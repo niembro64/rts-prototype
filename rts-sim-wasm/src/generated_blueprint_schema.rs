@@ -495,6 +495,7 @@ pub struct TurretBlueprint {
     pub rangeMultiplierOverrides: BlueprintJsonValue,
     pub eventsSmooth: bool,
     pub launchForce: f64,
+    pub addTurretVelocityToEmissionLaunch: bool,
     pub isManualFire: bool,
     pub passive: bool,
     pub requiresNonObstructedLineOfSight: bool,

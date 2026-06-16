@@ -1350,6 +1350,7 @@
         "rangeMultiplierOverrides",
         "eventsSmooth",
         "launchForce",
+        "addTurretVelocityToEmissionLaunch",
         "isManualFire",
         "passive",
         "requiresNonObstructedLineOfSight",
@@ -1419,6 +1420,9 @@
         },
         "launchForce": {
           "type": "number"
+        },
+        "addTurretVelocityToEmissionLaunch": {
+          "type": "boolean"
         },
         "isManualFire": {
           "type": "boolean"

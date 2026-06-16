@@ -1905,7 +1905,7 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 20,
+        "driveForce": 3,
         "traction": 0.3
       },
       "config": {

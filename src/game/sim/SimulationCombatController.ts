@@ -6,6 +6,7 @@ import {
   emitLaserStopsForTarget,
   emitShieldStopsForEntity,
   fireTurrets,
+  hasPendingProjectileLaunchVelocityFinalization,
   registerPackedProjectile,
   resetLaserSoundState,
   resetShieldBuffers,
@@ -198,6 +199,7 @@ export class SimulationCombatController {
       dtMs,
       this.damageSystem,
       this.forceAccumulator,
+      hasPendingProjectileLaunchVelocityFinalization,
     );
 
     // Add submunition / cluster projectiles spawned at explosion points,

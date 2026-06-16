@@ -5,6 +5,18 @@
     "checksumIntervalTicks": 180,
     "stallTimeoutMs": 5000,
     "desyncPolicy": "pause",
-    "allowLateJoin": false
+    "allowLateJoin": false,
+    "presentationSnapshots": {
+      "deltaSnapshotsEnabled": true,
+      "deltaMovementPositionThresholdAsMapRatio": 0.0001,
+      "deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio": 0.0001,
+      "deltaMovementVelocityDirectionThresholdAsFullTurnRatio": 0.0001,
+      "deltaRotationPositionThresholdAsFullTurnRatio": 0.0001,
+      "deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio": 0.0001,
+      "deltaRotationVelocityDirectionThresholdAsFullTurnRatio": 0.0001,
+      "fullSnapshotMinimapContactListMaxRefreshRateHz": 16,
+      "fullSnapshotEntityDetailFieldsMaxRefreshRateHz": 1,
+      "fullSnapshotProjectileDetailFieldsMaxRefreshRateHz": 1
+    }
   }
 }

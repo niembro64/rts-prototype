@@ -15,6 +15,7 @@ import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
+import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/projectileSystem';
 
 export type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
@@ -75,6 +76,7 @@ export class ServerSimulationCore {
     this.physics.step(dtSec, this.simulation.getWindState());
     this.repairInvalidEntityPoses();
     this.syncFromPhysics();
+    finalizePendingProjectileLaunchVelocities(this.world, dtMs);
   }
 
   getCanonicalStateHash(): CanonicalServerStateHash {

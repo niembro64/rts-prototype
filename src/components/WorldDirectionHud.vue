@@ -17,7 +17,12 @@ const props = withDefaults(defineProps<{
 
 const compassCanvasRef = ref<HTMLCanvasElement | null>(null);
 const windCanvasRef = ref<HTMLCanvasElement | null>(null);
-const windSpeedLabel = computed(() => `${(props.data.wind?.speed ?? 0).toFixed(2)}x`);
+const windSpeedLabel = computed(() => (props.data.wind?.speed ?? 0).toFixed(2));
+const windComponentLabels = computed(() => ({
+  x: fmtWindComponent(props.data.wind?.x ?? 0),
+  y: fmtWindComponent(props.data.wind?.y ?? 0),
+  z: fmtWindComponent(props.data.wind?.z ?? 0),
+}));
 const HUD_COLORS = COLORS.ui.worldDirectionHud;
 const hudStyle = {
   '--world-direction-text': HUD_COLORS.label.text,
@@ -64,6 +69,12 @@ const DEFAULT_CAMERA_Z = 4.8;
 
 const rightVec = new THREE.Vector2();
 const upVec = new THREE.Vector2();
+
+function fmtWindComponent(value: number): string {
+  const rounded = Math.abs(value) < 0.05 ? 0 : value;
+  const sign = rounded < 0 ? '-' : '+';
+  return `${sign}${Math.abs(rounded).toFixed(1)}`;
+}
 
 function cameraRelativeYaw(x: number, y: number): number {
   const len = Math.hypot(x, y);
@@ -507,11 +518,16 @@ watch(
         <strong>N</strong>
       </div>
     </div>
-    <div class="direction-item">
+    <div class="direction-item wind-item">
       <canvas ref="windCanvasRef" class="direction-canvas"></canvas>
-      <div class="direction-label">
+      <div class="direction-label wind-label">
         <span>Wind Speed</span>
         <strong>{{ windSpeedLabel }}</strong>
+        <div class="wind-components" aria-label="Wind speed components">
+          <span><b>X</b>{{ windComponentLabels.x }}</span>
+          <span><b>Y</b>{{ windComponentLabels.y }}</span>
+          <span><b>Z</b>{{ windComponentLabels.z }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -522,7 +538,7 @@ watch(
   display: flex;
   align-items: stretch;
   gap: 10px;
-  width: 300px;
+  width: 350px;
   height: 118px;
   min-height: 0;
   padding: 0;
@@ -534,7 +550,7 @@ watch(
 }
 
 .world-direction-hud.compact {
-  width: 276px;
+  width: 340px;
   height: 100%;
 }
 
@@ -545,6 +561,10 @@ watch(
   min-width: 0;
   flex: 1 1 0;
   height: 100%;
+}
+
+.wind-item {
+  flex: 1.45 1 0;
 }
 
 .direction-label {
@@ -595,5 +615,39 @@ watch(
 
 .world-direction-hud.compact .direction-label strong {
   font-size: 10px;
+}
+
+.wind-components {
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  gap: 4px;
+  min-width: 0;
+  margin-top: 1px;
+  color: var(--world-direction-strong);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 1px 5px var(--world-direction-strong-shadow);
+  white-space: nowrap;
+}
+
+.wind-components span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.wind-components b {
+  color: var(--world-direction-text);
+  font-size: 8px;
+}
+
+.world-direction-hud.compact .wind-components {
+  gap: 3px;
+  font-size: 9px;
+}
+
+.world-direction-hud.compact .wind-components b {
+  font-size: 8px;
 }
 </style>

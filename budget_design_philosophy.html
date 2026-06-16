@@ -769,6 +769,36 @@
         events, the client dead-reckons under gravity + per-shot
         thrust with no correction loop.
       </p>
+
+      <h3>Launch frames are explicit</h3>
+      <p>
+        A fired shot has two velocities that must not be confused. The
+        ballistic solver works in the firing mount's moving reference
+        frame: it receives the turret mount's world position and velocity,
+        the target's world position and velocity, the relevant acceleration
+        terms, and the universal gravity constant. Its launch solution is
+        the muzzle-relative velocity vector, not the complete world-space
+        projectile velocity.
+      </p>
+      <p>
+        Projectile creation converts that solution into the authoritative
+        spawn event by adding the mount center's current world velocity:
+        <code>v_world = v_mount + v_launch_relative</code>. The same world
+        velocity is written onto the projectile body and into the spawn
+        event, so server simulation, client prediction, and rendering all
+        start from one physical initial condition. A projectile fired from a
+        moving tank, aircraft, bobbing suspension mount, or recoil-shifted
+        turret therefore inherits that mount motion at launch.
+      </p>
+      <p>
+        Vertical tube launchers are not an exception to inheritance. Their
+        authored launch vector is vertical in the turret's own frame, so a
+        rocket exits the tube straight up relative to the launcher; in world
+        space it still carries the moving launcher velocity. D-gun terrain
+        waves are the narrow authored exception: they inherit horizontal
+        mount motion but suppress vertical mount velocity so a
+        terrain-following wave does not become a lobbed ballistic shell.
+      </p>
       <p>
         For non-homing shots &mdash; plasma bolts, D-gun waves &mdash; when a
         <code>velocityUpdate</code> arrives, the client

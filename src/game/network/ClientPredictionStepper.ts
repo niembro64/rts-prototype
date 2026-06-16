@@ -457,7 +457,6 @@ export class ClientPredictionStepper {
       deltaMs,
       mapWidth,
       mapHeight,
-      wind,
     });
 
     for (let i = 0; i < entitySettlementIds.length; i++) {

@@ -32,6 +32,7 @@ const TURRET_EXPLICIT_FIELDS = [
   'rangeVolume',
   'cooldown',
   'launchForce',
+  'addTurretVelocityToEmissionLaunch',
   'isManualFire',
   'passive',
   'requiresNonObstructedLineOfSight',
@@ -238,6 +239,9 @@ for (const [id, blueprint] of Object.entries(TURRET_BLUEPRINTS)) {
   validateTurretCooldown(label, blueprint.cooldown);
   validateTurretSubmunitions(`${label}.submunitions`, blueprint.submunitions);
   validateTurretUnitLauncher(`${label}.unitLauncher`, blueprint.unitLauncher);
+  if (typeof blueprint.addTurretVelocityToEmissionLaunch !== 'boolean') {
+    throw new Error(`Invalid ${label}.addTurretVelocityToEmissionLaunch: expected boolean`);
+  }
   if (blueprint.submunitions != null && blueprint.emissionKind !== 'shield') {
     throw new Error(
       `Invalid ${label}: submunitions are currently supported only for shield-emission turrets`,

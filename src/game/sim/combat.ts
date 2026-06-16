@@ -40,6 +40,8 @@ export {
 
 export {
   fireTurrets,
+  finalizePendingProjectileLaunchVelocities,
+  hasPendingProjectileLaunchVelocityFinalization,
   updateProjectiles,
   checkProjectileCollisions,
   registerPackedProjectile,

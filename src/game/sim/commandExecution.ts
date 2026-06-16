@@ -1294,9 +1294,8 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   // D-gun is a terrain-following wave: it travels horizontally in the
   // commanded direction while vertical thrust rides the local terrain.
-  // Keep horizontal mount-center inheritance so firing from a moving
-  // commander still uses the turret's own motion, but never let
-  // vertical mount velocity turn it into a ballistic shell.
+  // Authored turret velocity inheritance applies horizontally only:
+  // vertical mount velocity must not turn it into a ballistic shell.
   const dgunShot = turretDisruptor.config.shot;
   if (!dgunShot || !isProjectileShot(dgunShot)) {
     throw new Error('D-gun turret must use a projectile shot');
@@ -1307,10 +1306,10 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   let velocityX = DMath.cos(turretDisruptor.rotation) * speed;
   let velocityY = DMath.sin(turretDisruptor.rotation) * speed;
   let velocityZ = 0;
-  if (commander.unit) {
+  if (commander.unit && turretDisruptor.config.addTurretVelocityToEmissionLaunch) {
     // Manual D-gun shots update the same turret kinematics cache used
-    // by automated weapons above, so inherited velocity is the turret
-    // mount center's own 3D motion.
+    // by automated weapons above, so inherited horizontal velocity is
+    // the turret mount center's own motion.
     velocityX += turretDisruptor.worldVelocity.x;
     velocityY += turretDisruptor.worldVelocity.y;
   }

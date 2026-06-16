@@ -104,6 +104,18 @@ const _fireSimEvents: import('./types').SimEvent[] = [];
 const _fireSpawnEvents: ProjectileSpawnEvent[] = [];
 const _orphanedIds: EntityId[] = [];
 const _despawnEvents: ProjectileDespawnEvent[] = [];
+type PendingLaunchVelocityFinalization = {
+  projectile: Entity;
+  spawnEvent: ProjectileSpawnEvent;
+  sourceEntityId: EntityId;
+  turretIndex: number;
+  addTurretVelocityToEmissionLaunch: boolean;
+  relativeVx: number;
+  relativeVy: number;
+  relativeVz: number;
+};
+const _pendingLaunchVelocityFinalizations: PendingLaunchVelocityFinalization[] = [];
+const _pendingLaunchVelocityIds = new Set<EntityId>();
 const TWO_PI = Math.PI * 2;
 const _spreadConeDir = { x: 0, y: 0, z: 0 };
 
@@ -256,6 +268,7 @@ function refreshPackedProjectileViews(): void {
 const _fireWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamWeaponMount = { x: 0, y: 0, z: 0 };
 const _beamTraceEnd = { x: 0, y: 0, z: 0 };
+const _pendingLaunchWeaponMount = { x: 0, y: 0, z: 0 };
 const _fireFsm: CombatTargetingTurretFsmOut = {
   stateCode: CT_TURRET_STATE_ENGAGED,
   targetId: -1,
@@ -555,6 +568,7 @@ function isPackedProjectileEligible(entity: Entity): boolean {
 }
 
 export function registerPackedProjectile(entity: Entity): void {
+  if (hasPendingProjectileLaunchVelocityFinalization(entity.id)) return;
   if (!isPackedProjectileEligible(entity)) return;
   if (_packedProjectileSlots.has(entity.id)) return;
   const proj = entity.projectile!;
@@ -639,6 +653,8 @@ export function resetProjectileBuffers(): void {
   _packedProjectileIds = new Int32Array(0);
   _packedProjectileViewsBound = false;
   _packedProjectilePoolCapacity = 0;
+  _pendingLaunchVelocityFinalizations.length = 0;
+  _pendingLaunchVelocityIds.clear();
   _travelingProjectileBatchEntities.length = 0;
   trimTravelingProjectileBatchBuffers();
   trimHomingGuidanceBuffers();
@@ -668,6 +684,125 @@ function createTurretShotSource(
     spawnTick: world.getTick(),
     parentShotEntityId: null,
   };
+}
+
+function queueLaunchVelocityFinalization(
+  projectile: Entity,
+  spawnEvent: ProjectileSpawnEvent,
+  sourceEntityId: EntityId,
+  turretIndex: number,
+  addTurretVelocityToEmissionLaunch: boolean,
+  relativeVx: number,
+  relativeVy: number,
+  relativeVz: number,
+): void {
+  _pendingLaunchVelocityFinalizations.push({
+    projectile,
+    spawnEvent,
+    sourceEntityId,
+    turretIndex,
+    addTurretVelocityToEmissionLaunch,
+    relativeVx,
+    relativeVy,
+    relativeVz,
+  });
+  _pendingLaunchVelocityIds.add(projectile.id);
+}
+
+export function hasPendingProjectileLaunchVelocityFinalization(id: EntityId): boolean {
+  return _pendingLaunchVelocityIds.has(id);
+}
+
+function writeProjectileLaunchState(
+  projectileEntity: Entity,
+  spawnEvent: ProjectileSpawnEvent,
+  x: number,
+  y: number,
+  z: number,
+  vx: number,
+  vy: number,
+  vz: number,
+): void {
+  projectileEntity.transform.x = x;
+  projectileEntity.transform.y = y;
+  projectileEntity.transform.z = z;
+  spawnEvent.pos.x = x;
+  spawnEvent.pos.y = y;
+  spawnEvent.pos.z = z;
+  spawnEvent.velocity.x = vx;
+  spawnEvent.velocity.y = vy;
+  spawnEvent.velocity.z = vz;
+
+  const projectile = projectileEntity.projectile;
+  if (projectile === null) return;
+  projectile.velocityX = vx;
+  projectile.velocityY = vy;
+  projectile.velocityZ = vz;
+  projectile.lastSentVelX = vx;
+  projectile.lastSentVelY = vy;
+  projectile.lastSentVelZ = vz;
+
+  const packedSlot = _packedProjectileSlots.get(projectileEntity.id);
+  if (packedSlot !== undefined) {
+    _packedProjectileX[packedSlot] = x;
+    _packedProjectileY[packedSlot] = y;
+    _packedProjectileZ[packedSlot] = z;
+    _packedProjectileVx[packedSlot] = vx;
+    _packedProjectileVy[packedSlot] = vy;
+    _packedProjectileVz[packedSlot] = vz;
+  }
+  spatialGrid.updateProjectile(projectileEntity);
+}
+
+export function finalizePendingProjectileLaunchVelocities(world: WorldState, dtMs: number): void {
+  if (_pendingLaunchVelocityFinalizations.length === 0) return;
+
+  const currentTick = world.getTick();
+  for (let i = 0; i < _pendingLaunchVelocityFinalizations.length; i++) {
+    const pending = _pendingLaunchVelocityFinalizations[i];
+    const projectileEntity = pending.projectile;
+    _pendingLaunchVelocityIds.delete(projectileEntity.id);
+
+    if (world.getEntity(projectileEntity.id) !== projectileEntity) continue;
+    if (projectileEntity.projectile === null) continue;
+
+    const source = world.getEntity(pending.sourceEntityId);
+    const sourceCombat = source?.combat ?? null;
+    const turret = sourceCombat?.turrets[pending.turretIndex];
+    if (source === undefined || turret === undefined) {
+      registerPackedProjectile(projectileEntity);
+      continue;
+    }
+
+    const { cos, sin } = getTransformCosSin(source.transform);
+    const mount = updateWeaponWorldKinematics(
+      source,
+      turret,
+      pending.turretIndex,
+      cos,
+      sin,
+      {
+        currentTick,
+        dtMs,
+        unitGroundZ: getUnitGroundZ(source),
+        surfaceN: source.unit !== null ? source.unit.surfaceNormal : undefined,
+      },
+      _pendingLaunchWeaponMount,
+    );
+    writeProjectileLaunchState(
+      projectileEntity,
+      pending.spawnEvent,
+      mount.x,
+      mount.y,
+      mount.z,
+      pending.relativeVx + (pending.addTurretVelocityToEmissionLaunch ? turret.worldVelocity.x : 0),
+      pending.relativeVy + (pending.addTurretVelocityToEmissionLaunch ? turret.worldVelocity.y : 0),
+      pending.relativeVz + (pending.addTurretVelocityToEmissionLaunch ? turret.worldVelocity.z : 0),
+    );
+    registerPackedProjectile(projectileEntity);
+  }
+
+  _pendingLaunchVelocityFinalizations.length = 0;
 }
 
 // Fire weapons at targets - unified for all units
@@ -841,9 +976,12 @@ export function fireTurrets(
             });
           }
 
-          const projVx = dirX * speed + weapon.worldVelocity.x;
-          const projVy = dirY * speed + weapon.worldVelocity.y;
-          const projVz = dirZ * speed + weapon.worldVelocity.z;
+          const inheritedVx = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.x : 0;
+          const inheritedVy = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.y : 0;
+          const inheritedVz = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.z : 0;
+          const projVx = dirX * speed + inheritedVx;
+          const projVy = dirY * speed + inheritedVy;
+          const projVz = dirZ * speed + inheritedVz;
           const projectile = world.createProjectile(
             spawnX,
             spawnY,
@@ -867,7 +1005,7 @@ export function fireTurrets(
             : weapon.rotation;
 
           newProjectiles.push(projectile);
-          spawnEvents.push({
+          const spawnEvent: ProjectileSpawnEvent = {
             id: projectile.id,
             pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: fireYaw,
             velocity: { x: projVx, y: projVy, z: projVz },
@@ -889,7 +1027,18 @@ export function fireTurrets(
             turretIndex: weaponIndex,
             barrelIndex,
             homingTurnRate: projShot.homingTurnRate ?? undefined,
-          });
+          };
+          spawnEvents.push(spawnEvent);
+          queueLaunchVelocityFinalization(
+            projectile,
+            spawnEvent,
+            unit.id,
+            weaponIndex,
+            config.addTurretVelocityToEmissionLaunch,
+            dirX * speed,
+            dirY * speed,
+            dirZ * speed,
+          );
 
           if (forceAccumulator && projShot.mass > 0) {
             const recoilForce = projShot.launchForce * PROJECTILE_MASS_MULTIPLIER;
@@ -1086,18 +1235,16 @@ export function fireTurrets(
           // the per-pellet firing direction.
           const projShot = shot as ProjectileShot;
           const speed = getTurretProjectileLaunchSpeed(config, projShot);
-          let projVx = dirX * speed;
-          let projVy = dirY * speed;
-          let projVz = dirZ * speed;
-          // Ordinary turret shots inherit the mount center's 3D velocity.
-          // Vertical launchers are authored as tube launches: their initial
-          // velocity is exactly the barrel axis * launch speed, so rocket
-          // propulsion starts straight out of the tube even on a moving host.
-          if (!config.verticalLauncher) {
-            projVx += weapon.worldVelocity.x;
-            projVy += weapon.worldVelocity.y;
-            projVz += weapon.worldVelocity.z;
-          }
+          // Launch direction is authored in the turret's local frame.
+          // Physical emissions can opt into inheriting the moving mount
+          // center's current velocity; ray/shield/cosmetic turrets leave
+          // that disabled in authored data.
+          const inheritedVx = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.x : 0;
+          const inheritedVy = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.y : 0;
+          const inheritedVz = config.addTurretVelocityToEmissionLaunch ? weapon.worldVelocity.z : 0;
+          const projVx = dirX * speed + inheritedVx;
+          const projVy = dirY * speed + inheritedVy;
+          const projVz = dirZ * speed + inheritedVz;
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const shotSource = createTurretShotSource(world, unit, weapon, projShot.shotBlueprintId, playerId);
           const projectile = world.createProjectile(
@@ -1125,7 +1272,7 @@ export function fireTurrets(
           const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
 
           newProjectiles.push(projectile);
-          spawnEvents.push({
+          const spawnEvent: ProjectileSpawnEvent = {
             id: projectile.id,
             pos: { x: spawnX, y: spawnY, z: spawnZ }, rotation: fireYaw,
             velocity: { x: projVx, y: projVy, z: projVz },
@@ -1150,7 +1297,18 @@ export function fireTurrets(
               ? targetingTargetId
               : undefined,
             homingTurnRate: projShot.homingTurnRate ?? undefined,
-          });
+          };
+          spawnEvents.push(spawnEvent);
+          queueLaunchVelocityFinalization(
+            projectile,
+            spawnEvent,
+            unit.id,
+            weaponIndex,
+            config.addTurretVelocityToEmissionLaunch,
+            dirX * speed,
+            dirY * speed,
+            dirZ * speed,
+          );
 
           // Apply recoil to firing unit (momentum-based: p = mv). Use
           // the pellet's actual outbound horizontal direction so cone
@@ -1366,7 +1524,12 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
   for (let slot = 0; slot < _packedProjectileCount;) {
     const entity = _packedProjectileEntities[slot] ?? null;
     const proj = entity !== null ? entity.projectile : null;
-    if (entity === null || proj === null || !isPackedProjectileEligible(entity)) {
+    if (
+      entity === null ||
+      proj === null ||
+      hasPendingProjectileLaunchVelocityFinalization(entity.id) ||
+      !isPackedProjectileEligible(entity)
+    ) {
       unregisterPackedProjectile(_packedProjectileIds[slot]);
       continue;
     }
@@ -1452,6 +1615,7 @@ function _updateTravelingProjectilesJS(
 
   for (const entity of world.getTravelingProjectiles()) {
     if (!entity.projectile) continue;
+    if (hasPendingProjectileLaunchVelocityFinalization(entity.id)) continue;
     if (isPackedProjectile(entity.id)) continue;
     const proj = entity.projectile;
 
@@ -1757,8 +1921,10 @@ function _updateTravelingProjectilesJS(
       if (homingTargetChanged || snapshotVectorVelocityDeltaExceeded(
         vx, vy, vz,
         lastVx, lastVy, lastVz,
-        SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold,
-        snapshotRotationThresholdRadians(SNAPSHOT_CONFIG.movementVelocityDirectionThreshold),
+        SNAPSHOT_CONFIG.deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio,
+        snapshotRotationThresholdRadians(
+          SNAPSHOT_CONFIG.deltaMovementVelocityDirectionThresholdAsFullTurnRatio,
+        ),
       )) {
         proj.lastSentVelX = vx;
         proj.lastSentVelY = vy;

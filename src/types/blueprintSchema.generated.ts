@@ -327,6 +327,7 @@ export type TurretBlueprint = {
   rangeMultiplierOverrides: TurretRangeOverrides;
   eventsSmooth: boolean;
   launchForce: number;
+  addTurretVelocityToEmissionLaunch: boolean;
   isManualFire: boolean;
   passive: boolean;
   requiresNonObstructedLineOfSight: boolean;

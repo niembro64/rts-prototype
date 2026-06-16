@@ -245,7 +245,7 @@ export class ServerSnapshotDirectWirePreencoder {
     );
     const netProjectiles = writeProjectileSnapshotWireRowsDirect({
       world: input.world,
-      deltaEnabled: input.isDelta && SNAPSHOT_CONFIG.deltaEnabled,
+      deltaEnabled: input.isDelta && SNAPSHOT_CONFIG.deltaSnapshotsEnabled,
       visibility: input.visibility,
       emitBeamUpdates: input.emitProjectileDetailFields,
       projectileSpawns: input.projectileSpawns,
@@ -279,7 +279,7 @@ export class ServerSnapshotDirectWirePreencoder {
     state.terrain = input.terrain;
     state.buildability = input.buildability;
     state.gameState = _directGameState;
-    state.isDelta = input.isDelta && SNAPSHOT_CONFIG.deltaEnabled;
+    state.isDelta = input.isDelta && SNAPSHOT_CONFIG.deltaSnapshotsEnabled;
     state.removedEntityIds = this.removedEntityIds.length > 0
       ? this.removedEntityIds
       : undefined;
@@ -296,7 +296,7 @@ export class ServerSnapshotDirectWirePreencoder {
     const tracking = getDeltaTrackingState(input.trackingKey);
     const baselineHandle = input.snapshotBaselineHandle;
     const baselineSim = baselineHandle === undefined ? undefined : sim;
-    const deltaEnabled = input.isDelta && SNAPSHOT_CONFIG.deltaEnabled;
+    const deltaEnabled = input.isDelta && SNAPSHOT_CONFIG.deltaSnapshotsEnabled;
 
     if (input.removedEntities !== undefined) {
       this.processRemovedEntities(
@@ -610,4 +610,3 @@ export class ServerSnapshotDirectWirePreencoder {
     }
   }
 }
-

@@ -298,7 +298,7 @@ export function serializeGameState(
   // processRemovedEntities used to be per-call closures here; they're
   // now module-scope helpers with explicit params, dropping closure
   // allocations per serialize.
-  const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaEnabled;
+  const deltaEnabled = isDelta && SNAPSHOT_CONFIG.deltaSnapshotsEnabled;
 
   if (options.removedEntities !== undefined) {
     processRemovedEntities(options.removedEntities, tracking, visibility, baselineSim, baselineHandle);

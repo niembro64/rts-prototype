@@ -5,8 +5,8 @@ import {
   getTerrainVersion,
   WATER_LEVEL,
 } from '@/game/sim/Terrain';
-import { MAP_BG_COLOR } from '@/config';
-import { COLORS, readRgbTuple } from '@/colorsConfig';
+import { MAP_BG_COLOR, WIND_SPEED_MAX, WIND_SPEED_MIN } from '@/config';
+import { COLORS, cssHex, readRgbTuple } from '@/colorsConfig';
 import { minimapPointerToWorld } from './minimapHelpers';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
@@ -42,6 +42,10 @@ const MINIMAP_SELECTION_STROKE = COLORS.ui.minimap.selectionStroke;
 const MINIMAP_CAMERA_STROKE = COLORS.ui.minimap.cameraStroke;
 const MINIMAP_FRAME_STROKE = COLORS.ui.minimap.frameStroke;
 const MINIMAP_PANEL = COLORS.ui.minimap.panel;
+const MINIMAP_WIND_STROKE = cssHex(COLORS.ui.worldDirectionHud.materials.wind.colorHex);
+const MINIMAP_WIND_ACCENT = cssHex(COLORS.ui.worldDirectionHud.materials.windAccent.colorHex);
+const MINIMAP_WIND_TEXT = COLORS.ui.worldDirectionHud.label.strong;
+const MINIMAP_WIND_LABEL = COLORS.ui.worldDirectionHud.label.text;
 
 const props = withDefaults(defineProps<{
   data: MinimapData;
@@ -378,6 +382,127 @@ function drawCommunicationLayer(
   ctx.restore();
 }
 
+function fmtWindSpeed(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 100) return abs.toFixed(0);
+  if (abs >= 10) return abs.toFixed(1);
+  return abs.toFixed(2);
+}
+
+function windSpeedUnit(speed: number): number {
+  const min = Math.min(WIND_SPEED_MIN, WIND_SPEED_MAX);
+  const max = Math.max(WIND_SPEED_MIN, WIND_SPEED_MAX);
+  if (max > min) return Math.max(0, Math.min(1, (speed - min) / (max - min)));
+  return Math.max(0, Math.min(1, speed / Math.max(1, max)));
+}
+
+function roundedRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  const radius = Math.min(r, w * 0.5, h * 0.5);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + w - radius, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
+  ctx.lineTo(x + w, y + h - radius);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
+  ctx.lineTo(x + radius, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function drawWindLayer(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+): void {
+  const wind = props.data.wind;
+  if (!wind || wind.speed <= 1e-6) return;
+  const horizontalLen = Math.hypot(wind.x, wind.y);
+  if (horizontalLen <= 1e-6) return;
+
+  const inset = 6;
+  const panelW = Math.min(80, w - inset * 2);
+  const panelH = Math.min(46, h - inset * 2);
+  if (panelW < 62 || panelH < 38) return;
+
+  const x = w - panelW - inset;
+  const y = h - panelH - inset;
+  const arrowCx = x + 21;
+  const arrowCy = y + panelH * 0.52;
+  const textX = x + 41;
+  const speedScale = windSpeedUnit(wind.speed);
+  const arrowLength = 18 + speedScale * 9;
+  const arrowHead = 6;
+
+  // Match the top HUD's upwind convention, but keep it in map-space:
+  // canvas up is world north, independent of the current camera yaw.
+  const dx = -wind.x / horizontalLen;
+  const dy = -wind.y / horizontalLen;
+  const tailX = arrowCx - dx * arrowLength * 0.5;
+  const tailY = arrowCy - dy * arrowLength * 0.5;
+  const headX = arrowCx + dx * arrowLength * 0.5;
+  const headY = arrowCy + dy * arrowLength * 0.5;
+  const perpX = -dy;
+  const perpY = dx;
+
+  ctx.save();
+  ctx.shadowBlur = 8;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.72)';
+  roundedRectPath(ctx, x, y, panelW, panelH, 5);
+  ctx.fillStyle = 'rgba(4, 8, 14, 0.72)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(155, 232, 255, 0.36)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.shadowBlur = 4;
+  ctx.strokeStyle = MINIMAP_WIND_STROKE;
+  ctx.lineWidth = 2.25;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(headX, headY);
+  ctx.stroke();
+
+  ctx.fillStyle = MINIMAP_WIND_STROKE;
+  ctx.beginPath();
+  ctx.moveTo(headX, headY);
+  ctx.lineTo(
+    headX - dx * arrowHead + perpX * arrowHead * 0.58,
+    headY - dy * arrowHead + perpY * arrowHead * 0.58,
+  );
+  ctx.lineTo(
+    headX - dx * arrowHead - perpX * arrowHead * 0.58,
+    headY - dy * arrowHead - perpY * arrowHead * 0.58,
+  );
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = MINIMAP_WIND_ACCENT;
+  ctx.beginPath();
+  ctx.arc(tailX, tailY, 2.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = MINIMAP_WIND_LABEL;
+  ctx.font = '700 8px monospace';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('WIND', textX, y + 16);
+  ctx.fillStyle = MINIMAP_WIND_TEXT;
+  ctx.font = '700 11px monospace';
+  ctx.fillText(fmtWindSpeed(wind.speed), textX, y + 31);
+  ctx.restore();
+}
+
 /** Composite the cached entity layer + stroke the camera quad + the
  *  frame border. Called on every cameraQuad change — cheap. */
 function compose(): void {
@@ -414,6 +539,8 @@ function compose(): void {
   ctx.closePath();
   ctx.stroke();
   ctx.restore();
+
+  drawWindLayer(ctx, w, h);
 
   ctx.strokeStyle = MINIMAP_FRAME_STROKE;
   ctx.lineWidth = 2;
@@ -495,6 +622,16 @@ watch(
 // deep walk of every drawing object per change bought nothing.
 watch(
   () => props.drawings,
+  compose,
+);
+
+watch(
+  () => [
+    props.data.wind?.x ?? 0,
+    props.data.wind?.y ?? 0,
+    props.data.wind?.z ?? 0,
+    props.data.wind?.speed ?? 0,
+  ],
   compose,
 );
 

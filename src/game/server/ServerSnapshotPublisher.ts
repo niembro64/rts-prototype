@@ -398,7 +398,7 @@ export class ServerSnapshotPublisher {
       this.snapshotCounter = 0;
       return false;
     }
-    if (!SNAPSHOT_CONFIG.deltaEnabled) return false;
+    if (!SNAPSHOT_CONFIG.deltaSnapshotsEnabled) return false;
     if (keyframeRatio >= 1) return false;
     if (keyframeRatio <= 0) return true;
 
@@ -412,7 +412,7 @@ export class ServerSnapshotPublisher {
   }
 
   private resolveMinimapDeltaEmit(snapshotRate: SnapshotRate): boolean {
-    const targetHz = SNAPSHOT_CONFIG.minimapSnapshotRateHz;
+    const targetHz = SNAPSHOT_CONFIG.fullSnapshotMinimapContactListMaxRefreshRateHz;
     if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
     const sourceHz = snapshotRateHz(snapshotRate);
     const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
@@ -428,7 +428,7 @@ export class ServerSnapshotPublisher {
   }
 
   private resolveEntityDetailDeltaEmit(snapshotRate: SnapshotRate): boolean {
-    const targetHz = SNAPSHOT_CONFIG.entityDetailSnapshotRateHz;
+    const targetHz = SNAPSHOT_CONFIG.fullSnapshotEntityDetailFieldsMaxRefreshRateHz;
     if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
     const sourceHz = snapshotRateHz(snapshotRate);
     const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
@@ -444,7 +444,7 @@ export class ServerSnapshotPublisher {
   }
 
   private resolveProjectileDetailDeltaEmit(snapshotRate: SnapshotRate): boolean {
-    const targetHz = SNAPSHOT_CONFIG.projectileDetailSnapshotRateHz;
+    const targetHz = SNAPSHOT_CONFIG.fullSnapshotProjectileDetailFieldsMaxRefreshRateHz;
     if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
     const sourceHz = snapshotRateHz(snapshotRate);
     const interval = Math.max(1, Math.ceil(sourceHz / targetHz));

@@ -49,8 +49,8 @@ import {
   MAP_DIMENSION_CONFIG,
   nearestOddLandCellCount,
 } from './mapSizeConfig';
+import { ARCHITECTURE_CONFIG } from './architectureConfig';
 import sharedSimConstants from './sharedSimConstants.json';
-import snapshotConfigJson from './snapshotConfig.json';
 import emaConfigJson from './emaConfig.json';
 import combatConfigJson from './combatConfig.json';
 import beamConfigJson from './beamConfig.json';
@@ -118,18 +118,18 @@ export const GOOD_TPS = telemetryConfigJson.goodTps;
 // UNITS USED BELOW:
 //   - Threshold values are authored as ratios, not absolute world
 //     units/radians. 0.1 means 10%.
-//   - movementPositionThreshold is a ratio of the larger map axis.
+//   - deltaMovementPositionThresholdAsMapRatio is a ratio of the larger map axis.
 //     On a 10,600wu square map, 0.1 means a 1,060wu position delta.
-//   - movementVelocityMagnitudeThreshold is relative to the last-sent
-//     speed. A 5wu/s drop matters at 5wu/s, but not at 100wu/s.
-//   - movementVelocityDirectionThreshold is a ratio of a full turn
+//   - deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio is relative
+//     to the last-sent speed. A 5wu/s drop matters at 5wu/s, but not at 100wu/s.
+//   - deltaMovementVelocityDirectionThresholdAsFullTurnRatio is a ratio of a full turn
 //     between velocity vectors. 0.05 means 18 degrees. Direction is
 //     ignored when either velocity vector is effectively stopped.
-//   - rotationPositionThreshold is a ratio of a full turn. 0.1 means
-//     36 degrees.
-//   - rotationVelocityMagnitudeThreshold is relative to the last-sent
-//     yaw/pitch angular speed vector magnitude.
-//   - rotationVelocityDirectionThreshold is a ratio of a full turn
+//   - deltaRotationPositionThresholdAsFullTurnRatio is a ratio of a full turn.
+//     0.1 means 36 degrees.
+//   - deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio is
+//     relative to the last-sent yaw/pitch angular speed vector magnitude.
+//   - deltaRotationVelocityDirectionThresholdAsFullTurnRatio is a ratio of a full turn
 //     between yaw/pitch angular velocity vectors. For one-axis turret
 //     motion, a sign flip is a 180 degree direction change.
 //
@@ -137,44 +137,48 @@ export const GOOD_TPS = telemetryConfigJson.goodTps;
 // that matches your bandwidth budget vs visual smoothness target.
 // Higher resolution = more bytes on the wire, smoother visuals.
 //
-// Authored values live in src/snapshotConfig.json:
-//   deltaEnabled            — master switch; false ⇒ every snap is a
-//                             full keyframe (debug only; ~5-10×
-//                             bandwidth in active play).
-//   movementPositionThreshold — entity position must move by more than
-//                             this ratio of the larger map axis to
-//                             re-send. 0.1 = 10% of the full map.
-//   movementVelocityMagnitudeThreshold — velocity speed must change by
-//                             more than this ratio of the last-sent
-//                             speed to re-send. 0.1 = 10%.
-//   movementVelocityDirectionThreshold — velocity heading must change
-//                             by more than this ratio of a full 360°
-//                             turn to re-send. 0.05 = 18°.
-//   rotationPositionThreshold — body + turret rotations must change
-//                               by more than this ratio of a full
-//                               360° turn to re-send. 0.1 = 36°.
-//   rotationVelocityMagnitudeThreshold — turret yaw/pitch angular
-//                               speed must change by more than this
-//                               ratio of the last-sent angular speed
-//                               to re-send. 0.1 = 10%.
-//   rotationVelocityDirectionThreshold — turret yaw/pitch angular
-//                               velocity direction must change by
-//                               more than this ratio of a full 360°
-//                               turn to re-send. 0.05 = 18°.
-//   minimapSnapshotRateHz   — upper cadence for full minimap contact
-//                             lists on delta snapshots. Keyframes
-//                             always carry a fresh minimap baseline.
-//   entityDetailSnapshotRateHz — upper cadence for high-frequency
-//                             visual/detail entity fields such as
-//                             normals, suspension, building, and
-//                             factory state. Turret aim motion is
-//                             threshold-gated on normal deltas.
-//   projectileDetailSnapshotRateHz — upper cadence for live beam path
-//                             corrections on delta snapshots. Keep this
-//                             near snapshot cadence for beam/laser
-//                             turrets; line-shot aim is primary visible
-//                             state, not low-priority detail.
-export const SNAPSHOT_CONFIG: SnapshotConfig = snapshotConfigJson;
+// Authored values live in src/architecture.json:
+//   lockstep.presentationSnapshots.deltaSnapshotsEnabled
+//                             — master switch; false => every snap is a
+//                               full keyframe (debug only; ~5-10x
+//                               bandwidth in active play).
+//   deltaMovementPositionThresholdAsMapRatio
+//                             — entity position must move by more than
+//                               this ratio of the larger map axis to
+//                               re-send. 0.1 = 10% of the full map.
+//   deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio
+//                             — velocity speed must change by more than
+//                               this ratio of the last-sent speed to
+//                               re-send. 0.1 = 10%.
+//   deltaMovementVelocityDirectionThresholdAsFullTurnRatio
+//                             — velocity heading must change by more than
+//                               this ratio of a full 360 degree turn to
+//                               re-send. 0.05 = 18 degrees.
+//   deltaRotationPositionThresholdAsFullTurnRatio
+//                             — body + turret rotations must change by
+//                               more than this ratio of a full 360 degree
+//                               turn to re-send. 0.1 = 36 degrees.
+//   deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio
+//                             — turret yaw/pitch angular speed must
+//                               change by more than this ratio of the
+//                               last-sent angular speed to re-send.
+//   deltaRotationVelocityDirectionThresholdAsFullTurnRatio
+//                             — turret yaw/pitch angular velocity
+//                               direction must change by more than this
+//                               ratio of a full 360 degree turn.
+//   fullSnapshotMinimapContactListMaxRefreshRateHz
+//                             — maximum refresh cadence for full minimap
+//                               contact lists embedded in delta snapshots.
+//                               Keyframes always carry a fresh baseline.
+//   fullSnapshotEntityDetailFieldsMaxRefreshRateHz
+//                             — maximum refresh cadence for visual/detail
+//                               entity fields such as normals, suspension,
+//                               building, and factory state.
+//   fullSnapshotProjectileDetailFieldsMaxRefreshRateHz
+//                             — maximum refresh cadence for live beam path
+//                               corrections embedded in delta snapshots.
+export const SNAPSHOT_CONFIG: SnapshotConfig =
+  ARCHITECTURE_CONFIG.lockstep.presentationSnapshots;
 
 // Re-export bar config values used by sim/server code
 export { BATTLE_CONFIG } from './battleBarConfig';

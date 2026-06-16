@@ -1157,6 +1157,7 @@ export function checkProjectileCollisions(
   dtMs: number,
   damageSystem: DamageSystem,
   forceAccumulator: ForceAccumulator | undefined = undefined,
+  shouldSkipProjectile: ((id: EntityId) => boolean) | undefined = undefined,
 ): CollisionResult {
   // Reuse module-level containers (cleared each call)
   _collisionProjectilesToRemove.length = 0;
@@ -1187,6 +1188,7 @@ export function checkProjectileCollisions(
   for (let projectileOrdinal = 0; projectileOrdinal < projectileEntities.length; projectileOrdinal++) {
     const projEntity = projectileEntities[projectileOrdinal];
     if (!projEntity.projectile || !projEntity.ownership) continue;
+    if (shouldSkipProjectile?.(projEntity.id) === true) continue;
 
     const proj = projEntity.projectile;
     const config = proj.config;

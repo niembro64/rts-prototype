@@ -2,19 +2,131 @@ import { getTransformCosSin } from '../math';
 import { getUnitBlueprint } from './blueprints';
 import { createBuildable } from './buildableHelpers';
 import { DamageSystem } from './damage';
+import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import type { EntityId, PlayerId } from './types';
-import { NO_ENTITY_ID } from './types';
-import { resolveWeaponWorldMount } from './combat/combatUtils';
+import { isProjectileShot, NO_ENTITY_ID } from './types';
+import {
+  finalizePendingProjectileLaunchVelocities,
+  fireTurrets,
+  hasPendingProjectileLaunchVelocityFinalization,
+  updateTargetingAndFiringState,
+  updateTurretRotation,
+} from './combat';
+import { getProjectileLaunchSpeed, resolveWeaponWorldMount } from './combat/combatUtils';
 import { stampCombatTargetingPool } from './combat/targetingInputStamping';
 import { getUnitGroundZ } from './unitGeometry';
 import { WorldState } from './WorldState';
 
 const TEST_UNIT_BLUEPRINT_ID = 'unitFormik';
+const TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID = 'unitBadger';
 
-function assertContract(condition: boolean, message: string): void {
+function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(`[turret host integration] ${message}`);
+  }
+}
+
+function assertNear(actual: number, expected: number, message: string): void {
+  if (Math.abs(actual - expected) > 1e-6) {
+    throw new Error(
+      `[turret host integration] ${message}: expected ${expected}, got ${actual}`,
+    );
+  }
+}
+
+function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLaunch: boolean): void {
+  spatialGrid.clear();
+  const launchWorld = new WorldState(
+    addTurretVelocityToEmissionLaunch ? 4321 : 4322,
+    1024,
+    1024,
+  );
+  launchWorld.playerCount = 2;
+  const badger = launchWorld.createUnitFromBlueprint(
+    120,
+    120,
+    1 as PlayerId,
+    TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID,
+  );
+  const launchTarget = launchWorld.createUnitFromBlueprint(
+    720,
+    120,
+    2 as PlayerId,
+    'unitJackal',
+  );
+  launchWorld.addEntity(badger);
+  launchWorld.addEntity(launchTarget);
+  spatialGrid.updateUnit(badger);
+  spatialGrid.updateUnit(launchTarget);
+  if (badger.unit === null || badger.combat === null) {
+    throw new Error('[turret host integration] badger must be an armed unit');
+  }
+
+  const badgerTurret = badger.combat.turrets[0];
+  const previousInheritanceFlag = badgerTurret.config.addTurretVelocityToEmissionLaunch;
+  badgerTurret.config.addTurretVelocityToEmissionLaunch = addTurretVelocityToEmissionLaunch;
+  try {
+    badger.combat.priorityTargetId = launchTarget.id;
+    badger.combat.priorityTargetPoint = null;
+    const dtMs = 50;
+    stampCombatTargetingPool(launchWorld);
+    const activeCombatUnits = updateTargetingAndFiringState(launchWorld, dtMs);
+    updateTurretRotation(launchWorld, dtMs, activeCombatUnits);
+    const fireResult = fireTurrets(launchWorld, dtMs, new ForceAccumulator(), activeCombatUnits);
+    assertContract(fireResult.projectiles.length === 1, 'badger slow rocket should fire one projectile');
+    assertContract(fireResult.spawnEvents.length === 1, 'badger slow rocket should emit one spawn event');
+
+    const rocketEntity = fireResult.projectiles[0];
+    const rocket = rocketEntity.projectile;
+    const rocketSpawn = fireResult.spawnEvents[0];
+    if (rocket === null) {
+      throw new Error('[turret host integration] fired rocket must have a projectile component');
+    }
+    assertContract(
+      hasPendingProjectileLaunchVelocityFinalization(rocketEntity.id),
+      'fresh turret projectile must wait for post-physics launch velocity finalization',
+    );
+    launchWorld.addEntity(rocketEntity);
+
+    const badgerShot = badgerTurret.config.shot;
+    assertContract(
+      badgerShot !== null && isProjectileShot(badgerShot),
+      'badger turret must fire a physical projectile shot',
+    );
+    const relativeLaunchSpeed = getProjectileLaunchSpeed(badgerShot);
+    const finalHostVx = 37;
+    const finalHostVy = -11;
+    const finalHostVz = 3;
+    badger.transform.x += finalHostVx * (dtMs / 1000);
+    badger.transform.y += finalHostVy * (dtMs / 1000);
+    badger.transform.z += finalHostVz * (dtMs / 1000);
+    badger.unit.velocityX = finalHostVx;
+    badger.unit.velocityY = finalHostVy;
+    badger.unit.velocityZ = finalHostVz;
+    launchWorld.incrementTick();
+
+    finalizePendingProjectileLaunchVelocities(launchWorld, dtMs);
+    assertContract(
+      !hasPendingProjectileLaunchVelocityFinalization(rocketEntity.id),
+      'post-physics finalization must clear the pending launch marker',
+    );
+    const expectedInheritedVx = addTurretVelocityToEmissionLaunch ? finalHostVx : 0;
+    const expectedInheritedVy = addTurretVelocityToEmissionLaunch ? finalHostVy : 0;
+    const expectedInheritedVz = addTurretVelocityToEmissionLaunch ? finalHostVz : 0;
+    assertNear(rocket.velocityX, expectedInheritedVx, 'vertical rocket launch vx must match inheritance flag');
+    assertNear(rocket.velocityY, expectedInheritedVy, 'vertical rocket launch vy must match inheritance flag');
+    assertNear(
+      rocket.velocityZ,
+      expectedInheritedVz + relativeLaunchSpeed,
+      'vertical rocket launch vz must match inheritance flag plus relative launch speed',
+    );
+    assertNear(rocketSpawn.velocity.x, rocket.velocityX, 'spawn event vx must match finalized projectile vx');
+    assertNear(rocketSpawn.velocity.y, rocket.velocityY, 'spawn event vy must match finalized projectile vy');
+    assertNear(rocketSpawn.velocity.z, rocket.velocityZ, 'spawn event vz must match finalized projectile vz');
+  } finally {
+    badgerTurret.config.addTurretVelocityToEmissionLaunch = previousInheritanceFlag;
+    spatialGrid.clear();
   }
 }
 
@@ -120,6 +232,9 @@ export function runTurretHostIntegrationContractTest(): void {
     world.refreshEntityMetadata(host);
     assertContract(world.resolveMountedTurret(turret.id) === undefined, 'dead host body must not leave a hostless live turret');
     assertContract(host.combat?.turrets === authoredTurrets, 'host death must keep turrets as part of the host assembly until removal');
+
+    assertSlowRocketLaunchVelocityInheritance(true);
+    assertSlowRocketLaunchVelocityInheritance(false);
   } finally {
     spatialGrid.clear();
   }

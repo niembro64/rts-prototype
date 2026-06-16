@@ -428,6 +428,7 @@ export type TurretConfig = {
   rangeVolume: TurretRangeVolume;
   cooldown: TurretCooldownConfig | null;
   launchForce: number;
+  addTurretVelocityToEmissionLaunch: boolean;
   color: number;
   barrel: BarrelShape;
   angular: { turnAccel: number; drag: number };

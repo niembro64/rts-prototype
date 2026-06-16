@@ -240,20 +240,22 @@ export function getEntityDeltaChangedFields(
   world: WorldState,
 ): number {
   const positionThresholdWorldUnits = snapshotPositionThresholdWorldUnits(
-    SNAPSHOT_CONFIG.movementPositionThreshold,
+    SNAPSHOT_CONFIG.deltaMovementPositionThresholdAsMapRatio,
     world.mapWidth,
     world.mapHeight,
   );
-  const movementVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold;
+  const movementVelocityMagnitudeThresholdRatio =
+    SNAPSHOT_CONFIG.deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio;
   const movementVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.movementVelocityDirectionThreshold,
+    SNAPSHOT_CONFIG.deltaMovementVelocityDirectionThresholdAsFullTurnRatio,
   );
   const rotationPositionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.rotationPositionThreshold,
+    SNAPSHOT_CONFIG.deltaRotationPositionThresholdAsFullTurnRatio,
   );
-  const rotationVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.rotationVelocityMagnitudeThreshold;
+  const rotationVelocityMagnitudeThresholdRatio =
+    SNAPSHOT_CONFIG.deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio;
   const rotationVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold,
+    SNAPSHOT_CONFIG.deltaRotationVelocityDirectionThresholdAsFullTurnRatio,
   );
 
   let mask = 0;
@@ -456,20 +458,22 @@ export function getRustEntityDeltaChangedFields(
   if (sim.snapshotBaseline.slotUsed(baselineHandle, slot) === 0) return undefined;
 
   const positionThresholdWorldUnits = snapshotPositionThresholdWorldUnits(
-    SNAPSHOT_CONFIG.movementPositionThreshold,
+    SNAPSHOT_CONFIG.deltaMovementPositionThresholdAsMapRatio,
     world.mapWidth,
     world.mapHeight,
   );
-  const movementVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.movementVelocityMagnitudeThreshold;
+  const movementVelocityMagnitudeThresholdRatio =
+    SNAPSHOT_CONFIG.deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio;
   const movementVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.movementVelocityDirectionThreshold,
+    SNAPSHOT_CONFIG.deltaMovementVelocityDirectionThresholdAsFullTurnRatio,
   );
   const rotationPositionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.rotationPositionThreshold,
+    SNAPSHOT_CONFIG.deltaRotationPositionThresholdAsFullTurnRatio,
   );
-  const rotationVelocityMagnitudeThresholdRatio = SNAPSHOT_CONFIG.rotationVelocityMagnitudeThreshold;
+  const rotationVelocityMagnitudeThresholdRatio =
+    SNAPSHOT_CONFIG.deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio;
   const rotationVelocityDirectionThresholdRadians = snapshotRotationThresholdRadians(
-    SNAPSHOT_CONFIG.rotationVelocityDirectionThreshold,
+    SNAPSHOT_CONFIG.deltaRotationVelocityDirectionThresholdAsFullTurnRatio,
   );
 
   // 3-way dispatch: unit / building / tower. TOWER and BUILDING diff
@@ -793,7 +797,7 @@ export function captureSnapshotEntityStates(
   const sim = getSimWasm();
   capturedSim = sim;
 
-  if (isDelta && SNAPSHOT_CONFIG.deltaEnabled) {
+  if (isDelta && SNAPSHOT_CONFIG.deltaSnapshotsEnabled) {
     if (!dirtyEntityIds) return;
     for (let i = 0; i < dirtyEntityIds.length; i++) {
       const e = world.getEntity(dirtyEntityIds[i]);

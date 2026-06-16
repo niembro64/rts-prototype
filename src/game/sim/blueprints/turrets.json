@@ -9,6 +9,7 @@
       "durationRandomness": 0.2
     },
     "launchForce": 1000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 1,
     "barrel": {
@@ -64,6 +65,7 @@
       "durationRandomness": 0.2
     },
     "launchForce": 2000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 1,
     "barrel": {
@@ -130,6 +132,7 @@
       "durationRandomness": 0.05
     },
     "launchForce": 10000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 10,
     "barrel": {
@@ -188,6 +191,7 @@
       "durationRandomness": 0.3
     },
     "launchForce": 50000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 20,
     "barrel": {
@@ -246,6 +250,7 @@
       "durationRandomness": 0.3
     },
     "launchForce": 3500,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 140,
     "turretDrag": 0,
     "barrel": {
@@ -301,6 +306,7 @@
       "durationRandomness": 0.3
     },
     "launchForce": 100000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 20,
     "barrel": {
@@ -367,6 +373,7 @@
       "durationRandomness": 0.1
     },
     "launchForce": 4000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 500,
     "turretDrag": 1,
     "barrel": {
@@ -430,6 +437,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": null,
     "launchForce": 8400,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {
@@ -479,6 +487,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {
@@ -529,6 +538,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1600,
     "turretDrag": 0,
     "barrel": {
@@ -579,6 +589,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1600,
     "turretDrag": 0,
     "barrel": {
@@ -629,6 +640,7 @@
     "rangeVolume": "turret-range-bottom-unbounded",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1600,
     "turretDrag": 0,
     "barrel": {
@@ -679,6 +691,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {
@@ -738,6 +751,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {
@@ -797,6 +811,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 0.1,
     "turretDrag": 0.6,
     "barrel": {
@@ -856,6 +871,7 @@
     "rangeVolume": "turret-range-bottom-unbounded",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 20,
     "barrel": {
@@ -927,6 +943,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {
@@ -993,6 +1010,7 @@
     "rangeVolume": "turret-range-sphere",
     "cooldown": null,
     "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 1600,
     "turretDrag": 0,
     "barrel": {
@@ -1046,6 +1064,7 @@
       "durationRandomness": 0.05
     },
     "launchForce": 30000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 180,
     "turretDrag": 20,
     "barrel": {
@@ -1104,6 +1123,7 @@
       "durationRandomness": 0.05
     },
     "launchForce": 42000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 90,
     "turretDrag": 1,
     "barrel": {
@@ -1161,7 +1181,8 @@
       "duration": 2000,
       "durationRandomness": 0.3
     },
-    "launchForce": 50,
+    "launchForce": 200,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {
@@ -1228,6 +1249,7 @@
       "durationRandomness": 0.02
     },
     "launchForce": 2000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 500000,
     "turretDrag": 0,
     "barrel": {
@@ -1291,6 +1313,7 @@
       "durationRandomness": 0.05
     },
     "launchForce": 4000,
+    "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 650,
     "turretDrag": 0,
     "barrel": {
@@ -1351,6 +1374,7 @@
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": null,
     "launchForce": 58000,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 240,
     "turretDrag": 2,
     "barrel": {
@@ -1408,6 +1432,7 @@
       "durationRandomness": 0.12
     },
     "launchForce": 56000,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 520,
     "turretDrag": 2,
     "barrel": {
@@ -1465,6 +1490,7 @@
       "durationRandomness": 0.12
     },
     "launchForce": 500,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 420,
     "turretDrag": 3,
     "barrel": {
