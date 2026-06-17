@@ -394,7 +394,13 @@ function buildPreviewBuildingModel(
   const depth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
   const root = new THREE.Group();
 
-  const shape = buildBuildingShape(blueprint.renderProfile, width, depth, materials.primary);
+  const shape = buildBuildingShape(
+    blueprint.renderProfile,
+    width,
+    depth,
+    materials.primary,
+    buildingBlueprintId,
+  );
   if (!shape.bodyless) {
     // Match updateBuildingMesh: the primary body sits on the footprint
     // base and scales to (width, shapeHeight, depth).

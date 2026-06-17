@@ -223,10 +223,10 @@
         "roughness": 0.04
       },
       "extractorBlade": {
-        "colorHex": "#c8d4dd",
-        "metalness": 0.12,
-        "roughness": 0.78,
-        "envMapIntensity": 0.25
+        "colorHex": "#1f2528",
+        "metalness": 0.32,
+        "roughness": 0.7,
+        "envMapIntensity": 0.18
       },
       "radarDish": {
         "colorHex": "#c8d4dd",
@@ -657,6 +657,9 @@
         "flowText": "rgba(190, 190, 200, 0.78)",
         "flowLabel": "rgba(160, 160, 170, 0.72)",
         "flowValue": "rgba(205, 205, 215, 0.82)",
+        "netPositive": "#99e66f",
+        "netNegative": "#ff6868",
+        "netOverflow": "#ffd15c",
         "emptyFlash": "#ff5555",
         "emptyShellBackground": "rgba(255, 45, 45, 0.18)",
         "emptyShellBorder": "rgba(255, 80, 80, 0.65)",

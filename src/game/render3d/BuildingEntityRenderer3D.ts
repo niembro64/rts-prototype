@@ -118,7 +118,13 @@ export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOpt
   group.matrixAutoUpdate = false;
   group.userData.entityId = entity.id;
 
-  const shape = buildBuildingShape(shapeType, width, depth, getPrimaryMat(ownerId));
+  const shape = buildBuildingShape(
+    shapeType,
+    width,
+    depth,
+    getPrimaryMat(ownerId),
+    entity.buildingBlueprintId,
+  );
   shape.primary.matrixAutoUpdate = false;
   shape.primary.userData.entityId = entity.id;
 

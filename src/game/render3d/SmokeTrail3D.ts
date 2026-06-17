@@ -38,7 +38,6 @@ import {
   type SmokeUseId,
 } from '@/smokeConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 
 const DEFAULT_COLOR = COLORS.effects.smokeTrail.default.colorHex;
@@ -610,65 +609,126 @@ export class SmokeTrail3D {
     const useCap = Math.min(pool.maxParticles, Math.max(0, profile.maxPoolSize | 0));
     if (useCap <= 0) return false;
 
-    const { r, g, b } = hexToRgb01(color);
+    const r = ((color >> 16) & 0xff) / 255;
+    const g = ((color >> 8) & 0xff) / 255;
+    const b = (color & 0xff) / 255;
     const fadeInSec = Math.max(0, profile.fadeInMs / 1000);
     const fadeOutSec = Math.max(0, profile.fadeOutMs / 1000);
     const durationSec = this.smokeDurationSec(profile);
     const startRadius = Math.max(0, profile.startRadius);
     const finalRadius = startRadius * Math.max(0, profile.endRadiusMultiplier);
 
-    // sim(x, y, z) → three(x, z, y) — smoke stays at the rocket's
-    // 3D position when it was emitted and doesn't follow the rocket
-    // forward, so a long trail lingers along the flight path.
-    const puff: Puff = {
-      useId: profile.useId,
-      timeLeft: durationSec,
-      age: 0,
-      durationSec,
-      startRadius,
-      finalRadius,
-      maxAlpha: profile.maxAlpha,
-      fadeInSec,
-      fadeOutSec,
-      threeX: simX,
-      threeY: simZ,
-      threeZ: simY,
-      threeVX: simVX,
-      threeVY: simVZ,
-      threeVZ: simVY,
-      r, g, b,
-    };
-
     let i: number;
+    let puff: Puff;
     const useCount = pool.activeByUse.get(profile.useId) ?? 0;
     if (useCount >= useCap) {
       if (profile.capPolicy === 'skipWhenFull') return false;
       i = this.pickEvictionSlot(pool, profile.useId);
-      const old = pool.active[i];
-      if (old && old.useId !== profile.useId) {
-        this.adjustUseCount(pool, old.useId, -1);
+      puff = pool.active[i];
+      if (puff.useId !== profile.useId) {
+        this.adjustUseCount(pool, puff.useId, -1);
         this.adjustUseCount(pool, profile.useId, 1);
       }
-      pool.active[i] = puff;
     } else if (pool.active.length < pool.maxParticles) {
       i = pool.active.length;
+      puff = this.createPuff(profile.useId);
       pool.active.push(puff);
       this.adjustUseCount(pool, profile.useId, 1);
     } else {
       if (profile.capPolicy === 'skipWhenFull') return false;
       i = this.pickEvictionSlot(pool);
-      const old = pool.active[i];
-      if (old) this.adjustUseCount(pool, old.useId, -1);
-      pool.active[i] = puff;
+      puff = pool.active[i];
+      this.adjustUseCount(pool, puff.useId, -1);
       this.adjustUseCount(pool, profile.useId, 1);
     }
 
+    this.writePuffSpawn(
+      puff,
+      profile,
+      durationSec,
+      fadeInSec,
+      fadeOutSec,
+      startRadius,
+      finalRadius,
+      simX,
+      simY,
+      simZ,
+      simVX,
+      simVY,
+      simVZ,
+      r,
+      g,
+      b,
+    );
     this._scratchMat.makeScale(startRadius, startRadius, startRadius);
     this._scratchMat.setPosition(puff.threeX, puff.threeY, puff.threeZ);
     pool.mesh.setMatrixAt(i, this._scratchMat);
     pool.alphaArr[i] = 0;
     this.writePuffColor(pool, i, puff);
     return true;
+  }
+
+  private createPuff(useId: SmokeUseId): Puff {
+    return {
+      useId,
+      timeLeft: 0,
+      age: 0,
+      durationSec: 0,
+      startRadius: 0,
+      finalRadius: 0,
+      maxAlpha: 0,
+      fadeInSec: 0,
+      fadeOutSec: 0,
+      threeX: 0,
+      threeY: 0,
+      threeZ: 0,
+      threeVX: 0,
+      threeVY: 0,
+      threeVZ: 0,
+      r: 0,
+      g: 0,
+      b: 0,
+    };
+  }
+
+  private writePuffSpawn(
+    puff: Puff,
+    profile: SmokeSpawnProfile,
+    durationSec: number,
+    fadeInSec: number,
+    fadeOutSec: number,
+    startRadius: number,
+    finalRadius: number,
+    simX: number,
+    simY: number,
+    simZ: number,
+    simVX: number,
+    simVY: number,
+    simVZ: number,
+    r: number,
+    g: number,
+    b: number,
+  ): void {
+    // sim(x, y, z) -> three(x, z, y). Puffs stay fixed at their spawn
+    // position while the projectile moves away.
+    puff.useId = profile.useId;
+    puff.timeLeft = durationSec;
+    puff.age = 0;
+    puff.durationSec = durationSec;
+    puff.startRadius = startRadius;
+    puff.finalRadius = finalRadius;
+    puff.maxAlpha = profile.maxAlpha;
+    puff.fadeInSec = fadeInSec;
+    puff.fadeOutSec = fadeOutSec;
+    puff.threeX = simX;
+    puff.threeY = simZ;
+    puff.threeZ = simY;
+    puff.threeVX = simVX;
+    puff.threeVY = simVZ;
+    puff.threeVZ = simVY;
+    puff.r = r;
+    puff.g = g;
+    puff.b = b;
   }
 
   private pickEvictionSlot(pool: PuffPool, useId?: SmokeUseId): number {

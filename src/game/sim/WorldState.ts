@@ -352,7 +352,7 @@ export class WorldState {
       if (visibilityPadding > this.maxVisibilityPadding) this.maxVisibilityPadding = visibilityPadding;
     }
     this.markSnapshotDirty(entity.id, 0xff);
-    this.cache.invalidate();
+    this.cache.handleEntityAdded(entity);
   }
 
   /** Upper bound on `getTargetRadius(e)` for any unit/building entity
@@ -391,7 +391,7 @@ export class WorldState {
     this.snapshotDirtyFields.delete(id);
     if (entity !== undefined) this.markEntityMetadataDead(entity);
     this.entities.delete(id);
-    this.cache.invalidate();
+    if (entity !== undefined) this.cache.handleEntityRemoved(entity);
   }
 
   setEntityOwner(entity: Entity, playerId: PlayerId): void {

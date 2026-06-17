@@ -60,6 +60,7 @@ import {
 } from '../lifecycle/sessionSingleton';
 import { ReplayRecorder, type BudgetReplayFile } from './ReplayRecorder';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
+import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 
 export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
@@ -221,7 +222,7 @@ export class GameServer {
       acquireSimSlot(this);
     }
 
-    this.tickRateHz = 60;
+    this.tickRateHz = ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
 
     // Start visible host TPS at 0.0 until the first real tick period
     // seeds the EMA. CPU load starts at 0% measured work.
@@ -484,16 +485,6 @@ export class GameServer {
     // Intercept server config commands (don't need tick synchronization)
     const canApplyServerControl = canApplyGameServerControlCommand(authority, this.playerIds[0]);
     switch (sanitizedCommand.type) {
-      case 'setSnapshotRate':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setSnapshotRate(sanitizedCommand.rate);
-        return;
-      case 'setTickRate':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setTickRate(sanitizedCommand.rate);
-        return;
       case 'setPaused':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
@@ -701,23 +692,6 @@ export class GameServer {
   // bootstrap too. Other listeners keep their static payload state.
   requestSnapshotRecovery(playerId: PlayerId, includeStatic: boolean): void {
     this.snapshotListeners.requestRecovery(playerId, includeStatic);
-  }
-
-  // Change snapshot cadence. Invalid/legacy rates normalize to the
-  // deterministic-lockstep presentation snapshot default.
-  setSnapshotRate(rate: SnapshotRate): void {
-    const normalizedRate = normalizePresentationSnapshotRate(rate);
-    this.maxSnapshotsDisplay = normalizedRate;
-    this.maxSnapshotIntervalMs = presentationSnapshotRateIntervalMs(normalizedRate);
-  }
-
-  // Change simulation tick rate (restarts the game loop interval).
-  setTickRate(hz: number): void {
-    if (this.tickRateHz === hz) return;
-    this.tickRateHz = hz;
-    if (this.tickLoop.isRunning()) {
-      this.startGameLoop();
-    }
   }
 
   setPaused(paused: boolean): void {

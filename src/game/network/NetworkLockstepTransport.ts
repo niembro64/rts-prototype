@@ -18,6 +18,7 @@ import { LOCKSTEP_PROTOCOL_VERSION } from './NetworkTypes';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 
 const OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK = 900;
+const DEDUP_RETAIN_AFTER_ACK = OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK;
 
 export type LockstepCommandFrameDraft = {
   readonly frame: number;
@@ -54,8 +55,8 @@ export type NetworkLockstepTransportDiagnostics = {
 };
 
 export class NetworkLockstepTransport {
-  private readonly seenCommandKeys = new Set<string>();
-  private readonly seenCommandFrameKeys = new Set<string>();
+  private readonly seenCommandKeyFrames = new Map<string, number>();
+  private readonly seenCommandFrameKeyFrames = new Map<string, number>();
   private readonly receivedPeerSequences = new Map<PlayerId, number>();
   private readonly latestAckByPlayer = new Map<PlayerId, LockstepAckMessage>();
   private readonly outboundCommandFrames = new Map<number, LockstepCommandFrameMessage>();
@@ -149,7 +150,7 @@ export class NetworkLockstepTransport {
   }
 
   sendAck(ackFrame: number, ackFrameSequence: number): boolean {
-    return this.sendToHostOrBroadcast({
+    const sent = this.sendToHostOrBroadcast({
       ...this.base(),
       type: 'lockstepAck',
       playerId: this.options.getLocalPlayerId(),
@@ -157,6 +158,8 @@ export class NetworkLockstepTransport {
       ackFrameSequence,
       receivedPeerSequences: this.buildReceivedPeerSequenceAcks(),
     });
+    this.pruneAcknowledgedDedupState(ackFrame);
+    return sent;
   }
 
   sendChecksum(frame: number, stateHash: CanonicalServerStateHash): boolean {
@@ -298,8 +301,8 @@ export class NetworkLockstepTransport {
   }
 
   clear(): void {
-    this.seenCommandKeys.clear();
-    this.seenCommandFrameKeys.clear();
+    this.seenCommandKeyFrames.clear();
+    this.seenCommandFrameKeyFrames.clear();
     this.receivedPeerSequences.clear();
     this.latestAckByPlayer.clear();
     this.outboundCommandFrames.clear();
@@ -346,7 +349,7 @@ export class NetworkLockstepTransport {
         return this.acceptCommandFrameBatch(message);
       case 'lockstepAck':
         this.latestAckByPlayer.set(fromPlayerId, message);
-        this.pruneOutboundCommandFrames();
+        this.pruneAcknowledgedState();
         return true;
       default:
         return true;
@@ -356,10 +359,10 @@ export class NetworkLockstepTransport {
   private acceptCommand(message: LockstepCommandMessage): boolean {
     const envelope = message.envelope;
     const key = commandEnvelopeKey(envelope);
-    if (this.seenCommandKeys.has(key)) return false;
+    if (this.seenCommandKeyFrames.has(key)) return false;
     const previous = this.receivedPeerSequences.get(envelope.playerId) ?? -1;
     if (envelope.playerSequence < previous) return false;
-    this.seenCommandKeys.add(key);
+    this.seenCommandKeyFrames.set(key, envelope.executeFrame);
     if (envelope.playerSequence > previous) {
       this.receivedPeerSequences.set(envelope.playerId, envelope.playerSequence);
     }
@@ -379,14 +382,14 @@ export class NetworkLockstepTransport {
 
   private acceptCommandFrame(message: LockstepCommandFrameMessage): boolean {
     const key = `${message.frame}:${message.frameSequence}`;
-    if (this.seenCommandFrameKeys.has(key)) {
+    if (this.seenCommandFrameKeyFrames.has(key)) {
       if (message.commands.length > 1) message.commands.sort(compareLockstepCommandEnvelopes);
       return true;
     }
-    this.seenCommandFrameKeys.add(key);
+    this.seenCommandFrameKeyFrames.set(key, message.frame);
     if (message.commands.length > 1) message.commands.sort(compareLockstepCommandEnvelopes);
     for (const envelope of message.commands) {
-      this.seenCommandKeys.add(commandEnvelopeKey(envelope));
+      this.seenCommandKeyFrames.set(commandEnvelopeKey(envelope), envelope.executeFrame);
       const previous = this.receivedPeerSequences.get(envelope.playerId) ?? -1;
       if (envelope.playerSequence > previous) {
         this.receivedPeerSequences.set(envelope.playerId, envelope.playerSequence);
@@ -396,9 +399,9 @@ export class NetworkLockstepTransport {
   }
 
   private rememberCommandFrame(frame: LockstepCommandFrameBatchFrame): void {
-    this.seenCommandFrameKeys.add(`${frame.frame}:${frame.frameSequence}`);
+    this.seenCommandFrameKeyFrames.set(`${frame.frame}:${frame.frameSequence}`, frame.frame);
     for (const envelope of frame.commands) {
-      this.seenCommandKeys.add(commandEnvelopeKey(envelope));
+      this.seenCommandKeyFrames.set(commandEnvelopeKey(envelope), envelope.executeFrame);
       const previous = this.receivedPeerSequences.get(envelope.playerId) ?? -1;
       if (envelope.playerSequence > previous) {
         this.receivedPeerSequences.set(envelope.playerId, envelope.playerSequence);
@@ -407,20 +410,48 @@ export class NetworkLockstepTransport {
   }
 
   private pruneOutboundCommandFrames(): void {
-    if (this.outboundCommandFrames.size === 0) return;
+    const minAckedFrame = this.minAckedFrameAcrossConnectedPeers();
+    if (minAckedFrame === null) return;
+    this.pruneOutboundCommandFramesBefore(minAckedFrame);
+    this.pruneAcknowledgedDedupState(minAckedFrame);
+  }
+
+  private pruneAcknowledgedState(): void {
+    const minAckedFrame = this.minAckedFrameAcrossConnectedPeers();
+    if (minAckedFrame === null) return;
+    this.pruneOutboundCommandFramesBefore(minAckedFrame);
+    this.pruneAcknowledgedDedupState(minAckedFrame);
+  }
+
+  private minAckedFrameAcrossConnectedPeers(): number | null {
     let minAckedFrame: number | null = null;
     for (const playerId of this.options.getConnections().keys()) {
       const ack = this.latestAckByPlayer.get(playerId);
-      if (ack === undefined) return;
+      if (ack === undefined) return null;
       minAckedFrame = minAckedFrame === null
         ? ack.ackFrame
         : Math.min(minAckedFrame, ack.ackFrame);
     }
-    if (minAckedFrame === null) return;
+    return minAckedFrame;
+  }
+
+  private pruneOutboundCommandFramesBefore(minAckedFrame: number): void {
+    if (this.outboundCommandFrames.size === 0) return;
     const pruneBeforeFrame = minAckedFrame - OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK;
     if (pruneBeforeFrame <= 0) return;
     for (const frame of this.outboundCommandFrames.keys()) {
       if (frame < pruneBeforeFrame) this.outboundCommandFrames.delete(frame);
+    }
+  }
+
+  private pruneAcknowledgedDedupState(ackFrame: number): void {
+    const pruneBeforeFrame = ackFrame - DEDUP_RETAIN_AFTER_ACK;
+    if (pruneBeforeFrame <= 0) return;
+    for (const [key, frame] of this.seenCommandFrameKeyFrames) {
+      if (frame < pruneBeforeFrame) this.seenCommandFrameKeyFrames.delete(key);
+    }
+    for (const [key, executeFrame] of this.seenCommandKeyFrames) {
+      if (executeFrame < pruneBeforeFrame) this.seenCommandKeyFrames.delete(key);
     }
   }
 }

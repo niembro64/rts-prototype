@@ -141,7 +141,7 @@ export const BUILD_RATE_DISPLAY_EMA_MODE =
  *  smoothed normal so chassis tilt, locomotion basis, and turret
  *  mounts rotate through the boundary instead of popping. Same
  *  SNAP/FAST/MID/SLOW shape as the build-rate EMA; tune via the
- *  HOST SERVER bar at runtime.
+ *  BATTLE bar at runtime.
  *
  *  Reference points:
  *    SNAP — 0     (no smoothing; raw triangle-edge normal)
@@ -151,6 +151,6 @@ export const BUILD_RATE_DISPLAY_EMA_MODE =
  */
 export const UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC = shellConfig.unitGroundNormalEmaHalfLifeSec;
 export type UnitGroundNormalEmaMode = keyof typeof UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC;
-/** Compile-time default; overridden at runtime by the HOST SERVER bar. */
+/** Compile-time default; overridden at runtime by the BATTLE bar. */
 export const UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT =
   shellConfig.unitGroundNormalEmaModeDefault as UnitGroundNormalEmaMode;

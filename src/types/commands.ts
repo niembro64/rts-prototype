@@ -1,7 +1,6 @@
 // Command types extracted from game/sim/commands.ts
 
 import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitMoveState, CombatTrajectoryMode, CombatFireState } from './sim';
-import type { SnapshotRate, TickRate } from './server';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
@@ -47,8 +46,6 @@ export type CommandType =
   | 'attackArea'
   | 'manualLaunch'
   | 'guard'
-  | 'setSnapshotRate'
-  | 'setTickRate'
   | 'setPaused'
   | 'setUnitGroundNormalEmaMode'
   | 'setSendGridInfo'
@@ -433,16 +430,6 @@ export type GuardCommand = BaseCommand & {
   queueInsertIndex?: number;
 };
 
-export type SetSnapshotRateCommand = BaseCommand & {
-  type: 'setSnapshotRate';
-  rate: SnapshotRate;
-};
-
-export type SetTickRateCommand = BaseCommand & {
-  type: 'setTickRate';
-  rate: TickRate;
-};
-
 export type SetPausedCommand = BaseCommand & {
   type: 'setPaused';
   paused: boolean;
@@ -563,8 +550,6 @@ export type Command =
   | AttackAreaCommand
   | ManualLaunchCommand
   | GuardCommand
-  | SetSnapshotRateCommand
-  | SetTickRateCommand
   | SetPausedCommand
   | SetUnitGroundNormalEmaModeCommand
   | SetSendGridInfoCommand

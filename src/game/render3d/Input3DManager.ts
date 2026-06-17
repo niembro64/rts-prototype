@@ -70,10 +70,12 @@ import { Input3DRightDragController, type Input3DLineDragState } from './Input3D
 import { Input3DModeClickController } from './Input3DModeClickController';
 import type { Input3DAreaDragState } from './Input3DAreaDragState';
 import type { BuildFacingInfo, BuildLineSpacingInfo } from './Input3DBuildPlacementState';
+import { getEdgeScrollEnabled } from '../../clientBarConfig';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const SAME_TYPE_DOUBLE_CLICK_MS = 450;
 const SAME_TYPE_DOUBLE_CLICK_MAX_DIST_PX = 8;
+const EDGE_SCROLL_MARGIN_PX = 36;
 
 function isTextEntryTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
@@ -106,6 +108,7 @@ const AUTO_GROUP_PRESET_STORAGE_KEY = 'budget-annihilation.autoControlGroups.v1'
 
 export class Input3DManager {
   private canvas: HTMLCanvasElement;
+  private orbit: ThreeApp['orbit'];
   private context: InputContext;
   private entitySource: EntitySource;
   private commandSink: ClientCommandSink;
@@ -174,6 +177,8 @@ export class Input3DManager {
   private rightDrag: Input3DRightDragController;
   private modeClicks: Input3DModeClickController;
   private queueInsertIndex: number | null = null;
+  private pointerClientX = Number.NaN;
+  private pointerClientY = Number.NaN;
 
   // DOM handlers bound once for add/remove
   private onMouseDown: (e: MouseEvent) => void;
@@ -196,6 +201,7 @@ export class Input3DManager {
     cursorGround: CursorGround,
   ) {
     this.canvas = threeApp.renderer.domElement;
+    this.orbit = threeApp.orbit;
     this.context = context;
     this.entitySource = entitySource;
     this.commandSink = commandSink;
@@ -1724,7 +1730,34 @@ export class Input3DManager {
     if (this.towerTargetMode && !this.hasSelectedTargetableCombatEntities()) {
       this.exitTowerTargetMode();
     }
+    this.applyEdgeScroll();
     this.refreshCursor();
+  }
+
+  private applyEdgeScroll(): void {
+    if (!getEdgeScrollEnabled()) return;
+    if (this.rightDrag.active || this.modeClicks.active) return;
+    if (!Number.isFinite(this.pointerClientX) || !Number.isFinite(this.pointerClientY)) return;
+
+    const rect = this.canvas.getBoundingClientRect();
+    const x = this.pointerClientX;
+    const y = this.pointerClientY;
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return;
+    if (document.elementFromPoint(x, y) !== this.canvas) return;
+
+    const margin = Math.min(
+      EDGE_SCROLL_MARGIN_PX,
+      Math.max(8, rect.width * 0.18),
+      Math.max(8, rect.height * 0.18),
+    );
+    let screenX = 0;
+    let screenY = 0;
+    if (x <= rect.left + margin) screenX -= 1;
+    if (x >= rect.right - margin) screenX += 1;
+    if (y <= rect.top + margin) screenY -= 1;
+    if (y >= rect.bottom - margin) screenY += 1;
+    if (screenX === 0 && screenY === 0) return;
+    this.orbit.moveByKeyboardScreenDirection('pan', screenX, screenY, false);
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
@@ -2009,6 +2042,8 @@ export class Input3DManager {
   }
 
   private handleMouseDown(e: MouseEvent): void {
+    this.pointerClientX = e.clientX;
+    this.pointerClientY = e.clientY;
     // Button 0 = left (select / mode-click), Button 2 = right
     // (command / cancel), Button 1 (middle) is handled by OrbitCamera.
     if (this.modeClicks.handleMouseDown(e)) return;
@@ -2024,6 +2059,8 @@ export class Input3DManager {
   }
 
   private handleMouseMove(e: MouseEvent): void {
+    this.pointerClientX = e.clientX;
+    this.pointerClientY = e.clientY;
     if (
       this.leftDown ||
       this.rightDrag.active ||
@@ -2051,6 +2088,8 @@ export class Input3DManager {
   }
 
   private handleMouseUp(e: MouseEvent): void {
+    this.pointerClientX = e.clientX;
+    this.pointerClientY = e.clientY;
     if (this.modeClicks.handleMouseUp(e)) return;
     if (e.button === 2 && this.rightDrag.active) {
       this.rightDrag.handleMouseUp(e);

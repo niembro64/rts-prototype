@@ -1,4 +1,5 @@
-import type { CameraViewBasis, MinimapData } from '@/types/ui';
+import { markRaw } from 'vue';
+import type { CameraViewBasis, MinimapData, MinimapEntity } from '@/types/ui';
 import type { Vec2 } from '@/types/vec2';
 
 const DEFAULT_CAMERA_PITCH = Math.PI * 0.25;
@@ -38,13 +39,13 @@ export function createInitialMinimapData(
     contentVersion: 0,
     mapWidth,
     mapHeight,
-    entities: [],
-    cameraQuad: [
+    entities: markRaw([] as MinimapEntity[]),
+    cameraQuad: markRaw([
       { x: 0, y: 0 },
       { x: viewWidth, y: 0 },
       { x: viewWidth, y: viewHeight },
       { x: 0, y: viewHeight },
-    ],
+    ]),
     cameraYaw: 0,
     cameraPitch: DEFAULT_CAMERA_PITCH,
     cameraView: createCameraViewBasis(),
@@ -58,7 +59,7 @@ export function applyMinimapContentData(
   source: MinimapData,
 ): void {
   target.contentVersion = source.contentVersion;
-  target.entities = source.entities;
+  target.entities = markRaw(source.entities);
   target.mapWidth = source.mapWidth;
   target.mapHeight = source.mapHeight;
   target.cameraYaw = source.cameraYaw;
@@ -75,7 +76,7 @@ export function applyMinimapCameraQuad(
   cameraPitch?: number,
   cameraView?: CameraViewBasis,
 ): void {
-  target.cameraQuad = cameraQuad;
+  target.cameraQuad = markRaw(cameraQuad);
   if (cameraYaw !== undefined) target.cameraYaw = cameraYaw;
   if (cameraPitch !== undefined) target.cameraPitch = cameraPitch;
   if (cameraView !== undefined) applyCameraViewBasis(target.cameraView, cameraView);

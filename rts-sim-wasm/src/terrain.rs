@@ -341,7 +341,7 @@ pub(crate) fn terrain_collect_triangle_edge_owners(
         max_vertex_id = max_vertex_id.max(index as usize);
     }
     let vertex_key_base = (max_vertex_id as u64).checked_add(1)?;
-    let mut edge_owners: HashMap<u64, Vec<TerrainTriangleEdgeOwnerRust>> = HashMap::new();
+    let mut edge_owners: HashMap<u64, Vec<TerrainTriangleEdgeOwnerRust>> = HashMap::default();
 
     let triangle_count = triangle_indices.len() / 3;
     for triangle in 0..triangle_count {
@@ -432,7 +432,7 @@ pub(crate) fn terrain_collect_triangle_edge_spans_by_line(
     edge_owners: &HashMap<u64, Vec<TerrainTriangleEdgeOwnerRust>>,
     vertex_key_scale: f64,
 ) -> HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>> {
-    let mut spans_by_line: HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>> = HashMap::new();
+    let mut spans_by_line: HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>> = HashMap::default();
     for owners in edge_owners.values() {
         for &owner in owners {
             let Some(span) = terrain_edge_span_for_owner(vertex_coords, owner, vertex_key_scale)
@@ -460,7 +460,7 @@ pub(crate) fn terrain_collect_triangle_edge_spans_by_line(
 pub(crate) fn terrain_collect_triangle_edge_span_index(
     spans_by_line: &HashMap<i64, Vec<TerrainTriangleEdgeSpanRust>>,
 ) -> HashMap<usize, TerrainTriangleEdgeSpanRust> {
-    let mut edge_spans: HashMap<usize, TerrainTriangleEdgeSpanRust> = HashMap::new();
+    let mut edge_spans: HashMap<usize, TerrainTriangleEdgeSpanRust> = HashMap::default();
     for spans in spans_by_line.values() {
         for &span in spans {
             edge_spans.insert(terrain_triangle_edge_key(span.triangle, span.edge), span);
@@ -1498,7 +1498,7 @@ pub(crate) fn terrain_balance_triangle_leaves(
     let mut balanced = leaves;
     let max_passes = terrain_triangle_hierarchy_level(c, 1) + 1;
     for _ in 0..max_passes {
-        let mut segment_owners: HashMap<i64, Vec<(usize, i32)>> = HashMap::new();
+        let mut segment_owners: HashMap<i64, Vec<(usize, i32)>> = HashMap::default();
         for (leaf_index, &leaf) in balanced.iter().enumerate() {
             let level = terrain_triangle_hierarchy_level(c, leaf.side);
             terrain_for_each_triangle_unit_edge_segment_key(leaf, &mut |key| {
@@ -1509,7 +1509,7 @@ pub(crate) fn terrain_balance_triangle_leaves(
             });
         }
 
-        let mut split_leaves: HashSet<usize> = HashSet::new();
+        let mut split_leaves: HashSet<usize> = HashSet::default();
         for owners in segment_owners.values() {
             if owners.len() < 2 {
                 continue;
@@ -1830,7 +1830,7 @@ pub(crate) fn terrain_collect_mesh_edge_split_vertices(
     vc: &[f64],
     triangle_indices: &[i32],
 ) -> HashMap<usize, Vec<i32>> {
-    let mut split_vertices_by_edge: HashMap<usize, Vec<i32>> = HashMap::new();
+    let mut split_vertices_by_edge: HashMap<usize, Vec<i32>> = HashMap::default();
     let Some(meta) = terrain_build_mesh_edge_metadata(vc, triangle_indices, c.vertex_key_scale)
     else {
         return split_vertices_by_edge;
@@ -1995,14 +1995,14 @@ pub(crate) fn terrain_build_conforming_topology(
     cache: &mut TerrainMeshHeightCache,
     leaves: &[TerrainHierTri],
 ) -> TerrainMeshTopologyRust {
-    let mut leaf_vertex_set: HashSet<(i32, i32)> = HashSet::new();
+    let mut leaf_vertex_set: HashSet<(i32, i32)> = HashSet::default();
     for &leaf in leaves {
         for v in terrain_triangle_lattice_vertices(leaf) {
             leaf_vertex_set.insert(v);
         }
     }
 
-    let mut vertex_ids: HashMap<(i64, i64), i32> = HashMap::new();
+    let mut vertex_ids: HashMap<(i64, i64), i32> = HashMap::default();
     let mut vertex_coords: Vec<f64> = Vec::new();
     let mut vertex_heights: Vec<f64> = Vec::new();
     let mut triangle_indices: Vec<i32> = Vec::new();
@@ -2217,7 +2217,7 @@ pub(crate) fn terrain_find_discrepancy_splits(
     {
         return None;
     }
-    let mut set: HashSet<usize> = HashSet::new();
+    let mut set: HashSet<usize> = HashSet::default();
     for (i, &flag) in flags.iter().enumerate() {
         if flag != 0 {
             set.insert(i);

@@ -126,6 +126,12 @@ export const RESOURCE_CONFIG = {
     rawConfig.ballsPerResourcePerSecondOptions,
     defaultBallsPerResourcePerSecond,
   ),
+  metalExtractor: {
+    rotorSpinMultiplier: posNum(
+      'metalExtractor.rotorSpinMultiplier',
+      rawConfig.metalExtractor.rotorSpinMultiplier,
+    ),
+  },
   /** Resource-ball spray-cone half-angles (radians). Every pylon aims a
    *  ray from its tip at a lock-on spot and disperses its resource balls
    *  inside a cone of this half-angle around that ray (see
@@ -165,6 +171,8 @@ export const RESOURCE_CONFIG = {
 } as const;
 
 export const RESOURCE_BALL_DENSITY_OPTIONS = RESOURCE_CONFIG.ballsPerResourcePerSecondOptions;
+export const METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER =
+  RESOURCE_CONFIG.metalExtractor.rotorSpinMultiplier;
 
 /** Spray-cone half-angle (radians) for construction emitters — the tight
  *  cone a builder/factory tip aims at its build site. */

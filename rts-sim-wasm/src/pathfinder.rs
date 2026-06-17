@@ -56,6 +56,8 @@ pub(crate) struct PathfinderState {
     f_score: Vec<f32>,
     parent: Vec<i32>,
     closed: Vec<u8>,
+    visited_gen: Vec<u32>,
+    current_gen: u32,
     heap: Vec<u32>,
     // BFS scratch
     bfs_queue: Vec<u32>,
@@ -70,6 +72,7 @@ pub(crate) struct PathfinderState {
 
     // Output: smoothed waypoints as (x, y) f64 pairs.
     waypoint_scratch: Vec<f64>,
+    path_scratch: Vec<u32>,
 }
 
 impl PathfinderState {
@@ -90,6 +93,8 @@ impl PathfinderState {
             f_score: Vec::new(),
             parent: Vec::new(),
             closed: Vec::new(),
+            visited_gen: Vec::new(),
+            current_gen: 1,
             heap: Vec::new(),
             bfs_queue: Vec::new(),
             terrain_only_key: u64::MAX,
@@ -97,6 +102,7 @@ impl PathfinderState {
             full_mask_grid_id: u32::MAX,
             snap_offsets: Vec::new(),
             waypoint_scratch: Vec::new(),
+            path_scratch: Vec::new(),
         }
     }
 }
@@ -179,7 +185,11 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.parent.resize(n, -1);
     state.closed.clear();
     state.closed.resize(n, 0);
+    state.visited_gen.clear();
+    state.visited_gen.resize(n, 0);
+    state.current_gen = 1;
     state.heap.clear();
+    state.path_scratch.clear();
     state.bfs_queue.clear();
     state.bfs_queue.resize(n, 0);
     state.terrain_only_key = u64::MAX;
@@ -735,10 +745,32 @@ pub(crate) const PATHFINDER_NEIGHBOR_COST: [f32; 8] = [
 ];
 
 pub(crate) struct AStarResult {
-    cells: Vec<u32>, // sequence of cell indices from start to goal (excluding start)
     goal_gx: i32,
     goal_gy: i32,
     reached_goal: bool,
+}
+
+#[inline]
+fn pathfinder_begin_a_star_generation(state: &mut PathfinderState) {
+    state.current_gen = state.current_gen.wrapping_add(1);
+    if state.current_gen == 0 {
+        for gen in state.visited_gen.iter_mut() {
+            *gen = 0;
+        }
+        state.current_gen = 1;
+    }
+}
+
+#[inline]
+fn pathfinder_touch_a_star_cell(state: &mut PathfinderState, idx: usize) {
+    if state.visited_gen[idx] == state.current_gen {
+        return;
+    }
+    state.visited_gen[idx] = state.current_gen;
+    state.g_score[idx] = f32::INFINITY;
+    state.f_score[idx] = f32::INFINITY;
+    state.parent[idx] = -1;
+    state.closed[idx] = 0;
 }
 
 pub(crate) fn pathfinder_a_star(
@@ -753,24 +785,13 @@ pub(crate) fn pathfinder_a_star(
 ) -> Option<AStarResult> {
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
-    let n = state.n;
-    // Reset scratch.
-    for v in state.g_score.iter_mut() {
-        *v = f32::INFINITY;
-    }
-    for v in state.f_score.iter_mut() {
-        *v = f32::INFINITY;
-    }
-    for v in state.parent.iter_mut() {
-        *v = -1;
-    }
-    for v in state.closed.iter_mut() {
-        *v = 0;
-    }
+    pathfinder_begin_a_star_generation(state);
     state.heap.clear();
+    state.path_scratch.clear();
 
     let start_idx = (start_gy * grid_w + start_gx) as usize;
     let goal_idx = (goal_gy * grid_w + goal_gx) as u32;
+    pathfinder_touch_a_star_cell(state, start_idx);
     state.g_score[start_idx] = 0.0;
     state.f_score[start_idx] = pathfinder_octile(start_gx, start_gy, goal_gx, goal_gy);
     pathfinder_heap_push(state, start_idx as u32);
@@ -806,6 +827,7 @@ pub(crate) fn pathfinder_a_star(
                 continue;
             }
             let nidx = (ny * grid_w + nx) as usize;
+            pathfinder_touch_a_star_cell(state, nidx);
             if !pathfinder_can_step_between(
                 state,
                 cur_us,
@@ -835,30 +857,27 @@ pub(crate) fn pathfinder_a_star(
             }
         }
     }
-    let _ = n;
 
     let target = if found { goal_idx } else { best_idx };
-    let mut path: Vec<u32> = Vec::new();
     let mut walker = target as i32;
     while walker != start_idx as i32 && walker != -1 {
-        path.push(walker as u32);
+        state.path_scratch.push(walker as u32);
         walker = state.parent[walker as usize];
     }
     // If parent chain didn't reach start, target is unreachable from
     // start in the discovered subgraph — treat as no path.
-    if !path.is_empty()
-        && state.parent[*path.last().unwrap() as usize] == -1
-        && (*path.last().unwrap() as i32) != start_idx as i32
+    if !state.path_scratch.is_empty()
+        && state.parent[*state.path_scratch.last().unwrap() as usize] == -1
+        && (*state.path_scratch.last().unwrap() as i32) != start_idx as i32
     {
         // Final node has no parent and isn't start — unreachable.
         // (Matches the JS check `parent[path[last]] === -1`.)
         return None;
     }
-    path.reverse();
+    state.path_scratch.reverse();
     let gx = (target as i32) % grid_w;
     let gy = ((target as i32) - gx) / grid_w;
     Some(AStarResult {
-        cells: path,
         goal_gx: gx,
         goal_gy: gy,
         reached_goal: found,
@@ -1153,8 +1172,6 @@ pub fn pathfinder_find_path(
             return 1;
         }
     }
-    let cell_path = a_star_result.cells;
-
     // String-pull LOS smoothing.
     let mut anchor_x: f64;
     let mut anchor_y: f64;
@@ -1166,11 +1183,11 @@ pub fn pathfinder_find_path(
         anchor_x = start_x;
         anchor_y = start_y;
     }
-    let path_len = cell_path.len();
+    let path_len = state.path_scratch.len();
     if path_len > 1 {
         for i in 0..path_len - 1 {
-            let cand_idx = cell_path[i] as i32;
-            let next_idx = cell_path[i + 1] as i32;
+            let cand_idx = state.path_scratch[i] as i32;
+            let next_idx = state.path_scratch[i + 1] as i32;
             let cgx = cand_idx % grid_w;
             let cgy = (cand_idx - cgx) / grid_w;
             let ngx = next_idx % grid_w;

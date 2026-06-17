@@ -14,13 +14,14 @@ crate-type = ["cdylib"]
 wasm-bindgen = "0.2"
 js-sys = "0.3"
 console_error_panic_hook = "0.1"
+rustc-hash = "2"
 
 [build-dependencies]
 serde_json = "1"
 
 [profile.release]
-# Strip-everything release config. wasm-opt -Oz inside wasm-pack
-# trims further; this gets us most of the way there.
+# Strip-everything release config. npm's build:wasm runs wasm-opt -O3
+# after wasm-pack; keep rustc optimized for runtime speed here.
 opt-level = 3
 lto = true
 codegen-units = 1

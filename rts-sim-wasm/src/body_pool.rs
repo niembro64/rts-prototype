@@ -1335,7 +1335,7 @@ pub(crate) fn sphere_resolve_scratch() -> &'static mut SphereResolveScratch {
         let cell = SPHERE_RESOLVE_SCRATCH.0.get();
         if (*cell).is_none() {
             *cell = Some(SphereResolveScratch {
-                cells: HashMap::new(),
+                cells: HashMap::default(),
                 gen: 0,
                 woke: Vec::new(),
             });
@@ -1682,7 +1682,7 @@ pub(crate) struct EngineStatics {
 impl EngineStatics {
     pub(crate) fn new() -> Self {
         Self {
-            cells: HashMap::new(),
+            cells: HashMap::default(),
             visit_stamps: vec![0u32; POOL_CAPACITY_USIZE],
             next_stamp: 0,
         }

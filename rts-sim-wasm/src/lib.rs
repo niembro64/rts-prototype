@@ -18,8 +18,7 @@
 //  10  snapshot serializer     — per-entity quantize + delta path
 
 use std::cell::UnsafeCell;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────

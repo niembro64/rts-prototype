@@ -305,8 +305,6 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setConverterTax':
       ctx.world.converterTax = command.tax;
       break;
-    case 'setSnapshotRate':
-    case 'setTickRate':
     case 'setPaused':
     case 'setSendGridInfo':
     case 'setBackgroundUnitBlueprintEnabled':
@@ -376,10 +374,10 @@ function executePingCommand(ctx: CommandContext, command: PingCommand): void {
   ctx.pendingSimEvents.push(event);
 }
 
-/** Scan duration in ticks. With the 60 Hz tick rate this is a
- *  ~6-second sweep — long enough to see who's there, short enough
- *  that the player needs to commit a real probe (a scout, a radar)
- *  for sustained coverage. */
+/** Scan duration in simulation ticks. At the deterministic-lockstep
+ *  default step this is about a six-second sweep — long enough to see
+ *  who's there, short enough that the player needs to commit a real
+ *  probe (a scout, a radar) for sustained coverage. */
 const SCAN_PULSE_DURATION_TICKS = 360;
 /** Reveal radius for a scanner sweep. Tuned slightly larger than a
  *  unit's vision so the sweep meaningfully exposes a chunk of the

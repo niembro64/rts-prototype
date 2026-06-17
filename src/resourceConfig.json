@@ -1,5 +1,8 @@
 {
   "ballsPerResourcePerSecond": 0.5,
+  "metalExtractor": {
+    "rotorSpinMultiplier": 1.0
+  },
   "cone": {
     "constructionHalfAngleRad": 0.4,
     "economyHalfAngleRad": {

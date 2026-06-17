@@ -482,11 +482,9 @@ export class EconomyManager {
   }
 
   /** Per-tick conversion pass for resource converter buildings. Each
-   *  completed converter contributes its blueprint conversionRate to
-   *  its owner's per-second source-resource throughput; whichever
-   *  resource the owner currently has more of is consumed at that rate
-   *  and the other resource is credited at `consumed * (1 - tax)`. Idle
-   *  when the two stockpiles are equal. */
+   *  completed converter consumes energy at its blueprint conversionRate
+   *  and credits metal at `consumed * (1 - tax)`, clamped by current
+   *  energy and metal stockpile headroom. */
   processConverters(world: WorldState, dtMs: number): void {
     const dtSec = dtMs / 1000;
     if (dtSec <= 0) return;

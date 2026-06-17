@@ -167,9 +167,6 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return sanitizeLoadTransportCommand(command, tick);
     case 'unloadTransport':
       return sanitizeUnloadTransportCommand(command, world, tick);
-    case 'setSnapshotRate':
-    case 'setTickRate':
-      return null;
     case 'setPaused':
       return typeof command.paused === 'boolean' ? { ...command, tick } : null;
     case 'setUnitGroundNormalEmaMode':

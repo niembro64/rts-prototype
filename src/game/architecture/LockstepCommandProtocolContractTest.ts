@@ -1,8 +1,6 @@
 import type {
   MoveCommand,
   SetPausedCommand,
-  SetSnapshotRateCommand,
-  SetTickRateCommand,
   SetUnitGroundNormalEmaModeCommand,
   StopCommand,
 } from '../sim/commands';
@@ -233,20 +231,10 @@ export function runLockstepCommandProtocolContractTest(): void {
     'gameplay commands must be valid lockstep command payloads',
   );
 
-  const snapshotControl: SetSnapshotRateCommand = {
-    type: 'setSnapshotRate',
-    tick: 0,
-    rate: 30,
-  };
   const paused: SetPausedCommand = {
     type: 'setPaused',
     tick: 0,
     paused: true,
-  };
-  const tickRate: SetTickRateCommand = {
-    type: 'setTickRate',
-    tick: 0,
-    rate: 64,
   };
   const unitGroundNormal: SetUnitGroundNormalEmaModeCommand = {
     type: 'setUnitGroundNormalEmaMode',
@@ -259,16 +247,8 @@ export function runLockstepCommandProtocolContractTest(): void {
     tax: 0.25,
   };
   assertContract(
-    classifyCommandForArchitecture(snapshotControl) === 'local-presentation',
-    'snapshot-rate control is local presentation/debug, not gameplay truth',
-  );
-  assertContract(
     classifyCommandForArchitecture(paused) === 'architecture-control',
     'pause/resume must use architecture-control protocol',
-  );
-  assertContract(
-    classifyCommandForArchitecture(tickRate) === 'local-presentation',
-    'tick-rate control is ignored as local presentation in fixed-dt lockstep',
   );
   assertContract(
     classifyCommandForArchitecture(unitGroundNormal) === 'gameplay-truth',
@@ -284,35 +264,11 @@ export function runLockstepCommandProtocolContractTest(): void {
       currentKnownFrame: 1,
       inputDelayTicks: 6,
       playerId: 1 as PlayerId,
-      playerSequence: 4,
-      commandIndex: 0,
-      command: snapshotControl,
-    }),
-    'local presentation/debug commands must not be lockstep gameplay envelopes',
-  );
-  assertThrows(
-    () => createLockstepCommandEnvelope({
-      gameId: 'contract-game',
-      currentKnownFrame: 1,
-      inputDelayTicks: 6,
-      playerId: 1 as PlayerId,
       playerSequence: 5,
       commandIndex: 0,
       command: paused,
     }),
     'architecture-control commands must not be lockstep gameplay envelopes',
-  );
-  assertThrows(
-    () => createLockstepCommandEnvelope({
-      gameId: 'contract-game',
-      currentKnownFrame: 1,
-      inputDelayTicks: 6,
-      playerId: 1 as PlayerId,
-      playerSequence: 6,
-      commandIndex: 0,
-      command: tickRate,
-    }),
-    'fixed-dt tick-rate commands must not be lockstep gameplay envelopes',
   );
   assertContract(
     createLockstepCommandEnvelope({

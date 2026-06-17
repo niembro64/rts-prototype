@@ -82,6 +82,29 @@ export class EntityCacheManager {
     this.dirty = true;
   }
 
+  handleEntityAdded(entity: Entity): void {
+    if (entity.type !== 'shot') {
+      this.invalidate();
+      return;
+    }
+    if (this.dirty) return;
+    this.addProjectileEntity(entity, true);
+  }
+
+  handleEntityRemoved(entity: Entity): void {
+    if (entity.type !== 'shot') {
+      this.invalidate();
+      return;
+    }
+    if (this.dirty) return;
+    removeEntityFromList(this.cachedAll, entity);
+    removeEntityFromList(this.cachedProjectiles, entity);
+    removeEntityFromList(this.cachedTravelingProjectiles, entity);
+    removeEntityFromList(this.cachedSmokeTrailProjectiles, entity);
+    removeEntityFromList(this.cachedLineProjectiles, entity);
+    removeEntityFromList(this.cachedCombatTargetEntities, entity);
+  }
+
   rebuildIfNeeded(entities: Map<EntityId, Entity>): boolean {
     if (!this.dirty) return false;
 
@@ -246,22 +269,27 @@ export class EntityCacheManager {
           }
           break;
         case 'shot':
-          this.cachedProjectiles.push(entity);
-          if (entity.projectile !== null && entity.projectile.projectileType === 'projectile') {
-            this.cachedTravelingProjectiles.push(entity);
-            this.cachedCombatTargetEntities.push(entity);
-            if (entity.projectile.config.shotProfile.visual.smokeTrail) {
-              this.cachedSmokeTrailProjectiles.push(entity);
-            }
-          } else if (entity.projectile && isRayType(entity.projectile.projectileType)) {
-            this.cachedLineProjectiles.push(entity);
-          }
+          this.addProjectileEntity(entity, false);
           break;
       }
     }
 
     this.dirty = false;
     return true;
+  }
+
+  private addProjectileEntity(entity: Entity, includeAll: boolean): void {
+    this.cachedProjectiles.push(entity);
+    if (includeAll) this.cachedAll.push(entity);
+    if (entity.projectile !== null && entity.projectile.projectileType === 'projectile') {
+      this.cachedTravelingProjectiles.push(entity);
+      this.cachedCombatTargetEntities.push(entity);
+      if (entity.projectile.config.shotProfile.visual.smokeTrail) {
+        this.cachedSmokeTrailProjectiles.push(entity);
+      }
+    } else if (entity.projectile && isRayType(entity.projectile.projectileType)) {
+      this.cachedLineProjectiles.push(entity);
+    }
   }
 
   private getOrCreateUnitsByPlayer(playerId: PlayerId): Entity[] {
@@ -398,4 +426,9 @@ export class EntityCacheManager {
   getAll(): Entity[] {
     return this.cachedAll;
   }
+}
+
+function removeEntityFromList(list: Entity[], entity: Entity): void {
+  const index = list.indexOf(entity);
+  if (index >= 0) list.splice(index, 1);
 }

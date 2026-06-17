@@ -43,8 +43,6 @@ export type {
   AttackAreaCommand,
   ManualLaunchCommand,
   GuardCommand,
-  SetSnapshotRateCommand,
-  SetTickRateCommand,
   SetPausedCommand,
   SetUnitGroundNormalEmaModeCommand,
   SetSendGridInfoCommand,

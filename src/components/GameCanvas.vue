@@ -1003,12 +1003,9 @@ const displayTickRate = computed(
     serverMetaFromSnapshot.value?.ticks.rate ??
     ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
 );
-const isLockstepServerBar = computed(
-  () => currentBattleMode.value === 'real' && gameStarted.value,
-);
-// HOST SERVER unit ground normal EMA mode. Picks the half-life used by the
+// Simulation-side unit ground normal EMA mode. Picks the half-life used by the
 // sim's updateUnitGroundNormal (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[mode]). Persisted to
-// localStorage and pushed via setUnitGroundNormalEmaMode command.
+// localStorage and pushed via the host-applied setUnitGroundNormalEmaMode command.
 const serverUnitGroundNormalEmaMode = ref<UnitGroundNormalEmaMode>(
   loadStoredUnitGroundNormalEmaMode(currentBattleMode.value),
 );
@@ -1019,7 +1016,7 @@ const serverUnitGroundNormalEmaMode = ref<UnitGroundNormalEmaMode>(
 watch(currentBattleMode, (mode) => {
   serverUnitGroundNormalEmaMode.value = loadStoredUnitGroundNormalEmaMode(mode);
 });
-// HOST SERVER unit ground normal EMA - the host applies its setting via the
+// Simulation-side unit ground normal EMA - the host applies its setting via the
 // setUnitGroundNormalEmaMode command, then the display reconciles from
 // snapshot meta when the stored value differs.
 watch(
@@ -1081,7 +1078,7 @@ const {
 });
 
 const {
-  resetServerDefaults,
+  resetServerDefaults: resetUnitGroundNormalEmaDefault,
   setUnitGroundNormalEmaModeValue,
   resetGridInfoToDefault,
 } = useGameCanvasServerSettings({
@@ -1135,6 +1132,11 @@ const {
   applyTerrainDetail,
   applyMapLandDimensions,
 });
+
+function resetBattleDefaultsWithGroundNormal(): void {
+  resetDemoDefaults();
+  resetUnitGroundNormalEmaDefault();
+}
 
 const {
   setupNetworkCallbacks,
@@ -1274,10 +1276,11 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   currentShieldsObstructSight: currentShieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
   currentConverterTax: currentConverterTax.value,
+  serverUnitGroundNormalEmaMode: serverUnitGroundNormalEmaMode.value,
   presets: BATTLE_PRESETS,
   activePresetName: null,
   applyPreset,
-  resetDemoDefaults,
+  resetDemoDefaults: resetBattleDefaultsWithGroundNormal,
   toggleAllDemoUnits,
   toggleDemoUnitBlueprintId,
   toggleAllDemoBuildings,
@@ -1296,6 +1299,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   setShieldsObstructSight,
   setFogOfWarEnabled,
   setConverterTax,
+  setUnitGroundNormalEmaModeValue,
 });
 watchEffect(() => {
   const m = battleControlBarModel as {
@@ -1327,6 +1331,7 @@ watchEffect(() => {
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
   m.currentConverterTax = currentConverterTax.value;
+  m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   m.activePresetName = findMatchingPresetName({
     units: currentAllowedUnits.value,
     buildings: currentAllowedBuildings.value,
@@ -1360,17 +1365,12 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   isReadonly: serverBarReadonly.value,
   barStyle: serverBarVars.value,
   serverLabel: serverLabel.value,
-  isLockstepBackend: isLockstepServerBar.value,
   displayServerTime: displayServerTime.value,
   displayServerIp: displayServerIp.value,
-  displayTickRate: displayTickRate.value,
-  serverUnitGroundNormalEmaMode: serverUnitGroundNormalEmaMode.value,
   displayServerTpsAvg: displayServerTpsAvg.value,
   displayServerTpsWorst: displayServerTpsWorst.value,
   displayServerCpuAvg: displayServerCpuAvg.value,
   displayServerCpuHi: displayServerCpuHi.value,
-  resetServerDefaults,
-  setUnitGroundNormalEmaModeValue,
 });
 watchEffect(() => {
   const m = serverControlBarModel as {
@@ -1379,11 +1379,8 @@ watchEffect(() => {
   m.isReadonly = serverBarReadonly.value;
   m.barStyle = serverBarVars.value;
   m.serverLabel = serverLabel.value;
-  m.isLockstepBackend = isLockstepServerBar.value;
   m.displayServerTime = displayServerTime.value;
   m.displayServerIp = displayServerIp.value;
-  m.displayTickRate = displayTickRate.value;
-  m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   m.displayServerTpsAvg = displayServerTpsAvg.value;
   m.displayServerTpsWorst = displayServerTpsWorst.value;
   m.displayServerCpuAvg = displayServerCpuAvg.value;

@@ -67,6 +67,7 @@ import {
   type ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
 import { PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
+import type { StructureBlueprintId } from '@/types/blueprintIds';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
@@ -145,11 +146,10 @@ const radarDishMat = new THREE.MeshStandardMaterial({
   roughness: COLORS.buildings.materials.radarDish.roughness,
   side: THREE.DoubleSide,
 });
-const radarGlowMat = new THREE.MeshBasicMaterial({ color: BUILDING_PALETTE.cyanGlow });
 const radarSweepMat = new THREE.MeshBasicMaterial({
   color: BUILDING_PALETTE.cyanGlow,
   transparent: true,
-  opacity: 0.72,
+  opacity: 0.28,
   depthWrite: false,
 });
 
@@ -192,6 +192,7 @@ export function buildBuildingShape(
   width: number,
   depth: number,
   primaryMat: THREE.Material,
+  buildingBlueprintId?: StructureBlueprintId | null,
 ): BuildingShape {
   switch (type) {
     case 'buildingSolar':
@@ -201,7 +202,12 @@ export function buildBuildingShape(
     case 'towerFabricator':
       return buildFactoryMesh(width, depth, primaryMat);
     case 'buildingExtractor':
-      return buildMetalExtractorMesh(width, depth, primaryMat);
+      return buildMetalExtractorMesh(
+        width,
+        depth,
+        primaryMat,
+        buildingBlueprintId === 'buildingExtractorT2' ? 'advanced' : 'standard',
+      );
     case 'buildingRadar':
       return buildRadarMesh(width, depth, primaryMat);
     case 'towerBeamMega':
@@ -263,28 +269,26 @@ function buildRadarMesh(
   ));
 
   const sweep = new THREE.Mesh(boxGeom, invisibleMat);
-  sweep.position.set(0, height * 0.56, 0);
-  const sweepRadius = Math.max(30, minDim * 0.1);
+  sweep.position.set(0, height * 0.52, 0);
+  const sweepRadius = Math.max(24, minDim * 0.08);
   const sweepRing = new THREE.Mesh(radarRingGeom, radarSweepMat);
   sweepRing.rotation.x = Math.PI / 2;
   sweepRing.scale.set(sweepRadius, sweepRadius, 4);
   sweep.add(sweepRing);
-  sweep.add(makeBox(radarSweepMat, sweepRadius * 1.65, 1.4, 2.2, 0, 0, 0));
-  sweep.add(makeBox(radarFrameMat, 2.2, 2.8, sweepRadius * 1.05, 0, 0, 0));
-  sweep.add(makeSphere(radarGlowMat, 3.8, sweepRadius * 0.82, 0, 0));
-  sweep.add(makeSphere(radarGlowMat, 3.8, -sweepRadius * 0.82, 0, 0));
+  sweep.add(makeBox(radarSweepMat, sweepRadius * 1.35, 0.8, 1.4, 0, 0, 0));
+  sweep.add(makeBox(radarFrameMat, 1.8, 2.2, sweepRadius * 0.8, 0, 0, 0));
 
   const head = new THREE.Mesh(boxGeom, invisibleMat);
   head.position.set(0, height * 0.9, 0);
-  head.add(makeSphere(radarGlowMat, Math.max(5.5, minDim * 0.025), 0, 0, 0));
+  head.add(makeSphere(radarDarkMat, Math.max(5.5, minDim * 0.025), 0, 0, 0));
   head.add(makeCylinder(radarFrameMat, Math.max(5, minDim * 0.022), 8, 0, -6, 0, hexCylinderGeom));
 
   const dishPivot = new THREE.Mesh(boxGeom, invisibleMat);
-  dishPivot.rotation.x = -0.58;
+  dishPivot.rotation.x = -0.42;
   dishPivot.position.set(0, 1, 0);
-  const dishRadiusX = Math.max(36, minDim * 0.14);
-  const dishRadiusY = dishRadiusX * 0.66;
-  const dishDepth = Math.max(8, minDim * 0.04);
+  const dishRadiusX = Math.max(30, minDim * 0.12);
+  const dishRadiusY = dishRadiusX * 0.58;
+  const dishDepth = Math.max(6, minDim * 0.032);
   const dish = new THREE.Mesh(radarDishGeom, radarDishMat);
   dish.scale.set(dishRadiusX, dishRadiusY, dishDepth);
   dishPivot.add(dish);
@@ -293,8 +297,9 @@ function buildRadarMesh(
   rim.scale.set(dishRadiusX, dishRadiusY, 4);
   dishPivot.add(rim);
 
-  const feedZ = Math.max(16, dishRadiusX * 0.36);
-  dishPivot.add(makeSphere(radarGlowMat, Math.max(3.6, minDim * 0.045), 0, 0, feedZ));
+  const feedZ = Math.max(14, dishRadiusX * 0.36);
+  dishPivot.add(makeBox(radarFrameMat, dishRadiusX * 0.08, dishRadiusX * 0.08, feedZ, 0, 0, feedZ * 0.5));
+  dishPivot.add(makeSphere(radarDarkMat, Math.max(2.8, minDim * 0.028), 0, 0, feedZ));
   head.add(dishPivot);
 
   details.push(detail(sweep, 'low', undefined, 'radarRig'));
@@ -492,7 +497,6 @@ export function disposeBuildingGeoms(): void {
   radarFrameMat.dispose();
   radarDarkMat.dispose();
   radarDishMat.dispose();
-  radarGlowMat.dispose();
   radarSweepMat.dispose();
   hazardStripeMat.dispose();
   converterPlatformGeom.dispose();

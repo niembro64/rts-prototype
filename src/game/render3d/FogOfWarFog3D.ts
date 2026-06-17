@@ -11,12 +11,6 @@ import { COLORS } from '@/colorsConfig';
 import { disposeMesh } from './threeUtils';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 
-type VisionSource = {
-  x: number;
-  y: number;
-  radius: number;
-};
-
 type FogSphere = {
   timeLeft: number;
   age: number;
@@ -108,7 +102,9 @@ function clamp01(value: number): number {
  *  transparent at the projected sphere edge to maxAlpha at the center. */
 export class FogOfWarFog3D {
   private readonly profile = FOG_CONFIG.fogOfWar;
-  private readonly sources: VisionSource[] = [];
+  private readonly sourceXs: number[] = [];
+  private readonly sourceYs: number[] = [];
+  private readonly sourceRadii: number[] = [];
   private readonly centerX: number;
   private readonly centerY: number;
   private readonly spawnRadius: number;
@@ -177,7 +173,9 @@ export class FogOfWarFog3D {
   destroy(): void {
     disposeMesh(this.pool.mesh);
     this.pool.active.length = 0;
-    this.sources.length = 0;
+    this.sourceXs.length = 0;
+    this.sourceYs.length = 0;
+    this.sourceRadii.length = 0;
   }
 
   private createPool(
@@ -253,7 +251,9 @@ export class FogOfWarFog3D {
   }
 
   private collectSources(clientViewState: ClientViewState, localPlayerId: PlayerId): void {
-    this.sources.length = 0;
+    this.sourceXs.length = 0;
+    this.sourceYs.length = 0;
+    this.sourceRadii.length = 0;
     const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
     for (let i = 0; i < playerIds.length; i++) {
       const playerId = playerIds[i];
@@ -264,7 +264,7 @@ export class FogOfWarFog3D {
     const pulses = clientViewState.getScanPulses();
     for (let i = 0; i < pulses.length; i++) {
       const pulse = pulses[i];
-      this.sources.push({ x: pulse.x, y: pulse.y, radius: pulse.radius });
+      this.pushSource(pulse.x, pulse.y, pulse.radius);
     }
   }
 
@@ -272,12 +272,14 @@ export class FogOfWarFog3D {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
       if (!canEntityProvideFullVision(entity)) continue;
-      this.sources.push({
-        x: entity.transform.x,
-        y: entity.transform.y,
-        radius: getEntityFullVisionRadius(entity),
-      });
+      this.pushSource(entity.transform.x, entity.transform.y, getEntityFullVisionRadius(entity));
     }
+  }
+
+  private pushSource(x: number, y: number, radius: number): void {
+    this.sourceXs.push(x);
+    this.sourceYs.push(y);
+    this.sourceRadii.push(radius);
   }
 
   private spawnTowardDensity(dtSec: number): void {
@@ -399,11 +401,11 @@ export class FogOfWarFog3D {
   }
 
   private isInVision(x: number, y: number): boolean {
-    for (let i = 0; i < this.sources.length; i++) {
-      const source = this.sources[i];
-      const dx = x - source.x;
-      const dy = y - source.y;
-      if (dx * dx + dy * dy <= source.radius * source.radius) return true;
+    for (let i = 0; i < this.sourceXs.length; i++) {
+      const dx = x - this.sourceXs[i];
+      const dy = y - this.sourceYs[i];
+      const radius = this.sourceRadii[i];
+      if (dx * dx + dy * dy <= radius * radius) return true;
     }
     return false;
   }

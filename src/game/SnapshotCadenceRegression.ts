@@ -106,8 +106,6 @@ function isGameplayResponseCommand(command: Command): boolean {
   switch (command.type) {
     case 'select':
     case 'clearSelection':
-    case 'setSnapshotRate':
-    case 'setTickRate':
     case 'setPaused':
     case 'setUnitGroundNormalEmaMode':
     case 'setSendGridInfo':

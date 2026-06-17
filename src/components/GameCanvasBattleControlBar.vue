@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { BATTLE_CONFIG } from '../battleBarConfig';
+import { SERVER_CONFIG } from '../serverBarConfig';
+import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import {
   getUnitDisplayShortName,
   getBuildingDisplayShortName,
@@ -16,6 +18,13 @@ import { statBarStyle } from './uiUtils';
 defineProps<{
   model: GameCanvasBattleControlBarModel;
 }>();
+
+const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
+  snap: 'SNAP',
+  fast: 'FAST',
+  mid: 'MED',
+  slow: 'SLOW',
+};
 </script>
 
 <template>
@@ -277,6 +286,19 @@ defineProps<{
             :title="`Tax applied to resource converters: ${opt.toFixed(1)}`"
             @click="model.setConverterTax(opt)"
           >{{ opt.toFixed(1) }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Simulation EMA for units touching ground. SNAP uses the raw terrain triangle normal; FAST/MED/SLOW blend the unit's stored ground normal toward the new contact normal before chassis tilt takes the new slope angle.">UNITS TOUCHING GROUND NORMAL EMA:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="mode in SERVER_CONFIG.unitGroundNormalEma.options"
+            :key="mode"
+            :active="model.serverUnitGroundNormalEmaMode === mode"
+            :title="`Set units-touching-ground normal EMA to ${UNIT_GROUND_NORMAL_EMA_LABEL[mode]}.`"
+            @click="model.setUnitGroundNormalEmaModeValue(mode)"
+          >{{ UNIT_GROUND_NORMAL_EMA_LABEL[mode] }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>

@@ -9,7 +9,10 @@ import {
   cylinderGeom,
   detail,
   extractorBladeMat,
+  factoryFrameMat,
+  hexCylinderGeom,
   invisibleMat,
+  makeCylinder,
 } from './BuildingMeshPrimitives3D';
 
 const extractorPyramidGeom = createHexFrustumGeometry();
@@ -75,9 +78,14 @@ export function buildMetalExtractorMesh(
   width: number,
   depth: number,
   primaryMat: THREE.Material,
+  variant: 'standard' | 'advanced' = 'standard',
 ): BuildingShape {
+  const advanced = variant === 'advanced';
   const minDim = Math.min(width, depth);
-  const pyramidHeight = Math.min(EXTRACTOR_BUILDING_VISUAL_HEIGHT * 0.64, Math.max(28, minDim * 0.78));
+  const pyramidHeight = Math.min(
+    EXTRACTOR_BUILDING_VISUAL_HEIGHT * (advanced ? 0.78 : 0.64),
+    Math.max(advanced ? 36 : 28, minDim * (advanced ? 0.88 : 0.78)),
+  );
   const base = new THREE.Mesh(extractorPyramidGeom, primaryMat);
 
   const details: BuildingShape['details'] = [];
@@ -122,12 +130,40 @@ export function buildMetalExtractorMesh(
   );
   details.push(detail(simpleRotor, 'min', undefined, 'extractorRotor'));
 
+  const rotors = [simpleRotor];
+  if (advanced) {
+    const collar = makeCylinder(
+      factoryFrameMat,
+      Math.max(ratePillarRadius * 2.5, minDim * 0.18),
+      Math.max(5, minDim * 0.07),
+      0,
+      rotorY - Math.max(5, minDim * 0.06),
+      0,
+      hexCylinderGeom,
+    );
+    details.push(detail(collar, 'min'));
+    const upperRotor = makeExtractorRotor(
+      bladeLen * 0.78,
+      bladeThickness * 0.72,
+      panelThickness * 0.72,
+      3,
+      Math.min(EXTRACTOR_BUILDING_VISUAL_HEIGHT + 5, rotorY + Math.max(7, minDim * 0.08)),
+      bladeRootRadius * 0.72,
+      0.34,
+      width,
+      depth,
+      pyramidHeight,
+    );
+    details.push(detail(upperRotor, 'min', undefined, 'extractorRotor'));
+    rotors.push(upperRotor);
+  }
+
   return {
     primary: base,
     details,
     height: pyramidHeight,
     extractorRig: {
-      rotors: [simpleRotor],
+      rotors,
       pylon: metalPylon.rig,
     },
   };

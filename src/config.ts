@@ -178,7 +178,8 @@ export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
 
 /** Maximum dt (ms) the server will simulate in a single tick.
  *  Prevents spiral-of-death when a tick takes longer than the interval.
- *  JSON value is 4 frames at 60Hz (~66.7ms). */
+ *  This guard window is separate from the deterministic-lockstep step
+ *  cadence, which lives in architecture.json. */
 export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
 
 /** Maximum authoritative beam/laser path segments traced per re-path.
@@ -323,10 +324,12 @@ export const WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS =
 export const WIND_SPEED_OSCILLATION_PERIODS_SECONDS =
   windConfigJson.speedOscillationPeriodsSeconds;
 
-/** Visual wind turbine rotor speed, in radians per second at wind speed 1.0.
- *  Actual blade rotation is `wind.speed * WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED`. */
+/** Visual wind turbine rotor speed, in radians per second at wind speed 1.0,
+ *  before the authored visual-only spin multiplier is applied. */
 export const WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED =
   windConfigJson.turbine.rotorRadPerSecPerWindSpeed;
+export const WIND_TURBINE_ROTOR_SPIN_MULTIPLIER =
+  windConfigJson.turbine.rotorSpinMultiplier;
 
 /** Wind turbine visual EMA half-life multipliers layered on top of the
  *  selected PLAYER CLIENT DRIFT preset.

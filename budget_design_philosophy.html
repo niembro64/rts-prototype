@@ -170,10 +170,9 @@
     <section class="principle-grid" aria-label="Core principles">
       <div class="principle">
         <b>Authority is explicit</b>
-        Budget Annihilation has two implemented backend architectures, selected through
-        <code>architecture.json</code>. In authoritative-server, client commands go to the host
-        simulation, which validates and executes them. In deterministic-lockstep, the command-frame
-        stream is authoritative while every browser runs the same server simulation locally.
+        Budget Annihilation uses deterministic-lockstep as its single backend architecture, configured
+        through <code>architecture.json</code>. The command-frame stream is authoritative while every
+        browser runs the same server simulation locally.
       </div>
       <div class="principle">
         <b>Clients stay continuous</b>
@@ -192,9 +191,9 @@
       <p>
         Budget Annihilation, the <code>rts-prototype</code> repo, is our
         browser-native extension of Beyond All Reason. This document describes
-        the places where the prototype deliberately differs: authoritative
-        server networking, client prediction, force-and-mass physical systems,
-        browser constraints, selectable deterministic lockstep, owned simulation code, and the atomic gameplay
+        the places where the prototype deliberately differs: deterministic-lockstep
+        networking, client prediction, force-and-mass physical systems,
+        browser constraints, owned simulation code, and the atomic gameplay
         pieces this project adds or reshapes.
       </p>
       <p>
@@ -210,30 +209,26 @@
         <li>Rules written in this document override the BAR fallback.</li>
         <li>Intentional departures from BAR should be written into this document.</li>
         <li>BAR is the behavioral fallback, not a requirement to copy BAR code, Lua structure, assets, Recoil/Spring engine internals, or network assumptions.</li>
-        <li>When BAR behavior depends on Recoil/Spring details, translate the player-facing behavior into Budget Annihilation's browser, physics-first architecture. Authoritative-server and deterministic-lockstep are both implemented backend modes; <code>architecture.json</code> selects which one a match boots with.</li>
+        <li>When BAR behavior depends on Recoil/Spring details, translate the player-facing behavior into Budget Annihilation's browser, physics-first deterministic-lockstep architecture. <code>architecture.json</code> owns the lockstep cadence and support policy.</li>
       </ul>
     </section>
 
     <section>
       <h2>North Star</h2>
       <p>
-        Budget Annihilation now has two implemented backend architectures that can both be selected
-        today through <code>architecture.json</code>. In
-        <strong>authoritative-server</strong>, one server simulation owns gameplay truth and clients
-        render from snapshots plus bounded prediction. In <strong>deterministic-lockstep</strong>,
-        every browser runs the same server simulation locally and peers exchange ordered command
-        frames; snapshots become local presentation data instead of multiplayer truth. We are still
-        not building a thin renderer that waits for the host to stream every position at display
-        rate.
+        Budget Annihilation's implemented backend architecture is
+        <strong>deterministic-lockstep</strong>, configured through
+        <code>architecture.json</code>. Every browser runs the same server simulation locally and peers
+        exchange ordered command frames; snapshots are local presentation data instead of multiplayer
+        truth. We are still not building a thin renderer that waits for a host to stream every
+        position at display rate.
       </p>
       <p>
-        In authoritative-server, the host simulation owns the real world: commands, ownership,
+        The local server simulation owns the real world in every browser: commands, ownership,
         economy, construction, targeting, damage, projectile hits, physics bodies, collision
-        response, fog of war, victory, and persistent state. The client simulation owns
-        presentation: local command feedback, prediction, smoothing, camera-visible presentation,
-        audio scheduling, and render-time interpolation. In deterministic-lockstep, that same
-        server simulation runs locally in each browser, and the ordered command-frame stream owns
-        multiplayer truth.
+        response, fog of war, victory, and persistent state. The client presentation layer owns local
+        command feedback, smoothing, camera-visible presentation, audio scheduling, and render-time
+        interpolation. The ordered command-frame stream owns multiplayer truth.
       </p>
       <p>
         That split is architectural, not permission for accidental duplicate game loops. A browser
@@ -243,22 +238,20 @@
         networking, render state, or authority.
       </p>
       <p>
-        The preferred implementation is shared code, with authority chosen by architecture. Physical kernels and
-        battlefield contracts should be described once and reused by both the authoritative sim and
-        the client prediction sim where that reuse buys correctness: body integration, forces,
+        The preferred implementation is shared code inside one deterministic architecture. Physical kernels and
+        battlefield contracts should be described once and reused by the local server simulation and
+        the client presentation/prediction layer where that reuse buys correctness: body integration, forces,
         projectile motion, terrain sampling, turret pose, hover, and collision math. That does
-        not mean authoritative-server clients must run every authoritative system. Economy,
-        construction truth, target ownership, fog filtering, damage resolution, entity creation and
-        removal, and victory stay host-owned in authoritative-server. In deterministic-lockstep,
-        those systems run in every browser as the local copy of the same server simulation.
+        not create duplicate gameplay implementations. Economy, construction truth, target ownership,
+        fog filtering, damage resolution, entity creation and removal, and victory run in every
+        browser as the local copy of the same server simulation.
       </p>
       <div class="callout">
         <p>
-          The target networking feel is: commands arrive at the authoritative sim immediately, while
-          the authoritative sim only needs to update the client sim about 5 to 10 times per second in
-          normal authoritative-server play. Higher snapshot rates are a diagnostic or low-unit-count
-          luxury, not the architecture. In deterministic-lockstep, command frames and checksums are
-          the network truth; local snapshots are for rendering and diagnostics.
+          The target networking feel is: commands are assigned to deterministic future frames, and
+          every browser advances the same local server simulation from the same ordered stream.
+          Command frames and checksums are the network truth; local snapshots are for rendering and
+          diagnostics.
         </p>
       </div>
     </section>
@@ -329,28 +322,22 @@
       <h2>Network Model</h2>
       <h3>Architecture selection is explicit</h3>
       <p>
-        The active backend is selected before match startup by <code>src/architecture.json</code>.
-        <code>authoritative-server</code> preserves the original host-owned command/snapshot
-        model. <code>deterministic-lockstep</code> runs the same server simulation locally in every
-        browser and makes ordered command frames the multiplayer truth. Both are implemented and
-        currently usable; the architecture is a startup boundary, so changing
-        the config does not hot-flip a running match.
+        The active backend is deterministic-lockstep, configured before match startup by
+        <code>src/architecture.json</code>. It runs the same server simulation locally in every
+        browser and makes ordered command frames the multiplayer truth. The architecture is a startup
+        boundary, so changing the config does not hot-flip a running match.
       </p>
       <ul class="rule-list">
-        <li><code>authoritative-server</code>: host/server owns gameplay truth; clients send commands up and receive snapshots down.</li>
         <li><code>deterministic-lockstep</code>: the ordered command-frame stream owns gameplay truth; every peer steps the same local server simulation and compares checksums.</li>
-        <li>Mid-match migration is a checkpoint-driven operation, not a config reload. A failed migration must roll back rather than leave peers running different truths.</li>
+        <li>Mid-match architecture migration is not supported. Future checkpoint import/export work must preserve one canonical truth or roll back cleanly.</li>
       </ul>
 
       <h3>Commands flow upward</h3>
       <p>
-        A client issues a command and sends it directly to the authoritative host. The host checks
-        player authority, filters illegal unit IDs, clamps unsafe parameters, and enqueues the command
-        into the server command queue. In authoritative-server, the command is not broadcast as peer
-        truth; other clients learn the result through snapshots and events emitted by the authoritative
-        sim. In deterministic-lockstep, gameplay commands are sanitized, assigned future execute
-        frames, ordered canonically, and distributed as reliable command frames. The host may
-        coordinate/relay those frames, but it does not own gameplay truth in that mode.
+        A client issues a command and sends it into the lockstep command protocol. Commands are
+        sanitized, assigned future execute frames, ordered canonically, and distributed as reliable
+        command frames. The host may coordinate or relay those frames, but it does not own gameplay
+        truth.
       </p>
       <ul class="rule-list">
         <li>Selection can remain local because it is UI state.</li>
@@ -499,7 +486,7 @@
       <h3>Visibility computation must stay aggregate and indexed</h3>
       <p>
         Sight and radar cannot be implemented as &ldquo;each unit checks every other unit&rdquo; work. The
-        authoritative sim should build player/team coverage from sensor sources, cache it at a
+        local server simulation should build player/team coverage from sensor sources, cache it at a
         deliberate cadence, and let targeting and snapshot serialization query that aggregate. The
         current direction is already right: spatial hashes, recipient/team visibility objects,
         memoized entity visibility, scheduled targeting probes, and Rust/WASM slabs. New sight/radar
@@ -552,16 +539,9 @@
       <h2>Client Simulation Model</h2>
       <h3>Shared core, bounded client</h3>
       <p>
-        There should be one headless simulation core for physical behavior, but two different runtime
-        responsibilities in authoritative-server. The server runs the complete authoritative game
-        simulation. The client runs a bounded prediction simulation for the parts the player sees and
-        feels between snapshots. This client sim may be a real fixed-step loop, and it may eventually
-        live in a worker, but it must remain a prediction layer in authoritative-server. It is
-        corrected by authoritative state and never becomes the source of gameplay truth there.
-      </p>
-      <p>
-        In deterministic-lockstep, the browser also runs the full server simulation locally. That is
-        not a second gameplay implementation: it is the same server simulation stack &mdash;
+        There should be one headless simulation core for physical behavior. In deterministic-lockstep,
+        every browser runs the full server simulation locally. That is not a second gameplay
+        implementation: it is the same server simulation stack &mdash;
         <code>WorldState</code>, <code>Simulation</code>, physics, command execution, economy,
         construction, combat, fog truth, projectiles, and victory &mdash; driven by command frames.
         The renderer still consumes local snapshots from that local server simulation, so the client
@@ -569,8 +549,7 @@
       </p>
       <ul class="rule-list">
         <li>Share physical kernels for body motion, projectile stepping, recoil, hover, turret pose, terrain sampling, and collision helpers.</li>
-        <li>In authoritative-server, keep authoritative-only systems on the host: command validation, economy, construction completion, targeting truth, damage, fog filtering, unit creation and death, and victory.</li>
-        <li>In deterministic-lockstep, run those same authoritative systems locally on every peer and keep them deterministic through fixed frames, deterministic math, canonical command ordering, and checksum diagnostics.</li>
+        <li>Run authoritative systems locally on every peer and keep them deterministic through fixed frames, deterministic math, canonical command ordering, and checksum diagnostics.</li>
         <li>Predict visible state locally: movement, velocity, turret rotation, beam path presentation, projectile travel, and local command intent.</li>
         <li>Use snapshots as correction targets. The client stores the most recent server target per entity. Position channels — movement position and rotation position — always apply correction by snapping or EMA-blending toward it; velocity channels — movement velocity and rotation velocity — can additionally ignore the snapshot derivative when that is useful for prediction testing. Acceleration is never shipped: the authoritative force solver lives on the host, and the client&rsquo;s prediction integrates position from the last-seen velocity rather than re-deriving server-side forces from a stale snapshot.</li>
       </ul>
@@ -866,7 +845,7 @@
         The sim uses a real 3D state: horizontal <code>x/y</code>, vertical <code>z</code>, velocity,
         acceleration, gravity, surface normals, sphere and cuboid bodies, terrain contact, building
         collision, unit collision, projectile collision, and hover lift. The renderer
-        presents that state, but the authoritative sim should treat altitude and contact as
+        presents that state, but the local server simulation should treat altitude and contact as
         real gameplay inputs.
       </p>
       <p>
@@ -957,7 +936,7 @@
       </p>
       <ul class="rule-list">
         <li>Do not store pathfinder-expanded intermediate points in the same array as authored command waypoints.</li>
-        <li>Do not serialize pathfinding points as gameplay intent; serialize waypoints and let the authoritative sim regenerate movement plans.</li>
+        <li>Do not serialize pathfinding points as gameplay intent; serialize waypoints and let the local server simulation regenerate movement plans.</li>
         <li>Factory rally routes and fabricator-provided routes are high-level waypoint lists. Produced units resolve those lists against their own locomotion profile and current world state.</li>
         <li>Pathfinding is leg-local and demand-driven: plan the active leg, cache it while valid, and throw it away on completion, obstruction, stale progress, terrain/building-version change, or target drift.</li>
         <li>Patrol and fight loops re-enter the planner per leg rather than baking one permanent expanded loop. The path should adapt to the battlefield, while the waypoint loop remains the command.</li>
@@ -966,7 +945,7 @@
       <h3>Gravity is universal; thrust answers it</h3>
       <p>
         Every body with mass feels gravity every tick, without exception. The
-        authoritative sim should never special-case &ldquo;this projectile
+        local server simulation should never special-case &ldquo;this projectile
         ignores gravity&rdquo; as a free pass. If a rocket, missile, or other
         guided shot needs to fly a clean line to its target, it does so by
         producing thrust that cancels the gravitational pull, not by opting out
@@ -1155,7 +1134,7 @@
         <li>Move physics, projectile stepping, collision kernels, pathfinding kernels, terrain sampling, targeting batches, visibility packing, and snapshot encoding kernels toward WASM when the data can be batched.</li>
         <li>Use struct-of-arrays storage in WASM linear memory for bodies, projectiles, turrets, spatial indices, and other high-count state.</li>
         <li>Keep <code>TypeScript</code> as orchestration: UI, commands, networking glue, scene lifecycle, and code that would pay too much JS/WASM boundary cost. Configuration and blueprints are data, not TypeScript &mdash; see <strong>Config Is Data, Not Code</strong>.</li>
-        <li>Do not use a general-purpose JavaScript physics engine, ECS framework, pathfinding framework, or game framework in the authoritative sim hot path.</li>
+        <li>Do not use a general-purpose JavaScript physics engine, ECS framework, pathfinding framework, or game framework in the local server simulation hot path.</li>
       </ul>
 
       <h3>Rendering language and API</h3>
@@ -3096,7 +3075,7 @@
 
     <footer>
       Document purpose: align implementation decisions around a browser-native, massive-scale,
-      force-and-mass RTS where the authoritative sim corrects a continuous client sim instead of
+      force-and-mass RTS where deterministic command frames drive the shared simulation instead of
       streaming every frame.
     </footer>
   </main>

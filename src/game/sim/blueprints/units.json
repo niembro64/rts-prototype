@@ -1585,12 +1585,12 @@
     "shortName": "CDR",
     "hp": 226,
     "radius": {
-      "visual": 11,
-      "hitbox": 10,
-      "collision": 14,
-      "shotArmingRadius": 20
+      "visual": 15,
+      "hitbox": 14,
+      "collision": 19,
+      "shotArmingRadius": 28
     },
-    "bodyCenterHeight": 3.3,
+    "bodyCenterHeight": 4.5,
     "supportSurface": {
       "kind": "none"
     },
@@ -1627,14 +1627,14 @@
         {
           "kind": "oval",
           "offsetForward": 0,
-          "xFrac": 0.55,
-          "yFrac": 0.22,
-          "zFrac": 0.45
+          "xFrac": 0.68,
+          "yFrac": 0.24,
+          "zFrac": 0.48
         },
         {
           "kind": "cylinder",
-          "offsetForward": -0.55,
-          "lengthFrac": 0.8,
+          "offsetForward": -0.62,
+          "lengthFrac": 0.92,
           "radiusFrac": 0.12,
           "centerYFrac": 0.22,
           "pitchRad": 0
@@ -1699,10 +1699,10 @@
         "damage": 114.9
       },
       "radius": {
-        "visual": 11,
-        "hitbox": 10,
-        "collision": 14,
-        "shotArmingRadius": 20
+        "visual": 15,
+        "hitbox": 14,
+        "collision": 19,
+        "shotArmingRadius": 28
       }
     }
   },
@@ -2027,7 +2027,7 @@
       "$audio": "event.death.unitEagle"
     },
     "locomotion": {
-      "type": "flying",
+      "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "driveForce": 6,
@@ -2038,27 +2038,13 @@
         "hoverHeightUpwardForce": 760,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
         "hoverHeightUpwardForceEMA": 0.99,
-        "wingSpan": 2.95,
-        "wingChord": 0.68,
-        "wingOffsetX": -0.08,
-        "wingHeight": 0.38,
-        "wingThickness": 0.045,
-        "wingDihedralDeg": 8,
-        "wingSweepFrac": 0.45,
-        "tailWingSpan": 1.12,
-        "tailWingChord": 0.34,
-        "tailWingOffsetX": -0.9,
-        "tailWingHeight": 0.34,
-        "tailWingThickness": 0.04,
-        "tailWingDihedralDeg": 15,
-        "tailWingSweepFrac": 0.75,
-        "tailWingMirrorX": true,
-        "jetOffsetX": -0.92,
-        "jetOffsetY": 0,
-        "jetOffsetZ": 0.24,
-        "jetRadius": 0.08,
-        "jetLength": 0.2,
-        "jetCount": 1
+        "fanDistX": 0.56,
+        "fanDistY": 0.62,
+        "fanLayout": "triFront",
+        "fanRadius": 0.16,
+        "fanRingTubeRadius": 0.04,
+        "fanOutwardAngleDeg": 12,
+        "fanSpinRadPerSec": -9
       }
     },
     "base": {
@@ -2207,8 +2193,8 @@
   },
   "unitTransport": {
     "unitBlueprintId": "unitTransport",
-    "name": "Transport",
-    "shortName": "TRN",
+    "name": "Transport Drone",
+    "shortName": "TDR",
     "hp": 520,
     "radius": {
       "visual": 22,
@@ -2276,12 +2262,12 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 20,
+        "driveForce": 26,
         "traction": 1
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 230,
+        "hoverHeightUpwardForce": 260,
         "hoverHeightUpwardForceRandomizationAmount": 0.99,
         "hoverHeightUpwardForceEMA": 0.99,
         "fanDistX": 0.72,

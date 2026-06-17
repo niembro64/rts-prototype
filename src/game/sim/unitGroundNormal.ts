@@ -44,8 +44,8 @@ function ensureNormalCapacity(required: number): void {
   _normalDirtyEntityIds = new Uint32Array(required);
 }
 
-/** Set the active unit ground normal EMA mode. Wired to the HOST SERVER bar in
- *  Phase 3; until then this is a programmatic knob. */
+/** Set the active unit ground normal EMA mode. Wired to the BATTLE bar and
+ *  applied through the normal command path. */
 export function setUnitGroundNormalEmaMode(mode: UnitGroundNormalEmaMode): void {
   _activeMode = mode;
 }

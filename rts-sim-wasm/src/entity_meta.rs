@@ -160,8 +160,8 @@ impl EntityMetaPool {
             registry_generation: Vec::new(),
             registry_alive: Vec::new(),
             registry_targetable: Vec::new(),
-            registry_row_by_entity_id: HashMap::new(),
-            registry_row_by_storage: HashMap::new(),
+            registry_row_by_entity_id: HashMap::default(),
+            registry_row_by_storage: HashMap::default(),
             registry_free_rows: Vec::new(),
         }
     }

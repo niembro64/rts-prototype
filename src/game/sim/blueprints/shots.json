@@ -228,7 +228,7 @@
       "$audio": "event.hit.shotRocketFast"
     },
     "submunitions": null,
-    "homingTurnRate": 0.3,
+    "homingTurnRate": 0.5,
     "homingThrust": 600000,
     "homingDelayMs": 0,
     "propulsionForce": 5000,

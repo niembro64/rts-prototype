@@ -97,7 +97,7 @@ pub(crate) struct SpatialGridState {
 
     // Per-query scratch
     pub(crate) nearby_cells: Vec<u64>,
-    pub(crate) dedup: std::collections::HashSet<u32>,
+    pub(crate) dedup: HashSet<u32>,
     pub(crate) scratch_u32: Vec<u32>,
 }
 
@@ -106,7 +106,7 @@ impl SpatialGridState {
         Self {
             cell_size: 0.0,
             half_cell_size: 0.0,
-            cells: HashMap::new(),
+            cells: HashMap::default(),
             cell_pool: Vec::new(),
             slot_kind: Vec::new(),
             slot_entity_id: Vec::new(),
@@ -127,7 +127,7 @@ impl SpatialGridState {
             free_slots: Vec::new(),
             next_slot: 0,
             nearby_cells: Vec::new(),
-            dedup: std::collections::HashSet::new(),
+            dedup: HashSet::default(),
             scratch_u32: Vec::new(),
         }
     }
@@ -987,7 +987,7 @@ pub(crate) fn spatial_push_enemy_projectile_if_in_radius(
 #[inline]
 pub(crate) fn spatial_push_building_if_in_radius(
     state: &SpatialGridState,
-    dedup: &mut std::collections::HashSet<u32>,
+    dedup: &mut HashSet<u32>,
     out: &mut Vec<u32>,
     slot: u32,
     x: f64,
@@ -2522,7 +2522,7 @@ pub fn spatial_query_occupied_cells_debug() -> u32 {
     // which would make replay/debug diffs of this payload noisy.
     cells_iter.sort_unstable_by_key(|&(k, _)| k);
     let mut buf = std::mem::take(&mut state.scratch_u32);
-    let mut seen_players: std::collections::HashSet<u8> = std::collections::HashSet::new();
+    let mut seen_players: HashSet<u8> = HashSet::default();
     for (key, bucket) in cells_iter {
         if bucket.units.is_empty() {
             continue;

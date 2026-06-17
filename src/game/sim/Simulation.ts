@@ -330,11 +330,6 @@ export class Simulation {
     // Update economy income and production.
     economyManager.update(this.world, dtMs, this.windState.speed);
 
-    // Resource converters: per-tick metal↔energy conversion governed by
-    // world.converterTax. Runs after income so converters operate on
-    // post-income stockpiles.
-    economyManager.processConverters(this.world, dtMs);
-
     // Update each unit's smoothed surface normal BEFORE the systems
     // that read it (commanderAbilitiesSystem, turret kinematics inside
     // updateUnits / the targeting scheduler bridge). The EMA owns the
@@ -344,6 +339,11 @@ export class Simulation {
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);
+
+    // Resource converters are one-way energy -> metal makers. Run after
+    // construction/factory energy distribution so converters consume the
+    // leftover post-construction stockpile instead of deepening stalls.
+    economyManager.processConverters(this.world, dtMs);
 
     // Shared construction lifecycle for both building shells and
     // factory unit shells: HP growth, paid-full completion, building

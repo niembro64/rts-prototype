@@ -1903,7 +1903,7 @@ pub(crate) const CONSTRUCTION_CONSUMER_CHANGED_HP_CODE: u8 = 2;
 #[inline]
 pub(crate) fn economy_compute_converter_transfer_value(
     energy_curr: f64,
-    energy_max: f64,
+    _energy_max: f64,
     metal_curr: f64,
     metal_max: f64,
     total_rate_per_sec: f64,
@@ -1911,7 +1911,7 @@ pub(crate) fn economy_compute_converter_transfer_value(
     tax: f64,
 ) -> (f64, f64, u32, u32) {
     if !energy_curr.is_finite()
-        || !energy_max.is_finite()
+        || !_energy_max.is_finite()
         || !metal_curr.is_finite()
         || !metal_max.is_finite()
     {
@@ -1925,7 +1925,7 @@ pub(crate) fn economy_compute_converter_transfer_value(
 
     let source_target =
         economy_normalized_amount(total_rate_per_sec) * economy_normalized_amount(dt_sec);
-    if source_target <= 0.0 || energy_curr == metal_curr {
+    if source_target <= 0.0 {
         return (
             0.0,
             0.0,
@@ -1948,26 +1948,7 @@ pub(crate) fn economy_compute_converter_transfer_value(
         );
     }
 
-    let (source_curr, output_curr, output_max, consumed_resource, output_resource) =
-        if metal_curr > energy_curr {
-            (
-                metal_curr,
-                energy_curr,
-                energy_max,
-                ECONOMY_RESOURCE_METAL_CODE,
-                ECONOMY_RESOURCE_ENERGY_CODE,
-            )
-        } else {
-            (
-                energy_curr,
-                metal_curr,
-                metal_max,
-                ECONOMY_RESOURCE_ENERGY_CODE,
-                ECONOMY_RESOURCE_METAL_CODE,
-            )
-        };
-
-    let source_available = source_target.min(source_curr.max(0.0));
+    let source_available = source_target.min(energy_curr.max(0.0));
     if source_available <= 0.0 {
         return (
             0.0,
@@ -1977,7 +1958,7 @@ pub(crate) fn economy_compute_converter_transfer_value(
         );
     }
 
-    let headroom = (output_max - output_curr).max(0.0);
+    let headroom = (metal_max - metal_curr).max(0.0);
     if headroom <= 0.0 {
         return (
             0.0,
@@ -2001,8 +1982,8 @@ pub(crate) fn economy_compute_converter_transfer_value(
     (
         source_available * (accepted_output / wanted_output),
         accepted_output,
-        consumed_resource,
-        output_resource,
+        ECONOMY_RESOURCE_ENERGY_CODE,
+        ECONOMY_RESOURCE_METAL_CODE,
     )
 }
 

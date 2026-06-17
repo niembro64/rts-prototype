@@ -6,7 +6,9 @@ import {
 import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
+  WIND_TURBINE_ROTOR_SPIN_MULTIPLIER,
 } from '../../config';
+import { METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER } from '@/resourceConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../network/driftEma';
@@ -430,7 +432,10 @@ export class BuildingAnimationController3D {
     const normalizedRate = rate * extractorInverseBaseProduction(entity);
     let phase = this.extractorRotorPhases.get(id);
     if (phase === undefined) phase = id * 0.173;
-    const targetSpeed = EXTRACTOR_ROTOR_RAD_PER_SEC * normalizedRate * (1 - close);
+    const targetSpeed = EXTRACTOR_ROTOR_RAD_PER_SEC *
+      METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER *
+      normalizedRate *
+      (1 - close);
     let speed = this.extractorRotorSpeeds.get(id) ?? 0;
     speed = lerp(speed, targetSpeed, rotorSpeedAlpha);
     if (targetSpeed === 0 && speed < BUILDING_RIG_IDLE_EPSILON) speed = 0;
@@ -677,7 +682,10 @@ export class BuildingAnimationController3D {
         ),
       );
     }
-    this.windRotorPhase += dtSec * this.windVisualSpeed * WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED;
+    this.windRotorPhase += dtSec *
+      this.windVisualSpeed *
+      WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED *
+      WIND_TURBINE_ROTOR_SPIN_MULTIPLIER;
   }
 
   private scaledWindTurbineHalfLife(baseHalfLife: number, multiplier: number): number {

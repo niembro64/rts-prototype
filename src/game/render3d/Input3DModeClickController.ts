@@ -1,5 +1,6 @@
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { Entity, EntityId, PlayerId, BuildingBlueprintId } from '../sim/types';
+import type { MoveCommand } from '../sim/commands';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import {
   buildAttackCommandAt,
@@ -908,8 +909,18 @@ export class Input3DModeClickController {
       queueMode.queueFront,
       queueMode.queueInsertIndex,
     );
-    if (!attackCmd) return;
-    this.config.commandQueue.enqueue(attackCmd);
+    const cmd = attackCmd ?? buildFightMoveCommand(
+      selectedUnits,
+      world.x,
+      world.y,
+      tick,
+      queueMode.queue,
+      world.z,
+      queueMode.queueFront,
+      queueMode.queueInsertIndex,
+    );
+    if (!cmd) return;
+    this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('attack');
     if (!queueMode.queue) this.config.exitAttackMode();
   }
@@ -1273,6 +1284,33 @@ export class Input3DModeClickController {
     this.config.selectedCommands.setTowerTarget(entityHitId);
     if (!this.resolveClickQueueMode(e).queue) this.config.exitTowerTargetMode();
   }
+}
+
+function buildFightMoveCommand(
+  selectedUnits: readonly Entity[],
+  targetX: number,
+  targetY: number,
+  tick: number,
+  queue: boolean,
+  targetZ?: number,
+  queueFront = false,
+  queueInsertIndex?: number,
+): MoveCommand | null {
+  if (selectedUnits.length === 0) return null;
+  const entityIds = new Array<EntityId>(selectedUnits.length);
+  for (let i = 0; i < selectedUnits.length; i++) entityIds[i] = selectedUnits[i].id;
+  return {
+    type: 'move',
+    tick,
+    entityIds,
+    targetX,
+    targetY,
+    targetZ,
+    waypointType: 'fight',
+    queue,
+    queueFront,
+    queueInsertIndex,
+  };
 }
 
 function resolveBuildDragKind(e: MouseEvent): Input3DAreaDragKind {

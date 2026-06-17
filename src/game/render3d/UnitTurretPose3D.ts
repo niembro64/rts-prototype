@@ -122,6 +122,10 @@ export class UnitTurretPose3D {
       );
 
       if (turretMesh.constructionEmitter) {
+        setEulerZIfChanged(
+          turretMesh.constructionEmitter.group.rotation,
+          entity.unit?.unitBlueprintId === 'unitConstructionDrone' ? Math.PI : 0,
+        );
         this.enqueueHeadMount(
           entity,
           turretIdx,

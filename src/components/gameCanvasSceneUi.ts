@@ -1,4 +1,4 @@
-import { reactive, ref, type Ref } from 'vue';
+import { reactive, ref, shallowReactive, type Ref } from 'vue';
 import type { GameScene } from '@/types/game';
 import type { GamePhase, NetworkServerSnapshotMeta } from '@/types/network';
 import type { EconomyInfo, MinimapData, SelectionActions, SelectionInfo } from '@/types/ui';
@@ -165,7 +165,7 @@ export function useGameCanvasSceneUi({
     buildings: { solar: 0, wind: 0, factory: 0, extractor: 0 },
   });
 
-  const minimapData = reactive<MinimapData>(createInitialMinimapData());
+  const minimapData = shallowReactive<MinimapData>(createInitialMinimapData());
 
   /** Authoritative game phase from snapshots — drives the HUD pause
    *  toggle/indicator. */

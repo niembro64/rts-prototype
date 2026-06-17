@@ -29,12 +29,42 @@ function fmtMag(n: number): string {
   return abs.toFixed(0).padStart(4, ' ');
 }
 
+function fmtSignedMag(n: number): string {
+  const sign = n > 0.05 ? '+' : n < -0.05 ? '-' : ' ';
+  return sign + fmtMag(n);
+}
+
 function fmtStock(n: number): string {
   return Math.floor(n).toString().padStart(4, ' ');
 }
 
 function isStockEmpty(n: number): boolean {
   return Math.floor(n) <= 0;
+}
+
+type ResourceTrend = 'stall' | 'overflow' | 'gain' | 'balanced';
+
+function resourceTrend(curr: number, max: number, netFlow: number): ResourceTrend {
+  if (netFlow < -0.05) return 'stall';
+  if (netFlow > 0.05 && curr >= max * 0.92) return 'overflow';
+  if (netFlow > 0.05) return 'gain';
+  return 'balanced';
+}
+
+function fmtEtaSeconds(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '';
+  if (seconds >= 6000) return '99m+';
+  const rounded = Math.ceil(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const remainder = rounded % 60;
+  if (minutes <= 0) return `${remainder}s`;
+  return `${minutes}m${remainder.toString().padStart(2, '0')}`;
+}
+
+function resourceTempoLabel(curr: number, max: number, netFlow: number): string {
+  if (netFlow < -0.05) return `empty ${fmtEtaSeconds(curr / -netFlow)}`;
+  if (netFlow > 0.05) return `full ${fmtEtaSeconds((max - curr) / netFlow)}`;
+  return 'steady';
 }
 
 const energyPct = computed(() =>
@@ -74,6 +104,9 @@ const topBarStyle = computed(() => ({
   '--resource-flow-text': TOP_BAR.resource.flowText,
   '--resource-flow-label': TOP_BAR.resource.flowLabel,
   '--resource-flow-value': TOP_BAR.resource.flowValue,
+  '--resource-net-positive': TOP_BAR.resource.netPositive,
+  '--resource-net-negative': TOP_BAR.resource.netNegative,
+  '--resource-net-overflow': TOP_BAR.resource.netOverflow,
   '--resource-empty-flash': TOP_BAR.resource.emptyFlash,
   '--resource-empty-shell-bg': TOP_BAR.resource.emptyShellBackground,
   '--resource-empty-shell-border': TOP_BAR.resource.emptyShellBorder,
@@ -83,9 +116,31 @@ const topBarStyle = computed(() => ({
 const energyStockDisplay = computed(() => fmtStock(props.economy.stockpile.curr));
 const energyProduceDisplay = computed(() => fmtMag(props.economy.income.total));
 const energyConsumeDisplay = computed(() => fmtMag(props.economy.expenditure));
+const energyNetDisplay = computed(() => fmtSignedMag(props.economy.netFlow));
+const energyNetTrend = computed(() => resourceTrend(
+  props.economy.stockpile.curr,
+  props.economy.stockpile.max,
+  props.economy.netFlow,
+));
+const energyTempoDisplay = computed(() => resourceTempoLabel(
+  props.economy.stockpile.curr,
+  props.economy.stockpile.max,
+  props.economy.netFlow,
+));
 const metalStockDisplay = computed(() => fmtStock(props.economy.metal.stockpile.curr));
 const metalProduceDisplay = computed(() => fmtMag(props.economy.metal.income.total));
 const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditure));
+const metalNetDisplay = computed(() => fmtSignedMag(props.economy.metal.netFlow));
+const metalNetTrend = computed(() => resourceTrend(
+  props.economy.metal.stockpile.curr,
+  props.economy.metal.stockpile.max,
+  props.economy.metal.netFlow,
+));
+const metalTempoDisplay = computed(() => resourceTempoLabel(
+  props.economy.metal.stockpile.curr,
+  props.economy.metal.stockpile.max,
+  props.economy.metal.netFlow,
+));
 </script>
 
 <template>
@@ -144,6 +199,10 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
           <span class="flow-label">consume</span>
           <span class="flow-value">{{ energyConsumeDisplay }}</span>
         </span>
+        <span class="resource-flow resource-net" :class="`net-${energyNetTrend}`">
+          <span class="flow-label">{{ energyTempoDisplay }}</span>
+          <span class="flow-value">{{ energyNetDisplay }}</span>
+        </span>
       </div>
     </div>
 
@@ -174,6 +233,10 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
         <span class="resource-flow">
           <span class="flow-label">consume</span>
           <span class="flow-value">{{ metalConsumeDisplay }}</span>
+        </span>
+        <span class="resource-flow resource-net" :class="`net-${metalNetTrend}`">
+          <span class="flow-label">{{ metalTempoDisplay }}</span>
+          <span class="flow-value">{{ metalNetDisplay }}</span>
         </span>
       </div>
     </div>
@@ -375,6 +438,20 @@ const metalConsumeDisplay = computed(() => fmtMag(props.economy.metal.expenditur
 
 .flow-value {
   color: var(--resource-flow-value);
+}
+
+.resource-net.net-gain .flow-value {
+  color: var(--resource-net-positive);
+}
+
+.resource-net.net-stall .flow-label,
+.resource-net.net-stall .flow-value {
+  color: var(--resource-net-negative);
+}
+
+.resource-net.net-overflow .flow-label,
+.resource-net.net-overflow .flow-value {
+  color: var(--resource-net-overflow);
 }
 
 .resource-empty {

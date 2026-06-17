@@ -4,9 +4,9 @@ import { persist, readPersisted } from './persistence';
 import { UNIT_GROUND_NORMAL_EMA_MODE_DEFAULT, type UnitGroundNormalEmaMode } from './shellConfig';
 import serverBarConfig from './serverBarConfig.json';
 
-// Server-bar JSON owns only settings still exposed by the deterministic
-// lockstep SERVER bar. Fixed-step timing and presentation snapshot
-// cadence live in architecture.json.
+// Host-applied simulation settings that still travel through server commands.
+// The ground-normal EMA control is rendered in the BATTLE bar; fixed-step
+// timing and presentation snapshot cadence live in architecture.json.
 
 export type ServerMode = BattleMode;
 

@@ -60,6 +60,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly currentShieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
   readonly currentConverterTax: number;
+  readonly serverUnitGroundNormalEmaMode: UnitGroundNormalEmaMode;
   readonly presets: readonly BattlePreset[];
   readonly activePresetName: string | null;
   applyPreset(preset: BattlePreset): void;
@@ -82,23 +83,19 @@ export type GameCanvasBattleControlBarModel = {
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
   setConverterTax(tax: number): void;
+  setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
 };
 
 export type GameCanvasServerControlBarModel = {
   readonly isReadonly: boolean;
   readonly barStyle: ControlBarStyle;
   readonly serverLabel: string;
-  readonly isLockstepBackend: boolean;
   readonly displayServerTime: string;
   readonly displayServerIp: string;
-  readonly displayTickRate: number;
-  readonly serverUnitGroundNormalEmaMode: UnitGroundNormalEmaMode;
   readonly displayServerTpsAvg: number;
   readonly displayServerTpsWorst: number;
   readonly displayServerCpuAvg: number;
   readonly displayServerCpuHi: number;
-  resetServerDefaults(): void;
-  setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
 };
 
 export type GameCanvasClientControlBarModel = {

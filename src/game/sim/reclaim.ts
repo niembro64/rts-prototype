@@ -1,6 +1,6 @@
 import type { Entity, ResourceCost } from './types';
 import { getBuildingConfig, getUnitBuildConfig } from './buildConfigs';
-import { cloneResourceCost, makeZeroResourceCost } from './buildableHelpers';
+import { makeZeroResourceCost } from './buildableHelpers';
 
 export const RECLAIM_REFUND_FRACTION = 0.5;
 
@@ -27,12 +27,13 @@ export function getReclaimResourceValue(target: Entity): ResourceCost {
   }
 
   if (target.buildingBlueprintId) {
-    return cloneResourceCost(getBuildingConfig(target.buildingBlueprintId).cost);
+    const cost = getBuildingConfig(target.buildingBlueprintId).cost;
+    return { energy: 0, metal: cost.metal };
   }
 
   if (target.unit !== null) {
     const config = getUnitBuildConfig(target.unit.unitBlueprintId);
-    if (config) return cloneResourceCost(config.cost);
+    if (config) return { energy: 0, metal: config.cost.metal };
   }
 
   return makeZeroResourceCost();

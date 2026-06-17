@@ -12,21 +12,10 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 import { hexToRgb01 } from './colorUtils';
 
-type SensorBoundarySource = {
-  x: number;
-  y: number;
-  radius: number;
-};
-
 export type SensorBoundaryMode = 'sight' | 'radar';
 
 type SensorBoundaryRendererOptions = {
   mode?: SensorBoundaryMode;
-};
-
-type AngleInterval = {
-  start: number;
-  end: number;
 };
 
 const TAU = Math.PI * 2;
@@ -71,8 +60,11 @@ export class SightBoundaryRenderer3D {
   private readonly lineBuffer = new DynamicLineBuffer3D(STYLE.initialLineCap);
   private readonly material: THREE.LineBasicMaterial;
   private readonly lineMesh: THREE.LineSegments;
-  private readonly sources: SensorBoundarySource[] = [];
-  private readonly intervals: AngleInterval[] = [];
+  private readonly sourceXs: number[] = [];
+  private readonly sourceYs: number[] = [];
+  private readonly sourceRadii: number[] = [];
+  private readonly intervalStarts: number[] = [];
+  private readonly intervalEnds: number[] = [];
   private readonly mode: SensorBoundaryMode;
   private readonly color: { r: number; g: number; b: number };
 
@@ -113,12 +105,12 @@ export class SightBoundaryRenderer3D {
 
     this.collectSources(clientViewState, localPlayerId, renderScope);
     this.lineBuffer.resetDrawRange();
-    if (this.sources.length === 0) {
+    if (this.sourceXs.length === 0) {
       this.lineMesh.visible = false;
       return;
     }
 
-    for (let i = 0; i < this.sources.length; i++) {
+    for (let i = 0; i < this.sourceXs.length; i++) {
       this.drawVisibleBoundaryForSource(i);
     }
 
@@ -143,7 +135,9 @@ export class SightBoundaryRenderer3D {
     localPlayerId: PlayerId,
     renderScope: ViewportFootprint,
   ): void {
-    this.sources.length = 0;
+    this.sourceXs.length = 0;
+    this.sourceYs.length = 0;
+    this.sourceRadii.length = 0;
     const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
     for (let i = 0; i < playerIds.length; i++) {
       const playerId = playerIds[i];
@@ -198,52 +192,58 @@ export class SightBoundaryRenderer3D {
       return;
     }
     if (!renderScope.inScope(x, y, radius)) return;
-    this.sources.push({ x, y, radius });
+    this.sourceXs.push(x);
+    this.sourceYs.push(y);
+    this.sourceRadii.push(radius);
   }
 
   private drawVisibleBoundaryForSource(sourceIndex: number): void {
-    const source = this.sources[sourceIndex];
-    this.intervals.length = 0;
-    for (let i = 0; i < this.sources.length; i++) {
+    this.intervalStarts.length = 0;
+    this.intervalEnds.length = 0;
+    for (let i = 0; i < this.sourceXs.length; i++) {
       if (i === sourceIndex) continue;
       if (this.addCoveredInterval(sourceIndex, i)) return;
     }
 
     this.mergeIntervals();
     let cursor = 0;
-    for (let i = 0; i < this.intervals.length; i++) {
-      const interval = this.intervals[i];
-      if (interval.start > cursor + EPSILON) {
-        this.drawArc(source, cursor, interval.start);
+    for (let i = 0; i < this.intervalStarts.length; i++) {
+      const start = this.intervalStarts[i];
+      if (start > cursor + EPSILON) {
+        this.drawArc(sourceIndex, cursor, start);
       }
-      cursor = Math.max(cursor, interval.end);
+      cursor = Math.max(cursor, this.intervalEnds[i]);
     }
     if (cursor < TAU - EPSILON) {
-      this.drawArc(source, cursor, TAU);
+      this.drawArc(sourceIndex, cursor, TAU);
     }
   }
 
   /** Returns true when the source is fully covered by the other source. */
   private addCoveredInterval(sourceIndex: number, otherIndex: number): boolean {
-    const source = this.sources[sourceIndex];
-    const other = this.sources[otherIndex];
-    const dx = other.x - source.x;
-    const dy = other.y - source.y;
+    const sourceX = this.sourceXs[sourceIndex];
+    const sourceY = this.sourceYs[sourceIndex];
+    const sourceRadius = this.sourceRadii[sourceIndex];
+    const otherX = this.sourceXs[otherIndex];
+    const otherY = this.sourceYs[otherIndex];
+    const otherRadius = this.sourceRadii[otherIndex];
+    const dx = otherX - sourceX;
+    const dy = otherY - sourceY;
     const d = Math.hypot(dx, dy);
 
     if (d <= EPSILON) {
-      if (other.radius > source.radius + EPSILON) return true;
-      return Math.abs(other.radius - source.radius) <= EPSILON && otherIndex < sourceIndex;
+      if (otherRadius > sourceRadius + EPSILON) return true;
+      return Math.abs(otherRadius - sourceRadius) <= EPSILON && otherIndex < sourceIndex;
     }
 
-    if (d + source.radius <= other.radius + EPSILON) return true;
-    if (d >= source.radius + other.radius - EPSILON) return false;
-    if (d + other.radius <= source.radius + EPSILON) return false;
+    if (d + sourceRadius <= otherRadius + EPSILON) return true;
+    if (d >= sourceRadius + otherRadius - EPSILON) return false;
+    if (d + otherRadius <= sourceRadius + EPSILON) return false;
 
     const centerAngle = Math.atan2(dy, dx);
     const halfAngle = Math.acos(clampUnit(
-      (source.radius * source.radius + d * d - other.radius * other.radius) /
-      (2 * source.radius * d),
+      (sourceRadius * sourceRadius + d * d - otherRadius * otherRadius) /
+      (2 * sourceRadius * d),
     ));
     return this.pushInterval(centerAngle - halfAngle, centerAngle + halfAngle);
   }
@@ -256,62 +256,82 @@ export class SightBoundaryRenderer3D {
     const s = normalizeAngle(start);
     const e = normalizeAngle(end);
     if (s <= e) {
-      this.intervals.push({ start: s, end: e });
+      this.intervalStarts.push(s);
+      this.intervalEnds.push(e);
     } else {
-      this.intervals.push({ start: s, end: TAU });
-      this.intervals.push({ start: 0, end: e });
+      this.intervalStarts.push(s);
+      this.intervalEnds.push(TAU);
+      this.intervalStarts.push(0);
+      this.intervalEnds.push(e);
     }
     return false;
   }
 
   private mergeIntervals(): void {
-    const intervals = this.intervals;
-    if (intervals.length <= 1) return;
-    intervals.sort((a, b) => a.start - b.start);
+    const starts = this.intervalStarts;
+    const ends = this.intervalEnds;
+    if (starts.length <= 1) return;
+    this.sortIntervals();
     let write = 0;
-    for (let read = 1; read < intervals.length; read++) {
-      const current = intervals[write];
-      const next = intervals[read];
-      if (next.start <= current.end + EPSILON) {
-        current.end = Math.max(current.end, next.end);
+    for (let read = 1; read < starts.length; read++) {
+      if (starts[read] <= ends[write] + EPSILON) {
+        ends[write] = Math.max(ends[write], ends[read]);
       } else {
         write++;
-        intervals[write] = next;
+        starts[write] = starts[read];
+        ends[write] = ends[read];
       }
     }
-    intervals.length = write + 1;
+    starts.length = write + 1;
+    ends.length = write + 1;
   }
 
-  private drawArc(source: SensorBoundarySource, start: number, end: number): void {
+  private sortIntervals(): void {
+    const starts = this.intervalStarts;
+    const ends = this.intervalEnds;
+    for (let i = 1; i < starts.length; i++) {
+      const start = starts[i];
+      const end = ends[i];
+      let j = i - 1;
+      while (j >= 0 && starts[j] > start) {
+        starts[j + 1] = starts[j];
+        ends[j + 1] = ends[j];
+        j--;
+      }
+      starts[j + 1] = start;
+      ends[j + 1] = end;
+    }
+  }
+
+  private drawArc(sourceIndex: number, start: number, end: number): void {
     const span = end - start;
     if (span <= EPSILON) return;
 
+    const sourceRadius = this.sourceRadii[sourceIndex];
     const segments = Math.max(
       1,
       Math.ceil(span / STYLE.maxArcStepRad),
-      Math.ceil((span * source.radius) / STYLE.maxSegmentLength),
+      Math.ceil((span * sourceRadius) / STYLE.maxSegmentLength),
     );
-    let prev = this.sampleArcPoint(source, start);
+    const sourceX = this.sourceXs[sourceIndex];
+    const sourceY = this.sourceYs[sourceIndex];
+    let prevX = sourceX + Math.cos(start) * sourceRadius;
+    let prevY = sourceY + Math.sin(start) * sourceRadius;
+    let prevHeight = this.getTerrainHeight(prevX, prevY) + STYLE.groundLift;
     const { r, g, b } = this.color;
     for (let i = 1; i <= segments; i++) {
       const angle = start + (span * i) / segments;
-      const next = this.sampleArcPoint(source, angle);
+      const nextX = sourceX + Math.cos(angle) * sourceRadius;
+      const nextY = sourceY + Math.sin(angle) * sourceRadius;
+      const nextHeight = this.getTerrainHeight(nextX, nextY) + STYLE.groundLift;
       this.lineBuffer.pushSegment(
-        prev.x, prev.height, prev.y,
-        next.x, next.height, next.y,
+        prevX, prevHeight, prevY,
+        nextX, nextHeight, nextY,
         r, g, b,
       );
-      prev = next;
+      prevX = nextX;
+      prevY = nextY;
+      prevHeight = nextHeight;
     }
-  }
-
-  private sampleArcPoint(source: SensorBoundarySource, angle: number): { x: number; y: number; height: number } {
-    const x = source.x + Math.cos(angle) * source.radius;
-    const y = source.y + Math.sin(angle) * source.radius;
-    return {
-      x,
-      y,
-      height: this.getTerrainHeight(x, y) + STYLE.groundLift,
-    };
   }
 }
