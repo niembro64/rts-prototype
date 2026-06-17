@@ -947,6 +947,7 @@ export interface SimWasm {
     dtSec: number,
     thrustMultiplier: number,
     forceScale: number,
+    referenceMass: number,
     unitMassMultiplier: number,
     controlRadiusMin: number,
     responseTimeSec: number,
@@ -990,6 +991,7 @@ export interface SimWasm {
     dtSec: number,
     thrustMultiplier: number,
     forceScale: number,
+    referenceMass: number,
     hoverOrientationK: number,
     hoverOrientationC: number,
   ) => number;

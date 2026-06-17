@@ -26,10 +26,9 @@ use wasm_bindgen::prelude::*;
 //  (height + normal), now it's all-in-Rust.
 // ─────────────────────────────────────────────────────────────────
 
-// Constants — kept in sync with Pathfinder.ts.
+// Constants — grid/search constants live here; tuning constants are generated
+// from src/game/sim/pathfindingTuningConfig.json.
 pub(crate) const PATHFINDER_BUILD_GRID_CELL_SIZE: f64 = 20.0;
-pub(crate) const PATHFINDER_TERRAIN_INFLATION_CELLS: i32 = 2;
-pub(crate) const PATHFINDER_SLOPE_BLOCK_NZ: f32 = 0.34;
 pub(crate) const PATHFINDER_SNAP_RADIUS_CELLS: i32 = 32;
 pub(crate) const PATHFINDER_MAX_A_STAR_NODES: u32 = 50_000;
 pub(crate) const PATHFINDER_SQRT2: f32 = 1.4142135623730951;
@@ -246,30 +245,33 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     let grid_h = state.grid_h;
     let n = state.n;
     let cs = PATHFINDER_BUILD_GRID_CELL_SIZE;
-    let slope_block = PATHFINDER_SLOPE_BLOCK_NZ;
+    let slope_block = PATHFINDING_STABILITY_MIN_NORMAL_Z;
 
-    // Step 1 — water + slope mask at cell centres.
-    let mut terrain_mask: Vec<u8> = vec![0u8; n];
+    // Step 1 — classify water and broad stability-slope blockers at cell centres.
+    let mut water_mask: Vec<u8> = vec![0u8; n];
+    let mut slope_mask: Vec<u8> = vec![0u8; n];
     for gy in 0..grid_h {
         for gx in 0..grid_w {
             let idx = (gy * grid_w + gx) as usize;
             let cx = (gx as f64 + 0.5) * cs;
             let cy = (gy as f64 + 0.5) * cs;
             let (h, nz) = pathfinder_sample_terrain(cx, cy);
-            let blk = if h < TERRAIN_WATER_LEVEL {
+            if h < TERRAIN_WATER_LEVEL {
                 state.terrain_normal_z[idx] = 0.0;
-                true
+                water_mask[idx] = 1;
             } else {
                 state.terrain_normal_z[idx] = nz;
-                nz < slope_block
-            };
-            terrain_mask[idx] = if blk { 1 } else { 0 };
+                if nz < slope_block {
+                    slope_mask[idx] = 1;
+                }
+            }
         }
     }
 
-    // Step 2 — dilate by TERRAIN_INFLATION_CELLS into terrain_blocked.
-    // Map-edge cells within `tk` of any border are blocked.
-    let tk = PATHFINDER_TERRAIN_INFLATION_CELLS;
+    // Step 2 — dilate water by WATER_BUFFER_CELLS into terrain_blocked.
+    // Slope blockers stay cell-local; map-edge cells within `tk` of any
+    // border are blocked so ground routes keep their collision space in-bounds.
+    let tk = PATHFINDING_WATER_BUFFER_CELLS;
     for cell in state.terrain_blocked.iter_mut() {
         *cell = 0;
     }
@@ -280,11 +282,15 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
                 state.terrain_blocked[out_idx] = 1;
                 continue;
             }
+            if slope_mask[out_idx] == 1 {
+                state.terrain_blocked[out_idx] = 1;
+                continue;
+            }
             let mut blk = 0u8;
             'stencil: for dy in -tk..=tk {
                 let row = (gy + dy) * grid_w;
                 for dx in -tk..=tk {
-                    if terrain_mask[(row + gx + dx) as usize] == 1 {
+                    if water_mask[(row + gx + dx) as usize] == 1 {
                         blk = 1;
                         break 'stencil;
                     }

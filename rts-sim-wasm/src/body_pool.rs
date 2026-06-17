@@ -297,14 +297,21 @@ pub(crate) fn arrival_horizontal_drive_accel(
     mass: f64,
     thrust_multiplier: f64,
     force_scale: f64,
+    reference_mass: f64,
     unit_mass_multiplier: f64,
 ) -> f64 {
     let physics_mass = mass * unit_mass_multiplier;
-    if !physics_mass.is_finite() || physics_mass <= 0.0 || force_scale <= 0.0 {
+    if !physics_mass.is_finite()
+        || physics_mass <= 0.0
+        || !reference_mass.is_finite()
+        || reference_mass <= 0.0
+        || force_scale <= 0.0
+    {
         return 0.0;
     }
 
-    let traction_force_magnitude = drive_force * thrust_multiplier * traction * mass / force_scale;
+    let traction_force_magnitude =
+        drive_force * thrust_multiplier * traction * reference_mass / force_scale;
     traction_force_magnitude * 1_000_000.0 / physics_mass
 }
 
@@ -323,6 +330,7 @@ pub(crate) fn compute_arrival_control_thrust(
     dt_sec: f64,
     thrust_multiplier: f64,
     force_scale: f64,
+    reference_mass: f64,
     unit_mass_multiplier: f64,
     control_radius_min: f64,
     response_time_sec: f64,
@@ -343,6 +351,7 @@ pub(crate) fn compute_arrival_control_thrust(
         mass,
         thrust_multiplier,
         force_scale,
+        reference_mass,
         unit_mass_multiplier,
     );
     if max_accel <= min_accel || !max_accel.is_finite() {
@@ -392,6 +401,7 @@ pub fn arrival_control_step_batch(
     dt_sec: f64,
     thrust_multiplier: f64,
     force_scale: f64,
+    reference_mass: f64,
     unit_mass_multiplier: f64,
     control_radius_min: f64,
     response_time_sec: f64,
@@ -428,6 +438,7 @@ pub fn arrival_control_step_batch(
             dt_sec,
             thrust_multiplier,
             force_scale,
+            reference_mass,
             unit_mass_multiplier,
             control_radius_min,
             response_time_sec,

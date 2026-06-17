@@ -9,6 +9,7 @@ import {
 import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
 import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
 import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
+import { computeLocomotionClimbProfile } from '@/game/sim/pathfindingMobility';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
   LocomotionBlueprint,
@@ -234,6 +235,7 @@ function buildEconomySection(
 function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
   const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
   const locomotion = blueprint.locomotion;
+  const climb = computeLocomotionClimbProfile(runtime, blueprint.mass);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
     stat('Drive force', fmt(runtime.driveForce)),
@@ -241,8 +243,8 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
     node('Pathfinding', locomotion.pathfindingBlueprintId, undefined, [
       stat('Terrain mode', runtime.pathfinding.terrainMode),
       stat('Ignores blocking', yesNo(runtime.pathfinding.ignoreTerrainBlocking)),
-      stat('Max slope', runtime.pathfinding.maxSlopeDeg === null ? 'any' : `${fmt(runtime.pathfinding.maxSlopeDeg)} deg`),
-      stat('Surface normal floor', fmt(runtime.pathfinding.minSurfaceNormalZ, 3)),
+      stat('Max slope', climb.maxSlopeDeg === null ? 'any' : `${fmt(climb.maxSlopeDeg)} deg`),
+      stat('Surface normal floor', climb.minSurfaceNormalZ === null ? 'any' : fmt(climb.minSurfaceNormalZ, 3)),
     ]),
     ...describeLocomotionConfig(locomotion),
   ];

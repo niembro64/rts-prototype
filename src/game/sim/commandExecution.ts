@@ -523,7 +523,7 @@ export function resolvePathableFormationTarget(
     world.mapHeight,
     buildingGrid,
     world.getGroundZ(x, y),
-    pathTerrainFilterForLocomotion(unitComponent.locomotion),
+    pathTerrainFilterForLocomotion(unitComponent.locomotion, unitComponent.mass),
   );
   const final = points[points.length - 1];
   return final !== undefined

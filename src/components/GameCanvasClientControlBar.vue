@@ -15,6 +15,7 @@ import {
   type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
+import { unitRosterDisplay } from '../game/sim/blueprints/displayRosters';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
 import { presentationSnapshotRateHz } from '../presentationSnapshotConfig';
 import BarButton from './BarButton.vue';
@@ -23,7 +24,7 @@ import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasClientControlBarModel } from './gameCanvasControlBarModels';
-import type { EntityHudElement, EntityHudType } from '../types/client';
+import type { EntityHudElement, EntityHudType, PathingDebugUnitId } from '../types/client';
 import { fmt4, fmtBytes4, msBarStyle, statBarStyle } from './uiUtils';
 
 const ENTITY_HUD_TYPE_LABELS: Record<EntityHudType, string> = {
@@ -61,6 +62,18 @@ const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> 
 };
 
 const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;
+const PATHING_DEBUG_UNIT_OPTIONS: readonly {
+  readonly value: PathingDebugUnitId;
+  readonly label: string;
+  readonly title: string;
+}[] = [
+  { value: 'none', label: 'NONE', title: 'Clear unit pathability overlay' },
+  ...unitRosterDisplay.map((unit) => ({
+    value: unit.unitBlueprintId,
+    label: unit.shortName,
+    title: `Show valid pathfinding cells for ${unit.label}`,
+  })),
+];
 
 const SNAPSHOT_REASONABLE_BYTES = 1024 * 1024;
 const SNAPSHOT_SIZE_TARGET_RATIO_BUDGET = 1;
@@ -755,9 +768,20 @@ function resetEveryCustomHotkey(): void {
         >ELEV</BarButton>
         <BarButton
           :active="model.pathingMap"
-          title="PATH - show ground-unit pathable cells using terrain and occupied-cell blockers"
+          title="WATER - show cells blocked by water plus the configured shoreline buffer"
           @click="model.togglePathingMap"
-        >PATH</BarButton>
+        >WATER</BarButton>
+        <BarDivider />
+        <BarLabel>PATH:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in PATHING_DEBUG_UNIT_OPTIONS"
+            :key="opt.value"
+            :active="model.pathingDebugUnit === opt.value"
+            :title="opt.title"
+            @click="model.changePathingDebugUnit(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
         <BarButton
           :active="model.sightBoundary"
           title="SIGHT - draw the local player's total full-sight boundary"

@@ -60,6 +60,7 @@ export type CameraFovDegrees = 10 | 30 | 45 | 60 | 120;
  *  the pathfinder inserted along the route, so the player can see
  *  how units route around obstacles. */
 export type WaypointDetail = 'simple' | 'detailed';
+export type PathingDebugUnitId = 'none' | string;
 /** Entity-HUD entity classes. Each maps to a renderer category that
  *  can independently show / hide its name tag, health bar, and
  *  construction-progress bars. */
@@ -144,6 +145,7 @@ export type ClientBarConfig = {
   readonly metalMap: BooleanSetting;
   readonly elevationMap: BooleanSetting;
   readonly pathingMap: BooleanSetting;
+  readonly pathingDebugUnit: DefaultSetting<PathingDebugUnitId>;
   /** Draws the local player's current sight/sensor boundary on the
    *  terrain. This is a presentation/debug overlay only; authoritative
    *  fog filtering still lives on the host. */

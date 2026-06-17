@@ -12,6 +12,7 @@ import {
   getElevationMap,
   getMetalMap,
   getPathingMap,
+  getPathingDebugUnit,
   getTriangleDebug,
 } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
@@ -70,6 +71,12 @@ import {
 import { WATER_SURFACE_LINEAR_COLOR } from './WaterColor3D';
 import { getSimWasm } from '../sim-wasm/init';
 import { clamp01 } from '../math';
+import { UNIT_BLUEPRINTS, getUnitLocomotion } from '../sim/blueprints/units';
+import { computeLocomotionClimbProfile } from '../sim/pathfindingMobility';
+import {
+  PATHFINDING_STABILITY_MIN_NORMAL_Z,
+  PATHFINDING_WATER_BUFFER_CELLS,
+} from '../sim/pathfindingTuning';
 import {
   assignBuildGridOverlayUniforms,
   buildGridOverlayFragment,
@@ -96,7 +103,6 @@ const BUILD_GRID_COLOR_METAL = readRgbaTuple(
   'colorsConfig.world.terrain.buildGrid.metalRgba',
 );
 const BUILD_GRID_COLOR_TRANSPARENT = [0, 0, 0, 0] as const;
-const PATHING_SLOPE_BLOCK_NZ = 0.34;
 
 
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
@@ -308,6 +314,8 @@ export class TerrainTileRenderer3D {
   private buildGridKeyOverlayMode = '';
   private buildGridOccupiedMask = new Uint8Array(1);
   private buildGridMetalMask = new Uint8Array(1);
+  private buildGridWaterRawMask = new Uint8Array(1);
+  private buildGridWaterBlockMask = new Uint8Array(1);
   private groundDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
   private groundDetailTileWorldSizeUniform = { value: TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE };
   private groundDetailEnabledUniform = { value: 0 };
@@ -649,6 +657,12 @@ export class TerrainTileRenderer3D {
     if (this.buildGridMetalMask.length < safeCount) {
       this.buildGridMetalMask = new Uint8Array(safeCount);
     }
+    if (this.buildGridWaterRawMask.length < safeCount) {
+      this.buildGridWaterRawMask = new Uint8Array(safeCount);
+    }
+    if (this.buildGridWaterBlockMask.length < safeCount) {
+      this.buildGridWaterBlockMask = new Uint8Array(safeCount);
+    }
   }
 
   private computeMetalDepositSignature(): number {
@@ -770,6 +784,60 @@ export class TerrainTileRenderer3D {
     }
   }
 
+  private refreshBuildGridWaterMask(
+    cellsX: number,
+    cellsY: number,
+    buildCellSize: number,
+  ): void {
+    const cellCount = cellsX * cellsY;
+    this.buildGridWaterRawMask.fill(0, 0, cellCount);
+    this.buildGridWaterBlockMask.fill(0, 0, cellCount);
+
+    for (let gy = 0; gy < cellsY; gy++) {
+      const rowOffset = gy * cellsX;
+      for (let gx = 0; gx < cellsX; gx++) {
+        const x = gx * buildCellSize + buildCellSize / 2;
+        const y = gy * buildCellSize + buildCellSize / 2;
+        const sample = getTerrainMeshSample(x, y, this.mapWidth, this.mapHeight);
+        if (terrainMeshHeightFromSample(sample) < WATER_LEVEL) {
+          this.buildGridWaterRawMask[rowOffset + gx] = 1;
+        }
+      }
+    }
+
+    const bufferCells = PATHFINDING_WATER_BUFFER_CELLS;
+    for (let gy = 0; gy < cellsY; gy++) {
+      const rowOffset = gy * cellsX;
+      for (let gx = 0; gx < cellsX; gx++) {
+        if (this.buildGridWaterRawMask[rowOffset + gx] === 0) continue;
+        const minY = Math.max(0, gy - bufferCells);
+        const maxY = Math.min(cellsY - 1, gy + bufferCells);
+        const minX = Math.max(0, gx - bufferCells);
+        const maxX = Math.min(cellsX - 1, gx + bufferCells);
+        for (let yy = minY; yy <= maxY; yy++) {
+          const outRowOffset = yy * cellsX;
+          for (let xx = minX; xx <= maxX; xx++) {
+            this.buildGridWaterBlockMask[outRowOffset + xx] = 1;
+          }
+        }
+      }
+    }
+  }
+
+  private isPathfinderEdgeBlockedCell(
+    gx: number,
+    gy: number,
+    cellsX: number,
+    cellsY: number,
+  ): boolean {
+    const bufferCells = PATHFINDING_WATER_BUFFER_CELLS;
+    return bufferCells > 0 &&
+      (gx < bufferCells ||
+        gy < bufferCells ||
+        gx >= cellsX - bufferCells ||
+        gy >= cellsY - bufferCells);
+  }
+
   private writeBuildGridPixel(offset: number, color: readonly [number, number, number, number]): void {
     this.buildGridPixels[offset] = color[0];
     this.buildGridPixels[offset + 1] = color[1];
@@ -780,13 +848,31 @@ export class TerrainTileRenderer3D {
   private refreshBuildGridTexture(
     buildGridEnabled: boolean,
     metalMapEnabled: boolean,
-    pathingMapEnabled: boolean,
+    waterPathingMapEnabled: boolean,
+    pathingDebugUnitId: string,
   ): void {
-    const enabled = buildGridEnabled || metalMapEnabled || pathingMapEnabled;
+    const selectedUnitBlueprint =
+      pathingDebugUnitId !== 'none'
+        ? UNIT_BLUEPRINTS[pathingDebugUnitId as keyof typeof UNIT_BLUEPRINTS]
+        : undefined;
+    const selectedUnitLocomotion = selectedUnitBlueprint !== undefined
+      ? getUnitLocomotion(selectedUnitBlueprint.unitBlueprintId)
+      : null;
+    const selectedUnitClimbProfile =
+      selectedUnitBlueprint !== undefined && selectedUnitLocomotion !== null
+        ? computeLocomotionClimbProfile(selectedUnitLocomotion, selectedUnitBlueprint.mass)
+        : null;
+    const selectedUnitPathingEnabled = selectedUnitBlueprint !== undefined &&
+      selectedUnitLocomotion !== null &&
+      selectedUnitClimbProfile !== null;
+    const pathOverlayEnabled = waterPathingMapEnabled || selectedUnitPathingEnabled;
+    const enabled = buildGridEnabled || metalMapEnabled || pathOverlayEnabled;
     const overlayMode = buildGridEnabled
       ? 'build'
-      : pathingMapEnabled
-        ? 'path'
+      : pathOverlayEnabled
+        ? `path:${waterPathingMapEnabled ? 1 : 0}:${
+            selectedUnitPathingEnabled ? pathingDebugUnitId : 'none'
+          }`
         : metalMapEnabled
           ? 'metal'
           : 'off';
@@ -827,6 +913,9 @@ export class TerrainTileRenderer3D {
     this.ensureBuildGridMasks(cellCount);
     this.refreshBuildGridOccupiedMask(cellsX, cellsY);
     this.refreshBuildGridMetalMask(cellsX, cellsY);
+    if (pathOverlayEnabled) {
+      this.refreshBuildGridWaterMask(cellsX, cellsY, buildCellSize);
+    }
 
     for (let gy = 0; gy < cellsY; gy++) {
       const rowOffset = gy * cellsX;
@@ -844,16 +933,35 @@ export class TerrainTileRenderer3D {
           );
           continue;
         }
-        if (overlayMode === 'path') {
-          const sample = getTerrainMeshSample(x, y, this.mapWidth, this.mapHeight);
-          const height = terrainMeshHeightFromSample(sample);
-          const normal = terrainMeshNormalFromSample(sample);
-          const terrainBlocked = height <= WATER_LEVEL || normal.nz < PATHING_SLOPE_BLOCK_NZ;
+        if (overlayMode.startsWith('path:')) {
+          const waterBlocked = this.buildGridWaterBlockMask[cellIndex] !== 0;
+          if (waterPathingMapEnabled && waterBlocked) {
+            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
+            continue;
+          }
+          if (!selectedUnitPathingEnabled || selectedUnitLocomotion === null) {
+            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_TRANSPARENT);
+            continue;
+          }
+          const occupied = this.buildGridOccupiedMask[cellIndex] !== 0;
+          let passable = !occupied;
+          if (passable && !selectedUnitLocomotion.pathfinding.ignoreTerrainBlocking) {
+            const edgeBlocked = this.isPathfinderEdgeBlockedCell(gx, gy, cellsX, cellsY);
+            if (edgeBlocked || waterBlocked) {
+              passable = false;
+            } else {
+              const sample = getTerrainMeshSample(x, y, this.mapWidth, this.mapHeight);
+              const normal = terrainMeshNormalFromSample(sample);
+              const unitMinNormalZ = selectedUnitClimbProfile?.minSurfaceNormalZ;
+              passable = normal.nz >= PATHFINDING_STABILITY_MIN_NORMAL_Z &&
+                (unitMinNormalZ === null ||
+                  unitMinNormalZ === undefined ||
+                  normal.nz >= unitMinNormalZ);
+            }
+          }
           this.writeBuildGridPixel(
             offset,
-            terrainBlocked || this.buildGridOccupiedMask[cellIndex] !== 0
-              ? BUILD_GRID_COLOR_BLOCKED
-              : BUILD_GRID_COLOR_OK,
+            passable ? BUILD_GRID_COLOR_OK : BUILD_GRID_COLOR_TRANSPARENT,
           );
           continue;
         }
@@ -1429,7 +1537,12 @@ export class TerrainTileRenderer3D {
     // build mode shows the hover footprint (BuildGhost3D), so these map-wide
     // paints stay intentional overlays instead of appearing every time the
     // player tries to place a building.
-    this.refreshBuildGridTexture(getBuildGridDebug(), getMetalMap(), getPathingMap());
+    this.refreshBuildGridTexture(
+      getBuildGridDebug(),
+      getMetalMap(),
+      getPathingMap(),
+      getPathingDebugUnit(),
+    );
   }
 
   isReady(): boolean {

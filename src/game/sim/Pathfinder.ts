@@ -18,9 +18,9 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     shoreline cells get classified correctly even when their
 //     centre is a hair above water level — moved to Rust; falls
 //     back to centre-only sampling when no mesh is installed.
-//   • Terrain C-space inflation: 2 cells around water so unit bodies
-//     clear the shore. Building footprints are not climbable from
-//     terrain, but a unit already on a building top can path across
+//   • Terrain C-space inflation: configurable cells around water so
+//     unit bodies clear the shore. Building footprints are not climbable
+//     from terrain, but a unit already on a building top can path across
 //     that roof and fall off it; physics owns the fall.
 //   • Airborne queries (hover + flying) ignore terrain blocking so
 //     water and slope do not force them onto land-only routes; they
@@ -44,6 +44,8 @@ import {
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
 import type { ActionType, UnitAction, UnitLocomotion, UnitPathPoint, Waypoint } from './types';
+import { minSurfaceNormalZForLocomotion } from './pathfindingMobility';
+import { PATHFINDING_STABILITY_MIN_NORMAL_Z } from './pathfindingTuning';
 
 type Vec2 = { x: number; y: number };
 
@@ -51,10 +53,6 @@ export type PathTerrainFilter = {
   minSurfaceNormalZ: number | null;
   ignoreTerrainBlocking: boolean;
 };
-
-/** Slope nz floor — anything flatter than this nz is walkable.
- *  0.34 ≈ 70°, matches PhysicsEngine3D.integrate's stable limit. */
-const SLOPE_BLOCK_NZ = 0.34;
 
 /** When true, every path produced by `expandPathActions` is walked
  *  segment-by-segment and any world-space sample that lands over
@@ -133,7 +131,9 @@ function collectBuildingCells(buildingGrid: BuildingGrid): Uint32Array {
 function normalizeMinSurfaceNormalZ(filter: PathTerrainFilter | null): number {
   if (filter === null || filter.ignoreTerrainBlocking) return 0;
   const value = filter.minSurfaceNormalZ;
-  if (value === null || !Number.isFinite(value) || value <= SLOPE_BLOCK_NZ) return 0;
+  if (value === null || !Number.isFinite(value) || value <= PATHFINDING_STABILITY_MIN_NORMAL_Z) {
+    return 0;
+  }
   return Math.min(1, value);
 }
 
@@ -143,15 +143,17 @@ function shouldIgnoreTerrainBlocking(filter: PathTerrainFilter | null): boolean 
 
 export function pathTerrainFilterForLocomotion(
   locomotion: UnitLocomotion | undefined,
+  mass: number | undefined,
 ): PathTerrainFilter | null {
   if (locomotion === undefined) return null;
-  const pathfinding = locomotion.pathfinding;
-  if (pathfinding.ignoreTerrainBlocking) {
+  if (locomotion.pathfinding.ignoreTerrainBlocking) {
     return { minSurfaceNormalZ: null, ignoreTerrainBlocking: true };
   }
-  const minSurfaceNormalZ = pathfinding.minSurfaceNormalZ;
-  return minSurfaceNormalZ !== undefined
-    ? { minSurfaceNormalZ, ignoreTerrainBlocking: false }
+  return mass !== undefined
+    ? {
+        minSurfaceNormalZ: minSurfaceNormalZForLocomotion(locomotion, mass),
+        ignoreTerrainBlocking: false,
+      }
     : null;
 }
 
@@ -293,7 +295,7 @@ function validatePathDoesNotCrossWater(
  *  preserving "the cursor was there, the dot is there" precision.
  *  Otherwise z falls back to a terrain sample at the waypoint's xy.
  *
- *  `terrainFilter.minSurfaceNormalZ` adds a per-unit locomotion slope
+ *  `terrainFilter.minSurfaceNormalZ` adds a per-unit locomotion climb
  *  gate on top of the global terrain mask. Higher values mean flatter
  *  required terrain; cells whose surface normal z falls below the
  *  threshold are treated as blocked for that path query.

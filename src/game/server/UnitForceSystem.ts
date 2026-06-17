@@ -16,6 +16,7 @@ import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
+import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS } from '../../config';
 import { createWorldSupportSurface } from '../sim/supportSurface';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
@@ -45,7 +46,7 @@ const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 const UF_ROW_DIR_X = 0;
 const UF_ROW_DIR_Y = 1;
 const UF_ROW_ROTATION = 2;
-const UF_ROW_UNIT_MASS = 3;
+// Row 3 reserved; Rust reads effective mass from BodyPool.
 const UF_ROW_DRIVE_FORCE = 4;
 const UF_ROW_TRACTION = 5;
 const UF_ROW_GRAVITY_COUNTER_RATIO = 6;
@@ -172,7 +173,6 @@ export class UnitForceSystem {
       _forceSlots[count] = body.slot;
       _forceEntities[count] = entity;
       _forceRows[base + UF_ROW_ROTATION] = entity.transform.rotation;
-      _forceRows[base + UF_ROW_UNIT_MASS] = unit.mass;
       _forceRows[base + UF_ROW_DRIVE_FORCE] = unit.locomotion.driveForce;
       _forceRows[base + UF_ROW_TRACTION] = unit.locomotion.traction;
       const supportSurface = this.world.sampleSupportSurfaceFromIndex(
@@ -352,6 +352,7 @@ export class UnitForceSystem {
       dtSec,
       this.world.thrustMultiplier,
       LOCOMOTION_FORCE_SCALE,
+      UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
       HOVER_ORIENTATION_K,
       HOVER_ORIENTATION_C,
     );

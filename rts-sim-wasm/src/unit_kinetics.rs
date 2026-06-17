@@ -85,7 +85,8 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 36;
 pub(crate) const UF_ROW_DIR_X: usize = 0;
 pub(crate) const UF_ROW_DIR_Y: usize = 1;
 pub(crate) const UF_ROW_ROTATION: usize = 2;
-pub(crate) const UF_ROW_UNIT_MASS: usize = 3;
+// Row 3 reserved: unit mass now comes from BodyPool inv_mass so drive force
+// cannot accidentally cancel the unit's actual physics mass.
 pub(crate) const UF_ROW_DRIVE_FORCE: usize = 4;
 pub(crate) const UF_ROW_TRACTION: usize = 5;
 pub(crate) const UF_ROW_GRAVITY_COUNTER_RATIO: usize = 6;
@@ -159,21 +160,21 @@ pub(crate) const UNIT_FORCE_WATER_PROBE_DY: [f64; 8] = [
 pub(crate) fn unit_force_locomotion_magnitudes(
     drive_force: f64,
     traction: f64,
-    mass: f64,
+    reference_mass: f64,
     thrust_multiplier: f64,
     force_scale: f64,
 ) -> (f64, f64) {
     if !drive_force.is_finite()
         || !traction.is_finite()
-        || !mass.is_finite()
+        || !reference_mass.is_finite()
         || !thrust_multiplier.is_finite()
         || !force_scale.is_finite()
         || force_scale <= 0.0
-        || mass <= 0.0
+        || reference_mass <= 0.0
     {
         return (0.0, 0.0);
     }
-    let raw = drive_force * thrust_multiplier * mass / force_scale;
+    let raw = drive_force * thrust_multiplier * reference_mass / force_scale;
     let traction_mag = raw * traction;
     (
         if raw.is_finite() { raw } else { 0.0 },
@@ -297,6 +298,7 @@ pub fn unit_force_step_batch(
     dt_sec: f64,
     thrust_multiplier: f64,
     force_scale: f64,
+    reference_mass: f64,
     hover_orientation_k: f64,
     hover_orientation_c: f64,
 ) -> u32 {
@@ -350,7 +352,7 @@ pub fn unit_force_step_batch(
         let (raw_force_mag, traction_force_mag) = unit_force_locomotion_magnitudes(
             rows[base + UF_ROW_DRIVE_FORCE],
             rows[base + UF_ROW_TRACTION],
-            rows[base + UF_ROW_UNIT_MASS],
+            reference_mass,
             thrust_multiplier,
             force_scale,
         );
@@ -551,16 +553,27 @@ pub fn unit_force_step_batch(
 
                     if use_dir_x != 0.0 || use_dir_y != 0.0 {
                         let thrust_mag = traction_force_mag * thrust_scale;
+                        let normal_z = rows[base + UF_ROW_NORMAL_Z];
                         let (tx, ty, tz) = unit_force_project_horizontal_onto_slope(
                             use_dir_x,
                             use_dir_y,
                             rows[base + UF_ROW_NORMAL_X],
                             rows[base + UF_ROW_NORMAL_Y],
-                            rows[base + UF_ROW_NORMAL_Z],
+                            normal_z,
                         );
-                        thrust_force_x = tx * thrust_mag;
-                        thrust_force_y = ty * thrust_mag;
-                        thrust_force_z = tz * thrust_mag;
+                        let traction = rows[base + UF_ROW_TRACTION].max(0.0);
+                        let traction_min_normal_z = if traction.is_finite() {
+                            1.0 / (1.0 + traction * traction).sqrt()
+                        } else {
+                            1.0
+                        };
+                        let climbing_beyond_traction =
+                            tz > 0.0 && normal_z < traction_min_normal_z;
+                        if !climbing_beyond_traction {
+                            thrust_force_x = tx * thrust_mag;
+                            thrust_force_y = ty * thrust_mag;
+                            thrust_force_z = tz * thrust_mag;
+                        }
                     }
                 } else {
                     let (fx, fy, fz) = unit_force_idle_brake(

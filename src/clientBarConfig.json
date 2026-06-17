@@ -51,6 +51,7 @@
   "metalMap": { "demoDefault": false, "realDefault": false },
   "elevationMap": { "demoDefault": false, "realDefault": false },
   "pathingMap": { "demoDefault": false, "realDefault": false },
+  "pathingDebugUnit": { "demoDefault": "none", "realDefault": "none" },
   "sightBoundary": { "demoDefault": false, "realDefault": false },
   "radarBoundary": { "demoDefault": false, "realDefault": false },
   "predictionMode": {
@@ -234,6 +235,7 @@
     "metalMap": "metal-map",
     "elevationMap": "elevation-map",
     "pathingMap": "pathing-map",
+    "pathingDebugUnit": "pathing-debug-unit",
     "sightBoundary": "sight-boundary",
     "radarBoundary": "radar-boundary",
     "movementPosEma": "movement-pos-ema",

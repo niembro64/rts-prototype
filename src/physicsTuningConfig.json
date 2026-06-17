@@ -1,6 +1,7 @@
 {
   "unit": {
     "massMultiplier": 10.0,
+    "locomotionForceReferenceMass": 100.0,
     "thrustMultiplier": 20.0,
     "hpMultiplier": 2.0,
     "initialSpawnHeightAboveGround": 3

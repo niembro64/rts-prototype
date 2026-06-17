@@ -8984,7 +8984,6 @@ mod sim_kernel_tests {
         rows[UF_ROW_DIR_X] = 0.0;
         rows[UF_ROW_DIR_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
-        rows[UF_ROW_UNIT_MASS] = 100.0;
         rows[UF_ROW_DRIVE_FORCE] = 100.0;
         rows[UF_ROW_TRACTION] = traction;
         rows[UF_ROW_GRAVITY_COUNTER_RATIO] = 0.0;
@@ -9002,6 +9001,7 @@ mod sim_kernel_tests {
                 1.0 / 60.0,
                 20.0,
                 150_000.0,
+                100.0,
                 30.0,
                 2.0 * 30.0_f64.sqrt(),
             ),

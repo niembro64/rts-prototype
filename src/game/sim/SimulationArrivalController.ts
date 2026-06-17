@@ -1,4 +1,4 @@
-import { UNIT_MASS_MULTIPLIER } from '../../config';
+import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS, UNIT_MASS_MULTIPLIER } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
 import { LOCOMOTION_FORCE_SCALE } from './locomotion';
 import type { Entity, UnitAction } from './types';
@@ -207,6 +207,7 @@ export class SimulationArrivalController {
       dtSec,
       this.world.thrustMultiplier,
       LOCOMOTION_FORCE_SCALE,
+      UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
       UNIT_MASS_MULTIPLIER,
       ARRIVAL_CONTROL_RADIUS,
       ARRIVAL_RESPONSE_TIME_SEC,

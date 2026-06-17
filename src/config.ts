@@ -682,6 +682,14 @@ export const SHIELD_TURRET: Record<string, ShieldTurretConfig> =
 export const UNIT_MASS_MULTIPLIER = physicsTuningConfigJson.unit.massMultiplier;
 
 /**
+ * Authored locomotion drive force is converted into actual force using
+ * this reference mass. A unit at this mass keeps the authored acceleration
+ * envelope; heavier units accelerate and climb less for the same drive force.
+ */
+export const UNIT_LOCOMOTION_FORCE_REFERENCE_MASS =
+  physicsTuningConfigJson.unit.locomotionForceReferenceMass;
+
+/**
  * Global mass multiplier for all projectiles.
  * Scales recoil on shooter and knockback on target.
  * 1.0 = use raw mass values from PROJECTILE_STATS

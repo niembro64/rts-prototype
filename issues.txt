@@ -385,3 +385,11 @@ CORRECTNESS & DESIGN-CONFORMANCE
   What: There is exactly one id scheme (monotonic nextEntityId++ with a NO_ENTITY_ID sentinel) and the wire keys back to these ids — but EntityId is a raw `number`, not a branded/nominal type, and the TS Entity does not carry parent/root_host/mount/generation as first-class fields; that provenance lives only in the Rust registry while TS reconstructs relationships via component references.
   Why it matters: A raw-number EntityId gives no compile-time protection against mixing ids with slot indices, player ids, or blueprint codes (all numbers) — the class of bug the universal-id design aims to prevent. Provenance being authoritative only in Rust means TS code needing parent/root_host must round-trip through WASM or duplicate the relationship, a subtle SSoT split.
   Fix: Brand EntityId (e.g. `number & { __entityId: true }`) so it can't be confused with other numeric handles. Decide one home for provenance: surface parent/root_host/mount/generation on the TS Entity, or route all relationship queries through the Rust registry.
+
+[USER_ISSUE_01] Make the radar tower look less geeky. 
+[USER_ISSUE_02] Add a 'spin multiplier' config for both the metal extractor spin and the wind turbine spin in the appropriate config file.
+[USER_ISSUE_03] Rework how the transport aircraft and the construction aircraft work. Make the constrction aircraft's construction turret point downward from the body instead of upward, and make that aircraft bigger. 
+[USER_ISSUE_03] 
+
+
+

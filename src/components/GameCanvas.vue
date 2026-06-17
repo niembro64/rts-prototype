@@ -780,6 +780,7 @@ const {
   metalMap,
   elevationMap,
   pathingMap,
+  pathingDebugUnit,
   sightBoundary,
   radarBoundary,
   movementPosEma,
@@ -842,6 +843,7 @@ const {
   toggleMetalMap,
   toggleElevationMap,
   togglePathingMap,
+  changePathingDebugUnit,
   toggleSightBoundary,
   toggleRadarBoundary,
   changeMovementPosEma,
@@ -1464,6 +1466,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   metalMap: metalMap.value,
   elevationMap: elevationMap.value,
   pathingMap: pathingMap.value,
+  pathingDebugUnit: pathingDebugUnit.value,
   sightBoundary: sightBoundary.value,
   radarBoundary: radarBoundary.value,
   renderMode: renderMode.value,
@@ -1519,6 +1522,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleMetalMap,
   toggleElevationMap,
   togglePathingMap,
+  changePathingDebugUnit,
   toggleSightBoundary,
   toggleRadarBoundary,
   changeRenderMode,
@@ -1622,6 +1626,7 @@ watchEffect(() => {
   m.metalMap = metalMap.value;
   m.elevationMap = elevationMap.value;
   m.pathingMap = pathingMap.value;
+  m.pathingDebugUnit = pathingDebugUnit.value;
   m.sightBoundary = sightBoundary.value;
   m.radarBoundary = radarBoundary.value;
   m.renderMode = renderMode.value;

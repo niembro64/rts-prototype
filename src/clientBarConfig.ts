@@ -16,6 +16,7 @@ import type {
   MasterVolumePercent,
   PositionDriftChannelMode,
   PredictionMode,
+  PathingDebugUnitId,
   SelectionHudMode,
   SoundCategory,
   RangeType,
@@ -32,6 +33,7 @@ import {
 } from './resourceConfig';
 import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
+import { isBuildableUnitBlueprintId } from './game/sim/blueprints/unitRoster';
 
 export type { CameraSmoothMode, CameraFollowMode } from './types/client';
 export type {
@@ -69,6 +71,7 @@ type ClientDefaults = {
   readonly metalMap: boolean;
   readonly elevationMap: boolean;
   readonly pathingMap: boolean;
+  readonly pathingDebugUnit: PathingDebugUnitId;
   readonly sightBoundary: boolean;
   readonly radarBoundary: boolean;
   readonly predictionMode: PredictionMode;
@@ -141,6 +144,8 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     metalMap: pickDefault(clientBarConfig.metalMap, mode),
     elevationMap: pickDefault(clientBarConfig.elevationMap, mode),
     pathingMap: pickDefault(clientBarConfig.pathingMap, mode),
+    pathingDebugUnit:
+      pickDefault(clientBarConfig.pathingDebugUnit, mode) as PathingDebugUnitId,
     sightBoundary: pickDefault(clientBarConfig.sightBoundary, mode),
     radarBoundary: pickDefault(clientBarConfig.radarBoundary, mode),
     predictionMode: pickDefault(clientBarConfig.predictionMode, mode) as PredictionMode,
@@ -221,6 +226,7 @@ export const CLIENT_CONFIG = {
   metalMap: { default: DEMO_CLIENT_DEFAULTS.metalMap },
   elevationMap: { default: DEMO_CLIENT_DEFAULTS.elevationMap },
   pathingMap: { default: DEMO_CLIENT_DEFAULTS.pathingMap },
+  pathingDebugUnit: { default: DEMO_CLIENT_DEFAULTS.pathingDebugUnit },
   sightBoundary: { default: DEMO_CLIENT_DEFAULTS.sightBoundary },
   radarBoundary: { default: DEMO_CLIENT_DEFAULTS.radarBoundary },
   /** Prediction physics order: POS / VEL. Default 'vel' (integrate
@@ -322,6 +328,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     metalMap: { default: defaults.metalMap },
     elevationMap: { default: defaults.elevationMap },
     pathingMap: { default: defaults.pathingMap },
+    pathingDebugUnit: { default: defaults.pathingDebugUnit },
     sightBoundary: { default: defaults.sightBoundary },
     radarBoundary: { default: defaults.radarBoundary },
     predictionMode: { ...CLIENT_CONFIG.predictionMode, default: defaults.predictionMode },
@@ -380,6 +387,7 @@ type ClientStorageKeyName =
   | 'metalMap'
   | 'elevationMap'
   | 'pathingMap'
+  | 'pathingDebugUnit'
   | 'sightBoundary'
   | 'radarBoundary'
   | 'movementPosEma'
@@ -424,6 +432,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'metalMap',
   'elevationMap',
   'pathingMap',
+  'pathingDebugUnit',
   'sightBoundary',
   'radarBoundary',
   'movementPosEma',
@@ -521,6 +530,7 @@ let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentMetalMap: boolean = _cd.metalMap.default;
 let currentElevationMap: boolean = _cd.elevationMap.default;
 let currentPathingMap: boolean = _cd.pathingMap.default;
+let currentPathingDebugUnit: PathingDebugUnitId = _cd.pathingDebugUnit.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
 let currentRadarBoundary: boolean = _cd.radarBoundary.default;
 let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
@@ -543,6 +553,10 @@ let currentSelectionHudMode: SelectionHudMode = _cd.selectionHudMode.default;
 
 function isSelectionHudMode(value: unknown): value is SelectionHudMode {
   return value === 'always' || value === 'never' || value === 'whenNotFull';
+}
+
+function isPathingDebugUnitId(value: unknown): value is PathingDebugUnitId {
+  return value === 'none' || (typeof value === 'string' && isBuildableUnitBlueprintId(value));
 }
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
@@ -617,6 +631,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentMetalMap = cd.metalMap.default;
   currentElevationMap = cd.elevationMap.default;
   currentPathingMap = cd.pathingMap.default;
+  currentPathingDebugUnit = cd.pathingDebugUnit.default;
   currentSightBoundary = cd.sightBoundary.default;
   currentRadarBoundary = cd.radarBoundary.default;
   currentMovementPosEma = cd.movementPosEma.default;
@@ -734,6 +749,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedPathingMap = readPersisted(keys.pathingMap);
   if (storedPathingMap !== null) {
     currentPathingMap = storedPathingMap === 'true';
+  }
+  const storedPathingDebugUnit = readPersisted(keys.pathingDebugUnit);
+  if (isPathingDebugUnitId(storedPathingDebugUnit)) {
+    currentPathingDebugUnit = storedPathingDebugUnit;
   }
   const storedSightBoundary = readPersisted(keys.sightBoundary);
   if (storedSightBoundary !== null) {
@@ -1163,6 +1182,15 @@ export function getPathingMap(): boolean {
 export function setPathingMap(enabled: boolean): void {
   currentPathingMap = enabled;
   persist(activeStorageKeys().pathingMap, String(enabled));
+}
+
+export function getPathingDebugUnit(): PathingDebugUnitId {
+  return currentPathingDebugUnit;
+}
+
+export function setPathingDebugUnit(unitBlueprintId: PathingDebugUnitId): void {
+  currentPathingDebugUnit = isPathingDebugUnitId(unitBlueprintId) ? unitBlueprintId : 'none';
+  persist(activeStorageKeys().pathingDebugUnit, currentPathingDebugUnit);
 }
 
 export function getSightBoundary(): boolean {

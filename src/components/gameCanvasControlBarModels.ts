@@ -15,6 +15,7 @@ import type {
   MasterVolumePercent,
   PositionDriftChannelMode,
   PredictionMode,
+  PathingDebugUnitId,
   ProjRangeType,
   RangeType,
   SelectionHudMode,
@@ -173,6 +174,7 @@ export type GameCanvasClientControlBarModel = {
   readonly metalMap: boolean;
   readonly elevationMap: boolean;
   readonly pathingMap: boolean;
+  readonly pathingDebugUnit: PathingDebugUnitId;
   readonly sightBoundary: boolean;
   readonly radarBoundary: boolean;
   readonly renderMode: RenderMode;
@@ -228,6 +230,7 @@ export type GameCanvasClientControlBarModel = {
   toggleMetalMap(): void;
   toggleElevationMap(): void;
   togglePathingMap(): void;
+  changePathingDebugUnit(unitBlueprintId: PathingDebugUnitId): void;
   toggleSightBoundary(): void;
   toggleRadarBoundary(): void;
   changeRenderMode(mode: RenderMode): void;

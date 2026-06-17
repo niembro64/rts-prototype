@@ -1,0 +1,5 @@
+{
+  "waterBufferCells": 2,
+  "forceSafetyRatio": 0.8,
+  "stabilityMaxSlopeDeg": 70
+}

@@ -1094,7 +1094,7 @@ export class Simulation {
   private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | null {
     return entity.unit === null
       ? null
-      : pathTerrainFilterForLocomotion(entity.unit.locomotion);
+      : pathTerrainFilterForLocomotion(entity.unit.locomotion, entity.unit.mass);
   }
 
   // Get force accumulator for external force application (used by RtsScene)
