@@ -103,7 +103,7 @@ fn generate_wire_enums(manifest_dir: &Path) {
             .pointer(pointer)
             .and_then(Value::as_i64)
             .unwrap_or_else(|| panic!("missing integer {pointer} in {}", enums_path.display()));
-        generated.push_str(&format!("{vis}const {name}: {ty} = {value};\n"));
+        generated.push_str(&format!("#[allow(dead_code)]\n{vis}const {name}: {ty} = {value};\n"));
     }
 
     let out_path =

@@ -8568,17 +8568,17 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn economy_converter_transfer_picks_richer_pool_and_caps_by_output_headroom() {
+    pub(crate) fn economy_converter_transfer_consumes_energy_and_caps_by_metal_headroom() {
         let mut out = [0.0; 4];
 
         assert_eq!(
             economy_compute_converter_transfer(10.0, 100.0, 80.0, 100.0, 25.0, 1.0, 0.2, &mut out),
             1
         );
-        assert!((out[0] - 25.0).abs() < 1e-12);
-        assert!((out[1] - 20.0).abs() < 1e-12);
-        assert_eq!(out[2], ECONOMY_RESOURCE_METAL_CODE as f64);
-        assert_eq!(out[3], ECONOMY_RESOURCE_ENERGY_CODE as f64);
+        assert!((out[0] - 10.0).abs() < 1e-12);
+        assert!((out[1] - 8.0).abs() < 1e-12);
+        assert_eq!(out[2], ECONOMY_RESOURCE_ENERGY_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_METAL_CODE as f64);
 
         assert_eq!(
             economy_compute_converter_transfer(80.0, 100.0, 10.0, 25.0, 50.0, 1.0, 0.5, &mut out),
@@ -8593,15 +8593,10 @@ mod sim_kernel_tests {
             economy_compute_converter_transfer(50.0, 100.0, 50.0, 100.0, 25.0, 1.0, 0.2, &mut out),
             1
         );
-        assert_eq!(
-            out,
-            [
-                0.0,
-                0.0,
-                ECONOMY_RESOURCE_NONE_CODE as f64,
-                ECONOMY_RESOURCE_NONE_CODE as f64,
-            ]
-        );
+        assert!((out[0] - 25.0).abs() < 1e-12);
+        assert!((out[1] - 20.0).abs() < 1e-12);
+        assert_eq!(out[2], ECONOMY_RESOURCE_ENERGY_CODE as f64);
+        assert_eq!(out[3], ECONOMY_RESOURCE_METAL_CODE as f64);
 
         let mut short = [0.0; 3];
         assert_eq!(
@@ -8654,16 +8649,16 @@ mod sim_kernel_tests {
             3
         );
 
-        assert_eq!(energy_curr, [0.0, 40.0, 50.0]);
-        assert_eq!(metal_curr, [0.0, 50.0, 30.0]);
-        assert_eq!(out_consumed, [10.0, 30.0, 50.0, 10.0, 0.0]);
-        assert_eq!(out_output, [8.0, 24.0, 40.0, 8.0, 0.0]);
+        assert_eq!(energy_curr, [0.0, 40.0, 0.0]);
+        assert_eq!(metal_curr, [0.0, 50.0, 88.0]);
+        assert_eq!(out_consumed, [10.0, 30.0, 10.0, 10.0, 0.0]);
+        assert_eq!(out_output, [8.0, 24.0, 8.0, 8.0, 0.0]);
         assert_eq!(
             out_consumed_resource,
             [
                 ECONOMY_RESOURCE_ENERGY_CODE,
                 ECONOMY_RESOURCE_ENERGY_CODE,
-                ECONOMY_RESOURCE_METAL_CODE,
+                ECONOMY_RESOURCE_ENERGY_CODE,
                 ECONOMY_RESOURCE_ENERGY_CODE,
                 ECONOMY_RESOURCE_NONE_CODE,
             ]
@@ -8673,7 +8668,7 @@ mod sim_kernel_tests {
             [
                 ECONOMY_RESOURCE_METAL_CODE,
                 ECONOMY_RESOURCE_METAL_CODE,
-                ECONOMY_RESOURCE_ENERGY_CODE,
+                ECONOMY_RESOURCE_METAL_CODE,
                 ECONOMY_RESOURCE_METAL_CODE,
                 ECONOMY_RESOURCE_NONE_CODE,
             ]
@@ -8847,6 +8842,7 @@ mod sim_kernel_tests {
             20.0,
             0.22,
             0.001,
+            0.001,
         );
         assert_eq!(active, 1);
         assert!((x - 0.6).abs() < 1e-12);
@@ -8872,6 +8868,7 @@ mod sim_kernel_tests {
             50.0,
             20.0,
             0.22,
+            0.001,
             0.001,
         );
         assert_eq!(active, 1);
@@ -8899,6 +8896,7 @@ mod sim_kernel_tests {
             50.0,
             20.0,
             0.22,
+            0.001,
             0.001,
         );
         assert_eq!(active, 1);

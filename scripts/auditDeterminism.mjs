@@ -45,6 +45,14 @@ const HIGH_RISK_MATH_ALLOWLIST = new Map([
     count: 1,
     reason: 'blueprint load-time slope conversion; resulting numeric value is canonicalized in content hash/replay',
   }],
+  ['src/game/sim/pathfindingMobility.ts', {
+    count: 1,
+    reason: 'locomotion profile slope threshold derived from canonical blueprint/config data and covered by replay/browser determinism checks',
+  }],
+  ['src/game/sim/pathfindingTuning.ts', {
+    count: 1,
+    reason: 'module-load pathfinding stability threshold derived from canonical config before terrain/pathfinding startup',
+  }],
   ['src/game/sim/terrain/terrainConfig.ts', {
     count: 1,
     reason: 'module-load terrain collapse threshold derived from canonical config before terrain bake',
