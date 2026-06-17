@@ -1,3 +1,8 @@
+export function isTauriRuntime(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+}
+
 export function isMobileLikeBrowser(): boolean {
   if (typeof navigator === 'undefined') return false;
 
@@ -11,4 +16,46 @@ export function isMobileLikeBrowser(): boolean {
   }
 
   return window.matchMedia('(pointer: coarse)').matches && navigator.maxTouchPoints > 0;
+}
+
+export type BrowserRenderRuntimeProfile = {
+  readonly label: 'browser-desktop' | 'browser-mobile' | 'tauri-desktop';
+  readonly mobileLike: boolean;
+  readonly tauri: boolean;
+  readonly dynamicPixelRatio: boolean;
+  readonly pixelRatioCap: number;
+  readonly powerPreference: WebGLPowerPreference;
+};
+
+export function getBrowserRenderRuntimeProfile(): BrowserRenderRuntimeProfile {
+  const tauri = isTauriRuntime();
+  const mobileLike = !tauri && isMobileLikeBrowser();
+  if (tauri) {
+    return {
+      label: 'tauri-desktop',
+      mobileLike: false,
+      tauri: true,
+      dynamicPixelRatio: false,
+      pixelRatioCap: 2,
+      powerPreference: 'high-performance',
+    };
+  }
+  if (mobileLike) {
+    return {
+      label: 'browser-mobile',
+      mobileLike: true,
+      tauri: false,
+      dynamicPixelRatio: false,
+      pixelRatioCap: 1,
+      powerPreference: 'default',
+    };
+  }
+  return {
+    label: 'browser-desktop',
+    mobileLike: false,
+    tauri: false,
+    dynamicPixelRatio: true,
+    pixelRatioCap: Number.POSITIVE_INFINITY,
+    powerPreference: 'high-performance',
+  };
 }

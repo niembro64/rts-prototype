@@ -18,11 +18,19 @@ export type RtsScene3DFrameTiming = {
   longtaskMsPerSec: number;
   longtaskCountPerSec: number;
   longtaskSupported: boolean;
+  runtimeProfile: string;
+  nativePixelRatio: number;
+  activePixelRatio: number;
+  dynamicPixelRatioEnabled: boolean;
 };
 
 export type RtsScene3DFrameTimingGpuSample = {
   gpuTimerMs: number;
   gpuTimerSupported: boolean;
+  runtimeProfile: string;
+  nativePixelRatio: number;
+  activePixelRatio: number;
+  dynamicPixelRatioEnabled: boolean;
 };
 
 export class RtsScene3DFrameTelemetry {
@@ -90,6 +98,10 @@ export class RtsScene3DFrameTelemetry {
       longtaskMsPerSec: this.longtaskTracker.getBlockedMsPerSec(),
       longtaskCountPerSec: this.longtaskTracker.getCountPerSec(),
       longtaskSupported: this.longtaskTracker.isSupported(),
+      runtimeProfile: sample.runtimeProfile,
+      nativePixelRatio: sample.nativePixelRatio,
+      activePixelRatio: sample.activePixelRatio,
+      dynamicPixelRatioEnabled: sample.dynamicPixelRatioEnabled,
     };
   }
 

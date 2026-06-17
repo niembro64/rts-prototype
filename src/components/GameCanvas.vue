@@ -962,6 +962,10 @@ const {
   frameMsHi,
   gpuSourceLabel,
   gpuTimerSupported,
+  runtimeProfile,
+  nativePixelRatio,
+  activePixelRatio,
+  dynamicPixelRatioEnabled,
   hudSpriteActiveCount,
   hudSpriteBudgetCount,
   hudSpriteDisposedCount,
@@ -1410,6 +1414,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   displayGpuMs: displayGpuMs.value,
   gpuSourceLabel: gpuSourceLabel.value,
   gpuTimerSupported: gpuTimerSupported.value,
+  runtimeProfile: runtimeProfile.value,
+  nativePixelRatio: nativePixelRatio.value,
+  activePixelRatio: activePixelRatio.value,
+  dynamicPixelRatioEnabled: dynamicPixelRatioEnabled.value,
   rendererContextMainCount: rendererContextMainCount.value,
   rendererContextAuxiliaryCount: rendererContextAuxiliaryCount.value,
   rendererContextAuxiliaryBudget: rendererContextAuxiliaryBudget.value,
@@ -1570,6 +1578,10 @@ watchEffect(() => {
   m.displayGpuMs = displayGpuMs.value;
   m.gpuSourceLabel = gpuSourceLabel.value;
   m.gpuTimerSupported = gpuTimerSupported.value;
+  m.runtimeProfile = runtimeProfile.value;
+  m.nativePixelRatio = nativePixelRatio.value;
+  m.activePixelRatio = activePixelRatio.value;
+  m.dynamicPixelRatioEnabled = dynamicPixelRatioEnabled.value;
   m.rendererContextMainCount = rendererContextMainCount.value;
   m.rendererContextAuxiliaryCount = rendererContextAuxiliaryCount.value;
   m.rendererContextAuxiliaryBudget = rendererContextAuxiliaryBudget.value;

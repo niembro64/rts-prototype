@@ -118,6 +118,10 @@ export type GameCanvasClientControlBarModel = {
   readonly displayGpuMs: number;
   readonly gpuSourceLabel: string;
   readonly gpuTimerSupported: boolean;
+  readonly runtimeProfile: string;
+  readonly nativePixelRatio: number;
+  readonly activePixelRatio: number;
+  readonly dynamicPixelRatioEnabled: boolean;
   readonly rendererContextMainCount: number;
   readonly rendererContextAuxiliaryCount: number;
   readonly rendererContextAuxiliaryBudget: number;

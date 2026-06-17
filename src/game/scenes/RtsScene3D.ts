@@ -1198,9 +1198,14 @@ export class RtsScene3D {
   }
 
   public getFrameTiming(): RtsScene3DFrameTiming {
+    const renderRuntime = this.threeApp.getRenderRuntimeTelemetry();
     return this.frameTelemetry.getFrameTiming({
       gpuTimerMs: this.clientRenderEnabled ? this.threeApp.gpuTimer.getGpuMs() : 0,
       gpuTimerSupported: this.threeApp.gpuTimer.isSupported(),
+      runtimeProfile: renderRuntime.runtimeProfile,
+      nativePixelRatio: renderRuntime.nativePixelRatio,
+      activePixelRatio: renderRuntime.activePixelRatio,
+      dynamicPixelRatioEnabled: renderRuntime.dynamicPixelRatioEnabled,
     });
   }
 

@@ -5,7 +5,10 @@
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { isMobileLikeBrowser } from '../../browserRuntime';
+import {
+  getBrowserRenderRuntimeProfile,
+  type BrowserRenderRuntimeProfile,
+} from '../../browserRuntime';
 import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
@@ -30,7 +33,6 @@ import {
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
 } from '../../config';
 
-const MOBILE_PIXEL_RATIO_CAP = 1;
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
 // CAMERA_NEAR_PLANE bumped 5 → 50: depth-buffer precision is dominated
 // by 1/near, so 10× near gives 10× better precision everywhere. The
@@ -96,6 +98,7 @@ export class ThreeApp {
   private _environmentTexture: THREE.Texture | null = null;
   private _skyTexture: THREE.Texture | null = null;
   private _rendererContextToken: RendererContextToken | null = null;
+  private readonly _runtimeProfile: BrowserRenderRuntimeProfile;
   private _renderEnabled = true;
   private _drawSuspended = false;
   private _destroyed = false;
@@ -111,7 +114,8 @@ export class ThreeApp {
     this.scene = new THREE.Scene();
     this._skyTexture = makeSkyGradientTexture();
     this.scene.background = this._skyTexture;
-    const mobileLike = isMobileLikeBrowser();
+    this._runtimeProfile = getBrowserRenderRuntimeProfile();
+    const mobileLike = this._runtimeProfile.mobileLike;
 
     // `logarithmicDepthBuffer` was enabled here briefly but had to come
     // off: every custom THREE.ShaderMaterial in this codebase (beams,
@@ -127,7 +131,7 @@ export class ThreeApp {
     this.renderer = new THREE.WebGLRenderer({
       antialias: !mobileLike,
       precision: 'highp',
-      powerPreference: mobileLike ? 'default' : 'high-performance',
+      powerPreference: this._runtimeProfile.powerPreference,
     });
     this._rendererContextToken = acquireMainRendererContext('ThreeApp', this);
     // Three.js checks program/shader info logs on first use by default.
@@ -138,10 +142,11 @@ export class ThreeApp {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
-    this._dynamicPixelRatioEnabled = !mobileLike;
-    this._activePixelRatio = mobileLike
-      ? Math.min(this._nativePixelRatio, MOBILE_PIXEL_RATIO_CAP)
-      : this._nativePixelRatio;
+    this._dynamicPixelRatioEnabled = this._runtimeProfile.dynamicPixelRatio;
+    this._activePixelRatio = Math.min(
+      this._nativePixelRatio,
+      this._runtimeProfile.pixelRatioCap,
+    );
     this.renderer.setPixelRatio(this._activePixelRatio);
     this.camera = new THREE.PerspectiveCamera(
       CAMERA_FOV_DEGREES,
@@ -258,6 +263,20 @@ export class ThreeApp {
     return this._renderEnabled;
   }
 
+  getRenderRuntimeTelemetry(): {
+    runtimeProfile: BrowserRenderRuntimeProfile['label'];
+    nativePixelRatio: number;
+    activePixelRatio: number;
+    dynamicPixelRatioEnabled: boolean;
+  } {
+    return {
+      runtimeProfile: this._runtimeProfile.label,
+      nativePixelRatio: this._nativePixelRatio,
+      activePixelRatio: this._activePixelRatio,
+      dynamicPixelRatioEnabled: this._dynamicPixelRatioEnabled,
+    };
+  }
+
   setDrawSuspended(suspended: boolean): void {
     this._drawSuspended = suspended;
   }
@@ -310,10 +329,9 @@ export class ThreeApp {
   }
 
   private adjustPixelRatio(now: number, frameDeltaMs: number): void {
-    // Mobile browsers, especially Edge/Chromium shells on high-DPR
-    // phones, can visibly flash the entire WebGL canvas when the
-    // backing buffer is reallocated by setPixelRatio()+setSize(). Keep
-    // mobile DPR stable; desktop keeps the adaptive quality loop.
+    // Some runtimes visibly flash the WebGL canvas when the backing
+    // buffer is reallocated by setPixelRatio()+setSize(). Those profiles
+    // keep DPR stable; browser desktop keeps the adaptive quality loop.
     if (!this._dynamicPixelRatioEnabled) return;
     if (this._nativePixelRatio <= 1) return;
     if (now - this._lastPixelRatioAdjustMs < 750) return;

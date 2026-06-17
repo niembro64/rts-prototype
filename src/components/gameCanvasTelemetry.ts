@@ -26,6 +26,10 @@ export function useGameCanvasTelemetry({
   const logicMsHi = ref(0);
   const gpuTimerMs = ref(0);
   const gpuTimerSupported = ref(false);
+  const runtimeProfile = ref('browser-desktop');
+  const nativePixelRatio = ref(1);
+  const activePixelRatio = ref(1);
+  const dynamicPixelRatioEnabled = ref(false);
   const rendererContextMainCount = ref(0);
   const rendererContextAuxiliaryCount = ref(0);
   const rendererContextAuxiliaryBudget = ref(0);
@@ -84,6 +88,10 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(logicMsHi, timing.logicMsHi);
       setNumberRefIfChanged(gpuTimerMs, timing.gpuTimerMs);
       setRefIfChanged(gpuTimerSupported, timing.gpuTimerSupported);
+      setRefIfChanged(runtimeProfile, timing.runtimeProfile);
+      setNumberRefIfChanged(nativePixelRatio, timing.nativePixelRatio, 0.001);
+      setNumberRefIfChanged(activePixelRatio, timing.activePixelRatio, 0.001);
+      setRefIfChanged(dynamicPixelRatioEnabled, timing.dynamicPixelRatioEnabled);
       setNumberRefIfChanged(longtaskMsPerSec, timing.longtaskMsPerSec);
       setRefIfChanged(longtaskSupported, timing.longtaskSupported);
 
@@ -150,6 +158,10 @@ export function useGameCanvasTelemetry({
     frameMsHi,
     gpuSourceLabel,
     gpuTimerSupported,
+    runtimeProfile,
+    nativePixelRatio,
+    activePixelRatio,
+    dynamicPixelRatioEnabled,
     hudSpriteActiveCount,
     hudSpriteBudgetCount,
     hudSpriteDisposedCount,
