@@ -127,6 +127,10 @@ export const RESOURCE_CONFIG = {
     defaultBallsPerResourcePerSecond,
   ),
   metalExtractor: {
+    rotorRadPerSecPerMetalRate: posNum(
+      'metalExtractor.rotorRadPerSecPerMetalRate',
+      rawConfig.metalExtractor.rotorRadPerSecPerMetalRate,
+    ),
     rotorSpinMultiplier: posNum(
       'metalExtractor.rotorSpinMultiplier',
       rawConfig.metalExtractor.rotorSpinMultiplier,
@@ -171,6 +175,12 @@ export const RESOURCE_CONFIG = {
 } as const;
 
 export const RESOURCE_BALL_DENSITY_OPTIONS = RESOURCE_CONFIG.ballsPerResourcePerSecondOptions;
+/** Visual extractor rotor speed, in radians per second per (metal/second)
+ *  of live extraction, before the authored visual-only spin multiplier.
+ *  Spin is tied directly to throughput — no per-tier normalization — so a
+ *  higher-yield (e.g. advanced) extractor spins proportionally faster. */
+export const EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE =
+  RESOURCE_CONFIG.metalExtractor.rotorRadPerSecPerMetalRate;
 export const METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER =
   RESOURCE_CONFIG.metalExtractor.rotorSpinMultiplier;
 

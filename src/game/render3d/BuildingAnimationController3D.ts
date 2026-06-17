@@ -8,14 +8,15 @@ import {
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
   WIND_TURBINE_ROTOR_SPIN_MULTIPLIER,
 } from '../../config';
-import { METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER } from '@/resourceConfig';
+import {
+  EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE,
+  METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER,
+} from '@/resourceConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../network/driftEma';
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
-import { getBuildingConfig } from '../sim/buildConfigs';
-import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   writeSolarPetalMatrix,
   type SolarPetalAnimation,
@@ -43,7 +44,6 @@ import {
 // snapshot rotation fields. They intentionally keep fixed controller
 // alphas instead of borrowing ROT POS as a courtesy binding.
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
-const EXTRACTOR_ROTOR_RAD_PER_SEC = 2.4;
 const RADAR_HEAD_RAD_PER_SEC = 0.55;
 const RADAR_SWEEP_RAD_PER_SEC = 1.8;
 /** Per-frame blend toward the building's target open/closed pose
@@ -56,11 +56,6 @@ const _extractorBladePos = new THREE.Vector3();
 const _extractorBladeScale = new THREE.Vector3();
 const _windBladeQuat = new THREE.Quaternion();
 
-function extractorInverseBaseProduction(entity: Entity): number {
-  if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId)) return 0;
-  const base = getBuildingConfig(entity.buildingBlueprintId).metalProduction ?? 0;
-  return base > 0 ? 1 / base : 0;
-}
 const FACTORY_ANIMATION_IDLE_EPSILON = 0.001;
 const BUILDING_RIG_IDLE_EPSILON = 0.001;
 
@@ -429,12 +424,14 @@ export class BuildingAnimationController3D {
     this.extractorCloseAmounts.set(id, close);
 
     const rate = open ? (entity.metalExtractionRate ?? 0) : 0;
-    const normalizedRate = rate * extractorInverseBaseProduction(entity);
     let phase = this.extractorRotorPhases.get(id);
     if (phase === undefined) phase = id * 0.173;
-    const targetSpeed = EXTRACTOR_ROTOR_RAD_PER_SEC *
+    // Spin speed is tied directly to live metal throughput — the same way
+    // the wind rotor tracks wind speed — so an advanced extractor that
+    // pulls 5× the metal turns 5× as fast with no tier-specific branch.
+    const targetSpeed = rate *
+      EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE *
       METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER *
-      normalizedRate *
       (1 - close);
     let speed = this.extractorRotorSpeeds.get(id) ?? 0;
     speed = lerp(speed, targetSpeed, rotorSpeedAlpha);

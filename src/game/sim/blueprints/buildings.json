@@ -181,7 +181,7 @@
       "metal": 280
     },
     "energyProduction": null,
-    "metalProduction": 150,
+    "metalProduction": 250,
     "constructionRate": null,
     "conversionRate": null,
     "renderProfile": "buildingExtractor",

@@ -1,6 +1,7 @@
 {
   "ballsPerResourcePerSecond": 0.5,
   "metalExtractor": {
+    "rotorRadPerSecPerMetalRate": 0.048,
     "rotorSpinMultiplier": 1.0
   },
   "cone": {
