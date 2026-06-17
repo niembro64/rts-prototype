@@ -149,6 +149,7 @@ export type ClientViewRenderPacketOptions3D = {
   getEntityHudToggle: (type: EntityHudType, toggle: EntityHudElement) => boolean;
   lookupPlayerName: (id: PlayerId) => string | null;
   getGroundPrintLocomotionMesh: (entityId: EntityId) => Locomotion3DMesh;
+  isEntityFarLod?: (entity: Entity) => boolean;
 };
 
 export type ClientSnapshotApplyStats = {
@@ -1139,8 +1140,12 @@ export class ClientViewState {
     if (renderScope.getMode() === 'all') {
       const units = this.getUnits();
       const buildings = this.getBuildings();
-      this.populateUnitRenderRows3D(units, out);
-      this.populateQueuedBuildingRenderRows3D(out);
+      this.populateUnitRenderRows3D(units, options, out);
+      if (options.isEntityFarLod !== undefined) {
+        this.populateBuildingRenderRows3D(buildings, options, out);
+      } else {
+        this.populateQueuedBuildingRenderRows3D(options, out);
+      }
       if (options.includeBodyHud) {
         this.populateBodyHudPacket3D(this.getHudEntities(), options.hoveredEntity, options, out);
       }
@@ -1148,10 +1153,10 @@ export class ClientViewState {
         this.populateBodyNamePacket3D(this.getUnitsAndBuildings(), options, out);
       }
       if (options.includeShields) {
-        this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
+        this.populateShieldPacket3D(this.getShieldUnits(), renderScope, options, out);
       }
       if (options.includeContactShadows) {
-        this.populateContactShadowPacket3D(units, buildings, renderScope, out);
+        this.populateContactShadowPacket3D(units, buildings, renderScope, options, out);
       }
       if (options.includeGroundPrints) {
         this.populateGroundPrintPacket3D(units, options, out);
@@ -1172,37 +1177,44 @@ export class ClientViewState {
     let hoveredBodyHudPushed = false;
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      this.pushUnitRenderRow3D(entity, out);
-      if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
+      const farLod = this.entityUsesFarLod3D(entity, options);
+      this.pushUnitRenderRow3D(entity, farLod, out);
+      if (!farLod && options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
         this.pushBodyHudEntity3D(entity, forceVisible, options, out);
       }
-      if (options.includeBodyNames) {
+      if (!farLod && options.includeBodyNames) {
         this.pushBodyNamesForEntity3D(entity, options, out);
       }
-      if (options.includeShields && entity.unit !== null && entity.combat !== null) {
+      if (!farLod && options.includeShields && entity.unit !== null && entity.combat !== null) {
         out.shields.pushUnit(entity, renderScope);
       }
     }
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
-      this.pushBuildingRenderRow3D(entity, out);
-      if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
+      const farLod = this.entityUsesFarLod3D(entity, options);
+      this.pushBuildingRenderRow3D(entity, farLod, out);
+      if (!farLod && options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
         this.pushBodyHudEntity3D(entity, forceVisible, options, out);
       }
-      if (options.includeBodyNames) {
+      if (!farLod && options.includeBodyNames) {
         this.pushBodyNamesForEntity3D(entity, options, out);
       }
     }
 
-    if (options.includeBodyHud && options.hoveredEntity !== null && !hoveredBodyHudPushed) {
+    if (
+      options.includeBodyHud &&
+      options.hoveredEntity !== null &&
+      !hoveredBodyHudPushed &&
+      !this.entityUsesFarLod3D(options.hoveredEntity, options)
+    ) {
       this.pushBodyHudEntity3D(options.hoveredEntity, true, options, out);
     }
     if (options.includeContactShadows) {
-      this.populateContactShadowPacket3D(units, buildings, renderScope, out);
+      this.populateContactShadowPacket3D(units, buildings, renderScope, options, out);
     }
     if (options.includeGroundPrints) {
       this.populateGroundPrintPacket3D(units, options, out);
@@ -1287,32 +1299,55 @@ export class ClientViewState {
 
   private populateUnitRenderRows3D(
     units: readonly Entity[],
+    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < units.length; i++) {
-      this.pushUnitRenderRow3D(units[i], out);
+      const entity = units[i];
+      this.pushUnitRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
     }
   }
 
-  private populateQueuedBuildingRenderRows3D(out: ClientViewRenderEntityPackets3D): void {
+  private populateBuildingRenderRows3D(
+    buildings: readonly Entity[],
+    options: ClientViewRenderPacketOptions3D,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    for (let i = 0; i < buildings.length; i++) {
+      const entity = buildings[i];
+      this.pushBuildingRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
+    }
+  }
+
+  private populateQueuedBuildingRenderRows3D(
+    options: ClientViewRenderPacketOptions3D,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
     for (const id of this.activeEntityPredictionIds) {
       const entity = this.entities.get(id);
-      if (entity !== undefined && entity.building !== null) this.pushBuildingRenderRow3D(entity, out);
+      if (entity !== undefined && entity.building !== null) {
+        this.pushBuildingRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
+      }
     }
     for (const id of this.dirtyBuildingRenderIds) {
       if (this.activeEntityPredictionIds.has(id)) continue;
       const entity = this.entities.get(id);
-      if (entity !== undefined && entity.building !== null) this.pushBuildingRenderRow3D(entity, out);
+      if (entity !== undefined && entity.building !== null) {
+        this.pushBuildingRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
+      }
     }
     for (const id of this.renderLifecycleDirtyIds) {
       if (this.activeEntityPredictionIds.has(id) || this.dirtyBuildingRenderIds.has(id)) continue;
       const entity = this.entities.get(id);
-      if (entity !== undefined && entity.building !== null) this.pushBuildingRenderRow3D(entity, out);
+      if (entity !== undefined && entity.building !== null) {
+        this.pushBuildingRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
+      }
     }
   }
 
   private pushUnitRenderRow3D(
     entity: Entity,
+    farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     out.unitRows.pushEntity(
@@ -1320,11 +1355,13 @@ export class ClientViewState {
       this.activeEntityPredictionIds.has(entity.id),
       this.dirtyUnitRenderIds.has(entity.id),
       this.renderLifecycleDirtyIds.has(entity.id),
+      farLod,
     );
   }
 
   private pushBuildingRenderRow3D(
     entity: Entity,
+    farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     out.buildingRows.pushEntity(
@@ -1332,6 +1369,7 @@ export class ClientViewState {
       this.activeEntityPredictionIds.has(entity.id),
       this.dirtyBuildingRenderIds.has(entity.id),
       this.renderLifecycleDirtyIds.has(entity.id),
+      farLod,
     );
   }
 
@@ -1355,11 +1393,16 @@ export class ClientViewState {
     let hoveredBodyHudPushed = false;
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
+      if (this.entityUsesFarLod3D(entity, options)) continue;
       const forceVisible = entity === hoveredEntity;
       if (forceVisible) hoveredBodyHudPushed = true;
       this.pushBodyHudEntity3D(entity, forceVisible, options, out);
     }
-    if (hoveredEntity !== null && !hoveredBodyHudPushed) {
+    if (
+      hoveredEntity !== null &&
+      !hoveredBodyHudPushed &&
+      !this.entityUsesFarLod3D(hoveredEntity, options)
+    ) {
       this.pushBodyHudEntity3D(hoveredEntity, true, options, out);
     }
   }
@@ -1373,6 +1416,7 @@ export class ClientViewState {
     const unit = entity.unit;
     const building = entity.building;
     if (unit === null && building === null) return;
+    if (this.entityUsesFarLod3D(entity, options)) return;
 
     const type = this.hudTypeOf3D(entity);
     const selected = entity.selectable?.selected === true;
@@ -1419,7 +1463,10 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < entities.length; i++) {
-      this.pushBodyNamesForEntity3D(entities[i], options, out);
+      const entity = entities[i];
+      if (!this.entityUsesFarLod3D(entity, options)) {
+        this.pushBodyNamesForEntity3D(entity, options, out);
+      }
     }
   }
 
@@ -1428,6 +1475,7 @@ export class ClientViewState {
     options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
+    if (this.entityUsesFarLod3D(entity, options)) return;
     const type = this.hudTypeOf3D(entity);
     const nameToggle = options.getEntityHudToggle(type, 'name');
     const bodyName = resolveEntityDisplayName(
@@ -1467,10 +1515,13 @@ export class ClientViewState {
   private populateShieldPacket3D(
     units: readonly Entity[],
     renderScope: ViewportFootprint,
+    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < units.length; i++) {
-      out.shields.pushUnit(units[i], renderScope);
+      if (!this.entityUsesFarLod3D(units[i], options)) {
+        out.shields.pushUnit(units[i], renderScope);
+      }
     }
   }
 
@@ -1478,14 +1529,17 @@ export class ClientViewState {
     units: readonly Entity[],
     buildings: readonly Entity[],
     renderScope: ViewportFootprint,
+    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
     for (let i = 0; i < units.length; i++) {
+      if (this.entityUsesFarLod3D(units[i], options)) continue;
       out.contactShadows.pushUnit(units[i], mapWidth, mapHeight, renderScope);
     }
     for (let i = 0; i < buildings.length; i++) {
+      if (this.entityUsesFarLod3D(buildings[i], options)) continue;
       out.contactShadows.pushBuilding(buildings[i], renderScope);
     }
   }
@@ -1498,6 +1552,7 @@ export class ClientViewState {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
     for (let i = 0; i < units.length; i++) {
+      if (this.entityUsesFarLod3D(units[i], options)) continue;
       out.groundPrints.pushUnit(
         units[i],
         options.getGroundPrintLocomotionMesh,
@@ -1505,6 +1560,13 @@ export class ClientViewState {
         mapHeight,
       );
     }
+  }
+
+  private entityUsesFarLod3D(
+    entity: Entity,
+    options: ClientViewRenderPacketOptions3D,
+  ): boolean {
+    return options.isEntityFarLod?.(entity) === true;
   }
 
   getPredictionSupportSurfaceEntities(): readonly Entity[] {

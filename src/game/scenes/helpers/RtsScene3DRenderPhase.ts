@@ -81,6 +81,7 @@ import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
 import type { FootprintBounds, FootprintQuad, ViewportFootprint } from '../../ViewportFootprint';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
+import { entityUsesLodProxy3D } from '../../render3d/EntityLod3D';
 
 export type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
@@ -152,6 +153,12 @@ export class RtsScene3DRenderPhase {
     line: [],
     burnMark: [],
   };
+  private readonly nearLineProjectiles: Entity[] = [];
+  private readonly nearBurnMarkProjectiles: Entity[] = [];
+  private readonly nearSmokeTrailProjectiles: Entity[] = [];
+  private readonly nearCommanderSprays: SprayTarget[] = [];
+  private readonly nearResourcePylonSprays: SprayTarget[] = [];
+  private readonly nearPylonFreeLegSprays: SprayTarget[] = [];
   private readonly scopedUnitsScratch: Entity[] = [];
   private readonly scopedBuildingsScratch: Entity[] = [];
   private readonly bodyHudPacket = new BodyHudRenderPacket3D();
@@ -356,7 +363,10 @@ export class RtsScene3DRenderPhase {
       includeGroundPrints: updateEffectsThisFrame,
       hoveredEntity,
     }, selectionHudMode);
-    const lineProjectiles = projectileLists.line;
+    const lineProjectiles = this.filterNearLodProjectiles(
+      projectileLists.line,
+      this.nearLineProjectiles,
+    );
     entityRenderer.update(
       renderFrameState,
       (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,
@@ -432,7 +442,10 @@ export class RtsScene3DRenderPhase {
     waterSplashRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
-      burnMarkRenderer.update(projectileLists.burnMark, this.burnMarkAccumMs);
+      burnMarkRenderer.update(
+        this.filterNearLodProjectiles(projectileLists.burnMark, this.nearBurnMarkProjectiles),
+        this.burnMarkAccumMs,
+      );
       this.burnMarkAccumMs = 0;
     }
 
@@ -448,12 +461,21 @@ export class RtsScene3DRenderPhase {
 
     this.sprayAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
-      const pylonFreeLegSprays = pylonTubeFlowRenderer.update(
-        entityRenderer.getPylonTubeFlows(),
-        this.sprayAccumMs,
+      const pylonFreeLegSprays = this.filterNearLodSprays(
+        pylonTubeFlowRenderer.update(
+          entityRenderer.getPylonTubeFlows(),
+          this.sprayAccumMs,
+        ),
+        this.nearPylonFreeLegSprays,
       );
-      const commanderSprays = this.clientViewState.getSprayTargets();
-      const resourcePylonSprays = entityRenderer.getResourcePylonSprayTargets();
+      const commanderSprays = this.filterNearLodSprays(
+        this.clientViewState.getSprayTargets(),
+        this.nearCommanderSprays,
+      );
+      const resourcePylonSprays = this.filterNearLodSprays(
+        entityRenderer.getResourcePylonSprayTargets(),
+        this.nearResourcePylonSprays,
+      );
       if (resourcePylonSprays.length > 0) {
         const commanderSprayCount = commanderSprays.length;
         const resourcePylonSprayCount = resourcePylonSprays.length;
@@ -484,7 +506,7 @@ export class RtsScene3DRenderPhase {
     this.smokeTrailAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       smokeTrailRenderer.update(
-        projectileLists.smokeTrail,
+        this.filterNearLodProjectiles(projectileLists.smokeTrail, this.nearSmokeTrailProjectiles),
         this.smokeTrailAccumMs,
         this.renderFrameIndex,
         this.renderScope,
@@ -586,6 +608,7 @@ export class RtsScene3DRenderPhase {
         getEntityHudToggle,
         lookupPlayerName: this.lookupPlayerName,
         getGroundPrintLocomotionMesh: this.getGroundPrintLocomotionMesh,
+        isEntityFarLod: (entity) => this.entityUsesFarLod(entity),
       },
     );
   }
@@ -601,9 +624,42 @@ export class RtsScene3DRenderPhase {
     return this.clientViewState.collectProjectileRenderLists(bounds, this.projectileRenderLists);
   }
 
+  private entityUsesFarLod(entity: Entity): boolean {
+    return entityUsesLodProxy3D(this.threeApp.camera, entity);
+  }
+
+  private filterNearLodProjectiles(
+    projectiles: readonly Entity[],
+    out: Entity[],
+  ): readonly Entity[] {
+    out.length = 0;
+    for (let i = 0; i < projectiles.length; i++) {
+      const projectile = projectiles[i];
+      if (!this.entityUsesFarLod(projectile)) out.push(projectile);
+    }
+    return out;
+  }
+
+  private filterNearLodSprays(
+    sprays: readonly SprayTarget[],
+    out: SprayTarget[],
+  ): readonly SprayTarget[] {
+    out.length = 0;
+    for (let i = 0; i < sprays.length; i++) {
+      const spray = sprays[i];
+      const source = this.clientViewState.getEntity(spray.source.id);
+      if (source !== undefined && this.entityUsesFarLod(source)) continue;
+      const target = this.clientViewState.getEntity(spray.target.id);
+      if (target !== undefined && this.entityUsesFarLod(target)) continue;
+      out.push(spray);
+    }
+    return out;
+  }
+
   private populateTurretNamePacket(hosts: readonly Entity[], mode: SelectionHudMode): void {
     for (let i = 0; i < hosts.length; i++) {
-      this.pushTurretNamesForEntity(hosts[i], mode);
+      const host = hosts[i];
+      if (!this.entityUsesFarLod(host)) this.pushTurretNamesForEntity(host, mode);
     }
   }
 
@@ -625,10 +681,13 @@ export class RtsScene3DRenderPhase {
 
   private pushTurretNamesForEntityId(entityId: EntityId, mode: SelectionHudMode): void {
     const entity = this.clientViewState.getEntity(entityId);
-    if (entity !== undefined) this.pushTurretNamesForEntity(entity, mode);
+    if (entity !== undefined && !this.entityUsesFarLod(entity)) {
+      this.pushTurretNamesForEntity(entity, mode);
+    }
   }
 
   private pushTurretNamesForEntity(host: Entity, mode: SelectionHudMode): void {
+    if (this.entityUsesFarLod(host)) return;
     const turrets = host.combat?.turrets;
     if (!turrets) return;
     const entityRenderer = this.resources.entityRenderer;
@@ -657,6 +716,7 @@ export class RtsScene3DRenderPhase {
     const scope = this.renderScope;
     for (let i = 0; i < projectiles.length; i++) {
       const shot = projectiles[i];
+      if (this.entityUsesFarLod(shot)) continue;
       if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
       const proj = shot.projectile;
       if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;

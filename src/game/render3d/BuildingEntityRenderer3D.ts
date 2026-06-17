@@ -46,6 +46,7 @@ import {
   setObjectVisibleIfChanged,
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
+import type { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
 
 const BUILDING_HEIGHT = 120;
 
@@ -201,6 +202,7 @@ export type BuildingEntityRenderer3DOptions = {
   disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   metalDeposits: readonly MetalDeposit[];
   scopedMeshRetention: ScopedRenderMeshRetention3D;
+  lodProxyRenderer: EntityLodProxyRenderer3D;
 };
 
 export class BuildingEntityRenderer3D {
@@ -216,6 +218,7 @@ export class BuildingEntityRenderer3D {
   private readonly getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   private readonly scopedMeshRetention: ScopedRenderMeshRetention3D;
+  private readonly lodProxyRenderer: EntityLodProxyRenderer3D;
   private readonly animations: BuildingAnimationController3D;
   private readonly meshes = new Map<EntityId, EntityMesh>();
   private renderScopeToken = 0;
@@ -269,6 +272,7 @@ export class BuildingEntityRenderer3D {
     this.getTurretAccentMat = options.getTurretAccentMat;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.scopedMeshRetention = options.scopedMeshRetention;
+    this.lodProxyRenderer = options.lodProxyRenderer;
     this.animations = new BuildingAnimationController3D(
       this.clientViewState,
       this.constructionVisuals,
@@ -341,7 +345,19 @@ export class BuildingEntityRenderer3D {
       if (entity === undefined || entity.building === null) continue;
 
       const mesh = this.meshes.get(entityId);
-      if (mesh !== undefined) this.reactivateBuildingMeshForScope(entity, mesh);
+      if (rows.lodProxyAt(row)) {
+        this.lodProxyRenderer.pushBuilding(entity);
+        if (mesh !== undefined) {
+          if (pruneBuildings) mesh.renderSeenToken = pruneToken;
+          this.deactivateBuildingMeshForLod(entityId, mesh, beamAimCache);
+        }
+        continue;
+      }
+      const wasLodProxyActive = mesh?.renderLodProxyActive === true;
+      if (mesh !== undefined) {
+        this.reactivateBuildingMeshForScope(entity, mesh);
+        this.reactivateBuildingMeshForLod(entity, mesh);
+      }
       const rowDirty = rows.renderDirtyAt(row) || rows.lifecycleDirtyAt(row);
       const activePrediction = rows.activePredictionAt(row);
       const needsTurretFrame = activePrediction;
@@ -366,7 +382,8 @@ export class BuildingEntityRenderer3D {
         !rowDirty &&
         !needsTurretFrame &&
         !bodyFadeActive &&
-        !overlayDirty
+        !overlayDirty &&
+        !wasLodProxyActive
       ) {
         setObjectVisibleIfChanged(mesh.group, true);
         if (pruneBuildings) mesh.renderSeenToken = pruneToken;
@@ -533,8 +550,35 @@ export class BuildingEntityRenderer3D {
     setObjectVisibleIfChanged(mesh.group, false);
   }
 
+  private deactivateBuildingMeshForLod(
+    id: EntityId,
+    mesh: EntityMesh,
+    beamAimCache: TurretBeamAimCache3D,
+  ): void {
+    if (mesh.renderLodProxyActive === true) return;
+    mesh.renderLodProxyActive = true;
+    this.animations.unregister(id);
+    this.unregisterBuildingSpinTurrets(id);
+    beamAimCache.delete(id);
+    this.disposeWorldParentedOverlays(mesh);
+    this.applyBuildingEntityFade(mesh, 0);
+    setObjectVisibleIfChanged(mesh.group, false);
+  }
+
   private reactivateBuildingMeshForScope(entity: Entity, mesh: EntityMesh): void {
     if (!this.scopedMeshRetention.markBuildingActive(entity.id)) return;
+    setObjectVisibleIfChanged(mesh.group, true);
+    this.animations.register(entity, mesh);
+    this.registerBuildingSpinTurrets(entity, mesh);
+    this.applyBuildingEntityFade(
+      mesh,
+      (mesh.buildingMaterializationOpacity ?? 1) * this.currentSpawnFadeIn(entity.id),
+    );
+  }
+
+  private reactivateBuildingMeshForLod(entity: Entity, mesh: EntityMesh): void {
+    if (mesh.renderLodProxyActive !== true) return;
+    mesh.renderLodProxyActive = false;
     setObjectVisibleIfChanged(mesh.group, true);
     this.animations.register(entity, mesh);
     this.registerBuildingSpinTurrets(entity, mesh);

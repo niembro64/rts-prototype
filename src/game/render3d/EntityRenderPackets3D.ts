@@ -24,6 +24,7 @@ const ENTITY_RENDER_FLAG_RENDER_DIRTY = 1 << 5;
 const ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY = 1 << 6;
 const UNIT_RENDER_FLAG_AIRBORNE = 1 << 7;
 const UNIT_RENDER_FLAG_HAS_SUSPENSION = 1 << 8;
+const ENTITY_RENDER_FLAG_LOD_PROXY = 1 << 9;
 const EMPTY_TURRETS: readonly Turret[] = [];
 const passiveTurretIndexCache = new WeakMap<readonly Turret[], number>();
 
@@ -68,6 +69,7 @@ function entityRenderFlags(
   activePrediction: boolean,
   renderDirty: boolean,
   lifecycleDirty: boolean,
+  lodProxy: boolean,
 ): number {
   let flags = entity.selectable?.selected === true
     ? ENTITY_RENDER_FLAG_SELECTED
@@ -78,6 +80,7 @@ function entityRenderFlags(
   if (activePrediction) flags |= ENTITY_RENDER_FLAG_ACTIVE_PREDICTION;
   if (renderDirty) flags |= ENTITY_RENDER_FLAG_RENDER_DIRTY;
   if (lifecycleDirty) flags |= ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY;
+  if (lodProxy) flags |= ENTITY_RENDER_FLAG_LOD_PROXY;
   return flags;
 }
 
@@ -142,6 +145,7 @@ export class UnitRenderPacket3D {
     activePrediction: boolean = false,
     renderDirty: boolean = false,
     lifecycleDirty: boolean = false,
+    lodProxy: boolean = false,
   ): void {
     const unit = entity.unit;
     if (unit === null) return;
@@ -170,7 +174,7 @@ export class UnitRenderPacket3D {
     this.bodyCenterHeight[cursor] = unit.bodyCenterHeight;
     this.turretCount[cursor] = turretRows.length;
     this.passiveTurretIndex[cursor] = passiveTurretIndex(turretRows);
-    let flags = entityRenderFlags(entity, activePrediction, renderDirty, lifecycleDirty);
+    let flags = entityRenderFlags(entity, activePrediction, renderDirty, lifecycleDirty, lodProxy);
     const locomotionType = unit.locomotion.type;
     if (locomotionType === 'hover' || locomotionType === 'flying') {
       flags |= UNIT_RENDER_FLAG_AIRBORNE;
@@ -223,6 +227,10 @@ export class UnitRenderPacket3D {
 
   lifecycleDirtyAt(row: number): boolean {
     return (this.flags[row] & ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY) !== 0;
+  }
+
+  lodProxyAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_LOD_PROXY) !== 0;
   }
 
   airborneAt(row: number): boolean {
@@ -307,6 +315,7 @@ export class BuildingRenderPacket3D {
     activePrediction: boolean = false,
     renderDirty: boolean = false,
     lifecycleDirty: boolean = false,
+    lodProxy: boolean = false,
   ): void {
     const building = entity.building;
     if (building === null) return;
@@ -336,7 +345,13 @@ export class BuildingRenderPacket3D {
     this.progress[cursor] = getConstructionPieceRenderFraction(entity, 'body');
     this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
     this.turretCount[cursor] = turretRows.length;
-    this.flags[cursor] = entityRenderFlags(entity, activePrediction, renderDirty, lifecycleDirty);
+    this.flags[cursor] = entityRenderFlags(
+      entity,
+      activePrediction,
+      renderDirty,
+      lifecycleDirty,
+      lodProxy,
+    );
     this.count = cursor + 1;
   }
 
@@ -387,6 +402,10 @@ export class BuildingRenderPacket3D {
 
   lifecycleDirtyAt(row: number): boolean {
     return (this.flags[row] & ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY) !== 0;
+  }
+
+  lodProxyAt(row: number): boolean {
+    return (this.flags[row] & ENTITY_RENDER_FLAG_LOD_PROXY) !== 0;
   }
 
   private ensureCapacity(required: number): void {

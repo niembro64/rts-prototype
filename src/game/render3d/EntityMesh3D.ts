@@ -34,6 +34,11 @@ export type EntityMesh = {
    *  stamp the current token; meshes with an older token are outside the
    *  active render scope and can be torn down without querying view state. */
   renderSeenToken?: number;
+  /** True while this entity is represented by the renderer-wide LOD
+   *  hitbox proxy instead of its full detail mesh. The detailed mesh is
+   *  retained so crossing back under the threshold can resume without a
+   *  rebuild. */
+  renderLodProxyActive?: boolean;
   /** Yaw subgroup. Hierarchy: `group` carries position + the surface
    *  TILT (world-frame), `yawGroup` carries the unit's facing yaw
    *  (around the chassis-local up axis = the slope's up). Locomotion

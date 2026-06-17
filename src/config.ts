@@ -386,6 +386,13 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
 // camera far plane still controls what actually draws.
 export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
 
+// Entities farther than this camera distance render as cheap hitbox proxies
+// instead of full-detail meshes and effect emitters.
+export const ENTITY_LOD_FULL_DETAIL_DISTANCE =
+  worldRenderConfigJson.entityLod.fullDetailDistance;
+export const ENTITY_LOD_FULL_DETAIL_DISTANCE_SQ =
+  ENTITY_LOD_FULL_DETAIL_DISTANCE * ENTITY_LOD_FULL_DETAIL_DISTANCE;
+
 // Render-only water surface tuning. `color` is the tint of the flat
 // horizon water plane; `opacity` is material alpha. Lower opacity =
 // more transparent.

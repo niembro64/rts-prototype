@@ -85,6 +85,8 @@ import {
   setScaleScalarIfChanged,
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
+import { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
+import { entityUsesLodProxy3D } from './EntityLod3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -164,6 +166,7 @@ export class Render3DEntities {
   private unitDetailInstances: UnitDetailInstanceRenderer3D;
   private unitMeshBuilder!: UnitMeshBuilder3D;
   private projectileRangeEnvelope: ProjectileRangeEnvelope3D;
+  private lodProxyRenderer: EntityLodProxyRenderer3D;
   private readonly hoverSmokeEmitters: SmokePuffEmitter[] = [];
   private readonly airborneEmitterBatch = new AirborneEmitterBatch3D();
   private readonly airborneEmitterUpdate = new AirborneEmitterUpdateScratch3D(this.airborneEmitterBatch);
@@ -274,6 +277,7 @@ export class Render3DEntities {
       this.resourcePylonFlows,
     );
     this.projectileRangeEnvelope = new ProjectileRangeEnvelope3D(this.world, this.clientViewState);
+    this.lodProxyRenderer = new EntityLodProxyRenderer3D(this.world);
     this.buildingRenderer = new BuildingEntityRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
@@ -288,12 +292,14 @@ export class Render3DEntities {
       disposeWorldParentedOverlays: (mesh) => this.disposeWorldParentedOverlays(mesh),
       metalDeposits: this.metalDeposits,
       scopedMeshRetention: this.scopedMeshRetention,
+      lodProxyRenderer: this.lodProxyRenderer,
     });
     this.projectileRenderer = new ProjectileRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
       scope: this.scope,
       radiusSphereGeom: this.radiusSphereGeom,
+      isEntityFarLod: (entity) => entityUsesLodProxy3D(this.camera, entity),
     });
     // Per-team materials are created lazily on first use (see
     // getPrimaryMat / getSecondaryMat). The
@@ -398,6 +404,7 @@ export class Render3DEntities {
     this.syncSmokeTrailsQueue();
     this.syncLegsRadiusToggleQueue();
     this.selectionOverlays.beginFrame({ reclaimTargets: overlayModes.reclaimTargets === true });
+    this.lodProxyRenderer.beginFrame();
     // Populate beam-directed turret aim from the live beams BEFORE the
     // unit + building turret-pose passes read it this frame.
     this.turretBeamAimCache.collectFromBeamProjectiles(
@@ -421,6 +428,7 @@ export class Render3DEntities {
       this.frameState,
       entityPacket?.projectileRenderProjectiles ?? EMPTY_PROJECTILES,
     );
+    this.lodProxyRenderer.flush();
     // One flush per frame uploads the per-instance leg cylinder
     // buffers (start / end / thickness) to the GPU. Every leg in
     // every unit wrote into the same shared pool above; the GPU
@@ -535,8 +543,17 @@ export class Render3DEntities {
       const unitBlueprintId = unitRows.unitBlueprintIds[row];
       const unitTurretCount = unitRows.turretCount[row];
       const fullUnitDetail = true;
+      const useLodProxy = unitRows.lodProxyAt(row);
 
       let m = this.unitMeshes.get(entityId);
+      if (useLodProxy) {
+        this.lodProxyRenderer.pushUnit(e);
+        if (m !== undefined) {
+          if (pruneUnits) m.renderSeenToken = pruneToken;
+          this.deactivateUnitMeshForLod(entityId, m);
+        }
+        continue;
+      }
       if (
         m &&
         (
@@ -574,6 +591,7 @@ export class Render3DEntities {
         if (m.locomotion) this.activeLocomotionUnitIds.add(entityId);
       }
       this.reactivateUnitMeshForScope(entityId, m);
+      this.reactivateUnitMeshForLod(entityId, m);
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
       if (unitGfx.barrelSpin) this.barrelSpinState.advance(e, spinDt);
@@ -927,9 +945,31 @@ export class Render3DEntities {
     this.turretMountCache.delete(id);
   }
 
+  private deactivateUnitMeshForLod(id: EntityId, m: EntityMesh): void {
+    if (m.renderLodProxyActive === true) return;
+    m.renderLodProxyActive = true;
+    this.disposeWorldParentedOverlays(m);
+    this.unitDetailInstances.clearChassisSlots(m);
+    for (const turret of m.turrets) this.unitDetailInstances.clearTurretSlots(turret);
+    if (m.mirrors) this.deactivateShieldPanelMesh(m.mirrors);
+    this.applyUnitEntityFade(m, 0, null);
+    setObjectVisibleIfChanged(m.group, false);
+    this.activeLocomotionUnitIds.delete(id);
+    this.barrelSpinState.delete(id);
+    this.turretBeamAimCache.delete(id);
+    this.turretMountCache.delete(id);
+  }
+
   private reactivateUnitMeshForScope(id: EntityId, m: EntityMesh): void {
     if (!this.scopedMeshRetention.markUnitActive(id)) return;
     setObjectVisibleIfChanged(m.group, true);
+  }
+
+  private reactivateUnitMeshForLod(id: EntityId, m: EntityMesh): void {
+    if (m.renderLodProxyActive !== true) return;
+    m.renderLodProxyActive = false;
+    setObjectVisibleIfChanged(m.group, true);
+    if (m.locomotion) this.activeLocomotionUnitIds.add(id);
   }
 
   /** Look up the lift subgroup for a unit's mesh. The lift group
@@ -993,6 +1033,7 @@ export class Render3DEntities {
     // future build will consume them.
     this.legStateCache.clear();
     this.buildingRenderer.destroy();
+    this.lodProxyRenderer.destroy();
     this.projectileRangeEnvelope.destroy();
     this.projectileRenderer.destroy();
     this.unitMeshes.clear();

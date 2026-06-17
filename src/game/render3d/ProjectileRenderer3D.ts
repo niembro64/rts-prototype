@@ -135,13 +135,17 @@ export type ProjectileRenderer3DOptions = {
   clientViewState: ClientViewState;
   scope: ViewportFootprint;
   radiusSphereGeom: THREE.BufferGeometry;
+  isEntityFarLod?: (entity: Entity) => boolean;
 };
+
+const NEVER_FAR_LOD = (_entity: Entity): boolean => false;
 
 export class ProjectileRenderer3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
   private readonly scope: ViewportFootprint;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
+  private readonly isEntityFarLod: (entity: Entity) => boolean;
 
   private readonly projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private readonly projectileCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
@@ -212,6 +216,7 @@ export class ProjectileRenderer3D {
     this.clientViewState = options.clientViewState;
     this.scope = options.scope;
     this.radiusSphereGeom = options.radiusSphereGeom;
+    this.isEntityFarLod = options.isEntityFarLod ?? NEVER_FAR_LOD;
 
     this.sphereInstanced = new THREE.InstancedMesh(
       this.projectileGeom,
@@ -302,6 +307,12 @@ export class ProjectileRenderer3D {
         tx, tz, ty,
         r, r, r,
       );
+
+      if (this.isEntityFarLod(e)) {
+        this.hideProjRadiusMeshes(e.id);
+        this.trailStamps.delete(e.id);
+        continue;
+      }
 
       const tailShape = drawProjectileTail
         ? visualProfile?.projectileTailShape ?? 'cone'
