@@ -705,6 +705,11 @@ export class BuildingEntityRenderer3D {
         if (detail.role === 'solarTeamAccent') detail.mesh.material = primaryMat;
       }
     }
+    const extractorAccents = mesh.extractorRig?.teamAccents;
+    if (extractorAccents && extractorAccents.length > 0) {
+      const primaryMat = this.getPrimaryMat(ownerId);
+      for (const accent of extractorAccents) accent.material = primaryMat;
+    }
 
     // Transform.z is the building's vertical center in sim space.
     // Render from the footprint base so buildings sit on the same

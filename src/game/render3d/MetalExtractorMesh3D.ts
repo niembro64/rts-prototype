@@ -32,6 +32,15 @@ const EXTRACTOR_PANEL_EXTRUSION_SCALE = 4;
  *  blade reads as a panel sitting on the face rather than embedded in it. */
 const CLOSED_BLADE_STANDOFF = 0.4;
 
+/** Advanced-extractor team accent. A smaller team-colored plate riding the
+ *  outer face of each rotor blade — the extractor analogue of the solar
+ *  collector's leaf team accent. Footprint shrinks toward the blade center
+ *  so the dull blade still frames it; thickness is flattened so it reads as
+ *  trim sitting proud of the outer face rather than a second blade. */
+const EXTRACTOR_ACCENT_FOOTPRINT_SCALE = 0.6;
+const EXTRACTOR_ACCENT_THICKNESS_SCALE = 0.34;
+const EXTRACTOR_ACCENT_STANDOFF = 0.5;
+
 type ExtractorFaceFrame = {
   bottom0: THREE.Vector3;
   bottom1: THREE.Vector3;
@@ -65,6 +74,10 @@ export type ExtractorBladeAnim = {
 export type ExtractorRig = {
   rotors: THREE.Mesh[];
   pylon: ResourcePylonRig;
+  /** Advanced-variant only: team-colored accent plates nested on each
+   *  blade. Held flat so the renderer can re-point their material at the
+   *  owner's primary color on ownership change (see updateBuildingMesh). */
+  teamAccents: THREE.Mesh[];
 };
 
 /** Metal extractor detail.
@@ -121,12 +134,18 @@ export function buildMetalExtractorMesh(
   const panelThickness = Math.max(1.2, bladeThickness * 0.25) * EXTRACTOR_PANEL_EXTRUSION_SCALE;
   const bladeRootRadius = Math.max(ratePillarRadius * 2.2, minDim * 0.28);
 
+  // The advanced extractor is the standard shape with extra team coloring
+  // riding the outer face of every spinning panel. Standard stays plain.
+  const teamAccents: THREE.Mesh[] = [];
+  const accentMaterial = advanced ? primaryMat : undefined;
+
   // Simple rotor — all six blades remain visible and rotating so the
   // silhouette is stable. No alternate glow/trim variant.
   const simpleRotor = makeExtractorRotor(
     bladeLen, bladeThickness, panelThickness,
     EXTRACTOR_FACE_COUNT, rotorY, bladeRootRadius, 0.5,
     width, depth, pyramidHeight,
+    accentMaterial, teamAccents,
   );
   details.push(detail(simpleRotor, 'min', undefined, 'extractorRotor'));
 
@@ -153,6 +172,8 @@ export function buildMetalExtractorMesh(
       width,
       depth,
       pyramidHeight,
+      accentMaterial,
+      teamAccents,
     );
     details.push(detail(upperRotor, 'min', undefined, 'extractorRotor'));
     rotors.push(upperRotor);
@@ -165,6 +186,7 @@ export function buildMetalExtractorMesh(
     extractorRig: {
       rotors,
       pylon: metalPylon.rig,
+      teamAccents,
     },
   };
 }
@@ -180,6 +202,8 @@ function makeExtractorRotor(
   buildingWidth: number,
   buildingDepth: number,
   pyramidHeight: number,
+  accentMaterial?: THREE.Material,
+  accentSink?: THREE.Mesh[],
 ): THREE.Mesh {
   const rotor = new THREE.Mesh(cylinderGeom, invisibleMat);
   rotor.position.set(0, y, 0);
@@ -242,6 +266,27 @@ function makeExtractorRotor(
     blade.userData.extractorBlade = anim;
 
     rotor.add(blade);
+
+    if (accentMaterial) {
+      // Nest the accent inside the blade so it inherits the open/closed
+      // fold and spin for free. Local +Y is the blade's outer face (it
+      // maps to the pyramid face normal in the closed pose), so the
+      // accent rides the side that stays visible as the panel folds.
+      const accent = new THREE.Mesh(panelGeometries[i], accentMaterial);
+      const accentHalfThickness = panelThickness * 0.5 * EXTRACTOR_ACCENT_THICKNESS_SCALE;
+      accent.scale.set(
+        EXTRACTOR_ACCENT_FOOTPRINT_SCALE,
+        EXTRACTOR_ACCENT_THICKNESS_SCALE,
+        EXTRACTOR_ACCENT_FOOTPRINT_SCALE,
+      );
+      accent.position.set(
+        0,
+        panelThickness * 0.5 + accentHalfThickness + EXTRACTOR_ACCENT_STANDOFF,
+        0,
+      );
+      blade.add(accent);
+      accentSink?.push(accent);
+    }
   }
 
   return rotor;
