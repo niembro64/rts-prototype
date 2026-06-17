@@ -102,7 +102,7 @@ type PooledVelocityUpdate = NetworkServerSnapshotVelocityUpdate & {
 
 export type SerializeProjectileSnapshotOptions = {
   world: WorldState;
-  deltaEnabled: boolean;
+  fullStateResync: boolean;
   visibility: SnapshotVisibility | undefined;
   emitBeamUpdates: boolean;
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
@@ -614,7 +614,7 @@ function getBeamWirePointCount(sourceCount: number): number {
 
 export function serializeProjectileSnapshot({
   world,
-  deltaEnabled,
+  fullStateResync,
   visibility,
   emitBeamUpdates,
   projectileSpawns,
@@ -624,14 +624,14 @@ export function serializeProjectileSnapshot({
   resetProjectilePools();
   resetProjectileWireSource();
 
-  // Full keyframes synthesize spawns for every live projectile entity so a
+  // Full-state snapshots synthesize spawns for every live projectile entity so a
   // client that missed the original spawn event can still recover it.
   let netProjectileSpawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
-  const wantKeyframeProjectileResync = !deltaEnabled;
+  const wantProjectileResync = fullStateResync;
   const tickSpawnCount = projectileSpawns === undefined ? 0 : projectileSpawns.length;
-  if (tickSpawnCount > 0 || wantKeyframeProjectileResync) {
+  if (tickSpawnCount > 0 || wantProjectileResync) {
     _spawnBuf.length = 0;
-    if (wantKeyframeProjectileResync) _resyncSeenIds.clear();
+    if (wantProjectileResync) _resyncSeenIds.clear();
     if (projectileSpawns) {
       for (let i = 0; i < tickSpawnCount; i++) {
         const ps = projectileSpawns[i];
@@ -677,10 +677,10 @@ export function serializeProjectileSnapshot({
         out.homingTurnRate = ps.homingTurnRate ?? null;
         _spawnBuf.push(out);
         copyProjectileSpawnIntoWireRow(out);
-        if (wantKeyframeProjectileResync) _resyncSeenIds.add(ps.id);
+        if (wantProjectileResync) _resyncSeenIds.add(ps.id);
       }
     }
-    if (wantKeyframeProjectileResync) {
+    if (wantProjectileResync) {
       const liveProjectiles = world.getProjectiles();
       for (let i = 0; i < liveProjectiles.length; i++) {
         const entity = liveProjectiles[i];
@@ -884,7 +884,7 @@ export function serializeProjectileSnapshot({
 
 export function writeProjectileSnapshotWireRowsDirect({
   world,
-  deltaEnabled,
+  fullStateResync,
   visibility,
   emitBeamUpdates,
   projectileSpawns,
@@ -901,10 +901,10 @@ export function writeProjectileSnapshotWireRowsDirect({
   _directProjectilesBuf.velocityUpdates = undefined;
   _directProjectilesBuf.beamUpdates = undefined;
 
-  const wantKeyframeProjectileResync = !deltaEnabled;
+  const wantProjectileResync = fullStateResync;
   const tickSpawnCount = projectileSpawns === undefined ? 0 : projectileSpawns.length;
-  if (tickSpawnCount > 0 || wantKeyframeProjectileResync) {
-    if (wantKeyframeProjectileResync) _resyncSeenIds.clear();
+  if (tickSpawnCount > 0 || wantProjectileResync) {
+    if (wantProjectileResync) _resyncSeenIds.clear();
     if (projectileSpawns) {
       for (let i = 0; i < tickSpawnCount; i++) {
         const ps = projectileSpawns[i];
@@ -949,11 +949,11 @@ export function writeProjectileSnapshotWireRowsDirect({
           : null;
         out.homingTurnRate = ps.homingTurnRate ?? null;
         copyProjectileSpawnIntoWireRow(out);
-        if (wantKeyframeProjectileResync) _resyncSeenIds.add(ps.id);
+        if (wantProjectileResync) _resyncSeenIds.add(ps.id);
       }
     }
 
-    if (wantKeyframeProjectileResync) {
+    if (wantProjectileResync) {
       const liveProjectiles = world.getProjectiles();
       for (let i = 0; i < liveProjectiles.length; i++) {
         const entity = liveProjectiles[i];

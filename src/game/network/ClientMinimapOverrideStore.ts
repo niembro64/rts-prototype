@@ -15,13 +15,10 @@ export class ClientMinimapOverrideStore {
 
   constructor(private readonly options: ClientMinimapOverrideStoreOptions) {}
 
-  applySnapshot(
-    source: readonly NetworkServerSnapshotMinimapEntity[] | undefined,
-    isDelta: boolean,
-  ): void {
+  applySnapshot(source: readonly NetworkServerSnapshotMinimapEntity[] | undefined): void {
     if (source) {
       this.applyOverride(source);
-    } else if (!isDelta) {
+    } else {
       this.overrideEntities = null;
     }
   }

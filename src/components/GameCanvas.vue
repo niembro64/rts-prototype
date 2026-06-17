@@ -50,8 +50,10 @@ import type {
 import {
   SERVER_CONFIG,
   loadStoredUnitGroundNormalEmaMode,
-  snapshotRateHz,
 } from '../serverBarConfig';
+import {
+  PRESENTATION_SNAPSHOT_RATE_DEFAULT,
+} from '../presentationSnapshotConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 import { getPlayerColor } from './uiUtils';
 import type { GameServer } from '../game/server/GameServer';
@@ -953,15 +955,9 @@ const displayServerTpsWorst = computed(
 );
 const {
   currentZoom,
-  diffSnapSizeAvgBytes,
-  diffSnapSizeHiBytes,
   displayGpuMs,
   frameMsAvg,
   frameMsHi,
-  fullSnapAvgRate,
-  fullSnapSizeAvgBytes,
-  fullSnapSizeHiBytes,
-  fullSnapWorstRate,
   gpuSourceLabel,
   gpuTimerSupported,
   hudSpriteActiveCount,
@@ -989,6 +985,8 @@ const {
   renderTpsWorst,
   snapAvgRate,
   snapWorstRate,
+  snapshotSizeAvgBytes,
+  snapshotSizeHiBytes,
 } = useGameCanvasTelemetry({
   getScene: () => getBackgroundBattle()?.gameInstance?.getScene() ?? foregroundGame.getScene(),
 });
@@ -1002,6 +1000,9 @@ const displayTickRate = computed(
   () =>
     serverMetaFromSnapshot.value?.ticks.rate ??
     ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
+);
+const isLockstepServerBar = computed(
+  () => currentBattleMode.value === 'real' && gameStarted.value,
 );
 // HOST SERVER unit ground normal EMA mode. Picks the half-life used by the
 // sim's updateUnitGroundNormal (UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[mode]). Persisted to
@@ -1031,22 +1032,8 @@ watch(
 const displaySnapshotRate = computed(
   () =>
     serverMetaFromSnapshot.value?.snaps.rate ??
-    SERVER_CONFIG.snapshot.default,
+    PRESENTATION_SNAPSHOT_RATE_DEFAULT,
 );
-const displayKeyframeRatio = computed(
-  () =>
-    serverMetaFromSnapshot.value?.snaps.keyframes ??
-    SERVER_CONFIG.keyframe.default,
-);
-// Bar-fill target for FSPS: full snapshots are a configurable fraction
-// of the host DIFFSNAP rate.
-const fullSnapBarTarget = computed(() => {
-  const sps = snapshotRateHz(displaySnapshotRate.value, displayTickRate.value);
-  const kf = displayKeyframeRatio.value;
-  if (kf === 'NONE') return 1;
-  if (kf === 'ALL') return sps;
-  return Math.max(0.1, sps * (kf as number));
-});
 const displayGridInfo = computed(
   () => serverMetaFromSnapshot.value?.grid ?? loadStoredGrid(currentBattleMode.value),
 );
@@ -1371,8 +1358,10 @@ const serverControlBarModel = reactive<GameCanvasServerControlBarModel>({
   isReadonly: serverBarReadonly.value,
   barStyle: serverBarVars.value,
   serverLabel: serverLabel.value,
+  isLockstepBackend: isLockstepServerBar.value,
   displayServerTime: displayServerTime.value,
   displayServerIp: displayServerIp.value,
+  displayTickRate: displayTickRate.value,
   serverUnitGroundNormalEmaMode: serverUnitGroundNormalEmaMode.value,
   displayServerTpsAvg: displayServerTpsAvg.value,
   displayServerTpsWorst: displayServerTpsWorst.value,
@@ -1388,8 +1377,10 @@ watchEffect(() => {
   m.isReadonly = serverBarReadonly.value;
   m.barStyle = serverBarVars.value;
   m.serverLabel = serverLabel.value;
+  m.isLockstepBackend = isLockstepServerBar.value;
   m.displayServerTime = displayServerTime.value;
   m.displayServerIp = displayServerIp.value;
+  m.displayTickRate = displayTickRate.value;
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   m.displayServerTpsAvg = displayServerTpsAvg.value;
   m.displayServerTpsWorst = displayServerTpsWorst.value;
@@ -1446,13 +1437,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   snapWorstRate: snapWorstRate.value,
   displayTickRate: displayTickRate.value,
   displaySnapshotRate: displaySnapshotRate.value,
-  fullSnapAvgRate: fullSnapAvgRate.value,
-  fullSnapWorstRate: fullSnapWorstRate.value,
-  fullSnapBarTarget: fullSnapBarTarget.value,
-  diffSnapSizeAvgBytes: diffSnapSizeAvgBytes.value,
-  diffSnapSizeHiBytes: diffSnapSizeHiBytes.value,
-  fullSnapSizeAvgBytes: fullSnapSizeAvgBytes.value,
-  fullSnapSizeHiBytes: fullSnapSizeHiBytes.value,
+  snapshotSizeAvgBytes: snapshotSizeAvgBytes.value,
+  snapshotSizeHiBytes: snapshotSizeHiBytes.value,
   audioSmoothing: audioSmoothing.value,
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
@@ -1609,13 +1595,8 @@ watchEffect(() => {
   m.snapWorstRate = snapWorstRate.value;
   m.displayTickRate = displayTickRate.value;
   m.displaySnapshotRate = displaySnapshotRate.value;
-  m.fullSnapAvgRate = fullSnapAvgRate.value;
-  m.fullSnapWorstRate = fullSnapWorstRate.value;
-  m.fullSnapBarTarget = fullSnapBarTarget.value;
-  m.diffSnapSizeAvgBytes = diffSnapSizeAvgBytes.value;
-  m.diffSnapSizeHiBytes = diffSnapSizeHiBytes.value;
-  m.fullSnapSizeAvgBytes = fullSnapSizeAvgBytes.value;
-  m.fullSnapSizeHiBytes = fullSnapSizeHiBytes.value;
+  m.snapshotSizeAvgBytes = snapshotSizeAvgBytes.value;
+  m.snapshotSizeHiBytes = snapshotSizeHiBytes.value;
   m.audioSmoothing = audioSmoothing.value;
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;

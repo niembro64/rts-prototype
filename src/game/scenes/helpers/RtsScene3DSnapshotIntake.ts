@@ -43,16 +43,10 @@ export class RtsScene3DSnapshotIntake {
     EMA_CONFIG.snaps,
     EMA_INITIAL_VALUES.snaps,
   );
-  // Parallel tracker that ONLY updates on full keyframes
-  // (state.isDelta=false). No initial value: the EMA seeds from the
-  // first real full-keyframe interval.
-  private readonly fullSnapTracker = new EmaTracker(EMA_CONFIG.snaps);
-  private readonly diffSnapSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
-  private readonly fullSnapSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
+  private readonly snapshotSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
   private lastSnapArrivalMs = 0;
-  private lastFullSnapArrivalMs = 0;
   private startupReadyAckSent = false;
-  private startupFullSnapshotApplied = false;
+  private startupSnapshotApplied = false;
   private startupReleased = false;
   private readonly syncEconomyFromSnapshots: boolean;
 
@@ -90,23 +84,20 @@ export class RtsScene3DSnapshotIntake {
       syncEconomy: this.syncEconomyFromSnapshots,
     });
     const applyMs = performance.now() - applyStart;
-    if (!this.startupReadyAckSent && !state.isDelta) {
-      this.startupFullSnapshotApplied = true;
-    }
+    if (!this.startupReadyAckSent) this.startupSnapshotApplied = true;
 
     // The server intentionally pauses simulation ticks behind the startup
     // ready barrier, so a tick > 0 snapshot can only arrive after clients
-    // acknowledge their first full bootstrap. Treat that full snapshot as
+    // acknowledge their first full-state bootstrap. Treat that snapshot as
     // scene-startup-ready; otherwise the UI waits on the same gate it needs
     // to release.
-    const startupReleased = !this.startupReleased && this.startupFullSnapshotApplied;
+    const startupReleased = !this.startupReleased && this.startupSnapshotApplied;
     if (startupReleased) this.startupReleased = true;
 
     const now = nowOverride ?? performance.now();
-    this.recordSnapshotArrival(state.isDelta, now);
+    this.recordSnapshotArrival(now);
     SNAPSHOT_CADENCE_REGRESSION.recordSnapshotApply({
       tick: state.tick,
-      isDelta: state.isDelta,
       meta: state.serverMeta,
       applyMs,
       correction: applyStats.correction,
@@ -136,13 +127,13 @@ export class RtsScene3DSnapshotIntake {
   }
 
   markClientReadyAfterRender(): void {
-    if (!this.startupFullSnapshotApplied || this.startupReadyAckSent) return;
+    if (!this.startupSnapshotApplied || this.startupReadyAckSent) return;
     this.startupReadyAckSent = true;
     this.gameConnection.markClientReady();
   }
 
   hasStartupFullSnapshotApplied(): boolean {
-    return this.startupFullSnapshotApplied;
+    return this.startupSnapshotApplied;
   }
 
   getSnapshotStats(): { avgRate: number; worstRate: number } {
@@ -152,24 +143,10 @@ export class RtsScene3DSnapshotIntake {
     };
   }
 
-  getFullSnapshotStats(): { avgRate: number; worstRate: number } {
+  getSnapshotPayloadSizeStats(): { avgBytes: number; hiBytes: number } {
     return {
-      avgRate: this.fullSnapTracker.getAvg(),
-      worstRate: this.fullSnapTracker.getLow(),
-    };
-  }
-
-  getSnapshotPayloadSizeStats(): {
-    diffAvgBytes: number;
-    diffHiBytes: number;
-    fullAvgBytes: number;
-    fullHiBytes: number;
-  } {
-    return {
-      diffAvgBytes: this.diffSnapSizeTracker.getAvg(),
-      diffHiBytes: this.diffSnapSizeTracker.getHi(),
-      fullAvgBytes: this.fullSnapSizeTracker.getAvg(),
-      fullHiBytes: this.fullSnapSizeTracker.getHi(),
+      avgBytes: this.snapshotSizeTracker.getAvg(),
+      hiBytes: this.snapshotSizeTracker.getHi(),
     };
   }
 
@@ -177,25 +154,17 @@ export class RtsScene3DSnapshotIntake {
     this.snapshotBuffer.clear();
   }
 
-  private recordSnapshotArrival(isDelta: boolean, now: number): void {
+  private recordSnapshotArrival(now: number): void {
     if (this.lastSnapArrivalMs > 0) {
       const dt = now - this.lastSnapArrivalMs;
       if (dt > 0) this.snapTracker.update(1000 / dt);
     }
     this.lastSnapArrivalMs = now;
-
-    if (isDelta) return;
-    if (this.lastFullSnapArrivalMs > 0) {
-      const dt = now - this.lastFullSnapArrivalMs;
-      if (dt > 0) this.fullSnapTracker.update(1000 / dt);
-    }
-    this.lastFullSnapArrivalMs = now;
   }
 
   private recordSnapshotPayloadSize(state: NetworkServerSnapshot): void {
     const bytes = getSnapshotWireBytes(state);
     if (bytes === undefined) return;
-    if (state.isDelta) this.diffSnapSizeTracker.update(bytes);
-    else this.fullSnapSizeTracker.update(bytes);
+    this.snapshotSizeTracker.update(bytes);
   }
 }

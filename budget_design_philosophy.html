@@ -361,15 +361,15 @@
 
       <h3>Snapshots flow downward</h3>
       <p>
-        In authoritative-server, server snapshots are corrections, not per-frame animation frames. They should contain changed
-        authoritative targets, creation and removal events, projectile events, audio events, fog and
-        minimap deltas, and occasional keyframes. The client stores those values as server targets,
-        predicts forward locally, and drifts toward the newest authoritative target.
+        In deterministic-lockstep, presentation snapshots are renderer input, not gameplay truth.
+        They should contain the full visible simulation state, creation and removal events,
+        projectile events, audio events, fog, and minimap contacts. The client stores those values
+        as server targets, predicts forward locally, and drifts toward the newest local simulation target.
       </p>
       <ul class="rule-list">
-        <li>Normal target cadence is 5 to 10 snapshots per second.</li>
-        <li>Server tick rate and snapshot rate are independent.</li>
-        <li>Full keyframes are rare recovery points. Delta snapshots are the default.</li>
+        <li>Presentation cadence follows the lockstep snapshot configuration.</li>
+        <li>Simulation step rate and presentation snapshot rate are independent.</li>
+        <li>Every presentation snapshot is a full-state packet for the renderer.</li>
         <li>Area-of-interest and fog filtering are server responsibilities.</li>
         <li>Backpressure should drop or coarsen snapshots before it lets the browser build an unbounded send queue.</li>
       </ul>
@@ -383,7 +383,7 @@
         checksums are never coalesced by snapshot backpressure.
       </p>
       <ul class="rule-list">
-        <li>Every lockstep frame uses a fixed <code>1000 / 60</code> ms simulation step.</li>
+        <li>Every lockstep frame uses the fixed simulation step configured in <code>architecture.json</code>: <code>1000 / lockstep.fixedStepHz</code> ms.</li>
         <li>Missing command frames stall instead of causing peers to guess different futures.</li>
         <li>Checksums are compared by frame. A mismatch pauses/desyncs the match and produces an exportable report with initialization hash, state-hash sections, peer ids, and recent command frames.</li>
         <li>First-release lockstep support is intentionally narrow: real battles only, no AI players, no late join, no reconnect, no automatic resync, no host migration, and no spectators unless they are roster seats from frame 0.</li>
@@ -522,28 +522,20 @@
         <li>Run expensive acquisition only for turrets that need work. Existing target hysteresis, drop grace, probe scheduling, and broadphase candidate buffers are the right pattern.</li>
       </ul>
 
-      <h3>Delta thresholds match channel semantics</h3>
+      <h3>Snapshot channels match renderer semantics</h3>
       <p>
-        A <code>FULLSNAP</code> is a recovery baseline. A <code>DIFFSNAP</code> is a minimal update
-        from the last value actually sent to that recipient for that channel. Delta decisions must
-        not compare only against the previous full snapshot, and they must not compare against an
-        unsent local tick value. The baseline advances independently per field when that field is
-        emitted.
+        Presentation snapshots should be simple full-state packets from the local simulation to the
+        renderer. They are allowed to be visibility-filtered for fog of war, but they should not
+        depend on recipient-specific sparse baselines or recovery cadence.
       </p>
       <p>
-        Position-like channels use absolute error because their meaning is spatial: movement
-        position uses world-unit distance, and rotation position uses radians or quaternion angular
-        distance. Derivative channels use relative error because their meaning is rate: movement
-        velocity and rotation velocity should ask whether the new velocity is meaningfully different
-        by percentage from the last velocity sent, not whether it moved by one fixed unit. The same
-        rule applies to any future acceleration-like derivative channel.
+        Sparse event channels, such as one-shot audio or projectile notifications, should stay
+        explicit events. Continuous entity, economy, fog, minimap, and projectile presentation state
+        belongs in the full snapshot so renderer recovery is immediate after a dropped frame.
       </p>
       <p>
-        Derivative comparisons must treat zero as a semantic edge. If the last sent velocity was
-        non-zero and the current authoritative velocity is zero, the relative change is effectively
-        unbounded and the zero must be sent. Decaying velocities should keep producing deltas as they
-        change by meaningful percentages, so the client eventually learns that motion has stopped
-        instead of integrating an old non-zero derivative forever.
+        Dirty flags may still exist inside the simulation to mark changed systems, but they should
+        not define the renderer snapshot contract under deterministic-lockstep.
       </p>
 
       <h3>Client prediction is an explicit contract</h3>
@@ -1031,7 +1023,7 @@
       <p>
         Targeting, collision, capture, fog, projectile queries, and selection should use spatial
         indices, dirty sets, visibility masks, and area-of-interest bounds. Full-world scans are
-        acceptable for bootstrapping, debugging, and rare keyframes. They are not the normal steady
+        acceptable for bootstrapping, debugging, and full-state presentation snapshots. They are not the normal steady
         state for gameplay ticks.
       </p>
 
@@ -1160,7 +1152,7 @@
       <h3>Simulation language</h3>
       <ul class="rule-list">
         <li>Use <code>Rust</code> compiled to <code>WebAssembly</code> for dense numeric simulation kernels.</li>
-        <li>Move physics, projectile stepping, collision kernels, pathfinding kernels, terrain sampling, targeting batches, visibility packing, and snapshot-diff kernels toward WASM when the data can be batched.</li>
+        <li>Move physics, projectile stepping, collision kernels, pathfinding kernels, terrain sampling, targeting batches, visibility packing, and snapshot encoding kernels toward WASM when the data can be batched.</li>
         <li>Use struct-of-arrays storage in WASM linear memory for bodies, projectiles, turrets, spatial indices, and other high-count state.</li>
         <li>Keep <code>TypeScript</code> as orchestration: UI, commands, networking glue, scene lifecycle, and code that would pay too much JS/WASM boundary cost. Configuration and blueprints are data, not TypeScript &mdash; see <strong>Config Is Data, Not Code</strong>.</li>
         <li>Do not use a general-purpose JavaScript physics engine, ECS framework, pathfinding framework, or game framework in the authoritative sim hot path.</li>
@@ -1509,15 +1501,15 @@
       </p>
       <h3>Why aim stays off the wire for beams</h3>
       <p>
-        Aim motion is the busiest channel a turret pushes through the delta serializer.
-        A continuously tracking turret dirties its host entity every frame on rotation /
-        pitch / angular-velocity thresholds, which forces the entire entity row back
-        onto the wire. For beams the renderer never <em>uses</em> that traffic, because
+        Aim motion is one of the busiest turret channels in the presentation snapshot.
+        A continuously tracking turret changes rotation, pitch, and angular velocity every
+        frame, which bloats full-state rows with detail the renderer does not need for beams.
+        For beams the renderer never <em>uses</em> that traffic, because
         the beam polyline already defines the direction and the barrel is posed from it,
-        so zeroing the four angular fields collapses those transitions out of the diff
-        path and the entity only dirties on target-acquisition or state changes. Rocket
-        turrets accept that aim traffic deliberately, because for them the tracking,
-        spinning barrel cluster <em>is</em> the read.
+        so zeroing the four angular fields keeps the full-state beam row focused on
+        target-acquisition or state changes. Rocket turrets accept that aim traffic
+        deliberately, because for them the tracking, spinning barrel cluster <em>is</em>
+        the read.
       </p>
       <h3>Where the rule does not apply</h3>
       <p>
@@ -3026,7 +3018,7 @@
         semantically inapplicable, and previously torn down. An
         <code>entity.turret?.fire()</code> chain swallows all three. The unit just does not shoot,
         no stack trace, no symptom anyone can grep for. In an online multiplayer RTS with pooled state
-        and delta-encoded snapshots, that class of bug compounds.
+        and high-frequency presentation snapshots, that class of bug compounds.
       </p>
 
       <h3>Why this matters more in this codebase</h3>
@@ -3065,7 +3057,7 @@
         <li>Keep the client prediction sim bounded to responsiveness and presentation unless a full-system prediction need is proven.</li>
         <li>Keep rendering decoupled from simulation cadence; <code>requestAnimationFrame</code> samples state, it does not define truth.</li>
         <li>Keep commands small, direct, validated, and host-owned.</li>
-        <li>Keep snapshots sparse, recipient-aware, and low cadence by default.</li>
+        <li>Keep presentation snapshots full-state, recipient-aware, and bounded in cadence by default.</li>
         <li>Keep client prediction physically compatible with the server, especially for motion and projectiles. Ship velocity, not acceleration: the server owns force inputs, the wire ships their integrated result, and the client extrapolates from velocity only.</li>
         <li>Expose the per-channel EMA controls (movement position, movement velocity, rotation position, rotation velocity). Position channels use snap/fast/medium/slow; velocity channels additionally allow ignore so playtesters can tune each channel independently without rebuilds.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>

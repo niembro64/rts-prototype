@@ -1,7 +1,7 @@
 // Command types extracted from game/sim/commands.ts
 
 import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitMoveState, CombatTrajectoryMode, CombatFireState } from './sim';
-import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
+import type { SnapshotRate, TickRate } from './server';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
@@ -48,7 +48,6 @@ export type CommandType =
   | 'manualLaunch'
   | 'guard'
   | 'setSnapshotRate'
-  | 'setKeyframeRatio'
   | 'setTickRate'
   | 'setPaused'
   | 'setUnitGroundNormalEmaMode'
@@ -439,11 +438,6 @@ export type SetSnapshotRateCommand = BaseCommand & {
   rate: SnapshotRate;
 };
 
-export type SetKeyframeRatioCommand = BaseCommand & {
-  type: 'setKeyframeRatio';
-  ratio: KeyframeRatio;
-};
-
 export type SetTickRateCommand = BaseCommand & {
   type: 'setTickRate';
   rate: TickRate;
@@ -458,7 +452,7 @@ export type SetPausedCommand = BaseCommand & {
  *  (see updateUnitGroundNormal). SNAP = no smoothing (raw triangle-edge);
  *  FAST/MID/SLOW = increasing half-life. Goes through the regular
  *  command queue so host + every connected client run with the same
- *  effective EMA, just like setTickRate / setSnapshotRate. */
+ *  effective EMA. */
 export type SetUnitGroundNormalEmaModeCommand = BaseCommand & {
   type: 'setUnitGroundNormalEmaMode';
   mode: UnitGroundNormalEmaMode;
@@ -570,7 +564,6 @@ export type Command =
   | ManualLaunchCommand
   | GuardCommand
   | SetSnapshotRateCommand
-  | SetKeyframeRatioCommand
   | SetTickRateCommand
   | SetPausedCommand
   | SetUnitGroundNormalEmaModeCommand

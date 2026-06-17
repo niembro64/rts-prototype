@@ -144,14 +144,10 @@ export class LocalGameConnection implements GameConnection {
   ): void {
     if (this.snapshotCallback) {
       this.snapshotCallback(state, releaseSnapshot);
-    } else if (!this.pendingSnapshot || (this.pendingSnapshot.isDelta && !state.isDelta)) {
-      this.releasePendingSnapshot();
-      this.pendingSnapshot = state.isDelta
-        ? state
-        : this.pendingSnapshotCloner.clone(state);
-      this.pendingSnapshotRelease = state.isDelta ? releaseSnapshot ?? null : null;
-      if (!state.isDelta) releaseSnapshot?.();
     } else {
+      this.releasePendingSnapshot();
+      this.pendingSnapshot = this.pendingSnapshotCloner.clone(state);
+      this.pendingSnapshotRelease = null;
       releaseSnapshot?.();
     }
   }
@@ -185,7 +181,6 @@ export class LocalGameConnection implements GameConnection {
       unitCount,
       bytes: payload.byteLength,
       encodeMs,
-      isDelta: state.isDelta,
       encoderKind: encoded.encoderKind,
       materializationKind: encoded.materializationKind,
       rustEntityCount: encoded.rustEntityCount,

@@ -39,7 +39,7 @@ export class SnapshotBuffer {
   private pendingSnapshot: NetworkServerSnapshot | null = null;
   private pendingSnapshotRelease: (() => void) | null = null;
   private consumedSnapshotRelease: (() => void) | null = null;
-  private fullSnapshotCloner = new ReusableNetworkSnapshotCloner();
+  private snapshotCloner = new ReusableNetworkSnapshotCloner();
   private detachSnapshotCallback: (() => void) | null = null;
 
   // Double-buffered event arrays (swap instead of allocating new arrays each frame)
@@ -181,41 +181,28 @@ export class SnapshotBuffer {
       } else if (state.serverMeta !== undefined && state.serverMeta.grid === false) {
         this.bufferedGrid = undefined;
       }
-      // Never let startup deltas overwrite an unapplied full
-      // keyframe. A delta cannot create entities that the client has
-      // never seen, so dropping the first full snapshot during the
-      // lobby -> real-battle scene transition leaves the map empty
-      // until the next keyframe. Full snapshots are cloned because
-      // the local server reuses its serializer object for later deltas.
-      // The cloner reuses its destination object graph so full
-      // keyframes do not allocate a fresh 10k-entity tree each time.
-      if (!this.pendingSnapshot || !state.isDelta || this.pendingSnapshot.isDelta) {
-        const previousTerrain = this.pendingSnapshot?.terrain;
-        const previousBuildability = this.pendingSnapshot?.buildability;
-        this.releasePendingSnapshot();
-        const pending = state.isDelta
-          ? state
-          : this.fullSnapshotCloner.clone(state);
-        if (!state.isDelta) {
-          if (pending.terrain === undefined && previousTerrain !== undefined) {
-            pending.terrain = previousTerrain;
-          }
-          if (
-            pending.buildability === undefined &&
-            previousBuildability !== undefined
-          ) {
-            pending.buildability = previousBuildability;
-          }
-        }
-        this.pendingSnapshot = pending;
-        if (!state.isDelta && pending.grid !== undefined) {
-          this.bufferedGrid = pending.grid;
-        }
-        this.pendingSnapshotRelease = state.isDelta ? releaseSnapshot ?? null : null;
-        if (!state.isDelta) releaseSnapshot?.();
-      } else {
-        releaseSnapshot?.();
+      // Full-state snapshots are cloned because the local server reuses
+      // its serializer object for later frames. Static terrain/buildability
+      // ride only bootstrap/recovery packets, so preserve the latest copy.
+      const previousTerrain = this.pendingSnapshot?.terrain;
+      const previousBuildability = this.pendingSnapshot?.buildability;
+      this.releasePendingSnapshot();
+      const pending = this.snapshotCloner.clone(state);
+      if (pending.terrain === undefined && previousTerrain !== undefined) {
+        pending.terrain = previousTerrain;
       }
+      if (
+        pending.buildability === undefined &&
+        previousBuildability !== undefined
+      ) {
+        pending.buildability = previousBuildability;
+      }
+      this.pendingSnapshot = pending;
+      if (pending.grid !== undefined) {
+        this.bufferedGrid = pending.grid;
+      }
+      this.pendingSnapshotRelease = null;
+      releaseSnapshot?.();
     });
   }
 
@@ -351,7 +338,7 @@ export class SnapshotBuffer {
     this.releasePendingSnapshot();
     this.consumedSnapshotRelease?.();
     this.consumedSnapshotRelease = null;
-    this.fullSnapshotCloner.clear();
+    this.snapshotCloner.clear();
     this._spawnsA.length = 0;
     this._spawnsB.length = 0;
     this._spawnsPoolA.length = 0;

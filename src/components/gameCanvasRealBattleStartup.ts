@@ -854,6 +854,12 @@ async function createDeterministicLockstepBackendRuntime({
         return true;
       }
       if (command.type === 'ping') return true;
+      if (
+        command.type === 'setSnapshotRate' ||
+        command.type === 'setTickRate'
+      ) {
+        return true;
+      }
       server.receiveCommand(command, { mode: 'host-admin' });
       return true;
     }
@@ -870,9 +876,6 @@ async function createDeterministicLockstepBackendRuntime({
           scheduler.resume(frame);
           network?.getLockstepTransport().broadcastResume(frame);
         }
-        return true;
-      }
-      if (command.type === 'setTickRate') {
         return true;
       }
       server.receiveCommand(command, { mode: 'host-admin' });
@@ -1000,7 +1003,6 @@ async function createDeterministicLockstepBackendRuntime({
         ipAddress: localIpAddress,
         maxTotalUnits: initialMaxTotalUnits,
         fogOfWarEnabled: true,
-        applyAuthoritativeTiming: false,
       });
       scheduler.markPeerReady(localPlayerId);
       if (network !== undefined) {

@@ -16,7 +16,6 @@ import {
 } from '../../math';
 import {
   PROJECTILE_MASS_MULTIPLIER,
-  SNAPSHOT_CONFIG,
   GRAVITY,
   DGUN_TERRAIN_FOLLOW_HEIGHT,
   DGUN_TERRAIN_FOLLOW_SPRING_ACCEL_PER_WORLD_UNIT,
@@ -117,6 +116,8 @@ type PendingLaunchVelocityFinalization = {
 const _pendingLaunchVelocityFinalizations: PendingLaunchVelocityFinalization[] = [];
 const _pendingLaunchVelocityIds = new Set<EntityId>();
 const TWO_PI = Math.PI * 2;
+const PROJECTILE_VELOCITY_REPORT_MAGNITUDE_RATIO = 0.0001;
+const PROJECTILE_VELOCITY_REPORT_DIRECTION_RADIANS = snapshotRotationThresholdRadians(0.0001);
 const _spreadConeDir = { x: 0, y: 0, z: 0 };
 
 function writeRandomDirectionInCone(
@@ -1921,10 +1922,8 @@ function _updateTravelingProjectilesJS(
       if (homingTargetChanged || snapshotVectorVelocityDeltaExceeded(
         vx, vy, vz,
         lastVx, lastVy, lastVz,
-        SNAPSHOT_CONFIG.deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio,
-        snapshotRotationThresholdRadians(
-          SNAPSHOT_CONFIG.deltaMovementVelocityDirectionThresholdAsFullTurnRatio,
-        ),
+        PROJECTILE_VELOCITY_REPORT_MAGNITUDE_RATIO,
+        PROJECTILE_VELOCITY_REPORT_DIRECTION_RADIANS,
       )) {
         proj.lastSentVelX = vx;
         proj.lastSentVelY = vy;

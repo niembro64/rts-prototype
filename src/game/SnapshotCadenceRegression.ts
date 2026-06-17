@@ -11,10 +11,6 @@ import type { PlayerId } from './sim/types';
 import type { NetworkServerSnapshotMeta } from './network/NetworkTypes';
 import type { SnapshotRate } from '../types/server';
 
-const SCENARIO_RATES = [5, 8, 10] as const;
-const SCENARIO_TICK_RATE = 60;
-const PHASE_MS = 30_000;
-const PHASE_WARMUP_MS = 3_000;
 const PROBE_INTERVAL_MS = 2_000;
 const REPORT_INTERVAL_MS = 10_000;
 const MAX_PENDING_COMMANDS = 64;
@@ -28,7 +24,6 @@ type RateBucket = {
   lastAt: number;
   activeMs: number;
   snapshots: number;
-  fullSnapshots: number;
   correctionSamples: number;
   stats: Record<StatKey, RunningStats>;
 };
@@ -50,7 +45,6 @@ export type SnapshotCadenceRegressionReportRow = {
   seconds: number;
   snapshots: number;
   sps: number;
-  full: number;
   bytesAvg: number | string;
   bytesMax: number | string;
   encodeMs: number | string;
@@ -87,7 +81,6 @@ function makeBucket(rate: string, now: number): RateBucket {
     lastAt: now,
     activeMs: 0,
     snapshots: 0,
-    fullSnapshots: 0,
     correctionSamples: 0,
     stats: {
       bytes: createRunningStats(),
@@ -114,7 +107,6 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'select':
     case 'clearSelection':
     case 'setSnapshotRate':
-    case 'setKeyframeRatio':
     case 'setTickRate':
     case 'setPaused':
     case 'setUnitGroundNormalEmaMode':
@@ -137,7 +129,6 @@ function isGameplayResponseCommand(command: Command): boolean {
 
 export type SnapshotCadenceRegressionApplySample = {
   tick: number;
-  isDelta: boolean;
   meta?: NetworkServerSnapshotMeta;
   applyMs: number;
   correction: SnapshotCorrectionStats;
@@ -152,8 +143,6 @@ export class SnapshotCadenceRegression {
   private currentRate = 'unknown';
   private lastRecordKey = 'unknown';
   private lastRecordAt = 0;
-  private phaseIndex = -1;
-  private phaseStartedAt = 0;
   private lastProbeAt = 0;
   private lastReportAt = 0;
   private scenarioAnnounced = false;
@@ -189,7 +178,6 @@ export class SnapshotCadenceRegression {
     if (meta?.snaps.rate !== undefined) this.currentRate = rateKey(meta.snaps.rate);
     const bucket = this.bucket(meta?.snaps.rate, now);
     bucket.snapshots++;
-    if (!sample.isDelta) bucket.fullSnapshots++;
     addRunningStat(bucket.stats.applyMs, sample.applyMs);
     if (sample.correction.count > 0) {
       bucket.correctionSamples += sample.correction.count;
@@ -244,19 +232,11 @@ export class SnapshotCadenceRegression {
       this.reset(options.now);
       this.scenarioAnnounced = true;
       console.info(
-        '[DP-01] Snapshot cadence regression enabled. Cycling 5/8/10 SPS at 60 TPS; console tables report snapshots, bytes, encode/decode/apply time, correction distance, render FPS, and ping command response.',
+        '[DP-01] Snapshot cadence regression enabled. Observing deterministic-lockstep presentation snapshots; console tables report snapshots, bytes, encode/decode/apply time, correction distance, render FPS, and ping command response.',
       );
     }
 
     if (
-      this.phaseIndex < 0 ||
-      options.now - this.phaseStartedAt >= PHASE_MS
-    ) {
-      this.advancePhase(options);
-    }
-
-    if (
-      options.now - this.phaseStartedAt >= PHASE_WARMUP_MS &&
       options.now - this.lastProbeAt >= PROBE_INTERVAL_MS
     ) {
       this.lastProbeAt = options.now;
@@ -289,30 +269,6 @@ export class SnapshotCadenceRegression {
   rows(now = performance.now()): SnapshotCadenceRegressionReportRow[] {
     if (!this.enabled) return [];
     return this.buildReportRows(now);
-  }
-
-  private advancePhase(options: {
-    now: number;
-    currentTick: number;
-    sendCommand(command: Command): void;
-  }): void {
-    this.phaseIndex = (this.phaseIndex + 1) % SCENARIO_RATES.length;
-    const rate = SCENARIO_RATES[this.phaseIndex];
-    this.currentRate = String(rate);
-    this.phaseStartedAt = options.now;
-    this.lastProbeAt = options.now;
-    this.lastReportAt = options.now;
-    options.sendCommand({
-      type: 'setTickRate',
-      tick: options.currentTick,
-      rate: SCENARIO_TICK_RATE,
-    });
-    options.sendCommand({
-      type: 'setSnapshotRate',
-      tick: options.currentTick,
-      rate,
-    });
-    console.info(`[DP-01] Regression phase: ${rate} SPS, ${SCENARIO_TICK_RATE} TPS target.`);
   }
 
   private bucket(rate: SnapshotRate | undefined, now = performance.now()): RateBucket {
@@ -351,7 +307,7 @@ export class SnapshotCadenceRegression {
 
   private buildReportRows(_now: number): SnapshotCadenceRegressionReportRow[] {
     const rows: SnapshotCadenceRegressionReportRow[] = [];
-    const orderedRates = [...SCENARIO_RATES.map(String), 'unknown'];
+    const orderedRates = [...this.buckets.keys()].sort(compareRateKeys);
     for (const key of orderedRates) {
       const bucket = this.buckets.get(key);
       if (!bucket) continue;
@@ -361,7 +317,6 @@ export class SnapshotCadenceRegression {
         seconds: Number(durationSec.toFixed(1)),
         snapshots: bucket.snapshots,
         sps: Number((bucket.snapshots / durationSec).toFixed(2)),
-        full: bucket.fullSnapshots,
         bytesAvg: formatRunningAverage(bucket.stats.bytes, 0),
         bytesMax: formatRunningMax(bucket.stats.bytes, 0),
         encodeMs: formatRunningAverage(bucket.stats.encodeMs),
@@ -390,6 +345,16 @@ export class SnapshotCadenceRegression {
     console.info(`[DP-01] Snapshot cadence regression report @ ${Math.round(now)}ms`);
     console.table(rows);
   }
+}
+
+function compareRateKeys(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a === 'unknown') return 1;
+  if (b === 'unknown') return -1;
+  const an = Number(a);
+  const bn = Number(b);
+  if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+  return a.localeCompare(b);
 }
 
 export const SNAPSHOT_CADENCE_REGRESSION = new SnapshotCadenceRegression();

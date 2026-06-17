@@ -1232,7 +1232,6 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !isFiniteNumber(meta.ticks.rate) ||
     !meta.snaps ||
     !isFiniteNumberOrString(meta.snaps.rate) ||
-    !isFiniteNumberOrString(meta.snaps.keyframes) ||
     !meta.server ||
     typeof meta.server.time !== 'string' ||
     typeof meta.server.ip !== 'string' ||
@@ -1290,12 +1289,6 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     snapsRateSlot = pushString(snapsRate);
   }
 
-  const snapsKeyframes = meta.snaps.keyframes;
-  let snapsKeyframesSlot = 0;
-  if (typeof snapsKeyframes === 'string') {
-    snapsKeyframesSlot = pushString(snapsKeyframes);
-  }
-
   let shieldReflectionModeSlot = 0;
   if (meta.shieldReflectionMode !== undefined) {
     shieldReflectionModeSlot = pushString(meta.shieldReflectionMode);
@@ -1311,9 +1304,6 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     typeof snapsRate === 'string' ? 1 : 0,
     typeof snapsRate === 'string' ? 0 : snapsRate,
     snapsRateSlot,
-    typeof snapsKeyframes === 'string' ? 1 : 0,
-    typeof snapsKeyframes === 'string' ? 0 : snapsKeyframes,
-    snapsKeyframesSlot,
     serverTimeSlot,
     serverIpSlot,
     meta.grid ? 1 : 0,
@@ -2430,9 +2420,6 @@ function emitEnvelopeTail(
     index++;
   }
 
-  if (keys[index] !== 'isDelta' || typeof state.isDelta !== 'boolean') return startIndex;
-  index++;
-
   let hasRemovedEntityIds = 0;
   let removedEntityIdCount = 0;
   if (keys[index] === 'removedEntityIds') {
@@ -2461,7 +2448,6 @@ function emitEnvelopeTail(
     gameStatePhaseSlot,
     hasWinnerId,
     winnerId,
-    state.isDelta ? 1 : 0,
     hasRemovedEntityIds,
     removedEntityIdCount,
     hasVisibilityFiltered,
@@ -2529,7 +2515,7 @@ export function encodeNetworkSnapshotWithRustFallback(
   rawTopLevelKeys.length = 0;
   for (let i = 2; i < keys.length; i++) {
     const key = keys[i];
-    if (key === 'gameState' || key === 'isDelta') {
+    if (key === 'gameState' || key === 'removedEntityIds' || key === 'visibilityFiltered') {
       const nextIndex = emitEnvelopeTail(sim, state, keys, i);
       if (nextIndex !== i) {
         i = nextIndex - 1;

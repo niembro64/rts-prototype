@@ -306,7 +306,6 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       ctx.world.converterTax = command.tax;
       break;
     case 'setSnapshotRate':
-    case 'setKeyframeRatio':
     case 'setTickRate':
     case 'setPaused':
     case 'setSendGridInfo':

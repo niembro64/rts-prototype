@@ -373,17 +373,6 @@ import __wbg_init, {
   projectile_terminal_consequence_batch,
   projectile_terminal_effect_plan_batch,
   projectile_hitbox_sweep_batch,
-  snapshot_baseline_create,
-  snapshot_baseline_destroy,
-  snapshot_baseline_clear,
-  snapshot_baseline_unset_slot,
-  snapshot_baseline_ensure_capacity,
-  snapshot_baseline_live_count,
-  snapshot_baseline_capture_unit_slot,
-  snapshot_baseline_capture_building_slot,
-  snapshot_baseline_slot_used,
-  snapshot_baseline_slot_last_tick,
-  snapshot_baseline_diff_slot,
   snapshot_encode_entity_basic,
   snapshot_encode_entity_unit,
   snapshot_encode_entity_building,
@@ -1710,10 +1699,6 @@ export interface SimWasm {
    *  through the per-unit + per-panel arrays. The clearance / projectile
    *  kernels read both shapes and apply the same material policy. */
   readonly shieldSurfacePool: ShieldSurfacePoolApi;
-  /** Phase 10 D.3b — Per-recipient snapshot baseline registry.
-   *  Foundation for the D.3c quantize + D.3d delta-encode kernels;
-   *  no consumer reads from it yet. */
-  readonly snapshotBaseline: SnapshotBaselineApi;
   /** Phase 10 D.3j — Entity-DTO encoder kernels. Each successive
    *  commit handles one more field group of the snapshot DTO; the
    *  ported portion is verified byte-equal against
@@ -2905,112 +2890,12 @@ export interface ShieldSurfacePoolApi {
   ) => number;
 }
 
-/** Phase 10 D.3b — Per-recipient snapshot baseline registry. Each
- *  network listener registers once at session start via `create()`
- *  and is freed at session end via `destroy()`. The handle is the
- *  u32 index used by the (future) D.3c quantize + D.3d delta-encode
- *  kernels to look up that listener's last-shipped scalars. Storage
- *  is the parallel-SoA mirror of stateSerializerEntityDelta.ts's
- *  PrevEntityState — fields auto-grow as `ensureCapacity` is called
- *  with larger slot ids. */
-export interface SnapshotBaselineApi {
-  /** Allocate a baseline slot, returning its u32 handle. Reuses any
-   *  freed handle from `destroy()` via the registry's free list. */
-  create: () => number;
-  /** Free a baseline by handle; the handle is recycled on next create. */
-  destroy: (handle: number) => void;
-  /** Mark every slot's `used` flag back to 0 without dropping
-   *  capacity — used on session reset / keyframe forced re-emit. */
-  clear: (handle: number) => void;
-  /** Drop the baseline for one slot (entity removed / out of vision). */
-  unsetSlot: (handle: number, slot: number) => void;
-  /** Pre-grow the per-slot arrays to cover at least `slot`. Optional
-   *  hint — kernels that write a slot auto-grow as needed. */
-  ensureCapacity: (handle: number, slot: number) => void;
-  /** How many baselines are currently live (created minus destroyed). */
-  liveCount: () => number;
-  /** D.3c — capture one unit slot's current state into the baseline.
-   *  Pulls HP / build / suspension from the entity-meta pool and
-   *  per-turret state from the turret pool; takes transform,
-   *  velocity, normal, action hash, and turret engagement / target
-   *  bits as parameters. Auto-grows. */
-  captureUnitSlot: (
-    handle: number,
-    slot: number,
-    tick: number,
-    changedFields: number,
-    x: number, y: number, z: number,
-    rotation: number,
-    velocityX: number, velocityY: number, velocityZ: number,
-    normalX: number, normalY: number, normalZ: number,
-    actionCount: number,
-    actionHash: number,
-    isEngagedBits: number,
-    targetBits: number,
-  ) => void;
-  /** D.3c — capture one building slot's current state into the
-   *  baseline. Pulls HP + factory/solar/build progress from the
-   *  entity-meta pool and turret state from the turret pool (for
-   *  defense-turret buildings); takes transform plus engagement /
-   *  target bits as parameters. Auto-grows. Zeros velocity so a
-   *  stray emit can't pick up stale unit data from a slot recycle. */
-  captureBuildingSlot: (
-    handle: number,
-    slot: number,
-    tick: number,
-    changedFields: number,
-    x: number, y: number, z: number,
-    rotation: number,
-    isEngagedBits: number,
-    targetBits: number,
-  ) => void;
-  /** Per-slot used flag (0 = unset, 1 = baseline captured). */
-  slotUsed: (handle: number, slot: number) => number;
-  /** Tick at which a slot's baseline was last captured (0 if unset). */
-  slotLastTick: (handle: number, slot: number) => number;
-  /** D.3d — compute the ENTITY_CHANGED_* bitmask between the
-   *  caller-supplied current scalars (plus the pool-resident hp /
-   *  turret / build / factory / solar state) and this recipient's
-   *  stored baseline. Returns 0 when the baseline is unset (caller
-   *  should treat that case as "emit full DTO" — matches the
-   *  isNew branch in serializer.ts). Threshold math mirrors
-   *  stateSerializerEntityDelta.ts:getEntityDeltaChangedFields. */
-  diffSlot: (
-    handle: number,
-    slot: number,
-    kind: number,
-    x: number, y: number, z: number,
-    rotation: number,
-    velocityX: number, velocityY: number, velocityZ: number,
-    normalX: number, normalY: number, normalZ: number,
-    actionCount: number,
-    actionHash: number,
-    isEngagedBits: number,
-    targetBits: number,
-    posThresholdWorldUnits: number,
-    rotPosThresholdRadians: number,
-    movementVelMagnitudeThresholdRatio: number,
-    movementVelDirectionThresholdRadians: number,
-    rotVelMagnitudeThresholdRatio: number,
-    rotVelDirectionThresholdRadians: number,
-    hasBuildable: number,
-    hasCombat: number,
-    hasFactory: number,
-  ) => number;
-}
-
-/** Kind tags for SnapshotBaselineApi.diffSlot. Mirrors
- *  SNAPSHOT_DIFF_KIND_* in lib.rs. */
-export const SNAPSHOT_DIFF_KIND_UNIT = 1;
-export const SNAPSHOT_DIFF_KIND_BUILDING = 2;
-export const SNAPSHOT_DIFF_KIND_TOWER = 3;
-
 /** Phase 10 D.3j — entity-DTO encoder kernels. Byte-equal port of
  *  stateSerializerEntities.ts:serializeEntitySnapshot's output as
  *  encoded by @msgpack/msgpack with `ignoreUndefined: true`. The
  *  port lands one field group per commit; basic envelope here is
  *  the always-present `{id, type, pos, rotation, playerId}` plus
- *  the optional `changedFields` delta mask. Output lands in the
+   *  the optional legacy `changedFields` sparse-record mask. Output lands in the
  *  shared D.2 MessagePack writer scratch; read via writerPtr/Len. */
 export interface SnapshotEncodeApi {
   /** Encode the basic entity envelope into the D.2 scratch. Returns
@@ -3026,8 +2911,7 @@ export interface SnapshotEncodeApi {
   ) => number;
   /** Encode envelope + the unit sub-object. Numeric vector components
    *  are pre-quantized JS numbers (caller does qVel / qNormal).
-   *  Optional static fields cover full keyframes; delta-only fields
-   *  stay gated by their has* flags. */
+   *  Optional static fields are controlled by their has* flags. */
   encodeEntityUnit: (
     id: number,
     typeTag: number,
@@ -3202,9 +3086,6 @@ export interface SnapshotEncodeApi {
     snapsRateIsString: number,
     snapsRate: number,
     snapsRateSlot: number,
-    snapsKeyframesIsString: number,
-    snapsKeyframes: number,
-    snapsKeyframesSlot: number,
     serverTimeSlot: number,
     serverIpSlot: number,
     gridEnabled: number,
@@ -3236,7 +3117,7 @@ export interface SnapshotEncodeApi {
     windAngle: number,
     unitGroundNormalEmaSlot: number,
   ) => number;
-  /** Close the envelope. Emits gameState (if hasGameState), isDelta,
+  /** Close the envelope. Emits gameState (if hasGameState),
    *  removedEntityIds (if hasRemovedIds), visibilityFiltered (if
    *  hasVisibilityFiltered) in that order. Returns total bytes
    *  written. */
@@ -3245,7 +3126,6 @@ export interface SnapshotEncodeApi {
     gameStatePhaseSlot: number,
     hasWinnerId: number,
     winnerId: number,
-    isDelta: number,
     hasRemovedEntityIds: number,
     removedEntityIdCount: number,
     hasVisibilityFiltered: number,
@@ -4291,19 +4171,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           turretAimCompute: render_turret_aim_compute,
           turretAimInputStride: 12,
           turretAimOutputStride: 2,
-        },
-        snapshotBaseline: {
-          create: snapshot_baseline_create,
-          destroy: snapshot_baseline_destroy,
-          clear: snapshot_baseline_clear,
-          unsetSlot: snapshot_baseline_unset_slot,
-          ensureCapacity: snapshot_baseline_ensure_capacity,
-          liveCount: snapshot_baseline_live_count,
-          captureUnitSlot: snapshot_baseline_capture_unit_slot,
-          captureBuildingSlot: snapshot_baseline_capture_building_slot,
-          slotUsed: snapshot_baseline_slot_used,
-          slotLastTick: snapshot_baseline_slot_last_tick,
-          diffSlot: snapshot_baseline_diff_slot,
         },
         snapshotEncode: {
           encodeEntityBasic: snapshot_encode_entity_basic,

@@ -66,7 +66,6 @@ const LOCAL_PRESENTATION_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'clearSelection',
   'ping',
   'setSnapshotRate',
-  'setKeyframeRatio',
   'setTickRate',
   'setSendGridInfo',
   'setBackgroundUnitBlueprintEnabled',

@@ -38,7 +38,7 @@ export type BackgroundBattleState = {
   connection: LocalGameConnection;
   /** Persistent ClientViewState — survives a scene rebuild so the new
    *  scene resumes from the current entity state without waiting for a
-   *  keyframe. */
+   *  fresh snapshot. */
   clientViewState: ClientViewState;
 };
 

@@ -24,31 +24,52 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
   slow: 'SLOW',
 };
 
-function architectureLabel(): string {
-  return 'LOCKSTEP';
+function architectureLabel(model: GameCanvasServerControlBarModel): string {
+  return model.isLockstepBackend ? 'LOCKSTEP' : 'LOCAL SIM';
 }
 
-function architectureTitle(): string {
-  return 'deterministic-lockstep: ordered command frames are multiplayer truth; each browser runs the same local server simulation.';
+function architectureTitle(model: GameCanvasServerControlBarModel): string {
+  if (model.isLockstepBackend) {
+    return 'deterministic-lockstep: ordered command frames are multiplayer truth; each browser runs the same local server simulation.';
+  }
+  return 'local preview/demo simulation: this runtime is not the multiplayer lockstep backend.';
 }
 
-function simTpsLabel(): string {
-  return 'ADV TPS';
+function simTpsLabel(model: GameCanvasServerControlBarModel): string {
+  return model.isLockstepBackend ? 'ADV TPS' : 'TPS';
 }
 
-function simTpsTitle(): string {
+function simTpsTitle(model: GameCanvasServerControlBarModel): string {
+  if (!model.isLockstepBackend) {
+    return `Actual local simulation ticks per wall-clock second. Target is the local server tick rate reported by snapshot meta: ${fmt4(model.displayTickRate)} Hz.`;
+  }
   return `Actual lockstep frames advanced per wall-clock second in this browser. This can be below ${LOCKSTEP_FIXED_SIM_HZ} when the browser pump is slow or waiting for command frames; the fixed simulation step still remains ${LOCKSTEP_FIXED_SIM_HZ} Hz.`;
 }
 
-function simTpsTarget(): number {
-  return LOCKSTEP_FIXED_SIM_HZ;
+function simTpsTarget(model: GameCanvasServerControlBarModel): number {
+  return model.isLockstepBackend ? LOCKSTEP_FIXED_SIM_HZ : Math.max(1, model.displayTickRate);
 }
 
-function cpuTitle(): string {
+function cpuTitle(model: GameCanvasServerControlBarModel): string {
+  if (!model.isLockstepBackend) {
+    return `Local simulation CPU load - measured server-simulation work as a percent of the ${fmt4(model.displayTickRate)} Hz tick budget.`;
+  }
   return `Local lockstep simulation CPU load - measured server-simulation work as a percent of the fixed ${LOCKSTEP_FIXED_SIM_HZ} Hz frame budget.`;
 }
 
-function fixedStepTitle(): string {
+function timingLabel(model: GameCanvasServerControlBarModel): string {
+  return model.isLockstepBackend ? 'FIXED STEP:' : 'SIM STEP:';
+}
+
+function timingValue(model: GameCanvasServerControlBarModel): string {
+  const hz = model.isLockstepBackend ? LOCKSTEP_FIXED_SIM_HZ : model.displayTickRate;
+  return `${fmt4(hz)} HZ`;
+}
+
+function fixedStepTitle(model: GameCanvasServerControlBarModel): string {
+  if (!model.isLockstepBackend) {
+    return `Local preview/demo simulation step from snapshot meta: ${fmt4(model.displayTickRate)} Hz (${fmt4(1000 / Math.max(1, model.displayTickRate))} ms per tick).`;
+  }
   return `deterministic-lockstep fixed simulation step from architecture.json: ${LOCKSTEP_FIXED_SIM_HZ} Hz (${fmt4(1000 / LOCKSTEP_FIXED_SIM_HZ)} ms per logical frame). Actual frame advancement is shown separately as ADV TPS.`;
 }
 
@@ -92,21 +113,21 @@ function checksumTitle(): string {
           >{{ model.displayServerIp }}</span
         >
       </BarControlGroup>
-      <BarControlGroup>
+      <BarControlGroup v-if="model.isLockstepBackend">
         <BarDivider />
         <BarLabel>BACKEND:</BarLabel>
         <BarButton
           :active="true"
-          :title="architectureTitle()"
-        >{{ architectureLabel() }}</BarButton>
+          :title="architectureTitle(model)"
+        >{{ architectureLabel(model) }}</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="fixedStepTitle()">FIXED STEP:</BarLabel>
+        <BarLabel :title="fixedStepTitle(model)">{{ timingLabel(model) }}</BarLabel>
         <BarButton
           :active="true"
-          :title="fixedStepTitle()"
-        >{{ LOCKSTEP_FIXED_SIM_HZ }} HZ</BarButton>
+          :title="fixedStepTitle(model)"
+        >{{ timingValue(model) }}</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -131,7 +152,7 @@ function checksumTitle(): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="simTpsTitle()">{{ simTpsLabel() }}:</BarLabel>
+        <BarLabel :title="simTpsTitle(model)">{{ simTpsLabel(model) }}:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -142,7 +163,7 @@ function checksumTitle(): string {
               <div
                 class="stat-bar-fill"
                 :style="
-                  statBarStyle(model.displayServerTpsAvg, simTpsTarget(), model.isReadonly)
+                  statBarStyle(model.displayServerTpsAvg, simTpsTarget(model), model.isReadonly)
                 "
               ></div>
             </div>
@@ -158,7 +179,7 @@ function checksumTitle(): string {
               <div
                 class="stat-bar-fill"
                 :style="
-                  statBarStyle(model.displayServerTpsWorst, simTpsTarget(), model.isReadonly)
+                  statBarStyle(model.displayServerTpsWorst, simTpsTarget(model), model.isReadonly)
                 "
               ></div>
             </div>
@@ -167,7 +188,7 @@ function checksumTitle(): string {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="cpuTitle()">CPU:</BarLabel>
+        <BarLabel :title="cpuTitle(model)">CPU:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

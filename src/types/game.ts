@@ -18,7 +18,7 @@ export type GameConfig = {
   gameConnection: GameConnection;
   /** ClientViewState owned by GameCanvas so its contents (units, buildings,
    *  prediction, selection, etc.) survive a scene rebuild without waiting
-   *  on a keyframe. On first boot the caller creates a fresh one. */
+   *  on a fresh snapshot. On first boot the caller creates a fresh one. */
   clientViewState: import('../game/network/ClientViewState').ClientViewState;
   mapWidth: number;
   mapHeight: number;

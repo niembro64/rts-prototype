@@ -1,16 +1,7 @@
 // Types extracted from src/config.ts
 
 export type SnapshotConfig = {
-  deltaSnapshotsEnabled: boolean;
-  deltaMovementPositionThresholdAsMapRatio: number;
-  deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio: number;
-  deltaMovementVelocityDirectionThresholdAsFullTurnRatio: number;
-  deltaRotationPositionThresholdAsFullTurnRatio: number;
-  deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio: number;
-  deltaRotationVelocityDirectionThresholdAsFullTurnRatio: number;
-  fullSnapshotMinimapContactListMaxRefreshRateHz: number;
-  fullSnapshotEntityDetailFieldsMaxRefreshRateHz: number;
-  fullSnapshotProjectileDetailFieldsMaxRefreshRateHz: number;
+  nominalSnapshotRateHz: number;
 };
 
 export type EmaLowConfig = {

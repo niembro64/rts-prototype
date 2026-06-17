@@ -98,7 +98,7 @@ function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
   if (next.config.turretBlueprintId !== prev.config.turretBlueprintId) return;
 
   // Full snapshots rebuild turret arrays, but visual aim correction still
-  // belongs to ServerTarget + prediction so keyframes do not hard-snap poses.
+  // belongs to ServerTarget + prediction so snapshots do not hard-snap poses.
   next.rotation = prev.rotation;
   next.pitch = prev.pitch;
   next.angularVelocity = prev.angularVelocity;
@@ -350,11 +350,9 @@ function createUnitFromNetwork(
       thrustDirY: 0,
       shieldPanels: [],
       shieldBoundRadius: 0,
-      // Smoothed surface normal: hydrated from the wire when present
-      // (full keyframes always carry it, deltas ship it on
-      // ENTITY_CHANGED_NORMAL). Defaults to flat-up so non-keyframe
-      // creations or pre-unit-ground-normal-EMA snapshots don't leave a zero normal
-      // for downstream consumers.
+      // Smoothed surface normal: hydrated from the wire when present.
+      // Defaults to flat-up so old sparse records or pre-unit-ground-normal-EMA
+      // snapshots don't leave a zero normal for downstream consumers.
       surfaceNormal,
       suspension: createUnitSuspension(
         unitBlueprint !== undefined ? unitBlueprint.suspension : undefined,

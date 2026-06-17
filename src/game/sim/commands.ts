@@ -44,7 +44,6 @@ export type {
   ManualLaunchCommand,
   GuardCommand,
   SetSnapshotRateCommand,
-  SetKeyframeRatioCommand,
   SetTickRateCommand,
   SetPausedCommand,
   SetUnitGroundNormalEmaModeCommand,

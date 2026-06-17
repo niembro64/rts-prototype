@@ -1,5 +1,5 @@
 import type { NetworkServerSnapshotMeta } from '../network/NetworkTypes';
-import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
+import type { SnapshotRate, TickRate } from '../../types/server';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import type { UnitGroundNormalEmaMode } from '../../shellConfig';
 
@@ -8,7 +8,6 @@ export type ServerSnapshotMetaInput = {
   tickLow: number;
   tickRateHz: TickRate;
   snapshotRate: SnapshotRate;
-  keyframeRatio: KeyframeRatio;
   ipAddress: string;
   gridEnabled: boolean;
   allowedUnits: ReadonlySet<string> | undefined;
@@ -63,7 +62,7 @@ export class ServerSnapshotMetaBuilder {
         low: input.tickLow,
         rate: input.tickRateHz,
       },
-      snaps: { rate: input.snapshotRate, keyframes: input.keyframeRatio },
+      snaps: { rate: input.snapshotRate },
       server: { time: this.formatServerTime(), ip: input.ipAddress },
       grid: input.gridEnabled,
       units: {

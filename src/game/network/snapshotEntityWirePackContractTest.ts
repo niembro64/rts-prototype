@@ -111,7 +111,6 @@ export function runSnapshotEntityWirePackContractTest(): void {
     grid: undefined,
     terrain: undefined,
     buildability: undefined,
-    isDelta: false,
     visibilityFiltered: undefined,
     visionPlayerMask: undefined,
     removedEntityIds: undefined,

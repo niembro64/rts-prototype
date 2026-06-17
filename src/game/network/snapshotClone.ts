@@ -58,10 +58,10 @@ function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapsh
 
 /** Pass-through. TerrainTileMap is immutable per match (see the
  *  contract on the type definition); the previous deep-clone was
- *  copying ~14k–60k height samples per full keyframe per listener
+ *  copying ~14k-60k height samples per full snapshot per listener
  *  for no benefit since no consumer mutates the map. Sharing the
  *  reference is safe and saves a predictable allocation spike on
- *  every keyframe. */
+ *  every snapshot. */
 function cloneTerrainTileMap(map: TerrainTileMap): TerrainTileMap {
   return map;
 }
@@ -276,10 +276,10 @@ function copyEconomyInto(
 }
 
 /**
- * Reuses the destination snapshot/entity object graph across full-keyframe
+ * Reuses the destination snapshot/entity object graph across full-state
  * clones. This is for local in-memory snapshots where the server serializer
  * reuses pooled objects, but allocating a fresh 10k-entity clone every
- * keyframe would create GC spikes on the render thread.
+ * snapshot would create GC spikes on the render thread.
  */
 export class ReusableNetworkSnapshotCloner {
   private snapshot: NetworkServerSnapshot = {
@@ -298,7 +298,6 @@ export class ReusableNetworkSnapshotCloner {
     grid: undefined,
     terrain: undefined,
     buildability: undefined,
-    isDelta: false,
     visibilityFiltered: undefined,
     visionPlayerMask: undefined,
     removedEntityIds: undefined,
@@ -332,7 +331,7 @@ export class ReusableNetworkSnapshotCloner {
   // toggles to undefined instead of dropping the buffer.
   private serverMeta: NonNullable<NetworkServerSnapshot['serverMeta']> = {
     ticks: { avg: 0, low: 0, rate: 0 },
-    snaps: { rate: 0, keyframes: 0 },
+    snaps: { rate: 0 },
     server: { time: '', ip: '' },
     grid: false,
     units: { allowed: undefined, max: undefined, count: undefined },
@@ -492,7 +491,6 @@ export class ReusableNetworkSnapshotCloner {
       dsm.ticks.low = sm.ticks.low;
       dsm.ticks.rate = sm.ticks.rate;
       dsm.snaps.rate = sm.snaps.rate;
-      dsm.snaps.keyframes = sm.snaps.keyframes;
       dsm.server.time = sm.server.time;
       dsm.server.ip = sm.server.ip;
       dsm.grid = sm.grid;
@@ -560,7 +558,6 @@ export class ReusableNetworkSnapshotCloner {
     dst.buildability = state.buildability
       ? cloneTerrainBuildabilityGrid(state.buildability)
       : undefined;
-    dst.isDelta = state.isDelta;
     dst.visibilityFiltered = state.visibilityFiltered === true ? true : undefined;
     dst.visionPlayerMask = state.visionPlayerMask;
     if (state.removedEntityIds && state.removedEntityIds.length > 0) {

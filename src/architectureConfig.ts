@@ -35,16 +35,9 @@ function parsePositiveInteger(
   return value as number;
 }
 
-function parseBoolean(value: unknown, path: string): boolean {
-  if (typeof value !== 'boolean') {
-    throw new Error(`${path} must be a boolean; received ${String(value)}`);
-  }
-  return value;
-}
-
-function parseNonNegativeFiniteNumber(value: unknown, path: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new Error(`${path} must be a finite number >= 0; received ${String(value)}`);
+function parsePositiveFiniteNumber(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${path} must be a finite number > 0; received ${String(value)}`);
   }
   return value;
 }
@@ -68,45 +61,9 @@ function parseLockstepPresentationSnapshotConfig(
     throw new Error('architecture.lockstep.presentationSnapshots must be an object');
   }
   return {
-    deltaSnapshotsEnabled: parseBoolean(
-      value.deltaSnapshotsEnabled,
-      'architecture.lockstep.presentationSnapshots.deltaSnapshotsEnabled',
-    ),
-    deltaMovementPositionThresholdAsMapRatio: parseNonNegativeFiniteNumber(
-      value.deltaMovementPositionThresholdAsMapRatio,
-      'architecture.lockstep.presentationSnapshots.deltaMovementPositionThresholdAsMapRatio',
-    ),
-    deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio: parseNonNegativeFiniteNumber(
-      value.deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio,
-      'architecture.lockstep.presentationSnapshots.deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio',
-    ),
-    deltaMovementVelocityDirectionThresholdAsFullTurnRatio: parseNonNegativeFiniteNumber(
-      value.deltaMovementVelocityDirectionThresholdAsFullTurnRatio,
-      'architecture.lockstep.presentationSnapshots.deltaMovementVelocityDirectionThresholdAsFullTurnRatio',
-    ),
-    deltaRotationPositionThresholdAsFullTurnRatio: parseNonNegativeFiniteNumber(
-      value.deltaRotationPositionThresholdAsFullTurnRatio,
-      'architecture.lockstep.presentationSnapshots.deltaRotationPositionThresholdAsFullTurnRatio',
-    ),
-    deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio: parseNonNegativeFiniteNumber(
-      value.deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio,
-      'architecture.lockstep.presentationSnapshots.deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio',
-    ),
-    deltaRotationVelocityDirectionThresholdAsFullTurnRatio: parseNonNegativeFiniteNumber(
-      value.deltaRotationVelocityDirectionThresholdAsFullTurnRatio,
-      'architecture.lockstep.presentationSnapshots.deltaRotationVelocityDirectionThresholdAsFullTurnRatio',
-    ),
-    fullSnapshotMinimapContactListMaxRefreshRateHz: parseNonNegativeFiniteNumber(
-      value.fullSnapshotMinimapContactListMaxRefreshRateHz,
-      'architecture.lockstep.presentationSnapshots.fullSnapshotMinimapContactListMaxRefreshRateHz',
-    ),
-    fullSnapshotEntityDetailFieldsMaxRefreshRateHz: parseNonNegativeFiniteNumber(
-      value.fullSnapshotEntityDetailFieldsMaxRefreshRateHz,
-      'architecture.lockstep.presentationSnapshots.fullSnapshotEntityDetailFieldsMaxRefreshRateHz',
-    ),
-    fullSnapshotProjectileDetailFieldsMaxRefreshRateHz: parseNonNegativeFiniteNumber(
-      value.fullSnapshotProjectileDetailFieldsMaxRefreshRateHz,
-      'architecture.lockstep.presentationSnapshots.fullSnapshotProjectileDetailFieldsMaxRefreshRateHz',
+    nominalSnapshotRateHz: parsePositiveFiniteNumber(
+      value.nominalSnapshotRateHz,
+      'architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz',
     ),
   };
 }

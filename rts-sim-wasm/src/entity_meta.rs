@@ -641,7 +641,7 @@ pub fn entity_meta_set_building(
 /// fabricator's factory progress / queue rides on the same factory_*
 /// fields buildings use (fabricator is a tower that mounts a factory
 /// component). solar_open is unused for towers and should be passed as
-/// 0 / 1 consistently to avoid producing spurious snapshot diffs.
+/// 0 / 1 consistently to avoid producing spurious snapshot row churn.
 #[wasm_bindgen]
 pub fn entity_meta_set_tower(
     slot: u32,

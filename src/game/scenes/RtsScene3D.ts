@@ -90,7 +90,7 @@ export type RtsScene3DConfig = {
   localPlayerId: PlayerId;
   gameConnection: GameConnection;
   /** Hoisted up to GameCanvas so state survives a live 2D↔3D renderer
-   *  swap without waiting for the next keyframe. If the old scene's
+   *  swap without waiting for the next snapshot. If the old scene's
    *  CVS is already populated, the new scene inherits all units,
    *  buildings, projectiles, selection, prediction, etc. with zero
    *  delay. On first boot GameCanvas creates a fresh one. */
@@ -1224,20 +1224,7 @@ export class RtsScene3D {
     return this.snapshotIntake.getSnapshotStats();
   }
 
-  /** Full-keyframe arrival rate. Only counts snaps where
-   *  `state.isDelta === false`. Useful for spotting an aggressive
-   *  keyframe ratio (full snaps every tick) vs a sparse one (full
-   *  every few seconds). */
-  public getFullSnapshotStats(): { avgRate: number; worstRate: number } {
-    return this.snapshotIntake.getFullSnapshotStats();
-  }
-
-  public getSnapshotPayloadSizeStats(): {
-    diffAvgBytes: number;
-    diffHiBytes: number;
-    fullAvgBytes: number;
-    fullHiBytes: number;
-  } {
+  public getSnapshotPayloadSizeStats(): { avgBytes: number; hiBytes: number } {
     return this.snapshotIntake.getSnapshotPayloadSizeStats();
   }
 

@@ -4,7 +4,6 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { CommandQueue, Command } from '../sim/commands';
-import { resetDeltaTracking } from '../network/stateSerializer';
 import { trimEntitySnapshotPool } from '../network/stateSerializerEntities';
 import type { SnapshotCallback, GameOverCallback } from './GameConnection';
 import type { PlayerId } from '../sim/types';
@@ -13,16 +12,14 @@ import { economyManager } from '../sim/economy';
 import { beamIndex } from '../sim/BeamIndex';
 import type { PhysicsEngine3D } from './PhysicsEngine3D';
 import {
-  DEFAULT_KEYFRAME_RATIO,
   EMA_CONFIG,
-  type KeyframeRatio,
   type SnapshotRate,
 } from '../../config';
 import {
-  HOST_SNAPSHOT_RATE_DEFAULT,
-  normalizeSnapshotRate,
-  snapshotRateIntervalMs,
-} from '../../serverBarConfig';
+  PRESENTATION_SNAPSHOT_RATE_DEFAULT,
+  normalizePresentationSnapshotRate,
+  presentationSnapshotRateIntervalMs,
+} from '../../presentationSnapshotConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
 import { setUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
@@ -92,7 +89,6 @@ export class GameServer {
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
   private maxSnapshotsDisplay: SnapshotRate;
   private lastSnapshotTime: number = 0;
-  private keyframeRatioDisplay: KeyframeRatio;
 
   // Background mode — allowed unit blueprints for AI production & UI toggles.
   // Initial set comes from GameServerConfig.initialAllowedUnitBlueprintIds when the
@@ -122,8 +118,6 @@ export class GameServer {
   private tickMsHi: number = 0;
   private tickMsInitialized: boolean = false;
 
-  // Delta snapshot keyframe ratio tracking
-  private keyframeRatio: number = typeof DEFAULT_KEYFRAME_RATIO === 'number' ? DEFAULT_KEYFRAME_RATIO : DEFAULT_KEYFRAME_RATIO === 'ALL' ? 1 : 0;
   private startupGateOpen = false;
 
   private debugGridPublisher = new ServerDebugGridPublisher();
@@ -236,12 +230,11 @@ export class GameServer {
     this.tpsInitialized = false;
     this.tickMsAvg = 0;
     this.tickMsHi = 0;
-    const maxSnaps = normalizeSnapshotRate(
-      config.maxSnapshotsPerSec ?? HOST_SNAPSHOT_RATE_DEFAULT,
+    const maxSnaps = normalizePresentationSnapshotRate(
+      config.maxSnapshotsPerSec ?? PRESENTATION_SNAPSHOT_RATE_DEFAULT,
     );
-    this.maxSnapshotIntervalMs = snapshotRateIntervalMs(maxSnaps);
+    this.maxSnapshotIntervalMs = presentationSnapshotRateIntervalMs(maxSnaps);
     this.maxSnapshotsDisplay = maxSnaps;
-    this.keyframeRatioDisplay = DEFAULT_KEYFRAME_RATIO;
 
     // Bootstrap the entire world: terrain, physics, world state, sim,
     // and initial spawn. Ordering is tightly constrained
@@ -285,7 +278,6 @@ export class GameServer {
     acquireSimSlot(this);
     this.lastSnapshotTime = performance.now();
     this.startupGateOpen = true;
-    this.forceNextSnapshotKeyframe();
     this.emitSnapshot();
   }
 
@@ -339,7 +331,6 @@ export class GameServer {
   }
 
   private emitStartupSnapshot(now: number): void {
-    this.forceNextSnapshotKeyframe();
     this.lastSnapshotTime = now;
     this.emitSnapshot();
   }
@@ -433,9 +424,6 @@ export class GameServer {
       sim.projectilePool.clear();
     }
     this.debugGridPublisher.clear();
-    resetDeltaTracking();
-
-    // Reset keyframe state for next session
     this.snapshotPublisher.clear();
     this.snapshotListeners.clearStartupReady();
     this.startupGateOpen = false;
@@ -471,8 +459,6 @@ export class GameServer {
       tpsLow: this.tpsLow,
       tickRateHz: this.tickRateHz,
       maxSnapshotsDisplay: this.maxSnapshotsDisplay,
-      keyframeRatioDisplay: this.keyframeRatioDisplay,
-      keyframeRatio: this.keyframeRatio,
       ipAddress: this.ipAddress,
       backgroundMode: this.backgroundMode,
       backgroundAllowedUnitBlueprintIds: this.backgroundAllowedUnitBlueprintIds,
@@ -502,11 +488,6 @@ export class GameServer {
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
         this.setSnapshotRate(sanitizedCommand.rate);
-        return;
-      case 'setKeyframeRatio':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setKeyframeRatio(sanitizedCommand.ratio);
         return;
       case 'setTickRate':
         if (!canApplyServerControl) return;
@@ -671,7 +652,6 @@ export class GameServer {
   private setFogOfWarEnabled(enabled: boolean): void {
     if (this.world.fogOfWarEnabled === enabled) return;
     this.world.fogOfWarEnabled = enabled;
-    this.forceNextSnapshotKeyframe();
   }
 
   private setConverterTax(tax: number): void {
@@ -716,36 +696,19 @@ export class GameServer {
     if (idx >= 0) this.gameOverListeners.splice(idx, 1);
   }
 
-  // Change keyframe ratio (fraction of snapshots that are full keyframes)
-  setKeyframeRatio(ratio: KeyframeRatio): void {
-    this.keyframeRatioDisplay = ratio;
-    this.keyframeRatio = ratio === 'ALL' ? 1 : ratio === 'NONE' ? 0 : ratio;
-    this.snapshotPublisher.reset();
-  }
-
-  // Force the next emitted snapshot to be a dynamic keyframe for every
-  // listener. Used after network battle start so clients that attach
-  // their render scene slightly after the first server tick still
-  // receive commander/unit creation data even when KEYFRAMES is NONE.
-  forceNextSnapshotKeyframe(): void {
-    this.snapshotPublisher.forceNextKeyframe();
-  }
-
   // Per-listener recovery: the next snapshot for `playerId` becomes a
-  // keyframe because its delta baseline advanced past something the
-  // client never received (dropped send or client-requested resync).
-  // includeStatic re-sends the terrain/buildability bootstrap too.
-  // Other listeners keep their delta streams untouched.
+  // full state packet. includeStatic re-sends the terrain/buildability
+  // bootstrap too. Other listeners keep their static payload state.
   requestSnapshotRecovery(playerId: PlayerId, includeStatic: boolean): void {
     this.snapshotListeners.requestRecovery(playerId, includeStatic);
   }
 
   // Change snapshot cadence. Invalid/legacy rates normalize to the
-  // configured HOST SERVER DIFFSNAP default.
+  // deterministic-lockstep presentation snapshot default.
   setSnapshotRate(rate: SnapshotRate): void {
-    const normalizedRate = normalizeSnapshotRate(rate);
+    const normalizedRate = normalizePresentationSnapshotRate(rate);
     this.maxSnapshotsDisplay = normalizedRate;
-    this.maxSnapshotIntervalMs = snapshotRateIntervalMs(normalizedRate);
+    this.maxSnapshotIntervalMs = presentationSnapshotRateIntervalMs(normalizedRate);
   }
 
   // Change simulation tick rate (restarts the game loop interval).
@@ -759,7 +722,6 @@ export class GameServer {
 
   setPaused(paused: boolean): void {
     this.simulation.setPaused(paused);
-    this.forceNextSnapshotKeyframe();
   }
 
   // Get map dimensions (for scene configuration)

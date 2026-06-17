@@ -73,7 +73,6 @@ const TOP_LEVEL_SNAPSHOT_KEYS = [
   'grid',
   'terrain',
   'buildability',
-  'isDelta',
   'removedEntityIds',
   'visibilityFiltered',
   'visionPlayerMask',

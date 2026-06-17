@@ -358,8 +358,8 @@ export class SnapshotVisibility {
   }
 
   /** Full-visibility entity ids for the main snapshot serializer.
-   *  Built once per filtered team visibility, then shared by delta
-   *  re-entry and keyframe paths so they do not independently scan the
+   *  Built once per filtered team visibility, then shared by serializers
+   *  so they do not independently scan the
    *  world's unit/building arrays. Undefined for unfiltered snapshots,
    *  where the caller's existing all-entity walk is already the right
    *  shape. */

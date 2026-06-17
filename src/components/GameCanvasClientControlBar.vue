@@ -16,7 +16,7 @@ import {
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
-import { snapshotRateHz } from '../serverBarConfig';
+import { presentationSnapshotRateHz } from '../presentationSnapshotConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -62,8 +62,7 @@ const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> 
 
 const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;
 
-const DIFFSNAP_REASONABLE_BYTES = 64 * 1024;
-const FULLSNAP_REASONABLE_BYTES = 1024 * 1024;
+const SNAPSHOT_REASONABLE_BYTES = 1024 * 1024;
 const SNAPSHOT_SIZE_TARGET_RATIO_BUDGET = 1;
 
 function snapshotSizeTargetRatio(bytes: number, reasonableBytes: number): number {
@@ -481,7 +480,7 @@ function resetEveryCustomHotkey(): void {
                 :style="
                   statBarStyle(
                     model.snapAvgRate,
-                    snapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
+                    presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
                   )
                 "
               ></div>
@@ -498,7 +497,7 @@ function resetEveryCustomHotkey(): void {
                 :style="
                   statBarStyle(
                     model.snapWorstRate,
-                    snapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
+                    presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
                   )
                 "
               ></div>
@@ -508,65 +507,35 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Full keyframe snapshots received per second (state.isDelta === false).">FSPS:</BarLabel>
+        <BarLabel :title="`Encoded full-state presentation snapshot payload size before decode/unpack. Lockstep uses local snapshots for renderer input, not remote gameplay authority. Target ${fmtBytes4(SNAPSHOT_REASONABLE_BYTES)}; x is avg divided by target.`">SNAP SIZE:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.fullSnapAvgRate) }}</span>
+              <span class="fps-value">{{ fmtBytes4(model.snapshotSizeAvgBytes) }}</span>
               <span class="fps-label">avg</span>
             </div>
             <div class="stat-bar-track">
               <div
                 class="stat-bar-fill"
-                :style="statBarStyle(model.fullSnapAvgRate, model.fullSnapBarTarget)"
+                :style="msBarStyle(model.snapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES)"
               ></div>
             </div>
           </div>
           <div class="stat-bar">
             <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.fullSnapWorstRate) }}</span>
-              <span class="fps-label">low</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="statBarStyle(model.fullSnapWorstRate, model.fullSnapBarTarget)"
-              ></div>
-            </div>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel :title="`Encoded DIFFSNAP presentation payload size before decode/unpack. Lockstep uses local snapshots for renderer input, not remote gameplay authority. Target ${fmtBytes4(DIFFSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">DS SIZE:</BarLabel>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.diffSnapSizeAvgBytes) }}</span>
-              <span class="fps-label">avg</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.diffSnapSizeAvgBytes, DIFFSNAP_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.diffSnapSizeHiBytes) }}</span>
+              <span class="fps-value">{{ fmtBytes4(model.snapshotSizeHiBytes) }}</span>
               <span class="fps-label">hi</span>
             </div>
             <div class="stat-bar-track">
               <div
                 class="stat-bar-fill"
-                :style="msBarStyle(model.diffSnapSizeHiBytes, DIFFSNAP_REASONABLE_BYTES)"
+                :style="msBarStyle(model.snapshotSizeHiBytes, SNAPSHOT_REASONABLE_BYTES)"
               ></div>
             </div>
           </div>
           <div class="stat-bar">
             <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtRatio4(snapshotSizeTargetRatio(model.diffSnapSizeAvgBytes, DIFFSNAP_REASONABLE_BYTES)) }}</span>
+              <span class="fps-value">{{ fmtRatio4(snapshotSizeTargetRatio(model.snapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES)) }}</span>
               <span class="fps-label">x</span>
             </div>
             <div class="stat-bar-track">
@@ -574,54 +543,7 @@ function resetEveryCustomHotkey(): void {
                 class="stat-bar-fill"
                 :style="
                   msBarStyle(
-                    snapshotSizeTargetRatio(model.diffSnapSizeAvgBytes, DIFFSNAP_REASONABLE_BYTES),
-                    SNAPSHOT_SIZE_TARGET_RATIO_BUDGET,
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel :title="`Encoded FULLSNAP presentation payload size before decode/unpack. Lockstep uses local snapshots for renderer input, not remote gameplay authority. Target ${fmtBytes4(FULLSNAP_REASONABLE_BYTES)}; x is avg divided by target.`">FS SIZE:</BarLabel>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.fullSnapSizeAvgBytes) }}</span>
-              <span class="fps-label">avg</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.fullSnapSizeHiBytes) }}</span>
-              <span class="fps-label">hi</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.fullSnapSizeHiBytes, FULLSNAP_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtRatio4(snapshotSizeTargetRatio(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES)) }}</span>
-              <span class="fps-label">x</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  msBarStyle(
-                    snapshotSizeTargetRatio(model.fullSnapSizeAvgBytes, FULLSNAP_REASONABLE_BYTES),
+                    snapshotSizeTargetRatio(model.snapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES),
                     SNAPSHOT_SIZE_TARGET_RATIO_BUDGET,
                   )
                 "

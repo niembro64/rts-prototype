@@ -6,7 +6,6 @@ type SnapshotImpairmentConfig = {
   delayMs: number;
   jitterMs: number;
   dropEvery: number;
-  dropDeltasOnly: boolean;
 };
 
 type SnapshotImpairmentStats = {
@@ -41,7 +40,6 @@ const QUERY_ENABLE_KEYS = ['dp03impair', 'snapshotImpairment'];
 const QUERY_DELAY_KEYS = ['dp03delay', 'dp03delayMs', 'snapshotDelayMs'];
 const QUERY_JITTER_KEYS = ['dp03jitter', 'dp03jitterMs', 'snapshotJitterMs'];
 const QUERY_DROP_EVERY_KEYS = ['dp03dropEvery', 'snapshotDropEvery'];
-const QUERY_DROP_KEYFRAMES_KEYS = ['dp03dropKeyframes', 'snapshotDropKeyframes'];
 
 const CONFIG = readSnapshotImpairmentConfig();
 const GLOBAL_STATS: SnapshotImpairmentStats = {
@@ -61,7 +59,6 @@ declare global {
 
 export class SnapshotImpairmentQueue {
   private sequence = 0;
-  private sawFirstKeyframe = false;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private delayedClonePool: ReusableNetworkSnapshotCloner[] = [];
   private delayedLeases = new Set<DelayedSnapshotLease>();
@@ -79,15 +76,12 @@ export class SnapshotImpairmentQueue {
     GLOBAL_STATS.received++;
     this.sequence++;
 
-    const isFirstKeyframe = !this.sawFirstKeyframe && !state.isDelta;
-    if (!state.isDelta) this.sawFirstKeyframe = true;
-
-    if (!isFirstKeyframe && this.shouldDrop(state)) {
+    if (this.shouldDrop()) {
       GLOBAL_STATS.dropped++;
       return;
     }
 
-    const delayMs = isFirstKeyframe ? 0 : this.delayForSequence(this.sequence);
+    const delayMs = this.delayForSequence(this.sequence);
     if (delayMs <= 0) {
       GLOBAL_STATS.delivered++;
       deliver(state);
@@ -122,7 +116,6 @@ export class SnapshotImpairmentQueue {
       if (lease.timer !== null) lease.release();
     }
     this.sequence = 0;
-    this.sawFirstKeyframe = false;
   }
 
   private cloneForDelay(state: NetworkServerSnapshot): DelayedSnapshotLease {
@@ -146,9 +139,8 @@ export class SnapshotImpairmentQueue {
     this.delayedClonePool.push(lease.cloner);
   }
 
-  private shouldDrop(state: NetworkServerSnapshot): boolean {
+  private shouldDrop(): boolean {
     if (CONFIG.dropEvery <= 0) return false;
-    if (CONFIG.dropDeltasOnly && !state.isDelta) return false;
     return this.sequence % CONFIG.dropEvery === 0;
   }
 
@@ -190,7 +182,6 @@ function readSnapshotImpairmentConfig(): SnapshotImpairmentConfig {
     delayMs,
     jitterMs,
     dropEvery,
-    dropDeltasOnly: !queryFlag(QUERY_DROP_KEYFRAMES_KEYS),
   };
 }
 

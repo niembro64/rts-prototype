@@ -12,7 +12,7 @@ import type {
   TurretBlueprintId,
   UnitBlueprintId,
 } from './blueprintIds';
-import type { KeyframeRatio, SnapshotRate, TickRate } from './server';
+import type { SnapshotRate, TickRate } from './server';
 import type { BeamReflectorKind, CombatFireState, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitMoveState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 // Single source of truth for the wire codes TS and Rust must agree on.
@@ -718,7 +718,7 @@ export type NetworkServerSnapshotMeta = {
      *  any adaptive slowdown. */
     rate: TickRate;
   };
-  snaps: { rate: SnapshotRate; keyframes: KeyframeRatio };
+  snaps: { rate: SnapshotRate };
   server: { time: string; ip: string };
   grid: boolean;
   units: {
@@ -810,11 +810,8 @@ export type NetworkServerSnapshot = {
   grid: NetworkServerSnapshotGrid | undefined;
   terrain: TerrainTileMap | undefined;
   buildability: TerrainBuildabilityGrid | undefined;
-  isDelta: boolean;
-  /** True when the authoritative snapshot intentionally omits entities
-   *  outside the recipient player's current vision. Clients must keep
-   *  absent full-keyframe entities as last-seen state unless an explicit
-   *  removal arrives. */
+  /** True when the presentation snapshot intentionally omits entities
+   *  outside the recipient player's current vision. */
   visibilityFiltered: boolean | undefined;
   /** Bitmask of player IDs whose full-vision entities may contribute
    *  to this recipient's live fog presentation. Bit p-1 corresponds
@@ -908,11 +905,11 @@ export type NetworkServerSnapshotTurret = {
   currentShieldRange: number | null;
 };
 
-// Bitmask for per-field delta updates within an entity.
-// When absent/null (keyframe or new entity), all fields are present.
+// Legacy bitmask for sparse entity records. Lockstep presentation
+// snapshots emit full records with this absent/null.
 // MessagePack decodes own `undefined` properties as null, so network
 // clients must accept both absent and null as "full record".
-// When set (delta update), only flagged field groups are populated.
+// When set by old fixtures/tools, only flagged field groups are populated.
 export const ENTITY_CHANGED_POS       = wireEnums.entityChanged.pos;
 export const ENTITY_CHANGED_ROT       = wireEnums.entityChanged.rot;
 export const ENTITY_CHANGED_VEL       = wireEnums.entityChanged.vel;
@@ -921,11 +918,7 @@ export const ENTITY_CHANGED_ACTIONS   = wireEnums.entityChanged.actions;
 export const ENTITY_CHANGED_TURRETS   = wireEnums.entityChanged.turrets;
 export const ENTITY_CHANGED_BUILDING  = wireEnums.entityChanged.building;
 export const ENTITY_CHANGED_FACTORY   = wireEnums.entityChanged.factory;
-/** The unit's smoothed surface normal moved past wire precision while
- *  the unit didn't (e.g. EMA still settling after the unit stopped, or
- *  a unit-ground-normal mode change kicked off fresh drift). Without this bit the
- *  normal could only ride POS-bit deltas, so stationary units would
- *  hold a stale normal until they moved or until the next keyframe. */
+/** Legacy sparse-record bit for the unit's smoothed surface normal. */
 export const ENTITY_CHANGED_NORMAL    = wireEnums.entityChanged.normal;
 // Bits 1 << 9, 1 << 10, and 1 << 11 were previously assigned to
 // retired wire channels (visual suspension, acceleration-on-the-wire,
@@ -938,13 +931,10 @@ export const ENTITY_CHANGED_COMBAT_MODE = wireEnums.entityChanged.combatMode;
 export type NetworkServerSnapshotEntity = {
   id: number;
   type: EntityType;
-  /** 3D position (x,y = plane, z = altitude), encoded as
-   *  ENTITY_POSITION_WIRE_SCALE fixed-point integers. The 2D client
-   *  reads only x/y; the 3D client reads all three. Present on full
-   *  records and on deltas whose changedFields include ENTITY_CHANGED_POS. */
+  /** 3D position (x/y plane plus altitude), encoded as
+   *  ENTITY_POSITION_WIRE_SCALE fixed-point integers. */
   pos: Vec3 | null;
-  /** ROTATION_WIRE_SCALE fixed-point yaw. Present on full records and
-   *  on deltas whose changedFields include ENTITY_CHANGED_ROT. */
+  /** ROTATION_WIRE_SCALE fixed-point yaw. */
   rotation: number | null;
   playerId: PlayerId;
   changedFields: number | null;

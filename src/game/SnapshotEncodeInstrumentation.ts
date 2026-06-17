@@ -25,8 +25,6 @@ type EncodeBucket = {
   startedAt: number;
   lastAt: number;
   samples: number;
-  fullSnapshots: number;
-  deltaSnapshots: number;
   rustSamples: number;
   jsSamples: number;
   dtoMaterializedSamples: number;
@@ -39,8 +37,7 @@ type EncodeBucket = {
     rustEntities: RunningStats;
     rawEntities: RunningStats;
   };
-  latestFullBreakdown?: SnapshotWireBreakdown;
-  latestDeltaBreakdown?: SnapshotWireBreakdown;
+  latestBreakdown?: SnapshotWireBreakdown;
 };
 
 export type SnapshotEncodeInstrumentationReportRow = {
@@ -51,8 +48,6 @@ export type SnapshotEncodeInstrumentationReportRow = {
   seconds: number;
   samples: number;
   encodedSps: number;
-  full: number;
-  delta: number;
   encoder: string;
   materialization: string;
   unitsAvg: number | string;
@@ -71,7 +66,7 @@ export type SnapshotEncodeInstrumentationBreakdownRow = {
   listener: string;
   rate: string;
   unitBand: string;
-  kind: 'DIFFSNAP' | 'FULLSNAP';
+  kind: 'SNAPSHOT';
   totalBytes: number;
   top1: string;
   top1Bytes: number;
@@ -93,7 +88,6 @@ export type SnapshotEncodeInstrumentationSample = {
   unitCount?: number;
   bytes: number;
   encodeMs: number;
-  isDelta: boolean;
   encoderKind?: SnapshotWireEncoderKind;
   materializationKind?: SnapshotWireMaterializationKind;
   rustEntityCount?: number;
@@ -150,8 +144,6 @@ function createBucket(
     startedAt: now,
     lastAt: now,
     samples: 0,
-    fullSnapshots: 0,
-    deltaSnapshots: 0,
     rustSamples: 0,
     jsSamples: 0,
     dtoMaterializedSamples: 0,
@@ -187,8 +179,6 @@ export class SnapshotEncodeInstrumentation {
 
     bucket.lastAt = now;
     bucket.samples++;
-    if (sample.isDelta) bucket.deltaSnapshots++;
-    else bucket.fullSnapshots++;
     if (sample.encoderKind === 'rust') bucket.rustSamples++;
     else if (sample.encoderKind === 'js') bucket.jsSamples++;
     if (sample.materializationKind === 'dto') bucket.dtoMaterializedSamples++;
@@ -208,8 +198,7 @@ export class SnapshotEncodeInstrumentation {
       }
     }
     if (sample.breakdown !== undefined) {
-      if (sample.isDelta) bucket.latestDeltaBreakdown = sample.breakdown;
-      else bucket.latestFullBreakdown = sample.breakdown;
+      bucket.latestBreakdown = sample.breakdown;
     }
     this.maybeReport(now);
   }
@@ -262,8 +251,6 @@ export class SnapshotEncodeInstrumentation {
         seconds: Number(durationSec.toFixed(1)),
         samples: bucket.samples,
         encodedSps: Number((bucket.samples / durationSec).toFixed(2)),
-        full: bucket.fullSnapshots,
-        delta: bucket.deltaSnapshots,
         encoder: formatEncoderMix(bucket),
         materialization: formatMaterializationMix(bucket),
         unitsAvg: formatRunningAverage(bucket.stats.units, 0),
@@ -289,8 +276,7 @@ export class SnapshotEncodeInstrumentation {
   private buildBreakdownRows(): SnapshotEncodeInstrumentationBreakdownRow[] {
     const rows: SnapshotEncodeInstrumentationBreakdownRow[] = [];
     for (const bucket of this.buckets.values()) {
-      this.appendBreakdownRow(rows, bucket, 'FULLSNAP', bucket.latestFullBreakdown);
-      this.appendBreakdownRow(rows, bucket, 'DIFFSNAP', bucket.latestDeltaBreakdown);
+      this.appendBreakdownRow(rows, bucket, 'SNAPSHOT', bucket.latestBreakdown);
     }
     rows.sort((a, b) =>
       a.source.localeCompare(b.source) ||
@@ -305,7 +291,7 @@ export class SnapshotEncodeInstrumentation {
   private appendBreakdownRow(
     rows: SnapshotEncodeInstrumentationBreakdownRow[],
     bucket: EncodeBucket,
-    kind: 'DIFFSNAP' | 'FULLSNAP',
+    kind: 'SNAPSHOT',
     breakdown: SnapshotWireBreakdown | undefined,
   ): void {
     if (breakdown === undefined) return;

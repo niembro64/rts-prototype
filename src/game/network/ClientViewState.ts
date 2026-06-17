@@ -174,7 +174,7 @@ export class ClientViewState {
   /** Active temporary vision pulses (FOW-14) the server has confirmed
    *  for this client's team. Mirror of WorldState.scanPulses filtered
    *  through SnapshotVisibility. Snapshot applier overwrites this on
-   *  each keyframe; expired entries are pruned authoritatively before
+   *  each snapshot; expired entries are pruned authoritatively before
    *  the snapshot is built so the client never needs to drop them. */
   private scanPulses: NonNullable<NetworkServerSnapshot['scanPulses']> = [];
 
@@ -191,7 +191,7 @@ export class ClientViewState {
   // Current tick from host
   private currentTick: number = 0;
 
-  // Reusable Set for snapshot diffing (avoids new Set() per snapshot)
+  // Reusable Set for full-state membership reconciliation.
   private _serverIds: Set<EntityId> = new Set();
   private _projectileReflectionIds: Set<EntityId> = new Set();
 
@@ -233,7 +233,7 @@ export class ClientViewState {
 
   // Map dimensions — needed to evaluate the installed server-authored
   // terrain tile map on the client side. Before the first terrain
-  // keyframe arrives, clients fall back to the deterministic authored
+  // snapshot arrives, clients fall back to the deterministic authored
   // height function using these same dimensions.
   private mapWidth: number = 2000;
   private mapHeight: number = 2000;
@@ -696,7 +696,7 @@ export class ClientViewState {
       this.terrainBuildabilityGrid = state.buildability;
     }
     this.currentTick = state.tick;
-    this.minimapOverrideStore.applySnapshot(state.minimapEntities, state.isDelta);
+    this.minimapOverrideStore.applySnapshot(state.minimapEntities);
     let cacheNeedsInvalidate = false;
     const now = performance.now();
     const reflectedProjectileIds = this.collectProjectileReflectionIds(state.audioEvents);
@@ -706,7 +706,7 @@ export class ClientViewState {
       (spawn) => this.projectileStore.applySpawn(spawn),
     );
 
-    // Process entity updates (present in both delta and keyframe snapshots)
+    // Process entity records from the presentation snapshot.
     for (const netEntity of state.entities) {
       const cf = netEntity.changedFields;
       const isFull = cf == null;
@@ -789,9 +789,8 @@ export class ClientViewState {
       }
 
       if (!existing) {
-        // Only create entities from full data (keyframes or new-entity entries).
-        // Delta snapshots with changedFields set may be missing unit blueprint, HP, etc.
-        // The entity will be created on the next keyframe.
+        // Full-state lockstep snapshots create entities immediately. The
+        // changedFields guard only protects old sparse fixtures/tools.
         if (netEntity.changedFields != null) continue;
 
         const newEntity = createEntityFromNetwork(netEntity);
@@ -827,20 +826,17 @@ export class ClientViewState {
       }
     }
 
-    if (!state.isDelta) {
-      // Full keyframe: remove non-projectile entities not present in
-      // the snapshot. Visibility-filtered keyframes omit out-of-sight
-      // entities by design — dropping them here keeps the client view
-      // honest so the player never sees an enemy they shouldn't.
-      this._serverIds.clear();
-      for (const netEntity of state.entities) {
-        this._serverIds.add(netEntity.id);
-      }
-      for (const [id, entity] of this.entities) {
-        if (entity.type === 'shot') continue;
-        if (!this._serverIds.has(id)) {
-          this.deleteEntityLocalState(id);
-        }
+    // Full-state snapshot: remove non-projectile entities not present
+    // in the visible snapshot. Visibility-filtered snapshots omit
+    // out-of-sight entities by design.
+    this._serverIds.clear();
+    for (const netEntity of state.entities) {
+      this._serverIds.add(netEntity.id);
+    }
+    for (const [id, entity] of this.entities) {
+      if (entity.type === 'shot') continue;
+      if (!this._serverIds.has(id)) {
+        this.deleteEntityLocalState(id);
       }
     }
 

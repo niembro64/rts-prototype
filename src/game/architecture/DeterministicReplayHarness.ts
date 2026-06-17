@@ -1,4 +1,3 @@
-import { resetDeltaTracking } from '../network/stateSerializer';
 import { trimEntitySnapshotPool } from '../network/stateSerializerEntities';
 import { beamIndex } from '../sim/BeamIndex';
 import { trimBuildingActiveStateBuffers } from '../sim/buildingActiveState';
@@ -656,7 +655,6 @@ export function resetReusableSimulationStateForDeterministicReplay(): void {
   trimBuildingActiveStateBuffers();
   trimEnergyDistributionBuffers();
   trimEntitySnapshotPool();
-  resetDeltaTracking();
   resetTerrainStateForDeterministicReplay();
   const sim = getSimWasm();
   if (sim !== undefined) {

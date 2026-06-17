@@ -87,8 +87,10 @@ export type GameCanvasServerControlBarModel = {
   readonly isReadonly: boolean;
   readonly barStyle: ControlBarStyle;
   readonly serverLabel: string;
+  readonly isLockstepBackend: boolean;
   readonly displayServerTime: string;
   readonly displayServerIp: string;
+  readonly displayTickRate: number;
   readonly serverUnitGroundNormalEmaMode: UnitGroundNormalEmaMode;
   readonly displayServerTpsAvg: number;
   readonly displayServerTpsWorst: number;
@@ -144,13 +146,8 @@ export type GameCanvasClientControlBarModel = {
   readonly snapWorstRate: number;
   readonly displayTickRate: TickRate;
   readonly displaySnapshotRate: SnapshotRate;
-  readonly fullSnapAvgRate: number;
-  readonly fullSnapWorstRate: number;
-  readonly fullSnapBarTarget: number;
-  readonly diffSnapSizeAvgBytes: number;
-  readonly diffSnapSizeHiBytes: number;
-  readonly fullSnapSizeAvgBytes: number;
-  readonly fullSnapSizeHiBytes: number;
+  readonly snapshotSizeAvgBytes: number;
+  readonly snapshotSizeHiBytes: number;
   readonly audioSmoothing: boolean;
   readonly burnMarks: boolean;
   readonly locomotionMarks: boolean;

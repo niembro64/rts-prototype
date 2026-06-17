@@ -42,7 +42,6 @@ function createSnapshot(tick: number, despawnIds: readonly number[]): NetworkSer
     grid: undefined,
     terrain: undefined,
     buildability: undefined,
-    isDelta: true,
     visibilityFiltered: undefined,
     visionPlayerMask: undefined,
     removedEntityIds: undefined,

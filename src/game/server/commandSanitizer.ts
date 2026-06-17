@@ -52,7 +52,7 @@ import type { BuildingBlueprintId, CombatFireState, EntityId, WaypointType } fro
 import { STRUCTURE_CONFIGS } from '../sim/buildConfigs';
 import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
 import { isBuildingBlueprintId, isTowerBlueprintId } from '../../types/blueprintIds';
-import { SERVER_CONFIG, normalizeSnapshotRate } from '../../serverBarConfig';
+import { SERVER_CONFIG } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
 import { isShieldReflectionMode } from '../../types/shotTypes';
 import { normalizeAngle } from '../math';
@@ -168,17 +168,8 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
     case 'unloadTransport':
       return sanitizeUnloadTransportCommand(command, world, tick);
     case 'setSnapshotRate':
-      return SERVER_CONFIG.snapshot.options.includes(command.rate)
-        ? { ...command, tick, rate: normalizeSnapshotRate(command.rate) }
-        : null;
-    case 'setKeyframeRatio':
-      return SERVER_CONFIG.keyframe.options.includes(command.ratio)
-        ? { ...command, tick }
-        : null;
     case 'setTickRate':
-      return SERVER_CONFIG.tickRate.options.includes(command.rate)
-        ? { ...command, tick }
-        : null;
+      return null;
     case 'setPaused':
       return typeof command.paused === 'boolean' ? { ...command, tick } : null;
     case 'setUnitGroundNormalEmaMode':

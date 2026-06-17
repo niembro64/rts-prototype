@@ -101,97 +101,29 @@ export const SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS = serverDebugGridConfigJson.ma
 export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxSearchCells;
 export const GOOD_TPS = telemetryConfigJson.goodTps;
 
-// F=============================================================================
+// =============================================================================
 // SNAPSHOT / NETWORKING
 // =============================================================================
 
-// =============================================================================
-// SNAPSHOT THRESHOLDS — what makes a delta "worth sending"
-// =============================================================================
-//
-// On every delta snap the serializer (stateSerializer.ts:getChangedFields)
-// compares each entity's current state to the version the client last
-// saw and sets a bit in `changedFields` for any field whose change
-// exceeds its threshold. Entities with `changedFields === 0` are
-// SKIPPED ENTIRELY for that snap — those are the bytes deltas save.
-//
-// UNITS USED BELOW:
-//   - Threshold values are authored as ratios, not absolute world
-//     units/radians. 0.1 means 10%.
-//   - deltaMovementPositionThresholdAsMapRatio is a ratio of the larger map axis.
-//     On a 10,600wu square map, 0.1 means a 1,060wu position delta.
-//   - deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio is relative
-//     to the last-sent speed. A 5wu/s drop matters at 5wu/s, but not at 100wu/s.
-//   - deltaMovementVelocityDirectionThresholdAsFullTurnRatio is a ratio of a full turn
-//     between velocity vectors. 0.05 means 18 degrees. Direction is
-//     ignored when either velocity vector is effectively stopped.
-//   - deltaRotationPositionThresholdAsFullTurnRatio is a ratio of a full turn.
-//     0.1 means 36 degrees.
-//   - deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio is
-//     relative to the last-sent yaw/pitch angular speed vector magnitude.
-//   - deltaRotationVelocityDirectionThresholdAsFullTurnRatio is a ratio of a full turn
-//     between yaw/pitch angular velocity vectors. For one-axis turret
-//     motion, a sign flip is a 180 degree direction change.
-//
-// THE TIERS BELOW are reference points only — pick the resolution
-// that matches your bandwidth budget vs visual smoothness target.
-// Higher resolution = more bytes on the wire, smoother visuals.
-//
-// Authored values live in src/architecture.json:
-//   lockstep.presentationSnapshots.deltaSnapshotsEnabled
-//                             — master switch; false => every snap is a
-//                               full keyframe (debug only; ~5-10x
-//                               bandwidth in active play).
-//   deltaMovementPositionThresholdAsMapRatio
-//                             — entity position must move by more than
-//                               this ratio of the larger map axis to
-//                               re-send. 0.1 = 10% of the full map.
-//   deltaMovementVelocityMagnitudeThresholdAsLastSentSpeedRatio
-//                             — velocity speed must change by more than
-//                               this ratio of the last-sent speed to
-//                               re-send. 0.1 = 10%.
-//   deltaMovementVelocityDirectionThresholdAsFullTurnRatio
-//                             — velocity heading must change by more than
-//                               this ratio of a full 360 degree turn to
-//                               re-send. 0.05 = 18 degrees.
-//   deltaRotationPositionThresholdAsFullTurnRatio
-//                             — body + turret rotations must change by
-//                               more than this ratio of a full 360 degree
-//                               turn to re-send. 0.1 = 36 degrees.
-//   deltaRotationVelocityMagnitudeThresholdAsLastSentAngularSpeedRatio
-//                             — turret yaw/pitch angular speed must
-//                               change by more than this ratio of the
-//                               last-sent angular speed to re-send.
-//   deltaRotationVelocityDirectionThresholdAsFullTurnRatio
-//                             — turret yaw/pitch angular velocity
-//                               direction must change by more than this
-//                               ratio of a full 360 degree turn.
-//   fullSnapshotMinimapContactListMaxRefreshRateHz
-//                             — maximum refresh cadence for full minimap
-//                               contact lists embedded in delta snapshots.
-//                               Keyframes always carry a fresh baseline.
-//   fullSnapshotEntityDetailFieldsMaxRefreshRateHz
-//                             — maximum refresh cadence for visual/detail
-//                               entity fields such as normals, suspension,
-//                               building, and factory state.
-//   fullSnapshotProjectileDetailFieldsMaxRefreshRateHz
-//                             — maximum refresh cadence for live beam path
-//                               corrections embedded in delta snapshots.
+// Lockstep presentation snapshots are full game-state packets sent from
+// the local simulation to the renderer. They are presentation data, not
+// multiplayer truth.
 export const SNAPSHOT_CONFIG: SnapshotConfig =
   ARCHITECTURE_CONFIG.lockstep.presentationSnapshots;
 
 // Re-export bar config values used by sim/server code
 export { BATTLE_CONFIG } from './battleBarConfig';
 export { SERVER_CONFIG } from './serverBarConfig';
-export type { SnapshotRate, KeyframeRatio, TickRate } from './types/server';
-import { SERVER_CONFIG } from './serverBarConfig';
+export type { SnapshotRate, TickRate } from './types/server';
 import { BATTLE_CONFIG } from './battleBarConfig';
 import { BAR_THEMES } from './barThemes';
+import {
+  PRESENTATION_SNAPSHOT_RATE_DEFAULT,
+  PRESENTATION_SNAPSHOT_RATE_OPTIONS,
+} from './presentationSnapshotConfig';
 
-export const DEFAULT_KEYFRAME_RATIO = SERVER_CONFIG.keyframe.default;
-export const KEYFRAME_RATIO_OPTIONS = SERVER_CONFIG.keyframe.options;
-export const DEFAULT_SNAPSHOT_RATE = SERVER_CONFIG.snapshot.default;
-export const SNAPSHOT_RATE_OPTIONS = SERVER_CONFIG.snapshot.options;
+export const DEFAULT_SNAPSHOT_RATE = PRESENTATION_SNAPSHOT_RATE_DEFAULT;
+export const SNAPSHOT_RATE_OPTIONS = PRESENTATION_SNAPSHOT_RATE_OPTIONS;
 export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_TURRET_SHIELD_PANELS_ENABLED = BATTLE_CONFIG.turretShieldPanelsEnabled.default;
 export const DEFAULT_TURRET_SHIELD_SPHERES_ENABLED =

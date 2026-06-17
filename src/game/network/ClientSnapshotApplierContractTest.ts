@@ -66,7 +66,6 @@ function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
 
 function snapshot(
   tick: number,
-  isDelta: boolean,
   entities: NetworkServerSnapshotEntity[],
 ): NetworkServerSnapshot {
   return {
@@ -85,7 +84,6 @@ function snapshot(
     grid: undefined,
     terrain: undefined,
     buildability: undefined,
-    isDelta,
     visibilityFiltered: undefined,
     visionPlayerMask: undefined,
     removedEntityIds: undefined,
@@ -111,7 +109,7 @@ function fullUnitEntity(id: number, hp: number, maxHp: number): NetworkServerSna
   };
 }
 
-function movementOnlyDelta(id: number): NetworkServerSnapshotEntity {
+function movementOnlySparseEntity(id: number): NetworkServerSnapshotEntity {
   return {
     id,
     type: 'unit',
@@ -124,7 +122,7 @@ function movementOnlyDelta(id: number): NetworkServerSnapshotEntity {
   };
 }
 
-function hpDelta(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
+function hpSparseEntity(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
   return {
     id,
     type: 'unit',
@@ -146,8 +144,8 @@ function assertHudContains(view: ClientViewState, id: number, expected: boolean)
   assertContract(
     found === expected,
     expected
-      ? 'damaged unit must remain in the HUD cache across sparse deltas'
-      : 'fully-healed unit must leave the HUD cache after HP delta',
+      ? 'damaged unit must remain in the HUD cache across sparse rows'
+      : 'fully-healed unit must leave the HUD cache after HP row',
   );
 }
 
@@ -231,22 +229,22 @@ export function runClientSnapshotApplierContractTest(): void {
 
   const view = new ClientViewState();
   const id = 77;
-  view.applyNetworkState(snapshot(1, false, [fullUnitEntity(id, 60, 100)]));
-  assertContract(view.getEntity(id)?.unit?.hp === 60, 'full keyframe must seed unit HP');
+  view.applyNetworkState(snapshot(1, [fullUnitEntity(id, 60, 100)]));
+  assertContract(view.getEntity(id)?.unit?.hp === 60, 'full snapshot must seed unit HP');
   assertHudContains(view, id, true);
 
-  view.applyNetworkState(snapshot(2, true, [movementOnlyDelta(id)]));
+  view.applyNetworkState(snapshot(2, [movementOnlySparseEntity(id)]));
   assertContract(
     view.getEntity(id)?.unit?.hp === 60,
-    'movement-only delta must preserve the last received HP',
+    'movement-only sparse row must preserve the last received HP',
   );
   assertHudContains(view, id, true);
 
-  view.applyNetworkState(snapshot(3, true, [hpDelta(id, 80, 100)]));
-  assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP delta must update unit HP');
+  view.applyNetworkState(snapshot(3, [hpSparseEntity(id, 80, 100)]));
+  assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP sparse row must update unit HP');
   assertHudContains(view, id, true);
 
-  view.applyNetworkState(snapshot(4, true, [hpDelta(id, 100, 100)]));
-  assertContract(view.getEntity(id)?.unit?.hp === 100, 'full-heal HP delta must update unit HP');
+  view.applyNetworkState(snapshot(4, [hpSparseEntity(id, 100, 100)]));
+  assertContract(view.getEntity(id)?.unit?.hp === 100, 'full-heal HP row must update unit HP');
   assertHudContains(view, id, false);
 }

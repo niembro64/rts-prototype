@@ -47,12 +47,8 @@ export function useGameCanvasTelemetry({
   const renderTpsWorst = ref(0);
   const snapAvgRate = ref(0);
   const snapWorstRate = ref(0);
-  const fullSnapAvgRate = ref(0);
-  const fullSnapWorstRate = ref(0);
-  const diffSnapSizeAvgBytes = ref(0);
-  const diffSnapSizeHiBytes = ref(0);
-  const fullSnapSizeAvgBytes = ref(0);
-  const fullSnapSizeHiBytes = ref(0);
+  const snapshotSizeAvgBytes = ref(0);
+  const snapshotSizeHiBytes = ref(0);
   const currentZoom = ref(0.4);
   let updateInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -129,15 +125,10 @@ export function useGameCanvasTelemetry({
       const snapStats = scene.getSnapshotStats();
       setNumberRefIfChanged(snapAvgRate, snapStats.avgRate, 0.05);
       setNumberRefIfChanged(snapWorstRate, snapStats.worstRate, 0.05);
-      const fullSnapStats = scene.getFullSnapshotStats();
-      setNumberRefIfChanged(fullSnapAvgRate, fullSnapStats.avgRate, 0.05);
-      setNumberRefIfChanged(fullSnapWorstRate, fullSnapStats.worstRate, 0.05);
 
       const payloadSizeStats = scene.getSnapshotPayloadSizeStats();
-      setNumberRefIfChanged(diffSnapSizeAvgBytes, payloadSizeStats.diffAvgBytes, 1);
-      setNumberRefIfChanged(diffSnapSizeHiBytes, payloadSizeStats.diffHiBytes, 1);
-      setNumberRefIfChanged(fullSnapSizeAvgBytes, payloadSizeStats.fullAvgBytes, 1);
-      setNumberRefIfChanged(fullSnapSizeHiBytes, payloadSizeStats.fullHiBytes, 1);
+      setNumberRefIfChanged(snapshotSizeAvgBytes, payloadSizeStats.avgBytes, 1);
+      setNumberRefIfChanged(snapshotSizeHiBytes, payloadSizeStats.hiBytes, 1);
     }
   }
 
@@ -155,14 +146,8 @@ export function useGameCanvasTelemetry({
   return {
     currentZoom,
     displayGpuMs,
-    diffSnapSizeAvgBytes,
-    diffSnapSizeHiBytes,
     frameMsAvg,
     frameMsHi,
-    fullSnapAvgRate,
-    fullSnapSizeAvgBytes,
-    fullSnapSizeHiBytes,
-    fullSnapWorstRate,
     gpuSourceLabel,
     gpuTimerSupported,
     hudSpriteActiveCount,
@@ -190,5 +175,7 @@ export function useGameCanvasTelemetry({
     renderTpsWorst,
     snapAvgRate,
     snapWorstRate,
+    snapshotSizeAvgBytes,
+    snapshotSizeHiBytes,
   };
 }

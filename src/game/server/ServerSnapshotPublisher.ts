@@ -1,12 +1,10 @@
-import { SNAPSHOT_CONFIG } from '../../config';
-import { snapshotRateHz } from '../../serverBarConfig';
-import type { KeyframeRatio, SnapshotRate, TickRate } from '../../types/server';
+import type { SnapshotRate, TickRate } from '../../types/server';
 import { getUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
-import { captureSnapshotEntityStates, serializeGameState } from '../network/stateSerializer';
+import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
   createSnapshotVisibilityCache,
@@ -37,28 +35,19 @@ export type SnapshotListenerEntry = {
   callback: SnapshotCallback;
   playerId: PlayerId | undefined;
   trackingKey: string;
-  deltaTrackingKey: string;
+  cacheKey: string;
   preencodeWire: boolean;
   lastStaticTerrainTileMap: TerrainTileMap | undefined;
   lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
-  /** This listener's next snapshot must be a keyframe: a send for it
-   *  was dropped after its delta baseline advanced, or its client
-   *  asked for a resync. Per-listener so one player's hiccup never
-   *  forces keyframes (let alone terrain) onto everyone else. */
-  needsKeyframe: boolean;
+  /** This listener asked for recovery. Dynamic state is already full
+   *  every snapshot; this flag covers one packet worth of recovery
+   *  bookkeeping and is then cleared. */
+  needsFullState: boolean;
   /** This listener must also get the static terrain/buildability
    *  payload again — its static-carrying snapshot was dropped after
    *  being marked sent, or its client reported it never got one. */
   needsStatic: boolean;
   startupReady: boolean;
-  /** Phase 10 D.3e — Rust-side snapshot baseline handle for this
-   *  listener (u32 index into the WASM SnapshotBaselineRegistry).
-   *  Allocated via sim.snapshotBaseline.create() on add, released
-   *  via destroy() on remove. The mirror of the JS-side
-   *  DeltaTrackingState.prevStates map for the same listener;
-   *  populated per-tick by the serializer's baseline pass. Undefined
-   *  if the listener was registered before initSimWasm resolved. */
-  snapshotBaselineHandle: number | undefined;
 };
 
 export type ServerSnapshotPublisherInput = {
@@ -72,8 +61,6 @@ export type ServerSnapshotPublisherInput = {
   tpsLow: number;
   tickRateHz: TickRate;
   maxSnapshotsDisplay: SnapshotRate;
-  keyframeRatioDisplay: KeyframeRatio;
-  keyframeRatio: number;
   ipAddress: string;
   backgroundMode: boolean;
   backgroundAllowedUnitBlueprintIds: ReadonlySet<string>;
@@ -93,19 +80,7 @@ export class ServerSnapshotPublisher {
   private readonly teamAudioCache = new Map<string, SerializerAudioOverride>();
   private readonly teamSprayCache = new Map<string, SerializerSprayOverride>();
   private readonly teamMinimapCache = new Map<string, SerializerMinimapOverride>();
-  private isFirstSnapshot = true;
-  private snapshotCounter = 0;
-  private minimapSnapshotCounter = 0;
-  private entityDetailSnapshotCounter = 0;
-  private projectileDetailSnapshotCounter = 0;
-
-  reset(): void {
-    this.isFirstSnapshot = true;
-    this.snapshotCounter = 0;
-    this.minimapSnapshotCounter = 0;
-    this.entityDetailSnapshotCounter = 0;
-    this.projectileDetailSnapshotCounter = 0;
-  }
+  reset(): void {}
 
   clear(): void {
     this.reset();
@@ -116,13 +91,6 @@ export class ServerSnapshotPublisher {
     this.teamAudioCache.clear();
     this.teamSprayCache.clear();
     this.teamMinimapCache.clear();
-  }
-
-  /** Force the next emitted snapshot to be a dynamic keyframe for
-   *  every listener. Per-listener recovery (including static re-sends)
-   *  goes through the listener's needsKeyframe/needsStatic flags. */
-  forceNextKeyframe(): void {
-    this.reset();
   }
 
   emit(input: ServerSnapshotPublisherInput): void {
@@ -137,16 +105,6 @@ export class ServerSnapshotPublisher {
     const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
 
     const unitCount = input.world.getUnits().length;
-    const isDelta = this.resolveSnapshotDelta(input.keyframeRatio);
-    const emitMinimapOnDelta = isDelta
-      ? this.resolveMinimapDeltaEmit(input.maxSnapshotsDisplay)
-      : this.resolveMinimapKeyframeEmit();
-    const emitEntityDetailsOnDelta = isDelta
-      ? this.resolveEntityDetailDeltaEmit(input.maxSnapshotsDisplay)
-      : this.resolveEntityDetailKeyframeEmit();
-    const emitProjectileDetailsOnDelta = isDelta
-      ? this.resolveProjectileDetailDeltaEmit(input.maxSnapshotsDisplay)
-      : this.resolveProjectileDetailKeyframeEmit();
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
@@ -166,7 +124,6 @@ export class ServerSnapshotPublisher {
       tickLow: input.tpsLow,
       tickRateHz: input.tickRateHz,
       snapshotRate: input.maxSnapshotsDisplay,
-      keyframeRatio: input.keyframeRatioDisplay,
       ipAddress: input.ipAddress,
       gridEnabled: input.debugGridPublisher.isEnabled(),
       allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
@@ -198,19 +155,6 @@ export class ServerSnapshotPublisher {
     const gridSearchCells = gridDebug.searchCells;
     const gridCellSize = gridDebug.cellSize;
 
-    // Recipient-independent entity capture: walk dirty (or all, on
-    // keyframe) entities ONCE and stash the captured state for each
-    // per-recipient serializeGameState below to read. With N player
-    // listeners this avoids running captureEntityState N times per
-    // entity. The serializer falls back to inline capture if the cache
-    // is missed (covers any direct caller that didn't precapture).
-    const hasListenerNeedingKeyframe = this.hasListenerNeedingKeyframe(input);
-    captureSnapshotEntityStates(
-      input.world,
-      isDelta && !hasListenerNeedingKeyframe,
-      this.dirtyIdsBuf,
-    );
-
     // Share one SnapshotVisibility per team across the listener loop
     // (FOW-OPT-01). Two teammates merge the same set of
     // ally vision sources into the same spatial hash; without this
@@ -234,13 +178,9 @@ export class ServerSnapshotPublisher {
     const serializeForListener = (listener: SnapshotListenerEntry): SerializedListenerSnapshot => {
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       const listenerNeedsStaticMap = this.listenerNeedsStaticMap(listener, input);
-      const listenerIsDelta = isDelta && !listenerNeedsStaticMap && !listener.needsKeyframe;
-      // The keyframe request is satisfied by the snapshot built right
-      // below; clear it now so the flag covers exactly one snapshot.
-      if (!listenerIsDelta) listener.needsKeyframe = false;
-      const shouldEmitMinimap = !listenerIsDelta || emitMinimapOnDelta;
-      const shouldEmitEntityDetails = !listenerIsDelta || emitEntityDetailsOnDelta;
-      const shouldSendStaticTerrain = !listenerIsDelta && listenerNeedsStaticMap;
+      listener.needsFullState = false;
+      const shouldEmitMinimap = true;
+      const shouldSendStaticTerrain = listenerNeedsStaticMap;
       // FOW-OPT-20: team-uniform payload caches are deferred until
       // after the direct-wire attempt so typed snapshot rows can be
       // written without materializing DTO arrays.
@@ -253,14 +193,9 @@ export class ServerSnapshotPublisher {
       if (listener.preencodeWire) {
         const directSnapshot = this.directWirePreencoder.tryEncode({
           world: input.world,
-          trackingKey: listener.deltaTrackingKey,
-          snapshotBaselineHandle: listener.snapshotBaselineHandle,
-          dirtyEntityIds: this.dirtyIdsBuf,
-          dirtyEntityFields: this.dirtyFieldsBuf,
           removedEntities: this.removedEntitiesBuf,
           recipientPlayerId: listener.playerId,
           visibility,
-          isDelta: listenerIsDelta,
           gamePhase,
           winnerId,
           sprayTargets,
@@ -271,8 +206,7 @@ export class ServerSnapshotPublisher {
           gridCells,
           gridSearchCells,
           gridCellSize,
-          emitEntityDetailFields: shouldEmitEntityDetails,
-          emitProjectileDetailFields: !listenerIsDelta || emitProjectileDetailsOnDelta,
+          emitProjectileDetailFields: true,
           audioOverride,
           sprayOverride,
           minimapOverride,
@@ -291,14 +225,14 @@ export class ServerSnapshotPublisher {
         audioOverride = teamAudioCache.get(teamKey);
         if (!audioOverride) {
           audioOverride = {
-            value: serializeAudioEvents(audioEvents, visibility, listener.deltaTrackingKey),
+            value: serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
           };
           teamAudioCache.set(teamKey, audioOverride);
         }
         sprayOverride = teamSprayCache.get(teamKey);
         if (!sprayOverride) {
           sprayOverride = {
-            value: serializeSprayTargets(sprayTargets, visibility, listener.deltaTrackingKey),
+            value: serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
           };
           teamSprayCache.set(teamKey, sprayOverride);
         }
@@ -309,7 +243,7 @@ export class ServerSnapshotPublisher {
               value: serializeMinimapSnapshotEntities(
                 input.world,
                 visibility,
-                listener.deltaTrackingKey,
+                listener.cacheKey,
               ),
             };
             teamMinimapCache.set(teamKey, minimapOverride);
@@ -317,23 +251,18 @@ export class ServerSnapshotPublisher {
         }
       }
       const serializeOptions: SerializeGameStateOptions = {
-        trackingKey: listener.deltaTrackingKey,
-        snapshotBaselineHandle: listener.snapshotBaselineHandle,
-        dirtyEntityIds: this.dirtyIdsBuf,
-        dirtyEntityFields: this.dirtyFieldsBuf,
+        trackingKey: listener.cacheKey,
         removedEntityIds: undefined,
         removedEntities: this.removedEntitiesBuf,
         recipientPlayerId: listener.playerId,
         visibility,
-        emitEntityDetailFields: shouldEmitEntityDetails,
-        emitProjectileDetailFields: !listenerIsDelta || emitProjectileDetailsOnDelta,
+        emitProjectileDetailFields: true,
         audioOverride,
         sprayOverride,
         minimapOverride,
       };
       const state = serializeGameState(
         input.world,
-        listenerIsDelta,
         gamePhase,
         winnerId,
         sprayTargets,
@@ -390,80 +319,6 @@ export class ServerSnapshotPublisher {
       const snapshot = serializeForListener(listener);
       listener.callback(snapshot.state, undefined, snapshot.wirePayload);
     }
-  }
-
-  private resolveSnapshotDelta(keyframeRatio: number): boolean {
-    if (this.isFirstSnapshot) {
-      this.isFirstSnapshot = false;
-      this.snapshotCounter = 0;
-      return false;
-    }
-    if (!SNAPSHOT_CONFIG.deltaSnapshotsEnabled) return false;
-    if (keyframeRatio >= 1) return false;
-    if (keyframeRatio <= 0) return true;
-
-    this.snapshotCounter++;
-    const keyframeInterval = Math.round(1 / keyframeRatio);
-    if (this.snapshotCounter >= keyframeInterval) {
-      this.snapshotCounter = 0;
-      return false;
-    }
-    return true;
-  }
-
-  private resolveMinimapDeltaEmit(snapshotRate: SnapshotRate): boolean {
-    const targetHz = SNAPSHOT_CONFIG.fullSnapshotMinimapContactListMaxRefreshRateHz;
-    if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
-    const sourceHz = snapshotRateHz(snapshotRate);
-    const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
-    this.minimapSnapshotCounter++;
-    if (this.minimapSnapshotCounter < interval) return false;
-    this.minimapSnapshotCounter = 0;
-    return true;
-  }
-
-  private resolveMinimapKeyframeEmit(): boolean {
-    this.minimapSnapshotCounter = 0;
-    return true;
-  }
-
-  private resolveEntityDetailDeltaEmit(snapshotRate: SnapshotRate): boolean {
-    const targetHz = SNAPSHOT_CONFIG.fullSnapshotEntityDetailFieldsMaxRefreshRateHz;
-    if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
-    const sourceHz = snapshotRateHz(snapshotRate);
-    const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
-    this.entityDetailSnapshotCounter++;
-    if (this.entityDetailSnapshotCounter < interval) return false;
-    this.entityDetailSnapshotCounter = 0;
-    return true;
-  }
-
-  private resolveEntityDetailKeyframeEmit(): boolean {
-    this.entityDetailSnapshotCounter = 0;
-    return true;
-  }
-
-  private resolveProjectileDetailDeltaEmit(snapshotRate: SnapshotRate): boolean {
-    const targetHz = SNAPSHOT_CONFIG.fullSnapshotProjectileDetailFieldsMaxRefreshRateHz;
-    if (!Number.isFinite(targetHz) || targetHz <= 0) return false;
-    const sourceHz = snapshotRateHz(snapshotRate);
-    const interval = Math.max(1, Math.ceil(sourceHz / targetHz));
-    this.projectileDetailSnapshotCounter++;
-    if (this.projectileDetailSnapshotCounter < interval) return false;
-    this.projectileDetailSnapshotCounter = 0;
-    return true;
-  }
-
-  private resolveProjectileDetailKeyframeEmit(): boolean {
-    this.projectileDetailSnapshotCounter = 0;
-    return true;
-  }
-
-  private hasListenerNeedingKeyframe(input: ServerSnapshotPublisherInput): boolean {
-    for (const listener of input.listeners) {
-      if (listener.needsKeyframe || this.listenerNeedsStaticMap(listener, input)) return true;
-    }
-    return false;
   }
 
   private listenerNeedsStaticMap(

@@ -377,7 +377,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       id: 99, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
       unit: { hp: { curr: 12.5, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
     },
-    // Full keyframe static unit fields. Runtime DTO pools start with
+    // Full snapshot static unit fields. Runtime DTO pools start with
     // hp + velocity, then add static fields in this order on full records.
     {
       id: 100, type: 'unit', pos: { x: 10, y: 20, z: 30 }, rotation: 1571, playerId: 1,
@@ -390,7 +390,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         mass: 35,
       },
     },
-    // Full commander keyframe static fields with the isCommander flag.
+    // Full commander snapshot static fields with the isCommander flag.
     {
       id: 101, type: 'unit', pos: { x: 40, y: 50, z: 60 }, rotation: 0, playerId: 2,
       unit: {
@@ -2108,7 +2108,6 @@ type EnvelopeFixture = {
   audioEvents?: AudioEventFixture[];
   projectiles?: ProjectilesFixture;
   gameState?: GameStateFixture;
-  isDelta: boolean;
   removedEntityIds?: number[];
   visibilityFiltered?: boolean;
   scanPulses?: ScanPulseFixture[];
@@ -2187,11 +2186,11 @@ function packRemovedIdsIntoScratch(memory: WebAssembly.Memory, ids: number[]): v
 function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed: number } {
   const fixtures: EnvelopeFixture[] = [
     // Empty envelope — no entities, just shell
-    { tick: 0, entities: [], economy: {}, isDelta: false },
+    { tick: 0, entities: [], economy: {} },
     // Single tick
-    { tick: 1, entities: [], economy: {}, isDelta: true },
+    { tick: 1, entities: [], economy: {} },
     // Large tick value (forces u32-range encoding)
-    { tick: 1_000_000, entities: [], economy: {}, isDelta: false },
+    { tick: 1_000_000, entities: [], economy: {} },
     // One unit entity
     {
       tick: 42, entities: [
@@ -2199,7 +2198,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           id: 100, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
           unit: { hp: { curr: 100, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
         },
-      ], economy: {}, isDelta: true,
+      ], economy: {},
     },
     // One building entity
     {
@@ -2211,7 +2210,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             build: { complete: true, paid: { energy: 100, metal: 50 } },
           },
         },
-      ], economy: {}, isDelta: false,
+      ], economy: {},
     },
     // Mixed: one unit + one building
     {
@@ -2233,26 +2232,26 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
             build: { complete: true, paid: { energy: 50, metal: 30 } },
           },
         },
-      ], economy: {}, isDelta: true,
+      ], economy: {},
     },
     // removedEntityIds present (single removal)
     {
-      tick: 100, entities: [], economy: {}, isDelta: true,
+      tick: 100, entities: [], economy: {},
       removedEntityIds: [42],
     },
     // removedEntityIds with multiple ids
     {
-      tick: 101, entities: [], economy: {}, isDelta: true,
+      tick: 101, entities: [], economy: {},
       removedEntityIds: [1, 2, 3, 999, 1_000_000],
     },
     // visibilityFiltered true (FOW snapshot)
     {
-      tick: 200, entities: [], economy: {}, isDelta: false,
+      tick: 200, entities: [], economy: {},
       visibilityFiltered: true,
     },
     // visibilityFiltered false (full snapshot)
     {
-      tick: 201, entities: [], economy: {}, isDelta: false,
+      tick: 201, entities: [], economy: {},
       visibilityFiltered: false,
     },
     // Everything together — entities + removed + visibility
@@ -2262,25 +2261,23 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           id: 5, type: 'unit', pos: { x: 0, y: 0, z: 0 }, rotation: 0, playerId: 1,
           unit: { hp: { curr: 100, max: 100 }, velocity: { x: 0, y: 0, z: 0 } },
         },
-      ], economy: {}, isDelta: true,
+      ], economy: {},
       removedEntityIds: [10, 11],
       visibilityFiltered: true,
     },
     // gameState during battle (phase only). Property order must
     // match stateSerializer.ts:_snapshotBuf pool: tick, entities,
-    // economy, gameState, isDelta. msgpackEncode walks JS object
-    // insertion order so the fixture must place gameState BEFORE
-    // isDelta to match the Rust emit sequence.
+    // economy, gameState. msgpackEncode walks JS object insertion
+    // order, so the fixture keeps gameState in the same place as the
+    // Rust emit sequence.
     {
       tick: 400, entities: [], economy: {},
       gameState: { phase: 'battle' },
-      isDelta: true,
     },
     // gameState at game over with winner
     {
       tick: 401, entities: [], economy: {},
       gameState: { phase: 'gameOver', winnerId: 1 },
-      isDelta: false,
     },
     // minimapEntities — pool order puts minimapEntities BETWEEN
     // entities and economy, so the fixture's literal-property order
@@ -2292,7 +2289,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { id: 2, pos: { x: 200, y: 300 }, type: 'building', playerId: 2 },
         { id: 3, pos: { x: -50, y: 0 }, type: 'unit', playerId: 3, radarOnly: true },
       ],
-      economy: {}, isDelta: true,
+      economy: {},
     },
     // minimapEntities + gameState + visibility — busier envelope
     {
@@ -2306,7 +2303,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { id: 10, pos: { x: 0, y: 0 }, type: 'unit', playerId: 1 },
         { id: 11, pos: { x: 500, y: 500 }, type: 'building', playerId: 2 },
       ],
-      economy: {}, gameState: { phase: 'battle' }, isDelta: true,
+      economy: {}, gameState: { phase: 'battle' },
       removedEntityIds: [99],
       visibilityFiltered: true,
     },
@@ -2314,7 +2311,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     {
       tick: 700, entities: [], economy: {},
       projectiles: { despawns: [{ id: 1001 }, { id: 1002 }] },
-      isDelta: true,
     },
     // projectiles.velocityUpdates only (mid-flight projectile)
     {
@@ -2324,7 +2320,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           { id: 2001, pos: { x: 100, y: 200, z: 50 }, velocity: { x: 25, y: 10, z: 5 }, clearHomingTarget: true },
         ],
       },
-      isDelta: true,
     },
     // projectiles with both despawns AND velocityUpdates
     {
@@ -2336,7 +2331,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           { id: 3003, pos: { x: 500, y: 500, z: 0 }, velocity: { x: -10, y: 5, z: 0 } },
         ],
       },
-      isDelta: true,
     },
     // projectiles + everything else
     {
@@ -2357,7 +2351,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         ],
       },
       gameState: { phase: 'battle' },
-      isDelta: true,
       removedEntityIds: [10],
       visibilityFiltered: false,
     },
@@ -2378,7 +2371,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           barrelIndex: 0,
         }],
       },
-      isDelta: true,
     },
     // projectiles.spawns — every optional field set.
     {
@@ -2414,7 +2406,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           homingTurnRate: 0.5,
         }],
       },
-      isDelta: true,
     },
     // projectiles.spawns — multiple, mix of optional combos.
     {
@@ -2451,7 +2442,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         ],
       },
-      isDelta: true,
     },
     // projectiles with spawns + despawns + velocityUpdates.
     {
@@ -2474,26 +2464,24 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           { id: 7000, pos: { x: 50, y: 0, z: 50 }, velocity: { x: 25, y: 0, z: 0 } },
         ],
       },
-      isDelta: true,
     },
     // scanPulses — single pulse, all-required field shape.
     {
-      tick: 1000, entities: [], economy: {}, isDelta: true,
+      tick: 1000, entities: [], economy: {},
       scanPulses: [
         { playerId: 1, x: 5000, y: 6000, z: 0, radius: 800, expiresAtTick: 1064 },
       ],
     },
     // scanPulses — multiple pulses, varied owners + tick offsets.
     {
-      tick: 1001, entities: [], economy: {}, isDelta: true,
+      tick: 1001, entities: [], economy: {},
       scanPulses: [
         { playerId: 1, x: 100, y: 200, z: 0, radius: 1000, expiresAtTick: 1065 },
         { playerId: 2, x: -500, y: 300, z: 50, radius: 1500, expiresAtTick: 1090 },
         { playerId: 3, x: 0, y: 0, z: 0, radius: 600, expiresAtTick: 1101 },
       ],
     },
-    // audioEvents belongs before isDelta in the production _snapshotBuf
-    // insertion order.
+    // audioEvents follows the production _snapshotBuf insertion order.
     // audioEvents — single fire event, minimum fields.
     {
       tick: 1400, entities: [], economy: {},
@@ -2502,7 +2490,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         turretBlueprintId: 'turret.cannon',
         pos: { x: 500, y: 500, z: 12 },
       }],
-      isDelta: true,
     },
     // audioEvents — laserStart with playerId + sourceType + sourceKey.
     {
@@ -2516,7 +2503,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         playerId: 1,
         entityId: 42,
       }],
-      isDelta: true,
     },
     // audioEvents — shieldImpact with the nested normal vec.
     {
@@ -2530,7 +2516,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           playerId: 2,
         },
       }],
-      isDelta: true,
     },
     // audioEvents — attackAlert with victimPlayerId + audioOnly=true.
     {
@@ -2543,7 +2528,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         victimPlayerId: 1,
         audioOnly: true,
       }],
-      isDelta: true,
     },
     // audioEvents — death with killerPlayerId; deathContext omitted
     // (handled in D.3j-27 follow-up).
@@ -2558,7 +2542,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         entityId: 100,
         killerPlayerId: 1,
       }],
-      isDelta: true,
     },
     // audioEvents — multiple events in one snapshot mixing types.
     {
@@ -2569,7 +2552,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         { type: 'projectileExpire', turretBlueprintId: 'shot.shell', pos: { x: 200, y: 200, z: 10 } },
         { type: 'ping', turretBlueprintId: '', pos: { x: 0, y: 0, z: 0 }, playerId: 1, audioOnly: false },
       ],
-      isDelta: true,
     },
     // audioEvents — death with deathContext (no turretPoses, no
     // unitBlueprintId — building-style death).
@@ -2593,7 +2575,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           color: 0xFF8800,
         },
       }],
-      isDelta: true,
     },
     // audioEvents — death with full deathContext (unit-style: every
     // optional populated + nested turretPoses array).
@@ -2624,7 +2605,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         },
         killerPlayerId: 2,
       }],
-      isDelta: true,
     },
     // audioEvents — hit with impactContext (all required nested vecs).
     {
@@ -2642,7 +2622,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           penetrationDir: { x: 1, y: 0 },
         },
       }],
-      isDelta: true,
     },
     // audioEvents — waterSplash carries physical 3D velocity + mass.
     {
@@ -2657,7 +2636,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           mass: 30,
         },
       }],
-      isDelta: true,
     },
     // audioEvents — multiple deaths + hits + plain events in one tick
     // (validates the per-context offset walker).
@@ -2701,7 +2679,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         },
       ],
-      isDelta: true,
     },
     // economy — single player.
     {
@@ -2718,7 +2695,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         },
       },
-      isDelta: true,
     },
     // economy — multiple players, intentionally out-of-order keys to
     // verify the helper's ASC-by-playerId sort.
@@ -2746,7 +2722,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         },
       },
-      isDelta: false,
     },
     // sprayTargets — minimal build spray, no z / dim / radius / speed / particleRadius.
     {
@@ -2757,7 +2732,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         type: 'build',
         intensity: 0.5,
       }],
-      isDelta: true,
     },
     // sprayTargets — heal type with all optional fields populated.
     {
@@ -2777,7 +2751,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         particleRadius: 3,
         ballSpawnRate: 7.5,
       }],
-      isDelta: true,
     },
     // sprayTargets — multiple sprays mixing types and optional combos.
     {
@@ -2798,11 +2771,10 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           particleRadius: 2,
         },
       ],
-      isDelta: true,
     },
     // shroud — small bitmap exercising bin8 path (len <= 0xFF).
     {
-      tick: 1010, entities: [], economy: {}, isDelta: false,
+      tick: 1010, entities: [], economy: {},
       shroud: {
         gridW: 8, gridH: 4, cellSize: 64,
         bitmap: new Uint8Array([0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F, 0xFF]),
@@ -2810,7 +2782,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     },
     // shroud — bitmap > 255 bytes pushes msgpack into bin16 territory.
     {
-      tick: 1011, entities: [], economy: {}, isDelta: false,
+      tick: 1011, entities: [], economy: {},
       shroud: (() => {
         const bytes = new Uint8Array(300);
         for (let i = 0; i < bytes.length; i++) bytes[i] = i & 0xFF;
@@ -2831,7 +2803,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       ],
       economy: {},
       gameState: { phase: 'battle' },
-      isDelta: true,
       removedEntityIds: [25],
       visibilityFiltered: true,
       scanPulses: [
@@ -2841,7 +2812,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     // scanPulses + shroud together — both lazy-added, scanPulses
     // first, shroud second.
     {
-      tick: 1003, entities: [], economy: {}, isDelta: false,
+      tick: 1003, entities: [], economy: {},
       scanPulses: [
         { playerId: 2, x: 200, y: 300, z: 10, radius: 500, expiresAtTick: 1067 },
       ],
@@ -2862,7 +2833,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           ],
         }],
       },
-      isDelta: true,
     },
     // beamUpdates: full optionals (obstructionT + endpointDamageable +
     // mid-vertex reflector with normal + reflectorPlayerId).
@@ -2886,7 +2856,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           endpointDamageable: false,
         }],
       },
-      isDelta: true,
     },
     // beamUpdates: shield reflector kind on a beam point.
     {
@@ -2906,7 +2875,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           ],
         }],
       },
-      isDelta: true,
     },
     // beamUpdates: multiple beams in one tick + mixed with all other
     // projectile sub-arrays.
@@ -2948,7 +2916,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           },
         ],
       },
-      isDelta: true,
     },
     // Explicit false/true projectile booleans are rare in production
     // serializers but must not force raw MessagePack fallback for
@@ -2979,15 +2946,13 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           endpointDamageable: true,
         }],
       },
-      isDelta: true,
     },
-    // Full keyframe static terrain + buildability after the common
+    // Full snapshot static terrain + buildability after the common
     // envelope tail. The small arrays preserve the real DTO field
     // order without making the dev parity fixture heavy.
     {
       tick: 1000, entities: [], economy: {},
       gameState: { phase: 'battle' },
-      isDelta: false,
       terrain: {
         mapWidth: 400,
         mapHeight: 300,
@@ -3048,7 +3013,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       hasProjectiles +
       hasEconomy +
       hasGameState +
-      1 /* isDelta */ +
       hasRemovedIds +
       hasVisibilityFiltered +
       hasScanPulses +
@@ -3277,7 +3241,6 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       phaseSlot,
       hasWinnerId,
       f.gameState?.winnerId ?? 0,
-      f.isDelta ? 1 : 0,
       hasRemovedIds,
       f.removedEntityIds?.length ?? 0,
       hasVisibilityFiltered,
@@ -3365,14 +3328,13 @@ function runPackedMinimapCases(memory: WebAssembly.Memory): { passed: number; fa
       entities: [],
       minimapEntities: packedMinimap,
       economy: {},
-      isDelta: true,
     };
     const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     packMinimapIntoScratch(memory, f.minimapEntities);
-    snapshot_encode_envelope_begin(f.tick, 0, 5);
+    snapshot_encode_envelope_begin(f.tick, 0, 4);
     snapshot_encode_envelope_emit_packed_minimap(f.minimapEntities.length);
     snapshot_encode_envelope_emit_economy(0);
-    snapshot_encode_envelope_continue(0, 0, 0, 0, 1, 0, 0, 0, 0);
+    snapshot_encode_envelope_continue(0, 0, 0, 0, 0, 0, 0, 0);
 
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
@@ -3577,11 +3539,10 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
       entities: [],
       economy: {},
       projectiles: packedProjectiles,
-      isDelta: true,
     };
     const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
     const beamPointCount = packProjectilesFixtureIntoScratch(memory, f.projectiles);
-    snapshot_encode_envelope_begin(f.tick, 0, 5);
+    snapshot_encode_envelope_begin(f.tick, 0, 4);
     snapshot_encode_envelope_emit_economy(0);
     snapshot_encode_envelope_emit_packed_projectiles(
       f.projectiles.spawns !== undefined ? 1 : 0,
@@ -3594,7 +3555,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
       f.projectiles.beamUpdates?.length ?? 0,
       beamPointCount,
     );
-    snapshot_encode_envelope_continue(0, 0, 0, 0, 1, 0, 0, 0, 0);
+    snapshot_encode_envelope_continue(0, 0, 0, 0, 0, 0, 0, 0);
 
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
@@ -3670,14 +3631,13 @@ function runPackedStaticCases(memory: WebAssembly.Memory): { passed: number; fai
       economy: {},
       terrain: packTerrainForWire(f.terrain),
       buildability: packBuildabilityForWire(f.buildability),
-      isDelta: false,
     };
     const jsBytes = msgpackEncode(wireFixture, SNAPSHOT_ENCODE_OPTIONS);
-    snapshot_encode_envelope_begin(f.tick, 0, 6);
+    snapshot_encode_envelope_begin(f.tick, 0, 5);
     snapshot_encode_envelope_emit_economy(0);
     emitPackedTerrainFixture(memory, f.terrain);
     emitPackedBuildabilityFixture(memory, f.buildability);
-    snapshot_encode_envelope_continue(0, 0, 0, 0, 0, 0, 0, 0, 0);
+    snapshot_encode_envelope_continue(0, 0, 0, 0, 0, 0, 0, 0);
 
     const ptr = messagepack_writer_ptr();
     const len = messagepack_writer_len();
