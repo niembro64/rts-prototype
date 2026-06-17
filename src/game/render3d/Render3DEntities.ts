@@ -428,7 +428,7 @@ export class Render3DEntities {
       this.frameState,
       entityPacket?.projectileRenderProjectiles ?? EMPTY_PROJECTILES,
     );
-    this.lodProxyRenderer.flush();
+    this.lodProxyRenderer.flush(this.getViewportHeight());
     // One flush per frame uploads the per-instance leg cylinder
     // buffers (start / end / thickness) to the GPU. Every leg in
     // every unit wrote into the same shared pool above; the GPU

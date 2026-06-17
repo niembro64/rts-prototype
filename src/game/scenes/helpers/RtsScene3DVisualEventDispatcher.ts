@@ -24,6 +24,7 @@ export type RtsScene3DVisualEventDispatchContext = {
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
   debrisRenderer: Debris3D;
+  isPositionFarLod: (simX: number, simY: number, simZ: number) => boolean;
 };
 
 export function dispatchSimEvent3DVisual(
@@ -68,6 +69,7 @@ export function dispatchSimEvent3DVisual(
       effectGfx.fireExplosionStyle,
     );
   } else if (event.type === 'waterSplash') {
+    if (context.isPositionFarLod(event.pos.x, event.pos.y, event.pos.z)) return;
     const splash = event.waterSplash;
     const ctx = event.impactContext;
     const fallbackVelocity = {
@@ -118,6 +120,7 @@ export function dispatchSimEvent3DVisual(
     if (event.entityId !== null) {
       context.entityRenderer.markEntityKilled(event.entityId);
     }
+    if (context.isPositionFarLod(event.pos.x, event.pos.y, event.pos.z)) return;
     if (!getMaterialExplosions()) return;
     const ent = event.entityId !== null
       ? context.clientViewState.getEntity(event.entityId)
