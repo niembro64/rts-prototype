@@ -503,6 +503,7 @@ function writeMinimapEntity(
   return index + 1;
 }
 export type {
+  CameraViewBasis,
   UIEntitySource,
   SelectionInfo,
   EconomyInfo,
@@ -510,7 +511,33 @@ export type {
   MinimapData,
   UIInputState as InputState,
 } from '@/types/ui';
-import type { UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, UIInputState as InputState } from '@/types/ui';
+import type { CameraViewBasis, UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, UIInputState as InputState } from '@/types/ui';
+
+const DEFAULT_CAMERA_VIEW_BASIS: CameraViewBasis = {
+  right: { x: 1, y: 0, z: 0 },
+  up: { x: 0, y: Math.SQRT1_2, z: Math.SQRT1_2 },
+  towardCamera: { x: 0, y: -Math.SQRT1_2, z: Math.SQRT1_2 },
+};
+
+function cloneCameraViewBasis(source: CameraViewBasis): CameraViewBasis {
+  return {
+    right: { ...source.right },
+    up: { ...source.up },
+    towardCamera: { ...source.towardCamera },
+  };
+}
+
+function assignCameraViewBasis(target: CameraViewBasis, source: CameraViewBasis): void {
+  target.right.x = source.right.x;
+  target.right.y = source.right.y;
+  target.right.z = source.right.z;
+  target.up.x = source.up.x;
+  target.up.y = source.up.y;
+  target.up.z = source.up.z;
+  target.towardCamera.x = source.towardCamera.x;
+  target.towardCamera.y = source.towardCamera.y;
+  target.towardCamera.z = source.towardCamera.z;
+}
 
 // Build selection info from entity source and input state
 export function buildSelectionInfo(
@@ -871,11 +898,14 @@ export function buildMinimapData(
   mapHeight: number,
   cameraQuad: MinimapData['cameraQuad'],
   cameraYaw: number,
+  cameraPitch: number,
+  cameraView: CameraViewBasis | undefined,
   showTerrain: boolean,
   wind?: { x: number; y: number; z: number; speed: number },
   entityOverride?: readonly MinimapEntity[] | null,
   out?: MinimapData,
 ): MinimapData {
+  const resolvedCameraView = cameraView ?? out?.cameraView ?? DEFAULT_CAMERA_VIEW_BASIS;
   const data = out ?? {
     contentVersion: 0,
     mapWidth,
@@ -883,6 +913,8 @@ export function buildMinimapData(
     entities: [],
     cameraQuad,
     cameraYaw,
+    cameraPitch,
+    cameraView: cloneCameraViewBasis(resolvedCameraView),
     showTerrain,
     wind,
   };
@@ -927,6 +959,8 @@ export function buildMinimapData(
   data.contentVersion += 1;
   data.cameraQuad = cameraQuad;
   data.cameraYaw = cameraYaw;
+  data.cameraPitch = cameraPitch;
+  assignCameraViewBasis(data.cameraView, resolvedCameraView);
   data.showTerrain = showTerrain;
   data.wind = wind;
   return data;

@@ -188,8 +188,8 @@ export function useGameCanvasSceneUi({
       onMinimapUpdate: (data) => {
         applyMinimapContentData(minimapData, data);
       },
-      onCameraQuadUpdate: (quad, cameraYaw) => {
-        applyMinimapCameraQuad(minimapData, quad, cameraYaw);
+      onCameraQuadUpdate: (quad, cameraYaw, cameraPitch, cameraView) => {
+        applyMinimapCameraQuad(minimapData, quad, cameraYaw, cameraPitch, cameraView);
       },
       onServerMetaUpdate: (meta) => {
         serverMetaFromSnapshot.value = cloneServerMeta(meta);

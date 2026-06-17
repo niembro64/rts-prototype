@@ -10,7 +10,7 @@ import {
 } from '@/clientBarConfig';
 import type { SelectionHudMode } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
-import type { SprayTarget } from '@/types/ui';
+import type { CameraViewBasis, SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { ClientProjectileRenderLists } from '../../network/ClientProjectileStore';
 import type { Entity, EntityId, PlayerId } from '../../sim/types';
@@ -113,6 +113,7 @@ export type RtsScene3DRenderPhaseResources = {
 
 export type RtsScene3DRenderPhaseResult = {
   cameraQuad: FootprintQuad;
+  cameraView: CameraViewBasis;
   renderMs: number;
 };
 
@@ -179,6 +180,11 @@ export class RtsScene3DRenderPhase {
   /** Camera-distance fade shared by HP/build bars + name labels so
    *  both fade + cull together as the camera zooms out (BAR style). */
   private readonly hudFade = new HudFade();
+  private readonly cameraViewBasis: CameraViewBasis = {
+    right: { x: 1, y: 0, z: 0 },
+    up: { x: 0, y: Math.SQRT1_2, z: Math.SQRT1_2 },
+    towardCamera: { x: 0, y: -Math.SQRT1_2, z: Math.SQRT1_2 },
+  };
 
   constructor(
     private readonly threeApp: ThreeApp,
@@ -190,8 +196,17 @@ export class RtsScene3DRenderPhase {
     private readonly getLocalPlayerId: () => PlayerId,
     private readonly getInputManager: () => Input3DManager | null,
     private readonly lookupPlayerName: (id: PlayerId) => string | null,
-    private readonly getCameraQuadUpdate: () => (((quad: FootprintQuad, cameraYaw: number) => void) | undefined),
+    private readonly getCameraQuadUpdate: () => ((
+      quad: FootprintQuad,
+      cameraYaw: number,
+      cameraPitch: number,
+      cameraView: CameraViewBasis,
+    ) => void) | undefined,
   ) {}
+
+  getCameraViewBasis(): CameraViewBasis {
+    return this.cameraViewBasis;
+  }
 
   beginEnabledFrame(): void {
     this.resources.explosionRenderer.beginFrame();
@@ -286,6 +301,7 @@ export class RtsScene3DRenderPhase {
 
     const cameraFootprint = this.cameraFootprintSystem.update(this.threeApp.camera);
     const cameraQuad = cameraFootprint.quad;
+    const cameraView = this.updateCameraViewBasis(this.threeApp.camera);
     this.renderScope.setQuad(
       cameraQuad,
       cameraFootprint.bounds,
@@ -293,7 +309,12 @@ export class RtsScene3DRenderPhase {
     const projectileQueryBounds = this.getProjectileQueryBounds();
     const projectileLists = this.collectRenderProjectiles(projectileQueryBounds);
     environmentPropRenderer?.update();
-    this.getCameraQuadUpdate()?.(cameraQuad, this.threeApp.orbit.yaw);
+    this.getCameraQuadUpdate()?.(
+      cameraQuad,
+      this.threeApp.orbit.yaw,
+      this.threeApp.orbit.pitch,
+      cameraView,
+    );
 
     const serverMeta = this.clientViewState.getServerMeta();
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
@@ -524,8 +545,25 @@ export class RtsScene3DRenderPhase {
 
     return {
       cameraQuad,
+      cameraView,
       renderMs: performance.now() - renderStart,
     };
+  }
+
+  private updateCameraViewBasis(camera: THREE.Camera): CameraViewBasis {
+    camera.updateMatrixWorld();
+    const e = camera.matrixWorld.elements;
+    const basis = this.cameraViewBasis;
+    basis.right.x = e[0];
+    basis.right.y = e[2];
+    basis.right.z = e[1];
+    basis.up.x = e[4];
+    basis.up.y = e[6];
+    basis.up.z = e[5];
+    basis.towardCamera.x = e[8];
+    basis.towardCamera.y = e[10];
+    basis.towardCamera.z = e[9];
+    return basis;
   }
 
   private prepareEntityLists(

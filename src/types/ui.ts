@@ -225,6 +225,15 @@ export type MinimapEntity = {
   radarOnly?: boolean;
 };
 
+export type CameraViewBasis = {
+  /** Screen-right unit vector in sim coordinates: x/y ground, z vertical. */
+  right: { x: number; y: number; z: number };
+  /** Screen-up unit vector in sim coordinates: x/y ground, z vertical. */
+  up: { x: number; y: number; z: number };
+  /** Toward-camera unit vector in sim coordinates: x/y ground, z vertical. */
+  towardCamera: { x: number; y: number; z: number };
+};
+
 export type MinimapData = {
   /** Incremented whenever the minimap content layer changes. This lets
    *  callers reuse entity records without depending on array identity
@@ -241,9 +250,16 @@ export type MinimapData = {
    *  as a polygon so the shape always matches the actual viewport,
    *  including the trapezoidal ground-plane projection in 3D. */
   cameraQuad: readonly [Vec2, Vec2, Vec2, Vec2];
-  /** Orbit camera yaw in radians. Used by minimap instruments to draw
+  /** Orbit camera yaw in radians. Used by HUD instruments to draw
    *  world directions in current screen-space rather than map-space. */
   cameraYaw: number;
+  /** Orbit camera pitch in radians. 0 = straight down, PI/2 = horizontal.
+   *  Used by the top HUD wind arrow so vertical wind projects the same
+   *  way it does in the current camera view. */
+  cameraPitch: number;
+  /** Actual rendered camera basis. Unlike yaw/pitch, this reflects the
+   *  final Three.js camera view after any render-time adjustment. */
+  cameraView: CameraViewBasis;
 
   /** Whether to draw the terrain (land + water) layer. */
   showTerrain: boolean;

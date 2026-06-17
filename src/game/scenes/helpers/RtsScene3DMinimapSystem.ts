@@ -1,5 +1,5 @@
 import type { GraphicsConfig } from '@/types/graphics';
-import type { MinimapData, UIEntitySource } from '@/types/ui';
+import type { CameraViewBasis, MinimapData, UIEntitySource } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
 import { buildMinimapData } from './UIUpdateManager';
 
@@ -21,6 +21,12 @@ export class RtsScene3DMinimapSystem {
       { x: 0, y: 0 },
     ],
     cameraYaw: 0,
+    cameraPitch: Math.PI * 0.25,
+    cameraView: {
+      right: { x: 1, y: 0, z: 0 },
+      up: { x: 0, y: Math.SQRT1_2, z: Math.SQRT1_2 },
+      towardCamera: { x: 0, y: -Math.SQRT1_2, z: Math.SQRT1_2 },
+    },
     showTerrain: true,
     wind: undefined,
   };
@@ -37,6 +43,8 @@ export class RtsScene3DMinimapSystem {
     entitySource: UIEntitySource,
     cameraQuad: MinimapData['cameraQuad'],
     cameraYaw: number,
+    cameraPitch: number,
+    cameraView: CameraViewBasis | undefined,
     onMinimapUpdate: MinimapUpdateHandler,
   ): void {
     this.updateTimer += deltaMs;
@@ -44,13 +52,15 @@ export class RtsScene3DMinimapSystem {
     if (this.updateTimer < minimapInterval) return;
 
     this.updateTimer = 0;
-    this.emit(entitySource, cameraQuad, cameraYaw, onMinimapUpdate);
+    this.emit(entitySource, cameraQuad, cameraYaw, cameraPitch, cameraView, onMinimapUpdate);
   }
 
   emit(
     entitySource: UIEntitySource,
     cameraQuad: MinimapData['cameraQuad'],
     cameraYaw: number,
+    cameraPitch: number,
+    cameraView: CameraViewBasis | undefined,
     onMinimapUpdate: MinimapUpdateHandler,
   ): void {
     if (!onMinimapUpdate) return;
@@ -62,6 +72,8 @@ export class RtsScene3DMinimapSystem {
         this.mapHeight,
         cameraQuad,
         cameraYaw,
+        cameraPitch,
+        cameraView,
         true,
         this.clientViewState.getServerMeta()?.wind,
         this.clientViewState.getMinimapEntitiesOverride(),

@@ -43,9 +43,8 @@ const MINIMAP_CAMERA_STROKE = COLORS.ui.minimap.cameraStroke;
 const MINIMAP_FRAME_STROKE = COLORS.ui.minimap.frameStroke;
 const MINIMAP_PANEL = COLORS.ui.minimap.panel;
 const MINIMAP_WIND_STROKE = cssHex(COLORS.ui.worldDirectionHud.materials.wind.colorHex);
-const MINIMAP_WIND_ACCENT = cssHex(COLORS.ui.worldDirectionHud.materials.windAccent.colorHex);
-const MINIMAP_WIND_TEXT = COLORS.ui.worldDirectionHud.label.strong;
-const MINIMAP_WIND_LABEL = COLORS.ui.worldDirectionHud.label.text;
+const MINIMAP_COMPASS_STROKE = cssHex(COLORS.ui.worldDirectionHud.materials.north.colorHex);
+const MINIMAP_ARROW_HALO = 'rgba(0, 0, 0, 0.78)';
 
 const props = withDefaults(defineProps<{
   data: MinimapData;
@@ -382,13 +381,6 @@ function drawCommunicationLayer(
   ctx.restore();
 }
 
-function fmtWindSpeed(value: number): string {
-  const abs = Math.abs(value);
-  if (abs >= 100) return abs.toFixed(0);
-  if (abs >= 10) return abs.toFixed(1);
-  return abs.toFixed(2);
-}
-
 function windSpeedUnit(speed: number): number {
   const min = Math.min(WIND_SPEED_MIN, WIND_SPEED_MAX);
   const max = Math.max(WIND_SPEED_MIN, WIND_SPEED_MAX);
@@ -396,111 +388,101 @@ function windSpeedUnit(speed: number): number {
   return Math.max(0, Math.min(1, speed / Math.max(1, max)));
 }
 
-function roundedRectPath(
+function drawMapArrow(
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+  length: number,
+  color: string,
 ): void {
-  const radius = Math.min(r, w * 0.5, h * 0.5);
+  const vectorLength = Math.hypot(dx, dy);
+  if (vectorLength <= 1e-6) return;
+  const ux = dx / vectorLength;
+  const uy = dy / vectorLength;
+  const headSize = Math.max(4.5, length * 0.26);
+  const tailX = cx - ux * length * 0.48;
+  const tailY = cy - uy * length * 0.48;
+  const headX = cx + ux * length * 0.52;
+  const headY = cy + uy * length * 0.52;
+  const perpX = -uy;
+  const perpY = ux;
+
+  const drawHead = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(headX, headY);
+    ctx.lineTo(
+      headX - ux * headSize + perpX * headSize * 0.58,
+      headY - uy * headSize + perpY * headSize * 0.58,
+    );
+    ctx.lineTo(
+      headX - ux * headSize - perpX * headSize * 0.58,
+      headY - uy * headSize - perpY * headSize * 0.58,
+    );
+    ctx.closePath();
+  };
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.shadowBlur = 4;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.82)';
+
+  ctx.strokeStyle = MINIMAP_ARROW_HALO;
+  ctx.lineWidth = 6;
   ctx.beginPath();
-  ctx.moveTo(x + radius, y);
-  ctx.lineTo(x + w - radius, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + radius);
-  ctx.lineTo(x + w, y + h - radius);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - radius, y + h);
-  ctx.lineTo(x + radius, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - radius);
-  ctx.lineTo(x, y + radius);
-  ctx.quadraticCurveTo(x, y, x + radius, y);
-  ctx.closePath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(headX, headY);
+  ctx.stroke();
+  drawHead();
+  ctx.fillStyle = MINIMAP_ARROW_HALO;
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.25;
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(headX, headY);
+  ctx.stroke();
+  drawHead();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
 }
 
-function drawWindLayer(
+function drawInstrumentLayer(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
 ): void {
+  const shortestSide = Math.min(w, h);
+  if (shortestSide < 82) return;
+  const inset = Math.max(16, Math.min(24, shortestSide * 0.07));
+  const compassLength = Math.max(16, Math.min(24, shortestSide * 0.065));
+  const windLengthBase = Math.max(15, Math.min(23, shortestSide * 0.06));
+  const cx = w - inset;
+  const windCy = h - inset;
+  const compassCy = windCy - compassLength - 14;
+
+  drawMapArrow(ctx, cx, compassCy, 0, -1, compassLength, MINIMAP_COMPASS_STROKE);
+
   const wind = props.data.wind;
   if (!wind || wind.speed <= 1e-6) return;
   const horizontalLen = Math.hypot(wind.x, wind.y);
   if (horizontalLen <= 1e-6) return;
 
-  const inset = 6;
-  const panelW = Math.min(80, w - inset * 2);
-  const panelH = Math.min(46, h - inset * 2);
-  if (panelW < 62 || panelH < 38) return;
-
-  const x = w - panelW - inset;
-  const y = h - panelH - inset;
-  const arrowCx = x + 21;
-  const arrowCy = y + panelH * 0.52;
-  const textX = x + 41;
   const speedScale = windSpeedUnit(wind.speed);
-  const arrowLength = 18 + speedScale * 9;
-  const arrowHead = 6;
-
-  // Match the top HUD's upwind convention, but keep it in map-space:
-  // canvas up is world north, independent of the current camera yaw.
-  const dx = -wind.x / horizontalLen;
-  const dy = -wind.y / horizontalLen;
-  const tailX = arrowCx - dx * arrowLength * 0.5;
-  const tailY = arrowCy - dy * arrowLength * 0.5;
-  const headX = arrowCx + dx * arrowLength * 0.5;
-  const headY = arrowCy + dy * arrowLength * 0.5;
-  const perpX = -dy;
-  const perpY = dx;
-
-  ctx.save();
-  ctx.shadowBlur = 8;
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.72)';
-  roundedRectPath(ctx, x, y, panelW, panelH, 5);
-  ctx.fillStyle = 'rgba(4, 8, 14, 0.72)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(155, 232, 255, 0.36)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.shadowBlur = 4;
-  ctx.strokeStyle = MINIMAP_WIND_STROKE;
-  ctx.lineWidth = 2.25;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(tailX, tailY);
-  ctx.lineTo(headX, headY);
-  ctx.stroke();
-
-  ctx.fillStyle = MINIMAP_WIND_STROKE;
-  ctx.beginPath();
-  ctx.moveTo(headX, headY);
-  ctx.lineTo(
-    headX - dx * arrowHead + perpX * arrowHead * 0.58,
-    headY - dy * arrowHead + perpY * arrowHead * 0.58,
+  drawMapArrow(
+    ctx,
+    cx,
+    windCy,
+    wind.x / horizontalLen,
+    wind.y / horizontalLen,
+    windLengthBase + speedScale * 4,
+    MINIMAP_WIND_STROKE,
   );
-  ctx.lineTo(
-    headX - dx * arrowHead - perpX * arrowHead * 0.58,
-    headY - dy * arrowHead - perpY * arrowHead * 0.58,
-  );
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = MINIMAP_WIND_ACCENT;
-  ctx.beginPath();
-  ctx.arc(tailX, tailY, 2.2, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = MINIMAP_WIND_LABEL;
-  ctx.font = '700 8px monospace';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillText('WIND', textX, y + 16);
-  ctx.fillStyle = MINIMAP_WIND_TEXT;
-  ctx.font = '700 11px monospace';
-  ctx.fillText(fmtWindSpeed(wind.speed), textX, y + 31);
-  ctx.restore();
 }
 
 /** Composite the cached entity layer + stroke the camera quad + the
@@ -540,7 +522,7 @@ function compose(): void {
   ctx.stroke();
   ctx.restore();
 
-  drawWindLayer(ctx, w, h);
+  drawInstrumentLayer(ctx, w, h);
 
   ctx.strokeStyle = MINIMAP_FRAME_STROKE;
   ctx.lineWidth = 2;

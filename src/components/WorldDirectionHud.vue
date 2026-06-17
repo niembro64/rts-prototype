@@ -9,7 +9,7 @@ import {
 } from '@/game/render3d/RendererContextBudget';
 
 const props = withDefaults(defineProps<{
-  data: Pick<MinimapData, 'cameraYaw' | 'wind'>;
+  data: Pick<MinimapData, 'cameraView' | 'wind'>;
   compact?: boolean;
 }>(), {
   compact: false,
@@ -50,25 +50,26 @@ let resizeObserver: ResizeObserver | null = null;
 let rafId = 0;
 let throttleTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRenderMs = 0;
-let lastCompassYaw = Number.NaN;
-let lastWindYaw = Number.NaN;
 let lastWindScale = Number.NaN;
 let lastWindVisible = false;
 let needsRender = true;
 let lowMemoryHud = false;
 
 const RENDER_INTERVAL_MS = 1000 / 30;
-const ANGLE_EPS = 0.0005;
 const SCALE_EPS = 0.001;
-const COMPACT_CAMERA_FOV = 28;
-const DEFAULT_CAMERA_FOV = 38;
-const COMPACT_CAMERA_Y = 2.45;
-const COMPACT_CAMERA_Z = 2.88;
-const DEFAULT_CAMERA_Y = 4.0;
-const DEFAULT_CAMERA_Z = 4.8;
+const COMPACT_CAMERA_FOV = 20;
+const DEFAULT_CAMERA_FOV = 24;
+const COMPACT_CAMERA_Y = 3.0;
+const COMPACT_CAMERA_Z = 4.1;
+const DEFAULT_CAMERA_Y = 4.5;
+const DEFAULT_CAMERA_Z = 5.9;
 
-const rightVec = new THREE.Vector2();
-const upVec = new THREE.Vector2();
+const viewDirection = new THREE.Vector3();
+const hudDirection = new THREE.Vector3();
+const arrowForward = new THREE.Vector3(0, 0, 1);
+const hudRight = new THREE.Vector3();
+const hudUp = new THREE.Vector3();
+const hudTowardCamera = new THREE.Vector3();
 
 function fmtWindComponent(value: number): string {
   const rounded = Math.abs(value) < 0.05 ? 0 : value;
@@ -76,28 +77,51 @@ function fmtWindComponent(value: number): string {
   return `${sign}${Math.abs(rounded).toFixed(1)}`;
 }
 
-function cameraRelativeYaw(x: number, y: number): number {
-  const len = Math.hypot(x, y);
-  if (len <= 1e-6) return 0;
-  const yaw = props.data.cameraYaw ?? 0;
-  rightVec.set(Math.cos(yaw), Math.sin(yaw));
-  upVec.set(-Math.sin(yaw), Math.cos(yaw));
-  const nx = x / len;
-  const ny = y / len;
-  const right = nx * rightVec.x + ny * rightVec.y;
-  const up = nx * upVec.x + ny * upVec.y;
-  return Math.atan2(right, up);
+function writeWorldVectorInView(
+  x: number,
+  y: number,
+  z: number,
+  out: THREE.Vector3,
+): number {
+  const { right: viewRight, up: viewUp, towardCamera } = props.data.cameraView;
+  const right = x * viewRight.x + y * viewRight.y + z * viewRight.z;
+  const up = x * viewUp.x + y * viewUp.y + z * viewUp.z;
+  const toward = x * towardCamera.x + y * towardCamera.y + z * towardCamera.z;
+  out.set(right, up, toward);
+  return out.length();
 }
 
-function makeArrow(material: THREE.Material, accent: THREE.Material): THREE.Group {
+function applyViewArrowDirection(
+  view: HudView,
+  arrow: THREE.Object3D,
+  right: number,
+  up: number,
+  towardCamera: number,
+): void {
+  view.camera.updateMatrixWorld();
+  const matrix = view.camera.matrixWorld.elements;
+  hudRight.set(matrix[0], matrix[1], matrix[2]);
+  hudUp.set(matrix[4], matrix[5], matrix[6]);
+  hudTowardCamera.set(matrix[8], matrix[9], matrix[10]);
+  hudDirection
+    .copy(hudRight).multiplyScalar(right)
+    .addScaledVector(hudUp, up)
+    .addScaledVector(hudTowardCamera, towardCamera);
+  const len = hudDirection.length();
+  if (len <= 1e-6) return;
+  hudDirection.multiplyScalar(1 / len);
+  arrow.quaternion.setFromUnitVectors(arrowForward, hudDirection);
+}
+
+function makeArrow(material: THREE.Material): THREE.Group {
   const group = new THREE.Group();
-  const shaftLength = 1.65;
-  const headLength = 0.62;
+  const shaftLength = 0.9;
+  const headLength = 0.42;
   const totalLength = shaftLength + headLength;
   const tail = -totalLength * 0.5;
 
   const shaft = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.105, 0.13, shaftLength, 24),
+    new THREE.CylinderGeometry(0.055, 0.065, shaftLength, 14),
     material,
   );
   shaft.rotation.x = Math.PI / 2;
@@ -105,70 +129,12 @@ function makeArrow(material: THREE.Material, accent: THREE.Material): THREE.Grou
   group.add(shaft);
 
   const head = new THREE.Mesh(
-    new THREE.ConeGeometry(0.34, headLength, 32),
+    new THREE.ConeGeometry(0.17, headLength, 18),
     material,
   );
   head.rotation.x = Math.PI / 2;
   head.position.z = tail + shaftLength + headLength * 0.5;
   group.add(head);
-
-  const ridge = new THREE.Mesh(
-    new THREE.BoxGeometry(0.065, 0.06, totalLength * 0.76),
-    accent,
-  );
-  ridge.position.set(0, 0.125, 0.02);
-  group.add(ridge);
-
-  const tailCap = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.17, 0.17, 0.08, 24),
-    accent,
-  );
-  tailCap.rotation.x = Math.PI / 2;
-  tailCap.position.z = tail + 0.02;
-  group.add(tailCap);
-
-  return group;
-}
-
-function makeCompass(
-  ringMat: THREE.Material,
-  tickMat: THREE.Material,
-  northMat: THREE.Material,
-  northAccent: THREE.Material,
-): THREE.Group {
-  const group = new THREE.Group();
-
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.82, 0.035, 12, 56),
-    ringMat,
-  );
-  ring.rotation.x = Math.PI / 2;
-  group.add(ring);
-
-  for (let i = 0; i < 16; i++) {
-    const cardinal = i % 4 === 0;
-    const angle = (i / 16) * Math.PI * 2;
-    const tick = new THREE.Mesh(
-      new THREE.BoxGeometry(cardinal ? 0.07 : 0.035, 0.055, cardinal ? 0.26 : 0.15),
-      i === 0 ? northMat : tickMat,
-    );
-    const radius = cardinal ? 0.72 : 0.75;
-    tick.position.set(Math.sin(angle) * radius, 0.045, Math.cos(angle) * radius);
-    tick.rotation.y = angle;
-    group.add(tick);
-  }
-
-  const north = makeArrow(northMat, northAccent);
-  north.scale.setScalar(0.72);
-  north.position.y = 0.085;
-  group.add(north);
-
-  const hub = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.18, 0.18, 0.08, 28),
-    northAccent,
-  );
-  hub.position.y = 0.09;
-  group.add(hub);
 
   return group;
 }
@@ -255,15 +221,11 @@ function buildScene(): void {
     return;
   }
 
-  const compassMat = makeHudMaterial(HUD_COLORS.materials.compass);
-  const compassAccent = makeHudMaterial(HUD_COLORS.materials.compassAccent);
   const northMat = makeHudMaterial(HUD_COLORS.materials.north);
-  const northAccent = makeHudMaterial(HUD_COLORS.materials.northAccent);
   const windMat = makeHudMaterial(HUD_COLORS.materials.wind);
-  const windAccent = makeHudMaterial(HUD_COLORS.materials.windAccent);
 
-  compassRig = makeCompass(compassMat, compassAccent, northMat, northAccent);
-  windArrow = makeArrow(windMat, windAccent);
+  compassRig = makeArrow(northMat);
+  windArrow = makeArrow(windMat);
   windArrow.visible = false;
 
   try {
@@ -379,12 +341,8 @@ function renderHud(now: number): void {
   lastRenderMs = now;
 
   let changed = needsRender;
-  const compassYaw = cameraRelativeYaw(0, -1);
-  if (Math.abs(compassYaw - lastCompassYaw) > ANGLE_EPS || Number.isNaN(lastCompassYaw)) {
-    compassRig.rotation.y = compassYaw;
-    lastCompassYaw = compassYaw;
-    changed = true;
-  }
+  writeWorldVectorInView(0, -1, 0, viewDirection);
+  applyViewArrowDirection(compassView, compassRig, viewDirection.x, viewDirection.y, 0);
 
   const wind = props.data.wind;
   if (wind && wind.speed > 1e-6) {
@@ -393,14 +351,9 @@ function renderHud(now: number): void {
       lastWindVisible = true;
       changed = true;
     }
-    // Display incoming wind direction, matching the wind turbine face.
-    const windYaw = cameraRelativeYaw(-wind.x, -wind.y);
-    if (Math.abs(windYaw - lastWindYaw) > ANGLE_EPS || Number.isNaN(lastWindYaw)) {
-      windArrow.rotation.y = windYaw;
-      lastWindYaw = windYaw;
-      changed = true;
-    }
-    const speedScale = Math.max(0.72, Math.min(1.35, 0.74 + wind.speed * 0.28));
+    writeWorldVectorInView(wind.x, wind.y, wind.z, viewDirection);
+    applyViewArrowDirection(windView, windArrow, viewDirection.x, viewDirection.y, viewDirection.z);
+    const speedScale = Math.max(0.86, Math.min(1.06, 0.86 + wind.speed * 0.0025));
     if (Math.abs(speedScale - lastWindScale) > SCALE_EPS || Number.isNaN(lastWindScale)) {
       windArrow.scale.set(1, 1, speedScale);
       lastWindScale = speedScale;
@@ -494,9 +447,18 @@ onUnmounted(() => {
 
 watch(
   () => [
-    props.data.cameraYaw ?? 0,
+    props.data.cameraView.right.x,
+    props.data.cameraView.right.y,
+    props.data.cameraView.right.z,
+    props.data.cameraView.up.x,
+    props.data.cameraView.up.y,
+    props.data.cameraView.up.z,
+    props.data.cameraView.towardCamera.x,
+    props.data.cameraView.towardCamera.y,
+    props.data.cameraView.towardCamera.z,
     props.data.wind?.x ?? 0,
     props.data.wind?.y ?? 0,
+    props.data.wind?.z ?? 0,
     props.data.wind?.speed ?? 0,
     props.compact ? 1 : 0,
   ],
@@ -538,7 +500,7 @@ watch(
   display: flex;
   align-items: stretch;
   gap: 10px;
-  width: 350px;
+  width: 330px;
   height: 118px;
   min-height: 0;
   padding: 0;
@@ -550,7 +512,7 @@ watch(
 }
 
 .world-direction-hud.compact {
-  width: 340px;
+  width: 320px;
   height: 100%;
 }
 
@@ -578,15 +540,15 @@ watch(
 
 .direction-canvas {
   display: block;
-  flex: 0 0 58px;
-  width: 58px;
+  flex: 0 0 48px;
+  width: 48px;
   height: 100%;
   min-height: 0;
 }
 
 .world-direction-hud.compact .direction-canvas {
-  flex-basis: 58px;
-  width: 58px;
+  flex-basis: 48px;
+  width: 48px;
 }
 
 .direction-label span {

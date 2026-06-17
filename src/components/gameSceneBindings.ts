@@ -1,6 +1,6 @@
 import type { GameScene } from '@/types/game';
 import type { PlayerId } from '@/types/sim';
-import type { EconomyInfo, MinimapData, SelectionInfo } from '@/types/ui';
+import type { CameraViewBasis, EconomyInfo, MinimapData, SelectionInfo } from '@/types/ui';
 import type { GamePhase, NetworkServerSnapshotMeta } from '@/types/network';
 
 export type SceneUiBindings = {
@@ -8,7 +8,12 @@ export type SceneUiBindings = {
   onSelectionChange: (info: SelectionInfo) => void;
   onEconomyChange: (info: EconomyInfo) => void;
   onMinimapUpdate: (data: MinimapData) => void;
-  onCameraQuadUpdate: (quad: MinimapData['cameraQuad'], cameraYaw: number) => void;
+  onCameraQuadUpdate: (
+    quad: MinimapData['cameraQuad'],
+    cameraYaw: number,
+    cameraPitch: number,
+    cameraView: CameraViewBasis,
+  ) => void;
   onServerMetaUpdate: (meta: NetworkServerSnapshotMeta) => void;
   onGamePhaseChange?: (phase: GamePhase) => void;
   onGameOver?: (winnerId: PlayerId) => void;

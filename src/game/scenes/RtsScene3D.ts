@@ -231,6 +231,8 @@ export class RtsScene3D {
   public onCameraQuadUpdate?: (
     quad: import('../ViewportFootprint').FootprintQuad,
     cameraYaw: number,
+    cameraPitch: number,
+    cameraView: MinimapData['cameraView'],
   ) => void;
   public onGameOverUI?: (winnerId: PlayerId) => void;
   public onGameRestart?: () => void;
@@ -697,7 +699,7 @@ export class RtsScene3D {
       zoom: this.cameras.main.zoom,
     });
 
-    const { cameraQuad, renderMs } = renderPhase.run({
+    const { cameraQuad, cameraView, renderMs } = renderPhase.run({
       effectDtMs,
       graphicsConfig,
       renderFrameState,
@@ -723,6 +725,8 @@ export class RtsScene3D {
       this.entitySourceAdapter,
       cameraQuad,
       this.threeApp.orbit.yaw,
+      this.threeApp.orbit.pitch,
+      cameraView,
       this.onMinimapUpdate,
     );
 
@@ -803,6 +807,8 @@ export class RtsScene3D {
       this.entitySourceAdapter,
       this.cameraFootprintSystem.getQuad(),
       this.threeApp.orbit.yaw,
+      this.threeApp.orbit.pitch,
+      this.renderPhase?.getCameraViewBasis(),
       this.onMinimapUpdate,
     );
   }
