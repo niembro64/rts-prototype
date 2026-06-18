@@ -3,7 +3,7 @@
     "unitBlueprintId": "unitJackal",
     "name": "Jackal",
     "shortName": "JKL",
-    "hp": 98.25,
+    "hp": 110,
     "radius": {
       "visual": 8,
       "hitbox": 6,
@@ -22,11 +22,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 42,
+    "mass": 45,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 50,
-      "metal": 50
+      "energy": 60,
+      "metal": 60
     },
     "turrets": [
       {
@@ -75,15 +75,15 @@
     },
     "base": {
       "cost": {
-        "energy": 50,
-        "metal": 50
+        "energy": 60,
+        "metal": 60
       },
-      "mass": 42,
-      "health": 98.25,
+      "mass": 45,
+      "health": 110,
       "deathExplosion": {
         "radius": 11.04,
-        "force": 3150,
-        "damage": 52.663
+        "force": 3600,
+        "damage": 60
       },
       "radius": {
         "visual": 8,
@@ -97,7 +97,7 @@
     "unitBlueprintId": "unitLynx",
     "name": "Lynx",
     "shortName": "LNX",
-    "hp": 153,
+    "hp": 170,
     "radius": {
       "visual": 10,
       "hitbox": 7,
@@ -116,11 +116,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 63.5,
+    "mass": 75,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 90,
-      "metal": 90
+      "energy": 110,
+      "metal": 110
     },
     "turrets": [
       {
@@ -155,7 +155,7 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 170,
+        "driveForce": 180,
         "traction": 0.75
       },
       "config": {
@@ -168,15 +168,15 @@
     },
     "base": {
       "cost": {
-        "energy": 90,
-        "metal": 90
+        "energy": 110,
+        "metal": 110
       },
-      "mass": 63.5,
-      "health": 153,
+      "mass": 75,
+      "health": 170,
       "deathExplosion": {
         "radius": 14.95,
-        "force": 4200,
-        "damage": 57.45
+        "force": 6000,
+        "damage": 85
       },
       "radius": {
         "visual": 10,
@@ -190,7 +190,7 @@
     "unitBlueprintId": "unitDaddy",
     "name": "Daddy",
     "shortName": "DDY",
-    "hp": 414,
+    "hp": 480,
     "radius": {
       "visual": 13,
       "hitbox": 9,
@@ -209,11 +209,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 64.5,
+    "mass": 220,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 350,
-      "metal": 350
+      "energy": 520,
+      "metal": 520
     },
     "turrets": [
       {
@@ -256,7 +256,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 200,
+        "driveForce": 300,
         "traction": 1
       },
       "config": {
@@ -291,15 +291,15 @@
     },
     "base": {
       "cost": {
-        "energy": 350,
-        "metal": 350
+        "energy": 520,
+        "metal": 520
       },
-      "mass": 64.5,
-      "health": 414,
+      "mass": 220,
+      "health": 480,
       "deathExplosion": {
         "radius": 17.25,
-        "force": 3150,
-        "damage": 191.5
+        "force": 17600,
+        "damage": 260
       },
       "radius": {
         "visual": 13,
@@ -313,7 +313,7 @@
     "unitBlueprintId": "unitBadger",
     "name": "Badger",
     "shortName": "BDG",
-    "hp": 469,
+    "hp": 520,
     "radius": {
       "visual": 16,
       "hitbox": 13,
@@ -332,11 +332,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 387,
+    "mass": 430,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 300,
-      "metal": 300
+      "energy": 430,
+      "metal": 430
     },
     "turrets": [
       {
@@ -371,7 +371,7 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 200,
+        "driveForce": 360,
         "traction": 0.75
       },
       "config": {
@@ -384,15 +384,15 @@
     },
     "base": {
       "cost": {
-        "energy": 300,
-        "metal": 300
+        "energy": 430,
+        "metal": 430
       },
-      "mass": 387,
-      "health": 469,
+      "mass": 430,
+      "health": 520,
       "deathExplosion": {
         "radius": 25.76,
-        "force": 31500,
-        "damage": 287.25
+        "force": 34400,
+        "damage": 280
       },
       "radius": {
         "visual": 16,
@@ -406,7 +406,7 @@
     "unitBlueprintId": "unitMongoose",
     "name": "Mongoose",
     "shortName": "MGS",
-    "hp": 366,
+    "hp": 400,
     "radius": {
       "visual": 20,
       "hitbox": 12,
@@ -425,11 +425,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 268,
+    "mass": 300,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 220,
-      "metal": 220
+      "energy": 360,
+      "metal": 360
     },
     "turrets": [
       {
@@ -464,7 +464,7 @@
       "type": "wheels",
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
-        "driveForce": 220,
+        "driveForce": 450,
         "traction": 0.45
       },
       "config": {
@@ -478,15 +478,15 @@
     },
     "base": {
       "cost": {
-        "energy": 220,
-        "metal": 220
+        "energy": 360,
+        "metal": 360
       },
-      "mass": 268,
-      "health": 366,
+      "mass": 300,
+      "health": 400,
       "deathExplosion": {
         "radius": 27.6,
-        "force": 21000,
-        "damage": 191.5
+        "force": 24000,
+        "damage": 220
       },
       "radius": {
         "visual": 20,
@@ -522,8 +522,8 @@
     "mass": 29.5,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 35,
-      "metal": 35
+      "energy": 50,
+      "metal": 50
     },
     "turrets": [
       {
@@ -556,7 +556,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 120,
+        "driveForce": 115,
         "traction": 1
       },
       "config": {
@@ -591,15 +591,15 @@
     },
     "base": {
       "cost": {
-        "energy": 35,
-        "metal": 35
+        "energy": 50,
+        "metal": 50
       },
       "mass": 29.5,
       "health": 98.25,
       "deathExplosion": {
         "radius": 13.915,
-        "force": 2100,
-        "damage": 52.663
+        "force": 2400,
+        "damage": 50
       },
       "radius": {
         "visual": 10,
@@ -613,7 +613,7 @@
     "unitBlueprintId": "unitMammoth",
     "name": "Mammoth",
     "shortName": "MMT",
-    "hp": 1295,
+    "hp": 1500,
     "radius": {
       "visual": 24,
       "hitbox": 24,
@@ -632,11 +632,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 1265,
+    "mass": 1500,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 1200,
-      "metal": 1200
+      "energy": 1600,
+      "metal": 1600
     },
     "turrets": [
       {
@@ -671,7 +671,7 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 60,
+        "driveForce": 620,
         "traction": 0.75
       },
       "config": {
@@ -684,15 +684,15 @@
     },
     "base": {
       "cost": {
-        "energy": 1200,
-        "metal": 1200
+        "energy": 1600,
+        "metal": 1600
       },
-      "mass": 1265,
-      "health": 1295,
+      "mass": 1500,
+      "health": 1500,
       "deathExplosion": {
         "radius": 41.4,
-        "force": 105000,
-        "damage": 861.75
+        "force": 120000,
+        "damage": 900
       },
       "radius": {
         "visual": 24,
@@ -706,7 +706,7 @@
     "unitBlueprintId": "unitFormik",
     "name": "Formik",
     "shortName": "FMK",
-    "hp": 4576,
+    "hp": 4800,
     "radius": {
       "visual": 40,
       "hitbox": 50,
@@ -725,11 +725,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 3173,
+    "mass": 3400,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 4000,
-      "metal": 4000
+      "energy": 5200,
+      "metal": 5200
     },
     "turrets": [
       {
@@ -782,7 +782,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 60,
+        "driveForce": 900,
         "traction": 1
       },
       "config": {
@@ -827,15 +827,15 @@
     },
     "base": {
       "cost": {
-        "energy": 4000,
-        "metal": 4000
+        "energy": 5200,
+        "metal": 5200
       },
-      "mass": 3173,
-      "health": 4576,
+      "mass": 3400,
+      "health": 4800,
       "deathExplosion": {
         "radius": 74.75,
-        "force": 262500,
-        "damage": 3064
+        "force": 272000,
+        "damage": 2800
       },
       "radius": {
         "visual": 40,
@@ -849,7 +849,7 @@
     "unitBlueprintId": "unitWidow",
     "name": "Widow",
     "shortName": "WDW",
-    "hp": 3552,
+    "hp": 4200,
     "radius": {
       "visual": 30,
       "hitbox": 40,
@@ -868,11 +868,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 1308.5,
+    "mass": 2600,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 3000,
-      "metal": 3000
+      "energy": 6200,
+      "metal": 6200
     },
     "turrets": [
       {
@@ -991,7 +991,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 70,
+        "driveForce": 920,
         "traction": 1
       },
       "config": {
@@ -1026,15 +1026,15 @@
     },
     "base": {
       "cost": {
-        "energy": 3000,
-        "metal": 3000
+        "energy": 6200,
+        "metal": 6200
       },
-      "mass": 1308.5,
-      "health": 3552,
+      "mass": 2600,
+      "health": 4200,
       "deathExplosion": {
         "radius": 59.8,
-        "force": 105000,
-        "damage": 2298
+        "force": 208000,
+        "damage": 2500
       },
       "radius": {
         "visual": 30,
@@ -1048,7 +1048,7 @@
     "unitBlueprintId": "unitHippo",
     "name": "Hippo",
     "shortName": "HPO",
-    "hp": 2153,
+    "hp": 2400,
     "radius": {
       "visual": 30,
       "hitbox": 27,
@@ -1067,11 +1067,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 1899,
+    "mass": 2100,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 2500,
-      "metal": 2500
+      "energy": 3400,
+      "metal": 3400
     },
     "turrets": [
       {
@@ -1105,7 +1105,7 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 55,
+        "driveForce": 850,
         "traction": 0.75
       },
       "config": {
@@ -1118,15 +1118,15 @@
     },
     "base": {
       "cost": {
-        "energy": 2500,
-        "metal": 2500
+        "energy": 3400,
+        "metal": 3400
       },
-      "mass": 1899,
-      "health": 2153,
+      "mass": 2100,
+      "health": 2400,
       "deathExplosion": {
         "radius": 62.1,
-        "force": 157500,
-        "damage": 1436.25
+        "force": 168000,
+        "damage": 1450
       },
       "radius": {
         "visual": 30,
@@ -1140,7 +1140,7 @@
     "unitBlueprintId": "unitTarantula",
     "name": "Tarantula",
     "shortName": "TRN",
-    "hp": 183,
+    "hp": 210,
     "radius": {
       "visual": 11,
       "hitbox": 13,
@@ -1159,11 +1159,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 46.5,
+    "mass": 70,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 300,
-      "metal": 300
+      "energy": 330,
+      "metal": 330
     },
     "turrets": [
       {
@@ -1209,7 +1209,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 200,
+        "driveForce": 220,
         "traction": 1
       },
       "config": {
@@ -1244,15 +1244,15 @@
     },
     "base": {
       "cost": {
-        "energy": 300,
-        "metal": 300
+        "energy": 330,
+        "metal": 330
       },
-      "mass": 46.5,
-      "health": 183,
+      "mass": 70,
+      "health": 210,
       "deathExplosion": {
         "radius": 22.77,
-        "force": 3150,
-        "damage": 95.75
+        "force": 5600,
+        "damage": 100
       },
       "radius": {
         "visual": 11,
@@ -1266,7 +1266,7 @@
     "unitBlueprintId": "unitLoris",
     "name": "Loris",
     "shortName": "LRS",
-    "hp": 334,
+    "hp": 420,
     "radius": {
       "visual": 10,
       "hitbox": 8,
@@ -1285,11 +1285,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 124.5,
+    "mass": 180,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 400,
-      "metal": 400
+      "energy": 600,
+      "metal": 600
     },
     "turrets": [
       {
@@ -1329,7 +1329,7 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 160,
+        "driveForce": 220,
         "traction": 0.75
       },
       "config": {
@@ -1342,15 +1342,15 @@
     },
     "base": {
       "cost": {
-        "energy": 400,
-        "metal": 400
+        "energy": 600,
+        "metal": 600
       },
-      "mass": 124.5,
-      "health": 334,
+      "mass": 180,
+      "health": 420,
       "deathExplosion": {
         "radius": 27.6,
-        "force": 9450,
-        "damage": 191.5
+        "force": 14400,
+        "damage": 220
       },
       "radius": {
         "visual": 10,
@@ -1364,7 +1364,7 @@
     "unitBlueprintId": "unitBee",
     "name": "Bee",
     "shortName": "BEE",
-    "hp": 118.5,
+    "hp": 120,
     "radius": {
       "visual": 9,
       "hitbox": 8,
@@ -1383,11 +1383,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 35.75,
+    "mass": 40,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 120,
-      "metal": 120
+      "energy": 150,
+      "metal": 150
     },
     "turrets": [
       {
@@ -1420,7 +1420,7 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 30,
+        "driveForce": 60,
         "traction": 1
       },
       "config": {
@@ -1439,15 +1439,15 @@
     },
     "base": {
       "cost": {
-        "energy": 120,
-        "metal": 120
+        "energy": 150,
+        "metal": 150
       },
-      "mass": 35.75,
-      "health": 118.5,
+      "mass": 40,
+      "health": 120,
       "deathExplosion": {
         "radius": 12.42,
-        "force": 2625,
-        "damage": 67.025
+        "force": 3200,
+        "damage": 65
       },
       "radius": {
         "visual": 9,
@@ -1461,7 +1461,7 @@
     "unitBlueprintId": "unitDragonfly",
     "name": "Dragonfly",
     "shortName": "DRF",
-    "hp": 444,
+    "hp": 460,
     "radius": {
       "visual": 16,
       "hitbox": 40,
@@ -1480,11 +1480,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 135,
+    "mass": 170,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 360,
-      "metal": 360
+      "energy": 560,
+      "metal": 560
     },
     "turrets": [
       {
@@ -1542,7 +1542,7 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 10,
+        "driveForce": 80,
         "traction": 1
       },
       "config": {
@@ -1561,15 +1561,15 @@
     },
     "base": {
       "cost": {
-        "energy": 360,
-        "metal": 360
+        "energy": 560,
+        "metal": 560
       },
-      "mass": 135,
-      "health": 444,
+      "mass": 170,
+      "health": 460,
       "deathExplosion": {
         "radius": 57.5,
-        "force": 9450,
-        "damage": 229.8
+        "force": 13600,
+        "damage": 250
       },
       "radius": {
         "visual": 16,
@@ -1583,7 +1583,7 @@
     "unitBlueprintId": "unitConstructionDrone",
     "name": "Construction Drone",
     "shortName": "CDR",
-    "hp": 226,
+    "hp": 260,
     "radius": {
       "visual": 15,
       "hitbox": 14,
@@ -1602,11 +1602,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 68.25,
+    "mass": 90,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 180,
-      "metal": 160
+      "energy": 280,
+      "metal": 240
     },
     "turrets": [
       {
@@ -1669,7 +1669,7 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 35,
+        "driveForce": 75,
         "traction": 1
       },
       "config": {
@@ -1688,15 +1688,15 @@
     },
     "base": {
       "cost": {
-        "energy": 180,
-        "metal": 160
+        "energy": 280,
+        "metal": 240
       },
-      "mass": 68.25,
-      "health": 226,
+      "mass": 90,
+      "health": 260,
       "deathExplosion": {
         "radius": 16.1,
-        "force": 4725,
-        "damage": 114.9
+        "force": 7200,
+        "damage": 140
       },
       "radius": {
         "visual": 15,
@@ -1710,7 +1710,7 @@
     "unitBlueprintId": "unitEagle",
     "name": "Eagle",
     "shortName": "EGL",
-    "hp": 329,
+    "hp": 360,
     "radius": {
       "visual": 18,
       "hitbox": 15,
@@ -1729,11 +1729,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 124.75,
+    "mass": 150,
     "airFrictionPer60HzFrame": 0.2,
     "cost": {
-      "energy": 520,
-      "metal": 520
+      "energy": 800,
+      "metal": 800
     },
     "turrets": [
       {
@@ -1773,8 +1773,8 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 5000,
-        "traction": 0.03
+        "driveForce": 2000,
+        "traction": 0.2
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,
@@ -1800,15 +1800,15 @@
     },
     "base": {
       "cost": {
-        "energy": 520,
-        "metal": 520
+        "energy": 800,
+        "metal": 800
       },
-      "mass": 124.75,
-      "health": 329,
+      "mass": 150,
+      "health": 360,
       "deathExplosion": {
         "radius": 24.84,
-        "force": 9975,
-        "damage": 210.65
+        "force": 12000,
+        "damage": 220
       },
       "radius": {
         "visual": 18,
@@ -1822,7 +1822,7 @@
     "unitBlueprintId": "unitAlbatros",
     "name": "Albatross",
     "shortName": "ALB",
-    "hp": 7200,
+    "hp": 7600,
     "radius": {
       "visual": 76,
       "hitbox": 68,
@@ -1844,8 +1844,8 @@
     "mass": 40000,
     "airFrictionPer60HzFrame": 0.005,
     "cost": {
-      "energy": 5600,
-      "metal": 5600
+      "energy": 12000,
+      "metal": 12000
     },
     "turrets": [
       {
@@ -1905,7 +1905,7 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 3,
+        "driveForce": 6000,
         "traction": 0.3
       },
       "config": {
@@ -1938,15 +1938,15 @@
     },
     "base": {
       "cost": {
-        "energy": 5600,
-        "metal": 5600
+        "energy": 12000,
+        "metal": 12000
       },
-      "mass": 12000,
-      "health": 7200,
+      "mass": 40000,
+      "health": 7600,
       "deathExplosion": {
         "radius": 118,
-        "force": 180000,
-        "damage": 1200
+        "force": 1200000,
+        "damage": 4200
       },
       "radius": {
         "visual": 76,
@@ -1960,7 +1960,7 @@
     "unitBlueprintId": "unitQueenBee",
     "name": "Queen Bee",
     "shortName": "QBE",
-    "hp": 8400,
+    "hp": 9000,
     "radius": {
       "visual": 92,
       "hitbox": 82,
@@ -1979,11 +1979,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 15000,
+    "mass": 18000,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 6400,
-      "metal": 6400
+      "energy": 14000,
+      "metal": 14000
     },
     "turrets": [
       {
@@ -2030,7 +2030,7 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 6,
+        "driveForce": 20200,
         "traction": 1
       },
       "config": {
@@ -2049,15 +2049,15 @@
     },
     "base": {
       "cost": {
-        "energy": 6400,
-        "metal": 6400
+        "energy": 14000,
+        "metal": 14000
       },
-      "mass": 15000,
-      "health": 8400,
+      "mass": 18000,
+      "health": 9000,
       "deathExplosion": {
         "radius": 132,
-        "force": 210000,
-        "damage": 1400
+        "force": 900000,
+        "damage": 4800
       },
       "radius": {
         "visual": 92,
@@ -2071,7 +2071,7 @@
     "unitBlueprintId": "unitQueenTick",
     "name": "Queen Tick",
     "shortName": "QTK",
-    "hp": 8800,
+    "hp": 9400,
     "radius": {
       "visual": 94,
       "hitbox": 84,
@@ -2090,11 +2090,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 15500,
+    "mass": 20000,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 6600,
-      "metal": 6600
+      "energy": 15000,
+      "metal": 15000
     },
     "turrets": [
       {
@@ -2140,8 +2140,8 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 6,
-        "traction": 1
+        "driveForce": 9000,
+        "traction": 0.45
       },
       "config": {
         "gravityCounterUpwardForceRatio": 0.05,
@@ -2173,15 +2173,15 @@
     },
     "base": {
       "cost": {
-        "energy": 6600,
-        "metal": 6600
+        "energy": 15000,
+        "metal": 15000
       },
-      "mass": 15500,
-      "health": 8800,
+      "mass": 20000,
+      "health": 9400,
       "deathExplosion": {
         "radius": 136,
-        "force": 220000,
-        "damage": 1460
+        "force": 820000,
+        "damage": 5000
       },
       "radius": {
         "visual": 94,
@@ -2195,7 +2195,7 @@
     "unitBlueprintId": "unitTransport",
     "name": "Transport Drone",
     "shortName": "TDR",
-    "hp": 520,
+    "hp": 560,
     "radius": {
       "visual": 22,
       "hitbox": 20,
@@ -2214,11 +2214,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 180,
+    "mass": 220,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 300,
-      "metal": 300
+      "energy": 500,
+      "metal": 500
     },
     "turrets": [],
     "bodyShape": {
@@ -2262,7 +2262,7 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 26,
+        "driveForce": 110,
         "traction": 1
       },
       "config": {
@@ -2281,15 +2281,15 @@
     },
     "base": {
       "cost": {
-        "energy": 300,
-        "metal": 300
+        "energy": 500,
+        "metal": 500
       },
-      "mass": 180,
-      "health": 520,
+      "mass": 220,
+      "health": 560,
       "deathExplosion": {
         "radius": 24,
-        "force": 7200,
-        "damage": 130
+        "force": 12000,
+        "damage": 220
       },
       "radius": {
         "visual": 22,
@@ -2303,7 +2303,7 @@
     "unitBlueprintId": "unitCommander",
     "name": "Commander",
     "shortName": "CMD",
-    "hp": 851,
+    "hp": 1200,
     "radius": {
       "visual": 20,
       "hitbox": 20,
@@ -2322,11 +2322,11 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "mass": 408,
+    "mass": 650,
     "airFrictionPer60HzFrame": 0.05,
     "cost": {
-      "energy": 400,
-      "metal": 400
+      "energy": 2500,
+      "metal": 2500
     },
     "turrets": [
       {
@@ -2417,7 +2417,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 50,
+        "driveForce": 450,
         "traction": 1
       },
       "config": {
@@ -2452,15 +2452,15 @@
     },
     "base": {
       "cost": {
-        "energy": 400,
-        "metal": 400
+        "energy": 2500,
+        "metal": 2500
       },
-      "mass": 408,
-      "health": 851,
+      "mass": 650,
+      "health": 1200,
       "deathExplosion": {
         "radius": 23,
-        "force": 31500,
-        "damage": 478.75
+        "force": 52000,
+        "damage": 700
       },
       "radius": {
         "visual": 20,

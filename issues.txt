@@ -1,0 +1,21 @@
+================================================================================
+BUDGET ANNIHILATION (i.e. "rts-prototype") — ISSUES
+
+This is "issues.txt" for this game "budget-annihilation".
+
+Your task is to fix the issues documented here.
+
+Errors, Problems, Inconsistencies, TODOs, etc are listed here. As we fix
+something we should completely delete it from this file. You should also delete
+an item if you know for a fact it has been addressed. Remember that our code may
+have changed since the issue was written; check the code and if the issue is no
+longer relevant, delete it.
+
+Do not document "PROGRESS" in this file, just document or update issues that need to be resolved. If you see any "progress" information in this file, just remove it, or convert it into something actionable. Just documenting progress is not helpful - update the issue with the current state and the required fixes for it.
+
+Please always commit and push before and after any code changes we make.
+================================================================================
+
+[user_01] Let's keep "shotRocketLight" as a "rocket" type, let's convert "shotRocketFast" and "shotRocketLong" into a new "missile" type. So "shotMissileFast", "shotMissileLong". Missile types will keep the speed that they started with and not have any extra "propulsion" term in them. They will still have homing the same way, but it will only turn the speed in a different direction - keeping the same speed always regardless of the direction it turns. "rocket" will stay as it is with a "propulsion" term.
+
+[user_02] Let's also draw thin white lines for the "imposter" version of the beam segments. Include the imposter segment definition in "beamConfig.json". The imposter segments don't need transparnecy and can just be thin white lines. 

@@ -26,6 +26,9 @@ uniform float uViewportHeight;
 uniform float uMinPointSize;
 uniform float uMaxPointSize;
 varying vec3 vColor;
+varying float vViewZ;
+varying float vViewRadius;
+varying vec4 vDepthProjection;
 
 void main() {
   vColor = color;
@@ -33,17 +36,38 @@ void main() {
   gl_Position = projectionMatrix * mvPosition;
   float viewDistance = max(1.0, -mvPosition.z);
   float projectedDiameter = aRadius * projectionMatrix[1][1] * uViewportHeight / viewDistance;
-  gl_PointSize = clamp(projectedDiameter, uMinPointSize, uMaxPointSize);
+  float pointSize = clamp(projectedDiameter, uMinPointSize, uMaxPointSize);
+  gl_PointSize = pointSize;
+  vViewZ = mvPosition.z;
+  vViewRadius = pointSize * viewDistance / max(0.0001, projectionMatrix[1][1] * uViewportHeight);
+  vDepthProjection = vec4(
+    projectionMatrix[2][2],
+    projectionMatrix[3][2],
+    projectionMatrix[2][3],
+    projectionMatrix[3][3]
+  );
 }
 `;
 
 const POINT_FRAGMENT_SHADER = `
 uniform float uOpacity;
 varying vec3 vColor;
+varying float vViewZ;
+varying float vViewRadius;
+varying vec4 vDepthProjection;
 
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
-  if (dot(p, p) > 1.0) discard;
+  float radialSq = dot(p, p);
+  if (radialSq > 1.0) discard;
+
+  float frontShell = sqrt(max(0.0, 1.0 - radialSq)) * vViewRadius;
+  float viewZ = vViewZ + frontShell;
+  float clipZ = vDepthProjection.x * viewZ + vDepthProjection.y;
+  float clipW = vDepthProjection.z * viewZ + vDepthProjection.w;
+  float depth = (clipZ / clipW) * 0.5 + 0.5;
+  if (depth < 0.0 || depth > 1.0) discard;
+  gl_FragDepthEXT = depth;
   gl_FragColor = vec4(vColor, uOpacity);
 }
 `;
@@ -316,8 +340,13 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
     this.webGlBackend = new EntityLodProxyWebGlRenderer3D(normalizedOptions.world);
     this.activeBackend = this.webGlBackend;
     const runtimeProfile = getBrowserRenderRuntimeProfile();
+    // The WebGPU overlay is a separate canvas, so it cannot share the
+    // Three.js depth buffer with terrain or water. Use it only for explicitly
+    // depthless proxy markers; depth-aware proxies must stay in the WebGL scene.
     if (
       runtimeProfile.tauri &&
+      !ENTITY_LOD_PROXY_DEPTH_TEST &&
+      !ENTITY_LOD_PROXY_DEPTH_WRITE &&
       normalizedOptions.camera !== undefined &&
       normalizedOptions.canvas !== undefined
     ) {

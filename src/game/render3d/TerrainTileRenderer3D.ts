@@ -228,6 +228,93 @@ function computeNeighborhoodSlope(
   return best;
 }
 
+type PathingCellTerrainSample = {
+  hasWater: boolean;
+  minNormalZ: number;
+  centerHeight: number;
+};
+
+const PATHING_CELL_SAMPLE_INSET_WU = 0.001;
+const PATHING_CELL_EDGE_SAMPLE_POINTS = [
+  [0, 0],
+  [0.5, 0],
+  [1, 0],
+  [0, 0.5],
+  [1, 0.5],
+  [0, 1],
+  [0.5, 1],
+  [1, 1],
+] as const;
+
+function pathingCellSampleCoordinate(
+  start: number,
+  end: number,
+  midpoint: number,
+  fraction: number,
+  inset: number,
+): number {
+  if (fraction <= 0) return start + inset;
+  if (fraction >= 1) return end - inset;
+  return midpoint;
+}
+
+function samplePathingCellTerrain(
+  gx: number,
+  gy: number,
+  pathCellSize: number,
+  mapWidth: number,
+  mapHeight: number,
+): PathingCellTerrainSample {
+  const x0 = gx * pathCellSize;
+  const z0 = gy * pathCellSize;
+  const x1 = x0 + pathCellSize;
+  const z1 = z0 + pathCellSize;
+  const inset = Math.min(PATHING_CELL_SAMPLE_INSET_WU, pathCellSize * 0.25);
+  const midX = x0 + pathCellSize * 0.5;
+  const midZ = z0 + pathCellSize * 0.5;
+
+  const centerSample = getTerrainMeshSample(midX, midZ, mapWidth, mapHeight);
+  const centerHeight = terrainMeshHeightFromSample(centerSample);
+  let hasWater = centerHeight < WATER_LEVEL;
+  let minNormalZ = Math.min(1, Math.abs(terrainMeshNormalFromSample(centerSample).nz));
+  for (let i = 0; i < PATHING_CELL_EDGE_SAMPLE_POINTS.length; i++) {
+    const point = PATHING_CELL_EDGE_SAMPLE_POINTS[i];
+    const x = pathingCellSampleCoordinate(x0, x1, midX, point[0], inset);
+    const z = pathingCellSampleCoordinate(z0, z1, midZ, point[1], inset);
+    const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight);
+    const height = terrainMeshHeightFromSample(sample);
+    if (height < WATER_LEVEL) hasWater = true;
+    const normalZ = Math.min(1, Math.abs(terrainMeshNormalFromSample(sample).nz));
+    if (normalZ < minNormalZ) minNormalZ = normalZ;
+  }
+  return { hasWater, minNormalZ, centerHeight };
+}
+
+function requiredPathingNormalZ(unitMinNormalZ: number | null | undefined): number {
+  return Math.max(
+    PATHFINDING_STABILITY_MIN_NORMAL_Z,
+    unitMinNormalZ !== null && unitMinNormalZ !== undefined && Number.isFinite(unitMinNormalZ)
+      ? unitMinNormalZ
+      : 0,
+  );
+}
+
+function canPathingStepBetweenCellCenters(
+  fromHeight: number,
+  toHeight: number,
+  dxCells: number,
+  dyCells: number,
+  pathCellSize: number,
+  minNormalZ: number,
+): boolean {
+  if (!Number.isFinite(fromHeight) || !Number.isFinite(toHeight)) return false;
+  const horizontal = Math.hypot(dxCells, dyCells) * pathCellSize;
+  if (horizontal <= 1.0e-9) return true;
+  const dz = Math.abs(toHeight - fromHeight);
+  const stepNormalZ = horizontal / Math.hypot(horizontal, dz);
+  return stepNormalZ >= minNormalZ;
+}
+
 function writeTriangleDebugColor(
   out: Float32Array,
   offset: number,
@@ -796,10 +883,7 @@ export class TerrainTileRenderer3D {
     for (let gy = 0; gy < cellsY; gy++) {
       const rowOffset = gy * cellsX;
       for (let gx = 0; gx < cellsX; gx++) {
-        const x = gx * buildCellSize + buildCellSize / 2;
-        const y = gy * buildCellSize + buildCellSize / 2;
-        const sample = getTerrainMeshSample(x, y, this.mapWidth, this.mapHeight);
-        if (terrainMeshHeightFromSample(sample) < WATER_LEVEL) {
+        if (samplePathingCellTerrain(gx, gy, buildCellSize, this.mapWidth, this.mapHeight).hasWater) {
           this.buildGridWaterRawMask[rowOffset + gx] = 1;
         }
       }
@@ -865,6 +949,9 @@ export class TerrainTileRenderer3D {
     const selectedUnitPathingEnabled = selectedUnitBlueprint !== undefined &&
       selectedUnitLocomotion !== null &&
       selectedUnitClimbProfile !== null;
+    const selectedUnitRequiredNormalZ = selectedUnitPathingEnabled
+      ? requiredPathingNormalZ(selectedUnitClimbProfile?.minSurfaceNormalZ)
+      : PATHFINDING_STABILITY_MIN_NORMAL_Z;
     const pathOverlayEnabled = waterPathingMapEnabled || selectedUnitPathingEnabled;
     const enabled = buildGridEnabled || metalMapEnabled || pathOverlayEnabled;
     const overlayMode = buildGridEnabled
@@ -916,12 +1003,40 @@ export class TerrainTileRenderer3D {
     if (pathOverlayEnabled) {
       this.refreshBuildGridWaterMask(cellsX, cellsY, buildCellSize);
     }
+    const sampleUnitPathingTerrain =
+      pathOverlayEnabled &&
+      selectedUnitPathingEnabled &&
+      selectedUnitLocomotion !== null &&
+      !selectedUnitLocomotion.pathfinding.ignoreTerrainBlocking;
+    const pathingTerrainHeight = sampleUnitPathingTerrain ? new Float32Array(cellCount) : null;
+    const pathingTerrainNormalZ = sampleUnitPathingTerrain ? new Float32Array(cellCount) : null;
+    const pathingTerrainRawWater = sampleUnitPathingTerrain ? new Uint8Array(cellCount) : null;
+    if (
+      pathingTerrainHeight !== null &&
+      pathingTerrainNormalZ !== null &&
+      pathingTerrainRawWater !== null
+    ) {
+      for (let gy = 0; gy < cellsY; gy++) {
+        const rowOffset = gy * cellsX;
+        for (let gx = 0; gx < cellsX; gx++) {
+          const cellIndex = rowOffset + gx;
+          const terrain = samplePathingCellTerrain(
+            gx,
+            gy,
+            buildCellSize,
+            this.mapWidth,
+            this.mapHeight,
+          );
+          pathingTerrainHeight[cellIndex] = terrain.centerHeight;
+          pathingTerrainNormalZ[cellIndex] = terrain.minNormalZ;
+          pathingTerrainRawWater[cellIndex] = terrain.hasWater ? 1 : 0;
+        }
+      }
+    }
 
     for (let gy = 0; gy < cellsY; gy++) {
       const rowOffset = gy * cellsX;
       for (let gx = 0; gx < cellsX; gx++) {
-        const x = gx * buildCellSize + buildCellSize / 2;
-        const y = gy * buildCellSize + buildCellSize / 2;
         const cellIndex = rowOffset + gx;
         const offset = cellIndex * 4;
         if (overlayMode === 'metal') {
@@ -950,13 +1065,42 @@ export class TerrainTileRenderer3D {
             if (edgeBlocked || waterBlocked) {
               passable = false;
             } else {
-              const sample = getTerrainMeshSample(x, y, this.mapWidth, this.mapHeight);
-              const normal = terrainMeshNormalFromSample(sample);
-              const unitMinNormalZ = selectedUnitClimbProfile?.minSurfaceNormalZ;
-              passable = normal.nz >= PATHFINDING_STABILITY_MIN_NORMAL_Z &&
-                (unitMinNormalZ === null ||
-                  unitMinNormalZ === undefined ||
-                  normal.nz >= unitMinNormalZ);
+              if (
+                pathingTerrainHeight === null ||
+                pathingTerrainNormalZ === null ||
+                pathingTerrainRawWater === null
+              ) {
+                passable = false;
+              } else {
+                passable = pathingTerrainRawWater[cellIndex] === 0 &&
+                  pathingTerrainNormalZ[cellIndex] >= selectedUnitRequiredNormalZ;
+                if (passable) {
+                  for (let ndy = -1; ndy <= 1 && passable; ndy++) {
+                    const ny = gy + ndy;
+                    if (ny < 0 || ny >= cellsY) continue;
+                    const neighborRowOffset = ny * cellsX;
+                    for (let ndx = -1; ndx <= 1; ndx++) {
+                      if (ndx === 0 && ndy === 0) continue;
+                      const nx = gx + ndx;
+                      if (nx < 0 || nx >= cellsX) continue;
+                      const neighborIndex = neighborRowOffset + nx;
+                      if (
+                        !canPathingStepBetweenCellCenters(
+                          pathingTerrainHeight[cellIndex],
+                          pathingTerrainHeight[neighborIndex],
+                          ndx,
+                          ndy,
+                          buildCellSize,
+                          selectedUnitRequiredNormalZ,
+                        )
+                      ) {
+                        passable = false;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
           this.writeBuildGridPixel(

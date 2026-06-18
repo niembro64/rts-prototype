@@ -3,10 +3,10 @@
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaOther",
     "name": "Heavy Plasma",
-    "mass": 3,
+    "mass": 5,
     "health": 10,
     "radius": {
-      "visual": 1,
+      "visual": 4,
       "hitbox": 3.2,
       "collision": 4
     },
@@ -31,8 +31,8 @@
       "health": 10,
       "deathExplosion": {
         "radius": 25,
-        "force": 7000,
-        "damage": 50
+        "force": 5000,
+        "damage": 45
       },
       "radius": {
         "visual": 4,
@@ -73,8 +73,8 @@
       "health": 2,
       "deathExplosion": {
         "radius": 15,
-        "force": 500,
-        "damage": 6
+        "force": 650,
+        "damage": 8
       },
       "radius": {
         "visual": 2,
@@ -115,8 +115,8 @@
       "health": 4,
       "deathExplosion": {
         "radius": 24,
-        "force": 1000,
-        "damage": 12
+        "force": 1400,
+        "damage": 16
       },
       "radius": {
         "visual": 3,
@@ -129,8 +129,8 @@
     "type": "rocket",
     "shotBlueprintId": "shotRocketLight",
     "name": "Light Rocket",
-    "mass": 4,
-    "health": 6,
+    "mass": 6,
+    "health": 8,
     "radius": {
       "visual": 3,
       "hitbox": 1.6,
@@ -145,7 +145,7 @@
     "homingTurnRate": 70,
     "homingThrust": 3000,
     "homingDelayMs": 3000,
-    "propulsionForce": 300,
+    "propulsionForce": 350,
     "gravityForceMultiplier": 0,
     "airFrictionPer60HzFrame": 0.0,
     "smokeTrail": null,
@@ -154,15 +154,15 @@
         "energy": 0,
         "metal": 0
       },
-      "mass": 4,
-      "health": 6,
+      "mass": 6,
+      "health": 8,
       "deathExplosion": {
-        "radius": 100,
-        "force": 3000,
-        "damage": 100
+        "radius": 85,
+        "force": 3500,
+        "damage": 90
       },
       "radius": {
-        "visual": 2,
+        "visual": 3,
         "hitbox": 1.6,
         "collision": 2
       }
@@ -172,11 +172,11 @@
     "type": "rocket",
     "shotBlueprintId": "shotRocketFast",
     "name": "Fast Rocket",
-    "mass": 1,
+    "mass": 3,
     "health": 4,
     "radius": {
-      "visual": 1.6,
-      "hitbox": 1.6,
+      "visual": 1.5,
+      "hitbox": 2,
       "collision": 2
     },
     "detonateOnExpiry": true,
@@ -185,10 +185,10 @@
       "$audio": "event.hit.shotRocketFast"
     },
     "submunitions": null,
-    "homingTurnRate": 100,
+    "homingTurnRate": 0.2,
     "homingThrust": 600000,
     "homingDelayMs": 0,
-    "propulsionForce": 1000,
+    "propulsionForce": 3000,
     "gravityForceMultiplier": 0,
     "airFrictionPer60HzFrame": 0.02,
     "smokeTrail": null,
@@ -200,9 +200,9 @@
       "mass": 3,
       "health": 4,
       "deathExplosion": {
-        "radius": 20,
-        "force": 10000,
-        "damage": 30
+        "radius": 22,
+        "force": 8000,
+        "damage": 35
       },
       "radius": {
         "visual": 2,
@@ -215,10 +215,10 @@
     "type": "rocket",
     "shotBlueprintId": "shotRocketLong",
     "name": "Long Rocket",
-    "mass": 3.2,
-    "health": 4,
+    "mass": 6,
+    "health": 6,
     "radius": {
-      "visual": 1.6,
+      "visual": 1.5,
       "hitbox": 2,
       "collision": 3
     },
@@ -228,10 +228,10 @@
       "$audio": "event.hit.shotRocketFast"
     },
     "submunitions": null,
-    "homingTurnRate": 0.5,
-    "homingThrust": 600000,
+    "homingTurnRate": 0.3,
+    "homingThrust": 1000000,
     "homingDelayMs": 0,
-    "propulsionForce": 5000,
+    "propulsionForce": 4000,
     "gravityForceMultiplier": 0,
     "airFrictionPer60HzFrame": 0.02,
     "smokeTrail": null,
@@ -240,12 +240,12 @@
         "energy": 0,
         "metal": 0
       },
-      "mass": 3.2,
-      "health": 4,
+      "mass": 6,
+      "health": 6,
       "deathExplosion": {
-        "radius": 20,
-        "force": 10000,
-        "damage": 30
+        "radius": 32,
+        "force": 12000,
+        "damage": 45
       },
       "radius": {
         "visual": 3,
@@ -286,8 +286,8 @@
       "health": 10,
       "deathExplosion": {
         "radius": 75,
-        "force": 7000,
-        "damage": 150
+        "force": 9000,
+        "damage": 160
       },
       "radius": {
         "visual": 4,
@@ -301,7 +301,7 @@
     "shotBlueprintId": "shotMortarMedium",
     "name": "Medium Mortar Shell",
     "mass": 90,
-    "health": 8,
+    "health": 10,
     "radius": {
       "visual": 8,
       "hitbox": 6.4,
@@ -330,12 +330,12 @@
         "energy": 0,
         "metal": 0
       },
-      "mass": 30,
-      "health": 8,
+      "mass": 90,
+      "health": 10,
       "deathExplosion": {
-        "radius": 200,
-        "force": 20000,
-        "damage": 300
+        "radius": 180,
+        "force": 25000,
+        "damage": 240
       },
       "radius": {
         "visual": 8,
@@ -348,8 +348,8 @@
     "type": "plasma",
     "shotBlueprintId": "shotMortarHeavy",
     "name": "Heavy Mortar Shell",
-    "mass": 30,
-    "health": 12,
+    "mass": 140,
+    "health": 16,
     "radius": {
       "visual": 10,
       "hitbox": 8,
@@ -378,12 +378,12 @@
         "energy": 0,
         "metal": 0
       },
-      "mass": 30,
-      "health": 12,
+      "mass": 140,
+      "health": 16,
       "deathExplosion": {
-        "radius": 150,
-        "force": 20000,
-        "damage": 20
+        "radius": 240,
+        "force": 40000,
+        "damage": 420
       },
       "radius": {
         "visual": 10,
@@ -396,8 +396,8 @@
     "type": "plasma",
     "shotBlueprintId": "shotPlasmaDisruptor",
     "name": "Disruptor Plasma",
-    "mass": 20,
-    "health": 30,
+    "mass": 30,
+    "health": 40,
     "radius": {
       "visual": 25,
       "hitbox": 20,
@@ -420,12 +420,12 @@
         "energy": 0,
         "metal": 0
       },
-      "mass": 20,
-      "health": 30,
+      "mass": 30,
+      "health": 40,
       "deathExplosion": {
-        "radius": 120,
-        "force": 2499750,
-        "damage": 999999
+        "radius": 140,
+        "force": 500000,
+        "damage": 6000
       },
       "radius": {
         "visual": 25,

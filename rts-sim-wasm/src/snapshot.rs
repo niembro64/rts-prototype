@@ -8116,15 +8116,15 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_building_roof_cells_are_walkable() {
+    pub(crate) fn pathfinder_building_top_cells_are_walkable_terrain() {
         let _guard = lock_tests();
         terrain_clear();
         pathfinder_init(400.0, 400.0);
 
         // Factory-spawned units can begin on the factory's occupied
-        // footprint. The footprint is a valid roof/support cell, not
-        // a blocker that should force an origin-side escape point.
-        let building_cells = [10_u32, 10_u32];
+        // footprint. The footprint is elevated terrain with a flat top,
+        // not a blocker that should force an origin-side escape point.
+        let building_cells = [10.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_001, 20_001, 30_001);
         let count = pathfinder_find_path(210.0, 210.0, 320.0, 210.0, 0.0, false);
         assert_eq!(count, 1);
@@ -8136,7 +8136,7 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_building_roof_overrides_blocked_terrain_below() {
+    pub(crate) fn pathfinder_building_top_overrides_blocked_terrain_below() {
         let _guard = lock_tests();
         terrain_clear();
         pathfinder_init(400.0, 400.0);
@@ -8144,7 +8144,7 @@ mod sim_kernel_tests {
         // Terrain inflation blocks edge cells, but a building top at
         // that XY is still valid terrain for movement: units standing
         // there can always move/fall down from it.
-        let building_cells = [1_u32, 10_u32];
+        let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_002, 20_002, 30_002);
         let count = pathfinder_find_path(30.0, 210.0, 80.0, 210.0, 0.0, false);
         assert_eq!(count, 1);
@@ -8156,20 +8156,166 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_ground_units_do_not_climb_onto_roofs() {
+    pub(crate) fn pathfinder_ground_units_do_not_climb_building_sides() {
         let _guard = lock_tests();
         terrain_clear();
         pathfinder_init(400.0, 400.0);
 
-        let building_cells = [1_u32, 10_u32];
+        let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_003, 20_003, 30_003);
         let count = pathfinder_find_path(80.0, 210.0, 30.0, 210.0, 0.0, false);
+        assert!(count >= 1);
+
+        let waypoints =
+            unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
+        let last = (count as usize - 1) * 2;
+        assert!(
+            waypoints[last] < 20.0 || waypoints[last] >= 40.0,
+            "ground path must not enter elevated building footprint"
+        );
+        assert!((waypoints[last + 1] - 210.0).abs() < 1.0e-9);
+    }
+
+    fn install_pathfinder_cliff_test_terrain() {
+        const CELLS_X: i32 = 10;
+        const CELLS_Y: i32 = 5;
+        const CELL_SIZE: f64 = 20.0;
+        const CLIFF_X: i32 = 5;
+        const HIGH: f64 = 10.0;
+        const LOW: f64 = 0.0;
+
+        let cell_count = (CELLS_X * CELLS_Y) as usize;
+        let mut vertex_coords: Vec<f64> = Vec::new();
+        let mut vertex_heights: Vec<f64> = Vec::new();
+        let mut triangle_indices: Vec<i32> = Vec::new();
+        let mut triangle_levels: Vec<i32> = Vec::new();
+        let mut cell_refs: Vec<Vec<i32>> = vec![Vec::new(); cell_count];
+
+        fn push_vertex(
+            vertex_coords: &mut Vec<f64>,
+            vertex_heights: &mut Vec<f64>,
+            x: f64,
+            y: f64,
+            h: f64,
+        ) -> i32 {
+            let idx = vertex_heights.len() as i32;
+            vertex_coords.push(x);
+            vertex_coords.push(y);
+            vertex_heights.push(h);
+            idx
+        }
+
+        fn push_triangle(
+            triangle_indices: &mut Vec<i32>,
+            triangle_levels: &mut Vec<i32>,
+            a: i32,
+            b: i32,
+            c: i32,
+        ) -> i32 {
+            let tri = (triangle_indices.len() / 3) as i32;
+            triangle_indices.push(a);
+            triangle_indices.push(b);
+            triangle_indices.push(c);
+            triangle_levels.push(0);
+            tri
+        }
+
+        for gy in 0..CELLS_Y {
+            for gx in 0..CELLS_X {
+                let h = if gx < CLIFF_X { HIGH } else { LOW };
+                let x0 = gx as f64 * CELL_SIZE;
+                let y0 = gy as f64 * CELL_SIZE;
+                let x1 = x0 + CELL_SIZE;
+                let y1 = y0 + CELL_SIZE;
+                let v00 = push_vertex(&mut vertex_coords, &mut vertex_heights, x0, y0, h);
+                let v10 = push_vertex(&mut vertex_coords, &mut vertex_heights, x1, y0, h);
+                let v01 = push_vertex(&mut vertex_coords, &mut vertex_heights, x0, y1, h);
+                let v11 = push_vertex(&mut vertex_coords, &mut vertex_heights, x1, y1, h);
+                let t0 = push_triangle(&mut triangle_indices, &mut triangle_levels, v00, v10, v11);
+                let t1 = push_triangle(&mut triangle_indices, &mut triangle_levels, v00, v11, v01);
+                let cell_idx = (gy * CELLS_X + gx) as usize;
+                cell_refs[cell_idx].push(t0);
+                cell_refs[cell_idx].push(t1);
+            }
+        }
+
+        for gy in 0..CELLS_Y {
+            let x = CLIFF_X as f64 * CELL_SIZE;
+            let y0 = gy as f64 * CELL_SIZE;
+            let y1 = y0 + CELL_SIZE;
+            let top0 = push_vertex(&mut vertex_coords, &mut vertex_heights, x, y0, HIGH);
+            let top1 = push_vertex(&mut vertex_coords, &mut vertex_heights, x, y1, HIGH);
+            let low0 = push_vertex(&mut vertex_coords, &mut vertex_heights, x, y0, LOW);
+            let low1 = push_vertex(&mut vertex_coords, &mut vertex_heights, x, y1, LOW);
+            let t0 = push_triangle(&mut triangle_indices, &mut triangle_levels, top0, top1, low0);
+            let t1 = push_triangle(&mut triangle_indices, &mut triangle_levels, low0, top1, low1);
+            let left_idx = (gy * CELLS_X + CLIFF_X - 1) as usize;
+            let right_idx = (gy * CELLS_X + CLIFF_X) as usize;
+            cell_refs[left_idx].push(t0);
+            cell_refs[left_idx].push(t1);
+            cell_refs[right_idx].push(t0);
+            cell_refs[right_idx].push(t1);
+        }
+
+        let mut cell_triangle_offsets: Vec<i32> = Vec::with_capacity(cell_count + 1);
+        let mut cell_triangle_indices: Vec<i32> = Vec::new();
+        for refs in &cell_refs {
+            cell_triangle_offsets.push(cell_triangle_indices.len() as i32);
+            cell_triangle_indices.extend(refs.iter().copied());
+        }
+        cell_triangle_offsets.push(cell_triangle_indices.len() as i32);
+
+        let neighbor_indices = vec![-1; triangle_indices.len()];
+        let neighbor_levels = vec![-1; triangle_indices.len()];
+        terrain_clear();
+        terrain_install_mesh(
+            &vertex_coords,
+            &vertex_heights,
+            &triangle_indices,
+            &triangle_levels,
+            &neighbor_indices,
+            &neighbor_levels,
+            &cell_triangle_offsets,
+            &cell_triangle_indices,
+            CELLS_X as f64 * CELL_SIZE,
+            CELLS_Y as f64 * CELL_SIZE,
+            CELL_SIZE,
+            1,
+            CELLS_X,
+            CELLS_Y,
+        );
+    }
+
+    #[test]
+    pub(crate) fn pathfinder_allows_downhill_cliff_descent() {
+        let _guard = lock_tests();
+        install_pathfinder_cliff_test_terrain();
+        pathfinder_init(200.0, 100.0);
+        pathfinder_rebuild_mask_and_cc(&[], 10_004, 20_004, 30_004);
+
+        let count = pathfinder_find_path(90.0, 50.0, 110.0, 50.0, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =
             unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
-        assert!((waypoints[0] - 50.0).abs() < 1.0e-9);
-        assert!((waypoints[1] - 210.0).abs() < 1.0e-9);
+        assert!((waypoints[0] - 110.0).abs() < 1.0e-9);
+        assert!((waypoints[1] - 50.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    pub(crate) fn pathfinder_rejects_uphill_cliff_climb() {
+        let _guard = lock_tests();
+        install_pathfinder_cliff_test_terrain();
+        pathfinder_init(200.0, 100.0);
+        pathfinder_rebuild_mask_and_cc(&[], 10_005, 20_005, 30_005);
+
+        let count = pathfinder_find_path(110.0, 50.0, 90.0, 50.0, 0.0, false);
+        assert_eq!(count, 1);
+
+        let waypoints =
+            unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
+        assert!((waypoints[0] - 110.0).abs() < 1.0e-9);
+        assert!((waypoints[1] - 50.0).abs() < 1.0e-9);
     }
 
     #[test]

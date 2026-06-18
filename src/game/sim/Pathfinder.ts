@@ -4,8 +4,8 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Phase 9: the heavy lifting (mask + CC rebuild, A* + LOS smoothing)
 // runs inside WASM. This file is now a thin wrapper that:
 //   - tracks (terrain × buildings) version pairs and packs the
-//     buildingGrid.occupiedCells() into a Uint32Array so WASM can
-//     mark exact building footprints as one-way roof/support cells;
+//     buildingGrid.occupiedCells() into a Float64Array so WASM can
+//     treat exact building/tower footprints as elevated terrain cells;
 //   - keeps expandPathActions JS-side because it consults JS-side
 //     blueprint config and constructs UnitAction objects;
 //   - preserves the original public surface (`findPath`,
@@ -14,27 +14,26 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Design choices we kept from the JS impl:
 //   • 8-connected A* with the octile heuristic. Bounded by
 //     MAX_A_STAR_NODES so a pathological query can't stall a tick.
-//   • Multi-point water sampling per cell (centre + 4 corners) so
-//     shoreline cells get classified correctly even when their
-//     centre is a hair above water level — moved to Rust; falls
-//     back to centre-only sampling when no mesh is installed.
+//   • Multi-point water/slope sampling plus every terrain triangle
+//     touching the path cell, so shoreline cells and vertical cliff
+//     faces cannot slip between center samples.
 //   • Terrain C-space inflation: configurable cells around water so
-//     unit bodies clear the shore. Building footprints are not climbable
-//     from terrain, but a unit already on a building top can path across
-//     that roof and fall off it; physics owns the fall.
+//     unit bodies clear the shore. Building and tower footprints are
+//     elevated flat terrain: uphill entry is rejected by the same directed
+//     climb rule as cliffs, while top traversal and downhill falls are legal.
 //   • Airborne queries (hover + flying) ignore terrain blocking so
 //     water and slope do not force them onto land-only routes; they
 //     still stay inside the map.
-//   • Connected-component pre-flight. If start and goal are in
-//     different components A* would just thrash; instead we snap
-//     the goal to the nearest cell in start's component.
+//   • Connected-component pre-flight for symmetric blockers only. Slope
+//     traversal is directional: A* and LOS smoothing reject illegal uphill
+//     edges, while downhill moves and cliff falls remain valid.
 //   • Euclidean-sorted snap offsets — no compass bias.
 //   • Stay-put bail: when there's no possible path, return a
 //     single waypoint at the unit's current position so the queue
 //     gets cleared and the visualization doesn't draw a fake
 //     straight line through obstacles.
 
-import type { BuildingGrid } from './buildGrid';
+import { BUILD_GRID_CELL_SIZE, type BuildingGrid } from './buildGrid';
 import { LAND_CELL_SIZE } from '../../config';
 import { GAME_DIAGNOSTICS, debugWarn } from '../diagnostics';
 import {
@@ -109,21 +108,23 @@ function ensureInitialized(mapWidth: number, mapHeight: number): void {
   invalidateMaskCache();
 }
 
-// Reusable Uint32Array for the per-rebuild building-occupied-cells
-// payload. Grows on demand; never shrinks (steady-state busy combat
-// sees the upper bound).
-let _buildingCellsScratch = new Uint32Array(256);
+// Reusable Float64Array for the per-rebuild structure-cell payload:
+// gx, gy, pathTopZ triples. Grows on demand; never shrinks.
+let _buildingCellsScratch = new Float64Array(384);
 
-function collectBuildingCells(buildingGrid: BuildingGrid): Uint32Array {
+function collectBuildingCells(buildingGrid: BuildingGrid): Float64Array {
   let count = 0;
-  for (const { gx, gy } of buildingGrid.occupiedCells()) {
-    if (count + 2 > _buildingCellsScratch.length) {
-      const next = new Uint32Array(_buildingCellsScratch.length * 2);
+  for (const { gx, gy, cell } of buildingGrid.occupiedCells()) {
+    if (count + 3 > _buildingCellsScratch.length) {
+      const next = new Float64Array(_buildingCellsScratch.length * 2);
       next.set(_buildingCellsScratch);
       _buildingCellsScratch = next;
     }
     _buildingCellsScratch[count++] = gx;
     _buildingCellsScratch[count++] = gy;
+    _buildingCellsScratch[count++] = Number.isFinite(cell.pathTopZ) && cell.pathTopZ !== undefined
+      ? cell.pathTopZ
+      : BUILD_GRID_CELL_SIZE;
   }
   return _buildingCellsScratch.subarray(0, count);
 }
@@ -296,14 +297,13 @@ function validatePathDoesNotCrossWater(
  *  Otherwise z falls back to a terrain sample at the waypoint's xy.
  *
  *  `terrainFilter.minSurfaceNormalZ` adds a per-unit locomotion climb
- *  gate on top of the global terrain mask. Higher values mean flatter
- *  required terrain; cells whose surface normal z falls below the
- *  threshold are treated as blocked for that path query.
+ *  gate on directed uphill edges. Higher values mean flatter required
+ *  uphill terrain; downhill movement and cliff falls remain valid.
  *
  *  `terrainFilter.ignoreTerrainBlocking` is for airborne locomotion:
  *  water, terrain inflation, and slope are ignored while map bounds
- *  remain enforced. A building footprint is a valid roof/support
- *  cell only for a unit whose current path starts on that roof. */
+ *  remain enforced. Structure footprints are elevated terrain cells,
+ *  so they use the same directed step rules as hills and cliffs. */
 export function expandPathPoints(
   startX: number, startY: number,
   goalX: number, goalY: number,

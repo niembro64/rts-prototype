@@ -20,8 +20,8 @@
     "capacity": 32768,
     "useTeamColor": true,
     "opacity": 1,
-    "depthTest": false,
-    "depthWrite": false,
+    "depthTest": true,
+    "depthWrite": true,
     "renderOrder": 3,
     "units": {
       "minPixels": 6,

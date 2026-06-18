@@ -7,10 +7,10 @@
     "placementGridWidth": null,
     "placementGridHeight": null,
     "gridDepth": 1.5,
-    "hp": 864,
+    "hp": 1200,
     "cost": {
-      "energy": 300,
-      "metal": 300
+      "energy": 900,
+      "metal": 900
     },
     "energyProduction": null,
     "metalProduction": null,
@@ -58,15 +58,15 @@
     ],
     "base": {
       "cost": {
-        "energy": 300,
-        "metal": 300
+        "energy": 900,
+        "metal": 900
       },
-      "mass": 812,
-      "health": 864,
+      "mass": 3000,
+      "health": 1200,
       "deathExplosion": {
         "radius": 203.647,
-        "force": 48000,
-        "damage": 600
+        "force": 100000,
+        "damage": 700
       },
       "radius": {
         "visual": 169.706,
@@ -79,15 +79,15 @@
   "towerBeamMega": {
     "buildingBlueprintId": "towerBeamMega",
     "name": "Beam Tower",
-    "gridWidth": 1,
-    "gridHeight": 1,
+    "gridWidth": 3,
+    "gridHeight": 3,
     "placementGridWidth": null,
     "placementGridHeight": null,
     "gridDepth": 5,
-    "hp": 8128,
+    "hp": 4200,
     "cost": {
-      "energy": 1500,
-      "metal": 1500
+      "energy": 5200,
+      "metal": 5200
     },
     "energyProduction": null,
     "metalProduction": null,
@@ -99,8 +99,8 @@
     "supportSurface": {
       "kind": "boxTop",
       "topZ": 100,
-      "width": 20,
-      "height": 20
+      "width": 60,
+      "height": 60
     },
     "hud": {
       "barsOffsetAboveTop": 12
@@ -125,21 +125,21 @@
     ],
     "base": {
       "cost": {
-        "energy": 1500,
-        "metal": 1500
+        "energy": 5200,
+        "metal": 5200
       },
-      "mass": 8024,
-      "health": 8128,
+      "mass": 4500,
+      "health": 4200,
       "deathExplosion": {
-        "radius": 16.971,
-        "force": 480000,
-        "damage": 6000
+        "radius": 50.912,
+        "force": 270000,
+        "damage": 2000
       },
       "radius": {
-        "visual": 14.142,
-        "hitbox": 14.142,
-        "collision": 14.142,
-        "shotArmingRadius": 28.284
+        "visual": 42.426,
+        "hitbox": 42.426,
+        "collision": 42.426,
+        "shotArmingRadius": 84.852
       }
     }
   },
@@ -151,10 +151,10 @@
     "placementGridWidth": null,
     "placementGridHeight": null,
     "gridDepth": 3,
-    "hp": 8128,
+    "hp": 3600,
     "cost": {
-      "energy": 1500,
-      "metal": 1500
+      "energy": 2600,
+      "metal": 2600
     },
     "energyProduction": null,
     "metalProduction": null,
@@ -192,15 +192,15 @@
     ],
     "base": {
       "cost": {
-        "energy": 1500,
-        "metal": 1500
+        "energy": 2600,
+        "metal": 2600
       },
-      "mass": 8024,
-      "health": 8128,
+      "mass": 4200,
+      "health": 3600,
       "deathExplosion": {
         "radius": 67.882,
-        "force": 480000,
-        "damage": 6000
+        "force": 250000,
+        "damage": 1800
       },
       "radius": {
         "visual": 56.569,
@@ -218,10 +218,10 @@
     "placementGridWidth": null,
     "placementGridHeight": null,
     "gridDepth": 4,
-    "hp": 3600,
+    "hp": 2800,
     "cost": {
-      "energy": 900,
-      "metal": 900
+      "energy": 2200,
+      "metal": 2200
     },
     "energyProduction": null,
     "metalProduction": null,
@@ -259,15 +259,15 @@
     ],
     "base": {
       "cost": {
-        "energy": 900,
-        "metal": 900
+        "energy": 2200,
+        "metal": 2200
       },
-      "mass": 3600,
-      "health": 3600,
+      "mass": 2800,
+      "health": 2800,
       "deathExplosion": {
         "radius": 33.941,
-        "force": 220000,
-        "damage": 1800
+        "force": 160000,
+        "damage": 1200
       },
       "radius": {
         "visual": 28.284,

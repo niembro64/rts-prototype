@@ -7,10 +7,10 @@
     "placementGridWidth": null,
     "placementGridHeight": null,
     "gridDepth": 1,
-    "hp": 200,
+    "hp": 220,
     "cost": {
-      "energy": 100,
-      "metal": 100
+      "energy": 120,
+      "metal": 120
     },
     "energyProduction": 50,
     "metalProduction": null,
@@ -38,14 +38,14 @@
     "turrets": [],
     "base": {
       "cost": {
-        "energy": 100,
-        "metal": 100
+        "energy": 120,
+        "metal": 120
       },
-      "mass": 200,
-      "health": 200,
+      "mass": 260,
+      "health": 220,
       "deathExplosion": {
         "radius": 50.912,
-        "force": 12000,
+        "force": 15000,
         "damage": 150
       },
       "radius": {
@@ -63,10 +63,10 @@
     "placementGridWidth": 6,
     "placementGridHeight": 6,
     "gridDepth": 5,
-    "hp": 100,
+    "hp": 120,
     "cost": {
-      "energy": 60,
-      "metal": 60
+      "energy": 80,
+      "metal": 80
     },
     "energyProduction": 50,
     "metalProduction": null,
@@ -94,15 +94,15 @@
     "turrets": [],
     "base": {
       "cost": {
-        "energy": 60,
-        "metal": 60
+        "energy": 80,
+        "metal": 80
       },
-      "mass": 100,
-      "health": 100,
+      "mass": 180,
+      "health": 120,
       "deathExplosion": {
         "radius": 33.941,
-        "force": 6000,
-        "damage": 75
+        "force": 9000,
+        "damage": 80
       },
       "radius": {
         "visual": 28.284,
@@ -119,10 +119,10 @@
     "placementGridWidth": null,
     "placementGridHeight": null,
     "gridDepth": 2,
-    "hp": 250,
+    "hp": 320,
     "cost": {
-      "energy": 80,
-      "metal": 80
+      "energy": 120,
+      "metal": 160
     },
     "energyProduction": null,
     "metalProduction": 50,
@@ -150,15 +150,15 @@
     "turrets": [],
     "base": {
       "cost": {
-        "energy": 80,
-        "metal": 80
+        "energy": 120,
+        "metal": 160
       },
-      "mass": 250,
-      "health": 250,
+      "mass": 450,
+      "health": 320,
       "deathExplosion": {
         "radius": 84.853,
-        "force": 15000,
-        "damage": 187.5
+        "force": 27000,
+        "damage": 220
       },
       "radius": {
         "visual": 70.711,
@@ -175,10 +175,10 @@
     "placementGridWidth": null,
     "placementGridHeight": null,
     "gridDepth": 2,
-    "hp": 600,
+    "hp": 900,
     "cost": {
-      "energy": 420,
-      "metal": 280
+      "energy": 900,
+      "metal": 700
     },
     "energyProduction": null,
     "metalProduction": 250,
@@ -206,20 +206,20 @@
     "turrets": [],
     "base": {
       "cost": {
-        "energy": 420,
-        "metal": 280
+        "energy": 900,
+        "metal": 700
       },
-      "mass": 600,
-      "health": 600,
+      "mass": 1000,
+      "health": 900,
       "deathExplosion": {
-        "radius": 60,
-        "force": 9000,
-        "damage": 140
+        "radius": 84.853,
+        "force": 60000,
+        "damage": 450
       },
       "radius": {
-        "visual": 35.355,
-        "hitbox": 35.355,
-        "collision": 35.355
+        "visual": 70.711,
+        "hitbox": 70.711,
+        "collision": 70.711
       }
     }
   },
@@ -233,8 +233,8 @@
     "gridDepth": 7,
     "hp": 450,
     "cost": {
-      "energy": 400,
-      "metal": 280
+      "energy": 450,
+      "metal": 350
     },
     "energyProduction": null,
     "metalProduction": null,
@@ -262,15 +262,15 @@
     "turrets": [],
     "base": {
       "cost": {
-        "energy": 400,
-        "metal": 280
+        "energy": 450,
+        "metal": 350
       },
-      "mass": 450,
+      "mass": 500,
       "health": 450,
       "deathExplosion": {
         "radius": 33.941,
-        "force": 27000,
-        "damage": 337.5
+        "force": 25000,
+        "damage": 180
       },
       "radius": {
         "visual": 28.284,
@@ -287,10 +287,10 @@
     "placementGridWidth": null,
     "placementGridHeight": null,
     "gridDepth": 3,
-    "hp": 240,
+    "hp": 300,
     "cost": {
-      "energy": 120,
-      "metal": 120
+      "energy": 180,
+      "metal": 200
     },
     "energyProduction": null,
     "metalProduction": null,
@@ -318,15 +318,15 @@
     "turrets": [],
     "base": {
       "cost": {
-        "energy": 120,
-        "metal": 120
+        "energy": 180,
+        "metal": 200
       },
-      "mass": 240,
-      "health": 240,
+      "mass": 320,
+      "health": 300,
       "deathExplosion": {
         "radius": 50.912,
-        "force": 14400,
-        "damage": 180
+        "force": 18000,
+        "damage": 150
       },
       "radius": {
         "visual": 42.426,

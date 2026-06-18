@@ -85,13 +85,9 @@ export class BuildingGrid {
     return this._version;
   }
 
-  /** Iterate every occupied construction cell as `[gx, gy, cell]`
-   *  triples. `blocksMovement=false` remains available for future
-   *  reservation-only cells, but normal buildings occupy placement.
-   *
-   *  Movement pathfinding treats exact building footprints as one-way
-   *  roof/support cells; this iterator still supplies those cells to
-   *  the WASM planner so a unit already on a roof can leave it. */
+  /** Iterate every occupied physical structure cell as `[gx, gy, cell]`
+   *  triples. `blocksMovement=false` cells remain construction-only
+   *  reservations with no pathfinding surface. */
   *occupiedCells(): IterableIterator<{ gx: number; gy: number; cell: GridCell }> {
     for (const [key, cell] of this.cells) {
       if (!cell.occupied) continue;
@@ -181,8 +177,7 @@ export class BuildingGrid {
   // Place a building (mark cells as occupied). When the physical
   // footprint is smaller than the placement footprint, the centered
   // clearance ring outside the physical rect still occupies placement
-  // but never blocks movement — there is no body, roof, or support
-  // surface over those cells, only a construction reservation.
+  // but never contributes a pathfinding surface, body, or wall.
   place(
     gx: number,
     gy: number,
@@ -193,6 +188,7 @@ export class BuildingGrid {
     blocksMovement: boolean = true,
     physicalGridWidth: number = gridWidth,
     physicalGridHeight: number = gridHeight,
+    pathTopZ: number = BUILD_GRID_CELL_SIZE,
   ): void {
     const insetX = Math.floor((gridWidth - physicalGridWidth) / 2);
     const insetY = Math.floor((gridHeight - physicalGridHeight) / 2);
@@ -209,6 +205,7 @@ export class BuildingGrid {
           entityId,
           playerId,
           blocksMovement: physical && blocksMovement,
+          pathTopZ: physical && blocksMovement ? pathTopZ : undefined,
         });
       }
     }

@@ -333,6 +333,8 @@ export type GridCell = {
   entityId: EntityId | null;
   playerId: PlayerId | null;
   blocksMovement?: boolean;
+  /** Flat structure top above the terrain base under this cell. */
+  pathTopZ?: number;
 };
 
 // Force contribution

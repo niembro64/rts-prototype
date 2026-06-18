@@ -916,6 +916,32 @@
         <li>Hovercraft should remain slippery because their physical limits say so, not because the controller ignores velocity until after overshoot has happened.</li>
       </ul>
 
+      <h3>Terrain pathfinding is directional around slopes and cliffs</h3>
+      <p>
+        Ground pathfinding must treat terrain traversal as a directed movement problem, not a
+        symmetric &ldquo;is this cell steep?&rdquo; mask. A unit should never be routed up a slope,
+        ramp, shelf edge, or vertical cliff face that its locomotion profile cannot climb. The same
+        geometry remains legal in the downhill direction: units can always descend hills, drive down
+        steep faces, or fall off cliffs when the command and physics carry them that way.
+      </p>
+      <p>
+        Pathfinding nodes are conservative terrain summaries. A node must account for every
+        authoritative terrain triangle that touches it, including triangles that only meet the
+        node along an edge or vertex. Vertical 90-degree faces are common and must participate in
+        the node&rsquo;s traversal tests even when the node center samples a flat top or bottom
+        shelf. The planner may use such a node for a downhill or lateral route, but uphill edges
+        out of or into that node must be rejected unless the full directed step is within the
+        unit&rsquo;s climb budget.
+      </p>
+      <ul class="rule-list">
+        <li>Water, map bounds, and hard blockers remain symmetric blockers for ground pathfinding.</li>
+        <li>Other units may be ignored by the global path calculation; local collision, steering, and arrival control handle moving-unit congestion.</li>
+        <li>Buildings and towers are terrain in the pathfinding model: their footprints provide flat elevated tops and vertical sides. A route from ground level goes around them because climbing the side is an illegal uphill cliff, while a unit already on top can cross the flat roof or descend/fall off under the same rules as any other terrain shelf.</li>
+        <li>Slope and height-delta checks are edge rules: uphill is limited by the unit&rsquo;s climb profile; downhill and falling are always allowed.</li>
+        <li>Connected-component shortcuts must not use symmetric slope rejection, because that would incorrectly disconnect a valid downhill route.</li>
+        <li>Line-of-sight path smoothing must run the same directed edge checks as A*, so smoothing cannot erase a necessary climb gate.</li>
+      </ul>
+
       <h3>Waypoints are intent; pathfinding points are disposable</h3>
       <p>
         A waypoint is a player-, AI-, factory-, or fabricator-authored command point. It belongs to

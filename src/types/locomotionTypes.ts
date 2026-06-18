@@ -17,7 +17,8 @@ export type UnitPathfindingConfig = {
 
 export type UnitLocomotion = {
   type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
-  /** Authored propulsion scalar supplied by the unit's inline locomotion profile. */
+  /** Effective propulsion scalar: authored `physics.driveForce` after the
+   *  per-locomotion global multiplier from locomotionConfig.json. */
   driveForce: number;
   /** Movement authority coefficient. Ground units use this as terrain
    *  coupling; hover units use it as direct horizontal-thrust authority;

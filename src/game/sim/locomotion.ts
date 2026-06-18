@@ -4,6 +4,7 @@ import type {
   PathfindingBlueprint,
 } from '@/types/blueprints';
 import type { UnitLocomotion } from './types';
+import rawLocomotionConfig from './locomotionConfig.json';
 
 export const LOCOMOTION_TRACTION = {
   wheels: 0.45,
@@ -20,6 +21,14 @@ export const LOCOMOTION_TRACTION = {
 export const LOCOMOTION_FORCE_SCALE = 150000;
 
 export type LocomotionType = keyof typeof LOCOMOTION_TRACTION;
+
+type LocomotionTypeConfig = {
+  physics: {
+    driveForceMultiplier: number;
+  };
+};
+
+type LocomotionConfig = Record<LocomotionType, LocomotionTypeConfig>;
 
 function assertPositiveFinite(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0) {
@@ -41,6 +50,43 @@ function assertSlopeDegrees(label: string, value: number): void {
 
 function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
   return Math.cos(maxSlopeDeg * Math.PI / 180);
+}
+
+function readLocomotionConfig(): LocomotionConfig {
+  const config = rawLocomotionConfig as unknown as Partial<Record<LocomotionType, LocomotionTypeConfig>>;
+  for (const type of Object.keys(LOCOMOTION_TRACTION) as LocomotionType[]) {
+    const typeConfig = config[type];
+    if (!typeConfig || typeof typeConfig !== 'object') {
+      throw new Error(`Invalid locomotionConfig.json: missing ${type} config`);
+    }
+    if (!typeConfig.physics || typeof typeConfig.physics !== 'object') {
+      throw new Error(`Invalid locomotionConfig.json: missing ${type}.physics config`);
+    }
+    assertPositiveFinite(
+      `${type}.physics.driveForceMultiplier`,
+      typeConfig.physics.driveForceMultiplier,
+    );
+  }
+  for (const type of Object.keys(config)) {
+    if (!(type in LOCOMOTION_TRACTION)) {
+      throw new Error(`Invalid locomotionConfig.json: unknown locomotion type "${type}"`);
+    }
+  }
+  return config as LocomotionConfig;
+}
+
+export const LOCOMOTION_CONFIG = readLocomotionConfig();
+
+export function getLocomotionDriveForceMultiplier(type: LocomotionType): number {
+  return LOCOMOTION_CONFIG[type].physics.driveForceMultiplier;
+}
+
+export function getEffectiveLocomotionDriveForce(
+  type: LocomotionType,
+  authoredDriveForce: number,
+): number {
+  assertPositiveFinite(`${type}.physics.driveForce`, authoredDriveForce);
+  return authoredDriveForce * getLocomotionDriveForceMultiplier(type);
 }
 
 export function createLocomotionPhysics(
@@ -130,7 +176,7 @@ export function createUnitLocomotion(
   }
   return {
     type,
-    driveForce: physics.driveForce,
+    driveForce: getEffectiveLocomotionDriveForce(type, physics.driveForce),
     traction: physics.traction,
     pathfinding,
     gravityCounterUpwardForceRatio,

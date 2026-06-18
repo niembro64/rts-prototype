@@ -2620,6 +2620,134 @@ pub(crate) fn terrain_height_from_triangle_sample(sample: TerrainTriangleSample)
     wa * ah + wb * bh + wc * ch
 }
 
+#[inline]
+pub(crate) fn terrain_triangle_sample_from_index(
+    t: &TerrainGrid,
+    tri: usize,
+) -> Option<TerrainTriangleSample> {
+    let tri_offset = tri * 3;
+    let ia = *t.triangle_indices.get(tri_offset)? as usize;
+    let ib = *t.triangle_indices.get(tri_offset + 1)? as usize;
+    let ic = *t.triangle_indices.get(tri_offset + 2)? as usize;
+    let ax = *t.vertex_coords.get(ia * 2)?;
+    let az = *t.vertex_coords.get(ia * 2 + 1)?;
+    let ah = *t.vertex_heights.get(ia)?;
+    let bx = *t.vertex_coords.get(ib * 2)?;
+    let bz = *t.vertex_coords.get(ib * 2 + 1)?;
+    let bh = *t.vertex_heights.get(ib)?;
+    let cx = *t.vertex_coords.get(ic * 2)?;
+    let cz = *t.vertex_coords.get(ic * 2 + 1)?;
+    let ch = *t.vertex_heights.get(ic)?;
+    Some((
+        1.0 / 3.0,
+        1.0 / 3.0,
+        1.0 / 3.0,
+        ax,
+        az,
+        ah,
+        bx,
+        bz,
+        bh,
+        cx,
+        cz,
+        ch,
+    ))
+}
+
+#[inline]
+pub(crate) fn terrain_triangle_touches_rect(
+    sample: TerrainTriangleSample,
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+) -> bool {
+    let (_, _, _, ax, az, _, bx, bz, _, cx, cz, _) = sample;
+    let tri_min_x = ax.min(bx).min(cx);
+    let tri_max_x = ax.max(bx).max(cx);
+    let tri_min_y = az.min(bz).min(cz);
+    let tri_max_y = az.max(bz).max(cz);
+    const TOUCH_EPS: f64 = 1.0e-9;
+    tri_max_x + TOUCH_EPS >= min_x
+        && tri_min_x - TOUCH_EPS <= max_x
+        && tri_max_y + TOUCH_EPS >= min_y
+        && tri_min_y - TOUCH_EPS <= max_y
+}
+
+#[inline]
+pub(crate) fn terrain_accumulate_touching_triangle_safety_sample(
+    sample: TerrainTriangleSample,
+    has_water: &mut bool,
+    min_normal_z: &mut f32,
+) {
+    let (_, _, _, _, _, ah, _, _, bh, _, _, ch) = sample;
+    if ah < TERRAIN_WATER_LEVEL || bh < TERRAIN_WATER_LEVEL || ch < TERRAIN_WATER_LEVEL {
+        *has_water = true;
+    }
+    let (_, _, nz) = terrain_normal_from_triangle_sample(sample);
+    let normal_z = nz.abs().min(1.0) as f32;
+    if normal_z < *min_normal_z {
+        *min_normal_z = normal_z;
+    }
+}
+
+pub(crate) fn terrain_accumulate_touching_triangle_safety(
+    min_x: f64,
+    min_y: f64,
+    max_x: f64,
+    max_y: f64,
+    has_water: &mut bool,
+    min_normal_z: &mut f32,
+) {
+    let t = terrain_grid();
+    if !t.installed || t.cell_size <= 0.0 || t.cells_x <= 0 || t.cells_y <= 0 {
+        return;
+    }
+
+    let min_cell_x = ((min_x / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_x - 1);
+    let max_cell_x = ((max_x / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_x - 1);
+    let min_cell_y = ((min_y / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_y - 1);
+    let max_cell_y = ((max_y / t.cell_size).floor() as i32)
+        .max(0)
+        .min(t.cells_y - 1);
+
+    for cy in min_cell_y..=max_cell_y {
+        for cx in min_cell_x..=max_cell_x {
+            let cell_idx = (cy * t.cells_x + cx) as usize;
+            if cell_idx + 1 >= t.cell_triangle_offsets.len() {
+                continue;
+            }
+            let start = t.cell_triangle_offsets[cell_idx].max(0) as usize;
+            let end = t.cell_triangle_offsets[cell_idx + 1].max(0) as usize;
+            let end = end.min(t.cell_triangle_indices.len());
+            for ref_idx in start..end {
+                let tri = t.cell_triangle_indices[ref_idx];
+                if tri < 0 {
+                    continue;
+                }
+                let sample = match terrain_triangle_sample_from_index(t, tri as usize) {
+                    Some(sample) => sample,
+                    None => continue,
+                };
+                if !terrain_triangle_touches_rect(sample, min_x, min_y, max_x, max_y) {
+                    continue;
+                }
+                terrain_accumulate_touching_triangle_safety_sample(
+                    sample,
+                    has_water,
+                    min_normal_z,
+                );
+            }
+        }
+    }
+}
+
 pub(crate) fn terrain_triangle_sample_at(
     t: &TerrainGrid,
     px: f64,

@@ -178,6 +178,9 @@ export class ConstructionSystem {
     // Register the placement footprint. Only the centered physical rect
     // blocks movement; any clearance ring beyond it (wind turbine blade
     // sweep) reserves construction cells without becoming a wall.
+    const pathTopZ = config.supportSurface.kind === 'boxTop'
+      ? config.supportSurface.topZ
+      : config.gridDepth * BUILD_GRID_CELL_SIZE;
     this.buildingGrid.place(
       gridX,
       gridY,
@@ -188,6 +191,7 @@ export class ConstructionSystem {
       true,
       footprint.gridWidth,
       footprint.gridHeight,
+      pathTopZ,
     );
 
     // Add to world

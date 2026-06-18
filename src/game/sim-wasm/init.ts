@@ -3426,12 +3426,12 @@ export interface PathfinderApi {
    *  `ceil(mapW/20), ceil(mapH/20)`. */
   init: (mapWidth: number, mapHeight: number) => void;
   /** Rebuild blocked mask + CC labels from `buildingCells` (flat
-   *  Uint32Array of interleaved gx, gy pairs). The terrain mask is
-   *  cached by `terrainVersion`; full mask + CC by terrain/building
+   *  Float64Array of interleaved gx, gy, pathTopZ triples). The
+   *  terrain mask is cached by `terrainVersion`; full mask + CC by terrain/building
    *  versions plus the JS-side building-grid identity — no-op when
    *  nothing has changed. */
   rebuildMaskAndCc: (
-    buildingCells: Uint32Array,
+    buildingCells: Float64Array,
     terrainVersion: number,
     buildingVersion: number,
     buildingGridId: number,

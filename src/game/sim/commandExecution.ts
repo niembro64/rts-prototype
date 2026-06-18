@@ -664,11 +664,13 @@ export function buildMassAwareGroupFormationSlots(units: readonly Entity[]): Gro
 }
 
 function unitFormationAcceleration(entity: Entity): number {
-  const locomotion = entity.unit?.locomotion;
-  if (locomotion === undefined) return 0;
-  // Locomotion driveForce is authored as acceleration-like movement
-  // authority; the force system scales it by mass before integration.
-  return locomotion.driveForce * locomotion.traction;
+  const unit = entity.unit;
+  const locomotion = unit?.locomotion;
+  if (unit === null || locomotion === undefined) return 0;
+  const mass = Number.isFinite(unit.mass) && unit.mass > 0 ? unit.mass : 1;
+  // Match the physics solver's relative behavior: bigger engines help,
+  // but heavier bodies still accelerate more slowly for a given force.
+  return (locomotion.driveForce * locomotion.traction) / mass;
 }
 
 function computeSlowestFormationSpeedFactors(

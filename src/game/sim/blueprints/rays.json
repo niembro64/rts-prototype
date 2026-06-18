@@ -4,9 +4,9 @@
     "hitSound": {
       "$audio": "event.hit.rayBeamMini"
     },
-    "dps": 15,
-    "force": 100,
-    "recoil": 100,
+    "dps": 14,
+    "force": 120,
+    "recoil": 120,
     "radius": 1.5,
     "width": 3,
     "damageSphere": {
@@ -23,9 +23,9 @@
     "hitSound": {
       "$audio": "event.hit.rayBeamMedium"
     },
-    "dps": 30,
-    "force": 200,
-    "recoil": 200,
+    "dps": 36,
+    "force": 260,
+    "recoil": 260,
     "radius": 3,
     "width": 6,
     "damageSphere": {
@@ -42,9 +42,9 @@
     "hitSound": {
       "$audio": "event.hit.rayBeamHeavy"
     },
-    "dps": 300,
-    "force": 2000,
-    "recoil": 2000,
+    "dps": 260,
+    "force": 1800,
+    "recoil": 1800,
     "radius": 8,
     "width": 16,
     "damageSphere": {
@@ -61,13 +61,13 @@
     "hitSound": {
       "$audio": "event.hit.rayBeamMega"
     },
-    "dps": 1000,
-    "force": 3000,
-    "recoil": 3000,
+    "dps": 650,
+    "force": 3500,
+    "recoil": 3500,
     "radius": 8,
-    "width": 16,
+    "width": 18,
     "damageSphere": {
-      "radius": 32
+      "radius": 36
     },
     "gravityForceMultiplier": 0,
     "continuousSound": {

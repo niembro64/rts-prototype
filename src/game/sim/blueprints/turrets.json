@@ -128,10 +128,10 @@
     "range": 1000,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 2300,
+      "duration": 2400,
       "durationRandomness": 0.05
     },
-    "launchForce": 10000,
+    "launchForce": 12000,
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 10,
@@ -187,10 +187,10 @@
     "range": 1000,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 6000,
+      "duration": 6500,
       "durationRandomness": 0.3
     },
-    "launchForce": 50000,
+    "launchForce": 60000,
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 20,
@@ -246,10 +246,10 @@
     "range": 650,
     "rangeVolume": "turret-range-bottom-unbounded",
     "cooldown": {
-      "duration": 3500,
+      "duration": 3800,
       "durationRandomness": 0.3
     },
-    "launchForce": 3500,
+    "launchForce": 4500,
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 140,
     "turretDrag": 0,
@@ -302,10 +302,10 @@
     "range": 2000,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 900,
+      "duration": 1400,
       "durationRandomness": 0.3
     },
-    "launchForce": 100000,
+    "launchForce": 110000,
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 20,
@@ -369,7 +369,7 @@
     "range": 300,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 130,
+      "duration": 180,
       "durationRandomness": 0.1
     },
     "launchForce": 4000,
@@ -436,7 +436,7 @@
     "range": 150,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": null,
-    "launchForce": 8400,
+    "launchForce": 18000,
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 200,
     "turretDrag": 0,
@@ -1060,10 +1060,10 @@
     "range": 1500,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 1500,
+      "duration": 1700,
       "durationRandomness": 0.05
     },
-    "launchForce": 30000,
+    "launchForce": 36000,
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 180,
     "turretDrag": 20,
@@ -1119,7 +1119,7 @@
     "range": 1200,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 1700,
+      "duration": 1900,
       "durationRandomness": 0.05
     },
     "launchForce": 42000,
@@ -1178,10 +1178,10 @@
     "range": 800,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 2000,
+      "duration": 2200,
       "durationRandomness": 0.3
     },
-    "launchForce": 200,
+    "launchForce": 300,
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
@@ -1245,12 +1245,12 @@
     "range": 430,
     "rangeVolume": "turret-range-sphere",
     "cooldown": {
-      "duration": 70,
+      "duration": 160,
       "durationRandomness": 0.02
     },
-    "launchForce": 2000,
+    "launchForce": 16000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 500000,
+    "turretTurnAccel": 90000,
     "turretDrag": 0,
     "barrel": {
       "type": "simpleMultiBarrel",
@@ -1306,15 +1306,15 @@
   "turretAntiAir": {
     "turretBlueprintId": "turretAntiAir",
     "name": "Anti-Air Launcher",
-    "range": 1600,
+    "range": 1200,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
     "cooldown": {
-      "duration": 200,
+      "duration": 280,
       "durationRandomness": 0.05
     },
-    "launchForce": 4000,
+    "launchForce": 20000,
     "addTurretVelocityToEmissionLaunch": true,
-    "turretTurnAccel": 650,
+    "turretTurnAccel": 9000,
     "turretDrag": 0,
     "barrel": {
       "type": "simpleMultiBarrel",
@@ -1489,7 +1489,7 @@
       "duration": 1700,
       "durationRandomness": 0.12
     },
-    "launchForce": 500,
+    "launchForce": 8000,
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 420,
     "turretDrag": 3,

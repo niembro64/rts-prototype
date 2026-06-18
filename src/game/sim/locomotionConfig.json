@@ -1,0 +1,27 @@
+{
+  "wheels": {
+    "physics": {
+      "driveForceMultiplier": 2.0
+    }
+  },
+  "treads": {
+    "physics": {
+      "driveForceMultiplier": 2.0
+    }
+  },
+  "legs": {
+    "physics": {
+      "driveForceMultiplier": 1.0
+    }
+  },
+  "hover": {
+    "physics": {
+      "driveForceMultiplier": 0.3
+    }
+  },
+  "flying": {
+    "physics": {
+      "driveForceMultiplier": 1.0
+    }
+  }
+}

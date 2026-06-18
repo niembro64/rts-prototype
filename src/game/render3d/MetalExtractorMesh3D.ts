@@ -136,7 +136,7 @@ export function buildMetalExtractorMesh(
 
   // The advanced extractor is the standard shape with extra team coloring
   // riding the outer face of the main rotor's spinning panels. Standard
-  // stays plain; the small upper rotor stays plain on both.
+  // stays plain.
   const teamAccents: THREE.Mesh[] = [];
   const accentMaterial = advanced ? primaryMat : undefined;
 
@@ -162,20 +162,6 @@ export function buildMetalExtractorMesh(
       hexCylinderGeom,
     );
     details.push(detail(collar, 'min'));
-    const upperRotor = makeExtractorRotor(
-      bladeLen * 0.78,
-      bladeThickness * 0.72,
-      panelThickness * 0.72,
-      3,
-      Math.min(EXTRACTOR_BUILDING_VISUAL_HEIGHT + 5, rotorY + Math.max(7, minDim * 0.08)),
-      bladeRootRadius * 0.72,
-      0.34,
-      width,
-      depth,
-      pyramidHeight,
-    );
-    details.push(detail(upperRotor, 'min', undefined, 'extractorRotor'));
-    rotors.push(upperRotor);
   }
 
   return {
