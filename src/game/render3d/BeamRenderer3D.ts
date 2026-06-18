@@ -45,7 +45,6 @@ const BEAM_RADIUS_SCALE = 0.55;
 const ENDPOINT_MIN_RADIUS = 2.5;
 const DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
 const DEFAULT_IMPOSTER_SEGMENT_COLOR = 0xffffff;
-const DEFAULT_IMPOSTER_SEGMENT_LINE_WIDTH = 1;
 
 export type TurretMountResolver = {
   getTurretMountWorldState(
@@ -62,7 +61,6 @@ type OpenEndedLineConfig = {
 type BeamImposterSegmentConfig = {
   enabled: boolean;
   color: number;
-  lineWidth: number;
 };
 
 type BeamConfigFile = {
@@ -83,16 +81,9 @@ const OPEN_ENDED_LINE_CONFIG: OpenEndedLineConfig = {
       : DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH,
 };
 
-const configuredImposterLineWidth =
-  rawBeamConfig.imposterSegment?.lineWidth ?? DEFAULT_IMPOSTER_SEGMENT_LINE_WIDTH;
-
 const BEAM_IMPOSTER_SEGMENT_CONFIG: BeamImposterSegmentConfig = {
   enabled: rawBeamConfig.imposterSegment?.enabled ?? true,
   color: rawBeamConfig.imposterSegment?.color ?? DEFAULT_IMPOSTER_SEGMENT_COLOR,
-  lineWidth:
-    Number.isFinite(configuredImposterLineWidth) && configuredImposterLineWidth > 0
-      ? configuredImposterLineWidth
-      : DEFAULT_IMPOSTER_SEGMENT_LINE_WIDTH,
 };
 
 const BEAM_VISUAL_LAYERS: readonly {
@@ -190,9 +181,7 @@ function createBeamVisualLayer(
 export class BeamRenderer3D {
   private root: THREE.Group;
   private readonly layers: BeamVisualLayer[];
-  private readonly imposterSegmentMesh: THREE.LineSegments;
-  private readonly imposterSegmentPositions: Float32Array;
-  private readonly imposterSegmentPositionAttr: THREE.BufferAttribute;
+  private readonly imposterSegmentMesh: THREE.InstancedMesh;
   private activeImposterSegmentCount = 0;
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
@@ -226,22 +215,22 @@ export class BeamRenderer3D {
       );
     }
 
-    const imposterSegmentGeom = new THREE.BufferGeometry();
-    this.imposterSegmentPositions = new Float32Array(BEAM_IMPOSTER_SEGMENT_CAP * 2 * 3);
-    this.imposterSegmentPositionAttr = new THREE.BufferAttribute(this.imposterSegmentPositions, 3);
-    this.imposterSegmentPositionAttr.setUsage(THREE.DynamicDrawUsage);
-    imposterSegmentGeom.setAttribute('position', this.imposterSegmentPositionAttr);
-    imposterSegmentGeom.setDrawRange(0, 0);
-    const imposterSegmentMat = new THREE.LineBasicMaterial({
+    const imposterSegmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
+    const imposterSegmentMat = new THREE.MeshBasicMaterial({
       color: BEAM_IMPOSTER_SEGMENT_CONFIG.color,
-      linewidth: BEAM_IMPOSTER_SEGMENT_CONFIG.lineWidth,
       transparent: false,
       depthTest: true,
       depthWrite: true,
     });
-    this.imposterSegmentMesh = new THREE.LineSegments(imposterSegmentGeom, imposterSegmentMat);
+    this.imposterSegmentMesh = new THREE.InstancedMesh(
+      imposterSegmentGeom,
+      imposterSegmentMat,
+      BEAM_IMPOSTER_SEGMENT_CAP,
+    );
+    this.imposterSegmentMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.imposterSegmentMesh.frustumCulled = false;
     this.imposterSegmentMesh.renderOrder = 11;
+    this.imposterSegmentMesh.count = 0;
     this.imposterSegmentMesh.visible = BEAM_IMPOSTER_SEGMENT_CONFIG.enabled;
     this.root.add(this.imposterSegmentMesh);
   }
@@ -295,16 +284,18 @@ export class BeamRenderer3D {
     slot: number,
     ax: number, ay: number, az: number,
     bx: number, by: number, bz: number,
+    cylRadius: number,
+    length: number,
   ): void {
     if (slot >= BEAM_IMPOSTER_SEGMENT_CAP) return;
-    const base = slot * 6;
-    // sim-(x, y, z) maps to three-(x, z, y).
-    this.imposterSegmentPositions[base] = ax;
-    this.imposterSegmentPositions[base + 1] = az;
-    this.imposterSegmentPositions[base + 2] = ay;
-    this.imposterSegmentPositions[base + 3] = bx;
-    this.imposterSegmentPositions[base + 4] = bz;
-    this.imposterSegmentPositions[base + 5] = by;
+    this.placeSegment(
+      this.imposterSegmentMesh,
+      slot,
+      ax, ay, az,
+      bx, by, bz,
+      cylRadius,
+      length,
+    );
   }
 
   private writeEndpoint(
@@ -478,6 +469,8 @@ export class BeamRenderer3D {
             imposterSegIdx,
             ax, ay, az,
             bx, by, bz,
+            cylRadius,
+            segLen,
           );
           imposterSegIdx++;
         }
@@ -529,11 +522,11 @@ export class BeamRenderer3D {
 
     this.activeImposterSegmentCount = imposterSegIdx;
     this.imposterSegmentMesh.visible = BEAM_IMPOSTER_SEGMENT_CONFIG.enabled;
-    this.imposterSegmentMesh.geometry.setDrawRange(0, imposterSegIdx * 2);
+    this.imposterSegmentMesh.count = imposterSegIdx;
     if (imposterSegIdx > 0) {
-      this.imposterSegmentPositionAttr.clearUpdateRanges();
-      this.imposterSegmentPositionAttr.addUpdateRange(0, imposterSegIdx * 6);
-      this.imposterSegmentPositionAttr.needsUpdate = true;
+      this.imposterSegmentMesh.instanceMatrix.clearUpdateRanges();
+      this.imposterSegmentMesh.instanceMatrix.addUpdateRange(0, imposterSegIdx * 16);
+      this.imposterSegmentMesh.instanceMatrix.needsUpdate = true;
     }
   }
 
