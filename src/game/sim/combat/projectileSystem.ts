@@ -2,7 +2,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
+import type { BeamPoint, Entity, EntityId, PlayerId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -190,6 +190,98 @@ function resolveBeamTraceEndpoint(
   return out;
 }
 
+type BeamAimScratch = {
+  dirX: number;
+  dirY: number;
+  dirZ: number;
+  visualEndX: number;
+  visualEndY: number;
+  visualEndZ: number;
+  targetEntityId: EntityId;
+};
+
+function writeBeamAimFromPoint(
+  startX: number,
+  startY: number,
+  startZ: number,
+  targetX: number,
+  targetY: number,
+  targetZ: number,
+  out: BeamAimScratch,
+): boolean {
+  const dx = targetX - startX;
+  const dy = targetY - startY;
+  const dz = targetZ - startZ;
+  const len = DMath.hypot(dx, dy, dz);
+  if (!Number.isFinite(len) || len <= 1e-6) return false;
+  const inv = 1 / len;
+  out.dirX = dx * inv;
+  out.dirY = dy * inv;
+  out.dirZ = dz * inv;
+  out.visualEndX = targetX;
+  out.visualEndY = targetY;
+  out.visualEndZ = targetZ;
+  return true;
+}
+
+function writeBeamAimFallback(
+  startX: number,
+  startY: number,
+  startZ: number,
+  fallbackYaw: number,
+  fallbackPitch: number,
+  out: BeamAimScratch,
+): void {
+  const pitchCos = DMath.cos(fallbackPitch);
+  out.dirX = DMath.cos(fallbackYaw) * pitchCos;
+  out.dirY = DMath.sin(fallbackYaw) * pitchCos;
+  out.dirZ = DMath.sin(fallbackPitch);
+  out.visualEndX = startX + out.dirX;
+  out.visualEndY = startY + out.dirY;
+  out.visualEndZ = startZ + out.dirZ;
+}
+
+function resolveBeamAim(
+  target: Entity | undefined,
+  targetPoint: { x: number; y: number; z: number } | null,
+  existingPoints: readonly BeamPoint[] | null,
+  startX: number,
+  startY: number,
+  startZ: number,
+  fallbackYaw: number,
+  fallbackPitch: number,
+  out: BeamAimScratch,
+): BeamAimScratch {
+  out.targetEntityId = NO_ENTITY_ID;
+  if (target !== undefined && isLiveHomingTarget(target)) {
+    const point = getEntityPosition3d(target, _beamTargetPoint);
+    if (writeBeamAimFromPoint(startX, startY, startZ, point.x, point.y, point.z, out)) {
+      out.targetEntityId = target.id;
+      return out;
+    }
+  }
+  if (
+    targetPoint !== null &&
+    writeBeamAimFromPoint(startX, startY, startZ, targetPoint.x, targetPoint.y, targetPoint.z, out)
+  ) {
+    return out;
+  }
+  if (existingPoints !== null && existingPoints.length >= 2) {
+    const previousEnd = existingPoints[existingPoints.length - 1];
+    if (
+      writeBeamAimFromPoint(
+        startX, startY, startZ,
+        previousEnd.x, previousEnd.y, previousEnd.z,
+        out,
+      )
+    ) {
+      return out;
+    }
+  }
+  writeBeamAimFallback(startX, startY, startZ, fallbackYaw, fallbackPitch, out);
+  return out;
+}
+
 // Phase 5a — packed projectile dense state lives in the WASM-side
 // ProjectilePool (see rts-sim-wasm/src/lib.rs). The local typed-
 // array views below are captured lazily (the pool isn't ready
@@ -266,13 +358,71 @@ const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
+const _homingRetargetPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
 const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
+const _beamTargetPoint = { x: 0, y: 0, z: 0 };
+const _fireBeamAim: BeamAimScratch = {
+  dirX: 1,
+  dirY: 0,
+  dirZ: 0,
+  visualEndX: 0,
+  visualEndY: 0,
+  visualEndZ: 0,
+  targetEntityId: NO_ENTITY_ID,
+};
+const _updateBeamAim: BeamAimScratch = {
+  dirX: 1,
+  dirY: 0,
+  dirZ: 0,
+  visualEndX: 0,
+  visualEndY: 0,
+  visualEndZ: 0,
+  targetEntityId: NO_ENTITY_ID,
+};
 const HOMING_TARGET_UPDATE_UNCHANGED = -2;
 
 function getHomingMaxThrustAccel(shot: ProjectileShot): number {
   const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
   return (shot.homingThrust ?? 0) / mass;
+}
+
+function findReplacementHomingTarget(
+  world: WorldState,
+  ownerId: PlayerId,
+  position: { x: number; y: number; z: number },
+  searchRadius: number,
+): Entity | undefined {
+  if (!Number.isFinite(searchRadius) || searchRadius <= 0) return undefined;
+  const candidates = spatialGrid.queryEnemyEntitiesInRadius(
+    position.x,
+    position.y,
+    position.z,
+    searchRadius,
+    ownerId,
+  );
+  let best: Entity | undefined;
+  let bestDistSq = Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    if (!isLiveHomingTarget(candidate)) continue;
+    const ownership = candidate.ownership;
+    if (ownership !== null && world.arePlayersAllied(ownerId, ownership.playerId)) continue;
+    const point = getEntityPosition3d(candidate, _homingRetargetPoint);
+    const dx = point.x - position.x;
+    const dy = point.y - position.y;
+    const dz = point.z - position.z;
+    const distSq = dx * dx + dy * dy + dz * dz;
+    if (
+      best === undefined ||
+      distSq < bestDistSq - 1e-6 ||
+      (Math.abs(distSq - bestDistSq) <= 1e-6 && candidate.id < best.id)
+    ) {
+      best = candidate;
+      bestDistSq = distSq;
+    }
+  }
+  return best;
 }
 
 function getTurretProjectileLaunchSpeed(config: TurretConfig, shot: Pick<ProjectileShot, 'mass'>): number {
@@ -962,19 +1112,17 @@ export function fireTurrets(
           const beamStartX = spawnX;
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;
-
-          // Target lock remains range-gated by the turret. The beam
-          // trace itself is map-scale so out-of-range shield reflectors
-          // can still redirect an already-fired beam.
-          const endpoint = resolveBeamTraceEndpoint(
-            beamStartX, beamStartY, beamStartZ,
-            dirX, dirY, dirZ,
-            getBeamTraceDistance(world),
-            _beamTraceEnd,
+          const beamAim = resolveBeamAim(
+            lockedTarget,
+            groundTargetPoint,
+            null,
+            beamStartX,
+            beamStartY,
+            beamStartZ,
+            turretAngle,
+            turretPitch,
+            _fireBeamAim,
           );
-          const endX = endpoint.x;
-          const endY = endpoint.y;
-          const endZ = endpoint.z;
 
           const projectileConfig = createProjectileConfigFromTurret(config, weaponIndex);
           const beamProjectileType = shot.type === 'laser' ? 'laser' as const : 'beam' as const;
@@ -984,8 +1132,8 @@ export function fireTurrets(
             beamStartX,
             beamStartY,
             beamStartZ,
-            endX,
-            endY,
+            beamAim.visualEndX,
+            beamAim.visualEndY,
             playerId,
             unit.id,
             projectileConfig,
@@ -995,17 +1143,22 @@ export function fireTurrets(
           if (beam.projectile) {
             beam.projectile.sourceBarrelIndex = barrelIndex;
             beam.projectile.sourceEntityId = unit.id;
-            // createBeam seeds both polyline vertices at spawnZ; the
-            // pitched endpoint is the map-scale trace endpoint.
+            beam.projectile.targetEntityId = beamAim.targetEntityId;
+            // createBeam seeds both polyline vertices at spawnZ; snap
+            // the spawn endpoint to the direct target-origin ray so the
+            // first client frame starts on the intended target.
             const pts = beam.projectile.points;
-            if (pts && pts.length >= 2) pts[pts.length - 1].z = endZ;
+            if (pts && pts.length >= 2) pts[pts.length - 1].z = beamAim.visualEndZ;
           }
           // Register beam in index immediately (no need for full rebuild)
           beamIndex.addBeam(unit.id, weaponIndex, beam.id);
           newProjectiles.push(beam);
+          const beamFireYaw = DMath.hypot(beamAim.dirX, beamAim.dirY) > 1e-9
+            ? DMath.atan2(beamAim.dirY, beamAim.dirX)
+            : turretAngle;
           spawnEvents.push({
             id: beam.id,
-            pos: { x: beamStartX, y: beamStartY, z: beamStartZ }, rotation: fireYaw,
+            pos: { x: beamStartX, y: beamStartY, z: beamStartZ }, rotation: beamFireYaw,
             velocity: { x: 0, y: 0, z: 0 },
             projectileType: beamProjectileType,
             turretBlueprintId: config.turretBlueprintId,
@@ -1023,7 +1176,11 @@ export function fireTurrets(
             barrelIndex,
             beam: {
               start: { x: beamStartX, y: beamStartY, z: beamStartZ },
-              end: { x: endX, y: endY, z: endZ },
+              end: {
+                x: beamAim.visualEndX,
+                y: beamAim.visualEndY,
+                z: beamAim.visualEndZ,
+              },
             },
           });
           // Note: Beam recoil is applied continuously above while weapon is engaged
@@ -1485,7 +1642,12 @@ function _updateTravelingProjectilesJS(
         ? world.getEntity(previousHomingTargetId)
         : undefined;
       if (homingTarget === undefined || !isLiveHomingTarget(homingTarget)) {
-        homingTarget = undefined;
+        homingTarget = findReplacementHomingTarget(
+          world,
+          proj.ownerId,
+          position,
+          proj.config.range,
+        );
       }
       const resolvedHomingTargetId = homingTarget !== undefined ? homingTarget.id : NO_ENTITY_ID;
       if (resolvedHomingTargetId !== previousHomingTargetId) {
@@ -1788,10 +1950,13 @@ export function updateProjectiles(
         const shotType = proj.config.shot.type;
         const isContinuous = shotType === 'beam';
         const isLaser = shotType === 'laser';
+        let targetingTargetId = weapon.target ?? -1;
+        let engaged = weapon.state === 'engaged';
         if (isContinuous || isLaser) {
-          const engaged = readCombatTargetingTurretFsmInto(source, weaponIndex, _fireFsm)
-            ? _fireFsm.stateCode === CT_TURRET_STATE_ENGAGED
-            : weapon.state === 'engaged';
+          if (readCombatTargetingTurretFsmInto(source, weaponIndex, _fireFsm)) {
+            targetingTargetId = _fireFsm.targetId;
+            engaged = _fireFsm.stateCode === CT_TURRET_STATE_ENGAGED;
+          }
           if (!engaged && proj.timeAlive >= BEAM_MIN_ON_TIME_MS) {
             beamIndex.removeBeam(proj.sourceEntityId, weaponIndex);
             projectilesToRemove.push(entity.id);
@@ -1800,9 +1965,10 @@ export function updateProjectiles(
           }
         }
 
-        // Beam starts follow the turret origin. Direction follows
-        // the current turret yaw/pitch so the beam path is up-to-date even
-        // mid-tick.
+        // Beam starts follow the turret origin. Direction follows the
+        // live target-origin ray when the turret has an entity lock,
+        // so a fast target cannot visually or physically dodge merely
+        // because the rendered turret yaw is still catching up.
         const turretAngle = weapon.rotation;
         const turretPitch = weapon.pitch;
         const { cos: srcCos, sin: srcSin } = getTransformCosSin(source.transform);
@@ -1819,10 +1985,6 @@ export function updateProjectiles(
           },
           _beamWeaponMount,
         );
-        const dirPitchCos = DMath.cos(turretPitch);
-        const dirX = DMath.cos(turretAngle) * dirPitchCos;
-        const dirY = DMath.sin(turretAngle) * dirPitchCos;
-        const dirZ = DMath.sin(turretPitch);
         const beamStartX = beamMount.x;
         const beamStartY = beamMount.y;
         const beamStartZ = beamMount.z;
@@ -1862,6 +2024,23 @@ export function updateProjectiles(
         startPoint.z = beamStartZ;
         clearBeamReflectorMetadata(startPoint);
 
+        const lockedTarget = targetingTargetId !== -1
+          ? world.getEntity(targetingTargetId)
+          : undefined;
+        const beamAim = resolveBeamAim(
+          lockedTarget,
+          source.combat.priorityTargetPoint,
+          points,
+          beamStartX,
+          beamStartY,
+          beamStartZ,
+          turretAngle,
+          turretPitch,
+          _updateBeamAim,
+        );
+        const targetChanged = proj.targetEntityId !== beamAim.targetEntityId;
+        proj.targetEntityId = beamAim.targetEntityId;
+
         // Per-tick re-trace. The turret's fire range decides whether it
         // may lock and stay engaged; it does not clip the physical beam
         // path. Use a finite map-scale trace budget so shield reflectors
@@ -1869,7 +2048,7 @@ export function updateProjectiles(
         // unbounded ray.
         const endpoint = resolveBeamTraceEndpoint(
           beamStartX, beamStartY, beamStartZ,
-          dirX, dirY, dirZ,
+          beamAim.dirX, beamAim.dirY, beamAim.dirZ,
           getBeamTraceDistance(world),
           _beamTraceEnd,
         );
@@ -1978,6 +2157,7 @@ export function updateProjectiles(
         // finite-diff velocity.
         const endPoint = points[newLen - 1];
         const sameTopology =
+          !targetChanged &&
           prevTopologyRefCount === refs.length &&
           (refs.length === 0 ||
             prevLastReflectorId === refs[refs.length - 1].reflectorEntityId) &&
@@ -2025,7 +2205,9 @@ export function updateProjectiles(
         entity.transform.x = startPoint.x;
         entity.transform.y = startPoint.y;
         entity.transform.z = startPoint.z;
-        entity.transform.rotation = turretAngle;
+        entity.transform.rotation = DMath.hypot(beamAim.dirX, beamAim.dirY) > 1e-9
+          ? DMath.atan2(beamAim.dirY, beamAim.dirX)
+          : turretAngle;
       }
     }
   }

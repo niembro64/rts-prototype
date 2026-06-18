@@ -15,9 +15,3 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
-
-[user-01] light rockets should find a new target when they lose their target.
-
-[user-02] beams in the simulation should fire directly in the ray from the turret origin point to the target origin point - then the client does ema of those locations through time. We should never see beams "missing" because a target is too fast. The beams also have to stay on for at least a certain amount of time so we don't have flickering. And each time a beam turns on is a new "beam", in the client, we should start a new beam exactly between the turret and the target, and the EMA should only kick in at that point - basically the ema does not happen between "beams" that a turret shoots, it only happens within one instance of a shooting beam. Again - the first moment of a shooting beam snaps exactly to where it is supposed to be. 
-
-[user-3] Beams should always be visible, no LOD.

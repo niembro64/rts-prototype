@@ -39,7 +39,7 @@
     "shotNames": 6000,
     "contactShadows": 6000,
     "groundPrints": 6000,
-    "lineProjectiles": 6000,
+    "lineProjectiles": null,
     "projectileCores": null,
     "projectileTrailsAndFins": 100000,
     "projectileBurnMarks": 6000,

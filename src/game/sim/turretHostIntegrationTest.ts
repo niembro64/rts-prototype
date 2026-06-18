@@ -4,22 +4,35 @@ import { createBuildable } from './buildableHelpers';
 import { DamageSystem } from './damage';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
+import { beamIndex } from './BeamIndex';
 import type { EntityId, PlayerId } from './types';
 import { isProjectileShot, NO_ENTITY_ID } from './types';
 import {
   finalizePendingProjectileLaunchVelocities,
   fireTurrets,
   hasPendingProjectileLaunchVelocityFinalization,
+  updateProjectiles,
   updateTargetingAndFiringState,
   updateTurretRotation,
 } from './combat';
 import { getProjectileLaunchSpeed, resolveWeaponWorldMount } from './combat/combatUtils';
+import { resetProjectileBuffers } from './combat/projectileSystem';
 import { stampCombatTargetingPool } from './combat/targetingInputStamping';
+import { createProjectileConfigFromTurret } from './projectileConfigs';
 import { getUnitGroundZ } from './unitGeometry';
+import type { WindState } from './wind';
 import { WorldState } from './WorldState';
 
 const TEST_UNIT_BLUEPRINT_ID = 'unitFormik';
 const TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID = 'unitBadger';
+const TEST_BEAM_UNIT_BLUEPRINT_ID = 'unitDaddy';
+const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
+
+function resetTurretHostIntegrationState(): void {
+  spatialGrid.clear();
+  beamIndex.clear();
+  resetProjectileBuffers();
+}
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -36,7 +49,7 @@ function assertNear(actual: number, expected: number, message: string): void {
 }
 
 function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLaunch: boolean): void {
-  spatialGrid.clear();
+  resetTurretHostIntegrationState();
   const launchWorld = new WorldState(
     addTurretVelocityToEmissionLaunch ? 4321 : 4322,
     1024,
@@ -126,12 +139,127 @@ function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLa
     assertNear(rocketSpawn.velocity.z, rocket.velocityZ, 'spawn event vz must match finalized projectile vz');
   } finally {
     badgerTurret.config.addTurretVelocityToEmissionLaunch = previousInheritanceFlag;
-    spatialGrid.clear();
+    resetTurretHostIntegrationState();
   }
 }
 
+function assertSlowRocketRetargetsAfterLosingTarget(): void {
+  resetTurretHostIntegrationState();
+  const world = new WorldState(5321, 1024, 1024);
+  world.playerCount = 2;
+  const badger = world.createUnitFromBlueprint(
+    120,
+    120,
+    1 as PlayerId,
+    TEST_VERTICAL_ROCKET_UNIT_BLUEPRINT_ID,
+  );
+  const lostTarget = world.createUnitFromBlueprint(
+    290,
+    120,
+    2 as PlayerId,
+    'unitJackal',
+  );
+  const replacementTarget = world.createUnitFromBlueprint(
+    330,
+    120,
+    2 as PlayerId,
+    'unitJackal',
+  );
+  world.addEntity(badger);
+  world.addEntity(lostTarget);
+  world.addEntity(replacementTarget);
+  spatialGrid.updateUnit(badger);
+  spatialGrid.updateUnit(replacementTarget);
+  if (lostTarget.unit === null || badger.combat === null) {
+    throw new Error('[turret host integration] retarget fixtures must be armed/live units');
+  }
+  lostTarget.unit.hp = 0;
+
+  const turret = badger.combat.turrets[0];
+  const projectileConfig = createProjectileConfigFromTurret(turret.config, 0);
+  const rocket = world.createProjectile(
+    250,
+    120,
+    40,
+    0,
+    1 as PlayerId,
+    badger.id,
+    projectileConfig,
+  );
+  world.addEntity(rocket);
+  if (rocket.projectile === null) {
+    throw new Error('[turret host integration] retarget rocket must have a projectile component');
+  }
+  rocket.projectile.velocityZ = 0;
+  rocket.projectile.timeAlive = 3000;
+  rocket.projectile.homingTargetId = lostTarget.id;
+
+  const result = updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
+  assertContract(
+    rocket.projectile.homingTargetId === replacementTarget.id,
+    'homing rocket must acquire a replacement live target after its lock dies',
+  );
+  assertContract(
+    result.velocityUpdates.some((update) =>
+      update.id === rocket.id &&
+      update.targetEntityId === replacementTarget.id &&
+      update.clearHomingTarget !== true
+    ),
+    'homing rocket retarget must emit a velocity update naming the replacement target',
+  );
+  resetTurretHostIntegrationState();
+}
+
+function assertBeamSpawnAimsAtTargetOrigin(): void {
+  resetTurretHostIntegrationState();
+  const world = new WorldState(5322, 1024, 1024);
+  world.playerCount = 2;
+  const daddy = world.createUnitFromBlueprint(
+    120,
+    120,
+    1 as PlayerId,
+    TEST_BEAM_UNIT_BLUEPRINT_ID,
+  );
+  const target = world.createUnitFromBlueprint(
+    120,
+    250,
+    2 as PlayerId,
+    'unitJackal',
+  );
+  world.addEntity(daddy);
+  world.addEntity(target);
+  spatialGrid.updateUnit(daddy);
+  spatialGrid.updateUnit(target);
+  if (daddy.combat === null) {
+    throw new Error('[turret host integration] beam source must be armed');
+  }
+
+  daddy.combat.priorityTargetId = target.id;
+  daddy.combat.priorityTargetPoint = null;
+  const dtMs = 50;
+  stampCombatTargetingPool(world);
+  const activeCombatUnits = updateTargetingAndFiringState(world, dtMs);
+  updateTurretRotation(world, dtMs, activeCombatUnits);
+
+  const beamTurret = daddy.combat.turrets[0];
+  beamTurret.rotation = 0;
+  beamTurret.pitch = 0;
+  beamTurret.aimErrorYaw = 0;
+  beamTurret.aimErrorPitch = 0;
+
+  const fireResult = fireTurrets(world, dtMs, new ForceAccumulator(), activeCombatUnits);
+  const beamSpawn = fireResult.spawnEvents.find((event) => event.beam !== undefined);
+  assertContract(beamSpawn !== undefined, 'mini beam turret must spawn a beam event');
+  const beam = beamSpawn.beam;
+  assertContract(beam !== undefined, 'beam spawn must carry start/end metadata');
+  assertNear(beam.end.x, target.transform.x, 'beam spawn endpoint x must snap to target origin');
+  assertNear(beam.end.y, target.transform.y, 'beam spawn endpoint y must snap to target origin');
+  assertNear(beamSpawn.rotation, Math.PI / 2, 'beam spawn yaw must follow target-origin ray, not stale turret yaw');
+  resetTurretHostIntegrationState();
+}
+
 export function runTurretHostIntegrationContractTest(): void {
-  spatialGrid.clear();
+  resetTurretHostIntegrationState();
   try {
     const world = new WorldState(1234, 512, 512);
     world.playerCount = 2;
@@ -235,7 +363,9 @@ export function runTurretHostIntegrationContractTest(): void {
 
     assertSlowRocketLaunchVelocityInheritance(true);
     assertSlowRocketLaunchVelocityInheritance(false);
+    assertSlowRocketRetargetsAfterLosingTarget();
+    assertBeamSpawnAimsAtTargetOrigin();
   } finally {
-    spatialGrid.clear();
+    resetTurretHostIntegrationState();
   }
 }
