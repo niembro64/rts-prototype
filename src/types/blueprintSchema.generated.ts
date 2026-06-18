@@ -27,11 +27,12 @@ export type ShieldReflectionMode = 'outside-in' | 'inside-out' | 'both';
 
 export type ShieldReflectionDirection = 'reflect-none' | 'reflect-outside' | 'reflect-inside' | 'reflect-both';
 
-export type ShieldReflectionEntity = 'plasma' | 'rocket' | 'beam' | 'laser';
+export type ShieldReflectionEntity = 'plasma' | 'rocket' | 'missile' | 'beam' | 'laser';
 
 export type ShieldReflectionEntityDirections = {
   plasma?: ShieldReflectionDirection;
   rocket?: ShieldReflectionDirection;
+  missile?: ShieldReflectionDirection;
   beam?: ShieldReflectionDirection;
   laser?: ShieldReflectionDirection;
 };

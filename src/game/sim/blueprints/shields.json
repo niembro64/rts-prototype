@@ -11,8 +11,9 @@
       "entities": {
         "plasma": "reflect-outside",
         "rocket": "reflect-outside",
-        "beam": "reflect-none",
-        "laser": "reflect-none"
+        "missile": "reflect-outside",
+        "beam": "reflect-outside",
+        "laser": "reflect-outside"
       }
     },
     "barrier": {
@@ -33,8 +34,9 @@
       "entities": {
         "plasma": "reflect-outside",
         "rocket": "reflect-outside",
-        "beam": "reflect-none",
-        "laser": "reflect-none"
+        "missile": "reflect-outside",
+        "beam": "reflect-outside",
+        "laser": "reflect-outside"
       }
     },
     "barrier": {
@@ -55,8 +57,9 @@
       "entities": {
         "plasma": "reflect-outside",
         "rocket": "reflect-outside",
-        "beam": "reflect-none",
-        "laser": "reflect-none"
+        "missile": "reflect-outside",
+        "beam": "reflect-outside",
+        "laser": "reflect-outside"
       }
     },
     "barrier": {
@@ -77,8 +80,9 @@
       "entities": {
         "plasma": "reflect-outside",
         "rocket": "reflect-outside",
-        "beam": "reflect-none",
-        "laser": "reflect-none"
+        "missile": "reflect-outside",
+        "beam": "reflect-outside",
+        "laser": "reflect-outside"
       }
     },
     "barrier": {
@@ -99,6 +103,7 @@
       "entities": {
         "plasma": "reflect-both",
         "rocket": "reflect-both",
+        "missile": "reflect-both",
         "beam": "reflect-both",
         "laser": "reflect-both"
       }

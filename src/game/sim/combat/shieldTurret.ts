@@ -226,6 +226,14 @@ export function encodeShieldReflectionPolicy(
   return encodeShieldReflectionDirection(policy.entities[entity]);
 }
 
+export function encodeShieldRocketLikeReflectionPolicy(
+  policy: ShieldReflectionPolicy,
+): number {
+  return encodeShieldReflectionDirection(
+    policy.entities.rocket ?? policy.entities.missile,
+  );
+}
+
 export function encodeShieldBarrierShape(shape: ShieldBarrierShape): number {
   switch (shape) {
     case 'sphere':

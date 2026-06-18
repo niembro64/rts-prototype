@@ -79,6 +79,7 @@ export const SHIELD_REFLECTION_DIRECTIONS = [
 export const SHIELD_REFLECTION_ENTITIES = [
   'plasma',
   'rocket',
+  'missile',
   'beam',
   'laser',
 ] as const;

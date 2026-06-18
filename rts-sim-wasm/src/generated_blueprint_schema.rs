@@ -94,6 +94,7 @@ pub enum ShieldReflectionDirection {
 pub enum ShieldReflectionEntity {
     Plasma,
     Rocket,
+    Missile,
     Beam,
     Laser,
 }
@@ -102,6 +103,7 @@ pub enum ShieldReflectionEntity {
 pub struct ShieldReflectionEntityDirections {
     pub plasma: Option<ShieldReflectionDirection>,
     pub rocket: Option<ShieldReflectionDirection>,
+    pub missile: Option<ShieldReflectionDirection>,
     pub beam: Option<ShieldReflectionDirection>,
     pub laser: Option<ShieldReflectionDirection>,
 }

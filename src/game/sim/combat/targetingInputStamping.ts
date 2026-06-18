@@ -25,6 +25,7 @@ import { spatialGrid } from '../SpatialGrid';
 import {
   encodeShieldBarrierShape,
   encodeShieldReflectionPolicy,
+  encodeShieldRocketLikeReflectionPolicy,
   getActiveShields,
 } from './shieldTurret';
 import {
@@ -826,7 +827,7 @@ export function stampShieldSurfacePool(world: WorldState): void {
         f.radius,
         encodeShieldBarrierShape(f.shape),
         encodeShieldReflectionPolicy(f.reflection, 'plasma'),
-        encodeShieldReflectionPolicy(f.reflection, 'rocket'),
+        encodeShieldRocketLikeReflectionPolicy(f.reflection),
         encodeShieldReflectionPolicy(f.reflection, 'beam'),
         encodeShieldReflectionPolicy(f.reflection, 'laser'),
       );
@@ -871,7 +872,7 @@ export function stampShieldSurfacePool(world: WorldState): void {
     const panelShot = shieldPanelTurret.config.shot;
     if (panelShot === null || panelShot.type !== 'shield') continue;
     const plasmaReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'plasma');
-    const rocketReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'rocket');
+    const rocketReflection = encodeShieldRocketLikeReflectionPolicy(panelShot.reflection);
     const beamReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'beam');
     const laserReflection = encodeShieldReflectionPolicy(panelShot.reflection, 'laser');
     const shieldPanelRot = shieldPanelTurret.rotation;
