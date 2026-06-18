@@ -14,11 +14,11 @@ import {
 } from '../game/input/commandHotkeys';
 import {
   BAR_BUILD_CATEGORIES,
-  BAR_GRID_COLUMNS,
-  BAR_GRID_ROWS,
   BAR_GRID_SLOT_COUNT,
   BUILD_MENU_GRID_SLOT_COMMAND_IDS,
+  buildBarHomeBuildMenuCells,
   buildStructureMenuLayout,
+  type BuildMenuLayoutItem,
   type BarBuildCategoryId,
 } from '../game/input/buildMenuLayout';
 import {
@@ -353,24 +353,26 @@ const buildingMenuLayout = computed(() =>
   buildStructureMenuLayout(props.selection.allowedBuildBlueprintIds),
 );
 
-const buildingOptions = computed(() => {
-  return buildingMenuLayout.value.items
-    .map((item) => {
-      const { buildingBlueprintId, commandId } = item;
-      const option = structureRosterDisplay.find((entry) => entry.buildingBlueprintId === buildingBlueprintId);
-      return option === undefined
-        ? null
-        : {
-          ...option,
-          buildingBlueprintId: option.buildingBlueprintId as StructureBlueprintId,
-          key: hotkey(commandId),
-          commandId,
-          gridRow: item.gridRow,
-          gridColumn: item.gridColumn,
-        };
-    })
-    .filter((option) => option !== null);
-});
+function buildingOptionForLayoutItem(item: BuildMenuLayoutItem): BuildingGridOption | null {
+  const { buildingBlueprintId, commandId } = item;
+  const option = structureRosterDisplay.find((entry) => entry.buildingBlueprintId === buildingBlueprintId);
+  return option === undefined
+    ? null
+    : {
+      ...option,
+      buildingBlueprintId: option.buildingBlueprintId as StructureBlueprintId,
+      key: hotkey(commandId),
+      commandId,
+      gridRow: item.gridRow,
+      gridColumn: item.gridColumn,
+    };
+}
+
+const buildingOptions = computed(() =>
+  buildingMenuLayout.value.items
+    .map(buildingOptionForLayoutItem)
+    .filter((option) => option !== null),
+);
 const buildLineSpacingLabel = computed(() =>
   `${Math.round(props.selection.buildLineSpacingMultiplier * 100)}%`,
 );
@@ -405,20 +407,18 @@ const buildGridPageCount = computed(() =>
   Math.max(1, Math.ceil(currentBuildCategoryOptions.value.length / BAR_GRID_SLOT_COUNT)),
 );
 
+const homeBuildGridCells = computed<(BuildingGridOption | null)[]>(() =>
+  buildBarHomeBuildMenuCells(props.selection.allowedBuildBlueprintIds)
+    .map((item) => item === null ? null : buildingOptionForLayoutItem(item)),
+);
+
 const buildGridCells = computed<(BuildingGridOption | null)[]>(() => {
   if (currentBuildCategory.value !== null) {
     const start = buildGridPage.value * BAR_GRID_SLOT_COUNT;
     return gridCells(currentBuildCategoryOptions.value.slice(start, start + BAR_GRID_SLOT_COUNT));
   }
 
-  const cells = emptyGridCells<BuildingGridOption>();
-  BAR_BUILD_CATEGORIES.forEach((category, columnIndex) => {
-    const options = buildOptionsByBarCategory.value.get(category.id) ?? [];
-    for (let rowIndex = 0; rowIndex < BAR_GRID_ROWS && rowIndex < options.length; rowIndex++) {
-      cells[rowIndex * BAR_GRID_COLUMNS + columnIndex] = options[rowIndex] ?? null;
-    }
-  });
-  return cells;
+  return homeBuildGridCells.value;
 });
 
 const showBuildGridPager = computed(() =>
@@ -2167,7 +2167,7 @@ kbd {
 
 .bar-menu-group {
   position: fixed;
-  top: 265px;
+  top: var(--hud-minimap-follow-top, 326px);
   left: 0;
   bottom: auto;
   z-index: 1001;

@@ -82,6 +82,11 @@ import { useGameCanvasSceneUi } from './gameCanvasSceneUi';
 import { useGameCanvasSessionLifecycle } from './gameCanvasSessionLifecycle';
 import { useGameCanvasShellDisplay } from './gameCanvasShellDisplay';
 import { useGameCanvasLobbyRoster } from './gameCanvasLobbyRoster';
+import {
+  HUD_MINIMAP_FOLLOW_TOP_PX,
+  HUD_MINIMAP_MAX_PX,
+  HUD_MINIMAP_STACK_GAP_PX,
+} from './hudLayout';
 import { LAND_CELL_SIZE } from '../mapSizeConfig';
 import { ARCHITECTURE_CONFIG } from '../architectureConfig';
 
@@ -122,6 +127,11 @@ const loadingProgress = ref(0);
 const loadingPhase = ref('Preparing battle');
 const displayedLoadingProgress = computed(() => loadingProgress.value);
 const displayedLoadingPhase = computed(() => loadingPhase.value);
+const gameWrapperStyle = computed(() => ({
+  '--hud-minimap-max': `${HUD_MINIMAP_MAX_PX}px`,
+  '--hud-minimap-gap': `${HUD_MINIMAP_STACK_GAP_PX}px`,
+  '--hud-minimap-follow-top': `${HUD_MINIMAP_FOLLOW_TOP_PX}px`,
+}));
 
 function setLoadingProgress(progress: number, phase?: string): void {
   if (!Number.isFinite(progress)) {
@@ -1691,7 +1701,11 @@ watchEffect(() => {
 </script>
 
 <template>
-  <div class="game-wrapper" :class="{ 'menu-sidebar-open': menuSidebarOpen }">
+  <div
+    class="game-wrapper"
+    :class="{ 'menu-sidebar-open': menuSidebarOpen }"
+    :style="gameWrapperStyle"
+  >
     <!-- Top status bar lives outside the 3D game area, like the bottom controls. -->
     <div
       v-if="gameChromeVisible"
@@ -2454,9 +2468,9 @@ watchEffect(() => {
 .map-details-panel {
   position: absolute;
   top: 0;
-  left: 464px;
+  left: calc(var(--hud-minimap-max, 320px) + 16px);
   z-index: 1001;
-  width: min(300px, calc(100vw - 484px));
+  width: min(300px, calc(100vw - var(--hud-minimap-max, 320px) - 36px));
   max-width: 300px;
   border: 1px solid #4f6074;
   border-radius: 6px;
@@ -2513,9 +2527,9 @@ watchEffect(() => {
 .options-menu-panel {
   position: absolute;
   top: 0;
-  left: 780px;
+  left: calc(var(--hud-minimap-max, 320px) + 332px);
   z-index: 1001;
-  width: min(244px, calc(100vw - 800px));
+  width: min(244px, calc(100vw - var(--hud-minimap-max, 320px) - 352px));
   max-width: 244px;
   border: 1px solid #4f6074;
   border-radius: 6px;
@@ -2586,7 +2600,7 @@ watchEffect(() => {
   }
 
   .communication-panel {
-    top: 296px;
+    top: var(--hud-minimap-follow-top, 326px);
     left: 0;
     max-width: min(300px, 100vw);
     transform: none;
@@ -2598,13 +2612,13 @@ watchEffect(() => {
   }
 
   .map-details-panel {
-    top: 296px;
+    top: var(--hud-minimap-follow-top, 326px);
     left: 0;
     width: min(300px, 100vw);
   }
 
   .options-menu-panel {
-    top: 296px;
+    top: var(--hud-minimap-follow-top, 326px);
     left: 0;
     width: min(244px, 100vw);
   }

@@ -15,7 +15,7 @@ async function exitApp(): Promise<void> {
 
 const props = defineProps<{
   economy: EconomyInfo;
-  directionData: Pick<MinimapData, 'cameraView' | 'wind'>;
+  directionData: Pick<MinimapData, 'cameraView' | 'directionVersion' | 'wind'>;
   networkStatus?: string;
   networkWarning?: string | null;
 }>();

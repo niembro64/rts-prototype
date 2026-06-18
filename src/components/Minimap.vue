@@ -7,6 +7,7 @@ import {
 } from '@/game/sim/Terrain';
 import { MAP_BG_COLOR, WIND_SPEED_MAX, WIND_SPEED_MIN } from '@/config';
 import { COLORS, cssHex, readRgbTuple } from '@/colorsConfig';
+import { HUD_MINIMAP_MAX_PX } from './hudLayout';
 import { minimapPointerToWorld } from './minimapHelpers';
 
 export type { MinimapEntity, MinimapData } from '@/types/ui';
@@ -67,12 +68,12 @@ const canvasRef = ref<HTMLCanvasElement | null>(null);
 const draggingPointerId = ref<number | null>(null);
 
 // Minimap display size. The longest side is pinned at MINIMAP_MAX;
-// the other side follows the map's aspect ratio — so a 3000×3000
-// square map renders as a 265×265 square, a 4000×2000 map as
-// 265×133, and so on. Previously both dimensions were hardcoded 4:3
+// the other side follows the map's aspect ratio — so a 3000x3000
+// square map renders as a 320x320 square, a 4000x2000 map as
+// 320x160, and so on. Previously both dimensions were hardcoded 4:3
 // regardless of the map, which squashed square maps into rectangles
 // and miscomputed the camera-quad overlay.
-const MINIMAP_MAX = 371;
+const MINIMAP_MAX = HUD_MINIMAP_MAX_PX;
 const DENSE_ENTITY_MARKER_THRESHOLD = 1500;
 const DENSE_UNIT_MARKER_SIZE = 2;
 
@@ -197,8 +198,8 @@ function drawBackgroundLayer(): void {
   // the heightmap once per pixel, write either water-blue or the dark
   // background color into a single ImageData buffer with full alpha,
   // then putImageData stamps the whole tile in one shot. The minimap
-  // is at most 180×180, so this is ~32K terrain samples (each a
-  // handful of trig ops); well under a millisecond. drawEntityLayer
+  // is capped by HUD_MINIMAP_MAX_PX, so the terrain sample budget is
+  // bounded. drawEntityLayer
   // only fires on entities / mapWidth / mapHeight change — not every
   // frame — so the cost is effectively one-time per data refresh.
   //

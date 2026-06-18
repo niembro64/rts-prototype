@@ -27,6 +27,7 @@ export class RtsScene3DMinimapSystem {
       up: { x: 0, y: Math.SQRT1_2, z: Math.SQRT1_2 },
       towardCamera: { x: 0, y: -Math.SQRT1_2, z: Math.SQRT1_2 },
     },
+    directionVersion: 0,
     showTerrain: true,
     wind: undefined,
   };

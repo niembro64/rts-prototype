@@ -915,6 +915,7 @@ export function buildMinimapData(
     cameraYaw,
     cameraPitch,
     cameraView: cloneCameraViewBasis(resolvedCameraView),
+    directionVersion: 0,
     showTerrain,
     wind,
   };
@@ -961,6 +962,7 @@ export function buildMinimapData(
   data.cameraYaw = cameraYaw;
   data.cameraPitch = cameraPitch;
   assignCameraViewBasis(data.cameraView, resolvedCameraView);
+  data.directionVersion += 1;
   data.showTerrain = showTerrain;
   data.wind = wind;
   return data;

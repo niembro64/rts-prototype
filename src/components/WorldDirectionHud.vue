@@ -9,7 +9,7 @@ import {
 } from '@/game/render3d/RendererContextBudget';
 
 const props = withDefaults(defineProps<{
-  data: Pick<MinimapData, 'cameraView' | 'wind'>;
+  data: Pick<MinimapData, 'cameraView' | 'directionVersion' | 'wind'>;
   compact?: boolean;
 }>(), {
   compact: false,
@@ -17,12 +17,18 @@ const props = withDefaults(defineProps<{
 
 const compassCanvasRef = ref<HTMLCanvasElement | null>(null);
 const windCanvasRef = ref<HTMLCanvasElement | null>(null);
-const windSpeedLabel = computed(() => (props.data.wind?.speed ?? 0).toFixed(2));
-const windComponentLabels = computed(() => ({
-  x: fmtWindComponent(props.data.wind?.x ?? 0),
-  y: fmtWindComponent(props.data.wind?.y ?? 0),
-  z: fmtWindComponent(props.data.wind?.z ?? 0),
-}));
+const windSpeedLabel = computed(() => {
+  void props.data.directionVersion;
+  return (props.data.wind?.speed ?? 0).toFixed(2);
+});
+const windComponentLabels = computed(() => {
+  void props.data.directionVersion;
+  return {
+    x: fmtWindComponent(props.data.wind?.x ?? 0),
+    y: fmtWindComponent(props.data.wind?.y ?? 0),
+    z: fmtWindComponent(props.data.wind?.z ?? 0),
+  };
+});
 const HUD_COLORS = COLORS.ui.worldDirectionHud;
 const hudStyle = {
   '--world-direction-text': HUD_COLORS.label.text,
@@ -70,6 +76,8 @@ const arrowForward = new THREE.Vector3(0, 0, 1);
 const hudRight = new THREE.Vector3();
 const hudUp = new THREE.Vector3();
 const hudTowardCamera = new THREE.Vector3();
+const lowMemoryCompassDirection = new THREE.Vector3();
+const lowMemoryWindDirection = new THREE.Vector3();
 
 function fmtWindComponent(value: number): string {
   const rounded = Math.abs(value) < 0.05 ? 0 : value;
@@ -320,6 +328,7 @@ function renderHud(now: number): void {
   if (lowMemoryHud) {
     resizeLowMemoryCanvas(compassCanvasRef.value);
     resizeLowMemoryCanvas(windCanvasRef.value);
+    renderLowMemoryHud();
     needsRender = false;
     return;
   }
@@ -369,6 +378,99 @@ function renderHud(now: number): void {
     compassView.renderer.render(compassView.scene, compassView.camera);
     windView.renderer.render(windView.scene, windView.camera);
     needsRender = false;
+  }
+}
+
+function drawLowMemoryArrow(
+  canvas: HTMLCanvasElement | null,
+  direction: THREE.Vector3,
+  color: string,
+  visible: boolean,
+  scale = 1,
+): void {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!visible) return;
+
+  const width = canvas.width;
+  const height = canvas.height;
+  const cx = width * 0.5;
+  const cy = height * 0.5;
+  const len = Math.hypot(direction.x, direction.y);
+  if (len <= 1e-6) return;
+  const ux = direction.x / len;
+  const uy = -direction.y / len;
+  const length = Math.min(width, height) * 0.34 * scale;
+  const head = Math.max(7, length * 0.32);
+  const tailX = cx - ux * length * 0.48;
+  const tailY = cy - uy * length * 0.48;
+  const headX = cx + ux * length * 0.52;
+  const headY = cy + uy * length * 0.52;
+  const px = -uy;
+  const py = ux;
+
+  const arrowHeadPath = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(headX, headY);
+    ctx.lineTo(headX - ux * head + px * head * 0.55, headY - uy * head + py * head * 0.55);
+    ctx.lineTo(headX - ux * head - px * head * 0.55, headY - uy * head - py * head * 0.55);
+    ctx.closePath();
+  };
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.78)';
+  ctx.lineWidth = Math.max(5, width * 0.06);
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(headX, headY);
+  ctx.stroke();
+  arrowHeadPath();
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+  ctx.fill();
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2, width * 0.025);
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(headX, headY);
+  ctx.stroke();
+  arrowHeadPath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.restore();
+}
+
+function renderLowMemoryHud(): void {
+  writeWorldVectorInView(0, -1, 0, lowMemoryCompassDirection);
+  drawLowMemoryArrow(
+    compassCanvasRef.value,
+    lowMemoryCompassDirection,
+    `#${HUD_COLORS.materials.north.colorHex.toString(16).padStart(6, '0')}`,
+    true,
+  );
+
+  const wind = props.data.wind;
+  if (wind && wind.speed > 1e-6) {
+    writeWorldVectorInView(wind.x, wind.y, wind.z, lowMemoryWindDirection);
+    const speedScale = Math.max(0.86, Math.min(1.06, 0.86 + wind.speed * 0.0025));
+    drawLowMemoryArrow(
+      windCanvasRef.value,
+      lowMemoryWindDirection,
+      `#${HUD_COLORS.materials.wind.colorHex.toString(16).padStart(6, '0')}`,
+      true,
+      speedScale,
+    );
+  } else {
+    drawLowMemoryArrow(
+      windCanvasRef.value,
+      lowMemoryWindDirection,
+      `#${HUD_COLORS.materials.wind.colorHex.toString(16).padStart(6, '0')}`,
+      false,
+    );
   }
 }
 
@@ -460,6 +562,7 @@ watch(
     props.data.wind?.y ?? 0,
     props.data.wind?.z ?? 0,
     props.data.wind?.speed ?? 0,
+    props.data.directionVersion,
     props.compact ? 1 : 0,
   ],
   requestHudRender,

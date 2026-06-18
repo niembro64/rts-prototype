@@ -29,6 +29,12 @@ function applyCameraViewBasis(target: CameraViewBasis, source: CameraViewBasis):
   target.towardCamera.z = source.towardCamera.z;
 }
 
+function cloneWind(source: MinimapData['wind']): MinimapData['wind'] {
+  return source === undefined
+    ? undefined
+    : { x: source.x, y: source.y, z: source.z, speed: source.speed };
+}
+
 export function createInitialMinimapData(
   mapWidth = 2000,
   mapHeight = 2000,
@@ -49,6 +55,7 @@ export function createInitialMinimapData(
     cameraYaw: 0,
     cameraPitch: DEFAULT_CAMERA_PITCH,
     cameraView: createCameraViewBasis(),
+    directionVersion: 0,
     showTerrain: true,
     wind: undefined,
   };
@@ -65,8 +72,9 @@ export function applyMinimapContentData(
   target.cameraYaw = source.cameraYaw;
   target.cameraPitch = source.cameraPitch;
   applyCameraViewBasis(target.cameraView, source.cameraView);
+  target.directionVersion += 1;
   target.showTerrain = source.showTerrain;
-  target.wind = source.wind;
+  target.wind = cloneWind(source.wind);
 }
 
 export function applyMinimapCameraQuad(
@@ -80,6 +88,7 @@ export function applyMinimapCameraQuad(
   if (cameraYaw !== undefined) target.cameraYaw = cameraYaw;
   if (cameraPitch !== undefined) target.cameraPitch = cameraPitch;
   if (cameraView !== undefined) applyCameraViewBasis(target.cameraView, cameraView);
+  target.directionVersion += 1;
 }
 
 export function minimapPointerToWorld(

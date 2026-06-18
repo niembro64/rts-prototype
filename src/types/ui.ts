@@ -260,6 +260,10 @@ export type MinimapData = {
   /** Actual rendered camera basis. Unlike yaw/pitch, this reflects the
    *  final Three.js camera view after any render-time adjustment. */
   cameraView: CameraViewBasis;
+  /** Bumped when camera-basis or wind values change. MinimapData is
+   *  shallow-reactive, so nested vector mutation needs a top-level
+   *  signal for HUD instruments. */
+  directionVersion: number;
 
   /** Whether to draw the terrain (land + water) layer. */
   showTerrain: boolean;
