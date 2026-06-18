@@ -168,10 +168,10 @@
       }
     }
   },
-  "shotRocketFast": {
-    "type": "rocket",
-    "shotBlueprintId": "shotRocketFast",
-    "name": "Fast Rocket",
+  "shotMissileFast": {
+    "type": "missile",
+    "shotBlueprintId": "shotMissileFast",
+    "name": "Fast Missile",
     "mass": 3,
     "health": 4,
     "radius": {
@@ -182,15 +182,15 @@
     "detonateOnExpiry": true,
     "maxLifespan": 500,
     "hitSound": {
-      "$audio": "event.hit.shotRocketFast"
+      "$audio": "event.hit.shotMissileFast"
     },
     "submunitions": null,
     "homingTurnRate": 0.2,
-    "homingThrust": 600000,
+    "homingThrust": null,
     "homingDelayMs": 0,
-    "propulsionForce": 3000,
+    "propulsionForce": null,
     "gravityForceMultiplier": 0,
-    "airFrictionPer60HzFrame": 0.02,
+    "airFrictionPer60HzFrame": 0,
     "smokeTrail": null,
     "base": {
       "cost": {
@@ -211,10 +211,10 @@
       }
     }
   },
-  "shotRocketLong": {
-    "type": "rocket",
-    "shotBlueprintId": "shotRocketLong",
-    "name": "Long Rocket",
+  "shotMissileLong": {
+    "type": "missile",
+    "shotBlueprintId": "shotMissileLong",
+    "name": "Long Missile",
     "mass": 6,
     "health": 6,
     "radius": {
@@ -225,15 +225,15 @@
     "detonateOnExpiry": true,
     "maxLifespan": 6000,
     "hitSound": {
-      "$audio": "event.hit.shotRocketFast"
+      "$audio": "event.hit.shotMissileFast"
     },
     "submunitions": null,
     "homingTurnRate": 0.3,
-    "homingThrust": 1000000,
+    "homingThrust": null,
     "homingDelayMs": 0,
-    "propulsionForce": 4000,
+    "propulsionForce": null,
     "gravityForceMultiplier": 0,
-    "airFrictionPer60HzFrame": 0.02,
+    "airFrictionPer60HzFrame": 0,
     "smokeTrail": null,
     "base": {
       "cost": {

@@ -111,7 +111,7 @@
         "volume": 0.3,
         "playSpeed": 0.3
       },
-      "shotRocketFast": {
+      "shotMissileFast": {
         "synth": "heavy",
         "volume": 0.45,
         "playSpeed": 0.24

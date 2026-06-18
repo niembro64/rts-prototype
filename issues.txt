@@ -15,7 +15,3 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
-
-[user_01] Let's keep "shotRocketLight" as a "rocket" type, let's convert "shotRocketFast" and "shotRocketLong" into a new "missile" type. So "shotMissileFast", "shotMissileLong". Missile types will keep the speed that they started with and not have any extra "propulsion" term in them. They will still have homing the same way, but it will only turn the speed in a different direction - keeping the same speed always regardless of the direction it turns. "rocket" will stay as it is with a "propulsion" term.
-
-[user_02] Let's also draw thin white lines for the "imposter" version of the beam segments. Include the imposter segment definition in "beamConfig.json". The imposter segments don't need transparnecy and can just be thin white lines. 

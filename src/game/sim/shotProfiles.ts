@@ -43,11 +43,11 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
 
 function buildProjectileVisualProfile(shot: ProjectileShot): ShotVisualProfile {
   return {
-    projectileTailShape: shot.type === 'rocket' ? 'cylinder' : 'cone',
+    projectileTailShape: isRocketLikeShot(shot) ? 'cylinder' : 'cone',
     projectileTailLengthMult:
-      shot.type === 'rocket' ? ROCKET_TAIL_LENGTH_MULT : PLASMA_TAIL_LENGTH_MULT,
+      isRocketLikeShot(shot) ? ROCKET_TAIL_LENGTH_MULT : PLASMA_TAIL_LENGTH_MULT,
     projectileTailRadiusMult: PROJECTILE_TAIL_RADIUS_MULT,
-    projectileFinSizeMult: shot.type === 'rocket' ? ROCKET_FIN_SIZE_MULT : 0,
+    projectileFinSizeMult: isRocketLikeShot(shot) ? ROCKET_FIN_SIZE_MULT : 0,
     smokeTrail: getProjectileSmokeTrailSpec(shot.shotBlueprintId, shot.smokeTrail),
     burnMarkWidth: shot.radius.collision * 1.5,
     lineRadius: 0,

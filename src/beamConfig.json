@@ -10,6 +10,11 @@
     "waveSpacing": 500,
     "waveSpeed": 50
   },
+  "imposterSegment": {
+    "enabled": true,
+    "color": 16777215,
+    "lineWidth": 1
+  },
   "openEndedLine": {
     "extendToInfinity": false,
     "infinityVisualLength": 12000

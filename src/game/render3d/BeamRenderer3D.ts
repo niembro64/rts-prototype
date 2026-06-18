@@ -39,10 +39,13 @@ import {
 // the turret mount center, matching the authoritative sim path.
 const BEAM_SEGMENT_CAP = 8192;
 const BEAM_ENDPOINT_CAP = 4096;
+const BEAM_IMPOSTER_SEGMENT_CAP = BEAM_SEGMENT_CAP;
 const BEAM_MIN_RADIUS = 0.35;
 const BEAM_RADIUS_SCALE = 0.55;
 const ENDPOINT_MIN_RADIUS = 2.5;
 const DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
+const DEFAULT_IMPOSTER_SEGMENT_COLOR = 0xffffff;
+const DEFAULT_IMPOSTER_SEGMENT_LINE_WIDTH = 1;
 
 export type TurretMountResolver = {
   getTurretMountWorldState(
@@ -56,8 +59,15 @@ type OpenEndedLineConfig = {
   infinityVisualLength: number;
 };
 
+type BeamImposterSegmentConfig = {
+  enabled: boolean;
+  color: number;
+  lineWidth: number;
+};
+
 type BeamConfigFile = {
   openEndedLine?: Partial<OpenEndedLineConfig>;
+  imposterSegment?: Partial<BeamImposterSegmentConfig>;
 };
 
 const rawBeamConfig = beamConfig as unknown as BeamConfigFile;
@@ -71,6 +81,18 @@ const OPEN_ENDED_LINE_CONFIG: OpenEndedLineConfig = {
     Number.isFinite(configuredInfinityVisualLength) && configuredInfinityVisualLength > 0
       ? configuredInfinityVisualLength
       : DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH,
+};
+
+const configuredImposterLineWidth =
+  rawBeamConfig.imposterSegment?.lineWidth ?? DEFAULT_IMPOSTER_SEGMENT_LINE_WIDTH;
+
+const BEAM_IMPOSTER_SEGMENT_CONFIG: BeamImposterSegmentConfig = {
+  enabled: rawBeamConfig.imposterSegment?.enabled ?? true,
+  color: rawBeamConfig.imposterSegment?.color ?? DEFAULT_IMPOSTER_SEGMENT_COLOR,
+  lineWidth:
+    Number.isFinite(configuredImposterLineWidth) && configuredImposterLineWidth > 0
+      ? configuredImposterLineWidth
+      : DEFAULT_IMPOSTER_SEGMENT_LINE_WIDTH,
 };
 
 const BEAM_VISUAL_LAYERS: readonly {
@@ -168,6 +190,10 @@ function createBeamVisualLayer(
 export class BeamRenderer3D {
   private root: THREE.Group;
   private readonly layers: BeamVisualLayer[];
+  private readonly imposterSegmentMesh: THREE.LineSegments;
+  private readonly imposterSegmentPositions: Float32Array;
+  private readonly imposterSegmentPositionAttr: THREE.BufferAttribute;
+  private activeImposterSegmentCount = 0;
 
   // RENDER: WIN/PAD/ALL visibility scope — beams with BOTH endpoints
   // outside the scope rect skip segment placement entirely.
@@ -199,6 +225,25 @@ export class BeamRenderer3D {
         12 + i,
       );
     }
+
+    const imposterSegmentGeom = new THREE.BufferGeometry();
+    this.imposterSegmentPositions = new Float32Array(BEAM_IMPOSTER_SEGMENT_CAP * 2 * 3);
+    this.imposterSegmentPositionAttr = new THREE.BufferAttribute(this.imposterSegmentPositions, 3);
+    this.imposterSegmentPositionAttr.setUsage(THREE.DynamicDrawUsage);
+    imposterSegmentGeom.setAttribute('position', this.imposterSegmentPositionAttr);
+    imposterSegmentGeom.setDrawRange(0, 0);
+    const imposterSegmentMat = new THREE.LineBasicMaterial({
+      color: BEAM_IMPOSTER_SEGMENT_CONFIG.color,
+      linewidth: BEAM_IMPOSTER_SEGMENT_CONFIG.lineWidth,
+      transparent: false,
+      depthTest: true,
+      depthWrite: true,
+    });
+    this.imposterSegmentMesh = new THREE.LineSegments(imposterSegmentGeom, imposterSegmentMat);
+    this.imposterSegmentMesh.frustumCulled = false;
+    this.imposterSegmentMesh.renderOrder = 11;
+    this.imposterSegmentMesh.visible = BEAM_IMPOSTER_SEGMENT_CONFIG.enabled;
+    this.root.add(this.imposterSegmentMesh);
   }
 
   private placeSegment(
@@ -246,6 +291,22 @@ export class BeamRenderer3D {
     this.placeSegment(layer.segmentMesh, slot, ax, ay, az, bx, by, bz, cylRadius, length);
   }
 
+  private writeImposterSegment(
+    slot: number,
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+  ): void {
+    if (slot >= BEAM_IMPOSTER_SEGMENT_CAP) return;
+    const base = slot * 6;
+    // sim-(x, y, z) maps to three-(x, z, y).
+    this.imposterSegmentPositions[base] = ax;
+    this.imposterSegmentPositions[base + 1] = az;
+    this.imposterSegmentPositions[base + 2] = ay;
+    this.imposterSegmentPositions[base + 3] = bx;
+    this.imposterSegmentPositions[base + 4] = bz;
+    this.imposterSegmentPositions[base + 5] = by;
+  }
+
   private writeEndpoint(
     layer: BeamVisualLayer,
     slot: number,
@@ -273,6 +334,7 @@ export class BeamRenderer3D {
   }
 
   private hasActiveVisuals(): boolean {
+    if (this.activeImposterSegmentCount > 0) return true;
     const layers = this.layers;
     for (let i = 0; i < layers.length; i++) {
       const layer = layers[i];
@@ -303,6 +365,7 @@ export class BeamRenderer3D {
     this.lastScopeVersion = scopeVersion;
 
     let segIdx = 0;
+    let imposterSegIdx = 0;
     let endpointIdx = 0;
     const layers = this.layers;
     const layerCount = layers.length;
@@ -410,6 +473,14 @@ export class BeamRenderer3D {
           }
           segIdx++;
         }
+        if (BEAM_IMPOSTER_SEGMENT_CONFIG.enabled && imposterSegIdx < BEAM_IMPOSTER_SEGMENT_CAP) {
+          this.writeImposterSegment(
+            imposterSegIdx,
+            ax, ay, az,
+            bx, by, bz,
+          );
+          imposterSegIdx++;
+        }
       }
 
       if (proj.endpointDamageable !== false) {
@@ -455,9 +526,19 @@ export class BeamRenderer3D {
       }
       layer.activeEndpointCount = endpointIdx;
     }
+
+    this.activeImposterSegmentCount = imposterSegIdx;
+    this.imposterSegmentMesh.visible = BEAM_IMPOSTER_SEGMENT_CONFIG.enabled;
+    this.imposterSegmentMesh.geometry.setDrawRange(0, imposterSegIdx * 2);
+    if (imposterSegIdx > 0) {
+      this.imposterSegmentPositionAttr.clearUpdateRanges();
+      this.imposterSegmentPositionAttr.addUpdateRange(0, imposterSegIdx * 6);
+      this.imposterSegmentPositionAttr.needsUpdate = true;
+    }
   }
 
   destroy(): void {
+    disposeMesh(this.imposterSegmentMesh);
     for (const layer of this.layers) {
       disposeMesh(layer.segmentMesh);
       disposeMesh(layer.endpointMesh);

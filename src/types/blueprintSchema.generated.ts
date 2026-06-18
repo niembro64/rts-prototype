@@ -19,7 +19,7 @@ export type SensorCapabilityConfig = {
   scanRadius: number;
 };
 
-export type ProjectileShotKind = 'plasma' | 'rocket';
+export type ProjectileShotKind = 'plasma' | 'rocket' | 'missile';
 
 export type ShieldSurfaceResponse = 'reflect' | 'absorb' | 'passThrough';
 
@@ -199,7 +199,7 @@ export type BeamPoint = {
   normalZ: number | null;
 };
 
-export type ShotRuntimeType = 'plasma' | 'rocket' | 'beam' | 'laser';
+export type ShotRuntimeType = 'plasma' | 'rocket' | 'missile' | 'beam' | 'laser';
 
 export type ShotRuntimeProfile = {
   shotBlueprintId: string;

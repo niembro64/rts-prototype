@@ -65,6 +65,7 @@ pub struct SensorCapabilityConfig {
 pub enum ProjectileShotKind {
     Plasma,
     Rocket,
+    Missile,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -317,6 +318,7 @@ pub struct BeamPoint {
 pub enum ShotRuntimeType {
     Plasma,
     Rocket,
+    Missile,
     Beam,
     Laser,
 }

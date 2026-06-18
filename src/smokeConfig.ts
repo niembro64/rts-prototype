@@ -4,8 +4,8 @@ import rawSmokeConfig from './smokeConfig.json';
 
 export const SMOKE_USE_IDS = [
   'shotRocketLight',
-  'shotRocketFast',
-  'shotRocketLong',
+  'shotMissileFast',
+  'shotMissileLong',
   'locomotionHovercraft',
   'locomotionAlbatrosHoverFans',
   'locomotionDragonflyHovercraft',

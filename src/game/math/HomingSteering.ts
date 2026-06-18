@@ -1,19 +1,15 @@
-// Homing thrust — compute the bounded steering acceleration vector a
-// guided projectile applies this tick. Replaces the earlier velocity-
-// rotation primitive: instead of pretending the missile rotates its
-// velocity at constant speed, we treat the engine as a real force-
-// producer.
+// Homing guidance primitives.
 //
-// The thrust vector pushes velocity toward the predicted intercept at
-// the projectile's authored angular rate (centripetal accel `ω · |v|`
-// perpendicular to v, in the v→d plane). Callers pass the projectile's
-// effective gravity. Guided projectiles that should hold altitude pass
-// the world gravity so their engine spends thrust budget on
-// counter-gravity.
+// Rockets use bounded thrust acceleration: the engine pushes velocity
+// toward the predicted intercept and spends thrust budget on any
+// caller-provided gravity compensation.
 //
-// The whole vector is then clamped to the projectile's available
-// thrust acceleration (`homingThrust / mass`). The caller integrates
-// the returned thrust together with its own projectile gravity.
+// Missiles use constant-speed velocity rotation: guidance turns the
+// velocity vector toward the predicted intercept without changing its
+// magnitude.
+//
+// Both paths dispatch into the Rust/WASM projectile module so server and
+// client prediction share the same numeric behavior.
 
 import { getSimWasm } from '../sim-wasm/init';
 
@@ -23,8 +19,19 @@ export type HomingThrustResult = {
   thrustZ: number;
 };
 
+export type ConstantSpeedHomingVelocityResult = {
+  velocityX: number;
+  velocityY: number;
+  velocityZ: number;
+};
+
 // Reusable output to avoid per-call allocations in a hot path.
 const _htOut: HomingThrustResult = { thrustX: 0, thrustY: 0, thrustZ: 0 };
+const _constantSpeedOut: ConstantSpeedHomingVelocityResult = {
+  velocityX: 0,
+  velocityY: 0,
+  velocityZ: 0,
+};
 // Module-scope scratch for the WASM dispatch — written by Rust into
 // (thrustX, thrustY, thrustZ) at indices 0..3.
 const _htWasmScratch = new Float64Array(3);
@@ -60,4 +67,33 @@ export function computeHomingThrust(
   _htOut.thrustY = _htWasmScratch[1];
   _htOut.thrustZ = _htWasmScratch[2];
   return _htOut;
+}
+
+/**
+ * Rotate a missile velocity toward the target without changing its
+ * speed. This is the missile-class guidance primitive, separate from
+ * rocket thrust.
+ */
+export function computeConstantSpeedHomingVelocity(
+  velX: number, velY: number, velZ: number,
+  targetX: number, targetY: number, targetZ: number,
+  currentX: number, currentY: number, currentZ: number,
+  homingTurnRate: number,
+  dtSec: number,
+): ConstantSpeedHomingVelocityResult {
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Constant-speed homing requires initialized sim-wasm');
+  }
+  sim.computeConstantSpeedHomingVelocity(
+    _htWasmScratch,
+    velX, velY, velZ,
+    targetX, targetY, targetZ,
+    currentX, currentY, currentZ,
+    homingTurnRate, dtSec,
+  );
+  _constantSpeedOut.velocityX = _htWasmScratch[0];
+  _constantSpeedOut.velocityY = _htWasmScratch[1];
+  _constantSpeedOut.velocityZ = _htWasmScratch[2];
+  return _constantSpeedOut;
 }

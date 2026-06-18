@@ -109,7 +109,7 @@ export function isShieldConfig(emission: EmissionConfig): emission is ShieldConf
 }
 
 export function isProjectileShot(emission: EmissionConfig): emission is ProjectileShot {
-  return emission.type === 'plasma' || emission.type === 'rocket';
+  return emission.type === 'plasma' || emission.type === 'rocket' || emission.type === 'missile';
 }
 
 export function getEmissionBlueprintId(emission: EmissionConfig | ActiveProjectileShot): string {
@@ -120,7 +120,12 @@ export function getEmissionBlueprintId(emission: EmissionConfig | ActiveProjecti
 
 /** Rocket-class predicate used for seeker behavior and visuals. */
 export function isRocketLikeShot(emission: EmissionConfig): boolean {
-  return isProjectileShot(emission) && emission.type === 'rocket';
+  return isProjectileShot(emission) && (emission.type === 'rocket' || emission.type === 'missile');
+}
+
+/** Missiles steer by rotating their velocity vector while preserving speed. */
+export function isMissileShot(emission: EmissionConfig): boolean {
+  return isProjectileShot(emission) && emission.type === 'missile';
 }
 
 /** Static max active time for runtime shot entities. Traveling shots
@@ -129,7 +134,7 @@ export function isRocketLikeShot(emission: EmissionConfig): boolean {
 export function getShotMaxLifespan(emission: EmissionConfig, fallbackLifespan: number = 2000): number {
   if (emission.type === 'beam') return Infinity;
   if (emission.type === 'laser') return emission.duration;
-  if (emission.type === 'plasma' || emission.type === 'rocket') {
+  if (emission.type === 'plasma' || emission.type === 'rocket' || emission.type === 'missile') {
     return Number.isFinite(emission.maxLifespan) ? emission.maxLifespan! : Infinity;
   }
   return fallbackLifespan;

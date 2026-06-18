@@ -88,7 +88,7 @@ export type {
   Entity,
 } from '@/types/sim';
 
-export { isRayConfig, isRayType, isShieldConfig, isProjectileShot, isRocketLikeShot, getEmissionBlueprintId, getShotMaxLifespan, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '@/types/sim';
+export { isRayConfig, isRayType, isShieldConfig, isProjectileShot, isRocketLikeShot, isMissileShot, getEmissionBlueprintId, getShotMaxLifespan, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '@/types/sim';
 export { createCombatComponent, createEmptyEntityComponentSlots, createTransform } from '@/types/sim';
 
 import type { PlayerId } from '@/types/sim';

@@ -25,6 +25,7 @@ import {
 import { windVelocityForAirFriction } from '../sim/motionFriction';
 import {
   computeHomingThrust,
+  computeConstantSpeedHomingVelocity,
   computeTerrainFollowVerticalThrustAccel,
   lerp,
   magnitude3,
@@ -100,30 +101,17 @@ function getHomingMaxThrustAccel(shot: ProjectileShot): number {
   return (shot.homingThrust ?? 0) / mass;
 }
 
-/** Resolve the homing thrust acceleration the client predicts for a
- *  rocket given its current position and velocity. Used for both the
- *  live dead-reckon path (passing the entity's current state) and the
- *  snapshot-target advance (passing the snapshot's state) so both
- *  evolve under the same gravity + counter-thrust vector. Homing
- *  projectiles steer toward the latest target id supplied by the
- *  server; if that target is missing or dead client-side, local
- *  guidance stops until another authoritative retarget arrives. */
-function resolveClientHomingThrust(options: {
+function resolveClientHomingAimPoint(options: {
   entity: Entity;
-  dt: number;
-  timeAliveForHomingMs: number;
   position: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
+  projectileGravity: number;
   getEntity: (id: EntityId) => Entity | undefined;
 }): { x: number; y: number; z: number } | null {
-  const { entity, dt, timeAliveForHomingMs, position, velocity, getEntity } = options;
+  const { entity, position, velocity, projectileGravity, getEntity } = options;
   const proj = entity.projectile;
-  if (!proj || proj.homingTurnRate === undefined) return null;
+  if (proj === null) return null;
   const shot = proj.config.shot as ProjectileShot;
-  if (timeAliveForHomingMs < (shot.homingDelayMs ?? 0)) return null;
-  const maxThrustAccel = getHomingMaxThrustAccel(shot);
-  if (maxThrustAccel <= 0) return null;
-  const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
 
   if (proj.homingTargetId === NO_ENTITY_ID) {
     return null;
@@ -136,13 +124,6 @@ function resolveClientHomingThrust(options: {
   }
   if (homingTarget === undefined || !targetValid) return null;
 
-  // Lead intercept consumes raw target velocity/acceleration through
-  // the shared entity accessors. Client-side unit acceleration is
-  // usually zero (the server owns force inputs and the wire ships
-  // integrated velocity, not a per-tick force vector), so this falls
-  // back to a velocity-only intercept on most snapshots. Projectiles
-  // see no per-tick snapshot positions — only spawn/despawn events —
-  // so without this local steering they'd fly straight forever.
   const aimPoint = resolveTargetAimPoint(
     homingTarget,
     position.x, position.y, position.z,
@@ -208,9 +189,49 @@ function resolveClientHomingThrust(options: {
     }
   }
 
+  _clientThrustResult.x = steerX;
+  _clientThrustResult.y = steerY;
+  _clientThrustResult.z = steerZ;
+  return _clientThrustResult;
+}
+
+/** Resolve the homing thrust acceleration the client predicts for a
+ *  rocket given its current position and velocity. Used for both the
+ *  live dead-reckon path (passing the entity's current state) and the
+ *  snapshot-target advance (passing the snapshot's state) so both
+ *  evolve under the same gravity + counter-thrust vector. Homing
+ *  projectiles steer toward the latest target id supplied by the
+ *  server; if that target is missing or dead client-side, local
+ *  guidance stops until another authoritative retarget arrives. */
+function resolveClientHomingThrust(options: {
+  entity: Entity;
+  dt: number;
+  timeAliveForHomingMs: number;
+  position: { x: number; y: number; z: number };
+  velocity: { x: number; y: number; z: number };
+  getEntity: (id: EntityId) => Entity | undefined;
+}): { x: number; y: number; z: number } | null {
+  const { entity, dt, timeAliveForHomingMs, position, velocity, getEntity } = options;
+  const proj = entity.projectile;
+  if (!proj || proj.homingTurnRate === undefined) return null;
+  const shot = proj.config.shot as ProjectileShot;
+  if (shot.type === 'missile') return null;
+  if (timeAliveForHomingMs < (shot.homingDelayMs ?? 0)) return null;
+  const maxThrustAccel = getHomingMaxThrustAccel(shot);
+  if (maxThrustAccel <= 0) return null;
+  const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
+  const aimPoint = resolveClientHomingAimPoint({
+    entity,
+    position,
+    velocity,
+    projectileGravity,
+    getEntity,
+  });
+  if (aimPoint === null) return null;
+
   const thrust = computeHomingThrust(
     velocity.x, velocity.y, velocity.z,
-    steerX, steerY, steerZ,
+    aimPoint.x, aimPoint.y, aimPoint.z,
     position.x, position.y, position.z,
     proj.homingTurnRate ?? 0,
     maxThrustAccel,
@@ -221,6 +242,41 @@ function resolveClientHomingThrust(options: {
   _clientThrustResult.y = thrust.thrustY;
   _clientThrustResult.z = thrust.thrustZ;
   return _clientThrustResult;
+}
+
+function applyClientMissileHomingVelocity(options: {
+  entity: Entity;
+  dt: number;
+  timeAliveForHomingMs: number;
+  position: { x: number; y: number; z: number };
+  velocity: { x: number; y: number; z: number };
+  getEntity: (id: EntityId) => Entity | undefined;
+}): boolean {
+  const { entity, dt, timeAliveForHomingMs, position, velocity, getEntity } = options;
+  const proj = entity.projectile;
+  if (!proj || proj.homingTurnRate === undefined) return false;
+  const shot = proj.config.shot as ProjectileShot;
+  if (shot.type !== 'missile') return false;
+  if (timeAliveForHomingMs < (shot.homingDelayMs ?? 0)) return false;
+  const aimPoint = resolveClientHomingAimPoint({
+    entity,
+    position,
+    velocity,
+    projectileGravity: GRAVITY * shot.gravityForceMultiplier,
+    getEntity,
+  });
+  if (aimPoint === null) return false;
+  const guided = computeConstantSpeedHomingVelocity(
+    velocity.x, velocity.y, velocity.z,
+    aimPoint.x, aimPoint.y, aimPoint.z,
+    position.x, position.y, position.z,
+    proj.homingTurnRate ?? 0,
+    dt,
+  );
+  velocity.x = guided.velocityX;
+  velocity.y = guided.velocityY;
+  velocity.z = guided.velocityZ;
+  return true;
 }
 
 function resolveProjectileNetAcceleration(options: {
@@ -254,7 +310,7 @@ function resolveProjectileNetAcceleration(options: {
     out,
   );
 
-  if (!isDGunWave) {
+  if (!isDGunWave && shot.type !== 'missile') {
     const thrust = resolveClientHomingThrust({
       entity,
       dt,
@@ -375,6 +431,14 @@ export function applyClientProjectilePrediction(options: {
   _clientProjectileVelocityScratch.x = proj.velocityX;
   _clientProjectileVelocityScratch.y = proj.velocityY;
   _clientProjectileVelocityScratch.z = proj.velocityZ;
+  const missileSteered = applyClientMissileHomingVelocity({
+    entity,
+    dt,
+    timeAliveForHomingMs: timeAliveBeforeStep,
+    position,
+    velocity: _clientProjectileVelocityScratch,
+    getEntity,
+  });
   const entityAccel = resolveProjectileNetAcceleration({
     entity,
     dt,
@@ -385,6 +449,7 @@ export function applyClientProjectilePrediction(options: {
     mapHeight,
     getEntity,
   }, _clientProjectileEntityAccel);
+  if (missileSteered) entityAccel.isHoming = true;
 
   const sim = getSimWasm();
   if (sim === undefined) {
@@ -393,9 +458,9 @@ export function applyClientProjectilePrediction(options: {
   _clientProjectilePosX[0] = position.x;
   _clientProjectilePosY[0] = position.y;
   _clientProjectilePosZ[0] = position.z;
-  _clientProjectileVelX[0] = proj.velocityX;
-  _clientProjectileVelY[0] = proj.velocityY;
-  _clientProjectileVelZ[0] = proj.velocityZ;
+  _clientProjectileVelX[0] = _clientProjectileVelocityScratch.x;
+  _clientProjectileVelY[0] = _clientProjectileVelocityScratch.y;
+  _clientProjectileVelZ[0] = _clientProjectileVelocityScratch.z;
   _clientProjectileAccelX[0] = entityAccel.x;
   _clientProjectileAccelY[0] = entityAccel.y;
   _clientProjectileAccelZ[0] = entityAccel.z;
@@ -411,6 +476,14 @@ export function applyClientProjectilePrediction(options: {
     _clientProjectileTargetVelocityScratch.x = target.velocityX;
     _clientProjectileTargetVelocityScratch.y = target.velocityY;
     _clientProjectileTargetVelocityScratch.z = target.velocityZ;
+    applyClientMissileHomingVelocity({
+      entity,
+      dt,
+      timeAliveForHomingMs: timeAliveBeforeStep,
+      position: _clientProjectileTargetPositionScratch,
+      velocity: _clientProjectileTargetVelocityScratch,
+      getEntity,
+    });
     const targetAccel = resolveProjectileNetAcceleration({
       entity,
       dt,
@@ -424,9 +497,9 @@ export function applyClientProjectilePrediction(options: {
     _clientProjectilePosX[1] = target.x;
     _clientProjectilePosY[1] = target.y;
     _clientProjectilePosZ[1] = target.z;
-    _clientProjectileVelX[1] = target.velocityX;
-    _clientProjectileVelY[1] = target.velocityY;
-    _clientProjectileVelZ[1] = target.velocityZ;
+    _clientProjectileVelX[1] = _clientProjectileTargetVelocityScratch.x;
+    _clientProjectileVelY[1] = _clientProjectileTargetVelocityScratch.y;
+    _clientProjectileVelZ[1] = _clientProjectileTargetVelocityScratch.z;
     _clientProjectileAccelX[1] = targetAccel.x;
     _clientProjectileAccelY[1] = targetAccel.y;
     _clientProjectileAccelZ[1] = targetAccel.z;

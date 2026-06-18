@@ -784,7 +784,137 @@ pub fn compute_homing_thrust(
     out_buf[2] = a_z;
 }
 
-pub const PROJECTILE_HOMING_GUIDANCE_STRIDE: usize = 33;
+#[inline]
+pub(crate) fn compute_constant_speed_homing_velocity_inline(
+    vel_x: f64,
+    vel_y: f64,
+    vel_z: f64,
+    target_x: f64,
+    target_y: f64,
+    target_z: f64,
+    current_x: f64,
+    current_y: f64,
+    current_z: f64,
+    homing_turn_rate: f64,
+    dt_sec: f64,
+) -> (f64, f64, f64) {
+    if homing_turn_rate <= 0.0 || dt_sec <= 0.0 {
+        return (vel_x, vel_y, vel_z);
+    }
+
+    let speed = (vel_x * vel_x + vel_y * vel_y + vel_z * vel_z).sqrt();
+    if !speed.is_finite() || speed <= 1e-6 {
+        return (vel_x, vel_y, vel_z);
+    }
+
+    let dx = target_x - current_x;
+    let dy = target_y - current_y;
+    let dz = target_z - current_z;
+    let d_mag = (dx * dx + dy * dy + dz * dz).sqrt();
+    if !d_mag.is_finite() || d_mag <= 1e-6 {
+        return (vel_x, vel_y, vel_z);
+    }
+
+    let inv_speed = 1.0 / speed;
+    let vxn = vel_x * inv_speed;
+    let vyn = vel_y * inv_speed;
+    let vzn = vel_z * inv_speed;
+    let inv_d_mag = 1.0 / d_mag;
+    let dxn = dx * inv_d_mag;
+    let dyn_ = dy * inv_d_mag;
+    let dzn = dz * inv_d_mag;
+    let mut cos_a = vxn * dxn + vyn * dyn_ + vzn * dzn;
+    if cos_a > 1.0 {
+        cos_a = 1.0;
+    } else if cos_a < -1.0 {
+        cos_a = -1.0;
+    }
+
+    let theta = cos_a.acos();
+    if !theta.is_finite() || theta <= 1e-9 {
+        return (vel_x, vel_y, vel_z);
+    }
+    let max_turn = homing_turn_rate * dt_sec;
+    if !max_turn.is_finite() || max_turn <= 0.0 {
+        return (vel_x, vel_y, vel_z);
+    }
+    if theta <= max_turn {
+        return (dxn * speed, dyn_ * speed, dzn * speed);
+    }
+
+    let t = max_turn / theta;
+    let sin_theta = theta.sin();
+    let (mut out_x, mut out_y, mut out_z) = if sin_theta.abs() > 1e-6 {
+        let a = ((1.0 - t) * theta).sin() / sin_theta;
+        let b = (t * theta).sin() / sin_theta;
+        (vxn * a + dxn * b, vyn * a + dyn_ * b, vzn * a + dzn * b)
+    } else if cos_a < 0.0 {
+        // Anti-parallel target direction: choose the same stable
+        // horizontal perpendicular as the thrust solver so the missile
+        // starts turning deterministically.
+        let xy_mag = (vxn * vxn + vyn * vyn).sqrt();
+        let (perp_x, perp_y, perp_z) = if xy_mag > 0.05 {
+            (-vyn / xy_mag, vxn / xy_mag, 0.0)
+        } else {
+            (1.0, 0.0, 0.0)
+        };
+        let c = max_turn.cos();
+        let s = max_turn.sin();
+        (
+            vxn * c + perp_x * s,
+            vyn * c + perp_y * s,
+            vzn * c + perp_z * s,
+        )
+    } else {
+        return (vel_x, vel_y, vel_z);
+    };
+
+    let out_mag = (out_x * out_x + out_y * out_y + out_z * out_z).sqrt();
+    if !out_mag.is_finite() || out_mag <= 1e-9 {
+        return (vel_x, vel_y, vel_z);
+    }
+    let scale = speed / out_mag;
+    out_x *= scale;
+    out_y *= scale;
+    out_z *= scale;
+    (out_x, out_y, out_z)
+}
+
+#[wasm_bindgen]
+pub fn compute_constant_speed_homing_velocity(
+    out_buf: &mut [f64],
+    vel_x: f64,
+    vel_y: f64,
+    vel_z: f64,
+    target_x: f64,
+    target_y: f64,
+    target_z: f64,
+    current_x: f64,
+    current_y: f64,
+    current_z: f64,
+    homing_turn_rate: f64,
+    dt_sec: f64,
+) {
+    debug_assert!(out_buf.len() >= 3);
+    let (out_x, out_y, out_z) = compute_constant_speed_homing_velocity_inline(
+        vel_x,
+        vel_y,
+        vel_z,
+        target_x,
+        target_y,
+        target_z,
+        current_x,
+        current_y,
+        current_z,
+        homing_turn_rate,
+        dt_sec,
+    );
+    out_buf[0] = out_x;
+    out_buf[1] = out_y;
+    out_buf[2] = out_z;
+}
+
+pub const PROJECTILE_HOMING_GUIDANCE_STRIDE: usize = 37;
 
 pub(crate) const PHG_ROW_VEL_X: usize = 0;
 pub(crate) const PHG_ROW_VEL_Y: usize = 1;
@@ -815,10 +945,14 @@ pub(crate) const PHG_ROW_MAX_THRUST_ACCEL: usize = 25;
 pub(crate) const PHG_ROW_SOLVE_INTERCEPT: usize = 26;
 pub(crate) const PHG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME: usize = 27;
 pub(crate) const PHG_ROW_PROJECTILE_MASS: usize = 28;
-pub(crate) const PHG_ROW_OUT_THRUST_X: usize = 29;
-pub(crate) const PHG_ROW_OUT_THRUST_Y: usize = 30;
-pub(crate) const PHG_ROW_OUT_THRUST_Z: usize = 31;
-pub(crate) const PHG_ROW_OUT_INTERCEPT_FOUND: usize = 32;
+pub(crate) const PHG_ROW_CONSTANT_SPEED_MODE: usize = 29;
+pub(crate) const PHG_ROW_OUT_THRUST_X: usize = 30;
+pub(crate) const PHG_ROW_OUT_THRUST_Y: usize = 31;
+pub(crate) const PHG_ROW_OUT_THRUST_Z: usize = 32;
+pub(crate) const PHG_ROW_OUT_INTERCEPT_FOUND: usize = 33;
+pub(crate) const PHG_ROW_OUT_VEL_X: usize = 34;
+pub(crate) const PHG_ROW_OUT_VEL_Y: usize = 35;
+pub(crate) const PHG_ROW_OUT_VEL_Z: usize = 36;
 
 #[wasm_bindgen]
 pub fn projectile_homing_guidance_batch(
@@ -844,6 +978,9 @@ pub fn projectile_homing_guidance_batch(
         rows[base + PHG_ROW_OUT_THRUST_Y] = 0.0;
         rows[base + PHG_ROW_OUT_THRUST_Z] = 0.0;
         rows[base + PHG_ROW_OUT_INTERCEPT_FOUND] = 0.0;
+        rows[base + PHG_ROW_OUT_VEL_X] = rows[base + PHG_ROW_VEL_X];
+        rows[base + PHG_ROW_OUT_VEL_Y] = rows[base + PHG_ROW_VEL_Y];
+        rows[base + PHG_ROW_OUT_VEL_Z] = rows[base + PHG_ROW_VEL_Z];
 
         let mut steer_x = rows[base + PHG_ROW_STEER_X];
         let mut steer_y = rows[base + PHG_ROW_STEER_Y];
@@ -894,24 +1031,43 @@ pub fn projectile_homing_guidance_batch(
             }
         }
 
-        let (thrust_x, thrust_y, thrust_z) = compute_homing_thrust_inline(
-            rows[base + PHG_ROW_VEL_X],
-            rows[base + PHG_ROW_VEL_Y],
-            rows[base + PHG_ROW_VEL_Z],
-            steer_x,
-            steer_y,
-            steer_z,
-            rows[base + PHG_ROW_CURRENT_X],
-            rows[base + PHG_ROW_CURRENT_Y],
-            rows[base + PHG_ROW_CURRENT_Z],
-            rows[base + PHG_ROW_HOMING_TURN_RATE],
-            rows[base + PHG_ROW_MAX_THRUST_ACCEL],
-            gravity,
-            dt_sec,
-        );
-        rows[base + PHG_ROW_OUT_THRUST_X] = thrust_x;
-        rows[base + PHG_ROW_OUT_THRUST_Y] = thrust_y;
-        rows[base + PHG_ROW_OUT_THRUST_Z] = thrust_z;
+        if rows[base + PHG_ROW_CONSTANT_SPEED_MODE] != 0.0 {
+            let (vel_x, vel_y, vel_z) = compute_constant_speed_homing_velocity_inline(
+                rows[base + PHG_ROW_VEL_X],
+                rows[base + PHG_ROW_VEL_Y],
+                rows[base + PHG_ROW_VEL_Z],
+                steer_x,
+                steer_y,
+                steer_z,
+                rows[base + PHG_ROW_CURRENT_X],
+                rows[base + PHG_ROW_CURRENT_Y],
+                rows[base + PHG_ROW_CURRENT_Z],
+                rows[base + PHG_ROW_HOMING_TURN_RATE],
+                dt_sec,
+            );
+            rows[base + PHG_ROW_OUT_VEL_X] = vel_x;
+            rows[base + PHG_ROW_OUT_VEL_Y] = vel_y;
+            rows[base + PHG_ROW_OUT_VEL_Z] = vel_z;
+        } else {
+            let (thrust_x, thrust_y, thrust_z) = compute_homing_thrust_inline(
+                rows[base + PHG_ROW_VEL_X],
+                rows[base + PHG_ROW_VEL_Y],
+                rows[base + PHG_ROW_VEL_Z],
+                steer_x,
+                steer_y,
+                steer_z,
+                rows[base + PHG_ROW_CURRENT_X],
+                rows[base + PHG_ROW_CURRENT_Y],
+                rows[base + PHG_ROW_CURRENT_Z],
+                rows[base + PHG_ROW_HOMING_TURN_RATE],
+                rows[base + PHG_ROW_MAX_THRUST_ACCEL],
+                gravity,
+                dt_sec,
+            );
+            rows[base + PHG_ROW_OUT_THRUST_X] = thrust_x;
+            rows[base + PHG_ROW_OUT_THRUST_Y] = thrust_y;
+            rows[base + PHG_ROW_OUT_THRUST_Z] = thrust_z;
+        }
         processed += 1;
     }
 
@@ -925,6 +1081,9 @@ pub fn projectile_homing_guidance_apply_batch(
     accel_x: &mut [f64],
     accel_y: &mut [f64],
     accel_z: &mut [f64],
+    vel_x: &mut [f64],
+    vel_y: &mut [f64],
+    vel_z: &mut [f64],
     count: usize,
     dt_sec: f64,
     wind_x: f64,
@@ -944,7 +1103,13 @@ pub fn projectile_homing_guidance_apply_batch(
             return 0;
         }
         let i = projectile_index as usize;
-        if i >= accel_x.len() || i >= accel_y.len() || i >= accel_z.len() {
+        if i >= accel_x.len()
+            || i >= accel_y.len()
+            || i >= accel_z.len()
+            || i >= vel_x.len()
+            || i >= vel_y.len()
+            || i >= vel_z.len()
+        {
             return 0;
         }
     }
@@ -957,9 +1122,15 @@ pub fn projectile_homing_guidance_apply_batch(
     for (row_index, &projectile_index) in projectile_indices.iter().take(count).enumerate() {
         let projectile_index = projectile_index as usize;
         let base = row_index * PROJECTILE_HOMING_GUIDANCE_STRIDE;
-        accel_x[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_X];
-        accel_y[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_Y];
-        accel_z[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_Z];
+        if rows[base + PHG_ROW_CONSTANT_SPEED_MODE] != 0.0 {
+            vel_x[projectile_index] = rows[base + PHG_ROW_OUT_VEL_X];
+            vel_y[projectile_index] = rows[base + PHG_ROW_OUT_VEL_Y];
+            vel_z[projectile_index] = rows[base + PHG_ROW_OUT_VEL_Z];
+        } else {
+            accel_x[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_X];
+            accel_y[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_Y];
+            accel_z[projectile_index] += rows[base + PHG_ROW_OUT_THRUST_Z];
+        }
     }
 
     processed
@@ -1362,6 +1533,22 @@ mod tests {
         assert_close(vel_x[0], 10.0 + 3.0 * dt);
         assert_close(vel_y[0], -6.0 + 5.0 * dt);
         assert_close(vel_z[0], 4.0 - 9.0 * dt);
+    }
+
+    #[test]
+    fn constant_speed_homing_rotates_without_changing_speed() {
+        let (vx, vy, vz) = compute_constant_speed_homing_velocity_inline(
+            100.0, 0.0, 0.0, 0.0, 1000.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.25,
+        );
+
+        let speed = (vx * vx + vy * vy + vz * vz).sqrt();
+        assert_close(speed, 100.0);
+        assert!(
+            vx < 100.0,
+            "missile x velocity should turn away from original heading"
+        );
+        assert!(vy > 0.0, "missile y velocity should turn toward target");
+        assert_close(vz, 0.0);
     }
 
     #[test]

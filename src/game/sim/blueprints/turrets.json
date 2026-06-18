@@ -1301,7 +1301,7 @@
     },
     "kind": "attack",
     "emissionKind": "shot",
-    "emissionBlueprintId": "shotRocketFast"
+    "emissionBlueprintId": "shotMissileFast"
   },
   "turretAntiAir": {
     "turretBlueprintId": "turretAntiAir",
@@ -1365,7 +1365,7 @@
     },
     "kind": "attack",
     "emissionKind": "shot",
-    "emissionBlueprintId": "shotRocketLong"
+    "emissionBlueprintId": "shotMissileLong"
   },
   "turretUnitConstructorBallistic": {
     "turretBlueprintId": "turretUnitConstructorBallistic",

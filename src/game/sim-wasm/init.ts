@@ -135,6 +135,7 @@ import __wbg_init, {
   terrain_follow_vertical_thrust_accel,
   solve_kinematic_intercept,
   compute_homing_thrust,
+  compute_constant_speed_homing_velocity,
   integrate_damped_rotation,
   metal_deposit_count_placements,
   metal_deposit_generate_placements,
@@ -1381,6 +1382,9 @@ export interface SimWasm {
     accelX: Float64Array,
     accelY: Float64Array,
     accelZ: Float64Array,
+    velX: Float64Array,
+    velY: Float64Array,
+    velZ: Float64Array,
     count: number,
     dtSec: number,
     windX: number,
@@ -1470,6 +1474,16 @@ export interface SimWasm {
     homingTurnRate: number,
     maxThrustAccel: number,
     gravity: number,
+    dtSec: number,
+  ) => void;
+  /** AIM-05b — constant-speed missile guidance. Writes the rotated
+   *  velocity vector into out[0..3] while preserving its magnitude. */
+  readonly computeConstantSpeedHomingVelocity: (
+    out: Float64Array,
+    velX: number, velY: number, velZ: number,
+    targetX: number, targetY: number, targetZ: number,
+    currentX: number, currentY: number, currentZ: number,
+    homingTurnRate: number,
     dtSec: number,
   ) => void;
   /** Phase 6a — damped-spring single-axis rotation integrator. Per-
@@ -3909,6 +3923,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         terrainFollowVerticalThrustAccel: terrain_follow_vertical_thrust_accel,
         solveKinematicIntercept: solve_kinematic_intercept,
         computeHomingThrust: compute_homing_thrust,
+        computeConstantSpeedHomingVelocity: compute_constant_speed_homing_velocity,
         integrateDampedRotation: integrate_damped_rotation,
         metalDepositCountPlacements: metal_deposit_count_placements,
         metalDepositGeneratePlacements: metal_deposit_generate_placements,

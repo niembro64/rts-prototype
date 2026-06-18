@@ -9,7 +9,7 @@ import {
   SHIELD_REFLECTION_ENTITY_ROCKET,
   SHIELD_PANEL_PROJECTILE_QUERY_PAD,
 } from './reflectorBatch';
-import { getEmissionBlueprintId, isRayType, isProjectileShot } from '../types';
+import { getEmissionBlueprintId, isRayType, isProjectileShot, isRocketLikeShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -352,7 +352,7 @@ function computeProjectileReflectorHits(
     _reflectorEndZ[i] = curZ;
     _reflectorProjectileRadius[i] = proj.config.shotProfile.runtime.radius.collision;
     _reflectorReflectionEntity[i] =
-      isProjectileShot(proj.config.shot) && proj.config.shot.type === 'rocket'
+      isProjectileShot(proj.config.shot) && isRocketLikeShot(proj.config.shot)
         ? SHIELD_REFLECTION_ENTITY_ROCKET
         : SHIELD_REFLECTION_ENTITY_PLASMA;
     _reflectorExcludeEntityId[i] = proj.sourceEntityId;

@@ -50,9 +50,13 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
   if (typeof blueprint.name !== 'string' || blueprint.name.trim().length === 0) {
     throw new Error(`Invalid shot blueprint ${id}: missing display name`);
   }
-  if (blueprint.type !== 'plasma' && blueprint.type !== 'rocket') {
+  if (
+    blueprint.type !== 'plasma' &&
+    blueprint.type !== 'rocket' &&
+    blueprint.type !== 'missile'
+  ) {
     throw new Error(
-      `Invalid shot blueprint ${id}: shots.json may only contain physical plasma/rocket shots`,
+      `Invalid shot blueprint ${id}: shots.json may only contain physical plasma/rocket/missile shots`,
     );
   }
   assertExplicitFields(
@@ -76,13 +80,39 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
   // buildShotConfig — base.deathExplosion is the single source of truth for
   // a shot's death blast, so there is no separate authored `explosion` field
   // to cross-check here.
-  // Homing is "rate + thrust" — both fields must be set together or
-  // neither. A turn rate without a thrust budget would be steering
-  // without an engine; a thrust budget without a turn rate would be
-  // an engine without guidance fins.
+  // Rocket homing is "rate + thrust" because rockets steer through
+  // authored engine acceleration. Missiles are the constant-speed
+  // exception: they steer by rotating the velocity vector and must not
+  // author homing thrust or propulsion force.
   const hasRate = blueprint.homingTurnRate !== null;
   const hasThrust = blueprint.homingThrust !== null;
-  if (hasRate !== hasThrust) {
+  if (blueprint.type === 'missile') {
+    if (!hasRate || !Number.isFinite(blueprint.homingTurnRate) || blueprint.homingTurnRate! <= 0) {
+      throw new Error(
+        `Shot blueprint ${id} must define positive homingTurnRate for missile steering.`,
+      );
+    }
+    if (hasThrust) {
+      throw new Error(
+        `Shot blueprint ${id} must use null homingThrust: missiles preserve speed by velocity rotation.`,
+      );
+    }
+    if (blueprint.propulsionForce !== null) {
+      throw new Error(
+        `Shot blueprint ${id} must use null propulsionForce: missiles do not accelerate forward.`,
+      );
+    }
+    if (blueprint.airFrictionPer60HzFrame !== 0) {
+      throw new Error(
+        `Shot blueprint ${id} must use zero airFrictionPer60HzFrame to preserve missile speed.`,
+      );
+    }
+    if (blueprint.gravityForceMultiplier !== 0) {
+      throw new Error(
+        `Shot blueprint ${id} must use zero gravityForceMultiplier to preserve missile speed.`,
+      );
+    }
+  } else if (hasRate !== hasThrust) {
     throw new Error(
       `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
     );
@@ -112,10 +142,10 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       `Shot blueprint ${id} has invalid airFrictionPer60HzFrame: expected finite value in [0, 1).`,
     );
   }
-  if (blueprint.type === 'rocket') {
+  if (blueprint.type === 'rocket' || blueprint.type === 'missile') {
     if (!Number.isFinite(blueprint.maxLifespan) || blueprint.maxLifespan! <= 0) {
       throw new Error(
-        `Shot blueprint ${id} must define positive maxLifespan for rocket expiry`,
+        `Shot blueprint ${id} must define positive maxLifespan for guided munition expiry`,
       );
     }
   } else if (

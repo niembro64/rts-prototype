@@ -183,7 +183,8 @@
     "ProjectileShotKind": {
       "enum": [
         "plasma",
-        "rocket"
+        "rocket",
+        "missile"
       ]
     },
     "ShieldSurfaceResponse": {
@@ -915,6 +916,7 @@
       "enum": [
         "plasma",
         "rocket",
+        "missile",
         "beam",
         "laser"
       ]

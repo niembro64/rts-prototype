@@ -37,9 +37,9 @@ export const SHOT_BLUEPRINT_IDS = [
   'shotPlasmaHeavy',
   'shotMortarMedium',
   'shotPlasmaDisruptor',
-  'shotRocketFast',
+  'shotMissileFast',
   'shotMortarHeavy',
-  'shotRocketLong',
+  'shotMissileLong',
   'shotPlasmaOther',
 ] as const;
 export type ShotBlueprintId = typeof SHOT_BLUEPRINT_IDS[number];

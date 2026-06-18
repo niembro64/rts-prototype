@@ -32,7 +32,12 @@ export {
   isPointInSlice,
 } from './CollisionHelpers';
 
-export { computeHomingThrust, type HomingThrustResult } from './HomingSteering';
+export {
+  computeConstantSpeedHomingVelocity,
+  computeHomingThrust,
+  type ConstantSpeedHomingVelocityResult,
+  type HomingThrustResult,
+} from './HomingSteering';
 export {
   computeTerrainFollowVerticalThrustAccel,
   type TerrainFollowVerticalThrustInput,
