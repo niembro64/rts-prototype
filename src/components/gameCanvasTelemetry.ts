@@ -6,6 +6,46 @@ type GameCanvasTelemetryOptions = {
   getScene: () => GameScene | null;
 };
 
+type RenderProfileSample = {
+  readonly timestampMs: number;
+  readonly runtimeProfile: string;
+  readonly frameMsAvg: number;
+  readonly frameMsHi: number;
+  readonly logicMsAvg: number;
+  readonly logicMsHi: number;
+  readonly renderPrepMsAvg: number;
+  readonly renderPrepMsHi: number;
+  readonly gpuMs: number;
+  readonly gpuSource: string;
+  readonly gpuTimerSupported: boolean;
+  readonly webglRendererRenderMs: number;
+  readonly webglDrawCalls: number;
+  readonly webglTriangles: number;
+  readonly webglPoints: number;
+  readonly webglLines: number;
+  readonly webglGeometries: number;
+  readonly webglTextures: number;
+  readonly webglBufferProfilerSupported: boolean;
+  readonly webglBufferDataCalls: number;
+  readonly webglBufferSubDataCalls: number;
+  readonly webglBufferUploadBytes: number;
+  readonly longtaskSupported: boolean;
+  readonly longtaskMsPerSec: number;
+  readonly renderTpsAvg: number;
+  readonly renderTpsWorst: number;
+  readonly scopedRetainedUnitMeshes: number;
+  readonly scopedRetainedBuildingMeshes: number;
+  readonly scopedMeshDestroyPerSec: number;
+  readonly scopedMeshRebuildPerSec: number;
+  readonly activePixelRatio: number;
+  readonly nativePixelRatio: number;
+  readonly dynamicPixelRatioEnabled: boolean;
+};
+
+type RenderProfileApi = {
+  readonly sample: () => RenderProfileSample;
+};
+
 function setRefIfChanged<T>(target: { value: T }, value: T): void {
   if (!Object.is(target.value, value)) target.value = value;
 }
@@ -30,6 +70,17 @@ export function useGameCanvasTelemetry({
   const nativePixelRatio = ref(1);
   const activePixelRatio = ref(1);
   const dynamicPixelRatioEnabled = ref(false);
+  const webglBufferProfilerSupported = ref(false);
+  const webglRendererRenderMs = ref(0);
+  const webglDrawCalls = ref(0);
+  const webglTriangles = ref(0);
+  const webglPoints = ref(0);
+  const webglLines = ref(0);
+  const webglGeometries = ref(0);
+  const webglTextures = ref(0);
+  const webglBufferDataCalls = ref(0);
+  const webglBufferSubDataCalls = ref(0);
+  const webglBufferUploadBytes = ref(0);
   const rendererContextMainCount = ref(0);
   const rendererContextAuxiliaryCount = ref(0);
   const rendererContextAuxiliaryBudget = ref(0);
@@ -55,6 +106,7 @@ export function useGameCanvasTelemetry({
   const snapshotSizeHiBytes = ref(0);
   const currentZoom = ref(0.4);
   let updateInterval: ReturnType<typeof setInterval> | null = null;
+  let renderProfileApi: RenderProfileApi | null = null;
 
   const displayGpuMs = computed(() =>
     gpuTimerSupported.value ? gpuTimerMs.value : renderMsAvg.value,
@@ -92,6 +144,17 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(nativePixelRatio, timing.nativePixelRatio, 0.001);
       setNumberRefIfChanged(activePixelRatio, timing.activePixelRatio, 0.001);
       setRefIfChanged(dynamicPixelRatioEnabled, timing.dynamicPixelRatioEnabled);
+      setRefIfChanged(webglBufferProfilerSupported, timing.webglBufferProfilerSupported);
+      setNumberRefIfChanged(webglRendererRenderMs, timing.webglRendererRenderMs);
+      setNumberRefIfChanged(webglDrawCalls, timing.webglDrawCalls, 0);
+      setNumberRefIfChanged(webglTriangles, timing.webglTriangles, 0);
+      setNumberRefIfChanged(webglPoints, timing.webglPoints, 0);
+      setNumberRefIfChanged(webglLines, timing.webglLines, 0);
+      setNumberRefIfChanged(webglGeometries, timing.webglGeometries, 0);
+      setNumberRefIfChanged(webglTextures, timing.webglTextures, 0);
+      setNumberRefIfChanged(webglBufferDataCalls, timing.webglBufferDataCalls, 0);
+      setNumberRefIfChanged(webglBufferSubDataCalls, timing.webglBufferSubDataCalls, 0);
+      setNumberRefIfChanged(webglBufferUploadBytes, timing.webglBufferUploadBytes, 1);
       setNumberRefIfChanged(longtaskMsPerSec, timing.longtaskMsPerSec);
       setRefIfChanged(longtaskSupported, timing.longtaskSupported);
 
@@ -140,8 +203,51 @@ export function useGameCanvasTelemetry({
     }
   }
 
+  function sampleRenderProfile(): RenderProfileSample {
+    return {
+      timestampMs: performance.now(),
+      runtimeProfile: runtimeProfile.value,
+      frameMsAvg: frameMsAvg.value,
+      frameMsHi: frameMsHi.value,
+      logicMsAvg: logicMsAvg.value,
+      logicMsHi: logicMsHi.value,
+      renderPrepMsAvg: renderMsAvg.value,
+      renderPrepMsHi: renderMsHi.value,
+      gpuMs: displayGpuMs.value,
+      gpuSource: gpuSourceLabel.value,
+      gpuTimerSupported: gpuTimerSupported.value,
+      webglRendererRenderMs: webglRendererRenderMs.value,
+      webglDrawCalls: webglDrawCalls.value,
+      webglTriangles: webglTriangles.value,
+      webglPoints: webglPoints.value,
+      webglLines: webglLines.value,
+      webglGeometries: webglGeometries.value,
+      webglTextures: webglTextures.value,
+      webglBufferProfilerSupported: webglBufferProfilerSupported.value,
+      webglBufferDataCalls: webglBufferDataCalls.value,
+      webglBufferSubDataCalls: webglBufferSubDataCalls.value,
+      webglBufferUploadBytes: webglBufferUploadBytes.value,
+      longtaskSupported: longtaskSupported.value,
+      longtaskMsPerSec: longtaskMsPerSec.value,
+      renderTpsAvg: renderTpsAvg.value,
+      renderTpsWorst: renderTpsWorst.value,
+      scopedRetainedUnitMeshes: scopedRetainedUnitMeshes.value,
+      scopedRetainedBuildingMeshes: scopedRetainedBuildingMeshes.value,
+      scopedMeshDestroyPerSec: scopedMeshDestroyPerSec.value,
+      scopedMeshRebuildPerSec: scopedMeshRebuildPerSec.value,
+      activePixelRatio: activePixelRatio.value,
+      nativePixelRatio: nativePixelRatio.value,
+      dynamicPixelRatioEnabled: dynamicPixelRatioEnabled.value,
+    };
+  }
+
   onMounted(() => {
     updateInterval = setInterval(update, 100);
+    if (typeof window !== 'undefined') {
+      renderProfileApi = { sample: sampleRenderProfile };
+      (window as unknown as { __BA_RENDER_PROFILE__?: RenderProfileApi })
+        .__BA_RENDER_PROFILE__ = renderProfileApi;
+    }
   });
 
   onUnmounted(() => {
@@ -149,6 +255,16 @@ export function useGameCanvasTelemetry({
       clearInterval(updateInterval);
       updateInterval = null;
     }
+    if (
+      typeof window !== 'undefined' &&
+      renderProfileApi !== null &&
+      (window as unknown as { __BA_RENDER_PROFILE__?: RenderProfileApi })
+        .__BA_RENDER_PROFILE__ === renderProfileApi
+    ) {
+      delete (window as unknown as { __BA_RENDER_PROFILE__?: RenderProfileApi })
+        .__BA_RENDER_PROFILE__;
+    }
+    renderProfileApi = null;
   });
 
   return {
@@ -162,6 +278,17 @@ export function useGameCanvasTelemetry({
     nativePixelRatio,
     activePixelRatio,
     dynamicPixelRatioEnabled,
+    webglBufferProfilerSupported,
+    webglRendererRenderMs,
+    webglDrawCalls,
+    webglTriangles,
+    webglPoints,
+    webglLines,
+    webglGeometries,
+    webglTextures,
+    webglBufferDataCalls,
+    webglBufferSubDataCalls,
+    webglBufferUploadBytes,
     hudSpriteActiveCount,
     hudSpriteBudgetCount,
     hudSpriteDisposedCount,

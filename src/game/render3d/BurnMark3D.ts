@@ -147,6 +147,46 @@ type Mark = {
   removed: boolean;
 };
 
+type DirtySlotSpan = {
+  minSlot: number;
+  maxSlot: number;
+};
+
+function createDirtySlotSpan(): DirtySlotSpan {
+  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
+}
+
+function markDirtySlot(span: DirtySlotSpan, slot: number): void {
+  if (slot < span.minSlot) span.minSlot = slot;
+  if (slot > span.maxSlot) span.maxSlot = slot;
+}
+
+function clearDirtySlotSpan(span: DirtySlotSpan): void {
+  span.minSlot = Number.POSITIVE_INFINITY;
+  span.maxSlot = -1;
+}
+
+function uploadDirtySlotSpan(
+  attr: THREE.BufferAttribute,
+  span: DirtySlotSpan,
+  componentsPerSlot: number,
+  activeSlots: number,
+): void {
+  if (span.maxSlot < span.minSlot || activeSlots <= 0) {
+    clearDirtySlotSpan(span);
+    return;
+  }
+  const minSlot = Math.max(0, Math.min(span.minSlot, activeSlots - 1));
+  const maxSlot = Math.max(minSlot, Math.min(span.maxSlot, activeSlots - 1));
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(
+    minSlot * componentsPerSlot,
+    (maxSlot - minSlot + 1) * componentsPerSlot,
+  );
+  attr.needsUpdate = true;
+  clearDirtySlotSpan(span);
+}
+
 export class BurnMark3D {
   private root: THREE.Group;
 
@@ -159,7 +199,7 @@ export class BurnMark3D {
   private mat: THREE.MeshBasicMaterial;
   private posAttr: THREE.BufferAttribute;
   private colAttr: THREE.BufferAttribute;
-  private posDirty = false;
+  private readonly posDirty = createDirtySlotSpan();
   private colDirty = false;
 
   // Active marks, packed — `marks[mark.slot] === mark` invariant.
@@ -387,12 +427,7 @@ export class BurnMark3D {
     }
 
     if (this.marks.length > 0) {
-      if (this.posDirty) {
-        this.posAttr.clearUpdateRanges();
-        this.posAttr.addUpdateRange(0, this.marks.length * 12);
-        this.posAttr.needsUpdate = true;
-        this.posDirty = false;
-      }
+      uploadDirtySlotSpan(this.posAttr, this.posDirty, 12, this.marks.length);
       if (this.colDirty) {
         this.colAttr.clearUpdateRanges();
         this.colAttr.addUpdateRange(0, this.marks.length * 16);
@@ -400,7 +435,7 @@ export class BurnMark3D {
         this.colDirty = false;
       }
     } else {
-      this.posDirty = false;
+      clearDirtySlotSpan(this.posDirty);
       this.colDirty = false;
     }
   }
@@ -517,6 +552,7 @@ export class BurnMark3D {
         corners.sLx,
         corners.sLz,
       );
+      markDirtySlot(this.posDirty, prev!.slot);
     }
 
     // Allocate the new slot and write its vertex data.
@@ -530,11 +566,11 @@ export class BurnMark3D {
     };
     this.marks.push(mark);
     writeDrapedQuadXZ(this.positions, slot, this.markY, corners);
+    markDirtySlot(this.posDirty, slot);
     // Fresh marks render at hot color + full alpha — age sweep will take
     // over from the next frame. Writing once here avoids a 1-frame flicker.
     writeQuadRgba(this.colors, slot, HOT_LIN.r, HOT_LIN.g, HOT_LIN.b, 1);
 
-    this.posDirty = true;
     this.colDirty = true;
     this.geometry.setDrawRange(0, this.marks.length * 6);
 
@@ -556,7 +592,7 @@ export class BurnMark3D {
       copyQuadSlot(this.colors, 16, last, i);
       moved.slot = i;
       this.marks[i] = moved;
-      this.posDirty = true;
+      markDirtySlot(this.posDirty, i);
       this.colDirty = true;
     }
     this.marks.pop();
@@ -570,7 +606,7 @@ export class BurnMark3D {
     this.marks.length = 0;
     this.geometry.setDrawRange(0, 0);
     for (const state of this.beams.values()) state.prevMark = null;
-    this.posDirty = false;
+    clearDirtySlotSpan(this.posDirty);
     this.colDirty = false;
   }
 

@@ -7,48 +7,62 @@ import { resolve } from 'path';
 const isTauri = !!process.env.TAURI_ENV_PLATFORM;
 const usePollingWatcher = process.env.RTS_WATCH_POLLING === '1';
 
-export default defineConfig({
-  base: isTauri ? '/' : '/budget-annihilation/',
-  plugins: [vue(), wasm(), topLevelAwait()],
-  server: usePollingWatcher
-    ? {
-        watch: {
-          usePolling: true,
-          interval: 500,
-          ignored: [
-            '**/node_modules/**',
-            '**/dist/**',
-            '**/public/assets/environment-packs/**',
-          ],
-        },
-      }
-    : undefined,
-  resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
+export default defineConfig(({ command }) => {
+  const isTauriBuild = isTauri && command === 'build';
+  return {
+    base: isTauri ? '/' : '/budget-annihilation/',
+    plugins: [vue(), wasm(), topLevelAwait()],
+    esbuild: isTauriBuild
+      ? {
+          drop: ['console', 'debugger'],
+          legalComments: 'none',
+        }
+      : undefined,
+    server: usePollingWatcher
+      ? {
+          watch: {
+            usePolling: true,
+            interval: 500,
+            ignored: [
+              '**/node_modules/**',
+              '**/dist/**',
+              '**/public/assets/environment-packs/**',
+            ],
+          },
+        }
+      : undefined,
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src'),
+      },
     },
-  },
-  build: {
-    chunkSizeWarningLimit: 1500,
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          const normalizedId = id.replace(/\\/g, '/');
-          if (normalizedId.includes('/node_modules/')) {
-            if (normalizedId.includes('/node_modules/three/')) return 'vendor-three';
-            if (
-              normalizedId.includes('/node_modules/vue/') ||
-              normalizedId.includes('/node_modules/@vue/')
-            ) return 'vendor-vue';
-            if (
-              normalizedId.includes('/node_modules/peerjs/') ||
-              normalizedId.includes('/node_modules/peerjs-js-binarypack/') ||
-              normalizedId.includes('/node_modules/@msgpack/')
-            ) return 'vendor-network';
-            return 'vendor';
-          }
+    build: {
+      target: isTauri ? 'es2022' : undefined,
+      modulePreload: {
+        polyfill: !isTauri,
+      },
+      chunkSizeWarningLimit: 1500,
+      reportCompressedSize: !isTauri,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            const normalizedId = id.replace(/\\/g, '/');
+            if (normalizedId.includes('/node_modules/')) {
+              if (normalizedId.includes('/node_modules/three/')) return 'vendor-three';
+              if (
+                normalizedId.includes('/node_modules/vue/') ||
+                normalizedId.includes('/node_modules/@vue/')
+              ) return 'vendor-vue';
+              if (
+                normalizedId.includes('/node_modules/peerjs/') ||
+                normalizedId.includes('/node_modules/peerjs-js-binarypack/') ||
+                normalizedId.includes('/node_modules/@msgpack/')
+              ) return 'vendor-network';
+              return 'vendor';
+            }
+          },
         },
       },
     },
-  },
+  };
 });

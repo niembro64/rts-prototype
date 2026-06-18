@@ -405,6 +405,8 @@ export const ENTITY_LOD_ENTER_PROXY_DISTANCE_MULTIPLIER =
   lodConfigJson.entity.hysteresis.enterProxyMultiplier;
 export const ENTITY_LOD_EXIT_PROXY_DISTANCE_MULTIPLIER =
   lodConfigJson.entity.hysteresis.exitProxyMultiplier;
+export const ENTITY_LOD_RUNTIME_DISTANCE_MULTIPLIERS =
+  lodConfigJson.entity.runtimeDistanceMultipliers;
 export const ENTITY_LOD_FULL_DETAIL_DISTANCE_SQ =
   ENTITY_LOD_FULL_DETAIL_DISTANCE * ENTITY_LOD_FULL_DETAIL_DISTANCE;
 export const ENTITY_LOD_PROXY_ENABLED = lodConfigJson.proxy.enabled;

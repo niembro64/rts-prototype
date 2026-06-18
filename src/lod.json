@@ -8,6 +8,11 @@
       "enabled": true,
       "enterProxyMultiplier": 1,
       "exitProxyMultiplier": 0.92
+    },
+    "runtimeDistanceMultipliers": {
+      "browserDesktop": 1,
+      "browserMobile": 1,
+      "tauriDesktop": 0.6
     }
   },
   "proxy": {
@@ -28,20 +33,20 @@
     }
   },
   "emissions": {
-    "bodyHud": 3600,
-    "bodyNames": 3600,
-    "turretNames": 3600,
-    "shotNames": 3600,
-    "contactShadows": 3600,
-    "groundPrints": 3600,
-    "lineProjectiles": 3600,
+    "bodyHud": 6000,
+    "bodyNames": 6000,
+    "turretNames": 6000,
+    "shotNames": 6000,
+    "contactShadows": 6000,
+    "groundPrints": 6000,
+    "lineProjectiles": 6000,
     "projectileCores": null,
     "projectileTrailsAndFins": 100000,
-    "projectileBurnMarks": 3600,
-    "projectileSmokeTrails": 3600,
-    "resourceSprays": 3600,
-    "waterSplashes": 3600,
-    "materialDeathExplosions": 3600,
+    "projectileBurnMarks": 6000,
+    "projectileSmokeTrails": 6000,
+    "resourceSprays": 6000,
+    "waterSplashes": 6000,
+    "materialDeathExplosions": 6000,
     "shieldFields": null,
     "shieldImpacts": null,
     "hitImpacts": null,

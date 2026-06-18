@@ -11,9 +11,11 @@ import {
   ENTITY_LOD_PROXY_UNIT_MIN_PIXELS,
   ENTITY_LOD_PROXY_USE_TEAM_COLOR,
 } from '@/config';
+import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
 import type { Entity } from '../sim/types';
 import { entityInstanceColorHex } from './EntityInstanceColor3D';
 import { entityLodRadius3D } from './EntityLod3D';
+import { EntityLodProxyWebGpuRenderer3D } from './EntityLodProxyWebGpuRenderer3D';
 
 const ENTITY_LOD_PROXY_NEUTRAL_COLOR = 0xffffff;
 
@@ -46,6 +48,11 @@ void main() {
 }
 `;
 
+type DirtySpan = {
+  min: number;
+  max: number;
+};
+
 type ProxyPointBatch = {
   points: THREE.Points;
   geometry: THREE.BufferGeometry;
@@ -56,8 +63,52 @@ type ProxyPointBatch = {
   positionAttr: THREE.BufferAttribute;
   colorAttr: THREE.BufferAttribute;
   radiusAttr: THREE.BufferAttribute;
+  positionDirty: DirtySpan;
+  colorDirty: DirtySpan;
+  radiusDirty: DirtySpan;
   count: number;
+  drawRangeCount: number;
 };
+
+type EntityLodProxyRendererBackend3D = {
+  beginFrame(): void;
+  pushUnit(entity: Entity): void;
+  pushBuilding(entity: Entity): void;
+  flush(viewportHeight: number): void;
+  destroy(): void;
+};
+
+export type EntityLodProxyRenderer3DOptions = {
+  readonly world: THREE.Group;
+  readonly camera?: THREE.PerspectiveCamera;
+  readonly canvas?: HTMLCanvasElement;
+};
+
+function createDirtySpan(): DirtySpan {
+  return { min: Number.POSITIVE_INFINITY, max: -1 };
+}
+
+function markDirty(span: DirtySpan, slot: number): void {
+  if (slot < span.min) span.min = slot;
+  if (slot > span.max) span.max = slot;
+}
+
+function hasDirty(span: DirtySpan): boolean {
+  return span.max >= span.min;
+}
+
+function uploadDirty(
+  attr: THREE.BufferAttribute,
+  span: DirtySpan,
+  itemSize: number,
+): void {
+  if (!hasDirty(span)) return;
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(span.min * itemSize, (span.max - span.min + 1) * itemSize);
+  attr.needsUpdate = true;
+  span.min = Number.POSITIVE_INFINITY;
+  span.max = -1;
+}
 
 function createProxyPointMaterial(minPointSize: number, maxPointSize: number): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -105,15 +156,25 @@ function createProxyPointBatch(minPointSize: number, maxPointSize: number): Prox
     positionAttr,
     colorAttr,
     radiusAttr,
+    positionDirty: createDirtySpan(),
+    colorDirty: createDirtySpan(),
+    radiusDirty: createDirtySpan(),
     count: 0,
+    drawRangeCount: 0,
   };
 }
 
-function writeColorHex(out: Float32Array, slot: number, colorHex: number): void {
+function writeColorHex(batch: ProxyPointBatch, slot: number, colorHex: number): void {
+  const out = batch.colors;
   const o = slot * 3;
-  out[o] = ((colorHex >> 16) & 0xff) / 255;
-  out[o + 1] = ((colorHex >> 8) & 0xff) / 255;
-  out[o + 2] = (colorHex & 0xff) / 255;
+  const r = ((colorHex >> 16) & 0xff) / 255;
+  const g = ((colorHex >> 8) & 0xff) / 255;
+  const b = (colorHex & 0xff) / 255;
+  if (out[o] === r && out[o + 1] === g && out[o + 2] === b) return;
+  out[o] = r;
+  out[o + 1] = g;
+  out[o + 2] = b;
+  markDirty(batch.colorDirty, slot);
 }
 
 function writePoint(
@@ -126,30 +187,42 @@ function writePoint(
   colorHex: number,
 ): void {
   const posOffset = slot * 3;
-  batch.positions[posOffset] = x;
-  batch.positions[posOffset + 1] = y;
-  batch.positions[posOffset + 2] = z;
-  batch.radii[slot] = radius;
-  writeColorHex(batch.colors, slot, colorHex);
+  const px = Math.fround(x);
+  const py = Math.fround(y);
+  const pz = Math.fround(z);
+  if (
+    batch.positions[posOffset] !== px ||
+    batch.positions[posOffset + 1] !== py ||
+    batch.positions[posOffset + 2] !== pz
+  ) {
+    batch.positions[posOffset] = px;
+    batch.positions[posOffset + 1] = py;
+    batch.positions[posOffset + 2] = pz;
+    markDirty(batch.positionDirty, slot);
+  }
+
+  const nextRadius = Math.fround(radius);
+  if (batch.radii[slot] !== nextRadius) {
+    batch.radii[slot] = nextRadius;
+    markDirty(batch.radiusDirty, slot);
+  }
+  writeColorHex(batch, slot, colorHex);
 }
 
 function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
   const count = batch.count;
-  batch.geometry.setDrawRange(0, count);
+  if (batch.drawRangeCount !== count) {
+    batch.geometry.setDrawRange(0, count);
+    batch.drawRangeCount = count;
+  }
   batch.material.uniforms.uViewportHeight.value = Math.max(1, viewportHeight);
   if (count <= 0) return;
-  batch.positionAttr.clearUpdateRanges();
-  batch.positionAttr.addUpdateRange(0, count * 3);
-  batch.positionAttr.needsUpdate = true;
-  batch.colorAttr.clearUpdateRanges();
-  batch.colorAttr.addUpdateRange(0, count * 3);
-  batch.colorAttr.needsUpdate = true;
-  batch.radiusAttr.clearUpdateRanges();
-  batch.radiusAttr.addUpdateRange(0, count);
-  batch.radiusAttr.needsUpdate = true;
+  uploadDirty(batch.positionAttr, batch.positionDirty, 3);
+  uploadDirty(batch.colorAttr, batch.colorDirty, 3);
+  uploadDirty(batch.radiusAttr, batch.radiusDirty, 1);
 }
 
-export class EntityLodProxyRenderer3D {
+class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
   private readonly unitBatch = createProxyPointBatch(
     ENTITY_LOD_PROXY_UNIT_MIN_PIXELS,
     ENTITY_LOD_PROXY_UNIT_MAX_PIXELS,
@@ -162,6 +235,11 @@ export class EntityLodProxyRenderer3D {
   constructor(private readonly world: THREE.Group) {
     this.world.add(this.unitBatch.points);
     this.world.add(this.buildingBatch.points);
+  }
+
+  setVisible(visible: boolean): void {
+    this.unitBatch.points.visible = visible;
+    this.buildingBatch.points.visible = visible;
   }
 
   beginFrame(): void {
@@ -217,5 +295,74 @@ export class EntityLodProxyRenderer3D {
     this.buildingBatch.geometry.dispose();
     this.unitBatch.material.dispose();
     this.buildingBatch.material.dispose();
+  }
+}
+
+function normalizeOptions(
+  options: THREE.Group | EntityLodProxyRenderer3DOptions,
+): EntityLodProxyRenderer3DOptions {
+  if ('world' in options) return options;
+  return { world: options };
+}
+
+export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D {
+  private readonly webGlBackend: EntityLodProxyWebGlRenderer3D;
+  private activeBackend: EntityLodProxyRendererBackend3D;
+  private webGpuBackend: EntityLodProxyWebGpuRenderer3D | null = null;
+  private destroyed = false;
+
+  constructor(options: THREE.Group | EntityLodProxyRenderer3DOptions) {
+    const normalizedOptions = normalizeOptions(options);
+    this.webGlBackend = new EntityLodProxyWebGlRenderer3D(normalizedOptions.world);
+    this.activeBackend = this.webGlBackend;
+    const runtimeProfile = getBrowserRenderRuntimeProfile();
+    if (
+      runtimeProfile.tauri &&
+      normalizedOptions.camera !== undefined &&
+      normalizedOptions.canvas !== undefined
+    ) {
+      void this.installWebGpuBackend(normalizedOptions.camera, normalizedOptions.canvas);
+    }
+  }
+
+  beginFrame(): void {
+    this.activeBackend.beginFrame();
+  }
+
+  pushUnit(entity: Entity): void {
+    this.activeBackend.pushUnit(entity);
+  }
+
+  pushBuilding(entity: Entity): void {
+    this.activeBackend.pushBuilding(entity);
+  }
+
+  flush(viewportHeight: number): void {
+    this.activeBackend.flush(viewportHeight);
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    this.webGpuBackend?.destroy();
+    this.webGlBackend.destroy();
+    this.webGpuBackend = null;
+    this.activeBackend = this.webGlBackend;
+  }
+
+  private async installWebGpuBackend(
+    camera: THREE.PerspectiveCamera,
+    canvas: HTMLCanvasElement,
+  ): Promise<void> {
+    const webGpuBackend = await EntityLodProxyWebGpuRenderer3D.create({
+      baseCanvas: canvas,
+      camera,
+    });
+    if (webGpuBackend === null || this.destroyed) {
+      webGpuBackend?.destroy();
+      return;
+    }
+    this.webGpuBackend = webGpuBackend;
+    this.webGlBackend.setVisible(false);
+    this.activeBackend = webGpuBackend;
   }
 }

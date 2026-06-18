@@ -966,6 +966,17 @@ const {
   nativePixelRatio,
   activePixelRatio,
   dynamicPixelRatioEnabled,
+  webglBufferProfilerSupported,
+  webglRendererRenderMs,
+  webglDrawCalls,
+  webglTriangles,
+  webglPoints,
+  webglLines,
+  webglGeometries,
+  webglTextures,
+  webglBufferDataCalls,
+  webglBufferSubDataCalls,
+  webglBufferUploadBytes,
   hudSpriteActiveCount,
   hudSpriteBudgetCount,
   hudSpriteDisposedCount,
@@ -1418,6 +1429,17 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   nativePixelRatio: nativePixelRatio.value,
   activePixelRatio: activePixelRatio.value,
   dynamicPixelRatioEnabled: dynamicPixelRatioEnabled.value,
+  webglBufferProfilerSupported: webglBufferProfilerSupported.value,
+  webglRendererRenderMs: webglRendererRenderMs.value,
+  webglDrawCalls: webglDrawCalls.value,
+  webglTriangles: webglTriangles.value,
+  webglPoints: webglPoints.value,
+  webglLines: webglLines.value,
+  webglGeometries: webglGeometries.value,
+  webglTextures: webglTextures.value,
+  webglBufferDataCalls: webglBufferDataCalls.value,
+  webglBufferSubDataCalls: webglBufferSubDataCalls.value,
+  webglBufferUploadBytes: webglBufferUploadBytes.value,
   rendererContextMainCount: rendererContextMainCount.value,
   rendererContextAuxiliaryCount: rendererContextAuxiliaryCount.value,
   rendererContextAuxiliaryBudget: rendererContextAuxiliaryBudget.value,
@@ -1582,6 +1604,17 @@ watchEffect(() => {
   m.nativePixelRatio = nativePixelRatio.value;
   m.activePixelRatio = activePixelRatio.value;
   m.dynamicPixelRatioEnabled = dynamicPixelRatioEnabled.value;
+  m.webglBufferProfilerSupported = webglBufferProfilerSupported.value;
+  m.webglRendererRenderMs = webglRendererRenderMs.value;
+  m.webglDrawCalls = webglDrawCalls.value;
+  m.webglTriangles = webglTriangles.value;
+  m.webglPoints = webglPoints.value;
+  m.webglLines = webglLines.value;
+  m.webglGeometries = webglGeometries.value;
+  m.webglTextures = webglTextures.value;
+  m.webglBufferDataCalls = webglBufferDataCalls.value;
+  m.webglBufferSubDataCalls = webglBufferSubDataCalls.value;
+  m.webglBufferUploadBytes = webglBufferUploadBytes.value;
   m.rendererContextMainCount = rendererContextMainCount.value;
   m.rendererContextAuxiliaryCount = rendererContextAuxiliaryCount.value;
   m.rendererContextAuxiliaryBudget = rendererContextAuxiliaryBudget.value;

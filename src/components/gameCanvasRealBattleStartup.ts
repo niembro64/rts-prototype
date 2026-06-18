@@ -52,7 +52,12 @@ import {
   type LocalCommandAuthorityMode,
   type LocalGameConnectionOptions,
 } from '../game/server/LocalGameConnection';
-import { applyStoredBattleServerSettings } from '../game/server/battleServerSettings';
+import {
+  applyStoredBattleServerSettings,
+  buildStoredBattleServerSettingCommands,
+} from '../game/server/battleServerSettings';
+import { WorkerGameServerConnection } from '../game/server/WorkerGameServerConnection';
+import { isTauriRuntime } from '../browserRuntime';
 import type {
   BattleHandoff,
   LobbySettings,
@@ -83,6 +88,12 @@ export type CreateRealBattleServerOptions = {
 
 export type RealBattleBackendDiagnostics = {
   networkRole: NetworkRole | null;
+  threadedServer?: {
+    readonly enabled: boolean;
+    readonly transport: 'worker';
+    readonly snapshotsDecoded: number;
+    readonly pendingRequests: number;
+  };
   lockstepSupport?: LockstepSupportBoundaries;
   lockstepInputDelayTicks?: number;
   lockstepInitializationHash?: string;
@@ -106,6 +117,7 @@ export type RealBattleBackendDiagnostics = {
 
 export type RealBattleBackendRuntime = {
   readonly server: GameServer | null;
+  readonly ownsServer?: boolean;
   readonly gameConnection: GameConnection;
   start(): void;
   stop(): void;
@@ -1082,5 +1094,83 @@ async function createDeterministicLockstepBackendRuntime({
 export async function createRealBattleBackend(
   options: CreateRealBattleBackendOptions,
 ): Promise<RealBattleBackendRuntime> {
+  if (shouldUseWorkerAuthoritativeBackend(options)) {
+    try {
+      return await createWorkerAuthoritativeBackendRuntime(options);
+    } catch (error) {
+      console.warn('[WorkerGameServer] falling back to main-thread backend:', error);
+    }
+  }
   return createDeterministicLockstepBackend(options);
+}
+
+function shouldUseWorkerAuthoritativeBackend(
+  options: CreateRealBattleBackendOptions,
+): boolean {
+  return (
+    options.networkRole === null &&
+    typeof Worker !== 'undefined' &&
+    isTauriRuntime()
+  );
+}
+
+async function createWorkerAuthoritativeBackendRuntime({
+  playerIds,
+  aiPlayerIds,
+  terrain,
+  localPlayerId,
+  localIpAddress,
+  onLoadingProgress,
+}: CreateRealBattleBackendOptions): Promise<RealBattleBackendRuntime> {
+  const connection = await WorkerGameServerConnection.create({
+    config: {
+      playerIds,
+      aiPlayerIds,
+      centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
+      dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
+      terrainMapShape: terrain.terrainMapShape,
+      terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
+      metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
+      terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
+      mapWidthLandCells: terrain.mapDimensions.widthLandCells,
+      mapLengthLandCells: terrain.mapDimensions.lengthLandCells,
+      converterTax: loadStoredConverterTax('real'),
+    },
+    localPlayerId,
+    commandAuthorityMode: 'local-offline',
+    onProgress: onLoadingProgress,
+  });
+  const initialMaxTotalUnits = loadStoredRealCap();
+
+  return {
+    server: null,
+    ownsServer: true,
+    gameConnection: connection,
+    start() {
+      connection.setIpAddress(localIpAddress);
+      for (const command of buildStoredBattleServerSettingCommands('real', {
+        ipAddress: localIpAddress,
+        maxTotalUnits: initialMaxTotalUnits,
+        fogOfWarEnabled: true,
+      })) {
+        connection.sendHostCommand(command);
+      }
+      void connection.startServer();
+    },
+    stop() {
+      connection.disconnect();
+    },
+    getDiagnostics() {
+      const diagnostics = connection.getDiagnostics();
+      return {
+        networkRole: null,
+        threadedServer: {
+          enabled: true,
+          transport: 'worker',
+          snapshotsDecoded: diagnostics.snapshotsDecoded,
+          pendingRequests: diagnostics.pendingRequests,
+        },
+      };
+    },
+  };
 }

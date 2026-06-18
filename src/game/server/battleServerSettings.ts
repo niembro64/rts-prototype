@@ -14,6 +14,7 @@ import {
 } from '../../serverBarConfig';
 import type { GameServer } from './GameServer';
 import type { CommandAuthority } from './commandAuthority';
+import type { Command } from '../sim/commands';
 
 export type StoredBattleServerSettingsOptions = {
   ipAddress: string | undefined;
@@ -30,67 +31,82 @@ const DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS: StoredBattleServerSettingsO
   maxTotalUnits: undefined,
 };
 
+export function buildStoredBattleServerSettingCommands(
+  mode: BattleMode,
+  options: StoredBattleServerSettingsOptions = DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS,
+): Command[] {
+  const commands: Command[] = [
+    {
+      type: 'setUnitGroundNormalEmaMode',
+      tick: 0,
+      mode: loadStoredUnitGroundNormalEmaMode(mode),
+    },
+  ];
+
+  if (options.maxTotalUnits !== undefined) {
+    commands.push({
+      type: 'setMaxTotalUnits',
+      tick: 0,
+      maxTotalUnits: options.maxTotalUnits,
+    });
+  }
+
+  commands.push(
+    {
+      type: 'setTurretShieldPanelsEnabled',
+      tick: 0,
+      enabled: loadStoredTurretShieldPanelsEnabled(mode),
+    },
+    {
+      type: 'setTurretShieldSpheresEnabled',
+      tick: 0,
+      enabled: loadStoredTurretShieldSpheresEnabled(mode),
+    },
+    {
+      type: 'setForceFieldsVisible',
+      tick: 0,
+      enabled: loadStoredForceFieldsVisible(mode),
+    },
+    {
+      type: 'setShieldsObstructSight',
+      tick: 0,
+      enabled: loadStoredShieldsObstructSight(mode),
+    },
+    {
+      type: 'setShieldReflectionMode',
+      tick: 0,
+      mode: loadStoredShieldReflectionMode(mode),
+    },
+    {
+      type: 'setFogOfWarEnabled',
+      tick: 0,
+      enabled: options.fogOfWarEnabled ?? loadStoredFogOfWarEnabled(mode),
+    },
+    {
+      type: 'setConverterTax',
+      tick: 0,
+      tax: loadStoredConverterTax(mode),
+    },
+    {
+      type: 'setSendGridInfo',
+      tick: 0,
+      enabled: loadStoredGrid(mode),
+    },
+  );
+
+  return commands;
+}
+
 export function applyStoredBattleServerSettings(
   server: GameServer,
   mode: BattleMode,
   options: StoredBattleServerSettingsOptions = DEFAULT_STORED_BATTLE_SERVER_SETTINGS_OPTIONS,
 ): void {
   const authority: CommandAuthority = { mode: 'host-admin' };
-  server.receiveCommand({
-    type: 'setUnitGroundNormalEmaMode',
-    tick: 0,
-    mode: loadStoredUnitGroundNormalEmaMode(mode),
-  }, authority);
-
   if (options.ipAddress !== undefined) {
     server.setIpAddress(options.ipAddress);
   }
-  if (options.maxTotalUnits !== undefined) {
-    server.receiveCommand({
-      type: 'setMaxTotalUnits',
-      tick: 0,
-      maxTotalUnits: options.maxTotalUnits,
-    }, authority);
+  for (const command of buildStoredBattleServerSettingCommands(mode, options)) {
+    server.receiveCommand(command, authority);
   }
-
-  server.receiveCommand({
-    type: 'setTurretShieldPanelsEnabled',
-    tick: 0,
-    enabled: loadStoredTurretShieldPanelsEnabled(mode),
-  }, authority);
-  server.receiveCommand({
-    type: 'setTurretShieldSpheresEnabled',
-    tick: 0,
-    enabled: loadStoredTurretShieldSpheresEnabled(mode),
-  }, authority);
-  server.receiveCommand({
-    type: 'setForceFieldsVisible',
-    tick: 0,
-    enabled: loadStoredForceFieldsVisible(mode),
-  }, authority);
-  server.receiveCommand({
-    type: 'setShieldsObstructSight',
-    tick: 0,
-    enabled: loadStoredShieldsObstructSight(mode),
-  }, authority);
-  server.receiveCommand({
-    type: 'setShieldReflectionMode',
-    tick: 0,
-    mode: loadStoredShieldReflectionMode(mode),
-  }, authority);
-  server.receiveCommand({
-    type: 'setFogOfWarEnabled',
-    tick: 0,
-    enabled: options.fogOfWarEnabled ?? loadStoredFogOfWarEnabled(mode),
-  }, authority);
-  server.receiveCommand({
-    type: 'setConverterTax',
-    tick: 0,
-    tax: loadStoredConverterTax(mode),
-  }, authority);
-  server.receiveCommand({
-    type: 'setSendGridInfo',
-    tick: 0,
-    enabled: loadStoredGrid(mode),
-  }, authority);
 }

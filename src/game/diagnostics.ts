@@ -39,6 +39,9 @@ export const GAME_DIAGNOSTICS = {
   nameLabelIdentityTrace:
     envFlag('VITE_BA_DEBUG_NAME_LABEL_IDENTITY') ||
     queryFlag('nameLabelIdentityTrace', 'debugNameLabelIdentity'),
+  webglBufferUploads:
+    envFlag('VITE_BA_PROFILE_WEBGL_UPLOADS') ||
+    queryFlag('webglUploads', 'profileWebglUploads'),
 };
 
 export function debugLog(enabled: boolean, ...args: unknown[]): void {

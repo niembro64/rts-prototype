@@ -13,6 +13,7 @@ import { OrbitCamera } from './OrbitCamera';
 import { GpuTimerQuery } from '../scenes/helpers/GpuTimerQuery';
 import { installSunLighting } from './SunLighting';
 import { configureSpriteTexture } from './threeUtils';
+import { WebGlFrameProfiler, type WebGlFrameProfile } from './WebGlFrameProfiler';
 import {
   acquireMainRendererContext,
   type RendererContextToken,
@@ -83,6 +84,7 @@ export class ThreeApp {
    *  browsers without the extension (Safari), isSupported() returns false
    *  and callers should fall back to CPU-side renderMs. */
   public gpuTimer: GpuTimerQuery;
+  public frameProfiler: WebGlFrameProfiler;
 
   private _updateCallback: ((time: number, delta: number) => void) | null = null;
   private _lastTime = 0;
@@ -115,7 +117,6 @@ export class ThreeApp {
     this._skyTexture = makeSkyGradientTexture();
     this.scene.background = this._skyTexture;
     this._runtimeProfile = getBrowserRenderRuntimeProfile();
-    const mobileLike = this._runtimeProfile.mobileLike;
 
     // `logarithmicDepthBuffer` was enabled here briefly but had to come
     // off: every custom THREE.ShaderMaterial in this codebase (beams,
@@ -129,9 +130,15 @@ export class ThreeApp {
     // plane (5 → 50 below, ~10× precision win at distance) and the
     // pure-units water polygon offset.
     this.renderer = new THREE.WebGLRenderer({
-      antialias: !mobileLike,
-      precision: 'highp',
+      alpha: false,
+      antialias: this._runtimeProfile.antialias,
+      depth: true,
+      failIfMajorPerformanceCaveat: false,
+      precision: this._runtimeProfile.precision,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
       powerPreference: this._runtimeProfile.powerPreference,
+      stencil: false,
     });
     this._rendererContextToken = acquireMainRendererContext('ThreeApp', this);
     // Three.js checks program/shader info logs on first use by default.
@@ -139,7 +146,9 @@ export class ThreeApp {
     // keep them opt-in for shader debugging.
     this.renderer.debug.checkShaderErrors = GAME_DIAGNOSTICS.shaderErrorChecks;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMapping = this._runtimeProfile.highQualityToneMapping
+      ? THREE.ACESFilmicToneMapping
+      : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this._nativePixelRatio = Math.max(1, window.devicePixelRatio || 1);
     this._dynamicPixelRatioEnabled = this._runtimeProfile.dynamicPixelRatio;
@@ -167,7 +176,7 @@ export class ThreeApp {
     // per-frame overhead.
     // Mobile WebKit has limited GPU-process headroom during startup, so
     // avoid the PMREM render-target burst on mobile-like browsers.
-    if (!mobileLike) {
+    if (this._runtimeProfile.environmentLighting) {
       const pmrem = new THREE.PMREMGenerator(this.renderer);
       const roomEnv = new RoomEnvironment();
       this._environmentTexture = pmrem.fromScene(roomEnv, 0.04).texture;
@@ -232,9 +241,11 @@ export class ThreeApp {
     this.world = new THREE.Group();
     this.scene.add(this.world);
 
+    const gl = this.renderer.getContext();
     // Real-GPU-time telemetry. No-op on browsers without the extension
     // (the GpuTimerQuery constructor probes and records isSupported()).
-    this.gpuTimer = new GpuTimerQuery(this.renderer.getContext());
+    this.gpuTimer = new GpuTimerQuery(gl);
+    this.frameProfiler = new WebGlFrameProfiler(gl, GAME_DIAGNOSTICS.webglBufferUploads);
 
     this._resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -277,6 +288,10 @@ export class ThreeApp {
     };
   }
 
+  getWebGlFrameProfile(): WebGlFrameProfile {
+    return this.frameProfiler.getLatest();
+  }
+
   setDrawSuspended(suspended: boolean): void {
     this._drawSuspended = suspended;
   }
@@ -314,9 +329,13 @@ export class ThreeApp {
       if (this._renderEnabled && !this._drawSuspended) {
         // Wrap the render call so the GPU timer captures true draw-time
         // (only the render; update-callback work is CPU-side).
+        this.frameProfiler.beginFrame();
         this.gpuTimer.begin();
+        const renderStart = performance.now();
         this.renderer.render(this.scene, this.camera);
+        const rendererRenderMs = performance.now() - renderStart;
         this.gpuTimer.end();
+        this.frameProfiler.endFrame(this.renderer, rendererRenderMs);
         // Poll results from any queries that resolved during this frame —
         // results arrive 2-3 frames after the begin/end pair, so `getGpuMs()`
         // always reflects slightly stale data (acceptable for a UI readout).
@@ -387,6 +406,7 @@ export class ThreeApp {
     this.orbit.destroy();
     this._resizeObserver.disconnect();
     this.gpuTimer.destroy();
+    this.frameProfiler.destroy();
     this.scene.environment = null;
     this.scene.background = null;
     this._environmentTexture?.dispose();

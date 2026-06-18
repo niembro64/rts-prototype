@@ -1210,6 +1210,7 @@ export class RtsScene3D {
 
   public getFrameTiming(): RtsScene3DFrameTiming {
     const renderRuntime = this.threeApp.getRenderRuntimeTelemetry();
+    const webglProfile = this.threeApp.getWebGlFrameProfile();
     return this.frameTelemetry.getFrameTiming({
       gpuTimerMs: this.clientRenderEnabled ? this.threeApp.gpuTimer.getGpuMs() : 0,
       gpuTimerSupported: this.threeApp.gpuTimer.isSupported(),
@@ -1217,6 +1218,17 @@ export class RtsScene3D {
       nativePixelRatio: renderRuntime.nativePixelRatio,
       activePixelRatio: renderRuntime.activePixelRatio,
       dynamicPixelRatioEnabled: renderRuntime.dynamicPixelRatioEnabled,
+      webglBufferProfilerSupported: webglProfile.bufferProfilerSupported,
+      webglRendererRenderMs: webglProfile.rendererRenderMs,
+      webglDrawCalls: webglProfile.drawCalls,
+      webglTriangles: webglProfile.triangles,
+      webglPoints: webglProfile.points,
+      webglLines: webglProfile.lines,
+      webglGeometries: webglProfile.geometries,
+      webglTextures: webglProfile.textures,
+      webglBufferDataCalls: webglProfile.bufferDataCalls,
+      webglBufferSubDataCalls: webglProfile.bufferSubDataCalls,
+      webglBufferUploadBytes: webglProfile.bufferUploadBytes,
     });
   }
 

@@ -185,7 +185,7 @@ export async function startRealBattleWithPlayers(
     gameConnection = backend.gameConnection;
 
     backend.start();
-    options.hasServer.value = createdServer !== null;
+    options.hasServer.value = createdServer !== null || backend.ownsServer === true;
     await reportLoadingProgress(
       REAL_BATTLE_LOAD_PROGRESS.connectionReady,
       createdServer !== null ? 'Connecting local player' : 'Connecting to host',

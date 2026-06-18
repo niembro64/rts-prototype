@@ -300,6 +300,46 @@ type Mark = {
   removed: boolean;
 };
 
+type DirtySlotSpan = {
+  minSlot: number;
+  maxSlot: number;
+};
+
+function createDirtySlotSpan(): DirtySlotSpan {
+  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
+}
+
+function markDirtySlot(span: DirtySlotSpan, slot: number): void {
+  if (slot < span.minSlot) span.minSlot = slot;
+  if (slot > span.maxSlot) span.maxSlot = slot;
+}
+
+function clearDirtySlotSpan(span: DirtySlotSpan): void {
+  span.minSlot = Number.POSITIVE_INFINITY;
+  span.maxSlot = -1;
+}
+
+function uploadDirtySlotSpan(
+  attr: THREE.BufferAttribute,
+  span: DirtySlotSpan,
+  componentsPerSlot: number,
+  activeSlots: number,
+): void {
+  if (span.maxSlot < span.minSlot || activeSlots <= 0) {
+    clearDirtySlotSpan(span);
+    return;
+  }
+  const minSlot = Math.max(0, Math.min(span.minSlot, activeSlots - 1));
+  const maxSlot = Math.max(minSlot, Math.min(span.maxSlot, activeSlots - 1));
+  attr.clearUpdateRanges();
+  attr.addUpdateRange(
+    minSlot * componentsPerSlot,
+    (maxSlot - minSlot + 1) * componentsPerSlot,
+  );
+  attr.needsUpdate = true;
+  clearDirtySlotSpan(span);
+}
+
 export class GroundPrint3D {
   private root: THREE.Group;
 
@@ -316,10 +356,10 @@ export class GroundPrint3D {
   private colAttr: THREE.BufferAttribute;
   private uvAttr: THREE.BufferAttribute;
   private shapeAttr: THREE.BufferAttribute;
-  private posDirty = false;
+  private readonly posDirty = createDirtySlotSpan();
   private colDirty = false;
-  private uvDirty = false;
-  private shapeDirty = false;
+  private readonly uvDirty = createDirtySlotSpan();
+  private readonly shapeDirty = createDirtySlotSpan();
 
   private marks: Mark[] = [];
   private trails = new Map<TrailKey, TrailState>();
@@ -641,9 +681,9 @@ export class GroundPrint3D {
     const mark = this.allocateMark();
     const corners: RibbonQuadCorners = { sLx, sLz, sRx, sRz, eRx, eRz, eLx, eLz };
     writeDrapedQuadXZ(this.positions, mark.slot, this.markY, corners);
+    markDirtySlot(this.posDirty, mark.slot);
     this.writeCircleMask(mark.slot);
     writeQuadRgba(this.colors, mark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
-    this.posDirty = true;
     this.colDirty = true;
 
     state.lastX = fx;
@@ -697,11 +737,12 @@ export class GroundPrint3D {
         corners.sLx,
         corners.sLz,
       );
+      markDirtySlot(this.posDirty, prev!.slot);
     }
     writeDrapedQuadXZ(this.positions, newMark.slot, this.markY, corners);
+    markDirtySlot(this.posDirty, newMark.slot);
     this.writeQuadMask(newMark.slot);
     writeQuadRgba(this.colors, newMark.slot, PRINT_LIN.r, PRINT_LIN.g, PRINT_LIN.b, PRINT_INITIAL_ALPHA);
-    this.posDirty = true;
     this.colDirty = true;
 
     state.lastEmitX = endX;
@@ -745,8 +786,8 @@ export class GroundPrint3D {
     const shapeBase = slot * 4;
     for (let i = 0; i < 8; i++) uv[uvBase + i] = 0;
     for (let i = 0; i < 4; i++) shape[shapeBase + i] = 0;
-    this.uvDirty = true;
-    this.shapeDirty = true;
+    markDirtySlot(this.uvDirty, slot);
+    markDirtySlot(this.shapeDirty, slot);
   }
 
   private writeCircleMask(slot: number): void {
@@ -759,8 +800,8 @@ export class GroundPrint3D {
     uv[uvBase + 6] = -1; uv[uvBase + 7] =  1;
     const shapeBase = slot * 4;
     for (let i = 0; i < 4; i++) shape[shapeBase + i] = 1;
-    this.uvDirty = true;
-    this.shapeDirty = true;
+    markDirtySlot(this.uvDirty, slot);
+    markDirtySlot(this.shapeDirty, slot);
   }
 
   /** Swap-pop deletion: copy the last mark's data into slot `i`,
@@ -778,10 +819,10 @@ export class GroundPrint3D {
       copyQuadSlot(this.markShapes, 4, last, i);
       moved.slot = i;
       this.marks[i] = moved;
-      this.posDirty = true;
+      markDirtySlot(this.posDirty, i);
       this.colDirty = true;
-      this.uvDirty = true;
-      this.shapeDirty = true;
+      markDirtySlot(this.uvDirty, i);
+      markDirtySlot(this.shapeDirty, i);
     }
     this.marks.pop();
     this.geometry.setDrawRange(0, this.marks.length * 6);
@@ -796,41 +837,28 @@ export class GroundPrint3D {
     this.marks.length = 0;
     this.geometry.setDrawRange(0, 0);
     for (const state of this.trails.values()) state.prevMark = null;
-    this.posDirty = false;
+    clearDirtySlotSpan(this.posDirty);
     this.colDirty = false;
+    clearDirtySlotSpan(this.uvDirty);
+    clearDirtySlotSpan(this.shapeDirty);
   }
 
   private flushBuffers(): void {
     if (this.marks.length > 0) {
-      if (this.posDirty) {
-        this.posAttr.clearUpdateRanges();
-        this.posAttr.addUpdateRange(0, this.marks.length * 12);
-        this.posAttr.needsUpdate = true;
-        this.posDirty = false;
-      }
+      uploadDirtySlotSpan(this.posAttr, this.posDirty, 12, this.marks.length);
       if (this.colDirty) {
         this.colAttr.clearUpdateRanges();
         this.colAttr.addUpdateRange(0, this.marks.length * 16);
         this.colAttr.needsUpdate = true;
         this.colDirty = false;
       }
-      if (this.uvDirty) {
-        this.uvAttr.clearUpdateRanges();
-        this.uvAttr.addUpdateRange(0, this.marks.length * 8);
-        this.uvAttr.needsUpdate = true;
-        this.uvDirty = false;
-      }
-      if (this.shapeDirty) {
-        this.shapeAttr.clearUpdateRanges();
-        this.shapeAttr.addUpdateRange(0, this.marks.length * 4);
-        this.shapeAttr.needsUpdate = true;
-        this.shapeDirty = false;
-      }
+      uploadDirtySlotSpan(this.uvAttr, this.uvDirty, 8, this.marks.length);
+      uploadDirtySlotSpan(this.shapeAttr, this.shapeDirty, 4, this.marks.length);
     } else {
-      this.posDirty = false;
+      clearDirtySlotSpan(this.posDirty);
       this.colDirty = false;
-      this.uvDirty = false;
-      this.shapeDirty = false;
+      clearDirtySlotSpan(this.uvDirty);
+      clearDirtySlotSpan(this.shapeDirty);
     }
   }
 

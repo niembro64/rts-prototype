@@ -216,7 +216,8 @@ export class ProjectileRenderer3D {
   private readonly finRollQuat = new THREE.Quaternion();
   private readonly finQuat = new THREE.Quaternion();
   private readonly finColor = new THREE.Color();
-  private finColorDirty = false;
+  private finColorDirtyMin = Number.POSITIVE_INFINITY;
+  private finColorDirtyMax = -1;
 
   constructor(options: ProjectileRenderer3DOptions) {
     this.world = options.world;
@@ -394,7 +395,7 @@ export class ProjectileRenderer3D {
               this.finColors[colorOffset] = this.finColor.r;
               this.finColors[colorOffset + 1] = this.finColor.g;
               this.finColors[colorOffset + 2] = this.finColor.b;
-              this.finColorDirty = true;
+              this.markFinColorDirty(finCount);
             }
           }
           finCount++;
@@ -417,11 +418,17 @@ export class ProjectileRenderer3D {
     if (finCount > 0) {
       this.markInstanceMatrixRange(this.finInstanced, 0, finCount - 1);
     }
-    if (this.finColorDirty && this.finInstanced.instanceColor) {
+    if (
+      this.finColorDirtyMax >= this.finColorDirtyMin &&
+      this.finInstanced.instanceColor
+    ) {
+      const min = this.finColorDirtyMin;
+      const max = this.finColorDirtyMax;
       this.finInstanced.instanceColor.clearUpdateRanges();
-      this.finInstanced.instanceColor.addUpdateRange(0, finCount * 3);
+      this.finInstanced.instanceColor.addUpdateRange(min * 3, (max - min + 1) * 3);
       this.finInstanced.instanceColor.needsUpdate = true;
-      this.finColorDirty = false;
+      this.finColorDirtyMin = Number.POSITIVE_INFINITY;
+      this.finColorDirtyMax = -1;
     }
 
     if (pruneProjectiles) {
@@ -941,6 +948,11 @@ export class ProjectileRenderer3D {
     attr.clearUpdateRanges();
     attr.addUpdateRange(minSlot * 16, (maxSlot - minSlot + 1) * 16);
     attr.needsUpdate = true;
+  }
+
+  private markFinColorDirty(slot: number): void {
+    if (slot < this.finColorDirtyMin) this.finColorDirtyMin = slot;
+    if (slot > this.finColorDirtyMax) this.finColorDirtyMax = slot;
   }
 }
 

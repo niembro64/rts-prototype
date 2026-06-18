@@ -122,6 +122,17 @@ export type GameCanvasClientControlBarModel = {
   readonly nativePixelRatio: number;
   readonly activePixelRatio: number;
   readonly dynamicPixelRatioEnabled: boolean;
+  readonly webglBufferProfilerSupported: boolean;
+  readonly webglRendererRenderMs: number;
+  readonly webglDrawCalls: number;
+  readonly webglTriangles: number;
+  readonly webglPoints: number;
+  readonly webglLines: number;
+  readonly webglGeometries: number;
+  readonly webglTextures: number;
+  readonly webglBufferDataCalls: number;
+  readonly webglBufferSubDataCalls: number;
+  readonly webglBufferUploadBytes: number;
   readonly rendererContextMainCount: number;
   readonly rendererContextAuxiliaryCount: number;
   readonly rendererContextAuxiliaryBudget: number;

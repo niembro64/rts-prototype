@@ -95,6 +95,17 @@ function fmtRatio4(value: number): string {
   return '9k';
 }
 
+function fmtCount4(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value < 999.5) return Math.round(value).toString();
+  const thousands = value / 1000;
+  if (thousands < 9.95) return `${thousands.toFixed(1)}k`;
+  if (thousands < 999.5) return `${Math.round(thousands)}k`;
+  const millions = thousands / 1000;
+  if (millions < 9.95) return `${millions.toFixed(1)}m`;
+  return `${Math.round(millions)}m`;
+}
+
 const props = defineProps<{
   model: GameCanvasClientControlBarModel;
 }>();
@@ -375,7 +386,7 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="`Client GPU - source: ${model.gpuSourceLabel}. Runtime ${model.runtimeProfile}; DPR ${fmt4(model.activePixelRatio)} / native ${fmt4(model.nativePixelRatio)} (${model.dynamicPixelRatioEnabled ? 'adaptive' : 'stable'}). Raw renderMs avg/hi ${fmt4(model.renderMsAvg)} / ${fmt4(model.renderMsHi)} ms. Timer-query (when supported) shows the actual GPU-side execution time in milliseconds; otherwise shows renderer.render() wall-clock which is mostly CPU draw-call submission. WebGL contexts: main ${model.rendererContextMainCount}, auxiliary ${model.rendererContextAuxiliaryCount}/${model.rendererContextAuxiliaryBudget}, denied auxiliary ${model.rendererContextDeniedAuxiliaryCount}.`">GPU:</BarLabel>
+        <BarLabel :title="`Client GPU - source: ${model.gpuSourceLabel}. Runtime ${model.runtimeProfile}; DPR ${fmt4(model.activePixelRatio)} / native ${fmt4(model.nativePixelRatio)} (${model.dynamicPixelRatioEnabled ? 'adaptive' : 'stable'}). Scene render-prep avg/hi ${fmt4(model.renderMsAvg)} / ${fmt4(model.renderMsHi)} ms. WebGL submit ${fmt4(model.webglRendererRenderMs)} ms. Timer-query (when supported) shows actual GPU-side execution time. WebGL contexts: main ${model.rendererContextMainCount}, auxiliary ${model.rendererContextAuxiliaryCount}/${model.rendererContextAuxiliaryBudget}, denied auxiliary ${model.rendererContextDeniedAuxiliaryCount}.`">GPU:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -397,6 +408,30 @@ function resetEveryCustomHotkey(): void {
               <div class="stat-bar-fill" :style="msBarStyle(model.renderMsHi)"></div>
             </div>
           </div>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <div class="fps-stats">
+          <BarLabel :title="`Three/WebGL workload from the last completed draw. Draw calls ${model.webglDrawCalls}, triangles ${model.webglTriangles}, points ${model.webglPoints}, lines ${model.webglLines}, retained geometries ${model.webglGeometries}, textures ${model.webglTextures}.`">DRAW:</BarLabel>
+          <span class="fps-value">{{ fmtCount4(model.webglDrawCalls) }}</span>
+          <span class="fps-label">dc</span>
+          <span class="fps-value">{{ fmtCount4(model.webglTriangles) }}</span>
+          <span class="fps-label">tri</span>
+          <span class="fps-value">{{ fmtCount4(model.webglPoints) }}</span>
+          <span class="fps-label">pt</span>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <div class="fps-stats">
+          <BarLabel :title="`WebGL buffer upload pressure from bufferData/bufferSubData during the last completed draw. Profiler ${model.webglBufferProfilerSupported ? 'active' : 'unavailable'}. bufferData calls ${model.webglBufferDataCalls}, bufferSubData calls ${model.webglBufferSubDataCalls}, upload bytes ${fmtBytes4(model.webglBufferUploadBytes)}, WebGL submit ${fmt4(model.webglRendererRenderMs)} ms.`">UPLOAD:</BarLabel>
+          <span class="fps-value">{{ fmtBytes4(model.webglBufferUploadBytes) }}</span>
+          <span class="fps-label">buf</span>
+          <span class="fps-value">{{ fmtCount4(model.webglBufferDataCalls + model.webglBufferSubDataCalls) }}</span>
+          <span class="fps-label">calls</span>
+          <span class="fps-value">{{ fmt4(model.webglRendererRenderMs) }}</span>
+          <span class="fps-label">ms</span>
         </div>
       </BarControlGroup>
       <BarControlGroup>

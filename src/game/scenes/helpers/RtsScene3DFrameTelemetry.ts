@@ -22,6 +22,17 @@ export type RtsScene3DFrameTiming = {
   nativePixelRatio: number;
   activePixelRatio: number;
   dynamicPixelRatioEnabled: boolean;
+  webglBufferProfilerSupported: boolean;
+  webglRendererRenderMs: number;
+  webglDrawCalls: number;
+  webglTriangles: number;
+  webglPoints: number;
+  webglLines: number;
+  webglGeometries: number;
+  webglTextures: number;
+  webglBufferDataCalls: number;
+  webglBufferSubDataCalls: number;
+  webglBufferUploadBytes: number;
 };
 
 export type RtsScene3DFrameTimingGpuSample = {
@@ -31,6 +42,17 @@ export type RtsScene3DFrameTimingGpuSample = {
   nativePixelRatio: number;
   activePixelRatio: number;
   dynamicPixelRatioEnabled: boolean;
+  webglBufferProfilerSupported: boolean;
+  webglRendererRenderMs: number;
+  webglDrawCalls: number;
+  webglTriangles: number;
+  webglPoints: number;
+  webglLines: number;
+  webglGeometries: number;
+  webglTextures: number;
+  webglBufferDataCalls: number;
+  webglBufferSubDataCalls: number;
+  webglBufferUploadBytes: number;
 };
 
 export class RtsScene3DFrameTelemetry {
@@ -102,6 +124,17 @@ export class RtsScene3DFrameTelemetry {
       nativePixelRatio: sample.nativePixelRatio,
       activePixelRatio: sample.activePixelRatio,
       dynamicPixelRatioEnabled: sample.dynamicPixelRatioEnabled,
+      webglBufferProfilerSupported: sample.webglBufferProfilerSupported,
+      webglRendererRenderMs: sample.webglRendererRenderMs,
+      webglDrawCalls: sample.webglDrawCalls,
+      webglTriangles: sample.webglTriangles,
+      webglPoints: sample.webglPoints,
+      webglLines: sample.webglLines,
+      webglGeometries: sample.webglGeometries,
+      webglTextures: sample.webglTextures,
+      webglBufferDataCalls: sample.webglBufferDataCalls,
+      webglBufferSubDataCalls: sample.webglBufferSubDataCalls,
+      webglBufferUploadBytes: sample.webglBufferUploadBytes,
     };
   }
 

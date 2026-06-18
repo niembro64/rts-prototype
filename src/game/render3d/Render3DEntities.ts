@@ -269,6 +269,7 @@ export class Render3DEntities {
     camera: THREE.PerspectiveCamera,
     getViewportHeight: () => number,
     metalDeposits: readonly MetalDeposit[],
+    rendererCanvas?: HTMLCanvasElement,
   ) {
     this.world = world;
     this.clientViewState = clientViewState;
@@ -288,7 +289,11 @@ export class Render3DEntities {
       this.resourcePylonFlows,
     );
     this.projectileRangeEnvelope = new ProjectileRangeEnvelope3D(this.world, this.clientViewState);
-    this.lodProxyRenderer = new EntityLodProxyRenderer3D(this.world);
+    this.lodProxyRenderer = new EntityLodProxyRenderer3D({
+      world: this.world,
+      camera: this.camera,
+      canvas: rendererCanvas,
+    });
     this.buildingRenderer = new BuildingEntityRenderer3D({
       world: this.world,
       clientViewState: this.clientViewState,
