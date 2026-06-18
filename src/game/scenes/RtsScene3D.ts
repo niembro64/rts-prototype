@@ -21,8 +21,8 @@ import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootst
 import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
-import { simPositionUsesLodProxy3D } from '../render3d/EntityLod3D';
-import { ENTITY_LOD_EMISSION_CUTOFFS } from '@/config';
+import { simPositionUsesLowEmissionLod3D } from '../render3d/EntityLod3D';
+import { EMISSION_LOD_HIGH_TO_LOW_DISTANCES } from '@/config';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
@@ -774,14 +774,13 @@ export class RtsScene3D {
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
       debrisRenderer: this.debrisRenderer,
-      isPositionFarLod: (simX, simY, simZ, radius, emission) =>
-        simPositionUsesLodProxy3D(
+      isPositionLowEmissionLod: (simX, simY, simZ, emission) =>
+        simPositionUsesLowEmissionLod3D(
           this.threeApp.camera,
           simX,
           simY,
           simZ,
-          radius,
-          ENTITY_LOD_EMISSION_CUTOFFS[emission],
+          EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission],
         ),
     });
   }

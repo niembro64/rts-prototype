@@ -12,7 +12,8 @@
   },
   "imposterSegment": {
     "enabled": true,
-    "color": 16777215
+    "color": 14152959,
+    "opacity": 0.24
   },
   "openEndedLine": {
     "extendToInfinity": false,

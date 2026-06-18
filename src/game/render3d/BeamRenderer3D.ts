@@ -18,6 +18,7 @@ import type { GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret } from '@/clientBarConfig';
 import { detachObject, disposeMesh } from './threeUtils';
 import beamConfig from '@/beamConfig.json';
+import type { EntityLodEmission3D } from './EntityLod3D';
 import {
   BEAM_ENDPOINT_VERTEX_SHADER,
   BEAM_INNER_VISUAL_CONFIG,
@@ -44,7 +45,8 @@ const BEAM_MIN_RADIUS = 0.35;
 const BEAM_RADIUS_SCALE = 0.55;
 const ENDPOINT_MIN_RADIUS = 2.5;
 const DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
-const DEFAULT_IMPOSTER_SEGMENT_COLOR = 0xffffff;
+const DEFAULT_IMPOSTER_SEGMENT_COLOR = 0xd7f4ff;
+const DEFAULT_IMPOSTER_SEGMENT_OPACITY = 0.24;
 
 export type TurretMountResolver = {
   getTurretMountWorldState(
@@ -61,12 +63,20 @@ type OpenEndedLineConfig = {
 type BeamImposterSegmentConfig = {
   enabled: boolean;
   color: number;
+  opacity: number;
 };
 
 type BeamConfigFile = {
   openEndedLine?: Partial<OpenEndedLineConfig>;
   imposterSegment?: Partial<BeamImposterSegmentConfig>;
 };
+
+type BeamEmissionLodResolver = (
+  entity: Entity,
+  emission: EntityLodEmission3D,
+) => boolean;
+
+const NEVER_EMISSION_LOW_LOD: BeamEmissionLodResolver = () => false;
 
 const rawBeamConfig = beamConfig as unknown as BeamConfigFile;
 
@@ -81,9 +91,17 @@ const OPEN_ENDED_LINE_CONFIG: OpenEndedLineConfig = {
       : DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH,
 };
 
+const configuredImposterOpacity = rawBeamConfig.imposterSegment?.opacity;
+
 const BEAM_IMPOSTER_SEGMENT_CONFIG: BeamImposterSegmentConfig = {
   enabled: rawBeamConfig.imposterSegment?.enabled ?? true,
   color: rawBeamConfig.imposterSegment?.color ?? DEFAULT_IMPOSTER_SEGMENT_COLOR,
+  opacity: typeof configuredImposterOpacity === 'number' &&
+    Number.isFinite(configuredImposterOpacity) &&
+    configuredImposterOpacity >= 0 &&
+    configuredImposterOpacity <= 1
+    ? configuredImposterOpacity
+    : DEFAULT_IMPOSTER_SEGMENT_OPACITY,
 };
 
 const BEAM_VISUAL_LAYERS: readonly {
@@ -218,9 +236,10 @@ export class BeamRenderer3D {
     const imposterSegmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
     const imposterSegmentMat = new THREE.MeshBasicMaterial({
       color: BEAM_IMPOSTER_SEGMENT_CONFIG.color,
-      transparent: false,
+      transparent: true,
+      opacity: BEAM_IMPOSTER_SEGMENT_CONFIG.opacity,
       depthTest: true,
-      depthWrite: true,
+      depthWrite: false,
     });
     this.imposterSegmentMesh = new THREE.InstancedMesh(
       imposterSegmentGeom,
@@ -339,6 +358,7 @@ export class BeamRenderer3D {
     _graphicsConfig?: GraphicsConfig,
     contentVersion?: number,
     turretMountResolver?: TurretMountResolver,
+    isEntityEmissionLowLod: BeamEmissionLodResolver = NEVER_EMISSION_LOW_LOD,
   ): void {
     if (projectiles.length === 0 && !this.hasActiveVisuals()) return;
     tickBeamWaveTime();
@@ -384,6 +404,10 @@ export class BeamRenderer3D {
         BEAM_MIN_RADIUS,
         profile.lineRadius * BEAM_RADIUS_SCALE,
       );
+      const useLowLodSegments =
+        BEAM_IMPOSTER_SEGMENT_CONFIG.enabled &&
+        isEntityEmissionLowLod(e, 'beamSegments');
+      const useLowLodEndpoints = isEntityEmissionLowLod(e, 'beamEndpoints');
 
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched
@@ -448,7 +472,18 @@ export class BeamRenderer3D {
         const dy = by - ay;
         const dz = bz - az;
         const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (segIdx < BEAM_SEGMENT_CAP) {
+        if (useLowLodSegments) {
+          if (imposterSegIdx < BEAM_IMPOSTER_SEGMENT_CAP) {
+            this.writeImposterSegment(
+              imposterSegIdx,
+              ax, ay, az,
+              bx, by, bz,
+              cylRadius,
+              segLen,
+            );
+            imposterSegIdx++;
+          }
+        } else if (segIdx < BEAM_SEGMENT_CAP) {
           const phase = beamWaveFlowPhase(e.id, segIdx);
           for (let layerIndex = 0; layerIndex < layerCount; layerIndex++) {
             const layer = layers[layerIndex];
@@ -464,19 +499,9 @@ export class BeamRenderer3D {
           }
           segIdx++;
         }
-        if (BEAM_IMPOSTER_SEGMENT_CONFIG.enabled && imposterSegIdx < BEAM_IMPOSTER_SEGMENT_CAP) {
-          this.writeImposterSegment(
-            imposterSegIdx,
-            ax, ay, az,
-            bx, by, bz,
-            cylRadius,
-            segLen,
-          );
-          imposterSegIdx++;
-        }
       }
 
-      if (proj.endpointDamageable !== false) {
+      if (!useLowLodEndpoints && proj.endpointDamageable !== false) {
         if (endpointIdx < BEAM_ENDPOINT_CAP) {
           const damageSphereRadius = Math.max(
             ENDPOINT_MIN_RADIUS,
@@ -521,7 +546,8 @@ export class BeamRenderer3D {
     }
 
     this.activeImposterSegmentCount = imposterSegIdx;
-    this.imposterSegmentMesh.visible = BEAM_IMPOSTER_SEGMENT_CONFIG.enabled;
+    this.imposterSegmentMesh.visible =
+      BEAM_IMPOSTER_SEGMENT_CONFIG.enabled && imposterSegIdx > 0;
     this.imposterSegmentMesh.count = imposterSegIdx;
     if (imposterSegIdx > 0) {
       this.imposterSegmentMesh.instanceMatrix.clearUpdateRanges();

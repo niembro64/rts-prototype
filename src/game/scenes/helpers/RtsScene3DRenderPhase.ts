@@ -76,7 +76,7 @@ import {
 import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
   ENTITY_HUD_FADE_END_DISTANCE_FRAC,
-  ENTITY_LOD_EMISSION_CUTOFFS,
+  EMISSION_LOD_HIGH_TO_LOW_DISTANCES,
 } from '@/config';
 import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
 import type { FootprintBounds, FootprintQuad, ViewportFootprint } from '../../ViewportFootprint';
@@ -85,6 +85,7 @@ import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
 import {
   EntityLodHysteresis3D,
   type EntityLodEmission3D,
+  entityEmissionUsesLowLodDistance3D,
 } from '../../render3d/EntityLod3D';
 
 export type RtsScene3DRenderPhaseResources = {
@@ -422,6 +423,7 @@ export class RtsScene3DRenderPhase {
       graphicsConfig,
       this.clientViewState.getLineProjectileRenderVersion(),
       entityRenderer,
+      (entity, emission) => this.entityEmissionUsesFarLod(entity, emission),
     );
 
     waterRenderer.update(
@@ -655,11 +657,10 @@ export class RtsScene3DRenderPhase {
     entity: Entity,
     emission: EntityLodEmission3D,
   ): boolean {
-    return this.entityLod.entityEmissionUsesLodProxy(
+    return entityEmissionUsesLowLodDistance3D(
       this.threeApp.camera,
       entity,
-      emission,
-      ENTITY_LOD_EMISSION_CUTOFFS[emission],
+      EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission],
     );
   }
 
@@ -668,7 +669,7 @@ export class RtsScene3DRenderPhase {
     out: Entity[],
     emission: EntityLodEmission3D,
   ): readonly Entity[] {
-    if (ENTITY_LOD_EMISSION_CUTOFFS[emission] === null) return projectiles;
+    if (EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission] === null) return projectiles;
     out.length = 0;
     for (let i = 0; i < projectiles.length; i++) {
       const projectile = projectiles[i];
@@ -682,7 +683,7 @@ export class RtsScene3DRenderPhase {
     out: SprayTarget[],
     emission: EntityLodEmission3D,
   ): readonly SprayTarget[] {
-    if (ENTITY_LOD_EMISSION_CUTOFFS[emission] === null) return sprays;
+    if (EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission] === null) return sprays;
     out.length = 0;
     for (let i = 0; i < sprays.length; i++) {
       const spray = sprays[i];

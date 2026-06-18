@@ -420,7 +420,8 @@ export const ENTITY_LOD_PROXY_UNIT_MIN_PIXELS = lodConfigJson.proxy.units.minPix
 export const ENTITY_LOD_PROXY_UNIT_MAX_PIXELS = lodConfigJson.proxy.units.maxPixels;
 export const ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS = lodConfigJson.proxy.buildings.minPixels;
 export const ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS = lodConfigJson.proxy.buildings.maxPixels;
-export const ENTITY_LOD_EMISSION_CUTOFFS = lodConfigJson.emissions;
+export const EMISSION_LOD_HIGH_TO_LOW_DISTANCES =
+  lodConfigJson.emissionHighToLowDistances;
 export const ENTITY_LOD_EFFECT_RADIUS_FALLBACKS = lodConfigJson.effectRadiusFallbacks;
 
 // Render-only water surface tuning. `color` is the tint of the flat

@@ -37,6 +37,8 @@ export type EntityLodEmission3D =
   | 'contactShadows'
   | 'groundPrints'
   | 'lineProjectiles'
+  | 'beamSegments'
+  | 'beamEndpoints'
   | 'projectileCores'
   | 'projectileTrailsAndFins'
   | 'projectileBurnMarks'
@@ -50,6 +52,7 @@ export type EntityLodEmission3D =
   | 'projectileExpireImpacts';
 
 export type EntityLodCutoffDistance3D = number | null;
+export type EmissionLodHighToLowDistance3D = number | null;
 
 function finitePositiveRadius(...values: Array<number | null | undefined>): number {
   let radius = 0;
@@ -189,6 +192,33 @@ export function simPositionUsesLodProxy3D(
     );
 }
 
+export function entityEmissionUsesLowLodDistance3D(
+  camera: THREE.Camera,
+  entity: Entity,
+  highToLowDistance: EmissionLodHighToLowDistance3D,
+): boolean {
+  return simPositionUsesLowEmissionLod3D(
+    camera,
+    entity.transform.x,
+    entity.transform.y,
+    entity.transform.z,
+    highToLowDistance,
+  );
+}
+
+export function simPositionUsesLowEmissionLod3D(
+  camera: THREE.Camera,
+  simX: number,
+  simY: number,
+  simZ: number,
+  highToLowDistance: EmissionLodHighToLowDistance3D,
+): boolean {
+  if (highToLowDistance === null) return false;
+  if (!Number.isFinite(highToLowDistance) || highToLowDistance < 0) return false;
+  return simPositionCameraDistanceSq3D(camera, simX, simY, simZ) >
+    highToLowDistance * highToLowDistance;
+}
+
 export class EntityLodHysteresis3D {
   private readonly proxyIdsByChannel = new Map<string, Set<EntityId>>();
   private readonly lastSeenFrameByChannel = new Map<string, Map<EntityId, number>>();
@@ -279,15 +309,6 @@ export class EntityLodHysteresis3D {
     if (useProxy) proxyIds.add(entity.id);
     else proxyIds.delete(entity.id);
     return useProxy;
-  }
-
-  entityEmissionUsesLodProxy(
-    camera: THREE.Camera,
-    entity: Entity,
-    emission: EntityLodEmission3D,
-    fullDetailDistance: EntityLodCutoffDistance3D,
-  ): boolean {
-    return this.entityUsesLodProxy(camera, entity, emission, fullDetailDistance);
   }
 
   private deleteChannelEntity(channel: string, entityId: EntityId): void {

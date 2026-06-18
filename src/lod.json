@@ -32,7 +32,7 @@
       "maxPixels": 72
     }
   },
-  "emissions": {
+  "emissionHighToLowDistances": {
     "bodyHud": 6000,
     "bodyNames": 6000,
     "turretNames": 6000,
@@ -40,6 +40,8 @@
     "contactShadows": 6000,
     "groundPrints": 6000,
     "lineProjectiles": null,
+    "beamSegments": 6000,
+    "beamEndpoints": 6000,
     "projectileCores": null,
     "projectileTrailsAndFins": 100000,
     "projectileBurnMarks": 6000,
