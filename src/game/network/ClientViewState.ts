@@ -107,6 +107,7 @@ import type {
   BuildingRenderPacket3D,
   UnitRenderPacket3D,
 } from '../render3d/EntityRenderPackets3D';
+import type { EntityLodEmission3D } from '../render3d/EntityLod3D';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -150,6 +151,7 @@ export type ClientViewRenderPacketOptions3D = {
   lookupPlayerName: (id: PlayerId) => string | null;
   getGroundPrintLocomotionMesh: (entityId: EntityId) => Locomotion3DMesh;
   isEntityFarLod?: (entity: Entity) => boolean;
+  isEntityEmissionFarLod?: (entity: Entity, emission: EntityLodEmission3D) => boolean;
 };
 
 export type ClientSnapshotApplyStats = {
@@ -1179,15 +1181,27 @@ export class ClientViewState {
       const entity = units[i];
       const farLod = this.entityUsesFarLod3D(entity, options);
       this.pushUnitRenderRow3D(entity, farLod, out);
-      if (!farLod && options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
+      if (
+        !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
+        options.includeBodyHud &&
+        this.entityNeedsBodyHud3D(entity)
+      ) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
         this.pushBodyHudEntity3D(entity, forceVisible, options, out);
       }
-      if (!farLod && options.includeBodyNames) {
+      if (
+        !this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames') &&
+        options.includeBodyNames
+      ) {
         this.pushBodyNamesForEntity3D(entity, options, out);
       }
-      if (!farLod && options.includeShields && entity.unit !== null && entity.combat !== null) {
+      if (
+        options.includeShields &&
+        entity.unit !== null &&
+        entity.combat !== null &&
+        !this.entityEmissionUsesFarLod3D(entity, options, 'shieldFields')
+      ) {
         out.shields.pushUnit(entity, renderScope);
       }
     }
@@ -1195,12 +1209,19 @@ export class ClientViewState {
       const entity = buildings[i];
       const farLod = this.entityUsesFarLod3D(entity, options);
       this.pushBuildingRenderRow3D(entity, farLod, out);
-      if (!farLod && options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
+      if (
+        !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
+        options.includeBodyHud &&
+        this.entityNeedsBodyHud3D(entity)
+      ) {
         const forceVisible = entity === options.hoveredEntity;
         if (forceVisible) hoveredBodyHudPushed = true;
         this.pushBodyHudEntity3D(entity, forceVisible, options, out);
       }
-      if (!farLod && options.includeBodyNames) {
+      if (
+        !this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames') &&
+        options.includeBodyNames
+      ) {
         this.pushBodyNamesForEntity3D(entity, options, out);
       }
     }
@@ -1209,7 +1230,7 @@ export class ClientViewState {
       options.includeBodyHud &&
       options.hoveredEntity !== null &&
       !hoveredBodyHudPushed &&
-      !this.entityUsesFarLod3D(options.hoveredEntity, options)
+      !this.entityEmissionUsesFarLod3D(options.hoveredEntity, options, 'bodyHud')
     ) {
       this.pushBodyHudEntity3D(options.hoveredEntity, true, options, out);
     }
@@ -1393,7 +1414,7 @@ export class ClientViewState {
     let hoveredBodyHudPushed = false;
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (this.entityUsesFarLod3D(entity, options)) continue;
+      if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud')) continue;
       const forceVisible = entity === hoveredEntity;
       if (forceVisible) hoveredBodyHudPushed = true;
       this.pushBodyHudEntity3D(entity, forceVisible, options, out);
@@ -1401,7 +1422,7 @@ export class ClientViewState {
     if (
       hoveredEntity !== null &&
       !hoveredBodyHudPushed &&
-      !this.entityUsesFarLod3D(hoveredEntity, options)
+      !this.entityEmissionUsesFarLod3D(hoveredEntity, options, 'bodyHud')
     ) {
       this.pushBodyHudEntity3D(hoveredEntity, true, options, out);
     }
@@ -1416,7 +1437,7 @@ export class ClientViewState {
     const unit = entity.unit;
     const building = entity.building;
     if (unit === null && building === null) return;
-    if (this.entityUsesFarLod3D(entity, options)) return;
+    if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud')) return;
 
     const type = this.hudTypeOf3D(entity);
     const selected = entity.selectable?.selected === true;
@@ -1464,7 +1485,7 @@ export class ClientViewState {
   ): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!this.entityUsesFarLod3D(entity, options)) {
+      if (!this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames')) {
         this.pushBodyNamesForEntity3D(entity, options, out);
       }
     }
@@ -1475,7 +1496,7 @@ export class ClientViewState {
     options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
-    if (this.entityUsesFarLod3D(entity, options)) return;
+    if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames')) return;
     const type = this.hudTypeOf3D(entity);
     const nameToggle = options.getEntityHudToggle(type, 'name');
     const bodyName = resolveEntityDisplayName(
@@ -1519,7 +1540,7 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < units.length; i++) {
-      if (!this.entityUsesFarLod3D(units[i], options)) {
+      if (!this.entityEmissionUsesFarLod3D(units[i], options, 'shieldFields')) {
         out.shields.pushUnit(units[i], renderScope);
       }
     }
@@ -1535,11 +1556,11 @@ export class ClientViewState {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
     for (let i = 0; i < units.length; i++) {
-      if (this.entityUsesFarLod3D(units[i], options)) continue;
+      if (this.entityEmissionUsesFarLod3D(units[i], options, 'contactShadows')) continue;
       out.contactShadows.pushUnit(units[i], mapWidth, mapHeight, renderScope);
     }
     for (let i = 0; i < buildings.length; i++) {
-      if (this.entityUsesFarLod3D(buildings[i], options)) continue;
+      if (this.entityEmissionUsesFarLod3D(buildings[i], options, 'contactShadows')) continue;
       out.contactShadows.pushBuilding(buildings[i], renderScope);
     }
   }
@@ -1552,7 +1573,7 @@ export class ClientViewState {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
     for (let i = 0; i < units.length; i++) {
-      if (this.entityUsesFarLod3D(units[i], options)) continue;
+      if (this.entityEmissionUsesFarLod3D(units[i], options, 'groundPrints')) continue;
       out.groundPrints.pushUnit(
         units[i],
         options.getGroundPrintLocomotionMesh,
@@ -1567,6 +1588,15 @@ export class ClientViewState {
     options: ClientViewRenderPacketOptions3D,
   ): boolean {
     return options.isEntityFarLod?.(entity) === true;
+  }
+
+  private entityEmissionUsesFarLod3D(
+    entity: Entity,
+    options: ClientViewRenderPacketOptions3D,
+    emission: EntityLodEmission3D,
+  ): boolean {
+    return options.isEntityEmissionFarLod?.(entity, emission)
+      ?? this.entityUsesFarLod3D(entity, options);
   }
 
   getPredictionSupportSurfaceEntities(): readonly Entity[] {

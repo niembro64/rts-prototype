@@ -1,0 +1,57 @@
+{
+  "entity": {
+    "enabled": true,
+    "fullDetailDistance": 3600,
+    "referenceRadius": 30,
+    "minRadius": 1,
+    "hysteresis": {
+      "enabled": true,
+      "enterProxyMultiplier": 1,
+      "exitProxyMultiplier": 0.92
+    }
+  },
+  "proxy": {
+    "enabled": true,
+    "capacity": 32768,
+    "useTeamColor": true,
+    "opacity": 1,
+    "depthTest": false,
+    "depthWrite": false,
+    "renderOrder": 3,
+    "units": {
+      "minPixels": 6,
+      "maxPixels": 42
+    },
+    "buildings": {
+      "minPixels": 10,
+      "maxPixels": 72
+    }
+  },
+  "emissions": {
+    "bodyHud": 3600,
+    "bodyNames": 3600,
+    "turretNames": 3600,
+    "shotNames": 3600,
+    "contactShadows": 3600,
+    "groundPrints": 3600,
+    "lineProjectiles": 3600,
+    "projectileCores": null,
+    "projectileTrailsAndFins": 100000,
+    "projectileBurnMarks": 3600,
+    "projectileSmokeTrails": 3600,
+    "resourceSprays": 3600,
+    "waterSplashes": 3600,
+    "materialDeathExplosions": 3600,
+    "shieldFields": null,
+    "shieldImpacts": null,
+    "hitImpacts": null,
+    "projectileExpireImpacts": null
+  },
+  "effectRadiusFallbacks": {
+    "waterSplash": 2,
+    "deathExplosionMin": 6,
+    "hitImpact": 2,
+    "projectileExpireImpact": 8,
+    "shieldImpact": 30
+  }
+}

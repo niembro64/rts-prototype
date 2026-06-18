@@ -2,9 +2,6 @@
   "landTileGroundLift": 0,
   "waypointGroundLift": 12,
   "horizonRenderExtend": 180000,
-  "entityLod": {
-    "fullDetailDistance": 3600
-  },
   "sun": {
     "azimuthRad": -0.7853981633974483,
     "elevationRad": 0.3769911184307752,

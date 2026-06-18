@@ -56,6 +56,7 @@ import combatConfigJson from './combatConfig.json';
 import beamConfigJson from './beamConfig.json';
 import shieldConfigJson from './shieldConfig.json';
 import worldRenderConfigJson from './worldRenderConfig.json';
+import lodConfigJson from './lod.json';
 import shieldVisualConfigJson from './shieldVisualConfig.json';
 import explosionConfigJson from './explosionConfig.json';
 import entityHudConfigJson from './entityHudConfig.json';
@@ -386,12 +387,39 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
 // camera far plane still controls what actually draws.
 export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
 
+export const LOD_CONFIG = lodConfigJson;
+
 // Entities farther than this camera distance render as cheap hitbox proxies
-// instead of full-detail meshes and effect emitters.
+// instead of full-detail meshes and effect emitters. The distance scales
+// linearly by entity/effect radius relative to `referenceRadius`.
+export const ENTITY_LOD_ENABLED = lodConfigJson.entity.enabled;
 export const ENTITY_LOD_FULL_DETAIL_DISTANCE =
-  worldRenderConfigJson.entityLod.fullDetailDistance;
+  lodConfigJson.entity.fullDetailDistance;
+export const ENTITY_LOD_REFERENCE_RADIUS =
+  lodConfigJson.entity.referenceRadius;
+export const ENTITY_LOD_MIN_RADIUS =
+  lodConfigJson.entity.minRadius;
+export const ENTITY_LOD_HYSTERESIS_ENABLED =
+  lodConfigJson.entity.hysteresis.enabled;
+export const ENTITY_LOD_ENTER_PROXY_DISTANCE_MULTIPLIER =
+  lodConfigJson.entity.hysteresis.enterProxyMultiplier;
+export const ENTITY_LOD_EXIT_PROXY_DISTANCE_MULTIPLIER =
+  lodConfigJson.entity.hysteresis.exitProxyMultiplier;
 export const ENTITY_LOD_FULL_DETAIL_DISTANCE_SQ =
   ENTITY_LOD_FULL_DETAIL_DISTANCE * ENTITY_LOD_FULL_DETAIL_DISTANCE;
+export const ENTITY_LOD_PROXY_ENABLED = lodConfigJson.proxy.enabled;
+export const ENTITY_LOD_PROXY_CAP = lodConfigJson.proxy.capacity;
+export const ENTITY_LOD_PROXY_USE_TEAM_COLOR = lodConfigJson.proxy.useTeamColor;
+export const ENTITY_LOD_PROXY_OPACITY = lodConfigJson.proxy.opacity;
+export const ENTITY_LOD_PROXY_DEPTH_TEST = lodConfigJson.proxy.depthTest;
+export const ENTITY_LOD_PROXY_DEPTH_WRITE = lodConfigJson.proxy.depthWrite;
+export const ENTITY_LOD_PROXY_RENDER_ORDER = lodConfigJson.proxy.renderOrder;
+export const ENTITY_LOD_PROXY_UNIT_MIN_PIXELS = lodConfigJson.proxy.units.minPixels;
+export const ENTITY_LOD_PROXY_UNIT_MAX_PIXELS = lodConfigJson.proxy.units.maxPixels;
+export const ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS = lodConfigJson.proxy.buildings.minPixels;
+export const ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS = lodConfigJson.proxy.buildings.maxPixels;
+export const ENTITY_LOD_EMISSION_CUTOFFS = lodConfigJson.emissions;
+export const ENTITY_LOD_EFFECT_RADIUS_FALLBACKS = lodConfigJson.effectRadiusFallbacks;
 
 // Render-only water surface tuning. `color` is the tint of the flat
 // horizon water plane; `opacity` is material alpha. Lower opacity =

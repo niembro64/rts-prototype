@@ -1,12 +1,21 @@
 import * as THREE from 'three';
+import {
+  ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS,
+  ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS,
+  ENTITY_LOD_PROXY_CAP,
+  ENTITY_LOD_PROXY_DEPTH_TEST,
+  ENTITY_LOD_PROXY_DEPTH_WRITE,
+  ENTITY_LOD_PROXY_OPACITY,
+  ENTITY_LOD_PROXY_RENDER_ORDER,
+  ENTITY_LOD_PROXY_UNIT_MAX_PIXELS,
+  ENTITY_LOD_PROXY_UNIT_MIN_PIXELS,
+  ENTITY_LOD_PROXY_USE_TEAM_COLOR,
+} from '@/config';
 import type { Entity } from '../sim/types';
 import { entityInstanceColorHex } from './EntityInstanceColor3D';
+import { entityLodRadius3D } from './EntityLod3D';
 
-const ENTITY_LOD_PROXY_CAP = 32768;
-const UNIT_PROXY_MIN_PIXELS = 6;
-const UNIT_PROXY_MAX_PIXELS = 42;
-const BUILDING_PROXY_MIN_PIXELS = 10;
-const BUILDING_PROXY_MAX_PIXELS = 72;
+const ENTITY_LOD_PROXY_NEUTRAL_COLOR = 0xffffff;
 
 const POINT_VERTEX_SHADER = `
 attribute vec3 color;
@@ -27,12 +36,13 @@ void main() {
 `;
 
 const POINT_FRAGMENT_SHADER = `
+uniform float uOpacity;
 varying vec3 vColor;
 
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   if (dot(p, p) > 1.0) discard;
-  gl_FragColor = vec4(vColor, 1.0);
+  gl_FragColor = vec4(vColor, uOpacity);
 }
 `;
 
@@ -55,11 +65,13 @@ function createProxyPointMaterial(minPointSize: number, maxPointSize: number): T
       uViewportHeight: { value: 1 },
       uMinPointSize: { value: minPointSize },
       uMaxPointSize: { value: maxPointSize },
+      uOpacity: { value: Math.max(0, Math.min(1, ENTITY_LOD_PROXY_OPACITY)) },
     },
     vertexShader: POINT_VERTEX_SHADER,
     fragmentShader: POINT_FRAGMENT_SHADER,
-    depthTest: false,
-    depthWrite: false,
+    transparent: ENTITY_LOD_PROXY_OPACITY < 1,
+    depthTest: ENTITY_LOD_PROXY_DEPTH_TEST,
+    depthWrite: ENTITY_LOD_PROXY_DEPTH_WRITE,
   });
 }
 
@@ -82,7 +94,7 @@ function createProxyPointBatch(minPointSize: number, maxPointSize: number): Prox
   const material = createProxyPointMaterial(minPointSize, maxPointSize);
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
-  points.renderOrder = 3;
+  points.renderOrder = ENTITY_LOD_PROXY_RENDER_ORDER;
   return {
     points,
     geometry,
@@ -139,12 +151,12 @@ function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
 
 export class EntityLodProxyRenderer3D {
   private readonly unitBatch = createProxyPointBatch(
-    UNIT_PROXY_MIN_PIXELS,
-    UNIT_PROXY_MAX_PIXELS,
+    ENTITY_LOD_PROXY_UNIT_MIN_PIXELS,
+    ENTITY_LOD_PROXY_UNIT_MAX_PIXELS,
   );
   private readonly buildingBatch = createProxyPointBatch(
-    BUILDING_PROXY_MIN_PIXELS,
-    BUILDING_PROXY_MAX_PIXELS,
+    ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS,
+    ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS,
   );
 
   constructor(private readonly world: THREE.Group) {
@@ -161,15 +173,16 @@ export class EntityLodProxyRenderer3D {
     const unit = entity.unit;
     const slot = this.unitBatch.count;
     if (unit === null || slot >= ENTITY_LOD_PROXY_CAP) return;
-    const radius = Math.max(1, unit.radius.hitbox || unit.radius.visual || 15);
     writePoint(
       this.unitBatch,
       slot,
       entity.transform.x,
       entity.transform.z,
       entity.transform.y,
-      radius,
-      entityInstanceColorHex(entity),
+      entityLodRadius3D(entity),
+      ENTITY_LOD_PROXY_USE_TEAM_COLOR
+        ? entityInstanceColorHex(entity)
+        : ENTITY_LOD_PROXY_NEUTRAL_COLOR,
     );
     this.unitBatch.count = slot + 1;
   }
@@ -178,15 +191,16 @@ export class EntityLodProxyRenderer3D {
     const building = entity.building;
     const slot = this.buildingBatch.count;
     if (building === null || slot >= ENTITY_LOD_PROXY_CAP) return;
-    const radius = Math.max(1, Math.hypot(building.width, building.height) * 0.5);
     writePoint(
       this.buildingBatch,
       slot,
       entity.transform.x,
       entity.transform.z,
       entity.transform.y,
-      radius,
-      entityInstanceColorHex(entity),
+      entityLodRadius3D(entity),
+      ENTITY_LOD_PROXY_USE_TEAM_COLOR
+        ? entityInstanceColorHex(entity)
+        : ENTITY_LOD_PROXY_NEUTRAL_COLOR,
     );
     this.buildingBatch.count = slot + 1;
   }

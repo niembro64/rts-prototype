@@ -76,12 +76,16 @@ import {
 import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
   ENTITY_HUD_FADE_END_DISTANCE_FRAC,
+  ENTITY_LOD_EMISSION_CUTOFFS,
 } from '@/config';
 import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
 import type { FootprintBounds, FootprintQuad, ViewportFootprint } from '../../ViewportFootprint';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
-import { entityUsesLodProxy3D } from '../../render3d/EntityLod3D';
+import {
+  EntityLodHysteresis3D,
+  type EntityLodEmission3D,
+} from '../../render3d/EntityLod3D';
 
 export type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
@@ -168,6 +172,7 @@ export class RtsScene3DRenderPhase {
   private readonly groundPrintPacket = new GroundPrintRenderPacket3D();
   private readonly unitRenderPacket = new UnitRenderPacket3D();
   private readonly buildingRenderPacket = new BuildingRenderPacket3D();
+  private readonly entityLod = new EntityLodHysteresis3D();
   private readonly renderEntityLists: RenderPhaseEntityLists = {
     unitRows: this.unitRenderPacket,
     buildingRows: this.buildingRenderPacket,
@@ -309,6 +314,7 @@ export class RtsScene3DRenderPhase {
     const cameraFootprint = this.cameraFootprintSystem.update(this.threeApp.camera);
     const cameraQuad = cameraFootprint.quad;
     const cameraView = this.updateCameraViewBasis(this.threeApp.camera);
+    this.entityLod.beginFrame();
     this.renderScope.setQuad(
       cameraQuad,
       cameraFootprint.bounds,
@@ -366,6 +372,7 @@ export class RtsScene3DRenderPhase {
     const lineProjectiles = this.filterNearLodProjectiles(
       projectileLists.line,
       this.nearLineProjectiles,
+      'lineProjectiles',
     );
     entityRenderer.update(
       renderFrameState,
@@ -375,6 +382,8 @@ export class RtsScene3DRenderPhase {
         buildingRows: entityLists.buildingRows,
         beamAimProjectiles: lineProjectiles,
         projectileRenderProjectiles: projectileLists.traveling,
+        isEntityEmissionFarLod: (entity, emission) =>
+          this.entityEmissionUsesFarLod(entity, emission),
         scoped: this.renderScope.getMode() !== 'all',
       },
       {
@@ -443,7 +452,11 @@ export class RtsScene3DRenderPhase {
     this.burnMarkAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       burnMarkRenderer.update(
-        this.filterNearLodProjectiles(projectileLists.burnMark, this.nearBurnMarkProjectiles),
+        this.filterNearLodProjectiles(
+          projectileLists.burnMark,
+          this.nearBurnMarkProjectiles,
+          'projectileBurnMarks',
+        ),
         this.burnMarkAccumMs,
       );
       this.burnMarkAccumMs = 0;
@@ -467,14 +480,17 @@ export class RtsScene3DRenderPhase {
           this.sprayAccumMs,
         ),
         this.nearPylonFreeLegSprays,
+        'resourceSprays',
       );
       const commanderSprays = this.filterNearLodSprays(
         this.clientViewState.getSprayTargets(),
         this.nearCommanderSprays,
+        'resourceSprays',
       );
       const resourcePylonSprays = this.filterNearLodSprays(
         entityRenderer.getResourcePylonSprayTargets(),
         this.nearResourcePylonSprays,
+        'resourceSprays',
       );
       if (resourcePylonSprays.length > 0) {
         const commanderSprayCount = commanderSprays.length;
@@ -506,7 +522,11 @@ export class RtsScene3DRenderPhase {
     this.smokeTrailAccumMs += effectDtMs;
     if (updateEffectsThisFrame) {
       smokeTrailRenderer.update(
-        this.filterNearLodProjectiles(projectileLists.smokeTrail, this.nearSmokeTrailProjectiles),
+        this.filterNearLodProjectiles(
+          projectileLists.smokeTrail,
+          this.nearSmokeTrailProjectiles,
+          'projectileSmokeTrails',
+        ),
         this.smokeTrailAccumMs,
         this.renderFrameIndex,
         this.renderScope,
@@ -565,6 +585,7 @@ export class RtsScene3DRenderPhase {
       );
     }
 
+    this.entityLod.endFrame();
     return {
       cameraQuad,
       cameraView,
@@ -609,6 +630,8 @@ export class RtsScene3DRenderPhase {
         lookupPlayerName: this.lookupPlayerName,
         getGroundPrintLocomotionMesh: this.getGroundPrintLocomotionMesh,
         isEntityFarLod: (entity) => this.entityUsesFarLod(entity),
+        isEntityEmissionFarLod: (entity, emission) =>
+          this.entityEmissionUsesFarLod(entity, emission),
       },
     );
   }
@@ -625,17 +648,31 @@ export class RtsScene3DRenderPhase {
   }
 
   private entityUsesFarLod(entity: Entity): boolean {
-    return entityUsesLodProxy3D(this.threeApp.camera, entity);
+    return this.entityLod.entityUsesLodProxy(this.threeApp.camera, entity);
+  }
+
+  private entityEmissionUsesFarLod(
+    entity: Entity,
+    emission: EntityLodEmission3D,
+  ): boolean {
+    return this.entityLod.entityEmissionUsesLodProxy(
+      this.threeApp.camera,
+      entity,
+      emission,
+      ENTITY_LOD_EMISSION_CUTOFFS[emission],
+    );
   }
 
   private filterNearLodProjectiles(
     projectiles: readonly Entity[],
     out: Entity[],
+    emission: EntityLodEmission3D,
   ): readonly Entity[] {
+    if (ENTITY_LOD_EMISSION_CUTOFFS[emission] === null) return projectiles;
     out.length = 0;
     for (let i = 0; i < projectiles.length; i++) {
       const projectile = projectiles[i];
-      if (!this.entityUsesFarLod(projectile)) out.push(projectile);
+      if (!this.entityEmissionUsesFarLod(projectile, emission)) out.push(projectile);
     }
     return out;
   }
@@ -643,14 +680,16 @@ export class RtsScene3DRenderPhase {
   private filterNearLodSprays(
     sprays: readonly SprayTarget[],
     out: SprayTarget[],
+    emission: EntityLodEmission3D,
   ): readonly SprayTarget[] {
+    if (ENTITY_LOD_EMISSION_CUTOFFS[emission] === null) return sprays;
     out.length = 0;
     for (let i = 0; i < sprays.length; i++) {
       const spray = sprays[i];
       const source = this.clientViewState.getEntity(spray.source.id);
-      if (source !== undefined && this.entityUsesFarLod(source)) continue;
+      if (source !== undefined && this.entityEmissionUsesFarLod(source, emission)) continue;
       const target = this.clientViewState.getEntity(spray.target.id);
-      if (target !== undefined && this.entityUsesFarLod(target)) continue;
+      if (target !== undefined && this.entityEmissionUsesFarLod(target, emission)) continue;
       out.push(spray);
     }
     return out;
@@ -659,7 +698,9 @@ export class RtsScene3DRenderPhase {
   private populateTurretNamePacket(hosts: readonly Entity[], mode: SelectionHudMode): void {
     for (let i = 0; i < hosts.length; i++) {
       const host = hosts[i];
-      if (!this.entityUsesFarLod(host)) this.pushTurretNamesForEntity(host, mode);
+      if (!this.entityEmissionUsesFarLod(host, 'turretNames')) {
+        this.pushTurretNamesForEntity(host, mode);
+      }
     }
   }
 
@@ -681,13 +722,16 @@ export class RtsScene3DRenderPhase {
 
   private pushTurretNamesForEntityId(entityId: EntityId, mode: SelectionHudMode): void {
     const entity = this.clientViewState.getEntity(entityId);
-    if (entity !== undefined && !this.entityUsesFarLod(entity)) {
+    if (
+      entity !== undefined &&
+      !this.entityEmissionUsesFarLod(entity, 'turretNames')
+    ) {
       this.pushTurretNamesForEntity(entity, mode);
     }
   }
 
   private pushTurretNamesForEntity(host: Entity, mode: SelectionHudMode): void {
-    if (this.entityUsesFarLod(host)) return;
+    if (this.entityEmissionUsesFarLod(host, 'turretNames')) return;
     const turrets = host.combat?.turrets;
     if (!turrets) return;
     const entityRenderer = this.resources.entityRenderer;
@@ -716,7 +760,7 @@ export class RtsScene3DRenderPhase {
     const scope = this.renderScope;
     for (let i = 0; i < projectiles.length; i++) {
       const shot = projectiles[i];
-      if (this.entityUsesFarLod(shot)) continue;
+      if (this.entityEmissionUsesFarLod(shot, 'shotNames')) continue;
       if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
       const proj = shot.projectile;
       if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;

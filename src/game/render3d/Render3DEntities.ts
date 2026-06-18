@@ -86,7 +86,9 @@ import {
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
 import { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
-import { entityUsesLodProxy3D } from './EntityLod3D';
+import {
+  type EntityLodEmission3D,
+} from './EntityLod3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -94,12 +96,17 @@ import { entityUsesLodProxy3D } from './EntityLod3D';
 // barrel endpoint geometry is visual-only.
 
 const EMPTY_PROJECTILES: readonly Entity[] = [];
+const DEFAULT_ENTITY_EMISSION_FAR_LOD = (
+  _entity: Entity,
+  _emission: EntityLodEmission3D,
+): boolean => false;
 
 export type RenderEntityUpdatePacket3D = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
   beamAimProjectiles?: readonly Entity[];
   projectileRenderProjectiles?: readonly Entity[];
+  isEntityEmissionFarLod?: (entity: Entity, emission: EntityLodEmission3D) => boolean;
   scoped: boolean;
 };
 
@@ -121,6 +128,10 @@ export class Render3DEntities {
   private camera: THREE.PerspectiveCamera;
   private getViewportHeight: () => number;
   private metalDeposits: readonly MetalDeposit[];
+  private isEntityEmissionFarLod: (
+    entity: Entity,
+    emission: EntityLodEmission3D,
+  ) => boolean = DEFAULT_ENTITY_EMISSION_FAR_LOD;
   /** Visibility scope (RENDER: WIN/PAD/ALL). Unit pose, locomotion,
    *  and turret updates intentionally ignore this so camera distance
    *  cannot change their update cadence. Effect/projectile renderers
@@ -299,7 +310,8 @@ export class Render3DEntities {
       clientViewState: this.clientViewState,
       scope: this.scope,
       radiusSphereGeom: this.radiusSphereGeom,
-      isEntityFarLod: (entity) => entityUsesLodProxy3D(this.camera, entity),
+      isEntityEmissionFarLod: (entity, emission) =>
+        this.isEntityEmissionFarLod(entity, emission),
     });
     // Per-team materials are created lazily on first use (see
     // getPrimaryMat / getSecondaryMat). The
@@ -389,6 +401,8 @@ export class Render3DEntities {
       ?? snapshotRenderFrameState(this.camera, this.getViewportHeight(), this.frameState);
     this.frameState = newFrameState;
     this.turretShieldPanelsEnabled = turretShieldPanelsEnabled;
+    this.isEntityEmissionFarLod = entityPacket?.isEntityEmissionFarLod
+      ?? DEFAULT_ENTITY_EMISSION_FAR_LOD;
 
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;

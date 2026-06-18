@@ -6,6 +6,7 @@ import { getPlayerColors } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { RenderFrameState3D } from './RenderFrameState3D';
+import type { EntityLodEmission3D } from './EntityLod3D';
 import {
   detachObject,
   disposeGeometries,
@@ -135,17 +136,23 @@ export type ProjectileRenderer3DOptions = {
   clientViewState: ClientViewState;
   scope: ViewportFootprint;
   radiusSphereGeom: THREE.BufferGeometry;
-  isEntityFarLod?: (entity: Entity) => boolean;
+  isEntityEmissionFarLod?: (entity: Entity, emission: EntityLodEmission3D) => boolean;
 };
 
-const NEVER_FAR_LOD = (_entity: Entity): boolean => false;
+const NEVER_EMISSION_FAR_LOD = (
+  _entity: Entity,
+  _emission: EntityLodEmission3D,
+): boolean => false;
 
 export class ProjectileRenderer3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
   private readonly scope: ViewportFootprint;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
-  private readonly isEntityFarLod: (entity: Entity) => boolean;
+  private readonly isEntityEmissionFarLod: (
+    entity: Entity,
+    emission: EntityLodEmission3D,
+  ) => boolean;
 
   private readonly projectileGeom = new THREE.SphereGeometry(1, 10, 8);
   private readonly projectileCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
@@ -216,7 +223,8 @@ export class ProjectileRenderer3D {
     this.clientViewState = options.clientViewState;
     this.scope = options.scope;
     this.radiusSphereGeom = options.radiusSphereGeom;
-    this.isEntityFarLod = options.isEntityFarLod ?? NEVER_FAR_LOD;
+    this.isEntityEmissionFarLod =
+      options.isEntityEmissionFarLod ?? NEVER_EMISSION_FAR_LOD;
 
     this.sphereInstanced = new THREE.InstancedMesh(
       this.projectileGeom,
@@ -297,6 +305,12 @@ export class ProjectileRenderer3D {
       const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
 
+      if (this.isEntityEmissionFarLod(e, 'projectileCores')) {
+        this.hideProjRadiusMeshes(e.id);
+        this.trailStamps.delete(e.id);
+        continue;
+      }
+
       if (sphereCount >= PROJECTILE_INSTANCED_CAP) {
         this.hideProjRadiusMeshes(e.id);
         continue;
@@ -308,7 +322,7 @@ export class ProjectileRenderer3D {
         r, r, r,
       );
 
-      if (this.isEntityFarLod(e)) {
+      if (this.isEntityEmissionFarLod(e, 'projectileTrailsAndFins')) {
         this.hideProjRadiusMeshes(e.id);
         this.trailStamps.delete(e.id);
         continue;
