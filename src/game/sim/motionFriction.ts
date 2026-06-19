@@ -1,6 +1,6 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 
-export const NO_FRICTION_DAMP = 1;
+const NO_FRICTION_DAMP = 1;
 
 export function dampFromFrictionPer60HzFrame(
   frictionPer60HzFrame: number,
@@ -14,7 +14,7 @@ export function dampFromFrictionPer60HzFrame(
   return DMath.pow(1 - frictionPer60HzFrame, dtSec * 60);
 }
 
-export function hasVelocityAirFriction(frictionPer60HzFrame: number): boolean {
+function hasVelocityAirFriction(frictionPer60HzFrame: number): boolean {
   return Number.isFinite(frictionPer60HzFrame) &&
     frictionPer60HzFrame > 0 &&
     frictionPer60HzFrame < 1;
@@ -46,10 +46,6 @@ export function dragRateFromVelocityFrictionPer60HzFrame(
   return -Math.log(1 - frictionPer60HzFrame) * 60 * scale;
 }
 
-export function frictionPer60HzFrameFromDragRate(dragRate: number): number {
-  if (!Number.isFinite(dragRate) || dragRate <= 0) return 0;
-  return 1 - Math.exp(-dragRate / 60);
-}
 
 export function dragCoefficientFromVelocityFrictionPer60HzFrame(
   frictionPer60HzFrame: number,

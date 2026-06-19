@@ -28,7 +28,7 @@ function repairRatePairKey(sourceId: EntityId, targetId: EntityId): number {
 }
 
 // Commander abilities system - handles build queue (ONE target at a time)
-export class CommanderAbilitiesSystem {
+class CommanderAbilitiesSystem {
   private readonly sprayTargets: SprayTarget[] = [];
   private readonly sprayTargetPool: SprayTarget[] = [];
   private readonly completedBuildings: CompletedBuilding[] = [];

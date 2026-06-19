@@ -476,9 +476,6 @@ const CLIENT_STORAGE_KEYS: Record<ClientMode, ClientStorageKeys> = {
 // ── Runtime state ──
 let currentClientMode: ClientMode = 'demo';
 
-export function getClientMode(): ClientMode {
-  return currentClientMode;
-}
 
 export function getClientConfig(mode: ClientMode = currentClientMode): ClientBarConfig {
   return CLIENT_MODE_CONFIGS[mode];
@@ -546,7 +543,6 @@ let currentEdgeScrollEnabled: boolean = _cd.edgeScroll.default;
 let currentDragPanEnabled: boolean = _cd.dragPan.default;
 const _isMobile = typeof navigator !== 'undefined' &&
   /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-let currentLobbyVisible: boolean = defaultLobbyVisible('demo');
 let currentWaypointDetail: WaypointDetail = _cd.waypointDetail.default;
 const currentEntityHud: EntityHudToggles = cloneEntityHud(_cd.entityHud.default);
 let currentSelectionHudMode: SelectionHudMode = _cd.selectionHudMode.default;
@@ -643,7 +639,6 @@ function applyClientDefaults(mode: ClientMode): void {
   for (const cat of SOUND_CATEGORIES) currentSoundToggles[cat] = cd.sounds.default[cat];
   currentEdgeScrollEnabled = cd.edgeScroll.default;
   currentDragPanEnabled = cd.dragPan.default;
-  currentLobbyVisible = defaultLobbyVisible(mode);
   currentWaypointDetail = cd.waypointDetail.default;
   for (const type of ENTITY_HUD_TYPES) {
     for (const element of ENTITY_HUD_ELEMENTS) {
@@ -875,10 +870,6 @@ function loadFromStorage(mode: ClientMode): void {
   if (storedDragPan !== null) {
     currentDragPanEnabled = storedDragPan === 'true';
   }
-  const storedLobbyVisible = readPersisted(keys.lobbyVisible);
-  if (storedLobbyVisible !== null) {
-    currentLobbyVisible = storedLobbyVisible === 'true';
-  }
   const storedWaypointDetail = readPersisted(keys.waypointDetail);
   if (storedWaypointDetail === 'simple' || storedWaypointDetail === 'detailed') {
     currentWaypointDetail = storedWaypointDetail;
@@ -958,9 +949,6 @@ export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
   persistJson(activeStorageKeys().projRangeToggles, currentProjRangeToggles);
 }
 
-export function anyProjRangeToggleActive(): boolean {
-  return PROJ_RANGE_TYPES.some((prt) => currentProjRangeToggles[prt]);
-}
 
 export function getUnitRadiusToggle(type: UnitRadiusType): boolean {
   return currentUnitRadiusToggles[type];
@@ -1316,12 +1304,8 @@ export function getStoredLobbyVisible(mode: ClientMode): boolean {
   return defaultLobbyVisible(mode);
 }
 
-export function getLobbyVisible(): boolean {
-  return currentLobbyVisible;
-}
 
 export function setLobbyVisible(visible: boolean): void {
-  currentLobbyVisible = visible;
   persist(activeStorageKeys().lobbyVisible, String(visible));
 }
 

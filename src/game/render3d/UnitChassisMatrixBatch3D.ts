@@ -1,7 +1,7 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export const CHASSIS_PART_INPUT_STRIDE = 15;
-export const CHASSIS_PART_OUTPUT_STRIDE = 16;
+const CHASSIS_PART_OUTPUT_STRIDE = 16;
 
 export class UnitChassisMatrixBatch3D {
   inputStride = CHASSIS_PART_INPUT_STRIDE;

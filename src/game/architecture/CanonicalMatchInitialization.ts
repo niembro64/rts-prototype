@@ -162,7 +162,7 @@ export function hashCanonicalValue(value: unknown): string {
   return `fnv1a32:${hash.toString(16).padStart(8, '0')}`;
 }
 
-export function canonicalStringify(value: unknown): string {
+function canonicalStringify(value: unknown): string {
   if (value === null) return 'null';
   if (value === undefined) return '{"$undefined":true}';
   const type = typeof value;

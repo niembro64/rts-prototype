@@ -148,7 +148,7 @@ export function getLocomotionSurfaceHeight(
   return getVisualSupportY(x, z, terrainY, ignoreEntityId ?? null) ?? terrainY;
 }
 
-export function sampleLocomotionGroundContact(
+function sampleLocomotionGroundContact(
   entity: Entity,
   mapWidth: number,
   mapHeight: number,

@@ -1,7 +1,7 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export const TURRET_AIM_INPUT_STRIDE = 12;
-export const TURRET_AIM_OUTPUT_STRIDE = 2;
+const TURRET_AIM_OUTPUT_STRIDE = 2;
 export const TURRET_AIM_MODE_POSE = 0;
 export const TURRET_AIM_MODE_WORLD_DIR = 1;
 

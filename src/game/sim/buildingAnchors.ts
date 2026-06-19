@@ -9,13 +9,13 @@ function factoryVisualTopAboveGround(width: number, depth: number): number {
   return getFactoryBuildingVisualMetrics(width, depth).visualTop;
 }
 
-export function getBuildingBaseZ(entity: Entity): number {
+function getBuildingBaseZ(entity: Entity): number {
   const building = entity.building;
   if (building === null) return entity.transform.z;
   return entity.transform.z - building.depth / 2;
 }
 
-export function getBuildingVisualTopAboveGround(entity: Entity): number {
+function getBuildingVisualTopAboveGround(entity: Entity): number {
   const building = entity.building;
   const width = building === null ? 100 : building.width;
   const depth = building === null ? 100 : building.height;

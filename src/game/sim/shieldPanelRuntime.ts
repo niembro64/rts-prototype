@@ -11,7 +11,7 @@ function isShieldPanelTurret(turret: Turret): boolean {
   return shot?.type === 'shield' && shot.barrier === undefined;
 }
 
-export function findShieldPanelTurret(entity: Entity): ShieldPanelTurretRef | null {
+function findShieldPanelTurret(entity: Entity): ShieldPanelTurretRef | null {
   const combat = entity.combat;
   if (combat === null) return null;
 

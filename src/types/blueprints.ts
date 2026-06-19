@@ -83,11 +83,11 @@ export type {
 
 export {
   SHIELD_SURFACE_RESPONSES,
-  SHIELD_REFLECTION_DIRECTIONS,
-  SHIELD_REFLECTION_ENTITIES,
-  isShieldReflectionDirection,
+  
+  
+  
   isShieldReflectionMode,
-  isRayBlueprint,
+  
 } from './shotTypes';
 
 /** Lock-on policy relationship inclusions, kept as runtime arrays for validators. */

@@ -5,7 +5,7 @@ import terrainConfig from './terrainConfig.json';
 export const TILE_FLOOR_Y = terrainConfig.world.floorY;
 
 /** Water surface position between TILE_FLOOR_Y and ground level 0. */
-export const WATER_LEVEL_FRACTION = terrainConfig.water.levelFraction;
+const WATER_LEVEL_FRACTION = terrainConfig.water.levelFraction;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
 // Host sim, client prediction, and terrain rendering share this exact mesh.
@@ -30,14 +30,11 @@ export let TERRAIN_FINE_TRIANGLE_SUBDIV = Math.max(
 export const TERRAIN_TRIANGLE_MAX_SURFACE_ERROR =
   terrainConfig.mesh.collapse.maxSurfaceError;
 
-/** @deprecated Use TERRAIN_TRIANGLE_MAX_SURFACE_ERROR. The collapse check now
- *  measures perpendicular surface error instead of world-Z height error. */
-export const TERRAIN_TRIANGLE_MAX_HEIGHT_ERROR = TERRAIN_TRIANGLE_MAX_SURFACE_ERROR;
 
 /** Maximum source-surface normal divergence allowed inside a collapsed
  *  triangle. This catches curved terrain whose sampled points happen to stay
  *  within the positional error tolerance. */
-export const TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES =
+const TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES =
   terrainConfig.mesh.collapse.maxNormalAngleDegrees;
 export const TERRAIN_TRIANGLE_MIN_NORMAL_DOT = Math.cos(
   Math.max(0, Math.min(180, TERRAIN_TRIANGLE_MAX_NORMAL_ANGLE_DEGREES)) *

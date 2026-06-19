@@ -32,7 +32,6 @@ import {
 } from './LegRig3D';
 import {
   type TreadMesh,
-  TREAD_HEIGHT,
   buildTreads,
   updateTreads,
 } from './TreadRig3D';
@@ -69,7 +68,6 @@ export type Locomotion3DMesh =
   | undefined;
 
 export type { LegStateSnapshot };
-export { TREAD_HEIGHT };
 export { setHoverFanAnimationTime };
 
 export type AirborneEmitterUpdate3D = {
@@ -91,7 +89,7 @@ export function getChassisLift(blueprint: UnitBlueprint, unitRadius: number): nu
   return getChassisLiftY(blueprint, unitRadius);
 }
 
-export function geometryKeyFor(gfx: GraphicsConfig): string {
+function geometryKeyFor(gfx: GraphicsConfig): string {
   return `${gfx.legs}|${gfx.treadsAnimated ? 1 : 0}`;
 }
 

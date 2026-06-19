@@ -43,7 +43,7 @@ export function setFactoryProductionPresetSlot(
   saveFactoryProductionPresetSlots(slots);
 }
 
-export function saveFactoryProductionPresetSlots(
+function saveFactoryProductionPresetSlots(
   slots: readonly (string | null)[],
 ): void {
   if (typeof window === 'undefined') return;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export const GROUND_CIRCLE_LINE_THICKNESS = 5;
+const GROUND_CIRCLE_LINE_THICKNESS = 5;
 
 export type ClosedRibbonGeometry = {
   geometry: THREE.BufferGeometry;

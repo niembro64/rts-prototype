@@ -63,7 +63,7 @@ function getBarrelTopAboveGround(turret: Turret, mountY: number): number {
   return mountY + forwardUp + orbitUp + getBarrelRadius(turret);
 }
 
-export function getUnitHudTopY(unit: Entity): number {
+function getUnitHudTopY(unit: Entity): number {
   if (!unit.unit) return unit.transform.z;
   const unitRadius = unit.unit.radius.visual;
   const groundY = getUnitGroundZ(unit);
@@ -100,7 +100,7 @@ export function getUnitHudTopY(unit: Entity): number {
   return groundY + topAboveGround;
 }
 
-export function getBuildingHudTopY(building: Entity): number {
+function getBuildingHudTopY(building: Entity): number {
   if (!building.building) return building.transform.z;
   return getBuildingVisualTopZ(building);
 }
@@ -165,7 +165,7 @@ export function getBuildingHudNameY(building: Entity): number {
  *  authored HUD layout. */
 const PIECE_BAR_GAP = SHELL_BAR_WORLD_HEIGHT;
 
-export function getTurretHudBarsY(mountWorldZ: number, config: Turret['config']): number {
+function getTurretHudBarsY(mountWorldZ: number, config: Turret['config']): number {
   return mountWorldZ + getTurretHeadRadius(config) + PIECE_BAR_GAP;
 }
 
@@ -173,15 +173,8 @@ export function getTurretHudNameY(mountWorldZ: number, config: Turret['config'])
   return getHudNameYFromBarsY(getTurretHudBarsY(mountWorldZ, config));
 }
 
-/** Locomotion anchor: low at the unit's footprint base, lifted just
- *  enough to clear the ground. Deliberately well below
- *  `getUnitHudBarsY` (which sits above the body top) so the loco stack
- *  never collides with the body stack. */
-export function getLocomotionHudBarsY(unit: Entity): number {
-  return getUnitGroundZ(unit) + PIECE_BAR_GAP;
-}
 
-export function getShotHudBarsY(shot: Entity): number {
+function getShotHudBarsY(shot: Entity): number {
   return shot.transform.z + PIECE_BAR_GAP;
 }
 

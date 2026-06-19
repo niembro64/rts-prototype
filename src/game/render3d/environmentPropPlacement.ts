@@ -61,18 +61,18 @@ export const SCOPE_PADDING_EXTRA = 120;
 const RANDOM_ENVIRONMENT_PLACEMENT_MAX_ATTEMPTS_PER_TARGET = 80;
 
 // Uses the terrain shader slope metric: 0 is flat, 1 is vertical.
-export const RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE = 0.03;
-export const RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE = 0.3;
-export const RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT = 100;
+const RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE = 0.03;
+const RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE = 0.3;
+const RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT = 100;
 
 // Lower tree roots by the terrain drop across this approximate trunk/base
 // footprint so the downhill side does not reveal the asset's underside.
-export const RANDOM_ENVIRONMENT_TREE_SLOPE_SINK_RADIUS_FRACTION = 0.35;
-export const RANDOM_ENVIRONMENT_TREE_SLOPE_SINK_MAX_HEIGHT_FRACTION = 0.12;
+const RANDOM_ENVIRONMENT_TREE_SLOPE_SINK_RADIUS_FRACTION = 0.35;
+const RANDOM_ENVIRONMENT_TREE_SLOPE_SINK_MAX_HEIGHT_FRACTION = 0.12;
 
 // Target counts at the default map area. Larger/smaller maps scale from these.
-export const RANDOM_ENVIRONMENT_TREE_ASSET_COUNT = 1000;
-export const RANDOM_ENVIRONMENT_GRASS_ASSET_COUNT = 1000;
+const RANDOM_ENVIRONMENT_TREE_ASSET_COUNT = 1000;
+const RANDOM_ENVIRONMENT_GRASS_ASSET_COUNT = 1000;
 
 export function generateEnvironmentPlacements(
   options: EnvironmentPlacementGenerationOptions,

@@ -13,7 +13,6 @@ const LINE_SHOT_RANGE_VOLUME_CYLINDER_NORMAL = 0;
 const LINE_SHOT_RANGE_VOLUME_BOTTOM_UNBOUNDED = 1;
 const LINE_SHOT_RANGE_VOLUME_TOP_AND_BOTTOM_UNBOUNDED = 2;
 const LINE_SHOT_RANGE_VOLUME_SPHERE = 3;
-const _lineShotEndpointOut = new Float64Array(3);
 
 function encodeLineShotRangeVolume(rangeVolume: TurretRangeVolume): number {
   switch (rangeVolume) {
@@ -60,31 +59,3 @@ export function distanceToRayConfigRangeCylinder(
   return distance >= 0 ? distance : null;
 }
 
-export function resolveRayConfigRangeCylinderEndpoint(
-  startX: number,
-  startY: number,
-  startZ: number,
-  dirX: number,
-  dirY: number,
-  dirZ: number,
-  cylinder: RayConfigRangeCylinder,
-  out: { x: number; y: number; z: number },
-): { x: number; y: number; z: number } {
-  const written = requireLineShotWasm().lineShotRangeEndpoint(
-    _lineShotEndpointOut,
-    startX, startY, startZ,
-    dirX, dirY, dirZ,
-    cylinder.centerX,
-    cylinder.centerY,
-    cylinder.centerZ,
-    cylinder.radius,
-    encodeLineShotRangeVolume(cylinder.rangeVolume),
-  );
-  if (written !== 1) {
-    throw new Error('Line-shot range endpoint failed');
-  }
-  out.x = _lineShotEndpointOut[0];
-  out.y = _lineShotEndpointOut[1];
-  out.z = _lineShotEndpointOut[2];
-  return out;
-}

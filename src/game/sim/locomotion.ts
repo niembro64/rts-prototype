@@ -1,12 +1,11 @@
 import type {
   LocomotionBlueprint,
-  LocomotionPhysics,
   PathfindingBlueprint,
 } from '@/types/blueprints';
 import type { UnitLocomotion } from './types';
 import rawLocomotionConfig from './locomotionConfig.json';
 
-export const LOCOMOTION_TRACTION = {
+const LOCOMOTION_TRACTION = {
   wheels: 0.45,
   treads: 0.75,
   legs: 1.0,
@@ -75,13 +74,13 @@ function readLocomotionConfig(): LocomotionConfig {
   return config as LocomotionConfig;
 }
 
-export const LOCOMOTION_CONFIG = readLocomotionConfig();
+const LOCOMOTION_CONFIG = readLocomotionConfig();
 
-export function getLocomotionDriveForceMultiplier(type: LocomotionType): number {
+function getLocomotionDriveForceMultiplier(type: LocomotionType): number {
   return LOCOMOTION_CONFIG[type].physics.driveForceMultiplier;
 }
 
-export function getEffectiveLocomotionDriveForce(
+function getEffectiveLocomotionDriveForce(
   type: LocomotionType,
   authoredDriveForce: number,
 ): number {
@@ -89,16 +88,6 @@ export function getEffectiveLocomotionDriveForce(
   return authoredDriveForce * getLocomotionDriveForceMultiplier(type);
 }
 
-export function createLocomotionPhysics(
-  type: LocomotionType,
-  driveForce: number,
-): LocomotionPhysics {
-  assertPositiveFinite(`${type}.driveForce`, driveForce);
-  return {
-    driveForce,
-    traction: LOCOMOTION_TRACTION[type],
-  };
-}
 
 function createRuntimePathfindingConfig(
   label: string,
@@ -209,7 +198,7 @@ export type LocomotionForceProfile = {
   tractionForceMagnitude: number;
 };
 
-export function writeLocomotionForceProfile(
+function writeLocomotionForceProfile(
   out: LocomotionForceProfile,
   locomotion: UnitLocomotion,
   referenceMass: number,

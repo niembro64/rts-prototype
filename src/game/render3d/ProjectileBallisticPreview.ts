@@ -107,7 +107,7 @@ export function resolveProjectileWeaponMount(
   );
 }
 
-export function projectileWeaponCanReachGroundPoint(
+function projectileWeaponCanReachGroundPoint(
   entity: Entity,
   weapon: Turret,
   targetX: number,
@@ -171,7 +171,7 @@ export function findProjectileShotReachDistance(
   return lo;
 }
 
-export function projectileShotCanReachGroundPoint(
+function projectileShotCanReachGroundPoint(
   originX: number,
   originY: number,
   launchZ: number,

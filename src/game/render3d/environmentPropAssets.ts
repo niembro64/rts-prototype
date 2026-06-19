@@ -76,7 +76,7 @@ function grass(
   };
 }
 
-export const ENVIRONMENT_ASSETS: readonly EnvironmentAssetSpec[] = [
+const ENVIRONMENT_ASSETS: readonly EnvironmentAssetSpec[] = [
   grass(
     'modGrass1',
     `${MODULAR_ROOT}/Hilly_Prop_Grass_Clump_1.obj`,
@@ -144,14 +144,14 @@ export const ENVIRONMENT_ASSETS: readonly EnvironmentAssetSpec[] = [
 ];
 
 // Applied after each asset's scale. 1 keeps the current asset sizes unchanged.
-export const RANDOM_ENVIRONMENT_ASSET_GLOBAL_SCALE = 2.2;
+const RANDOM_ENVIRONMENT_ASSET_GLOBAL_SCALE = 2.2;
 
 // Adds +/- this fraction to each placed asset's resolved scale. 0.1 means +/-10%.
-export const RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS = 0.05;
+const RANDOM_ENVIRONMENT_ASSET_SCALE_RANDOMNESS = 0.05;
 
 // Toggle random placement here. Scale is a direct multiplier on that asset's world size.
 // Frequency is a relative pick weight among enabled assets of the same kind.
-export const RANDOM_ENVIRONMENT_ASSETS = [
+const RANDOM_ENVIRONMENT_ASSETS = [
   { id: 'lowTree4', use: true, scale: 0.1, frequency: 1 },
   { id: 'lowTree5', use: true, scale: 0.1, frequency: 1 },
   { id: 'forestSpruce2', use: true, scale: 0.15, frequency: 1 },

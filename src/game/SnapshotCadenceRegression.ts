@@ -133,7 +133,7 @@ export type SnapshotCadenceRegressionApplySample = {
   now?: number;
 };
 
-export class SnapshotCadenceRegression {
+class SnapshotCadenceRegression {
   readonly enabled = GAME_DIAGNOSTICS.snapshotCadenceRegression;
 
   private readonly buckets = new Map<string, RateBucket>();

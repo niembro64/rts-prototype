@@ -13,7 +13,7 @@ import type { GraphicsConfig } from '@/types/graphics';
 let lastGraphicsKeyConfig: GraphicsConfig | null = null;
 let lastGraphicsKey = '';
 
-export function graphicsKey(gfx: GraphicsConfig): string {
+function graphicsKey(gfx: GraphicsConfig): string {
   if (gfx === lastGraphicsKeyConfig) return lastGraphicsKey;
   lastGraphicsKeyConfig = gfx;
   lastGraphicsKey = `${gfx.unitShape}|${gfx.legs}|${

@@ -31,13 +31,11 @@ export type {
 } from './types/camera';
 
 import type {
-  SnapshotConfig,
   EmaTierConfig,
   EmaMsConfig,
   KnockbackConfig,
   ShieldVisualConfig,
   ShieldImpactVisualConfig,
-  ShieldTurretConfig,
   MapSize,
 } from './types/config';
 import type {
@@ -49,12 +47,10 @@ import {
   MAP_DIMENSION_CONFIG,
   nearestOddLandCellCount,
 } from './mapSizeConfig';
-import { ARCHITECTURE_CONFIG } from './architectureConfig';
 import sharedSimConstants from './sharedSimConstants.json';
 import emaConfigJson from './emaConfig.json';
 import combatConfigJson from './combatConfig.json';
 import beamConfigJson from './beamConfig.json';
-import shieldConfigJson from './shieldConfig.json';
 import worldRenderConfigJson from './worldRenderConfig.json';
 import lodConfigJson from './lod.json';
 import shieldVisualConfigJson from './shieldVisualConfig.json';
@@ -78,8 +74,8 @@ export { LAND_CELL_SIZE } from './mapSizeConfig';
 // use the same option set and server/client math, while their selected size is
 // persisted per mode. Keep this odd so the map has exactly one central
 // land tile.
-export const MAP_LAND_CELLS_WIDTH = MAP_DIMENSION_CONFIG.width.default;
-export const MAP_LAND_CELLS_LENGTH = MAP_DIMENSION_CONFIG.length.default;
+const MAP_LAND_CELLS_WIDTH = MAP_DIMENSION_CONFIG.width.default;
+const MAP_LAND_CELLS_LENGTH = MAP_DIMENSION_CONFIG.length.default;
 
 // Render-only vertical lift for the terrain mesh above sampled terrain. Keep
 // this at 0 for normal play: the terrain renderer, host sim, and client
@@ -106,25 +102,11 @@ export const GOOD_TPS = telemetryConfigJson.goodTps;
 // SNAPSHOT / NETWORKING
 // =============================================================================
 
-// Lockstep presentation snapshots are full game-state packets sent from
-// the local simulation to the renderer. They are presentation data, not
-// multiplayer truth.
-export const SNAPSHOT_CONFIG: SnapshotConfig =
-  ARCHITECTURE_CONFIG.lockstep.presentationSnapshots;
 
 // Re-export bar config values used by sim/server code
-export { BATTLE_CONFIG } from './battleBarConfig';
-export { SERVER_CONFIG } from './serverBarConfig';
 export type { SnapshotRate, TickRate } from './types/server';
 import { BATTLE_CONFIG } from './battleBarConfig';
-import { BAR_THEMES } from './barThemes';
-import {
-  PRESENTATION_SNAPSHOT_RATE_DEFAULT,
-  PRESENTATION_SNAPSHOT_RATE_OPTIONS,
-} from './presentationSnapshotConfig';
 
-export const DEFAULT_SNAPSHOT_RATE = PRESENTATION_SNAPSHOT_RATE_DEFAULT;
-export const SNAPSHOT_RATE_OPTIONS = PRESENTATION_SNAPSHOT_RATE_OPTIONS;
 export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
 export const DEFAULT_TURRET_SHIELD_PANELS_ENABLED = BATTLE_CONFIG.turretShieldPanelsEnabled.default;
 export const DEFAULT_TURRET_SHIELD_SPHERES_ENABLED =
@@ -135,7 +117,6 @@ export const DEFAULT_SHIELDS_OBSTRUCT_SIGHT =
   BATTLE_CONFIG.shieldsObstructSight.default;
 export const DEFAULT_SHIELD_REFLECTION_MODE =
   BATTLE_CONFIG.shieldReflectionMode.default;
-export const BAR_COLORS = BAR_THEMES;
 
 // =============================================================================
 // EMA (Exponential Moving Average) STATS TRACKING
@@ -177,11 +158,6 @@ export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
 // SERVER TICK
 // =============================================================================
 
-/** Maximum dt (ms) the server will simulate in a single tick.
- *  Prevents spiral-of-death when a tick takes longer than the interval.
- *  This guard window is separate from the deterministic-lockstep step
- *  cadence, which lives in architecture.json. */
-export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
 
 /** Maximum authoritative beam/laser path segments traced per re-path.
  *  Segment 1 is launch origin -> first hit/trace limit, segment 2 is after the
@@ -192,10 +168,6 @@ export const MAX_TICK_DT_MS = sharedSimConstants.maxTickDtMs;
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 export const BEAM_MIN_ON_TIME_MS = beamConfigJson.minOnTimeMs;
 
-/** Minimum time (ms) a shield field stays commanded-on once it starts
- *  raising. Debounces rapid engage/disengage flicker from the targeting
- *  FSM — same contract as BEAM_MIN_ON_TIME_MS for beams. */
-export const SHIELD_MIN_ON_TIME_MS = shieldConfigJson.minOnTimeMs;
 
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS
@@ -233,24 +205,8 @@ export const UNIT_GROUND_FRICTION_PER_60HZ_FRAME =
 export const UNIT_GROUND_CONTACT_EPSILON =
   sharedSimConstants.unitGroundContactEpsilon;
 
-/** Terrain spring acceleration per world-unit of ground-point
- *  penetration. Force is mass * acceleration, so all unit masses
- *  settle at the same tiny gravity sag depth. */
-export const UNIT_GROUND_SPRING_ACCEL_PER_WORLD_UNIT =
-  sharedSimConstants.unitGroundSpringAccelPerWorldUnit;
 
-/** Damping ratio for the terrain spring along the terrain normal.
- *  1 is critical damping for the spring's authored acceleration
- *  frequency. The ground never pulls downward; damping only reduces
- *  or increases the upward spring response. */
-export const UNIT_GROUND_SPRING_DAMPING_RATIO =
-  sharedSimConstants.unitGroundSpringDampingRatio;
 
-/** Maximum outward terrain-normal velocity passive ground contact can
- *  produce. This permits small damped settling oscillation, but stops
- *  the terrain spring from launching units off the surface. */
-export const UNIT_GROUND_PASSIVE_REBOUND_MAX_SPEED =
-  sharedSimConstants.unitGroundPassiveReboundMaxSpeed;
 
 /** Map-edge boundary spring acceleration per world-unit of penetration.
  *  The engine applies this as an inward spring before the WASM integration
@@ -301,29 +257,15 @@ export const MAX_METAL = economyConfigJson.metal.maxStockpile;
  *  metal income, not coast on the passive drip. */
 export const BASE_METAL_PER_SECOND = economyConfigJson.metal.baseIncomePerSecond;
 
-/** Metal produced per second by each completed extractor sitting on a
- *  metal deposit. Tuned so 1 extractor ≈ 1 solar in income scale. */
-export const EXTRACTOR_METAL_PER_SECOND = economyConfigJson.metal.extractorPerSecond;
 
 // =============================================================================
 // UNIT CAP
 // =============================================================================
 
-/** Energy produced per second by each completed solar panel */
-export const SOLAR_ENERGY_PER_SECOND = economyConfigJson.energy.solarEnergyPerSecond;
-export const WIND_ENERGY_PER_SECOND = windConfigJson.energyPerSecond;
 export const WIND_SPEED_MIN = windConfigJson.speed.min;
 export const WIND_SPEED_MAX = windConfigJson.speed.max;
 
-/** Wind direction oscillation wave periods in seconds. These are true
- *  sine/cosine periods, not angular divisors. Longer = slower turning. */
-export const WIND_DIRECTION_OSCILLATION_PERIODS_SECONDS =
-  windConfigJson.directionOscillationPeriodsSeconds;
 
-/** Wind magnitude/speed oscillation wave periods in seconds. Longer =
- *  slower production-multiplier drift for Wind buildings. */
-export const WIND_SPEED_OSCILLATION_PERIODS_SECONDS =
-  windConfigJson.speedOscillationPeriodsSeconds;
 
 /** Visual wind turbine rotor speed, in radians per second at wind speed 1.0,
  *  before the authored visual-only spin multiplier is applied. */
@@ -370,15 +312,11 @@ export const BEAM_EXPLOSION_MAGNITUDE = explosionConfigJson.beamExplosionMagnitu
 export function hexToStr(c: number): string {
   return '#' + c.toString(16).padStart(6, '0');
 }
-export function hexToRgb(c: number): { r: number; g: number; b: number } {
-  return { r: (c >> 16) & 0xff, g: (c >> 8) & 0xff, b: c & 0xff };
-}
 
 // Map colors
 export const MAP_BG_COLOR = COLORS.world.map.inBounds.colorHex; // in-bounds background
-export const MAP_OOB_COLOR = COLORS.world.map.outOfBounds.colorHex; // out-of-bounds background
-export const MAP_CAMERA_BG = COLORS.world.map.cameraClear.colorHex; // camera clear color
-export const MAP_GRID_COLOR = MAP_BG_COLOR;
+ // out-of-bounds background
+ // camera clear color
 
 // Render-only fake horizon extent for the transparent water plane and
 // submerged "infinity" terrain shelf around circle-perimeter maps.
@@ -387,7 +325,6 @@ export const MAP_GRID_COLOR = MAP_BG_COLOR;
 // camera far plane still controls what actually draws.
 export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
 
-export const LOD_CONFIG = lodConfigJson;
 
 // Entities farther than this camera distance render as cheap hitbox proxies
 // instead of full-detail meshes and effect emitters. The distance scales
@@ -407,8 +344,6 @@ export const ENTITY_LOD_EXIT_PROXY_DISTANCE_MULTIPLIER =
   lodConfigJson.entity.hysteresis.exitProxyMultiplier;
 export const ENTITY_LOD_RUNTIME_DISTANCE_MULTIPLIERS =
   lodConfigJson.entity.runtimeDistanceMultipliers;
-export const ENTITY_LOD_FULL_DETAIL_DISTANCE_SQ =
-  ENTITY_LOD_FULL_DETAIL_DISTANCE * ENTITY_LOD_FULL_DETAIL_DISTANCE;
 export const ENTITY_LOD_PROXY_ENABLED = lodConfigJson.proxy.enabled;
 export const ENTITY_LOD_PROXY_CAP = lodConfigJson.proxy.capacity;
 export const ENTITY_LOD_PROXY_USE_TEAM_COLOR = lodConfigJson.proxy.useTeamColor;
@@ -613,7 +548,7 @@ export const METAL_DEPOSIT_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumb
   COLORS.environment.metalDeposit.rockTexture.tileWorldSize,
   'colorsConfig.environment.metalDeposit.rockTexture.tileWorldSize',
 );
-export const METAL_DEPOSIT_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
+const METAL_DEPOSIT_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
   COLORS.environment.metalDeposit.rockTexture.resolution,
   'colorsConfig.environment.metalDeposit.rockTexture.resolution',
 );
@@ -686,12 +621,6 @@ export const SHIELD_IMPACT_VISUAL: ShieldImpactVisualConfig =
     coreOpacity: COLORS.effects.shield.impact.coreOpacity,
   } as ShieldImpactVisualConfig;
 
-/**
- * Shield turret (grate) configuration per unit blueprint.
- * All length/width values are multipliers of the unit's collision radius.
- */
-export const SHIELD_TURRET: Record<string, ShieldTurretConfig> =
-  shieldVisualConfigJson.turret as Record<string, ShieldTurretConfig>;
 
 // =============================================================================
 // CHASSIS MOUNT POINTS
@@ -775,12 +704,12 @@ export const UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND = physicsTuningConfigJson.un
 // MAP SIZE SETTINGS
 // =============================================================================
 
-export const normalizeMapLandCells = nearestOddLandCellCount;
+const normalizeMapLandCells = nearestOddLandCellCount;
 
 const landCellMapSpan = (landCells: number): number =>
   normalizeMapLandCells(landCells) * LAND_CELL_SIZE;
 
-export function mapSizeFromLandCells(
+function mapSizeFromLandCells(
   widthLandCells: number,
   lengthLandCells: number = widthLandCells,
 ): MapSize {
@@ -790,17 +719,7 @@ export function mapSizeFromLandCells(
   };
 }
 
-const UNIVERSAL_MAP_SIZE = mapSizeFromLandCells(
-  MAP_LAND_CELLS_WIDTH,
-  MAP_LAND_CELLS_LENGTH,
-);
 
-export const MAP_SETTINGS: Record<string, MapSize> = {
-  // Both modes share one authoritative land-cell map size. With the default
-  // 320wu land cell and 21 cells per axis, every battle is 6720x6720wu.
-  game: UNIVERSAL_MAP_SIZE,
-  demo: UNIVERSAL_MAP_SIZE,
-};
 
 /** Pick the map size for the current battle. Demo and real currently share
  *  the same dimensions; keep the parameter for existing call sites. */
@@ -825,7 +744,6 @@ export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING =
   backgroundBattleConfigJson.spawnInverseCostWeighting;
 
 // Re-export audio config
-export { AUDIO } from './audioConfig';
 export type { SynthId, SoundEntry } from './audioConfig';
 
 // =============================================================================

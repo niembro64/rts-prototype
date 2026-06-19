@@ -2,10 +2,10 @@
 
 export {
   type WorldPoint,
-  getPathLength,
-  getPointAtDistance,
-  calculateLinePathTargets,
-  assignUnitsToTargets,
+  
+  
+  
+  
 } from './PathDistribution';
 
 export {
@@ -40,7 +40,7 @@ export {
   buildAttackCommandForTarget,
   buildAttackCommandAt,
   buildAttackGroundCommand,
-  buildFormationPreservingMoveCommand,
+  
   buildFormationPreservingMoveTargets,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
@@ -52,8 +52,8 @@ export { type ModeCancel, handleEscape } from './EscapeHandler';
 
 export {
   CommanderModeController,
-  getBuildModeBuildingBlueprintIdByIndex,
-  getBuildModeBuildingBlueprintIds,
+  
+  
   getDefaultBuildModeBuildingBlueprintId,
 } from './CommanderModeController';
 
@@ -61,7 +61,7 @@ export {
   buildRepairAreaCommand,
   buildRepairCommandAt,
   buildReclaimAreaCommand,
-  buildReclaimCommandAt,
+  
   buildReclaimCommandForTarget,
   buildCaptureCommandForTarget,
   buildResurrectAreaCommand,
@@ -71,37 +71,37 @@ export {
   buildFactoryGuardCommands,
   buildFactoryRallyCommands,
   getSelectedClientTransports,
-  isClientResurrectableWreck,
+  
 } from './CommanderCommands';
 
 export {
   type RepairEntitySource,
-  findRepairTargetAt,
-  findIncompleteBuildingAt,
-  findDamagedUnitAt,
+  
+  
+  
 } from './RepairTargetHelper';
 
 export {
   type AttackEntitySource,
-  findAttackTargetAt,
+  
 } from './AttackTargetHelper';
 
 export {
   type GuardEntitySource,
-  findGuardTargetAt,
-  isGuardableFriendlyTarget,
+  
+  
 } from './GuardTargetHelper';
 
 export {
   type ReclaimEntitySource,
-  findReclaimTargetAt,
+  
 } from './ReclaimTargetHelper';
 
 export {
   type BuildPlacementCellDiagnostic,
   type BuildPlacementCellReason,
   type BuildPlacementDiagnostics,
-  canPlaceBuildingAt,
+  
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
   getSnappedBuildPosition,

@@ -1,8 +1,8 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 
-export const AIRBORNE_EMITTER_INPUT_STRIDE = 24;
-export const AIRBORNE_EMITTER_OUTPUT_STRIDE = 6;
+const AIRBORNE_EMITTER_INPUT_STRIDE = 24;
+const AIRBORNE_EMITTER_OUTPUT_STRIDE = 6;
 
 export type AirborneEmitterParentPose3D = {
   parentX: number;

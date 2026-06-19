@@ -86,7 +86,7 @@ function entityLodEnabled(): boolean {
   return ENTITY_LOD_ENABLED && ENTITY_LOD_PROXY_ENABLED;
 }
 
-export function entityCameraDistanceSq3D(camera: THREE.Camera, entity: Entity): number {
+function entityCameraDistanceSq3D(camera: THREE.Camera, entity: Entity): number {
   return simPositionCameraDistanceSq3D(
     camera,
     entity.transform.x,
@@ -95,7 +95,7 @@ export function entityCameraDistanceSq3D(camera: THREE.Camera, entity: Entity): 
   );
 }
 
-export function simPositionCameraDistanceSq3D(
+function simPositionCameraDistanceSq3D(
   camera: THREE.Camera,
   simX: number,
   simY: number,
@@ -135,7 +135,7 @@ export function entityLodRadius3D(entity: Entity): number {
   return minEntityLodRadius();
 }
 
-export function entityLodFullDetailDistance3D(
+function entityLodFullDetailDistance3D(
   radius: number,
   multiplier: number = 1,
   fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
@@ -150,7 +150,7 @@ export function entityLodFullDetailDistance3D(
   );
 }
 
-export function entityLodFullDetailDistanceSq3D(
+function entityLodFullDetailDistanceSq3D(
   radius: number,
   multiplier: number = 1,
   fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
@@ -159,38 +159,7 @@ export function entityLodFullDetailDistanceSq3D(
   return distance * distance;
 }
 
-export function entityUsesLodProxy3D(
-  camera: THREE.Camera,
-  entity: Entity,
-  fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
-): boolean {
-  if (fullDetailDistance === null) return false;
-  if (!entityLodEnabled()) return false;
-  return entityCameraDistanceSq3D(camera, entity) >
-    entityLodFullDetailDistanceSq3D(
-      entityLodRadius3D(entity),
-      enterProxyDistanceMultiplier(),
-      fullDetailDistance,
-    );
-}
 
-export function simPositionUsesLodProxy3D(
-  camera: THREE.Camera,
-  simX: number,
-  simY: number,
-  simZ: number,
-  radius: number = ENTITY_LOD_REFERENCE_RADIUS,
-  fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
-): boolean {
-  if (fullDetailDistance === null) return false;
-  if (!entityLodEnabled()) return false;
-  return simPositionCameraDistanceSq3D(camera, simX, simY, simZ) >
-    entityLodFullDetailDistanceSq3D(
-      radius,
-      enterProxyDistanceMultiplier(),
-      fullDetailDistance,
-    );
-}
 
 export function entityEmissionUsesLowLodDistance3D(
   camera: THREE.Camera,

@@ -7,7 +7,7 @@ export {
   type MinimapEntity,
   type MinimapData,
   type InputState,
-  buildSelectionInfo,
+  
   buildEconomyInfo,
-  buildMinimapData,
+  
 } from './UIUpdateManager';

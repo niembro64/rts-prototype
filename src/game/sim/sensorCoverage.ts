@@ -2,7 +2,7 @@ import type { BuildingBlueprintId, Entity } from './types';
 import { isBuildBlockingActivation } from './buildableHelpers';
 import { getBuildingConfig } from './buildConfigs';
 
-export function getBuildingAuthoredFullSightRadius(buildingBlueprintId: BuildingBlueprintId | null): number {
+function getBuildingAuthoredFullSightRadius(buildingBlueprintId: BuildingBlueprintId | null): number {
   if (buildingBlueprintId === null) return 0;
   return getBuildingConfig(buildingBlueprintId).sensors.fullSightRadius;
 }
@@ -12,7 +12,7 @@ export function getBuildingAuthoredRadarRadius(buildingBlueprintId: BuildingBlue
   return getBuildingConfig(buildingBlueprintId).sensors.radarRadius;
 }
 
-export function getBuildingAuthoredDetectorRadius(buildingBlueprintId: BuildingBlueprintId | null): number {
+function getBuildingAuthoredDetectorRadius(buildingBlueprintId: BuildingBlueprintId | null): number {
   if (buildingBlueprintId === null) return 0;
   return getBuildingConfig(buildingBlueprintId).sensors.detectorRadius;
 }

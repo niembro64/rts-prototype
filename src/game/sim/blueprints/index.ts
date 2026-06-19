@@ -242,9 +242,9 @@ function buildTowerHostLockOnMasks(): Partial<Record<BuildingBlueprintId, LockOn
   return masks;
 }
 
-export const UNIT_HOST_LOCK_ON_MASKS: Record<string, LockOnMasks> = buildUnitHostLockOnMasks();
+const UNIT_HOST_LOCK_ON_MASKS: Record<string, LockOnMasks> = buildUnitHostLockOnMasks();
 
-export const TOWER_HOST_LOCK_ON_MASKS: Partial<Record<BuildingBlueprintId, LockOnMasks>> =
+const TOWER_HOST_LOCK_ON_MASKS: Partial<Record<BuildingBlueprintId, LockOnMasks>> =
   buildTowerHostLockOnMasks();
 
 export function getUnitHostLockOnMasks(unitBlueprintId: string): LockOnMasks {
@@ -653,7 +653,7 @@ export function buildProjectileShotConfig(
 /**
  * Build a TurretConfig (for runtime sim) from a TurretBlueprint.
  */
-export function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
+function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
   const turretBlueprint: TurretBlueprint = TURRET_BLUEPRINTS[turretBlueprintId];
   if (!turretBlueprint)
     throw new Error(`Unknown turret blueprint: ${turretBlueprintId}`);

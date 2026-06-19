@@ -12,14 +12,8 @@
 // Every tunable knob for that look-and-feel lives here. Renderers and
 // the per-tick HP-sync pass import from this single source.
 import shellConfig from './shellConfig.json';
-import { COLORS, RESOURCE_COLOR_CSS, readRgbTuple } from './colorsConfig';
+import { COLORS, RESOURCE_COLOR_CSS } from './colorsConfig';
 
-/** The flat unlit color every shell mesh and every shell-flagged
- *  instance is painted in. Picked to read as "placeholder, not real
- *  yet" — pale gray, no reflections, no shading, no team tint. RGB ∈
- *  [0..1] in linear color space. */
-export const SHELL_PALE_RGB: readonly [number, number, number] =
-  readRgbTuple(COLORS.construction.shell.pale.rgb01, 'colorsConfig.construction.shell.pale.rgb01');
 
 /** Same color as a 0xRRGGBB hex literal — keeps Three's Color
  *  constructors that expect a number happy. Must agree with
@@ -88,15 +82,8 @@ export const SHELL_BAR_CANVAS_HEIGHT = shellConfig.shellBar.canvasHeight;
  *  this codebase; configurable here so a debug overlay can flip it. */
 export const SHELL_BAR_HIDE_AT_FULL = shellConfig.shellBar.hideAtFull;
 
-/** HP-bar foreground colors. The bar switches from "high" to "low" at
- *  HP_BAR_LOW_THRESHOLD; while a unit is shell-state, every bar in the
- *  group renders in BUILD instead. */
-export const HP_BAR_COLOR_HIGH = COLORS.construction.hpBar.high.cssColor;
-export const HP_BAR_COLOR_LOW = COLORS.construction.hpBar.low.cssColor;
 export const HP_BAR_COLOR_BUILD = COLORS.construction.hpBar.build.cssColor;
 
-/** HP fraction below which the HP bar switches to HP_BAR_COLOR_LOW. */
-export const HP_BAR_LOW_THRESHOLD = shellConfig.hpBar.lowThreshold;
 
 /** Per-resource transfer-rate smoothing for the factory + commander
  *  build emitters. The rate fractions written by the sim each tick

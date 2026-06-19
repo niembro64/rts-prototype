@@ -56,7 +56,6 @@ import {
   type CreateUnitFromBlueprintOptions,
 } from './WorldUnitFactory';
 
-export { SeededRNG } from './SeededRNG';
 export type { CreateProjectileProvenance } from './WorldProjectileFactory';
 
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();

@@ -62,9 +62,9 @@ for (const useId of SMOKE_USE_IDS) {
   assertSmokeCapPolicy(SMOKE_CONFIG_RAW[useId].capPolicy, `smokeConfig.${useId}.capPolicy`);
 }
 
-export const SMOKE_CONFIG = SMOKE_CONFIG_RAW;
+const SMOKE_CONFIG = SMOKE_CONFIG_RAW;
 
-export function isSmokeUseId(value: string): value is SmokeUseId {
+function isSmokeUseId(value: string): value is SmokeUseId {
   return SMOKE_USE_ID_SET.has(value);
 }
 

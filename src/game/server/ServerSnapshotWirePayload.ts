@@ -32,7 +32,7 @@ export class ServerSnapshotWirePreencoder {
   }
 }
 
-export function buildServerSnapshotWirePayload(
+function buildServerSnapshotWirePayload(
   state: NetworkServerSnapshot,
 ): SnapshotWirePayload {
   const encodeStart = performance.now();

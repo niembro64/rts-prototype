@@ -130,7 +130,7 @@ function directFactoryRallyActions(
 }
 
 // Factory production system
-export class FactoryProductionSystem {
+class FactoryProductionSystem {
   // Update all factories. The factory's job is now (a) spawning a
   // shell of the selected repeat-build unit on its center support when
   // work begins, and (b) detecting completion of the shell and finishing the

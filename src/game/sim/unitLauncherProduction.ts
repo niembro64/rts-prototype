@@ -25,7 +25,7 @@ const _fsm: CombatTargetingTurretFsmOut = {
 };
 const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
 
-export class UnitLauncherProductionSystem {
+class UnitLauncherProductionSystem {
   update(
     world: WorldState,
     dtMs: number,

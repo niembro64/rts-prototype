@@ -24,9 +24,9 @@ import {
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
 // and the on-screen result agree and both shield shapes match.
-export const SHIELD_FIELD_SHAPE_SPHERE = 0;
-export const SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
-export const SHIELD_FIELD_SHAPE_AIMED_CYLINDER = 2;
+const SHIELD_FIELD_SHAPE_SPHERE = 0;
+const SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
+const SHIELD_FIELD_SHAPE_AIMED_CYLINDER = 2;
 const FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT = 12000;
 const IMPLICIT_FIELD_CAP = 96;
 

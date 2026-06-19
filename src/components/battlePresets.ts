@@ -1,7 +1,7 @@
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from '../game/sim/blueprints/unitRoster';
 import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../types/blueprintIds';
 import type { BattleMode } from '../battleBarConfig';
-import { persist, readPersisted } from '../persistence';
+import { persist } from '../persistence';
 import type { TerrainMapShape } from '../types/terrain';
 import type { ShieldReflectionMode } from '../types/shotTypes';
 
@@ -45,8 +45,8 @@ export type BattlePresetSnapshot = Omit<BattlePreset, 'name'>;
 // Stable identifiers for the two presets that supply DEMO BATTLE and
 // REAL BATTLE bar defaults. The bars never carry their own defaults;
 // every fallback flows through one of these presets.
-export const DEMO_BATTLE_DEFAULT_PRESET_NAME = 'DEMO BATTLE DEFAULT';
-export const REAL_BATTLE_DEFAULT_PRESET_NAME = 'REAL BATTLE DEFAULT';
+const DEMO_BATTLE_DEFAULT_PRESET_NAME = 'DEMO BATTLE DEFAULT';
+const REAL_BATTLE_DEFAULT_PRESET_NAME = 'REAL BATTLE DEFAULT';
 
 const MODE_DEFAULT_PRESET_NAMES: Record<BattleMode, string> = {
   demo: DEMO_BATTLE_DEFAULT_PRESET_NAME,
@@ -262,7 +262,6 @@ function buildPresets(): readonly BattlePreset[] {
 }
 
 export const BATTLE_PRESETS: readonly BattlePreset[] = buildPresets();
-export const DEFAULT_PRESET_NAME: string = BATTLE_PRESETS[0].name;
 
 const STORAGE_SELECTED_PRESET = 'battle-selected-preset';
 
@@ -279,16 +278,7 @@ export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
   return found;
 }
 
-export function getDefaultPreset(): BattlePreset {
-  const name = loadDefaultPresetName();
-  return BATTLE_PRESETS.find((p) => p.name === name) ?? BATTLE_PRESETS[0];
-}
 
-export function loadDefaultPresetName(): string {
-  const raw = readPersisted(STORAGE_SELECTED_PRESET);
-  if (raw && BATTLE_PRESETS.some((p) => p.name === raw)) return raw;
-  return DEFAULT_PRESET_NAME;
-}
 
 export function saveSelectedPresetName(name: string): void {
   persist(STORAGE_SELECTED_PRESET, name);
@@ -301,7 +291,7 @@ function sameUnits(a: readonly string[], b: readonly string[]): boolean {
   return true;
 }
 
-export function presetMatchesCurrent(
+function presetMatchesCurrent(
   p: BattlePreset,
   c: BattlePresetSnapshot,
 ): boolean {

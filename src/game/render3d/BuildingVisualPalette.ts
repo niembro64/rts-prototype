@@ -23,9 +23,3 @@ export const SHINY_GRAY_METAL_MATERIAL = {
   envMapIntensity: COLORS.buildings.materials.shinyGrayMetal.envMapIntensity,
 } as const;
 
-export const MIRROR_CHROME_MATERIAL = {
-  color: COLORS.buildings.materials.mirrorChrome.colorHex,
-  metalness: COLORS.buildings.materials.mirrorChrome.metalness,
-  roughness: COLORS.buildings.materials.mirrorChrome.roughness,
-  envMapIntensity: COLORS.buildings.materials.mirrorChrome.envMapIntensity,
-} as const;

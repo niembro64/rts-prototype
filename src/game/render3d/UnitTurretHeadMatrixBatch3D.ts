@@ -1,7 +1,7 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export const TURRET_HEAD_INPUT_STRIDE = 11;
-export const TURRET_HEAD_OUTPUT_STRIDE = 16;
+const TURRET_HEAD_OUTPUT_STRIDE = 16;
 
 export class UnitTurretHeadMatrixBatch3D {
   inputStride = TURRET_HEAD_INPUT_STRIDE;

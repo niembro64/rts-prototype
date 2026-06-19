@@ -78,7 +78,7 @@ const _directTurretFsm: CombatTargetingTurretFsmOut = {
   targetId: -1,
 };
 
-export const ENTITY_SNAPSHOT_WIRE_KIND_RAW = 0;
+const ENTITY_SNAPSHOT_WIRE_KIND_RAW = 0;
 export const ENTITY_SNAPSHOT_WIRE_KIND_BASIC = 1;
 export const ENTITY_SNAPSHOT_WIRE_KIND_UNIT = 2;
 export const ENTITY_SNAPSHOT_WIRE_KIND_BUILDING = 3;

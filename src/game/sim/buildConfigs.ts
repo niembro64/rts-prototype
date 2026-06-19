@@ -1,6 +1,6 @@
 import type { BuildingConfig, BuildingBlueprintId, UnitBuildConfig } from './types';
 import { COST_MULTIPLIER } from '../../config';
-import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion, BUILDABLE_UNIT_BLUEPRINT_IDS } from './blueprints';
+import { BUILDING_BLUEPRINTS, getUnitBlueprint, getUnitLocomotion } from './blueprints';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
 import {
   BUILDING_BLUEPRINT_IDS as PURE_BUILDING_BLUEPRINT_IDS,
@@ -48,7 +48,7 @@ for (const buildingBlueprintId in BUILDING_BLUEPRINTS) {
   ALL_STRUCTURE_CONFIGS.push(config);
 }
 
-export const BUILDING_CONFIGS = {} as Record<PureBuildingBlueprintId, BuildingConfig>;
+const BUILDING_CONFIGS = {} as Record<PureBuildingBlueprintId, BuildingConfig>;
 const ALL_BUILDING_CONFIGS = new Array<BuildingConfig>(PURE_BUILDING_BLUEPRINT_IDS.length);
 for (let i = 0; i < PURE_BUILDING_BLUEPRINT_IDS.length; i++) {
   const buildingBlueprintId = PURE_BUILDING_BLUEPRINT_IDS[i];
@@ -57,7 +57,7 @@ for (let i = 0; i < PURE_BUILDING_BLUEPRINT_IDS.length; i++) {
   ALL_BUILDING_CONFIGS[i] = config;
 }
 
-export const TOWER_CONFIGS = {} as Record<TowerBlueprintId, BuildingConfig>;
+const TOWER_CONFIGS = {} as Record<TowerBlueprintId, BuildingConfig>;
 const ALL_TOWER_CONFIGS = new Array<BuildingConfig>(TOWER_BLUEPRINT_IDS.length);
 for (let i = 0; i < TOWER_BLUEPRINT_IDS.length; i++) {
   const towerBlueprintId = TOWER_BLUEPRINT_IDS[i];
@@ -72,9 +72,6 @@ export function getBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Bui
   return STRUCTURE_CONFIGS[buildingBlueprintId];
 }
 
-export function getTowerConfig(towerBlueprintId: TowerBlueprintId): BuildingConfig {
-  return TOWER_CONFIGS[towerBlueprintId];
-}
 
 // Helper to get unit build config (now backed by blueprints)
 // Returns a shim matching the old UnitBuildConfig shape for backward compatibility
@@ -99,14 +96,6 @@ export function getUnitBuildConfig(unitBlueprintId: string): UnitBuildConfig | u
   };
 }
 
-// Get list of all buildable units
-export function getBuildableUnits() {
-  const units = new Array<UnitBuildConfig>(BUILDABLE_UNIT_BLUEPRINT_IDS.length);
-  for (let i = 0; i < BUILDABLE_UNIT_BLUEPRINT_IDS.length; i++) {
-    units[i] = getUnitBuildConfig(BUILDABLE_UNIT_BLUEPRINT_IDS[i])!;
-  }
-  return units;
-}
 
 // Get list of all buildings
 export function getAllBuildings(): BuildingConfig[] {

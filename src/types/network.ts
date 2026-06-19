@@ -23,9 +23,9 @@ import wireEnums from '../wireEnums.json';
 // String enums compress poorly even after msgpack — every "tracking"
 // is 8 bytes plus a length tag. These ints take 1 byte each.
 
-export const TURRET_STATE_IDLE = wireEnums.turretState.idle;
-export const TURRET_STATE_TRACKING = wireEnums.turretState.tracking;
-export const TURRET_STATE_ENGAGED = wireEnums.turretState.engaged;
+const TURRET_STATE_IDLE = wireEnums.turretState.idle;
+const TURRET_STATE_TRACKING = wireEnums.turretState.tracking;
+const TURRET_STATE_ENGAGED = wireEnums.turretState.engaged;
 export type TurretStateCode = number;
 
 const _TURRET_STATE_TO_CODE: Record<TurretState, TurretStateCode> = {
@@ -42,20 +42,20 @@ export function codeToTurretState(c: number): TurretState {
   return _CODE_TO_TURRET_STATE[c] ?? 'idle';
 }
 
-export const ACTION_TYPE_MOVE = 0;
-export const ACTION_TYPE_PATROL = 1;
-export const ACTION_TYPE_FIGHT = 2;
-export const ACTION_TYPE_BUILD = 3;
-export const ACTION_TYPE_REPAIR = 4;
-export const ACTION_TYPE_ATTACK = 5;
-export const ACTION_TYPE_GUARD = 6;
-export const ACTION_TYPE_RECLAIM = 7;
-export const ACTION_TYPE_ATTACK_GROUND = 8;
+const ACTION_TYPE_MOVE = 0;
+const ACTION_TYPE_PATROL = 1;
+const ACTION_TYPE_FIGHT = 2;
+const ACTION_TYPE_BUILD = 3;
+const ACTION_TYPE_REPAIR = 4;
+const ACTION_TYPE_ATTACK = 5;
+const ACTION_TYPE_GUARD = 6;
+const ACTION_TYPE_RECLAIM = 7;
+const ACTION_TYPE_ATTACK_GROUND = 8;
 export const ACTION_TYPE_WAIT = 9;
-export const ACTION_TYPE_CAPTURE = 10;
-export const ACTION_TYPE_RESURRECT = 11;
-export const ACTION_TYPE_LOAD_TRANSPORT = 12;
-export const ACTION_TYPE_UNLOAD_TRANSPORT = 13;
+const ACTION_TYPE_CAPTURE = 10;
+const ACTION_TYPE_RESURRECT = 11;
+const ACTION_TYPE_LOAD_TRANSPORT = 12;
+const ACTION_TYPE_UNLOAD_TRANSPORT = 13;
 export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 
 const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
@@ -149,8 +149,8 @@ export function codeToBuildingBlueprintId(c: number): StructureBlueprintId | nul
 
 // ── Projectile type codes ──────────────────────────────────────────
 export const PROJECTILE_TYPE_PROJECTILE = 0;
-export const PROJECTILE_TYPE_BEAM = 1;
-export const PROJECTILE_TYPE_LASER = 2;
+const PROJECTILE_TYPE_BEAM = 1;
+const PROJECTILE_TYPE_LASER = 2;
 export const PROJECTILE_TYPE_UNKNOWN = 0xff;
 export type ProjectileTypeCode = number;
 const _PROJECTILE_TYPE_TO_CODE: Record<string, ProjectileTypeCode> = {

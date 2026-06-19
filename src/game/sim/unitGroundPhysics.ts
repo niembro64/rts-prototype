@@ -11,7 +11,7 @@ export { UNIT_GROUND_CONTACT_EPSILON };
 let cachedGroundDampDtSec = -1;
 let cachedGroundDamp = 1;
 
-export function getUnitGroundPointZ(unit: Unit, bodyCenterZ: number): number {
+function getUnitGroundPointZ(unit: Unit, bodyCenterZ: number): number {
   return bodyCenterZ - unit.bodyCenterHeight;
 }
 
@@ -27,15 +27,6 @@ export function isUnitGroundPenetrationInContact(penetration: number): boolean {
   return penetration >= -UNIT_GROUND_CONTACT_EPSILON;
 }
 
-export function isUnitGroundPointAtOrBelowTerrain(
-  unit: Unit,
-  bodyCenterZ: number,
-  groundZ: number,
-): boolean {
-  return isUnitGroundPenetrationInContact(
-    getUnitGroundPenetration(unit, bodyCenterZ, groundZ),
-  );
-}
 
 export function getUnitGroundFrictionDamp(dtSec: number): number {
   if (dtSec === cachedGroundDampDtSec) return cachedGroundDamp;

@@ -19,12 +19,9 @@
 // shape, just bigger or smaller.
 
 import * as THREE from 'three';
-import type { TurretMount, UnitBodyShape } from '@/types/blueprints';
-import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
+import type { UnitBodyShape } from '@/types/blueprints';
 import {
-  getBodyMountTopY as getBodyMountTopYShared,
   getBodyTopFrac,
-  getTurretRootY as getTurretRootYShared,
   getUnitBodyShapeKey,
 } from '../math/BodyDimensions';
 
@@ -242,10 +239,6 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
 
 const CACHE: Map<string, BodyGeomEntry> = new Map();
 
-function getBlueprintBodyShape(unitBlueprintId: string): UnitBodyShape {
-  try { return getUnitBlueprint(unitBlueprintId).bodyShape; }
-  catch { return FALLBACK_UNIT_BODY_SHAPE; }
-}
 
 /** Look up or build the 3D chassis geometry for an authored body shape.
  *  Returned parts live in unit-radius-1 space; call sites scale the
@@ -260,44 +253,8 @@ export function getBodyGeom(bodyShape: UnitBodyShape): BodyGeomEntry {
   return entry;
 }
 
-export function getBodyGeomForUnit(unitBlueprintId: string): BodyGeomEntry {
-  return getBodyGeom(getBlueprintBodyShape(unitBlueprintId));
-}
 
-/** World-space Y of the body top AT the chassis-local (mountX, mountZ)
- *  position. For composite bodies (arachnid / commander / beam) this
- *  picks the per-PART top so a turret mounted on the small front
- *  prosoma sits on the prosoma's top — not floating at the global
- *  body top, which is the (much taller) abdomen on the widow.
- *
- *  Single-part bodies fall through to the global topY (same value as
- *  `getBodyTopY`).
- *
- *  `mountX` / `mountZ` are CHASSIS-LOCAL forward / lateral offsets in
- *  WORLD units (already multiplied by unitRadius from the unit
- *  blueprint's `turrets[i].mount`). */
-export function getBodyMountTopY(
-  bodyShape: UnitBodyShape,
-  unitRadius: number,
-  mountX: number,
-  mountZ: number,
-): number {
-  return getBodyMountTopYShared(bodyShape, unitRadius, mountX, mountZ);
-}
 
-/** Chassis-local Y for a turret root. Mirrors the sim's
- *  BodyDimensions helper so the visible turret head, barrel pivot, and
- *  authoritative projectile/beam origin share one mount rule. */
-export function getTurretRootY(
-  bodyShape: UnitBodyShape,
-  unitRadius: number,
-  mountX: number,
-  mountZ: number,
-  headRadius: number,
-  mount?: Pick<TurretMount, 'mount'>,
-): number {
-  return getTurretRootYShared(bodyShape, unitRadius, mountX, mountZ, headRadius, mount);
-}
 
 function buildPolygonShape(sides: number, radius: number, rotation: number): THREE.Shape {
   // Matches 2D drawPolygon: vertices at angle = rotation + (i/sides)·2π.

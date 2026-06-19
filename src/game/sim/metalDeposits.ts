@@ -25,7 +25,7 @@ export type MetalDepositFootprintCoverage = {
   primaryDepositId: number | null;
 };
 
-export function metalDepositContainsPoint(
+function metalDepositContainsPoint(
   deposit: MetalDeposit,
   x: number,
   y: number,
@@ -35,7 +35,7 @@ export function metalDepositContainsPoint(
   return metalDepositContainsGridCell(deposit, gx, gy);
 }
 
-export function metalDepositContainsGridCell(
+function metalDepositContainsGridCell(
   deposit: MetalDeposit,
   gx: number,
   gy: number,
@@ -68,7 +68,7 @@ export function findDepositContainingPoint(
 /** True iff at least one generated metal-producing cell overlaps a
  *  building footprint anchored at (gridX, gridY) with (gridW × gridH)
  *  cells. */
-export function metalDepositOverlapsBuildingFootprint(
+function metalDepositOverlapsBuildingFootprint(
   deposit: MetalDeposit,
   gridX: number,
   gridY: number,

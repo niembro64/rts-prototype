@@ -55,7 +55,7 @@ export const BEAM_INNER_VISUAL_CONFIG: BeamVisualConfig = {
 
 export type BeamWaveLayer = 'outer' | 'inner';
 
-export function beamWaveLayerConfig(layer: BeamWaveLayer): BeamVisualConfig {
+function beamWaveLayerConfig(layer: BeamWaveLayer): BeamVisualConfig {
   return layer === 'outer' ? BEAM_OUTER_VISUAL_CONFIG : BEAM_INNER_VISUAL_CONFIG;
 }
 
@@ -94,14 +94,14 @@ export function beamWaveFlowPhase(seedA: number, seedB: number): number {
 
 // GLSL needs decimal-pointed float literals (`1.0`, not `1`); JSON values
 // might be `1` or `0.5`, so format them with a decimal so shader parses.
-export const glsl = (n: number): string => {
+const glsl = (n: number): string => {
   const s = n.toString();
   return s.includes('.') ? s : `${s}.0`;
 };
-export const glslVec3 = (rgb: readonly number[]): string =>
+const glslVec3 = (rgb: readonly number[]): string =>
   `vec3(${glsl(rgb[0])}, ${glsl(rgb[1])}, ${glsl(rgb[2])})`;
 
-export function beamWaveHighAlphaStart(config: BeamVisualConfig): number {
+function beamWaveHighAlphaStart(config: BeamVisualConfig): number {
   const ratio = config.waveHighToLowAlphaLengthRatio ?? 1;
   const safeRatio = Number.isFinite(ratio) ? Math.max(0.001, ratio) : 1;
   const highFrac = safeRatio / (1 + safeRatio);
@@ -222,70 +222,9 @@ export function createBeamEmitterInstancedMaterial(layer: BeamWaveLayer): THREE.
   return material;
 }
 
-const EMITTER_MESH_VERTEX_SHADER = `
-uniform float uTipTaper;
-varying float vAlong;
-void main() {
-  vAlong = position.y + 0.5;
-  vec3 p = position;
-  float radial = mix(1.0, uTipTaper, vAlong);
-  p.x *= radial;
-  p.z *= radial;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-}
-`;
 
-const createEmitterMeshFragmentShader = (config: BeamVisualConfig): string => `
-uniform float uTime;
-uniform float uFlowRepeats;
-uniform float uFlowPhase;
-varying float vAlong;
-void main() {
-  float repeats = max(0.001, uFlowRepeats);
-  float p = fract(vAlong * repeats - uTime * ${glsl(config.waveSpeed)} + uFlowPhase);
-  float pulse = step(${glsl(beamWaveHighAlphaStart(config))}, p);
-  float alpha = mix(${glsl(config.waveLowAlpha)}, ${glsl(config.waveHighAlpha)}, pulse);
-  gl_FragColor = vec4(${glslVec3(config.color)}, alpha);
-}
-`;
 
-// Per-Mesh emitter materials are shared across every turret whose shape has
-// the same world length + tip taper (flow params are uniforms, so the cache
-// key is the resolved values). One compiled program per layer regardless.
-const emitterMeshMaterialCache = new Map<string, THREE.ShaderMaterial>();
 
-/** Material for a per-Mesh emitter shape (tower barrels / unit instanced-cap
- *  fallback). `worldLength` is the shape's span along its local +Y in world
- *  units — barrel length for cones, diameter for balls. `tipTaper` narrows
- *  the radial footprint toward the +Y end (frustum): cones pass their
- *  ballRadius / baseRadius ratio (0 = pointed); balls keep the default 1. */
-export function getBeamEmitterMeshMaterial(
-  layer: BeamWaveLayer,
-  worldLength: number,
-  tipTaper: number = 1,
-): THREE.ShaderMaterial {
-  const config = beamWaveLayerConfig(layer);
-  const repeats = beamWaveFlowRepeats(worldLength, config.waveSpacing);
-  const key = `${layer}:${repeats.toFixed(4)}:${tipTaper.toFixed(4)}`;
-  const cached = emitterMeshMaterialCache.get(key);
-  if (cached !== undefined) return cached;
-  const material = new THREE.ShaderMaterial({
-    vertexShader: EMITTER_MESH_VERTEX_SHADER,
-    fragmentShader: createEmitterMeshFragmentShader(config),
-    uniforms: {
-      uTime: BEAM_WAVE_TIME,
-      uFlowRepeats: { value: repeats },
-      uFlowPhase: { value: beamWaveFlowPhase(repeats * 16, layer === 'outer' ? 1 : 2) },
-      uTipTaper: { value: tipTaper },
-    },
-    transparent: true,
-    depthWrite: false,
-    depthTest: true,
-  });
-  material.customProgramCacheKey = () => `beamEmitterWave:mesh:${layer}`;
-  emitterMeshMaterialCache.set(key, material);
-  return material;
-}
 
 /** Shared start-ball geometry: radius 0.5 so local y spans [-0.5, +0.5]
  *  (the wave-shader geometry contract) and a world-space uniform scale of

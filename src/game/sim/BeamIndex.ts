@@ -4,7 +4,7 @@ import type { EntityId } from './types';
  * Index for O(1) beam lookup by source unit and turret index.
  * Replaces the O(n) hasActiveWeaponBeam() function.
  */
-export class BeamIndex {
+class BeamIndex {
   // Map<unitEntityId, Map<turretIndex, beamEntityId>>
   private beamsByTurret: Map<EntityId, Map<number, EntityId>> = new Map();
 

@@ -189,15 +189,13 @@ export const METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER =
 export const PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD = RESOURCE_CONFIG.cone.constructionHalfAngleRad;
 
 /** Spray-cone half-angle (radians), keyed by economy building blueprint id. */
-export const PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING =
+const PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING =
   RESOURCE_CONFIG.cone.economyHalfAngleRad;
 
 /** Spray-cone half-angle (radians) for an extractor pylon aimed at its
  *  metal deposit source. */
 export const PYLON_BUILDING_EXTRACTOR_CONE_HALF_ANGLE_RAD =
   PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingExtractor;
-export const PYLON_BUILDING_EXTRACTOR_T2_CONE_HALF_ANGLE_RAD =
-  PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingExtractorT2;
 
 /** Spray-cone half-angle (radians) for a solar pylon aimed at its sky
  *  source. */
@@ -219,9 +217,6 @@ export const DEFAULT_BALLS_PER_RESOURCE_PER_SECOND = RESOURCE_CONFIG.ballsPerRes
 
 let activeBallsPerResourcePerSecond = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
 
-export function getBallsPerResourcePerSecond(): number {
-  return activeBallsPerResourcePerSecond;
-}
 
 export function setBallsPerResourcePerSecond(value: number): void {
   activeBallsPerResourcePerSecond = posNum('activeBallsPerResourcePerSecond', value);

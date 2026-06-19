@@ -5,7 +5,7 @@ import type { WorldState } from './WorldState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { shiftUnitAction, setUnitActions } from './unitActions';
 
-export const TRANSPORT_UNIT_BLUEPRINT_ID = 'unitTransport';
+const TRANSPORT_UNIT_BLUEPRINT_ID = 'unitTransport';
 
 const TRANSPORT_CAPACITY = 6;
 const TRANSPORT_LOAD_RANGE_PADDING = 24;
@@ -44,7 +44,7 @@ export function isClientTransportUnit(entity: Entity | null | undefined): entity
   );
 }
 
-export function isTransportableUnit(target: Entity | null | undefined, playerId: number): target is Entity {
+function isTransportableUnit(target: Entity | null | undefined, playerId: number): target is Entity {
   return !!(
     target !== null &&
     target !== undefined &&
@@ -79,7 +79,7 @@ export function isTransportLoadInRange(transport: Entity, target: Entity): boole
   return dx * dx + dy * dy <= range * range;
 }
 
-export function loadUnitIntoTransport(
+function loadUnitIntoTransport(
   world: WorldState,
   transport: Entity,
   target: Entity,
@@ -104,7 +104,7 @@ export function loadUnitIntoTransport(
   return true;
 }
 
-export function unloadTransportCargo(
+function unloadTransportCargo(
   world: WorldState,
   transport: Entity,
   targetX: number,

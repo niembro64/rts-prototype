@@ -31,7 +31,7 @@ export const LAND_CELL_SIZE: number = MAP_SIZE_CONFIG.landCellSize;
 /** Single source for map-size option generation. Width and length both use
  *  this same base cell count, then grow by 1.5x per option. Keep generated
  *  sizes odd so maps have exactly one central land cell. */
-export const MAP_DIMENSION_BASE_LAND_CELLS: number =
+const MAP_DIMENSION_BASE_LAND_CELLS: number =
   MAP_SIZE_CONFIG.mapDimensionBaseLandCells;
 const MAP_DIMENSION_AXIS_GROWTH: number = MAP_SIZE_CONFIG.mapDimensionAxisGrowth;
 const MAP_DIMENSION_AXIS_OPTION_COUNT: number = MAP_SIZE_CONFIG.mapDimensionAxisOptionCount;
@@ -63,7 +63,7 @@ export function nearestOddLandCellCount(value: number): number {
 /** Hard-fail dev guard: a land-cell axis value must be a positive
  *  odd integer. Maps need exactly one central cell, which requires
  *  odd cell counts on both axes. */
-export function assertOddPositiveLandCellAxis(label: string, value: number): void {
+function assertOddPositiveLandCellAxis(label: string, value: number): void {
   if (!Number.isInteger(value) || value <= 0 || value % 2 !== 1) {
     throw new Error(
       `${label} (${value}) must be a positive odd integer (one central land cell required)`,
@@ -105,11 +105,11 @@ function validateDefaultMapDimension(axis: 'width' | 'length', valueLandCells: n
   return valueLandCells;
 }
 
-export const DEFAULT_MAP_WIDTH_LAND_CELLS = validateDefaultMapDimension(
+const DEFAULT_MAP_WIDTH_LAND_CELLS = validateDefaultMapDimension(
   'width',
   DEFAULT_MAP_WIDTH_LAND_CELLS_VALUE,
 );
-export const DEFAULT_MAP_LENGTH_LAND_CELLS = validateDefaultMapDimension(
+const DEFAULT_MAP_LENGTH_LAND_CELLS = validateDefaultMapDimension(
   'length',
   DEFAULT_MAP_LENGTH_LAND_CELLS_VALUE,
 );

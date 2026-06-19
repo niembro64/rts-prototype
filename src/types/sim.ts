@@ -89,7 +89,7 @@ export type {
   ShotVisualProfile,
 } from './shotTypes';
 export {
-  RAY_TYPES,
+  
   getEmissionBlueprintId,
   getShotMaxLifespan,
   isRayConfig,
@@ -97,7 +97,7 @@ export {
   isShieldConfig,
   isProjectileShot,
   isRocketLikeShot,
-  isMissileShot,
+  
 } from './shotTypes';
 
 // Transform component - position and rotation in world space.

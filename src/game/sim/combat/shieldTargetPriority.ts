@@ -19,7 +19,7 @@ const _shieldPanelTargetFsm: CombatTargetingTurretFsmOut = {
 /** Sustained DPS for a turret, precomputed from its static shot config
  *  at runtime-turret construction. Force shots and turrets without a
  *  damaging shot return 0 and are filtered out. */
-export function turretDps(turret: Turret): number {
+function turretDps(turret: Turret): number {
   return turret.sustainedDps;
 }
 
@@ -60,7 +60,7 @@ function scoreShieldPanelTargetTurretFromTarget(
   return turretDps(turret);
 }
 
-export function pickShieldPanelTargetTurret(
+function pickShieldPanelTargetTurret(
   target: Entity,
   ourUnitId: number,
   ourTurretId: number | undefined = undefined,
@@ -113,11 +113,3 @@ export function pickTargetAimTurret(
   return best;
 }
 
-export function getShieldPanelTargetScore(
-  target: Entity,
-  ourUnitId: number,
-  ourTurretId: number | undefined = undefined,
-): number {
-  const pick = pickShieldPanelTargetTurret(target, ourUnitId, ourTurretId);
-  return pick !== null ? pick.score : 0;
-}

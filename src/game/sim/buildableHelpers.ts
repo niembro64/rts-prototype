@@ -2,17 +2,12 @@ import type { Buildable, ConstructionPieceBuildRecord, ConstructionPieceKind, En
 
 export type ResourceKind = keyof ResourceCost;
 
-export const RESOURCE_KINDS: ReadonlyArray<ResourceKind> = ['energy', 'metal'];
-export const BUILDABLE_INITIAL_HP = 1;
+const RESOURCE_KINDS: ReadonlyArray<ResourceKind> = ['energy', 'metal'];
 
 export function makeZeroResourceCost(): ResourceCost {
   return { energy: 0, metal: 0 };
 }
 
-export function getInitialBuildHp(maxHp: number): number {
-  if (!Number.isFinite(maxHp) || maxHp <= 0) return 0;
-  return Math.min(BUILDABLE_INITIAL_HP, maxHp);
-}
 
 export type BuildableState = {
   paid: ResourceCost | null;
@@ -57,7 +52,7 @@ export function getBuildFraction(b: Buildable): number {
   return sum / RESOURCE_KINDS.length;
 }
 
-export function getPieceFillRatio(
+function getPieceFillRatio(
   piece: Buildable['pieces'][number],
   kind: ResourceKind,
 ): number {
@@ -66,13 +61,13 @@ export function getPieceFillRatio(
   return Math.min(1, Math.max(0, piece.paid[kind] / req));
 }
 
-export function getPieceBuildFraction(piece: Buildable['pieces'][number]): number {
+function getPieceBuildFraction(piece: Buildable['pieces'][number]): number {
   let sum = 0;
   for (const k of RESOURCE_KINDS) sum += getPieceFillRatio(piece, k);
   return sum / RESOURCE_KINDS.length;
 }
 
-export function getConstructionPieceRecord(
+function getConstructionPieceRecord(
   entity: Entity,
   kind: ConstructionPieceKind,
   mountIndex: number | null = null,
@@ -133,7 +128,7 @@ export function isConstructionBodyMaterialized(entity: Entity): boolean {
   return isConstructionPieceMaterialized(entity, 'body');
 }
 
-export function getActiveBuildPiece(b: Buildable): Buildable['pieces'][number] | null {
+function getActiveBuildPiece(b: Buildable): Buildable['pieces'][number] | null {
   for (let i = 0; i < b.pieces.length; i++) {
     const piece = b.pieces[i];
     if (!piece.isComplete) return piece;

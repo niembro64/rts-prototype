@@ -86,7 +86,7 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
 
 type JsonTowerBlueprint = Omit<BuildingBlueprint, keyof LockOnInclusionObject>;
 
-export const PURE_BUILDING_BLUEPRINTS =
+const PURE_BUILDING_BLUEPRINTS =
   rawBuildingBlueprints as Partial<Record<BuildingBlueprintId, BuildingBlueprint>>;
 const RAW_TOWER_BLUEPRINTS =
   rawTowerBlueprints as Partial<Record<BuildingBlueprintId, JsonTowerBlueprint>>;
@@ -109,7 +109,7 @@ function buildTowerBlueprints(): Partial<Record<BuildingBlueprintId, BuildingBlu
   return blueprints;
 }
 
-export const TOWER_BLUEPRINTS = buildTowerBlueprints();
+const TOWER_BLUEPRINTS = buildTowerBlueprints();
 const STATIC_BLUEPRINTS_BY_ID = {
   ...PURE_BUILDING_BLUEPRINTS,
   ...TOWER_BLUEPRINTS,
@@ -156,7 +156,7 @@ const BUILDING_EXPLICIT_FIELDS = [
 export const DEFAULT_BUILDING_VISUAL_HEIGHT = 120;
 export const SOLAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingSolar.visualHeight;
 export const WIND_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingWind.visualHeight;
-export const FACTORY_BASE_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.towerFabricator.visualHeight;
+const FACTORY_BASE_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.towerFabricator.visualHeight;
 export const EXTRACTOR_BUILDING_VISUAL_HEIGHT =
   BUILDING_BLUEPRINTS.buildingExtractor.visualHeight;
 export const RADAR_BUILDING_VISUAL_HEIGHT = BUILDING_BLUEPRINTS.buildingRadar.visualHeight;
@@ -175,18 +175,8 @@ function firstTurretMountZ(
   return turret !== undefined ? turret.mount.z : fallback;
 }
 
-export const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
+const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
   firstTurretMountZ(BUILDING_BLUEPRINTS.towerFabricator, FACTORY_BASE_VISUAL_HEIGHT);
-/** Pivot height for the megaBeam turret on the tower — head sits just
- *  above the body socket so the barrel clears the tapered hex shaft. */
-export const MEGA_BEAM_TOWER_TURRET_MOUNT_Z =
-  firstTurretMountZ(BUILDING_BLUEPRINTS.towerBeamMega, MEGA_BEAM_TOWER_VISUAL_HEIGHT);
-/** Pivot height for the cannon tower's heavier static turret head. */
-export const CANNON_TOWER_TURRET_MOUNT_Z =
-  firstTurretMountZ(BUILDING_BLUEPRINTS.towerCannon, CANNON_TOWER_VISUAL_HEIGHT);
-/** Pivot height for the anti-air tower's missile launcher. */
-export const ANTI_AIR_TOWER_TURRET_MOUNT_Z =
-  firstTurretMountZ(BUILDING_BLUEPRINTS.towerAntiAir, ANTI_AIR_TOWER_VISUAL_HEIGHT);
 
 export type FactoryBuildingVisualMetrics = {
   minDim: number;
@@ -375,6 +365,3 @@ export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): 
   return BUILDING_BLUEPRINTS[buildingBlueprintId];
 }
 
-export function getAllBuildingBlueprints(): BuildingBlueprint[] {
-  return Object.values(BUILDING_BLUEPRINTS);
-}

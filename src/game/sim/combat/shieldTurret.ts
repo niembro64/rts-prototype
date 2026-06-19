@@ -203,7 +203,7 @@ export type ShieldProjectileIntersection = {
 };
 
 
-export function encodeShieldReflectionDirection(
+function encodeShieldReflectionDirection(
   direction: ShieldReflectionDirection | undefined,
 ): number {
   switch (direction) {

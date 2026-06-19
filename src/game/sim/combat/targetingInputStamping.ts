@@ -107,7 +107,6 @@ import {
   type ProjectileShot,
   type Turret,
   type TurretRanges,
-  type TurretState,
 } from '../types';
 
 const _stampPos = { x: 0, y: 0, z: 0 };
@@ -288,13 +287,6 @@ export function getCombatTargetingSourceCount(): number {
   return _combatTargetingSourceCount;
 }
 
-export function encodeCombatTargetingTurretState(state: TurretState): CombatTargetingTurretStateCode {
-  switch (state) {
-    case 'engaged': return CT_TURRET_STATE_ENGAGED;
-    case 'tracking': return CT_TURRET_STATE_TRACKING;
-    case 'idle': return CT_TURRET_STATE_IDLE;
-  }
-}
 
 export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingStateViews {
   const targeting = sim.combatTargeting;
@@ -381,7 +373,7 @@ export function readCombatTargetingTurretFsmInto(
   return readCombatTargetingTurretFsmFromSimInto(sim, entity, turretIndex, out);
 }
 
-export function readCombatTargetingTurretFsmFromSimInto(
+function readCombatTargetingTurretFsmFromSimInto(
   sim: SimWasm,
   entity: Entity,
   turretIndex: number,

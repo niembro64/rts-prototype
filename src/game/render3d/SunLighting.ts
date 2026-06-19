@@ -129,7 +129,7 @@ function smoothstep(edge0: number, edge1: number, v: number): number {
   return t * t * (3 - 2 * t);
 }
 
-export function terrainDirectionalShade(normal: SimSunDirection): number {
+function terrainDirectionalShade(normal: SimSunDirection): number {
   if (!TERRAIN_SHADOW_RENDER_CONFIG.enabled) return 1;
   const direct = Math.max(
     0,

@@ -285,16 +285,3 @@ export class ForceAccumulator {
   }
 }
 
-/**
- * Steering strength presets for different behaviors.
- */
-export const STEERING_PRESETS = {
-  /** Smooth, gentle steering - good for large units */
-  GENTLE: 0.3,
-  /** Default steering - balanced responsiveness */
-  NORMAL: 0.5,
-  /** Aggressive steering - snappy, responsive */
-  AGGRESSIVE: 0.8,
-  /** Very tight steering - almost instant response */
-  TIGHT: 1.0,
-};

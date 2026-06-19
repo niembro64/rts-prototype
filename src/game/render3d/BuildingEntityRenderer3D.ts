@@ -98,7 +98,7 @@ export type BuildingEntityMeshFactoryOptions = {
   getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
 };
 
-export function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): EntityMesh {
+function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): EntityMesh {
   const {
     entity,
     width,

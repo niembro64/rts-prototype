@@ -8,7 +8,7 @@ export const PRESENTATION_SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
   PRESENTATION_SNAPSHOT_RATE_DEFAULT,
 ];
 
-export function isPresentationSnapshotRate(rate: SnapshotRate): rate is number {
+function isPresentationSnapshotRate(rate: SnapshotRate): rate is number {
   return typeof rate === 'number' && Number.isFinite(rate) && rate > 0;
 }
 

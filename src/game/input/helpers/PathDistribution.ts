@@ -22,7 +22,7 @@ export function getPathLength(points: readonly WorldPoint[]): number {
 // (the right-drag accumulator's points each come from CursorGround.pickSim
 // so z is present in normal play); the result preserves z so downstream
 // command builders can keep the click-altitude all the way through.
-export function getPointAtDistance(points: readonly WorldPoint[], targetDist: number): WorldPoint {
+function getPointAtDistance(points: readonly WorldPoint[], targetDist: number): WorldPoint {
   if (points.length === 0) return { x: 0, y: 0 };
   if (points.length === 1) return { x: points[0].x, y: points[0].y, z: points[0].z };
 

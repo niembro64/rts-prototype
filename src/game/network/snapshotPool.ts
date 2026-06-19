@@ -75,7 +75,7 @@ export function deleteSnapshotPoolForKey<T>(
  *  callers through one shared pool — they pay the same hidden-coupling
  *  cost the per-listener split avoided, but no real call site does
  *  this today. */
-export const DEFAULT_SNAPSHOT_POOL_KEY = '__default__';
+const DEFAULT_SNAPSHOT_POOL_KEY = '__default__';
 
 /** Resolve a serializer trackingKey (string | number | undefined) to
  *  the string used as the pool map key. Centralized so the audio /

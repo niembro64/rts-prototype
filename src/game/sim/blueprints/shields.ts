@@ -7,7 +7,6 @@
  */
 
 import {
-  isShieldBlueprintId,
   isShieldMaterialId,
   type ShieldBlueprintId,
 } from '../../../types/blueprintIds';
@@ -20,7 +19,7 @@ import { resolveBlueprintRefs } from './jsonRefs';
 import { assertExplicitFields, isObject } from './jsonValidation';
 import type { ShieldBlueprint } from './types';
 
-export const SHIELD_SURFACE_RENDER_MODES = [
+const SHIELD_SURFACE_RENDER_MODES = [
   'finite-mesh',
   'screen-space-analytic-shader',
 ] as const;
@@ -70,10 +69,6 @@ export const SHIELD_BLUEPRINTS = resolveBlueprintRefs(
   readShieldBlueprintEntries(rawShieldBlueprints),
 ) as unknown as Record<ShieldBlueprintId, ShieldBlueprint>;
 
-export function getShieldBlueprint(id: string): ShieldBlueprint {
-  if (!isShieldBlueprintId(id)) throw new Error(`Unknown shield blueprint: ${id}`);
-  return SHIELD_BLUEPRINTS[id];
-}
 
 for (const [id, blueprint] of Object.entries(SHIELD_BLUEPRINTS)) {
   if (blueprint.shieldBlueprintId !== id) {

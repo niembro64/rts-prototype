@@ -333,9 +333,6 @@ export function isPackedEntitySnapshotWire(
   );
 }
 
-export function isPackedEntitiesField(value: unknown): value is PackedEntitySnapshotWire {
-  return isPackedEntitySnapshotWire(value);
-}
 
 function unpackDetailEntityRow(row: PackedEntityRow): NetworkServerSnapshotEntity {
   let i = 0;

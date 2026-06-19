@@ -1,7 +1,7 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export const SHIELD_PANEL_INPUT_STRIDE = 24;
-export const SHIELD_PANEL_OUTPUT_STRIDE = 16;
+const SHIELD_PANEL_OUTPUT_STRIDE = 16;
 
 export class ShieldPanelMatrixBatch3D {
   inputStride = SHIELD_PANEL_INPUT_STRIDE;

@@ -43,7 +43,7 @@ function pickRandomFunnyName(): FunnyName {
  *  null when nothing is stored (first-ever load, or storage unavailable
  *  in a sandboxed iframe). Trim + length-cap protects against pathologic
  *  values stuck in storage from older builds. */
-export function loadStoredUsername(): string | null {
+function loadStoredUsername(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);

@@ -33,9 +33,9 @@ import type { WorldState } from './WorldState';
 import type { BuildingActiveState, BuildingBlueprintId, Entity } from './types';
 
 /** Grace period from first hit to the building actually closing. */
-export const BUILDING_DAMAGE_DELAY_MS = 2000;
+const BUILDING_DAMAGE_DELAY_MS = 2000;
 /** Auto-reopen timer once closed: must go this long without taking damage. */
-export const BUILDING_REOPEN_DELAY_MS = 5000;
+const BUILDING_REOPEN_DELAY_MS = 5000;
 /** Damage multiplier applied while the building is OFF. 0.1 = 10× tougher. */
 export const BUILDING_CLOSED_DAMAGE_MULTIPLIER = 0.1;
 
@@ -54,7 +54,7 @@ export function buildingBlueprintHasActiveState(
     || buildingBlueprintId === 'buildingResourceConverter';
 }
 
-export function createInitialBuildingActiveState(): BuildingActiveState {
+function createInitialBuildingActiveState(): BuildingActiveState {
   return {
     open: false,
     damageDelayMs: 0,

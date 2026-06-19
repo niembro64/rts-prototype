@@ -8,7 +8,7 @@ export type ResolvedLegLayout = {
   sides: number[];
 };
 
-export function resolveLeftSideLegConfigs(
+function resolveLeftSideLegConfigs(
   config: LegConfig,
   radius: number,
 ): ArachnidLegConfig[] {

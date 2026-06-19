@@ -3,7 +3,7 @@ import type { PlayerId } from './types';
 // Angular anchor for player 0 on radial maps. Rotated 45 degrees
 // counterclockwise from the top so the first player starts in a
 // square-map corner rather than on a flat side.
-export const FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
+const FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
 
 export function normalizePlayerIds(playerIds: readonly PlayerId[]): PlayerId[] {
   if (playerIds.length > 0) {

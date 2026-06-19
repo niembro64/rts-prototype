@@ -22,26 +22,26 @@ import {
 
 export {
   canEntityProvideFullVision,
-  canEntityProvideCloakDetection,
-  canEntityProvideRadarVision,
-  getBuildingAuthoredDetectorRadius,
-  getBuildingAuthoredFullSightRadius,
-  getBuildingAuthoredRadarRadius,
-  getEntityCloakDetectionRadius,
+  
+  
+  
+  
+  
+  
   getEntityFullVisionRadius,
-  getEntityRadarRadius,
-  getEntityVisibilityPadding,
-  isEntityCloaked,
+  
+  
+  
 } from '../sim/sensorCoverage';
 
-export const VISION_CELL_SIZE = 512;
+const VISION_CELL_SIZE = 512;
 /** Additional radius beyond a full-vision source where sounds carry
  *  but visuals do not (FOW-09). A vision-source's effective audio
  *  reach is `radius + EARSHOT_PAD`. Tuned roughly half the unit
  *  vision radius — enough to hear gunfire just over the rim of your
  *  scout's circle, not enough to hear a base under attack across
  *  the map. */
-export const EARSHOT_PAD = 600;
+const EARSHOT_PAD = 600;
 
 /** Eye-height above transform.z assumed for vision sources when
  *  running the terrain LOS check (FOW-04). Constant rather
@@ -71,7 +71,7 @@ type VisionSource = {
  *  events through audioOnly forwarding, and drops OUT_OF_RANGE
  *  events (unless authored by the recipient). Numeric literals so
  *  the hot loop can branch on a single int compare. */
-export const VISIBILITY_CLASS_OUT_OF_RANGE = 0;
+const VISIBILITY_CLASS_OUT_OF_RANGE = 0;
 export const VISIBILITY_CLASS_IN_EARSHOT = 1;
 export const VISIBILITY_CLASS_IN_VISION = 2;
 export type VisibilityClass = 0 | 1 | 2;
@@ -91,7 +91,7 @@ export function getScanPulseWireSource(
   return scanPulseWireSources.get(pulses);
 }
 
-export function writeScanPulseWireRow(
+function writeScanPulseWireRow(
   values: MutableScanPulseWireRow,
   base: number,
   pulse: NetworkServerSnapshotScanPulse,

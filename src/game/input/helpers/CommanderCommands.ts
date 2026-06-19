@@ -21,8 +21,6 @@ import type {
 import type { PlayerId } from '../../sim/types';
 import { findRepairTargetAt } from './RepairTargetHelper';
 import type { RepairEntitySource } from './RepairTargetHelper';
-import { findReclaimTargetAt } from './ReclaimTargetHelper';
-import type { ReclaimEntitySource } from './ReclaimTargetHelper';
 import { isGuardableFriendlyTarget } from './GuardTargetHelper';
 import { isCapturableTarget } from '../../sim/capture';
 import { isReclaimableTarget } from '../../sim/reclaim';
@@ -105,19 +103,6 @@ export function buildReclaimCommandForTarget(
   };
 }
 
-export function buildReclaimCommandAt(
-  source: ReclaimEntitySource,
-  worldX: number,
-  worldY: number,
-  commander: Entity | null,
-  tick: number,
-  queue: boolean,
-  queueFront = false,
-  queueInsertIndex?: number,
-): ReclaimCommand | null {
-  const target = findReclaimTargetAt(source, worldX, worldY);
-  return buildReclaimCommandForTarget(target, commander, tick, queue, queueFront, queueInsertIndex);
-}
 
 export function buildReclaimAreaCommand(
   commander: Entity | null,
@@ -167,7 +152,7 @@ export function buildCaptureCommandForTarget(
   };
 }
 
-export function isClientResurrectableWreck(target: Entity | null | undefined): target is Entity {
+function isClientResurrectableWreck(target: Entity | null | undefined): target is Entity {
   if (target === null || target === undefined || target.building === null) return false;
   return target.wreck !== null && target.building.hp > 0;
 }

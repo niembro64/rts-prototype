@@ -24,7 +24,7 @@ export function getSnapshotWireBytes(state: NetworkServerSnapshot): number | und
   return Number.isFinite(bytes) ? bytes : undefined;
 }
 
-export function clearSnapshotWireBytes(state: NetworkServerSnapshot): void {
+function clearSnapshotWireBytes(state: NetworkServerSnapshot): void {
   Object.defineProperty(state, SNAPSHOT_WIRE_BYTES, {
     value: undefined,
     writable: true,

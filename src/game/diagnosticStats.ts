@@ -15,7 +15,7 @@ export function addRunningStat(stats: RunningStats, value: number): void {
   if (value > stats.max) stats.max = value;
 }
 
-export function averageRunningStat(stats: RunningStats): number | null {
+function averageRunningStat(stats: RunningStats): number | null {
   return stats.count > 0 ? stats.total / stats.count : null;
 }
 

@@ -1,6 +1,6 @@
 import type { Unit } from './types';
 
-export const UNIT_MOVEMENT_ACCEL_EPSILON = 0.05;
+const UNIT_MOVEMENT_ACCEL_EPSILON = 0.05;
 
 export function setUnitMovementAcceleration(
   unit: Unit,

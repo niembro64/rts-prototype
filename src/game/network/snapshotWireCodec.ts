@@ -109,9 +109,6 @@ export type SnapshotWireBreakdown = {
   projectileTop: SnapshotWireBreakdownEntry[];
 };
 
-export function encodeNetworkSnapshot(state: NetworkServerSnapshot): Uint8Array {
-  return encodeNetworkSnapshotDetailed(state).bytes;
-}
 
 export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): EncodedNetworkSnapshot {
   if (ENABLE_RUST_SNAPSHOT_WIRE) {
@@ -187,7 +184,7 @@ export function measureNetworkSnapshotWireBreakdown(
   };
 }
 
-export function packNetworkSnapshotForWire(
+function packNetworkSnapshotForWire(
   state: NetworkServerSnapshot,
   options: {
     audioEvents?: 'packed' | 'raw';

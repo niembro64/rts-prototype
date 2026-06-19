@@ -258,21 +258,6 @@ export function getTerrainHeight(
   );
 }
 
-export function createTerrainHeightSampler(
-  mapWidth: number,
-  mapHeight: number,
-  includeDeposits = true,
-): (x: number, y: number) => number {
-  const ovalMetrics = makeMapOvalMetrics(mapWidth, mapHeight);
-  return (x: number, y: number): number => getTerrainHeightWithMetrics(
-    x,
-    y,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-    includeDeposits,
-  );
-}
 
 function getTerrainHeightWithMetrics(
   x: number,

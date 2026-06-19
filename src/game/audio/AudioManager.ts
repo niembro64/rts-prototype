@@ -39,7 +39,7 @@ const SHARED_NOISE_BUFFER_SECONDS = 2;
  *  gameCanvasClientSettings. */
 type AudioCategory = Exclude<SoundCategory, 'music'>;
 
-export class AudioManager {
+class AudioManager {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
   private initialized = false;

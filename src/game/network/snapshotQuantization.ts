@@ -1,9 +1,9 @@
-export const ENTITY_POSITION_WIRE_SCALE = 100;
-export const MINIMAP_POSITION_WIRE_SCALE = 1;
-export const PROJECTILE_POSITION_WIRE_SCALE = 1;
-export const VELOCITY_WIRE_SCALE = 10;
-export const ROTATION_WIRE_SCALE = 1000;
-export const NORMAL_WIRE_SCALE = 1000;
+const ENTITY_POSITION_WIRE_SCALE = 100;
+const MINIMAP_POSITION_WIRE_SCALE = 1;
+const PROJECTILE_POSITION_WIRE_SCALE = 1;
+const VELOCITY_WIRE_SCALE = 10;
+const ROTATION_WIRE_SCALE = 1000;
+const NORMAL_WIRE_SCALE = 1000;
 
 function quantizeFixedPoint(value: number, scale: number): number {
   return Math.round(value * scale);
@@ -25,9 +25,6 @@ export function quantizeMinimapPosition(value: number): number {
   return Math.round(value * MINIMAP_POSITION_WIRE_SCALE);
 }
 
-export function dequantizeMinimapPosition(value: number): number {
-  return dequantizeFixedPoint(value, MINIMAP_POSITION_WIRE_SCALE);
-}
 
 export function quantizeProjectilePosition(value: number): number {
   return Math.round(value * PROJECTILE_POSITION_WIRE_SCALE);

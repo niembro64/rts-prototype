@@ -5,11 +5,11 @@ const BUILD_TARGET_KIND_POINT = 0;
 const BUILD_TARGET_KIND_BUILDING = 1;
 const BUILD_TARGET_KIND_UNIT = 2;
 
-export function getBuildRange(entity: Entity): number {
+function getBuildRange(entity: Entity): number {
   return entity.builder !== null ? entity.builder.buildRange : 0;
 }
 
-export function getBuildTargetHorizontalDistance(builder: Entity, target: Entity): number {
+function getBuildTargetHorizontalDistance(builder: Entity, target: Entity): number {
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('getBuildTargetHorizontalDistance: sim-wasm is not initialized');

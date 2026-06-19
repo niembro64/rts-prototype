@@ -24,7 +24,7 @@ import {
 // Terrain repetition scale comes from
 // colorsConfig.world.terrain.ground.texture.tileWorldSize.
 const BASE_TEXTURE_PIXELS = 4096;
-export const GROUND_DETAIL_TEXTURE_PIXELS = TERRAIN_GROUND_TEXTURE_RESOLUTION;
+const GROUND_DETAIL_TEXTURE_PIXELS = TERRAIN_GROUND_TEXTURE_RESOLUTION;
 const TEXTURE_SCALE = GROUND_DETAIL_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
 // The shader also samples a second rotated+rescaled copy of this texture
 // (see TerrainTileRenderer3D), so the visible repeat period is much larger

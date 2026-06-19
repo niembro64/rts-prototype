@@ -8,7 +8,7 @@ export type { RepairEntitySource } from '@/types/input';
 import type { RepairEntitySource } from '@/types/input';
 
 // Find an incomplete building at a world position
-export function findIncompleteBuildingAt(
+function findIncompleteBuildingAt(
   entitySource: RepairEntitySource,
   worldX: number,
   worldY: number,
@@ -33,7 +33,7 @@ export function findIncompleteBuildingAt(
 }
 
 // Find a damaged friendly unit at a world position
-export function findDamagedUnitAt(
+function findDamagedUnitAt(
   entitySource: RepairEntitySource,
   worldX: number,
   worldY: number,

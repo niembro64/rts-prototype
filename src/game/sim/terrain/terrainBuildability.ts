@@ -41,24 +41,6 @@ function getFlatZoneBuildabilityLevel(height: number): number | null {
     + Math.round(height * TERRAIN_FLAT_ZONE_LEVEL_SCALE);
 }
 
-export function getTerrainPlateauLevelAt(
-  x: number,
-  z: number,
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
-): number | null {
-  assertCanonicalLandCellSize('getTerrainPlateauLevelAt cellSize', cellSize);
-  const step = TERRAIN_D_TERRAIN;
-  if (step <= 0) return 0;
-  const flatZone = findDepositFlatZoneAt(x, z);
-  const height = flatZone
-    ? flatZone.height
-    : getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
-  return flatZone
-    ? getFlatZoneBuildabilityLevel(height)
-    : getTerrainPlateauLevelForHeight(height);
-}
 
 export type FootprintBuildability = {
   /** True iff every sampled corner/edge/center is dry land, under the
@@ -186,19 +168,6 @@ export function evaluateBuildabilityFootprint(
   );
 }
 
-export function isBuildableTerrainFootprint(
-  centerX: number,
-  centerZ: number,
-  halfWidth: number,
-  halfDepth: number,
-  mapWidth: number,
-  mapHeight: number,
-  cellSize: number = LAND_CELL_SIZE,
-): boolean {
-  return evaluateBuildabilityFootprint(
-    centerX, centerZ, halfWidth, halfDepth, mapWidth, mapHeight, cellSize,
-  ).buildable;
-}
 
 export type TerrainBuildabilityCell = {
   buildable: boolean;

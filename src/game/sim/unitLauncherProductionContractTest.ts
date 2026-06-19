@@ -1,6 +1,6 @@
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
-import { getSimWasm, initSimWasm } from '../sim-wasm/init';
+import { getSimWasm } from '../sim-wasm/init';
 import { stampCombatTargetingPool } from './combat/targetingInputStamping';
 import type { Entity, PlayerId } from './types';
 import { unitLauncherProductionSystem } from './unitLauncherProduction';
@@ -86,9 +86,3 @@ export function runUnitLauncherProductionContractTest(): void {
   }
 }
 
-export async function runUnitLauncherProductionContractTestAsync(): Promise<void> {
-  if (getSimWasm() === undefined) {
-    await initSimWasm();
-  }
-  runUnitLauncherProductionContractTest();
-}

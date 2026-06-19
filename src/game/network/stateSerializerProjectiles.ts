@@ -43,7 +43,7 @@ import {
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 
 export const PROJECTILE_SPAWN_WIRE_STRIDE = 32;
-export const PROJECTILE_DESPAWN_WIRE_STRIDE = 1;
+const PROJECTILE_DESPAWN_WIRE_STRIDE = 1;
 export const PROJECTILE_VELOCITY_WIRE_STRIDE = 9;
 export const PROJECTILE_BEAM_UPDATE_WIRE_STRIDE = 4;
 export const PROJECTILE_BEAM_POINT_WIRE_STRIDE = 12;

@@ -1,10 +1,10 @@
 // Math utilities - re-exports
 
 export {
-  distanceSquared,
+  
   distance,
-  distanceSquared3,
-  distance3,
+  
+  
   magnitude,
   magnitude3,
   normalizeAngle,
@@ -12,24 +12,24 @@ export {
   clamp01,
   angleDeltaAbs,
   lerp,
-  angleDiff,
+  
   lerpAngle,
   getTransformCosSin,
-  integrateDampedRotation,
+  
   isFiniteNumber,
   shouldRunOnStride,
   type DampedRotationOptions,
 } from './MathHelpers';
 
 export {
-  lineCircleIntersectionT,
+  
   lineSphereIntersectionT,
-  lineLineIntersectionT,
-  lineRectIntersectionT,
-  rayVerticalRectIntersectionT,
-  rayTiltedRectIntersectionT,
+  
+  
+  
+  
   rayBoxIntersectionT,
-  isPointInSlice,
+  
 } from './CollisionHelpers';
 
 export {
@@ -45,7 +45,7 @@ export {
 
 export {
   type BarrelEndpoint,
-  getBarrelTip,
+  
   countBarrels,
   turretBarrelFollowsBeam,
   getBarrelOrbitAngle,
@@ -67,11 +67,11 @@ export {
   type TurretShotAngleInput,
   type TurretShotAngleSolution,
   type TurretShotArcPreference,
-  computeInterceptTime,
-  integrateConstantAccelerationPosition,
-  integrateConstantAccelerationVelocity,
+  
+  
+  
   solveKinematicIntercept,
-  solveTurretShotAngles,
+  
 } from './Ballistics';
 
 export { getTurretWorldMount } from './MountGeometry';

@@ -167,12 +167,6 @@ export const BATTLE_CONFIG = {
 void (battleBarConfig.demoDefault as string);
 void (battleBarConfig.realDefault as string);
 
-// Per-mode defaults are not authored here. Each DEMO BATTLE / REAL
-// BATTLE bar reads its fallback values from the matching default
-// preset (DEMO BATTLE DEFAULT / REAL BATTLE DEFAULT) via
-// `getModeDefaultPreset(mode)` in battlePresets.ts.
-export const DEMO_CAP_DEFAULT = getModeDefaultPreset('demo').cap;
-export const REAL_CAP_DEFAULT = getModeDefaultPreset('real').cap;
 
 // ── localStorage keys (module-private) ──
 // `demo-battle-*` and `real-battle-*` namespace each setting to the
@@ -196,18 +190,12 @@ const STORAGE_DEMO_CAP = sk.demoCap;
 const STORAGE_REAL_CAP = sk.realCap;
 const STORAGE_DEMO_GRID = sk.demoGrid;
 const STORAGE_REAL_GRID = sk.realGrid;
-const STORAGE_DEMO_TURRET_SHIELD_PANELS_ENABLED = sk.demoTurretShieldPanelsEnabled;
-const STORAGE_REAL_TURRET_SHIELD_PANELS_ENABLED = sk.realTurretShieldPanelsEnabled;
-const STORAGE_DEMO_TURRET_SHIELD_SPHERES_ENABLED = sk.demoTurretShieldSpheresEnabled;
-const STORAGE_REAL_TURRET_SHIELD_SPHERES_ENABLED = sk.realTurretShieldSpheresEnabled;
 const STORAGE_DEMO_FORCE_FIELDS_VISIBLE = sk.demoForceFieldsVisible;
 const STORAGE_REAL_FORCE_FIELDS_VISIBLE = sk.realForceFieldsVisible;
 const STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT = sk.demoShieldsObstructSight;
 const STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT = sk.realShieldsObstructSight;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
-const STORAGE_DEMO_SHIELD_REFLECTION_MODE = sk.demoShieldReflectionMode;
-const STORAGE_REAL_SHIELD_REFLECTION_MODE = sk.realShieldReflectionMode;
 const STORAGE_DEMO_CENTER_MAGNITUDE = sk.demoCenterMagnitude;
 const STORAGE_REAL_CENTER_MAGNITUDE = sk.realCenterMagnitude;
 const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
@@ -345,7 +333,7 @@ export function loadStoredDemoCap(): number {
   return loadPosNum(STORAGE_DEMO_CAP) ?? getModeDefaultPreset('demo').cap;
 }
 
-export function saveDemoCap(value: number): void {
+function saveDemoCap(value: number): void {
   persist(STORAGE_DEMO_CAP, String(value));
 }
 
@@ -353,23 +341,23 @@ export function loadStoredRealCap(): number {
   return loadPosNum(STORAGE_REAL_CAP) ?? getModeDefaultPreset('real').cap;
 }
 
-export function saveRealCap(value: number): void {
+function saveRealCap(value: number): void {
   persist(STORAGE_REAL_CAP, String(value));
 }
 
-export function loadStoredDemoGrid(): boolean {
+function loadStoredDemoGrid(): boolean {
   return loadBool(STORAGE_DEMO_GRID) ?? getModeDefaultPreset('demo').grid;
 }
 
-export function saveDemoGrid(enabled: boolean): void {
+function saveDemoGrid(enabled: boolean): void {
   persist(STORAGE_DEMO_GRID, String(enabled));
 }
 
-export function loadStoredRealGrid(): boolean {
+function loadStoredRealGrid(): boolean {
   return loadBool(STORAGE_REAL_GRID) ?? getModeDefaultPreset('real').grid;
 }
 
-export function saveRealGrid(enabled: boolean): void {
+function saveRealGrid(enabled: boolean): void {
   persist(STORAGE_REAL_GRID, String(enabled));
 }
 
@@ -424,9 +412,6 @@ export type BattleTerrainRuntimeConfig = {
   terrainDetail: number;
 };
 
-export function getDefaultCap(mode: BattleMode): number {
-  return getModeDefaultPreset(mode).cap;
-}
 
 export function loadStoredCap(mode: BattleMode): number {
   return mode === 'real' ? loadStoredRealCap() : loadStoredDemoCap();
@@ -441,9 +426,6 @@ export function getDefaultGrid(mode: BattleMode): boolean {
   return getModeDefaultPreset(mode).grid;
 }
 
-export function getDefaultFogOfWar(mode: BattleMode): boolean {
-  return getModeDefaultPreset(mode).fogOfWarEnabled;
-}
 
 /** Read a per-mode boolean. When `mode === 'real'` and the real
  *  key has never been written, falls back to the demo key (so a
@@ -469,27 +451,11 @@ export function loadStoredTurretShieldPanelsEnabled(_mode: BattleMode): boolean 
   return BATTLE_CONFIG.turretShieldPanelsEnabled.default;
 }
 
-export function saveTurretShieldPanelsEnabled(_enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TURRET_SHIELD_PANELS_ENABLED
-      : STORAGE_DEMO_TURRET_SHIELD_PANELS_ENABLED,
-    String(BATTLE_CONFIG.turretShieldPanelsEnabled.default),
-  );
-}
 
 export function loadStoredTurretShieldSpheresEnabled(_mode: BattleMode): boolean {
   return BATTLE_CONFIG.turretShieldSpheresEnabled.default;
 }
 
-export function saveTurretShieldSpheresEnabled(_enabled: boolean, mode: BattleMode): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_TURRET_SHIELD_SPHERES_ENABLED
-      : STORAGE_DEMO_TURRET_SHIELD_SPHERES_ENABLED,
-    String(BATTLE_CONFIG.turretShieldSpheresEnabled.default),
-  );
-}
 
 export function loadStoredForceFieldsVisible(mode: BattleMode): boolean {
   return loadModeBool(
@@ -549,17 +515,6 @@ export function loadStoredShieldReflectionMode(_mode: BattleMode): ShieldReflect
   return BATTLE_CONFIG.shieldReflectionMode.default;
 }
 
-export function saveShieldReflectionMode(
-  _reflectionMode: ShieldReflectionMode,
-  mode: BattleMode,
-): void {
-  persist(
-    mode === 'real'
-      ? STORAGE_REAL_SHIELD_REFLECTION_MODE
-      : STORAGE_DEMO_SHIELD_REFLECTION_MODE,
-    BATTLE_CONFIG.shieldReflectionMode.default,
-  );
-}
 
 function parseTerrainMapShape(s: string | null): TerrainMapShape | null {
   if (s === 'square' || s === 'circle') return s;
@@ -879,7 +834,7 @@ export function getDefaultMapLandDimensions(): MapLandCellDimensions {
   };
 }
 
-export function getModeDefaultMapLandDimensions(mode: BattleMode): MapLandCellDimensions {
+function getModeDefaultMapLandDimensions(mode: BattleMode): MapLandCellDimensions {
   const preset = getModeDefaultPreset(mode);
   return {
     widthLandCells: preset.mapWidthLandCells,

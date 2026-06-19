@@ -26,7 +26,7 @@ import { getSimWasm } from '../sim-wasm/init';
 import type { WorldState } from './WorldState';
 
 // Economy constants (using values from config.ts + blueprints)
-export const ECONOMY_CONSTANTS = {
+const ECONOMY_CONSTANTS = {
   maxStockpile: MAX_STOCKPILE,
   baseIncome: BASE_INCOME_PER_SECOND,
   startingStockpile: STARTING_STOCKPILE,
@@ -72,7 +72,7 @@ export function createEconomyState(): EconomyState {
 }
 
 // Economy manager - handles all player economies
-export class EconomyManager {
+class EconomyManager {
   private economies: Map<PlayerId, EconomyState> = new Map();
   private incomePlayerIds = new Uint32Array(DEFAULT_ECONOMY_INCOME_CAPACITY);
   private incomeResourceCodes = new Uint32Array(DEFAULT_ECONOMY_INCOME_CAPACITY);

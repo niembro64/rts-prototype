@@ -1,6 +1,6 @@
 import type { Builder, Entity, StructureBlueprintId } from './types';
 
-export function builderCanBuild(
+function builderCanBuild(
   builder: Builder | null | undefined,
   buildingBlueprintId: StructureBlueprintId | string | null | undefined,
 ): boolean {

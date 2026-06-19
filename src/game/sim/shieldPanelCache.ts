@@ -15,10 +15,6 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { CachedShieldPanel } from '../../types/sim';
 import type { UnitBlueprint } from '../../types/blueprints';
 
-/** Forward arm length (from turret body center to panel center) as a
- *  multiple of unit radius.visual. 1.0 puts the panel center at the
- *  body edge; bigger values stretch the support rails further out. */
-export const SHIELD_PANEL_ARM_LENGTH_MULT = 1.8;
 
 /** Force-field panel size multiplier. Scales BOTH the sim collision
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
@@ -95,50 +91,7 @@ export function getShieldPanelCenter(
   return out;
 }
 
-/** Unit-length arm direction `a(α, β)` from the same `(yaw, pitch)`
- *  pose `getShieldPanelCenter` extends along. The panel's face normal
- *  IS this direction (panel face is perpendicular to the arm), so the
- *  hit test reaches for the same vector instead of recomputing the
- *  components inline. Mutates `out` and returns it. */
-export function getMirrorArmDirection(
-  shieldPanelYaw: number, shieldPanelPitch: number,
-  out: { x: number; y: number; z: number },
-): { x: number; y: number; z: number } {
-  const cosYaw = DMath.cos(shieldPanelYaw);
-  const sinYaw = DMath.sin(shieldPanelYaw);
-  const cosPitch = DMath.cos(shieldPanelPitch);
-  const sinPitch = DMath.sin(shieldPanelPitch);
-  out.x = cosYaw * cosPitch;
-  out.y = sinYaw * cosPitch;
-  out.z = sinPitch;
-  return out;
-}
 
-/** Upright (slope-IGNORANT) mirror arm pivot — the turret pivot point
- *  the rigid arm extends from, computed from the chassis-local panel
- *  cache + the unit's ground anchor. Used by the hit test
- *  when no slope-aware pivot is
- *  supplied, plus debris/fallback code.
- *
- *  Live mirror aim and hit-test paths prefer the tilt-aware runtime
- *  turret mount. This helper remains the stable fallback for callers
- *  that do not have a turret entity/mount available. Mutates `out`
- *  and returns it. */
-export function getMirrorUprightPivot(
-  unitX: number, unitY: number, unitGroundZ: number,
-  /** Chassis-perpendicular axis (unit length) — pre-computed by the
-   *  caller from the unit yaw to avoid redundant trig. */
-  perpX: number, perpY: number,
-  panel: CachedShieldPanel,
-  out: { x: number; y: number; z: number },
-): { x: number; y: number; z: number } {
-  out.x = unitX + perpX * panel.offsetY;
-  out.y = unitY + perpY * panel.offsetY;
-  // panel.baseY/topY are authored at zero pitch, so their midpoint
-  // is the pivot height regardless of pitch.
-  out.z = unitGroundZ + (panel.baseY + panel.topY) / 2;
-  return out;
-}
 
 /** Mutates `panelsOut` (push), returns the bound radius the caller
  *  should assign to `unit.shieldBoundRadius`. Returns 0 when the

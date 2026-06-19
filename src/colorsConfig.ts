@@ -133,19 +133,3 @@ export const ACTION_COLOR_HEX: Record<ActionType, number> = {
   guard: COLORS.ui.actionColors.guard.colorHex,
 };
 
-export const ACTION_COLOR_CSS: Record<ActionType, string> = {
-  move: COLORS.ui.actionColors.move.cssColor,
-  patrol: COLORS.ui.actionColors.patrol.cssColor,
-  fight: COLORS.ui.actionColors.fight.cssColor,
-  build: COLORS.ui.actionColors.build.cssColor,
-  repair: COLORS.ui.actionColors.repair.cssColor,
-  reclaim: COLORS.ui.actionColors.reclaim.cssColor,
-  capture: COLORS.ui.actionColors.capture.cssColor,
-  resurrect: COLORS.ui.actionColors.resurrect.cssColor,
-  loadTransport: COLORS.ui.actionColors.loadTransport.cssColor,
-  unloadTransport: COLORS.ui.actionColors.unloadTransport.cssColor,
-  wait: COLORS.ui.actionColors.wait.cssColor,
-  attack: COLORS.ui.actionColors.attack.cssColor,
-  attackGround: COLORS.ui.actionColors.attackGround.cssColor,
-  guard: COLORS.ui.actionColors.guard.cssColor,
-};

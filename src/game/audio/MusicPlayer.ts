@@ -19,7 +19,7 @@ import {
   scheduleMidiLoop,
 } from './midiPlayback';
 
-export class MusicPlayer {
+class MusicPlayer {
   private ctx: AudioContext | null = null;
   private musicGain: GainNode | null = null;
   private playing = false;

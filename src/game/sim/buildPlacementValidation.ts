@@ -339,25 +339,6 @@ export function getBuildingPlacementDiagnostics(
   );
 }
 
-export function canPlaceBuildingAt(
-  candidateType: BuildingBlueprintId,
-  centerX: number,
-  centerY: number,
-  mapWidth: number,
-  mapHeight: number,
-  buildings: Entity[],
-  metalDeposits: ReadonlyArray<MetalDeposit> = [],
-): boolean {
-  return getBuildingPlacementDiagnostics(
-    candidateType,
-    centerX,
-    centerY,
-    mapWidth,
-    mapHeight,
-    buildings,
-    metalDeposits,
-  ).canPlace;
-}
 
 export function getSnappedBuildPosition(
   worldX: number,

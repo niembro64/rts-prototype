@@ -3,7 +3,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 
 import type { Entity, ProjectileShot, Turret } from '../types';
 import { isProjectileShot } from '../types';
-import { distance, normalizeAngle, magnitude, getTransformCosSin } from '../../math';
+import { getTransformCosSin } from '../../math';
 import { getTurretWorldMount } from '../../math';
 import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
@@ -11,9 +11,6 @@ import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMou
 import { getBuildingConfig } from '../buildConfigs';
 import { GRAVITY } from '../../../config';
 import { readCombatTargetingTurretMountKinematicsInto } from './targetingInputStamping';
-
-// Re-export common math functions for backward compatibility
-export { distance, normalizeAngle };
 
 /** True iff the entity carries the optional `commander` block — i.e.
  *  it's the player's commander unit. Centralized so a future tweak to
@@ -27,11 +24,8 @@ export function isCommander(entity: { commander: unknown | null }): boolean {
  *  fit in a 32-bit mask, so the helpers below treat them as always
  *  included (the rare unit with 31+ turrets falls back to "permissive"
  *  semantics rather than silently dropping out of the mask). */
-export const TURRET_MASK_MAX_INDEX = 30;
+const TURRET_MASK_MAX_INDEX = 30;
 
-export function turretBit(index: number): number {
-  return index <= TURRET_MASK_MAX_INDEX ? (1 << index) : 0;
-}
 
 export function turretMaskIncludes(mask: number | undefined, index: number): boolean {
   if (mask === undefined) return true;
@@ -532,21 +526,3 @@ export function updateProjectileSourceClearance(
   return false;
 }
 
-// Get angle to face based on movement (or body direction if stationary)
-// Used by weapons when they have no target - they face movement direction
-export function getMovementAngle(unit: Entity): number {
-  if (!unit.unit) return unit.transform.rotation;
-
-  const velocity = getEntityVelocity3d(unit, _entityVelocityScratch);
-  const velX = velocity.x;
-  const velY = velocity.y;
-  const speed = magnitude(velX, velY);
-
-  if (speed > 1) {
-    // Moving - face movement direction
-    return DMath.atan2(velY, velX);
-  }
-
-  // Stationary - use body direction (weapons maintain their own rotation)
-  return unit.transform.rotation;
-}

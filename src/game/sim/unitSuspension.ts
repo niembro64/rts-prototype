@@ -51,7 +51,7 @@ function clampAxis(value: number, velocity: number, maxAbs: number | undefined):
   return { value, velocity };
 }
 
-export function isUnitSuspensionNearRest(s: UnitSuspensionState): boolean {
+function isUnitSuspensionNearRest(s: UnitSuspensionState): boolean {
   return (
     Math.abs(s.offsetX) <= SUSPENSION_REST_EPSILON &&
     Math.abs(s.offsetY) <= SUSPENSION_REST_EPSILON &&

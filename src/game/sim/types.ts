@@ -88,7 +88,7 @@ export type {
   Entity,
 } from '@/types/sim';
 
-export { isRayConfig, isRayType, isShieldConfig, isProjectileShot, isRocketLikeShot, isMissileShot, getEmissionBlueprintId, getShotMaxLifespan, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '@/types/sim';
+export { isRayConfig, isRayType, isShieldConfig, isProjectileShot, isRocketLikeShot,  getEmissionBlueprintId, getShotMaxLifespan, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '@/types/sim';
 export { createCombatComponent, createEmptyEntityComponentSlots, createTransform } from '@/types/sim';
 
 import type { PlayerId } from '@/types/sim';
@@ -103,12 +103,6 @@ export type PlayerColors = { primary: number; secondary: number; name: string };
 // anti-red". Set via setPlayerCountForColors() at game/lobby init.
 let _playerCountForColors = 6;
 
-/** Compatibility shim for older callers. Colors are global by player
- *  id now: player 1 is the same color on every browser, player 2 is
- *  the same color on every browser, and so on. */
-export function setLocalPlayerForColors(_playerId: PlayerId | undefined): void {
-  // Intentionally no-op. Never remap colors per local browser.
-}
 
 /** Tell the color helpers how many total players are in the game so
  *  the hue wheel divides evenly. With N players, hues land at
@@ -267,8 +261,3 @@ export function getPlayerPrimaryColor(playerId: PlayerId | undefined): number {
   return getPlayerColors(playerId).primary;
 }
 
-/** Resolve a player's secondary (darker) display color. */
-export function getPlayerSecondaryColor(playerId: PlayerId | undefined): number {
-  if (playerId === undefined) return NEUTRAL_PLAYER_COLOR;
-  return getPlayerColors(playerId).secondary;
-}

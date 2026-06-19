@@ -24,7 +24,7 @@ import {
 } from '../../config';
 
 const BASE_TEXTURE_PIXELS = 4096;
-export const ROCK_DETAIL_TEXTURE_PIXELS = TERRAIN_ROCK_TEXTURE_RESOLUTION;
+const ROCK_DETAIL_TEXTURE_PIXELS = TERRAIN_ROCK_TEXTURE_RESOLUTION;
 const TEXTURE_SCALE = ROCK_DETAIL_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
 // Resolution changes only pixel density inside the same world-space tile.
 // It does not change how much terrain one tile covers; that remains

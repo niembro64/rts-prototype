@@ -72,9 +72,9 @@ export type {
 } from '@/types/blueprints';
 
 export {
-  SHIELD_REFLECTION_DIRECTIONS,
-  SHIELD_REFLECTION_ENTITIES,
+  
+  
   SHIELD_SURFACE_RESPONSES,
-  isShieldReflectionDirection,
+  
   isShieldReflectionMode,
 } from '@/types/blueprints';

@@ -273,7 +273,7 @@ function assertRelationshipPoliciesCanCompile(
   }
 }
 
-export function normalizeLockOnTargetPolicy(
+function normalizeLockOnTargetPolicy(
   label: string,
   value: unknown,
 ): LockOnInclusionObject {

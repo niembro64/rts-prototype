@@ -159,7 +159,7 @@ function createBucket(
   };
 }
 
-export class SnapshotEncodeInstrumentation {
+class SnapshotEncodeInstrumentation {
   readonly enabled = GAME_DIAGNOSTICS.snapshotEncodeInstrumentation;
 
   private readonly buckets = new Map<string, EncodeBucket>();

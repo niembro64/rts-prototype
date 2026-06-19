@@ -21,7 +21,7 @@ import type {
 } from './types/blueprintIds';
 import rawConfig from './audioConfig.json';
 
-export const BEAM_SOUND_HARMONIC_SERIES = [
+const BEAM_SOUND_HARMONIC_SERIES = [
   1 / 1,
   1 / 2,
   1 / 3,

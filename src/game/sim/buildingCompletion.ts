@@ -13,10 +13,6 @@ import {
   computeExtractorMetalCoverage,
 } from './metalDepositOwnership';
 
-export function getExtractorMetalRate(entity: Entity): number {
-  if (!isMetalExtractorBlueprintId(entity.buildingBlueprintId)) return 0;
-  return entity.metalExtractionRate ?? 0;
-}
 
 export function applyCompletedBuildingEffects(world: WorldState, entity: Entity): void {
   if (isMetalExtractorBlueprintId(entity.buildingBlueprintId) && entity.ownership) {

@@ -129,30 +129,7 @@ function rentRow(pool: number[][]): number[] {
   return [];
 }
 
-export function packNetworkSnapshotAudioForWire(
-  state: NetworkServerSnapshot,
-): NetworkServerSnapshotWire {
-  const audioEvents = state.audioEvents;
-  if (audioEvents === undefined || audioEvents.length === 0) {
-    return state as NetworkServerSnapshotWire;
-  }
 
-  const wire = { ...state } as NetworkServerSnapshotWire;
-  wire.audioEvents = packAudioEventsForWire(audioEvents);
-  return wire;
-}
-
-export function unpackNetworkSnapshotAudioFromWire(
-  state: NetworkServerSnapshotWire,
-): NetworkServerSnapshot {
-  if (!isPackedAudioEventsWire(state.audioEvents)) {
-    return state as NetworkServerSnapshot;
-  }
-
-  const snapshot = { ...state } as NetworkServerSnapshot;
-  snapshot.audioEvents = unpackAudioEventsFromWire(state.audioEvents);
-  return snapshot;
-}
 
 export function packAudioEventsForWire(
   events: readonly NetworkServerSnapshotSimEvent[] | undefined,

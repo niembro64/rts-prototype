@@ -456,7 +456,7 @@ export class NetworkLockstepTransport {
   }
 }
 
-export function isNetworkLockstepMessage(message: NetworkMessage): message is NetworkLockstepMessage {
+function isNetworkLockstepMessage(message: NetworkMessage): message is NetworkLockstepMessage {
   switch (message.type) {
     case 'lockstepHello':
     case 'lockstepReady':

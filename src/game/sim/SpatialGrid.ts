@@ -36,7 +36,7 @@ import {
 // Default Z band for ground-plane queries.
 const DEFAULT_CIRCLE_Z_MIN = TILE_FLOOR_Y;
 
-export class SpatialGrid {
+class SpatialGrid {
   private cellSize: number;
 
   // Slot bookkeeping.

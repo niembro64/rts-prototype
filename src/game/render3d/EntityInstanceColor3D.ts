@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import type { Entity, Turret, TurretState } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
@@ -54,14 +53,6 @@ export function entityShieldSphereTurretHeadColorHex(
   return blendHexTowardWhite(primary, towardWhite);
 }
 
-export function setEntityInstanceColor(
-  mesh: THREE.InstancedMesh,
-  slot: number,
-  entity: Entity,
-  scratchColor: THREE.Color,
-): void {
-  mesh.setColorAt(slot, scratchColor.set(entityInstanceColorHex(entity)));
-}
 
 /** Lerp an RGB hex toward white by `t` in [0,1]. t=0 returns the input
  *  unchanged; t=1 returns pure white. Pure integer math, no allocation

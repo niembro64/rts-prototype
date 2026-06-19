@@ -42,7 +42,7 @@ import {
   getTerrainVersion,
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
-import type { ActionType, UnitAction, UnitLocomotion, UnitPathPoint, Waypoint } from './types';
+import type { ActionType, UnitLocomotion, UnitPathPoint } from './types';
 import { minSurfaceNormalZForLocomotion } from './pathfindingMobility';
 import { PATHFINDING_STABILITY_MIN_NORMAL_Z } from './pathfindingTuning';
 
@@ -347,72 +347,5 @@ export type MultiLegWaypoint = {
   type: ActionType;
 };
 
-type MultiLegWaypointInput = MultiLegWaypoint | Waypoint;
 
-/** Plan a sequence of legs from a start position through `waypoints`,
- *  expanding each leg with `expandPathActions` and concatenating the
- *  resulting per-cell actions. Returns the combined action list and
- *  the index of the first action that belongs to a 'patrol' waypoint
- *  (or null if no patrol waypoint was supplied), suitable for setting
- *  `unit.patrolStartIndex` so the rotation loop in
- *  Simulation.completeAction cycles through every action from that
- *  point onward. */
-export function expandMultiLegPathActions(
-  startX: number, startY: number,
-  waypoints: readonly MultiLegWaypointInput[],
-  mapWidth: number, mapHeight: number,
-  buildingGrid: BuildingGrid,
-  terrainFilter: PathTerrainFilter | null,
-): { actions: UnitAction[]; patrolStartIndex: number | null } {
-  const actions: UnitAction[] = [];
-  let anchorX = startX;
-  let anchorY = startY;
-  let patrolStartIndex: number | null = null;
-  for (let w = 0; w < waypoints.length; w++) {
-    const wp = waypoints[w];
-    if (wp.type === 'patrol' && patrolStartIndex === null) {
-      patrolStartIndex = actions.length;
-    }
-    const leg = expandPathActions(
-      anchorX, anchorY, wp.x, wp.y, wp.type,
-      mapWidth, mapHeight, buildingGrid,
-      wp.z ?? null, terrainFilter,
-    );
-    for (let i = 0; i < leg.length; i++) actions.push(leg[i]);
-    anchorX = wp.x;
-    anchorY = wp.y;
-  }
-  return { actions, patrolStartIndex };
-}
 
-export function expandPathActions(
-  startX: number, startY: number,
-  goalX: number, goalY: number,
-  type: ActionType,
-  mapWidth: number, mapHeight: number,
-  buildingGrid: BuildingGrid,
-  goalZ: number | null,
-  terrainFilter: PathTerrainFilter | null,
-): UnitAction[] {
-  const points = expandPathPoints(
-    startX,
-    startY,
-    goalX,
-    goalY,
-    mapWidth,
-    mapHeight,
-    buildingGrid,
-    goalZ,
-    terrainFilter,
-  );
-  const out: UnitAction[] = [];
-  const lastIdx = points.length - 1;
-  for (let i = 0; i < points.length; i++) {
-    const point = points[i];
-    const isFinal = i === lastIdx;
-    const action: UnitAction = { type, x: point.x, y: point.y, z: point.z };
-    if (!isFinal) action.isPathExpansion = true;
-    out.push(action);
-  }
-  return out;
-}

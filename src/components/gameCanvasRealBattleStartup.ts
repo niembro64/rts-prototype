@@ -441,7 +441,7 @@ function diffCanonicalComponentFields(
   return diffs.slice(0, 16);
 }
 
-export function createLocalRealBattleConnection(
+function createLocalRealBattleConnection(
   server: GameServer,
   localPlayerId: PlayerId | undefined,
   commandAuthorityMode: LocalCommandAuthorityMode = 'player',
@@ -450,7 +450,7 @@ export function createLocalRealBattleConnection(
   return new LocalGameConnection(server, localPlayerId, commandAuthorityMode, options);
 }
 
-export async function createRealBattleServer({
+async function createRealBattleServer({
   playerIds,
   aiPlayerIds,
   terrain,

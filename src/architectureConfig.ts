@@ -96,7 +96,7 @@ function parseLockstepConfig(value: unknown): LockstepArchitectureConfig {
   };
 }
 
-export function parseArchitectureConfig(value: unknown): ArchitectureConfig {
+function parseArchitectureConfig(value: unknown): ArchitectureConfig {
   if (!isRecord(value)) {
     throw new Error('architecture config must be an object');
   }

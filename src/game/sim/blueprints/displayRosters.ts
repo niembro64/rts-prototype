@@ -115,12 +115,12 @@ export function structureBuildCategory(buildingBlueprintId: BuildingBlueprintId)
   }
 }
 
-export const buildingRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDisplay(
+const buildingRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDisplay(
   getAllBuildings(),
   0,
 );
 
-export const towerRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDisplay(
+const towerRosterDisplay: BuildingRosterDisplay[] = buildStructureRosterDisplay(
   getAllTowers(),
   buildingRosterDisplay.length,
 );

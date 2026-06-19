@@ -22,11 +22,11 @@ export const TERRAIN_GENERATION_EXTENT_FRACTION = 0.85;
 
 /** Length of the packed generation-config slice consumed by Rust
  *  (`metal_deposit_terrain_config_from_slice`). */
-export const TERRAIN_GENERATION_CONFIG_LENGTH = 22;
+const TERRAIN_GENERATION_CONFIG_LENGTH = 22;
 
 /** Stride of a packed deposit flat-zone row: x, y, radius, height, blendRadius.
  *  Matches `METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE` in the Rust sim. */
-export const TERRAIN_FLAT_ZONE_WASM_STRIDE = 5;
+const TERRAIN_FLAT_ZONE_WASM_STRIDE = 5;
 
 /** Pack the live terrain generation config into the 22-value slice the Rust
  *  height sampler reads. Single source of truth for both the adaptive mesh

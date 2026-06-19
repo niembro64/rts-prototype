@@ -52,7 +52,7 @@ export function refreshSlabActivityMasksForUnit(
  *  same tick sees the cleared FSM state. No-op when the sim is
  *  unavailable or the entity lacks a spatial slot — the slab is not
  *  the source of truth on those paths. */
-export function clearTurretFsmOnSlab(unit: Entity, weaponIndex: number): void {
+function clearTurretFsmOnSlab(unit: Entity, weaponIndex: number): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
   const slot = spatialGrid.getSlot(unit.id);

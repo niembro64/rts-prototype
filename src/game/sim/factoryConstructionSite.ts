@@ -1,7 +1,6 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { Entity } from './types';
 import { getTransformCosSin } from '../math';
-import { getBuildingConfig } from './buildConfigs';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 
 export type FactoryFootprintDimensions = {
@@ -32,24 +31,11 @@ export type FactoryBuildSpotOptions = {
 const FACTORY_CONSTRUCTION_RADIUS_CELLS = 6;
 const _buildSpotDir = { x: 0, y: 0 };
 
-export function getFactoryFootprintDimensions(): FactoryFootprintDimensions {
-  const cfg = getBuildingConfig('towerFabricator');
-  return {
-    footprintWidth: cfg.gridWidth * BUILD_GRID_CELL_SIZE,
-    footprintHeight: cfg.gridHeight * BUILD_GRID_CELL_SIZE,
-    footprintDepth: cfg.gridDepth * BUILD_GRID_CELL_SIZE,
-    constructionRadius: getFactoryConstructionRadius(),
-  };
-}
 
 export function getFactoryConstructionRadius(): number {
   return FACTORY_CONSTRUCTION_RADIUS_CELLS * BUILD_GRID_CELL_SIZE;
 }
 
-export function getFactoryWaypointDirection(factory: Entity): { x: number; y: number } {
-  writeFactoryWaypointDirection(factory, _buildSpotDir);
-  return { x: _buildSpotDir.x, y: _buildSpotDir.y };
-}
 
 function writeFactoryWaypointDirection(factory: Entity, out: { x: number; y: number }): void {
   const factoryComp = factory.factory;

@@ -24,7 +24,7 @@ import {
   TREE_TRUNK_TEXTURE_REPEAT,
 } from '../../config';
 
-export const TREE_TRUNK_TEXTURE_PIXELS = 1024;
+const TREE_TRUNK_TEXTURE_PIXELS = 1024;
 const ITEM_COUNT = 5200;
 
 // Fraction of items that get a near-vertical rotation. The rest get full

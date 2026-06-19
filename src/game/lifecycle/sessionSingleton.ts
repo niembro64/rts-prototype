@@ -71,10 +71,4 @@ export function releaseRendererSlot(owner: object): void {
   if (activeRenderer === owner) activeRenderer = null;
 }
 
-export function getActiveSimOwner(): object | null {
-  return activeSim;
-}
 
-export function getActiveRendererOwner(): object | null {
-  return activeRenderer;
-}

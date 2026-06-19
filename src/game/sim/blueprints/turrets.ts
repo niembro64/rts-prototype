@@ -200,8 +200,6 @@ function buildTurretBlueprints(): Record<TurretBlueprintId, TurretBlueprint> {
 
 export const TURRET_BLUEPRINTS = buildTurretBlueprints();
 
-export const CONSTRUCTION_TURRET_HEAD_RADIUS =
-  TURRET_BLUEPRINTS.turretConstruction.radius.visual;
 
 export function getTurretBlueprint(id: string): TurretBlueprint {
   if (!isTurretBlueprintId(id)) throw new Error(`Unknown weapon blueprint: ${id}`);

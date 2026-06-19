@@ -54,7 +54,7 @@ export function getUnitGroundNormalEmaMode(): UnitGroundNormalEmaMode {
   return _activeMode;
 }
 
-export function getUnitGroundNormalEmaHalfLife(): number {
+function getUnitGroundNormalEmaHalfLife(): number {
   return UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC[_activeMode];
 }
 

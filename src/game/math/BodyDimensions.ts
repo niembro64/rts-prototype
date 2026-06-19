@@ -27,7 +27,6 @@ const TOP_Y_CACHE: Map<string, number> = new Map();
 const BODY_PART_CONTAIN_EPS = 1e-6;
 
 export const TREAD_CHASSIS_LIFT_Y = 10;
-export const LEG_BODY_LIFT_FRAC = 0.5;
 
 /** Stable identity for a unit body shape. This is the only render/cache
  *  key for chassis geometry; unit blueprints author bodyShape, not a
@@ -36,93 +35,21 @@ export function getUnitBodyShapeKey(bodyShape: UnitBodyShape): string {
   return JSON.stringify(bodyShape);
 }
 
-/** Default locomotion clearance under a body whose center height has
- *  not been explicitly authored. This is only a blueprint-authoring
- *  helper; runtime layout must use bodyCenterHeight as the source of
- *  truth via getChassisLiftY. */
-export function getDefaultLocomotionBodyLiftY(
-  locomotion: UnitBlueprint['locomotion'] | undefined,
-  unitRadius: number,
-): number {
-  const loc = locomotion;
-  if (!loc) return 0;
-  switch (loc.type) {
-    case 'treads':
-      return TREAD_CHASSIS_LIFT_Y;
-    case 'wheels': {
-      const wheelR = Math.max(1, unitRadius * loc.config.wheelRadius);
-      return 2 * wheelR;
-    }
-    case 'legs':
-      return unitRadius * LEG_BODY_LIFT_FRAC;
-    case 'hover':
-      // Hover units have no chassis-attached ground gear; the body
-      // sits at chassis-local Y=0 and the inverse-distance lift
-      // integrator owns the body's world-space altitude entirely.
-      return 0;
-    case 'flying':
-      // Flying units use hover-style altitude physics with visual
-      // wings/jets instead of contact gear.
-      return 0;
-  }
-}
 
 /** Chassis-local Y of the visible body's vertical center. Unit body
  *  shapes are built from terrain-up: bottoms at local Y=0 and tops at
  *  getBodyTopY, so the center is the midpoint of that authored volume. */
-export function getBodyCenterLocalY(
+function getBodyCenterLocalY(
   bodyShape: UnitBodyShape,
   unitRadius: number,
 ): number {
   return getBodyTopY(bodyShape, unitRadius) * 0.5;
 }
 
-export function getWheelBodyCenterHeightY(
-  bodyShape: UnitBodyShape,
-  unitRadius: number,
-  wheelRadiusFrac: number,
-): number {
-  return Math.max(1, unitRadius * wheelRadiusFrac) * 2
-    + getBodyCenterLocalY(bodyShape, unitRadius);
-}
 
-/** Hover units sit with their visible body at chassis-local Y=0
- *  (no wheels/legs/treads beneath); the world-space altitude is
- *  owned entirely by the inverse-distance lift integrator. So the
- *  body-center height is just the local center of the body shape. */
-export function getHoverBodyCenterHeightY(
-  bodyShape: UnitBodyShape,
-  unitRadius: number,
-): number {
-  return getBodyCenterLocalY(bodyShape, unitRadius);
-}
 
-export function getTreadBodyCenterHeightY(
-  bodyShape: UnitBodyShape,
-  unitRadius: number,
-): number {
-  return TREAD_CHASSIS_LIFT_Y + getBodyCenterLocalY(bodyShape, unitRadius);
-}
 
-export function getLegBodyCenterHeightY(
-  bodyShape: UnitBodyShape,
-  unitRadius: number,
-): number {
-  return unitRadius * LEG_BODY_LIFT_FRAC
-    + getBodyCenterLocalY(bodyShape, unitRadius);
-}
 
-/** Default body center height implied by the locomotion rig and body
- *  shape. Unit blueprints should normally author this value directly
- *  (or use this helper) so simulation center, renderer center, and
- *  locomotion attachment stay in one coordinate system. */
-export function getDefaultUnitBodyCenterHeightY(
-  blueprint: Pick<UnitBlueprint, 'locomotion' | 'bodyShape'>,
-  unitRadius: number,
-): number {
-  return getDefaultLocomotionBodyLiftY(blueprint.locomotion, unitRadius)
-    + getBodyCenterLocalY(blueprint.bodyShape, unitRadius);
-}
 
 /** World-space lift applied to the visible body/chassis above the unit's
  *  ground footprint. This is derived from bodyCenterHeight so the
@@ -244,19 +171,6 @@ export function getTurretRootY(
   return getBodyMountTopY(bodyShape, unitRadius, mountX, mountY);
 }
 
-/** Chassis-local Y of the turret head center. This is the value used
- *  by turret mount math before chassis lift and world terrain altitude
- *  are applied. */
-export function getTurretHeadCenterY(
-  bodyShape: UnitBodyShape,
-  unitRadius: number,
-  mountX: number,
-  mountY: number,
-  headRadius: number,
-  mount?: Pick<TurretMount, 'mount'>,
-): number {
-  return getTurretRootY(bodyShape, unitRadius, mountX, mountY, headRadius, mount) + headRadius;
-}
 
 /** World-space Y for the mid-height of whichever body segment sits
  *  closest to the given forward offset (forwardX is in WORLD units,

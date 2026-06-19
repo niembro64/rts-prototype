@@ -260,7 +260,7 @@ export function buildLinePathMoveCommand(
   return command;
 }
 
-export function buildFormationPreservingMoveCommand(
+function buildFormationPreservingMoveCommand(
   selectedUnits: readonly Entity[],
   targetX: number,
   targetY: number,

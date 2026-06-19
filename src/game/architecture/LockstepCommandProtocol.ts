@@ -93,7 +93,7 @@ export function classifyCommandForArchitecture(command: Pick<Command, 'type'>): 
   return 'gameplay-truth';
 }
 
-export function isLockstepGameplayTruthCommand(command: Pick<Command, 'type'>): boolean {
+function isLockstepGameplayTruthCommand(command: Pick<Command, 'type'>): boolean {
   return classifyCommandForArchitecture(command) === 'gameplay-truth';
 }
 
@@ -250,7 +250,7 @@ export function compareLockstepCommandEnvelopes(
   return a.commandIndex - b.commandIndex;
 }
 
-export function lockstepOrderFromEnvelope(envelope: LockstepCommandEnvelope): CommandQueueLockstepOrder {
+function lockstepOrderFromEnvelope(envelope: LockstepCommandEnvelope): CommandQueueLockstepOrder {
   return {
     playerId: envelope.playerId,
     playerSequence: envelope.playerSequence,

@@ -24,7 +24,7 @@ export function createUint32WireRows(rowCapacity = 0, stride = 1): Uint32WireRow
   };
 }
 
-export function ensureFloat64WireRows(
+function ensureFloat64WireRows(
   rows: Float64WireRows,
   rowCount: number,
   stride: number,
@@ -32,7 +32,7 @@ export function ensureFloat64WireRows(
   rows.values = ensureWireRows(rows.values, rowCount, stride);
 }
 
-export function ensureUint32WireRows(
+function ensureUint32WireRows(
   rows: Uint32WireRows,
   rowCount: number,
   stride: number,

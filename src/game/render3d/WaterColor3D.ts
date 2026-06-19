@@ -13,7 +13,7 @@ function clamp01(value: number): number {
   return value;
 }
 
-export function hexToLinearRgb(hex: number): Rgb01 {
+function hexToLinearRgb(hex: number): Rgb01 {
   const color = new THREE.Color(hex);
   return { r: color.r, g: color.g, b: color.b };
 }
@@ -63,11 +63,11 @@ function linearToOutputRgb(color: Rgb01): Rgb01 {
   };
 }
 
-export function builtInMaterialOutputRgb(linearColor: Rgb01): Rgb01 {
+function builtInMaterialOutputRgb(linearColor: Rgb01): Rgb01 {
   return linearToOutputRgb(applyAcesFilmicToneMapping(linearColor));
 }
 
-export function quantizeOutputRgb(color: Rgb01): Rgb01 {
+function quantizeOutputRgb(color: Rgb01): Rgb01 {
   return {
     r: Math.round(clamp01(color.r) * 255) / 255,
     g: Math.round(clamp01(color.g) * 255) / 255,
@@ -75,22 +75,22 @@ export function quantizeOutputRgb(color: Rgb01): Rgb01 {
   };
 }
 
-export function outputRgbToLinearRgb(color: Rgb01): Rgb01 {
+function outputRgbToLinearRgb(color: Rgb01): Rgb01 {
   const linear = new THREE.Color().setRGB(color.r, color.g, color.b, THREE.SRGBColorSpace);
   return { r: linear.r, g: linear.g, b: linear.b };
 }
 
-export function rgb01ToLinearColor(color: Rgb01): THREE.Color {
+function rgb01ToLinearColor(color: Rgb01): THREE.Color {
   return new THREE.Color().setRGB(color.r, color.g, color.b);
 }
 
 // The water surface material receives this linear color before Three's common
 // tone-mapping and output-color conversion.
-export const WATER_SURFACE_LINEAR_RGB = hexToLinearRgb(WATER_RENDER_CONFIG.color);
+const WATER_SURFACE_LINEAR_RGB = hexToLinearRgb(WATER_RENDER_CONFIG.color);
 export const WATER_SURFACE_LINEAR_COLOR = rgb01ToLinearColor(WATER_SURFACE_LINEAR_RGB);
 
 // Final visible water target, snapped to the 8-bit framebuffer grid.
-export const WATER_SURFACE_OUTPUT_RGB = quantizeOutputRgb(
+const WATER_SURFACE_OUTPUT_RGB = quantizeOutputRgb(
   builtInMaterialOutputRgb(WATER_SURFACE_LINEAR_RGB),
 );
 

@@ -40,18 +40,7 @@ export function fmtBytes4(bytes: number): string {
   return `${Math.round(gib)}g`;
 }
 
-/** Format with sign prefix (+/-) and magnitude-based precision. Uses '+' for zero. */
-export function fmtSigned(n: number): string {
-  const sign = n < 0 ? '-' : '+';
-  return sign + fmt4(Math.abs(n));
-}
 
-/** Color for a signed value: gray when near-zero (|n| < 1), green when positive, red when negative. */
-export function signedColor(n: number): string {
-  if (Math.abs(n) < 1) return COLORS.ui.numericDelta.neutral;
-  if (n > 0) return COLORS.ui.numericDelta.positive;
-  return COLORS.ui.numericDelta.negative;
-}
 
 function mixRgb(from: readonly [number, number, number], to: readonly [number, number, number], t: number): [number, number, number] {
   return [

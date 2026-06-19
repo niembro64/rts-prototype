@@ -28,7 +28,7 @@ import {
 } from './mapOval';
 import { angleDeltaAbs } from '../math';
 
-export { FIRST_PLAYER_ANGLE, getPlayerBaseAngle } from './playerLayout';
+export {  getPlayerBaseAngle } from './playerLayout';
 
 type InitialBaseMode = 'demo' | 'real';
 

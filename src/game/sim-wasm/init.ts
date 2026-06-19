@@ -1782,9 +1782,6 @@ export interface RenderPoseApi {
   turretAimOutputStride: number;
 }
 
-/** Constants exposed alongside the SpatialGrid API. Mirrors the
- *  SPATIAL_KIND_* values in rts-sim-wasm/src/lib.rs. */
-export const SPATIAL_KIND_UNSET = 0;
 export const SPATIAL_KIND_UNIT = 1;
 export const SPATIAL_KIND_BUILDING = 2;
 export const SPATIAL_KIND_PROJECTILE = 3;
@@ -2053,26 +2050,6 @@ export interface EntityMetaApi {
   readonly registryCapacity: () => number;
 }
 
-/** Entity-meta type tag values (mirrors lib.rs ENTITY_META_TYPE_*). */
-export const ENTITY_META_TYPE_UNSET = 0;
-export const ENTITY_META_TYPE_UNIT = 1;
-export const ENTITY_META_TYPE_BUILDING = 2;
-export const ENTITY_META_TYPE_TOWER = 3;
-export const ENTITY_META_KIND_NONE = 0;
-export const ENTITY_META_KIND_UNIT = 1;
-export const ENTITY_META_KIND_TOWER = 2;
-export const ENTITY_META_KIND_BUILDING = 3;
-export const ENTITY_META_KIND_SHOT = 4;
-export const ENTITY_META_KIND_TURRET = 5;
-export const ENTITY_META_BLUEPRINT_KIND_NONE = 0;
-export const ENTITY_META_BLUEPRINT_KIND_UNIT = 1;
-export const ENTITY_META_BLUEPRINT_KIND_TOWER = 2;
-export const ENTITY_META_BLUEPRINT_KIND_BUILDING = 3;
-export const ENTITY_META_BLUEPRINT_KIND_TURRET = 4;
-export const ENTITY_META_BLUEPRINT_KIND_SHOT = 5;
-export const ENTITY_META_STORAGE_NONE = 0;
-export const ENTITY_META_STORAGE_ENTITIES = 1;
-export const ENTITY_META_STORAGE_COMBAT_TURRETS = 2;
 
 /** Phase 10 D.1b — Turret sub-pool. Up to 8 turrets per entity at
  *  fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
@@ -2200,8 +2177,6 @@ export const CT_LOCK_ON_LEVEL1_MASK_CAPACITY = 32;
  *  these to dispatch JS-only bookkeeping (activity flags, priority
  *  command cleanup) after the slab is authoritative for the FSM. */
 export const CT_TARGETING_TICK_MODE_AUTO = 0;
-export const CT_TARGETING_TICK_MODE_PRIORITY_POINT = 1;
-export const CT_TARGETING_TICK_MODE_PRIORITY_TARGET = 2;
 export const CT_TARGETING_TICK_MODE_CLEAR_LOCKS = 3;
 export const CT_TARGETING_TICK_MODE_SKIP = 255;
 

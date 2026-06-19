@@ -10,7 +10,7 @@
 import { LAND_CELL_SIZE } from '../../../config';
 import { getSimWasm } from '../../sim-wasm/init';
 import type { WorldState } from '../WorldState';
-import type { EntityId, Turret } from '../../../types/sim';
+import type { Turret } from '../../../types/sim';
 import { UNIT_BLUEPRINTS } from '../blueprints/units';
 import { hasTerrainLineOfSight } from '../terrain/terrainLineOfSight';
 
@@ -26,12 +26,6 @@ export const COMBAT_LOS_ENTITY_QUERY_WIDTH = LAND_CELL_SIZE + 2 * Math.max(
   0,
   maxUnitCollisionRadius(),
 );
-const NO_EXCLUDED_ENTITY = -1;
-/** Sightline-graze epsilon. Hits within FORCE_MATERIAL_GRAZE_EPS of
- *  either endpoint don't count — keeps targeting and projectile
- *  collision in agreement when a turret or target sits on a panel
- *  edge. Force-field-panel and shield clearance both use this. */
-export const FORCE_MATERIAL_GRAZE_EPS = 1e-6;
 /** Force-field-panel broadphase pad. Stamping adds this to the mirror's
  *  bound radius so the Rust shield-panel kernel only narrowphase-walks
  *  units whose silhouettes can touch the segment. */
@@ -104,7 +98,7 @@ export type ShieldShapeMask = {
   includePanels: boolean;
 };
 
-export function hasShieldClearance(
+function hasShieldClearance(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
   shapes: ShieldShapeMask,
@@ -151,57 +145,4 @@ export function hasFogOfWarLineOfSight(
   return true;
 }
 
-/** True if the parabolic ballistic arc described by
- *  (launch position, launch velocity, flight time, universal gravity)
- *  does not cross any shield sphere boundary between launch and
- *  impact. The arc-aware counterpart of `hasShieldClearance`
- *  approximates the same `pos = p₀ + v·t − 0.5·g·ẑ·t²` envelope the
- *  projectile integrator advances each tick.
- *
- *  Implementation: dispatches to the Rust `shield_clearance_arc`
- *  kernel, which chord-samples the parabola so the same "endpoints
- *  don't count" rule applies as for the straight test. Keep this
- *  helper for callers that need projectile-path clearance — the
- *  targeting gate uses the segment + slab walks in Rust directly. */
-export function hasArcShieldClearance(
-  launchX: number, launchY: number, launchZ: number,
-  launchVx: number, launchVy: number, launchVz: number,
-  flightTime: number,
-  options: ShieldClearanceOptions = { maxCrossings: undefined },
-): boolean {
-  const sim = getSimWasm();
-  if (sim === undefined) return true;
-  const maxCrossings = options.maxCrossings ?? 0;
-  return (
-    sim.shieldSurfacePool.clearanceArc(
-      launchX, launchY, launchZ,
-      launchVx, launchVy, launchVz,
-      flightTime,
-      NO_EXCLUDED_OWNER,
-      maxCrossings,
-    ) === 1
-  );
-}
 
-/** Full direct-fire sightline: terrain plus live unit/building
- *  occluders. The Rust kernel owns the per-call gate math and reads
- *  live blockers from the spatial slab; TypeScript only supplies the
- *  segment and source/target exclusions. */
-export function hasCombatLineOfSight(
-  _world: WorldState,
-  sx: number, sy: number, sz: number,
-  tx: number, ty: number, tz: number,
-  sourceEntityId: EntityId | undefined = undefined,
-  targetEntityId: EntityId | undefined = undefined,
-): boolean {
-  const sim = getSimWasm();
-  if (sim === undefined) return true;
-  return sim.combatHasLineOfSight(
-    sx, sy, sz,
-    tx, ty, tz,
-    COMBAT_LOS_TERRAIN_STEP_LEN,
-    COMBAT_LOS_ENTITY_QUERY_WIDTH,
-    sourceEntityId ?? NO_EXCLUDED_ENTITY,
-    targetEntityId ?? NO_EXCLUDED_ENTITY,
-  ) === 1;
-}

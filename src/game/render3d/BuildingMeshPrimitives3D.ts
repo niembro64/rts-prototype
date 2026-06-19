@@ -6,11 +6,11 @@ import type { BuildingDetailMesh, BuildingDetailRole } from './BuildingShape3D';
 export const boxGeom = new THREE.BoxGeometry(1, 1, 1);
 export const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 export const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
-export const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
-export const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
+const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
+const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
 const windBladeGeom = createWindBladeGeometry();
 
-export const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
+const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 export const windTrimMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 export const windNacelleMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.windNacelle.colorHex,
@@ -45,7 +45,7 @@ export const invisibleMat = new THREE.MeshBasicMaterial({
 });
 export const factoryFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 
-export function createWindBladeGeometry(): THREE.BufferGeometry {
+function createWindBladeGeometry(): THREE.BufferGeometry {
   const stations = [
     { y: 0.06, halfW: 0.68, halfT: 0.92, sweep: -0.02 },
     { y: 0.48, halfW: 0.376, halfT: 0.509, sweep: 0.025 },
@@ -143,11 +143,6 @@ export function makeTurbineBlade(
   return mesh;
 }
 
-export function applyBasis(mesh: THREE.Mesh, xAxis: THREE.Vector3, yAxis: THREE.Vector3, zAxis: THREE.Vector3): void {
-  const basis = new THREE.Matrix4();
-  basis.makeBasis(xAxis, yAxis, zAxis);
-  mesh.quaternion.setFromRotationMatrix(basis);
-}
 
 export function makeBox(
   material: THREE.Material,

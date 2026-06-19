@@ -1,7 +1,7 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
 export const BUILDING_POSE_INPUT_STRIDE = 8;
-export const BUILDING_POSE_OUTPUT_STRIDE = 32;
+const BUILDING_POSE_OUTPUT_STRIDE = 32;
 
 const GROUP_MATRIX_OFFSET = 0;
 const BODY_MATRIX_OFFSET = 16;

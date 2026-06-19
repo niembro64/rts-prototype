@@ -3,13 +3,10 @@ import type {
   ShieldReflectionDirection,
   ActiveProjectileShot,
   RayConfig,
-  RayBlueprint,
   RayType,
   EmissionConfig,
   ProjectileShot,
-  ShieldBlueprint,
   ShieldConfig,
-  ShotBlueprint,
 } from './blueprintSchema.generated';
 
 export type {
@@ -54,10 +51,6 @@ export type {
   SubmunitionSpec,
 } from './blueprintSchema.generated';
 
-/** The set of ray `type` values that shield panels reflect. Adding
- *  one here automatically wires the new type into the aim solver,
- *  panel hit collision, and beam-trace reflection. */
-export const RAY_TYPES = ['beam', 'laser'] as const;
 
 /** Predicate on raw emission `type` strings, used at network / projectile
  *  layer boundaries where we have a string but not the full config. */
@@ -69,12 +62,6 @@ export const SHIELD_SURFACE_RESPONSES = ['reflect', 'absorb', 'passThrough'] as 
 
 export const SHIELD_REFLECTION_MODES = ['outside-in', 'inside-out', 'both'] as const;
 
-export const SHIELD_REFLECTION_DIRECTIONS = [
-  'reflect-none',
-  'reflect-outside',
-  'reflect-inside',
-  'reflect-both',
-] as const;
 
 export const SHIELD_REFLECTION_ENTITIES = [
   'plasma',
@@ -97,9 +84,6 @@ export function isShieldReflectionDirection(value: unknown): value is ShieldRefl
   );
 }
 
-export function isRayBlueprint(bp: ShotBlueprint | RayBlueprint | ShieldBlueprint): bp is RayBlueprint {
-  return isRayType(bp.type);
-}
 
 export function isRayConfig(emission: EmissionConfig): emission is RayConfig {
   return isRayType(emission.type);
@@ -124,10 +108,6 @@ export function isRocketLikeShot(emission: EmissionConfig): boolean {
   return isProjectileShot(emission) && (emission.type === 'rocket' || emission.type === 'missile');
 }
 
-/** Missiles steer by rotating their velocity vector while preserving speed. */
-export function isMissileShot(emission: EmissionConfig): boolean {
-  return isProjectileShot(emission) && emission.type === 'missile';
-}
 
 /** Static max active time for runtime shot entities. Traveling shots
  *  can opt into authored time-to-live values; otherwise they terminate

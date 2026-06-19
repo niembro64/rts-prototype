@@ -29,7 +29,7 @@ const MATERIAL_EXPLICIT_FIELDS = [
 const SHIELD_SURFACE_RESPONSE_SET =
   new Set<ShieldSurfaceResponse>(SHIELD_SURFACE_RESPONSES);
 
-export const SHIELD_MATERIALS = rawShieldMaterials as unknown as Record<
+const SHIELD_MATERIALS = rawShieldMaterials as unknown as Record<
   ShieldMaterialId,
   ShieldMaterialBlueprint
 >;

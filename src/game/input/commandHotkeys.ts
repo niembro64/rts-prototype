@@ -102,8 +102,8 @@ export type CommandHotkeyPreset = Readonly<Record<CommandHotkeyId, readonly Comm
 type ChordOptions = Partial<Omit<CommandKeyChord, 'key' | 'code' | 'label'>>;
 type CustomCommandHotkeyOverrides = Partial<Record<CommandHotkeyId, CommandHotkeyBinding>>;
 
-export const COMMAND_HOTKEY_STORAGE_KEY = 'budget-annihilation.commandHotkeyPreset';
-export const COMMAND_HOTKEY_CUSTOM_STORAGE_KEY = 'budget-annihilation.customCommandHotkeys';
+const COMMAND_HOTKEY_STORAGE_KEY = 'budget-annihilation.commandHotkeyPreset';
+const COMMAND_HOTKEY_CUSTOM_STORAGE_KEY = 'budget-annihilation.customCommandHotkeys';
 export const DEFAULT_COMMAND_HOTKEY_PRESET: CommandHotkeyPresetId = 'bar-grid';
 
 export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
@@ -281,7 +281,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'ui.mapErase': 'Erase Map Drawings',
 };
 
-export function commandHotkeyScope(commandId: CommandHotkeyId): CommandHotkeyScope {
+function commandHotkeyScope(commandId: CommandHotkeyId): CommandHotkeyScope {
   if (commandId === 'factory.stopProduction') return 'factory';
   return commandId.startsWith('build.slot') ? 'buildMenu' : 'global';
 }
@@ -304,7 +304,7 @@ function commandPreset(
   return entries;
 }
 
-export const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, CommandHotkeyPreset>> = {
+const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, CommandHotkeyPreset>> = {
   prototype: commandPreset({
     'waypoint.move': [key('M', 'm', { shift: 'any' })],
     'waypoint.fight': [key('F', 'f', { shift: 'any' })],
@@ -616,7 +616,7 @@ export function setActiveCommandHotkeyPresetId(presetId: CommandHotkeyPresetId):
   window.localStorage.setItem(COMMAND_HOTKEY_STORAGE_KEY, presetId);
 }
 
-export function isCommandHotkeyPresetId(value: unknown): value is CommandHotkeyPresetId {
+function isCommandHotkeyPresetId(value: unknown): value is CommandHotkeyPresetId {
   return COMMAND_HOTKEY_PRESET_IDS.includes(value as CommandHotkeyPresetId);
 }
 
@@ -679,15 +679,6 @@ export function commandHotkeyLabel(
   return bindingLabel(firstBinding);
 }
 
-export function commandHotkeyLabels(
-  commandId: CommandHotkeyId,
-  presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
-): string[] {
-  const bindings = getCommandHotkeyPreset(presetId)[commandId];
-  const labels = new Array<string>(bindings.length);
-  for (let i = 0; i < bindings.length; i++) labels[i] = bindingLabel(bindings[i]);
-  return labels;
-}
 
 export function resolveCommandHotkey(
   event: KeyboardEvent,

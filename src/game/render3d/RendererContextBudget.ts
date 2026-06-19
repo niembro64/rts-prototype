@@ -116,9 +116,6 @@ export function acquireAuxiliaryRendererContext(
   return createToken(record);
 }
 
-export function canAcquireAuxiliaryRendererContext(): boolean {
-  return currentAuxiliaryCount < auxiliaryBudget();
-}
 
 export function getRendererContextTelemetry(): RendererContextTelemetry {
   return {

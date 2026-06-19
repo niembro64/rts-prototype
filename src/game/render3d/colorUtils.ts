@@ -11,7 +11,7 @@ const LOCOMOTION_TEAM_COLOR_FRACTION = 0.5;
 
 /** Blend two 0xRRGGBB colors in ordinary 8-bit RGB space. `t = 0`
  *  returns `baseHex`; `t = 1` returns `tintHex`. */
-export function blendHexColors(baseHex: number, tintHex: number, t: number): number {
+function blendHexColors(baseHex: number, tintHex: number, t: number): number {
   const clampedT = Math.max(0, Math.min(1, t));
   const r = (baseHex >> 16) & 0xff;
   const g = (baseHex >> 8) & 0xff;

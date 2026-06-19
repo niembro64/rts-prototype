@@ -88,7 +88,7 @@ function addSingleStat(stats: RunningStats, value: number): void {
   if (value > stats.max) stats.max = value;
 }
 
-export class ClientPredictionDiagnostics {
+class ClientPredictionDiagnostics {
   readonly enabled = GAME_DIAGNOSTICS.clientPredictionDiagnostics;
 
   private frames = 0;

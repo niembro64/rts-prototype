@@ -45,7 +45,7 @@ export function warnNonFiniteVisualEvent(event: NetworkServerSnapshotSimEvent): 
   });
 }
 
-export function sanitizeDeathContext(ctx: SimDeathContext3D): SimDeathContext3D {
+function sanitizeDeathContext(ctx: SimDeathContext3D): SimDeathContext3D {
   const radius = finiteAtLeast(ctx.radius, 0, 15);
   return {
     ...ctx,

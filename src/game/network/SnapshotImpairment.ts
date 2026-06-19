@@ -57,7 +57,7 @@ declare global {
   }
 }
 
-export class SnapshotImpairmentQueue {
+class SnapshotImpairmentQueue {
   private sequence = 0;
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private delayedClonePool: ReusableNetworkSnapshotCloner[] = [];

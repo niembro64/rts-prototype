@@ -54,7 +54,7 @@ function requireSimWasm(context: string) {
   return sim;
 }
 
-export class ResourceMovementSystem {
+class ResourceMovementSystem {
   beginTick(sink: ResourceMovementSink): void {
     sink.resourceMovements.length = 0;
   }

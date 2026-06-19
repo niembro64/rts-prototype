@@ -2184,7 +2184,7 @@ function addQueuedActionToUnit(
 }
 
 // Add an action to a unit (respecting queue flag)
-export function addActionToUnit(
+function addActionToUnit(
   entity: Entity,
   action: UnitAction,
   queue: boolean,

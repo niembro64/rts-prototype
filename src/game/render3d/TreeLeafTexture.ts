@@ -18,7 +18,7 @@ import {
   TREE_LEAF_TEXTURE_REPEAT,
 } from '../../config';
 
-export const TREE_LEAF_TEXTURE_PIXELS = 1024;
+const TREE_LEAF_TEXTURE_PIXELS = 1024;
 const ITEM_COUNT = 5200;
 
 type ShapeKind = 'box' | 'tri' | 'hex';

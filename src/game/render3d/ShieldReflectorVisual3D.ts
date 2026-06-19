@@ -13,7 +13,7 @@ import { REFLECTIVE_SHIELD_MATERIAL } from '../sim/blueprints/shieldMaterials';
 // The authored material alpha IS the rendered surface alpha. No hidden
 // renderer-side boost: shieldMaterials.json is the single knob, and both
 // shapes (sphere bubble, flat panels) read it identically.
-export const SHIELD_SURFACE_COLOR = REFLECTIVE_SHIELD_MATERIAL.visual.color;
+const SHIELD_SURFACE_COLOR = REFLECTIVE_SHIELD_MATERIAL.visual.color;
 export const SHIELD_SURFACE_OPACITY = Math.min(1, REFLECTIVE_SHIELD_MATERIAL.visual.alpha);
 
 /** Color of the shield material at this surface — team color when the
@@ -26,7 +26,7 @@ export function resolveShieldSurfaceColor(entity: Entity): number {
     : REFLECTIVE_SHIELD_MATERIAL.visual.color;
 }
 
-export const SHIELD_SURFACE_VS = `
+const SHIELD_SURFACE_VS = `
 attribute float aAlpha;
 attribute vec3 aColor;
 varying float vAlpha;
@@ -38,7 +38,7 @@ void main() {
 }
 `;
 
-export const SHIELD_SURFACE_FS = `
+const SHIELD_SURFACE_FS = `
 varying float vAlpha;
 varying vec3 vColor;
 void main() {
