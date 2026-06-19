@@ -42,7 +42,6 @@ import { queueModeFromEvent } from '../game/input/queueModifiers';
 import { isTowerBuildingBlueprintId } from '@/types/buildingTypes';
 import type { StructureBlueprintId } from '@/types/blueprintIds';
 
-export type { FactorySelectionItem, SelectionInfo, SelectionActions } from '@/types/ui';
 import type {
   QueueInsertOption,
   SelectionEntityType,

@@ -10,10 +10,9 @@ import { COLORS, cssHex, readRgbTuple } from '@/colorsConfig';
 import { HUD_MINIMAP_MAX_PX } from './hudLayout';
 import { minimapPointerToWorld } from './minimapHelpers';
 
-export type { MinimapEntity, MinimapData } from '@/types/ui';
 import type { MinimapData } from '@/types/ui';
 
-export type MinimapMapDrawing = {
+type MinimapMapDrawing = {
   id: string;
   kind: 'line' | 'label';
   points: ReadonlyArray<{ x: number; y: number }>;

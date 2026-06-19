@@ -45,7 +45,7 @@ import { locomotionPieceColorHex } from './colorUtils';
 const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
 const WHEEL_COLOR = COLORS.units.locomotion.tread.wheel.colorHex;
 const _treadClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
-export const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
+const TREAD_HEIGHT = TREAD_CHASSIS_LIFT_Y;
 const TREAD_Y = TREAD_HEIGHT / 2;
 const TREAD_CLEAT_HEIGHT = 1.1;
 const TREAD_CLEAT_WIDTH_FRAC = 1.0;

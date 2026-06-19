@@ -1,19 +1,5 @@
 
-/**
- * Compute squared distance between two points (avoids sqrt for comparisons)
- */
-function distanceSquared(x1: number, y1: number, x2: number, y2: number): number {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  return dx * dx + dy * dy;
-}
 
-/**
- * Compute Euclidean distance between two points
- */
-export function distance(x1: number, y1: number, x2: number, y2: number): number {
-  return Math.sqrt(distanceSquared(x1, y1, x2, y2));
-}
 
 /**
  * Compute magnitude of a vector

@@ -3,7 +3,6 @@ import { computed } from 'vue';
 import { COLORS, RESOURCE_COLOR_CSS } from '@/colorsConfig';
 import WorldDirectionHud from './WorldDirectionHud.vue';
 
-export type { EconomyInfo } from '@/types/ui';
 import type { EconomyInfo, MinimapData } from '@/types/ui';
 
 const isTauri = typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;

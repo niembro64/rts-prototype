@@ -1,7 +1,6 @@
 // Math utilities - re-exports
 
 export {
-  distance,
   
   magnitude,
   magnitude3,
@@ -18,21 +17,18 @@ export {
 
 export {
   lineSphereIntersectionT,
-
   rayBoxIntersectionT,
 } from './CollisionHelpers';
 
 export {
   computeConstantSpeedHomingVelocity,
   computeHomingThrust,
-  
 } from './HomingSteering';
 export {
   computeTerrainFollowVerticalThrustAccel,
 } from './TerrainFollowThrust';
 
 export {
-  
   countBarrels,
   turretBarrelFollowsBeam,
   getBarrelOrbitAngle,
@@ -49,7 +45,6 @@ export {
 export {
   type KinematicInterceptSolution,
   type KinematicState3,
-
   
   solveKinematicIntercept,
 } from './Ballistics';

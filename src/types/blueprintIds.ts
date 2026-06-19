@@ -102,7 +102,6 @@ const TOWER_BLUEPRINT_ID_SET = new Set<string>(TOWER_BLUEPRINT_IDS);
 const STRUCTURE_BLUEPRINT_ID_SET = new Set<string>(STRUCTURE_BLUEPRINT_IDS);
 const SHOT_BLUEPRINT_ID_SET = new Set<string>(SHOT_BLUEPRINT_IDS);
 const RAY_BLUEPRINT_ID_SET = new Set<string>(RAY_BLUEPRINT_IDS);
-const SHIELD_BLUEPRINT_ID_SET = new Set<string>(SHIELD_BLUEPRINT_IDS);
 const SHIELD_MATERIAL_ID_SET = new Set<string>(SHIELD_MATERIAL_IDS);
 const TURRET_BLUEPRINT_ID_SET = new Set<string>(TURRET_BLUEPRINT_IDS);
 
@@ -130,9 +129,6 @@ export function isRayBlueprintId(value: string): value is RayBlueprintId {
   return RAY_BLUEPRINT_ID_SET.has(value);
 }
 
-export function isShieldBlueprintId(value: string): value is ShieldBlueprintId {
-  return SHIELD_BLUEPRINT_ID_SET.has(value);
-}
 
 export function isShieldMaterialId(value: string): value is ShieldMaterialId {
   return SHIELD_MATERIAL_ID_SET.has(value);

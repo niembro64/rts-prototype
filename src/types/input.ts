@@ -46,7 +46,3 @@ export type GuardEntitySource = {
 };
 
 // Entity source for reclaim target queries
-export type ReclaimEntitySource = {
-  getUnits(): Entity[];
-  getBuildings(): Entity[];
-};

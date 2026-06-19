@@ -3444,11 +3444,6 @@ export interface PathfinderApi {
   gridHeight: () => number;
 }
 
-/** Bit flags for `integrateDampedRotation`. Mirrors the
- *  DAMPED_ROTATION_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
-export const DAMPED_ROTATION_FLAG_WRAP = 1 << 0;
-export const DAMPED_ROTATION_FLAG_HAS_MIN = 1 << 1;
-export const DAMPED_ROTATION_FLAG_HAS_MAX = 1 << 2;
 
 /** Views over the projectile SoA pool. Indexed by slot id (0..count
  *  where count is JS-managed in projectileSystem.ts). All views

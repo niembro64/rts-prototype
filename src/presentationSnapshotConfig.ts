@@ -4,9 +4,6 @@ import type { SnapshotRate } from './types/server';
 export const PRESENTATION_SNAPSHOT_RATE_DEFAULT: number =
   ARCHITECTURE_CONFIG.lockstep.presentationSnapshots.nominalSnapshotRateHz;
 
-export const PRESENTATION_SNAPSHOT_RATE_OPTIONS: readonly SnapshotRate[] = [
-  PRESENTATION_SNAPSHOT_RATE_DEFAULT,
-];
 
 function isPresentationSnapshotRate(rate: SnapshotRate): rate is number {
   return typeof rate === 'number' && Number.isFinite(rate) && rate > 0;

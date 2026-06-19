@@ -100,12 +100,6 @@ export function buildStructureMenuLayout(
   return { items, groups };
 }
 
-export function getBuildMenuStructureBlueprintIdBySlotIndex(
-  slotIndex: number,
-  allowedBuildBlueprintIds: readonly StructureBlueprintId[],
-): BuildingBlueprintId | null {
-  return buildStructureMenuLayout(allowedBuildBlueprintIds).items[slotIndex]?.buildingBlueprintId ?? null;
-}
 
 export function buildBarHomeBuildMenuCells(
   allowedBuildBlueprintIds: readonly StructureBlueprintId[],
