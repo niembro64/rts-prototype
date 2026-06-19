@@ -1089,6 +1089,35 @@
         <li>Measure TPS, CPU budget, render time, prediction time, snapshot rate, and backpressure continuously.</li>
         <li>Prefer instancing, shared geometry, shared materials, spatial grouping, and GPU-friendly batches over per-unit scene graph complexity.</li>
       </ul>
+
+      <h3>Performance bottlenecks are measured by layer</h3>
+      <p>
+        Performance debugging must separate simulation math, snapshot work, client prediction,
+        render-list preparation, WebGL submission, and real GPU time before naming a bottleneck.
+        A single &ldquo;current TPS / ideal TPS&rdquo; or &ldquo;current FPS / ideal FPS&rdquo; number is a symptom,
+        not a diagnosis. The canonical diagnostic path is the performance bottleneck harness:
+        <code>npm run performance:bottleneck</code>, implemented by
+        <code>scripts/performanceBottleneckHarness.mjs</code> and
+        <code>src/game/perf/PerformanceBottleneckHarness.ts</code>.
+      </p>
+      <p>
+        The harness runs the same battle shape through three deliberately different loads.
+        <strong>Sim only</strong> advances <code>ServerSimulationCore.stepFixedTick()</code> without
+        renderer or snapshots, giving the fixed-step simulation headroom. <strong>Sim + snapshot +
+        client apply</strong> adds presentation snapshot emission, wire encode/decode, and
+        <code>ClientViewState.applyNetworkState()</code>, which catches serialization and
+        snapshot-apply costs that otherwise get blamed on rendering. <strong>Full stack</strong>
+        runs the local server, client prediction, Three renderer, WebGL frame profiler, GPU timer,
+        draw-call counters, triangle counts, buffer upload counters, long-task tracking, and snapshot
+        size tracking in Chromium.
+      </p>
+      <ul class="rule-list">
+        <li>If sim-only p95 approaches the fixed-step budget, optimize simulation systems first: targeting, physics, pathing, fog, projectile stepping, or broadphase work.</li>
+        <li>If sim-only has headroom but sim + snapshot is expensive, the bottleneck is snapshot construction, visibility filtering, wire encoding/decoding, or client snapshot apply.</li>
+        <li>If GPU time approaches the frame budget while sim and snapshot have headroom, reduce draw pressure, fill pressure, shader cost, or render-target resolution.</li>
+        <li>If GPU time is low but full-stack frame time is high, inspect JavaScript render preparation, prediction, HUD work, buffer uploads, garbage collection, and long tasks.</li>
+        <li>Use heavier harness runs with explicit caps and viewport sizes before accepting a scale claim, for example <code>npm run performance:bottleneck -- --unit-cap=1024 --seconds=10 --map-cells=17 --width=1920 --height=1080</code>.</li>
+      </ul>
     </section>
 
     <section>
