@@ -28,7 +28,7 @@ import {
   type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
-import { locomotionPieceColorHex } from './colorUtils';
+import { getLocomotionMatByCache } from './RenderUtils';
 
 // Movement-position EMA tau for the per-tire suspension lift. Drives
 // the wheel toward the floor-clamp target each frame; long enough
@@ -48,16 +48,6 @@ const _wheelClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 
 const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
-
-function getWheelMat(ownerId: PlayerId | undefined): THREE.MeshBasicMaterial {
-  const color = locomotionPieceColorHex(WHEEL_COLOR, ownerId);
-  let mat = wheelMats.get(color);
-  if (!mat) {
-    mat = new THREE.MeshBasicMaterial({ color });
-    wheelMats.set(color, mat);
-  }
-  return mat;
-}
 
 /** Per-tire chassis-local mount, plus the four canonical visual state
  *  channels carried across every frame:
@@ -144,7 +134,7 @@ export function buildWheels(
       // rotation, world lateral). Spin animation rotates this mesh
       // around its own +Y, which after the parent's rotation.x is
       // the lateral axis in the unit's frame.
-      const tire = new THREE.Mesh(wheelGeom, getWheelMat(ownerId));
+      const tire = new THREE.Mesh(wheelGeom, getLocomotionMatByCache(wheelMats, WHEEL_COLOR, ownerId));
       tire.scale.set(wheelR, tireWidth, wheelR);
       wheelGroup.add(tire);
       group.add(wheelGroup);

@@ -39,6 +39,7 @@ import {
 } from '@/smokeConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { disposeMesh } from './threeUtils';
+import { clamp01 } from './RenderUtils';
 
 const DEFAULT_COLOR = COLORS.effects.smokeTrail.default.colorHex;
 const MAX_PARTICLES = getSmokePoolMaxParticles();
@@ -176,12 +177,6 @@ void main() {
   gl_FragColor = vec4(vColor, vAlpha * soft);
 }
 `;
-
-function clamp01(value: number): number {
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
-}
 
 /** One InstancedMesh pool for every smoke puff. */
 type PuffPool = {

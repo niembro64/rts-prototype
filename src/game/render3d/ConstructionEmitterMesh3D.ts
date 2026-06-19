@@ -21,6 +21,7 @@ import { RESOURCE_COLOR_HEX } from '@/colorsConfig';
 import { PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import { CONSTRUCTION_HAZARD_COLORS } from '@/constructionVisualConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
+import { makeSphere, disposeRenderUtilsGeoms } from './RenderUtils';
 
 export type ConstructionTowerOrbitPart = {
   mesh: THREE.Mesh;
@@ -107,7 +108,6 @@ type ResourcePylonBuildOptions = {
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
 const octagonCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
-const sphereGeom = new THREE.SphereGeometry(1, 18, 12);
 const frameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 
 // "Straw" walls: the pylon is a transparent double-wall tube — an outer
@@ -300,7 +300,7 @@ export function disposeConstructionEmitterGeoms(): void {
   cylinderGeom.dispose();
   hexCylinderGeom.dispose();
   octagonCylinderGeom.dispose();
-  sphereGeom.dispose();
+  disposeRenderUtilsGeoms();
   frameMat.dispose();
   strawOuterMat.dispose();
   strawInnerMat.dispose();
@@ -461,19 +461,6 @@ function makeCylinder(
 ): THREE.Mesh {
   const mesh = new THREE.Mesh(geom, material);
   mesh.scale.set(radius * 2, height, radius * 2);
-  mesh.position.set(x, y, z);
-  return mesh;
-}
-
-function makeSphere(
-  material: THREE.Material,
-  radius: number,
-  x: number,
-  y: number,
-  z: number,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(sphereGeom, material);
-  mesh.scale.setScalar(radius);
   mesh.position.set(x, y, z);
   return mesh;
 }

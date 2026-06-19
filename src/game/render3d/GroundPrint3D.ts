@@ -52,6 +52,12 @@ import {
   writeQuadRgba,
   type RibbonQuadCorners,
 } from './RibbonTrailBuffer3D';
+import {
+  createDirtySlotSpan,
+  markDirtySlot,
+  clearDirtySlotSpan,
+  uploadDirtySlotSpan,
+} from './DecalBufferUtils';
 import { clamp01 } from '../math';
 
 // ── World Y layout ──
@@ -299,46 +305,6 @@ type Mark = {
    *  notice this and fall back to a square cap for the next quad. */
   removed: boolean;
 };
-
-type DirtySlotSpan = {
-  minSlot: number;
-  maxSlot: number;
-};
-
-function createDirtySlotSpan(): DirtySlotSpan {
-  return { minSlot: Number.POSITIVE_INFINITY, maxSlot: -1 };
-}
-
-function markDirtySlot(span: DirtySlotSpan, slot: number): void {
-  if (slot < span.minSlot) span.minSlot = slot;
-  if (slot > span.maxSlot) span.maxSlot = slot;
-}
-
-function clearDirtySlotSpan(span: DirtySlotSpan): void {
-  span.minSlot = Number.POSITIVE_INFINITY;
-  span.maxSlot = -1;
-}
-
-function uploadDirtySlotSpan(
-  attr: THREE.BufferAttribute,
-  span: DirtySlotSpan,
-  componentsPerSlot: number,
-  activeSlots: number,
-): void {
-  if (span.maxSlot < span.minSlot || activeSlots <= 0) {
-    clearDirtySlotSpan(span);
-    return;
-  }
-  const minSlot = Math.max(0, Math.min(span.minSlot, activeSlots - 1));
-  const maxSlot = Math.max(minSlot, Math.min(span.maxSlot, activeSlots - 1));
-  attr.clearUpdateRanges();
-  attr.addUpdateRange(
-    minSlot * componentsPerSlot,
-    (maxSlot - minSlot + 1) * componentsPerSlot,
-  );
-  attr.needsUpdate = true;
-  clearDirtySlotSpan(span);
-}
 
 export class GroundPrint3D {
   private root: THREE.Group;

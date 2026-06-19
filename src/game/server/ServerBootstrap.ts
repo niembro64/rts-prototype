@@ -42,7 +42,10 @@ import type { Entity, PlayerId } from '../sim/types';
 import { BACKGROUND_UNIT_BLUEPRINT_IDS, spawnBackgroundUnitsStandalone } from './BackgroundBattleStandalone';
 import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../../types/blueprintIds';
 import { PhysicsEngine3D } from './PhysicsEngine3D';
-import { createPhysicsBodyForUnit } from './unitPhysicsBody';
+import {
+  createBuildingBodiesForEntities,
+  createUnitBodiesForEntities,
+} from './InitialPhysicsBodiesHelpers';
 
 export interface BootstrappedServerWorld {
   physics: PhysicsEngine3D;
@@ -401,38 +404,8 @@ export class ServerBootstrap {
     physics: PhysicsEngine3D,
     entities: Entity[],
   ): void {
-    // Pass 1: create building bodies (buildings + towers share static
-    // cuboid bodies — towers are buildings-with-turrets structurally).
-    for (const entity of entities) {
-      if ((entity.type === 'building' || entity.type === 'tower') && entity.building) {
-        // baseZ matches WorldState.createBuilding's terrain lookup so
-        // the static cuboid body sits where the entity transform says
-        // it does — base on the local cube tile top.
-        const baseZ = entity.transform.z - entity.building.depth / 2;
-        const body = physics.createBuildingBody(
-          entity.transform.x,
-          entity.transform.y,
-          entity.building.width,
-          entity.building.height,
-          entity.building.depth,
-          baseZ,
-          entity.building.supportSurface,
-          `building_${entity.id}`,
-          entity.id,
-        );
-        entity.body = { physicsBody: body };
-      }
-    }
-
-    // Pass 2: create unit bodies + set ignore-static for overlapping buildings
-    for (const entity of entities) {
-      if (entity.type === 'unit' && entity.unit) {
-        createPhysicsBodyForUnit(world, physics, entity, {
-          ignoreOverlappingBuildings: true,
-          overlapPadding: entity.unit.radius.collision,
-        });
-      }
-    }
+    createBuildingBodiesForEntities(world, physics, entities);
+    createUnitBodiesForEntities(world, physics, entities);
   }
 
   private static async createInitialPhysicsBodiesAsync(
@@ -446,33 +419,10 @@ export class ServerBootstrap {
   ): Promise<void> {
     await report(startProgress, phase);
     const midProgress = startProgress + (endProgress - startProgress) * 0.45;
-    for (const entity of entities) {
-      if ((entity.type === 'building' || entity.type === 'tower') && entity.building) {
-        const baseZ = entity.transform.z - entity.building.depth / 2;
-        const body = physics.createBuildingBody(
-          entity.transform.x,
-          entity.transform.y,
-          entity.building.width,
-          entity.building.height,
-          entity.building.depth,
-          baseZ,
-          entity.building.supportSurface,
-          `building_${entity.id}`,
-          entity.id,
-        );
-        entity.body = { physicsBody: body };
-      }
-    }
+    createBuildingBodiesForEntities(world, physics, entities);
     await report(midProgress, phase);
 
-    for (const entity of entities) {
-      if (entity.type === 'unit' && entity.unit) {
-        createPhysicsBodyForUnit(world, physics, entity, {
-          ignoreOverlappingBuildings: true,
-          overlapPadding: entity.unit.radius.collision,
-        });
-      }
-    }
+    createUnitBodiesForEntities(world, physics, entities);
     await report(endProgress, phase);
   }
 }

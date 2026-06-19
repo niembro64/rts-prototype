@@ -10,6 +10,7 @@ import { FOG_CONFIG } from '@/fogConfig';
 import { COLORS } from '@/colorsConfig';
 import { disposeMesh } from './threeUtils';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
+import { clamp01 } from './RenderUtils';
 
 type FogSphere = {
   timeLeft: number;
@@ -90,12 +91,6 @@ void main() {
   #include <colorspace_fragment>
 }
 `;
-
-function clamp01(value: number): number {
-  if (value <= 0) return 0;
-  if (value >= 1) return 1;
-  return value;
-}
 
 /** Soft fog-of-war field spheres. Unlike smoke puffs, these are not
  *  hard-edged translucent surfaces: fragment alpha eases from fully

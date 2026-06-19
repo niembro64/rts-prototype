@@ -22,6 +22,13 @@ import {
   TERRAIN_ROCK_BASE_COLOR,
   TERRAIN_ROCK_TEXTURE_RESOLUTION,
 } from '../../config';
+import {
+  cssRgb,
+  drawCommonShape,
+  installDetailTextureDevDownloadHelper,
+  makeSeededRng,
+  randIn,
+} from './detailTextureHelpers';
 
 const BASE_TEXTURE_PIXELS = 4096;
 const ROCK_DETAIL_TEXTURE_PIXELS = TERRAIN_ROCK_TEXTURE_RESOLUTION;
@@ -62,7 +69,11 @@ export function getRockDetailTexture(): THREE.CanvasTexture {
     const { canvas, texture } = generate();
     cachedCanvas = canvas;
     cachedTexture = texture;
-    installDevDownloadHelper();
+    installDetailTextureDevDownloadHelper(
+      'rock-detail.png',
+      () => cachedCanvas,
+      'downloadRockDetailTexture',
+    );
   }
   return cachedTexture;
 }
@@ -96,28 +107,6 @@ function generate(): { canvas: HTMLCanvasElement; texture: THREE.CanvasTexture }
   texture.anisotropy = 8;
   texture.needsUpdate = true;
   return { canvas, texture };
-}
-
-function cssRgb(hex: number): string {
-  const r = (hex >> 16) & 0xff;
-  const g = (hex >> 8) & 0xff;
-  const b = hex & 0xff;
-  return `rgb(${r}, ${g}, ${b})`;
-}
-
-function makeSeededRng(seed: number): () => number {
-  let s = seed >>> 0;
-  return () => {
-    s = (s + 0x6D2B79F5) >>> 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function randIn(rng: () => number, min: number, max: number): number {
-  return min + rng() * (max - min);
 }
 
 function generateItems(rng: () => number): Item[] {
@@ -194,37 +183,7 @@ function generateItems(rng: () => number): Item[] {
 }
 
 function drawShape(ctx: CanvasRenderingContext2D, item: Item): void {
-  const s = item.size;
-  switch (item.shapeKind) {
-    case 'box': {
-      const w = s * item.shapeParam;
-      ctx.fillRect(-w / 2, -s / 2, w, s);
-      return;
-    }
-    case 'tri': {
-      const halfBase = s * item.shapeParam;
-      ctx.beginPath();
-      ctx.moveTo(0, -s / 2);
-      ctx.lineTo(halfBase, s / 2);
-      ctx.lineTo(-halfBase, s / 2);
-      ctx.closePath();
-      ctx.fill();
-      return;
-    }
-    case 'hex': {
-      ctx.beginPath();
-      for (let v = 0; v < 6; v++) {
-        const a = (v / 6) * Math.PI * 2;
-        const x = (s / 2) * Math.cos(a);
-        const y = (s / 2) * Math.sin(a);
-        if (v === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-      ctx.fill();
-      return;
-    }
-  }
+  drawCommonShape(ctx, item.size, item.shapeKind, item.shapeParam);
 }
 
 function drawItemWithWrap(ctx: CanvasRenderingContext2D, item: Item): void {
@@ -246,18 +205,4 @@ function drawItemWithWrap(ctx: CanvasRenderingContext2D, item: Item): void {
       ctx.restore();
     }
   }
-}
-
-function installDevDownloadHelper(): void {
-  if (!import.meta.env.DEV) return;
-  if (typeof window === 'undefined') return;
-  const w = window as unknown as { downloadRockDetailTexture?: () => void };
-  if (w.downloadRockDetailTexture) return;
-  w.downloadRockDetailTexture = () => {
-    if (!cachedCanvas) return;
-    const link = document.createElement('a');
-    link.href = cachedCanvas.toDataURL('image/png');
-    link.download = 'rock-detail.png';
-    link.click();
-  };
 }

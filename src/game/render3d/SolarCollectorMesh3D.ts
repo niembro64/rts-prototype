@@ -7,6 +7,7 @@ import {
 } from './ConstructionEmitterMesh3D';
 import { PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './BuildingShape3D';
+import { makeSphere, disposeRenderUtilsGeoms } from './RenderUtils';
 
 export type SolarPetalAnimation = {
   width: number;
@@ -60,7 +61,6 @@ const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape
   steps: 1,
 });
 const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
-const sphereGeom = new THREE.SphereGeometry(1, 18, 12);
 
 const solarCellMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.solarCell.colorHex,
@@ -439,19 +439,6 @@ function makeHingeBar(
   return mesh;
 }
 
-function makeSphere(
-  material: THREE.Material,
-  radius: number,
-  x: number,
-  y: number,
-  z: number,
-): THREE.Mesh {
-  const mesh = new THREE.Mesh(sphereGeom, material);
-  mesh.scale.setScalar(radius);
-  mesh.position.set(x, y, z);
-  return mesh;
-}
-
 function detail(
   mesh: THREE.Mesh,
   _legacyVisibility?: unknown,
@@ -466,7 +453,7 @@ export function disposeSolarCollectorGeoms(): void {
   solarTrianglePanelGeom.dispose();
   solarTrianglePetalGeom.dispose();
   cylinderGeom.dispose();
-  sphereGeom.dispose();
+  disposeRenderUtilsGeoms();
   solarCellMat.dispose();
   solarPetalBackMat.dispose();
 }

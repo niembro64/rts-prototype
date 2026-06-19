@@ -40,7 +40,7 @@ import {
   type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
-import { locomotionPieceColorHex } from './colorUtils';
+import { getLocomotionMatByCache } from './RenderUtils';
 
 const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
 const WHEEL_COLOR = COLORS.units.locomotion.tread.wheel.colorHex;
@@ -71,20 +71,6 @@ const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
 const treadMats = new Map<number, THREE.MeshBasicMaterial>();
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 const cleatMats = new Map<number, THREE.MeshBasicMaterial>();
-
-function getLocomotionMat(
-  cache: Map<number, THREE.MeshBasicMaterial>,
-  baseColor: number,
-  ownerId: PlayerId | undefined,
-): THREE.MeshBasicMaterial {
-  const color = locomotionPieceColorHex(baseColor, ownerId);
-  let mat = cache.get(color);
-  if (!mat) {
-    mat = new THREE.MeshBasicMaterial({ color });
-    cache.set(color, mat);
-  }
-  return mat;
-}
 
 /** Per-side state owned by the rig. The `group` holds the side's
  *  slab, end caps, internal wheels, and animated cleats — all in a
@@ -163,9 +149,9 @@ export function buildTreads(
   const cleats: THREE.Mesh[] = [];
   let cleatSpacing = 0;
   const cleatLoopLength = 2 * straightLength + 2 * Math.PI * treadRadius;
-  const treadMat = getLocomotionMat(treadMats, TREAD_COLOR, ownerId);
-  const wheelMat = getLocomotionMat(wheelMats, WHEEL_COLOR, ownerId);
-  const cleatMat = getLocomotionMat(
+  const treadMat = getLocomotionMatByCache(treadMats, TREAD_COLOR, ownerId);
+  const wheelMat = getLocomotionMatByCache(wheelMats, WHEEL_COLOR, ownerId);
+  const cleatMat = getLocomotionMatByCache(
     cleatMats,
     COLORS.units.locomotion.tread.cleat.colorHex,
     ownerId,

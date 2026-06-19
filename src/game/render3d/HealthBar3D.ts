@@ -28,6 +28,11 @@ import {
 } from './CanvasSpritePool';
 import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
 import {
+  growFloat32Array,
+  growFloat64Array,
+  growUint8Array,
+} from './RenderUtils';
+import {
   SHELL_BAR_COLORS,
   SHELL_BAR_BG_COLOR,
   SHELL_BAR_BG_ALPHA,
@@ -160,34 +165,16 @@ export class BodyHudRenderPacket3D {
     if (required <= this.ids.length) return;
     let nextCapacity = this.ids.length;
     while (nextCapacity < required) nextCapacity *= 2;
-    this.ids = growFloat64(this.ids, nextCapacity);
-    this.x = growFloat32(this.x, nextCapacity);
-    this.y = growFloat32(this.y, nextCapacity);
-    this.z = growFloat32(this.z, nextCapacity);
-    this.width = growFloat32(this.width, nextCapacity);
-    this.healthRatio = growFloat32(this.healthRatio, nextCapacity);
-    this.energyRatio = growFloat32(this.energyRatio, nextCapacity);
-    this.metalRatio = growFloat32(this.metalRatio, nextCapacity);
-    this.flags = growUint8(this.flags, nextCapacity);
+    this.ids = growFloat64Array(this.ids, nextCapacity);
+    this.x = growFloat32Array(this.x, nextCapacity);
+    this.y = growFloat32Array(this.y, nextCapacity);
+    this.z = growFloat32Array(this.z, nextCapacity);
+    this.width = growFloat32Array(this.width, nextCapacity);
+    this.healthRatio = growFloat32Array(this.healthRatio, nextCapacity);
+    this.energyRatio = growFloat32Array(this.energyRatio, nextCapacity);
+    this.metalRatio = growFloat32Array(this.metalRatio, nextCapacity);
+    this.flags = growUint8Array(this.flags, nextCapacity);
   }
-}
-
-function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
-  const next = new Float32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
-  const next = new Float64Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
-  const next = new Uint8Array(nextCapacity);
-  next.set(source);
-  return next;
 }
 
 type BarState = {

@@ -1,0 +1,75 @@
+// RenderUtils — small render-visual helpers shared across the 3D
+// renderer. These were each duplicated byte-for-byte in several mesh /
+// HUD / locomotion modules; they live here so the single copy is the
+// one everything calls. Behavior is identical to the former local
+// copies — these are pure geometry / math / material-cache helpers.
+
+import * as THREE from 'three';
+import type { PlayerId } from '../sim/types';
+import { locomotionPieceColorHex } from './colorUtils';
+
+// Shared unit sphere used by makeSphere. Every former local copy built
+// its own `new THREE.SphereGeometry(1, 18, 12)`; this is the one shared
+// instance. Disposed via disposeRenderUtilsGeoms at scene teardown.
+const sphereGeom = new THREE.SphereGeometry(1, 18, 12);
+
+/** A scaled, positioned sphere mesh on the shared unit sphere geometry. */
+export function makeSphere(
+  material: THREE.Material,
+  radius: number,
+  x: number,
+  y: number,
+  z: number,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(sphereGeom, material);
+  mesh.scale.setScalar(radius);
+  mesh.position.set(x, y, z);
+  return mesh;
+}
+
+/** Free the shared geometry RenderUtils owns. Safe to call more than
+ *  once — disposing a THREE BufferGeometry twice is a no-op. */
+export function disposeRenderUtilsGeoms(): void {
+  sphereGeom.dispose();
+}
+
+export function growFloat32Array(source: Float32Array, nextCapacity: number): Float32Array {
+  const next = new Float32Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+export function growFloat64Array(source: Float64Array, nextCapacity: number): Float64Array {
+  const next = new Float64Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+export function growUint8Array(source: Uint8Array, nextCapacity: number): Uint8Array {
+  const next = new Uint8Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+export function clamp01(value: number): number {
+  if (value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
+/** Look up (or create + cache) the team-tinted MeshBasicMaterial for a
+ *  locomotion piece. The cache is keyed by the resolved tinted color so
+ *  units sharing an owner share one material. */
+export function getLocomotionMatByCache(
+  cache: Map<number, THREE.MeshBasicMaterial>,
+  baseColor: number,
+  ownerId: PlayerId | undefined,
+): THREE.MeshBasicMaterial {
+  const color = locomotionPieceColorHex(baseColor, ownerId);
+  let mat = cache.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color });
+    cache.set(color, mat);
+  }
+  return mat;
+}

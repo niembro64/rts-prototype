@@ -25,6 +25,28 @@ import {
   quantizeRotation as qRot,
   quantizeVelocity as qVel,
 } from './snapshotQuantization';
+import {
+  AUDIO_EVENT_SOURCE_TYPE_CODES,
+  AUDIO_EVENT_TYPE_CODES,
+  DEATH_HAS_BASE_Z,
+  DEATH_HAS_COLLISION_RADIUS,
+  DEATH_HAS_ROTATION,
+  DEATH_HAS_TURRET_POSES,
+  DEATH_HAS_UNIT_TYPE,
+  DEATH_HAS_VISUAL_RADIUS,
+  EVENT_AUDIO_ONLY_VALUE,
+  EVENT_HAS_AUDIO_ONLY,
+  EVENT_HAS_DEATH_CONTEXT,
+  EVENT_HAS_ENTITY_ID,
+  EVENT_HAS_IMPACT_CONTEXT,
+  EVENT_HAS_KILLER_PLAYER_ID,
+  EVENT_HAS_PLAYER_ID,
+  EVENT_HAS_SHIELD_IMPACT,
+  EVENT_HAS_SOURCE_KEY,
+  EVENT_HAS_SOURCE_TYPE,
+  EVENT_HAS_VICTIM_PLAYER_ID,
+  EVENT_HAS_WATER_SPLASH_CONTEXT,
+} from './audioEventWireFormat';
 
 type PooledSimEvent = NetworkServerSnapshotSimEvent & {
   _pos: Vec3;
@@ -42,48 +64,6 @@ export type AudioEventWireSource = {
   impactContextRows: Float64WireRows;
   strings: string[];
 };
-
-const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'], number> = {
-  fire: 0,
-  hit: 1,
-  death: 2,
-  laserStart: 3,
-  laserStop: 4,
-  shieldStart: 5,
-  shieldStop: 6,
-  shieldImpact: 7,
-  ping: 8,
-  attackAlert: 9,
-  projectileExpire: 10,
-  waterSplash: 11,
-};
-
-const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<string, number> = {
-  turret: 0,
-  unit: 1,
-  building: 2,
-  system: 3,
-};
-
-const EVENT_HAS_SOURCE_TYPE = 0x001;
-const EVENT_HAS_SOURCE_KEY = 0x002;
-const EVENT_HAS_PLAYER_ID = 0x004;
-const EVENT_HAS_ENTITY_ID = 0x008;
-const EVENT_HAS_SHIELD_IMPACT = 0x010;
-const EVENT_HAS_KILLER_PLAYER_ID = 0x020;
-const EVENT_HAS_VICTIM_PLAYER_ID = 0x040;
-const EVENT_HAS_AUDIO_ONLY = 0x080;
-const EVENT_AUDIO_ONLY_VALUE = 0x100;
-const EVENT_HAS_DEATH_CONTEXT = 0x200;
-const EVENT_HAS_IMPACT_CONTEXT = 0x400;
-const EVENT_HAS_WATER_SPLASH_CONTEXT = 0x800;
-
-const DEATH_HAS_VISUAL_RADIUS = 0x01;
-const DEATH_HAS_COLLISION_RADIUS = 0x02;
-const DEATH_HAS_BASE_Z = 0x04;
-const DEATH_HAS_UNIT_TYPE = 0x08;
-const DEATH_HAS_ROTATION = 0x10;
-const DEATH_HAS_TURRET_POSES = 0x20;
 
 /** Per-listener pool of pooled NetworkServerSnapshotSimEvent objects
  *  plus the snapshot's outbound buf (FOW-OPT-07). Keyed by

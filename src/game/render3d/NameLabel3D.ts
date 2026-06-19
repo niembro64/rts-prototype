@@ -22,6 +22,11 @@ import {
   type CanvasSpriteSlot,
 } from './CanvasSpritePool';
 import { FADE_CULL_ALPHA, type HudFade } from './HudFade';
+import {
+  growFloat32Array,
+  growFloat64Array,
+  growUint8Array,
+} from './RenderUtils';
 import { PIECE_TAG_BODY, PIECE_TAG_TURRET_BASE, packPieceKey } from './HealthBar3D';
 import {
   buildingBlueprintIdToCode,
@@ -120,31 +125,13 @@ export class PieceNameRenderPacket3D {
     if (required <= this.hostIds.length) return;
     let nextCapacity = this.hostIds.length;
     while (nextCapacity < required) nextCapacity *= 2;
-    this.hostIds = growFloat64(this.hostIds, nextCapacity);
+    this.hostIds = growFloat64Array(this.hostIds, nextCapacity);
     this.pieceTags = growUint16(this.pieceTags, nextCapacity);
-    this.x = growFloat32(this.x, nextCapacity);
-    this.y = growFloat32(this.y, nextCapacity);
-    this.z = growFloat32(this.z, nextCapacity);
-    this.tones = growUint8(this.tones, nextCapacity);
+    this.x = growFloat32Array(this.x, nextCapacity);
+    this.y = growFloat32Array(this.y, nextCapacity);
+    this.z = growFloat32Array(this.z, nextCapacity);
+    this.tones = growUint8Array(this.tones, nextCapacity);
   }
-}
-
-function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
-  const next = new Float32Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growFloat64(source: Float64Array, nextCapacity: number): Float64Array {
-  const next = new Float64Array(nextCapacity);
-  next.set(source);
-  return next;
-}
-
-function growUint8(source: Uint8Array, nextCapacity: number): Uint8Array {
-  const next = new Uint8Array(nextCapacity);
-  next.set(source);
-  return next;
 }
 
 function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {

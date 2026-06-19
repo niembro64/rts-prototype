@@ -25,6 +25,7 @@ import type { LocomotionBase } from './LocomotionRigShared3D';
 import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { locomotionPieceColorHex } from './colorUtils';
+import { getLocomotionMatByCache } from './RenderUtils';
 
 /** Minimum world-Y gap the rendered fan ring is allowed to have above
  *  terrain. The sim is supposed to keep hovers above ground via the
@@ -55,20 +56,6 @@ const LOCAL_EXHAUST_DIR = new THREE.Vector3(0, -1, 0);
 const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
 const _fanWorldDir = new THREE.Vector3();
-
-function getFanMat(
-  cache: Map<number, THREE.MeshBasicMaterial>,
-  baseColor: number,
-  ownerId: PlayerId | undefined,
-): THREE.MeshBasicMaterial {
-  const color = locomotionPieceColorHex(baseColor, ownerId);
-  let mat = cache.get(color);
-  if (!mat) {
-    mat = new THREE.MeshBasicMaterial({ color });
-    cache.set(color, mat);
-  }
-  return mat;
-}
 
 function getRingGeom(tubeRatio: number): THREE.TorusGeometry {
   const key = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
@@ -304,7 +291,7 @@ function buildFan(
 
   const ring = new THREE.Mesh(
     getRingGeom(ringTubeRatio),
-    getFanMat(ringMats, FAN_RING_COLOR, ownerId),
+    getLocomotionMatByCache(ringMats, FAN_RING_COLOR, ownerId),
   );
   ring.rotation.x = Math.PI / 2;
   ring.scale.setScalar(fanRadius);
@@ -329,7 +316,7 @@ function buildFan(
   );
   fanGroup.add(rotor);
 
-  const hub = new THREE.Mesh(hubGeom, getFanMat(hubMats, FAN_HUB_COLOR, ownerId));
+  const hub = new THREE.Mesh(hubGeom, getLocomotionMatByCache(hubMats, FAN_HUB_COLOR, ownerId));
   hub.scale.setScalar(hubRadius);
   fanGroup.add(hub);
 
