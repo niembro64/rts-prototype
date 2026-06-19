@@ -26,7 +26,7 @@ export type ClientPredictionCorrectionStats = {
   maxTargetAgeMs: number;
 };
 
-export type ClientPredictionDiagnosticsReport = {
+type ClientPredictionDiagnosticsReport = {
   frames: number;
   snapshotApplies: number;
   corrections: number;
@@ -50,7 +50,7 @@ export type ClientPredictionDiagnosticsReport = {
   };
 };
 
-export type ClientPredictionDiagnosticsDebugApi = {
+type ClientPredictionDiagnosticsDebugApi = {
   reset(): void;
   stats(): ClientPredictionDiagnosticsReport;
 };

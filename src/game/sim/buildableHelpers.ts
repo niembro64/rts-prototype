@@ -1,6 +1,6 @@
 import type { Buildable, ConstructionPieceBuildRecord, ConstructionPieceKind, Entity, ResourceCost } from './types';
 
-export type ResourceKind = keyof ResourceCost;
+type ResourceKind = keyof ResourceCost;
 
 const RESOURCE_KINDS: ReadonlyArray<ResourceKind> = ['energy', 'metal'];
 
@@ -8,8 +8,7 @@ export function makeZeroResourceCost(): ResourceCost {
   return { energy: 0, metal: 0 };
 }
 
-
-export type BuildableState = {
+type BuildableState = {
   paid: ResourceCost | null;
   isGhost: boolean | null;
   isInterrupted?: boolean | null;

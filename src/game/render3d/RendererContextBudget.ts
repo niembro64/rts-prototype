@@ -10,7 +10,7 @@ export type RendererContextToken = {
   release(): void;
 };
 
-export type RendererContextTelemetry = {
+type RendererContextTelemetry = {
   activeMainCount: number;
   activeAuxiliaryCount: number;
   auxiliaryBudget: number;
@@ -115,7 +115,6 @@ export function acquireAuxiliaryRendererContext(
   peakAuxiliaryCount = Math.max(peakAuxiliaryCount, activeAux + 1);
   return createToken(record);
 }
-
 
 export function getRendererContextTelemetry(): RendererContextTelemetry {
   return {

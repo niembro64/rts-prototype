@@ -40,7 +40,7 @@ const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
 const SHIFT_CAMERA_INPUT_SCALE = 0.1;
 const KEYBOARD_CAMERA_SCREEN_STEP_PX = 48;
 
-export type OrbitCameraOptions = {
+type OrbitCameraOptions = {
   /** Closest-approach zoom-in rail. Terrain clearance is resolved
    *  separately as a render-time eye floor that never alters the orbit
    *  state, so there is no zoom-OUT rail and the zoom limits stay

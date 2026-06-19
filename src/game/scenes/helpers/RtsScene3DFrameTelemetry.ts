@@ -35,7 +35,7 @@ export type RtsScene3DFrameTiming = {
   webglBufferUploadBytes: number;
 };
 
-export type RtsScene3DFrameTimingGpuSample = {
+type RtsScene3DFrameTimingGpuSample = {
   gpuTimerMs: number;
   gpuTimerSupported: boolean;
   runtimeProfile: string;

@@ -34,7 +34,7 @@ import {
 } from '../../sim/Terrain';
 import type { RtsScene3DCameraFramingSystem } from './RtsScene3DCameraFramingSystem';
 
-export type RtsScene3DRendererBootstrapOptions = {
+type RtsScene3DRendererBootstrapOptions = {
   threeApp: ThreeApp;
   clientViewState: ClientViewState;
   renderScope: ViewportFootprint;
@@ -45,7 +45,7 @@ export type RtsScene3DRendererBootstrapOptions = {
   metalDeposits: readonly MetalDeposit[];
 };
 
-export type RtsScene3DRendererBootstrapResult = {
+type RtsScene3DRendererBootstrapResult = {
   entityRenderer: Render3DEntities;
   beamRenderer: BeamRenderer3D;
   shieldRenderer: ShieldRenderer3D;

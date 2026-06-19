@@ -24,7 +24,7 @@ import { quantizeMinimapPosition as qPos } from './snapshotQuantization';
 
 export const MINIMAP_SNAPSHOT_WIRE_STRIDE = 6;
 
-export type MinimapSnapshotWireSource = Float64WireRows;
+type MinimapSnapshotWireSource = Float64WireRows;
 
 /** Per-listener pool of NetworkServerSnapshotMinimapEntity DTOs
  *  (FOW-OPT-20, mirrors FOW-OPT-07 for audio). The previous

@@ -52,7 +52,7 @@ export type BuildPlacementDiagnostics = {
   metalDepositCells: BuildPlacementCellDiagnostic[] | null;
 };
 
-export type BuildPlacementOccupiedLookup = (gx: number, gy: number) => boolean;
+type BuildPlacementOccupiedLookup = (gx: number, gy: number) => boolean;
 
 function cellKey(gx: number, gy: number): string {
   return `${gx},${gy}`;
@@ -338,7 +338,6 @@ export function getBuildingPlacementDiagnostics(
     rotation,
   );
 }
-
 
 export function getSnappedBuildPosition(
   worldX: number,

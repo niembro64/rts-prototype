@@ -67,7 +67,7 @@ export function patchInstancedFadeMaterial(material: THREE.Material): void {
   material.needsUpdate = true;
 }
 
-export type PerObjectFade = {
+type PerObjectFade = {
   material: THREE.Material;
   setFade(value: number): void;
 };

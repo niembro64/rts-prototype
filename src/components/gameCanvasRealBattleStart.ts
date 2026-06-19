@@ -21,7 +21,7 @@ async function waitForLoadingOverlayPaint(): Promise<void> {
   });
 }
 
-export type StartRealBattleWithPlayersOptions = {
+type StartRealBattleWithPlayersOptions = {
   containerRef: Ref<HTMLDivElement | null>;
   showLobby: Ref<boolean>;
   gameStarted: Ref<boolean>;

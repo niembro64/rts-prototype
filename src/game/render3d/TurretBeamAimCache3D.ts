@@ -6,8 +6,8 @@ import type { Entity, EntityId } from '../sim/types';
 
 /** Last firing direction of a beam, in SIM world coordinates
  *  (x/y horizontal, z up). Unit length. */
-export type TurretBeamDir = { x: number; y: number; z: number };
-export type TurretBeamAimSourceResolver = (entityId: EntityId) => Entity | undefined;
+type TurretBeamDir = { x: number; y: number; z: number };
+type TurretBeamAimSourceResolver = (entityId: EntityId) => Entity | undefined;
 
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const _mountScratch = { x: 0, y: 0, z: 0 };

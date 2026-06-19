@@ -11,7 +11,7 @@
 // the leaving-vision fade is deliberately distinct from the death animation.
 import rawVisionConfig from './visionConfig.json';
 
-export type VisionConfig = {
+type VisionConfig = {
   /** Fade-in duration (ms) when a unit becomes newly visible (enters vision). */
   fadeInMs: number;
   /** Fade-out duration (ms) when a unit leaves vision — a plain alpha fade

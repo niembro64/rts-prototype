@@ -20,12 +20,12 @@ import type { ResourceCost } from '../../types/economyTypes';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP } from '../../types/network';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
-export type ConstructionLifecycleResult = {
+type ConstructionLifecycleResult = {
   completedUnits: Entity[];
   completedBuildings: Entity[];
 };
 
-export type InterruptedConstructionResult = {
+type InterruptedConstructionResult = {
   preserved: boolean;
   refund: ResourceCost;
 };

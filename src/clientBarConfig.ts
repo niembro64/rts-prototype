@@ -38,7 +38,6 @@ import { isBuildableUnitBlueprintId } from './game/sim/blueprints/unitRoster';
 export type { CameraSmoothMode, CameraFollowMode } from './types/client';
 export type {
   EntityHudElement,
-  EntityHudToggles,
   EntityHudType,
   SelectionHudMode,
 } from './types/client';
@@ -475,7 +474,6 @@ const CLIENT_STORAGE_KEYS: Record<ClientMode, ClientStorageKeys> = {
 
 // ── Runtime state ──
 let currentClientMode: ClientMode = 'demo';
-
 
 export function getClientConfig(mode: ClientMode = currentClientMode): ClientBarConfig {
   return CLIENT_MODE_CONFIGS[mode];
@@ -949,7 +947,6 @@ export function setProjRangeToggle(type: ProjRangeType, show: boolean): void {
   persistJson(activeStorageKeys().projRangeToggles, currentProjRangeToggles);
 }
 
-
 export function getUnitRadiusToggle(type: UnitRadiusType): boolean {
   return currentUnitRadiusToggles[type];
 }
@@ -1303,7 +1300,6 @@ export function getStoredLobbyVisible(mode: ClientMode): boolean {
   if (stored === 'false') return false;
   return defaultLobbyVisible(mode);
 }
-
 
 export function setLobbyVisible(visible: boolean): void {
   persist(activeStorageKeys().lobbyVisible, String(visible));

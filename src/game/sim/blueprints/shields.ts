@@ -23,7 +23,7 @@ const SHIELD_SURFACE_RENDER_MODES = [
   'finite-mesh',
   'screen-space-analytic-shader',
 ] as const;
-export type ShieldSurfaceRenderMode = typeof SHIELD_SURFACE_RENDER_MODES[number];
+type ShieldSurfaceRenderMode = typeof SHIELD_SURFACE_RENDER_MODES[number];
 
 const SHIELD_EXPLICIT_FIELDS = [
   'materialId',
@@ -68,7 +68,6 @@ export const SHIELD_SURFACE_RENDER_MODE = readShieldSurfaceRenderMode(rawShieldB
 export const SHIELD_BLUEPRINTS = resolveBlueprintRefs(
   readShieldBlueprintEntries(rawShieldBlueprints),
 ) as unknown as Record<ShieldBlueprintId, ShieldBlueprint>;
-
 
 for (const [id, blueprint] of Object.entries(SHIELD_BLUEPRINTS)) {
   if (blueprint.shieldBlueprintId !== id) {

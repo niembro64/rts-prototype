@@ -1,10 +1,4 @@
-import type { EntityId, UnitSupportSurface } from './types';
-
-export type UnitSupportQueryOptions = {
-  bodyZ?: number;
-  groundOffset?: number;
-  ignoreEntityId?: EntityId | null;
-};
+import type { UnitSupportSurface } from './types';
 
 export function cloneUnitSupportSurface(
   surface: UnitSupportSurface | undefined,

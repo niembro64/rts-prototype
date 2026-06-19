@@ -27,7 +27,7 @@ export const BAR_GRID_SLOT_COUNT = BAR_GRID_COLUMNS * BAR_GRID_ROWS;
 
 export type BarBuildCategoryId = 'Economy' | 'Combat' | 'Utility' | 'Production';
 
-export type BarBuildCategory = {
+type BarBuildCategory = {
   id: BarBuildCategoryId;
   sourceCategory: BuildMenuCategory;
   label: string;
@@ -50,12 +50,12 @@ export type BuildMenuLayoutItem = {
   gridColumn: number;
 };
 
-export type BuildMenuLayoutGroup = {
+type BuildMenuLayoutGroup = {
   category: BuildMenuCategory;
   items: BuildMenuLayoutItem[];
 };
 
-export type BuildMenuLayout = {
+type BuildMenuLayout = {
   items: BuildMenuLayoutItem[];
   groups: BuildMenuLayoutGroup[];
 };

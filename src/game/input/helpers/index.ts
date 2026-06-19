@@ -1,12 +1,5 @@
 // Input helpers - re-exports
 
-export {
-  type WorldPoint,
-  
-  
-  
-  
-} from './PathDistribution';
 
 export {
   type SelectionEntitySource,
@@ -14,8 +7,7 @@ export {
 } from './SelectionHelper';
 
 export {
-  type ScreenRect,
-  type ProjectToScreen,
+  
   type ScreenRectSelectionOptions,
   entityMatchesScreenRectSelectionOptions,
   selectEntitiesInScreenRect,
@@ -40,7 +32,6 @@ export {
   buildAttackCommandForTarget,
   buildAttackCommandAt,
   buildAttackGroundCommand,
-  
   buildFormationPreservingMoveTargets,
   buildGuardCommandAt,
   buildGuardCommandForTarget,
@@ -48,11 +39,10 @@ export {
   shouldCollapseLinePathToSingleMove,
 } from './RightClickCommands';
 
-export { type ModeCancel, handleEscape } from './EscapeHandler';
+export {  handleEscape } from './EscapeHandler';
 
 export {
   CommanderModeController,
-  
   
   getDefaultBuildModeBuildingBlueprintId,
 } from './CommanderModeController';
@@ -61,7 +51,6 @@ export {
   buildRepairAreaCommand,
   buildRepairCommandAt,
   buildReclaimAreaCommand,
-  
   buildReclaimCommandForTarget,
   buildCaptureCommandForTarget,
   buildResurrectAreaCommand,
@@ -71,37 +60,14 @@ export {
   buildFactoryGuardCommands,
   buildFactoryRallyCommands,
   getSelectedClientTransports,
-  
 } from './CommanderCommands';
 
-export {
-  type RepairEntitySource,
-  
-  
-  
-} from './RepairTargetHelper';
 
-export {
-  type AttackEntitySource,
-  
-} from './AttackTargetHelper';
 
-export {
-  type GuardEntitySource,
-  
-  
-} from './GuardTargetHelper';
-
-export {
-  type ReclaimEntitySource,
-  
-} from './ReclaimTargetHelper';
 
 export {
   type BuildPlacementCellDiagnostic,
-  type BuildPlacementCellReason,
   type BuildPlacementDiagnostics,
-  
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
   getSnappedBuildPosition,

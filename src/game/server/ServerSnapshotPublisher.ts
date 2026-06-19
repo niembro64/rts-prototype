@@ -50,7 +50,7 @@ export type SnapshotListenerEntry = {
   startupReady: boolean;
 };
 
-export type ServerSnapshotPublisherInput = {
+type ServerSnapshotPublisherInput = {
   world: WorldState;
   simulation: Simulation;
   debugGridPublisher: ServerDebugGridPublisher;

@@ -1,6 +1,6 @@
 export type {
-  CommandType,
-  BaseCommand,
+  
+  
   SelectCommand,
   WaypointTarget,
   MoveCommand,
@@ -12,7 +12,6 @@ export type {
   SetUnitMoveStateCommand,
   SetTrajectoryModeCommand,
   SetCloakStateCommand,
-  ClearSelectionCommand,
   PingCommand,
   ScanCommand,
   StartBuildCommand,
@@ -45,15 +44,13 @@ export type {
   GuardCommand,
   SetPausedCommand,
   SetUnitGroundNormalEmaModeCommand,
-  SetSendGridInfoCommand,
-  SetBackgroundUnitBlueprintEnabledCommand,
-  SetMaxTotalUnitsCommand,
+  
+  
   SetTurretShieldPanelsEnabledCommand,
   SetTurretShieldSpheresEnabledCommand,
   SetForceFieldsVisibleCommand,
-  SetShieldsObstructSightCommand,
   SetShieldReflectionModeCommand,
-  SetFogOfWarEnabledCommand,
+  
   Command,
 } from '@/types/commands';
 

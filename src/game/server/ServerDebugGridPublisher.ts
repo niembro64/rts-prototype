@@ -15,7 +15,7 @@ const GRID_DEBUG_KEY_X_MULT = GRID_DEBUG_KEY_BASE * GRID_DEBUG_KEY_BASE;
 const GRID_DEBUG_CELL_POOL_MAX =
   SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS + SERVER_GRID_DEBUG_MAX_SEARCH_CELLS;
 
-export type ServerDebugGridSnapshot = {
+type ServerDebugGridSnapshot = {
   cells: NetworkServerSnapshotGridCell[] | undefined;
   searchCells: NetworkServerSnapshotGridCell[] | undefined;
   cellSize: number | undefined;

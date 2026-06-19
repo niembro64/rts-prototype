@@ -14,14 +14,9 @@ import {
 
 // Re-export types from NetworkTypes for backward compatibility
 export type {
-  NetworkMessage,
-  NetworkLockstepMessage,
-  NetworkCommunicationDraft,
-  NetworkCommunicationEvent,
-  NetworkCommunicationChatEvent,
-  NetworkCommunicationMapDrawingEvent,
-  NetworkCommunicationMapEraseEvent,
-  NetworkCommunicationPoint,
+
+  
+  
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshot,
   NetworkServerSnapshotSprayTarget,

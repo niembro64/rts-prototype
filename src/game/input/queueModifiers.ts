@@ -1,4 +1,4 @@
-export type QueueModifierEvent = {
+type QueueModifierEvent = {
   shiftKey: boolean;
   altKey: boolean;
   ctrlKey: boolean;

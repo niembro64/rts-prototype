@@ -11,7 +11,7 @@
  * share the same progression without copying frequency literals.
  */
 
-export type { SynthId, SoundEntry } from './types/audio';
+export type {  SoundEntry } from './types/audio';
 import type { SoundEntry } from './types/audio';
 import type {
   RayBlueprintId,

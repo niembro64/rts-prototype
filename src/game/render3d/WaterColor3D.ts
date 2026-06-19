@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { WATER_RENDER_CONFIG } from '../../config';
 
-export type Rgb01 = {
+type Rgb01 = {
   r: number;
   g: number;
   b: number;

@@ -126,7 +126,7 @@ export type ClientResourcePylonFlow = {
 
 const EMPTY_RESOURCE_PYLON_FLOWS: readonly ClientResourcePylonFlow[] = [];
 
-export type ClientViewRenderEntityPackets3D = {
+type ClientViewRenderEntityPackets3D = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
   bodyHud: BodyHudRenderPacket3D;
@@ -136,7 +136,7 @@ export type ClientViewRenderEntityPackets3D = {
   groundPrints: GroundPrintRenderPacket3D;
 };
 
-export type ClientViewRenderPacketOptions3D = {
+type ClientViewRenderPacketOptions3D = {
   renderScope: ViewportFootprint;
   includeBodyHud: boolean;
   includeBodyNames: boolean;
@@ -154,7 +154,7 @@ export type ClientViewRenderPacketOptions3D = {
   isEntityEmissionFarLod?: (entity: Entity, emission: EntityLodEmission3D) => boolean;
 };
 
-export type ClientSnapshotApplyStats = {
+type ClientSnapshotApplyStats = {
   correction: ClientPredictionCorrectionStats;
 };
 
@@ -962,7 +962,6 @@ export class ClientViewState {
         proj.pendingReflectionZ = evt.pos.z;
       }
     }
-
 
     // Snapshot owns the full list of active scan pulses for this
     // client's team. Length is small (a few at most), so a fresh copy

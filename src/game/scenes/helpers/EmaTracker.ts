@@ -3,7 +3,6 @@
 // Starts from the caller-provided seed. The current performance HUD
 // seeds visible stats at 0.0 so they climb from an empty baseline.
 
-export type { EmaConfig } from '@/types/game';
 import type { EmaConfig } from '@/types/game';
 
 export class EmaTracker {

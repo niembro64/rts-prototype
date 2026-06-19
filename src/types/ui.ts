@@ -318,14 +318,6 @@ export type UIInputState = {
   queueInsertIndex: number | null;
 };
 
-// Unit valuation
-export type UnitValuation = {
-  weaponValue: number;
-  defensiveValue: number;
-  mobilityValue: number;
-  rawValue: number;
-  suggestedCost: number;
-};
 
 // Grid cell
 export type GridCell = {

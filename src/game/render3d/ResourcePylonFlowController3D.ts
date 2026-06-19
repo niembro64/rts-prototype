@@ -25,7 +25,7 @@ const RESOURCE_SPRAY_COLOR_BY_RESOURCE: Record<ConstructionTowerResource, { r: n
   metal: RESOURCE_SPRAY_COLORS[1],
 };
 
-export type ResourcePylonFlowDescriptor = {
+type ResourcePylonFlowDescriptor = {
   pylon: ResourcePylonRig;
   group: THREE.Group;
   hostId: EntityId;
@@ -39,7 +39,7 @@ export type ResourcePylonFlowDescriptor = {
   channel: number;
 };
 
-export type ResourcePylonTaxedArcDescriptor = {
+type ResourcePylonTaxedArcDescriptor = {
   hostId: EntityId;
   playerId: PlayerId;
   sourcePylon: ResourcePylonRig;

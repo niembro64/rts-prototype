@@ -8,28 +8,6 @@
 // TYPE RE-EXPORTS (definitions live in ./types/config.ts)
 // =============================================================================
 
-export type {
-  SnapshotConfig,
-  EmaLowConfig,
-  EmaTierConfig,
-  EmaHighConfig,
-  EmaMsConfig,
-  KnockbackConfig,
-  ShieldVisualConfig,
-  ShieldImpactVisualConfig,
-  ShieldTurretShape,
-  ShieldTurretConfig,
-  SpinConfig,
-  BarrelShape,
-  MapSize,
-} from './types/config';
-export type {
-  CameraAnchor,
-  CameraAnchorScreen,
-  CameraAnchorTerrain,
-  CameraTerrainCollisionMode,
-} from './types/camera';
-
 import type {
   EmaTierConfig,
   EmaMsConfig,
@@ -102,9 +80,8 @@ export const GOOD_TPS = telemetryConfigJson.goodTps;
 // SNAPSHOT / NETWORKING
 // =============================================================================
 
-
 // Re-export bar config values used by sim/server code
-export type { SnapshotRate, TickRate } from './types/server';
+export type { SnapshotRate,  } from './types/server';
 import { BATTLE_CONFIG } from './battleBarConfig';
 
 export const MAX_TOTAL_UNITS = BATTLE_CONFIG.cap.default;
@@ -158,7 +135,6 @@ export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
 // SERVER TICK
 // =============================================================================
 
-
 /** Maximum authoritative beam/laser path segments traced per re-path.
  *  Segment 1 is launch origin -> first hit/trace limit, segment 2 is after the
  *  first reflector, and so on. If the final allowed segment ends on a
@@ -167,7 +143,6 @@ export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
  *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 export const BEAM_MIN_ON_TIME_MS = beamConfigJson.minOnTimeMs;
-
 
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS
@@ -204,9 +179,6 @@ export const UNIT_GROUND_FRICTION_PER_60HZ_FRAME =
  *  point is touching terrain/support. */
 export const UNIT_GROUND_CONTACT_EPSILON =
   sharedSimConstants.unitGroundContactEpsilon;
-
-
-
 
 /** Map-edge boundary spring acceleration per world-unit of penetration.
  *  The engine applies this as an inward spring before the WASM integration
@@ -257,15 +229,12 @@ export const MAX_METAL = economyConfigJson.metal.maxStockpile;
  *  metal income, not coast on the passive drip. */
 export const BASE_METAL_PER_SECOND = economyConfigJson.metal.baseIncomePerSecond;
 
-
 // =============================================================================
 // UNIT CAP
 // =============================================================================
 
 export const WIND_SPEED_MIN = windConfigJson.speed.min;
 export const WIND_SPEED_MAX = windConfigJson.speed.max;
-
-
 
 /** Visual wind turbine rotor speed, in radians per second at wind speed 1.0,
  *  before the authored visual-only spin multiplier is applied. */
@@ -324,7 +293,6 @@ export const MAP_BG_COLOR = COLORS.world.map.inBounds.colorHex; // in-bounds bac
 // distance. This is only a few giant quads, so raising it is cheap; the
 // camera far plane still controls what actually draws.
 export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
-
 
 // Entities farther than this camera distance render as cheap hitbox proxies
 // instead of full-detail meshes and effect emitters. The distance scales
@@ -621,7 +589,6 @@ export const SHIELD_IMPACT_VISUAL: ShieldImpactVisualConfig =
     coreOpacity: COLORS.effects.shield.impact.coreOpacity,
   } as ShieldImpactVisualConfig;
 
-
 // =============================================================================
 // CHASSIS MOUNT POINTS
 // =============================================================================
@@ -719,8 +686,6 @@ function mapSizeFromLandCells(
   };
 }
 
-
-
 /** Pick the map size for the current battle. Demo and real currently share
  *  the same dimensions; keep the parameter for existing call sites. */
 export function getMapSize(
@@ -744,7 +709,6 @@ export const BACKGROUND_SPAWN_INVERSE_COST_WEIGHTING =
   backgroundBattleConfigJson.spawnInverseCostWeighting;
 
 // Re-export audio config
-export type { SynthId, SoundEntry } from './audioConfig';
 
 // =============================================================================
 // UI
@@ -822,7 +786,7 @@ export type CameraBattleFocus =
   | 'map-origin-use-map-height'
   | 'map-origin-map-height-agnostic'
   | 'local-commander';
-export type CameraBattleDefault = {
+type CameraBattleDefault = {
   readonly focus: CameraBattleFocus;
   /** Higher = closer. Values below 1 are pulled back for broad map reads. */
   readonly zoom: number;

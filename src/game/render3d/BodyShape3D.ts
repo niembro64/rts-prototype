@@ -239,7 +239,6 @@ function buildEntry(spec: UnitBodyShape): BodyGeomEntry {
 
 const CACHE: Map<string, BodyGeomEntry> = new Map();
 
-
 /** Look up or build the 3D chassis geometry for an authored body shape.
  *  Returned parts live in unit-radius-1 space; call sites scale the
  *  chassis parent group by the unit's render radius so each part's
@@ -252,9 +251,6 @@ export function getBodyGeom(bodyShape: UnitBodyShape): BodyGeomEntry {
   CACHE.set(key, entry);
   return entry;
 }
-
-
-
 
 function buildPolygonShape(sides: number, radius: number, rotation: number): THREE.Shape {
   // Matches 2D drawPolygon: vertices at angle = rotation + (i/sides)·2π.
@@ -292,7 +288,7 @@ function buildRhombusShape(width: number, length: number): THREE.Shape {
  *  Centered at (x, z) in unit-local coords, `length` along the edge
  *  direction, `thickness` along the normal, standing full body height.
  *  `yaw` is the rotation around Y that lays the edge tangent to the shape. */
-export type BodyEdgeTemplate = {
+type BodyEdgeTemplate = {
   x: number;
   z: number;
   yaw: number;

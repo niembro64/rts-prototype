@@ -25,20 +25,3 @@ export type ArachnidLegConfig = {
   lerpDuration?: number;
 };
 
-/** Per-channel UNIT SPH wireframe sphere visibility. */
-export type UnitRadiusVisibility = {
-  visual: boolean;
-  shot: boolean;
-  push: boolean;
-};
-
-/** Per-channel TURR CIR ground-plane circle visibility. */
-export type RangeVisibility = {
-  trackAcquire: boolean;
-  trackRelease: boolean;
-  engageAcquire: boolean;
-  engageRelease: boolean;
-  engageMinAcquire: boolean;
-  engageMinRelease: boolean;
-  build: boolean;
-};

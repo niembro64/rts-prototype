@@ -5,7 +5,7 @@ import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
 import { getUnitAirDragCoefficient } from '../sim/unitAirFriction';
 import { getUnitGroundFrictionScale } from '../sim/unitMotionFriction';
 
-export type UnitPhysicsBodyOptions = {
+type UnitPhysicsBodyOptions = {
   ignoreOverlappingBuildings: boolean | undefined;
   overlapPadding: number | undefined;
 };

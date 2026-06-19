@@ -1,6 +1,6 @@
 // Runtime locomotion profile used by movement physics and rendering.
 
-export type UnitPathfindingTerrainMode = 'land' | 'anywhere';
+type UnitPathfindingTerrainMode = 'land' | 'anywhere';
 
 export type UnitPathfindingConfig = {
   pathfindingBlueprintId: string;

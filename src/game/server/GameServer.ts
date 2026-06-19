@@ -62,19 +62,18 @@ import { ReplayRecorder, type BudgetReplayFile } from './ReplayRecorder';
 import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHash';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
 
-export type { GameServerConfig } from '@/types/game';
 import type { GameServerConfig } from '@/types/game';
 
-export type GameServerStartupProgress = (
+type GameServerStartupProgress = (
   progress: number,
   phase: string | undefined,
 ) => void | Promise<void>;
 
-export type GameServerCreateOptions = {
+type GameServerCreateOptions = {
   onProgress: GameServerStartupProgress | undefined;
 };
 
-export type ExternalSimulationTelemetrySample = {
+type ExternalSimulationTelemetrySample = {
   readonly elapsedMs: number;
   readonly stepsRun: number;
   readonly workMs: number;

@@ -5,7 +5,7 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import { createBuildable, getBuildFraction } from '../sim/buildableHelpers';
 import { initializeConstructionPieceHealth } from '../sim/constructionLifecycle';
 
-export type NetworkBuildState = {
+type NetworkBuildState = {
   complete: boolean;
   interrupted?: boolean;
   paid: Buildable['paid'];

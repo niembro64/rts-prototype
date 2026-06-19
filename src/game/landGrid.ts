@@ -4,19 +4,12 @@
 // config graph during production module initialization.
 export const CANONICAL_LAND_CELL_SIZE = 200;
 
-export type LandGridMetrics = {
+type LandGridMetrics = {
   mapWidth: number;
   mapHeight: number;
   cellSize: number;
   cellsX: number;
   cellsY: number;
-};
-
-export type LandCellBounds = {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
 };
 
 export function normalizeLandCellSize(cellSize: number = CANONICAL_LAND_CELL_SIZE): number {
@@ -56,20 +49,4 @@ export function makeLandGridMetrics(
     cellsY: landCellCountForSpan(mapHeight, normalizedCellSize),
   };
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

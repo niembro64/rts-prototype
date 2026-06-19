@@ -120,7 +120,7 @@ function getHostLockOnMasks(entity: Entity): LockOnMasks {
   return EMPTY_LOCK_ON_MASKS;
 }
 
-export type CombatTargetingStateViews = {
+type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
   length: number;
   entityCapacity: number;
@@ -161,7 +161,7 @@ export type CombatTargetingTurretFsmOut = {
   targetId: EntityId;
 };
 
-export type CombatTargetingTurretMountOut = {
+type CombatTargetingTurretMountOut = {
   x: number;
   y: number;
   z: number;
@@ -171,11 +171,6 @@ export type CombatTargetingTurretAimOut = {
   hasSolution: boolean;
   yaw: number;
   pitch: number;
-};
-
-export type CombatTargetingTurretKinematicsOut = {
-  pos: { x: number; y: number; z: number };
-  vel: { x: number; y: number; z: number };
 };
 
 let _stateViews: CombatTargetingStateViews | null = null;
@@ -286,7 +281,6 @@ export function getCombatTargetingSourceSlots(): Uint32Array {
 export function getCombatTargetingSourceCount(): number {
   return _combatTargetingSourceCount;
 }
-
 
 export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingStateViews {
   const targeting = sim.combatTargeting;

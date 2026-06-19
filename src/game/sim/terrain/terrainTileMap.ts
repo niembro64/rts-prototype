@@ -33,7 +33,7 @@ import {
 
 export { setAuthoritativeTerrainTileMap };
 
-export type TerrainMeshSample = {
+type TerrainMeshSample = {
   u: number;
   v: number;
   subSize: number;
@@ -44,7 +44,7 @@ export type TerrainMeshSample = {
   triangle: TerrainTriangleSample | undefined;
 };
 
-export type TerrainMeshView = {
+type TerrainMeshView = {
   vertexCount: number;
   triangleCount: number;
   vertexCoords: readonly number[];

@@ -1,6 +1,6 @@
-export type ServerTickCallback = (nowMs: number, deltaMs: number) => boolean | void;
+type ServerTickCallback = (nowMs: number, deltaMs: number) => boolean | void;
 
-export type ServerTickLoopFrameStats = {
+type ServerTickLoopFrameStats = {
   nowMs: number;
   elapsedMs: number;
   stepsRun: number;
@@ -9,7 +9,7 @@ export type ServerTickLoopFrameStats = {
   fixedDeltaMs: number;
 };
 
-export type ServerTickLoopOptions = {
+type ServerTickLoopOptions = {
   nowMs?: number;
   onFrame?: (stats: ServerTickLoopFrameStats) => void;
 };

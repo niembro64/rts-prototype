@@ -87,7 +87,7 @@ import {
   LAND_CELL_SIZE,
 } from '../../config';
 
-export type RtsScene3DConfig = {
+type RtsScene3DConfig = {
   playerIds: PlayerId[];
   localPlayerId: PlayerId;
   gameConnection: GameConnection;

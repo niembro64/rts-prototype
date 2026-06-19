@@ -30,7 +30,7 @@ const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
 
 type SnapshotBufferCallback = (state: NetworkServerSnapshot) => void;
-export type SnapshotBufferDiagnostics = {
+type SnapshotBufferDiagnostics = {
   bufferedDespawns: number;
   coalescedDespawns: number;
 };

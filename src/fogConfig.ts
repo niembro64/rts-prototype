@@ -1,8 +1,8 @@
 import rawFogConfig from './fogConfig.json';
 
-export type FogCapPolicy = 'evictOldest' | 'skipWhenFull';
+type FogCapPolicy = 'evictOldest' | 'skipWhenFull';
 
-export type FogOfWarProfile = {
+type FogOfWarProfile = {
   maxPoolSize: number;
   capPolicy: FogCapPolicy;
   densitySamples: number;
@@ -16,12 +16,12 @@ export type FogOfWarProfile = {
   zRange: number;
 };
 
-export type FogSphereGeometryConfig = {
+type FogSphereGeometryConfig = {
   widthSegments: number;
   heightSegments: number;
 };
 
-export type FogConfig = {
+type FogConfig = {
   fogOfWar: FogOfWarProfile;
   sphereGeometry: FogSphereGeometryConfig;
 };

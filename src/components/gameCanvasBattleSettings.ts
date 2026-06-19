@@ -29,7 +29,7 @@ import {
   saveSelectedPresetName,
 } from './battlePresets';
 
-export type GameCanvasBattleSettings = {
+type GameCanvasBattleSettings = {
   currentAllowedUnits: ComputedRef<readonly string[]>;
   /** Set-backed view of currentAllowedUnits so consumers in v-for
    *  templates can do O(1) membership lookups instead of array
@@ -61,7 +61,7 @@ export type GameCanvasBattleSettings = {
   applyPreset(preset: BattlePreset): void;
 };
 
-export type GameCanvasBattleSettingsOptions = {
+type GameCanvasBattleSettingsOptions = {
   serverMetaFromSnapshot: Ref<NetworkServerSnapshotMeta | null>;
   currentBattleMode: ComputedRef<BattleMode>;
   demoUnitBlueprintIds: readonly string[];

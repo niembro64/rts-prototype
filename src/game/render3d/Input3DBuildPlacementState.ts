@@ -14,7 +14,7 @@ import {
   type BuildPlacementDiagnostics,
 } from '../input/helpers';
 
-export type BuildAreaPlacementPlan = {
+type BuildAreaPlacementPlan = {
   gridX: number;
   gridY: number;
   x: number;

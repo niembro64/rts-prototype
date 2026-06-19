@@ -1,7 +1,7 @@
 import type { TurretMount } from '@/types/blueprints';
 import type { Vec3 } from '@/types/vec2';
 
-export type RuntimeTurretMountSource = {
+type RuntimeTurretMountSource = {
   mount: Vec3;
 };
 

@@ -20,7 +20,7 @@ import type { CanonicalServerStateHash } from '../architecture/CanonicalStateHas
 const OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK = 900;
 const DEDUP_RETAIN_AFTER_ACK = OUTBOUND_COMMAND_FRAME_RETAIN_AFTER_ACK;
 
-export type LockstepCommandFrameDraft = {
+type LockstepCommandFrameDraft = {
   readonly frame: number;
   readonly frameSequence: number;
   readonly commands: readonly LockstepCommandEnvelope[];

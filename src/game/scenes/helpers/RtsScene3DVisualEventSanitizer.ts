@@ -6,7 +6,7 @@ import { getPlayerPrimaryColor, type Entity } from '../../sim/types';
 
 export const WATER_SURFACE_NORMAL_SIM = { x: 0, y: 0, z: 1 } as const;
 
-export type SimDeathContext3D = NonNullable<NetworkServerSnapshotSimEvent['deathContext']>;
+type SimDeathContext3D = NonNullable<NetworkServerSnapshotSimEvent['deathContext']>;
 
 let warnedNonFiniteVisualEvent = false;
 

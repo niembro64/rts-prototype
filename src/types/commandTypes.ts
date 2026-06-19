@@ -4,14 +4,6 @@ import type { EntityId } from './entityTypes';
 // Waypoint types for unit movement.
 export type WaypointType = 'move' | 'fight' | 'patrol';
 
-// Single waypoint in a unit's path queue. Altitude (`z`) is optional.
-export type Waypoint = {
-  x: number;
-  y: number;
-  z?: number;
-  type: WaypointType;
-};
-
 // Action types for unified action queue.
 export type ActionType =
   | 'move'

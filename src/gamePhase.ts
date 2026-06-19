@@ -1,4 +1,3 @@
-export type { GamePhase } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 
 const GAME_PHASE_TRANSITIONS: Record<GamePhase, GamePhase[]> = {

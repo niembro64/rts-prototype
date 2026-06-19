@@ -5,7 +5,7 @@ import {
   type CombatTargetingTurretStateCode,
 } from './targetingInputStamping';
 
-export type ShieldPanelTargetTurretPick = {
+type ShieldPanelTargetTurretPick = {
   turret: Turret;
   index: number;
   score: number;

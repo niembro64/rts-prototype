@@ -18,12 +18,12 @@
 
 import rawConfig from './resourceConfig.json';
 
-export type ResourceBallDensityOption = {
+type ResourceBallDensityOption = {
   readonly value: number;
   readonly label: string;
 };
 
-export type EconomyConeHalfAnglesByBuilding = {
+type EconomyConeHalfAnglesByBuilding = {
   readonly buildingExtractor: number;
   readonly buildingExtractorT2: number;
   readonly buildingSolar: number;
@@ -216,7 +216,6 @@ export const PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD =
 export const DEFAULT_BALLS_PER_RESOURCE_PER_SECOND = RESOURCE_CONFIG.ballsPerResourcePerSecond;
 
 let activeBallsPerResourcePerSecond = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
-
 
 export function setBallsPerResourcePerSecond(value: number): void {
   activeBallsPerResourcePerSecond = posNum('activeBallsPerResourcePerSecond', value);

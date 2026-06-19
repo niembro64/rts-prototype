@@ -71,7 +71,7 @@ export type LockstepFrameSchedulerDiagnostics = {
   readonly message: string;
 };
 
-export type LockstepFrameSchedulerAdvanceResult = {
+type LockstepFrameSchedulerAdvanceResult = {
   readonly advancedFrames: number;
   readonly nextFrame: number;
   readonly status: LockstepFrameSchedulerStatus;

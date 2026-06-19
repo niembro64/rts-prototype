@@ -227,7 +227,7 @@ function ensureOrientationBatchCapacity(count: number): void {
   orientationBatch = new Float64Array(capacity * QUAT_HOVER_BATCH_STRIDE);
 }
 
-export type ClientUnitPredictionPoolStats = {
+type ClientUnitPredictionPoolStats = {
   motionCapacity: number;
   orientationCapacity: number;
   targetRefs: number;

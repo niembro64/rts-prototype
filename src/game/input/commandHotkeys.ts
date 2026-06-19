@@ -83,11 +83,11 @@ export type CommandHotkeyId =
 
 export type BuiltInCommandHotkeyPresetId = 'prototype' | 'bar-grid' | 'bar-legacy';
 export type CommandHotkeyPresetId = BuiltInCommandHotkeyPresetId | 'custom';
-export type CommandHotkeyScope = 'global' | 'buildMenu' | 'factory';
+type CommandHotkeyScope = 'global' | 'buildMenu' | 'factory';
 
 type ModifierMatch = boolean | 'any';
 
-export type CommandKeyChord = {
+type CommandKeyChord = {
   key?: string;
   code?: string;
   ctrl?: ModifierMatch;
@@ -97,8 +97,8 @@ export type CommandKeyChord = {
   label: string;
 };
 
-export type CommandHotkeyBinding = readonly CommandKeyChord[];
-export type CommandHotkeyPreset = Readonly<Record<CommandHotkeyId, readonly CommandHotkeyBinding[]>>;
+type CommandHotkeyBinding = readonly CommandKeyChord[];
+type CommandHotkeyPreset = Readonly<Record<CommandHotkeyId, readonly CommandHotkeyBinding[]>>;
 type ChordOptions = Partial<Omit<CommandKeyChord, 'key' | 'code' | 'label'>>;
 type CustomCommandHotkeyOverrides = Partial<Record<CommandHotkeyId, CommandHotkeyBinding>>;
 
@@ -583,13 +583,13 @@ const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, Comm
   }),
 };
 
-export type CommandHotkeyConflict = {
+type CommandHotkeyConflict = {
   presetId: CommandHotkeyPresetId;
   signature: string;
   commandIds: CommandHotkeyId[];
 };
 
-export type CommandHotkeyResolution = {
+type CommandHotkeyResolution = {
   commandId: CommandHotkeyId | null;
   pending: boolean;
 };
@@ -678,7 +678,6 @@ export function commandHotkeyLabel(
   const firstBinding = getCommandHotkeyPreset(presetId)[commandId][0];
   return bindingLabel(firstBinding);
 }
-
 
 export function resolveCommandHotkey(
   event: KeyboardEvent,

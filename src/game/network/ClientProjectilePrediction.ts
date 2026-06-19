@@ -37,7 +37,7 @@ import { getSimWasm } from '../sim-wasm/init';
 import type { PredictionStep } from './ClientPredictionCadence';
 import type { ServerTarget } from './ClientPredictionTargets';
 
-export type ClientProjectilePredictionResult = {
+type ClientProjectilePredictionResult = {
   becameLineProjectile: boolean;
   shouldDelete: boolean;
   targetSettled: boolean;

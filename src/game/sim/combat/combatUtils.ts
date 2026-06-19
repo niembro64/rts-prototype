@@ -26,7 +26,6 @@ export function isCommander(entity: { commander: unknown | null }): boolean {
  *  semantics rather than silently dropping out of the mask). */
 const TURRET_MASK_MAX_INDEX = 30;
 
-
 export function turretMaskIncludes(mask: number | undefined, index: number): boolean {
   if (mask === undefined) return true;
   if (mask < 0) return true;
@@ -114,14 +113,14 @@ const _weaponMountScratch: Vec3 = { x: 0, y: 0, z: 0 };
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 
-export type WeaponKinematicsOptions = {
+type WeaponKinematicsOptions = {
   currentTick: number | undefined;
   dtMs: number | undefined;
   unitGroundZ: number | undefined;
   surfaceN: SurfaceNormal | undefined;
 };
 
-export type WeaponWorldMountOptions = {
+type WeaponWorldMountOptions = {
   currentTick: number | undefined;
   unitGroundZ: number | undefined;
   surfaceN: SurfaceNormal | undefined;

@@ -8,7 +8,7 @@ import serverBarConfig from './serverBarConfig.json';
 // The ground-normal EMA control is rendered in the BATTLE bar; fixed-step
 // timing and presentation snapshot cadence live in architecture.json.
 
-export type ServerMode = BattleMode;
+type ServerMode = BattleMode;
 
 type ServerDefaults = {
   readonly unitGroundNormalEmaMode: UnitGroundNormalEmaMode;

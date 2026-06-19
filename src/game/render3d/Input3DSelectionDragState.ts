@@ -1,6 +1,6 @@
 import { COLORS } from '@/colorsConfig';
 
-export type Input3DScreenPoint = {
+type Input3DScreenPoint = {
   x: number;
   y: number;
 };

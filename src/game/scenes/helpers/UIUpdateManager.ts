@@ -503,13 +503,11 @@ function writeMinimapEntity(
   return index + 1;
 }
 export type {
-  CameraViewBasis,
-  UIEntitySource,
+  
   SelectionInfo,
   EconomyInfo,
-  MinimapEntity,
+  
   MinimapData,
-  UIInputState as InputState,
 } from '@/types/ui';
 import type { CameraViewBasis, UIEntitySource, SelectionInfo, EconomyInfo, MinimapEntity, MinimapData, UIInputState as InputState } from '@/types/ui';
 

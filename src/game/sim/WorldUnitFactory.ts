@@ -28,7 +28,7 @@ export type CreateUnitFromBlueprintOptions = {
   allocateSubEntityIds?: boolean;
 };
 
-export type CreateUnitFromBlueprintContext = {
+type CreateUnitFromBlueprintContext = {
   generateEntityId: () => EntityId;
   sampleSupportSurface: (x: number, y: number) => WorldSupportSurface;
 };

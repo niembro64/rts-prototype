@@ -50,12 +50,12 @@ export function createProceduralState(startTime: number): ProceduralState {
   };
 }
 
-export type NoteCreator = (
+type NoteCreator = (
   type: OscillatorType, freq: number, gain: number,
   startTime: number, duration: number, attack?: number, release?: number,
 ) => void;
 
-export type FilteredNoteCreator = (
+type FilteredNoteCreator = (
   type: OscillatorType, freq: number, gain: number,
   startTime: number, duration: number, filterFreq: number,
   attack?: number, release?: number,

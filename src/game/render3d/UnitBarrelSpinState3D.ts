@@ -15,7 +15,7 @@ const _barrelSpinFsm: CombatTargetingTurretFsmOut = {
   targetId: -1,
 };
 
-export type BarrelSpinFrameState = {
+type BarrelSpinFrameState = {
   spinDtSec: number;
   currentDtMs: number;
   timeMs: number;

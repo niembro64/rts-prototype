@@ -5,10 +5,9 @@ import { magnitude } from '../math';
 // canonical LAND_CELL_SIZE terrain cells.
 export const BUILD_GRID_CELL_SIZE = 20; // 20x20 world units per cell
 
-export type { GridCell } from '@/types/ui';
 import type { GridCell } from '@/types/ui';
 
-export type BuildingGridSnap = {
+type BuildingGridSnap = {
   /** Top-left occupied cell in the shared building grid. */
   gridX: number;
   gridY: number;
@@ -29,7 +28,7 @@ export function getBuildingCenterFromGrid(
   };
 }
 
-export type BuildingGridFootprint = {
+type BuildingGridFootprint = {
   gridWidth: number;
   gridHeight: number;
 };

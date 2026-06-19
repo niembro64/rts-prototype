@@ -9,7 +9,7 @@ import {
 
 export const ECONOMY_SNAPSHOT_WIRE_STRIDE = 11;
 
-export type EconomySnapshotWireSource = Float64WireRows;
+type EconomySnapshotWireSource = Float64WireRows;
 
 const economyBuf: Record<PlayerId, NetworkServerSnapshotEconomy> = {} as Record<
   PlayerId,

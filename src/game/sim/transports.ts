@@ -12,7 +12,7 @@ const TRANSPORT_LOAD_RANGE_PADDING = 24;
 const TRANSPORT_UNLOAD_ARRIVAL_RADIUS = 15;
 const TRANSPORT_UNLOAD_SPACING = 32;
 
-export type TransportActionUpdateResult = {
+type TransportActionUpdateResult = {
   unloadedUnits: Entity[];
 };
 

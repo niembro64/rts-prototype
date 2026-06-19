@@ -84,7 +84,7 @@ type BuildingTurretSpinEntry = {
   active: boolean;
 };
 
-export type BuildingEntityMeshFactoryOptions = {
+type BuildingEntityMeshFactoryOptions = {
   entity: Entity;
   width: number;
   depth: number;
@@ -188,7 +188,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   };
 }
 
-export type BuildingEntityRenderer3DOptions = {
+type BuildingEntityRenderer3DOptions = {
   world: THREE.Group;
   clientViewState: ClientViewState;
   selectionOverlays: SelectionOverlayRenderer3D;

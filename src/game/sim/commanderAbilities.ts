@@ -14,7 +14,7 @@ import { ballSpawnRateForResourceRate } from '@/resourceConfig';
 import { getSimWasm } from '../sim-wasm/init';
 import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
 
-export type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
+export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
 const _constructionEmitterMount = { x: 0, y: 0, z: 0 };

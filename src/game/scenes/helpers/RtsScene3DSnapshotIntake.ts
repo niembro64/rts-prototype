@@ -30,7 +30,7 @@ export type RtsScene3DSnapshotAudioOptions = {
   play(event: NetworkServerSnapshotSimEvent): void;
 };
 
-export type RtsScene3DSnapshotIntakeResult = {
+type RtsScene3DSnapshotIntakeResult = {
   appliedSnapshot: boolean;
   startupReleased: boolean;
   serverMeta: NetworkServerSnapshotMeta | null;

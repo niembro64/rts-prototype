@@ -100,13 +100,13 @@ const _dgunMount = { x: 0, y: 0, z: 0 };
 const MIN_GROUP_FORMATION_SPACING = 40;
 const COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER = 2.25;
 
-export type ResolvedFormationTarget = {
+type ResolvedFormationTarget = {
   x: number;
   y: number;
   z: number;
 };
 
-export type GroupFormationSlot = {
+type GroupFormationSlot = {
   unit: Entity;
   offsetX: number;
   offsetY: number;

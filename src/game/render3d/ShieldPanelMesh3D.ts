@@ -47,7 +47,7 @@ export type ShieldPanelMesh = {
   panelSlotsActive: boolean;
 };
 
-export type ShieldPanelMount = {
+type ShieldPanelMount = {
   /** Authored chassis-local offset of the panel center along the
    *  turret's local +X (forward), resolved from the host mount geometry. */
   offsetX: number;

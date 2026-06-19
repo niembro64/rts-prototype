@@ -72,7 +72,7 @@ const NAME_LABEL_MAX_RETAINED_SPRITES = 512;
 const NAME_LABEL_SHRINK_COOLDOWN_FRAMES = 90;
 const NAME_LABEL_SHRINK_BATCH_SIZE = 64;
 
-export type NameLabelTone = 'blueprint' | 'owner';
+type NameLabelTone = 'blueprint' | 'owner';
 const PIECE_NAME_PACKET_INITIAL_CAP = 512;
 const NAME_LABEL_TONE_BLUEPRINT = 0;
 const NAME_LABEL_TONE_OWNER = 1;

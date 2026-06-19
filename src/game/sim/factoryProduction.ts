@@ -33,7 +33,6 @@ import {
   targetIdToLiveEnemyEntity,
 } from './unitLauncher';
 
-export type { FactoryProductionResult } from '@/types/ui';
 import type { FactoryProductionResult } from '@/types/ui';
 import type { UnitAction } from './types';
 

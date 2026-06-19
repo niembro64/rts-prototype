@@ -9,7 +9,7 @@ import { cloneBuildingSupportSurface } from './buildingSupportSurface';
 import { getBuildingConfig } from './buildConfigs';
 import { createBuildingRuntimeTurrets } from './runtimeTurrets';
 
-export type ApplyBuildingBlueprintRuntimeOptions = {
+type ApplyBuildingBlueprintRuntimeOptions = {
   allocateEntityId?: (() => EntityId) | null;
 };
 

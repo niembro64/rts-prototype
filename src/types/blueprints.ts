@@ -11,59 +11,39 @@ import type {
 // Re-export for consumers
 export type {
   BarrelShape,
-  ShieldTurretConfig,
-  SpinConfig,
+  
 } from './config';
-export type { SoundEntry } from './audio';
-export type { TurretRangeOverrides } from './combatTypes';
 export type {
   ConstructionEmitterSize,
-  ConstructionEmitterVisualSpec,
 } from './constructionTypes';
 
 export type {
-  BeamRayBlueprint,
   EntityBaseLedger,
-  EntityDeathExplosion,
   EntityHudBlueprint,
   EntityRadiusConfig,
   ShieldBarrierRatioConfig,
   ShieldBlueprint,
   ShieldMaterialBlueprint,
-  ShieldMaterialVisualConfig,
-  ShieldReflectionDirection,
-  ShieldReflectionEntity,
-  ShieldReflectionEntityDirections,
-  ShieldReflectionPolicy,
-  ShieldPanel,
+
+  
   ShieldSurfaceResponse,
   FlyingConfig,
   HoverConfig,
-  LaserRayBlueprint,
   RayBlueprint,
   LockOnInclusionObject,
   LockOnRequiresTargetLockedOntoSelf,
   LocomotionBlueprint,
-  LocomotionPhysics,
-  MountOffset,
+  
   PathfindingBlueprint,
-  PathfindingTerrainMode,
-  ProjectileShotBlueprint,
-  ProjectileShotKind,
+  
   SensorCapabilityConfig,
   ShotBlueprint,
-  ShotCollision,
-  ShotExplosion,
-  SmokeTrailSpec,
-  SubmunitionSpec,
+
   TreadConfig,
-  TurretAimAngleType,
   TurretAimStyle,
   TurretBlueprint,
   TurretCooldownConfig,
-  UnitLauncherAimMode,
-  UnitLauncherConfig,
-  TurretLockOnEntityFamilyInclusion,
+  
   TurretLockOnRelationshipInclusion,
   TurretMount,
   TurretRadiusConfig,
@@ -73,21 +53,15 @@ export type {
   UnitBodyShape,
   UnitBodyShapePart,
   UnitSupportSurface,
-  UnitTurretMountZResolver,
   WheelConfig,
   LegConfig,
-  LegLayoutEntry,
   BuildingTurretMount,
-  WeaponKind,
 } from './blueprintSchema.generated';
 
 export {
   SHIELD_SURFACE_RESPONSES,
   
-  
-  
   isShieldReflectionMode,
-  
 } from './shotTypes';
 
 /** Lock-on policy relationship inclusions, kept as runtime arrays for validators. */

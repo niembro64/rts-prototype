@@ -5,7 +5,7 @@ import {
 } from '../../config';
 import { configureSpriteTexture } from './threeUtils';
 
-export type SimSunDirection = Readonly<{
+type SimSunDirection = Readonly<{
   x: number;
   y: number;
   z: number;

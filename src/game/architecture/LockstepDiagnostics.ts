@@ -2,7 +2,7 @@ import type { CanonicalServerStateHash } from './CanonicalStateHash';
 import type { LockstepCompleteCommandFrame } from './LockstepFrameScheduler';
 import type { PlayerId } from '../sim/types';
 
-export type DeterministicLockstepReplayFile = {
+type DeterministicLockstepReplayFile = {
   readonly schema: 'budget-annihilation.lockstep-replay.v1';
   readonly initializationHash: string;
   readonly fixedDtMs: number;

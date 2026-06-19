@@ -19,7 +19,7 @@ import type { LoadingEntityBlueprintId, LoadingPreviewKind } from './loadingUnit
 import type { Turret } from '@/game/sim/types';
 import { getEmissionBlueprintId, isRayConfig, isShieldConfig } from '@/game/sim/types';
 
-export type EntityLabSelection = {
+type EntityLabSelection = {
   kind: LoadingPreviewKind;
   id: LoadingEntityBlueprintId;
   name: string;

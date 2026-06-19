@@ -66,7 +66,7 @@ export type CanonicalMatchInitialization = {
   };
 };
 
-export type BuildCanonicalMatchInitializationOptions = {
+type BuildCanonicalMatchInitializationOptions = {
   gameId: string;
   roomCode: string;
   hostPlayerId: PlayerId;

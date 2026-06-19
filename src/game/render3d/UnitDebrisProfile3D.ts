@@ -106,7 +106,7 @@ export interface DebrisTurretMount {
  *  lookups stay aligned with the original bp.turrets indexing. */
 export type DebrisTurretSlot = DebrisTurretMount | null;
 
-export interface DebrisUnitProfile {
+interface DebrisUnitProfile {
   /** Vertical lift of the chassis above the ground plane — used by
    *  consumers to position chassis-relative fragments (shield panels
    *  baseline, body edges) and to apply the same lift Locomotion3D

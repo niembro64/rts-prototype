@@ -75,7 +75,7 @@ export function createBeamPathTarget(): BeamPathTarget {
 const _beamPointFreeList: BeamPoint[] = [];
 const BEAM_POINT_FREE_LIST_WARM_CAPACITY = 512;
 
-export type ClientPredictionTargetPoolStats = {
+type ClientPredictionTargetPoolStats = {
   freeBeamPoints: number;
   warmBeamPoints: number;
 };

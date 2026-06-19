@@ -1,7 +1,6 @@
 import type { EntityId } from './types';
 import { magnitude } from '../math';
 
-export type { ForceContribution } from '@/types/ui';
 import type { ForceContribution } from '@/types/ui';
 import type { KnockbackInfo } from '@/types/damage';
 

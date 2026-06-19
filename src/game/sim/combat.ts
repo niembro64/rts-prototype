@@ -3,10 +3,10 @@
 
 export type {
   SimEvent,
-  FireTurretsResult,
-  CollisionResult,
+  
+  
   DeathContext,
-  TurretAudioId,
+  
   ProjectileSpawnEvent,
   ProjectileDespawnEvent,
   ProjectileVelocityUpdateEvent,

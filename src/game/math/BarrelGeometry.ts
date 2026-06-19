@@ -96,7 +96,7 @@ export function getTurretBarrelCenterToTipLength(
 
 /** World-space 3D position + unit-vector firing direction for a single
  *  barrel. Every fire path returns one of these per shot. */
-export type BarrelEndpoint = {
+type BarrelEndpoint = {
   x: number;
   y: number;
   z: number;

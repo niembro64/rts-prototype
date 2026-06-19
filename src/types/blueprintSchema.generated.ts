@@ -27,8 +27,6 @@ export type ShieldReflectionMode = 'outside-in' | 'inside-out' | 'both';
 
 export type ShieldReflectionDirection = 'reflect-none' | 'reflect-outside' | 'reflect-inside' | 'reflect-both';
 
-export type ShieldReflectionEntity = 'plasma' | 'rocket' | 'missile' | 'beam' | 'laser';
-
 export type ShieldReflectionEntityDirections = {
   plasma?: ShieldReflectionDirection;
   rocket?: ShieldReflectionDirection;
@@ -268,7 +266,7 @@ export type TurretAimStyle = {
   angleType: TurretAimAngleType;
 };
 
-export type UnitLauncherAimMode = 'ballistic-or-waypoint' | 'direct-target';
+type UnitLauncherAimMode = 'ballistic-or-waypoint' | 'direct-target';
 
 export type UnitLauncherConfig = {
   aimMode: UnitLauncherAimMode;
@@ -423,7 +421,7 @@ export type LegConfig = {
   leftSide: LegLayoutEntry[];
 };
 
-export type LocomotionPhysics = {
+type LocomotionPhysics = {
   driveForce: number;
   traction: number;
 };
@@ -687,7 +685,7 @@ export type BeamRayBlueprint = {
   rayBlueprintId: RayBlueprintId;
 };
 
-export type BeamContinuousSoundConfig = {
+type BeamContinuousSoundConfig = {
   harmonicSeriesIndex: number;
 };
 

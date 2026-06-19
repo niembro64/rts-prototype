@@ -15,7 +15,7 @@ export type LockstepArchitectureConfig = {
   readonly presentationSnapshots: LockstepPresentationSnapshotConfig;
 };
 
-export type ArchitectureConfig = {
+type ArchitectureConfig = {
   readonly lockstep: LockstepArchitectureConfig;
 };
 

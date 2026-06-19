@@ -1,8 +1,6 @@
 export {
   type BuildPlacementCellDiagnostic,
-  type BuildPlacementCellReason,
   type BuildPlacementDiagnostics,
-  
   getBuildingPlacementDiagnostics,
   getOccupiedBuildingCells,
   getSnappedBuildPosition,

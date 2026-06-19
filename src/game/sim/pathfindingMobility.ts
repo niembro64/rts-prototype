@@ -17,7 +17,7 @@ import {
 const RAD_TO_DEG = 180 / Math.PI;
 const DEG_TO_RAD = Math.PI / 180;
 
-export type LocomotionClimbProfile = {
+type LocomotionClimbProfile = {
   readonly maxSlopeDeg: number | null;
   readonly minSurfaceNormalZ: number | null;
   readonly safeDriveAccel: number;

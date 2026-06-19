@@ -22,15 +22,9 @@ import {
 
 export {
   canEntityProvideFullVision,
-  
-  
-  
-  
-  
+
   
   getEntityFullVisionRadius,
-  
-  
   
 } from '../sim/sensorCoverage';
 
@@ -74,10 +68,10 @@ type VisionSource = {
 const VISIBILITY_CLASS_OUT_OF_RANGE = 0;
 export const VISIBILITY_CLASS_IN_EARSHOT = 1;
 export const VISIBILITY_CLASS_IN_VISION = 2;
-export type VisibilityClass = 0 | 1 | 2;
+type VisibilityClass = 0 | 1 | 2;
 export const SCAN_PULSE_WIRE_STRIDE = 6;
 
-export type ScanPulseWireSource = Float64WireRows;
+type ScanPulseWireSource = Float64WireRows;
 
 type MutableScanPulseWireRow = Float64Array | number[];
 
@@ -784,7 +778,7 @@ export class SnapshotVisibility {
  *  team unit + building + scan pulse and inserting them into the
  *  spatial hash — runs once per team per snapshot instead of once per
  *  listener per snapshot. */
-export type SnapshotVisibilityCache = Map<string, SnapshotVisibility>;
+type SnapshotVisibilityCache = Map<string, SnapshotVisibility>;
 
 export function createSnapshotVisibilityCache(): SnapshotVisibilityCache {
   return new Map();

@@ -26,7 +26,7 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import { getShotBlueprint } from '../sim/blueprints/shots';
 import { getTurretBlueprint } from '../sim/blueprints/turrets';
 
-export type PlayerNameLookup = (playerId: PlayerId) => string | null;
+type PlayerNameLookup = (playerId: PlayerId) => string | null;
 
 const UNKNOWN_UNIT_NAME = 'Unknown Unit';
 const UNKNOWN_BUILDING_NAME = 'Unknown Building';

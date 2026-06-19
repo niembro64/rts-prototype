@@ -20,7 +20,7 @@ const _shieldMount = { x: 0, y: 0, z: 0 };
 // Compact list of shield weapons with progress > 0, built by
 // updateShieldState() and consumed by projectile collision and the
 // targeting LOS clearance check.
-export type ActiveShieldRef = {
+type ActiveShieldRef = {
   shape: ShieldBarrierShape;
   prevCenterX: number;
   prevCenterY: number;
@@ -189,19 +189,6 @@ export function updateShieldState(world: WorldState, dtMs: number): void {
   _previousShieldPoses = _nextShieldPoses;
   _nextShieldPoses = oldPrevious;
 }
-
-export type ShieldProjectileIntersection = {
-  t: number;
-  x: number;
-  y: number;
-  z: number;
-  nx: number;
-  ny: number;
-  nz: number;
-  playerId: number;
-  entityId: number;
-};
-
 
 function encodeShieldReflectionDirection(
   direction: ShieldReflectionDirection | undefined,

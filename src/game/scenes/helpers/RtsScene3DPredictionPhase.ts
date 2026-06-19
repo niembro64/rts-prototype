@@ -8,7 +8,7 @@ import {
   type RenderFrameState3D,
 } from '../../render3d/RenderFrameState3D';
 
-export type RtsScene3DPredictionPhaseResult = {
+type RtsScene3DPredictionPhaseResult = {
   renderFrameState: RenderFrameState3D;
   graphicsConfig: GraphicsConfig;
   predMs: number;

@@ -41,8 +41,7 @@ function getFlatZoneBuildabilityLevel(height: number): number | null {
     + Math.round(height * TERRAIN_FLAT_ZONE_LEVEL_SCALE);
 }
 
-
-export type FootprintBuildability = {
+type FootprintBuildability = {
   /** True iff every sampled corner/edge/center is dry land, under the
    *  max buildable slope angle, and on the same plateau level. */
   buildable: boolean;
@@ -168,8 +167,7 @@ export function evaluateBuildabilityFootprint(
   );
 }
 
-
-export type TerrainBuildabilityCell = {
+type TerrainBuildabilityCell = {
   buildable: boolean;
   level: number | null;
 };

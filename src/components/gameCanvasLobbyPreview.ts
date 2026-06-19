@@ -12,7 +12,7 @@ import {
 import type { PlayerId } from '../game/sim/types';
 import type { TerrainMapShape } from '../types/terrain';
 
-export type GameCanvasLobbyPreviewOptions = {
+type GameCanvasLobbyPreviewOptions = {
   backgroundContainerRef: Ref<HTMLDivElement | null>;
   gameAreaRef: Ref<HTMLDivElement | null>;
   currentBattleMode: ComputedRef<BattleMode>;

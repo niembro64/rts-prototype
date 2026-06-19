@@ -3,7 +3,7 @@ import type { PlayerId } from '@/types/sim';
 import type { CameraViewBasis, EconomyInfo, MinimapData, SelectionInfo } from '@/types/ui';
 import type { GamePhase, NetworkServerSnapshotMeta } from '@/types/network';
 
-export type SceneUiBindings = {
+type SceneUiBindings = {
   onPlayerChange: (playerId: PlayerId) => void;
   onSelectionChange: (info: SelectionInfo) => void;
   onEconomyChange: (info: EconomyInfo) => void;

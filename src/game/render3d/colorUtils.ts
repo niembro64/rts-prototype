@@ -6,7 +6,7 @@
 
 import { getPlayerColors, type PlayerId } from '../sim/types';
 
-export type Rgb01 = { r: number; g: number; b: number };
+type Rgb01 = { r: number; g: number; b: number };
 const LOCOMOTION_TEAM_COLOR_FRACTION = 0.5;
 
 /** Blend two 0xRRGGBB colors in ordinary 8-bit RGB space. `t = 0`

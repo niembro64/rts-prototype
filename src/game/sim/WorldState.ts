@@ -56,14 +56,12 @@ import {
   type CreateUnitFromBlueprintOptions,
 } from './WorldUnitFactory';
 
-export type { CreateProjectileProvenance } from './WorldProjectileFactory';
-
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
 
 /** Temporary vision pulse owned by a single player, contributing a
  *  full-vision source for the ticks between spawn and expiresAtTick.
  *  See WorldState.scanPulses. */
-export type ScanPulse = {
+type ScanPulse = {
   playerId: PlayerId;
   x: number;
   y: number;

@@ -5,7 +5,7 @@ import type { WorldState } from '../sim/WorldState';
 import { sanitizeCommandForScheduledFrame } from '../server/commandSanitizer';
 import { authorizeGameServerGameplayCommand } from '../server/ServerCommandAuthorizer';
 
-export type CommandArchitectureCategory =
+type CommandArchitectureCategory =
   | 'gameplay-truth'
   | 'local-presentation'
   | 'architecture-control';
@@ -20,7 +20,7 @@ export type LockstepCommandEnvelope = {
   readonly clientIssuedFrame?: number;
 };
 
-export type LockstepCommandEnvelopeOptions = {
+type LockstepCommandEnvelopeOptions = {
   readonly gameId: string;
   readonly currentKnownFrame: number;
   readonly playerId: PlayerId;
@@ -47,7 +47,7 @@ export type LockstepCommandRejection = {
   readonly detail: string;
 };
 
-export type LockstepCommandValidationResult =
+type LockstepCommandValidationResult =
   | {
       readonly accepted: true;
       readonly envelope: LockstepCommandEnvelope;
@@ -59,7 +59,7 @@ export type LockstepCommandValidationResult =
       readonly rejection: LockstepCommandRejection;
     };
 
-export type LockstepCommandRejectionLogger = (rejection: LockstepCommandRejection) => void;
+type LockstepCommandRejectionLogger = (rejection: LockstepCommandRejection) => void;
 
 const LOCAL_PRESENTATION_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'select',

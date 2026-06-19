@@ -4,7 +4,7 @@ import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitMoveSta
 import type { ShieldReflectionMode } from './shotTypes';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
-export type CommandType =
+type CommandType =
   | 'select'
   | 'move'
   | 'stop'

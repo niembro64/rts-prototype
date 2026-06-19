@@ -8,7 +8,7 @@ import type {
 import type { NetworkCommunicationEvent } from '../types/network';
 import type { PlayerId } from '../game/sim/types';
 
-export type GameCanvasNetworkCallbackOptions = {
+type GameCanvasNetworkCallbackOptions = {
   network: NetworkManager;
   networkNotice: Ref<string | null>;
   lobbyError: Ref<string | null>;

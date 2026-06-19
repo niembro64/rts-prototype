@@ -37,7 +37,7 @@ type DeterministicReplayCase = {
   readonly assertFinal?: ReplayFinalAssertion;
 };
 
-export type DeterministicReplayCaseReport = {
+type DeterministicReplayCaseReport = {
   readonly id: string;
   readonly ticks: number;
   readonly checkpointCount: number;
@@ -46,7 +46,7 @@ export type DeterministicReplayCaseReport = {
   readonly finalEntities: readonly unknown[];
 };
 
-export type DeterministicReplayHarnessReport = {
+type DeterministicReplayHarnessReport = {
   readonly schema: 'budget-annihilation.deterministic-replay-harness.v1';
   readonly cases: DeterministicReplayCaseReport[];
 };

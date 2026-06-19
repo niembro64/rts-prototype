@@ -51,8 +51,8 @@ export type EntityLodEmission3D =
   | 'hitImpacts'
   | 'projectileExpireImpacts';
 
-export type EntityLodCutoffDistance3D = number | null;
-export type EmissionLodHighToLowDistance3D = number | null;
+type EntityLodCutoffDistance3D = number | null;
+type EmissionLodHighToLowDistance3D = number | null;
 
 function finitePositiveRadius(...values: Array<number | null | undefined>): number {
   let radius = 0;
@@ -158,8 +158,6 @@ function entityLodFullDetailDistanceSq3D(
   const distance = entityLodFullDetailDistance3D(radius, multiplier, fullDetailDistance);
   return distance * distance;
 }
-
-
 
 export function entityEmissionUsesLowLodDistance3D(
   camera: THREE.Camera,

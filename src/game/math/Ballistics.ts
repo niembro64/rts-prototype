@@ -35,7 +35,7 @@ export type KinematicState3 = {
   acceleration: KinematicVec3;
 };
 
-export type KinematicInterceptInput = {
+type KinematicInterceptInput = {
   myPosition: KinematicVec3;
   myVelocity: KinematicVec3;
   myAcceleration: KinematicVec3;
@@ -96,8 +96,6 @@ const INTERCEPT_MAX_TIME = 30;
 const INTERCEPT_ROOT_EPSILON = 1e-5;
 const HIGH_ARC_MIN_TIME_SEPARATION = 1 / 120;
 const SHOT_DIRECTION_EPSILON = 1e-6;
-
-
 
 function isFiniteVec3(v: KinematicVec3): boolean {
   return Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
@@ -676,5 +674,4 @@ function solveDampedKinematicInterceptTs(
   if (selectedRoot <= INTERCEPT_MIN_TIME) return null;
   return writeDampedInterceptSolution(input, selectedRoot, dragK, out);
 }
-
 

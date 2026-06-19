@@ -26,7 +26,7 @@ import { getCombatTargetingStateViews } from './targetingInputStamping';
 import type { WorldState } from '../WorldState';
 import type { Entity, EntityId } from '../types';
 
-export type BeamWeaponRef = {
+type BeamWeaponRef = {
   unit: Entity;
   weaponIndex: number;
 };

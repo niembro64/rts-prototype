@@ -43,7 +43,7 @@ type LateralProfile = GroupAngular & {
   lengthScale: number;
 };
 
-export type SplashConfig = {
+type SplashConfig = {
   pool: {
     maxDroplets: number;
     maxDropletsPerSpawn: number;

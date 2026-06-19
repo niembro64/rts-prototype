@@ -11,7 +11,7 @@ import { isStructureBlueprintId } from '../../../types/blueprintIds';
 import type { UnitBlueprint } from './types';
 import type { UnitLocomotion } from '../types';
 import { createUnitLocomotion } from '../locomotion';
-export { BUILDABLE_UNIT_BLUEPRINT_IDS, type BuildableUnitBlueprintId } from './unitRoster';
+export { BUILDABLE_UNIT_BLUEPRINT_IDS,  } from './unitRoster';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { PATHFINDING_BLUEPRINTS } from './pathfinding';
 import { TURRET_BLUEPRINTS } from './turrets';

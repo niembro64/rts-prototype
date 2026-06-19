@@ -56,7 +56,7 @@ import { BUILD_GRID_CELL_SIZE } from './game/sim/buildGrid';
 import { getSimWasm } from './game/sim-wasm/init';
 import rawConfig from './metalDepositConfig.json';
 
-export type DepositRing = {
+type DepositRing = {
   /** Distance from map center as a fraction of the oval-space
    *  (mapMinExtent/2 - margin). 0 = center (single deposit),
    *  1 = at the spawn oval edge. */
@@ -95,7 +95,7 @@ export type DepositRing = {
   comment?: string;
 };
 
-export type MetalDepositClusterConfig = {
+type MetalDepositClusterConfig = {
   count: number;
   radius: number;
   angleOffset: number;

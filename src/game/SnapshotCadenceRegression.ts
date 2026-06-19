@@ -40,7 +40,7 @@ type SnapshotCorrectionStats = {
   maxDistance: number;
 };
 
-export type SnapshotCadenceRegressionReportRow = {
+type SnapshotCadenceRegressionReportRow = {
   rate: string;
   seconds: number;
   snapshots: number;
@@ -62,7 +62,7 @@ export type SnapshotCadenceRegressionReportRow = {
   commands: number;
 };
 
-export type SnapshotCadenceRegressionDebugApi = {
+type SnapshotCadenceRegressionDebugApi = {
   reset(): void;
   report(): void;
   rows(): SnapshotCadenceRegressionReportRow[];
@@ -125,7 +125,7 @@ function isGameplayResponseCommand(command: Command): boolean {
   }
 }
 
-export type SnapshotCadenceRegressionApplySample = {
+type SnapshotCadenceRegressionApplySample = {
   tick: number;
   meta?: NetworkServerSnapshotMeta;
   applyMs: number;

@@ -5,7 +5,7 @@ import { findClosestSelectableEntityToPoint } from '../input/helpers';
 
 const DEFAULT_HOVER_RAYCAST_INTERVAL_MS = 50;
 
-export type Input3DHoverTargets = {
+type Input3DHoverTargets = {
   hovered: EntityId | null;
   selectable: EntityId | null;
 };

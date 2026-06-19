@@ -14,43 +14,28 @@ export type {
   BeamPoint,
   BeamReflectorKind,
   BeamRay,
-  BeamRayBlueprint,
   ShieldBarrierConfig,
   ShieldBarrierShape,
-  ShieldBarrierRatioConfig,
-  ShieldMaterialBlueprint,
-  ShieldMaterialVisualConfig,
+  
   ShieldReflectionDirection,
-  ShieldReflectionEntity,
-  ShieldReflectionEntityDirections,
+  
   ShieldReflectionPolicy,
   ShieldReflectionMode,
-  ShieldBlueprint,
-  ShieldSurfaceResponse,
+  
   ShieldConfig,
   EmissionConfig,
   LaserRay,
-  LaserRayBlueprint,
-  RayConfig,
-  RayBlueprint,
-  RayType,
+
   ProjectileShot,
-  ProjectileShotBlueprint,
-  ProjectileShotKind,
-  ProjectileTailShape,
+  
   ProjectileType,
-  ShotBlueprint,
-  ShotCollision,
+  
   ShotConfig,
-  ShotExplosion,
   ShotProfile,
   ShotRuntimeProfile,
-  ShotRuntimeType,
   ShotVisualProfile,
   SmokeTrailSpec,
-  SubmunitionSpec,
 } from './blueprintSchema.generated';
-
 
 /** Predicate on raw emission `type` strings, used at network / projectile
  *  layer boundaries where we have a string but not the full config. */
@@ -61,7 +46,6 @@ export function isRayType(t: string): t is RayType {
 export const SHIELD_SURFACE_RESPONSES = ['reflect', 'absorb', 'passThrough'] as const;
 
 export const SHIELD_REFLECTION_MODES = ['outside-in', 'inside-out', 'both'] as const;
-
 
 export const SHIELD_REFLECTION_ENTITIES = [
   'plasma',
@@ -83,7 +67,6 @@ export function isShieldReflectionDirection(value: unknown): value is ShieldRefl
     value === 'reflect-both'
   );
 }
-
 
 export function isRayConfig(emission: EmissionConfig): emission is RayConfig {
   return isRayType(emission.type);
@@ -107,7 +90,6 @@ export function getEmissionBlueprintId(emission: EmissionConfig | ActiveProjecti
 export function isRocketLikeShot(emission: EmissionConfig): boolean {
   return isProjectileShot(emission) && (emission.type === 'rocket' || emission.type === 'missile');
 }
-
 
 /** Static max active time for runtime shot entities. Traveling shots
  *  can opt into authored time-to-live values; otherwise they terminate

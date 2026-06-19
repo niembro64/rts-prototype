@@ -6,7 +6,7 @@ import type {
 } from '../game/network/NetworkManager';
 import type { PlayerId } from '../game/sim/types';
 
-export type GameCanvasLobbyActions = {
+type GameCanvasLobbyActions = {
   handleHost(): Promise<void>;
   handleJoin(code: string): Promise<void>;
   handleLobbyStart(): void;
@@ -14,7 +14,7 @@ export type GameCanvasLobbyActions = {
   handleOffline(): void;
 };
 
-export type GameCanvasLobbyActionsOptions = {
+type GameCanvasLobbyActionsOptions = {
   network: NetworkManager;
   isConnecting: Ref<boolean>;
   lobbyError: Ref<string | null>;

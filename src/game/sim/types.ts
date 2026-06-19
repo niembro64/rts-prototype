@@ -8,17 +8,17 @@
 
 export type {
   HysteresisRange,
-  HysteresisRangeMultiplier,
+  
   TurretRanges,
-  TurretRangeOverrides,
+  
   EntityId,
   PlayerId,
-  Transform,
-  Body,
-  Selectable,
-  Ownership,
+  
+  
+  
+  
   WaypointType,
-  Waypoint,
+  
   ActionType,
   BuildingBlueprintId,
   BuildingRenderProfile,
@@ -28,24 +28,21 @@ export type {
   SensorCapabilityConfig,
   UnitSupportSurface,
   UnitAction,
-  UnitPathPlan,
   UnitPathPoint,
   UnitLocomotion,
   UnitMoveState,
   CombatFireState,
   CombatTrajectoryMode,
-  UnitLauncherAimMode,
-  UnitLauncherConfig,
+  
   BuildingActiveState,
   Unit,
-  Building,
+  
   ShieldBarrierConfig,
   CombatComponent,
   ProjectileShot,
   BeamRay,
   LaserRay,
-  RayConfig,
-  RayType,
+  
   ActiveProjectileShot,
   ShieldConfig,
   EmissionConfig,
@@ -62,7 +59,6 @@ export type {
   ShotSource,
   BeamReflectorKind,
   BeamPoint,
-  ProjectileAbsenceSlots,
   Projectile,
   EconomyState,
   ConstructionPieceKind,
@@ -70,20 +66,15 @@ export type {
   ResourceCost,
   Buildable,
   Builder,
-  Wreck,
-  WreckSource,
+  
   Transport,
-  Transported,
   BuildingConfig,
   UnitBuildConfig,
-  Factory,
   FactoryDefaultWaypoint,
-  Commander,
-  DGunProjectile,
+  
   EntityMeta,
   EntityMetaBlueprintKind,
   EntityMetaKind,
-  EntityMetaStoragePool,
   EntityType,
   Entity,
 } from '@/types/sim';
@@ -94,7 +85,7 @@ export { createCombatComponent, createEmptyEntityComponentSlots, createTransform
 import type { PlayerId } from '@/types/sim';
 import { COLORS } from '@/colorsConfig';
 
-export type PlayerColors = { primary: number; secondary: number; name: string };
+type PlayerColors = { primary: number; secondary: number; name: string };
 
 // Number of total players currently in the lobby / game. Drives the
 // evenly-spaced hue distribution: with N players slot k lands at hue

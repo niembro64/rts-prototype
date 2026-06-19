@@ -78,7 +78,7 @@ export type RealBattleStartupTerrain = {
   mapSize: { width: number; height: number };
 };
 
-export type CreateRealBattleServerOptions = {
+type CreateRealBattleServerOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
   terrain: RealBattleStartupTerrain;
@@ -124,7 +124,7 @@ export type RealBattleBackendRuntime = {
   getDiagnostics(): RealBattleBackendDiagnostics;
 };
 
-export type CreateRealBattleBackendOptions = {
+type CreateRealBattleBackendOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
   terrain: RealBattleStartupTerrain;

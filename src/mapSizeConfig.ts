@@ -8,7 +8,7 @@ export type MapLandCellDimensions = {
   readonly lengthLandCells: number;
 };
 
-export type MapDimensionAxisConfig = {
+type MapDimensionAxisConfig = {
   readonly default: number;
   readonly options: readonly MapDimensionAxisOption[];
 };
@@ -35,7 +35,6 @@ const MAP_DIMENSION_BASE_LAND_CELLS: number =
   MAP_SIZE_CONFIG.mapDimensionBaseLandCells;
 const MAP_DIMENSION_AXIS_GROWTH: number = MAP_SIZE_CONFIG.mapDimensionAxisGrowth;
 const MAP_DIMENSION_AXIS_OPTION_COUNT: number = MAP_SIZE_CONFIG.mapDimensionAxisOptionCount;
-
 
 // 7, 11, 15, 23, 35, 53, 79, 119
 const DEFAULT_MAP_WIDTH_LAND_CELLS_VALUE: number = MAP_SIZE_CONFIG.defaultMapWidthLandCells;

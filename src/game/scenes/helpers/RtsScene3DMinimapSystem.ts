@@ -3,7 +3,7 @@ import type { CameraViewBasis, MinimapData, UIEntitySource } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
 import { buildMinimapData } from './UIUpdateManager';
 
-export type MinimapUpdateHandler = ((data: MinimapData) => void) | undefined;
+type MinimapUpdateHandler = ((data: MinimapData) => void) | undefined;
 
 const MINIMAP_UPDATE_INTERVAL_MS = 50;
 

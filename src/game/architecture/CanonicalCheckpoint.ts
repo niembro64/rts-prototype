@@ -32,7 +32,7 @@ export type CanonicalCheckpoint = {
   };
 };
 
-export type ExportCanonicalCheckpointOptions = {
+type ExportCanonicalCheckpointOptions = {
   readonly core: ServerSimulationCore;
   readonly config: GameServerConfig;
   readonly commandFrames: readonly CanonicalCheckpointCommandFrame[];
@@ -40,7 +40,7 @@ export type ExportCanonicalCheckpointOptions = {
   readonly fixedDtMs?: number;
 };
 
-export type ImportedCanonicalCheckpoint = {
+type ImportedCanonicalCheckpoint = {
   readonly core: ServerSimulationCore;
   readonly verifiedHash: CanonicalServerStateHash;
 };

@@ -15,7 +15,7 @@ import type { SnapshotRate } from '../types/server';
 
 const REPORT_INTERVAL_MS = 10_000;
 
-export type SnapshotEncodeInstrumentationSource = 'local';
+type SnapshotEncodeInstrumentationSource = 'local';
 
 type EncodeBucket = {
   source: SnapshotEncodeInstrumentationSource;
@@ -40,7 +40,7 @@ type EncodeBucket = {
   latestBreakdown?: SnapshotWireBreakdown;
 };
 
-export type SnapshotEncodeInstrumentationReportRow = {
+type SnapshotEncodeInstrumentationReportRow = {
   source: SnapshotEncodeInstrumentationSource;
   listener: string;
   rate: string;
@@ -61,7 +61,7 @@ export type SnapshotEncodeInstrumentationReportRow = {
   rawKeys: string;
 };
 
-export type SnapshotEncodeInstrumentationBreakdownRow = {
+type SnapshotEncodeInstrumentationBreakdownRow = {
   source: SnapshotEncodeInstrumentationSource;
   listener: string;
   rate: string;
@@ -81,7 +81,7 @@ export type SnapshotEncodeInstrumentationBreakdownRow = {
   projectileTop: string;
 };
 
-export type SnapshotEncodeInstrumentationSample = {
+type SnapshotEncodeInstrumentationSample = {
   source: SnapshotEncodeInstrumentationSource;
   listener: string;
   rate?: SnapshotRate;
@@ -97,7 +97,7 @@ export type SnapshotEncodeInstrumentationSample = {
   now?: number;
 };
 
-export type SnapshotEncodeInstrumentationDebugApi = {
+type SnapshotEncodeInstrumentationDebugApi = {
   reset(): void;
   report(): void;
   rows(): SnapshotEncodeInstrumentationReportRow[];

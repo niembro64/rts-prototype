@@ -7,8 +7,7 @@
 // part. Identity is { x:0, y:0, z:0, w:1 }. Yaw is rotation about
 // world +Z, ZYX intrinsic Euler order.
 
-export type Quat = { x: number; y: number; z: number; w: number };
-export type AngularVec3 = { x: number; y: number; z: number };
+type Quat = { x: number; y: number; z: number; w: number };
 
 /** Set a yaw-only world +Z orientation. Used by spawn/direct-facing
  *  paths so hover units' quaternion pose agrees with transform.rotation. */

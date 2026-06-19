@@ -53,7 +53,7 @@ export function turretIgnoresForceMaterialSightObstruction(weapon: Turret): bool
   return weapon.config.shot?.type === 'shield' && weapon.config.submunitions === undefined;
 }
 
-export type ShieldClearanceOptions = {
+type ShieldClearanceOptions = {
   /** Number of shields a turret may "see through." 0 = any
    *  intervening field blocks lock-on (default). Future targeting
    *  brain upgrades raise this per-player to pierce N shields. */
@@ -93,7 +93,7 @@ function maxUnitCollisionRadius(): number {
  *  Independent Of Shape: spheres and flat panels are one material, so a
  *  single query answers both — the flags only exist so a caller can
  *  restrict to shapes currently enabled by battle-bar toggles. */
-export type ShieldShapeMask = {
+type ShieldShapeMask = {
   includeSpheres: boolean;
   includePanels: boolean;
 };
@@ -144,5 +144,4 @@ export function hasFogOfWarLineOfSight(
   }
   return true;
 }
-
 

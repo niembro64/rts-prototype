@@ -86,7 +86,7 @@ type ConstructionTowerVariant = {
   capMaterial: THREE.Material;
 };
 
-export type ResourcePylonBuildOptions = {
+type ResourcePylonBuildOptions = {
   resource: ConstructionTowerResource;
   direction: ResourcePylonDirection;
   pylonHeight: number;

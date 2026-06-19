@@ -17,7 +17,7 @@ import { UnitForceSystem } from './UnitForceSystem';
 import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
 import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/projectileSystem';
 
-export type ServerSimulationCoreOptions = {
+type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
 };
 

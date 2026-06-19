@@ -4,7 +4,7 @@ import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import { AudioEventScheduler } from './AudioEventScheduler';
 import type { RtsScene3DSnapshotAudioOptions } from './RtsScene3DSnapshotIntake';
 
-export type RtsScene3DAudioEventHandler = (
+type RtsScene3DAudioEventHandler = (
   event: NetworkServerSnapshotSimEvent,
 ) => void;
 

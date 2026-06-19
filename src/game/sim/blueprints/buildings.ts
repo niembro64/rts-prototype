@@ -178,7 +178,7 @@ function firstTurretMountZ(
 const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
   firstTurretMountZ(BUILDING_BLUEPRINTS.towerFabricator, FACTORY_BASE_VISUAL_HEIGHT);
 
-export type FactoryBuildingVisualMetrics = {
+type FactoryBuildingVisualMetrics = {
   minDim: number;
   baseHeight: number;
   towerRadius: number;

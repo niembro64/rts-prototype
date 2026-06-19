@@ -71,7 +71,7 @@ const _launcherShotInput: TurretShotAngleInput = {
   maxTimeSec: 0,
 };
 
-export type UnitLauncherTurretRef = {
+type UnitLauncherTurretRef = {
   turret: Turret;
   turretIndex: number;
 };

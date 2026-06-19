@@ -19,13 +19,13 @@ export type LockstepDesyncReport = {
   readonly recentCommandFrames: readonly LockstepCompleteCommandFrame[];
 };
 
-export type LockstepChecksumRecord = {
+type LockstepChecksumRecord = {
   readonly playerId: PlayerId;
   readonly frame: number;
   readonly stateHash: CanonicalServerStateHash;
 };
 
-export type LockstepDesyncMonitorOptions = {
+type LockstepDesyncMonitorOptions = {
   readonly localPlayerId: PlayerId;
   readonly peerIds: readonly PlayerId[];
   readonly initializationHash: string;

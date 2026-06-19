@@ -88,7 +88,7 @@ import {
   entityEmissionUsesLowLodDistance3D,
 } from '../../render3d/EntityLod3D';
 
-export type RtsScene3DRenderPhaseResources = {
+type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
   beamRenderer: BeamRenderer3D;
   shieldRenderer: ShieldRenderer3D;
@@ -117,7 +117,7 @@ export type RtsScene3DRenderPhaseResources = {
   waypoint3D: Waypoint3D | null;
 };
 
-export type RtsScene3DRenderPhaseResult = {
+type RtsScene3DRenderPhaseResult = {
   cameraQuad: FootprintQuad;
   cameraView: CameraViewBasis;
   renderMs: number;

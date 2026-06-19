@@ -1,11 +1,6 @@
 import type { BuildingSupportSurface } from './types';
 import { isOddQuarterTurnGridRotation } from './buildGrid';
 
-export type BuildingSupportQueryOptions = {
-  bodyZ?: number;
-  groundOffset?: number;
-};
-
 export function cloneBuildingSupportSurface(
   surface: BuildingSupportSurface,
   rotation = 0,

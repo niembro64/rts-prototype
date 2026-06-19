@@ -1,7 +1,7 @@
 // Unified Damage System Types — re-exported from canonical @/types/damage
 
 export type {
-  DamageSourceBase,
+  
   SweptDamageSource,
   AreaDamageSource,
   AnyDamageSource,

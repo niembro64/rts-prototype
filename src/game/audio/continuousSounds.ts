@@ -4,7 +4,7 @@
 import { AUDIO } from '../../audioConfig';
 import type { AudioToolkit } from './audioHelpers';
 
-export type { ContinuousSound, ContinuousSoundConfig } from '@/types/audio';
+export type { ContinuousSound,  } from '@/types/audio';
 import type { ContinuousSound, ContinuousSoundConfig } from '@/types/audio';
 
 // Start a continuous sound with oscillator + optional LFO + filter + noise layer

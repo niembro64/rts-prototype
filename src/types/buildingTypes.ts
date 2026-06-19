@@ -3,15 +3,12 @@
 import rawTowerBlueprints from '../game/sim/blueprints/towers.json';
 import {
   TOWER_BLUEPRINT_IDS,
-  type BuildingBlueprintId as PureBuildingBlueprintId,
   type StructureBlueprintId,
   type TowerBlueprintId,
 } from './blueprintIds';
 
 export type {
-  PureBuildingBlueprintId,
   StructureBlueprintId,
-  TowerBlueprintId,
 };
 
 // Compatibility shim: runtime/network fields still use the historical

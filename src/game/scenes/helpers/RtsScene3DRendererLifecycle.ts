@@ -10,7 +10,7 @@ type Clearable = {
   clear(): void;
 };
 
-export type RtsScene3DRendererResources = {
+type RtsScene3DRendererResources = {
   inputManager?: Destroyable | null;
   healthBar3D?: Destroyable | null;
   nameLabel3D?: Destroyable | null;

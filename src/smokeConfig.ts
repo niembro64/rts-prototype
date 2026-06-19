@@ -20,7 +20,7 @@ export type HoverSmokeUseId = Extract<
 >;
 export type FlyingSmokeUseId = Extract<SmokeUseId, 'locomotionEagleFlying' | 'locomotionAlbatrosFlying'>;
 
-export type SmokePuffGeometryConfig = {
+type SmokePuffGeometryConfig = {
   widthSegments: number;
   heightSegments: number;
 };
@@ -44,7 +44,7 @@ export type ResolvedSmokeProfile = SmokeProfile & {
   useId: SmokeUseId;
 };
 
-export type SmokeConfig = Record<SmokeUseId, SmokeProfile> & {
+type SmokeConfig = Record<SmokeUseId, SmokeProfile> & {
   puffGeometry: SmokePuffGeometryConfig;
 };
 

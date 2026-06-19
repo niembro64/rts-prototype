@@ -10,7 +10,7 @@ export type MetalDepositFootprintCell = {
   depositId: number | null;
 };
 
-export type MetalDepositGridCell = {
+type MetalDepositGridCell = {
   gx: number;
   gy: number;
   x: number;
@@ -18,7 +18,7 @@ export type MetalDepositGridCell = {
   depositId: number;
 };
 
-export type MetalDepositFootprintCoverage = {
+type MetalDepositFootprintCoverage = {
   fraction: number;
   coveredCells: number;
   totalCells: number;

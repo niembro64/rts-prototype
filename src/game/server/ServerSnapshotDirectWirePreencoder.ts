@@ -46,12 +46,12 @@ import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 
 const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
-export type DirectSerializedListenerSnapshot = {
+type DirectSerializedListenerSnapshot = {
   state: NetworkServerSnapshot;
   wirePayload: SnapshotWirePayload;
 };
 
-export type ServerSnapshotDirectWireInput = {
+type ServerSnapshotDirectWireInput = {
   world: WorldState;
   removedEntities: readonly RemovedSnapshotEntity[] | undefined;
   recipientPlayerId: PlayerId | undefined;

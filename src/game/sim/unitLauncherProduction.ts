@@ -14,7 +14,7 @@ import {
 } from './unitLauncher';
 import type { WorldState } from './WorldState';
 
-export type UnitLauncherProductionResult = {
+type UnitLauncherProductionResult = {
   spawnedUnits: Entity[];
 };
 

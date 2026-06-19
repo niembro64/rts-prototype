@@ -3,7 +3,6 @@
 export type {
   GameConnection,
   SnapshotCallback,
-  SnapshotWirePayload,
   SnapshotUnsubscribe,
   SimEventCallback,
   GameOverCallback,

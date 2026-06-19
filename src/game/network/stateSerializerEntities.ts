@@ -285,7 +285,7 @@ export function resetEntitySnapshotPool(): void {
   resetEntitySnapshotWireSource();
 }
 
-export type EntitySnapshotPoolStats = {
+type EntitySnapshotPoolStats = {
   retainedEntries: number;
   activeEntries: number;
   warmEntries: number;

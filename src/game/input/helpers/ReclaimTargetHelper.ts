@@ -4,7 +4,6 @@ import type { Entity } from '../../sim/types';
 import { magnitude } from '../../math';
 import { isReclaimableTarget } from '../../sim/reclaim';
 
-export type { ReclaimEntitySource } from '@/types/input';
 import type { ReclaimEntitySource } from '@/types/input';
 
 function findReclaimableUnitAt(

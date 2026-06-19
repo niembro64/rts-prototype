@@ -307,7 +307,7 @@ export type NetworkCommunicationEvent =
   | NetworkCommunicationMapEraseEvent;
 
 export const LOCKSTEP_PROTOCOL_VERSION = 'budget-annihilation.lockstep.v3' as const;
-export type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
+type LockstepProtocolVersion = typeof LOCKSTEP_PROTOCOL_VERSION;
 
 export type LockstepProtocolBase = {
   gameId: string | undefined;

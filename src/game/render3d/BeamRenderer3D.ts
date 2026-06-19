@@ -48,7 +48,7 @@ const DEFAULT_OPEN_ENDED_LINE_VISUAL_LENGTH = 12000;
 const DEFAULT_IMPOSTER_SEGMENT_COLOR = 0xd7f4ff;
 const DEFAULT_IMPOSTER_SEGMENT_OPACITY = 0.24;
 
-export type TurretMountResolver = {
+type TurretMountResolver = {
   getTurretMountWorldState(
     entityId: number,
     turretIdx: number,

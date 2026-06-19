@@ -15,7 +15,7 @@ import type {
   BuildLineSpacingInfo,
 } from '../../render3d/Input3DBuildPlacementState';
 
-export type SelectionChangeHandler = ((info: SelectionInfo) => void) | undefined;
+type SelectionChangeHandler = ((info: SelectionInfo) => void) | undefined;
 
 function createControlGroupSlotSnapshots(): ControlGroupSlotSnapshot[] {
   const slots = new Array<ControlGroupSlotSnapshot>(CONTROL_GROUP_COUNT);

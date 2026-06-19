@@ -6,7 +6,7 @@ import type { RtsScene3DSnapshotIntake } from './RtsScene3DSnapshotIntake';
 
 const SHADER_WARMUP_TIMEOUT_MS = 5000;
 
-export type RtsScene3DRendererWarmupOptions = {
+type RtsScene3DRendererWarmupOptions = {
   threeApp: ThreeApp;
   explosionRenderer: Explosion3D;
   snapshotIntake: RtsScene3DSnapshotIntake;

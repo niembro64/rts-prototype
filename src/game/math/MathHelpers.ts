@@ -123,14 +123,5 @@ export function shouldRunOnStride(
   return ((tick + entityPhase) % stride) === 0;
 }
 
-export type DampedRotationOptions = {
-  /** Wrap the diff and the integrated angle through normalizeAngle.
-   *  Use for yaw axes that need to turn the short way around ±π. */
-  wrap?: boolean;
-  /** Inclusive lower clamp; when hit, angularVel snaps to 0. */
-  minAngle?: number;
-  /** Inclusive upper clamp; when hit, angularVel snaps to 0. */
-  maxAngle?: number;
-};
 
 

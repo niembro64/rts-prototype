@@ -14,7 +14,6 @@
 import shellConfig from './shellConfig.json';
 import { COLORS, RESOURCE_COLOR_CSS } from './colorsConfig';
 
-
 /** Same color as a 0xRRGGBB hex literal — keeps Three's Color
  *  constructors that expect a number happy. Must agree with
  *  SHELL_PALE_RGB rounded to 8-bit per channel. */
@@ -84,7 +83,6 @@ export const SHELL_BAR_HIDE_AT_FULL = shellConfig.shellBar.hideAtFull;
 
 export const HP_BAR_COLOR_BUILD = COLORS.construction.hpBar.build.cssColor;
 
-
 /** Per-resource transfer-rate smoothing for the factory + commander
  *  build emitters. The rate fractions written by the sim each tick
  *  are noisy by nature — once-a-tick step changes whenever a stockpile
@@ -102,7 +100,7 @@ export const HP_BAR_COLOR_BUILD = COLORS.construction.hpBar.build.cssColor;
  */
 export const BUILD_RATE_EMA_HALF_LIFE_SEC =
   shellConfig.buildRateEmaHalfLifeSec;
-export type BuildRateEmaMode = keyof typeof BUILD_RATE_EMA_HALF_LIFE_SEC;
+type BuildRateEmaMode = keyof typeof BUILD_RATE_EMA_HALF_LIFE_SEC;
 export const BUILD_RATE_EMA_MODE =
   shellConfig.buildRateEmaMode as BuildRateEmaMode;
 
@@ -117,7 +115,7 @@ export const BUILD_RATE_EMA_MODE =
  *  reasoned about together. */
 export const BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC =
   shellConfig.buildRateDisplayEmaHalfLifeSec;
-export type BuildRateDisplayEmaMode = keyof typeof BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC;
+type BuildRateDisplayEmaMode = keyof typeof BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC;
 export const BUILD_RATE_DISPLAY_EMA_MODE =
   shellConfig.buildRateDisplayEmaMode as BuildRateDisplayEmaMode;
 

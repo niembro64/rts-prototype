@@ -22,7 +22,7 @@ import {
 import { resourceMovementSystem, type ResourceKind } from './resourceMovement';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 
-export type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
+export type { EnergyBuffers,  } from '@/types/ui';
 import type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 
 export function createEnergyBuffers(): EnergyBuffers {

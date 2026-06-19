@@ -3,13 +3,6 @@ import type { Entity } from './types';
 import { getTransformCosSin } from '../math';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 
-export type FactoryFootprintDimensions = {
-  footprintWidth: number;
-  footprintHeight: number;
-  footprintDepth: number;
-  constructionRadius: number;
-};
-
 export type FactoryBuildSpot = {
   x: number;
   y: number;
@@ -22,7 +15,7 @@ export type FactoryBuildSpot = {
   offset: number;
 };
 
-export type FactoryBuildSpotOptions = {
+type FactoryBuildSpotOptions = {
   mapWidth: number | null;
   mapHeight: number | null;
   clampRadius: number | null;
@@ -31,11 +24,9 @@ export type FactoryBuildSpotOptions = {
 const FACTORY_CONSTRUCTION_RADIUS_CELLS = 6;
 const _buildSpotDir = { x: 0, y: 0 };
 
-
 export function getFactoryConstructionRadius(): number {
   return FACTORY_CONSTRUCTION_RADIUS_CELLS * BUILD_GRID_CELL_SIZE;
 }
-
 
 function writeFactoryWaypointDirection(factory: Entity, out: { x: number; y: number }): void {
   const factoryComp = factory.factory;

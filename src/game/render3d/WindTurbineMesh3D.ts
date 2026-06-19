@@ -26,7 +26,7 @@ import {
  *  pose. The pivot stays at the rotor hub — the blade tip swings from
  *  radial-fan to "tight against the pole" by reorienting the blade's
  *  spanwise (local Y) axis from in-plane to rotor-axis-aligned. */
-export type WindBladeAnim = {
+type WindBladeAnim = {
   openQuat: THREE.Quaternion;
   closedQuat: THREE.Quaternion;
 };

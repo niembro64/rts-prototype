@@ -21,7 +21,7 @@ import {
   warnNonFiniteVisualEvent,
 } from './RtsScene3DVisualEventSanitizer';
 
-export type RtsScene3DVisualEventDispatchContext = {
+type RtsScene3DVisualEventDispatchContext = {
   clientViewState: ClientViewState;
   entityRenderer: Render3DEntities;
   explosionRenderer: Explosion3D;

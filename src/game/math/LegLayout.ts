@@ -1,7 +1,7 @@
 import type { LegConfig } from '@/types/blueprints';
 import type { ArachnidLegConfig } from '@/types/render';
 
-export type ResolvedLegLayout = {
+type ResolvedLegLayout = {
   left: ArachnidLegConfig[];
   right: ArachnidLegConfig[];
   all: ArachnidLegConfig[];

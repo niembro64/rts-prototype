@@ -1,6 +1,6 @@
 import { getSimWasm } from '../../sim-wasm/init';
 
-export type TerrainCellTriangleIndexInput = {
+type TerrainCellTriangleIndexInput = {
   cellsX: number;
   cellsY: number;
   cellSize: number;
@@ -8,7 +8,7 @@ export type TerrainCellTriangleIndexInput = {
   triangleIndices: readonly number[];
 };
 
-export type TerrainCellTriangleIndex = {
+type TerrainCellTriangleIndex = {
   cellTriangleOffsets: number[];
   cellTriangleIndices: number[];
 };

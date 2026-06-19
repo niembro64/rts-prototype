@@ -13,13 +13,13 @@
 
 import { getSimWasm } from '../sim-wasm/init';
 
-export type HomingThrustResult = {
+type HomingThrustResult = {
   thrustX: number;
   thrustY: number;
   thrustZ: number;
 };
 
-export type ConstantSpeedHomingVelocityResult = {
+type ConstantSpeedHomingVelocityResult = {
   velocityX: number;
   velocityY: number;
   velocityZ: number;

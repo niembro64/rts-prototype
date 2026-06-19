@@ -89,9 +89,7 @@ const ENTITY_MAJOR_KEYS = [
   'building',
 ] as const satisfies readonly (keyof NetworkServerSnapshotEntity)[];
 
-export type { NetworkServerSnapshotWire } from './snapshotWireTypes';
-
-export type EncodedNetworkSnapshot = Omit<SnapshotWirePayload, 'encodeMs'>;
+type EncodedNetworkSnapshot = Omit<SnapshotWirePayload, 'encodeMs'>;
 
 export type SnapshotWireBreakdownEntry = {
   section: string;
@@ -108,7 +106,6 @@ export type SnapshotWireBreakdown = {
   entityTop: SnapshotWireBreakdownEntry[];
   projectileTop: SnapshotWireBreakdownEntry[];
 };
-
 
 export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): EncodedNetworkSnapshot {
   if (ENABLE_RUST_SNAPSHOT_WIRE) {

@@ -30,8 +30,8 @@ import {
   createTurretDto,
 } from './snapshotDtoCopy';
 
-export type NetworkUnitSnapshot = NonNullable<NetworkServerSnapshotEntity['unit']>;
-export type NetworkUnitRadius = NonNullable<NetworkUnitSnapshot['radius']>;
+type NetworkUnitSnapshot = NonNullable<NetworkServerSnapshotEntity['unit']>;
+type NetworkUnitRadius = NonNullable<NetworkUnitSnapshot['radius']>;
 
 type Vec3 = { x: number; y: number; z: number };
 type Quantize = (n: number) => number;

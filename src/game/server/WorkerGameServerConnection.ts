@@ -25,7 +25,7 @@ type PendingRequest = {
   reject: (error: Error) => void;
 };
 
-export type WorkerGameServerConnectionCreateOptions = {
+type WorkerGameServerConnectionCreateOptions = {
   readonly config: GameServerConfig;
   readonly localPlayerId: PlayerId | undefined;
   readonly commandAuthorityMode?: LocalCommandAuthorityMode;

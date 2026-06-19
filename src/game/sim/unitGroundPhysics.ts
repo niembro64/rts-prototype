@@ -5,7 +5,6 @@ import {
 import type { Unit } from './types';
 import { dampFromFrictionPer60HzFrame } from './motionFriction';
 
-export type GroundNormal = { nx: number; ny: number; nz: number };
 export { UNIT_GROUND_CONTACT_EPSILON };
 
 let cachedGroundDampDtSec = -1;
@@ -26,7 +25,6 @@ export function getUnitGroundPenetration(
 export function isUnitGroundPenetrationInContact(penetration: number): boolean {
   return penetration >= -UNIT_GROUND_CONTACT_EPSILON;
 }
-
 
 export function getUnitGroundFrictionDamp(dtSec: number): number {
   if (dtSec === cachedGroundDampDtSec) return cachedGroundDamp;

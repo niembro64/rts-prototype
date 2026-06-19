@@ -74,7 +74,7 @@ type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building'
 type ReusableFactory = NonNullable<ReusableEntityBuilding['factory']>;
 type ReusableBuildState = NonNullable<ReusableEntityBuilding['build']>;
 
-export type ReusableNetworkSnapshotClonerRetainedCounts = {
+type ReusableNetworkSnapshotClonerRetainedCounts = {
   entities: number;
   minimapEntities: number;
   resourceMovements: number;

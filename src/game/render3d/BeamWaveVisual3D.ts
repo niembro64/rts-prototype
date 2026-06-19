@@ -53,7 +53,7 @@ export const BEAM_INNER_VISUAL_CONFIG: BeamVisualConfig = {
   waveHighAlpha: COLORS.effects.beam.inner.waveHighAlpha,
 };
 
-export type BeamWaveLayer = 'outer' | 'inner';
+type BeamWaveLayer = 'outer' | 'inner';
 
 function beamWaveLayerConfig(layer: BeamWaveLayer): BeamVisualConfig {
   return layer === 'outer' ? BEAM_OUTER_VISUAL_CONFIG : BEAM_INNER_VISUAL_CONFIG;
@@ -221,10 +221,6 @@ export function createBeamEmitterInstancedMaterial(layer: BeamWaveLayer): THREE.
   material.customProgramCacheKey = () => `beamEmitterWave:inst:${layer}`;
   return material;
 }
-
-
-
-
 
 /** Shared start-ball geometry: radius 0.5 so local y spans [-0.5, +0.5]
  *  (the wave-shader geometry contract) and a world-space uniform scale of

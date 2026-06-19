@@ -39,7 +39,7 @@ export type LoadingUnitInfoSection = {
   items: LoadingUnitInfoNode[];
 };
 
-export type LoadingUnitInfo = {
+type LoadingUnitInfo = {
   summary: LoadingUnitInfoNode[];
   leftSections: LoadingUnitInfoSection[];
   rightSections: LoadingUnitInfoSection[];

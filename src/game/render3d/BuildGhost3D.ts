@@ -47,7 +47,7 @@ type CellMaterialPair = {
   border: THREE.LineBasicMaterial;
 };
 
-export type BuildAbilitySquareCell = {
+type BuildAbilitySquareCell = {
   x: number;
   y: number;
   gx?: number;
@@ -56,7 +56,7 @@ export type BuildAbilitySquareCell = {
   depositId?: number | null;
 };
 
-export type BuildAbilitySquarePose = {
+type BuildAbilitySquarePose = {
   x: number;
   z: number;
   xMin: number;

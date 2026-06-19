@@ -18,7 +18,7 @@ import {
 export type { LoadingEntityBlueprintId, LoadingPreviewKind };
 export type { LoadingUnitPreviewControls };
 
-export type LoadingUnitPreviewSelection = {
+type LoadingUnitPreviewSelection = {
   kind: LoadingPreviewKind;
   id: LoadingEntityBlueprintId;
   name: string;
@@ -29,7 +29,7 @@ export type LoadingUnitPreviewRuntime = {
   destroy: () => void;
 };
 
-export type LoadingUnitPreviewOptions = {
+type LoadingUnitPreviewOptions = {
   fullBleed?: boolean;
   controls?: Partial<LoadingUnitPreviewControls>;
   onReady?: () => void;

@@ -6,8 +6,8 @@
 import rawColorsConfig from './colorsConfig.json';
 import type { ActionType, WaypointType } from './game/sim/types';
 
-export type RgbTuple = readonly [number, number, number];
-export type RgbaTuple = readonly [number, number, number, number];
+type RgbTuple = readonly [number, number, number];
+type RgbaTuple = readonly [number, number, number, number];
 
 type JsonObject = { readonly [key: string]: JsonValue };
 type JsonValue = string | number | boolean | null | readonly JsonValue[] | JsonObject;

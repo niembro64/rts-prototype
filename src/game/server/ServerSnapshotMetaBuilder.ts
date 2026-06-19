@@ -3,7 +3,7 @@ import type { SnapshotRate, TickRate } from '../../types/server';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
 import type { UnitGroundNormalEmaMode } from '../../shellConfig';
 
-export type ServerSnapshotMetaInput = {
+type ServerSnapshotMetaInput = {
   tickAvg: number;
   tickLow: number;
   tickRateHz: TickRate;

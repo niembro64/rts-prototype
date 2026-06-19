@@ -2238,7 +2238,7 @@ function packRemovedIdsIntoScratch(sim: SimWasm, ids: readonly number[]): void {
   for (let i = 0; i < ids.length; i++) view[i] = ids[i];
 }
 
-export type RustSnapshotEncodeResult = {
+type RustSnapshotEncodeResult = {
   bytes: Uint8Array;
   rustEntityCount: number;
   rawEntityCount: number;

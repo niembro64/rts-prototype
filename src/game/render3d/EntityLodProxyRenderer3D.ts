@@ -102,7 +102,7 @@ type EntityLodProxyRendererBackend3D = {
   destroy(): void;
 };
 
-export type EntityLodProxyRenderer3DOptions = {
+type EntityLodProxyRenderer3DOptions = {
   readonly world: THREE.Group;
   readonly camera?: THREE.PerspectiveCamera;
   readonly canvas?: HTMLCanvasElement;

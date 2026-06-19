@@ -5,7 +5,7 @@ import { getAllBuildings, getAllTowers } from '../buildConfigs';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
 
-export type UnitRosterDisplay = {
+type UnitRosterDisplay = {
   unitBlueprintId: string;
   label: string;
   shortName: string;
@@ -13,7 +13,7 @@ export type UnitRosterDisplay = {
   locomotion: string;
 };
 
-export type BuildingRosterDisplay = {
+type BuildingRosterDisplay = {
   buildingBlueprintId: BuildingBlueprintId;
   label: string;
   key: string;

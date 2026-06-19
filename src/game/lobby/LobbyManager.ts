@@ -42,7 +42,7 @@ export type BackgroundBattleState = {
   clientViewState: ClientViewState;
 };
 
-export type BackgroundBattleLoadProgress = (
+type BackgroundBattleLoadProgress = (
   progress: number,
   phase?: string,
 ) => void | Promise<void>;

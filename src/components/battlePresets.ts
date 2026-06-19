@@ -40,7 +40,7 @@ export type BattlePreset = {
   readonly barsCollapsed: boolean;
 };
 
-export type BattlePresetSnapshot = Omit<BattlePreset, 'name'>;
+type BattlePresetSnapshot = Omit<BattlePreset, 'name'>;
 
 // Stable identifiers for the two presets that supply DEMO BATTLE and
 // REAL BATTLE bar defaults. The bars never carry their own defaults;
@@ -277,8 +277,6 @@ export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
   }
   return found;
 }
-
-
 
 export function saveSelectedPresetName(name: string): void {
   persist(STORAGE_SELECTED_PRESET, name);

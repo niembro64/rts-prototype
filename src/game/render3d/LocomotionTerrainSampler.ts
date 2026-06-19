@@ -117,7 +117,7 @@ export function sampleLocomotionPartClamp(
   return result;
 }
 
-export type LocomotionGroundContactSample = {
+type LocomotionGroundContactSample = {
   grounded: boolean;
   groundY: number;
   penetration: number;

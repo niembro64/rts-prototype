@@ -16,7 +16,7 @@ import {
 
 export const RESOURCE_MOVEMENT_WIRE_STRIDE = 7;
 
-export type ResourceMovementWireSource = Float64WireRows;
+type ResourceMovementWireSource = Float64WireRows;
 
 const resourceMovementBuf: NetworkServerSnapshotResourceMovement[] = [];
 const resourceMovementPool: NetworkServerSnapshotResourceMovement[] = [];

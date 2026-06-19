@@ -101,7 +101,7 @@ const DEFAULT_ENTITY_EMISSION_FAR_LOD = (
   _emission: EntityLodEmission3D,
 ): boolean => false;
 
-export type RenderEntityUpdatePacket3D = {
+type RenderEntityUpdatePacket3D = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
   beamAimProjectiles?: readonly Entity[];

@@ -1,6 +1,6 @@
 import { getSimWasm } from '../sim-wasm/init';
 
-export type TerrainFollowVerticalThrustInput = {
+type TerrainFollowVerticalThrustInput = {
   positionZ: number;
   velocityZ: number;
   targetZ: number;

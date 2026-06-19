@@ -9,7 +9,7 @@ import { assertExplicitFields, isObject } from './jsonValidation';
 type AuthoredLockOnInclusionConfigSection = Record<string, unknown>;
 type NormalizedLockOnInclusionConfigSection = Record<string, LockOnInclusionObject>;
 type LockOnInclusionSectionName = 'units' | 'turrets' | 'towers';
-export type SecondaryLockOnProfile = {
+type SecondaryLockOnProfile = {
   mode: 'incomingThreatReflector';
   candidateRelationship: 'enemy_entities';
   candidateFamily: 'turrets';

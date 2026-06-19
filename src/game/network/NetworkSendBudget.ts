@@ -7,7 +7,7 @@ const COMMAND_REJECT_BYTES = 512 * 1024;
 const CONTROL_REJECT_BYTES = 1024 * 1024;
 const COMMANDS_PER_SECOND = 120;
 
-export type NetworkSendMessageClass =
+type NetworkSendMessageClass =
   | 'heartbeat'
   | 'playerInfo'
   | 'playerInfoUpdate'

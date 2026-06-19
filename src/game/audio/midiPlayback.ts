@@ -4,7 +4,7 @@ import { Midi } from '@tonejs/midi';
 import { AUDIO } from '../../audioConfig';
 import { LOOK_AHEAD } from './proceduralMusic';
 
-export type { MidiNote, MidiState, MidiEffectsChain } from '@/types/audio';
+export type {  MidiState, MidiEffectsChain } from '@/types/audio';
 import type { MidiNote, MidiState, MidiEffectsChain } from '@/types/audio';
 
 export function createMidiState(): MidiState {

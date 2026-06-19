@@ -25,11 +25,11 @@ export type ResourceMovement = {
   reason: ResourceMovementReason;
 };
 
-export type ResourceMovementSink = {
+type ResourceMovementSink = {
   resourceMovements: ResourceMovement[];
 };
 
-export type ResourceMovementRequest = {
+type ResourceMovementRequest = {
   playerId: PlayerId;
   sourceEntityId: EntityId | null;
   targetEntityId: EntityId | null;

@@ -110,7 +110,7 @@ export type TurretMesh = {
   };
 };
 
-export type TurretMesh3DDeps = {
+type TurretMesh3DDeps = {
   headGeom: THREE.SphereGeometry;
   barrelGeom: THREE.CylinderGeometry;
   /** Barrel geometry for authored single-cone barrels. */

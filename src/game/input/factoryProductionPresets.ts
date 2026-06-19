@@ -3,7 +3,7 @@ export const FACTORY_PRODUCTION_PRESETS_CHANGED_EVENT =
   'budget-annihilation:factory-production-presets-changed';
 export const FACTORY_PRODUCTION_PRESET_COUNT = 4;
 
-export type FactoryProductionPresetSlots = (string | null)[];
+type FactoryProductionPresetSlots = (string | null)[];
 
 function emptyFactoryProductionPresetSlots(): FactoryProductionPresetSlots {
   const slots = new Array<string | null>(FACTORY_PRODUCTION_PRESET_COUNT);

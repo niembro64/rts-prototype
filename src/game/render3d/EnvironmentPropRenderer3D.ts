@@ -32,7 +32,7 @@ type LoadedEnvironmentAsset = {
   unitHeight: number;
 };
 
-export type EnvironmentPropRenderer3DOptions = {
+type EnvironmentPropRenderer3DOptions = {
   mapWidth: number;
   mapHeight: number;
   playerCount: number;

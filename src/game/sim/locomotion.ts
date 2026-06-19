@@ -19,7 +19,7 @@ const LOCOMOTION_TRACTION = {
 
 export const LOCOMOTION_FORCE_SCALE = 150000;
 
-export type LocomotionType = keyof typeof LOCOMOTION_TRACTION;
+type LocomotionType = keyof typeof LOCOMOTION_TRACTION;
 
 type LocomotionTypeConfig = {
   physics: {
@@ -87,7 +87,6 @@ function getEffectiveLocomotionDriveForce(
   assertPositiveFinite(`${type}.physics.driveForce`, authoredDriveForce);
   return authoredDriveForce * getLocomotionDriveForceMultiplier(type);
 }
-
 
 function createRuntimePathfindingConfig(
   label: string,
@@ -191,7 +190,7 @@ export function cloneUnitLocomotion(
   };
 }
 
-export type LocomotionForceProfile = {
+type LocomotionForceProfile = {
   rawDriveForce: number;
   tractionDriveForce: number;
   rawForceMagnitude: number;

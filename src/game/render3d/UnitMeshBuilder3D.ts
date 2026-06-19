@@ -26,7 +26,7 @@ import { setVector3IfChanged } from './threeTransformWriteUtils';
 // normal rendering route.
 const USE_DETAILED_UNIT_INSTANCING = true;
 
-export type UnitMeshBuilder3DOptions = {
+type UnitMeshBuilder3DOptions = {
   world: THREE.Group;
   unitDetailInstances: UnitDetailInstanceRenderer3D;
   commanderVisualKit: CommanderVisualKit3D;
@@ -44,7 +44,7 @@ export type UnitMeshBuilder3DOptions = {
   getMapHeight: () => number;
 };
 
-export type UnitMeshBuildRequest = {
+type UnitMeshBuildRequest = {
   entity: Entity;
   radius: number;
   ownerId: PlayerId | undefined;

@@ -14,7 +14,7 @@ const RENDER_SCOPE_PLANES = [
   TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
 ] as const;
 
-export type RtsScene3DCameraFootprintResult = {
+type RtsScene3DCameraFootprintResult = {
   quad: FootprintQuad;
   bounds: FootprintBounds;
 };

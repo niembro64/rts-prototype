@@ -3,7 +3,7 @@ import * as THREE from 'three';
 const FLOATS_PER_SEGMENT = 6;
 const VERTICES_PER_SEGMENT = 2;
 
-export type LinePoint3D = {
+type LinePoint3D = {
   x: number;
   y: number;
   z: number;

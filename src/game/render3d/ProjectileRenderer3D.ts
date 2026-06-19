@@ -131,7 +131,7 @@ type DynamicCurvedConeGeometry = {
   normalAttr: THREE.BufferAttribute;
 };
 
-export type ProjectileRenderer3DOptions = {
+type ProjectileRenderer3DOptions = {
   world: THREE.Group;
   clientViewState: ClientViewState;
   scope: ViewportFootprint;

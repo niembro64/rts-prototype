@@ -7,7 +7,7 @@
 
 import type { ClientCommandSink } from '../ClientCommandSink';
 
-export type ModeCancel = {
+type ModeCancel = {
   /** Is this mode currently active? */
   isActive: () => boolean;
   /** Cancel it. Called at most once per Escape press. */

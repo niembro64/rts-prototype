@@ -44,7 +44,7 @@ type PreviewCanvas = HTMLCanvasElement | OffscreenCanvas;
 export type LoadingPreviewKind = 'unit' | 'tower' | 'building';
 export type LoadingEntityBlueprintId = UnitBlueprintId | StructureBlueprintId;
 
-export type LoadingUnitPreviewSceneOptions = {
+type LoadingUnitPreviewSceneOptions = {
   canvas: PreviewCanvas;
   kind: LoadingPreviewKind;
   blueprintId: LoadingEntityBlueprintId;

@@ -22,7 +22,7 @@ export type MetalDepositVisualCluster = {
   depositIds: number[];
 };
 
-export type MetalDepositSurfaceIndex = {
+type MetalDepositSurfaceIndex = {
   surfaceYByCell: Map<string, number>;
   surfaceYById: Map<number, number>;
 };

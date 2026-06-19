@@ -59,7 +59,7 @@ export type ShieldImpactVisualConfig = {
   surfaceOffset: number;
 };
 
-export type ShieldTurretShape =
+type ShieldTurretShape =
   | 'triangle'
   | 'line'
   | 'square'

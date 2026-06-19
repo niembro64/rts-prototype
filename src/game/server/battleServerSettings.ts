@@ -16,7 +16,7 @@ import type { GameServer } from './GameServer';
 import type { CommandAuthority } from './commandAuthority';
 import type { Command } from '../sim/commands';
 
-export type StoredBattleServerSettingsOptions = {
+type StoredBattleServerSettingsOptions = {
   ipAddress: string | undefined;
   maxTotalUnits: number | undefined;
   /** When set, overrides the stored fog-of-war value. Lobby preview

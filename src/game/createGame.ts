@@ -7,7 +7,7 @@ import {
   transferRendererSlot,
 } from './lifecycle/sessionSingleton';
 
-export type { GameConfig, GameInstance, GameScene, GameApp } from '@/types/game';
+export type {  GameInstance, GameScene,  } from '@/types/game';
 import type { GameConfig, GameInstance, GameScene } from '@/types/game';
 
 const clearSceneByInstance = new WeakMap<GameInstance, () => void>();

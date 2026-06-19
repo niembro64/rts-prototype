@@ -33,7 +33,7 @@ import {
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { TerrainMapShape } from '../types/terrain';
 
-export type GameCanvasLobbySettings = {
+type GameCanvasLobbySettings = {
   currentLobbySettings(): LobbySettings;
   broadcastLobbySettingsIfHost(): void;
   applyCenterMagnitude(value: number, broadcast?: boolean): void;
@@ -53,7 +53,7 @@ export type GameCanvasLobbySettings = {
   resetTerrainDefaults(): void;
 };
 
-export type GameCanvasLobbySettingsOptions = {
+type GameCanvasLobbySettingsOptions = {
   network: NetworkManager;
   currentBattleMode: ComputedRef<BattleMode>;
   networkRole: Ref<NetworkRole | null>;

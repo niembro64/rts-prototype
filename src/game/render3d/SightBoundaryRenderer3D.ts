@@ -12,7 +12,7 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
 import { hexToRgb01 } from './colorUtils';
 
-export type SensorBoundaryMode = 'sight' | 'radar';
+type SensorBoundaryMode = 'sight' | 'radar';
 
 type SensorBoundaryRendererOptions = {
   mode?: SensorBoundaryMode;

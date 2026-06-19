@@ -1,7 +1,7 @@
 import { NO_ENTITY_ID, type Entity, type Turret } from './types';
 import { isConstructionPieceMaterialized } from './buildableHelpers';
 
-export type ShieldPanelTurretRef = {
+type ShieldPanelTurretRef = {
   turret: Turret;
   turretIndex: number;
 };

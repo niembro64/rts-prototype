@@ -45,7 +45,7 @@ const RADIUS_SPHERE_RENDER_ORDER = RANGE_CIRCLE_RENDER_ORDER + 2;
 const FLAT_SURFACE_NORMAL = { nx: 0, ny: 0, nz: 1 };
 const SUPPORT_DIAGNOSTIC_LOG_INTERVAL_MS = 500;
 
-export type OverlayEntityMesh = Pick<
+type OverlayEntityMesh = Pick<
   EntityMesh,
   | 'group'
   | 'turrets'

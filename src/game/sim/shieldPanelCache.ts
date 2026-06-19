@@ -15,7 +15,6 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { CachedShieldPanel } from '../../types/sim';
 import type { UnitBlueprint } from '../../types/blueprints';
 
-
 /** Force-field panel size multiplier. Scales BOTH the sim collision
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
  *  Render3DEntities reads `shieldPanels[0].halfWidth` directly so a
@@ -39,7 +38,7 @@ export const SHIELD_PANEL_SIZE_MULT = 2.0;
  *  `Debris3D` (post-death debris) so the dead-mirror tumbling pieces
  *  always match the live silhouette. Past drift bug:
  *  Debris3D fell out of sync when ShieldPanelMesh3D's constants moved. */
-export type MirrorFrameGeometry = {
+type MirrorFrameGeometry = {
   side: number;
   supportDiameter: number;
   supportRadius: number;
@@ -90,8 +89,6 @@ export function getShieldPanelCenter(
   out.z = pivotZ + sinPitch * armLength;
   return out;
 }
-
-
 
 /** Mutates `panelsOut` (push), returns the bound radius the caller
  *  should assign to `unit.shieldBoundRadius`. Returns 0 when the

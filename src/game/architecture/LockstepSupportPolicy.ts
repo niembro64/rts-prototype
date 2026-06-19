@@ -26,7 +26,7 @@ export const LOCKSTEP_SUPPORT_BOUNDARIES: LockstepSupportBoundaries = {
   automaticResync: false,
 };
 
-export type LockstepSupportCheckOptions = {
+type LockstepSupportCheckOptions = {
   readonly playerIds: readonly PlayerId[];
   readonly aiPlayerIds: readonly PlayerId[] | undefined;
   readonly localPlayerId: PlayerId;

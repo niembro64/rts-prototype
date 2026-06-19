@@ -11,14 +11,14 @@ import {
 } from '../serverBarConfig';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
-export type GameCanvasServerSettings = {
+type GameCanvasServerSettings = {
   resetServerDefaults(): void;
   setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
   toggleSendGridInfo(): void;
   resetGridInfoToDefault(): void;
 };
 
-export type GameCanvasServerSettingsOptions = {
+type GameCanvasServerSettingsOptions = {
   currentBattleMode: ComputedRef<BattleMode>;
   displayGridInfo: ComputedRef<boolean>;
   serverUnitGroundNormalEmaMode: Ref<UnitGroundNormalEmaMode>;

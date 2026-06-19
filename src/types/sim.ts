@@ -49,13 +49,10 @@ export type {
   UnitAction,
   UnitPathPlan,
   UnitPathPoint,
-  Waypoint,
   WaypointType,
 } from './commandTypes';
 export type {
-  FireEnvelope,
   HysteresisRange,
-  HysteresisRangeMultiplier,
   TurretRangeOverrides,
   TurretRanges,
 } from './combatTypes';
@@ -79,8 +76,7 @@ export type {
   ShieldConfig,
   EmissionConfig,
   LaserRay,
-  RayConfig,
-  RayType,
+  
   ProjectileShot,
   ProjectileType,
   ShotConfig,
@@ -89,7 +85,6 @@ export type {
   ShotVisualProfile,
 } from './shotTypes';
 export {
-  
   getEmissionBlueprintId,
   getShotMaxLifespan,
   isRayConfig,
@@ -97,7 +92,6 @@ export {
   isShieldConfig,
   isProjectileShot,
   isRocketLikeShot,
-  
 } from './shotTypes';
 
 // Transform component - position and rotation in world space.
@@ -132,17 +126,17 @@ export function createTransform(
 }
 
 // Body component - reference to the 3D physics body.
-export type Body = {
+type Body = {
   physicsBody: import('../game/server/PhysicsEngine3D').Body3D;
 };
 
 // Selectable tag component
-export type Selectable = {
+type Selectable = {
   selected: boolean;
 };
 
 // Ownership component - which player owns this entity
-export type Ownership = {
+type Ownership = {
   playerId: PlayerId;
 };
 
@@ -157,7 +151,7 @@ export type EntityRadii = {
 export type UnitMoveState = 'maneuver' | 'holdPosition' | 'roam';
 export type CombatTrajectoryMode = 'auto' | 'low' | 'high';
 export type CombatFireState = 'fireAtWill' | 'returnFire' | 'holdFire';
-export type UnitLauncherAimMode = 'ballistic-or-waypoint' | 'direct-target';
+type UnitLauncherAimMode = 'ballistic-or-waypoint' | 'direct-target';
 
 export type UnitLauncherConfig = {
   aimMode: UnitLauncherAimMode;
@@ -404,7 +398,7 @@ export type BuildingActiveState = {
   reopenDelayMs: number;
 };
 
-export type Building = {
+type Building = {
   width: number;
   height: number;
   depth: number;
@@ -766,7 +760,7 @@ export type Projectile = {
   pendingReflectionZ: number | null;
 };
 
-export type ProjectileAbsenceSlots = Pick<Projectile,
+type ProjectileAbsenceSlots = Pick<Projectile,
   | 'prevX'
   | 'prevY'
   | 'prevZ'
@@ -905,7 +899,7 @@ export type Builder = {
   currentBuildTarget: EntityId;
 };
 
-export type WreckSource =
+type WreckSource =
   | {
       kind: 'unit';
       unitBlueprintId: string;
@@ -918,7 +912,7 @@ export type WreckSource =
       depth: number;
     };
 
-export type Wreck = {
+type Wreck = {
   source: WreckSource;
   originalOwnerId: PlayerId | null;
   resurrectProgressMs: number;
@@ -930,7 +924,7 @@ export type Transport = {
   loadedUnits: Entity[];
 };
 
-export type Transported = {
+type Transported = {
   transportId: EntityId;
   slotIndex: number;
 };
@@ -1013,7 +1007,7 @@ export type UnitBuildConfig = {
 // single progress fraction without looking up the shell entity. On the
 // server it is refreshed when resources flow into the shell; on the
 // client it is populated from the wire's f.progress field.
-export type Factory = {
+type Factory = {
   selectedUnitBlueprintId: string | null;
   repeatProduction: boolean;
   productionQueue: string[];
@@ -1050,13 +1044,13 @@ export type FactoryDefaultWaypoint = {
 };
 
 // Commander component
-export type Commander = {
+type Commander = {
   isDGunActive: boolean;
   dgunEnergyCost: number;
 };
 
 // D-gun projectile marker
-export type DGunProjectile = {
+type DGunProjectile = {
   isDGun: boolean;
   groundOffset: number;
 };

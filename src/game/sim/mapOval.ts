@@ -11,7 +11,7 @@ export type MapOvalMetrics = {
   readonly height: number;
 };
 
-export type MapOvalPoint = {
+type MapOvalPoint = {
   readonly x: number;
   readonly y: number;
 };

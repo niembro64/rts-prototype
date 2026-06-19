@@ -1,5 +1,4 @@
 import type {
-  NetworkServerSnapshot,
   NetworkServerSnapshotSimEvent,
 } from './NetworkTypes';
 import {
@@ -88,10 +87,6 @@ export type PackedAudioEventsWire = {
   t: number[][] | undefined;
 };
 
-export type NetworkServerSnapshotWire = Omit<NetworkServerSnapshot, 'audioEvents'> & {
-  audioEvents: NetworkServerSnapshot['audioEvents'] | PackedAudioEventsWire;
-};
-
 const _packStrings: string[] = [];
 const _packStringSlots = new Map<string, number>();
 const _packEventRows: number[][] = [];
@@ -128,8 +123,6 @@ function rentRow(pool: number[][]): number[] {
   }
   return [];
 }
-
-
 
 export function packAudioEventsForWire(
   events: readonly NetworkServerSnapshotSimEvent[] | undefined,

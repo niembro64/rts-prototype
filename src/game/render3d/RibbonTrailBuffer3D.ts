@@ -1,5 +1,5 @@
 /** Ground height sampler in render space: world (x, z) → surface Y. */
-export type GroundYSampler = (x: number, z: number) => number;
+type GroundYSampler = (x: number, z: number) => number;
 
 export type RibbonQuadCorners = {
   sLx: number;

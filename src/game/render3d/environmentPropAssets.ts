@@ -16,7 +16,7 @@ export type EnvironmentAssetSpec = {
   palette: EnvironmentPalette;
 };
 
-export type RandomEnvironmentAssetConfig = Readonly<{
+type RandomEnvironmentAssetConfig = Readonly<{
   id: string;
   use: boolean;
   scale: number;

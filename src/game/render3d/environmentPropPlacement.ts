@@ -26,7 +26,7 @@ export type EnvironmentPlacement = {
   radius: number;
 };
 
-export type EnvironmentPlacementGenerationOptions = {
+type EnvironmentPlacementGenerationOptions = {
   mapWidth: number;
   mapHeight: number;
   playerCount: number;

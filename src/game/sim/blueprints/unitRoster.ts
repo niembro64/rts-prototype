@@ -6,7 +6,7 @@
 import { isUnitBlueprintId, type UnitBlueprintId } from '../../../types/blueprintIds';
 import unitRoster from './unitRoster.json';
 
-export type BuildableUnitBlueprintId = Exclude<UnitBlueprintId, 'unitCommander'>;
+type BuildableUnitBlueprintId = Exclude<UnitBlueprintId, 'unitCommander'>;
 
 function readBuildableUnitBlueprintIds(): BuildableUnitBlueprintId[] {
   const unitBlueprintIds = new Array<BuildableUnitBlueprintId>(unitRoster.buildableUnitIds.length);

@@ -30,7 +30,7 @@ const sprayWireSources = new WeakMap<object, SprayTargetWireSource>();
 
 export const SPRAY_TARGET_WIRE_STRIDE = 17;
 
-export type SprayTargetWireSource = Float64WireRows;
+type SprayTargetWireSource = Float64WireRows;
 
 export function resetSprayPoolForKey(key: string | number | undefined): void {
   deleteSnapshotPoolForKey(sprayPools, key);

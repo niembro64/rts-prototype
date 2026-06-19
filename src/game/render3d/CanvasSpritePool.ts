@@ -13,7 +13,7 @@ export type CanvasSpriteSlot<TState> = CanvasSpriteBaseSlot & {
   state: TState;
 };
 
-export type CanvasSpritePoolOptions<TState, TPaintArgs extends unknown[]> = {
+type CanvasSpritePoolOptions<TState, TPaintArgs extends unknown[]> = {
   parent: THREE.Object3D;
   canvasWidth: number;
   canvasHeight: number;
