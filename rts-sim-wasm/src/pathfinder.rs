@@ -423,15 +423,29 @@ pub fn pathfinder_rebuild_mask_and_cc(
     }
 
     // Clearance distance field: Chebyshev cell-distance from each open cell to
-    // the nearest blocked cell (0 for blocked). Built once per mask via a
-    // two-pass transform and consumed by pathfinder_is_cell_passable so a unit
-    // of collision radius r is kept out of gaps narrower than its body. Map
-    // edges are already blocked in the terrain mask, so border cells get small
-    // clearance and wide units route away from the map boundary too.
+    // the nearest OBSTACLE cell (0 for obstacle cells). Built once per mask via
+    // a two-pass transform and consumed by pathfinder_is_cell_passable so a unit
+    // is kept its full footprint-plus-arrival standoff away from anything its
+    // body cannot occupy. Obstacles are water + map edges (already in `blocked`)
+    // AND every building footprint cell — buildings are walkable elevated
+    // terrain rather than `blocked` cells (only the slope gate keeps ground
+    // units off the roof), but a ground unit routing past one must still hold
+    // its body clear of the vertical sides, so the footprints seed the field
+    // too. Without this, clearance only buffered water and units hugged walls.
     {
         let n = state.n;
         for idx in 0..n {
             state.clearance[idx] = if state.blocked[idx] == 1 { 0 } else { u16::MAX };
+        }
+        // Seed building footprints as clearance obstacles (see comment above).
+        let mut bi = 0usize;
+        while bi + 2 < building_cells.len() {
+            let bgx = building_cells[bi].floor() as i32;
+            let bgy = building_cells[bi + 1].floor() as i32;
+            bi += 3;
+            if bgx >= 0 && bgy >= 0 && bgx < grid_w && bgy < grid_h {
+                state.clearance[(bgy * grid_w + bgx) as usize] = 0;
+            }
         }
         // Forward pass: top-left → bottom-right (W, N, NW, NE already settled).
         for gy in 0..grid_h {
@@ -1288,12 +1302,16 @@ pub fn pathfinder_find_path(
         min_normal_z,
         ignore_terrain_blocking,
     );
-    if required_clearance > 1 && (a_star_result.is_none() || state.path_scratch.is_empty()) {
-        // Boxed in by its own footprint, or the only route is a gap narrower
-        // than the unit fits — fall back to point pathing so it still moves;
-        // local physics resolves the minor wall contact. Never worse than the
-        // pre-clearance behaviour.
-        state.cur_required_clearance = 0;
+    // If the full standoff can't reach the goal (a unit hemmed in by structures,
+    // or the only route is a gap narrower than its body), relax the clearance
+    // stepwise instead of collapsing straight to point-pathing, so the unit
+    // keeps the LARGEST standoff it can actually achieve rather than hugging
+    // every wall. Halving bounds this to ~log2(required) extra searches and only
+    // runs when the previous attempt found no usable path.
+    let mut relaxed = required_clearance;
+    while relaxed > 0 && (a_star_result.is_none() || state.path_scratch.is_empty()) {
+        relaxed = if relaxed > 1 { relaxed / 2 } else { 0 };
+        state.cur_required_clearance = relaxed;
         a_star_result = pathfinder_a_star(
             state,
             start_cell_gx,
