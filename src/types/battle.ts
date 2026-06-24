@@ -2,6 +2,7 @@ import type { BooleanSetting, LabeledOptionsConfig, OptionsConfig } from './bars
 import type { TerrainMapShape } from './terrain';
 import type { MapDimensionAxisOption } from '../mapSizeConfig';
 import type { ShieldReflectionMode } from './shotTypes';
+import type { SlopePathMode } from './slopePathMode';
 
 export type UnitToggleConfig = {
   readonly default: boolean;
@@ -24,6 +25,9 @@ export type BattleBarConfig = {
     readonly default: ShieldReflectionMode;
   };
   readonly fogOfWarEnabled: BooleanSetting;
+  readonly slopePathMode: {
+    readonly default: SlopePathMode;
+  };
   /** Signed altitude amplitude of the central ripple zone (CENTER
    *  button group). Negative values dish the centre below ground
    *  (valley), positive raise it (mountain), zero suppresses the

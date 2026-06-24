@@ -50,6 +50,8 @@
     "realFogOfWarEnabled": "real-battle-fog-of-war-enabled",
     "demoShieldReflectionMode": "demo-battle-shield-reflection-mode",
     "realShieldReflectionMode": "real-battle-shield-reflection-mode",
+    "demoSlopePathMode": "demo-battle-slope-path-mode",
+    "realSlopePathMode": "real-battle-slope-path-mode",
     "demoCenterMagnitude": "demo-battle-center-magnitude",
     "realCenterMagnitude": "real-battle-center-magnitude",
     "demoDividersMagnitude": "demo-battle-dividers-magnitude",

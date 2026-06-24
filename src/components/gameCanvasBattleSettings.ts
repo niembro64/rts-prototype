@@ -16,9 +16,12 @@ import {
   saveForceFieldsVisible,
   saveShieldsObstructSight,
   saveFogOfWarEnabled,
+  loadStoredSlopePathMode,
+  saveSlopePathMode,
   saveStoredCap,
   type BattleMode,
 } from '../battleBarConfig';
+import type { SlopePathMode } from '../types/slopePathMode';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import type { GameConnection } from '../game/server/GameConnection';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
@@ -45,6 +48,7 @@ type GameCanvasBattleSettings = {
   currentForceFieldsVisible: ComputedRef<boolean>;
   currentShieldsObstructSight: ComputedRef<boolean>;
   currentFogOfWarEnabled: ComputedRef<boolean>;
+  currentSlopePathMode: ComputedRef<SlopePathMode>;
   currentConverterTax: ComputedRef<number>;
   toggleDemoUnitBlueprintId(unitBlueprintId: string): void;
   toggleAllDemoUnits(): void;
@@ -56,6 +60,7 @@ type GameCanvasBattleSettings = {
   setForceFieldsVisible(enabled: boolean): void;
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
+  setSlopePathMode(mode: SlopePathMode): void;
   setConverterTax(tax: number): void;
   resetDemoDefaults(): void;
   applyPreset(preset: BattlePreset): void;
@@ -233,6 +238,14 @@ export function useGameCanvasBattleSettings({
       serverMetaFromSnapshot.value?.fogOfWarEnabled ??
       loadStoredFogOfWarEnabled(currentBattleMode.value),
   );
+  // Slope mode is not mirrored on the snapshot meta (it would only matter for a
+  // second player, and the toggle is demo-only), so the bar reflects the stored
+  // value. The version ref re-reads it after each local toggle.
+  const slopePathModeStoreVersion = ref(0);
+  const currentSlopePathMode = computed<SlopePathMode>(() => {
+    void slopePathModeStoreVersion.value;
+    return loadStoredSlopePathMode(currentBattleMode.value);
+  });
   const currentConverterTax = computed(
     () =>
       serverMetaFromSnapshot.value?.converterTax ??
@@ -319,6 +332,15 @@ export function useGameCanvasBattleSettings({
     saveFogOfWarEnabled(enabled, currentBattleMode.value);
   }
 
+  function setSlopePathMode(mode: SlopePathMode): void {
+    // SLOPE PATH gates the DEMO battle only. The real lockstep game keeps the
+    // default policy so every peer agrees without a per-peer stored value.
+    if (currentBattleMode.value !== 'demo') return;
+    getActiveConnection()?.sendCommand({ type: 'setSlopePathMode', tick: 0, mode });
+    saveSlopePathMode(mode, currentBattleMode.value);
+    slopePathModeStoreVersion.value++;
+  }
+
   function setConverterTax(tax: number, broadcast = true): void {
     const normalized = normalizeConverterTax(tax);
     const mode = currentBattleMode.value;
@@ -353,6 +375,7 @@ export function useGameCanvasBattleSettings({
     setForceFieldsVisible(preset.forceFieldsVisible, false);
     setShieldsObstructSight(preset.shieldsObstructSight);
     setFogOfWarEnabled(preset.fogOfWarEnabled);
+    setSlopePathMode(preset.slopePathMode);
     setConverterTax(preset.converterTax, false);
     applyCenterMagnitude(preset.centerMagnitude, false);
     applyDividersMagnitude(preset.dividersMagnitude, false);
@@ -389,6 +412,7 @@ export function useGameCanvasBattleSettings({
     currentForceFieldsVisible,
     currentShieldsObstructSight,
     currentFogOfWarEnabled,
+    currentSlopePathMode,
     currentConverterTax,
     toggleDemoUnitBlueprintId,
     toggleAllDemoUnits,
@@ -400,6 +424,7 @@ export function useGameCanvasBattleSettings({
     setForceFieldsVisible,
     setShieldsObstructSight,
     setFogOfWarEnabled,
+    setSlopePathMode,
     setConverterTax,
     resetDemoDefaults,
     applyPreset,

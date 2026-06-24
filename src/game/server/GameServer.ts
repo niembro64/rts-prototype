@@ -46,6 +46,10 @@ import {
   type ShieldReflectionMode,
 } from '../../types/shotTypes';
 import {
+  isSlopePathMode,
+  type SlopePathMode,
+} from '../../types/slopePathMode';
+import {
   type CommandAuthority,
 } from './commandAuthority';
 import { sanitizeCommand } from './commandSanitizer';
@@ -553,6 +557,11 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setFogOfWarEnabled(sanitizedCommand.enabled);
         return;
+      case 'setSlopePathMode':
+        if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
+        this.setSlopePathMode(sanitizedCommand.mode);
+        return;
       case 'setConverterTax':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
@@ -642,6 +651,15 @@ export class GameServer {
   private setFogOfWarEnabled(enabled: boolean): void {
     if (this.world.fogOfWarEnabled === enabled) return;
     this.world.fogOfWarEnabled = enabled;
+  }
+
+  private setSlopePathMode(mode: SlopePathMode): void {
+    if (!isSlopePathMode(mode)) return;
+    if (this.world.slopePathMode === mode) return;
+    this.world.slopePathMode = mode;
+    // A live policy change reroutes everyone: drop cached plans so the next
+    // movement step re-plans under the new slope rule.
+    this.world.invalidateAllActivePaths();
   }
 
   private setConverterTax(tax: number): void {

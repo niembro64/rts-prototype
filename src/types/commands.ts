@@ -2,6 +2,7 @@
 
 import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitMoveState, CombatTrajectoryMode, CombatFireState } from './sim';
 import type { ShieldReflectionMode } from './shotTypes';
+import type { SlopePathMode } from './slopePathMode';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 
 type CommandType =
@@ -59,6 +60,7 @@ type CommandType =
   | 'setShieldsObstructSight'
   | 'setShieldReflectionMode'
   | 'setFogOfWarEnabled'
+  | 'setSlopePathMode'
   | 'setConverterTax';
 
 export type BaseCommand = {
@@ -503,6 +505,11 @@ export type SetFogOfWarEnabledCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetSlopePathModeCommand = BaseCommand & {
+  type: 'setSlopePathMode';
+  mode: SlopePathMode;
+};
+
 export type SetConverterTaxCommand = BaseCommand & {
   type: 'setConverterTax';
   tax: number;
@@ -563,4 +570,5 @@ export type Command =
   | SetShieldsObstructSightCommand
   | SetShieldReflectionModeCommand
   | SetFogOfWarEnabledCommand
+  | SetSlopePathModeCommand
   | SetConverterTaxCommand;

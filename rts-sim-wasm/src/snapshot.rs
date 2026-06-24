@@ -8126,7 +8126,7 @@ mod sim_kernel_tests {
         // not a blocker that should force an origin-side escape point.
         let building_cells = [10.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_001, 20_001, 30_001);
-        let count = pathfinder_find_path(210.0, 210.0, 320.0, 210.0, 0.0, false);
+        let count = pathfinder_find_path(210.0, 210.0, 320.0, 210.0, 0.0, false, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =
@@ -8146,7 +8146,7 @@ mod sim_kernel_tests {
         // there can always move/fall down from it.
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_002, 20_002, 30_002);
-        let count = pathfinder_find_path(30.0, 210.0, 80.0, 210.0, 0.0, false);
+        let count = pathfinder_find_path(30.0, 210.0, 80.0, 210.0, 0.0, false, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =
@@ -8163,7 +8163,7 @@ mod sim_kernel_tests {
 
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_003, 20_003, 30_003);
-        let count = pathfinder_find_path(80.0, 210.0, 30.0, 210.0, 0.0, false);
+        let count = pathfinder_find_path(80.0, 210.0, 30.0, 210.0, 0.0, false, 0.0, false);
         assert!(count >= 1);
 
         let waypoints =
@@ -8293,7 +8293,7 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_004, 20_004, 30_004);
 
-        let count = pathfinder_find_path(90.0, 50.0, 110.0, 50.0, 0.0, false);
+        let count = pathfinder_find_path(90.0, 50.0, 110.0, 50.0, 0.0, false, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =
@@ -8309,7 +8309,7 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_005, 20_005, 30_005);
 
-        let count = pathfinder_find_path(110.0, 50.0, 90.0, 50.0, 0.0, false);
+        let count = pathfinder_find_path(110.0, 50.0, 90.0, 50.0, 0.0, false, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =

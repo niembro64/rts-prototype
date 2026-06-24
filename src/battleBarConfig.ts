@@ -1,5 +1,6 @@
 import type { BattleBarConfig } from './types/battle';
 import type { ShieldReflectionMode } from './types/shotTypes';
+import { isSlopePathMode, type SlopePathMode } from './types/slopePathMode';
 import type { TerrainMapShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
@@ -124,6 +125,9 @@ export const BATTLE_CONFIG = {
   shieldReflectionMode: {
     default: _demoPreset.shieldReflectionMode,
   },
+  slopePathMode: {
+    default: _demoPreset.slopePathMode,
+  },
   // CENTER / DIVIDERS amplitudes — applied at game-construction time
   // via setTerrainCenterMagnitude / setTerrainDividersMagnitude
   // (Terrain.ts). Signed: negative dishes the feature below ground,
@@ -196,6 +200,8 @@ const STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT = sk.demoShieldsObstructSight;
 const STORAGE_REAL_SHIELDS_OBSTRUCT_SIGHT = sk.realShieldsObstructSight;
 const STORAGE_DEMO_FOG_OF_WAR_ENABLED = sk.demoFogOfWarEnabled;
 const STORAGE_REAL_FOG_OF_WAR_ENABLED = sk.realFogOfWarEnabled;
+const STORAGE_DEMO_SLOPE_PATH_MODE = sk.demoSlopePathMode;
+const STORAGE_REAL_SLOPE_PATH_MODE = sk.realSlopePathMode;
 const STORAGE_DEMO_CENTER_MAGNITUDE = sk.demoCenterMagnitude;
 const STORAGE_REAL_CENTER_MAGNITUDE = sk.realCenterMagnitude;
 const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
@@ -513,6 +519,20 @@ export function saveFogOfWarEnabled(enabled: boolean, mode: BattleMode): void {
 
 export function loadStoredShieldReflectionMode(_mode: BattleMode): ShieldReflectionMode {
   return BATTLE_CONFIG.shieldReflectionMode.default;
+}
+
+export function loadStoredSlopePathMode(mode: BattleMode): SlopePathMode {
+  const stored = readPersisted(
+    mode === 'real' ? STORAGE_REAL_SLOPE_PATH_MODE : STORAGE_DEMO_SLOPE_PATH_MODE,
+  );
+  return isSlopePathMode(stored) ? stored : getModeDefaultPreset(mode).slopePathMode;
+}
+
+export function saveSlopePathMode(value: SlopePathMode, mode: BattleMode): void {
+  persist(
+    mode === 'real' ? STORAGE_REAL_SLOPE_PATH_MODE : STORAGE_DEMO_SLOPE_PATH_MODE,
+    value,
+  );
 }
 
 

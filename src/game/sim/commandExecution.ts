@@ -302,6 +302,13 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setFogOfWarEnabled':
       ctx.world.fogOfWarEnabled = command.enabled;
       break;
+    case 'setSlopePathMode':
+      if (ctx.world.slopePathMode !== command.mode) {
+        ctx.world.slopePathMode = command.mode;
+        // Reroute in-flight units under the new slope rule.
+        ctx.world.invalidateAllActivePaths();
+      }
+      break;
     case 'setConverterTax':
       ctx.world.converterTax = command.tax;
       break;
@@ -522,6 +529,8 @@ export function resolvePathableFormationTarget(
     buildingGrid,
     world.getGroundZ(x, y),
     pathTerrainFilterForLocomotion(unitComponent.locomotion, unitComponent.mass),
+    unitComponent.radius.collision,
+    world.slopePathMode === 'symmetric',
   );
   const final = points[points.length - 1];
   return final !== undefined

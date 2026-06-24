@@ -4,6 +4,7 @@ import type { BattleMode } from '../battleBarConfig';
 import { persist } from '../persistence';
 import type { TerrainMapShape } from '../types/terrain';
 import type { ShieldReflectionMode } from '../types/shotTypes';
+import type { SlopePathMode } from '../types/slopePathMode';
 
 export type BattlePreset = {
   readonly name: string;
@@ -22,6 +23,8 @@ export type BattlePreset = {
   readonly shieldsObstructSight: boolean;
   readonly shieldReflectionMode: ShieldReflectionMode;
   readonly fogOfWarEnabled: boolean;
+  /** Ground pathfinding slope policy (SLOPE PATH bar toggle). */
+  readonly slopePathMode: SlopePathMode;
   readonly converterTax: number;
   readonly centerMagnitude: number;
   readonly dividersMagnitude: number;
@@ -86,6 +89,7 @@ const SUBSYSTEM_DEFAULTS = {
   turretShieldSpheresEnabled: true,
   forceFieldsVisible: true,
   shieldReflectionMode: 'both' as ShieldReflectionMode,
+  slopePathMode: 'directional' as SlopePathMode,
 };
 
 // Every preset enables all buildings and towers — there is no preset

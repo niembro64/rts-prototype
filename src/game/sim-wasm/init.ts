@@ -3435,6 +3435,13 @@ export interface PathfinderApi {
     goalX: number, goalY: number,
     minNormalZ: number,
     ignoreTerrainBlocking: boolean,
+    /** Unit collision radius in world units. Blockers are kept this far from
+     *  the route (clearance field) so a body is not squeezed through gaps it
+     *  cannot fit. 0 = point-size (no clearance gate). */
+    unitRadius: number,
+    /** When true (SYMMETRIC mode), the slope climb-gate applies to downhill
+     *  edges too; when false (DIRECTIONAL), descent is always allowed. */
+    symmetricSlope: boolean,
   ) => number;
   /** Raw pointer to the waypoint scratch buffer. Build a fresh
    *  Float64Array(memory.buffer, ptr, count * 2) view per call. */

@@ -1126,6 +1126,7 @@ const {
   currentForceFieldsVisible,
   currentShieldsObstructSight,
   currentFogOfWarEnabled,
+  currentSlopePathMode,
   currentConverterTax,
   toggleDemoUnitBlueprintId,
   toggleAllDemoUnits,
@@ -1137,6 +1138,7 @@ const {
   setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
+  setSlopePathMode,
   setConverterTax,
   resetDemoDefaults,
   applyPreset,
@@ -1300,6 +1302,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   currentForceFieldsVisible: currentForceFieldsVisible.value,
   currentShieldsObstructSight: currentShieldsObstructSight.value,
   currentFogOfWarEnabled: currentFogOfWarEnabled.value,
+  currentSlopePathMode: currentSlopePathMode.value,
   currentConverterTax: currentConverterTax.value,
   serverUnitGroundNormalEmaMode: serverUnitGroundNormalEmaMode.value,
   presets: BATTLE_PRESETS,
@@ -1323,6 +1326,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
+  setSlopePathMode,
   setConverterTax,
   setUnitGroundNormalEmaModeValue,
 });
@@ -1355,6 +1359,7 @@ watchEffect(() => {
   m.currentForceFieldsVisible = currentForceFieldsVisible.value;
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;
   m.currentFogOfWarEnabled = currentFogOfWarEnabled.value;
+  m.currentSlopePathMode = currentSlopePathMode.value;
   m.currentConverterTax = currentConverterTax.value;
   m.serverUnitGroundNormalEmaMode = serverUnitGroundNormalEmaMode.value;
   m.activePresetName = findMatchingPresetName({
@@ -1368,6 +1373,7 @@ watchEffect(() => {
     shieldsObstructSight: currentShieldsObstructSight.value,
     shieldReflectionMode: BATTLE_CONFIG.shieldReflectionMode.default,
     fogOfWarEnabled: currentFogOfWarEnabled.value,
+    slopePathMode: BATTLE_CONFIG.slopePathMode.default,
     converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
     dividersMagnitude: dividersMagnitude.value,

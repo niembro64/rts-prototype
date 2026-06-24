@@ -48,6 +48,12 @@ pub(crate) struct PathfinderState {
     terrain_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
     cc_labels: Vec<i16>,
+    /// Chebyshev cell-distance from each open cell to the nearest blocked
+    /// cell (0 for blocked cells). Rebuilt with the mask and consumed as a
+    /// per-unit collision-clearance gate, so a body of collision radius r is
+    /// not routed through gaps narrower than it can fit. Independent of unit
+    /// size, so it is cached once per mask rather than per radius.
+    clearance: Vec<u16>,
 
     // A* scratch (reused per query)
     g_score: Vec<f32>,
@@ -59,6 +65,13 @@ pub(crate) struct PathfinderState {
     heap: Vec<u32>,
     // BFS scratch
     bfs_queue: Vec<u32>,
+
+    // Per-query traversal params, set at pathfinder_find_path entry (one query
+    // runs at a time). `cur_required_clearance` gates cells by the unit's
+    // collision footprint in cells; `cur_symmetric_slope` makes the climb gate
+    // apply to downhill edges too (SYMMETRIC mode) instead of only uphill.
+    cur_required_clearance: i32,
+    cur_symmetric_slope: bool,
 
     // Cache keys — invalidated on terrain/building/grid-dim change.
     terrain_only_key: u64, // = (tVer as u64) << 32 | (gridW as u64) << 16 | gridH
@@ -87,6 +100,7 @@ impl PathfinderState {
             terrain_height: Vec::new(),
             terrain_normal_z: Vec::new(),
             cc_labels: Vec::new(),
+            clearance: Vec::new(),
             g_score: Vec::new(),
             f_score: Vec::new(),
             parent: Vec::new(),
@@ -95,6 +109,8 @@ impl PathfinderState {
             current_gen: 1,
             heap: Vec::new(),
             bfs_queue: Vec::new(),
+            cur_required_clearance: 0,
+            cur_symmetric_slope: false,
             terrain_only_key: u64::MAX,
             full_mask_key: u128::MAX,
             full_mask_grid_id: u32::MAX,
@@ -179,6 +195,8 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.terrain_normal_z.resize(n, 1.0);
     state.cc_labels.clear();
     state.cc_labels.resize(n, 0);
+    state.clearance.clear();
+    state.clearance.resize(n, 0);
     state.g_score.clear();
     state.g_score.resize(n, f32::INFINITY);
     state.f_score.clear();
@@ -404,6 +422,67 @@ pub fn pathfinder_rebuild_mask_and_cc(
         state.blocked[idx] = 0;
     }
 
+    // Clearance distance field: Chebyshev cell-distance from each open cell to
+    // the nearest blocked cell (0 for blocked). Built once per mask via a
+    // two-pass transform and consumed by pathfinder_is_cell_passable so a unit
+    // of collision radius r is kept out of gaps narrower than its body. Map
+    // edges are already blocked in the terrain mask, so border cells get small
+    // clearance and wide units route away from the map boundary too.
+    {
+        let n = state.n;
+        for idx in 0..n {
+            state.clearance[idx] = if state.blocked[idx] == 1 { 0 } else { u16::MAX };
+        }
+        // Forward pass: top-left → bottom-right (W, N, NW, NE already settled).
+        for gy in 0..grid_h {
+            for gx in 0..grid_w {
+                let idx = (gy * grid_w + gx) as usize;
+                if state.clearance[idx] == 0 {
+                    continue;
+                }
+                let mut m = state.clearance[idx];
+                if gx > 0 {
+                    m = m.min(state.clearance[idx - 1].saturating_add(1));
+                }
+                if gy > 0 {
+                    let up = idx - grid_w as usize;
+                    m = m.min(state.clearance[up].saturating_add(1));
+                    if gx > 0 {
+                        m = m.min(state.clearance[up - 1].saturating_add(1));
+                    }
+                    if gx < grid_w - 1 {
+                        m = m.min(state.clearance[up + 1].saturating_add(1));
+                    }
+                }
+                state.clearance[idx] = m;
+            }
+        }
+        // Backward pass: bottom-right → top-left (E, S, SE, SW).
+        for gy in (0..grid_h).rev() {
+            for gx in (0..grid_w).rev() {
+                let idx = (gy * grid_w + gx) as usize;
+                if state.clearance[idx] == 0 {
+                    continue;
+                }
+                let mut m = state.clearance[idx];
+                if gx < grid_w - 1 {
+                    m = m.min(state.clearance[idx + 1].saturating_add(1));
+                }
+                if gy < grid_h - 1 {
+                    let dn = idx + grid_w as usize;
+                    m = m.min(state.clearance[dn].saturating_add(1));
+                    if gx < grid_w - 1 {
+                        m = m.min(state.clearance[dn + 1].saturating_add(1));
+                    }
+                    if gx > 0 {
+                        m = m.min(state.clearance[dn - 1].saturating_add(1));
+                    }
+                }
+                state.clearance[idx] = m;
+            }
+        }
+    }
+
     // CC labelling via BFS over open cells. This is an obstacle pre-flight
     // only: slope traversal is directional, so it cannot be represented by
     // one undirected component label without rejecting valid downhill paths.
@@ -470,7 +549,26 @@ pub(crate) fn pathfinder_is_cell_passable(
     if state.blocked[idx] == 1 {
         return false;
     }
+    // Collision-clearance gate: keep a unit of the current query's footprint
+    // out of cells whose nearest blocker is closer than the body can fit.
+    // cur_required_clearance is 0 during start/goal snapping and for point-size
+    // units, so this is inert there (every open cell has clearance >= 1).
+    if (state.clearance[idx] as i32) < state.cur_required_clearance {
+        return false;
+    }
     true
+}
+
+/// Cells the unit's collision footprint must keep clear of any blocker. The
+/// nearest blocked cell's near edge sits ~(c - 0.5) cells from the cell centre,
+/// so c >= r/cell + 0.5 guarantees the body does not overlap a blocker. Returns
+/// 0 for point-size / non-finite radii (gate becomes a no-op).
+#[inline]
+pub(crate) fn pathfinder_clearance_cells_for_radius(radius: f64) -> i32 {
+    if !radius.is_finite() || radius <= 0.0 {
+        return 0;
+    }
+    ((radius / PATHFINDER_BUILD_GRID_CELL_SIZE) + 0.5).ceil() as i32
 }
 
 #[inline]
@@ -526,7 +624,12 @@ pub(crate) fn pathfinder_can_step_height_delta(
         return true;
     }
     let dz = to_h - from_h;
-    if dz <= 0.0 {
+    // DIRECTIONAL mode (default): descending and flat steps are always legal —
+    // gravity assists, so a unit may drive down or fall off any slope while
+    // only uphill is gated by its climb profile. SYMMETRIC mode: the climb gate
+    // applies regardless of direction, so a face too steep to climb also blocks
+    // the downhill edge.
+    if dz <= 0.0 && !state.cur_symmetric_slope {
         return true;
     }
     let required_normal_z = pathfinder_required_step_normal_z(min_normal_z);
@@ -535,7 +638,8 @@ pub(crate) fn pathfinder_can_step_height_delta(
     {
         return false;
     }
-    let step_normal_z = horizontal / (horizontal * horizontal + dz * dz).sqrt();
+    let abs_dz = dz.abs();
+    let step_normal_z = horizontal / (horizontal * horizontal + abs_dz * abs_dz).sqrt();
     step_normal_z >= required_normal_z as f64
 }
 
@@ -1025,9 +1129,23 @@ pub fn pathfinder_find_path(
     goal_y: f64,
     min_normal_z: f32,
     ignore_terrain_blocking: bool,
+    unit_radius: f64,
+    symmetric_slope: bool,
 ) -> u32 {
     let state = pathfinder_state();
     state.waypoint_scratch.clear();
+    // Per-query traversal params. Snapping resolves the unit's literal
+    // start/goal cells, so it must NOT be clearance-gated (a unit parked
+    // against a building still starts there) — clearance is enabled only for
+    // the A* search + LOS smoothing below. Airborne (ignore_terrain_blocking)
+    // flies over footprints, so it carries no clearance.
+    state.cur_symmetric_slope = symmetric_slope;
+    let required_clearance = if ignore_terrain_blocking {
+        0
+    } else {
+        pathfinder_clearance_cells_for_radius(unit_radius)
+    };
+    state.cur_required_clearance = 0;
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
     if grid_w == 0 || grid_h == 0 {
@@ -1148,7 +1266,9 @@ pub fn pathfinder_find_path(
         return 1;
     }
 
-    let a_star_result = match pathfinder_a_star(
+    // Enable the collision-clearance gate for the actual search + smoothing.
+    state.cur_required_clearance = required_clearance;
+    let mut a_star_result = pathfinder_a_star(
         state,
         start_cell_gx,
         start_cell_gy,
@@ -1156,7 +1276,24 @@ pub fn pathfinder_find_path(
         goal_cell_gy,
         min_normal_z,
         ignore_terrain_blocking,
-    ) {
+    );
+    if required_clearance > 1 && (a_star_result.is_none() || state.path_scratch.is_empty()) {
+        // Boxed in by its own footprint, or the only route is a gap narrower
+        // than the unit fits — fall back to point pathing so it still moves;
+        // local physics resolves the minor wall contact. Never worse than the
+        // pre-clearance behaviour.
+        state.cur_required_clearance = 0;
+        a_star_result = pathfinder_a_star(
+            state,
+            start_cell_gx,
+            start_cell_gy,
+            goal_cell_gx,
+            goal_cell_gy,
+            min_normal_z,
+            ignore_terrain_blocking,
+        );
+    }
+    let a_star_result = match a_star_result {
         Some(r) => r,
         None => {
             state.waypoint_scratch.push(start_x);

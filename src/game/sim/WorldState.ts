@@ -31,6 +31,7 @@ import {
   DEFAULT_FORCE_FIELDS_VISIBLE,
 } from '../../config';
 import type { ShieldReflectionMode } from '../../types/shotTypes';
+import { DEFAULT_SLOPE_PATH_MODE, type SlopePathMode } from '../../types/slopePathMode';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
@@ -167,6 +168,9 @@ export class WorldState {
   public shieldReflectionMode: ShieldReflectionMode = DEFAULT_SHIELD_REFLECTION_MODE;
   // Whether player-specific snapshots and the client fog overlay use vision.
   public fogOfWarEnabled: boolean = true;
+  // Slope-traversal policy for ground pathfinding. `directional` lets units
+  // descend/fall any slope and only gates uphill; `symmetric` gates both.
+  public slopePathMode: SlopePathMode = DEFAULT_SLOPE_PATH_MODE;
   /** Tax (fraction in [0, 1)) applied to a resource converter's per-tick
    *  output. 0 = lossless; 0.5 = lose half of the source resource on
    *  every conversion. Read by economy.update each tick. */
@@ -469,6 +473,15 @@ export class WorldState {
   getAllEntities(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getAll();
+  }
+
+  /** Drop every unit's cached pathfinder plan so the next movement step
+   *  re-plans under current policy. Used when a global pathfinding rule
+   *  (slopePathMode) changes mid-battle so in-flight units re-route. */
+  invalidateAllActivePaths(): void {
+    for (const entity of this.getAllEntities()) {
+      if (entity.unit !== null) entity.unit.activePath = null;
+    }
   }
 
   // Get entities by type (uses cache for common types)

@@ -6,6 +6,7 @@ import {
   loadStoredShieldsObstructSight,
   loadStoredTurretShieldSpheresEnabled,
   loadStoredFogOfWarEnabled,
+  loadStoredSlopePathMode,
   loadStoredGrid,
   loadStoredTurretShieldPanelsEnabled,
 } from '../../battleBarConfig';
@@ -81,6 +82,11 @@ export function buildStoredBattleServerSettingCommands(
       type: 'setFogOfWarEnabled',
       tick: 0,
       enabled: options.fogOfWarEnabled ?? loadStoredFogOfWarEnabled(mode),
+    },
+    {
+      type: 'setSlopePathMode',
+      tick: 0,
+      mode: loadStoredSlopePathMode(mode),
     },
     {
       type: 'setConverterTax',

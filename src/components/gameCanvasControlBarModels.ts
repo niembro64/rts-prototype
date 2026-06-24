@@ -25,6 +25,7 @@ import type {
 } from '../types/client';
 import type { SnapshotRate, TickRate } from '../types/server';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
+import type { SlopePathMode } from '../types/slopePathMode';
 import type { RenderMode } from '../types/graphics';
 import type { CommandHotkeyPresetId } from '../game/input/commandHotkeys';
 
@@ -59,6 +60,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly currentForceFieldsVisible: boolean;
   readonly currentShieldsObstructSight: boolean;
   readonly currentFogOfWarEnabled: boolean;
+  readonly currentSlopePathMode: SlopePathMode;
   readonly currentConverterTax: number;
   readonly serverUnitGroundNormalEmaMode: UnitGroundNormalEmaMode;
   readonly presets: readonly BattlePreset[];
@@ -82,6 +84,7 @@ export type GameCanvasBattleControlBarModel = {
   setForceFieldsVisible(enabled: boolean): void;
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
+  setSlopePathMode(mode: SlopePathMode): void;
   setConverterTax(tax: number): void;
   setUnitGroundNormalEmaModeValue(mode: UnitGroundNormalEmaMode): void;
 };

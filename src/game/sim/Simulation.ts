@@ -514,6 +514,8 @@ export class Simulation {
       buildingGrid,
       action.z ?? null,
       this.pathTerrainFilterForUnit(entity),
+      unit.radius.collision,
+      this.world.slopePathMode === 'symmetric',
     );
     unit.activePath = {
       points,

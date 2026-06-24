@@ -55,6 +55,7 @@ import { isBuildingBlueprintId, isTowerBlueprintId } from '../../types/blueprint
 import { SERVER_CONFIG } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
 import { isShieldReflectionMode } from '../../types/shotTypes';
+import { isSlopePathMode } from '../../types/slopePathMode';
 import { normalizeAngle } from '../math';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
@@ -200,6 +201,10 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
     case 'setShieldReflectionMode':
       return isShieldReflectionMode(command.mode)
+        ? { ...command, tick, mode: command.mode }
+        : null;
+    case 'setSlopePathMode':
+      return isSlopePathMode(command.mode)
         ? { ...command, tick, mode: command.mode }
         : null;
     case 'setConverterTax': {

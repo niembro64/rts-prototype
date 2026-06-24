@@ -194,6 +194,8 @@ function findPath(
   mapWidth: number, mapHeight: number,
   buildingGrid: BuildingGrid,
   terrainFilter: PathTerrainFilter | null,
+  unitRadius: number,
+  symmetricSlope: boolean,
 ): Vec2[] {
   ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
   const minSurfaceNormalZ = normalizeMinSurfaceNormalZ(terrainFilter);
@@ -206,6 +208,8 @@ function findPath(
     goalY,
     minSurfaceNormalZ,
     ignoreTerrainBlocking,
+    unitRadius,
+    symmetricSlope,
   );
   if (count === 0) {
     return [{ x: startX, y: startY }];
@@ -311,6 +315,8 @@ export function expandPathPoints(
   buildingGrid: BuildingGrid,
   goalZ: number | null,
   terrainFilter: PathTerrainFilter | null,
+  unitRadius: number,
+  symmetricSlope: boolean,
 ): UnitPathPoint[] {
   const path = findPath(
     startX,
@@ -321,6 +327,8 @@ export function expandPathPoints(
     mapHeight,
     buildingGrid,
     terrainFilter,
+    unitRadius,
+    symmetricSlope,
   );
   if (VALIDATE_PATHS && !shouldIgnoreTerrainBlocking(terrainFilter)) {
     validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);

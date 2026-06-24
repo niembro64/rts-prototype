@@ -309,6 +309,12 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
           @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
         >FOG OF WAR</BarButton>
         <BarDivider />
+        <BarButton
+          :active="model.currentSlopePathMode === 'symmetric'"
+          title="Ground pathfinding slope policy (demo battle). DIRECTIONAL: units may descend/fall any slope, only uphill is gated by climb ability. SYMMETRIC: a face too steep to climb blocks travel both up and down."
+          @click="model.setSlopePathMode(model.currentSlopePathMode === 'symmetric' ? 'directional' : 'symmetric')"
+        >SLOPE PATH: {{ model.currentSlopePathMode === 'symmetric' ? 'SYMMETRIC' : 'DIRECTIONAL' }}</BarButton>
+        <BarDivider />
       </BarControlGroup>
     </div>
   </div>
