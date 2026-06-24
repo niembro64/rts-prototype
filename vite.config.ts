@@ -60,6 +60,22 @@ export default defineConfig(({ command }) => {
               ) return 'vendor-network';
               return 'vendor';
             }
+            // colorsConfig is a pure-data leaf (it imports only colorsConfig.json)
+            // whose normalized `COLORS` singleton is read at MODULE-INIT time by
+            // many config modules (shellConfig, constructionVisualConfig, config,
+            // nameLabelConfig, barThemes, ...). If Rollup folds colorsConfig into a
+            // chunk that participates in a circular import, a consumer's top-level
+            // `COLORS.x` read can execute before `COLORS` has been assigned, which
+            // crashes in production as `TypeError: Cannot read properties of
+            // undefined (reading 'construction')`. Pinning colorsConfig to its own
+            // leaf chunk guarantees it has no back-edges and therefore initializes
+            // before every importer, on every bundler ordering.
+            if (
+              normalizedId.endsWith('/src/colorsConfig.ts') ||
+              normalizedId.endsWith('/src/colorsConfig.json')
+            ) {
+              return 'config-colors';
+            }
           },
         },
       },
