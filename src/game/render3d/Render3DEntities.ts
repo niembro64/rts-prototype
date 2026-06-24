@@ -34,6 +34,7 @@ import {
 import type { ViewportFootprint } from '../ViewportFootprint';
 import { ProjectileRenderer3D } from './ProjectileRenderer3D';
 import { SelectionOverlayRenderer3D } from './SelectionOverlayRenderer3D';
+import type { OverlayLineSystem } from './OverlayLineSystem';
 import { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
@@ -269,6 +270,7 @@ export class Render3DEntities {
     camera: THREE.PerspectiveCamera,
     getViewportHeight: () => number,
     metalDeposits: readonly MetalDeposit[],
+    overlayLines: OverlayLineSystem,
     rendererCanvas?: HTMLCanvasElement,
   ) {
     this.world = world;
@@ -282,13 +284,18 @@ export class Render3DEntities {
       world: this.world,
       clientViewState: this.clientViewState,
       radiusSphereGeom: this.radiusSphereGeom,
+      overlayLines,
     });
     this.resourcePylonFlows = new ResourcePylonFlowController3D();
     this.constructionVisuals = new ConstructionVisualController3D(
       this.clientViewState,
       this.resourcePylonFlows,
     );
-    this.projectileRangeEnvelope = new ProjectileRangeEnvelope3D(this.world, this.clientViewState);
+    this.projectileRangeEnvelope = new ProjectileRangeEnvelope3D(
+      this.world,
+      this.clientViewState,
+      overlayLines,
+    );
     this.lodProxyRenderer = new EntityLodProxyRenderer3D({
       world: this.world,
       camera: this.camera,
@@ -929,7 +936,6 @@ export class Render3DEntities {
     // immediately for both removal paths; the body/turrets/locomotion remain
     // for the render-only fade.
     this.disposeWorldParentedOverlays(m);
-    if (m.ring) setObjectVisibleIfChanged(m.ring, false);
     if (m.killed) {
       this.dyingUnitScatter.prepare(m);
       this.dyingUnits.markDying(id, m);

@@ -199,7 +199,17 @@ function installDepositTextureBlendShader(
           '  diffuseColor.rgb *= mix(vec3(1.0), sampledDiffuseColor.rgb, textureBlend);',
           '  diffuseColor.a *= sampledDiffuseColor.a;',
           '#endif',
-          buildGridOverlayFragment('vBuildGridOverlayWorldPos'),
+        ].join('\n'),
+      )
+      // The coin is dark/metallic, so apply the build-grid overlay AFTER
+      // lighting (onto gl_FragColor) instead of pre-lighting into diffuseColor.
+      // That keeps the squares as bright as the terrain ones, which sit on a
+      // bright lit surface.
+      .replace(
+        '#include <opaque_fragment>',
+        [
+          '#include <opaque_fragment>',
+          buildGridOverlayFragment('vBuildGridOverlayWorldPos', 'gl_FragColor.rgb'),
         ].join('\n'),
       );
   };

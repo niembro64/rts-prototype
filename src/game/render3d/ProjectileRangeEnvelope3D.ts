@@ -7,11 +7,9 @@ import { isProjectileShot, isRocketLikeShot } from '../sim/types';
 import { getSurfaceHeight } from '../sim/Terrain';
 import { getProjectileLaunchSpeed } from '../sim/combat/combatUtils';
 import { isBuildBlockingActivation } from '../sim/buildableHelpers';
-import {
-  createClosedRibbonGeometry,
-  writeClosedRibbonGeometry,
-  type ClosedRibbonGeometry,
-} from './GroundCircleLine3D';
+import type { OverlayLineSystem } from './OverlayLineSystem';
+import type { GroundLineBatch3D } from './GroundLineBatch3D';
+import { hexToRgb01 } from './colorUtils';
 import {
   findProjectileShotReachDistance,
   resolveProjectileWeaponMount,
@@ -19,12 +17,13 @@ import {
 
 const ENVELOPE_SLICES = 64;
 const RECOMPUTE_FRAMES = 6;
-const GROUND_LIFT = 9;
-const RENDER_ORDER = 22;
 
 type EnvelopeRing = {
-  mesh: THREE.Mesh;
-  ribbon: ClosedRibbonGeometry;
+  // World-space [x,y,z, …] of the draped reach outline; cached between
+  // recomputes so the (expensive) per-direction ballistic solve only reruns
+  // every RECOMPUTE_FRAMES, while the batch re-pushes the cached points each
+  // frame.
+  points: Float32Array;
   cacheKey: string;
   framesUntilRecompute: number;
 };
@@ -32,26 +31,31 @@ type EnvelopeRing = {
 export class ProjectileRangeEnvelope3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
-  private readonly material = new THREE.MeshBasicMaterial({
-    color: COLORS.effects.projectile.rangeEnvelope.colorHex,
-    transparent: true,
-    opacity: COLORS.effects.projectile.rangeEnvelope.opacity,
-    depthWrite: false,
-    depthTest: false,
-    side: THREE.DoubleSide,
-  });
+  private readonly batch: GroundLineBatch3D;
+  private readonly widthPx: number;
+  private readonly groundLift: number;
+  private readonly color: { r: number; g: number; b: number };
+  private readonly alpha: number;
   private readonly rings: EnvelopeRing[] = [];
   private activeEntityId: EntityId | null = null;
 
-  constructor(world: THREE.Group, clientViewState: ClientViewState) {
+  constructor(world: THREE.Group, clientViewState: ClientViewState, overlayLines: OverlayLineSystem) {
     this.world = world;
     this.clientViewState = clientViewState;
+    const style = overlayLines.style('projectileEnvelope');
+    this.widthPx = style.widthPx;
+    this.groundLift = style.groundLift;
+    this.color = hexToRgb01(COLORS.effects.projectile.rangeEnvelope.colorHex);
+    this.alpha = COLORS.effects.projectile.rangeEnvelope.opacity;
+    this.batch = overlayLines.createBatch('projectileEnvelope', ENVELOPE_SLICES * 4);
+    this.world.add(this.batch.mesh);
   }
 
   update(): void {
+    this.batch.begin();
     const selectedIds = this.clientViewState.getSelectedIds();
     if (selectedIds.size !== 1) {
-      this.hideAll();
+      this.clear();
       return;
     }
 
@@ -61,13 +65,13 @@ export class ProjectileRangeEnvelope3D {
       break;
     }
     if (selectedId === null) {
-      this.hideAll();
+      this.clear();
       return;
     }
 
     const entity = this.clientViewState.getEntity(selectedId);
     if (!this.canShowForEntity(entity)) {
-      this.hideAll();
+      this.clear();
       return;
     }
     if (this.activeEntityId !== selectedId) {
@@ -78,6 +82,7 @@ export class ProjectileRangeEnvelope3D {
     const mapWidth = this.clientViewState.getMapWidth();
     const mapHeight = this.clientViewState.getMapHeight();
     const turrets = entity.combat?.turrets ?? [];
+    const { r, g, b } = this.color;
     let ringIndex = 0;
     for (let turretIndex = 0; turretIndex < turrets.length; turretIndex++) {
       const weapon = turrets[turretIndex];
@@ -89,39 +94,36 @@ export class ProjectileRangeEnvelope3D {
       if (speed <= 1e-6) continue;
 
       const mount = resolveProjectileWeaponMount(entity, weapon, mapWidth, mapHeight);
-      const baseY = getSurfaceHeight(mount.x, mount.y, mapWidth, mapHeight, LAND_CELL_SIZE)
-        + GROUND_LIFT;
       const ring = this.ensureRing(ringIndex);
-      ring.mesh.visible = true;
-      ring.mesh.position.set(mount.x, baseY, mount.y);
 
       const key = `${entity.id}:${turretIndex}:${shot.shotBlueprintId}:${shot.launchForce}:${shot.mass}:`
         + `${isRocketLikeShot(shot) ? 1 : 0}:`
         + `${mapWidth}:${mapHeight}`;
       if (ring.cacheKey !== key || ring.framesUntilRecompute <= 0) {
-        this.writeEnvelopeGeometry(ring, mount.x, mount.y, mount.z, shot, speed, mapWidth, mapHeight, baseY);
+        this.computeEnvelopePoints(ring, mount.x, mount.y, mount.z, shot, speed, mapWidth, mapHeight);
         ring.cacheKey = key;
         ring.framesUntilRecompute = RECOMPUTE_FRAMES;
       } else {
         ring.framesUntilRecompute--;
       }
 
+      this.batch.pushPolyline(ring.points, ENVELOPE_SLICES, r, g, b, this.alpha, this.widthPx, true);
       ringIndex++;
     }
 
-    for (let i = ringIndex; i < this.rings.length; i++) {
-      this.rings[i].mesh.visible = false;
-    }
+    this.batch.finishFrame();
     if (ringIndex === 0) this.activeEntityId = null;
   }
 
   destroy(): void {
-    for (const ring of this.rings) {
-      this.world.remove(ring.mesh);
-      ring.mesh.geometry.dispose();
-    }
+    this.world.remove(this.batch.mesh);
+    this.batch.dispose();
     this.rings.length = 0;
-    this.material.dispose();
+    this.activeEntityId = null;
+  }
+
+  private clear(): void {
+    this.batch.finishFrame();
     this.activeEntityId = null;
   }
 
@@ -146,15 +148,8 @@ export class ProjectileRangeEnvelope3D {
   private ensureRing(index: number): EnvelopeRing {
     let ring = this.rings[index];
     if (ring) return ring;
-
-    const ribbon = createClosedRibbonGeometry(ENVELOPE_SLICES);
-    const mesh = new THREE.Mesh(ribbon.geometry, this.material);
-    mesh.renderOrder = RENDER_ORDER;
-    mesh.frustumCulled = false;
-    this.world.add(mesh);
     ring = {
-      mesh,
-      ribbon,
+      points: new Float32Array(ENVELOPE_SLICES * 3),
       cacheKey: '',
       framesUntilRecompute: 0,
     };
@@ -162,7 +157,7 @@ export class ProjectileRangeEnvelope3D {
     return ring;
   }
 
-  private writeEnvelopeGeometry(
+  private computeEnvelopePoints(
     ring: EnvelopeRing,
     originX: number,
     originY: number,
@@ -171,9 +166,8 @@ export class ProjectileRangeEnvelope3D {
     speed: number,
     mapWidth: number,
     mapHeight: number,
-    baseY: number,
   ): void {
-    const centers = ring.ribbon.centers;
+    const points = ring.points;
     for (let i = 0; i < ENVELOPE_SLICES; i++) {
       const a = (i / ENVELOPE_SLICES) * Math.PI * 2;
       const dirX = Math.cos(a);
@@ -191,18 +185,12 @@ export class ProjectileRangeEnvelope3D {
       );
       const x = originX + dirX * dist;
       const y = originY + dirY * dist;
-      const groundY = getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE) + GROUND_LIFT;
+      const groundY = getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE) + this.groundLift;
       const o = i * 3;
-      centers[o] = dirX * dist;
-      centers[o + 1] = groundY - baseY;
-      centers[o + 2] = dirY * dist;
+      points[o] = x;
+      points[o + 1] = groundY;
+      points[o + 2] = y;
     }
-    writeClosedRibbonGeometry(ring.ribbon);
-  }
-
-  private hideAll(): void {
-    for (const ring of this.rings) ring.mesh.visible = false;
-    this.activeEntityId = null;
   }
 
   private invalidateAll(): void {

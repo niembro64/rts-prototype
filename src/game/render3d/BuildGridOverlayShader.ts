@@ -33,7 +33,16 @@ export function buildGridOverlayUniformDeclarations(): string {
   ].join('\n');
 }
 
-export function buildGridOverlayFragment(worldPositionExpr: string): string {
+// `targetColorExpr` is the GLSL lvalue the overlay blends into. Terrain blends
+// into `diffuseColor.rgb` (pre-lighting) where the bright lit surface keeps it
+// vivid. The metal-deposit coin is dark/metallic, so it blends post-lighting
+// into `gl_FragColor.rgb` instead — otherwise the coin's lighting would dim the
+// squares and they'd read fainter than the terrain ones. Either way the squares
+// land at the same per-cell colour.
+export function buildGridOverlayFragment(
+  worldPositionExpr: string,
+  targetColorExpr = 'diffuseColor.rgb',
+): string {
   return [
     `if (uBuildGridEnabled > 0.0 &&`,
     `    ${worldPositionExpr}.x >= 0.0 && ${worldPositionExpr}.z >= 0.0 &&`,
@@ -48,7 +57,7 @@ export function buildGridOverlayFragment(worldPositionExpr: string): string {
     '  vec3 buildBorderColor = min(buildColor.rgb * 3.25 + vec3(0.02), vec3(1.0));',
     '  vec3 buildRgb = mix(buildColor.rgb, buildBorderColor, buildBorder);',
     '  float buildAlpha = buildColor.a * mix(0.42, 0.95, buildBorder);',
-    '  diffuseColor.rgb = mix(diffuseColor.rgb, buildRgb, buildAlpha);',
+    `  ${targetColorExpr} = mix(${targetColorExpr}, buildRgb, buildAlpha);`,
     '}',
   ].join('\n');
 }

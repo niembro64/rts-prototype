@@ -88,6 +88,10 @@ export function bootstrapRtsScene3DRenderers(
     metalDeposits,
   } = options;
 
+  // One shared overlay-line system drives every ground line/ring (selection,
+  // range, sight/radar, waypoints, drag). Created first so entity overlays can
+  // use it; resolution is pushed to its material each frame by the render phase.
+  const overlayLineSystem = new OverlayLineSystem();
   const legInstancedRenderer = new LegInstancedRenderer(threeApp.world);
   const entityRenderer = new Render3DEntities(
     threeApp.world,
@@ -97,6 +101,7 @@ export function bootstrapRtsScene3DRenderers(
     threeApp.camera,
     () => threeApp.renderer.domElement.clientHeight,
     metalDeposits,
+    overlayLineSystem,
     threeApp.renderer.domElement,
   );
   const beamRenderer = new BeamRenderer3D(threeApp.world, renderScope);
@@ -186,7 +191,6 @@ export function bootstrapRtsScene3DRenderers(
     mapWidth,
     mapHeight,
   );
-  const overlayLineSystem = new OverlayLineSystem();
   const sightBoundaryRenderer = new SightBoundaryRenderer3D(
     threeApp.world,
     overlayLineSystem,

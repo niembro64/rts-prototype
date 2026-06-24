@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import type { Turret } from '../sim/types';
 import type { GraphicsConfig } from '@/types/graphics';
-import type { RangeRingMesh } from './EntityMesh3D';
+import type { GroundRing3D } from './GroundRing3D';
 import {
   getBarrelOrbitAngle,
   getConeBarrelBaseOrbitRadius,
@@ -101,12 +101,12 @@ export type TurretMesh = {
   /** Per-turret TURR CIR overlay circles (filled in by the range-ring
    *  update path; nothing built here). */
   rangeRings?: {
-    trackAcquire?: RangeRingMesh;
-    trackRelease?: RangeRingMesh;
-    engageAcquire?: RangeRingMesh;
-    engageRelease?: RangeRingMesh;
-    engageMinAcquire?: RangeRingMesh;
-    engageMinRelease?: RangeRingMesh;
+    trackAcquire?: GroundRing3D;
+    trackRelease?: GroundRing3D;
+    engageAcquire?: GroundRing3D;
+    engageRelease?: GroundRing3D;
+    engageMinAcquire?: GroundRing3D;
+    engageMinRelease?: GroundRing3D;
   };
 };
 

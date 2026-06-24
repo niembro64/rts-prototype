@@ -3,6 +3,7 @@ import type { UnitBodyShape } from '@/types/blueprints';
 import type { PlayerId } from '../sim/types';
 import type { Locomotion3DMesh } from './Locomotion3D';
 import type { TurretMesh } from './TurretMesh3D';
+import type { GroundRing3D } from './GroundRing3D';
 import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import type {
   BuildingDetailMesh,
@@ -21,12 +22,6 @@ export type RadiusRingMeshes = {
   shotArmingRadius?: THREE.LineSegments;
 };
 
-export type RangeRingMesh = THREE.Mesh & {
-  userData: THREE.Object3D['userData'] & {
-    radius?: number;
-    ribbon?: unknown;
-  };
-};
 
 export type EntityMesh = {
   group: THREE.Group;
@@ -96,7 +91,7 @@ export type EntityMesh = {
    *  SelectionOverlayRenderer3D, so we don't store a per-unit material
    *  reference. The mesh itself lives under `m.group` and is GC'd with
    *  the group on death. */
-  ring?: THREE.Mesh;
+  ring?: GroundRing3D;
   /** UNIT SPH wireframe spheres. All three channels are now 3D in
    *  the sim:
    *    - visual    → unit.radius.visual, the drawn body footprint.
@@ -113,13 +108,13 @@ export type EntityMesh = {
   /** Builder-unit BLD ground-plane circle. Build range is a 2D
    *  horizontal check, so this lives at the local terrain surface and
    *  draws as a fixed-width ground ribbon instead of a 3D sphere. */
-  buildRing?: RangeRingMesh;
+  buildRing?: GroundRing3D;
   /** Radar-building ground-plane circle. This previews the visual fog
    *  clearing radius without changing snapshot semantics. */
-  radarRing?: RangeRingMesh;
+  radarRing?: GroundRing3D;
   /** Reclaim-mode ground highlight for reclaimable entities. It is
    *  world-parented like range rings so it follows terrain height. */
-  reclaimRing?: RangeRingMesh;
+  reclaimRing?: GroundRing3D;
   rangeRingsVisible?: boolean;
   /** Per-building accent meshes (chimney, solar cells, etc.). Tracked
    *  so rebuilds / destroy() know what to clean up alongside the primary

@@ -510,7 +510,6 @@ export class BuildingEntityRenderer3D {
     if (!mesh) return;
 
     this.disposeWorldParentedOverlays(mesh);
-    if (mesh.ring) setObjectVisibleIfChanged(mesh.ring, false);
     this.animations.unregister(id);
     this.meshes.delete(id);
     if (wasScopedHidden) {
