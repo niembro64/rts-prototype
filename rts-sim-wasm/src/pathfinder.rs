@@ -950,7 +950,12 @@ pub(crate) fn pathfinder_a_star(
         let cur_i32 = cur as i32;
         let cgx = cur_i32 % grid_w;
         let cgy = (cur_i32 - cgx) / grid_w;
-        for k in 0..8 {
+        // Grid connectivity: the first four neighbour offsets are the edge-
+        // sharing (cardinal) cells, the last four are the corner-sharing
+        // (diagonal) cells. PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS picks 8-way
+        // (edges + corners) vs 4-way (edges only) adjacency.
+        let neighbor_count = if PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS { 8 } else { 4 };
+        for k in 0..neighbor_count {
             let nx = cgx + PATHFINDER_NEIGHBOR_DX[k];
             let ny = cgy + PATHFINDER_NEIGHBOR_DY[k];
             if nx < 0 || ny < 0 || nx >= grid_w || ny >= grid_h {

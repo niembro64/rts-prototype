@@ -1,5 +1,6 @@
 {
   "waterBufferCells": 2,
   "forceSafetyRatio": 0.8,
-  "stabilityMaxSlopeDeg": 70
+  "stabilityMaxSlopeDeg": 70,
+  "allowDiagonalNeighbors": false
 }
