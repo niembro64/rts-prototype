@@ -1,4 +1,4 @@
-import type { BuildingBlueprintId, CombatFireState, Entity, Unit, UnitAction, UnitMoveState } from '../sim/types';
+import type { BuildingBlueprintId, CombatFireState, Entity, Unit, UnitAction, UnitMoveState, UnitPathPoint } from '../sim/types';
 import type {
   NetworkServerSnapshotAction,
   NetworkServerSnapshotEntity,
@@ -106,31 +106,81 @@ function decodeNetworkUnitAction(action: NetworkServerSnapshotAction): UnitActio
   };
 }
 
+export type DecodedNetworkUnitActions = {
+  /** Durable authored waypoints — a pure mirror of the sim action queue,
+   *  with no pathfinder intermediates mixed in (queue indices, order
+   *  counts, and insert positions therefore line up with the host). */
+  actions: UnitAction[];
+  /** Active-leg pathfinder route preview for presentation, or null when
+   *  the unit has no multi-point plan. Reconstructed as an activePath so
+   *  Waypoint3D can trace the smoothed route the unit actually walks. */
+  routePreview: Unit['activePath'];
+};
+
+/** Rebuild a client-side activePath from decoded route-preview points.
+ *  This is presentation state: only `points` is ever read (by Waypoint3D).
+ *  The plan-cache metadata is filled with inert values because the client
+ *  view never re-plans against it — the local server simulation owns the
+ *  authoritative plan and regenerates it from the durable waypoints. */
+function buildClientRoutePreview(
+  points: UnitPathPoint[] | null,
+  actions: readonly UnitAction[],
+): Unit['activePath'] {
+  if (points === null || points.length === 0) return null;
+  const goal = actions.length > 0 ? actions[0] : undefined;
+  const fallback = points[points.length - 1];
+  return {
+    points,
+    index: 0,
+    actionHash: 0,
+    terrainVersion: 0,
+    buildingGridVersion: 0,
+    goalX: goal?.x ?? fallback.x,
+    goalY: goal?.y ?? fallback.y,
+    goalZ: goal?.z,
+    actionType: goal?.type ?? 'move',
+    targetId: goal?.targetId,
+    buildingId: goal?.buildingId,
+  };
+}
+
+/** Decode the wire action list, splitting the planner's pathfinding
+ *  intermediates (pathExp entries) out of the durable waypoints. The
+ *  intermediates ride the same wire framing as a transport detail, but
+ *  are immediately separated so neither array on the client mixes
+ *  authored intent with disposable path points. */
 export function decodeNetworkUnitActions(
   actions: NetworkUnitSnapshot['actions'] | undefined | null,
-): UnitAction[] {
+): DecodedNetworkUnitActions {
   const decoded: UnitAction[] = [];
-  if (!actions) return decoded;
-  for (let i = 0; i < actions.length; i++) {
-    const action = decodeNetworkUnitAction(actions[i]);
-    if (action) decoded.push(action);
+  let previewPoints: UnitPathPoint[] | null = null;
+  if (actions) {
+    for (let i = 0; i < actions.length; i++) {
+      const action = decodeNetworkUnitAction(actions[i]);
+      if (!action) continue;
+      if (action.isPathExpansion === true) {
+        (previewPoints ??= []).push({ x: action.x, y: action.y, z: action.z });
+      } else {
+        decoded.push(action);
+      }
+    }
   }
-  return decoded;
+  return { actions: decoded, routePreview: buildClientRoutePreview(previewPoints, decoded) };
 }
 
 export function applyNetworkUnitActions(
   unit: Unit,
   actions: NetworkUnitSnapshot['actions'] | undefined | null,
 ): void {
+  const decoded = decodeNetworkUnitActions(actions);
   const dst = unit.actions;
   dst.length = 0;
-  if (actions) {
-    for (let i = 0; i < actions.length; i++) {
-      const action = decodeNetworkUnitAction(actions[i]);
-      if (action) dst.push(action);
-    }
-  }
+  for (let i = 0; i < decoded.actions.length; i++) dst.push(decoded.actions[i]);
+  // refreshUnitActionHash clears activePath (it treats it as stale sim-cache
+  // state), so assign the decoded presentation preview AFTERWARD — otherwise
+  // it would be wiped before Waypoint3D ever reads it on the render frame.
   refreshUnitActionHash(unit);
+  unit.activePath = decoded.routePreview;
 }
 
 export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapshot): void {
@@ -330,6 +380,11 @@ export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
   dst.trajectoryMode = null;
 }
 
+/** Cap on smoothed pathfinder intermediates serialized per unit as a
+ *  presentation-only route preview. Smoothed paths are short (corner nodes
+ *  only); the cap is a guard against a pathological plan, not a normal limit. */
+const MAX_ROUTE_PREVIEW_POINTS = 64;
+
 export function writeNetworkUnitActions(
   dst: NetworkUnitSnapshot,
   unit: Unit,
@@ -337,12 +392,65 @@ export function writeNetworkUnitActions(
   canReferenceEntityId: ((id: number | undefined) => boolean) | undefined = undefined,
 ): void {
   const actions = unit.actions ?? [];
-  const count = actions.length;
-  while (actionPool.length < count) actionPool.push(createActionDto());
-  actionPool.length = count;
-  for (let i = 0; i < count; i++) {
+  const realCount = actions.length;
+
+  // Active-leg pathfinding route preview (presentation only). The planner
+  // keeps its smoothed intermediate points in unit.activePath, deliberately
+  // OUT of the durable action queue — waypoints are intent, pathfinding
+  // points are disposable. For visualization we ship the remaining
+  // intermediates as leading pathExp entries; the client splits them back
+  // out into activePath (see decodeNetworkUnitActions), so the action queue
+  // every client sees stays a pure mirror of authored intent.
+  let previewStart = 0;
+  let previewEnd = 0;
+  const plan = unit.activePath;
+  if (
+    plan !== null &&
+    realCount > 0 &&
+    plan.goalX === actions[0].x &&
+    plan.goalY === actions[0].y &&
+    plan.goalZ === actions[0].z
+  ) {
+    // Skip points already passed (index) and the final point, which
+    // coincides with actions[0] (the leg goal carries its own marker).
+    previewStart = plan.index > 0 ? plan.index : 0;
+    previewEnd = plan.points.length - 1;
+    if (previewEnd - previewStart > MAX_ROUTE_PREVIEW_POINTS) {
+      previewEnd = previewStart + MAX_ROUTE_PREVIEW_POINTS;
+    }
+    if (previewEnd < previewStart) previewEnd = previewStart;
+  }
+  const previewCount = previewEnd - previewStart;
+  const total = previewCount + realCount;
+
+  while (actionPool.length < total) actionPool.push(createActionDto());
+  actionPool.length = total;
+
+  let w = 0;
+  if (previewCount > 0) {
+    const moveCode = actionTypeToCode('move');
+    const points = plan!.points;
+    for (let k = previewStart; k < previewEnd; k++) {
+      const pt = points[k];
+      const action = actionPool[w++];
+      action.type = moveCode;
+      if (!action.pos) action.pos = { x: 0, y: 0 };
+      action.pos.x = pt.x;
+      action.pos.y = pt.y;
+      action.posZ = pt.z ?? null;
+      action.pathExp = true;
+      action.targetId = null;
+      action.buildingBlueprintId = null;
+      action.grid = null;
+      action.buildingId = null;
+      action.waitGather = null;
+      action.waitGroupId = null;
+    }
+  }
+
+  for (let i = 0; i < realCount; i++) {
     const src = actions[i];
-    const action = actionPool[i];
+    const action = actionPool[w++];
     action.type = actionTypeToCode(src.type);
     if (src.x !== undefined) {
       if (!action.pos) action.pos = { x: 0, y: 0 };

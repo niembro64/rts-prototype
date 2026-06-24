@@ -266,7 +266,8 @@ function createUnitFromNetwork(
   const unitOrientation = u !== null ? u.orientation : null;
   const unitAngularVelocity3 = u !== null ? u.angularVelocity3 : null;
   const unitTurrets = u !== null ? u.turrets : null;
-  const actions = decodeNetworkUnitActions(u !== null ? u.actions : null);
+  const decodedActions = decodeNetworkUnitActions(u !== null ? u.actions : null);
+  const actions = decodedActions.actions;
   const velocity = readNetworkUnitVelocity(u);
   const surfaceNormal = readNetworkUnitSurfaceNormal(u);
   let unitBlueprint: ReturnType<typeof getUnitBlueprint> | undefined;
@@ -333,7 +334,7 @@ function createUnitFromNetwork(
       wantCloak: u !== null && u.wantCloak === true,
       cloaked: u !== null && u.cloaked === true,
       patrolStartIndex: null,
-      activePath: null,
+      activePath: decodedActions.routePreview,
       flyingLoiterTargetX: null,
       flyingLoiterTargetY: null,
       flyingLoiterTargetZ: null,

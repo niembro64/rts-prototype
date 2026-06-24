@@ -59,6 +59,10 @@ const STYLE = {
   lineAlpha: 0.6,
   /** Alpha multiplier for the patrol-return arc (the loop-back). */
   patrolReturnAlpha: 0.3,
+  /** Brightness multiplier for DETAILED-mode pathfinding intermediate dots.
+   *  Dimmer than the numbered command waypoints so the planner's route nodes
+   *  read as subordinate route hints rather than user-issued orders. */
+  pathIntermediateAlpha: 0.4,
   /** Square size for build / repair markers, in world units. */
   rectWorldSize: 18,
   /** Flag sprite size in world units. */
@@ -334,7 +338,7 @@ export class Waypoint3D {
 
   private pushDot(
     state: { dotCount: number },
-    x: number, y: number, color: number, zHint?: number,
+    x: number, y: number, color: number, zHint?: number, alpha = 1,
   ): void {
     if (state.dotCount + 1 > this.dotCap) {
       this.growDotCap(state.dotCount + 1);
@@ -345,6 +349,13 @@ export class Waypoint3D {
     this.dotPositions[o + 1] = z;
     this.dotPositions[o + 2] = y;
     writeHexToRgb01Array(color, this.dotColors, o);
+    // The dot mesh is opaque over a dark clear, so pre-multiplying the color
+    // by alpha reads as transparency (same trick the line buffer uses).
+    if (alpha !== 1) {
+      this.dotColors[o + 0] *= alpha;
+      this.dotColors[o + 1] *= alpha;
+      this.dotColors[o + 2] *= alpha;
+    }
     state.dotCount++;
   }
 
@@ -403,57 +414,56 @@ export class Waypoint3D {
     // — used directly so a waypoint dot on a hilltop sits ON the
     // hilltop, not at a terrain re-sample that may differ.
     //
-    // SIMPLE mode keeps the LINES tracing the unit's actual route
-    // (so the visualization is geometrically honest — lines stay on
-    // dry land instead of cutting straight across water) but draws
-    // dots / rect markers ONLY at the user-issued endpoints. The
-    // result: less visual clutter than DETAILED, but the line still
-    // matches what the unit walks. The earlier SIMPLE behaviour
-    // skipped lines for path-expansion actions too, which produced
-    // a single chord from the unit straight to its final waypoint —
-    // that chord could cross water while the unit walked around it,
-    // which read as "the planner suggested a path through water"
-    // even though the unit's actual route was correct.
-    const simple = getWaypointDetail() === 'simple';
+    // `actions` is a pure mirror of the authored command queue — the wire
+    // splits the planner's pathfinding intermediates back out into
+    // activePath. WAYPOINTS: SIMPLE draws each leg as a direct line to the
+    // next user waypoint (the long-standing behaviour). WAYPOINTS: DETAILED
+    // additionally traces the active leg through activePath — the smoothed
+    // route the unit actually walks around obstacles — dropping a dim,
+    // unlabelled dot at every intermediate so the routing is visible.
+    const detailed = getWaypointDetail() === 'detailed';
     for (const u of selectedUnits) {
-      const actions = u.unit?.actions;
-      if (!actions || actions.length === 0) continue;
+      const unit = u.unit;
+      const actions = unit?.actions;
+      if (!unit || !actions || actions.length === 0) continue;
       let prevX = u.transform.x;
       let prevY = u.transform.y;
       let prevZ: number | undefined = u.transform.z;
+      const previewPoints = detailed ? unit.activePath?.points : undefined;
       for (let i = 0; i < actions.length; i++) {
         const a = actions[i];
         const p = this.actionDisplayPoint(a);
         const color = ACTION_COLORS[a.type] ?? COLORS.units.turret.barrel.colorHex;
-        // Always draw the connecting line — this traces the unit's
-        // physical route, regardless of mode.
-        this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
-        // Endpoint markers (dots / rect outlines) get suppressed in
-        // SIMPLE mode for path-expansion intermediates so only
-        // user-issued endpoints carry a visible marker.
-        if (!simple || !a.isPathExpansion) {
-          if (a.type === 'build' || a.type === 'repair') {
-            this.pushRectOutline(p.x, p.y, color, p.z);
-          } else {
-            this.pushDot(state, p.x, p.y, color, p.z);
+        // Active leg (i === 0) in DETAILED mode: thread the line through the
+        // planner's intermediate route points, marking each with a dim dot.
+        if (i === 0 && previewPoints !== undefined && previewPoints.length > 0) {
+          for (let k = 0; k < previewPoints.length; k++) {
+            const pt = previewPoints[k];
+            this.pushTerrainLine(prevX, prevY, pt.x, pt.y, color, STYLE.lineAlpha, prevZ, pt.z);
+            this.pushDot(state, pt.x, pt.y, color, pt.z, STYLE.pathIntermediateAlpha);
+            prevX = pt.x;
+            prevY = pt.y;
+            prevZ = pt.z;
           }
-          this.acquireLabel(labelCount++, String(i + 1), color, p.x, p.y, p.z);
         }
+        // Connecting line into the user waypoint (traces the unit's route).
+        this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
+        // User waypoint marker + queue-order label.
+        if (a.type === 'build' || a.type === 'repair') {
+          this.pushRectOutline(p.x, p.y, color, p.z);
+        } else {
+          this.pushDot(state, p.x, p.y, color, p.z);
+        }
+        this.acquireLabel(labelCount++, String(i + 1), color, p.x, p.y, p.z);
         prevX = p.x;
         prevY = p.y;
         prevZ = p.z;
       }
-      // Patrol return — link last patrol waypoint back to the first
-      // patrol waypoint with a dimmer line. In SIMPLE mode pick the
-      // last NON-expansion patrol action so the loop-back stays on
-      // user-clicked endpoints.
-      if (u.unit!.patrolStartIndex !== null && actions.length > 0) {
-        let lastIdx = actions.length - 1;
-        if (simple) {
-          while (lastIdx >= 0 && actions[lastIdx].isPathExpansion) lastIdx--;
-        }
-        const last = lastIdx >= 0 ? actions[lastIdx] : null;
-        const first = actions[u.unit!.patrolStartIndex];
+      // Patrol return — link the last patrol waypoint back to the first
+      // with a dimmer line.
+      if (unit.patrolStartIndex !== null && actions.length > 0) {
+        const last = actions[actions.length - 1];
+        const first = actions[unit.patrolStartIndex];
         if (last && last.type === 'patrol' && first) {
           this.pushTerrainLine(
             last.x, last.y, first.x, first.y,

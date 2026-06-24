@@ -528,6 +528,10 @@ export class Simulation {
       targetId: action.targetId,
       buildingId: action.buildingId,
     };
+    // The route preview rides the (presentation-only) actions channel, so a
+    // repath has to re-mark actions dirty even though the durable queue is
+    // unchanged — otherwise delta snapshots would keep shipping the old path.
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     return unit.activePath;
   }
 
@@ -542,12 +546,18 @@ export class Simulation {
       };
     }
 
+    const startIndex = plan.index;
     while (plan.index < plan.points.length - 1) {
       const point = plan.points[plan.index];
       const dx = point.x - entity.transform.x;
       const dy = point.y - entity.transform.y;
       if (magnitude(dx, dy) > ARRIVAL_RADIUS) break;
       plan.index++;
+    }
+    // Advancing past a preview point shrinks the serialized route; re-mark
+    // actions so selected-unit waypoint visuals follow the unit forward.
+    if (plan.index !== startIndex) {
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     }
 
     const point = plan.points[plan.index];
@@ -565,6 +575,7 @@ export class Simulation {
     if (plan === null) return;
     if (plan.index < plan.points.length - 1) {
       plan.index++;
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
     }
   }
 
