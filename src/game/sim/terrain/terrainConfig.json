@@ -8,9 +8,9 @@
   },
   "generation": {
     "edgeFadeWidthFraction": 0.01,
-    "circleIsland": {
-      "radiusFraction": 0.99,
-      "shorelineWidthFraction": 0.1
+    "perimeter": {
+      "innerRadiusFraction": 0.4,
+      "outerRadiusFraction": 0.5
     },
     "ripple": {
       "radiusFraction": 0.4,

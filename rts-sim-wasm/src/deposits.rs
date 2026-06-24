@@ -47,11 +47,11 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     center_magnitude: f64,
     dividers_magnitude: f64,
     terrain_d_terrain: f64,
-    map_shape_circle: bool,
+    perimeter_magnitude: f64,
     team_count: u32,
     tile_floor_y: f64,
-    circle_edge_fraction: f64,
-    circle_transition_width_fraction: f64,
+    perimeter_outer_radius_fraction: f64,
+    perimeter_inner_radius_fraction: f64,
     generation_edge_transition_width_fraction: f64,
     plateau_shelf_fraction_of_step: f64,
     plateau_ramp_edge_sharpness: f64,
@@ -79,11 +79,11 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         center_magnitude: values[0],
         dividers_magnitude: values[1],
         terrain_d_terrain: values[2],
-        map_shape_circle: values[3] >= 0.5,
+        perimeter_magnitude: values[3],
         team_count: values[4].max(0.0).floor() as u32,
         tile_floor_y: values[5],
-        circle_edge_fraction: values[6],
-        circle_transition_width_fraction: values[7],
+        perimeter_outer_radius_fraction: values[6],
+        perimeter_inner_radius_fraction: values[7],
         generation_edge_transition_width_fraction: values[8],
         plateau_shelf_fraction_of_step: values[9],
         plateau_ramp_edge_sharpness: values[10],
@@ -111,6 +111,14 @@ pub(crate) fn terrain_clamp01(value: f64) -> f64 {
 #[inline]
 pub(crate) fn terrain_smootherstep(t: f64) -> f64 {
     t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+/// Raised-cosine ramp on [0,1]: 0 at t=0, 1 at t=1, zero slope at both
+/// ends. Mirrors `perimeterRampWeight` in terrainHeightGenerator.ts so the
+/// TS analytic and Rust baked PERIMETER blend agree.
+#[inline]
+pub(crate) fn terrain_perimeter_ramp_weight(t: f64) -> f64 {
+    (1.0 - (t * std::f64::consts::PI).cos()) * 0.5
 }
 
 #[inline]
@@ -188,25 +196,20 @@ pub(crate) fn terrain_apply_plateaus(height: f64, cfg: &MetalDepositTerrainConfi
     plateau_level * step
 }
 
-pub(crate) fn terrain_circle_end_radius_for_min_dim(
+pub(crate) fn terrain_perimeter_outer_radius_for_min_dim(
     min_dim: f64,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
-    let max_end_radius = min_dim * 0.5;
-    (min_dim * cfg.circle_edge_fraction)
-        .min(max_end_radius)
-        .max(1.0)
+    (min_dim * cfg.perimeter_outer_radius_fraction).max(1.0)
 }
 
-pub(crate) fn terrain_circle_start_radius_for_min_dim(
+pub(crate) fn terrain_perimeter_inner_radius_for_min_dim(
     min_dim: f64,
-    end_radius: f64,
+    outer_radius: f64,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
-    let max_width = (end_radius - 1.0).max(0.0);
-    let desired_width = min_dim * cfg.circle_transition_width_fraction.max(0.0);
-    let width = max_width.min(desired_width);
-    (end_radius - width).max(0.0)
+    let inner = min_dim * cfg.perimeter_inner_radius_fraction.max(0.0);
+    inner.max(0.0).min(outer_radius)
 }
 
 pub(crate) fn terrain_generation_boundary_fade_for_sample(
@@ -235,19 +238,21 @@ pub(crate) fn terrain_map_boundary_fade_for_sample(
     oval: &MapOvalSampleRust,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
-    if !cfg.map_shape_circle {
+    // PERIMETER off (magnitude 0) leaves the natural square map untouched.
+    if cfg.perimeter_magnitude == 0.0 {
         return 0.0;
     }
-    let end_radius = terrain_circle_end_radius_for_min_dim(metrics.min_dim, cfg);
-    let start_radius = terrain_circle_start_radius_for_min_dim(metrics.min_dim, end_radius, cfg);
-    if oval.distance <= start_radius {
+    let outer_radius = terrain_perimeter_outer_radius_for_min_dim(metrics.min_dim, cfg);
+    let inner_radius =
+        terrain_perimeter_inner_radius_for_min_dim(metrics.min_dim, outer_radius, cfg);
+    if oval.distance <= inner_radius {
         return 0.0;
     }
-    if oval.distance >= end_radius {
+    if oval.distance >= outer_radius {
         return 1.0;
     }
-    terrain_smootherstep(terrain_clamp01(
-        (oval.distance - start_radius) / (end_radius - start_radius),
+    terrain_perimeter_ramp_weight(terrain_clamp01(
+        (oval.distance - inner_radius) / (outer_radius - inner_radius).max(1e-6),
     ))
 }
 
@@ -262,9 +267,9 @@ pub(crate) fn terrain_apply_map_boundary_for_sample(
         return height;
     }
     if w >= 1.0 {
-        return cfg.tile_floor_y;
+        return cfg.perimeter_magnitude;
     }
-    height + (cfg.tile_floor_y - height) * w
+    height + (cfg.perimeter_magnitude - height) * w
 }
 
 pub(crate) fn terrain_generated_natural_height(

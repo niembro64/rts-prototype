@@ -230,7 +230,6 @@ import type { CanonicalServerStateHash } from '../game/architecture/CanonicalSta
 import type { LockstepCommandEnvelope } from '../game/architecture/LockstepCommandProtocol';
 import type {
   TerrainBuildabilityGrid,
-  TerrainMapShape,
   TerrainTileMap,
 } from './terrain';
 
@@ -498,7 +497,9 @@ export type LobbySettings = {
   centerMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
-  terrainMapShape: TerrainMapShape;
+  /** Signed PERIMETER ring altitude (PERIMETER bar). 0 = flat square;
+   *  negative = round-island; positive = rim. */
+  perimeterMagnitude: number;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain: number | undefined;
   /** Metal-extractor pad altitude step (world units). */

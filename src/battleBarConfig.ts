@@ -1,7 +1,6 @@
 import type { BattleBarConfig } from './types/battle';
 import type { ShieldReflectionMode } from './types/shotTypes';
 import { isSlopePathMode, type SlopePathMode } from './types/slopePathMode';
-import type { TerrainMapShape } from './types/terrain';
 import { persist, persistJson, readPersisted, migrateKey } from './persistence';
 import { MAP_DIMENSION_CONFIG, type MapLandCellDimensions } from './mapSizeConfig';
 import {
@@ -140,9 +139,9 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.dividersMagnitude,
     options: battleBarConfig.dividersMagnitude.options as readonly number[],
   },
-  mapShape: {
-    default: _demoPreset.terrainMapShape,
-    options: battleBarConfig.mapShape.options as ReadonlyArray<{ value: TerrainMapShape; label: string }>,
+  perimeterMagnitude: {
+    default: _demoPreset.perimeterMagnitude,
+    options: battleBarConfig.perimeterMagnitude.options as readonly number[],
   },
   terrainDTerrain: {
     default: _demoPreset.terrainDTerrain,
@@ -206,8 +205,8 @@ const STORAGE_DEMO_CENTER_MAGNITUDE = sk.demoCenterMagnitude;
 const STORAGE_REAL_CENTER_MAGNITUDE = sk.realCenterMagnitude;
 const STORAGE_DEMO_DIVIDERS_MAGNITUDE = sk.demoDividersMagnitude;
 const STORAGE_REAL_DIVIDERS_MAGNITUDE = sk.realDividersMagnitude;
-const STORAGE_DEMO_TERRAIN_MAP_SHAPE = sk.demoTerrainMapShape;
-const STORAGE_REAL_TERRAIN_MAP_SHAPE = sk.realTerrainMapShape;
+const STORAGE_DEMO_PERIMETER_MAGNITUDE = sk.demoPerimeterMagnitude;
+const STORAGE_REAL_PERIMETER_MAGNITUDE = sk.realPerimeterMagnitude;
 const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
 const STORAGE_DEMO_METAL_DEPOSIT_STEP = sk.demoMetalDepositStep;
@@ -409,6 +408,9 @@ export type BattleMode = 'demo' | 'real';
 export type BattleTerrainRuntimeConfig = {
   centerMagnitude: number;
   dividersMagnitude: number;
+  /** Signed PERIMETER ring altitude. 0 = flat square; negative sinks the
+   *  outer ring below water (round-island); positive raises a rim. */
+  perimeterMagnitude: number;
   /** Plateau lattice step in world units. 0 = NONE (no terracing). */
   terrainDTerrain: number;
   /** Metal-extractor pad altitude step in world units. */
@@ -536,11 +538,6 @@ export function saveSlopePathMode(value: SlopePathMode, mode: BattleMode): void 
 }
 
 
-function parseTerrainMapShape(s: string | null): TerrainMapShape | null {
-  if (s === 'square' || s === 'circle') return s;
-  return null;
-}
-
 function parseNumberOption(
   value: string | null,
   options: readonly number[],
@@ -587,6 +584,10 @@ export function normalizeCenterMagnitude(value: number): number {
 
 export function normalizeDividersMagnitude(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.dividersMagnitude);
+}
+
+export function normalizePerimeterMagnitude(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.perimeterMagnitude);
 }
 
 export function normalizeTerrainDTerrain(value: number): number {
@@ -752,34 +753,21 @@ export function saveDividersMagnitude(value: number, mode: BattleMode): void {
   );
 }
 
-export function loadStoredTerrainMapShape(mode: BattleMode): TerrainMapShape {
-  ensureBattleMigrations();
-  const primary = parseTerrainMapShape(
-    readPersisted(
-      mode === 'real'
-        ? STORAGE_REAL_TERRAIN_MAP_SHAPE
-        : STORAGE_DEMO_TERRAIN_MAP_SHAPE,
-    ),
+export function loadStoredPerimeterMagnitude(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_PERIMETER_MAGNITUDE,
+    STORAGE_DEMO_PERIMETER_MAGNITUDE,
+    BATTLE_CONFIG.perimeterMagnitude,
   );
-  if (primary !== null) return primary;
-  if (mode === 'real') {
-    const demoFallback = parseTerrainMapShape(
-      readPersisted(STORAGE_DEMO_TERRAIN_MAP_SHAPE),
-    );
-    if (demoFallback !== null) return demoFallback;
-  }
-  return BATTLE_CONFIG.mapShape.default;
 }
 
-export function saveTerrainMapShape(
-  shape: TerrainMapShape,
-  mode: BattleMode,
-): void {
+export function savePerimeterMagnitude(value: number, mode: BattleMode): void {
   persist(
     mode === 'real'
-      ? STORAGE_REAL_TERRAIN_MAP_SHAPE
-      : STORAGE_DEMO_TERRAIN_MAP_SHAPE,
-    shape,
+      ? STORAGE_REAL_PERIMETER_MAGNITUDE
+      : STORAGE_DEMO_PERIMETER_MAGNITUDE,
+    String(normalizePerimeterMagnitude(value)),
   );
 }
 
@@ -841,6 +829,7 @@ export function loadStoredTerrainRuntimeConfig(
   return {
     centerMagnitude: loadStoredCenterMagnitude(mode),
     dividersMagnitude: loadStoredDividersMagnitude(mode),
+    perimeterMagnitude: loadStoredPerimeterMagnitude(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),
     metalDepositStep: loadStoredMetalDepositStep(mode),
     terrainDetail: loadStoredTerrainDetail(mode),

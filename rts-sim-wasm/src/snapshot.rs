@@ -8848,17 +8848,18 @@ mod sim_kernel_tests {
 
     #[test]
     pub(crate) fn terrain_adaptive_mesh_build_is_deterministic_and_conforming() {
-        // 22-value generation slice: circular island, 2 teams, ripple + ridge
-        // so the LOD walk actually varies triangle sizes.
+        // 22-value generation slice: round-island perimeter (negative
+        // magnitude), 2 teams, ripple + ridge so the LOD walk actually
+        // varies triangle sizes.
         let terrain_config = [
             40.0,    // center_magnitude
             30.0,    // dividers_magnitude
             0.0,     // terrain_d_terrain (plateau off)
-            1.0,     // map_shape_circle
+            -400.0,  // perimeter_magnitude (negative = below-water rim)
             2.0,     // team_count
             -1200.0, // tile_floor_y
-            0.49,    // circle_edge_fraction
-            0.1,     // circle_transition_width_fraction
+            0.49,    // perimeter_outer_radius_fraction
+            0.39,    // perimeter_inner_radius_fraction
             0.04,    // generation_edge_transition_width_fraction
             0.99,    // plateau_shelf_fraction_of_step
             0.0,     // plateau_ramp_edge_sharpness

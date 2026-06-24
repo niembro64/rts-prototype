@@ -1,5 +1,4 @@
 import type { MapLandCellDimensions } from '../mapSizeConfig';
-import type { TerrainMapShape } from '../types/terrain';
 import type { BattlePreset } from './battlePresets';
 import type {
   AudioScope,
@@ -52,7 +51,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly mapLengthLandCells: number;
   readonly centerMagnitude: number;
   readonly dividersMagnitude: number;
-  readonly terrainMapShape: TerrainMapShape;
+  readonly perimeterMagnitude: number;
   readonly terrainDTerrain: number;
   readonly metalDepositStep: number;
   readonly terrainDetail: number;
@@ -77,7 +76,7 @@ export type GameCanvasBattleControlBarModel = {
   applyMapLandDimensions(dimensions: MapLandCellDimensions): void;
   applyCenterMagnitude(value: number): void;
   applyDividersMagnitude(value: number): void;
-  applyTerrainMapShape(shape: TerrainMapShape): void;
+  applyPerimeterMagnitude(value: number): void;
   applyTerrainDTerrain(value: number): void;
   applyMetalDepositStep(value: number): void;
   applyTerrainDetail(value: number): void;

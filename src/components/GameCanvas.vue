@@ -35,11 +35,10 @@ import {
   loadStoredTerrainDTerrain,
   loadStoredMetalDepositStep,
   loadStoredTerrainDetail,
-  loadStoredTerrainMapShape,
+  loadStoredPerimeterMagnitude,
   loadStoredMapLandDimensions,
   type BattleMode,
 } from '../battleBarConfig';
-import type { TerrainMapShape } from '../types/terrain';
 import type {
   NetworkCommunicationDraft,
   NetworkCommunicationEvent,
@@ -749,7 +748,7 @@ const demoTowerBlueprintIds: readonly string[] = [...TOWER_BLUEPRINT_IDS];
 // these refs from the real-battle keys at that point.
 const centerMagnitude = ref<number>(loadStoredCenterMagnitude('demo'));
 const dividersMagnitude = ref<number>(loadStoredDividersMagnitude('demo'));
-const terrainMapShape = ref<TerrainMapShape>(loadStoredTerrainMapShape('demo'));
+const perimeterMagnitude = ref<number>(loadStoredPerimeterMagnitude('demo'));
 const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
 const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
@@ -763,9 +762,9 @@ const mapDetailsRows = computed(() => [
     label: 'WORLD',
     value: `${mapWidthLandCells.value * LAND_CELL_SIZE} x ${mapLengthLandCells.value * LAND_CELL_SIZE}`,
   },
-  { label: 'SHAPE', value: terrainMapShape.value.toUpperCase() },
   { label: 'CENTER', value: String(centerMagnitude.value) },
   { label: 'DIVIDERS', value: String(dividersMagnitude.value) },
+  { label: 'PERIMETER', value: String(perimeterMagnitude.value) },
   { label: 'D-TERRAIN', value: terrainDTerrain.value === 0 ? 'NONE' : String(terrainDTerrain.value) },
   { label: 'METAL STEP', value: metalDepositStep.value === 0 ? 'NONE' : String(metalDepositStep.value) },
   { label: 'DETAIL', value: String(terrainDetail.value) },
@@ -948,7 +947,7 @@ useGameCanvasLobbyPreview({
   localPlayerId,
   centerMagnitude,
   dividersMagnitude,
-  terrainMapShape,
+  perimeterMagnitude,
   terrainDTerrain,
   metalDepositStep,
   terrainDetail,
@@ -1078,7 +1077,7 @@ const {
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
   applyDividersMagnitude,
-  applyTerrainMapShape,
+  applyPerimeterMagnitude,
   applyTerrainDTerrain,
   applyMetalDepositStep,
   applyTerrainDetail,
@@ -1092,7 +1091,7 @@ const {
   gameStarted,
   centerMagnitude,
   dividersMagnitude,
-  terrainMapShape,
+  perimeterMagnitude,
   terrainDTerrain,
   metalDepositStep,
   terrainDetail,
@@ -1153,7 +1152,7 @@ const {
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
   applyDividersMagnitude,
-  applyTerrainMapShape,
+  applyPerimeterMagnitude,
   applyTerrainDTerrain,
   applyMetalDepositStep,
   applyTerrainDetail,
@@ -1294,7 +1293,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   mapLengthLandCells: mapLengthLandCells.value,
   centerMagnitude: centerMagnitude.value,
   dividersMagnitude: dividersMagnitude.value,
-  terrainMapShape: terrainMapShape.value,
+  perimeterMagnitude: perimeterMagnitude.value,
   terrainDTerrain: terrainDTerrain.value,
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
@@ -1319,7 +1318,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyMapLandDimensions,
   applyCenterMagnitude,
   applyDividersMagnitude,
-  applyTerrainMapShape,
+  applyPerimeterMagnitude,
   applyTerrainDTerrain,
   applyMetalDepositStep,
   applyTerrainDetail,
@@ -1351,7 +1350,7 @@ watchEffect(() => {
   m.mapLengthLandCells = mapLengthLandCells.value;
   m.centerMagnitude = centerMagnitude.value;
   m.dividersMagnitude = dividersMagnitude.value;
-  m.terrainMapShape = terrainMapShape.value;
+  m.perimeterMagnitude = perimeterMagnitude.value;
   m.terrainDTerrain = terrainDTerrain.value;
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
@@ -1377,7 +1376,7 @@ watchEffect(() => {
     converterTax: currentConverterTax.value,
     centerMagnitude: centerMagnitude.value,
     dividersMagnitude: dividersMagnitude.value,
-    terrainMapShape: terrainMapShape.value,
+    perimeterMagnitude: perimeterMagnitude.value,
     terrainDTerrain: terrainDTerrain.value,
     metalDepositStep: metalDepositStep.value,
     terrainDetail: terrainDetail.value,
@@ -2111,7 +2110,7 @@ watchEffect(() => {
       :is-connecting="isConnecting"
       :center-magnitude="centerMagnitude"
       :dividers-magnitude="dividersMagnitude"
-      :terrain-map-shape="terrainMapShape"
+      :perimeter-magnitude="perimeterMagnitude"
       :terrain-d-terrain="terrainDTerrain"
       :metal-deposit-step="metalDepositStep"
       :terrain-detail="terrainDetail"
@@ -2141,7 +2140,7 @@ watchEffect(() => {
       @spectate="toggleSpectateMode"
       @set-center-magnitude="(v) => applyCenterMagnitude(v)"
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
-      @set-terrain-map-shape="(s) => applyTerrainMapShape(s)"
+      @set-perimeter-magnitude="(v) => applyPerimeterMagnitude(v)"
       @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
       @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"
       @set-terrain-detail="(v) => applyTerrainDetail(v)"

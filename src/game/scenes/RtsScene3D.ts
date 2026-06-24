@@ -4,7 +4,6 @@
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
 import type { CameraViewMode } from '@/types/client';
-import type { TerrainMapShape } from '@/types/terrain';
 import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { buildEconomyInfo } from './helpers';
@@ -63,7 +62,7 @@ import {
   setTerrainTeamCount,
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
-  setTerrainMapShape,
+  setTerrainPerimeterMagnitude,
 } from '../sim/Terrain';
 import { HealthBar3D } from '../render3d/HealthBar3D';
 import { NameLabel3D } from '../render3d/NameLabel3D';
@@ -102,7 +101,7 @@ type RtsScene3DConfig = {
   mapHeight: number;
   centerMagnitude?: number;
   dividersMagnitude?: number;
-  terrainMapShape?: TerrainMapShape;
+  perimeterMagnitude?: number;
   backgroundMode: boolean;
   /** GAME LOBBY preview pane — selects the lobby camera defaults and
    *  expects the GameServer to have spawned commanders only (no AI,
@@ -196,7 +195,7 @@ export class RtsScene3D {
   private mapHeight: number;
   private centerMagnitude: number;
   private dividersMagnitude: number;
-  private terrainMapShape: TerrainMapShape;
+  private perimeterMagnitude: number;
   private backgroundMode: boolean;
   private lobbyPreview: boolean;
 
@@ -276,7 +275,7 @@ export class RtsScene3D {
     this.onStartupReady = config.onStartupReady;
     this.centerMagnitude = config.centerMagnitude ?? 0;
     this.dividersMagnitude = config.dividersMagnitude ?? 0;
-    this.terrainMapShape = config.terrainMapShape ?? 'circle';
+    this.perimeterMagnitude = config.perimeterMagnitude ?? 0;
     // Pin the color wheel to the lobby's player count. Player ids map
     // directly to color slots, so every browser sees the same colors.
     setPlayerCountForColors(this.playerIds.length);
@@ -287,7 +286,7 @@ export class RtsScene3D {
     setTerrainTeamCount(getTerrainDividerTeamCount(this.playerIds.length));
     setTerrainCenterMagnitude(this.centerMagnitude);
     setTerrainDividersMagnitude(this.dividersMagnitude);
-    setTerrainMapShape(this.terrainMapShape);
+    setTerrainPerimeterMagnitude(this.perimeterMagnitude);
     this.mapWidth = config.mapWidth;
     this.mapHeight = config.mapHeight;
     this.backgroundMode = config.backgroundMode;

@@ -1,5 +1,4 @@
-import type { BooleanSetting, LabeledOptionsConfig, OptionsConfig } from './bars';
-import type { TerrainMapShape } from './terrain';
+import type { BooleanSetting, OptionsConfig } from './bars';
 import type { MapDimensionAxisOption } from '../mapSizeConfig';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
@@ -36,8 +35,11 @@ export type BattleBarConfig = {
   /** Signed altitude amplitude of the team-separator ridges (DIVIDERS
    *  button group). Same sign convention as `centerMagnitude`. */
   readonly dividersMagnitude: OptionsConfig<number>;
-  /** Overall map boundary shape: full square map or circular island. */
-  readonly mapShape: LabeledOptionsConfig<TerrainMapShape>;
+  /** Signed altitude amplitude of the map perimeter ring (PERIMETER
+   *  button group). 0 = flat square map (no boundary override); negative
+   *  sinks the outer ring below water (round-island); positive raises a
+   *  rim. Same sign convention as `centerMagnitude`. */
+  readonly perimeterMagnitude: OptionsConfig<number>;
   /** Plateau lattice step in world units. The value `0` is the "NONE"
    *  option (no terracing — the sim short-circuits on step <= 0), so
    *  this bar replaces the old PLATEAU on/off toggle plus the step

@@ -24,7 +24,7 @@ export function runCanonicalCheckpointContractTest(): void {
     playerIds: [1 as PlayerId, 2 as PlayerId],
     centerMagnitude: 0,
     dividersMagnitude: 0,
-    terrainMapShape: 'circle',
+    perimeterMagnitude: -800,
     terrainDTerrain: 0,
     metalDepositStep: 0,
     terrainDetail: 1,

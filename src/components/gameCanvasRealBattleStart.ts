@@ -223,7 +223,7 @@ export async function startRealBattleWithPlayers(
       mapHeight: realBattleTerrain.mapSize.height,
       centerMagnitude: realBattleTerrain.terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: realBattleTerrain.terrainRuntimeConfig.dividersMagnitude,
-      terrainMapShape: realBattleTerrain.terrainMapShape,
+      perimeterMagnitude: realBattleTerrain.terrainRuntimeConfig.perimeterMagnitude,
       backgroundMode: false,
       lookupPlayerName: options.lookupPlayerName,
       onRendererWarmupChange: (warming) => {

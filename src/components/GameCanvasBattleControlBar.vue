@@ -188,12 +188,12 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
         <BarLabel>PERIMETER:</BarLabel>
         <BarButtonGroup>
           <BarButton
-            v-for="opt in BATTLE_CONFIG.mapShape.options"
-            :key="opt.value"
-            :active="model.terrainMapShape === opt.value"
-            :title="`Set the map perimeter to ${opt.label.toLowerCase()}`"
-            @click="model.applyTerrainMapShape(opt.value)"
-          >{{ opt.label }}</BarButton>
+            v-for="opt in BATTLE_CONFIG.perimeterMagnitude.options"
+            :key="opt"
+            :active="model.perimeterMagnitude === opt"
+            :title="`Set the map perimeter ring altitude to ${opt}`"
+            @click="model.applyPerimeterMagnitude(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">

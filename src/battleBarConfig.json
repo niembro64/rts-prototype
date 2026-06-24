@@ -11,11 +11,8 @@
   "dividersMagnitude": {
     "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
-  "mapShape": {
-    "options": [
-      { "value": "square", "label": "SQUARE" },
-      { "value": "circle", "label": "CIRCLE" }
-    ]
+  "perimeterMagnitude": {
+    "options": [-3200, -800, -400, -200, 0, 200, 400, 800, 1600, 3200, 6400]
   },
   "terrainDTerrain": {
     "options": [100, 200, 400, 800, 0]
@@ -56,8 +53,8 @@
     "realCenterMagnitude": "real-battle-center-magnitude",
     "demoDividersMagnitude": "demo-battle-dividers-magnitude",
     "realDividersMagnitude": "real-battle-dividers-magnitude",
-    "demoTerrainMapShape": "demo-battle-terrain-map-shape",
-    "realTerrainMapShape": "real-battle-terrain-map-shape",
+    "demoPerimeterMagnitude": "demo-battle-perimeter-magnitude",
+    "realPerimeterMagnitude": "real-battle-perimeter-magnitude",
     "demoTerrainDTerrain": "demo-battle-terrain-d-terrain",
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
     "demoMetalDepositStep": "demo-battle-metal-deposit-step",
@@ -94,7 +91,6 @@
       "real-battle-shields-obstruct-sight"
     ],
     ["rts-fog-of-war-enabled", "demo-battle-fog-of-war-enabled"],
-    ["rts-terrain-map-shape", "demo-battle-terrain-map-shape"],
     ["rts-map-land-cells", "demo-battle-map-width-land-cells"]
   ]
 }

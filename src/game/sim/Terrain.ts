@@ -1,15 +1,8 @@
 // Public terrain facade. Keep external imports stable while the terrain
 // implementation is split into focused modules under ./terrain.
 export {
-  
-  TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
-  
   METAL_DEPOSIT_STEP,
   TERRAIN_MAX_RENDER_Y,
-
-  
-
-  
   TILE_FLOOR_Y,
   WATER_FULLY_OPAQUE,
   WATER_LEVEL,
@@ -17,14 +10,14 @@ export {
 } from './terrain/terrainConfig';
 export {
   getTerrainRuntimeConfig,
-  getTerrainMapShape,
+  getTerrainPerimeterMagnitude,
   getTerrainVersion,
   getTerrainTeamCount,
   resetTerrainStateForDeterministicReplay,
   setTerrainRuntimeConfig,
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
-  setTerrainMapShape,
+  setTerrainPerimeterMagnitude,
   setTerrainTeamCount,
 } from './terrain/terrainState';
 export {

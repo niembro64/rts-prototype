@@ -8,6 +8,7 @@ import {
   normalizeConverterTax,
   normalizeDividersMagnitude,
   normalizeMetalDepositStep,
+  normalizePerimeterMagnitude,
   normalizeTerrainDTerrain,
   normalizeTerrainDetail,
   saveCenterMagnitude,
@@ -15,10 +16,10 @@ import {
   saveDividersMagnitude,
   saveMapLandDimensions,
   saveMetalDepositStep,
+  savePerimeterMagnitude,
   saveStoredCap,
   saveTerrainDTerrain,
   saveTerrainDetail,
-  saveTerrainMapShape,
   type BattleMode,
 } from '../battleBarConfig';
 import type {
@@ -26,19 +27,15 @@ import type {
   NetworkManager,
   NetworkRole,
 } from '../game/network/NetworkManager';
-import {
-  setTerrainMapShape,
-  setTerrainRuntimeConfig,
-} from '../game/sim/Terrain';
+import { setTerrainRuntimeConfig } from '../game/sim/Terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
-import type { TerrainMapShape } from '../types/terrain';
 
 type GameCanvasLobbySettings = {
   currentLobbySettings(): LobbySettings;
   broadcastLobbySettingsIfHost(): void;
   applyCenterMagnitude(value: number, broadcast?: boolean): void;
   applyDividersMagnitude(value: number, broadcast?: boolean): void;
-  applyTerrainMapShape(shape: TerrainMapShape, broadcast?: boolean): void;
+  applyPerimeterMagnitude(value: number, broadcast?: boolean): void;
   applyTerrainDTerrain(value: number, broadcast?: boolean): void;
   applyMetalDepositStep(value: number, broadcast?: boolean): void;
   applyTerrainDetail(value: number, broadcast?: boolean): void;
@@ -61,7 +58,7 @@ type GameCanvasLobbySettingsOptions = {
   gameStarted: Ref<boolean>;
   centerMagnitude: Ref<number>;
   dividersMagnitude: Ref<number>;
-  terrainMapShape: Ref<TerrainMapShape>;
+  perimeterMagnitude: Ref<number>;
   terrainDTerrain: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
@@ -89,7 +86,7 @@ export function useGameCanvasLobbySettings({
   gameStarted,
   centerMagnitude,
   dividersMagnitude,
-  terrainMapShape,
+  perimeterMagnitude,
   terrainDTerrain,
   metalDepositStep,
   terrainDetail,
@@ -115,6 +112,7 @@ export function useGameCanvasLobbySettings({
     setTerrainRuntimeConfig({
       centerMagnitude: centerMagnitude.value,
       dividersMagnitude: dividersMagnitude.value,
+      perimeterMagnitude: perimeterMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
       metalDepositStep: metalDepositStep.value,
       terrainDetail: terrainDetail.value,
@@ -125,7 +123,7 @@ export function useGameCanvasLobbySettings({
     return {
       centerMagnitude: centerMagnitude.value,
       dividersMagnitude: dividersMagnitude.value,
-      terrainMapShape: terrainMapShape.value,
+      perimeterMagnitude: perimeterMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
       metalDepositStep: metalDepositStep.value,
       terrainDetail: terrainDetail.value,
@@ -166,12 +164,14 @@ export function useGameCanvasLobbySettings({
     if (broadcast) broadcastLobbySettingsIfHost();
   }
 
-  function applyTerrainMapShape(shape: TerrainMapShape, broadcast = true): void {
+  function applyPerimeterMagnitude(value: number, broadcast = true): void {
     const mode = currentBattleMode.value;
-    const changed = terrainMapShape.value !== shape;
-    terrainMapShape.value = shape;
-    saveTerrainMapShape(shape, mode);
+    const normalized = normalizePerimeterMagnitude(value);
+    const changed = perimeterMagnitude.value !== normalized;
+    perimeterMagnitude.value = normalized;
+    savePerimeterMagnitude(normalized, mode);
     if (!changed) return;
+    applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
     if (broadcast) broadcastLobbySettingsIfHost();
   }
@@ -240,6 +240,9 @@ export function useGameCanvasLobbySettings({
     const nextDividersMagnitude = normalizeDividersMagnitude(
       settings.dividersMagnitude,
     );
+    const nextPerimeterMagnitude = normalizePerimeterMagnitude(
+      settings.perimeterMagnitude,
+    );
     const nextDTerrain =
       settings.terrainDTerrain === undefined
         ? terrainDTerrain.value
@@ -255,7 +258,7 @@ export function useGameCanvasLobbySettings({
     const changed =
       nextCenterMagnitude !== centerMagnitude.value ||
       nextDividersMagnitude !== dividersMagnitude.value ||
-      settings.terrainMapShape !== terrainMapShape.value ||
+      nextPerimeterMagnitude !== perimeterMagnitude.value ||
       nextDTerrain !== terrainDTerrain.value ||
       nextMetalDepositStep !== metalDepositStep.value ||
       nextTerrainDetail !== terrainDetail.value ||
@@ -264,7 +267,7 @@ export function useGameCanvasLobbySettings({
 
     centerMagnitude.value = nextCenterMagnitude;
     dividersMagnitude.value = nextDividersMagnitude;
-    terrainMapShape.value = settings.terrainMapShape;
+    perimeterMagnitude.value = nextPerimeterMagnitude;
     terrainDTerrain.value = nextDTerrain;
     metalDepositStep.value = nextMetalDepositStep;
     terrainDetail.value = nextTerrainDetail;
@@ -272,7 +275,7 @@ export function useGameCanvasLobbySettings({
     mapLengthLandCells.value = settings.mapLengthLandCells;
     saveCenterMagnitude(nextCenterMagnitude, 'real');
     saveDividersMagnitude(nextDividersMagnitude, 'real');
-    saveTerrainMapShape(settings.terrainMapShape, 'real');
+    savePerimeterMagnitude(nextPerimeterMagnitude, 'real');
     saveTerrainDTerrain(nextDTerrain, 'real');
     saveMetalDepositStep(nextMetalDepositStep, 'real');
     saveTerrainDetail(nextTerrainDetail, 'real');
@@ -295,7 +298,6 @@ export function useGameCanvasLobbySettings({
     }
     if (changed) {
       applyCurrentTerrainRuntimeConfig();
-      setTerrainMapShape(settings.terrainMapShape);
     }
 
     const restartPreview = options.restartPreview ?? true;
@@ -313,7 +315,7 @@ export function useGameCanvasLobbySettings({
     const mode = currentBattleMode.value;
     const centerMagnitudeDefault = BATTLE_CONFIG.centerMagnitude.default;
     const dividersMagnitudeDefault = BATTLE_CONFIG.dividersMagnitude.default;
-    const mapShapeDefault = BATTLE_CONFIG.mapShape.default;
+    const perimeterMagnitudeDefault = BATTLE_CONFIG.perimeterMagnitude.default;
     const dTerrainDefault = BATTLE_CONFIG.terrainDTerrain.default;
     const metalDepositStepDefault = BATTLE_CONFIG.metalDepositStep.default;
     const terrainDetailDefault = BATTLE_CONFIG.terrainDetail.default;
@@ -321,7 +323,7 @@ export function useGameCanvasLobbySettings({
     if (
       centerMagnitude.value === centerMagnitudeDefault &&
       dividersMagnitude.value === dividersMagnitudeDefault &&
-      terrainMapShape.value === mapShapeDefault &&
+      perimeterMagnitude.value === perimeterMagnitudeDefault &&
       terrainDTerrain.value === dTerrainDefault &&
       metalDepositStep.value === metalDepositStepDefault &&
       terrainDetail.value === terrainDetailDefault &&
@@ -338,7 +340,7 @@ export function useGameCanvasLobbySettings({
 
     centerMagnitude.value = centerMagnitudeDefault;
     dividersMagnitude.value = dividersMagnitudeDefault;
-    terrainMapShape.value = mapShapeDefault;
+    perimeterMagnitude.value = perimeterMagnitudeDefault;
     terrainDTerrain.value = dTerrainDefault;
     metalDepositStep.value = metalDepositStepDefault;
     terrainDetail.value = terrainDetailDefault;
@@ -346,7 +348,7 @@ export function useGameCanvasLobbySettings({
     mapLengthLandCells.value = mapDimensionsDefault.lengthLandCells;
     saveCenterMagnitude(centerMagnitudeDefault, mode);
     saveDividersMagnitude(dividersMagnitudeDefault, mode);
-    saveTerrainMapShape(mapShapeDefault, mode);
+    savePerimeterMagnitude(perimeterMagnitudeDefault, mode);
     saveTerrainDTerrain(dTerrainDefault, mode);
     saveMetalDepositStep(metalDepositStepDefault, mode);
     saveTerrainDetail(terrainDetailDefault, mode);
@@ -360,7 +362,7 @@ export function useGameCanvasLobbySettings({
     broadcastLobbySettingsIfHost,
     applyCenterMagnitude,
     applyDividersMagnitude,
-    applyTerrainMapShape,
+    applyPerimeterMagnitude,
     applyTerrainDTerrain,
     applyMetalDepositStep,
     applyTerrainDetail,

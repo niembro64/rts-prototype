@@ -29,7 +29,7 @@ import { SERVER_WORLD_SEED } from '../server/ServerBootstrap';
 import type { PlayerId } from '../sim/types';
 import type { LobbySettings } from '@/types/network';
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v2';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v3';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 
@@ -45,7 +45,7 @@ export type CanonicalMatchInitialization = {
   readonly map: {
     readonly centerMagnitude: number | null;
     readonly dividersMagnitude: number | null;
-    readonly terrainMapShape: string | null;
+    readonly perimeterMagnitude: number | null;
     readonly terrainDTerrain: number | null;
     readonly metalDepositStep: number | null;
     readonly terrainDetail: number | null;
@@ -124,7 +124,7 @@ export function buildCanonicalMatchInitialization({
     map: {
       centerMagnitude: finiteOrNull(settings?.centerMagnitude),
       dividersMagnitude: finiteOrNull(settings?.dividersMagnitude),
-      terrainMapShape: settings?.terrainMapShape ?? null,
+      perimeterMagnitude: finiteOrNull(settings?.perimeterMagnitude),
       terrainDTerrain: finiteOrNull(settings?.terrainDTerrain),
       metalDepositStep: finiteOrNull(settings?.metalDepositStep),
       terrainDetail: finiteOrNull(settings?.terrainDetail),

@@ -145,7 +145,7 @@ function assertInitializationHashMismatch(): void {
     settings: {
       centerMagnitude: 0,
       dividersMagnitude: 0,
-      terrainMapShape: 'circle' as const,
+      perimeterMagnitude: -800,
       terrainDTerrain: 0,
       metalDepositStep: 0,
       terrainDetail: 1,
@@ -168,10 +168,10 @@ function assertInitializationHashMismatch(): void {
 
 function createTerrain(): RealBattleStartupTerrain {
   return {
-    terrainMapShape: 'circle',
     terrainRuntimeConfig: {
       centerMagnitude: 0,
       dividersMagnitude: 0,
+      perimeterMagnitude: -800,
       terrainDTerrain: 0,
       metalDepositStep: 0,
       terrainDetail: 1,
@@ -191,7 +191,7 @@ function createLobbySettings(terrain: RealBattleStartupTerrain): LobbySettings {
   return {
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
-    terrainMapShape: terrain.terrainMapShape,
+    perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
     terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,

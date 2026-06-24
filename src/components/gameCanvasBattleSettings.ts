@@ -25,7 +25,6 @@ import type { SlopePathMode } from '../types/slopePathMode';
 import type { NetworkServerSnapshotMeta } from '../game/network/NetworkTypes';
 import type { GameConnection } from '../game/server/GameConnection';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
-import type { TerrainMapShape } from '../types/terrain';
 import {
   type BattlePreset,
   getModeDefaultPreset,
@@ -77,7 +76,7 @@ type GameCanvasBattleSettingsOptions = {
   broadcastLobbySettingsIfHost: () => void;
   applyCenterMagnitude: (value: number, broadcast?: boolean) => void;
   applyDividersMagnitude: (value: number, broadcast?: boolean) => void;
-  applyTerrainMapShape: (shape: TerrainMapShape, broadcast?: boolean) => void;
+  applyPerimeterMagnitude: (value: number, broadcast?: boolean) => void;
   applyTerrainDTerrain: (value: number, broadcast?: boolean) => void;
   applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
   applyTerrainDetail: (value: number, broadcast?: boolean) => void;
@@ -98,7 +97,7 @@ export function useGameCanvasBattleSettings({
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
   applyDividersMagnitude,
-  applyTerrainMapShape,
+  applyPerimeterMagnitude,
   applyTerrainDTerrain,
   applyMetalDepositStep,
   applyTerrainDetail,
@@ -379,7 +378,7 @@ export function useGameCanvasBattleSettings({
     setConverterTax(preset.converterTax, false);
     applyCenterMagnitude(preset.centerMagnitude, false);
     applyDividersMagnitude(preset.dividersMagnitude, false);
-    applyTerrainMapShape(preset.terrainMapShape, false);
+    applyPerimeterMagnitude(preset.perimeterMagnitude, false);
     applyTerrainDTerrain(preset.terrainDTerrain, false);
     applyMetalDepositStep(preset.metalDepositStep, false);
     applyTerrainDetail(preset.terrainDetail, false);

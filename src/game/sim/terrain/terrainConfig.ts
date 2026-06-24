@@ -96,6 +96,10 @@ export type TerrainRuntimeConfig = {
   centerMagnitude: number;
   /** Signed altitude of the team-separator ridges (DIVIDERS bar). */
   dividersMagnitude: number;
+  /** Signed altitude of the map perimeter ring (PERIMETER bar). 0 =
+   *  flat square (no boundary override); negative dishes the outer
+   *  ring below water (round-island); positive raises a rim wall. */
+  perimeterMagnitude: number;
   /** Plateau lattice step (D-PLATEAU bar). 0 = NONE (terracing
    *  disabled — the sim short-circuits on step <= 0). */
   terrainDTerrain: number;
@@ -112,19 +116,26 @@ export type TerrainRuntimeConfig = {
 export let TERRAIN_CENTER_MAGNITUDE = BATTLE_CONFIG.centerMagnitude.default;
 /** Currently-installed signed DIVIDERS amplitude. */
 export let TERRAIN_DIVIDERS_MAGNITUDE = BATTLE_CONFIG.dividersMagnitude.default;
+/** Currently-installed signed PERIMETER amplitude (matches the active
+ *  battle's PERIMETER bar pick). The terrain heightmap blends the
+ *  outer ring toward this value — 0 leaves the natural square map,
+ *  negative sinks the ring below water (round-island), positive raises
+ *  a rim. */
+export let TERRAIN_PERIMETER_MAGNITUDE = BATTLE_CONFIG.perimeterMagnitude.default;
 
-/** Conservative upper bound on terrain heights — both ripples can
- *  stack at their intersection, so use the sum of absolute amplitudes
- *  doubled to match the prior "magnitude × 2" headroom convention. */
+/** Conservative upper bound on terrain heights — center/dividers/
+ *  perimeter features can stack, so sum their absolute amplitudes. */
 function computeTerrainMaxRenderY(
   centerMag: number,
   dividersMag: number,
+  perimeterMag: number,
 ): number {
-  return Math.abs(centerMag) + Math.abs(dividersMag);
+  return Math.abs(centerMag) + Math.abs(dividersMag) + Math.abs(perimeterMag);
 }
 export let TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
   TERRAIN_CENTER_MAGNITUDE,
   TERRAIN_DIVIDERS_MAGNITUDE,
+  TERRAIN_PERIMETER_MAGNITUDE,
 );
 
 /** Vertical spacing between authored terrain plateau levels. Drives
@@ -139,26 +150,21 @@ export let TERRAIN_D_TERRAIN = BATTLE_CONFIG.terrainDTerrain.default;
  *  lattice. */
 export let METAL_DEPOSIT_STEP = BATTLE_CONFIG.metalDepositStep.default;
 
-/** Round-island TERRAIN GENERATION shape (sim authority, circle maps only):
- *  the fraction of the map's smaller dimension at which the land has fully
- *  descended to the seabed floor (`TILE_FLOOR_Y`). Drives the height falloff
- *  in `getTerrainMapBoundaryFade` and the matching Rust sampler. This is NOT
- *  a coloring knob — the renderer's outer-ring color/fade is configured
+/** PERIMETER ring shape (sim authority): fractions of the map's smaller
+ *  dimension marking where the perimeter override begins and where it
+ *  reaches full strength. Inside `innerRadiusFraction` the natural terrain
+ *  is untouched; from there to `outerRadiusFraction` the height cosine-blends
+ *  toward the signed PERIMETER magnitude; beyond `outerRadiusFraction` (out
+ *  to the map edge) the terrain is flat at exactly that magnitude. Drives the
+ *  weight in `getTerrainMapBoundaryFade` and the matching Rust sampler. NOT a
+ *  coloring knob — the renderer's outer-ring color/fade is configured
  *  separately by `terrainHorizonBlend` in worldRenderConfig.json and
  *  `COLORS.world.terrain.horizonBlend`; the horizon blend merely reads this
- *  generation boundary so the color seam tracks the land→seabed handoff. */
-export const TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION =
-  terrainConfig.generation.circleIsland.radiusFraction;
-/** Width (fraction of min dimension) of the shoreline falloff band just
- *  inside `TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION` over which land ramps down
- *  to the seabed. Generation shape, not coloring. */
-export const TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION =
-  terrainConfig.generation.circleIsland.shorelineWidthFraction;
-
-/** The terrain height outside the round island. Keep this at the world floor:
- *  water is a separate plane above it, so the island edge visibly descends
- *  through the waterline instead of flattening at the water surface. */
-export const TERRAIN_CIRCLE_UNDERWATER_HEIGHT = TILE_FLOOR_Y;
+ *  weight so the color seam tracks the perimeter handoff. */
+export const TERRAIN_PERIMETER_CONFIG = {
+  innerRadiusFraction: terrainConfig.generation.perimeter.innerRadiusFraction,
+  outerRadiusFraction: terrainConfig.generation.perimeter.outerRadiusFraction,
+} as const;
 
 /** Fade authored terrain features to flat before the outer map buffer. */
 export const TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION =
@@ -187,10 +193,15 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     TERRAIN_DIVIDERS_MAGNITUDE = config.dividersMagnitude;
     changed = true;
   }
+  if (TERRAIN_PERIMETER_MAGNITUDE !== config.perimeterMagnitude) {
+    TERRAIN_PERIMETER_MAGNITUDE = config.perimeterMagnitude;
+    changed = true;
+  }
   if (changed) {
     TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
       TERRAIN_CENTER_MAGNITUDE,
       TERRAIN_DIVIDERS_MAGNITUDE,
+      TERRAIN_PERIMETER_MAGNITUDE,
     );
   }
 

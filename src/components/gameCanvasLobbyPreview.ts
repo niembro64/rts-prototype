@@ -4,13 +4,12 @@ import {
   loadStoredDividersMagnitude,
   loadStoredMapLandDimensions,
   loadStoredMetalDepositStep,
+  loadStoredPerimeterMagnitude,
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
-  loadStoredTerrainMapShape,
   type BattleMode,
 } from '../battleBarConfig';
 import type { PlayerId } from '../game/sim/types';
-import type { TerrainMapShape } from '../types/terrain';
 
 type GameCanvasLobbyPreviewOptions = {
   backgroundContainerRef: Ref<HTMLDivElement | null>;
@@ -23,7 +22,7 @@ type GameCanvasLobbyPreviewOptions = {
   localPlayerId: Ref<PlayerId>;
   centerMagnitude: Ref<number>;
   dividersMagnitude: Ref<number>;
-  terrainMapShape: Ref<TerrainMapShape>;
+  perimeterMagnitude: Ref<number>;
   terrainDTerrain: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
@@ -44,7 +43,7 @@ export function useGameCanvasLobbyPreview({
   localPlayerId,
   centerMagnitude,
   dividersMagnitude,
-  terrainMapShape,
+  perimeterMagnitude,
   terrainDTerrain,
   metalDepositStep,
   terrainDetail,
@@ -69,7 +68,7 @@ export function useGameCanvasLobbyPreview({
   watch(currentBattleMode, (mode) => {
     centerMagnitude.value = loadStoredCenterMagnitude(mode);
     dividersMagnitude.value = loadStoredDividersMagnitude(mode);
-    terrainMapShape.value = loadStoredTerrainMapShape(mode);
+    perimeterMagnitude.value = loadStoredPerimeterMagnitude(mode);
     terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
     metalDepositStep.value = loadStoredMetalDepositStep(mode);
     terrainDetail.value = loadStoredTerrainDetail(mode);

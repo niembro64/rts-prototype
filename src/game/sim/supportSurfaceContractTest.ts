@@ -7,10 +7,8 @@ import {
 import { PhysicsEngine3D } from '../server/PhysicsEngine3D';
 import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
 import {
-  getTerrainMapShape,
   getTerrainRuntimeConfig,
   getTerrainTeamCount,
-  setTerrainMapShape,
   setTerrainRuntimeConfig,
   setTerrainTeamCount,
   type TerrainRuntimeConfig,
@@ -46,6 +44,9 @@ const CONTRACT_EPSILON = 1e-6;
 const SUPPORT_SURFACE_CONTRACT_TERRAIN: TerrainRuntimeConfig = {
   centerMagnitude: 0,
   dividersMagnitude: 0,
+  // Negative perimeter sinks the outer ring below water so the contract
+  // test can find both ground and water support surfaces (round-island).
+  perimeterMagnitude: -800,
   terrainDTerrain: 0,
   metalDepositStep: 0,
   terrainDetail: 1,
@@ -116,17 +117,14 @@ function findSurfacePoint(
 
 function withKnownSupportSurfaceTerrain(test: () => void): void {
   const previousRuntimeConfig = getTerrainRuntimeConfig();
-  const previousMapShape = getTerrainMapShape();
   const previousTeamCount = getTerrainTeamCount();
   setTerrainTeamCount(0);
   setTerrainRuntimeConfig(SUPPORT_SURFACE_CONTRACT_TERRAIN);
-  setTerrainMapShape('circle');
   try {
     test();
   } finally {
     setTerrainRuntimeConfig(previousRuntimeConfig);
     setTerrainTeamCount(previousTeamCount);
-    setTerrainMapShape(previousMapShape);
   }
 }
 

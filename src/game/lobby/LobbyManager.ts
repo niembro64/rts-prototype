@@ -14,7 +14,6 @@ import {
   loadStoredDemoBuildings,
   loadStoredDemoTowers,
   loadStoredDemoCap,
-  loadStoredTerrainMapShape,
   loadStoredMapLandDimensions,
   loadStoredTerrainRuntimeConfig,
   getDefaultDemoUnits,
@@ -25,7 +24,7 @@ import {
 import {
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
-  setTerrainMapShape,
+  setTerrainPerimeterMagnitude,
   setTerrainRuntimeConfig,
 } from '../sim/Terrain';
 import type { PlayerId } from '../sim/types';
@@ -117,7 +116,6 @@ export async function createBackgroundBattle(
   // renderer bakes its tile mesh once when the scene is created — both
   // must read the current shape, not the module's compile-time
   // default.
-  const terrainMapShape = loadStoredTerrainMapShape(mode);
   const terrainRuntimeConfig = loadStoredTerrainRuntimeConfig(mode);
   const mapDimensions = loadStoredMapLandDimensions(mode);
   const mapSize = getMapSize(
@@ -128,7 +126,7 @@ export async function createBackgroundBattle(
   setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
-  setTerrainMapShape(terrainMapShape);
+  setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
   await report(0.1, 'Loading terrain settings');
 
   // GAME LOBBY preview = a stripped-down background battle showing
@@ -197,7 +195,7 @@ export async function createBackgroundBattle(
       playerIds: demoPlayerIds,
       centerMagnitude: terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
-      terrainMapShape,
+      perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
       terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep: terrainRuntimeConfig.metalDepositStep,
       terrainDetail: terrainRuntimeConfig.terrainDetail,
@@ -265,7 +263,7 @@ export async function createBackgroundBattle(
     mapHeight: mapSize.height,
     centerMagnitude: terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
-    terrainMapShape,
+    perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
     backgroundMode: true,
     lobbyPreview: isLobbyPreview,
     onRendererWarmupChange,

@@ -2,7 +2,6 @@ import { BUILDABLE_UNIT_BLUEPRINT_IDS } from '../game/sim/blueprints/unitRoster'
 import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../types/blueprintIds';
 import type { BattleMode } from '../battleBarConfig';
 import { persist } from '../persistence';
-import type { TerrainMapShape } from '../types/terrain';
 import type { ShieldReflectionMode } from '../types/shotTypes';
 import type { SlopePathMode } from '../types/slopePathMode';
 
@@ -28,7 +27,9 @@ export type BattlePreset = {
   readonly converterTax: number;
   readonly centerMagnitude: number;
   readonly dividersMagnitude: number;
-  readonly terrainMapShape: TerrainMapShape;
+  /** Signed PERIMETER ring altitude. 0 = flat square; negative sinks the
+   *  outer ring below water (round-island); positive raises a rim. */
+  readonly perimeterMagnitude: number;
   readonly terrainDTerrain: number;
   readonly metalDepositStep: number;
   /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
@@ -113,7 +114,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.0,
       centerMagnitude: 0,
       dividersMagnitude: 0,
-      terrainMapShape: 'square',
+      perimeterMagnitude: 0,
       terrainDTerrain: 0,
       metalDepositStep: 0,
       terrainDetail: 0,
@@ -133,7 +134,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 0,
       dividersMagnitude: 400,
-      terrainMapShape: 'circle',
+      perimeterMagnitude: -800,
       terrainDTerrain: 1,
       metalDepositStep: 200,
       terrainDetail: 1,
@@ -153,7 +154,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 0,
       dividersMagnitude: 0,
-      terrainMapShape: 'circle',
+      perimeterMagnitude: -800,
       terrainDTerrain: 0,
       metalDepositStep: 0,
       terrainDetail: 16,
@@ -173,7 +174,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 0,
       dividersMagnitude: 1600,
-      terrainMapShape: 'circle',
+      perimeterMagnitude: -800,
       terrainDTerrain: 400,
       metalDepositStep: 0,
       terrainDetail: 16,
@@ -193,7 +194,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 1600,
       dividersMagnitude: 800,
-      terrainMapShape: 'circle',
+      perimeterMagnitude: -800,
       terrainDTerrain: 0,
       metalDepositStep: 400,
       terrainDetail: 1,
@@ -213,7 +214,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: -400,
       dividersMagnitude: 1600,
-      terrainMapShape: 'circle',
+      perimeterMagnitude: -800,
       terrainDTerrain: 0,
       metalDepositStep: 200,
       terrainDetail: 8,
@@ -233,7 +234,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 200,
       dividersMagnitude: -3200,
-      terrainMapShape: 'circle',
+      perimeterMagnitude: -800,
       terrainDTerrain: 0,
       metalDepositStep: 200,
       terrainDetail: 8,
@@ -253,7 +254,7 @@ function buildPresets(): readonly BattlePreset[] {
       converterTax: 0.5,
       centerMagnitude: 6400,
       dividersMagnitude: 6400,
-      terrainMapShape: 'circle',
+      perimeterMagnitude: -800,
       terrainDTerrain: 200,
       metalDepositStep: 3200,
       terrainDetail: 16,
@@ -312,7 +313,7 @@ function presetMatchesCurrent(
     Math.abs(p.converterTax - c.converterTax) < 1e-6 &&
     p.centerMagnitude === c.centerMagnitude &&
     p.dividersMagnitude === c.dividersMagnitude &&
-    p.terrainMapShape === c.terrainMapShape &&
+    p.perimeterMagnitude === c.perimeterMagnitude &&
     p.terrainDTerrain === c.terrainDTerrain &&
     p.metalDepositStep === c.metalDepositStep &&
     p.terrainDetail === c.terrainDetail &&

@@ -4,7 +4,6 @@ import type { PlayerId } from './sim';
 import type { Command } from './commands';
 import type { NetworkServerSnapshot } from './network';
 import type { SimEvent } from './combat';
-import type { TerrainMapShape } from './terrain';
 import type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
 
 export type { SnapshotWirePayload } from '../game/network/SnapshotWirePayload';
@@ -30,7 +29,10 @@ export type GameConfig = {
   /** Signed DIVIDERS amplitude used for team-separator ridges/trenches.
    *  Same sign convention as `centerMagnitude`. */
   dividersMagnitude?: number;
-  terrainMapShape?: TerrainMapShape;
+  /** Signed PERIMETER ring amplitude. 0 = flat square; negative sinks the
+   *  outer ring below water (round-island); positive raises a rim. Same
+   *  sign convention as `centerMagnitude`. */
+  perimeterMagnitude?: number;
   backgroundMode?: boolean;
   /** Lobby-preview rendering: select the lobby camera defaults and
    *  skip the usual demo base spawn so the small pane in the GAME
@@ -119,7 +121,9 @@ export type GameServerConfig = {
   centerMagnitude?: number;
   /** Signed DIVIDERS amplitude selected by the host/lobby. */
   dividersMagnitude?: number;
-  terrainMapShape?: TerrainMapShape;
+  /** Signed PERIMETER ring amplitude selected by the host/lobby. 0 = flat
+   *  square; negative = round-island; positive = rim. */
+  perimeterMagnitude?: number;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain?: number;
   /** Metal-extractor pad altitude step (world units). */

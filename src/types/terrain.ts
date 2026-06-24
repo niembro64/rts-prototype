@@ -1,5 +1,3 @@
-export type TerrainMapShape = 'square' | 'circle';
-
 /** Server-authored terrain mesh samples.
  *
  *  Terrain topology is independent from LAND GRID gameplay cells. The

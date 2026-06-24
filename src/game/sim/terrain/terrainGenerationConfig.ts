@@ -1,7 +1,6 @@
 import {
-  TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION,
-  TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
+  TERRAIN_PERIMETER_CONFIG,
   TERRAIN_PLATEAU_CONFIG,
   TERRAIN_RIDGE_CONFIG,
   TERRAIN_RIPPLE_CONFIG,
@@ -9,7 +8,6 @@ import {
 } from './terrainConfig';
 import type { TerrainFlatZone } from './terrainFlatZones';
 import {
-  getTerrainMapShape,
   getTerrainRuntimeConfig,
   getTerrainTeamCount,
 } from './terrainState';
@@ -38,11 +36,11 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   rows[0] = runtime.centerMagnitude;
   rows[1] = runtime.dividersMagnitude;
   rows[2] = runtime.terrainDTerrain;
-  rows[3] = getTerrainMapShape() === 'circle' ? 1 : 0;
+  rows[3] = runtime.perimeterMagnitude;
   rows[4] = getTerrainTeamCount();
   rows[5] = TILE_FLOOR_Y;
-  rows[6] = TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION;
-  rows[7] = TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION;
+  rows[6] = TERRAIN_PERIMETER_CONFIG.outerRadiusFraction;
+  rows[7] = TERRAIN_PERIMETER_CONFIG.innerRadiusFraction;
   rows[8] = TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION;
   rows[9] = TERRAIN_PLATEAU_CONFIG.shelfFractionOfStep;
   rows[10] = TERRAIN_PLATEAU_CONFIG.rampEdgeSharpness;

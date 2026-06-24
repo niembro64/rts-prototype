@@ -1,5 +1,4 @@
 import {
-  type TerrainMapShape,
   type TerrainTileMap,
 } from '@/types/terrain';
 import { getTerrainDividerTeamCount } from '../playerLayout';
@@ -11,12 +10,13 @@ import {
   TERRAIN_D_TERRAIN,
   TERRAIN_DIVIDERS_MAGNITUDE,
   TERRAIN_FINE_TRIANGLE_SUBDIV,
+  TERRAIN_PERIMETER_MAGNITUDE,
   type TerrainRuntimeConfig,
 } from './terrainConfig';
 
 let mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
 let mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
-let terrainMapShape: TerrainMapShape = 'circle';
+let perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
 let teamCount = 0;
 let terrainVersion = 1;
 let authoritativeTerrainTileMap: TerrainTileMap | null = null;
@@ -28,7 +28,7 @@ export function getTerrainVersion(): number {
 export function resetTerrainStateForDeterministicReplay(): void {
   mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
   mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
-  terrainMapShape = 'circle';
+  perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
   teamCount = 0;
   terrainVersion = 1;
   authoritativeTerrainTileMap = null;
@@ -84,14 +84,17 @@ export function getMountainSeparatorAmplitude(): number {
   return mountainSeparatorAmplitude;
 }
 
-export function getTerrainMapShape(): TerrainMapShape {
-  return terrainMapShape;
+/** Currently-installed signed PERIMETER amplitude. The terrain height
+ *  generator reads this to blend the outer ring toward its value. */
+export function getTerrainPerimeterMagnitude(): number {
+  return perimeterMagnitude;
 }
 
 export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
   return {
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
+    perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
@@ -102,6 +105,7 @@ export function setTerrainRuntimeConfig(config: TerrainRuntimeConfig): void {
   if (!applyTerrainRuntimeConfig(config)) return;
   mountainRippleAmplitude = TERRAIN_CENTER_MAGNITUDE;
   mountainSeparatorAmplitude = TERRAIN_DIVIDERS_MAGNITUDE;
+  perimeterMagnitude = TERRAIN_PERIMETER_MAGNITUDE;
   invalidateTerrainConfig();
 }
 
@@ -111,6 +115,7 @@ export function setTerrainCenterMagnitude(value: number): void {
   applyTerrainRuntimeConfig({
     centerMagnitude: value,
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
+    perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
@@ -124,6 +129,7 @@ export function setTerrainDividersMagnitude(value: number): void {
   applyTerrainRuntimeConfig({
     centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
     dividersMagnitude: value,
+    perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
@@ -131,12 +137,17 @@ export function setTerrainDividersMagnitude(value: number): void {
   invalidateTerrainConfig();
 }
 
-export function setTerrainMapShape(shape: TerrainMapShape): void {
-  if (shape !== 'square' && shape !== 'circle') {
-    throw new Error(`Unknown terrain map shape: ${shape as string}`);
-  }
-  if (shape === terrainMapShape) return;
-  terrainMapShape = shape;
+export function setTerrainPerimeterMagnitude(value: number): void {
+  if (value === perimeterMagnitude) return;
+  perimeterMagnitude = value;
+  applyTerrainRuntimeConfig({
+    centerMagnitude: TERRAIN_CENTER_MAGNITUDE,
+    dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
+    perimeterMagnitude: value,
+    terrainDTerrain: TERRAIN_D_TERRAIN,
+    metalDepositStep: METAL_DEPOSIT_STEP,
+    terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
+  });
   invalidateTerrainConfig();
 }
 

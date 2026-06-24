@@ -1,10 +1,8 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import {
-  TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION,
-  TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION,
-  TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
   TERRAIN_D_TERRAIN,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
+  TERRAIN_PERIMETER_CONFIG,
   TERRAIN_PLATEAU_CONFIG,
   TERRAIN_RIDGE_CONFIG,
   TERRAIN_RIPPLE_CONFIG,
@@ -16,9 +14,16 @@ import { depositOverride } from './terrainFlatZones';
 import {
   getMountainRippleAmplitude,
   getMountainSeparatorAmplitude,
-  getTerrainMapShape,
+  getTerrainPerimeterMagnitude,
   getTerrainTeamCount,
 } from './terrainState';
+
+/** Raised-cosine ramp on [0,1]: 0 at t=0, 1 at t=1, with zero slope at
+ *  both ends. Used to blend the natural terrain into the PERIMETER ring
+ *  across the inner→outer band. Mirrors the Rust perimeter weight. */
+function perimeterRampWeight(t: number): number {
+  return (1 - DMath.cos(t * Math.PI)) * 0.5;
+}
 import {
   makeMapOvalMetrics,
   sampleMapOvalAt,
@@ -69,26 +74,21 @@ function applyTerrainPlateaus(height: number): number {
   return plateauLevel * step;
 }
 
-function getTerrainCircleEndRadiusForMinDim(minDim: number): number {
-  const maxEndRadius = minDim * 0.5;
-  return Math.max(
-    1,
-    Math.min(
-      maxEndRadius,
-      minDim * TERRAIN_CIRCLE_ISLAND_RADIUS_FRACTION,
-    ),
-  );
+/** Outer radius (world units) of the PERIMETER ring: at and beyond this
+ *  distance the terrain is flat at exactly the perimeter magnitude. */
+function getTerrainPerimeterOuterRadiusForMinDim(minDim: number): number {
+  return Math.max(1, minDim * TERRAIN_PERIMETER_CONFIG.outerRadiusFraction);
 }
 
-function getTerrainCircleStartRadiusForMinDim(
+/** Inner radius (world units) where the perimeter override begins. Inside
+ *  it the natural terrain is untouched; clamped to never exceed the outer
+ *  radius so the band stays well-formed for any config. */
+function getTerrainPerimeterInnerRadiusForMinDim(
   minDim: number,
-  endRadius: number,
+  outerRadius: number,
 ): number {
-  const maxWidth = Math.max(0, endRadius - 1);
-  const desiredWidth =
-    minDim * Math.max(0, TERRAIN_CIRCLE_SHORELINE_WIDTH_FRACTION);
-  const width = Math.min(maxWidth, desiredWidth);
-  return Math.max(0, endRadius - width);
+  const inner = minDim * Math.max(0, TERRAIN_PERIMETER_CONFIG.innerRadiusFraction);
+  return Math.min(Math.max(0, inner), outerRadius);
 }
 
 function getTerrainGenerationBoundaryFadeForSample(
@@ -117,13 +117,18 @@ function getTerrainMapBoundaryFadeForSample(
   metrics: MapOvalMetrics,
   oval: MapOvalSample,
 ): number {
-  if (getTerrainMapShape() !== 'circle') return 0;
-  const endRadius = getTerrainCircleEndRadiusForMinDim(metrics.minDim);
-  const startRadius = getTerrainCircleStartRadiusForMinDim(metrics.minDim, endRadius);
-  if (oval.distance <= startRadius) return 0;
-  if (oval.distance >= endRadius) return 1;
-  return smootherstep(
-    clamp01((oval.distance - startRadius) / (endRadius - startRadius)),
+  // PERIMETER off (magnitude 0) leaves the natural square map untouched,
+  // exactly like the old SQUARE shape: weight 0 everywhere.
+  if (getTerrainPerimeterMagnitude() === 0) return 0;
+  const outerRadius = getTerrainPerimeterOuterRadiusForMinDim(metrics.minDim);
+  const innerRadius = getTerrainPerimeterInnerRadiusForMinDim(
+    metrics.minDim,
+    outerRadius,
+  );
+  if (oval.distance <= innerRadius) return 0;
+  if (oval.distance >= outerRadius) return 1;
+  return perimeterRampWeight(
+    clamp01((oval.distance - innerRadius) / Math.max(1e-6, outerRadius - innerRadius)),
   );
 }
 
@@ -133,13 +138,16 @@ export function getTerrainMapBoundaryFade(
   mapWidth: number,
   mapHeight: number,
 ): number {
-  if (getTerrainMapShape() !== 'circle') return 0;
+  if (getTerrainPerimeterMagnitude() === 0) return 0;
   const metrics = makeMapOvalMetrics(mapWidth, mapHeight);
   const oval = sampleMapOvalAt(metrics, x, y);
   return getTerrainMapBoundaryFadeForSample(metrics, oval);
 }
 
-/** Internal: apply boundary fade with pre-built metrics + sample. */
+/** Internal: blend toward the PERIMETER magnitude with pre-built metrics +
+ *  sample. Inside the inner radius the natural height passes through; in the
+ *  band it cosine-blends toward the perimeter value; at/beyond the outer
+ *  radius the height is hard-enforced to exactly the perimeter magnitude. */
 function applyTerrainMapBoundaryForSample(
   height: number,
   metrics: MapOvalMetrics,
@@ -147,8 +155,9 @@ function applyTerrainMapBoundaryForSample(
 ): number {
   const w = getTerrainMapBoundaryFadeForSample(metrics, oval);
   if (w <= 0) return height;
-  if (w >= 1) return TERRAIN_CIRCLE_UNDERWATER_HEIGHT;
-  return height + (TERRAIN_CIRCLE_UNDERWATER_HEIGHT - height) * w;
+  const perimeter = getTerrainPerimeterMagnitude();
+  if (w >= 1) return perimeter;
+  return height + (perimeter - height) * w;
 }
 
 function getGeneratedNaturalTerrainHeight(

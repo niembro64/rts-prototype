@@ -315,7 +315,7 @@ async function runFullStack(
       mapHeight: mapSize,
       centerMagnitude: 0,
       dividersMagnitude: 0,
-      terrainMapShape: 'circle',
+      perimeterMagnitude: -800,
       backgroundMode: true,
     });
     server.start();
@@ -414,7 +414,7 @@ function createServerConfig(
     playerIds: PLAYER_IDS,
     centerMagnitude: 0,
     dividersMagnitude: 0,
-    terrainMapShape: 'circle',
+    perimeterMagnitude: -800,
     terrainDTerrain: 0,
     metalDepositStep: 0,
     terrainDetail: 1,

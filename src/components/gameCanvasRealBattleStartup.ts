@@ -4,14 +4,13 @@ import {
   loadStoredConverterTax,
   loadStoredMapLandDimensions,
   loadStoredRealCap,
-  loadStoredTerrainMapShape,
   loadStoredTerrainRuntimeConfig,
   type BattleTerrainRuntimeConfig,
 } from '../battleBarConfig';
 import {
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
-  setTerrainMapShape,
+  setTerrainPerimeterMagnitude,
   setTerrainRuntimeConfig,
 } from '../game/sim/Terrain';
 import { GameServer } from '../game/server/GameServer';
@@ -69,10 +68,8 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { Command } from '../game/sim/commands';
 import type { PlayerId } from '../game/sim/types';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
-import type { TerrainMapShape } from '../types/terrain';
 
 export type RealBattleStartupTerrain = {
-  terrainMapShape: TerrainMapShape;
   terrainRuntimeConfig: BattleTerrainRuntimeConfig;
   mapDimensions: MapLandCellDimensions;
   mapSize: { width: number; height: number };
@@ -162,7 +159,6 @@ const LOCKSTEP_CLIENT_RESYNC_REQUEST_INTERVAL_MS = 500;
 const LOCKSTEP_MAX_PUMP_ADVANCE_FRAMES = 300;
 
 export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
-  const terrainMapShape = loadStoredTerrainMapShape('real');
   const terrainRuntimeConfig = loadStoredTerrainRuntimeConfig('real');
   const mapDimensions = loadStoredMapLandDimensions('real');
   const mapSize = getMapSize(
@@ -173,9 +169,8 @@ export function loadAndApplyRealBattleTerrain(): RealBattleStartupTerrain {
   setTerrainRuntimeConfig(terrainRuntimeConfig);
   setTerrainCenterMagnitude(terrainRuntimeConfig.centerMagnitude);
   setTerrainDividersMagnitude(terrainRuntimeConfig.dividersMagnitude);
-  setTerrainMapShape(terrainMapShape);
+  setTerrainPerimeterMagnitude(terrainRuntimeConfig.perimeterMagnitude);
   return {
-    terrainMapShape,
     terrainRuntimeConfig,
     mapDimensions,
     mapSize,
@@ -188,7 +183,7 @@ function buildRealBattleLobbySettingsFromTerrain(
   return {
     centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
-    terrainMapShape: terrain.terrainMapShape,
+    perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
     metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
     terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
@@ -315,7 +310,7 @@ function assertTerrainMatchesSettings(
   const mismatches: string[] = [];
   pushMismatch(mismatches, 'centerMagnitude', terrain.terrainRuntimeConfig.centerMagnitude, settings.centerMagnitude);
   pushMismatch(mismatches, 'dividersMagnitude', terrain.terrainRuntimeConfig.dividersMagnitude, settings.dividersMagnitude);
-  pushMismatch(mismatches, 'terrainMapShape', terrain.terrainMapShape, settings.terrainMapShape);
+  pushMismatch(mismatches, 'perimeterMagnitude', terrain.terrainRuntimeConfig.perimeterMagnitude, settings.perimeterMagnitude);
   pushMismatch(mismatches, 'terrainDTerrain', terrain.terrainRuntimeConfig.terrainDTerrain, settings.terrainDTerrain);
   pushMismatch(mismatches, 'metalDepositStep', terrain.terrainRuntimeConfig.metalDepositStep, settings.metalDepositStep);
   pushMismatch(mismatches, 'terrainDetail', terrain.terrainRuntimeConfig.terrainDetail, settings.terrainDetail);
@@ -463,7 +458,7 @@ async function createRealBattleServer({
       aiPlayerIds,
       centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
-      terrainMapShape: terrain.terrainMapShape,
+      perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
       terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
       terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
@@ -1128,7 +1123,7 @@ async function createWorkerAuthoritativeBackendRuntime({
       aiPlayerIds,
       centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
-      terrainMapShape: terrain.terrainMapShape,
+      perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
       terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
       terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,

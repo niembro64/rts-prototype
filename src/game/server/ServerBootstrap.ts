@@ -28,7 +28,7 @@ import {
   setAuthoritativeTerrainTileMap,
   setTerrainCenterMagnitude,
   setTerrainDividersMagnitude,
-  setTerrainMapShape,
+  setTerrainPerimeterMagnitude,
   setTerrainRuntimeConfig,
   setTerrainTeamCount,
 } from '../sim/Terrain';
@@ -96,9 +96,12 @@ export class ServerBootstrap {
       config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
     const dividersMagnitude =
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
+    const perimeterMagnitude =
+      config.perimeterMagnitude ?? terrainRuntimeConfig.perimeterMagnitude;
     setTerrainRuntimeConfig({
       centerMagnitude,
       dividersMagnitude,
+      perimeterMagnitude,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep:
@@ -109,7 +112,7 @@ export class ServerBootstrap {
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
-    setTerrainMapShape(config.terrainMapShape ?? 'circle');
+    setTerrainPerimeterMagnitude(perimeterMagnitude);
     await report(0.14, 'Configuring terrain');
 
     const deposits = generateMetalDeposits(
@@ -259,9 +262,12 @@ export class ServerBootstrap {
       config.centerMagnitude ?? terrainRuntimeConfig.centerMagnitude;
     const dividersMagnitude =
       config.dividersMagnitude ?? terrainRuntimeConfig.dividersMagnitude;
+    const perimeterMagnitude =
+      config.perimeterMagnitude ?? terrainRuntimeConfig.perimeterMagnitude;
     setTerrainRuntimeConfig({
       centerMagnitude,
       dividersMagnitude,
+      perimeterMagnitude,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
       metalDepositStep:
@@ -272,7 +278,7 @@ export class ServerBootstrap {
     setTerrainTeamCount(getTerrainDividerTeamCount(playerIds.length));
     setTerrainCenterMagnitude(centerMagnitude);
     setTerrainDividersMagnitude(dividersMagnitude);
-    setTerrainMapShape(config.terrainMapShape ?? 'circle');
+    setTerrainPerimeterMagnitude(perimeterMagnitude);
 
     // Metal deposits — same set across all clients (deterministic from
     // map size + player count). `generateMetalDeposits` installs the

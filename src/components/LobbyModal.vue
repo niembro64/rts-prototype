@@ -16,7 +16,6 @@ import {
   getBuildingDisplayShortName,
   getTowerDisplayShortName,
 } from '../game/sim/blueprints/displayRosters';
-import type { TerrainMapShape } from '@/types/terrain';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import type { BattlePreset } from './battlePresets';
 import { MAX_NAME_LENGTH } from '@/playerNamesConfig';
@@ -35,7 +34,7 @@ const props = defineProps<{
   isConnecting: boolean;
   centerMagnitude: number;
   dividersMagnitude: number;
-  terrainMapShape: TerrainMapShape;
+  perimeterMagnitude: number;
   terrainDTerrain: number;
   metalDepositStep: number;
   terrainDetail: number;
@@ -67,7 +66,7 @@ const emit = defineEmits<{
   (e: 'spectate'): void;
   (e: 'setCenterMagnitude', value: number): void;
   (e: 'setDividersMagnitude', value: number): void;
-  (e: 'setTerrainMapShape', shape: TerrainMapShape): void;
+  (e: 'setPerimeterMagnitude', value: number): void;
   (e: 'setTerrainDTerrain', value: number): void;
   (e: 'setMetalDepositStep', value: number): void;
   (e: 'setTerrainDetail', value: number): void;
@@ -92,7 +91,7 @@ const emit = defineEmits<{
 // click handler is gated on isHost so only the host can change it.
 const centerMagnitudeOptions = BATTLE_CONFIG.centerMagnitude.options;
 const dividersMagnitudeOptions = BATTLE_CONFIG.dividersMagnitude.options;
-const mapShapeOptions = BATTLE_CONFIG.mapShape.options;
+const perimeterMagnitudeOptions = BATTLE_CONFIG.perimeterMagnitude.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
 const metalDepositStepOptions = BATTLE_CONFIG.metalDepositStep.options;
 const terrainDetailOptions = BATTLE_CONFIG.terrainDetail.options;
@@ -138,9 +137,9 @@ function pickDividersMagnitude(value: number): void {
   emit('setDividersMagnitude', value);
 }
 
-function pickTerrainMapShape(shape: TerrainMapShape): void {
+function pickPerimeterMagnitude(value: number): void {
   if (!props.isHost) return;
-  emit('setTerrainMapShape', shape);
+  emit('setPerimeterMagnitude', value);
 }
 
 function pickTerrainDTerrain(value: number): void {
@@ -698,12 +697,12 @@ const terrainSectionVars = computed(() =>
                 <BarLabel>PERIMETER:</BarLabel>
                 <BarButtonGroup>
                   <BarButton
-                    v-for="opt in mapShapeOptions"
-                    :key="opt.value"
-                    :active="terrainMapShape === opt.value"
-                    :title="isHost ? `Set the map perimeter to ${opt.label.toLowerCase()}` : 'Only the host can change terrain'"
-                    @click="pickTerrainMapShape(opt.value)"
-                  >{{ opt.label }}</BarButton>
+                    v-for="opt in perimeterMagnitudeOptions"
+                    :key="opt"
+                    :active="perimeterMagnitude === opt"
+                    :title="isHost ? `Set the map perimeter altitude to ${opt}` : 'Only the host can change terrain'"
+                    @click="pickPerimeterMagnitude(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>

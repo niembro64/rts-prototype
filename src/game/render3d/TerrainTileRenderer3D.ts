@@ -46,7 +46,7 @@ import {
   terrainMeshNormalFromSample,
   getTerrainBuildabilityGridCell,
   getTerrainBuildabilityConfigKey,
-  TERRAIN_CIRCLE_UNDERWATER_HEIGHT,
+  getTerrainPerimeterMagnitude,
   TERRAIN_MAX_RENDER_Y,
   TILE_FLOOR_Y,
   WATER_FULLY_OPAQUE,
@@ -1570,7 +1570,12 @@ export class TerrainTileRenderer3D {
         getTerrainMapBoundaryFade(0, this.mapHeight * 0.5, this.mapWidth, this.mapHeight) >= 1;
       if (!sideMidpointsAreShelf) return;
 
-      const y = TERRAIN_CIRCLE_UNDERWATER_HEIGHT + LAND_TILE_GROUND_LIFT;
+      // The flat perimeter ring extends to the render horizon at exactly the
+      // PERIMETER altitude (clamped to the world floor, matching the height
+      // pipeline's final Math.max(TILE_FLOOR_Y, ...)).
+      const y =
+        Math.max(TILE_FLOOR_Y, getTerrainPerimeterMagnitude()) +
+        LAND_TILE_GROUND_LIFT;
       const outer = HORIZON_RENDER_EXTEND;
       const W = this.mapWidth;
       const H = this.mapHeight;
