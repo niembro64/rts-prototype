@@ -15,3 +15,305 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 
 Please always commit and push before and after any code changes we make.
 ================================================================================
+
+
+================================================================================
+DEEP-DIVE AUDIT (2026-06-24) — top 15 high-priority items
+--------------------------------------------------------------------------------
+Audited the whole repo against budget_design_philosophy.html + the BAR repo
+(../Beyond-All-Reason) across 11 domains; every finding below was independently
+re-confirmed against current code (file:line verified). Categories: correctness,
+optimization, memory-leak, missing-functionality, BAR-gap, SSoT/dead-path.
+
+Note on BAR coverage: the BAR command vocabulary (Move/Fight/Patrol/Guard/Stop/
+Attack-Ground/Attack-Area, queue ops, Fire-at-Will/Hold-Fire, build menu, D-Gun/
+Repair/Reclaim, self-destruct) is largely PRESENT. The notable BAR-shaped gaps
+are #8 (sight-vs-radar fire tiers) and #12 (selection-panel uniformity). No other
+strong BAR command gap surfaced — do not assume the list is thin by accident.
+
+--- CORRECTNESS / DETERMINISM ---
+
+[1] Guided shots run their own replacement-target acquisition after launch
+    Category: correctness (determinism-relevant) | Severity: HIGH
+    Evidence: src/game/sim/combat/projectileSystem.ts:1644-1651 calls
+      findReplacementHomingTarget whenever the inherited homing target is dead/
+      gone, then commits it into proj.homingTargetId at :1654.
+      findReplacementHomingTarget (projectileSystem.ts:390-426) picks the nearest
+      live enemy via spatialGrid.queryEnemyEntitiesInRadius with NO inclusion-
+      object filtering. isLiveHomingTarget (combatUtils.ts:85-94) flips to false
+      the instant the inherited target's hp<=0, so re-acquisition fires
+      immediately on target death.
+    Design: "Lock-on policy lives on turrets, not guided shots"
+      (budget_design_philosophy.html:1989-1992): a guided shot "must not run its
+      own target acquisition pass, scan for replacements, or choose a new victim
+      after launch. If the inherited target no longer exists, it loses guidance
+      and continues on its current flight path ... until it hits something or
+      expires."
+    Problem: A missile fired by a units-only turret can re-home onto a building or
+      another projectile, and it changes who gets hit — a behavior bug in lockstep
+      combat, not cosmetic. This is the single authoritative server projectile
+      loop (NOT a determinism mirror), so the fix is safe.
+    Fix: Delete the replacement-acquisition fallback for guided shots. When the
+      inherited homingTargetId is no longer live, set proj.homingTargetId =
+      NO_ENTITY_ID, stop applying steering thrust (fly ballistic). Remove
+      findReplacementHomingTarget from the per-tick homing path (it is also a
+      per-projectile spatial query running every tick for every orphaned missile).
+
+[2] D-gun / instant ability energy spend never surfaces as a pylon ball
+    Category: correctness (economy invariant) / missing-functionality | Sev: MED
+    Evidence: src/game/sim/economy.ts:211 spendInstant hard-codes
+      amountPerSecond:0; resourceMovement.ts:119 keeps the real value only in
+      `amount`; stateSerializerResourceMovements.ts:97 drops any movement with
+      amountPerSecond<=0 SERVER-SIDE before it is ever serialized; a secondary
+      client drop is at ClientViewState.ts:566. D-gun spend path:
+      commandExecution.ts:1268 (reason 'ability').
+    Design: "Resource Movement Flows Through Pylons" / "Hard invariant: resources
+      are visible only as pylon balls" (html:2632-2655): ammo/ability/"fired"
+      costs must follow a pylon; "changes a stockpile without publishing the
+      corresponding pylon flow is a correctness bug."
+    Fix: Carry the burst as a real rate — pass amountPerSecond = amount/dtSec (or
+      a fixed short visual rate) from spendInstant so the client emits a brief
+      outbound energy pylon burst on the commander; OR add an explicit one-shot
+      impulse field to ResourceMovement the renderer treats as a short spray.
+
+[3] Beam-vertex EMA channel split: position rides the BEAM knob, velocity rides
+    the movement-velocity knob (prediction channels not applied uniformly)
+    Category: correctness (prediction channels) | Severity: MEDIUM
+    Evidence: src/game/network/ClientPredictionStepper.ts:361-363 builds movPos/
+      movVel/beamPos blends; :398-405 passes (beamPosBlend, movVelBlend) into
+      applyBeamPathPrediction; :250-252 lerps beam vertex POSITION by the beam
+      knob while :255-260 lerps the same vertex's VELOCITY by movement-velocity.
+      Separate control: clientBarConfig.ts:1108-1109 getBeamEmaMode; "BEAM EMA"
+      label GameCanvasClientControlBar.vue:658. (Param at the call site is even
+      named movPosBlend but is fed the beam blend.)
+    Design: "What each EMA channel applies to" (html:624-647): beam points
+      proj.points[i].x/y/z belong to MOVEMENT POSITION and proj.points[i].vx/vy/vz
+      to MOVEMENT VELOCITY; "A channel that is only applied to some of its fields
+      is a bug." A vertex's position and velocity are paired motion state and must
+      ride the same channel family.
+    Fix: Make beam-vertex position and velocity share one channel — either both on
+      movement-pos/movement-vel (matches the doc; retire/repurpose beamEma), or
+      both on a unified beam channel (add a beamVelEma sibling). Do not leave
+      position on beamEma while velocity is on movement-velocity.
+
+--- OPTIMIZATION (5,000-unit scale target) ---
+
+[4] Per-tick support-surface sampling is brute-force O(awake x dynamicBodies) +
+    2 x O(awake x staticBodies) with no spatial index
+    Category: optimization | Severity: HIGH
+    Evidence: src/game/server/PhysicsEngine3D.ts integrate() (:856) runs both
+      sampleIntegrationSupportSurfaces (:1114) and refreshStepSupportIgnoredStatic
+      Slots (:1141) every step. findDynamicSupportSurface (:1022) is a full
+      this.dynamicBodies scan; findStaticSupportSurface (:982) is a full
+      this.staticBodies scan called TWICE per awake body (via findSupportSurface
+      :1062-1063 and again at :965). dynamicBodies/staticBodies are plain arrays
+      (:395-396). Neighbor-contact resolvers already use the WASM cell-walk
+      broadphase (:1150) — support sampling alone does not.
+    Design: Physics Model / "Full 3D, not decorative altitude" — units stand on
+      buildings and on each other, so support sampling must scale.
+    Fix: Index static cuboids + discTop dynamic bodies in a spatial grid (reuse
+      the existing broadphase / spatial_grid.rs cell-walk) and query only cells
+      overlapping each body's footprint. Merge the two static scans so static
+      support is found once per body per tick, not twice. TS-side path; no
+      determinism mirror touched.
+
+[5] Client projectile visual prediction crosses the WASM boundary once per
+    projectile per frame and allocates a fresh closure per projectile per frame
+    Category: optimization | Severity: MEDIUM
+    Evidence: src/game/network/ClientPredictionStepper.ts:477-524 loops per
+      projectile and allocates a new `getEntity: (id) => entities.get(id)` arrow
+      at :507 (the only getEntity in the file — no reusable bound field).
+      ClientProjectilePrediction.ts:470-471 (batchCount = hasTarget?2:1) + :510
+      issue one sim.projectileIntegrateStepBatch PER projectile; :424 confirms no
+      early-out. Contrast the batched unit path
+      ClientUnitPrediction.ts:698 applyClientUnitVisualPredictionBatch (one WASM
+      call for all entities). Driven per frame via RtsScene3D.ts:702 ->
+      RtsScene3DPredictionPhase.ts:36.
+    Design: Browser Performance Rules ("no per-unit/per-frame allocation"); "TS
+      Coordinates, WASM Computes" ("hot data should cross the JS/WASM boundary as
+      rarely as the design allows").
+    Fix: Pack all active projectiles (+ optional correction targets) into the
+      existing module-scratch typed arrays in one pass, then issue a SINGLE
+      projectileIntegrateStepBatch for the frame (mirror the unit path). Hoist the
+      getEntity lambda to a reusable bound field. Client-only visual path, distinct
+      from the authoritative projectileSystem mirror.
+
+[6] EntityCacheManager does a full copy-all + O(n log n) sort + ~25-list rebucket
+    on every HP delta in a presentation snapshot, not just on structural changes
+    Category: optimization | Severity: MEDIUM
+    Evidence: src/game/sim/EntityCacheManager.ts:139-141 (clear sortedEntities,
+      push all, .sort by id) and :111-275 (clear ~25 lists and re-bucket every
+      entity). Invalidation: ClientViewState.ts:817-818 (cache.invalidate()) is
+      triggered whenever snapClientNonVisualState is true, and
+      ClientSnapshotApplier.ts:58-62/:136-140 set cacheDirty on ANY hp delta.
+    Design: Scale Target — "Spatial structure beats broad scans"; full scans "are
+      not the normal steady state for gameplay ticks." Entities are keyed by
+      ascending EntityId, so the re-sort is avoidable.
+    Fix: Maintain id order incrementally (insert at the sorted position on add,
+      remove on delete) instead of copy-all + Array.sort on every invalidation; or
+      patch only the buckets for entities that actually changed rather than
+      clearing and rebuilding all ~25 lists.
+
+--- MEMORY LEAKS ---
+
+[7] findStatic/findDynamicSupportSurface allocate a fresh WorldSupportSurface per
+    candidate inside the per-tick integration loop (GC churn at scale)
+    Category: memory-leak (per-tick GC churn) | Severity: MEDIUM
+    Evidence: src/game/server/PhysicsEngine3D.ts:997 and :1042 call
+      createWorldSupportSurface (src/game/sim/supportSurface.ts:25 returns a fresh
+      object literal) for every candidate, driven once per awake body per tick
+      from integrate():1114/:1141. Pooled-scratch precedent already exists in
+      UnitForceSystem.ts:103-104 (_forceSupportSurface / _forceProbeSupportSurface).
+    Design: Physics Model / Browser Performance Rules — the hot integration loop
+      must not churn the GC.
+    Fix: Reuse two preallocated WorldSupportSurface scratch instances (one static,
+      one dynamic), writing the best candidate in place, exactly as UnitForceSystem
+      already does.
+
+[8] Scene teardown never disposes overlayLineSystem (real ShaderMaterial/GL
+    program leak on every game-over/rematch) nor cursorGround
+    Category: memory-leak (GPU) | Severity: MEDIUM
+    Evidence: OverlayLineSystem owns a THREE.ShaderMaterial with a working
+      dispose() (OverlayLineSystem.ts:21,24-29,45-47; ScreenSpaceLineMaterial.ts:
+      38-45), created per scene bootstrap (RtsScene3DRendererBootstrap.ts:94).
+      GroundLineBatch3D.dispose() deliberately skips the shared material
+      (GroundLineBatch3D.ts:143-145). teardownRtsScene3DRenderers
+      (RtsScene3DRendererLifecycle.ts:13-77) has no overlayLineSystem/cursorGround
+      field; RtsScene3D.shutdown() (RtsScene3D.ts:1272-1302) never disposes either
+      (fields set at :405/:419). Rematch reuses the same ThreeApp/GL context —
+      app.destroy() is NOT called on restart (createGame.ts:64-71), so the
+      material + GL program leak each rematch. (cursorGround is CPU-only: a no-op
+      leak but the same missing-teardown-owner defect.)
+    Design: Browser Performance Rules ("shared materials") + Delete The Old Path
+      (teardown must release what create() allocated).
+    Fix: Thread overlayLineSystem (and cursorGround) through the resources object
+      into teardownRtsScene3DRenderers and call overlayLineSystem.dispose() on
+      shutdown; null cursorGround.terrainMesh. Lifetime is per-scene, not per-app.
+
+[9] factoryConstructionTargetBySource entry is never pruned when a producing
+    factory dies mid-build (renderer map grows, bounded by factory count)
+    Category: memory-leak | Severity: LOW
+    Evidence: src/game/render3d/ConstructionVisualController3D.ts:69 (Map<EntityId,
+      EntityId> keyed by factory source id), set at :601, self-prunes only at
+      :605-611 when resolveFactoryConstructionTarget is re-called for that source
+      — which never happens after the factory dies (updateFactoryConstructionEmitter
+      :212 stops being called for it). Only wholesale clear is in destroy() (:88-89).
+      Sibling per-id caches (barrelSpinState, turretBeamAimCache) ARE pruned on
+      entity removal at Render3DEntities.ts:921-926/:967-985 — the idiomatic place
+      to add unregister().
+    Fix: Add unregister(entityId) that deletes the map entry, called from the same
+      renderer entity-removal path that disposes builder/factory meshes.
+
+--- MISSING FUNCTIONALITY / BAR ---
+
+[10] Targeting merges full-sight and radar into ONE coverage mask; there is no
+     per-weapon radar-fire vs full-sight gate, so direct/beam turrets can fire on
+     radar-only contacts and there are no separate sight/radar envelopes
+    Category: missing-functionality (BAR-relevant) | Severity: MEDIUM-HIGH
+    Evidence: rts-sim-wasm/src/combat_targeting.rs:2219-2223 computes
+      sensor_radius = max(full_vision_radius, radar_radius) and marks it into the
+      single entity_sensor_coverage_mask (:2146); only two per-target masks exist
+      (sensor + detector). All acquisition gates read the merged mask (candidacy
+      fill :5598, priority-target gate :6271-6291, per-candidate gate :6610).
+      Turret config bits (:38-62) carry no requiresFullSight / radarFire bit; grep
+      for full_vision_mask / requires_full_sight / radar_fire = 0 hits.
+    Design: "Sight, radar, and contacts are separate information tiers"
+      (html:430-449): radar-only contacts are coarse blips eligible only for
+      weapons "explicitly authored for blind or remote fire" (artillery/missiles);
+      "direct beams and precision line weapons should usually require full sight."
+      Weapon range, tracking, sight, radar, detector are separate envelopes.
+    Fix: Track a second per-target coverage mask seeded ONLY by full-sight sources
+      (entity_full_vision_radius + scan pulses, excluding radar). Add a per-turret
+      blueprint bit (e.g. CT_TURRET_CFG_REQUIRES_FULL_SIGHT, default ON for beams/
+      precision; OFF = radar-fire-eligible for artillery/missiles) and gate
+      acquisition on the appropriate mask.
+
+[11] Selection panel renders per-blueprint-gated action buttons outside the doc's
+     fixed "full vocabulary" for the unit type
+    Category: BAR-gap / SSoT (panel uniformity) | Severity: MEDIUM
+    Evidence: SelectionPanel.vue gates buttons by per-blueprint capability flags:
+      :1061 Cloak (v-if hasCloakControl), :1156 Trajectory (hasTrajectoryControl),
+      :1582-1592 Manual Launch, :1333-1344 Capture (hasCommander), :1356-1379
+      Load/Unload (hasTransport); flags in src/types/ui.ts:49-55. Several of these
+      back UI for systems the doc says must NOT exist as dead UI until their
+      authoritative mechanics exist (transports, capture, manual launch, cloak).
+    Design: "Selection Menus Are Uniform Per Entity Type" (html:2513-2545): the
+      unit panel vocabulary is closed; "Stuffing a new button onto only some
+      blueprints inside an existing type ... is not allowed." Also "Commands
+      require real systems" — no command may exist as dead UI.
+    Fix: For each gated button, decide: (a) it's backed by a real authoritative
+      system -> amend the design doc to add it as a sanctioned unit action category
+      and make it unconditional-but-disabled within the type, or (b) it's dead UI
+      -> remove the button until its mechanics exist. Do not leave per-blueprint
+      button creep.
+
+--- SSoT / CONFIG-IS-DATA / DELETE-THE-OLD-PATH ---
+
+[12] mapSizeConfig.ts hardcodes the values mapSizeConfig.json holds; the .json is
+     an orphaned second source (the migration ran BACKWARDS: data -> code)
+    Category: ssot / config-is-data | Severity: MEDIUM (drift risk)
+    Evidence: src/mapSizeConfig.ts:16-24 hardcodes MAP_SIZE_CONFIG (7 values)
+      byte-for-byte identical to src/mapSizeConfig.json:2-8. Commit 32b6b8e9
+      deleted the `import mapSizeConfig from './mapSizeConfig.json'`. Zero
+      importers of the .json remain except a stale comment at battleBarConfig.ts:25.
+    Design: "Config Is Data, Not Code" / "Migration direction" (html:2941-2951:
+      every tuning table moves .ts -> .json, never the reverse) + "Delete The Old
+      Path." Two copies WILL drift.
+    Fix: Restore `import rawMapSizeConfig from './mapSizeConfig.json'`, delete the
+      hardcoded const, validate the imported shape (as pathfindingTuning.ts does),
+      and fix the stale comment at battleBarConfig.ts:25.
+
+[13] Rust EntityMetaPool registry (register/resolve/set_unit/set_building/set_tower
+     + 14 registry*Ptr exports) is fully implemented and bound but has ZERO
+     production callers — a dead parallel SSoT beside the live TS WorldEntityMetadata
+    Category: ssot / dead-path | Severity: MEDIUM
+    Evidence: rts-sim-wasm/src/entity_meta.rs:266-355 (register), :387-403
+      (resolve_row), :472-669 (set_unit/set_building/set_tower exports), :738-783
+      (registry*Ptr exports); bound at src/game/sim-wasm/init.ts:3936-3979 but
+      never called. Live registry is the TS Map src/game/sim/WorldEntityMetadata.ts
+      :13 (metaById = new Map), driven from WorldState.ts:302/307/315. The Rust
+      half is referenced only by snapshot.rs:9414-9452 unit tests.
+    Design: "Universal Runtime Entity IDs" — the ID is meant to resolve "through
+      the entity registry into a dense metadata row." The Rust registry matching
+      the doc's EntityMeta shape is the path the design intends, yet it is dead.
+    Fix: Decide the SSoT. Either (a) drive the Rust EntityMetaPool from the live
+      path (register/setUnit/setTower/setBuilding per dirty entity, route resolve
+      through resolve_row) and make WorldEntityMetadata.ts a thin view; or (b) if
+      the TS map is intentionally the SSoT, DELETE the dead Rust registry-row half
+      and its init.ts bindings (Delete The Old Path). Relatedly: the wire entity
+      kind collapses tower into KIND_BUILDING (stateSerializerEntities.ts:653,
+      667-678) while Rust reserves ENTITY_META_KIND_TOWER (entity_meta.rs:44) that
+      the encoder never emits — pick one and remove the dead constant or emit it.
+
+[14] Two flagship Rust sim modules are 10k+ LOC flat files, violating the file-size
+     SSoT discipline (boilerplate is mechanically extractable without touching the
+     wire-format parity contract)
+    Category: ssot / file-size discipline | Severity: MEDIUM
+    Evidence: rts-sim-wasm/src/snapshot.rs = 11,317 LOC (flat `mod snapshot` at
+      lib.rs:343), with ~31 mechanically-identical scratch-pool ptr/ensure pairs
+      (e.g. turret pool :44-80 is structurally byte-for-byte identical to proj_vel
+      pool :1205-1241, differing only by name/elem-type/stride).
+      rts-sim-wasm/src/combat_targeting.rs = 10,734 LOC (215 fns, `mod` at
+      lib.rs:340) mixing SoA storage (:356), ballistic aim (:1591), observation
+      masks (:2252/:2285), and 8 per-tick FSM batch processors (:4100-:5267).
+    Design: Single Source Of Truth — file-size discipline (html:2955-2974, :3152):
+      "split cohesive behavior into small helper files."
+    Fix: Intra-crate extraction only (no cross-language merge, do NOT alter the
+      encoder<->test parity contract): for snapshot.rs, generate the ~31 scratch
+      pools via a macro_rules!(name, elem_type, stride) or move them to
+      snapshot/scratch.rs. For combat_targeting.rs, split into submodules
+      (observation.rs, ballistic.rs, fsm.rs) leaving SoA storage + accessors in the
+      parent and re-exporting.
+
+[15] Per-locomotion-type physics tuning is split between code and JSON
+    Category: ssot / config-is-data | Severity: LOW
+    Evidence: src/game/sim/locomotion.ts:8-18 (LOCOMOTION_TRACTION table), :20
+      (LOCOMOTION_FORCE_SCALE = 150000) hardcode per-type physics tuning, while
+      src/game/sim/locomotionConfig.json:1-27 holds driveForceMultiplier keyed by
+      the SAME 5 locomotion types. One concept, two key authorities.
+    Design: "Config Is Data, Not Code" (html:2916: friction/mass tuning tables
+      belong in JSON; :2938 defaults live in the schema, not the loader).
+    Fix: Move the per-type traction values and LOCOMOTION_FORCE_SCALE into
+      locomotionConfig.json alongside driveForceMultiplier so all per-locomotion
+      physics tuning is one data table; the loader only validates/types it.
+================================================================================
