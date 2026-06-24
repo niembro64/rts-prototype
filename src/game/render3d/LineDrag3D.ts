@@ -21,6 +21,9 @@ import type { WaypointType } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { WAYPOINT_COLORS } from '../uiLabels';
 import { WAYPOINT_GROUND_LIFT } from '../../config';
+import type { OverlayLineSystem } from './OverlayLineSystem';
+import type { GroundLineBatch3D } from './GroundLineBatch3D';
+import { hexToRgb01 } from './colorUtils';
 
 // Lift values chosen so the preview reads above terrain overlays at
 // terrain overlays. Keep these tied to the persistent waypoint lift so
@@ -43,7 +46,6 @@ const BALLISTIC_BLOCKED_COLOR = 0xff3434;
 // dividing by camera zoom the way the 2D overlay does would fight the
 // perspective projection). Target dots scale with a base radius plus a
 // gentle modulation so multiple dots don't visually merge when close.
-const LINE_WIDTH = 3;
 const DOT_RADIUS = 6;
 
 type DragState = {
@@ -55,20 +57,13 @@ type DragState = {
 };
 
 export class LineDrag3D {
-  /** Reusable scratch — quaternion alignment per segment runs many
-   *  times per frame during a drag; allocating these once keeps the
-   *  hot path allocation-free. */
-  private static readonly _UNIT_X = new THREE.Vector3(1, 0, 0);
-  private static readonly _scratchDir = new THREE.Vector3();
-  private static readonly _scratchQuat = new THREE.Quaternion();
-
   private root: THREE.Group;
 
-  // Ribbon segment = flat box scaled to (segmentLength × LINE_WIDTH), laid on
-  // XZ plane. Pool entries are hidden when not in use; visible ones are
-  // repositioned each frame.
-  private segmentGeom = new THREE.BoxGeometry(1, 0.5, 1);
-  private segmentPool: THREE.Mesh[] = [];
+  // Path ribbon — the unified screen-space line batch (constant on-screen
+  // width, depth-occluded), drawn through the traced drag points.
+  private readonly lineBatch: GroundLineBatch3D;
+  private readonly lineWidthPx: number;
+  private linePoints = new Float32Array(0);
 
   // Filled sphere for each target; thin white ring around it for contrast
   // against dark tiles. Both are scaled uniformly from a unit base.
@@ -83,12 +78,16 @@ export class LineDrag3D {
   private blockedMat: THREE.MeshBasicMaterial;
   private ringMat: THREE.MeshBasicMaterial;
 
-  constructor(parentWorld: THREE.Group) {
+  constructor(parentWorld: THREE.Group, overlayLines: OverlayLineSystem) {
     this.root = new THREE.Group();
     // Render after entities but before HUD overlays so dots draw on top of
     // the chassis but beneath the 2D SVG layer (which lives in the DOM).
     this.root.renderOrder = 16;
     parentWorld.add(this.root);
+
+    this.lineWidthPx = overlayLines.style('drag').widthPx;
+    this.lineBatch = overlayLines.createBatch('drag', 64);
+    this.root.add(this.lineBatch.mesh);
 
     this.ringMat = new THREE.MeshBasicMaterial({
       color: COLORS.effects.lineDrag.ring.colorHex,
@@ -116,40 +115,31 @@ export class LineDrag3D {
     const fill = this.getFillMat(state.mode);
 
     // --- Path ribbon ---
-    // Each consecutive pair of points becomes one segment box. Earlier
-    // versions yawed the box only and placed it at the AVERAGE endpoint
-    // altitude — so on a slope a segment crossing a height drop sat
-    // below terrain at one end (clip-through) and adjacent segments
-    // didn't even agree on Y at their shared endpoint (jagged seam at
-    // every joint). Now we use each endpoint's lifted altitude directly
-    // and rotate the box in 3D to align its local +X with the actual
-    // slope direction; the ribbon follows the terrain and consecutive
-    // segments share Y at their shared endpoint.
+    // The traced points (each lifted onto the terrain it was sampled over)
+    // become one screen-space polyline: constant on-screen width and
+    // depth-occluded, drawn straight between consecutive lifted points.
     const pts = state.points;
-    let segIdx = 0;
-    const dirVec = LineDrag3D._scratchDir;
-    const segQuat = LineDrag3D._scratchQuat;
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1];
-      const b = pts[i];
-      const aY = a.z !== undefined ? a.z + LINE_LIFT : LEGACY_LINE_Y;
-      const bY = b.z !== undefined ? b.z + LINE_LIFT : LEGACY_LINE_Y;
-      const dx = b.x - a.x;
-      const dy = bY - aY;
-      const dz = b.y - a.y;
-      const length3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (length3D < 1e-3) continue;
-      const seg = this.acquireSegment(segIdx++);
-      seg.material = fill;
-      dirVec.set(dx / length3D, dy / length3D, dz / length3D);
-      segQuat.setFromUnitVectors(LineDrag3D._UNIT_X, dirVec);
-      seg.quaternion.copy(segQuat);
-      seg.position.set((a.x + b.x) / 2, (aY + bY) / 2, (a.y + b.y) / 2);
-      seg.scale.set(length3D, 1, LINE_WIDTH);
+    this.lineBatch.begin();
+    if (pts.length >= 2) {
+      if (this.linePoints.length < pts.length * 3) {
+        this.linePoints = new Float32Array(pts.length * 3);
+      }
+      const lp = this.linePoints;
+      for (let i = 0; i < pts.length; i++) {
+        const p = pts[i];
+        lp[i * 3] = p.x;
+        lp[i * 3 + 1] = p.z !== undefined ? p.z + LINE_LIFT : LEGACY_LINE_Y;
+        lp[i * 3 + 2] = p.y;
+      }
+      const c = hexToRgb01(WAYPOINT_COLORS[state.mode]);
+      this.lineBatch.pushPolyline(
+        lp, pts.length,
+        c.r, c.g, c.b, COLORS.effects.lineDrag.fillOpacity, this.lineWidthPx,
+        false,
+      );
     }
-    for (let i = segIdx; i < this.segmentPool.length; i++) {
-      this.segmentPool[i].visible = false;
-    }
+    this.lineBatch.finishFrame();
+    const segIdx = pts.length >= 2 ? pts.length - 1 : 0;
 
     // --- Target dots + white outline ring ---
     const targets = state.targets;
@@ -174,18 +164,6 @@ export class LineDrag3D {
       this.ringPool[i].visible = false;
     }
     this.hadVisible = segIdx > 0 || targets.length > 0;
-  }
-
-  private acquireSegment(i: number): THREE.Mesh {
-    let mesh = this.segmentPool[i];
-    if (!mesh) {
-      mesh = new THREE.Mesh(this.segmentGeom);
-      mesh.renderOrder = 16;
-      this.root.add(mesh);
-      this.segmentPool.push(mesh);
-    }
-    mesh.visible = true;
-    return mesh;
   }
 
   private acquireDot(i: number): THREE.Mesh {
@@ -230,20 +208,19 @@ export class LineDrag3D {
   }
 
   private hideAll(): void {
-    for (const m of this.segmentPool) m.visible = false;
+    this.lineBatch.begin();
+    this.lineBatch.finishFrame();
     for (const m of this.dotPool) m.visible = false;
     for (const m of this.ringPool) m.visible = false;
     this.hadVisible = false;
   }
 
   destroy(): void {
-    for (const m of this.segmentPool) this.root.remove(m);
     for (const m of this.dotPool) this.root.remove(m);
     for (const m of this.ringPool) this.root.remove(m);
-    this.segmentPool.length = 0;
+    this.lineBatch.dispose();
     this.dotPool.length = 0;
     this.ringPool.length = 0;
-    this.segmentGeom.dispose();
     this.dotGeom.dispose();
     this.ringGeom.dispose();
     for (const mat of this.fillMats.values()) mat.dispose();

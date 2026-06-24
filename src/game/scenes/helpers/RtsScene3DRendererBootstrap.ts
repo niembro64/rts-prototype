@@ -176,10 +176,11 @@ export function bootstrapRtsScene3DRenderers(
     renderScope,
     (x, z) => getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight),
   );
-  const areaDragRenderer = new AreaDrag3D(threeApp.world);
-  const lineDragRenderer = new LineDrag3D(threeApp.world);
+  const areaDragRenderer = new AreaDrag3D(threeApp.world, overlayLineSystem);
+  const lineDragRenderer = new LineDrag3D(threeApp.world, overlayLineSystem);
   const buildGhostRenderer = new BuildGhost3D(
     threeApp.world,
+    overlayLineSystem,
     (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
     metalDeposits,
   );

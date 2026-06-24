@@ -2,9 +2,14 @@ import * as THREE from 'three';
 import { WAYPOINT_GROUND_LIFT } from '../../config';
 import { ACTION_COLORS } from '../uiLabels';
 import type { Input3DAreaDragKind, Input3DAreaDragState } from './Input3DAreaDragState';
+import type { OverlayLineSystem } from './OverlayLineSystem';
+import type { GroundLineBatch3D } from './GroundLineBatch3D';
+import { hexToRgb01 } from './colorUtils';
 
 const RING_LIFT = WAYPOINT_GROUND_LIFT + 1;
 const LEGACY_Y = RING_LIFT;
+const OUTLINE_OPACITY = 0.88;
+const OUTLINE_SEGMENTS = 96;
 
 const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
   repairArea: ACTION_COLORS.repair,
@@ -20,134 +25,100 @@ const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
 };
 const BALLISTIC_BLOCKED_COLOR = 0xff3434;
 
+// Area/build drag preview. The OUTLINES (radius ring, build line, build-rect
+// border) go through the unified screen-space line batch — constant on-screen
+// width, depth-occluded. The FILLS (radius disc, build-rect fill) stay as
+// world-scaled translucent meshes, since a filled area should scale with the
+// area, not the screen.
 export class AreaDrag3D {
-  private static readonly _UNIT_X = new THREE.Vector3(1, 0, 0);
-  private static readonly _scratchDir = new THREE.Vector3();
-  private static readonly _scratchQuat = new THREE.Quaternion();
-
   private readonly root = new THREE.Group();
-  private readonly ringGeom = new THREE.RingGeometry(0.975, 1, 96);
-  private readonly discGeom = new THREE.CircleGeometry(1, 96);
-  private readonly lineGeom = new THREE.BoxGeometry(1, 0.5, 1);
+  private readonly discGeom = new THREE.CircleGeometry(1, OUTLINE_SEGMENTS);
   private readonly rectFillGeom = new THREE.BoxGeometry(1, 0.2, 1);
-  private readonly borderGeom = new THREE.BufferGeometry();
-  private readonly ringMats = new Map<string, THREE.MeshBasicMaterial>();
   private readonly discMats = new Map<string, THREE.MeshBasicMaterial>();
-  private readonly borderMats = new Map<Input3DAreaDragKind, THREE.LineBasicMaterial>();
   private readonly rectFillMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();
-  private readonly ring: THREE.Mesh;
   private readonly disc: THREE.Mesh;
-  private readonly line: THREE.Mesh;
   private readonly rectFill: THREE.Mesh;
-  private readonly border: THREE.LineSegments;
+  private readonly lineBatch: GroundLineBatch3D;
+  private readonly outlineWidthPx: number;
+  private rectPoints = new Float32Array(12);
+  private linePoints = new Float32Array(6);
 
-  constructor(parentWorld: THREE.Group) {
-    this.ring = new THREE.Mesh(this.ringGeom);
+  constructor(parentWorld: THREE.Group, overlayLines: OverlayLineSystem) {
     this.disc = new THREE.Mesh(this.discGeom);
-    this.line = new THREE.Mesh(this.lineGeom);
     this.rectFill = new THREE.Mesh(this.rectFillGeom);
-    this.border = new THREE.LineSegments(this.borderGeom);
-    this.ring.rotation.x = -Math.PI / 2;
     this.disc.rotation.x = -Math.PI / 2;
-    this.ring.renderOrder = 19;
-    this.disc.renderOrder = 18;
-    this.line.renderOrder = 19;
-    this.rectFill.renderOrder = 18;
-    this.border.renderOrder = 19;
+    // Fills sit just under the outline batch so the outline reads on top.
+    this.disc.renderOrder = 15;
+    this.rectFill.renderOrder = 15;
+    this.outlineWidthPx = overlayLines.style('drag').widthPx;
+    this.lineBatch = overlayLines.createBatch('drag', 8);
     this.root.visible = false;
-    this.root.add(this.disc, this.ring, this.line, this.rectFill, this.border);
+    this.root.add(this.disc, this.rectFill, this.lineBatch.mesh);
     parentWorld.add(this.root);
   }
 
   update(state: Input3DAreaDragState): void {
+    this.lineBatch.begin();
     if (!state.active || state.radius <= 0) {
       this.root.visible = false;
+      this.lineBatch.finishFrame();
       return;
     }
     this.root.visible = true;
     if (state.kind === 'buildLine') {
       this.updateBuildLine(state);
-      return;
-    }
-    if (state.kind === 'buildBorder') {
+    } else if (state.kind === 'buildBorder') {
       this.updateBuildRectangle(state, false);
-      return;
-    }
-    if (state.kind === 'buildGrid') {
+    } else if (state.kind === 'buildGrid') {
       this.updateBuildRectangle(state, true);
-      return;
+    } else {
+      this.rectFill.visible = false;
+      this.disc.visible = true;
+      this.disc.material = this.getDiscMat(state.kind, state.ballisticReach);
+      const y = state.z !== undefined ? state.z + RING_LIFT : LEGACY_Y;
+      this.disc.position.set(state.x, y, state.y);
+      this.disc.scale.setScalar(state.radius);
+      const c = hexToRgb01(colorForState(state.kind, state.ballisticReach));
+      this.lineBatch.pushRing(
+        state.x, y, state.y, state.radius, OUTLINE_SEGMENTS,
+        c.r, c.g, c.b, OUTLINE_OPACITY, this.outlineWidthPx, 0,
+      );
     }
-    this.line.visible = false;
-    this.rectFill.visible = false;
-    this.border.visible = false;
-    this.ring.visible = true;
-    this.disc.visible = true;
-    this.ring.material = this.getRingMat(state.kind, state.ballisticReach);
-    this.disc.material = this.getDiscMat(state.kind, state.ballisticReach);
-    const y = state.z !== undefined ? state.z + RING_LIFT : LEGACY_Y;
-    this.root.position.set(state.x, y, state.y);
-    this.ring.scale.setScalar(state.radius);
-    this.disc.scale.setScalar(state.radius);
+    this.lineBatch.finishFrame();
   }
 
   destroy(): void {
     this.root.parent?.remove(this.root);
-    this.ringGeom.dispose();
     this.discGeom.dispose();
-    this.lineGeom.dispose();
     this.rectFillGeom.dispose();
-    this.borderGeom.dispose();
-    for (const mat of this.ringMats.values()) mat.dispose();
+    this.lineBatch.dispose();
     for (const mat of this.discMats.values()) mat.dispose();
-    for (const mat of this.borderMats.values()) mat.dispose();
     for (const mat of this.rectFillMats.values()) mat.dispose();
-    this.ringMats.clear();
     this.discMats.clear();
-    this.borderMats.clear();
     this.rectFillMats.clear();
   }
 
   private updateBuildLine(state: Input3DAreaDragState): void {
-    this.ring.visible = false;
     this.disc.visible = false;
     this.rectFill.visible = false;
-    this.border.visible = false;
-    this.line.visible = true;
-    this.line.material = this.getRingMat(state.kind);
-    this.root.position.set(0, 0, 0);
 
     const endX = state.endX ?? state.x;
     const endY = state.endY ?? state.y;
     const startZ = state.z !== undefined ? state.z + RING_LIFT : LEGACY_Y;
     const endZ = state.endZ !== undefined ? state.endZ + RING_LIFT : startZ;
     const dx = endX - state.x;
-    const dy = endZ - startZ;
     const dz = endY - state.y;
-    const length3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (length3D < 1e-3) {
-      this.line.visible = false;
-      return;
-    }
-    const dirVec = AreaDrag3D._scratchDir;
-    const quat = AreaDrag3D._scratchQuat;
-    dirVec.set(dx / length3D, dy / length3D, dz / length3D);
-    quat.setFromUnitVectors(AreaDrag3D._UNIT_X, dirVec);
-    this.line.quaternion.copy(quat);
-    this.line.position.set(
-      (state.x + endX) / 2,
-      (startZ + endZ) / 2,
-      (state.y + endY) / 2,
-    );
-    this.line.scale.set(length3D, 1, 4);
+    if (Math.hypot(dx, dz) < 1e-3) return;
+
+    const lp = this.linePoints;
+    lp[0] = state.x; lp[1] = startZ; lp[2] = state.y;
+    lp[3] = endX; lp[4] = endZ; lp[5] = endY;
+    const c = hexToRgb01(AREA_COLORS[state.kind]);
+    this.lineBatch.pushPolyline(lp, 2, c.r, c.g, c.b, OUTLINE_OPACITY, this.outlineWidthPx, false);
   }
 
   private updateBuildRectangle(state: Input3DAreaDragState, filled: boolean): void {
-    this.ring.visible = false;
     this.disc.visible = false;
-    this.line.visible = false;
-    this.border.visible = true;
-    this.border.material = this.getBorderMat(state.kind);
-    this.root.position.set(0, 0, 0);
 
     const endX = state.endX ?? state.x;
     const endY = state.endY ?? state.y;
@@ -161,7 +132,6 @@ export class AreaDrag3D {
     const width = maxX - minX;
     const depth = maxY - minY;
     if (width < 1e-3 || depth < 1e-3) {
-      this.border.visible = false;
       this.rectFill.visible = false;
       return;
     }
@@ -173,32 +143,13 @@ export class AreaDrag3D {
       this.rectFill.scale.set(width, 1, depth);
     }
 
-    const positions = new Float32Array([
-      minX, y, minY, maxX, y, minY,
-      maxX, y, minY, maxX, y, maxY,
-      maxX, y, maxY, minX, y, maxY,
-      minX, y, maxY, minX, y, minY,
-    ]);
-    this.borderGeom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    this.borderGeom.computeBoundingSphere();
-  }
-
-  private getRingMat(
-    kind: Input3DAreaDragKind,
-    ballisticReach: Input3DAreaDragState['ballisticReach'] = null,
-  ): THREE.MeshBasicMaterial {
-    const key = materialKey(kind, ballisticReach);
-    const cached = this.ringMats.get(key);
-    if (cached) return cached;
-    const mat = new THREE.MeshBasicMaterial({
-      color: colorForState(kind, ballisticReach),
-      transparent: true,
-      opacity: 0.88,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    this.ringMats.set(key, mat);
-    return mat;
+    const rp = this.rectPoints;
+    rp[0] = minX; rp[1] = y; rp[2] = minY;
+    rp[3] = maxX; rp[4] = y; rp[5] = minY;
+    rp[6] = maxX; rp[7] = y; rp[8] = maxY;
+    rp[9] = minX; rp[10] = y; rp[11] = maxY;
+    const c = hexToRgb01(AREA_COLORS[state.kind]);
+    this.lineBatch.pushPolyline(rp, 4, c.r, c.g, c.b, OUTLINE_OPACITY, this.outlineWidthPx, true);
   }
 
   private getDiscMat(
@@ -216,19 +167,6 @@ export class AreaDrag3D {
       side: THREE.DoubleSide,
     });
     this.discMats.set(key, mat);
-    return mat;
-  }
-
-  private getBorderMat(kind: Input3DAreaDragKind): THREE.LineBasicMaterial {
-    const cached = this.borderMats.get(kind);
-    if (cached) return cached;
-    const mat = new THREE.LineBasicMaterial({
-      color: AREA_COLORS[kind],
-      transparent: true,
-      opacity: 0.88,
-      depthWrite: false,
-    });
-    this.borderMats.set(kind, mat);
     return mat;
   }
 
