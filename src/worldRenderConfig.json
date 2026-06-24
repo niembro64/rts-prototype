@@ -81,5 +81,21 @@
     "unitSunOffsetPerHeight": 0.18,
     "buildingSunOffsetPerHeight": 0.22,
     "maxSunOffset": 70
+  },
+  "overlayLines": {
+    "feather": 0.16,
+    "kinds": {
+      "selection": { "widthPx": 3, "groundLift": 0.8, "renderOrder": 22 },
+      "rangeEngage": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
+      "rangeTrack": { "widthPx": 2, "groundLift": 6, "renderOrder": 20 },
+      "build": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
+      "radar": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 20 },
+      "reclaim": { "widthPx": 2.5, "groundLift": 6, "renderOrder": 21 },
+      "projectileEnvelope": { "widthPx": 2.5, "groundLift": 9, "renderOrder": 22 },
+      "sight": { "widthPx": 2, "groundLift": 9, "renderOrder": 25 },
+      "radarBoundary": { "widthPx": 2, "groundLift": 9, "renderOrder": 24 },
+      "waypoint": { "widthPx": 2.5, "groundLift": 12, "renderOrder": 5 },
+      "drag": { "widthPx": 3.5, "groundLift": 1, "renderOrder": 16 }
+    }
   }
 }

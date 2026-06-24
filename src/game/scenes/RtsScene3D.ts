@@ -41,6 +41,7 @@ import { PylonTubeFlowRenderer } from '../render3d/PylonTubeFlowRenderer';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
 import { FogOfWarFog3D } from '../render3d/FogOfWarFog3D';
 import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
+import type { OverlayLineSystem } from '../render3d/OverlayLineSystem';
 import { Explosion3D } from '../render3d/Explosion3D';
 import { ShieldImpactRenderer3D } from '../render3d/ShieldImpactRenderer3D';
 import { WaterSplash3D } from '../render3d/WaterSplash3D';
@@ -154,6 +155,7 @@ export class RtsScene3D {
   private pylonTubeFlowRenderer!: PylonTubeFlowRenderer;
   private smokeTrailRenderer!: SmokeTrail3D;
   private fogOfWarFogRenderer!: FogOfWarFog3D;
+  private overlayLineSystem!: OverlayLineSystem;
   private sightBoundaryRenderer!: SightBoundaryRenderer3D;
   private radarBoundaryRenderer!: SightBoundaryRenderer3D;
   private audioSystem = new RtsScene3DAudioSystem();
@@ -414,6 +416,7 @@ export class RtsScene3D {
     this.pylonTubeFlowRenderer = renderers.pylonTubeFlowRenderer;
     this.smokeTrailRenderer = renderers.smokeTrailRenderer;
     this.fogOfWarFogRenderer = renderers.fogOfWarFogRenderer;
+    this.overlayLineSystem = renderers.overlayLineSystem;
     this.sightBoundaryRenderer = renderers.sightBoundaryRenderer;
     this.radarBoundaryRenderer = renderers.radarBoundaryRenderer;
     this.rendererWarmup = new RtsScene3DRendererWarmup({
@@ -578,6 +581,7 @@ export class RtsScene3D {
         pylonTubeFlowRenderer: this.pylonTubeFlowRenderer,
         smokeTrailRenderer: this.smokeTrailRenderer,
         fogOfWarFogRenderer: this.fogOfWarFogRenderer,
+        overlayLineSystem: this.overlayLineSystem,
         sightBoundaryRenderer: this.sightBoundaryRenderer,
         radarBoundaryRenderer: this.radarBoundaryRenderer,
         healthBar3D: this.healthBar3D,

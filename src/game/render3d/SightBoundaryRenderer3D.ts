@@ -9,7 +9,8 @@ import {
 } from '../sim/sensorCoverage';
 import type { Entity, PlayerId } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
-import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
+import type { OverlayLineSystem } from './OverlayLineSystem';
+import type { GroundLineBatch3D } from './GroundLineBatch3D';
 import { hexToRgb01 } from './colorUtils';
 
 type SensorBoundaryMode = 'sight' | 'radar';
@@ -22,21 +23,14 @@ const TAU = Math.PI * 2;
 const EPSILON = 1e-5;
 const STYLE = {
   initialLineCap: 4096,
-  groundLift: 9,
   maxSegmentLength: 28,
   maxArcStepRad: Math.PI / 48,
-  renderOrder: 24,
 };
 
 const STYLE_BY_MODE = {
   sight: COLORS.effects.selectionOverlay.radiusVisual,
   radar: COLORS.effects.selectionOverlay.radar,
 } as const;
-
-const RENDER_ORDER_BY_MODE: Record<SensorBoundaryMode, number> = {
-  radar: STYLE.renderOrder,
-  sight: STYLE.renderOrder + 1,
-};
 
 function normalizeAngle(angle: number): number {
   const n = angle % TAU;
@@ -57,9 +51,7 @@ function clampUnit(value: number): number {
 export class SightBoundaryRenderer3D {
   private readonly parent: THREE.Group;
   private readonly getTerrainHeight: (x: number, y: number) => number;
-  private readonly lineBuffer = new DynamicLineBuffer3D(STYLE.initialLineCap);
-  private readonly material: THREE.LineBasicMaterial;
-  private readonly lineMesh: THREE.LineSegments;
+  private readonly batch: GroundLineBatch3D;
   private readonly sourceXs: number[] = [];
   private readonly sourceYs: number[] = [];
   private readonly sourceRadii: number[] = [];
@@ -67,29 +59,28 @@ export class SightBoundaryRenderer3D {
   private readonly intervalEnds: number[] = [];
   private readonly mode: SensorBoundaryMode;
   private readonly color: { r: number; g: number; b: number };
+  private readonly alpha: number;
+  private readonly widthPx: number;
+  private readonly groundLift: number;
 
   constructor(
     parent: THREE.Group,
+    overlayLines: OverlayLineSystem,
     getTerrainHeight: (x: number, y: number) => number,
     options: SensorBoundaryRendererOptions = {},
   ) {
     this.parent = parent;
     this.getTerrainHeight = getTerrainHeight;
     this.mode = options.mode ?? 'sight';
-    const style = STYLE_BY_MODE[this.mode];
-    this.color = hexToRgb01(style.colorHex);
-    this.material = new THREE.LineBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      opacity: style.opacity,
-      depthTest: false,
-      depthWrite: false,
-    });
-    this.lineMesh = new THREE.LineSegments(this.lineBuffer.geometry, this.material);
-    this.lineMesh.frustumCulled = false;
-    this.lineMesh.renderOrder = RENDER_ORDER_BY_MODE[this.mode];
-    this.lineMesh.visible = false;
-    parent.add(this.lineMesh);
+    const colorStyle = STYLE_BY_MODE[this.mode];
+    this.color = hexToRgb01(colorStyle.colorHex);
+    this.alpha = colorStyle.opacity;
+    const kind = this.mode === 'radar' ? 'radarBoundary' : 'sight';
+    const style = overlayLines.style(kind);
+    this.widthPx = style.widthPx;
+    this.groundLift = style.groundLift;
+    this.batch = overlayLines.createBatch(kind, STYLE.initialLineCap);
+    parent.add(this.batch.mesh);
   }
 
   update(
@@ -98,15 +89,15 @@ export class SightBoundaryRenderer3D {
     enabled: boolean,
     renderScope: ViewportFootprint,
   ): void {
+    this.batch.begin();
     if (!enabled) {
-      this.clear();
+      this.batch.finishFrame();
       return;
     }
 
     this.collectSources(clientViewState, localPlayerId, renderScope);
-    this.lineBuffer.resetDrawRange();
     if (this.sourceXs.length === 0) {
-      this.lineMesh.visible = false;
+      this.batch.finishFrame();
       return;
     }
 
@@ -114,20 +105,12 @@ export class SightBoundaryRenderer3D {
       this.drawVisibleBoundaryForSource(i);
     }
 
-    const segmentCount = this.lineBuffer.finishFrame();
-    this.lineMesh.visible = segmentCount > 0;
+    this.batch.finishFrame();
   }
 
   destroy(): void {
-    this.parent.remove(this.lineMesh);
-    this.lineBuffer.dispose();
-    this.material.dispose();
-  }
-
-  private clear(): void {
-    if (!this.lineMesh.visible && this.lineBuffer.count === 0) return;
-    this.lineBuffer.resetDrawRange();
-    this.lineMesh.visible = false;
+    this.parent.remove(this.batch.mesh);
+    this.batch.dispose();
   }
 
   private collectSources(
@@ -317,17 +300,17 @@ export class SightBoundaryRenderer3D {
     const sourceY = this.sourceYs[sourceIndex];
     let prevX = sourceX + Math.cos(start) * sourceRadius;
     let prevY = sourceY + Math.sin(start) * sourceRadius;
-    let prevHeight = this.getTerrainHeight(prevX, prevY) + STYLE.groundLift;
+    let prevHeight = this.getTerrainHeight(prevX, prevY) + this.groundLift;
     const { r, g, b } = this.color;
     for (let i = 1; i <= segments; i++) {
       const angle = start + (span * i) / segments;
       const nextX = sourceX + Math.cos(angle) * sourceRadius;
       const nextY = sourceY + Math.sin(angle) * sourceRadius;
-      const nextHeight = this.getTerrainHeight(nextX, nextY) + STYLE.groundLift;
-      this.lineBuffer.pushSegment(
+      const nextHeight = this.getTerrainHeight(nextX, nextY) + this.groundLift;
+      this.batch.pushSegment(
         prevX, prevHeight, prevY,
         nextX, nextHeight, nextY,
-        r, g, b,
+        r, g, b, this.alpha, this.widthPx,
       );
       prevX = nextX;
       prevY = nextY;

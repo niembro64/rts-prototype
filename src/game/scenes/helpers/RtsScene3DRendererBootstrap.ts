@@ -19,6 +19,7 @@ import { Render3DEntities } from '../../render3d/Render3DEntities';
 import { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import { ShieldRenderer3D } from '../../render3d/ShieldRenderer3D';
 import { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
+import { OverlayLineSystem } from '../../render3d/OverlayLineSystem';
 import { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import { TerrainTileRenderer3D } from '../../render3d/TerrainTileRenderer3D';
@@ -68,6 +69,7 @@ type RtsScene3DRendererBootstrapResult = {
   pylonTubeFlowRenderer: PylonTubeFlowRenderer;
   smokeTrailRenderer: SmokeTrail3D;
   fogOfWarFogRenderer: FogOfWarFog3D;
+  overlayLineSystem: OverlayLineSystem;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
 };
@@ -184,12 +186,15 @@ export function bootstrapRtsScene3DRenderers(
     mapWidth,
     mapHeight,
   );
+  const overlayLineSystem = new OverlayLineSystem();
   const sightBoundaryRenderer = new SightBoundaryRenderer3D(
     threeApp.world,
+    overlayLineSystem,
     (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
   );
   const radarBoundaryRenderer = new SightBoundaryRenderer3D(
     threeApp.world,
+    overlayLineSystem,
     (x, y) => getTerrainMeshHeight(x, y, mapWidth, mapHeight),
     { mode: 'radar' },
   );
@@ -217,6 +222,7 @@ export function bootstrapRtsScene3DRenderers(
     pylonTubeFlowRenderer,
     smokeTrailRenderer,
     fogOfWarFogRenderer,
+    overlayLineSystem,
     sightBoundaryRenderer,
     radarBoundaryRenderer,
   };

@@ -46,6 +46,7 @@ import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
 import type { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
 import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
+import type { OverlayLineSystem } from '../../render3d/OverlayLineSystem';
 import {
   ContactShadowRenderPacket3D,
   type ContactShadowRenderer3D,
@@ -109,6 +110,7 @@ type RtsScene3DRenderPhaseResources = {
   pylonTubeFlowRenderer: PylonTubeFlowRenderer;
   smokeTrailRenderer: SmokeTrail3D;
   fogOfWarFogRenderer: FogOfWarFog3D;
+  overlayLineSystem: OverlayLineSystem;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
   healthBar3D: HealthBar3D | null;
@@ -192,6 +194,8 @@ export class RtsScene3DRenderPhase {
   /** Camera-distance fade shared by HP/build bars + name labels so
    *  both fade + cull together as the camera zooms out (BAR style). */
   private readonly hudFade = new HudFade();
+  /** Scratch for reading the canvas size into the overlay-line material. */
+  private readonly _overlayResolution = new THREE.Vector2();
   private readonly cameraViewBasis: CameraViewBasis = {
     right: { x: 1, y: 0, z: 0 },
     up: { x: 0, y: Math.SQRT1_2, z: Math.SQRT1_2 },
@@ -279,6 +283,7 @@ export class RtsScene3DRenderPhase {
       pylonTubeFlowRenderer,
       smokeTrailRenderer,
       fogOfWarFogRenderer,
+      overlayLineSystem,
       sightBoundaryRenderer,
       radarBoundaryRenderer,
       healthBar3D,
@@ -332,6 +337,10 @@ export class RtsScene3DRenderPhase {
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
     const turretShieldSpheresEnabled = serverMeta?.turretShieldSpheresEnabled ?? true;
     const forceFieldsVisible = serverMeta?.forceFieldsVisible ?? true;
+    // Keep every overlay line's screen-pixel width correct for the current
+    // canvas size (one shared material drives all of them).
+    const overlaySize = this.threeApp.renderer.getSize(this._overlayResolution);
+    overlayLineSystem.setResolution(overlaySize.x, overlaySize.y);
     sightBoundaryRenderer.update(
       this.clientViewState,
       this.getLocalPlayerId(),

@@ -562,6 +562,13 @@ export const GROUND_RENDER_ORDER = worldRenderConfigJson.groundRenderOrder;
 // contact-shadow mesh and update at configured strides.
 export const CONTACT_SHADOW_RENDER_CONFIG = worldRenderConfigJson.contactShadow;
 
+// Per-kind styling (screen-pixel width, ground lift, render order) for the
+// unified ground overlay line system (selection rings, range circles,
+// sight/radar boundaries, waypoints, drag previews). Widths are in CSS
+// pixels and stay constant on screen at any zoom.
+export const OVERLAY_LINE_CONFIG = worldRenderConfigJson.overlayLines;
+export type OverlayLineKind = keyof typeof OVERLAY_LINE_CONFIG.kinds;
+
 // Scorched earth burn mark colors and decay
 export const BURN_COLOR_HOT = COLORS.world.burnMark.hotColorHex; // bright red start
 export const BURN_COLOR_TAU = worldRenderConfigJson.burnMark.colorTauMs; // color decay: red → black (ms), fast
