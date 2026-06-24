@@ -32,7 +32,8 @@ import {
   type CanvasSpritePoolTelemetry,
   type CanvasSpriteSlot,
 } from './CanvasSpritePool';
-import { DynamicLineBuffer3D } from './DynamicLineBuffer3D';
+import type { OverlayLineSystem } from './OverlayLineSystem';
+import type { GroundLineBatch3D } from './GroundLineBatch3D';
 
 const WAYPOINT_FLAG_MAX_RETAINED_SPRITES = 64;
 const WAYPOINT_FLAG_SHRINK_COOLDOWN_FRAMES = 120;
@@ -139,9 +140,9 @@ export class Waypoint3D {
   private mapHeight: number;
   private getEntity?: (id: number) => Entity | undefined;
 
-  // Line buffer (path segments + rect outlines).
-  private lineBuffer = new DynamicLineBuffer3D(STYLE.initialLineCap);
-  private lineMesh: THREE.LineSegments;
+  // Line buffer (path segments + rect outlines) — screen-space 3D ribbons.
+  private lineBatch: GroundLineBatch3D;
+  private readonly lineWidthPx: number;
 
   // Point buffer (dot markers).
   private dotGeom: THREE.BufferGeometry;
@@ -159,12 +160,16 @@ export class Waypoint3D {
     parent: THREE.Group,
     mapWidth: number,
     mapHeight: number,
+    overlayLines: OverlayLineSystem,
     getEntity?: (id: number) => Entity | undefined,
   ) {
     this.parent = parent;
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.getEntity = getEntity;
+    this.lineWidthPx = overlayLines.style('waypoint').widthPx;
+    this.lineBatch = overlayLines.createBatch('waypoint', STYLE.initialLineCap);
+    parent.add(this.lineBatch.mesh);
     this.flagPool = new CanvasSpritePool<FlagState, [number]>({
       parent,
       canvasWidth: 32,
@@ -192,17 +197,6 @@ export class Waypoint3D {
       repaint: repaintLabel,
       material: { depthTest: true },
     });
-
-    // Lines.
-    const lineMat = new THREE.LineBasicMaterial({
-      vertexColors: true,
-      transparent: false,
-      depthTest: true,
-    });
-    this.lineMesh = new THREE.LineSegments(this.lineBuffer.geometry, lineMat);
-    this.lineMesh.frustumCulled = false;
-    this.lineMesh.renderOrder = 5;
-    parent.add(this.lineMesh);
 
     // Dots.
     this.dotCap = STYLE.initialDotCap;
@@ -267,14 +261,14 @@ export class Waypoint3D {
     );
   }
 
-  /** Push one straight 3D line segment endpoint pair into the buffer
-   *  with a single per-vertex color (alpha pre-multiplied). */
+  /** Push one straight 3D line segment endpoint pair into the buffer as a
+   *  constant-width screen-space ribbon (sim x/y → world x/z, height → world y). */
   private pushSegment(
     ax: number, ay: number, az: number,
     bx: number, by: number, bz: number,
-    r: number, g: number, b: number,
+    r: number, g: number, b: number, a: number,
   ): void {
-    this.lineBuffer.pushSegment(ax, az, ay, bx, bz, by, r, g, b);
+    this.lineBatch.pushSegment(ax, az, ay, bx, bz, by, r, g, b, a, this.lineWidthPx);
   }
 
   /** Push a long line A→B as several short sub-segments that follow
@@ -291,9 +285,6 @@ export class Waypoint3D {
     az?: number, bz?: number,
   ): void {
     const c = hexToRgb01(color);
-    const r = c.r * alpha;
-    const g = c.g * alpha;
-    const b = c.b * alpha;
     const dx = bx - ax;
     const dy = by - ay;
     const length = Math.sqrt(dx * dx + dy * dy);
@@ -308,7 +299,7 @@ export class Waypoint3D {
       // Last step pins to the b-endpoint's altitude (when provided)
       // so a click on a hilltop's final dot meets the line cleanly.
       const nz = i === steps ? this.resolveY(nx, ny, bz) : this.resolveY(nx, ny);
-      this.pushSegment(prevX, prevY, prevZ, nx, ny, nz, r, g, b);
+      this.pushSegment(prevX, prevY, prevZ, nx, ny, nz, c.r, c.g, c.b, alpha);
       prevX = nx; prevY = ny; prevZ = nz;
     }
   }
@@ -320,9 +311,7 @@ export class Waypoint3D {
     x: number, y: number, color: number, zHint?: number,
   ): void {
     const c = hexToRgb01(color);
-    const r = c.r * STYLE.lineAlpha;
-    const g = c.g * STYLE.lineAlpha;
-    const b = c.b * STYLE.lineAlpha;
+    const a = STYLE.lineAlpha;
     const h = STYLE.rectWorldSize / 2;
     const z = this.resolveY(x, y, zHint);
     // Four corners traversed counterclockwise.
@@ -330,10 +319,10 @@ export class Waypoint3D {
     const cx1 = x + h, cy1 = y - h;
     const cx2 = x + h, cy2 = y + h;
     const cx3 = x - h, cy3 = y + h;
-    this.pushSegment(cx0, cy0, z, cx1, cy1, z, r, g, b);
-    this.pushSegment(cx1, cy1, z, cx2, cy2, z, r, g, b);
-    this.pushSegment(cx2, cy2, z, cx3, cy3, z, r, g, b);
-    this.pushSegment(cx3, cy3, z, cx0, cy0, z, r, g, b);
+    this.pushSegment(cx0, cy0, z, cx1, cy1, z, c.r, c.g, c.b, a);
+    this.pushSegment(cx1, cy1, z, cx2, cy2, z, c.r, c.g, c.b, a);
+    this.pushSegment(cx2, cy2, z, cx3, cy3, z, c.r, c.g, c.b, a);
+    this.pushSegment(cx3, cy3, z, cx0, cy0, z, c.r, c.g, c.b, a);
   }
 
   private pushDot(
@@ -395,7 +384,8 @@ export class Waypoint3D {
   ): void {
     if (selectedUnits.length === 0 && selectedBuildings.length === 0) {
       if (this.hadVisible) {
-        this.lineBuffer.resetDrawRange();
+        this.lineBatch.begin();
+        this.lineBatch.finishFrame();
         this.dotGeom.setDrawRange(0, 0);
         this.flagPool.hideAll();
         this.labelPool.hideAll();
@@ -405,7 +395,7 @@ export class Waypoint3D {
     }
 
     const state = { dotCount: 0 };
-    this.lineBuffer.resetDrawRange();
+    this.lineBatch.begin();
     let flagCount = 0;
     let labelCount = 0;
 
@@ -545,7 +535,7 @@ export class Waypoint3D {
     // Push GPU buffer updates and trim the visible counts to what
     // we filled this frame. Hidden flags stay in the pool ready
     // for the next frame.
-    const lineSeg = this.lineBuffer.finishFrame();
+    const lineSeg = this.lineBatch.finishFrame();
     this.dotGeom.setDrawRange(0, state.dotCount);
     (this.dotGeom.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.dotGeom.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
@@ -555,11 +545,10 @@ export class Waypoint3D {
   }
 
   destroy(): void {
-    this.parent.remove(this.lineMesh);
+    this.parent.remove(this.lineBatch.mesh);
     this.parent.remove(this.dotMesh);
-    this.lineBuffer.dispose();
+    this.lineBatch.dispose();
     this.dotGeom.dispose();
-    (this.lineMesh.material as THREE.Material).dispose();
     (this.dotMesh.material as THREE.Material).dispose();
     this.flagPool.destroy();
     this.labelPool.destroy();

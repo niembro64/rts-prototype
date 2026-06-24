@@ -440,6 +440,7 @@ export class RtsScene3D {
       this.waypoint3D = new Waypoint3D(
         this.threeApp.world,
         this.mapWidth, this.mapHeight,
+        this.overlayLineSystem,
         (id) => this.clientViewState.getEntity(id),
       );
     }
