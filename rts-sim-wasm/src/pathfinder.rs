@@ -559,16 +559,22 @@ pub(crate) fn pathfinder_is_cell_passable(
     true
 }
 
-/// Cells the unit's collision footprint must keep clear of any blocker. The
-/// nearest blocked cell's near edge sits ~(c - 0.5) cells from the cell centre,
-/// so c >= r/cell + 0.5 guarantees the body does not overlap a blocker. Returns
-/// 0 for point-size / non-finite radii (gate becomes a no-op).
+/// Cells the unit's footprint must keep clear of any blocker. The standoff is
+/// the collision radius PLUS the arrival tolerance (× the clearance factor): the
+/// body needs `radius` so it does not overlap, and an extra `arrivalRadius`
+/// because the arrival controller may abandon a waypoint and cut toward the next
+/// while still up to that far short of it — without the margin that corner-cut
+/// punches a unit's centre through the building edge. The nearest blocked cell's
+/// near edge sits ~(c - 0.5) cells from the cell centre, so
+/// `c >= (radius + margin)/cell + 0.5` keeps the cut on legal ground. Returns 0
+/// for point-size / non-finite radii (gate becomes a no-op, e.g. airborne).
 #[inline]
 pub(crate) fn pathfinder_clearance_cells_for_radius(radius: f64) -> i32 {
     if !radius.is_finite() || radius <= 0.0 {
         return 0;
     }
-    ((radius / PATHFINDER_BUILD_GRID_CELL_SIZE) + 0.5).ceil() as i32
+    let margin = PATHFINDING_ARRIVAL_RADIUS * PATHFINDING_ARRIVAL_CLEARANCE_FACTOR;
+    (((radius + margin) / PATHFINDER_BUILD_GRID_CELL_SIZE) + 0.5).ceil() as i32
 }
 
 #[inline]

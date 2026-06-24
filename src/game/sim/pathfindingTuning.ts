@@ -4,6 +4,7 @@ type PathfindingTuningConfig = {
   waterBufferCells: number;
   forceSafetyRatio: number;
   stabilityMaxSlopeDeg: number;
+  arrivalRadius: number;
 };
 
 const config = rawPathfindingTuningConfig as PathfindingTuningConfig;
@@ -45,7 +46,21 @@ function readStabilityMaxSlopeDeg(): number {
   return value;
 }
 
+function readArrivalRadius(): number {
+  const value = requireFinite('arrivalRadius', config.arrivalRadius);
+  if (value < 0) {
+    throw new Error(
+      `Invalid pathfinding tuning arrivalRadius: expected non-negative number, got ${value}`,
+    );
+  }
+  return value;
+}
+
 export const PATHFINDING_WATER_BUFFER_CELLS = readWaterBufferCells();
+/** Arrival tolerance in world units (distance at which a unit ticks a waypoint
+ *  as reached). Owned here so the WASM pathfinder's clearance margin and the
+ *  arrival controller cannot drift apart. */
+export const PATHFINDING_ARRIVAL_RADIUS = readArrivalRadius();
 export const PATHFINDING_FORCE_SAFETY_RATIO = readForceSafetyRatio();
 export const PATHFINDING_STABILITY_MAX_SLOPE_DEG = readStabilityMaxSlopeDeg();
 export const PATHFINDING_STABILITY_MIN_NORMAL_Z = Math.cos(

@@ -4,8 +4,13 @@ import { LOCOMOTION_FORCE_SCALE } from './locomotion';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
+import { PATHFINDING_ARRIVAL_RADIUS } from './pathfindingTuning';
 
-export const ARRIVAL_RADIUS = 50;
+/** Distance (world units) at which a unit ticks a waypoint as reached. Single
+ *  source of truth in pathfindingTuningConfig.json so the WASM pathfinder folds
+ *  this same value into per-unit clearance (preventing corner-cuts into
+ *  blockers); the two can never drift apart. */
+export const ARRIVAL_RADIUS = PATHFINDING_ARRIVAL_RADIUS;
 const ARRIVAL_FINAL_RADIUS = 15;
 const ARRIVAL_FINAL_STOP_SPEED = 100;
 const ARRIVAL_CONTROL_RADIUS = 20;
