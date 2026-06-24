@@ -551,12 +551,6 @@
       "cellOk": {
         "colorHex": "#006600"
       },
-      "cellMetal": {
-        "colorHex": "#003a99"
-      },
-      "cellMetalDeposit": {
-        "colorHex": "#005566"
-      },
       "cellBad": {
         "colorHex": "#770000"
       },
@@ -565,12 +559,6 @@
       },
       "cellBorderOk": {
         "colorHex": "#00ff00"
-      },
-      "cellBorderMetal": {
-        "colorHex": "#0096ff"
-      },
-      "cellBorderMetalDeposit": {
-        "colorHex": "#00d8ff"
       },
       "cellBorderBad": {
         "colorHex": "#ff0000"

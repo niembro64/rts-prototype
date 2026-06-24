@@ -2,18 +2,20 @@
 // 3D scene. Ground-cell colors describe placement/resource facts:
 // green = buildable, red = blocked, yellow = buildable but suboptimal
 // (extractor off a deposit, or a non-extractor placed on a deposit).
-// The always-built deposit overlay (a separate group on the same
-// instance) draws filled blue squares with a brighter blue border above
-// every metal-deposit coin, matching the red/green tile look produced by
-// the terrain shader; its visibility is driven externally by
-// setBuildGridOverlayVisible and is intentionally tied only to the
-// DEBUG: BUILD toggle (build mode does NOT show it). Builder range is
-// shown separately because the builder can move to the site.
+// Footprint cells that land on a metal deposit are lifted onto the coin's
+// top surface (via the deposit surface index) so the preview hugs the
+// poked-up deposit instead of the buried pad. Builder range is shown
+// separately because the builder can move to the site.
+//
+// The whole-map DEBUG: BUILD blue-on-deposit squares are NOT drawn here.
+// They are baked directly onto the terrain AND the metal-deposit coin
+// surfaces by the shared BuildGridOverlayShader (TerrainTileRenderer3D +
+// MetalDepositRenderer3D), exactly like the red/green terrain squares, so
+// they conform to the surface and occlude naturally.
 //
 // Ownership: Input3DManager drives the footprint preview (setTarget on
-// mouse move, hide on mode exit). The scene render phase drives the
-// deposit overlay's visibility every frame. Everything is parented to
-// the world group so it tracks camera pan/orbit naturally.
+// mouse move, hide on mode exit). Everything is parented to the world
+// group so it tracks camera pan/orbit naturally.
 
 import * as THREE from 'three';
 import type { Entity, BuildingBlueprintId } from '../sim/types';
@@ -35,10 +37,8 @@ import {
 } from './MetalDepositVisualClusters';
 
 const GHOST_Y = 1; // hover a hair above the ground so it doesn't z-fight tiles
-const TERRAIN_CELL_FILL_LIFT = 1.25;
-const TERRAIN_CELL_BORDER_LIFT = 1.38;
-const METAL_DEPOSIT_CELL_FILL_LIFT = 7.5;
-const METAL_DEPOSIT_CELL_BORDER_LIFT = 7.82;
+const CELL_FILL_LIFT = 1.25;
+const CELL_BORDER_LIFT = 1.38;
 const RANGE_Y = 0.6;
 type GroundHeightLookup = (x: number, y: number) => number;
 
@@ -72,8 +72,6 @@ export function resolveBuildAbilitySquarePose(
   surfaceY: number,
 ): BuildAbilitySquarePose {
   const half = BUILD_GRID_CELL_SIZE / 2;
-  const fillLift = cell.metalCovered ? METAL_DEPOSIT_CELL_FILL_LIFT : TERRAIN_CELL_FILL_LIFT;
-  const borderLift = cell.metalCovered ? METAL_DEPOSIT_CELL_BORDER_LIFT : TERRAIN_CELL_BORDER_LIFT;
   return {
     x: cell.x,
     z: cell.y,
@@ -81,8 +79,8 @@ export function resolveBuildAbilitySquarePose(
     xMax: cell.x + half,
     zMin: cell.y - half,
     zMax: cell.y + half,
-    fillY: surfaceY + fillLift,
-    borderY: surfaceY + borderLift,
+    fillY: surfaceY + CELL_FILL_LIFT,
+    borderY: surfaceY + CELL_BORDER_LIFT,
   };
 }
 
@@ -92,17 +90,9 @@ export class BuildGhost3D {
   /** Footprint preview group — shown only while the player is actively
    *  hovering a build target (setTarget). */
   private group = new THREE.Group();
-  /** Deposit-cell overlay group — built once from the deposit list at
-   *  construction, visibility flipped externally each frame. Lives outside
-   *  the footprint group so it can be shown without an active build
-   *  target (e.g. while DEBUG: BUILD is on). Contains one filled mesh and
-   *  one border LineSegments so the on-coin marker matches the red/green
-   *  fill+border look the terrain shader paints elsewhere. */
-  private depositOverlayGroup = new THREE.Group();
-  private depositOverlayFillGeom: THREE.BufferGeometry | null = null;
-  private depositOverlayFillMat: THREE.MeshBasicMaterial | null = null;
-  private depositOverlayBorderGeom: THREE.BufferGeometry | null = null;
-  private depositOverlayBorderMat: THREE.LineBasicMaterial | null = null;
+  /** Maps every metal-deposit build cell to its coin-top surface Y so a
+   *  footprint cell placed on a deposit hugs the poked-up coin instead of
+   *  the buried flat pad. */
   private metalDepositSurfaceYByCell = new Map<string, number>();
   private metalDepositSurfaceYById = new Map<number, number>();
 
@@ -227,78 +217,6 @@ export class BuildGhost3D {
     this.world.add(this.group);
 
     this.indexMetalDepositSurfaces(deposits);
-    this.buildDepositOverlay(deposits);
-    this.depositOverlayGroup.visible = false;
-    this.world.add(this.depositOverlayGroup);
-  }
-
-  /** Show/hide the always-built deposit-cell overlay. Driven externally
-   *  so the same overlay activates for both build mode and the DEBUG:
-   *  BUILD toggle. */
-  setBuildGridOverlayVisible(visible: boolean): void {
-    if (this.depositOverlayGroup.visible === visible) return;
-    this.depositOverlayGroup.visible = visible;
-  }
-
-  /** Build one merged filled mesh + one merged border LineSegments
-   *  covering every metal-deposit cell. Together they reproduce the
-   *  red/green "darker fill, brighter border" look the terrain shader
-   *  paints. Positions are resolved through the same square helper used
-   *  by live placement diagnostics, so deposit markers and red/yellow/
-   *  green buildability cells share the same clearance rules. */
-  private buildDepositOverlay(deposits: ReadonlyArray<MetalDeposit>): void {
-    if (deposits.length === 0) return;
-    const fillPositions: number[] = [];
-    const fillIndices: number[] = [];
-    const borderPositions: number[] = [];
-    let vertexBase = 0;
-    for (const deposit of deposits) {
-      for (const cell of deposit.cells) {
-        const square = this.getBuildAbilitySquarePose({
-          ...cell,
-          metalCovered: true,
-          depositId: deposit.id,
-        });
-        fillPositions.push(
-          square.xMin, square.fillY, square.zMin,
-          square.xMax, square.fillY, square.zMin,
-          square.xMax, square.fillY, square.zMax,
-          square.xMin, square.fillY, square.zMax,
-        );
-        fillIndices.push(
-          vertexBase, vertexBase + 1, vertexBase + 2,
-          vertexBase, vertexBase + 2, vertexBase + 3,
-        );
-        vertexBase += 4;
-        borderPositions.push(
-          square.xMin, square.borderY, square.zMin, square.xMax, square.borderY, square.zMin,
-          square.xMax, square.borderY, square.zMin, square.xMax, square.borderY, square.zMax,
-          square.xMax, square.borderY, square.zMax, square.xMin, square.borderY, square.zMax,
-          square.xMin, square.borderY, square.zMax, square.xMin, square.borderY, square.zMin,
-        );
-      }
-    }
-    if (fillPositions.length > 0) {
-      const fillGeom = new THREE.BufferGeometry();
-      fillGeom.setAttribute('position', new THREE.Float32BufferAttribute(fillPositions, 3));
-      fillGeom.setIndex(fillIndices);
-      const fillMat = makeBuildAbilityFillMaterial(COLORS.effects.buildGhost.cellMetal.colorHex, 0.5);
-      const fillMesh = new THREE.Mesh(fillGeom, fillMat);
-      fillMesh.renderOrder = 32;
-      this.depositOverlayGroup.add(fillMesh);
-      this.depositOverlayFillGeom = fillGeom;
-      this.depositOverlayFillMat = fillMat;
-    }
-    if (borderPositions.length > 0) {
-      const borderGeom = new THREE.BufferGeometry();
-      borderGeom.setAttribute('position', new THREE.Float32BufferAttribute(borderPositions, 3));
-      const borderMat = makeBuildAbilityBorderMaterial(COLORS.effects.buildGhost.cellBorderMetal.colorHex);
-      const borderMesh = new THREE.LineSegments(borderGeom, borderMat);
-      borderMesh.renderOrder = 33;
-      this.depositOverlayGroup.add(borderMesh);
-      this.depositOverlayBorderGeom = borderGeom;
-      this.depositOverlayBorderMat = borderMat;
-    }
   }
 
   /** Update the ghost position + styling. Sim y maps to world z on
@@ -492,17 +410,12 @@ export class BuildGhost3D {
 
   destroy(): void {
     this.world.remove(this.group);
-    this.world.remove(this.depositOverlayGroup);
     (this.footprint.geometry as THREE.BufferGeometry).dispose();
     (this.rangeRing.geometry as THREE.BufferGeometry).dispose();
     (this.radarRangeRing.geometry as THREE.BufferGeometry).dispose();
     this.cellGeom.dispose();
     this.cellBorderGeom.dispose();
     this.rangeLineGeom.dispose();
-    this.depositOverlayFillGeom?.dispose();
-    this.depositOverlayFillMat?.dispose();
-    this.depositOverlayBorderGeom?.dispose();
-    this.depositOverlayBorderMat?.dispose();
     this.footMatOk.dispose();
     this.footMatBad.dispose();
     this.cellMatOk.dispose();
@@ -517,13 +430,19 @@ export class BuildGhost3D {
   }
 }
 
+// Footprint cells follow natural depth occlusion (nearer geometry hides
+// them) — depthTest on, depthWrite off so they layer over terrain without
+// z-fighting (the small per-cell lift plus polygonOffset keep them clear).
 function makeBuildAbilityFillMaterial(color: number, opacity = 1): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({
     color,
     transparent: opacity < 1,
     opacity,
-    depthTest: false,
+    depthTest: true,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
     side: THREE.DoubleSide,
     toneMapped: false,
   });
@@ -533,7 +452,7 @@ function makeBuildAbilityBorderMaterial(color: number): THREE.LineBasicMaterial 
   return new THREE.LineBasicMaterial({
     color,
     transparent: false,
-    depthTest: false,
+    depthTest: true,
     depthWrite: false,
     toneMapped: false,
   });

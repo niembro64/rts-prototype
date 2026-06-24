@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import {
-  getBuildGridDebug,
   getFogClouds,
   getMaterialExplosions,
   getRadarBoundary,
@@ -264,7 +263,6 @@ export class RtsScene3DRenderPhase {
       beamRenderer,
       shieldRenderer,
       terrainTileRenderer,
-      buildGhostRenderer,
       metalDepositRenderer,
       environmentPropRenderer,
       contactShadowRenderer,
@@ -408,11 +406,11 @@ export class RtsScene3DRenderPhase {
     if (contactShadowRenderer && updateContactShadowsThisFrame) {
       contactShadowRenderer.update(entityLists.contactShadows, this.renderFrameIndex);
     }
-    // The whole-map build-grid visualization (terrain-shader red/green/blue
-    // overlay + matching blue squares above each deposit coin) is gated
-    // solely to the DEBUG: BUILD toggle. The build-mode hover footprint is
-    // a separate, localized signal owned by BuildGhost3D's setTarget path.
-    buildGhostRenderer.setBuildGridOverlayVisible(getBuildGridDebug());
+    // The whole-map build-grid visualization (red/green/blue squares) is
+    // baked directly onto the terrain AND the metal-deposit coin surfaces by
+    // the shared BuildGridOverlayShader inside terrainTileRenderer.update(),
+    // gated solely to the DEBUG: BUILD toggle. The build-mode hover footprint
+    // is a separate, localized signal owned by BuildGhost3D's setTarget path.
     terrainTileRenderer.update(
       graphicsConfig,
       renderFrameState,
