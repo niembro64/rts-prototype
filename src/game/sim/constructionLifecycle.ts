@@ -25,11 +25,6 @@ type ConstructionLifecycleResult = {
   completedBuildings: Entity[];
 };
 
-type InterruptedConstructionResult = {
-  preserved: boolean;
-  refund: ResourceCost;
-};
-
 type ConstructionPieceSpec = {
   getId: () => number;
   assignId: ((id: number) => void) | null;
@@ -109,10 +104,6 @@ function resourceCostTotal(cost: ResourceCost): number {
 
 function costHasAnyResource(cost: ResourceCost): boolean {
   return resourceCostTotal(cost) > 0;
-}
-
-function hasPaidProgress(piece: ConstructionPieceBuildRecord): boolean {
-  return piece.paid.energy > 0 || piece.paid.metal > 0;
 }
 
 function assignConstructionPieceIdentity(
@@ -343,79 +334,6 @@ function reconcileAndGrowConstructionPieces(
       world.onHostMassChanged?.(entity);
     }
   }
-}
-
-function shouldPreserveInterruptedPiece(
-  piece: ConstructionPieceBuildRecord,
-  spec: ConstructionPieceSpec,
-): boolean {
-  return piece.isActive && spec.getHp() > 0 && (piece.isComplete || hasPaidProgress(piece));
-}
-
-function zeroInterruptedPiece(
-  world: WorldState,
-  spec: ConstructionPieceSpec,
-): void {
-  if (spec.getHp() !== 0) {
-    spec.setHp(0);
-  }
-  const pieceId = spec.getId();
-  if (spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
-    world.markSubEntityMetadataDead(pieceId);
-  }
-}
-
-export function interruptConstructionPreservingBuiltPieces(
-  world: WorldState,
-  entity: Entity,
-): InterruptedConstructionResult {
-  const buildable = entity.buildable;
-  if (buildable === null || buildable.isGhost || buildable.isComplete) {
-    return {
-      preserved: false,
-      refund: { energy: 0, metal: 0 },
-    };
-  }
-
-  ensureConstructionPieceRecords(entity);
-  reconcileAndGrowConstructionPieces(world, entity, 'current');
-
-  const specs = scalePieceCostsToBuildableRequired(
-    getConstructionPieceSpecs(entity),
-    buildable.required,
-  );
-  let preserved = false;
-  let changedFields = 0;
-
-  for (let i = 0; i < specs.length; i++) {
-    const spec = specs[i];
-    const piece = buildable.pieces[i];
-    if (piece !== undefined && shouldPreserveInterruptedPiece(piece, spec)) {
-      preserved = true;
-      const pieceId = spec.getId();
-      if (spec.isSubEntity && pieceId !== NO_ENTITY_ID) {
-        world.setSubEntityMetadataTargetable(pieceId, true);
-      }
-      continue;
-    }
-    zeroInterruptedPiece(world, spec);
-    changedFields |= spec.snapshotFields;
-  }
-
-  if (!preserved) {
-    return {
-      preserved: false,
-      refund: cloneResourceCost(buildable.paid),
-    };
-  }
-
-  world.refreshEntityMetadata(entity);
-  buildable.isInterrupted = true;
-  world.markSnapshotDirty(entity.id, changedFields | ENTITY_CHANGED_BUILDING);
-  return {
-    preserved: true,
-    refund: { energy: 0, metal: 0 },
-  };
 }
 
 export function initializeConstructionPieceHealth(entity: Entity, world: WorldState | null = null): void {
