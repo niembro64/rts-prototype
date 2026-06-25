@@ -45,15 +45,6 @@
         },
         "visualVariant": "large",
         "hostDirected": true
-      },
-      {
-        "turretBlueprintId": "turretUnitConstructorBallistic",
-        "mount": {
-          "x": 0,
-          "y": 0,
-          "z": 74
-        },
-        "hostDirected": true
       }
     ],
     "base": {

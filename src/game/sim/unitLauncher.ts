@@ -76,21 +76,6 @@ type UnitLauncherTurretRef = {
   turretIndex: number;
 };
 
-export function findUnitLauncherTurret(
-  host: Entity,
-  predicate: ((turret: Turret) => boolean) | null = null,
-): UnitLauncherTurretRef | null {
-  const turrets = host.combat?.turrets;
-  if (turrets === undefined) return null;
-  for (let i = 0; i < turrets.length; i++) {
-    const turret = turrets[i];
-    if (turret.config.unitLauncher === null) continue;
-    if (predicate !== null && !predicate(turret)) continue;
-    return { turret, turretIndex: i };
-  }
-  return null;
-}
-
 export function isLiveUnitLauncherTarget(
   world: WorldState,
   host: Entity,

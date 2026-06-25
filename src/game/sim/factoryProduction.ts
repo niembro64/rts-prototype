@@ -26,12 +26,6 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { getSimWasm } from '../sim-wasm/init';
 import type { ForceAccumulator } from './ForceAccumulator';
 import type { WindState } from './wind';
-import {
-  findUnitLauncherTurret,
-  inheritProducedUnitIntent,
-  launchProducedUnitFromTurret,
-  targetIdToLiveEnemyEntity,
-} from './unitLauncher';
 
 import type { FactoryProductionResult } from '@/types/ui';
 import type { UnitAction } from './types';
@@ -335,9 +329,9 @@ class FactoryProductionSystem {
     factory: Entity,
     unit: Entity,
     _buildingGrid: BuildingGrid,
-    dtMs: number,
-    forceAccumulator: ForceAccumulator,
-    wind: WindState,
+    _dtMs: number,
+    _forceAccumulator: ForceAccumulator,
+    _wind: WindState,
   ): void {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
@@ -376,30 +370,9 @@ class FactoryProductionSystem {
         }
       }
     }
-    const launcher = findUnitLauncherTurret(
-      factory,
-      (turret) => turret.config.unitLauncher?.autoProduce === false,
-    );
-    if (launcher !== null) {
-      const target = targetIdToLiveEnemyEntity(
-        world,
-        factory,
-        factory.combat?.priorityTargetId,
-      );
-      if (target !== null) {
-        inheritProducedUnitIntent(world, factory, unit, target);
-      }
-      launchProducedUnitFromTurret(
-        world,
-        forceAccumulator,
-        factory,
-        launcher,
-        unit,
-        dtMs,
-        wind,
-        target,
-      );
-    }
+    // The finished unit is NOT launched — it simply free-falls off the
+    // fabricator under gravity and then drives/flies to its rally (BAR-style
+    // roll-off). The old ballistic "unit constructor" cannon is gone.
     aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
     world.markSnapshotDirty(unit.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS);
   }
