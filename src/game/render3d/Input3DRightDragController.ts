@@ -8,9 +8,9 @@ import {
   buildFormationPreservingMoveTargets,
   buildFactoryGuardCommands,
   buildFactoryRallyCommands,
+  buildGuardCommandForTarget,
   buildLinePathMoveCommand,
   buildRepairCommandAt,
-  buildRepairCommandForTarget,
   LinePathAccumulator,
   shouldCollapseLinePathToSingleMove,
 } from '../input/helpers';
@@ -146,25 +146,29 @@ export class Input3DRightDragController {
       }
     }
 
-    // Repair/assist the body under the cursor in 3D first (airborne or
-    // precisely-clicked friendly), before falling back to the ground point.
-    if (!preserveFormationMove) {
-      const meshRepairCmd = buildRepairCommandForTarget(
+    // Right-click on a friendly body in 3D issues GUARD — BAR's smart
+    // default command over an ally. What the guard then does (defend the
+    // target, repair/heal it, or assist what it is building) is resolved
+    // per the guarder's own capabilities in the guard behavior. Self-guard
+    // is excluded by buildGuardCommandForTarget (drops the target itself).
+    if (!preserveFormationMove && selectedUnits.length > 0) {
+      const guardCmd = buildGuardCommandForTarget(
         entityHit,
-        this.config.getSelectedCommander(),
+        selectedUnits,
+        activePlayerId,
         tick,
         queueMode.queue,
         queueMode.queueFront,
         queueMode.queueInsertIndex,
       );
-      if (meshRepairCmd) {
+      if (guardCmd) {
         debugLog(
           GAME_DIAGNOSTICS.commandPlans,
-          '[click] repair-mesh: hit target #%d',
-          meshRepairCmd.targetId,
+          '[click] guard-mesh: hit target #%d, %d unit(s)',
+          guardCmd.targetId, selectedUnits.length,
         );
-        this.config.applyCursor('repair');
-        this.config.commandQueue.enqueue(meshRepairCmd);
+        this.config.applyCursor('guard');
+        this.config.commandQueue.enqueue(guardCmd);
         return;
       }
     }

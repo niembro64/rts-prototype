@@ -13,11 +13,13 @@ import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
+import { resolveGuardBuildAssistTargetId } from './guard';
 import {
   getRemainingResource,
   getTotalRemainingCost,
   isEntityActive,
   isBuildInProgress,
+  isBuildBlockingActivation,
 } from './buildableHelpers';
 import { resourceMovementSystem, type ResourceKind } from './resourceMovement';
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
@@ -333,11 +335,22 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   buffers.constructionSources.length = 0;
 
   // 1) Walk builder units. Aggregate their per-target rate caps so the
-  //    pass below knows how fast a building can be funded.
+  //    pass below knows how fast a building can be funded. A builder's
+  //    effective build target is its direct currentBuildTarget, or — when
+  //    it is GUARDING a builder/factory/nanoframe — the thing that guard
+  //    target is building (BAR: guard a builder == assist its build). Both
+  //    feed the same per-target accumulator, so any number of direct
+  //    builders + guard-assisters sum their build power onto one nanoframe.
   for (const entity of world.getBuilderUnits()) {
     const builder = entity.builder;
     if (builder === null) continue;
-    const targetId = builder.currentBuildTarget;
+    // While actively guarding, a builder funds what its guard target is
+    // building (BAR assist) — not any stale direct build target; otherwise
+    // it funds its own currentBuildTarget.
+    const isGuarding = entity.unit !== null && entity.unit.actions[0]?.type === 'guard';
+    const targetId = isGuarding
+      ? (resolveGuardBuildAssistTargetId(world, entity) ?? NO_ENTITY_ID)
+      : builder.currentBuildTarget;
     if (targetId === NO_ENTITY_ID) continue;
     const target = world.getEntity(targetId);
     if (!target || !isBuildTargetInRange(entity, target)) continue;
@@ -446,6 +459,41 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         );
       }
     }
+  }
+
+  // 4) Guarding builders heal a damaged guarded ally (BAR: a guarding
+  //    builder repairs the unit it guards). Only when there is no
+  //    construction to assist (that goes through the build pass above) and
+  //    the target is a damaged, completed unit. One healer funds a given
+  //    target per tick; HP is capped at maxHp so it never overshoots.
+  const guardHealedTargetIds = new Set<EntityId>();
+  for (const entity of world.getBuilderUnits()) {
+    const builder = entity.builder;
+    if (builder === null || entity.unit === null || entity.ownership === null) continue;
+    if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
+    const action = entity.unit.actions[0];
+    if (action === undefined || action.type !== 'guard' || action.targetId === undefined) continue;
+    // Construction assist already handled this guard in the build pass.
+    if (resolveGuardBuildAssistTargetId(world, entity) !== null) continue;
+    const target = world.getEntity(action.targetId);
+    if (target === undefined || target.unit === null || target.ownership === null) continue;
+    if (target.ownership.playerId !== entity.ownership.playerId) continue;
+    if (target.unit.hp <= 0 || target.unit.hp >= target.unit.maxHp) continue;
+    if (isBuildInProgress(target.buildable)) continue; // shell -> assist, not heal
+    if (guardHealedTargetIds.has(target.id)) continue;
+    if (!isBuildTargetInRange(entity, target)) continue;
+    const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;
+    if (remaining <= 0) continue;
+    guardHealedTargetIds.add(target.id);
+    addConsumer(
+      entity.ownership.playerId,
+      target,
+      'heal',
+      remaining,
+      builder.constructionRate * dtSec,
+      entity.id,
+      null,
+    );
   }
 
   // ── Per-player resource distribution ──

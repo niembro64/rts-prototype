@@ -2039,11 +2039,11 @@ function executeGuardCommand(ctx: CommandContext, command: GuardCommand): void {
 
     const queueFront = commandQueuesInFront(command);
     const queueInsertIndex = commandQueueInsertIndex(command);
-    if (entity.commander && isRepairableByCommander(entity, target)) {
-      enqueueRepairAction(ctx, entity, target, command.queue, queueFront, queueInsertIndex);
-      continue;
-    }
-
+    // Every guarder — commander or plain builder — gets the same guard
+    // action and follows the target; what it then does for the target
+    // (assist its construction, heal it, or defend it) is resolved per the
+    // guarder's own capabilities in the construction/energy pass, so guard
+    // behaves identically across builders (BAR-style).
     enqueueGuardAction(ctx, entity, target, command.queue, queueFront, queueInsertIndex);
   }
 }
