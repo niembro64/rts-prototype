@@ -647,6 +647,13 @@ export class WorldState {
     return this.cache.getHealthBarBuildings();
   }
 
+  // Damaged-or-shell units (hp < maxHp, or an incomplete build shell). Used by
+  // idle-builder auto-repair to find nearby damaged friendlies cheaply.
+  getDamagedUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getDamagedUnits();
+  }
+
   // Get every building that uses the shared BuildingActiveState fortify
   // mechanic — solar + wind + extractor.
   getActiveStateBuildings(): Entity[] {

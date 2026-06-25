@@ -27,6 +27,72 @@ import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 export type { EnergyBuffers,  } from '@/types/ui';
 import type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 
+// Construction-pylon auto-assist: pick the nearest friendly nanoframe that an
+// idle builder can already reach (never move to it). Pure read — mutates no
+// builder state, so it can't disturb a real build order. Deterministic:
+// nearest by squared distance, ties broken by ascending entity id.
+// Per-tick scratch for idle-builder auto-assist candidates (module-scoped to
+// avoid per-tick allocation; distributeEnergy runs single-threaded).
+const _autoAssistCandidates: Entity[] = [];
+
+function findAutoAssistTarget(builder: Entity, candidates: readonly Entity[]): Entity | null {
+  const ownership = builder.ownership;
+  if (ownership === null) return null;
+  const ownerId = ownership.playerId;
+  const bx = builder.transform.x;
+  const by = builder.transform.y;
+  let best: Entity | null = null;
+  let bestDistSq = Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    if (candidate.id === builder.id) continue;
+    if (candidate.ownership === null || candidate.ownership.playerId !== ownerId) continue;
+    if (!isBuildTargetInRange(builder, candidate)) continue;
+    const dx = candidate.transform.x - bx;
+    const dy = candidate.transform.y - by;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestDistSq || (distSq === bestDistSq && best !== null && candidate.id < best.id)) {
+      bestDistSq = distSq;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+// Idle-builder auto-repair counterpart: nearest damaged, COMPLETE friendly unit
+// already in build range, skipping any already claimed by another healer this
+// tick. Same determinism rule (nearest sq dist, id tiebreak); pure read.
+function findNearestDamagedUnit(
+  builder: Entity,
+  candidates: readonly Entity[],
+  excluded: ReadonlySet<EntityId>,
+): Entity | null {
+  const ownership = builder.ownership;
+  if (ownership === null) return null;
+  const ownerId = ownership.playerId;
+  const bx = builder.transform.x;
+  const by = builder.transform.y;
+  let best: Entity | null = null;
+  let bestDistSq = Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    if (candidate.id === builder.id || candidate.unit === null) continue;
+    if (candidate.unit.hp <= 0 || candidate.unit.hp >= candidate.unit.maxHp) continue;
+    if (isBuildInProgress(candidate.buildable)) continue; // shells fund via build, not repair
+    if (candidate.ownership === null || candidate.ownership.playerId !== ownerId) continue;
+    if (excluded.has(candidate.id)) continue;
+    if (!isBuildTargetInRange(builder, candidate)) continue;
+    const dx = candidate.transform.x - bx;
+    const dy = candidate.transform.y - by;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestDistSq || (distSq === bestDistSq && best !== null && candidate.id < best.id)) {
+      bestDistSq = distSq;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 export function createEnergyBuffers(): EnergyBuffers {
   return {
     consumers: [],
@@ -348,6 +414,19 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // Shell entity id -> the factory producing it, so the per-source build
   // breakdown can still update the factory's progress/rate fractions.
   const factoryByShellId = new Map<EntityId, EntityId>();
+  // Candidate nanoframes for idle-builder auto-assist (structures only; unit
+  // shells are funded by their factory + explicit guard-assist). Collected
+  // once per tick; the fast path below skips the scan entirely when empty.
+  const autoAssistCandidates = _autoAssistCandidates;
+  autoAssistCandidates.length = 0;
+  for (const structure of world.getHealthBarBuildings()) {
+    if (structure.ownership !== null && isBuildInProgress(structure.buildable)) {
+      autoAssistCandidates.push(structure);
+    }
+  }
+  // Builders that auto-assisted a build this tick — excluded from auto-repair
+  // so one idle builder does not split its pylons across two jobs.
+  const autoAssistedBuilderIds = new Set<EntityId>();
   for (const entity of world.getBuilderUnits()) {
     const builder = entity.builder;
     if (builder === null) continue;
@@ -377,7 +456,18 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     } else {
       targetId = builder.currentBuildTarget;
     }
-    if (targetId === NO_ENTITY_ID) continue;
+    if (targetId === NO_ENTITY_ID) {
+      // Idle builder with no order: its construction pylons auto-continue the
+      // nearest friendly nanoframe already in build range (no movement). Only
+      // when truly idle, so a builder traveling to a real build site or doing
+      // anything else is never diverted.
+      const idle = entity.unit !== null && entity.unit.actions.length === 0;
+      if (!idle || autoAssistCandidates.length === 0) continue;
+      const assist = findAutoAssistTarget(entity, autoAssistCandidates);
+      if (assist === null) continue;
+      targetId = assist.id;
+      autoAssistedBuilderIds.add(entity.id);
+    }
     const target = world.getEntity(targetId);
     if (!target || !isBuildTargetInRange(entity, target)) continue;
     buildTargets.add(targetId);
@@ -524,6 +614,36 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       entity.id,
       null,
     );
+  }
+
+  // 5) Idle-builder auto-repair. A builder with no order and no guard that
+  //    isn't already auto-assisting a build repairs the nearest damaged,
+  //    complete friendly unit already in range (BAR idle-assist; never moves).
+  //    Shares guardHealedTargetIds so one target gets one healer per tick.
+  const damagedUnits = world.getDamagedUnits();
+  if (damagedUnits.length > 0) {
+    for (const entity of world.getBuilderUnits()) {
+      const builder = entity.builder;
+      if (builder === null || entity.unit === null || entity.ownership === null) continue;
+      if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
+      if (entity.unit.actions.length !== 0) continue; // idle only
+      if (builder.currentBuildTarget !== NO_ENTITY_ID) continue;
+      if (autoAssistedBuilderIds.has(entity.id)) continue; // already assisting a build
+      const target = findNearestDamagedUnit(entity, damagedUnits, guardHealedTargetIds);
+      if (target === null || target.unit === null) continue;
+      const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;
+      if (remaining <= 0) continue;
+      guardHealedTargetIds.add(target.id);
+      addConsumer(
+        entity.ownership.playerId,
+        target,
+        'heal',
+        remaining,
+        builder.constructionRate * dtSec,
+        entity.id,
+        null,
+      );
+    }
   }
 
   // ── Per-player resource distribution ──
