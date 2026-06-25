@@ -677,14 +677,22 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
   // while unit launchers apply force directly to the produced unit.
   const shot = buildEmissionConfig(turretBlueprintId, turretBlueprint);
   const unitLauncher = turretBlueprint.unitLauncher ?? null;
+  // Spawn turrets bring entities into existence; resource-pylon turrets move
+  // resources. Both are non-combat emitters with their own authoritative
+  // config (read from TURRET_BLUEPRINTS at runtime), so they need no
+  // shot/constructionEmitter/unitLauncher to justify their existence.
+  const spawn = turretBlueprint.spawn ?? null;
+  const resourcePylon = turretBlueprint.resourcePylon ?? null;
 
   if (
     shot === null &&
     turretBlueprint.constructionEmitter === null &&
-    unitLauncher === null
+    unitLauncher === null &&
+    spawn === null &&
+    resourcePylon === null
   ) {
     throw new Error(
-      `Turret ${turretBlueprintId} has neither emissionBlueprintId, constructionEmitter, nor unitLauncher`,
+      `Turret ${turretBlueprintId} has no emissionBlueprintId, constructionEmitter, unitLauncher, spawn, nor resourcePylon`,
     );
   }
   validateTurretAimStyle(turretBlueprintId, turretBlueprint, shot);
