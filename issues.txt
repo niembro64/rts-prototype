@@ -339,13 +339,6 @@ spray resource balls at the build target (auto-aimed, so they point down for
 flying builders). Determinism: economy stays in energyDistribution; run
 deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
 
-[18] Phase B - spawn turrets create the entity + init laser
-    turretSpawnBuildingsAndTowers / turretSpawnUnits become what brings an entity
-    into existence: the build command and factory produce route through a spawn
-    turret that creates the 1-HP nanoframe (or an instant unit for queens) at the
-    target and fires a brief init laser/beam. Construction funding stays as-is this
-    phase. Every builder gains a spawn turret.
-
 [19] Phase C - construction pylons (metal + energy) + auto-assist radius
     Split the construction emitter into turretResourcePylonConstructionMetal +
     ...Energy. Per-tick funding (energyDistribution) pours each pylon's rate into

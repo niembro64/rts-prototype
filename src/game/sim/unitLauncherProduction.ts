@@ -65,6 +65,8 @@ class UnitLauncherProductionSystem {
           producedUnitBlueprintId,
         );
         world.addEntity(produced);
+        // The queen's spawn turret zapped this unit into existence.
+        world.registerSpawnBeam(produced.id, host.id);
         inheritProducedUnitIntent(world, host, produced, target);
         launchProducedUnitFromTurret(
           world,

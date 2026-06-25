@@ -21,6 +21,17 @@ const _constructionEmitterMount = { x: 0, y: 0, z: 0 };
 const _reclaimTickOut = new Float64Array(5);
 const REPAIR_RATE_PAIR_KEY_STRIDE = 67_108_864;
 
+// Init "spawn beam": a brief, fast, dense team-colored zap from a spawn
+// turret's host to the entity it just brought into existence. Reads as a laser
+// (fast + dense particles) vs the lazier continuous construction balls.
+// NOTE: the spray wire format carries only speed/particleRadius/ballSpawnRate/
+// intensity (+ heal flag); colorRGB/flow/fade do not survive serialization, so
+// the zap renders in the source player's team color (resolveSprayColor).
+const SPAWN_BEAM_SOURCE_Z_BUMP = 8;
+const SPAWN_BEAM_PARTICLE_SPEED = 700;
+const SPAWN_BEAM_PARTICLE_RADIUS = 1.3;
+const SPAWN_BEAM_BALL_SPAWN_RATE = 80;
+
 type CompletedBuilding = CommanderAbilitiesResult['completedBuildings'][number];
 
 function repairRatePairKey(sourceId: EntityId, targetId: EntityId): number {
@@ -190,7 +201,44 @@ class CommanderAbilitiesSystem {
     for (const key of this.captureProgressByPair.keys()) {
       if (!this.activeCaptureKeys.has(key)) this.captureProgressByPair.delete(key);
     }
+
+    this.emitSpawnBeamSprays(world);
+
     return this.result;
+  }
+
+  // Emit the brief init beam for each freshly-created entity (registered via
+  // world.registerSpawnBeam at the build/produce/launch creation sites). The
+  // beam zaps from the spawning host to the new shell for a handful of ticks.
+  private emitSpawnBeamSprays(world: WorldState): void {
+    const beams = world.spawnBeams;
+    if (beams.length === 0) return;
+    const tick = world.getTick();
+    for (let i = 0; i < beams.length; i++) {
+      const beam = beams[i];
+      if (beam.untilTick <= tick) continue;
+      const source = world.getEntity(beam.sourceId);
+      const target = world.getEntity(beam.targetId);
+      if (source === undefined || target === undefined || source.ownership === null) continue;
+      const spray = this.acquireSprayTarget();
+      spray.source.id = source.id;
+      spray.source.pos.x = source.transform.x;
+      spray.source.pos.y = source.transform.y;
+      spray.source.z = source.transform.z + SPAWN_BEAM_SOURCE_Z_BUMP;
+      spray.source.playerId = source.ownership.playerId;
+      spray.target.id = target.id;
+      spray.target.pos.x = target.transform.x;
+      spray.target.pos.y = target.transform.y;
+      spray.target.z = target.transform.z;
+      spray.type = 'build';
+      spray.intensity = 1;
+      spray.channel = 0;
+      spray.flow = 'direct';
+      spray.flowRadius = 0;
+      spray.speed = SPAWN_BEAM_PARTICLE_SPEED;
+      spray.particleRadius = SPAWN_BEAM_PARTICLE_RADIUS;
+      spray.ballSpawnRate = SPAWN_BEAM_BALL_SPAWN_RATE;
+    }
   }
 
   private rebuildRepairEnergyRateIndex(world: WorldState): void {

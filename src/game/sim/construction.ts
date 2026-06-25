@@ -197,6 +197,12 @@ export class ConstructionSystem {
     // Add to world
     world.addEntity(entity);
 
+    // The builder's spawn turret is what brought this nanoframe into
+    // existence: flash a brief init beam from it to the new shell.
+    if (builderEntity !== undefined) {
+      world.registerSpawnBeam(entity.id, builderId);
+    }
+
     // Assign builder (only for non-commanders - commanders use their own action queue)
     const builder = builderEntity;
     if (builder !== undefined && builder.builder !== null && builder.commander === null) {

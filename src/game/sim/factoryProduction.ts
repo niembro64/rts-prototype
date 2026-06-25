@@ -319,6 +319,9 @@ class FactoryProductionSystem {
     });
     initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
+    // The factory's spawn turret brought this shell into existence — flash a
+    // brief init beam from the factory to it.
+    world.registerSpawnBeam(unit.id, factory.id);
     return unit;
   }
 
