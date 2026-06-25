@@ -1272,8 +1272,83 @@
       "enum": [
         "attack",
         "construction",
-        "repair"
+        "repair",
+        "spawn",
+        "resourcePylon"
       ]
+    },
+    "SpawnProducedKind": {
+      "enum": [
+        "buildingsAndTowers",
+        "units"
+      ]
+    },
+    "ResourcePylonResource": {
+      "enum": [
+        "metal",
+        "energy"
+      ]
+    },
+    "ResourcePylonRole": {
+      "enum": [
+        "construction",
+        "extraction"
+      ]
+    },
+    "SpawnTurretConfig": {
+      "type": "object",
+      "required": [
+        "producedKind",
+        "producedBlueprintId",
+        "producesNanoframe",
+        "cooldownMs",
+        "launchForce"
+      ],
+      "properties": {
+        "producedKind": {
+          "$ref": "#/$defs/SpawnProducedKind"
+        },
+        "producedBlueprintId": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "producesNanoframe": {
+          "type": "boolean"
+        },
+        "cooldownMs": {
+          "type": "number"
+        },
+        "launchForce": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ResourcePylonConfig": {
+      "type": "object",
+      "required": [
+        "resource",
+        "role",
+        "radius"
+      ],
+      "properties": {
+        "resource": {
+          "$ref": "#/$defs/ResourcePylonResource"
+        },
+        "role": {
+          "$ref": "#/$defs/ResourcePylonRole"
+        },
+        "radius": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
     },
     "TurretSpreadConfig": {
       "type": "object",
@@ -1524,6 +1599,26 @@
           "oneOf": [
             {
               "$ref": "#/$defs/UnitLauncherConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spawn": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/SpawnTurretConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resourcePylon": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ResourcePylonConfig"
             },
             {
               "type": "null"

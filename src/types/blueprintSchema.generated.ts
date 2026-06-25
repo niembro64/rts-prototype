@@ -293,7 +293,27 @@ export type LockOnInclusionObject = {
   lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
 };
 
-export type WeaponKind = 'attack' | 'construction' | 'repair';
+export type WeaponKind = 'attack' | 'construction' | 'repair' | 'spawn' | 'resourcePylon';
+
+export type SpawnProducedKind = 'buildingsAndTowers' | 'units';
+
+export type ResourcePylonResource = 'metal' | 'energy';
+
+export type ResourcePylonRole = 'construction' | 'extraction';
+
+export type SpawnTurretConfig = {
+  producedKind: SpawnProducedKind;
+  producedBlueprintId: string | null;
+  producesNanoframe: boolean;
+  cooldownMs: number;
+  launchForce: number;
+};
+
+export type ResourcePylonConfig = {
+  resource: ResourcePylonResource;
+  role: ResourcePylonRole;
+  radius: number;
+};
 
 export type TurretSpreadConfig = {
   angle: number;
@@ -345,6 +365,8 @@ export type TurretBlueprint = {
   groundAimFraction: number | null;
   constructionEmitter: ConstructionEmitterVisualSpec | null;
   unitLauncher?: UnitLauncherConfig | null;
+  spawn?: SpawnTurretConfig | null;
+  resourcePylon?: ResourcePylonConfig | null;
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
   includeLockOnLevel0Entities: TurretLockOnEntityFamilyInclusion[];
   includeLockOnLevel1Buildings: string[];

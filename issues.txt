@@ -339,14 +339,6 @@ spray resource balls at the build target (auto-aimed, so they point down for
 flying builders). Determinism: economy stays in energyDistribution; run
 deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
 
-[17] Phase A - turret taxonomy: schema + loader for the new turret kinds
-    Add the SPAWN and RESOURCE-PYLON turret kinds to blueprintSchema.json + the TS
-    loader (blueprints/turrets.ts, blueprints/index.ts) + generated_blueprint_
-    schema.rs, with config: spawn { producedKind, producedBlueprintId,
-    producesNanoframe, cooldown, launch } and resourcePylon { resource:
-    metal|energy, role: construction|extraction, radius }. No behavior change yet;
-    old turretConstruction still runs.
-
 [18] Phase B - spawn turrets create the entity + init laser
     turretSpawnBuildingsAndTowers / turretSpawnUnits become what brings an entity
     into existence: the build command and factory produce route through a spawn

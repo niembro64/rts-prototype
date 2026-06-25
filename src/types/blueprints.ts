@@ -73,4 +73,10 @@ export const TURRET_LOCK_ON_ENTITY_FAMILY_INCLUSIONS: readonly TurretLockOnEntit
   ['buildings', 'towers', 'units', 'turrets', 'shots'];
 
 /** Turret role categories used by host-directed mount validation. */
-export const WEAPON_KINDS: readonly WeaponKind[] = ['attack', 'construction', 'repair'];
+export const WEAPON_KINDS: readonly WeaponKind[] = [
+  'attack',
+  'construction',
+  'repair',
+  'spawn',
+  'resourcePylon',
+];

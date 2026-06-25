@@ -459,6 +459,42 @@ pub enum WeaponKind {
     Attack,
     Construction,
     Repair,
+    Spawn,
+    ResourcePylon,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SpawnProducedKind {
+    BuildingsAndTowers,
+    Units,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ResourcePylonResource {
+    Metal,
+    Energy,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ResourcePylonRole {
+    Construction,
+    Extraction,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SpawnTurretConfig {
+    pub producedKind: SpawnProducedKind,
+    pub producedBlueprintId: Option<String>,
+    pub producesNanoframe: bool,
+    pub cooldownMs: f64,
+    pub launchForce: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ResourcePylonConfig {
+    pub resource: ResourcePylonResource,
+    pub role: ResourcePylonRole,
+    pub radius: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -516,6 +552,8 @@ pub struct TurretBlueprint {
     pub groundAimFraction: Option<f64>,
     pub constructionEmitter: Option<BlueprintJsonValue>,
     pub unitLauncher: Option<UnitLauncherConfig>,
+    pub spawn: Option<SpawnTurretConfig>,
+    pub resourcePylon: Option<ResourcePylonConfig>,
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
     pub includeLockOnLevel0Entities: Vec<TurretLockOnEntityFamilyInclusion>,
     pub includeLockOnLevel1Buildings: Vec<String>,
