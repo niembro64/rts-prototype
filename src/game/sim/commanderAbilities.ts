@@ -54,9 +54,11 @@ class CommanderAbilitiesSystem {
     this.activeCaptureKeys.clear();
     this.rebuildRepairEnergyRateIndex(world);
 
-    // Find all commanders
-    for (const commander of world.getCommanderUnits()) {
-      if (!commander.commander || !commander.builder || !commander.ownership) continue;
+    // Walk every builder (commanders + plain construction units). `commander`
+    // below is "the acting builder"; reclaim + build/heal sprays apply to all
+    // of them, while capture/resurrect stay gated to commander-class units.
+    for (const commander of world.getBuilderUnits()) {
+      if (!commander.builder || !commander.ownership) continue;
       if (!commander.unit || commander.unit.hp <= 0) continue;
 
       const playerId = commander.ownership.playerId;
@@ -115,7 +117,7 @@ class CommanderAbilitiesSystem {
         continue;
       }
 
-      if (currentAction !== undefined && currentAction.type === 'capture') {
+      if (currentAction !== undefined && currentAction.type === 'capture' && commander.commander !== null) {
         if (
           this.captureTarget(
             world,
@@ -133,7 +135,7 @@ class CommanderAbilitiesSystem {
         continue;
       }
 
-      if (currentAction !== undefined && currentAction.type === 'resurrect') {
+      if (currentAction !== undefined && currentAction.type === 'resurrect' && commander.commander !== null) {
         if (
           this.resurrectTarget(
             world,

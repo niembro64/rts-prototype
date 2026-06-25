@@ -1844,9 +1844,10 @@ function enqueueReclaimAction(
   queueFront: boolean,
   queueInsertIndex?: number,
 ): void {
+  // Any builder can reclaim (BAR: reclaim is a default constructor capability),
+  // not just commanders.
   if (
     commander === undefined ||
-    commander.commander === null ||
     commander.unit === null ||
     commander.builder === null
   ) return;

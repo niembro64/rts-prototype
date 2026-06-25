@@ -10,6 +10,7 @@ import {
   buildFactoryRallyCommands,
   buildGuardCommandForTarget,
   buildLinePathMoveCommand,
+  buildReclaimCommandForTarget,
   buildRepairCommandAt,
   LinePathAccumulator,
   shouldCollapseLinePathToSingleMove,
@@ -19,8 +20,22 @@ import {
   queueModeFromEvent,
   type QueueCommandMode,
 } from '../input/queueModifiers';
+import { isAttackableEnemyTarget } from '../input/helpers/AttackTargetHelper';
+import { isReclaimableTarget } from '../sim/reclaim';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
+
+/** A unit can attack iff it mounts a real weapon/launcher turret (a pure
+ *  construction emitter does not count) — used to pick attack vs reclaim on
+ *  an enemy, BAR's leader rule. */
+function unitCanAttack(unit: Entity): boolean {
+  const turrets = unit.combat?.turrets;
+  if (turrets === undefined) return false;
+  for (let i = 0; i < turrets.length; i++) {
+    if (turrets[i].config.constructionEmitter === null) return true;
+  }
+  return false;
+}
 import { getSurfaceHeight, isWaterAt } from '../sim/Terrain';
 import type { Input3DPicker } from './Input3DPicker';
 import {
@@ -104,8 +119,11 @@ export class Input3DRightDragController {
       ? source.getEntity(entityHitId)
       : null;
     const preserveFormationMove = selectedUnits.length > 0 && this.shouldUseFormationOffsets(e);
+    const selectionHasAttacker = selectedUnits.some(unitCanAttack);
 
-    if (!preserveFormationMove) {
+    // Enemy under the cursor: an attack-capable selection attacks it; a pure
+    // builder selection reclaims it instead (BAR default-command leader rule).
+    if (!preserveFormationMove && selectionHasAttacker) {
       const meshAttackCmd = buildAttackCommandForTarget(
         entityHit,
         selectedUnits,
@@ -123,6 +141,35 @@ export class Input3DRightDragController {
         );
         this.config.applyCursor('attack');
         this.config.commandQueue.enqueue(meshAttackCmd);
+        return;
+      }
+    }
+
+    if (!preserveFormationMove && isAttackableEnemyTarget(entityHit, activePlayerId) && isReclaimableTarget(entityHit)) {
+      let issued = false;
+      for (let i = 0; i < selectedUnits.length; i++) {
+        const reclaimer = selectedUnits[i];
+        if (reclaimer.builder === null || reclaimer.builder.constructionRate <= 0) continue;
+        const reclaimCmd = buildReclaimCommandForTarget(
+          entityHit,
+          reclaimer,
+          tick,
+          queueMode.queue,
+          queueMode.queueFront,
+          queueMode.queueInsertIndex,
+        );
+        if (reclaimCmd !== null) {
+          this.config.commandQueue.enqueue(reclaimCmd);
+          issued = true;
+        }
+      }
+      if (issued) {
+        debugLog(
+          GAME_DIAGNOSTICS.commandPlans,
+          '[click] reclaim-mesh: enemy #%d, builder(s) reclaiming',
+          entityHitId ?? -1,
+        );
+        this.config.applyCursor('reclaim');
         return;
       }
     }
