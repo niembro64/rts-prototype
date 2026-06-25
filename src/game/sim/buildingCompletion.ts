@@ -37,7 +37,9 @@ export function applyCompletedBuildingEffects(world: WorldState, entity: Entity)
 
 export function removeCompletedBuildingEffects(world: WorldState, entity: Entity): void {
   if (entity.factory) {
-    factoryProductionSystem.cancelActiveShell(world, entity);
+    // The factory is being destroyed — its in-progress unit frame dies
+    // with it (no refund, and never released as a live unit).
+    factoryProductionSystem.cancelActiveShell(world, entity, false);
   }
 
   // Deactivate forces the building closed, releasing its current

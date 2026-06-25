@@ -164,12 +164,16 @@ export function getTotalRemainingCost(b: Buildable): number {
 
 /** Active iff the entity has no Buildable, or its Buildable is
  *  complete. Inert shells (Buildable present + !isComplete) skip
- *  combat, commanded movement, production, income, animation, etc. */
+ *  combat, commanded movement, production, income, animation, etc.
+ *  An interrupted (cancelled / orphaned) shell is NEVER active: an
+ *  unfinished host can never act as a real unit (BAR: only a finished
+ *  unit is controllable). Interrupting construction leaves an
+ *  incomplete host, not a coherent finished body. */
 export function isEntityActive(entity: Entity): boolean {
   const b = entity.buildable;
   if (!b) return true;
   if (b.isGhost) return false;
-  return b.isComplete || b.isInterrupted;
+  return b.isComplete;
 }
 
 /** Convenience: true iff the entity is a shell (in-world, non-ghost,

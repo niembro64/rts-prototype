@@ -15,12 +15,12 @@ import {
 } from '../../types/network';
 import { economyManager } from './economy';
 import {
+  cloneResourceCost,
   createBuildable,
   isEntityActive,
 } from './buildableHelpers';
 import {
   initializeConstructionPieceHealth,
-  interruptConstructionPreservingBuiltPieces,
 } from './constructionLifecycle';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getSimWasm } from '../sim-wasm/init';
@@ -540,28 +540,30 @@ class FactoryProductionSystem {
     return false;
   }
 
-  // Interrupt the in-progress shell. If construction has not produced
-  // a paid live piece yet, remove it and refund the paid counters. Once
-  // any piece is live, the shell stays in the world with exactly those
-  // materialized pieces instead of being deleted by the factory.
-  cancelActiveShell(world: WorldState, factory: Entity): void {
+  // Cancel the in-progress shell. An unfinished factory unit is never
+  // released as a real unit (BAR: only a finished unit is controllable;
+  // the in-factory frame is destroyed if the factory dies, and cancelling
+  // production removes the frame). So the shell is always removed — never
+  // preserved as a half-built, controllable zombie. `refund` is true for
+  // player-initiated cancels/replaces (return the metal/energy paid so
+  // far) and false when the factory itself dies (the work is lost with it).
+  cancelActiveShell(world: WorldState, factory: Entity, refund = true): void {
     const factoryComp = factory.factory!;
     const shellId = factoryComp.currentShellId;
     if (shellId === null) return;
     const shell = world.getEntity(shellId);
     if (shell !== undefined && shell.buildable !== null && shell.ownership !== null) {
-      const interrupted = interruptConstructionPreservingBuiltPieces(world, shell);
-      if (!interrupted.preserved) {
+      if (refund) {
         economyManager.addStockpile(
           world,
           shell.ownership.playerId,
-          interrupted.refund,
+          cloneResourceCost(shell.buildable.paid),
           factory.id,
           shell.id,
           'refund',
         );
-        world.removeEntity(shellId);
       }
+      world.removeEntity(shellId);
     }
     factoryComp.currentShellId = null;
     factoryComp.currentBuildProgress = 0;
