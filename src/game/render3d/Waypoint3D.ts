@@ -349,10 +349,18 @@ export class Waypoint3D {
   }
 
   private actionDisplayPoint(a: UnitAction): { x: number; y: number; z?: number } {
-    if (a.type === 'attack' && a.targetId !== undefined && this.getEntity) {
-      const target = this.getEntity(a.targetId);
-      if (target?.building) {
-        return getEntityTargetPoint(target);
+    // Entity-targeting orders (attack / guard / repair / reclaim / capture /
+    // resurrect / build) draw to the target's LIVE position so a queued line
+    // follows a moving target (e.g. guarding or attacking a moving unit),
+    // not the stale point captured when the order was issued. Falls back to
+    // the stored point for ground orders or a vanished target.
+    if (this.getEntity) {
+      const targetId = a.type === 'build' ? a.buildingId : a.targetId;
+      if (targetId !== undefined && targetId !== null) {
+        const target = this.getEntity(targetId);
+        if (target !== undefined) {
+          return getEntityTargetPoint(target);
+        }
       }
     }
     return { x: a.x, y: a.y, z: a.z };
