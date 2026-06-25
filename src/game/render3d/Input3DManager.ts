@@ -1615,24 +1615,28 @@ export class Input3DManager {
     }
   }
 
-  private isRepairableBySelectedCommander(entity: Entity | null): boolean {
-    const commander = this.getSelectedCommander();
-    if (!commander?.ownership || !entity?.ownership) return false;
-    if (entity.ownership.playerId !== commander.ownership.playerId) return false;
-    if (entity.building) {
-      return isBuildInProgress(entity.buildable);
-    }
-    if (entity.unit) {
-      return entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp;
-    }
+  /** True iff a selected builder would repair/assist this friendly target:
+   *  an in-progress building, a damaged unit, or a producing factory. */
+  private isAssistableByBuilders(entity: Entity): boolean {
+    if (entity.building !== null && isBuildInProgress(entity.buildable)) return true;
+    if (entity.unit !== null && entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp) return true;
+    const factory = entity.factory;
+    if (factory !== null && factory.isProducing && factory.currentShellId !== null) return true;
     return false;
   }
 
-  private isAttackableBySelectedUnits(entity: Entity | null): boolean {
-    if (!entity?.ownership || entity.ownership.playerId === this.context.activePlayerId) return false;
-    if (this.entitySource.getSelectedUnits().length === 0) return false;
-    if (entity.unit) return entity.unit.hp > 0;
-    if (entity.building) return entity.building.hp > 0;
+  /** True iff the selection contains a unit that can actually attack (mounts
+   *  a real weapon/launcher turret, not just a construction emitter) — drives
+   *  attack-vs-reclaim cursor on an enemy, matching the command leader rule. */
+  private selectionHasAttacker(): boolean {
+    const units = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < units.length; i++) {
+      const turrets = units[i].combat?.turrets;
+      if (turrets === undefined) continue;
+      for (let j = 0; j < turrets.length; j++) {
+        if (turrets[j].config.constructionEmitter === null) return true;
+      }
+    }
     return false;
   }
 
@@ -1658,14 +1662,34 @@ export class Input3DManager {
     const hovered = hoveredEntityId !== null
       ? this.entitySource.getEntity(hoveredEntityId) ?? null
       : null;
-    if (this.isRepairableBySelectedCommander(hovered)) return 'repair';
-    if (this.isAttackableBySelectedUnits(hovered)) return 'attack';
+    const haveUnits = this.entitySource.getSelectedUnits().length > 0;
+
+    // Smart cursor: reflect the right-click default command on the hovered
+    // body, matching the leader rule the command path uses, so the cursor
+    // always previews what a click will do.
+    if (hovered?.ownership && haveUnits) {
+      const alive =
+        (hovered.unit !== null && hovered.unit.hp > 0) ||
+        (hovered.building !== null && hovered.building.hp > 0);
+      if (alive) {
+        if (hovered.ownership.playerId !== this.context.activePlayerId) {
+          // Enemy: attack if the selection can, else reclaim it (builders).
+          if (this.selectionHasAttacker()) return 'attack';
+          if (this.hasSelectedBuilder() && isReclaimableTarget(hovered)) return 'reclaim';
+        } else {
+          // Friendly: builders show repair/assist; everyone else guards.
+          if (this.hasSelectedBuilder() && this.isAssistableByBuilders(hovered)) return 'repair';
+          return 'guard';
+        }
+      }
+    }
+
     const selectableHoveredId = this.hoverState.hoveredSelectableEntityId;
     const selectableHovered = selectableHoveredId !== null
       ? this.entitySource.getEntity(selectableHoveredId) ?? null
       : null;
     if (this.isSelectableByActivePlayer(selectableHovered)) return 'select';
-    if (this.entitySource.getSelectedUnits().length > 0) return this.waypointCursorKind();
+    if (haveUnits) return this.waypointCursorKind();
     if (this.rightDrag.hasSelectedFactories()) return 'factoryWaypoint';
     return 'game';
   }
