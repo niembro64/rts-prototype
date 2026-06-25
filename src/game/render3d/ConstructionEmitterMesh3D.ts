@@ -252,6 +252,9 @@ export function buildConstructionEmitterRigFromTurretConfig(
   turretConfig: Pick<TurretConfig, 'constructionEmitter'>,
   visualVariant: ConstructionEmitterSize | undefined,
   primaryMat: THREE.Material = frameMat,
+  // Resource-pylon turrets carry exactly ONE resource pylon (the legacy
+  // construction emitter renders the energy+metal pair). null = the pair.
+  singleResource: ConstructionTowerResource | null = null,
 ): ConstructionEmitterRig {
   const spec = turretConfig.constructionEmitter;
   if (!spec) {
@@ -272,6 +275,7 @@ export function buildConstructionEmitterRigFromTurretConfig(
     dims.pylonOffset,
     dims.innerPylonRadius,
     pylonBaseY,
+    singleResource,
   );
   if (variant === 'large') {
     root.add(buildConstructionTurretDeck(dims.pylonOffset, dims.innerPylonRadius, primaryMat));
@@ -329,22 +333,31 @@ function buildConstructionPylonTrio(
   pylonOffset: number,
   innerPylonRadius: number,
   pylonBaseY: number,
+  singleResource: ConstructionTowerResource | null = null,
 ): ConstructionPylonTrio {
   const staticMeshes: THREE.Mesh[] = [];
   const towerOrbitParts: ConstructionTowerOrbitPart[] = [];
   const pylons: ResourcePylonRig[] = [];
 
-  for (let i = 0; i < CONSTRUCTION_TOWER_VARIANTS.length; i++) {
-    const a = (i / CONSTRUCTION_TOWER_VARIANTS.length) * Math.PI * 2;
+  // Single-resource pylon turrets (Phase C split): one centered pylon of the
+  // turret's own resource. Otherwise the legacy emitter renders the
+  // energy + metal pair around the mount circle.
+  const variants = singleResource !== null
+    ? [CONSTRUCTION_TOWER_VARIANT_BY_RESOURCE[singleResource]]
+    : CONSTRUCTION_TOWER_VARIANTS;
+
+  for (let i = 0; i < variants.length; i++) {
+    const a = (i / variants.length) * Math.PI * 2;
+    const offset = singleResource !== null ? 0 : pylonOffset;
     const tower = buildConstructionTowerPiece(
-      CONSTRUCTION_TOWER_VARIANTS[i],
+      variants[i],
       size,
       teamBaseMat,
       pylonHeight,
       innerPylonRadius,
       pylonBaseY,
-      Math.cos(a) * pylonOffset,
-      Math.sin(a) * pylonOffset,
+      Math.cos(a) * offset,
+      Math.sin(a) * offset,
     );
     staticMeshes.push(...tower.staticMeshes);
     towerOrbitParts.push(...tower.towerOrbitParts);

@@ -29,6 +29,7 @@ import {
   buildConstructionEmitterRigFromTurretConfig,
   type ConstructionEmitterRig,
 } from './ConstructionEmitterMesh3D';
+import { TURRET_BLUEPRINTS } from '../sim/blueprints/turrets';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -161,10 +162,17 @@ export function buildTurretMesh3D(
   const followsBeam = turretBarrelFollowsBeam(turret.config);
 
   if (turret.config.constructionEmitter !== null) {
+    // Resource-pylon turrets render only their own resource's pylon; the
+    // legacy turretConstruction (no resourcePylon) renders the energy+metal
+    // pair. Read the resource off the blueprint registry (not the runtime
+    // TurretConfig, which doesn't carry pylon data).
+    const pylonResource =
+      TURRET_BLUEPRINTS[turret.config.turretBlueprintId]?.resourcePylon?.resource ?? null;
     const constructionEmitter = buildConstructionEmitterRigFromTurretConfig(
       turret.config,
       turret.config.visualVariant ?? undefined,
       deps.primaryMat,
+      pylonResource,
     );
     root.add(constructionEmitter.group);
     parent.add(root);

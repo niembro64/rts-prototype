@@ -339,14 +339,6 @@ spray resource balls at the build target (auto-aimed, so they point down for
 flying builders). Determinism: economy stays in energyDistribution; run
 deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
 
-[19] Phase C - construction pylons (metal + energy) + auto-assist radius
-    Split the construction emitter into turretResourcePylonConstructionMetal +
-    ...Energy. Per-tick funding (energyDistribution) pours each pylon's rate into
-    build targets, summed per target. Each construction pylon has a radius and,
-    when its host is idle, auto-continues the nearest in-range thing under
-    construction and repairs damaged friendlies (no movement). Spinning pylon +
-    resource-ball-to-target visuals (balls auto-aim, so they point down for flyers).
-
 [20] Phase D - extraction pylons replace producer wiring
     Convert metal-extractor production to turretResourcePylonExtractionMetal and
     solar/wind/geo to turretResourcePylonExtractionEnergy. Production rate +
