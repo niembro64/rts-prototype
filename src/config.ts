@@ -242,6 +242,13 @@ export const WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED =
   windConfigJson.turbine.rotorRadPerSecPerWindSpeed;
 export const WIND_TURBINE_ROTOR_SPIN_MULTIPLIER =
   windConfigJson.turbine.rotorSpinMultiplier;
+/** When true the turbine blades spin proportional to live (actual) wind speed
+ *  (dead air -> still); when false every open turbine spins at the flat
+ *  "potential" rate below regardless of current wind. */
+export const WIND_TURBINE_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION =
+  windConfigJson.turbine.rotorSpinReflectsActualProduction;
+export const WIND_TURBINE_ROTOR_POTENTIAL_RAD_PER_SEC =
+  windConfigJson.turbine.rotorPotentialRadPerSec;
 
 /** Wind turbine visual EMA half-life multipliers layered on top of the
  *  selected PLAYER CLIENT DRIFT preset.

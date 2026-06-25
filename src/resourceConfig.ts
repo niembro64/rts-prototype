@@ -135,6 +135,12 @@ export const RESOURCE_CONFIG = {
       'metalExtractor.rotorSpinMultiplier',
       rawConfig.metalExtractor.rotorSpinMultiplier,
     ),
+    rotorSpinReflectsActualProduction:
+      rawConfig.metalExtractor.rotorSpinReflectsActualProduction !== false,
+    rotorPotentialRadPerSec: posNum(
+      'metalExtractor.rotorPotentialRadPerSec',
+      rawConfig.metalExtractor.rotorPotentialRadPerSec,
+    ),
   },
   /** Resource-ball spray-cone half-angles (radians). Every pylon aims a
    *  ray from its tip at a lock-on spot and disperses its resource balls
@@ -183,6 +189,13 @@ export const EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE =
   RESOURCE_CONFIG.metalExtractor.rotorRadPerSecPerMetalRate;
 export const METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER =
   RESOURCE_CONFIG.metalExtractor.rotorSpinMultiplier;
+/** When true the extractor rotor spins proportional to its live (actual)
+ *  metal throughput; when false every deposit-covered extractor spins at the
+ *  flat "potential" rate below regardless of how much it is currently pulling. */
+export const EXTRACTOR_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION =
+  RESOURCE_CONFIG.metalExtractor.rotorSpinReflectsActualProduction;
+export const EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC =
+  RESOURCE_CONFIG.metalExtractor.rotorPotentialRadPerSec;
 
 /** Spray-cone half-angle (radians) for construction emitters — the tight
  *  cone a builder/factory tip aims at its build site. */

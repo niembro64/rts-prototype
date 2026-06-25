@@ -24,6 +24,8 @@
   "turbine": {
     "rotorRadPerSecPerWindSpeed": 2,
     "rotorSpinMultiplier": 0.2,
+    "rotorSpinReflectsActualProduction": true,
+    "rotorPotentialRadPerSec": 0.4,
     "driftEmaHalfLifeMultipliers": {
       "fanYaw": 4,
       "bladeSpeed": 0.2

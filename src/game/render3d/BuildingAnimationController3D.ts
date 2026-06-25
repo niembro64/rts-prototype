@@ -7,10 +7,14 @@ import {
   WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
   WIND_TURBINE_ROTOR_SPIN_MULTIPLIER,
+  WIND_TURBINE_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION,
+  WIND_TURBINE_ROTOR_POTENTIAL_RAD_PER_SEC,
 } from '../../config';
 import {
   EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE,
   METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER,
+  EXTRACTOR_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION,
+  EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC,
 } from '@/resourceConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
@@ -423,16 +427,19 @@ export class BuildingAnimationController3D {
       : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
     this.extractorCloseAmounts.set(id, close);
 
-    const rate = open ? (entity.metalExtractionRate ?? 0) : 0;
+    const actualRate = open ? (entity.metalExtractionRate ?? 0) : 0;
     let phase = this.extractorRotorPhases.get(id);
     if (phase === undefined) phase = id * 0.173;
-    // Spin speed is tied directly to live metal throughput — the same way
-    // the wind rotor tracks wind speed — so an advanced extractor that
-    // pulls 5× the metal turns 5× as fast with no tier-specific branch.
-    const targetSpeed = rate *
-      EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE *
-      METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER *
-      (1 - close);
+    // ACTUAL mode (default): spin ∝ live metal throughput — an advanced
+    // extractor pulling 5× turns 5× as fast, and one extracting nothing is
+    // still. POTENTIAL mode: any deposit-covered extractor spins at a flat
+    // rate (what it *could* extract), still zero off a deposit / when closed.
+    const baseSpeed = EXTRACTOR_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION
+      ? actualRate *
+        EXTRACTOR_ROTOR_RAD_PER_SEC_PER_METAL_RATE *
+        METAL_EXTRACTOR_ROTOR_SPIN_MULTIPLIER
+      : (actualRate > 0 ? EXTRACTOR_ROTOR_POTENTIAL_RAD_PER_SEC : 0);
+    const targetSpeed = baseSpeed * (1 - close);
     let speed = this.extractorRotorSpeeds.get(id) ?? 0;
     speed = lerp(speed, targetSpeed, rotorSpeedAlpha);
     if (targetSpeed === 0 && speed < BUILDING_RIG_IDLE_EPSILON) speed = 0;
@@ -679,10 +686,17 @@ export class BuildingAnimationController3D {
         ),
       );
     }
-    this.windRotorPhase += dtSec *
-      this.windVisualSpeed *
-      WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED *
-      WIND_TURBINE_ROTOR_SPIN_MULTIPLIER;
+    // ACTUAL mode (default): blade speed tracks live wind (a turbine in dead
+    // air is still). POTENTIAL mode: spin at a flat rate regardless of current
+    // wind. Either way each turbine's own OFF/folded state zeroes its rotor via
+    // closeAmount in updateWindTurbineRig.
+    this.windRotorPhase += dtSec * (
+      WIND_TURBINE_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION
+        ? this.windVisualSpeed *
+          WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED *
+          WIND_TURBINE_ROTOR_SPIN_MULTIPLIER
+        : WIND_TURBINE_ROTOR_POTENTIAL_RAD_PER_SEC
+    );
   }
 
   private scaledWindTurbineHalfLife(baseHalfLife: number, multiplier: number): number {
