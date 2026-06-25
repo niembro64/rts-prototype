@@ -942,6 +942,28 @@ export class Simulation {
           continue;
         }
 
+        // Active defend (BAR): a guarding unit helps fight whatever its
+        // guarded ally is currently engaging — prioritize that enemy so the
+        // guard's turrets and combat-halt engage it; cleared when the ally
+        // isn't fighting (turrets fall back to opportunistic acquisition).
+        if (entity.combat !== null && !entity.combat.manualLaunchActive) {
+          let defendId: EntityId | null = null;
+          const allyTargetId = guardTarget.combat !== null ? guardTarget.combat.priorityTargetId : null;
+          if (allyTargetId !== null) {
+            const allyTarget = this.world.getEntity(allyTargetId);
+            if (
+              allyTarget !== undefined &&
+              allyTarget.ownership !== null &&
+              allyTarget.ownership.playerId !== entity.ownership.playerId &&
+              ((allyTarget.unit !== null && allyTarget.unit.hp > 0) ||
+                (allyTarget.building !== null && allyTarget.building.hp > 0))
+            ) {
+              defendId = allyTargetId;
+            }
+          }
+          entity.combat.priorityTargetId = defendId;
+        }
+
         if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
           unit.stuckTicks = 0;
           continue;
