@@ -50,6 +50,7 @@ export {
 export {
   buildRepairAreaCommand,
   buildRepairCommandAt,
+  buildRepairCommandForTarget,
   buildReclaimAreaCommand,
   buildReclaimCommandForTarget,
   buildCaptureCommandForTarget,

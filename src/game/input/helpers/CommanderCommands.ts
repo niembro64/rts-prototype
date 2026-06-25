@@ -19,7 +19,7 @@ import type {
   UnloadTransportCommand,
 } from '../../sim/commands';
 import type { PlayerId } from '../../sim/types';
-import { findRepairTargetAt } from './RepairTargetHelper';
+import { findRepairTargetAt, isRepairableFriendlyTarget } from './RepairTargetHelper';
 import type { RepairEntitySource } from './RepairTargetHelper';
 import { isGuardableFriendlyTarget } from './GuardTargetHelper';
 import { isCapturableTarget } from '../../sim/capture';
@@ -45,6 +45,31 @@ export function buildRepairCommandAt(
     source, worldX, worldY, commander.ownership.playerId,
   );
   if (!target) return null;
+  return {
+    type: 'repair',
+    tick,
+    commanderId: commander.id,
+    targetId: target.id,
+    queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+/** Build a RepairCommand against an already-resolved entity (the
+ *  canonical path for a 3D body pick), so a commander can repair/assist
+ *  an airborne or precisely-clicked friendly target — not just whatever
+ *  sits under a ground point. */
+export function buildRepairCommandForTarget(
+  target: Entity | null | undefined,
+  commander: Entity | null,
+  tick: number,
+  queue: boolean,
+  queueFront = false,
+  queueInsertIndex?: number,
+): RepairCommand | null {
+  if (!commander?.ownership) return null;
+  if (!isRepairableFriendlyTarget(target, commander.ownership.playerId)) return null;
   return {
     type: 'repair',
     tick,

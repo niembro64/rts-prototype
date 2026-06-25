@@ -7,6 +7,21 @@ import { isBuildInProgress } from '../../sim/buildableHelpers';
 export type { RepairEntitySource } from '@/types/input';
 import type { RepairEntitySource } from '@/types/input';
 
+/** True iff `entity` is a friendly target a builder/commander can pour
+ *  build power into: an in-progress (incomplete) building/tower shell —
+ *  i.e. construction assist — or a damaged friendly unit. Mirrors the
+ *  ground-point find helpers below, but tests a concrete resolved entity
+ *  (the canonical path for a 3D body pick). */
+export function isRepairableFriendlyTarget(
+  entity: Entity | null | undefined,
+  playerId: PlayerId,
+): entity is Entity {
+  if (!entity?.ownership || entity.ownership.playerId !== playerId) return false;
+  if (entity.building !== null && isBuildInProgress(entity.buildable)) return true;
+  if (entity.unit !== null && entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp) return true;
+  return false;
+}
+
 // Find an incomplete building at a world position
 function findIncompleteBuildingAt(
   entitySource: RepairEntitySource,

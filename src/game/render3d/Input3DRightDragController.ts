@@ -10,6 +10,7 @@ import {
   buildFactoryRallyCommands,
   buildLinePathMoveCommand,
   buildRepairCommandAt,
+  buildRepairCommandForTarget,
   LinePathAccumulator,
   shouldCollapseLinePathToSingleMove,
 } from '../input/helpers';
@@ -141,6 +142,29 @@ export class Input3DRightDragController {
         );
         this.config.applyCursor('guard');
         for (const cmd of factoryGuardCmds) this.config.commandQueue.enqueue(cmd);
+        return;
+      }
+    }
+
+    // Repair/assist the body under the cursor in 3D first (airborne or
+    // precisely-clicked friendly), before falling back to the ground point.
+    if (!preserveFormationMove) {
+      const meshRepairCmd = buildRepairCommandForTarget(
+        entityHit,
+        this.config.getSelectedCommander(),
+        tick,
+        queueMode.queue,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (meshRepairCmd) {
+        debugLog(
+          GAME_DIAGNOSTICS.commandPlans,
+          '[click] repair-mesh: hit target #%d',
+          meshRepairCmd.targetId,
+        );
+        this.config.applyCursor('repair');
+        this.config.commandQueue.enqueue(meshRepairCmd);
         return;
       }
     }

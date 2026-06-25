@@ -59,7 +59,7 @@ import {
 } from '../sim/metalExtractorUpgrade';
 import { isClientTransportUnit } from '../sim/transports';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
-import { Input3DHoverState, resolveInput3DHoverTargets } from './Input3DHoverState';
+import { Input3DHoverState } from './Input3DHoverState';
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
 import {
   Input3DKeyboardController,
@@ -205,7 +205,7 @@ export class Input3DManager {
     this.context = context;
     this.entitySource = entitySource;
     this.commandSink = commandSink;
-    this.picker = new Input3DPicker(threeApp, cursorGround);
+    this.picker = new Input3DPicker(threeApp, cursorGround, () => this.entitySource);
     this.controlGroups = new InputControlGroups(
       entitySource,
       (entity) => this.isSelectableByActivePlayer(entity),
@@ -2027,16 +2027,17 @@ export class Input3DManager {
       clientX,
       clientY,
       (targetX, targetY) => {
-        const world = this.picker.raycastGround(targetX, targetY);
-        return world
-          ? resolveInput3DHoverTargets(
-            this.entitySource,
-            this.context.activePlayerId,
-            world.x,
-            world.y,
-            SELECTABLE_GROUND_MIN_UNIT_RADIUS,
-          )
-          : { hovered: null, selectable: null };
+        // Same render-independent 3D body pick the click path uses, so an
+        // airborne or LOD-proxy unit highlights on hover exactly where the
+        // cursor can command it.
+        const hoveredId = this.picker.raycastEntity(targetX, targetY);
+        if (hoveredId === null) return { hovered: null, selectable: null };
+        const entity = this.entitySource.getEntity(hoveredId) ?? null;
+        if (entity === null) return { hovered: null, selectable: null };
+        return {
+          hovered: hoveredId,
+          selectable: this.isSelectableByActivePlayer(entity) ? hoveredId : null,
+        };
       },
     );
   }
@@ -2101,8 +2102,9 @@ export class Input3DManager {
     this.selectionDrag.finish();
 
     if (isClick) {
-      // Try exact mesh pick first (cleaner for overlapping units than the
-      // distance-based closest-entity fallback).
+      // 3D selection-volume pick first (camera-angle / altitude correct,
+      // works for LOD-proxy and airborne bodies); ground-distance closest
+      // is only a backstop below.
       const hit = this.picker.raycastEntity(e.clientX, e.clientY);
       if (hit !== null) {
         const ent = this.entitySource.getEntity(hit) ?? null;
