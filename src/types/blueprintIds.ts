@@ -93,6 +93,8 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretUnitConstructorBallistic',
   'turretQueenBeeConstructor',
   'turretQueenTickConstructor',
+  'turretSpawnBuildingsAndTowers',
+  'turretSpawnUnits',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 

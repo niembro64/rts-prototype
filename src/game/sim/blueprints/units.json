@@ -1619,6 +1619,16 @@
         "visualVariant": "small",
         "hostDirected": true,
         "requiredEngagedForFightStop": false
+      },
+      {
+        "turretBlueprintId": "turretSpawnBuildingsAndTowers",
+        "mount": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "hostDirected": true,
+        "requiredEngagedForFightStop": false
       }
     ],
     "bodyShape": {
@@ -2357,6 +2367,16 @@
           "z": 2.28
         },
         "visualVariant": "small",
+        "hostDirected": true,
+        "requiredEngagedForFightStop": false
+      },
+      {
+        "turretBlueprintId": "turretSpawnBuildingsAndTowers",
+        "mount": {
+          "x": -0.42,
+          "y": 0,
+          "z": 2.28
+        },
         "hostDirected": true,
         "requiredEngagedForFightStop": false
       }

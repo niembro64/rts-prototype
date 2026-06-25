@@ -1537,5 +1537,99 @@
     "kind": "construction",
     "emissionKind": null,
     "emissionBlueprintId": null
+  },
+  "turretSpawnBuildingsAndTowers": {
+    "turretBlueprintId": "turretSpawnBuildingsAndTowers",
+    "name": "Building/Tower Spawn Emitter",
+    "range": 0,
+    "rangeVolume": "turret-range-sphere",
+    "cooldown": null,
+    "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
+    "turretTurnAccel": 200,
+    "turretDrag": 0,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 0.6,
+      "barrelThickness": 12
+    },
+    "isManualFire": true,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": false,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": { "acquire": 0.95, "release": 1 },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 6740479,
+    "spread": { "angle": 0, "pelletCount": 1 },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": { "visual": 10 },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "aimStyle": { "angleType": "rayDirect" },
+    "spawn": {
+      "producedKind": "buildingsAndTowers",
+      "producedBlueprintId": null,
+      "producesNanoframe": true,
+      "cooldownMs": 0,
+      "launchForce": 0
+    },
+    "kind": "spawn",
+    "emissionKind": null,
+    "emissionBlueprintId": null
+  },
+  "turretSpawnUnits": {
+    "turretBlueprintId": "turretSpawnUnits",
+    "name": "Unit Spawn Emitter",
+    "range": 0,
+    "rangeVolume": "turret-range-sphere",
+    "cooldown": null,
+    "launchForce": 0,
+    "addTurretVelocityToEmissionLaunch": false,
+    "turretTurnAccel": 200,
+    "turretDrag": 0,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 0.6,
+      "barrelThickness": 12
+    },
+    "isManualFire": true,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": false,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": { "acquire": 0.95, "release": 1 },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 6740479,
+    "spread": { "angle": 0, "pelletCount": 1 },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": null,
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": { "visual": 10 },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "aimStyle": { "angleType": "rayDirect" },
+    "spawn": {
+      "producedKind": "units",
+      "producedBlueprintId": null,
+      "producesNanoframe": true,
+      "cooldownMs": 0,
+      "launchForce": 0
+    },
+    "kind": "spawn",
+    "emissionKind": null,
+    "emissionBlueprintId": null
   }
 }

@@ -73,7 +73,9 @@
         "turretAntiAir",
         "turretUnitConstructorBallistic",
         "turretQueenBeeConstructor",
-        "turretQueenTickConstructor"
+        "turretQueenTickConstructor",
+        "turretSpawnBuildingsAndTowers",
+        "turretSpawnUnits"
       ],
       "shots": [
         "shotPlasmaLight",
@@ -576,6 +578,12 @@
           "units": "all"
         }
       }
+    },
+    "turretSpawnBuildingsAndTowers": {
+      "targets": "none"
+    },
+    "turretSpawnUnits": {
+      "targets": "none"
     }
   },
   "towers": {
