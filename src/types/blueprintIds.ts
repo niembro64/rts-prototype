@@ -97,6 +97,8 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretSpawnUnits',
   'turretResourcePylonConstructionMetal',
   'turretResourcePylonConstructionEnergy',
+  'turretResourcePylonExtractionMetal',
+  'turretResourcePylonExtractionEnergy',
 ] as const;
 export type TurretBlueprintId = typeof TURRET_BLUEPRINT_IDS[number];
 

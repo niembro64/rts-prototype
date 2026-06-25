@@ -35,7 +35,13 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "turrets": [],
+    "turrets": [
+      {
+        "turretBlueprintId": "turretResourcePylonExtractionEnergy",
+        "mount": { "x": 0, "y": 0, "z": 0 },
+        "hostDirected": true
+      }
+    ],
     "base": {
       "cost": {
         "energy": 120,
@@ -91,7 +97,13 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "turrets": [],
+    "turrets": [
+      {
+        "turretBlueprintId": "turretResourcePylonExtractionEnergy",
+        "mount": { "x": 0, "y": 0, "z": 0 },
+        "hostDirected": true
+      }
+    ],
     "base": {
       "cost": {
         "energy": 80,
@@ -147,7 +159,13 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "turrets": [],
+    "turrets": [
+      {
+        "turretBlueprintId": "turretResourcePylonExtractionMetal",
+        "mount": { "x": 0, "y": 0, "z": 0 },
+        "hostDirected": true
+      }
+    ],
     "base": {
       "cost": {
         "energy": 120,
@@ -203,7 +221,13 @@
       "trackingRadius": 0,
       "scanRadius": 0
     },
-    "turrets": [],
+    "turrets": [
+      {
+        "turretBlueprintId": "turretResourcePylonExtractionMetal",
+        "mount": { "x": 0, "y": 0, "z": 0 },
+        "hostDirected": true
+      }
+    ],
     "base": {
       "cost": {
         "energy": 900,

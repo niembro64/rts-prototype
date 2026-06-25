@@ -842,16 +842,23 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
 for (const bp of Object.values(BUILDING_BLUEPRINTS)) {
   const turrets = bp.turrets;
   if (!turrets) continue;
-  if (turrets.length > 0 && !isTowerBuildingBlueprintId(bp.buildingBlueprintId)) {
-    throw new Error(
-      `Invalid building blueprint ${bp.buildingBlueprintId}: non-tower buildings must not declare turrets; move the blueprint to towers.json or remove the turret mounts`,
-    );
-  }
+  const isTower = isTowerBuildingBlueprintId(bp.buildingBlueprintId);
   for (let i = 0; i < turrets.length; i++) {
     const turretBlueprintId = turrets[i].turretBlueprintId;
-    if (!TURRET_BLUEPRINTS[turretBlueprintId]) {
+    const turretBlueprint = TURRET_BLUEPRINTS[turretBlueprintId];
+    if (!turretBlueprint) {
       throw new Error(
         `Invalid building turret reference for ${bp.buildingBlueprintId}[${i}]: unknown turretBlueprintId "${turretBlueprintId}"`,
+      );
+    }
+    // Non-tower buildings (solar / wind / extractor) may host ONLY non-combat
+    // resource-pylon turrets — the extraction pylon is a cosmetic/economy
+    // emitter, not a weapon, so the host stays a plain building for targeting
+    // and economy. Combat or spawn hardware makes a host a tower and belongs
+    // in towers.json.
+    if (!isTower && (turretBlueprint.resourcePylon ?? null) === null) {
+      throw new Error(
+        `Invalid building blueprint ${bp.buildingBlueprintId}: non-tower buildings may only declare resource-pylon turrets; move combat/spawn turret "${turretBlueprintId}" to a towers.json blueprint`,
       );
     }
   }

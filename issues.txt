@@ -339,12 +339,21 @@ spray resource balls at the build target (auto-aimed, so they point down for
 flying builders). Determinism: economy stays in energyDistribution; run
 deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
 
-[20] Phase D - extraction pylons replace producer wiring
-    Convert metal-extractor production to turretResourcePylonExtractionMetal and
-    solar/wind/geo to turretResourcePylonExtractionEnergy. Production rate +
-    rotor/inbound-ball visuals read from the pylon turret (honoring the
-    rotorSpinReflectsActualProduction toggle). Converter/upkeep/ammo "consumption"
-    spend is NOT covered here (future consumption-pylon role) - keep current.
+[20] Phase D (cont.) - surface producer income as inbound pylon balls
+    DONE: extraction pylons (turretResourcePylonExtraction{Metal,Energy}) are mounted
+    on extractor/extractorT2 (metal) and solar/wind (energy); they are non-combat
+    emitters so the hosts stay plain buildings (loader now allows resource-pylon
+    turrets on non-tower buildings). Production rate stays host-sourced
+    (energyProduction/metalProduction/metalExtractionRate, economy unchanged) and the
+    existing rotor visuals already reflect actual production (rotorSpinReflectsActual-
+    Production toggle).
+    REMAINING: surface each producer's per-tick income as inbound resource-pylon
+    balls converging into the building, emitted from its extraction pylon. NOTE:
+    world.resourceMovements IS part of the lockstep checksum (CanonicalStateHash), so
+    income movements must be perfectly deterministic across host + every client —
+    verify cross-peer + in-app before relying on it. Overlaps [2] (the broader
+    "resources are visible only as pylon balls" invariant). Converter/upkeep/ammo
+    "consumption" spend stays as-is (future consumption-pylon role).
 
 [21] Phase E - fabricator becomes a hovering torus
     Torus body high in the air (same overall size); spawn + construction-pylon
