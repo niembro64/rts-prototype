@@ -1006,6 +1006,13 @@ export class Simulation {
           continue;
         }
 
+        // Pin the path goal to the guarded ally's LIVE position every tick so
+        // the guard tracks a moving target continuously, instead of walking to
+        // where the ally was and only re-pathing on arrival (the "lurch and
+        // catch up" lag). sameActionApproachTarget no-ops (1-unit epsilon) when
+        // the ally hasn't moved, so a stationary guard never thrashes pathing.
+        this.tryRefreshGuardApproach(entity, currentAction, targetPoint);
+
         const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
         const dx = movementTarget.x - transform.x;
         const dy = movementTarget.y - transform.y;

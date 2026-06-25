@@ -345,6 +345,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // add their build power to that factory's current unit shell (keyed by
   // factory id; read by pass 2a below).
   const factoryAssistRateById = new Map<EntityId, number>();
+  // Shell entity id -> the factory producing it, so the per-source build
+  // breakdown can still update the factory's progress/rate fractions.
+  const factoryByShellId = new Map<EntityId, EntityId>();
   for (const entity of world.getBuilderUnits()) {
     const builder = entity.builder;
     if (builder === null) continue;
@@ -408,14 +411,21 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           // Factory's own build power + any builders guarding it (assist).
           const assistRate = factoryAssistRateById.get(entity.id) ?? 0;
           const rateCap = ((config.constructionRate ?? Infinity) + assistRate) * dtSec;
+          // Register the factory itself as a build source on the shell so the
+          // shell's per-source breakdown attributes flow to the factory AND to
+          // every guarding builder (added above) — each gets its own resource
+          // movement, which lights up its construction emitter. Route through
+          // the breakdown channel (null sourceEntityId, shell as breakdown key).
+          addConstructionSource(buffers, shell.id, entity.id, (config.constructionRate ?? 0) * dtSec);
+          factoryByShellId.set(shell.id, entity.id);
           addConsumer(
             ownership.playerId,
             shell,
             'build',
             remainingCost,
             rateCap,
-            entity.id,
             null,
+            shell.id,
           );
         }
       }
@@ -608,8 +618,12 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           buildable.paid.energy = consumerPaidEnergy[i];
           buildable.paid.metal = consumerPaidMetal[i];
           world.markSnapshotDirty(c.entity.id, ENTITY_CHANGED_BUILDING);
-          if (c.sourceEntityId !== null) {
-            const factory = world.getEntity(c.sourceEntityId);
+          // Factory shells now fund through the per-source breakdown channel
+          // (sourceEntityId null), so recover the producing factory from the
+          // shell to keep its progress/rate fractions updated.
+          const factoryId = c.sourceEntityId ?? factoryByShellId.get(c.entity.id) ?? null;
+          if (factoryId !== null) {
+            const factory = world.getEntity(factoryId);
             const factoryComp = factory === undefined ? null : factory.factory;
             if (factory !== undefined && factoryComp !== null && factoryComp.currentShellId === c.entity.id) {
               factoryComp.currentBuildProgress = consumerBuildProgress[i];
