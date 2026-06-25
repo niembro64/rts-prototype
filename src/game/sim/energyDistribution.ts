@@ -13,7 +13,7 @@ import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
-import { resolveGuardBuildAssistTargetId } from './guard';
+import { resolveGuardServiceTarget } from './guard';
 import {
   getRemainingResource,
   getTotalRemainingCost,
@@ -341,16 +341,39 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   //    target is building (BAR: guard a builder == assist its build). Both
   //    feed the same per-target accumulator, so any number of direct
   //    builders + guard-assisters sum their build power onto one nanoframe.
+  // Guard-assisted factory production: builders guarding a producing factory
+  // add their build power to that factory's current unit shell (keyed by
+  // factory id; read by pass 2a below).
+  const factoryAssistRateById = new Map<EntityId, number>();
   for (const entity of world.getBuilderUnits()) {
     const builder = entity.builder;
     if (builder === null) continue;
-    // While actively guarding, a builder funds what its guard target is
-    // building (BAR assist) — not any stale direct build target; otherwise
-    // it funds its own currentBuildTarget.
-    const isGuarding = entity.unit !== null && entity.unit.actions[0]?.type === 'guard';
-    const targetId = isGuarding
-      ? (resolveGuardBuildAssistTargetId(world, entity) ?? NO_ENTITY_ID)
-      : builder.currentBuildTarget;
+    // While actively guarding, a builder services its guard target (BAR
+    // assist) — not any stale direct build target; otherwise it funds its
+    // own currentBuildTarget.
+    let targetId = NO_ENTITY_ID;
+    if (entity.unit !== null && entity.unit.actions[0]?.type === 'guard') {
+      const svc = resolveGuardServiceTarget(world, entity);
+      if (svc === null) continue;
+      if (svc.kind === 'build') {
+        targetId = svc.target.id;
+      } else if (svc.kind === 'factory') {
+        // Assist the guarded factory's current unit production.
+        const factory = svc.target.factory;
+        if (factory !== null && factory.currentShellId !== null && isBuildTargetInRange(entity, svc.target)) {
+          factoryAssistRateById.set(
+            svc.target.id,
+            (factoryAssistRateById.get(svc.target.id) ?? 0) + builder.constructionRate,
+          );
+          addConstructionSource(buffers, factory.currentShellId, entity.id, builder.constructionRate * dtSec);
+        }
+        continue;
+      } else {
+        continue; // 'heal' is handled by the heal pass below
+      }
+    } else {
+      targetId = builder.currentBuildTarget;
+    }
     if (targetId === NO_ENTITY_ID) continue;
     const target = world.getEntity(targetId);
     if (!target || !isBuildTargetInRange(entity, target)) continue;
@@ -382,7 +405,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         const remainingCost = getTotalRemainingCost(shell.buildable);
         if (remainingCost > 0) {
           const config = getBuildingConfig(entity.buildingBlueprintId!);
-          const rateCap = (config.constructionRate ?? Infinity) * dtSec;
+          // Factory's own build power + any builders guarding it (assist).
+          const assistRate = factoryAssistRateById.get(entity.id) ?? 0;
+          const rateCap = ((config.constructionRate ?? Infinity) + assistRate) * dtSec;
           addConsumer(
             ownership.playerId,
             shell,
@@ -471,15 +496,10 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const builder = entity.builder;
     if (builder === null || entity.unit === null || entity.ownership === null) continue;
     if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
-    const action = entity.unit.actions[0];
-    if (action === undefined || action.type !== 'guard' || action.targetId === undefined) continue;
-    // Construction assist already handled this guard in the build pass.
-    if (resolveGuardBuildAssistTargetId(world, entity) !== null) continue;
-    const target = world.getEntity(action.targetId);
-    if (target === undefined || target.unit === null || target.ownership === null) continue;
-    if (target.ownership.playerId !== entity.ownership.playerId) continue;
-    if (target.unit.hp <= 0 || target.unit.hp >= target.unit.maxHp) continue;
-    if (isBuildInProgress(target.buildable)) continue; // shell -> assist, not heal
+    const svc = resolveGuardServiceTarget(world, entity);
+    if (svc === null || svc.kind !== 'heal') continue; // build/factory assist handled above
+    const target = svc.target;
+    if (target.unit === null) continue;
     if (guardHealedTargetIds.has(target.id)) continue;
     if (!isBuildTargetInRange(entity, target)) continue;
     const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;

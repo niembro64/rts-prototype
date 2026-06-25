@@ -1,4 +1,4 @@
-import { NO_ENTITY_ID, type Entity, type EntityId, type PlayerId } from './types';
+import { NO_ENTITY_ID, type Entity, type PlayerId } from './types';
 import { isBuildInProgress } from './buildableHelpers';
 import type { WorldState } from './WorldState';
 
@@ -20,18 +20,24 @@ export function isFriendlyGuardTarget(
     target.ownership.playerId === playerId;
 }
 
-/** BAR guard rule for a BUILDER guard: "help build what the target is
- *  building." Resolve the in-progress BUILDING the guard should pour build
- *  power into, given its current guard order — the guarded body itself if
- *  it is an in-progress building, otherwise whatever the guarded
- *  builder/commander is constructing. Returns null when there is nothing to
- *  assist (the guard then just follows / defends). Funding + build-power
- *  summing is handled by the normal construction pass once the guard's
- *  effective build target resolves to this id. */
-export function resolveGuardBuildAssistTargetId(
+/** What a BUILDER guard should do for its guard target this tick, BAR-style
+ *  ("continuously do for the target whatever you can"). One resolver shared
+ *  by movement (approach the serviced thing within build range) and funding
+ *  (the energy pass routes each kind to the right consumer):
+ *   - `build`   — an in-progress BUILDING to help finish: the guarded body
+ *                 itself, or whatever the guarded builder/commander is
+ *                 constructing. Build power sums with all other assisters.
+ *   - `factory` — a guarded FACTORY currently producing a unit: assist its
+ *                 production (speed up the shell it is building).
+ *   - `heal`    — a damaged, completed guarded unit to repair.
+ *  Returns null when there is nothing to service (guard just follows/defends). */
+export type GuardServiceKind = 'build' | 'factory' | 'heal';
+export type GuardService = { target: Entity; kind: GuardServiceKind };
+
+export function resolveGuardServiceTarget(
   world: WorldState,
   guard: Entity,
-): EntityId | null {
+): GuardService | null {
   const unit = guard.unit;
   if (unit === null || guard.builder === null || guard.ownership === null) return null;
   const action = unit.actions[0];
@@ -41,15 +47,15 @@ export function resolveGuardBuildAssistTargetId(
   if (target.ownership.playerId !== guard.ownership.playerId) return null;
 
   // (a) Guarding an in-progress building/tower shell -> help finish it.
-  if (target.building !== null && isBuildInProgress(target.buildable)) return target.id;
+  if (target.building !== null && isBuildInProgress(target.buildable)) return { target, kind: 'build' };
 
-  // (b) Guarding a builder/commander that is constructing a building -> help
-  //     build the same nanoframe (its direct build target or build order).
+  // (b) Guarding a builder/commander constructing a building -> help build
+  //     the same nanoframe (its direct build target or build/repair order).
   const targetBuilder = target.builder;
   if (targetBuilder !== null && targetBuilder.currentBuildTarget !== NO_ENTITY_ID) {
     const site = world.getEntity(targetBuilder.currentBuildTarget);
     if (site !== undefined && site.building !== null && isBuildInProgress(site.buildable)) {
-      return site.id;
+      return { target: site, kind: 'build' };
     }
   }
   const targetAction = target.unit?.actions[0];
@@ -58,9 +64,25 @@ export function resolveGuardBuildAssistTargetId(
     if (siteId !== undefined && siteId !== null) {
       const site = world.getEntity(siteId);
       if (site !== undefined && site.building !== null && isBuildInProgress(site.buildable)) {
-        return site.id;
+        return { target: site, kind: 'build' };
       }
     }
+  }
+
+  // (c) Guarding a factory that is producing -> assist its unit production.
+  const factory = target.factory;
+  if (factory !== null && factory.isProducing && factory.currentShellId !== null && factory.currentShellId !== NO_ENTITY_ID) {
+    return { target, kind: 'factory' };
+  }
+
+  // (d) Guarding a damaged, completed unit -> repair (heal) it.
+  if (
+    target.unit !== null &&
+    target.unit.hp > 0 &&
+    target.unit.hp < target.unit.maxHp &&
+    !isBuildInProgress(target.buildable)
+  ) {
+    return { target, kind: 'heal' };
   }
   return null;
 }

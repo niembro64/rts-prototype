@@ -36,7 +36,7 @@ import {
 import { getTerrainVersion } from './Terrain';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
-import { getGuardFollowRadius, isFriendlyGuardTarget } from './guard';
+import { getGuardFollowRadius, isFriendlyGuardTarget, resolveGuardServiceTarget } from './guard';
 import { isTransportLoadInRange, updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { isBuildTargetInRange } from './builderRange';
@@ -949,6 +949,30 @@ export class Simulation {
         if (unit.moveState === 'holdPosition') {
           unit.stuckTicks = 0;
           continue;
+        }
+
+        // BAR: a guarding builder continuously services its target — assist
+        // its construction, assist a guarded factory's production, or repair
+        // a damaged ally. Approach the serviced thing within build range so
+        // the energy pass can fund it (the funding itself happens there);
+        // otherwise fall through to plain follow.
+        if (entity.builder !== null) {
+          const service = resolveGuardServiceTarget(this.world, entity);
+          if (service !== null) {
+            if (isBuildTargetInRange(entity, service.target)) {
+              unit.stuckTicks = 0;
+              continue;
+            }
+            const sp = getEntityTargetPoint(service.target);
+            const sdx = sp.x - transform.x;
+            const sdy = sp.y - transform.y;
+            const sdist = magnitude(sdx, sdy);
+            if (sdist > 15) {
+              this.arrivalController.queueThrust(entity, currentAction, sdx, sdy, sdist, true);
+            }
+            unit.stuckTicks = 0;
+            continue;
+          }
         }
 
         const targetPoint = getEntityTargetPoint(guardTarget);
