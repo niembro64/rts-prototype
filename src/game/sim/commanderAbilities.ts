@@ -79,21 +79,23 @@ class CommanderAbilitiesSystem {
       let commanderSprayY = commanderY;
       let commanderSprayZ = commander.transform.z;
       const commanderTurrets = commander.combat !== null ? commander.combat.turrets : null;
-      let turretConstructionIndex = -1;
+      // The construction spray originates at the host's construction emitter —
+      // the construction pylon(s) on builders, or any legacy turretConstruction.
+      let constructionEmitterIndex = -1;
       if (commanderTurrets !== null) {
         for (let i = 0; i < commanderTurrets.length; i++) {
-          if (commanderTurrets[i].config.turretBlueprintId === 'turretConstruction') {
-            turretConstructionIndex = i;
+          if (commanderTurrets[i].config.constructionEmitter !== null) {
+            constructionEmitterIndex = i;
             break;
           }
         }
       }
-      if (turretConstructionIndex >= 0 && commanderTurrets !== null) {
+      if (constructionEmitterIndex >= 0 && commanderTurrets !== null) {
         const { cos, sin } = getTransformCosSin(commander.transform);
         const mount = updateWeaponWorldKinematics(
           commander,
-          commanderTurrets[turretConstructionIndex],
-          turretConstructionIndex,
+          commanderTurrets[constructionEmitterIndex],
+          constructionEmitterIndex,
           cos,
           sin,
           {

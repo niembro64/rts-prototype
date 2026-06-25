@@ -75,7 +75,9 @@
         "turretQueenBeeConstructor",
         "turretQueenTickConstructor",
         "turretSpawnBuildingsAndTowers",
-        "turretSpawnUnits"
+        "turretSpawnUnits",
+        "turretResourcePylonConstructionMetal",
+        "turretResourcePylonConstructionEnergy"
       ],
       "shots": [
         "shotPlasmaLight",
@@ -583,6 +585,12 @@
       "targets": "none"
     },
     "turretSpawnUnits": {
+      "targets": "none"
+    },
+    "turretResourcePylonConstructionMetal": {
+      "targets": "none"
+    },
+    "turretResourcePylonConstructionEnergy": {
       "targets": "none"
     }
   },
