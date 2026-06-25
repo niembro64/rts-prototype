@@ -41,6 +41,13 @@ const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
 const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
 const FACTORY_SHELL_MIN_FREEFALL_CLEARANCE = 36;
+
+// Fabricator torus hover height: the spawn turret materializes the unit shell in
+// the CENTER of the hovering torus, this far above the ground, and it free-falls
+// (supportSurface=none) while the under-slung construction pylons finish it. The
+// renderer reads this same value so the torus body + pylons sit at the height the
+// unit actually appears.
+export const FABRICATOR_TORUS_HOVER_HEIGHT = 96;
 const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
 
 export function shiftFactoryProductionQueue(queue: string[]): string | null {
@@ -310,9 +317,14 @@ class FactoryProductionSystem {
       unitBlueprintId,
     );
     const spawnSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
+    // Fabricator shells appear in the torus center high in the air and free-fall;
+    // any other factory keeps the small surface clearance.
+    const spawnClearance = factory.buildingBlueprintId === 'towerFabricator'
+      ? FABRICATOR_TORUS_HOVER_HEIGHT
+      : getFactoryShellSpawnClearanceAboveSurface(bp);
     unit.transform.z = spawnSupport.groundZ
       + bp.bodyCenterHeight
-      + getFactoryShellSpawnClearanceAboveSurface(bp);
+      + spawnClearance;
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
