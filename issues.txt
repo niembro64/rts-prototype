@@ -320,3 +320,61 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
 
 
 [16] I think we need to abstract locomotion better. We need to have separate "friction" and "traction" for our locomotion against all three media: "ground", "air", "water". So basically every single unit should have "locomotionGroundTraction","locomotionGroundFriction", "locomotionAirTraction", "locomotionGroundFriction", "locomotionWaterTraction", "locomotionWaterFriction". All units should also have "locomotionGroundForce", "locomotionAirForce", "locomotionWaterForce", which means that they can push themselves if they are touching the ground, in the air, or under water, a specific amoount. The ground under water should count as ground. Use proper physics for these kinds of things, and also any entity should have only one of the air/water tractions or frictions applied if they are above or below the water. Think this through. Basically in this way we should be able to let units swim, or sink to the bottom of the water and walk or even walk on the top of the water, with specific values of these things. Also we will need a separate "swimHeightUpwardForce" (and all of the other random stuff similar to the flying and hover locomotions). To be honest we should fully abstract all of the locomotion stuff such taht any unit basically has all of the physics as possibilities, we can have zero for any of the values to make it act like a ground unit or an air unit. So basically we want to both add all physics for all units for "ground", "air", and "water", but we also want to fully abstract all of our units locomotion to have values for all possible locomotions - in this way we can mix and match and create strange combinations of locomotions that could walk, then fly, then swim for example. Let's fully abstract it and create an elegant exhaustive physics system for them. Let's actually add this requirement to our "budget_design_philosophy.html" document, find the appropriate places in that document to update with this new fully abstracted physics and locomotion systems.
+
+================================================================================
+FABRICATOR REDESIGN + CONSTRUCTION/SPAWN TURRET ABSTRACTION (2026-06-25, user request)
+--------------------------------------------------------------------------------
+
+[17] Fabricator becomes a hovering TORUS that drops free-fall units through its center
+    Today the fabricator is an upright cylinder with a solid boxTop support
+    surface (src/game/sim/blueprints/towers.json towerFabricator:
+    supportSurface kind "boxTop" topZ 30, 240x240). With launching removed, a
+    produced unit free-falls onto the fabricator's TOP, not the terrain — i.e.
+    the surface DOES interact with the unit. Redesign it:
+    - Flip the form: a TORUS platform hovering HIGH in the air, same overall
+      footprint/size as now. Render profile + mesh become a torus (not a
+      cylinder); body sits up at the hover height.
+    - The construction + spawn turret(s) and the build pylons hang UNDERNEATH
+      the torus, pointing DOWN (mounts move below the body; turret idle pitch /
+      pylons aim downward).
+    - Units spawn in the air in the MIDDLE of the torus (the hole), free-fall to
+      the ground, and are built on the way down / on the ground. The center/hole
+      must NOT present a support surface the unit lands on — it falls through to
+      terrain (adjust supportSurface so the spawn column is open; the torus ring
+      itself can keep an appropriate footprint/collision).
+    - Touch: towers.json (shape, visualHeight, anchorProfile, supportSurface,
+      turret mount z + downward orientation), the towerFabricator render
+      profile/mesh (FactoryMesh3D / render3d), spawnUnitShell spawn position
+      (torus center, at hover height), construction-emitter pylon orientation.
+
+[18] Construction turrets gain an auto-assist build RADIUS
+    A construction turret should automatically CONTINUE building / repairing any
+    friendly entity that is under construction (or damaged / low-health) within a
+    configured radius — not only an explicitly guard/build-targeted one. This
+    makes "construction turret" the general "continue anything being built"
+    concept the design wants.
+    - Add a per-construction-turret build/assist radius. Each tick, every
+      in-range friendly that is under construction or damaged receives this
+      turret's build power, summed through the existing per-target construction
+      accumulator (energyDistribution). No explicit order required.
+    - Touch: turret blueprint (assist radius field), energyDistribution
+      (auto-enroll in-range under-construction/damaged targets), construction-
+      emitter visual (already source->target, should light up per assisted site).
+
+[19] Separate "construction turret" from "spawn turret", fully
+    Two distinct turret roles, cleanly separated:
+    - construction turret: abstract + general. ONLY continues an existing build
+      and repairs low-health entities. It never creates anything.
+    - spawn turret: brings a NEW unit/building/tower into existence (creates the
+      nanoframe / initial entity), visualized by firing a "laser"/beam to
+      initialize the target.
+    - Every entity that has a construction turret also has a spawn turret
+      (commander, construction drone, fabricator, queen bee, queen tick).
+    This realizes "starting the build is separated from helping build": the spawn
+    turret starts it, any in-range construction turret (see [18]) continues it.
+    - Touch: turret blueprints (define a spawn-turret role + its laser/beam
+      emission; mark construction turrets as continue-only), the build-command
+      path (start = spawn turret emits + creates the entity), the construction
+      abstraction (construction turret = continue/repair only), renderer (spawn
+      laser/beam visual).
+================================================================================
