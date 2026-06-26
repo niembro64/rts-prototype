@@ -2,7 +2,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Projectile system - firing, movement, and beam updates
 
 import type { WorldState } from '../WorldState';
-import type { BeamPoint, Entity, EntityId, PlayerId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
+import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
@@ -358,7 +358,6 @@ const _projectilePositionScratch = { x: 0, y: 0, z: 0 };
 const _homingTargetVelocity = { x: 0, y: 0, z: 0 };
 const _homingTargetAcceleration = { x: 0, y: 0, z: 0 };
 const _homingAimPoint = { x: 0, y: 0, z: 0 };
-const _homingRetargetPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
 const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
 const _beamTargetPoint = { x: 0, y: 0, z: 0 };
@@ -385,44 +384,6 @@ const HOMING_TARGET_UPDATE_UNCHANGED = -2;
 function getHomingMaxThrustAccel(shot: ProjectileShot): number {
   const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
   return (shot.homingThrust ?? 0) / mass;
-}
-
-function findReplacementHomingTarget(
-  world: WorldState,
-  ownerId: PlayerId,
-  position: { x: number; y: number; z: number },
-  searchRadius: number,
-): Entity | undefined {
-  if (!Number.isFinite(searchRadius) || searchRadius <= 0) return undefined;
-  const candidates = spatialGrid.queryEnemyEntitiesInRadius(
-    position.x,
-    position.y,
-    position.z,
-    searchRadius,
-    ownerId,
-  );
-  let best: Entity | undefined;
-  let bestDistSq = Infinity;
-  for (let i = 0; i < candidates.length; i++) {
-    const candidate = candidates[i];
-    if (!isLiveHomingTarget(candidate)) continue;
-    const ownership = candidate.ownership;
-    if (ownership !== null && world.arePlayersAllied(ownerId, ownership.playerId)) continue;
-    const point = getEntityPosition3d(candidate, _homingRetargetPoint);
-    const dx = point.x - position.x;
-    const dy = point.y - position.y;
-    const dz = point.z - position.z;
-    const distSq = dx * dx + dy * dy + dz * dz;
-    if (
-      best === undefined ||
-      distSq < bestDistSq - 1e-6 ||
-      (Math.abs(distSq - bestDistSq) <= 1e-6 && candidate.id < best.id)
-    ) {
-      best = candidate;
-      bestDistSq = distSq;
-    }
-  }
-  return best;
 }
 
 function getTurretProjectileLaunchSpeed(config: TurretConfig, shot: Pick<ProjectileShot, 'mass'>): number {
@@ -1641,13 +1602,16 @@ function _updateTravelingProjectilesJS(
       let homingTarget = previousHomingTargetId !== NO_ENTITY_ID
         ? world.getEntity(previousHomingTargetId)
         : undefined;
-      if (homingTarget === undefined || !isLiveHomingTarget(homingTarget)) {
-        homingTarget = findReplacementHomingTarget(
-          world,
-          proj.ownerId,
-          position,
-          proj.config.range,
-        );
+      // Lock-on policy lives on turrets, not guided shots. A rocket/missile
+      // homes only toward the exact entity it inherited at launch, and only
+      // while that target is still live. It never runs its own acquisition
+      // pass or scans for a replacement victim — once the inherited target is
+      // gone it loses guidance, drops to NO_ENTITY_ID, and continues on its
+      // current flight path under normal projectile physics (the steering
+      // block below is skipped). See budget_design_philosophy.html
+      // "Lock-on policy lives on turrets, not guided shots".
+      if (homingTarget !== undefined && !isLiveHomingTarget(homingTarget)) {
+        homingTarget = undefined;
       }
       const resolvedHomingTargetId = homingTarget !== undefined ? homingTarget.id : NO_ENTITY_ID;
       if (resolvedHomingTargetId !== previousHomingTargetId) {

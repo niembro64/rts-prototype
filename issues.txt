@@ -33,32 +33,6 @@ are #8 (sight-vs-radar fire tiers) and #12 (selection-panel uniformity). No othe
 strong BAR command gap surfaced — do not assume the list is thin by accident.
 
 
-[1] Guided shots run their own replacement-target acquisition after launch
-    Category: correctness (determinism-relevant) | Severity: HIGH
-    Evidence: src/game/sim/combat/projectileSystem.ts:1644-1651 calls
-      findReplacementHomingTarget whenever the inherited homing target is dead/
-      gone, then commits it into proj.homingTargetId at :1654.
-      findReplacementHomingTarget (projectileSystem.ts:390-426) picks the nearest
-      live enemy via spatialGrid.queryEnemyEntitiesInRadius with NO inclusion-
-      object filtering. isLiveHomingTarget (combatUtils.ts:85-94) flips to false
-      the instant the inherited target's hp<=0, so re-acquisition fires
-      immediately on target death.
-    Design: "Lock-on policy lives on turrets, not guided shots"
-      (budget_design_philosophy.html:1989-1992): a guided shot "must not run its
-      own target acquisition pass, scan for replacements, or choose a new victim
-      after launch. If the inherited target no longer exists, it loses guidance
-      and continues on its current flight path ... until it hits something or
-      expires."
-    Problem: A missile fired by a units-only turret can re-home onto a building or
-      another projectile, and it changes who gets hit — a behavior bug in lockstep
-      combat, not cosmetic. This is the single authoritative server projectile
-      loop (NOT a determinism mirror), so the fix is safe.
-    Fix: Delete the replacement-acquisition fallback for guided shots. When the
-      inherited homingTargetId is no longer live, set proj.homingTargetId =
-      NO_ENTITY_ID, stop applying steering thrust (fly ballistic). Remove
-      findReplacementHomingTarget from the per-tick homing path (it is also a
-      per-projectile spatial query running every tick for every orphaned missile).
-
 [2] D-gun / instant ability energy spend never surfaces as a pylon ball
     Category: correctness (economy invariant) / missing-functionality | Sev: MED
     Evidence: src/game/sim/economy.ts:211 spendInstant hard-codes
