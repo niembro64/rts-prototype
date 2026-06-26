@@ -91,7 +91,8 @@
         "collision": 9.6,
         "shotArmingRadius": 12
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitLynx": {
     "unitBlueprintId": "unitLynx",
@@ -184,7 +185,8 @@
         "collision": 13,
         "shotArmingRadius": 14
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitDaddy": {
     "unitBlueprintId": "unitDaddy",
@@ -307,7 +309,8 @@
         "collision": 15,
         "shotArmingRadius": 18
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitBadger": {
     "unitBlueprintId": "unitBadger",
@@ -400,7 +403,8 @@
         "collision": 22.4,
         "shotArmingRadius": 26
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitMongoose": {
     "unitBlueprintId": "unitMongoose",
@@ -494,7 +498,8 @@
         "collision": 24,
         "shotArmingRadius": 24
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitTick": {
     "unitBlueprintId": "unitTick",
@@ -607,7 +612,8 @@
         "collision": 12.1,
         "shotArmingRadius": 16
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitMammoth": {
     "unitBlueprintId": "unitMammoth",
@@ -700,7 +706,8 @@
         "collision": 36,
         "shotArmingRadius": 48
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitFormik": {
     "unitBlueprintId": "unitFormik",
@@ -843,7 +850,8 @@
         "collision": 65,
         "shotArmingRadius": 100
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitWidow": {
     "unitBlueprintId": "unitWidow",
@@ -1042,7 +1050,8 @@
         "collision": 52,
         "shotArmingRadius": 80
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitHippo": {
     "unitBlueprintId": "unitHippo",
@@ -1134,7 +1143,8 @@
         "collision": 54,
         "shotArmingRadius": 54
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitTarantula": {
     "unitBlueprintId": "unitTarantula",
@@ -1260,7 +1270,8 @@
         "collision": 19.8,
         "shotArmingRadius": 26
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitLoris": {
     "unitBlueprintId": "unitLoris",
@@ -1455,7 +1466,8 @@
         "collision": 10.8,
         "shotArmingRadius": 16
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitDragonfly": {
     "unitBlueprintId": "unitDragonfly",
@@ -1577,7 +1589,8 @@
         "collision": 50,
         "shotArmingRadius": 80
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitConstructionDrone": {
     "unitBlueprintId": "unitConstructionDrone",
@@ -1837,7 +1850,8 @@
         "collision": 21.6,
         "shotArmingRadius": 30
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitAlbatros": {
     "unitBlueprintId": "unitAlbatros",
@@ -1975,7 +1989,8 @@
         "collision": 92,
         "shotArmingRadius": 136
       }
-    }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
   },
   "unitQueenBee": {
     "unitBlueprintId": "unitQueenBee",

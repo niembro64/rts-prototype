@@ -2877,6 +2877,9 @@
         },
         "lockOnRequiresTargetLockedOntoSelf": {
           "$ref": "#/$defs/LockOnRequiresTargetLockedOntoSelf"
+        },
+        "preventLockOnIfMyTeamIsAboveMe": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

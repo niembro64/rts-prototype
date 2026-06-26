@@ -1961,6 +1961,9 @@ export const CT_ENTITY_FLAG_HAS_COMBAT = 1 << 1;
 export const CT_ENTITY_FLAG_FIRE_ENABLED = 1 << 2;
 export const CT_ENTITY_FLAG_BUILDABLE_COMPLETE = 1 << 3;
 export const CT_ENTITY_FLAG_CLOAKED = 1 << 4;
+/** Host refuses every lock-on while a friendly entity sits directly above it
+ *  (stamped from the host blueprint's preventLockOnIfMyTeamIsAboveMe). */
+export const CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE = 1 << 5;
 
 /** AIM-08.1 — Turret-config-flag bits packed into the combat-targeting
  *  turret slab's `configFlags` field. Mirrors `CT_TURRET_CFG_*`. */

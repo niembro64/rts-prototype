@@ -4,6 +4,7 @@
 use crate::*;
 #[allow(unused_imports)]
 use wasm_bindgen::prelude::*;
+use std::cell::Cell;
 
 // ─────────────────────────────────────────────────────────────────
 // AIM-08.1 — Targeting input slabs
@@ -33,6 +34,12 @@ pub const CT_ENTITY_FLAG_HAS_COMBAT: u8 = 1 << 1;
 pub const CT_ENTITY_FLAG_FIRE_ENABLED: u8 = 1 << 2;
 pub const CT_ENTITY_FLAG_BUILDABLE_COMPLETE: u8 = 1 << 3;
 pub const CT_ENTITY_FLAG_CLOAKED: u8 = 1 << 4;
+/// When set, this entity (a unit or tower host) refuses every lock-on while
+/// a friendly entity is positioned directly above it, so a freshly-spawned
+/// host does not fire up through the teammate (e.g. the fabricator) that is
+/// hovering over it. Stamped from the host blueprint's
+/// `preventLockOnIfMyTeamIsAboveMe`.
+pub const CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE: u8 = 1 << 5;
 
 // Turret-config-flag bits — packed into `turret_config_flags`.
 pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u16 = 1 << 0;
@@ -220,6 +227,13 @@ pub(crate) struct CombatTargetingPool {
     pub(crate) active_entity_slots: Vec<u32>,
     pub(crate) entity_stamp_epoch: Vec<u32>,
     pub(crate) stamp_epoch: u32,
+    // Per-source memo for the "friendly directly above me" lock-on shelter
+    // gate (CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE). Computed once per
+    // source per stamp epoch and reused across that source's per-candidate
+    // lock-on checks. Cell interior mutability lets the immutable per-candidate
+    // gate populate the cache (single-threaded wasm).
+    pub(crate) entity_shelter_memo_epoch: Vec<Cell<u32>>,
+    pub(crate) entity_shelter_memo_value: Vec<Cell<u8>>,
     // Transient per-stamp flag written by set_entity and consumed by the
     // set_turret calls that follow it in the same stamping pass: 1 when
     // the slot still holds the same entity it held last stamp, so the
@@ -409,6 +423,8 @@ impl CombatTargetingPool {
             active_entity_slots: Vec::new(),
             entity_stamp_epoch: Vec::new(),
             stamp_epoch: 1,
+            entity_shelter_memo_epoch: Vec::new(),
+            entity_shelter_memo_value: Vec::new(),
             entity_stamp_same_entity: Vec::new(),
             turret_count_per_entity: Vec::new(),
             turret_entity_id: Vec::new(),
@@ -532,6 +548,8 @@ impl CombatTargetingPool {
             self.entity_active_turret_mask.resize(entity_needed, 0);
             self.entity_firing_turret_mask.resize(entity_needed, 0);
             self.entity_stamp_epoch.resize(entity_needed, 0);
+            self.entity_shelter_memo_epoch.resize_with(entity_needed, || Cell::new(0));
+            self.entity_shelter_memo_value.resize_with(entity_needed, || Cell::new(0));
             self.entity_stamp_same_entity.resize(entity_needed, 0);
             self.turret_count_per_entity.resize(entity_needed, 0);
         }
@@ -2761,6 +2779,106 @@ pub(crate) fn combat_targeting_entity_may_lock_entity_slot(
 }
 
 #[inline]
+/// True when `source_entity_slot` carries CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE
+/// AND a friendly (same-owner) entity sits directly above it (higher center,
+/// footprints overlapping). Such a source refuses every lock-on so it never
+/// fires up through the teammate hovering over it (e.g. the fabricator that
+/// just produced it). Memoized per source per stamp epoch.
+pub(crate) fn combat_targeting_source_sheltered_by_friendly_above(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+) -> bool {
+    if source_entity_slot >= pool.entity_flags.len()
+        || (pool.entity_flags[source_entity_slot] & CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE) == 0
+    {
+        return false;
+    }
+    let epoch = pool.stamp_epoch;
+    if pool.entity_shelter_memo_epoch[source_entity_slot].get() == epoch {
+        return pool.entity_shelter_memo_value[source_entity_slot].get() != 0;
+    }
+    let sheltered = combat_targeting_compute_sheltered_by_friendly_above(pool, source_entity_slot);
+    pool.entity_shelter_memo_epoch[source_entity_slot].set(epoch);
+    pool.entity_shelter_memo_value[source_entity_slot].set(sheltered as u8);
+    sheltered
+}
+
+fn combat_targeting_compute_sheltered_by_friendly_above(
+    pool: &CombatTargetingPool,
+    source_entity_slot: usize,
+) -> bool {
+    let source_x = pool.entity_pos_x[source_entity_slot];
+    let source_y = pool.entity_pos_y[source_entity_slot];
+    let source_z = pool.entity_pos_z[source_entity_slot];
+    let source_radius = pool.entity_radius_collision[source_entity_slot];
+    let source_owner = pool.entity_owner_player_id[source_entity_slot];
+    if !source_x.is_finite() || !source_y.is_finite() {
+        return false;
+    }
+    // Reuse the observation broadphase: walk only the cells whose entities
+    // could horizontally overlap the source. Entities bucket by center, so the
+    // query radius adds the largest footprint padding to catch big hosts (the
+    // fabricator) whose center sits a cell or two away. Cell iteration is a
+    // deterministic nested loop and "any friendly above" is order-independent.
+    let query_radius = source_radius + pool.observation_max_detection_padding;
+    let min_cx = combat_targeting_observation_cell_coord(source_x - query_radius);
+    let max_cx = combat_targeting_observation_cell_coord(source_x + query_radius);
+    let min_cy = combat_targeting_observation_cell_coord(source_y - query_radius);
+    let max_cy = combat_targeting_observation_cell_coord(source_y + query_radius);
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            let key = combat_targeting_observation_cell_key(cx, cy);
+            let Some(cell) = pool.observation_cells.get(&key) else {
+                continue;
+            };
+            for &slot_u32 in &cell.slots {
+                let slot = slot_u32 as usize;
+                if slot == source_entity_slot
+                    || slot >= pool.entity_id.len()
+                    || pool.entity_id[slot] < 0
+                {
+                    continue;
+                }
+                // "My team" is same-owner — the kernel's notion of friendly,
+                // and the spawn case (host + the fabricator that made it share
+                // a player).
+                if pool.entity_owner_player_id[slot] != source_owner {
+                    continue;
+                }
+                if !combat_targeting_entity_alive(pool, slot) {
+                    continue;
+                }
+                // Strictly higher center, so an upward shot passes through it.
+                if pool.entity_pos_z[slot] <= source_z {
+                    continue;
+                }
+                let overlaps = match pool.entity_family[slot] {
+                    CT_ENTITY_FAMILY_BUILDING | CT_ENTITY_FAMILY_TOWER => {
+                        spatial_dist_sq_to_aabb2(
+                            pool.entity_pos_x[slot],
+                            pool.entity_pos_y[slot],
+                            pool.entity_aabb_half_x[slot],
+                            pool.entity_aabb_half_y[slot],
+                            source_x,
+                            source_y,
+                        ) <= source_radius * source_radius
+                    }
+                    _ => {
+                        let dx = pool.entity_pos_x[slot] - source_x;
+                        let dy = pool.entity_pos_y[slot] - source_y;
+                        let r = source_radius + pool.entity_radius_collision[slot];
+                        dx * dx + dy * dy <= r * r
+                    }
+                };
+                if overlaps {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 pub(crate) fn combat_targeting_turret_may_lock_entity_slot(
     pool: &CombatTargetingPool,
     source_entity_slot: usize,
@@ -2775,6 +2893,11 @@ pub(crate) fn combat_targeting_turret_may_lock_entity_slot(
         || pool.entity_id[target_entity_slot] < 0
         || !combat_targeting_entity_alive(pool, target_entity_slot)
     {
+        return false;
+    }
+    // Lock-on shelter: a flagged host refuses every lock-on while a teammate
+    // is directly above it, so it never fires up into that teammate.
+    if combat_targeting_source_sheltered_by_friendly_above(pool, source_entity_slot) {
         return false;
     }
     if !combat_targeting_turret_owner_relationship_allowed(

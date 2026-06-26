@@ -938,6 +938,7 @@ pub struct UnitBlueprint {
     pub includeLockOnLevel1Turrets: Vec<String>,
     pub includeLockOnLevel1Shots: Vec<String>,
     pub lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf,
+    pub preventLockOnIfMyTeamIsAboveMe: Option<bool>,
 }
 
 pub type RayBlueprintId = String;

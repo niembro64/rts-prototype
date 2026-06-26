@@ -9494,6 +9494,55 @@ mod lock_on_inclusion_tests {
         }
     }
 
+    #[test]
+    pub(crate) fn lockon_shelter_detects_friendly_directly_above() {
+        let _guard = lock_tests();
+
+        // A flagged unit with a friendly (same-owner) host directly above it
+        // (overlapping footprints, higher center) is sheltered → no lock-on.
+        reset_pools();
+        stamp_entity_with_host_lockon_at_z(0, 10, 1, 0.0, 0.0, CT_ENTITY_FAMILY_UNIT, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0);
+        combat_targeting_pool().entity_flags[0] |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
+        stamp_entity_with_host_lockon_at_z(1, 11, 1, 0.0, 50.0, CT_ENTITY_FAMILY_BUILDING, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0);
+        combat_targeting_rebuild_observation_index(combat_targeting_pool());
+        assert!(
+            combat_targeting_source_sheltered_by_friendly_above(combat_targeting_pool(), 0),
+            "flagged host with a friendly directly above must be sheltered",
+        );
+
+        // The same teammate BELOW does not shelter (an upward shot misses it).
+        reset_pools();
+        stamp_entity_with_host_lockon_at_z(0, 10, 1, 0.0, 0.0, CT_ENTITY_FAMILY_UNIT, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0);
+        combat_targeting_pool().entity_flags[0] |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
+        stamp_entity_with_host_lockon_at_z(1, 11, 1, 0.0, -50.0, CT_ENTITY_FAMILY_BUILDING, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0);
+        combat_targeting_rebuild_observation_index(combat_targeting_pool());
+        assert!(
+            !combat_targeting_source_sheltered_by_friendly_above(combat_targeting_pool(), 0),
+            "a teammate below the host must not shelter it",
+        );
+
+        // An ENEMY directly above does not shelter (only friendlies do).
+        reset_pools();
+        stamp_entity_with_host_lockon_at_z(0, 10, 1, 0.0, 0.0, CT_ENTITY_FAMILY_UNIT, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0);
+        combat_targeting_pool().entity_flags[0] |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
+        stamp_entity_with_host_lockon_at_z(1, 11, 2, 0.0, 50.0, CT_ENTITY_FAMILY_BUILDING, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0);
+        combat_targeting_rebuild_observation_index(combat_targeting_pool());
+        assert!(
+            !combat_targeting_source_sheltered_by_friendly_above(combat_targeting_pool(), 0),
+            "an enemy above must not shelter the host",
+        );
+
+        // Without the opt-in flag the gate is inert even with a friendly above.
+        reset_pools();
+        stamp_entity_with_host_lockon_at_z(0, 10, 1, 0.0, 0.0, CT_ENTITY_FAMILY_UNIT, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0);
+        stamp_entity_with_host_lockon_at_z(1, 11, 1, 0.0, 50.0, CT_ENTITY_FAMILY_BUILDING, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0);
+        combat_targeting_rebuild_observation_index(combat_targeting_pool());
+        assert!(
+            !combat_targeting_source_sheltered_by_friendly_above(combat_targeting_pool(), 0),
+            "an unflagged host is never sheltered",
+        );
+    }
+
     pub(crate) fn stamp_entity_with_host_lockon(
         slot: u32,
         entity_id: i32,

@@ -55,6 +55,7 @@ import {
   CT_ENTITY_FLAG_FIRE_ENABLED,
   CT_ENTITY_FLAG_BUILDABLE_COMPLETE,
   CT_ENTITY_FLAG_CLOAKED,
+  CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE,
   CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS,
   CT_TURRET_CFG_NEEDS_BALLISTIC,
   CT_TURRET_CFG_VERTICAL_LAUNCHER,
@@ -87,6 +88,7 @@ import {
   EMPTY_LOCK_ON_MASKS,
   getTowerHostLockOnMasks,
   getUnitHostLockOnMasks,
+  getUnitBlueprint,
   type LockOnMasks,
 } from '../blueprints';
 import {
@@ -574,6 +576,12 @@ function stampCombatTargetingEntityInto(
   if (combatCanFire(combat)) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
   if (isEntityActive(entity)) {
     entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
+  }
+  if (
+    entity.unit !== null &&
+    getUnitBlueprint(entity.unit.unitBlueprintId).preventLockOnIfMyTeamIsAboveMe === true
+  ) {
+    entityFlags |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
   }
   if (isEntityCloaked(entity)) {
     entityFlags |= CT_ENTITY_FLAG_CLOAKED;

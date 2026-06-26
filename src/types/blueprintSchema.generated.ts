@@ -689,6 +689,7 @@ export type UnitBlueprint = {
   includeLockOnLevel1Turrets: string[];
   includeLockOnLevel1Shots: string[];
   lockOnRequiresTargetLockedOntoSelf: LockOnRequiresTargetLockedOntoSelf;
+  preventLockOnIfMyTeamIsAboveMe?: boolean;
 };
 
 export type RayType = 'beam' | 'laser';
