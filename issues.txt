@@ -78,24 +78,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
       precision; OFF = radar-fire-eligible for artillery/missiles) and gate
       acquisition on the appropriate mask.
 
-[11] Selection panel renders per-blueprint-gated action buttons outside the doc's
-     fixed "full vocabulary" for the unit type
-    Category: BAR-gap / SSoT (panel uniformity) | Severity: MEDIUM
-    Evidence: SelectionPanel.vue gates buttons by per-blueprint capability flags:
-      :1061 Cloak (v-if hasCloakControl), :1156 Trajectory (hasTrajectoryControl),
-      :1582-1592 Manual Launch, :1333-1344 Capture (hasCommander), :1356-1379
-      Load/Unload (hasTransport); flags in src/types/ui.ts:49-55. Several of these
-      back UI for systems the doc says must NOT exist as dead UI until their
-      authoritative mechanics exist (transports, capture, manual launch, cloak).
-    Design: "Selection Menus Are Uniform Per Entity Type" (html:2513-2545): the
-      unit panel vocabulary is closed; "Stuffing a new button onto only some
-      blueprints inside an existing type ... is not allowed." Also "Commands
-      require real systems" — no command may exist as dead UI.
-    Fix: For each gated button, decide: (a) it's backed by a real authoritative
-      system -> amend the design doc to add it as a sanctioned unit action category
-      and make it unconditional-but-disabled within the type, or (b) it's dead UI
-      -> remove the button until its mechanics exist. Do not leave per-blueprint
-      button creep.
 
 --- SSoT / CONFIG-IS-DATA / DELETE-THE-OLD-PATH ---
 

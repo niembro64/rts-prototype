@@ -2518,12 +2518,29 @@
       </p>
 
       <h3>Unit selection panel</h3>
+      <p>
+        Every category below is gated only by a <em>type-defining capability the
+        blueprint either has or lacks</em> &mdash; the same shape as &ldquo;build menu
+        only if the unit is a builder.&rdquo; A capability gate is sanctioned vocabulary,
+        not panel creep: the rule this section forbids is a <em>bespoke</em> button on
+        an arbitrary subset of blueprints with no capability behind it. A unit that lacks
+        the capability simply does not show that category; a unit that has it shows the
+        identical control as every other unit with the same capability. Each capability
+        below is backed by a real authoritative system (cloak affects sensor coverage,
+        the trajectory toggle drives the ballistic arc, manual launch drives the
+        cooldown launcher, transport load/unload moves real carried bodies, capture is a
+        commander ability) &mdash; no entry here is dead UI.
+      </p>
       <ul class="rule-list">
         <li>Movement orders: Move, Fight, Patrol, Attack-Area, Attack-Ground, Guard, Stop, Wait.</li>
         <li>Queue management: Undo Q, Clear Q, Ping.</li>
         <li>Fire control toggle: Fire at Will / Hold Fire.</li>
+        <li>Trajectory toggle (only on units with an arc-selectable weapon): high-arc / low-arc / auto fire solution.</li>
+        <li>Cloak toggle (only on cloak-capable units): request cloak / decloak; the authoritative cloak state gates detector-vs-radar visibility.</li>
         <li>Build menu (only if the unit is a builder): the build roster filtered to what this builder is allowed to construct.</li>
-        <li>Commander specials (only on commander units): D-Gun, Repair, Reclaim.</li>
+        <li>Manual launch (only on launch-capable units such as queens): fire the cooldown-gated unit launcher on command instead of waiting for auto-produce.</li>
+        <li>Transport load/unload (only on transport units): load a selected unit / unload carried units at a point.</li>
+        <li>Commander specials (only on commander units): D-Gun, Repair, Reclaim, Capture.</li>
         <li>Self-destruct.</li>
       </ul>
 
@@ -2547,9 +2564,13 @@
 
       <p>
         That is the full vocabulary. Adding a new action category requires a design decision
-        about which entity type it belongs to and an update to this section. Stuffing a new
-        button onto only some blueprints inside an existing type is what makes the panel
-        creep over time, and is not allowed.
+        about which entity type it belongs to, a real authoritative system behind it, and an
+        update to this section. Once enumerated here, a category may be gated by a
+        type-defining capability (builder, commander, cloak, transport, arc weapon, launcher)
+        exactly like the build menu is gated by &ldquo;is a builder.&rdquo; What is <em>not</em>
+        allowed is a bespoke button stuffed onto an arbitrary subset of blueprints with no
+        sanctioned category and no capability behind it &mdash; that is the panel creep this
+        section retires, and a command with no real system behind it is forbidden outright.
       </p>
     </section>
 
@@ -3149,7 +3170,7 @@
         <li>Give every addressable live instance &mdash; unit, tower, building, mounted turret, travelling munition, and build site &mdash; a universal runtime <code>EntityId</code> plus the host ids it belongs to: top-level hosts point <code>root_host_id</code> at themselves, mounted turrets store <code>parent_id</code>, <code>root_host_id</code>, and mount index. A unit&rsquo;s locomotion is not on that list &mdash; it is part of the unit body, not a separately addressable instance. Assign ids by addressability, not independent bodyhood: a mounted turret can be locked onto and can attribute emissions without carrying its own health; a ray sustained by a live turret attributes through its emitter instead of minting its own id; and a build site is the product carrying its final id from frame one rather than a shell that hands off later. Resolve that opaque ID through explicit metadata for kind, blueprint, owner player, team, parent, root host, mount index, storage row, generation, liveness, and targetability. Do not encode mutable meaning into the numeric ID itself. Shots carry immutable source provenance (<code>source_turret_id</code>, <code>source_host_id</code>, player/team, blueprint IDs, spawn tick, and parent shot) so projectiles, submunitions, damage attribution, replays, and debug traces all agree on where they came from.</li>
         <li>Keep host command targets separate from turret lock-on targets. A unit or tower may carry player intent such as attack, guard, repair, or assist, and may lock onto an entity that has an ID &mdash; of any kind, including a single mounted turret or a travelling shot &mdash; but only the kinds and relationships its own host-level lock-on inclusion object admits; each mounted turret may then inherit that target only if its own inclusion object and targeting gates accept it. Turrets, units, and towers all carry the same additive lock-on inclusion object; buildings carry none, and no host target, because they mount no turrets.</li>
         <li>Tag every turret mount as <code>host-directed</code> (inherits the host lock-on) or <code>fully-autonomous</code> on the unit or tower blueprint &mdash; not on the turret blueprint, so the same turret can be host-directed on one host and fully-autonomous on another. Zero, one, or many mounts can be host-directed; the blueprint loader throws only when the boolean choice is missing. When the host is locked on to another entity, each host-directed turret&rsquo;s lock-on is overwritten by the host&rsquo;s, subject to that turret&rsquo;s inclusion object; fully-autonomous turrets are never overwritten and run their own independent targeting flow. Host-directed turrets fall back to autonomous targeting when the host has no lock. Fight-move and patrol halt logic is a separate unit-mount flag, <code>requiredEngagedForFightStop</code>; every marked non-visual turret must be engaged before the unit halts.</li>
-        <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, build, commander specials, and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Adding a new button to only some blueprints inside an existing type is not allowed.</li>
+        <li>Make the selection action panel uniform per entity type. Units expose movement, fire control, trajectory toggle (arc-weapon units), cloak toggle (cloak-capable units), build (builders), manual launch (launcher units), transport load/unload (transports), commander specials including capture (commanders), and self-destruct. Towers expose set-lock-on (any entity with an ID), fire control, fabricator production (when applicable), and self-destruct. Buildings expose ON/OFF and self-destruct. Mixed selections degrade to the intersection. Each category is gated only by a real type-defining capability backed by an authoritative system, exactly like the build menu is gated by &ldquo;is a builder&rdquo;; a bespoke button on an arbitrary blueprint subset with no sanctioned category behind it is not allowed.</li>
         <li>Keep sight, radar, and detection as sensor capability sources aggregated per player/team. Full sight identifies and also supplies radar-level location, radar-only coverage locates, detectors uncloak, and weapon fire consumes those tiers through explicit turret targeting requirements. Weapon range must not automatically create full vision.</li>
         <li>Keep lock-on acquisition in turret blueprints and targeting kernels, and author lock-on eligibility as an additive inclusion object carried by turrets, units, and towers alike. Rockets and missiles inherit the spawning turret&rsquo;s lock at launch, but they never scan for replacement targets; eligibility is <strong>off by default</strong> &mdash; a locker with no inclusions locks onto nothing &mdash; and broadened only by addition: level-0 friend/enemy and entity-family inclusions (<code>units</code>, <code>towers</code>, <code>buildings</code>, <code>turrets</code>, <code>shots</code>), then optional level-1 named blueprint inclusions that narrow an included family. Including only one family is how a turret specializes &mdash; point-defense includes only <code>shots</code>, a disarmer includes only <code>turrets</code>. There is no <code>locomotions</code> family: a unit&rsquo;s movement is part of its body, not a targetable entity.</li>
         <li>Keep specialist targeting behavior explicit. If a turret ever needs behavior beyond additive lock-on eligibility, give it a validated secondary lock-on profile and tests rather than a special case buried in the shared targeting kernel.</li>
