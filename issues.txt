@@ -60,7 +60,35 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
 ================================================================================
 
 
-[16] I think we need to abstract locomotion better. We need to have separate "friction" and "traction" for our locomotion against all three media: "ground", "air", "water". So basically every single unit should have "locomotionGroundTraction","locomotionGroundFriction", "locomotionAirTraction", "locomotionGroundFriction", "locomotionWaterTraction", "locomotionWaterFriction". All units should also have "locomotionGroundForce", "locomotionAirForce", "locomotionWaterForce", which means that they can push themselves if they are touching the ground, in the air, or under water, a specific amoount. The ground under water should count as ground. Use proper physics for these kinds of things, and also any entity should have only one of the air/water tractions or frictions applied if they are above or below the water. Think this through. Basically in this way we should be able to let units swim, or sink to the bottom of the water and walk or even walk on the top of the water, with specific values of these things. Also we will need a separate "swimHeightUpwardForce" (and all of the other random stuff similar to the flying and hover locomotions). To be honest we should fully abstract all of the locomotion stuff such taht any unit basically has all of the physics as possibilities, we can have zero for any of the values to make it act like a ground unit or an air unit. So basically we want to both add all physics for all units for "ground", "air", and "water", but we also want to fully abstract all of our units locomotion to have values for all possible locomotions - in this way we can mix and match and create strange combinations of locomotions that could walk, then fly, then swim for example. Let's fully abstract it and create an elegant exhaustive physics system for them. Let's actually add this requirement to our "budget_design_philosophy.html" document, find the appropriate places in that document to update with this new fully abstracted physics and locomotion systems.
+[16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
+    Goal: one fully-abstracted force profile on EVERY unit - ground/air/water x
+    {force, traction, friction} + a lift family (gravityCounterUpwardForceRatio,
+    hoverHeightUpwardForce, swimHeightUpwardForce) - so any unit can mix walk/fly/
+    swim, zeros meaning "cannot act in that medium". Ground under water counts as
+    ground; air vs water are mutually exclusive by the water line.
+
+    DONE: the design is fully specified in budget_design_philosophy.html (new
+    Physics-Model subsection "Locomotion is one fully-abstracted force profile across
+    ground, air, and water" + the summary-list bullet), including the medium-sampling
+    rule, the swim-lift = water-line analogue of hover lift, and the behaviour-
+    preserving migration.
+
+    REMAINING (implementation; behaviour-preserving + opt-in so it validates against
+    identical replay checksums):
+    - Type (src/types/locomotionTypes.ts) + schema (blueprintSchema.json locomotion
+      variants) + codegen: add the per-medium force/traction/friction fields + swim
+      lift (+ randomisation/EMA siblings), all defaulting to 0/inert. The existing
+      single traction/driveForce become the ground terms.
+    - Rust force kernel (unit_kinetics.rs): add UF_ROW_* for the new terms; the
+      kernel already carries UF_FLAG_IN_WATER and water probes. Apply water force/
+      friction/swim-lift ONLY when submerged and the term is non-zero, leaving the
+      existing ground/air (hover/flying) paths byte-identical so current units are
+      unchanged. Add new fields to UNIT_FORCE_BATCH_STRIDE.
+    - UnitForceSystem.ts: marshal the new values + the above/below-water medium flag.
+    - units.json: author the new fields (ground = current values, air/water 0 to
+      preserve behaviour; then author a demonstrator amphibian/swimmer).
+    - Validate: deterministic:replay must stay IDENTICAL for existing units; in-app
+      tune swim/float/sink + walk-on-bottom (needs eyes).
 
 ================================================================================
 FULLY-ABSTRACTED TURRET SYSTEM: SPAWN + RESOURCE-PYLON TURRETS (2026-06-25, user request)
