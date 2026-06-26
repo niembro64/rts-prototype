@@ -171,7 +171,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     turrets: buildingTurretMeshes,
     geometryKey,
     buildingDetails: shape.details,
-    factoryBuildSpotRig: shape.factoryBuildSpotRig,
+    isFactoryConstructionHost: shape.isFactoryConstructionHost,
     windRig: shape.windRig,
     extractorRig: shape.extractorRig,
     solarRig: shape.solarRig,

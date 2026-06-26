@@ -60,7 +60,6 @@ import {
 import {
   buildFactoryMesh,
   disposeFactoryMeshGeoms,
-  type FactoryBuildSpotRig,
 } from './FactoryMesh3D';
 import {
   buildResourcePylonRig,
@@ -71,7 +70,6 @@ import type { StructureBlueprintId } from '@/types/blueprintIds';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
-export type { FactoryBuildSpotRig } from './FactoryMesh3D';
 
 /** Short building blueprints we have art for. Unknown types fall back to a
  *  plain primary-color slab (same as before). */
@@ -84,10 +82,7 @@ export type BuildingDetailRole =
   | 'solarTeamAccent'
   | 'windRig'
   | 'extractorRotor'
-  | 'radarRig'
-  | 'factoryUnitGhost'
-  | 'factoryUnitCore'
-  | 'factorySpark';
+  | 'radarRig';
 
 export type BuildingDetailMesh = {
   mesh: THREE.Mesh;
@@ -113,7 +108,7 @@ export type BuildingShape = {
   /** The building's render height so the caller can position the
    *  primary body correctly on the ground plane. */
   height: number;
-  factoryBuildSpotRig?: FactoryBuildSpotRig;
+  isFactoryConstructionHost?: boolean;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;

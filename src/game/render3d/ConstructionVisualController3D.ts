@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import {
-  BUILD_BUBBLE_RADIUS_COLLISION_MULT,
   BUILD_RATE_DISPLAY_EMA_HALF_LIFE_SEC,
   BUILD_RATE_DISPLAY_EMA_MODE,
   BUILD_RATE_EMA_HALF_LIFE_SEC,
@@ -24,10 +23,8 @@ import { NO_ENTITY_ID } from '../sim/types';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import {
   getFactoryBuildSpot,
-  getFactoryConstructionRadius,
   type FactoryBuildSpot,
 } from '../sim/factoryConstructionSite';
-import type { FactoryBuildSpotRig } from './BuildingShape3D';
 import type {
   ConstructionEmitterRig,
   ConstructionTowerOrbitPart,
@@ -302,81 +299,6 @@ export class ConstructionVisualController3D {
       factoryAbsRates,
     );
     return visualActive;
-  }
-
-  /** Drive the factory's "forming unit" visualizer at the center build bay —
-   *  ghost orb, core orb, sparks. This is the unit-being-assembled
-   *  preview that's specific to factories (commanders/aircraft don't
-   *  show a forming-unit shell, they spray at the buildable shell that
-   *  already exists in the world). */
-  updateFactoryBuildSpot(
-    rig: FactoryBuildSpotRig | undefined,
-    e: Entity,
-    detailsReady: boolean,
-    footprintW: number,
-    footprintD: number,
-    timeMs: number,
-  ): void {
-    if (!rig) return;
-
-    const factory = e.factory;
-    const selectedUnitBlueprintId = factory?.selectedUnitBlueprintId;
-    const progress = Math.max(0, Math.min(1, factory?.currentBuildProgress ?? 0));
-    const active = detailsReady
-      && !!factory
-      && !!selectedUnitBlueprintId
-      && factory.isProducing;
-
-    if (!active) {
-      rig.unitGhost.visible = false;
-      rig.unitCore.visible = false;
-      for (const spark of rig.sparks) spark.visible = false;
-      return;
-    }
-
-    let blueprintRadius = Math.min(footprintW, footprintD) * 0.13;
-    let buildSpotRadius = blueprintRadius;
-    if (selectedUnitBlueprintId) {
-      try {
-        const bp = getUnitBlueprint(selectedUnitBlueprintId);
-        blueprintRadius = bp.radius.other;
-        buildSpotRadius = bp.radius.collision;
-      } catch {
-        // Unknown selection ids should not break rendering; keep the generic bay ghost.
-      }
-    }
-
-    const targetGhostRadius = Math.max(8, buildSpotRadius * BUILD_BUBBLE_RADIUS_COLLISION_MULT);
-    const easedProgress = progress * progress * (3 - 2 * progress);
-    const ghostScaleProgress = 0.28 + easedProgress * 0.72;
-    const timeSec = timeMs / 1000;
-    const phase = timeSec * 4.7 + e.id * 0.19;
-    const pulse = 1 + Math.sin(phase * 1.7) * 0.035;
-    const ghostRadius = targetGhostRadius * ghostScaleProgress * pulse;
-    const maxBayRadius = Math.max(
-      12,
-      Math.min(getFactoryConstructionRadius() * 0.34, blueprintRadius * 1.35),
-    );
-    const baseRadius = Math.max(8, Math.min(maxBayRadius, blueprintRadius * 1.15));
-    const radius = baseRadius * (0.28 + easedProgress * 0.72);
-    const centerY = Math.max(5, ghostRadius * 0.68);
-    const buildSpot = getFactoryBuildSpot(e, buildSpotRadius, {
-      mapWidth: this.clientViewState.getMapWidth(),
-      mapHeight: this.clientViewState.getMapHeight(),
-      clampRadius: null,
-    }, this._factoryBuildSpot);
-    const localSpotX = buildSpot.localX;
-    const localSpotZ = buildSpot.localY;
-
-    rig.unitGhost.visible = false;
-    rig.unitGhost.position.set(localSpotX, centerY, localSpotZ);
-    rig.unitGhost.scale.setScalar(ghostRadius);
-
-    rig.unitCore.visible = false;
-    rig.unitCore.position.set(localSpotX, centerY + radius * 0.08, localSpotZ);
-    rig.unitCore.scale.setScalar(Math.max(3, radius * 0.18));
-
-    for (const spark of rig.sparks) spark.visible = false;
   }
 
   private updateConstructionTowerSpin(

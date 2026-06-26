@@ -8,7 +8,6 @@ import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import type {
   BuildingDetailMesh,
   ExtractorRig,
-  FactoryBuildSpotRig,
   RadarRig,
   ResourceConverterRig,
   WindTurbineRig,
@@ -120,7 +119,7 @@ export type EntityMesh = {
    *  so rebuilds / destroy() know what to clean up alongside the primary
    *  body. Empty / undefined for units. */
   buildingDetails?: BuildingDetailMesh[];
-  factoryBuildSpotRig?: FactoryBuildSpotRig;
+  isFactoryConstructionHost?: boolean;
   windRig?: WindTurbineRig;
   extractorRig?: ExtractorRig;
   solarRig?: SolarRig;

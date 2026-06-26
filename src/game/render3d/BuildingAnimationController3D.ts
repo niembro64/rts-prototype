@@ -151,7 +151,7 @@ export class BuildingAnimationController3D {
       this.updateExtractorAnimationQueue(entry);
     }
     this.resourcePylonAnimator.register(entity, mesh);
-    if (mesh.factoryBuildSpotRig) {
+    if (mesh.isFactoryConstructionHost) {
       const entry = addAnimatedBuildingEntry(
         this.factoryBuildings,
         this.factoryBuildingIndexById,
@@ -183,7 +183,7 @@ export class BuildingAnimationController3D {
       const entry = addAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, entity, mesh);
       this.updateRadarAnimationQueue(entry);
     }
-    if (mesh.factoryBuildSpotRig) {
+    if (mesh.isFactoryConstructionHost) {
       const entry = addAnimatedBuildingEntry(
         this.factoryBuildings,
         this.factoryBuildingIndexById,
@@ -223,7 +223,10 @@ export class BuildingAnimationController3D {
   update(
     spinDt: number,
     currentDtMs: number,
-    timeMs: number,
+    // Wall-clock animation time — currently unused since the factory
+    // build-spot ghost orbs were retired, but kept on the building-
+    // animation tick signature for time-driven animators.
+    _timeMs: number,
   ): void {
     this.resourcePylonAnimator.refreshActiveQueue();
     this.updateActiveSolarAnimations();
@@ -247,14 +250,6 @@ export class BuildingAnimationController3D {
           emitterVisualActive = true;
         }
       });
-      this.constructionVisuals.updateFactoryBuildSpot(
-        mesh.factoryBuildSpotRig,
-        entity,
-        detailsReady,
-        mesh.buildingCachedWidth ?? entity.building?.width ?? 100,
-        mesh.buildingCachedDepth ?? entity.building?.height ?? 100,
-        timeMs,
-      );
       if (this.factoryBuildSpotActive(entry) || emitterVisualActive) {
         i++;
       } else {
