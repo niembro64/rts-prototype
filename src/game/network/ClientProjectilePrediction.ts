@@ -37,7 +37,7 @@ import { getSimWasm } from '../sim-wasm/init';
 import type { PredictionStep } from './ClientPredictionCadence';
 import type { ServerTarget } from './ClientPredictionTargets';
 
-type ClientProjectilePredictionResult = {
+export type ClientProjectilePredictionResult = {
   becameLineProjectile: boolean;
   shouldDelete: boolean;
   targetSettled: boolean;
@@ -60,17 +60,76 @@ const _clientProjectileVelocityScratch = { x: 0, y: 0, z: 0 };
 const _clientProjectilePredictionWind = { x: 0, y: 0, z: 0 };
 const _clientProjectileTargetPositionScratch = { x: 0, y: 0, z: 0 };
 const _clientProjectileTargetVelocityScratch = { x: 0, y: 0, z: 0 };
-const _clientProjectilePosX = new Float64Array(2);
-const _clientProjectilePosY = new Float64Array(2);
-const _clientProjectilePosZ = new Float64Array(2);
-const _clientProjectileVelX = new Float64Array(2);
-const _clientProjectileVelY = new Float64Array(2);
-const _clientProjectileVelZ = new Float64Array(2);
-const _clientProjectileAccelX = new Float64Array(2);
-const _clientProjectileAccelY = new Float64Array(2);
-const _clientProjectileAccelZ = new Float64Array(2);
-const _clientProjectileAirDragCoefficient = new Float64Array(2);
-const _clientProjectileInvMass = new Float64Array(2);
+// Packed projectile integration buffers, grown on demand to hold every
+// active projectile plus its optional correction target in a single
+// projectileIntegrateStepBatch call per frame (mirrors the batched unit
+// prediction path; never shrunk to avoid per-frame allocation churn).
+let _clientProjectileBatchCapacity = 0;
+let _clientProjectilePosX = new Float64Array(0);
+let _clientProjectilePosY = new Float64Array(0);
+let _clientProjectilePosZ = new Float64Array(0);
+let _clientProjectileVelX = new Float64Array(0);
+let _clientProjectileVelY = new Float64Array(0);
+let _clientProjectileVelZ = new Float64Array(0);
+let _clientProjectileAccelX = new Float64Array(0);
+let _clientProjectileAccelY = new Float64Array(0);
+let _clientProjectileAccelZ = new Float64Array(0);
+let _clientProjectileAirDragCoefficient = new Float64Array(0);
+let _clientProjectileInvMass = new Float64Array(0);
+
+function ensureClientProjectileBatchCapacity(slots: number): void {
+  if (slots <= _clientProjectileBatchCapacity) return;
+  const cap = Math.max(slots, _clientProjectileBatchCapacity === 0 ? 8 : _clientProjectileBatchCapacity * 2);
+  _clientProjectilePosX = new Float64Array(cap);
+  _clientProjectilePosY = new Float64Array(cap);
+  _clientProjectilePosZ = new Float64Array(cap);
+  _clientProjectileVelX = new Float64Array(cap);
+  _clientProjectileVelY = new Float64Array(cap);
+  _clientProjectileVelZ = new Float64Array(cap);
+  _clientProjectileAccelX = new Float64Array(cap);
+  _clientProjectileAccelY = new Float64Array(cap);
+  _clientProjectileAccelZ = new Float64Array(cap);
+  _clientProjectileAirDragCoefficient = new Float64Array(cap);
+  _clientProjectileInvMass = new Float64Array(cap);
+  _clientProjectileBatchCapacity = cap;
+}
+
+type ClientProjectileBatchSlot = {
+  entity: Entity;
+  selfSlot: number;
+  targetSlot: number;
+  hasTarget: boolean;
+  isHoming: boolean;
+  skip: boolean;
+};
+const _clientProjectileBatchSlots: ClientProjectileBatchSlot[] = [];
+function ensureClientProjectileBatchSlot(i: number): ClientProjectileBatchSlot {
+  let slot = _clientProjectileBatchSlots[i];
+  if (slot === undefined) {
+    slot = {
+      entity: null as unknown as Entity,
+      selfSlot: -1,
+      targetSlot: -1,
+      hasTarget: false,
+      isHoming: false,
+      skip: true,
+    };
+    _clientProjectileBatchSlots[i] = slot;
+  }
+  return slot;
+}
+
+function ensureClientProjectileResult(
+  out: ClientProjectilePredictionResult[],
+  i: number,
+): ClientProjectilePredictionResult {
+  let result = out[i];
+  if (result === undefined) {
+    result = { becameLineProjectile: false, shouldDelete: false, targetSettled: true };
+    out[i] = result;
+  }
+  return result;
+}
 const _clientHomingOriginState: KinematicState3 = {
   position: { x: 0, y: 0, z: 0 },
   velocity: { x: 0, y: 0, z: 0 },
@@ -381,134 +440,182 @@ function applyProjectileTargetDrift(
   );
 }
 
-export function applyClientProjectilePrediction(options: {
+export type ClientProjectilePredictionItem = {
   entity: Entity;
+  target: ServerTarget | undefined;
+};
+
+/** Advance every active travelling projectile's client visual prediction in
+ *  one batched pass. All projectiles (and their optional rocket correction
+ *  targets) are packed into the shared buffers and integrated with a SINGLE
+ *  projectileIntegrateStepBatch call per frame, mirroring the batched unit
+ *  prediction path — instead of one WASM boundary crossing per projectile.
+ *  `out` is a caller-owned, reused result array (one entry per input item);
+ *  it is grown/reused in place to avoid per-frame allocation. */
+export function applyClientProjectileVisualPredictionBatch(options: {
+  items: ClientProjectilePredictionItem[];
   predictionStep: PredictionStep;
-  target?: ServerTarget;
   movPosBlend: number;
   movVelBlend: number;
   mapWidth: number;
   mapHeight: number;
   wind: PredictionWind | undefined;
   getEntity: (id: EntityId) => Entity | undefined;
-}): ClientProjectilePredictionResult {
+  out: ClientProjectilePredictionResult[];
+}): ClientProjectilePredictionResult[] {
   const {
-    entity,
+    items,
     predictionStep,
-    target,
     movPosBlend,
     movVelBlend,
     mapWidth,
     mapHeight,
     wind,
     getEntity,
+    out,
   } = options;
-  const proj = entity.projectile;
-  if (!proj) return { becameLineProjectile: false, shouldDelete: true, targetSettled: true };
-  if (isRayType(proj.projectileType)) {
-    return { becameLineProjectile: true, shouldDelete: false, targetSettled: true };
-  }
+  const count = items.length;
+  out.length = count;
+  if (count === 0) return out;
 
   const entityDeltaMs = predictionStep.entityDeltaMs;
   const dt = entityDeltaMs / 1000;
-  const timeAliveBeforeStep = proj.timeAlive;
-  proj.timeAlive += entityDeltaMs;
-  const shot = proj.config.shot as ProjectileShot;
-  const airDragCoefficient = getProjectileAirDragCoefficient(shot);
-  const invMass = shot.mass > 1e-6 ? 1 / shot.mass : 0;
   const predictionWind = wind ?? STILL_AIR;
   _clientProjectilePredictionWind.x = Number.isFinite(predictionWind.x) ? predictionWind.x : 0;
   _clientProjectilePredictionWind.y = Number.isFinite(predictionWind.y) ? predictionWind.y : 0;
   _clientProjectilePredictionWind.z = Number.isFinite(predictionWind.z) ? predictionWind.z : 0;
 
-  // Travelling projectiles dead-reckon every frame. Rocket velocity
-  // updates also install a separate authoritative correction target;
-  // this function advances that target with the same gravity / homing /
-  // terrain-follow math, then applies the movement position + velocity
-  // EMA channels to the rendered projectile. Reflection events still
-  // snap before reaching this path so their tails kink at the exact hit.
-  const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
-  _clientProjectileVelocityScratch.x = proj.velocityX;
-  _clientProjectileVelocityScratch.y = proj.velocityY;
-  _clientProjectileVelocityScratch.z = proj.velocityZ;
-  const missileSteered = applyClientMissileHomingVelocity({
-    entity,
-    dt,
-    timeAliveForHomingMs: timeAliveBeforeStep,
-    position,
-    velocity: _clientProjectileVelocityScratch,
-    getEntity,
-  });
-  const entityAccel = resolveProjectileNetAcceleration({
-    entity,
-    dt,
-    timeAliveForHomingMs: timeAliveBeforeStep,
-    position,
-    velocity: _clientProjectileVelocityScratch,
-    mapWidth,
-    mapHeight,
-    getEntity,
-  }, _clientProjectileEntityAccel);
-  if (missileSteered) entityAccel.isHoming = true;
+  ensureClientProjectileBatchCapacity(count * 2);
+
+  // Pass A — per-projectile steering + net acceleration, packed into the
+  // shared integration buffers. Travelling projectiles dead-reckon every
+  // frame; a rocket velocity update also installs a separate authoritative
+  // correction target advanced with the same gravity / homing / terrain-
+  // follow math (packed as a second slot) so the movement position +
+  // velocity EMA channels can blend the rendered projectile toward it.
+  // Reflection events still snap before reaching this path.
+  let packed = 0;
+  for (let i = 0; i < count; i++) {
+    const item = items[i];
+    const entity = item.entity;
+    const result = ensureClientProjectileResult(out, i);
+    const slot = ensureClientProjectileBatchSlot(i);
+    slot.entity = entity;
+    slot.hasTarget = false;
+    slot.isHoming = false;
+    slot.skip = true;
+
+    const proj = entity.projectile;
+    if (!proj) {
+      result.becameLineProjectile = false;
+      result.shouldDelete = true;
+      result.targetSettled = true;
+      continue;
+    }
+    if (isRayType(proj.projectileType)) {
+      result.becameLineProjectile = true;
+      result.shouldDelete = false;
+      result.targetSettled = true;
+      continue;
+    }
+
+    const timeAliveBeforeStep = proj.timeAlive;
+    proj.timeAlive += entityDeltaMs;
+    const shot = proj.config.shot as ProjectileShot;
+    const airDragCoefficient = getProjectileAirDragCoefficient(shot);
+    const invMass = shot.mass > 1e-6 ? 1 / shot.mass : 0;
+
+    const position = getEntityPosition3d(entity, _clientProjectilePositionScratch);
+    _clientProjectileVelocityScratch.x = proj.velocityX;
+    _clientProjectileVelocityScratch.y = proj.velocityY;
+    _clientProjectileVelocityScratch.z = proj.velocityZ;
+    const missileSteered = applyClientMissileHomingVelocity({
+      entity,
+      dt,
+      timeAliveForHomingMs: timeAliveBeforeStep,
+      position,
+      velocity: _clientProjectileVelocityScratch,
+      getEntity,
+    });
+    const entityAccel = resolveProjectileNetAcceleration({
+      entity,
+      dt,
+      timeAliveForHomingMs: timeAliveBeforeStep,
+      position,
+      velocity: _clientProjectileVelocityScratch,
+      mapWidth,
+      mapHeight,
+      getEntity,
+    }, _clientProjectileEntityAccel);
+    if (missileSteered) entityAccel.isHoming = true;
+    slot.isHoming = entityAccel.isHoming;
+
+    const selfSlot = packed++;
+    slot.selfSlot = selfSlot;
+    _clientProjectilePosX[selfSlot] = position.x;
+    _clientProjectilePosY[selfSlot] = position.y;
+    _clientProjectilePosZ[selfSlot] = position.z;
+    _clientProjectileVelX[selfSlot] = _clientProjectileVelocityScratch.x;
+    _clientProjectileVelY[selfSlot] = _clientProjectileVelocityScratch.y;
+    _clientProjectileVelZ[selfSlot] = _clientProjectileVelocityScratch.z;
+    _clientProjectileAccelX[selfSlot] = entityAccel.x;
+    _clientProjectileAccelY[selfSlot] = entityAccel.y;
+    _clientProjectileAccelZ[selfSlot] = entityAccel.z;
+    _clientProjectileAirDragCoefficient[selfSlot] = airDragCoefficient;
+    _clientProjectileInvMass[selfSlot] = invMass;
+
+    const target = item.target;
+    if (target !== undefined) {
+      _clientProjectileTargetPositionScratch.x = target.x;
+      _clientProjectileTargetPositionScratch.y = target.y;
+      _clientProjectileTargetPositionScratch.z = target.z;
+      _clientProjectileTargetVelocityScratch.x = target.velocityX;
+      _clientProjectileTargetVelocityScratch.y = target.velocityY;
+      _clientProjectileTargetVelocityScratch.z = target.velocityZ;
+      applyClientMissileHomingVelocity({
+        entity,
+        dt,
+        timeAliveForHomingMs: timeAliveBeforeStep,
+        position: _clientProjectileTargetPositionScratch,
+        velocity: _clientProjectileTargetVelocityScratch,
+        getEntity,
+      });
+      const targetAccel = resolveProjectileNetAcceleration({
+        entity,
+        dt,
+        timeAliveForHomingMs: timeAliveBeforeStep,
+        position: _clientProjectileTargetPositionScratch,
+        velocity: _clientProjectileTargetVelocityScratch,
+        mapWidth,
+        mapHeight,
+        getEntity,
+      }, _clientProjectileTargetAccel);
+      const targetSlot = packed++;
+      slot.hasTarget = true;
+      slot.targetSlot = targetSlot;
+      _clientProjectilePosX[targetSlot] = target.x;
+      _clientProjectilePosY[targetSlot] = target.y;
+      _clientProjectilePosZ[targetSlot] = target.z;
+      _clientProjectileVelX[targetSlot] = _clientProjectileTargetVelocityScratch.x;
+      _clientProjectileVelY[targetSlot] = _clientProjectileTargetVelocityScratch.y;
+      _clientProjectileVelZ[targetSlot] = _clientProjectileTargetVelocityScratch.z;
+      _clientProjectileAccelX[targetSlot] = targetAccel.x;
+      _clientProjectileAccelY[targetSlot] = targetAccel.y;
+      _clientProjectileAccelZ[targetSlot] = targetAccel.z;
+      _clientProjectileAirDragCoefficient[targetSlot] = airDragCoefficient;
+      _clientProjectileInvMass[targetSlot] = invMass;
+    }
+    slot.skip = false;
+  }
+
+  if (packed === 0) return out;
 
   const sim = getSimWasm();
   if (sim === undefined) {
     throw new Error('Client projectile prediction requires initialized sim-wasm');
   }
-  _clientProjectilePosX[0] = position.x;
-  _clientProjectilePosY[0] = position.y;
-  _clientProjectilePosZ[0] = position.z;
-  _clientProjectileVelX[0] = _clientProjectileVelocityScratch.x;
-  _clientProjectileVelY[0] = _clientProjectileVelocityScratch.y;
-  _clientProjectileVelZ[0] = _clientProjectileVelocityScratch.z;
-  _clientProjectileAccelX[0] = entityAccel.x;
-  _clientProjectileAccelY[0] = entityAccel.y;
-  _clientProjectileAccelZ[0] = entityAccel.z;
-  _clientProjectileAirDragCoefficient[0] = airDragCoefficient;
-  _clientProjectileInvMass[0] = invMass;
-
-  const hasTarget = target !== undefined;
-  const batchCount = hasTarget ? 2 : 1;
-  if (hasTarget) {
-    _clientProjectileTargetPositionScratch.x = target.x;
-    _clientProjectileTargetPositionScratch.y = target.y;
-    _clientProjectileTargetPositionScratch.z = target.z;
-    _clientProjectileTargetVelocityScratch.x = target.velocityX;
-    _clientProjectileTargetVelocityScratch.y = target.velocityY;
-    _clientProjectileTargetVelocityScratch.z = target.velocityZ;
-    applyClientMissileHomingVelocity({
-      entity,
-      dt,
-      timeAliveForHomingMs: timeAliveBeforeStep,
-      position: _clientProjectileTargetPositionScratch,
-      velocity: _clientProjectileTargetVelocityScratch,
-      getEntity,
-    });
-    const targetAccel = resolveProjectileNetAcceleration({
-      entity,
-      dt,
-      timeAliveForHomingMs: timeAliveBeforeStep,
-      position: _clientProjectileTargetPositionScratch,
-      velocity: _clientProjectileTargetVelocityScratch,
-      mapWidth,
-      mapHeight,
-      getEntity,
-    }, _clientProjectileTargetAccel);
-    _clientProjectilePosX[1] = target.x;
-    _clientProjectilePosY[1] = target.y;
-    _clientProjectilePosZ[1] = target.z;
-    _clientProjectileVelX[1] = _clientProjectileTargetVelocityScratch.x;
-    _clientProjectileVelY[1] = _clientProjectileTargetVelocityScratch.y;
-    _clientProjectileVelZ[1] = _clientProjectileTargetVelocityScratch.z;
-    _clientProjectileAccelX[1] = targetAccel.x;
-    _clientProjectileAccelY[1] = targetAccel.y;
-    _clientProjectileAccelZ[1] = targetAccel.z;
-    _clientProjectileAirDragCoefficient[1] = airDragCoefficient;
-    _clientProjectileInvMass[1] = invMass;
-  }
-
   const integrated = sim.projectileIntegrateStepBatch(
-    batchCount,
+    packed,
     _clientProjectilePosX,
     _clientProjectilePosY,
     _clientProjectilePosZ,
@@ -525,44 +632,71 @@ export function applyClientProjectilePrediction(options: {
     _clientProjectilePredictionWind.z,
     dt,
   );
-  if (integrated !== batchCount) {
+  if (integrated !== packed) {
     throw new Error('Client projectile prediction integration failed');
   }
-  entity.transform.x = _clientProjectilePosX[0];
-  entity.transform.y = _clientProjectilePosY[0];
-  entity.transform.z = _clientProjectilePosZ[0];
-  proj.velocityX = _clientProjectileVelX[0];
-  proj.velocityY = _clientProjectileVelY[0];
-  proj.velocityZ = _clientProjectileVelZ[0];
 
-  if (hasTarget) {
-    target.x = _clientProjectilePosX[1];
-    target.y = _clientProjectilePosY[1];
-    target.z = _clientProjectilePosZ[1];
-    target.velocityX = _clientProjectileVelX[1];
-    target.velocityY = _clientProjectileVelY[1];
-    target.velocityZ = _clientProjectileVelZ[1];
-    target.rotation = Math.atan2(target.velocityY, target.velocityX);
+  // Pass B — unpack integrated state, apply the rocket correction-target
+  // EMA drift, and decide each projectile's outcome.
+  for (let i = 0; i < count; i++) {
+    const slot = _clientProjectileBatchSlots[i];
+    if (slot.skip) continue;
+    const entity = slot.entity;
+    const proj = entity.projectile;
+    const result = out[i];
+    if (!proj) {
+      result.becameLineProjectile = false;
+      result.shouldDelete = true;
+      result.targetSettled = true;
+      continue;
+    }
+    const s = slot.selfSlot;
+    entity.transform.x = _clientProjectilePosX[s];
+    entity.transform.y = _clientProjectilePosY[s];
+    entity.transform.z = _clientProjectilePosZ[s];
+    proj.velocityX = _clientProjectileVelX[s];
+    proj.velocityY = _clientProjectileVelY[s];
+    proj.velocityZ = _clientProjectileVelZ[s];
+
+    const target = items[i].target;
+    const hasTarget = slot.hasTarget && target !== undefined;
+    if (hasTarget) {
+      const t = slot.targetSlot;
+      target.x = _clientProjectilePosX[t];
+      target.y = _clientProjectilePosY[t];
+      target.z = _clientProjectilePosZ[t];
+      target.velocityX = _clientProjectileVelX[t];
+      target.velocityY = _clientProjectileVelY[t];
+      target.velocityZ = _clientProjectileVelZ[t];
+      target.rotation = Math.atan2(target.velocityY, target.velocityX);
+    }
+
+    if (slot.isHoming) {
+      entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
+    }
+    const targetSettled = hasTarget
+      ? applyProjectileTargetDrift(entity, target, movPosBlend, movVelBlend)
+      : true;
+
+    const groundPosition = getEntityPosition3d(entity, _clientProjectilePositionScratch);
+    const groundZ = getSurfaceHeight(groundPosition.x, groundPosition.y, mapWidth, mapHeight, LAND_CELL_SIZE);
+    if (groundPosition.z <= groundZ && proj.velocityZ <= 0) {
+      entity.transform.z = groundZ;
+      result.becameLineProjectile = false;
+      result.shouldDelete = true;
+      result.targetSettled = targetSettled;
+      continue;
+    }
+    // Auto-remove if this projectile has a finite runtime timeout.
+    if (Number.isFinite(proj.maxLifespan) && proj.timeAlive > proj.maxLifespan) {
+      result.becameLineProjectile = false;
+      result.shouldDelete = true;
+      result.targetSettled = targetSettled;
+      continue;
+    }
+    result.becameLineProjectile = false;
+    result.shouldDelete = false;
+    result.targetSettled = targetSettled;
   }
-
-  if (entityAccel.isHoming) {
-    entity.transform.rotation = Math.atan2(proj.velocityY, proj.velocityX);
-  }
-  const targetSettled = hasTarget
-    ? applyProjectileTargetDrift(entity, target, movPosBlend, movVelBlend)
-    : true;
-
-  const groundPosition = getEntityPosition3d(entity, _clientProjectilePositionScratch);
-  const groundZ = getSurfaceHeight(groundPosition.x, groundPosition.y, mapWidth, mapHeight, LAND_CELL_SIZE);
-  if (groundPosition.z <= groundZ && proj.velocityZ <= 0) {
-    entity.transform.z = groundZ;
-    return { becameLineProjectile: false, shouldDelete: true, targetSettled };
-  }
-
-  // Auto-remove if this projectile has a finite runtime timeout.
-  if (Number.isFinite(proj.maxLifespan) && proj.timeAlive > proj.maxLifespan) {
-    return { becameLineProjectile: false, shouldDelete: true, targetSettled };
-  }
-
-  return { becameLineProjectile: false, shouldDelete: false, targetSettled };
+  return out;
 }

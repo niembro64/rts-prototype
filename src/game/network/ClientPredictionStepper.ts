@@ -12,7 +12,11 @@ import {
   applyClientUnitVisualPredictionBatch,
   clientUnitPredictionIsSettled,
 } from './ClientUnitPrediction';
-import { applyClientProjectilePrediction } from './ClientProjectilePrediction';
+import {
+  applyClientProjectileVisualPredictionBatch,
+  type ClientProjectilePredictionItem,
+} from './ClientProjectilePrediction';
+import type { ClientProjectilePredictionResult } from './ClientProjectilePrediction';
 import type { ProjectileSpawnQueue } from './ProjectileSpawnQueue';
 import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 import {
@@ -24,6 +28,21 @@ import {
 } from './ClientPredictionTargets';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import type { ClientPredictionTargetAgeStats } from './ClientPredictionDiagnostics';
+
+// Reused per-frame work + result buffers for the batched projectile
+// prediction pass — gathered once, integrated in a single WASM call, then
+// consumed below. Never shrunk, so no per-frame allocation.
+const _projectilePredictionItems: ClientProjectilePredictionItem[] = [];
+const _projectilePredictionResults: ClientProjectilePredictionResult[] = [];
+const _projectilePredictionIds: EntityId[] = [];
+function ensureProjectilePredictionItem(i: number): ClientProjectilePredictionItem {
+  let item = _projectilePredictionItems[i];
+  if (item === undefined) {
+    item = { entity: null as unknown as Entity, target: undefined };
+    _projectilePredictionItems[i] = item;
+  }
+  return item;
+}
 
 type ClientPredictionStepperOptions = {
   entities: Map<EntityId, Entity>;
@@ -476,6 +495,15 @@ export class ClientPredictionStepper {
       }
     }
 
+    // Gather every active projectile (and its rocket correction target) into
+    // a reused work list, then integrate them all in a single batched WASM
+    // call (one getEntity closure for the whole frame instead of one per
+    // projectile). The per-id ordering of a Set iteration is stable, so the
+    // results array lines up with the gathered ids below.
+    const getProjectilePredictionEntity = (entityId: EntityId) => entities.get(entityId);
+    let projectileItemCount = 0;
+    const projectileIds = _projectilePredictionIds;
+    projectileIds.length = 0;
     for (const id of activeProjectilePredictionIds) {
       const entity = entities.get(id);
       if (entity === undefined || entity.projectile === null) {
@@ -495,33 +523,46 @@ export class ClientPredictionStepper {
         projectileTarget === undefined ? undefined : projectileTarget.updatedAtMs,
         now,
       );
-      const predictionStep = predictionCadence.consumeDelta(deltaMs);
+      const item = ensureProjectilePredictionItem(projectileItemCount);
+      item.entity = entity;
+      item.target = projectileTarget;
+      projectileIds[projectileItemCount] = id;
+      projectileItemCount++;
+    }
 
-      const projectileResult = applyClientProjectilePrediction({
-        entity,
+    if (projectileItemCount > 0) {
+      _projectilePredictionItems.length = projectileItemCount;
+      const predictionStep = predictionCadence.consumeDelta(deltaMs);
+      const projectileResults = applyClientProjectileVisualPredictionBatch({
+        items: _projectilePredictionItems,
         predictionStep,
-        target: projectileTarget,
         movPosBlend,
         movVelBlend,
         mapWidth,
         mapHeight,
         wind,
-        getEntity: (entityId) => entities.get(entityId),
+        getEntity: getProjectilePredictionEntity,
+        out: _projectilePredictionResults,
       });
-      if (projectileResult.becameLineProjectile) {
-        activeBeamPathIds.add(id);
-        activeProjectilePredictionIds.delete(id);
-        serverTargets.delete(id);
-        updateProjectileRenderSpatialIndex(entity);
-        markLineProjectilesChanged();
-        markBeamHostRenderDirty(entity);
-        continue;
-      }
-      if (projectileResult.shouldDelete) {
-        deleteEntityLocalState(entity.id);
-      } else {
-        if (projectileResult.targetSettled) serverTargets.delete(id);
-        updateProjectileRenderSpatialIndex(entity);
+      for (let i = 0; i < projectileItemCount; i++) {
+        const id = projectileIds[i];
+        const entity = _projectilePredictionItems[i].entity;
+        const projectileResult = projectileResults[i];
+        if (projectileResult.becameLineProjectile) {
+          activeBeamPathIds.add(id);
+          activeProjectilePredictionIds.delete(id);
+          serverTargets.delete(id);
+          updateProjectileRenderSpatialIndex(entity);
+          markLineProjectilesChanged();
+          markBeamHostRenderDirty(entity);
+          continue;
+        }
+        if (projectileResult.shouldDelete) {
+          deleteEntityLocalState(entity.id);
+        } else {
+          if (projectileResult.targetSettled) serverTargets.delete(id);
+          updateProjectileRenderSpatialIndex(entity);
+        }
       }
     }
     return targetAgeStats;

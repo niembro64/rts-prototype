@@ -71,27 +71,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
       support is found once per body per tick, not twice. TS-side path; no
       determinism mirror touched.
 
-[5] Client projectile visual prediction crosses the WASM boundary once per
-    projectile per frame and allocates a fresh closure per projectile per frame
-    Category: optimization | Severity: MEDIUM
-    Evidence: src/game/network/ClientPredictionStepper.ts:477-524 loops per
-      projectile and allocates a new `getEntity: (id) => entities.get(id)` arrow
-      at :507 (the only getEntity in the file — no reusable bound field).
-      ClientProjectilePrediction.ts:470-471 (batchCount = hasTarget?2:1) + :510
-      issue one sim.projectileIntegrateStepBatch PER projectile; :424 confirms no
-      early-out. Contrast the batched unit path
-      ClientUnitPrediction.ts:698 applyClientUnitVisualPredictionBatch (one WASM
-      call for all entities). Driven per frame via RtsScene3D.ts:702 ->
-      RtsScene3DPredictionPhase.ts:36.
-    Design: Browser Performance Rules ("no per-unit/per-frame allocation"); "TS
-      Coordinates, WASM Computes" ("hot data should cross the JS/WASM boundary as
-      rarely as the design allows").
-    Fix: Pack all active projectiles (+ optional correction targets) into the
-      existing module-scratch typed arrays in one pass, then issue a SINGLE
-      projectileIntegrateStepBatch for the frame (mirror the unit path). Hoist the
-      getEntity lambda to a reusable bound field. Client-only visual path, distinct
-      from the authoritative projectileSystem mirror.
-
 --- MISSING FUNCTIONALITY / BAR ---
 
 [10] Targeting merges full-sight and radar into ONE coverage mask; there is no
