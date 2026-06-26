@@ -16,19 +16,7 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-[0]  moves towards its target. And now with our fabricator being above this unit when it is created, the
-  unit is basically immediately destroying the fabricator that created it fi there is an enemy unit
-  around.
-
-  This is my solution to tell this unit (and any future units that may have this problem) to never fire
-  and never lock on (i.e. don't stop if we are in fight stop or patrol) etc.
-
-  I think you are undersatanding what I need, and I think we need this
-  "preventLockOnIfMyTeamIsAboveMe", because both a turret and a unit can have a lock on. Oh we also
-  need to do this for all towers, as the towers also have lock on.
-
-  So yeah for all turrets, units, and towers, we need this new booelan that will basically prevent lock
-  on
+[0]  moves towards its target. And now with our fabricator being above this unit when it is created, the unit is basically immediately destroying the fabricator that created it fi there is an enemy unit around. This is my solution to tell this unit (and any future units that may have this problem) to never fire and never lock on (i.e. don't stop if we are in fight stop or patrol) etc. I think you are undersatanding what I need, and I think we need this "preventLockOnIfMyTeamIsAboveMe", because both a turret and a unit can have a lock on. Oh we also need to do this for all towers, as the towers also have lock on. So yeah for all turrets, units, and towers, we need this new booelan that will basically prevent lock on so that we don't accidentally destroy our own teammates (our) stuff above it. 
 
 ================================================================================
 DEEP-DIVE AUDIT (2026-06-24) — top 15 high-priority items
