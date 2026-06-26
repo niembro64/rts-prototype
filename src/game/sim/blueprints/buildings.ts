@@ -237,7 +237,7 @@ export function getFactoryBuildingVisualMetrics(
     // The fabricator body is now the hovering torus, so its top (where the
     // health/build bars float) is the ring height plus the ring's tube radius —
     // not the old central construction tower.
-    visualTop: FABRICATOR_TORUS_HOVER_HEIGHT + fabricatorTorusRingRadius(width, depth) * 0.22 + capRadius,
+    visualTop: fabricatorTorusHoverHeight() + fabricatorTorusRingRadius(width, depth) * 0.22 + capRadius,
   };
 }
 
@@ -376,11 +376,14 @@ export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): 
 
 // ── Fabricator torus geometry (single source of truth) ──────────────────────
 // The fabricator is a hovering torus. Its body floats 1.2x the LARGEST unit's
-// collision DIAMETER above the ground, computed from the roster (never hand-
-// tuned), so even the biggest unit fits comfortably under it and moves freely
-// beneath. The renderer (torus + pylon rigs), the spawn height, and the turret
-// mounts all read this geometry, so they can never drift apart.
-function maxUnitCollisionRadius(): number {
+// collision DIAMETER above the ground so even the biggest unit fits comfortably
+// under it and moves freely beneath. The renderer (torus + pylon rigs), the
+// spawn height, and the turret mounts all read this geometry, so they can never
+// drift apart.
+//
+// Computed live from the current unit roster on every call (a real-time check,
+// never a baked constant), so it always reflects the actual largest unit.
+export function maxUnitCollisionRadius(): number {
   let max = 0;
   for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     if (bp.radius.collision > max) max = bp.radius.collision;
@@ -388,8 +391,11 @@ function maxUnitCollisionRadius(): number {
   return max;
 }
 
-/** Height of the fabricator torus body = 1.2 x the largest unit's collision diameter. */
-export const FABRICATOR_TORUS_HOVER_HEIGHT = 1.2 * (2 * maxUnitCollisionRadius());
+/** Height of the fabricator torus body = 1.2 x the largest unit's collision
+ *  diameter, recomputed live from the roster each call. */
+export function fabricatorTorusHoverHeight(): number {
+  return 1.2 * (2 * maxUnitCollisionRadius());
+}
 
 /** Radius of the torus ring — the circle the construction pylons hang on. */
 export function fabricatorTorusRingRadius(width: number, depth: number): number {
@@ -406,17 +412,18 @@ export function fabricatorTorusRingRadius(width: number, depth: number): number 
     const width = fabricator.gridWidth * BUILD_GRID_CELL_SIZE;
     const depth = fabricator.gridHeight * BUILD_GRID_CELL_SIZE;
     const ring = fabricatorTorusRingRadius(width, depth);
+    const hover = fabricatorTorusHoverHeight();
     let nextPylonX = -ring;
     for (const mount of fabricator.turrets) {
       const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
       if (turretBlueprint.spawn != null) {
         mount.mount.x = 0;
         mount.mount.y = 0;
-        mount.mount.z = FABRICATOR_TORUS_HOVER_HEIGHT;
+        mount.mount.z = hover;
       } else if (turretBlueprint.resourcePylon?.role === 'construction') {
         mount.mount.x = nextPylonX;
         mount.mount.y = 0;
-        mount.mount.z = FABRICATOR_TORUS_HOVER_HEIGHT;
+        mount.mount.z = hover;
         nextPylonX = ring;
       }
     }

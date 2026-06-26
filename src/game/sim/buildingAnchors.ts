@@ -1,7 +1,7 @@
 import type { Entity } from './types';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
-  FABRICATOR_TORUS_HOVER_HEIGHT,
+  fabricatorTorusHoverHeight,
   getFactoryBuildingVisualMetrics,
   getBuildingBlueprint,
 } from './blueprints';
@@ -46,7 +46,7 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
   // top midpoint a grounded building uses. This is what selection/picking and
   // the selection overlay center on, so they sit on the torus, not mid-air.
   if (entity.building?.hovering) {
-    return getBuildingBaseZ(entity) + FABRICATOR_TORUS_HOVER_HEIGHT;
+    return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight();
   }
   return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.5;
 }
@@ -60,7 +60,7 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
  */
 export function getBuildingCombatCenterZ(entity: Entity): number {
   if (entity.building?.hovering) {
-    return getBuildingBaseZ(entity) + FABRICATOR_TORUS_HOVER_HEIGHT;
+    return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight();
   }
   return entity.transform.z;
 }

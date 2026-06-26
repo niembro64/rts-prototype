@@ -14,7 +14,7 @@ import {
 import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
 import type { Entity } from '../sim/types';
 import { entityInstanceColorHex } from './EntityInstanceColor3D';
-import { entityLodRadius3D } from './EntityLod3D';
+import { entityLodProxyRadius3D } from './EntityLod3D';
 import { EntityLodProxyWebGpuRenderer3D } from './EntityLodProxyWebGpuRenderer3D';
 
 const ENTITY_LOD_PROXY_NEUTRAL_COLOR = 0xffffff;
@@ -281,7 +281,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       entity.transform.x,
       entity.transform.z,
       entity.transform.y,
-      entityLodRadius3D(entity),
+      entityLodProxyRadius3D(entity),
       ENTITY_LOD_PROXY_USE_TEAM_COLOR
         ? entityInstanceColorHex(entity)
         : ENTITY_LOD_PROXY_NEUTRAL_COLOR,
@@ -299,7 +299,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       entity.transform.x,
       entity.transform.z,
       entity.transform.y,
-      entityLodRadius3D(entity),
+      entityLodProxyRadius3D(entity),
       ENTITY_LOD_PROXY_USE_TEAM_COLOR
         ? entityInstanceColorHex(entity)
         : ENTITY_LOD_PROXY_NEUTRAL_COLOR,

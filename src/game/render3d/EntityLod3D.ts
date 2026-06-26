@@ -136,6 +136,54 @@ export function entityLodRadius3D(entity: Entity): number {
   return minEntityLodRadius();
 }
 
+/** First finite-positive value (NOT the max — unlike finitePositiveRadius),
+ *  floored to the min LOD radius. Lets the proxy honor a specific radius
+ *  channel (collision) with hitbox/visual only as fallbacks. */
+function firstFinitePositiveRadius(...values: Array<number | null | undefined>): number {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return Math.max(minEntityLodRadius(), value);
+    }
+  }
+  return minEntityLodRadius();
+}
+
+/**
+ * Radius the LOD PROXY is drawn at — the entity's COLLISION volume (its
+ * collision radius / hitbox), NOT the visual mesh size. The proxy exists to
+ * show the collision shape and nothing else, so it uses collision first, with
+ * hitbox -> visual only as fallbacks. Buildings already expose their collision
+ * footprint via targetRadius. (entityLodRadius3D — which uses the largest/visual
+ * radius — still drives the distance-based LOD switch; only the proxy's drawn
+ * size differs.)
+ */
+export function entityLodProxyRadius3D(entity: Entity): number {
+  const unit = entity.unit;
+  if (unit !== null) {
+    return firstFinitePositiveRadius(
+      unit.radius.collision,
+      unit.radius.hitbox,
+      unit.radius.visual,
+    );
+  }
+
+  const building = entity.building;
+  if (building !== null) {
+    return firstFinitePositiveRadius(
+      building.targetRadius,
+      Math.hypot(building.width, building.height) * 0.5,
+    );
+  }
+
+  const projectile = entity.projectile;
+  if (projectile !== null) {
+    const radius = projectile.config.shotProfile.runtime.radius;
+    return firstFinitePositiveRadius(radius.collision, radius.hitbox, radius.visual);
+  }
+
+  return minEntityLodRadius();
+}
+
 function entityLodFullDetailDistance3D(
   radius: number,
   multiplier: number = 1,

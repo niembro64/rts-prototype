@@ -19,7 +19,7 @@ import {
   cylinderGeom,
   detail,
 } from './BuildingMeshPrimitives3D';
-import { FABRICATOR_TORUS_HOVER_HEIGHT, fabricatorTorusRingRadius } from '../sim/blueprints';
+import { fabricatorTorusHoverHeight, fabricatorTorusRingRadius } from '../sim/blueprints';
 
 // Unit torus (ring radius 1, tube 0.22) for the hovering fabricator body. Scaled
 // per-instance to the footprint and laid flat (horizontal ring) at hover height.
@@ -94,7 +94,7 @@ export function buildFactoryMesh(
   const ringRadius = fabricatorTorusRingRadius(width, depth);
   torus.scale.set(ringRadius, ringRadius, ringRadius);
   torus.rotation.x = Math.PI / 2;
-  torus.position.y = FABRICATOR_TORUS_HOVER_HEIGHT;
+  torus.position.y = fabricatorTorusHoverHeight();
   details.push(detail(torus, 'medium', undefined, 'static'));
 
   // Build-bay visuals. These follow the FORMING UNIT (not the tower)

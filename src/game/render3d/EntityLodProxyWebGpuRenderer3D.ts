@@ -9,7 +9,7 @@ import {
 } from '@/config';
 import type { Entity } from '../sim/types';
 import { entityInstanceColorHex } from './EntityInstanceColor3D';
-import { entityLodRadius3D } from './EntityLod3D';
+import { entityLodProxyRadius3D } from './EntityLod3D';
 
 const GPU_BUFFER_USAGE_COPY_DST = 0x0008;
 const GPU_BUFFER_USAGE_VERTEX = 0x0020;
@@ -242,7 +242,7 @@ function writeProxyInstance(batch: GpuProxyBatch, slot: number, entity: Entity):
   data[offset] = Math.fround(entity.transform.x);
   data[offset + 1] = Math.fround(entity.transform.z);
   data[offset + 2] = Math.fround(entity.transform.y);
-  data[offset + 3] = Math.fround(entityLodRadius3D(entity));
+  data[offset + 3] = Math.fround(entityLodProxyRadius3D(entity));
   normalizeColorHex(
     ENTITY_LOD_PROXY_USE_TEAM_COLOR
       ? entityInstanceColorHex(entity)

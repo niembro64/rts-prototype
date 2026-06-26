@@ -1,7 +1,7 @@
 import type { WorldState } from './WorldState';
 import type { Entity } from './types';
 import type { BuildingGrid } from './buildGrid';
-import { getUnitBlueprint, FABRICATOR_TORUS_HOVER_HEIGHT } from './blueprints';
+import { getUnitBlueprint, fabricatorTorusHoverHeight } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import {
   COST_MULTIPLIER,
@@ -313,7 +313,7 @@ class FactoryProductionSystem {
     // Fabricator shells appear in the torus center high in the air and free-fall;
     // any other factory keeps the small surface clearance.
     const spawnClearance = factory.buildingBlueprintId === 'towerFabricator'
-      ? FABRICATOR_TORUS_HOVER_HEIGHT
+      ? fabricatorTorusHoverHeight()
       : getFactoryShellSpawnClearanceAboveSurface(bp);
     unit.transform.z = spawnSupport.groundZ
       + bp.bodyCenterHeight
