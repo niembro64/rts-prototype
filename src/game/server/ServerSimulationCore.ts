@@ -16,6 +16,7 @@ import type { BootstrappedServerWorld } from './ServerBootstrap';
 import { UnitForceSystem } from './UnitForceSystem';
 import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
 import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/projectileSystem';
+import { isBuildInProgress } from '../sim/buildableHelpers';
 
 type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
@@ -157,6 +158,12 @@ export class ServerSimulationCore {
     this.simulation.onBuildingSpawn = (newBuildings: Entity[]) => {
       for (const entity of newBuildings) {
         if (entity.building === null || entity.body !== null) continue;
+        // A building with no support surface (the hovering fabricator torus) is
+        // intangible at ground level: it gets NO collision body, so units walk
+        // freely underneath and freshly-spawned shells free-fall all the way to
+        // the ground. Its footprint is still reserved + it stays selectable/
+        // targetable via the entity spatial grid.
+        if (entity.building.supportSurface.kind === 'none') continue;
         const baseZ = entity.transform.z - entity.building.depth / 2;
         const body = this.physics.createBuildingBody(
           entity.transform.x,
@@ -195,6 +202,17 @@ export class ServerSimulationCore {
       if (!hasFiniteBodyKinematics(body)) {
         this.repairInvalidUnitBody(entity);
         continue;
+      }
+      // A unit shell still under construction is locked to its spawn column: no
+      // force (wind, knockback, collisions) can move it horizontally. It still
+      // free-falls in Z. Pin x/y back to the previously-synced value (its spawn
+      // anchor on the first tick) and zero horizontal velocity; the unit is
+      // released the tick it completes.
+      if (isBuildInProgress(entity.buildable)) {
+        body.x = entity.transform.x;
+        body.y = entity.transform.y;
+        body.vx = 0;
+        body.vy = 0;
       }
       entity.transform.x = body.x;
       entity.transform.y = body.y;

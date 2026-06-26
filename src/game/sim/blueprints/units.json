@@ -61,7 +61,7 @@
       "type": "wheels",
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
-        "driveForce": 300,
+        "driveForce": 150,
         "traction": 0.45
       },
       "config": {
@@ -155,7 +155,7 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 180,
+        "driveForce": 80,
         "traction": 0.75
       },
       "config": {
@@ -256,7 +256,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 300,
+        "driveForce": 130,
         "traction": 1
       },
       "config": {
@@ -371,7 +371,7 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 360,
+        "driveForce": 160,
         "traction": 0.75
       },
       "config": {
@@ -464,7 +464,7 @@
       "type": "wheels",
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
-        "driveForce": 450,
+        "driveForce": 250,
         "traction": 0.45
       },
       "config": {
@@ -556,7 +556,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 115,
+        "driveForce": 25,
         "traction": 1
       },
       "config": {
