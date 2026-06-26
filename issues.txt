@@ -154,22 +154,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
       patch only the buckets for entities that actually changed rather than
       clearing and rebuilding all ~25 lists.
 
---- MEMORY LEAKS ---
-
-[7] findStatic/findDynamicSupportSurface allocate a fresh WorldSupportSurface per
-    candidate inside the per-tick integration loop (GC churn at scale)
-    Category: memory-leak (per-tick GC churn) | Severity: MEDIUM
-    Evidence: src/game/server/PhysicsEngine3D.ts:997 and :1042 call
-      createWorldSupportSurface (src/game/sim/supportSurface.ts:25 returns a fresh
-      object literal) for every candidate, driven once per awake body per tick
-      from integrate():1114/:1141. Pooled-scratch precedent already exists in
-      UnitForceSystem.ts:103-104 (_forceSupportSurface / _forceProbeSupportSurface).
-    Design: Physics Model / Browser Performance Rules — the hot integration loop
-      must not churn the GC.
-    Fix: Reuse two preallocated WorldSupportSurface scratch instances (one static,
-      one dynamic), writing the best candidate in place, exactly as UnitForceSystem
-      already does.
-
 --- MISSING FUNCTIONALITY / BAR ---
 
 [10] Targeting merges full-sight and radar into ONE coverage mask; there is no

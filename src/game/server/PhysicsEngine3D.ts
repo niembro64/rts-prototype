@@ -83,6 +83,16 @@ type StaticSupportSurfaceContact = WorldSupportSurface & {
 type DynamicSupportSurfaceContact = WorldSupportSurface & {
   dynamicBody: Body3D;
 };
+// Reused per-find scratch for support-surface sampling. findStatic and
+// findDynamic each own one instance so their two results can coexist when
+// findSupportSurface compares them; the best candidate is written in place
+// rather than allocating a fresh WorldSupportSurface per candidate inside
+// the per-tick integration loop (mirrors UnitForceSystem's scratch reuse).
+const _findStaticSupportScratch =
+  createWorldSupportSurface() as StaticSupportSurfaceContact;
+const _findDynamicSupportScratch =
+  createWorldSupportSurface() as DynamicSupportSurfaceContact;
+
 type ApplyForceOptions = { canLaunchFromGround: boolean };
 
 const DEFAULT_APPLY_FORCE_OPTIONS: ApplyForceOptions = {
@@ -994,7 +1004,7 @@ export class PhysicsEngine3D {
       if (Math.abs(dy) > st.supportHalfY + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
 
       if (best === null || topZ > best.groundZ) {
-        const candidate = createWorldSupportSurface() as StaticSupportSurfaceContact;
+        const candidate = _findStaticSupportScratch;
         candidate.staticBody = st;
         best = writeBuildingSupportSurface(
           candidate,
@@ -1039,7 +1049,7 @@ export class PhysicsEngine3D {
       if (!groundPointNearTop && !sphereBottomNearTop) continue;
 
       if (best === null || topZ > best.groundZ) {
-        const candidate = createWorldSupportSurface() as DynamicSupportSurfaceContact;
+        const candidate = _findDynamicSupportScratch;
         candidate.dynamicBody = supportBody;
         best = writeUnitSupportSurface(
           candidate,
