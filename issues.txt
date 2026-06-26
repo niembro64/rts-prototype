@@ -25,28 +25,36 @@ Please always commit and push before and after any code changes we make.
     swim, zeros meaning "cannot act in that medium". Ground under water counts as
     ground; air vs water are mutually exclusive by the water line.
 
-    DONE: the design is fully specified in budget_design_philosophy.html (new
-    Physics-Model subsection "Locomotion is one fully-abstracted force profile across
-    ground, air, and water" + the summary-list bullet), including the medium-sampling
-    rule, the swim-lift = water-line analogue of hover lift, and the behaviour-
+    DONE - design: fully specified in budget_design_philosophy.html (Physics-Model
+    subsection "Locomotion is one fully-abstracted force profile across ground, air,
+    and water" + summary bullet) - medium-sampling rule, swim-lift, behaviour-
     preserving migration.
 
-    REMAINING (implementation; behaviour-preserving + opt-in so it validates against
-    identical replay checksums):
-    - Type (src/types/locomotionTypes.ts) + schema (blueprintSchema.json locomotion
-      variants) + codegen: add the per-medium force/traction/friction fields + swim
-      lift (+ randomisation/EMA siblings), all defaulting to 0/inert. The existing
-      single traction/driveForce become the ground terms.
-    - Rust force kernel (unit_kinetics.rs): add UF_ROW_* for the new terms; the
-      kernel already carries UF_FLAG_IN_WATER and water probes. Apply water force/
-      friction/swim-lift ONLY when submerged and the term is non-zero, leaving the
-      existing ground/air (hover/flying) paths byte-identical so current units are
-      unchanged. Add new fields to UNIT_FORCE_BATCH_STRIDE.
-    - UnitForceSystem.ts: marshal the new values + the above/below-water medium flag.
-    - units.json: author the new fields (ground = current values, air/water 0 to
-      preserve behaviour; then author a demonstrator amphibian/swimmer).
-    - Validate: deterministic:replay must stay IDENTICAL for existing units; in-app
-      tune swim/float/sink + walk-on-bottom (needs eyes).
+    DONE - implementation (behaviour-preserving, opt-in; replay BYTE-IDENTICAL to the
+    pre-[16] baseline across all 8 deterministic-replay cases, verified by stash/
+    rebuild diff; cargo 107, tsc 0, audit pass):
+    - Data model: UnitLocomotion (locomotionTypes.ts) + LocomotionPhysics schema +
+      codegen now carry the opt-in medium profile - groundFriction, airFriction,
+      water{Force,Traction,Friction}, and the swim-lift family (swimHeightUpwardForce
+      + swimGravityCounterUpwardForceRatio + randomisation/EMA siblings). driveForce/
+      traction remain the ground (and airborne) drive terms. Terms are OMITTED when
+      absent (not stored as 0) so existing units' locomotion object - and therefore
+      the canonical hash - is unchanged.
+    - Kernel (unit_kinetics.rs, UNIT_FORCE_BATCH_STRIDE 36->47): a swim branch (water
+      drive + bed-referenced swim lift + isotropic water drag) runs only when
+      submerged AND water/swim terms are authored; ground/air friction are additive
+      and gated on a non-zero term. Every existing unit authors none of these, so the
+      ground/air (hover/flying) paths are byte-identical.
+    - UnitForceSystem.ts marshals the new rows + a swimmer-gated open-water medium
+      flag + swim-lift RNG/EMA, mirroring the hover plumbing. swimHeightUpwardForce-
+      Smoothed is tick-only state excluded from the canonical hash.
+    - Demonstrator: unitHippo is now amphibious (treads + water/swim terms +
+      amphibiousAnywhere pathfinding); existing units keep absent water/air terms.
+
+    REMAINING (USER, in-app eyes only - keep this item until the user closes it):
+    build a Hippo and tune swim/float/sink + walk-on-bottom feel (waterForce/Traction/
+    Friction + swimHeightUpwardForce + swimGravityCounterUpwardForceRatio are starter
+    values). No code change is outstanding.
 
 ================================================================================
 FULLY-ABSTRACTED TURRET SYSTEM: SPAWN + RESOURCE-PYLON TURRETS (2026-06-25, user request)

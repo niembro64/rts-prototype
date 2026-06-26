@@ -135,6 +135,7 @@ function createUnitBaseEntity({
         ? { x: 0, y: 0, z: 0 }
         : null,
       hoverHeightUpwardForceSmoothed: null,
+      swimHeightUpwardForceSmoothed: null,
       stuckTicks: 0,
     },
   };

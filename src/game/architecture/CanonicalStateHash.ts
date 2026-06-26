@@ -182,6 +182,10 @@ function serializeUnit(value: Entity['unit']): CanonicalValue {
     thrustDirX: _thrustDirX,
     thrustDirY: _thrustDirY,
     surfaceNormal: _surfaceNormal,
+    // Tick-only EMA accumulator for swim lift; derived from body vz (which is
+    // hashed via the physics body), so excluding it keeps the canonical hash
+    // identical for units that never swim while still detecting real desyncs.
+    swimHeightUpwardForceSmoothed: _swimHeightUpwardForceSmoothed,
     ...canonicalUnit
   } = value;
   return toCanonicalValue(canonicalUnit);

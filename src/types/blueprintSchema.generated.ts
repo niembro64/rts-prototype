@@ -449,6 +449,15 @@ export type LegConfig = {
 export type LocomotionPhysics = {
   driveForce: number;
   traction: number;
+  groundFriction?: number;
+  airFriction?: number;
+  waterForce?: number;
+  waterTraction?: number;
+  waterFriction?: number;
+  swimGravityCounterUpwardForceRatio?: number;
+  swimHeightUpwardForce?: number;
+  swimHeightUpwardForceRandomizationAmount?: number;
+  swimHeightUpwardForceEMA?: number;
 };
 
 export type PathfindingTerrainMode = 'land' | 'anywhere';

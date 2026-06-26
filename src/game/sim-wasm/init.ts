@@ -3346,8 +3346,8 @@ export interface ProjectilePoolViews {
 export const QUAT_HOVER_BATCH_STRIDE = 14;
 
 /** Layout stride for `unitForceStepBatch`. Mirrors
- *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/lib.rs. */
-export const UNIT_FORCE_BATCH_STRIDE = 36;
+ *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
+export const UNIT_FORCE_BATCH_STRIDE = 47;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */

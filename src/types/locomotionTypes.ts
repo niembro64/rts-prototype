@@ -46,6 +46,54 @@ export type UnitLocomotion = {
    *  0 (or undefined) disables smoothing. Pairs with the per-unit
    *  `Unit.hoverHeightUpwardForceSmoothed` accumulator. */
   hoverHeightUpwardForceEMA?: number;
+
+  // ── Fully-abstracted medium force profile (ground / air / water) ──
+  //
+  // `driveForce` + `traction` above are the GROUND drive terms (and the
+  // airborne branch reads them as its air thrust). The fields below add the
+  // remaining behaviour-preserving slice of the per-medium profile from the
+  // design doc ("Locomotion is one fully-abstracted force profile across
+  // ground, air, and water"): per-medium passive friction, the full water
+  // drive medium, and the swim-lift family. Every term defaults to 0/inert,
+  // so a unit that authors none of them moves bit-for-bit as before; a unit
+  // specialises into a medium purely by setting its terms non-zero. The full
+  // air/ground force-traction split (separate from driveForce/traction) is a
+  // future behaviour-changing migration noted in the design doc.
+
+  /** Passive horizontal velocity damping applied while in ground contact, as
+   *  an acceleration rate (1/s). 0 = no extra ground drag (current units). */
+  groundFriction?: number;
+  /** Passive isotropic velocity damping applied while airborne (hover/flying),
+   *  as an acceleration rate (1/s). 0 = no air drag (current units). */
+  airFriction?: number;
+  /** Water medium drive force (analogue of `driveForce` for the submerged
+   *  medium). 0 = cannot propel itself in water. Effective drive after the
+   *  per-locomotion global multiplier is NOT applied to water terms; they are
+   *  authored directly. */
+  waterForce?: number;
+  /** Water medium traction: couples `waterForce` into directed thrust, the
+   *  submerged analogue of `traction`. 0 with a non-zero waterForce yields no
+   *  coupled thrust. */
+  waterTraction?: number;
+  /** Passive isotropic velocity damping applied while submerged (water drag),
+   *  as an acceleration rate (1/s). 0 = no water drag. */
+  waterFriction?: number;
+  /** Swim lift: constant upward force as a ratio of gravity, the water-medium
+   *  analogue of `gravityCounterUpwardForceRatio`. Must be < 1. 0 (default) =
+   *  pure depth-seeking lift with no constant buoyancy. */
+  swimGravityCounterUpwardForceRatio?: number;
+  /** Swim lift: depth-seeking upward force that holds a target height above
+   *  the lake bed (the same inverse-distance force shape as
+   *  `hoverHeightUpwardForce`, referenced to the bed under water). 0 = sinks
+   *  (bottom-walker); balanced = neutral mid-column; high = floats. */
+  swimHeightUpwardForce?: number;
+  /** Swim lift: per-tick uniform randomization of `swimHeightUpwardForce`
+   *  expressed as a fraction (mirrors the hover sibling). */
+  swimHeightUpwardForceRandomizationAmount?: number;
+  /** Swim lift: EMA smoothing weight on the per-tick (jittered)
+   *  swimHeightUpwardForce, in [0, 1). Pairs with the per-unit
+   *  `Unit.swimHeightUpwardForceSmoothed` accumulator. */
+  swimHeightUpwardForceEMA?: number;
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

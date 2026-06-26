@@ -42,6 +42,49 @@ function assertSlopeDegrees(label: string, value: number): void {
   }
 }
 
+/** Optional medium force/traction/friction term. Returns undefined when the
+ *  field is absent so it is OMITTED from the runtime locomotion object (and
+ *  thus from the canonical state hash, keeping existing units byte-identical);
+ *  the force code reads it back as 0 via `?? 0`. Zero is still a meaningful
+ *  authored value when explicitly present. */
+function readOptionalNonNegative(label: string, value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Invalid locomotion ${label}: expected finite >= 0, got ${value}`);
+  }
+  return value;
+}
+
+/** Optional fraction in [0, 1): absent => undefined (omitted). Used by the
+ *  swim-lift gravity counter ratio and the randomization/EMA siblings. */
+function readOptionalUnitFraction(label: string, value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value) || value < 0 || value >= 1) {
+    throw new Error(`Invalid locomotion ${label}: expected finite [0, 1), got ${value}`);
+  }
+  return value;
+}
+
+/** Copy an optional locomotion term only when present, so absent fields stay
+ *  absent (never materialised as a `0`/`undefined` key that would alter the
+ *  canonical state hash). */
+function assignOptionalLocomotionTerm(
+  target: UnitLocomotion,
+  key:
+    | 'groundFriction'
+    | 'airFriction'
+    | 'waterForce'
+    | 'waterTraction'
+    | 'waterFriction'
+    | 'swimGravityCounterUpwardForceRatio'
+    | 'swimHeightUpwardForce'
+    | 'swimHeightUpwardForceRandomizationAmount'
+    | 'swimHeightUpwardForceEMA',
+  value: number | undefined,
+): void {
+  if (value !== undefined) target[key] = value;
+}
+
 function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
   return Math.cos(maxSlopeDeg * Math.PI / 180);
 }
@@ -170,7 +213,7 @@ export function createUnitLocomotion(
       hoverHeightUpwardForceEMA = rawEMA > 0 ? rawEMA : undefined;
     }
   }
-  return {
+  const result: UnitLocomotion = {
     type,
     driveForce: getEffectiveLocomotionDriveForce(type, physics.driveForce),
     traction: physics.traction,
@@ -180,12 +223,48 @@ export function createUnitLocomotion(
     hoverHeightUpwardForceRandomizationAmount,
     hoverHeightUpwardForceEMA,
   };
+  // Fully-abstracted medium profile: opt-in terms, included only when authored
+  // so a unit that sets none of them is byte-identical to the pre-profile model.
+  assignOptionalLocomotionTerm(
+    result, 'groundFriction',
+    readOptionalNonNegative(`${type}.groundFriction`, physics.groundFriction));
+  assignOptionalLocomotionTerm(
+    result, 'airFriction',
+    readOptionalNonNegative(`${type}.airFriction`, physics.airFriction));
+  assignOptionalLocomotionTerm(
+    result, 'waterForce',
+    readOptionalNonNegative(`${type}.waterForce`, physics.waterForce));
+  assignOptionalLocomotionTerm(
+    result, 'waterTraction',
+    readOptionalNonNegative(`${type}.waterTraction`, physics.waterTraction));
+  assignOptionalLocomotionTerm(
+    result, 'waterFriction',
+    readOptionalNonNegative(`${type}.waterFriction`, physics.waterFriction));
+  assignOptionalLocomotionTerm(
+    result, 'swimGravityCounterUpwardForceRatio',
+    readOptionalUnitFraction(
+      `${type}.swimGravityCounterUpwardForceRatio`,
+      physics.swimGravityCounterUpwardForceRatio));
+  assignOptionalLocomotionTerm(
+    result, 'swimHeightUpwardForce',
+    readOptionalNonNegative(`${type}.swimHeightUpwardForce`, physics.swimHeightUpwardForce));
+  assignOptionalLocomotionTerm(
+    result, 'swimHeightUpwardForceRandomizationAmount',
+    readOptionalUnitFraction(
+      `${type}.swimHeightUpwardForceRandomizationAmount`,
+      physics.swimHeightUpwardForceRandomizationAmount));
+  assignOptionalLocomotionTerm(
+    result, 'swimHeightUpwardForceEMA',
+    readOptionalUnitFraction(
+      `${type}.swimHeightUpwardForceEMA`,
+      physics.swimHeightUpwardForceEMA));
+  return result;
 }
 
 export function cloneUnitLocomotion(
   locomotion: UnitLocomotion,
 ): UnitLocomotion {
-  return {
+  const result: UnitLocomotion = {
     type: locomotion.type,
     driveForce: locomotion.driveForce,
     traction: locomotion.traction,
@@ -196,6 +275,22 @@ export function cloneUnitLocomotion(
       locomotion.hoverHeightUpwardForceRandomizationAmount,
     hoverHeightUpwardForceEMA: locomotion.hoverHeightUpwardForceEMA,
   };
+  // Preserve absent-stays-absent for the opt-in medium profile terms.
+  assignOptionalLocomotionTerm(result, 'groundFriction', locomotion.groundFriction);
+  assignOptionalLocomotionTerm(result, 'airFriction', locomotion.airFriction);
+  assignOptionalLocomotionTerm(result, 'waterForce', locomotion.waterForce);
+  assignOptionalLocomotionTerm(result, 'waterTraction', locomotion.waterTraction);
+  assignOptionalLocomotionTerm(result, 'waterFriction', locomotion.waterFriction);
+  assignOptionalLocomotionTerm(
+    result, 'swimGravityCounterUpwardForceRatio',
+    locomotion.swimGravityCounterUpwardForceRatio);
+  assignOptionalLocomotionTerm(result, 'swimHeightUpwardForce', locomotion.swimHeightUpwardForce);
+  assignOptionalLocomotionTerm(
+    result, 'swimHeightUpwardForceRandomizationAmount',
+    locomotion.swimHeightUpwardForceRandomizationAmount);
+  assignOptionalLocomotionTerm(
+    result, 'swimHeightUpwardForceEMA', locomotion.swimHeightUpwardForceEMA);
+  return result;
 }
 
 type LocomotionForceProfile = {

@@ -645,6 +645,15 @@ pub struct LegConfig {
 pub struct LocomotionPhysics {
     pub driveForce: f64,
     pub traction: f64,
+    pub groundFriction: Option<f64>,
+    pub airFriction: Option<f64>,
+    pub waterForce: Option<f64>,
+    pub waterTraction: Option<f64>,
+    pub waterFriction: Option<f64>,
+    pub swimGravityCounterUpwardForceRatio: Option<f64>,
+    pub swimHeightUpwardForce: Option<f64>,
+    pub swimHeightUpwardForceRandomizationAmount: Option<f64>,
+    pub swimHeightUpwardForceEMA: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

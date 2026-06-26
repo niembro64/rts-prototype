@@ -1112,10 +1112,15 @@
     },
     "locomotion": {
       "type": "treads",
-      "pathfindingBlueprintId": "treadsLand",
+      "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "driveForce": 850,
-        "traction": 0.75
+        "traction": 0.75,
+        "waterForce": 1200,
+        "waterTraction": 0.5,
+        "waterFriction": 1.5,
+        "swimHeightUpwardForce": 12,
+        "swimGravityCounterUpwardForceRatio": 0.25
       },
       "config": {
         "treadOffset": 1.1,

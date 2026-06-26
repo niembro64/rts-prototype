@@ -80,7 +80,7 @@ pub fn quat_hover_orientation_step_batch(
 //  state that still lives on Entity/Unit objects.
 // ─────────────────────────────────────────────────────────────────
 
-pub const UNIT_FORCE_BATCH_STRIDE: usize = 36;
+pub const UNIT_FORCE_BATCH_STRIDE: usize = 47;
 
 pub(crate) const UF_ROW_DIR_X: usize = 0;
 pub(crate) const UF_ROW_DIR_Y: usize = 1;
@@ -119,6 +119,22 @@ pub(crate) const UF_ROW_MOVEMENT_ACCEL_Z: usize = 32;
 pub(crate) const UF_ROW_ANGULAR_ACCEL_X: usize = 33;
 pub(crate) const UF_ROW_ANGULAR_ACCEL_Y: usize = 34;
 pub(crate) const UF_ROW_ANGULAR_ACCEL_Z: usize = 35;
+// ── Fully-abstracted medium force profile (appended) ──
+// Rows 0..36 are unchanged, so when every term below is 0 the marshaling and
+// kernel output are byte-for-byte identical to the pre-profile behaviour. The
+// kernel consumes these only when submerged (water/swim) or when the friction
+// term is non-zero; existing units author none of them.
+pub(crate) const UF_ROW_GROUND_FRICTION: usize = 36;
+pub(crate) const UF_ROW_AIR_FRICTION: usize = 37;
+pub(crate) const UF_ROW_WATER_FORCE: usize = 38;
+pub(crate) const UF_ROW_WATER_TRACTION: usize = 39;
+pub(crate) const UF_ROW_WATER_FRICTION: usize = 40;
+pub(crate) const UF_ROW_SWIM_GRAVITY_COUNTER_RATIO: usize = 41;
+pub(crate) const UF_ROW_SWIM_HEIGHT_FORCE: usize = 42;
+pub(crate) const UF_ROW_SWIM_RANDOM_AMOUNT: usize = 43;
+pub(crate) const UF_ROW_SWIM_EMA_WEIGHT: usize = 44;
+pub(crate) const UF_ROW_SWIM_SMOOTHED_FORCE: usize = 45;
+pub(crate) const UF_ROW_SWIM_RANDOM_SAMPLE: usize = 46;
 
 pub(crate) const UF_FLAG_HAS_THRUST: u32 = 1 << 0;
 pub(crate) const UF_FLAG_IS_FLYING: u32 = 1 << 1;
@@ -516,6 +532,98 @@ pub fn unit_force_step_batch(
                     out_flags[i] |= UF_OUT_ROTATION_DIRTY;
                 }
             }
+
+            // Air drag (isotropic), opposing velocity. Gated on a non-zero
+            // authored term so existing flyers/hovercraft are byte-identical.
+            let air_friction = rows[base + UF_ROW_AIR_FRICTION];
+            if air_friction > 0.0 && body_mass > 0.0 {
+                let k = air_friction * body_mass / 1_000_000.0;
+                thrust_force_x -= k * p.vel_x[slot];
+                thrust_force_y -= k * p.vel_y[slot];
+                thrust_force_z -= k * p.vel_z[slot];
+            }
+        } else if flag & UF_FLAG_IN_WATER != 0
+            && (rows[base + UF_ROW_WATER_FORCE] > 0.0
+                || rows[base + UF_ROW_SWIM_HEIGHT_FORCE] > 0.0)
+        {
+            // ── Swim path ──
+            // The unit is submerged and authors a non-zero water drive or swim
+            // lift, so it swims instead of being shoved out of the water. This
+            // branch is entered only by units that opt in (water/swim terms set);
+            // every existing unit authors neither and takes the ground path below,
+            // byte-for-byte unchanged.
+            let ground_z = rows[base + UF_ROW_GROUND_Z];
+            let water_force = rows[base + UF_ROW_WATER_FORCE];
+
+            // Water drive: horizontal thrust toward the requested direction,
+            // coupled by water traction. No slope projection (open water).
+            if has_thrust && thrust_input_mag > 0.0 && water_force > 0.0 {
+                let (_water_raw, water_traction_mag) = unit_force_locomotion_magnitudes(
+                    water_force,
+                    rows[base + UF_ROW_WATER_TRACTION],
+                    reference_mass,
+                    thrust_multiplier,
+                    force_scale,
+                );
+                let inv_dir_mag = 1.0 / thrust_input_mag;
+                let mag = water_traction_mag * thrust_scale;
+                thrust_force_x += dir_x * inv_dir_mag * mag;
+                thrust_force_y += dir_y * inv_dir_mag * mag;
+            }
+
+            // Swim lift: the hover lift law referenced to the lake bed (ground_z
+            // under water). Holds a target height above the bed, so 0 sinks
+            // (bottom-walker), balanced is neutral mid-column, and high floats.
+            let swim_height_force = rows[base + UF_ROW_SWIM_HEIGHT_FORCE];
+            if swim_height_force > 0.0 && body_mass > 0.0 {
+                let altitude = (p.pos_z[slot] - ground_z).max(0.5);
+                let swim_counter_ratio = rows[base + UF_ROW_SWIM_GRAVITY_COUNTER_RATIO];
+                let swim_deficit_ratio = 1.0 - swim_counter_ratio;
+                let rand_amount = rows[base + UF_ROW_SWIM_RANDOM_AMOUNT];
+                let raw_swim_force = if rand_amount > 0.0 {
+                    let sample = rows[base + UF_ROW_SWIM_RANDOM_SAMPLE];
+                    swim_height_force * (1.0 + (sample * 2.0 - 1.0) * rand_amount)
+                } else {
+                    swim_height_force
+                };
+                let ema_weight = rows[base + UF_ROW_SWIM_EMA_WEIGHT];
+                let lift_force = if ema_weight > 0.0 {
+                    let prev = rows[base + UF_ROW_SWIM_SMOOTHED_FORCE];
+                    let smoothed = if prev.is_finite() {
+                        ema_weight * prev + (1.0 - ema_weight) * raw_swim_force
+                    } else {
+                        raw_swim_force
+                    };
+                    rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = smoothed;
+                    smoothed
+                } else {
+                    rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+                    raw_swim_force
+                };
+                if swim_deficit_ratio > 0.0 && lift_force > 0.0 {
+                    let stable_altitude = lift_force / swim_deficit_ratio;
+                    if stable_altitude > 0.0 && stable_altitude.is_finite() {
+                        let counter_gravity_force = body_mass * GRAVITY * swim_counter_ratio;
+                        let lift_k = body_mass * GRAVITY * lift_force;
+                        let vz_damp_per_mass =
+                            2.0 * ((GRAVITY * swim_deficit_ratio) / stable_altitude).sqrt();
+                        thrust_force_z += (counter_gravity_force + lift_k / altitude
+                            - body_mass * vz_damp_per_mass * p.vel_z[slot])
+                            / 1_000_000.0;
+                    }
+                }
+            } else {
+                rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+            }
+
+            // Water drag (isotropic), opposing velocity.
+            let water_friction = rows[base + UF_ROW_WATER_FRICTION];
+            if water_friction > 0.0 && body_mass > 0.0 {
+                let k = water_friction * body_mass / 1_000_000.0;
+                thrust_force_x -= k * p.vel_x[slot];
+                thrust_force_y -= k * p.vel_y[slot];
+                thrust_force_z -= k * p.vel_z[slot];
+            }
         } else {
             let ground_z = rows[base + UF_ROW_GROUND_Z];
             let ground_contact = is_in_contact(ground_z - (p.pos_z[slot] - p.ground_offset[slot]));
@@ -590,6 +698,15 @@ pub fn unit_force_step_batch(
                     thrust_force_x = fx;
                     thrust_force_y = fy;
                     thrust_force_z = fz;
+                }
+
+                // Ground drag (horizontal), opposing velocity. Gated on a
+                // non-zero authored term so existing units are byte-identical.
+                let ground_friction = rows[base + UF_ROW_GROUND_FRICTION];
+                if ground_friction > 0.0 && body_mass > 0.0 {
+                    let k = ground_friction * body_mass / 1_000_000.0;
+                    thrust_force_x -= k * p.vel_x[slot];
+                    thrust_force_y -= k * p.vel_y[slot];
                 }
             }
         }

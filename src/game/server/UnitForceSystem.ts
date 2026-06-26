@@ -8,6 +8,7 @@ import {
 import {
   UNIT_GROUND_CONTACT_EPSILON,
 } from '../sim/unitGroundPhysics';
+import { WATER_LEVEL } from '../sim/Terrain';
 import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_NORMAL,
@@ -79,6 +80,18 @@ const UF_ROW_MOVEMENT_ACCEL_Z = 32;
 const UF_ROW_ANGULAR_ACCEL_X = 33;
 const UF_ROW_ANGULAR_ACCEL_Y = 34;
 const UF_ROW_ANGULAR_ACCEL_Z = 35;
+// Fully-abstracted medium force profile (appended; rows 0..36 unchanged).
+const UF_ROW_GROUND_FRICTION = 36;
+const UF_ROW_AIR_FRICTION = 37;
+const UF_ROW_WATER_FORCE = 38;
+const UF_ROW_WATER_TRACTION = 39;
+const UF_ROW_WATER_FRICTION = 40;
+const UF_ROW_SWIM_GRAVITY_COUNTER_RATIO = 41;
+const UF_ROW_SWIM_HEIGHT_FORCE = 42;
+const UF_ROW_SWIM_RANDOM_AMOUNT = 43;
+const UF_ROW_SWIM_EMA_WEIGHT = 44;
+const UF_ROW_SWIM_SMOOTHED_FORCE = 45;
+const UF_ROW_SWIM_RANDOM_SAMPLE = 46;
 
 const UF_FLAG_HAS_THRUST = 1 << 0;
 const UF_FLAG_IS_FLYING = 1 << 1;
@@ -231,6 +244,29 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_2] = 0;
       _forceRows[base + UF_ROW_WATER_AHEAD_MASK] = 0;
 
+      // Fully-abstracted medium force profile (all opt-in, default 0/inert).
+      const loco = unit.locomotion;
+      // A unit "swims" only if it authored water drive or swim lift. Used to
+      // gate the open-water medium flag below so non-swimmers (every existing
+      // unit) keep their exact pre-profile UF_FLAG_IN_WATER and stay byte-
+      // identical.
+      const unitIsSwimmer =
+        (loco.waterForce ?? 0) > 0 || (loco.swimHeightUpwardForce ?? 0) > 0;
+      _forceRows[base + UF_ROW_GROUND_FRICTION] = loco.groundFriction ?? 0;
+      _forceRows[base + UF_ROW_AIR_FRICTION] = loco.airFriction ?? 0;
+      _forceRows[base + UF_ROW_WATER_FORCE] = loco.waterForce ?? 0;
+      _forceRows[base + UF_ROW_WATER_TRACTION] = loco.waterTraction ?? 0;
+      _forceRows[base + UF_ROW_WATER_FRICTION] = loco.waterFriction ?? 0;
+      _forceRows[base + UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] =
+        loco.swimGravityCounterUpwardForceRatio ?? 0;
+      _forceRows[base + UF_ROW_SWIM_HEIGHT_FORCE] = loco.swimHeightUpwardForce ?? 0;
+      _forceRows[base + UF_ROW_SWIM_RANDOM_AMOUNT] =
+        loco.swimHeightUpwardForceRandomizationAmount ?? 0;
+      _forceRows[base + UF_ROW_SWIM_EMA_WEIGHT] = loco.swimHeightUpwardForceEMA ?? 0;
+      _forceRows[base + UF_ROW_SWIM_SMOOTHED_FORCE] =
+        unit.swimHeightUpwardForceSmoothed ?? Number.NaN;
+      _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = 0;
+
       let flags = 0;
 
       if (unit.hp <= 0) {
@@ -343,6 +379,29 @@ export class UnitForceSystem {
             }
           }
         }
+      } else if (unitIsSwimmer && body.z < WATER_LEVEL) {
+        // Suspended in the water column with no ground contact: only swimmers
+        // reach here. Mark the water medium so the kernel's swim path can drive
+        // and seek depth. Gated on unitIsSwimmer so non-swimmers (every
+        // existing unit) never get this flag and stay byte-identical.
+        flags |= UF_FLAG_IN_WATER;
+      }
+
+      // Feed the swim-lift RNG sample iff the kernel will consume it (submerged,
+      // non-zero swim randomization + force, body not sleep-skipped). For
+      // non-swimmers swimForce is 0, so the RNG stream is untouched.
+      if ((flags & UF_FLAG_IN_WATER) !== 0) {
+        const swimRand = loco.swimHeightUpwardForceRandomizationAmount ?? 0;
+        const swimForce = loco.swimHeightUpwardForce ?? 0;
+        if (swimRand > 0 && swimForce > 0) {
+          // Mirror the kernel sleep-skip (isFlying is always false on the
+          // in-water paths) so RNG advances in lockstep across peers.
+          const willRustSkipSleeping =
+            body.sleeping && !hasThrustDir && externalForce === null;
+          if (!willRustSkipSleeping) {
+            _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.rng.next();
+          }
+        }
       }
 
       _forceFlags[count] = flags;
@@ -426,6 +485,20 @@ export class UnitForceSystem {
           (unit.locomotion.hoverHeightUpwardForceEMA ?? 0) > 0 && Number.isFinite(smoothedHoverForce)
             ? smoothedHoverForce
             : null;
+      }
+
+      if (
+        (unit.locomotion.swimHeightUpwardForceEMA ?? 0) > 0 &&
+        (outFlags & UF_OUT_MOVEMENT_ACCEL) !== 0
+      ) {
+        // Persist the swim-lift EMA accumulator. When the unit was not
+        // submerged this tick the kernel left the row at its marshaled value,
+        // so this read-back is a no-op (preserves the accumulator across brief
+        // surfacing); NaN clears it for a fresh reseed.
+        const smoothedSwimForce = _forceRows[base + UF_ROW_SWIM_SMOOTHED_FORCE];
+        unit.swimHeightUpwardForceSmoothed = Number.isFinite(smoothedSwimForce)
+          ? smoothedSwimForce
+          : null;
       }
 
       if ((outFlags & UF_OUT_ROTATION_DIRTY) !== 0) {

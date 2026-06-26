@@ -1944,6 +1944,33 @@
         },
         "traction": {
           "type": "number"
+        },
+        "groundFriction": {
+          "type": "number"
+        },
+        "airFriction": {
+          "type": "number"
+        },
+        "waterForce": {
+          "type": "number"
+        },
+        "waterTraction": {
+          "type": "number"
+        },
+        "waterFriction": {
+          "type": "number"
+        },
+        "swimGravityCounterUpwardForceRatio": {
+          "type": "number"
+        },
+        "swimHeightUpwardForce": {
+          "type": "number"
+        },
+        "swimHeightUpwardForceRandomizationAmount": {
+          "type": "number"
+        },
+        "swimHeightUpwardForceEMA": {
+          "type": "number"
         }
       },
       "additionalProperties": false

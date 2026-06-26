@@ -18,5 +18,10 @@
     "pathfindingBlueprintId": "airborneAnywhere",
     "terrainMode": "anywhere",
     "maxSlopeDeg": null
+  },
+  "amphibiousAnywhere": {
+    "pathfindingBlueprintId": "amphibiousAnywhere",
+    "terrainMode": "anywhere",
+    "maxSlopeDeg": null
   }
 }

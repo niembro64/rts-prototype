@@ -291,6 +291,12 @@ export type Unit = {
    *  first tick seeds it from the raw sample. Tick-only state, never
    *  serialised. */
   hoverHeightUpwardForceSmoothed: number | null;
+  /** Per-unit EMA accumulator for the jittered swimHeightUpwardForce, the
+   *  water-medium analogue of `hoverHeightUpwardForceSmoothed`. Updated each
+   *  tick by UnitForceSystem when submerged and `locomotion
+   *  .swimHeightUpwardForceEMA > 0`; null until first seeded. Tick-only
+   *  state, never serialised. */
+  swimHeightUpwardForceSmoothed: number | null;
   /** Full 3-DOF orientation, used by entities that need roll or
    *  arbitrary orientation (hover drones banking into turns, future
    *  ragdoll debris). Null for ground units that only need a yaw scalar
