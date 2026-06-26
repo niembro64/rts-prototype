@@ -355,12 +355,21 @@ deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
     "resources are visible only as pylon balls" invariant). Converter/upkeep/ammo
     "consumption" spend stays as-is (future consumption-pylon role).
 
-[21] Phase E - fabricator becomes a hovering torus
-    Torus body high in the air (same overall size); spawn + construction-pylon
-    turrets hang underneath; pylons spin and spray down. turretSpawnUnits creates
-    the unit shell in the CENTER of the torus, in the air; it free-falls to the
-    ground (supportSurface already none) while construction pylons finish it.
-    Render: torus geometry + hover height + spinning down-pylons.
+[21] Phase E (cont.) - fabricator torus visual tuning (needs in-app eyes)
+    DONE: fabricator renders bodyless with a hovering team-colored torus ring at
+    FABRICATOR_TORUS_HOVER_HEIGHT (96); it mounts the metal + energy construction
+    pylons (small) under the ring + turretSpawnUnits at the ring center (no more
+    turretConstruction). Unit shells spawn in the torus center high in the air and
+    free-fall (supportSurface=none) while the pylons finish them; both pylons spin +
+    spray their own resource (factory now drives every construction-emitter rig).
+    REMAINING (visual tuning — verify + adjust in-app, can't be eyeballed headless):
+    - pylons should visibly POINT DOWN (their small rigs currently render upright
+      under the ring; the spray already auto-aims down at the falling shell).
+    - torus ring radius / tube / hover height fine-tuning vs the footprint.
+    - anchor visualTop (health-bar height) still derives from the old construction-
+      tower metrics in getFactoryBuildingVisualMetrics — retarget it to the torus.
+    - the forming-unit ghost orbs (factoryBuildSpotRig) still sit at the build bay;
+      move them to the torus center or retire them now that the real shell is visible.
 
 [22] Phase F - remove the old path + document
     Delete turretConstruction, the builder.constructionRate coupling, and dead

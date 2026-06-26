@@ -19,6 +19,11 @@ import {
   cylinderGeom,
   detail,
 } from './BuildingMeshPrimitives3D';
+import { FABRICATOR_TORUS_HOVER_HEIGHT } from '../sim/factoryProduction';
+
+// Unit torus (ring radius 1, tube 0.22) for the hovering fabricator body. Scaled
+// per-instance to the footprint and laid flat (horizontal ring) at hover height.
+const fabricatorTorusGeom = new THREE.TorusGeometry(1, 0.22, 12, 32);
 
 /** Factory-only "what's being built" visualizer. Lives at the factory's
  *  centered build bay (not on the turret) and shows the
@@ -72,13 +77,25 @@ const constructionOrbGeom = new THREE.SphereGeometry(1, 12, 8);
  *  factory's `turretConstruction` like any other turret-mounted emitter,
  *  built by the standard TurretMesh3D path. */
 export function buildFactoryMesh(
-  _width: number,
-  _depth: number,
+  width: number,
+  depth: number,
   primaryMat: THREE.Material,
 ): BuildingShape {
+  // The fabricator is a hovering TORUS, not a body shell — render bodyless and
+  // hang the ring (+ its under-slung spawn / construction pylons) in the air.
   const primary = new THREE.Mesh(cylinderGeom, primaryMat);
   const details: BuildingShape['details'] = [];
   const blueprint = getBuildingBlueprint('towerFabricator');
+
+  // Hovering torus body: a flat (horizontal) team-colored ring at the spawn
+  // height, sized to the footprint. The unit shell appears in its center and
+  // free-falls through the open middle while the down-pointing pylons finish it.
+  const torus = new THREE.Mesh(fabricatorTorusGeom, primaryMat);
+  const ringRadius = Math.max(width, depth) * 0.46;
+  torus.scale.set(ringRadius, ringRadius, ringRadius);
+  torus.rotation.x = Math.PI / 2;
+  torus.position.y = FABRICATOR_TORUS_HOVER_HEIGHT;
+  details.push(detail(torus, 'medium', undefined, 'static'));
 
   // Build-bay visuals. These follow the FORMING UNIT (not the tower)
   // so they stay even after the central tower pieces were removed.
@@ -101,6 +118,7 @@ export function buildFactoryMesh(
   return {
     primary,
     details,
+    bodyless: true,
     height: blueprint.visualHeight ?? DEFAULT_BUILDING_VISUAL_HEIGHT,
     factoryBuildSpotRig: {
       unitGhost,
@@ -112,6 +130,7 @@ export function buildFactoryMesh(
 
 export function disposeFactoryMeshGeoms(): void {
   constructionOrbGeom.dispose();
+  fabricatorTorusGeom.dispose();
   disposeConstructionEmitterGeoms();
   constructionGhostMat.dispose();
   constructionCoreMat.dispose();

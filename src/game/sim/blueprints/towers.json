@@ -34,13 +34,23 @@
     },
     "turrets": [
       {
-        "turretBlueprintId": "turretConstruction",
+        "turretBlueprintId": "turretResourcePylonConstructionMetal",
         "mount": {
-          "x": 0,
+          "x": -100,
           "y": 0,
-          "z": 38
+          "z": 88
         },
-        "visualVariant": "large",
+        "visualVariant": "small",
+        "hostDirected": true
+      },
+      {
+        "turretBlueprintId": "turretResourcePylonConstructionEnergy",
+        "mount": {
+          "x": 100,
+          "y": 0,
+          "z": 88
+        },
+        "visualVariant": "small",
         "hostDirected": true
       },
       {
@@ -48,7 +58,7 @@
         "mount": {
           "x": 0,
           "y": 0,
-          "z": 38
+          "z": 96
         },
         "hostDirected": true
       }

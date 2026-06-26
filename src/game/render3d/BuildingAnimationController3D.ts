@@ -235,16 +235,17 @@ export class BuildingAnimationController3D {
       const entry = this.activeFactoryBuildings[i];
       const { entity, mesh } = entry;
       const detailsReady = mesh.buildingCachedDetailsReady === true;
-      const emitterRig = findConstructionEmitterRig(mesh, entity);
       let emitterVisualActive = false;
-      if (emitterRig) {
-        emitterVisualActive = this.constructionVisuals.updateFactoryConstructionEmitter(
-          emitterRig,
+      forEachConstructionEmitterRig(mesh, entity, (rig) => {
+        if (this.constructionVisuals.updateFactoryConstructionEmitter(
+          rig,
           entity,
           detailsReady,
           currentDtMs,
-        );
-      }
+        )) {
+          emitterVisualActive = true;
+        }
+      });
       this.constructionVisuals.updateFactoryBuildSpot(
         mesh.factoryBuildSpotRig,
         entity,
@@ -576,12 +577,18 @@ export class BuildingAnimationController3D {
   }
 
   private factoryConstructionEmitterDraining(entry: AnimatedBuildingEntry): boolean {
-    const rig = findConstructionEmitterRig(entry.mesh, entry.entity);
-    if (!rig) return false;
-    return rig.smoothedRates.energy > FACTORY_ANIMATION_IDLE_EPSILON ||
-      rig.smoothedRates.metal > FACTORY_ANIMATION_IDLE_EPSILON ||
-      rig.displaySmoothedRates.energy > FACTORY_ANIMATION_IDLE_EPSILON ||
-      rig.displaySmoothedRates.metal > FACTORY_ANIMATION_IDLE_EPSILON;
+    let draining = false;
+    forEachConstructionEmitterRig(entry.mesh, entry.entity, (rig) => {
+      if (
+        rig.smoothedRates.energy > FACTORY_ANIMATION_IDLE_EPSILON ||
+        rig.smoothedRates.metal > FACTORY_ANIMATION_IDLE_EPSILON ||
+        rig.displaySmoothedRates.energy > FACTORY_ANIMATION_IDLE_EPSILON ||
+        rig.displaySmoothedRates.metal > FACTORY_ANIMATION_IDLE_EPSILON
+      ) {
+        draining = true;
+      }
+    });
+    return draining;
   }
 
   private updateSolarCollectorAnimation(
@@ -746,19 +753,21 @@ function getNextExtractorAlignedPhase(phase: number, twoPi: number): number {
   return alignedTurn * twoPi;
 }
 
-/** Locate the construction emitter rig mounted on this building's
- *  `turretConstruction`. Buildings can only carry one (factories do today,
- *  cannon towers and the like don't), so the first match wins. */
-function findConstructionEmitterRig(
+/** Run `fn` over every construction-emitter rig mounted on this building. The
+ *  fabricator carries TWO (its metal + energy construction pylons, each a
+ *  single-resource rig); legacy single-emitter hosts carry one. Driving all of
+ *  them keeps both pylons spinning + spraying their own resource. */
+function forEachConstructionEmitterRig(
   mesh: EntityMesh,
   entity: Entity,
-): ConstructionEmitterRig | undefined {
+  fn: (rig: ConstructionEmitterRig) => void,
+): void {
   const combatTurrets = entity.combat?.turrets;
-  if (!combatTurrets) return undefined;
+  if (!combatTurrets) return;
   for (let i = 0; i < combatTurrets.length && i < mesh.turrets.length; i++) {
     if (combatTurrets[i].config.constructionEmitter) {
-      return mesh.turrets[i].constructionEmitter;
+      const rig = mesh.turrets[i].constructionEmitter;
+      if (rig) fn(rig);
     }
   }
-  return undefined;
 }
