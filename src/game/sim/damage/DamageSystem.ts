@@ -534,6 +534,10 @@ function classifyAreaDamageRowsViaSlab(
 // the calling loop's DEV branch) and assert it matches the slab kernel row by
 // row. Throws on the first divergence so a slot-mapping or coherence bug
 // surfaces immediately instead of as silent hit-detection drift.
+// DEV-only: throttle the slab/pack divergence log to once per entity id. A
+// persistent (pre-existing) divergence otherwise re-logs every explosion every
+// tick, and the per-tick console.error chokes the dev tick loop.
+const _loggedAreaDivergences = new Set<number | undefined>();
 function assertAreaSlabMatchesPacked(
   source: AreaDamageSource,
   count: number,
@@ -578,15 +582,18 @@ function assertAreaSlabMatchesPacked(
       // Match the codebase's dev-compare convention (snapshot wire oracle):
       // log the first divergence loudly instead of throwing, so a slot /
       // coherence bug surfaces without crashing the dev session.
-      console.error('[C1-area] slab/pack hit-classification divergence', {
-        row: i,
-        entityId: entity?.id,
-        slot: _areaDamageSlots[i],
-        flags: _areaDamageOutFlags[i],
-        refFlags: _areaDamageRefFlags[i],
-        distance: _areaDamageOutDistance[i],
-        refDistance: _areaDamageRefDistance[i],
-      });
+      if (!_loggedAreaDivergences.has(entity?.id)) {
+        _loggedAreaDivergences.add(entity?.id);
+        console.error('[C1-area] slab/pack hit-classification divergence', {
+          row: i,
+          entityId: entity?.id,
+          slot: _areaDamageSlots[i],
+          flags: _areaDamageOutFlags[i],
+          refFlags: _areaDamageRefFlags[i],
+          distance: _areaDamageOutDistance[i],
+          refDistance: _areaDamageRefDistance[i],
+        });
+      }
       return;
     }
   }
