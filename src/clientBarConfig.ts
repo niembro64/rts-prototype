@@ -969,6 +969,23 @@ export function setLegsRadiusToggle(show: boolean): void {
   persist(activeStorageKeys().legsRadius, String(show));
 }
 
+// "Only show proxies" debug-view toggle: force every unit / building / tower to
+// render as its level-of-detail PROXY (the hitbox-style simplified mesh)
+// regardless of camera distance. Standalone + global (not per-mode) — it is a
+// pure inspection aid, so it uses a fixed storage key rather than the per-mode
+// client-bar config structure.
+const FORCE_LOD_PROXY_STORAGE_KEY = 'client-force-lod-proxy';
+let currentForceLodProxy: boolean = readPersisted(FORCE_LOD_PROXY_STORAGE_KEY) === 'true';
+
+export function getForceLodProxyToggle(): boolean {
+  return currentForceLodProxy;
+}
+
+export function setForceLodProxyToggle(show: boolean): void {
+  currentForceLodProxy = show;
+  persist(FORCE_LOD_PROXY_STORAGE_KEY, String(show));
+}
+
 export function getCameraSmoothMode(): CameraSmoothMode {
   return currentCameraSmoothMode;
 }

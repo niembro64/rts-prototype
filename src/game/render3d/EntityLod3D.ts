@@ -11,6 +11,7 @@ import {
   ENTITY_LOD_RUNTIME_DISTANCE_MULTIPLIERS,
 } from '@/config';
 import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
+import { getForceLodProxyToggle } from '@/clientBarConfig';
 import type { Entity, EntityId } from '../sim/types';
 
 const FALLBACK_MIN_ENTITY_LOD_RADIUS = 1;
@@ -257,6 +258,15 @@ export class EntityLodHysteresis3D {
     if (!entityLodEnabled()) {
       this.delete(entity.id);
       return false;
+    }
+
+    // "Only show proxies" client toggle: force the LOD proxy for every entity
+    // regardless of camera distance so the player can inspect the proxy/hitbox
+    // meshes up close.
+    if (getForceLodProxyToggle()) {
+      this.proxyIdsForChannel(channel).add(entity.id);
+      this.lastSeenForChannel(channel).set(entity.id, this.frame);
+      return true;
     }
 
     const proxyIds = this.proxyIdsForChannel(channel);

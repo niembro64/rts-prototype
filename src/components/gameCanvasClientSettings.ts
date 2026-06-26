@@ -29,6 +29,8 @@ import {
   getRotationVelEmaMode,
   getEdgeScrollEnabled,
   getBurnMarks,
+  getForceLodProxyToggle,
+  setForceLodProxyToggle,
   getLegsRadiusToggle,
   getLocomotionMarks,
   getMasterVolume,
@@ -204,6 +206,7 @@ export function useGameCanvasClientSettings({
   const commandHotkeyPreset = ref<CommandHotkeyPresetId>(getActiveCommandHotkeyPresetId());
   const commandHotkeyRevision = ref(0);
   const legsRadiusToggle = ref(getLegsRadiusToggle());
+  const forceLodProxy = ref(getForceLodProxyToggle());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
@@ -263,6 +266,7 @@ export function useGameCanvasClientSettings({
     for (const prt of PROJ_RANGE_TYPES) projRangeToggles[prt] = getProjRangeToggle(prt);
     for (const urt of UNIT_RADIUS_TYPES) unitRadiusToggles[urt] = getUnitRadiusToggle(urt);
     legsRadiusToggle.value = getLegsRadiusToggle();
+    forceLodProxy.value = getForceLodProxyToggle();
     cameraSmoothMode.value = getCameraSmoothMode();
     cameraFollowMode.value = getCameraFollowMode();
     cameraFovDegrees.value = getCameraFovDegrees();
@@ -316,6 +320,12 @@ export function useGameCanvasClientSettings({
     const newValue = !legsRadiusToggle.value;
     setLegsRadiusToggle(newValue);
     legsRadiusToggle.value = newValue;
+  }
+
+  function toggleForceLodProxy(): void {
+    const newValue = !forceLodProxy.value;
+    setForceLodProxyToggle(newValue);
+    forceLodProxy.value = newValue;
   }
 
   function setCameraMode(mode: CameraSmoothMode): void {
@@ -726,6 +736,7 @@ export function useGameCanvasClientSettings({
     projRangeToggles,
     unitRadiusToggles,
     legsRadiusToggle,
+    forceLodProxy,
     cameraSmoothMode,
     cameraFollowMode,
     cameraFovDegrees,
@@ -745,6 +756,7 @@ export function useGameCanvasClientSettings({
     toggleProjRange,
     toggleUnitRadius,
     toggleLegsRadius,
+    toggleForceLodProxy,
     setCameraMode,
     setCameraFollow,
     changeCameraFovDegrees,

@@ -649,6 +649,15 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>LOD:</BarLabel>
+        <BarButton
+          :active="model.forceLodProxy"
+          title="Only show proxies — force every unit, building, and tower to render as its level-of-detail proxy (the simplified hitbox-style mesh) regardless of camera distance."
+          @click="model.toggleForceLodProxy"
+        >PROXIES</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>BEAMS:</BarLabel>
         <BarButton
           :active="model.beamSnapToTurret"
