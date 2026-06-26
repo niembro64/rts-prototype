@@ -185,7 +185,7 @@ const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
   firstTurretMountZ(BUILDING_BLUEPRINTS.towerFabricator, FACTORY_BASE_VISUAL_HEIGHT);
 
 // Fabricator construction-tower dimensions. Historically read from the
-// (now-unmounted) turretConstruction blueprint's large constructionEmitter;
+// (now-removed) turretConstruction blueprint's large constructionEmitter;
 // retained here as explicit constants (the exact former blueprint values) so
 // the legacy turret blueprint is no longer a load-bearing dependency. These
 // feed both the 3D renderer and sim-side anchors, so they are fixed: changing

@@ -903,7 +903,7 @@ export type Buildable = {
 
 /** Builder component. Gives a unit the ability to construct
  *  **buildings** (and assist/repair them) anywhere within `buildRange`.
- *  The host visualizes the work through a `turretConstruction` mount.
+ *  The host visualizes the work through its construction-pylon mounts.
  *
  *  Builder ≠ factory: buildings come from builders, units come from
  *  factories. Currently mounted on commanders; the planned construction

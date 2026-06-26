@@ -18,7 +18,7 @@ const fabricatorTorusGeom = new THREE.TorusGeometry(1, 0.22, 12, 32);
 
 /** Factory chassis: the team-colored hovering torus body only. The
  *  factory's construction emitter (towers + sprays) is NOT created here —
- *  it rides on the factory's `turretConstruction` like any other
+ *  it rides on the factory's construction-pylon turrets like any other
  *  turret-mounted emitter, built by the standard TurretMesh3D path. */
 export function buildFactoryMesh(
   width: number,

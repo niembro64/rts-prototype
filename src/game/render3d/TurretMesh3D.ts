@@ -162,8 +162,8 @@ export function buildTurretMesh3D(
   const followsBeam = turretBarrelFollowsBeam(turret.config);
 
   if (turret.config.constructionEmitter !== null) {
-    // Resource-pylon turrets render only their own resource's pylon; the
-    // legacy turretConstruction (no resourcePylon) renders the energy+metal
+    // Resource-pylon turrets render only their own resource's pylon; a
+    // constructionEmitter with no resourcePylon falls back to the energy+metal
     // pair. Read the resource off the blueprint registry (not the runtime
     // TurretConfig, which doesn't carry pylon data).
     const pylonResource =

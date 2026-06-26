@@ -62,16 +62,12 @@
         "turretBeamMega",
         "turretShieldSphere",
         "turretShieldSphereSmall",
-        "turretShieldCylinderInfinite",
-        "turretShieldCylinderInfiniteAimed",
-        "turretConstruction",
         "turretBeamLong",
         "turretCannonLong",
         "turretAlbatrosSiegeCannon",
         "turretRocketSlow",
         "turretRocketFast",
         "turretAntiAir",
-        "turretUnitConstructorBallistic",
         "turretQueenBeeConstructor",
         "turretQueenTickConstructor",
         "turretSpawnBuildingsAndTowers",
@@ -464,33 +460,6 @@
         }
       }
     },
-    "turretShieldCylinderInfinite": {
-      "targets": {
-        "enemy": {
-          "towers": "all",
-          "units": "all",
-          "buildings": "all"
-        }
-      }
-    },
-    "turretShieldCylinderInfiniteAimed": {
-      "targets": {
-        "enemy": {
-          "towers": "all",
-          "buildings": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretConstruction": {
-      "targets": {
-        "friendly": {
-          "buildings": "all",
-          "towers": "all",
-          "units": "all"
-        }
-      }
-    },
     "turretBeamLong": {
       "targets": {
         "enemy": {
@@ -561,9 +530,6 @@
           }
         }
       }
-    },
-    "turretUnitConstructorBallistic": {
-      "targets": "none"
     },
     "turretQueenBeeConstructor": {
       "targets": {

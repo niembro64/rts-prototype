@@ -80,7 +80,7 @@ class CommanderAbilitiesSystem {
       let commanderSprayZ = commander.transform.z;
       const commanderTurrets = commander.combat !== null ? commander.combat.turrets : null;
       // The construction spray originates at the host's construction emitter —
-      // the construction pylon(s) on builders, or any legacy turretConstruction.
+      // the construction pylon(s) on builders.
       let constructionEmitterIndex = -1;
       if (commanderTurrets !== null) {
         for (let i = 0; i < commanderTurrets.length; i++) {

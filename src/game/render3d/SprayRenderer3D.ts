@@ -47,7 +47,7 @@ import { RESOURCE_CONFIG } from '@/resourceConfig';
 const TRAIL_Y = RESOURCE_CONFIG.spray.trailY;
 const MIN_FLIGHT_SEC = RESOURCE_CONFIG.spray.minFlightSec;
 // Default construction-spray particle visuals. These were historically read
-// from the (now-unmounted) turretConstruction blueprint's constructionEmitter;
+// from the (now-removed) turretConstruction blueprint's constructionEmitter;
 // kept here as explicit constants (the exact former blueprint values) so the
 // legacy turret blueprint is no longer a render dependency. Factory tower
 // sprays still pass explicit per-spray overrides.

@@ -212,7 +212,7 @@ export class ConstructionVisualController3D {
   }
 
   /** Drive a factory's construction emitter (the tower/sprays
-   *  rig mounted on the factory's `turretConstruction`). The rate is
+   *  rig mounted on the factory's construction pylons). The rate is
    *  read directly from the factory's per-resource transfer fractions.
    *  Spray target follows the live shell once resource flow identifies it,
    *  with the static center bay as a short-lived fallback. */
