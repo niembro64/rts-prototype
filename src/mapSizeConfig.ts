@@ -1,3 +1,5 @@
+import rawMapSizeConfig from './mapSizeConfig.json';
+
 export type MapDimensionAxisOption = {
   readonly valueLandCells: number;
   readonly label: string;

@@ -5,21 +5,13 @@ import type {
 import type { UnitLocomotion } from './types';
 import rawLocomotionConfig from './locomotionConfig.json';
 
-const LOCOMOTION_TRACTION = {
-  wheels: 0.45,
-  treads: 0.75,
-  legs: 1.0,
-  // Hover units have no terrain contact patch; the "traction" here is
-  // applied as a uniform horizontal-thrust scalar (1.0 = full authority).
-  hover: 1.0,
-  // Flying units use this as thrust and yaw authority: low values drift
-  // through wide turns, high values feel closer to direct hover control.
-  flying: 1.0,
-} as const;
+// Canonical set of locomotion discriminants. The live per-type physics
+// tuning (drive-force multiplier) and the global force scale are authored
+// in locomotionConfig.json (Config Is Data, Not Code); per-unit traction
+// is authored on each blueprint's physics.traction.
+const LOCOMOTION_TYPES = ['wheels', 'treads', 'legs', 'hover', 'flying'] as const;
 
-export const LOCOMOTION_FORCE_SCALE = 150000;
-
-type LocomotionType = keyof typeof LOCOMOTION_TRACTION;
+type LocomotionType = (typeof LOCOMOTION_TYPES)[number];
 
 type LocomotionTypeConfig = {
   physics: {
@@ -27,7 +19,10 @@ type LocomotionTypeConfig = {
   };
 };
 
-type LocomotionConfig = Record<LocomotionType, LocomotionTypeConfig>;
+type LocomotionConfig = {
+  forceScale: number;
+  types: Record<LocomotionType, LocomotionTypeConfig>;
+};
 
 function assertPositiveFinite(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0) {
@@ -52,22 +47,30 @@ function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
 }
 
 function readLocomotionConfig(): LocomotionConfig {
-  const config = rawLocomotionConfig as unknown as Partial<Record<LocomotionType, LocomotionTypeConfig>>;
-  for (const type of Object.keys(LOCOMOTION_TRACTION) as LocomotionType[]) {
-    const typeConfig = config[type];
+  const config = rawLocomotionConfig as unknown as {
+    forceScale?: number;
+    types?: Partial<Record<LocomotionType, LocomotionTypeConfig>>;
+  };
+  assertPositiveFinite('forceScale', config.forceScale ?? NaN);
+  const types = config.types;
+  if (!types || typeof types !== 'object') {
+    throw new Error('Invalid locomotionConfig.json: missing types table');
+  }
+  for (const type of LOCOMOTION_TYPES) {
+    const typeConfig = types[type];
     if (!typeConfig || typeof typeConfig !== 'object') {
-      throw new Error(`Invalid locomotionConfig.json: missing ${type} config`);
+      throw new Error(`Invalid locomotionConfig.json: missing types.${type} config`);
     }
     if (!typeConfig.physics || typeof typeConfig.physics !== 'object') {
-      throw new Error(`Invalid locomotionConfig.json: missing ${type}.physics config`);
+      throw new Error(`Invalid locomotionConfig.json: missing types.${type}.physics config`);
     }
     assertPositiveFinite(
-      `${type}.physics.driveForceMultiplier`,
+      `types.${type}.physics.driveForceMultiplier`,
       typeConfig.physics.driveForceMultiplier,
     );
   }
-  for (const type of Object.keys(config)) {
-    if (!(type in LOCOMOTION_TRACTION)) {
+  for (const type of Object.keys(types)) {
+    if (!(LOCOMOTION_TYPES as readonly string[]).includes(type)) {
       throw new Error(`Invalid locomotionConfig.json: unknown locomotion type "${type}"`);
     }
   }
@@ -76,8 +79,13 @@ function readLocomotionConfig(): LocomotionConfig {
 
 const LOCOMOTION_CONFIG = readLocomotionConfig();
 
+/** Global force scale shared by every locomotion profile, authored in
+ *  locomotionConfig.json. Drives the mass-to-acceleration conversion in
+ *  the arrival controller, pathfinding mobility, and UnitForceSystem. */
+export const LOCOMOTION_FORCE_SCALE: number = LOCOMOTION_CONFIG.forceScale;
+
 function getLocomotionDriveForceMultiplier(type: LocomotionType): number {
-  return LOCOMOTION_CONFIG[type].physics.driveForceMultiplier;
+  return LOCOMOTION_CONFIG.types[type].physics.driveForceMultiplier;
 }
 
 function getEffectiveLocomotionDriveForce(

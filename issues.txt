@@ -249,20 +249,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
 
 --- SSoT / CONFIG-IS-DATA / DELETE-THE-OLD-PATH ---
 
-[12] mapSizeConfig.ts hardcodes the values mapSizeConfig.json holds; the .json is
-     an orphaned second source (the migration ran BACKWARDS: data -> code)
-    Category: ssot / config-is-data | Severity: MEDIUM (drift risk)
-    Evidence: src/mapSizeConfig.ts:16-24 hardcodes MAP_SIZE_CONFIG (7 values)
-      byte-for-byte identical to src/mapSizeConfig.json:2-8. Commit 32b6b8e9
-      deleted the `import mapSizeConfig from './mapSizeConfig.json'`. Zero
-      importers of the .json remain except a stale comment at battleBarConfig.ts:25.
-    Design: "Config Is Data, Not Code" / "Migration direction" (html:2941-2951:
-      every tuning table moves .ts -> .json, never the reverse) + "Delete The Old
-      Path." Two copies WILL drift.
-    Fix: Restore `import rawMapSizeConfig from './mapSizeConfig.json'`, delete the
-      hardcoded const, validate the imported shape (as pathfindingTuning.ts does),
-      and fix the stale comment at battleBarConfig.ts:25.
-
 [13] Rust EntityMetaPool registry (register/resolve/set_unit/set_building/set_tower
      + 14 registry*Ptr exports) is fully implemented and bound but has ZERO
      production callers — a dead parallel SSoT beside the live TS WorldEntityMetadata
@@ -305,17 +291,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
       (observation.rs, ballistic.rs, fsm.rs) leaving SoA storage + accessors in the
       parent and re-exporting.
 
-[15] Per-locomotion-type physics tuning is split between code and JSON
-    Category: ssot / config-is-data | Severity: LOW
-    Evidence: src/game/sim/locomotion.ts:8-18 (LOCOMOTION_TRACTION table), :20
-      (LOCOMOTION_FORCE_SCALE = 150000) hardcode per-type physics tuning, while
-      src/game/sim/locomotionConfig.json:1-27 holds driveForceMultiplier keyed by
-      the SAME 5 locomotion types. One concept, two key authorities.
-    Design: "Config Is Data, Not Code" (html:2916: friction/mass tuning tables
-      belong in JSON; :2938 defaults live in the schema, not the loader).
-    Fix: Move the per-type traction values and LOCOMOTION_FORCE_SCALE into
-      locomotionConfig.json alongside driveForceMultiplier so all per-locomotion
-      physics tuning is one data table; the loader only validates/types it.
 ================================================================================
 
 
