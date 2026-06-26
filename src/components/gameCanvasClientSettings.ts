@@ -186,7 +186,7 @@ export function useGameCanvasClientSettings({
     explosion: getProjRangeToggle('explosion'),
   });
   const unitRadiusToggles = reactive<Record<UnitRadiusType, boolean>>({
-    visual: getUnitRadiusToggle('visual'),
+    other: getUnitRadiusToggle('other'),
     hitbox: getUnitRadiusToggle('hitbox'),
     collision: getUnitRadiusToggle('collision'),
     shotArmingRadius: getUnitRadiusToggle('shotArmingRadius'),

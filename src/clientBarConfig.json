@@ -214,7 +214,7 @@
     "build"
   ],
   "projRangeTypes": ["collision", "explosion"],
-  "unitRadiusTypes": ["visual", "hitbox", "collision", "shotArmingRadius"],
+  "unitRadiusTypes": ["other", "hitbox", "collision", "shotArmingRadius"],
 
   "storageKeySuffixes": {
     "renderMode": "render-mode",

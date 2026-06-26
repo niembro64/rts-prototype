@@ -110,7 +110,7 @@ export class UnitRenderPacket3D {
   z = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   rotation = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   groundY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
-  radiusVisual = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  radiusOther = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalX = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -163,7 +163,7 @@ export class UnitRenderPacket3D {
     this.z[cursor] = entity.transform.z;
     this.rotation[cursor] = entity.transform.rotation;
     this.groundY[cursor] = getUnitGroundZ(entity);
-    this.radiusVisual[cursor] = unit.radius.other || unit.radius.hitbox || 15;
+    this.radiusOther[cursor] = unit.radius.other || unit.radius.hitbox || 15;
     this.normalX[cursor] = unit.surfaceNormal.nx;
     this.normalY[cursor] = unit.surfaceNormal.ny;
     this.normalZ[cursor] = unit.surfaceNormal.nz;
@@ -252,7 +252,7 @@ export class UnitRenderPacket3D {
     this.z = growFloat32(this.z, nextCapacity);
     this.rotation = growFloat32(this.rotation, nextCapacity);
     this.groundY = growFloat32(this.groundY, nextCapacity);
-    this.radiusVisual = growFloat32(this.radiusVisual, nextCapacity);
+    this.radiusOther = growFloat32(this.radiusOther, nextCapacity);
     this.normalX = growFloat32(this.normalX, nextCapacity);
     this.normalY = growFloat32(this.normalY, nextCapacity);
     this.normalZ = growFloat32(this.normalZ, nextCapacity);

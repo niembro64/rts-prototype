@@ -665,8 +665,8 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
   // the turret renders no head sphere (and barrels, which scale off it,
   // collapse to nothing). Any other non-positive / non-finite value is an
   // authoring mistake.
-  const radiusVisual = turretBlueprint.radius.other;
-  if (radiusVisual != null && (!Number.isFinite(radiusVisual) || radiusVisual <= 0)) {
+  const radiusOther = turretBlueprint.radius.other;
+  if (radiusOther != null && (!Number.isFinite(radiusOther) || radiusOther <= 0)) {
     throw new Error(
       `Turret blueprint ${turretBlueprintId} radius.other must be a positive number or null`,
     );

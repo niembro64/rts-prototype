@@ -992,9 +992,9 @@ function resetEveryCustomHotkey(): void {
         >ALL</BarButton>
         <BarButtonGroup>
           <BarButton
-            :active="model.unitRadiusToggles.visual"
-            title="Show host body sphere (radius.visual - visible chassis/body size)"
-            @click="model.toggleUnitRadius('visual')"
+            :active="model.unitRadiusToggles.other"
+            title="Show host body sphere (radius.other - outer/render extent: mesh size, LOD distance, selection volume)"
+            @click="model.toggleUnitRadius('other')"
           >BODY</BarButton>
           <BarButton
             :active="model.unitRadiusToggles.hitbox"

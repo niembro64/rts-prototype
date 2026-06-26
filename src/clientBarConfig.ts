@@ -499,7 +499,7 @@ const currentProjRangeToggles: Record<ProjRangeType, boolean> = {
   explosion: _cd.projRangeToggles.default,
 };
 const currentUnitRadiusToggles: Record<UnitRadiusType, boolean> = {
-  visual: _cd.unitRadiusToggles.default,
+  other: _cd.unitRadiusToggles.default,
   hitbox: _cd.unitRadiusToggles.default,
   collision: _cd.unitRadiusToggles.default,
   shotArmingRadius: _cd.unitRadiusToggles.default,

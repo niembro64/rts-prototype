@@ -485,7 +485,7 @@
       }
     },
     "selectionOverlay": {
-      "radiusVisual": {
+      "radiusOther": {
         "colorHex": "#44ffff",
         "opacity": 0.7
       },

@@ -91,7 +91,7 @@ export class SelectionOverlayRenderer3D {
   private showEngageMinRelease = false;
   private showBuild = false;
   private showReclaimTargets = false;
-  private showVisualRadius = false;
+  private showOtherRadius = false;
   private showHitboxRadius = false;
   private showCollisionRadius = false;
   private showShotArmingRadius = false;
@@ -103,10 +103,10 @@ export class SelectionOverlayRenderer3D {
   private unitOverlayStateKey = '';
   private unitOverlayStateVersion = 0;
 
-  private readonly radiusMatVisual = new THREE.LineBasicMaterial({
-    color: COLORS.effects.selectionOverlay.radiusVisual.colorHex,
+  private readonly radiusMatOther = new THREE.LineBasicMaterial({
+    color: COLORS.effects.selectionOverlay.radiusOther.colorHex,
     transparent: true,
-    opacity: COLORS.effects.selectionOverlay.radiusVisual.opacity,
+    opacity: COLORS.effects.selectionOverlay.radiusOther.opacity,
     depthWrite: false,
     depthTest: false,
   });
@@ -164,7 +164,7 @@ export class SelectionOverlayRenderer3D {
     this.showEngageMinRelease = getRangeToggle('engageMinRelease');
     this.showBuild = getRangeToggle('build');
     this.showReclaimTargets = options.reclaimTargets === true;
-    this.showVisualRadius = getUnitRadiusToggle('visual');
+    this.showOtherRadius = getUnitRadiusToggle('other');
     this.showHitboxRadius = getUnitRadiusToggle('hitbox');
     this.showCollisionRadius = getUnitRadiusToggle('collision');
     this.showShotArmingRadius = getUnitRadiusToggle('shotArmingRadius');
@@ -187,7 +187,7 @@ export class SelectionOverlayRenderer3D {
     }
     const nextUnitOverlayStateKey = [
       nextRangeStateKey,
-      this.showVisualRadius,
+      this.showOtherRadius,
       this.showHitboxRadius,
       this.showCollisionRadius,
       this.showShotArmingRadius,
@@ -256,13 +256,13 @@ export class SelectionOverlayRenderer3D {
   }
 
   updateUnitRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
-    const showVisual = this.showVisualRadius;
+    const showOther = this.showOtherRadius;
     const showHitbox = this.showHitboxRadius;
     const showCollision = this.showCollisionRadius;
     const showShotArming = this.showShotArmingRadius;
-    if (!showVisual && !showHitbox && !showCollision && !showShotArming) {
+    if (!showOther && !showHitbox && !showCollision && !showShotArming) {
       if (m.radiusRingsVisible && m.radiusRings) {
-        if (m.radiusRings.visual) setObjectVisibleIfChanged(m.radiusRings.visual, false);
+        if (m.radiusRings.other) setObjectVisibleIfChanged(m.radiusRings.other, false);
         if (m.radiusRings.hitbox) setObjectVisibleIfChanged(m.radiusRings.hitbox, false);
         if (m.radiusRings.collision) setObjectVisibleIfChanged(m.radiusRings.collision, false);
         if (m.radiusRings.shotArmingRadius) setObjectVisibleIfChanged(m.radiusRings.shotArmingRadius, false);
@@ -278,8 +278,8 @@ export class SelectionOverlayRenderer3D {
     const centerY = getUnitBodyCenterHeight(entity.unit);
 
     this.setUnitRadiusSphere(
-      rings, 'visual', showVisual, m.group,
-      centerY, entity.unit.radius.other, this.radiusMatVisual,
+      rings, 'other', showOther, m.group,
+      centerY, entity.unit.radius.other, this.radiusMatOther,
     );
     this.setUnitRadiusSphere(
       rings, 'hitbox', showHitbox, m.group,
@@ -297,13 +297,13 @@ export class SelectionOverlayRenderer3D {
   }
 
   updateBuildingRadiusRings(m: OverlayEntityMesh, entity: Entity): void {
-    const showVisual = this.showVisualRadius;
+    const showOther = this.showOtherRadius;
     const showHitbox = this.showHitboxRadius;
     const showCollision = this.showCollisionRadius;
     const showShotArming = this.showShotArmingRadius;
-    if (!showVisual && !showHitbox && !showCollision && !showShotArming) {
+    if (!showOther && !showHitbox && !showCollision && !showShotArming) {
       if (m.radiusRingsVisible && m.radiusRings) {
-        if (m.radiusRings.visual) setObjectVisibleIfChanged(m.radiusRings.visual, false);
+        if (m.radiusRings.other) setObjectVisibleIfChanged(m.radiusRings.other, false);
         if (m.radiusRings.hitbox) setObjectVisibleIfChanged(m.radiusRings.hitbox, false);
         if (m.radiusRings.collision) setObjectVisibleIfChanged(m.radiusRings.collision, false);
         if (m.radiusRings.shotArmingRadius) setObjectVisibleIfChanged(m.radiusRings.shotArmingRadius, false);
@@ -323,8 +323,8 @@ export class SelectionOverlayRenderer3D {
       : Math.max(0, config.visualHeight * 0.5);
 
     this.setUnitRadiusSphere(
-      rings, 'visual', showVisual, m.group,
-      centerY, collider.other, this.radiusMatVisual,
+      rings, 'other', showOther, m.group,
+      centerY, collider.other, this.radiusMatOther,
     );
     this.setUnitRadiusSphere(
       rings, 'hitbox', showHitbox, m.group,
@@ -516,7 +516,7 @@ export class SelectionOverlayRenderer3D {
   dispose(): void {
     // Overlay-ring geometry/material is owned by the shared OverlayLineSystem;
     // only the radius-sphere wireframe materials are owned here.
-    this.radiusMatVisual.dispose();
+    this.radiusMatOther.dispose();
     this.radiusMatHitbox.dispose();
     this.radiusMatCollision.dispose();
     this.radiusMatShotArming.dispose();

@@ -564,7 +564,7 @@ export class Render3DEntities {
       // footprint, matching the 2D renderer. Body height is per-unit
       // (see BodyShape3D / BodyDimensions); turrets mount on top of
       // whatever height the body resolves to.
-      const radius = unitRows.radiusVisual[row];
+      const radius = unitRows.radiusOther[row];
       const pid = unitRows.ownerIdAt(row);
       const unitBlueprintId = unitRows.unitBlueprintIds[row];
       const unitTurretCount = unitRows.turretCount[row];
@@ -677,7 +677,7 @@ export class Render3DEntities {
       const tRot = unitRows.rotation[row];
       const turrets = unitRows.turretsAt(row);
       const groundZ = unitRows.groundY[row];
-      const radius = unitRows.radiusVisual[row];
+      const radius = unitRows.radiusOther[row];
       const bodyOpacity = poseBodyOpacity[poseIndex];
       const bodyMaterialized = unitRows.bodyMaterializedAt(row);
       const bodyVisible = bodyOpacity > 0;

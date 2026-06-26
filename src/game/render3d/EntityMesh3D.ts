@@ -16,7 +16,7 @@ import type {
 import type { SolarRig } from './SolarCollectorMesh3D';
 
 export type RadiusRingMeshes = {
-  visual?: THREE.LineSegments;
+  other?: THREE.LineSegments;
   hitbox?: THREE.LineSegments;
   collision?: THREE.LineSegments;
   shotArmingRadius?: THREE.LineSegments;
@@ -94,7 +94,7 @@ export type EntityMesh = {
   ring?: GroundRing3D;
   /** UNIT SPH wireframe spheres. All three channels are now 3D in
    *  the sim:
-   *    - visual    → unit.radius.other, the drawn body footprint.
+   *    - other     → unit.radius.other, the drawn body footprint.
    *    - hitbox    → 3D swept + area-damage check (lineSphereIntersectionT
    *      + sqrt(dx²+dy²+dz²) in DamageSystem).
    *    - collision → full 3D sphere-vs-sphere contact in PhysicsEngine3D.

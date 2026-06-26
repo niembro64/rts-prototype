@@ -2917,7 +2917,7 @@ export interface SnapshotEncodeApi {
     hasUnitType: number,
     unitTypeCode: number,
     hasRadius: number,
-    radiusVisual: number,
+    radiusOther: number,
     radiusHitbox: number,
     radiusCollision: number,
     hasBodyCenterHeight: number,
