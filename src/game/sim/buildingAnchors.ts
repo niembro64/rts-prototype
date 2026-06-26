@@ -1,6 +1,7 @@
 import type { Entity } from './types';
 import {
   DEFAULT_BUILDING_VISUAL_HEIGHT,
+  FABRICATOR_TORUS_HOVER_HEIGHT,
   getFactoryBuildingVisualMetrics,
   getBuildingBlueprint,
 } from './blueprints';
@@ -40,6 +41,13 @@ export function getBuildingVisualTopZ(entity: Entity): number {
 }
 
 export function getBuildingVisualCenterZ(entity: Entity): number {
+  // A hovering body (the fabricator torus) floats at a fixed height in the air,
+  // so its visual/hitbox center is the floating body itself — NOT the ground-to-
+  // top midpoint a grounded building uses. This is what selection/picking and
+  // the selection overlay center on, so they sit on the torus, not mid-air.
+  if (entity.building?.hovering) {
+    return getBuildingBaseZ(entity) + FABRICATOR_TORUS_HOVER_HEIGHT;
+  }
   return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.5;
 }
 

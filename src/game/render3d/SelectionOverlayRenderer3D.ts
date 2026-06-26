@@ -12,6 +12,7 @@ import { isConstructionPieceMaterialized } from '../sim/buildableHelpers';
 import type { ClientViewState } from '../network/ClientViewState';
 import { getSurfaceHeight, getSurfaceNormal } from '../sim/Terrain';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from '../sim/unitGeometry';
+import { FABRICATOR_TORUS_HOVER_HEIGHT } from '../sim/blueprints';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTransformCosSin } from '../math';
@@ -315,7 +316,11 @@ export class SelectionOverlayRenderer3D {
     const config = getBuildingConfig(entity.buildingBlueprintId);
     const collider = config.radius;
     const rings = m.radiusRings ?? (m.radiusRings = {});
-    const centerY = Math.max(0, config.visualHeight * 0.5);
+    // A hovering body (the fabricator torus) carries its hitbox/collision/visual
+    // volumes up at the torus center, not at the ground-level body midpoint.
+    const centerY = entity.building.hovering
+      ? FABRICATOR_TORUS_HOVER_HEIGHT
+      : Math.max(0, config.visualHeight * 0.5);
 
     this.setUnitRadiusSphere(
       rings, 'visual', showVisual, m.group,
