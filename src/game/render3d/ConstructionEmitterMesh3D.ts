@@ -277,7 +277,9 @@ export function buildConstructionEmitterRigFromTurretConfig(
     pylonBaseY,
     singleResource,
   );
-  if (variant === 'large') {
+  // The deck is the multi-pylon construction tower's shared base; a single
+  // resource pylon (the split metal/energy pylons) stands alone without it.
+  if (variant === 'large' && singleResource === null) {
     root.add(buildConstructionTurretDeck(dims.pylonOffset, dims.innerPylonRadius, primaryMat));
   }
   for (const mesh of pylonTrio.staticMeshes) root.add(mesh);

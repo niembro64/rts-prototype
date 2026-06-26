@@ -190,6 +190,14 @@ export class UnitForceSystem {
       const supportPenetration = supportSurface.groundZ - (body.z - body.groundOffset);
       const surfaceContact = supportPenetration >= -UNIT_GROUND_CONTACT_EPSILON;
       const buildInProgress = isBuildInProgress(entity.buildable);
+      if (buildInProgress) {
+        // Freeze the shell's horizontal motion while it is still being built:
+        // a factory shell free-falling out of the fabricator torus drops
+        // straight down into the production area and cannot slide out. Gravity
+        // still acts on Z; the unit is released the tick it completes.
+        body.vx = 0;
+        body.vy = 0;
+      }
       const locomotionType = unit.locomotion.type;
       const isFlying = locomotionType === 'flying';
       const isAirborneLocomotion = locomotionType === 'hover' || locomotionType === 'flying';

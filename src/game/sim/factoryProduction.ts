@@ -1,7 +1,7 @@
 import type { WorldState } from './WorldState';
 import type { Entity } from './types';
 import type { BuildingGrid } from './buildGrid';
-import { getUnitBlueprint } from './blueprints';
+import { getUnitBlueprint, FABRICATOR_TORUS_HOVER_HEIGHT } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import {
   COST_MULTIPLIER,
@@ -41,13 +41,6 @@ const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
 const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
 const FACTORY_SHELL_MIN_FREEFALL_CLEARANCE = 36;
-
-// Fabricator torus hover height: the spawn turret materializes the unit shell in
-// the CENTER of the hovering torus, this far above the ground, and it free-falls
-// (supportSurface=none) while the under-slung construction pylons finish it. The
-// renderer reads this same value so the torus body + pylons sit at the height the
-// unit actually appears.
-export const FABRICATOR_TORUS_HOVER_HEIGHT = 96;
 const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
 
 export function shiftFactoryProductionQueue(queue: string[]): string | null {

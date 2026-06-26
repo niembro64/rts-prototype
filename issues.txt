@@ -355,21 +355,16 @@ deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
     "resources are visible only as pylon balls" invariant). Converter/upkeep/ammo
     "consumption" spend stays as-is (future consumption-pylon role).
 
-[21] Phase E (cont.) - fabricator torus visual tuning (needs in-app eyes)
-    DONE: fabricator renders bodyless with a hovering team-colored torus ring at
-    FABRICATOR_TORUS_HOVER_HEIGHT (96); it mounts the metal + energy construction
-    pylons (small) under the ring + turretSpawnUnits at the ring center (no more
-    turretConstruction). Unit shells spawn in the torus center high in the air and
-    free-fall (supportSurface=none) while the pylons finish them; both pylons spin +
-    spray their own resource (factory now drives every construction-emitter rig).
-    REMAINING (visual tuning — verify + adjust in-app, can't be eyeballed headless):
-    - pylons should visibly POINT DOWN (their small rigs currently render upright
-      under the ring; the spray already auto-aims down at the falling shell).
-    - torus ring radius / tube / hover height fine-tuning vs the footprint.
-    - anchor visualTop (health-bar height) still derives from the old construction-
-      tower metrics in getFactoryBuildingVisualMetrics — retarget it to the torus.
-    - the forming-unit ghost orbs (factoryBuildSpotRig) still sit at the build bay;
-      move them to the torus center or retire them now that the real shell is visible.
+[21] Phase E (cont.) - retire/relocate the factory ghost orbs
+    The fabricator torus is done: body hovers at FABRICATOR_TORUS_HOVER_HEIGHT
+    (= 1.2x the largest unit's collision DIAMETER, computed in buildings.ts so the
+    biggest unit fits under it), large metal+energy construction pylons hang on the
+    ring and point DOWN, the spawn turret sits at the ring center, shells spawn in
+    the center + free-fall with X/Y frozen until complete, and the health-bar anchor
+    tracks the torus top. REMAINING: the forming-unit ghost orbs (factoryBuildSpotRig
+    in FactoryMesh3D) still sit at the ground-level build bay -- now redundant since
+    the real shell is visibly falling from the torus. Move them to the torus center
+    or retire them (needs in-app eyes).
 
 [22] Phase F (cont.) - old-path removal is gated by wire codes + load-bearing deps
     DONE: budget_design_philosophy.html updated -- turret = ANY mounted emitter

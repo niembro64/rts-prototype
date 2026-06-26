@@ -830,6 +830,12 @@ export class BuildingEntityRenderer3D {
       // turret yaw/velocity stream so the whole fabricator construction
       // deck can rotate smoothly on the client.
       if (turret.config.constructionEmitter) {
+        // Building construction pylons (the fabricator's) hang UNDER the torus
+        // and point DOWN at the free-falling shell — flip the rig like the
+        // construction drone does (π about Z).
+        if (turretMesh.constructionEmitter) {
+          setEulerZIfChanged(turretMesh.constructionEmitter.group.rotation, Math.PI);
+        }
         this.enqueueTurretAim(
           turretMesh,
           entity.transform.rotation,

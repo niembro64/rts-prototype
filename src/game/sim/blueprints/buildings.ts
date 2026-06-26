@@ -36,6 +36,8 @@ import {
 } from './lockOnConfig';
 import { STRUCTURE_BLUEPRINT_IDS } from '../../../types/blueprintIds';
 import { TURRET_BLUEPRINTS } from './turrets';
+import { UNIT_BLUEPRINTS } from './units';
+import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import {
   assertValidShotArmingRadius,
   normalizeEntityBaseLedgerFromAliases,
@@ -228,7 +230,10 @@ export function getFactoryBuildingVisualMetrics(
     capY,
     nozzleRadius,
     nozzleY,
-    visualTop: towerBaseY + pylonHeight + capRadius,
+    // The fabricator body is now the hovering torus, so its top (where the
+    // health/build bars float) is the ring height plus the ring's tube radius —
+    // not the old central construction tower.
+    visualTop: FABRICATOR_TORUS_HOVER_HEIGHT + fabricatorTorusRingRadius(width, depth) * 0.22 + capRadius,
   };
 }
 
@@ -363,5 +368,54 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
 
 export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): BuildingBlueprint {
   return BUILDING_BLUEPRINTS[buildingBlueprintId];
+}
+
+// ── Fabricator torus geometry (single source of truth) ──────────────────────
+// The fabricator is a hovering torus. Its body floats 1.2x the LARGEST unit's
+// collision DIAMETER above the ground, computed from the roster (never hand-
+// tuned), so even the biggest unit fits comfortably under it and moves freely
+// beneath. The renderer (torus + pylon rigs), the spawn height, and the turret
+// mounts all read this geometry, so they can never drift apart.
+function maxUnitCollisionRadius(): number {
+  let max = 0;
+  for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+    if (bp.radius.collision > max) max = bp.radius.collision;
+  }
+  return max;
+}
+
+/** Height of the fabricator torus body = 1.2 x the largest unit's collision diameter. */
+export const FABRICATOR_TORUS_HOVER_HEIGHT = 1.2 * (2 * maxUnitCollisionRadius());
+
+/** Radius of the torus ring — the circle the construction pylons hang on. */
+export function fabricatorTorusRingRadius(width: number, depth: number): number {
+  return Math.max(width, depth) * 0.46;
+}
+
+// Finalize the fabricator's turret mounts from the torus geometry: the spawn
+// turret sits at the ring center (where the unit materializes), and the two
+// construction pylons hang on opposite sides of the ring. Mutating loaded
+// blueprint data at import time mirrors normalizeEntityBaseLedgerFromAliases.
+{
+  const fabricator = BUILDING_BLUEPRINTS.towerFabricator;
+  if (fabricator) {
+    const width = fabricator.gridWidth * BUILD_GRID_CELL_SIZE;
+    const depth = fabricator.gridHeight * BUILD_GRID_CELL_SIZE;
+    const ring = fabricatorTorusRingRadius(width, depth);
+    let nextPylonX = -ring;
+    for (const mount of fabricator.turrets) {
+      const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+      if (turretBlueprint.spawn != null) {
+        mount.mount.x = 0;
+        mount.mount.y = 0;
+        mount.mount.z = FABRICATOR_TORUS_HOVER_HEIGHT;
+      } else if (turretBlueprint.resourcePylon?.role === 'construction') {
+        mount.mount.x = nextPylonX;
+        mount.mount.y = 0;
+        mount.mount.z = FABRICATOR_TORUS_HOVER_HEIGHT;
+        nextPylonX = ring;
+      }
+    }
+  }
 }
 
