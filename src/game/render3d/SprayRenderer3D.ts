@@ -39,7 +39,6 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
-import { TURRET_CONFIGS } from '../sim/turretConfigs';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
@@ -47,10 +46,13 @@ import { RESOURCE_CONFIG } from '@/resourceConfig';
 // tower sprays can pass explicit source/target z heights.
 const TRAIL_Y = RESOURCE_CONFIG.spray.trailY;
 const MIN_FLIGHT_SEC = RESOURCE_CONFIG.spray.minFlightSec;
-const DEFAULT_BUILD_PARTICLE_SPEED =
-  TURRET_CONFIGS.turretConstruction.constructionEmitter?.particleTravelSpeed ?? 100;
-const DEFAULT_BUILD_PARTICLE_RADIUS =
-  TURRET_CONFIGS.turretConstruction.constructionEmitter?.particleRadius ?? 1.5;
+// Default construction-spray particle visuals. These were historically read
+// from the (now-unmounted) turretConstruction blueprint's constructionEmitter;
+// kept here as explicit constants (the exact former blueprint values) so the
+// legacy turret blueprint is no longer a render dependency. Factory tower
+// sprays still pass explicit per-spray overrides.
+const DEFAULT_BUILD_PARTICLE_SPEED = 50;
+const DEFAULT_BUILD_PARTICLE_RADIUS = 1.5;
 const HEAL_PARTICLE_SPEED = RESOURCE_CONFIG.spray.healParticleSpeed;
 const HEAL_MAX_FLIGHT_SEC = RESOURCE_CONFIG.spray.healMaxFlightSec;
 const HEAL_PARTICLE_BASE_RADIUS = RESOURCE_CONFIG.spray.healParticleBaseRadius;

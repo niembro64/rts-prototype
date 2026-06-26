@@ -184,6 +184,17 @@ function firstTurretMountZ(
 const FACTORY_CONSTRUCTION_TURRET_MOUNT_Z =
   firstTurretMountZ(BUILDING_BLUEPRINTS.towerFabricator, FACTORY_BASE_VISUAL_HEIGHT);
 
+// Fabricator construction-tower dimensions. Historically read from the
+// (now-unmounted) turretConstruction blueprint's large constructionEmitter;
+// retained here as explicit constants (the exact former blueprint values) so
+// the legacy turret blueprint is no longer a load-bearing dependency. These
+// feed both the 3D renderer and sim-side anchors, so they are fixed: changing
+// a value is a visual + anchor change, not a refactor.
+const FABRICATOR_TOWER_PYLON_RADIUS = 3.6;
+const FABRICATOR_TOWER_PYLON_OFFSET = 96;
+const FABRICATOR_TOWER_PYLON_HEIGHT = 90;
+const FABRICATOR_TOWER_MOUNT_RADIUS = 8;
+
 type FactoryBuildingVisualMetrics = {
   minDim: number;
   baseHeight: number;
@@ -208,15 +219,13 @@ export function getFactoryBuildingVisualMetrics(
   depth: number,
 ): FactoryBuildingVisualMetrics {
   const minDim = Math.min(width, depth);
-  const emitter = TURRET_BLUEPRINTS.turretConstruction.constructionEmitter;
-  const largeEmitter = emitter?.sizes.large;
-  const pylonRadius = largeEmitter?.innerPylonRadius ?? Math.max(2.3, minDim * 0.055);
-  const pylonOffset = largeEmitter?.pylonOffset ?? Math.max(15, minDim * 0.4);
-  const pylonHeight = largeEmitter?.pylonHeight ?? 50;
+  const pylonRadius = FABRICATOR_TOWER_PYLON_RADIUS;
+  const pylonOffset = FABRICATOR_TOWER_PYLON_OFFSET;
+  const pylonHeight = FABRICATOR_TOWER_PYLON_HEIGHT;
   const towerRadius = Math.max(7, minDim * 0.09);
   const collarRadius = Math.max(towerRadius * 1.35, minDim * 0.16);
   const towerHeight = pylonHeight;
-  const towerBaseY = Math.max(0, FACTORY_CONSTRUCTION_TURRET_MOUNT_Z - TURRET_BLUEPRINTS.turretConstruction.radius.other);
+  const towerBaseY = Math.max(0, FACTORY_CONSTRUCTION_TURRET_MOUNT_Z - FABRICATOR_TOWER_MOUNT_RADIUS);
   const capRadius = Math.max(1.35, pylonRadius * 1.65);
   const capY = towerBaseY + pylonHeight + capRadius * 0.36;
   const nozzleRadius = capRadius;
