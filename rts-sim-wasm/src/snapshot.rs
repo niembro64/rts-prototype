@@ -92,18 +92,18 @@ pub const SNAPSHOT_ENTITY_TYPE_UNIT: u8 = 1;
 pub const SNAPSHOT_ENTITY_TYPE_BUILDING: u8 = 2;
 pub const SNAPSHOT_ENTITY_TYPE_TOWER: u8 = 3;
 
-/// Encoder turret scratch — JS pre-fills with already-quantized
-/// turret values, then the encoder reads from it when emitting the
-/// turrets array. Layout per turret (10 f64 = 80 bytes):
-///   [0..4]  qRot(rotation, vel, pitch, pitchVel)
-///   [4]     turretBlueprintCode (TurretBlueprintCode as f64)
-///   [5]     state code (TurretStateCode as f64)
-///   [6]     has_target_id (0 or 1)
-///   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
-///   [8]     has_shield_range (0 or 1)
-///   [9]     shield_range (raw value; ignored when has_ff_range==0)
-///
-/// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
+// Encoder turret scratch — JS pre-fills with already-quantized
+// turret values, then the encoder reads from it when emitting the
+// turrets array. Layout per turret (10 f64 = 80 bytes):
+//   [0..4]  qRot(rotation, vel, pitch, pitchVel)
+//   [4]     turretBlueprintCode (TurretBlueprintCode as f64)
+//   [5]     state code (TurretStateCode as f64)
+//   [6]     has_target_id (0 or 1)
+//   [7]     target_id (raw entity id as f64; ignored when has_target_id==0)
+//   [8]     has_shield_range (0 or 1)
+//   [9]     shield_range (raw value; ignored when has_ff_range==0)
+//
+// Capacity grown on demand by snapshot_encode_turret_scratch_ensure.
 snapshot_scratch_pool!(
     SnapshotEncodeTurretScratch,
     SnapshotEncodeTurretScratchHolder,
@@ -118,23 +118,23 @@ snapshot_scratch_pool!(
     ensure(turret_count)
 );
 
-/// Encoder action scratch — JS pre-fills with action data, then the
-/// encoder reads when emitting the actions array. Layout per action
-/// (16 f64 = 128 bytes):
-///   [0]   action type code (u8 ActionTypeCode as f64)
-///   [1]   has_pos (0 or 1)
-///   [2..4] pos.x, pos.y (when has_pos)
-///   [4]   has_pos_z (0 or 1)
-///   [5]   pos_z (when has_pos_z)
-///   [6]   path_exp (1 emits `true`, 0 omits the key)
-///   [7]   has_target_id (0 or 1)
-///   [8]   target_id (when has_target_id)
-///   [9]   has_building_type (0 or 1)
-///   [10]  building_type_string_slot (when has_building_type)
-///   [11]  has_grid (0 or 1)
-///   [12..14] grid.x, grid.y (when has_grid)
-///   [14]  has_building_id (0 or 1)
-///   [15]  building_id (when has_building_id)
+// Encoder action scratch — JS pre-fills with action data, then the
+// encoder reads when emitting the actions array. Layout per action
+// (16 f64 = 128 bytes):
+//   [0]   action type code (u8 ActionTypeCode as f64)
+//   [1]   has_pos (0 or 1)
+//   [2..4] pos.x, pos.y (when has_pos)
+//   [4]   has_pos_z (0 or 1)
+//   [5]   pos_z (when has_pos_z)
+//   [6]   path_exp (1 emits `true`, 0 omits the key)
+//   [7]   has_target_id (0 or 1)
+//   [8]   target_id (when has_target_id)
+//   [9]   has_building_type (0 or 1)
+//   [10]  building_type_string_slot (when has_building_type)
+//   [11]  has_grid (0 or 1)
+//   [12..14] grid.x, grid.y (when has_grid)
+//   [14]  has_building_id (0 or 1)
+//   [15]  building_id (when has_building_id)
 snapshot_scratch_pool!(
     SnapshotEncodeActionScratch,
     SnapshotEncodeActionScratchHolder,
@@ -251,11 +251,11 @@ pub fn snapshot_encode_factory_queue_scratch_ensure(count: u32) {
     }
 }
 
-/// Factory waypoint scratch — 5 f64 per waypoint:
-///   [0..2]  pos.x, pos.y
-///   [2]     has_pos_z (0 or 1)
-///   [3]     pos_z (when has_pos_z)
-///   [4]     type_string_slot (index into string scratch)
+// Factory waypoint scratch — 5 f64 per waypoint:
+//   [0..2]  pos.x, pos.y
+//   [2]     has_pos_z (0 or 1)
+//   [3]     pos_z (when has_pos_z)
+//   [4]     type_string_slot (index into string scratch)
 snapshot_scratch_pool!(
     SnapshotEncodeWaypointScratch,
     SnapshotEncodeWaypointScratchHolder,
@@ -1065,42 +1065,42 @@ pub fn snapshot_encode_entity_building(
     (w.buf.len() - start) as u32
 }
 
-/// Phase 10 D.3j-15: snapshot envelope encoder.
-///
-/// Mirrors stateSerializer.ts's `_snapshotBuf` pool entry layout:
-/// the entries are inserted in declaration order at pool creation
-/// (tick, entities, minimapEntities, economy, sprayTargets,
-/// audioEvents, projectiles, gameState, grid, removedEntityIds,
-/// visibilityFiltered). msgpack-with-
-/// ignoreUndefined emits ONLY the keys whose values are not
-/// undefined.
-///
-/// This commit covers the always-present minimum subset:
-///   - tick (uint)
-///   - entities[] (array of unit/building DTOs appended between
-///     `_begin` and `_continue` via the per-entity encoders)
-///   - economy (empty map for now)
-///
-/// Other envelope fields (audioEvents, projectiles, gameState,
-/// economy contents, etc.) come in follow-up commits.
-///
-/// API:
-///   1. `snapshot_encode_envelope_begin(tick, entity_count)`
-///      → clears the writer, writes the envelope map header + tick
-///      key + entities key + array16 header.
-///   2. For each entity: JS packs scratches and calls one of the
-///      existing entity encoders. They APPEND now (no auto-clear).
-///   3. `snapshot_encode_envelope_continue()`
-///      → writes the tail fields. Returns total
-///      written bytes.
-/// Minimap-entities scratch — 6 f64 per entry:
-///   [0]   id (entity id)
-///   [1]   pos.x
-///   [2]   pos.y
-///   [3]   type_tag (1 = unit, 2 = building, 3 = tower, matches SNAPSHOT_ENTITY_TYPE_*)
-///   [4]   playerId
-///   [5]   has_radar_only + (radar_only << 1) packed: 0 = omit, 2 = emit
-///         false (rare), 3 = emit true. Practically only 0 or 3 appear.
+// Phase 10 D.3j-15: snapshot envelope encoder.
+//
+// Mirrors stateSerializer.ts's `_snapshotBuf` pool entry layout:
+// the entries are inserted in declaration order at pool creation
+// (tick, entities, minimapEntities, economy, sprayTargets,
+// audioEvents, projectiles, gameState, grid, removedEntityIds,
+// visibilityFiltered). msgpack-with-
+// ignoreUndefined emits ONLY the keys whose values are not
+// undefined.
+//
+// This commit covers the always-present minimum subset:
+//   - tick (uint)
+//   - entities[] (array of unit/building DTOs appended between
+//     `_begin` and `_continue` via the per-entity encoders)
+//   - economy (empty map for now)
+//
+// Other envelope fields (audioEvents, projectiles, gameState,
+// economy contents, etc.) come in follow-up commits.
+//
+// API:
+//   1. `snapshot_encode_envelope_begin(tick, entity_count)`
+//      → clears the writer, writes the envelope map header + tick
+//      key + entities key + array16 header.
+//   2. For each entity: JS packs scratches and calls one of the
+//      existing entity encoders. They APPEND now (no auto-clear).
+//   3. `snapshot_encode_envelope_continue()`
+//      → writes the tail fields. Returns total
+//      written bytes.
+// Minimap-entities scratch — 6 f64 per entry:
+//   [0]   id (entity id)
+//   [1]   pos.x
+//   [2]   pos.y
+//   [3]   type_tag (1 = unit, 2 = building, 3 = tower, matches SNAPSHOT_ENTITY_TYPE_*)
+//   [4]   playerId
+//   [5]   has_radar_only + (radar_only << 1) packed: 0 = omit, 2 = emit
+//         false (rare), 3 = emit true. Practically only 0 or 3 appear.
 snapshot_scratch_pool!(
     SnapshotEncodeMinimapScratch,
     SnapshotEncodeMinimapScratchHolder,
@@ -1155,12 +1155,12 @@ pub fn snapshot_encode_proj_despawn_scratch_ensure(count: u32) {
     }
 }
 
-/// Projectile velocity-update scratch — 9 f64 per entry:
-///   [0]   id
-///   [1..4] pos.x, pos.y, pos.z
-///   [4..7] velocity.x, velocity.y, velocity.z
-///   [7]   clearHomingTarget flag
-///   [8]   targetEntityId (0 = omitted)
+// Projectile velocity-update scratch — 9 f64 per entry:
+//   [0]   id
+//   [1..4] pos.x, pos.y, pos.z
+//   [4..7] velocity.x, velocity.y, velocity.z
+//   [7]   clearHomingTarget flag
+//   [8]   targetEntityId (0 = omitted)
 snapshot_scratch_pool!(
     SnapshotEncodeProjVelScratch,
     SnapshotEncodeProjVelScratchHolder,
@@ -1175,37 +1175,37 @@ snapshot_scratch_pool!(
     ensure(count)
 );
 
-/// Projectile spawn scratch — 32 f64 per entry. Field order matches
-/// `createPooledProjectileSpawn` in stateSerializerProjectiles.ts so
-/// the emit loop walks the slots in DTO insertion order.
-///   [0]    id
-///   [1..4] pos.x, pos.y, pos.z
-///   [4]    rotation
-///   [5..8] velocity.x, velocity.y, velocity.z
-///   [8]    projectileType (code)
-///   [9]    maxLifespan (gated by flag bit 0)
-///   [10]   turretBlueprintCode
-///   [11]   shotBlueprintCode (gated by flag bit 1)
-///   [12]   sourceTurretBlueprintCode (gated by flag bit 2)
-///   [13]   playerId
-///   [14]   sourceEntityId
-///   [15]   turretIndex
-///   [16]   barrelIndex
-///   [17..20] beam.start.x/y/z (gated by flag bit 5)
-///   [20..23] beam.end.x/y/z (gated by flag bit 5)
-///   [23]   targetEntityId (gated by flag bit 6)
-///   [24]   homingTurnRate (gated by flag bit 7)
-///   [25]   sourceTurretEntityId (gated by flag bit 10)
-///   [26]   sourceHostEntityId
-///   [27]   sourceRootEntityId
-///   [28]   sourceTeamId
-///   [29]   spawnTick
-///   [30]   parentShotEntityId (gated by flag bit 11)
-///   [31]   flags: bit 0 maxLifespan, 1 shotBlueprintCode, 2 sourceTurretBlueprintCode,
-///          3 isDGun(true), 4 fromParentDetonation(true), 5 beam,
-///          6 targetEntityId, 7 homingTurnRate, 8 isDGun(false),
-///          9 fromParentDetonation(false), 10 sourceTurretEntityId,
-///          11 parentShotEntityId.
+// Projectile spawn scratch — 32 f64 per entry. Field order matches
+// `createPooledProjectileSpawn` in stateSerializerProjectiles.ts so
+// the emit loop walks the slots in DTO insertion order.
+//   [0]    id
+//   [1..4] pos.x, pos.y, pos.z
+//   [4]    rotation
+//   [5..8] velocity.x, velocity.y, velocity.z
+//   [8]    projectileType (code)
+//   [9]    maxLifespan (gated by flag bit 0)
+//   [10]   turretBlueprintCode
+//   [11]   shotBlueprintCode (gated by flag bit 1)
+//   [12]   sourceTurretBlueprintCode (gated by flag bit 2)
+//   [13]   playerId
+//   [14]   sourceEntityId
+//   [15]   turretIndex
+//   [16]   barrelIndex
+//   [17..20] beam.start.x/y/z (gated by flag bit 5)
+//   [20..23] beam.end.x/y/z (gated by flag bit 5)
+//   [23]   targetEntityId (gated by flag bit 6)
+//   [24]   homingTurnRate (gated by flag bit 7)
+//   [25]   sourceTurretEntityId (gated by flag bit 10)
+//   [26]   sourceHostEntityId
+//   [27]   sourceRootEntityId
+//   [28]   sourceTeamId
+//   [29]   spawnTick
+//   [30]   parentShotEntityId (gated by flag bit 11)
+//   [31]   flags: bit 0 maxLifespan, 1 shotBlueprintCode, 2 sourceTurretBlueprintCode,
+//          3 isDGun(true), 4 fromParentDetonation(true), 5 beam,
+//          6 targetEntityId, 7 homingTurnRate, 8 isDGun(false),
+//          9 fromParentDetonation(false), 10 sourceTurretEntityId,
+//          11 parentShotEntityId.
 snapshot_scratch_pool!(
     SnapshotEncodeProjSpawnScratch,
     SnapshotEncodeProjSpawnScratchHolder,
@@ -1220,13 +1220,13 @@ snapshot_scratch_pool!(
     ensure(count)
 );
 
-/// Beam-update header scratch — 4 f64 per update:
-///   [0]   id
-///   [1]   flags: bit 0 has_obstructionT, bit 1 has_endpointDamageable_false,
-///         bit 2 has_endpointDamageable_true
-///   [2]   obstructionT (qRot value, only valid if flag set)
-///   [3]   point_count (u32 as f64, points come from beam_point_scratch
-///         in order — first update's points then next update's, etc.)
+// Beam-update header scratch — 4 f64 per update:
+//   [0]   id
+//   [1]   flags: bit 0 has_obstructionT, bit 1 has_endpointDamageable_false,
+//         bit 2 has_endpointDamageable_true
+//   [2]   obstructionT (qRot value, only valid if flag set)
+//   [3]   point_count (u32 as f64, points come from beam_point_scratch
+//         in order — first update's points then next update's, etc.)
 snapshot_scratch_pool!(
     SnapshotEncodeBeamUpdateScratch,
     SnapshotEncodeBeamUpdateScratchHolder,
@@ -1241,16 +1241,16 @@ snapshot_scratch_pool!(
     ensure(count)
 );
 
-/// Beam-point scratch — flat 12 f64 per point across ALL beam updates
-/// (first update's N1 points, then next update's N2 points, etc.).
-///   [0..3]  x, y, z
-///   [3..6]  vx, vy, vz
-///   [6]     flags: bit 0 has_reflectorEntityId, bit 1 has_reflectorKind
-///           (shield material; bit 2 unused), bit 3 has_reflectorPlayerId,
-///           bit 4 has_normalX, bit 5 has_normalY, bit 6 has_normalZ.
-///   [7]     reflectorEntityId
-///   [8]     reflectorPlayerId
-///   [9..12] normalX, normalY, normalZ
+// Beam-point scratch — flat 12 f64 per point across ALL beam updates
+// (first update's N1 points, then next update's N2 points, etc.).
+//   [0..3]  x, y, z
+//   [3..6]  vx, vy, vz
+//   [6]     flags: bit 0 has_reflectorEntityId, bit 1 has_reflectorKind
+//           (shield material; bit 2 unused), bit 3 has_reflectorPlayerId,
+//           bit 4 has_normalX, bit 5 has_normalY, bit 6 has_normalZ.
+//   [7]     reflectorEntityId
+//   [8]     reflectorPlayerId
+//   [9..12] normalX, normalY, normalZ
 snapshot_scratch_pool!(
     SnapshotEncodeBeamPointScratch,
     SnapshotEncodeBeamPointScratchHolder,
@@ -1753,25 +1753,25 @@ pub(crate) fn pack_projectile_beam_updates(count: usize, beam_point_count: usize
     out.set_u32_le(0, count as u32);
 }
 
-/// Death-context scratch — 16 f64 per deathContext (one per audio
-/// event that has the has_deathContext flag set). Caller packs in
-/// the same order as the audio events appear; Rust walks audio
-/// events and uses a local offset to pull the next deathContext.
-///   [0..2]  unitVel.x, unitVel.y
-///   [2..4]  hitDir.x, hitDir.y
-///   [4..6]  projectileVel.x, projectileVel.y
-///   [6]     attackMagnitude
-///   [7]     radius
-///   [8]     color
-///   [9]     visualRadius (gated by flags bit 0)
-///   [10]    collisionRadius (gated by flags bit 1)
-///   [11]    baseZ (gated by flags bit 2)
-///   [12]    rotation (gated by flags bit 4)
-///   [13]    unitBlueprintId string-scratch slot (gated by flags bit 3)
-///   [14]    turretPoses_count (gated by flags bit 5)
-///   [15]    flags: bit 0 has_visualRadius, bit 1 has_collisionRadius,
-///            bit 2 has_baseZ, bit 3 has_unitType, bit 4 has_rotation,
-///            bit 5 has_turretPoses
+// Death-context scratch — 16 f64 per deathContext (one per audio
+// event that has the has_deathContext flag set). Caller packs in
+// the same order as the audio events appear; Rust walks audio
+// events and uses a local offset to pull the next deathContext.
+//   [0..2]  unitVel.x, unitVel.y
+//   [2..4]  hitDir.x, hitDir.y
+//   [4..6]  projectileVel.x, projectileVel.y
+//   [6]     attackMagnitude
+//   [7]     radius
+//   [8]     color
+//   [9]     visualRadius (gated by flags bit 0)
+//   [10]    collisionRadius (gated by flags bit 1)
+//   [11]    baseZ (gated by flags bit 2)
+//   [12]    rotation (gated by flags bit 4)
+//   [13]    unitBlueprintId string-scratch slot (gated by flags bit 3)
+//   [14]    turretPoses_count (gated by flags bit 5)
+//   [15]    flags: bit 0 has_visualRadius, bit 1 has_collisionRadius,
+//            bit 2 has_baseZ, bit 3 has_unitType, bit 4 has_rotation,
+//            bit 5 has_turretPoses
 snapshot_scratch_pool!(
     SnapshotEncodeDeathContextScratch,
     SnapshotEncodeDeathContextScratchHolder,
@@ -1786,8 +1786,8 @@ snapshot_scratch_pool!(
     ensure(count)
 );
 
-/// Turret-pose scratch (for deathContext.turretPoses arrays) — flat
-/// across all deathContexts in pack order; stride 2 (rotation, pitch).
+// Turret-pose scratch (for deathContext.turretPoses arrays) — flat
+// across all deathContexts in pack order; stride 2 (rotation, pitch).
 snapshot_scratch_pool!(
     SnapshotEncodeTurretPoseScratch,
     SnapshotEncodeTurretPoseScratchHolder,
@@ -1802,16 +1802,16 @@ snapshot_scratch_pool!(
     ensure(count)
 );
 
-/// Impact-context scratch — 11 f64 per impactContext (one per audio
-/// event with has_impactContext flag set). All fields are required
-/// in the source DTO (no optionals).
-///   [0]    radiusCollision
-///   [1]    deathExplosionRadius
-///   [2..4] projectile.pos.x, projectile.pos.y
-///   [4..6] projectile.vel.x, projectile.vel.y
-///   [6..8] entity.vel.x, entity.vel.y
-///   [8]    entity.radiusCollision
-///   [9..11] penetrationDir.x, penetrationDir.y
+// Impact-context scratch — 11 f64 per impactContext (one per audio
+// event with has_impactContext flag set). All fields are required
+// in the source DTO (no optionals).
+//   [0]    radiusCollision
+//   [1]    deathExplosionRadius
+//   [2..4] projectile.pos.x, projectile.pos.y
+//   [4..6] projectile.vel.x, projectile.vel.y
+//   [6..8] entity.vel.x, entity.vel.y
+//   [8]    entity.radiusCollision
+//   [9..11] penetrationDir.x, penetrationDir.y
 snapshot_scratch_pool!(
     SnapshotEncodeImpactContextScratch,
     SnapshotEncodeImpactContextScratchHolder,
@@ -1826,33 +1826,33 @@ snapshot_scratch_pool!(
     ensure(count)
 );
 
-/// Audio-event scratch — 16 f64 per event (NetworkServerSnapshotSimEvent
-/// minus deathContext / impactContext, which arrive in follow-ups).
-///   [0]    type_code (0='fire', 1='hit', 2='death', 3='laserStart',
-///           4='laserStop', 5='shieldStart', 6='shieldStop',
-///           7='shieldImpact', 8='ping', 9='attackAlert',
-///           10='projectileExpire', 11='waterSplash')
-///   [1..3] pos.x, pos.y, pos.z (always present)
-///   [4]    playerId (gated by flags bit 2)
-///   [5]    entityId (gated by flags bit 3)
-///   [6]    killerPlayerId (gated by flags bit 5)
-///   [7]    victimPlayerId (gated by flags bit 6)
-///   [8..10] shieldImpact.normal.x/y/z (gated by flags bit 4)
-///   [11]   shieldImpact.playerId
-///   [12]   sourceType_code (gated by flags bit 0; 0='turret', 1='unit',
-///           2='building', 3='system')
-///   [13]   turretBlueprintId string-scratch slot (always present — empty
-///           string is a valid value, encoded as fixstr 0xA0)
-///   [14]   sourceKey string-scratch slot (gated by flags bit 1)
-///   [15]   flags: bit 0 has_sourceType, bit 1 has_sourceKey,
-///           bit 2 has_playerId, bit 3 has_entityId,
-///           bit 4 has_shieldImpact, bit 5 has_killerPlayerId,
-///           bit 6 has_victimPlayerId, bit 7 has_audioOnly,
-///           bit 8 audioOnly_value, bit 9 has_deathContext (TBD),
-///           bit 10 has_impactContext (TBD),
-///           bit 11 has_waterSplash.
-///   [16..18] waterSplash.velocity.x/y/z (gated by flags bit 11)
-///   [19]   waterSplash.mass (gated by flags bit 11)
+// Audio-event scratch — 16 f64 per event (NetworkServerSnapshotSimEvent
+// minus deathContext / impactContext, which arrive in follow-ups).
+//   [0]    type_code (0='fire', 1='hit', 2='death', 3='laserStart',
+//           4='laserStop', 5='shieldStart', 6='shieldStop',
+//           7='shieldImpact', 8='ping', 9='attackAlert',
+//           10='projectileExpire', 11='waterSplash')
+//   [1..3] pos.x, pos.y, pos.z (always present)
+//   [4]    playerId (gated by flags bit 2)
+//   [5]    entityId (gated by flags bit 3)
+//   [6]    killerPlayerId (gated by flags bit 5)
+//   [7]    victimPlayerId (gated by flags bit 6)
+//   [8..10] shieldImpact.normal.x/y/z (gated by flags bit 4)
+//   [11]   shieldImpact.playerId
+//   [12]   sourceType_code (gated by flags bit 0; 0='turret', 1='unit',
+//           2='building', 3='system')
+//   [13]   turretBlueprintId string-scratch slot (always present — empty
+//           string is a valid value, encoded as fixstr 0xA0)
+//   [14]   sourceKey string-scratch slot (gated by flags bit 1)
+//   [15]   flags: bit 0 has_sourceType, bit 1 has_sourceKey,
+//           bit 2 has_playerId, bit 3 has_entityId,
+//           bit 4 has_shieldImpact, bit 5 has_killerPlayerId,
+//           bit 6 has_victimPlayerId, bit 7 has_audioOnly,
+//           bit 8 audioOnly_value, bit 9 has_deathContext (TBD),
+//           bit 10 has_impactContext (TBD),
+//           bit 11 has_waterSplash.
+//   [16..18] waterSplash.velocity.x/y/z (gated by flags bit 11)
+//   [19]   waterSplash.mass (gated by flags bit 11)
 snapshot_scratch_pool!(
     SnapshotEncodeAudioEventScratch,
     SnapshotEncodeAudioEventScratchHolder,
@@ -1897,16 +1897,16 @@ pub(crate) fn audio_event_source_type_str(code: u8) -> &'static str {
     }
 }
 
-/// Economy scratch — 11 f64 per player (caller must pack in ASCENDING
-/// playerId order to match @msgpack/msgpack's iteration of a JS
-/// object with integer-string keys).
-///   [0]   playerId (becomes the outer-map string key)
-///   [1..3] stockpile.curr, stockpile.max
-///   [3..5] income.base, income.production
-///   [5]   expenditure
-///   [6..8] metal.stockpile.curr, metal.stockpile.max
-///   [8..10] metal.income.base, metal.income.extraction
-///   [10]  metal.expenditure
+// Economy scratch — 11 f64 per player (caller must pack in ASCENDING
+// playerId order to match @msgpack/msgpack's iteration of a JS
+// object with integer-string keys).
+//   [0]   playerId (becomes the outer-map string key)
+//   [1..3] stockpile.curr, stockpile.max
+//   [3..5] income.base, income.production
+//   [5]   expenditure
+//   [6..8] metal.stockpile.curr, metal.stockpile.max
+//   [8..10] metal.income.base, metal.income.extraction
+//   [10]  metal.expenditure
 snapshot_scratch_pool!(
     SnapshotEncodeEconomyScratch,
     SnapshotEncodeEconomyScratchHolder,
@@ -1971,23 +1971,23 @@ pub fn snapshot_encode_resource_movement_scratch_ensure(count: u32) {
     }
 }
 
-/// Spray-target scratch — 17 f64 per spray (NetworkServerSnapshotSprayTarget).
-///   [0]    source.id
-///   [1..3] source.pos.x, source.pos.y
-///   [3]    source.z (gated by flags bit 1)
-///   [4]    source.playerId
-///   [5]    target.id
-///   [6..8] target.pos.x, target.pos.y
-///   [8]    target.z (gated by flags bit 2)
-///   [9..11] target.dim.x, target.dim.y (gated by flags bit 3)
-///   [11]   target.radius (gated by flags bit 4)
-///   [12]   intensity
-///   [13]   speed (gated by flags bit 5)
-///   [14]   particleRadius (gated by flags bit 6)
-///   [15]   ballSpawnRate (gated by flags bit 7)
-///   [16]   flags: bit 0 type_is_heal (else 'build'), bit 1 has_source_z,
-///          bit 2 has_target_z, bit 3 has_target_dim, bit 4 has_target_radius,
-///          bit 5 has_speed, bit 6 has_particleRadius, bit 7 hasBallSpawnRate.
+// Spray-target scratch — 17 f64 per spray (NetworkServerSnapshotSprayTarget).
+//   [0]    source.id
+//   [1..3] source.pos.x, source.pos.y
+//   [3]    source.z (gated by flags bit 1)
+//   [4]    source.playerId
+//   [5]    target.id
+//   [6..8] target.pos.x, target.pos.y
+//   [8]    target.z (gated by flags bit 2)
+//   [9..11] target.dim.x, target.dim.y (gated by flags bit 3)
+//   [11]   target.radius (gated by flags bit 4)
+//   [12]   intensity
+//   [13]   speed (gated by flags bit 5)
+//   [14]   particleRadius (gated by flags bit 6)
+//   [15]   ballSpawnRate (gated by flags bit 7)
+//   [16]   flags: bit 0 type_is_heal (else 'build'), bit 1 has_source_z,
+//          bit 2 has_target_z, bit 3 has_target_dim, bit 4 has_target_radius,
+//          bit 5 has_speed, bit 6 has_particleRadius, bit 7 hasBallSpawnRate.
 snapshot_scratch_pool!(
     SnapshotEncodeSprayScratch,
     SnapshotEncodeSprayScratchHolder,
@@ -2216,10 +2216,10 @@ pub(crate) fn write_number_array_from_scratch(w: &mut MessagePackWriter, offset:
     }
 }
 
-/// Scan-pulse scratch — 6 f64 per pulse:
-///   [0] playerId   [1] x   [2] y   [3] z
-///   [4] radius     [5] expiresAtTick
-/// Field count is fixed (no optionals on NetworkServerSnapshotScanPulse).
+// Scan-pulse scratch — 6 f64 per pulse:
+//   [0] playerId   [1] x   [2] y   [3] z
+//   [4] radius     [5] expiresAtTick
+// Field count is fixed (no optionals on NetworkServerSnapshotScanPulse).
 snapshot_scratch_pool!(
     SnapshotEncodeScanPulseScratch,
     SnapshotEncodeScanPulseScratchHolder,
@@ -4090,7 +4090,6 @@ pub fn snapshot_encode_envelope_emit_server_meta(
 }
 
 mod envelope_emit;
-pub(crate) use envelope_emit::*;
 
 /// Append `sprayTargets: [...]`. Sits between economy and projectiles
 /// in iteration order (sprayTargets is in the _snapshotBuf static
