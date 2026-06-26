@@ -13,15 +13,61 @@ type MapDimensionAxisConfig = {
   readonly options: readonly MapDimensionAxisOption[];
 };
 
-const MAP_SIZE_CONFIG = {
-  landCellSize: 200,
-  mapDimensionBaseLandCells: 7,
-  mapDimensionAxisGrowth: 1.5,
-  mapDimensionAxisOptionCount: 8,
-  defaultMapWidthLandCells: 53,
-  defaultMapLengthLandCells: 53,
-  mapGenerationExtentFraction: 0.85,
-} as const;
+// ── Authored map-size tuning lives in mapSizeConfig.json (Config Is Data,
+//    Not Code). This module only validates the imported shape and derives
+//    the option lists below from it. ──
+type MapSizeConfigShape = {
+  readonly landCellSize: number;
+  readonly mapDimensionBaseLandCells: number;
+  readonly mapDimensionAxisGrowth: number;
+  readonly mapDimensionAxisOptionCount: number;
+  readonly defaultMapWidthLandCells: number;
+  readonly defaultMapLengthLandCells: number;
+  readonly mapGenerationExtentFraction: number;
+};
+
+function requireMapSizePositiveFinite(label: string, value: number): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      `Invalid map size config ${label}: expected positive finite number, got ${value}`,
+    );
+  }
+  return value;
+}
+
+function requireMapSizePositiveInteger(label: string, value: number): number {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(
+      `Invalid map size config ${label}: expected positive integer, got ${value}`,
+    );
+  }
+  return value;
+}
+
+function validateMapSizeConfig(raw: MapSizeConfigShape): MapSizeConfigShape {
+  requireMapSizePositiveFinite('landCellSize', raw.landCellSize);
+  requireMapSizePositiveInteger('mapDimensionBaseLandCells', raw.mapDimensionBaseLandCells);
+  if (!Number.isFinite(raw.mapDimensionAxisGrowth) || raw.mapDimensionAxisGrowth <= 1) {
+    throw new Error(
+      `Invalid map size config mapDimensionAxisGrowth: expected number > 1, got ${raw.mapDimensionAxisGrowth}`,
+    );
+  }
+  requireMapSizePositiveInteger('mapDimensionAxisOptionCount', raw.mapDimensionAxisOptionCount);
+  requireMapSizePositiveInteger('defaultMapWidthLandCells', raw.defaultMapWidthLandCells);
+  requireMapSizePositiveInteger('defaultMapLengthLandCells', raw.defaultMapLengthLandCells);
+  if (
+    !Number.isFinite(raw.mapGenerationExtentFraction) ||
+    raw.mapGenerationExtentFraction <= 0 ||
+    raw.mapGenerationExtentFraction > 1
+  ) {
+    throw new Error(
+      `Invalid map size config mapGenerationExtentFraction: expected fraction in (0, 1], got ${raw.mapGenerationExtentFraction}`,
+    );
+  }
+  return raw;
+}
+
+const MAP_SIZE_CONFIG = validateMapSizeConfig(rawMapSizeConfig as MapSizeConfigShape);
 
 // Canonical 2D land partition size. All broad ground-space systems
 // should derive from this: host spatial-grid XY columns, capture
