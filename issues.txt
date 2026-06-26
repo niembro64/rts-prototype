@@ -98,20 +98,31 @@ deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
     pylons and stay buildings); fabricator documented as the hovering torus with a
     spawn turret + construction pylons. turretConstruction is no longer MOUNTED
     anywhere (commander/drone/fabricator use pylons).
-    NOT removed -- doing so blindly breaks the game; each needs the prerequisite first:
-    - Turret blueprint ids are WIRE CODES by array index and append-only
-      (types/network.ts: _TURRET_BLUEPRINT_ID_TO_CODE[id] = i). Removing
-      turretConstruction / turretUnitConstructorBallistic mid-array shifts every later
-      turret's code and breaks snapshots + replays. Leave the ids in place. To fully
-      retire turretConstruction's BLUEPRINT, first retarget its two remaining reads --
-      getFactoryBuildingVisualMetrics fabricator anchor metrics (buildings.ts) and
-      SprayRenderer3D particle speed/radius defaults -- onto a pylon/constants; the id
-      itself still stays for wire safety.
+    DONE (blocker A): the two remaining turretConstruction reads were retargeted to
+      explicit constants (exact former blueprint values) - buildings.ts
+      getFactoryBuildingVisualMetrics (FABRICATOR_TOWER_* = 3.6/96/90/8) and
+      SprayRenderer3D (DEFAULT_BUILD_PARTICLE_SPEED/RADIUS = 50/1.5). turretConstruction
+      is no longer read by any live code path (only doc comments + the wire-code id
+      remain). Replay byte-identical. The blueprint definition + the array-index wire
+      code STAY in place (removing them shifts every later turret's code and breaks
+      snapshots/replays - wire codes are append-only in types/network.ts
+      _TURRET_BLUEPRINT_ID_TO_CODE[id] = i; same for turretUnitConstructorBallistic).
+    NOT removed -- doing so blindly breaks the game; each needs the prerequisite first
+    (both are gameplay/lockstep-critical migrations that need in-app verification):
     - builder.constructionRate is the host-sourced construction rate the funding pass
-      reads (commander 50 / drone 35 / fabricator 100). Construction-pylon BLUEPRINTS
-      are shared across hosts, so they cannot carry per-host rates; deleting
-      constructionRate first needs a per-mount (or per-host) rate source.
-    - unitLauncher is the LIVE queen mechanism (turretQueen*Constructor +
-      unitLauncherProduction.ts). Removing it first needs queens migrated to
-      turretSpawnUnits carrying the instant-produce + cooldown + launch behavior.
+      reads (commander 50 / drone 35 / fabricator 100; read in 9 places in
+      energyDistribution.ts, which is in the lockstep checksum). Construction-pylon
+      BLUEPRINTS are shared across hosts, so they cannot carry per-host rates; deleting
+      constructionRate first needs a per-mount (or per-host) rate source. This touches
+      the economy checksum, so it needs a behaviour-preserving migration + replay proof.
+    - unitLauncher is the LIVE queen mechanism (turretQueenBeeConstructor +
+      turretQueenTickConstructor + unitLauncherProduction.ts + unitLauncher.ts). It is
+      NOT a simple cooldown spawner: it locks a combat-FSM target, only produces when a
+      live target exists (ballistic-or-waypoint vs direct-target aimMode), inherits the
+      queen's intent into the produced unit, launches it ballistically via the force
+      accumulator + wind, and rolls a randomised cooldown from world.rng. The
+      turretSpawnUnits `spawn` config carries none of that (producedKind/blueprintId/
+      cooldownMs/launchForce only). Migrating queens first needs spawnTurretProduction
+      replicating ALL of that behaviour, a queen-production replay case to prove
+      determinism (none exists today), and in-app gameplay verification.
 ================================================================================
