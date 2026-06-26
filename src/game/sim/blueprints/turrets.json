@@ -1548,11 +1548,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0.6,
-      "barrelThickness": 12
-    },
+    "barrel": { "type": "singleCylinderBarrel", "barrelLength": 0 },
     "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -1570,8 +1566,8 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": { "visual": 10 },
-    "headOnly": false,
+    "radius": { "visual": null },
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": { "angleType": "rayDirect" },
     "spawn": {
@@ -1595,11 +1591,7 @@
     "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
-    "barrel": {
-      "type": "singleCylinderBarrel",
-      "barrelLength": 0.6,
-      "barrelThickness": 12
-    },
+    "barrel": { "type": "singleCylinderBarrel", "barrelLength": 0 },
     "isManualFire": true,
     "passive": false,
     "requiresNonObstructedLineOfSight": false,
@@ -1617,8 +1609,8 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": { "visual": 10 },
-    "headOnly": false,
+    "radius": { "visual": null },
+    "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": { "angleType": "rayDirect" },
     "spawn": {
