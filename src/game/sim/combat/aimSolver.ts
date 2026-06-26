@@ -8,6 +8,7 @@ import {
 import { pickTargetAimTurret } from './shieldTargetPriority';
 import { readCombatTargetingTurretMountInto } from './targetingInputStamping';
 import { getUnitGroundZ } from '../unitGeometry';
+import { getBuildingCombatCenterZ } from '../buildingAnchors';
 
 type ResolveTargetAimPointOptions = {
   aimAtTargetTurret: boolean | undefined;
@@ -80,6 +81,9 @@ export function resolveTargetAimPoint(
 
   const targetPos = getEntityPosition3d(target, _targetAimPosition);
   if (target.building) {
+    // A hovering building's box is in the air (the fabricator torus); aim at its
+    // combat center, not the ground-level transform.z. No-op for grounded ones.
+    const centerZ = getBuildingCombatCenterZ(target);
     const halfW = target.building.width / 2;
     const halfH = target.building.height / 2;
     const halfD = target.building.depth / 2;
@@ -87,8 +91,8 @@ export function resolveTargetAimPoint(
     const maxX = targetPos.x + halfW;
     const minY = targetPos.y - halfH;
     const maxY = targetPos.y + halfH;
-    const minZ = targetPos.z - halfD;
-    const maxZ = targetPos.z + halfD;
+    const minZ = centerZ - halfD;
+    const maxZ = centerZ + halfD;
 
     out.x = clamp(originX, minX, maxX);
     out.y = clamp(originY, minY, maxY);
@@ -97,7 +101,7 @@ export function resolveTargetAimPoint(
     if (out.x === originX && out.y === originY && out.z === originZ) {
       out.x = targetPos.x;
       out.y = targetPos.y;
-      out.z = targetPos.z;
+      out.z = centerZ;
     }
     return out;
   }

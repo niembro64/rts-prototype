@@ -41,6 +41,7 @@ import {
 } from './combatUtils';
 import { getProjectileAirFrictionPer60HzFrame } from '../projectileMotion';
 import { getUnitGroundZ } from '../unitGeometry';
+import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import { getActiveShieldPanelTurret } from '../shieldPanelRuntime';
 import {
   CT_BLUEPRINT_CODE_NONE,
@@ -526,6 +527,12 @@ function stampCombatTargetingEntityInto(
   const playerId = ownership ? ownership.playerId : 0;
   const viewMask = getEntityViewMask(world, playerId);
   const pos = getEntityPosition3d(entity, _stampPos);
+  // A hovering building's combat box is in the air (the fabricator torus), so
+  // stamp its combat center z for the targeting/aim solver instead of the
+  // ground-level transform.z. Non-hovering buildings are unaffected.
+  if (entity.building !== null && entity.building.hovering) {
+    pos.z = getBuildingCombatCenterZ(entity);
+  }
   const vel = getEntityVelocity3d(entity, _stampVel);
   const groundZ = getUnitGroundZ(entity);
   const rotCos = DMath.cos(entity.transform.rotation);

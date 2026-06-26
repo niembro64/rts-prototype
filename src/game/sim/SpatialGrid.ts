@@ -5,6 +5,7 @@ import {
   assertCanonicalLandCellSize,
 } from '../landGrid';
 import { hasMaterializedLiveUnitPiece, isEntityActive } from './buildableHelpers';
+import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { TERRAIN_MAX_RENDER_Y, TILE_FLOOR_Y } from './terrain/terrainConfig';
 import {
   getSimWasm,
@@ -340,7 +341,7 @@ class SpatialGrid {
     const playerId = entity.ownership !== null ? entity.ownership.playerId : 0;
     this.api().setBuilding(
       slot,
-      entity.transform.x, entity.transform.y, entity.transform.z,
+      entity.transform.x, entity.transform.y, getBuildingCombatCenterZ(entity),
       b.width / 2, b.height / 2, b.depth / 2,
       playerId,
       b.hp > 0 ? 1 : 0,

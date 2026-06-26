@@ -51,6 +51,20 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
   return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.5;
 }
 
+/**
+ * The world z a building's COMBAT box is centered on — turret aim, projectile /
+ * beam collision, and the spatial-grid AABB all use this. A hovering body (the
+ * fabricator torus) sits in the air, so combat must engage it there, not at the
+ * ground footprint. Non-hovering buildings keep transform.z (their box is
+ * ground-centered), so their behavior is unchanged.
+ */
+export function getBuildingCombatCenterZ(entity: Entity): number {
+  if (entity.building?.hovering) {
+    return getBuildingBaseZ(entity) + FABRICATOR_TORUS_HOVER_HEIGHT;
+  }
+  return entity.transform.z;
+}
+
 export function getEntityTargetPoint(entity: Entity): { x: number; y: number; z: number } {
   if (entity.building) {
     return {

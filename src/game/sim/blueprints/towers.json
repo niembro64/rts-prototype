@@ -6,7 +6,7 @@
     "gridHeight": 12,
     "placementGridWidth": null,
     "placementGridHeight": null,
-    "gridDepth": 1.5,
+    "gridDepth": 3,
     "hp": 1200,
     "cost": {
       "energy": 900,

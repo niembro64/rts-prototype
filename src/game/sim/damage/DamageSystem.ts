@@ -20,6 +20,7 @@ import {
   PROJECTILE_MASS_MULTIPLIER,
 } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
+import { getBuildingCombatCenterZ } from '../buildingAnchors';
 import { magnitude, lineSphereIntersectionT, rayBoxIntersectionT, getTransformCosSin } from '../../math';
 import {
   REFLECTOR_HIT_KIND_NONE,
@@ -1436,12 +1437,13 @@ export class DamageSystem {
       const bWidth = building.building.width;
       const bHeight = building.building.height;
       const bDepth = building.building.depth;
+      const bCenterZ = getBuildingCombatCenterZ(building);
       const minX = building.transform.x - bWidth / 2;
       const minY = building.transform.y - bHeight / 2;
       const maxX = building.transform.x + bWidth / 2;
       const maxY = building.transform.y + bHeight / 2;
-      const minZ = building.transform.z - bDepth / 2;
-      const maxZ = building.transform.z + bDepth / 2;
+      const minZ = bCenterZ - bDepth / 2;
+      const maxZ = bCenterZ + bDepth / 2;
       const t = rayBoxIntersectionT(
         startX, startY, startZ,
         endX, endY, endZ,
@@ -1664,7 +1666,7 @@ export class DamageSystem {
           row,
           building.transform.x,
           building.transform.y,
-          building.transform.z,
+          getBuildingCombatCenterZ(building),
           building.building.width / 2 + aabbInflation,
           building.building.height / 2 + aabbInflation,
           building.building.depth / 2 + aabbInflation,
