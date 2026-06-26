@@ -1028,6 +1028,114 @@
         <li>Hover and any other &ldquo;defies gravity&rdquo; behavior follows the same shape: a force that fights <code>g &middot; m</code>, not a conditional that skips it.</li>
       </ul>
 
+      <h3>Locomotion is one fully-abstracted force profile across ground, air, and water</h3>
+      <p>
+        A unit&rsquo;s locomotion is not a closed set of discriminated chassis types
+        (&ldquo;this is a wheeled unit,&rdquo; &ldquo;this is a flyer&rdquo;) that each
+        carry their own private physics. It is one <em>fully-abstracted force profile</em>
+        that every unit owns in full: the same field set is present on every unit, and a
+        unit specializes only by which terms it sets to non-zero. The chassis archetypes
+        &mdash; wheels, treads, legs, hover, flying &mdash; survive as <strong>visual rig
+        choices and authored default presets</strong> (see <strong>Locomotion Visuals Are
+        Frontend</strong>), not as separate physics code paths. Two units with the same
+        force-profile numbers move identically regardless of which rig draws them, exactly
+        as two shapes with the same material look identically (<strong>Materials Are
+        Independent Of Shape</strong>). A zero is a real, meaningful authored value: it is
+        how a pure ground tank declares it cannot push on air or water, and how an aircraft
+        declares it cannot push on the ground.
+      </p>
+      <p>
+        The world has three propulsion <em>media</em>: <strong>ground</strong> (a terrain
+        contact patch, including terrain that lies under water &mdash; the lake bed is
+        ground), <strong>air</strong> (the body is above the water surface and not in ground
+        contact), and <strong>water</strong> (the body is below the water surface and not in
+        ground contact). Air and water are mutually exclusive and chosen by the water line:
+        a body is in the water medium when submerged and the air medium when it is not, and
+        it is additionally in the ground medium whenever its contact point rests on a
+        surface, <em>even underwater</em>. So a unit standing on a lake bed is in ground +
+        water; a unit swimming mid-column is in water only; a hovercraft skimming the surface
+        is in air (and optionally ground if its skirt contacts); a submarine resting on the
+        bottom is ground + water.
+      </p>
+      <p>
+        Each medium contributes three authored scalars, present on every unit:
+      </p>
+      <ul class="rule-list">
+        <li>
+          <strong>Drive force</strong> (<code>locomotionGroundForce</code>,
+          <code>locomotionAirForce</code>, <code>locomotionWaterForce</code>) &mdash; the
+          magnitude of thrust the unit can produce <em>while in that medium</em>, applied
+          through the arrival controller toward the desired motion state. A unit that can
+          walk but not swim sets ground force &gt; 0 and water force = 0; an amphibious unit
+          sets both; a gunship sets air force &gt; 0 and ground force = 0. The forces are
+          additive when a unit is in more than one medium at once (a tracked amphibian on the
+          lake bed drives on ground force, then loses it and falls back to water force as it
+          drives off into the deep).
+        </li>
+        <li>
+          <strong>Traction</strong> (<code>locomotionGroundTraction</code>,
+          <code>locomotionAirTraction</code>, <code>locomotionWaterTraction</code>) &mdash;
+          how effectively that medium <em>couples</em> the drive force into directed
+          acceleration and turn authority. High ground traction is a tank that turns and
+          stops crisply; low water traction is a slippery, wide-turning swimmer. Traction
+          scales the drive force for the medium it belongs to; it is the medium-specific
+          generalisation of today&rsquo;s single <code>traction</code> coupling coefficient.
+        </li>
+        <li>
+          <strong>Friction</strong> (<code>locomotionGroundFriction</code>,
+          <code>locomotionAirFriction</code>, <code>locomotionWaterFriction</code>) &mdash;
+          the passive velocity damping the medium applies whether or not the unit is driving,
+          a force opposing current velocity (water is draggy, air is light, ground friction
+          is what makes a powered-down tank coast to a stop). Friction is the medium-resistance
+          counterpart to drive force: drive pushes, friction resists, and the equilibrium speed
+          is where they balance.
+        </li>
+      </ul>
+      <p>
+        Only the medium(s) the body is actually in contribute this tick: a flying unit high
+        above the lake feels air friction and air force only; the instant it descends below
+        the surface it feels water friction and water force instead (air and water never both
+        apply), plus ground if it touches bottom. Selecting between air and water by the water
+        line, and adding ground whenever there is contact, is the whole medium rule &mdash;
+        there is no per-chassis branch deciding &ldquo;this unit type ignores water.&rdquo; A
+        unit ignores water by authoring zero water terms, and the same medium-sampling code
+        runs for every unit.
+      </p>
+      <p>
+        Vertical lift is the buoyancy/altitude analogue of drive force and follows the
+        <strong>Gravity is universal; thrust answers it</strong> rule exactly. Just as hover
+        and flying author a <code>hoverHeightUpwardForce</code> (an inverse-distance ground
+        lift) and a <code>gravityCounterUpwardForceRatio</code> (a constant fraction of gravity
+        cancelled), a swimming unit authors <code>swimHeightUpwardForce</code> &mdash; a
+        depth-seeking upward force that holds a target depth in the water column, sized so a
+        unit can be tuned to bob at the surface, hold mid-column neutral buoyancy, or sink to
+        the bed. Set it to zero and the unit sinks (a bottom-walker); set it high and the unit
+        floats (a boat); tune it to balance gravity and the unit hovers neutrally buoyant (a
+        true swimmer). These lift terms are one family &mdash; air lift and water lift are the
+        same force shape against a different reference surface (terrain vs. water line) &mdash;
+        and like all of them they are bounded by available thrust and never an
+        <code>ignoresGravity</code> conditional. The same per-tick randomisation and EMA
+        smoothing knobs that steady hover lift apply to swim lift.
+      </p>
+      <p>
+        Because every term lives on every unit, strange-but-legal combinations fall out for
+        free: a unit with non-zero ground, air, and water force that walks to the shore, lifts
+        off on air force and lift, flies across the lake, then settles and swims under water
+        force &mdash; all without a single new code path, just three media sampled per tick and
+        a force profile with all terms authored. The arrival controller, gravity, terrain
+        contact, and collision are unchanged; they simply read whichever medium&rsquo;s
+        traction, friction, and force are active this tick. This is the locomotion reading of
+        <strong>Mass must matter</strong> and <strong>Config Is Data, Not Code</strong>: one
+        physical model, all tuning in JSON, no chassis-type conditionals in the hot path.
+      </p>
+      <ul class="rule-list">
+        <li>Every unit carries the full force profile: ground/air/water &times; {force, traction, friction}, plus the lift family (<code>gravityCounterUpwardForceRatio</code>, <code>hoverHeightUpwardForce</code>, <code>swimHeightUpwardForce</code> and their randomisation/EMA siblings). A term left at zero is the explicit declaration that the unit cannot act in that way &mdash; it is authored absence, not a missing capability.</li>
+        <li>Medium is sampled, never typed: ground whenever a contact patch rests on a surface (lake bed included), then air <em>or</em> water by the water line. The same sampling runs for every unit; chassis archetypes only choose the default preset and the visual rig.</li>
+        <li>Forces and frictions from co-active media add; air and water are mutually exclusive so at most one of them applies at a time alongside any ground contribution.</li>
+        <li>Vertical buoyancy/lift is thrust answering gravity, identical in shape across hover (ground-referenced), flying (ground-referenced), and swim (water-line-referenced). <code>swimHeightUpwardForce</code> = 0 sinks, balanced = neutral, high = floats.</li>
+        <li>The migration preserves behaviour exactly: a current ground unit&rsquo;s single <code>traction</code>/<code>driveForce</code> become its ground traction/force with air and water terms zero, so existing units move bit-for-bit identically until new water/air values are authored.</li>
+      </ul>
+
       <h3>Discrete gameplay still enters through physical effects</h3>
       <p>
         Commands, economy, construction, fog, build queues, and ownership are intentionally discrete
@@ -3156,6 +3264,7 @@
         <li>Expose the per-channel EMA controls (movement position, movement velocity, rotation position, rotation velocity). Position channels use snap/fast/medium/slow; velocity channels additionally allow ignore so playtesters can tune each channel independently without rebuilds.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
+        <li>Make locomotion one fully-abstracted force profile present on every unit &mdash; ground/air/water &times; {force, traction, friction} plus the lift family (gravity-counter ratio, hover-height force, swim-height force) &mdash; not a closed set of chassis types with private physics. The medium is sampled per tick (ground on any contact patch including the lake bed, then air or water by the water line), only active media contribute, and a zero term is the authored declaration that a unit cannot push on that medium. Chassis archetypes survive only as visual rigs and default presets; the same sampling and force code runs for every unit, so walk/fly/swim combinations fall out for free. See <strong>Locomotion is one fully-abstracted force profile across ground, air, and water</strong>.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
