@@ -118,22 +118,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
       getEntity lambda to a reusable bound field. Client-only visual path, distinct
       from the authoritative projectileSystem mirror.
 
-[6] EntityCacheManager does a full copy-all + O(n log n) sort + ~25-list rebucket
-    on every HP delta in a presentation snapshot, not just on structural changes
-    Category: optimization | Severity: MEDIUM
-    Evidence: src/game/sim/EntityCacheManager.ts:139-141 (clear sortedEntities,
-      push all, .sort by id) and :111-275 (clear ~25 lists and re-bucket every
-      entity). Invalidation: ClientViewState.ts:817-818 (cache.invalidate()) is
-      triggered whenever snapClientNonVisualState is true, and
-      ClientSnapshotApplier.ts:58-62/:136-140 set cacheDirty on ANY hp delta.
-    Design: Scale Target — "Spatial structure beats broad scans"; full scans "are
-      not the normal steady state for gameplay ticks." Entities are keyed by
-      ascending EntityId, so the re-sort is avoidable.
-    Fix: Maintain id order incrementally (insert at the sorted position on add,
-      remove on delete) instead of copy-all + Array.sort on every invalidation; or
-      patch only the buckets for entities that actually changed rather than
-      clearing and rebuilding all ~25 lists.
-
 --- MISSING FUNCTIONALITY / BAR ---
 
 [10] Targeting merges full-sight and radar into ONE coverage mask; there is no

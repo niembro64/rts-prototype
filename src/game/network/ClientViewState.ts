@@ -593,6 +593,14 @@ export class ClientViewState {
     entity: Entity,
     server: NetworkServerSnapshotEntity,
   ): boolean {
+    // Ownership transfer (capture) moves the entity between the per-player
+    // cache buckets (cachedUnitsByPlayer / cachedBuildingsByPlayer /
+    // cachedFactoriesByPlayer), so it must invalidate even though it is not
+    // an HP or build change. Mirrors the ownership reassignment in
+    // snapClientNonVisualState, which is the other consumer of this delta.
+    if (entity.ownership !== null && entity.ownership.playerId !== server.playerId) {
+      return true;
+    }
     const cf = server.changedFields;
     if (entity.unit && (cf == null || (cf & (ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING)))) {
       return this.unitHealthBarCacheMembership(entity) !==
@@ -611,7 +619,11 @@ export class ClientViewState {
   private unitHealthBarCacheMembership(entity: Entity): boolean {
     const unit = entity.unit;
     if (!unit) return false;
-    return unit.hp < unit.maxHp ||
+    // Mirror EntityCacheManager's cachedDamagedUnits/cachedHudEntities
+    // bucket condition exactly (hp > 0 so a freshly-spawned 0-hp shell is
+    // not counted as "damaged" — it rides build-in-progress instead) so
+    // this predicate is a faithful membership-change detector.
+    return (unit.hp > 0 && unit.hp < unit.maxHp) ||
       isBuildInProgress(entity.buildable);
   }
 
@@ -630,14 +642,15 @@ export class ClientViewState {
     const interrupted = build !== null
       ? build.interrupted === true
       : buildable !== null ? buildable.isInterrupted : false;
-    return curr < max ||
+    return (curr > 0 && curr < max) ||
       !!(buildable && !buildable.isGhost && !complete && !interrupted);
   }
 
   private buildingHealthBarCacheMembership(entity: Entity): boolean {
     const building = entity.building;
     if (!building) return false;
-    return building.hp < building.maxHp ||
+    // Mirror EntityCacheManager's cachedHealthBarBuildings bucket exactly.
+    return (building.hp > 0 && building.hp < building.maxHp) ||
       isBuildInProgress(entity.buildable);
   }
 
@@ -656,7 +669,7 @@ export class ClientViewState {
     const interrupted = build !== null
       ? build.interrupted === true
       : buildable !== null ? buildable.isInterrupted : false;
-    return curr < max ||
+    return (curr > 0 && curr < max) ||
       !!(buildable && !buildable.isGhost && !complete && !interrupted);
   }
 
@@ -810,13 +823,17 @@ export class ClientViewState {
           cacheNeedsInvalidate = true;
         }
       } else {
-        // Existing entity — snap non-visual state immediately
+        // Existing entity — snap non-visual state immediately. The entity
+        // cache is rebuilt only when a snapshot actually changes bucket
+        // membership (damaged/HUD/health-bar/per-player), which
+        // snapshotAffectsEntityCaches detects precisely; a bare HP tick that
+        // does not cross a membership boundary no longer forces a full
+        // copy-all + sort + rebucket. snapClientNonVisualState still runs for
+        // its entity-mutation side effects.
         if (this.snapshotAffectsEntityCaches(existing, netEntity)) {
           cacheNeedsInvalidate = true;
         }
-        if (snapClientNonVisualState(existing, netEntity)) {
-          this.cache.invalidate();
-        }
+        snapClientNonVisualState(existing, netEntity);
         this.renderSpatialIndex.update(existing);
         this.refreshPredictionSupportSurfaceProvider(existing);
         this.markNetworkEntityPredictionActive(netEntity, existing);
