@@ -61,6 +61,15 @@ export class CursorGround {
     this.terrainMesh = terrainMesh;
   }
 
+  /** Release the retained terrain mesh reference on scene teardown so a
+   *  rematch (which reuses the same GL context without app.destroy) does
+   *  not keep the previous match's terrain graph alive through this
+   *  per-scene picking service. */
+  dispose(): void {
+    this.terrainMesh = undefined;
+    this.terrainHits.length = 0;
+  }
+
   /** Cursor → camera anchor point in THREE.JS coords.
    *
    *  The caller supplies the terrain axis explicitly:

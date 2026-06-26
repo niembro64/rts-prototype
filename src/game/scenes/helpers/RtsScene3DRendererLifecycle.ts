@@ -38,6 +38,8 @@ type RtsScene3DRendererResources = {
   fogOfWarFogRenderer?: Destroyable | null;
   sightBoundaryRenderer?: Destroyable | null;
   radarBoundaryRenderer?: Destroyable | null;
+  overlayLineSystem?: Disposable | null;
+  cursorGround?: Disposable | null;
   longtaskTracker: Destroyable;
   audioSystem: Clearable;
 };
@@ -72,6 +74,12 @@ export function teardownRtsScene3DRenderers(
   resources.fogOfWarFogRenderer?.destroy();
   resources.sightBoundaryRenderer?.destroy();
   resources.radarBoundaryRenderer?.destroy();
+  // overlayLineSystem owns the single shared ScreenSpaceLineMaterial (GL
+  // program); cursorGround retains a terrain mesh reference. Both are
+  // per-scene and must be released on teardown — the rematch path reuses
+  // the same ThreeApp/GL context without app.destroy().
+  resources.overlayLineSystem?.dispose();
+  resources.cursorGround?.dispose();
   resources.longtaskTracker.destroy();
   resources.audioSystem.clear();
 }

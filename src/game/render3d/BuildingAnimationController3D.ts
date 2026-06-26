@@ -202,6 +202,7 @@ export class BuildingAnimationController3D {
     removeAnimatedBuildingEntry(this.extractorBuildings, this.extractorBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeExtractorBuildings, this.activeExtractorBuildingIndexById, id);
     this.resourcePylonAnimator.unregister(id);
+    this.constructionVisuals.unregister(id);
     this.extractorRotorPhases.delete(id);
     this.extractorRotorSpeeds.delete(id);
     this.extractorCloseAmounts.delete(id);

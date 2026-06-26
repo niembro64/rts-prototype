@@ -1296,6 +1296,8 @@ export class RtsScene3D {
       fogOfWarFogRenderer: this.fogOfWarFogRenderer,
       sightBoundaryRenderer: this.sightBoundaryRenderer,
       radarBoundaryRenderer: this.radarBoundaryRenderer,
+      overlayLineSystem: this.overlayLineSystem,
+      cursorGround: this.cursorGround,
       longtaskTracker: this.frameTelemetry,
       audioSystem: this.audioSystem,
     });

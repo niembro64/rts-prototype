@@ -170,40 +170,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
       one dynamic), writing the best candidate in place, exactly as UnitForceSystem
       already does.
 
-[8] Scene teardown never disposes overlayLineSystem (real ShaderMaterial/GL
-    program leak on every game-over/rematch) nor cursorGround
-    Category: memory-leak (GPU) | Severity: MEDIUM
-    Evidence: OverlayLineSystem owns a THREE.ShaderMaterial with a working
-      dispose() (OverlayLineSystem.ts:21,24-29,45-47; ScreenSpaceLineMaterial.ts:
-      38-45), created per scene bootstrap (RtsScene3DRendererBootstrap.ts:94).
-      GroundLineBatch3D.dispose() deliberately skips the shared material
-      (GroundLineBatch3D.ts:143-145). teardownRtsScene3DRenderers
-      (RtsScene3DRendererLifecycle.ts:13-77) has no overlayLineSystem/cursorGround
-      field; RtsScene3D.shutdown() (RtsScene3D.ts:1272-1302) never disposes either
-      (fields set at :405/:419). Rematch reuses the same ThreeApp/GL context —
-      app.destroy() is NOT called on restart (createGame.ts:64-71), so the
-      material + GL program leak each rematch. (cursorGround is CPU-only: a no-op
-      leak but the same missing-teardown-owner defect.)
-    Design: Browser Performance Rules ("shared materials") + Delete The Old Path
-      (teardown must release what create() allocated).
-    Fix: Thread overlayLineSystem (and cursorGround) through the resources object
-      into teardownRtsScene3DRenderers and call overlayLineSystem.dispose() on
-      shutdown; null cursorGround.terrainMesh. Lifetime is per-scene, not per-app.
-
-[9] factoryConstructionTargetBySource entry is never pruned when a producing
-    factory dies mid-build (renderer map grows, bounded by factory count)
-    Category: memory-leak | Severity: LOW
-    Evidence: src/game/render3d/ConstructionVisualController3D.ts:69 (Map<EntityId,
-      EntityId> keyed by factory source id), set at :601, self-prunes only at
-      :605-611 when resolveFactoryConstructionTarget is re-called for that source
-      — which never happens after the factory dies (updateFactoryConstructionEmitter
-      :212 stops being called for it). Only wholesale clear is in destroy() (:88-89).
-      Sibling per-id caches (barrelSpinState, turretBeamAimCache) ARE pruned on
-      entity removal at Render3DEntities.ts:921-926/:967-985 — the idiomatic place
-      to add unregister().
-    Fix: Add unregister(entityId) that deletes the map entry, called from the same
-      renderer entity-removal path that disposes builder/factory meshes.
-
 --- MISSING FUNCTIONALITY / BAR ---
 
 [10] Targeting merges full-sight and radar into ONE coverage mask; there is no

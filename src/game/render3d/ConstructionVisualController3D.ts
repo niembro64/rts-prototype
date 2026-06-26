@@ -89,6 +89,16 @@ export class ConstructionVisualController3D {
     this.factoryConstructionTargetBySource.clear();
   }
 
+  /** Drop the cached factory→build-target association for a source entity
+   *  when its mesh is removed (e.g. a factory dies mid-build). Called from
+   *  the renderer entity-removal path, matching how barrelSpinState and
+   *  turretBeamAimCache are pruned. Without this the map grows unbounded by
+   *  factory count, since resolveFactoryConstructionTarget only self-prunes
+   *  while it is still being called for that source. */
+  unregister(entityId: EntityId): void {
+    this.factoryConstructionTargetBySource.delete(entityId);
+  }
+
   /** Drive a builder-unit's construction emitter (commander, future
    *  construction aircraft, anything with a `builder` component). The
    *  rate is inferred from the build target's paid-resource deltas
