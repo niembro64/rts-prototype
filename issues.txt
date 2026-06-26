@@ -371,11 +371,27 @@ deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
     - the forming-unit ghost orbs (factoryBuildSpotRig) still sit at the build bay;
       move them to the torus center or retire them now that the real shell is visible.
 
-[22] Phase F - remove the old path + document
-    Delete turretConstruction, the builder.constructionRate coupling, and dead
-    unitLauncher / turretUnitConstructorBallistic bits. Update
-    budget_design_philosophy.html: turret = ANY mounted emitter
-    (combat/spawn/resource-pylon); resource-pylon turrets are non-combat emitters
-    that do NOT make a host a combat tower; document spawn vs construction vs
-    extraction.
+[22] Phase F (cont.) - old-path removal is gated by wire codes + load-bearing deps
+    DONE: budget_design_philosophy.html updated -- turret = ANY mounted emitter
+    (combat / spawn / resource-pylon); spawn + resource-pylon turrets are non-combat
+    emitters that do NOT make a host a combat tower (buildings may mount extraction
+    pylons and stay buildings); fabricator documented as the hovering torus with a
+    spawn turret + construction pylons. turretConstruction is no longer MOUNTED
+    anywhere (commander/drone/fabricator use pylons).
+    NOT removed -- doing so blindly breaks the game; each needs the prerequisite first:
+    - Turret blueprint ids are WIRE CODES by array index and append-only
+      (types/network.ts: _TURRET_BLUEPRINT_ID_TO_CODE[id] = i). Removing
+      turretConstruction / turretUnitConstructorBallistic mid-array shifts every later
+      turret's code and breaks snapshots + replays. Leave the ids in place. To fully
+      retire turretConstruction's BLUEPRINT, first retarget its two remaining reads --
+      getFactoryBuildingVisualMetrics fabricator anchor metrics (buildings.ts) and
+      SprayRenderer3D particle speed/radius defaults -- onto a pylon/constants; the id
+      itself still stays for wire safety.
+    - builder.constructionRate is the host-sourced construction rate the funding pass
+      reads (commander 50 / drone 35 / fabricator 100). Construction-pylon BLUEPRINTS
+      are shared across hosts, so they cannot carry per-host rates; deleting
+      constructionRate first needs a per-mount (or per-host) rate source.
+    - unitLauncher is the LIVE queen mechanism (turretQueen*Constructor +
+      unitLauncherProduction.ts). Removing it first needs queens migrated to
+      turretSpawnUnits carrying the instant-produce + cooldown + launch behavior.
 ================================================================================
