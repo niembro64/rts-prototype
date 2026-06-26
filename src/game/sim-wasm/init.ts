@@ -1982,6 +1982,8 @@ export const CT_TURRET_CFG_RANGE_SPHERE = 1 << 11;
 export const CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP = 1 << 12;
 export const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION = 1 << 13;
 export const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY = 1 << 14;
+/** Turret may only lock enemies seen with full sight (not radar-only). */
+export const CT_TURRET_CFG_REQUIRES_FULL_SIGHT = 1 << 15;
 
 /** AIM-08.1 — FSM state encodings. Single-sourced from wireEnums.json (the
  *  same file Rust generates its CT_TURRET_STATE_* constants from), so the

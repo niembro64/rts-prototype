@@ -548,6 +548,7 @@ pub struct TurretBlueprint {
     pub headOnly: bool,
     pub aimStyle: TurretAimStyle,
     pub verticalLauncher: bool,
+    pub requiresFullSight: Option<bool>,
     pub idlePitch: f64,
     pub groundAimFraction: Option<f64>,
     pub constructionEmitter: Option<BlueprintJsonValue>,

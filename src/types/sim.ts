@@ -460,6 +460,11 @@ export type TurretConfig = {
    *  into a random cone around vertical. See TurretBlueprint
    *  .verticalLauncher. */
   verticalLauncher: boolean;
+  /** When true this turret may only lock an enemy the player/team sees with
+   *  full sight, never a radar-only contact. Direct beams and precision line
+   *  weapons set it; artillery / missiles authored for radar fire leave it
+   *  false. See TurretBlueprint.requiresFullSight. */
+  requiresFullSight: boolean;
   /** Initial-spawn pitch in radians applied once at turret creation.
    *  See TurretBlueprint.idlePitch. */
   idlePitch: number;

@@ -361,6 +361,7 @@ export type TurretBlueprint = {
   headOnly: boolean;
   aimStyle: TurretAimStyle;
   verticalLauncher: boolean;
+  requiresFullSight?: boolean;
   idlePitch: number;
   groundAimFraction: number | null;
   constructionEmitter: ConstructionEmitterVisualSpec | null;

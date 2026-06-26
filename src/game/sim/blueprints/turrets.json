@@ -1,6 +1,7 @@
 {
   "turretGunLight": {
     "turretBlueprintId": "turretGunLight",
+    "requiresFullSight": true,
     "name": "Light Gun",
     "range": 200,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
@@ -57,6 +58,7 @@
   },
   "turretGunBurst": {
     "turretBlueprintId": "turretGunBurst",
+    "requiresFullSight": true,
     "name": "Burst Gun",
     "range": 230,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
@@ -124,6 +126,7 @@
   },
   "turretCannon": {
     "turretBlueprintId": "turretCannon",
+    "requiresFullSight": true,
     "name": "Cannon",
     "range": 1000,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
@@ -365,6 +368,7 @@
   },
   "turretGatling": {
     "turretBlueprintId": "turretGatling",
+    "requiresFullSight": true,
     "name": "Gatling Gun",
     "range": 300,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
@@ -533,6 +537,7 @@
   },
   "turretBeam": {
     "turretBlueprintId": "turretBeam",
+    "requiresFullSight": true,
     "name": "Beam Emitter",
     "range": 250,
     "rangeVolume": "turret-range-sphere",
@@ -584,6 +589,7 @@
   },
   "turretBeamMini": {
     "turretBlueprintId": "turretBeamMini",
+    "requiresFullSight": true,
     "name": "Mini Beam",
     "range": 180,
     "rangeVolume": "turret-range-sphere",
@@ -635,6 +641,7 @@
   },
   "turretBeamMega": {
     "turretBlueprintId": "turretBeamMega",
+    "requiresFullSight": true,
     "name": "Mega Beam",
     "range": 350,
     "rangeVolume": "turret-range-bottom-unbounded",
@@ -1005,6 +1012,7 @@
   },
   "turretBeamLong": {
     "turretBlueprintId": "turretBeamLong",
+    "requiresFullSight": true,
     "name": "Long Beam",
     "range": 350,
     "rangeVolume": "turret-range-sphere",
@@ -1056,6 +1064,7 @@
   },
   "turretCannonLong": {
     "turretBlueprintId": "turretCannonLong",
+    "requiresFullSight": true,
     "name": "Long Cannon",
     "range": 1500,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",
@@ -1115,6 +1124,7 @@
   },
   "turretAlbatrosSiegeCannon": {
     "turretBlueprintId": "turretAlbatrosSiegeCannon",
+    "requiresFullSight": true,
     "name": "Albatros Siege Cannon",
     "range": 1200,
     "rangeVolume": "turret-range-top-and-bottom-unbounded",

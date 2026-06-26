@@ -69,6 +69,7 @@ import {
   CT_TURRET_CFG_RANGE_TOP_UNBOUNDED,
   CT_TURRET_CFG_RANGE_SPHERE,
   CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP,
+  CT_TURRET_CFG_REQUIRES_FULL_SIGHT,
   CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION,
   CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY,
   CT_TURRET_STATE_IDLE,
@@ -492,6 +493,9 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.config.hostDirected) f |= CT_TURRET_CFG_HOST_DIRECTED;
   if (turret.config.requiredEngagedForFightStop) {
     f |= CT_TURRET_CFG_REQUIRED_ENGAGED_FOR_FIGHT_STOP;
+  }
+  if (turret.config.requiresFullSight === true) {
+    f |= CT_TURRET_CFG_REQUIRES_FULL_SIGHT;
   }
   switch (turret.config.rangeVolume) {
     case 'turret-range-bottom-unbounded':

@@ -35,29 +35,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
 
 --- MISSING FUNCTIONALITY / BAR ---
 
-[10] Targeting merges full-sight and radar into ONE coverage mask; there is no
-     per-weapon radar-fire vs full-sight gate, so direct/beam turrets can fire on
-     radar-only contacts and there are no separate sight/radar envelopes
-    Category: missing-functionality (BAR-relevant) | Severity: MEDIUM-HIGH
-    Evidence: rts-sim-wasm/src/combat_targeting.rs:2219-2223 computes
-      sensor_radius = max(full_vision_radius, radar_radius) and marks it into the
-      single entity_sensor_coverage_mask (:2146); only two per-target masks exist
-      (sensor + detector). All acquisition gates read the merged mask (candidacy
-      fill :5598, priority-target gate :6271-6291, per-candidate gate :6610).
-      Turret config bits (:38-62) carry no requiresFullSight / radarFire bit; grep
-      for full_vision_mask / requires_full_sight / radar_fire = 0 hits.
-    Design: "Sight, radar, and contacts are separate information tiers"
-      (html:430-449): radar-only contacts are coarse blips eligible only for
-      weapons "explicitly authored for blind or remote fire" (artillery/missiles);
-      "direct beams and precision line weapons should usually require full sight."
-      Weapon range, tracking, sight, radar, detector are separate envelopes.
-    Fix: Track a second per-target coverage mask seeded ONLY by full-sight sources
-      (entity_full_vision_radius + scan pulses, excluding radar). Add a per-turret
-      blueprint bit (e.g. CT_TURRET_CFG_REQUIRES_FULL_SIGHT, default ON for beams/
-      precision; OFF = radar-fire-eligible for artillery/missiles) and gate
-      acquisition on the appropriate mask.
-
-
 --- SSoT / CONFIG-IS-DATA / DELETE-THE-OLD-PATH ---
 
 [14] Two flagship Rust sim modules are 10k+ LOC flat files, violating the file-size

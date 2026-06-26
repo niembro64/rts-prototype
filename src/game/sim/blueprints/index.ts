@@ -701,6 +701,9 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
 
   const config: TurretConfig = {
     turretBlueprintId: turretBlueprint.turretBlueprintId,
+    // Optional in the schema; default to radar-fire-eligible (false) so the
+    // runtime field is always an explicit boolean (Explicit Absence).
+    requiresFullSight: turretBlueprint.requiresFullSight === true,
     range: turretBlueprint.range,
     rangeVolume: turretBlueprint.rangeVolume,
     cooldown: turretBlueprint.cooldown,

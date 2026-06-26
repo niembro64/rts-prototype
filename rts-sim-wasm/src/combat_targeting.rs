@@ -67,6 +67,10 @@ pub const CT_TURRET_CFG_IGNORES_FORCE_MATERIAL_SIGHT_OBSTRUCTION: u16 = 1 << 13;
 /// Passive shield panels aim between the incoming enemy turret and the
 /// enemy body so reflections return toward the source of fire.
 pub const CT_TURRET_CFG_RAY_BISECT_TURRET_AND_BODY: u16 = 1 << 14;
+/// When set, this turret may only lock an enemy the player/team sees with
+/// FULL sight (not radar-only). Direct beams and precision line weapons set
+/// it; artillery / missiles that author radar fire leave it clear.
+pub const CT_TURRET_CFG_REQUIRES_FULL_SIGHT: u16 = 1 << 15;
 
 // FSM state encodings (CT_TURRET_STATE_*) are generated from
 // src/wireEnums.json — see the include! near the top of this file.
@@ -192,6 +196,11 @@ pub(crate) struct CombatTargetingPool {
     // A bit is set when that player's radar-level aggregate covers
     // this target. Radar-level aggregate is sight OR radar.
     pub(crate) entity_sensor_coverage_mask: Vec<u32>,
+    // Coverage by FULL-SIGHT sources only (excludes radar-only sensors). A
+    // subset of entity_sensor_coverage_mask. Turrets that require full sight
+    // (direct beams / precision line weapons) gate enemy lock-on on this mask
+    // so radar-only contacts are eligible only for radar-fire weapons.
+    pub(crate) entity_full_sight_coverage_mask: Vec<u32>,
     pub(crate) entity_detector_coverage_mask: Vec<u32>,
     pub(crate) observation_cells: HashMap<u64, CombatTargetingObservationCell>,
     pub(crate) observation_cell_keys: Vec<u64>,
@@ -406,6 +415,7 @@ impl CombatTargetingPool {
             entity_radar_radius: Vec::new(),
             entity_detector_radius: Vec::new(),
             entity_sensor_coverage_mask: Vec::new(),
+            entity_full_sight_coverage_mask: Vec::new(),
             entity_detector_coverage_mask: Vec::new(),
             observation_cells: HashMap::default(),
             observation_cell_keys: Vec::new(),
@@ -537,6 +547,7 @@ impl CombatTargetingPool {
             self.entity_radar_radius.resize(entity_needed, 0.0);
             self.entity_detector_radius.resize(entity_needed, 0.0);
             self.entity_sensor_coverage_mask.resize(entity_needed, 0);
+            self.entity_full_sight_coverage_mask.resize(entity_needed, 0);
             self.entity_detector_coverage_mask.resize(entity_needed, 0);
             self.entity_detection_padding.resize(entity_needed, 0.0);
             self.entity_priority_target_id.resize(entity_needed, -1);
@@ -683,6 +694,7 @@ impl CombatTargetingPool {
         }
         self.entity_flags[s] = 0;
         self.entity_sensor_coverage_mask[s] = 0;
+        self.entity_full_sight_coverage_mask[s] = 0;
         self.entity_detector_coverage_mask[s] = 0;
         self.turret_count_per_entity[s] = 0;
         let base = s * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
@@ -2129,13 +2141,18 @@ pub(crate) fn combat_targeting_mark_observation_cell(
     }
 }
 
+// Observation mask selector for combat_targeting_mark_observation_circle.
+pub(crate) const CT_OBSERVATION_MASK_SENSOR: u8 = 0;
+pub(crate) const CT_OBSERVATION_MASK_DETECTOR: u8 = 1;
+pub(crate) const CT_OBSERVATION_MASK_FULL_SIGHT: u8 = 2;
+
 pub(crate) fn combat_targeting_mark_observation_circle(
     pool: &mut CombatTargetingPool,
     source_x: f64,
     source_y: f64,
     radius: f64,
     owner_bit: u32,
-    detector_only: bool,
+    mask_kind: u8,
 ) {
     if owner_bit == 0 || !source_x.is_finite() || !source_y.is_finite() || !radius.is_finite() {
         return;
@@ -2158,10 +2175,10 @@ pub(crate) fn combat_targeting_mark_observation_circle(
     let entity_detection_padding = &pool.entity_detection_padding;
     let observation_cells = &pool.observation_cells;
     let observation_cell_keys = &pool.observation_cell_keys;
-    let coverage_mask = if detector_only {
-        &mut pool.entity_detector_coverage_mask
-    } else {
-        &mut pool.entity_sensor_coverage_mask
+    let coverage_mask = match mask_kind {
+        CT_OBSERVATION_MASK_DETECTOR => &mut pool.entity_detector_coverage_mask,
+        CT_OBSERVATION_MASK_FULL_SIGHT => &mut pool.entity_full_sight_coverage_mask,
+        _ => &mut pool.entity_sensor_coverage_mask,
     };
     let cells_x = (max_cx - min_cx + 1) as i64;
     let cells_y = (max_cy - min_cy + 1) as i64;
@@ -2246,7 +2263,20 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
             source_y,
             sensor_radius,
             owner_bit,
-            false,
+            CT_OBSERVATION_MASK_SENSOR,
+        );
+    }
+    // Full-sight sources additionally seed the full-sight-only mask (radar
+    // sources do not). Full sight already supplies radar-level location via
+    // the merged sensor mask above, so this is a strict subset.
+    if full_radius > 0.0 {
+        combat_targeting_mark_observation_circle(
+            pool,
+            source_x,
+            source_y,
+            full_radius,
+            owner_bit,
+            CT_OBSERVATION_MASK_FULL_SIGHT,
         );
     }
     if detector_radius > 0.0 {
@@ -2256,7 +2286,7 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
             source_y,
             detector_radius,
             owner_bit,
-            true,
+            CT_OBSERVATION_MASK_DETECTOR,
         );
     }
 }
@@ -2270,6 +2300,9 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
 pub fn combat_targeting_rebuild_observation_masks() {
     let pool = combat_targeting_pool();
     for mask in pool.entity_sensor_coverage_mask.iter_mut() {
+        *mask = 0;
+    }
+    for mask in pool.entity_full_sight_coverage_mask.iter_mut() {
         *mask = 0;
     }
     for mask in pool.entity_detector_coverage_mask.iter_mut() {
@@ -2308,8 +2341,12 @@ pub fn combat_targeting_add_sensor_observation_circle(
 ) {
     let owner_bit = combat_targeting_player_bit(owner_player_id);
     let pool = combat_targeting_pool();
-    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, false);
-    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, true);
+    // A scan pulse is a full-sight source: it reveals identity in its area, so
+    // it seeds the merged sensor mask (radar-level), the full-sight-only mask,
+    // and the detector mask.
+    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, CT_OBSERVATION_MASK_SENSOR);
+    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, CT_OBSERVATION_MASK_FULL_SIGHT);
+    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, CT_OBSERVATION_MASK_DETECTOR);
 }
 
 pub(crate) fn combat_targeting_view_mask_covers_entity(
@@ -2899,6 +2936,19 @@ pub(crate) fn combat_targeting_turret_may_lock_entity_slot(
     // is directly above it, so it never fires up into that teammate.
     if combat_targeting_source_sheltered_by_friendly_above(pool, source_entity_slot) {
         return false;
+    }
+    // Sight-vs-radar fire tier: a turret that requires full sight may only lock
+    // an enemy its team sees with full sight, never a radar-only contact. Uses
+    // the same team view mask as the merged-sensor observability gate, so team
+    // full sight counts; friendly (own-team) targets are always visible, so
+    // this only gates enemies.
+    if (pool.turret_config_flags[source_turret_idx] & CT_TURRET_CFG_REQUIRES_FULL_SIGHT) != 0 {
+        let view_mask = pool.entity_view_mask[source_entity_slot];
+        if (view_mask & pool.entity_owner_bit[target_entity_slot]) == 0
+            && (pool.entity_full_sight_coverage_mask[target_entity_slot] & view_mask) == 0
+        {
+            return false;
+        }
     }
     if !combat_targeting_turret_owner_relationship_allowed(
         pool,
