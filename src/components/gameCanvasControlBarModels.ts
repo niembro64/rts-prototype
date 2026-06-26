@@ -171,7 +171,6 @@ export type GameCanvasClientControlBarModel = {
   readonly fogClouds: boolean;
   readonly materialExplosions: boolean;
   readonly beamSnapToTurret: boolean;
-  readonly beamEma: PositionDriftChannelMode;
   readonly resourceBallDensity: number;
   readonly movementPosEma: PositionDriftChannelMode;
   readonly movementVelEma: DriftChannelMode;
@@ -229,7 +228,6 @@ export type GameCanvasClientControlBarModel = {
   toggleFogClouds(): void;
   toggleMaterialExplosions(): void;
   toggleBeamSnapToTurret(): void;
-  changeBeamEma(mode: PositionDriftChannelMode): void;
   changeResourceBallDensity(value: number): void;
   changeMovementPosEma(mode: PositionDriftChannelMode): void;
   changeMovementVelEma(mode: DriftChannelMode): void;

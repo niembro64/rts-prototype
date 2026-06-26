@@ -782,7 +782,6 @@ const {
   fogClouds,
   materialExplosions,
   beamSnapToTurret,
-  beamEma,
   resourceBallDensity,
   triangleDebug,
   buildGridDebug,
@@ -847,7 +846,6 @@ const {
   toggleFogClouds,
   toggleMaterialExplosions,
   toggleBeamSnapToTurret,
-  changeBeamEma,
   changeResourceBallDensity,
   toggleTriangleDebug,
   toggleBuildGridDebug,
@@ -1493,7 +1491,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   fogClouds: fogClouds.value,
   materialExplosions: materialExplosions.value,
   beamSnapToTurret: beamSnapToTurret.value,
-  beamEma: beamEma.value,
   resourceBallDensity: resourceBallDensity.value,
   movementPosEma: movementPosEma.value,
   movementVelEma: movementVelEma.value,
@@ -1551,7 +1548,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleFogClouds,
   toggleMaterialExplosions,
   toggleBeamSnapToTurret,
-  changeBeamEma,
   changeResourceBallDensity,
   changeMovementPosEma,
   changeMovementVelEma,
@@ -1670,7 +1666,6 @@ watchEffect(() => {
   m.fogClouds = fogClouds.value;
   m.materialExplosions = materialExplosions.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
-  m.beamEma = beamEma.value;
   m.resourceBallDensity = resourceBallDensity.value;
   m.movementPosEma = movementPosEma.value;
   m.movementVelEma = movementVelEma.value;

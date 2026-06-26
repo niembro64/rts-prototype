@@ -36,16 +36,6 @@
   "fogClouds": { "demoDefault": true, "realDefault": true },
   "materialExplosions": { "demoDefault": true, "realDefault": true },
   "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
-  "beamEma": {
-    "demoDefault": "fast",
-    "realDefault": "fast",
-    "options": [
-      { "value": "snap", "label": "SNAP" },
-      { "value": "fast", "label": "FAST" },
-      { "value": "medium", "label": "MED" },
-      { "value": "slow", "label": "SLOW" }
-    ]
-  },
   "triangleDebug": { "demoDefault": false, "realDefault": false },
   "buildGridDebug": { "demoDefault": false, "realDefault": false },
   "metalMap": { "demoDefault": false, "realDefault": false },
@@ -228,7 +218,6 @@
     "fogClouds": "fog-clouds",
     "materialExplosions": "material-explosions",
     "beamSnapToTurret": "beam-snap-to-turret",
-    "beamEma": "beam-ema",
     "resourceBallDensity": "resource-ball-density",
     "triangleDebug": "triangle-debug",
     "buildGridDebug": "build-grid-debug",

@@ -139,7 +139,6 @@ export type ClientBarConfig = {
    *  knockback, or the dying shell materialization fade. */
   readonly materialExplosions: BooleanSetting;
   readonly beamSnapToTurret: BooleanSetting;
-  readonly beamEma: LabeledOptionsConfig<PositionDriftChannelMode>;
   readonly triangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
   readonly metalMap: BooleanSetting;

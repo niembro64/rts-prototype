@@ -664,16 +664,6 @@ function resetEveryCustomHotkey(): void {
           title="Snap beam origins to live rendered turret centers"
           @click="model.toggleBeamSnapToTurret"
         >TURRET</BarButton>
-        <BarLabel title="Beam path point EMA. SNAP replaces every tick; FAST/MED/SLOW EMA each beam point toward the latest authoritative path with the named half-life.">BEAM EMA:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.beamEma.options"
-            :key="opt.value"
-            :active="model.beamEma === opt.value"
-            :title="`Beam point EMA: ${opt.label}.`"
-            @click="model.changeBeamEma(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

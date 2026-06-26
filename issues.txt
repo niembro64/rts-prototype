@@ -76,26 +76,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
       outbound energy pylon burst on the commander; OR add an explicit one-shot
       impulse field to ResourceMovement the renderer treats as a short spray.
 
-[3] Beam-vertex EMA channel split: position rides the BEAM knob, velocity rides
-    the movement-velocity knob (prediction channels not applied uniformly)
-    Category: correctness (prediction channels) | Severity: MEDIUM
-    Evidence: src/game/network/ClientPredictionStepper.ts:361-363 builds movPos/
-      movVel/beamPos blends; :398-405 passes (beamPosBlend, movVelBlend) into
-      applyBeamPathPrediction; :250-252 lerps beam vertex POSITION by the beam
-      knob while :255-260 lerps the same vertex's VELOCITY by movement-velocity.
-      Separate control: clientBarConfig.ts:1108-1109 getBeamEmaMode; "BEAM EMA"
-      label GameCanvasClientControlBar.vue:658. (Param at the call site is even
-      named movPosBlend but is fed the beam blend.)
-    Design: "What each EMA channel applies to" (html:624-647): beam points
-      proj.points[i].x/y/z belong to MOVEMENT POSITION and proj.points[i].vx/vy/vz
-      to MOVEMENT VELOCITY; "A channel that is only applied to some of its fields
-      is a bug." A vertex's position and velocity are paired motion state and must
-      ride the same channel family.
-    Fix: Make beam-vertex position and velocity share one channel — either both on
-      movement-pos/movement-vel (matches the doc; retire/repurpose beamEma), or
-      both on a unified beam channel (add a beamVelEma sibling). Do not leave
-      position on beamEma while velocity is on movement-velocity.
-
 --- OPTIMIZATION (5,000-unit scale target) ---
 
 [4] Per-tick support-surface sampling is brute-force O(awake x dynamicBodies) +

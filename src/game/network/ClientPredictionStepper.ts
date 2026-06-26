@@ -1,5 +1,4 @@
 import {
-  getBeamEmaMode,
   getMovementPosEmaMode,
   getMovementVelEmaMode,
   getPredictionMode,
@@ -356,11 +355,14 @@ export class ClientPredictionStepper {
       totalTargetAgeMs: 0,
       maxTargetAgeMs: 0,
     };
-    // Beam path positions have their own EMA because smoothing a reflected
-    // polyline has different visual failure modes than smoothing unit motion.
+    // Beam vertices are paired motion state: their position rides the
+    // movement-position channel and their velocity rides movement-velocity,
+    // exactly like a unit body center (budget_design_philosophy.html "What
+    // each EMA channel applies to" — proj.points[i].x/y/z are movement
+    // position, .vx/vy/vz are movement velocity). One channel must drive
+    // every field it owns, so both blends come from the movement knobs.
     const movPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
     const movVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
-    const beamPosBlend = getChannelBlend(getBeamEmaMode(), deltaMs / 1000);
     const predictionMode = getPredictionMode();
     const mapWidth = getMapWidth();
     const mapHeight = getMapHeight();
@@ -399,7 +401,7 @@ export class ClientPredictionStepper {
           entity,
           beamTarget,
           deltaMs,
-          beamPosBlend,
+          movPosBlend,
           movVelBlend,
           predictionMode,
         )
