@@ -326,10 +326,6 @@ export const ENTITY_LOD_PROXY_OPACITY = lodConfigJson.proxy.opacity;
 export const ENTITY_LOD_PROXY_DEPTH_TEST = lodConfigJson.proxy.depthTest;
 export const ENTITY_LOD_PROXY_DEPTH_WRITE = lodConfigJson.proxy.depthWrite;
 export const ENTITY_LOD_PROXY_RENDER_ORDER = lodConfigJson.proxy.renderOrder;
-export const ENTITY_LOD_PROXY_UNIT_MIN_PIXELS = lodConfigJson.proxy.units.minPixels;
-export const ENTITY_LOD_PROXY_UNIT_MAX_PIXELS = lodConfigJson.proxy.units.maxPixels;
-export const ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS = lodConfigJson.proxy.buildings.minPixels;
-export const ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS = lodConfigJson.proxy.buildings.maxPixels;
 export const EMISSION_LOD_HIGH_TO_LOW_DISTANCES =
   lodConfigJson.emissionHighToLowDistances;
 export const ENTITY_LOD_EFFECT_RADIUS_FALLBACKS = lodConfigJson.effectRadiusFallbacks;

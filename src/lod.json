@@ -22,15 +22,7 @@
     "opacity": 1,
     "depthTest": true,
     "depthWrite": true,
-    "renderOrder": 3,
-    "units": {
-      "minPixels": 6,
-      "maxPixels": 42
-    },
-    "buildings": {
-      "minPixels": 10,
-      "maxPixels": 72
-    }
+    "renderOrder": 3
   },
   "emissionHighToLowDistances": {
     "bodyHud": 6000,

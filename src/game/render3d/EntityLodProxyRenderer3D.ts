@@ -1,14 +1,10 @@
 import * as THREE from 'three';
 import {
-  ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS,
-  ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS,
   ENTITY_LOD_PROXY_CAP,
   ENTITY_LOD_PROXY_DEPTH_TEST,
   ENTITY_LOD_PROXY_DEPTH_WRITE,
   ENTITY_LOD_PROXY_OPACITY,
   ENTITY_LOD_PROXY_RENDER_ORDER,
-  ENTITY_LOD_PROXY_UNIT_MAX_PIXELS,
-  ENTITY_LOD_PROXY_UNIT_MIN_PIXELS,
   ENTITY_LOD_PROXY_USE_TEAM_COLOR,
 } from '@/config';
 import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
@@ -23,8 +19,6 @@ const POINT_VERTEX_SHADER = `
 attribute vec3 color;
 attribute float aRadius;
 uniform float uViewportHeight;
-uniform float uMinPointSize;
-uniform float uMaxPointSize;
 varying vec3 vColor;
 varying float vViewZ;
 varying float vViewRadius;
@@ -35,11 +29,12 @@ void main() {
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   float viewDistance = max(1.0, -mvPosition.z);
-  float projectedDiameter = aRadius * projectionMatrix[1][1] * uViewportHeight / viewDistance;
-  float pointSize = clamp(projectedDiameter, uMinPointSize, uMaxPointSize);
-  gl_PointSize = pointSize;
+  // The proxy is ALWAYS the entity's true collision boundary in world space:
+  // project that world radius straight to pixels with no min/max clamp, so the
+  // marker exactly tracks the collision sphere at every zoom level.
+  gl_PointSize = aRadius * projectionMatrix[1][1] * uViewportHeight / viewDistance;
   vViewZ = mvPosition.z;
-  vViewRadius = pointSize * viewDistance / max(0.0001, projectionMatrix[1][1] * uViewportHeight);
+  vViewRadius = aRadius;
   vDepthProjection = vec4(
     projectionMatrix[2][2],
     projectionMatrix[3][2],
@@ -134,12 +129,10 @@ function uploadDirty(
   span.max = -1;
 }
 
-function createProxyPointMaterial(minPointSize: number, maxPointSize: number): THREE.ShaderMaterial {
+function createProxyPointMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
       uViewportHeight: { value: 1 },
-      uMinPointSize: { value: minPointSize },
-      uMaxPointSize: { value: maxPointSize },
       uOpacity: { value: Math.max(0, Math.min(1, ENTITY_LOD_PROXY_OPACITY)) },
     },
     vertexShader: POINT_VERTEX_SHADER,
@@ -150,7 +143,7 @@ function createProxyPointMaterial(minPointSize: number, maxPointSize: number): T
   });
 }
 
-function createProxyPointBatch(minPointSize: number, maxPointSize: number): ProxyPointBatch {
+function createProxyPointBatch(): ProxyPointBatch {
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
   const colors = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
@@ -166,7 +159,7 @@ function createProxyPointBatch(minPointSize: number, maxPointSize: number): Prox
   geometry.setAttribute('aRadius', radiusAttr);
   geometry.setDrawRange(0, 0);
 
-  const material = createProxyPointMaterial(minPointSize, maxPointSize);
+  const material = createProxyPointMaterial();
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
   points.renderOrder = ENTITY_LOD_PROXY_RENDER_ORDER;
@@ -247,14 +240,8 @@ function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
 }
 
 class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
-  private readonly unitBatch = createProxyPointBatch(
-    ENTITY_LOD_PROXY_UNIT_MIN_PIXELS,
-    ENTITY_LOD_PROXY_UNIT_MAX_PIXELS,
-  );
-  private readonly buildingBatch = createProxyPointBatch(
-    ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS,
-    ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS,
-  );
+  private readonly unitBatch = createProxyPointBatch();
+  private readonly buildingBatch = createProxyPointBatch();
 
   constructor(private readonly world: THREE.Group) {
     this.world.add(this.unitBatch.points);

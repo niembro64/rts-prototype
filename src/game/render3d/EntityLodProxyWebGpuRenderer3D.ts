@@ -1,10 +1,6 @@
 import * as THREE from 'three';
 import {
-  ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS,
-  ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS,
   ENTITY_LOD_PROXY_CAP,
-  ENTITY_LOD_PROXY_UNIT_MAX_PIXELS,
-  ENTITY_LOD_PROXY_UNIT_MIN_PIXELS,
   ENTITY_LOD_PROXY_USE_TEAM_COLOR,
 } from '@/config';
 import type { Entity } from '../sim/types';
@@ -69,13 +65,10 @@ fn vsMain(input: VertexInput) -> VertexOutput {
   let viewport = max(uniforms.params.xy, vec2<f32>(1.0, 1.0));
   let projectionYScale = uniforms.params.z;
   let viewDistance = max(1.0, -viewPosition.z);
-  let minPixels = uniforms.params.w;
-  let maxPixels = uniforms.params2.x;
-  let diameterPixels = clamp(
-    input.radius * projectionYScale * viewport.y / viewDistance,
-    minPixels,
-    maxPixels,
-  );
+  // The proxy is ALWAYS the entity's true collision boundary in world space:
+  // project that world radius straight to pixels with no min/max clamp so the
+  // marker exactly tracks the collision sphere at every zoom level.
+  let diameterPixels = input.radius * projectionYScale * viewport.y / viewDistance;
   let radiusPixels = diameterPixels * 0.5;
   let ndcOffset = vec2<f32>(
     input.corner.x * radiusPixels * 2.0 / viewport.x,
@@ -156,8 +149,6 @@ type GpuProxyBatch = {
   readonly instanceBuffer: GpuBufferLike;
   readonly uniformBuffer: GpuBufferLike;
   readonly bindGroup: unknown;
-  readonly minPixels: number;
-  readonly maxPixels: number;
   count: number;
 };
 
@@ -205,8 +196,6 @@ function normalizeColorHex(colorHex: number, out: Float32Array, offset: number):
 function createGpuBatch(
   device: GpuDeviceLike,
   bindGroupLayout: unknown,
-  minPixels: number,
-  maxPixels: number,
 ): GpuProxyBatch {
   const instanceBuffer = device.createBuffer({
     size: ENTITY_LOD_PROXY_CAP * INSTANCE_BYTES,
@@ -230,8 +219,6 @@ function createGpuBatch(
     instanceBuffer,
     uniformBuffer,
     bindGroup,
-    minPixels,
-    maxPixels,
     count: 0,
   };
 }
@@ -325,18 +312,8 @@ export class EntityLodProxyWebGpuRenderer3D {
       usage: GPU_BUFFER_USAGE_VERTEX | GPU_BUFFER_USAGE_COPY_DST,
     });
     device.queue.writeBuffer(this.quadVertexBuffer, 0, QUAD_CORNERS);
-    this.unitBatch = createGpuBatch(
-      device,
-      bindGroupLayout,
-      ENTITY_LOD_PROXY_UNIT_MIN_PIXELS,
-      ENTITY_LOD_PROXY_UNIT_MAX_PIXELS,
-    );
-    this.buildingBatch = createGpuBatch(
-      device,
-      bindGroupLayout,
-      ENTITY_LOD_PROXY_BUILDING_MIN_PIXELS,
-      ENTITY_LOD_PROXY_BUILDING_MAX_PIXELS,
-    );
+    this.unitBatch = createGpuBatch(device, bindGroupLayout);
+    this.buildingBatch = createGpuBatch(device, bindGroupLayout);
     this.pipeline = device.createRenderPipeline({
       layout: pipelineLayout,
       vertex: {
@@ -471,8 +448,8 @@ export class EntityLodProxyWebGpuRenderer3D {
     this.uniformData[32] = width;
     this.uniformData[33] = height;
     this.uniformData[34] = this.options.camera.projectionMatrix.elements[5] ?? 1;
-    this.uniformData[35] = batch.minPixels;
-    this.uniformData[36] = batch.maxPixels;
+    this.uniformData[35] = 0;
+    this.uniformData[36] = 0;
     this.uniformData[37] = 0;
     this.uniformData[38] = 0;
     this.uniformData[39] = 0;
