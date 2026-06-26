@@ -203,16 +203,33 @@ export class ServerSimulationCore {
         this.repairInvalidUnitBody(entity);
         continue;
       }
-      // A unit shell still under construction is locked to its spawn column: no
-      // force (wind, knockback, collisions) can move it horizontally. It still
-      // free-falls in Z. Pin x/y back to the previously-synced value (its spawn
-      // anchor on the first tick) and zero horizontal velocity; the unit is
-      // released the tick it completes.
+      // A unit shell still under construction is locked so it cannot drift out
+      // of its producer; it is released the tick it completes. Two policies:
+      //  - static spawn column (buildLockHostId null): X/Y pinned to the spawn
+      //    anchor, Z left free so it free-falls (the fabricator torus drop).
+      //  - attached to a mobile host (buildLockHostId set): X/Y/Z all pinned to
+      //    the host body so the shell rides along as the host moves (a queen
+      //    building its bee/tick); released, it free-falls from there.
       if (isBuildInProgress(entity.buildable)) {
-        body.x = entity.transform.x;
-        body.y = entity.transform.y;
-        body.vx = 0;
-        body.vy = 0;
+        const lockHostId = entity.buildable.buildLockHostId;
+        const lockHost = lockHostId !== null ? this.world.getEntity(lockHostId) : undefined;
+        if (lockHost !== undefined) {
+          // ATTACHED_BUILD_SHELL_ELEVATION holds the shell above the host so it
+          // reads as carried and has somewhere to fall on release. Tunable; the
+          // queen-mount spawn pose will refine the exact anchor.
+          const ATTACHED_BUILD_SHELL_ELEVATION = 60;
+          body.x = lockHost.transform.x;
+          body.y = lockHost.transform.y;
+          body.z = lockHost.transform.z + ATTACHED_BUILD_SHELL_ELEVATION;
+          body.vx = 0;
+          body.vy = 0;
+          body.vz = 0;
+        } else {
+          body.x = entity.transform.x;
+          body.y = entity.transform.y;
+          body.vx = 0;
+          body.vy = 0;
+        }
       }
       entity.transform.x = body.x;
       entity.transform.y = body.y;

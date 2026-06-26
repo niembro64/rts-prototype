@@ -899,6 +899,17 @@ export type Buildable = {
   isInterrupted: boolean;
   healthBuildFraction: number;
   pieces: ConstructionPieceBuildRecord[];
+  /** While a unit shell is under construction its body is locked so it
+   *  cannot drift out of its producer. Two policies, both released the tick
+   *  the shell completes:
+   *    - `null` (default): static spawn column — X/Y pinned to the shell's own
+   *      spawn point, Z free so it free-falls (the fabricator torus drop).
+   *    - an `EntityId`: rigidly attached to that host body — X/Y/Z all pinned
+   *      to the host so the shell rides along as the host moves (the queen
+   *      builds its bee/tick attached to itself, then releases it to free-fall).
+   *  Server-only physics state: it drives the body pin, is not sent on the
+   *  wire (the client just receives the resulting position each snapshot). */
+  buildLockHostId: EntityId | null;
 };
 
 /** Builder component. Gives a unit the ability to construct

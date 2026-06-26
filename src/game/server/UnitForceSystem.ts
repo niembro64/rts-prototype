@@ -210,6 +210,12 @@ export class UnitForceSystem {
         // still acts on Z; the unit is released the tick it completes.
         body.vx = 0;
         body.vy = 0;
+        // A shell attached to a mobile producer (a queen building its bee/tick)
+        // is locked in all three axes so it rides along with the host instead of
+        // free-falling; the static spawn-column case (fabricator) keeps Z free.
+        if (entity.buildable !== null && entity.buildable.buildLockHostId !== null) {
+          body.vz = 0;
+        }
       }
       const locomotionType = unit.locomotion.type;
       const isFlying = locomotionType === 'flying';

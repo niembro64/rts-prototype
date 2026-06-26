@@ -32,6 +32,10 @@ export function createBuildable(required: ResourceCost, state: BuildableState | 
       ? 0
       : state.healthBuildFraction,
     pieces: [],
+    // Default static spawn-column lock (X/Y pinned, Z free-falls). A mobile
+    // producer (queen) overrides this to its own id at shell spawn so the shell
+    // rides along attached in all three axes.
+    buildLockHostId: null,
   };
 }
 
