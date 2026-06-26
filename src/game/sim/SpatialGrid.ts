@@ -201,8 +201,6 @@ class SpatialGrid {
     // fields from the previous occupant.
     const sim = getSimWasm();
     if (sim !== undefined) {
-      sim.entityMeta.unregisterRoot(id);
-      sim.entityMeta.unset(slot);
       sim.turretPool.unsetEntity(slot);
     }
     this.api().freeSlot(slot);
@@ -230,11 +228,10 @@ class SpatialGrid {
 
   clear(): void {
     this.api().clear();
-    // Phase 10 D.1 / D.1b — drop the meta-pool + turret-pool state
-    // alongside the spatial cells so a fresh session starts clean.
+    // Phase 10 D.1b — drop the turret-pool state alongside the spatial
+    // cells so a fresh session starts clean.
     const sim = getSimWasm();
     if (sim !== undefined) {
-      sim.entityMeta.clear();
       sim.turretPool.clear();
     }
     this.slotByEntityId.clear();

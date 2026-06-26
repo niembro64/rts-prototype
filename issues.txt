@@ -116,28 +116,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
 
 --- SSoT / CONFIG-IS-DATA / DELETE-THE-OLD-PATH ---
 
-[13] Rust EntityMetaPool registry (register/resolve/set_unit/set_building/set_tower
-     + 14 registry*Ptr exports) is fully implemented and bound but has ZERO
-     production callers — a dead parallel SSoT beside the live TS WorldEntityMetadata
-    Category: ssot / dead-path | Severity: MEDIUM
-    Evidence: rts-sim-wasm/src/entity_meta.rs:266-355 (register), :387-403
-      (resolve_row), :472-669 (set_unit/set_building/set_tower exports), :738-783
-      (registry*Ptr exports); bound at src/game/sim-wasm/init.ts:3936-3979 but
-      never called. Live registry is the TS Map src/game/sim/WorldEntityMetadata.ts
-      :13 (metaById = new Map), driven from WorldState.ts:302/307/315. The Rust
-      half is referenced only by snapshot.rs:9414-9452 unit tests.
-    Design: "Universal Runtime Entity IDs" — the ID is meant to resolve "through
-      the entity registry into a dense metadata row." The Rust registry matching
-      the doc's EntityMeta shape is the path the design intends, yet it is dead.
-    Fix: Decide the SSoT. Either (a) drive the Rust EntityMetaPool from the live
-      path (register/setUnit/setTower/setBuilding per dirty entity, route resolve
-      through resolve_row) and make WorldEntityMetadata.ts a thin view; or (b) if
-      the TS map is intentionally the SSoT, DELETE the dead Rust registry-row half
-      and its init.ts bindings (Delete The Old Path). Relatedly: the wire entity
-      kind collapses tower into KIND_BUILDING (stateSerializerEntities.ts:653,
-      667-678) while Rust reserves ENTITY_META_KIND_TOWER (entity_meta.rs:44) that
-      the encoder never emits — pick one and remove the dead constant or emit it.
-
 [14] Two flagship Rust sim modules are 10k+ LOC flat files, violating the file-size
      SSoT discipline (boilerplate is mechanically extractable without touching the
      wire-format parity contract)

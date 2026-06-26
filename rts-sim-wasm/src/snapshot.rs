@@ -9401,56 +9401,9 @@ mod lock_on_inclusion_tests {
 
     pub(crate) fn reset_pools() {
         spatial_init(200.0, 64);
-        entity_meta_init(64);
         combat_targeting_init(64);
         shield_pool_clear();
         terrain_clear();
-    }
-
-    #[test]
-    pub(crate) fn entity_meta_registry_generation_guards_storage_reuse() {
-        let _guard = lock_tests();
-        entity_meta_init(8);
-
-        let gen_a = entity_meta_register(
-            10,
-            ENTITY_META_KIND_UNIT,
-            ENTITY_META_BLUEPRINT_KIND_UNIT,
-            3,
-            1,
-            ENTITY_META_NO_ID,
-            ENTITY_META_NO_ID,
-            10,
-            ENTITY_META_NO_INDEX,
-            ENTITY_META_STORAGE_ENTITIES,
-            2,
-            1,
-        );
-        assert!(gen_a > 0);
-        assert!(entity_meta_resolve_row(10, gen_a) >= 0);
-        assert_eq!(entity_meta_resolve_storage_slot(10, gen_a), 2);
-
-        entity_meta_unregister(10);
-        assert_eq!(entity_meta_resolve_row(10, gen_a), -1);
-
-        let gen_b = entity_meta_register(
-            11,
-            ENTITY_META_KIND_UNIT,
-            ENTITY_META_BLUEPRINT_KIND_UNIT,
-            4,
-            1,
-            ENTITY_META_NO_ID,
-            ENTITY_META_NO_ID,
-            11,
-            ENTITY_META_NO_INDEX,
-            ENTITY_META_STORAGE_ENTITIES,
-            2,
-            1,
-        );
-        assert!(gen_b > gen_a);
-        assert_eq!(entity_meta_resolve_row(10, gen_a), -1);
-        assert_eq!(entity_meta_resolve_storage_slot(11, gen_a), -1);
-        assert_eq!(entity_meta_resolve_storage_slot(11, gen_b), 2);
     }
 
     pub(crate) fn entity_flags(has_combat: bool) -> u8 {

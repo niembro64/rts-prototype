@@ -190,52 +190,6 @@ import __wbg_init, {
   pathfinder_grid_size_w,
   pathfinder_grid_size_h,
   messagepack_self_test,
-  entity_meta_init,
-  entity_meta_clear,
-  entity_meta_register,
-  entity_meta_unregister,
-  entity_meta_unregister_root,
-  entity_meta_resolve_row,
-  entity_meta_generation,
-  entity_meta_resolve_storage_slot,
-  entity_meta_set_unit,
-  entity_meta_set_building,
-  entity_meta_set_tower,
-  entity_meta_unset,
-  entity_meta_type,
-  entity_meta_type_ptr,
-  entity_meta_player_id_ptr,
-  entity_meta_hp_curr_ptr,
-  entity_meta_hp_max_ptr,
-  entity_meta_combat_mode_ptr,
-  entity_meta_is_commander_ptr,
-  entity_meta_build_complete_ptr,
-  entity_meta_build_paid_energy_ptr,
-  entity_meta_build_paid_metal_ptr,
-  entity_meta_build_target_id_ptr,
-  entity_meta_suspension_spring_offset_ptr,
-  entity_meta_suspension_spring_velocity_ptr,
-  entity_meta_factory_is_producing_ptr,
-  entity_meta_factory_build_queue_len_ptr,
-  entity_meta_factory_progress_ptr,
-  entity_meta_solar_open_ptr,
-  entity_meta_build_progress_ptr,
-  entity_meta_capacity,
-  entity_meta_registry_entity_id_ptr,
-  entity_meta_registry_kind_ptr,
-  entity_meta_registry_blueprint_kind_ptr,
-  entity_meta_registry_blueprint_code_ptr,
-  entity_meta_registry_owner_player_id_ptr,
-  entity_meta_registry_team_id_ptr,
-  entity_meta_registry_parent_id_ptr,
-  entity_meta_registry_root_host_id_ptr,
-  entity_meta_registry_mount_index_ptr,
-  entity_meta_registry_storage_pool_ptr,
-  entity_meta_registry_storage_slot_ptr,
-  entity_meta_registry_generation_ptr,
-  entity_meta_registry_alive_ptr,
-  entity_meta_registry_targetable_ptr,
-  entity_meta_registry_capacity,
   turret_pool_init,
   turret_pool_clear,
   turret_pool_max_per_entity,
@@ -1699,7 +1653,6 @@ export interface SimWasm {
   /** Phase 10 D.1 — Entity-meta SoA pool. Foundation for future
    *  D.3 quantize/delta-encode kernel; JS-side population lands in
    *  D.3 when there's a consumer. */
-  readonly entityMeta: EntityMetaApi;
   /** Phase 10 D.1b — Turret sub-pool. Per-entity turret arrays
    *  indexed at fixed offsets. JS-side population lands with D.3
    *  alongside the entity-meta capture pass. */
@@ -1956,101 +1909,6 @@ export interface SpatialApi {
  *  tick. Position / velocity / orientation continue to live in
  *  BodyPool (Phase 3d). Variable-length arrays (turrets, actions)
  *  will land in a follow-up sub-pool. */
-export interface EntityMetaApi {
-  init: (initialCapacity: number) => void;
-  clear: () => void;
-  /** Register/refresh a runtime EntityId metadata row. Returns the
-   *  row generation; (id,generation) is the stale-ref checked handle. */
-  register: (
-    id: number,
-    kind: number,
-    blueprintKind: number,
-    blueprintCode: number,
-    ownerPlayerId: number,
-    teamId: number,
-    parentId: number,
-    rootHostId: number,
-    mountIndex: number,
-    storagePool: number,
-    storageSlot: number,
-    targetable: number,
-  ) => number;
-  unregister: (id: number) => void;
-  unregisterRoot: (rootId: number) => void;
-  resolveRow: (id: number, generation: number) => number;
-  generation: (id: number) => number;
-  resolveStorageSlot: (id: number, generation: number) => number;
-  setUnit: (
-    slot: number,
-    playerId: number,
-    hpCurr: number, hpMax: number,
-    combatMode: number,
-    isCommander: number,
-    buildComplete: number,
-    buildPaidEnergy: number, buildPaidMetal: number,
-    buildTargetId: number,
-    suspensionSpringOffset: number, suspensionSpringVelocity: number,
-    buildProgress: number,
-  ) => void;
-  setBuilding: (
-    slot: number,
-    playerId: number,
-    hpCurr: number, hpMax: number,
-    factoryIsProducing: number, factoryBuildQueueLen: number, factoryProgress: number,
-    solarOpen: number,
-    buildProgress: number,
-  ) => void;
-  setTower: (
-    slot: number,
-    playerId: number,
-    hpCurr: number, hpMax: number,
-    factoryIsProducing: number, factoryBuildQueueLen: number, factoryProgress: number,
-    solarOpen: number,
-    buildProgress: number,
-  ) => void;
-  unset: (slot: number) => void;
-  /** Returns 0 (unset) / 1 (unit) / 2 (building) / 3 (tower) for the slot. */
-  type: (slot: number) => number;
-  /** Current per-slot SoA capacity (auto-grows on set*). */
-  capacity: () => number;
-  /** Per-field raw pointers — JS builds typed-array views once and
-   *  re-builds them if `memory.grow` ever detaches them. Same
-   *  pattern as BodyPool / ProjectilePool. */
-  readonly typePtr: () => number;
-  readonly playerIdPtr: () => number;
-  readonly hpCurrPtr: () => number;
-  readonly hpMaxPtr: () => number;
-  readonly combatModePtr: () => number;
-  readonly isCommanderPtr: () => number;
-  readonly buildCompletePtr: () => number;
-  readonly buildPaidEnergyPtr: () => number;
-  readonly buildPaidMetalPtr: () => number;
-  readonly buildTargetIdPtr: () => number;
-  readonly suspensionSpringOffsetPtr: () => number;
-  readonly suspensionSpringVelocityPtr: () => number;
-  readonly factoryIsProducingPtr: () => number;
-  readonly factoryBuildQueueLenPtr: () => number;
-  readonly factoryProgressPtr: () => number;
-  readonly solarOpenPtr: () => number;
-  readonly buildProgressPtr: () => number;
-  readonly registryEntityIdPtr: () => number;
-  readonly registryKindPtr: () => number;
-  readonly registryBlueprintKindPtr: () => number;
-  readonly registryBlueprintCodePtr: () => number;
-  readonly registryOwnerPlayerIdPtr: () => number;
-  readonly registryTeamIdPtr: () => number;
-  readonly registryParentIdPtr: () => number;
-  readonly registryRootHostIdPtr: () => number;
-  readonly registryMountIndexPtr: () => number;
-  readonly registryStoragePoolPtr: () => number;
-  readonly registryStorageSlotPtr: () => number;
-  readonly registryGenerationPtr: () => number;
-  readonly registryAlivePtr: () => number;
-  readonly registryTargetablePtr: () => number;
-  readonly registryCapacity: () => number;
-}
-
-
 /** Phase 10 D.1b — Turret sub-pool. Up to 8 turrets per entity at
  *  fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
  *  Per-entity count gates which indices are live. Used by the
@@ -3605,7 +3463,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       // Phase 10 D.1 — entity-meta SoA pool. Same initial slot
       // capacity hint as SpatialGrid since the slot spaces are
       // shared (one EntityId<->slot map JS-side).
-      entity_meta_init(1024);
       // Phase 10 D.1b — turret sub-pool. Per-entity turret arrays
       // indexed at fixed offsets up to MAX_TURRETS_PER_ENTITY = 8.
       turret_pool_init(1024);
@@ -3929,54 +3786,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           waypointsPtr: pathfinder_waypoints_ptr,
           gridWidth: pathfinder_grid_size_w,
           gridHeight: pathfinder_grid_size_h,
-        },
-        entityMeta: {
-          init: entity_meta_init,
-          clear: entity_meta_clear,
-          register: entity_meta_register,
-          unregister: entity_meta_unregister,
-          unregisterRoot: entity_meta_unregister_root,
-          resolveRow: entity_meta_resolve_row,
-          generation: entity_meta_generation,
-          resolveStorageSlot: entity_meta_resolve_storage_slot,
-          setUnit: entity_meta_set_unit,
-          setBuilding: entity_meta_set_building,
-          setTower: entity_meta_set_tower,
-          unset: entity_meta_unset,
-          type: entity_meta_type,
-          capacity: entity_meta_capacity,
-          typePtr: entity_meta_type_ptr,
-          playerIdPtr: entity_meta_player_id_ptr,
-          hpCurrPtr: entity_meta_hp_curr_ptr,
-          hpMaxPtr: entity_meta_hp_max_ptr,
-          combatModePtr: entity_meta_combat_mode_ptr,
-          isCommanderPtr: entity_meta_is_commander_ptr,
-          buildCompletePtr: entity_meta_build_complete_ptr,
-          buildPaidEnergyPtr: entity_meta_build_paid_energy_ptr,
-          buildPaidMetalPtr: entity_meta_build_paid_metal_ptr,
-          buildTargetIdPtr: entity_meta_build_target_id_ptr,
-          suspensionSpringOffsetPtr: entity_meta_suspension_spring_offset_ptr,
-          suspensionSpringVelocityPtr: entity_meta_suspension_spring_velocity_ptr,
-          factoryIsProducingPtr: entity_meta_factory_is_producing_ptr,
-          factoryBuildQueueLenPtr: entity_meta_factory_build_queue_len_ptr,
-          factoryProgressPtr: entity_meta_factory_progress_ptr,
-          solarOpenPtr: entity_meta_solar_open_ptr,
-          buildProgressPtr: entity_meta_build_progress_ptr,
-          registryEntityIdPtr: entity_meta_registry_entity_id_ptr,
-          registryKindPtr: entity_meta_registry_kind_ptr,
-          registryBlueprintKindPtr: entity_meta_registry_blueprint_kind_ptr,
-          registryBlueprintCodePtr: entity_meta_registry_blueprint_code_ptr,
-          registryOwnerPlayerIdPtr: entity_meta_registry_owner_player_id_ptr,
-          registryTeamIdPtr: entity_meta_registry_team_id_ptr,
-          registryParentIdPtr: entity_meta_registry_parent_id_ptr,
-          registryRootHostIdPtr: entity_meta_registry_root_host_id_ptr,
-          registryMountIndexPtr: entity_meta_registry_mount_index_ptr,
-          registryStoragePoolPtr: entity_meta_registry_storage_pool_ptr,
-          registryStorageSlotPtr: entity_meta_registry_storage_slot_ptr,
-          registryGenerationPtr: entity_meta_registry_generation_ptr,
-          registryAlivePtr: entity_meta_registry_alive_ptr,
-          registryTargetablePtr: entity_meta_registry_targetable_ptr,
-          registryCapacity: entity_meta_registry_capacity,
         },
         turretPool: {
           init: turret_pool_init,
