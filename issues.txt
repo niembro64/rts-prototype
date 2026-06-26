@@ -125,20 +125,20 @@ flying builders). Determinism: economy stays in energyDistribution; run
 deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
 
 [20] Phase D (cont.) - surface producer income as inbound pylon balls
-    DONE: extraction pylons (turretResourcePylonExtraction{Metal,Energy}) are mounted
-    on extractor/extractorT2 (metal) and solar/wind (energy); they are non-combat
-    emitters so the hosts stay plain buildings (loader now allows resource-pylon
-    turrets on non-tower buildings). Production rate stays host-sourced
-    (energyProduction/metalProduction/metalExtractionRate, economy unchanged) and the
-    existing rotor visuals already reflect actual production (rotorSpinReflectsActual-
-    Production toggle).
-    REMAINING: surface each producer's per-tick income as inbound resource-pylon
-    balls converging into the building, emitted from its extraction pylon. NOTE:
-    world.resourceMovements IS part of the lockstep checksum (CanonicalStateHash), so
-    income movements must be perfectly deterministic across host + every client —
-    verify cross-peer + in-app before relying on it. Overlaps [2] (the broader
-    "resources are visible only as pylon balls" invariant). Converter/upkeep/ammo
-    "consumption" spend stays as-is (future consumption-pylon role).
+    The income->pylon path is implemented end to end: economy.ts applyIncomeCredits
+    publishes one INBOUND resourceMovement per producing solar/wind/extractor
+    (sourceEntityId = the building, amountPerSecond = the production rate, reason
+    'production'); the serializer keeps it (rate>0); ClientViewState.applyResource-
+    Movements registers the signed rate per source; BuildingResourcePylonAnimator3D
+    .updateDeclaredPylon reads it and emits inbound balls from the world endpoint
+    (sun/upwind/deposit) into solar/wind/extractor extraction pylons.
+    Cross-peer determinism is VERIFIED: deterministicReplayHarness passes 8 cases
+    incl. real-prebuilt-factory-production and real-construction-economy-scan (2-peer,
+    checksummed resourceMovements).
+    REMAINING (user, in-app eyes only): confirm the inbound producer balls actually
+    render and converge correctly in the running app; A/B density if needed. No code
+    change is outstanding. Converter/upkeep/ammo "consumption" spend stays as-is
+    (future consumption-pylon role).
 
 
 [22] Phase F (cont.) - old-path removal is gated by wire codes + load-bearing deps
