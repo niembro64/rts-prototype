@@ -302,7 +302,7 @@ export class ProjectileRenderer3D {
 
       const shotProfile = e.projectile?.config.shotProfile;
       const visualProfile = shotProfile?.visual;
-      const radius = shotProfile?.runtime.radius.visual ?? 4;
+      const radius = shotProfile?.runtime.radius.other ?? 4;
       const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
 

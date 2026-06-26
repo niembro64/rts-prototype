@@ -272,7 +272,7 @@ type UnitFixture = BasicEntityFixture & {
     hp: { curr: number; max: number };
     velocity: { x: number; y: number; z: number };
     unitBlueprintCode?: number;
-    radius?: { visual: number; hitbox: number; collision: number };
+    radius?: { other: number; hitbox: number; collision: number };
     bodyCenterHeight?: number;
     mass?: number;
     surfaceNormal?: { nx: number; ny: number; nz: number };
@@ -385,7 +385,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 100, max: 100 },
         velocity: { x: 0, y: 0, z: 0 },
         unitBlueprintCode: 4,
-        radius: { visual: 12, hitbox: 15, collision: 18 },
+        radius: { other: 12, hitbox: 15, collision: 18 },
         bodyCenterHeight: 21,
         mass: 35,
       },
@@ -397,7 +397,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
         hp: { curr: 5000, max: 5000 },
         velocity: { x: 0, y: 0, z: 0 },
         unitBlueprintCode: 0,
-        radius: { visual: 20, hitbox: 20, collision: 22 },
+        radius: { other: 20, hitbox: 20, collision: 22 },
         bodyCenterHeight: 24,
         mass: 250,
         isCommander: true,
@@ -896,7 +896,7 @@ function runEntityUnitCases(memory: WebAssembly.Memory): { passed: number; faile
       f.unit.unitBlueprintCode !== undefined ? 1 : 0,
       f.unit.unitBlueprintCode ?? 0,
       f.unit.radius !== undefined ? 1 : 0,
-      f.unit.radius?.visual ?? 0,
+      f.unit.radius?.other ?? 0,
       f.unit.radius?.hitbox ?? 0,
       f.unit.radius?.collision ?? 0,
       f.unit.bodyCenterHeight !== undefined ? 1 : 0,
@@ -3108,7 +3108,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           u.unit.unitBlueprintCode !== undefined ? 1 : 0,
           u.unit.unitBlueprintCode ?? 0,
           u.unit.radius !== undefined ? 1 : 0,
-          u.unit.radius?.visual ?? 0,
+          u.unit.radius?.other ?? 0,
           u.unit.radius?.hitbox ?? 0,
           u.unit.radius?.collision ?? 0,
           u.unit.bodyCenterHeight !== undefined ? 1 : 0,

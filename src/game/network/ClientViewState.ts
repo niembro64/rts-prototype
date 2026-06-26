@@ -1468,7 +1468,7 @@ export class ClientViewState {
       entity.transform.x,
       unit !== null ? getUnitHudBarsY(entity) : getBuildingHudBarsY(entity),
       entity.transform.y,
-      unit !== null ? unit.radius.visual * 2 : building!.width,
+      unit !== null ? unit.radius.other * 2 : building!.width,
       maxHp > 0 ? hp / maxHp : 0,
       buildable !== null ? getResourceFillRatio(buildable, 'energy') : 0,
       buildable !== null ? getResourceFillRatio(buildable, 'metal') : 0,

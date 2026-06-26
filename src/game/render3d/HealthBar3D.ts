@@ -116,7 +116,7 @@ export class BodyHudRenderPacket3D {
     this.x[cursor] = entity.transform.x;
     this.y[cursor] = unit ? getUnitHudBarsY(entity) : getBuildingHudBarsY(entity);
     this.z[cursor] = entity.transform.y;
-    this.width[cursor] = unit ? unit.radius.visual * 2 : building!.width;
+    this.width[cursor] = unit ? unit.radius.other * 2 : building!.width;
     this.healthRatio[cursor] = maxHp > 0
       ? Math.max(0, Math.min(1, hp / maxHp))
       : 0;
@@ -421,7 +421,7 @@ export class HealthBar3D {
     const worldZ = u.transform.y;
     const alpha = this._fade ? this._fade.alphaAt(worldX, worldY, worldZ) : 1;
     if (alpha <= FADE_CULL_ALPHA) return;
-    const worldWidth = unit.radius.visual * 2;
+    const worldWidth = unit.radius.other * 2;
     let stack = 0;
     if (showHp) {
       const ratio = Math.max(0, Math.min(1, hp / maxHp));

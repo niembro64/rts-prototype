@@ -62,7 +62,7 @@ export function buildLoadingEntityInfo(
 function buildUnitInfo(unitBlueprintId: UnitBlueprintId): LoadingUnitInfo {
   const blueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
-  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.visual);
+  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
   const damagingTurrets = turrets.filter((turret) => turret.config.shot && !turret.config.visualOnly);
   const firepower = turrets.reduce<Firepower>(
     (acc, turret) => {
@@ -221,7 +221,7 @@ function buildEconomySection(
       stat('Build cost', `${fmt(buildCost.energy)} energy / ${fmt(buildCost.metal)} metal`),
       stat('Hit points', fmt(blueprint.hp)),
       stat('Mass', fmt(blueprint.mass)),
-      stat('Size', fmt(blueprint.radius.visual)),
+      stat('Size', fmt(blueprint.radius.other)),
       stat(
         'Fight-move stop',
         fightStopMounts.length === 0
@@ -372,7 +372,7 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
     children.push(
       stat('Mass', fmt(shot.mass)),
       stat('Launch force', fmt(shot.launchForce)),
-      stat('Visual radius', fmt(shot.radius.visual)),
+      stat('Visual radius', fmt(shot.radius.other)),
       stat('Hitbox radius', fmt(shot.radius.hitbox)),
       stat('Collision radius', fmt(shot.radius.collision)),
       stat('TTL', shot.maxLifespan === undefined ? 'impact/ground only' : ms(shot.maxLifespan)),

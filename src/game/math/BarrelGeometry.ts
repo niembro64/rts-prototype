@@ -36,9 +36,9 @@ const BARREL_ORBIT_CLAMP_FRAC = {
 } as const;
 
 /** Radius of the spherical turret body. Read directly from the turret
- *  blueprint's `radius.visual`; turrets are unit-agnostic by contract,
+ *  blueprint's `radius.other`; turrets are unit-agnostic by contract,
  *  so the host unit's body radius does NOT factor in. */
-type TurretRadiusSource = { id?: string; radius?: { visual?: number } };
+type TurretRadiusSource = { id?: string; radius?: { other?: number } };
 type TurretBarrelSource = TurretRadiusSource & { barrel?: BarrelShape };
 type BarrelShotSource = TurretBarrelSource & {
   shot?: EmissionConfig | ActiveProjectileShot | null;
@@ -50,8 +50,8 @@ function getTurretBodyRadius(config: TurretRadiusSource): number {
 }
 
 /** Legacy name retained for the existing turret mesh/HUD vocabulary:
- *  the visible turret "head" is the same sphere as `radius.visual`.
- *  Returns 0 when `radius.visual` is `null` — the explicit "draw no body
+ *  the visible turret "head" is the same sphere as `radius.other`.
+ *  Returns 0 when `radius.other` is `null` — the explicit "draw no body
  *  sphere" signal (the head mesh is skipped and barrels, which pivot/scale
  *  off this radius, collapse to nothing). A positive number is the drawn
  *  sphere's world radius. */
@@ -60,13 +60,13 @@ export function getTurretHeadRadius(config: TurretRadiusSource): number {
 }
 
 /** Turret body sphere radius from a radius config: the positive
- *  `radius.visual`, or 0 when it is `null` / absent / non-positive (no body
+ *  `radius.other`, or 0 when it is `null` / absent / non-positive (no body
  *  sphere). Top-mounted turrets still require a positive radius — that's
  *  enforced where `mount.z` is resolved, not here. */
 export function turretBodyRadiusFromRadius(
   radius: TurretRadiusSource['radius'] | undefined,
 ): number {
-  const body = radius?.visual;
+  const body = radius?.other;
   if (typeof body !== 'number' || body <= 0) return 0;
   return body;
 }
@@ -210,7 +210,7 @@ export function getTurretBarrelDiameter(
   // shot/rocket turret is intentionally ignored. A rocket reads 1.5x its
   // visual radius so the launch tube looks chunkier than the projectile.
   if (shot !== null && shot !== undefined && isProjectileShot(shot)) {
-    const width = shot.radius.visual * 2 * (isRocketLikeShot(shot) ? 1.5 : 1);
+    const width = shot.radius.other * 2 * (isRocketLikeShot(shot) ? 1.5 : 1);
     return Math.max(width, TURRET_BARREL_MIN_DIAMETER);
   }
   // Rays (beams/lasers): width comes from the ray emission, or an explicit
@@ -223,7 +223,7 @@ export function getTurretBarrelDiameter(
 /** Compute the 3D tip position and firing direction for a specific
  *  barrel on a turret. Unit-agnostic: the host unit's body radius
  *  is intentionally NOT a parameter. Barrel dimensions are derived
- *  from the turret blueprint's own `radius.visual`, so a turret of a
+ *  from the turret blueprint's own `radius.other`, so a turret of a
  *  given blueprint fires from the same offset on every host that
  *  mounts it.
  *

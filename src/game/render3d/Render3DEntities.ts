@@ -1,6 +1,6 @@
 // Render3DEntities — extrudes the 2D sim primitives into 3D shapes.
 //
-// - Units:        cylinder (radius from unit.radius.visual, height ∝ radius)
+// - Units:        cylinder (radius from unit.radius.other, height ∝ radius)
 // - Turrets:      one per entry in entity.combat.turrets, positioned at the
 //                 blueprint-authored chassis-local 3D mount, rotated to
 //                 the turret's firing angle, with white barrel cylinders.
@@ -119,7 +119,7 @@ const _invTiltQuat = new THREE.Quaternion();
 // Force-field panels (reflective mirror-unit armor plates) are square slabs
 // mounted at the rigid mirror-arm's far end. The cache in
 // shieldPanelCache.ts computes baseY/topY/halfWidth from the turret's
-// mount.z + radius.visual scaled by SHIELD_PANEL_SIZE_MULT; both the
+// mount.z + radius.other scaled by SHIELD_PANEL_SIZE_MULT; both the
 // renderer and the sim's beam-reflection tracer read those cached
 // fields so the visible mesh and the collision rectangle stay in sync.
 

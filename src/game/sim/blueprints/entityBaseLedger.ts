@@ -27,7 +27,7 @@ export function assertValidEntityRadius(label: string, radius: EntityRadiusConfi
   if (!radius || typeof radius !== 'object') {
     throw new Error(`Invalid ${label}: radius must be an object`);
   }
-  assertFinitePositive(label, 'radius.visual', radius.visual);
+  assertFinitePositive(label, 'radius.other', radius.other);
   assertFinitePositive(label, 'radius.hitbox', radius.hitbox);
   assertFinitePositive(label, 'radius.collision', radius.collision);
   if (radius.shotArmingRadius !== undefined) {

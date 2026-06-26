@@ -6,7 +6,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // so beam-vs-mirror collision uses the exact same canonical rectangles
 // on host and client.
 //
-// The shield panel is a square slab sized from radius.visual and mounted
+// The shield panel is a square slab sized from radius.other and mounted
 // from the host's turret mount. The material lives on the shield shot;
 // this cache only materializes the mount-authored geometry into runtime units.
 // Visual side support rails are rendered from the same panel sizing;
@@ -19,10 +19,10 @@ import type { UnitBlueprint } from '../../types/blueprints';
  *  rectangle (`halfWidth` / `halfHeight`) and the rendered plane —
  *  Render3DEntities reads `shieldPanels[0].halfWidth` directly so a
  *  bump here flows through to the visual panel without any other
- *  edit. 1.0 = legacy "panel side = 2 × radius.visual". */
+ *  edit. 1.0 = legacy "panel side = 2 × radius.other". */
 export const SHIELD_PANEL_SIZE_MULT = 2.0;
 
-/** Mirror frame geometry derived from `panelHalfSide` (= radius.visual
+/** Mirror frame geometry derived from `panelHalfSide` (= radius.other
  *  × SHIELD_PANEL_SIZE_MULT).
  *
  *  - `side`              — full panel edge length (= 2 × halfSide).
@@ -97,7 +97,7 @@ export function buildShieldPanelCache(
   bp: UnitBlueprint,
   panelsOut: CachedShieldPanel[],
 ): number {
-  const unitBodyRadius = bp.radius.visual;
+  const unitBodyRadius = bp.radius.other;
   const halfSide = unitBodyRadius * SHIELD_PANEL_SIZE_MULT;
   let shieldBoundRadius = 0;
 

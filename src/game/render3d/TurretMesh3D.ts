@@ -188,7 +188,7 @@ export function buildTurretMesh3D(
   //  - turretStyle='none': no body, no barrels — chassis only.
   //  - shield turrets at any detail: the ShieldRenderer3D's glowing
   //    sphere is the whole visual.
-  //  - radius.visual: null → headRadius 0: the explicit "draw no body
+  //  - radius.other: null → headRadius 0: the explicit "draw no body
   //    sphere" signal (barrels collapse to nothing too, since they scale
   //    off this radius).
   //  - deps.skipHead=true: the caller is rendering the head through the

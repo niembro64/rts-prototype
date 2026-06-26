@@ -279,7 +279,7 @@ export class SelectionOverlayRenderer3D {
 
     this.setUnitRadiusSphere(
       rings, 'visual', showVisual, m.group,
-      centerY, entity.unit.radius.visual, this.radiusMatVisual,
+      centerY, entity.unit.radius.other, this.radiusMatVisual,
     );
     this.setUnitRadiusSphere(
       rings, 'hitbox', showHitbox, m.group,
@@ -324,7 +324,7 @@ export class SelectionOverlayRenderer3D {
 
     this.setUnitRadiusSphere(
       rings, 'visual', showVisual, m.group,
-      centerY, collider.visual, this.radiusMatVisual,
+      centerY, collider.other, this.radiusMatVisual,
     );
     this.setUnitRadiusSphere(
       rings, 'hitbox', showHitbox, m.group,
@@ -668,7 +668,7 @@ function roundSupportDiagnostic(value: number): number {
 }
 
 function reclaimHighlightRadius(entity: Entity): number {
-  if (entity.unit?.radius) return Math.max(12, entity.unit.radius.visual * 1.45);
+  if (entity.unit?.radius) return Math.max(12, entity.unit.radius.other * 1.45);
   if (entity.building) return Math.max(18, Math.hypot(entity.building.width, entity.building.height) * 0.58);
   return 16;
 }

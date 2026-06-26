@@ -563,7 +563,7 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
   return (
     (unit.unitBlueprintCode !== null && !isUint(unit.unitBlueprintCode, 0xFFFF_FFFF)) ||
     (unit.radius !== null && (
-      !Number.isFinite(unit.radius.visual) ||
+      !Number.isFinite(unit.radius.other) ||
       !Number.isFinite(unit.radius.hitbox) ||
       !Number.isFinite(unit.radius.collision)
     )) ||
@@ -622,7 +622,7 @@ function encodeUnitEntity(sim: SimWasm, entity: NetworkServerSnapshotEntity, uni
     unit.unitBlueprintCode !== null ? 1 : 0,
     unit.unitBlueprintCode ?? 0,
     radius !== null ? 1 : 0,
-    radius !== null && radius.visual !== null ? radius.visual : 0,
+    radius !== null && radius.other !== null ? radius.other : 0,
     radius !== null && radius.hitbox !== null ? radius.hitbox : 0,
     radius !== null && radius.collision !== null ? radius.collision : 0,
     unit.bodyCenterHeight !== null ? 1 : 0,

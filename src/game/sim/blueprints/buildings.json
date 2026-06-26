@@ -55,7 +55,7 @@
         "damage": 150
       },
       "radius": {
-        "visual": 42.426,
+        "other": 42.426,
         "hitbox": 42.426,
         "collision": 42.426
       }
@@ -117,7 +117,7 @@
         "damage": 80
       },
       "radius": {
-        "visual": 28.284,
+        "other": 28.284,
         "hitbox": 28.284,
         "collision": 28.284
       }
@@ -179,7 +179,7 @@
         "damage": 220
       },
       "radius": {
-        "visual": 70.711,
+        "other": 70.711,
         "hitbox": 70.711,
         "collision": 70.711
       }
@@ -241,7 +241,7 @@
         "damage": 450
       },
       "radius": {
-        "visual": 70.711,
+        "other": 70.711,
         "hitbox": 70.711,
         "collision": 70.711
       }
@@ -297,7 +297,7 @@
         "damage": 180
       },
       "radius": {
-        "visual": 28.284,
+        "other": 28.284,
         "hitbox": 28.284,
         "collision": 28.284
       }
@@ -353,7 +353,7 @@
         "damage": 150
       },
       "radius": {
-        "visual": 42.426,
+        "other": 42.426,
         "hitbox": 42.426,
         "collision": 42.426
       }

@@ -186,7 +186,7 @@ export function applyNetworkUnitActions(
 export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapshot): void {
   const radius = src.radius;
   if (radius) {
-    if (isFiniteNumber(radius.visual)) unit.radius.visual = radius.visual;
+    if (isFiniteNumber(radius.other)) unit.radius.other = radius.other;
     if (isFiniteNumber(radius.hitbox)) unit.radius.hitbox = radius.hitbox;
     if (isFiniteNumber(radius.collision)) unit.radius.collision = radius.collision;
   }
@@ -252,12 +252,12 @@ function finiteOr(value: unknown, fallback: number): number {
 export function readNetworkUnitRadius(
   src: NetworkUnitSnapshot | undefined | null,
   fallback: number | NetworkUnitRadius,
-): { visual: number; hitbox: number; collision: number } {
+): { other: number; hitbox: number; collision: number } {
   const radius = src !== null && src !== undefined ? src.radius : null;
   return {
-    visual: finiteOr(
-      radius !== null && radius !== undefined ? radius.visual : undefined,
-      radiusFallback(fallback, 'visual'),
+    other: finiteOr(
+      radius !== null && radius !== undefined ? radius.other : undefined,
+      radiusFallback(fallback, 'other'),
     ),
     hitbox: finiteOr(
       radius !== null && radius !== undefined ? radius.hitbox : undefined,
@@ -529,8 +529,8 @@ export function copyNetworkUnitSnapshotInto(
     dst.hp = null;
   }
   if (src.radius !== null) {
-    const radius = dst.radius ?? (dst.radius = { visual: 0, hitbox: 0, collision: 0 });
-    radius.visual = src.radius.visual;
+    const radius = dst.radius ?? (dst.radius = { other: 0, hitbox: 0, collision: 0 });
+    radius.other = src.radius.other;
     radius.hitbox = src.radius.hitbox;
     radius.collision = src.radius.collision;
   } else {

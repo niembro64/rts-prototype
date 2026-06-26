@@ -141,7 +141,10 @@ type Ownership = {
 };
 
 export type EntityRadii = {
-  visual: number;
+  /** Outer/render extent (formerly "visual"): drives mesh size, the LOD
+   *  distance switch, and the selection volume. Renamed to a neutral name so it
+   *  is not mistaken for the collision/hitbox radius (which combat + physics use). */
+  other: number;
   hitbox: number;
   collision: number;
   /** Host-local safety radius for arming traveling projectile shots. */

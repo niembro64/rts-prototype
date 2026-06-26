@@ -216,7 +216,7 @@ export function getFactoryBuildingVisualMetrics(
   const towerRadius = Math.max(7, minDim * 0.09);
   const collarRadius = Math.max(towerRadius * 1.35, minDim * 0.16);
   const towerHeight = pylonHeight;
-  const towerBaseY = Math.max(0, FACTORY_CONSTRUCTION_TURRET_MOUNT_Z - TURRET_BLUEPRINTS.turretConstruction.radius.visual);
+  const towerBaseY = Math.max(0, FACTORY_CONSTRUCTION_TURRET_MOUNT_Z - TURRET_BLUEPRINTS.turretConstruction.radius.other);
   const capRadius = Math.max(1.35, pylonRadius * 1.65);
   const capY = towerBaseY + pylonHeight + capRadius * 0.36;
   const nozzleRadius = capRadius;

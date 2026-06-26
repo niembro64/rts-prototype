@@ -530,7 +530,7 @@ function appendUnitEntityWireRow(
   values[base + 13] = unit.unitBlueprintCode !== null ? 1 : 0;
   values[base + 14] = unit.unitBlueprintCode ?? 0;
   values[base + 15] = radius !== null ? 1 : 0;
-  values[base + 16] = radius !== null && radius.visual !== null ? radius.visual : 0;
+  values[base + 16] = radius !== null && radius.other !== null ? radius.other : 0;
   values[base + 17] = radius !== null && radius.hitbox !== null ? radius.hitbox : 0;
   values[base + 18] = radius !== null && radius.collision !== null ? radius.collision : 0;
   values[base + 19] = unit.bodyCenterHeight !== null ? 1 : 0;

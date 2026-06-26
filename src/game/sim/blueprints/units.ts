@@ -342,10 +342,10 @@ export function resolveUnitTurretMounts(
       const turretRadius = getTurretBodyRadius(turret.turretBlueprintId);
       if (!Number.isFinite(turretRadius) || turretRadius <= 0) {
         throw new Error(
-          `Invalid top-mounted turret for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: turret radius.visual must be positive`,
+          `Invalid top-mounted turret for ${bp.unitBlueprintId}[${i}] ${turret.turretBlueprintId}: turret radius.other must be positive`,
         );
       }
-      turret.mount.z = resolver.bodyTopZFrac + turretRadius / bp.radius.visual;
+      turret.mount.z = resolver.bodyTopZFrac + turretRadius / bp.radius.other;
     }
   }
 

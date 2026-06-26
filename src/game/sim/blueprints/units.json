@@ -5,7 +5,7 @@
     "shortName": "JKL",
     "hp": 110,
     "radius": {
-      "visual": 8,
+      "other": 8,
       "hitbox": 6,
       "collision": 9.6,
       "shotArmingRadius": 12
@@ -86,7 +86,7 @@
         "damage": 60
       },
       "radius": {
-        "visual": 8,
+        "other": 8,
         "hitbox": 6,
         "collision": 9.6,
         "shotArmingRadius": 12
@@ -99,7 +99,7 @@
     "shortName": "LNX",
     "hp": 170,
     "radius": {
-      "visual": 10,
+      "other": 10,
       "hitbox": 7,
       "collision": 13,
       "shotArmingRadius": 14
@@ -179,7 +179,7 @@
         "damage": 85
       },
       "radius": {
-        "visual": 10,
+        "other": 10,
         "hitbox": 7,
         "collision": 13,
         "shotArmingRadius": 14
@@ -192,7 +192,7 @@
     "shortName": "DDY",
     "hp": 480,
     "radius": {
-      "visual": 13,
+      "other": 13,
       "hitbox": 9,
       "collision": 15,
       "shotArmingRadius": 18
@@ -302,7 +302,7 @@
         "damage": 260
       },
       "radius": {
-        "visual": 13,
+        "other": 13,
         "hitbox": 9,
         "collision": 15,
         "shotArmingRadius": 18
@@ -315,7 +315,7 @@
     "shortName": "BDG",
     "hp": 520,
     "radius": {
-      "visual": 16,
+      "other": 16,
       "hitbox": 13,
       "collision": 22.4,
       "shotArmingRadius": 26
@@ -395,7 +395,7 @@
         "damage": 280
       },
       "radius": {
-        "visual": 16,
+        "other": 16,
         "hitbox": 13,
         "collision": 22.4,
         "shotArmingRadius": 26
@@ -408,7 +408,7 @@
     "shortName": "MGS",
     "hp": 400,
     "radius": {
-      "visual": 20,
+      "other": 20,
       "hitbox": 12,
       "collision": 24,
       "shotArmingRadius": 24
@@ -489,7 +489,7 @@
         "damage": 220
       },
       "radius": {
-        "visual": 20,
+        "other": 20,
         "hitbox": 12,
         "collision": 24,
         "shotArmingRadius": 24
@@ -502,7 +502,7 @@
     "shortName": "TCK",
     "hp": 98.25,
     "radius": {
-      "visual": 10,
+      "other": 10,
       "hitbox": 8,
       "collision": 12.1,
       "shotArmingRadius": 16
@@ -602,7 +602,7 @@
         "damage": 50
       },
       "radius": {
-        "visual": 10,
+        "other": 10,
         "hitbox": 8,
         "collision": 12.1,
         "shotArmingRadius": 16
@@ -615,7 +615,7 @@
     "shortName": "MMT",
     "hp": 1500,
     "radius": {
-      "visual": 24,
+      "other": 24,
       "hitbox": 24,
       "collision": 36,
       "shotArmingRadius": 48
@@ -695,7 +695,7 @@
         "damage": 900
       },
       "radius": {
-        "visual": 24,
+        "other": 24,
         "hitbox": 24,
         "collision": 36,
         "shotArmingRadius": 48
@@ -708,7 +708,7 @@
     "shortName": "FMK",
     "hp": 4800,
     "radius": {
-      "visual": 40,
+      "other": 40,
       "hitbox": 50,
       "collision": 65,
       "shotArmingRadius": 100
@@ -838,7 +838,7 @@
         "damage": 2800
       },
       "radius": {
-        "visual": 40,
+        "other": 40,
         "hitbox": 50,
         "collision": 65,
         "shotArmingRadius": 100
@@ -851,7 +851,7 @@
     "shortName": "WDW",
     "hp": 4200,
     "radius": {
-      "visual": 30,
+      "other": 30,
       "hitbox": 40,
       "collision": 52,
       "shotArmingRadius": 80
@@ -1037,7 +1037,7 @@
         "damage": 2500
       },
       "radius": {
-        "visual": 30,
+        "other": 30,
         "hitbox": 40,
         "collision": 52,
         "shotArmingRadius": 80
@@ -1050,7 +1050,7 @@
     "shortName": "HPO",
     "hp": 2400,
     "radius": {
-      "visual": 30,
+      "other": 30,
       "hitbox": 27,
       "collision": 54,
       "shotArmingRadius": 54
@@ -1129,7 +1129,7 @@
         "damage": 1450
       },
       "radius": {
-        "visual": 30,
+        "other": 30,
         "hitbox": 27,
         "collision": 54,
         "shotArmingRadius": 54
@@ -1142,7 +1142,7 @@
     "shortName": "TRN",
     "hp": 210,
     "radius": {
-      "visual": 11,
+      "other": 11,
       "hitbox": 13,
       "collision": 19.8,
       "shotArmingRadius": 26
@@ -1255,7 +1255,7 @@
         "damage": 100
       },
       "radius": {
-        "visual": 11,
+        "other": 11,
         "hitbox": 13,
         "collision": 19.8,
         "shotArmingRadius": 26
@@ -1268,7 +1268,7 @@
     "shortName": "LRS",
     "hp": 420,
     "radius": {
-      "visual": 10,
+      "other": 10,
       "hitbox": 8,
       "collision": 24,
       "shotArmingRadius": 16
@@ -1353,7 +1353,7 @@
         "damage": 220
       },
       "radius": {
-        "visual": 10,
+        "other": 10,
         "hitbox": 8,
         "collision": 24,
         "shotArmingRadius": 16
@@ -1366,7 +1366,7 @@
     "shortName": "BEE",
     "hp": 120,
     "radius": {
-      "visual": 9,
+      "other": 9,
       "hitbox": 8,
       "collision": 10.8,
       "shotArmingRadius": 16
@@ -1450,7 +1450,7 @@
         "damage": 65
       },
       "radius": {
-        "visual": 9,
+        "other": 9,
         "hitbox": 8,
         "collision": 10.8,
         "shotArmingRadius": 16
@@ -1463,7 +1463,7 @@
     "shortName": "DRF",
     "hp": 460,
     "radius": {
-      "visual": 16,
+      "other": 16,
       "hitbox": 40,
       "collision": 50,
       "shotArmingRadius": 80
@@ -1572,7 +1572,7 @@
         "damage": 250
       },
       "radius": {
-        "visual": 16,
+        "other": 16,
         "hitbox": 40,
         "collision": 50,
         "shotArmingRadius": 80
@@ -1585,7 +1585,7 @@
     "shortName": "CDR",
     "hp": 260,
     "radius": {
-      "visual": 15,
+      "other": 15,
       "hitbox": 14,
       "collision": 19,
       "shotArmingRadius": 28
@@ -1720,7 +1720,7 @@
         "damage": 140
       },
       "radius": {
-        "visual": 15,
+        "other": 15,
         "hitbox": 14,
         "collision": 19,
         "shotArmingRadius": 28
@@ -1733,7 +1733,7 @@
     "shortName": "EGL",
     "hp": 360,
     "radius": {
-      "visual": 18,
+      "other": 18,
       "hitbox": 15,
       "collision": 21.6,
       "shotArmingRadius": 30
@@ -1832,7 +1832,7 @@
         "damage": 220
       },
       "radius": {
-        "visual": 18,
+        "other": 18,
         "hitbox": 15,
         "collision": 21.6,
         "shotArmingRadius": 30
@@ -1845,7 +1845,7 @@
     "shortName": "ALB",
     "hp": 7600,
     "radius": {
-      "visual": 76,
+      "other": 76,
       "hitbox": 68,
       "collision": 92,
       "shotArmingRadius": 136
@@ -1970,7 +1970,7 @@
         "damage": 4200
       },
       "radius": {
-        "visual": 76,
+        "other": 76,
         "hitbox": 68,
         "collision": 92,
         "shotArmingRadius": 136
@@ -1983,7 +1983,7 @@
     "shortName": "QBE",
     "hp": 9000,
     "radius": {
-      "visual": 92,
+      "other": 92,
       "hitbox": 82,
       "collision": 112,
       "shotArmingRadius": 164
@@ -2081,7 +2081,7 @@
         "damage": 4800
       },
       "radius": {
-        "visual": 92,
+        "other": 92,
         "hitbox": 82,
         "collision": 112,
         "shotArmingRadius": 164
@@ -2094,7 +2094,7 @@
     "shortName": "QTK",
     "hp": 9400,
     "radius": {
-      "visual": 94,
+      "other": 94,
       "hitbox": 84,
       "collision": 114,
       "shotArmingRadius": 168
@@ -2205,7 +2205,7 @@
         "damage": 5000
       },
       "radius": {
-        "visual": 94,
+        "other": 94,
         "hitbox": 84,
         "collision": 114,
         "shotArmingRadius": 168
@@ -2218,7 +2218,7 @@
     "shortName": "TDR",
     "hp": 560,
     "radius": {
-      "visual": 22,
+      "other": 22,
       "hitbox": 20,
       "collision": 28,
       "shotArmingRadius": 40
@@ -2313,7 +2313,7 @@
         "damage": 220
       },
       "radius": {
-        "visual": 22,
+        "other": 22,
         "hitbox": 20,
         "collision": 28,
         "shotArmingRadius": 40
@@ -2326,7 +2326,7 @@
     "shortName": "CMD",
     "hp": 1200,
     "radius": {
-      "visual": 20,
+      "other": 20,
       "hitbox": 20,
       "collision": 20,
       "shotArmingRadius": 40
@@ -2505,7 +2505,7 @@
         "damage": 700
       },
       "radius": {
-        "visual": 20,
+        "other": 20,
         "hitbox": 20,
         "collision": 20,
         "shotArmingRadius": 40

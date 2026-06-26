@@ -34,7 +34,7 @@ type CreateUnitFromBlueprintContext = {
 };
 
 type UnitRadius = {
-  visual: number;
+  other: number;
   hitbox: number;
   collision: number;
 };
@@ -171,7 +171,7 @@ export function createUnitFromBlueprintEntity(
   entity.unit!.suspension = null;
   entity.combat = createCombatComponent(createUnitRuntimeTurrets(
     unitBlueprintId,
-    bp.radius.visual,
+    bp.radius.other,
     entity.id,
     entity.id,
     allocateSubEntityIds ? context.generateEntityId : null,

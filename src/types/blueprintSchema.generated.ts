@@ -240,7 +240,7 @@ export type ShieldPanel = {
 };
 
 export type EntityRadiusConfig = {
-  visual: number;
+  other: number;
   hitbox: number;
   collision: number;
   shotArmingRadius?: number;

@@ -44,7 +44,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 3
+      "other": 3
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -111,7 +111,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 9
+      "other": 9
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -170,7 +170,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 10
+      "other": 10
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -229,7 +229,7 @@
     "idlePitch": 0,
     "groundAimFraction": 1,
     "radius": {
-      "visual": 12
+      "other": 12
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -285,7 +285,7 @@
     "idlePitch": -1.5707963267948966,
     "groundAimFraction": 1,
     "radius": {
-      "visual": 9
+      "other": 9
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -352,7 +352,7 @@
     "idlePitch": 0,
     "groundAimFraction": 1,
     "radius": {
-      "visual": 32
+      "other": 32
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -419,7 +419,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 16
+      "other": 16
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -469,7 +469,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": null
+      "other": null
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -520,7 +520,7 @@
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": null,
     "radius": {
-      "visual": 8
+      "other": 8
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -571,7 +571,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 6
+      "other": 6
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -622,7 +622,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 3
+      "other": 3
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -673,7 +673,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 15
+      "other": 15
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -733,7 +733,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 12
+      "other": 12
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -793,7 +793,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 10
+      "other": 10
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -853,7 +853,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 10
+      "other": 10
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -925,7 +925,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 10
+      "other": 10
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -974,7 +974,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 8
+      "other": 8
     },
     "headOnly": false,
     "constructionEmitter": {
@@ -1043,7 +1043,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 16
+      "other": 16
     },
     "headOnly": true,
     "constructionEmitter": null,
@@ -1102,7 +1102,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 16
+      "other": 16
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1161,7 +1161,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 18
+      "other": 18
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1228,7 +1228,7 @@
     "idlePitch": 1.5707963267948966,
     "groundAimFraction": null,
     "radius": {
-      "visual": 8
+      "other": 8
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1292,7 +1292,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 6
+      "other": 6
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1356,7 +1356,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 20
+      "other": 20
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1406,7 +1406,7 @@
     "idlePitch": 0.7853981633974483,
     "groundAimFraction": null,
     "radius": {
-      "visual": 22
+      "other": 22
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1464,7 +1464,7 @@
     "idlePitch": 0,
     "groundAimFraction": null,
     "radius": {
-      "visual": 16
+      "other": 16
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1522,7 +1522,7 @@
     "idlePitch": 0.7853981633974483,
     "groundAimFraction": null,
     "radius": {
-      "visual": 18
+      "other": 18
     },
     "headOnly": false,
     "constructionEmitter": null,
@@ -1566,7 +1566,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": { "visual": null },
+    "radius": { "other": null },
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": { "angleType": "rayDirect" },
@@ -1609,7 +1609,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": { "visual": null },
+    "radius": { "other": null },
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": { "angleType": "rayDirect" },
@@ -1652,7 +1652,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": { "visual": 8 },
+    "radius": { "other": 8 },
     "headOnly": false,
     "constructionEmitter": {
       "defaultSize": "small",
@@ -1697,7 +1697,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": { "visual": 8 },
+    "radius": { "other": 8 },
     "headOnly": false,
     "constructionEmitter": {
       "defaultSize": "small",
@@ -1742,7 +1742,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": { "visual": null },
+    "radius": { "other": null },
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": { "angleType": "rayDirect" },
@@ -1779,7 +1779,7 @@
     "verticalLauncher": false,
     "idlePitch": 0,
     "groundAimFraction": null,
-    "radius": { "visual": null },
+    "radius": { "other": null },
     "headOnly": true,
     "constructionEmitter": null,
     "aimStyle": { "angleType": "rayDirect" },

@@ -444,7 +444,7 @@ function buildPreviewUnitModel(
   materials: PreviewUnitMaterials,
 ): PreviewModel {
   const blueprint = getUnitBlueprint(unitBlueprintId);
-  const radius = blueprint.radius.visual;
+  const radius = blueprint.radius.other;
   const chassisLift = getChassisLiftY(blueprint, radius);
   const root = new THREE.Group();
   const yawGroup = new THREE.Group();
@@ -480,7 +480,7 @@ function buildPreviewBody(
       chassis.add(mesh);
     }
   }
-  chassis.scale.setScalar(blueprint.radius.visual);
+  chassis.scale.setScalar(blueprint.radius.other);
   liftGroup.add(chassis);
 }
 
@@ -491,7 +491,7 @@ function buildPreviewTurrets(
   chassisLift: number,
   materials: PreviewUnitMaterials,
 ): void {
-  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.visual);
+  const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
   for (const turret of turrets) {
     const showShieldEmitterCore =
       unitBlueprintId === 'unitAlbatros' &&
@@ -523,7 +523,7 @@ function buildPreviewLocomotion(
   materials: PreviewUnitMaterials,
 ): PreviewLocomotionRig | null {
   const locomotion = blueprint.locomotion;
-  const radius = blueprint.radius.visual;
+  const radius = blueprint.radius.other;
   switch (locomotion.type) {
     case 'treads':
       return { type: 'treads', mesh: buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID) };
@@ -582,7 +582,7 @@ function buildPreviewMirrors(
   buildShieldPanelCache(blueprint, shieldPanels);
   if (shieldPanels.length === 0) return;
 
-  const turrets = createUnitRuntimeTurrets(blueprint.unitBlueprintId, blueprint.radius.visual);
+  const turrets = createUnitRuntimeTurrets(blueprint.unitBlueprintId, blueprint.radius.other);
   const shieldPanelTurret = turrets.find((turret) => turret.config.passive);
   const panelHalfSide = shieldPanels[0].halfWidth;
   const panelArmLength = shieldPanels[0].offsetX;
@@ -610,7 +610,7 @@ function buildPreviewLegs(
 ): THREE.Group {
   const locomotion = blueprint.locomotion;
   if (locomotion.type !== 'legs') return new THREE.Group();
-  const radius = blueprint.radius.visual;
+  const radius = blueprint.radius.other;
   const chassisLift = getChassisLiftY(blueprint, radius);
   const { all } = resolveMirroredLegConfigs(locomotion.config, radius);
   const upperRadius = Math.max(locomotion.config.upperThickness, 1) * 0.6;

@@ -363,7 +363,7 @@ export class ShieldRenderPacket3D {
 
   private resolveMountLiftY(unit: Unit): number {
     const unitBlueprintId = unit.unitBlueprintId;
-    const radius = unit.radius.visual;
+    const radius = unit.radius.other;
     const cached = this.mountLiftCache.get(unitBlueprintId);
     if (cached !== undefined && cached.radius === radius) return cached.liftY;
     let unitBlueprint;

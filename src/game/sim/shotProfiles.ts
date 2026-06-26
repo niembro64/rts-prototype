@@ -67,7 +67,7 @@ function buildLineRuntimeProfile(shot: ActiveProjectileShot): ShotRuntimeProfile
     isLine: true,
     isRocketLike: false,
     radius: {
-      visual: shot.radius,
+      other: shot.radius,
       hitbox: shot.damageSphere.radius,
       collision: shot.radius,
     },

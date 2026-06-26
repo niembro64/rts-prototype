@@ -384,7 +384,7 @@ export class WorldState {
         : (entity.building ? entity.building.targetRadius : 0);
       if (r > this.maxTargetableRadius) this.maxTargetableRadius = r;
       const visibilityPadding = entity.unit
-        ? Math.max(entity.unit.radius.visual, entity.unit.radius.hitbox, entity.unit.radius.collision)
+        ? Math.max(entity.unit.radius.other, entity.unit.radius.hitbox, entity.unit.radius.collision)
         : (entity.building ? Math.max(entity.building.width, entity.building.height) * 0.5 : 0);
       if (visibilityPadding > this.maxVisibilityPadding) this.maxVisibilityPadding = visibilityPadding;
     }

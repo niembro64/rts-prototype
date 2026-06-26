@@ -113,7 +113,7 @@ export function entityLodRadius3D(entity: Entity): number {
   const unit = entity.unit;
   if (unit !== null) {
     return finitePositiveRadius(
-      unit.radius.visual,
+      unit.radius.other,
       unit.radius.hitbox,
       unit.radius.collision,
     );
@@ -130,7 +130,7 @@ export function entityLodRadius3D(entity: Entity): number {
   const projectile = entity.projectile;
   if (projectile !== null) {
     const radius = projectile.config.shotProfile.runtime.radius;
-    return finitePositiveRadius(radius.visual, radius.hitbox, radius.collision);
+    return finitePositiveRadius(radius.other, radius.hitbox, radius.collision);
   }
 
   return minEntityLodRadius();
@@ -163,7 +163,7 @@ export function entityLodProxyRadius3D(entity: Entity): number {
     return firstFinitePositiveRadius(
       unit.radius.collision,
       unit.radius.hitbox,
-      unit.radius.visual,
+      unit.radius.other,
     );
   }
 
@@ -178,7 +178,7 @@ export function entityLodProxyRadius3D(entity: Entity): number {
   const projectile = entity.projectile;
   if (projectile !== null) {
     const radius = projectile.config.shotProfile.runtime.radius;
-    return firstFinitePositiveRadius(radius.collision, radius.hitbox, radius.visual);
+    return firstFinitePositiveRadius(radius.collision, radius.hitbox, radius.other);
   }
 
   return minEntityLodRadius();

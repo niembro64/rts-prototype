@@ -186,7 +186,7 @@ function getEntityLabTurrets(
 ): Turret[] {
   if (kind === 'unit') {
     const unitBlueprint = getUnitBlueprint(id as UnitBlueprintId);
-    return createUnitRuntimeTurrets(unitBlueprint.unitBlueprintId, unitBlueprint.radius.visual);
+    return createUnitRuntimeTurrets(unitBlueprint.unitBlueprintId, unitBlueprint.radius.other);
   }
   if (kind === 'tower') return createBuildingRuntimeTurrets(id as StructureBlueprintId);
   return [];

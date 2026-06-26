@@ -18,7 +18,7 @@ const MIN_SELECTION_RADIUS = 12;
  *  their drawn radius; buildings/towers use their footprint half-diagonal. */
 function selectionVolumeRadius(entity: Entity): number {
   if (entity.unit !== null) {
-    return Math.max(MIN_SELECTION_RADIUS, entity.unit.radius.visual * SELECTION_VOLUME_SCALE);
+    return Math.max(MIN_SELECTION_RADIUS, entity.unit.radius.other * SELECTION_VOLUME_SCALE);
   }
   if (entity.building !== null) {
     const halfDiag = 0.5 * Math.hypot(entity.building.width, entity.building.height);

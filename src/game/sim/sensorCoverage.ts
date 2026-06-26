@@ -81,7 +81,7 @@ export function isEntityCloaked(entity: Entity): boolean {
 export function getEntityVisibilityPadding(entity: Entity): number {
   if (entity.unit) {
     return Math.max(
-      entity.unit.radius.visual,
+      entity.unit.radius.other,
       entity.unit.radius.hitbox,
       entity.unit.radius.collision,
     );

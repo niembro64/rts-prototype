@@ -578,10 +578,10 @@ function unpackUnit(row: unknown[]): UnitSub {
     unit.unitBlueprintCode = row[i++] as number;
   }
   if ((flags & UNIT_FLAG_RADIUS) !== 0) {
-    const visual = row[i++] as number;
+    const other = row[i++] as number;
     const hitbox = row[i++] as number;
     const collision = row[i++] as number;
-    unit.radius = { visual, hitbox, collision };
+    unit.radius = { other, hitbox, collision };
   }
   if ((flags & UNIT_FLAG_BODY_CENTER_HEIGHT) !== 0) {
     unit.bodyCenterHeight = row[i++] as number;

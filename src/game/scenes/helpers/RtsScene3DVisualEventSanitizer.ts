@@ -91,7 +91,7 @@ export function resolveDeathContext3D(
   if (!ctx && ent) {
     const pid = ent.ownership?.playerId;
     const tcol = getPlayerPrimaryColor(pid);
-    const visualRadius = ent.unit?.radius.visual
+    const visualRadius = ent.unit?.radius.other
       ?? ent.unit?.radius.hitbox
       ?? 15;
     const collisionRadius = ent.unit ? getUnitBodyCenterHeight(ent.unit) : visualRadius;
@@ -115,7 +115,7 @@ export function resolveDeathContext3D(
     };
   }
   if (ctx && ent?.unit) {
-    const visualRadius = ent.unit.radius.visual
+    const visualRadius = ent.unit.radius.other
       ?? ent.unit.radius.hitbox
       ?? ctx.visualRadius
       ?? ctx.radius;

@@ -368,7 +368,7 @@ pub struct ShieldPanel {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EntityRadiusConfig {
-    pub visual: f64,
+    pub other: f64,
     pub hitbox: f64,
     pub collision: f64,
     pub shotArmingRadius: Option<f64>,

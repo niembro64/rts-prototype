@@ -339,7 +339,7 @@ resolveUnitTurretMounts((turretBlueprintId) => {
       `Invalid unit turret mount resolver: unknown turretBlueprintId "${turretBlueprintId}"`,
     );
   }
-  return turretBlueprint.radius.visual;
+  return turretBlueprint.radius.other;
 });
 
 function assertFiniteRangeMultiplier(
@@ -661,14 +661,14 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     turretBlueprintId,
     turretBlueprint.rangeMultiplierOverrides,
   );
-  // `radius.visual: null` is the explicit "draw no body sphere" signal —
+  // `radius.other: null` is the explicit "draw no body sphere" signal —
   // the turret renders no head sphere (and barrels, which scale off it,
   // collapse to nothing). Any other non-positive / non-finite value is an
   // authoring mistake.
-  const radiusVisual = turretBlueprint.radius.visual;
+  const radiusVisual = turretBlueprint.radius.other;
   if (radiusVisual != null && (!Number.isFinite(radiusVisual) || radiusVisual <= 0)) {
     throw new Error(
-      `Turret blueprint ${turretBlueprintId} radius.visual must be a positive number or null`,
+      `Turret blueprint ${turretBlueprintId} radius.other must be a positive number or null`,
     );
   }
 
@@ -726,11 +726,11 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     verticalLauncher: turretBlueprint.verticalLauncher,
     idlePitch: turretBlueprint.idlePitch,
     groundAimFraction: turretBlueprint.groundAimFraction,
-    // Turrets author only `radius.visual` (the body sphere). hitbox/collision
+    // Turrets author only `radius.other` (the body sphere). hitbox/collision
     // are pinned to 0 here: a turret is not a separate hit/collide body — it
     // extends no hit-surface and does its own muzzle self-clearance off 0
     // (the host body's own collision covers clearance). See turretHostIntegration.
-    radius: { visual: turretBlueprint.radius.visual, hitbox: 0, collision: 0 },
+    radius: { other: turretBlueprint.radius.other, hitbox: 0, collision: 0 },
     headOnly: turretBlueprint.headOnly,
     visualOnly: shot === null && unitLauncher === null,
     // hostDirected is a per-MOUNT tag, not a per-blueprint constant. The
@@ -788,8 +788,8 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     } else {
       const shotBlueprint = SHOT_BLUEPRINTS[turretBlueprint.emissionBlueprintId as ShotBlueprintId];
       rawThickness =
-        shotBlueprint && shotBlueprint.radius.visual > 0
-          ? shotBlueprint.radius.visual * 2
+        shotBlueprint && shotBlueprint.radius.other > 0
+          ? shotBlueprint.radius.other * 2
           : 2;
     }
     config.barrel = {

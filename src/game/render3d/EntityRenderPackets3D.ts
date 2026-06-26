@@ -163,7 +163,7 @@ export class UnitRenderPacket3D {
     this.z[cursor] = entity.transform.z;
     this.rotation[cursor] = entity.transform.rotation;
     this.groundY[cursor] = getUnitGroundZ(entity);
-    this.radiusVisual[cursor] = unit.radius.visual || unit.radius.hitbox || 15;
+    this.radiusVisual[cursor] = unit.radius.other || unit.radius.hitbox || 15;
     this.normalX[cursor] = unit.surfaceNormal.nx;
     this.normalY[cursor] = unit.surfaceNormal.ny;
     this.normalZ[cursor] = unit.surfaceNormal.nz;

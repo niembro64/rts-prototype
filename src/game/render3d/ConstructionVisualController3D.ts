@@ -182,8 +182,8 @@ export class ConstructionVisualController3D {
         halfHeight = b.depth * 0.5;
         sphereRadius = Math.hypot(b.width, b.height, b.depth) * 0.5;
       } else if (target.unit) {
-        halfHeight = target.unit.radius.visual;
-        sphereRadius = target.unit.radius.visual;
+        halfHeight = target.unit.radius.other;
+        sphereRadius = target.unit.radius.other;
       }
       this._resourceEndpointWorld.set(
         target.transform.x,
@@ -329,7 +329,7 @@ export class ConstructionVisualController3D {
     if (selectedUnitBlueprintId) {
       try {
         const bp = getUnitBlueprint(selectedUnitBlueprintId);
-        blueprintRadius = bp.radius.visual;
+        blueprintRadius = bp.radius.other;
         buildSpotRadius = bp.radius.collision;
       } catch {
         // Unknown selection ids should not break rendering; keep the generic bay ghost.
@@ -619,8 +619,8 @@ export class ConstructionVisualController3D {
       halfHeight = entity.building.depth * 0.5;
       radius = Math.hypot(entity.building.width, entity.building.height, entity.building.depth) * 0.5;
     } else if (entity.unit) {
-      halfHeight = entity.unit.radius.visual;
-      radius = entity.unit.radius.visual;
+      halfHeight = entity.unit.radius.other;
+      radius = entity.unit.radius.other;
     }
     out.set(entity.transform.x, entity.transform.z + halfHeight, entity.transform.y);
     return Math.max(1, radius);

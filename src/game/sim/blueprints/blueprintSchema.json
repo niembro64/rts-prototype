@@ -1059,12 +1059,12 @@
     "EntityRadiusConfig": {
       "type": "object",
       "required": [
-        "visual",
+        "other",
         "hitbox",
         "collision"
       ],
       "properties": {
-        "visual": {
+        "other": {
           "type": "number"
         },
         "hitbox": {

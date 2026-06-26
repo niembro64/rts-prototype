@@ -542,7 +542,7 @@ export class SmokeTrail3D {
   ): { x: number; y: number; z: number } {
     const out = this._emitPoint;
     const proj = entity.projectile;
-    const radius = proj?.config.shotProfile.runtime.radius.visual ?? 0;
+    const radius = proj?.config.shotProfile.runtime.radius.other ?? 0;
     const tailLength = radius * Math.max(0, tailLengthMult);
     const x = entity.transform.x;
     const y = entity.transform.y;

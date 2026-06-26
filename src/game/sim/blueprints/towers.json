@@ -77,7 +77,7 @@
         "damage": 700
       },
       "radius": {
-        "visual": 169.706,
+        "other": 169.706,
         "hitbox": 169.706,
         "collision": 169.706,
         "shotArmingRadius": 339.412
@@ -144,7 +144,7 @@
         "damage": 2000
       },
       "radius": {
-        "visual": 42.426,
+        "other": 42.426,
         "hitbox": 42.426,
         "collision": 42.426,
         "shotArmingRadius": 84.852
@@ -211,7 +211,7 @@
         "damage": 1800
       },
       "radius": {
-        "visual": 56.569,
+        "other": 56.569,
         "hitbox": 56.569,
         "collision": 56.569,
         "shotArmingRadius": 113.138
@@ -278,7 +278,7 @@
         "damage": 1200
       },
       "radius": {
-        "visual": 28.284,
+        "other": 28.284,
         "hitbox": 28.284,
         "collision": 28.284,
         "shotArmingRadius": 56.568

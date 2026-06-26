@@ -276,7 +276,7 @@ function createUnitFromNetwork(
   } catch { /* unknown unit blueprint fallback handled by existing defaults */ }
   const blueprintRadius = unitBlueprint !== undefined && unitBlueprint.radius !== undefined
     ? unitBlueprint.radius
-    : { visual: 15, hitbox: 15, collision: 15 };
+    : { other: 15, hitbox: 15, collision: 15 };
   const blueprintMass = unitBlueprint !== undefined && unitBlueprint.mass !== undefined
     ? unitBlueprint.mass
     : 25;
@@ -374,7 +374,7 @@ function createUnitFromNetwork(
     },
   };
 
-  const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.visual, unitTurrets);
+  const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.other, unitTurrets);
   if (turrets) {
     const combat = createCombatComponent(turrets);
     combat.fireState = readNetworkCombatFireState(u);
