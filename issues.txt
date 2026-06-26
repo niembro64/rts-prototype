@@ -16,6 +16,19 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
+[0]  moves towards its target. And now with our fabricator being above this unit when it is created, the
+  unit is basically immediately destroying the fabricator that created it fi there is an enemy unit
+  around.
+
+  This is my solution to tell this unit (and any future units that may have this problem) to never fire
+  and never lock on (i.e. don't stop if we are in fight stop or patrol) etc.
+
+  I think you are undersatanding what I need, and I think we need this
+  "preventLockOnIfMyTeamIsAboveMe", because both a turret and a unit can have a lock on. Oh we also
+  need to do this for all towers, as the towers also have lock on.
+
+  So yeah for all turrets, units, and towers, we need this new booelan that will basically prevent lock
+  on
 
 ================================================================================
 DEEP-DIVE AUDIT (2026-06-24) — top 15 high-priority items
@@ -31,7 +44,6 @@ Repair/Reclaim, self-destruct) is largely PRESENT. The notable BAR-shaped gaps
 are #8 (sight-vs-radar fire tiers) and #12 (selection-panel uniformity). No other
 strong BAR command gap surfaced — do not assume the list is thin by accident.
 
---- CORRECTNESS / DETERMINISM ---
 
 [1] Guided shots run their own replacement-target acquisition after launch
     Category: correctness (determinism-relevant) | Severity: HIGH
