@@ -667,6 +667,14 @@ export class WorldState {
     return this.cache.getFactoryBuildings();
   }
 
+  /** Mobile factories: units that carry a factory component (queens). The
+   *  production + funding passes iterate buildings then these, so a queen
+   *  builds its bee/tick exactly like a building factory. */
+  getFactoryUnits(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getFactoryUnits();
+  }
+
   // Get units by player — returns reusable array, DO NOT STORE the reference
   getUnitsByPlayer(playerId: PlayerId): Entity[] {
     this.rebuildCachesIfNeeded();

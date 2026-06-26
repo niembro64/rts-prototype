@@ -23,6 +23,7 @@ import { createUnitRuntimeTurrets } from './runtimeTurrets';
 import { buildShieldPanelCache } from './shieldPanelCache';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
 import { createTransportComponentForUnitBlueprint } from './transports';
+import { REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../config';
 
 export type CreateUnitFromBlueprintOptions = {
   allocateSubEntityIds?: boolean;
@@ -188,6 +189,32 @@ export function createUnitFromBlueprintEntity(
       constructionRate: bp.builder.constructionRate,
       allowedBuildBlueprintIds: [...bp.builder.allowedBuildBlueprintIds],
       currentBuildTarget: NO_ENTITY_ID,
+    };
+  }
+
+  // A unit whose spawn turret declares a produced unit is a mobile factory: it
+  // builds that unit in place exactly like the fabricator, but the shell rides
+  // attached to the moving host (the spawn turret's buildLockAnchor 'host'),
+  // released to free-fall on completion. Queens build their bees / ticks this
+  // way. The factory is derived from the turret — there is no authored factory
+  // block on the unit blueprint.
+  const spawnMount = bp.turrets.find((m) => m.producedBlueprintId != null);
+  if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
+    entity.factory = {
+      selectedUnitBlueprintId: spawnMount.producedBlueprintId,
+      repeatProduction: true,
+      productionQueue: [],
+      currentShellId: null,
+      currentBuildProgress: 0,
+      defaultWaypoints: null,
+      rallyX: x,
+      rallyY: y,
+      rallyZ: null,
+      rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+      guardTargetId: null,
+      isProducing: false,
+      energyRateFraction: 0,
+      metalRateFraction: 0,
     };
   }
 

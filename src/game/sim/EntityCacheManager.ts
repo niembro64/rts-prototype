@@ -45,6 +45,7 @@ export class EntityCacheManager {
    *  production run every sim tick and should not scan every building
    *  just to find this subset. */
   private cachedFactoryBuildings: Entity[] = [];
+  private cachedFactoryUnits: Entity[] = [];
   private cachedFactoriesByPlayer: Map<PlayerId, Entity[]> = new Map();
   private cachedShieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
@@ -123,6 +124,7 @@ export class EntityCacheManager {
     this.cachedConverterBuildings.length = 0;
     this.cachedActiveStateBuildings.length = 0;
     this.cachedFactoryBuildings.length = 0;
+    this.cachedFactoryUnits.length = 0;
     this.cachedShieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
@@ -206,6 +208,16 @@ export class EntityCacheManager {
           }
           if (entity.commander) this.cachedCommanderUnits.push(entity);
           if (entity.builder) this.cachedBuilderUnits.push(entity);
+          // A unit that carries a factory component is a mobile factory (a
+          // queen): it produces units exactly like a building factory, so it
+          // joins the per-player factory bucket the production + funding passes
+          // iterate.
+          if (entity.factory) {
+            this.cachedFactoryUnits.push(entity);
+            if (ownership !== null) {
+              this.getOrCreateFactoriesByPlayer(ownership.playerId).push(entity);
+            }
+          }
           break;
         case 'building':
         case 'tower':
@@ -393,6 +405,10 @@ export class EntityCacheManager {
 
   getFactoryBuildings(): Entity[] {
     return this.cachedFactoryBuildings;
+  }
+
+  getFactoryUnits(): Entity[] {
+    return this.cachedFactoryUnits;
   }
 
   getFactoriesByPlayer(playerId: PlayerId): Entity[] {

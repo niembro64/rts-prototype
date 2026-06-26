@@ -589,6 +589,9 @@ pub struct TurretMount {
     pub requiredEngagedForFightStop: bool,
     pub zResolver: Option<UnitTurretMountZResolver>,
     pub visualVariant: Option<String>,
+    pub producedBlueprintId: Option<String>,
+    pub buildLockAnchor: Option<String>,
+    pub constructionRate: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -139,7 +139,11 @@ class FactoryProductionSystem {
   ): FactoryProductionResult {
     const spawnedUnits: Entity[] = [];
     const completedUnits: Entity[] = [];
-    const factories = world.getFactoryBuildings();
+    // Building factories (fabricator) then mobile unit factories (queens). The
+    // per-factory logic below is host-type-agnostic; a queen's shell differs
+    // only in being attached to the moving host (buildLockHostId) and funded
+    // from its own mount rate. Order is deterministic (buildings then units).
+    const factories = world.getFactoryBuildings().concat(world.getFactoryUnits());
     ensureFactoryProductionCapacity(factories.length);
     factoryRows.length = 0;
     factoryRowShells.length = 0;
@@ -322,6 +326,19 @@ class FactoryProductionSystem {
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
     });
+    // A mobile unit factory (queen) whose spawn turret declares buildLockAnchor
+    // 'host' builds the shell rigidly attached to itself (X/Y/Z), riding along
+    // until release. A building factory (fabricator) leaves it null → static
+    // spawn column, Z free-falling out of the torus.
+    if (factory.unit !== null) {
+      const hostBp = getUnitBlueprint(factory.unit.unitBlueprintId);
+      const spawnMount = hostBp.turrets.find(
+        (m) => m.producedBlueprintId === unitBlueprintId,
+      );
+      if (spawnMount?.buildLockAnchor === 'host') {
+        unit.buildable.buildLockHostId = factory.id;
+      }
+    }
     initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
     // The factory's spawn turret brought this shell into existence — flash a

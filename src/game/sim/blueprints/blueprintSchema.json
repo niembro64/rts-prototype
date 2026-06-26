@@ -1764,6 +1764,16 @@
         },
         "visualVariant": {
           "$ref": "#/$defs/ConstructionEmitterSize"
+        },
+        "producedBlueprintId": {
+          "$ref": "#/$defs/UnitBlueprintId"
+        },
+        "buildLockAnchor": {
+          "type": "string",
+          "enum": ["spawnColumn", "host"]
+        },
+        "constructionRate": {
+          "type": "number"
         }
       },
       "additionalProperties": false

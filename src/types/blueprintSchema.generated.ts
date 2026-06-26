@@ -399,6 +399,9 @@ export type TurretMount = {
   requiredEngagedForFightStop: boolean;
   zResolver?: UnitTurretMountZResolver;
   visualVariant?: ConstructionEmitterSize;
+  producedBlueprintId?: UnitBlueprintId;
+  buildLockAnchor?: 'spawnColumn' | 'host';
+  constructionRate?: number;
 };
 
 export type BuildingTurretMount = {

@@ -11,6 +11,7 @@ import type { Entity, EntityId, PlayerId } from './types';
 import { NO_ENTITY_ID } from './types';
 import { economyManager } from './economy';
 import { getBuildingConfig } from './buildConfigs';
+import { getUnitBlueprint } from './blueprints';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
 import { resolveGuardServiceTarget } from './guard';
@@ -34,6 +35,16 @@ import type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 // Per-tick scratch for idle-builder auto-assist candidates (module-scoped to
 // avoid per-tick allocation; distributeEnergy runs single-threaded).
 const _autoAssistCandidates: Entity[] = [];
+
+// A mobile unit factory (queen) has no building config; its per-tick build
+// rate is the value authored on its construction-pylon mount, read fresh each
+// tick so nothing is stored on the hashed/wired Factory component.
+function factoryUnitConstructionRate(entity: Entity): number {
+  if (entity.unit === null) return Infinity;
+  const bp = getUnitBlueprint(entity.unit.unitBlueprintId);
+  const pylon = bp.turrets.find((m) => m.constructionRate != null);
+  return pylon?.constructionRate ?? Infinity;
+}
 
 function findAutoAssistTarget(builder: Entity, candidates: readonly Entity[]): Entity | null {
   const ownership = builder.ownership;
@@ -355,7 +366,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // funded a transfer this tick; any factory not touched stays at 0,
   // so the 3D resource-ball flow correctly reads empty when a queue
   // stalls or completes between frames.
-  for (const factoryEntity of world.getFactoryBuildings()) {
+  for (const factoryEntity of world.getFactoryBuildings().concat(world.getFactoryUnits())) {
     const fc = factoryEntity.factory;
     if (!fc) continue;
     if (fc.energyRateFraction !== 0 || fc.metalRateFraction !== 0) {
@@ -476,8 +487,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     addConstructionSource(buffers, targetId, entity.id, rate * dtSec);
   }
 
-  // 2a) Factories currently funding unit shells.
-  for (const entity of world.getFactoryBuildings()) {
+  // 2a) Factories currently funding unit shells (building factories then
+  //     mobile unit factories / queens).
+  for (const entity of world.getFactoryBuildings().concat(world.getFactoryUnits())) {
     const factory = entity.factory;
     const ownership = entity.ownership;
     if (factory !== null && factory.isProducing && factory.currentShellId !== null
@@ -497,16 +509,29 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       ) {
         const remainingCost = getTotalRemainingCost(shell.buildable);
         if (remainingCost > 0) {
-          const config = getBuildingConfig(entity.buildingBlueprintId!);
-          // Factory's own build power + any builders guarding it (assist).
+          // Building factory (fabricator): rate from its building config —
+          // verbatim original. Mobile unit factory (queen): rate authored on its
+          // construction-pylon mount, read on the fly so the Factory component
+          // (hashed + wired) is left untouched. assistRate adds guarding builders.
           const assistRate = factoryAssistRateById.get(entity.id) ?? 0;
-          const rateCap = ((config.constructionRate ?? Infinity) + assistRate) * dtSec;
+          let capRate: number;
+          let sourceRate: number;
+          if (entity.buildingBlueprintId !== null) {
+            const config = getBuildingConfig(entity.buildingBlueprintId);
+            capRate = config.constructionRate ?? Infinity;
+            sourceRate = config.constructionRate ?? 0;
+          } else {
+            const rate = factoryUnitConstructionRate(entity);
+            capRate = rate;
+            sourceRate = rate;
+          }
+          const rateCap = (capRate + assistRate) * dtSec;
           // Register the factory itself as a build source on the shell so the
           // shell's per-source breakdown attributes flow to the factory AND to
           // every guarding builder (added above) — each gets its own resource
           // movement, which lights up its construction emitter. Route through
           // the breakdown channel (null sourceEntityId, shell as breakdown key).
-          addConstructionSource(buffers, shell.id, entity.id, (config.constructionRate ?? 0) * dtSec);
+          addConstructionSource(buffers, shell.id, entity.id, sourceRate * dtSec);
           factoryByShellId.set(shell.id, entity.id);
           addConsumer(
             ownership.playerId,
