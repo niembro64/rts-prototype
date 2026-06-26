@@ -892,6 +892,7 @@ export class WorldState {
         height,
         depth,
         supportSurface: createCollisionTopBuildingSupportSurface(width, height, depth),
+        hovering: false,
         hp: 500,
         maxHp: 500,
         targetRadius: DMath.sqrt(width * width + height * height) / 2,

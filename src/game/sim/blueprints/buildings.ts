@@ -78,6 +78,10 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   anchorProfile: BuildingAnchorProfile;
   /** Authored walkable/support proxy, independent from the collision cuboid. */
   supportSurface: BuildingSupportSurface;
+  /** Hovering structure (the fabricator torus): intangible at ground level —
+   *  no collision body, no support surface, excluded from pathfinding — but
+   *  still reserves its footprint. Optional; defaults to false. */
+  hovering?: boolean;
   hud: EntityHudBlueprint;
   sensors: SensorCapabilityConfig;
   /** Optional reusable turret hardpoints mounted on this building.

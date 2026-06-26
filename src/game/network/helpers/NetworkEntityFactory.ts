@@ -474,6 +474,7 @@ function createBuildingFromNetwork(
       height,
       depth,
       supportSurface: cloneBuildingSupportSurface(config.supportSurface),
+      hovering: config.hovering,
       hp: buildingHp !== null ? buildingHp.curr : config.hp,
       maxHp: buildingHp !== null ? buildingHp.max : config.hp,
       targetRadius: Math.sqrt(width * width + height * height) / 2,

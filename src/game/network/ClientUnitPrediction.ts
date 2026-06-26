@@ -131,7 +131,9 @@ function refreshPredictionSupportSurfaces(supportEntities: Iterable<Entity>): vo
 
 export function isPredictionSupportSurfaceProvider(entity: Entity): boolean {
   const building = entity.building;
-  if (building !== null) return building.supportSurface.kind === 'boxTop';
+  // Hovering buildings are intangible at ground level: never a support surface,
+  // so client-predicted units fall straight through to the ground under them.
+  if (building !== null) return !building.hovering && building.supportSurface.kind === 'boxTop';
   const unit = entity.unit;
   return unit !== null && unit.hp > 0 && unit.supportSurface.kind === 'discTop';
 }

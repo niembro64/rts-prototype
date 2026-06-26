@@ -20,6 +20,11 @@ export function createBuildingBodiesForEntities(
 ): void {
   for (const entity of entities) {
     if ((entity.type === 'building' || entity.type === 'tower') && entity.building) {
+      // Hovering structures (the fabricator torus) are intangible at ground
+      // level — no collision body — so units pass under and falling units drop
+      // straight through to the ground. (Mirrors ServerSimulationCore's runtime
+      // onBuildingSpawn path.)
+      if (entity.building.hovering) continue;
       // baseZ matches WorldState.createBuilding's terrain lookup so
       // the static cuboid body sits where the entity transform says
       // it does — base on the local cube tile top.

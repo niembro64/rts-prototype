@@ -32,6 +32,7 @@ function buildBuildingConfig(buildingBlueprintId: BuildingBlueprintId): Building
     visualHeight: bp.visualHeight,
     anchorProfile: bp.anchorProfile,
     supportSurface: bp.supportSurface,
+    hovering: bp.hovering ?? false,
     hud: bp.hud,
     sensors: { ...bp.sensors },
     radius: { ...bp.base.radius },

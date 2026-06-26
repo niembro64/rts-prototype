@@ -158,12 +158,12 @@ export class ServerSimulationCore {
     this.simulation.onBuildingSpawn = (newBuildings: Entity[]) => {
       for (const entity of newBuildings) {
         if (entity.building === null || entity.body !== null) continue;
-        // A building with no support surface (the hovering fabricator torus) is
-        // intangible at ground level: it gets NO collision body, so units walk
-        // freely underneath and freshly-spawned shells free-fall all the way to
-        // the ground. Its footprint is still reserved + it stays selectable/
-        // targetable via the entity spatial grid.
-        if (entity.building.supportSurface.kind === 'none') continue;
+        // A hovering building (the fabricator torus) is intangible at ground
+        // level: it gets NO collision body, so units walk freely underneath and
+        // freshly-spawned shells free-fall all the way to the ground. Its
+        // footprint is still reserved + it stays selectable/targetable via the
+        // entity spatial grid.
+        if (entity.building.hovering) continue;
         const baseZ = entity.transform.z - entity.building.depth / 2;
         const body = this.physics.createBuildingBody(
           entity.transform.x,

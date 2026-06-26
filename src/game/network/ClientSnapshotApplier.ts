@@ -115,9 +115,11 @@ export function snapClientNonVisualState(
     const buildingBlueprintId = codeToBuildingBlueprintId(sb.buildingBlueprintCode);
     if (buildingBlueprintId) {
       entity.buildingBlueprintId = buildingBlueprintId as BuildingBlueprintId;
+      const buildingConfig = getBuildingConfig(entity.buildingBlueprintId);
       entity.building.supportSurface = cloneBuildingSupportSurface(
-        getBuildingConfig(entity.buildingBlueprintId).supportSurface,
+        buildingConfig.supportSurface,
       );
+      entity.building.hovering = buildingConfig.hovering;
     }
   }
 

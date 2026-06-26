@@ -177,10 +177,10 @@ export class ConstructionSystem {
 
     // Register the placement footprint. Only the centered physical rect
     // blocks movement; any clearance ring beyond it (wind turbine blade
-    // sweep) reserves construction cells without becoming a wall. A building
-    // with no support surface (the hovering fabricator torus) reserves its
-    // footprint but does NOT block movement, so units walk freely underneath.
-    const isHovering = config.supportSurface.kind === 'none';
+    // sweep) reserves construction cells without becoming a wall. A hovering
+    // building (the fabricator torus) reserves its footprint but does NOT block
+    // movement, so units path/walk freely underneath as if it weren't there.
+    const isHovering = config.hovering;
     const pathTopZ = config.supportSurface.kind === 'boxTop'
       ? config.supportSurface.topZ
       : config.gridDepth * BUILD_GRID_CELL_SIZE;

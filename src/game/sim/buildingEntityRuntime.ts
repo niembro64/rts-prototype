@@ -22,10 +22,12 @@ export function applyBuildingBlueprintRuntime(
   entity.type = isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building';
 
   if (entity.building !== null) {
+    const buildingConfig = getBuildingConfig(buildingBlueprintId);
     entity.building.supportSurface = cloneBuildingSupportSurface(
-      getBuildingConfig(buildingBlueprintId).supportSurface,
+      buildingConfig.supportSurface,
       entity.transform.rotation,
     );
+    entity.building.hovering = buildingConfig.hovering;
   }
 
   if (buildingBlueprintHasActiveState(buildingBlueprintId)) {

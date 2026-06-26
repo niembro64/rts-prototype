@@ -406,6 +406,12 @@ type Building = {
    *  collision cuboid so a building can block one shape while exposing
    *  a different walkable top, pad, or no top support at all. */
   supportSurface: BuildingSupportSurface;
+  /** Hovering structures (the fabricator torus) are intangible at ground
+   *  level: no collision body, no support surface, and excluded from path-
+   *  finding — units move under them freely and falling units pass through to
+   *  the ground. They still reserve their footprint so nothing can be built on
+   *  top of them. */
+  hovering: boolean;
   hp: number;
   maxHp: number;
   /** sqrt(width² + height²) / 2 — precomputed at construction so the
@@ -964,6 +970,9 @@ export type BuildingConfig = {
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
   supportSurface: BuildingSupportSurface;
+  /** See Building.hovering — intangible at ground level (no collision / no
+   *  pathfinding block / no support), but still reserves its footprint. */
+  hovering: boolean;
   hud: import('./blueprints').EntityHudBlueprint;
   sensors: SensorCapabilityConfig;
   radius: EntityRadii;
