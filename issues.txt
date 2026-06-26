@@ -35,25 +35,6 @@ strong BAR command gap surfaced — do not assume the list is thin by accident.
 
 --- OPTIMIZATION (5,000-unit scale target) ---
 
-[4] Per-tick support-surface sampling is brute-force O(awake x dynamicBodies) +
-    2 x O(awake x staticBodies) with no spatial index
-    Category: optimization | Severity: HIGH
-    Evidence: src/game/server/PhysicsEngine3D.ts integrate() (:856) runs both
-      sampleIntegrationSupportSurfaces (:1114) and refreshStepSupportIgnoredStatic
-      Slots (:1141) every step. findDynamicSupportSurface (:1022) is a full
-      this.dynamicBodies scan; findStaticSupportSurface (:982) is a full
-      this.staticBodies scan called TWICE per awake body (via findSupportSurface
-      :1062-1063 and again at :965). dynamicBodies/staticBodies are plain arrays
-      (:395-396). Neighbor-contact resolvers already use the WASM cell-walk
-      broadphase (:1150) — support sampling alone does not.
-    Design: Physics Model / "Full 3D, not decorative altitude" — units stand on
-      buildings and on each other, so support sampling must scale.
-    Fix: Index static cuboids + discTop dynamic bodies in a spatial grid (reuse
-      the existing broadphase / spatial_grid.rs cell-walk) and query only cells
-      overlapping each body's footprint. Merge the two static scans so static
-      support is found once per body per tick, not twice. TS-side path; no
-      determinism mirror touched.
-
 --- MISSING FUNCTIONALITY / BAR ---
 
 [10] Targeting merges full-sight and radar into ONE coverage mask; there is no

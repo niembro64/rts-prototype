@@ -388,6 +388,24 @@ const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
 // common query to the immediate 3x3x3 neighborhood while the dynamic
 // range below still handles future oversized bodies correctly.
 const CONTACT_CELL_SIZE = 160;
+
+// Support-surface broadphase. Static support cuboids (building roofs) and
+// dynamic support discs (units that can be stood on) are bucketed into a flat
+// cell grid so per-body support sampling queries only the probe's cell instead
+// of scanning every static / dynamic body. A support body is registered into
+// every cell its footprint+epsilon overlaps, so a probe point inside that
+// footprint always lands in a registered cell — making the candidate set a
+// superset that the identical per-candidate checks below filter down to the
+// same winner the full scan produced.
+const SUPPORT_CELL_SIZE = 200;
+function supportCellCoord(world: number): number {
+  return Math.floor(world / SUPPORT_CELL_SIZE);
+}
+// 16-bit per-axis pack: cell coords stay within ±32767 for any real map
+// (≤ ~6.5M world units), so this is collision-free across the playable area.
+function packSupportCell(cellX: number, cellY: number): number {
+  return ((cellX & 0xffff) << 16) | (cellY & 0xffff);
+}
 const WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED =
   UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT > 0
     ? 2
@@ -404,6 +422,13 @@ export class PhysicsEngine3D {
   private bodies: Body3D[] = [];
   private dynamicBodies: Body3D[] = [];
   private staticBodies: Body3D[] = [];
+  // Support-surface broadphase cells (see SUPPORT_CELL_SIZE). The static
+  // grid is maintained incrementally on add/remove (static cuboids never
+  // move); the dynamic grid is rebuilt lazily whenever dynamic body positions
+  // may have changed (after integration, and on dynamic add/remove).
+  private staticSupportGrid: Map<number, Body3D[]> = new Map();
+  private dynamicSupportGrid: Map<number, Body3D[]> = new Map();
+  private dynamicSupportGridDirty = true;
   private dynamicBodySlots: Uint32Array = new Uint32Array(0);
   private dynamicBodySlotsDirty = true;
   // Slot-id → Body3D lookup. Indexed by the pool slot, so the
@@ -607,9 +632,11 @@ export class PhysicsEngine3D {
     if (body.isStatic) {
       this.staticBodies.push(body);
       this.addStaticToBroadphase(body);
+      this.addStaticSupportToGrid(body);
     } else {
       this.dynamicBodies.push(body);
       this.dynamicBodySlotsDirty = true;
+      this.dynamicSupportGridDirty = true;
       if (!body.sleeping) this.awakeDynamicBodyCount++;
     }
   }
@@ -623,10 +650,12 @@ export class PhysicsEngine3D {
       this.dynamicBodySlotsDirty = true;
       if (!body.sleeping) this.awakeDynamicBodyCount = Math.max(0, this.awakeDynamicBodyCount - 1);
     }
+    if (j >= 0) this.dynamicSupportGridDirty = true;
     const k = this.staticBodies.indexOf(body);
     if (k >= 0) {
       this.staticBodies.splice(k, 1);
       this.removeStaticFromBroadphase(body);
+      this.removeStaticSupportFromGrid(body);
     }
     // Purge any ignore-pairs referencing this body.
     for (const [dyn, stat] of this.ignoreStatic) {
@@ -834,6 +863,9 @@ export class PhysicsEngine3D {
     }
     this.dynamicBodies.length = 0;
     this.staticBodies.length = 0;
+    this.staticSupportGrid.clear();
+    this.dynamicSupportGrid.clear();
+    this.dynamicSupportGridDirty = true;
     this.dynamicBodySlotsDirty = true;
     this.bodyBySlot.length = 0;
     this.ignoreStatic.clear();
@@ -951,6 +983,10 @@ export class PhysicsEngine3D {
   }
 
   private sampleIntegrationSupportSurfaces(count: number): void {
+    // Refresh the dynamic support broadphase once for the whole pass using the
+    // bodies' current (pre-integration) positions; the per-body queries below
+    // then reuse it.
+    this.rebuildDynamicSupportGrid();
     for (let i = 0; i < count; i++) {
       const slot = _integrateAwakeSlots[i];
       const b = this.bodyBySlot[slot];
@@ -979,6 +1015,80 @@ export class PhysicsEngine3D {
     }
   }
 
+  /** Insert a support body into every grid cell its footprint+epsilon AABB
+   *  overlaps, so any probe point inside that footprint resolves the body in
+   *  its own single cell. */
+  private insertSupportBodyIntoGrid(
+    grid: Map<number, Body3D[]>,
+    body: Body3D,
+    halfExtentX: number,
+    halfExtentY: number,
+  ): void {
+    const minCx = supportCellCoord(body.x - halfExtentX - SUPPORT_SURFACE_FOOTPRINT_EPSILON);
+    const maxCx = supportCellCoord(body.x + halfExtentX + SUPPORT_SURFACE_FOOTPRINT_EPSILON);
+    const minCy = supportCellCoord(body.y - halfExtentY - SUPPORT_SURFACE_FOOTPRINT_EPSILON);
+    const maxCy = supportCellCoord(body.y + halfExtentY + SUPPORT_SURFACE_FOOTPRINT_EPSILON);
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        const key = packSupportCell(cx, cy);
+        let bucket = grid.get(key);
+        if (bucket === undefined) {
+          bucket = [];
+          grid.set(key, bucket);
+        }
+        bucket.push(body);
+      }
+    }
+  }
+
+  private isStaticSupportBody(body: Body3D): boolean {
+    return body.isStatic && body.shape === 'cuboid' && body.supportTopZ !== null;
+  }
+
+  private addStaticSupportToGrid(body: Body3D): void {
+    if (!this.isStaticSupportBody(body)) return;
+    this.insertSupportBodyIntoGrid(
+      this.staticSupportGrid,
+      body,
+      body.supportHalfX,
+      body.supportHalfY,
+    );
+  }
+
+  private removeStaticSupportFromGrid(body: Body3D): void {
+    if (!this.isStaticSupportBody(body)) return;
+    const minCx = supportCellCoord(body.x - body.supportHalfX - SUPPORT_SURFACE_FOOTPRINT_EPSILON);
+    const maxCx = supportCellCoord(body.x + body.supportHalfX + SUPPORT_SURFACE_FOOTPRINT_EPSILON);
+    const minCy = supportCellCoord(body.y - body.supportHalfY - SUPPORT_SURFACE_FOOTPRINT_EPSILON);
+    const maxCy = supportCellCoord(body.y + body.supportHalfY + SUPPORT_SURFACE_FOOTPRINT_EPSILON);
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cy = minCy; cy <= maxCy; cy++) {
+        const bucket = this.staticSupportGrid.get(packSupportCell(cx, cy));
+        if (bucket === undefined) continue;
+        const idx = bucket.indexOf(body);
+        if (idx >= 0) bucket.splice(idx, 1);
+      }
+    }
+  }
+
+  /** Rebuild the dynamic support broadphase from the dynamic bodies' current
+   *  positions. Cell arrays are reused (cleared, not dropped) to avoid
+   *  per-tick allocation churn. */
+  private rebuildDynamicSupportGrid(): void {
+    for (const bucket of this.dynamicSupportGrid.values()) bucket.length = 0;
+    for (let i = 0; i < this.dynamicBodies.length; i++) {
+      const b = this.dynamicBodies[i];
+      if (b.shape !== 'sphere' || b.unitSupportTopOffsetZ === null) continue;
+      this.insertSupportBodyIntoGrid(
+        this.dynamicSupportGrid,
+        b,
+        b.unitSupportRadius,
+        b.unitSupportRadius,
+      );
+    }
+    this.dynamicSupportGridDirty = false;
+  }
+
   private findStaticSupportSurface(
     body: Body3D,
     terrainGroundZ: number,
@@ -989,8 +1099,17 @@ export class PhysicsEngine3D {
     const ignoredStatic = this.ignoreStatic.get(body);
     let best: StaticSupportSurfaceContact | null = null;
 
-    for (let i = 0; i < this.staticBodies.length; i++) {
-      const st = this.staticBodies[i];
+    // Only the static support cuboids whose footprint covers the probe's cell
+    // can match the |dx|/|dy| footprint test below; the broadphase narrows the
+    // scan to that cell instead of every static body. The per-candidate checks
+    // are unchanged, so the selected surface is identical to the full scan.
+    const cell = this.staticSupportGrid.get(
+      packSupportCell(supportCellCoord(body.x), supportCellCoord(body.y)),
+    );
+    if (cell === undefined) return null;
+
+    for (let i = 0; i < cell.length; i++) {
+      const st = cell[i];
       if (st === ignoredStatic || st.shape !== 'cuboid') continue;
       if (st.supportTopZ === null) continue;
 
@@ -1029,8 +1148,16 @@ export class PhysicsEngine3D {
     const sphereBottomZ = body.z - body.radius;
     let best: DynamicSupportSurfaceContact | null = null;
 
-    for (let i = 0; i < this.dynamicBodies.length; i++) {
-      const supportBody = this.dynamicBodies[i];
+    if (this.dynamicSupportGridDirty) this.rebuildDynamicSupportGrid();
+    // Only dynamic support discs whose radius covers the probe's cell can pass
+    // the distance test below; the broadphase narrows the scan to that cell.
+    const cell = this.dynamicSupportGrid.get(
+      packSupportCell(supportCellCoord(body.x), supportCellCoord(body.y)),
+    );
+    if (cell === undefined) return null;
+
+    for (let i = 0; i < cell.length; i++) {
+      const supportBody = cell[i];
       if (supportBody === body || supportBody.shape !== 'sphere') continue;
       const supportTopOffsetZ = supportBody.unitSupportTopOffsetZ;
       if (supportTopOffsetZ === null) continue;
@@ -1148,6 +1275,10 @@ export class PhysicsEngine3D {
         this.sleepBody(b);
       }
     }
+    // Dynamic body positions just changed, so the dynamic support broadphase
+    // built before integration is stale; force a rebuild before its next use
+    // (refreshStepSupportIgnoredStaticSlots below only touches the static grid).
+    this.dynamicSupportGridDirty = true;
     this.refreshStepSupportIgnoredStaticSlots(count);
   }
 
