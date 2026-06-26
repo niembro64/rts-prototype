@@ -82,6 +82,10 @@ export function runResourceMovementConformanceContractTest(): void {
   const instantSpend = world.resourceMovements[0];
   assertContract(instantSpend.resource === 'energy', 'instant spend is an energy movement');
   assertContract(instantSpend.direction === 'outbound', 'instant spend must be outbound at the source pylon');
+  assertContract(
+    instantSpend.amountPerSecond > 0,
+    'instant spend must publish a positive per-second burst rate so it renders as a pylon ball (not dropped by the amountPerSecond<=0 filter)',
+  );
   assertContract(instantSpend.sourceEntityId === sourceEntityId, 'instant spend must preserve the source host pylon');
   assertContract(instantSpend.targetEntityId === targetEntityId, 'instant spend must preserve the target endpoint');
 

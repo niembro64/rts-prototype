@@ -6,6 +6,7 @@ import {
   type PlayerId,
   type ResourceCost,
 } from './types';
+import { ARCHITECTURE_CONFIG } from '@/architectureConfig';
 import {
   STARTING_STOCKPILE,
   MAX_STOCKPILE,
@@ -202,13 +203,20 @@ class EconomyManager {
   ): boolean {
     const economy = this.getOrCreateEconomy(playerId);
     if (economy.stockpile.curr < amount) return false;
+    // An instant spend (D-gun, future ability/ammo costs) is a one-tick
+    // burst, so its pylon-ball density is the instantaneous per-second rate
+    // it would run at if sustained for the fixed sim step: amount / dtSec =
+    // amount * fixedStepHz. Publishing a real rate (not 0) is what surfaces
+    // the spend as an outbound pylon burst — the "resources are visible only
+    // as pylon balls" invariant. fixedStepHz is canonical config, so the
+    // value is identical on every peer and stays in the lockstep checksum.
     resourceMovementSystem.debit(economy, world, {
       playerId,
       sourceEntityId,
       targetEntityId,
       resource: 'energy',
       amount,
-      amountPerSecond: 0,
+      amountPerSecond: amount * ARCHITECTURE_CONFIG.lockstep.fixedStepHz,
       direction: 'outbound',
       reason,
     });

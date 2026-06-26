@@ -33,23 +33,6 @@ are #8 (sight-vs-radar fire tiers) and #12 (selection-panel uniformity). No othe
 strong BAR command gap surfaced — do not assume the list is thin by accident.
 
 
-[2] D-gun / instant ability energy spend never surfaces as a pylon ball
-    Category: correctness (economy invariant) / missing-functionality | Sev: MED
-    Evidence: src/game/sim/economy.ts:211 spendInstant hard-codes
-      amountPerSecond:0; resourceMovement.ts:119 keeps the real value only in
-      `amount`; stateSerializerResourceMovements.ts:97 drops any movement with
-      amountPerSecond<=0 SERVER-SIDE before it is ever serialized; a secondary
-      client drop is at ClientViewState.ts:566. D-gun spend path:
-      commandExecution.ts:1268 (reason 'ability').
-    Design: "Resource Movement Flows Through Pylons" / "Hard invariant: resources
-      are visible only as pylon balls" (html:2632-2655): ammo/ability/"fired"
-      costs must follow a pylon; "changes a stockpile without publishing the
-      corresponding pylon flow is a correctness bug."
-    Fix: Carry the burst as a real rate — pass amountPerSecond = amount/dtSec (or
-      a fixed short visual rate) from spendInstant so the client emits a brief
-      outbound energy pylon burst on the commander; OR add an explicit one-shot
-      impulse field to ResourceMovement the renderer treats as a short spray.
-
 --- OPTIMIZATION (5,000-unit scale target) ---
 
 [4] Per-tick support-surface sampling is brute-force O(awake x dynamicBodies) +
