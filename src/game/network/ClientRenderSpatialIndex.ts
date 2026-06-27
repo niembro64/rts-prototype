@@ -11,6 +11,8 @@ type ClientRenderCellKey = number;
 
 type ClientRenderSpatialEntry = {
   entity: Entity;
+  cellX: number;
+  cellY: number;
   cellKey: ClientRenderCellKey;
   bucketIndex: number;
   padding: number;
@@ -37,12 +39,16 @@ export class ClientRenderSpatialIndex {
       return;
     }
 
-    const cellKey = this.cellKeyFor(entity.transform.x, entity.transform.y);
+    const cellX = this.cellCoord(entity.transform.x);
+    const cellY = this.cellCoord(entity.transform.y);
+    const cellKey = this.cellKey(cellX, cellY);
     const existing = this.entries.get(entity.id);
     const padding = getEntityRenderScopePadding(entity);
 
     if (existing !== undefined && existing.cellKey === cellKey) {
       existing.entity = entity;
+      existing.cellX = cellX;
+      existing.cellY = cellY;
       this.updateEntryPadding(existing, padding);
       const bucket = this.buckets.get(cellKey);
       if (bucket !== undefined) bucket[existing.bucketIndex] = entity;
@@ -53,6 +59,8 @@ export class ClientRenderSpatialIndex {
     const bucket = this.getOrCreateBucket(cellKey);
     const entry: ClientRenderSpatialEntry = {
       entity,
+      cellX,
+      cellY,
       cellKey,
       bucketIndex: bucket.length,
       padding,
@@ -91,6 +99,16 @@ export class ClientRenderSpatialIndex {
     const maxCellX = this.cellCoord(bounds.maxX);
     const minCellY = this.cellCoord(bounds.minY);
     const maxCellY = this.cellCoord(bounds.maxY);
+    if (this.shouldQueryEntriesDirectly(minCellX, maxCellX, minCellY, maxCellY)) {
+      for (const entry of this.entries.values()) {
+        if (!this.entryIntersectsCells(entry, minCellX, maxCellX, minCellY, maxCellY)) continue;
+        const entity = entry.entity;
+        if (entity.unit !== null) outUnits.push(entity);
+        else if (entity.building !== null) outBuildings.push(entity);
+      }
+      return;
+    }
+
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
         const bucket = this.buckets.get(this.cellKey(cellX, cellY));
@@ -117,6 +135,17 @@ export class ClientRenderSpatialIndex {
     const maxCellX = this.cellCoord(bounds.maxX);
     const minCellY = this.cellCoord(bounds.minY);
     const maxCellY = this.cellCoord(bounds.maxY);
+    if (this.shouldQueryEntriesDirectly(minCellX, maxCellX, minCellY, maxCellY)) {
+      for (const entry of this.entries.values()) {
+        if (!this.entryIntersectsCells(entry, minCellX, maxCellX, minCellY, maxCellY)) continue;
+        const entity = entry.entity;
+        if (!includeEntity(entity)) continue;
+        if (entity.unit !== null) outUnits.push(entity);
+        else if (entity.building !== null) outBuildings.push(entity);
+      }
+      return;
+    }
+
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
         const bucket = this.buckets.get(this.cellKey(cellX, cellY));
@@ -158,8 +187,32 @@ export class ClientRenderSpatialIndex {
     this.maxEntityPadding = next;
   }
 
-  private cellKeyFor(x: number, y: number): ClientRenderCellKey {
-    return this.cellKey(this.cellCoord(x), this.cellCoord(y));
+  private shouldQueryEntriesDirectly(
+    minCellX: number,
+    maxCellX: number,
+    minCellY: number,
+    maxCellY: number,
+  ): boolean {
+    const width = maxCellX - minCellX + 1;
+    const height = maxCellY - minCellY + 1;
+    if (!(width > 0) || !(height > 0)) return true;
+    const queriedCells = width * height;
+    return !Number.isFinite(queriedCells) || queriedCells > this.buckets.size;
+  }
+
+  private entryIntersectsCells(
+    entry: ClientRenderSpatialEntry,
+    minCellX: number,
+    maxCellX: number,
+    minCellY: number,
+    maxCellY: number,
+  ): boolean {
+    return (
+      entry.cellX >= minCellX &&
+      entry.cellX <= maxCellX &&
+      entry.cellY >= minCellY &&
+      entry.cellY <= maxCellY
+    );
   }
 
   private cellCoord(value: number): number {

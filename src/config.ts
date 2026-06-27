@@ -18,9 +18,7 @@ import type {
 } from './types/config';
 import type {
   CameraAnchor,
-  CameraMovementMomentum,
-  CameraMovementScaleMode,
-  CameraTerrainCollisionMode,
+  CameraMovementConfig,
 } from './types/camera';
 import {
   LAND_CELL_SIZE,
@@ -764,11 +762,6 @@ export const ENTITY_HUD_FADE_END_DISTANCE_FRAC = entityHudConfigJson.fadeEndDist
  *  camera's pitch angle against the terrain. */
 export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegrees;
 
-/** Maximum zoom level (zoomed in). There is intentionally no minimum
- *  zoom level — zoom-out is unbounded (the old max-zoom-out rail was
- *  removed because it wedged the camera against terrain). */
-export const ZOOM_MAX = cameraConfigJson.zoom.max;
-
 /** Far-distance reference for HUD fade, expressed as a multiple of the
  *  base framing distance (max(mapW, mapH) * 0.35). Entity HUD elements
  *  (health bars, name tags) finish fading out by this distance, so the
@@ -793,29 +786,11 @@ export const CAMERA_FAR_REFERENCE_DISTANCE_FACTOR =
  */
 export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
 
-/** Camera input movement metric. 'anchor-distance-relative' keeps the
- *  historical behavior: zoom scales by a fraction of active camera/anchor
- *  distance, and pan derives world-per-pixel from grabbed depth.
- *  'absolute-world' converts input to fixed world-unit amounts.
- *  'absolute-world-momentum' keeps those absolute units and applies a
- *  bounded velocity-sensitive gain for faster gestures. */
-export const CAMERA_MOVEMENT_SCALE_MODE =
-  cameraConfigJson.movement.scaleMode as CameraMovementScaleMode;
-
-/** Absolute-mode wheel/pinch movement, in world units for one ordinary
- *  wheel tick before any velocity-sensitive gain. */
-export const CAMERA_ABSOLUTE_ZOOM_STEP_WORLD_UNITS =
-  cameraConfigJson.movement.absoluteZoomStepWorldUnits;
-
-/** Absolute-mode pan movement, in final world units per screen pixel. */
-export const CAMERA_ABSOLUTE_PAN_WORLD_UNITS_PER_PIXEL =
-  cameraConfigJson.movement.absolutePanWorldUnitsPerPixel;
-
-/** Velocity-sensitive gain tuning for 'absolute-world-momentum'. This is
- *  input acceleration, not post-release camera inertia: releasing the
- *  gesture stops camera input immediately. */
-export const CAMERA_MOVEMENT_MOMENTUM =
-  cameraConfigJson.movement.momentum as CameraMovementMomentum;
+/** Full camera movement tuning, grouped by physical mouse gesture. Each
+ *  gesture owns its base movement amount and its velocity-sensitive gain
+ *  block so momentum can be tuned or disabled independently. */
+export const CAMERA_MOVEMENT_CONFIG =
+  cameraConfigJson.movement as CameraMovementConfig;
 
 export type CameraBattleKind = 'demoBattle' | 'lobbyBattle' | 'realBattle';
 export type CameraBattleFocus =
@@ -869,19 +844,6 @@ export const CAMERA_ZOOM_IN_ANCHOR = cameraConfigJson.anchor.zoomIn as CameraAnc
 export const CAMERA_ZOOM_OUT_ANCHOR = cameraConfigJson.anchor.zoomOut as CameraAnchor;
 export const CAMERA_ROTATE_ANCHOR = cameraConfigJson.anchor.rotate as CameraAnchor;
 export const CAMERA_PAN_ANCHOR = cameraConfigJson.anchor.pan as CameraAnchor;
-
-/** Minimum 3D clearance (sim units) between the camera and terrain.
- *  The camera checks terrain around its position and resolves along
- *  local terrain normals instead of checking only the vertical gap to
- *  the ground directly beneath it. */
-export const CAMERA_MIN_TERRAIN_CLEARANCE = cameraConfigJson.minTerrainClearance;
-
-/** How the orbit camera resolves frames where the eye would dip below
- *  terrain — see CameraTerrainCollisionMode. 'none' lets the camera pass
- *  through the heightfield; 'raiseEye' lifts the eye straight up to clear;
- *  'clampPitch' steepens the orbit arc to clear instead. */
-export const CAMERA_TERRAIN_COLLISION_MODE =
-  cameraConfigJson.terrainCollisionMode as CameraTerrainCollisionMode;
 
 /**
  * World padding as a percentage of map dimensions.

@@ -21,20 +21,14 @@ import {
 import { GAME_DIAGNOSTICS } from '../diagnostics';
 import {
   CAMERA_PAN_MULTIPLIER,
-  CAMERA_MIN_TERRAIN_CLEARANCE,
-  CAMERA_TERRAIN_COLLISION_MODE,
   CAMERA_ZOOM_IN_ANCHOR,
   CAMERA_ZOOM_OUT_ANCHOR,
   CAMERA_ROTATE_ANCHOR,
   CAMERA_PAN_ANCHOR,
   CAMERA_FOV_DEGREES,
-  CAMERA_MOVEMENT_SCALE_MODE,
-  CAMERA_ABSOLUTE_ZOOM_STEP_WORLD_UNITS,
-  CAMERA_ABSOLUTE_PAN_WORLD_UNITS_PER_PIXEL,
-  CAMERA_MOVEMENT_MOMENTUM,
+  CAMERA_MOVEMENT_CONFIG,
   SKY_RENDER_CONFIG,
   ZOOM_STEP_FRACTION,
-  ZOOM_MAX,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
 } from '../../config';
 
@@ -42,9 +36,8 @@ const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
 const DYNAMIC_PIXEL_RATIO_FLOOR = 0.75;
 // CAMERA_NEAR_PLANE bumped 5 → 50: depth-buffer precision is dominated
 // by 1/near, so 10× near gives 10× better precision everywhere. The
-// game's units have ~10–20 wu radius and the camera's altitude clamp
-// keeps it well above the surface, so 50 is safe — nothing legitimately
-// renders closer to the camera than that.
+// game's units have ~10–20 wu radius, so 50 keeps routine play geometry
+// out of the precision-hostile near range.
 //
 // CAMERA_FAR_PLANE raised 50000 → 100000 so the water plane (which
 // extends `HORIZON_RENDER_EXTEND` past every map edge) doesn't get
@@ -202,24 +195,16 @@ export class ThreeApp {
     }
 
     // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
-    // region of the map as the 2D camera at its default zoom. The zoom-IN rail
-    // (minDistance) is derived from ZOOM_MAX so "zoomed in" matches the 2D
-    // limit. There is no zoom-OUT rail — dolly distance is unbounded above;
-    // terrain is handled by a render-time eye floor that never touches the
-    // orbit state, so zoom limits stay absolute. The far reference distance
+    // region of the map as the 2D camera at its default zoom. There are no
+    // camera-position rails: dolly/target movement is free, and terrain does
+    // not clamp or bias the camera body. The far reference distance
     // (map-scaled) only drives HUD fade, not a cap.
     const baseDistance = Math.max(mapWidth, mapHeight) * 0.35;
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
-      minDistance: baseDistance / ZOOM_MAX,
       farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
       zoomStepFraction: ZOOM_STEP_FRACTION,
-      movementScaleMode: CAMERA_MOVEMENT_SCALE_MODE,
-      absoluteZoomStepWorldUnits: CAMERA_ABSOLUTE_ZOOM_STEP_WORLD_UNITS,
-      absolutePanWorldUnitsPerPixel: CAMERA_ABSOLUTE_PAN_WORLD_UNITS_PER_PIXEL,
-      movementMomentum: CAMERA_MOVEMENT_MOMENTUM,
+      movementConfig: CAMERA_MOVEMENT_CONFIG,
       panMultiplier: CAMERA_PAN_MULTIPLIER,
-      minTerrainClearance: CAMERA_MIN_TERRAIN_CLEARANCE,
-      terrainCollisionMode: CAMERA_TERRAIN_COLLISION_MODE,
       zoomInAnchor: CAMERA_ZOOM_IN_ANCHOR,
       zoomOutAnchor: CAMERA_ZOOM_OUT_ANCHOR,
       rotateAnchor: CAMERA_ROTATE_ANCHOR,

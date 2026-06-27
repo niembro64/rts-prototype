@@ -148,36 +148,71 @@ export class ClientProjectileRenderSpatialIndex {
     const maxCellX = this.cellCoord(bounds.maxX);
     const minCellY = this.cellCoord(bounds.minY);
     const maxCellY = this.cellCoord(bounds.maxY);
+    if (this.shouldQueryEntriesDirectly(minCellX, maxCellX, minCellY, maxCellY)) {
+      for (const entry of this.entries.values()) {
+        if (
+          entry.maxCellX < minCellX ||
+          entry.minCellX > maxCellX ||
+          entry.maxCellY < minCellY ||
+          entry.minCellY > maxCellY
+        ) {
+          continue;
+        }
+        this.pushEntryRenderLists(entry.entity, out, seen);
+      }
+      return out;
+    }
+
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
         const bucket = this.buckets.get(this.cellKey(cellX, cellY));
         if (bucket === undefined) continue;
         const entries = bucket.entries;
         for (let i = 0; i < entries.length; i++) {
-          const entity = entries[i].entity;
-          const projectile = entity.projectile;
-          if (projectile === null) continue;
-          const points = projectile.points;
-          if (points !== null && points.length > 0) {
-            if (seen.has(entity.id)) continue;
-            seen.add(entity.id);
-          }
-          if (projectile.projectileType === 'projectile') {
-            out.traveling.push(entity);
-            if (projectile.config.shotProfile.visual.smokeTrail !== undefined) {
-              out.smokeTrail.push(entity);
-            }
-            if (entity.dgunProjectile?.isDGun === true) {
-              out.burnMark.push(entity);
-            }
-          } else {
-            out.line.push(entity);
-            out.burnMark.push(entity);
-          }
+          this.pushEntryRenderLists(entries[i].entity, out, seen);
         }
       }
     }
     return out;
+  }
+
+  private shouldQueryEntriesDirectly(
+    minCellX: number,
+    maxCellX: number,
+    minCellY: number,
+    maxCellY: number,
+  ): boolean {
+    const width = maxCellX - minCellX + 1;
+    const height = maxCellY - minCellY + 1;
+    if (!(width > 0) || !(height > 0)) return true;
+    const queriedCells = width * height;
+    return !Number.isFinite(queriedCells) || queriedCells > this.buckets.size;
+  }
+
+  private pushEntryRenderLists(
+    entity: Entity,
+    out: ClientProjectileRenderLists,
+    seen: Set<EntityId>,
+  ): void {
+    const projectile = entity.projectile;
+    if (projectile === null) return;
+    const points = projectile.points;
+    if (points !== null && points.length > 0) {
+      if (seen.has(entity.id)) return;
+      seen.add(entity.id);
+    }
+    if (projectile.projectileType === 'projectile') {
+      out.traveling.push(entity);
+      if (projectile.config.shotProfile.visual.smokeTrail !== undefined) {
+        out.smokeTrail.push(entity);
+      }
+      if (entity.dgunProjectile?.isDGun === true) {
+        out.burnMark.push(entity);
+      }
+    } else {
+      out.line.push(entity);
+      out.burnMark.push(entity);
+    }
   }
 
   private updateBoundsForProjectile(entity: Entity): void {

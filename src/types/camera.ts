@@ -12,12 +12,43 @@ export type CameraMovementScaleMode =
   | 'absolute-world'
   | 'absolute-world-momentum';
 
-export type CameraMovementMomentum = {
+export type CameraInputMomentumConfig = {
+  /** false = no velocity gain; the gesture always uses gain 1. */
+  readonly enabled: boolean;
   readonly minGain: number;
   readonly maxGain: number;
-  readonly mouseVelocityForMaxGainPixelsPerSecond: number;
-  readonly wheelVelocityForMaxGainDeltaPerSecond: number;
+  /** Pixels/sec for mouse gestures, wheel-delta/sec for wheel gestures. */
+  readonly velocityForMaxGain: number;
   readonly curve: number;
+};
+
+export type CameraPanMovementConfig = {
+  readonly absoluteWorldUnitsPerPixel: number;
+  readonly momentum: CameraInputMomentumConfig;
+};
+
+export type CameraZoomMovementConfig = {
+  readonly absoluteWorldUnitsPerWheelTick: number;
+  readonly momentum: CameraInputMomentumConfig;
+};
+
+export type CameraOrbitMovementConfig = {
+  readonly radiansPerPixel: number;
+  readonly momentum: CameraInputMomentumConfig;
+};
+
+export type CameraMovementConfig = {
+  readonly scaleMode: CameraMovementScaleMode;
+  /** Middle-click drag pan. */
+  readonly centerClickPan: CameraPanMovementConfig;
+  /** Wheel zoom-in. */
+  readonly zoomIn: CameraZoomMovementConfig;
+  /** Wheel zoom-out. */
+  readonly zoomOut: CameraZoomMovementConfig;
+  /** Alt + middle-click orbit/tumble. */
+  readonly altCenterClickOrbit: CameraOrbitMovementConfig;
+  /** Ctrl + middle-click horizontal + vertical pan. */
+  readonly ctrlCenterClickHeightPan: CameraPanMovementConfig;
 };
 
 /** How the orbit camera resolves a frame where the eye would sit below
