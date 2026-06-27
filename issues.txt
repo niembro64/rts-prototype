@@ -91,56 +91,46 @@ deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
     (future consumption-pylon role).
 
 
-[22] Queen as mobile factory + remove the unit-launcher path (in progress)
-    The "queen = spawn-as-weapon / fire bees like shots" idea was dropped. New
-    model (user, 2026-06-26): a queen is a MOBILE FABRICATOR -- it builds its
-    bee/tick exactly like the fabricator (factory shell, funded over time, now a
-    COST not free/cooldown), but the shell is locked X/Y/Z to the moving queen
-    (rides attached) and released to free-fall on completion. No shooting/launch.
+[22] Queen-as-mobile-factory: DONE (verified); small remainders only
+    Queens are now MOBILE FACTORIES -- they build their bee/tick exactly like
+    the fabricator (factory shell, funded over time, a cost now), but the shell
+    rides X/Y/Z-locked to the moving queen and free-falls on release. No launch.
 
-    DONE this session (3 commits, each byte-identical: replay harness 8/8 == baseline):
-    - 2c0f4e2f: deleted 4 unused orphan turrets (turretConstruction,
-      turretUnitConstructorBallistic, turretShieldCylinderInfinite/Aimed). Wire
-      codes auto-repack from TURRET_BLUEPRINT_IDS by array index, so deletion is
-      safe in one coordinated change (harness regenerates its own baselines; no
-      stored golden). 28 turrets remain.
-    - fc4654b6: axis-lock generalized. buildable.buildLockHostId (SERVER-ONLY,
-      not on wire): null = static spawn column (X/Y pinned, Z free-falls, the
-      fabricator drop); an EntityId = rigidly pinned X/Y/Z to that host (the
-      queen). Applied in UnitForceSystem + ServerSimulationCore.syncFromPhysics.
-    - cc34b4f5: factory production+funding generalized to UNIT hosts. Added
-      per-mount producedBlueprintId + buildLockAnchor + constructionRate to
-      TurretMount; a unit whose spawn turret declares producedBlueprintId derives
-      a factory (WorldUnitFactory). getFactoryUnits() bucket; factoryProduction +
-      energyDistribution pass 2a iterate buildings then unit factories;
-      spawnUnitShell stamps buildLockHostId from the spawn mount's buildLockAnchor.
-      GOTCHA: a unit factory's rate is read ON THE FLY from its construction-pylon
-      mount (factoryUnitConstructionRate) -- do NOT store it on the Factory
-      component. A null field on the (generically toCanonicalValue-hashed) Factory
-      SHIFTS the canonical hash; buildable's null field does NOT (it serializes
-      via a path that drops it). Verified by bisect.
+    DONE this session (all verified; replay harness green; 8 prior cases stayed
+    byte-identical throughout, + a new queen case):
+    - 2c0f4e2f delete 4 orphan turrets.
+    - fc4654b6 axis-lock generalized (buildable.buildLockHostId; null=spawn
+      column/Z-free-fall, an id=rigid X/Y/Z attach to that host).
+    - cc34b4f5 factory production+funding generalized to UNIT hosts; per-mount
+      producedBlueprintId/buildLockAnchor/constructionRate on TurretMount; a
+      unit factory's rate is read on the fly (factoryUnitConstructionRate) to
+      keep the hashed Factory component untouched.
+    - 13f85006 re-equip unitQueenBee/Tick as mobile factories (turretSpawnUnits
+      producedBlueprintId + 'host' anchor + construction pylons; derived factory,
+      isProducing from spawn; mounts on the roll axis since queens hover/fly;
+      queens stop locking enemies) + a real-queen-mobile-factory replay case
+      proving derive->spawn->fund->complete is deterministic.
+    - 6bb22dcb delete the dead unitLauncher mechanism (3 files + the Simulation
+      call + the init.ts test runner) + the orphan turretQueen*Constructor
+      turrets. Byte-identical.
 
     REMAINING:
-    - Stage C (BEHAVIOR CHANGE; needs a new queen-production replay case + in-app
-      verification): re-equip unitQueenBee/unitQueenTick in units.json -- drop the
-      turretQueen*Constructor mount, add a turretSpawnUnits mount (producedBlueprintId
-      = unitBee/unitTick, buildLockAnchor 'host', hostDirected) + construction pylon
-      mounts (turretResourcePylonConstruction{Metal,Energy}) carrying constructionRate
-      (the queen build rate). Update inclusionLockOnConfig (queens stop locking
-      enemies; turretSpawnUnits already targets:none). Refine the attach pose /
-      ATTACHED_BUILD_SHELL_ELEVATION (placeholder 60 in ServerSimulationCore) so the
-      bee/tick reads as carried and free-falls on release. Confirm the cost change
-      is the intended balance (queens were free/cooldown-only before).
-    - Stage D (after C): delete the launch mechanism -- unitLauncher.ts,
-      unitLauncherProduction.ts(+ContractTest), the Simulation.ts launcher call,
-      the unitLauncher config on TurretConfig/schema/index/turrets.ts, and the
-      now-orphan turretQueenBeeConstructor/turretQueenTickConstructor (re-pack wire
-      codes like stage 1).
+    - D2 (BASELINE SHIFT, deliberate): remove the now-vestigial unitLauncher
+      CONFIG plumbing -- TurretConfig.unitLauncher, Turret.unitLauncherCooldownMs
+      (hashed -> removing it shifts every turret hash; harness re-proves
+      determinism), UnitLauncherConfig (sim.ts), the blueprintSchema.json
+      UnitLauncherConfig + unitLauncher property (regenerate), and the
+      buildTurretConfig + turrets.ts validateTurretUnitLauncher handling. Pure
+      dead-data cleanup; kept out of the byte-identical commits on purpose.
+    - IN-APP (user eyes only): confirm queens build bees/ticks visibly attached
+      and free-fall on release; tune the carry pose -- ATTACHED_BUILD_SHELL_
+      ELEVATION (placeholder 60 in ServerSimulationCore) + the queen spawn-turret
+      mount x -- and the build rates (bee 120 / tick 30, set to match the old
+      cadence; balance change: queens now COST resources, were free/cooldown).
 
-    SEPARATE / deferred (NOT needed for the queen): builder.constructionRate
-    (commander 50 / drone 35) still funds pass 1 directly; moving it onto the
+    SEPARATE / deferred (not queen-related): builder.constructionRate
+    (commander 50 / drone 35) still funds pass 1 directly -- moving it onto the
     construction-pylon mount + dissolving the builder component is its own pass
-    (the per-mount constructionRate field now exists to enable it). Build ROSTER ->
-    spawn turret is also still open. Both shift the canonical hash (builder is
-    hashed), so they are deliberate behaviour-preserving migrations, not byte-identical.
+    (the per-mount constructionRate field already exists). Build ROSTER -> spawn
+    turret is also still open. Both shift the hash (builder is hashed).
 ================================================================================
