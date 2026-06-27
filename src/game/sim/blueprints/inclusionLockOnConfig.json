@@ -279,22 +279,10 @@
       }
     },
     "unitQueenBee": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "towers": "all",
-          "units": "all"
-        }
-      }
+      "targets": "none"
     },
     "unitQueenTick": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "towers": "all",
-          "units": "all"
-        }
-      }
+      "targets": "none"
     },
     "unitTransport": {
       "targets": "none"

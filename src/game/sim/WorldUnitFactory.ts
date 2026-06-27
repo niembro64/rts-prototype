@@ -212,7 +212,10 @@ export function createUnitFromBlueprintEntity(
       rallyZ: null,
       rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
       guardTargetId: null,
-      isProducing: false,
+      // A queen is a continuous auto-producer (the old launcher's autoProduce):
+      // it builds its bee/tick from spawn, funded over time, with no player
+      // queue command -- unlike a fabricator, which a player toggles on.
+      isProducing: true,
       energyRateFraction: 0,
       metalRateFraction: 0,
     };

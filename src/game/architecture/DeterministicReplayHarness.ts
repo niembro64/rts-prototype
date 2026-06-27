@@ -14,6 +14,7 @@ import type { Command } from '../sim/commands';
 import type { BuildingBlueprintId, Entity, PlayerId } from '../sim/types';
 import { ServerBootstrap } from '../server/ServerBootstrap';
 import { ServerSimulationCore } from '../server/ServerSimulationCore';
+import { createPhysicsBodyForUnit } from '../server/unitPhysicsBody';
 import {
   buildCanonicalServerState,
   type CanonicalServerState,
@@ -308,6 +309,34 @@ const CASES: readonly DeterministicReplayCase[] = [
       const commander = core.world.getCommander(2 as PlayerId);
       if (commander !== undefined) {
         throw new Error('[deterministic replay] expected self-destructed commander cleanup');
+      }
+    },
+  },
+  {
+    id: 'real-queen-mobile-factory-2p-150t',
+    ticks: 150,
+    config: BASE_REAL_CONFIG,
+    setup: (core) => {
+      createActiveQueenNear(core, requireCommander(core, 1 as PlayerId), 'unitQueenBee');
+    },
+    buildCommands: () => [],
+    assertFinal: (core) => {
+      const queen = requireFirstEntity(
+        core,
+        (entity) => entity.unit?.unitBlueprintId === 'unitQueenBee',
+        'mobile-factory queen',
+      );
+      if (queen.factory === null) {
+        throw new Error('[deterministic replay] queen did not derive a factory from its spawn turret');
+      }
+      const bees = core.world
+        .getUnits()
+        .filter((entity) => entity.unit?.unitBlueprintId === 'unitBee');
+      if (bees.length === 0) {
+        throw new Error('[deterministic replay] queen produced no unitBee shell');
+      }
+      if (!bees.some((entity) => entity.buildable === null)) {
+        throw new Error('[deterministic replay] queen produced no COMPLETED unitBee');
       }
     },
   },
@@ -644,6 +673,23 @@ function createActiveFactoryNear(core: ServerSimulationCore, builder: Entity): E
   );
   factory.body = { physicsBody: body };
   return factory;
+}
+
+function createActiveQueenNear(
+  core: ServerSimulationCore,
+  builder: Entity,
+  queenBlueprintId: string,
+): Entity {
+  const playerId = builder.ownership?.playerId ?? (1 as PlayerId);
+  const queen = core.world.createUnitFromBlueprint(
+    builder.transform.x + 220,
+    builder.transform.y,
+    playerId,
+    queenBlueprintId,
+  );
+  core.world.addEntity(queen);
+  createPhysicsBodyForUnit(core.world, core.physics, queen);
+  return queen;
 }
 
 export function resetReusableSimulationStateForDeterministicReplay(): void {
