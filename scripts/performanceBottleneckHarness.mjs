@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeFile } from 'node:fs/promises';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '..');
@@ -46,15 +47,58 @@ try {
       console.error(`[browser pageerror] ${error.stack ?? error.message}`);
     });
 
-    await page.goto(new URL('performanceBottleneckHarness.html', url).href, {
+    const harnessUrl = new URL('performanceBottleneckHarness.html', url);
+    if (options.snapshotWireStats) harnessUrl.searchParams.set('dp02', '1');
+    await page.goto(harnessUrl.href, {
       waitUntil: 'domcontentloaded',
     });
     await page.waitForFunction(() => typeof window.__runPerformanceBottleneckHarness === 'function');
-    const report = await page.evaluate((browserOptions) => (
-      window.__runPerformanceBottleneckHarness?.(browserOptions)
-    ), options.harnessOptions);
+
+    let cpuProfile = null;
+    let profilerSession = null;
+    if (options.profileCpu) {
+      profilerSession = await page.context().newCDPSession(page);
+      await profilerSession.send('Profiler.enable');
+      await profilerSession.send('Profiler.start');
+    }
+
+    let report;
+    try {
+      report = await page.evaluate((browserOptions) => (
+        window.__runPerformanceBottleneckHarness?.(browserOptions)
+      ), options.harnessOptions);
+    } finally {
+      if (profilerSession !== null) {
+        const stopped = await profilerSession.send('Profiler.stop');
+        cpuProfile = stopped.profile;
+        await profilerSession.detach();
+      }
+    }
     if (!report) throw new Error('Performance harness did not return a report');
+    const snapshotWireStats = options.snapshotWireStats
+      ? chooseSnapshotWireStats(
+          collectReportSnapshotWireStats(report),
+          await page.evaluate(() => ({
+            rows: window.__BA_DP02_SNAPSHOT_WIRE__?.rows?.() ?? [],
+            breakdowns: window.__BA_DP02_SNAPSHOT_WIRE__?.breakdowns?.() ?? [],
+          })),
+        )
+      : null;
+    const cpuProfileSummary = cpuProfile !== null
+      ? summarizeCpuProfile(cpuProfile, options.profileTop)
+      : null;
     printReport(report);
+    if (snapshotWireStats !== null) printSnapshotWireStats(snapshotWireStats);
+    if (cpuProfileSummary !== null) printCpuProfileSummary(cpuProfileSummary);
+    if (options.jsonPath !== null) {
+      const outputPath = path.resolve(repoRoot, options.jsonPath);
+      await writeFile(
+        outputPath,
+        JSON.stringify({ report, snapshotWireStats, cpuProfileSummary }, null, 2),
+      );
+      console.log('');
+      console.log(`wrote JSON report: ${path.relative(repoRoot, outputPath)}`);
+    }
   } finally {
     await browser.close();
   }
@@ -65,17 +109,38 @@ try {
 function parseArgs(args) {
   const harnessOptions = {};
   let headless = true;
+  let profileCpu = false;
+  let profileTop = 30;
+  let snapshotWireStats = false;
+  let jsonPath = null;
   for (const arg of args) {
     if (arg === '--headed') {
       headless = false;
       continue;
     }
+    if (arg === '--profile-cpu') {
+      profileCpu = true;
+      continue;
+    }
+    if (arg === '--snapshot-wire-stats' || arg === '--dp02') {
+      snapshotWireStats = true;
+      continue;
+    }
     const match = /^--([^=]+)=(.+)$/.exec(arg);
     if (!match) continue;
     const key = match[1];
-    const value = Number(match[2]);
+    const rawValue = match[2];
+    if (key === 'json') {
+      jsonPath = rawValue;
+      continue;
+    }
+    const value = Number(rawValue);
     if (!Number.isFinite(value)) continue;
     switch (key) {
+      case 'profile-top':
+      case 'profileTop':
+        profileTop = Math.max(1, Math.floor(value));
+        break;
       case 'unit-cap':
       case 'unitCap':
         harnessOptions.unitCap = value;
@@ -112,6 +177,10 @@ function parseArgs(args) {
   }
   return {
     headless,
+    profileCpu,
+    profileTop,
+    snapshotWireStats,
+    jsonPath,
     width: harnessOptions.width,
     height: harnessOptions.height,
     harnessOptions,
@@ -131,6 +200,7 @@ function printReport(report) {
   console.log(`  p95 ceiling: ${fmt(report.simOnly.simCeilingTpsP95)} TPS`);
   console.log('');
   console.log('SIM + SNAPSHOT + CLIENT APPLY');
+  console.log(`  units/buildings/projectiles: ${report.simSnapshot.units}/${report.simSnapshot.buildings}/${report.simSnapshot.projectiles}`);
   console.log(`  snapshots: ${report.simSnapshot.snapshots}`);
   console.log(`  step ms avg/p95/max: ${triplet(report.simSnapshot.stepMs)}`);
   console.log(`  snapshot total ms avg/p95/max: ${triplet(report.simSnapshot.snapshotTotalMs)}`);
@@ -154,6 +224,138 @@ function printReport(report) {
   console.log(`  ${report.diagnosis.summary}`);
   for (const line of report.diagnosis.evidence) console.log(`  evidence: ${line}`);
   for (const line of report.diagnosis.nextChecks) console.log(`  next: ${line}`);
+}
+
+function printSnapshotWireStats(stats) {
+  console.log('');
+  console.log('SNAPSHOT WIRE STATS');
+  if (!stats.rows.length) {
+    console.log('  no DP02 rows recorded');
+  } else {
+    for (const row of stats.rows) {
+      console.log(
+        `  ${row.listener} rate=${row.rate} band=${row.unitBand} samples=${row.samples} ` +
+          `encoder=${row.encoder} materialization=${row.materialization} ` +
+          `units(avg/max)=${row.unitsAvg}/${row.unitsMax} ` +
+          `bytes(avg/max)=${row.bytesAvg}/${row.bytesMax} ` +
+          `encodeMs(avg/max)=${row.encodeMs}/${row.encodeMsMax}`,
+      );
+      if (row.rawKeys) console.log(`    raw keys: ${row.rawKeys}`);
+    }
+  }
+  if (stats.breakdowns.length) {
+    console.log('  latest payload byte breakdowns:');
+    for (const row of stats.breakdowns) {
+      console.log(
+        `    total=${row.totalBytes} ` +
+          `top=${row.top1}:${row.top1Bytes}B/${fmt(row.top1Pct)}%, ` +
+          `${row.top2}:${row.top2Bytes}B/${fmt(row.top2Pct)}%, ` +
+          `${row.top3}:${row.top3Bytes}B/${fmt(row.top3Pct)}%`,
+      );
+      if (row.entityTop) console.log(`      entity fields: ${row.entityTop}`);
+      if (row.projectileTop) console.log(`      projectile fields: ${row.projectileTop}`);
+    }
+  }
+}
+
+function collectReportSnapshotWireStats(report) {
+  const rows = [];
+  const breakdowns = [];
+  for (const phase of [report.simSnapshot, report.fullStack]) {
+    const stats = phase.snapshotWireStats;
+    if (!stats) continue;
+    if (Array.isArray(stats.rows)) rows.push(...stats.rows);
+    if (Array.isArray(stats.breakdowns)) breakdowns.push(...stats.breakdowns);
+  }
+  return { rows, breakdowns };
+}
+
+function chooseSnapshotWireStats(reportStats, liveStats) {
+  if (reportStats.rows.length > 0 || reportStats.breakdowns.length > 0) return reportStats;
+  return liveStats;
+}
+
+function printCpuProfileSummary(summary) {
+  console.log('');
+  console.log('CPU PROFILE TOP FILES');
+  for (const row of summary.files) {
+    console.log(`  ${fmt(row.selfMs)}ms ${fmt(row.pct)}% ${row.file}`);
+  }
+  console.log('');
+  console.log('CPU PROFILE TOP FUNCTIONS');
+  for (const row of summary.functions) {
+    console.log(`  ${fmt(row.selfMs)}ms ${fmt(row.pct)}% ${row.name} ${row.location}`);
+  }
+}
+
+function summarizeCpuProfile(profile, limit) {
+  const nodeById = new Map(profile.nodes.map((node) => [node.id, node]));
+  const totalUs = Array.isArray(profile.timeDeltas)
+    ? profile.timeDeltas.reduce((sum, value) => sum + value, 0)
+    : (profile.samples?.length ?? 0) * 1000;
+  const functions = new Map();
+  const files = new Map();
+  const samples = profile.samples ?? [];
+  for (let i = 0; i < samples.length; i++) {
+    const node = nodeById.get(samples[i]);
+    if (!node) continue;
+    const callFrame = node.callFrame;
+    const selfUs = Array.isArray(profile.timeDeltas) ? (profile.timeDeltas[i] ?? 0) : 1000;
+    const file = normalizeProfileUrl(callFrame.url);
+    const functionName = callFrame.functionName || '(anonymous)';
+    const line = Math.max(1, (callFrame.lineNumber ?? 0) + 1);
+    const column = Math.max(1, (callFrame.columnNumber ?? 0) + 1);
+    const location = file ? `${file}:${line}:${column}` : '<native>';
+    const key = `${functionName}|${location}`;
+    const fnRow = functions.get(key) ?? {
+      name: functionName,
+      location,
+      selfUs: 0,
+      samples: 0,
+    };
+    fnRow.selfUs += selfUs;
+    fnRow.samples++;
+    functions.set(key, fnRow);
+
+    const fileKey = file || '<native>';
+    const fileRow = files.get(fileKey) ?? { file: fileKey, selfUs: 0, samples: 0 };
+    fileRow.selfUs += selfUs;
+    fileRow.samples++;
+    files.set(fileKey, fileRow);
+  }
+
+  const toPublicRow = (row) => ({
+    ...row,
+    selfMs: row.selfUs / 1000,
+    pct: totalUs > 0 ? (row.selfUs / totalUs) * 100 : 0,
+  });
+  return {
+    totalMs: totalUs / 1000,
+    functions: [...functions.values()]
+      .sort((a, b) => b.selfUs - a.selfUs)
+      .slice(0, limit)
+      .map(toPublicRow),
+    files: [...files.values()]
+      .sort((a, b) => b.selfUs - a.selfUs)
+      .slice(0, Math.min(limit, 20))
+      .map(toPublicRow),
+  };
+}
+
+function normalizeProfileUrl(url) {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return url;
+    if (parsed.pathname.startsWith('/budget-annihilation/')) {
+      return `${parsed.pathname.slice('/budget-annihilation/'.length)}${parsed.search}`;
+    }
+    return `${parsed.pathname.replace(/^\/+/, '')}${parsed.search}`;
+  } catch {
+    return url
+      .replace(/^https?:\/\/[^/]+\/budget-annihilation\//, '')
+      .replace(/^https?:\/\/[^/]+\//, '');
+  }
 }
 
 function triplet(summary) {

@@ -30,6 +30,7 @@ import {
 import {
   isPackedProjectileSnapshotWire,
   packProjectilesForWire,
+  type PackedProjectileSnapshotWire,
   unpackProjectilesFromWire,
 } from './snapshotProjectileWirePack';
 import {
@@ -167,8 +168,8 @@ export function measureNetworkSnapshotWireBreakdown(
   const envelopeBytes = Math.max(0, measuredTotalBytes - topLevelSum);
   if (envelopeBytes > 0) topLevel.envelope = envelopeBytes;
 
-  const entity = measureEntityBreakdown(state.entities);
-  const projectile = measureProjectileBreakdown(state.projectiles);
+  const entity = measureEntityBreakdown(state.entities, wireState.entities);
+  const projectile = measureProjectileBreakdown(state.projectiles, wireState.projectiles);
 
   return {
     totalBytes: measuredTotalBytes,
@@ -298,10 +299,16 @@ function addPairBytes(
 
 function measureEntityBreakdown(
   entities: readonly NetworkServerSnapshotEntity[],
+  wireEntities: NetworkServerSnapshotWire['entities'],
 ): Record<string, number> {
   const sections: Record<string, number> = {};
+  if (isPackedEntitySnapshotWire(wireEntities)) {
+    return measurePackedEntityBreakdown(wireEntities);
+  }
+
   for (let i = 0; i < entities.length; i++) {
     const entity = entities[i];
+    if (entity === undefined) continue;
     for (let keyI = 0; keyI < ENTITY_MAJOR_KEYS.length; keyI++) {
       const key = ENTITY_MAJOR_KEYS[keyI];
       addPairBytes(sections, `entities.${key}`, key, entity[key]);
@@ -322,10 +329,31 @@ function measureEntityBreakdown(
   return sections;
 }
 
-function measureProjectileBreakdown(
-  projectiles: NetworkServerSnapshot['projectiles'],
+function measurePackedEntityBreakdown(
+  entities: PackedEntitySnapshotWire,
 ): Record<string, number> {
   const sections: Record<string, number> = {};
+  addPairBytes(sections, 'entities.version', 'v', entities.v);
+  if (entities.m !== undefined) {
+    addPairBytes(sections, 'entities.movementRows', 'm', entities.m);
+  }
+  if (entities.t !== undefined) {
+    addPairBytes(sections, 'entities.turretRows', 't', entities.t);
+  }
+  if (entities.e !== undefined) {
+    addPairBytes(sections, 'entities.detailRows', 'e', entities.e);
+  }
+  return sections;
+}
+
+function measureProjectileBreakdown(
+  projectiles: NetworkServerSnapshot['projectiles'],
+  wireProjectiles: NetworkServerSnapshotWire['projectiles'],
+): Record<string, number> {
+  const sections: Record<string, number> = {};
+  if (isPackedProjectileSnapshotWire(wireProjectiles)) {
+    return measurePackedProjectileBreakdown(wireProjectiles);
+  }
   if (projectiles === undefined) return sections;
 
   addPairBytes(sections, 'projectiles.spawns', 'spawns', projectiles.spawns);
@@ -335,11 +363,37 @@ function measureProjectileBreakdown(
 
   const spawns = projectiles.spawns;
   if (spawns !== undefined) {
-    for (let i = 0; i < spawns.length; i++) measureProjectileSpawn(sections, spawns[i]);
+    for (let i = 0; i < spawns.length; i++) {
+      const spawn = spawns[i];
+      if (spawn !== undefined) measureProjectileSpawn(sections, spawn);
+    }
   }
   const beamUpdates = projectiles.beamUpdates;
   if (beamUpdates !== undefined) {
-    for (let i = 0; i < beamUpdates.length; i++) measureBeamUpdate(sections, beamUpdates[i]);
+    for (let i = 0; i < beamUpdates.length; i++) {
+      const beam = beamUpdates[i];
+      if (beam !== undefined) measureBeamUpdate(sections, beam);
+    }
+  }
+  return sections;
+}
+
+function measurePackedProjectileBreakdown(
+  projectiles: PackedProjectileSnapshotWire,
+): Record<string, number> {
+  const sections: Record<string, number> = {};
+  addPairBytes(sections, 'projectiles.version', 'v', projectiles.v);
+  if (projectiles.s !== undefined) {
+    addPairBytes(sections, 'projectiles.spawnsPacked', 's', projectiles.s);
+  }
+  if (projectiles.d !== undefined) {
+    addPairBytes(sections, 'projectiles.despawnsPacked', 'd', projectiles.d);
+  }
+  if (projectiles.u !== undefined) {
+    addPairBytes(sections, 'projectiles.velocityUpdatesPacked', 'u', projectiles.u);
+  }
+  if (projectiles.b !== undefined) {
+    addPairBytes(sections, 'projectiles.beamUpdatesPacked', 'b', projectiles.b);
   }
   return sections;
 }

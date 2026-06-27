@@ -13,6 +13,13 @@ import {
   PackedBinaryWriter,
   readPackedBinaryRowCount,
 } from './snapshotBinaryWire';
+import {
+  MINIMAP_SNAPSHOT_WIRE_STRIDE,
+  getMinimapSnapshotWireSource,
+} from './stateSerializerMinimap';
+import {
+  activeFloat64WireValues,
+} from './snapshotWireRows';
 
 const PACKED_MINIMAP_ENTITIES_V1_VERSION = 1;
 const PACKED_MINIMAP_ENTITIES_VERSION = 2;
@@ -169,28 +176,68 @@ function packMinimapEntitiesV2(
 ): Uint8Array {
   resetMinimapPackScratch();
   const estimatedGroupBytes = Math.max(24, Math.ceil(entries.length / 4) * 8);
+  const source = getMinimapSnapshotWireSource(entries);
+
+  if (source !== undefined && source.count === entries.length) {
+    const rows = activeFloat64WireValues(source, MINIMAP_SNAPSHOT_WIRE_STRIDE);
+    for (let i = 0; i < source.count; i++) {
+      const base = i * MINIMAP_SNAPSHOT_WIRE_STRIDE;
+      appendMinimapPackedRow(
+        rows[base + 0],
+        rows[base + 1],
+        rows[base + 2],
+        rows[base + 3],
+        rows[base + 4],
+        rows[base + 5],
+        estimatedGroupBytes,
+      );
+    }
+
+    return finishMinimapPackedRows(source.count);
+  }
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
-    const typeTag = minimapTypeToWireType(entry.type);
-    const flags = entry.radarOnly === true ? MINIMAP_ENTITY_FLAG_RADAR_ONLY : 0;
-    const playerId = entry.playerId;
-    const key = typeTag * 0x1000 + playerId * 0x10 + flags;
-    let group = _packGroupsByKey[key];
-    if (group === undefined) {
-      group = rentMinimapGroup(typeTag, playerId, flags, estimatedGroupBytes);
-      _packGroupsByKey[key] = group;
-      _packGroupKeys.push(key);
-      _packGroups.push(group);
-    }
-
-    group.writer.writeVarInt(entry.id - group.lastId);
-    group.lastId = entry.id;
-    group.writer.writeVarInt(entry.pos.x);
-    group.writer.writeVarInt(entry.pos.y);
-    group.count++;
+    appendMinimapPackedRow(
+      entry.id,
+      entry.pos.x,
+      entry.pos.y,
+      minimapTypeToWireType(entry.type),
+      entry.playerId,
+      entry.radarOnly === true ? MINIMAP_ENTITY_FLAG_RADAR_ONLY : 0,
+      estimatedGroupBytes,
+    );
   }
 
+  return finishMinimapPackedRows(entries.length);
+}
+
+function appendMinimapPackedRow(
+  id: number,
+  x: number,
+  y: number,
+  typeTag: number,
+  playerId: number,
+  flags: number,
+  estimatedGroupBytes: number,
+): void {
+  const key = typeTag * 0x1000 + playerId * 0x10 + flags;
+  let group = _packGroupsByKey[key];
+  if (group === undefined) {
+    group = rentMinimapGroup(typeTag, playerId, flags, estimatedGroupBytes);
+    _packGroupsByKey[key] = group;
+    _packGroupKeys.push(key);
+    _packGroups.push(group);
+  }
+
+  group.writer.writeVarInt(id - group.lastId);
+  group.lastId = id;
+  group.writer.writeVarInt(x);
+  group.writer.writeVarInt(y);
+  group.count++;
+}
+
+function finishMinimapPackedRows(count: number): Uint8Array {
   let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
   for (let i = 0; i < _packGroups.length; i++) {
     estimatedBytes += _packGroups[i].writer.byteLength + 8;
@@ -206,7 +253,7 @@ function packMinimapEntitiesV2(
     out.writeVarUint(group.count);
     out.writeBytes(group.writer.finishBytes());
   }
-  out.setUint32LE(0, entries.length);
+  out.setUint32LE(0, count);
   const packed = out.finishBytes();
   resetMinimapPackScratch();
   return packed;

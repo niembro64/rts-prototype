@@ -33,6 +33,17 @@ import {
   EVENT_HAS_VICTIM_PLAYER_ID,
   EVENT_HAS_WATER_SPLASH_CONTEXT,
 } from './audioEventWireFormat';
+import {
+  AUDIO_DEATH_CONTEXT_WIRE_STRIDE,
+  AUDIO_EVENT_WIRE_STRIDE,
+  AUDIO_IMPACT_CONTEXT_WIRE_STRIDE,
+  AUDIO_TURRET_POSE_WIRE_STRIDE,
+  getAudioEventWireSource,
+  type AudioEventWireSource,
+} from './stateSerializerAudio';
+import {
+  activeFloat64WireValues,
+} from './snapshotWireRows';
 
 const PACKED_AUDIO_EVENTS_VERSION = 2;
 
@@ -111,6 +122,11 @@ export function packAudioEventsForWire(
   if (events.length === 0) return undefined;
 
   resetAudioPackScratch();
+  const source = getAudioEventWireSource(events);
+  if (source !== undefined && source.eventRows.count === events.length) {
+    return packAudioEventWireSourceForWire(source);
+  }
+
   const strings = _packStrings;
   const stringSlots = _packStringSlots;
   const eventRows = _packEventRows;
@@ -207,6 +223,122 @@ export function packAudioEventsForWire(
     i: impactRows.length > 0 ? impactRows : undefined,
     t: turretPoseRows.length > 0 ? turretPoseRows : undefined,
   };
+}
+
+function packAudioEventWireSourceForWire(
+  source: AudioEventWireSource,
+): PackedAudioEventsWire | undefined {
+  const strings = _packStrings;
+  strings.push(...source.strings);
+  appendAudioEventSourceRows(source);
+  appendDeathContextSourceRows(source);
+  appendImpactContextSourceRows(source);
+  appendTurretPoseSourceRows(source);
+
+  if (_packEventRows.length === 0) return undefined;
+  return {
+    v: PACKED_AUDIO_EVENTS_VERSION,
+    s: strings,
+    e: _packEventRows,
+    d: _packDeathRows.length > 0 ? _packDeathRows : undefined,
+    i: _packImpactRows.length > 0 ? _packImpactRows : undefined,
+    t: _packTurretPoseRows.length > 0 ? _packTurretPoseRows : undefined,
+  };
+}
+
+function appendAudioEventSourceRows(source: AudioEventWireSource): void {
+  const values = activeFloat64WireValues(source.eventRows, AUDIO_EVENT_WIRE_STRIDE);
+  for (let i = 0; i < source.eventRows.count; i++) {
+    const base = i * AUDIO_EVENT_WIRE_STRIDE;
+    const flags = values[base + 15] ?? 0;
+    const row = rentRow(_packEventRowPool);
+    row.push(
+      values[base + 0] ?? 0,
+      flags,
+      values[base + 13] ?? 0,
+      values[base + 1] ?? 0,
+      values[base + 2] ?? 0,
+      values[base + 3] ?? 0,
+    );
+
+    if ((flags & EVENT_HAS_SOURCE_TYPE) !== 0) row.push(values[base + 12] ?? 0);
+    if ((flags & EVENT_HAS_SOURCE_KEY) !== 0) row.push(values[base + 14] ?? 0);
+    if ((flags & EVENT_HAS_PLAYER_ID) !== 0) row.push(values[base + 4] ?? 0);
+    if ((flags & EVENT_HAS_ENTITY_ID) !== 0) row.push(values[base + 5] ?? 0);
+    if ((flags & EVENT_HAS_SHIELD_IMPACT) !== 0) {
+      row.push(
+        values[base + 8] ?? 0,
+        values[base + 9] ?? 0,
+        values[base + 10] ?? 0,
+        values[base + 11] ?? 0,
+      );
+    }
+    if ((flags & EVENT_HAS_KILLER_PLAYER_ID) !== 0) row.push(values[base + 6] ?? 0);
+    if ((flags & EVENT_HAS_VICTIM_PLAYER_ID) !== 0) row.push(values[base + 7] ?? 0);
+    if ((flags & EVENT_HAS_AUDIO_ONLY) !== 0) {
+      row.push((flags & EVENT_AUDIO_ONLY_VALUE) !== 0 ? 1 : 0);
+    }
+    if ((flags & EVENT_HAS_WATER_SPLASH_CONTEXT) !== 0) {
+      row.push(
+        values[base + 16] ?? 0,
+        values[base + 17] ?? 0,
+        values[base + 18] ?? 0,
+        values[base + 19] ?? 0,
+      );
+    }
+    _packEventRows.push(row);
+  }
+}
+
+function appendDeathContextSourceRows(source: AudioEventWireSource): void {
+  const values = activeFloat64WireValues(source.deathContextRows, AUDIO_DEATH_CONTEXT_WIRE_STRIDE);
+  for (let i = 0; i < source.deathContextRows.count; i++) {
+    const base = i * AUDIO_DEATH_CONTEXT_WIRE_STRIDE;
+    const flags = values[base + 0] ?? 0;
+    const row = rentRow(_packDeathRowPool);
+    row.push(
+      flags,
+      values[base + 1] ?? 0,
+      values[base + 2] ?? 0,
+      values[base + 3] ?? 0,
+      values[base + 4] ?? 0,
+      values[base + 5] ?? 0,
+      values[base + 6] ?? 0,
+      values[base + 7] ?? 0,
+      values[base + 8] ?? 0,
+      values[base + 9] ?? 0,
+    );
+
+    if ((flags & DEATH_HAS_VISUAL_RADIUS) !== 0) row.push(values[base + 10] ?? 0);
+    if ((flags & DEATH_HAS_COLLISION_RADIUS) !== 0) row.push(values[base + 11] ?? 0);
+    if ((flags & DEATH_HAS_BASE_Z) !== 0) row.push(values[base + 12] ?? 0);
+    if ((flags & DEATH_HAS_UNIT_TYPE) !== 0) row.push(values[base + 13] ?? 0);
+    if ((flags & DEATH_HAS_ROTATION) !== 0) row.push(values[base + 14] ?? 0);
+    if ((flags & DEATH_HAS_TURRET_POSES) !== 0) row.push(values[base + 15] ?? 0);
+    _packDeathRows.push(row);
+  }
+}
+
+function appendImpactContextSourceRows(source: AudioEventWireSource): void {
+  const values = activeFloat64WireValues(source.impactContextRows, AUDIO_IMPACT_CONTEXT_WIRE_STRIDE);
+  for (let i = 0; i < source.impactContextRows.count; i++) {
+    const base = i * AUDIO_IMPACT_CONTEXT_WIRE_STRIDE;
+    const row = rentRow(_packImpactRowPool);
+    for (let j = 0; j < AUDIO_IMPACT_CONTEXT_WIRE_STRIDE; j++) {
+      row.push(values[base + j] ?? 0);
+    }
+    _packImpactRows.push(row);
+  }
+}
+
+function appendTurretPoseSourceRows(source: AudioEventWireSource): void {
+  const values = activeFloat64WireValues(source.turretPoseRows, AUDIO_TURRET_POSE_WIRE_STRIDE);
+  for (let i = 0; i < source.turretPoseRows.count; i++) {
+    const base = i * AUDIO_TURRET_POSE_WIRE_STRIDE;
+    const row = rentRow(_packTurretPoseRowPool);
+    row.push(values[base + 0] ?? 0, values[base + 1] ?? 0);
+    _packTurretPoseRows.push(row);
+  }
 }
 
 export function unpackAudioEventsFromWire(

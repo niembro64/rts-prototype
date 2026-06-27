@@ -8,6 +8,7 @@ import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { getSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { GameServer } from '../server/GameServer';
+import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 
 type NumericSummary = {
   readonly avg: number;
@@ -67,6 +68,7 @@ type SimSnapshotReport = {
   readonly snapshotBytes: NumericSummary;
   readonly fixedStepUtilPctP95: number;
   readonly snapshotMainThreadMsPerSecond: number;
+  readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
 
 type FullStackReport = {
@@ -93,6 +95,12 @@ type FullStackReport = {
   readonly bufferUploadCalls: NumericSummary;
   readonly longtaskMsPerSec: NumericSummary;
   readonly snapshotBytes: NumericSummary;
+  readonly snapshotWireStats?: SnapshotWireStatsReport;
+};
+
+type SnapshotWireStatsReport = {
+  readonly rows: readonly unknown[];
+  readonly breakdowns: readonly unknown[];
 };
 
 type BottleneckDiagnosis = {
@@ -259,6 +267,7 @@ async function runSimSnapshot(
 
     const stepMs = summarize(stepSamples);
     const snapshotTotalMs = summarize(snapshotSamples);
+    const snapshotWireStats = readSnapshotWireStats();
     return {
       ...countCoreEntities(core),
       measuredTicks: options.ticks,
@@ -270,6 +279,7 @@ async function runSimSnapshot(
       fixedStepUtilPctP95: (stepMs.p95 / fixedStepMs) * 100,
       snapshotMainThreadMsPerSecond:
         snapshotTotalMs.avg * (1000 / (fixedStepMs * options.snapshotEveryTicks)),
+      snapshotWireStats,
     };
   } finally {
     unsubscribe();
@@ -374,6 +384,7 @@ async function runFullStack(
       snapshotBytes.push(snapSize.avgBytes);
     }
 
+    const snapshotWireStats = readSnapshotWireStats();
     return {
       units: clientViewState.getUnits().length,
       buildings: clientViewState.getBuildings().length,
@@ -398,6 +409,7 @@ async function runFullStack(
       bufferUploadCalls: summarize(bufferUploadCalls),
       longtaskMsPerSec: summarize(longtaskMsPerSec),
       snapshotBytes: summarize(snapshotBytes),
+      snapshotWireStats,
     };
   } finally {
     if (game !== null) destroyGame(game);
@@ -405,6 +417,14 @@ async function runFullStack(
     server.stop();
     parent.remove();
   }
+}
+
+function readSnapshotWireStats(): SnapshotWireStatsReport | undefined {
+  if (!SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return undefined;
+  const rows = SNAPSHOT_ENCODE_INSTRUMENTATION.rows();
+  const breakdowns = SNAPSHOT_ENCODE_INSTRUMENTATION.breakdowns();
+  if (rows.length === 0 && breakdowns.length === 0) return undefined;
+  return { rows, breakdowns };
 }
 
 function createServerConfig(

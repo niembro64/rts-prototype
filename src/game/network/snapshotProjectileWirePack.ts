@@ -6,15 +6,18 @@ import type {
   NetworkServerSnapshotVelocityUpdate,
 } from './NetworkTypes';
 import {
+  PROJECTILE_BEAM_POINT_WIRE_STRIDE,
   PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID,
   PROJECTILE_BEAM_POINT_FLAG_NORMAL_X,
   PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y,
   PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z,
   PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND,
   PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID,
+  PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE,
   PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE,
   PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T,
+  PROJECTILE_SPAWN_WIRE_STRIDE,
   PROJECTILE_SPAWN_FLAG_BEAM,
   PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE,
   PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE,
@@ -27,6 +30,9 @@ import {
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID,
   PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
+  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  getProjectileSnapshotWireSource,
+  type ProjectileSnapshotWireSource,
 } from './stateSerializerProjectiles';
 import {
   PACKED_BINARY_ROW_COUNT_BYTES,
@@ -34,6 +40,10 @@ import {
   PackedBinaryWriter,
   readPackedBinaryRowCount,
 } from './snapshotBinaryWire';
+import {
+  activeFloat64WireValues,
+  activeUint32WireValues,
+} from './snapshotWireRows';
 
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
 type PlayerId = NetworkServerSnapshotBeamPoint['reflectorPlayerId'];
@@ -64,6 +74,7 @@ export function packProjectilesForWire(
   projectiles: ProjectileSnapshot | undefined,
 ): PackedProjectileSnapshotWire | undefined {
   if (projectiles === undefined) return undefined;
+  const source = getCurrentProjectileWireSource(projectiles);
   const packed: PackedProjectileSnapshotWire = {
     v: PACKED_PROJECTILES_VERSION,
     s: undefined,
@@ -71,15 +82,44 @@ export function packProjectilesForWire(
     u: undefined,
     b: undefined,
   };
-  const spawnBytes = packProjectileSpawns(projectiles.spawns);
-  const despawnBytes = packProjectileDespawns(projectiles.despawns);
-  const velocityBytes = packProjectileVelocityUpdates(projectiles.velocityUpdates);
-  const beamBytes = packBeamUpdates(projectiles.beamUpdates);
+  const spawnBytes = source !== undefined
+    ? packProjectileSpawnsFromSource(source)
+    : packProjectileSpawns(projectiles.spawns);
+  const despawnBytes = source !== undefined
+    ? packProjectileDespawnsFromSource(source)
+    : packProjectileDespawns(projectiles.despawns);
+  const velocityBytes = source !== undefined
+    ? packProjectileVelocityUpdatesFromSource(source)
+    : packProjectileVelocityUpdates(projectiles.velocityUpdates);
+  const beamBytes = source !== undefined
+    ? packBeamUpdatesFromSource(source)
+    : packBeamUpdates(projectiles.beamUpdates);
   if (spawnBytes !== undefined) packed.s = spawnBytes;
   if (despawnBytes !== undefined) packed.d = despawnBytes;
   if (velocityBytes !== undefined) packed.u = velocityBytes;
   if (beamBytes !== undefined) packed.b = beamBytes;
   return packed;
+}
+
+function getCurrentProjectileWireSource(
+  projectiles: ProjectileSnapshot,
+): ProjectileSnapshotWireSource | undefined {
+  const source = getProjectileSnapshotWireSource(projectiles);
+  if (source === undefined) return undefined;
+  const spawnCount = projectiles.spawns !== undefined ? projectiles.spawns.length : 0;
+  const despawnCount = projectiles.despawns !== undefined ? projectiles.despawns.length : 0;
+  const velocityCount = projectiles.velocityUpdates !== undefined
+    ? projectiles.velocityUpdates.length
+    : 0;
+  const beamCount = projectiles.beamUpdates !== undefined ? projectiles.beamUpdates.length : 0;
+  return (
+    source.spawns.count === spawnCount &&
+    source.despawns.count === despawnCount &&
+    source.velocityUpdates.count === velocityCount &&
+    source.beamUpdates.count === beamCount
+  )
+    ? source
+    : undefined;
 }
 
 export function unpackProjectilesFromWire(
@@ -173,6 +213,55 @@ function packProjectileSpawns(
   return out.finishBytes();
 }
 
+function packProjectileSpawnsFromSource(
+  source: ProjectileSnapshotWireSource,
+): Uint8Array | undefined {
+  const rows = source.spawns;
+  if (rows.count === 0) return undefined;
+
+  const values = activeFloat64WireValues(rows, PROJECTILE_SPAWN_WIRE_STRIDE);
+  const groups: SpawnGroup[] = [];
+  const groupsByFlags: (SpawnGroup | undefined)[] = [];
+  const estimatedPerRow = 16;
+
+  for (let i = 0; i < rows.count; i++) {
+    const base = i * PROJECTILE_SPAWN_WIRE_STRIDE;
+    const flags = values[base + 31] ?? 0;
+    let group = groupsByFlags[flags];
+    if (group === undefined) {
+      group = {
+        flags,
+        writer: new PackedBinaryWriter(Math.max(32, rows.count * estimatedPerRow)),
+        count: 0,
+        lastId: 0,
+      };
+      groupsByFlags[flags] = group;
+      groups.push(group);
+    }
+    writeSpawnSourceRow(group.writer, values, base, flags, group.lastId);
+    group.lastId = values[base + 0] ?? 0;
+    group.count++;
+  }
+
+  const chunks: Uint8Array[] = new Array(groups.length);
+  let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
+  for (let i = 0; i < groups.length; i++) {
+    chunks[i] = groups[i].writer.finishBytes();
+    estimatedBytes += chunks[i].byteLength + 8;
+  }
+
+  const out = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
+  out.writeVarUint(groups.length);
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    out.writeVarUint(group.flags);
+    out.writeVarUint(group.count);
+    out.writeBytes(chunks[i]);
+  }
+  out.setUint32LE(0, rows.count);
+  return out.finishBytes();
+}
+
 function computeSpawnFlags(spawn: NetworkServerSnapshotProjectileSpawn): number {
   let flags = 0;
   if (spawn.maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
@@ -251,6 +340,63 @@ function writeSpawnRow(
   }
   if ((flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) !== 0) {
     writer.writeFloat64(spawn.homingTurnRate ?? 0);
+  }
+}
+
+function writeSpawnSourceRow(
+  writer: PackedBinaryWriter,
+  values: Float64Array,
+  base: number,
+  flags: number,
+  lastId: number,
+): void {
+  const id = values[base + 0] ?? 0;
+  writer.writeVarInt(id - lastId);
+  writer.writeVarInt(values[base + 1] ?? 0);
+  writer.writeVarInt(values[base + 2] ?? 0);
+  writer.writeVarInt(values[base + 3] ?? 0);
+  writer.writeVarInt(values[base + 4] ?? 0);
+  writer.writeVarInt(values[base + 5] ?? 0);
+  writer.writeVarInt(values[base + 6] ?? 0);
+  writer.writeVarInt(values[base + 7] ?? 0);
+  writer.writeVarUint(values[base + 8] ?? 0);
+  writer.writeVarUint(values[base + 10] ?? 0);
+  writer.writeVarUint(values[base + 13] ?? 0);
+  writer.writeVarUint(values[base + 14] ?? 0);
+  writer.writeVarUint(values[base + 26] ?? 0);
+  writer.writeVarUint(values[base + 27] ?? 0);
+  writer.writeVarUint(values[base + 28] ?? 0);
+  writer.writeVarUint(values[base + 29] ?? 0);
+  writer.writeVarUint(values[base + 15] ?? 0);
+  writer.writeVarUint(values[base + 16] ?? 0);
+  if ((flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0) {
+    writer.writeVarUint(values[base + 9] ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE) !== 0) {
+    writer.writeVarUint(values[base + 11] ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) !== 0) {
+    writer.writeVarUint(values[base + 12] ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID) !== 0) {
+    writer.writeVarUint(values[base + 25] ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID) !== 0) {
+    writer.writeVarUint(values[base + 30] ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_BEAM) !== 0) {
+    writer.writeVarInt(values[base + 17] ?? 0);
+    writer.writeVarInt(values[base + 18] ?? 0);
+    writer.writeVarInt(values[base + 19] ?? 0);
+    writer.writeVarInt(values[base + 20] ?? 0);
+    writer.writeVarInt(values[base + 21] ?? 0);
+    writer.writeVarInt(values[base + 22] ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID) !== 0) {
+    writer.writeVarUint(values[base + 23] ?? 0);
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) !== 0) {
+    writer.writeFloat64(values[base + 24] ?? 0);
   }
 }
 
@@ -386,6 +532,26 @@ function packProjectileDespawns(
   return writer.finishBytes();
 }
 
+function packProjectileDespawnsFromSource(
+  source: ProjectileSnapshotWireSource,
+): Uint8Array | undefined {
+  const rows = source.despawns;
+  if (rows.count === 0) return undefined;
+  const ids = activeUint32WireValues(rows, 1);
+  const writer = new PackedBinaryWriter(
+    Math.max(PACKED_BINARY_ROW_COUNT_BYTES + 1, PACKED_BINARY_ROW_COUNT_BYTES + rows.count * 2),
+    PACKED_BINARY_ROW_COUNT_BYTES,
+  );
+  let lastId = 0;
+  for (let i = 0; i < rows.count; i++) {
+    const id = ids[i] ?? 0;
+    writer.writeVarInt(id - lastId);
+    lastId = id;
+  }
+  writer.setUint32LE(0, rows.count);
+  return writer.finishBytes();
+}
+
 function unpackProjectileDespawns(
   bytes: Uint8Array,
 ): NonNullable<ProjectileSnapshot['despawns']> {
@@ -468,6 +634,66 @@ function packProjectileVelocityUpdates(
     out.writeBytes(chunks[i]);
   }
   out.setUint32LE(0, updates.length);
+  return out.finishBytes();
+}
+
+function packProjectileVelocityUpdatesFromSource(
+  source: ProjectileSnapshotWireSource,
+): Uint8Array | undefined {
+  const rows = source.velocityUpdates;
+  if (rows.count === 0) return undefined;
+
+  const values = activeFloat64WireValues(rows, PROJECTILE_VELOCITY_WIRE_STRIDE);
+  const groups: VelocityGroup[] = [];
+  const groupsByFlags: (VelocityGroup | undefined)[] = [];
+  const estimatedPerRow = 9;
+
+  for (let i = 0; i < rows.count; i++) {
+    const base = i * PROJECTILE_VELOCITY_WIRE_STRIDE;
+    let flags = values[base + 7] !== 0 ? VELOCITY_FLAG_CLEAR_HOMING : 0;
+    if ((values[base + 8] ?? 0) !== 0) flags |= VELOCITY_FLAG_TARGET_ENTITY_ID;
+    let group = groupsByFlags[flags];
+    if (group === undefined) {
+      group = {
+        flags,
+        writer: new PackedBinaryWriter(Math.max(32, rows.count * estimatedPerRow)),
+        count: 0,
+        lastId: 0,
+      };
+      groupsByFlags[flags] = group;
+      groups.push(group);
+    }
+    const id = values[base + 0] ?? 0;
+    group.writer.writeVarInt(id - group.lastId);
+    group.lastId = id;
+    group.writer.writeVarInt(values[base + 1] ?? 0);
+    group.writer.writeVarInt(values[base + 2] ?? 0);
+    group.writer.writeVarInt(values[base + 3] ?? 0);
+    group.writer.writeVarInt(values[base + 4] ?? 0);
+    group.writer.writeVarInt(values[base + 5] ?? 0);
+    group.writer.writeVarInt(values[base + 6] ?? 0);
+    if ((flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0) {
+      group.writer.writeVarUint(values[base + 8] ?? 0);
+    }
+    group.count++;
+  }
+
+  const chunks: Uint8Array[] = new Array(groups.length);
+  let estimatedBytes = PACKED_BINARY_ROW_COUNT_BYTES + 4;
+  for (let i = 0; i < groups.length; i++) {
+    chunks[i] = groups[i].writer.finishBytes();
+    estimatedBytes += chunks[i].byteLength + 8;
+  }
+
+  const out = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
+  out.writeVarUint(groups.length);
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    out.writeVarUint(group.flags);
+    out.writeVarUint(group.count);
+    out.writeBytes(chunks[i]);
+  }
+  out.setUint32LE(0, rows.count);
   return out.finishBytes();
 }
 
@@ -562,6 +788,47 @@ function packBeamUpdates(
   return writer.finishBytes();
 }
 
+function packBeamUpdatesFromSource(
+  source: ProjectileSnapshotWireSource,
+): Uint8Array | undefined {
+  const rows = source.beamUpdates;
+  if (rows.count === 0) return undefined;
+
+  const headers = activeFloat64WireValues(rows, PROJECTILE_BEAM_UPDATE_WIRE_STRIDE);
+  const points = activeFloat64WireValues(source.beamPoints, PROJECTILE_BEAM_POINT_WIRE_STRIDE);
+  const estimatedBytes =
+    PACKED_BINARY_ROW_COUNT_BYTES + rows.count * 8 + source.beamPoints.count * 14;
+  const writer = new PackedBinaryWriter(estimatedBytes, PACKED_BINARY_ROW_COUNT_BYTES);
+  let lastBeamId = 0;
+  let pointOffset = 0;
+
+  for (let i = 0; i < rows.count; i++) {
+    const base = i * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
+    const id = headers[base + 0] ?? 0;
+    writer.writeVarInt(id - lastBeamId);
+    lastBeamId = id;
+
+    const flags = headers[base + 1] ?? 0;
+    writer.writeVarUint(flags);
+    if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0) {
+      writer.writeVarInt(headers[base + 2] ?? 0);
+    }
+
+    const pointCount = headers[base + 3] ?? 0;
+    writer.writeVarUint(pointCount);
+    for (let p = 0; p < pointCount; p++) {
+      writeBeamPointSourceRow(
+        writer,
+        points,
+        (pointOffset + p) * PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+      );
+    }
+    pointOffset += pointCount;
+  }
+  writer.setUint32LE(0, rows.count);
+  return writer.finishBytes();
+}
+
 function writeBeamPoint(
   writer: PackedBinaryWriter,
   point: NetworkServerSnapshotBeamPoint,
@@ -596,6 +863,36 @@ function writeBeamPoint(
   }
   if ((flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0) {
     writer.writeVarInt(point.normalZ ?? 0);
+  }
+}
+
+function writeBeamPointSourceRow(
+  writer: PackedBinaryWriter,
+  values: Float64Array,
+  base: number,
+): void {
+  const flags = values[base + 6] ?? 0;
+  writer.writeVarUint(flags);
+  writer.writeVarInt(values[base + 0] ?? 0);
+  writer.writeVarInt(values[base + 1] ?? 0);
+  writer.writeVarInt(values[base + 2] ?? 0);
+  writer.writeVarInt(values[base + 3] ?? 0);
+  writer.writeVarInt(values[base + 4] ?? 0);
+  writer.writeVarInt(values[base + 5] ?? 0);
+  if ((flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0) {
+    writer.writeVarUint(values[base + 7] ?? 0);
+  }
+  if ((flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0) {
+    writer.writeVarUint(values[base + 8] ?? 0);
+  }
+  if ((flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) !== 0) {
+    writer.writeVarInt(values[base + 9] ?? 0);
+  }
+  if ((flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) !== 0) {
+    writer.writeVarInt(values[base + 10] ?? 0);
+  }
+  if ((flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0) {
+    writer.writeVarInt(values[base + 11] ?? 0);
   }
 }
 
