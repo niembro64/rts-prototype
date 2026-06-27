@@ -258,6 +258,12 @@ function createReusableEntity(): NetworkServerSnapshotEntity {
   };
 }
 
+export function cloneNetworkSnapshotEntity(
+  src: NetworkServerSnapshotEntity,
+): NetworkServerSnapshotEntity {
+  return copyEntityInto(src, createReusableEntity());
+}
+
 function copyEconomyInto(
   src: NetworkServerSnapshotEconomy,
   dst: NetworkServerSnapshotEconomy,

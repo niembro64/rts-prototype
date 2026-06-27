@@ -996,9 +996,9 @@ async function createDeterministicLockstepBackendRuntime({
       // render cadence or command-frame catch-up under high unit counts.
       if (nowMs - lastLockstepPresentationSnapshotMs >= lockstepPresentationSnapshotIntervalMs) {
         const snapshotStartMs = performance.now();
-        server.emitLockstepPresentationSnapshot();
+        const didEmitSnapshot = server.emitLockstepPresentationSnapshot();
         lastLockstepPresentationSnapshotMs = snapshotStartMs;
-        recordSnapshotMs(performance.now() - snapshotStartMs);
+        if (didEmitSnapshot) recordSnapshotMs(performance.now() - snapshotStartMs);
       } else {
         const snapshotStartMs = performance.now();
         if (server.emitLockstepProjectileDeltaSnapshotIfNeeded()) {

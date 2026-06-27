@@ -16,12 +16,16 @@ import {
 import {
   createSnapshotVisibilityCache,
   getOrBuildVisibility,
+  serializeScanPulses,
   type SnapshotVisibility,
 } from '../network/stateSerializerVisibility';
 import { serializeAudioEvents } from '../network/stateSerializerAudio';
+import { serializeEconomySnapshot } from '../network/stateSerializerEconomy';
 import { serializeSprayTargets } from '../network/stateSerializerSpray';
 import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMinimap';
 import { serializeProjectileSnapshot } from '../network/stateSerializerProjectiles';
+import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
+import { serializeGridSnapshot } from '../network/stateSerializerGrid';
 import {
   getEntitySnapshotPoolStats,
   resetEntitySnapshotPool,
@@ -82,6 +86,8 @@ export type SnapshotListenerEntry = {
    *  being marked sent, or its client reported it never got one. */
   needsStatic: boolean;
   startupReady: boolean;
+  hasVisibleEntityBaseline: boolean;
+  visibleEntityIds: Set<EntityId>;
 };
 
 type ServerSnapshotPublisherInput = {
@@ -114,6 +120,10 @@ export class ServerSnapshotPublisher {
   private readonly teamAudioCache = new Map<string, SerializerAudioOverride>();
   private readonly teamSprayCache = new Map<string, SerializerSprayOverride>();
   private readonly teamMinimapCache = new Map<string, SerializerMinimapOverride>();
+  private readonly currentVisibleEntityIdsBuf = new Set<EntityId>();
+  private readonly deltaRemovedEntityIdsBuf: EntityId[] = [];
+  private readonly deltaRemovedEntityIdSet = new Set<EntityId>();
+  private readonly deltaEntityIdSet = new Set<EntityId>();
   reset(): void {}
 
   clear(): void {
@@ -125,6 +135,10 @@ export class ServerSnapshotPublisher {
     this.teamAudioCache.clear();
     this.teamSprayCache.clear();
     this.teamMinimapCache.clear();
+    this.currentVisibleEntityIdsBuf.clear();
+    this.deltaRemovedEntityIdsBuf.length = 0;
+    this.deltaRemovedEntityIdSet.clear();
+    this.deltaEntityIdSet.clear();
   }
 
   hasEntityMotionDeltaCandidates(world: WorldState): boolean {
@@ -133,6 +147,47 @@ export class ServerSnapshotPublisher {
       if (isEntityMotionDeltaCandidate(units[i])) return true;
     }
     return false;
+  }
+
+  private updateListenerVisibleBaseline(
+    listener: SnapshotListenerEntry,
+    world: WorldState,
+    visibility: SnapshotVisibility,
+  ): void {
+    const baseline = listener.visibleEntityIds;
+    this.collectCurrentVisibleEntityIds(world, visibility, baseline);
+    listener.hasVisibleEntityBaseline = true;
+  }
+
+  private collectCurrentVisibleEntityIds(
+    world: WorldState,
+    visibility: SnapshotVisibility,
+    out: Set<EntityId>,
+  ): void {
+    out.clear();
+    const visibleEntityIds = visibility.getVisibleEntityIds();
+    if (visibleEntityIds !== undefined) {
+      for (let i = 0; i < visibleEntityIds.length; i++) {
+        out.add(visibleEntityIds[i]);
+      }
+      return;
+    }
+    const sources: ReadonlyArray<readonly Entity[]> = [
+      world.getUnits(),
+      world.getBuildings(),
+    ];
+    for (let s = 0; s < sources.length; s++) {
+      const source = sources[s];
+      for (let i = 0; i < source.length; i++) {
+        const entity = source[i];
+        if (
+          (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') &&
+          visibility.isEntityVisible(entity)
+        ) {
+          out.add(entity.id);
+        }
+      }
+    }
   }
 
   emit(input: ServerSnapshotPublisherInput): void {
@@ -260,6 +315,7 @@ export class ServerSnapshotPublisher {
           if (shouldSendStaticTerrain) {
             this.markListenerStaticMapSent(listener, input);
           }
+          this.updateListenerVisibleBaseline(listener, input.world, visibility);
           return directSnapshot;
         }
       }
@@ -326,6 +382,7 @@ export class ServerSnapshotPublisher {
         this.markListenerStaticMapSent(listener, input);
       }
       state.serverMeta = serverMeta;
+      this.updateListenerVisibleBaseline(listener, input.world, visibility);
       return this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
     };
 
@@ -338,6 +395,11 @@ export class ServerSnapshotPublisher {
           sharedGlobalStaticSnapshot = serializeForListener(listener);
         } else {
           this.markListenerStaticMapSent(listener, input);
+          this.updateListenerVisibleBaseline(
+            listener,
+            input.world,
+            getOrBuildVisibility(input.world, listener.playerId, visibilityCache),
+          );
         }
         listener.callback(
           sharedGlobalStaticSnapshot.state,
@@ -347,6 +409,12 @@ export class ServerSnapshotPublisher {
       } else {
         if (!sharedGlobalDynamicSnapshot) {
           sharedGlobalDynamicSnapshot = serializeForListener(listener);
+        } else {
+          this.updateListenerVisibleBaseline(
+            listener,
+            input.world,
+            getOrBuildVisibility(input.world, listener.playerId, visibilityCache),
+          );
         }
         listener.callback(
           sharedGlobalDynamicSnapshot.state,
@@ -361,6 +429,283 @@ export class ServerSnapshotPublisher {
       const snapshot = serializeForListener(listener);
       listener.callback(snapshot.state, undefined, snapshot.wirePayload);
     }
+  }
+
+  emitLockstepPresentation(input: ServerSnapshotPublisherInput): boolean {
+    if (input.listeners.length === 0) return false;
+    for (let i = 0; i < input.listeners.length; i++) {
+      const listener = input.listeners[i];
+      if (
+        !listener.startupReady ||
+        listener.needsFullState ||
+        this.listenerNeedsStaticMap(listener, input) ||
+        !listener.hasVisibleEntityBaseline
+      ) {
+        this.emit(input);
+        return true;
+      }
+    }
+    return this.emitDirtyPresentationDelta(input);
+  }
+
+  private emitDirtyPresentationDelta(input: ServerSnapshotPublisherInput): boolean {
+    const gamePhase = input.simulation.getGamePhase();
+    const winnerId = gamePhase === 'gameOver'
+      ? input.simulation.getWinnerId() ?? undefined
+      : undefined;
+    const sprayTargets = input.simulation.getSprayTargets();
+    const audioEvents = input.simulation.getAndClearEvents();
+    const projectileSpawns = input.simulation.getAndClearProjectileSpawns();
+    const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
+    const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
+
+    this.dirtyIdsBuf.length = 0;
+    this.dirtyFieldsBuf.length = 0;
+    this.removedEntitiesBuf.length = 0;
+    input.world.drainSnapshotDirtyEntities(this.dirtyIdsBuf, this.dirtyFieldsBuf);
+    input.world.drainRemovedSnapshotEntities(this.removedEntitiesBuf);
+
+    const hasProjectileEvents =
+      projectileSpawns.length > 0 ||
+      projectileDespawns.length > 0 ||
+      projectileVelocityUpdates.length > 0;
+
+    const unitCount = input.world.getUnits().length;
+    const entityPoolStats = getEntitySnapshotPoolStats();
+    const serverMeta = this.metaBuilder.build({
+      tickAvg: input.tpsAvg,
+      tickLow: input.tpsLow,
+      tickRateHz: input.tickRateHz,
+      snapshotRate: input.maxSnapshotsDisplay,
+      ipAddress: input.ipAddress,
+      gridEnabled: input.debugGridPublisher.isEnabled(),
+      allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
+      maxUnits: input.world.maxTotalUnits,
+      unitCount,
+      turretShieldPanelsEnabled: input.world.turretShieldPanelsEnabled,
+      turretShieldSpheresEnabled: input.world.turretShieldSpheresEnabled,
+      forceFieldsVisible: input.world.forceFieldsVisible,
+      shieldsObstructSight: input.world.shieldsObstructSight,
+      shieldReflectionMode: input.world.shieldReflectionMode,
+      fogOfWarEnabled: input.world.fogOfWarEnabled,
+      converterTax: input.world.converterTax,
+      tickMsAvg: input.tickMsAvg,
+      tickMsHi: input.tickMsHi,
+      tickMsInitialized: input.tickMsInitialized,
+      wind: input.simulation.getWindState(),
+      retainedPools: {
+        entitySnapshots: {
+          retained: entityPoolStats.retainedEntries,
+          active: entityPoolStats.activeEntries,
+          warm: entityPoolStats.warmEntries,
+        },
+      },
+      unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
+    });
+
+    const gridDebug = input.debugGridPublisher.refresh(performance.now(), input.world);
+    const gridCells = gridDebug.cells;
+    const gridSearchCells = gridDebug.searchCells;
+    const gridCellSize = gridDebug.cellSize;
+
+    const visibilityCache = this.visibilityCache;
+    visibilityCache.clear();
+    const teamAudioCache = this.teamAudioCache;
+    const teamSprayCache = this.teamSprayCache;
+    const teamMinimapCache = this.teamMinimapCache;
+    teamAudioCache.clear();
+    teamSprayCache.clear();
+    teamMinimapCache.clear();
+
+    let emitted = false;
+    for (const listener of input.listeners) {
+      const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
+      const currentVisible = this.currentVisibleEntityIdsBuf;
+      this.collectCurrentVisibleEntityIds(input.world, visibility, currentVisible);
+      const entities = this.serializeDirtyPresentationEntities(
+        input.world,
+        visibility,
+        listener.visibleEntityIds,
+        currentVisible,
+        this.dirtyIdsBuf,
+        this.dirtyFieldsBuf,
+      );
+      const removedEntityIds = this.serializeDirtyPresentationRemovals(
+        visibility,
+        listener.visibleEntityIds,
+        currentVisible,
+        this.removedEntitiesBuf,
+      );
+
+      const teamKey = visibility.teamMaskKey;
+      let audioOverride: SerializerAudioOverride | undefined;
+      let sprayOverride: SerializerSprayOverride | undefined;
+      let minimapOverride: SerializerMinimapOverride | undefined;
+      if (teamKey !== undefined) {
+        audioOverride = teamAudioCache.get(teamKey);
+        if (!audioOverride) {
+          audioOverride = {
+            value: serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
+          };
+          teamAudioCache.set(teamKey, audioOverride);
+        }
+        sprayOverride = teamSprayCache.get(teamKey);
+        if (!sprayOverride) {
+          sprayOverride = {
+            value: serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
+          };
+          teamSprayCache.set(teamKey, sprayOverride);
+        }
+        minimapOverride = teamMinimapCache.get(teamKey);
+        if (!minimapOverride) {
+          minimapOverride = {
+            value: serializeMinimapSnapshotEntities(
+              input.world,
+              visibility,
+              listener.cacheKey,
+            ),
+          };
+          teamMinimapCache.set(teamKey, minimapOverride);
+        }
+      }
+
+      const state: NetworkServerSnapshot = {
+        tick: input.world.getTick(),
+        entities,
+        entityDeltaOnly: true,
+        projectileDeltaOnly: undefined,
+        minimapEntities: minimapOverride !== undefined
+          ? minimapOverride.value
+          : serializeMinimapSnapshotEntities(input.world, visibility, listener.cacheKey),
+        economy: serializeEconomySnapshot(input.world.playerCount, listener.playerId),
+        resourceMovements: serializeResourceMovements(input.world, visibility),
+        sprayTargets: sprayOverride !== undefined
+          ? sprayOverride.value
+          : serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
+        audioEvents: audioOverride !== undefined
+          ? audioOverride.value
+          : serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
+        scanPulses: serializeScanPulses(input.world, visibility),
+        shroud: undefined,
+        projectiles: hasProjectileEvents
+          ? serializeProjectileSnapshot({
+              world: input.world,
+              fullStateResync: false,
+              visibility,
+              emitBeamUpdates: false,
+              projectileSpawns,
+              projectileDespawns,
+              projectileVelocityUpdates,
+            })
+          : undefined,
+        gameState: {
+          phase: gamePhase,
+          winnerId,
+        },
+        serverMeta,
+        grid: serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize),
+        terrain: undefined,
+        buildability: undefined,
+        removedEntityIds,
+        visibilityFiltered: visibility.isFiltered ? true : undefined,
+        visionPlayerMask: visibility.hasRecipient
+          ? visibility.getVisionPlayerMask()
+          : undefined,
+      };
+
+      this.copyVisibleBaseline(listener, currentVisible);
+      const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
+      listener.callback(state, undefined, encoded.wirePayload);
+      emitted = true;
+    }
+    return emitted;
+  }
+
+  private serializeDirtyPresentationEntities(
+    world: WorldState,
+    visibility: SnapshotVisibility,
+    previousVisibleEntityIds: ReadonlySet<EntityId>,
+    currentVisibleEntityIds: ReadonlySet<EntityId>,
+    dirtyIds: readonly EntityId[],
+    dirtyFields: readonly number[],
+  ): NetworkServerSnapshot['entities'] {
+    resetEntitySnapshotPool();
+    const entities: NetworkServerSnapshot['entities'] = [];
+    const emittedIds = this.deltaEntityIdSet;
+    emittedIds.clear();
+
+    for (const id of currentVisibleEntityIds) {
+      if (previousVisibleEntityIds.has(id)) continue;
+      const entity = world.getEntity(id);
+      if (
+        entity === undefined ||
+        (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
+      ) continue;
+      const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
+      if (netEntity !== null) {
+        entities.push(netEntity);
+        emittedIds.add(id);
+      }
+    }
+
+    for (let i = 0; i < dirtyIds.length; i++) {
+      const id = dirtyIds[i];
+      if (emittedIds.has(id)) continue;
+      if (!previousVisibleEntityIds.has(id) || !currentVisibleEntityIds.has(id)) continue;
+      const entity = world.getEntity(id);
+      if (
+        entity === undefined ||
+        (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
+      ) continue;
+      const netEntity = serializeEntitySnapshot(entity, dirtyFields[i], world, visibility);
+      if (netEntity !== null) {
+        entities.push(netEntity);
+        emittedIds.add(id);
+      }
+    }
+
+    emittedIds.clear();
+    return entities;
+  }
+
+  private serializeDirtyPresentationRemovals(
+    visibility: SnapshotVisibility,
+    previousVisibleEntityIds: ReadonlySet<EntityId>,
+    currentVisibleEntityIds: ReadonlySet<EntityId>,
+    removedEntities: readonly RemovedSnapshotEntity[],
+  ): NetworkServerSnapshot['removedEntityIds'] {
+    const removedIds = this.deltaRemovedEntityIdsBuf;
+    const removedIdSet = this.deltaRemovedEntityIdSet;
+    removedIds.length = 0;
+    removedIdSet.clear();
+
+    const pushRemoved = (id: EntityId): void => {
+      if (removedIdSet.has(id)) return;
+      removedIdSet.add(id);
+      removedIds.push(id);
+    };
+
+    for (let i = 0; i < removedEntities.length; i++) {
+      const record = removedEntities[i];
+      if (visibility.shouldSendRemoval(record)) pushRemoved(record.id);
+    }
+
+    for (const id of previousVisibleEntityIds) {
+      if (!currentVisibleEntityIds.has(id)) pushRemoved(id);
+    }
+
+    removedIdSet.clear();
+    return removedIds.length > 0 ? removedIds : undefined;
+  }
+
+  private copyVisibleBaseline(
+    listener: SnapshotListenerEntry,
+    currentVisibleEntityIds: ReadonlySet<EntityId>,
+  ): void {
+    const baseline = listener.visibleEntityIds;
+    baseline.clear();
+    for (const id of currentVisibleEntityIds) baseline.add(id);
+    listener.hasVisibleEntityBaseline = true;
   }
 
   emitProjectileDelta(input: ServerSnapshotPublisherInput): boolean {

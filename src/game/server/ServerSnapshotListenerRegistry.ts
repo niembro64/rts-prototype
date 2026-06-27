@@ -41,6 +41,8 @@ export class ServerSnapshotListenerRegistry {
       needsFullState: false,
       needsStatic: false,
       startupReady: false,
+      hasVisibleEntityBaseline: false,
+      visibleEntityIds: new Set(),
     });
     return trackingKey;
   }
@@ -52,6 +54,8 @@ export class ServerSnapshotListenerRegistry {
     for (const listener of this.listeners) {
       if (listener.playerId !== playerId) continue;
       listener.needsFullState = true;
+      listener.hasVisibleEntityBaseline = false;
+      listener.visibleEntityIds.clear();
       if (includeStatic) listener.needsStatic = true;
     }
   }

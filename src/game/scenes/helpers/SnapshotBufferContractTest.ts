@@ -168,6 +168,21 @@ export function runSnapshotBufferContractTest(): void {
     'entity motion delta must patch the pending full entity pose',
   );
 
+  fake.emitSnapshot(createSnapshot(6, [], [createUnitEntity(40, 100, null)]));
+  const visibilityDelta = createSnapshot(7, [], [createUnitEntity(41, 500, null)]);
+  visibilityDelta.entityDeltaOnly = true;
+  visibilityDelta.removedEntityIds = [40];
+  fake.emitSnapshot(visibilityDelta);
+  const consumedWithVisibilityDelta = buffer.consume();
+  assertContract(
+    consumedWithVisibilityDelta?.entities.some((entity) => entity.id === 41) === true,
+    'entity delta full rows must append newly visible entities to pending full snapshots',
+  );
+  assertContract(
+    consumedWithVisibilityDelta?.entities.some((entity) => entity.id === 40) === false,
+    'entity delta removals must prune pending full snapshot rows',
+  );
+
   const sparseMotionDelta = createSnapshot(7, [], [createSparseDecodedMotionUnitEntity(31, 300)]);
   sparseMotionDelta.entityDeltaOnly = true;
   fake.emitSnapshot(sparseMotionDelta);

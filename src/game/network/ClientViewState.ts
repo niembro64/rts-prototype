@@ -715,7 +715,7 @@ export class ClientViewState {
     const entityDeltaOnly = state.entityDeltaOnly === true;
     const projectileDeltaOnly = state.projectileDeltaOnly === true;
     const presentationDeltaOnly = entityDeltaOnly || projectileDeltaOnly;
-    if (!presentationDeltaOnly) {
+    if (!presentationDeltaOnly || state.minimapEntities !== undefined) {
       this.minimapOverrideStore.applySnapshot(state.minimapEntities);
     }
     let cacheNeedsInvalidate = false;
@@ -849,7 +849,7 @@ export class ClientViewState {
       }
     }
 
-    if (!presentationDeltaOnly && state.removedEntityIds) {
+    if (!projectileDeltaOnly && state.removedEntityIds) {
       for (const id of state.removedEntityIds) {
         this.deleteEntityLocalState(id);
       }
@@ -951,7 +951,7 @@ export class ClientViewState {
     // Update economy state (immediate). Local in-memory clients share
     // the local server's economy singleton, so they must not
     // replay older snapshots back into the server state.
-    if (!presentationDeltaOnly && options.syncEconomy !== false) {
+    if (options.syncEconomy !== false) {
       // Avoid Object.entries here: snapshots arrive frequently and this
       // path should not allocate an intermediate [key,value][] array
       // just to walk up to six players.
@@ -963,8 +963,10 @@ export class ClientViewState {
       }
     }
 
-    if (!presentationDeltaOnly) {
+    if (!presentationDeltaOnly || state.resourceMovements !== undefined) {
       this.applyResourceMovements(state.resourceMovements);
+    }
+    if (!presentationDeltaOnly || state.sprayTargets !== undefined) {
       this.sprayTargetStore.applySnapshot(state.sprayTargets);
     }
 
@@ -996,7 +998,7 @@ export class ClientViewState {
     // Snapshot owns the full list of active scan pulses for this
     // client's team. Length is small (a few at most), so a fresh copy
     // each snapshot is cheaper than maintaining incremental state.
-    if (!presentationDeltaOnly) {
+    if (!presentationDeltaOnly || state.scanPulses !== undefined || state.serverMeta !== undefined) {
       const incomingPulses = state.scanPulses;
       if (incomingPulses && incomingPulses.length > 0) {
         this.scanPulses.length = incomingPulses.length;
@@ -1010,7 +1012,7 @@ export class ClientViewState {
 
     // Track authoritative game phase (battle / paused / gameOver)
     const gameState = state.gameState;
-    if (!presentationDeltaOnly && gameState !== undefined && gameState !== null) {
+    if (gameState !== undefined && gameState !== null) {
       this.gamePhase = gameState.phase;
       if (gameState.phase === 'gameOver' && gameState.winnerId !== undefined) {
         this.gameOverWinnerId = gameState.winnerId;
@@ -1022,21 +1024,21 @@ export class ClientViewState {
     // received grid payload until a new one arrives. When the server
     // toggle is off, serverMeta.grid clears the client copy.
     const serverMeta = state.serverMeta;
-    if (!presentationDeltaOnly && state.grid) {
+    if (state.grid) {
       this.gridCells = state.grid.cells;
       this.gridSearchCells = state.grid.searchCells;
       this.gridCellSize = state.grid.cellSize;
-    } else if (!presentationDeltaOnly && serverMeta !== undefined && serverMeta !== null && serverMeta.grid === false) {
+    } else if (serverMeta !== undefined && serverMeta !== null && serverMeta.grid === false) {
       this.gridCells = [];
       this.gridSearchCells = [];
       this.gridCellSize = 0;
     }
 
     // Store server metadata
-    if (!presentationDeltaOnly && serverMeta !== undefined && serverMeta !== null) {
+    if (serverMeta !== undefined && serverMeta !== null) {
       this.serverMeta = serverMeta;
     }
-    if (!presentationDeltaOnly) {
+    if (!presentationDeltaOnly || state.visionPlayerMask !== undefined) {
       this.visionPlayerMask = state.visionPlayerMask ?? 0;
     }
     return applyStats;

@@ -68,14 +68,6 @@ Please always commit and push before and after any code changes we make.
     should reuse those slabs instead of rebuilding per-recipient visible lists
     from JS entities.
 
-[29] Optimization - replace steady-state full presentation snapshots with dirty buffers
-    Preserve command truth, deterministic checksums, and current presentation
-    content. Keep full snapshots for join/resync/diagnostics, but the normal
-    local renderer path should consume shared/double-buffered typed
-    presentation slabs or compact dirty ranges. Remote client packets should be
-    bounded by changed fields and interest/visibility, not rebuilt full visible
-    entity rows every snapshot.
-
 [30] Optimization - flatten ClientViewState and prediction into slot-indexed typed state
     Preserve client prediction behavior and reconciliation results. Replace
     hot-path client Map<EntityId, Entity>, serverTargets maps, prediction sets,

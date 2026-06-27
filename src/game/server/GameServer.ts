@@ -291,10 +291,10 @@ export class GameServer {
     return this.core;
   }
 
-  emitLockstepPresentationSnapshot(): void {
-    if (this.stopped) return;
+  emitLockstepPresentationSnapshot(): boolean {
+    if (this.stopped) return false;
     this.lastSnapshotTime = performance.now();
-    this.emitSnapshot();
+    return this.snapshotPublisher.emitLockstepPresentation(this.buildSnapshotPublisherInput());
   }
 
   emitLockstepProjectileDeltaSnapshotIfNeeded(): boolean {

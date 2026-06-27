@@ -15,7 +15,10 @@ import type {
   NetworkServerSnapshotVelocityUpdate,
 } from '../../network/NetworkTypes';
 import type { GameConnection } from '../../server/GameConnection';
-import { ReusableNetworkSnapshotCloner } from '../../network/snapshotClone';
+import {
+  cloneNetworkSnapshotEntity,
+  ReusableNetworkSnapshotCloner,
+} from '../../network/snapshotClone';
 import {
   copyBeamInto,
   copySimEventInto,
@@ -155,20 +158,34 @@ export class SnapshotBuffer {
     this.bufferedDespawns.set(despawn.id, out);
   }
 
-  private mergeEntityMotionDeltaIntoPending(deltaEntities: readonly NetworkServerSnapshotEntity[]): void {
+  private mergeEntityMotionDeltaIntoPending(
+    deltaEntities: readonly NetworkServerSnapshotEntity[],
+    removedEntityIds: readonly number[] | undefined,
+  ): void {
     const pending = this.pendingSnapshot;
     if (pending === null || pending.entityDeltaOnly === true) return;
     const pendingEntities = pending.entities;
     for (let i = 0; i < deltaEntities.length; i++) {
       const delta = deltaEntities[i];
       let target: NetworkServerSnapshotEntity | undefined;
+      let targetIndex = -1;
       for (let j = 0; j < pendingEntities.length; j++) {
         if (pendingEntities[j].id === delta.id) {
           target = pendingEntities[j];
+          targetIndex = j;
           break;
         }
       }
-      if (target === undefined) continue;
+      if (target === undefined) {
+        if (delta.changedFields === null) {
+          pendingEntities.push(cloneNetworkSnapshotEntity(delta));
+        }
+        continue;
+      }
+      if (delta.changedFields === null) {
+        pendingEntities[targetIndex] = cloneNetworkSnapshotEntity(delta);
+        continue;
+      }
       if (delta.pos != null) {
         if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
         copyPositionDelta(delta.pos, target.pos);
@@ -194,6 +211,14 @@ export class SnapshotBuffer {
       if (srcUnit.angularVelocity3 != null) {
         if (dstUnit.angularVelocity3 === null) dstUnit.angularVelocity3 = { x: 0, y: 0, z: 0 };
         copyPositionDelta(srcUnit.angularVelocity3, dstUnit.angularVelocity3);
+      }
+    }
+    if (removedEntityIds !== undefined && removedEntityIds.length > 0) {
+      for (let i = 0; i < removedEntityIds.length; i++) {
+        const id = removedEntityIds[i];
+        for (let j = pendingEntities.length - 1; j >= 0; j--) {
+          if (pendingEntities[j].id === id) pendingEntities.splice(j, 1);
+        }
       }
     }
   }
@@ -266,7 +291,7 @@ export class SnapshotBuffer {
         this.pendingSnapshot !== null &&
         this.pendingSnapshot.entityDeltaOnly !== true
       ) {
-        this.mergeEntityMotionDeltaIntoPending(state.entities);
+        this.mergeEntityMotionDeltaIntoPending(state.entities, state.removedEntityIds);
         releaseSnapshot?.();
         return;
       }
