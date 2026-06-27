@@ -141,7 +141,8 @@ export class UnitForceSystem {
 
   private readonly physicsForceUnitIdsBuf: EntityId[] = [];
   private readonly physicsCandidateUnitIdsBuf: EntityId[] = [];
-  private readonly physicsActiveUnitIds = new Set<EntityId>();
+  private physicsActiveUnitIdMarks = new Uint32Array(1024);
+  private physicsActiveUnitIdMark = 1;
   private waterDryMaskCache = new Map<number, number>();
 
   constructor(world: WorldState, simulation: Simulation, physics: PhysicsEngine3D) {
@@ -538,26 +539,19 @@ export class UnitForceSystem {
 
   private collectPhysicsForceUnitIds(): void {
     const ids = this.physicsForceUnitIdsBuf;
-    const seen = this.physicsActiveUnitIds;
     ids.length = 0;
-    seen.clear();
-
-    const pushId = (id: EntityId): void => {
-      if (seen.has(id)) return;
-      seen.add(id);
-      ids.push(id);
-    };
+    this.beginPhysicsActiveUnitIdMarkFrame();
 
     const movingUnits = this.simulation.getMovingUnits();
     for (let i = 0; i < movingUnits.length; i++) {
-      pushId(movingUnits[i].id);
+      this.pushPhysicsForceUnitId(ids, movingUnits[i].id);
     }
 
     const units = this.world.getUnits();
     for (let i = 0; i < units.length; i++) {
       const unit = units[i].unit;
       if (unit !== null && unit.locomotion.type === 'flying') {
-        pushId(units[i].id);
+        this.pushPhysicsForceUnitId(ids, units[i].id);
       }
     }
 
@@ -565,16 +559,39 @@ export class UnitForceSystem {
     candidates.length = 0;
     this.simulation.getForceAccumulator().collectActiveEntityIds(candidates);
     for (let i = 0; i < candidates.length; i++) {
-      pushId(candidates[i]);
+      this.pushPhysicsForceUnitId(ids, candidates[i]);
     }
 
     candidates.length = 0;
     this.physics.collectAwakeEntityIds(candidates);
     for (let i = 0; i < candidates.length; i++) {
-      pushId(candidates[i]);
+      this.pushPhysicsForceUnitId(ids, candidates[i]);
     }
 
     ids.sort((a, b) => a - b);
+  }
+
+  private beginPhysicsActiveUnitIdMarkFrame(): void {
+    if (this.physicsActiveUnitIdMark >= 0xffffffff) {
+      this.physicsActiveUnitIdMarks.fill(0);
+      this.physicsActiveUnitIdMark = 1;
+      return;
+    }
+    this.physicsActiveUnitIdMark++;
+  }
+
+  private pushPhysicsForceUnitId(ids: EntityId[], id: EntityId): void {
+    if (id < 0 || !Number.isInteger(id)) return;
+    if (id >= this.physicsActiveUnitIdMarks.length) {
+      let cap = this.physicsActiveUnitIdMarks.length;
+      while (cap <= id) cap *= 2;
+      const next = new Uint32Array(cap);
+      next.set(this.physicsActiveUnitIdMarks);
+      this.physicsActiveUnitIdMarks = next;
+    }
+    if (this.physicsActiveUnitIdMarks[id] === this.physicsActiveUnitIdMark) return;
+    this.physicsActiveUnitIdMarks[id] = this.physicsActiveUnitIdMark;
+    ids.push(id);
   }
 
   private syncActiveBodyTransforms(activeIds: EntityId[]): void {

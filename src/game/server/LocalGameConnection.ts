@@ -21,6 +21,10 @@ import type { CommandAuthority } from './commandAuthority';
 export type LocalCommandAuthorityMode = 'player' | 'local-offline';
 export type LocalGameConnectionOptions = {
   commandDoorway?: (command: Command, fromPlayerId: PlayerId) => boolean;
+  /** Encode local snapshots only to stamp/diagnose estimated wire size.
+   *  Leave false for lockstep local presentation: gameplay truth is the
+   *  command stream, and SnapshotBuffer clones DTOs before render apply. */
+  recordSnapshotWireCost?: boolean;
   loopbackSnapshotsThroughWire?: boolean;
   sharesAuthoritativeState?: boolean;
 };
@@ -43,6 +47,7 @@ export class LocalGameConnection implements GameConnection {
   private commandPlayerId: PlayerId | undefined = undefined;
   private commandAuthorityMode: LocalCommandAuthorityMode;
   private readonly commandDoorway: ((command: Command, fromPlayerId: PlayerId) => boolean) | undefined;
+  private readonly recordSnapshotWireCost: boolean;
   private readonly loopbackSnapshotsThroughWire: boolean;
   /** Whose snapshot view this client receives. `undefined` = global
    *  observer (no fog filter; sees every entity). Decoupled from
@@ -61,6 +66,7 @@ export class LocalGameConnection implements GameConnection {
     this.filterPlayerId = playerId;
     this.commandAuthorityMode = commandAuthorityMode;
     this.commandDoorway = options.commandDoorway;
+    this.recordSnapshotWireCost = options.recordSnapshotWireCost === true;
     this.loopbackSnapshotsThroughWire = options.loopbackSnapshotsThroughWire === true;
     this.sharesAuthoritativeState = options.sharesAuthoritativeState ??
       !this.loopbackSnapshotsThroughWire;
@@ -128,11 +134,11 @@ export class LocalGameConnection implements GameConnection {
     wirePayload: SnapshotWirePayload | undefined = undefined,
   ): NetworkServerSnapshot {
     if (!this.loopbackSnapshotsThroughWire) {
-      this.recordLocalSnapshotWireCost(state, wirePayload);
+      this.recordLocalSnapshotWireCostIfNeeded(state, wirePayload);
       return state;
     }
     const encoded = wirePayload ?? this.encodeSnapshotForDiagnostics(state);
-    this.recordLocalSnapshotWireCost(state, encoded);
+    this.recordLocalSnapshotWireCostIfNeeded(state, encoded);
     const decoded = decodeNetworkSnapshot(encoded.bytes);
     setSnapshotWireBytes(decoded, encoded.bytes.byteLength);
     return decoded;
@@ -152,15 +158,18 @@ export class LocalGameConnection implements GameConnection {
     }
   }
 
-  private recordLocalSnapshotWireCost(
+  private recordLocalSnapshotWireCostIfNeeded(
     state: NetworkServerSnapshot,
     wirePayload: SnapshotWirePayload | undefined = undefined,
   ): void {
-    // Always encode + stamp the wire size: the CLIENT bar's DS SIZE /
-    // FS SIZE / NET readouts are fed by this stamp in local host play
-    // (their tooltips promise an estimate from the same MessagePack
-    // snapshot encoder). Only the heavier regression/instrumentation
-    // recording below stays gated behind the diagnostic flags.
+    if (
+      wirePayload === undefined &&
+      !this.recordSnapshotWireCost &&
+      !SNAPSHOT_CADENCE_REGRESSION.enabled &&
+      !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled
+    ) {
+      return;
+    }
     const encoded = wirePayload ?? this.encodeSnapshotForDiagnostics(state);
     const payload = encoded.bytes;
     const encodeMs = encoded.encodeMs;

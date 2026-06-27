@@ -103,8 +103,8 @@ export class WorldState {
   private buildingVersion: number = 0;
   private unitSetVersion: number = 0;
   private removedSnapshotEntities: RemovedSnapshotEntity[] = [];
-  private snapshotDirtyIds = new Set<EntityId>();
-  private snapshotDirtyFields = new Map<EntityId, number>();
+  private snapshotDirtyIds: EntityId[] = [];
+  private snapshotDirtyFieldsById: number[] = [];
   private pendingDeathCheckIds = new Set<EntityId>();
   private readonly supportSurfaceSampler: WorldSupportSurfaceSampler;
   // Monotonically-growing upper bound on `getTargetRadius(e)` across all
@@ -424,8 +424,7 @@ export class WorldState {
       });
     }
     this.pendingDeathCheckIds.delete(id);
-    this.snapshotDirtyIds.delete(id);
-    this.snapshotDirtyFields.delete(id);
+    this.snapshotDirtyFieldsById[id] = 0;
     if (entity !== undefined) this.markEntityMetadataDead(entity);
     this.entities.delete(id);
     if (entity !== undefined) this.cache.handleEntityRemoved(entity);
@@ -450,8 +449,9 @@ export class WorldState {
     const entity = this.entities.get(id);
     if (!entity || (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')) return;
     if (fields & ENTITY_CHANGED_HP) this.pendingDeathCheckIds.add(id);
-    this.snapshotDirtyIds.add(id);
-    this.snapshotDirtyFields.set(id, (this.snapshotDirtyFields.get(id) ?? 0) | fields);
+    const previousFields = this.snapshotDirtyFieldsById[id] ?? 0;
+    if (previousFields === 0) this.snapshotDirtyIds.push(id);
+    this.snapshotDirtyFieldsById[id] = previousFields | fields;
   }
 
   drainPendingDeathCheckIds(out: EntityId[]): void {
@@ -468,14 +468,16 @@ export class WorldState {
   drainSnapshotDirtyEntities(outIds: EntityId[], outFields: number[]): void {
     outIds.length = 0;
     outFields.length = 0;
-    for (const id of this.snapshotDirtyIds) outIds.push(id);
-    outIds.sort((a, b) => a - b);
-    for (let i = 0; i < outIds.length; i++) {
-      const id = outIds[i];
-      outFields.push(this.snapshotDirtyFields.get(id) ?? 0);
+    this.snapshotDirtyIds.sort((a, b) => a - b);
+    for (let i = 0; i < this.snapshotDirtyIds.length; i++) {
+      const id = this.snapshotDirtyIds[i];
+      const fields = this.snapshotDirtyFieldsById[id] ?? 0;
+      if (fields === 0) continue;
+      outIds.push(id);
+      outFields.push(fields);
+      this.snapshotDirtyFieldsById[id] = 0;
     }
-    this.snapshotDirtyIds.clear();
-    this.snapshotDirtyFields.clear();
+    this.snapshotDirtyIds.length = 0;
   }
 
   drainRemovedSnapshotEntityIds(out: EntityId[]): void {

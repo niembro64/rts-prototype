@@ -340,6 +340,30 @@ const CASES: readonly DeterministicReplayCase[] = [
       }
     },
   },
+  {
+    id: 'real-queen-mobile-factory-attach-release-2p-180t',
+    ticks: 180,
+    config: BASE_REAL_CONFIG,
+    setup: (core) => {
+      createActiveQueenNear(core, requireCommander(core, 1 as PlayerId), 'unitQueenBee');
+    },
+    buildCommands: () => [],
+    assertFinal: (_core, stats) => {
+      const queenStats = stats.queenMobileFactory;
+      if (!queenStats.shellAttachedToHostObserved) {
+        throw new Error('[deterministic replay] queen shell was never attached to the host while building');
+      }
+      if (!queenStats.shellPinnedAboveHostObserved) {
+        throw new Error('[deterministic replay] queen shell was not pinned above the host during construction');
+      }
+      if (!queenStats.completedReleasedObserved) {
+        throw new Error('[deterministic replay] queen shell was never released as a completed unit');
+      }
+      if (!queenStats.completedFallingOrLowerObserved) {
+        throw new Error('[deterministic replay] completed queen-built unit never fell below its attached shell pose');
+      }
+    },
+  },
 ];
 
 export async function runDeterministicReplayHarness(): Promise<DeterministicReplayHarnessReport> {
@@ -430,6 +454,12 @@ function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
 function createReplayRunStats(): ReplayRunStats {
   return {
     constructionEnergySpendByPlayer: new Map(),
+    queenMobileFactory: {
+      shellAttachedToHostObserved: false,
+      shellPinnedAboveHostObserved: false,
+      completedReleasedObserved: false,
+      completedFallingOrLowerObserved: false,
+    },
   };
 }
 
@@ -441,6 +471,44 @@ function observeReplayTick(core: ServerSimulationCore, stats: ReplayRunStats): v
     const playerId = movement.playerId;
     const previous = stats.constructionEnergySpendByPlayer.get(playerId) ?? 0;
     stats.constructionEnergySpendByPlayer.set(playerId, previous + movement.amount);
+  }
+  observeQueenMobileFactoryTick(core, stats);
+}
+
+function observeQueenMobileFactoryTick(core: ServerSimulationCore, stats: ReplayRunStats): void {
+  const queens = core.world.getUnits().filter((entity) =>
+    entity.unit?.unitBlueprintId === 'unitQueenBee' ||
+    entity.unit?.unitBlueprintId === 'unitQueenTick'
+  );
+  if (queens.length === 0) return;
+  const queenIds = new Set(queens.map((entity) => entity.id));
+  const producedUnits = core.world.getUnits().filter((entity) =>
+    entity.unit?.unitBlueprintId === 'unitBee' ||
+    entity.unit?.unitBlueprintId === 'unitTick'
+  );
+  for (let i = 0; i < producedUnits.length; i++) {
+    const entity = producedUnits[i];
+    const lockHostId = entity.buildable?.buildLockHostId ?? null;
+    if (lockHostId !== null && queenIds.has(lockHostId)) {
+      stats.queenMobileFactory.shellAttachedToHostObserved = true;
+      const host = core.world.getEntity(lockHostId);
+      if (host !== undefined) {
+        const dz = entity.transform.z - host.transform.z;
+        if (Math.abs(dz - QUEEN_ATTACHED_BUILD_SHELL_ELEVATION) <= 0.001) {
+          stats.queenMobileFactory.shellPinnedAboveHostObserved = true;
+        }
+      }
+      continue;
+    }
+    if (entity.buildable !== null) continue;
+    stats.queenMobileFactory.completedReleasedObserved = true;
+    for (let q = 0; q < queens.length; q++) {
+      const attachedZ = queens[q].transform.z + QUEEN_ATTACHED_BUILD_SHELL_ELEVATION;
+      if (entity.transform.z < attachedZ - 1) {
+        stats.queenMobileFactory.completedFallingOrLowerObserved = true;
+        break;
+      }
+    }
   }
 }
 

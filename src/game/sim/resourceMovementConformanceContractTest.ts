@@ -124,6 +124,7 @@ export function runResourceMovementConformanceContractTest(): void {
   const solar = createCompletedOpenBuilding(world, playerId, 'buildingSolar', 160, 120);
   const wind = createCompletedOpenBuilding(world, playerId, 'buildingWind', 220, 120);
   const extractor = createCompletedOpenBuilding(world, playerId, 'buildingExtractor', 280, 120);
+  extractor.metalExtractionRate = getBuildingConfig('buildingExtractor').metalProduction ?? 0;
 
   resourceMovementSystem.beginTick(world);
   economyManager.update(world, 1000, 1);

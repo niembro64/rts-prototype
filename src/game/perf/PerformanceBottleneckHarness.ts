@@ -199,6 +199,11 @@ const DEFAULT_OPTIONS: Required<PerformanceBottleneckHarnessOptions> = {
 const DEFAULT_SUITE_UNIT_CAPS = [500, 1000, 2500, 5000] as const;
 const PLAYER_IDS = [1 as PlayerId, 2 as PlayerId];
 const LOCAL_PLAYER_ID = 1 as PlayerId;
+const LOCAL_PRESENTATION_CONNECTION_OPTIONS = {
+  loopbackSnapshotsThroughWire: false,
+  recordSnapshotWireCost: false,
+  sharesAuthoritativeState: true,
+} as const;
 
 export async function runPerformanceBottleneckHarness(
   options: PerformanceBottleneckHarnessOptions = {},
@@ -393,8 +398,7 @@ async function runSimSnapshot(
   const server = await GameServer.create(createServerConfig(options));
   const core = server.getLockstepSimulationCore();
   const connection = new LocalGameConnection(server, LOCAL_PLAYER_ID, 'local-offline', {
-    loopbackSnapshotsThroughWire: true,
-    sharesAuthoritativeState: true,
+    ...LOCAL_PRESENTATION_CONNECTION_OPTIONS,
   });
   const view = new ClientViewState();
   view.setMapDimensions(mapWorldSize(options.mapCells), mapWorldSize(options.mapCells));
@@ -479,8 +483,7 @@ async function runFullStack(
 
   const server = await GameServer.create(createServerConfig(options));
   const connection = new LocalGameConnection(server, LOCAL_PLAYER_ID, 'local-offline', {
-    loopbackSnapshotsThroughWire: true,
-    sharesAuthoritativeState: true,
+    ...LOCAL_PRESENTATION_CONNECTION_OPTIONS,
   });
   const clientViewState = new ClientViewState();
   const mapSize = mapWorldSize(options.mapCells);

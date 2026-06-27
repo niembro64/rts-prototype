@@ -8,6 +8,7 @@ import type { KnockbackInfo } from '@/types/damage';
  * Accumulated forces for a single entity this frame.
  */
 type EntityForces = {
+  entityId: EntityId;
   contributions: ForceContribution[];
   contributionCount: number;  // How many contributions are active (avoids .length = 0 + push overhead)
   finalFx: number;
@@ -31,23 +32,22 @@ type EntityForces = {
  */
 export class ForceAccumulator {
   private forces: Map<EntityId, EntityForces> = new Map();
-  private activeIds: EntityId[] = [];
+  private activeEntries: EntityForces[] = [];
 
   /**
    * Clear all accumulated forces (call at start of each frame).
    * Reuses Map entries — just resets contribution counts.
    */
   clear(): void {
-    for (let i = 0; i < this.activeIds.length; i++) {
-      const entry = this.forces.get(this.activeIds[i]);
-      if (!entry) continue;
+    for (let i = 0; i < this.activeEntries.length; i++) {
+      const entry = this.activeEntries[i];
       entry.contributionCount = 0;
       entry.finalFx = 0;
       entry.finalFy = 0;
       entry.finalFz = 0;
       entry.active = false;
     }
-    this.activeIds.length = 0;
+    this.activeEntries.length = 0;
   }
 
   /**
@@ -56,7 +56,7 @@ export class ForceAccumulator {
    */
   reset(): void {
     this.forces.clear();
-    this.activeIds.length = 0;
+    this.activeEntries.length = 0;
   }
 
   /**
@@ -76,6 +76,7 @@ export class ForceAccumulator {
     let entry = this.forces.get(entityId);
     if (!entry) {
       entry = {
+        entityId,
         contributions: [],
         contributionCount: 0,
         finalFx: 0,
@@ -91,7 +92,7 @@ export class ForceAccumulator {
       entry.finalFx = 0;
       entry.finalFy = 0;
       entry.finalFz = 0;
-      this.activeIds.push(entityId);
+      this.activeEntries.push(entry);
     }
     const idx = entry.contributionCount++;
     if (idx < entry.contributions.length) {
@@ -202,9 +203,8 @@ export class ForceAccumulator {
    * Finalize forces by summing all contributions.
    */
   finalize(): void {
-    for (let a = 0; a < this.activeIds.length; a++) {
-      const entry = this.forces.get(this.activeIds[a]);
-      if (!entry) continue;
+    for (let a = 0; a < this.activeEntries.length; a++) {
+      const entry = this.activeEntries[a];
       entry.finalFx = 0;
       entry.finalFy = 0;
       entry.finalFz = 0;
@@ -252,10 +252,9 @@ export class ForceAccumulator {
    * contributionCount was reset by clear().
    */
   collectActiveEntityIds(out: EntityId[]): void {
-    for (let i = 0; i < this.activeIds.length; i++) {
-      const id = this.activeIds[i];
-      const entry = this.forces.get(id);
-      if (entry && entry.contributionCount > 0) out.push(id);
+    for (let i = 0; i < this.activeEntries.length; i++) {
+      const entry = this.activeEntries[i];
+      if (entry.contributionCount > 0) out.push(entry.entityId);
     }
     out.sort((a, b) => a - b);
   }

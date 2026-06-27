@@ -18,23 +18,12 @@ Please always commit and push before and after any code changes we make.
 
 
 
+
 [16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
     USER / in-app eyes only: build a Hippo and tune swim/float/sink +
     walk-on-bottom feel. Starter knobs: waterForce, waterTraction,
     waterFriction, swimHeightUpwardForce, and
     swimGravityCounterUpwardForceRatio.
-
-[20] Phase D (cont.) - surface producer income as inbound pylon balls
-    USER / in-app eyes only: confirm inbound producer balls render and converge
-    correctly in the running app for solar, wind, and metal extractors. A/B
-    density if needed.
-
-
-[22] Queen-as-mobile-factory in-app validation
-    USER / in-app eyes only: confirm queens build bees/ticks visibly attached
-    and free-fall on release. Tune the carry pose
-    (ATTACHED_BUILD_SHELL_ELEVATION in ServerSimulationCore and the queen
-    spawn-turret mount x) and build rates (bee 120 / tick 30) if needed.
 
 [23] Optimization - make Rust/WASM SoA state canonical for high-count entities
     Preserve gameplay exactly. Move hot-path unit/building/projectile state out
@@ -102,10 +91,4 @@ Please always commit and push before and after any code changes we make.
     overlays, and far LOD proxies should update stable GPU instance buffers via
     dirty ranges and shader-side expansion/culling.
 
-[32] Optimization - add golden high-count performance gates with no-gameplay-change checks
-    Extend PerformanceBottleneckHarness with repeatable 500, 1000, 2500, and
-    5000 unit scenarios. Track sim p95, snapshot ms/s, frame p95, render prep,
-    GPU time, long tasks, allocations, and JS/WASM boundary time. Every
-    optimization above must pass replay/checksum parity and visible-state parity
-    against the current gameplay before it can replace the old path.
 ================================================================================

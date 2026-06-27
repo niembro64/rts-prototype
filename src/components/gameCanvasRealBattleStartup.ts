@@ -923,12 +923,12 @@ async function createDeterministicLockstepBackendRuntime({
     networkRole === null ? 'local-offline' : 'player',
     {
       commandDoorway: scheduleCommand,
-      // Lockstep snapshots are presentation data; the canonical
-      // multiplayer truth is the command-frame stream. Decode snapshots
-      // through the wire boundary so client presentation never shares
-      // mutable objects with the local server simulation, while keeping
-      // the economy singleton owned by the local server.
-      loopbackSnapshotsThroughWire: true,
+      // Lockstep snapshots are local presentation data; the canonical
+      // multiplayer truth is the command-frame stream. SnapshotBuffer
+      // clones full DTOs before applying them, so local presentation
+      // does not need to pay the MessagePack wire boundary every frame.
+      loopbackSnapshotsThroughWire: false,
+      recordSnapshotWireCost: false,
       sharesAuthoritativeState: true,
     },
   );
