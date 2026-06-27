@@ -11,6 +11,7 @@ import {
   type CommandHotkeyId,
 } from '../../input/commandHotkeys';
 import { buildStructureMenuLayout } from '../../input/buildMenuLayout';
+import { getUnitBuilderAllowedBuildBlueprintIds } from '../builderBuildRoster';
 import { createTransportComponentForUnitBlueprint } from '../transports';
 import { BUILDING_BLUEPRINTS } from './buildings';
 import {
@@ -93,13 +94,14 @@ export function runRosterCommandSurfaceContractTest(): void {
     const unitBlueprint = UNIT_BLUEPRINTS[unitBlueprintId];
     assertContract(unitBlueprint !== undefined, `stable unit ${unitBlueprintId} must have a blueprint`);
     if (unitBlueprint.builder === null) continue;
+    const allowedBuildBlueprintIds = getUnitBuilderAllowedBuildBlueprintIds(unitBlueprint);
     assertSameMembers(
       `${unitBlueprintId} builder roster`,
-      unitBlueprint.builder.allowedBuildBlueprintIds,
+      allowedBuildBlueprintIds,
       playerBuildableStructures,
     );
 
-    const layout = buildStructureMenuLayout(unitBlueprint.builder.allowedBuildBlueprintIds);
+    const layout = buildStructureMenuLayout(allowedBuildBlueprintIds);
     assertSameMembers(
       `${unitBlueprintId} build menu`,
       layout.items.map((item) => item.buildingBlueprintId),

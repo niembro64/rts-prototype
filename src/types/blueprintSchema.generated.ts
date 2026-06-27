@@ -268,14 +268,6 @@ export type TurretAimStyle = {
   angleType: TurretAimAngleType;
 };
 
-export type UnitLauncherAimMode = 'ballistic-or-waypoint' | 'direct-target';
-
-export type UnitLauncherConfig = {
-  aimMode: UnitLauncherAimMode;
-  producedUnitBlueprintId: UnitBlueprintId | null;
-  autoProduce: boolean;
-};
-
 export type TurretLockOnRelationshipInclusion = 'friendly_entities' | 'enemy_entities';
 
 export type TurretLockOnEntityFamilyInclusion = 'buildings' | 'towers' | 'units' | 'turrets' | 'shots';
@@ -365,7 +357,6 @@ export type TurretBlueprint = {
   idlePitch: number;
   groundAimFraction: number | null;
   constructionEmitter: ConstructionEmitterVisualSpec | null;
-  unitLauncher?: UnitLauncherConfig | null;
   spawn?: SpawnTurretConfig | null;
   resourcePylon?: ResourcePylonConfig | null;
   includeLockOnLevel0FriendsAndEnemies: TurretLockOnRelationshipInclusion[];
@@ -400,6 +391,7 @@ export type TurretMount = {
   zResolver?: UnitTurretMountZResolver;
   visualVariant?: ConstructionEmitterSize;
   producedBlueprintId?: UnitBlueprintId;
+  allowedBuildBlueprintIds?: StructureBlueprintId[];
   buildLockAnchor?: 'spawnColumn' | 'host';
   constructionRate?: number;
 };
@@ -650,8 +642,6 @@ export type UnitRadiusConfig = EntityRadiusConfig;
 
 export type UnitBuilderConfig = {
   buildRange: number;
-  constructionRate: number;
-  allowedBuildBlueprintIds: StructureBlueprintId[];
 };
 
 export type UnitDgunConfig = {

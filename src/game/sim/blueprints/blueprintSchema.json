@@ -1151,39 +1151,6 @@
       },
       "additionalProperties": false
     },
-    "UnitLauncherAimMode": {
-      "enum": [
-        "ballistic-or-waypoint",
-        "direct-target"
-      ]
-    },
-    "UnitLauncherConfig": {
-      "type": "object",
-      "required": [
-        "aimMode",
-        "producedUnitBlueprintId",
-        "autoProduce"
-      ],
-      "properties": {
-        "aimMode": {
-          "$ref": "#/$defs/UnitLauncherAimMode"
-        },
-        "producedUnitBlueprintId": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/UnitBlueprintId"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "autoProduce": {
-          "type": "boolean"
-        }
-      },
-      "additionalProperties": false
-    },
     "TurretLockOnRelationshipInclusion": {
       "enum": [
         "friendly_entities",
@@ -1598,16 +1565,6 @@
             }
           ]
         },
-        "unitLauncher": {
-          "oneOf": [
-            {
-              "$ref": "#/$defs/UnitLauncherConfig"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
         "spawn": {
           "oneOf": [
             {
@@ -1767,6 +1724,12 @@
         },
         "producedBlueprintId": {
           "$ref": "#/$defs/UnitBlueprintId"
+        },
+        "allowedBuildBlueprintIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/StructureBlueprintId"
+          }
         },
         "buildLockAnchor": {
           "type": "string",
@@ -2656,22 +2619,11 @@
     "UnitBuilderConfig": {
       "type": "object",
       "required": [
-        "buildRange",
-        "constructionRate",
-        "allowedBuildBlueprintIds"
+        "buildRange"
       ],
       "properties": {
         "buildRange": {
           "type": "number"
-        },
-        "constructionRate": {
-          "type": "number"
-        },
-        "allowedBuildBlueprintIds": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/StructureBlueprintId"
-          }
         }
       },
       "additionalProperties": false

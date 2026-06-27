@@ -14,6 +14,7 @@ import { getBuildingConfig } from './buildConfigs';
 import { getUnitBlueprint } from './blueprints';
 import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP } from '../../types/network';
 import { isBuildTargetInRange } from './builderRange';
+import { getBuilderConstructionRate } from './builderBuildRoster';
 import { resolveGuardServiceTarget } from './guard';
 import {
   getRemainingResource,
@@ -441,6 +442,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   for (const entity of world.getBuilderUnits()) {
     const builder = entity.builder;
     if (builder === null) continue;
+    const builderRate = getBuilderConstructionRate(entity);
     // While actively guarding, a builder services its guard target (BAR
     // assist) — not any stale direct build target; otherwise it funds its
     // own currentBuildTarget.
@@ -456,9 +458,9 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         if (factory !== null && factory.currentShellId !== null && isBuildTargetInRange(entity, svc.target)) {
           factoryAssistRateById.set(
             svc.target.id,
-            (factoryAssistRateById.get(svc.target.id) ?? 0) + builder.constructionRate,
+            (factoryAssistRateById.get(svc.target.id) ?? 0) + builderRate,
           );
-          addConstructionSource(buffers, factory.currentShellId, entity.id, builder.constructionRate * dtSec);
+          addConstructionSource(buffers, factory.currentShellId, entity.id, builderRate * dtSec);
         }
         continue;
       } else {
@@ -482,7 +484,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const target = world.getEntity(targetId);
     if (!target || !isBuildTargetInRange(entity, target)) continue;
     buildTargets.add(targetId);
-    const rate = builder.constructionRate;
+    const rate = builderRate;
     constructionRateByTarget.set(targetId, (constructionRateByTarget.get(targetId) ?? 0) + rate);
     addConstructionSource(buffers, targetId, entity.id, rate * dtSec);
   }
@@ -577,7 +579,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const target = world.getEntity(targetId);
     if (!target) continue;
     if (!isBuildTargetInRange(commander, target)) continue;
-    const commanderRateCap = commander.builder.constructionRate * dtSec;
+    const commanderRateCap = getBuilderConstructionRate(commander) * dtSec;
 
     if (isBuildInProgress(target.buildable)) {
       if (!buildingConsumerIds.has(target.id)) {
@@ -635,7 +637,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       target,
       'heal',
       remaining,
-      builder.constructionRate * dtSec,
+      getBuilderConstructionRate(entity) * dtSec,
       entity.id,
       null,
     );
@@ -664,7 +666,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         target,
         'heal',
         remaining,
-        builder.constructionRate * dtSec,
+        getBuilderConstructionRate(entity) * dtSec,
         entity.id,
         null,
       );

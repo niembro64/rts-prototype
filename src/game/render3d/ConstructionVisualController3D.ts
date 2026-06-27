@@ -21,6 +21,7 @@ import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import { isBuildInProgress } from '../sim/buildableHelpers';
+import { getBuilderConstructionRate } from '../sim/builderBuildRoster';
 import {
   getFactoryBuildSpot,
   type FactoryBuildSpot,
@@ -112,7 +113,7 @@ export class ConstructionVisualController3D {
     const builder = builderUnit.builder;
     const targetId = builder?.currentBuildTarget ?? NO_ENTITY_ID;
     const flows = this.clientViewState.getResourcePylonFlows(builderUnit.id);
-    const fullRate = builder?.constructionRate ?? 0;
+    const fullRate = builder !== null ? getBuilderConstructionRate(builderUnit) : 0;
     let aggregateEnergy = 0;
     let aggregateMetal = 0;
     for (let i = 0; i < flows.length; i++) {
@@ -147,7 +148,7 @@ export class ConstructionVisualController3D {
         fallbackAbsRates.energy = dE / dtSec;
         fallbackAbsRates.metal = dT / dtSec;
 
-        const cap = builder.constructionRate * dtSec;
+        const cap = fullRate * dtSec;
         if (cap > 0) {
           targetRateE = Math.max(0, Math.min(1, dE / cap));
           targetRateT = Math.max(0, Math.min(1, dT / cap));

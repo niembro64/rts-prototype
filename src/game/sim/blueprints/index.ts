@@ -672,27 +672,24 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     );
   }
 
-  // Determine emission config. Construction emitters and unit launchers
-  // have no shot/ray/shield emission: pylons are renderer-owned cosmetics,
-  // while unit launchers apply force directly to the produced unit.
+  // Determine emission config. Construction emitters have no shot/ray/shield
+  // emission: pylons are renderer-owned cosmetics.
   const shot = buildEmissionConfig(turretBlueprintId, turretBlueprint);
-  const unitLauncher = turretBlueprint.unitLauncher ?? null;
   // Spawn turrets bring entities into existence; resource-pylon turrets move
   // resources. Both are non-combat emitters with their own authoritative
   // config (read from TURRET_BLUEPRINTS at runtime), so they need no
-  // shot/constructionEmitter/unitLauncher to justify their existence.
+  // shot/constructionEmitter to justify their existence.
   const spawn = turretBlueprint.spawn ?? null;
   const resourcePylon = turretBlueprint.resourcePylon ?? null;
 
   if (
     shot === null &&
     turretBlueprint.constructionEmitter === null &&
-    unitLauncher === null &&
     spawn === null &&
     resourcePylon === null
   ) {
     throw new Error(
-      `Turret ${turretBlueprintId} has no emissionBlueprintId, constructionEmitter, unitLauncher, spawn, nor resourcePylon`,
+      `Turret ${turretBlueprintId} has no emissionBlueprintId, constructionEmitter, spawn, nor resourcePylon`,
     );
   }
   validateTurretAimStyle(turretBlueprintId, turretBlueprint, shot);
@@ -735,7 +732,7 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
     // (the host body's own collision covers clearance). See turretHostIntegration.
     radius: { other: turretBlueprint.radius.other, hitbox: 0, collision: 0 },
     headOnly: turretBlueprint.headOnly,
-    visualOnly: shot === null && unitLauncher === null,
+    visualOnly: shot === null,
     // hostDirected is a per-MOUNT tag, not a per-blueprint constant. The
     // shared TurretConfig defaults to false; the runtime turret factory
     // (makeRuntimeTurret) overrides it from each mount's hostDirected flag.
@@ -752,13 +749,6 @@ function buildTurretConfig(turretBlueprintId: TurretBlueprintId): TurretConfig {
             small: { ...turretBlueprint.constructionEmitter.sizes.small },
             large: { ...turretBlueprint.constructionEmitter.sizes.large },
           },
-        }
-      : null,
-    unitLauncher: unitLauncher !== null
-      ? {
-          aimMode: unitLauncher.aimMode,
-          producedUnitBlueprintId: unitLauncher.producedUnitBlueprintId,
-          autoProduce: unitLauncher.autoProduce,
         }
       : null,
     visualVariant: null,

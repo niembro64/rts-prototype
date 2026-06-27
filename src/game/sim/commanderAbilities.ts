@@ -1,6 +1,7 @@
 import type { WorldState } from './WorldState';
 import { NO_ENTITY_ID, type Entity, type EntityId, type PlayerId } from './types';
 import { isBuildTargetInRange } from './builderRange';
+import { getBuilderConstructionRate } from './builderBuildRoster';
 import { updateWeaponWorldKinematics } from './combat/combatUtils';
 import { getUnitGroundZ } from './unitGeometry';
 import { getTransformCosSin } from '../math';
@@ -404,7 +405,7 @@ class CommanderAbilitiesSystem {
     if (sim.commanderApplyReclaimTick(
       hpState.hp,
       hpState.maxHp,
-      commander.builder.constructionRate,
+      getBuilderConstructionRate(commander),
       dtSec,
       value.energy,
       value.metal,
@@ -465,7 +466,7 @@ class CommanderAbilitiesSystem {
     }
 
     const dtSec = dtMs / 1000;
-    state.progress = Math.min(1, state.progress + (commander.builder.constructionRate * dtSec) / hpState.maxHp);
+    state.progress = Math.min(1, state.progress + (getBuilderConstructionRate(commander) * dtSec) / hpState.maxHp);
 
     const spray = this.acquireSprayTarget();
     spray.source.id = commander.id;
@@ -525,7 +526,7 @@ class CommanderAbilitiesSystem {
 
     wreck.resurrectProgressMs = Math.min(
       wreck.resurrectRequiredMs,
-      wreck.resurrectProgressMs + dtMs * Math.max(0.1, commander.builder.constructionRate / 100),
+      wreck.resurrectProgressMs + dtMs * Math.max(0.1, getBuilderConstructionRate(commander) / 100),
     );
     const progress = wreck.resurrectProgressMs / wreck.resurrectRequiredMs;
 

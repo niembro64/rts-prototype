@@ -1635,6 +1635,7 @@
           "z": 0
         },
         "visualVariant": "small",
+        "constructionRate": 35,
         "hostDirected": true,
         "requiredEngagedForFightStop": false
       },
@@ -1646,6 +1647,7 @@
           "z": 0
         },
         "visualVariant": "small",
+        "constructionRate": 35,
         "hostDirected": true,
         "requiredEngagedForFightStop": false
       },
@@ -1656,6 +1658,17 @@
           "y": 0,
           "z": 0
         },
+        "allowedBuildBlueprintIds": [
+          "buildingSolar",
+          "buildingWind",
+          "buildingExtractor",
+          "buildingRadar",
+          "buildingResourceConverter",
+          "towerFabricator",
+          "towerBeamMega",
+          "towerCannon",
+          "towerAntiAir"
+        ],
         "hostDirected": true,
         "requiredEngagedForFightStop": false
       }
@@ -1686,19 +1699,7 @@
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": {
-      "buildRange": 170,
-      "constructionRate": 35,
-      "allowedBuildBlueprintIds": [
-        "buildingSolar",
-        "buildingWind",
-        "buildingExtractor",
-        "buildingRadar",
-        "buildingResourceConverter",
-        "towerFabricator",
-        "towerBeamMega",
-        "towerCannon",
-        "towerAntiAir"
-      ]
+      "buildRange": 170
     },
     "dgun": null,
     "deathSound": {
@@ -2450,6 +2451,7 @@
           "z": 2.28
         },
         "visualVariant": "small",
+        "constructionRate": 50,
         "hostDirected": true,
         "requiredEngagedForFightStop": false
       },
@@ -2461,6 +2463,7 @@
           "z": 2.28
         },
         "visualVariant": "small",
+        "constructionRate": 50,
         "hostDirected": true,
         "requiredEngagedForFightStop": false
       },
@@ -2471,6 +2474,17 @@
           "y": 0,
           "z": 2.28
         },
+        "allowedBuildBlueprintIds": [
+          "buildingSolar",
+          "buildingWind",
+          "buildingExtractor",
+          "buildingRadar",
+          "buildingResourceConverter",
+          "towerFabricator",
+          "towerBeamMega",
+          "towerCannon",
+          "towerAntiAir"
+        ],
         "hostDirected": true,
         "requiredEngagedForFightStop": false
       }
@@ -2506,19 +2520,7 @@
     "legAttachHeightFrac": null,
     "suspension": null,
     "builder": {
-      "buildRange": 150,
-      "constructionRate": 50,
-      "allowedBuildBlueprintIds": [
-        "buildingSolar",
-        "buildingWind",
-        "buildingExtractor",
-        "buildingRadar",
-        "buildingResourceConverter",
-        "towerFabricator",
-        "towerBeamMega",
-        "towerCannon",
-        "towerAntiAir"
-      ]
+      "buildRange": 150
     },
     "dgun": {
       "turretBlueprintId": "turretDisruptor",

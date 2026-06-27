@@ -22,10 +22,11 @@ import {
 } from '../input/queueModifiers';
 import { isAttackableEnemyTarget } from '../input/helpers/AttackTargetHelper';
 import { isReclaimableTarget } from '../sim/reclaim';
+import { getBuilderConstructionRate } from '../sim/builderBuildRoster';
 import type { CommandCursorKind } from '../input/CommandCursors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 
-/** A unit can attack iff it mounts a real weapon/launcher turret (a pure
+/** A unit can attack iff it mounts a real weapon turret (a pure
  *  construction emitter does not count) — used to pick attack vs reclaim on
  *  an enemy, BAR's leader rule. */
 function unitCanAttack(unit: Entity): boolean {
@@ -149,7 +150,7 @@ export class Input3DRightDragController {
       let issued = false;
       for (let i = 0; i < selectedUnits.length; i++) {
         const reclaimer = selectedUnits[i];
-        if (reclaimer.builder === null || reclaimer.builder.constructionRate <= 0) continue;
+        if (reclaimer.builder === null || getBuilderConstructionRate(reclaimer) <= 0) continue;
         const reclaimCmd = buildReclaimCommandForTarget(
           entityHit,
           reclaimer,

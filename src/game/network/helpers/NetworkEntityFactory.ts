@@ -406,8 +406,6 @@ function createUnitFromNetwork(
     const builder = unitBlueprint.builder;
     entity.builder = {
       buildRange: builder.buildRange,
-      constructionRate: builder.constructionRate,
-      allowedBuildBlueprintIds: [...builder.allowedBuildBlueprintIds],
       currentBuildTarget: u !== null && u.buildTargetId !== null ? u.buildTargetId : NO_ENTITY_ID,
     };
   }

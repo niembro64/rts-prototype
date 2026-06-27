@@ -8,6 +8,7 @@ import {
 } from '@/game/sim/blueprints';
 import { createBuildingRuntimeTurrets, createUnitRuntimeTurrets } from '@/game/sim/runtimeTurrets';
 import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
+import { getUnitBuilderConstructionRate } from '@/game/sim/builderBuildRoster';
 import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
 import { computeLocomotionClimbProfile } from '@/game/sim/pathfindingMobility';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
@@ -295,7 +296,7 @@ function buildSystemsSection(blueprint: UnitBlueprint): LoadingUnitInfoSection {
   if (blueprint.builder) {
     items.push(node('Builder', 'construction capable', undefined, [
       stat('Build range', fmt(blueprint.builder.buildRange)),
-      stat('Construction rate', `${fmt(blueprint.builder.constructionRate)}/s`),
+      stat('Construction rate', `${fmt(getUnitBuilderConstructionRate(blueprint))}/s`),
     ]));
   }
   if (blueprint.dgun) {

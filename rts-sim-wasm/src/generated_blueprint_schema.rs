@@ -407,19 +407,6 @@ pub struct TurretAimStyle {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum UnitLauncherAimMode {
-    BallisticOrWaypoint,
-    DirectTarget,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct UnitLauncherConfig {
-    pub aimMode: UnitLauncherAimMode,
-    pub producedUnitBlueprintId: Option<String>,
-    pub autoProduce: bool,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub enum TurretLockOnRelationshipInclusion {
     FriendlyEntities,
     EnemyEntities,
@@ -552,7 +539,6 @@ pub struct TurretBlueprint {
     pub idlePitch: f64,
     pub groundAimFraction: Option<f64>,
     pub constructionEmitter: Option<BlueprintJsonValue>,
-    pub unitLauncher: Option<UnitLauncherConfig>,
     pub spawn: Option<SpawnTurretConfig>,
     pub resourcePylon: Option<ResourcePylonConfig>,
     pub includeLockOnLevel0FriendsAndEnemies: Vec<TurretLockOnRelationshipInclusion>,
@@ -590,6 +576,7 @@ pub struct TurretMount {
     pub zResolver: Option<UnitTurretMountZResolver>,
     pub visualVariant: Option<String>,
     pub producedBlueprintId: Option<String>,
+    pub allowedBuildBlueprintIds: Option<Vec<String>>,
     pub buildLockAnchor: Option<String>,
     pub constructionRate: Option<f64>,
 }
@@ -891,8 +878,6 @@ pub type UnitRadiusConfig = EntityRadiusConfig;
 #[derive(Clone, Debug, PartialEq)]
 pub struct UnitBuilderConfig {
     pub buildRange: f64,
-    pub constructionRate: f64,
-    pub allowedBuildBlueprintIds: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

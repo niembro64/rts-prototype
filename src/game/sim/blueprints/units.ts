@@ -187,6 +187,65 @@ function validateSensorCapabilityConfig(
   }
 }
 
+function validateUnitBuilderMounts(bp: UnitBlueprint): void {
+  let hasStructureSpawnRoster = false;
+  let hasConstructionRate = false;
+
+  for (const mount of bp.turrets) {
+    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+    if (mount.allowedBuildBlueprintIds !== undefined) {
+      if (turretBlueprint.spawn?.producedKind !== 'buildingsAndTowers') {
+        throw new Error(
+          `Invalid builder config for ${bp.unitBlueprintId}: allowedBuildBlueprintIds belongs on a building/tower spawn turret mount`,
+        );
+      }
+      if (!Array.isArray(mount.allowedBuildBlueprintIds) || mount.allowedBuildBlueprintIds.length === 0) {
+        throw new Error(
+          `Invalid builder config for ${bp.unitBlueprintId}: spawn turret allowedBuildBlueprintIds must not be empty`,
+        );
+      }
+      for (const id of mount.allowedBuildBlueprintIds) {
+        if (!isStructureBlueprintId(id)) {
+          throw new Error(
+            `Invalid builder config for ${bp.unitBlueprintId}: unknown allowedBuildBlueprintId "${id}"`,
+          );
+        }
+      }
+      hasStructureSpawnRoster = true;
+    }
+    if (mount.constructionRate !== undefined) {
+      if (turretBlueprint.resourcePylon?.role !== 'construction') {
+        throw new Error(
+          `Invalid builder config for ${bp.unitBlueprintId}: constructionRate belongs on a construction-pylon turret mount`,
+        );
+      }
+      if (!Number.isFinite(mount.constructionRate) || mount.constructionRate <= 0) {
+        throw new Error(
+          `Invalid builder config for ${bp.unitBlueprintId}: construction-pylon constructionRate must be positive`,
+        );
+      }
+      hasConstructionRate = true;
+    }
+  }
+
+  if (bp.builder === null) return;
+  if (!Number.isFinite(bp.builder.buildRange) || bp.builder.buildRange <= 0) {
+    throw new Error(
+      `Invalid builder config for ${bp.unitBlueprintId}: buildRange must be positive`,
+    );
+  }
+  if (!hasStructureSpawnRoster) {
+    throw new Error(
+      `Invalid builder config for ${bp.unitBlueprintId}: builder units must author allowedBuildBlueprintIds on their building/tower spawn turret mount`,
+    );
+  }
+  if (!hasConstructionRate) {
+    throw new Error(
+      `Invalid builder config for ${bp.unitBlueprintId}: builder units must author constructionRate on a construction-pylon mount`,
+    );
+  }
+}
+
 for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   validateUnitSupportSurface(bp.unitBlueprintId, bp.supportSurface);
   validateSensorCapabilityConfig(bp.unitBlueprintId, bp.sensors);
@@ -208,20 +267,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
       `Invalid sensor config for ${bp.unitBlueprintId}: fullVisionRadius must mirror sensors.fullSightRadius`,
     );
   }
-  if (bp.builder !== null) {
-    if (!Array.isArray(bp.builder.allowedBuildBlueprintIds) || bp.builder.allowedBuildBlueprintIds.length === 0) {
-      throw new Error(
-        `Invalid builder config for ${bp.unitBlueprintId}: allowedBuildBlueprintIds must not be empty`,
-      );
-    }
-    for (const id of bp.builder.allowedBuildBlueprintIds) {
-      if (!isStructureBlueprintId(id)) {
-        throw new Error(
-          `Invalid builder config for ${bp.unitBlueprintId}: unknown allowedBuildBlueprintId "${id}"`,
-        );
-      }
-    }
-  }
+  validateUnitBuilderMounts(bp);
 
   if (!bp.hud || !Number.isFinite(bp.hud.barsOffsetAboveTop)) {
     throw new Error(

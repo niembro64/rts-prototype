@@ -19,118 +19,20 @@ Please always commit and push before and after any code changes we make.
 
 
 [16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
-    Goal: one fully-abstracted force profile on EVERY unit - ground/air/water x
-    {force, traction, friction} + a lift family (gravityCounterUpwardForceRatio,
-    hoverHeightUpwardForce, swimHeightUpwardForce) - so any unit can mix walk/fly/
-    swim, zeros meaning "cannot act in that medium". Ground under water counts as
-    ground; air vs water are mutually exclusive by the water line.
-
-    DONE - design: fully specified in budget_design_philosophy.html (Physics-Model
-    subsection "Locomotion is one fully-abstracted force profile across ground, air,
-    and water" + summary bullet) - medium-sampling rule, swim-lift, behaviour-
-    preserving migration.
-
-    DONE - implementation (behaviour-preserving, opt-in; replay BYTE-IDENTICAL to the
-    pre-[16] baseline across all 8 deterministic-replay cases, verified by stash/
-    rebuild diff; cargo 107, tsc 0, audit pass):
-    - Data model: UnitLocomotion (locomotionTypes.ts) + LocomotionPhysics schema +
-      codegen now carry the opt-in medium profile - groundFriction, airFriction,
-      water{Force,Traction,Friction}, and the swim-lift family (swimHeightUpwardForce
-      + swimGravityCounterUpwardForceRatio + randomisation/EMA siblings). driveForce/
-      traction remain the ground (and airborne) drive terms. Terms are OMITTED when
-      absent (not stored as 0) so existing units' locomotion object - and therefore
-      the canonical hash - is unchanged.
-    - Kernel (unit_kinetics.rs, UNIT_FORCE_BATCH_STRIDE 36->47): a swim branch (water
-      drive + bed-referenced swim lift + isotropic water drag) runs only when
-      submerged AND water/swim terms are authored; ground/air friction are additive
-      and gated on a non-zero term. Every existing unit authors none of these, so the
-      ground/air (hover/flying) paths are byte-identical.
-    - UnitForceSystem.ts marshals the new rows + a swimmer-gated open-water medium
-      flag + swim-lift RNG/EMA, mirroring the hover plumbing. swimHeightUpwardForce-
-      Smoothed is tick-only state excluded from the canonical hash.
-    - Demonstrator: unitHippo is now amphibious (treads + water/swim terms +
-      amphibiousAnywhere pathfinding); existing units keep absent water/air terms.
-
-    REMAINING (USER, in-app eyes only - keep this item until the user closes it):
-    build a Hippo and tune swim/float/sink + walk-on-bottom feel (waterForce/Traction/
-    Friction + swimHeightUpwardForce + swimGravityCounterUpwardForceRatio are starter
-    values). No code change is outstanding.
-
-================================================================================
-FULLY-ABSTRACTED TURRET SYSTEM: SPAWN + RESOURCE-PYLON TURRETS (2026-06-25, user request)
---------------------------------------------------------------------------------
-Replaces the single "construction turret" with a uniform turret taxonomy. Three
-emitter families: COMBAT (emits shot/ray, existing); SPAWN turrets (create an
-entity + fire an init laser); RESOURCE-PYLON turrets (move one resource in one
-role). New turret kinds:
-  turretSpawnBuildingsAndTowers, turretSpawnUnits,
-  turretResourcePylonConstructionMetal, turretResourcePylonConstructionEnergy,
-  turretResourcePylonExtractionMetal,   turretResourcePylonExtractionEnergy
-Re-equip: builders (commander / construction drone / construction hovercraft /
-fabricator) = a spawn turret + construction metal+energy pylons; queens =
-turretSpawnUnits (instant + cooldown + launch); metal extractor = extraction-metal
-pylon; solar/wind/geo = extraction-energy pylon. Construction pylons spin and
-spray resource balls at the build target (auto-aimed, so they point down for
-flying builders). Determinism: economy stays in energyDistribution; run
-deterministic:audit each phase; keep encoder<->contract-test mirrors in sync.
+    USER / in-app eyes only: build a Hippo and tune swim/float/sink +
+    walk-on-bottom feel. Starter knobs: waterForce, waterTraction,
+    waterFriction, swimHeightUpwardForce, and
+    swimGravityCounterUpwardForceRatio.
 
 [20] Phase D (cont.) - surface producer income as inbound pylon balls
-    The income->pylon path is implemented end to end: economy.ts applyIncomeCredits
-    publishes one INBOUND resourceMovement per producing solar/wind/extractor
-    (sourceEntityId = the building, amountPerSecond = the production rate, reason
-    'production'); the serializer keeps it (rate>0); ClientViewState.applyResource-
-    Movements registers the signed rate per source; BuildingResourcePylonAnimator3D
-    .updateDeclaredPylon reads it and emits inbound balls from the world endpoint
-    (sun/upwind/deposit) into solar/wind/extractor extraction pylons.
-    Cross-peer determinism is VERIFIED: deterministicReplayHarness passes 8 cases
-    incl. real-prebuilt-factory-production and real-construction-economy-scan (2-peer,
-    checksummed resourceMovements).
-    REMAINING (user, in-app eyes only): confirm the inbound producer balls actually
-    render and converge correctly in the running app; A/B density if needed. No code
-    change is outstanding. Converter/upkeep/ammo "consumption" spend stays as-is
-    (future consumption-pylon role).
+    USER / in-app eyes only: confirm inbound producer balls render and converge
+    correctly in the running app for solar, wind, and metal extractors. A/B
+    density if needed.
 
 
-[22] Queen-as-mobile-factory: DONE (verified); small remainders only
-    Queens are now MOBILE FACTORIES -- they build their bee/tick exactly like
-    the fabricator (factory shell, funded over time, a cost now), but the shell
-    rides X/Y/Z-locked to the moving queen and free-falls on release. No launch.
-
-    DONE this session (all verified; replay harness green; 8 prior cases stayed
-    byte-identical throughout, + a new queen case):
-    - 2c0f4e2f delete 4 orphan turrets.
-    - fc4654b6 axis-lock generalized (buildable.buildLockHostId; null=spawn
-      column/Z-free-fall, an id=rigid X/Y/Z attach to that host).
-    - cc34b4f5 factory production+funding generalized to UNIT hosts; per-mount
-      producedBlueprintId/buildLockAnchor/constructionRate on TurretMount; a
-      unit factory's rate is read on the fly (factoryUnitConstructionRate) to
-      keep the hashed Factory component untouched.
-    - 13f85006 re-equip unitQueenBee/Tick as mobile factories (turretSpawnUnits
-      producedBlueprintId + 'host' anchor + construction pylons; derived factory,
-      isProducing from spawn; mounts on the roll axis since queens hover/fly;
-      queens stop locking enemies) + a real-queen-mobile-factory replay case
-      proving derive->spawn->fund->complete is deterministic.
-    - 6bb22dcb delete the dead unitLauncher mechanism (3 files + the Simulation
-      call + the init.ts test runner) + the orphan turretQueen*Constructor
-      turrets. Byte-identical.
-
-    REMAINING:
-    - D2 (BASELINE SHIFT, deliberate): remove the now-vestigial unitLauncher
-      CONFIG plumbing -- TurretConfig.unitLauncher, Turret.unitLauncherCooldownMs
-      (hashed -> removing it shifts every turret hash; harness re-proves
-      determinism), UnitLauncherConfig (sim.ts), the blueprintSchema.json
-      UnitLauncherConfig + unitLauncher property (regenerate), and the
-      buildTurretConfig + turrets.ts validateTurretUnitLauncher handling. Pure
-      dead-data cleanup; kept out of the byte-identical commits on purpose.
-    - IN-APP (user eyes only): confirm queens build bees/ticks visibly attached
-      and free-fall on release; tune the carry pose -- ATTACHED_BUILD_SHELL_
-      ELEVATION (placeholder 60 in ServerSimulationCore) + the queen spawn-turret
-      mount x -- and the build rates (bee 120 / tick 30, set to match the old
-      cadence; balance change: queens now COST resources, were free/cooldown).
-
-    SEPARATE / deferred (not queen-related): builder.constructionRate
-    (commander 50 / drone 35) still funds pass 1 directly -- moving it onto the
-    construction-pylon mount + dissolving the builder component is its own pass
-    (the per-mount constructionRate field already exists). Build ROSTER -> spawn
-    turret is also still open. Both shift the hash (builder is hashed).
+[22] Queen-as-mobile-factory in-app validation
+    USER / in-app eyes only: confirm queens build bees/ticks visibly attached
+    and free-fall on release. Tune the carry pose
+    (ATTACHED_BUILD_SHELL_ELEVATION in ServerSimulationCore and the queen
+    spawn-turret mount x) and build rates (bee 120 / tick 30) if needed.
 ================================================================================

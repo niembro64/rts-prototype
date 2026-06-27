@@ -1626,7 +1626,7 @@ export class Input3DManager {
   }
 
   /** True iff the selection contains a unit that can actually attack (mounts
-   *  a real weapon/launcher turret, not just a construction emitter) — drives
+   *  a real weapon turret, not just a construction emitter) — drives
    *  attack-vs-reclaim cursor on an enemy, matching the command leader rule. */
   private selectionHasAttacker(): boolean {
     const units = this.entitySource.getSelectedUnits();
