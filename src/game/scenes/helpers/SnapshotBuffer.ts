@@ -7,6 +7,7 @@
 
 import type {
   NetworkServerSnapshot,
+  NetworkServerSnapshotEntity,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotBeamUpdate,
@@ -34,6 +35,34 @@ type SnapshotBufferDiagnostics = {
   bufferedDespawns: number;
   coalescedDespawns: number;
 };
+
+function copyPositionDelta(
+  src: NonNullable<NetworkServerSnapshotEntity['pos']>,
+  dst: NonNullable<NetworkServerSnapshotEntity['pos']>,
+): void {
+  dst.x = src.x;
+  dst.y = src.y;
+  dst.z = src.z;
+}
+
+function copyNormalDelta(
+  src: NonNullable<NonNullable<NetworkServerSnapshotEntity['unit']>['surfaceNormal']>,
+  dst: NonNullable<NonNullable<NetworkServerSnapshotEntity['unit']>['surfaceNormal']>,
+): void {
+  dst.nx = src.nx;
+  dst.ny = src.ny;
+  dst.nz = src.nz;
+}
+
+function copyOrientationDelta(
+  src: NonNullable<NonNullable<NetworkServerSnapshotEntity['unit']>['orientation']>,
+  dst: NonNullable<NonNullable<NetworkServerSnapshotEntity['unit']>['orientation']>,
+): void {
+  dst.x = src.x;
+  dst.y = src.y;
+  dst.z = src.z;
+  dst.w = src.w;
+}
 
 export class SnapshotBuffer {
   private pendingSnapshot: NetworkServerSnapshot | null = null;
@@ -126,6 +155,49 @@ export class SnapshotBuffer {
     this.bufferedDespawns.set(despawn.id, out);
   }
 
+  private mergeEntityMotionDeltaIntoPending(deltaEntities: readonly NetworkServerSnapshotEntity[]): void {
+    const pending = this.pendingSnapshot;
+    if (pending === null || pending.entityDeltaOnly === true) return;
+    const pendingEntities = pending.entities;
+    for (let i = 0; i < deltaEntities.length; i++) {
+      const delta = deltaEntities[i];
+      let target: NetworkServerSnapshotEntity | undefined;
+      for (let j = 0; j < pendingEntities.length; j++) {
+        if (pendingEntities[j].id === delta.id) {
+          target = pendingEntities[j];
+          break;
+        }
+      }
+      if (target === undefined) continue;
+      if (delta.pos != null) {
+        if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
+        copyPositionDelta(delta.pos, target.pos);
+      }
+      if (delta.rotation != null) {
+        target.rotation = delta.rotation;
+      }
+      const srcUnit = delta.unit;
+      const dstUnit = target.unit;
+      if (srcUnit == null || dstUnit == null) continue;
+      if (srcUnit.velocity != null) {
+        if (dstUnit.velocity === null) dstUnit.velocity = { x: 0, y: 0, z: 0 };
+        copyPositionDelta(srcUnit.velocity, dstUnit.velocity);
+      }
+      if (srcUnit.surfaceNormal != null) {
+        if (dstUnit.surfaceNormal === null) dstUnit.surfaceNormal = { nx: 0, ny: 0, nz: 1000 };
+        copyNormalDelta(srcUnit.surfaceNormal, dstUnit.surfaceNormal);
+      }
+      if (srcUnit.orientation != null) {
+        if (dstUnit.orientation === null) dstUnit.orientation = { x: 0, y: 0, z: 0, w: 1 };
+        copyOrientationDelta(srcUnit.orientation, dstUnit.orientation);
+      }
+      if (srcUnit.angularVelocity3 != null) {
+        if (dstUnit.angularVelocity3 === null) dstUnit.angularVelocity3 = { x: 0, y: 0, z: 0 };
+        copyPositionDelta(srcUnit.angularVelocity3, dstUnit.angularVelocity3);
+      }
+    }
+  }
+
   /** Wire the gameConnection snapshot callback to accumulate events. */
   attach(gameConnection: GameConnection, onBufferedSnapshot?: SnapshotBufferCallback): void {
     this.detachSnapshotCallback?.();
@@ -186,6 +258,15 @@ export class SnapshotBuffer {
         this.pendingSnapshot !== null &&
         this.pendingSnapshot.projectileDeltaOnly !== true
       ) {
+        releaseSnapshot?.();
+        return;
+      }
+      if (
+        state.entityDeltaOnly === true &&
+        this.pendingSnapshot !== null &&
+        this.pendingSnapshot.entityDeltaOnly !== true
+      ) {
+        this.mergeEntityMotionDeltaIntoPending(state.entities);
         releaseSnapshot?.();
         return;
       }

@@ -790,6 +790,10 @@ export type NetworkServerSnapshotGrid = {
 export type NetworkServerSnapshot = {
   tick: number;
   entities: NetworkServerSnapshotEntity[];
+  /** Sparse packet carrying entity presentation deltas only.
+   *  Clients must process `entities` as sparse rows but must not treat them
+   *  as the authoritative visible set when this flag is present. */
+  entityDeltaOnly: boolean | undefined;
   /** Sparse packet carrying projectile/audio presentation deltas only.
    *  Clients must not treat `entities` as the authoritative visible set
    *  when this flag is present. */

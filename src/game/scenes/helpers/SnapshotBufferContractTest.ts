@@ -6,7 +6,9 @@ import type {
   SnapshotCallback,
 } from '../../server/GameConnection';
 import type { NetworkServerSnapshot } from '../../network/NetworkTypes';
+import type { NetworkServerSnapshotEntity } from '../../network/NetworkTypes';
 import { SnapshotBuffer } from './SnapshotBuffer';
+import { ENTITY_CHANGED_POS } from '../../../types/network';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -20,10 +22,40 @@ type FakeConnectionHarness = {
   hasSnapshotCallback(): boolean;
 };
 
-function createSnapshot(tick: number, despawnIds: readonly number[]): NetworkServerSnapshot {
+function createUnitEntity(
+  id: number,
+  x: number,
+  changedFields: number | null,
+): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'unit',
+    playerId: 1,
+    changedFields,
+    pos: { x, y: 0, z: 0 },
+    rotation: changedFields === null ? 0 : null,
+    unit: null,
+    building: null,
+  };
+}
+
+function createSparseDecodedMotionUnitEntity(id: number, x: number): NetworkServerSnapshotEntity {
+  const entity = createUnitEntity(id, x, ENTITY_CHANGED_POS);
+  entity.unit = {
+    velocity: { x: 7, y: 0, z: 0 },
+  } as NetworkServerSnapshotEntity['unit'];
+  return entity;
+}
+
+function createSnapshot(
+  tick: number,
+  despawnIds: readonly number[],
+  entities: NetworkServerSnapshotEntity[] = [],
+): NetworkServerSnapshot {
   return {
     tick,
-    entities: [],
+    entities,
+    entityDeltaOnly: undefined,
     projectileDeltaOnly: undefined,
     minimapEntities: undefined,
     economy: {},
@@ -116,6 +148,37 @@ export function runSnapshotBufferContractTest(): void {
   assertContract(
     consumedWithDelta?.projectiles?.despawns?.some((despawn) => despawn.id === 20) === true,
     'projectile delta events must merge into the pending full snapshot',
+  );
+
+  fake.emitSnapshot(createSnapshot(5, [], [createUnitEntity(30, 100, null)]));
+  const motionDelta = createSnapshot(6, [], [createUnitEntity(30, 250, ENTITY_CHANGED_POS)]);
+  motionDelta.entityDeltaOnly = true;
+  fake.emitSnapshot(motionDelta);
+  const consumedWithMotionDelta = buffer.consume();
+  assertContract(
+    consumedWithMotionDelta?.tick === 5,
+    'entity motion delta must not replace a pending full snapshot',
+  );
+  assertContract(
+    consumedWithMotionDelta?.entities[0]?.changedFields === null,
+    'entity motion delta must preserve the pending full entity row shape',
+  );
+  assertContract(
+    consumedWithMotionDelta?.entities[0]?.pos?.x === 250,
+    'entity motion delta must patch the pending full entity pose',
+  );
+
+  const sparseMotionDelta = createSnapshot(7, [], [createSparseDecodedMotionUnitEntity(31, 300)]);
+  sparseMotionDelta.entityDeltaOnly = true;
+  fake.emitSnapshot(sparseMotionDelta);
+  const consumedSparseMotionDelta = buffer.consume();
+  assertContract(
+    consumedSparseMotionDelta?.entityDeltaOnly === true,
+    'entity motion delta must be consumable when no full snapshot is pending',
+  );
+  assertContract(
+    consumedSparseMotionDelta?.entities[0]?.unit?.velocity?.x === 7,
+    'sparse decoded unit motion fields must survive snapshot cloning',
   );
 
   buffer.clear();

@@ -104,6 +104,7 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly state: NetworkServerSnapshot = {
     tick: 0,
     entities: this.entityPlaceholders,
+    entityDeltaOnly: undefined,
     projectileDeltaOnly: undefined,
     minimapEntities: undefined,
     economy: {} as NetworkServerSnapshot['economy'],

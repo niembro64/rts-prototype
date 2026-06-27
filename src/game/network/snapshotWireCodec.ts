@@ -61,6 +61,7 @@ const RUST_ENTITIES_KEY_PREFIX_BYTES = 9;
 const TOP_LEVEL_SNAPSHOT_KEYS = [
   'tick',
   'entities',
+  'entityDeltaOnly',
   'projectileDeltaOnly',
   'minimapEntities',
   'economy',

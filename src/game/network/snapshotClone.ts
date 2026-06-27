@@ -285,6 +285,7 @@ export class ReusableNetworkSnapshotCloner {
   private snapshot: NetworkServerSnapshot = {
     tick: 0,
     entities: [],
+    entityDeltaOnly: undefined,
     projectileDeltaOnly: undefined,
     minimapEntities: undefined,
     economy: {} as NetworkServerSnapshot['economy'],
@@ -394,6 +395,7 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.buildability = undefined;
     this.snapshot.gameState = undefined;
     this.snapshot.serverMeta = undefined;
+    this.snapshot.entityDeltaOnly = undefined;
     this.snapshot.projectileDeltaOnly = undefined;
     this.snapshot.removedEntityIds = undefined;
     this.snapshot.visibilityFiltered = undefined;
@@ -423,6 +425,7 @@ export class ReusableNetworkSnapshotCloner {
   clone(state: NetworkServerSnapshot): NetworkServerSnapshot {
     const dst = this.snapshot;
     dst.tick = state.tick;
+    dst.entityDeltaOnly = state.entityDeltaOnly === true ? true : undefined;
     dst.projectileDeltaOnly = state.projectileDeltaOnly === true ? true : undefined;
     const entities = dst.entities;
     entities.length = state.entities.length;

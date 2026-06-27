@@ -3,19 +3,30 @@ import { getUnitGroundNormalEmaMode } from '../sim/unitGroundNormal';
 import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
-import type { PlayerId, EntityId } from '../sim/types';
+import type { Entity, PlayerId, EntityId } from '../sim/types';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
+  ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_VEL,
+} from '../../types/network';
+import {
   createSnapshotVisibilityCache,
   getOrBuildVisibility,
+  type SnapshotVisibility,
 } from '../network/stateSerializerVisibility';
 import { serializeAudioEvents } from '../network/stateSerializerAudio';
 import { serializeSprayTargets } from '../network/stateSerializerSpray';
 import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMinimap';
 import { serializeProjectileSnapshot } from '../network/stateSerializerProjectiles';
-import { getEntitySnapshotPoolStats } from '../network/stateSerializerEntities';
+import {
+  getEntitySnapshotPoolStats,
+  resetEntitySnapshotPool,
+  serializeEntitySnapshot,
+} from '../network/stateSerializerEntities';
 import type {
   SerializerAudioOverride,
   SerializerMinimapOverride,
@@ -34,6 +45,25 @@ import { ServerSnapshotDirectWirePreencoder } from './ServerSnapshotDirectWirePr
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 const PROJECTILE_DELTA_EMPTY_ENTITIES: NetworkServerSnapshot['entities'] = [];
 const PROJECTILE_DELTA_EMPTY_ECONOMY: NetworkServerSnapshot['economy'] = {};
+const ENTITY_MOTION_DELTA_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_NORMAL;
+const ENTITY_MOTION_SPEED_EPSILON_SQ = 0.01 * 0.01;
+const ENTITY_MOTION_ANGULAR_EPSILON_SQ = 0.0001 * 0.0001;
+
+function isEntityMotionDeltaCandidate(entity: Entity): boolean {
+  const unit = entity.unit;
+  if (unit === null || unit.hp <= 0 || unit.locomotion.type !== 'flying') return false;
+  const vx = unit.velocityX ?? 0;
+  const vy = unit.velocityY ?? 0;
+  const vz = unit.velocityZ ?? 0;
+  if (vx * vx + vy * vy + vz * vz > ENTITY_MOTION_SPEED_EPSILON_SQ) return true;
+  const av = unit.angularVelocity3;
+  if (av === null) return false;
+  return av.x * av.x + av.y * av.y + av.z * av.z > ENTITY_MOTION_ANGULAR_EPSILON_SQ;
+}
 
 export type SnapshotListenerEntry = {
   callback: SnapshotCallback;
@@ -95,6 +125,14 @@ export class ServerSnapshotPublisher {
     this.teamAudioCache.clear();
     this.teamSprayCache.clear();
     this.teamMinimapCache.clear();
+  }
+
+  hasEntityMotionDeltaCandidates(world: WorldState): boolean {
+    const units = world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      if (isEntityMotionDeltaCandidate(units[i])) return true;
+    }
+    return false;
   }
 
   emit(input: ServerSnapshotPublisherInput): void {
@@ -327,17 +365,32 @@ export class ServerSnapshotPublisher {
 
   emitProjectileDelta(input: ServerSnapshotPublisherInput): boolean {
     if (input.listeners.length === 0) return false;
-    if (!input.simulation.hasPendingProjectilePresentationEvents()) return false;
+    const hasProjectilePresentationEvents = input.simulation.hasPendingProjectilePresentationEvents();
+    const hasEntityMotionDeltas = this.hasEntityMotionDeltaCandidates(input.world);
+    if (!hasProjectilePresentationEvents && !hasEntityMotionDeltas) return false;
 
-    const audioEvents = input.simulation.getAndClearEvents();
-    const projectileSpawns = input.simulation.getAndClearProjectileSpawns();
-    const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
-    const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
-    if (
-      projectileSpawns.length === 0 &&
-      projectileDespawns.length === 0 &&
-      projectileVelocityUpdates.length === 0
-    ) {
+    const audioEvents = hasProjectilePresentationEvents
+      ? input.simulation.getAndClearEvents()
+      : undefined;
+    const projectileSpawns = hasProjectilePresentationEvents
+      ? input.simulation.getAndClearProjectileSpawns()
+      : undefined;
+    const projectileDespawns = hasProjectilePresentationEvents
+      ? input.simulation.getAndClearProjectileDespawns()
+      : undefined;
+    const projectileVelocityUpdates = hasProjectilePresentationEvents
+      ? input.simulation.getAndClearProjectileVelocityUpdates()
+      : undefined;
+    const hasProjectilesAfterDrain =
+      projectileSpawns !== undefined &&
+      projectileDespawns !== undefined &&
+      projectileVelocityUpdates !== undefined &&
+      (
+        projectileSpawns.length > 0 ||
+        projectileDespawns.length > 0 ||
+        projectileVelocityUpdates.length > 0
+      );
+    if (!hasProjectilesAfterDrain && !hasEntityMotionDeltas) {
       return false;
     }
 
@@ -346,21 +399,34 @@ export class ServerSnapshotPublisher {
     let emitted = false;
     for (const listener of input.listeners) {
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
-      const projectiles = serializeProjectileSnapshot({
-        world: input.world,
-        fullStateResync: false,
-        visibility,
-        emitBeamUpdates: false,
-        projectileSpawns,
-        projectileDespawns,
-        projectileVelocityUpdates,
-      });
-      const netAudioEvents = serializeAudioEvents(audioEvents, visibility, listener.cacheKey);
-      if (projectiles === undefined && netAudioEvents === undefined) continue;
+      const motionEntities = hasEntityMotionDeltas
+        ? this.serializeEntityMotionDelta(input.world, visibility)
+        : undefined;
+      const projectiles = hasProjectilesAfterDrain
+        ? serializeProjectileSnapshot({
+            world: input.world,
+            fullStateResync: false,
+            visibility,
+            emitBeamUpdates: false,
+            projectileSpawns,
+            projectileDespawns,
+            projectileVelocityUpdates,
+          })
+        : undefined;
+      const netAudioEvents = audioEvents !== undefined
+        ? serializeAudioEvents(audioEvents, visibility, listener.cacheKey)
+        : undefined;
+      if (
+        motionEntities === undefined &&
+        projectiles === undefined &&
+        netAudioEvents === undefined
+      ) continue;
+      const hasMotionEntities = motionEntities !== undefined && motionEntities.length > 0;
       const state: NetworkServerSnapshot = {
         tick: input.world.getTick(),
-        entities: PROJECTILE_DELTA_EMPTY_ENTITIES,
-        projectileDeltaOnly: true,
+        entities: motionEntities ?? PROJECTILE_DELTA_EMPTY_ENTITIES,
+        entityDeltaOnly: hasMotionEntities ? true : undefined,
+        projectileDeltaOnly: hasMotionEntities ? undefined : true,
         minimapEntities: undefined,
         economy: PROJECTILE_DELTA_EMPTY_ECONOMY,
         resourceMovements: undefined,
@@ -383,6 +449,28 @@ export class ServerSnapshotPublisher {
       emitted = true;
     }
     return emitted;
+  }
+
+  private serializeEntityMotionDelta(
+    world: WorldState,
+    visibility: SnapshotVisibility,
+  ): NetworkServerSnapshot['entities'] | undefined {
+    resetEntitySnapshotPool();
+    const entities: NetworkServerSnapshot['entities'] = [];
+    const units = world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      if (!isEntityMotionDeltaCandidate(entity)) continue;
+      if (!visibility.isEntityVisible(entity)) continue;
+      const netEntity = serializeEntitySnapshot(
+        entity,
+        ENTITY_MOTION_DELTA_FIELDS,
+        world,
+        visibility,
+      );
+      if (netEntity !== null) entities.push(netEntity);
+    }
+    return entities.length > 0 ? entities : undefined;
   }
 
   private listenerNeedsStaticMap(

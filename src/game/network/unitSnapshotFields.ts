@@ -520,15 +520,15 @@ export function copyNetworkUnitSnapshotInto(
   src: NetworkUnitSnapshot,
   dst: NetworkUnitSnapshot,
 ): NetworkUnitSnapshot {
-  dst.unitBlueprintCode = src.unitBlueprintCode;
-  if (src.hp !== null) {
+  dst.unitBlueprintCode = src.unitBlueprintCode ?? null;
+  if (src.hp != null) {
     const hp = dst.hp ?? (dst.hp = { curr: 0, max: 0 });
     hp.curr = src.hp.curr;
     hp.max = src.hp.max;
   } else {
     dst.hp = null;
   }
-  if (src.radius !== null) {
+  if (src.radius != null) {
     const radius = dst.radius ?? (dst.radius = { other: 0, hitbox: 0, collision: 0 });
     radius.other = src.radius.other;
     radius.hitbox = src.radius.hitbox;
@@ -536,9 +536,9 @@ export function copyNetworkUnitSnapshotInto(
   } else {
     dst.radius = null;
   }
-  dst.bodyCenterHeight = src.bodyCenterHeight;
-  dst.mass = src.mass;
-  if (src.velocity !== null) {
+  dst.bodyCenterHeight = src.bodyCenterHeight ?? null;
+  dst.mass = src.mass ?? null;
+  if (src.velocity != null) {
     const velocity = dst.velocity ?? (dst.velocity = { x: 0, y: 0, z: 0 });
     velocity.x = src.velocity.x;
     velocity.y = src.velocity.y;
@@ -546,7 +546,7 @@ export function copyNetworkUnitSnapshotInto(
   } else {
     dst.velocity = null;
   }
-  if (src.surfaceNormal !== null) {
+  if (src.surfaceNormal != null) {
     const sn = dst.surfaceNormal ?? (dst.surfaceNormal = { nx: 0, ny: 0, nz: 1 });
     sn.nx = src.surfaceNormal.nx;
     sn.ny = src.surfaceNormal.ny;
@@ -554,7 +554,7 @@ export function copyNetworkUnitSnapshotInto(
   } else {
     dst.surfaceNormal = null;
   }
-  if (src.orientation !== null) {
+  if (src.orientation != null) {
     const o = dst.orientation ?? (dst.orientation = { x: 0, y: 0, z: 0, w: 1 });
     o.x = src.orientation.x;
     o.y = src.orientation.y;
@@ -564,7 +564,7 @@ export function copyNetworkUnitSnapshotInto(
     dst.orientation = null;
   }
   dst.angularVelocity3 = copyVec3OptionalInto(src.angularVelocity3, dst.angularVelocity3);
-  dst.fireEnabled = src.fireEnabled;
+  dst.fireEnabled = src.fireEnabled ?? null;
   dst.fireState = src.fireState ?? null;
   dst.trajectoryMode = src.trajectoryMode ?? null;
   dst.repeatQueue = src.repeatQueue ?? null;
@@ -572,14 +572,14 @@ export function copyNetworkUnitSnapshotInto(
   dst.holdPosition = src.holdPosition ?? null;
   dst.wantCloak = src.wantCloak ?? null;
   dst.cloaked = src.cloaked ?? null;
-  dst.isCommander = src.isCommander;
-  dst.buildTargetId = src.buildTargetId;
-  dst.buildTargetIdPresent = src.buildTargetIdPresent;
+  dst.isCommander = src.isCommander ?? null;
+  dst.buildTargetId = src.buildTargetId ?? null;
+  dst.buildTargetIdPresent = src.buildTargetIdPresent === true;
   dst.build = src.build
     ? copyNetworkUnitBuildState(src.build, dst.build ?? createNetworkUnitBuildState())
     : null;
 
-  if (src.actions !== null) {
+  if (src.actions != null) {
     const actions = dst.actions ?? (dst.actions = []);
     actions.length = src.actions.length;
     for (let i = 0; i < src.actions.length; i++) {
@@ -589,7 +589,7 @@ export function copyNetworkUnitSnapshotInto(
     dst.actions = null;
   }
 
-  if (src.turrets !== null) {
+  if (src.turrets != null) {
     const turrets = dst.turrets ?? (dst.turrets = []);
     turrets.length = src.turrets.length;
     for (let i = 0; i < src.turrets.length; i++) {

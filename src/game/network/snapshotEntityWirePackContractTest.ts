@@ -98,6 +98,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
         },
       },
     ],
+    entityDeltaOnly: undefined,
     projectileDeltaOnly: undefined,
     minimapEntities: undefined,
     economy: {},

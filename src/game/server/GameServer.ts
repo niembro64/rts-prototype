@@ -330,7 +330,10 @@ export class GameServer {
       if (interval === 0 || elapsed >= interval) {
         this.lastSnapshotTime = tickNow;
         this.queuePresentationSnapshot();
-      } else if (this.simulation.hasPendingProjectilePresentationEvents()) {
+      } else if (
+        this.simulation.hasPendingProjectilePresentationEvents() ||
+        this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world)
+      ) {
         this.queueProjectileDeltaSnapshot();
       }
 

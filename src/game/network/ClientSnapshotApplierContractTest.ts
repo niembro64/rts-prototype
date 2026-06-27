@@ -71,6 +71,7 @@ function snapshot(
   return {
     tick,
     entities,
+    entityDeltaOnly: undefined,
     projectileDeltaOnly: undefined,
     minimapEntities: undefined,
     economy: {},
@@ -240,6 +241,15 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     view.getEntity(id)?.unit?.hp === 60,
     'projectile delta snapshots must not reconcile away existing units',
+  );
+  assertHudContains(view, id, true);
+
+  const entityDelta = snapshot(2, [movementOnlySparseEntity(id)]);
+  entityDelta.entityDeltaOnly = true;
+  view.applyNetworkState(entityDelta);
+  assertContract(
+    view.getEntity(id)?.unit?.hp === 60,
+    'entity delta snapshots must not reconcile away existing units',
   );
   assertHudContains(view, id, true);
 
