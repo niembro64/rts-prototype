@@ -218,6 +218,33 @@ function printReport(report) {
   console.log(`  server CPU avg/hi p95: ${fmt(report.fullStack.serverCpuAvgPct.p95)}% / ${fmt(report.fullStack.serverCpuHiPct.p95)}%`);
   console.log(`  draw calls/triangles p95: ${fmt(report.fullStack.drawCalls.p95)} / ${fmt(report.fullStack.triangles.p95)}`);
   console.log(`  buffer upload bytes/calls p95: ${fmt(report.fullStack.bufferUploadBytes.p95)} / ${fmt(report.fullStack.bufferUploadCalls.p95)}`);
+  console.log(
+    `  render budget: ${report.fullStack.renderBudgetTier} ` +
+      `(lod scale avg/p95=${fmt(report.fullStack.renderBudgetLodDistanceScale.avg)}/${fmt(report.fullStack.renderBudgetLodDistanceScale.p95)}, ` +
+      `hud/effect stride p95=${fmt(report.fullStack.renderBudgetHudFrameStride.p95)}/${fmt(report.fullStack.renderBudgetEffectFrameStride.p95)})`,
+  );
+  console.log(
+    `  render phase ms p95: scope=${fmt(report.fullStack.renderPhaseScopeMs.p95)}, ` +
+      `projectiles=${fmt(report.fullStack.renderPhaseProjectileQueryMs.p95)}, ` +
+      `packets=${fmt(report.fullStack.renderPhaseEntityPacketMs.p95)}, ` +
+      `entities=${fmt(report.fullStack.renderPhaseEntityRendererMs.p95)}, ` +
+      `terrain=${fmt(report.fullStack.renderPhaseTerrainMs.p95)}, ` +
+      `beam=${fmt(report.fullStack.renderPhaseBeamMs.p95)}, ` +
+      `effects=${fmt(report.fullStack.renderPhaseEffectsMs.p95)}, ` +
+      `hud=${fmt(report.fullStack.renderPhaseHudMs.p95)}`,
+  );
+  console.log(
+    `  render rows p95 units/buildings/projectiles/line: ` +
+      `${fmt(report.fullStack.renderPhaseUnitRows.p95)}/` +
+      `${fmt(report.fullStack.renderPhaseBuildingRows.p95)}/` +
+      `${fmt(report.fullStack.renderPhaseProjectileRows.p95)}/` +
+      `${fmt(report.fullStack.renderPhaseLineProjectileRows.p95)}`,
+  );
+  console.log(
+    `  LOD proxy rows p95 units/buildings: ` +
+      `${fmt(report.fullStack.renderPhaseUnitLodProxyRows.p95)}/` +
+      `${fmt(report.fullStack.renderPhaseBuildingLodProxyRows.p95)}`,
+  );
   console.log(`  long tasks p95: ${fmt(report.fullStack.longtaskMsPerSec.p95)} ms/s`);
   console.log('');
   console.log(`DIAGNOSIS: ${report.diagnosis.primary} (${report.diagnosis.confidence})`);

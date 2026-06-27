@@ -93,6 +93,7 @@ export class GameServer {
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
   private maxSnapshotsDisplay: SnapshotRate;
   private lastSnapshotTime: number = 0;
+  private pendingPresentationSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Background mode — allowed unit blueprints for AI production & UI toggles.
   // Initial set comes from GameServerConfig.initialAllowedUnitBlueprintIds when the
@@ -322,7 +323,7 @@ export class GameServer {
       const interval = this.maxSnapshotIntervalMs;
       if (interval === 0 || elapsed >= interval) {
         this.lastSnapshotTime = tickNow;
-        this.emitSnapshot();
+        this.queuePresentationSnapshot();
       }
 
       this.recordTickWork(performance.now() - workStart);
@@ -337,6 +338,15 @@ export class GameServer {
   private emitStartupSnapshot(now: number): void {
     this.lastSnapshotTime = now;
     this.emitSnapshot();
+  }
+
+  private queuePresentationSnapshot(): void {
+    if (this.pendingPresentationSnapshotTimer !== null) return;
+    this.pendingPresentationSnapshotTimer = setTimeout(() => {
+      this.pendingPresentationSnapshotTimer = null;
+      if (this.stopped) return;
+      this.emitSnapshot();
+    }, 0);
   }
 
   private areStartupClientsReady(): boolean {
@@ -403,6 +413,10 @@ export class GameServer {
     this.stopped = true;
     releaseSimSlot(this);
     this.tickLoop.stop();
+    if (this.pendingPresentationSnapshotTimer !== null) {
+      clearTimeout(this.pendingPresentationSnapshotTimer);
+      this.pendingPresentationSnapshotTimer = null;
+    }
     this.releaseSnapshotListeners();
     this.gameOverListeners.length = 0;
     this.core.clearPendingCommandsAndStepBuffers();

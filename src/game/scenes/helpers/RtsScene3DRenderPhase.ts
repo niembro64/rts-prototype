@@ -124,6 +124,29 @@ type RtsScene3DRenderPhaseResult = {
   renderMs: number;
 };
 
+export type RtsScene3DRenderPhaseBudget = {
+  readonly lodDistanceScale: number;
+  readonly emissionLodDistanceScale: number;
+};
+
+export type RtsScene3DRenderPhaseTimings = {
+  scopeMs: number;
+  projectileQueryMs: number;
+  entityPacketMs: number;
+  entityRendererMs: number;
+  terrainMs: number;
+  beamMs: number;
+  effectsMs: number;
+  hudMs: number;
+  totalMs: number;
+  unitRows: number;
+  buildingRows: number;
+  unitLodProxyRows: number;
+  buildingLodProxyRows: number;
+  projectileRows: number;
+  lineProjectileRows: number;
+};
+
 type RenderPhaseEntityLists = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
@@ -201,6 +224,25 @@ export class RtsScene3DRenderPhase {
     up: { x: 0, y: Math.SQRT1_2, z: Math.SQRT1_2 },
     towardCamera: { x: 0, y: -Math.SQRT1_2, z: Math.SQRT1_2 },
   };
+  private lodDistanceScale = 1;
+  private emissionLodDistanceScale = 1;
+  private readonly lastPhaseTimings: RtsScene3DRenderPhaseTimings = {
+    scopeMs: 0,
+    projectileQueryMs: 0,
+    entityPacketMs: 0,
+    entityRendererMs: 0,
+    terrainMs: 0,
+    beamMs: 0,
+    effectsMs: 0,
+    hudMs: 0,
+    totalMs: 0,
+    unitRows: 0,
+    buildingRows: 0,
+    unitLodProxyRows: 0,
+    buildingLodProxyRows: 0,
+    projectileRows: 0,
+    lineProjectileRows: 0,
+  };
 
   constructor(
     private readonly threeApp: ThreeApp,
@@ -222,6 +264,21 @@ export class RtsScene3DRenderPhase {
 
   getCameraViewBasis(): CameraViewBasis {
     return this.cameraViewBasis;
+  }
+
+  setRenderBudget(budget: RtsScene3DRenderPhaseBudget): void {
+    this.lodDistanceScale = Number.isFinite(budget.lodDistanceScale) && budget.lodDistanceScale > 0
+      ? budget.lodDistanceScale
+      : 1;
+    this.emissionLodDistanceScale =
+      Number.isFinite(budget.emissionLodDistanceScale) && budget.emissionLodDistanceScale > 0
+        ? budget.emissionLodDistanceScale
+        : 1;
+    this.entityLod.setDistanceScale(this.lodDistanceScale);
+  }
+
+  getLastPhaseTimings(): RtsScene3DRenderPhaseTimings {
+    return this.lastPhaseTimings;
   }
 
   beginEnabledFrame(): void {
@@ -290,6 +347,8 @@ export class RtsScene3DRenderPhase {
       nameLabel3D,
       waypoint3D,
     } = this.resources;
+    const timings = this.lastPhaseTimings;
+    let phaseMark = renderStart;
 
     metalDepositRenderer?.update(graphicsConfig);
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
@@ -324,7 +383,13 @@ export class RtsScene3DRenderPhase {
       cameraFootprint.bounds,
     );
     const projectileQueryBounds = this.getProjectileQueryBounds();
+    let phaseNow = performance.now();
+    timings.scopeMs = phaseNow - phaseMark;
+    phaseMark = phaseNow;
     const projectileLists = this.collectRenderProjectiles(projectileQueryBounds);
+    phaseNow = performance.now();
+    timings.projectileQueryMs = phaseNow - phaseMark;
+    phaseMark = phaseNow;
     environmentPropRenderer?.update();
     this.getCameraQuadUpdate()?.(
       cameraQuad,
@@ -377,6 +442,9 @@ export class RtsScene3DRenderPhase {
       includeGroundPrints: updateEffectsThisFrame,
       hoveredEntity,
     }, selectionHudMode);
+    phaseNow = performance.now();
+    timings.entityPacketMs = phaseNow - phaseMark;
+    phaseMark = phaseNow;
     const lineProjectiles = this.filterNearLodProjectiles(
       projectileLists.line,
       this.nearLineProjectiles,
@@ -402,6 +470,9 @@ export class RtsScene3DRenderPhase {
           (inputManager?.isInResurrectAreaMode() ?? false),
       },
     );
+    phaseNow = performance.now();
+    timings.entityRendererMs = phaseNow - phaseMark;
+    phaseMark = phaseNow;
     this.clientViewState.consumeRenderDirties();
     if (shotNamesEnabled) {
       this.populateShotNamePacket(
@@ -424,6 +495,9 @@ export class RtsScene3DRenderPhase {
       graphicsConfig,
       renderFrameState,
     );
+    phaseNow = performance.now();
+    timings.terrainMs = phaseNow - phaseMark;
+    phaseMark = phaseNow;
 
     beamRenderer.update(
       lineProjectiles,
@@ -432,6 +506,9 @@ export class RtsScene3DRenderPhase {
       entityRenderer,
       (entity, emission) => this.entityEmissionUsesFarLod(entity, emission),
     );
+    phaseNow = performance.now();
+    timings.beamMs = phaseNow - phaseMark;
+    phaseMark = phaseNow;
 
     waterRenderer.update(
       effectDtMs / 1000,
@@ -549,6 +626,9 @@ export class RtsScene3DRenderPhase {
       );
       this.smokeTrailAccumMs = 0;
     }
+    phaseNow = performance.now();
+    timings.effectsMs = phaseNow - phaseMark;
+    phaseMark = phaseNow;
 
     if (inputManager) {
       areaDragRenderer.update(inputManager.getAreaDragState());
@@ -595,10 +675,19 @@ export class RtsScene3DRenderPhase {
     }
 
     this.entityLod.endFrame();
+    const renderEnd = performance.now();
+    timings.hudMs = renderEnd - phaseMark;
+    timings.totalMs = renderEnd - renderStart;
+    timings.unitRows = entityLists.unitRows.count;
+    timings.buildingRows = entityLists.buildingRows.count;
+    timings.unitLodProxyRows = this.countUnitLodProxyRows(entityLists.unitRows);
+    timings.buildingLodProxyRows = this.countBuildingLodProxyRows(entityLists.buildingRows);
+    timings.projectileRows = projectileLists.traveling.length;
+    timings.lineProjectileRows = lineProjectiles.length;
     return {
       cameraQuad,
       cameraView,
-      renderMs: performance.now() - renderStart,
+      renderMs: timings.totalMs,
     };
   }
 
@@ -616,6 +705,22 @@ export class RtsScene3DRenderPhase {
     basis.towardCamera.y = e[10];
     basis.towardCamera.z = e[9];
     return basis;
+  }
+
+  private countUnitLodProxyRows(rows: UnitRenderPacket3D): number {
+    let count = 0;
+    for (let row = 0; row < rows.count; row++) {
+      if (rows.lodProxyAt(row)) count++;
+    }
+    return count;
+  }
+
+  private countBuildingLodProxyRows(rows: BuildingRenderPacket3D): number {
+    let count = 0;
+    for (let row = 0; row < rows.count; row++) {
+      if (rows.lodProxyAt(row)) count++;
+    }
+    return count;
   }
 
   private prepareEntityLists(
@@ -664,10 +769,11 @@ export class RtsScene3DRenderPhase {
     entity: Entity,
     emission: EntityLodEmission3D,
   ): boolean {
+    const distance = EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission];
     return entityEmissionUsesLowLodDistance3D(
       this.threeApp.camera,
       entity,
-      EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission],
+      distance === null ? null : distance * this.emissionLodDistanceScale,
     );
   }
 

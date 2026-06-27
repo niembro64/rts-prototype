@@ -33,6 +33,27 @@ export type RtsScene3DFrameTiming = {
   webglBufferDataCalls: number;
   webglBufferSubDataCalls: number;
   webglBufferUploadBytes: number;
+  renderBudgetTier: string;
+  renderBudgetTierIndex: number;
+  renderBudgetUnitCount: number;
+  renderBudgetLodDistanceScale: number;
+  renderBudgetEmissionLodDistanceScale: number;
+  renderBudgetHudFrameStride: number;
+  renderBudgetEffectFrameStride: number;
+  renderPhaseScopeMs: number;
+  renderPhaseProjectileQueryMs: number;
+  renderPhaseEntityPacketMs: number;
+  renderPhaseEntityRendererMs: number;
+  renderPhaseTerrainMs: number;
+  renderPhaseBeamMs: number;
+  renderPhaseEffectsMs: number;
+  renderPhaseHudMs: number;
+  renderPhaseUnitRows: number;
+  renderPhaseBuildingRows: number;
+  renderPhaseUnitLodProxyRows: number;
+  renderPhaseBuildingLodProxyRows: number;
+  renderPhaseProjectileRows: number;
+  renderPhaseLineProjectileRows: number;
 };
 
 type RtsScene3DFrameTimingGpuSample = {
@@ -53,10 +74,31 @@ type RtsScene3DFrameTimingGpuSample = {
   webglBufferDataCalls: number;
   webglBufferSubDataCalls: number;
   webglBufferUploadBytes: number;
+  renderBudgetTier: string;
+  renderBudgetTierIndex: number;
+  renderBudgetUnitCount: number;
+  renderBudgetLodDistanceScale: number;
+  renderBudgetEmissionLodDistanceScale: number;
+  renderBudgetHudFrameStride: number;
+  renderBudgetEffectFrameStride: number;
+  renderPhaseScopeMs: number;
+  renderPhaseProjectileQueryMs: number;
+  renderPhaseEntityPacketMs: number;
+  renderPhaseEntityRendererMs: number;
+  renderPhaseTerrainMs: number;
+  renderPhaseBeamMs: number;
+  renderPhaseEffectsMs: number;
+  renderPhaseHudMs: number;
+  renderPhaseUnitRows: number;
+  renderPhaseBuildingRows: number;
+  renderPhaseUnitLodProxyRows: number;
+  renderPhaseBuildingLodProxyRows: number;
+  renderPhaseProjectileRows: number;
+  renderPhaseLineProjectileRows: number;
 };
 
 export class RtsScene3DFrameTelemetry {
-  private readonly renderTpsTracker = new EmaTracker(EMA_CONFIG.tps, EMA_INITIAL_VALUES.tps);
+  private readonly renderTpsTracker = new EmaTracker(EMA_CONFIG.tps);
   private readonly frameMsTracker = new EmaMsTracker(
     FRAME_TIMING_EMA.frameMs,
     EMA_INITIAL_VALUES.frameMs,
@@ -135,6 +177,27 @@ export class RtsScene3DFrameTelemetry {
       webglBufferDataCalls: sample.webglBufferDataCalls,
       webglBufferSubDataCalls: sample.webglBufferSubDataCalls,
       webglBufferUploadBytes: sample.webglBufferUploadBytes,
+      renderBudgetTier: sample.renderBudgetTier,
+      renderBudgetTierIndex: sample.renderBudgetTierIndex,
+      renderBudgetUnitCount: sample.renderBudgetUnitCount,
+      renderBudgetLodDistanceScale: sample.renderBudgetLodDistanceScale,
+      renderBudgetEmissionLodDistanceScale: sample.renderBudgetEmissionLodDistanceScale,
+      renderBudgetHudFrameStride: sample.renderBudgetHudFrameStride,
+      renderBudgetEffectFrameStride: sample.renderBudgetEffectFrameStride,
+      renderPhaseScopeMs: sample.renderPhaseScopeMs,
+      renderPhaseProjectileQueryMs: sample.renderPhaseProjectileQueryMs,
+      renderPhaseEntityPacketMs: sample.renderPhaseEntityPacketMs,
+      renderPhaseEntityRendererMs: sample.renderPhaseEntityRendererMs,
+      renderPhaseTerrainMs: sample.renderPhaseTerrainMs,
+      renderPhaseBeamMs: sample.renderPhaseBeamMs,
+      renderPhaseEffectsMs: sample.renderPhaseEffectsMs,
+      renderPhaseHudMs: sample.renderPhaseHudMs,
+      renderPhaseUnitRows: sample.renderPhaseUnitRows,
+      renderPhaseBuildingRows: sample.renderPhaseBuildingRows,
+      renderPhaseUnitLodProxyRows: sample.renderPhaseUnitLodProxyRows,
+      renderPhaseBuildingLodProxyRows: sample.renderPhaseBuildingLodProxyRows,
+      renderPhaseProjectileRows: sample.renderPhaseProjectileRows,
+      renderPhaseLineProjectileRows: sample.renderPhaseLineProjectileRows,
     };
   }
 

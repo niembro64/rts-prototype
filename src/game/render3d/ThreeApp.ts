@@ -35,6 +35,7 @@ import {
 } from '../../config';
 
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
+const DYNAMIC_PIXEL_RATIO_FLOOR = 0.75;
 // CAMERA_NEAR_PLANE bumped 5 → 50: depth-buffer precision is dominated
 // by 1/near, so 10× near gives 10× better precision everywhere. The
 // game's units have ~10–20 wu radius and the camera's altitude clamp
@@ -310,7 +311,10 @@ export class ThreeApp {
   }
 
   async precompileShadersAsync(): Promise<void> {
-    await this.renderer.compileAsync(this.scene, this.camera);
+    // Three's compileAsync() can throw from an internal polling timeout when
+    // a material does not receive currentProgram. Keep warmup under our own
+    // error handling instead of relying on that uncaught async path.
+    this.precompileShaders();
   }
 
   start(): void {
@@ -352,16 +356,15 @@ export class ThreeApp {
     // buffer is reallocated by setPixelRatio()+setSize(). Those profiles
     // keep DPR stable; browser desktop keeps the adaptive quality loop.
     if (!this._dynamicPixelRatioEnabled) return;
-    if (this._nativePixelRatio <= 1) return;
     if (now - this._lastPixelRatioAdjustMs < 750) return;
 
     const gpuMs = this.gpuTimer.getGpuMs();
     const hasGpuMs = this.gpuTimer.isSupported() && gpuMs > 0;
-    const overloaded = hasGpuMs ? gpuMs > 18 : frameDeltaMs > 24;
-    const comfortable = hasGpuMs ? gpuMs < 10 : frameDeltaMs < 15;
+    const overloaded = hasGpuMs ? gpuMs > 16 : frameDeltaMs > 22;
+    const comfortable = hasGpuMs ? gpuMs < 9 : frameDeltaMs < 14;
     let next = this._activePixelRatio;
     if (overloaded) {
-      next = Math.max(1, this._activePixelRatio - 0.25);
+      next = Math.max(DYNAMIC_PIXEL_RATIO_FLOOR, this._activePixelRatio - 0.25);
     } else if (comfortable) {
       next = Math.min(this._nativePixelRatio, this._activePixelRatio + 0.25);
     }

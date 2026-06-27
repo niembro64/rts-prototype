@@ -69,7 +69,7 @@ export function getBrowserRenderRuntimeProfile(): BrowserRenderRuntimeProfile {
     label: 'browser-desktop',
     mobileLike: false,
     tauri: false,
-    antialias: true,
+    antialias: false,
     precision: 'highp',
     dynamicPixelRatio: true,
     pixelRatioCap: Number.POSITIVE_INFINITY,

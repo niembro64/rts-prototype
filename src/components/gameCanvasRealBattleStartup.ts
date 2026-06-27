@@ -68,6 +68,7 @@ import type { GameConnection } from '../game/server/GameConnection';
 import type { Command } from '../game/sim/commands';
 import type { PlayerId } from '../game/sim/types';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
+import { presentationSnapshotRateIntervalMs } from '../presentationSnapshotConfig';
 
 export type RealBattleStartupTerrain = {
   terrainRuntimeConfig: BattleTerrainRuntimeConfig;
@@ -540,6 +541,10 @@ async function createDeterministicLockstepBackendRuntime({
   let snapshotMsHi = 0;
   let snapshotMsInitialized = false;
   let snapshotsEmitted = 0;
+  const lockstepPresentationSnapshotIntervalMs = presentationSnapshotRateIntervalMs(
+    ARCHITECTURE_CONFIG.lockstep.presentationSnapshots.nominalSnapshotRateHz,
+  );
+  let lastLockstepPresentationSnapshotMs = Number.NEGATIVE_INFINITY;
   let lastLockstepTelemetryPumpMs: number | null = null;
   let lastLockstepCommandPumpMs: number | null = null;
   let lockstepCommandPumpAccumulatorMs = LOCKSTEP_FIXED_DT_MS;
@@ -986,11 +991,15 @@ async function createDeterministicLockstepBackendRuntime({
         tickRateHz: LOCKSTEP_FIXED_STEP_HZ,
       });
 
-      // Lockstep snapshots are local presentation only. Emit one after catch-up
-      // instead of one per fixed sim frame so serialization cannot cap sim rate.
-      const snapshotStartMs = performance.now();
-      server.emitLockstepPresentationSnapshot();
-      recordSnapshotMs(performance.now() - snapshotStartMs);
+      // Lockstep snapshots are local presentation only. Gate them separately
+      // from command-frame simulation so full-state serialization cannot cap
+      // render cadence or command-frame catch-up under high unit counts.
+      if (nowMs - lastLockstepPresentationSnapshotMs >= lockstepPresentationSnapshotIntervalMs) {
+        const snapshotStartMs = performance.now();
+        server.emitLockstepPresentationSnapshot();
+        lastLockstepPresentationSnapshotMs = snapshotStartMs;
+        recordSnapshotMs(performance.now() - snapshotStartMs);
+      }
     }
     resendCommandFramesToLaggingPeers();
     requestMissingCommandFrameIfNeeded();
@@ -1019,6 +1028,7 @@ async function createDeterministicLockstepBackendRuntime({
         );
       }
       server.startLockstepPresentation();
+      lastLockstepPresentationSnapshotMs = performance.now();
       pumpTimer = setInterval(pumpFrame, LOCKSTEP_FIXED_DT_MS);
       if (typeof window !== 'undefined' && typeof document !== 'undefined') {
         browserResumePumpHandler = () => {

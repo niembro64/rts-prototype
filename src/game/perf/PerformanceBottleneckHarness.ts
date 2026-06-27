@@ -93,6 +93,26 @@ type FullStackReport = {
   readonly triangles: NumericSummary;
   readonly bufferUploadBytes: NumericSummary;
   readonly bufferUploadCalls: NumericSummary;
+  readonly renderBudgetTier: string;
+  readonly renderBudgetTierIndex: NumericSummary;
+  readonly renderBudgetLodDistanceScale: NumericSummary;
+  readonly renderBudgetEmissionLodDistanceScale: NumericSummary;
+  readonly renderBudgetHudFrameStride: NumericSummary;
+  readonly renderBudgetEffectFrameStride: NumericSummary;
+  readonly renderPhaseScopeMs: NumericSummary;
+  readonly renderPhaseProjectileQueryMs: NumericSummary;
+  readonly renderPhaseEntityPacketMs: NumericSummary;
+  readonly renderPhaseEntityRendererMs: NumericSummary;
+  readonly renderPhaseTerrainMs: NumericSummary;
+  readonly renderPhaseBeamMs: NumericSummary;
+  readonly renderPhaseEffectsMs: NumericSummary;
+  readonly renderPhaseHudMs: NumericSummary;
+  readonly renderPhaseUnitRows: NumericSummary;
+  readonly renderPhaseBuildingRows: NumericSummary;
+  readonly renderPhaseUnitLodProxyRows: NumericSummary;
+  readonly renderPhaseBuildingLodProxyRows: NumericSummary;
+  readonly renderPhaseProjectileRows: NumericSummary;
+  readonly renderPhaseLineProjectileRows: NumericSummary;
   readonly longtaskMsPerSec: NumericSummary;
   readonly snapshotBytes: NumericSummary;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
@@ -346,12 +366,32 @@ async function runFullStack(
     const triangles: number[] = [];
     const bufferUploadBytes: number[] = [];
     const bufferUploadCalls: number[] = [];
+    const renderBudgetTierIndex: number[] = [];
+    const renderBudgetLodDistanceScale: number[] = [];
+    const renderBudgetEmissionLodDistanceScale: number[] = [];
+    const renderBudgetHudFrameStride: number[] = [];
+    const renderBudgetEffectFrameStride: number[] = [];
+    const renderPhaseScopeMs: number[] = [];
+    const renderPhaseProjectileQueryMs: number[] = [];
+    const renderPhaseEntityPacketMs: number[] = [];
+    const renderPhaseEntityRendererMs: number[] = [];
+    const renderPhaseTerrainMs: number[] = [];
+    const renderPhaseBeamMs: number[] = [];
+    const renderPhaseEffectsMs: number[] = [];
+    const renderPhaseHudMs: number[] = [];
+    const renderPhaseUnitRows: number[] = [];
+    const renderPhaseBuildingRows: number[] = [];
+    const renderPhaseUnitLodProxyRows: number[] = [];
+    const renderPhaseBuildingLodProxyRows: number[] = [];
+    const renderPhaseProjectileRows: number[] = [];
+    const renderPhaseLineProjectileRows: number[] = [];
     const longtaskMsPerSec: number[] = [];
     const snapshotBytes: number[] = [];
     let runtimeProfile = 'unknown';
     let gpuTimerSupported = false;
     let activePixelRatio = 1;
     let nativePixelRatio = 1;
+    let renderBudgetTier = 'normal';
 
     const deadline = performance.now() + options.seconds * 1000;
     while (performance.now() < deadline) {
@@ -380,6 +420,26 @@ async function runFullStack(
       triangles.push(timing.webglTriangles);
       bufferUploadBytes.push(timing.webglBufferUploadBytes);
       bufferUploadCalls.push(timing.webglBufferDataCalls + timing.webglBufferSubDataCalls);
+      renderBudgetTier = timing.renderBudgetTier;
+      renderBudgetTierIndex.push(timing.renderBudgetTierIndex);
+      renderBudgetLodDistanceScale.push(timing.renderBudgetLodDistanceScale);
+      renderBudgetEmissionLodDistanceScale.push(timing.renderBudgetEmissionLodDistanceScale);
+      renderBudgetHudFrameStride.push(timing.renderBudgetHudFrameStride);
+      renderBudgetEffectFrameStride.push(timing.renderBudgetEffectFrameStride);
+      renderPhaseScopeMs.push(timing.renderPhaseScopeMs);
+      renderPhaseProjectileQueryMs.push(timing.renderPhaseProjectileQueryMs);
+      renderPhaseEntityPacketMs.push(timing.renderPhaseEntityPacketMs);
+      renderPhaseEntityRendererMs.push(timing.renderPhaseEntityRendererMs);
+      renderPhaseTerrainMs.push(timing.renderPhaseTerrainMs);
+      renderPhaseBeamMs.push(timing.renderPhaseBeamMs);
+      renderPhaseEffectsMs.push(timing.renderPhaseEffectsMs);
+      renderPhaseHudMs.push(timing.renderPhaseHudMs);
+      renderPhaseUnitRows.push(timing.renderPhaseUnitRows);
+      renderPhaseBuildingRows.push(timing.renderPhaseBuildingRows);
+      renderPhaseUnitLodProxyRows.push(timing.renderPhaseUnitLodProxyRows);
+      renderPhaseBuildingLodProxyRows.push(timing.renderPhaseBuildingLodProxyRows);
+      renderPhaseProjectileRows.push(timing.renderPhaseProjectileRows);
+      renderPhaseLineProjectileRows.push(timing.renderPhaseLineProjectileRows);
       longtaskMsPerSec.push(timing.longtaskMsPerSec);
       snapshotBytes.push(snapSize.avgBytes);
     }
@@ -407,6 +467,26 @@ async function runFullStack(
       triangles: summarize(triangles),
       bufferUploadBytes: summarize(bufferUploadBytes),
       bufferUploadCalls: summarize(bufferUploadCalls),
+      renderBudgetTier,
+      renderBudgetTierIndex: summarize(renderBudgetTierIndex),
+      renderBudgetLodDistanceScale: summarize(renderBudgetLodDistanceScale),
+      renderBudgetEmissionLodDistanceScale: summarize(renderBudgetEmissionLodDistanceScale),
+      renderBudgetHudFrameStride: summarize(renderBudgetHudFrameStride),
+      renderBudgetEffectFrameStride: summarize(renderBudgetEffectFrameStride),
+      renderPhaseScopeMs: summarize(renderPhaseScopeMs),
+      renderPhaseProjectileQueryMs: summarize(renderPhaseProjectileQueryMs),
+      renderPhaseEntityPacketMs: summarize(renderPhaseEntityPacketMs),
+      renderPhaseEntityRendererMs: summarize(renderPhaseEntityRendererMs),
+      renderPhaseTerrainMs: summarize(renderPhaseTerrainMs),
+      renderPhaseBeamMs: summarize(renderPhaseBeamMs),
+      renderPhaseEffectsMs: summarize(renderPhaseEffectsMs),
+      renderPhaseHudMs: summarize(renderPhaseHudMs),
+      renderPhaseUnitRows: summarize(renderPhaseUnitRows),
+      renderPhaseBuildingRows: summarize(renderPhaseBuildingRows),
+      renderPhaseUnitLodProxyRows: summarize(renderPhaseUnitLodProxyRows),
+      renderPhaseBuildingLodProxyRows: summarize(renderPhaseBuildingLodProxyRows),
+      renderPhaseProjectileRows: summarize(renderPhaseProjectileRows),
+      renderPhaseLineProjectileRows: summarize(renderPhaseLineProjectileRows),
       longtaskMsPerSec: summarize(longtaskMsPerSec),
       snapshotBytes: summarize(snapshotBytes),
       snapshotWireStats,
@@ -444,7 +524,6 @@ function createServerConfig(
     aiPlayerIds: PLAYER_IDS,
     spawnDemoInitialState: true,
     initialMaxTotalUnits: options.unitCap,
-    maxSnapshotsPerSec: 10,
     converterTax: 0,
   };
 }
@@ -477,6 +556,12 @@ function diagnose(input: {
   evidence.push(
     `full frame p95 ${fmt(frameP95)}ms, render prep p95 ${fmt(renderPrepP95)}ms, ` +
       `gpu p95 ${fmt(gpuP95)}ms`,
+  );
+  evidence.push(
+    `render budget ${input.fullStack.renderBudgetTier}, entity packet p95 ` +
+      `${fmt(input.fullStack.renderPhaseEntityPacketMs.p95)}ms, entity renderer p95 ` +
+      `${fmt(input.fullStack.renderPhaseEntityRendererMs.p95)}ms, effects p95 ` +
+      `${fmt(input.fullStack.renderPhaseEffectsMs.p95)}ms`,
   );
 
   if (simUtil >= 85 || input.simOnly.simCeilingTpsP95 < ARCHITECTURE_CONFIG.lockstep.fixedStepHz * 1.15) {

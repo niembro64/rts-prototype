@@ -15,6 +15,7 @@ import { RtsScene3DFrameTelemetry, type RtsScene3DFrameTiming } from './helpers/
 import { buildHudSpriteTelemetry, type HudSpriteTelemetry } from './helpers/RtsScene3DHudSpriteTelemetry';
 import { RtsScene3DMinimapSystem } from './helpers/RtsScene3DMinimapSystem';
 import { RtsScene3DRenderPhase } from './helpers/RtsScene3DRenderPhase';
+import { RtsScene3DRenderBudget } from './helpers/RtsScene3DRenderBudget';
 import { teardownRtsScene3DRenderers } from './helpers/RtsScene3DRendererLifecycle';
 import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootstrap';
 import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
@@ -22,6 +23,7 @@ import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
 import { simPositionUsesLowEmissionLod3D } from '../render3d/EntityLod3D';
 import { EMISSION_LOD_HIGH_TO_LOW_DISTANCES } from '@/config';
+import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
@@ -202,6 +204,7 @@ export class RtsScene3D {
   private isGameOver = false;
 
   private frameTelemetry = new RtsScene3DFrameTelemetry();
+  private renderBudget = new RtsScene3DRenderBudget(getGraphicsConfig());
 
   // UI update throttling (mirror RtsScene)
   private economyUpdateTimer = 0;
@@ -704,10 +707,20 @@ export class RtsScene3D {
       viewportHeightPx,
       zoom: this.cameras.main.zoom,
     });
+    const renderTpsStats = this.frameTelemetry.getRenderTpsStats();
+    const serverUnitCount = this.clientViewState.getServerMeta()?.units?.count;
+    const budgetState = this.renderBudget.resolve({
+      baseGraphicsConfig: graphicsConfig,
+      unitCount: serverUnitCount ?? this.clientViewState.getUnits().length,
+      renderTpsAvg: renderTpsStats.avgRate,
+      renderTpsWorst: renderTpsStats.worstRate,
+    });
+    renderFrameState.gfx = budgetState.graphicsConfig;
+    renderPhase.setRenderBudget(budgetState);
 
     const { cameraQuad, cameraView, renderMs } = renderPhase.run({
       effectDtMs,
-      graphicsConfig,
+      graphicsConfig: budgetState.graphicsConfig,
       renderFrameState,
     });
     this.rendererWarmup?.tickStartupGate();
@@ -727,7 +740,7 @@ export class RtsScene3D {
 
     this.minimapSystem.tick(
       delta,
-      graphicsConfig,
+      budgetState.graphicsConfig,
       this.entitySourceAdapter,
       cameraQuad,
       this.threeApp.orbit.yaw,
@@ -784,7 +797,9 @@ export class RtsScene3D {
           simX,
           simY,
           simZ,
-          EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission],
+          this.renderBudget.scaleEmissionDistance(
+            EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission],
+          ),
         ),
     });
   }
@@ -1214,6 +1229,8 @@ export class RtsScene3D {
   public getFrameTiming(): RtsScene3DFrameTiming {
     const renderRuntime = this.threeApp.getRenderRuntimeTelemetry();
     const webglProfile = this.threeApp.getWebGlFrameProfile();
+    const renderBudget = this.renderBudget.getTelemetry();
+    const renderPhaseTimings = this.renderPhase?.getLastPhaseTimings();
     return this.frameTelemetry.getFrameTiming({
       gpuTimerMs: this.clientRenderEnabled ? this.threeApp.gpuTimer.getGpuMs() : 0,
       gpuTimerSupported: this.threeApp.gpuTimer.isSupported(),
@@ -1232,6 +1249,27 @@ export class RtsScene3D {
       webglBufferDataCalls: webglProfile.bufferDataCalls,
       webglBufferSubDataCalls: webglProfile.bufferSubDataCalls,
       webglBufferUploadBytes: webglProfile.bufferUploadBytes,
+      renderBudgetTier: renderBudget.tier,
+      renderBudgetTierIndex: renderBudget.tierIndex,
+      renderBudgetUnitCount: renderBudget.unitCount,
+      renderBudgetLodDistanceScale: renderBudget.lodDistanceScale,
+      renderBudgetEmissionLodDistanceScale: renderBudget.emissionLodDistanceScale,
+      renderBudgetHudFrameStride: renderBudget.hudFrameStride,
+      renderBudgetEffectFrameStride: renderBudget.effectFrameStride,
+      renderPhaseScopeMs: renderPhaseTimings?.scopeMs ?? 0,
+      renderPhaseProjectileQueryMs: renderPhaseTimings?.projectileQueryMs ?? 0,
+      renderPhaseEntityPacketMs: renderPhaseTimings?.entityPacketMs ?? 0,
+      renderPhaseEntityRendererMs: renderPhaseTimings?.entityRendererMs ?? 0,
+      renderPhaseTerrainMs: renderPhaseTimings?.terrainMs ?? 0,
+      renderPhaseBeamMs: renderPhaseTimings?.beamMs ?? 0,
+      renderPhaseEffectsMs: renderPhaseTimings?.effectsMs ?? 0,
+      renderPhaseHudMs: renderPhaseTimings?.hudMs ?? 0,
+      renderPhaseUnitRows: renderPhaseTimings?.unitRows ?? 0,
+      renderPhaseBuildingRows: renderPhaseTimings?.buildingRows ?? 0,
+      renderPhaseUnitLodProxyRows: renderPhaseTimings?.unitLodProxyRows ?? 0,
+      renderPhaseBuildingLodProxyRows: renderPhaseTimings?.buildingLodProxyRows ?? 0,
+      renderPhaseProjectileRows: renderPhaseTimings?.projectileRows ?? 0,
+      renderPhaseLineProjectileRows: renderPhaseTimings?.lineProjectileRows ?? 0,
     });
   }
 

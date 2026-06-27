@@ -14,8 +14,11 @@ type ServerTickLoopOptions = {
   onFrame?: (stats: ServerTickLoopFrameStats) => void;
 };
 
-const MAX_CATCH_UP_WINDOW_MS = 50;
-const MIN_CATCH_UP_STEPS = 5;
+const MAX_CATCH_UP_WINDOW_MS = 25;
+// Do not force a large catch-up burst on the main thread. At 30Hz the
+// 25ms window allows one fixed step; the old minimum of five could turn a
+// brief stall into a 70ms+ render-blocking sim callback.
+const MIN_CATCH_UP_STEPS = 1;
 const MAX_CATCH_UP_STEPS = 24;
 const ACCUMULATOR_EPSILON_MS = 0.0001;
 

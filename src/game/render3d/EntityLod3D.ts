@@ -242,7 +242,12 @@ export class EntityLodHysteresis3D {
   private readonly radiusFrameByEntityId = new Map<EntityId, number>();
   private readonly distanceSqByEntityId = new Map<EntityId, number>();
   private readonly distanceSqFrameByEntityId = new Map<EntityId, number>();
+  private distanceScale = 1;
   private frame = 0;
+
+  setDistanceScale(scale: number): void {
+    this.distanceScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  }
 
   beginFrame(): void {
     this.frame++;
@@ -327,7 +332,7 @@ export class EntityLodHysteresis3D {
       this.entityCameraDistanceSq(camera, entity) >
       entityLodFullDetailDistanceSq3D(
         this.entityLodRadius(entity),
-        multiplier,
+        multiplier * this.distanceScale,
         fullDetailDistance,
       );
 

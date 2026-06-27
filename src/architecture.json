@@ -7,7 +7,7 @@
     "desyncPolicy": "pause",
     "allowLateJoin": false,
     "presentationSnapshots": {
-      "nominalSnapshotRateHz": 20
+      "nominalSnapshotRateHz": 5
     }
   }
 }
