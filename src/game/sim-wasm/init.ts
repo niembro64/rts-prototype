@@ -4180,8 +4180,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runMetalDepositVisualClustersContractTest();
         const { runTurretHostIntegrationContractTest } = await import('../sim/turretHostIntegrationTest');
         runTurretHostIntegrationContractTest();
-        const { runUnitLauncherProductionContractTest } = await import('../sim/unitLauncherProductionContractTest');
-        runUnitLauncherProductionContractTest();
         const { runResourceMovementConformanceContractTest } = await import('../sim/resourceMovementConformanceContractTest');
         runResourceMovementConformanceContractTest();
         const { runSupportSurfaceContractTest } = await import('../sim/supportSurfaceContractTest');

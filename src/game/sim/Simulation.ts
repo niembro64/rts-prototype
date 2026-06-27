@@ -17,7 +17,6 @@ import { DamageSystem } from './damage';
 import { economyManager } from './economy';
 import { ConstructionSystem } from './construction';
 import { factoryProductionSystem } from './factoryProduction';
-import { unitLauncherProductionSystem } from './unitLauncherProduction';
 import { updateConstructionLifecycle } from './constructionLifecycle';
 import { isBuildBlockingActivation } from './buildableHelpers';
 import { commanderAbilitiesSystem, type SprayTarget } from './commanderAbilities';
@@ -418,16 +417,6 @@ export class Simulation {
       this.onUnitDeath,
       this.onBuildingDeath,
     );
-    const launcherProductionResult = unitLauncherProductionSystem.update(
-      this.world,
-      dtMs,
-      this.forceAccumulator,
-      this.windState,
-    );
-    if (launcherProductionResult.spawnedUnits.length > 0) {
-      const onUnitSpawn = this.onUnitSpawn;
-      if (onUnitSpawn !== null) onUnitSpawn(launcherProductionResult.spawnedUnits);
-    }
     // Safety cleanup - remove any dead entities that slipped through.
     // WorldState records ids whose HP changed, so this drains only
     // those candidates instead of walking every unit/building.

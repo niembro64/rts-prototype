@@ -87,8 +87,6 @@ export const TURRET_BLUEPRINT_IDS = [
   'turretAntiAir',
   'turretShieldSphereSmall',
   'turretAlbatrosSiegeCannon',
-  'turretQueenBeeConstructor',
-  'turretQueenTickConstructor',
   'turretSpawnBuildingsAndTowers',
   'turretSpawnUnits',
   'turretResourcePylonConstructionMetal',

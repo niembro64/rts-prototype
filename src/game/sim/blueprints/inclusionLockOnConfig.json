@@ -68,8 +68,6 @@
         "turretRocketSlow",
         "turretRocketFast",
         "turretAntiAir",
-        "turretQueenBeeConstructor",
-        "turretQueenTickConstructor",
         "turretSpawnBuildingsAndTowers",
         "turretSpawnUnits",
         "turretResourcePylonConstructionMetal",
@@ -516,24 +514,6 @@
           "shots": {
             "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
-        }
-      }
-    },
-    "turretQueenBeeConstructor": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "towers": "all",
-          "units": "all"
-        }
-      }
-    },
-    "turretQueenTickConstructor": {
-      "targets": {
-        "enemy": {
-          "buildings": "all",
-          "towers": "all",
-          "units": "all"
         }
       }
     },
