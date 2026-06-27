@@ -382,7 +382,15 @@ type ReplayRun = {
 
 type ReplayRunStats = {
   readonly constructionEnergySpendByPlayer: Map<PlayerId, number>;
+  readonly queenMobileFactory: {
+    shellAttachedToHostObserved: boolean;
+    shellPinnedAboveHostObserved: boolean;
+    completedReleasedObserved: boolean;
+    completedFallingOrLowerObserved: boolean;
+  };
 };
+
+const QUEEN_ATTACHED_BUILD_SHELL_ELEVATION = 60;
 
 function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
   resetReusableSimulationStateForDeterministicReplay();

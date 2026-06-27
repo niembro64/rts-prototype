@@ -51,6 +51,17 @@ export type CameraMovementConfig = {
   readonly ctrlCenterClickHeightPan: CameraPanMovementConfig;
 };
 
+export type CameraZoomInLimitMode = 'none' | 'zoom-max';
+
+export type CameraTargetBoundsMode = 'none' | 'map-padding';
+
+export type CameraConstraintConfig = {
+  /** 'zoom-max' derives the closest orbit distance from zoom.max. */
+  readonly zoomInLimit: CameraZoomInLimitMode;
+  /** 'map-padding' keeps the orbit target inside the padded map region. */
+  readonly targetBounds: CameraTargetBoundsMode;
+};
+
 /** How the orbit camera resolves a frame where the eye would sit below
  *  terrain. Every mode keeps the camera looking at the orbit target, and
  *  NONE of them write terrain back into the orbit state (so zoom limits

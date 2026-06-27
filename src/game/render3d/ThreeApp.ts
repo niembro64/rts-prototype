@@ -27,7 +27,9 @@ import {
   CAMERA_PAN_ANCHOR,
   CAMERA_FOV_DEGREES,
   CAMERA_MOVEMENT_CONFIG,
+  CAMERA_CONSTRAINTS,
   SKY_RENDER_CONFIG,
+  ZOOM_MAX,
   ZOOM_STEP_FRACTION,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
 } from '../../config';
@@ -195,12 +197,16 @@ export class ThreeApp {
     }
 
     // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
-    // region of the map as the 2D camera at its default zoom. There are no
-    // camera-position rails: dolly/target movement is free, and terrain does
-    // not clamp or bias the camera body. The far reference distance
-    // (map-scaled) only drives HUD fade, not a cap.
+    // region of the map as the 2D camera at its default zoom. The near
+    // distance rail is optional config; the far reference distance only
+    // drives HUD fade, not a zoom-out cap.
     const baseDistance = Math.max(mapWidth, mapHeight) * 0.35;
+    const minDistance =
+      CAMERA_CONSTRAINTS.zoomInLimit === 'zoom-max'
+        ? baseDistance / Math.max(1e-6, ZOOM_MAX)
+        : undefined;
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
+      minDistance,
       farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
       zoomStepFraction: ZOOM_STEP_FRACTION,
       movementConfig: CAMERA_MOVEMENT_CONFIG,

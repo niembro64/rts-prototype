@@ -3,10 +3,15 @@
   "panMultiplier": 6.0,
   "worldPaddingPercent": 20.0,
   "zoom": {
+    "max": 40.0,
     "stepFraction": 0.2
   },
+  "constraints": {
+    "zoomInLimit": "zoom-max",
+    "targetBounds": "map-padding"
+  },
   "movement": {
-    "scaleMode": "absolute-world-momentum",
+    "scaleMode": "anchor-distance-relative",
     "centerClickPan": {
       "absoluteWorldUnitsPerPixel": 5.0,
       "momentum": {

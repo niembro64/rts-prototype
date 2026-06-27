@@ -4,6 +4,7 @@ import type { Entity, EntityId } from '../sim/types';
 const CLIENT_PROJECTILE_RENDER_CELL_SIZE = 512;
 const CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET = 1 << 20;
 const CLIENT_PROJECTILE_RENDER_CELL_KEY_STRIDE = CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET * 2 + 1;
+const CLIENT_PROJECTILE_RENDER_MAX_BUCKET_CELLS_PER_ENTRY = 256;
 
 type ClientProjectileRenderCellKey = number | string;
 
@@ -32,6 +33,7 @@ export type ClientProjectileRenderLists = {
 export class ClientProjectileRenderSpatialIndex {
   private readonly buckets = new Map<ClientProjectileRenderCellKey, ClientProjectileRenderBucket>();
   private readonly entries = new Map<EntityId, ClientProjectileRenderSpatialEntry>();
+  private readonly unbucketedEntries = new Set<ClientProjectileRenderSpatialEntry>();
   private readonly querySeenIds = new Set<EntityId>();
   private boundsMinX = 0;
   private boundsMaxX = 0;
@@ -41,6 +43,7 @@ export class ClientProjectileRenderSpatialIndex {
   clear(): void {
     this.buckets.clear();
     this.entries.clear();
+    this.unbucketedEntries.clear();
     this.querySeenIds.clear();
   }
 
@@ -55,6 +58,15 @@ export class ClientProjectileRenderSpatialIndex {
     const maxCellX = this.cellCoord(this.boundsMaxX);
     const minCellY = this.cellCoord(this.boundsMinY);
     const maxCellY = this.cellCoord(this.boundsMaxY);
+    if (
+      !Number.isFinite(minCellX) ||
+      !Number.isFinite(maxCellX) ||
+      !Number.isFinite(minCellY) ||
+      !Number.isFinite(maxCellY)
+    ) {
+      this.remove(entity.id);
+      return;
+    }
     const existing = this.entries.get(entity.id);
     if (
       existing !== undefined &&
@@ -70,6 +82,7 @@ export class ClientProjectileRenderSpatialIndex {
     let entry = existing;
     if (entry !== undefined) {
       this.removeEntryFromBuckets(entry);
+      this.unbucketedEntries.delete(entry);
       entry.entity = entity;
       entry.minCellX = minCellX;
       entry.maxCellX = maxCellX;
@@ -90,6 +103,11 @@ export class ClientProjectileRenderSpatialIndex {
       this.entries.set(entity.id, entry);
     }
 
+    if (this.shouldStoreEntryUnbucketed(minCellX, maxCellX, minCellY, maxCellY)) {
+      this.unbucketedEntries.add(entry);
+      return;
+    }
+
     for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
       for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
         const key = this.cellKey(cellX, cellY);
@@ -108,6 +126,7 @@ export class ClientProjectileRenderSpatialIndex {
     if (entry === undefined) return;
 
     this.removeEntryFromBuckets(entry);
+    this.unbucketedEntries.delete(entry);
     this.entries.delete(id);
   }
 
@@ -173,7 +192,24 @@ export class ClientProjectileRenderSpatialIndex {
         }
       }
     }
+    this.queryUnbucketedEntries(minCellX, maxCellX, minCellY, maxCellY, out, seen);
     return out;
+  }
+
+  private shouldStoreEntryUnbucketed(
+    minCellX: number,
+    maxCellX: number,
+    minCellY: number,
+    maxCellY: number,
+  ): boolean {
+    const width = maxCellX - minCellX + 1;
+    const height = maxCellY - minCellY + 1;
+    if (!(width > 0) || !(height > 0)) return true;
+    const cells = width * height;
+    return (
+      !Number.isFinite(cells) ||
+      cells > CLIENT_PROJECTILE_RENDER_MAX_BUCKET_CELLS_PER_ENTRY
+    );
   }
 
   private shouldQueryEntriesDirectly(
@@ -212,6 +248,28 @@ export class ClientProjectileRenderSpatialIndex {
     } else {
       out.line.push(entity);
       out.burnMark.push(entity);
+    }
+  }
+
+  private queryUnbucketedEntries(
+    minCellX: number,
+    maxCellX: number,
+    minCellY: number,
+    maxCellY: number,
+    out: ClientProjectileRenderLists,
+    seen: Set<EntityId>,
+  ): void {
+    if (this.unbucketedEntries.size === 0) return;
+    for (const entry of this.unbucketedEntries) {
+      if (
+        entry.maxCellX < minCellX ||
+        entry.minCellX > maxCellX ||
+        entry.maxCellY < minCellY ||
+        entry.minCellY > maxCellY
+      ) {
+        continue;
+      }
+      this.pushEntryRenderLists(entry.entity, out, seen);
     }
   }
 

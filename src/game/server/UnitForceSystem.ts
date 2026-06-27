@@ -23,6 +23,7 @@ import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -416,19 +417,21 @@ export class UnitForceSystem {
 
     if (count === 0) return;
 
-    sim.unitForceStepBatch(
-      _forceSlots.subarray(0, count),
-      _forceFlags.subarray(0, count),
-      _forceRows.subarray(0, count * UNIT_FORCE_BATCH_STRIDE),
-      _forceOutFlags.subarray(0, count),
-      count,
-      dtSec,
-      this.world.thrustMultiplier,
-      LOCOMOTION_FORCE_SCALE,
-      UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
-      HOVER_ORIENTATION_K,
-      HOVER_ORIENTATION_C,
-    );
+    measureWasmBoundary('server.unitForceStepBatch', () => {
+      sim.unitForceStepBatch(
+        _forceSlots.subarray(0, count),
+        _forceFlags.subarray(0, count),
+        _forceRows.subarray(0, count * UNIT_FORCE_BATCH_STRIDE),
+        _forceOutFlags.subarray(0, count),
+        count,
+        dtSec,
+        this.world.thrustMultiplier,
+        LOCOMOTION_FORCE_SCALE,
+        UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
+        HOVER_ORIENTATION_K,
+        HOVER_ORIENTATION_C,
+      );
+    });
 
     for (let i = 0; i < count; i++) {
       const entity = _forceEntities[i];

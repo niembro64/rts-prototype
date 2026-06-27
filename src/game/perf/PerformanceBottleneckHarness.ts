@@ -9,6 +9,11 @@ import { getSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { GameServer } from '../server/GameServer';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
+import { getSimWasm } from '../sim-wasm/init';
+import {
+  WASM_BOUNDARY_INSTRUMENTATION,
+  type WasmBoundaryInstrumentationReport,
+} from './WasmBoundaryInstrumentation';
 
 type NumericSummary = {
   readonly avg: number;
@@ -29,6 +34,11 @@ export type PerformanceBottleneckHarnessOptions = {
   readonly height?: number;
 };
 
+export type PerformanceBottleneckHarnessSuiteOptions =
+  PerformanceBottleneckHarnessOptions & {
+    readonly unitCaps?: readonly number[];
+  };
+
 export type PerformanceBottleneckHarnessReport = {
   readonly schema: 'budget-annihilation.performance-bottleneck-harness.v1';
   readonly options: Required<PerformanceBottleneckHarnessOptions>;
@@ -45,6 +55,21 @@ export type PerformanceBottleneckHarnessReport = {
   readonly diagnosis: BottleneckDiagnosis;
 };
 
+export type PerformanceBottleneckHarnessSuiteReport = {
+  readonly schema: 'budget-annihilation.performance-bottleneck-suite.v1';
+  readonly unitCaps: readonly number[];
+  readonly reports: readonly PerformanceBottleneckHarnessReport[];
+  readonly summary: {
+    readonly scenarios: number;
+    readonly worstSimFixedStepUtilPctP95: number;
+    readonly worstFrameMsP95: number;
+    readonly worstSnapshotMainThreadMsPerSecond: number;
+    readonly totalWasmBoundaryMs: number;
+    readonly maxJsHeapUsedBytes: number | null;
+    readonly maxWasmMemoryBytes: number | null;
+  };
+};
+
 type SimOnlyReport = {
   readonly units: number;
   readonly buildings: number;
@@ -54,6 +79,8 @@ type SimOnlyReport = {
   readonly stepMs: NumericSummary;
   readonly simCeilingTpsP95: number;
   readonly fixedStepUtilPctP95: number;
+  readonly memory: MemoryReport;
+  readonly wasmBoundary: WasmBoundaryInstrumentationReport;
 };
 
 type SimSnapshotReport = {
@@ -68,6 +95,8 @@ type SimSnapshotReport = {
   readonly snapshotBytes: NumericSummary;
   readonly fixedStepUtilPctP95: number;
   readonly snapshotMainThreadMsPerSecond: number;
+  readonly memory: MemoryReport;
+  readonly wasmBoundary: WasmBoundaryInstrumentationReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
 
@@ -115,12 +144,30 @@ type FullStackReport = {
   readonly renderPhaseLineProjectileRows: NumericSummary;
   readonly longtaskMsPerSec: NumericSummary;
   readonly snapshotBytes: NumericSummary;
+  readonly memory: MemoryReport;
+  readonly wasmBoundary: WasmBoundaryInstrumentationReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
 
 type SnapshotWireStatsReport = {
   readonly rows: readonly unknown[];
   readonly breakdowns: readonly unknown[];
+};
+
+type MemorySample = {
+  readonly jsHeapUsedBytes: number | null;
+  readonly jsHeapTotalBytes: number | null;
+  readonly wasmMemoryBytes: number | null;
+};
+
+type MemoryReport = {
+  readonly jsHeapSupported: boolean;
+  readonly wasmMemorySupported: boolean;
+  readonly jsHeapUsedBytes: NumericSummary;
+  readonly jsHeapTotalBytes: NumericSummary;
+  readonly wasmMemoryBytes: NumericSummary;
+  readonly jsHeapUsedDeltaBytes: number | null;
+  readonly wasmMemoryDeltaBytes: number | null;
 };
 
 type BottleneckDiagnosis = {
@@ -149,6 +196,7 @@ const DEFAULT_OPTIONS: Required<PerformanceBottleneckHarnessOptions> = {
   height: 720,
 };
 
+const DEFAULT_SUITE_UNIT_CAPS = [500, 1000, 2500, 5000] as const;
 const PLAYER_IDS = [1 as PlayerId, 2 as PlayerId];
 const LOCAL_PLAYER_ID = 1 as PlayerId;
 
@@ -189,6 +237,27 @@ export async function runPerformanceBottleneckHarness(
   };
 }
 
+export async function runPerformanceBottleneckHarnessSuite(
+  options: PerformanceBottleneckHarnessSuiteOptions = {},
+): Promise<PerformanceBottleneckHarnessSuiteReport> {
+  const { unitCaps: rawUnitCaps, ...baseOptions } = options;
+  const unitCaps = normalizeUnitCaps(rawUnitCaps);
+  const reports: PerformanceBottleneckHarnessReport[] = [];
+  for (let i = 0; i < unitCaps.length; i++) {
+    reports.push(await runPerformanceBottleneckHarness({
+      ...baseOptions,
+      unitCap: unitCaps[i],
+    }));
+    if (i < unitCaps.length - 1) await yieldToBrowser();
+  }
+  return {
+    schema: 'budget-annihilation.performance-bottleneck-suite.v1',
+    unitCaps,
+    reports,
+    summary: summarizeSuite(reports),
+  };
+}
+
 function normalizeOptions(
   options: PerformanceBottleneckHarnessOptions,
 ): Required<PerformanceBottleneckHarnessOptions> {
@@ -208,6 +277,75 @@ function normalizeOptions(
   };
 }
 
+function normalizeUnitCaps(unitCaps: readonly number[] | undefined): readonly number[] {
+  const source = unitCaps === undefined || unitCaps.length === 0
+    ? DEFAULT_SUITE_UNIT_CAPS
+    : unitCaps;
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (let i = 0; i < source.length; i++) {
+    const cap = positiveInteger(source[i], 0);
+    if (cap <= 0 || seen.has(cap)) continue;
+    seen.add(cap);
+    out.push(cap);
+  }
+  return out.length > 0 ? out : [...DEFAULT_SUITE_UNIT_CAPS];
+}
+
+function summarizeSuite(
+  reports: readonly PerformanceBottleneckHarnessReport[],
+): PerformanceBottleneckHarnessSuiteReport['summary'] {
+  let worstSimFixedStepUtilPctP95 = 0;
+  let worstFrameMsP95 = 0;
+  let worstSnapshotMainThreadMsPerSecond = 0;
+  let totalWasmBoundaryMs = 0;
+  let maxJsHeapUsedBytes: number | null = null;
+  let maxWasmMemoryBytes: number | null = null;
+  for (const report of reports) {
+    worstSimFixedStepUtilPctP95 = Math.max(
+      worstSimFixedStepUtilPctP95,
+      report.simOnly.fixedStepUtilPctP95,
+      report.simSnapshot.fixedStepUtilPctP95,
+    );
+    worstFrameMsP95 = Math.max(worstFrameMsP95, report.fullStack.frameMs.p95);
+    worstSnapshotMainThreadMsPerSecond = Math.max(
+      worstSnapshotMainThreadMsPerSecond,
+      report.simSnapshot.snapshotMainThreadMsPerSecond,
+    );
+    totalWasmBoundaryMs +=
+      report.simOnly.wasmBoundary.totalMs +
+      report.simSnapshot.wasmBoundary.totalMs +
+      report.fullStack.wasmBoundary.totalMs;
+    if (report.simOnly.memory.jsHeapSupported) {
+      maxJsHeapUsedBytes = maxNullable(maxJsHeapUsedBytes, report.simOnly.memory.jsHeapUsedBytes.max);
+    }
+    if (report.simSnapshot.memory.jsHeapSupported) {
+      maxJsHeapUsedBytes = maxNullable(maxJsHeapUsedBytes, report.simSnapshot.memory.jsHeapUsedBytes.max);
+    }
+    if (report.fullStack.memory.jsHeapSupported) {
+      maxJsHeapUsedBytes = maxNullable(maxJsHeapUsedBytes, report.fullStack.memory.jsHeapUsedBytes.max);
+    }
+    if (report.simOnly.memory.wasmMemorySupported) {
+      maxWasmMemoryBytes = maxNullable(maxWasmMemoryBytes, report.simOnly.memory.wasmMemoryBytes.max);
+    }
+    if (report.simSnapshot.memory.wasmMemorySupported) {
+      maxWasmMemoryBytes = maxNullable(maxWasmMemoryBytes, report.simSnapshot.memory.wasmMemoryBytes.max);
+    }
+    if (report.fullStack.memory.wasmMemorySupported) {
+      maxWasmMemoryBytes = maxNullable(maxWasmMemoryBytes, report.fullStack.memory.wasmMemoryBytes.max);
+    }
+  }
+  return {
+    scenarios: reports.length,
+    worstSimFixedStepUtilPctP95,
+    worstFrameMsP95,
+    worstSnapshotMainThreadMsPerSecond,
+    totalWasmBoundaryMs,
+    maxJsHeapUsedBytes,
+    maxWasmMemoryBytes,
+  };
+}
+
 async function runSimOnly(
   options: Required<PerformanceBottleneckHarnessOptions>,
   fixedStepMs: number,
@@ -219,15 +357,19 @@ async function runSimOnly(
       core.stepFixedTick(fixedStepMs);
     }
 
+    const memory = createMemoryTracker();
+    beginWasmBoundaryTracking();
     const samples: number[] = [];
     const wallStart = performance.now();
     for (let i = 0; i < options.ticks; i++) {
       const start = performance.now();
       core.stepFixedTick(fixedStepMs);
+      memory.sample();
       samples.push(performance.now() - start);
     }
     const wallMs = performance.now() - wallStart;
     const stepMs = summarize(samples);
+    const wasmBoundary = finishWasmBoundaryTracking();
     return {
       ...countCoreEntities(core),
       measuredTicks: options.ticks,
@@ -235,8 +377,11 @@ async function runSimOnly(
       stepMs,
       simCeilingTpsP95: stepMs.p95 > 0 ? 1000 / stepMs.p95 : 0,
       fixedStepUtilPctP95: (stepMs.p95 / fixedStepMs) * 100,
+      memory: memory.finish(),
+      wasmBoundary,
     };
   } finally {
+    finishWasmBoundaryTracking();
     server.stop();
   }
 }
@@ -272,15 +417,21 @@ async function runSimSnapshot(
       if (i % options.snapshotEveryTicks === 0) server.emitLockstepPresentationSnapshot();
     }
 
+    applySamples.length = 0;
+    byteSamples.length = 0;
+    const memory = createMemoryTracker();
+    beginWasmBoundaryTracking();
     const stepSamples: number[] = [];
     const snapshotSamples: number[] = [];
     for (let i = 0; i < options.ticks; i++) {
       const stepStart = performance.now();
       core.stepFixedTick(fixedStepMs);
+      memory.sample();
       stepSamples.push(performance.now() - stepStart);
       if (i % options.snapshotEveryTicks === 0) {
         const snapshotStart = performance.now();
         server.emitLockstepPresentationSnapshot();
+        memory.sample();
         snapshotSamples.push(performance.now() - snapshotStart);
       }
     }
@@ -288,6 +439,7 @@ async function runSimSnapshot(
     const stepMs = summarize(stepSamples);
     const snapshotTotalMs = summarize(snapshotSamples);
     const snapshotWireStats = readSnapshotWireStats();
+    const wasmBoundary = finishWasmBoundaryTracking();
     return {
       ...countCoreEntities(core),
       measuredTicks: options.ticks,
@@ -299,9 +451,12 @@ async function runSimSnapshot(
       fixedStepUtilPctP95: (stepMs.p95 / fixedStepMs) * 100,
       snapshotMainThreadMsPerSecond:
         snapshotTotalMs.avg * (1000 / (fixedStepMs * options.snapshotEveryTicks)),
+      memory: memory.finish(),
+      wasmBoundary,
       snapshotWireStats,
     };
   } finally {
+    finishWasmBoundaryTracking();
     unsubscribe();
     connection.disconnect();
     server.stop();
@@ -353,6 +508,8 @@ async function runFullStack(
 
     await waitMs(options.warmupSeconds * 1000);
 
+    const memory = createMemoryTracker();
+    beginWasmBoundaryTracking();
     const frameMs: number[] = [];
     const logicMs: number[] = [];
     const renderPrepMs: number[] = [];
@@ -442,9 +599,11 @@ async function runFullStack(
       renderPhaseLineProjectileRows.push(timing.renderPhaseLineProjectileRows);
       longtaskMsPerSec.push(timing.longtaskMsPerSec);
       snapshotBytes.push(snapSize.avgBytes);
+      memory.sample();
     }
 
     const snapshotWireStats = readSnapshotWireStats();
+    const wasmBoundary = finishWasmBoundaryTracking();
     return {
       units: clientViewState.getUnits().length,
       buildings: clientViewState.getBuildings().length,
@@ -489,9 +648,12 @@ async function runFullStack(
       renderPhaseLineProjectileRows: summarize(renderPhaseLineProjectileRows),
       longtaskMsPerSec: summarize(longtaskMsPerSec),
       snapshotBytes: summarize(snapshotBytes),
+      memory: memory.finish(),
+      wasmBoundary,
       snapshotWireStats,
     };
   } finally {
+    finishWasmBoundaryTracking();
     if (game !== null) destroyGame(game);
     else connection.disconnect();
     server.stop();
@@ -643,6 +805,90 @@ function countCoreEntities(core: ReturnType<GameServer['getLockstepSimulationCor
     buildings: core.world.getBuildings().length,
     projectiles: core.world.getProjectiles().length,
   };
+}
+
+function beginWasmBoundaryTracking(): void {
+  WASM_BOUNDARY_INSTRUMENTATION.reset();
+  WASM_BOUNDARY_INSTRUMENTATION.setEnabled(true);
+}
+
+function finishWasmBoundaryTracking(): WasmBoundaryInstrumentationReport {
+  const report = WASM_BOUNDARY_INSTRUMENTATION.report();
+  WASM_BOUNDARY_INSTRUMENTATION.setEnabled(false);
+  return report;
+}
+
+function createMemoryTracker(): {
+  sample(): void;
+  finish(): MemoryReport;
+} {
+  const samples: MemorySample[] = [sampleMemory()];
+  return {
+    sample(): void {
+      samples.push(sampleMemory());
+    },
+    finish(): MemoryReport {
+      samples.push(sampleMemory());
+      return summarizeMemory(samples);
+    },
+  };
+}
+
+function sampleMemory(): MemorySample {
+  const heap = (
+    performance as Performance & {
+      memory?: {
+        usedJSHeapSize?: number;
+        totalJSHeapSize?: number;
+      };
+    }
+  ).memory;
+  const wasm = getSimWasm();
+  return {
+    jsHeapUsedBytes: finiteOrNull(heap?.usedJSHeapSize),
+    jsHeapTotalBytes: finiteOrNull(heap?.totalJSHeapSize),
+    wasmMemoryBytes: finiteOrNull(wasm?.memory.buffer.byteLength),
+  };
+}
+
+function summarizeMemory(samples: readonly MemorySample[]): MemoryReport {
+  const jsHeapUsed = samples
+    .map((sample) => sample.jsHeapUsedBytes)
+    .filter((value): value is number => value !== null);
+  const jsHeapTotal = samples
+    .map((sample) => sample.jsHeapTotalBytes)
+    .filter((value): value is number => value !== null);
+  const wasmMemory = samples
+    .map((sample) => sample.wasmMemoryBytes)
+    .filter((value): value is number => value !== null);
+  return {
+    jsHeapSupported: jsHeapUsed.length > 0 || jsHeapTotal.length > 0,
+    wasmMemorySupported: wasmMemory.length > 0,
+    jsHeapUsedBytes: summarize(jsHeapUsed),
+    jsHeapTotalBytes: summarize(jsHeapTotal),
+    wasmMemoryBytes: summarize(wasmMemory),
+    jsHeapUsedDeltaBytes: deltaOrNull(jsHeapUsed),
+    wasmMemoryDeltaBytes: deltaOrNull(wasmMemory),
+  };
+}
+
+function finiteOrNull(value: number | undefined): number | null {
+  return value !== undefined && Number.isFinite(value) ? value : null;
+}
+
+function deltaOrNull(values: readonly number[]): number | null {
+  if (values.length < 2) return null;
+  return values[values.length - 1] - values[0];
+}
+
+function maxNullable(current: number | null, ...values: readonly number[]): number | null {
+  let max = current;
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i];
+    if (!Number.isFinite(value)) continue;
+    if (max === null || value > max) max = value;
+  }
+  return max;
 }
 
 function summarize(values: readonly number[]): NumericSummary {

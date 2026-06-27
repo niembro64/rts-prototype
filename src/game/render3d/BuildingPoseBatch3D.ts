@@ -1,4 +1,5 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
 export const BUILDING_POSE_INPUT_STRIDE = 8;
 const BUILDING_POSE_OUTPUT_STRIDE = 32;
@@ -46,7 +47,9 @@ export class BuildingPoseBatch3D {
 
   compute(count: number): Float32Array {
     if (this.wasm !== null) {
-      this.wasm.renderPose.buildingCompute(count);
+      measureWasmBoundary('renderPose.buildingCompute', () => {
+        this.wasm!.renderPose.buildingCompute(count);
+      });
       return this.output;
     }
     this.computeFallback(count);

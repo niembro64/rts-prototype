@@ -1,4 +1,5 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
 export const TURRET_HEAD_INPUT_STRIDE = 11;
 const TURRET_HEAD_OUTPUT_STRIDE = 16;
@@ -43,7 +44,9 @@ export class UnitTurretHeadMatrixBatch3D {
 
   compute(count: number): Float32Array {
     if (this.wasm !== null) {
-      this.wasm.renderPose.turretHeadCompute(count);
+      measureWasmBoundary('renderPose.turretHeadCompute', () => {
+        this.wasm!.renderPose.turretHeadCompute(count);
+      });
       return this.output;
     }
     this.computeFallback(count);

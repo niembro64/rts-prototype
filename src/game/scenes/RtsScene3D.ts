@@ -85,6 +85,7 @@ import type {
 } from '../sim/types';
 
 import {
+  CAMERA_CONSTRAINTS,
   WORLD_PADDING_PERCENT,
   LAND_CELL_SIZE,
 } from '../../config';
@@ -598,14 +599,16 @@ export class RtsScene3D {
     );
 
     // Camera clamping: keep the orbit target inside a padded map region.
-    const paddingX = this.mapWidth * WORLD_PADDING_PERCENT;
-    const paddingY = this.mapHeight * WORLD_PADDING_PERCENT;
-    this.threeApp.orbit.setTargetBounds(
-      -paddingX,
-      -paddingY,
-      this.mapWidth + paddingX,
-      this.mapHeight + paddingY,
-    );
+    if (CAMERA_CONSTRAINTS.targetBounds === 'map-padding') {
+      const paddingX = this.mapWidth * WORLD_PADDING_PERCENT;
+      const paddingY = this.mapHeight * WORLD_PADDING_PERCENT;
+      this.threeApp.orbit.setTargetBounds(
+        -paddingX,
+        -paddingY,
+        this.mapWidth + paddingX,
+        this.mapHeight + paddingY,
+      );
+    }
   }
 
   update(_time: number, delta: number): void {

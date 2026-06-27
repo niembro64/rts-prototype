@@ -1,4 +1,5 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
 export const SHIELD_PANEL_INPUT_STRIDE = 24;
 const SHIELD_PANEL_OUTPUT_STRIDE = 16;
@@ -43,7 +44,9 @@ export class ShieldPanelMatrixBatch3D {
 
   compute(count: number): Float32Array {
     if (this.wasm !== null) {
-      this.wasm.renderPose.shieldPanelCompute(count);
+      measureWasmBoundary('renderPose.shieldPanelCompute', () => {
+        this.wasm!.renderPose.shieldPanelCompute(count);
+      });
       return this.output;
     }
     this.computeFallback(count);

@@ -101,6 +101,10 @@ const DEFAULT_CAMERA_MOVEMENT_CONFIG: CameraMovementConfig = {
 };
 
 type OrbitCameraOptions = {
+  /** Closest-approach zoom-in rail. Leave undefined for an effectively
+   *  unbounded camera; terrain clearance is handled separately at render
+   *  time and never writes back into the orbit state. */
+  minDistance?: number;
   /** Reference far distance for HUD fade scaling — NOT a zoom-out cap.
    *  The camera can dolly past it freely; HUD elements key off this so
    *  the fade window tracks map size. */
@@ -186,10 +190,15 @@ export class OrbitCamera {
    *  to-state; after 3·tau ~95%. */
   public smoothTauSec = 0;
 
+  private minDistance = 1e-6;
   /** HUD-fade far reference (see getFarReferenceDistance). Not a clamp. */
   private farReferenceDistance: number;
   private minPitch: number;
   private maxPitch: number;
+  private targetMinX = -Infinity;
+  private targetMaxX = Infinity;
+  private targetMinZ = -Infinity;
+  private targetMaxZ = Infinity;
   private zoomStepFraction: number;
   private movementScaleMode: CameraMovementScaleMode = 'anchor-distance-relative';
   private movementConfig: CameraMovementConfig = DEFAULT_CAMERA_MOVEMENT_CONFIG;
@@ -286,6 +295,9 @@ export class OrbitCamera {
   ) {
     this.camera = camera;
     this.canvas = canvas;
+    if (opts.minDistance !== undefined && Number.isFinite(opts.minDistance)) {
+      this.minDistance = Math.max(1e-6, opts.minDistance);
+    }
     this.farReferenceDistance = opts.farReferenceDistance ?? 8000;
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
@@ -800,10 +812,7 @@ export class OrbitCamera {
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
     const wantedDistance = this.toDistance * wantFactor;
-    // Relative zoom has no authored positional rail. The tiny epsilon is
-    // only a numerical guard for the orbit representation; absolute zoom
-    // does not use this path.
-    const nextDistance = Math.max(1e-6, wantedDistance);
+    const nextDistance = Math.max(this.minDistance, wantedDistance);
     if (nextDistance === this.toDistance) return;
     const actualFactor = nextDistance / this.toDistance;
     const startTargetX = this.toTargetX;
@@ -1046,6 +1055,20 @@ export class OrbitCamera {
     return Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
   }
 
+  /** Clamp both rendered target and smooth destination target to the
+   *  camera's active map bounds. Keeping both states constrained avoids
+   *  a smoothing tug-of-war at map edges. */
+  private constrainTargets(): void {
+    if (Number.isFinite(this.targetMinX) || Number.isFinite(this.targetMaxX)) {
+      this.target.x = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.target.x));
+      this.toTargetX = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.toTargetX));
+    }
+    if (Number.isFinite(this.targetMinZ) || Number.isFinite(this.targetMaxZ)) {
+      this.target.z = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.target.z));
+      this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
+    }
+  }
+
   private static normalizeAngleDelta(delta: number): number {
     return Math.atan2(Math.sin(delta), Math.cos(delta));
   }
@@ -1190,6 +1213,7 @@ export class OrbitCamera {
    *  made the view spin and ratchet its zoom as the camera brushed hills
    *  while panning. Never reintroduce terrain → orbit-state write-back. */
   apply(): void {
+    this.constrainTargets();
     // Resolve the sampler once; undefined disables clearance (mode 'none',
     // no sampler installed, or zero clearance).
     const sample =
@@ -1278,8 +1302,9 @@ export class OrbitCamera {
 
   setDistance(distance: number): void {
     if (!Number.isFinite(distance)) return;
-    this.distance = distance;
-    this.toDistance = distance;
+    const d = Math.max(this.minDistance, distance);
+    this.distance = d;
+    this.toDistance = d;
     this.apply();
   }
 
@@ -1298,9 +1323,25 @@ export class OrbitCamera {
     this.apply();
   }
 
-  setTargetBounds(_minX: number, _minZ: number, _maxX: number, _maxZ: number): void {
-    // Kept as a compatibility hook for callers that used to install map
-    // bounds. The battle camera is now position-unbounded.
+  setTargetBounds(minX: number, minZ: number, maxX: number, maxZ: number): void {
+    if (
+      !Number.isFinite(minX) ||
+      !Number.isFinite(minZ) ||
+      !Number.isFinite(maxX) ||
+      !Number.isFinite(maxZ)
+    ) {
+      this.targetMinX = -Infinity;
+      this.targetMaxX = Infinity;
+      this.targetMinZ = -Infinity;
+      this.targetMaxZ = Infinity;
+      this.apply();
+      return;
+    }
+    this.targetMinX = Math.min(minX, maxX);
+    this.targetMaxX = Math.max(minX, maxX);
+    this.targetMinZ = Math.min(minZ, maxZ);
+    this.targetMaxZ = Math.max(minZ, maxZ);
+    this.apply();
   }
 
   setState(state: {
@@ -1315,7 +1356,10 @@ export class OrbitCamera {
     this.toTargetX = state.targetX;
     this.toTargetY = state.targetY;
     this.toTargetZ = state.targetZ;
-    this.distance = state.distance;
+    this.distance = Math.max(
+      this.minDistance,
+      Number.isFinite(state.distance) ? state.distance : this.minDistance,
+    );
     this.toDistance = this.distance;
     this.yaw = state.yaw;
     this.toYaw = state.yaw;

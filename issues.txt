@@ -35,4 +35,77 @@ Please always commit and push before and after any code changes we make.
     and free-fall on release. Tune the carry pose
     (ATTACHED_BUILD_SHELL_ELEVATION in ServerSimulationCore and the queen
     spawn-turret mount x) and build rates (bee 120 / tick 30) if needed.
+
+[23] Optimization - make Rust/WASM SoA state canonical for high-count entities
+    Preserve gameplay exactly. Move hot-path unit/building/projectile state out
+    of JS Map<EntityId, Entity> ownership and into stable slot-indexed
+    Rust/WASM structure-of-arrays slabs. TypeScript may keep debug/editor/API
+    views, but sim, physics, visibility, snapshots, and render prep should read
+    canonical typed state directly. Add replay/checksum parity tests before
+    deleting the old JS-object hot path.
+
+[24] Optimization - port Simulation.updateUnits hot action loop to native batches
+    Preserve all command, action, path, arrival, stuck, guard, fight, patrol,
+    attack, build, repair, reclaim, capture, resurrect, load, and unload
+    semantics. Replace the branch-heavy per-unit TypeScript loop with
+    slot-indexed Rust/WASM state machines and batch systems. Verify identical
+    command-frame outputs, unit positions, action transitions, and checksums on
+    golden replays.
+
+[25] Optimization - remove UnitForceSystem JS pack/scatter from the tick path
+    Preserve the existing force formulas and resulting movement. UnitForceSystem
+    should stop gathering active IDs into JS arrays, packing Float64Array rows,
+    sampling support/water inputs in TypeScript, and scattering results back to
+    Entity objects. Move the required inputs/results into native slabs so the
+    force batch reads and writes canonical state directly.
+
+[26] Optimization - make PhysicsEngine3D sync slot-native and dirty-range based
+    Preserve current physics behavior and collision/contact outcomes. Dynamic
+    body integration, contact results, support-surface state, sleep/wake state,
+    and dirty flags should update canonical slots directly. Avoid per-touched
+    body JS entity writes on every physics step; expose bounded dirty ranges or
+    slot lists for systems that need presentation updates.
+
+[27] Optimization - make spatial queries fully native and shared across systems
+    Preserve exact query semantics. SpatialGrid should not rely on JS Maps,
+    entityBySlot references, JS result arrays, or per-entity wrapper resolution
+    in hot paths. Sim, combat, projectiles, visibility, snapshots, and render
+    scope should consume shared slot-native broadphase results.
+
+[28] Optimization - move visibility/fog/radar filtering to native aggregate slabs
+    Preserve current visibility gameplay exactly. Implement LOS, radar, fog,
+    recipient masks, and visible entity sets as native aggregate grids/bitsets
+    over stable slots. Snapshot selection, targeting, minimap, and render scope
+    should reuse those slabs instead of rebuilding per-recipient visible lists
+    from JS entities.
+
+[29] Optimization - replace steady-state full presentation snapshots with dirty buffers
+    Preserve command truth, deterministic checksums, and current presentation
+    content. Keep full snapshots for join/resync/diagnostics, but the normal
+    local renderer path should consume shared/double-buffered typed
+    presentation slabs or compact dirty ranges. Remote client packets should be
+    bounded by changed fields and interest/visibility, not rebuilt full visible
+    entity rows every snapshot.
+
+[30] Optimization - flatten ClientViewState and prediction into slot-indexed typed state
+    Preserve client prediction behavior and reconciliation results. Replace
+    hot-path client Map<EntityId, Entity>, serverTargets maps, prediction sets,
+    dirty sets, and render packet construction from JS objects with typed
+    slot-indexed state. Render preparation should read stable presentation
+    slots and dirty ranges instead of rebuilding object-derived packets each
+    frame.
+
+[31] Optimization - render high-count units from stable GPU instance buffers
+    Preserve current visuals unless a separate gameplay/design issue approves a
+    visual change. Reduce per-unit Three.js Object3D/EntityMesh orchestration in
+    Render3DEntities. Units, turrets, chassis, shields, health/selection/range
+    overlays, and far LOD proxies should update stable GPU instance buffers via
+    dirty ranges and shader-side expansion/culling.
+
+[32] Optimization - add golden high-count performance gates with no-gameplay-change checks
+    Extend PerformanceBottleneckHarness with repeatable 500, 1000, 2500, and
+    5000 unit scenarios. Track sim p95, snapshot ms/s, frame p95, render prep,
+    GPU time, long tasks, allocations, and JS/WASM boundary time. Every
+    optimization above must pass replay/checksum parity and visible-state parity
+    against the current gameplay before it can replace the old path.
 ================================================================================

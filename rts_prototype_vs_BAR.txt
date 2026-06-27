@@ -1,0 +1,497 @@
+RTS prototype vs Beyond All Reason: unit-count performance notes
+Date: 2026-06-27
+
+Scope
+=====
+
+This compares the local rts-prototype project with the local
+../Beyond-All-Reason checkout, with budget_design_philosophy.html treated as
+the intended direction for this prototype.
+
+Important scope caveat: the Beyond-All-Reason checkout is mostly BAR game
+data, Lua gadgets/widgets, assets, and configuration. It is not the full
+Recoil/Spring engine source. So the BAR side below is based on the game repo's
+engine-facing config/API usage and its documented coding practices, not a
+line-by-line audit of the native engine internals.
+
+Key local sources consulted
+===========================
+
+rts-prototype:
+- budget_design_philosophy.html
+- src/architecture.json
+- src/game/sim/AUTHORITY_LEDGER.md
+- src/game/sim/WorldState.ts
+- src/game/sim/Simulation.ts
+- src/game/server/ServerSimulationCore.ts
+- src/game/server/ServerTickLoop.ts
+- src/game/server/PhysicsEngine3D.ts
+- src/game/server/UnitForceSystem.ts
+- src/game/sim/SpatialGrid.ts
+- src/game/network/stateSerializer.ts
+- src/game/network/stateSerializerEntities.ts
+- src/game/server/ServerSnapshotPublisher.ts
+- src/game/server/ServerSnapshotDirectWirePreencoder.ts
+- src/game/network/ClientViewState.ts
+- src/game/scenes/RtsScene3D.ts
+- src/game/scenes/helpers/RtsScene3DRenderPhase.ts
+- src/game/render3d/Render3DEntities.ts
+- src/game/render3d/UnitDetailInstanceRenderer3D.ts
+- src/game/render3d/EntityLodProxyRenderer3D.ts
+- src/game/perf/PerformanceBottleneckHarness.ts
+
+Beyond-All-Reason:
+- README.md
+- CONTRIBUTING.md
+- gamedata/modrules.lua
+- gamedata/movedefs.lua
+- common/traversability_grid.lua
+- luaui/Widgets/api_unit_tracker_gl4.lua
+- luaui/Widgets/gui_healthbars_gl4.lua
+- luaui/Widgets/gfx_DrawUnitShape_GL4.lua
+- luaui/Include/instancevbotable.lua
+
+Executive summary
+=================
+
+BAR's 5,000-unit performance is not the result of one small trick. The big
+difference is that BAR runs on the Recoil/Spring native RTS engine. The game
+repo supplies data, rules, Lua glue, and GPU-oriented widgets, while the hot
+paths for unit simulation, movement, pathfinding, LOS/radar, collision,
+projectiles, and base unit rendering live in native engine code.
+
+rts-prototype is still building those engine responsibilities inside a browser
+stack. Some kernels are already Rust/WASM and some rendering is batched, but
+the current architecture still moves through TypeScript object graphs, Map/Set
+lookups, per-unit orchestration loops, WASM pack/scatter boundaries, full
+presentation snapshot materialization, client-side Map state, and Three.js
+object/update overhead. That stack can work, but it is currently paying several
+costs that BAR avoids or pushes into native code.
+
+The prototype is also intentionally more expensive in several places. The
+budget design document calls for deterministic browser lockstep, client
+prediction, owned simulation code, full 3D force/mass physics, richer terrain
+interaction, and typed-buffer/WASM ownership as the eventual destination. BAR's
+engine gives it decades of native RTS specialization, and BAR also configures
+several systems toward cheaper approximations: coarse LOS/radar mips, throttled
+repathing, no normal ground-unit gravity, limited collision pushing, and
+engine-native resource sharing when possible.
+
+The result is consistent with the observed gap: BAR can keep thousands of units
+smooth because high-cardinality systems are native, data-oriented, throttled,
+and GPU-batched. rts-prototype is currently closer to a browser engine
+prototype with several mature pieces, not yet a fully data-oriented native/WASM
+RTS engine.
+
+What BAR is doing to get that performance
+=========================================
+
+1. Native engine hot paths
+--------------------------
+
+BAR's README identifies the game as built on the Recoil RTS Engine. The BAR
+repo does not implement per-unit movement, physics, weapon simulation,
+pathfinding, LOS, and base unit rendering in Lua. BAR mostly describes units,
+weapons, move definitions, mod rules, gadgets, and widgets; the Recoil engine
+executes the high-frequency RTS workload.
+
+This is the largest difference. Native engine code can keep unit state in
+compact arrays, update many units without JS object/property overhead, avoid
+browser garbage collection, and render from engine-owned data. rts-prototype
+uses Rust/WASM for selected kernels, but the canonical world state and many
+decisions still pass through TypeScript objects.
+
+2. Game code treats Lua/engine crossings as expensive
+----------------------------------------------------
+
+BAR's CONTRIBUTING.md explicitly warns that every Spring engine call has
+overhead and that Lua code should minimize engine calls, table creation, string
+creation, and large returned data. It recommends narrow API calls and caching
+UnitDefs/WeaponDefs/FeatureDefs into ordinary tables for hot access.
+
+That coding culture matters. BAR Lua is written as a thin rules/widget layer
+around engine-owned state. rts-prototype currently performs many engine-like
+responsibilities in TypeScript itself, so the browser-side language boundary
+and allocation costs are part of the main path rather than just the game-layer
+extension path.
+
+3. Data-driven movement definitions
+-----------------------------------
+
+BAR's gamedata/movedefs.lua defines movement classes: footprint, crush
+strength, slope limits, slope modifiers, water-depth limits, submarine flags,
+and speed-mod classes. These are data consumed by the engine's movement and
+pathing systems.
+
+rts-prototype has richer per-unit movement orchestration in
+Simulation.updateUnits and UnitForceSystem. Ground, flying, support-surface,
+water, arrival, stuck/replan, action, guard, patrol, attack, build, repair,
+reclaim, capture, resurrect, load, and unload behavior still goes through
+TypeScript control flow before or around the WASM kernels. BAR delegates much
+more of that to engine-native movement code parameterized by data.
+
+4. Engine pathfinding with repath throttles
+-------------------------------------------
+
+BAR's gamedata/modrules.lua enables the engine pathfinder system through
+pathFinderSystem = useQTPFS and 1 or 0. It also sets pathfinder throttle knobs:
+pfRepathDelayInFrames = 60 and pfRepathMaxRateInFrames = 150. Those settings
+limit how often units can ask for new paths and reduce CPU waste from frequent
+repathing.
+
+rts-prototype has path refresh and stuck/replan decisions inside
+Simulation.updateUnits, and movement force preparation in UnitForceSystem. Even
+when individual math kernels are moved into WASM, the present orchestration can
+still touch many active units every tick from TypeScript.
+
+5. Coarse native LOS/radar
+--------------------------
+
+BAR configures lower-resolution native sensor maps in gamedata/modrules.lua:
+losMipLevel = 3, airMipLevel = 4, and radarMipLevel = 3. The comments describe
+higher mips as lower resolution and higher performance.
+
+rts-prototype's design document says visibility should become aggregate and
+indexed rather than unit-vs-unit. However, the current authority ledger still
+lists fog/visibility filtering and recipient snapshot selection as
+TypeScript-orchestrated. Snapshot serialization still iterates visible entity
+sets when building presentation/network state. BAR gets broad sensor behavior
+from an engine-native grid with deliberately reduced resolution.
+
+6. Cheaper movement/physics rules
+---------------------------------
+
+BAR's modrules choose several performance-friendly or simplification-oriented
+movement settings:
+- allowGroundUnitGravity = false
+- allowPushingEnemyUnits = false
+- maxCollisionPushMultiplier = 1
+- debris = 0 for body parts flying off dead units
+- guard movement recalculation has distance thresholds and interval
+  multipliers
+
+rts-prototype intentionally models more physical behavior. sharedSimConstants
+and PhysicsEngine3D show gravity, sleep thresholds, dynamic body integration,
+terrain support, sphere-vs-sphere and sphere-vs-cuboid collision, water/support
+surface probing, mass/force handling, and force accumulator integration. That
+is a more expensive simulation target than BAR's configured ground movement
+rules.
+
+7. Event-driven visible/allied unit tracking
+--------------------------------------------
+
+BAR's luaui/Widgets/api_unit_tracker_gl4.lua maintains alliedUnits and
+visibleUnits tables using engine call-ins such as UnitCreated, UnitDestroyed,
+UnitEnteredLos, UnitLeftLos, VisibleUnitAdded, and VisibleUnitRemoved. Widgets
+can consume those tracked sets instead of scanning all units every draw.
+
+rts-prototype also has dirty sets and render scopes, but the render pipeline
+still builds render packets from ClientViewState entities and then runs
+per-frame entity renderer orchestration. The important distinction is that BAR
+gets visibility changes as engine events and uses them to maintain GPU/widget
+state, while rts-prototype is still translating from a client-side JS entity
+store into renderer packets every frame.
+
+8. GL4/VBO widget rendering
+---------------------------
+
+BAR's GL4 widgets use engine-provided gl.InstanceVBOTable APIs. The local
+instancevbotable.lua wrapper exposes makeInstanceVBOTable, pushElementInstance,
+popElementInstance, uploadAllElements, uploadElementRange, compactInstanceVBO,
+drawInstanceVBO, and common VBO geometry helpers. gui_healthbars_gl4.lua and
+gfx_DrawUnitShape_GL4.lua use these APIs for instanced overlays and unit-shape
+effects. Health bars and similar overlays are represented as GPU instance data
+and shader work rather than thousands of individual high-level UI objects.
+
+rts-prototype has real batching work too: UnitDetailInstanceRenderer3D,
+EntityLodProxyRenderer3D, render-pose batches, typed render packets, and dirty
+span uploads. But Render3DEntities still maintains maps of EntityMesh objects
+and does substantial per-visible-unit JavaScript work for pose output, Three.js
+group transforms, overlays, material sync, turret pose, shield panels,
+locomotion, fading, and LOD decisions. BAR's overlay layer is much closer to
+"update instance data, let GL/shaders do the expansion/culling."
+
+9. No equivalent browser presentation snapshot pipeline
+------------------------------------------------------
+
+BAR's engine owns simulation and rendering in the same native process. Lua code
+queries engine state or receives call-ins; the base renderer does not need a
+TypeScript server to serialize a full visible-state packet, a client store to
+apply it, and a Three.js renderer to rebuild packets from that store.
+
+rts-prototype deliberately has a local server/client architecture. The design
+document says command frames/checksums are truth and snapshots are for
+presentation/diagnostics. src/architecture.json sets fixedStepHz to 30 and
+nominalSnapshotRateHz to 5. ServerSnapshotPublisher and stateSerializer build
+visible state for listeners, and ClientViewState applies that state before
+render packet creation. The direct wire preencoder reduces DTO overhead, but
+it still starts from JS entity objects and iterates visible IDs.
+
+10. Mature throttling and cadence choices
+-----------------------------------------
+
+BAR uses engine pathfinder throttle settings, sensor mips, guard recalc
+thresholds, and many Lua gadgets/widgets that run work on periodic frames
+rather than every frame for every unit. Some gadgets still call GetAllUnits,
+but the codebase generally treats those as special cases, initialization, debug
+tools, or throttled work.
+
+rts-prototype has a fixed 30 Hz sim tick, a 5 Hz nominal presentation snapshot
+rate, render budgets, dirty sets, and LOD/proxy rendering. Those are useful,
+but several expensive systems still have O(active units) or O(visible units)
+JavaScript work on each tick/frame/snapshot.
+
+Major rts-prototype bottlenecking differences
+=============================================
+
+1. Canonical world state is still a JS object graph
+--------------------------------------------------
+
+WorldState stores canonical entities in Map<EntityId, Entity>. Even where
+subsystems use typed arrays or WASM slabs, they often have to gather from and
+scatter back into JS entity objects.
+
+This is one of the biggest structural blockers for BAR-like scale. A 5,000-unit
+RTS wants stable numeric slots, structure-of-arrays state, and hot loops that
+operate on contiguous memory. The prototype has some of that in specific
+kernels, but not as the single canonical representation.
+
+2. TypeScript still owns too much per-unit tick logic
+----------------------------------------------------
+
+AUTHORITY_LEDGER.md says Rust/WASM owns several kernels, but TypeScript still
+orchestrates tick sequencing, command dispatch, action queues/path semantics,
+economy/resource movement, construction lifecycle orchestration, commander
+abilities, damage/death events, projectile lifecycle, fog/visibility filtering,
+and recipient snapshot selection.
+
+Simulation.updateUnits is especially important. It loops units and branches
+through many action cases: load, unload, build, repair, reclaim, capture,
+resurrect, attack, attack-ground, guard, fight, patrol, path refresh, arrival,
+stuck handling, and more. That kind of branch-heavy per-unit JavaScript loop
+will struggle to scale compared with BAR's native engine loop.
+
+3. WASM kernels are currently surrounded by pack/scatter cost
+------------------------------------------------------------
+
+UnitForceSystem batches force decisions in Rust/WASM, but TypeScript still
+collects active IDs, sorts them, synchronizes transforms, refreshes support
+surface indexes, samples terrain/water/support inputs, packs a large
+Float64Array row per active unit, calls the batch kernel, and then scatters
+orientation/movement/dirty-state results back to Entity objects.
+
+That is a common halfway-state performance issue: the math kernel is fast, but
+the memory layout crossing and JS-side preparation remain expensive. BAR avoids
+this pattern for core sim because engine-owned state is already in the native
+layout used by the hot loops.
+
+4. Physics fidelity is much higher than BAR's common ground-unit model
+---------------------------------------------------------------------
+
+PhysicsEngine3D integrates dynamic bodies, terrain springs, drag/friction,
+sleep, sphere-sphere contacts, sphere-cuboid contacts, static building
+broadphase, support surfaces, and syncs touched bodies back to JS entities.
+UnitForceSystem also reasons about medium forces, external forces, support
+surfaces, water probes, flying units, and awake physics IDs.
+
+BAR's modrules disable ground-unit gravity and enemy pushing and use engine
+movement definitions instead of a full force/mass solver for ordinary unit
+locomotion. If the prototype keeps the richer physical model, it needs a more
+aggressive data-oriented/native implementation than BAR needs for its cheaper
+model.
+
+5. Spatial indexing is only partly native
+-----------------------------------------
+
+rts-prototype's SpatialGrid uses a WASM grid, but the wrapper still keeps JS
+Maps, entityBySlot references, kind arrays, result arrays, projectile batches,
+and slot/entity resolution. Simulation.updateUnits also calls spatial updates
+around unit processing, and projectiles are updated every tick.
+
+BAR exposes spatial queries to Lua, but the authoritative spatial structures
+are engine-owned. Lua can ask for nearby units when needed; it is not the
+primary owner of the broadphase for all units.
+
+6. Full visible snapshots are expensive at scale
+------------------------------------------------
+
+stateSerializer builds full visible state rows for units/buildings, removed
+IDs, minimap state, economy/resource movements, spray/audio/scan/projectiles,
+and grid/debug payloads. Full snapshots iterate visible IDs or all
+units/buildings. ServerSnapshotDirectWirePreencoder avoids some object
+materialization, but it still walks JS entities and appends wire rows.
+
+At 500 units this may be acceptable. At 5,000 units, full visible snapshot
+materialization, encoding, transfer, decoding, and application become a
+separate scaling ceiling unless the steady-state renderer reads shared typed
+state directly or receives tightly bounded dirty ranges.
+
+7. Client-side state repeats the object-graph problem
+----------------------------------------------------
+
+ClientViewState stores entities in Map<EntityId, Entity>, tracks prediction and
+dirty sets, updates a render spatial index, and then prepares typed render
+packets for the renderer. That means the client pays for entity store
+maintenance and per-frame packet construction in addition to server-side sim
+and snapshot work.
+
+BAR's renderer and Lua widgets operate against engine-owned state/call-ins.
+There is no analogous browser client state layer between the authoritative sim
+and the renderer.
+
+8. Three.js object orchestration remains visible in the hot path
+---------------------------------------------------------------
+
+Render3DEntities has strong optimizations: instanced detail renderers, pose
+batching, chassis matrix batching, LOD proxies, dirty spans, and typed packets.
+However, it still keeps unitMeshes maps, EntityMesh instances, Three groups,
+fade controllers, locomotion state, material synchronization, overlay updates,
+turret/chassis/shield-panel update paths, and several per-visible-unit loops.
+
+BAR's native engine renderer handles base unit models/pieces, and GL4 widgets
+add overlays with VBO/VAO instance data. The BAR pattern leaves less
+high-level scripting/object orchestration in the per-unit draw path.
+
+9. Browser runtime costs are unavoidable unless minimized
+--------------------------------------------------------
+
+rts-prototype runs in a browser/JavaScript/WASM/Three.js environment. Even with
+good WASM kernels, JavaScript object churn, Map/Set iteration, typed-array
+packing, GC, WebGL/Three abstraction overhead, and worker/main-thread message
+costs matter.
+
+BAR's Recoil engine is native C++/OpenGL. It can use lower-level memory layout,
+threading, renderer integration, and engine-specific profiling/optimization
+patterns that are not available in the same way through TypeScript and Three.js.
+
+10. Current harness scale reflects the present target
+----------------------------------------------------
+
+PerformanceBottleneckHarness defaults to unitCap = 512. It measures sim-only,
+sim+snapshot, and full-stack modes. That is useful and honest: the current
+diagnostic harness is tuned around the scale where the prototype is already
+feeling pressure, not around BAR's 5,000-unit battle scale.
+
+Design-philosophy implications
+==============================
+
+budget_design_philosophy.html already points in the direction needed to close
+the gap:
+
+- Hot kernels should move to Rust/WASM.
+- TypeScript should coordinate, not own per-unit/per-tick hot loops.
+- High-count rendering should use owned typed buffers, explicit ranges,
+  batching, and shaders.
+- Visibility should be aggregate/indexed, not unit-vs-unit.
+- Snapshots are presentation/diagnostics, not simulation truth.
+- The eventual goal is 5,000-unit scale.
+
+The current codebase has started this migration, but it has not crossed the
+critical architectural threshold yet. The main issue is not that one function
+is slow; it is that several high-count systems still use JS objects as the
+source of truth and use typed arrays/WASM as temporary accelerators around
+those objects.
+
+Prioritized recommendations for BAR-like scale
+==============================================
+
+1. Make Rust/WASM SoA/ECS state canonical for units/buildings/projectiles
+-------------------------------------------------------------------------
+
+Move beyond "WASM kernels called from JS objects" toward stable numeric entity
+slots and structure-of-arrays state owned by Rust/WASM. TypeScript should issue
+commands, configure systems, and read bounded presentation views. It should not
+gather, branch over, and scatter thousands of unit records every tick.
+
+This is the biggest lever because it removes repeated Map/object/property and
+pack/scatter costs from sim, physics, visibility, snapshot, and render prep.
+
+2. Move Simulation.updateUnits semantics into native/data-oriented systems
+-------------------------------------------------------------------------
+
+The per-unit action/path/control loop is currently one of the main scale
+limits. It should become a native state-machine/batch system with explicit
+queues and compact action records. Path refresh, stuck detection, arrival,
+guard/fight/patrol transitions, build/repair/reclaim/capture reach checks, and
+attack targeting should operate over slabs/indices.
+
+3. Replace steady-state full snapshots with shared buffers or dirty ranges
+-------------------------------------------------------------------------
+
+Keep full snapshots for join/resync/diagnostics, but do not make them the main
+renderer data path at high unit counts. For the local renderer, prefer shared
+typed buffers, double-buffered presentation slabs, or compact dirty ranges keyed
+by stable entity slots. For networked remote clients, bound visibility packets
+by changed fields and explicit interest regions rather than rebuilding full
+visible entity rows every snapshot.
+
+4. Make visibility/fog/radar native aggregate slabs
+---------------------------------------------------
+
+Follow the design doc's aggregate/indexed direction. Use coarse native grids or
+bitsets for LOS/radar/fog, and reuse those outputs for targeting, snapshots,
+minimap, and rendering. BAR's losMipLevel/radarMipLevel choices are a direct
+example of trading sensor resolution for scale.
+
+5. Flatten the renderer around stable GPU instance buffers
+---------------------------------------------------------
+
+Keep Three.js where it is useful as a shell, but reduce per-unit Object3D and
+Map orchestration for high-count units. The target should look more like:
+native/typed sim slots -> presentation slab -> dirty GPU instance ranges ->
+shader/LOD expansion. Overlays such as health bars, selection markers, build
+range, radar/LOS, and simple far units should be VBO/instance/shader work, not
+object-per-unit work.
+
+6. Decide where the prototype should intentionally differ from BAR
+------------------------------------------------------------------
+
+Some performance gap comes from the prototype's chosen fidelity:
+- full 3D physics
+- mass/force-based motion
+- support surfaces
+- water/medium effects
+- deterministic browser lockstep
+- presentation snapshots
+- richer client prediction
+
+If those are core differentiators, the implementation must be more aggressive
+than BAR's in data layout and batching. If 5,000-unit scale is more important
+than that fidelity, borrow more of BAR's simplifications: cheaper common-case
+ground locomotion, coarser sensor grids, lower-frequency repathing, stronger
+sleep/LOD rules for collision, and reduced debris/effects cadence.
+
+Most likely current 500-unit ceilings
+=====================================
+
+The most likely combined ceilings in rts-prototype are:
+
+1. TypeScript unit/action orchestration in Simulation.updateUnits.
+2. UnitForceSystem active-unit collection, input sampling, WASM pack/scatter,
+   and result scatter back to entities.
+3. PhysicsEngine3D contact/support work plus sync back into JS WorldState.
+4. Full visible snapshot serialization/preencoding and client application.
+5. ClientViewState entity maps, prediction state, render spatial index, and
+   per-frame render packet construction.
+6. Render3DEntities per-visible-unit Three.js object/pose/overlay/material work.
+7. Browser GC and JS Map/Set/object overhead across all of the above.
+
+BAR's high-count path avoids most of those specific costs by keeping the core
+state and systems inside Recoil and by using Lua/GL4 as a thin, event-driven,
+batched layer.
+
+Short answer
+============
+
+BAR can show 5,000 units smoothly because it is not running a browser
+TypeScript RTS engine for those 5,000 units. It is running a native RTS engine
+with data-driven unit definitions, engine pathfinding, coarse native LOS/radar,
+throttled replanning, simplified ground movement physics, event-driven Lua
+state, and GL4/VBO widget rendering.
+
+rts-prototype has many of the right optimization ideas already, but it is still
+paying the cost of JS object ownership and JS<->WASM<->snapshot<->Three.js
+translation in hot paths. Closing the gap means making the Rust/WASM
+data-oriented engine the owner of canonical high-count state and making the
+renderer consume bounded typed-buffer updates instead of rebuilt JS entity
+views.

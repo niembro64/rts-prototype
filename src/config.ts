@@ -18,6 +18,7 @@ import type {
 } from './types/config';
 import type {
   CameraAnchor,
+  CameraConstraintConfig,
   CameraMovementConfig,
 } from './types/camera';
 import {
@@ -762,6 +763,11 @@ export const ENTITY_HUD_FADE_END_DISTANCE_FRAC = entityHudConfigJson.fadeEndDist
  *  camera's pitch angle against the terrain. */
 export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegrees;
 
+/** Maximum zoom level (zoomed in). When camera constraints use
+ *  zoomInLimit='zoom-max', this becomes the closest orbit distance via
+ *  baseDistance / ZOOM_MAX. There is still no authored zoom-out rail. */
+export const ZOOM_MAX = cameraConfigJson.zoom.max;
+
 /** Far-distance reference for HUD fade, expressed as a multiple of the
  *  base framing distance (max(mapW, mapH) * 0.35). Entity HUD elements
  *  (health bars, name tags) finish fading out by this distance, so the
@@ -791,6 +797,11 @@ export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
  *  block so momentum can be tuned or disabled independently. */
 export const CAMERA_MOVEMENT_CONFIG =
   cameraConfigJson.movement as CameraMovementConfig;
+
+/** High-level camera rails. These restore the stable RTS orbit behavior
+ *  without coupling camera body movement to terrain height. */
+export const CAMERA_CONSTRAINTS =
+  cameraConfigJson.constraints as CameraConstraintConfig;
 
 export type CameraBattleKind = 'demoBattle' | 'lobbyBattle' | 'realBattle';
 export type CameraBattleFocus =

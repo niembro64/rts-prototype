@@ -74,6 +74,7 @@ import {
   type BodyPoolViews,
 } from '../sim-wasm/init';
 import type { BuildingSupportSurface, EntityId, UnitSupportSurface } from '../sim/types';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
 type SurfaceNormal = { nx: number; ny: number; nz: number };
 export type SupportSurfaceContact = WorldSupportSurface;
@@ -716,7 +717,9 @@ export class PhysicsEngine3D {
     }
     const sim = getSimWasm()!;
     const idsView = _collectAwakeEntityIds.subarray(0, count);
-    const entityCount = sim.poolCollectAwakeEntityIds(slots, idsView);
+    const entityCount = measureWasmBoundary('physics.poolCollectAwakeEntityIds', () =>
+      sim.poolCollectAwakeEntityIds(slots, idsView)
+    );
     for (let i = 0; i < entityCount; i++) {
       out.push(idsView[i]);
     }
@@ -921,16 +924,18 @@ export class PhysicsEngine3D {
     const sim = getSimWasm()!;
     const awakeView = _integrateAwakeSlots.subarray(0, count);
     const syncView = _integrateStepSyncEntityIds.subarray(0, count);
-    sim.poolPrepareDynamicStep(
-      dynamicSlots,
-      awakeView,
-      syncView,
-      _physicsStepStats,
-      this.mapWidth,
-      this.mapHeight,
-      UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT,
-      WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED,
-    );
+    measureWasmBoundary('physics.poolPrepareDynamicStep', () => {
+      sim.poolPrepareDynamicStep(
+        dynamicSlots,
+        awakeView,
+        syncView,
+        _physicsStepStats,
+        this.mapWidth,
+        this.mapHeight,
+        UNIT_WORLD_BOUNDARY_SPRING_ACCEL_PER_WORLD_UNIT,
+        WORLD_BOUNDARY_DAMPING_ACCEL_PER_SPEED,
+      );
+    });
     this.awakeDynamicBodyCount += _physicsStepStats[1];
     const syncCount = _physicsStepStats[2];
     for (let i = 0; i < syncCount; i++) {
@@ -944,7 +949,9 @@ export class PhysicsEngine3D {
     if (count === 0) return;
     const sim = getSimWasm()!;
     const syncView = _finalStepSyncEntityIds.subarray(0, count);
-    const syncCount = sim.poolFinalizeDynamicStep(dynamicSlots, syncView);
+    const syncCount = measureWasmBoundary('physics.poolFinalizeDynamicStep', () =>
+      sim.poolFinalizeDynamicStep(dynamicSlots, syncView)
+    );
     for (let i = 0; i < syncCount; i++) {
       this.addStepSyncEntityId(syncView[i]);
     }
@@ -1240,27 +1247,29 @@ export class PhysicsEngine3D {
     const groundNormalsView = _integrateGroundNormals.subarray(0, count * 3);
     const transitionsView = _integrateSleepTransitions.subarray(0, count);
     const groundSampled =
-      sim.terrainSampleGroundForSlots(
+      measureWasmBoundary('physics.terrainSampleGroundForSlots', () => sim.terrainSampleGroundForSlots(
         slotsView,
         groundZView,
         groundNormalsView,
-      ) !== 0;
+      )) !== 0;
     if (!groundSampled) {
       this.sampleIntegrationGroundFallback(count);
     }
     this.sampleIntegrationSupportSurfaces(count);
-    const transitionCount = sim.poolStepIntegrate(
-      slotsView,
-      groundZView,
-      groundNormalsView,
-      transitionsView,
-      dtSec,
-      groundDamp,
-      Number.isFinite(wind.x) ? wind.x : 0,
-      Number.isFinite(wind.y) ? wind.y : 0,
-      Number.isFinite(wind.z) ? wind.z : 0,
-      this.mapWidth,
-      this.mapHeight,
+    const transitionCount = measureWasmBoundary('physics.poolStepIntegrate', () =>
+      sim.poolStepIntegrate(
+        slotsView,
+        groundZView,
+        groundNormalsView,
+        transitionsView,
+        dtSec,
+        groundDamp,
+        Number.isFinite(wind.x) ? wind.x : 0,
+        Number.isFinite(wind.y) ? wind.y : 0,
+        Number.isFinite(wind.z) ? wind.z : 0,
+        this.mapWidth,
+        this.mapHeight,
+      )
     );
     for (let i = 0; i < transitionCount; i++) {
       const slot = transitionsView[i];
@@ -1317,12 +1326,14 @@ export class PhysicsEngine3D {
     }
     const ignoredView = _sphereCuboidIgnoredStatics.subarray(0, maxCount);
     const wakeView = _sphereCuboidWakeTransitions.subarray(0, maxCount);
-    const wakeCount = sim.poolResolveSphereCuboidFull(
-      this.staticsHandle,
-      stepSlots,
-      ignoredView,
-      CONTACT_CELL_SIZE,
-      wakeView,
+    const wakeCount = measureWasmBoundary('physics.poolResolveSphereCuboidFull', () =>
+      sim.poolResolveSphereCuboidFull(
+        this.staticsHandle,
+        stepSlots,
+        ignoredView,
+        CONTACT_CELL_SIZE,
+        wakeView,
+      )
     );
     for (let i = 0; i < wakeCount; i++) {
       const slot = wakeView[i];
@@ -1350,11 +1361,13 @@ export class PhysicsEngine3D {
       _sphereSphereWakeTransitions = new Uint32Array(maxCount);
     }
     const wakeView = _sphereSphereWakeTransitions.subarray(0, maxCount);
-    const wakeCount = sim.poolResolveSphereSphere(
-      dynamicSlots,
-      iterations,
-      CONTACT_CELL_SIZE,
-      wakeView,
+    const wakeCount = measureWasmBoundary('physics.poolResolveSphereSphere', () =>
+      sim.poolResolveSphereSphere(
+        dynamicSlots,
+        iterations,
+        CONTACT_CELL_SIZE,
+        wakeView,
+      )
     );
     for (let i = 0; i < wakeCount; i++) {
       const slot = wakeView[i];

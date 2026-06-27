@@ -1,4 +1,5 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
 export const TURRET_BARREL_INPUT_STRIDE = 38;
 const TURRET_BARREL_OUTPUT_STRIDE = 16;
@@ -43,7 +44,9 @@ export class UnitTurretBarrelMatrixBatch3D {
 
   compute(count: number): Float32Array {
     if (this.wasm !== null) {
-      this.wasm.renderPose.turretBarrelCompute(count);
+      measureWasmBoundary('renderPose.turretBarrelCompute', () => {
+        this.wasm!.renderPose.turretBarrelCompute(count);
+      });
       return this.output;
     }
     this.computeFallback(count);

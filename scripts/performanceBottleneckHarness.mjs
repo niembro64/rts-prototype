@@ -64,9 +64,12 @@ try {
 
     let report;
     try {
-      report = await page.evaluate((browserOptions) => (
-        window.__runPerformanceBottleneckHarness?.(browserOptions)
-      ), options.harnessOptions);
+      report = await page.evaluate(({ suite, browserOptions }) => {
+        if (suite) {
+          return window.__runPerformanceBottleneckHarnessSuite?.(browserOptions);
+        }
+        return window.__runPerformanceBottleneckHarness?.(browserOptions);
+      }, { suite: options.suite, browserOptions: options.harnessOptions });
     } finally {
       if (profilerSession !== null) {
         const stopped = await profilerSession.send('Profiler.stop');
@@ -87,7 +90,8 @@ try {
     const cpuProfileSummary = cpuProfile !== null
       ? summarizeCpuProfile(cpuProfile, options.profileTop)
       : null;
-    printReport(report);
+    if (isSuiteReport(report)) printSuiteReport(report);
+    else printReport(report);
     if (snapshotWireStats !== null) printSnapshotWireStats(snapshotWireStats);
     if (cpuProfileSummary !== null) printCpuProfileSummary(cpuProfileSummary);
     if (options.jsonPath !== null) {
@@ -113,9 +117,14 @@ function parseArgs(args) {
   let profileTop = 30;
   let snapshotWireStats = false;
   let jsonPath = null;
+  let suite = false;
   for (const arg of args) {
     if (arg === '--headed') {
       headless = false;
+      continue;
+    }
+    if (arg === '--suite') {
+      suite = true;
       continue;
     }
     if (arg === '--profile-cpu') {
@@ -132,6 +141,14 @@ function parseArgs(args) {
     const rawValue = match[2];
     if (key === 'json') {
       jsonPath = rawValue;
+      continue;
+    }
+    if (key === 'unit-caps' || key === 'unitCaps') {
+      harnessOptions.unitCaps = rawValue
+        .split(',')
+        .map((part) => Number(part.trim()))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      suite = true;
       continue;
     }
     const value = Number(rawValue);
@@ -181,6 +198,7 @@ function parseArgs(args) {
     profileTop,
     snapshotWireStats,
     jsonPath,
+    suite,
     width: harnessOptions.width,
     height: harnessOptions.height,
     harnessOptions,
@@ -198,6 +216,8 @@ function printReport(report) {
   console.log(`  units/buildings/projectiles: ${report.simOnly.units}/${report.simOnly.buildings}/${report.simOnly.projectiles}`);
   console.log(`  step ms avg/p95/max: ${triplet(report.simOnly.stepMs)} (${fmt(report.simOnly.fixedStepUtilPctP95)}% of ${fmt(fixed)}ms fixed step)`);
   console.log(`  p95 ceiling: ${fmt(report.simOnly.simCeilingTpsP95)} TPS`);
+  printMemoryLine('  memory', report.simOnly.memory);
+  printWasmBoundaryLine('  JS/WASM boundary', report.simOnly.wasmBoundary);
   console.log('');
   console.log('SIM + SNAPSHOT + CLIENT APPLY');
   console.log(`  units/buildings/projectiles: ${report.simSnapshot.units}/${report.simSnapshot.buildings}/${report.simSnapshot.projectiles}`);
@@ -207,6 +227,8 @@ function printReport(report) {
   console.log(`  snapshot apply ms avg/p95/max: ${triplet(report.simSnapshot.snapshotApplyMs)}`);
   console.log(`  snapshot bytes avg/p95/max: ${triplet(report.simSnapshot.snapshotBytes)}`);
   console.log(`  snapshot main-thread share: ${fmt(report.simSnapshot.snapshotMainThreadMsPerSecond)} ms/s`);
+  printMemoryLine('  memory', report.simSnapshot.memory);
+  printWasmBoundaryLine('  JS/WASM boundary', report.simSnapshot.wasmBoundary);
   console.log('');
   console.log('FULL STACK');
   console.log(`  units/buildings/projectiles: ${report.fullStack.units}/${report.fullStack.buildings}/${report.fullStack.projectiles}`);
@@ -246,11 +268,77 @@ function printReport(report) {
       `${fmt(report.fullStack.renderPhaseBuildingLodProxyRows.p95)}`,
   );
   console.log(`  long tasks p95: ${fmt(report.fullStack.longtaskMsPerSec.p95)} ms/s`);
+  printMemoryLine('  memory', report.fullStack.memory);
+  printWasmBoundaryLine('  JS/WASM boundary', report.fullStack.wasmBoundary);
   console.log('');
   console.log(`DIAGNOSIS: ${report.diagnosis.primary} (${report.diagnosis.confidence})`);
   console.log(`  ${report.diagnosis.summary}`);
   for (const line of report.diagnosis.evidence) console.log(`  evidence: ${line}`);
   for (const line of report.diagnosis.nextChecks) console.log(`  next: ${line}`);
+}
+
+function printSuiteReport(report) {
+  console.log('Performance bottleneck suite');
+  console.log(`scenarios: ${report.unitCaps.join(', ')} unit caps`);
+  console.log(
+    `worst sim util p95=${fmt(report.summary.worstSimFixedStepUtilPctP95)}%, ` +
+      `worst frame p95=${fmt(report.summary.worstFrameMsP95)}ms, ` +
+      `worst snapshot share=${fmt(report.summary.worstSnapshotMainThreadMsPerSecond)}ms/s`,
+  );
+  console.log(
+    `total JS/WASM boundary=${fmt(report.summary.totalWasmBoundaryMs)}ms, ` +
+      `max heap=${fmtBytesOrNull(report.summary.maxJsHeapUsedBytes)}, ` +
+      `max wasm=${fmtBytesOrNull(report.summary.maxWasmMemoryBytes)}`,
+  );
+  for (const scenario of report.reports) {
+    console.log('');
+    console.log(`SCENARIO cap=${scenario.options.unitCap}`);
+    console.log(
+      `  sim p95=${fmt(scenario.simOnly.stepMs.p95)}ms ` +
+        `(${fmt(scenario.simOnly.fixedStepUtilPctP95)}% fixed-step), ` +
+        `snapshot=${fmt(scenario.simSnapshot.snapshotMainThreadMsPerSecond)}ms/s, ` +
+        `frame p95=${fmt(scenario.fullStack.frameMs.p95)}ms`,
+    );
+    console.log(
+      `  render prep p95=${fmt(scenario.fullStack.renderPrepMs.p95)}ms, ` +
+        `gpu/render p95=${fmt(scenario.fullStack.gpuMs.p95)}ms, ` +
+        `longtask p95=${fmt(scenario.fullStack.longtaskMsPerSec.p95)}ms/s`,
+    );
+    console.log(
+      `  JS/WASM boundary sim/snapshot/full=${fmt(scenario.simOnly.wasmBoundary.totalMs)}/` +
+        `${fmt(scenario.simSnapshot.wasmBoundary.totalMs)}/` +
+        `${fmt(scenario.fullStack.wasmBoundary.totalMs)}ms, ` +
+        `heap max=${fmtBytesOrNull(maxScenarioHeap(scenario))}, ` +
+        `wasm max=${fmtBytesOrNull(maxScenarioWasmMemory(scenario))}`,
+    );
+    console.log(
+      `  diagnosis=${scenario.diagnosis.primary} (${scenario.diagnosis.confidence})`,
+    );
+  }
+}
+
+function printMemoryLine(prefix, memory) {
+  if (!memory) return;
+  console.log(
+    `${prefix}: heap max=${fmtBytesSummary(memory.jsHeapSupported, memory.jsHeapUsedBytes)} ` +
+      `delta=${fmtBytesOrNull(memory.jsHeapUsedDeltaBytes)}, ` +
+      `wasm max=${fmtBytesSummary(memory.wasmMemorySupported, memory.wasmMemoryBytes)} ` +
+      `delta=${fmtBytesOrNull(memory.wasmMemoryDeltaBytes)}`,
+  );
+}
+
+function printWasmBoundaryLine(prefix, boundary) {
+  if (!boundary) return;
+  console.log(
+    `${prefix}: total=${fmt(boundary.totalMs)}ms calls=${boundary.calls} ` +
+      `avg=${fmt(boundary.avgMs)}ms max=${fmt(boundary.maxMs)}ms`,
+  );
+  for (const row of boundary.rows.slice(0, 5)) {
+    console.log(
+      `    ${row.label}: total=${fmt(row.totalMs)}ms calls=${row.calls} ` +
+        `avg=${fmt(row.avgMs)}ms max=${fmt(row.maxMs)}ms`,
+    );
+  }
 }
 
 function printSnapshotWireStats(stats) {
@@ -286,6 +374,16 @@ function printSnapshotWireStats(stats) {
 }
 
 function collectReportSnapshotWireStats(report) {
+  if (isSuiteReport(report)) {
+    const rows = [];
+    const breakdowns = [];
+    for (const scenario of report.reports) {
+      const stats = collectReportSnapshotWireStats(scenario);
+      rows.push(...stats.rows);
+      breakdowns.push(...stats.breakdowns);
+    }
+    return { rows, breakdowns };
+  }
   const rows = [];
   const breakdowns = [];
   for (const phase of [report.simSnapshot, report.fullStack]) {
@@ -300,6 +398,37 @@ function collectReportSnapshotWireStats(report) {
 function chooseSnapshotWireStats(reportStats, liveStats) {
   if (reportStats.rows.length > 0 || reportStats.breakdowns.length > 0) return reportStats;
   return liveStats;
+}
+
+function isSuiteReport(report) {
+  return report?.schema === 'budget-annihilation.performance-bottleneck-suite.v1';
+}
+
+function maxScenarioHeap(scenario) {
+  return maxSupportedMemory(
+    [scenario.simOnly.memory, scenario.simSnapshot.memory, scenario.fullStack.memory],
+    'jsHeapSupported',
+    'jsHeapUsedBytes',
+  );
+}
+
+function maxScenarioWasmMemory(scenario) {
+  return maxSupportedMemory(
+    [scenario.simOnly.memory, scenario.simSnapshot.memory, scenario.fullStack.memory],
+    'wasmMemorySupported',
+    'wasmMemoryBytes',
+  );
+}
+
+function maxSupportedMemory(reports, supportKey, summaryKey) {
+  let max = null;
+  for (const report of reports) {
+    if (!report?.[supportKey]) continue;
+    const value = report[summaryKey]?.max;
+    if (!Number.isFinite(value)) continue;
+    if (max === null || value > max) max = value;
+  }
+  return max;
 }
 
 function printCpuProfileSummary(summary) {
@@ -391,4 +520,22 @@ function triplet(summary) {
 
 function fmt(value) {
   return Number.isFinite(value) ? value.toFixed(2) : 'n/a';
+}
+
+function fmtBytesSummary(supported, summary) {
+  if (!supported || !summary || !Number.isFinite(summary.max)) return 'n/a';
+  return fmtBytes(summary.max);
+}
+
+function fmtBytesOrNull(value) {
+  return Number.isFinite(value) ? fmtBytes(value) : 'n/a';
+}
+
+function fmtBytes(value) {
+  const sign = value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  if (abs >= 1024 * 1024 * 1024) return `${sign}${fmt(abs / (1024 * 1024 * 1024))}GiB`;
+  if (abs >= 1024 * 1024) return `${sign}${fmt(abs / (1024 * 1024))}MiB`;
+  if (abs >= 1024) return `${sign}${fmt(abs / 1024)}KiB`;
+  return `${sign}${fmt(abs)}B`;
 }

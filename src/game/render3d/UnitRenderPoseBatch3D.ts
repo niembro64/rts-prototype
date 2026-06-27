@@ -1,4 +1,5 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
 const UNIT_POSE_INPUT_STRIDE = 11;
 const UNIT_POSE_OUTPUT_STRIDE = 32;
@@ -71,7 +72,9 @@ export class UnitRenderPoseBatch3D {
 
   compute(count: number): Float32Array {
     if (this.wasm !== null) {
-      this.wasm.renderPose.unitCompute(count);
+      measureWasmBoundary('renderPose.unitCompute', () => {
+        this.wasm!.renderPose.unitCompute(count);
+      });
       return this.output;
     }
     this.computeFallback(count);

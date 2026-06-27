@@ -10,7 +10,7 @@ import {
   economyManager,
 } from './economy';
 import { resourceMovementSystem } from './resourceMovement';
-import type { Entity, EntityId, PlayerId } from './types';
+import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from './types';
 import { setUnitActions } from './unitActions';
 import { WorldState } from './WorldState';
 
@@ -37,6 +37,29 @@ function makeCompletedOpenBuilding(entity: Entity, hp: number): void {
     entity.building.activeState.damageDelayMs = 0;
     entity.building.activeState.reopenDelayMs = 0;
   }
+}
+
+function createCompletedOpenBuilding(
+  world: WorldState,
+  playerId: PlayerId,
+  blueprintId: BuildingBlueprintId,
+  x: number,
+  y: number,
+): Entity {
+  const config = getBuildingConfig(blueprintId);
+  const entity = world.createBuilding(
+    x,
+    y,
+    config.gridWidth * 20,
+    config.gridHeight * 20,
+    config.gridDepth * 20,
+    playerId,
+  );
+  applyBuildingBlueprintRuntime(entity, blueprintId);
+  makeCompletedOpenBuilding(entity, config.hp);
+  entity.buildable = null;
+  world.addEntity(entity);
+  return entity;
 }
 
 export function runResourceMovementConformanceContractTest(): void {
@@ -98,22 +121,12 @@ export function runResourceMovementConformanceContractTest(): void {
       stockpile: { curr: 0, max: 200 },
     },
   });
-  const solarConfig = getBuildingConfig('buildingSolar');
-  const solar = world.createBuilding(
-    160,
-    120,
-    solarConfig.gridWidth * 20,
-    solarConfig.gridHeight * 20,
-    solarConfig.gridDepth * 20,
-    playerId,
-  );
-  applyBuildingBlueprintRuntime(solar, 'buildingSolar');
-  makeCompletedOpenBuilding(solar, solarConfig.hp);
-  solar.buildable = null;
-  world.addEntity(solar);
+  const solar = createCompletedOpenBuilding(world, playerId, 'buildingSolar', 160, 120);
+  const wind = createCompletedOpenBuilding(world, playerId, 'buildingWind', 220, 120);
+  const extractor = createCompletedOpenBuilding(world, playerId, 'buildingExtractor', 280, 120);
 
   resourceMovementSystem.beginTick(world);
-  economyManager.update(world, 1000, 0);
+  economyManager.update(world, 1000, 1);
   assertContract(
     world.resourceMovements.some((movement) =>
       movement.reason === 'baseIncome' &&
@@ -129,6 +142,24 @@ export function runResourceMovementConformanceContractTest(): void {
       movement.sourceEntityId === solar.id
     ),
     'producer income must publish an inbound pylon movement from the producer host',
+  );
+  assertContract(
+    world.resourceMovements.some((movement) =>
+      movement.reason === 'production' &&
+      movement.resource === 'energy' &&
+      movement.direction === 'inbound' &&
+      movement.sourceEntityId === wind.id
+    ),
+    'wind producer income must publish an inbound energy pylon movement from the wind host',
+  );
+  assertContract(
+    world.resourceMovements.some((movement) =>
+      movement.reason === 'production' &&
+      movement.resource === 'metal' &&
+      movement.direction === 'inbound' &&
+      movement.sourceEntityId === extractor.id
+    ),
+    'extractor producer income must publish an inbound metal pylon movement from the extractor host',
   );
 
   economyManager.reset();

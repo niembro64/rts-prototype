@@ -1,4 +1,5 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 
 const AIRBORNE_EMITTER_INPUT_STRIDE = 24;
@@ -115,7 +116,9 @@ export class AirborneEmitterBatch3D {
         count * this.inputStride,
       );
       wasmInput.set(this.input.subarray(0, count * this.inputStride));
-      renderPose.airborneEmitterCompute(count);
+      measureWasmBoundary('renderPose.airborneEmitterCompute', () => {
+        renderPose.airborneEmitterCompute(count);
+      });
       return new Float32Array(
         this.wasm.memory.buffer,
         renderPose.airborneEmitterOutputScratchPtr(),

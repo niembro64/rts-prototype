@@ -1,4 +1,5 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
+import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
 export const CHASSIS_PART_INPUT_STRIDE = 15;
 const CHASSIS_PART_OUTPUT_STRIDE = 16;
@@ -43,7 +44,9 @@ export class UnitChassisMatrixBatch3D {
 
   compute(count: number): Float32Array {
     if (this.wasm !== null) {
-      this.wasm.renderPose.chassisPartCompute(count);
+      measureWasmBoundary('renderPose.chassisPartCompute', () => {
+        this.wasm!.renderPose.chassisPartCompute(count);
+      });
       return this.output;
     }
     this.computeFallback(count);
