@@ -54,6 +54,10 @@ export type BuildPlacementDiagnostics = {
 
 type BuildPlacementOccupiedLookup = (gx: number, gy: number) => boolean;
 
+type BuildPlacementDiagnosticsOptions = {
+  includeMetalDiagnostics?: boolean;
+};
+
 function cellKey(gx: number, gy: number): string {
   return `${gx},${gy}`;
 }
@@ -101,7 +105,9 @@ function getBuildingPlacementDiagnosticsAtGrid(
   isCellOccupied: BuildPlacementOccupiedLookup,
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null,
   rotation = 0,
+  options: BuildPlacementDiagnosticsOptions = {},
 ): BuildPlacementDiagnostics {
+  const includeMetalDiagnostics = options.includeMetalDiagnostics !== false;
   const config = getBuildingConfig(candidateType);
   // Validate and reserve the full placement footprint. It shares its
   // center with the physical rect (parity is loader-enforced), so the
@@ -177,7 +183,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
         }
       }
 
-      if (!blocking) {
+      if (!blocking && includeMetalDiagnostics) {
         const deposit = findDepositContainingPoint(metalDeposits, x, y);
         metalCovered = deposit !== null;
         depositId = deposit === null ? null : deposit.id;
@@ -234,31 +240,34 @@ function getBuildingPlacementDiagnosticsAtGrid(
   // ghost no longer reads it (deposit markers come from a persistent
   // overlay built once from the deposit list); kept here so the rest of
   // the diagnostic surface remains intact for any other consumer.
-  const footprintCellKeys = new Set<string>();
-  for (let i = 0; i < cells.length; i++) {
-    const cell = cells[i];
-    footprintCellKeys.add(cellKey(cell.gx, cell.gy));
-  }
-  const metalDepositCells: BuildPlacementCellDiagnostic[] = [];
-  const depositCells = getMetalDepositGridCells(metalDeposits);
-  for (let i = 0; i < depositCells.length; i++) {
-    const cell = depositCells[i];
-    if (footprintCellKeys.has(cellKey(cell.gx, cell.gy))) continue;
-    metalDepositCells.push({
-      gx: cell.gx,
-      gy: cell.gy,
-      x: cell.x,
-      y: cell.y,
-      reason: 'metal',
-      blocking: false,
-      terrainLevel: null,
-      metalCovered: true,
-      depositId: cell.depositId,
-    });
-  }
+  let metalDepositCells: BuildPlacementCellDiagnostic[] | null = null;
   let metalFraction: number | null = null;
   let metalTotalCells: number | null = null;
-  if (isMetalExtractorBlueprintId(candidateType)) {
+  if (includeMetalDiagnostics) {
+    const footprintCellKeys = new Set<string>();
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      footprintCellKeys.add(cellKey(cell.gx, cell.gy));
+    }
+    metalDepositCells = [];
+    const depositCells = getMetalDepositGridCells(metalDeposits);
+    for (let i = 0; i < depositCells.length; i++) {
+      const cell = depositCells[i];
+      if (footprintCellKeys.has(cellKey(cell.gx, cell.gy))) continue;
+      metalDepositCells.push({
+        gx: cell.gx,
+        gy: cell.gy,
+        x: cell.x,
+        y: cell.y,
+        reason: 'metal',
+        blocking: false,
+        terrainLevel: null,
+        metalCovered: true,
+        depositId: cell.depositId,
+      });
+    }
+  }
+  if (includeMetalDiagnostics && isMetalExtractorBlueprintId(candidateType)) {
     const coverage = getMetalDepositFootprintCoverage(
       metalDeposits,
       center.x,
@@ -281,7 +290,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     cells,
     failureReason,
     metalFraction,
-    metalCoveredCells: isMetalExtractorBlueprintId(candidateType) ? metalCoveredCells : null,
+    metalCoveredCells: includeMetalDiagnostics && isMetalExtractorBlueprintId(candidateType) ? metalCoveredCells : null,
     metalTotalCells,
     metalDepositCells,
   };
@@ -297,6 +306,7 @@ export function getBuildingPlacementDiagnosticsForGrid(
   isCellOccupied: BuildPlacementOccupiedLookup = emptyOccupiedLookup,
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
   rotation = 0,
+  options: BuildPlacementDiagnosticsOptions = {},
 ): BuildPlacementDiagnostics {
   return getBuildingPlacementDiagnosticsAtGrid(
     candidateType,
@@ -308,6 +318,7 @@ export function getBuildingPlacementDiagnosticsForGrid(
     isCellOccupied,
     terrainBuildabilityGrid,
     rotation,
+    options,
   );
 }
 
@@ -322,6 +333,7 @@ export function getBuildingPlacementDiagnostics(
   occupiedCells: ReadonlySet<string> = getOccupiedBuildingCells(buildings),
   terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null,
   rotation = 0,
+  options: BuildPlacementDiagnosticsOptions = {},
 ): BuildPlacementDiagnostics {
   const config = getBuildingConfig(candidateType);
   const footprint = getRotatedGridFootprint(config.placementGridWidth, config.placementGridHeight, rotation);
@@ -336,6 +348,7 @@ export function getBuildingPlacementDiagnostics(
     occupiedSetLookup(occupiedCells),
     terrainBuildabilityGrid,
     rotation,
+    options,
   );
 }
 

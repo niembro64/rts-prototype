@@ -147,14 +147,20 @@ export function useGameCanvasBackgroundBattle({
         }
         let createdBattle: BackgroundBattleState | null = null;
         let startupReadyPending = false;
+        let startupReady = false;
         const handleStartupReady = () => {
           if (myGen !== backgroundBattleGen) return;
           if (createdBattle === null || backgroundBattle !== createdBattle) {
             startupReadyPending = true;
             return;
           }
+          startupReady = true;
           startupReadyPending = false;
-          onLoadingProgress(BACKGROUND_LOAD_PROGRESS.firstSnapshot, 'Applying first snapshot');
+          // The first full snapshot is the point where the demo is usable.
+          // Shader warmup continues opportunistically, but it must not keep
+          // the full-screen loading overlay pinned over a running battle.
+          onLoadingProgress(BACKGROUND_LOAD_PROGRESS.done, 'Ready');
+          onRendererWarmupChange(false);
         };
         const battle = await lobbyManager.createBackgroundBattle(
           backgroundContainerRef.value,
@@ -163,13 +169,14 @@ export function useGameCanvasBackgroundBattle({
           getPreviewPlayerIds(),
           getPreviewLocalPlayerId(),
           (warming) => {
+            const blocksLoadingOverlay = warming && !startupReady;
             onLoadingProgress(
-              warming
+              blocksLoadingOverlay
                 ? BACKGROUND_LOAD_PROGRESS.shaderWarmup
                 : BACKGROUND_LOAD_PROGRESS.done,
-              warming ? 'Warming shaders' : 'Ready',
+              blocksLoadingOverlay ? 'Warming shaders' : 'Ready',
             );
-            onRendererWarmupChange(warming && getPlayerClientEnabled());
+            onRendererWarmupChange(blocksLoadingOverlay && getPlayerClientEnabled());
           },
           (progress, phase) => reportLoadingProgress(
             BACKGROUND_LOAD_PROGRESS.settingsLoaded +

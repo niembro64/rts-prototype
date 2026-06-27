@@ -59,7 +59,7 @@
         "baseColorHex": "#38362f",
         "texture": {
           "sourceFile": "src/game/render3d/RockDetailTexture.ts",
-          "resolution": 8192,
+          "resolution": 4096,
           "blend": 0.1,
           "tileWorldSize": 10000
         },
@@ -148,7 +148,7 @@
       "baseColorHex": "#272b2e",
       "rockTexture": {
         "sourceFile": "src/game/render3d/RockDetailTexture.ts",
-        "resolution": 8192,
+        "resolution": 4096,
         "blend": 1,
         "tileWorldSize": 2000
       },

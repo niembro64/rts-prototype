@@ -36,7 +36,7 @@ const TEXTURE_SCALE = GROUND_DETAIL_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
 // The shader also samples a second rotated+rescaled copy of this texture
 // (see TerrainTileRenderer3D), so the visible repeat period is much larger
 // than this literal tile at normal RTS zoom levels.
-const ITEM_COUNT = 83200;
+const ITEM_COUNT = 24576;
 
 type ShapeKind = 'box' | 'tri' | 'circle' | 'hex' | 'rosette';
 

@@ -25,33 +25,38 @@ type MetalDepositFootprintCoverage = {
   primaryDepositId: number | null;
 };
 
-function metalDepositContainsPoint(
-  deposit: MetalDeposit,
-  x: number,
-  y: number,
-): boolean {
-  const gx = Math.floor(x / BUILD_GRID_CELL_SIZE);
-  const gy = Math.floor(y / BUILD_GRID_CELL_SIZE);
-  return metalDepositContainsGridCell(deposit, gx, gy);
+type MetalDepositGridLookup = {
+  byGridCell: Map<string, MetalDeposit>;
+  cells: MetalDepositGridCell[];
+};
+
+const metalDepositGridLookupCache = new WeakMap<ReadonlyArray<MetalDeposit>, MetalDepositGridLookup>();
+
+function metalDepositGridCellKey(gx: number, gy: number): string {
+  return `${gx},${gy}`;
 }
 
-function metalDepositContainsGridCell(
-  deposit: MetalDeposit,
-  gx: number,
-  gy: number,
-): boolean {
-  if (
-    gx < deposit.boundsGridX ||
-    gy < deposit.boundsGridY ||
-    gx >= deposit.boundsGridX + deposit.boundsGridW ||
-    gy >= deposit.boundsGridY + deposit.boundsGridH
-  ) {
-    return false;
+function getMetalDepositGridLookup(deposits: ReadonlyArray<MetalDeposit>): MetalDepositGridLookup {
+  let cached = metalDepositGridLookupCache.get(deposits);
+  if (cached !== undefined) return cached;
+
+  const byGridCell = new Map<string, MetalDeposit>();
+  const cells: MetalDepositGridCell[] = [];
+  for (const deposit of deposits) {
+    for (const cell of deposit.cells) {
+      byGridCell.set(metalDepositGridCellKey(cell.gx, cell.gy), deposit);
+      cells.push({
+        gx: cell.gx,
+        gy: cell.gy,
+        x: cell.x,
+        y: cell.y,
+        depositId: deposit.id,
+      });
+    }
   }
-  for (const cell of deposit.cells) {
-    if (cell.gx === gx && cell.gy === gy) return true;
-  }
-  return false;
+  cached = { byGridCell, cells };
+  metalDepositGridLookupCache.set(deposits, cached);
+  return cached;
 }
 
 export function findDepositContainingPoint(
@@ -59,10 +64,9 @@ export function findDepositContainingPoint(
   x: number,
   y: number,
 ): MetalDeposit | null {
-  for (const deposit of deposits) {
-    if (metalDepositContainsPoint(deposit, x, y)) return deposit;
-  }
-  return null;
+  const gx = Math.floor(x / BUILD_GRID_CELL_SIZE);
+  const gy = Math.floor(y / BUILD_GRID_CELL_SIZE);
+  return getMetalDepositGridLookup(deposits).byGridCell.get(metalDepositGridCellKey(gx, gy)) ?? null;
 }
 
 /** True iff at least one generated metal-producing cell overlaps a
@@ -128,16 +132,16 @@ export function getMetalDepositGridCells(
   out: MetalDepositGridCell[] = [],
 ): MetalDepositGridCell[] {
   out.length = 0;
-  for (const deposit of deposits) {
-    for (const cell of deposit.cells) {
-      out.push({
-        gx: cell.gx,
-        gy: cell.gy,
-        x: cell.x,
-        y: cell.y,
-        depositId: deposit.id,
-      });
-    }
+  const cells = getMetalDepositGridLookup(deposits).cells;
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i];
+    out.push({
+      gx: cell.gx,
+      gy: cell.gy,
+      x: cell.x,
+      y: cell.y,
+      depositId: cell.depositId,
+    });
   }
   return out;
 }

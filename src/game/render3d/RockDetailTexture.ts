@@ -39,7 +39,7 @@ const TEXTURE_SCALE = ROCK_DETAIL_TEXTURE_PIXELS / BASE_TEXTURE_PIXELS;
 // Terrain/deposit repetition scale comes from colorsConfig texture settings.
 // A larger tileWorldSize makes every rock shape cover more world area when
 // sampled, so rocks read chunkier than the finer grass / sticks texture.
-const ITEM_COUNT = 83200;
+const ITEM_COUNT = 24576;
 
 // Only hard-cornered shapes — rock fractures along straight lines, not curves.
 type ShapeKind = 'box' | 'tri' | 'hex';

@@ -88,6 +88,7 @@ export class ConstructionSystem {
       (gx, gy) => this.isCellOccupied(gx, gy),
       this.terrainBuildabilityGrid,
       rotation,
+      { includeMetalDiagnostics: false },
     );
     if (!diagnostics.canPlace) {
       return null;
@@ -256,6 +257,7 @@ export class ConstructionSystem {
       (gx, gy) => this.isCellOccupiedByOtherEntity(gx, gy, target.id),
       this.terrainBuildabilityGrid,
       rotation,
+      { includeMetalDiagnostics: false },
     );
     if (!diagnostics.canPlace) return null;
 
