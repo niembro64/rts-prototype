@@ -1224,7 +1224,7 @@ export class Input3DManager {
     orbit: ThreeApp['orbit'],
     action: CameraKeyboardAction,
   ): void {
-    orbit.moveByKeyboardScreenDirection(action.mode, action.x, action.y, action.fine);
+    orbit.moveByKeyboardScreenDirection(action.mode, action.x, action.y);
   }
 
   /** True if D-gun mode is currently active. */
@@ -1781,7 +1781,7 @@ export class Input3DManager {
     if (y <= rect.top + margin) screenY -= 1;
     if (y >= rect.bottom - margin) screenY += 1;
     if (screenX === 0 && screenY === 0) return;
-    this.orbit.moveByKeyboardScreenDirection('pan', screenX, screenY, false);
+    this.orbit.moveByKeyboardScreenDirection('pan', screenX, screenY);
   }
 
   private handleKeyDown(e: KeyboardEvent): void {

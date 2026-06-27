@@ -7,6 +7,19 @@ export type CameraAnchor = {
   readonly terrain: CameraAnchorTerrain;
 };
 
+export type CameraMovementScaleMode =
+  | 'anchor-distance-relative'
+  | 'absolute-world'
+  | 'absolute-world-momentum';
+
+export type CameraMovementMomentum = {
+  readonly minGain: number;
+  readonly maxGain: number;
+  readonly mouseVelocityForMaxGainPixelsPerSecond: number;
+  readonly wheelVelocityForMaxGainDeltaPerSecond: number;
+  readonly curve: number;
+};
+
 /** How the orbit camera resolves a frame where the eye would sit below
  *  terrain. Every mode keeps the camera looking at the orbit target, and
  *  NONE of them write terrain back into the orbit state (so zoom limits

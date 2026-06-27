@@ -71,8 +71,8 @@ export function runInput3DKeyboardControllerContractTest(): void {
     'Alt + arrows must orbit the camera',
   );
   assertContract(
-    cameraKeyboardActionForKey(makeKey({ code: 'Numpad9', shiftKey: true }))?.fine === true,
-    'Shift + keyboard camera input must use fine control',
+    cameraKeyboardActionForKey(makeKey({ code: 'Numpad9', shiftKey: true }))?.mode === 'pan',
+    'Shift + keyboard camera input must not switch into a camera fine-control mode',
   );
   assertContract(
     cameraKeyboardActionForKey(makeKey({ code: 'ArrowDown', metaKey: true })) === null,

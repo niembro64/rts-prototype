@@ -8,6 +8,18 @@
     "max": 40.0,
     "stepFraction": 0.2
   },
+  "movement": {
+    "scaleMode": "absolute-world-momentum",
+    "absoluteZoomStepWorldUnits": 120.0,
+    "absolutePanWorldUnitsPerPixel": 2.0,
+    "momentum": {
+      "minGain": 0.35,
+      "maxGain": 3.0,
+      "mouseVelocityForMaxGainPixelsPerSecond": 1800.0,
+      "wheelVelocityForMaxGainDeltaPerSecond": 5000.0,
+      "curve": 1.35
+    }
+  },
   "farReferenceDistanceFactor": 5.0,
   "battleDefaults": {
     "demoBattle": {

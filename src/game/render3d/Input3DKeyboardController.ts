@@ -152,7 +152,6 @@ export type CameraKeyboardAction = {
   mode: CameraKeyboardActionMode;
   x: number;
   y: number;
-  fine: boolean;
 };
 
 type CameraKeyboardEvent = Pick<
@@ -204,7 +203,6 @@ export function cameraKeyboardActionForKey(e: CameraKeyboardEvent): CameraKeyboa
     mode: e.altKey ? 'orbit' : e.ctrlKey ? 'height-pan' : 'pan',
     x,
     y,
-    fine: e.shiftKey,
   };
 }
 

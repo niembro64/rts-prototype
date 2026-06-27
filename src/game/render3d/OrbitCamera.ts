@@ -5,7 +5,6 @@
 //   - Alt + middle drag   → orbit (yaw + pitch)
 //   - Middle drag         → pan (slide target on the world ground)
 //   - Ctrl + middle drag  → height pan (left/right on ground, up/down in world height)
-//   - Shift held          → fine camera control (1/10 movement)
 //   - Touch 1 finger      → pan
 //   - Touch 2 fingers     → centroid pan + pinch zoom + twist rotate
 //
@@ -23,22 +22,26 @@
 // Cursor pinning is 3D-accurate when a `getCursorWorldPoint` callback
 // is supplied: the scene raycasts the actual rendered geometry
 // (terrain, etc.) instead of a flat y=0 plane, so wheel zoom anchors
-// at the real point under the cursor and pan drag uses the cursor's
-// actual world depth to compute world-per-pixel — meaning the world
-// point under the cursor at drag-start follows the cursor exactly,
-// regardless of terrain elevation under it.
+// at the real point under the cursor. In anchor-distance-relative
+// movement mode, pan drag also uses the cursor's actual world depth
+// to compute world-per-pixel. In absolute-world mode, the same
+// anchors and movement directions are used with fixed world-unit
+// movement amounts.
 
 import * as THREE from 'three';
 import type {
   CameraAnchor,
   CameraAnchorTerrain,
+  CameraMovementMomentum,
+  CameraMovementScaleMode,
   CameraTerrainCollisionMode,
 } from '../../types/camera';
 
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
 const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
-const SHIFT_CAMERA_INPUT_SCALE = 0.1;
 const KEYBOARD_CAMERA_SCREEN_STEP_PX = 48;
+const WHEEL_MOMENTUM_RESET_MS = 240;
+const WHEEL_MOMENTUM_FALLBACK_DT_MS = 120;
 
 type OrbitCameraOptions = {
   /** Closest-approach zoom-in rail. Terrain clearance is resolved
@@ -52,7 +55,7 @@ type OrbitCameraOptions = {
   farReferenceDistance?: number;
   minPitch?: number;
   maxPitch?: number;
-  /** Per-wheel-tick zoom fraction. Each scroll-IN moves the
+  /** Relative-mode per-wheel-tick zoom fraction. Each scroll-IN moves the
    *  camera this fraction of the way toward the cursor's actual
    *  rendered ground point (raycast against the scene); scroll-
    *  OUT applies the inverse factor 1/(1−f) so paired in/out
@@ -60,9 +63,17 @@ type OrbitCameraOptions = {
    *  same factor, which keeps the cursor pixel pinned to its
    *  world point through the move. */
   zoomStepFraction?: number;
+  /** Selects how input magnitude turns into world movement. */
+  movementScaleMode?: CameraMovementScaleMode;
+  /** Absolute-world zoom movement for one ordinary wheel tick. */
+  absoluteZoomStepWorldUnits?: number;
+  /** Absolute-world pan movement in final world units per screen pixel. */
+  absolutePanWorldUnitsPerPixel?: number;
+  /** Velocity-sensitive gain tuning for absolute-world-momentum. */
+  movementMomentum?: CameraMovementMomentum;
   rotateSpeed?: number;
-  /** Multiplier applied on top of world-per-pixel when panning. Matches the
-   *  2D CAMERA_PAN_MULTIPLIER so pan feel is consistent across renderers. */
+  /** Relative-mode multiplier applied on top of world-per-pixel when
+   *  panning. Absolute-world mode uses its fixed pan scale directly. */
   panMultiplier?: number;
   /** OPTIONAL 3D cursor picker — if set, the orbit camera uses real
    *  raycasting against the scene to find the configured world anchor.
@@ -140,6 +151,16 @@ export class OrbitCamera {
   private targetMinZ = -Infinity;
   private targetMaxZ = Infinity;
   private zoomStepFraction: number;
+  private movementScaleMode: CameraMovementScaleMode = 'anchor-distance-relative';
+  private absoluteZoomStepWorldUnits = 120;
+  private absolutePanWorldUnitsPerPixel = 2;
+  private movementMomentum: CameraMovementMomentum = {
+    minGain: 0.35,
+    maxGain: 3,
+    mouseVelocityForMaxGainPixelsPerSecond: 1800,
+    wheelVelocityForMaxGainDeltaPerSecond: 5000,
+    curve: 1.35,
+  };
   private rotateSpeed: number;
   private panMultiplier: number;
   private getCursorWorldPoint?: (
@@ -166,6 +187,8 @@ export class OrbitCamera {
   private dragMode: 'none' | 'orbit' | 'pan' | 'height-pan' = 'none';
   private lastMouseX = 0;
   private lastMouseY = 0;
+  private lastMouseTimeMs = Number.NEGATIVE_INFINITY;
+  private lastWheelTimeMs = Number.NEGATIVE_INFINITY;
   private touchMode: 'none' | 'pan' | 'pinch' = 'none';
   private touchLastCenterX = 0;
   private touchLastCenterY = 0;
@@ -235,6 +258,16 @@ export class OrbitCamera {
     this.minPitch = opts.minPitch ?? 0.05;
     this.maxPitch = opts.maxPitch ?? Math.PI * 0.49;
     this.zoomStepFraction = opts.zoomStepFraction ?? 0.125;
+    this.movementScaleMode = opts.movementScaleMode ?? this.movementScaleMode;
+    if (opts.absoluteZoomStepWorldUnits !== undefined) {
+      this.absoluteZoomStepWorldUnits = Math.max(0, opts.absoluteZoomStepWorldUnits);
+    }
+    if (opts.absolutePanWorldUnitsPerPixel !== undefined) {
+      this.absolutePanWorldUnitsPerPixel = Math.max(0, opts.absolutePanWorldUnitsPerPixel);
+    }
+    if (opts.movementMomentum !== undefined) {
+      this.movementMomentum = opts.movementMomentum;
+    }
     this.rotateSpeed = opts.rotateSpeed ?? 0.005;
     this.panMultiplier = opts.panMultiplier ?? 1.0;
     this.getCursorWorldPoint = opts.getCursorWorldPoint;
@@ -269,20 +302,14 @@ export class OrbitCamera {
       const wheelDelta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
       if (wheelDelta === 0) return;
 
-      // Wheel zoom scales distance against the broad distance rails
-      // and shifts the target by the same factor around the selected
-      // anchor. Terrain never re-solves the wheel factor with a
-      // vertical-only altitude rule; zoom destinations are checked
-      // with the same 3D clearance approximation used at render time.
-      const f = this.zoomStepFraction * this.modifierInputScale(e);
       const zoomingIn = wheelDelta < 0;
+      const inputGain = this.wheelMomentumGain(e, wheelDelta);
       // Each zoom direction still has its own configurable anchor, but
       // the default is cursor for both directions. That keeps paired
       // scroll-in / scroll-out ticks symmetric instead of making a
       // reversal pivot around a different world point.
       const anchor = zoomingIn ? this.zoomInAnchor : this.zoomOutAnchor;
-      const factor = zoomingIn ? 1 - f : 1 / (1 - f);
-      this.zoomByFactorAt(e.clientX, e.clientY, factor, anchor);
+      this.zoomWheelAt(e.clientX, e.clientY, zoomingIn, inputGain, anchor);
     };
 
     this.onMouseDown = (e) => {
@@ -292,6 +319,7 @@ export class OrbitCamera {
       this.dragMode = e.altKey ? 'orbit' : e.ctrlKey ? 'height-pan' : 'pan';
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
+      this.lastMouseTimeMs = e.timeStamp;
       if (this.dragMode === 'pan' || this.dragMode === 'height-pan') {
         this.capturePanAnchor(e.clientX, e.clientY);
       } else if (this.dragMode === 'orbit') {
@@ -334,13 +362,14 @@ export class OrbitCamera {
       if (this.dragMode === 'none') return;
       const dx = e.clientX - this.lastMouseX;
       const dy = e.clientY - this.lastMouseY;
+      const inputGain = this.mouseMomentumGain(dx, dy, e.timeStamp, this.lastMouseTimeMs);
       this.lastMouseX = e.clientX;
       this.lastMouseY = e.clientY;
+      this.lastMouseTimeMs = e.timeStamp;
 
       if (this.dragMode === 'orbit') {
-        const inputScale = this.modifierInputScale(e);
-        const scaledDx = dx * inputScale;
-        const scaledDy = dy * inputScale;
+        const scaledDx = dx * inputGain;
+        const scaledDy = dy * inputGain;
         // RIGID TUMBLE around the cursor's 3D ground pivot. The
         // total yaw/pitch deltas since drag-start are applied as a
         // single rigid rotation of the camera around `orbitPivot`:
@@ -446,11 +475,9 @@ export class OrbitCamera {
           this.apply();
         }
       } else if (this.dragMode === 'pan') {
-        const inputScale = this.modifierInputScale(e);
-        this.panByScreenDelta(dx * inputScale, dy * inputScale);
+        this.panByScreenDelta(dx * inputGain, dy * inputGain);
       } else if (this.dragMode === 'height-pan') {
-        const inputScale = this.modifierInputScale(e);
-        this.panHeightByScreenDelta(dx * inputScale, dy * inputScale);
+        this.panHeightByScreenDelta(dx * inputGain, dy * inputGain);
       }
     };
 
@@ -489,7 +516,11 @@ export class OrbitCamera {
           // Fingers apart means zoom in. Clamp the per-event factor
           // so browser event bursts cannot create a jarring snap.
           const factor = Math.min(1.25, Math.max(0.8, this.touchLastDistance / dist));
-          this.zoomByFactorAt(center.x, center.y, factor);
+          if (this.movementScaleMode === 'absolute-world') {
+            this.zoomByWorldStepAt(center.x, center.y, this.worldStepForZoomFactor(factor));
+          } else {
+            this.zoomByFactorAt(center.x, center.y, factor);
+          }
         }
         if (Number.isFinite(angle) && Number.isFinite(this.touchLastAngle)) {
           const twist = OrbitCamera.normalizeAngleDelta(angle - this.touchLastAngle);
@@ -552,8 +583,91 @@ export class OrbitCamera {
     this.apply();
   }
 
-  private modifierInputScale(e: Pick<MouseEvent | WheelEvent, 'shiftKey'>): number {
-    return e.shiftKey ? SHIFT_CAMERA_INPUT_SCALE : 1;
+  private zoomWheelAt(
+    clientX: number,
+    clientY: number,
+    zoomingIn: boolean,
+    inputGain: number,
+    anchor: CameraAnchor,
+  ): void {
+    if (this.usesAbsoluteWorldMovement()) {
+      const step = this.absoluteZoomStepWorldUnits * inputGain;
+      this.zoomByWorldStepAt(clientX, clientY, zoomingIn ? -step : step, anchor);
+      return;
+    }
+
+    // Wheel zoom scales distance against the broad distance rails
+    // and shifts the target by the same factor around the selected
+    // anchor. Terrain never re-solves the wheel factor with a
+    // vertical-only altitude rule; zoom destinations are checked
+    // with the same 3D clearance approximation used at render time.
+    const f = this.zoomStepFraction;
+    const factor = zoomingIn ? 1 - f : 1 / (1 - f);
+    this.zoomByFactorAt(clientX, clientY, factor, anchor);
+  }
+
+  private usesAbsoluteWorldMovement(): boolean {
+    return this.movementScaleMode === 'absolute-world'
+      || this.movementScaleMode === 'absolute-world-momentum';
+  }
+
+  private usesMomentumGain(): boolean {
+    return this.movementScaleMode === 'absolute-world-momentum';
+  }
+
+  private momentumGainForVelocity(velocity: number, velocityForMaxGain: number): number {
+    if (!this.usesMomentumGain()) return 1;
+    const minGain = Number.isFinite(this.movementMomentum.minGain)
+      ? Math.max(0, this.movementMomentum.minGain)
+      : 1;
+    const maxGain = Number.isFinite(this.movementMomentum.maxGain)
+      ? Math.max(minGain, this.movementMomentum.maxGain)
+      : minGain;
+    const maxVelocity = Number.isFinite(velocityForMaxGain)
+      ? Math.max(1, velocityForMaxGain)
+      : 1;
+    const curve = Number.isFinite(this.movementMomentum.curve)
+      ? Math.max(0.01, this.movementMomentum.curve)
+      : 1;
+    const t = Math.min(1, Math.max(0, velocity / maxVelocity));
+    return minGain + (maxGain - minGain) * Math.pow(t, curve);
+  }
+
+  private mouseMomentumGain(
+    dx: number,
+    dy: number,
+    timeMs: number,
+    previousTimeMs: number,
+  ): number {
+    if (!this.usesMomentumGain()) return 1;
+    const distancePx = Math.hypot(dx, dy);
+    if (distancePx <= 0) return this.momentumGainForVelocity(0, 1);
+    const dtMs = Number.isFinite(timeMs) && Number.isFinite(previousTimeMs)
+      ? timeMs - previousTimeMs
+      : 0;
+    const dtSec = dtMs > 0 ? dtMs / 1000 : 1 / 60;
+    const velocity = distancePx / Math.max(dtSec, 1 / 240);
+    return this.momentumGainForVelocity(
+      velocity,
+      this.movementMomentum.mouseVelocityForMaxGainPixelsPerSecond,
+    );
+  }
+
+  private wheelMomentumGain(e: WheelEvent, wheelDelta: number): number {
+    if (!this.usesMomentumGain()) return 1;
+    const nowMs = e.timeStamp;
+    const elapsedMs = Number.isFinite(nowMs) && Number.isFinite(this.lastWheelTimeMs)
+      ? nowMs - this.lastWheelTimeMs
+      : Number.NaN;
+    this.lastWheelTimeMs = nowMs;
+    const dtMs = Number.isFinite(elapsedMs) && elapsedMs > 0 && elapsedMs <= WHEEL_MOMENTUM_RESET_MS
+      ? elapsedMs
+      : WHEEL_MOMENTUM_FALLBACK_DT_MS;
+    const velocity = Math.abs(wheelDelta) / Math.max(dtMs / 1000, 1 / 240);
+    return this.momentumGainForVelocity(
+      velocity,
+      this.movementMomentum.wheelVelocityForMaxGainDeltaPerSecond,
+    );
   }
 
   private zoomByFactorAt(
@@ -563,18 +677,40 @@ export class OrbitCamera {
     anchor?: CameraAnchor,
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
-    const p0 = this._anchorWorldPoint(
-      clientX,
-      clientY,
-      anchor ?? (wantFactor < 1 ? this.zoomInAnchor : this.zoomOutAnchor),
-    );
+    const resolvedAnchor = anchor ?? (wantFactor < 1 ? this.zoomInAnchor : this.zoomOutAnchor);
+    const p0 = this._anchorWorldPoint(clientX, clientY, resolvedAnchor);
+    this.zoomByResolvedAnchorFactor(wantFactor, p0);
+  }
+
+  private zoomByWorldStepAt(
+    clientX: number,
+    clientY: number,
+    worldStep: number,
+    anchor?: CameraAnchor,
+  ): void {
+    if (!Number.isFinite(worldStep) || worldStep === 0 || this.toDistance <= 0) return;
+    const resolvedAnchor = anchor ?? (worldStep < 0 ? this.zoomInAnchor : this.zoomOutAnchor);
+    const p0 = this._anchorWorldPoint(clientX, clientY, resolvedAnchor);
+    const referenceDistance = p0
+      ? this.destinationCameraDistanceTo(p0)
+      : this.toDistance;
+    if (!(referenceDistance > 1e-6)) return;
+    const wantFactor = Math.max(1e-6, 1 + worldStep / referenceDistance);
+    this.zoomByResolvedAnchorFactor(wantFactor, p0);
+  }
+
+  private zoomByResolvedAnchorFactor(
+    wantFactor: number,
+    p0: THREE.Vector3 | null,
+  ): void {
+    if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
     const wantedDistance = this.toDistance * wantFactor;
     // Zoom limits are ABSOLUTE and history-independent: bounded below by
     // the zoom-in rail, unbounded above. Terrain is NEVER allowed to feed
     // back into the dolly distance — it is resolved purely as a render-
     // time eye floor in apply() that leaves the orbit state untouched. So
     // hitting a mountain can't cache a different zoom-in/out limit.
-    let nextDistance = Math.max(this.minDistance, wantedDistance);
+    const nextDistance = Math.max(this.minDistance, wantedDistance);
     if (nextDistance === this.toDistance) return; // already at the zoom-in rail
     const actualFactor = nextDistance / this.toDistance;
     const startTargetX = this.toTargetX;
@@ -609,6 +745,29 @@ export class OrbitCamera {
     this.applyDestinationIfSnap();
   }
 
+  private worldStepForZoomFactor(factor: number): number {
+    if (!Number.isFinite(factor) || factor <= 0 || factor === 1) return 0;
+    const baseInFraction = Math.max(1e-6, Math.min(0.95, this.zoomStepFraction));
+    if (factor < 1) {
+      return -this.absoluteZoomStepWorldUnits * ((1 - factor) / baseInFraction);
+    }
+    const baseOutFactor = 1 / (1 - baseInFraction);
+    return this.absoluteZoomStepWorldUnits * ((factor - 1) / (baseOutFactor - 1));
+  }
+
+  private destinationCameraDistanceTo(point: THREE.Vector3): number {
+    const cam = this.cameraPositionForState(
+      this.toTargetX,
+      this.toTargetY,
+      this.toTargetZ,
+      this.toDistance,
+      this.toYaw,
+      this.pitch,
+      this._cameraPosTmp,
+    );
+    return cam.distanceTo(point);
+  }
+
   private capturePanAnchor(clientX: number, clientY: number): void {
     // Capture the cursor's 3D ground point + camera-to-anchor
     // distance. The distance is what worldPerPixel keys off during
@@ -630,6 +789,9 @@ export class OrbitCamera {
   }
 
   private panWorldScale(): number {
+    if (this.usesAbsoluteWorldMovement()) {
+      return this.absolutePanWorldUnitsPerPixel;
+    }
     const refDist = this.panAnchorValid ? this.panAnchorDistance : this.distance;
     const vFovRad = (this.camera.fov * Math.PI) / 180;
     const worldPerPixel =
@@ -675,6 +837,10 @@ export class OrbitCamera {
     // finger. Desktop middle-drag still uses the configured
     // CAMERA_PAN_MULTIPLIER, but touch should feel 1:1, so divide it
     // out before going through the shared pan math.
+    if (this.usesAbsoluteWorldMovement()) {
+      this.panByScreenDelta(-dx, -dy);
+      return;
+    }
     const multiplier = this.panMultiplier > 0 ? this.panMultiplier : 1;
     this.panByScreenDelta(-dx / multiplier, -dy / multiplier);
   }
@@ -683,13 +849,12 @@ export class OrbitCamera {
     mode: 'pan' | 'height-pan' | 'orbit',
     screenX: number,
     screenY: number,
-    fine: boolean,
   ): void {
     const magnitude = Math.hypot(screenX, screenY);
     if (magnitude <= 0) return;
     const x = screenX / magnitude;
     const y = screenY / magnitude;
-    const step = KEYBOARD_CAMERA_SCREEN_STEP_PX * (fine ? SHIFT_CAMERA_INPUT_SCALE : 1);
+    const step = KEYBOARD_CAMERA_SCREEN_STEP_PX;
     if (mode === 'pan') {
       this.panByScreenDelta(-x * step, -y * step);
       return;

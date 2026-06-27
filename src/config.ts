@@ -18,6 +18,8 @@ import type {
 } from './types/config';
 import type {
   CameraAnchor,
+  CameraMovementMomentum,
+  CameraMovementScaleMode,
   CameraTerrainCollisionMode,
 } from './types/camera';
 import {
@@ -790,6 +792,30 @@ export const CAMERA_FAR_REFERENCE_DISTANCE_FACTOR =
  * the cursor's world point stays pinned through the move.
  */
 export const ZOOM_STEP_FRACTION = cameraConfigJson.zoom.stepFraction;
+
+/** Camera input movement metric. 'anchor-distance-relative' keeps the
+ *  historical behavior: zoom scales by a fraction of active camera/anchor
+ *  distance, and pan derives world-per-pixel from grabbed depth.
+ *  'absolute-world' converts input to fixed world-unit amounts.
+ *  'absolute-world-momentum' keeps those absolute units and applies a
+ *  bounded velocity-sensitive gain for faster gestures. */
+export const CAMERA_MOVEMENT_SCALE_MODE =
+  cameraConfigJson.movement.scaleMode as CameraMovementScaleMode;
+
+/** Absolute-mode wheel/pinch movement, in world units for one ordinary
+ *  wheel tick before any velocity-sensitive gain. */
+export const CAMERA_ABSOLUTE_ZOOM_STEP_WORLD_UNITS =
+  cameraConfigJson.movement.absoluteZoomStepWorldUnits;
+
+/** Absolute-mode pan movement, in final world units per screen pixel. */
+export const CAMERA_ABSOLUTE_PAN_WORLD_UNITS_PER_PIXEL =
+  cameraConfigJson.movement.absolutePanWorldUnitsPerPixel;
+
+/** Velocity-sensitive gain tuning for 'absolute-world-momentum'. This is
+ *  input acceleration, not post-release camera inertia: releasing the
+ *  gesture stops camera input immediately. */
+export const CAMERA_MOVEMENT_MOMENTUM =
+  cameraConfigJson.movement.momentum as CameraMovementMomentum;
 
 export type CameraBattleKind = 'demoBattle' | 'lobbyBattle' | 'realBattle';
 export type CameraBattleFocus =

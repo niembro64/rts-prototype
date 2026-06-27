@@ -1413,6 +1413,25 @@
         from a dolly.
       </p>
 
+      <h3>Movement metric is separate from anchor choice</h3>
+      <p>
+        The anchor answers which world point a gesture pins or pivots around. The movement metric
+        answers how much camera motion an input produces. These are separate config axes because
+        a player may want cursor-on-terrain anchoring while still wanting each wheel tick or pan
+        pixel to move a fixed world amount.
+      </p>
+      <ul class="rule-list">
+        <li><code>anchor-distance-relative</code> &mdash; the current terrain-aware feel: wheel and pinch zoom move by a fraction of the camera-to-anchor distance, and pan derives world-per-pixel from the depth grabbed by the cursor.</li>
+        <li><code>absolute-world</code> &mdash; the same anchors and movement directions, but wheel and pinch zoom use fixed world-unit steps and pan uses fixed world-units-per-pixel, so terrain height and current camera-to-surface distance do not change the amount of movement.</li>
+        <li><code>absolute-world-momentum</code> &mdash; absolute-world movement with velocity-sensitive gain: slow wheel, pan, height-pan, and orbit gestures stay precise, while faster gestures multiply the same base world-unit or angular movement. This is input acceleration, not post-release camera drift; the camera stops receiving movement when the gesture stops.</li>
+      </ul>
+      <p>
+        This movement metric is not terrain collision. Collision decides whether the rendered eye
+        may clip through terrain. Anchoring decides which world point a gesture references. The
+        movement metric decides whether input magnitude is relative to the anchor distance or an
+        absolute world amount.
+      </p>
+
       <h3>Minimap camera and PIP are replaced by 3D overview controls</h3>
       <p>
         BAR-style minimap camera switching and picture-in-picture are not the canonical Budget
@@ -3268,7 +3287,7 @@
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Carry per-part visual state in the same four channels client prediction uses &mdash; movement position, movement velocity, rotation position, rotation velocity &mdash; and EMA each channel toward its target every frame. Animation always plays off body motion; the rig never branches on whether a part is touching ground. The floor clamp drives the position channel; the body-motion signed distance drives the velocity channel; rotation integrates from rotation velocity. Hover replaces all of this with a per-frame clearance scalar.</li>
-        <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code> / <code>terrain-3d-water</code>) &mdash; and whether the camera may pass through terrain is a separate boolean. All six anchor behaviors and both collision behaviors must be reachable from config, never from a hardcoded branch in the picker.</li>
+        <li>Keep the camera frontend and exhaustively enumerated: a gesture&rsquo;s anchor point is the product of two orthogonal data axes &mdash; <code>anchorPointCameraScreen</code> (<code>cursor</code> / <code>screen-center</code>) and <code>anchorPointCameraTerrain</code> (<code>plane-2d</code> / <code>terrain-3d</code> / <code>terrain-3d-water</code>) &mdash; while movement metric (<code>anchor-distance-relative</code> / <code>absolute-world</code> / <code>absolute-world-momentum</code>) and whether the camera may pass through terrain are separate config choices. All six anchor behaviors, all movement metrics, and both collision behaviors must be reachable from config, never from a hardcoded branch in the picker.</li>
         <li>Keep unit, tower, turret, shot, ray, and building definitions atomic, swappable, and free of overlapping responsibility. A unit owns its <strong>locomotion inline</strong> &mdash; movement is part of the unit, not a separate piece, blueprint, or entity, and it has no id, cost, health, or lock-on eligibility of its own. <code>unit</code> is mobile and has turrets; <code>tower</code> is immobile and has turrets; <code>building</code> is immobile and has no turrets. Anything static that locks onto an entity ID through a turret is a tower, not a building &mdash; fabricators and shooting towers both belong on the tower side of that boundary. Make the turret a standardized, addressable mounted emitter that names exactly one emission by id and carries no inline emission payload, so it drops onto any host&rsquo;s mount unchanged. A turret has no independent cost, mass, health, death explosion, construction phase, or detached life. A turret emits exactly one of two separate kinds, each in its own blueprint file: a <code>shot</code> (a travelling munition that is a body with mass/health/death-explosion, in <code>shots.json</code>) or a <code>ray</code> (a sustained line emission &mdash; <code>beam</code> or <code>laser</code> variants &mdash; no body, in <code>rays.json</code>). Only the shot is a body; rays are emitter-bound emissions with no mass, health, or id of their own.</li>
         <li>Give every physical body the same base ledger before its kind-specific fields: a universal <code>EntityId</code>, a <code>{ metal, energy }</code> cost, a mass, a health pool, and a <code>{ radius, force, damage }</code> death explosion. These are a floor that unit, tower, building, and shot bodies all meet. A turret is still an addressable entity for lock-on and provenance, but its resources and lifetime belong to the host. A unit&rsquo;s locomotion is the same kind of intrinsic host behavior: part of the body, sharing the unit&rsquo;s id, cost, and health.</li>
         <li>Make every body death an explosion. When a unit, tower, building, or shot&rsquo;s health hits zero it detonates its death blast, applying outward force (heavier bodies resist more) and damage to everything in its radius, friend or foe. A shot&rsquo;s detonation is the smallest case; a host death ends its mounted turrets as part of the same assembly, without separate turret health checks, detached turret pieces, or turret death explosions.</li>
