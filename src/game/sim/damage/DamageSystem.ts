@@ -2067,9 +2067,9 @@ export class DamageSystem {
     }
     clearAreaDamageEntities(areaRowCount);
 
-    // Check buildings — full 3D. Buildings are axis-aligned boxes
-    // (width × height × depth) sitting on the ground. Rust owns the
-    // sphere-vs-AABB overlap and horizontal slice filter.
+    // Check buildings — full 3D. Buildings are axis-aligned combat boxes
+    // (width × height × depth). Rust owns the sphere-vs-AABB overlap and
+    // horizontal slice filter.
     ensureAreaDamageCapacity(nearbyBuildings.length);
     areaRowCount = 0;
     for (let buildingIndex = 0; buildingIndex < nearbyBuildings.length; buildingIndex++) {
@@ -2088,7 +2088,7 @@ export class DamageSystem {
         _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;
         _areaDamageTargetX[row] = building.transform.x;
         _areaDamageTargetY[row] = building.transform.y;
-        _areaDamageTargetZ[row] = building.transform.z;
+        _areaDamageTargetZ[row] = getBuildingCombatCenterZ(building);
         _areaDamageTargetRadius[row] = getTargetRadius(building);
         _areaDamageBoxHalfX[row] = building.building.width / 2;
         _areaDamageBoxHalfY[row] = building.building.height / 2;
