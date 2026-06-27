@@ -790,6 +790,10 @@ export type NetworkServerSnapshotGrid = {
 export type NetworkServerSnapshot = {
   tick: number;
   entities: NetworkServerSnapshotEntity[];
+  /** Sparse packet carrying projectile/audio presentation deltas only.
+   *  Clients must not treat `entities` as the authoritative visible set
+   *  when this flag is present. */
+  projectileDeltaOnly: boolean | undefined;
   minimapEntities: NetworkServerSnapshotMinimapEntity[] | undefined;
   economy: Record<PlayerId, NetworkServerSnapshotEconomy>;
   resourceMovements: NetworkServerSnapshotResourceMovement[] | undefined;

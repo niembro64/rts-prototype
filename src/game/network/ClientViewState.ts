@@ -712,7 +712,10 @@ export class ClientViewState {
       this.terrainBuildabilityGrid = state.buildability;
     }
     this.currentTick = state.tick;
-    this.minimapOverrideStore.applySnapshot(state.minimapEntities);
+    const projectileDeltaOnly = state.projectileDeltaOnly === true;
+    if (!projectileDeltaOnly) {
+      this.minimapOverrideStore.applySnapshot(state.minimapEntities);
+    }
     let cacheNeedsInvalidate = false;
     const now = performance.now();
     const reflectedProjectileIds = this.collectProjectileReflectionIds(state.audioEvents);
@@ -722,125 +725,129 @@ export class ClientViewState {
       (spawn) => this.projectileStore.applySpawn(spawn),
     );
 
-    // Process entity records from the presentation snapshot.
-    for (const netEntity of state.entities) {
-      const cf = netEntity.changedFields;
-      const isFull = cf == null;
-      // Towers ride the static-entity wire shape (no velocity, has
-      // turrets through server.building.turrets), so isBuildingUpdate
-      // gates the static branch for both.
-      const isBuildingUpdate = netEntity.type === 'building' || netEntity.type === 'tower';
-      const existing = this.entities.get(netEntity.id);
-      const previousTarget = this.serverTargets.get(netEntity.id);
-      const previousTargetAgeMs = previousTarget !== undefined && previousTarget.updatedAtMs
-        ? Math.max(0, now - previousTarget.updatedAtMs)
-        : 0;
-      if (isBuildingUpdate) {
-        // Building bodies are static, but armed buildings still use the
-        // same turret target/prediction path as units.
-        const turretSnapshot = netEntity.building !== null ? netEntity.building.turrets : null;
-        if (turretSnapshot) {
+    // Process entity records from full presentation snapshots. Projectile
+    // delta packets intentionally carry an empty entity list and must not
+    // trigger full visible-set reconciliation.
+    if (!projectileDeltaOnly) {
+      for (const netEntity of state.entities) {
+        const cf = netEntity.changedFields;
+        const isFull = cf == null;
+        // Towers ride the static-entity wire shape (no velocity, has
+        // turrets through server.building.turrets), so isBuildingUpdate
+        // gates the static branch for both.
+        const isBuildingUpdate = netEntity.type === 'building' || netEntity.type === 'tower';
+        const existing = this.entities.get(netEntity.id);
+        const previousTarget = this.serverTargets.get(netEntity.id);
+        const previousTargetAgeMs = previousTarget !== undefined && previousTarget.updatedAtMs
+          ? Math.max(0, now - previousTarget.updatedAtMs)
+          : 0;
+        if (isBuildingUpdate) {
+          // Building bodies are static, but armed buildings still use the
+          // same turret target/prediction path as units.
+          const turretSnapshot = netEntity.building !== null ? netEntity.building.turrets : null;
+          if (turretSnapshot) {
+            const target = this.getOrCreateServerTarget(netEntity.id);
+            this.clearTargetPredictionAccum(netEntity.id);
+            if ((isFull || cf! & ENTITY_CHANGED_POS) && netEntity.pos) {
+              target.x = deqEntityPos(netEntity.pos.x);
+              target.y = deqEntityPos(netEntity.pos.y);
+              target.z = deqEntityPos(netEntity.pos.z);
+            }
+            if ((isFull || cf! & ENTITY_CHANGED_ROT) && netEntity.rotation !== null) {
+              target.rotation = deqRot(netEntity.rotation);
+            }
+            this.copyNetworkTurretsToTarget(target, turretSnapshot, isFull);
+            target.updatedAtMs = now;
+          } else if (isFull) {
+            this.serverTargets.delete(netEntity.id);
+            this.clearPredictionAccum(netEntity.id);
+          }
+        } else {
+          // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
           const target = this.getOrCreateServerTarget(netEntity.id);
+          // A fresh server target supersedes any sparse-prediction time
+          // accumulated before this snapshot. Otherwise an entity can
+          // extrapolate the newest target by time that already belonged
+          // to an older target and visibly overshoot.
           this.clearTargetPredictionAccum(netEntity.id);
-          if ((isFull || cf! & ENTITY_CHANGED_POS) && netEntity.pos) {
-            target.x = deqEntityPos(netEntity.pos.x);
-            target.y = deqEntityPos(netEntity.pos.y);
-            target.z = deqEntityPos(netEntity.pos.z);
-          }
-          if ((isFull || cf! & ENTITY_CHANGED_ROT) && netEntity.rotation !== null) {
-            target.rotation = deqRot(netEntity.rotation);
-          }
-          this.copyNetworkTurretsToTarget(target, turretSnapshot, isFull);
+          applyNetworkUnitDriftFieldsToTarget(target, netEntity, isFull, cf);
+          this.copyNetworkTurretsToTarget(target, netEntity.unit !== null ? netEntity.unit.turrets : null, isFull);
           target.updatedAtMs = now;
-        } else if (isFull) {
-          this.serverTargets.delete(netEntity.id);
-          this.clearPredictionAccum(netEntity.id);
         }
-      } else {
-        // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
-        const target = this.getOrCreateServerTarget(netEntity.id);
-        // A fresh server target supersedes any sparse-prediction time
-        // accumulated before this snapshot. Otherwise an entity can
-        // extrapolate the newest target by time that already belonged
-        // to an older target and visibly overshoot.
-        this.clearTargetPredictionAccum(netEntity.id);
-        applyNetworkUnitDriftFieldsToTarget(target, netEntity, isFull, cf);
-        this.copyNetworkTurretsToTarget(target, netEntity.unit !== null ? netEntity.unit.turrets : null, isFull);
-        target.updatedAtMs = now;
-      }
 
-      if (existing && netEntity.pos && (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)) {
-        const netX = deqEntityPos(netEntity.pos.x);
-        const netY = deqEntityPos(netEntity.pos.y);
-        const netZ = deqEntityPos(netEntity.pos.z);
-        const dx = existing.transform.x - netX;
-        const dy = existing.transform.y - netY;
-        const dz = existing.transform.z - netZ;
-        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        applyStats.correction.count++;
-        applyStats.correction.totalDistance += distance;
-        if (distance > applyStats.correction.maxDistance) {
-          applyStats.correction.maxDistance = distance;
-        }
-        if (previousTargetAgeMs > 0) {
-          applyStats.correction.targetAgeCount++;
-          applyStats.correction.totalTargetAgeMs += previousTargetAgeMs;
-          if (previousTargetAgeMs > applyStats.correction.maxTargetAgeMs) {
-            applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
+        if (existing && netEntity.pos && (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)) {
+          const netX = deqEntityPos(netEntity.pos.x);
+          const netY = deqEntityPos(netEntity.pos.y);
+          const netZ = deqEntityPos(netEntity.pos.z);
+          const dx = existing.transform.x - netX;
+          const dy = existing.transform.y - netY;
+          const dz = existing.transform.z - netZ;
+          const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          applyStats.correction.count++;
+          applyStats.correction.totalDistance += distance;
+          if (distance > applyStats.correction.maxDistance) {
+            applyStats.correction.maxDistance = distance;
+          }
+          if (previousTargetAgeMs > 0) {
+            applyStats.correction.targetAgeCount++;
+            applyStats.correction.totalTargetAgeMs += previousTargetAgeMs;
+            if (previousTargetAgeMs > applyStats.correction.maxTargetAgeMs) {
+              applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
+            }
+          }
+          const netVelocity = netEntity.unit !== null ? netEntity.unit.velocity : null;
+          const localUnit = existing.unit;
+          if (localUnit && netVelocity && (isFull || (cf & ENTITY_CHANGED_VEL) !== 0)) {
+            const dvx = (localUnit.velocityX ?? 0) - deqVel(netVelocity.x);
+            const dvy = (localUnit.velocityY ?? 0) - deqVel(netVelocity.y);
+            const dvz = (localUnit.velocityZ ?? 0) - deqVel(netVelocity.z);
+            const velocityDelta = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
+            applyStats.correction.velocityCount++;
+            applyStats.correction.totalVelocityDelta += velocityDelta;
+            if (velocityDelta > applyStats.correction.maxVelocityDelta) {
+              applyStats.correction.maxVelocityDelta = velocityDelta;
+            }
           }
         }
-        const netVelocity = netEntity.unit !== null ? netEntity.unit.velocity : null;
-        const localUnit = existing.unit;
-        if (localUnit && netVelocity && (isFull || (cf & ENTITY_CHANGED_VEL) !== 0)) {
-          const dvx = (localUnit.velocityX ?? 0) - deqVel(netVelocity.x);
-          const dvy = (localUnit.velocityY ?? 0) - deqVel(netVelocity.y);
-          const dvz = (localUnit.velocityZ ?? 0) - deqVel(netVelocity.z);
-          const velocityDelta = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
-          applyStats.correction.velocityCount++;
-          applyStats.correction.totalVelocityDelta += velocityDelta;
-          if (velocityDelta > applyStats.correction.maxVelocityDelta) {
-            applyStats.correction.maxVelocityDelta = velocityDelta;
-          }
-        }
-      }
 
-      if (!existing) {
-        // Full-state lockstep snapshots create entities immediately. The
-        // changedFields guard only protects old sparse fixtures/tools.
-        if (netEntity.changedFields != null) continue;
+        if (!existing) {
+          // Full-state lockstep snapshots create entities immediately. The
+          // changedFields guard only protects old sparse fixtures/tools.
+          if (netEntity.changedFields != null) continue;
 
-        const newEntity = createEntityFromNetwork(netEntity);
-        if (newEntity) {
-          if (newEntity.selectable && this.selectionState.has(newEntity.id)) {
-            newEntity.selectable.selected = true;
+          const newEntity = createEntityFromNetwork(netEntity);
+          if (newEntity) {
+            if (newEntity.selectable && this.selectionState.has(newEntity.id)) {
+              newEntity.selectable.selected = true;
+            }
+            this.entities.set(netEntity.id, newEntity);
+            this.renderSpatialIndex.update(newEntity);
+            this.markEntityPredictionActive(newEntity);
+            this.refreshPredictionSupportSurfaceProvider(newEntity);
+            this.entitySetVersion++;
+            this.renderLifecycleDirtyIds.add(netEntity.id);
+            cacheNeedsInvalidate = true;
           }
-          this.entities.set(netEntity.id, newEntity);
-          this.renderSpatialIndex.update(newEntity);
-          this.markEntityPredictionActive(newEntity);
-          this.refreshPredictionSupportSurfaceProvider(newEntity);
-          this.entitySetVersion++;
-          this.renderLifecycleDirtyIds.add(netEntity.id);
-          cacheNeedsInvalidate = true;
+        } else {
+          // Existing entity — snap non-visual state immediately. The entity
+          // cache is rebuilt only when a snapshot actually changes bucket
+          // membership (damaged/HUD/health-bar/per-player), which
+          // snapshotAffectsEntityCaches detects precisely; a bare HP tick that
+          // does not cross a membership boundary no longer forces a full
+          // copy-all + sort + rebucket. snapClientNonVisualState still runs for
+          // its entity-mutation side effects.
+          if (this.snapshotAffectsEntityCaches(existing, netEntity)) {
+            cacheNeedsInvalidate = true;
+          }
+          snapClientNonVisualState(existing, netEntity);
+          this.renderSpatialIndex.update(existing);
+          this.refreshPredictionSupportSurfaceProvider(existing);
+          this.markNetworkEntityPredictionActive(netEntity, existing);
         }
-      } else {
-        // Existing entity — snap non-visual state immediately. The entity
-        // cache is rebuilt only when a snapshot actually changes bucket
-        // membership (damaged/HUD/health-bar/per-player), which
-        // snapshotAffectsEntityCaches detects precisely; a bare HP tick that
-        // does not cross a membership boundary no longer forces a full
-        // copy-all + sort + rebucket. snapClientNonVisualState still runs for
-        // its entity-mutation side effects.
-        if (this.snapshotAffectsEntityCaches(existing, netEntity)) {
-          cacheNeedsInvalidate = true;
-        }
-        snapClientNonVisualState(existing, netEntity);
-        this.renderSpatialIndex.update(existing);
-        this.refreshPredictionSupportSurfaceProvider(existing);
-        this.markNetworkEntityPredictionActive(netEntity, existing);
       }
     }
 
-    if (state.removedEntityIds) {
+    if (!projectileDeltaOnly && state.removedEntityIds) {
       for (const id of state.removedEntityIds) {
         this.deleteEntityLocalState(id);
       }
@@ -849,14 +856,16 @@ export class ClientViewState {
     // Full-state snapshot: remove non-projectile entities not present
     // in the visible snapshot. Visibility-filtered snapshots omit
     // out-of-sight entities by design.
-    this._serverIds.clear();
-    for (const netEntity of state.entities) {
-      this._serverIds.add(netEntity.id);
-    }
-    for (const [id, entity] of this.entities) {
-      if (entity.type === 'shot') continue;
-      if (!this._serverIds.has(id)) {
-        this.deleteEntityLocalState(id);
+    if (!projectileDeltaOnly) {
+      this._serverIds.clear();
+      for (const netEntity of state.entities) {
+        this._serverIds.add(netEntity.id);
+      }
+      for (const [id, entity] of this.entities) {
+        if (entity.type === 'shot') continue;
+        if (!this._serverIds.has(id)) {
+          this.deleteEntityLocalState(id);
+        }
       }
     }
 
@@ -940,7 +949,7 @@ export class ClientViewState {
     // Update economy state (immediate). Local in-memory clients share
     // the local server's economy singleton, so they must not
     // replay older snapshots back into the server state.
-    if (options.syncEconomy !== false) {
+    if (!projectileDeltaOnly && options.syncEconomy !== false) {
       // Avoid Object.entries here: snapshots arrive frequently and this
       // path should not allocate an intermediate [key,value][] array
       // just to walk up to six players.
@@ -952,8 +961,10 @@ export class ClientViewState {
       }
     }
 
-    this.applyResourceMovements(state.resourceMovements);
-    this.sprayTargetStore.applySnapshot(state.sprayTargets);
+    if (!projectileDeltaOnly) {
+      this.applyResourceMovements(state.resourceMovements);
+      this.sprayTargetStore.applySnapshot(state.sprayTargets);
+    }
 
     // Store audio events for processing (reuse constant for empty case)
     this.pendingAudioEvents = state.audioEvents ?? EMPTY_AUDIO;
@@ -983,19 +994,21 @@ export class ClientViewState {
     // Snapshot owns the full list of active scan pulses for this
     // client's team. Length is small (a few at most), so a fresh copy
     // each snapshot is cheaper than maintaining incremental state.
-    const incomingPulses = state.scanPulses;
-    if (incomingPulses && incomingPulses.length > 0) {
-      this.scanPulses.length = incomingPulses.length;
-      for (let i = 0; i < incomingPulses.length; i++) {
-        this.scanPulses[i] = incomingPulses[i];
+    if (!projectileDeltaOnly) {
+      const incomingPulses = state.scanPulses;
+      if (incomingPulses && incomingPulses.length > 0) {
+        this.scanPulses.length = incomingPulses.length;
+        for (let i = 0; i < incomingPulses.length; i++) {
+          this.scanPulses[i] = incomingPulses[i];
+        }
+      } else {
+        this.scanPulses.length = 0;
       }
-    } else {
-      this.scanPulses.length = 0;
     }
 
     // Track authoritative game phase (battle / paused / gameOver)
     const gameState = state.gameState;
-    if (gameState !== undefined && gameState !== null) {
+    if (!projectileDeltaOnly && gameState !== undefined && gameState !== null) {
       this.gamePhase = gameState.phase;
       if (gameState.phase === 'gameOver' && gameState.winnerId !== undefined) {
         this.gameOverWinnerId = gameState.winnerId;
@@ -1007,21 +1020,23 @@ export class ClientViewState {
     // received grid payload until a new one arrives. When the server
     // toggle is off, serverMeta.grid clears the client copy.
     const serverMeta = state.serverMeta;
-    if (state.grid) {
+    if (!projectileDeltaOnly && state.grid) {
       this.gridCells = state.grid.cells;
       this.gridSearchCells = state.grid.searchCells;
       this.gridCellSize = state.grid.cellSize;
-    } else if (serverMeta !== undefined && serverMeta !== null && serverMeta.grid === false) {
+    } else if (!projectileDeltaOnly && serverMeta !== undefined && serverMeta !== null && serverMeta.grid === false) {
       this.gridCells = [];
       this.gridSearchCells = [];
       this.gridCellSize = 0;
     }
 
     // Store server metadata
-    if (serverMeta !== undefined && serverMeta !== null) {
+    if (!projectileDeltaOnly && serverMeta !== undefined && serverMeta !== null) {
       this.serverMeta = serverMeta;
     }
-    this.visionPlayerMask = state.visionPlayerMask ?? 0;
+    if (!projectileDeltaOnly) {
+      this.visionPlayerMask = state.visionPlayerMask ?? 0;
+    }
     return applyStats;
   }
 

@@ -24,6 +24,7 @@ function createSnapshot(tick: number, despawnIds: readonly number[]): NetworkSer
   return {
     tick,
     entities: [],
+    projectileDeltaOnly: undefined,
     minimapEntities: undefined,
     economy: {},
     resourceMovements: undefined,
@@ -102,6 +103,20 @@ export function runSnapshotBufferContractTest(): void {
   assertContract(despawns.length === 2, 'consume must emit coalesced despawns only');
   assertContract(despawns[0].id === 10, 'first despawn id must survive');
   assertContract(despawns[1].id === 11, 'second despawn id must survive');
+
+  fake.emitSnapshot(createSnapshot(3, []));
+  const delta = createSnapshot(4, [20]);
+  delta.projectileDeltaOnly = true;
+  fake.emitSnapshot(delta);
+  const consumedWithDelta = buffer.consume();
+  assertContract(
+    consumedWithDelta?.tick === 3,
+    'projectile delta must not replace a pending full snapshot',
+  );
+  assertContract(
+    consumedWithDelta?.projectiles?.despawns?.some((despawn) => despawn.id === 20) === true,
+    'projectile delta events must merge into the pending full snapshot',
+  );
 
   buffer.clear();
   assertContract(!fake.hasSnapshotCallback(), 'clear must detach the snapshot callback');

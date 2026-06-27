@@ -48,6 +48,7 @@ const _gameStateBuf: NonNullable<NetworkServerSnapshot['gameState']> = {
 const _snapshotBuf: NetworkServerSnapshot = {
   tick: 0,
   entities: _entityBuf,
+  projectileDeltaOnly: undefined,
   minimapEntities: undefined,
   economy: serializeEconomySnapshot(0, undefined),
   resourceMovements: undefined,
@@ -228,6 +229,7 @@ export function serializeGameState(
   _gameStateBuf.winnerId = winnerId;
 
   _snapshotBuf.tick = tick;
+  _snapshotBuf.projectileDeltaOnly = undefined;
   _snapshotBuf.entities = _entityBuf;
   _snapshotBuf.minimapEntities = netMinimapEntities;
   _snapshotBuf.economy = netEconomy;

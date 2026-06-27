@@ -181,6 +181,14 @@ export class SnapshotBuffer {
       } else if (state.serverMeta !== undefined && state.serverMeta.grid === false) {
         this.bufferedGrid = undefined;
       }
+      if (
+        state.projectileDeltaOnly === true &&
+        this.pendingSnapshot !== null &&
+        this.pendingSnapshot.projectileDeltaOnly !== true
+      ) {
+        releaseSnapshot?.();
+        return;
+      }
       // Full-state snapshots are cloned because the local server reuses
       // its serializer object for later frames. Static terrain/buildability
       // ride only bootstrap/recovery packets, so preserve the latest copy.

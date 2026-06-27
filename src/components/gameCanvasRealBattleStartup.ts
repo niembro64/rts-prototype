@@ -999,6 +999,11 @@ async function createDeterministicLockstepBackendRuntime({
         server.emitLockstepPresentationSnapshot();
         lastLockstepPresentationSnapshotMs = snapshotStartMs;
         recordSnapshotMs(performance.now() - snapshotStartMs);
+      } else {
+        const snapshotStartMs = performance.now();
+        if (server.emitLockstepProjectileDeltaSnapshotIfNeeded()) {
+          recordSnapshotMs(performance.now() - snapshotStartMs);
+        }
       }
     }
     resendCommandFramesToLaggingPeers();

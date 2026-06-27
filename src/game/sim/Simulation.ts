@@ -281,6 +281,10 @@ export class Simulation {
     return this.eventQueues.getAndClearProjectileVelocityUpdates();
   }
 
+  hasPendingProjectilePresentationEvents(): boolean {
+    return this.eventQueues.hasPendingProjectilePresentationEvents();
+  }
+
   getWindState(): WindState {
     return this.windState;
   }

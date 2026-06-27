@@ -4,6 +4,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { PlayerId, EntityId } from '../sim/types';
+import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
@@ -13,6 +14,7 @@ import {
 import { serializeAudioEvents } from '../network/stateSerializerAudio';
 import { serializeSprayTargets } from '../network/stateSerializerSpray';
 import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMinimap';
+import { serializeProjectileSnapshot } from '../network/stateSerializerProjectiles';
 import { getEntitySnapshotPoolStats } from '../network/stateSerializerEntities';
 import type {
   SerializerAudioOverride,
@@ -30,6 +32,8 @@ import {
 import { ServerSnapshotDirectWirePreencoder } from './ServerSnapshotDirectWirePreencoder';
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
+const PROJECTILE_DELTA_EMPTY_ENTITIES: NetworkServerSnapshot['entities'] = [];
+const PROJECTILE_DELTA_EMPTY_ECONOMY: NetworkServerSnapshot['economy'] = {};
 
 export type SnapshotListenerEntry = {
   callback: SnapshotCallback;
@@ -319,6 +323,66 @@ export class ServerSnapshotPublisher {
       const snapshot = serializeForListener(listener);
       listener.callback(snapshot.state, undefined, snapshot.wirePayload);
     }
+  }
+
+  emitProjectileDelta(input: ServerSnapshotPublisherInput): boolean {
+    if (input.listeners.length === 0) return false;
+    if (!input.simulation.hasPendingProjectilePresentationEvents()) return false;
+
+    const audioEvents = input.simulation.getAndClearEvents();
+    const projectileSpawns = input.simulation.getAndClearProjectileSpawns();
+    const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
+    const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
+    if (
+      projectileSpawns.length === 0 &&
+      projectileDespawns.length === 0 &&
+      projectileVelocityUpdates.length === 0
+    ) {
+      return false;
+    }
+
+    const visibilityCache = this.visibilityCache;
+    visibilityCache.clear();
+    let emitted = false;
+    for (const listener of input.listeners) {
+      const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
+      const projectiles = serializeProjectileSnapshot({
+        world: input.world,
+        fullStateResync: false,
+        visibility,
+        emitBeamUpdates: false,
+        projectileSpawns,
+        projectileDespawns,
+        projectileVelocityUpdates,
+      });
+      const netAudioEvents = serializeAudioEvents(audioEvents, visibility, listener.cacheKey);
+      if (projectiles === undefined && netAudioEvents === undefined) continue;
+      const state: NetworkServerSnapshot = {
+        tick: input.world.getTick(),
+        entities: PROJECTILE_DELTA_EMPTY_ENTITIES,
+        projectileDeltaOnly: true,
+        minimapEntities: undefined,
+        economy: PROJECTILE_DELTA_EMPTY_ECONOMY,
+        resourceMovements: undefined,
+        sprayTargets: undefined,
+        audioEvents: netAudioEvents,
+        scanPulses: undefined,
+        shroud: undefined,
+        projectiles,
+        gameState: undefined,
+        serverMeta: undefined,
+        grid: undefined,
+        terrain: undefined,
+        buildability: undefined,
+        visibilityFiltered: undefined,
+        visionPlayerMask: undefined,
+        removedEntityIds: undefined,
+      };
+      const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
+      listener.callback(state, undefined, encoded.wirePayload);
+      emitted = true;
+    }
+    return emitted;
   }
 
   private listenerNeedsStaticMap(

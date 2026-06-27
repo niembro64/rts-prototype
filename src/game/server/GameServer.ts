@@ -94,6 +94,7 @@ export class GameServer {
   private maxSnapshotsDisplay: SnapshotRate;
   private lastSnapshotTime: number = 0;
   private pendingPresentationSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingProjectileDeltaSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Background mode — allowed unit blueprints for AI production & UI toggles.
   // Initial set comes from GameServerConfig.initialAllowedUnitBlueprintIds when the
@@ -296,6 +297,11 @@ export class GameServer {
     this.emitSnapshot();
   }
 
+  emitLockstepProjectileDeltaSnapshotIfNeeded(): boolean {
+    if (this.stopped) return false;
+    return this.emitProjectileDeltaSnapshot();
+  }
+
   private startGameLoop(): void {
     // Run simulation at configured tick rate. Snapshot interval is normally
     // uncapped, which emits once at the end of every server tick.
@@ -324,6 +330,8 @@ export class GameServer {
       if (interval === 0 || elapsed >= interval) {
         this.lastSnapshotTime = tickNow;
         this.queuePresentationSnapshot();
+      } else if (this.simulation.hasPendingProjectilePresentationEvents()) {
+        this.queueProjectileDeltaSnapshot();
       }
 
       this.recordTickWork(performance.now() - workStart);
@@ -341,11 +349,25 @@ export class GameServer {
   }
 
   private queuePresentationSnapshot(): void {
+    if (this.pendingProjectileDeltaSnapshotTimer !== null) {
+      clearTimeout(this.pendingProjectileDeltaSnapshotTimer);
+      this.pendingProjectileDeltaSnapshotTimer = null;
+    }
     if (this.pendingPresentationSnapshotTimer !== null) return;
     this.pendingPresentationSnapshotTimer = setTimeout(() => {
       this.pendingPresentationSnapshotTimer = null;
       if (this.stopped) return;
       this.emitSnapshot();
+    }, 0);
+  }
+
+  private queueProjectileDeltaSnapshot(): void {
+    if (this.pendingPresentationSnapshotTimer !== null) return;
+    if (this.pendingProjectileDeltaSnapshotTimer !== null) return;
+    this.pendingProjectileDeltaSnapshotTimer = setTimeout(() => {
+      this.pendingProjectileDeltaSnapshotTimer = null;
+      if (this.stopped) return;
+      this.emitProjectileDeltaSnapshot();
     }, 0);
   }
 
@@ -417,6 +439,10 @@ export class GameServer {
       clearTimeout(this.pendingPresentationSnapshotTimer);
       this.pendingPresentationSnapshotTimer = null;
     }
+    if (this.pendingProjectileDeltaSnapshotTimer !== null) {
+      clearTimeout(this.pendingProjectileDeltaSnapshotTimer);
+      this.pendingProjectileDeltaSnapshotTimer = null;
+    }
     this.releaseSnapshotListeners();
     this.gameOverListeners.length = 0;
     this.core.clearPendingCommandsAndStepBuffers();
@@ -466,7 +492,15 @@ export class GameServer {
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
   private emitSnapshot(): void {
-    this.snapshotPublisher.emit({
+    this.snapshotPublisher.emit(this.buildSnapshotPublisherInput());
+  }
+
+  private emitProjectileDeltaSnapshot(): boolean {
+    return this.snapshotPublisher.emitProjectileDelta(this.buildSnapshotPublisherInput());
+  }
+
+  private buildSnapshotPublisherInput() {
+    return {
       world: this.world,
       simulation: this.simulation,
       debugGridPublisher: this.debugGridPublisher,
@@ -483,7 +517,7 @@ export class GameServer {
       tickMsAvg: this.tickMsAvg,
       tickMsHi: this.tickMsHi,
       tickMsInitialized: this.tickMsInitialized,
-    });
+    };
   }
 
   // Receive a command from a client

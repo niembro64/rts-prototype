@@ -69,6 +69,14 @@ export class SimulationEventQueues {
     return buf;
   }
 
+  hasPendingProjectilePresentationEvents(): boolean {
+    return (
+      this.projectileSpawns.length > 0 ||
+      this.projectileDespawns.length > 0 ||
+      this.projectileVelocityUpdates.size > 0
+    );
+  }
+
   reset(): void {
     this.audioA.length = 0;
     this.audioB.length = 0;
