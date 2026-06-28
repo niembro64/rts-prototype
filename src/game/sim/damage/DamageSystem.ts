@@ -1433,7 +1433,19 @@ export class DamageSystem {
 
     // Buildings: 3D ray-vs-AABB (x/y footprint × z depth). A beam arcing
     // over a short building correctly misses; clipping the wall stops.
-    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 100);
+    let queryEndX = endX;
+    let queryEndY = endY;
+    let queryEndZ = endZ;
+    if (bestT < 1) {
+      queryEndX = startX + bestT * dx;
+      queryEndY = startY + bestT * dy;
+      queryEndZ = startZ + bestT * dz;
+    }
+    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
+      startX, startY, startZ,
+      queryEndX, queryEndY, queryEndZ,
+      lineWidth + 100,
+    );
     for (const building of nearbyBuildings) {
       // Skip the firing building — a tower-mounted turret must not
       // self-block on its own AABB. Mirrors the unit-source guard
@@ -1472,8 +1484,15 @@ export class DamageSystem {
       }
     }
 
+    if (bestT < 1) {
+      queryEndX = startX + bestT * dx;
+      queryEndY = startY + bestT * dy;
+      queryEndZ = startZ + bestT * dz;
+    }
     const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
-      startX, startY, startZ, endX, endY, endZ, lineWidth + 60,
+      startX, startY, startZ,
+      queryEndX, queryEndY, queryEndZ,
+      lineWidth + 60,
     );
     for (const projectile of nearbyProjectiles) {
       if (projectile.id === bodyExcludeEntityId) continue;
