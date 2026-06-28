@@ -1,0 +1,146 @@
+import {
+  projectileTypeToCode,
+  shotBlueprintIdToCode,
+  turretBlueprintIdToCode,
+} from '../../types/network';
+import type { NetworkServerSnapshot } from './NetworkTypes';
+import { ClientViewState } from './ClientViewState';
+import type { ClientProjectileRenderLists } from './ClientProjectileStore';
+import { createSpawnDto } from './snapshotDtoCopy';
+import {
+  quantizeProjectilePosition as qProjPos,
+  quantizeRotation as qRot,
+  quantizeVelocity as qVel,
+} from './snapshotQuantization';
+
+function assertContract(condition: boolean, message: string): void {
+  if (!condition) {
+    throw new Error(`[client projectile render state contract] ${message}`);
+  }
+}
+
+function emptyLists(): ClientProjectileRenderLists {
+  return {
+    traveling: [],
+    smokeTrail: [],
+    line: [],
+    burnMark: [],
+  };
+}
+
+function projectileSnapshot(
+  tick: number,
+  spawns: ReturnType<typeof createSpawnDto>[] | undefined,
+  despawnIds?: readonly number[],
+): NetworkServerSnapshot {
+  return {
+    tick,
+    entities: [],
+    entityDeltaOnly: undefined,
+    projectileDeltaOnly: true,
+    minimapEntities: undefined,
+    economy: {},
+    resourceMovements: undefined,
+    sprayTargets: undefined,
+    audioEvents: undefined,
+    scanPulses: undefined,
+    shroud: undefined,
+    projectiles: {
+      spawns,
+      despawns: despawnIds !== undefined
+        ? despawnIds.map((id) => ({ id }))
+        : undefined,
+      velocityUpdates: undefined,
+      beamUpdates: undefined,
+    },
+    gameState: undefined,
+    serverMeta: undefined,
+    grid: undefined,
+    terrain: undefined,
+    buildability: undefined,
+    visibilityFiltered: undefined,
+    visionPlayerMask: undefined,
+    removedEntityIds: undefined,
+  };
+}
+
+function rocketSpawn(id: number, x: number, y: number) {
+  const spawn = createSpawnDto();
+  spawn.id = id;
+  spawn.pos.x = qProjPos(x);
+  spawn.pos.y = qProjPos(y);
+  spawn.pos.z = qProjPos(20);
+  spawn.rotation = qRot(0);
+  spawn.velocity.x = qVel(80);
+  spawn.velocity.y = qVel(0);
+  spawn.velocity.z = qVel(0);
+  spawn.projectileType = projectileTypeToCode('projectile');
+  spawn.turretBlueprintCode = turretBlueprintIdToCode('turretRocketSlow');
+  spawn.sourceTurretBlueprintCode = turretBlueprintIdToCode('turretRocketSlow');
+  spawn.shotBlueprintCode = shotBlueprintIdToCode('shotRocketLight');
+  spawn.playerId = 1;
+  spawn.sourceEntityId = 500;
+  spawn.sourceHostEntityId = 500;
+  spawn.sourceRootEntityId = 500;
+  spawn.sourceTeamId = 1;
+  spawn.fromParentDetonation = true;
+  return spawn;
+}
+
+function beamSpawn(id: number, x: number, y: number) {
+  const spawn = createSpawnDto();
+  spawn.id = id;
+  spawn.pos.x = qProjPos(x);
+  spawn.pos.y = qProjPos(y);
+  spawn.pos.z = qProjPos(25);
+  spawn.rotation = qRot(0);
+  spawn.projectileType = projectileTypeToCode('beam');
+  spawn.turretBlueprintCode = turretBlueprintIdToCode('turretBeam');
+  spawn.sourceTurretBlueprintCode = turretBlueprintIdToCode('turretBeam');
+  spawn.shotBlueprintCode = null;
+  spawn.playerId = 1;
+  spawn.sourceEntityId = 600;
+  spawn.sourceHostEntityId = 600;
+  spawn.sourceRootEntityId = 600;
+  spawn.sourceTeamId = 1;
+  spawn.beam = {
+    start: { x: qProjPos(x), y: qProjPos(y), z: qProjPos(25) },
+    end: { x: qProjPos(x + 250), y: qProjPos(y), z: qProjPos(25) },
+  };
+  return spawn;
+}
+
+export function runClientProjectileRenderStateSlabContractTest(): void {
+  const view = new ClientViewState();
+  const lists = emptyLists();
+  view.applyNetworkState(projectileSnapshot(1, [
+    rocketSpawn(301, 100, 100),
+    beamSpawn(302, 900, 100),
+  ]));
+
+  let current = view.collectProjectileRenderLists(null, lists);
+  assertContract(current.traveling.length === 1 && current.traveling[0].id === 301, 'all-mode traveling list resolves rocket slot');
+  assertContract(current.smokeTrail.length === 1 && current.smokeTrail[0].id === 301, 'all-mode smoke list resolves rocket slot');
+  assertContract(current.line.length === 1 && current.line[0].id === 302, 'all-mode line list resolves beam slot');
+  assertContract(current.burnMark.length === 1 && current.burnMark[0].id === 302, 'all-mode burn list resolves beam slot');
+
+  view.collectProjectileRenderLists({ minX: 0, minY: 0, maxX: 300, maxY: 300 }, lists);
+  assertContract(lists.traveling.length === 1 && lists.traveling[0].id === 301, 'scoped traveling query keeps nearby rocket');
+  assertContract(lists.line.length === 0, 'scoped line query excludes distant beam');
+  assertContract(lists.burnMark.length === 0, 'scoped burn query excludes distant beam');
+
+  view.collectProjectileRenderLists({ minX: 0, minY: 0, maxX: 1200, maxY: 300 }, lists);
+  assertContract(lists.traveling.length === 1 && lists.traveling[0].id === 301, 'wide scoped query keeps rocket');
+  assertContract(lists.line.length === 1 && lists.line[0].id === 302, 'wide scoped query keeps beam');
+  assertContract(lists.burnMark.length === 1 && lists.burnMark[0].id === 302, 'wide scoped query keeps beam burn mark');
+
+  view.applyNetworkState(projectileSnapshot(2, undefined, [301, 302]));
+  current = view.collectProjectileRenderLists(null, lists);
+  assertContract(
+    current.traveling.length === 0 &&
+      current.smokeTrail.length === 0 &&
+      current.line.length === 0 &&
+      current.burnMark.length === 0,
+    'despawn removes projectile render slab rows and compatibility lists',
+  );
+}

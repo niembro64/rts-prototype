@@ -1,5 +1,13 @@
 import type { FootprintBounds } from '../ViewportFootprint';
 import type { Entity, EntityId } from '../sim/types';
+import {
+  CLIENT_PROJECTILE_RENDER_FLAG_BURN_MARK,
+  CLIENT_PROJECTILE_RENDER_FLAG_HAS_POINTS,
+  CLIENT_PROJECTILE_RENDER_FLAG_LINE,
+  CLIENT_PROJECTILE_RENDER_FLAG_SMOKE_TRAIL,
+  CLIENT_PROJECTILE_RENDER_FLAG_TRAVELING,
+  type ClientProjectileRenderStateViews,
+} from './ClientProjectileRenderStateSlab';
 
 const CLIENT_PROJECTILE_RENDER_CELL_SIZE = 512;
 const CLIENT_PROJECTILE_RENDER_CELL_KEY_OFFSET = 1 << 20;
@@ -9,7 +17,8 @@ const CLIENT_PROJECTILE_RENDER_MAX_BUCKET_CELLS_PER_ENTRY = 256;
 type ClientProjectileRenderCellKey = number | string;
 
 type ClientProjectileRenderSpatialEntry = {
-  entity: Entity;
+  entityId: EntityId;
+  slot: number;
   minCellX: number;
   maxCellX: number;
   minCellY: number;
@@ -30,15 +39,18 @@ export type ClientProjectileRenderLists = {
   burnMark: Entity[];
 };
 
+export type ClientProjectileRenderSlotLists = {
+  traveling: number[];
+  smokeTrail: number[];
+  line: number[];
+  burnMark: number[];
+};
+
 export class ClientProjectileRenderSpatialIndex {
   private readonly buckets = new Map<ClientProjectileRenderCellKey, ClientProjectileRenderBucket>();
   private readonly entries = new Map<EntityId, ClientProjectileRenderSpatialEntry>();
   private readonly unbucketedEntries = new Set<ClientProjectileRenderSpatialEntry>();
   private readonly querySeenIds = new Set<EntityId>();
-  private boundsMinX = 0;
-  private boundsMaxX = 0;
-  private boundsMinY = 0;
-  private boundsMaxY = 0;
 
   clear(): void {
     this.buckets.clear();
@@ -47,27 +59,31 @@ export class ClientProjectileRenderSpatialIndex {
     this.querySeenIds.clear();
   }
 
-  update(entity: Entity): void {
-    if (entity.projectile === null) {
-      this.remove(entity.id);
+  updateSlot(views: ClientProjectileRenderStateViews, slot: number): void {
+    const entityId = views.entityIds[slot] as EntityId;
+    if (entityId <= 0 || views.flags[slot] === 0) {
+      if (entityId > 0) this.remove(entityId);
       return;
     }
 
-    this.updateBoundsForProjectile(entity);
-    const minCellX = this.cellCoord(this.boundsMinX);
-    const maxCellX = this.cellCoord(this.boundsMaxX);
-    const minCellY = this.cellCoord(this.boundsMinY);
-    const maxCellY = this.cellCoord(this.boundsMaxY);
+    const minCellX = this.cellCoord(views.minX[slot]);
+    const maxCellX = this.cellCoord(views.maxX[slot]);
+    const minCellY = this.cellCoord(views.minY[slot]);
+    const maxCellY = this.cellCoord(views.maxY[slot]);
     if (
       !Number.isFinite(minCellX) ||
       !Number.isFinite(maxCellX) ||
       !Number.isFinite(minCellY) ||
       !Number.isFinite(maxCellY)
     ) {
-      this.remove(entity.id);
+      this.remove(entityId);
       return;
     }
-    const existing = this.entries.get(entity.id);
+    let existing = this.entries.get(entityId);
+    if (existing !== undefined && existing.slot !== slot) {
+      this.remove(entityId);
+      existing = undefined;
+    }
     if (
       existing !== undefined &&
       existing.minCellX === minCellX &&
@@ -75,7 +91,7 @@ export class ClientProjectileRenderSpatialIndex {
       existing.minCellY === minCellY &&
       existing.maxCellY === maxCellY
     ) {
-      existing.entity = entity;
+      existing.slot = slot;
       return;
     }
 
@@ -83,7 +99,7 @@ export class ClientProjectileRenderSpatialIndex {
     if (entry !== undefined) {
       this.removeEntryFromBuckets(entry);
       this.unbucketedEntries.delete(entry);
-      entry.entity = entity;
+      entry.slot = slot;
       entry.minCellX = minCellX;
       entry.maxCellX = maxCellX;
       entry.minCellY = minCellY;
@@ -92,7 +108,8 @@ export class ClientProjectileRenderSpatialIndex {
       entry.bucketIndices.length = 0;
     } else {
       entry = {
-        entity,
+        entityId,
+        slot,
         minCellX,
         maxCellX,
         minCellY,
@@ -100,7 +117,7 @@ export class ClientProjectileRenderSpatialIndex {
         cellKeys: [],
         bucketIndices: [],
       };
-      this.entries.set(entity.id, entry);
+      this.entries.set(entityId, entry);
     }
 
     if (this.shouldStoreEntryUnbucketed(minCellX, maxCellX, minCellY, maxCellY)) {
@@ -153,8 +170,9 @@ export class ClientProjectileRenderSpatialIndex {
 
   queryRenderLists(
     bounds: FootprintBounds,
-    out: ClientProjectileRenderLists,
-  ): ClientProjectileRenderLists {
+    out: ClientProjectileRenderSlotLists,
+    views: ClientProjectileRenderStateViews,
+  ): ClientProjectileRenderSlotLists {
     out.traveling.length = 0;
     out.smokeTrail.length = 0;
     out.line.length = 0;
@@ -177,7 +195,7 @@ export class ClientProjectileRenderSpatialIndex {
         ) {
           continue;
         }
-        this.pushEntryRenderLists(entry.entity, out, seen);
+        this.pushEntryRenderLists(entry, views, out, seen);
       }
       return out;
     }
@@ -188,11 +206,11 @@ export class ClientProjectileRenderSpatialIndex {
         if (bucket === undefined) continue;
         const entries = bucket.entries;
         for (let i = 0; i < entries.length; i++) {
-          this.pushEntryRenderLists(entries[i].entity, out, seen);
+          this.pushEntryRenderLists(entries[i], views, out, seen);
         }
       }
     }
-    this.queryUnbucketedEntries(minCellX, maxCellX, minCellY, maxCellY, out, seen);
+    this.queryUnbucketedEntries(minCellX, maxCellX, minCellY, maxCellY, views, out, seen);
     return out;
   }
 
@@ -226,29 +244,20 @@ export class ClientProjectileRenderSpatialIndex {
   }
 
   private pushEntryRenderLists(
-    entity: Entity,
-    out: ClientProjectileRenderLists,
+    entry: ClientProjectileRenderSpatialEntry,
+    views: ClientProjectileRenderStateViews,
+    out: ClientProjectileRenderSlotLists,
     seen: Set<EntityId>,
   ): void {
-    const projectile = entity.projectile;
-    if (projectile === null) return;
-    const points = projectile.points;
-    if (points !== null && points.length > 0) {
-      if (seen.has(entity.id)) return;
-      seen.add(entity.id);
+    const flags = views.flags[entry.slot];
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_HAS_POINTS) !== 0) {
+      if (seen.has(entry.entityId)) return;
+      seen.add(entry.entityId);
     }
-    if (projectile.projectileType === 'projectile') {
-      out.traveling.push(entity);
-      if (projectile.config.shotProfile.visual.smokeTrail !== undefined) {
-        out.smokeTrail.push(entity);
-      }
-      if (entity.dgunProjectile?.isDGun === true) {
-        out.burnMark.push(entity);
-      }
-    } else {
-      out.line.push(entity);
-      out.burnMark.push(entity);
-    }
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_TRAVELING) !== 0) out.traveling.push(entry.slot);
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_SMOKE_TRAIL) !== 0) out.smokeTrail.push(entry.slot);
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_LINE) !== 0) out.line.push(entry.slot);
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_BURN_MARK) !== 0) out.burnMark.push(entry.slot);
   }
 
   private queryUnbucketedEntries(
@@ -256,7 +265,8 @@ export class ClientProjectileRenderSpatialIndex {
     maxCellX: number,
     minCellY: number,
     maxCellY: number,
-    out: ClientProjectileRenderLists,
+    views: ClientProjectileRenderStateViews,
+    out: ClientProjectileRenderSlotLists,
     seen: Set<EntityId>,
   ): void {
     if (this.unbucketedEntries.size === 0) return;
@@ -269,34 +279,8 @@ export class ClientProjectileRenderSpatialIndex {
       ) {
         continue;
       }
-      this.pushEntryRenderLists(entry.entity, out, seen);
+      this.pushEntryRenderLists(entry, views, out, seen);
     }
-  }
-
-  private updateBoundsForProjectile(entity: Entity): void {
-    const projectile = entity.projectile;
-    if (projectile?.points && projectile.points.length > 0) {
-      let minX = entity.transform.x;
-      let maxX = entity.transform.x;
-      let minY = entity.transform.y;
-      let maxY = entity.transform.y;
-      for (const point of projectile.points) {
-        if (point.x < minX) minX = point.x;
-        if (point.x > maxX) maxX = point.x;
-        if (point.y < minY) minY = point.y;
-        if (point.y > maxY) maxY = point.y;
-      }
-      this.boundsMinX = minX;
-      this.boundsMaxX = maxX;
-      this.boundsMinY = minY;
-      this.boundsMaxY = maxY;
-      return;
-    }
-
-    this.boundsMinX = entity.transform.x;
-    this.boundsMaxX = entity.transform.x;
-    this.boundsMinY = entity.transform.y;
-    this.boundsMaxY = entity.transform.y;
   }
 
   private getOrCreateBucket(cellKey: ClientProjectileRenderCellKey): ClientProjectileRenderBucket {

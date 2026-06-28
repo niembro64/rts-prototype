@@ -35,7 +35,16 @@ import {
 import {
   ClientProjectileRenderSpatialIndex,
   type ClientProjectileRenderLists,
+  type ClientProjectileRenderSlotLists,
 } from './ClientProjectileRenderSpatialIndex';
+import {
+  CLIENT_PROJECTILE_RENDER_FLAG_BURN_MARK,
+  CLIENT_PROJECTILE_RENDER_FLAG_LINE,
+  CLIENT_PROJECTILE_RENDER_FLAG_SMOKE_TRAIL,
+  CLIENT_PROJECTILE_RENDER_FLAG_TRAVELING,
+  ClientProjectileRenderStateSlab,
+  type ClientProjectileRenderStateViews,
+} from './ClientProjectileRenderStateSlab';
 
 export type { ClientProjectileRenderLists } from './ClientProjectileRenderSpatialIndex';
 
@@ -59,12 +68,23 @@ export class ClientProjectileStore {
   private cachedSmokeTrailProjectiles: Entity[] = [];
   private cachedLineProjectiles: Entity[] = [];
   private cachedBurnMarkProjectiles: Entity[] = [];
+  private cachedTravelingProjectileSlots: number[] = [];
+  private cachedSmokeTrailProjectileSlots: number[] = [];
+  private cachedLineProjectileSlots: number[] = [];
+  private cachedBurnMarkProjectileSlots: number[] = [];
   private cachedRenderLists: ClientProjectileRenderLists = {
     traveling: this.cachedTravelingProjectiles,
     smokeTrail: this.cachedSmokeTrailProjectiles,
     line: this.cachedLineProjectiles,
     burnMark: this.cachedBurnMarkProjectiles,
   };
+  private cachedRenderSlotLists: ClientProjectileRenderSlotLists = {
+    traveling: this.cachedTravelingProjectileSlots,
+    smokeTrail: this.cachedSmokeTrailProjectileSlots,
+    line: this.cachedLineProjectileSlots,
+    burnMark: this.cachedBurnMarkProjectileSlots,
+  };
+  private renderState = new ClientProjectileRenderStateSlab();
   private renderSpatialIndex = new ClientProjectileRenderSpatialIndex();
 
   constructor(private readonly options: ClientProjectileStoreOptions) {}
@@ -108,6 +128,7 @@ export class ClientProjectileStore {
     this.activeProjectilePredictionIds.delete(id);
     this.activeBeamPathIds.delete(id);
     this.renderSpatialIndex.remove(id);
+    this.renderState.unsetEntity(id);
     this.markRenderListsDirty();
     if (wasLineProjectile) this.markLineProjectilesChanged();
   }
@@ -119,7 +140,7 @@ export class ClientProjectileStore {
       const entity = this.createProjectileFromSpawn(spawn);
       this.options.markEntitySetChanged(false);
       entities.set(spawn.id, entity);
-      this.renderSpatialIndex.update(entity);
+      this.refreshRenderStateAndSpatialIndex(entity);
       if (isLineProjectileTypeCode(spawn.projectileType)) {
         this.activeBeamPathIds.add(spawn.id);
         this.markLineProjectilesChanged();
@@ -181,7 +202,7 @@ export class ClientProjectileStore {
       this.markRenderListsDirty();
     }
     this.options.clearPredictionAccum(update.id);
-    this.renderSpatialIndex.update(entity);
+    this.refreshRenderStateAndSpatialIndex(entity);
     this.markLineProjectilesChanged();
   }
 
@@ -195,51 +216,33 @@ export class ClientProjectileStore {
       this.activeProjectilePredictionIds.add(id);
       this.markRenderListsDirty();
     }
-    this.renderSpatialIndex.update(entity);
+    this.refreshRenderStateAndSpatialIndex(entity);
   }
 
   updateRenderSpatialIndex(entity: Entity): void {
-    this.renderSpatialIndex.update(entity);
+    this.refreshRenderStateAndSpatialIndex(entity);
   }
 
   private rebuildRenderListsIfNeeded(): void {
     if (!this.renderListsDirty) return;
     this.renderListsDirty = false;
-    const traveling = this.cachedTravelingProjectiles;
-    const smokeTrail = this.cachedSmokeTrailProjectiles;
-    const line = this.cachedLineProjectiles;
-    const burnMark = this.cachedBurnMarkProjectiles;
-    traveling.length = 0;
-    smokeTrail.length = 0;
-    line.length = 0;
-    burnMark.length = 0;
+    const slotLists = this.cachedRenderSlotLists;
+    slotLists.traveling.length = 0;
+    slotLists.smokeTrail.length = 0;
+    slotLists.line.length = 0;
+    slotLists.burnMark.length = 0;
+    const views = this.renderState.getViews();
 
     for (const id of this.activeProjectilePredictionIds) {
-      const entity = this.options.entities.get(id);
-      if (entity === undefined) continue;
-      const projectile = entity.projectile;
-      if (projectile === null || projectile.projectileType !== 'projectile') continue;
-      traveling.push(entity);
-      const profile = projectile.config.shotProfile;
-      if (
-        profile.visual.smokeTrail !== undefined
-      ) {
-        smokeTrail.push(entity);
-      }
-      const dgunProjectile = entity.dgunProjectile;
-      if (dgunProjectile !== null && dgunProjectile.isDGun) {
-        burnMark.push(entity);
-      }
+      const slot = this.refreshProjectileRenderSlotById(id);
+      if (slot !== undefined) this.pushSlotRenderLists(slot, views, slotLists);
     }
 
     for (const id of this.activeBeamPathIds) {
-      const entity = this.options.entities.get(id);
-      if (entity === undefined || entity.projectile === null) continue;
-      if (isLineProjectileEntity(entity)) {
-        line.push(entity);
-        burnMark.push(entity);
-      }
+      const slot = this.refreshProjectileRenderSlotById(id);
+      if (slot !== undefined) this.pushSlotRenderLists(slot, views, slotLists);
     }
+    this.resolveRenderSlotLists(slotLists, this.cachedRenderLists);
   }
 
   collectRenderLists(
@@ -250,7 +253,12 @@ export class ClientProjectileStore {
       this.rebuildRenderListsIfNeeded();
       return this.cachedRenderLists;
     }
-    return this.renderSpatialIndex.queryRenderLists(bounds, out);
+    const slotLists = this.renderSpatialIndex.queryRenderLists(
+      bounds,
+      this.cachedRenderSlotLists,
+      this.renderState.getViews(),
+    );
+    return this.resolveRenderSlotLists(slotLists, out);
   }
 
   clear(): void {
@@ -265,12 +273,70 @@ export class ClientProjectileStore {
     this.activeProjectilePredictionIds.clear();
     this.activeBeamPathIds.clear();
     this.renderSpatialIndex.clear();
+    this.renderState.clear();
     this.cachedTravelingProjectiles.length = 0;
     this.cachedSmokeTrailProjectiles.length = 0;
     this.cachedLineProjectiles.length = 0;
     this.cachedBurnMarkProjectiles.length = 0;
+    this.cachedTravelingProjectileSlots.length = 0;
+    this.cachedSmokeTrailProjectileSlots.length = 0;
+    this.cachedLineProjectileSlots.length = 0;
+    this.cachedBurnMarkProjectileSlots.length = 0;
     this.renderListsDirty = false;
     this.lineProjectileRenderVersion = 0;
+  }
+
+  private refreshProjectileRenderSlotById(id: EntityId): number | undefined {
+    const entity = this.options.entities.get(id);
+    if (entity === undefined) {
+      this.renderState.unsetEntity(id);
+      this.renderSpatialIndex.remove(id);
+      return undefined;
+    }
+    return this.refreshRenderStateAndSpatialIndex(entity);
+  }
+
+  private refreshRenderStateAndSpatialIndex(entity: Entity): number | undefined {
+    const slot = this.renderState.refreshEntity(entity);
+    if (slot !== undefined) {
+      this.renderSpatialIndex.updateSlot(this.renderState.getViews(), slot);
+    } else {
+      this.renderSpatialIndex.remove(entity.id);
+    }
+    return slot;
+  }
+
+  private pushSlotRenderLists(
+    slot: number,
+    views: ClientProjectileRenderStateViews,
+    out: ClientProjectileRenderSlotLists,
+  ): void {
+    const flags = views.flags[slot];
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_TRAVELING) !== 0) out.traveling.push(slot);
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_SMOKE_TRAIL) !== 0) out.smokeTrail.push(slot);
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_LINE) !== 0) out.line.push(slot);
+    if ((flags & CLIENT_PROJECTILE_RENDER_FLAG_BURN_MARK) !== 0) out.burnMark.push(slot);
+  }
+
+  private resolveRenderSlotLists(
+    slots: ClientProjectileRenderSlotLists,
+    out: ClientProjectileRenderLists,
+  ): ClientProjectileRenderLists {
+    this.resolveRenderSlots(slots.traveling, out.traveling);
+    this.resolveRenderSlots(slots.smokeTrail, out.smokeTrail);
+    this.resolveRenderSlots(slots.line, out.line);
+    this.resolveRenderSlots(slots.burnMark, out.burnMark);
+    return out;
+  }
+
+  private resolveRenderSlots(slots: readonly number[], out: Entity[]): void {
+    out.length = 0;
+    const views = this.renderState.getViews();
+    for (let i = 0; i < slots.length; i++) {
+      const entityId = views.entityIds[slots[i]] as EntityId;
+      const entity = this.options.entities.get(entityId);
+      if (entity !== undefined && entity.projectile !== null) out.push(entity);
+    }
   }
 
   private createProjectileFromSpawn(
