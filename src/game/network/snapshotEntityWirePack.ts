@@ -18,6 +18,18 @@ import {
   PackedBinaryReader,
   readPackedBinaryRowCount,
 } from './snapshotBinaryWire';
+import {
+  ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  registerEntitySnapshotWireSource,
+  type EntitySnapshotWireSource,
+} from './stateSerializerEntities';
+import {
+  createFloat64WireRows,
+  createUint32WireRows,
+  reserveFloat64WireRows,
+} from './snapshotWireRows';
 
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
@@ -94,6 +106,20 @@ const _normalPool: DecodedNormal[] = [];
 let _normalPoolIndex = 0;
 const _quatPool: DecodedQuat[] = [];
 let _quatPoolIndex = 0;
+const _decodedEntityWireSource: EntitySnapshotWireSource = {
+  kinds: [],
+  rowIndices: [],
+  basicRows: createFloat64WireRows(),
+  unitRows: createFloat64WireRows(),
+  buildingRows: createFloat64WireRows(),
+  actionRows: createFloat64WireRows(),
+  actionStrings: [],
+  turretRows: createFloat64WireRows(),
+  factorySelectedUnitRows: createUint32WireRows(),
+  waypointRows: createFloat64WireRows(),
+  waypointStrings: [],
+};
+let _decodedEntityWireSourceHasTypedRows = false;
 
 function resetDecodePools(): void {
   _entityPoolIndex = 0;
@@ -102,6 +128,41 @@ function resetDecodePools(): void {
   _hpPoolIndex = 0;
   _normalPoolIndex = 0;
   _quatPoolIndex = 0;
+}
+
+function resetDecodedEntityWireSource(): void {
+  _decodedEntityWireSource.kinds.length = 0;
+  _decodedEntityWireSource.rowIndices.length = 0;
+  _decodedEntityWireSource.basicRows.count = 0;
+  _decodedEntityWireSource.unitRows.count = 0;
+  _decodedEntityWireSource.buildingRows.count = 0;
+  _decodedEntityWireSource.actionRows.count = 0;
+  _decodedEntityWireSource.actionStrings.length = 0;
+  _decodedEntityWireSource.turretRows.count = 0;
+  _decodedEntityWireSource.factorySelectedUnitRows.count = 0;
+  _decodedEntityWireSource.waypointRows.count = 0;
+  _decodedEntityWireSource.waypointStrings.length = 0;
+  _decodedEntityWireSourceHasTypedRows = false;
+}
+
+function appendDecodedFallbackEntityWireSourceRow(): void {
+  _decodedEntityWireSource.kinds.push(0);
+  _decodedEntityWireSource.rowIndices.push(-1);
+}
+
+function appendDecodedUnitEntityWireRow(): { values: Float64Array; base: number } {
+  const rowIndex = reserveFloat64WireRows(
+    _decodedEntityWireSource.unitRows,
+    1,
+    ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  );
+  const values = _decodedEntityWireSource.unitRows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  values.fill(0, base, base + ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+  _decodedEntityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
+  _decodedEntityWireSource.rowIndices.push(rowIndex);
+  _decodedEntityWireSourceHasTypedRows = true;
+  return { values, base };
 }
 
 function rentDecodedEntity(): NetworkServerSnapshotEntity {
@@ -338,6 +399,7 @@ export function unpackEntitiesFromWire(
   packed: PackedEntitySnapshotWire,
 ): NetworkServerSnapshotEntity[] {
   resetDecodePools();
+  resetDecodedEntityWireSource();
   const movementRows = packed.m;
   const turretRows = packed.t;
   const detailRows = packed.e;
@@ -355,7 +417,14 @@ export function unpackEntitiesFromWire(
   if (detailRows !== undefined) {
     for (let i = 0; i < detailRows.length; i++) {
       out[outIndex++] = unpackDetailEntityRow(detailRows[i]);
+      appendDecodedFallbackEntityWireSourceRow();
     }
+  }
+  if (
+    _decodedEntityWireSourceHasTypedRows &&
+    _decodedEntityWireSource.kinds.length === out.length
+  ) {
+    registerEntitySnapshotWireSource(out, _decodedEntityWireSource);
   }
   return out;
 }
@@ -481,16 +550,33 @@ function readMovementUnitDeltaByteEntity(
   id: number,
   playerId: PlayerId,
 ): NetworkServerSnapshotEntity {
+  const wireRow = appendDecodedUnitEntityWireRow();
+  const wireValues = wireRow.values;
+  const wireBase = wireRow.base;
+  const changedFields = movementUnitChangedFields(flags);
+  wireValues[wireBase + 0] = id;
+  wireValues[wireBase + 5] = playerId;
+  wireValues[wireBase + 6] = 1;
+  wireValues[wireBase + 7] = changedFields;
+
   const entity = rentDecodedEntity();
   entity.id = id;
   entity.type = 'unit';
   entity.playerId = playerId;
-  entity.changedFields = movementUnitChangedFields(flags);
+  entity.changedFields = changedFields;
   if ((flags & MOVEMENT_UNIT_FLAG_POS) !== 0) {
-    entity.pos = rentDecodedVec3(reader.readVarInt(), reader.readVarInt(), reader.readVarInt());
+    const x = reader.readVarInt();
+    const y = reader.readVarInt();
+    const z = reader.readVarInt();
+    entity.pos = rentDecodedVec3(x, y, z);
+    wireValues[wireBase + 1] = x;
+    wireValues[wireBase + 2] = y;
+    wireValues[wireBase + 3] = z;
   }
   if ((flags & MOVEMENT_UNIT_FLAG_ROTATION) !== 0) {
-    entity.rotation = reader.readVarInt();
+    const rotation = reader.readVarInt();
+    entity.rotation = rotation;
+    wireValues[wireBase + 4] = rotation;
   }
   if (
     (flags & (
@@ -505,40 +591,70 @@ function readMovementUnitDeltaByteEntity(
   ) {
     const unit = rentDecodedUnitSub();
     if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
-      unit.velocity = rentDecodedVec3(reader.readVarInt(), reader.readVarInt(), reader.readVarInt());
+      const x = reader.readVarInt();
+      const y = reader.readVarInt();
+      const z = reader.readVarInt();
+      unit.velocity = rentDecodedVec3(x, y, z);
+      wireValues[wireBase + 10] = x;
+      wireValues[wireBase + 11] = y;
+      wireValues[wireBase + 12] = z;
     }
     if ((flags & MOVEMENT_UNIT_FLAG_SURFACE_NORMAL) !== 0) {
-      unit.surfaceNormal = rentDecodedNormal(
-        reader.readVarInt(),
-        reader.readVarInt(),
-        reader.readVarInt(),
-      );
+      const nx = reader.readVarInt();
+      const ny = reader.readVarInt();
+      const nz = reader.readVarInt();
+      unit.surfaceNormal = rentDecodedNormal(nx, ny, nz);
+      wireValues[wireBase + 23] = 1;
+      wireValues[wireBase + 24] = nx;
+      wireValues[wireBase + 25] = ny;
+      wireValues[wireBase + 26] = nz;
     }
     if ((flags & MOVEMENT_UNIT_FLAG_HP) !== 0) {
-      unit.hp = rentDecodedHp(reader.readFloat64(), reader.readFloat64());
+      const curr = reader.readFloat64();
+      const max = reader.readFloat64();
+      unit.hp = rentDecodedHp(curr, max);
+      wireValues[wireBase + 8] = curr;
+      wireValues[wireBase + 9] = max;
     }
     if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
-      unit.orientation = rentDecodedQuat(
-        reader.readFloat64(),
-        reader.readFloat64(),
-        reader.readFloat64(),
-        reader.readFloat64(),
-      );
+      const x = reader.readFloat64();
+      const y = reader.readFloat64();
+      const z = reader.readFloat64();
+      const w = reader.readFloat64();
+      unit.orientation = rentDecodedQuat(x, y, z, w);
+      wireValues[wireBase + 27] = 1;
+      wireValues[wireBase + 28] = x;
+      wireValues[wireBase + 29] = y;
+      wireValues[wireBase + 30] = z;
+      wireValues[wireBase + 31] = w;
     }
     if ((flags & MOVEMENT_UNIT_FLAG_YAW_ORIENTATION) !== 0) {
       const orientation = rentDecodedQuat(0, 0, 0, 1);
       setQuatFromYaw(orientation, deqRot(entity.rotation ?? 0));
       unit.orientation = orientation;
+      wireValues[wireBase + 27] = 1;
+      wireValues[wireBase + 28] = orientation.x;
+      wireValues[wireBase + 29] = orientation.y;
+      wireValues[wireBase + 30] = orientation.z;
+      wireValues[wireBase + 31] = orientation.w;
     }
     if ((flags & MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY) !== 0) {
-      unit.angularVelocity3 = rentDecodedVec3(
-        reader.readFloat64(),
-        reader.readFloat64(),
-        reader.readFloat64(),
-      );
+      const x = reader.readFloat64();
+      const y = reader.readFloat64();
+      const z = reader.readFloat64();
+      unit.angularVelocity3 = rentDecodedVec3(x, y, z);
+      wireValues[wireBase + 32] = 1;
+      wireValues[wireBase + 33] = x;
+      wireValues[wireBase + 34] = y;
+      wireValues[wireBase + 35] = z;
     }
     if ((flags & MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY) !== 0) {
-      unit.angularVelocity3 = rentDecodedVec3(0, 0, reader.readFloat64());
+      const z = reader.readFloat64();
+      unit.angularVelocity3 = rentDecodedVec3(0, 0, z);
+      wireValues[wireBase + 32] = 1;
+      wireValues[wireBase + 33] = 0;
+      wireValues[wireBase + 34] = 0;
+      wireValues[wireBase + 35] = z;
     }
     entity.unit = unit;
   }
@@ -579,16 +695,42 @@ function readUnitTurretDeltaByteEntity(
   playerId: PlayerId,
   turretCount: number,
 ): NetworkServerSnapshotEntity {
+  const wireRow = appendDecodedUnitEntityWireRow();
+  const wireValues = wireRow.values;
+  const wireBase = wireRow.base;
+  const turretRowOffset = reserveFloat64WireRows(
+    _decodedEntityWireSource.turretRows,
+    turretCount,
+    ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  );
+  const turretWireValues = _decodedEntityWireSource.turretRows.values;
+  turretWireValues.fill(
+    0,
+    turretRowOffset * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+    (turretRowOffset + turretCount) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  );
+  wireValues[wireBase + 0] = id;
+  wireValues[wireBase + 5] = playerId;
+  wireValues[wireBase + 6] = 1;
+  wireValues[wireBase + 7] = ENTITY_CHANGED_TURRETS;
+  wireValues[wireBase + 43] = turretCount > 0 ? 1 : 0;
+  wireValues[wireBase + 44] = turretCount;
+  wireValues[wireBase + 49] = turretRowOffset;
+
   const turrets: NetworkServerSnapshotTurret[] = new Array(turretCount);
   for (let turretIndex = 0; turretIndex < turretCount; turretIndex++) {
     const flags = reader.readVarUint();
     const turretBlueprintCode = reader.readVarUint() as NetworkServerSnapshotTurret['turret']['turretBlueprintCode'];
     const state = reader.readVarUint() as NetworkServerSnapshotTurret['state'];
+    const rot = reader.readVarInt();
+    const vel = reader.readVarInt();
+    const pitch = reader.readVarInt();
+    const pitchVel = reader.readVarInt();
     const angular: TurretAngular = {
-      rot: reader.readVarInt(),
-      vel: reader.readVarInt(),
-      pitch: reader.readVarInt(),
-      pitchVel: reader.readVarInt(),
+      rot,
+      vel,
+      pitch,
+      pitchVel,
     };
     const turret: NetworkServerSnapshotTurret = {
       turret: { turretBlueprintCode, angular },
@@ -597,10 +739,28 @@ function readUnitTurretDeltaByteEntity(
       active: null,
       currentShieldRange: null,
     };
-    if ((flags & TURRET_FLAG_TARGET_ID) !== 0) turret.targetId = reader.readVarUint();
-    if ((flags & TURRET_FLAG_INACTIVE) !== 0) turret.active = false;
+    const turretWireBase = (turretRowOffset + turretIndex) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+    turretWireValues[turretWireBase + 0] = rot;
+    turretWireValues[turretWireBase + 1] = vel;
+    turretWireValues[turretWireBase + 2] = pitch;
+    turretWireValues[turretWireBase + 3] = pitchVel;
+    turretWireValues[turretWireBase + 4] = turretBlueprintCode;
+    turretWireValues[turretWireBase + 5] = state;
+    if ((flags & TURRET_FLAG_TARGET_ID) !== 0) {
+      const targetId = reader.readVarUint();
+      turret.targetId = targetId;
+      turretWireValues[turretWireBase + 6] = 1;
+      turretWireValues[turretWireBase + 7] = targetId;
+    }
+    if ((flags & TURRET_FLAG_INACTIVE) !== 0) {
+      turret.active = false;
+      turretWireValues[turretWireBase + 10] = 1;
+    }
     if ((flags & TURRET_FLAG_SHIELD_RANGE) !== 0) {
-      turret.currentShieldRange = reader.readFloat64();
+      const shieldRange = reader.readFloat64();
+      turret.currentShieldRange = shieldRange;
+      turretWireValues[turretWireBase + 8] = 1;
+      turretWireValues[turretWireBase + 9] = shieldRange;
     }
     turrets[turretIndex] = turret;
   }

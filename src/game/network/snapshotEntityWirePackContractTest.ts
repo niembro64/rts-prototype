@@ -9,6 +9,7 @@ import {
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
 } from '../../types/network';
 import {
@@ -18,7 +19,9 @@ import {
 import { PackedBinaryWriter, PACKED_BINARY_ROW_COUNT_BYTES } from './snapshotBinaryWire';
 import {
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
 import { unpackEntitiesFromWire, type PackedEntitySnapshotWire } from './snapshotEntityWirePack';
@@ -41,6 +44,8 @@ const MOVEMENT_UNIT_FLAG_ROTATION = 1 << 1;
 const MOVEMENT_UNIT_FLAG_VELOCITY = 1 << 2;
 const MOVEMENT_UNIT_FLAG_SURFACE_NORMAL = 1 << 7;
 const MOVEMENT_UNIT_FLAG_HP = 1 << 8;
+const TURRET_FLAG_TARGET_ID = 1 << 0;
+const TURRET_FLAG_SHIELD_RANGE = 1 << 1;
 const ENTITIES_KEY_PREFIX_BYTES = 9;
 
 function createEmptyEntityWireSource(): EntitySnapshotWireSource {
@@ -84,6 +89,26 @@ function createPackedMovementRowWithNormal(): Uint8Array {
   writer.writeVarInt(975);
   writer.writeFloat64(88.5);
   writer.writeFloat64(120);
+  writer.setUint32LE(0, 1);
+  return writer.finishBytes().slice();
+}
+
+function createPackedTurretRow(): Uint8Array {
+  const writer = new PackedBinaryWriter(64, PACKED_BINARY_ROW_COUNT_BYTES);
+  writer.writeVarUint(1);
+  writer.writeVarUint(2);
+  writer.writeVarUint(1);
+  writer.writeVarUint(1);
+  writer.writeVarInt(505);
+  writer.writeVarUint(TURRET_FLAG_TARGET_ID | TURRET_FLAG_SHIELD_RANGE);
+  writer.writeVarUint(7);
+  writer.writeVarUint(3);
+  writer.writeVarInt(11);
+  writer.writeVarInt(12);
+  writer.writeVarInt(13);
+  writer.writeVarInt(14);
+  writer.writeVarUint(606);
+  writer.writeFloat64(88);
   writer.setUint32LE(0, 1);
   return writer.finishBytes().slice();
 }
@@ -150,6 +175,49 @@ export function runSnapshotEntityWirePackContractTest(): void {
       movementEntity.unit.hp.max === 120,
     'movement-normal-hp row hp must decode from compact movement slab',
   );
+  const movementSource = getEntitySnapshotWireSource(movementEntities);
+  assertContract(
+    movementSource !== undefined &&
+      movementSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    'movement-normal row must expose decoded typed entity wire source metadata',
+  );
+  const movementWireBase = movementSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  assertContract(
+    movementSource.unitRows.values[movementWireBase + 1] === 1000 &&
+      movementSource.unitRows.values[movementWireBase + 8] === 88.5 &&
+      movementSource.unitRows.values[movementWireBase + 23] === 1,
+    'movement-normal typed row metadata must mirror compact decoded fields',
+  );
+
+  const turretEntities = unpackEntitiesFromWire({
+    v: PACKED_ENTITIES_VERSION_V13,
+    m: undefined,
+    t: createPackedTurretRow(),
+    e: undefined,
+  });
+  const turretEntity = turretEntities[0];
+  assertContract(
+    turretEntity?.id === 505 &&
+      turretEntity.changedFields === ENTITY_CHANGED_TURRETS &&
+      turretEntity.unit?.turrets?.[0]?.targetId === 606,
+    'unit-turret row must decode from compact turret slab',
+  );
+  const turretSource = getEntitySnapshotWireSource(turretEntities);
+  assertContract(
+    turretSource !== undefined &&
+      turretSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    'unit-turret row must expose decoded typed entity wire source metadata',
+  );
+  const turretUnitWireBase = turretSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  const turretWireBase =
+    turretSource.unitRows.values[turretUnitWireBase + 49] * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+  assertContract(
+    turretSource.unitRows.values[turretUnitWireBase + 43] === 1 &&
+      turretSource.unitRows.values[turretUnitWireBase + 44] === 1 &&
+      turretSource.turretRows.values[turretWireBase + 7] === 606 &&
+      turretSource.turretRows.values[turretWireBase + 9] === 88,
+    'unit-turret typed row metadata must mirror compact decoded fields',
+  );
 
   const v6Bytes = encodeEntitiesV6Bytes(createV6MovementNormalSource());
   assertContract(v6Bytes !== null, 'Rust V6 entity source encoder must encode movement-normal source');
@@ -160,7 +228,8 @@ export function runSnapshotEntityWirePackContractTest(): void {
     packedV6.m !== undefined && packedV6.e === undefined,
     'Rust V6 movement-normal source must use compact movement slab without detail fallback',
   );
-  const decodedV6Movement = unpackEntitiesFromWire(packedV6)[0];
+  const decodedV6MovementEntities = unpackEntitiesFromWire(packedV6);
+  const decodedV6Movement = decodedV6MovementEntities[0];
   assertContract(decodedV6Movement?.id === 404, 'Rust V6 movement-normal row id must survive');
   assertContract(
     decodedV6Movement.unit?.surfaceNormal?.nx === -125 &&
@@ -172,6 +241,12 @@ export function runSnapshotEntityWirePackContractTest(): void {
     decodedV6Movement.unit?.hp?.curr === 77.25 &&
       decodedV6Movement.unit.hp.max === 100,
     'Rust V6 movement-normal-hp row hp must survive compact round trip',
+  );
+  const decodedV6Source = getEntitySnapshotWireSource(decodedV6MovementEntities);
+  assertContract(
+    decodedV6Source !== undefined &&
+      decodedV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    'Rust V6 movement-normal compact decode must expose typed source metadata',
   );
 
   const factoryEntity: NetworkServerSnapshotEntity = {
