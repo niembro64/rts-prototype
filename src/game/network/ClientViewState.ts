@@ -1940,8 +1940,8 @@ export class ClientViewState {
     this.removedUnitRenderIds.length = 0;
     this.removedBuildingRenderIds.length = 0;
     this.renderLifecycleDirtyIds.clear();
-    this.renderEntityState.consumeDirtySlots();
-    this.renderTurretState.consumeDirtyHostSlots();
+    this.renderEntityState.clearDirtySlots();
+    this.renderTurretState.clearDirtyHostSlots();
   }
 
   private refreshPredictedRenderSpatialIndex(): void {

@@ -220,6 +220,13 @@ export class ClientRenderTurretStateSlab {
     return out;
   }
 
+  clearDirtyHostSlots(): void {
+    for (let i = 0; i < this.dirtyHostSlots.length; i++) {
+      this.dirtyHostMarks[this.dirtyHostSlots[i]] = 0;
+    }
+    this.dirtyHostSlots.length = 0;
+  }
+
   clear(): void {
     this.dirtyHostMarks.fill(0);
     this.dirtyHostSlots.length = 0;

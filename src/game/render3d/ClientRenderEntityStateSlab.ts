@@ -474,6 +474,13 @@ export class ClientRenderEntityStateSlab {
     return out;
   }
 
+  clearDirtySlots(): void {
+    for (let i = 0; i < this.dirtySlots.length; i++) {
+      this.dirtySlotMarks[this.dirtySlots[i]] = 0;
+    }
+    this.dirtySlots.length = 0;
+  }
+
   clear(): void {
     this.slotByEntityId.clear();
     this.freeSlots.length = 0;
