@@ -128,7 +128,9 @@ function appendRemovedEntityIds(
     const records: readonly RemovedSnapshotEntity[] = options.removedEntities;
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
-      if (visibility.shouldSendRemoval(record)) _removedIdsBuf.push(record.id);
+      if (!visibility.isFiltered || visibility.shouldSendRemoval(record)) {
+        _removedIdsBuf.push(record.id);
+      }
     }
     return;
   }

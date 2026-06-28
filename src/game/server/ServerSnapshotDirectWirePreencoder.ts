@@ -796,7 +796,9 @@ export class ServerSnapshotDirectWirePreencoder {
 
     for (let i = 0; i < input.removedEntities.length; i++) {
       const record = input.removedEntities[i];
-      if (input.visibility.shouldSendRemoval(record)) pushRemoved(record.id);
+      if (!input.visibility.isFiltered || input.visibility.shouldSendRemoval(record)) {
+        pushRemoved(record.id);
+      }
     }
 
     if (input.currentVisibleEntityIds !== undefined) {
@@ -814,7 +816,7 @@ export class ServerSnapshotDirectWirePreencoder {
   ): void {
     for (let i = 0; i < records.length; i++) {
       const record = records[i];
-      if (visibility.shouldSendRemoval(record)) {
+      if (!visibility.isFiltered || visibility.shouldSendRemoval(record)) {
         this.removedEntityIds.push(record.id);
       }
     }

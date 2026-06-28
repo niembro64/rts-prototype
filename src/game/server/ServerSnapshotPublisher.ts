@@ -257,7 +257,7 @@ export class ServerSnapshotPublisher {
         const entity = source[i];
         if (
           (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') &&
-          visibility.isEntityVisible(entity)
+          (!visibility.isFiltered || visibility.isEntityVisible(entity))
         ) {
           out.add(entity.id);
         }
@@ -757,7 +757,6 @@ export class ServerSnapshotPublisher {
             this.removedEntitiesBuf,
           )
         : this.serializeUnfilteredDirtyPresentationRemovals(
-            visibility,
             this.removedEntitiesBuf,
           );
       addMaterializationStage(stages, 'entityDtos', stageStart);
@@ -1040,7 +1039,6 @@ export class ServerSnapshotPublisher {
   }
 
   private serializeUnfilteredDirtyPresentationRemovals(
-    visibility: SnapshotVisibility,
     removedEntities: readonly RemovedSnapshotEntity[],
   ): NetworkServerSnapshot['removedEntityIds'] {
     const removedIds = this.deltaRemovedEntityIdsBuf;
@@ -1050,7 +1048,7 @@ export class ServerSnapshotPublisher {
 
     for (let i = 0; i < removedEntities.length; i++) {
       const record = removedEntities[i];
-      if (!visibility.shouldSendRemoval(record) || removedIdSet.has(record.id)) continue;
+      if (removedIdSet.has(record.id)) continue;
       removedIdSet.add(record.id);
       removedIds.push(record.id);
     }
@@ -1236,7 +1234,7 @@ export class ServerSnapshotPublisher {
     for (let i = 0; i < candidateIds.length; i++) {
       const entity = world.getEntity(candidateIds[i]);
       if (entity === undefined) continue;
-      if (!visibility.isEntityVisible(entity)) continue;
+      if (visibility.isFiltered && !visibility.isEntityVisible(entity)) continue;
       const netEntity = serializeEntityDeltaSnapshot(
         entity,
         ENTITY_MOTION_DELTA_FIELDS,
