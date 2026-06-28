@@ -976,12 +976,12 @@ pub(crate) fn pool_wake_body(p: &mut BodyPool, slot: usize) -> bool {
 /// stats_out layout:
 ///   [0] awake slot count
 ///   [1] boundary wake count
-///   [2] sync entity id count
+///   [2] sync body slot count
 #[wasm_bindgen]
 pub fn pool_prepare_dynamic_step(
     dynamic_slots: &[u32],
     awake_slots_out: &mut [u32],
-    sync_entity_ids_out: &mut [i32],
+    sync_body_slots_out: &mut [u32],
     stats_out: &mut [u32],
     map_width: f64,
     map_height: f64,
@@ -995,7 +995,7 @@ pub fn pool_prepare_dynamic_step(
     stats_out[1] = 0;
     stats_out[2] = 0;
     if awake_slots_out.len() < dynamic_slots.len()
-        || sync_entity_ids_out.len() < dynamic_slots.len()
+        || sync_body_slots_out.len() < dynamic_slots.len()
     {
         return 0;
     }
@@ -1073,9 +1073,8 @@ pub fn pool_prepare_dynamic_step(
         if p.flags[slot] & BODY_FLAG_SLEEPING == 0 {
             awake_slots_out[awake_count as usize] = slot_u32;
             awake_count += 1;
-            let entity_id = p.entity_id[slot];
-            if entity_id >= 0 {
-                sync_entity_ids_out[sync_count as usize] = entity_id;
+            if p.entity_id[slot] >= 0 {
+                sync_body_slots_out[sync_count as usize] = slot_u32;
                 sync_count += 1;
             }
         }
@@ -1114,10 +1113,10 @@ pub fn pool_collect_awake_entity_ids(dynamic_slots: &[u32], entity_ids_out: &mut
     count
 }
 
-/// Final per-step sync collection and accumulator clear.
+/// Final per-step sync body-slot collection and accumulator clear.
 #[wasm_bindgen]
-pub fn pool_finalize_dynamic_step(dynamic_slots: &[u32], sync_entity_ids_out: &mut [i32]) -> u32 {
-    if sync_entity_ids_out.len() < dynamic_slots.len() {
+pub fn pool_finalize_dynamic_step(dynamic_slots: &[u32], sync_body_slots_out: &mut [u32]) -> u32 {
+    if sync_body_slots_out.len() < dynamic_slots.len() {
         return 0;
     }
 
@@ -1129,9 +1128,8 @@ pub fn pool_finalize_dynamic_step(dynamic_slots: &[u32], sync_entity_ids_out: &m
             continue;
         }
         if p.flags[slot] & BODY_FLAG_SLEEPING == 0 {
-            let entity_id = p.entity_id[slot];
-            if entity_id >= 0 {
-                sync_entity_ids_out[sync_count as usize] = entity_id;
+            if p.entity_id[slot] >= 0 {
+                sync_body_slots_out[sync_count as usize] = slot_u32;
                 sync_count += 1;
             }
         }

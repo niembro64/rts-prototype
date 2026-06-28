@@ -864,12 +864,12 @@ export interface SimWasm {
   /** Pool-backed PhysicsEngine3D step prep. Rust clears per-step
    *  upward-contact flags, applies map-boundary acceleration, wakes
    *  boundary-pushed sleepers, and emits both awake slot ids and
-   *  pre-step sync entity ids. statsOut = [awakeCount, wakeCount,
+   *  pre-step sync body slots. statsOut = [awakeCount, wakeCount,
    *  syncCount]. */
   readonly poolPrepareDynamicStep: (
     dynamicSlots: Uint32Array,
     awakeSlotsOut: Uint32Array,
-    syncEntityIdsOut: Int32Array,
+    syncBodySlotsOut: Uint32Array,
     statsOut: Uint32Array,
     mapWidth: number,
     mapHeight: number,
@@ -886,7 +886,7 @@ export interface SimWasm {
    *  BodyPool slots. */
   readonly poolFinalizeDynamicStep: (
     dynamicSlots: Uint32Array,
-    syncEntityIdsOut: Int32Array,
+    syncBodySlotsOut: Uint32Array,
   ) => number;
   /** Pool-backed sphere-sphere resolver — Phase 3d-2. Iterates
    *  the broadphase + N sub-passes over body slots. State read /

@@ -112,8 +112,8 @@ let _integrateAwakeSlots: Uint32Array = new Uint32Array(0);
 let _integrateGroundZ: Float64Array = new Float64Array(0);
 let _integrateGroundNormals: Float64Array = new Float64Array(0);
 let _integrateSleepTransitions: Uint32Array = new Uint32Array(0);
-let _integrateStepSyncEntityIds: Int32Array = new Int32Array(0);
-let _finalStepSyncEntityIds: Int32Array = new Int32Array(0);
+let _integrateStepSyncBodySlots: Uint32Array = new Uint32Array(0);
+let _finalStepSyncBodySlots: Uint32Array = new Uint32Array(0);
 let _collectAwakeEntityIds: Int32Array = new Int32Array(0);
 const _physicsStepStats: Uint32Array = new Uint32Array(3);
 const STILL_AIR = { x: 0, y: 0, z: 0 };
@@ -440,8 +440,10 @@ export class PhysicsEngine3D {
   // not owned by this engine instance.
   private bodyBySlot: (Body3D | undefined)[] = [];
   private awakeDynamicBodyCount = 0;
-  private stepSyncEntityIds: EntityId[] = [];
-  private stepSyncEntityIdSet = new Set<EntityId>();
+  private stepSyncBodySlots = new Uint32Array(1024);
+  private stepSyncBodySlotCount = 0;
+  private stepSyncBodySlotMarks = new Uint32Array(1024);
+  private stepSyncBodySlotMark = 1;
   private mapWidth: number;
   private mapHeight: number;
 
@@ -782,10 +784,20 @@ export class PhysicsEngine3D {
     return copyWorldSupportSurface(terrainSurface, out);
   }
 
-  collectLastStepEntityIds(out: EntityId[]): void {
-    for (let i = 0; i < this.stepSyncEntityIds.length; i++) {
-      out.push(this.stepSyncEntityIds[i]);
+  collectLastStepEntitySlots(
+    out: Uint32Array,
+    slotForEntityId: (entityId: EntityId) => number,
+  ): number {
+    if (out.length < this.stepSyncBodySlotCount) return -this.stepSyncBodySlotCount;
+    let count = 0;
+    for (let i = 0; i < this.stepSyncBodySlotCount; i++) {
+      const body = this.bodyBySlot[this.stepSyncBodySlots[i]];
+      const entityId = body?.entityId;
+      if (entityId === undefined) continue;
+      const entitySlot = slotForEntityId(entityId);
+      if (entitySlot >= 0) out[count++] = entitySlot;
     }
+    return count;
   }
 
   /** Mark that `dynamicBody` should not collide with `staticBody`.
@@ -855,10 +867,33 @@ export class PhysicsEngine3D {
     body.groundLaunchAz = 0;
   }
 
-  private addStepSyncEntityId(id: EntityId): void {
-    if (this.stepSyncEntityIdSet.has(id)) return;
-    this.stepSyncEntityIdSet.add(id);
-    this.stepSyncEntityIds.push(id);
+  private beginStepSyncBodySlotFrame(): void {
+    this.stepSyncBodySlotCount = 0;
+    if (this.stepSyncBodySlotMark >= 0xffffffff) {
+      this.stepSyncBodySlotMarks.fill(0);
+      this.stepSyncBodySlotMark = 1;
+      return;
+    }
+    this.stepSyncBodySlotMark++;
+  }
+
+  private addStepSyncBodySlot(slot: number): void {
+    if (slot < 0 || !Number.isInteger(slot)) return;
+    if (slot >= this.stepSyncBodySlotMarks.length) {
+      let cap = this.stepSyncBodySlotMarks.length;
+      while (cap <= slot) cap *= 2;
+      const next = new Uint32Array(cap);
+      next.set(this.stepSyncBodySlotMarks);
+      this.stepSyncBodySlotMarks = next;
+    }
+    if (this.stepSyncBodySlotMarks[slot] === this.stepSyncBodySlotMark) return;
+    this.stepSyncBodySlotMarks[slot] = this.stepSyncBodySlotMark;
+    if (this.stepSyncBodySlotCount >= this.stepSyncBodySlots.length) {
+      const next = new Uint32Array(this.stepSyncBodySlots.length * 2);
+      next.set(this.stepSyncBodySlots);
+      this.stepSyncBodySlots = next;
+    }
+    this.stepSyncBodySlots[this.stepSyncBodySlotCount++] = slot;
   }
 
   private addStaticToBroadphase(body: Body3D): void {
@@ -898,8 +933,9 @@ export class PhysicsEngine3D {
     this.bodyBySlot.length = 0;
     this.ignoreStatic.clear();
     this.awakeDynamicBodyCount = 0;
-    this.stepSyncEntityIds.length = 0;
-    this.stepSyncEntityIdSet.clear();
+    this.stepSyncBodySlotCount = 0;
+    this.stepSyncBodySlotMarks.fill(0);
+    this.stepSyncBodySlotMark = 1;
 
     sim.engineStaticsDestroy(this.staticsHandle);
   }
@@ -913,8 +949,7 @@ export class PhysicsEngine3D {
     // view crashes the renderer. Cheap to refresh (~22 typed-array
     // constructions) and idempotent when nothing actually grew.
     getSimWasm()!.pool.refreshViews();
-    this.stepSyncEntityIds.length = 0;
-    this.stepSyncEntityIdSet.clear();
+    this.beginStepSyncBodySlotFrame();
     this.stepSupportIgnoredStaticSlots.clear();
     if (this.awakeDynamicBodyCount <= 0) return;
     const dynamicSlots = this.getDynamicBodySlotsView();
@@ -939,8 +974,8 @@ export class PhysicsEngine3D {
       _integrateGroundZ = new Float64Array(maxCount);
       _integrateGroundNormals = new Float64Array(maxCount * 3);
       _integrateSleepTransitions = new Uint32Array(maxCount);
-      _integrateStepSyncEntityIds = new Int32Array(maxCount);
-      _finalStepSyncEntityIds = new Int32Array(maxCount);
+      _integrateStepSyncBodySlots = new Uint32Array(maxCount);
+      _finalStepSyncBodySlots = new Uint32Array(maxCount);
     }
   }
 
@@ -948,7 +983,7 @@ export class PhysicsEngine3D {
     const count = dynamicSlots.length;
     const sim = getSimWasm()!;
     const awakeView = _integrateAwakeSlots.subarray(0, count);
-    const syncView = _integrateStepSyncEntityIds.subarray(0, count);
+    const syncView = _integrateStepSyncBodySlots.subarray(0, count);
     measureWasmBoundary('physics.poolPrepareDynamicStep', () => {
       sim.poolPrepareDynamicStep(
         dynamicSlots,
@@ -964,7 +999,7 @@ export class PhysicsEngine3D {
     this.awakeDynamicBodyCount += _physicsStepStats[1];
     const syncCount = _physicsStepStats[2];
     for (let i = 0; i < syncCount; i++) {
-      this.addStepSyncEntityId(syncView[i]);
+      this.addStepSyncBodySlot(syncView[i]);
     }
     return _physicsStepStats[0];
   }
@@ -973,12 +1008,12 @@ export class PhysicsEngine3D {
     const count = dynamicSlots.length;
     if (count === 0) return;
     const sim = getSimWasm()!;
-    const syncView = _finalStepSyncEntityIds.subarray(0, count);
+    const syncView = _finalStepSyncBodySlots.subarray(0, count);
     const syncCount = measureWasmBoundary('physics.poolFinalizeDynamicStep', () =>
       sim.poolFinalizeDynamicStep(dynamicSlots, syncView)
     );
     for (let i = 0; i < syncCount; i++) {
-      this.addStepSyncEntityId(syncView[i]);
+      this.addStepSyncBodySlot(syncView[i]);
     }
   }
 

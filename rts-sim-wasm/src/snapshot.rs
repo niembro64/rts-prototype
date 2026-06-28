@@ -6139,13 +6139,13 @@ mod sim_kernel_tests {
 
         let slots = [awake_slot, boundary_slot];
         let mut awake_slots = [0_u32; 2];
-        let mut sync_ids = [0_i32; 2];
+        let mut sync_body_slots = [0_u32; 2];
         let mut stats = [99_u32; 3];
         assert_eq!(
             pool_prepare_dynamic_step(
                 &slots,
                 &mut awake_slots,
-                &mut sync_ids,
+                &mut sync_body_slots,
                 &mut stats,
                 100.0,
                 100.0,
@@ -6156,7 +6156,7 @@ mod sim_kernel_tests {
         );
         assert_eq!(stats, [2, 1, 2]);
         assert_eq!(awake_slots, slots);
-        assert_eq!(sync_ids, [101, 202]);
+        assert_eq!(sync_body_slots, slots);
 
         let mut collected = [0_i32; 2];
         assert_eq!(pool_collect_awake_entity_ids(&slots, &mut collected), 2);
@@ -6170,9 +6170,9 @@ mod sim_kernel_tests {
             assert_eq!(p.sleep_ticks[boundary], 0.0);
         }
 
-        let mut final_sync = [0_i32; 2];
+        let mut final_sync = [0_u32; 2];
         assert_eq!(pool_finalize_dynamic_step(&slots, &mut final_sync), 2);
-        assert_eq!(final_sync, [101, 202]);
+        assert_eq!(final_sync, slots);
         {
             let p = pool();
             for &slot in &slots {

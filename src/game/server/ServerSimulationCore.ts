@@ -2,6 +2,7 @@ import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { ENTITY_CHANGED_POS, ENTITY_CHANGED_VEL } from '../../types/network';
 import type { Command, CommandQueue } from '../sim/commands';
 import type { DeathContext } from '../sim/combat';
+import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { spatialGrid } from '../sim/SpatialGrid';
 import type { Simulation } from '../sim/Simulation';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -22,6 +23,8 @@ type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
 };
 
+const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
+
 export class ServerSimulationCore {
   readonly physics: PhysicsEngine3D;
   readonly world: WorldState;
@@ -37,7 +40,7 @@ export class ServerSimulationCore {
 
   private readonly unitForceSystem: UnitForceSystem;
   private readonly factoryConstructionTurretSystem: FactoryConstructionTurretSystem;
-  private readonly physicsSyncUnitIdsBuf: EntityId[] = [];
+  private physicsSyncEntitySlotsBuf = new Uint32Array(1024);
   private readonly onGameOver: ((winnerId: PlayerId) => void) | undefined;
   private isGameOver = false;
   private disposed = false;
@@ -86,7 +89,6 @@ export class ServerSimulationCore {
 
   clearPendingCommandsAndStepBuffers(): void {
     this.commandQueue.clear();
-    this.physicsSyncUnitIdsBuf.length = 0;
   }
 
   resetSessionState(): void {
@@ -191,11 +193,19 @@ export class ServerSimulationCore {
   }
 
   private syncFromPhysics(): void {
-    const ids = this.physicsSyncUnitIdsBuf;
-    ids.length = 0;
-    this.physics.collectLastStepEntityIds(ids);
-    for (let i = 0; i < ids.length; i++) {
-      const entity = this.world.getEntity(ids[i]);
+    let slotCount = this.physics.collectLastStepEntitySlots(
+      this.physicsSyncEntitySlotsBuf,
+      entitySlotForId,
+    );
+    if (slotCount < 0) {
+      this.ensurePhysicsSyncEntitySlotCapacity(-slotCount);
+      slotCount = this.physics.collectLastStepEntitySlots(
+        this.physicsSyncEntitySlotsBuf,
+        entitySlotForId,
+      );
+    }
+    for (let i = 0; i < slotCount; i++) {
+      const entity = entitySlotRegistry.resolveSlot(this.physicsSyncEntitySlotsBuf[i]);
       if (entity === undefined) continue;
       const bodySlot = entity.body;
       if (bodySlot === null) continue;
@@ -245,6 +255,13 @@ export class ServerSimulationCore {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
       }
     }
+  }
+
+  private ensurePhysicsSyncEntitySlotCapacity(count: number): void {
+    if (this.physicsSyncEntitySlotsBuf.length >= count) return;
+    let cap = this.physicsSyncEntitySlotsBuf.length;
+    while (cap < count) cap *= 2;
+    this.physicsSyncEntitySlotsBuf = new Uint32Array(cap);
   }
 
   private repairInvalidUnitBody(entity: Entity): void {
