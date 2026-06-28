@@ -46,6 +46,8 @@ type ClientPredictionDiagnosticsReport = {
   retainedPools: {
     unitMotionCapacity: number;
     unitOrientationCapacity: number;
+    serverTargetFreeList: number;
+    serverTargetTurretFreeList: number;
     beamPointFreeList: number;
   };
 };
@@ -175,6 +177,8 @@ class ClientPredictionDiagnostics {
       retainedPools: {
         unitMotionCapacity: unitPools.motionCapacity,
         unitOrientationCapacity: unitPools.orientationCapacity,
+        serverTargetFreeList: targetPools.freeServerTargets,
+        serverTargetTurretFreeList: targetPools.freeServerTargetTurrets,
         beamPointFreeList: targetPools.freeBeamPoints,
       },
     };

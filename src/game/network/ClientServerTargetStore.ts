@@ -1,9 +1,14 @@
 import type { EntityId } from '../sim/types';
-import type { ServerTarget } from './ClientPredictionTargets';
+import {
+  acquireServerTarget,
+  releaseServerTarget,
+  type ServerTarget,
+} from './ClientPredictionTargets';
 import { canIndexClientEntityId } from './ClientEntityIds';
 
 export class ClientServerTargetStore extends Map<EntityId, ServerTarget> {
   private readonly byId: Array<ServerTarget | undefined> = [];
+  private readonly pooledTargets = new WeakSet<ServerTarget>();
 
   override get(id: EntityId): ServerTarget | undefined {
     if (canIndexClientEntityId(id)) return this.byId[id] ?? super.get(id);
@@ -16,17 +21,38 @@ export class ClientServerTargetStore extends Map<EntityId, ServerTarget> {
   }
 
   override set(id: EntityId, target: ServerTarget): this {
+    const previous = this.get(id);
+    if (previous !== undefined && previous !== target && this.pooledTargets.delete(previous)) {
+      releaseServerTarget(previous);
+    }
     if (canIndexClientEntityId(id)) this.byId[id] = target;
     return super.set(id, target);
   }
 
   override delete(id: EntityId): boolean {
+    const target = this.get(id);
     if (canIndexClientEntityId(id)) this.byId[id] = undefined;
-    return super.delete(id);
+    const deleted = super.delete(id);
+    if (deleted && target !== undefined && this.pooledTargets.delete(target)) {
+      releaseServerTarget(target);
+    }
+    return deleted;
   }
 
   override clear(): void {
+    for (const target of super.values()) {
+      if (this.pooledTargets.delete(target)) releaseServerTarget(target);
+    }
     this.byId.length = 0;
     super.clear();
+  }
+
+  getOrCreate(id: EntityId): ServerTarget {
+    let target = this.get(id);
+    if (target !== undefined) return target;
+    target = acquireServerTarget();
+    this.pooledTargets.add(target);
+    this.set(id, target);
+    return target;
   }
 }

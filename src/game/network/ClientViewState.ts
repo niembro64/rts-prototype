@@ -49,8 +49,8 @@ import { EntityCacheManager } from '../sim/EntityCacheManager';
 import { ClientMinimapOverrideStore } from './ClientMinimapOverrideStore';
 import { ClientSprayTargetStore } from './ClientSprayTargetStore';
 import {
-  createServerTarget,
   resetClientPredictionTargetPools,
+  resizeServerTargetTurrets,
   type ServerTarget,
 } from './ClientPredictionTargets';
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
@@ -224,7 +224,7 @@ export class ClientViewState {
   private entities = new ClientEntityStore();
 
   // Server target state — owned copies of drift-relevant fields per entity
-  private serverTargets: Map<EntityId, ServerTarget> = new ClientServerTargetStore();
+  private serverTargets = new ClientServerTargetStore();
   private projectileStore!: ClientProjectileStore;
 
   private sprayTargetStore = new ClientSprayTargetStore();
@@ -409,12 +409,7 @@ export class ClientViewState {
   }
 
   private getOrCreateServerTarget(id: EntityId): ServerTarget {
-    let target = this.serverTargets.get(id);
-    if (!target) {
-      target = createServerTarget();
-      this.serverTargets.set(id, target);
-    }
-    return target;
+    return this.serverTargets.getOrCreate(id);
   }
 
   private collectProjectileReflectionIds(
@@ -460,7 +455,7 @@ export class ClientViewState {
     target.angularVelocityX = null;
     target.angularVelocityY = null;
     target.angularVelocityZ = null;
-    target.turrets.length = 0;
+    resizeServerTargetTurrets(target, 0);
     target.updatedAtMs = now;
   }
 
@@ -521,16 +516,7 @@ export class ClientViewState {
     isFull: boolean,
   ): boolean {
     if (turrets) {
-      while (target.turrets.length < turrets.length) {
-        target.turrets.push({
-          rotation: 0,
-          angularVelocity: 0,
-          pitch: 0,
-          pitchVelocity: 0,
-          shieldRange: null,
-        });
-      }
-      target.turrets.length = turrets.length;
+      resizeServerTargetTurrets(target, turrets.length);
       for (let i = 0; i < turrets.length; i++) {
         const wireAng = turrets[i].turret.angular;
         target.turrets[i].rotation = deqRot(wireAng.rot);
@@ -541,7 +527,7 @@ export class ClientViewState {
       }
       return true;
     }
-    if (isFull) target.turrets.length = 0;
+    if (isFull) resizeServerTargetTurrets(target, 0);
     return false;
   }
 
@@ -554,16 +540,7 @@ export class ClientViewState {
   ): boolean {
     if (count <= 0) return false;
     if (offset < 0 || offset + count > source.turretRows.count) return false;
-    while (target.turrets.length < count) {
-      target.turrets.push({
-        rotation: 0,
-        angularVelocity: 0,
-        pitch: 0,
-        pitchVelocity: 0,
-        shieldRange: null,
-      });
-    }
-    target.turrets.length = count;
+    resizeServerTargetTurrets(target, count);
     const rows = source.turretRows.values;
     const combat = entity.combat;
     const entityTurrets = combat?.turrets;

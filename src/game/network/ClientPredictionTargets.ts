@@ -2,6 +2,14 @@ import type { BeamPoint, Entity } from '../../types/sim';
 
 // Lightweight copy of server state used for per-frame drift in client prediction.
 // Owns its data instead of retaining references to pooled serializer objects.
+export type ServerTargetTurret = {
+  rotation: number;
+  angularVelocity: number;
+  pitch: number;
+  pitchVelocity: number;
+  shieldRange: number | null;
+};
+
 export type ServerTarget = {
   updatedAtMs: number;
   x: number;
@@ -23,13 +31,7 @@ export type ServerTarget = {
   angularVelocityX: number | null;
   angularVelocityY: number | null;
   angularVelocityZ: number | null;
-  turrets: {
-    rotation: number;
-    angularVelocity: number;
-    pitch: number;
-    pitchVelocity: number;
-    shieldRange: number | null;
-  }[];
+  turrets: ServerTargetTurret[];
 };
 
 export function createServerTarget(): ServerTarget {
@@ -74,16 +76,28 @@ export function createBeamPathTarget(): BeamPathTarget {
 // type that's recycled minutes later.
 const _beamPointFreeList: BeamPoint[] = [];
 const BEAM_POINT_FREE_LIST_WARM_CAPACITY = 512;
+const _serverTargetFreeList: ServerTarget[] = [];
+const _serverTargetTurretFreeList: ServerTargetTurret[] = [];
+const SERVER_TARGET_FREE_LIST_WARM_CAPACITY = 2048;
+const SERVER_TARGET_TURRET_FREE_LIST_WARM_CAPACITY = 4096;
 
 type ClientPredictionTargetPoolStats = {
   freeBeamPoints: number;
   warmBeamPoints: number;
+  freeServerTargets: number;
+  warmServerTargets: number;
+  freeServerTargetTurrets: number;
+  warmServerTargetTurrets: number;
 };
 
 export function getClientPredictionTargetPoolStats(): ClientPredictionTargetPoolStats {
   return {
     freeBeamPoints: _beamPointFreeList.length,
     warmBeamPoints: BEAM_POINT_FREE_LIST_WARM_CAPACITY,
+    freeServerTargets: _serverTargetFreeList.length,
+    warmServerTargets: SERVER_TARGET_FREE_LIST_WARM_CAPACITY,
+    freeServerTargetTurrets: _serverTargetTurretFreeList.length,
+    warmServerTargetTurrets: SERVER_TARGET_TURRET_FREE_LIST_WARM_CAPACITY,
   };
 }
 
@@ -94,7 +108,108 @@ export function resetClientPredictionTargetPools(
   if (_beamPointFreeList.length > retained) {
     _beamPointFreeList.length = retained;
   }
+  const retainedServerTargets = Math.max(
+    0,
+    Math.floor(
+      maxRetained === BEAM_POINT_FREE_LIST_WARM_CAPACITY
+        ? SERVER_TARGET_FREE_LIST_WARM_CAPACITY
+        : maxRetained,
+    ),
+  );
+  const retainedServerTargetTurrets = Math.max(
+    0,
+    Math.floor(
+      maxRetained === BEAM_POINT_FREE_LIST_WARM_CAPACITY
+        ? SERVER_TARGET_TURRET_FREE_LIST_WARM_CAPACITY
+        : maxRetained,
+    ),
+  );
+  if (_serverTargetFreeList.length > retainedServerTargets) {
+    _serverTargetFreeList.length = retainedServerTargets;
+  }
+  if (_serverTargetTurretFreeList.length > retainedServerTargetTurrets) {
+    _serverTargetTurretFreeList.length = retainedServerTargetTurrets;
+  }
   return getClientPredictionTargetPoolStats();
+}
+
+function clearServerTargetTurret(turret: ServerTargetTurret): void {
+  turret.rotation = 0;
+  turret.angularVelocity = 0;
+  turret.pitch = 0;
+  turret.pitchVelocity = 0;
+  turret.shieldRange = null;
+}
+
+function acquireServerTargetTurret(): ServerTargetTurret {
+  const pooled = _serverTargetTurretFreeList.pop();
+  if (pooled) return pooled;
+  return {
+    rotation: 0,
+    angularVelocity: 0,
+    pitch: 0,
+    pitchVelocity: 0,
+    shieldRange: null,
+  };
+}
+
+function releaseServerTargetTurret(turret: ServerTargetTurret): void {
+  if (_serverTargetTurretFreeList.length >= SERVER_TARGET_TURRET_FREE_LIST_WARM_CAPACITY) return;
+  clearServerTargetTurret(turret);
+  _serverTargetTurretFreeList.push(turret);
+}
+
+function resetServerTargetScalars(target: ServerTarget): void {
+  target.updatedAtMs = 0;
+  target.x = 0;
+  target.y = 0;
+  target.z = 0;
+  target.rotation = 0;
+  target.velocityX = 0;
+  target.velocityY = 0;
+  target.velocityZ = 0;
+  target.surfaceNormalX = 0;
+  target.surfaceNormalY = 0;
+  target.surfaceNormalZ = 1;
+  target.bodyCenterHeight = 0;
+  target.predictedGroundContact = true;
+  target.orientation = null;
+  target.angularVelocityX = null;
+  target.angularVelocityY = null;
+  target.angularVelocityZ = null;
+}
+
+function clearServerTarget(target: ServerTarget): void {
+  resizeServerTargetTurrets(target, 0);
+  resetServerTargetScalars(target);
+}
+
+export function acquireServerTarget(): ServerTarget {
+  const pooled = _serverTargetFreeList.pop();
+  if (pooled) {
+    clearServerTarget(pooled);
+    return pooled;
+  }
+  return createServerTarget();
+}
+
+export function releaseServerTarget(target: ServerTarget): void {
+  clearServerTarget(target);
+  if (_serverTargetFreeList.length >= SERVER_TARGET_FREE_LIST_WARM_CAPACITY) return;
+  _serverTargetFreeList.push(target);
+}
+
+export function resizeServerTargetTurrets(target: ServerTarget, count: number): void {
+  const nextLength = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  const turrets = target.turrets;
+  for (let i = turrets.length - 1; i >= nextLength; i--) {
+    const turret = turrets[i];
+    if (turret !== undefined) releaseServerTargetTurret(turret);
+  }
+  if (turrets.length > nextLength) turrets.length = nextLength;
+  while (turrets.length < nextLength) {
+    turrets.push(acquireServerTargetTurret());
+  }
 }
 
 function clearBeamPoint(p: BeamPoint): void {
