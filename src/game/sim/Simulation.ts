@@ -793,6 +793,11 @@ export class Simulation {
 
       // No actions - flying units keep circling their last destination.
       if (unit.actions.length === 0) {
+        if (unit.locomotion.type !== 'flying') {
+          unit.activePath = null;
+          unit.stuckTicks = 0;
+          continue;
+        }
         planner.queue(entity, undefined, 0);
         continue;
       }
