@@ -150,6 +150,9 @@ type CombatTargetingStateViews = {
   aimPitch: Float32Array;
   activeTurretMask: Uint32Array;
   firingTurretMask: Uint32Array;
+  sensorCoverageMask: Uint32Array;
+  fullSightCoverageMask: Uint32Array;
+  detectorCoverageMask: Uint32Array;
 };
 
 export type CombatTargetingTurretStateCode =
@@ -338,6 +341,21 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     firingTurretMask: new Uint32Array(
       buffer,
       targeting.entityFiringTurretMaskPtr(),
+      entityCapacity,
+    ),
+    sensorCoverageMask: new Uint32Array(
+      buffer,
+      targeting.entitySensorCoverageMaskPtr(),
+      entityCapacity,
+    ),
+    fullSightCoverageMask: new Uint32Array(
+      buffer,
+      targeting.entityFullSightCoverageMaskPtr(),
+      entityCapacity,
+    ),
+    detectorCoverageMask: new Uint32Array(
+      buffer,
+      targeting.entityDetectorCoverageMaskPtr(),
       entityCapacity,
     ),
   };

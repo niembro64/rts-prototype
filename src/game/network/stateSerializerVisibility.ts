@@ -2,6 +2,7 @@ import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
+import { getCombatTargetingStateViews } from '../sim/combat/targetingInputStamping';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
   canEntityProvideFullVision,
@@ -426,29 +427,16 @@ export class SnapshotVisibility {
     const entityViews = entitySlotRegistry.getViews();
     if (sim === undefined || entityViews === null) return false;
 
-    const targeting = sim.combatTargeting;
-    const combatCapacity = targeting.entityCapacity();
+    const targetingViews = getCombatTargetingStateViews(sim);
+    const combatCapacity = targetingViews.entityCapacity;
     const capacity = Math.min(entityViews.capacity, combatCapacity);
     if (capacity <= 0) return false;
 
-    const buffer = sim.memory.buffer;
-    const combatEntityId = new Int32Array(buffer, targeting.entityIdPtr(), combatCapacity);
-    const combatFlags = new Uint8Array(buffer, targeting.entityFlagsPtr(), combatCapacity);
-    const sensorCoverageMask = new Uint32Array(
-      buffer,
-      targeting.entitySensorCoverageMaskPtr(),
-      combatCapacity,
-    );
-    const fullSightCoverageMask = new Uint32Array(
-      buffer,
-      targeting.entityFullSightCoverageMaskPtr(),
-      combatCapacity,
-    );
-    const detectorCoverageMask = new Uint32Array(
-      buffer,
-      targeting.entityDetectorCoverageMaskPtr(),
-      combatCapacity,
-    );
+    const combatEntityId = targetingViews.entityId;
+    const combatFlags = targetingViews.entityFlags;
+    const sensorCoverageMask = targetingViews.sensorCoverageMask;
+    const fullSightCoverageMask = targetingViews.fullSightCoverageMask;
+    const detectorCoverageMask = targetingViews.detectorCoverageMask;
 
     const viewMask = this.viewMask >>> 0;
     let stampedRows = 0;
