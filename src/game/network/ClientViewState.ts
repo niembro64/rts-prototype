@@ -86,10 +86,13 @@ import {
   dequantizeVelocity as deqVel,
 } from './snapshotQuantization';
 import {
+  ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
@@ -796,6 +799,91 @@ export class ClientViewState {
     return entity.ownership !== null && entity.ownership.playerId === server.playerId;
   }
 
+  private tryApplyBasicTypedDeltaWireRow(
+    source: EntitySnapshotWireSource | undefined,
+    entityIndex: number,
+    now: number,
+    collectCorrectionStats: boolean,
+    applyStats: ClientSnapshotApplyStats,
+  ): boolean {
+    if (source === undefined || source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_BASIC) {
+      return false;
+    }
+    const rowIndex = source.rowIndices[entityIndex];
+    if (rowIndex < 0 || rowIndex >= source.basicRows.count) return false;
+    const values = source.basicRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+    const changedFields = values[base + 8] | 0;
+    if (values[base + 7] === 0 || changedFields === 0) return false;
+    if ((changedFields & ~(ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0) return false;
+
+    const id = values[base + 0] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined) return false;
+    const playerId = values[base + 6] | 0;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== playerId) return false;
+
+    const hasPos = (changedFields & ENTITY_CHANGED_POS) !== 0;
+    const hasRot = (changedFields & ENTITY_CHANGED_ROT) !== 0;
+    if (!hasPos && !hasRot) return false;
+
+    if ((values[base + 1] | 0) === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT) {
+      if (existing.unit === null) return false;
+      const previousTarget = collectCorrectionStats && hasPos
+        ? this.serverTargets.get(id)
+        : undefined;
+      const previousTargetAgeMs =
+        previousTarget !== undefined && previousTarget.updatedAtMs
+          ? Math.max(0, now - previousTarget.updatedAtMs)
+          : 0;
+      const target = this.getOrCreateServerTarget(id);
+      this.clearTargetPredictionAccum(id);
+      if (hasPos) {
+        const x = deqEntityPos(values[base + 2]);
+        const y = deqEntityPos(values[base + 3]);
+        const z = deqEntityPos(values[base + 4]);
+        target.x = x;
+        target.y = y;
+        target.z = z;
+        if (collectCorrectionStats) {
+          const dx = existing.transform.x - x;
+          const dy = existing.transform.y - y;
+          const dz = existing.transform.z - z;
+          const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          applyStats.correction.count++;
+          applyStats.correction.totalDistance += distance;
+          if (distance > applyStats.correction.maxDistance) {
+            applyStats.correction.maxDistance = distance;
+          }
+          if (previousTargetAgeMs > 0) {
+            applyStats.correction.targetAgeCount++;
+            applyStats.correction.totalTargetAgeMs += previousTargetAgeMs;
+            if (previousTargetAgeMs > applyStats.correction.maxTargetAgeMs) {
+              applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
+            }
+          }
+        }
+      }
+      if (hasRot) target.rotation = deqRot(values[base + 5]);
+      target.updatedAtMs = now;
+      this.activeEntityPredictionIds.add(id);
+      this.dirtyUnitRenderIds.add(id);
+      return true;
+    }
+
+    if (existing.building === null) return false;
+    if (hasPos) {
+      existing.transform.x = deqEntityPos(values[base + 2]);
+      existing.transform.y = deqEntityPos(values[base + 3]);
+      existing.transform.z = deqEntityPos(values[base + 4]);
+    }
+    if (hasRot) existing.transform.rotation = deqRot(values[base + 5]);
+    this.refreshRenderableEntityStateFromSnapshot(existing, hasPos);
+    this.dirtyBuildingRenderIds.add(id);
+    return true;
+  }
+
   private tryApplyUnitTypedDeltaWireRow(
     source: EntitySnapshotWireSource | undefined,
     entityIndex: number,
@@ -1194,6 +1282,17 @@ export class ClientViewState {
         : undefined;
     if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
+        if (
+          this.tryApplyBasicTypedDeltaWireRow(
+            typedEntityWireSource,
+            entityIndex,
+            now,
+            collectCorrectionStats,
+            applyStats,
+          )
+        ) {
+          continue;
+        }
         if (
           this.tryApplyUnitTypedDeltaWireRow(
             typedEntityWireSource,

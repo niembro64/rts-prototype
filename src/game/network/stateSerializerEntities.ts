@@ -1183,16 +1183,19 @@ export function serializeEntitySnapshot(
 
 function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: number | undefined): boolean {
   if (changedFields === undefined || changedFields === 0) return false;
+  const hasBasicTransformFields = (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0;
   if (entity.type === 'unit' && entity.unit !== null) {
     if ((changedFields & ~TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS) !== 0) return false;
     const orientationTriggersTypedRow = entity.unit.orientation !== null &&
       (changedFields & (ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0;
     return (changedFields & TYPED_PLACEHOLDER_UNIT_TRIGGER_FIELDS) !== 0 ||
-      orientationTriggersTypedRow;
+      orientationTriggersTypedRow ||
+      hasBasicTransformFields;
   }
   if ((entity.type === 'building' || entity.type === 'tower') && entity.building !== null) {
     return (changedFields & ~TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS) === 0 &&
-      (changedFields & TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS) !== 0;
+      ((changedFields & TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS) !== 0 ||
+        hasBasicTransformFields);
   }
   return false;
 }

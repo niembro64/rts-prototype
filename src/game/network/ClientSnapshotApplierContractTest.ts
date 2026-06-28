@@ -433,10 +433,19 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   if (posOnlyGroundRow !== null) posOnlyGroundRows.push(posOnlyGroundRow);
   assertContract(
-    posOnlyGroundRows[0]?.pos !== null,
-    'position-only ground unit deltas must keep DTO position fields when the direct row is basic',
+    posOnlyGroundRows[0]?.pos === null,
+    'position-only ground unit deltas must omit DTO position fields when the direct row is basic',
   );
+  const basicTypedMotionStats = view.applyNetworkState(snapshot(4, posOnlyGroundRows), {
+    syncEconomy: undefined,
+    collectCorrectionStats: true,
+  });
   resetEntitySnapshotPool();
+  assertContract(
+    basicTypedMotionStats.correction.count === 1 &&
+      basicTypedMotionStats.correction.totalDistance > 40,
+    'basic typed unit motion rows must apply from wire rows before DTO fallback',
+  );
 
   wireMotionEntity.transform.x = 120;
   const typedPlaceholderRows: NetworkServerSnapshotEntity[] = [];
