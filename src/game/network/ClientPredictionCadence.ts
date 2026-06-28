@@ -4,6 +4,11 @@ export type PredictionStep = {
 };
 
 export class ClientPredictionCadence {
+  private readonly step: PredictionStep = {
+    entityDeltaMs: 0,
+    targetDeltaMs: 0,
+  };
+
   clear(_id: number): void {}
 
   clearTarget(_id: number): void {}
@@ -11,6 +16,8 @@ export class ClientPredictionCadence {
   clearAll(): void {}
 
   consumeDelta(deltaMs: number): PredictionStep {
-    return { entityDeltaMs: deltaMs, targetDeltaMs: deltaMs };
+    this.step.entityDeltaMs = deltaMs;
+    this.step.targetDeltaMs = deltaMs;
+    return this.step;
   }
 }
