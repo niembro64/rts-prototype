@@ -11,7 +11,7 @@ import { LAND_CELL_SIZE } from '../../../config';
 import { getSimWasm } from '../../sim-wasm/init';
 import type { WorldState } from '../WorldState';
 import type { Turret } from '../../../types/sim';
-import { UNIT_BLUEPRINTS } from '../blueprints/units';
+import { maxUnitCollisionRadius } from '../blueprints/buildings';
 import { hasTerrainLineOfSight } from '../terrain/terrainLineOfSight';
 
 /** Terrain samples still use the half-cell cadence; the walk now runs
@@ -64,15 +64,6 @@ type ShieldClearanceOptions = {
  *  excluded. -1 cannot collide with a real entityId because entity ids
  *  are non-negative. */
 const NO_EXCLUDED_OWNER = -1;
-
-function maxUnitCollisionRadius(): number {
-  let maxRadius = 0;
-  for (const unitBlueprintId in UNIT_BLUEPRINTS) {
-    const radius = UNIT_BLUEPRINTS[unitBlueprintId as keyof typeof UNIT_BLUEPRINTS].radius.collision;
-    if (radius > maxRadius) maxRadius = radius;
-  }
-  return maxRadius;
-}
 
 /** True if no active shield sphere stands between the segment's
  *  endpoints. Shields are physical, team-agnostic barriers — the
@@ -144,4 +135,3 @@ export function hasFogOfWarLineOfSight(
   }
   return true;
 }
-

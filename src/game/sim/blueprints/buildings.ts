@@ -390,9 +390,7 @@ export function getBuildingBlueprint(buildingBlueprintId: BuildingBlueprintId): 
 // spawn height, and the turret mounts all read this geometry, so they can never
 // drift apart.
 //
-// Computed live from the current unit roster on every call (a real-time check,
-// never a baked constant), so it always reflects the actual largest unit.
-export function maxUnitCollisionRadius(): number {
+function computeMaxUnitCollisionRadius(): number {
   let max = 0;
   for (const bp of Object.values(UNIT_BLUEPRINTS)) {
     if (bp.radius.collision > max) max = bp.radius.collision;
@@ -400,10 +398,19 @@ export function maxUnitCollisionRadius(): number {
   return max;
 }
 
+// Unit blueprints are immutable static data, so cache this derived roster
+// maximum once instead of allocating/scanning Object.values() in hot geometry
+// helpers and line-of-sight setup.
+const MAX_UNIT_COLLISION_RADIUS = computeMaxUnitCollisionRadius();
+
+export function maxUnitCollisionRadius(): number {
+  return MAX_UNIT_COLLISION_RADIUS;
+}
+
 /** Height of the fabricator torus body = 1.2 x the largest unit's collision
- *  diameter, recomputed live from the roster each call. */
+ *  diameter. */
 export function fabricatorTorusHoverHeight(): number {
-  return 1.2 * (2 * maxUnitCollisionRadius());
+  return 1.2 * (2 * MAX_UNIT_COLLISION_RADIUS);
 }
 
 /** Radius of the torus ring — the circle the construction pylons hang on. */
@@ -438,4 +445,3 @@ export function fabricatorTorusRingRadius(width: number, depth: number): number 
     }
   }
 }
-
