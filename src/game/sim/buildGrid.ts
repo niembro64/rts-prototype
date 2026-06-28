@@ -67,7 +67,7 @@ export function snapBuildingToGrid(
 
 // Building grid manager
 export class BuildingGrid {
-  private cells: Map<string, GridCell> = new Map();
+  private cells: Map<number, GridCell> = new Map();
   private gridWidth: number;
   private gridHeight: number;
   /** Monotonic version bumped on every mutation (place / remove).
@@ -91,9 +91,8 @@ export class BuildingGrid {
     for (const [key, cell] of this.cells) {
       if (!cell.occupied) continue;
       if (cell.blocksMovement === false) continue;
-      const comma = key.indexOf(',');
-      const gx = +key.slice(0, comma);
-      const gy = +key.slice(comma + 1);
+      const gy = Math.floor(key / this.gridWidth);
+      const gx = key - gy * this.gridWidth;
       yield { gx, gy, cell };
     }
   }
@@ -129,8 +128,8 @@ export class BuildingGrid {
   }
 
   // Get cell key for map
-  private getCellKey(gx: number, gy: number): string {
-    return `${gx},${gy}`;
+  private getCellKey(gx: number, gy: number): number {
+    return gy * this.gridWidth + gx;
   }
 
   // Get cell at grid coordinates
@@ -226,7 +225,7 @@ export class BuildingGrid {
 
   // Remove by entity ID (find and remove all cells for this entity)
   removeByEntityId(entityId: EntityId): void {
-    const keysToRemove: string[] = [];
+    const keysToRemove: number[] = [];
     for (const [key, cell] of this.cells) {
       if (cell.entityId === entityId) {
         keysToRemove.push(key);
