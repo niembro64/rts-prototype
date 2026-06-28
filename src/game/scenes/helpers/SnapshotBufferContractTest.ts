@@ -16,7 +16,10 @@ import {
   packProjectilesForWire,
 } from '../../network/snapshotProjectileWirePack';
 import {
+  ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   getEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
@@ -100,6 +103,31 @@ function attachTypedUnitMotionSource(
   values[base + 6] = changedFields === null ? 0 : 1;
   values[base + 7] = changedFields ?? 0;
   source.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
+  source.rowIndices.push(rowIndex);
+  registerEntitySnapshotWireSource(entities, source);
+  return source;
+}
+
+function attachTypedBasicMotionSource(
+  entities: NetworkServerSnapshotEntity[],
+  id: number,
+  x: number,
+  changedFields: number = ENTITY_CHANGED_POS,
+): EntitySnapshotWireSource {
+  const source = createEmptyEntityWireSource();
+  const rowIndex = reserveFloat64WireRows(source.basicRows, 1, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+  const values = source.basicRows.values;
+  values[base + 0] = id;
+  values[base + 1] = ENTITY_SNAPSHOT_WIRE_TYPE_UNIT;
+  values[base + 2] = x;
+  values[base + 3] = 0;
+  values[base + 4] = 0;
+  values[base + 5] = 0;
+  values[base + 6] = 1;
+  values[base + 7] = 1;
+  values[base + 8] = changedFields;
+  source.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BASIC);
   source.rowIndices.push(rowIndex);
   registerEntitySnapshotWireSource(entities, source);
   return source;
@@ -327,6 +355,36 @@ export function runSnapshotBufferContractTest(): void {
         preservedPlaceholderSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 1
       ] === 444,
     'typed placeholder motion deltas must patch pending full typed rows from wire rows',
+  );
+
+  const typedBasicFullEntity = createSparseDecodedMotionUnitEntity(63, 100);
+  typedBasicFullEntity.changedFields = null;
+  typedBasicFullEntity.rotation = 0;
+  const typedBasicFullEntities = [typedBasicFullEntity];
+  const typedBasicFullSnapshot = createSnapshot(16, [], typedBasicFullEntities);
+  attachTypedUnitMotionSource(typedBasicFullEntities, 63, 100, null);
+  fake.emitSnapshot(typedBasicFullSnapshot);
+  const typedBasicDeltaEntity = createUnitEntity(63, -1, ENTITY_CHANGED_POS);
+  typedBasicDeltaEntity.pos = null;
+  const typedBasicDeltaEntities = [typedBasicDeltaEntity];
+  attachTypedBasicMotionSource(typedBasicDeltaEntities, 63, 555);
+  const typedBasicDeltaSnapshot = createSnapshot(17, [], typedBasicDeltaEntities);
+  typedBasicDeltaSnapshot.entityDeltaOnly = true;
+  fake.emitSnapshot(typedBasicDeltaSnapshot);
+  const consumedTypedBasicMerge = buffer.consume();
+  assertContract(
+    consumedTypedBasicMerge?.entities[0]?.pos?.x === 555,
+    'typed basic transform deltas must patch pending full DTO rows from wire rows',
+  );
+  const preservedBasicSource = consumedTypedBasicMerge !== null
+    ? getEntitySnapshotWireSource(consumedTypedBasicMerge.entities)
+    : undefined;
+  assertContract(
+    preservedBasicSource !== undefined &&
+      preservedBasicSource.unitRows.values[
+        preservedBasicSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 1
+      ] === 555,
+    'typed basic transform deltas must patch pending full typed rows from wire rows',
   );
 
   const typedRemovedEntity = createSparseDecodedMotionUnitEntity(61, 100);

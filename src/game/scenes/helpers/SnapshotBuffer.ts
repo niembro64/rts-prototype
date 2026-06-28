@@ -36,6 +36,10 @@ import {
   getPackedProjectileSnapshotWire,
 } from '../../network/snapshotProjectileWirePack';
 import {
+  ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   getEntitySnapshotWireSource,
@@ -62,6 +66,11 @@ type SnapshotBufferCallback = (state: NetworkServerSnapshot) => void;
 type SnapshotBufferDiagnostics = {
   bufferedDespawns: number;
   coalescedDespawns: number;
+};
+type PendingEntityWireMotionRow = {
+  kind: number;
+  values: Float64Array;
+  base: number;
 };
 
 function copyPositionDelta(
@@ -329,9 +338,20 @@ export class SnapshotBuffer {
     targetIndex: number,
     patchPendingSource: boolean,
   ): boolean {
-    if (deltaSource === undefined || deltaSource.kinds[deltaIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+    if (deltaSource === undefined) {
       return false;
     }
+    if (deltaSource.kinds[deltaIndex] === ENTITY_SNAPSHOT_WIRE_KIND_BASIC) {
+      return this.patchPendingEntityTransformFromBasicTypedDelta(
+        deltaSource,
+        deltaIndex,
+        target,
+        pendingSource,
+        targetIndex,
+        patchPendingSource,
+      );
+    }
+    if (deltaSource.kinds[deltaIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) return false;
     const deltaRowIndex = deltaSource.rowIndices[deltaIndex];
     if (deltaRowIndex < 0 || deltaRowIndex >= deltaSource.unitRows.count) return false;
     const deltaValues = deltaSource.unitRows.values;
@@ -439,6 +459,49 @@ export class SnapshotBuffer {
     return patched;
   }
 
+  private patchPendingEntityTransformFromBasicTypedDelta(
+    deltaSource: EntitySnapshotWireSource,
+    deltaIndex: number,
+    target: NetworkServerSnapshotEntity,
+    pendingSource: EntitySnapshotWireSource | undefined,
+    targetIndex: number,
+    patchPendingSource: boolean,
+  ): boolean {
+    const deltaRowIndex = deltaSource.rowIndices[deltaIndex];
+    if (deltaRowIndex < 0 || deltaRowIndex >= deltaSource.basicRows.count) return false;
+    const deltaValues = deltaSource.basicRows.values;
+    const deltaBase = deltaRowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+    const changedFields = deltaValues[deltaBase + 8] | 0;
+    if (deltaValues[deltaBase + 7] === 0 || changedFields === 0) return false;
+    if ((changedFields & ~ENTITY_MOTION_MERGE_FIELDS) !== 0) return false;
+    if ((changedFields & (ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL)) !== 0) return false;
+    if ((deltaValues[deltaBase + 0] | 0) !== target.id) return false;
+
+    const pendingRow = patchPendingSource
+      ? this.getPendingEntityWireMotionRow(pendingSource, targetIndex, target.id)
+      : undefined;
+    let patched = false;
+    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+      if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
+      target.pos.x = deltaValues[deltaBase + 2];
+      target.pos.y = deltaValues[deltaBase + 3];
+      target.pos.z = deltaValues[deltaBase + 4];
+      this.patchPendingWireRowPosition(
+        pendingRow,
+        deltaValues[deltaBase + 2],
+        deltaValues[deltaBase + 3],
+        deltaValues[deltaBase + 4],
+      );
+      patched = true;
+    }
+    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+      target.rotation = deltaValues[deltaBase + 5];
+      this.patchPendingWireRowRotation(pendingRow, deltaValues[deltaBase + 5]);
+      patched = true;
+    }
+    return patched;
+  }
+
   private canPreservePendingEntityWireSource(
     pendingEntities: readonly NetworkServerSnapshotEntity[],
     deltaEntities: readonly NetworkServerSnapshotEntity[],
@@ -460,13 +523,14 @@ export class SnapshotBuffer {
       const targetIndex = this.findPendingEntityIndex(pendingEntities, delta.id, indexById);
       if (targetIndex < 0) return false;
       const target = pendingEntities[targetIndex];
-      if (target.unit == null || source.kinds[targetIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+      const pendingRow = this.getPendingEntityWireMotionRow(source, targetIndex, delta.id);
+      if (pendingRow === undefined) return false;
+      if (
+        (changedFields & (ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL)) !== 0 &&
+        (target.unit == null || pendingRow.kind !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT)
+      ) {
         return false;
       }
-      const rowIndex = source.rowIndices[targetIndex];
-      if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
-      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-      if (source.unitRows.values[base] !== delta.id) return false;
     }
     return true;
   }
@@ -476,17 +540,17 @@ export class SnapshotBuffer {
     targetIndex: number,
     delta: NetworkServerSnapshotEntity,
   ): void {
-    const rowIndex = source.rowIndices[targetIndex];
-    const values = source.unitRows.values;
-    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    const row = this.getPendingEntityWireMotionRow(source, targetIndex, delta.id);
+    if (row === undefined) return;
+    const values = row.values;
+    const base = row.base;
     if (delta.pos != null) {
-      values[base + 1] = delta.pos.x;
-      values[base + 2] = delta.pos.y;
-      values[base + 3] = delta.pos.z;
+      this.patchPendingWireRowPosition(row, delta.pos.x, delta.pos.y, delta.pos.z);
     }
     if (delta.rotation != null) {
-      values[base + 4] = delta.rotation;
+      this.patchPendingWireRowRotation(row, delta.rotation);
     }
+    if (row.kind !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) return;
     const unit = delta.unit;
     if (unit == null) return;
     if (unit.velocity != null) {
@@ -513,6 +577,55 @@ export class SnapshotBuffer {
       values[base + 34] = unit.angularVelocity3.y;
       values[base + 35] = unit.angularVelocity3.z;
     }
+  }
+
+  private getPendingEntityWireMotionRow(
+    source: EntitySnapshotWireSource | undefined,
+    targetIndex: number,
+    id: number,
+  ): PendingEntityWireMotionRow | undefined {
+    if (source === undefined) return undefined;
+    const kind = source.kinds[targetIndex];
+    const rowIndex = source.rowIndices[targetIndex];
+    let values: Float64Array;
+    let base: number;
+    if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+      if (rowIndex < 0 || rowIndex >= source.unitRows.count) return undefined;
+      values = source.unitRows.values;
+      base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    } else if (kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) {
+      if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return undefined;
+      values = source.buildingRows.values;
+      base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+    } else if (kind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC) {
+      if (rowIndex < 0 || rowIndex >= source.basicRows.count) return undefined;
+      values = source.basicRows.values;
+      base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+    } else {
+      return undefined;
+    }
+    return (values[base + 0] | 0) === id ? { kind, values, base } : undefined;
+  }
+
+  private patchPendingWireRowPosition(
+    row: PendingEntityWireMotionRow | undefined,
+    x: number,
+    y: number,
+    z: number,
+  ): void {
+    if (row === undefined) return;
+    const posBase = row.kind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC ? row.base + 2 : row.base + 1;
+    row.values[posBase + 0] = x;
+    row.values[posBase + 1] = y;
+    row.values[posBase + 2] = z;
+  }
+
+  private patchPendingWireRowRotation(
+    row: PendingEntityWireMotionRow | undefined,
+    rotation: number,
+  ): void {
+    if (row === undefined) return;
+    row.values[row.kind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC ? row.base + 5 : row.base + 4] = rotation;
   }
 
   private preparePendingEntityIndex(
