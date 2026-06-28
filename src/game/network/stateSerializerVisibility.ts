@@ -461,8 +461,8 @@ export class SnapshotVisibility {
 
       const ownerPlayerId = entityViews.ownerPlayerId[slot];
       if (ownerPlayerId !== 0 && (viewMask & (1 << (ownerPlayerId - 1))) !== 0) {
-        this.appendVisibleEntityIdById(id);
-        this.appendRadarEntityIdById(id);
+        this.appendVisibleEntityIdByIdUnchecked(id);
+        this.appendRadarEntityIdByIdUnchecked(id);
         continue;
       }
 
@@ -472,8 +472,8 @@ export class SnapshotVisibility {
       const cloaked = (flags & CT_ENTITY_FLAG_CLOAKED) !== 0;
       if (cloaked) {
         if (detectorCovered) {
-          this.appendVisibleEntityIdById(id);
-          this.appendRadarEntityIdById(id);
+          this.appendVisibleEntityIdByIdUnchecked(id);
+          this.appendRadarEntityIdByIdUnchecked(id);
         }
         continue;
       }
@@ -484,12 +484,12 @@ export class SnapshotVisibility {
         const visible = this.isEntityStateSlotVisibleWithLos(entityViews, slot, kind);
         this.entityVisibilityMemo.set(id, visible);
         if (visible) {
-          this.appendVisibleEntityIdById(id);
-          this.appendRadarEntityIdById(id);
+          this.appendVisibleEntityIdByIdUnchecked(id);
+          this.appendRadarEntityIdByIdUnchecked(id);
           continue;
         }
       }
-      if (radarCovered || detectorCovered) this.appendRadarEntityIdById(id);
+      if (radarCovered || detectorCovered) this.appendRadarEntityIdByIdUnchecked(id);
     }
     return stampedRows > 0;
   }
@@ -601,12 +601,22 @@ export class SnapshotVisibility {
     this.visibleEntityIds.push(id);
   }
 
+  private appendVisibleEntityIdByIdUnchecked(id: EntityId): void {
+    this.visibleEntityIdSet.add(id);
+    this.visibleEntityIds.push(id);
+  }
+
   private appendRadarEntityId(entity: Entity): void {
     this.appendRadarEntityIdById(entity.id);
   }
 
   private appendRadarEntityIdById(id: EntityId): void {
     if (this.radarEntityIdSet.has(id)) return;
+    this.radarEntityIdSet.add(id);
+    this.radarEntityIds.push(id);
+  }
+
+  private appendRadarEntityIdByIdUnchecked(id: EntityId): void {
     this.radarEntityIdSet.add(id);
     this.radarEntityIds.push(id);
   }
