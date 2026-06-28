@@ -15,8 +15,20 @@ import {
   getPackedProjectileSnapshotWire,
   packProjectilesForWire,
 } from '../../network/snapshotProjectileWirePack';
+import {
+  ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  getEntitySnapshotWireSource,
+  registerEntitySnapshotWireSource,
+  type EntitySnapshotWireSource,
+} from '../../network/stateSerializerEntities';
+import {
+  createFloat64WireRows,
+  createUint32WireRows,
+  reserveFloat64WireRows,
+} from '../../network/snapshotWireRows';
 
-function assertContract(condition: boolean, message: string): void {
+function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(`[snapshot buffer contract] ${message}`);
   }
@@ -51,6 +63,46 @@ function createSparseDecodedMotionUnitEntity(id: number, x: number): NetworkServ
     velocity: { x: 7, y: 0, z: 0 },
   } as NetworkServerSnapshotEntity['unit'];
   return entity;
+}
+
+function createEmptyEntityWireSource(): EntitySnapshotWireSource {
+  return {
+    kinds: [],
+    rowIndices: [],
+    basicRows: createFloat64WireRows(),
+    unitRows: createFloat64WireRows(),
+    buildingRows: createFloat64WireRows(),
+    actionRows: createFloat64WireRows(),
+    actionStrings: [],
+    turretRows: createFloat64WireRows(),
+    factorySelectedUnitRows: createUint32WireRows(),
+    waypointRows: createFloat64WireRows(),
+    waypointStrings: [],
+  };
+}
+
+function attachTypedUnitMotionSource(
+  entities: NetworkServerSnapshotEntity[],
+  id: number,
+  x: number,
+  changedFields: number | null = ENTITY_CHANGED_POS,
+): EntitySnapshotWireSource {
+  const source = createEmptyEntityWireSource();
+  const rowIndex = reserveFloat64WireRows(source.unitRows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  const values = source.unitRows.values;
+  values[base + 0] = id;
+  values[base + 1] = x;
+  values[base + 2] = 0;
+  values[base + 3] = 0;
+  values[base + 4] = 0;
+  values[base + 5] = 1;
+  values[base + 6] = changedFields === null ? 0 : 1;
+  values[base + 7] = changedFields ?? 0;
+  source.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
+  source.rowIndices.push(rowIndex);
+  registerEntitySnapshotWireSource(entities, source);
+  return source;
 }
 
 function createSnapshot(
@@ -187,6 +239,48 @@ export function runSnapshotBufferContractTest(): void {
   assertContract(
     consumedWithVisibilityDelta?.entities.some((entity) => entity.id === 40) === false,
     'entity delta removals must prune pending full snapshot rows',
+  );
+
+  const typedEntities = [createSparseDecodedMotionUnitEntity(50, 123)];
+  const typedSnapshot = createSnapshot(8, [], typedEntities);
+  const originalSource = attachTypedUnitMotionSource(typedEntities, 50, 123);
+  fake.emitSnapshot(typedSnapshot);
+  originalSource.unitRows.values[1] = 999;
+  const consumedTypedClone = buffer.consume();
+  assertContract(consumedTypedClone !== null, 'typed snapshot clone must be consumable');
+  const clonedSource = getEntitySnapshotWireSource(consumedTypedClone.entities);
+  assertContract(clonedSource !== undefined, 'typed entity wire source must survive snapshot clone');
+  assertContract(clonedSource !== originalSource, 'typed entity wire source clone must not alias original source');
+  const clonedRowIndex = clonedSource.rowIndices[0];
+  assertContract(
+    clonedSource.unitRows.values[clonedRowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 1] === 123,
+    'typed entity wire rows must be copied before the server source buffer is reused',
+  );
+
+  fake.emitSnapshot(createSnapshot(9, [], [createSparseDecodedMotionUnitEntity(51, 77)]));
+  const consumedUntypedClone = buffer.consume();
+  assertContract(consumedUntypedClone !== null, 'untyped snapshot clone must be consumable');
+  assertContract(
+    getEntitySnapshotWireSource(consumedUntypedClone.entities) === undefined,
+    'untyped snapshot clone must clear stale typed entity wire source metadata',
+  );
+
+  const typedFullEntities = [createUnitEntity(60, 100, null)];
+  const typedFullSnapshot = createSnapshot(10, [], typedFullEntities);
+  attachTypedUnitMotionSource(typedFullEntities, 60, 100, null);
+  fake.emitSnapshot(typedFullSnapshot);
+  const typedMotionDelta = createSnapshot(11, [], [createUnitEntity(60, 250, ENTITY_CHANGED_POS)]);
+  typedMotionDelta.entityDeltaOnly = true;
+  fake.emitSnapshot(typedMotionDelta);
+  const consumedTypedMerge = buffer.consume();
+  assertContract(
+    consumedTypedMerge?.entities[0]?.pos?.x === 250,
+    'typed pending snapshot must still receive merged entity motion deltas',
+  );
+  assertContract(
+    consumedTypedMerge !== null &&
+      getEntitySnapshotWireSource(consumedTypedMerge.entities) === undefined,
+    'merged entity deltas must invalidate cloned typed entity wire source metadata',
   );
 
   const sparseMotionDelta = createSnapshot(7, [], [createSparseDecodedMotionUnitEntity(31, 300)]);

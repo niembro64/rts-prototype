@@ -43,6 +43,26 @@ import {
 } from './unitSnapshotFields';
 import { copySnapshotWireBytes } from './snapshotWireMetadata';
 import { copySnapshotMaterializationMetadata } from './snapshotMaterializationMetadata';
+import {
+  createFloat64WireRows,
+  createUint32WireRows,
+  reserveFloat64WireRows,
+  reserveUint32WireRows,
+  type Float64WireRows,
+  type Uint32WireRows,
+} from './snapshotWireRows';
+import {
+  ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
+  getEntitySnapshotWireSource,
+  registerEntitySnapshotWireSource,
+  unregisterEntitySnapshotWireSource,
+  type EntitySnapshotWireSource,
+} from './stateSerializerEntities';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -69,6 +89,85 @@ function cloneTerrainTileMap(map: TerrainTileMap): TerrainTileMap {
 
 function cloneTerrainBuildabilityGrid(grid: TerrainBuildabilityGrid): TerrainBuildabilityGrid {
   return grid;
+}
+
+function createEntitySnapshotWireSource(): EntitySnapshotWireSource {
+  return {
+    kinds: [],
+    rowIndices: [],
+    basicRows: createFloat64WireRows(),
+    unitRows: createFloat64WireRows(),
+    buildingRows: createFloat64WireRows(),
+    actionRows: createFloat64WireRows(),
+    actionStrings: [],
+    turretRows: createFloat64WireRows(),
+    factorySelectedUnitRows: createUint32WireRows(),
+    waypointRows: createFloat64WireRows(),
+    waypointStrings: [],
+  };
+}
+
+function copyNumberArrayInto(src: readonly number[], dst: number[]): void {
+  dst.length = src.length;
+  for (let i = 0; i < src.length; i++) dst[i] = src[i];
+}
+
+function copyStringArrayInto(src: readonly string[], dst: string[]): void {
+  dst.length = src.length;
+  for (let i = 0; i < src.length; i++) dst[i] = src[i];
+}
+
+function copyFloat64WireRowsInto(
+  src: Float64WireRows,
+  dst: Float64WireRows,
+  stride: number,
+): void {
+  dst.count = 0;
+  if (src.count === 0) return;
+  reserveFloat64WireRows(dst, src.count, stride);
+  dst.values.set(src.values.subarray(0, src.count * stride), 0);
+}
+
+function copyUint32WireRowsInto(
+  src: Uint32WireRows,
+  dst: Uint32WireRows,
+  stride: number,
+): void {
+  dst.count = 0;
+  if (src.count === 0) return;
+  reserveUint32WireRows(dst, src.count, stride);
+  dst.values.set(src.values.subarray(0, src.count * stride), 0);
+}
+
+function copyEntitySnapshotWireSourceInto(
+  src: EntitySnapshotWireSource,
+  dst: EntitySnapshotWireSource,
+): void {
+  copyNumberArrayInto(src.kinds, dst.kinds);
+  copyNumberArrayInto(src.rowIndices, dst.rowIndices);
+  copyFloat64WireRowsInto(src.basicRows, dst.basicRows, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
+  copyFloat64WireRowsInto(src.unitRows, dst.unitRows, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+  copyFloat64WireRowsInto(src.buildingRows, dst.buildingRows, ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
+  copyFloat64WireRowsInto(src.actionRows, dst.actionRows, ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE);
+  copyStringArrayInto(src.actionStrings, dst.actionStrings);
+  copyFloat64WireRowsInto(src.turretRows, dst.turretRows, ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE);
+  copyUint32WireRowsInto(src.factorySelectedUnitRows, dst.factorySelectedUnitRows, 1);
+  copyFloat64WireRowsInto(src.waypointRows, dst.waypointRows, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
+  copyStringArrayInto(src.waypointStrings, dst.waypointStrings);
+}
+
+function clearEntitySnapshotWireSource(source: EntitySnapshotWireSource): void {
+  source.kinds.length = 0;
+  source.rowIndices.length = 0;
+  source.basicRows.count = 0;
+  source.unitRows.count = 0;
+  source.buildingRows.count = 0;
+  source.actionRows.count = 0;
+  source.actionStrings.length = 0;
+  source.turretRows.count = 0;
+  source.factorySelectedUnitRows.count = 0;
+  source.waypointRows.count = 0;
+  source.waypointStrings.length = 0;
 }
 
 type ReusableEntityBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
@@ -367,9 +466,12 @@ export class ReusableNetworkSnapshotCloner {
     },
   };
   private removedEntityIds: number[] = [];
+  private entityWireSource = createEntitySnapshotWireSource();
 
   clear(): void {
     this.snapshot.entities.length = 0;
+    unregisterEntitySnapshotWireSource(this.snapshot.entities);
+    clearEntitySnapshotWireSource(this.entityWireSource);
     for (let i = 0; i < this.economyKeys.length; i++) {
       delete this.snapshot.economy[Number(this.economyKeys[i]) as keyof NetworkServerSnapshot['economy']];
     }
@@ -438,6 +540,14 @@ export class ReusableNetworkSnapshotCloner {
     entities.length = state.entities.length;
     for (let i = 0; i < state.entities.length; i++) {
       entities[i] = copyEntityInto(state.entities[i], entities[i] ?? createReusableEntity());
+    }
+    const entityWireSource = getEntitySnapshotWireSource(state.entities);
+    if (entityWireSource !== undefined && entityWireSource.kinds.length === state.entities.length) {
+      copyEntitySnapshotWireSourceInto(entityWireSource, this.entityWireSource);
+      registerEntitySnapshotWireSource(entities, this.entityWireSource);
+    } else {
+      unregisterEntitySnapshotWireSource(entities);
+      clearEntitySnapshotWireSource(this.entityWireSource);
     }
     dst.minimapEntities = state.minimapEntities !== undefined
       ? this.copyRequiredArray(

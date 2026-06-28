@@ -314,14 +314,21 @@ export function trimEntitySnapshotPool(maxRetained = INITIAL_ENTITY_POOL): Entit
 
 export function registerEntitySnapshotWireSource(
   entities: NetworkServerSnapshotEntity[],
+  source: EntitySnapshotWireSource = entityWireSource,
 ): void {
-  entityWireSources.set(entities, entityWireSource);
+  entityWireSources.set(entities, source);
 }
 
 export function getEntitySnapshotWireSource(
   entities: readonly NetworkServerSnapshotEntity[],
 ): EntitySnapshotWireSource | undefined {
   return entityWireSources.get(entities);
+}
+
+export function unregisterEntitySnapshotWireSource(
+  entities: readonly NetworkServerSnapshotEntity[],
+): void {
+  entityWireSources.delete(entities);
 }
 
 function resetEntitySnapshotWireSource(): void {

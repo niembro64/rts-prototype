@@ -35,6 +35,7 @@ import {
   forEachPackedProjectileVelocityUpdate,
   getPackedProjectileSnapshotWire,
 } from '../../network/snapshotProjectileWirePack';
+import { unregisterEntitySnapshotWireSource } from '../../network/stateSerializerEntities';
 
 const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
@@ -207,6 +208,9 @@ export class SnapshotBuffer {
     const pending = this.pendingSnapshot;
     if (pending === null || pending.entityDeltaOnly === true) return;
     const pendingEntities = pending.entities;
+    if (deltaEntities.length > 0 || (removedEntityIds !== undefined && removedEntityIds.length > 0)) {
+      unregisterEntitySnapshotWireSource(pendingEntities);
+    }
     const pendingEntityIndexById = this.preparePendingEntityIndex(
       pendingEntities,
       deltaEntities.length,
