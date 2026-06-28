@@ -1108,6 +1108,8 @@ export type EntityMeta = {
 };
 
 export type EntityComponentSlots = {
+  /** Stable native entity/spatial slot id, or -1 before registry binding. */
+  entitySlotId: number;
   body: Body | null;
   selectable: Selectable | null;
   ownership: Ownership | null;
@@ -1148,6 +1150,7 @@ export type EntityComponentSlots = {
 
 export function createEmptyEntityComponentSlots(): EntityComponentSlots {
   return {
+    entitySlotId: -1,
     body: null,
     selectable: null,
     ownership: null,

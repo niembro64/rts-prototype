@@ -28,7 +28,7 @@ export function refreshSlabActivityMasksForUnit(
 ): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
-  const slot = spatialGrid.getSlot(unit.id);
+  const slot = spatialGrid.getEntitySlot(unit);
   if (slot < 0) return;
   const targeting = sim.combatTargeting;
   const turretCount = Math.min(targeting.turretCount(slot), combat.turrets.length);
@@ -55,7 +55,7 @@ export function refreshSlabActivityMasksForUnit(
 function clearTurretFsmOnSlab(unit: Entity, weaponIndex: number): void {
   const sim = getSimWasm();
   if (sim === undefined) return;
-  const slot = spatialGrid.getSlot(unit.id);
+  const slot = spatialGrid.getEntitySlot(unit);
   if (slot < 0) return;
   sim.combatTargeting.clearTurretFsm(slot, weaponIndex);
 }
@@ -89,7 +89,7 @@ export function dropTurretLockMidTick(unit: Entity, weaponIndex: number): void {
 export function readActiveTurretMaskForUnit(unit: Entity): number {
   const sim = getSimWasm();
   if (sim === undefined) return 0;
-  const slot = spatialGrid.getSlot(unit.id);
+  const slot = spatialGrid.getEntitySlot(unit);
   if (slot < 0) return 0;
   return getCombatTargetingStateViews(sim).activeTurretMask[slot];
 }
@@ -100,7 +100,7 @@ export function readActiveTurretMaskForUnit(unit: Entity): number {
 export function readFiringTurretMaskForUnit(unit: Entity): number {
   const sim = getSimWasm();
   if (sim === undefined) return 0;
-  const slot = spatialGrid.getSlot(unit.id);
+  const slot = spatialGrid.getEntitySlot(unit);
   if (slot < 0) return 0;
   return getCombatTargetingStateViews(sim).firingTurretMask[slot];
 }
@@ -116,7 +116,7 @@ function combatTargetingTurretSlabIndex(
   if (weaponIndex < 0) return -1;
   const sim = getSimWasm();
   if (sim === undefined) return -1;
-  const slot = spatialGrid.getSlot(unit.id);
+  const slot = spatialGrid.getEntitySlot(unit);
   if (slot < 0) return -1;
   const targeting = sim.combatTargeting;
   if (weaponIndex >= targeting.turretCount(slot)) return -1;

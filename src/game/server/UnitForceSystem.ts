@@ -543,12 +543,12 @@ export class UnitForceSystem {
 
     const movingUnits = this.simulation.getMovingUnits();
     for (let i = 0; i < movingUnits.length; i++) {
-      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(movingUnits[i].id));
+      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getEntitySlot(movingUnits[i]));
     }
 
     const flyingUnits = this.world.getFlyingUnits();
     for (let i = 0; i < flyingUnits.length; i++) {
-      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(flyingUnits[i].id));
+      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getEntitySlot(flyingUnits[i]));
     }
 
     const forceAccumulator = this.simulation.getForceAccumulator();

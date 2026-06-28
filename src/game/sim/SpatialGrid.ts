@@ -194,6 +194,10 @@ class SpatialGrid {
     return entitySlotRegistry.getSlot(entityId);
   }
 
+  getEntitySlot(entity: Entity): number {
+    return entitySlotRegistry.getEntitySlot(entity);
+  }
+
   /** Resolve a Rust spatial slot back to the live JS entity wrapper.
    *  Projectile collision kernels return slots so callers can avoid
    *  copying candidate id arrays back through another spatial query. */

@@ -42,6 +42,8 @@ export function runEntitySlotRegistryContractTest(): void {
   spatialGrid.updateUnit(first);
   const firstSlot = entitySlotRegistry.getSlot(first.id);
   assertContract(firstSlot >= 0, 'added unit must receive a stable slot');
+  assertContract(first.entitySlotId === firstSlot, 'added unit must cache its stable slot');
+  assertContract(entitySlotRegistry.getEntitySlot(first) === firstSlot, 'entity slot helper must read cached slot');
   assertParity(first);
 
   world.setEntityOwner(first, 2 as PlayerId);
@@ -52,6 +54,7 @@ export function runEntitySlotRegistryContractTest(): void {
 
   world.removeEntity(first.id);
   assertContract(entitySlotRegistry.getSlot(first.id) === -1, 'removed entity must clear id->slot mapping');
+  assertContract(first.entitySlotId === -1, 'removed entity must clear cached stable slot');
   const viewsAfterRemove = requireViews();
   assertContract(viewsAfterRemove.entityId[firstSlot] === -1, 'removed entity must clear slab entity id');
 
@@ -62,6 +65,7 @@ export function runEntitySlotRegistryContractTest(): void {
     entitySlotRegistry.getSlot(reused.id) === firstSlot,
     'slot allocator must reuse freed spatial/entity slots',
   );
+  assertContract(reused.entitySlotId === firstSlot, 'reused entity must cache reused stable slot');
   assertParity(reused);
 
   assertContract(reused.unit !== null, 'reused unit must have a unit component');
@@ -93,6 +97,7 @@ export function runEntitySlotRegistryContractTest(): void {
   spatialGrid.addBuilding(building);
   const buildingSlot = entitySlotRegistry.getSlot(building.id);
   assertContract(buildingSlot >= 0, 'building must receive a slot');
+  assertContract(building.entitySlotId === buildingSlot, 'building must cache its stable slot');
   const buildingViews = requireViews();
   assertContract(
     Math.abs(buildingViews.buildProgress[buildingSlot] - 0.75) < 1e-9,
@@ -133,6 +138,7 @@ export function runEntitySlotRegistryContractTest(): void {
   spatialGrid.updateProjectile(projectile);
   const projectileSlot = entitySlotRegistry.getSlot(projectile.id);
   assertContract(projectileSlot >= 0, 'projectile must receive a slot');
+  assertContract(projectile.entitySlotId === projectileSlot, 'projectile must cache its stable slot');
   assertParity(projectile);
 
   projectile.transform.x = 70;
@@ -154,4 +160,5 @@ export function runEntitySlotRegistryContractTest(): void {
   );
   world.removeEntity(projectile.id);
   assertContract(entitySlotRegistry.getSlot(projectile.id) === -1, 'projectile world removal must free slot');
+  assertContract(projectile.entitySlotId === -1, 'projectile world removal must clear cached slot');
 }

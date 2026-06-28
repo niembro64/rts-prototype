@@ -243,7 +243,7 @@ function ensureCombatTargetingSourceCapacity(count: number): void {
 function queueCombatTargetingSource(entity: Entity): void {
   const combat = entity.combat;
   if (!entity.ownership || !combat || combat.turrets.length === 0) return;
-  const slot = spatialGrid.getSlot(entity.id);
+  const slot = spatialGrid.getEntitySlot(entity);
   if (slot < 0) return;
   const idx = _combatTargetingSourceCount;
   ensureCombatTargetingSourceCapacity(idx + 1);
@@ -368,7 +368,7 @@ function getCombatTargetingTurretStateIndex(
   turretIndex: number,
 ): number {
   if (turretIndex < 0) return -1;
-  const slot = spatialGrid.getSlot(entity.id);
+  const slot = spatialGrid.getEntitySlot(entity);
   if (slot < 0) return -1;
   const targeting = sim.combatTargeting;
   if (turretIndex >= targeting.turretCount(slot)) return -1;
@@ -540,7 +540,7 @@ function stampCombatTargetingEntityInto(
   entity: Entity,
 ): boolean {
   const combat = entity.combat;
-  const slot = spatialGrid.getSlot(entity.id);
+  const slot = spatialGrid.getEntitySlot(entity);
   // Entities without a spatial slot can't be addressed by the slab;
   // the eventual kernel walks the slab, not the JS list, so anything
   // off-grid would be invisible to it anyway.

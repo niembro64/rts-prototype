@@ -153,13 +153,17 @@ export class EntitySlotRegistry {
       this.slotByEntityId.set(entity.id, slot);
       if (slot >= this.entityBySlot.length) this.entityBySlot.length = slot + 1;
       this.entityBySlot[slot] = entity;
+      entity.entitySlotId = slot;
       this.ensureLocalCapacity(slot);
       this.ensureStateCapacity(sim, slot);
       sim.spatial.setEntityId(slot, entity.id);
       sim.entityState.ensureCapacity(slot);
     } else if (this.entityBySlot[slot] !== entity) {
       this.entityBySlot[slot] = entity;
+      entity.entitySlotId = slot;
       sim.spatial.setEntityId(slot, entity.id);
+    } else if (entity.entitySlotId !== slot) {
+      entity.entitySlotId = slot;
     }
     return slot;
   }
@@ -167,6 +171,12 @@ export class EntitySlotRegistry {
   getSlot(entityId: EntityId): number {
     const slot = this.slotByEntityId.get(entityId);
     return slot === undefined ? -1 : slot;
+  }
+
+  getEntitySlot(entity: Entity): number {
+    const slot = entity.entitySlotId;
+    if (slot >= 0) return slot;
+    return this.getSlot(entity.id);
   }
 
   resolveSlot(slot: number): Entity | undefined {
@@ -180,6 +190,10 @@ export class EntitySlotRegistry {
       sim.entityState.clear();
       sim.turretPool.clear();
     }
+    for (let slot = 0; slot < this.entityBySlot.length; slot++) {
+      const entity = this.entityBySlot[slot];
+      if (entity !== undefined) entity.entitySlotId = -1;
+    }
     this.slotByEntityId.clear();
     this.entityBySlot.length = 0;
     this.spatialKindBySlot.fill(0);
@@ -192,6 +206,7 @@ export class EntitySlotRegistry {
   unsetEntity(entityId: EntityId): void {
     const slot = this.slotByEntityId.get(entityId);
     if (slot === undefined) return;
+    const entity = this.entityBySlot[slot];
     const sim = this.sim();
     if (sim !== undefined) {
       sim.spatial.freeSlot(slot);
@@ -200,6 +215,7 @@ export class EntitySlotRegistry {
       sim.combatTargeting.unsetEntity(slot);
     }
     this.slotByEntityId.delete(entityId);
+    if (entity !== undefined && entity.id === entityId) entity.entitySlotId = -1;
     this.entityBySlot[slot] = undefined;
     if (slot < this.spatialKindBySlot.length) this.spatialKindBySlot[slot] = 0;
     this.unitSlots.delete(entityId);
@@ -520,7 +536,7 @@ export class EntitySlotRegistry {
   }
 
   assertParity(entity: Entity, teamId?: number): void {
-    const slot = this.getSlot(entity.id);
+    const slot = this.getEntitySlot(entity);
     if (slot < 0) {
       throw new Error(`EntitySlotRegistry.assertParity: entity ${entity.id} has no slot`);
     }

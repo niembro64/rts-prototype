@@ -52,7 +52,7 @@ export class SimulationCombatHaltController {
       } else {
         continue;
       }
-      const slot = spatialGrid.getSlot(entity.id);
+      const slot = spatialGrid.getEntitySlot(entity);
       if (slot < 0) continue;
       this.queue(count, slot, mode, priorityPointPresent);
       count++;
@@ -171,7 +171,7 @@ export class SimulationCombatHaltController {
     mode: number,
     priorityPointPresent: boolean,
   ): boolean {
-    const slot = spatialGrid.getSlot(entity.id);
+    const slot = spatialGrid.getEntitySlot(entity);
     if (slot < 0) return false;
     this.ensureSlotCapacity(slot + 1);
     const modeKey = mode + 1;
