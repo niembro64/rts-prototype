@@ -4,11 +4,6 @@
     "maxDropletsPerSpawn": 36
   },
 
-  "geometry": {
-    "sphereWidthSegments": 5,
-    "sphereHeightSegments": 3
-  },
-
   "appearance": {
     "color": [0.78, 0.9, 1.0],
     "maxAlpha": 0.85,

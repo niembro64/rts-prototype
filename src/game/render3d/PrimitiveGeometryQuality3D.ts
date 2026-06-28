@@ -8,9 +8,13 @@ export type PrimitiveGeometryRole =
   | 'projectile'
   | 'beam'
   | 'shield'
+  | 'shieldImpact'
   | 'building'
   | 'locomotion'
   | 'effect'
+  | 'smoke'
+  | 'fog'
+  | 'waterSplash'
   | 'hud'
   | 'debug';
 
@@ -199,6 +203,33 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
       far: { tubeSegments: 6, radialSegments: 10 },
     },
   },
+  shieldImpact: {
+    sphere: {
+      close: { widthSegments: 16, heightSegments: 10 },
+      mid: { widthSegments: 12, heightSegments: 8 },
+      far: { widthSegments: 8, heightSegments: 6 },
+    },
+    cylinder: {
+      close: { radialSegments: 24 },
+      mid: { radialSegments: 16 },
+      far: { radialSegments: 10 },
+    },
+    cone: {
+      close: { radialSegments: 16 },
+      mid: { radialSegments: 12 },
+      far: { radialSegments: 8 },
+    },
+    circle: {
+      close: { radialSegments: 24 },
+      mid: { radialSegments: 16 },
+      far: { radialSegments: 10 },
+    },
+    torus: {
+      close: { tubeSegments: 6, radialSegments: 24 },
+      mid: { tubeSegments: 5, radialSegments: 16 },
+      far: { tubeSegments: 4, radialSegments: 10 },
+    },
+  },
   building: {
     sphere: {
       close: { widthSegments: 14, heightSegments: 10 },
@@ -277,6 +308,87 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
     torus: {
       close: { tubeSegments: 8, radialSegments: 20 },
       mid: { tubeSegments: 6, radialSegments: 14 },
+      far: { tubeSegments: 5, radialSegments: 8 },
+    },
+  },
+  smoke: {
+    sphere: {
+      close: { widthSegments: 12, heightSegments: 8 },
+      mid: { widthSegments: 8, heightSegments: 6 },
+      far: { widthSegments: 6, heightSegments: 4 },
+    },
+    cylinder: {
+      close: { radialSegments: 10 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 6 },
+    },
+    cone: {
+      close: { radialSegments: 10 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 6 },
+    },
+    circle: {
+      close: { radialSegments: 20 },
+      mid: { radialSegments: 14 },
+      far: { radialSegments: 8 },
+    },
+    torus: {
+      close: { tubeSegments: 8, radialSegments: 20 },
+      mid: { tubeSegments: 6, radialSegments: 14 },
+      far: { tubeSegments: 5, radialSegments: 8 },
+    },
+  },
+  fog: {
+    sphere: {
+      close: { widthSegments: 8, heightSegments: 6 },
+      mid: { widthSegments: 6, heightSegments: 4 },
+      far: { widthSegments: 3, heightSegments: 3 },
+    },
+    cylinder: {
+      close: { radialSegments: 6 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 6 },
+    },
+    cone: {
+      close: { radialSegments: 6 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 6 },
+    },
+    circle: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 8 },
+    },
+    torus: {
+      close: { tubeSegments: 5, radialSegments: 8 },
+      mid: { tubeSegments: 5, radialSegments: 8 },
+      far: { tubeSegments: 5, radialSegments: 8 },
+    },
+  },
+  waterSplash: {
+    sphere: {
+      close: { widthSegments: 5, heightSegments: 3 },
+      mid: { widthSegments: 5, heightSegments: 3 },
+      far: { widthSegments: 5, heightSegments: 3 },
+    },
+    cylinder: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 6 },
+    },
+    cone: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 6 },
+    },
+    circle: {
+      close: { radialSegments: 12 },
+      mid: { radialSegments: 10 },
+      far: { radialSegments: 8 },
+    },
+    torus: {
+      close: { tubeSegments: 6, radialSegments: 12 },
+      mid: { tubeSegments: 5, radialSegments: 10 },
       far: { tubeSegments: 5, radialSegments: 8 },
     },
   },
@@ -396,6 +508,16 @@ export function createPrimitiveCircleGeometry(
   return new THREE.CircleGeometry(radius, q.radialSegments);
 }
 
+export function createPrimitiveRingGeometry(
+  role: PrimitiveGeometryRole,
+  tier: PrimitiveGeometryTier = 'close',
+  innerRadius = 0.9,
+  outerRadius = 1,
+): THREE.RingGeometry {
+  const q = quality(role).circle[tier];
+  return new THREE.RingGeometry(innerRadius, outerRadius, q.radialSegments);
+}
+
 export function createPrimitiveTorusGeometry(
   role: PrimitiveGeometryRole,
   tier: PrimitiveGeometryTier = 'close',
@@ -481,6 +603,21 @@ export function getSharedPrimitiveCircleGeometry(
   let geom = sharedGeometry.get(key) as THREE.CircleGeometry | undefined;
   if (geom === undefined) {
     geom = createPrimitiveCircleGeometry(role, tier, radius);
+    sharedGeometry.set(key, geom);
+  }
+  return geom;
+}
+
+export function getSharedPrimitiveRingGeometry(
+  role: PrimitiveGeometryRole,
+  tier: PrimitiveGeometryTier = 'close',
+  innerRadius = 0.9,
+  outerRadius = 1,
+): THREE.RingGeometry {
+  const key = keyOf(['ring', role, tier, innerRadius, outerRadius]);
+  let geom = sharedGeometry.get(key) as THREE.RingGeometry | undefined;
+  if (geom === undefined) {
+    geom = createPrimitiveRingGeometry(role, tier, innerRadius, outerRadius);
     sharedGeometry.set(key, geom);
   }
   return geom;

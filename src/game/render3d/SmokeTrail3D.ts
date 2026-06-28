@@ -20,7 +20,7 @@
 // uses at runtime — see update().
 //
 // One shared instanced pool renders every smoke use. Puff geometry
-// resolution comes from smokeConfig.puffGeometry.
+// resolution comes from PrimitiveGeometryQuality3D.
 //
 // Smoke density, velocity, fade timing, size, and per-use caps come
 // from flat smokeConfig entries keyed by the actual smoke producer
@@ -31,19 +31,18 @@ import type { Entity } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getSmokeTrails, getSmokeSoftEdges } from '@/clientBarConfig';
 import {
-  getSmokePuffGeometryConfig,
   getSmokePoolMaxParticles,
   type ResolvedSmokeProfile,
   type SmokeCapPolicy,
   type SmokeUseId,
 } from '@/smokeConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
 import { clamp01 } from './RenderUtils';
 
 const DEFAULT_COLOR = COLORS.effects.smokeTrail.default.colorHex;
 const MAX_PARTICLES = getSmokePoolMaxParticles();
-const PUFF_GEOMETRY = getSmokePuffGeometryConfig();
 
 type SmokeSpawnProfile = {
   useId: SmokeUseId;
@@ -234,23 +233,15 @@ export class SmokeTrail3D {
     });
     this.softEdges = getSmokeSoftEdges();
 
-    this.pool = this.createPool(
-      Math.max(3, PUFF_GEOMETRY.widthSegments | 0),
-      Math.max(2, PUFF_GEOMETRY.heightSegments | 0),
-      MAX_PARTICLES,
-    );
+    this.pool = this.createPool(MAX_PARTICLES);
   }
 
   private activeMaterial(): THREE.ShaderMaterial {
     return this.softEdges ? this.matSoft : this.matSphere;
   }
 
-  private createPool(
-    widthSegments: number,
-    heightSegments: number,
-    maxParticles: number,
-  ): PuffPool {
-    const geom = new THREE.SphereGeometry(1, widthSegments, heightSegments);
+  private createPool(maxParticles: number): PuffPool {
+    const geom = createPrimitiveSphereGeometry('smoke', 'close');
     const alphaArr = new Float32Array(maxParticles);
     const colorArr = new Float32Array(maxParticles * 3);
     // Per-instance attribute buffers. Index i in alphaArr / colorArr

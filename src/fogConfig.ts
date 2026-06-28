@@ -16,14 +16,8 @@ type FogOfWarProfile = {
   zRange: number;
 };
 
-type FogSphereGeometryConfig = {
-  widthSegments: number;
-  heightSegments: number;
-};
-
 type FogConfig = {
   fogOfWar: FogOfWarProfile;
-  sphereGeometry: FogSphereGeometryConfig;
 };
 
 const FOG_CONFIG_RAW = rawFogConfig as FogConfig;

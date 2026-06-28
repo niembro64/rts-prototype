@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { SHIELD_IMPACT_VISUAL } from '../../config';
 import { getPlayerPrimaryColor, type Entity, type PlayerId } from '../sim/types';
 import { writeHexToRgb01Array } from './colorUtils';
+import { createPrimitiveCircleGeometry, createPrimitiveTorusGeometry } from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
 
 type Impact = {
@@ -145,8 +146,6 @@ export class ShieldImpactRenderer3D {
 
   constructor(parentWorld: THREE.Group) {
     const cfg = SHIELD_IMPACT_VISUAL;
-    const ringSegments = Math.max(12, Math.floor(cfg.ringSegments));
-    const tubeSegments = Math.max(3, Math.floor(cfg.ringTubeSegments));
     const tubeRadius = Math.min(0.45, Math.max(0.01, cfg.ringTubeRadiusFrac));
     this.root = new THREE.Group();
     parentWorld.add(this.root);
@@ -157,7 +156,7 @@ export class ShieldImpactRenderer3D {
     // tori read like rings of shield/mirror material.
     this.ringPool = new ImpactPool(
       this.root,
-      new THREE.TorusGeometry(1, tubeRadius, tubeSegments, ringSegments),
+      createPrimitiveTorusGeometry('shieldImpact', 'close', 1, tubeRadius),
       cfg.maxImpacts * Math.max(1, cfg.ringCount)
         + ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP
           * ShieldImpactRenderer3D.CONTINUOUS_RING_COUNT,
@@ -166,7 +165,7 @@ export class ShieldImpactRenderer3D {
     );
     this.corePool = new ImpactPool(
       this.root,
-      new THREE.CircleGeometry(1, ringSegments),
+      createPrimitiveCircleGeometry('shieldImpact', 'close'),
       cfg.maxImpacts + ShieldImpactRenderer3D.CONTINUOUS_BEAM_HIT_CAP,
       17,
     );

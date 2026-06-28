@@ -20,11 +20,6 @@ export type HoverSmokeUseId = Extract<
 >;
 export type FlyingSmokeUseId = Extract<SmokeUseId, 'locomotionEagleFlying' | 'locomotionAlbatrosFlying'>;
 
-type SmokePuffGeometryConfig = {
-  widthSegments: number;
-  heightSegments: number;
-};
-
 export type SmokeCapPolicy = 'evictOldest' | 'skipWhenFull';
 
 export type SmokeProfile = {
@@ -44,9 +39,7 @@ export type ResolvedSmokeProfile = SmokeProfile & {
   useId: SmokeUseId;
 };
 
-type SmokeConfig = Record<SmokeUseId, SmokeProfile> & {
-  puffGeometry: SmokePuffGeometryConfig;
-};
+type SmokeConfig = Record<SmokeUseId, SmokeProfile>;
 
 const SMOKE_CONFIG_RAW = rawSmokeConfig as SmokeConfig;
 
@@ -78,13 +71,9 @@ export function getSmokeProfile(useId: SmokeUseId): ResolvedSmokeProfile {
 export function getSmokePoolMaxParticles(): number {
   let total = 0;
   for (const profile of Object.values(SMOKE_CONFIG)) {
-    if ('maxPoolSize' in profile) total += profile.maxPoolSize;
+    total += profile.maxPoolSize;
   }
   return Math.max(1, total);
-}
-
-export function getSmokePuffGeometryConfig(): SmokePuffGeometryConfig {
-  return SMOKE_CONFIG.puffGeometry;
 }
 
 export function getProjectileSmokeTrailSpec(

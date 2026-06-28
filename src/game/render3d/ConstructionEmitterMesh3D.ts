@@ -107,8 +107,8 @@ type ResourcePylonBuildOptions = {
 };
 
 const cylinderGeom = createPrimitiveCylinderGeometry('building', 'close', 0.5, 0.5);
-const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
-const octagonCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
+const hexCylinderGeom = createPrimitiveCylinderGeometry('building', 'far', 0.5, 0.5);
+const octagonCylinderGeom = createPrimitiveCylinderGeometry('effect', 'mid', 0.5, 0.5);
 const frameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 
 // "Straw" walls: the pylon is a transparent double-wall tube — an outer

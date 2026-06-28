@@ -11,9 +11,5 @@
     "transparentOuterFraction": 0.4,
     "zMin": -500,
     "zRange": 1600
-  },
-  "sphereGeometry": {
-    "widthSegments": 3,
-    "heightSegments": 3
   }
 }

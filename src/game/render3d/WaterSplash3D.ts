@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { WATER_LEVEL } from '../sim/Terrain';
 import { SPLASH_CONFIG } from '@/splashConfig';
 import type { Vec3 } from '@/types/vec2';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
 
 const VS = `
@@ -67,11 +68,7 @@ export class WaterSplash3D {
     this.root = new THREE.Group();
     parentWorld.add(this.root);
 
-    this.geom = new THREE.SphereGeometry(
-      1,
-      cfg.geometry.sphereWidthSegments,
-      cfg.geometry.sphereHeightSegments,
-    );
+    this.geom = createPrimitiveSphereGeometry('waterSplash', 'close');
     this.alphaArr = new Float32Array(cfg.pool.maxDroplets);
     this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);
     this.alphaAttr.setUsage(THREE.DynamicDrawUsage);

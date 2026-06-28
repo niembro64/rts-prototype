@@ -10,7 +10,7 @@ import {
 
 export const boxGeom = new THREE.BoxGeometry(1, 1, 1);
 export const cylinderGeom = createPrimitiveCylinderGeometry('building', 'close', 0.5, 0.5);
-export const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
+export const hexCylinderGeom = createPrimitiveCylinderGeometry('building', 'far', 0.5, 0.5);
 const factorySphereGeom = createPrimitiveSphereGeometry('building', 'close');
 const coneGeom = createPrimitiveConeGeometry('building', 'close', 0.5);
 const windBladeGeom = createWindBladeGeometry();

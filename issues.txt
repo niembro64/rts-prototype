@@ -19,15 +19,6 @@ Please always commit and push before and after any code changes we make.
 
 
 
-[19] Optimization - centralize primitive sphere/cylinder quality and add render LOD controls
-    Preserve current visuals by default, but provide a high-level quality
-    policy for shared sphere, cylinder, cone, torus, and circle geometry roles.
-    Unit bodies, turret heads/barrels, beams, shields, projectiles, locomotion
-    parts, effects, HUD/debug primitives, and smoke puffs should use common
-    quality tiers instead of ad hoc smooth geometry. Add contract coverage for
-    primitive segment counts and benchmark the GPU/frame impact before lowering
-    defaults or enabling distance/quality-based reductions.
-
 [20] Optimization - finish render-facing slab consumption beyond core entity rows
     Preserve current visuals until explicit visual-quality issues say otherwise.
     Remaining high-count render paths should consume stable slot-indexed typed

@@ -12,12 +12,10 @@
     "maxImpacts": 192,
     "durationMs": 1000,
     "ringCount": 1,
-    "ringSegments": 24,
     "ringDelayMs": 0,
     "startRadius": 0,
     "endRadius": 38,
     "ringTubeRadiusFrac": 0.11,
-    "ringTubeSegments": 6,
     "coreRadiusFrac": 0.42,
     "coreDurationFrac": 0.45,
     "surfaceOffset": 1.2

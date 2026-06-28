@@ -48,10 +48,6 @@ type SplashConfig = {
     maxDroplets: number;
     maxDropletsPerSpawn: number;
   };
-  geometry: {
-    sphereWidthSegments: number;
-    sphereHeightSegments: number;
-  };
   appearance: {
     colorR: number;
     colorG: number;
@@ -105,10 +101,6 @@ function buildConfig(): SplashConfig {
     pool: Object.freeze({
       maxDroplets: raw.pool.maxDroplets,
       maxDropletsPerSpawn: raw.pool.maxDropletsPerSpawn,
-    }),
-    geometry: Object.freeze({
-      sphereWidthSegments: raw.geometry.sphereWidthSegments,
-      sphereHeightSegments: raw.geometry.sphereHeightSegments,
     }),
     appearance: Object.freeze({
       colorR: color[0],

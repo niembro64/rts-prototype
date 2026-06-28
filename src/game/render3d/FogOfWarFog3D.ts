@@ -8,6 +8,7 @@ import type { Entity, PlayerId } from '../sim/types';
 import { DEMO_CONFIG } from '@/demoConfig';
 import { FOG_CONFIG } from '@/fogConfig';
 import { COLORS } from '@/colorsConfig';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 import { clamp01 } from './RenderUtils';
@@ -137,12 +138,7 @@ export class FogOfWarFog3D {
       toneMapped: false,
     });
 
-    const geomCfg = FOG_CONFIG.sphereGeometry;
-    this.pool = this.createPool(
-      Math.max(8, geomCfg.widthSegments | 0),
-      Math.max(6, geomCfg.heightSegments | 0),
-      Math.max(1, this.profile.maxPoolSize | 0),
-    );
+    this.pool = this.createPool(Math.max(1, this.profile.maxPoolSize | 0));
     worldGroup.add(this.pool.mesh);
   }
 
@@ -173,12 +169,8 @@ export class FogOfWarFog3D {
     this.sourceRadii.length = 0;
   }
 
-  private createPool(
-    widthSegments: number,
-    heightSegments: number,
-    maxSpheres: number,
-  ): FogPool {
-    const geom = new THREE.SphereGeometry(1, widthSegments, heightSegments);
+  private createPool(maxSpheres: number): FogPool {
+    const geom = createPrimitiveSphereGeometry('fog', 'close');
     const alphaArr = new Float32Array(maxSpheres);
     const colorArr = new Float32Array(maxSpheres * 3);
     const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);
