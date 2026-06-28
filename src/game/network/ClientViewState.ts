@@ -1679,8 +1679,10 @@ export class ClientViewState {
     hoveredEntity: Entity | null,
     renderScope: ViewportFootprint,
   ): void {
-    const included = this.scopedRenderIncludedIds;
-    included.clear();
+    const selectedIds = this.selectionState.get();
+    const hasExceptions = hoveredEntity !== null || selectedIds.size > 0;
+    const included = hasExceptions ? this.scopedRenderIncludedIds : null;
+    if (included !== null) included.clear();
     const unitSlots = this.scopedRenderUnitSlots;
     const buildingSlots = this.scopedRenderBuildingSlots;
     this.renderSpatialIndex.queryFilteredSlots(
@@ -1699,10 +1701,11 @@ export class ClientViewState {
       CLIENT_RENDER_ENTITY_KIND_BUILDING,
     );
 
+    if (included === null) return;
     if (hoveredEntity !== null) {
       this.pushScopedRenderException(hoveredEntity, outUnits, outBuildings, included);
     }
-    for (const id of this.selectionState.get()) {
+    for (const id of selectedIds) {
       const entity = this.entities.get(id);
       if (entity !== undefined) {
         this.pushScopedRenderException(entity, outUnits, outBuildings, included);
@@ -1982,7 +1985,7 @@ export class ClientViewState {
   private resolveScopedRenderSlots(
     slots: readonly number[],
     out: Entity[],
-    included: Set<EntityId>,
+    included: Set<EntityId> | null,
     expectedKind: number,
   ): void {
     const views = this.renderEntityState.getViews();
@@ -1990,7 +1993,7 @@ export class ClientViewState {
       const slot = slots[i];
       if (views.kind[slot] !== expectedKind) continue;
       const entityId = views.entityIds[slot] as EntityId;
-      if (included.has(entityId)) continue;
+      if (included !== null && included.has(entityId)) continue;
       const entity = this.entities.get(entityId);
       if (entity === undefined) continue;
       if (
@@ -2000,7 +2003,7 @@ export class ClientViewState {
         continue;
       }
       out.push(entity);
-      included.add(entityId);
+      if (included !== null) included.add(entityId);
     }
   }
 
