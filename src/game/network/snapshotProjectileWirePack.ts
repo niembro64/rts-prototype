@@ -71,6 +71,11 @@ export type PackedProjectileSnapshotWire = {
   b: Uint8Array | undefined;
 };
 
+export type PackedProjectileUnpackOptions = {
+  materializeDespawns?: boolean;
+  materializeVelocityUpdates?: boolean;
+};
+
 export function packProjectilesForWire(
   projectiles: ProjectileSnapshot | undefined,
 ): PackedProjectileSnapshotWire | undefined {
@@ -125,11 +130,16 @@ function getCurrentProjectileWireSource(
 
 export function unpackProjectilesFromWire(
   packed: PackedProjectileSnapshotWire,
+  options: PackedProjectileUnpackOptions = {},
 ): ProjectileSnapshot {
   const projectiles = createEmptyProjectileSnapshot();
   const spawns = packed.s !== undefined ? unpackProjectileSpawns(packed.s) : undefined;
-  const despawns = packed.d !== undefined ? unpackProjectileDespawns(packed.d) : undefined;
-  const velocityUpdates = packed.u !== undefined
+  const materializeDespawns = options.materializeDespawns !== false;
+  const materializeVelocityUpdates = options.materializeVelocityUpdates !== false;
+  const despawns = packed.d !== undefined && materializeDespawns
+    ? unpackProjectileDespawns(packed.d)
+    : undefined;
+  const velocityUpdates = packed.u !== undefined && materializeVelocityUpdates
     ? unpackProjectileVelocityUpdates(packed.u)
     : undefined;
   const beamUpdates = packed.b !== undefined ? unpackBeamUpdates(packed.b) : undefined;

@@ -143,7 +143,12 @@ export class LocalGameConnection implements GameConnection {
     }
     const encoded = wirePayload ?? this.encodeSnapshotForDiagnostics(state);
     this.recordLocalSnapshotWireCostIfNeeded(state, encoded);
-    const decoded = decodeNetworkSnapshot(encoded.bytes);
+    const decoded = decodeNetworkSnapshot(encoded.bytes, {
+      packedProjectileDeltas:
+        this.snapshotCallback !== null && !this.snapshotImpairment.enabled
+          ? 'metadata-only'
+          : 'dto',
+    });
     setSnapshotWireBytes(decoded, encoded.bytes.byteLength);
     copySnapshotMaterializationMetadata(state, decoded);
     return decoded;

@@ -94,6 +94,10 @@ const ENTITY_MAJOR_KEYS = [
 
 type EncodedNetworkSnapshot = Omit<SnapshotWirePayload, 'encodeMs'>;
 
+export type DecodeNetworkSnapshotOptions = {
+  packedProjectileDeltas?: 'dto' | 'metadata-only';
+};
+
 export type SnapshotWireBreakdownEntry = {
   section: string;
   bytes: number;
@@ -145,9 +149,15 @@ export function encodeNetworkSnapshotDetailed(state: NetworkServerSnapshot): Enc
   };
 }
 
-export function decodeNetworkSnapshot(raw: Uint8Array | ArrayBuffer): NetworkServerSnapshot {
+export function decodeNetworkSnapshot(
+  raw: Uint8Array | ArrayBuffer,
+  options: DecodeNetworkSnapshotOptions = {},
+): NetworkServerSnapshot {
   const bytes = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-  return unpackNetworkSnapshotFromWire(msgpackDecode(bytes) as NetworkServerSnapshotWire);
+  return unpackNetworkSnapshotFromWire(
+    msgpackDecode(bytes) as NetworkServerSnapshotWire,
+    options,
+  );
 }
 
 export function measureNetworkSnapshotWireBreakdown(
@@ -236,6 +246,7 @@ function packNetworkSnapshotForWire(
 
 function unpackNetworkSnapshotFromWire(
   state: NetworkServerSnapshotWire,
+  options: DecodeNetworkSnapshotOptions = {},
 ): NetworkServerSnapshot {
   const audioEvents = state.audioEvents;
   const minimapEntities = state.minimapEntities;
@@ -269,7 +280,12 @@ function unpackNetworkSnapshotFromWire(
     snapshot.minimapEntities = unpackMinimapEntitiesFromWire(minimapEntities);
   }
   if (hasPackedProjectiles) {
-    snapshot.projectiles = unpackProjectilesFromWire(projectiles);
+    snapshot.projectiles = unpackProjectilesFromWire(
+      projectiles,
+      options.packedProjectileDeltas === 'metadata-only'
+        ? { materializeDespawns: false, materializeVelocityUpdates: false }
+        : undefined,
+    );
   }
   if (hasPackedEntities) {
     snapshot.entities = unpackEntitiesFromWire(entities);

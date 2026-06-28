@@ -30,6 +30,11 @@ import {
   createVelocityDto,
 } from '../../network/snapshotDtoCopy';
 import { addSnapshotClientMaterializationStage } from '../../network/snapshotMaterializationMetadata';
+import {
+  forEachPackedProjectileDespawn,
+  forEachPackedProjectileVelocityUpdate,
+  getPackedProjectileSnapshotWire,
+} from '../../network/snapshotProjectileWirePack';
 
 const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
@@ -151,15 +156,48 @@ export class SnapshotBuffer {
   }
 
   private pushBufferedDespawn(despawn: NetworkServerSnapshotProjectileDespawn): void {
-    if (this.bufferedDespawns.has(despawn.id)) {
+    this.pushBufferedDespawnId(despawn.id);
+  }
+
+  private pushBufferedDespawnId(id: number): void {
+    if (this.bufferedDespawns.has(id)) {
       this.coalescedDespawns++;
       return;
     }
     const out = this.despawnStagePool[this.despawnStagePoolIndex] ?? { id: 0 };
     this.despawnStagePool[this.despawnStagePoolIndex] = out;
     this.despawnStagePoolIndex++;
-    out.id = despawn.id;
-    this.bufferedDespawns.set(despawn.id, out);
+    out.id = id;
+    this.bufferedDespawns.set(id, out);
+  }
+
+  private pushBufferedVelocityFields(
+    id: number,
+    qposX: number,
+    qposY: number,
+    qposZ: number,
+    qvelX: number,
+    qvelY: number,
+    qvelZ: number,
+    targetEntityId: number | null,
+    clearHomingTarget: boolean,
+  ): void {
+    let out = this.bufferedVelocityUpdates.get(id);
+    if (!out) {
+      out = this.velocityStagePool[this.velocityStagePoolIndex] ?? createVelocityDto();
+      this.velocityStagePool[this.velocityStagePoolIndex] = out;
+      this.velocityStagePoolIndex++;
+      this.bufferedVelocityUpdates.set(id, out);
+    }
+    out.id = id;
+    out.pos.x = qposX;
+    out.pos.y = qposY;
+    out.pos.z = qposZ;
+    out.velocity.x = qvelX;
+    out.velocity.y = qvelY;
+    out.velocity.z = qvelZ;
+    out.targetEntityId = targetEntityId;
+    out.clearHomingTarget = clearHomingTarget ? true : null;
   }
 
   private mergeEntityMotionDeltaIntoPending(
@@ -286,6 +324,7 @@ export class SnapshotBuffer {
     ) => {
       if (onBufferedSnapshot !== undefined) onBufferedSnapshot(state);
       const proj = state.projectiles;
+      const packedProjectiles = getPackedProjectileSnapshotWire(proj);
       if (proj !== undefined && proj.spawns !== undefined) {
         for (let i = 0; i < proj.spawns.length; i++) {
           this.pushBufferedSpawn(proj.spawns[i]);
@@ -295,6 +334,11 @@ export class SnapshotBuffer {
         for (let i = 0; i < proj.despawns.length; i++) {
           this.pushBufferedDespawn(proj.despawns[i]);
         }
+      } else if (packedProjectiles !== undefined) {
+        forEachPackedProjectileDespawn(
+          packedProjectiles,
+          (id) => this.pushBufferedDespawnId(id),
+        );
       }
       if (state.audioEvents) {
         for (let i = 0; i < state.audioEvents.length; i++) {
@@ -304,15 +348,43 @@ export class SnapshotBuffer {
       if (proj !== undefined && proj.velocityUpdates !== undefined) {
         for (let i = 0; i < proj.velocityUpdates.length; i++) {
           const vu = proj.velocityUpdates[i];
-          let out = this.bufferedVelocityUpdates.get(vu.id);
-          if (!out) {
-            out = this.velocityStagePool[this.velocityStagePoolIndex] ?? createVelocityDto();
-            this.velocityStagePool[this.velocityStagePoolIndex] = out;
-            this.velocityStagePoolIndex++;
-            this.bufferedVelocityUpdates.set(vu.id, out);
-          }
-          copyVelocityInto(vu, out);
+          this.pushBufferedVelocityFields(
+            vu.id,
+            vu.pos.x,
+            vu.pos.y,
+            vu.pos.z,
+            vu.velocity.x,
+            vu.velocity.y,
+            vu.velocity.z,
+            vu.targetEntityId,
+            vu.clearHomingTarget === true,
+          );
         }
+      } else if (packedProjectiles !== undefined) {
+        forEachPackedProjectileVelocityUpdate(
+          packedProjectiles,
+          (
+            id,
+            qposX,
+            qposY,
+            qposZ,
+            qvelX,
+            qvelY,
+            qvelZ,
+            targetEntityId,
+            clearHomingTarget,
+          ) => this.pushBufferedVelocityFields(
+            id,
+            qposX,
+            qposY,
+            qposZ,
+            qvelX,
+            qvelY,
+            qvelZ,
+            targetEntityId,
+            clearHomingTarget,
+          ),
+        );
       }
       if (proj !== undefined && proj.beamUpdates !== undefined) {
         for (let i = 0; i < proj.beamUpdates.length; i++) {

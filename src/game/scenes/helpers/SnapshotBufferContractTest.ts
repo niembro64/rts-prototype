@@ -1,3 +1,4 @@
+import { encode as msgpackEncode } from '@msgpack/msgpack';
 import type { Command } from '../../sim/commands';
 import type {
   GameConnection,
@@ -9,6 +10,11 @@ import type { NetworkServerSnapshot } from '../../network/NetworkTypes';
 import type { NetworkServerSnapshotEntity } from '../../network/NetworkTypes';
 import { SnapshotBuffer } from './SnapshotBuffer';
 import { ENTITY_CHANGED_POS } from '../../../types/network';
+import { decodeNetworkSnapshot } from '../../network/snapshotWireCodec';
+import {
+  getPackedProjectileSnapshotWire,
+  packProjectilesForWire,
+} from '../../network/snapshotProjectileWirePack';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -223,6 +229,52 @@ export function runSnapshotBufferContractTest(): void {
   assertContract(
     consumedIndexedMerge?.entities.some((entity) => entity.id === 1090) === false,
     'indexed entity delta merge must prune removed pending rows',
+  );
+
+  const packedProjectileDelta = createSnapshot(10, [60, 60, 61]);
+  packedProjectileDelta.projectileDeltaOnly = true;
+  packedProjectileDelta.projectiles!.velocityUpdates = [{
+    id: 70,
+    pos: { x: 100, y: 200, z: 300 },
+    velocity: { x: 10, y: 20, z: 30 },
+    targetEntityId: 88,
+    clearHomingTarget: null,
+  }];
+  const packedProjectiles = packProjectilesForWire(packedProjectileDelta.projectiles);
+  assertContract(packedProjectiles !== undefined, 'packed projectile delta fixture must pack');
+  const decodedPackedDelta = decodeNetworkSnapshot(
+    msgpackEncode({
+      ...packedProjectileDelta,
+      projectiles: packedProjectiles,
+    }, { ignoreUndefined: true }),
+    { packedProjectileDeltas: 'metadata-only' },
+  );
+  assertContract(
+    decodedPackedDelta.projectiles?.despawns === undefined &&
+      decodedPackedDelta.projectiles?.velocityUpdates === undefined,
+    'metadata-only decode must skip projectile despawn and velocity DTO arrays',
+  );
+  assertContract(
+    getPackedProjectileSnapshotWire(decodedPackedDelta.projectiles) !== undefined,
+    'metadata-only decode must retain packed projectile metadata',
+  );
+  fake.emitSnapshot(decodedPackedDelta);
+  const consumedPackedDelta = buffer.consume();
+  const packedDespawns = consumedPackedDelta?.projectiles?.despawns ?? [];
+  const packedVelocityUpdates = consumedPackedDelta?.projectiles?.velocityUpdates ?? [];
+  assertContract(
+    packedDespawns.length === 2 &&
+      packedDespawns.some((despawn) => despawn.id === 60) &&
+      packedDespawns.some((despawn) => despawn.id === 61),
+    'snapshot buffer must coalesce packed metadata-only despawns',
+  );
+  assertContract(
+    packedVelocityUpdates.length === 1 &&
+      packedVelocityUpdates[0].id === 70 &&
+      packedVelocityUpdates[0].pos.x === 100 &&
+      packedVelocityUpdates[0].velocity.z === 30 &&
+      packedVelocityUpdates[0].targetEntityId === 88,
+    'snapshot buffer must materialize packed metadata-only velocity updates on consume',
   );
 
   buffer.clear();
