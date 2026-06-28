@@ -24,6 +24,8 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
+import type { ClientRenderEntityStateViews } from './ClientRenderEntityStateSlab';
+import { CLIENT_RENDER_ENTITY_KIND_UNIT } from './ClientRenderEntityStateSlab';
 
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
@@ -289,6 +291,74 @@ export class ShieldRenderPacket3D {
           ? SHIELD_FIELD_SHAPE_AIMED_CYLINDER
         : SHIELD_FIELD_SHAPE_SPHERE;
       this.count = cursor + 1;
+    }
+  }
+
+  pushUnitState(
+    unitEntity: Entity,
+    state: ClientRenderEntityStateViews,
+    slot: number,
+    scope: ViewportFootprint,
+  ): void {
+    const unit = unitEntity.unit;
+    const combat = unitEntity.combat;
+    if (!unit || !combat || state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return;
+    const unitMountLiftY = this.resolveMountLiftY(unit);
+    const fieldColor = resolveShieldSurfaceColor(unitEntity);
+    const turrets = combat.turrets;
+    const hostX = state.x[slot];
+    const hostY = state.y[slot];
+    const hostZ = state.z[slot];
+    const hostRotation = state.rotation[slot];
+    const bodyCenterHeight = state.bodyCenterHeight[slot];
+    const cos = Math.cos(hostRotation);
+    const sin = Math.sin(hostRotation);
+    for (let ti = 0; ti < turrets.length; ti++) {
+      const turret = turrets[ti];
+      if (!isShieldTurret(turret)) continue;
+      const shot = turret.config.shot;
+      if (!shot || shot.type !== 'shield' || !shot.barrier) continue;
+      const barrier = shot.barrier;
+      let targetX = hostX;
+      let targetY = hostY;
+      let targetZ = hostZ;
+      if (barrier.shape === 'aimedCylinder') {
+        const originX = hostX + turret.mount.x * cos - turret.mount.y * sin;
+        const originY = hostY + turret.mount.x * sin + turret.mount.y * cos;
+        const originZ = hostZ - bodyCenterHeight + turret.mount.z;
+        const pitchSin = Math.sin(turret.pitch);
+        const pitchCos = Math.cos(turret.pitch);
+        targetX = originX + Math.cos(turret.rotation) * pitchCos * turret.config.range;
+        targetY = originY + Math.sin(turret.rotation) * pitchCos * turret.config.range;
+        targetZ = originZ + pitchSin * turret.config.range;
+      }
+      if (!scope.inScope(hostX, hostY, Math.max(300, barrier.outerRange))) continue;
+      this.pushRow({
+        hostId: state.entityIds[slot],
+        turretIndex: ti,
+        x: hostX,
+        y: hostY,
+        z: hostZ,
+        rotation: hostRotation,
+        bodyCenterHeight,
+        mountLiftY: unitMountLiftY,
+        localX: turret.mount.x,
+        localY: turret.mount.z - unitMountLiftY,
+        localZ: turret.mount.y,
+        targetX,
+        targetY,
+        targetZ,
+        progress: turret.shield?.range ?? 0,
+        outerRange: barrier.outerRange,
+        originOffsetZ: barrier.originOffsetZ,
+        barrierAlpha: barrier.alpha,
+        color: fieldColor,
+        shape: barrier.shape === 'infiniteVerticalCylinder'
+          ? SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER
+          : barrier.shape === 'aimedCylinder'
+            ? SHIELD_FIELD_SHAPE_AIMED_CYLINDER
+          : SHIELD_FIELD_SHAPE_SPHERE,
+      });
     }
   }
 

@@ -1263,7 +1263,7 @@ export class ClientViewState {
         entity.combat !== null &&
         !this.entityEmissionUsesFarLod3D(entity, options, 'shieldFields')
       ) {
-        out.shields.pushUnit(entity, renderScope);
+        this.pushShieldUnit3D(entity, renderScope, out);
       }
     }
     for (let i = 0; i < buildings.length; i++) {
@@ -1733,8 +1733,23 @@ export class ClientViewState {
   ): void {
     for (let i = 0; i < units.length; i++) {
       if (!this.entityEmissionUsesFarLod3D(units[i], options, 'shieldFields')) {
-        out.shields.pushUnit(units[i], renderScope);
+        this.pushShieldUnit3D(units[i], renderScope, out);
       }
+    }
+  }
+
+  private pushShieldUnit3D(
+    entity: Entity,
+    renderScope: ViewportFootprint,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    const slot = this.renderEntityState.getSlot(entity.id)
+      ?? this.renderEntityState.refreshEntity(entity);
+    const views = this.renderEntityState.getViews();
+    if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
+      out.shields.pushUnitState(entity, views, slot, renderScope);
+    } else {
+      out.shields.pushUnit(entity, renderScope);
     }
   }
 
