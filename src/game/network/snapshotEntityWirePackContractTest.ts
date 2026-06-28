@@ -5,6 +5,7 @@ import type {
 } from './NetworkTypes';
 import {
   ACTION_TYPE_WAIT,
+  ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -34,11 +35,12 @@ function assertContract(condition: unknown, message: string): asserts condition 
   }
 }
 
-const PACKED_ENTITIES_VERSION_V12 = 12;
+const PACKED_ENTITIES_VERSION_V13 = 13;
 const MOVEMENT_UNIT_FLAG_POS = 1 << 0;
 const MOVEMENT_UNIT_FLAG_ROTATION = 1 << 1;
 const MOVEMENT_UNIT_FLAG_VELOCITY = 1 << 2;
 const MOVEMENT_UNIT_FLAG_SURFACE_NORMAL = 1 << 7;
+const MOVEMENT_UNIT_FLAG_HP = 1 << 8;
 const ENTITIES_KEY_PREFIX_BYTES = 9;
 
 function createEmptyEntityWireSource(): EntitySnapshotWireSource {
@@ -62,8 +64,9 @@ function createPackedMovementRowWithNormal(): Uint8Array {
     MOVEMENT_UNIT_FLAG_POS |
     MOVEMENT_UNIT_FLAG_ROTATION |
     MOVEMENT_UNIT_FLAG_VELOCITY |
-    MOVEMENT_UNIT_FLAG_SURFACE_NORMAL;
-  const writer = new PackedBinaryWriter(64, PACKED_BINARY_ROW_COUNT_BYTES);
+    MOVEMENT_UNIT_FLAG_SURFACE_NORMAL |
+    MOVEMENT_UNIT_FLAG_HP;
+  const writer = new PackedBinaryWriter(96, PACKED_BINARY_ROW_COUNT_BYTES);
   writer.writeVarUint(1);
   writer.writeVarUint(flags);
   writer.writeVarUint(2);
@@ -79,6 +82,8 @@ function createPackedMovementRowWithNormal(): Uint8Array {
   writer.writeVarInt(100);
   writer.writeVarInt(-200);
   writer.writeVarInt(975);
+  writer.writeFloat64(88.5);
+  writer.writeFloat64(120);
   writer.setUint32LE(0, 1);
   return writer.finishBytes().slice();
 }
@@ -99,7 +104,10 @@ function createV6MovementNormalSource(): EntitySnapshotWireSource {
     ENTITY_CHANGED_POS |
     ENTITY_CHANGED_ROT |
     ENTITY_CHANGED_VEL |
-    ENTITY_CHANGED_NORMAL;
+    ENTITY_CHANGED_NORMAL |
+    ENTITY_CHANGED_HP;
+  values[base + 8] = 77.25;
+  values[base + 9] = 100;
   values[base + 10] = 11;
   values[base + 11] = 12;
   values[base + 12] = 13;
@@ -114,7 +122,7 @@ function createV6MovementNormalSource(): EntitySnapshotWireSource {
 
 export function runSnapshotEntityWirePackContractTest(): void {
   const movementEntities = unpackEntitiesFromWire({
-    v: PACKED_ENTITIES_VERSION_V12,
+    v: PACKED_ENTITIES_VERSION_V13,
     m: createPackedMovementRowWithNormal(),
     t: undefined,
     e: undefined,
@@ -126,15 +134,21 @@ export function runSnapshotEntityWirePackContractTest(): void {
       ENTITY_CHANGED_POS |
       ENTITY_CHANGED_ROT |
       ENTITY_CHANGED_VEL |
-      ENTITY_CHANGED_NORMAL
+      ENTITY_CHANGED_NORMAL |
+      ENTITY_CHANGED_HP
     ),
-    'movement-normal row changed field mask must include normal',
+    'movement-normal-hp row changed field mask must include normal and hp',
   );
   assertContract(
     movementEntity.unit?.surfaceNormal?.nx === 100 &&
       movementEntity.unit.surfaceNormal.ny === -200 &&
       movementEntity.unit.surfaceNormal.nz === 975,
     'movement-normal row surface normal must decode from compact movement slab',
+  );
+  assertContract(
+    movementEntity.unit?.hp?.curr === 88.5 &&
+      movementEntity.unit.hp.max === 120,
+    'movement-normal-hp row hp must decode from compact movement slab',
   );
 
   const v6Bytes = encodeEntitiesV6Bytes(createV6MovementNormalSource());
@@ -153,6 +167,11 @@ export function runSnapshotEntityWirePackContractTest(): void {
       decodedV6Movement.unit.surfaceNormal.ny === 250 &&
       decodedV6Movement.unit.surfaceNormal.nz === 960,
     'Rust V6 movement-normal row surface normal must survive compact round trip',
+  );
+  assertContract(
+    decodedV6Movement.unit?.hp?.curr === 77.25 &&
+      decodedV6Movement.unit.hp.max === 100,
+    'Rust V6 movement-normal-hp row hp must survive compact round trip',
   );
 
   const factoryEntity: NetworkServerSnapshotEntity = {

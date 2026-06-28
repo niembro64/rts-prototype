@@ -1,5 +1,6 @@
 import type { PlayerId } from '../../types/sim';
 import {
+  ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -77,6 +78,7 @@ function createEmptyBuildingSub(): BuildingSub {
 // clone the snapshot into owned objects before holding it. So pooled
 // objects are dead by the next decode.
 type DecodedVec3 = { x: number; y: number; z: number };
+type DecodedHp = { curr: number; max: number };
 type DecodedNormal = { nx: number; ny: number; nz: number };
 type DecodedQuat = { x: number; y: number; z: number; w: number };
 
@@ -86,6 +88,8 @@ const _unitSubPool: UnitSub[] = [];
 let _unitSubPoolIndex = 0;
 const _vec3Pool: DecodedVec3[] = [];
 let _vec3PoolIndex = 0;
+const _hpPool: DecodedHp[] = [];
+let _hpPoolIndex = 0;
 const _normalPool: DecodedNormal[] = [];
 let _normalPoolIndex = 0;
 const _quatPool: DecodedQuat[] = [];
@@ -95,6 +99,7 @@ function resetDecodePools(): void {
   _entityPoolIndex = 0;
   _unitSubPoolIndex = 0;
   _vec3PoolIndex = 0;
+  _hpPoolIndex = 0;
   _normalPoolIndex = 0;
   _quatPoolIndex = 0;
 }
@@ -174,6 +179,19 @@ function rentDecodedVec3(x: number, y: number, z: number): DecodedVec3 {
   return v;
 }
 
+function rentDecodedHp(curr: number, max: number): DecodedHp {
+  let hp = _hpPool[_hpPoolIndex];
+  if (hp === undefined) {
+    hp = { curr, max };
+    _hpPool[_hpPoolIndex] = hp;
+  } else {
+    hp.curr = curr;
+    hp.max = max;
+  }
+  _hpPoolIndex++;
+  return hp;
+}
+
 function rentDecodedNormal(nx: number, ny: number, nz: number): DecodedNormal {
   let n = _normalPool[_normalPoolIndex];
   if (n === undefined) {
@@ -203,7 +221,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 12;
+const PACKED_ENTITIES_VERSION = 13;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -268,6 +286,7 @@ const MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY = 1 << 4;
 const MOVEMENT_UNIT_FLAG_YAW_ORIENTATION = 1 << 5;
 const MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY = 1 << 6;
 const MOVEMENT_UNIT_FLAG_SURFACE_NORMAL = 1 << 7;
+const MOVEMENT_UNIT_FLAG_HP = 1 << 8;
 
 const ACTION_FLAG_POS = 1 << 0;
 const ACTION_FLAG_POS_Z = 1 << 1;
@@ -302,7 +321,8 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // mode. V10 adds factory guard target ids to the detail-row factory
 // sub-object. V11 adds finite factory production queues. V12 adds surface
 // normals to the compact movement slab so motion+normal sparse rows avoid
-// detail-row fallback.
+// detail-row fallback. V13 lets HP ride that same compact unit delta slab
+// so movement/turret/HP rows avoid detail-row fallback.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitBytes = Uint8Array;
 export type PackedUnitTurretBytes = Uint8Array;
@@ -409,6 +429,7 @@ function movementUnitChangedFields(flags: number): number {
     changedFields |= ENTITY_CHANGED_VEL;
   }
   if ((flags & MOVEMENT_UNIT_FLAG_SURFACE_NORMAL) !== 0) changedFields |= ENTITY_CHANGED_NORMAL;
+  if ((flags & MOVEMENT_UNIT_FLAG_HP) !== 0) changedFields |= ENTITY_CHANGED_HP;
   return changedFields;
 }
 
@@ -475,6 +496,7 @@ function readMovementUnitDeltaByteEntity(
     (flags & (
       MOVEMENT_UNIT_FLAG_VELOCITY |
       MOVEMENT_UNIT_FLAG_SURFACE_NORMAL |
+      MOVEMENT_UNIT_FLAG_HP |
       MOVEMENT_UNIT_FLAG_ORIENTATION |
       MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY |
       MOVEMENT_UNIT_FLAG_YAW_ORIENTATION |
@@ -491,6 +513,9 @@ function readMovementUnitDeltaByteEntity(
         reader.readVarInt(),
         reader.readVarInt(),
       );
+    }
+    if ((flags & MOVEMENT_UNIT_FLAG_HP) !== 0) {
+      unit.hp = rentDecodedHp(reader.readFloat64(), reader.readFloat64());
     }
     if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
       unit.orientation = rentDecodedQuat(

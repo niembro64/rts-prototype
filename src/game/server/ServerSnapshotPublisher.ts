@@ -28,6 +28,7 @@ import { serializeResourceMovements } from '../network/stateSerializerResourceMo
 import { serializeGridSnapshot } from '../network/stateSerializerGrid';
 import {
   getEntitySnapshotPoolStats,
+  registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
   serializeEntitySnapshot,
 } from '../network/stateSerializerEntities';
@@ -816,6 +817,7 @@ export class ServerSnapshotPublisher {
   ): NetworkServerSnapshot['entities'] {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
+    registerEntitySnapshotWireSource(entities);
     const emittedIds = this.deltaEntityIdSet;
     emittedIds.clear();
 
@@ -1056,6 +1058,7 @@ export class ServerSnapshotPublisher {
   ): NetworkServerSnapshot['entities'] | undefined {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
+    registerEntitySnapshotWireSource(entities);
     for (let i = 0; i < candidateIds.length; i++) {
       const entity = world.getEntity(candidateIds[i]);
       if (entity === undefined) continue;
