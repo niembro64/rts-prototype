@@ -67,6 +67,7 @@ import { encodeFactoryProductionQueue } from './factoryProductionQueueWire';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 
 const INITIAL_ENTITY_POOL = 200;
+const INITIAL_TYPED_DELTA_PLACEHOLDER_POOL = 512;
 const MAX_WEAPONS_PER_ENTITY = 8;
 const MAX_ACTIONS_PER_ENTITY = 16;
 const TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS =
@@ -159,6 +160,9 @@ type PooledEntry = {
   actions: NetworkServerSnapshotAction[];
   rally: WaypointDto;
   route: WaypointDto[];
+};
+type TypedDeltaPlaceholderEntry = {
+  entity: NetworkServerSnapshotEntity;
 };
 
 const entityWireSource = createEntitySnapshotWireSource(INITIAL_ENTITY_POOL);
@@ -354,9 +358,14 @@ function createPooledEntry(): PooledEntry {
 
 const pool: PooledEntry[] = [];
 let poolIndex = 0;
+const typedDeltaPlaceholderPool: TypedDeltaPlaceholderEntry[] = [];
+let typedDeltaPlaceholderPoolIndex = 0;
 
 for (let i = 0; i < INITIAL_ENTITY_POOL; i++) {
   pool.push(createPooledEntry());
+}
+for (let i = 0; i < INITIAL_TYPED_DELTA_PLACEHOLDER_POOL; i++) {
+  typedDeltaPlaceholderPool.push(createTypedDeltaPlaceholderEntry());
 }
 
 function getPooledEntry(): PooledEntry {
@@ -366,8 +375,31 @@ function getPooledEntry(): PooledEntry {
   return pool[poolIndex++];
 }
 
+function createTypedDeltaPlaceholderEntry(): TypedDeltaPlaceholderEntry {
+  return {
+    entity: {
+      id: 0,
+      type: 'unit',
+      pos: null,
+      rotation: null,
+      playerId: 1 as PlayerId,
+      changedFields: 0,
+      unit: null,
+      building: null,
+    },
+  };
+}
+
+function getTypedDeltaPlaceholderEntry(): TypedDeltaPlaceholderEntry {
+  if (typedDeltaPlaceholderPoolIndex >= typedDeltaPlaceholderPool.length) {
+    typedDeltaPlaceholderPool.push(createTypedDeltaPlaceholderEntry());
+  }
+  return typedDeltaPlaceholderPool[typedDeltaPlaceholderPoolIndex++];
+}
+
 export function resetEntitySnapshotPool(): void {
   poolIndex = 0;
+  typedDeltaPlaceholderPoolIndex = 0;
   resetEntitySnapshotWireSource();
 }
 
@@ -379,20 +411,31 @@ type EntitySnapshotPoolStats = {
 
 export function getEntitySnapshotPoolStats(): EntitySnapshotPoolStats {
   return {
-    retainedEntries: pool.length,
-    activeEntries: poolIndex,
-    warmEntries: INITIAL_ENTITY_POOL,
+    retainedEntries: pool.length + typedDeltaPlaceholderPool.length,
+    activeEntries: poolIndex + typedDeltaPlaceholderPoolIndex,
+    warmEntries: INITIAL_ENTITY_POOL + INITIAL_TYPED_DELTA_PLACEHOLDER_POOL,
   };
 }
 
 export function trimEntitySnapshotPool(maxRetained = INITIAL_ENTITY_POOL): EntitySnapshotPoolStats {
   poolIndex = 0;
+  typedDeltaPlaceholderPoolIndex = 0;
   const retained = Math.max(INITIAL_ENTITY_POOL, Math.floor(maxRetained));
   if (pool.length > retained) {
     pool.length = retained;
   }
   while (pool.length < INITIAL_ENTITY_POOL) {
     pool.push(createPooledEntry());
+  }
+  const retainedPlaceholders = Math.max(
+    INITIAL_TYPED_DELTA_PLACEHOLDER_POOL,
+    Math.floor(maxRetained),
+  );
+  if (typedDeltaPlaceholderPool.length > retainedPlaceholders) {
+    typedDeltaPlaceholderPool.length = retainedPlaceholders;
+  }
+  while (typedDeltaPlaceholderPool.length < INITIAL_TYPED_DELTA_PLACEHOLDER_POOL) {
+    typedDeltaPlaceholderPool.push(createTypedDeltaPlaceholderEntry());
   }
   resetEntitySnapshotWireSource();
   return getEntitySnapshotPoolStats();
@@ -1276,7 +1319,7 @@ function serializeTypedDeltaPlaceholder(
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
 ): NetworkServerSnapshotEntity {
-  const poolEntry = getPooledEntry();
+  const poolEntry = getTypedDeltaPlaceholderEntry();
   const ne = poolEntry.entity;
   ne.id = entity.id;
   ne.type = entity.type;
