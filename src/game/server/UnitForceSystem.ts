@@ -21,6 +21,7 @@ import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS } from '../../config';
 import { createWorldSupportSurface } from '../sim/supportSurface';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
+import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
@@ -139,10 +140,11 @@ export class UnitForceSystem {
   private readonly simulation: Simulation;
   private readonly physics: PhysicsEngine3D;
 
-  private readonly physicsForceUnitIdsBuf: EntityId[] = [];
+  private physicsForceUnitSlotsBuf = new Uint32Array(1024);
+  private physicsForceUnitSlotCount = 0;
   private readonly physicsCandidateUnitIdsBuf: EntityId[] = [];
-  private physicsActiveUnitIdMarks = new Uint32Array(1024);
-  private physicsActiveUnitIdMark = 1;
+  private physicsActiveUnitSlotMarks = new Uint32Array(1024);
+  private physicsActiveUnitSlotMark = 1;
   private waterDryMaskCache = new Map<number, number>();
 
   constructor(world: WorldState, simulation: Simulation, physics: PhysicsEngine3D) {
@@ -160,18 +162,17 @@ export class UnitForceSystem {
 
     const forceAccumulator = this.simulation.getForceAccumulator();
 
-    this.collectPhysicsForceUnitIds();
-    const activeIds = this.physicsForceUnitIdsBuf;
-    if (activeIds.length === 0) return;
-    this.syncActiveBodyTransforms(activeIds);
+    const activeSlots = this.collectPhysicsForceUnitSlots();
+    if (activeSlots.length === 0) return;
+    this.syncActiveBodyTransforms(activeSlots);
     this.world.refreshSupportSurfaceIndex();
     this.waterDryMaskCache.clear();
 
-    ensureForceBatchCapacity(activeIds.length);
+    ensureForceBatchCapacity(activeSlots.length);
 
     let count = 0;
-    for (let i = 0; i < activeIds.length; i++) {
-      const entity = this.world.getEntity(activeIds[i]);
+    for (let i = 0; i < activeSlots.length; i++) {
+      const entity = entitySlotRegistry.resolveSlot(activeSlots[i]);
       if (entity === undefined || entity.body === null || entity.unit === null) continue;
 
       const body = entity.body.physicsBody;
@@ -537,21 +538,20 @@ export class UnitForceSystem {
     this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_NORMAL);
   }
 
-  private collectPhysicsForceUnitIds(): void {
-    const ids = this.physicsForceUnitIdsBuf;
-    ids.length = 0;
-    this.beginPhysicsActiveUnitIdMarkFrame();
+  private collectPhysicsForceUnitSlots(): Uint32Array {
+    this.physicsForceUnitSlotCount = 0;
+    this.beginPhysicsActiveUnitSlotMarkFrame();
 
     const movingUnits = this.simulation.getMovingUnits();
     for (let i = 0; i < movingUnits.length; i++) {
-      this.pushPhysicsForceUnitId(ids, movingUnits[i].id);
+      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(movingUnits[i].id));
     }
 
     const units = this.world.getUnits();
     for (let i = 0; i < units.length; i++) {
       const unit = units[i].unit;
       if (unit !== null && unit.locomotion.type === 'flying') {
-        this.pushPhysicsForceUnitId(ids, units[i].id);
+        this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(units[i].id));
       }
     }
 
@@ -559,44 +559,56 @@ export class UnitForceSystem {
     candidates.length = 0;
     this.simulation.getForceAccumulator().collectActiveEntityIds(candidates);
     for (let i = 0; i < candidates.length; i++) {
-      this.pushPhysicsForceUnitId(ids, candidates[i]);
+      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(candidates[i]));
     }
 
     candidates.length = 0;
     this.physics.collectAwakeEntityIds(candidates);
     for (let i = 0; i < candidates.length; i++) {
-      this.pushPhysicsForceUnitId(ids, candidates[i]);
+      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(candidates[i]));
     }
 
-    ids.sort((a, b) => a - b);
+    const slots = this.physicsForceUnitSlotsBuf.subarray(0, this.physicsForceUnitSlotCount);
+    const views = entitySlotRegistry.getViews();
+    if (views !== null) {
+      slots.sort((a, b) => views.entityId[a] - views.entityId[b]);
+    } else {
+      slots.sort();
+    }
+    return slots;
   }
 
-  private beginPhysicsActiveUnitIdMarkFrame(): void {
-    if (this.physicsActiveUnitIdMark >= 0xffffffff) {
-      this.physicsActiveUnitIdMarks.fill(0);
-      this.physicsActiveUnitIdMark = 1;
+  private beginPhysicsActiveUnitSlotMarkFrame(): void {
+    if (this.physicsActiveUnitSlotMark >= 0xffffffff) {
+      this.physicsActiveUnitSlotMarks.fill(0);
+      this.physicsActiveUnitSlotMark = 1;
       return;
     }
-    this.physicsActiveUnitIdMark++;
+    this.physicsActiveUnitSlotMark++;
   }
 
-  private pushPhysicsForceUnitId(ids: EntityId[], id: EntityId): void {
-    if (id < 0 || !Number.isInteger(id)) return;
-    if (id >= this.physicsActiveUnitIdMarks.length) {
-      let cap = this.physicsActiveUnitIdMarks.length;
-      while (cap <= id) cap *= 2;
+  private pushPhysicsForceUnitSlot(slot: number): void {
+    if (slot < 0 || !Number.isInteger(slot)) return;
+    if (slot >= this.physicsActiveUnitSlotMarks.length) {
+      let cap = this.physicsActiveUnitSlotMarks.length;
+      while (cap <= slot) cap *= 2;
       const next = new Uint32Array(cap);
-      next.set(this.physicsActiveUnitIdMarks);
-      this.physicsActiveUnitIdMarks = next;
+      next.set(this.physicsActiveUnitSlotMarks);
+      this.physicsActiveUnitSlotMarks = next;
     }
-    if (this.physicsActiveUnitIdMarks[id] === this.physicsActiveUnitIdMark) return;
-    this.physicsActiveUnitIdMarks[id] = this.physicsActiveUnitIdMark;
-    ids.push(id);
+    if (this.physicsActiveUnitSlotMarks[slot] === this.physicsActiveUnitSlotMark) return;
+    this.physicsActiveUnitSlotMarks[slot] = this.physicsActiveUnitSlotMark;
+    if (this.physicsForceUnitSlotCount >= this.physicsForceUnitSlotsBuf.length) {
+      const next = new Uint32Array(this.physicsForceUnitSlotsBuf.length * 2);
+      next.set(this.physicsForceUnitSlotsBuf);
+      this.physicsForceUnitSlotsBuf = next;
+    }
+    this.physicsForceUnitSlotsBuf[this.physicsForceUnitSlotCount++] = slot;
   }
 
-  private syncActiveBodyTransforms(activeIds: EntityId[]): void {
-    for (let i = 0; i < activeIds.length; i++) {
-      const entity = this.world.getEntity(activeIds[i]);
+  private syncActiveBodyTransforms(activeSlots: Uint32Array): void {
+    for (let i = 0; i < activeSlots.length; i++) {
+      const entity = entitySlotRegistry.resolveSlot(activeSlots[i]);
       if (entity === undefined || entity.body === null) continue;
       const body = entity.body.physicsBody;
       entity.transform.x = body.x;
