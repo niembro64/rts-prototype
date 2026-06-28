@@ -396,6 +396,8 @@ export class SnapshotVisibility {
     this.fullCandidateEntityIdSet.clear();
     this.radarCandidateEntityIdSet.clear();
 
+    if (this.addNativeObservationMaskEntityCandidates()) return;
+
     let pending = this.viewMask;
     while (pending !== 0) {
       const lowBit = pending & -pending;
@@ -409,7 +411,6 @@ export class SnapshotVisibility {
       return;
     }
 
-    if (this.addNativeObservationMaskEntityCandidates()) return;
     this.addSourceEntityCandidates(this.fullSources, true);
     this.addSourceEntityCandidates(this.radarSources, false);
     this.addSourceEntityCandidates(this.detectorSources, true);
@@ -455,7 +456,6 @@ export class SnapshotVisibility {
       const id = entityViews.entityId[slot];
       if (id < 0 || combatEntityId[slot] !== id) continue;
       const flags = combatFlags[slot];
-      if ((flags & CT_ENTITY_FLAG_ALIVE) === 0) continue;
       const kind = entityViews.kind[slot];
       if (
         kind !== ENTITY_STATE_KIND_UNIT &&
@@ -468,8 +468,12 @@ export class SnapshotVisibility {
 
       const ownerPlayerId = entityViews.ownerPlayerId[slot];
       if (ownerPlayerId !== 0 && (viewMask & (1 << (ownerPlayerId - 1))) !== 0) {
+        this.appendVisibleEntityIdById(id);
+        this.appendRadarEntityIdById(id);
         continue;
       }
+
+      if ((flags & CT_ENTITY_FLAG_ALIVE) === 0) continue;
 
       const detectorCovered = (detectorCoverageMask[slot] & viewMask) !== 0;
       const cloaked = (flags & CT_ENTITY_FLAG_CLOAKED) !== 0;
