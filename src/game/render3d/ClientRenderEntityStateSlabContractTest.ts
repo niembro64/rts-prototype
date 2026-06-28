@@ -14,7 +14,12 @@ import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
 import type { Entity, PlayerId } from '../sim/types';
 import type { WorldSupportSurface } from '../sim/supportSurface';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
-import { ClientRenderEntityStateSlab } from './ClientRenderEntityStateSlab';
+import {
+  CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION,
+  CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY,
+  CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY,
+  ClientRenderEntityStateSlab,
+} from './ClientRenderEntityStateSlab';
 import {
   CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
   ClientRenderTurretStateSlab,
@@ -268,6 +273,25 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   assertContract(packet.lifecycleDirtyAt(0), 'packet lifecycle-dirty bit must be composed');
   assertContract(packet.x[0] === Math.fround(unit.transform.x), 'packet x must match slab x');
   assertContract(packet.velocityX[0] === Math.fround(unit.unit.velocityX), 'packet velocity must match slab velocity');
+
+  const slabFlagPacket = new UnitRenderPacket3D();
+  slab.clearPacketFlags();
+  slab.markPacketFlags(
+    slot!,
+    CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION |
+      CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY |
+      CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY,
+  );
+  slabFlagPacket.pushEntityState(unit, slab.getViews(), slot!, turretSlab, false, false, false, false);
+  assertContract(slabFlagPacket.activePredictionAt(0), 'packet active-prediction bit must come from slab flags');
+  assertContract(slabFlagPacket.renderDirtyAt(0), 'packet render-dirty bit must come from slab flags');
+  assertContract(slabFlagPacket.lifecycleDirtyAt(0), 'packet lifecycle-dirty bit must come from slab flags');
+  slab.clearPacketFlags();
+  const clearedPacket = new UnitRenderPacket3D();
+  clearedPacket.pushEntityState(unit, slab.getViews(), slot!, turretSlab, false, false, false, false);
+  assertContract(!clearedPacket.activePredictionAt(0), 'packet active-prediction slab flag must clear');
+  assertContract(!clearedPacket.renderDirtyAt(0), 'packet render-dirty slab flag must clear');
+  assertContract(!clearedPacket.lifecycleDirtyAt(0), 'packet lifecycle-dirty slab flag must clear');
 
   slab.unsetEntity(unit.id);
   assertContract(slab.getSlot(unit.id) === undefined, 'unset must remove id-to-slot mapping');

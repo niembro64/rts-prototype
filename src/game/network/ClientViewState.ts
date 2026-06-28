@@ -134,7 +134,10 @@ import type {
 } from '../render3d/EntityRenderPackets3D';
 import type { EntityLodEmission3D } from '../render3d/EntityLod3D';
 import {
+  CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION,
   CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS,
+  CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY,
+  CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY,
   CLIENT_RENDER_ENTITY_FLAG_SELECTED,
   CLIENT_RENDER_ENTITY_KIND_BUILDING,
   CLIENT_RENDER_ENTITY_KIND_UNIT,
@@ -1808,6 +1811,7 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
     options: ClientViewRenderPacketOptions3D,
   ): ClientViewRenderEntityPackets3D {
+    this.refreshRenderPacketFlags3D();
     out.unitRows.reset();
     out.buildingRows.reset();
     out.bodyHud.reset();
@@ -1923,6 +1927,7 @@ export class ClientViewState {
   }
 
   consumeRenderDirties(): void {
+    this.renderEntityState.clearPacketFlags();
     this.dirtyUnitRenderIds.clear();
     this.dirtyBuildingRenderIds.clear();
     this.removedUnitRenderIds.length = 0;
@@ -2012,11 +2017,51 @@ export class ClientViewState {
     }
   }
 
+  private refreshRenderPacketFlags3D(): void {
+    this.renderEntityState.clearPacketFlags();
+    for (const id of this.activeEntityPredictionIds) {
+      this.markRenderPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION);
+    }
+    for (const id of this.dirtyUnitRenderIds) {
+      this.markRenderPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY);
+    }
+    for (const id of this.dirtyBuildingRenderIds) {
+      this.markRenderPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY);
+    }
+    for (const id of this.renderLifecycleDirtyIds) {
+      this.markRenderPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY);
+    }
+  }
+
+  private markRenderPacketFlagById(id: EntityId, flag: number): void {
+    const slot = this.renderEntityState.getSlot(id);
+    if (slot !== undefined) this.renderEntityState.markPacketFlags(slot, flag);
+  }
+
+  private markPreparedRenderPacketFlagsForSlot(
+    id: EntityId,
+    slot: number,
+    isBuilding: boolean,
+  ): void {
+    let flags = 0;
+    if (this.activeEntityPredictionIds.has(id)) flags |= CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION;
+    if (isBuilding) {
+      if (this.dirtyBuildingRenderIds.has(id)) flags |= CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY;
+    } else if (this.dirtyUnitRenderIds.has(id)) {
+      flags |= CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY;
+    }
+    if (this.renderLifecycleDirtyIds.has(id)) flags |= CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY;
+    if (flags !== 0) this.renderEntityState.markPacketFlags(slot, flags);
+  }
+
   private getOrRefreshRenderEntityStateSlot(entity: Entity): number | undefined {
     const existing = this.renderEntityState.getSlot(entity.id);
     if (existing !== undefined) return existing;
     const slot = this.renderEntityState.refreshEntity(entity);
-    if (slot !== undefined) this.renderTurretState.refreshHost(entity, slot);
+    if (slot !== undefined) {
+      this.renderTurretState.refreshHost(entity, slot);
+      this.markPreparedRenderPacketFlagsForSlot(entity.id, slot, entity.building !== null);
+    }
     return slot;
   }
 
@@ -2189,9 +2234,9 @@ export class ClientViewState {
         this.renderEntityState.getViews(),
         slot,
         this.renderTurretState,
-        this.activeEntityPredictionIds.has(entity.id),
-        this.dirtyUnitRenderIds.has(entity.id),
-        this.renderLifecycleDirtyIds.has(entity.id),
+        false,
+        false,
+        false,
         farLod,
       );
     } else {
@@ -2217,9 +2262,9 @@ export class ClientViewState {
         this.renderEntityState.getViews(),
         slot,
         this.renderTurretState,
-        this.activeEntityPredictionIds.has(entity.id),
-        this.dirtyBuildingRenderIds.has(entity.id),
-        this.renderLifecycleDirtyIds.has(entity.id),
+        false,
+        false,
+        false,
         farLod,
       );
     } else {

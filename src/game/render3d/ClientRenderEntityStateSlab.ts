@@ -25,8 +25,15 @@ export const CLIENT_RENDER_ENTITY_FLAG_SELECTED = 1;
 export const CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS = 1 << 1;
 export const CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED = 1 << 2;
 export const CLIENT_RENDER_ENTITY_FLAG_SHELL = 1 << 3;
+export const CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION = 1 << 4;
+export const CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY = 1 << 5;
+export const CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY = 1 << 6;
 export const CLIENT_RENDER_UNIT_FLAG_AIRBORNE = 1 << 7;
 export const CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION = 1 << 8;
+const CLIENT_RENDER_ENTITY_PACKET_FLAG_MASK =
+  CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION |
+  CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY |
+  CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY;
 const CLIENT_RENDER_ENTITY_CONSTRUCTION_FLAG_MASK =
   CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS |
   CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED |
@@ -159,7 +166,9 @@ export class ClientRenderEntityStateSlab {
   private readonly slotByEntityId = new Map<EntityId, number>();
   private readonly freeSlots: number[] = [];
   private readonly dirtySlots: number[] = [];
+  private readonly packetFlagSlots: number[] = [];
   private dirtySlotMarks: Uint8Array = new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP);
+  private packetFlagSlotMarks: Uint8Array = new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP);
   private nextSlot = 0;
   private views: ClientRenderEntityStateViews = {
     kind: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -208,6 +217,25 @@ export class ClientRenderEntityStateSlab {
 
   getSlot(id: EntityId): number | undefined {
     return this.slotByEntityId.get(id);
+  }
+
+  markPacketFlags(slot: number, flags: number): void {
+    const packetFlags = flags & CLIENT_RENDER_ENTITY_PACKET_FLAG_MASK;
+    if (packetFlags === 0 || slot < 0 || slot >= this.views.flags.length) return;
+    if (this.packetFlagSlotMarks[slot] === 0) {
+      this.packetFlagSlotMarks[slot] = 1;
+      this.packetFlagSlots.push(slot);
+    }
+    this.views.flags[slot] |= packetFlags;
+  }
+
+  clearPacketFlags(): void {
+    for (let i = 0; i < this.packetFlagSlots.length; i++) {
+      const slot = this.packetFlagSlots[i];
+      this.views.flags[slot] &= ~CLIENT_RENDER_ENTITY_PACKET_FLAG_MASK;
+      this.packetFlagSlotMarks[slot] = 0;
+    }
+    this.packetFlagSlots.length = 0;
   }
 
   slotForEntity(entity: Entity): number {
@@ -485,7 +513,9 @@ export class ClientRenderEntityStateSlab {
     this.slotByEntityId.clear();
     this.freeSlots.length = 0;
     this.dirtySlots.length = 0;
+    this.packetFlagSlots.length = 0;
     this.dirtySlotMarks.fill(0);
+    this.packetFlagSlotMarks.fill(0);
     this.nextSlot = 0;
     this.views.kind.fill(CLIENT_RENDER_ENTITY_KIND_NONE);
     this.views.entityIds.fill(0);
@@ -676,6 +706,7 @@ export class ClientRenderEntityStateSlab {
       buildingBlueprintIds: views.buildingBlueprintIds,
     };
     this.dirtySlotMarks = growUint8(this.dirtySlotMarks, nextCapacity);
+    this.packetFlagSlotMarks = growUint8(this.packetFlagSlotMarks, nextCapacity);
   }
 
   private markSlotDirty(slot: number): void {
