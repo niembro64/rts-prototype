@@ -2,12 +2,17 @@ import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import type { BuildingDetailMesh, BuildingDetailRole } from './BuildingShape3D';
+import {
+  createPrimitiveConeGeometry,
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 export const boxGeom = new THREE.BoxGeometry(1, 1, 1);
-export const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
+export const cylinderGeom = createPrimitiveCylinderGeometry('building', 'close', 0.5, 0.5);
 export const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
-const factorySphereGeom = new THREE.SphereGeometry(1, 18, 12);
-const coneGeom = new THREE.ConeGeometry(0.5, 1, 18);
+const factorySphereGeom = createPrimitiveSphereGeometry('building', 'close');
+const coneGeom = createPrimitiveConeGeometry('building', 'close', 0.5);
 const windBladeGeom = createWindBladeGeometry();
 
 const windTowerMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });

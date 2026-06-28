@@ -51,6 +51,7 @@ import {
   transformChassisToWorld,
 } from './LocomotionRigShared3D';
 import { clamp, clamp01 } from '../math';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 /** Per-unit step-circle radius as a fraction of the unit's LONGEST
  *  leg (upperLegLength + lowerLegLength). One value shared by every
@@ -143,7 +144,9 @@ const PLANTED_REACH_RELEASE_MARGIN = 1.04;
 // leg's rest center, scaled to stepRadius. A real 3D ball, not a
 // flat ground ring, so on uneven terrain the foot can actually find
 // a valid ground spot inside it.
-const restSphereGeom = new THREE.WireframeGeometry(new THREE.SphereGeometry(1, 16, 12));
+const restSphereGeom = new THREE.WireframeGeometry(
+  createPrimitiveSphereGeometry('debug', 'close'),
+);
 const restSphereMat = new THREE.LineBasicMaterial({
   color: COLORS.units.locomotion.leg.debugRestSphere.colorHex,
   transparent: true,

@@ -38,6 +38,10 @@ import {
   type DebrisTurretSlot,
   getDebrisUnitProfile,
 } from './UnitDebrisProfile3D';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -436,10 +440,10 @@ export class Debris3D {
       this.root, new THREE.BoxGeometry(1, 1, 1), GLOBAL_MAX_PIECES,
     );
     this.cylPool = new InstancedDebrisPool(
-      this.root, new THREE.CylinderGeometry(1, 1, 1, 10), GLOBAL_MAX_PIECES,
+      this.root, createPrimitiveCylinderGeometry('effect', 'close'), GLOBAL_MAX_PIECES,
     );
     this.spherePool = new InstancedDebrisPool(
-      this.root, new THREE.SphereGeometry(1, 10, 8), GLOBAL_MAX_PIECES,
+      this.root, createPrimitiveSphereGeometry('effect', 'close'), GLOBAL_MAX_PIECES,
     );
   }
 

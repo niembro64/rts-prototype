@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import beamConfig from '@/beamConfig.json';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 export type BeamVisualConfig = {
   color: readonly number[];
@@ -227,4 +228,4 @@ export function createBeamEmitterInstancedMaterial(layer: BeamWaveLayer): THREE.
  *  `2 * ballRadius` yields a ball of radius `ballRadius`. Per-Mesh users
  *  share this instance; instanced pools clone it (each pool owns its own
  *  per-instance attributes). */
-export const BEAM_EMITTER_BALL_GEOM = new THREE.SphereGeometry(0.5, 16, 12);
+export const BEAM_EMITTER_BALL_GEOM = createPrimitiveSphereGeometry('beam', 'close', 0.5);

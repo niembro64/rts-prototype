@@ -28,15 +28,6 @@ Please always commit and push before and after any code changes we make.
     Entity fallbacks only after [30]/[31] parity proves the slab path is the
     complete render truth.
 
-[21] Optimization - central primitive geometry quality and LOD config
-    Preserve gameplay exactly; this is visual/render performance only. Audit all
-    Three.js sphere/cylinder/cone/capsule primitive creation and replace
-    scattered high-segment geometry with shared cached primitives selected from
-    a central quality config by role (unit body, turret, projectile, shield,
-    building detail, resource, debug). Add close/mid/far LOD tiers and validate
-    quality from gameplay camera distances. Smooth high-poly spheres should be
-    reserved for cases where they materially improve the shipped view.
-
 [16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
     USER / in-app eyes only: build a Hippo and tune swim/float/sink +
     walk-on-bottom feel. Starter knobs: waterForce, waterTraction,

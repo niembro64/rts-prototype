@@ -8,6 +8,7 @@ import {
 import { PYLON_BUILDING_SOLAR_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import type { BuildingDetailMesh, BuildingDetailRole, BuildingShape } from './BuildingShape3D';
 import { makeSphere, disposeRenderUtilsGeoms } from './RenderUtils';
+import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
 
 export type SolarPetalAnimation = {
   width: number;
@@ -60,7 +61,7 @@ const solarTrianglePetalGeom = new THREE.ExtrudeGeometry(solarTrianglePetalShape
   bevelEnabled: false,
   steps: 1,
 });
-const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
+const cylinderGeom = createPrimitiveCylinderGeometry('building', 'close', 0.5, 0.5);
 
 const solarCellMat = new THREE.MeshStandardMaterial({
   color: COLORS.buildings.materials.solarCell.colorHex,

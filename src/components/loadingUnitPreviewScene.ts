@@ -33,6 +33,10 @@ import { SUN_RENDER_CONFIG } from '@/config';
 import { getPlayerColors, type PlayerId } from '@/game/sim/types';
 import { turretAccentColorHexForPlayer } from '@/game/render3d/EntityInstanceColor3D';
 import { createShieldFallbackPanelMaterial } from '@/game/render3d/ShieldReflectorVisual3D';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from '@/game/render3d/PrimitiveGeometryQuality3D';
 import { writeSunDirectionThree } from '@/game/render3d/SunLighting';
 import { locomotionPieceColorHex } from '@/game/render3d/colorUtils';
 
@@ -209,15 +213,15 @@ function installPreviewEnvironment(
   return texture;
 }
 
-const turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
-const barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
-const coneBarrelGeom = new THREE.CylinderGeometry(0, 1, 1, 10);
+const turretHeadGeom = createPrimitiveSphereGeometry('turret', 'close');
+const barrelGeom = createPrimitiveCylinderGeometry('turret', 'close');
+const coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close', 0, 1);
 const mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
 const mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
-const mirrorSupportGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
-const legCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
-const legJointGeom = new THREE.SphereGeometry(1, 14, 10);
-const legFootGeom = new THREE.CylinderGeometry(1, 1, 1, 14);
+const mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
+const legCylinderGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
+const legJointGeom = createPrimitiveSphereGeometry('locomotion', 'close');
+const legFootGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
 const scratchUp = new THREE.Vector3(0, 1, 0);
 const scratchDir = new THREE.Vector3();
 const scratchTarget = new THREE.Vector3();

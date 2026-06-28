@@ -5,6 +5,7 @@ import type { Input3DAreaDragKind, Input3DAreaDragState } from './Input3DAreaDra
 import type { OverlayLineSystem } from './OverlayLineSystem';
 import type { GroundLineBatch3D } from './GroundLineBatch3D';
 import { hexToRgb01 } from './colorUtils';
+import { createPrimitiveCircleGeometry } from './PrimitiveGeometryQuality3D';
 
 const RING_LIFT = WAYPOINT_GROUND_LIFT + 1;
 const LEGACY_Y = RING_LIFT;
@@ -32,7 +33,7 @@ const BALLISTIC_BLOCKED_COLOR = 0xff3434;
 // area, not the screen.
 export class AreaDrag3D {
   private readonly root = new THREE.Group();
-  private readonly discGeom = new THREE.CircleGeometry(1, OUTLINE_SEGMENTS);
+  private readonly discGeom = createPrimitiveCircleGeometry('hud', 'close');
   private readonly rectFillGeom = new THREE.BoxGeometry(1, 0.2, 1);
   private readonly discMats = new Map<string, THREE.MeshBasicMaterial>();
   private readonly rectFillMats = new Map<Input3DAreaDragKind, THREE.MeshBasicMaterial>();

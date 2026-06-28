@@ -10,10 +10,11 @@ import {
   detail,
 } from './BuildingMeshPrimitives3D';
 import { fabricatorTorusHoverHeight, fabricatorTorusRingRadius } from '../sim/blueprints';
+import { createPrimitiveTorusGeometry } from './PrimitiveGeometryQuality3D';
 
 // Unit torus (ring radius 1, tube 0.22) for the hovering fabricator body. Scaled
 // per-instance to the footprint and laid flat (horizontal ring) at hover height.
-const fabricatorTorusGeom = new THREE.TorusGeometry(1, 0.22, 12, 32);
+const fabricatorTorusGeom = createPrimitiveTorusGeometry('building', 'close', 1, 0.22);
 
 
 /** Factory chassis: the team-colored hovering torus body only. The

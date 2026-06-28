@@ -15,8 +15,9 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { SUN_DIRECTION_SIM, writeSunDirectionThree } from './SunLighting';
 import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import { disposeMesh } from './threeUtils';
+import { createPrimitiveCircleGeometry } from './PrimitiveGeometryQuality3D';
 
-const SHADOW_GEOMETRY = new THREE.CircleGeometry(1, 28);
+const SHADOW_GEOMETRY = createPrimitiveCircleGeometry('effect', 'close');
 SHADOW_GEOMETRY.rotateX(-Math.PI / 2);
 const UNIT_AIR_SHADOW_FADE_BODY_HEIGHTS = 4;
 const UNIT_AIR_SHADOW_FADE_MIN_HEIGHT = 80;

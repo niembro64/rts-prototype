@@ -33,6 +33,10 @@ import {
   tickBeamWaveTime,
   type BeamVisualConfig,
 } from './BeamWaveVisual3D';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 // Visual tuning (color, wave alpha range, wave spacing/speed) lives in
 // beamConfig.json + colorsConfig.json and is resolved by BeamWaveVisual3D —
@@ -129,7 +133,7 @@ function createBeamVisualLayer(
   radiusMultiplier: number,
   renderOrder: number,
 ): BeamVisualLayer {
-  const segmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
+  const segmentGeom = createPrimitiveCylinderGeometry('beam', 'close', 1, 1, 1, 1, false);
   const segmentAlpha = new Float32Array(BEAM_SEGMENT_CAP);
   segmentAlpha.fill(1);
   const segmentAlphaAttr = new THREE.InstancedBufferAttribute(segmentAlpha, 1);
@@ -160,7 +164,7 @@ function createBeamVisualLayer(
   segmentMesh.count = 0;
   root.add(segmentMesh);
 
-  const endpointGeom = new THREE.SphereGeometry(1, 12, 10);
+  const endpointGeom = createPrimitiveSphereGeometry('beam', 'close');
   const endpointAlpha = new Float32Array(BEAM_ENDPOINT_CAP);
   endpointAlpha.fill(1);
   const endpointAlphaAttr = new THREE.InstancedBufferAttribute(endpointAlpha, 1);
@@ -233,7 +237,7 @@ export class BeamRenderer3D {
       );
     }
 
-    const imposterSegmentGeom = new THREE.CylinderGeometry(1, 1, 1, 8, 1, false);
+    const imposterSegmentGeom = createPrimitiveCylinderGeometry('beam', 'close', 1, 1, 1, 1, false);
     const imposterSegmentMat = new THREE.MeshBasicMaterial({
       color: BEAM_IMPOSTER_SEGMENT_CONFIG.color,
       transparent: true,

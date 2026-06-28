@@ -7,11 +7,12 @@
 import * as THREE from 'three';
 import type { PlayerId } from '../sim/types';
 import { locomotionPieceColorHex } from './colorUtils';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 // Shared unit sphere used by makeSphere. Every former local copy built
-// its own `new THREE.SphereGeometry(1, 18, 12)`; this is the one shared
+// its own sphere primitive; this is the one shared
 // instance. Disposed via disposeRenderUtilsGeoms at scene teardown.
-const sphereGeom = new THREE.SphereGeometry(1, 18, 12);
+const sphereGeom = createPrimitiveSphereGeometry('unitDetail', 'close');
 
 /** A scaled, positioned sphere mesh on the shared unit sphere geometry. */
 export function makeSphere(

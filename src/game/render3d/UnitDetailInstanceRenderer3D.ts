@@ -27,6 +27,7 @@ import {
   beamWaveFlowRepeats,
   createBeamEmitterInstancedMaterial,
 } from './BeamWaveVisual3D';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 const SMOOTH_CHASSIS_CAP = 16384;
 const POLY_CHASSIS_CAP = 4096;
@@ -289,7 +290,7 @@ export type DyingUnitPartDelta = {
 
 export class UnitDetailInstanceRenderer3D {
   private readonly world: THREE.Group;
-  private readonly smoothChassisGeom = new THREE.SphereGeometry(1, 24, 16);
+  private readonly smoothChassisGeom = createPrimitiveSphereGeometry('unitBody', 'close');
   private readonly smoothChassis: THREE.InstancedMesh;
   private readonly smoothChassisSlots = new Map<EntityId, number[]>();
   private readonly smoothChassisColorKey = new Map<EntityId, number>();

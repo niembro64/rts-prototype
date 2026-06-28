@@ -24,6 +24,7 @@ import { WAYPOINT_GROUND_LIFT } from '../../config';
 import type { OverlayLineSystem } from './OverlayLineSystem';
 import type { GroundLineBatch3D } from './GroundLineBatch3D';
 import { hexToRgb01 } from './colorUtils';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 // Lift values chosen so the preview reads above terrain overlays at
 // terrain overlays. Keep these tied to the persistent waypoint lift so
@@ -67,7 +68,7 @@ export class LineDrag3D {
 
   // Filled sphere for each target; thin white ring around it for contrast
   // against dark tiles. Both are scaled uniformly from a unit base.
-  private dotGeom = new THREE.SphereGeometry(1, 14, 10);
+  private dotGeom = createPrimitiveSphereGeometry('hud', 'close');
   private dotPool: THREE.Mesh[] = [];
   private ringGeom = new THREE.RingGeometry(1.0, 1.15, 24);
   private ringPool: THREE.Mesh[] = [];

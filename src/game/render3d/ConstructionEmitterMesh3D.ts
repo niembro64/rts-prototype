@@ -22,6 +22,7 @@ import { PYLON_CONSTRUCTION_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import { CONSTRUCTION_HAZARD_COLORS } from '@/constructionVisualConfig';
 import { BUILDING_PALETTE } from './BuildingVisualPalette';
 import { makeSphere, disposeRenderUtilsGeoms } from './RenderUtils';
+import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
 
 export type ConstructionTowerOrbitPart = {
   mesh: THREE.Mesh;
@@ -105,7 +106,7 @@ type ResourcePylonBuildOptions = {
   channel: number;
 };
 
-const cylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 18);
+const cylinderGeom = createPrimitiveCylinderGeometry('building', 'close', 0.5, 0.5);
 const hexCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 6);
 const octagonCylinderGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
 const frameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });

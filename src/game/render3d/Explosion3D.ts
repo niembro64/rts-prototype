@@ -9,6 +9,7 @@ import type { FireExplosionStyle } from '@/types/graphics';
 import { COLORS } from '@/colorsConfig';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 const CORE_COLOR = COLORS.effects.explosion.core.colorHex;
 const CORE_LIFETIME_MS = 180;
@@ -69,7 +70,7 @@ class InstancedSpherePool {
   private scratch = new THREE.Matrix4();
 
   constructor(parent: THREE.Group, cap: number, renderOrder: number) {
-    this.geom = new THREE.SphereGeometry(1, 12, 10);
+    this.geom = createPrimitiveSphereGeometry('effect', 'close');
     this.alphaArr = new Float32Array(cap);
     this.colorArr = new Float32Array(cap * 3);
     this.alphaAttr = new THREE.InstancedBufferAttribute(this.alphaArr, 1);

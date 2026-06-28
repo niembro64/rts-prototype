@@ -1,4 +1,9 @@
 import * as THREE from 'three';
+import {
+  createPrimitiveConeGeometry,
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 const PHI = (1 + Math.sqrt(5)) / 2;
 
@@ -23,10 +28,10 @@ for (let i = 0; i < rawIcosahedronVertices.length; i++) rawIcosahedronVertices[i
 export const ALBATROS_ICOSAHEDRON_VERTEX_DIRECTIONS: readonly THREE.Vector3[] =
   rawIcosahedronVertices;
 
-const bodyGeom = new THREE.SphereGeometry(1, 24, 14);
-const smallSphereGeom = new THREE.SphereGeometry(1, 12, 8);
-const neckGeom = new THREE.CylinderGeometry(1, 1, 1, 12, 1);
-const noseConeGeom = new THREE.ConeGeometry(1, 1, 12, 1);
+const bodyGeom = createPrimitiveSphereGeometry('unitBody', 'close');
+const smallSphereGeom = createPrimitiveSphereGeometry('unitDetail', 'mid');
+const neckGeom = createPrimitiveCylinderGeometry('unitDetail', 'close');
+const noseConeGeom = createPrimitiveConeGeometry('unitDetail', 'close');
 const finGeom = new THREE.BoxGeometry(1, 1, 1);
 
 const undersideMat = new THREE.MeshBasicMaterial({ color: 0xe8ece2 });

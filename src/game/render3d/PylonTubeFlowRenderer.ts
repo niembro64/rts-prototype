@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import type { PylonTubeFlow, PylonTubeFreeLeg, SprayTarget } from '@/types/ui';
 import { disposeMesh } from './threeUtils';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 /** Global cap on simultaneous tube beads across every pylon. */
@@ -78,7 +79,7 @@ void main() {
 
 export class PylonTubeFlowRenderer {
   private root: THREE.Group;
-  private geom = new THREE.SphereGeometry(1, 8, 6);
+  private geom = createPrimitiveSphereGeometry('effect', 'mid');
   private mat: THREE.ShaderMaterial;
   private mesh: THREE.InstancedMesh;
   private alphaArr = new Float32Array(MAX_BEADS);

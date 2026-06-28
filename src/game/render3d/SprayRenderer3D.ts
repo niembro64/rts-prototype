@@ -40,6 +40,7 @@ import { getPlayerPrimaryColor } from '../sim/types';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 import { RESOURCE_CONFIG } from '@/resourceConfig';
+import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 
 // Resource-ball visual tuning lives in resourceConfig.json (Config Is Data).
 // Default spray trail altitude for legacy 2D spray targets. Factory
@@ -98,7 +99,7 @@ export class SprayRenderer3D {
   private root: THREE.Group;
   // Shared sphere geometry for all particles — cheap tessellation since
   // each particle is small on screen.
-  private geom = new THREE.SphereGeometry(1, 8, 6);
+  private geom = createPrimitiveSphereGeometry('effect', 'mid');
   private mat: THREE.ShaderMaterial;
   private mesh: THREE.InstancedMesh;
   // Per-instance attribute buffers. Index i in alphaArr / colorArr /

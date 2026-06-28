@@ -29,6 +29,7 @@ import {
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { getLocomotionMatByCache } from './RenderUtils';
+import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
 
 // Movement-position EMA tau for the per-tire suspension lift. Drives
 // the wheel toward the floor-clamp target each frame; long enough
@@ -46,7 +47,7 @@ const WHEEL_OMEGA_SETTLED_EPSILON = 0.02;
 const WHEEL_COLOR = COLORS.units.locomotion.wheel.tire.colorHex;
 const _wheelClamp: LocomotionPartClamp = { groundY: 0, renderedY: 0 };
 
-const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
+const wheelGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 
 /** Per-tire chassis-local mount, plus the four canonical visual state

@@ -16,6 +16,7 @@ import type {
 import type { LocomotionBase } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { locomotionPieceColorHex } from './colorUtils';
+import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
 
 const WING_COLOR = COLORS.units.locomotion.flying.wing.colorHex;
 const JET_COLOR = COLORS.units.locomotion.flying.jet.colorHex;
@@ -47,7 +48,7 @@ function buildWingPanelGeom(lateralSign: -1 | 1, sweepFrac: number): THREE.Buffe
 }
 
 const wingGeomCache = new Map<string, THREE.BufferGeometry>();
-const jetGeom = new THREE.CylinderGeometry(1, 1, 1, 18, 1, true);
+const jetGeom = createPrimitiveCylinderGeometry('locomotion', 'close', 1, 1, 1, 1, true);
 jetGeom.rotateZ(Math.PI / 2);
 const wingMats = new Map<number, THREE.MeshBasicMaterial>();
 const jetMats = new Map<number, THREE.MeshBasicMaterial>();

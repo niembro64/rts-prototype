@@ -24,6 +24,10 @@ import {
   getBodyTopFrac,
   getUnitBodyShapeKey,
 } from '../math/BodyDimensions';
+import {
+  createPrimitiveCylinderGeometry,
+  getSharedPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 /** One mesh that makes up a unit body. Positions and scales are in
  *  unit-radius-1 space — the caller multiplies both by the unit's
@@ -73,14 +77,14 @@ export type BodyGeomEntry = {
 // without needing a separate BufferGeometry per body shape.
 let _unitSphere: THREE.SphereGeometry | null = null;
 function getUnitSphere(): THREE.SphereGeometry {
-  if (!_unitSphere) _unitSphere = new THREE.SphereGeometry(1, 24, 16);
+  if (!_unitSphere) _unitSphere = getSharedPrimitiveSphereGeometry('unitBody', 'close');
   return _unitSphere;
 }
 
 let _unitCylinder: THREE.CylinderGeometry | null = null;
 function getUnitCylinder(): THREE.CylinderGeometry {
   if (!_unitCylinder) {
-    _unitCylinder = new THREE.CylinderGeometry(1, 1, 1, 18, 1);
+    _unitCylinder = createPrimitiveCylinderGeometry('unitBody', 'close', 1, 1, 1, 1);
     _unitCylinder.rotateZ(-Math.PI / 2);
   }
   return _unitCylinder;
@@ -94,7 +98,7 @@ function getUnitCylinder(): THREE.CylinderGeometry {
 let _unitCone: THREE.CylinderGeometry | null = null;
 function getUnitCone(): THREE.CylinderGeometry {
   if (!_unitCone) {
-    _unitCone = new THREE.CylinderGeometry(1, 0, 1, 18, 1);
+    _unitCone = createPrimitiveCylinderGeometry('unitBody', 'close', 1, 0, 1, 1);
     _unitCone.rotateZ(-Math.PI / 2);
   }
   return _unitCone;

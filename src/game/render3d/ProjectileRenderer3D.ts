@@ -18,6 +18,10 @@ import {
   setScaleScalarIfChanged,
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
@@ -154,8 +158,8 @@ export class ProjectileRenderer3D {
     emission: EntityLodEmission3D,
   ) => boolean;
 
-  private readonly projectileGeom = new THREE.SphereGeometry(1, 10, 8);
-  private readonly projectileCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
+  private readonly projectileGeom = createPrimitiveSphereGeometry('projectile', 'close');
+  private readonly projectileCylinderGeom = createPrimitiveCylinderGeometry('projectile', 'close');
   private readonly projectileFinGeom = createProjectileFinGeometry();
   private readonly projectileMat = new THREE.MeshLambertMaterial({
     color: COLORS.effects.projectile.body.colorHex,

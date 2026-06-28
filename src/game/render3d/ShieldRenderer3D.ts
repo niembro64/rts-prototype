@@ -20,6 +20,10 @@ import {
   createShieldSurfaceMaterial,
   resolveShieldSurfaceColor,
 } from './ShieldReflectorVisual3D';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
@@ -505,8 +509,8 @@ export class ShieldRenderer3D {
   private root: THREE.Group;
   // Unit sphere reused for the bubble write into the shared
   // sphereInstancedMesh below.
-  private sphereGeom = new THREE.SphereGeometry(1, 20, 14);
-  private finiteCylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 32, 1, true);
+  private sphereGeom = createPrimitiveSphereGeometry('shield', 'close');
+  private finiteCylinderGeom = createPrimitiveCylinderGeometry('shield', 'close', 1, 1, 1, 1, true);
   private implicitFieldGeom = new THREE.PlaneGeometry(2, 2);
   private fields = new Map<FieldKey, FieldMesh>();
 

@@ -90,6 +90,10 @@ import { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
 import {
   type EntityLodEmission3D,
 } from './EntityLod3D';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 // Turret head height is the one remaining shared vertical constant —
 // chassis heights are now per-unit (see getBodyTopY in BodyDimensions.ts).
@@ -207,11 +211,11 @@ export class Render3DEntities {
   // direction — the head reads as a turret ball the barrels swing
   // around, letting pitch aim up toward AA targets without the
   // barrels clipping through a flat cylinder top.
-  private turretHeadGeom = new THREE.SphereGeometry(1, 16, 12);
+  private turretHeadGeom = createPrimitiveSphereGeometry('turret', 'close');
   private commanderVisualKit = new CommanderVisualKit3D();
-  private barrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
+  private barrelGeom = createPrimitiveCylinderGeometry('turret', 'close');
   // Taperable barrel geometry for any authored single-cone barrels.
-  private coneBarrelGeom = new THREE.CylinderGeometry(1, 1, 1, 10);
+  private coneBarrelGeom = createPrimitiveCylinderGeometry('turret', 'close');
   private readonly materialPalette = new EntityMaterialPalette3D();
   // Force-field panel = flat unit square plane. Default orientation: face
   // in XY plane with normal +Z; we rotate it into the panel-local frame
@@ -222,7 +226,7 @@ export class Render3DEntities {
   // the same center plane.
   private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
-  private mirrorSupportGeom = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
+  private mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
   // Unit-radius indicator wireframe spheres (VISUAL/HITBOX/COLLISION). Unit
   // radius = 1 → scale per mesh to the actual collider radius. The
   // sim's hit-detection uses 3D spheres centered on transform.z, so
@@ -230,7 +234,7 @@ export class Render3DEntities {
   // ground ring) that shows exactly what volume the collision code
   // tests against.
   private radiusSphereGeom = new THREE.WireframeGeometry(
-    new THREE.SphereGeometry(1, 16, 10),
+    createPrimitiveSphereGeometry('debug', 'close'),
   );
 
   /** Per-frame scratch populated from UnitRenderPoseBatch3D's

@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
 import { getConstructionHazardMaterial } from './BuildingShape3D';
 import type { TurretMesh } from './TurretMesh3D';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 const COMMANDER_ARMOR_COLOR = COLORS.units.unitCommander.armor.colorHex;
 const COMMANDER_TRIM_COLOR = COLORS.units.unitCommander.trim.colorHex;
@@ -9,8 +13,8 @@ const COMMANDER_LENS_COLOR = COLORS.units.unitCommander.lens.colorHex;
 
 export class CommanderVisualKit3D {
   private readonly boxGeom = new THREE.BoxGeometry(1, 1, 1);
-  private readonly cylinderGeom = new THREE.CylinderGeometry(1, 1, 1, 18);
-  private readonly domeGeom = new THREE.SphereGeometry(1, 14, 10);
+  private readonly cylinderGeom = createPrimitiveCylinderGeometry('unitDetail', 'close');
+  private readonly domeGeom = createPrimitiveSphereGeometry('unitDetail', 'close');
   private readonly armorMat = new THREE.MeshLambertMaterial({ color: COMMANDER_ARMOR_COLOR });
   private readonly trimMat = new THREE.MeshLambertMaterial({ color: COMMANDER_TRIM_COLOR });
   private readonly lensMat = new THREE.MeshBasicMaterial({

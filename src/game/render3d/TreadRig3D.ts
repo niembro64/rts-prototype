@@ -41,6 +41,7 @@ import {
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { getLocomotionMatByCache } from './RenderUtils';
+import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
 
 const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
 const WHEEL_COLOR = COLORS.units.locomotion.tread.wheel.colorHex;
@@ -66,8 +67,8 @@ const TREAD_LIFT_SETTLED_EPSILON = 0.02;
 const TREAD_BELT_SETTLED_EPSILON = 0.02;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
-const treadEndGeom = new THREE.CylinderGeometry(1, 1, 1, 16);
-const wheelGeom = new THREE.CylinderGeometry(1, 1, 1, 12);
+const treadEndGeom = createPrimitiveCylinderGeometry('locomotion', 'close');
+const wheelGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
 const treadMats = new Map<number, THREE.MeshBasicMaterial>();
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 const cleatMats = new Map<number, THREE.MeshBasicMaterial>();

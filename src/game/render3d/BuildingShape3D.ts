@@ -67,6 +67,7 @@ import {
 } from './ConstructionEmitterMesh3D';
 import { PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD } from '@/resourceConfig';
 import type { StructureBlueprintId } from '@/types/blueprintIds';
+import { createPrimitiveTorusGeometry } from './PrimitiveGeometryQuality3D';
 
 export type { WindTurbineRig } from './WindTurbineMesh3D';
 export type { ExtractorRig } from './MetalExtractorMesh3D';
@@ -132,7 +133,7 @@ const DEFAULT_HEIGHT = DEFAULT_BUILDING_VISUAL_HEIGHT;
 
 const radarTowerGeom = createHexFrustumGeometry(0.055, 0.16);
 const radarDishGeom = createRadarDishGeometry();
-const radarRingGeom = new THREE.TorusGeometry(1, 0.055, 8, 36);
+const radarRingGeom = createPrimitiveTorusGeometry('building', 'close', 1, 0.055);
 const radarFrameMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureMid });
 const radarDarkMat = new THREE.MeshLambertMaterial({ color: BUILDING_PALETTE.structureDark });
 const radarDishMat = new THREE.MeshStandardMaterial({

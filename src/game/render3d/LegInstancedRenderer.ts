@@ -38,6 +38,10 @@
 import * as THREE from 'three';
 import { createShellMaterial } from './ShellMaterial';
 import { disposeMesh } from './threeUtils';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -342,7 +346,7 @@ function buildInstancedCylinderGeom(
   colorBuf: THREE.InstancedBufferAttribute,
   fadeBuf: THREE.InstancedBufferAttribute,
 ): THREE.InstancedBufferGeometry {
-  const base = new THREE.CylinderGeometry(1, 1, 1, 10);
+  const base = createPrimitiveCylinderGeometry('locomotion', 'mid');
   const inst = new THREE.InstancedBufferGeometry();
   inst.index = base.index;
   inst.setAttribute('position', base.attributes.position);
@@ -608,7 +612,7 @@ class JointSpherePool {
 
   constructor(parent: THREE.Group, shell: boolean) {
     this.shell = shell;
-    const geom = new THREE.SphereGeometry(1, 8, 6);
+    const geom = createPrimitiveSphereGeometry('locomotion', 'mid');
     this.fadeBuf = makeFadeAttribute();
     geom.setAttribute('aFade', this.fadeBuf);
     const material = makeInstancedSphereMaterial(shell);
@@ -761,7 +765,7 @@ class FootPadPool {
 
   constructor(parent: THREE.Group, shell: boolean) {
     this.shell = shell;
-    const geom = new THREE.SphereGeometry(1, 12, 8);
+    const geom = createPrimitiveSphereGeometry('locomotion', 'close');
     this.fadeBuf = makeFadeAttribute();
     geom.setAttribute('aFade', this.fadeBuf);
     const material = makeInstancedSphereMaterial(shell);

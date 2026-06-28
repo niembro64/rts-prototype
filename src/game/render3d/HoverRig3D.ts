@@ -26,6 +26,10 @@ import { getLocomotionSurfaceHeight } from './LocomotionTerrainSampler';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { locomotionPieceColorHex } from './colorUtils';
 import { getLocomotionMatByCache } from './RenderUtils';
+import {
+  createPrimitiveSphereGeometry,
+  createPrimitiveTorusGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 /** Minimum world-Y gap the rendered fan ring is allowed to have above
  *  terrain. The sim is supposed to keep hovers above ground via the
@@ -48,7 +52,7 @@ const ALBATROS_FAN_POSITION_RADIUS_FRAC = 0.86;
 
 const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
 const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
-const hubGeom = new THREE.SphereGeometry(1, 18, 12);
+const hubGeom = createPrimitiveSphereGeometry('locomotion', 'close');
 const ringMats = new Map<number, THREE.MeshBasicMaterial>();
 const hubMats = new Map<number, THREE.MeshBasicMaterial>();
 const bladeRotorMats = new Map<string, THREE.ShaderMaterial>();
@@ -61,7 +65,7 @@ function getRingGeom(tubeRatio: number): THREE.TorusGeometry {
   const key = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
   let geom = ringGeomByTubeRatio.get(key);
   if (!geom) {
-    geom = new THREE.TorusGeometry(1, key, 16, 40);
+    geom = createPrimitiveTorusGeometry('locomotion', 'close', 1, key);
     ringGeomByTubeRatio.set(key, geom);
   }
   return geom;

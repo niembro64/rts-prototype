@@ -7,6 +7,10 @@ import {
   acquireAuxiliaryRendererContext,
   type RendererContextToken,
 } from '@/game/render3d/RendererContextBudget';
+import {
+  createPrimitiveConeGeometry,
+  createPrimitiveCylinderGeometry,
+} from '@/game/render3d/PrimitiveGeometryQuality3D';
 
 const props = withDefaults(defineProps<{
   data: Pick<MinimapData, 'cameraView' | 'directionVersion' | 'wind'>;
@@ -129,7 +133,7 @@ function makeArrow(material: THREE.Material): THREE.Group {
   const tail = -totalLength * 0.5;
 
   const shaft = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.055, 0.065, shaftLength, 14),
+    createPrimitiveCylinderGeometry('hud', 'close', 0.055, 0.065, shaftLength),
     material,
   );
   shaft.rotation.x = Math.PI / 2;
@@ -137,7 +141,7 @@ function makeArrow(material: THREE.Material): THREE.Group {
   group.add(shaft);
 
   const head = new THREE.Mesh(
-    new THREE.ConeGeometry(0.17, headLength, 18),
+    createPrimitiveConeGeometry('hud', 'close', 0.17, headLength),
     material,
   );
   head.rotation.x = Math.PI / 2;
