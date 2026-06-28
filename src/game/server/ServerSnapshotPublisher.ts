@@ -31,6 +31,15 @@ import {
   resetEntitySnapshotPool,
   serializeEntitySnapshot,
 } from '../network/stateSerializerEntities';
+import {
+  addSnapshotMaterializationStageFromStart,
+  copySnapshotMaterializationStageDurations,
+  createSnapshotMaterializationStageDurations,
+  setSnapshotMaterializationMetadata,
+  type SnapshotMaterializationKind,
+  type SnapshotMaterializationStage,
+  type SnapshotMaterializationStageDurations,
+} from '../network/snapshotMaterializationMetadata';
 import type {
   SerializerAudioOverride,
   SerializerMinimapOverride,
@@ -67,6 +76,37 @@ function isEntityMotionDeltaCandidate(entity: Entity): boolean {
   const av = unit.angularVelocity3;
   if (av === null) return false;
   return av.x * av.x + av.y * av.y + av.z * av.z > ENTITY_MOTION_ANGULAR_EPSILON_SQ;
+}
+
+function addMaterializationStage(
+  stages: SnapshotMaterializationStageDurations,
+  stage: SnapshotMaterializationStage,
+  start: number,
+): void {
+  addSnapshotMaterializationStageFromStart(stages, stage, start);
+}
+
+function timeMaterializationStage<T>(
+  stages: SnapshotMaterializationStageDurations,
+  stage: SnapshotMaterializationStage,
+  fn: () => T,
+): T {
+  const start = performance.now();
+  const value = fn();
+  addMaterializationStage(stages, stage, start);
+  return value;
+}
+
+function snapshotProjectileRowCount(
+  projectiles: NetworkServerSnapshot['projectiles'],
+): number {
+  if (projectiles === undefined) return 0;
+  return (
+    (projectiles.spawns?.length ?? 0) +
+    (projectiles.despawns?.length ?? 0) +
+    (projectiles.velocityUpdates?.length ?? 0) +
+    (projectiles.beamUpdates?.length ?? 0)
+  );
 }
 
 export type SnapshotListenerEntry = {
@@ -124,6 +164,7 @@ export class ServerSnapshotPublisher {
   private readonly deltaRemovedEntityIdsBuf: EntityId[] = [];
   private readonly deltaRemovedEntityIdSet = new Set<EntityId>();
   private readonly deltaEntityIdSet = new Set<EntityId>();
+  private readonly entityMotionCandidateIdsBuf: EntityId[] = [];
   reset(): void {}
 
   clear(): void {
@@ -139,14 +180,35 @@ export class ServerSnapshotPublisher {
     this.deltaRemovedEntityIdsBuf.length = 0;
     this.deltaRemovedEntityIdSet.clear();
     this.deltaEntityIdSet.clear();
+    this.entityMotionCandidateIdsBuf.length = 0;
   }
 
   hasEntityMotionDeltaCandidates(world: WorldState): boolean {
-    const units = world.getUnits();
-    for (let i = 0; i < units.length; i++) {
-      if (isEntityMotionDeltaCandidate(units[i])) return true;
-    }
-    return false;
+    return this.collectEntityMotionDeltaCandidates(world, this.entityMotionCandidateIdsBuf) > 0;
+  }
+
+  private stampSnapshotMaterialization(
+    state: NetworkServerSnapshot,
+    kind: SnapshotMaterializationKind,
+    listener: SnapshotListenerEntry,
+    stages: SnapshotMaterializationStageDurations,
+    startedAt: number,
+    snapshot: SerializedListenerSnapshot,
+  ): void {
+    const finalStages = copySnapshotMaterializationStageDurations(stages);
+    addMaterializationStage(finalStages, 'total', startedAt);
+    setSnapshotMaterializationMetadata(state, {
+      kind,
+      tick: state.tick,
+      listener: listener.trackingKey,
+      playerId: listener.playerId ?? null,
+      entityRows: state.entities.length,
+      removedRows: state.removedEntityIds?.length ?? 0,
+      projectileRows: snapshotProjectileRowCount(state.projectiles),
+      directWire: snapshot.wirePayload?.materializationKind === 'direct',
+      preencodedWire: snapshot.wirePayload !== undefined,
+      stages: finalStages,
+    });
   }
 
   private updateListenerVisibleBaseline(
@@ -191,6 +253,8 @@ export class ServerSnapshotPublisher {
   }
 
   emit(input: ServerSnapshotPublisherInput): void {
+    const emitBaseStages = createSnapshotMaterializationStageDurations();
+    const lifecycleStart = performance.now();
     const gamePhase = input.simulation.getGamePhase();
     const winnerId = gamePhase === 'gameOver'
       ? input.simulation.getWinnerId() ?? undefined
@@ -213,7 +277,9 @@ export class ServerSnapshotPublisher {
     // already covers every id with position metadata for the FOW-02b
     // ghost cleanup, so the parallel id array would be dead-loaded.
     // We only pass removedEntities below.
+    addMaterializationStage(emitBaseStages, 'lifecycleDrain', lifecycleStart);
 
+    let stageStart = performance.now();
     const wind = input.simulation.getWindState();
     const entityPoolStats = getEntitySnapshotPoolStats();
     const serverMeta = this.metaBuilder.build({
@@ -246,11 +312,14 @@ export class ServerSnapshotPublisher {
       },
       unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
     });
+    addMaterializationStage(emitBaseStages, 'meta', stageStart);
 
+    stageStart = performance.now();
     const gridDebug = input.debugGridPublisher.refresh(performance.now(), input.world);
     const gridCells = gridDebug.cells;
     const gridSearchCells = gridDebug.searchCells;
     const gridCellSize = gridDebug.cellSize;
+    addMaterializationStage(emitBaseStages, 'grid', stageStart);
 
     // Share one SnapshotVisibility per team across the listener loop
     // (FOW-OPT-01). Two teammates merge the same set of
@@ -273,7 +342,11 @@ export class ServerSnapshotPublisher {
     teamMinimapCache.clear();
 
     const serializeForListener = (listener: SnapshotListenerEntry): SerializedListenerSnapshot => {
+      const listenerStartedAt = performance.now();
+      const stages = copySnapshotMaterializationStageDurations(emitBaseStages);
+      let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
+      addMaterializationStage(stages, 'visibility', stageStart);
       const listenerNeedsStaticMap = this.listenerNeedsStaticMap(listener, input);
       listener.needsFullState = false;
       const shouldEmitMinimap = true;
@@ -310,33 +383,51 @@ export class ServerSnapshotPublisher {
           terrain: shouldSendStaticTerrain ? input.terrainTileMap : undefined,
           buildability: shouldSendStaticTerrain ? input.terrainBuildabilityGrid : undefined,
           serverMeta,
+          materializationStages: stages,
         });
         if (directSnapshot !== undefined) {
+          stageStart = performance.now();
           if (shouldSendStaticTerrain) {
             this.markListenerStaticMapSent(listener, input);
           }
+          addMaterializationStage(stages, 'staticPayload', stageStart);
+          stageStart = performance.now();
           this.updateListenerVisibleBaseline(listener, input.world, visibility);
+          addMaterializationStage(stages, 'visibility', stageStart);
+          this.stampSnapshotMaterialization(
+            directSnapshot.state,
+            'rich-full',
+            listener,
+            stages,
+            listenerStartedAt,
+            directSnapshot,
+          );
           return directSnapshot;
         }
       }
       if (teamKey !== undefined) {
         audioOverride = teamAudioCache.get(teamKey);
         if (!audioOverride) {
+          stageStart = performance.now();
           audioOverride = {
             value: serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
           };
           teamAudioCache.set(teamKey, audioOverride);
+          addMaterializationStage(stages, 'audio', stageStart);
         }
         sprayOverride = teamSprayCache.get(teamKey);
         if (!sprayOverride) {
+          stageStart = performance.now();
           sprayOverride = {
             value: serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
           };
           teamSprayCache.set(teamKey, sprayOverride);
+          addMaterializationStage(stages, 'spray', stageStart);
         }
         if (shouldEmitMinimap) {
           minimapOverride = teamMinimapCache.get(teamKey);
           if (!minimapOverride) {
+            stageStart = performance.now();
             minimapOverride = {
               value: serializeMinimapSnapshotEntities(
                 input.world,
@@ -345,6 +436,7 @@ export class ServerSnapshotPublisher {
               ),
             };
             teamMinimapCache.set(teamKey, minimapOverride);
+            addMaterializationStage(stages, 'minimap', stageStart);
           }
         }
       }
@@ -358,6 +450,7 @@ export class ServerSnapshotPublisher {
         audioOverride,
         sprayOverride,
         minimapOverride,
+        materializationStages: stages,
       };
       const state = serializeGameState(
         input.world,
@@ -374,6 +467,7 @@ export class ServerSnapshotPublisher {
         serializeOptions,
       );
 
+      stageStart = performance.now();
       state.terrain = shouldSendStaticTerrain ? input.terrainTileMap : undefined;
       state.buildability = shouldSendStaticTerrain
         ? input.terrainBuildabilityGrid
@@ -382,8 +476,22 @@ export class ServerSnapshotPublisher {
         this.markListenerStaticMapSent(listener, input);
       }
       state.serverMeta = serverMeta;
+      addMaterializationStage(stages, 'staticPayload', stageStart);
+      stageStart = performance.now();
       this.updateListenerVisibleBaseline(listener, input.world, visibility);
-      return this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
+      addMaterializationStage(stages, 'visibility', stageStart);
+      stageStart = performance.now();
+      const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
+      addMaterializationStage(stages, 'wireEncode', stageStart);
+      this.stampSnapshotMaterialization(
+        state,
+        'rich-full',
+        listener,
+        stages,
+        listenerStartedAt,
+        encoded,
+      );
+      return encoded;
     };
 
     let sharedGlobalDynamicSnapshot: SerializedListenerSnapshot | undefined;
@@ -449,6 +557,8 @@ export class ServerSnapshotPublisher {
   }
 
   private emitDirtyPresentationDelta(input: ServerSnapshotPublisherInput): boolean {
+    const emitBaseStages = createSnapshotMaterializationStageDurations();
+    const lifecycleStart = performance.now();
     const gamePhase = input.simulation.getGamePhase();
     const winnerId = gamePhase === 'gameOver'
       ? input.simulation.getWinnerId() ?? undefined
@@ -469,7 +579,9 @@ export class ServerSnapshotPublisher {
       projectileSpawns.length > 0 ||
       projectileDespawns.length > 0 ||
       projectileVelocityUpdates.length > 0;
+    addMaterializationStage(emitBaseStages, 'lifecycleDrain', lifecycleStart);
 
+    let stageStart = performance.now();
     const unitCount = input.world.getUnits().length;
     const entityPoolStats = getEntitySnapshotPoolStats();
     const serverMeta = this.metaBuilder.build({
@@ -502,11 +614,14 @@ export class ServerSnapshotPublisher {
       },
       unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
     });
+    addMaterializationStage(emitBaseStages, 'meta', stageStart);
 
+    stageStart = performance.now();
     const gridDebug = input.debugGridPublisher.refresh(performance.now(), input.world);
     const gridCells = gridDebug.cells;
     const gridSearchCells = gridDebug.searchCells;
     const gridCellSize = gridDebug.cellSize;
+    addMaterializationStage(emitBaseStages, 'grid', stageStart);
 
     const visibilityCache = this.visibilityCache;
     visibilityCache.clear();
@@ -519,9 +634,14 @@ export class ServerSnapshotPublisher {
 
     let emitted = false;
     for (const listener of input.listeners) {
+      const listenerStartedAt = performance.now();
+      const stages = copySnapshotMaterializationStageDurations(emitBaseStages);
+      let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       const currentVisible = this.currentVisibleEntityIdsBuf;
       this.collectCurrentVisibleEntityIds(input.world, visibility, currentVisible);
+      addMaterializationStage(stages, 'visibility', stageStart);
+      stageStart = performance.now();
       const entities = this.serializeDirtyPresentationEntities(
         input.world,
         visibility,
@@ -536,6 +656,7 @@ export class ServerSnapshotPublisher {
         currentVisible,
         this.removedEntitiesBuf,
       );
+      addMaterializationStage(stages, 'entityDtos', stageStart);
 
       const teamKey = visibility.teamMaskKey;
       let audioOverride: SerializerAudioOverride | undefined;
@@ -544,20 +665,25 @@ export class ServerSnapshotPublisher {
       if (teamKey !== undefined) {
         audioOverride = teamAudioCache.get(teamKey);
         if (!audioOverride) {
+          stageStart = performance.now();
           audioOverride = {
             value: serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
           };
           teamAudioCache.set(teamKey, audioOverride);
+          addMaterializationStage(stages, 'audio', stageStart);
         }
         sprayOverride = teamSprayCache.get(teamKey);
         if (!sprayOverride) {
+          stageStart = performance.now();
           sprayOverride = {
             value: serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
           };
           teamSprayCache.set(teamKey, sprayOverride);
+          addMaterializationStage(stages, 'spray', stageStart);
         }
         minimapOverride = teamMinimapCache.get(teamKey);
         if (!minimapOverride) {
+          stageStart = performance.now();
           minimapOverride = {
             value: serializeMinimapSnapshotEntities(
               input.world,
@@ -566,29 +692,51 @@ export class ServerSnapshotPublisher {
             ),
           };
           teamMinimapCache.set(teamKey, minimapOverride);
+          addMaterializationStage(stages, 'minimap', stageStart);
         }
       }
 
-      const state: NetworkServerSnapshot = {
-        tick: input.world.getTick(),
-        entities,
-        entityDeltaOnly: true,
-        projectileDeltaOnly: undefined,
-        minimapEntities: minimapOverride !== undefined
-          ? minimapOverride.value
-          : serializeMinimapSnapshotEntities(input.world, visibility, listener.cacheKey),
-        economy: serializeEconomySnapshot(input.world.playerCount, listener.playerId),
-        resourceMovements: serializeResourceMovements(input.world, visibility),
-        sprayTargets: sprayOverride !== undefined
-          ? sprayOverride.value
-          : serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
-        audioEvents: audioOverride !== undefined
-          ? audioOverride.value
-          : serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
-        scanPulses: serializeScanPulses(input.world, visibility),
-        shroud: undefined,
-        projectiles: hasProjectileEvents
-          ? serializeProjectileSnapshot({
+      const minimapEntities = minimapOverride !== undefined
+        ? minimapOverride.value
+        : timeMaterializationStage(
+            stages,
+            'minimap',
+            () => serializeMinimapSnapshotEntities(input.world, visibility, listener.cacheKey),
+          );
+      const economy = timeMaterializationStage(
+        stages,
+        'economy',
+        () => serializeEconomySnapshot(input.world.playerCount, listener.playerId),
+      );
+      const resourceMovements = timeMaterializationStage(
+        stages,
+        'resources',
+        () => serializeResourceMovements(input.world, visibility),
+      );
+      const sprayTargetsForSnapshot = sprayOverride !== undefined
+        ? sprayOverride.value
+        : timeMaterializationStage(
+            stages,
+            'spray',
+            () => serializeSprayTargets(sprayTargets, visibility, listener.cacheKey),
+          );
+      const audioEventsForSnapshot = audioOverride !== undefined
+        ? audioOverride.value
+        : timeMaterializationStage(
+            stages,
+            'audio',
+            () => serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
+          );
+      const scanPulses = timeMaterializationStage(
+        stages,
+        'scanPulses',
+        () => serializeScanPulses(input.world, visibility),
+      );
+      const projectiles = hasProjectileEvents
+        ? timeMaterializationStage(
+            stages,
+            'projectiles',
+            () => serializeProjectileSnapshot({
               world: input.world,
               fullStateResync: false,
               visibility,
@@ -596,14 +744,39 @@ export class ServerSnapshotPublisher {
               projectileSpawns,
               projectileDespawns,
               projectileVelocityUpdates,
-            })
-          : undefined,
-        gameState: {
+            }),
+          )
+        : undefined;
+      const gameState = timeMaterializationStage(
+        stages,
+        'gameState',
+        () => ({
           phase: gamePhase,
           winnerId,
-        },
+        }),
+      );
+      const grid = timeMaterializationStage(
+        stages,
+        'grid',
+        () => serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize),
+      );
+
+      const state: NetworkServerSnapshot = {
+        tick: input.world.getTick(),
+        entities,
+        entityDeltaOnly: true,
+        projectileDeltaOnly: undefined,
+        minimapEntities,
+        economy,
+        resourceMovements,
+        sprayTargets: sprayTargetsForSnapshot,
+        audioEvents: audioEventsForSnapshot,
+        scanPulses,
+        shroud: undefined,
+        projectiles,
+        gameState,
         serverMeta,
-        grid: serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize),
+        grid,
         terrain: undefined,
         buildability: undefined,
         removedEntityIds,
@@ -613,8 +786,20 @@ export class ServerSnapshotPublisher {
           : undefined,
       };
 
+      stageStart = performance.now();
       this.copyVisibleBaseline(listener, currentVisible);
+      addMaterializationStage(stages, 'visibility', stageStart);
+      stageStart = performance.now();
       const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
+      addMaterializationStage(stages, 'wireEncode', stageStart);
+      this.stampSnapshotMaterialization(
+        state,
+        'rich-delta',
+        listener,
+        stages,
+        listenerStartedAt,
+        encoded,
+      );
       listener.callback(state, undefined, encoded.wirePayload);
       emitted = true;
     }
@@ -710,10 +895,18 @@ export class ServerSnapshotPublisher {
 
   emitProjectileDelta(input: ServerSnapshotPublisherInput): boolean {
     if (input.listeners.length === 0) return false;
+    const emitBaseStages = createSnapshotMaterializationStageDurations();
+    let stageStart = performance.now();
     const hasProjectilePresentationEvents = input.simulation.hasPendingProjectilePresentationEvents();
-    const hasEntityMotionDeltas = this.hasEntityMotionDeltaCandidates(input.world);
+    addMaterializationStage(emitBaseStages, 'lifecycleDrain', stageStart);
+    stageStart = performance.now();
+    const motionCandidateIds = this.entityMotionCandidateIdsBuf;
+    const hasEntityMotionDeltas =
+      this.collectEntityMotionDeltaCandidates(input.world, motionCandidateIds) > 0;
+    addMaterializationStage(emitBaseStages, 'entityDtos', stageStart);
     if (!hasProjectilePresentationEvents && !hasEntityMotionDeltas) return false;
 
+    stageStart = performance.now();
     const audioEvents = hasProjectilePresentationEvents
       ? input.simulation.getAndClearEvents()
       : undefined;
@@ -738,28 +931,45 @@ export class ServerSnapshotPublisher {
     if (!hasProjectilesAfterDrain && !hasEntityMotionDeltas) {
       return false;
     }
+    addMaterializationStage(emitBaseStages, 'lifecycleDrain', stageStart);
 
     const visibilityCache = this.visibilityCache;
     visibilityCache.clear();
     let emitted = false;
     for (const listener of input.listeners) {
+      const listenerStartedAt = performance.now();
+      const stages = copySnapshotMaterializationStageDurations(emitBaseStages);
+      let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
+      addMaterializationStage(stages, 'visibility', stageStart);
       const motionEntities = hasEntityMotionDeltas
-        ? this.serializeEntityMotionDelta(input.world, visibility)
+        ? timeMaterializationStage(
+            stages,
+            'entityDtos',
+            () => this.serializeEntityMotionDelta(input.world, visibility, motionCandidateIds),
+          )
         : undefined;
       const projectiles = hasProjectilesAfterDrain
-        ? serializeProjectileSnapshot({
-            world: input.world,
-            fullStateResync: false,
-            visibility,
-            emitBeamUpdates: false,
-            projectileSpawns,
-            projectileDespawns,
-            projectileVelocityUpdates,
-          })
+        ? timeMaterializationStage(
+            stages,
+            'projectiles',
+            () => serializeProjectileSnapshot({
+              world: input.world,
+              fullStateResync: false,
+              visibility,
+              emitBeamUpdates: false,
+              projectileSpawns,
+              projectileDespawns,
+              projectileVelocityUpdates,
+            }),
+          )
         : undefined;
       const netAudioEvents = audioEvents !== undefined
-        ? serializeAudioEvents(audioEvents, visibility, listener.cacheKey)
+        ? timeMaterializationStage(
+            stages,
+            'audio',
+            () => serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
+          )
         : undefined;
       if (
         motionEntities === undefined &&
@@ -789,7 +999,17 @@ export class ServerSnapshotPublisher {
         visionPlayerMask: undefined,
         removedEntityIds: undefined,
       };
+      stageStart = performance.now();
       const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
+      addMaterializationStage(stages, 'wireEncode', stageStart);
+      this.stampSnapshotMaterialization(
+        state,
+        'sparse-delta',
+        listener,
+        stages,
+        listenerStartedAt,
+        encoded,
+      );
       listener.callback(state, undefined, encoded.wirePayload);
       emitted = true;
     }
@@ -799,13 +1019,13 @@ export class ServerSnapshotPublisher {
   private serializeEntityMotionDelta(
     world: WorldState,
     visibility: SnapshotVisibility,
+    candidateIds: readonly EntityId[],
   ): NetworkServerSnapshot['entities'] | undefined {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
-    const units = world.getUnits();
-    for (let i = 0; i < units.length; i++) {
-      const entity = units[i];
-      if (!isEntityMotionDeltaCandidate(entity)) continue;
+    for (let i = 0; i < candidateIds.length; i++) {
+      const entity = world.getEntity(candidateIds[i]);
+      if (entity === undefined) continue;
       if (!visibility.isEntityVisible(entity)) continue;
       const netEntity = serializeEntitySnapshot(
         entity,
@@ -816,6 +1036,19 @@ export class ServerSnapshotPublisher {
       if (netEntity !== null) entities.push(netEntity);
     }
     return entities.length > 0 ? entities : undefined;
+  }
+
+  private collectEntityMotionDeltaCandidates(
+    world: WorldState,
+    out: EntityId[],
+  ): number {
+    out.length = 0;
+    const units = world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      if (isEntityMotionDeltaCandidate(entity)) out.push(entity.id);
+    }
+    return out.length;
   }
 
   private listenerNeedsStaticMap(

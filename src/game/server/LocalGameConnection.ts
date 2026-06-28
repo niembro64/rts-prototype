@@ -12,6 +12,10 @@ import {
   encodeNetworkSnapshotDetailed,
   measureNetworkSnapshotWireBreakdown,
 } from '../network/snapshotWireCodec';
+import {
+  addSnapshotMaterializationStageToSnapshot,
+  copySnapshotMaterializationMetadata,
+} from '../network/snapshotMaterializationMetadata';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
@@ -141,6 +145,7 @@ export class LocalGameConnection implements GameConnection {
     this.recordLocalSnapshotWireCostIfNeeded(state, encoded);
     const decoded = decodeNetworkSnapshot(encoded.bytes);
     setSnapshotWireBytes(decoded, encoded.bytes.byteLength);
+    copySnapshotMaterializationMetadata(state, decoded);
     return decoded;
   }
 
@@ -174,6 +179,9 @@ export class LocalGameConnection implements GameConnection {
     const payload = encoded.bytes;
     const encodeMs = encoded.encodeMs;
     setSnapshotWireBytes(state, payload.byteLength);
+    if (wirePayload === undefined) {
+      addSnapshotMaterializationStageToSnapshot(state, 'wireEncode', encodeMs);
+    }
     if (!SNAPSHOT_CADENCE_REGRESSION.enabled && !SNAPSHOT_ENCODE_INSTRUMENTATION.enabled) return;
     const serverMeta = state.serverMeta;
     const snapshotRate = serverMeta !== undefined ? serverMeta.snaps.rate : undefined;

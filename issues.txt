@@ -19,15 +19,6 @@ Please always commit and push before and after any code changes we make.
 
 
 
-[18] Optimization - profile and reduce presentation snapshot materialization cost
-    Preserve snapshot content and deterministic-lockstep truth. Add timing
-    breakdowns inside snapshot emit for visibility collection, entity DTO
-    materialization, projectile serialization, minimap/economy/resource rows,
-    object clone/merge, optional wire encode, and client apply. Use those
-    measurements to remove avoidable object graph work, repeated scans, and
-    render-irrelevant fields from high-frequency snapshots without changing
-    gameplay or replay checksums.
-
 [19] Optimization - stop using 30 Hz JS DTO snapshots as the local motion path
     Preserve visual smoothness and projectile/audio event timing. Rich
     presentation snapshots should remain around the configured cadence, but

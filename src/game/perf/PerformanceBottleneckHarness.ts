@@ -5,6 +5,13 @@ import type { PlayerId } from '../../types/sim';
 import { createGame, destroyGame, type GameInstance } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
+import {
+  getSnapshotMaterializationMetadata,
+  SNAPSHOT_MATERIALIZATION_STAGES,
+  type SnapshotMaterializationKind,
+  type SnapshotMaterializationMetadata,
+  type SnapshotMaterializationStage,
+} from '../network/snapshotMaterializationMetadata';
 import { getSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { GameServer } from '../server/GameServer';
@@ -97,6 +104,7 @@ type SimSnapshotReport = {
   readonly snapshotMainThreadMsPerSecond: number;
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
+  readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
 
@@ -152,6 +160,42 @@ type FullStackReport = {
 type SnapshotWireStatsReport = {
   readonly rows: readonly unknown[];
   readonly breakdowns: readonly unknown[];
+};
+
+type SnapshotMaterializationStageSummary = {
+  readonly stage: SnapshotMaterializationStage;
+  readonly avgMs: number;
+  readonly p95Ms: number;
+  readonly maxMs: number;
+};
+
+type SnapshotMaterializationKindReport = {
+  readonly kind: SnapshotMaterializationKind | 'all';
+  readonly samples: number;
+  readonly entityRows: NumericSummary;
+  readonly removedRows: NumericSummary;
+  readonly projectileRows: NumericSummary;
+  readonly stageMs: Partial<Record<SnapshotMaterializationStage, NumericSummary>>;
+  readonly topStages: readonly SnapshotMaterializationStageSummary[];
+};
+
+type SnapshotMaterializationStatsReport = {
+  readonly samples: number;
+  readonly all: SnapshotMaterializationKindReport;
+  readonly kinds: readonly SnapshotMaterializationKindReport[];
+};
+
+type SnapshotMaterializationBucket = {
+  samples: number;
+  entityRows: number[];
+  removedRows: number[];
+  projectileRows: number[];
+  stages: Record<SnapshotMaterializationStage, number[]>;
+};
+
+type SnapshotMaterializationAccumulator = {
+  all: SnapshotMaterializationBucket;
+  byKind: Map<SnapshotMaterializationKind, SnapshotMaterializationBucket>;
 };
 
 type MemorySample = {
@@ -405,10 +449,14 @@ async function runSimSnapshot(
 
   const applySamples: number[] = [];
   const byteSamples: number[] = [];
+  const materializationSamples = createSnapshotMaterializationAccumulator();
   const unsubscribe = connection.onSnapshot((snapshot: NetworkServerSnapshot) => {
+    const materialization = getSnapshotMaterializationMetadata(snapshot);
     const applyStart = performance.now();
     view.applyNetworkState(snapshot, { syncEconomy: false });
-    applySamples.push(performance.now() - applyStart);
+    const applyMs = performance.now() - applyStart;
+    applySamples.push(applyMs);
+    recordSnapshotMaterializationSample(materializationSamples, materialization, applyMs);
     const bytes = getSnapshotWireBytes(snapshot);
     if (bytes !== undefined && Number.isFinite(bytes)) byteSamples.push(bytes);
   });
@@ -423,6 +471,7 @@ async function runSimSnapshot(
 
     applySamples.length = 0;
     byteSamples.length = 0;
+    resetSnapshotMaterializationAccumulator(materializationSamples);
     const memory = createMemoryTracker();
     beginWasmBoundaryTracking();
     const stepSamples: number[] = [];
@@ -443,6 +492,9 @@ async function runSimSnapshot(
     const stepMs = summarize(stepSamples);
     const snapshotTotalMs = summarize(snapshotSamples);
     const snapshotWireStats = readSnapshotWireStats();
+    const snapshotMaterializationStats = summarizeSnapshotMaterialization(
+      materializationSamples,
+    );
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
       ...countCoreEntities(core),
@@ -457,6 +509,7 @@ async function runSimSnapshot(
         snapshotTotalMs.avg * (1000 / (fixedStepMs * options.snapshotEveryTicks)),
       memory: memory.finish(),
       wasmBoundary,
+      snapshotMaterializationStats,
       snapshotWireStats,
     };
   } finally {
@@ -672,6 +725,137 @@ function readSnapshotWireStats(): SnapshotWireStatsReport | undefined {
   return { rows, breakdowns };
 }
 
+function createSnapshotMaterializationAccumulator(): SnapshotMaterializationAccumulator {
+  return {
+    all: createSnapshotMaterializationBucket(),
+    byKind: new Map(),
+  };
+}
+
+function resetSnapshotMaterializationAccumulator(
+  accumulator: SnapshotMaterializationAccumulator,
+): void {
+  resetSnapshotMaterializationBucket(accumulator.all);
+  accumulator.byKind.clear();
+}
+
+function recordSnapshotMaterializationSample(
+  accumulator: SnapshotMaterializationAccumulator,
+  metadata: SnapshotMaterializationMetadata | undefined,
+  clientApplyMs: number,
+): void {
+  if (metadata === undefined) return;
+  recordSnapshotMaterializationBucket(accumulator.all, metadata, clientApplyMs);
+  let bucket = accumulator.byKind.get(metadata.kind);
+  if (bucket === undefined) {
+    bucket = createSnapshotMaterializationBucket();
+    accumulator.byKind.set(metadata.kind, bucket);
+  }
+  recordSnapshotMaterializationBucket(bucket, metadata, clientApplyMs);
+}
+
+function summarizeSnapshotMaterialization(
+  accumulator: SnapshotMaterializationAccumulator,
+): SnapshotMaterializationStatsReport | undefined {
+  if (accumulator.all.samples === 0) return undefined;
+  const kinds: SnapshotMaterializationKindReport[] = [];
+  for (const [kind, bucket] of accumulator.byKind) {
+    kinds.push(summarizeSnapshotMaterializationBucket(kind, bucket));
+  }
+  kinds.sort((a, b) => a.kind.localeCompare(b.kind));
+  return {
+    samples: accumulator.all.samples,
+    all: summarizeSnapshotMaterializationBucket('all', accumulator.all),
+    kinds,
+  };
+}
+
+function createSnapshotMaterializationBucket(): SnapshotMaterializationBucket {
+  return {
+    samples: 0,
+    entityRows: [],
+    removedRows: [],
+    projectileRows: [],
+    stages: createSnapshotMaterializationStageSampleRows(),
+  };
+}
+
+function createSnapshotMaterializationStageSampleRows(): Record<SnapshotMaterializationStage, number[]> {
+  const stages = {} as Record<SnapshotMaterializationStage, number[]>;
+  for (let i = 0; i < SNAPSHOT_MATERIALIZATION_STAGES.length; i++) {
+    stages[SNAPSHOT_MATERIALIZATION_STAGES[i]] = [];
+  }
+  return stages;
+}
+
+function resetSnapshotMaterializationBucket(bucket: SnapshotMaterializationBucket): void {
+  bucket.samples = 0;
+  bucket.entityRows.length = 0;
+  bucket.removedRows.length = 0;
+  bucket.projectileRows.length = 0;
+  for (let i = 0; i < SNAPSHOT_MATERIALIZATION_STAGES.length; i++) {
+    bucket.stages[SNAPSHOT_MATERIALIZATION_STAGES[i]].length = 0;
+  }
+}
+
+function recordSnapshotMaterializationBucket(
+  bucket: SnapshotMaterializationBucket,
+  metadata: SnapshotMaterializationMetadata,
+  clientApplyMs: number,
+): void {
+  bucket.samples++;
+  bucket.entityRows.push(metadata.entityRows);
+  bucket.removedRows.push(metadata.removedRows);
+  bucket.projectileRows.push(metadata.projectileRows);
+  for (let i = 0; i < SNAPSHOT_MATERIALIZATION_STAGES.length; i++) {
+    const stage = SNAPSHOT_MATERIALIZATION_STAGES[i];
+    let ms = metadata.stages[stage];
+    if (stage === 'clientApply') {
+      ms = (ms ?? 0) + (Number.isFinite(clientApplyMs) && clientApplyMs >= 0 ? clientApplyMs : 0);
+    }
+    if (ms !== undefined && Number.isFinite(ms) && ms >= 0) {
+      bucket.stages[stage].push(ms);
+    }
+  }
+}
+
+function summarizeSnapshotMaterializationBucket(
+  kind: SnapshotMaterializationKind | 'all',
+  bucket: SnapshotMaterializationBucket,
+): SnapshotMaterializationKindReport {
+  const stageMs: Partial<Record<SnapshotMaterializationStage, NumericSummary>> = {};
+  const topStages: SnapshotMaterializationStageSummary[] = [];
+  for (let i = 0; i < SNAPSHOT_MATERIALIZATION_STAGES.length; i++) {
+    const stage = SNAPSHOT_MATERIALIZATION_STAGES[i];
+    const samples = bucket.stages[stage];
+    if (samples.length === 0) continue;
+    const summary = summarize(samples);
+    stageMs[stage] = summary;
+    if (stage !== 'total') {
+      topStages.push({
+        stage,
+        avgMs: summary.avg,
+        p95Ms: summary.p95,
+        maxMs: summary.max,
+      });
+    }
+  }
+  topStages.sort((a, b) =>
+    b.avgMs - a.avgMs ||
+    b.p95Ms - a.p95Ms ||
+    a.stage.localeCompare(b.stage)
+  );
+  return {
+    kind,
+    samples: bucket.samples,
+    entityRows: summarize(bucket.entityRows),
+    removedRows: summarize(bucket.removedRows),
+    projectileRows: summarize(bucket.projectileRows),
+    stageMs,
+    topStages: topStages.slice(0, 6),
+  };
+}
+
 function createServerConfig(
   options: Required<PerformanceBottleneckHarnessOptions>,
 ): GameServerConfig {
@@ -718,6 +902,10 @@ function diagnose(input: {
     `snapshot p95 ${fmt(input.simSnapshot.snapshotTotalMs.p95)}ms, ` +
       `${fmt(snapshotMsPerSecond)}ms/s main-thread share`,
   );
+  const materializationEvidence = formatSnapshotMaterializationEvidence(
+    input.simSnapshot.snapshotMaterializationStats,
+  );
+  if (materializationEvidence !== '') evidence.push(materializationEvidence);
   evidence.push(
     `full frame p95 ${fmt(frameP95)}ms, render prep p95 ${fmt(renderPrepP95)}ms, ` +
       `gpu p95 ${fmt(gpuP95)}ms`,
@@ -742,7 +930,7 @@ function diagnose(input: {
   }
 
   if (snapshotMsPerSecond >= 80 || input.simSnapshot.snapshotTotalMs.p95 >= frameBudget * 0.5) {
-    nextChecks.push('Split snapshot emit into visibility, DTO materialization, wire encode/decode, and ClientViewState.applyNetworkState.');
+    nextChecks.push('Use snapshot materialization stage p95s to pick the next reduction target: visibility, entity DTOs, projectiles, wire encode, clone/merge, or ClientViewState.applyNetworkState.');
     nextChecks.push('Repeat with lower presentation snapshot rates to confirm serialization sensitivity.');
     return {
       primary: 'snapshot',
@@ -796,6 +984,20 @@ function diagnose(input: {
     evidence,
     nextChecks,
   };
+}
+
+function formatSnapshotMaterializationEvidence(
+  stats: SnapshotMaterializationStatsReport | undefined,
+): string {
+  if (stats === undefined || stats.all.topStages.length === 0) return '';
+  const top = stats.all.topStages.slice(0, 4).map((stage) =>
+    `${stage.stage} avg ${fmt(stage.avgMs)}ms/p95 ${fmt(stage.p95Ms)}ms`
+  ).join(', ');
+  const total = stats.all.stageMs.total;
+  const totalPart = total !== undefined
+    ? `total avg ${fmt(total.avg)}ms/p95 ${fmt(total.p95)}ms; `
+    : '';
+  return `snapshot materialization ${totalPart}top stages: ${top}`;
 }
 
 function countCoreEntities(core: ReturnType<GameServer['getLockstepSimulationCore']>): {

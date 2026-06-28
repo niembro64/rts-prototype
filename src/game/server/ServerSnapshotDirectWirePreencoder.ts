@@ -32,6 +32,10 @@ import {
   encodeNetworkSnapshotWithRustFallback,
   isRustSnapshotWireEnabled,
 } from '../network/snapshotRustWireEncoder';
+import {
+  addSnapshotMaterializationStageFromStart,
+  type SnapshotMaterializationStageDurations,
+} from '../network/snapshotMaterializationMetadata';
 import type { NetworkServerSnapshotWire } from '../network/snapshotWireTypes';
 import type { SprayTarget } from '../sim/commanderAbilities';
 import type {
@@ -73,6 +77,7 @@ type ServerSnapshotDirectWireInput = {
   terrain: TerrainTileMap | undefined;
   buildability: TerrainBuildabilityGrid | undefined;
   serverMeta: NetworkServerSnapshotMeta;
+  materializationStages: SnapshotMaterializationStageDurations | undefined;
 };
 
 const _directGameState: NonNullable<NetworkServerSnapshot['gameState']> = {
@@ -127,17 +132,34 @@ export class ServerSnapshotDirectWirePreencoder {
   tryEncode(input: ServerSnapshotDirectWireInput): DirectSerializedListenerSnapshot | undefined {
     if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
-    if (!this.canUseDirectEntityRows(input)) return undefined;
+    let stageStart = performance.now();
+    const canUseDirectRows = this.canUseDirectEntityRows(input);
+    if (input.materializationStages !== undefined) {
+      addSnapshotMaterializationStageFromStart(
+        input.materializationStages,
+        'entityDtos',
+        stageStart,
+      );
+    }
+    if (!canUseDirectRows) return undefined;
 
     const state = this.materializeWireState(input);
-    const encodeStart = performance.now();
+    stageStart = performance.now();
     const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
+    const encodeMs = performance.now() - stageStart;
+    if (input.materializationStages !== undefined) {
+      addSnapshotMaterializationStageFromStart(
+        input.materializationStages,
+        'wireEncode',
+        stageStart,
+      );
+    }
     if (encoded === null) return undefined;
     return {
       state,
       wirePayload: {
         bytes: encoded.bytes,
-        encodeMs: performance.now() - encodeStart,
+        encodeMs,
         encoderKind: 'rust',
         materializationKind: 'direct',
         rustEntityCount: encoded.rustEntityCount,
@@ -177,46 +199,85 @@ export class ServerSnapshotDirectWirePreencoder {
   }
 
   private materializeWireState(input: ServerSnapshotDirectWireInput): NetworkServerSnapshot {
+    const stages = input.materializationStages;
+    let stageStart = performance.now();
     const entityCount = this.writeEntityRows(input);
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'entityDtos', stageStart);
+    }
     this.entityPlaceholders.length = entityCount;
     registerEntitySnapshotWireSource(this.entityPlaceholders);
 
-    const netMinimapEntities = input.minimapOverride !== undefined
-      ? input.minimapOverride.value
-      : writeMinimapSnapshotWireRowsDirect(
-          input.world,
-          input.visibility,
-          this.minimapPlaceholders,
-        );
+    let netMinimapEntities: NetworkServerSnapshot['minimapEntities'];
+    if (input.minimapOverride !== undefined) {
+      netMinimapEntities = input.minimapOverride.value;
+    } else {
+      stageStart = performance.now();
+      netMinimapEntities = writeMinimapSnapshotWireRowsDirect(
+        input.world,
+        input.visibility,
+        this.minimapPlaceholders,
+      );
+      if (stages !== undefined) {
+        addSnapshotMaterializationStageFromStart(stages, 'minimap', stageStart);
+      }
+    }
+    stageStart = performance.now();
     const netEconomy = writeEconomySnapshotWireRowsDirect(
       input.world.playerCount,
       input.recipientPlayerId,
       this.economyPlaceholder,
     );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'economy', stageStart);
+    }
+    stageStart = performance.now();
     const netResourceMovements = writeResourceMovementWireRowsDirect(
       input.world,
       input.visibility,
       this.resourceMovementPlaceholders,
     );
-    const netSprayTargets = input.sprayOverride !== undefined
-      ? input.sprayOverride.value
-      : writeSprayTargetWireRowsDirect(
-          input.sprayTargets,
-          input.visibility,
-          this.sprayPlaceholders,
-        );
-    const netAudioEvents = input.audioOverride !== undefined
-      ? input.audioOverride.value
-      : writeAudioEventWireRowsDirect(
-          input.audioEvents,
-          input.visibility,
-          this.audioEventPlaceholders,
-        );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'resources', stageStart);
+    }
+    let netSprayTargets: NetworkServerSnapshot['sprayTargets'];
+    if (input.sprayOverride !== undefined) {
+      netSprayTargets = input.sprayOverride.value;
+    } else {
+      stageStart = performance.now();
+      netSprayTargets = writeSprayTargetWireRowsDirect(
+        input.sprayTargets,
+        input.visibility,
+        this.sprayPlaceholders,
+      );
+      if (stages !== undefined) {
+        addSnapshotMaterializationStageFromStart(stages, 'spray', stageStart);
+      }
+    }
+    let netAudioEvents: NetworkServerSnapshot['audioEvents'];
+    if (input.audioOverride !== undefined) {
+      netAudioEvents = input.audioOverride.value;
+    } else {
+      stageStart = performance.now();
+      netAudioEvents = writeAudioEventWireRowsDirect(
+        input.audioEvents,
+        input.visibility,
+        this.audioEventPlaceholders,
+      );
+      if (stages !== undefined) {
+        addSnapshotMaterializationStageFromStart(stages, 'audio', stageStart);
+      }
+    }
+    stageStart = performance.now();
     const netScanPulses = writeScanPulseWireRowsDirect(
       input.world,
       input.visibility,
       this.scanPulsePlaceholders,
     );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'scanPulses', stageStart);
+    }
+    stageStart = performance.now();
     const netProjectiles = writeProjectileSnapshotWireRowsDirect({
       world: input.world,
       fullStateResync: true,
@@ -226,6 +287,10 @@ export class ServerSnapshotDirectWirePreencoder {
       projectileDespawns: input.projectileDespawns,
       projectileVelocityUpdates: input.projectileVelocityUpdates,
     });
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
+    }
+    stageStart = performance.now();
     const netGrid = writeGridSnapshotWireRowsDirect(
       input.gridCells,
       input.gridSearchCells,
@@ -233,9 +298,16 @@ export class ServerSnapshotDirectWirePreencoder {
       this.gridCellPlaceholders,
       this.gridSearchCellPlaceholders,
     );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'grid', stageStart);
+    }
 
+    stageStart = performance.now();
     _directGameState.phase = input.gamePhase;
     _directGameState.winnerId = input.winnerId;
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'gameState', stageStart);
+    }
 
     const state = this.state;
     state.tick = input.world.getTick();

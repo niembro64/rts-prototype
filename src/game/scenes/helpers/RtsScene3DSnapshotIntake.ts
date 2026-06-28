@@ -7,6 +7,7 @@ import type {
   NetworkServerSnapshotSimEvent,
 } from '../../network/NetworkTypes';
 import { getSnapshotWireBytes } from '../../network/snapshotWireMetadata';
+import { addSnapshotClientMaterializationStage } from '../../network/snapshotMaterializationMetadata';
 import type { GameConnection } from '../../server/GameConnection';
 import type { PlayerId } from '../../sim/types';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../../SnapshotCadenceRegression';
@@ -139,6 +140,7 @@ export class RtsScene3DSnapshotIntake {
       syncEconomy: this.syncEconomyFromSnapshots,
     });
     const applyMs = performance.now() - applyStart;
+    addSnapshotClientMaterializationStage(state, 'clientApply', applyMs);
     this.recordSnapshotApply(kind, applyMs);
     if (!this.startupReadyAckSent) this.startupSnapshotApplied = true;
 

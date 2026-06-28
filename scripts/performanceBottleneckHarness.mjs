@@ -227,6 +227,7 @@ function printReport(report) {
   console.log(`  snapshot apply ms avg/p95/max: ${triplet(report.simSnapshot.snapshotApplyMs)}`);
   console.log(`  snapshot bytes avg/p95/max: ${triplet(report.simSnapshot.snapshotBytes)}`);
   console.log(`  snapshot main-thread share: ${fmt(report.simSnapshot.snapshotMainThreadMsPerSecond)} ms/s`);
+  printSnapshotMaterializationStats('  materialization', report.simSnapshot.snapshotMaterializationStats);
   printMemoryLine('  memory', report.simSnapshot.memory);
   printWasmBoundaryLine('  JS/WASM boundary', report.simSnapshot.wasmBoundary);
   console.log('');
@@ -299,6 +300,7 @@ function printSuiteReport(report) {
         `snapshot=${fmt(scenario.simSnapshot.snapshotMainThreadMsPerSecond)}ms/s, ` +
         `frame p95=${fmt(scenario.fullStack.frameMs.p95)}ms`,
     );
+    printSnapshotMaterializationStats('  materialization', scenario.simSnapshot.snapshotMaterializationStats);
     console.log(
       `  render prep p95=${fmt(scenario.fullStack.renderPrepMs.p95)}ms, ` +
         `gpu/render p95=${fmt(scenario.fullStack.gpuMs.p95)}ms, ` +
@@ -315,6 +317,32 @@ function printSuiteReport(report) {
       `  diagnosis=${scenario.diagnosis.primary} (${scenario.diagnosis.confidence})`,
     );
   }
+}
+
+function printSnapshotMaterializationStats(prefix, stats) {
+  if (!stats || !stats.samples) return;
+  const total = stats.all?.stageMs?.total;
+  const totalText = total
+    ? ` total avg/p95/max=${triplet(total)}`
+    : '';
+  console.log(`${prefix}: samples=${stats.samples}${totalText}`);
+  printSnapshotMaterializationKind(`${prefix} all`, stats.all);
+  for (const kind of stats.kinds ?? []) {
+    printSnapshotMaterializationKind(`${prefix} ${kind.kind}`, kind);
+  }
+}
+
+function printSnapshotMaterializationKind(prefix, kind) {
+  if (!kind || !kind.samples) return;
+  const rows =
+    `rows entity/rem/projectile avg=` +
+    `${fmt(kind.entityRows.avg)}/${fmt(kind.removedRows.avg)}/${fmt(kind.projectileRows.avg)}`;
+  const stages = (kind.topStages ?? [])
+    .slice(0, 5)
+    .map((stage) => `${stage.stage} ${fmt(stage.avgMs)}/${fmt(stage.p95Ms)}ms`)
+    .join(', ');
+  console.log(`    ${prefix}: samples=${kind.samples} ${rows}`);
+  if (stages) console.log(`      top avg/p95 stages: ${stages}`);
 }
 
 function printMemoryLine(prefix, memory) {

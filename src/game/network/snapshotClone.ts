@@ -42,6 +42,7 @@ import {
   createNetworkUnitSnapshot,
 } from './unitSnapshotFields';
 import { copySnapshotWireBytes } from './snapshotWireMetadata';
+import { copySnapshotMaterializationMetadata } from './snapshotMaterializationMetadata';
 
 function cloneEconomyEntry(e: NetworkServerSnapshotEconomy): NetworkServerSnapshotEconomy {
   return {
@@ -582,6 +583,7 @@ export class ReusableNetworkSnapshotCloner {
       dst.removedEntityIds = undefined;
     }
     copySnapshotWireBytes(state, dst);
+    copySnapshotMaterializationMetadata(state, dst);
     return dst;
   }
 

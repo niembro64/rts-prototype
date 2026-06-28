@@ -29,6 +29,7 @@ import {
   createSpawnDto,
   createVelocityDto,
 } from '../../network/snapshotDtoCopy';
+import { addSnapshotClientMaterializationStage } from '../../network/snapshotMaterializationMetadata';
 
 const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
@@ -291,7 +292,13 @@ export class SnapshotBuffer {
         this.pendingSnapshot !== null &&
         this.pendingSnapshot.entityDeltaOnly !== true
       ) {
+        const mergeStart = performance.now();
         this.mergeEntityMotionDeltaIntoPending(state.entities, state.removedEntityIds);
+        addSnapshotClientMaterializationStage(
+          this.pendingSnapshot,
+          'cloneMerge',
+          performance.now() - mergeStart,
+        );
         releaseSnapshot?.();
         return;
       }
@@ -301,7 +308,13 @@ export class SnapshotBuffer {
       const previousTerrain = this.pendingSnapshot?.terrain;
       const previousBuildability = this.pendingSnapshot?.buildability;
       this.releasePendingSnapshot();
+      const cloneStart = performance.now();
       const pending = this.snapshotCloner.clone(state);
+      addSnapshotClientMaterializationStage(
+        pending,
+        'cloneMerge',
+        performance.now() - cloneStart,
+      );
       if (pending.terrain === undefined && previousTerrain !== undefined) {
         pending.terrain = previousTerrain;
       }

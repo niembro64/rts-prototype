@@ -33,6 +33,10 @@ import {
   SnapshotVisibility,
   serializeScanPulses,
 } from './stateSerializerVisibility';
+import {
+  addSnapshotMaterializationStageFromStart,
+  type SnapshotMaterializationStageDurations,
+} from './snapshotMaterializationMetadata';
 
 const _entityBuf: NetworkServerSnapshotEntity[] = [];
 const _removedIdsBuf: number[] = [];
@@ -78,6 +82,7 @@ export type SerializeGameStateOptions = {
   sprayOverride: SerializerSprayOverride | undefined;
   minimapOverride: SerializerMinimapOverride | undefined;
   emitProjectileDetailFields: boolean | undefined;
+  materializationStages: SnapshotMaterializationStageDurations | undefined;
 };
 
 const DEFAULT_SERIALIZE_GAME_STATE_OPTIONS: SerializeGameStateOptions = {
@@ -90,6 +95,7 @@ const DEFAULT_SERIALIZE_GAME_STATE_OPTIONS: SerializeGameStateOptions = {
   sprayOverride: undefined,
   minimapOverride: undefined,
   emitProjectileDetailFields: undefined,
+  materializationStages: undefined,
 };
 
 export type SerializerAudioOverride = {
@@ -184,36 +190,79 @@ export function serializeGameState(
   const recipientPlayerId = options.recipientPlayerId;
   const visibility = options.visibility ?? SnapshotVisibility.forRecipient(world, recipientPlayerId);
   const tick = world.getTick();
+  const stages = options.materializationStages;
 
   resetEntitySnapshotPool();
   _entityBuf.length = 0;
   _removedIdsBuf.length = 0;
 
+  let stageStart = performance.now();
   appendRemovedEntityIds(world, visibility, options);
   appendFullEntityRows(world, visibility);
+  if (stages !== undefined) {
+    addSnapshotMaterializationStageFromStart(stages, 'entityDtos', stageStart);
+  }
 
   // Full-state snapshots do not consume dirty records, but direct callers
   // still need the world's per-tick dirty buffer drained.
   world.drainSnapshotDirtyEntities(_dirtyEntityIdsBuf, _dirtyEntityFieldsBuf);
 
-  const netMinimapEntities = options.minimapOverride !== undefined
-    ? options.minimapOverride.value
-    : serializeMinimapSnapshotEntities(world, visibility, options.trackingKey);
+  let netMinimapEntities: NetworkServerSnapshot['minimapEntities'];
+  if (options.minimapOverride !== undefined) {
+    netMinimapEntities = options.minimapOverride.value;
+  } else {
+    stageStart = performance.now();
+    netMinimapEntities = serializeMinimapSnapshotEntities(
+      world,
+      visibility,
+      options.trackingKey,
+    );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'minimap', stageStart);
+    }
+  }
 
+  stageStart = performance.now();
   const netEconomy = serializeEconomySnapshot(world.playerCount, recipientPlayerId);
+  if (stages !== undefined) {
+    addSnapshotMaterializationStageFromStart(stages, 'economy', stageStart);
+  }
+  stageStart = performance.now();
   const netResourceMovements = serializeResourceMovements(world, visibility);
+  if (stages !== undefined) {
+    addSnapshotMaterializationStageFromStart(stages, 'resources', stageStart);
+  }
 
-  const netSprayTargets = options.sprayOverride !== undefined
-    ? options.sprayOverride.value
-    : serializeSprayTargets(sprayTargets, visibility, options.trackingKey);
+  let netSprayTargets: NetworkServerSnapshot['sprayTargets'];
+  if (options.sprayOverride !== undefined) {
+    netSprayTargets = options.sprayOverride.value;
+  } else {
+    stageStart = performance.now();
+    netSprayTargets = serializeSprayTargets(sprayTargets, visibility, options.trackingKey);
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'spray', stageStart);
+    }
+  }
 
-  const netAudioEvents = options.audioOverride !== undefined
-    ? options.audioOverride.value
-    : serializeAudioEvents(audioEvents, visibility, options.trackingKey);
+  let netAudioEvents: NetworkServerSnapshot['audioEvents'];
+  if (options.audioOverride !== undefined) {
+    netAudioEvents = options.audioOverride.value;
+  } else {
+    stageStart = performance.now();
+    netAudioEvents = serializeAudioEvents(audioEvents, visibility, options.trackingKey);
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'audio', stageStart);
+    }
+  }
 
+  stageStart = performance.now();
   const netScanPulses = serializeScanPulses(world, visibility);
+  if (stages !== undefined) {
+    addSnapshotMaterializationStageFromStart(stages, 'scanPulses', stageStart);
+  }
   const netShroud = undefined;
 
+  stageStart = performance.now();
   const netProjectiles = serializeProjectileSnapshot({
     world,
     fullStateResync: true,
@@ -223,11 +272,22 @@ export function serializeGameState(
     projectileDespawns,
     projectileVelocityUpdates,
   });
+  if (stages !== undefined) {
+    addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
+  }
 
+  stageStart = performance.now();
   const netGrid = serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize);
+  if (stages !== undefined) {
+    addSnapshotMaterializationStageFromStart(stages, 'grid', stageStart);
+  }
 
+  stageStart = performance.now();
   _gameStateBuf.phase = gamePhase;
   _gameStateBuf.winnerId = winnerId;
+  if (stages !== undefined) {
+    addSnapshotMaterializationStageFromStart(stages, 'gameState', stageStart);
+  }
 
   _snapshotBuf.tick = tick;
   _snapshotBuf.entityDeltaOnly = undefined;
