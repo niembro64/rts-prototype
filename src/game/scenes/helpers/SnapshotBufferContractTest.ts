@@ -265,7 +265,10 @@ export function runSnapshotBufferContractTest(): void {
     'untyped snapshot clone must clear stale typed entity wire source metadata',
   );
 
-  const typedFullEntities = [createUnitEntity(60, 100, null)];
+  const typedFullEntity = createSparseDecodedMotionUnitEntity(60, 100);
+  typedFullEntity.changedFields = null;
+  typedFullEntity.rotation = 0;
+  const typedFullEntities = [typedFullEntity];
   const typedFullSnapshot = createSnapshot(10, [], typedFullEntities);
   attachTypedUnitMotionSource(typedFullEntities, 60, 100, null);
   fake.emitSnapshot(typedFullSnapshot);
@@ -277,10 +280,36 @@ export function runSnapshotBufferContractTest(): void {
     consumedTypedMerge?.entities[0]?.pos?.x === 250,
     'typed pending snapshot must still receive merged entity motion deltas',
   );
+  const preservedMergeSource = consumedTypedMerge !== null
+    ? getEntitySnapshotWireSource(consumedTypedMerge.entities)
+    : undefined;
   assertContract(
-    consumedTypedMerge !== null &&
-      getEntitySnapshotWireSource(consumedTypedMerge.entities) === undefined,
-    'merged entity deltas must invalidate cloned typed entity wire source metadata',
+    preservedMergeSource !== undefined,
+    'motion-only merged entity deltas must preserve cloned typed entity wire source metadata',
+  );
+  assertContract(
+    preservedMergeSource.unitRows.values[
+      preservedMergeSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 1
+    ] === 250,
+    'motion-only merged entity deltas must patch cloned typed unit rows',
+  );
+
+  const typedRemovedEntity = createSparseDecodedMotionUnitEntity(61, 100);
+  typedRemovedEntity.changedFields = null;
+  typedRemovedEntity.rotation = 0;
+  const typedRemovedEntities = [typedRemovedEntity];
+  const typedRemovalSnapshot = createSnapshot(12, [], typedRemovedEntities);
+  attachTypedUnitMotionSource(typedRemovedEntities, 61, 100, null);
+  fake.emitSnapshot(typedRemovalSnapshot);
+  const typedRemovalDelta = createSnapshot(13, [], []);
+  typedRemovalDelta.entityDeltaOnly = true;
+  typedRemovalDelta.removedEntityIds = [61];
+  fake.emitSnapshot(typedRemovalDelta);
+  const consumedTypedRemovalMerge = buffer.consume();
+  assertContract(
+    consumedTypedRemovalMerge !== null &&
+      getEntitySnapshotWireSource(consumedTypedRemovalMerge.entities) === undefined,
+    'removal entity deltas must invalidate cloned typed entity wire source metadata',
   );
 
   const sparseMotionDelta = createSnapshot(7, [], [createSparseDecodedMotionUnitEntity(31, 300)]);

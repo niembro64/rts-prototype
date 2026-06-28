@@ -35,11 +35,28 @@ import {
   forEachPackedProjectileVelocityUpdate,
   getPackedProjectileSnapshotWire,
 } from '../../network/snapshotProjectileWirePack';
-import { unregisterEntitySnapshotWireSource } from '../../network/stateSerializerEntities';
+import {
+  ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  getEntitySnapshotWireSource,
+  unregisterEntitySnapshotWireSource,
+  type EntitySnapshotWireSource,
+} from '../../network/stateSerializerEntities';
+import {
+  ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_VEL,
+} from '../../../types/network';
 
 const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
 const INDEXED_ENTITY_MERGE_MIN_WORK = 4096;
+const ENTITY_MOTION_MERGE_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_NORMAL;
 
 type SnapshotBufferCallback = (state: NetworkServerSnapshot) => void;
 type SnapshotBufferDiagnostics = {
@@ -208,13 +225,25 @@ export class SnapshotBuffer {
     const pending = this.pendingSnapshot;
     if (pending === null || pending.entityDeltaOnly === true) return;
     const pendingEntities = pending.entities;
-    if (deltaEntities.length > 0 || (removedEntityIds !== undefined && removedEntityIds.length > 0)) {
-      unregisterEntitySnapshotWireSource(pendingEntities);
-    }
     const pendingEntityIndexById = this.preparePendingEntityIndex(
       pendingEntities,
       deltaEntities.length,
     );
+    const pendingWireSource = getEntitySnapshotWireSource(pendingEntities);
+    const canPreservePendingWireSource = pendingWireSource !== undefined &&
+      this.canPreservePendingEntityWireSource(
+        pendingEntities,
+        deltaEntities,
+        removedEntityIds,
+        pendingWireSource,
+        pendingEntityIndexById,
+      );
+    if (
+      !canPreservePendingWireSource &&
+      (deltaEntities.length > 0 || (removedEntityIds !== undefined && removedEntityIds.length > 0))
+    ) {
+      unregisterEntitySnapshotWireSource(pendingEntities);
+    }
     for (let i = 0; i < deltaEntities.length; i++) {
       const delta = deltaEntities[i];
       const targetIndex = this.findPendingEntityIndex(
@@ -233,6 +262,9 @@ export class SnapshotBuffer {
       if (delta.changedFields === null) {
         pendingEntities[targetIndex] = cloneNetworkSnapshotEntity(delta);
         continue;
+      }
+      if (canPreservePendingWireSource && pendingWireSource !== undefined) {
+        this.patchPendingEntityWireSourceMotion(pendingWireSource, targetIndex, delta);
       }
       if (delta.pos != null) {
         if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
@@ -273,6 +305,82 @@ export class SnapshotBuffer {
           if (pendingEntities[j].id === id) pendingEntities.splice(j, 1);
         }
       }
+    }
+  }
+
+  private canPreservePendingEntityWireSource(
+    pendingEntities: readonly NetworkServerSnapshotEntity[],
+    deltaEntities: readonly NetworkServerSnapshotEntity[],
+    removedEntityIds: readonly number[] | undefined,
+    source: EntitySnapshotWireSource,
+    indexById: ReadonlyMap<number, number> | undefined,
+  ): boolean {
+    if (removedEntityIds !== undefined && removedEntityIds.length > 0) return false;
+    if (source.kinds.length !== pendingEntities.length) return false;
+    for (let i = 0; i < deltaEntities.length; i++) {
+      const delta = deltaEntities[i];
+      const changedFields = delta.changedFields;
+      if (
+        typeof changedFields !== 'number' ||
+        (changedFields & ~ENTITY_MOTION_MERGE_FIELDS) !== 0
+      ) {
+        return false;
+      }
+      const targetIndex = this.findPendingEntityIndex(pendingEntities, delta.id, indexById);
+      if (targetIndex < 0) return false;
+      const target = pendingEntities[targetIndex];
+      if (target.unit == null || source.kinds[targetIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+        return false;
+      }
+      const rowIndex = source.rowIndices[targetIndex];
+      if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
+      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+      if (source.unitRows.values[base] !== delta.id) return false;
+    }
+    return true;
+  }
+
+  private patchPendingEntityWireSourceMotion(
+    source: EntitySnapshotWireSource,
+    targetIndex: number,
+    delta: NetworkServerSnapshotEntity,
+  ): void {
+    const rowIndex = source.rowIndices[targetIndex];
+    const values = source.unitRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    if (delta.pos != null) {
+      values[base + 1] = delta.pos.x;
+      values[base + 2] = delta.pos.y;
+      values[base + 3] = delta.pos.z;
+    }
+    if (delta.rotation != null) {
+      values[base + 4] = delta.rotation;
+    }
+    const unit = delta.unit;
+    if (unit == null) return;
+    if (unit.velocity != null) {
+      values[base + 10] = unit.velocity.x;
+      values[base + 11] = unit.velocity.y;
+      values[base + 12] = unit.velocity.z;
+    }
+    if (unit.surfaceNormal != null) {
+      values[base + 23] = 1;
+      values[base + 24] = unit.surfaceNormal.nx;
+      values[base + 25] = unit.surfaceNormal.ny;
+      values[base + 26] = unit.surfaceNormal.nz;
+    }
+    if (unit.orientation != null) {
+      values[base + 27] = 1;
+      values[base + 28] = unit.orientation.x;
+      values[base + 29] = unit.orientation.y;
+      values[base + 30] = unit.orientation.z;
+      values[base + 31] = unit.orientation.w;
+    }
+    if (unit.angularVelocity3 != null) {
+      values[base + 32] = 1;
+      values[base + 33] = unit.angularVelocity3.x;
+      values[base + 34] = unit.angularVelocity3.y;
+      values[base + 35] = unit.angularVelocity3.z;
     }
   }
 
