@@ -54,6 +54,11 @@ import {
   type ServerTarget,
 } from './ClientPredictionTargets';
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
+import {
+  applyNetworkBuildStateFields,
+  getBuildingBuildRequired,
+  getUnitBuildRequired,
+} from './ClientBuildStateApplier';
 import { ClientSelectionState } from './ClientSelectionState';
 import { ClientPredictionCadence } from './ClientPredictionCadence';
 import {
@@ -148,12 +153,14 @@ const CLIENT_UNIT_MOTION_DELTA_FIELDS =
 const CLIENT_UNIT_TYPED_DELTA_FIELDS =
   CLIENT_UNIT_MOTION_DELTA_FIELDS |
   ENTITY_CHANGED_HP |
-  ENTITY_CHANGED_TURRETS;
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING;
 const CLIENT_BUILDING_TYPED_DELTA_FIELDS =
   ENTITY_CHANGED_POS |
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_HP |
-  ENTITY_CHANGED_TURRETS;
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING;
 
 type ClientResourcePylonSignedRates = {
   energy: number;
@@ -809,7 +816,8 @@ export class ClientViewState {
     const hasMotionFields = (changedFields & CLIENT_UNIT_MOTION_DELTA_FIELDS) !== 0;
     const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
     const hasTurretFields = (changedFields & ENTITY_CHANGED_TURRETS) !== 0;
-    if (!hasMotionFields && !hasHpFields && !hasTurretFields) return false;
+    const hasBuildFields = (changedFields & ENTITY_CHANGED_BUILDING) !== 0;
+    if (!hasMotionFields && !hasHpFields && !hasTurretFields && !hasBuildFields) return false;
 
     const id = values[base + 0] | 0;
     const playerId = values[base + 5] | 0;
@@ -899,17 +907,41 @@ export class ClientViewState {
       );
     }
 
+    const mayAffectHealthBarCache = hasHpFields || hasBuildFields;
+    const healthBarCacheMemberBefore = mayAffectHealthBarCache
+      ? this.unitHealthBarCacheMembership(existing)
+      : false;
+
     if (hasHpFields) {
-      const healthBarCacheMemberBefore = this.unitHealthBarCacheMembership(existing);
       existing.unit.hp = values[base + 8];
       existing.unit.maxHp = values[base + 9];
+    }
+
+    if (hasBuildFields) {
+      const hasBuildPayload = values[base + 45] !== 0;
+      applyNetworkBuildStateFields(
+        existing,
+        !hasBuildPayload || values[base + 46] !== 0,
+        values[base + 63] !== 0,
+        values[base + 47],
+        values[base + 48],
+        getUnitBuildRequired(existing.unit.unitBlueprintId),
+      );
+    }
+
+    if (mayAffectHealthBarCache) {
       if (healthBarCacheMemberBefore !== this.unitHealthBarCacheMembership(existing)) {
         this.cache.refreshHealthBarEntity(existing);
       }
     }
 
-    if (hasHpFields || copiedTurretRows) {
-      this.refreshRenderableEntityStateSnapshotDelta(existing, hasHpFields, copiedTurretRows);
+    if (hasHpFields || hasBuildFields || copiedTurretRows) {
+      this.refreshRenderableEntityStateSnapshotDelta(
+        existing,
+        hasHpFields || hasBuildFields,
+        copiedTurretRows,
+        hasBuildFields,
+      );
     }
 
     if (hasMotionFields || copiedTurretRows) {
@@ -937,7 +969,8 @@ export class ClientViewState {
     const hasMotionFields = (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0;
     const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
     const hasTurretFields = (changedFields & ENTITY_CHANGED_TURRETS) !== 0;
-    if (!hasMotionFields && !hasHpFields && !hasTurretFields) return false;
+    const hasBuildFields = (changedFields & ENTITY_CHANGED_BUILDING) !== 0;
+    if (!hasMotionFields && !hasHpFields && !hasTurretFields && !hasBuildFields) return false;
 
     const id = values[base + 0] | 0;
     const playerId = values[base + 5] | 0;
@@ -981,10 +1014,39 @@ export class ClientViewState {
     }
     if (target !== undefined) target.updatedAtMs = now;
 
+    const mayAffectHealthBarCache = hasHpFields || hasBuildFields;
+    const healthBarCacheMemberBefore = mayAffectHealthBarCache
+      ? this.buildingHealthBarCacheMembership(existing)
+      : false;
+
     if (hasHpFields) {
-      const healthBarCacheMemberBefore = this.buildingHealthBarCacheMembership(existing);
       existing.building.hp = values[base + 13];
       existing.building.maxHp = values[base + 14];
+    }
+
+    if (hasBuildFields) {
+      applyNetworkBuildStateFields(
+        existing,
+        values[base + 15] !== 0,
+        values[base + 34] !== 0,
+        values[base + 16],
+        values[base + 17],
+        getBuildingBuildRequired(existing.buildingBlueprintId),
+      );
+      if (values[base + 18] !== 0) {
+        existing.metalExtractionRate = values[base + 19];
+      }
+      if (values[base + 20] !== 0) {
+        const activeState = existing.building.activeState;
+        existing.building.activeState = {
+          open: values[base + 21] !== 0,
+          damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
+          reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
+        };
+      }
+    }
+
+    if (mayAffectHealthBarCache) {
       if (healthBarCacheMemberBefore !== this.buildingHealthBarCacheMembership(existing)) {
         this.cache.refreshHealthBarEntity(existing);
       }
@@ -992,10 +1054,15 @@ export class ClientViewState {
 
     if (hasMotionFields) {
       this.refreshRenderableEntityStateFromSnapshot(existing, hasMotionFields);
-    } else if (hasHpFields || copiedTurretRows) {
-      this.refreshRenderableEntityStateSnapshotDelta(existing, hasHpFields, copiedTurretRows);
+    } else if (hasHpFields || hasBuildFields || copiedTurretRows) {
+      this.refreshRenderableEntityStateSnapshotDelta(
+        existing,
+        hasHpFields || hasBuildFields,
+        copiedTurretRows,
+        hasBuildFields,
+      );
     }
-    if (hasMotionFields || hasHpFields) this.dirtyBuildingRenderIds.add(id);
+    if (hasMotionFields || hasHpFields || hasBuildFields) this.dirtyBuildingRenderIds.add(id);
     if (copiedTurretRows) this.activeEntityPredictionIds.add(id);
     return true;
   }
@@ -1822,11 +1889,13 @@ export class ClientViewState {
     entity: Entity,
     refreshHealth: boolean,
     refreshTurrets: boolean,
+    refreshBuild: boolean,
   ): void {
     let slot: number | undefined;
     if (refreshHealth) slot = this.renderEntityState.refreshHealth(entity);
+    if (refreshBuild) slot = this.renderEntityState.refreshBuildState(entity);
     if (refreshTurrets) slot = this.renderEntityState.refreshTurretMetadata(entity);
-    if (!refreshHealth && !refreshTurrets) {
+    if (!refreshHealth && !refreshTurrets && !refreshBuild) {
       slot = this.renderEntityState.getSlot(entity.id)
         ?? this.renderEntityState.refreshEntity(entity);
     }

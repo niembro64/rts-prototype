@@ -45,7 +45,25 @@ export function applyNetworkBuildState(
   build: NetworkBuildState | undefined,
   required: Buildable['required'] | undefined,
 ): boolean {
-  if (!build || build.complete) {
+  return applyNetworkBuildStateFields(
+    entity,
+    build === undefined || build.complete,
+    build?.interrupted === true,
+    build?.paid.energy ?? 0,
+    build?.paid.metal ?? 0,
+    required,
+  );
+}
+
+export function applyNetworkBuildStateFields(
+  entity: Entity,
+  complete: boolean,
+  interrupted: boolean,
+  paidEnergy: number,
+  paidMetal: number,
+  required: Buildable['required'] | undefined,
+): boolean {
+  if (complete) {
     if (!entity.buildable) return false;
     entity.buildable = null;
     return true;
@@ -55,9 +73,9 @@ export function applyNetworkBuildState(
   let buildable = entity.buildable;
   if (!buildable) {
     buildable = createBuildable(required, {
-      paid: build.paid,
+      paid: { energy: paidEnergy, metal: paidMetal },
       isGhost: null,
-      isInterrupted: build.interrupted === true,
+      isInterrupted: interrupted,
       healthBuildFraction: null,
     });
     buildable.healthBuildFraction = getBuildFraction(buildable);
@@ -68,11 +86,11 @@ export function applyNetworkBuildState(
 
   buildable.required.energy = required.energy;
   buildable.required.metal = required.metal;
-  buildable.paid.energy = build.paid.energy;
-  buildable.paid.metal = build.paid.metal;
+  buildable.paid.energy = paidEnergy;
+  buildable.paid.metal = paidMetal;
   buildable.isComplete = false;
   buildable.isGhost = false;
-  buildable.isInterrupted = build.interrupted === true;
+  buildable.isInterrupted = interrupted;
   buildable.healthBuildFraction = getBuildFraction(buildable);
   initializeConstructionPieceHealth(entity);
   return true;

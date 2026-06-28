@@ -27,6 +27,10 @@ export const CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED = 1 << 2;
 export const CLIENT_RENDER_ENTITY_FLAG_SHELL = 1 << 3;
 export const CLIENT_RENDER_UNIT_FLAG_AIRBORNE = 1 << 7;
 export const CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION = 1 << 8;
+const CLIENT_RENDER_ENTITY_CONSTRUCTION_FLAG_MASK =
+  CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS |
+  CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED |
+  CLIENT_RENDER_ENTITY_FLAG_SHELL;
 
 export const CLIENT_RENDER_ENTITY_KIND_NONE = 0;
 export const CLIENT_RENDER_ENTITY_KIND_UNIT = 1;
@@ -121,6 +125,31 @@ function passiveTurretIndex(turrets: readonly Turret[]): number {
 
 function assertNear(label: string, actual: number, expected: number, tolerance = 1e-3): void {
   if (Math.abs(actual - expected) <= tolerance) return;
+  throw new Error(
+    `[client render entity state] ${label} mismatch: slab=${actual}, entity=${expected}`,
+  );
+}
+
+function refreshConstructionFlags(entity: Entity, flags: number): number {
+  let nextFlags = flags & ~CLIENT_RENDER_ENTITY_CONSTRUCTION_FLAG_MASK;
+  if (isBuildInProgress(entity.buildable)) {
+    nextFlags |= CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS;
+  }
+  if (isConstructionPieceMaterialized(entity, 'body')) {
+    nextFlags |= CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED;
+  }
+  if (isShell(entity)) nextFlags |= CLIENT_RENDER_ENTITY_FLAG_SHELL;
+  return nextFlags;
+}
+
+function assertFlag(
+  label: string,
+  actualFlags: number,
+  flag: number,
+  expected: boolean,
+): void {
+  const actual = (actualFlags & flag) !== 0;
+  if (actual === expected) return;
   throw new Error(
     `[client render entity state] ${label} mismatch: slab=${actual}, entity=${expected}`,
   );
@@ -241,6 +270,42 @@ export class ClientRenderEntityStateSlab {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return this.refreshEntity(entity);
       views.turretCount[slot] = turrets?.length ?? 0;
       views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
+      this.markSlotDirty(slot);
+      return slot;
+    }
+    this.unsetEntity(entity.id);
+    return undefined;
+  }
+
+  refreshBuildState(entity: Entity): number | undefined {
+    const slot = this.slotByEntityId.get(entity.id);
+    if (slot === undefined) return this.refreshEntity(entity);
+    const views = this.views;
+    const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
+    if (entity.unit !== null) {
+      if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return this.refreshEntity(entity);
+      views.flags[slot] = refreshConstructionFlags(entity, views.flags[slot]);
+      views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
+      views.buildEnergyRatio[slot] = buildable !== null
+        ? getResourceFillRatio(buildable, 'energy')
+        : 0;
+      views.buildMetalRatio[slot] = buildable !== null
+        ? getResourceFillRatio(buildable, 'metal')
+        : 0;
+      this.markSlotDirty(slot);
+      return slot;
+    }
+    if (entity.building !== null) {
+      if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return this.refreshEntity(entity);
+      views.flags[slot] = refreshConstructionFlags(entity, views.flags[slot]);
+      views.buildingProgress[slot] = getConstructionPieceRenderFraction(entity, 'body');
+      views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
+      views.buildEnergyRatio[slot] = buildable !== null
+        ? getResourceFillRatio(buildable, 'energy')
+        : 0;
+      views.buildMetalRatio[slot] = buildable !== null
+        ? getResourceFillRatio(buildable, 'metal')
+        : 0;
       this.markSlotDirty(slot);
       return slot;
     }
@@ -471,6 +536,36 @@ export class ClientRenderEntityStateSlab {
       );
       assertNear('hp', views.hp[slot], unit.hp);
       assertNear('maxHp', views.maxHp[slot], unit.maxHp);
+      const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
+      assertNear('bodyOpacity', views.bodyOpacity[slot], getConstructionPieceOpacity(entity, 'body'));
+      assertNear(
+        'buildEnergyRatio',
+        views.buildEnergyRatio[slot],
+        buildable !== null ? getResourceFillRatio(buildable, 'energy') : 0,
+      );
+      assertNear(
+        'buildMetalRatio',
+        views.buildMetalRatio[slot],
+        buildable !== null ? getResourceFillRatio(buildable, 'metal') : 0,
+      );
+      assertFlag(
+        'buildInProgress flag',
+        views.flags[slot],
+        CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS,
+        buildable !== null,
+      );
+      assertFlag(
+        'bodyMaterialized flag',
+        views.flags[slot],
+        CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED,
+        isConstructionPieceMaterialized(entity, 'body'),
+      );
+      assertFlag(
+        'shell flag',
+        views.flags[slot],
+        CLIENT_RENDER_ENTITY_FLAG_SHELL,
+        isShell(entity),
+      );
       if (views.unitBlueprintIds[slot] !== unit.unitBlueprintId) {
         throw new Error(`[client render entity state] unit blueprint mismatch for ${entity.id}`);
       }
@@ -494,6 +589,37 @@ export class ClientRenderEntityStateSlab {
       );
       assertNear('hp', views.hp[slot], building.hp);
       assertNear('maxHp', views.maxHp[slot], building.maxHp);
+      const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
+      assertNear('buildingProgress', views.buildingProgress[slot], getConstructionPieceRenderFraction(entity, 'body'));
+      assertNear('bodyOpacity', views.bodyOpacity[slot], getConstructionPieceOpacity(entity, 'body'));
+      assertNear(
+        'buildEnergyRatio',
+        views.buildEnergyRatio[slot],
+        buildable !== null ? getResourceFillRatio(buildable, 'energy') : 0,
+      );
+      assertNear(
+        'buildMetalRatio',
+        views.buildMetalRatio[slot],
+        buildable !== null ? getResourceFillRatio(buildable, 'metal') : 0,
+      );
+      assertFlag(
+        'buildInProgress flag',
+        views.flags[slot],
+        CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS,
+        buildable !== null,
+      );
+      assertFlag(
+        'bodyMaterialized flag',
+        views.flags[slot],
+        CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED,
+        isConstructionPieceMaterialized(entity, 'body'),
+      );
+      assertFlag(
+        'shell flag',
+        views.flags[slot],
+        CLIENT_RENDER_ENTITY_FLAG_SHELL,
+        isShell(entity),
+      );
     }
   }
 

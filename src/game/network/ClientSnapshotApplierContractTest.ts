@@ -1,5 +1,6 @@
 import {
   ENTITY_CHANGED_ACTIONS,
+  ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_TURRETS,
@@ -17,6 +18,7 @@ import type { PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import type { WorldSupportSurface } from '../sim/supportSurface';
 import { refreshUnitActionHash } from '../sim/unitActions';
+import { createBuildable } from '../sim/buildableHelpers';
 import {
   appendEntitySnapshotWireRowDirect,
   registerEntitySnapshotWireSource,
@@ -202,6 +204,31 @@ function hpSparseEntity(id: number, hp: number, maxHp: number): NetworkServerSna
   };
 }
 
+function unitBuildSparseEntity(
+  id: number,
+  complete: boolean,
+  paidEnergy: number,
+  paidMetal: number,
+): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'unit',
+    playerId: 1 as PlayerId,
+    changedFields: ENTITY_CHANGED_BUILDING,
+    pos: null,
+    rotation: null,
+    unit: {
+      ...emptyUnitSnapshot(),
+      build: {
+        complete,
+        interrupted: false,
+        paid: { energy: paidEnergy, metal: paidMetal },
+      },
+    },
+    building: null,
+  };
+}
+
 function buildingHpSparseEntity(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
   return {
     id,
@@ -214,6 +241,32 @@ function buildingHpSparseEntity(id: number, hp: number, maxHp: number): NetworkS
     building: {
       ...emptyBuildingSnapshot(),
       hp: { curr: hp, max: maxHp },
+    },
+  };
+}
+
+function buildingBuildSparseEntity(
+  id: number,
+  complete: boolean,
+  paidEnergy: number,
+  paidMetal: number,
+): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'building',
+    playerId: 1 as PlayerId,
+    changedFields: ENTITY_CHANGED_BUILDING,
+    pos: null,
+    rotation: null,
+    unit: null,
+    building: {
+      ...emptyBuildingSnapshot(),
+      build: {
+        complete,
+        interrupted: false,
+        paid: { energy: paidEnergy, metal: paidMetal },
+      },
+      solar: { open: true },
     },
   };
 }
@@ -408,6 +461,51 @@ export function runClientSnapshotApplierContractTest(): void {
   view.assertRenderEntityStateParity(id);
   assertHudContains(view, id, false);
 
+  wireMotionEntity.buildable = createBuildable(
+    { energy: 100, metal: 50 },
+    {
+      paid: { energy: 25, metal: 10 },
+      isGhost: null,
+      isInterrupted: false,
+      healthBuildFraction: null,
+    },
+  );
+  const typedBuildRows = [unitBuildSparseEntity(id, true, 900, 900)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedBuildRows);
+  appendEntitySnapshotWireRowDirect(
+    wireMotionEntity,
+    ENTITY_CHANGED_BUILDING,
+    {} as WorldState,
+  );
+  view.applyNetworkState(snapshot(6, typedBuildRows));
+  resetEntitySnapshotPool();
+  const unitAfterBuild = view.getEntity(id);
+  assertContract(
+    unitAfterBuild?.buildable?.paid.energy === 25 &&
+      unitAfterBuild.buildable.paid.metal === 10,
+    'typed unit build rows must apply build paid state from wire rows before DTO fallback',
+  );
+  view.assertRenderEntityStateParity(id);
+  assertHudContains(view, id, true);
+
+  wireMotionEntity.buildable = null;
+  const typedBuildCompleteRows = [unitBuildSparseEntity(id, false, 900, 900)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedBuildCompleteRows);
+  appendEntitySnapshotWireRowDirect(
+    wireMotionEntity,
+    ENTITY_CHANGED_BUILDING,
+    {} as WorldState,
+  );
+  view.applyNetworkState(snapshot(7, typedBuildCompleteRows));
+  resetEntitySnapshotPool();
+  assertContract(
+    view.getEntity(id)?.buildable === null,
+    'typed unit build completion rows must clear build state from wire rows before DTO fallback',
+  );
+  view.assertRenderEntityStateParity(id);
+
   const buildingView = new ClientViewState();
   const buildingId = 501;
   buildingView.applyNetworkState(snapshot(1, [fullBuildingEntity(buildingId, 80, 120)]));
@@ -432,6 +530,60 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     buildingView.getEntity(buildingId)?.building?.hp === 45,
     'typed building HP rows must update HP from wire rows before DTO fallback',
+  );
+  buildingView.assertRenderEntityStateParity(buildingId);
+
+  buildingSource.buildable = createBuildable(
+    { energy: 200, metal: 100 },
+    {
+      paid: { energy: 50, metal: 20 },
+      isGhost: null,
+      isInterrupted: false,
+      healthBuildFraction: null,
+    },
+  );
+  const typedBuildingBuildRows = [buildingBuildSparseEntity(buildingId, true, 900, 900)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedBuildingBuildRows);
+  appendEntitySnapshotWireRowDirect(
+    buildingSource,
+    ENTITY_CHANGED_BUILDING,
+    {} as WorldState,
+  );
+  buildingSource.buildable = null;
+  buildingView.applyNetworkState(snapshot(3, typedBuildingBuildRows));
+  resetEntitySnapshotPool();
+  const buildingAfterBuild = buildingView.getEntity(buildingId)?.buildable;
+  assertContract(
+    buildingAfterBuild?.paid.energy === 50 &&
+      buildingAfterBuild.paid.metal === 20,
+    'typed building build rows must apply build paid state from wire rows before DTO fallback',
+  );
+  buildingView.assertRenderEntityStateParity(buildingId);
+
+  buildingSource.buildable = null;
+  const typedBuildingCompleteRows = [buildingBuildSparseEntity(buildingId, false, 900, 900)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedBuildingCompleteRows);
+  appendEntitySnapshotWireRowDirect(
+    buildingSource,
+    ENTITY_CHANGED_BUILDING,
+    {} as WorldState,
+  );
+  buildingSource.buildable = createBuildable(
+    { energy: 200, metal: 100 },
+    {
+      paid: { energy: 75, metal: 25 },
+      isGhost: null,
+      isInterrupted: false,
+      healthBuildFraction: null,
+    },
+  );
+  buildingView.applyNetworkState(snapshot(4, typedBuildingCompleteRows));
+  resetEntitySnapshotPool();
+  assertContract(
+    buildingSource.buildable === null,
+    'typed building build completion rows must clear build state from wire rows before DTO fallback',
   );
   buildingView.assertRenderEntityStateParity(buildingId);
 
