@@ -19,17 +19,6 @@ Please always commit and push before and after any code changes we make.
 
 
 
-[17] Optimization - make snapshot telemetry distinguish full snapshots and deltas
-    Preserve gameplay exactly. The client bar's SPS readout currently counts
-    full/rich presentation snapshots and sparse entity/projectile delta
-    snapshots as one rate, which makes the 5 Hz presentation target look
-    contradictory when delta traffic reaches ~30 Hz. Split telemetry and UI
-    diagnostics into full/rich SPS, delta SPS, total SPS, bytes by snapshot
-    kind, emit/materialization ms by kind, and ClientViewState apply ms by
-    kind. The UI should make clear which path is capped by
-    architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz and which
-    path is opportunistic per-tick presentation delta traffic.
-
 [18] Optimization - profile and reduce presentation snapshot materialization cost
     Preserve snapshot content and deterministic-lockstep truth. Add timing
     breakdowns inside snapshot emit for visibility collection, entity DTO

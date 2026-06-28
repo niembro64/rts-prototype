@@ -65,7 +65,9 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
       assertContract(
         backend.getDiagnostics().lockstepPerformanceBudget?.slowClientPolicy ===
           'stall-and-resync-lockstep-frames' &&
-          (backend.getDiagnostics().lockstepSnapshotPerformance?.snapshotsEmitted ?? 0) > 0,
+          (backend.getDiagnostics().lockstepSnapshotPerformance?.snapshotsEmitted ?? 0) > 0 &&
+          (backend.getDiagnostics().lockstepSnapshotPerformance?.rich.snapshotsEmitted ?? 0) > 0 &&
+          backend.getDiagnostics().lockstepSnapshotPerformance?.delta.snapshotsEmitted !== undefined,
         'lockstep diagnostics must expose performance budget and snapshot timing',
       );
 

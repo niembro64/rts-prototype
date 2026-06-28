@@ -102,8 +102,22 @@ export function useGameCanvasTelemetry({
   const renderTpsWorst = ref(0);
   const snapAvgRate = ref(0);
   const snapWorstRate = ref(0);
+  const richSnapAvgRate = ref(0);
+  const richSnapWorstRate = ref(0);
+  const deltaSnapAvgRate = ref(0);
+  const deltaSnapWorstRate = ref(0);
   const snapshotSizeAvgBytes = ref(0);
   const snapshotSizeHiBytes = ref(0);
+  const richSnapshotSizeAvgBytes = ref(0);
+  const richSnapshotSizeHiBytes = ref(0);
+  const deltaSnapshotSizeAvgBytes = ref(0);
+  const deltaSnapshotSizeHiBytes = ref(0);
+  const snapshotApplyAvgMs = ref(0);
+  const snapshotApplyHiMs = ref(0);
+  const richSnapshotApplyAvgMs = ref(0);
+  const richSnapshotApplyHiMs = ref(0);
+  const deltaSnapshotApplyAvgMs = ref(0);
+  const deltaSnapshotApplyHiMs = ref(0);
   const currentZoom = ref(0.4);
   let updateInterval: ReturnType<typeof setInterval> | null = null;
   let renderProfileApi: RenderProfileApi | null = null;
@@ -196,10 +210,26 @@ export function useGameCanvasTelemetry({
       const snapStats = scene.getSnapshotStats();
       setNumberRefIfChanged(snapAvgRate, snapStats.avgRate, 0.05);
       setNumberRefIfChanged(snapWorstRate, snapStats.worstRate, 0.05);
+      setNumberRefIfChanged(richSnapAvgRate, snapStats.rich.avgRate, 0.05);
+      setNumberRefIfChanged(richSnapWorstRate, snapStats.rich.worstRate, 0.05);
+      setNumberRefIfChanged(deltaSnapAvgRate, snapStats.delta.avgRate, 0.05);
+      setNumberRefIfChanged(deltaSnapWorstRate, snapStats.delta.worstRate, 0.05);
 
       const payloadSizeStats = scene.getSnapshotPayloadSizeStats();
       setNumberRefIfChanged(snapshotSizeAvgBytes, payloadSizeStats.avgBytes, 1);
       setNumberRefIfChanged(snapshotSizeHiBytes, payloadSizeStats.hiBytes, 1);
+      setNumberRefIfChanged(richSnapshotSizeAvgBytes, payloadSizeStats.rich.avgBytes, 1);
+      setNumberRefIfChanged(richSnapshotSizeHiBytes, payloadSizeStats.rich.hiBytes, 1);
+      setNumberRefIfChanged(deltaSnapshotSizeAvgBytes, payloadSizeStats.delta.avgBytes, 1);
+      setNumberRefIfChanged(deltaSnapshotSizeHiBytes, payloadSizeStats.delta.hiBytes, 1);
+
+      const applyStats = scene.getSnapshotApplyStats();
+      setNumberRefIfChanged(snapshotApplyAvgMs, applyStats.total.avgMs, 0.01);
+      setNumberRefIfChanged(snapshotApplyHiMs, applyStats.total.hiMs, 0.01);
+      setNumberRefIfChanged(richSnapshotApplyAvgMs, applyStats.rich.avgMs, 0.01);
+      setNumberRefIfChanged(richSnapshotApplyHiMs, applyStats.rich.hiMs, 0.01);
+      setNumberRefIfChanged(deltaSnapshotApplyAvgMs, applyStats.delta.avgMs, 0.01);
+      setNumberRefIfChanged(deltaSnapshotApplyHiMs, applyStats.delta.hiMs, 0.01);
     }
   }
 
@@ -314,7 +344,21 @@ export function useGameCanvasTelemetry({
     renderTpsWorst,
     snapAvgRate,
     snapWorstRate,
+    richSnapAvgRate,
+    richSnapWorstRate,
+    deltaSnapAvgRate,
+    deltaSnapWorstRate,
     snapshotSizeAvgBytes,
     snapshotSizeHiBytes,
+    richSnapshotSizeAvgBytes,
+    richSnapshotSizeHiBytes,
+    deltaSnapshotSizeAvgBytes,
+    deltaSnapshotSizeHiBytes,
+    snapshotApplyAvgMs,
+    snapshotApplyHiMs,
+    richSnapshotApplyAvgMs,
+    richSnapshotApplyHiMs,
+    deltaSnapshotApplyAvgMs,
+    deltaSnapshotApplyHiMs,
   };
 }

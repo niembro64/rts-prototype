@@ -77,6 +77,7 @@ const PATHING_DEBUG_UNIT_OPTIONS: readonly {
 
 const SNAPSHOT_REASONABLE_BYTES = 1024 * 1024;
 const SNAPSHOT_SIZE_TARGET_RATIO_BUDGET = 1;
+const SNAPSHOT_APPLY_REASONABLE_MS = 4;
 
 function snapshotSizeTargetRatio(bytes: number, reasonableBytes: number): number {
   if (!Number.isFinite(bytes) || !Number.isFinite(reasonableBytes) || reasonableBytes <= 0) {
@@ -515,7 +516,7 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Snapshots received per second from server">SPS:</BarLabel>
+        <BarLabel title="All snapshots consumed by the local renderer: rich presentation packets plus sparse motion/projectile delta packets. This can approach the fixed simulation rate when deltas are active.">TOTAL SPS:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -528,7 +529,7 @@ function resetEveryCustomHotkey(): void {
                 :style="
                   statBarStyle(
                     model.snapAvgRate,
-                    presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
+                    model.displayTickRate,
                   )
                 "
               ></div>
@@ -545,6 +546,46 @@ function resetEveryCustomHotkey(): void {
                 :style="
                   statBarStyle(
                     model.snapWorstRate,
+                    model.displayTickRate,
+                  )
+                "
+              ></div>
+            </div>
+          </div>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Rich presentation snapshots carry server metadata and slower-changing presentation state. Target comes from architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz.">RICH SPS:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.richSnapAvgRate) }}</span>
+              <span class="fps-label">avg</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="
+                  statBarStyle(
+                    model.richSnapAvgRate,
+                    presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
+                  )
+                "
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.richSnapWorstRate) }}</span>
+              <span class="fps-label">low</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="
+                  statBarStyle(
+                    model.richSnapWorstRate,
                     presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
                   )
                 "
@@ -555,7 +596,47 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="`Encoded full-state presentation snapshot payload size before decode/unpack. Lockstep uses local snapshots for renderer input, not remote gameplay authority. Target ${fmtBytes4(SNAPSHOT_REASONABLE_BYTES)}; x is avg divided by target.`">SNAP SIZE:</BarLabel>
+        <BarLabel title="Sparse no-metadata entity/projectile deltas emitted opportunistically between rich snapshots. These can approach fixed-step cadence during movement/combat.">DELTA SPS:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.deltaSnapAvgRate) }}</span>
+              <span class="fps-label">avg</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="
+                  statBarStyle(
+                    model.deltaSnapAvgRate,
+                    model.displayTickRate,
+                  )
+                "
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.deltaSnapWorstRate) }}</span>
+              <span class="fps-label">low</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="
+                  statBarStyle(
+                    model.deltaSnapWorstRate,
+                    model.displayTickRate,
+                  )
+                "
+              ></div>
+            </div>
+          </div>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel :title="`Encoded local snapshot payload size estimate before decode/unpack. Lockstep uses local snapshots for renderer input, not remote gameplay authority. Target ${fmtBytes4(SNAPSHOT_REASONABLE_BYTES)}; x is avg divided by target.`">SNAP SIZE:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -595,6 +676,108 @@ function resetEveryCustomHotkey(): void {
                     SNAPSHOT_SIZE_TARGET_RATIO_BUDGET,
                   )
                 "
+              ></div>
+            </div>
+          </div>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Payload bytes for rich metadata-carrying presentation snapshots.">RICH BYTES:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtBytes4(model.richSnapshotSizeAvgBytes) }}</span>
+              <span class="fps-label">avg</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="msBarStyle(model.richSnapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES)"
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtBytes4(model.richSnapshotSizeHiBytes) }}</span>
+              <span class="fps-label">hi</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="msBarStyle(model.richSnapshotSizeHiBytes, SNAPSHOT_REASONABLE_BYTES)"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Payload bytes for sparse no-metadata entity/projectile deltas.">DELTA BYTES:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtBytes4(model.deltaSnapshotSizeAvgBytes) }}</span>
+              <span class="fps-label">avg</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="msBarStyle(model.deltaSnapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES)"
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmtBytes4(model.deltaSnapshotSizeHiBytes) }}</span>
+              <span class="fps-label">hi</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="msBarStyle(model.deltaSnapshotSizeHiBytes, SNAPSHOT_REASONABLE_BYTES)"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="ClientViewState.applyNetworkState wall-clock cost split by all/rich/delta snapshots.">SNAP APPLY:</BarLabel>
+        <div class="stat-bar-group">
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.snapshotApplyAvgMs) }}</span>
+              <span class="fps-label">all</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="msBarStyle(model.snapshotApplyAvgMs, SNAPSHOT_APPLY_REASONABLE_MS)"
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.richSnapshotApplyAvgMs) }}</span>
+              <span class="fps-label">rich</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="msBarStyle(model.richSnapshotApplyAvgMs, SNAPSHOT_APPLY_REASONABLE_MS)"
+              ></div>
+            </div>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-top">
+              <span class="fps-value">{{ fmt4(model.deltaSnapshotApplyAvgMs) }}</span>
+              <span class="fps-label">delta</span>
+            </div>
+            <div class="stat-bar-track">
+              <div
+                class="stat-bar-fill"
+                :style="msBarStyle(model.deltaSnapshotApplyAvgMs, SNAPSHOT_APPLY_REASONABLE_MS)"
               ></div>
             </div>
           </div>

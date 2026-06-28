@@ -4,7 +4,12 @@
 import type { ClientViewState } from '../network/ClientViewState';
 import type { SceneCameraState } from '@/types/game';
 import type { CameraViewMode } from '@/types/client';
-import { RtsScene3DSnapshotIntake } from './helpers/RtsScene3DSnapshotIntake';
+import {
+  RtsScene3DSnapshotIntake,
+  type RtsScene3DSnapshotApplyStats,
+  type RtsScene3DSnapshotPayloadSizeStats,
+  type RtsScene3DSnapshotRateStats,
+} from './helpers/RtsScene3DSnapshotIntake';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { buildEconomyInfo } from './helpers';
 import type { EconomyInfo, MinimapData, SelectionInfo } from './helpers';
@@ -1292,12 +1297,16 @@ export class RtsScene3D {
     return this.entityRenderer.getScopedMeshRetentionTelemetry();
   }
 
-  public getSnapshotStats(): { avgRate: number; worstRate: number } {
+  public getSnapshotStats(): RtsScene3DSnapshotRateStats {
     return this.snapshotIntake.getSnapshotStats();
   }
 
-  public getSnapshotPayloadSizeStats(): { avgBytes: number; hiBytes: number } {
+  public getSnapshotPayloadSizeStats(): RtsScene3DSnapshotPayloadSizeStats {
     return this.snapshotIntake.getSnapshotPayloadSizeStats();
+  }
+
+  public getSnapshotApplyStats(): RtsScene3DSnapshotApplyStats {
+    return this.snapshotIntake.getSnapshotApplyStats();
   }
 
   /**

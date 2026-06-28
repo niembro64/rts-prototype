@@ -1011,8 +1011,22 @@ const {
   renderTpsWorst,
   snapAvgRate,
   snapWorstRate,
+  richSnapAvgRate,
+  richSnapWorstRate,
+  deltaSnapAvgRate,
+  deltaSnapWorstRate,
   snapshotSizeAvgBytes,
   snapshotSizeHiBytes,
+  richSnapshotSizeAvgBytes,
+  richSnapshotSizeHiBytes,
+  deltaSnapshotSizeAvgBytes,
+  deltaSnapshotSizeHiBytes,
+  snapshotApplyAvgMs,
+  snapshotApplyHiMs,
+  richSnapshotApplyAvgMs,
+  richSnapshotApplyHiMs,
+  deltaSnapshotApplyAvgMs,
+  deltaSnapshotApplyHiMs,
 } = useGameCanvasTelemetry({
   getScene: () => getBackgroundBattle()?.gameInstance?.getScene() ?? foregroundGame.getScene(),
 });
@@ -1479,10 +1493,24 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   currentZoom: currentZoom.value,
   snapAvgRate: snapAvgRate.value,
   snapWorstRate: snapWorstRate.value,
+  richSnapAvgRate: richSnapAvgRate.value,
+  richSnapWorstRate: richSnapWorstRate.value,
+  deltaSnapAvgRate: deltaSnapAvgRate.value,
+  deltaSnapWorstRate: deltaSnapWorstRate.value,
   displayTickRate: displayTickRate.value,
   displaySnapshotRate: displaySnapshotRate.value,
   snapshotSizeAvgBytes: snapshotSizeAvgBytes.value,
   snapshotSizeHiBytes: snapshotSizeHiBytes.value,
+  richSnapshotSizeAvgBytes: richSnapshotSizeAvgBytes.value,
+  richSnapshotSizeHiBytes: richSnapshotSizeHiBytes.value,
+  deltaSnapshotSizeAvgBytes: deltaSnapshotSizeAvgBytes.value,
+  deltaSnapshotSizeHiBytes: deltaSnapshotSizeHiBytes.value,
+  snapshotApplyAvgMs: snapshotApplyAvgMs.value,
+  snapshotApplyHiMs: snapshotApplyHiMs.value,
+  richSnapshotApplyAvgMs: richSnapshotApplyAvgMs.value,
+  richSnapshotApplyHiMs: richSnapshotApplyHiMs.value,
+  deltaSnapshotApplyAvgMs: deltaSnapshotApplyAvgMs.value,
+  deltaSnapshotApplyHiMs: deltaSnapshotApplyHiMs.value,
   audioSmoothing: audioSmoothing.value,
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
@@ -1654,10 +1682,24 @@ watchEffect(() => {
   m.currentZoom = currentZoom.value;
   m.snapAvgRate = snapAvgRate.value;
   m.snapWorstRate = snapWorstRate.value;
+  m.richSnapAvgRate = richSnapAvgRate.value;
+  m.richSnapWorstRate = richSnapWorstRate.value;
+  m.deltaSnapAvgRate = deltaSnapAvgRate.value;
+  m.deltaSnapWorstRate = deltaSnapWorstRate.value;
   m.displayTickRate = displayTickRate.value;
   m.displaySnapshotRate = displaySnapshotRate.value;
   m.snapshotSizeAvgBytes = snapshotSizeAvgBytes.value;
   m.snapshotSizeHiBytes = snapshotSizeHiBytes.value;
+  m.richSnapshotSizeAvgBytes = richSnapshotSizeAvgBytes.value;
+  m.richSnapshotSizeHiBytes = richSnapshotSizeHiBytes.value;
+  m.deltaSnapshotSizeAvgBytes = deltaSnapshotSizeAvgBytes.value;
+  m.deltaSnapshotSizeHiBytes = deltaSnapshotSizeHiBytes.value;
+  m.snapshotApplyAvgMs = snapshotApplyAvgMs.value;
+  m.snapshotApplyHiMs = snapshotApplyHiMs.value;
+  m.richSnapshotApplyAvgMs = richSnapshotApplyAvgMs.value;
+  m.richSnapshotApplyHiMs = richSnapshotApplyHiMs.value;
+  m.deltaSnapshotApplyAvgMs = deltaSnapshotApplyAvgMs.value;
+  m.deltaSnapshotApplyHiMs = deltaSnapshotApplyHiMs.value;
   m.audioSmoothing = audioSmoothing.value;
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;

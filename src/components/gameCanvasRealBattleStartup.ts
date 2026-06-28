@@ -537,10 +537,30 @@ async function createDeterministicLockstepBackendRuntime({
   let lastCoordinatorResendMs = Number.NEGATIVE_INFINITY;
   let lastClientResyncRequestMs = Number.NEGATIVE_INFINITY;
   let lastClientResyncRequestFrame: number | null = null;
-  let snapshotMsAvg = 0;
-  let snapshotMsHi = 0;
-  let snapshotMsInitialized = false;
-  let snapshotsEmitted = 0;
+  type SnapshotTimingLane = {
+    snapshotMsAvg: number;
+    snapshotMsHi: number;
+    snapshotMsInitialized: boolean;
+    snapshotsEmitted: number;
+  };
+  const totalSnapshotTiming: SnapshotTimingLane = {
+    snapshotMsAvg: 0,
+    snapshotMsHi: 0,
+    snapshotMsInitialized: false,
+    snapshotsEmitted: 0,
+  };
+  const richSnapshotTiming: SnapshotTimingLane = {
+    snapshotMsAvg: 0,
+    snapshotMsHi: 0,
+    snapshotMsInitialized: false,
+    snapshotsEmitted: 0,
+  };
+  const deltaSnapshotTiming: SnapshotTimingLane = {
+    snapshotMsAvg: 0,
+    snapshotMsHi: 0,
+    snapshotMsInitialized: false,
+    snapshotsEmitted: 0,
+  };
   const lockstepPresentationSnapshotIntervalMs = presentationSnapshotRateIntervalMs(
     ARCHITECTURE_CONFIG.lockstep.presentationSnapshots.nominalSnapshotRateHz,
   );
@@ -548,19 +568,23 @@ async function createDeterministicLockstepBackendRuntime({
   let lastLockstepTelemetryPumpMs: number | null = null;
   let lastLockstepCommandPumpMs: number | null = null;
   let lockstepCommandPumpAccumulatorMs = LOCKSTEP_FIXED_DT_MS;
-  const recordSnapshotMs = (sampleMs: number): void => {
+  const recordSnapshotTimingLane = (lane: SnapshotTimingLane, sampleMs: number): void => {
     const sample = Number.isFinite(sampleMs) && sampleMs >= 0 ? sampleMs : 0;
-    snapshotsEmitted++;
-    if (!snapshotMsInitialized) {
-      snapshotMsAvg = sample;
-      snapshotMsHi = sample;
-      snapshotMsInitialized = true;
+    lane.snapshotsEmitted++;
+    if (!lane.snapshotMsInitialized) {
+      lane.snapshotMsAvg = sample;
+      lane.snapshotMsHi = sample;
+      lane.snapshotMsInitialized = true;
       return;
     }
-    snapshotMsAvg = snapshotMsAvg * 0.95 + sample * 0.05;
-    snapshotMsHi = sample > snapshotMsHi
-      ? snapshotMsHi * 0.5 + sample * 0.5
-      : snapshotMsHi * 0.995 + sample * 0.005;
+    lane.snapshotMsAvg = lane.snapshotMsAvg * 0.95 + sample * 0.05;
+    lane.snapshotMsHi = sample > lane.snapshotMsHi
+      ? lane.snapshotMsHi * 0.5 + sample * 0.5
+      : lane.snapshotMsHi * 0.995 + sample * 0.005;
+  };
+  const recordSnapshotMs = (kind: 'rich' | 'delta', sampleMs: number): void => {
+    recordSnapshotTimingLane(totalSnapshotTiming, sampleMs);
+    recordSnapshotTimingLane(kind === 'rich' ? richSnapshotTiming : deltaSnapshotTiming, sampleMs);
   };
 
   const scheduler = new LockstepFrameScheduler({
@@ -998,11 +1022,11 @@ async function createDeterministicLockstepBackendRuntime({
         const snapshotStartMs = performance.now();
         const didEmitSnapshot = server.emitLockstepPresentationSnapshot();
         lastLockstepPresentationSnapshotMs = snapshotStartMs;
-        if (didEmitSnapshot) recordSnapshotMs(performance.now() - snapshotStartMs);
+        if (didEmitSnapshot) recordSnapshotMs('rich', performance.now() - snapshotStartMs);
       } else {
         const snapshotStartMs = performance.now();
         if (server.emitLockstepProjectileDeltaSnapshotIfNeeded()) {
-          recordSnapshotMs(performance.now() - snapshotStartMs);
+          recordSnapshotMs('delta', performance.now() - snapshotStartMs);
         }
       }
     }
@@ -1032,7 +1056,9 @@ async function createDeterministicLockstepBackendRuntime({
           startFrame,
         );
       }
+      const snapshotStartMs = performance.now();
       server.startLockstepPresentation();
+      recordSnapshotMs('rich', performance.now() - snapshotStartMs);
       lastLockstepPresentationSnapshotMs = performance.now();
       pumpTimer = setInterval(pumpFrame, LOCKSTEP_FIXED_DT_MS);
       if (typeof window !== 'undefined' && typeof document !== 'undefined') {
@@ -1090,9 +1116,19 @@ async function createDeterministicLockstepBackendRuntime({
         lockstepBroadcastCommandFrameCount: broadcastCommandFrameCount,
         lockstepPerformanceBudget: LOCKSTEP_PERFORMANCE_BUDGET,
         lockstepSnapshotPerformance: {
-          snapshotMsAvg,
-          snapshotMsHi,
-          snapshotsEmitted,
+          snapshotMsAvg: totalSnapshotTiming.snapshotMsAvg,
+          snapshotMsHi: totalSnapshotTiming.snapshotMsHi,
+          snapshotsEmitted: totalSnapshotTiming.snapshotsEmitted,
+          rich: {
+            snapshotMsAvg: richSnapshotTiming.snapshotMsAvg,
+            snapshotMsHi: richSnapshotTiming.snapshotMsHi,
+            snapshotsEmitted: richSnapshotTiming.snapshotsEmitted,
+          },
+          delta: {
+            snapshotMsAvg: deltaSnapshotTiming.snapshotMsAvg,
+            snapshotMsHi: deltaSnapshotTiming.snapshotMsHi,
+            snapshotsEmitted: deltaSnapshotTiming.snapshotsEmitted,
+          },
         },
         desyncReport: desyncMonitor?.getReport() ?? null,
         lockstep: scheduler.getDiagnostics(),
