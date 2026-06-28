@@ -108,6 +108,7 @@ import type {
   UnitRenderPacket3D,
 } from '../render3d/EntityRenderPackets3D';
 import type { EntityLodEmission3D } from '../render3d/EntityLod3D';
+import { ClientRenderEntityStateSlab } from '../render3d/ClientRenderEntityStateSlab';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -213,6 +214,7 @@ export class ClientViewState {
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
   private renderSpatialIndex = new ClientRenderSpatialIndex();
+  private renderEntityState = new ClientRenderEntityStateSlab();
   private readonly scopedRenderIncludedIds = new Set<EntityId>();
   private entitySetVersion = 0;
   private projectileCacheDirty = false;
@@ -446,6 +448,7 @@ export class ClientViewState {
     this.entities.delete(id);
     this.serverTargets.delete(id);
     this.renderSpatialIndex.remove(id);
+    this.renderEntityState.unsetEntity(id);
     this.selectionState.delete(id);
     this.activeEntityPredictionIds.delete(id);
     this.dirtyUnitRenderIds.delete(id);
@@ -824,6 +827,7 @@ export class ClientViewState {
             }
             this.entities.set(netEntity.id, newEntity);
             this.renderSpatialIndex.update(newEntity);
+            this.renderEntityState.refreshEntity(newEntity);
             this.markEntityPredictionActive(newEntity);
             this.refreshPredictionSupportSurfaceProvider(newEntity);
             this.entitySetVersion++;
@@ -843,6 +847,7 @@ export class ClientViewState {
           }
           snapClientNonVisualState(existing, netEntity);
           this.renderSpatialIndex.update(existing);
+          this.renderEntityState.refreshEntity(existing);
           this.refreshPredictionSupportSurfaceProvider(existing);
           this.markNetworkEntityPredictionActive(netEntity, existing);
         }
@@ -1052,6 +1057,7 @@ export class ClientViewState {
   applyPrediction(deltaMs: number): ClientPredictionTargetAgeStats {
     const stats = this.predictionStepper.apply(deltaMs);
     this.refreshPredictedRenderSpatialIndex();
+    this.refreshPredictedRenderEntityState();
     return stats;
   }
 
@@ -1123,6 +1129,18 @@ export class ClientViewState {
 
   getProjectileRenderScopePadding(): number {
     return this.projectileStore.getRenderScopePadding();
+  }
+
+  getRenderEntityStateSlot(id: EntityId): number | undefined {
+    return this.renderEntityState.getSlot(id);
+  }
+
+  assertRenderEntityStateParity(id: EntityId): void {
+    const entity = this.entities.get(id);
+    if (entity === undefined) {
+      throw new Error(`[client render entity state] missing entity ${id}`);
+    }
+    this.renderEntityState.assertParity(entity);
   }
 
   collectScopedRenderEntities(
@@ -1284,6 +1302,7 @@ export class ClientViewState {
     this.removedUnitRenderIds.length = 0;
     this.removedBuildingRenderIds.length = 0;
     this.renderLifecycleDirtyIds.clear();
+    this.renderEntityState.consumeDirtySlots();
   }
 
   private refreshPredictedRenderSpatialIndex(): void {
@@ -1296,6 +1315,42 @@ export class ClientViewState {
       const entity = this.entities.get(id);
       if (entity !== undefined) this.renderSpatialIndex.update(entity);
       else this.renderSpatialIndex.remove(id);
+    }
+  }
+
+  private refreshRenderEntityStateById(id: EntityId): void {
+    const entity = this.entities.get(id);
+    if (entity !== undefined) this.renderEntityState.refreshEntity(entity);
+    else this.renderEntityState.unsetEntity(id);
+  }
+
+  private refreshAllRenderableEntityStates(): void {
+    for (const entity of this.entities.values()) {
+      if (entity.unit !== null || entity.building !== null) {
+        this.renderEntityState.refreshEntity(entity);
+      }
+    }
+  }
+
+  private refreshPredictedRenderEntityState(): void {
+    for (const id of this.activeEntityPredictionIds) {
+      this.refreshRenderEntityStateById(id);
+    }
+    for (const id of this.dirtyUnitRenderIds) {
+      if (!this.activeEntityPredictionIds.has(id)) this.refreshRenderEntityStateById(id);
+    }
+    for (const id of this.dirtyBuildingRenderIds) {
+      if (!this.activeEntityPredictionIds.has(id)) this.refreshRenderEntityStateById(id);
+    }
+    for (const id of this.renderLifecycleDirtyIds) {
+      if (
+        this.activeEntityPredictionIds.has(id) ||
+        this.dirtyUnitRenderIds.has(id) ||
+        this.dirtyBuildingRenderIds.has(id)
+      ) {
+        continue;
+      }
+      this.refreshRenderEntityStateById(id);
     }
   }
 
@@ -1406,13 +1461,27 @@ export class ClientViewState {
     farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
-    out.unitRows.pushEntity(
-      entity,
-      this.activeEntityPredictionIds.has(entity.id),
-      this.dirtyUnitRenderIds.has(entity.id),
-      this.renderLifecycleDirtyIds.has(entity.id),
-      farLod,
-    );
+    const slot = this.renderEntityState.getSlot(entity.id)
+      ?? this.renderEntityState.refreshEntity(entity);
+    if (slot !== undefined) {
+      out.unitRows.pushEntityState(
+        entity,
+        this.renderEntityState.getViews(),
+        slot,
+        this.activeEntityPredictionIds.has(entity.id),
+        this.dirtyUnitRenderIds.has(entity.id),
+        this.renderLifecycleDirtyIds.has(entity.id),
+        farLod,
+      );
+    } else {
+      out.unitRows.pushEntity(
+        entity,
+        this.activeEntityPredictionIds.has(entity.id),
+        this.dirtyUnitRenderIds.has(entity.id),
+        this.renderLifecycleDirtyIds.has(entity.id),
+        farLod,
+      );
+    }
   }
 
   private pushBuildingRenderRow3D(
@@ -1420,13 +1489,27 @@ export class ClientViewState {
     farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
-    out.buildingRows.pushEntity(
-      entity,
-      this.activeEntityPredictionIds.has(entity.id),
-      this.dirtyBuildingRenderIds.has(entity.id),
-      this.renderLifecycleDirtyIds.has(entity.id),
-      farLod,
-    );
+    const slot = this.renderEntityState.getSlot(entity.id)
+      ?? this.renderEntityState.refreshEntity(entity);
+    if (slot !== undefined) {
+      out.buildingRows.pushEntityState(
+        entity,
+        this.renderEntityState.getViews(),
+        slot,
+        this.activeEntityPredictionIds.has(entity.id),
+        this.dirtyBuildingRenderIds.has(entity.id),
+        this.renderLifecycleDirtyIds.has(entity.id),
+        farLod,
+      );
+    } else {
+      out.buildingRows.pushEntity(
+        entity,
+        this.activeEntityPredictionIds.has(entity.id),
+        this.dirtyBuildingRenderIds.has(entity.id),
+        this.renderLifecycleDirtyIds.has(entity.id),
+        farLod,
+      );
+    }
   }
 
   private populateRenderRemovalRows3D(out: ClientViewRenderEntityPackets3D): void {
@@ -1772,6 +1855,7 @@ export class ClientViewState {
 
   setSelectedIds(ids: Set<EntityId>): void {
     this.selectionState.set(ids);
+    this.refreshAllRenderableEntityStates();
   }
 
   getSelectedIds(): Set<EntityId> {
@@ -1780,14 +1864,18 @@ export class ClientViewState {
 
   selectEntity(id: EntityId): void {
     this.selectionState.select(id);
+    this.refreshRenderEntityStateById(id);
   }
 
   deselectEntity(id: EntityId): void {
     this.selectionState.deselect(id);
+    this.refreshRenderEntityStateById(id);
   }
 
   clearSelection(): void {
+    const hadSelection = this.selectionState.get().size > 0;
     this.selectionState.clear();
+    if (hadSelection) this.refreshAllRenderableEntityStates();
   }
 
   // === Spatial grid debug data ===
@@ -1830,6 +1918,7 @@ export class ClientViewState {
     this.terrainBuildabilityGrid = null;
     this.serverMeta = null;
     this.renderSpatialIndex.clear();
+    this.renderEntityState.clear();
     this.predictionStepper.reset();
     this.predictionCadence.clearAll();
     this.activeEntityPredictionIds.clear();

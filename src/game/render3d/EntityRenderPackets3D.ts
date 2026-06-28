@@ -9,21 +9,32 @@ import {
   isShell,
 } from '../sim/buildableHelpers';
 import { getUnitGroundZ } from '../sim/unitGeometry';
+import type { ClientRenderEntityStateViews } from './ClientRenderEntityStateSlab';
+import {
+  CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED,
+  CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS,
+  CLIENT_RENDER_ENTITY_FLAG_SELECTED,
+  CLIENT_RENDER_ENTITY_FLAG_SHELL,
+  CLIENT_RENDER_ENTITY_KIND_BUILDING,
+  CLIENT_RENDER_ENTITY_KIND_UNIT,
+  CLIENT_RENDER_UNIT_FLAG_AIRBORNE,
+  CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION,
+} from './ClientRenderEntityStateSlab';
 
 const ENTITY_RENDER_PACKET_INITIAL_CAP = 4096;
 const ENTITY_RENDER_REMOVAL_INITIAL_CAP = 256;
 const NO_OWNER_ID = 0;
 const NO_PASSIVE_TURRET_INDEX = -1;
 
-const ENTITY_RENDER_FLAG_SELECTED = 1;
-const ENTITY_RENDER_FLAG_BUILD_IN_PROGRESS = 1 << 1;
-const ENTITY_RENDER_FLAG_BODY_MATERIALIZED = 1 << 2;
-const ENTITY_RENDER_FLAG_SHELL = 1 << 3;
+const ENTITY_RENDER_FLAG_SELECTED = CLIENT_RENDER_ENTITY_FLAG_SELECTED;
+const ENTITY_RENDER_FLAG_BUILD_IN_PROGRESS = CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS;
+const ENTITY_RENDER_FLAG_BODY_MATERIALIZED = CLIENT_RENDER_ENTITY_FLAG_BODY_MATERIALIZED;
+const ENTITY_RENDER_FLAG_SHELL = CLIENT_RENDER_ENTITY_FLAG_SHELL;
 const ENTITY_RENDER_FLAG_ACTIVE_PREDICTION = 1 << 4;
 const ENTITY_RENDER_FLAG_RENDER_DIRTY = 1 << 5;
 const ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY = 1 << 6;
-const UNIT_RENDER_FLAG_AIRBORNE = 1 << 7;
-const UNIT_RENDER_FLAG_HAS_SUSPENSION = 1 << 8;
+const UNIT_RENDER_FLAG_AIRBORNE = CLIENT_RENDER_UNIT_FLAG_AIRBORNE;
+const UNIT_RENDER_FLAG_HAS_SUSPENSION = CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION;
 const ENTITY_RENDER_FLAG_LOD_PROXY = 1 << 9;
 const EMPTY_TURRETS: readonly Turret[] = [];
 const passiveTurretIndexCache = new WeakMap<readonly Turret[], number>();
@@ -77,6 +88,21 @@ function entityRenderFlags(
   if (isBuildInProgress(entity.buildable)) flags |= ENTITY_RENDER_FLAG_BUILD_IN_PROGRESS;
   if (isConstructionPieceMaterialized(entity, 'body')) flags |= ENTITY_RENDER_FLAG_BODY_MATERIALIZED;
   if (isShell(entity)) flags |= ENTITY_RENDER_FLAG_SHELL;
+  if (activePrediction) flags |= ENTITY_RENDER_FLAG_ACTIVE_PREDICTION;
+  if (renderDirty) flags |= ENTITY_RENDER_FLAG_RENDER_DIRTY;
+  if (lifecycleDirty) flags |= ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY;
+  if (lodProxy) flags |= ENTITY_RENDER_FLAG_LOD_PROXY;
+  return flags;
+}
+
+function entityRenderFlagsFromState(
+  stateFlags: number,
+  activePrediction: boolean,
+  renderDirty: boolean,
+  lifecycleDirty: boolean,
+  lodProxy: boolean,
+): number {
+  let flags = stateFlags;
   if (activePrediction) flags |= ENTITY_RENDER_FLAG_ACTIVE_PREDICTION;
   if (renderDirty) flags |= ENTITY_RENDER_FLAG_RENDER_DIRTY;
   if (lifecycleDirty) flags |= ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY;
@@ -181,6 +207,51 @@ export class UnitRenderPacket3D {
     }
     if (unit.suspension !== null) flags |= UNIT_RENDER_FLAG_HAS_SUSPENSION;
     this.flags[cursor] = flags;
+    this.count = cursor + 1;
+  }
+
+  pushEntityState(
+    entity: Entity,
+    state: ClientRenderEntityStateViews,
+    slot: number,
+    activePrediction: boolean = false,
+    renderDirty: boolean = false,
+    lifecycleDirty: boolean = false,
+    lodProxy: boolean = false,
+  ): void {
+    if (entity.unit === null || state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return;
+    const cursor = this.count;
+    this.ensureCapacity(cursor + 1);
+    const combatTurrets = entity.combat?.turrets;
+    const turretRows = combatTurrets ?? EMPTY_TURRETS;
+    this.entities[cursor] = entity;
+    this.turrets[cursor] = turretRows;
+    this.unitBlueprintIds[cursor] = state.unitBlueprintIds[slot];
+    this.ids[cursor] = state.entityIds[slot];
+    this.ownerIds[cursor] = state.ownerIds[slot];
+    this.x[cursor] = state.x[slot];
+    this.y[cursor] = state.y[slot];
+    this.z[cursor] = state.z[slot];
+    this.rotation[cursor] = state.rotation[slot];
+    this.groundY[cursor] = state.groundY[slot];
+    this.radiusOther[cursor] = state.radiusOther[slot];
+    this.normalX[cursor] = state.normalX[slot];
+    this.normalY[cursor] = state.normalY[slot];
+    this.normalZ[cursor] = state.normalZ[slot];
+    this.velocityX[cursor] = state.velocityX[slot];
+    this.velocityY[cursor] = state.velocityY[slot];
+    this.yawRate[cursor] = state.yawRate[slot];
+    this.bodyOpacity[cursor] = state.bodyOpacity[slot];
+    this.bodyCenterHeight[cursor] = state.bodyCenterHeight[slot];
+    this.turretCount[cursor] = state.turretCount[slot];
+    this.passiveTurretIndex[cursor] = state.passiveTurretIndex[slot];
+    this.flags[cursor] = entityRenderFlagsFromState(
+      state.flags[slot],
+      activePrediction,
+      renderDirty,
+      lifecycleDirty,
+      lodProxy,
+    );
     this.count = cursor + 1;
   }
 
@@ -347,6 +418,45 @@ export class BuildingRenderPacket3D {
     this.turretCount[cursor] = turretRows.length;
     this.flags[cursor] = entityRenderFlags(
       entity,
+      activePrediction,
+      renderDirty,
+      lifecycleDirty,
+      lodProxy,
+    );
+    this.count = cursor + 1;
+  }
+
+  pushEntityState(
+    entity: Entity,
+    state: ClientRenderEntityStateViews,
+    slot: number,
+    activePrediction: boolean = false,
+    renderDirty: boolean = false,
+    lifecycleDirty: boolean = false,
+    lodProxy: boolean = false,
+  ): void {
+    if (entity.building === null || state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return;
+    const cursor = this.count;
+    this.ensureCapacity(cursor + 1);
+    const combatTurrets = entity.combat?.turrets;
+    const turretRows = combatTurrets ?? EMPTY_TURRETS;
+    this.entities[cursor] = entity;
+    this.turrets[cursor] = turretRows;
+    this.buildingBlueprintIds[cursor] = state.buildingBlueprintIds[slot];
+    this.ids[cursor] = state.entityIds[slot];
+    this.ownerIds[cursor] = state.ownerIds[slot];
+    this.x[cursor] = state.x[slot];
+    this.y[cursor] = state.y[slot];
+    this.z[cursor] = state.z[slot];
+    this.rotation[cursor] = state.rotation[slot];
+    this.baseY[cursor] = state.buildingBaseY[slot];
+    this.width[cursor] = state.buildingWidth[slot];
+    this.footprintDepth[cursor] = state.buildingFootprintDepth[slot];
+    this.progress[cursor] = state.buildingProgress[slot];
+    this.bodyOpacity[cursor] = state.bodyOpacity[slot];
+    this.turretCount[cursor] = state.turretCount[slot];
+    this.flags[cursor] = entityRenderFlagsFromState(
+      state.flags[slot],
       activePrediction,
       renderDirty,
       lifecycleDirty,

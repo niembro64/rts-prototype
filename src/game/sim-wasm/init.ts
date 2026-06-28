@@ -4354,6 +4354,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCommandExecutionContractTest();
         const { runEntitySlotRegistryContractTest } = await import('../sim/EntitySlotRegistryContractTest');
         runEntitySlotRegistryContractTest();
+        const { runClientRenderEntityStateSlabContractTest } = await import('../render3d/ClientRenderEntityStateSlabContractTest');
+        runClientRenderEntityStateSlabContractTest();
         const { runInputControlGroupsContractTest } = await import('../input/helpers/InputControlGroupsContractTest');
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');
