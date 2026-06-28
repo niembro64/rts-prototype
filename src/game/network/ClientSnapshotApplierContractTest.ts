@@ -12,8 +12,14 @@ import { ClientViewState } from './ClientViewState';
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
 import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
 import type { PlayerId } from '../sim/types';
+import type { WorldState } from '../sim/WorldState';
 import type { WorldSupportSurface } from '../sim/supportSurface';
 import { refreshUnitActionHash } from '../sim/unitActions';
+import {
+  appendEntitySnapshotWireRowDirect,
+  registerEntitySnapshotWireSource,
+  resetEntitySnapshotPool,
+} from './stateSerializerEntities';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -259,6 +265,36 @@ export function runClientSnapshotApplierContractTest(): void {
     'movement-only sparse row must preserve the last received HP',
   );
   assertHudContains(view, id, true);
+
+  const wireMotionEntity = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => id,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    50,
+    0,
+    1 as PlayerId,
+    'unitJackal',
+    { allocateSubEntityIds: false },
+  );
+  const typedMotionRows = [movementOnlySparseEntity(id)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedMotionRows);
+  appendEntitySnapshotWireRowDirect(
+    wireMotionEntity,
+    ENTITY_CHANGED_POS,
+    {} as WorldState,
+  );
+  const typedMotionStats = view.applyNetworkState(snapshot(3, typedMotionRows), {
+    syncEconomy: undefined,
+    collectCorrectionStats: true,
+  });
+  resetEntitySnapshotPool();
+  assertContract(
+    typedMotionStats.correction.count === 1 &&
+      typedMotionStats.correction.totalDistance > 40,
+    'typed unit motion rows must drive local correction targets before DTO fallback',
+  );
 
   view.applyNetworkState(snapshot(3, [hpSparseEntity(id, 80, 100)]));
   assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP sparse row must update unit HP');

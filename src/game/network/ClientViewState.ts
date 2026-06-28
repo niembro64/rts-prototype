@@ -73,10 +73,17 @@ import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
   dequantizeEntityPosition as deqEntityPos,
+  dequantizeNormal as deqNormal,
   dequantizeProjectilePosition as deqProjPos,
   dequantizeRotation as deqRot,
   dequantizeVelocity as deqVel,
 } from './snapshotQuantization';
+import {
+  ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  getEntitySnapshotWireSource,
+  type EntitySnapshotWireSource,
+} from './stateSerializerEntities';
 import type { EntityHudElement, EntityHudType, SelectionHudMode } from '@/clientBarConfig';
 import { getDefaultPlayerName } from '@/playerNamesConfig';
 import { NAME_LABEL_OWNER_Y_OFFSET } from '@/nameLabelConfig';
@@ -661,6 +668,144 @@ export class ClientViewState {
     return entity.ownership !== null && entity.ownership.playerId === server.playerId;
   }
 
+  private tryApplyUnitMotionOnlyWireRow(
+    source: EntitySnapshotWireSource | undefined,
+    snapshotEntity: NetworkServerSnapshotEntity,
+    entityIndex: number,
+    now: number,
+    collectCorrectionStats: boolean,
+    applyStats: ClientSnapshotApplyStats,
+  ): boolean {
+    if (source === undefined || source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+      return false;
+    }
+    const rowIndex = source.rowIndices[entityIndex];
+    if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
+    const values = source.unitRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    const changedFields = values[base + 7] | 0;
+    if (values[base + 6] === 0 || changedFields === 0) return false;
+    if ((changedFields & ~CLIENT_UNIT_MOTION_DELTA_FIELDS) !== 0) return false;
+
+    const id = values[base + 0] | 0;
+    if (
+      snapshotEntity.id !== id ||
+      snapshotEntity.type !== 'unit' ||
+      snapshotEntity.changedFields !== changedFields ||
+      snapshotEntity.playerId !== (values[base + 5] | 0)
+    ) {
+      return false;
+    }
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.unit === null) return false;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== (values[base + 5] | 0)) return false;
+
+    const previousTarget = collectCorrectionStats ? this.serverTargets.get(id) : undefined;
+    const previousTargetAgeMs =
+      previousTarget !== undefined && previousTarget.updatedAtMs
+        ? Math.max(0, now - previousTarget.updatedAtMs)
+        : 0;
+    const target = this.getOrCreateServerTarget(id);
+    this.clearTargetPredictionAccum(id);
+
+    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+      target.x = deqEntityPos(values[base + 1]);
+      target.y = deqEntityPos(values[base + 2]);
+      target.z = deqEntityPos(values[base + 3]);
+    }
+    if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && values[base + 23] !== 0) {
+      target.surfaceNormalX = deqNormal(values[base + 24]);
+      target.surfaceNormalY = deqNormal(values[base + 25]);
+      target.surfaceNormalZ = deqNormal(values[base + 26]);
+    }
+    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+      target.rotation = deqRot(values[base + 4]);
+      if (values[base + 27] !== 0) {
+        let orientation = target.orientation;
+        if (orientation === null) {
+          orientation = { x: 0, y: 0, z: 0, w: 1 };
+          target.orientation = orientation;
+        }
+        orientation.x = values[base + 28];
+        orientation.y = values[base + 29];
+        orientation.z = values[base + 30];
+        orientation.w = values[base + 31];
+      }
+    }
+    if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
+      target.velocityX = deqVel(values[base + 10]);
+      target.velocityY = deqVel(values[base + 11]);
+      target.velocityZ = deqVel(values[base + 12]);
+      if (values[base + 32] !== 0) {
+        target.angularVelocityX = values[base + 33];
+        target.angularVelocityY = values[base + 34];
+        target.angularVelocityZ = values[base + 35];
+      } else {
+        target.angularVelocityX = null;
+        target.angularVelocityY = null;
+        target.angularVelocityZ = null;
+      }
+    }
+
+    target.updatedAtMs = now;
+    if (collectCorrectionStats && (changedFields & ENTITY_CHANGED_POS) !== 0) {
+      this.recordWireMotionCorrectionStats(
+        existing,
+        values,
+        base,
+        changedFields,
+        previousTargetAgeMs,
+        applyStats,
+      );
+    }
+
+    this.activeEntityPredictionIds.add(id);
+    this.dirtyUnitRenderIds.add(id);
+    return true;
+  }
+
+  private recordWireMotionCorrectionStats(
+    existing: Entity,
+    values: Float64Array | number[],
+    base: number,
+    changedFields: number,
+    previousTargetAgeMs: number,
+    applyStats: ClientSnapshotApplyStats,
+  ): void {
+    const netX = deqEntityPos(values[base + 1]);
+    const netY = deqEntityPos(values[base + 2]);
+    const netZ = deqEntityPos(values[base + 3]);
+    const dx = existing.transform.x - netX;
+    const dy = existing.transform.y - netY;
+    const dz = existing.transform.z - netZ;
+    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    applyStats.correction.count++;
+    applyStats.correction.totalDistance += distance;
+    if (distance > applyStats.correction.maxDistance) {
+      applyStats.correction.maxDistance = distance;
+    }
+    if (previousTargetAgeMs > 0) {
+      applyStats.correction.targetAgeCount++;
+      applyStats.correction.totalTargetAgeMs += previousTargetAgeMs;
+      if (previousTargetAgeMs > applyStats.correction.maxTargetAgeMs) {
+        applyStats.correction.maxTargetAgeMs = previousTargetAgeMs;
+      }
+    }
+    const localUnit = existing.unit;
+    if (localUnit !== null && (changedFields & ENTITY_CHANGED_VEL) !== 0) {
+      const dvx = (localUnit.velocityX ?? 0) - deqVel(values[base + 10]);
+      const dvy = (localUnit.velocityY ?? 0) - deqVel(values[base + 11]);
+      const dvz = (localUnit.velocityZ ?? 0) - deqVel(values[base + 12]);
+      const velocityDelta = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
+      applyStats.correction.velocityCount++;
+      applyStats.correction.totalVelocityDelta += velocityDelta;
+      if (velocityDelta > applyStats.correction.maxVelocityDelta) {
+        applyStats.correction.maxVelocityDelta = velocityDelta;
+      }
+    }
+  }
+
   private unitHealthBarCacheMembership(entity: Entity): boolean {
     const unit = entity.unit;
     if (!unit) return false;
@@ -776,8 +921,29 @@ export class ClientViewState {
     // Process entity records from full snapshots and sparse entity-delta
     // snapshots. Projectile-only packets intentionally carry an empty entity
     // list and must not trigger entity drift or full visible-set reconciliation.
+    const entityWireSource = !projectileDeltaOnly
+      ? getEntitySnapshotWireSource(state.entities)
+      : undefined;
+    const typedEntityWireSource =
+      entityWireSource !== undefined && entityWireSource.kinds.length === state.entities.length
+        ? entityWireSource
+        : undefined;
     if (!projectileDeltaOnly) {
-      for (const netEntity of state.entities) {
+      for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
+        const netEntity = state.entities[entityIndex];
+        if (
+          this.tryApplyUnitMotionOnlyWireRow(
+            typedEntityWireSource,
+            netEntity,
+            entityIndex,
+            now,
+            collectCorrectionStats,
+            applyStats,
+          )
+        ) {
+          continue;
+        }
+
         const cf = netEntity.changedFields;
         const isFull = cf == null;
         // Towers ride the static-entity wire shape (no velocity, has
