@@ -724,7 +724,6 @@ export class ClientViewState {
 
   private tryApplyUnitMotionOnlyWireRow(
     source: EntitySnapshotWireSource | undefined,
-    snapshotEntity: NetworkServerSnapshotEntity,
     entityIndex: number,
     now: number,
     collectCorrectionStats: boolean,
@@ -742,18 +741,11 @@ export class ClientViewState {
     if ((changedFields & ~CLIENT_UNIT_MOTION_DELTA_FIELDS) !== 0) return false;
 
     const id = values[base + 0] | 0;
-    if (
-      snapshotEntity.id !== id ||
-      snapshotEntity.type !== 'unit' ||
-      snapshotEntity.changedFields !== changedFields ||
-      snapshotEntity.playerId !== (values[base + 5] | 0)
-    ) {
-      return false;
-    }
+    const playerId = values[base + 5] | 0;
     const existing = this.entities.get(id);
     if (existing === undefined || existing.unit === null) return false;
     const ownership = existing.ownership;
-    if (ownership === null || ownership.playerId !== (values[base + 5] | 0)) return false;
+    if (ownership === null || ownership.playerId !== playerId) return false;
 
     const previousTarget = collectCorrectionStats ? this.serverTargets.get(id) : undefined;
     const previousTargetAgeMs =
@@ -984,11 +976,9 @@ export class ClientViewState {
         : undefined;
     if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
-        const netEntity = state.entities[entityIndex];
         if (
           this.tryApplyUnitMotionOnlyWireRow(
             typedEntityWireSource,
-            netEntity,
             entityIndex,
             now,
             collectCorrectionStats,
@@ -998,6 +988,7 @@ export class ClientViewState {
           continue;
         }
 
+        const netEntity = state.entities[entityIndex];
         const cf = netEntity.changedFields;
         const isFull = cf == null;
         // Towers ride the static-entity wire shape (no velocity, has
