@@ -728,7 +728,7 @@ export class ServerSnapshotPublisher {
       }
       stageStart = performance.now();
       const entities = currentVisible !== undefined
-        ? this.serializeDirtyPresentationEntities(
+        ? this.serializeDirtyPresentationEntitiesAndAddVisibleBaseline(
             input.world,
             visibility,
             listener.visibleEntityIds,
@@ -744,7 +744,7 @@ export class ServerSnapshotPublisher {
             this.dirtyFieldsBuf,
           );
       const removedEntityIds = currentVisible !== undefined
-        ? this.serializeDirtyPresentationRemovals(
+        ? this.serializeDirtyPresentationRemovalsAndPruneVisibleBaseline(
             visibility,
             listener.visibleEntityIds,
             currentVisible,
@@ -886,7 +886,7 @@ export class ServerSnapshotPublisher {
 
       stageStart = performance.now();
       if (currentVisible !== undefined) {
-        this.copyVisibleBaseline(listener, currentVisible);
+        listener.hasVisibleEntityBaseline = true;
       } else {
         this.updateUnfilteredVisibleBaseline(
           listener,
@@ -913,10 +913,10 @@ export class ServerSnapshotPublisher {
     return emitted;
   }
 
-  private serializeDirtyPresentationEntities(
+  private serializeDirtyPresentationEntitiesAndAddVisibleBaseline(
     world: WorldState,
     visibility: SnapshotVisibility,
-    previousVisibleEntityIds: ReadonlySet<EntityId>,
+    previousVisibleEntityIds: Set<EntityId>,
     currentVisibleEntityIds: ReadonlySet<EntityId>,
     dirtyIds: readonly EntityId[],
     dirtyFields: readonly number[],
@@ -938,6 +938,7 @@ export class ServerSnapshotPublisher {
       if (netEntity !== null) {
         entities.push(netEntity);
         emittedIds.add(id);
+        previousVisibleEntityIds.add(id);
       }
     }
 
@@ -998,9 +999,9 @@ export class ServerSnapshotPublisher {
     return entities;
   }
 
-  private serializeDirtyPresentationRemovals(
+  private serializeDirtyPresentationRemovalsAndPruneVisibleBaseline(
     visibility: SnapshotVisibility,
-    previousVisibleEntityIds: ReadonlySet<EntityId>,
+    previousVisibleEntityIds: Set<EntityId>,
     currentVisibleEntityIds: ReadonlySet<EntityId>,
     removedEntities: readonly RemovedSnapshotEntity[],
   ): NetworkServerSnapshot['removedEntityIds'] {
@@ -1017,11 +1018,16 @@ export class ServerSnapshotPublisher {
 
     for (let i = 0; i < removedEntities.length; i++) {
       const record = removedEntities[i];
-      if (visibility.shouldSendRemoval(record)) pushRemoved(record.id);
+      const wasPreviouslyVisible = previousVisibleEntityIds.has(record.id);
+      if (wasPreviouslyVisible || visibility.shouldSendRemoval(record)) pushRemoved(record.id);
+      previousVisibleEntityIds.delete(record.id);
     }
 
     for (const id of previousVisibleEntityIds) {
-      if (!currentVisibleEntityIds.has(id)) pushRemoved(id);
+      if (!currentVisibleEntityIds.has(id)) {
+        pushRemoved(id);
+        previousVisibleEntityIds.delete(id);
+      }
     }
 
     removedIdSet.clear();
