@@ -19,6 +19,34 @@ Please always commit and push before and after any code changes we make.
 
 
 
+[17] Optimization - make snapshot-rate UI and telemetry distinguish total/delta/rich cadence
+    The target is not "5 total SPS" once sparse motion/projectile deltas are
+    enabled. Rich presentation snapshots target
+    architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz, while
+    sparse motion/projectile deltas may approach the fixed simulation tick
+    rate. Make the HUD, harness output, and debug labels unambiguous: total
+    consumed snapshots, rich presentation snapshots, and sparse delta snapshots
+    should each report actual/target cadence separately so a healthy 30-ish
+    TOTAL SPS is not misread as missing a 5 SPS target.
+
+[18] Optimization - reduce snapshot materialization cost and bytes for high unit counts
+    Preserve deterministic replay truth and snapshot semantics. Continue moving
+    snapshot construction away from JS Entity object materialization and
+    duplicated DTO/wire rows. At high caps, entity DTO construction, wire
+    encoding, client apply, and visibility filtering should read canonical
+    slot-indexed typed state with dirty ranges, emit compact deltas, and keep
+    materialization p95 comfortably below frame budget. Keep byte-size and
+    materialization timing telemetry in the harness until this is proven.
+
+[19] Optimization - centralize primitive sphere/cylinder quality and add render LOD controls
+    Preserve current visuals by default, but provide a high-level quality
+    policy for shared sphere, cylinder, cone, torus, and circle geometry roles.
+    Unit bodies, turret heads/barrels, beams, shields, projectiles, locomotion
+    parts, effects, HUD/debug primitives, and smoke puffs should use common
+    quality tiers instead of ad hoc smooth geometry. Add contract coverage for
+    primitive segment counts and benchmark the GPU/frame impact before lowering
+    defaults or enabling distance/quality-based reductions.
+
 [20] Optimization - finish render-facing slab consumption beyond core entity rows
     Preserve current visuals until explicit visual-quality issues say otherwise.
     Remaining high-count render paths should consume stable slot-indexed typed
