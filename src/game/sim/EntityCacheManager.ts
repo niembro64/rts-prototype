@@ -106,6 +106,28 @@ export class EntityCacheManager {
     removeEntityFromList(this.cachedCombatTargetEntities, entity);
   }
 
+  refreshHealthBarEntity(entity: Entity): void {
+    if (this.dirty) return;
+    const buildInProgress = isBuildInProgress(entity.buildable);
+    if (entity.unit !== null) {
+      removeEntityFromList(this.cachedDamagedUnits, entity);
+      removeEntityFromList(this.cachedHudEntities, entity);
+      if ((entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp) || buildInProgress) {
+        insertEntityById(this.cachedDamagedUnits, entity);
+        insertEntityById(this.cachedHudEntities, entity);
+      }
+      return;
+    }
+    if (entity.building !== null) {
+      removeEntityFromList(this.cachedHealthBarBuildings, entity);
+      removeEntityFromList(this.cachedHudEntities, entity);
+      if ((entity.building.hp > 0 && entity.building.hp < entity.building.maxHp) || buildInProgress) {
+        insertEntityById(this.cachedHealthBarBuildings, entity);
+        insertEntityById(this.cachedHudEntities, entity);
+      }
+    }
+  }
+
   rebuildIfNeeded(entities: Map<EntityId, Entity>): boolean {
     if (!this.dirty) return false;
 
@@ -447,4 +469,10 @@ export class EntityCacheManager {
 function removeEntityFromList(list: Entity[], entity: Entity): void {
   const index = list.indexOf(entity);
   if (index >= 0) list.splice(index, 1);
+}
+
+function insertEntityById(list: Entity[], entity: Entity): void {
+  let index = list.length;
+  while (index > 0 && list[index - 1].id > entity.id) index--;
+  list.splice(index, 0, entity);
 }

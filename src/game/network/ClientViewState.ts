@@ -679,30 +679,27 @@ export class ClientViewState {
     }
   }
 
-  private snapshotAffectsEntityCaches(
+  private snapshotChangesOwnership(
     entity: Entity,
     server: NetworkServerSnapshotEntity,
   ): boolean {
-    // Ownership transfer (capture) moves the entity between the per-player
-    // cache buckets (cachedUnitsByPlayer / cachedBuildingsByPlayer /
-    // cachedFactoriesByPlayer), so it must invalidate even though it is not
-    // an HP or build change. Mirrors the ownership reassignment in
-    // snapClientNonVisualState, which is the other consumer of this delta.
-    if (entity.ownership !== null && entity.ownership.playerId !== server.playerId) {
-      return true;
-    }
+    // Ownership transfer (capture) moves the entity between per-player
+    // cache buckets, so it still needs a full cache rebuild.
+    return entity.ownership !== null && entity.ownership.playerId !== server.playerId;
+  }
+
+  private snapshotMayAffectHealthBarCacheMembership(
+    entity: Entity,
+    server: NetworkServerSnapshotEntity,
+  ): boolean {
     const cf = server.changedFields;
-    if (entity.unit && (cf == null || (cf & (ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING)))) {
-      return this.unitHealthBarCacheMembership(entity) !==
-        this.networkUnitHealthBarCacheMembership(entity, server);
-    }
-    if (
-      entity.building &&
-      (cf == null || (cf & (ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING)))
-    ) {
-      return this.buildingHealthBarCacheMembership(entity) !==
-        this.networkBuildingHealthBarCacheMembership(entity, server);
-    }
+    return (entity.unit !== null || entity.building !== null) &&
+      (cf == null || (cf & (ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING)) !== 0);
+  }
+
+  private healthBarCacheMembership(entity: Entity): boolean {
+    if (entity.unit !== null) return this.unitHealthBarCacheMembership(entity);
+    if (entity.building !== null) return this.buildingHealthBarCacheMembership(entity);
     return false;
   }
 
@@ -863,50 +860,12 @@ export class ClientViewState {
       isBuildInProgress(entity.buildable);
   }
 
-  private networkUnitHealthBarCacheMembership(
-    entity: Entity,
-    server: NetworkServerSnapshotEntity,
-  ): boolean {
-    const serverUnit = server.unit;
-    const hp = serverUnit !== null ? serverUnit.hp : null;
-    const build = serverUnit !== null ? serverUnit.build : null;
-    const entityUnit = entity.unit;
-    const buildable = entity.buildable;
-    const curr = hp !== null ? hp.curr : entityUnit !== null ? entityUnit.hp : 0;
-    const max = hp !== null ? hp.max : entityUnit !== null ? entityUnit.maxHp : 0;
-    const complete = build !== null ? build.complete : buildable !== null ? buildable.isComplete : true;
-    const interrupted = build !== null
-      ? build.interrupted === true
-      : buildable !== null ? buildable.isInterrupted : false;
-    return (curr > 0 && curr < max) ||
-      !!(buildable && !buildable.isGhost && !complete && !interrupted);
-  }
-
   private buildingHealthBarCacheMembership(entity: Entity): boolean {
     const building = entity.building;
     if (!building) return false;
     // Mirror EntityCacheManager's cachedHealthBarBuildings bucket exactly.
     return (building.hp > 0 && building.hp < building.maxHp) ||
       isBuildInProgress(entity.buildable);
-  }
-
-  private networkBuildingHealthBarCacheMembership(
-    entity: Entity,
-    server: NetworkServerSnapshotEntity,
-  ): boolean {
-    const building = entity.building;
-    const serverBuilding = server.building;
-    const hp = serverBuilding !== null ? serverBuilding.hp : null;
-    const build = serverBuilding !== null ? serverBuilding.build : null;
-    const buildable = entity.buildable;
-    const curr = hp !== null ? hp.curr : building !== null ? building.hp : 0;
-    const max = hp !== null ? hp.max : building !== null ? building.maxHp : 0;
-    const complete = build !== null ? build.complete : buildable !== null ? buildable.isComplete : true;
-    const interrupted = build !== null
-      ? build.interrupted === true
-      : buildable !== null ? buildable.isInterrupted : false;
-    return (curr > 0 && curr < max) ||
-      !!(buildable && !buildable.isGhost && !complete && !interrupted);
   }
 
   private rebuildCachesIfNeeded(includeProjectileChanges = false): void {
@@ -1097,19 +1056,29 @@ export class ClientViewState {
           }
         } else {
           // Existing entity — snap non-visual state immediately. The entity
-          // cache is rebuilt only when a snapshot actually changes bucket
-          // membership (damaged/HUD/health-bar/per-player), which
-          // snapshotAffectsEntityCaches detects precisely; a bare HP tick that
-          // does not cross a membership boundary no longer forces a full
-          // copy-all + sort + rebucket. Pure unit motion rows only update
-          // ServerTarget; ClientPredictionStepper mutates the visual entity
-          // and refreshes typed render state later in the same frame.
+          // cache is rebuilt only for structural/per-player bucket changes.
+          // HUD/health-bar bucket transitions are refreshed incrementally so
+          // a damage/heal row does not force a full copy-all + sort + rebucket.
+          // Pure unit motion rows only update ServerTarget; ClientPredictionStepper
+          // mutates the visual entity and refreshes typed render state later in
+          // the same frame.
           const unitMotionOnly = this.snapshotIsUnitMotionOnly(existing, netEntity);
-          if (!unitMotionOnly && this.snapshotAffectsEntityCaches(existing, netEntity)) {
-            cacheNeedsInvalidate = true;
-          }
+          const ownershipChanged = !unitMotionOnly && this.snapshotChangesOwnership(existing, netEntity);
+          const mayAffectHealthBarCache = !unitMotionOnly &&
+            !ownershipChanged &&
+            this.snapshotMayAffectHealthBarCacheMembership(existing, netEntity);
+          const healthBarCacheMemberBefore = mayAffectHealthBarCache
+            ? this.healthBarCacheMembership(existing)
+            : false;
+          if (ownershipChanged) cacheNeedsInvalidate = true;
           if (!unitMotionOnly) {
             snapClientNonVisualState(existing, netEntity);
+            if (
+              mayAffectHealthBarCache &&
+              healthBarCacheMemberBefore !== this.healthBarCacheMembership(existing)
+            ) {
+              this.cache.refreshHealthBarEntity(existing);
+            }
             this.refreshRenderableEntityStateFromSnapshot(
               existing,
               this.snapshotAffectsRenderSpatialIndex(netEntity),
