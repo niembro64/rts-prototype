@@ -21,7 +21,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 
 import type { WorldState } from '../WorldState';
 import type { WindState } from '../wind';
-import { spatialGrid } from '../SpatialGrid';
+import { entitySlotRegistry } from '../EntitySlotRegistry';
 import {
   encodeShieldBarrierShape,
   encodeShieldReflectionPolicy,
@@ -240,10 +240,9 @@ function ensureCombatTargetingSourceCapacity(count: number): void {
   _combatTargetingSourceSlots = slots;
 }
 
-function queueCombatTargetingSource(entity: Entity): void {
+function queueCombatTargetingSourceSlot(entity: Entity, slot: number): void {
   const combat = entity.combat;
   if (!entity.ownership || !combat || combat.turrets.length === 0) return;
-  const slot = spatialGrid.getEntitySlot(entity);
   if (slot < 0) return;
   const idx = _combatTargetingSourceCount;
   ensureCombatTargetingSourceCapacity(idx + 1);
@@ -368,7 +367,7 @@ function getCombatTargetingTurretStateIndex(
   turretIndex: number,
 ): number {
   if (turretIndex < 0) return -1;
-  const slot = spatialGrid.getEntitySlot(entity);
+  const slot = entitySlotRegistry.getEntitySlot(entity);
   if (slot < 0) return -1;
   const targeting = sim.combatTargeting;
   if (turretIndex >= targeting.turretCount(slot)) return -1;
@@ -538,13 +537,13 @@ function stampCombatTargetingEntityInto(
   targeting: CombatTargetingApi,
   world: WorldState,
   entity: Entity,
-): boolean {
+): number {
   const combat = entity.combat;
-  const slot = spatialGrid.getEntitySlot(entity);
+  const slot = entitySlotRegistry.getEntitySlot(entity);
   // Entities without a spatial slot can't be addressed by the slab;
   // the eventual kernel walks the slab, not the JS list, so anything
   // off-grid would be invisible to it anyway.
-  if (slot < 0) return false;
+  if (slot < 0) return -1;
   reserveCombatTargetingSlot(slot);
 
   const ownership = entity.ownership;
@@ -558,38 +557,41 @@ function stampCombatTargetingEntityInto(
     pos.z = getBuildingCombatCenterZ(entity);
   }
   const vel = getEntityVelocity3d(entity, _stampVel);
+  const unit = entity.unit;
+  const building = entity.building;
+  const projectile = entity.projectile;
   const groundZ = getUnitGroundZ(entity);
   const rotCos = DMath.cos(entity.transform.rotation);
   const rotSin = DMath.sin(entity.transform.rotation);
   entity.transform.rotCos = rotCos;
   entity.transform.rotSin = rotSin;
-  const surfaceN = entity.unit ? entity.unit.surfaceNormal : undefined;
+  const surfaceN = unit ? unit.surfaceNormal : undefined;
   const surfaceNx = surfaceN ? surfaceN.nx : 0;
   const surfaceNy = surfaceN ? surfaceN.ny : 0;
   const surfaceNz = surfaceN ? surfaceN.nz : 1;
-  const suspension = entity.unit ? entity.unit.suspension : undefined;
+  const suspension = unit ? unit.suspension : undefined;
   const suspensionOffsetX = suspension ? suspension.offsetX : 0;
   const suspensionOffsetY = suspension ? suspension.offsetY : 0;
   const suspensionOffsetZ = suspension ? suspension.offsetZ : 0;
-  const radiusHitbox = entity.unit
-    ? entity.unit.radius.hitbox
-    : (entity.building
-      ? entity.building.targetRadius
-      : (entity.projectile && isProjectileShot(entity.projectile.config.shot)
-        ? entity.projectile.config.shot.radius.hitbox
+  const radiusHitbox = unit
+    ? unit.radius.hitbox
+    : (building
+      ? building.targetRadius
+      : (projectile && isProjectileShot(projectile.config.shot)
+        ? projectile.config.shot.radius.hitbox
         : 0));
   // AABB half-extents for AABB-shaped targets (buildings). Sphere
   // targets (units/projectiles) stamp zeros so the Rust aim-point
   // resolver collapses to entity-center without branching on shape.
-  const aabbHalfX = entity.building ? entity.building.width * 0.5 : 0;
-  const aabbHalfY = entity.building ? entity.building.height * 0.5 : 0;
-  const aabbHalfZ = entity.building ? entity.building.depth * 0.5 : 0;
-  const hp = entity.unit
-    ? entity.unit.hp
-    : (entity.building
-      ? entity.building.hp
-      : (entity.projectile && isProjectileShot(entity.projectile.config.shot)
-        ? entity.projectile.hp
+  const aabbHalfX = building ? building.width * 0.5 : 0;
+  const aabbHalfY = building ? building.height * 0.5 : 0;
+  const aabbHalfZ = building ? building.depth * 0.5 : 0;
+  const hp = unit
+    ? unit.hp
+    : (building
+      ? building.hp
+      : (projectile && isProjectileShot(projectile.config.shot)
+        ? projectile.hp
         : 0));
 
   let entityFlags = 0;
@@ -600,8 +602,8 @@ function stampCombatTargetingEntityInto(
     entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
   }
   if (
-    entity.unit !== null &&
-    getUnitBlueprint(entity.unit.unitBlueprintId).preventLockOnIfMyTeamIsAboveMe === true
+    unit !== null &&
+    getUnitBlueprint(unit.unitBlueprintId).preventLockOnIfMyTeamIsAboveMe === true
   ) {
     entityFlags |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
   }
@@ -617,18 +619,18 @@ function stampCombatTargetingEntityInto(
   // family / level-1 named exclusions for that row.
   let entityFamily: number = CT_ENTITY_FAMILY_NONE;
   let entityBlueprintCode: number = CT_BLUEPRINT_CODE_NONE;
-  if (entity.unit) {
+  if (unit) {
     entityFamily = CT_ENTITY_FAMILY_UNIT;
-    entityBlueprintCode = unitBlueprintIdToCode(entity.unit.unitBlueprintId);
-  } else if (entity.building) {
+    entityBlueprintCode = unitBlueprintIdToCode(unit.unitBlueprintId);
+  } else if (building) {
     entityFamily =
       entity.type === 'tower' ? CT_ENTITY_FAMILY_TOWER : CT_ENTITY_FAMILY_BUILDING;
     const buildingBlueprintId = entity.buildingBlueprintId;
     entityBlueprintCode =
       buildingBlueprintId !== null ? buildingBlueprintIdToCode(buildingBlueprintId) : CT_BLUEPRINT_CODE_NONE;
-  } else if (entity.projectile) {
+  } else if (projectile) {
     entityFamily = CT_ENTITY_FAMILY_SHOT;
-    entityBlueprintCode = shotBlueprintIdToCode(entity.projectile.shotBlueprintId);
+    entityBlueprintCode = shotBlueprintIdToCode(projectile.shotBlueprintId);
   }
   const hostLockOn = getHostLockOnMasks(entity);
 
@@ -691,7 +693,7 @@ function stampCombatTargetingEntityInto(
     turrets !== null ? turrets.length : 0,
   );
 
-  if (turrets === null) return true;
+  if (turrets === null) return slot;
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
     const ranges = t.ranges;
@@ -762,7 +764,7 @@ function stampCombatTargetingEntityInto(
       t.config.lockOnRequiresTargetLockedOntoSelfMode,
     );
   }
-  return true;
+  return slot;
 }
 
 /** Rebuild every targetable entity row before the FSM runs. Turret rows
@@ -791,8 +793,9 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
 
   const targets = world.getCombatTargetEntities();
   for (const entity of targets) {
-    if (stampCombatTargetingEntityInto(targeting, world, entity)) {
-      queueCombatTargetingSource(entity);
+    const slot = stampCombatTargetingEntityInto(targeting, world, entity);
+    if (slot >= 0) {
+      queueCombatTargetingSourceSlot(entity, slot);
     }
   }
 
