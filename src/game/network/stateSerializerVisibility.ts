@@ -282,6 +282,10 @@ export class SnapshotVisibility {
     if (!this.isFiltered) return true;
     const cached = this.entityReferenceMemo.get(entityId);
     if (cached !== undefined) return cached;
+    if (this.entityIdBuffersReady && this.visibleEntityIdSet.has(entityId)) {
+      this.entityReferenceMemo.set(entityId, true);
+      return true;
+    }
     const entity = world.getEntity(entityId);
     const result = entity !== undefined && this.isEntityVisible(entity);
     this.entityReferenceMemo.set(entityId, result);
