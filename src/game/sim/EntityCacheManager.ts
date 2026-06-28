@@ -50,6 +50,10 @@ export class EntityCacheManager {
   private cachedShieldUnits: Entity[] = [];
   private cachedCommanderUnits: Entity[] = [];
   private cachedBuilderUnits: Entity[] = [];
+  /** Flying units specifically. Force and snapshot-delta passes poll these
+   *  every tick; locomotion type is blueprint-static, so cache it with the
+   *  other stable unit buckets instead of filtering all units repeatedly. */
+  private cachedFlyingUnits: Entity[] = [];
   /** Every entity (unit OR building) with a CombatComponent that owns
    *  at least one non-visualOnly turret. The combat pipeline iterates
    *  this list and never branches on entity type — armed buildings are
@@ -150,6 +154,7 @@ export class EntityCacheManager {
     this.cachedShieldUnits.length = 0;
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
+    this.cachedFlyingUnits.length = 0;
     this.cachedArmedEntities.length = 0;
     this.cachedBeamUnits.length = 0;
     this.cachedShieldPanelUnits.length = 0;
@@ -227,6 +232,9 @@ export class EntityCacheManager {
           }
           if (entity.unit !== null && entity.unit.shieldPanels.length > 0) {
             this.cachedShieldPanelUnits.push(entity);
+          }
+          if (entity.unit !== null && entity.unit.locomotion.type === 'flying') {
+            this.cachedFlyingUnits.push(entity);
           }
           if (entity.commander) this.cachedCommanderUnits.push(entity);
           if (entity.builder) this.cachedBuilderUnits.push(entity);
@@ -447,6 +455,10 @@ export class EntityCacheManager {
 
   getBuilderUnits(): Entity[] {
     return this.cachedBuilderUnits;
+  }
+
+  getFlyingUnits(): Entity[] {
+    return this.cachedFlyingUnits;
   }
 
   getArmedEntities(): Entity[] {

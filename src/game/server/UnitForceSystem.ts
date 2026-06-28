@@ -544,15 +544,13 @@ export class UnitForceSystem {
       this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(movingUnits[i].id));
     }
 
-    const units = this.world.getUnits();
-    for (let i = 0; i < units.length; i++) {
-      const unit = units[i].unit;
-      if (unit !== null && unit.locomotion.type === 'flying') {
-        this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(units[i].id));
-      }
+    const flyingUnits = this.world.getFlyingUnits();
+    for (let i = 0; i < flyingUnits.length; i++) {
+      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(flyingUnits[i].id));
     }
 
     const forceAccumulator = this.simulation.getForceAccumulator();
+    const units = this.world.getUnits();
     this.ensurePhysicsCandidateSlotCapacity(
       Math.max(units.length, forceAccumulator.activeEntityCount()),
     );

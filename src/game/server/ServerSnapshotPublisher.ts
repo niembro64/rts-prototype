@@ -1246,9 +1246,9 @@ export class ServerSnapshotPublisher {
     out: EntityId[],
   ): number {
     out.length = 0;
-    const units = world.getUnits();
-    for (let i = 0; i < units.length; i++) {
-      const entity = units[i];
+    const flyingUnits = world.getFlyingUnits();
+    for (let i = 0; i < flyingUnits.length; i++) {
+      const entity = flyingUnits[i];
       if (isEntityMotionDeltaCandidate(entity)) out.push(entity.id);
     }
     return out.length;
