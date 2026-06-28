@@ -103,6 +103,7 @@ type ServerSnapshotRichDeltaDirectWireInput = {
   visibility: SnapshotVisibility;
   previousVisibleEntityIds: ReadonlySet<EntityId>;
   currentVisibleEntityIds: ReadonlySet<EntityId> | undefined;
+  currentVisibleEntityIdList: readonly EntityId[] | undefined;
   dirtyIds: readonly EntityId[];
   dirtyFields: readonly number[];
   gamePhase: GamePhase;
@@ -738,19 +739,32 @@ export class ServerSnapshotDirectWirePreencoder {
     }
 
     let entityCount = 0;
-    for (const id of currentVisibleEntityIds) {
-      if (input.previousVisibleEntityIds.has(id)) continue;
-      const entity = input.world.getEntity(id);
-      if (!entity || !isSerializedEntityKind(entity)) continue;
-      appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
-      emittedIds.add(id);
-      entityCount++;
+    const currentVisibleEntityIdList = input.currentVisibleEntityIdList;
+    if (currentVisibleEntityIdList !== undefined) {
+      for (let i = 0; i < currentVisibleEntityIdList.length; i++) {
+        const id = currentVisibleEntityIdList[i];
+        if (input.previousVisibleEntityIds.has(id)) continue;
+        const entity = input.world.getEntity(id);
+        if (!entity || !isSerializedEntityKind(entity)) continue;
+        appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
+        emittedIds.add(id);
+        entityCount++;
+      }
+    } else {
+      for (const id of currentVisibleEntityIds) {
+        if (input.previousVisibleEntityIds.has(id)) continue;
+        const entity = input.world.getEntity(id);
+        if (!entity || !isSerializedEntityKind(entity)) continue;
+        appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
+        emittedIds.add(id);
+        entityCount++;
+      }
     }
 
     for (let i = 0; i < input.dirtyIds.length; i++) {
       const id = input.dirtyIds[i];
       if (emittedIds.has(id)) continue;
-      if (!input.previousVisibleEntityIds.has(id) || !currentVisibleEntityIds.has(id)) continue;
+      if (!currentVisibleEntityIds.has(id)) continue;
       const entity = input.world.getEntity(id);
       if (!entity || !isSerializedEntityKind(entity)) continue;
       appendEntitySnapshotWireRowDirect(

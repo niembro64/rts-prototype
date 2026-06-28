@@ -674,6 +674,9 @@ export class ServerSnapshotPublisher {
       let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       const currentVisible = visibility.getVisibleEntityIdSet();
+      const currentVisibleList = currentVisible !== undefined
+        ? visibility.getVisibleEntityIds()
+        : undefined;
       addMaterializationStage(stages, 'visibility', stageStart);
       if (listener.preencodeWire) {
         const directSnapshot = this.directWirePreencoder.tryEncodeRichDelta({
@@ -683,6 +686,7 @@ export class ServerSnapshotPublisher {
           visibility,
           previousVisibleEntityIds: listener.visibleEntityIds,
           currentVisibleEntityIds: currentVisible,
+          currentVisibleEntityIdList: currentVisibleList,
           dirtyIds: this.dirtyIdsBuf,
           dirtyFields: this.dirtyFieldsBuf,
           gamePhase,
@@ -704,7 +708,7 @@ export class ServerSnapshotPublisher {
         if (directSnapshot !== undefined) {
           stageStart = performance.now();
           if (currentVisible !== undefined) {
-            this.copyVisibleBaseline(listener, currentVisible);
+            this.copyVisibleBaseline(listener, currentVisibleList ?? currentVisible);
           } else {
             this.updateUnfilteredVisibleBaseline(
               listener,
@@ -733,6 +737,7 @@ export class ServerSnapshotPublisher {
             input.world,
             visibility,
             listener.visibleEntityIds,
+            currentVisibleList!,
             currentVisible,
             this.dirtyIdsBuf,
             this.dirtyFieldsBuf,
@@ -918,7 +923,8 @@ export class ServerSnapshotPublisher {
     world: WorldState,
     visibility: SnapshotVisibility,
     previousVisibleEntityIds: Set<EntityId>,
-    currentVisibleEntityIds: ReadonlySet<EntityId>,
+    currentVisibleEntityIds: readonly EntityId[],
+    currentVisibleEntityIdSet: ReadonlySet<EntityId>,
     dirtyIds: readonly EntityId[],
     dirtyFields: readonly number[],
   ): NetworkServerSnapshot['entities'] {
@@ -928,7 +934,8 @@ export class ServerSnapshotPublisher {
     const emittedIds = this.deltaEntityIdSet;
     emittedIds.clear();
 
-    for (const id of currentVisibleEntityIds) {
+    for (let i = 0; i < currentVisibleEntityIds.length; i++) {
+      const id = currentVisibleEntityIds[i];
       if (previousVisibleEntityIds.has(id)) continue;
       const entity = world.getEntity(id);
       if (
@@ -946,7 +953,7 @@ export class ServerSnapshotPublisher {
     for (let i = 0; i < dirtyIds.length; i++) {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
-      if (!previousVisibleEntityIds.has(id) || !currentVisibleEntityIds.has(id)) continue;
+      if (!currentVisibleEntityIdSet.has(id)) continue;
       const entity = world.getEntity(id);
       if (
         entity === undefined ||
@@ -1054,7 +1061,7 @@ export class ServerSnapshotPublisher {
 
   private copyVisibleBaseline(
     listener: SnapshotListenerEntry,
-    currentVisibleEntityIds: ReadonlySet<EntityId>,
+    currentVisibleEntityIds: Iterable<EntityId>,
   ): void {
     const baseline = listener.visibleEntityIds;
     baseline.clear();
