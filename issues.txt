@@ -83,6 +83,10 @@ Please always commit and push before and after any code changes we make.
     visual change. Reduce per-unit Three.js Object3D/EntityMesh orchestration in
     Render3DEntities. Units, turrets, chassis, shields, health/selection/range
     overlays, and far LOD proxies should update stable GPU instance buffers via
-    dirty ranges and shader-side expansion/culling.
+    dirty ranges and shader-side expansion/culling. Audit high-count primitive
+    geometry usage through the existing PrimitiveGeometryQuality3D tier config
+    before changing visuals: sphere/cylinder/cone segment reductions are valid
+    only when triangle/GPU/render-submit metrics show material pressure, and
+    should not be treated as a fix for SPS or snapshot materialization.
 
 ================================================================================
