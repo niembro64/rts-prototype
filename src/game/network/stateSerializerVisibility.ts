@@ -466,8 +466,8 @@ export class SnapshotVisibility {
       }
       stampedRows++;
 
-      if (this.visibleEntityIdSet.has(id)) {
-        this.appendRadarEntityIdById(id);
+      const ownerPlayerId = entityViews.ownerPlayerId[slot];
+      if (ownerPlayerId !== 0 && (viewMask & (1 << (ownerPlayerId - 1))) !== 0) {
         continue;
       }
 
