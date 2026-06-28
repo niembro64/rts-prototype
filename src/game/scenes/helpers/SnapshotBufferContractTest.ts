@@ -90,20 +90,31 @@ function attachTypedUnitMotionSource(
   x: number,
   changedFields: number | null = ENTITY_CHANGED_POS,
 ): EntitySnapshotWireSource {
+  return attachTypedUnitMotionSources(entities, [{ id, x, changedFields }]);
+}
+
+function attachTypedUnitMotionSources(
+  entities: NetworkServerSnapshotEntity[],
+  rows: readonly { id: number; x: number; changedFields?: number | null }[],
+): EntitySnapshotWireSource {
   const source = createEmptyEntityWireSource();
-  const rowIndex = reserveFloat64WireRows(source.unitRows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
-  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-  const values = source.unitRows.values;
-  values[base + 0] = id;
-  values[base + 1] = x;
-  values[base + 2] = 0;
-  values[base + 3] = 0;
-  values[base + 4] = 0;
-  values[base + 5] = 1;
-  values[base + 6] = changedFields === null ? 0 : 1;
-  values[base + 7] = changedFields ?? 0;
-  source.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
-  source.rowIndices.push(rowIndex);
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const changedFields = row.changedFields === undefined ? ENTITY_CHANGED_POS : row.changedFields;
+    const rowIndex = reserveFloat64WireRows(source.unitRows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    const values = source.unitRows.values;
+    values[base + 0] = row.id;
+    values[base + 1] = row.x;
+    values[base + 2] = 0;
+    values[base + 3] = 0;
+    values[base + 4] = 0;
+    values[base + 5] = 1;
+    values[base + 6] = changedFields === null ? 0 : 1;
+    values[base + 7] = changedFields ?? 0;
+    source.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
+    source.rowIndices.push(rowIndex);
+  }
   registerEntitySnapshotWireSource(entities, source);
   return source;
 }
@@ -385,6 +396,41 @@ export function runSnapshotBufferContractTest(): void {
         preservedBasicSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 1
       ] === 555,
     'typed basic transform deltas must patch pending full typed rows from wire rows',
+  );
+
+  const typedPruneKeepA = createSparseDecodedMotionUnitEntity(64, 100);
+  typedPruneKeepA.changedFields = null;
+  typedPruneKeepA.rotation = 0;
+  const typedPruneKeepB = createSparseDecodedMotionUnitEntity(65, 200);
+  typedPruneKeepB.changedFields = null;
+  typedPruneKeepB.rotation = 0;
+  const typedPruneKeepEntities = [typedPruneKeepA, typedPruneKeepB];
+  const typedPruneKeepSnapshot = createSnapshot(18, [], typedPruneKeepEntities);
+  attachTypedUnitMotionSources(typedPruneKeepEntities, [
+    { id: 64, x: 100, changedFields: null },
+    { id: 65, x: 200, changedFields: null },
+  ]);
+  fake.emitSnapshot(typedPruneKeepSnapshot);
+  const typedPruneKeepDelta = createSnapshot(19, [], []);
+  typedPruneKeepDelta.entityDeltaOnly = true;
+  typedPruneKeepDelta.removedEntityIds = [64];
+  fake.emitSnapshot(typedPruneKeepDelta);
+  const consumedTypedPruneKeep = buffer.consume();
+  assertContract(
+    consumedTypedPruneKeep?.entities.length === 1 &&
+      consumedTypedPruneKeep.entities[0]?.id === 65,
+    'removal entity deltas must prune DTO rows while retaining survivors',
+  );
+  const preservedPruneKeepSource = consumedTypedPruneKeep !== null
+    ? getEntitySnapshotWireSource(consumedTypedPruneKeep.entities)
+    : undefined;
+  assertContract(
+    preservedPruneKeepSource !== undefined &&
+      preservedPruneKeepSource.kinds.length === 1 &&
+      preservedPruneKeepSource.unitRows.values[
+        preservedPruneKeepSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 0
+      ] === 65,
+    'removal entity deltas must compact cloned typed row metadata for surviving rows',
   );
 
   const typedRemovedEntity = createSparseDecodedMotionUnitEntity(61, 100);

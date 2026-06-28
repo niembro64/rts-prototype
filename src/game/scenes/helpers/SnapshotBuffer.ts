@@ -244,7 +244,6 @@ export class SnapshotBuffer {
       this.canPreservePendingEntityWireSource(
         pendingEntities,
         deltaEntities,
-        removedEntityIds,
         pendingWireSource,
         pendingEntityIndexById,
       );
@@ -317,14 +316,17 @@ export class SnapshotBuffer {
     }
     pendingEntityIndexById?.clear();
     if (removedEntityIds !== undefined && removedEntityIds.length > 0) {
+      const preservedWireSource = canPreservePendingWireSource ? pendingWireSource : undefined;
       if (pendingEntities.length * removedEntityIds.length >= INDEXED_ENTITY_MERGE_MIN_WORK) {
-        this.prunePendingEntitiesWithSet(pendingEntities, removedEntityIds);
+        this.prunePendingEntitiesWithSet(pendingEntities, removedEntityIds, preservedWireSource);
         return;
       }
       for (let i = 0; i < removedEntityIds.length; i++) {
         const id = removedEntityIds[i];
         for (let j = pendingEntities.length - 1; j >= 0; j--) {
-          if (pendingEntities[j].id === id) pendingEntities.splice(j, 1);
+          if (pendingEntities[j].id === id) {
+            this.prunePendingEntityAt(pendingEntities, j, preservedWireSource);
+          }
         }
       }
     }
@@ -505,11 +507,9 @@ export class SnapshotBuffer {
   private canPreservePendingEntityWireSource(
     pendingEntities: readonly NetworkServerSnapshotEntity[],
     deltaEntities: readonly NetworkServerSnapshotEntity[],
-    removedEntityIds: readonly number[] | undefined,
     source: EntitySnapshotWireSource,
     indexById: ReadonlyMap<number, number> | undefined,
   ): boolean {
-    if (removedEntityIds !== undefined && removedEntityIds.length > 0) return false;
     if (source.kinds.length !== pendingEntities.length) return false;
     for (let i = 0; i < deltaEntities.length; i++) {
       const delta = deltaEntities[i];
@@ -656,6 +656,7 @@ export class SnapshotBuffer {
   private prunePendingEntitiesWithSet(
     pendingEntities: NetworkServerSnapshotEntity[],
     removedEntityIds: readonly number[],
+    wireSource: EntitySnapshotWireSource | undefined,
   ): void {
     const removedIds = this.removedEntityIdSet;
     removedIds.clear();
@@ -664,11 +665,34 @@ export class SnapshotBuffer {
     for (let read = 0; read < pendingEntities.length; read++) {
       const entity = pendingEntities[read];
       if (removedIds.has(entity.id)) continue;
-      if (write !== read) pendingEntities[write] = entity;
+      if (write !== read) {
+        pendingEntities[write] = entity;
+        if (wireSource !== undefined) {
+          wireSource.kinds[write] = wireSource.kinds[read];
+          wireSource.rowIndices[write] = wireSource.rowIndices[read];
+        }
+      }
       write++;
     }
     pendingEntities.length = write;
+    if (wireSource !== undefined) {
+      wireSource.kinds.length = write;
+      wireSource.rowIndices.length = write;
+      if (write === 0) unregisterEntitySnapshotWireSource(pendingEntities);
+    }
     removedIds.clear();
+  }
+
+  private prunePendingEntityAt(
+    pendingEntities: NetworkServerSnapshotEntity[],
+    index: number,
+    wireSource: EntitySnapshotWireSource | undefined,
+  ): void {
+    pendingEntities.splice(index, 1);
+    if (wireSource === undefined) return;
+    wireSource.kinds.splice(index, 1);
+    wireSource.rowIndices.splice(index, 1);
+    if (wireSource.kinds.length === 0) unregisterEntitySnapshotWireSource(pendingEntities);
   }
 
   /** Wire the gameConnection snapshot callback to accumulate events. */
