@@ -950,6 +950,31 @@ export class ServerSnapshotPublisher {
       let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       addMaterializationStage(stages, 'visibility', stageStart);
+      if (listener.preencodeWire) {
+        const directSnapshot = this.directWirePreencoder.tryEncodeSparseDelta({
+          world: input.world,
+          visibility,
+          motionCandidateIds,
+          audioEvents,
+          projectileSpawns,
+          projectileDespawns,
+          projectileVelocityUpdates,
+          materializationStages: stages,
+        });
+        if (directSnapshot !== undefined) {
+          this.stampSnapshotMaterialization(
+            directSnapshot.state,
+            'sparse-delta',
+            listener,
+            stages,
+            listenerStartedAt,
+            directSnapshot,
+          );
+          listener.callback(directSnapshot.state, undefined, directSnapshot.wirePayload);
+          emitted = true;
+          continue;
+        }
+      }
       const motionEntities = hasEntityMotionDeltas
         ? timeMaterializationStage(
             stages,

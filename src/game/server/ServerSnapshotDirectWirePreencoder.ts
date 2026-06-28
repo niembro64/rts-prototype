@@ -45,8 +45,14 @@ import type {
   SimEvent,
 } from '../sim/combat';
 import { getSimWasm } from '../sim-wasm/init';
-import type { Entity, PlayerId } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
+import {
+  ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_VEL,
+} from '../../types/network';
 
 const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
@@ -80,10 +86,27 @@ type ServerSnapshotDirectWireInput = {
   materializationStages: SnapshotMaterializationStageDurations | undefined;
 };
 
+type ServerSnapshotSparseDeltaDirectWireInput = {
+  world: WorldState;
+  visibility: SnapshotVisibility;
+  motionCandidateIds: readonly EntityId[];
+  audioEvents: SimEvent[] | undefined;
+  projectileSpawns: ProjectileSpawnEvent[] | undefined;
+  projectileDespawns: ProjectileDespawnEvent[] | undefined;
+  projectileVelocityUpdates: ProjectileVelocityUpdateEvent[] | undefined;
+  materializationStages: SnapshotMaterializationStageDurations | undefined;
+};
+
 const _directGameState: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
   winnerId: undefined,
 };
+
+const ENTITY_MOTION_DELTA_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_NORMAL;
 
 function acceptsSerializedEntity(
   entity: Entity,
@@ -145,6 +168,42 @@ export class ServerSnapshotDirectWirePreencoder {
 
     const state = this.materializeWireState(input);
     stageStart = performance.now();
+    const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
+    const encodeMs = performance.now() - stageStart;
+    if (input.materializationStages !== undefined) {
+      addSnapshotMaterializationStageFromStart(
+        input.materializationStages,
+        'wireEncode',
+        stageStart,
+      );
+    }
+    if (encoded === null) return undefined;
+    return {
+      state,
+      wirePayload: {
+        bytes: encoded.bytes,
+        encodeMs,
+        encoderKind: 'rust',
+        materializationKind: 'direct',
+        rustEntityCount: encoded.rustEntityCount,
+        rawEntityCount: encoded.rawEntityCount,
+        rawTopLevelKeys: encoded.rawTopLevelKeys.length > 0
+          ? [...encoded.rawTopLevelKeys]
+          : undefined,
+      },
+    };
+  }
+
+  tryEncodeSparseDelta(
+    input: ServerSnapshotSparseDeltaDirectWireInput,
+  ): DirectSerializedListenerSnapshot | undefined {
+    if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
+    if (getSimWasm() === undefined) return undefined;
+
+    const state = this.materializeSparseDeltaWireState(input);
+    if (state === undefined) return undefined;
+
+    const stageStart = performance.now();
     const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
     const encodeMs = performance.now() - stageStart;
     if (input.materializationStages !== undefined) {
@@ -335,6 +394,71 @@ export class ServerSnapshotDirectWirePreencoder {
     return state;
   }
 
+  private materializeSparseDeltaWireState(
+    input: ServerSnapshotSparseDeltaDirectWireInput,
+  ): NetworkServerSnapshot | undefined {
+    const stages = input.materializationStages;
+    let stageStart = performance.now();
+    const entityCount = this.writeSparseEntityMotionRows(input);
+    if (entityCount < 0) return undefined;
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'entityDtos', stageStart);
+    }
+    this.entityPlaceholders.length = entityCount;
+    registerEntitySnapshotWireSource(this.entityPlaceholders);
+
+    stageStart = performance.now();
+    const netProjectiles = writeProjectileSnapshotWireRowsDirect({
+      world: input.world,
+      fullStateResync: false,
+      visibility: input.visibility,
+      emitBeamUpdates: false,
+      projectileSpawns: input.projectileSpawns,
+      projectileDespawns: input.projectileDespawns,
+      projectileVelocityUpdates: input.projectileVelocityUpdates,
+    });
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
+    }
+
+    stageStart = performance.now();
+    const netAudioEvents = writeAudioEventWireRowsDirect(
+      input.audioEvents,
+      input.visibility,
+      this.audioEventPlaceholders,
+    );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'audio', stageStart);
+    }
+
+    if (entityCount === 0 && netProjectiles === undefined && netAudioEvents === undefined) {
+      return undefined;
+    }
+
+    const state = this.state;
+    state.tick = input.world.getTick();
+    state.entities = this.entityPlaceholders;
+    state.entityDeltaOnly = entityCount > 0 ? true : undefined;
+    state.projectileDeltaOnly = entityCount > 0 ? undefined : true;
+    state.minimapEntities = undefined;
+    state.economy = this.economyPlaceholder;
+    state.resourceMovements = undefined;
+    state.sprayTargets = undefined;
+    state.audioEvents = netAudioEvents;
+    state.scanPulses = undefined;
+    state.shroud = undefined;
+    state.projectiles = netProjectiles;
+    state.grid = undefined;
+    state.serverMeta = undefined;
+    state.terrain = undefined;
+    state.buildability = undefined;
+    state.gameState = undefined;
+    state.removedEntityIds = undefined;
+    state.visibilityFiltered = undefined;
+    state.visionPlayerMask = undefined;
+    return state;
+  }
+
   private writeEntityRows(input: ServerSnapshotDirectWireInput): number {
     resetEntitySnapshotPool();
     this.removedEntityIds.length = 0;
@@ -367,6 +491,27 @@ export class ServerSnapshotDirectWirePreencoder {
         appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
         entityCount++;
       }
+    }
+    return entityCount;
+  }
+
+  private writeSparseEntityMotionRows(
+    input: ServerSnapshotSparseDeltaDirectWireInput,
+  ): number {
+    resetEntitySnapshotPool();
+    let entityCount = 0;
+    const ids = input.motionCandidateIds;
+    for (let i = 0; i < ids.length; i++) {
+      const entity = input.world.getEntity(ids[i]);
+      if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
+      if (!canAppendEntitySnapshotWireRowDirect(entity)) return -1;
+      appendEntitySnapshotWireRowDirect(
+        entity,
+        ENTITY_MOTION_DELTA_FIELDS,
+        input.world,
+        input.visibility,
+      );
+      entityCount++;
     }
     return entityCount;
   }
