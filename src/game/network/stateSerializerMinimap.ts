@@ -119,10 +119,11 @@ export function writeMinimapSnapshotWireRowsDirect(
 
   const radarEntityIds = visibility?.getRadarEntityIds();
   if (radarEntityIds !== undefined) {
+    const visibleEntityIdSet = visibility!.getVisibleEntityIdSet();
     for (let i = 0; i < radarEntityIds.length; i++) {
       const entity = world.getEntity(radarEntityIds[i]);
       if (!entity) continue;
-      const radarOnly = !visibility!.isEntityVisible(entity);
+      const radarOnly = visibleEntityIdSet !== undefined && !visibleEntityIdSet.has(entity.id);
       appendMinimapWireRow(directMinimapWireSource, entity, radarOnly);
     }
   } else {
@@ -162,10 +163,11 @@ export function serializeMinimapSnapshotEntities(
 
   const radarEntityIds = visibility?.getRadarEntityIds();
   if (radarEntityIds !== undefined) {
+    const visibleEntityIdSet = visibility!.getVisibleEntityIdSet();
     for (let i = 0; i < radarEntityIds.length; i++) {
       const entity = world.getEntity(radarEntityIds[i]);
       if (!entity) continue;
-      const radarOnly = !visibility!.isEntityVisible(entity);
+      const radarOnly = visibleEntityIdSet !== undefined && !visibleEntityIdSet.has(entity.id);
       const out = getPooledItem(state, createMinimapEntityDto);
       writeMinimapEntity(out, entity, radarOnly);
       appendMinimapWireRow(wireSource, entity, radarOnly);

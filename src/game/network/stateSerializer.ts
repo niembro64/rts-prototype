@@ -110,14 +110,13 @@ export type SerializerMinimapOverride = {
   value: NetworkServerSnapshotMinimapEntity[] | undefined;
 };
 
-function acceptsSerializedEntity(
-  entity: Entity,
-  visibility: SnapshotVisibility,
-): boolean {
-  return (
-    (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') &&
-    visibility.isEntityVisible(entity)
-  );
+function isSerializableSnapshotEntity(entity: Entity): boolean {
+  return entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower';
+}
+
+function acceptsSerializedEntity(entity: Entity, visibility: SnapshotVisibility): boolean {
+  return isSerializableSnapshotEntity(entity) &&
+    (!visibility.isFiltered || visibility.isEntityVisible(entity));
 }
 
 function appendRemovedEntityIds(
@@ -150,7 +149,7 @@ function appendFullEntityRows(
   if (visibleEntityIds !== undefined) {
     for (let i = 0; i < visibleEntityIds.length; i++) {
       const entity = world.getEntity(visibleEntityIds[i]);
-      if (!entity || !acceptsSerializedEntity(entity, visibility)) continue;
+      if (!entity || !isSerializableSnapshotEntity(entity)) continue;
       const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
       if (netEntity) _entityBuf.push(netEntity);
     }
