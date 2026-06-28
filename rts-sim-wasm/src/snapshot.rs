@@ -2346,7 +2346,7 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
 // the DTO sub-fields.
-pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 11;
+pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 12;
 
 pub(crate) const V6_ENTITY_FLAG_HAS_POS: u32 = 1 << 0;
 pub(crate) const V6_ENTITY_FLAG_HAS_ROTATION: u32 = 1 << 1;
@@ -2406,6 +2406,7 @@ pub(crate) const V6_MOVEMENT_FLAG_ORIENTATION: u32 = 1 << 3;
 pub(crate) const V6_MOVEMENT_FLAG_ANGULAR_VELOCITY: u32 = 1 << 4;
 pub(crate) const V6_MOVEMENT_FLAG_YAW_ORIENTATION: u32 = 1 << 5;
 pub(crate) const V6_MOVEMENT_FLAG_YAW_ANGULAR_VELOCITY: u32 = 1 << 6;
+pub(crate) const V6_MOVEMENT_FLAG_SURFACE_NORMAL: u32 = 1 << 7;
 
 pub(crate) const V6_ACTION_FLAG_POS: u32 = 1 << 0;
 pub(crate) const V6_ACTION_FLAG_POS_Z: u32 = 1 << 1;
@@ -2435,7 +2436,7 @@ pub(crate) const V6_WIRE_TYPE_UNIT: f64 = 1.0;
 
 #[inline]
 pub(crate) fn v6_movement_changed_mask() -> u32 {
-    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL
 }
 
 // --- Input scratch (bulk-filled by the TS bridge from entityWireSource) ---
@@ -2650,6 +2651,9 @@ pub(crate) fn v6_is_movement_only(
         if cf == 0 || (cf & !mask) != 0 {
             return false;
         }
+        if (cf & ENTITY_CHANGED_NORMAL) != 0 {
+            return false;
+        }
         return true;
     }
     if kind == V6_KIND_UNIT {
@@ -2666,7 +2670,6 @@ pub(crate) fn v6_is_movement_only(
             || input.unit[base + 15] != 0.0
             || input.unit[base + 19] != 0.0
             || input.unit[base + 21] != 0.0
-            || input.unit[base + 23] != 0.0
             || input.unit[base + 36] != 0.0
             || input.unit[base + 37] != 0.0
             || input.unit[base + 38] != 0.0
@@ -2687,6 +2690,9 @@ pub(crate) fn v6_is_movement_only(
             return false;
         }
         if input.unit[base + 32] != 0.0 && (cf & ENTITY_CHANGED_VEL) == 0 {
+            return false;
+        }
+        if input.unit[base + 23] != 0.0 && (cf & ENTITY_CHANGED_NORMAL) == 0 {
             return false;
         }
         return true;
@@ -2721,7 +2727,6 @@ pub(crate) fn v6_is_split_turret(
         || input.unit[base + 15] != 0.0
         || input.unit[base + 19] != 0.0
         || input.unit[base + 21] != 0.0
-        || input.unit[base + 23] != 0.0
         || input.unit[base + 36] != 0.0
         || input.unit[base + 37] != 0.0
         || input.unit[base + 38] != 0.0
@@ -2743,6 +2748,9 @@ pub(crate) fn v6_is_split_turret(
     if input.unit[base + 32] != 0.0 && (cf & ENTITY_CHANGED_VEL) == 0 {
         return false;
     }
+    if input.unit[base + 23] != 0.0 && (cf & ENTITY_CHANGED_NORMAL) == 0 {
+        return false;
+    }
     true
 }
 
@@ -2752,6 +2760,7 @@ pub(crate) fn v6_has_movement_fields(input: &SnapshotEncodeV6InputScratch, row: 
     (cf & ENTITY_CHANGED_POS) != 0
         || (cf & ENTITY_CHANGED_ROT) != 0
         || (cf & ENTITY_CHANGED_VEL) != 0
+        || (cf & ENTITY_CHANGED_NORMAL) != 0
         || input.unit[base + 27] != 0.0
         || input.unit[base + 32] != 0.0
 }
@@ -2803,6 +2812,9 @@ pub(crate) fn v6_movement_flags(
     }
     if v6_present(is_full, cf, ENTITY_CHANGED_VEL) {
         flags |= V6_MOVEMENT_FLAG_VELOCITY;
+    }
+    if input.unit[base + 23] != 0.0 {
+        flags |= V6_MOVEMENT_FLAG_SURFACE_NORMAL;
     }
     if input.unit[base + 27] != 0.0 {
         let compact = v6_can_compact_yaw_orientation(
@@ -2861,6 +2873,11 @@ pub(crate) fn v6_write_movement_payload(
         writer.write_var_int_from_f64(input.unit[base + 10]);
         writer.write_var_int_from_f64(input.unit[base + 11]);
         writer.write_var_int_from_f64(input.unit[base + 12]);
+    }
+    if (flags & V6_MOVEMENT_FLAG_SURFACE_NORMAL) != 0 {
+        writer.write_var_int_from_f64(input.unit[base + 24]);
+        writer.write_var_int_from_f64(input.unit[base + 25]);
+        writer.write_var_int_from_f64(input.unit[base + 26]);
     }
     if (flags & V6_MOVEMENT_FLAG_ORIENTATION) != 0 {
         writer.write_f64_le(input.unit[base + 28]);

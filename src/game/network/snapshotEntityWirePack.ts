@@ -1,5 +1,6 @@
 import type { PlayerId } from '../../types/sim';
 import {
+  ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_TURRETS,
@@ -76,6 +77,7 @@ function createEmptyBuildingSub(): BuildingSub {
 // clone the snapshot into owned objects before holding it. So pooled
 // objects are dead by the next decode.
 type DecodedVec3 = { x: number; y: number; z: number };
+type DecodedNormal = { nx: number; ny: number; nz: number };
 type DecodedQuat = { x: number; y: number; z: number; w: number };
 
 const _entityPool: NetworkServerSnapshotEntity[] = [];
@@ -84,6 +86,8 @@ const _unitSubPool: UnitSub[] = [];
 let _unitSubPoolIndex = 0;
 const _vec3Pool: DecodedVec3[] = [];
 let _vec3PoolIndex = 0;
+const _normalPool: DecodedNormal[] = [];
+let _normalPoolIndex = 0;
 const _quatPool: DecodedQuat[] = [];
 let _quatPoolIndex = 0;
 
@@ -91,6 +95,7 @@ function resetDecodePools(): void {
   _entityPoolIndex = 0;
   _unitSubPoolIndex = 0;
   _vec3PoolIndex = 0;
+  _normalPoolIndex = 0;
   _quatPoolIndex = 0;
 }
 
@@ -169,6 +174,20 @@ function rentDecodedVec3(x: number, y: number, z: number): DecodedVec3 {
   return v;
 }
 
+function rentDecodedNormal(nx: number, ny: number, nz: number): DecodedNormal {
+  let n = _normalPool[_normalPoolIndex];
+  if (n === undefined) {
+    n = { nx, ny, nz };
+    _normalPool[_normalPoolIndex] = n;
+  } else {
+    n.nx = nx;
+    n.ny = ny;
+    n.nz = nz;
+  }
+  _normalPoolIndex++;
+  return n;
+}
+
 function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQuat {
   let q = _quatPool[_quatPoolIndex];
   if (q === undefined) {
@@ -184,7 +203,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 11;
+const PACKED_ENTITIES_VERSION = 12;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -248,6 +267,7 @@ const MOVEMENT_UNIT_FLAG_ORIENTATION = 1 << 3;
 const MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY = 1 << 4;
 const MOVEMENT_UNIT_FLAG_YAW_ORIENTATION = 1 << 5;
 const MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY = 1 << 6;
+const MOVEMENT_UNIT_FLAG_SURFACE_NORMAL = 1 << 7;
 
 const ACTION_FLAG_POS = 1 << 0;
 const ACTION_FLAG_POS_Z = 1 << 1;
@@ -280,7 +300,9 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // one. V7 adds a detail-row unit repeat command-state bit pair. V8 adds
 // the unit hold-position command-state bit pair. V9 adds unit trajectory
 // mode. V10 adds factory guard target ids to the detail-row factory
-// sub-object. V11 adds finite factory production queues.
+// sub-object. V11 adds finite factory production queues. V12 adds surface
+// normals to the compact movement slab so motion+normal sparse rows avoid
+// detail-row fallback.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitBytes = Uint8Array;
 export type PackedUnitTurretBytes = Uint8Array;
@@ -386,6 +408,7 @@ function movementUnitChangedFields(flags: number): number {
   ) {
     changedFields |= ENTITY_CHANGED_VEL;
   }
+  if ((flags & MOVEMENT_UNIT_FLAG_SURFACE_NORMAL) !== 0) changedFields |= ENTITY_CHANGED_NORMAL;
   return changedFields;
 }
 
@@ -451,6 +474,7 @@ function readMovementUnitDeltaByteEntity(
   if (
     (flags & (
       MOVEMENT_UNIT_FLAG_VELOCITY |
+      MOVEMENT_UNIT_FLAG_SURFACE_NORMAL |
       MOVEMENT_UNIT_FLAG_ORIENTATION |
       MOVEMENT_UNIT_FLAG_ANGULAR_VELOCITY |
       MOVEMENT_UNIT_FLAG_YAW_ORIENTATION |
@@ -460,6 +484,13 @@ function readMovementUnitDeltaByteEntity(
     const unit = rentDecodedUnitSub();
     if ((flags & MOVEMENT_UNIT_FLAG_VELOCITY) !== 0) {
       unit.velocity = rentDecodedVec3(reader.readVarInt(), reader.readVarInt(), reader.readVarInt());
+    }
+    if ((flags & MOVEMENT_UNIT_FLAG_SURFACE_NORMAL) !== 0) {
+      unit.surfaceNormal = rentDecodedNormal(
+        reader.readVarInt(),
+        reader.readVarInt(),
+        reader.readVarInt(),
+      );
     }
     if ((flags & MOVEMENT_UNIT_FLAG_ORIENTATION) !== 0) {
       unit.orientation = rentDecodedQuat(
