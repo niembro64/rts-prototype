@@ -138,7 +138,8 @@ function acceptsSerializedEntity(
   entity: Entity,
   visibility: SnapshotVisibility,
 ): boolean {
-  return isSerializedEntityKind(entity) && visibility.isEntityVisible(entity);
+  return isSerializedEntityKind(entity) &&
+    (!visibility.isFiltered || visibility.isEntityVisible(entity));
 }
 
 function isSerializedEntityKind(entity: Entity): boolean {
