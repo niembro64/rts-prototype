@@ -479,7 +479,11 @@ export class ClientViewState {
     } else if (clearHomingTarget) {
       entity.projectile.homingTargetId = NO_ENTITY_ID;
     }
-    this.projectileStore.markVelocityUpdateActive(entity, id);
+    if (shouldSmoothRocket) {
+      this.projectileStore.markVelocityTargetUpdateActive(entity, id);
+    } else {
+      this.projectileStore.markVelocityUpdateActive(entity, id);
+    }
   }
 
   private copyNetworkTurretsToTarget(

@@ -219,6 +219,17 @@ export class ClientProjectileStore {
     this.refreshRenderStateAndSpatialIndex(entity);
   }
 
+  markVelocityTargetUpdateActive(entity: Entity, id: EntityId): void {
+    if (isLineProjectileEntity(entity)) {
+      this.markVelocityUpdateActive(entity, id);
+      return;
+    }
+    if (!this.activeProjectilePredictionIds.has(id)) {
+      this.activeProjectilePredictionIds.add(id);
+      this.markRenderListsDirty();
+    }
+  }
+
   updateRenderSpatialIndex(entity: Entity): void {
     this.refreshRenderStateAndSpatialIndex(entity);
   }
