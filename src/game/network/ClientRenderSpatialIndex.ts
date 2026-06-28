@@ -25,15 +25,13 @@ type ClientRenderSpatialEntry = {
 };
 
 export class ClientRenderSpatialIndex {
-  private readonly buckets = new Map<ClientRenderCellKey, number[]>();
+  private readonly buckets = new Map<ClientRenderCellKey, ClientRenderSpatialEntry[]>();
   private readonly entriesById = new Map<EntityId, ClientRenderSpatialEntry>();
-  private readonly entriesBySlot = new Map<number, ClientRenderSpatialEntry>();
   private maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
 
   clear(): void {
     this.buckets.clear();
     this.entriesById.clear();
-    this.entriesBySlot.clear();
     this.maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
   }
 
@@ -72,8 +70,6 @@ export class ClientRenderSpatialIndex {
       existing.cellX = cellX;
       existing.cellY = cellY;
       this.updateEntryPadding(existing, padding);
-      const bucket = this.buckets.get(cellKey);
-      if (bucket !== undefined) bucket[existing.bucketIndex] = slot;
       return;
     }
 
@@ -89,9 +85,8 @@ export class ClientRenderSpatialIndex {
       bucketIndex: bucket.length,
       padding,
     };
-    bucket.push(slot);
+    bucket.push(entry);
     this.entriesById.set(entityId, entry);
-    this.entriesBySlot.set(slot, entry);
     if (padding > this.maxEntityPadding) this.maxEntityPadding = padding;
   }
 
@@ -100,16 +95,14 @@ export class ClientRenderSpatialIndex {
     if (entry === undefined) return;
     const bucket = this.buckets.get(entry.cellKey);
     if (bucket !== undefined) {
-      const lastSlot = bucket.pop();
-      if (lastSlot !== undefined && entry.bucketIndex < bucket.length) {
-        bucket[entry.bucketIndex] = lastSlot;
-        const moved = this.entriesBySlot.get(lastSlot);
-        if (moved !== undefined) moved.bucketIndex = entry.bucketIndex;
+      const lastEntry = bucket.pop();
+      if (lastEntry !== undefined && entry.bucketIndex < bucket.length) {
+        bucket[entry.bucketIndex] = lastEntry;
+        lastEntry.bucketIndex = entry.bucketIndex;
       }
       if (bucket.length === 0) this.buckets.delete(entry.cellKey);
     }
     this.entriesById.delete(id);
-    this.entriesBySlot.delete(entry.slot);
     if (entry.padding >= this.maxEntityPadding) this.recomputeMaxEntityPadding();
   }
 
@@ -139,16 +132,13 @@ export class ClientRenderSpatialIndex {
         const bucket = this.buckets.get(this.cellKey(cellX, cellY));
         if (bucket === undefined) continue;
         for (let i = 0; i < bucket.length; i++) {
-          const entry = this.entriesBySlot.get(bucket[i]);
-          if (entry !== undefined) {
-            this.pushEntrySlots(entry, outUnitSlots, outBuildingSlots, includeSlot);
-          }
+          this.pushEntrySlots(bucket[i], outUnitSlots, outBuildingSlots, includeSlot);
         }
       }
     }
   }
 
-  private getOrCreateBucket(cellKey: ClientRenderCellKey): number[] {
+  private getOrCreateBucket(cellKey: ClientRenderCellKey): ClientRenderSpatialEntry[] {
     let bucket = this.buckets.get(cellKey);
     if (bucket === undefined) {
       bucket = [];
