@@ -1,5 +1,6 @@
 import {
   ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_POS,
   buildingBlueprintIdToCode,
   unitBlueprintIdToCode,
 } from '../../types/network';
@@ -98,6 +99,16 @@ function snapshot(
   };
 }
 
+function entityDeltaSnapshot(
+  tick: number,
+  entities: NetworkServerSnapshotEntity[],
+): NetworkServerSnapshot {
+  return {
+    ...snapshot(tick, entities),
+    entityDeltaOnly: true,
+  };
+}
+
 function fullUnitEntity(
   id: number,
   hp: number,
@@ -166,6 +177,24 @@ function fullBuildingEntity(
       turrets: null,
       factory: null,
     },
+  };
+}
+
+function posSparseBuildingEntity(
+  id: number,
+  x: number,
+  y: number,
+  z: number,
+): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'building',
+    playerId: 2 as PlayerId,
+    changedFields: ENTITY_CHANGED_POS,
+    pos: { x: qEntityPos(x), y: qEntityPos(y), z: qEntityPos(z) },
+    rotation: null,
+    unit: null,
+    building: null,
   };
 }
 
@@ -306,6 +335,16 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   );
   assertContract(units.length === 1 && units[0].id === 101, 'slot-backed scoped query returns the nearby unit');
   assertContract(buildings.length === 0, 'slot-backed scoped query excludes distant building');
+
+  scopedView.applyNetworkState(entityDeltaSnapshot(2, [posSparseBuildingEntity(202, 180, 100, 0)]));
+  scopedView.collectScopedRenderEntities(
+    nearBounds,
+    units,
+    buildings,
+    null,
+    scopeFromBounds(nearBounds),
+  );
+  assertContract(buildings.length === 1 && buildings[0].id === 202, 'position delta must reindex building rows');
 
   const wideBounds: FootprintBounds = { minX: 0, minY: 0, maxX: 1500, maxY: 400 };
   scopedView.collectScopedRenderEntities(

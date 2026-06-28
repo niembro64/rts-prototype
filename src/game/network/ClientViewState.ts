@@ -635,6 +635,11 @@ export class ClientViewState {
     return false;
   }
 
+  private snapshotAffectsRenderSpatialIndex(server: NetworkServerSnapshotEntity): boolean {
+    const changedFields = server.changedFields;
+    return changedFields == null || (changedFields & ENTITY_CHANGED_POS) !== 0;
+  }
+
   private unitHealthBarCacheMembership(entity: Entity): boolean {
     const unit = entity.unit;
     if (!unit) return false;
@@ -861,7 +866,10 @@ export class ClientViewState {
             cacheNeedsInvalidate = true;
           }
           snapClientNonVisualState(existing, netEntity);
-          this.refreshRenderableEntityStateAndSpatialIndex(existing);
+          this.refreshRenderableEntityStateFromSnapshot(
+            existing,
+            this.snapshotAffectsRenderSpatialIndex(netEntity),
+          );
           this.refreshPredictionSupportSurfaceProvider(existing);
           this.markNetworkEntityPredictionActive(netEntity, existing);
         }
@@ -1355,13 +1363,32 @@ export class ClientViewState {
   }
 
   private refreshRenderableEntityStateAndSpatialIndex(entity: Entity): void {
-    const slot = this.renderEntityState.refreshEntity(entity);
+    const slot = this.refreshRenderableEntityState(entity);
     if (slot !== undefined) {
-      this.renderTurretState.refreshHost(entity, slot);
       this.renderSpatialIndex.updateSlot(this.renderEntityState.getViews(), slot);
     } else {
       this.renderSpatialIndex.remove(entity.id);
     }
+  }
+
+  private refreshRenderableEntityStateFromSnapshot(
+    entity: Entity,
+    refreshSpatialIndex: boolean,
+  ): void {
+    const slot = this.refreshRenderableEntityState(entity);
+    if (slot === undefined) {
+      this.renderSpatialIndex.remove(entity.id);
+      return;
+    }
+    if (refreshSpatialIndex) {
+      this.renderSpatialIndex.updateSlot(this.renderEntityState.getViews(), slot);
+    }
+  }
+
+  private refreshRenderableEntityState(entity: Entity): number | undefined {
+    const slot = this.renderEntityState.refreshEntity(entity);
+    if (slot !== undefined) this.renderTurretState.refreshHost(entity, slot);
+    return slot;
   }
 
   private refreshRenderEntityStateById(id: EntityId): void {
