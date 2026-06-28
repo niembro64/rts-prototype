@@ -35,7 +35,7 @@ import {
 } from '../combat/lineShotRange';
 import { getActiveShields } from '../combat/shieldTurret';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
-import { getSimWasm } from '../../sim-wasm/init';
+import { getSimWasm, type SimWasm } from '../../sim-wasm/init';
 import { entitySlotRegistry } from '../EntitySlotRegistry';
 import {
   BUILDING_CLOSED_DAMAGE_MULTIPLIER,
@@ -1049,6 +1049,11 @@ export class DamageSystem {
     let bodyExcludePanelIndex = -1;
     let reflectorExcludeEntityId = NO_ENTITY_ID;
     let reflectorExcludePanelIndex = -1;
+    const panelsActive = this.world.turretShieldPanelsEnabled &&
+      this.world.getShieldPanelUnits().length > 0;
+    const fieldsActive = this.world.turretShieldSpheresEnabled &&
+      getActiveShields().length > 0;
+    const reflectorSim = panelsActive || fieldsActive ? getSimWasm() : undefined;
 
     for (let segmentIndex = 0; segmentIndex < segmentLimit; segmentIndex++) {
       if (rangeCylinder) {
@@ -1083,6 +1088,9 @@ export class DamageSystem {
         lineWidth,
         dtMs,
         reflectionEntity,
+        reflectorSim,
+        panelsActive,
+        fieldsActive,
       );
 
       if (!hit) {
@@ -1294,6 +1302,9 @@ export class DamageSystem {
     lineWidth: number,
     dtMs: number,
     reflectionEntity: number,
+    reflectorSim: SimWasm | undefined,
+    panelsActive: boolean,
+    fieldsActive: boolean,
   ): typeof _segHit | null {
     let bestT = Infinity;
     let found = false;
@@ -1362,13 +1373,8 @@ export class DamageSystem {
     // path uses — one pose epoch and one mirror formula for every
     // emission kind, so a beam and a rocket can never disagree about
     // where a surface is or how it bounces.
-    const sim = getSimWasm();
-    const panelsActive = this.world.turretShieldPanelsEnabled &&
-      this.world.getShieldPanelUnits().length > 0;
-    const fieldsActive = this.world.turretShieldSpheresEnabled &&
-      getActiveShields().length > 0;
     if (
-      sim !== undefined &&
+      reflectorSim !== undefined &&
       (panelsActive || fieldsActive)
     ) {
       _beamReflStartX[0] = startX;
@@ -1381,7 +1387,7 @@ export class DamageSystem {
       _beamReflReflectionEntity[0] = reflectionEntity;
       _beamReflExcludeEntityId[0] = reflectorExcludeEntityId;
       _beamReflExcludePanelIndex[0] = reflectorExcludePanelIndex;
-      sim.projectileReflectorIntersectionsBatch(
+      reflectorSim.projectileReflectorIntersectionsBatch(
         1,
         _beamReflEnabled,
         _beamReflStartX,
