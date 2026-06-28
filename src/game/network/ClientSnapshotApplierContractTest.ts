@@ -387,6 +387,7 @@ export function runClientSnapshotApplierContractTest(): void {
     view.getEntity(id)?.unit?.hp === 45,
     'typed unit HP rows must update HP from wire rows before DTO fallback',
   );
+  view.assertRenderEntityStateParity(id);
   assertHudContains(view, id, true);
 
   wireMotionEntity.unit.hp = 100;
@@ -404,6 +405,7 @@ export function runClientSnapshotApplierContractTest(): void {
     view.getEntity(id)?.unit?.hp === 100,
     'typed unit HP rows must apply full-heal HP from wire rows',
   );
+  view.assertRenderEntityStateParity(id);
   assertHudContains(view, id, false);
 
   const buildingView = new ClientViewState();
@@ -431,6 +433,7 @@ export function runClientSnapshotApplierContractTest(): void {
     buildingView.getEntity(buildingId)?.building?.hp === 45,
     'typed building HP rows must update HP from wire rows before DTO fallback',
   );
+  buildingView.assertRenderEntityStateParity(buildingId);
 
   view.applyNetworkState(snapshot(3, [hpSparseEntity(id, 80, 100)]));
   assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP sparse row must update unit HP');
@@ -483,4 +486,5 @@ export function runClientSnapshotApplierContractTest(): void {
     turretView.getEntity(400)?.combat?.turrets[0]?.target === 77,
     'typed unit turret rows must update turret target before DTO fallback',
   );
+  turretView.assertRenderEntityStateParity(400);
 }

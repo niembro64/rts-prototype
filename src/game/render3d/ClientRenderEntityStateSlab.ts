@@ -199,6 +199,55 @@ export class ClientRenderEntityStateSlab {
     return undefined;
   }
 
+  refreshHealth(entity: Entity): number | undefined {
+    const slot = this.slotByEntityId.get(entity.id);
+    if (slot === undefined) return this.refreshEntity(entity);
+    const views = this.views;
+    const unit = entity.unit;
+    if (unit !== null) {
+      if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return this.refreshEntity(entity);
+      views.hp[slot] = unit.hp;
+      views.maxHp[slot] = unit.maxHp;
+      this.markSlotDirty(slot);
+      return slot;
+    }
+    const building = entity.building;
+    if (building !== null) {
+      if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return this.refreshEntity(entity);
+      views.hp[slot] = building.hp;
+      views.maxHp[slot] = building.maxHp;
+      this.markSlotDirty(slot);
+      return slot;
+    }
+    this.unsetEntity(entity.id);
+    return undefined;
+  }
+
+  refreshTurretMetadata(entity: Entity): number | undefined {
+    const slot = this.slotByEntityId.get(entity.id);
+    if (slot === undefined) return this.refreshEntity(entity);
+    const views = this.views;
+    const turrets = entity.combat?.turrets;
+    if (entity.unit !== null) {
+      if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return this.refreshEntity(entity);
+      views.turretCount[slot] = turrets?.length ?? 0;
+      views.passiveTurretIndex[slot] = turrets !== undefined
+        ? passiveTurretIndex(turrets)
+        : NO_PASSIVE_TURRET_INDEX;
+      this.markSlotDirty(slot);
+      return slot;
+    }
+    if (entity.building !== null) {
+      if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return this.refreshEntity(entity);
+      views.turretCount[slot] = turrets?.length ?? 0;
+      views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
+      this.markSlotDirty(slot);
+      return slot;
+    }
+    this.unsetEntity(entity.id);
+    return undefined;
+  }
+
   refreshUnit(entity: Entity): number | undefined {
     const unit = entity.unit;
     if (unit === null) return undefined;

@@ -909,7 +909,7 @@ export class ClientViewState {
     }
 
     if (hasHpFields || copiedTurretRows) {
-      this.refreshRenderableEntityStateFromSnapshot(existing, false);
+      this.refreshRenderableEntityStateSnapshotDelta(existing, hasHpFields, copiedTurretRows);
     }
 
     if (hasMotionFields || copiedTurretRows) {
@@ -990,8 +990,10 @@ export class ClientViewState {
       }
     }
 
-    if (hasMotionFields || hasHpFields || copiedTurretRows) {
+    if (hasMotionFields) {
       this.refreshRenderableEntityStateFromSnapshot(existing, hasMotionFields);
+    } else if (hasHpFields || copiedTurretRows) {
+      this.refreshRenderableEntityStateSnapshotDelta(existing, hasHpFields, copiedTurretRows);
     }
     if (hasMotionFields || hasHpFields) this.dirtyBuildingRenderIds.add(id);
     if (copiedTurretRows) this.activeEntityPredictionIds.add(id);
@@ -1814,6 +1816,25 @@ export class ClientViewState {
     if (refreshSpatialIndex) {
       this.renderSpatialIndex.updateSlot(this.renderEntityState.getViews(), slot);
     }
+  }
+
+  private refreshRenderableEntityStateSnapshotDelta(
+    entity: Entity,
+    refreshHealth: boolean,
+    refreshTurrets: boolean,
+  ): void {
+    let slot: number | undefined;
+    if (refreshHealth) slot = this.renderEntityState.refreshHealth(entity);
+    if (refreshTurrets) slot = this.renderEntityState.refreshTurretMetadata(entity);
+    if (!refreshHealth && !refreshTurrets) {
+      slot = this.renderEntityState.getSlot(entity.id)
+        ?? this.renderEntityState.refreshEntity(entity);
+    }
+    if (slot === undefined) {
+      this.renderSpatialIndex.remove(entity.id);
+      return;
+    }
+    if (refreshTurrets) this.renderTurretState.refreshHost(entity, slot);
   }
 
   private refreshRenderableEntityState(entity: Entity): number | undefined {
