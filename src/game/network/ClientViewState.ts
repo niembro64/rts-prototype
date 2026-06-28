@@ -547,6 +547,7 @@ export class ClientViewState {
     offset: number,
     count: number,
     target: ServerTarget,
+    entity: Entity,
   ): boolean {
     if (count <= 0) return false;
     if (offset < 0 || offset + count > source.turretRows.count) return false;
@@ -561,41 +562,31 @@ export class ClientViewState {
     }
     target.turrets.length = count;
     const rows = source.turretRows.values;
+    const combat = entity.combat;
+    const entityTurrets = combat?.turrets;
+    const entityTurretLimit = entityTurrets !== undefined
+      ? Math.min(count, entityTurrets.length)
+      : 0;
     for (let i = 0; i < count; i++) {
       const rowBase = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
-      const turret = target.turrets[i];
-      turret.rotation = deqRot(rows[rowBase + 0]);
-      turret.angularVelocity = deqRot(rows[rowBase + 1]);
-      turret.pitch = deqRot(rows[rowBase + 2]);
-      turret.pitchVelocity = deqRot(rows[rowBase + 3]);
-      turret.shieldRange = rows[rowBase + 8] !== 0 ? rows[rowBase + 9] : null;
-    }
-    return true;
-  }
-
-  private applyWireUnitTurretNonVisualState(
-    entity: Entity,
-    source: EntitySnapshotWireSource,
-    offset: number,
-    count: number,
-  ): void {
-    const combat = entity.combat;
-    if (combat === null || count <= 0) return;
-    const rows = source.turretRows.values;
-    const turrets = combat.turrets;
-    const limit = Math.min(count, turrets.length);
-    for (let i = 0; i < limit; i++) {
-      const rowBase = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
-      const turret = turrets[i];
+      const targetTurret = target.turrets[i];
+      targetTurret.rotation = deqRot(rows[rowBase + 0]);
+      targetTurret.angularVelocity = deqRot(rows[rowBase + 1]);
+      targetTurret.pitch = deqRot(rows[rowBase + 2]);
+      targetTurret.pitchVelocity = deqRot(rows[rowBase + 3]);
+      targetTurret.shieldRange = rows[rowBase + 8] !== 0 ? rows[rowBase + 9] : null;
+      if (i >= entityTurretLimit || entityTurrets === undefined) continue;
+      const entityTurret = entityTurrets[i];
       if (rows[rowBase + 10] !== 0) {
-        turret.target = null;
-        turret.state = 'idle';
-        turret.shield = null;
+        entityTurret.target = null;
+        entityTurret.state = 'idle';
+        entityTurret.shield = null;
         continue;
       }
-      turret.target = rows[rowBase + 6] !== 0 ? (rows[rowBase + 7] | 0) as EntityId : null;
-      turret.state = codeToTurretState(rows[rowBase + 5]);
+      entityTurret.target = rows[rowBase + 6] !== 0 ? (rows[rowBase + 7] | 0) as EntityId : null;
+      entityTurret.state = codeToTurretState(rows[rowBase + 5]);
     }
+    return true;
   }
 
   private deleteEntityLocalState(id: EntityId, deferEntitySetChange = false): boolean {
@@ -979,14 +970,9 @@ export class ClientViewState {
         turretOffset,
         turretCount,
         target,
+        existing,
       );
       if (!copiedTurretRows) return false;
-      this.applyWireUnitTurretNonVisualState(
-        existing,
-        source,
-        turretOffset,
-        turretCount,
-      );
     }
 
     if (target !== undefined) target.updatedAtMs = now;
@@ -1097,14 +1083,9 @@ export class ClientViewState {
         turretOffset,
         turretCount,
         target,
+        existing,
       );
       if (!copiedTurretRows) return false;
-      this.applyWireUnitTurretNonVisualState(
-        existing,
-        source,
-        turretOffset,
-        turretCount,
-      );
     }
     if (target !== undefined) target.updatedAtMs = now;
 
