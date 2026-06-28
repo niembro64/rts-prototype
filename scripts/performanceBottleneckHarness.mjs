@@ -239,10 +239,12 @@ function printReport(report) {
   console.log(`  gpu/render-submit ms avg/p95/max: ${triplet(report.fullStack.gpuMs)}`);
   console.log(`  render TPS avg/low p95: ${fmt(report.fullStack.renderTpsAvg.p95)} / ${fmt(report.fullStack.renderTpsLow.p95)}`);
   console.log(
-    `  snapshot SPS total/rich/delta p95: ` +
+    `  snapshot SPS total/rich/delta/entity/projectile p95: ` +
       `${fmt(report.fullStack.snapshotTotalSps?.p95)}/` +
       `${fmt(report.fullStack.snapshotRichSps?.p95)}/` +
-      `${fmt(report.fullStack.snapshotDeltaSps?.p95)} ` +
+      `${fmt(report.fullStack.snapshotDeltaSps?.p95)}/` +
+      `${fmt(report.fullStack.snapshotEntityDeltaSps?.p95)}/` +
+      `${fmt(report.fullStack.snapshotProjectileDeltaSps?.p95)} ` +
       cadenceTargetsText(report),
   );
   console.log(`  server CPU avg/hi p95: ${fmt(report.fullStack.serverCpuAvgPct.p95)}% / ${fmt(report.fullStack.serverCpuHiPct.p95)}%`);
@@ -311,9 +313,11 @@ function printSuiteReport(report) {
     console.log(
       `  render prep p95=${fmt(scenario.fullStack.renderPrepMs.p95)}ms, ` +
         `gpu/render p95=${fmt(scenario.fullStack.gpuMs.p95)}ms, ` +
-        `sps total/rich/delta p95=${fmt(scenario.fullStack.snapshotTotalSps?.p95)}/` +
+        `sps total/rich/delta/entity/projectile p95=${fmt(scenario.fullStack.snapshotTotalSps?.p95)}/` +
         `${fmt(scenario.fullStack.snapshotRichSps?.p95)}/` +
-        `${fmt(scenario.fullStack.snapshotDeltaSps?.p95)} ` +
+        `${fmt(scenario.fullStack.snapshotDeltaSps?.p95)}/` +
+        `${fmt(scenario.fullStack.snapshotEntityDeltaSps?.p95)}/` +
+        `${fmt(scenario.fullStack.snapshotProjectileDeltaSps?.p95)} ` +
         cadenceTargetsText(scenario) + ', ' +
         `longtask p95=${fmt(scenario.fullStack.longtaskMsPerSec.p95)}ms/s`,
     );

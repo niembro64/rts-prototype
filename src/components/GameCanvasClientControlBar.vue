@@ -123,7 +123,7 @@ function richSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): strin
 }
 
 function deltaSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
-  return `Sparse no-metadata deltas. Entity motion target ${fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT)} Hz; projectile presentation deltas can emit up to ${fmt4(model.displayTickRate)} Hz during active combat.`;
+  return `Sparse no-metadata deltas. Combined avg/low includes entity and projectile deltas. Entity motion target ${fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT)} Hz; projectile presentation deltas can emit up to ${fmt4(model.displayTickRate)} Hz during active combat.`;
 }
 
 const props = defineProps<{
@@ -654,6 +654,10 @@ function resetEveryCustomHotkey(): void {
               ></div>
             </div>
           </div>
+        </div>
+        <div class="snapshot-delta-split">
+          <span title="Entity motion delta snapshots. Target is the sparse entity motion rate.">ent {{ fmt4(model.entityDeltaSnapAvgRate) }}/{{ fmt4(model.entityDeltaSnapWorstRate) }}</span>
+          <span title="Projectile delta snapshots. Target can rise to the fixed simulation tick rate during active projectile traffic.">proj {{ fmt4(model.projectileDeltaSnapAvgRate) }}/{{ fmt4(model.projectileDeltaSnapWorstRate) }}</span>
         </div>
       </BarControlGroup>
       <BarControlGroup>
@@ -1397,6 +1401,16 @@ function resetEveryCustomHotkey(): void {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.snapshot-delta-split {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 88px;
+  color: #aeb8c6;
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .hotkey-editor {

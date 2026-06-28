@@ -106,18 +106,30 @@ export function useGameCanvasTelemetry({
   const richSnapWorstRate = ref(0);
   const deltaSnapAvgRate = ref(0);
   const deltaSnapWorstRate = ref(0);
+  const entityDeltaSnapAvgRate = ref(0);
+  const entityDeltaSnapWorstRate = ref(0);
+  const projectileDeltaSnapAvgRate = ref(0);
+  const projectileDeltaSnapWorstRate = ref(0);
   const snapshotSizeAvgBytes = ref(0);
   const snapshotSizeHiBytes = ref(0);
   const richSnapshotSizeAvgBytes = ref(0);
   const richSnapshotSizeHiBytes = ref(0);
   const deltaSnapshotSizeAvgBytes = ref(0);
   const deltaSnapshotSizeHiBytes = ref(0);
+  const entityDeltaSnapshotSizeAvgBytes = ref(0);
+  const entityDeltaSnapshotSizeHiBytes = ref(0);
+  const projectileDeltaSnapshotSizeAvgBytes = ref(0);
+  const projectileDeltaSnapshotSizeHiBytes = ref(0);
   const snapshotApplyAvgMs = ref(0);
   const snapshotApplyHiMs = ref(0);
   const richSnapshotApplyAvgMs = ref(0);
   const richSnapshotApplyHiMs = ref(0);
   const deltaSnapshotApplyAvgMs = ref(0);
   const deltaSnapshotApplyHiMs = ref(0);
+  const entityDeltaSnapshotApplyAvgMs = ref(0);
+  const entityDeltaSnapshotApplyHiMs = ref(0);
+  const projectileDeltaSnapshotApplyAvgMs = ref(0);
+  const projectileDeltaSnapshotApplyHiMs = ref(0);
   const currentZoom = ref(0.4);
   let updateInterval: ReturnType<typeof setInterval> | null = null;
   let renderProfileApi: RenderProfileApi | null = null;
@@ -214,6 +226,10 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(richSnapWorstRate, snapStats.rich.worstRate, 0.05);
       setNumberRefIfChanged(deltaSnapAvgRate, snapStats.delta.avgRate, 0.05);
       setNumberRefIfChanged(deltaSnapWorstRate, snapStats.delta.worstRate, 0.05);
+      setNumberRefIfChanged(entityDeltaSnapAvgRate, snapStats.entityDelta.avgRate, 0.05);
+      setNumberRefIfChanged(entityDeltaSnapWorstRate, snapStats.entityDelta.worstRate, 0.05);
+      setNumberRefIfChanged(projectileDeltaSnapAvgRate, snapStats.projectileDelta.avgRate, 0.05);
+      setNumberRefIfChanged(projectileDeltaSnapWorstRate, snapStats.projectileDelta.worstRate, 0.05);
 
       const payloadSizeStats = scene.getSnapshotPayloadSizeStats();
       setNumberRefIfChanged(snapshotSizeAvgBytes, payloadSizeStats.avgBytes, 1);
@@ -222,6 +238,10 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(richSnapshotSizeHiBytes, payloadSizeStats.rich.hiBytes, 1);
       setNumberRefIfChanged(deltaSnapshotSizeAvgBytes, payloadSizeStats.delta.avgBytes, 1);
       setNumberRefIfChanged(deltaSnapshotSizeHiBytes, payloadSizeStats.delta.hiBytes, 1);
+      setNumberRefIfChanged(entityDeltaSnapshotSizeAvgBytes, payloadSizeStats.entityDelta.avgBytes, 1);
+      setNumberRefIfChanged(entityDeltaSnapshotSizeHiBytes, payloadSizeStats.entityDelta.hiBytes, 1);
+      setNumberRefIfChanged(projectileDeltaSnapshotSizeAvgBytes, payloadSizeStats.projectileDelta.avgBytes, 1);
+      setNumberRefIfChanged(projectileDeltaSnapshotSizeHiBytes, payloadSizeStats.projectileDelta.hiBytes, 1);
 
       const applyStats = scene.getSnapshotApplyStats();
       setNumberRefIfChanged(snapshotApplyAvgMs, applyStats.total.avgMs, 0.01);
@@ -230,6 +250,10 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(richSnapshotApplyHiMs, applyStats.rich.hiMs, 0.01);
       setNumberRefIfChanged(deltaSnapshotApplyAvgMs, applyStats.delta.avgMs, 0.01);
       setNumberRefIfChanged(deltaSnapshotApplyHiMs, applyStats.delta.hiMs, 0.01);
+      setNumberRefIfChanged(entityDeltaSnapshotApplyAvgMs, applyStats.entityDelta.avgMs, 0.01);
+      setNumberRefIfChanged(entityDeltaSnapshotApplyHiMs, applyStats.entityDelta.hiMs, 0.01);
+      setNumberRefIfChanged(projectileDeltaSnapshotApplyAvgMs, applyStats.projectileDelta.avgMs, 0.01);
+      setNumberRefIfChanged(projectileDeltaSnapshotApplyHiMs, applyStats.projectileDelta.hiMs, 0.01);
     }
   }
 
@@ -348,17 +372,29 @@ export function useGameCanvasTelemetry({
     richSnapWorstRate,
     deltaSnapAvgRate,
     deltaSnapWorstRate,
+    entityDeltaSnapAvgRate,
+    entityDeltaSnapWorstRate,
+    projectileDeltaSnapAvgRate,
+    projectileDeltaSnapWorstRate,
     snapshotSizeAvgBytes,
     snapshotSizeHiBytes,
     richSnapshotSizeAvgBytes,
     richSnapshotSizeHiBytes,
     deltaSnapshotSizeAvgBytes,
     deltaSnapshotSizeHiBytes,
+    entityDeltaSnapshotSizeAvgBytes,
+    entityDeltaSnapshotSizeHiBytes,
+    projectileDeltaSnapshotSizeAvgBytes,
+    projectileDeltaSnapshotSizeHiBytes,
     snapshotApplyAvgMs,
     snapshotApplyHiMs,
     richSnapshotApplyAvgMs,
     richSnapshotApplyHiMs,
     deltaSnapshotApplyAvgMs,
     deltaSnapshotApplyHiMs,
+    entityDeltaSnapshotApplyAvgMs,
+    entityDeltaSnapshotApplyHiMs,
+    projectileDeltaSnapshotApplyAvgMs,
+    projectileDeltaSnapshotApplyHiMs,
   };
 }

@@ -1015,18 +1015,30 @@ const {
   richSnapWorstRate,
   deltaSnapAvgRate,
   deltaSnapWorstRate,
+  entityDeltaSnapAvgRate,
+  entityDeltaSnapWorstRate,
+  projectileDeltaSnapAvgRate,
+  projectileDeltaSnapWorstRate,
   snapshotSizeAvgBytes,
   snapshotSizeHiBytes,
   richSnapshotSizeAvgBytes,
   richSnapshotSizeHiBytes,
   deltaSnapshotSizeAvgBytes,
   deltaSnapshotSizeHiBytes,
+  entityDeltaSnapshotSizeAvgBytes,
+  entityDeltaSnapshotSizeHiBytes,
+  projectileDeltaSnapshotSizeAvgBytes,
+  projectileDeltaSnapshotSizeHiBytes,
   snapshotApplyAvgMs,
   snapshotApplyHiMs,
   richSnapshotApplyAvgMs,
   richSnapshotApplyHiMs,
   deltaSnapshotApplyAvgMs,
   deltaSnapshotApplyHiMs,
+  entityDeltaSnapshotApplyAvgMs,
+  entityDeltaSnapshotApplyHiMs,
+  projectileDeltaSnapshotApplyAvgMs,
+  projectileDeltaSnapshotApplyHiMs,
 } = useGameCanvasTelemetry({
   getScene: () => getBackgroundBattle()?.gameInstance?.getScene() ?? foregroundGame.getScene(),
 });
@@ -1497,6 +1509,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   richSnapWorstRate: richSnapWorstRate.value,
   deltaSnapAvgRate: deltaSnapAvgRate.value,
   deltaSnapWorstRate: deltaSnapWorstRate.value,
+  entityDeltaSnapAvgRate: entityDeltaSnapAvgRate.value,
+  entityDeltaSnapWorstRate: entityDeltaSnapWorstRate.value,
+  projectileDeltaSnapAvgRate: projectileDeltaSnapAvgRate.value,
+  projectileDeltaSnapWorstRate: projectileDeltaSnapWorstRate.value,
   displayTickRate: displayTickRate.value,
   displaySnapshotRate: displaySnapshotRate.value,
   snapshotSizeAvgBytes: snapshotSizeAvgBytes.value,
@@ -1505,12 +1521,20 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   richSnapshotSizeHiBytes: richSnapshotSizeHiBytes.value,
   deltaSnapshotSizeAvgBytes: deltaSnapshotSizeAvgBytes.value,
   deltaSnapshotSizeHiBytes: deltaSnapshotSizeHiBytes.value,
+  entityDeltaSnapshotSizeAvgBytes: entityDeltaSnapshotSizeAvgBytes.value,
+  entityDeltaSnapshotSizeHiBytes: entityDeltaSnapshotSizeHiBytes.value,
+  projectileDeltaSnapshotSizeAvgBytes: projectileDeltaSnapshotSizeAvgBytes.value,
+  projectileDeltaSnapshotSizeHiBytes: projectileDeltaSnapshotSizeHiBytes.value,
   snapshotApplyAvgMs: snapshotApplyAvgMs.value,
   snapshotApplyHiMs: snapshotApplyHiMs.value,
   richSnapshotApplyAvgMs: richSnapshotApplyAvgMs.value,
   richSnapshotApplyHiMs: richSnapshotApplyHiMs.value,
   deltaSnapshotApplyAvgMs: deltaSnapshotApplyAvgMs.value,
   deltaSnapshotApplyHiMs: deltaSnapshotApplyHiMs.value,
+  entityDeltaSnapshotApplyAvgMs: entityDeltaSnapshotApplyAvgMs.value,
+  entityDeltaSnapshotApplyHiMs: entityDeltaSnapshotApplyHiMs.value,
+  projectileDeltaSnapshotApplyAvgMs: projectileDeltaSnapshotApplyAvgMs.value,
+  projectileDeltaSnapshotApplyHiMs: projectileDeltaSnapshotApplyHiMs.value,
   audioSmoothing: audioSmoothing.value,
   burnMarks: burnMarks.value,
   locomotionMarks: locomotionMarks.value,
@@ -1686,6 +1710,10 @@ watchEffect(() => {
   m.richSnapWorstRate = richSnapWorstRate.value;
   m.deltaSnapAvgRate = deltaSnapAvgRate.value;
   m.deltaSnapWorstRate = deltaSnapWorstRate.value;
+  m.entityDeltaSnapAvgRate = entityDeltaSnapAvgRate.value;
+  m.entityDeltaSnapWorstRate = entityDeltaSnapWorstRate.value;
+  m.projectileDeltaSnapAvgRate = projectileDeltaSnapAvgRate.value;
+  m.projectileDeltaSnapWorstRate = projectileDeltaSnapWorstRate.value;
   m.displayTickRate = displayTickRate.value;
   m.displaySnapshotRate = displaySnapshotRate.value;
   m.snapshotSizeAvgBytes = snapshotSizeAvgBytes.value;
@@ -1694,12 +1722,20 @@ watchEffect(() => {
   m.richSnapshotSizeHiBytes = richSnapshotSizeHiBytes.value;
   m.deltaSnapshotSizeAvgBytes = deltaSnapshotSizeAvgBytes.value;
   m.deltaSnapshotSizeHiBytes = deltaSnapshotSizeHiBytes.value;
+  m.entityDeltaSnapshotSizeAvgBytes = entityDeltaSnapshotSizeAvgBytes.value;
+  m.entityDeltaSnapshotSizeHiBytes = entityDeltaSnapshotSizeHiBytes.value;
+  m.projectileDeltaSnapshotSizeAvgBytes = projectileDeltaSnapshotSizeAvgBytes.value;
+  m.projectileDeltaSnapshotSizeHiBytes = projectileDeltaSnapshotSizeHiBytes.value;
   m.snapshotApplyAvgMs = snapshotApplyAvgMs.value;
   m.snapshotApplyHiMs = snapshotApplyHiMs.value;
   m.richSnapshotApplyAvgMs = richSnapshotApplyAvgMs.value;
   m.richSnapshotApplyHiMs = richSnapshotApplyHiMs.value;
   m.deltaSnapshotApplyAvgMs = deltaSnapshotApplyAvgMs.value;
   m.deltaSnapshotApplyHiMs = deltaSnapshotApplyHiMs.value;
+  m.entityDeltaSnapshotApplyAvgMs = entityDeltaSnapshotApplyAvgMs.value;
+  m.entityDeltaSnapshotApplyHiMs = entityDeltaSnapshotApplyHiMs.value;
+  m.projectileDeltaSnapshotApplyAvgMs = projectileDeltaSnapshotApplyAvgMs.value;
+  m.projectileDeltaSnapshotApplyHiMs = projectileDeltaSnapshotApplyHiMs.value;
   m.audioSmoothing = audioSmoothing.value;
   m.burnMarks = burnMarks.value;
   m.locomotionMarks = locomotionMarks.value;

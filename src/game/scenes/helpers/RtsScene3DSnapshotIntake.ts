@@ -38,7 +38,7 @@ type RtsScene3DSnapshotIntakeResult = {
   gameOverWinnerId: PlayerId | null;
 };
 
-export type RtsScene3DSnapshotTrafficKind = 'rich' | 'delta';
+export type RtsScene3DSnapshotTrafficKind = 'rich' | 'entity-delta' | 'projectile-delta';
 
 export type RtsScene3DSnapshotRateLaneStats = {
   avgRate: number;
@@ -59,22 +59,33 @@ export type RtsScene3DSnapshotRateStats = RtsScene3DSnapshotRateLaneStats & {
   total: RtsScene3DSnapshotRateLaneStats;
   rich: RtsScene3DSnapshotRateLaneStats;
   delta: RtsScene3DSnapshotRateLaneStats;
+  entityDelta: RtsScene3DSnapshotRateLaneStats;
+  projectileDelta: RtsScene3DSnapshotRateLaneStats;
 };
 
 export type RtsScene3DSnapshotPayloadSizeStats = RtsScene3DSnapshotByteLaneStats & {
   total: RtsScene3DSnapshotByteLaneStats;
   rich: RtsScene3DSnapshotByteLaneStats;
   delta: RtsScene3DSnapshotByteLaneStats;
+  entityDelta: RtsScene3DSnapshotByteLaneStats;
+  projectileDelta: RtsScene3DSnapshotByteLaneStats;
 };
 
 export type RtsScene3DSnapshotApplyStats = {
   total: RtsScene3DSnapshotApplyLaneStats;
   rich: RtsScene3DSnapshotApplyLaneStats;
   delta: RtsScene3DSnapshotApplyLaneStats;
+  entityDelta: RtsScene3DSnapshotApplyLaneStats;
+  projectileDelta: RtsScene3DSnapshotApplyLaneStats;
 };
 
 function snapshotTrafficKind(state: NetworkServerSnapshot): RtsScene3DSnapshotTrafficKind {
-  return state.serverMeta !== undefined ? 'rich' : 'delta';
+  if (state.serverMeta !== undefined) return 'rich';
+  return state.projectileDeltaOnly === true ? 'projectile-delta' : 'entity-delta';
+}
+
+function isDeltaSnapshotKind(kind: RtsScene3DSnapshotTrafficKind): boolean {
+  return kind !== 'rich';
 }
 
 export class RtsScene3DSnapshotIntake {
@@ -91,15 +102,29 @@ export class RtsScene3DSnapshotIntake {
     EMA_CONFIG.snaps,
     EMA_INITIAL_VALUES.snaps,
   );
+  private readonly entityDeltaSnapTracker = new EmaTracker(
+    EMA_CONFIG.snaps,
+    EMA_INITIAL_VALUES.snaps,
+  );
+  private readonly projectileDeltaSnapTracker = new EmaTracker(
+    EMA_CONFIG.snaps,
+    EMA_INITIAL_VALUES.snaps,
+  );
   private readonly snapshotSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
   private readonly richSnapshotSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
   private readonly deltaSnapshotSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
+  private readonly entityDeltaSnapshotSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
+  private readonly projectileDeltaSnapshotSizeTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
   private readonly snapshotApplyTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
   private readonly richSnapshotApplyTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
   private readonly deltaSnapshotApplyTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
+  private readonly entityDeltaSnapshotApplyTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
+  private readonly projectileDeltaSnapshotApplyTracker = new EmaMsTracker(FRAME_TIMING_EMA.frameMs);
   private lastSnapArrivalMs = 0;
   private lastRichSnapArrivalMs = 0;
   private lastDeltaSnapArrivalMs = 0;
+  private lastEntityDeltaSnapArrivalMs = 0;
+  private lastProjectileDeltaSnapArrivalMs = 0;
   private startupReadyAckSent = false;
   private startupSnapshotApplied = false;
   private startupReleased = false;
@@ -210,6 +235,14 @@ export class RtsScene3DSnapshotIntake {
         avgRate: this.deltaSnapTracker.getAvg(),
         worstRate: this.deltaSnapTracker.getLow(),
       },
+      entityDelta: {
+        avgRate: this.entityDeltaSnapTracker.getAvg(),
+        worstRate: this.entityDeltaSnapTracker.getLow(),
+      },
+      projectileDelta: {
+        avgRate: this.projectileDeltaSnapTracker.getAvg(),
+        worstRate: this.projectileDeltaSnapTracker.getLow(),
+      },
     };
   }
 
@@ -229,6 +262,14 @@ export class RtsScene3DSnapshotIntake {
         avgBytes: this.deltaSnapshotSizeTracker.getAvg(),
         hiBytes: this.deltaSnapshotSizeTracker.getHi(),
       },
+      entityDelta: {
+        avgBytes: this.entityDeltaSnapshotSizeTracker.getAvg(),
+        hiBytes: this.entityDeltaSnapshotSizeTracker.getHi(),
+      },
+      projectileDelta: {
+        avgBytes: this.projectileDeltaSnapshotSizeTracker.getAvg(),
+        hiBytes: this.projectileDeltaSnapshotSizeTracker.getHi(),
+      },
     };
   }
 
@@ -245,6 +286,14 @@ export class RtsScene3DSnapshotIntake {
       delta: {
         avgMs: this.deltaSnapshotApplyTracker.getAvg(),
         hiMs: this.deltaSnapshotApplyTracker.getHi(),
+      },
+      entityDelta: {
+        avgMs: this.entityDeltaSnapshotApplyTracker.getAvg(),
+        hiMs: this.entityDeltaSnapshotApplyTracker.getHi(),
+      },
+      projectileDelta: {
+        avgMs: this.projectileDeltaSnapshotApplyTracker.getAvg(),
+        hiMs: this.projectileDeltaSnapshotApplyTracker.getHi(),
       },
     };
   }
@@ -267,11 +316,25 @@ export class RtsScene3DSnapshotIntake {
       this.lastRichSnapArrivalMs = now;
       return;
     }
+    if (!isDeltaSnapshotKind(kind)) return;
     if (this.lastDeltaSnapArrivalMs > 0) {
       const dt = now - this.lastDeltaSnapArrivalMs;
       if (dt > 0) this.deltaSnapTracker.update(1000 / dt);
     }
     this.lastDeltaSnapArrivalMs = now;
+    if (kind === 'entity-delta') {
+      if (this.lastEntityDeltaSnapArrivalMs > 0) {
+        const dt = now - this.lastEntityDeltaSnapArrivalMs;
+        if (dt > 0) this.entityDeltaSnapTracker.update(1000 / dt);
+      }
+      this.lastEntityDeltaSnapArrivalMs = now;
+    } else {
+      if (this.lastProjectileDeltaSnapArrivalMs > 0) {
+        const dt = now - this.lastProjectileDeltaSnapArrivalMs;
+        if (dt > 0) this.projectileDeltaSnapTracker.update(1000 / dt);
+      }
+      this.lastProjectileDeltaSnapArrivalMs = now;
+    }
   }
 
   private recordSnapshotApply(kind: RtsScene3DSnapshotTrafficKind, applyMs: number): void {
@@ -279,8 +342,12 @@ export class RtsScene3DSnapshotIntake {
     this.snapshotApplyTracker.update(sample);
     if (kind === 'rich') {
       this.richSnapshotApplyTracker.update(sample);
+    } else if (kind === 'entity-delta') {
+      this.deltaSnapshotApplyTracker.update(sample);
+      this.entityDeltaSnapshotApplyTracker.update(sample);
     } else {
       this.deltaSnapshotApplyTracker.update(sample);
+      this.projectileDeltaSnapshotApplyTracker.update(sample);
     }
   }
 
@@ -291,8 +358,12 @@ export class RtsScene3DSnapshotIntake {
     this.snapshotSizeTracker.update(bytes);
     if (kind === 'rich') {
       this.richSnapshotSizeTracker.update(bytes);
+    } else if (kind === 'entity-delta') {
+      this.deltaSnapshotSizeTracker.update(bytes);
+      this.entityDeltaSnapshotSizeTracker.update(bytes);
     } else {
       this.deltaSnapshotSizeTracker.update(bytes);
+      this.projectileDeltaSnapshotSizeTracker.update(bytes);
     }
   }
 }

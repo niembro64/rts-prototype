@@ -129,6 +129,8 @@ type FullStackReport = {
   readonly snapshotTotalSps: NumericSummary;
   readonly snapshotRichSps: NumericSummary;
   readonly snapshotDeltaSps: NumericSummary;
+  readonly snapshotEntityDeltaSps: NumericSummary;
+  readonly snapshotProjectileDeltaSps: NumericSummary;
   readonly serverTpsAvg: NumericSummary;
   readonly serverCpuAvgPct: NumericSummary;
   readonly serverCpuHiPct: NumericSummary;
@@ -584,6 +586,8 @@ async function runFullStack(
     const snapshotTotalSps: number[] = [];
     const snapshotRichSps: number[] = [];
     const snapshotDeltaSps: number[] = [];
+    const snapshotEntityDeltaSps: number[] = [];
+    const snapshotProjectileDeltaSps: number[] = [];
     const serverTpsAvg: number[] = [];
     const serverCpuAvgPct: number[] = [];
     const serverCpuHiPct: number[] = [];
@@ -642,6 +646,8 @@ async function runFullStack(
       snapshotTotalSps.push(snapshotStats.total.avgRate);
       snapshotRichSps.push(snapshotStats.rich.avgRate);
       snapshotDeltaSps.push(snapshotStats.delta.avgRate);
+      snapshotEntityDeltaSps.push(snapshotStats.entityDelta.avgRate);
+      snapshotProjectileDeltaSps.push(snapshotStats.projectileDelta.avgRate);
       serverTpsAvg.push(meta?.ticks.avg ?? 0);
       serverCpuAvgPct.push(meta?.cpu?.avg ?? 0);
       serverCpuHiPct.push(meta?.cpu?.hi ?? 0);
@@ -694,6 +700,8 @@ async function runFullStack(
       snapshotTotalSps: summarize(snapshotTotalSps),
       snapshotRichSps: summarize(snapshotRichSps),
       snapshotDeltaSps: summarize(snapshotDeltaSps),
+      snapshotEntityDeltaSps: summarize(snapshotEntityDeltaSps),
+      snapshotProjectileDeltaSps: summarize(snapshotProjectileDeltaSps),
       serverTpsAvg: summarize(serverTpsAvg),
       serverCpuAvgPct: summarize(serverCpuAvgPct),
       serverCpuHiPct: summarize(serverCpuHiPct),
