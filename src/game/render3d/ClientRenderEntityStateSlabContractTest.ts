@@ -8,9 +8,11 @@ import type {
   NetworkServerSnapshotEntity,
 } from '../network/NetworkTypes';
 import { ClientViewState } from '../network/ClientViewState';
+import { quantizeEntityPosition as qEntityPos } from '../network/snapshotQuantization';
 import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
-import type { PlayerId } from '../sim/types';
+import type { Entity, PlayerId } from '../sim/types';
 import type { WorldSupportSurface } from '../sim/supportSurface';
+import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
 import { ClientRenderEntityStateSlab } from './ClientRenderEntityStateSlab';
 import { UnitRenderPacket3D } from './EntityRenderPackets3D';
 
@@ -91,13 +93,20 @@ function snapshot(
   };
 }
 
-function fullUnitEntity(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
+function fullUnitEntity(
+  id: number,
+  hp: number,
+  maxHp: number,
+  x = 0,
+  y = 0,
+  z = 0,
+): NetworkServerSnapshotEntity {
   return {
     id,
     type: 'unit',
     playerId: 1 as PlayerId,
     changedFields: null,
-    pos: { x: 0, y: 0, z: 0 },
+    pos: { x: qEntityPos(x), y: qEntityPos(y), z: qEntityPos(z) },
     rotation: 0,
     unit: {
       ...emptyUnitSnapshot(),
@@ -126,13 +135,20 @@ function hpSparseUnitEntity(id: number, hp: number, maxHp: number): NetworkServe
   };
 }
 
-function fullBuildingEntity(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
+function fullBuildingEntity(
+  id: number,
+  hp: number,
+  maxHp: number,
+  x = 0,
+  y = 0,
+  z = 0,
+): NetworkServerSnapshotEntity {
   return {
     id,
     type: 'building',
     playerId: 2 as PlayerId,
     changedFields: null,
-    pos: { x: 0, y: 0, z: 0 },
+    pos: { x: qEntityPos(x), y: qEntityPos(y), z: qEntityPos(z) },
     rotation: 0,
     unit: null,
     building: {
@@ -163,6 +179,17 @@ function createTestUnit(id: number, playerId: PlayerId) {
   );
   entity.id = id;
   return entity;
+}
+
+function scopeFromBounds(bounds: FootprintBounds): ViewportFootprint {
+  return {
+    inScope: (x: number, y: number, padding = 0): boolean => (
+      x + padding >= bounds.minX &&
+      x - padding <= bounds.maxX &&
+      y + padding >= bounds.minY &&
+      y - padding <= bounds.maxY
+    ),
+  } as ViewportFootprint;
 }
 
 export function runClientRenderEntityStateSlabContractTest(): void {
@@ -219,4 +246,43 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   view.applyNetworkState(snapshot(3, []));
   assertContract(view.getRenderEntityStateSlot(77) === undefined, 'full reconciliation must remove unit slab row');
   assertContract(view.getRenderEntityStateSlot(88) === undefined, 'full reconciliation must remove building slab row');
+
+  const scopedView = new ClientViewState();
+  scopedView.applyNetworkState(snapshot(1, [
+    fullUnitEntity(101, 100, 100, 100, 100),
+    fullBuildingEntity(202, 200, 200, 1200, 100),
+  ]));
+  const units: Entity[] = [];
+  const buildings: Entity[] = [];
+  const nearBounds: FootprintBounds = { minX: 0, minY: 0, maxX: 400, maxY: 400 };
+  scopedView.collectScopedRenderEntities(
+    nearBounds,
+    units,
+    buildings,
+    null,
+    scopeFromBounds(nearBounds),
+  );
+  assertContract(units.length === 1 && units[0].id === 101, 'slot-backed scoped query returns the nearby unit');
+  assertContract(buildings.length === 0, 'slot-backed scoped query excludes distant building');
+
+  const wideBounds: FootprintBounds = { minX: 0, minY: 0, maxX: 1500, maxY: 400 };
+  scopedView.collectScopedRenderEntities(
+    wideBounds,
+    units,
+    buildings,
+    null,
+    scopeFromBounds(wideBounds),
+  );
+  assertContract(units.length === 1 && units[0].id === 101, 'slot-backed wide query keeps unit rows');
+  assertContract(buildings.length === 1 && buildings[0].id === 202, 'slot-backed wide query resolves building rows');
+
+  scopedView.applyNetworkState(snapshot(2, []));
+  scopedView.collectScopedRenderEntities(
+    wideBounds,
+    units,
+    buildings,
+    null,
+    scopeFromBounds(wideBounds),
+  );
+  assertContract(units.length === 0 && buildings.length === 0, 'slot-backed scoped query drops removed rows');
 }

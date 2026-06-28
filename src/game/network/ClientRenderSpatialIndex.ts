@@ -1,6 +1,10 @@
 import type { FootprintBounds } from '../ViewportFootprint';
-import { getEntityRenderScopePadding } from '../entityRenderScope';
-import type { Entity, EntityId } from '../sim/types';
+import {
+  CLIENT_RENDER_ENTITY_KIND_BUILDING,
+  CLIENT_RENDER_ENTITY_KIND_UNIT,
+  type ClientRenderEntityStateViews,
+} from '../render3d/ClientRenderEntityStateSlab';
+import type { EntityId } from '../sim/types';
 
 const CLIENT_RENDER_CELL_SIZE = 512;
 const CLIENT_RENDER_CELL_KEY_OFFSET = 1 << 20;
@@ -10,7 +14,9 @@ const DEFAULT_MAX_ENTITY_PADDING = 350;
 type ClientRenderCellKey = number;
 
 type ClientRenderSpatialEntry = {
-  entity: Entity;
+  entityId: EntityId;
+  slot: number;
+  kind: number;
   cellX: number;
   cellY: number;
   cellKey: ClientRenderCellKey;
@@ -19,13 +25,15 @@ type ClientRenderSpatialEntry = {
 };
 
 export class ClientRenderSpatialIndex {
-  private readonly buckets = new Map<ClientRenderCellKey, Entity[]>();
-  private readonly entries = new Map<EntityId, ClientRenderSpatialEntry>();
+  private readonly buckets = new Map<ClientRenderCellKey, number[]>();
+  private readonly entriesById = new Map<EntityId, ClientRenderSpatialEntry>();
+  private readonly entriesBySlot = new Map<number, ClientRenderSpatialEntry>();
   private maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
 
   clear(): void {
     this.buckets.clear();
-    this.entries.clear();
+    this.entriesById.clear();
+    this.entriesBySlot.clear();
     this.maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
   }
 
@@ -33,78 +41,95 @@ export class ClientRenderSpatialIndex {
     return this.maxEntityPadding;
   }
 
-  update(entity: Entity): void {
-    if (entity.unit === null && entity.building === null) {
-      this.remove(entity.id);
+  updateSlot(views: ClientRenderEntityStateViews, slot: number): void {
+    const kind = views.kind[slot];
+    const entityId = views.entityIds[slot] as EntityId;
+    if (
+      entityId <= 0 ||
+      (kind !== CLIENT_RENDER_ENTITY_KIND_UNIT && kind !== CLIENT_RENDER_ENTITY_KIND_BUILDING)
+    ) {
+      if (entityId > 0) this.remove(entityId);
       return;
     }
 
-    const cellX = this.cellCoord(entity.transform.x);
-    const cellY = this.cellCoord(entity.transform.y);
+    const cellX = this.cellCoord(views.x[slot]);
+    const cellY = this.cellCoord(views.y[slot]);
+    if (!Number.isFinite(cellX) || !Number.isFinite(cellY)) {
+      this.remove(entityId);
+      return;
+    }
     const cellKey = this.cellKey(cellX, cellY);
-    const existing = this.entries.get(entity.id);
-    const padding = getEntityRenderScopePadding(entity);
+    const padding = Math.max(DEFAULT_MAX_ENTITY_PADDING, views.renderScopePadding[slot]);
+    let existing = this.entriesById.get(entityId);
+    if (existing !== undefined && existing.slot !== slot) {
+      this.remove(entityId);
+      existing = undefined;
+    }
 
     if (existing !== undefined && existing.cellKey === cellKey) {
-      existing.entity = entity;
+      existing.slot = slot;
+      existing.kind = kind;
       existing.cellX = cellX;
       existing.cellY = cellY;
       this.updateEntryPadding(existing, padding);
       const bucket = this.buckets.get(cellKey);
-      if (bucket !== undefined) bucket[existing.bucketIndex] = entity;
+      if (bucket !== undefined) bucket[existing.bucketIndex] = slot;
       return;
     }
 
-    if (existing !== undefined) this.remove(entity.id);
+    if (existing !== undefined) this.remove(entityId);
     const bucket = this.getOrCreateBucket(cellKey);
     const entry: ClientRenderSpatialEntry = {
-      entity,
+      entityId,
+      slot,
+      kind,
       cellX,
       cellY,
       cellKey,
       bucketIndex: bucket.length,
       padding,
     };
-    bucket.push(entity);
-    this.entries.set(entity.id, entry);
+    bucket.push(slot);
+    this.entriesById.set(entityId, entry);
+    this.entriesBySlot.set(slot, entry);
     if (padding > this.maxEntityPadding) this.maxEntityPadding = padding;
   }
 
   remove(id: EntityId): void {
-    const entry = this.entries.get(id);
+    const entry = this.entriesById.get(id);
     if (entry === undefined) return;
     const bucket = this.buckets.get(entry.cellKey);
     if (bucket !== undefined) {
-      const last = bucket.pop();
-      if (last !== undefined && entry.bucketIndex < bucket.length) {
-        bucket[entry.bucketIndex] = last;
-        const moved = this.entries.get(last.id);
+      const lastSlot = bucket.pop();
+      if (lastSlot !== undefined && entry.bucketIndex < bucket.length) {
+        bucket[entry.bucketIndex] = lastSlot;
+        const moved = this.entriesBySlot.get(lastSlot);
         if (moved !== undefined) moved.bucketIndex = entry.bucketIndex;
       }
       if (bucket.length === 0) this.buckets.delete(entry.cellKey);
     }
-    this.entries.delete(id);
+    this.entriesById.delete(id);
+    this.entriesBySlot.delete(entry.slot);
     if (entry.padding >= this.maxEntityPadding) this.recomputeMaxEntityPadding();
   }
 
-  queryUnitsAndBuildings(
+  queryFilteredSlots(
     bounds: FootprintBounds,
-    outUnits: Entity[],
-    outBuildings: Entity[],
+    outUnitSlots: number[],
+    outBuildingSlots: number[],
+    includeSlot?: (slot: number) => boolean,
   ): void {
-    outUnits.length = 0;
-    outBuildings.length = 0;
+    outUnitSlots.length = 0;
+    outBuildingSlots.length = 0;
 
     const minCellX = this.cellCoord(bounds.minX);
     const maxCellX = this.cellCoord(bounds.maxX);
     const minCellY = this.cellCoord(bounds.minY);
     const maxCellY = this.cellCoord(bounds.maxY);
     if (this.shouldQueryEntriesDirectly(minCellX, maxCellX, minCellY, maxCellY)) {
-      for (const entry of this.entries.values()) {
+      for (const entry of this.entriesById.values()) {
         if (!this.entryIntersectsCells(entry, minCellX, maxCellX, minCellY, maxCellY)) continue;
-        const entity = entry.entity;
-        if (entity.unit !== null) outUnits.push(entity);
-        else if (entity.building !== null) outBuildings.push(entity);
+        this.pushEntrySlots(entry, outUnitSlots, outBuildingSlots, includeSlot);
       }
       return;
     }
@@ -114,53 +139,16 @@ export class ClientRenderSpatialIndex {
         const bucket = this.buckets.get(this.cellKey(cellX, cellY));
         if (bucket === undefined) continue;
         for (let i = 0; i < bucket.length; i++) {
-          const entity = bucket[i];
-          if (entity.unit !== null) outUnits.push(entity);
-          else if (entity.building !== null) outBuildings.push(entity);
+          const entry = this.entriesBySlot.get(bucket[i]);
+          if (entry !== undefined) {
+            this.pushEntrySlots(entry, outUnitSlots, outBuildingSlots, includeSlot);
+          }
         }
       }
     }
   }
 
-  queryFilteredUnitsAndBuildings(
-    bounds: FootprintBounds,
-    outUnits: Entity[],
-    outBuildings: Entity[],
-    includeEntity: (entity: Entity) => boolean,
-  ): void {
-    outUnits.length = 0;
-    outBuildings.length = 0;
-
-    const minCellX = this.cellCoord(bounds.minX);
-    const maxCellX = this.cellCoord(bounds.maxX);
-    const minCellY = this.cellCoord(bounds.minY);
-    const maxCellY = this.cellCoord(bounds.maxY);
-    if (this.shouldQueryEntriesDirectly(minCellX, maxCellX, minCellY, maxCellY)) {
-      for (const entry of this.entries.values()) {
-        if (!this.entryIntersectsCells(entry, minCellX, maxCellX, minCellY, maxCellY)) continue;
-        const entity = entry.entity;
-        if (!includeEntity(entity)) continue;
-        if (entity.unit !== null) outUnits.push(entity);
-        else if (entity.building !== null) outBuildings.push(entity);
-      }
-      return;
-    }
-
-    for (let cellX = minCellX; cellX <= maxCellX; cellX++) {
-      for (let cellY = minCellY; cellY <= maxCellY; cellY++) {
-        const bucket = this.buckets.get(this.cellKey(cellX, cellY));
-        if (bucket === undefined) continue;
-        for (let i = 0; i < bucket.length; i++) {
-          const entity = bucket[i];
-          if (!includeEntity(entity)) continue;
-          if (entity.unit !== null) outUnits.push(entity);
-          else if (entity.building !== null) outBuildings.push(entity);
-        }
-      }
-    }
-  }
-
-  private getOrCreateBucket(cellKey: ClientRenderCellKey): Entity[] {
+  private getOrCreateBucket(cellKey: ClientRenderCellKey): number[] {
     let bucket = this.buckets.get(cellKey);
     if (bucket === undefined) {
       bucket = [];
@@ -181,7 +169,7 @@ export class ClientRenderSpatialIndex {
 
   private recomputeMaxEntityPadding(): void {
     let next = DEFAULT_MAX_ENTITY_PADDING;
-    for (const entry of this.entries.values()) {
+    for (const entry of this.entriesById.values()) {
       if (entry.padding > next) next = entry.padding;
     }
     this.maxEntityPadding = next;
@@ -198,6 +186,17 @@ export class ClientRenderSpatialIndex {
     if (!(width > 0) || !(height > 0)) return true;
     const queriedCells = width * height;
     return !Number.isFinite(queriedCells) || queriedCells > this.buckets.size;
+  }
+
+  private pushEntrySlots(
+    entry: ClientRenderSpatialEntry,
+    outUnitSlots: number[],
+    outBuildingSlots: number[],
+    includeSlot: ((slot: number) => boolean) | undefined,
+  ): void {
+    if (includeSlot !== undefined && !includeSlot(entry.slot)) return;
+    if (entry.kind === CLIENT_RENDER_ENTITY_KIND_UNIT) outUnitSlots.push(entry.slot);
+    else if (entry.kind === CLIENT_RENDER_ENTITY_KIND_BUILDING) outBuildingSlots.push(entry.slot);
   }
 
   private entryIntersectsCells(
