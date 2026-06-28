@@ -17,7 +17,10 @@ import {
 } from '../game/input/commandHotkeys';
 import { unitRosterDisplay } from '../game/sim/blueprints/displayRosters';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
-import { presentationSnapshotRateHz } from '../presentationSnapshotConfig';
+import {
+  presentationSnapshotRateHz,
+  SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT,
+} from '../presentationSnapshotConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -105,6 +108,22 @@ function fmtCount4(value: number): string {
   const millions = thousands / 1000;
   if (millions < 9.95) return `${millions.toFixed(1)}m`;
   return `${Math.round(millions)}m`;
+}
+
+function richSnapshotTargetHz(model: GameCanvasClientControlBarModel): number {
+  return presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate);
+}
+
+function totalSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
+  return `All snapshots consumed by the local renderer: rich presentation packets plus sparse motion/projectile delta packets. Target ${fmt4(model.displayTickRate)} Hz because total can approach the fixed simulation rate when projectile deltas are active.`;
+}
+
+function richSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
+  return `Rich presentation snapshots carry server metadata and slower-changing presentation state. Target ${fmt4(richSnapshotTargetHz(model))} Hz from architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz.`;
+}
+
+function deltaSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
+  return `Sparse no-metadata deltas. Entity motion target ${fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT)} Hz; projectile presentation deltas can emit up to ${fmt4(model.displayTickRate)} Hz during active combat.`;
 }
 
 const props = defineProps<{
@@ -516,7 +535,8 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="All snapshots consumed by the local renderer: rich presentation packets plus sparse motion/projectile delta packets. This can approach the fixed simulation rate when deltas are active.">TOTAL SPS:</BarLabel>
+        <BarLabel :title="totalSnapshotCadenceTitle(model)">TOTAL SPS:</BarLabel>
+        <span class="fps-label">tgt {{ fmt4(model.displayTickRate) }}</span>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -556,7 +576,8 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Rich presentation snapshots carry server metadata and slower-changing presentation state. Target comes from architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz.">RICH SPS:</BarLabel>
+        <BarLabel :title="richSnapshotCadenceTitle(model)">RICH SPS:</BarLabel>
+        <span class="fps-label">tgt {{ fmt4(richSnapshotTargetHz(model)) }}</span>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -569,7 +590,7 @@ function resetEveryCustomHotkey(): void {
                 :style="
                   statBarStyle(
                     model.richSnapAvgRate,
-                    presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
+                    richSnapshotTargetHz(model),
                   )
                 "
               ></div>
@@ -586,7 +607,7 @@ function resetEveryCustomHotkey(): void {
                 :style="
                   statBarStyle(
                     model.richSnapWorstRate,
-                    presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate),
+                    richSnapshotTargetHz(model),
                   )
                 "
               ></div>
@@ -596,7 +617,8 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Sparse no-metadata entity/projectile deltas emitted opportunistically between rich snapshots. These can approach fixed-step cadence during movement/combat.">DELTA SPS:</BarLabel>
+        <BarLabel :title="deltaSnapshotCadenceTitle(model)">DELTA SPS:</BarLabel>
+        <span class="fps-label">tgt {{ fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT) }}/{{ fmt4(model.displayTickRate) }}</span>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

@@ -242,7 +242,8 @@ function printReport(report) {
     `  snapshot SPS total/rich/delta p95: ` +
       `${fmt(report.fullStack.snapshotTotalSps?.p95)}/` +
       `${fmt(report.fullStack.snapshotRichSps?.p95)}/` +
-      `${fmt(report.fullStack.snapshotDeltaSps?.p95)}`,
+      `${fmt(report.fullStack.snapshotDeltaSps?.p95)} ` +
+      cadenceTargetsText(report),
   );
   console.log(`  server CPU avg/hi p95: ${fmt(report.fullStack.serverCpuAvgPct.p95)}% / ${fmt(report.fullStack.serverCpuHiPct.p95)}%`);
   console.log(`  draw calls/triangles p95: ${fmt(report.fullStack.drawCalls.p95)} / ${fmt(report.fullStack.triangles.p95)}`);
@@ -312,7 +313,8 @@ function printSuiteReport(report) {
         `gpu/render p95=${fmt(scenario.fullStack.gpuMs.p95)}ms, ` +
         `sps total/rich/delta p95=${fmt(scenario.fullStack.snapshotTotalSps?.p95)}/` +
         `${fmt(scenario.fullStack.snapshotRichSps?.p95)}/` +
-        `${fmt(scenario.fullStack.snapshotDeltaSps?.p95)}, ` +
+        `${fmt(scenario.fullStack.snapshotDeltaSps?.p95)} ` +
+        cadenceTargetsText(scenario) + ', ' +
         `longtask p95=${fmt(scenario.fullStack.longtaskMsPerSec.p95)}ms/s`,
     );
     console.log(
@@ -339,6 +341,15 @@ function printSnapshotMaterializationStats(prefix, stats) {
   for (const kind of stats.kinds ?? []) {
     printSnapshotMaterializationKind(`${prefix} ${kind.kind}`, kind);
   }
+}
+
+function cadenceTargetsText(report) {
+  const env = report?.environment ?? {};
+  const total = env.fixedStepHz;
+  const rich = env.richSnapshotTargetHz;
+  const entityDelta = env.sparseEntityMotionSnapshotTargetHz;
+  const projectileDelta = env.projectileDeltaSnapshotCeilingHz ?? total;
+  return `(targets total=${fmt(total)}, rich=${fmt(rich)}, delta entity/projectile=${fmt(entityDelta)}/${fmt(projectileDelta)})`;
 }
 
 function printSnapshotMaterializationKind(prefix, kind) {

@@ -55,6 +55,9 @@ export type PerformanceBottleneckHarnessReport = {
     readonly fixedStepHz: number;
     readonly fixedStepMs: number;
     readonly frameBudgetMs60: number;
+    readonly richSnapshotTargetHz: number;
+    readonly sparseEntityMotionSnapshotTargetHz: number;
+    readonly projectileDeltaSnapshotCeilingHz: number;
   };
   readonly simOnly: SimOnlyReport;
   readonly simSnapshot: SimSnapshotReport;
@@ -275,6 +278,9 @@ export async function runPerformanceBottleneckHarness(
       fixedStepHz,
       fixedStepMs,
       frameBudgetMs60,
+      richSnapshotTargetHz: ARCHITECTURE_CONFIG.lockstep.presentationSnapshots.nominalSnapshotRateHz,
+      sparseEntityMotionSnapshotTargetHz: ARCHITECTURE_CONFIG.lockstep.presentationSnapshots.sparseEntityMotionRateHz,
+      projectileDeltaSnapshotCeilingHz: fixedStepHz,
     },
     simOnly,
     simSnapshot,
