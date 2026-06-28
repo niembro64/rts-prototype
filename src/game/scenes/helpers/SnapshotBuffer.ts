@@ -33,6 +33,7 @@ import { addSnapshotClientMaterializationStage } from '../../network/snapshotMat
 
 const MAX_BUFFERED_PROJECTILE_SPAWNS = 4096;
 const MAX_BUFFERED_SIM_EVENTS = 512;
+const INDEXED_ENTITY_MERGE_MIN_WORK = 4096;
 
 type SnapshotBufferCallback = (state: NetworkServerSnapshot) => void;
 type SnapshotBufferDiagnostics = {
@@ -120,6 +121,8 @@ export class SnapshotBuffer {
   private _beamPoolB: NetworkServerSnapshotBeamUpdate[] = [];
   private _beamBufToggle = false;
   private bufferedGrid: NetworkServerSnapshot['grid'];
+  private readonly pendingEntityIndexById = new Map<number, number>();
+  private readonly removedEntityIdSet = new Set<number>();
 
   private pushBufferedSpawn(spawn: NetworkServerSnapshotProjectileSpawn): void {
     let index = this.bufferedSpawns.length;
@@ -166,20 +169,22 @@ export class SnapshotBuffer {
     const pending = this.pendingSnapshot;
     if (pending === null || pending.entityDeltaOnly === true) return;
     const pendingEntities = pending.entities;
+    const pendingEntityIndexById = this.preparePendingEntityIndex(
+      pendingEntities,
+      deltaEntities.length,
+    );
     for (let i = 0; i < deltaEntities.length; i++) {
       const delta = deltaEntities[i];
-      let target: NetworkServerSnapshotEntity | undefined;
-      let targetIndex = -1;
-      for (let j = 0; j < pendingEntities.length; j++) {
-        if (pendingEntities[j].id === delta.id) {
-          target = pendingEntities[j];
-          targetIndex = j;
-          break;
-        }
-      }
+      const targetIndex = this.findPendingEntityIndex(
+        pendingEntities,
+        delta.id,
+        pendingEntityIndexById,
+      );
+      const target = targetIndex >= 0 ? pendingEntities[targetIndex] : undefined;
       if (target === undefined) {
         if (delta.changedFields === null) {
           pendingEntities.push(cloneNetworkSnapshotEntity(delta));
+          pendingEntityIndexById?.set(delta.id, pendingEntities.length - 1);
         }
         continue;
       }
@@ -214,7 +219,12 @@ export class SnapshotBuffer {
         copyPositionDelta(srcUnit.angularVelocity3, dstUnit.angularVelocity3);
       }
     }
+    pendingEntityIndexById?.clear();
     if (removedEntityIds !== undefined && removedEntityIds.length > 0) {
+      if (pendingEntities.length * removedEntityIds.length >= INDEXED_ENTITY_MERGE_MIN_WORK) {
+        this.prunePendingEntitiesWithSet(pendingEntities, removedEntityIds);
+        return;
+      }
       for (let i = 0; i < removedEntityIds.length; i++) {
         const id = removedEntityIds[i];
         for (let j = pendingEntities.length - 1; j >= 0; j--) {
@@ -222,6 +232,49 @@ export class SnapshotBuffer {
         }
       }
     }
+  }
+
+  private preparePendingEntityIndex(
+    pendingEntities: readonly NetworkServerSnapshotEntity[],
+    deltaCount: number,
+  ): Map<number, number> | undefined {
+    if (pendingEntities.length * deltaCount < INDEXED_ENTITY_MERGE_MIN_WORK) return undefined;
+    const indexById = this.pendingEntityIndexById;
+    indexById.clear();
+    for (let i = 0; i < pendingEntities.length; i++) {
+      indexById.set(pendingEntities[i].id, i);
+    }
+    return indexById;
+  }
+
+  private findPendingEntityIndex(
+    pendingEntities: readonly NetworkServerSnapshotEntity[],
+    id: number,
+    indexById: ReadonlyMap<number, number> | undefined,
+  ): number {
+    if (indexById !== undefined) return indexById.get(id) ?? -1;
+    for (let i = 0; i < pendingEntities.length; i++) {
+      if (pendingEntities[i].id === id) return i;
+    }
+    return -1;
+  }
+
+  private prunePendingEntitiesWithSet(
+    pendingEntities: NetworkServerSnapshotEntity[],
+    removedEntityIds: readonly number[],
+  ): void {
+    const removedIds = this.removedEntityIdSet;
+    removedIds.clear();
+    for (let i = 0; i < removedEntityIds.length; i++) removedIds.add(removedEntityIds[i]);
+    let write = 0;
+    for (let read = 0; read < pendingEntities.length; read++) {
+      const entity = pendingEntities[read];
+      if (removedIds.has(entity.id)) continue;
+      if (write !== read) pendingEntities[write] = entity;
+      write++;
+    }
+    pendingEntities.length = write;
+    removedIds.clear();
   }
 
   /** Wire the gameConnection snapshot callback to accumulate events. */
@@ -491,6 +544,8 @@ export class SnapshotBuffer {
     this.beamStagePool.length = 0;
     this.beamStagePoolIndex = 0;
     this.bufferedGrid = undefined;
+    this.pendingEntityIndexById.clear();
+    this.removedEntityIdSet.clear();
     this._velBufA.length = 0;
     this._velBufB.length = 0;
     this._velPoolA.length = 0;

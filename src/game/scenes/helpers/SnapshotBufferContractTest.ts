@@ -196,6 +196,35 @@ export function runSnapshotBufferContractTest(): void {
     'sparse decoded unit motion fields must survive snapshot cloning',
   );
 
+  const manyEntities: NetworkServerSnapshotEntity[] = [];
+  for (let i = 0; i < 128; i++) {
+    manyEntities.push(createUnitEntity(1000 + i, i, null));
+  }
+  fake.emitSnapshot(createSnapshot(8, [], manyEntities));
+  const manyDeltas: NetworkServerSnapshotEntity[] = [];
+  for (let i = 0; i < 40; i++) {
+    manyDeltas.push(createUnitEntity(1000 + i, 5000 + i, ENTITY_CHANGED_POS));
+  }
+  manyDeltas.push(createUnitEntity(2000, 7000, null));
+  const indexedMergeDelta = createSnapshot(9, [], manyDeltas);
+  indexedMergeDelta.entityDeltaOnly = true;
+  indexedMergeDelta.removedEntityIds = [];
+  for (let i = 0; i < 40; i++) indexedMergeDelta.removedEntityIds.push(1080 + i);
+  fake.emitSnapshot(indexedMergeDelta);
+  const consumedIndexedMerge = buffer.consume();
+  assertContract(
+    consumedIndexedMerge?.entities.find((entity) => entity.id === 1005)?.pos?.x === 5005,
+    'indexed entity delta merge must patch existing pending rows',
+  );
+  assertContract(
+    consumedIndexedMerge?.entities.some((entity) => entity.id === 2000 && entity.pos?.x === 7000) === true,
+    'indexed entity delta merge must append newly visible full rows',
+  );
+  assertContract(
+    consumedIndexedMerge?.entities.some((entity) => entity.id === 1090) === false,
+    'indexed entity delta merge must prune removed pending rows',
+  );
+
   buffer.clear();
   assertContract(!fake.hasSnapshotCallback(), 'clear must detach the snapshot callback');
   fake.emitSnapshot(createSnapshot(2, [12]));
