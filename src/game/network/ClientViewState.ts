@@ -75,6 +75,7 @@ import {
   ClientProjectileStore,
   type ClientProjectileRenderLists,
 } from './ClientProjectileStore';
+import { ClientEntityStore } from './ClientEntityStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
@@ -218,7 +219,7 @@ type ClientSnapshotApplyOptions = {
 
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
-  private entities: Map<EntityId, Entity> = new Map();
+  private entities = new ClientEntityStore();
 
   // Server target state — owned copies of drift-relevant fields per entity
   private serverTargets: Map<EntityId, ServerTarget> = new Map();
