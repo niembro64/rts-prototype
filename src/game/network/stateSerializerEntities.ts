@@ -363,13 +363,6 @@ function canReferenceSnapshotEntityId(
   return id === undefined || visibility === undefined || visibility.canReferenceEntityId(world, id);
 }
 
-export function canAppendEntitySnapshotWireRowDirect(entity: Entity): boolean {
-  if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') {
-    return false;
-  }
-  return true;
-}
-
 function appendDirectBasicEntityWireRow(
   entity: Entity,
   changedFields: number | undefined,
