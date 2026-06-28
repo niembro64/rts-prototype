@@ -123,6 +123,11 @@ import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
+const CLIENT_UNIT_MOTION_DELTA_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_NORMAL;
 
 type ClientResourcePylonSignedRates = {
   energy: number;
@@ -640,6 +645,17 @@ export class ClientViewState {
     return changedFields == null || (changedFields & ENTITY_CHANGED_POS) !== 0;
   }
 
+  private snapshotIsUnitMotionOnly(
+    entity: Entity,
+    server: NetworkServerSnapshotEntity,
+  ): boolean {
+    if (server.type !== 'unit' || entity.unit === null) return false;
+    const changedFields = server.changedFields;
+    if (changedFields == null || changedFields === 0) return false;
+    if ((changedFields & ~CLIENT_UNIT_MOTION_DELTA_FIELDS) !== 0) return false;
+    return entity.ownership !== null && entity.ownership.playerId === server.playerId;
+  }
+
   private unitHealthBarCacheMembership(entity: Entity): boolean {
     const unit = entity.unit;
     if (!unit) return false;
@@ -860,17 +876,21 @@ export class ClientViewState {
           // membership (damaged/HUD/health-bar/per-player), which
           // snapshotAffectsEntityCaches detects precisely; a bare HP tick that
           // does not cross a membership boundary no longer forces a full
-          // copy-all + sort + rebucket. snapClientNonVisualState still runs for
-          // its entity-mutation side effects.
-          if (this.snapshotAffectsEntityCaches(existing, netEntity)) {
+          // copy-all + sort + rebucket. Pure unit motion rows only update
+          // ServerTarget; ClientPredictionStepper mutates the visual entity
+          // and refreshes typed render state later in the same frame.
+          const unitMotionOnly = this.snapshotIsUnitMotionOnly(existing, netEntity);
+          if (!unitMotionOnly && this.snapshotAffectsEntityCaches(existing, netEntity)) {
             cacheNeedsInvalidate = true;
           }
-          snapClientNonVisualState(existing, netEntity);
-          this.refreshRenderableEntityStateFromSnapshot(
-            existing,
-            this.snapshotAffectsRenderSpatialIndex(netEntity),
-          );
-          this.refreshPredictionSupportSurfaceProvider(existing);
+          if (!unitMotionOnly) {
+            snapClientNonVisualState(existing, netEntity);
+            this.refreshRenderableEntityStateFromSnapshot(
+              existing,
+              this.snapshotAffectsRenderSpatialIndex(netEntity),
+            );
+            this.refreshPredictionSupportSurfaceProvider(existing);
+          }
           this.markNetworkEntityPredictionActive(netEntity, existing);
         }
       }
