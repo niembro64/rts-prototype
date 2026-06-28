@@ -110,6 +110,8 @@ const UF_OUT_ROTATION_DIRTY = 1 << 2;
 const UF_OUT_HOVER_ORIENTATION = 1 << 3;
 const UF_OUT_WOKE_BODY = 1 << 4;
 
+const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
+
 let _forceSlots: Uint32Array = new Uint32Array(0);
 let _forceFlags: Uint32Array = new Uint32Array(0);
 let _forceRows: Float64Array = new Float64Array(0);
@@ -142,7 +144,7 @@ export class UnitForceSystem {
 
   private physicsForceUnitSlotsBuf = new Uint32Array(1024);
   private physicsForceUnitSlotCount = 0;
-  private readonly physicsCandidateUnitIdsBuf: EntityId[] = [];
+  private physicsCandidateUnitSlotsBuf = new Uint32Array(1024);
   private physicsActiveUnitSlotMarks = new Uint32Array(1024);
   private physicsActiveUnitSlotMark = 1;
   private waterDryMaskCache = new Map<number, number>();
@@ -555,17 +557,31 @@ export class UnitForceSystem {
       }
     }
 
-    const candidates = this.physicsCandidateUnitIdsBuf;
-    candidates.length = 0;
-    this.simulation.getForceAccumulator().collectActiveEntityIds(candidates);
-    for (let i = 0; i < candidates.length; i++) {
-      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(candidates[i]));
+    const forceAccumulator = this.simulation.getForceAccumulator();
+    this.ensurePhysicsCandidateSlotCapacity(
+      Math.max(units.length, forceAccumulator.activeEntityCount()),
+    );
+    let candidateCount = forceAccumulator.collectActiveEntitySlots(
+      this.physicsCandidateUnitSlotsBuf,
+      entitySlotForId,
+    );
+    for (let i = 0; i < candidateCount; i++) {
+      this.pushPhysicsForceUnitSlot(this.physicsCandidateUnitSlotsBuf[i]);
     }
 
-    candidates.length = 0;
-    this.physics.collectAwakeEntityIds(candidates);
-    for (let i = 0; i < candidates.length; i++) {
-      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getSlot(candidates[i]));
+    candidateCount = this.physics.collectAwakeEntitySlots(
+      this.physicsCandidateUnitSlotsBuf,
+      entitySlotForId,
+    );
+    if (candidateCount < 0) {
+      this.ensurePhysicsCandidateSlotCapacity(-candidateCount);
+      candidateCount = this.physics.collectAwakeEntitySlots(
+        this.physicsCandidateUnitSlotsBuf,
+        entitySlotForId,
+      );
+    }
+    for (let i = 0; i < candidateCount; i++) {
+      this.pushPhysicsForceUnitSlot(this.physicsCandidateUnitSlotsBuf[i]);
     }
 
     const slots = this.physicsForceUnitSlotsBuf.subarray(0, this.physicsForceUnitSlotCount);
@@ -576,6 +592,13 @@ export class UnitForceSystem {
       slots.sort();
     }
     return slots;
+  }
+
+  private ensurePhysicsCandidateSlotCapacity(count: number): void {
+    if (this.physicsCandidateUnitSlotsBuf.length >= count) return;
+    let cap = this.physicsCandidateUnitSlotsBuf.length;
+    while (cap < count) cap *= 2;
+    this.physicsCandidateUnitSlotsBuf = new Uint32Array(cap);
   }
 
   private beginPhysicsActiveUnitSlotMarkFrame(): void {

@@ -725,6 +725,31 @@ export class PhysicsEngine3D {
     }
   }
 
+  collectAwakeEntitySlots(
+    out: Uint32Array,
+    slotForEntityId: (entityId: EntityId) => number,
+  ): number {
+    if (this.awakeDynamicBodyCount <= 0) return 0;
+    const slots = this.getDynamicBodySlotsView();
+    const count = slots.length;
+    if (count === 0) return 0;
+    if (out.length < count) return -count;
+    if (_collectAwakeEntityIds.length < count) {
+      _collectAwakeEntityIds = new Int32Array(count);
+    }
+    const sim = getSimWasm()!;
+    const idsView = _collectAwakeEntityIds.subarray(0, count);
+    const entityCount = measureWasmBoundary('physics.poolCollectAwakeEntityIds', () =>
+      sim.poolCollectAwakeEntityIds(slots, idsView)
+    );
+    let slotCount = 0;
+    for (let i = 0; i < entityCount; i++) {
+      const slot = slotForEntityId(idsView[i]);
+      if (slot >= 0) out[slotCount++] = slot;
+    }
+    return slotCount;
+  }
+
   private getDynamicBodySlotsView(): Uint32Array {
     const count = this.dynamicBodies.length;
     if (this.dynamicBodySlots.length < count) {

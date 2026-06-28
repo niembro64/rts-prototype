@@ -246,6 +246,10 @@ export class ForceAccumulator {
     return entry !== undefined && entry.contributionCount > 0;
   }
 
+  activeEntityCount(): number {
+    return this.activeEntries.length;
+  }
+
   /**
    * Append entity IDs that have live force contributions this frame.
    * Unlike getEntityIds(), this ignores warm cached entries whose
@@ -257,6 +261,21 @@ export class ForceAccumulator {
       if (entry.contributionCount > 0) out.push(entry.entityId);
     }
     out.sort((a, b) => a - b);
+  }
+
+  collectActiveEntitySlots(
+    out: Uint32Array,
+    slotForEntityId: (entityId: EntityId) => number,
+  ): number {
+    let count = 0;
+    for (let i = 0; i < this.activeEntries.length; i++) {
+      const entry = this.activeEntries[i];
+      if (entry.contributionCount <= 0) continue;
+      const slot = slotForEntityId(entry.entityId);
+      if (slot < 0) continue;
+      out[count++] = slot;
+    }
+    return count;
   }
 
   /**
