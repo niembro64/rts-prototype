@@ -81,6 +81,8 @@ import {
   dequantizeVelocity as deqVel,
 } from './snapshotQuantization';
 import {
+  ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
@@ -145,6 +147,11 @@ const CLIENT_UNIT_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_NORMAL;
 const CLIENT_UNIT_TYPED_DELTA_FIELDS =
   CLIENT_UNIT_MOTION_DELTA_FIELDS |
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_TURRETS;
+const CLIENT_BUILDING_TYPED_DELTA_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS;
 
@@ -912,6 +919,85 @@ export class ClientViewState {
     return true;
   }
 
+  private tryApplyBuildingTypedDeltaWireRow(
+    source: EntitySnapshotWireSource | undefined,
+    entityIndex: number,
+    now: number,
+  ): boolean {
+    if (source === undefined || source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) {
+      return false;
+    }
+    const rowIndex = source.rowIndices[entityIndex];
+    if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
+    const values = source.buildingRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+    const changedFields = values[base + 7] | 0;
+    if (values[base + 6] === 0 || changedFields === 0) return false;
+    if ((changedFields & ~CLIENT_BUILDING_TYPED_DELTA_FIELDS) !== 0) return false;
+    const hasMotionFields = (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0;
+    const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
+    const hasTurretFields = (changedFields & ENTITY_CHANGED_TURRETS) !== 0;
+    if (!hasMotionFields && !hasHpFields && !hasTurretFields) return false;
+
+    const id = values[base + 0] | 0;
+    const playerId = values[base + 5] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.building === null) return false;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== playerId) return false;
+
+    const needsServerTarget = hasMotionFields || hasTurretFields;
+    const target = needsServerTarget ? this.getOrCreateServerTarget(id) : undefined;
+    if (target !== undefined) {
+      this.clearTargetPredictionAccum(id);
+      if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+        target.x = deqEntityPos(values[base + 1]);
+        target.y = deqEntityPos(values[base + 2]);
+        target.z = deqEntityPos(values[base + 3]);
+      }
+      if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+        target.rotation = deqRot(values[base + 4]);
+      }
+    }
+
+    let copiedTurretRows = false;
+    if (hasTurretFields && values[base + 22] !== 0) {
+      if (target === undefined) return false;
+      const turretCount = values[base + 23] | 0;
+      const turretOffset = values[base + 31] | 0;
+      copiedTurretRows = this.copyWireUnitTurretsToTarget(
+        source,
+        turretOffset,
+        turretCount,
+        target,
+      );
+      if (!copiedTurretRows) return false;
+      this.applyWireUnitTurretNonVisualState(
+        existing,
+        source,
+        turretOffset,
+        turretCount,
+      );
+    }
+    if (target !== undefined) target.updatedAtMs = now;
+
+    if (hasHpFields) {
+      const healthBarCacheMemberBefore = this.buildingHealthBarCacheMembership(existing);
+      existing.building.hp = values[base + 13];
+      existing.building.maxHp = values[base + 14];
+      if (healthBarCacheMemberBefore !== this.buildingHealthBarCacheMembership(existing)) {
+        this.cache.refreshHealthBarEntity(existing);
+      }
+    }
+
+    if (hasMotionFields || hasHpFields || copiedTurretRows) {
+      this.refreshRenderableEntityStateFromSnapshot(existing, hasMotionFields);
+    }
+    if (hasMotionFields || hasHpFields) this.dirtyBuildingRenderIds.add(id);
+    if (copiedTurretRows) this.activeEntityPredictionIds.add(id);
+    return true;
+  }
+
   private recordWireMotionCorrectionStats(
     existing: Entity,
     values: Float64Array | number[],
@@ -1046,6 +1132,15 @@ export class ClientViewState {
             now,
             collectCorrectionStats,
             applyStats,
+          )
+        ) {
+          continue;
+        }
+        if (
+          this.tryApplyBuildingTypedDeltaWireRow(
+            typedEntityWireSource,
+            entityIndex,
+            now,
           )
         ) {
           continue;

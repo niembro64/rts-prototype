@@ -3,6 +3,7 @@ import {
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_TURRETS,
+  buildingBlueprintIdToCode,
   unitBlueprintIdToCode,
 } from '../../types/network';
 import type {
@@ -72,6 +73,19 @@ function emptyUnitSnapshot(): NonNullable<NetworkServerSnapshotEntity['unit']> {
   };
 }
 
+function emptyBuildingSnapshot(): NonNullable<NetworkServerSnapshotEntity['building']> {
+  return {
+    buildingBlueprintCode: null,
+    dim: null,
+    hp: null,
+    build: null,
+    metalExtractionRate: null,
+    solar: null,
+    turrets: null,
+    factory: null,
+  };
+}
+
 function snapshot(
   tick: number,
   entities: NetworkServerSnapshotEntity[],
@@ -119,6 +133,30 @@ function fullUnitEntity(id: number, hp: number, maxHp: number): NetworkServerSna
   };
 }
 
+function fullBuildingEntity(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'building',
+    playerId: 1 as PlayerId,
+    changedFields: null,
+    pos: { x: 0, y: 0, z: 20 },
+    rotation: 0,
+    unit: null,
+    building: {
+      ...emptyBuildingSnapshot(),
+      buildingBlueprintCode: buildingBlueprintIdToCode('buildingSolar'),
+      dim: { x: 80, y: 80 },
+      hp: { curr: hp, max: maxHp },
+      build: {
+        complete: true,
+        interrupted: false,
+        paid: { energy: 0, metal: 0 },
+      },
+      solar: { open: false },
+    },
+  };
+}
+
 function movementOnlySparseEntity(id: number): NetworkServerSnapshotEntity {
   return {
     id,
@@ -161,6 +199,22 @@ function hpSparseEntity(id: number, hp: number, maxHp: number): NetworkServerSna
       hp: { curr: hp, max: maxHp },
     },
     building: null,
+  };
+}
+
+function buildingHpSparseEntity(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'building',
+    playerId: 1 as PlayerId,
+    changedFields: ENTITY_CHANGED_HP,
+    pos: null,
+    rotation: null,
+    unit: null,
+    building: {
+      ...emptyBuildingSnapshot(),
+      hp: { curr: hp, max: maxHp },
+    },
   };
 }
 
@@ -351,6 +405,32 @@ export function runClientSnapshotApplierContractTest(): void {
     'typed unit HP rows must apply full-heal HP from wire rows',
   );
   assertHudContains(view, id, false);
+
+  const buildingView = new ClientViewState();
+  const buildingId = 501;
+  buildingView.applyNetworkState(snapshot(1, [fullBuildingEntity(buildingId, 80, 120)]));
+  const buildingSource = buildingView.getEntity(buildingId);
+  if (buildingSource === undefined || buildingSource.building === null) {
+    throw new Error('[client snapshot applier contract] typed building HP fixture must hydrate a building');
+  }
+  buildingSource.building.hp = 45;
+  buildingSource.building.maxHp = 120;
+  const typedBuildingHpRows = [buildingHpSparseEntity(buildingId, 5, 120)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedBuildingHpRows);
+  appendEntitySnapshotWireRowDirect(
+    buildingSource,
+    ENTITY_CHANGED_HP,
+    {} as WorldState,
+  );
+  buildingSource.building.hp = 80;
+  buildingSource.building.maxHp = 120;
+  buildingView.applyNetworkState(snapshot(2, typedBuildingHpRows));
+  resetEntitySnapshotPool();
+  assertContract(
+    buildingView.getEntity(buildingId)?.building?.hp === 45,
+    'typed building HP rows must update HP from wire rows before DTO fallback',
+  );
 
   view.applyNetworkState(snapshot(3, [hpSparseEntity(id, 80, 100)]));
   assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP sparse row must update unit HP');
