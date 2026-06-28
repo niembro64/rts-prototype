@@ -1949,6 +1949,7 @@ export class ClientViewState {
       this.refreshRenderSpatialIndexById(id);
     }
     for (const id of this.dirtyUnitRenderIds) {
+      if (this.activeEntityPredictionIds.has(id)) continue;
       this.refreshRenderSpatialIndexById(id);
     }
   }
