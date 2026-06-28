@@ -1670,8 +1670,7 @@ export class ClientViewState {
    */
   applyPrediction(deltaMs: number): ClientPredictionTargetAgeStats {
     const stats = this.predictionStepper.apply(deltaMs);
-    this.refreshPredictedRenderEntityState();
-    this.refreshPredictedRenderSpatialIndex();
+    this.refreshPredictedRenderStateAndSpatialIndex();
     return stats;
   }
 
@@ -1933,24 +1932,7 @@ export class ClientViewState {
     this.renderTurretState.clearDirtyHostSlots();
   }
 
-  private refreshPredictedRenderSpatialIndex(): void {
-    for (const id of this.activeEntityPredictionIds) {
-      this.refreshRenderSpatialIndexById(id);
-    }
-    for (const id of this.dirtyUnitRenderIds) {
-      if (this.activeEntityPredictionIds.has(id)) continue;
-      this.refreshRenderSpatialIndexById(id);
-    }
-  }
-
-  private refreshRenderSpatialIndexById(id: EntityId): void {
-    const entity = this.entities.get(id);
-    if (entity === undefined) {
-      this.renderSpatialIndex.remove(id);
-      return;
-    }
-    const slot = this.renderEntityState.getSlot(id)
-      ?? this.renderEntityState.refreshEntity(entity);
+  private refreshRenderSpatialIndexBySlot(id: EntityId, slot: number | undefined): void {
     if (slot !== undefined) {
       this.renderSpatialIndex.updateSlot(this.renderEntityState.getViews(), slot);
     } else {
@@ -2008,16 +1990,17 @@ export class ClientViewState {
     return slot;
   }
 
-  private refreshRenderEntityStateById(id: EntityId): void {
+  private refreshRenderEntityStateById(id: EntityId): number | undefined {
     const entity = this.entities.get(id);
     if (entity !== undefined) {
       const slot = this.renderEntityState.refreshEntity(entity);
       if (slot !== undefined) this.renderTurretState.refreshHost(entity, slot);
-      return;
+      return slot;
     }
     const slot = this.renderEntityState.getSlot(id);
     if (slot !== undefined) this.renderTurretState.unsetHostSlot(slot);
     this.renderEntityState.unsetEntity(id);
+    return undefined;
   }
 
   private refreshAllRenderableEntityStates(): void {
@@ -2037,12 +2020,13 @@ export class ClientViewState {
     return slot;
   }
 
-  private refreshPredictedRenderEntityState(): void {
+  private refreshPredictedRenderStateAndSpatialIndex(): void {
     for (const id of this.activeEntityPredictionIds) {
-      this.refreshRenderEntityStateById(id);
+      this.refreshRenderSpatialIndexBySlot(id, this.refreshRenderEntityStateById(id));
     }
     for (const id of this.dirtyUnitRenderIds) {
-      if (!this.activeEntityPredictionIds.has(id)) this.refreshRenderEntityStateById(id);
+      if (this.activeEntityPredictionIds.has(id)) continue;
+      this.refreshRenderSpatialIndexBySlot(id, this.refreshRenderEntityStateById(id));
     }
     for (const id of this.dirtyBuildingRenderIds) {
       if (!this.activeEntityPredictionIds.has(id)) this.refreshRenderEntityStateById(id);
