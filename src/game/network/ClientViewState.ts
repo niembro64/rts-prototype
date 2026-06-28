@@ -175,6 +175,11 @@ type ClientSnapshotApplyStats = {
   correction: ClientPredictionCorrectionStats;
 };
 
+type ClientSnapshotApplyOptions = {
+  syncEconomy: boolean | undefined;
+  collectCorrectionStats?: boolean | undefined;
+};
+
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
   private entities: Map<EntityId, Entity> = new Map();
@@ -729,7 +734,7 @@ export class ClientViewState {
    */
   applyNetworkState(
     state: NetworkServerSnapshot,
-    options: { syncEconomy: boolean | undefined } = { syncEconomy: undefined },
+    options: ClientSnapshotApplyOptions = { syncEconomy: undefined },
   ): ClientSnapshotApplyStats {
     const applyStats: ClientSnapshotApplyStats = {
       correction: {
@@ -755,6 +760,7 @@ export class ClientViewState {
     const entityDeltaOnly = state.entityDeltaOnly === true;
     const projectileDeltaOnly = state.projectileDeltaOnly === true;
     const presentationDeltaOnly = entityDeltaOnly || projectileDeltaOnly;
+    const collectCorrectionStats = options.collectCorrectionStats === true;
     if (!presentationDeltaOnly || state.minimapEntities !== undefined) {
       this.minimapOverrideStore.applySnapshot(state.minimapEntities);
     }
@@ -779,10 +785,13 @@ export class ClientViewState {
         // gates the static branch for both.
         const isBuildingUpdate = netEntity.type === 'building' || netEntity.type === 'tower';
         const existing = this.entities.get(netEntity.id);
-        const previousTarget = this.serverTargets.get(netEntity.id);
-        const previousTargetAgeMs = previousTarget !== undefined && previousTarget.updatedAtMs
-          ? Math.max(0, now - previousTarget.updatedAtMs)
-          : 0;
+        const previousTarget = collectCorrectionStats
+          ? this.serverTargets.get(netEntity.id)
+          : undefined;
+        const previousTargetAgeMs =
+          previousTarget !== undefined && previousTarget.updatedAtMs
+            ? Math.max(0, now - previousTarget.updatedAtMs)
+            : 0;
         if (isBuildingUpdate) {
           // Building bodies are static, but armed buildings still use the
           // same turret target/prediction path as units.
@@ -817,7 +826,12 @@ export class ClientViewState {
           target.updatedAtMs = now;
         }
 
-        if (existing && netEntity.pos && (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)) {
+        if (
+          collectCorrectionStats &&
+          existing &&
+          netEntity.pos &&
+          (cf == null || (cf & ENTITY_CHANGED_POS) !== 0)
+        ) {
           const netX = deqEntityPos(netEntity.pos.x);
           const netY = deqEntityPos(netEntity.pos.y);
           const netZ = deqEntityPos(netEntity.pos.z);

@@ -373,6 +373,12 @@ export class SnapshotVisibility {
     return this.visibleEntityIds;
   }
 
+  getVisibleEntityIdSet(): ReadonlySet<EntityId> | undefined {
+    if (!this.isFiltered) return undefined;
+    this.ensureEntityIdBuffers();
+    return this.visibleEntityIdSet;
+  }
+
   /** Full-vision + radar-contact ids for minimap serialization. */
   getRadarEntityIds(): readonly EntityId[] | undefined {
     if (!this.isFiltered) return undefined;

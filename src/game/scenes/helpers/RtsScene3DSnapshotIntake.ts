@@ -163,6 +163,9 @@ export class RtsScene3DSnapshotIntake {
     const applyStart = performance.now();
     const applyStats = this.clientViewState.applyNetworkState(state, {
       syncEconomy: this.syncEconomyFromSnapshots,
+      collectCorrectionStats:
+        SNAPSHOT_CADENCE_REGRESSION.enabled ||
+        CLIENT_PREDICTION_DIAGNOSTICS.enabled,
     });
     const applyMs = performance.now() - applyStart;
     addSnapshotClientMaterializationStage(state, 'clientApply', applyMs);

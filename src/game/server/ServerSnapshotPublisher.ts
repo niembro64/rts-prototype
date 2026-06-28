@@ -161,7 +161,6 @@ export class ServerSnapshotPublisher {
   private readonly teamAudioCache = new Map<string, SerializerAudioOverride>();
   private readonly teamSprayCache = new Map<string, SerializerSprayOverride>();
   private readonly teamMinimapCache = new Map<string, SerializerMinimapOverride>();
-  private readonly currentVisibleEntityIdsBuf = new Set<EntityId>();
   private readonly deltaRemovedEntityIdsBuf: EntityId[] = [];
   private readonly deltaRemovedEntityIdSet = new Set<EntityId>();
   private readonly deltaEntityIdSet = new Set<EntityId>();
@@ -177,7 +176,6 @@ export class ServerSnapshotPublisher {
     this.teamAudioCache.clear();
     this.teamSprayCache.clear();
     this.teamMinimapCache.clear();
-    this.currentVisibleEntityIdsBuf.clear();
     this.deltaRemovedEntityIdsBuf.length = 0;
     this.deltaRemovedEntityIdSet.clear();
     this.deltaEntityIdSet.clear();
@@ -218,8 +216,21 @@ export class ServerSnapshotPublisher {
     visibility: SnapshotVisibility,
   ): void {
     const baseline = listener.visibleEntityIds;
-    this.collectCurrentVisibleEntityIds(world, visibility, baseline);
+    const visibleEntityIdSet = visibility.getVisibleEntityIdSet();
+    if (visibleEntityIdSet !== undefined) {
+      this.copyVisibleIdsInto(baseline, visibleEntityIdSet);
+    } else {
+      this.collectCurrentVisibleEntityIds(world, visibility, baseline);
+    }
     listener.hasVisibleEntityBaseline = true;
+  }
+
+  private copyVisibleIdsInto(
+    out: Set<EntityId>,
+    visibleEntityIds: Iterable<EntityId>,
+  ): void {
+    out.clear();
+    for (const id of visibleEntityIds) out.add(id);
   }
 
   private collectCurrentVisibleEntityIds(
@@ -251,6 +262,28 @@ export class ServerSnapshotPublisher {
         }
       }
     }
+  }
+
+  private updateUnfilteredVisibleBaseline(
+    listener: SnapshotListenerEntry,
+    world: WorldState,
+    dirtyIds: readonly EntityId[],
+    removedEntities: readonly RemovedSnapshotEntity[],
+  ): void {
+    const baseline = listener.visibleEntityIds;
+    for (let i = 0; i < removedEntities.length; i++) {
+      baseline.delete(removedEntities[i].id);
+    }
+    for (let i = 0; i < dirtyIds.length; i++) {
+      const entity = world.getEntity(dirtyIds[i]);
+      if (
+        entity !== undefined &&
+        (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower')
+      ) {
+        baseline.add(entity.id);
+      }
+    }
+    listener.hasVisibleEntityBaseline = true;
   }
 
   emit(input: ServerSnapshotPublisherInput): void {
@@ -639,24 +672,88 @@ export class ServerSnapshotPublisher {
       const stages = copySnapshotMaterializationStageDurations(emitBaseStages);
       let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
-      const currentVisible = this.currentVisibleEntityIdsBuf;
-      this.collectCurrentVisibleEntityIds(input.world, visibility, currentVisible);
+      const currentVisible = visibility.getVisibleEntityIdSet();
       addMaterializationStage(stages, 'visibility', stageStart);
+      if (listener.preencodeWire) {
+        const directSnapshot = this.directWirePreencoder.tryEncodeRichDelta({
+          world: input.world,
+          removedEntities: this.removedEntitiesBuf,
+          recipientPlayerId: listener.playerId,
+          visibility,
+          previousVisibleEntityIds: listener.visibleEntityIds,
+          currentVisibleEntityIds: currentVisible,
+          dirtyIds: this.dirtyIdsBuf,
+          dirtyFields: this.dirtyFieldsBuf,
+          gamePhase,
+          winnerId,
+          sprayTargets,
+          audioEvents,
+          projectileSpawns,
+          projectileDespawns,
+          projectileVelocityUpdates,
+          gridCells,
+          gridSearchCells,
+          gridCellSize,
+          audioOverride: undefined,
+          sprayOverride: undefined,
+          minimapOverride: undefined,
+          serverMeta,
+          materializationStages: stages,
+        });
+        if (directSnapshot !== undefined) {
+          stageStart = performance.now();
+          if (currentVisible !== undefined) {
+            this.copyVisibleBaseline(listener, currentVisible);
+          } else {
+            this.updateUnfilteredVisibleBaseline(
+              listener,
+              input.world,
+              this.dirtyIdsBuf,
+              this.removedEntitiesBuf,
+            );
+          }
+          addMaterializationStage(stages, 'visibility', stageStart);
+          this.stampSnapshotMaterialization(
+            directSnapshot.state,
+            'rich-delta',
+            listener,
+            stages,
+            listenerStartedAt,
+            directSnapshot,
+          );
+          listener.callback(directSnapshot.state, undefined, directSnapshot.wirePayload);
+          emitted = true;
+          continue;
+        }
+      }
       stageStart = performance.now();
-      const entities = this.serializeDirtyPresentationEntities(
-        input.world,
-        visibility,
-        listener.visibleEntityIds,
-        currentVisible,
-        this.dirtyIdsBuf,
-        this.dirtyFieldsBuf,
-      );
-      const removedEntityIds = this.serializeDirtyPresentationRemovals(
-        visibility,
-        listener.visibleEntityIds,
-        currentVisible,
-        this.removedEntitiesBuf,
-      );
+      const entities = currentVisible !== undefined
+        ? this.serializeDirtyPresentationEntities(
+            input.world,
+            visibility,
+            listener.visibleEntityIds,
+            currentVisible,
+            this.dirtyIdsBuf,
+            this.dirtyFieldsBuf,
+          )
+        : this.serializeUnfilteredDirtyPresentationEntities(
+            input.world,
+            visibility,
+            listener.visibleEntityIds,
+            this.dirtyIdsBuf,
+            this.dirtyFieldsBuf,
+          );
+      const removedEntityIds = currentVisible !== undefined
+        ? this.serializeDirtyPresentationRemovals(
+            visibility,
+            listener.visibleEntityIds,
+            currentVisible,
+            this.removedEntitiesBuf,
+          )
+        : this.serializeUnfilteredDirtyPresentationRemovals(
+            visibility,
+            this.removedEntitiesBuf,
+          );
       addMaterializationStage(stages, 'entityDtos', stageStart);
 
       const teamKey = visibility.teamMaskKey;
@@ -788,7 +885,16 @@ export class ServerSnapshotPublisher {
       };
 
       stageStart = performance.now();
-      this.copyVisibleBaseline(listener, currentVisible);
+      if (currentVisible !== undefined) {
+        this.copyVisibleBaseline(listener, currentVisible);
+      } else {
+        this.updateUnfilteredVisibleBaseline(
+          listener,
+          input.world,
+          this.dirtyIdsBuf,
+          this.removedEntitiesBuf,
+        );
+      }
       addMaterializationStage(stages, 'visibility', stageStart);
       stageStart = performance.now();
       const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
@@ -855,6 +961,43 @@ export class ServerSnapshotPublisher {
     return entities;
   }
 
+  private serializeUnfilteredDirtyPresentationEntities(
+    world: WorldState,
+    visibility: SnapshotVisibility,
+    previousVisibleEntityIds: ReadonlySet<EntityId>,
+    dirtyIds: readonly EntityId[],
+    dirtyFields: readonly number[],
+  ): NetworkServerSnapshot['entities'] {
+    resetEntitySnapshotPool();
+    const entities: NetworkServerSnapshot['entities'] = [];
+    registerEntitySnapshotWireSource(entities);
+    const emittedIds = this.deltaEntityIdSet;
+    emittedIds.clear();
+
+    for (let i = 0; i < dirtyIds.length; i++) {
+      const id = dirtyIds[i];
+      if (emittedIds.has(id)) continue;
+      const entity = world.getEntity(id);
+      if (
+        entity === undefined ||
+        (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
+      ) continue;
+      const netEntity = serializeEntitySnapshot(
+        entity,
+        previousVisibleEntityIds.has(id) ? dirtyFields[i] : undefined,
+        world,
+        visibility,
+      );
+      if (netEntity !== null) {
+        entities.push(netEntity);
+        emittedIds.add(id);
+      }
+    }
+
+    emittedIds.clear();
+    return entities;
+  }
+
   private serializeDirtyPresentationRemovals(
     visibility: SnapshotVisibility,
     previousVisibleEntityIds: ReadonlySet<EntityId>,
@@ -879,6 +1022,26 @@ export class ServerSnapshotPublisher {
 
     for (const id of previousVisibleEntityIds) {
       if (!currentVisibleEntityIds.has(id)) pushRemoved(id);
+    }
+
+    removedIdSet.clear();
+    return removedIds.length > 0 ? removedIds : undefined;
+  }
+
+  private serializeUnfilteredDirtyPresentationRemovals(
+    visibility: SnapshotVisibility,
+    removedEntities: readonly RemovedSnapshotEntity[],
+  ): NetworkServerSnapshot['removedEntityIds'] {
+    const removedIds = this.deltaRemovedEntityIdsBuf;
+    const removedIdSet = this.deltaRemovedEntityIdSet;
+    removedIds.length = 0;
+    removedIdSet.clear();
+
+    for (let i = 0; i < removedEntities.length; i++) {
+      const record = removedEntities[i];
+      if (!visibility.shouldSendRemoval(record) || removedIdSet.has(record.id)) continue;
+      removedIdSet.add(record.id);
+      removedIds.push(record.id);
     }
 
     removedIdSet.clear();

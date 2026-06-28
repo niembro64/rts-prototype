@@ -97,6 +97,32 @@ type ServerSnapshotSparseDeltaDirectWireInput = {
   materializationStages: SnapshotMaterializationStageDurations | undefined;
 };
 
+type ServerSnapshotRichDeltaDirectWireInput = {
+  world: WorldState;
+  removedEntities: readonly RemovedSnapshotEntity[];
+  recipientPlayerId: PlayerId | undefined;
+  visibility: SnapshotVisibility;
+  previousVisibleEntityIds: ReadonlySet<EntityId>;
+  currentVisibleEntityIds: ReadonlySet<EntityId> | undefined;
+  dirtyIds: readonly EntityId[];
+  dirtyFields: readonly number[];
+  gamePhase: GamePhase;
+  winnerId: PlayerId | undefined;
+  sprayTargets: SprayTarget[] | undefined;
+  audioEvents: SimEvent[] | undefined;
+  projectileSpawns: ProjectileSpawnEvent[] | undefined;
+  projectileDespawns: ProjectileDespawnEvent[] | undefined;
+  projectileVelocityUpdates: ProjectileVelocityUpdateEvent[] | undefined;
+  gridCells: NetworkServerSnapshotGridCell[] | undefined;
+  gridSearchCells: NetworkServerSnapshotGridCell[] | undefined;
+  gridCellSize: number | undefined;
+  audioOverride: SerializerAudioOverride | undefined;
+  sprayOverride: SerializerSprayOverride | undefined;
+  minimapOverride: SerializerMinimapOverride | undefined;
+  serverMeta: NetworkServerSnapshotMeta;
+  materializationStages: SnapshotMaterializationStageDurations | undefined;
+};
+
 const _directGameState: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
   winnerId: undefined,
@@ -129,6 +155,8 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly gridSearchCellPlaceholders: NetworkServerSnapshotGridCell[] = [];
   private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
   private readonly removedEntityIds: number[] = [];
+  private readonly removedEntityIdSet = new Set<EntityId>();
+  private readonly emittedDeltaEntityIds = new Set<EntityId>();
   private readonly state: NetworkServerSnapshot = {
     tick: 0,
     entities: this.entityPlaceholders,
@@ -201,6 +229,42 @@ export class ServerSnapshotDirectWirePreencoder {
     if (getSimWasm() === undefined) return undefined;
 
     const state = this.materializeSparseDeltaWireState(input);
+    if (state === undefined) return undefined;
+
+    const stageStart = performance.now();
+    const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
+    const encodeMs = performance.now() - stageStart;
+    if (input.materializationStages !== undefined) {
+      addSnapshotMaterializationStageFromStart(
+        input.materializationStages,
+        'wireEncode',
+        stageStart,
+      );
+    }
+    if (encoded === null) return undefined;
+    return {
+      state,
+      wirePayload: {
+        bytes: encoded.bytes,
+        encodeMs,
+        encoderKind: 'rust',
+        materializationKind: 'direct',
+        rustEntityCount: encoded.rustEntityCount,
+        rawEntityCount: encoded.rawEntityCount,
+        rawTopLevelKeys: encoded.rawTopLevelKeys.length > 0
+          ? [...encoded.rawTopLevelKeys]
+          : undefined,
+      },
+    };
+  }
+
+  tryEncodeRichDelta(
+    input: ServerSnapshotRichDeltaDirectWireInput,
+  ): DirectSerializedListenerSnapshot | undefined {
+    if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
+    if (getSimWasm() === undefined) return undefined;
+
+    const state = this.materializeRichDeltaWireState(input);
     if (state === undefined) return undefined;
 
     const stageStart = performance.now();
@@ -459,6 +523,170 @@ export class ServerSnapshotDirectWirePreencoder {
     return state;
   }
 
+  private materializeRichDeltaWireState(
+    input: ServerSnapshotRichDeltaDirectWireInput,
+  ): NetworkServerSnapshot | undefined {
+    const stages = input.materializationStages;
+    let stageStart = performance.now();
+    const entityCount = this.writeRichDeltaEntityRows(input);
+    if (entityCount < 0) return undefined;
+    this.writeRichDeltaRemovedIds(input);
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'entityDtos', stageStart);
+    }
+    this.entityPlaceholders.length = entityCount;
+    registerEntitySnapshotWireSource(this.entityPlaceholders);
+
+    let netMinimapEntities: NetworkServerSnapshot['minimapEntities'];
+    if (input.minimapOverride !== undefined) {
+      netMinimapEntities = input.minimapOverride.value;
+    } else {
+      stageStart = performance.now();
+      netMinimapEntities = writeMinimapSnapshotWireRowsDirect(
+        input.world,
+        input.visibility,
+        this.minimapPlaceholders,
+      );
+      if (stages !== undefined) {
+        addSnapshotMaterializationStageFromStart(stages, 'minimap', stageStart);
+      }
+    }
+
+    stageStart = performance.now();
+    const netEconomy = writeEconomySnapshotWireRowsDirect(
+      input.world.playerCount,
+      input.recipientPlayerId,
+      this.economyPlaceholder,
+    );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'economy', stageStart);
+    }
+
+    stageStart = performance.now();
+    const netResourceMovements = writeResourceMovementWireRowsDirect(
+      input.world,
+      input.visibility,
+      this.resourceMovementPlaceholders,
+    );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'resources', stageStart);
+    }
+
+    let netSprayTargets: NetworkServerSnapshot['sprayTargets'];
+    if (input.sprayOverride !== undefined) {
+      netSprayTargets = input.sprayOverride.value;
+    } else {
+      stageStart = performance.now();
+      netSprayTargets = writeSprayTargetWireRowsDirect(
+        input.sprayTargets,
+        input.visibility,
+        this.sprayPlaceholders,
+      );
+      if (stages !== undefined) {
+        addSnapshotMaterializationStageFromStart(stages, 'spray', stageStart);
+      }
+    }
+
+    let netAudioEvents: NetworkServerSnapshot['audioEvents'];
+    if (input.audioOverride !== undefined) {
+      netAudioEvents = input.audioOverride.value;
+    } else {
+      stageStart = performance.now();
+      netAudioEvents = writeAudioEventWireRowsDirect(
+        input.audioEvents,
+        input.visibility,
+        this.audioEventPlaceholders,
+      );
+      if (stages !== undefined) {
+        addSnapshotMaterializationStageFromStart(stages, 'audio', stageStart);
+      }
+    }
+
+    stageStart = performance.now();
+    const netScanPulses = writeScanPulseWireRowsDirect(
+      input.world,
+      input.visibility,
+      this.scanPulsePlaceholders,
+    );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'scanPulses', stageStart);
+    }
+
+    const hasProjectileEvents =
+      input.projectileSpawns !== undefined &&
+      input.projectileDespawns !== undefined &&
+      input.projectileVelocityUpdates !== undefined &&
+      (
+        input.projectileSpawns.length > 0 ||
+        input.projectileDespawns.length > 0 ||
+        input.projectileVelocityUpdates.length > 0
+      );
+    const netProjectiles = hasProjectileEvents
+      ? (() => {
+          stageStart = performance.now();
+          const rows = writeProjectileSnapshotWireRowsDirect({
+            world: input.world,
+            fullStateResync: false,
+            visibility: input.visibility,
+            emitBeamUpdates: false,
+            projectileSpawns: input.projectileSpawns,
+            projectileDespawns: input.projectileDespawns,
+            projectileVelocityUpdates: input.projectileVelocityUpdates,
+          });
+          if (stages !== undefined) {
+            addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
+          }
+          return rows;
+        })()
+      : undefined;
+
+    stageStart = performance.now();
+    const netGrid = writeGridSnapshotWireRowsDirect(
+      input.gridCells,
+      input.gridSearchCells,
+      input.gridCellSize,
+      this.gridCellPlaceholders,
+      this.gridSearchCellPlaceholders,
+    );
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'grid', stageStart);
+    }
+
+    stageStart = performance.now();
+    _directGameState.phase = input.gamePhase;
+    _directGameState.winnerId = input.winnerId;
+    if (stages !== undefined) {
+      addSnapshotMaterializationStageFromStart(stages, 'gameState', stageStart);
+    }
+
+    const state = this.state;
+    state.tick = input.world.getTick();
+    state.entities = this.entityPlaceholders;
+    state.entityDeltaOnly = true;
+    state.projectileDeltaOnly = undefined;
+    state.minimapEntities = netMinimapEntities;
+    state.economy = netEconomy;
+    state.resourceMovements = netResourceMovements;
+    state.sprayTargets = netSprayTargets;
+    state.audioEvents = netAudioEvents;
+    state.scanPulses = netScanPulses;
+    state.shroud = undefined;
+    state.projectiles = netProjectiles;
+    state.grid = netGrid;
+    state.serverMeta = input.serverMeta;
+    state.terrain = undefined;
+    state.buildability = undefined;
+    state.gameState = _directGameState;
+    state.removedEntityIds = this.removedEntityIds.length > 0
+      ? this.removedEntityIds
+      : undefined;
+    state.visibilityFiltered = input.visibility.isFiltered ? true : undefined;
+    state.visionPlayerMask = input.visibility.hasRecipient
+      ? input.visibility.getVisionPlayerMask()
+      : undefined;
+    return state;
+  }
+
   private writeEntityRows(input: ServerSnapshotDirectWireInput): number {
     resetEntitySnapshotPool();
     this.removedEntityIds.length = 0;
@@ -514,6 +742,101 @@ export class ServerSnapshotDirectWirePreencoder {
       entityCount++;
     }
     return entityCount;
+  }
+
+  private writeRichDeltaEntityRows(input: ServerSnapshotRichDeltaDirectWireInput): number {
+    resetEntitySnapshotPool();
+    const emittedIds = this.emittedDeltaEntityIds;
+    emittedIds.clear();
+
+    const currentVisibleEntityIds = input.currentVisibleEntityIds;
+    if (currentVisibleEntityIds === undefined) {
+      let entityCount = 0;
+      for (let i = 0; i < input.dirtyIds.length; i++) {
+        const id = input.dirtyIds[i];
+        if (emittedIds.has(id)) continue;
+        const entity = input.world.getEntity(id);
+        if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
+        if (!canAppendEntitySnapshotWireRowDirect(entity)) {
+          emittedIds.clear();
+          return -1;
+        }
+        appendEntitySnapshotWireRowDirect(
+          entity,
+          input.previousVisibleEntityIds.has(id) ? input.dirtyFields[i] : undefined,
+          input.world,
+          input.visibility,
+        );
+        emittedIds.add(id);
+        entityCount++;
+      }
+
+      emittedIds.clear();
+      return entityCount;
+    }
+
+    let entityCount = 0;
+    for (const id of currentVisibleEntityIds) {
+      if (input.previousVisibleEntityIds.has(id)) continue;
+      const entity = input.world.getEntity(id);
+      if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
+      if (!canAppendEntitySnapshotWireRowDirect(entity)) {
+        emittedIds.clear();
+        return -1;
+      }
+      appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
+      emittedIds.add(id);
+      entityCount++;
+    }
+
+    for (let i = 0; i < input.dirtyIds.length; i++) {
+      const id = input.dirtyIds[i];
+      if (emittedIds.has(id)) continue;
+      if (!input.previousVisibleEntityIds.has(id) || !currentVisibleEntityIds.has(id)) continue;
+      const entity = input.world.getEntity(id);
+      if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
+      if (!canAppendEntitySnapshotWireRowDirect(entity)) {
+        emittedIds.clear();
+        return -1;
+      }
+      appendEntitySnapshotWireRowDirect(
+        entity,
+        input.dirtyFields[i],
+        input.world,
+        input.visibility,
+      );
+      emittedIds.add(id);
+      entityCount++;
+    }
+
+    emittedIds.clear();
+    return entityCount;
+  }
+
+  private writeRichDeltaRemovedIds(input: ServerSnapshotRichDeltaDirectWireInput): void {
+    const removedIds = this.removedEntityIds;
+    const removedIdSet = this.removedEntityIdSet;
+    removedIds.length = 0;
+    removedIdSet.clear();
+
+    const pushRemoved = (id: EntityId): void => {
+      if (removedIdSet.has(id)) return;
+      removedIdSet.add(id);
+      removedIds.push(id);
+    };
+
+    for (let i = 0; i < input.removedEntities.length; i++) {
+      const record = input.removedEntities[i];
+      if (input.visibility.shouldSendRemoval(record)) pushRemoved(record.id);
+    }
+
+    if (input.currentVisibleEntityIds !== undefined) {
+      for (const id of input.previousVisibleEntityIds) {
+        if (!input.currentVisibleEntityIds.has(id)) pushRemoved(id);
+      }
+    }
+
+    removedIdSet.clear();
   }
 
   private processRemovedEntities(
