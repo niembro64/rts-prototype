@@ -1,4 +1,5 @@
 import type { Entity, UnitAction } from './types';
+import { getSimWasm } from '../sim-wasm/init';
 import {
   SimulationUnitActionPlanner,
   UNIT_ACTION_FLAG_COMBAT_STOP_ANY,
@@ -31,6 +32,13 @@ import {
   UNIT_ACTION_PLAN_WAIT_LOITER,
   type UnitActionPlanCode,
 } from './SimulationUnitActionPlanner';
+import {
+  SimulationUnitActionMovementPlanner,
+  UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH,
+  UNIT_ACTION_MOVEMENT_DECISION_HOLD,
+  UNIT_ACTION_MOVEMENT_DECISION_THRUST,
+  type UnitActionMovementDecision,
+} from './SimulationUnitActionMovementPlanner';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -163,4 +171,53 @@ export function runSimulationUnitActionPlannerContractTest(): void {
   );
   assertContract(classify(action('patrol')) === UNIT_ACTION_PLAN_MOVE_COMPLETION, 'patrol otherwise moves');
   assertContract(classify(action('move')) === UNIT_ACTION_PLAN_MOVE_COMPLETION, 'move uses completion batch');
+
+  const sim = getSimWasm();
+  assertContract(sim !== undefined, 'sim-wasm must be initialized for movement planner contract');
+  sim.entityState.clear();
+  sim.entityState.setTransform(3, 10, 20, 0, 0);
+
+  const movementPlanner = new SimulationUnitActionMovementPlanner();
+  const classifyMovement = (
+    slot: number,
+    targetX: number,
+    targetY: number,
+    threshold: number,
+    isFinalActionPoint: boolean,
+  ): UnitActionMovementDecision => {
+    movementPlanner.begin(1);
+    movementPlanner.queue(
+      entity,
+      action('move'),
+      UNIT_ACTION_PLAN_MOVE_COMPLETION,
+      slot,
+      targetX,
+      targetY,
+      threshold,
+      isFinalActionPoint,
+    );
+    assertContract(movementPlanner.compute() === 1, 'single queued movement must produce one decision');
+    return movementPlanner.decisionAt(0);
+  };
+
+  assertContract(
+    classifyMovement(3, 14, 23, 3, true) === UNIT_ACTION_MOVEMENT_DECISION_THRUST,
+    'movement beyond threshold thrusts from entity-state slot position',
+  );
+  assertContract(
+    movementPlanner.dxAt(0) === 4 && movementPlanner.dyAt(0) === 3 && movementPlanner.distanceAt(0) === 5,
+    'movement batch outputs dx/dy/distance from slot position',
+  );
+  assertContract(
+    classifyMovement(3, 11, 20, 3, false) === UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH,
+    'movement inside threshold on intermediate path advances path point',
+  );
+  assertContract(
+    classifyMovement(3, 11, 20, 3, true) === UNIT_ACTION_MOVEMENT_DECISION_HOLD,
+    'movement inside threshold on final path holds',
+  );
+  assertContract(
+    classifyMovement(-1, 11, 20, 3, true) === UNIT_ACTION_MOVEMENT_DECISION_HOLD,
+    'invalid movement slot holds without reading slab memory',
+  );
 }

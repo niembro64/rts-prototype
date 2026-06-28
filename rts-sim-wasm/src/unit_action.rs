@@ -1,5 +1,8 @@
 use wasm_bindgen::prelude::*;
 
+#[allow(unused_imports)]
+use crate::*;
+
 const ACTION_TYPE_MOVE: u8 = 0;
 const ACTION_TYPE_PATROL: u8 = 1;
 const ACTION_TYPE_FIGHT: u8 = 2;
@@ -47,6 +50,10 @@ const UNIT_ACTION_PLAN_GUARD_SERVICE_MOVE: u8 = 15;
 const UNIT_ACTION_PLAN_GUARD_FOLLOW: u8 = 16;
 const UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD: u8 = 17;
 const UNIT_ACTION_PLAN_MOVE_COMPLETION: u8 = 18;
+
+const UNIT_ACTION_MOVEMENT_DECISION_THRUST: u8 = 0;
+const UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH: u8 = 1;
+const UNIT_ACTION_MOVEMENT_DECISION_HOLD: u8 = 2;
 
 #[inline]
 fn has(flags: u32, bit: u32) -> bool {
@@ -152,6 +159,61 @@ pub fn unit_action_plan_batch(action_type: &[u8], flags: &[u32], out_plan: &mut 
         } else {
             UNIT_ACTION_PLAN_MOVE_COMPLETION
         };
+    }
+    1
+}
+
+#[wasm_bindgen]
+pub fn unit_action_movement_batch(
+    slots: &[u32],
+    target_x: &[f64],
+    target_y: &[f64],
+    threshold: &[f64],
+    final_point: &[u8],
+    out_dx: &mut [f64],
+    out_dy: &mut [f64],
+    out_distance: &mut [f64],
+    out_decision: &mut [u8],
+) -> u32 {
+    let count = slots.len();
+    if target_x.len() < count
+        || target_y.len() < count
+        || threshold.len() < count
+        || final_point.len() < count
+        || out_dx.len() < count
+        || out_dy.len() < count
+        || out_distance.len() < count
+        || out_decision.len() < count
+    {
+        return 0;
+    }
+
+    let slab = entity_state();
+    for i in 0..count {
+        let slot = slots[i] as usize;
+        if slot >= slab.pos_x.len() {
+            out_dx[i] = 0.0;
+            out_dy[i] = 0.0;
+            out_distance[i] = 0.0;
+            out_decision[i] = UNIT_ACTION_MOVEMENT_DECISION_HOLD;
+            continue;
+        }
+
+        let dx = target_x[i] - slab.pos_x[slot];
+        let dy = target_y[i] - slab.pos_y[slot];
+        let distance = (dx * dx + dy * dy).sqrt();
+        out_dx[i] = if dx.is_finite() { dx } else { 0.0 };
+        out_dy[i] = if dy.is_finite() { dy } else { 0.0 };
+        out_distance[i] = if distance.is_finite() { distance } else { 0.0 };
+
+        let limit = threshold[i];
+        if distance.is_finite() && limit.is_finite() && distance > limit {
+            out_decision[i] = UNIT_ACTION_MOVEMENT_DECISION_THRUST;
+        } else if final_point[i] == 0 {
+            out_decision[i] = UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH;
+        } else {
+            out_decision[i] = UNIT_ACTION_MOVEMENT_DECISION_HOLD;
+        }
     }
     1
 }

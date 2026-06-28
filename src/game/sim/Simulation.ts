@@ -99,6 +99,12 @@ import {
   UNIT_ACTION_PLAN_UNLOAD_MOVE,
   UNIT_ACTION_PLAN_WAIT_LOITER,
 } from './SimulationUnitActionPlanner';
+import {
+  SimulationUnitActionMovementPlanner,
+  UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH,
+  UNIT_ACTION_MOVEMENT_DECISION_HOLD,
+  UNIT_ACTION_MOVEMENT_DECISION_THRUST,
+} from './SimulationUnitActionMovementPlanner';
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
@@ -139,6 +145,7 @@ export class Simulation {
   private flyingLoiter: SimulationFlyingLoiterController;
   private stuckReplanController: SimulationStuckReplanController;
   private unitActionPlanner: SimulationUnitActionPlanner = new SimulationUnitActionPlanner();
+  private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
@@ -918,6 +925,8 @@ export class Simulation {
     }
 
     const planCount = planner.compute();
+    const movementPlanner = this.unitActionMovementPlanner;
+    movementPlanner.begin(planCount);
     for (let i = 0; i < planCount; i++) {
       const entity = planner.entityAt(i);
       const unit = entity.unit;
@@ -952,47 +961,48 @@ export class Simulation {
         case UNIT_ACTION_PLAN_LOAD_MOVE: {
           if (currentAction === undefined) break;
           const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-          const dx = movementTarget.x - transform.x;
-          const dy = movementTarget.y - transform.y;
-          const distance = magnitude(dx, dy);
-          if (distance <= 1) {
-            if (!movementTarget.isFinalActionPoint) this.advanceActivePathPoint(entity);
-            unit.stuckTicks = 0;
-          } else {
-            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-          }
+          movementPlanner.queue(
+            entity,
+            currentAction,
+            UNIT_ACTION_PLAN_LOAD_MOVE,
+            spatialGrid.getSlot(entity.id),
+            movementTarget.x,
+            movementTarget.y,
+            1,
+            movementTarget.isFinalActionPoint,
+          );
           break;
         }
 
         case UNIT_ACTION_PLAN_UNLOAD_MOVE: {
           if (currentAction === undefined) break;
           const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-          const dx = movementTarget.x - transform.x;
-          const dy = movementTarget.y - transform.y;
-          const distance = magnitude(dx, dy);
-          if (distance > 15) {
-            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-          } else if (!movementTarget.isFinalActionPoint) {
-            this.advanceActivePathPoint(entity);
-            unit.stuckTicks = 0;
-          } else {
-            unit.stuckTicks = 0;
-          }
+          movementPlanner.queue(
+            entity,
+            currentAction,
+            UNIT_ACTION_PLAN_UNLOAD_MOVE,
+            spatialGrid.getSlot(entity.id),
+            movementTarget.x,
+            movementTarget.y,
+            15,
+            movementTarget.isFinalActionPoint,
+          );
           break;
         }
 
         case UNIT_ACTION_PLAN_BUILD_MOVE: {
           if (currentAction === undefined) break;
           const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-          const dx = movementTarget.x - transform.x;
-          const dy = movementTarget.y - transform.y;
-          const distance = magnitude(dx, dy);
-          if (distance <= 1) {
-            if (!movementTarget.isFinalActionPoint) this.advanceActivePathPoint(entity);
-            unit.stuckTicks = 0;
-          } else {
-            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-          }
+          movementPlanner.queue(
+            entity,
+            currentAction,
+            UNIT_ACTION_PLAN_BUILD_MOVE,
+            spatialGrid.getSlot(entity.id),
+            movementTarget.x,
+            movementTarget.y,
+            1,
+            movementTarget.isFinalActionPoint,
+          );
           break;
         }
 
@@ -1011,45 +1021,36 @@ export class Simulation {
           }
           const attackTarget = this.world.getEntity(currentAction.targetId);
           const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-          const dx = movementTarget.x - transform.x;
-          const dy = movementTarget.y - transform.y;
-          const distance = magnitude(dx, dy);
-          if (distance > 15) {
-            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-          } else if (!movementTarget.isFinalActionPoint) {
-            this.advanceActivePathPoint(entity);
+          if (attackTarget === undefined) {
             unit.stuckTicks = 0;
-          } else if (attackTarget === undefined) {
-            unit.stuckTicks = 0;
-          } else {
-            if ((unit.stuckTicks ?? 0) < 0) {
-              unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
-              break;
-            }
-            const targetPoint = getEntityTargetPoint(attackTarget);
-            if (!this.tryRefreshAttackApproach(entity, currentAction, targetPoint)) {
-              unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
-              break;
-            }
-            unit.stuckTicks = 0;
+            break;
           }
+          movementPlanner.queue(
+            entity,
+            currentAction,
+            UNIT_ACTION_PLAN_ATTACK_MOVE,
+            spatialGrid.getSlot(entity.id),
+            movementTarget.x,
+            movementTarget.y,
+            15,
+            movementTarget.isFinalActionPoint,
+          );
           break;
         }
 
         case UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE: {
           if (currentAction === undefined) break;
           const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-          const dx = movementTarget.x - transform.x;
-          const dy = movementTarget.y - transform.y;
-          const distance = magnitude(dx, dy);
-          if (distance > 15) {
-            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-          } else if (!movementTarget.isFinalActionPoint) {
-            this.advanceActivePathPoint(entity);
-            unit.stuckTicks = 0;
-          } else {
-            unit.stuckTicks = 0;
-          }
+          movementPlanner.queue(
+            entity,
+            currentAction,
+            UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE,
+            spatialGrid.getSlot(entity.id),
+            movementTarget.x,
+            movementTarget.y,
+            15,
+            movementTarget.isFinalActionPoint,
+          );
           break;
         }
 
@@ -1061,13 +1062,16 @@ export class Simulation {
             break;
           }
           const sp = getEntityTargetPoint(target);
-          const sdx = sp.x - transform.x;
-          const sdy = sp.y - transform.y;
-          const sdist = magnitude(sdx, sdy);
-          if (sdist > 15) {
-            this.arrivalController.queueThrust(entity, currentAction, sdx, sdy, sdist, true);
-          }
-          unit.stuckTicks = 0;
+          movementPlanner.queue(
+            entity,
+            currentAction,
+            UNIT_ACTION_PLAN_GUARD_SERVICE_MOVE,
+            spatialGrid.getSlot(entity.id),
+            sp.x,
+            sp.y,
+            15,
+            true,
+          );
           break;
         }
 
@@ -1130,6 +1134,57 @@ export class Simulation {
           );
           break;
         }
+      }
+    }
+
+    const movementCount = movementPlanner.compute();
+    for (let i = 0; i < movementCount; i++) {
+      const entity = movementPlanner.entityAt(i);
+      const unit = entity.unit;
+      if (!unit || !entity.body) continue;
+      const action = movementPlanner.actionAt(i);
+      const decision = movementPlanner.decisionAt(i);
+
+      if (decision === UNIT_ACTION_MOVEMENT_DECISION_THRUST) {
+        this.arrivalController.queueThrust(
+          entity,
+          action,
+          movementPlanner.dxAt(i),
+          movementPlanner.dyAt(i),
+          movementPlanner.distanceAt(i),
+          movementPlanner.isFinalActionPointAt(i),
+        );
+        continue;
+      }
+
+      if (decision === UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH) {
+        this.advanceActivePathPoint(entity);
+        unit.stuckTicks = 0;
+        continue;
+      }
+
+      if (decision === UNIT_ACTION_MOVEMENT_DECISION_HOLD) {
+        if (movementPlanner.planAt(i) === UNIT_ACTION_PLAN_ATTACK_MOVE) {
+          if ((unit.stuckTicks ?? 0) < 0) {
+            unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
+            continue;
+          }
+          if (action.type !== 'attack' || action.targetId === undefined) {
+            unit.stuckTicks = 0;
+            continue;
+          }
+          const attackTarget = this.world.getEntity(action.targetId);
+          if (attackTarget === undefined) {
+            unit.stuckTicks = 0;
+            continue;
+          }
+          const targetPoint = getEntityTargetPoint(attackTarget);
+          if (!this.tryRefreshAttackApproach(entity, action, targetPoint)) {
+            unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
+            continue;
+          }
+        }
+        unit.stuckTicks = 0;
       }
     }
 
@@ -1318,6 +1373,7 @@ export class Simulation {
     this.stuckReplanController.reset();
     this.combatHaltController.reset();
     this.unitActionPlanner.reset();
+    this.unitActionMovementPlanner.reset();
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     this.spatialGridBuildingVersion = -1;

@@ -58,6 +58,7 @@ import __wbg_init, {
   flying_loiter_step_batch,
   stuck_replan_step_batch,
   unit_action_plan_batch,
+  unit_action_movement_batch,
   turret_rotation_step_batch,
   step_unit_motion,
   client_predict_unit_motion_batch,
@@ -740,6 +741,17 @@ export interface SimWasm {
     actionTypes: Uint8Array,
     flags: Uint32Array,
     outPlan: Uint8Array,
+  ) => number;
+  readonly unitActionMovementBatch: (
+    slots: Uint32Array,
+    targetX: Float64Array,
+    targetY: Float64Array,
+    threshold: Float64Array,
+    finalPoint: Uint8Array,
+    outDx: Float64Array,
+    outDy: Float64Array,
+    outDistance: Float64Array,
+    outDecision: Uint8Array,
   ) => number;
   readonly turretRotationStepBatch: (
     currentYaw: Float64Array,
@@ -3867,6 +3879,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         flyingLoiterStepBatch: flying_loiter_step_batch,
         stuckReplanStepBatch: stuck_replan_step_batch,
         unitActionPlanBatch: unit_action_plan_batch,
+        unitActionMovementBatch: unit_action_movement_batch,
         turretRotationStepBatch: turret_rotation_step_batch,
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
