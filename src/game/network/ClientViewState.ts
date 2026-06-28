@@ -811,25 +811,28 @@ export class ClientViewState {
     const ownership = existing.ownership;
     if (ownership === null || ownership.playerId !== playerId) return false;
 
-    const previousTarget = collectCorrectionStats ? this.serverTargets.get(id) : undefined;
+    const needsServerTarget = hasMotionFields || hasTurretFields;
+    const previousTarget = collectCorrectionStats && needsServerTarget
+      ? this.serverTargets.get(id)
+      : undefined;
     const previousTargetAgeMs =
       previousTarget !== undefined && previousTarget.updatedAtMs
         ? Math.max(0, now - previousTarget.updatedAtMs)
         : 0;
-    const target = this.getOrCreateServerTarget(id);
-    this.clearTargetPredictionAccum(id);
+    const target = needsServerTarget ? this.getOrCreateServerTarget(id) : undefined;
+    if (target !== undefined) this.clearTargetPredictionAccum(id);
 
-    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+    if (target !== undefined && (changedFields & ENTITY_CHANGED_POS) !== 0) {
       target.x = deqEntityPos(values[base + 1]);
       target.y = deqEntityPos(values[base + 2]);
       target.z = deqEntityPos(values[base + 3]);
     }
-    if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && values[base + 23] !== 0) {
+    if (target !== undefined && (changedFields & ENTITY_CHANGED_NORMAL) !== 0 && values[base + 23] !== 0) {
       target.surfaceNormalX = deqNormal(values[base + 24]);
       target.surfaceNormalY = deqNormal(values[base + 25]);
       target.surfaceNormalZ = deqNormal(values[base + 26]);
     }
-    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+    if (target !== undefined && (changedFields & ENTITY_CHANGED_ROT) !== 0) {
       target.rotation = deqRot(values[base + 4]);
       if (values[base + 27] !== 0) {
         let orientation = target.orientation;
@@ -843,7 +846,7 @@ export class ClientViewState {
         orientation.w = values[base + 31];
       }
     }
-    if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
+    if (target !== undefined && (changedFields & ENTITY_CHANGED_VEL) !== 0) {
       target.velocityX = deqVel(values[base + 10]);
       target.velocityY = deqVel(values[base + 11]);
       target.velocityZ = deqVel(values[base + 12]);
@@ -859,6 +862,7 @@ export class ClientViewState {
     }
     let copiedTurretRows = false;
     if (hasTurretFields && values[base + 43] !== 0) {
+      if (target === undefined) return false;
       const turretCount = values[base + 44] | 0;
       const turretOffset = values[base + 49] | 0;
       copiedTurretRows = this.copyWireUnitTurretsToTarget(
@@ -876,7 +880,7 @@ export class ClientViewState {
       );
     }
 
-    target.updatedAtMs = now;
+    if (target !== undefined) target.updatedAtMs = now;
     if (collectCorrectionStats && (changedFields & ENTITY_CHANGED_POS) !== 0) {
       this.recordWireMotionCorrectionStats(
         existing,
