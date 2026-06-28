@@ -23,9 +23,9 @@ Please always commit and push before and after any code changes we make.
     Preserve current visuals until explicit visual-quality issues say otherwise.
     Remaining high-count render paths should consume stable slot-indexed typed
     state and dirty ranges instead of JS Entity objects: turret pose, shield
-    packets, ground prints, projectile render lists, and visibility/render-scope
-    inputs. Remove JS Entity fallbacks only after [30]/[31] parity proves the
-    slab path is the complete render truth.
+    packets, projectile render lists, and visibility/render-scope inputs.
+    Remove JS Entity fallbacks only after [30]/[31] parity proves the slab path
+    is the complete render truth.
 
 [16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
     USER / in-app eyes only: build a Hippo and tune swim/float/sink +

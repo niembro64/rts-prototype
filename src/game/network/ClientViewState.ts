@@ -103,6 +103,7 @@ import type { ShieldRenderPacket3D } from '../render3d/ShieldRenderer3D';
 import type { ContactShadowRenderPacket3D } from '../render3d/ContactShadowRenderer3D';
 import type { GroundPrintRenderPacket3D } from '../render3d/GroundPrint3D';
 import type { Locomotion3DMesh } from '../render3d/Locomotion3D';
+import { getLocomotionSurfaceHeight } from '../render3d/LocomotionTerrainSampler';
 import type {
   BuildingRenderPacket3D,
   UnitRenderPacket3D,
@@ -115,6 +116,7 @@ import {
   CLIENT_RENDER_ENTITY_KIND_UNIT,
   ClientRenderEntityStateSlab,
 } from '../render3d/ClientRenderEntityStateSlab';
+import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -1797,15 +1799,55 @@ export class ClientViewState {
   ): void {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
+    let views = this.renderEntityState.getViews();
     for (let i = 0; i < units.length; i++) {
-      if (this.entityEmissionUsesFarLod3D(units[i], options, 'groundPrints')) continue;
-      out.groundPrints.pushUnit(
-        units[i],
-        options.getGroundPrintLocomotionMesh,
-        mapWidth,
-        mapHeight,
-      );
+      const entity = units[i];
+      if (this.entityEmissionUsesFarLod3D(entity, options, 'groundPrints')) continue;
+      const slot = this.renderEntityState.getSlot(entity.id)
+        ?? this.renderEntityState.refreshEntity(entity);
+      views = this.renderEntityState.getViews();
+      if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
+        const entityId = views.entityIds[slot] as EntityId;
+        const loc = options.getGroundPrintLocomotionMesh(entityId);
+        const grounded = loc?.type === 'legs'
+          ? loc.visualGrounded
+          : this.groundPrintGroundedFromState(slot, mapWidth, mapHeight);
+        out.groundPrints.pushRow(
+          entityId,
+          views.x[slot],
+          views.y[slot],
+          grounded,
+        );
+      } else {
+        out.groundPrints.pushUnit(
+          entity,
+          options.getGroundPrintLocomotionMesh,
+          mapWidth,
+          mapHeight,
+        );
+      }
     }
+  }
+
+  private groundPrintGroundedFromState(
+    slot: number,
+    mapWidth: number,
+    mapHeight: number,
+  ): boolean {
+    const views = this.renderEntityState.getViews();
+    if (views.groundContactEnabled[slot] === 0) return false;
+    const x = views.x[slot];
+    const y = views.y[slot];
+    const z = views.z[slot];
+    const groundY = getLocomotionSurfaceHeight(
+      x,
+      y,
+      mapWidth,
+      mapHeight,
+      views.entityIds[slot] as EntityId,
+    );
+    const penetration = groundY - (z - views.bodyCenterHeight[slot]);
+    return isUnitGroundPenetrationInContact(penetration);
   }
 
   private entityUsesFarLod3D(

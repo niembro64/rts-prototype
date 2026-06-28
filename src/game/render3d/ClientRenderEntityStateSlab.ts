@@ -64,6 +64,7 @@ export type ClientRenderEntityStateViews = {
   readonly maxHp: Float32Array;
   readonly buildEnergyRatio: Float32Array;
   readonly buildMetalRatio: Float32Array;
+  readonly groundContactEnabled: Uint8Array;
   readonly turretCount: Uint16Array;
   readonly passiveTurretIndex: Int16Array;
   readonly flags: Uint16Array;
@@ -162,6 +163,7 @@ export class ClientRenderEntityStateSlab {
     maxHp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildEnergyRatio: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildMetalRatio: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    groundContactEnabled: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     turretCount: new Uint16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     passiveTurretIndex: new Int16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     flags: new Uint16Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -246,6 +248,7 @@ export class ClientRenderEntityStateSlab {
     views.buildMetalRatio[slot] = buildable !== null
       ? getResourceFillRatio(buildable, 'metal')
       : 0;
+    views.groundContactEnabled[slot] = unit.suspension?.legContact === false ? 0 : 1;
     views.turretCount[slot] = turrets?.length ?? 0;
     views.passiveTurretIndex[slot] = turrets !== undefined
       ? passiveTurretIndex(turrets)
@@ -305,6 +308,7 @@ export class ClientRenderEntityStateSlab {
     views.buildMetalRatio[slot] = buildable !== null
       ? getResourceFillRatio(buildable, 'metal')
       : 0;
+    views.groundContactEnabled[slot] = 0;
     views.turretCount[slot] = turrets?.length ?? 0;
     views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
     views.flags[slot] = flags;
@@ -330,6 +334,7 @@ export class ClientRenderEntityStateSlab {
     this.views.hudNameY[slot] = 0;
     this.views.contactShadowWidth[slot] = 0;
     this.views.contactShadowDepth[slot] = 0;
+    this.views.groundContactEnabled[slot] = 0;
     this.views.unitBlueprintIds[slot] = undefined;
     this.views.buildingBlueprintIds[slot] = undefined;
     this.freeSlots.push(slot);
@@ -365,6 +370,7 @@ export class ClientRenderEntityStateSlab {
     this.views.hudNameY.fill(0);
     this.views.contactShadowWidth.fill(0);
     this.views.contactShadowDepth.fill(0);
+    this.views.groundContactEnabled.fill(0);
     this.views.unitBlueprintIds.length = 0;
     this.views.buildingBlueprintIds.length = 0;
   }
@@ -394,6 +400,12 @@ export class ClientRenderEntityStateSlab {
       assertNear('bodyHudWidth', views.bodyHudWidth[slot], unit.radius.other * 2);
       assertNear('hudBarsY', views.hudBarsY[slot], getUnitHudBarsY(entity));
       assertNear('hudNameY', views.hudNameY[slot], getUnitHudNameY(entity));
+      assertNear(
+        'groundContactEnabled',
+        views.groundContactEnabled[slot],
+        unit.suspension?.legContact === false ? 0 : 1,
+        0,
+      );
       assertNear('hp', views.hp[slot], unit.hp);
       assertNear('maxHp', views.maxHp[slot], unit.maxHp);
       if (views.unitBlueprintIds[slot] !== unit.unitBlueprintId) {
@@ -454,6 +466,7 @@ export class ClientRenderEntityStateSlab {
       maxHp: growFloat32(views.maxHp, nextCapacity),
       buildEnergyRatio: growFloat32(views.buildEnergyRatio, nextCapacity),
       buildMetalRatio: growFloat32(views.buildMetalRatio, nextCapacity),
+      groundContactEnabled: growUint8(views.groundContactEnabled, nextCapacity),
       turretCount: growUint16(views.turretCount, nextCapacity),
       passiveTurretIndex: growInt16(views.passiveTurretIndex, nextCapacity),
       flags: growUint16(views.flags, nextCapacity),
