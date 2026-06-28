@@ -34,9 +34,11 @@ import {
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_TURRETS,
   RESOURCE_FLOW_OUTBOUND,
   RESOURCE_KIND_ENERGY,
   RESOURCE_KIND_METAL,
+  codeToTurretState,
   type GamePhase,
   type ResourceFlowDirectionCode,
   type ResourceKindCode,
@@ -80,6 +82,7 @@ import {
 } from './snapshotQuantization';
 import {
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
@@ -140,6 +143,10 @@ const CLIENT_UNIT_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const CLIENT_UNIT_TYPED_DELTA_FIELDS =
+  CLIENT_UNIT_MOTION_DELTA_FIELDS |
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_TURRETS;
 
 type ClientResourcePylonSignedRates = {
   energy: number;
@@ -518,6 +525,62 @@ export class ClientViewState {
     return false;
   }
 
+  private copyWireUnitTurretsToTarget(
+    source: EntitySnapshotWireSource,
+    offset: number,
+    count: number,
+    target: ServerTarget,
+  ): boolean {
+    if (count <= 0) return false;
+    if (offset < 0 || offset + count > source.turretRows.count) return false;
+    while (target.turrets.length < count) {
+      target.turrets.push({
+        rotation: 0,
+        angularVelocity: 0,
+        pitch: 0,
+        pitchVelocity: 0,
+        shieldRange: null,
+      });
+    }
+    target.turrets.length = count;
+    const rows = source.turretRows.values;
+    for (let i = 0; i < count; i++) {
+      const rowBase = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+      const turret = target.turrets[i];
+      turret.rotation = deqRot(rows[rowBase + 0]);
+      turret.angularVelocity = deqRot(rows[rowBase + 1]);
+      turret.pitch = deqRot(rows[rowBase + 2]);
+      turret.pitchVelocity = deqRot(rows[rowBase + 3]);
+      turret.shieldRange = rows[rowBase + 8] !== 0 ? rows[rowBase + 9] : null;
+    }
+    return true;
+  }
+
+  private applyWireUnitTurretNonVisualState(
+    entity: Entity,
+    source: EntitySnapshotWireSource,
+    offset: number,
+    count: number,
+  ): void {
+    const combat = entity.combat;
+    if (combat === null || count <= 0) return;
+    const rows = source.turretRows.values;
+    const turrets = combat.turrets;
+    const limit = Math.min(count, turrets.length);
+    for (let i = 0; i < limit; i++) {
+      const rowBase = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+      const turret = turrets[i];
+      if (rows[rowBase + 10] !== 0) {
+        turret.target = null;
+        turret.state = 'idle';
+        turret.shield = null;
+        continue;
+      }
+      turret.target = rows[rowBase + 6] !== 0 ? (rows[rowBase + 7] | 0) as EntityId : null;
+      turret.state = codeToTurretState(rows[rowBase + 5]);
+    }
+  }
+
   private deleteEntityLocalState(id: EntityId): void {
     const existing = this.entities.get(id);
     const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
@@ -719,7 +782,7 @@ export class ClientViewState {
     return entity.ownership !== null && entity.ownership.playerId === server.playerId;
   }
 
-  private tryApplyUnitMotionOnlyWireRow(
+  private tryApplyUnitTypedDeltaWireRow(
     source: EntitySnapshotWireSource | undefined,
     entityIndex: number,
     now: number,
@@ -735,7 +798,11 @@ export class ClientViewState {
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
     const changedFields = values[base + 7] | 0;
     if (values[base + 6] === 0 || changedFields === 0) return false;
-    if ((changedFields & ~CLIENT_UNIT_MOTION_DELTA_FIELDS) !== 0) return false;
+    if ((changedFields & ~CLIENT_UNIT_TYPED_DELTA_FIELDS) !== 0) return false;
+    const hasMotionFields = (changedFields & CLIENT_UNIT_MOTION_DELTA_FIELDS) !== 0;
+    const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
+    const hasTurretFields = (changedFields & ENTITY_CHANGED_TURRETS) !== 0;
+    if (!hasMotionFields && !hasHpFields && !hasTurretFields) return false;
 
     const id = values[base + 0] | 0;
     const playerId = values[base + 5] | 0;
@@ -790,6 +857,24 @@ export class ClientViewState {
         target.angularVelocityZ = null;
       }
     }
+    let copiedTurretRows = false;
+    if (hasTurretFields && values[base + 43] !== 0) {
+      const turretCount = values[base + 44] | 0;
+      const turretOffset = values[base + 49] | 0;
+      copiedTurretRows = this.copyWireUnitTurretsToTarget(
+        source,
+        turretOffset,
+        turretCount,
+        target,
+      );
+      if (!copiedTurretRows) return false;
+      this.applyWireUnitTurretNonVisualState(
+        existing,
+        source,
+        turretOffset,
+        turretCount,
+      );
+    }
 
     target.updatedAtMs = now;
     if (collectCorrectionStats && (changedFields & ENTITY_CHANGED_POS) !== 0) {
@@ -803,8 +888,23 @@ export class ClientViewState {
       );
     }
 
-    this.activeEntityPredictionIds.add(id);
-    this.dirtyUnitRenderIds.add(id);
+    if (hasHpFields) {
+      const healthBarCacheMemberBefore = this.unitHealthBarCacheMembership(existing);
+      existing.unit.hp = values[base + 8];
+      existing.unit.maxHp = values[base + 9];
+      if (healthBarCacheMemberBefore !== this.unitHealthBarCacheMembership(existing)) {
+        this.cache.refreshHealthBarEntity(existing);
+      }
+    }
+
+    if (hasHpFields || copiedTurretRows) {
+      this.refreshRenderableEntityStateFromSnapshot(existing, false);
+    }
+
+    if (hasMotionFields || copiedTurretRows) {
+      this.activeEntityPredictionIds.add(id);
+      this.dirtyUnitRenderIds.add(id);
+    }
     return true;
   }
 
@@ -936,7 +1036,7 @@ export class ClientViewState {
     if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
         if (
-          this.tryApplyUnitMotionOnlyWireRow(
+          this.tryApplyUnitTypedDeltaWireRow(
             typedEntityWireSource,
             entityIndex,
             now,

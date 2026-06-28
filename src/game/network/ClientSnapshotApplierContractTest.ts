@@ -2,6 +2,7 @@ import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_TURRETS,
   unitBlueprintIdToCode,
 } from '../../types/network';
 import type {
@@ -19,6 +20,7 @@ import {
   appendEntitySnapshotWireRowDirect,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
+  serializeEntitySnapshot,
 } from './stateSerializerEntities';
 
 function assertContract(condition: boolean, message: string): void {
@@ -126,6 +128,22 @@ function movementOnlySparseEntity(id: number): NetworkServerSnapshotEntity {
     pos: { x: 10, y: 20, z: 0 },
     rotation: null,
     unit: null,
+    building: null,
+  };
+}
+
+function turretSparseEntity(id: number): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'unit',
+    playerId: 1 as PlayerId,
+    changedFields: ENTITY_CHANGED_TURRETS,
+    pos: null,
+    rotation: null,
+    unit: {
+      ...emptyUnitSnapshot(),
+      turrets: null,
+    },
     building: null,
   };
 }
@@ -296,6 +314,44 @@ export function runClientSnapshotApplierContractTest(): void {
     'typed unit motion rows must drive local correction targets before DTO fallback',
   );
 
+  if (wireMotionEntity.unit === null) {
+    throw new Error('[client snapshot applier contract] typed HP source unit must have a unit component');
+  }
+  wireMotionEntity.unit.hp = 45;
+  wireMotionEntity.unit.maxHp = 100;
+  const typedHpRows = [hpSparseEntity(id, 5, 100)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedHpRows);
+  appendEntitySnapshotWireRowDirect(
+    wireMotionEntity,
+    ENTITY_CHANGED_HP,
+    {} as WorldState,
+  );
+  view.applyNetworkState(snapshot(4, typedHpRows));
+  resetEntitySnapshotPool();
+  assertContract(
+    view.getEntity(id)?.unit?.hp === 45,
+    'typed unit HP rows must update HP from wire rows before DTO fallback',
+  );
+  assertHudContains(view, id, true);
+
+  wireMotionEntity.unit.hp = 100;
+  const typedHealRows = [hpSparseEntity(id, 5, 100)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedHealRows);
+  appendEntitySnapshotWireRowDirect(
+    wireMotionEntity,
+    ENTITY_CHANGED_HP,
+    {} as WorldState,
+  );
+  view.applyNetworkState(snapshot(5, typedHealRows));
+  resetEntitySnapshotPool();
+  assertContract(
+    view.getEntity(id)?.unit?.hp === 100,
+    'typed unit HP rows must apply full-heal HP from wire rows',
+  );
+  assertHudContains(view, id, false);
+
   view.applyNetworkState(snapshot(3, [hpSparseEntity(id, 80, 100)]));
   assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP sparse row must update unit HP');
   assertHudContains(view, id, true);
@@ -303,4 +359,48 @@ export function runClientSnapshotApplierContractTest(): void {
   view.applyNetworkState(snapshot(4, [hpSparseEntity(id, 100, 100)]));
   assertContract(view.getEntity(id)?.unit?.hp === 100, 'full-heal HP row must update unit HP');
   assertHudContains(view, id, false);
+
+  const turretView = new ClientViewState();
+  const turretSource = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => 400,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    0,
+    0,
+    1 as PlayerId,
+    'unitJackal',
+    { allocateSubEntityIds: false },
+  );
+  assertContract(
+    turretSource.combat !== null && turretSource.combat.turrets.length > 0,
+    'typed turret contract fixture must create a turreted unit',
+  );
+  resetEntitySnapshotPool();
+  const fullTurretEntity = serializeEntitySnapshot(turretSource, undefined, {} as WorldState);
+  resetEntitySnapshotPool();
+  if (fullTurretEntity === null) {
+    throw new Error('[client snapshot applier contract] typed turret contract full row must serialize');
+  }
+  turretView.applyNetworkState(snapshot(1, [fullTurretEntity]));
+  const hydratedTurret = turretView.getEntity(400)?.combat?.turrets[0];
+  if (hydratedTurret === undefined) {
+    throw new Error('[client snapshot applier contract] full turret row must hydrate a client turret');
+  }
+  hydratedTurret.target = null;
+  turretSource.combat!.turrets[0].target = 77;
+  const typedTurretRows = [turretSparseEntity(400)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedTurretRows);
+  appendEntitySnapshotWireRowDirect(
+    turretSource,
+    ENTITY_CHANGED_TURRETS,
+    {} as WorldState,
+  );
+  turretView.applyNetworkState(snapshot(2, typedTurretRows));
+  resetEntitySnapshotPool();
+  assertContract(
+    turretView.getEntity(400)?.combat?.turrets[0]?.target === 77,
+    'typed unit turret rows must update turret target before DTO fallback',
+  );
 }
