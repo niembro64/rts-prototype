@@ -60,6 +60,7 @@ export type ClientRenderEntityStateViews = {
   readonly hudNameY: Float32Array;
   readonly contactShadowWidth: Float32Array;
   readonly contactShadowDepth: Float32Array;
+  readonly renderScopePadding: Float32Array;
   readonly hp: Float32Array;
   readonly maxHp: Float32Array;
   readonly buildEnergyRatio: Float32Array;
@@ -159,6 +160,7 @@ export class ClientRenderEntityStateSlab {
     hudNameY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     contactShadowWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     contactShadowDepth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    renderScopePadding: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     maxHp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildEnergyRatio: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -240,6 +242,7 @@ export class ClientRenderEntityStateSlab {
     views.hudNameY[slot] = getUnitHudNameY(entity);
     views.contactShadowWidth[slot] = 0;
     views.contactShadowDepth[slot] = 0;
+    views.renderScopePadding[slot] = Math.max(350, views.radiusOther[slot]);
     views.hp[slot] = unit.hp;
     views.maxHp[slot] = unit.maxHp;
     views.buildEnergyRatio[slot] = buildable !== null
@@ -300,6 +303,10 @@ export class ClientRenderEntityStateSlab {
     views.hudNameY[slot] = getBuildingHudNameY(entity);
     views.contactShadowWidth[slot] = building.width;
     views.contactShadowDepth[slot] = building.height;
+    views.renderScopePadding[slot] = Math.max(
+      200,
+      Math.max(building.width, building.height) * 0.75,
+    );
     views.hp[slot] = building.hp;
     views.maxHp[slot] = building.maxHp;
     views.buildEnergyRatio[slot] = buildable !== null
@@ -334,6 +341,7 @@ export class ClientRenderEntityStateSlab {
     this.views.hudNameY[slot] = 0;
     this.views.contactShadowWidth[slot] = 0;
     this.views.contactShadowDepth[slot] = 0;
+    this.views.renderScopePadding[slot] = 0;
     this.views.groundContactEnabled[slot] = 0;
     this.views.unitBlueprintIds[slot] = undefined;
     this.views.buildingBlueprintIds[slot] = undefined;
@@ -370,6 +378,7 @@ export class ClientRenderEntityStateSlab {
     this.views.hudNameY.fill(0);
     this.views.contactShadowWidth.fill(0);
     this.views.contactShadowDepth.fill(0);
+    this.views.renderScopePadding.fill(0);
     this.views.groundContactEnabled.fill(0);
     this.views.unitBlueprintIds.length = 0;
     this.views.buildingBlueprintIds.length = 0;
@@ -401,6 +410,11 @@ export class ClientRenderEntityStateSlab {
       assertNear('hudBarsY', views.hudBarsY[slot], getUnitHudBarsY(entity));
       assertNear('hudNameY', views.hudNameY[slot], getUnitHudNameY(entity));
       assertNear(
+        'renderScopePadding',
+        views.renderScopePadding[slot],
+        Math.max(350, views.radiusOther[slot]),
+      );
+      assertNear(
         'groundContactEnabled',
         views.groundContactEnabled[slot],
         unit.suspension?.legContact === false ? 0 : 1,
@@ -424,6 +438,11 @@ export class ClientRenderEntityStateSlab {
       assertNear('hudNameY', views.hudNameY[slot], getBuildingHudNameY(entity));
       assertNear('contactShadowWidth', views.contactShadowWidth[slot], building.width);
       assertNear('contactShadowDepth', views.contactShadowDepth[slot], building.height);
+      assertNear(
+        'renderScopePadding',
+        views.renderScopePadding[slot],
+        Math.max(200, Math.max(building.width, building.height) * 0.75),
+      );
       assertNear('hp', views.hp[slot], building.hp);
       assertNear('maxHp', views.maxHp[slot], building.maxHp);
     }
@@ -462,6 +481,7 @@ export class ClientRenderEntityStateSlab {
       hudNameY: growFloat32(views.hudNameY, nextCapacity),
       contactShadowWidth: growFloat32(views.contactShadowWidth, nextCapacity),
       contactShadowDepth: growFloat32(views.contactShadowDepth, nextCapacity),
+      renderScopePadding: growFloat32(views.renderScopePadding, nextCapacity),
       hp: growFloat32(views.hp, nextCapacity),
       maxHp: growFloat32(views.maxHp, nextCapacity),
       buildEnergyRatio: growFloat32(views.buildEnergyRatio, nextCapacity),

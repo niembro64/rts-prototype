@@ -1400,6 +1400,22 @@ export class ClientViewState {
   }
 
   private entityInRenderScope3D(entity: Entity, renderScope: ViewportFootprint): boolean {
+    const slot = this.renderEntityState.getSlot(entity.id)
+      ?? this.renderEntityState.refreshEntity(entity);
+    const views = this.renderEntityState.getViews();
+    if (
+      slot !== undefined &&
+      (
+        views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT ||
+        views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING
+      )
+    ) {
+      return renderScope.inScope(
+        views.x[slot],
+        views.y[slot],
+        views.renderScopePadding[slot],
+      );
+    }
     return renderScope.inScope(
       entity.transform.x,
       entity.transform.y,
