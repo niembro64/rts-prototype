@@ -7,6 +7,10 @@ import {
 import { getBuildingCombatCenterZ } from './buildingAnchors';
 import {
   BUILDING_BLUEPRINT_CODE_UNKNOWN,
+  ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_VEL,
   PROJECTILE_TYPE_UNKNOWN,
   SHOT_BLUEPRINT_CODE_UNKNOWN,
   UNIT_BLUEPRINT_CODE_UNKNOWN,
@@ -44,6 +48,11 @@ export const ENTITY_SLOT_BUILD_FLAG_INTERRUPTED = 1 << 3;
 
 const INITIAL_KIND_CAPACITY = 1024;
 const EPSILON = 1e-9;
+const HOT_MOTION_DIRTY_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_NORMAL;
 
 export type EntityStateViews = {
   capacity: number;
@@ -406,7 +415,51 @@ export class EntitySlotRegistry {
 
   markDirty(entity: Entity, fields: number, teamId?: number): void {
     if (fields === 0) return;
+    if ((fields & ~HOT_MOTION_DIRTY_FIELDS) === 0) {
+      this.refreshHotMotionState(entity, fields, teamId);
+      return;
+    }
     this.refreshEntityState(entity, fields, teamId);
+  }
+
+  private refreshHotMotionState(entity: Entity, dirtyMask: number, teamId?: number): number {
+    const sim = this.sim();
+    if (sim === undefined) return -1;
+    const slot = this.slotForEntity(entity);
+    if (slot < 0) return slot;
+    this.ensureStateCapacity(sim, slot);
+    const views = this.ensureViews();
+    if (
+      views === null ||
+      slot >= views.capacity ||
+      views.entityId[slot] !== entity.id
+    ) {
+      return this.refreshEntityState(entity, dirtyMask, teamId);
+    }
+
+    if ((dirtyMask & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0) {
+      views.posX[slot] = entity.transform.x;
+      views.posY[slot] = entity.transform.y;
+      views.posZ[slot] = entity.transform.z;
+      views.rotation[slot] = entity.transform.rotation;
+    }
+
+    if ((dirtyMask & ENTITY_CHANGED_VEL) !== 0) {
+      const unit = entity.unit;
+      const projectile = entity.projectile;
+      views.velX[slot] = unit !== null
+        ? unit.velocityX
+        : projectile !== null ? projectile.velocityX : 0;
+      views.velY[slot] = unit !== null
+        ? unit.velocityY
+        : projectile !== null ? projectile.velocityY : 0;
+      views.velZ[slot] = unit !== null
+        ? unit.velocityZ
+        : projectile !== null ? projectile.velocityZ : 0;
+    }
+
+    sim.entityState.markDirty(slot, dirtyMask);
+    return slot;
   }
 
   setOwnership(entity: Entity, teamId?: number): void {

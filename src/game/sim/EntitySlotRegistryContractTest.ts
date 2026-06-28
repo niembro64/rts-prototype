@@ -1,4 +1,9 @@
-import { ENTITY_CHANGED_BUILDING, ENTITY_CHANGED_HP } from '../../types/network';
+import {
+  ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_VEL,
+} from '../../types/network';
 import { createProjectileConfigFromShot } from './projectileConfigs';
 import { spatialGrid } from './SpatialGrid';
 import { WorldState } from './WorldState';
@@ -57,6 +62,19 @@ export function runEntitySlotRegistryContractTest(): void {
     entitySlotRegistry.getSlot(reused.id) === firstSlot,
     'slot allocator must reuse freed spatial/entity slots',
   );
+  assertParity(reused);
+
+  assertContract(reused.unit !== null, 'reused unit must have a unit component');
+  reused.transform.x = 165;
+  reused.transform.y = 145;
+  reused.transform.z = 22;
+  reused.unit.velocityX = 4.5;
+  reused.unit.velocityY = -2.25;
+  reused.unit.velocityZ = 1.5;
+  world.markSnapshotDirty(reused.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+  const motionViews = requireViews();
+  assertContract(motionViews.posX[firstSlot] === 165, 'motion dirty update must refresh position x');
+  assertContract(motionViews.velY[firstSlot] === -2.25, 'motion dirty update must refresh velocity y');
   assertParity(reused);
 
   const building = world.createBuilding(
