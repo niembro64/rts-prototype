@@ -52,6 +52,7 @@ const PACKED_PROJECTILES_VERSION = 1;
 
 const VELOCITY_FLAG_CLEAR_HOMING = 0x01;
 const VELOCITY_FLAG_TARGET_ENTITY_ID = 0x02;
+const packedProjectileWireByDto = new WeakMap<object, PackedProjectileSnapshotWire>();
 
 function createEmptyProjectileSnapshot(): ProjectileSnapshot {
   return {
@@ -136,7 +137,16 @@ export function unpackProjectilesFromWire(
   if (despawns !== undefined) projectiles.despawns = despawns;
   if (velocityUpdates !== undefined) projectiles.velocityUpdates = velocityUpdates;
   if (beamUpdates !== undefined) projectiles.beamUpdates = beamUpdates;
+  packedProjectileWireByDto.set(projectiles, packed);
   return projectiles;
+}
+
+export function getPackedProjectileSnapshotWire(
+  projectiles: ProjectileSnapshot | undefined | null,
+): PackedProjectileSnapshotWire | undefined {
+  return projectiles !== undefined && projectiles !== null
+    ? packedProjectileWireByDto.get(projectiles)
+    : undefined;
 }
 
 export function isPackedProjectileSnapshotWire(
@@ -567,6 +577,22 @@ function unpackProjectileDespawns(
   return out;
 }
 
+export function forEachPackedProjectileDespawn(
+  packed: PackedProjectileSnapshotWire,
+  visitor: (id: number) => void,
+): boolean {
+  if (packed.d === undefined) return false;
+  const total = readPackedBinaryRowCount(packed.d);
+  if (total === 0) return true;
+  const reader = new PackedBinaryReader(packed.d);
+  let id = 0;
+  for (let i = 0; i < total; i++) {
+    id += reader.readVarInt();
+    visitor(id);
+  }
+  return true;
+}
+
 type VelocityGroup = {
   flags: number;
   writer: PackedBinaryWriter;
@@ -739,6 +765,58 @@ function unpackProjectileVelocityUpdates(
   }
   if (outIndex < out.length) out.length = outIndex;
   return out;
+}
+
+export type PackedProjectileVelocityUpdateVisitor = (
+  id: number,
+  qposX: number,
+  qposY: number,
+  qposZ: number,
+  qvelX: number,
+  qvelY: number,
+  qvelZ: number,
+  targetEntityId: number | null,
+  clearHomingTarget: boolean,
+) => void;
+
+export function forEachPackedProjectileVelocityUpdate(
+  packed: PackedProjectileSnapshotWire,
+  visitor: PackedProjectileVelocityUpdateVisitor,
+): boolean {
+  if (packed.u === undefined) return false;
+  const total = readPackedBinaryRowCount(packed.u);
+  if (total === 0) return true;
+  const reader = new PackedBinaryReader(packed.u);
+  const groupCount = reader.readVarUint();
+  for (let g = 0; g < groupCount; g++) {
+    const flags = reader.readVarUint();
+    const count = reader.readVarUint();
+    let id = 0;
+    const clearHomingTarget = (flags & VELOCITY_FLAG_CLEAR_HOMING) !== 0;
+    const hasTargetEntityId = (flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0;
+    for (let i = 0; i < count; i++) {
+      id += reader.readVarInt();
+      const qposX = reader.readVarInt();
+      const qposY = reader.readVarInt();
+      const qposZ = reader.readVarInt();
+      const qvelX = reader.readVarInt();
+      const qvelY = reader.readVarInt();
+      const qvelZ = reader.readVarInt();
+      const targetEntityId = hasTargetEntityId ? reader.readVarUint() : 0;
+      visitor(
+        id,
+        qposX,
+        qposY,
+        qposZ,
+        qvelX,
+        qvelY,
+        qvelZ,
+        targetEntityId > 0 ? targetEntityId : null,
+        clearHomingTarget,
+      );
+    }
+  }
+  return true;
 }
 
 function packBeamUpdates(

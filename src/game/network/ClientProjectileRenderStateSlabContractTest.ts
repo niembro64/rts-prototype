@@ -1,3 +1,4 @@
+import { encode as msgpackEncode } from '@msgpack/msgpack';
 import {
   projectileTypeToCode,
   shotBlueprintIdToCode,
@@ -12,6 +13,11 @@ import {
   quantizeRotation as qRot,
   quantizeVelocity as qVel,
 } from './snapshotQuantization';
+import { decodeNetworkSnapshot } from './snapshotWireCodec';
+import {
+  getPackedProjectileSnapshotWire,
+  packProjectilesForWire,
+} from './snapshotProjectileWirePack';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -133,6 +139,37 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
   assertContract(lists.traveling.length === 1 && lists.traveling[0].id === 301, 'wide scoped query keeps rocket');
   assertContract(lists.line.length === 1 && lists.line[0].id === 302, 'wide scoped query keeps beam');
   assertContract(lists.burnMark.length === 1 && lists.burnMark[0].id === 302, 'wide scoped query keeps beam burn mark');
+
+  const packedVelocitySnapshot = projectileSnapshot(2, undefined, [302]);
+  packedVelocitySnapshot.projectiles!.velocityUpdates = [{
+    id: 301,
+    pos: { x: qProjPos(125), y: qProjPos(140), z: qProjPos(35) },
+    velocity: { x: qVel(45), y: qVel(5), z: qVel(0) },
+    targetEntityId: 999,
+    clearHomingTarget: null,
+  }];
+  const packedProjectiles = packProjectilesForWire(packedVelocitySnapshot.projectiles);
+  assertContract(packedProjectiles !== undefined, 'test projectile update must pack for wire');
+  const decodedPackedVelocitySnapshot = decodeNetworkSnapshot(msgpackEncode({
+    ...packedVelocitySnapshot,
+    projectiles: packedProjectiles,
+  }, { ignoreUndefined: true }));
+  assertContract(
+    getPackedProjectileSnapshotWire(decodedPackedVelocitySnapshot.projectiles) !== undefined,
+    'decoded packed projectile snapshot must retain packed metadata',
+  );
+  decodedPackedVelocitySnapshot.projectiles!.despawns = undefined;
+  decodedPackedVelocitySnapshot.projectiles!.velocityUpdates = undefined;
+  view.applyNetworkState(decodedPackedVelocitySnapshot);
+  const packedUpdatedProjectile = view.getEntity(301)?.projectile;
+  assertContract(
+    packedUpdatedProjectile?.homingTargetId === 999,
+    'packed projectile velocity metadata must apply without DTO velocity rows',
+  );
+  assertContract(
+    view.getEntity(302) === undefined,
+    'packed projectile despawn metadata must apply without DTO despawn rows',
+  );
 
   view.applyNetworkState(projectileSnapshot(2, undefined, [301, 302]));
   current = view.collectProjectileRenderLists(null, lists);

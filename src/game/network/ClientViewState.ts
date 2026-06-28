@@ -84,6 +84,11 @@ import {
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
+import {
+  forEachPackedProjectileDespawn,
+  forEachPackedProjectileVelocityUpdate,
+  getPackedProjectileSnapshotWire,
+} from './snapshotProjectileWirePack';
 import type { EntityHudElement, EntityHudType, SelectionHudMode } from '@/clientBarConfig';
 import { getDefaultPlayerName } from '@/playerNamesConfig';
 import { NAME_LABEL_OWNER_Y_OFFSET } from '@/nameLabelConfig';
@@ -430,6 +435,51 @@ export class ClientViewState {
     target.angularVelocityZ = null;
     target.turrets.length = 0;
     target.updatedAtMs = now;
+  }
+
+  private applyProjectileVelocityUpdateFields(
+    id: EntityId,
+    qposX: number,
+    qposY: number,
+    qposZ: number,
+    qvelX: number,
+    qvelY: number,
+    qvelZ: number,
+    targetEntityId: EntityId | null,
+    clearHomingTarget: boolean,
+    now: number,
+    reflectedProjectileIds: Set<EntityId>,
+  ): void {
+    const entity = this.entities.get(id);
+    if (entity === undefined || entity.projectile === null) return;
+
+    const x = deqProjPos(qposX);
+    const y = deqProjPos(qposY);
+    const z = deqProjPos(qposZ);
+    const velocityX = deqVel(qvelX);
+    const velocityY = deqVel(qvelY);
+    const velocityZ = deqVel(qvelZ);
+    const shouldSmoothRocket =
+      entity.projectile.config.shotProfile.runtime.isRocketLike === true &&
+      !reflectedProjectileIds.has(id);
+    if (shouldSmoothRocket) {
+      this.writeRocketVelocityTarget(id, x, y, z, velocityX, velocityY, velocityZ, now);
+    } else {
+      entity.transform.x = x;
+      entity.transform.y = y;
+      entity.transform.z = z;
+      entity.projectile.velocityX = velocityX;
+      entity.projectile.velocityY = velocityY;
+      entity.projectile.velocityZ = velocityZ;
+      this.serverTargets.delete(id);
+      this.clearTargetPredictionAccum(id);
+    }
+    if (targetEntityId !== null) {
+      entity.projectile.homingTargetId = targetEntityId;
+    } else if (clearHomingTarget) {
+      entity.projectile.homingTargetId = NO_ENTITY_ID;
+    }
+    this.projectileStore.markVelocityUpdateActive(entity, id);
   }
 
   private copyNetworkTurretsToTarget(
@@ -1100,6 +1150,7 @@ export class ClientViewState {
 
     const projectiles = state.projectiles;
     if (projectiles !== undefined && projectiles !== null) {
+      const packedProjectiles = getPackedProjectileSnapshotWire(projectiles);
       const spawns = projectiles.spawns;
 
       // Process projectile spawn events
@@ -1124,7 +1175,13 @@ export class ClientViewState {
       }
 
       // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
-      const despawns = projectiles.despawns;
+      const appliedPackedDespawns = packedProjectiles !== undefined
+        ? forEachPackedProjectileDespawn(
+            packedProjectiles,
+            (id) => this.deleteEntityLocalState(id as EntityId),
+          )
+        : false;
+      const despawns = appliedPackedDespawns ? undefined : projectiles.despawns;
       if (despawns !== undefined && despawns !== null) {
         for (const despawn of despawns) {
           this.deleteEntityLocalState(despawn.id);
@@ -1136,39 +1193,50 @@ export class ClientViewState {
       // course corrections become EMA targets: the render-side projectile
       // keeps dead-reckoning, while ClientProjectilePrediction advances the
       // target and drifts position + velocity toward it each frame.
-      const velocityUpdates = projectiles.velocityUpdates;
+      const appliedPackedVelocityUpdates = packedProjectiles !== undefined
+        ? forEachPackedProjectileVelocityUpdate(
+            packedProjectiles,
+            (
+              id,
+              qposX,
+              qposY,
+              qposZ,
+              qvelX,
+              qvelY,
+              qvelZ,
+              targetEntityId,
+              clearHomingTarget,
+            ) => this.applyProjectileVelocityUpdateFields(
+              id as EntityId,
+              qposX,
+              qposY,
+              qposZ,
+              qvelX,
+              qvelY,
+              qvelZ,
+              targetEntityId as EntityId | null,
+              clearHomingTarget,
+              now,
+              reflectedProjectileIds,
+            ),
+          )
+        : false;
+      const velocityUpdates = appliedPackedVelocityUpdates ? undefined : projectiles.velocityUpdates;
       if (velocityUpdates !== undefined && velocityUpdates !== null) {
         for (const vu of velocityUpdates) {
-          const entity = this.entities.get(vu.id);
-          if (entity !== undefined && entity.projectile !== null) {
-            const x = deqProjPos(vu.pos.x);
-            const y = deqProjPos(vu.pos.y);
-            const z = deqProjPos(vu.pos.z);
-            const velocityX = deqVel(vu.velocity.x);
-            const velocityY = deqVel(vu.velocity.y);
-            const velocityZ = deqVel(vu.velocity.z);
-            const shouldSmoothRocket =
-              entity.projectile.config.shotProfile.runtime.isRocketLike === true &&
-              !reflectedProjectileIds.has(vu.id);
-            if (shouldSmoothRocket) {
-              this.writeRocketVelocityTarget(vu.id, x, y, z, velocityX, velocityY, velocityZ, now);
-            } else {
-              entity.transform.x = x;
-              entity.transform.y = y;
-              entity.transform.z = z;
-              entity.projectile.velocityX = velocityX;
-              entity.projectile.velocityY = velocityY;
-              entity.projectile.velocityZ = velocityZ;
-              this.serverTargets.delete(vu.id);
-              this.clearTargetPredictionAccum(vu.id);
-            }
-            if (vu.targetEntityId !== null) {
-              entity.projectile.homingTargetId = vu.targetEntityId;
-            } else if (vu.clearHomingTarget === true) {
-              entity.projectile.homingTargetId = NO_ENTITY_ID;
-            }
-            this.projectileStore.markVelocityUpdateActive(entity, vu.id);
-          }
+          this.applyProjectileVelocityUpdateFields(
+            vu.id,
+            vu.pos.x,
+            vu.pos.y,
+            vu.pos.z,
+            vu.velocity.x,
+            vu.velocity.y,
+            vu.velocity.z,
+            vu.targetEntityId,
+            vu.clearHomingTarget === true,
+            now,
+            reflectedProjectileIds,
+          );
         }
       }
     }
