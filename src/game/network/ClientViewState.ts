@@ -76,6 +76,7 @@ import {
   type ClientProjectileRenderLists,
 } from './ClientProjectileStore';
 import { ClientEntityStore } from './ClientEntityStore';
+import { ClientEntityIdSet } from './ClientEntityIdSet';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
@@ -281,12 +282,12 @@ export class ClientViewState {
   private projectileCacheDirty = false;
 
   private predictionCadence = new ClientPredictionCadence();
-  private activeEntityPredictionIds: Set<EntityId> = new Set();
-  private dirtyUnitRenderIds: Set<EntityId> = new Set();
-  private dirtyBuildingRenderIds: Set<EntityId> = new Set();
+  private activeEntityPredictionIds: Set<EntityId> = new ClientEntityIdSet();
+  private dirtyUnitRenderIds: Set<EntityId> = new ClientEntityIdSet();
+  private dirtyBuildingRenderIds: Set<EntityId> = new ClientEntityIdSet();
   private removedUnitRenderIds: EntityId[] = [];
   private removedBuildingRenderIds: EntityId[] = [];
-  private renderLifecycleDirtyIds: Set<EntityId> = new Set();
+  private renderLifecycleDirtyIds: Set<EntityId> = new ClientEntityIdSet();
   private predictionSupportSurfaceEntities: Entity[] = [];
   private predictionSupportSurfaceEntityIds = new Set<EntityId>();
   private selectionState = new ClientSelectionState(

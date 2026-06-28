@@ -4371,6 +4371,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientSnapshotApplierContractTest();
         const { runClientEntityStoreContractTest } = await import('../network/ClientEntityStoreContractTest');
         runClientEntityStoreContractTest();
+        const { runClientEntityIdSetContractTest } = await import('../network/ClientEntityIdSetContractTest');
+        runClientEntityIdSetContractTest();
         const { runSnapshotVisibilityContractTest } = await import('../network/SnapshotVisibilityContractTest');
         runSnapshotVisibilityContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');

@@ -45,6 +45,7 @@ import {
   ClientProjectileRenderStateSlab,
   type ClientProjectileRenderStateViews,
 } from './ClientProjectileRenderStateSlab';
+import { ClientEntityIdSet } from './ClientEntityIdSet';
 
 export type { ClientProjectileRenderLists } from './ClientProjectileRenderSpatialIndex';
 
@@ -58,8 +59,8 @@ const PROJECTILE_RENDER_SCOPE_PADDING = 250;
 
 export class ClientProjectileStore {
   readonly beamPathTargets = new Map<EntityId, BeamPathTarget>();
-  readonly activeBeamPathIds = new Set<EntityId>();
-  readonly activeProjectilePredictionIds = new Set<EntityId>();
+  readonly activeBeamPathIds = new ClientEntityIdSet();
+  readonly activeProjectilePredictionIds = new ClientEntityIdSet();
   readonly projectileSpawns = new ProjectileSpawnQueue();
 
   private lineProjectileRenderVersion = 0;
