@@ -1282,7 +1282,9 @@ export class ClientViewState {
         : undefined;
     if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
+        const typedEntityKind = typedEntityWireSource?.kinds[entityIndex] ?? 0;
         if (
+          typedEntityKind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC &&
           this.tryApplyBasicTypedDeltaWireRow(
             typedEntityWireSource,
             entityIndex,
@@ -1294,6 +1296,7 @@ export class ClientViewState {
           continue;
         }
         if (
+          typedEntityKind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT &&
           this.tryApplyUnitTypedDeltaWireRow(
             typedEntityWireSource,
             entityIndex,
@@ -1305,6 +1308,7 @@ export class ClientViewState {
           continue;
         }
         if (
+          typedEntityKind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING &&
           this.tryApplyBuildingTypedDeltaWireRow(
             typedEntityWireSource,
             entityIndex,
