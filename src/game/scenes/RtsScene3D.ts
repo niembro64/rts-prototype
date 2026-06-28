@@ -10,6 +10,7 @@ import {
   type RtsScene3DSnapshotPayloadSizeStats,
   type RtsScene3DSnapshotRateStats,
 } from './helpers/RtsScene3DSnapshotIntake';
+import type { SnapshotMaterializationMetadata } from '../network/snapshotMaterializationMetadata';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { buildEconomyInfo } from './helpers';
 import type { EconomyInfo, MinimapData, SelectionInfo } from './helpers';
@@ -1307,6 +1308,10 @@ export class RtsScene3D {
 
   public getSnapshotApplyStats(): RtsScene3DSnapshotApplyStats {
     return this.snapshotIntake.getSnapshotApplyStats();
+  }
+
+  public drainSnapshotMaterializationMetadata(out: SnapshotMaterializationMetadata[]): void {
+    this.snapshotIntake.drainSnapshotMaterializationMetadata(out);
   }
 
   /**

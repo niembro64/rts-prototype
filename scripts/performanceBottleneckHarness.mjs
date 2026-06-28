@@ -247,6 +247,7 @@ function printReport(report) {
       `${fmt(report.fullStack.snapshotProjectileDeltaSps?.p95)} ` +
       cadenceTargetsText(report),
   );
+  printSnapshotMaterializationStats('  materialization', report.fullStack.snapshotMaterializationStats);
   console.log(`  server CPU avg/hi p95: ${fmt(report.fullStack.serverCpuAvgPct.p95)}% / ${fmt(report.fullStack.serverCpuHiPct.p95)}%`);
   console.log(`  draw calls/triangles p95: ${fmt(report.fullStack.drawCalls.p95)} / ${fmt(report.fullStack.triangles.p95)}`);
   console.log(`  buffer upload bytes/calls p95: ${fmt(report.fullStack.bufferUploadBytes.p95)} / ${fmt(report.fullStack.bufferUploadCalls.p95)}`);
@@ -321,6 +322,7 @@ function printSuiteReport(report) {
         cadenceTargetsText(scenario) + ', ' +
         `longtask p95=${fmt(scenario.fullStack.longtaskMsPerSec.p95)}ms/s`,
     );
+    printSnapshotMaterializationStats('  full-stack materialization', scenario.fullStack.snapshotMaterializationStats);
     console.log(
       `  JS/WASM boundary sim/snapshot/full=${fmt(scenario.simOnly.wasmBoundary.totalMs)}/` +
         `${fmt(scenario.simSnapshot.wasmBoundary.totalMs)}/` +

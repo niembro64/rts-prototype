@@ -162,6 +162,7 @@ type FullStackReport = {
   readonly snapshotBytes: NumericSummary;
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
+  readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
 
@@ -616,6 +617,8 @@ async function runFullStack(
     const renderPhaseLineProjectileRows: number[] = [];
     const longtaskMsPerSec: number[] = [];
     const snapshotBytes: number[] = [];
+    const snapshotMaterializationSamples = createSnapshotMaterializationAccumulator();
+    const drainedSnapshotMaterialization: SnapshotMaterializationMetadata[] = [];
     let runtimeProfile = 'unknown';
     let gpuTimerSupported = false;
     let activePixelRatio = 1;
@@ -632,6 +635,15 @@ async function runFullStack(
       const snapshotStats = scene.getSnapshotStats();
       const meta = clientViewState.getServerMeta();
       const snapSize = scene.getSnapshotPayloadSizeStats();
+      scene.drainSnapshotMaterializationMetadata(drainedSnapshotMaterialization);
+      for (let i = 0; i < drainedSnapshotMaterialization.length; i++) {
+        recordSnapshotMaterializationSample(
+          snapshotMaterializationSamples,
+          drainedSnapshotMaterialization[i],
+          0,
+        );
+      }
+      drainedSnapshotMaterialization.length = 0;
 
       runtimeProfile = timing.runtimeProfile;
       gpuTimerSupported = timing.gpuTimerSupported;
@@ -679,8 +691,23 @@ async function runFullStack(
       snapshotBytes.push(snapSize.avgBytes);
       memory.sample();
     }
+    const scene = game.getScene();
+    if (scene !== null) {
+      scene.drainSnapshotMaterializationMetadata(drainedSnapshotMaterialization);
+      for (let i = 0; i < drainedSnapshotMaterialization.length; i++) {
+        recordSnapshotMaterializationSample(
+          snapshotMaterializationSamples,
+          drainedSnapshotMaterialization[i],
+          0,
+        );
+      }
+      drainedSnapshotMaterialization.length = 0;
+    }
 
     const snapshotWireStats = readSnapshotWireStats();
+    const snapshotMaterializationStats = summarizeSnapshotMaterialization(
+      snapshotMaterializationSamples,
+    );
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
       units: clientViewState.getUnits().length,
@@ -733,6 +760,7 @@ async function runFullStack(
       snapshotBytes: summarize(snapshotBytes),
       memory: memory.finish(),
       wasmBoundary,
+      snapshotMaterializationStats,
       snapshotWireStats,
     };
   } finally {
@@ -933,6 +961,11 @@ function diagnose(input: {
     input.simSnapshot.snapshotMaterializationStats,
   );
   if (materializationEvidence !== '') evidence.push(materializationEvidence);
+  const fullStackMaterializationEvidence = formatSnapshotMaterializationEvidence(
+    input.fullStack.snapshotMaterializationStats,
+    'full-stack snapshot materialization',
+  );
+  if (fullStackMaterializationEvidence !== '') evidence.push(fullStackMaterializationEvidence);
   evidence.push(
     `full frame p95 ${fmt(frameP95)}ms, render prep p95 ${fmt(renderPrepP95)}ms, ` +
       `gpu p95 ${fmt(gpuP95)}ms`,
@@ -1015,6 +1048,7 @@ function diagnose(input: {
 
 function formatSnapshotMaterializationEvidence(
   stats: SnapshotMaterializationStatsReport | undefined,
+  label = 'snapshot materialization',
 ): string {
   if (stats === undefined || stats.all.topStages.length === 0) return '';
   const top = stats.all.topStages.slice(0, 4).map((stage) =>
@@ -1024,7 +1058,7 @@ function formatSnapshotMaterializationEvidence(
   const totalPart = total !== undefined
     ? `total avg ${fmt(total.avg)}ms/p95 ${fmt(total.p95)}ms; `
     : '';
-  return `snapshot materialization ${totalPart}top stages: ${top}`;
+  return `${label} ${totalPart}top stages: ${top}`;
 }
 
 function countCoreEntities(core: ReturnType<GameServer['getLockstepSimulationCore']>): {

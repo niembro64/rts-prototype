@@ -7,7 +7,11 @@ import type {
   NetworkServerSnapshotSimEvent,
 } from '../../network/NetworkTypes';
 import { getSnapshotWireBytes } from '../../network/snapshotWireMetadata';
-import { addSnapshotClientMaterializationStage } from '../../network/snapshotMaterializationMetadata';
+import {
+  addSnapshotClientMaterializationStage,
+  getSnapshotMaterializationMetadata,
+  type SnapshotMaterializationMetadata,
+} from '../../network/snapshotMaterializationMetadata';
 import type { GameConnection } from '../../server/GameConnection';
 import type { PlayerId } from '../../sim/types';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../../SnapshotCadenceRegression';
@@ -129,6 +133,7 @@ export class RtsScene3DSnapshotIntake {
   private startupSnapshotApplied = false;
   private startupReleased = false;
   private readonly syncEconomyFromSnapshots: boolean;
+  private readonly materializationMetadataSamples: SnapshotMaterializationMetadata[] = [];
 
   constructor(
     private readonly clientViewState: ClientViewState,
@@ -169,6 +174,10 @@ export class RtsScene3DSnapshotIntake {
     });
     const applyMs = performance.now() - applyStart;
     addSnapshotClientMaterializationStage(state, 'clientApply', applyMs);
+    const materializationMetadata = getSnapshotMaterializationMetadata(state);
+    if (materializationMetadata !== undefined) {
+      this.materializationMetadataSamples.push(materializationMetadata);
+    }
     this.recordSnapshotApply(kind, applyMs);
     if (!this.startupReadyAckSent) this.startupSnapshotApplied = true;
 
@@ -301,8 +310,16 @@ export class RtsScene3DSnapshotIntake {
     };
   }
 
+  drainSnapshotMaterializationMetadata(out: SnapshotMaterializationMetadata[]): void {
+    for (let i = 0; i < this.materializationMetadataSamples.length; i++) {
+      out.push(this.materializationMetadataSamples[i]);
+    }
+    this.materializationMetadataSamples.length = 0;
+  }
+
   clear(): void {
     this.snapshotBuffer.clear();
+    this.materializationMetadataSamples.length = 0;
   }
 
   private recordSnapshotArrival(now: number, kind: RtsScene3DSnapshotTrafficKind): void {
