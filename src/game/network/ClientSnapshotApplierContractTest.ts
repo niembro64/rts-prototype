@@ -22,11 +22,14 @@ import { refreshUnitActionHash } from '../sim/unitActions';
 import { createBuildable } from '../sim/buildableHelpers';
 import {
   appendEntitySnapshotWireRowDirect,
+  getEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
   serializeEntityDeltaSnapshot,
   serializeEntitySnapshot,
 } from './stateSerializerEntities';
+import { encodeNetworkSnapshotWithRustFallback } from './snapshotRustWireEncoder';
+import { decodeNetworkSnapshot } from './snapshotWireCodec';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -472,6 +475,51 @@ export function runClientSnapshotApplierContractTest(): void {
     'typed unit motion placeholder rows must apply from wire rows before DTO fallback',
   );
 
+  wireMotionEntity.transform.x = 180;
+  const metadataOnlyPackedMotionRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(metadataOnlyPackedMotionRows);
+  const metadataOnlyPackedMotionRow = serializeEntityDeltaSnapshot(
+    wireMotionEntity,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL,
+    {} as WorldState,
+  );
+  if (metadataOnlyPackedMotionRow !== null) {
+    metadataOnlyPackedMotionRows.push(metadataOnlyPackedMotionRow);
+  }
+  const encodedPackedMotion = encodeNetworkSnapshotWithRustFallback(
+    snapshot(5, metadataOnlyPackedMotionRows),
+  );
+  if (encodedPackedMotion === null) {
+    throw new Error('[client snapshot applier contract] packed motion fixture must encode');
+  }
+  assertContract(
+    encodedPackedMotion.rustEntityCount === metadataOnlyPackedMotionRows.length,
+    'packed metadata-only motion fixture must encode through compact entity rows',
+  );
+  const decodedPackedMotion = decodeNetworkSnapshot(encodedPackedMotion.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  assertContract(
+    decodedPackedMotion.entities[0]?.pos === null &&
+      decodedPackedMotion.entities[0]?.unit === null,
+    'packed metadata-only motion decode must omit DTO fields',
+  );
+  assertContract(
+    getEntitySnapshotWireSource(decodedPackedMotion.entities) !== undefined,
+    'packed metadata-only motion decode must expose typed wire rows',
+  );
+  const metadataOnlyPackedMotionStats = view.applyNetworkState(decodedPackedMotion, {
+    syncEconomy: undefined,
+    collectCorrectionStats: true,
+  });
+  resetEntitySnapshotPool();
+  assertContract(
+    metadataOnlyPackedMotionStats.correction.count === 1 &&
+      metadataOnlyPackedMotionStats.correction.totalDistance > 150,
+    'packed metadata-only motion rows must apply from decoded wire rows',
+  );
+
   if (wireMotionEntity.unit === null) {
     throw new Error('[client snapshot applier contract] typed HP source unit must have a unit component');
   }
@@ -688,6 +736,49 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     turretView.getEntity(400)?.combat?.turrets[0]?.target === 77,
     'typed unit turret rows must update turret target before DTO fallback',
+  );
+  turretView.assertRenderEntityStateParity(400);
+
+  turretSource.combat!.turrets[0].target = 88;
+  const metadataOnlyPackedTurretRows = [turretSparseEntity(400)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(metadataOnlyPackedTurretRows);
+  appendEntitySnapshotWireRowDirect(
+    turretSource,
+    ENTITY_CHANGED_TURRETS,
+    {} as WorldState,
+  );
+  const encodedPackedTurret = encodeNetworkSnapshotWithRustFallback(
+    snapshot(3, metadataOnlyPackedTurretRows),
+  );
+  if (encodedPackedTurret === null) {
+    throw new Error('[client snapshot applier contract] packed turret fixture must encode');
+  }
+  assertContract(
+    encodedPackedTurret.rustEntityCount === metadataOnlyPackedTurretRows.length,
+    'packed metadata-only turret fixture must encode through compact entity rows',
+  );
+  const decodedPackedTurret = decodeNetworkSnapshot(encodedPackedTurret.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  assertContract(
+    decodedPackedTurret.entities[0]?.unit === null,
+    'packed metadata-only turret decode must omit DTO turret fields',
+  );
+  assertContract(
+    getEntitySnapshotWireSource(decodedPackedTurret.entities) !== undefined,
+    'packed metadata-only turret decode must expose typed wire rows',
+  );
+  const clientPackedTurret = turretView.getEntity(400)?.combat?.turrets[0];
+  if (clientPackedTurret === undefined) {
+    throw new Error('[client snapshot applier contract] packed turret fixture must remain hydrated');
+  }
+  clientPackedTurret.target = null;
+  turretView.applyNetworkState(decodedPackedTurret);
+  resetEntitySnapshotPool();
+  assertContract(
+    turretView.getEntity(400)?.combat?.turrets[0]?.target === 88,
+    'packed metadata-only turret rows must apply from decoded wire rows',
   );
   turretView.assertRenderEntityStateParity(400);
 }

@@ -148,6 +148,10 @@ export class LocalGameConnection implements GameConnection {
         this.snapshotCallback !== null && !this.snapshotImpairment.enabled
           ? 'metadata-only'
           : 'dto',
+      packedEntityDeltas:
+        this.snapshotCallback !== null && !this.snapshotImpairment.enabled
+          ? 'metadata-only'
+          : 'dto',
     });
     setSnapshotWireBytes(decoded, encoded.bytes.byteLength);
     copySnapshotMaterializationMetadata(state, decoded);

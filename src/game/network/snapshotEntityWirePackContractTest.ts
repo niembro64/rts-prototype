@@ -188,6 +188,36 @@ export function runSnapshotEntityWirePackContractTest(): void {
       movementSource.unitRows.values[movementWireBase + 23] === 1,
     'movement-normal typed row metadata must mirror compact decoded fields',
   );
+  const metadataOnlyMovementEntities = unpackEntitiesFromWire(
+    {
+      v: PACKED_ENTITIES_VERSION_V13,
+      m: createPackedMovementRowWithNormal(),
+      t: undefined,
+      e: undefined,
+    },
+    { materializeTypedDeltas: false },
+  );
+  const metadataOnlyMovement = metadataOnlyMovementEntities[0];
+  assertContract(
+    metadataOnlyMovement?.id === 303 &&
+      metadataOnlyMovement.pos === null &&
+      metadataOnlyMovement.unit === null,
+    'metadata-only movement decode must keep a placeholder entity without DTO fields',
+  );
+  const metadataOnlyMovementSource = getEntitySnapshotWireSource(metadataOnlyMovementEntities);
+  assertContract(
+    metadataOnlyMovementSource !== undefined &&
+      metadataOnlyMovementSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    'metadata-only movement decode must preserve typed entity wire metadata',
+  );
+  const metadataOnlyMovementWireBase =
+    metadataOnlyMovementSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  assertContract(
+    metadataOnlyMovementSource.unitRows.values[metadataOnlyMovementWireBase + 1] === 1000 &&
+      metadataOnlyMovementSource.unitRows.values[metadataOnlyMovementWireBase + 8] === 88.5 &&
+      metadataOnlyMovementSource.unitRows.values[metadataOnlyMovementWireBase + 23] === 1,
+    'metadata-only movement typed row metadata must mirror compact decoded fields',
+  );
 
   const turretEntities = unpackEntitiesFromWire({
     v: PACKED_ENTITIES_VERSION_V13,
@@ -217,6 +247,39 @@ export function runSnapshotEntityWirePackContractTest(): void {
       turretSource.turretRows.values[turretWireBase + 7] === 606 &&
       turretSource.turretRows.values[turretWireBase + 9] === 88,
     'unit-turret typed row metadata must mirror compact decoded fields',
+  );
+  const metadataOnlyTurretEntities = unpackEntitiesFromWire(
+    {
+      v: PACKED_ENTITIES_VERSION_V13,
+      m: undefined,
+      t: createPackedTurretRow(),
+      e: undefined,
+    },
+    { materializeTypedDeltas: false },
+  );
+  const metadataOnlyTurret = metadataOnlyTurretEntities[0];
+  assertContract(
+    metadataOnlyTurret?.id === 505 &&
+      metadataOnlyTurret.changedFields === ENTITY_CHANGED_TURRETS &&
+      metadataOnlyTurret.unit === null,
+    'metadata-only turret decode must keep a placeholder entity without DTO turret fields',
+  );
+  const metadataOnlyTurretSource = getEntitySnapshotWireSource(metadataOnlyTurretEntities);
+  assertContract(
+    metadataOnlyTurretSource !== undefined &&
+      metadataOnlyTurretSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    'metadata-only turret decode must preserve typed entity wire metadata',
+  );
+  const metadataOnlyTurretUnitWireBase =
+    metadataOnlyTurretSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  const metadataOnlyTurretWireBase =
+    metadataOnlyTurretSource.unitRows.values[metadataOnlyTurretUnitWireBase + 49] *
+    ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+  assertContract(
+    metadataOnlyTurretSource.unitRows.values[metadataOnlyTurretUnitWireBase + 43] === 1 &&
+      metadataOnlyTurretSource.turretRows.values[metadataOnlyTurretWireBase + 7] === 606 &&
+      metadataOnlyTurretSource.turretRows.values[metadataOnlyTurretWireBase + 9] === 88,
+    'metadata-only turret typed row metadata must mirror compact decoded fields',
   );
 
   const v6Bytes = encodeEntitiesV6Bytes(createV6MovementNormalSource());

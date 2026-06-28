@@ -220,7 +220,10 @@ export class WorkerGameServerConnection implements GameConnection {
 
   private receiveSnapshot(bytes: ArrayBuffer): void {
     const byteLength = bytes.byteLength;
-    const snapshot = decodeNetworkSnapshot(bytes, { packedProjectileDeltas: 'metadata-only' });
+    const snapshot = decodeNetworkSnapshot(bytes, {
+      packedProjectileDeltas: 'metadata-only',
+      packedEntityDeltas: 'metadata-only',
+    });
     setSnapshotWireBytes(snapshot, byteLength);
     this.snapshotsDecoded++;
     if (this.snapshotCallback !== null) {

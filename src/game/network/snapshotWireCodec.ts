@@ -96,6 +96,7 @@ type EncodedNetworkSnapshot = Omit<SnapshotWirePayload, 'encodeMs'>;
 
 export type DecodeNetworkSnapshotOptions = {
   packedProjectileDeltas?: 'dto' | 'metadata-only';
+  packedEntityDeltas?: 'dto' | 'metadata-only';
 };
 
 export type SnapshotWireBreakdownEntry = {
@@ -288,7 +289,12 @@ function unpackNetworkSnapshotFromWire(
     );
   }
   if (hasPackedEntities) {
-    snapshot.entities = unpackEntitiesFromWire(entities);
+    snapshot.entities = unpackEntitiesFromWire(
+      entities,
+      options.packedEntityDeltas === 'metadata-only'
+        ? { materializeTypedDeltas: false }
+        : undefined,
+    );
   }
   if (hasPackedTerrain) {
     snapshot.terrain = unpackTerrainFromWire(terrain);
