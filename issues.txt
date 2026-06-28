@@ -19,6 +19,54 @@ Please always commit and push before and after any code changes we make.
 
 
 
+[17] Optimization - make snapshot telemetry distinguish full snapshots and deltas
+    Preserve gameplay exactly. The client bar's SPS readout currently counts
+    full/rich presentation snapshots and sparse entity/projectile delta
+    snapshots as one rate, which makes the 5 Hz presentation target look
+    contradictory when delta traffic reaches ~30 Hz. Split telemetry and UI
+    diagnostics into full/rich SPS, delta SPS, total SPS, bytes by snapshot
+    kind, emit/materialization ms by kind, and ClientViewState apply ms by
+    kind. The UI should make clear which path is capped by
+    architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz and which
+    path is opportunistic per-tick presentation delta traffic.
+
+[18] Optimization - profile and reduce presentation snapshot materialization cost
+    Preserve snapshot content and deterministic-lockstep truth. Add timing
+    breakdowns inside snapshot emit for visibility collection, entity DTO
+    materialization, projectile serialization, minimap/economy/resource rows,
+    object clone/merge, optional wire encode, and client apply. Use those
+    measurements to remove avoidable object graph work, repeated scans, and
+    render-irrelevant fields from high-frequency snapshots without changing
+    gameplay or replay checksums.
+
+[19] Optimization - stop using 30 Hz JS DTO snapshots as the local motion path
+    Preserve visual smoothness and projectile/audio event timing. Rich
+    presentation snapshots should remain around the configured cadence, but
+    local lockstep render motion should not require per-tick NetworkServerSnapshot
+    entity DTO materialization for hundreds or thousands of units. Either
+    throttle sparse entity-motion deltas to an intentional lower cadence with
+    interpolation, or replace them with direct reads from canonical slot-indexed
+    state. Keep immediate event delivery for projectile spawn/despawn/audio
+    where latency matters.
+
+[20] Optimization - route render-facing high-count state through canonical slabs
+    Preserve current visuals until explicit visual-quality issues say otherwise.
+    As [23], [30], and [31] mature, render packet construction should read
+    stable slot-indexed typed state and dirty ranges for transforms, velocity,
+    turret pose, hp/build state, ownership, and visibility instead of rebuilding
+    object-derived packets from snapshot DTOs every frame. JS Entity objects may
+    remain compatibility/debug views, but they should not be the high-count
+    render truth.
+
+[21] Optimization - central primitive geometry quality and LOD config
+    Preserve gameplay exactly; this is visual/render performance only. Audit all
+    Three.js sphere/cylinder/cone/capsule primitive creation and replace
+    scattered high-segment geometry with shared cached primitives selected from
+    a central quality config by role (unit body, turret, projectile, shield,
+    building detail, resource, debug). Add close/mid/far LOD tiers and validate
+    quality from gameplay camera distances. Smooth high-poly spheres should be
+    reserved for cases where they materially improve the shipped view.
+
 [16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
     USER / in-app eyes only: build a Hippo and tune swim/float/sink +
     walk-on-bottom feel. Starter knobs: waterForce, waterTraction,

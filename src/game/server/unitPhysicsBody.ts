@@ -67,6 +67,7 @@ export function createPhysicsBodyForUnit(
   body.vx = Number.isFinite(entity.unit.velocityX) ? entity.unit.velocityX : 0;
   body.vy = Number.isFinite(entity.unit.velocityY) ? entity.unit.velocityY : 0;
   body.vz = Number.isFinite(entity.unit.velocityZ) ? entity.unit.velocityZ : 0;
+  world.refreshEntitySlotState(entity);
 
   if (options !== undefined && options.ignoreOverlappingBuildings === true) {
     const padding = options.overlapPadding !== undefined ? options.overlapPadding : 0;

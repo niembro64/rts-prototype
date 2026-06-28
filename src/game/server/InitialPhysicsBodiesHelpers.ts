@@ -14,7 +14,7 @@ import { createPhysicsBodyForUnit } from './unitPhysicsBody';
 // Pass 1: create building bodies (buildings + towers share static
 // cuboid bodies — towers are buildings-with-turrets structurally).
 export function createBuildingBodiesForEntities(
-  _world: WorldState,
+  world: WorldState,
   physics: PhysicsEngine3D,
   entities: Entity[],
 ): void {
@@ -41,6 +41,7 @@ export function createBuildingBodiesForEntities(
         entity.id,
       );
       entity.body = { physicsBody: body };
+      world.refreshEntitySlotState(entity);
     }
   }
 }

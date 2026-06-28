@@ -748,6 +748,7 @@ function createActiveFactoryNear(core: ServerSimulationCore, builder: Entity): E
     factory.id,
   );
   factory.body = { physicsBody: body };
+  core.world.refreshEntitySlotState(factory);
   return factory;
 }
 

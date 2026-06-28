@@ -177,6 +177,7 @@ export class ServerSimulationCore {
           entity.id,
         );
         entity.body = { physicsBody: body };
+        this.world.refreshEntitySlotState(entity);
       }
     };
 

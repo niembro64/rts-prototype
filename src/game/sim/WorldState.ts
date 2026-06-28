@@ -57,6 +57,7 @@ import {
   createUnitFromBlueprintEntity,
   type CreateUnitFromBlueprintOptions,
 } from './WorldUnitFactory';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 
 const EMPTY_PLAYER_SET: ReadonlySet<PlayerId> = new Set();
 
@@ -345,6 +346,12 @@ export class WorldState {
     this.entityMetadata.markEntityDead(entity);
   }
 
+  refreshEntitySlotState(entity: Entity, dirtyFields = 0): void {
+    const ownership = entity.ownership;
+    const teamId = ownership !== null ? this.getTeamId(ownership.playerId) : undefined;
+    entitySlotRegistry.refreshEntityState(entity, dirtyFields, teamId);
+  }
+
   // Get current tick
   getTick(): number {
     return this.tick;
@@ -373,6 +380,7 @@ export class WorldState {
   addEntity(entity: Entity): void {
     this.entities.set(entity.id, entity);
     this.registerEntityMetadata(entity);
+    this.refreshEntitySlotState(entity, 0xff);
     if (entity.type === 'unit') this.unitSetVersion++;
     // Towers share the buildingVersion bucket because their structural
     // shape (static, footprint, building component) matches buildings;
@@ -426,6 +434,7 @@ export class WorldState {
     this.pendingDeathCheckIds.delete(id);
     this.snapshotDirtyFieldsById[id] = 0;
     if (entity !== undefined) this.markEntityMetadataDead(entity);
+    if (entity !== undefined) entitySlotRegistry.unsetEntity(id);
     this.entities.delete(id);
     if (entity !== undefined) this.cache.handleEntityRemoved(entity);
   }
@@ -433,6 +442,7 @@ export class WorldState {
   setEntityOwner(entity: Entity, playerId: PlayerId): void {
     if (entity.ownership !== null && entity.ownership.playerId === playerId) return;
     entity.ownership = { playerId };
+    entitySlotRegistry.setOwnership(entity, this.getTeamId(playerId));
     this.cache.invalidate();
     this.markSnapshotDirty(
       entity.id,
@@ -448,6 +458,7 @@ export class WorldState {
     if (fields === 0) return;
     const entity = this.entities.get(id);
     if (!entity || (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')) return;
+    this.refreshEntitySlotState(entity, fields);
     if (fields & ENTITY_CHANGED_HP) this.pendingDeathCheckIds.add(id);
     const previousFields = this.snapshotDirtyFieldsById[id] ?? 0;
     if (previousFields === 0) this.snapshotDirtyIds.push(id);

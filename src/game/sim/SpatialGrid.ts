@@ -4,22 +4,18 @@ import {
   CANONICAL_LAND_CELL_SIZE,
   assertCanonicalLandCellSize,
 } from '../landGrid';
-import { hasMaterializedLiveUnitPiece, isEntityActive } from './buildableHelpers';
-import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { TERRAIN_MAX_RENDER_Y, TILE_FLOOR_Y } from './terrain/terrainConfig';
 import {
   getSimWasm,
-  SPATIAL_KIND_UNIT,
-  SPATIAL_KIND_BUILDING,
-  SPATIAL_KIND_PROJECTILE,
   type SpatialApi,
 } from '../sim-wasm/init';
+import { entitySlotRegistry } from './EntitySlotRegistry';
+import { projectileTypeToCode } from '../../types/network';
 
 // Phase 7: the SpatialGrid lives in WASM linear memory. This file is
 // now a thin JS-side wrapper that:
-//   - owns the EntityId ↔ slot mapping (Map<EntityId, slot>) +
-//     reverse table (Entity[] indexed by slot) so query result slot
-//     ids can be resolved back to live Entity refs;
+//   - delegates EntityId ↔ slot mapping to EntitySlotRegistry, which
+//     also populates the canonical entity-state slab;
 //   - exposes the same public API as the previous JS-only grid so no
 //     caller is touched;
 //   - reuses result arrays (queryResultUnits / Buildings / Projectiles
@@ -39,20 +35,6 @@ const DEFAULT_CIRCLE_Z_MIN = TILE_FLOOR_Y;
 
 class SpatialGrid {
   private cellSize: number;
-
-  // Slot bookkeeping.
-  private slotByEntityId: Map<EntityId, number> = new Map();
-  private entityBySlot: (Entity | undefined)[] = [];
-
-  // Track which kind each slot was last set to (so removeEntity can
-  // dispatch correctly without consulting Rust).
-  private kindBySlot: Uint8Array = new Uint8Array(1024);
-
-  // Per-entity tracking flags — match the original JS grid's three
-  // separate Maps. Used by removeEntity to pick the right teardown.
-  private unitSlots: Set<EntityId> = new Set();
-  private buildingSlots: Set<EntityId> = new Set();
-  private projectileSlots: Set<EntityId> = new Set();
 
   // Reusable result arrays. Match the original contract: callers
   // must consume before issuing another query.
@@ -89,6 +71,14 @@ class SpatialGrid {
   private _projectileBatchX = new Float64Array(0);
   private _projectileBatchY = new Float64Array(0);
   private _projectileBatchZ = new Float64Array(0);
+  private _projectileBatchVx = new Float64Array(0);
+  private _projectileBatchVy = new Float64Array(0);
+  private _projectileBatchVz = new Float64Array(0);
+  private _projectileBatchHp = new Float64Array(0);
+  private _projectileBatchMaxHp = new Float64Array(0);
+  private _projectileBatchFlags = new Uint32Array(0);
+  private _projectileBatchOwnerPlayerU32 = new Uint32Array(0);
+  private _projectileBatchTypeCodes = new Uint32Array(0);
   private _projectileBatchOwnerPlayers = new Uint8Array(0);
   private _projectileBatchTypeFlags = new Uint8Array(0);
   private _projectileBatchRadiusCollision = new Float64Array(0);
@@ -121,15 +111,6 @@ class SpatialGrid {
     return getSimWasm()!.spatial;
   }
 
-  private ensureKindCapacity(slot: number): void {
-    if (slot < this.kindBySlot.length) return;
-    let cap = this.kindBySlot.length;
-    while (cap <= slot) cap *= 2;
-    const next = new Uint8Array(cap);
-    next.set(this.kindBySlot);
-    this.kindBySlot = next;
-  }
-
   private ensureProjectileBatchCapacity(required: number): void {
     if (required <= this._projectileBatchCapacity) return;
     let cap = Math.max(32, this._projectileBatchCapacity);
@@ -151,6 +132,38 @@ class SpatialGrid {
     zs.set(this._projectileBatchZ);
     this._projectileBatchZ = zs;
 
+    const vxs = new Float64Array(cap);
+    vxs.set(this._projectileBatchVx);
+    this._projectileBatchVx = vxs;
+
+    const vys = new Float64Array(cap);
+    vys.set(this._projectileBatchVy);
+    this._projectileBatchVy = vys;
+
+    const vzs = new Float64Array(cap);
+    vzs.set(this._projectileBatchVz);
+    this._projectileBatchVz = vzs;
+
+    const hps = new Float64Array(cap);
+    hps.set(this._projectileBatchHp);
+    this._projectileBatchHp = hps;
+
+    const maxHps = new Float64Array(cap);
+    maxHps.set(this._projectileBatchMaxHp);
+    this._projectileBatchMaxHp = maxHps;
+
+    const stateFlags = new Uint32Array(cap);
+    stateFlags.set(this._projectileBatchFlags);
+    this._projectileBatchFlags = stateFlags;
+
+    const ownerU32 = new Uint32Array(cap);
+    ownerU32.set(this._projectileBatchOwnerPlayerU32);
+    this._projectileBatchOwnerPlayerU32 = ownerU32;
+
+    const typeCodes = new Uint32Array(cap);
+    typeCodes.set(this._projectileBatchTypeCodes);
+    this._projectileBatchTypeCodes = typeCodes;
+
     const owners = new Uint8Array(cap);
     owners.set(this._projectileBatchOwnerPlayers);
     this._projectileBatchOwnerPlayers = owners;
@@ -170,116 +183,36 @@ class SpatialGrid {
     this._projectileBatchCapacity = cap;
   }
 
-  private slotFor(entity: Entity): number {
-    let slot = this.slotByEntityId.get(entity.id);
-    if (slot === undefined) {
-      slot = this.api().allocSlot();
-      this.slotByEntityId.set(entity.id, slot);
-      if (slot >= this.entityBySlot.length) {
-        this.entityBySlot.length = slot + 1;
-      }
-      this.entityBySlot[slot] = entity;
-      this.ensureKindCapacity(slot);
-      this.api().setEntityId(slot, entity.id);
-    } else {
-      // Re-bind in case the Entity object identity changed across a
-      // snapshot apply (defensive — should be stable today).
-      if (this.entityBySlot[slot] !== entity) {
-        this.entityBySlot[slot] = entity;
-        this.api().setEntityId(slot, entity.id);
-      }
-    }
-    return slot;
-  }
-
-  private freeEntitySlot(id: EntityId): void {
-    const slot = this.slotByEntityId.get(id);
-    if (slot === undefined) return;
-    this.api().unsetSlot(slot);
-    // Phase 10 D.1 / D.1b — also clear meta-pool + turret-pool state
-    // for this slot so a recycled slot doesn't inherit stale snapshot
-    // fields from the previous occupant.
-    const sim = getSimWasm();
-    if (sim !== undefined) {
-      sim.turretPool.unsetEntity(slot);
-    }
-    this.api().freeSlot(slot);
-    this.slotByEntityId.delete(id);
-    this.entityBySlot[slot] = undefined;
-    if (slot < this.kindBySlot.length) {
-      this.kindBySlot[slot] = 0;
-    }
-  }
-
   /** Returns the WASM-pool slot for an entity, or -1 if the entity
    *  is not currently tracked by the grid. Used by other systems
-   *  (entity-meta, turret-pool) that share the slot space. */
+   *  (entity-state, turret-pool) that share the slot space. */
   getSlot(entityId: EntityId): number {
-    const slot = this.slotByEntityId.get(entityId);
-    return slot === undefined ? -1 : slot;
+    return entitySlotRegistry.getSlot(entityId);
   }
 
   /** Resolve a Rust spatial slot back to the live JS entity wrapper.
    *  Projectile collision kernels return slots so callers can avoid
    *  copying candidate id arrays back through another spatial query. */
   resolveSlot(slot: number): Entity | undefined {
-    return this.entityBySlot[slot];
+    return entitySlotRegistry.resolveSlot(slot);
   }
 
   clear(): void {
-    this.api().clear();
-    // Phase 10 D.1b — drop the turret-pool state alongside the spatial
-    // cells so a fresh session starts clean.
-    const sim = getSimWasm();
-    if (sim !== undefined) {
-      sim.turretPool.clear();
-    }
-    this.slotByEntityId.clear();
-    this.entityBySlot.length = 0;
-    this.kindBySlot.fill(0);
-    this.unitSlots.clear();
-    this.buildingSlots.clear();
-    this.projectileSlots.clear();
+    entitySlotRegistry.clear();
   }
 
   // ===================== Mutations =====================
 
   updateUnit(entity: Entity): void {
-    if (!entity.unit || !hasMaterializedLiveUnitPiece(entity)) {
-      this.removeUnit(entity.id);
-      return;
-    }
-    const slot = this.slotFor(entity);
-    this.kindBySlot[slot] = SPATIAL_KIND_UNIT;
-    this.unitSlots.add(entity.id);
-    const playerId = entity.ownership !== null ? entity.ownership.playerId : 0;
-    this.api().setUnit(
-      slot,
-      entity.transform.x, entity.transform.y, entity.transform.z,
-      entity.unit.radius.collision, entity.unit.radius.hitbox,
-      playerId,
-      1,
-    );
+    entitySlotRegistry.setUnit(entity);
   }
 
   removeUnit(id: EntityId): void {
-    if (!this.unitSlots.delete(id)) return;
-    this.freeEntitySlot(id);
+    entitySlotRegistry.removeUnit(id);
   }
 
   updateProjectile(entity: Entity): void {
-    if (!entity.projectile) return;
-    const slot = this.slotFor(entity);
-    this.kindBySlot[slot] = SPATIAL_KIND_PROJECTILE;
-    this.projectileSlots.add(entity.id);
-    this.api().setProjectile(
-      slot,
-      entity.transform.x, entity.transform.y, entity.transform.z,
-      entity.projectile.ownerId ?? 0,
-      entity.projectile.projectileType === 'projectile' ? 1 : 0,
-      entity.projectile.config.shotProfile.runtime.radius.collision,
-      entity.projectile.config.shotProfile.runtime.radius.hitbox,
-    );
+    entitySlotRegistry.setProjectile(entity);
   }
 
   updateProjectiles(entities: readonly Entity[]): void {
@@ -290,14 +223,21 @@ class SpatialGrid {
       if (!projectile) continue;
 
       this.ensureProjectileBatchCapacity(count + 1);
-      const slot = this.slotFor(entity);
-      this.kindBySlot[slot] = SPATIAL_KIND_PROJECTILE;
-      this.projectileSlots.add(entity.id);
+      const slot = entitySlotRegistry.bindProjectileForBatch(entity);
+      if (slot < 0) continue;
 
       this._projectileBatchSlots[count] = slot;
       this._projectileBatchX[count] = entity.transform.x;
       this._projectileBatchY[count] = entity.transform.y;
       this._projectileBatchZ[count] = entity.transform.z;
+      this._projectileBatchVx[count] = projectile.velocityX;
+      this._projectileBatchVy[count] = projectile.velocityY;
+      this._projectileBatchVz[count] = projectile.velocityZ;
+      this._projectileBatchHp[count] = projectile.hp;
+      this._projectileBatchMaxHp[count] = projectile.maxHp;
+      this._projectileBatchFlags[count] = entitySlotRegistry.projectileHotFlags(entity);
+      this._projectileBatchOwnerPlayerU32[count] = projectile.ownerId ?? 0;
+      this._projectileBatchTypeCodes[count] = projectileTypeToCode(projectile.projectileType);
       this._projectileBatchOwnerPlayers[count] = projectile.ownerId ?? 0;
       this._projectileBatchTypeFlags[count] = projectile.projectileType === 'projectile' ? 1 : 0;
       this._projectileBatchRadiusCollision[count] =
@@ -322,43 +262,42 @@ class SpatialGrid {
     if (updated !== count) {
       throw new Error(`SpatialGrid.updateProjectiles: batch updated ${updated}/${count} projectiles`);
     }
+    const stateUpdated = entitySlotRegistry.setProjectilesHotBatch(
+      count,
+      this._projectileBatchSlots.subarray(0, count),
+      this._projectileBatchX.subarray(0, count),
+      this._projectileBatchY.subarray(0, count),
+      this._projectileBatchZ.subarray(0, count),
+      this._projectileBatchVx.subarray(0, count),
+      this._projectileBatchVy.subarray(0, count),
+      this._projectileBatchVz.subarray(0, count),
+      this._projectileBatchHp.subarray(0, count),
+      this._projectileBatchMaxHp.subarray(0, count),
+      this._projectileBatchFlags.subarray(0, count),
+      this._projectileBatchOwnerPlayerU32.subarray(0, count),
+      this._projectileBatchTypeCodes.subarray(0, count),
+      this._projectileBatchRadiusCollision.subarray(0, count),
+      this._projectileBatchRadiusHitbox.subarray(0, count),
+    );
+    if (stateUpdated !== count) {
+      throw new Error(`SpatialGrid.updateProjectiles: entity-state batch updated ${stateUpdated}/${count} projectiles`);
+    }
   }
 
   removeProjectile(id: EntityId): void {
-    if (!this.projectileSlots.delete(id)) return;
-    this.freeEntitySlot(id);
+    entitySlotRegistry.removeProjectile(id);
   }
 
   addBuilding(entity: Entity): void {
-    if (!entity.building) return;
-    const slot = this.slotFor(entity);
-    this.kindBySlot[slot] = SPATIAL_KIND_BUILDING;
-    this.buildingSlots.add(entity.id);
-    const b = entity.building;
-    const playerId = entity.ownership !== null ? entity.ownership.playerId : 0;
-    this.api().setBuilding(
-      slot,
-      entity.transform.x, entity.transform.y, getBuildingCombatCenterZ(entity),
-      b.width / 2, b.height / 2, b.depth / 2,
-      playerId,
-      b.hp > 0 ? 1 : 0,
-      isEntityActive(entity) ? 1 : 0,
-    );
+    entitySlotRegistry.setBuilding(entity);
   }
 
   removeBuilding(id: EntityId): void {
-    if (!this.buildingSlots.delete(id)) return;
-    this.freeEntitySlot(id);
+    entitySlotRegistry.removeBuilding(id);
   }
 
   removeEntity(id: EntityId): void {
-    if (this.unitSlots.has(id)) {
-      this.removeUnit(id);
-    } else if (this.buildingSlots.has(id)) {
-      this.removeBuilding(id);
-    } else if (this.projectileSlots.has(id)) {
-      this.removeProjectile(id);
-    }
+    entitySlotRegistry.unsetEntity(id);
   }
 
   // ===================== Result readback helpers =====================
@@ -393,7 +332,7 @@ class SpatialGrid {
   private resolveSlotsRange(slots: Uint32Array, start: number, end: number, out: Entity[]): void {
     out.length = 0;
     for (let i = start; i < end; i++) {
-      const e = this.entityBySlot[slots[i]];
+      const e = entitySlotRegistry.resolveSlot(slots[i]);
       if (e) out.push(e);
     }
   }
@@ -409,7 +348,7 @@ class SpatialGrid {
     outSlots.length = 0;
     for (let i = start; i < end; i++) {
       const slot = slots[i];
-      const e = this.entityBySlot[slot];
+      const e = entitySlotRegistry.resolveSlot(slot);
       if (!e) continue;
       outEntities.push(e);
       outSlots.push(slot);
@@ -520,7 +459,7 @@ class SpatialGrid {
     // same result array.
     this.queryResultAll.length = 0;
     for (let i = 2; i < 2 + nUnits + nBuildings; i++) {
-      const e = this.entityBySlot[slots[i]];
+      const e = entitySlotRegistry.resolveSlot(slots[i]);
       if (e) this.queryResultAll.push(e);
     }
     return this.queryResultAll;
@@ -537,7 +476,7 @@ class SpatialGrid {
     const nBuildings = slots[1];
     this.queryResultAll.length = 0;
     for (let i = 2; i < 2 + nUnits + nBuildings; i++) {
-      const e = this.entityBySlot[slots[i]];
+      const e = entitySlotRegistry.resolveSlot(slots[i]);
       if (e) this.queryResultAll.push(e);
     }
     return this.queryResultAll;

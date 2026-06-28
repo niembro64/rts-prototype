@@ -328,6 +328,9 @@ pub(crate) use terrain::*;
 mod spatial_grid;
 #[allow(unused_imports)]
 pub(crate) use spatial_grid::*;
+mod entity_state;
+#[allow(unused_imports)]
+pub(crate) use entity_state::*;
 mod pathfinder;
 #[allow(unused_imports)]
 pub(crate) use pathfinder::*;

@@ -156,6 +156,50 @@ import __wbg_init, {
   fog_mark_circle_scanline,
   fog_mark_circle_scanline_rgba,
   combat_has_line_of_sight,
+  entity_state_init,
+  entity_state_clear,
+  entity_state_ensure_capacity,
+  entity_state_unset_slot,
+  entity_state_capacity,
+  entity_state_set_lifecycle,
+  entity_state_set_transform,
+  entity_state_set_velocity,
+  entity_state_set_ownership,
+  entity_state_set_hp_build,
+  entity_state_set_static_shape,
+  entity_state_set_body_slot,
+  entity_state_set_blueprints,
+  entity_state_mark_dirty,
+  entity_state_clear_dirty,
+  entity_state_set_projectiles_hot_batch,
+  entity_state_entity_id_ptr,
+  entity_state_kind_ptr,
+  entity_state_flags_ptr,
+  entity_state_owner_player_id_ptr,
+  entity_state_team_id_ptr,
+  entity_state_pos_x_ptr,
+  entity_state_pos_y_ptr,
+  entity_state_pos_z_ptr,
+  entity_state_rotation_ptr,
+  entity_state_vel_x_ptr,
+  entity_state_vel_y_ptr,
+  entity_state_vel_z_ptr,
+  entity_state_hp_ptr,
+  entity_state_max_hp_ptr,
+  entity_state_radius_collision_ptr,
+  entity_state_radius_hitbox_ptr,
+  entity_state_radius_other_ptr,
+  entity_state_aabb_hx_ptr,
+  entity_state_aabb_hy_ptr,
+  entity_state_aabb_hz_ptr,
+  entity_state_body_slot_ptr,
+  entity_state_unit_blueprint_code_ptr,
+  entity_state_building_blueprint_code_ptr,
+  entity_state_shot_blueprint_code_ptr,
+  entity_state_projectile_type_code_ptr,
+  entity_state_build_progress_ptr,
+  entity_state_build_flags_ptr,
+  entity_state_dirty_mask_ptr,
   spatial_init,
   spatial_clear,
   spatial_alloc_slot,
@@ -1647,15 +1691,16 @@ export interface SimWasm {
    *  Uint32Array view over the scratch buffer. EntityId↔slot map
    *  is JS-side; Rust only sees u32 slot ids. */
   readonly spatial: SpatialApi;
+  /** [23] Canonical high-count entity state slab. Slot space is shared
+   *  with SpatialGrid, BodyPool/turret consumers store references to
+   *  those slots, and JS Entity objects remain compatibility views. */
+  readonly entityState: EntityStateApi;
   /** Phase 9 — Pathfinder A* over the build/walk grid. Mask + CC +
    *  A* + LOS smoothing all in one WASM call. */
   readonly pathfinder: PathfinderApi;
-  /** Phase 10 D.1 — Entity-meta SoA pool. Foundation for future
-   *  D.3 quantize/delta-encode kernel; JS-side population lands in
-   *  D.3 when there's a consumer. */
   /** Phase 10 D.1b — Turret sub-pool. Per-entity turret arrays
-   *  indexed at fixed offsets. JS-side population lands with D.3
-   *  alongside the entity-meta capture pass. */
+   *  indexed at fixed offsets and keyed by the shared entity-state
+   *  slot. */
   readonly turretPool: TurretPoolApi;
   /** AIM-08.1 — Targeting input slabs, stamped from JS each tick.
    *  Source of truth for the scheduled Rust targeting kernels. JS
@@ -1738,6 +1783,107 @@ export interface RenderPoseApi {
 export const SPATIAL_KIND_UNIT = 1;
 export const SPATIAL_KIND_BUILDING = 2;
 export const SPATIAL_KIND_PROJECTILE = 3;
+
+export const ENTITY_STATE_KIND_NONE = 0;
+export const ENTITY_STATE_KIND_BUILDING = 1;
+export const ENTITY_STATE_KIND_UNIT = 2;
+export const ENTITY_STATE_KIND_TOWER = 3;
+export const ENTITY_STATE_KIND_SHOT = 4;
+export const ENTITY_STATE_BLUEPRINT_NONE = 0xff;
+export const ENTITY_STATE_NO_BODY_SLOT = -1;
+
+/** [23] Slot-indexed canonical entity state. Rows use the same stable
+ *  slot ids allocated for SpatialGrid, so future WASM action/physics/
+ *  render slabs can share one EntityId <-> slot mapping. */
+export interface EntityStateApi {
+  init: (initialCapacity: number) => void;
+  clear: () => void;
+  ensureCapacity: (slot: number) => void;
+  unsetSlot: (slot: number) => void;
+  capacity: () => number;
+  setLifecycle: (
+    slot: number,
+    entityId: number,
+    kind: number,
+    ownerPlayerId: number,
+    teamId: number,
+    flags: number,
+  ) => void;
+  setTransform: (slot: number, x: number, y: number, z: number, rotation: number) => void;
+  setVelocity: (slot: number, vx: number, vy: number, vz: number) => void;
+  setOwnership: (slot: number, ownerPlayerId: number, teamId: number) => void;
+  setHpBuild: (
+    slot: number,
+    hp: number,
+    maxHp: number,
+    buildProgress: number,
+    buildFlags: number,
+  ) => void;
+  setStaticShape: (
+    slot: number,
+    radiusCollision: number,
+    radiusHitbox: number,
+    radiusOther: number,
+    aabbHx: number,
+    aabbHy: number,
+    aabbHz: number,
+  ) => void;
+  setBodySlot: (slot: number, bodySlot: number) => void;
+  setBlueprints: (
+    slot: number,
+    unitBlueprintCode: number,
+    buildingBlueprintCode: number,
+    shotBlueprintCode: number,
+    projectileTypeCode: number,
+  ) => void;
+  markDirty: (slot: number, dirtyMask: number) => void;
+  clearDirty: (slot: number) => void;
+  setProjectilesHotBatch: (
+    count: number,
+    slots: Uint32Array,
+    xs: Float64Array,
+    ys: Float64Array,
+    zs: Float64Array,
+    vxs: Float64Array,
+    vys: Float64Array,
+    vzs: Float64Array,
+    hps: Float64Array,
+    maxHps: Float64Array,
+    flags: Uint32Array,
+    ownerPlayerIds: Uint32Array,
+    projectileTypeCodes: Uint32Array,
+    radiusCollision: Float64Array,
+    radiusHitbox: Float64Array,
+  ) => number;
+  entityIdPtr: () => number;
+  kindPtr: () => number;
+  flagsPtr: () => number;
+  ownerPlayerIdPtr: () => number;
+  teamIdPtr: () => number;
+  posXPtr: () => number;
+  posYPtr: () => number;
+  posZPtr: () => number;
+  rotationPtr: () => number;
+  velXPtr: () => number;
+  velYPtr: () => number;
+  velZPtr: () => number;
+  hpPtr: () => number;
+  maxHpPtr: () => number;
+  radiusCollisionPtr: () => number;
+  radiusHitboxPtr: () => number;
+  radiusOtherPtr: () => number;
+  aabbHxPtr: () => number;
+  aabbHyPtr: () => number;
+  aabbHzPtr: () => number;
+  bodySlotPtr: () => number;
+  unitBlueprintCodePtr: () => number;
+  buildingBlueprintCodePtr: () => number;
+  shotBlueprintCodePtr: () => number;
+  projectileTypeCodePtr: () => number;
+  buildProgressPtr: () => number;
+  buildFlagsPtr: () => number;
+  dirtyMaskPtr: () => number;
+}
 
 /** Public surface of the WASM-backed spatial grid. Each query returns
  *  a count; the result slot ids land in the shared scratch buffer
@@ -1901,14 +2047,6 @@ export interface SpatialApi {
   slotKind: (slot: number) => number;
 }
 
-/** Phase 10 D.1 — Entity-meta SoA pool. Per-entity scalar fields
- *  the snapshot serializer reads (HP, build state, combat mode,
- *  suspension, factory/solar booleans). Slot space is shared with
- *  SpatialGrid — JS calls `setUnit(slot, ...)` /
- *  `setBuilding(slot, ...)` once per dirty entity per snapshot
- *  tick. Position / velocity / orientation continue to live in
- *  BodyPool (Phase 3d). Variable-length arrays (turrets, actions)
- *  will land in a follow-up sub-pool. */
 /** Phase 10 D.1b — Turret sub-pool. Up to 8 turrets per entity at
  *  fixed offset `entity_slot * MAX + turret_idx` in a flat SoA.
  *  Per-entity count gates which indices are live. Used by the
@@ -3465,9 +3603,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       // CANONICAL_LAND_CELL_SIZE in landGrid.ts; the grid auto-grows
       // its per-slot SoA arrays past the initial capacity hint.
       spatial_init(200, 1024);
-      // Phase 10 D.1 — entity-meta SoA pool. Same initial slot
-      // capacity hint as SpatialGrid since the slot spaces are
-      // shared (one EntityId<->slot map JS-side).
+      // [23] Canonical entity state slab. Same initial slot capacity
+      // hint as SpatialGrid since the slot spaces are shared.
+      entity_state_init(1024);
       // Phase 10 D.1b — turret sub-pool. Per-entity turret arrays
       // indexed at fixed offsets up to MAX_TURRETS_PER_ENTITY = 8.
       turret_pool_init(1024);
@@ -4120,6 +4258,52 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           scratchLen: spatial_scratch_len,
           slotKind: spatial_slot_kind,
         },
+        entityState: {
+          init: entity_state_init,
+          clear: entity_state_clear,
+          ensureCapacity: entity_state_ensure_capacity,
+          unsetSlot: entity_state_unset_slot,
+          capacity: entity_state_capacity,
+          setLifecycle: entity_state_set_lifecycle,
+          setTransform: entity_state_set_transform,
+          setVelocity: entity_state_set_velocity,
+          setOwnership: entity_state_set_ownership,
+          setHpBuild: entity_state_set_hp_build,
+          setStaticShape: entity_state_set_static_shape,
+          setBodySlot: entity_state_set_body_slot,
+          setBlueprints: entity_state_set_blueprints,
+          markDirty: entity_state_mark_dirty,
+          clearDirty: entity_state_clear_dirty,
+          setProjectilesHotBatch: entity_state_set_projectiles_hot_batch,
+          entityIdPtr: entity_state_entity_id_ptr,
+          kindPtr: entity_state_kind_ptr,
+          flagsPtr: entity_state_flags_ptr,
+          ownerPlayerIdPtr: entity_state_owner_player_id_ptr,
+          teamIdPtr: entity_state_team_id_ptr,
+          posXPtr: entity_state_pos_x_ptr,
+          posYPtr: entity_state_pos_y_ptr,
+          posZPtr: entity_state_pos_z_ptr,
+          rotationPtr: entity_state_rotation_ptr,
+          velXPtr: entity_state_vel_x_ptr,
+          velYPtr: entity_state_vel_y_ptr,
+          velZPtr: entity_state_vel_z_ptr,
+          hpPtr: entity_state_hp_ptr,
+          maxHpPtr: entity_state_max_hp_ptr,
+          radiusCollisionPtr: entity_state_radius_collision_ptr,
+          radiusHitboxPtr: entity_state_radius_hitbox_ptr,
+          radiusOtherPtr: entity_state_radius_other_ptr,
+          aabbHxPtr: entity_state_aabb_hx_ptr,
+          aabbHyPtr: entity_state_aabb_hy_ptr,
+          aabbHzPtr: entity_state_aabb_hz_ptr,
+          bodySlotPtr: entity_state_body_slot_ptr,
+          unitBlueprintCodePtr: entity_state_unit_blueprint_code_ptr,
+          buildingBlueprintCodePtr: entity_state_building_blueprint_code_ptr,
+          shotBlueprintCodePtr: entity_state_shot_blueprint_code_ptr,
+          projectileTypeCodePtr: entity_state_projectile_type_code_ptr,
+          buildProgressPtr: entity_state_build_progress_ptr,
+          buildFlagsPtr: entity_state_build_flags_ptr,
+          dirtyMaskPtr: entity_state_dirty_mask_ptr,
+        },
       };
       resolvedHandle = handle;
       if (import.meta.env.DEV && !shouldRunBootContractTests()) {
@@ -4168,6 +4352,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runRightClickCommandsContractTest();
         const { runCommandExecutionContractTest } = await import('../sim/commandExecutionContractTest');
         runCommandExecutionContractTest();
+        const { runEntitySlotRegistryContractTest } = await import('../sim/EntitySlotRegistryContractTest');
+        runEntitySlotRegistryContractTest();
         const { runInputControlGroupsContractTest } = await import('../input/helpers/InputControlGroupsContractTest');
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');
