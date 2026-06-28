@@ -40,66 +40,15 @@ type PrimitiveRoleQuality = {
   torus: Record<PrimitiveGeometryTier, TorusSegments>;
 };
 
+// Close tier still means an RTS camera close-up, not hero-asset smoothness.
+// Keep high-count roles deliberately modest; buildings/shields/HUD retain
+// richer silhouettes where instance counts are lower or readability matters.
 export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, PrimitiveRoleQuality> = {
   unitBody: {
     sphere: {
-      close: { widthSegments: 18, heightSegments: 12 },
-      mid: { widthSegments: 12, heightSegments: 8 },
-      far: { widthSegments: 8, heightSegments: 6 },
-    },
-    cylinder: {
-      close: { radialSegments: 14 },
-      mid: { radialSegments: 10 },
-      far: { radialSegments: 6 },
-    },
-    cone: {
-      close: { radialSegments: 14 },
-      mid: { radialSegments: 10 },
-      far: { radialSegments: 6 },
-    },
-    circle: {
-      close: { radialSegments: 24 },
-      mid: { radialSegments: 16 },
-      far: { radialSegments: 10 },
-    },
-    torus: {
-      close: { tubeSegments: 10, radialSegments: 28 },
-      mid: { tubeSegments: 8, radialSegments: 20 },
-      far: { tubeSegments: 6, radialSegments: 12 },
-    },
-  },
-  unitDetail: {
-    sphere: {
-      close: { widthSegments: 14, heightSegments: 10 },
-      mid: { widthSegments: 10, heightSegments: 8 },
-      far: { widthSegments: 8, heightSegments: 6 },
-    },
-    cylinder: {
-      close: { radialSegments: 12 },
-      mid: { radialSegments: 8 },
-      far: { radialSegments: 6 },
-    },
-    cone: {
-      close: { radialSegments: 12 },
-      mid: { radialSegments: 8 },
-      far: { radialSegments: 6 },
-    },
-    circle: {
-      close: { radialSegments: 20 },
-      mid: { radialSegments: 14 },
-      far: { radialSegments: 8 },
-    },
-    torus: {
-      close: { tubeSegments: 10, radialSegments: 24 },
-      mid: { tubeSegments: 8, radialSegments: 18 },
-      far: { tubeSegments: 6, radialSegments: 12 },
-    },
-  },
-  turret: {
-    sphere: {
-      close: { widthSegments: 14, heightSegments: 10 },
-      mid: { widthSegments: 10, heightSegments: 8 },
-      far: { widthSegments: 8, heightSegments: 6 },
+      close: { widthSegments: 12, heightSegments: 8 },
+      mid: { widthSegments: 10, heightSegments: 6 },
+      far: { widthSegments: 6, heightSegments: 4 },
     },
     cylinder: {
       close: { radialSegments: 10 },
@@ -118,35 +67,89 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
     },
     torus: {
       close: { tubeSegments: 8, radialSegments: 20 },
-      mid: { tubeSegments: 6, radialSegments: 16 },
+      mid: { tubeSegments: 6, radialSegments: 14 },
       far: { tubeSegments: 5, radialSegments: 10 },
     },
   },
-  projectile: {
+  unitDetail: {
     sphere: {
       close: { widthSegments: 10, heightSegments: 8 },
       mid: { widthSegments: 8, heightSegments: 6 },
       far: { widthSegments: 6, heightSegments: 4 },
     },
     cylinder: {
-      close: { radialSegments: 10 },
-      mid: { radialSegments: 8 },
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
       far: { radialSegments: 6 },
     },
     cone: {
-      close: { radialSegments: 10 },
-      mid: { radialSegments: 8 },
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
       far: { radialSegments: 6 },
     },
     circle: {
       close: { radialSegments: 16 },
-      mid: { radialSegments: 12 },
+      mid: { radialSegments: 10 },
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 8, radialSegments: 18 },
-      mid: { tubeSegments: 6, radialSegments: 12 },
-      far: { tubeSegments: 5, radialSegments: 8 },
+      close: { tubeSegments: 6, radialSegments: 16 },
+      mid: { tubeSegments: 5, radialSegments: 12 },
+      far: { tubeSegments: 4, radialSegments: 8 },
+    },
+  },
+  turret: {
+    sphere: {
+      close: { widthSegments: 10, heightSegments: 8 },
+      mid: { widthSegments: 8, heightSegments: 6 },
+      far: { widthSegments: 6, heightSegments: 4 },
+    },
+    cylinder: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 6 },
+    },
+    cone: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 6 },
+    },
+    circle: {
+      close: { radialSegments: 14 },
+      mid: { radialSegments: 10 },
+      far: { radialSegments: 8 },
+    },
+    torus: {
+      close: { tubeSegments: 6, radialSegments: 14 },
+      mid: { tubeSegments: 5, radialSegments: 10 },
+      far: { tubeSegments: 4, radialSegments: 8 },
+    },
+  },
+  projectile: {
+    sphere: {
+      close: { widthSegments: 8, heightSegments: 6 },
+      mid: { widthSegments: 6, heightSegments: 4 },
+      far: { widthSegments: 5, heightSegments: 3 },
+    },
+    cylinder: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 5 },
+    },
+    cone: {
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
+      far: { radialSegments: 5 },
+    },
+    circle: {
+      close: { radialSegments: 12 },
+      mid: { radialSegments: 8 },
+      far: { radialSegments: 6 },
+    },
+    torus: {
+      close: { tubeSegments: 6, radialSegments: 12 },
+      mid: { tubeSegments: 5, radialSegments: 8 },
+      far: { tubeSegments: 4, radialSegments: 6 },
     },
   },
   beam: {
@@ -259,29 +262,29 @@ export const PRIMITIVE_GEOMETRY_QUALITY: Record<PrimitiveGeometryRole, Primitive
   },
   locomotion: {
     sphere: {
-      close: { widthSegments: 12, heightSegments: 8 },
+      close: { widthSegments: 10, heightSegments: 8 },
       mid: { widthSegments: 8, heightSegments: 6 },
       far: { widthSegments: 6, heightSegments: 4 },
     },
     cylinder: {
-      close: { radialSegments: 12 },
-      mid: { radialSegments: 8 },
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
       far: { radialSegments: 6 },
     },
     cone: {
-      close: { radialSegments: 12 },
-      mid: { radialSegments: 8 },
+      close: { radialSegments: 8 },
+      mid: { radialSegments: 6 },
       far: { radialSegments: 6 },
     },
     circle: {
-      close: { radialSegments: 18 },
-      mid: { radialSegments: 12 },
+      close: { radialSegments: 14 },
+      mid: { radialSegments: 10 },
       far: { radialSegments: 8 },
     },
     torus: {
-      close: { tubeSegments: 10, radialSegments: 28 },
-      mid: { tubeSegments: 8, radialSegments: 20 },
-      far: { tubeSegments: 6, radialSegments: 12 },
+      close: { tubeSegments: 6, radialSegments: 16 },
+      mid: { tubeSegments: 5, radialSegments: 12 },
+      far: { tubeSegments: 4, radialSegments: 8 },
     },
   },
   effect: {

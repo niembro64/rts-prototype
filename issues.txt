@@ -28,15 +28,6 @@ Please always commit and push before and after any code changes we make.
     high-count snapshot materialization away from JS object/DTO churn and
     toward typed dirty slot/range reads from the canonical slabs.
 
-[33] Optimization - centralize primitive mesh detail and high-count unit LOD
-    Preserve gameplay silhouettes and readability while reducing unnecessary
-    geometry cost. Spheres, cylinders, cones, rings, and rounded shapes should
-    use a shared render-quality configuration with per-primitive segment
-    budgets and distance/count-based LOD tiers. High-count units should avoid
-    smooth default sphere/cylinder meshes when simpler geometry is visually
-    equivalent at RTS camera distances. Verify before/after triangle counts,
-    frame/render prep timings, and screenshots at close, mid, and far zoom.
-
 [16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
     USER / in-app eyes only: build a Hippo and tune swim/float/sink +
     walk-on-bottom feel. Starter knobs: waterForce, waterTraction,
