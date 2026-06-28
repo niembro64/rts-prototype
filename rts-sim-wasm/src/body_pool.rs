@@ -1316,6 +1316,10 @@ pub(crate) struct SphereContactBucket {
 
 pub(crate) struct SphereResolveScratch {
     pub(crate) cells: HashMap<u64, SphereContactBucket>,
+    pub(crate) dense_cells: Vec<SphereContactBucket>,
+    pub(crate) cell_x: Vec<i32>,
+    pub(crate) cell_y: Vec<i32>,
+    pub(crate) cell_z: Vec<i32>,
     pub(crate) gen: u32,
     pub(crate) woke: Vec<bool>,
 }
@@ -1334,6 +1338,10 @@ pub(crate) fn sphere_resolve_scratch() -> &'static mut SphereResolveScratch {
         if (*cell).is_none() {
             *cell = Some(SphereResolveScratch {
                 cells: HashMap::default(),
+                dense_cells: Vec::new(),
+                cell_x: Vec::new(),
+                cell_y: Vec::new(),
+                cell_z: Vec::new(),
                 gen: 0,
                 woke: Vec::new(),
             });
@@ -1342,90 +1350,169 @@ pub(crate) fn sphere_resolve_scratch() -> &'static mut SphereResolveScratch {
     }
 }
 
-#[wasm_bindgen]
-pub fn pool_resolve_sphere_sphere(
+const SPHERE_DENSE_CELL_LIMIT: usize = 131_072;
+
+#[inline]
+fn sphere_contact_dense_shape(
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    max_cx: i32,
+    max_cy: i32,
+    max_cz: i32,
+) -> Option<(usize, usize, usize, usize)> {
+    let width = i64::from(max_cx) - i64::from(min_cx) + 1;
+    let height = i64::from(max_cy) - i64::from(min_cy) + 1;
+    let depth = i64::from(max_cz) - i64::from(min_cz) + 1;
+    if width <= 0 || height <= 0 || depth <= 0 {
+        return None;
+    }
+    let width = usize::try_from(width).ok()?;
+    let height = usize::try_from(height).ok()?;
+    let depth = usize::try_from(depth).ok()?;
+    let volume = width.checked_mul(height)?.checked_mul(depth)?;
+    Some((width, height, depth, volume))
+}
+
+#[inline]
+fn sphere_contact_dense_index(
+    cx: i32,
+    cy: i32,
+    cz: i32,
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    width: usize,
+    height: usize,
+) -> usize {
+    let x = (cx - min_cx) as usize;
+    let y = (cy - min_cy) as usize;
+    let z = (cz - min_cz) as usize;
+    (z * height + y) * width + x
+}
+
+#[inline]
+fn resolve_pool_sphere_pair(
+    p: &mut BodyPool,
+    sphere_slots: &[u32],
+    woke: &mut [bool],
+    i: usize,
+    j: usize,
+    ar: f64,
+    a_inv_mass: f64,
+    a_restitution: f64,
+) {
+    let slot_a = sphere_slots[i] as usize;
+    let slot_b = sphere_slots[j] as usize;
+    let br = p.radius[slot_b];
+
+    let ax = p.pos_x[slot_a];
+    let ay = p.pos_y[slot_a];
+    let az = p.pos_z[slot_a];
+    let bx = p.pos_x[slot_b];
+    let by = p.pos_y[slot_b];
+    let bz = p.pos_z[slot_b];
+
+    let ddx = bx - ax;
+    let ddy = by - ay;
+    let ddz = bz - az;
+    let r_sum = ar + br;
+    let dist_sq = ddx * ddx + ddy * ddy + ddz * ddz;
+    if dist_sq >= r_sum * r_sum {
+        return;
+    }
+
+    woke[i] = true;
+    woke[j] = true;
+
+    let dist: f64;
+    let nx: f64;
+    let ny: f64;
+    let nz: f64;
+    if dist_sq < 1e-12 {
+        // Degenerate: deterministic random direction. Using slot ids
+        // (stable for body lifetime) as the seed source.
+        let a_id = slot_a as u64;
+        let b_id = slot_b as u64;
+        let seed = (a_id.wrapping_mul(73856093) ^ b_id.wrapping_mul(19349663)) as u32;
+        let angle = (seed as f64 / 4294967296.0) * core::f64::consts::PI * 2.0;
+        dist = 1e-6;
+        nx = angle.cos();
+        ny = angle.sin();
+        nz = 0.0;
+    } else {
+        dist = dist_sq.sqrt();
+        let inv_dist = 1.0 / dist;
+        nx = ddx * inv_dist;
+        ny = ddy * inv_dist;
+        nz = ddz * inv_dist;
+    }
+    let penetration = r_sum - dist;
+    let b_inv_mass = p.inv_mass[slot_b];
+    let inv_mass_sum_inv = 1.0 / (a_inv_mass + b_inv_mass);
+    let w_a = a_inv_mass * inv_mass_sum_inv;
+    let w_b = b_inv_mass * inv_mass_sum_inv;
+    p.pos_x[slot_a] = ax - nx * penetration * w_a;
+    p.pos_y[slot_a] = ay - ny * penetration * w_a;
+    p.pos_z[slot_a] = az - nz * penetration * w_a;
+    p.pos_x[slot_b] = bx + nx * penetration * w_b;
+    p.pos_y[slot_b] = by + ny * penetration * w_b;
+    p.pos_z[slot_b] = bz + nz * penetration * w_b;
+
+    // Upward contact flag — set directly in pool; JS reads via the
+    // body.upwardSurfaceContact getter.
+    if nz > 0.35 {
+        p.flags[slot_b] |= BODY_FLAG_UPWARD_CONTACT;
+    } else if nz < -0.35 {
+        p.flags[slot_a] |= BODY_FLAG_UPWARD_CONTACT;
+    }
+
+    let a_vx = p.vel_x[slot_a];
+    let a_vy = p.vel_y[slot_a];
+    let a_vz = p.vel_z[slot_a];
+    let b_vx = p.vel_x[slot_b];
+    let b_vy = p.vel_y[slot_b];
+    let b_vz = p.vel_z[slot_b];
+    let rvx = b_vx - a_vx;
+    let rvy = b_vy - a_vy;
+    let rvz = b_vz - a_vz;
+    let v_dot_n = rvx * nx + rvy * ny + rvz * nz;
+    if v_dot_n >= 0.0 {
+        return;
+    }
+    let b_restitution = p.restitution[slot_b];
+    let e = a_restitution.min(b_restitution);
+    let j_mag = -(1.0 + e) * v_dot_n * inv_mass_sum_inv;
+    let ix = j_mag * nx;
+    let iy = j_mag * ny;
+    let iz = j_mag * nz;
+    p.vel_x[slot_a] = a_vx - ix * a_inv_mass;
+    p.vel_y[slot_a] = a_vy - iy * a_inv_mass;
+    p.vel_z[slot_a] = a_vz - iz * a_inv_mass;
+    p.vel_x[slot_b] = b_vx + ix * b_inv_mass;
+    p.vel_y[slot_b] = b_vy + iy * b_inv_mass;
+    p.vel_z[slot_b] = b_vz + iz * b_inv_mass;
+}
+
+#[inline]
+fn run_pool_sphere_resolve_hash(
+    p: &mut BodyPool,
     sphere_slots: &[u32],
     iterations: u32,
     cell_size: f64,
-    wake_transitions_out: &mut [u32],
-) -> u32 {
+    half_cs: f64,
+    max_radius: f64,
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    max_cx: i32,
+    max_cy: i32,
+    max_cz: i32,
+    cells: &HashMap<u64, SphereContactBucket>,
+    gen: u32,
+    woke: &mut [bool],
+) {
     let count = sphere_slots.len();
-    debug_assert!(wake_transitions_out.len() >= count);
-    if count == 0 || iterations == 0 || cell_size <= 0.0 {
-        return 0;
-    }
-
-    let p = pool();
-    let half_cs = cell_size * 0.5;
-
-    // Bucket bodies by center cell; reused across all sub-iterations
-    // — same as PhysicsEngine3D.rebuildContactCells / Phase 3c. The grid
-    // and the woke buffer live in persistent scratch (see
-    // SphereResolveScratch): bump the generation and stamp each touched
-    // bucket so stale buckets read as empty without freeing their Vecs.
-    let scratch = sphere_resolve_scratch();
-    scratch.gen = scratch.gen.wrapping_add(1);
-    let gen = scratch.gen;
-    let cells = &mut scratch.cells;
-    let mut max_radius = 0.0_f64;
-    let mut min_cx = i32::MAX;
-    let mut min_cy = i32::MAX;
-    let mut min_cz = i32::MAX;
-    let mut max_cx = i32::MIN;
-    let mut max_cy = i32::MIN;
-    let mut max_cz = i32::MIN;
-    for i in 0..count {
-        let slot = sphere_slots[i] as usize;
-        let x = p.pos_x[slot];
-        let y = p.pos_y[slot];
-        let z = p.pos_z[slot];
-        let r = p.radius[slot];
-        if r > max_radius {
-            max_radius = r;
-        }
-        let cx = (x / cell_size).floor() as i32;
-        let cy = (y / cell_size).floor() as i32;
-        let cz = ((z + half_cs) / cell_size).floor() as i32;
-        if cx < min_cx {
-            min_cx = cx;
-        }
-        if cy < min_cy {
-            min_cy = cy;
-        }
-        if cz < min_cz {
-            min_cz = cz;
-        }
-        if cx > max_cx {
-            max_cx = cx;
-        }
-        if cy > max_cy {
-            max_cy = cy;
-        }
-        if cz > max_cz {
-            max_cz = cz;
-        }
-        let key = pack_contact_cell_key(cx, cy, cz);
-        let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
-            gen,
-            items: Vec::new(),
-        });
-        if bucket.gen != gen {
-            bucket.gen = gen;
-            bucket.items.clear();
-        }
-        bucket.items.push(i as u32);
-    }
-    // Track "got pushed" per local index so JS can fire wakeBody on
-    // exactly the bodies whose state flipped. Reused across calls; only
-    // [0, count) is touched, so a longer buffer from a prior call is fine.
-    let woke = &mut scratch.woke;
-    if woke.len() < count {
-        woke.resize(count, false);
-    }
-    for k in 0..count {
-        woke[k] = false;
-    }
-
     for _iter in 0..iterations {
         for i in 0..count {
             let slot_a = sphere_slots[i] as usize;
@@ -1463,112 +1550,272 @@ pub fn pool_resolve_sphere_sphere(
                             if j <= i {
                                 continue;
                             }
-                            let slot_b = sphere_slots[j] as usize;
-                            let br = p.radius[slot_b];
-
-                            let ax = p.pos_x[slot_a];
-                            let ay = p.pos_y[slot_a];
-                            let az = p.pos_z[slot_a];
-                            let bx = p.pos_x[slot_b];
-                            let by = p.pos_y[slot_b];
-                            let bz = p.pos_z[slot_b];
-
-                            let ddx = bx - ax;
-                            let ddy = by - ay;
-                            let ddz = bz - az;
-                            let r_sum = ar + br;
-                            let dist_sq = ddx * ddx + ddy * ddy + ddz * ddz;
-                            if dist_sq >= r_sum * r_sum {
-                                continue;
-                            }
-
-                            woke[i] = true;
-                            woke[j] = true;
-
-                            let dist: f64;
-                            let nx: f64;
-                            let ny: f64;
-                            let nz: f64;
-                            if dist_sq < 1e-12 {
-                                // Degenerate: deterministic random direction.
-                                // Using slot ids (stable for body lifetime) as
-                                // the seed source — slightly different from the
-                                // Phase 3c buffer-based version (which used the
-                                // entityId), but functionally equivalent for the
-                                // tie-break case (centers exactly coincident).
-                                let a_id = slot_a as u64;
-                                let b_id = slot_b as u64;
-                                let seed = (a_id.wrapping_mul(73856093)
-                                    ^ b_id.wrapping_mul(19349663))
-                                    as u32;
-                                let angle =
-                                    (seed as f64 / 4294967296.0) * core::f64::consts::PI * 2.0;
-                                dist = 1e-6;
-                                nx = angle.cos();
-                                ny = angle.sin();
-                                nz = 0.0;
-                            } else {
-                                dist = dist_sq.sqrt();
-                                let inv_dist = 1.0 / dist;
-                                nx = ddx * inv_dist;
-                                ny = ddy * inv_dist;
-                                nz = ddz * inv_dist;
-                            }
-                            let penetration = r_sum - dist;
-                            let b_inv_mass = p.inv_mass[slot_b];
-                            let inv_mass_sum_inv = 1.0 / (a_inv_mass + b_inv_mass);
-                            let w_a = a_inv_mass * inv_mass_sum_inv;
-                            let w_b = b_inv_mass * inv_mass_sum_inv;
-                            p.pos_x[slot_a] = ax - nx * penetration * w_a;
-                            p.pos_y[slot_a] = ay - ny * penetration * w_a;
-                            p.pos_z[slot_a] = az - nz * penetration * w_a;
-                            p.pos_x[slot_b] = bx + nx * penetration * w_b;
-                            p.pos_y[slot_b] = by + ny * penetration * w_b;
-                            p.pos_z[slot_b] = bz + nz * penetration * w_b;
-
-                            // Upward contact flag — set directly in pool;
-                            // JS reads via the body.upwardSurfaceContact getter.
-                            if nz > 0.35 {
-                                p.flags[slot_b] |= BODY_FLAG_UPWARD_CONTACT;
-                            } else if nz < -0.35 {
-                                p.flags[slot_a] |= BODY_FLAG_UPWARD_CONTACT;
-                            }
-
-                            let a_vx = p.vel_x[slot_a];
-                            let a_vy = p.vel_y[slot_a];
-                            let a_vz = p.vel_z[slot_a];
-                            let b_vx = p.vel_x[slot_b];
-                            let b_vy = p.vel_y[slot_b];
-                            let b_vz = p.vel_z[slot_b];
-                            let rvx = b_vx - a_vx;
-                            let rvy = b_vy - a_vy;
-                            let rvz = b_vz - a_vz;
-                            let v_dot_n = rvx * nx + rvy * ny + rvz * nz;
-                            if v_dot_n >= 0.0 {
-                                continue;
-                            }
-                            let b_restitution = p.restitution[slot_b];
-                            let e = a_restitution.min(b_restitution);
-                            let j_mag = -(1.0 + e) * v_dot_n * inv_mass_sum_inv;
-                            let ix = j_mag * nx;
-                            let iy = j_mag * ny;
-                            let iz = j_mag * nz;
-                            p.vel_x[slot_a] = a_vx - ix * a_inv_mass;
-                            p.vel_y[slot_a] = a_vy - iy * a_inv_mass;
-                            p.vel_z[slot_a] = a_vz - iz * a_inv_mass;
-                            p.vel_x[slot_b] = b_vx + ix * b_inv_mass;
-                            p.vel_y[slot_b] = b_vy + iy * b_inv_mass;
-                            p.vel_z[slot_b] = b_vz + iz * b_inv_mass;
+                            resolve_pool_sphere_pair(
+                                p,
+                                sphere_slots,
+                                woke,
+                                i,
+                                j,
+                                ar,
+                                a_inv_mass,
+                                a_restitution,
+                            );
                         }
                     }
                 }
             }
         }
     }
+}
+
+#[inline]
+fn run_pool_sphere_resolve_dense(
+    p: &mut BodyPool,
+    sphere_slots: &[u32],
+    iterations: u32,
+    cell_size: f64,
+    half_cs: f64,
+    max_radius: f64,
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    max_cx: i32,
+    max_cy: i32,
+    max_cz: i32,
+    width: usize,
+    height: usize,
+    dense_cells: &[SphereContactBucket],
+    gen: u32,
+    woke: &mut [bool],
+) {
+    let count = sphere_slots.len();
+    for _iter in 0..iterations {
+        for i in 0..count {
+            let slot_a = sphere_slots[i] as usize;
+            let ar = p.radius[slot_a];
+            let a_inv_mass = p.inv_mass[slot_a];
+            let a_restitution = p.restitution[slot_a];
+            let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
+
+            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
+            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
+            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
+
+            let query_min_cx = (acx - range).max(min_cx);
+            let query_max_cx = (acx + range).min(max_cx);
+            let query_min_cy = (acy - range).max(min_cy);
+            let query_max_cy = (acy + range).min(max_cy);
+            let query_min_cz = (acz - range).max(min_cz);
+            let query_max_cz = (acz + range).min(max_cz);
+
+            for cz in query_min_cz..=query_max_cz {
+                for cy in query_min_cy..=query_max_cy {
+                    for cx in query_min_cx..=query_max_cx {
+                        let index = sphere_contact_dense_index(
+                            cx, cy, cz, min_cx, min_cy, min_cz, width, height,
+                        );
+                        let bucket = &dense_cells[index];
+                        if bucket.gen != gen {
+                            continue;
+                        }
+                        for &j_u32 in bucket.items.iter() {
+                            let j = j_u32 as usize;
+                            if j <= i {
+                                continue;
+                            }
+                            resolve_pool_sphere_pair(
+                                p,
+                                sphere_slots,
+                                woke,
+                                i,
+                                j,
+                                ar,
+                                a_inv_mass,
+                                a_restitution,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub fn pool_resolve_sphere_sphere(
+    sphere_slots: &[u32],
+    iterations: u32,
+    cell_size: f64,
+    wake_transitions_out: &mut [u32],
+) -> u32 {
+    let count = sphere_slots.len();
+    debug_assert!(wake_transitions_out.len() >= count);
+    if count == 0 || iterations == 0 || cell_size <= 0.0 {
+        return 0;
+    }
+
+    let p = pool();
+    let half_cs = cell_size * 0.5;
+
+    // Bucket bodies by center cell; reused across all sub-iterations
+    // — same as PhysicsEngine3D.rebuildContactCells / Phase 3c. The grid
+    // and the woke buffer live in persistent scratch (see
+    // SphereResolveScratch): bump the generation and stamp each touched
+    // bucket so stale buckets read as empty without freeing their Vecs.
+    let scratch = sphere_resolve_scratch();
+    scratch.gen = scratch.gen.wrapping_add(1);
+    let gen = scratch.gen;
+    if scratch.cell_x.len() < count {
+        scratch.cell_x.resize(count, 0);
+        scratch.cell_y.resize(count, 0);
+        scratch.cell_z.resize(count, 0);
+    }
+    let mut max_radius = 0.0_f64;
+    let mut min_cx = i32::MAX;
+    let mut min_cy = i32::MAX;
+    let mut min_cz = i32::MAX;
+    let mut max_cx = i32::MIN;
+    let mut max_cy = i32::MIN;
+    let mut max_cz = i32::MIN;
+    for i in 0..count {
+        let slot = sphere_slots[i] as usize;
+        let x = p.pos_x[slot];
+        let y = p.pos_y[slot];
+        let z = p.pos_z[slot];
+        let r = p.radius[slot];
+        if r > max_radius {
+            max_radius = r;
+        }
+        let cx = (x / cell_size).floor() as i32;
+        let cy = (y / cell_size).floor() as i32;
+        let cz = ((z + half_cs) / cell_size).floor() as i32;
+        scratch.cell_x[i] = cx;
+        scratch.cell_y[i] = cy;
+        scratch.cell_z[i] = cz;
+        if cx < min_cx {
+            min_cx = cx;
+        }
+        if cy < min_cy {
+            min_cy = cy;
+        }
+        if cz < min_cz {
+            min_cz = cz;
+        }
+        if cx > max_cx {
+            max_cx = cx;
+        }
+        if cy > max_cy {
+            max_cy = cy;
+        }
+        if cz > max_cz {
+            max_cz = cz;
+        }
+    }
+
+    let dense_shape = sphere_contact_dense_shape(min_cx, min_cy, min_cz, max_cx, max_cy, max_cz);
+    let use_dense = matches!(
+        dense_shape,
+        Some((_width, _height, _depth, volume)) if volume <= SPHERE_DENSE_CELL_LIMIT
+    );
+    if use_dense {
+        let (width, height, _depth, volume) = dense_shape.unwrap();
+        if scratch.dense_cells.len() < volume {
+            scratch
+                .dense_cells
+                .resize_with(volume, || SphereContactBucket {
+                    gen: 0,
+                    items: Vec::new(),
+                });
+        }
+        for i in 0..count {
+            let index = sphere_contact_dense_index(
+                scratch.cell_x[i],
+                scratch.cell_y[i],
+                scratch.cell_z[i],
+                min_cx,
+                min_cy,
+                min_cz,
+                width,
+                height,
+            );
+            let bucket = &mut scratch.dense_cells[index];
+            if bucket.gen != gen {
+                bucket.gen = gen;
+                bucket.items.clear();
+            }
+            bucket.items.push(i as u32);
+        }
+    } else {
+        let cells = &mut scratch.cells;
+        for i in 0..count {
+            let key =
+                pack_contact_cell_key(scratch.cell_x[i], scratch.cell_y[i], scratch.cell_z[i]);
+            let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
+                gen,
+                items: Vec::new(),
+            });
+            if bucket.gen != gen {
+                bucket.gen = gen;
+                bucket.items.clear();
+            }
+            bucket.items.push(i as u32);
+        }
+    }
+
+    // Track "got pushed" per local index so JS can fire wakeBody on
+    // exactly the bodies whose state flipped. Reused across calls; only
+    // [0, count) is touched, so a longer buffer from a prior call is fine.
+    if scratch.woke.len() < count {
+        scratch.woke.resize(count, false);
+    }
+    for k in 0..count {
+        scratch.woke[k] = false;
+    }
+
+    if use_dense {
+        let (width, height, _depth, _volume) = dense_shape.unwrap();
+        run_pool_sphere_resolve_dense(
+            p,
+            sphere_slots,
+            iterations,
+            cell_size,
+            half_cs,
+            max_radius,
+            min_cx,
+            min_cy,
+            min_cz,
+            max_cx,
+            max_cy,
+            max_cz,
+            width,
+            height,
+            &scratch.dense_cells,
+            gen,
+            &mut scratch.woke[0..count],
+        );
+    } else {
+        run_pool_sphere_resolve_hash(
+            p,
+            sphere_slots,
+            iterations,
+            cell_size,
+            half_cs,
+            max_radius,
+            min_cx,
+            min_cy,
+            min_cz,
+            max_cx,
+            max_cy,
+            max_cz,
+            &scratch.cells,
+            gen,
+            &mut scratch.woke[0..count],
+        );
+    }
 
     let mut transitions = 0_u32;
     for i in 0..count {
-        if woke[i] {
+        if scratch.woke[i] {
             wake_transitions_out[transitions as usize] = sphere_slots[i];
             transitions += 1;
         }
