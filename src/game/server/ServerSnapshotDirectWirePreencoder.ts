@@ -10,7 +10,6 @@ import { writeAudioEventWireRowsDirect } from '../network/stateSerializerAudio';
 import { writeEconomySnapshotWireRowsDirect } from '../network/stateSerializerEconomy';
 import {
   appendEntitySnapshotWireRowDirect,
-  canAppendEntitySnapshotWireRowDirect,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
 } from '../network/stateSerializerEntities';
@@ -188,19 +187,9 @@ export class ServerSnapshotDirectWirePreencoder {
   tryEncode(input: ServerSnapshotDirectWireInput): DirectSerializedListenerSnapshot | undefined {
     if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
-    let stageStart = performance.now();
-    const canUseDirectRows = this.canUseDirectEntityRows(input);
-    if (input.materializationStages !== undefined) {
-      addSnapshotMaterializationStageFromStart(
-        input.materializationStages,
-        'entityDtos',
-        stageStart,
-      );
-    }
-    if (!canUseDirectRows) return undefined;
 
     const state = this.materializeWireState(input);
-    stageStart = performance.now();
+    let stageStart = performance.now();
     const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
     const encodeMs = performance.now() - stageStart;
     if (input.materializationStages !== undefined) {
@@ -297,33 +286,6 @@ export class ServerSnapshotDirectWirePreencoder {
           : undefined,
       },
     };
-  }
-
-  private canUseDirectEntityRows(input: ServerSnapshotDirectWireInput): boolean {
-    const visibility = input.visibility;
-    const visibleEntityIds = visibility.getVisibleEntityIds();
-    if (visibleEntityIds !== undefined) {
-      for (let i = 0; i < visibleEntityIds.length; i++) {
-        const entity = input.world.getEntity(visibleEntityIds[i]);
-        if (!entity || !isSerializedEntityKind(entity)) continue;
-        if (!canAppendEntitySnapshotWireRowDirect(entity)) return false;
-      }
-      return true;
-    }
-
-    const sources: ReadonlyArray<readonly Entity[]> = [
-      input.world.getUnits(),
-      input.world.getBuildings(),
-    ];
-    for (let s = 0; s < sources.length; s++) {
-      const source = sources[s];
-      for (let i = 0; i < source.length; i++) {
-        const entity = source[i];
-        if (!acceptsSerializedEntity(entity, visibility)) continue;
-        if (!canAppendEntitySnapshotWireRowDirect(entity)) return false;
-      }
-    }
-    return true;
   }
 
   private materializeWireState(input: ServerSnapshotDirectWireInput): NetworkServerSnapshot {
@@ -737,7 +699,6 @@ export class ServerSnapshotDirectWirePreencoder {
     for (let i = 0; i < ids.length; i++) {
       const entity = input.world.getEntity(ids[i]);
       if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
-      if (!canAppendEntitySnapshotWireRowDirect(entity)) return -1;
       appendEntitySnapshotWireRowDirect(
         entity,
         ENTITY_MOTION_DELTA_FIELDS,
@@ -762,10 +723,6 @@ export class ServerSnapshotDirectWirePreencoder {
         if (emittedIds.has(id)) continue;
         const entity = input.world.getEntity(id);
         if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
-        if (!canAppendEntitySnapshotWireRowDirect(entity)) {
-          emittedIds.clear();
-          return -1;
-        }
         appendEntitySnapshotWireRowDirect(
           entity,
           input.previousVisibleEntityIds.has(id) ? input.dirtyFields[i] : undefined,
@@ -785,10 +742,6 @@ export class ServerSnapshotDirectWirePreencoder {
       if (input.previousVisibleEntityIds.has(id)) continue;
       const entity = input.world.getEntity(id);
       if (!entity || !isSerializedEntityKind(entity)) continue;
-      if (!canAppendEntitySnapshotWireRowDirect(entity)) {
-        emittedIds.clear();
-        return -1;
-      }
       appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
       emittedIds.add(id);
       entityCount++;
@@ -800,10 +753,6 @@ export class ServerSnapshotDirectWirePreencoder {
       if (!input.previousVisibleEntityIds.has(id) || !currentVisibleEntityIds.has(id)) continue;
       const entity = input.world.getEntity(id);
       if (!entity || !isSerializedEntityKind(entity)) continue;
-      if (!canAppendEntitySnapshotWireRowDirect(entity)) {
-        emittedIds.clear();
-        return -1;
-      }
       appendEntitySnapshotWireRowDirect(
         entity,
         input.dirtyFields[i],
