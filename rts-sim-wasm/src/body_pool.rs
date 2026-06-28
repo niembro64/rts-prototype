@@ -1368,6 +1368,12 @@ pub fn pool_resolve_sphere_sphere(
     let gen = scratch.gen;
     let cells = &mut scratch.cells;
     let mut max_radius = 0.0_f64;
+    let mut min_cx = i32::MAX;
+    let mut min_cy = i32::MAX;
+    let mut min_cz = i32::MAX;
+    let mut max_cx = i32::MIN;
+    let mut max_cy = i32::MIN;
+    let mut max_cz = i32::MIN;
     for i in 0..count {
         let slot = sphere_slots[i] as usize;
         let x = p.pos_x[slot];
@@ -1380,6 +1386,24 @@ pub fn pool_resolve_sphere_sphere(
         let cx = (x / cell_size).floor() as i32;
         let cy = (y / cell_size).floor() as i32;
         let cz = ((z + half_cs) / cell_size).floor() as i32;
+        if cx < min_cx {
+            min_cx = cx;
+        }
+        if cy < min_cy {
+            min_cy = cy;
+        }
+        if cz < min_cz {
+            min_cz = cz;
+        }
+        if cx > max_cx {
+            max_cx = cx;
+        }
+        if cy > max_cy {
+            max_cy = cy;
+        }
+        if cz > max_cz {
+            max_cz = cz;
+        }
         let key = pack_contact_cell_key(cx, cy, cz);
         let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
             gen,
@@ -1419,10 +1443,17 @@ pub fn pool_resolve_sphere_sphere(
             let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
             let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
 
-            for dz in -range..=range {
-                for dy in -range..=range {
-                    for dx in -range..=range {
-                        let key = pack_contact_cell_key(acx + dx, acy + dy, acz + dz);
+            let query_min_cx = (acx - range).max(min_cx);
+            let query_max_cx = (acx + range).min(max_cx);
+            let query_min_cy = (acy - range).max(min_cy);
+            let query_max_cy = (acy + range).min(max_cy);
+            let query_min_cz = (acz - range).max(min_cz);
+            let query_max_cz = (acz + range).min(max_cz);
+
+            for cz in query_min_cz..=query_max_cz {
+                for cy in query_min_cy..=query_max_cy {
+                    for cx in query_min_cx..=query_max_cx {
+                        let key = pack_contact_cell_key(cx, cy, cz);
                         let bucket = match cells.get(&key) {
                             Some(b) if b.gen == gen => b,
                             _ => continue,
