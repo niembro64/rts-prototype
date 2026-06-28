@@ -800,15 +800,12 @@ export class ClientViewState {
   }
 
   private tryApplyBasicTypedDeltaWireRow(
-    source: EntitySnapshotWireSource | undefined,
+    source: EntitySnapshotWireSource,
     entityIndex: number,
     now: number,
     collectCorrectionStats: boolean,
     applyStats: ClientSnapshotApplyStats,
   ): boolean {
-    if (source === undefined || source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_BASIC) {
-      return false;
-    }
     const rowIndex = source.rowIndices[entityIndex];
     if (rowIndex < 0 || rowIndex >= source.basicRows.count) return false;
     const values = source.basicRows.values;
@@ -885,15 +882,12 @@ export class ClientViewState {
   }
 
   private tryApplyUnitTypedDeltaWireRow(
-    source: EntitySnapshotWireSource | undefined,
+    source: EntitySnapshotWireSource,
     entityIndex: number,
     now: number,
     collectCorrectionStats: boolean,
     applyStats: ClientSnapshotApplyStats,
   ): boolean {
-    if (source === undefined || source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
-      return false;
-    }
     const rowIndex = source.rowIndices[entityIndex];
     if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
     const values = source.unitRows.values;
@@ -1035,13 +1029,10 @@ export class ClientViewState {
   }
 
   private tryApplyBuildingTypedDeltaWireRow(
-    source: EntitySnapshotWireSource | undefined,
+    source: EntitySnapshotWireSource,
     entityIndex: number,
     now: number,
   ): boolean {
-    if (source === undefined || source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) {
-      return false;
-    }
     const rowIndex = source.rowIndices[entityIndex];
     if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
     const values = source.buildingRows.values;
@@ -1272,34 +1263,35 @@ export class ClientViewState {
         : undefined;
     if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
-        const typedEntityKind = typedEntityWireSource?.kinds[entityIndex] ?? 0;
         let appliedTypedDelta = false;
-        switch (typedEntityKind) {
-          case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
-            appliedTypedDelta = this.tryApplyBasicTypedDeltaWireRow(
-              typedEntityWireSource,
-              entityIndex,
-              now,
-              collectCorrectionStats,
-              applyStats,
-            );
-            break;
-          case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
-            appliedTypedDelta = this.tryApplyUnitTypedDeltaWireRow(
-              typedEntityWireSource,
-              entityIndex,
-              now,
-              collectCorrectionStats,
-              applyStats,
-            );
-            break;
-          case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
-            appliedTypedDelta = this.tryApplyBuildingTypedDeltaWireRow(
-              typedEntityWireSource,
-              entityIndex,
-              now,
-            );
-            break;
+        if (typedEntityWireSource !== undefined) {
+          switch (typedEntityWireSource.kinds[entityIndex]) {
+            case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+              appliedTypedDelta = this.tryApplyBasicTypedDeltaWireRow(
+                typedEntityWireSource,
+                entityIndex,
+                now,
+                collectCorrectionStats,
+                applyStats,
+              );
+              break;
+            case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+              appliedTypedDelta = this.tryApplyUnitTypedDeltaWireRow(
+                typedEntityWireSource,
+                entityIndex,
+                now,
+                collectCorrectionStats,
+                applyStats,
+              );
+              break;
+            case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+              appliedTypedDelta = this.tryApplyBuildingTypedDeltaWireRow(
+                typedEntityWireSource,
+                entityIndex,
+                now,
+              );
+              break;
+          }
         }
         if (appliedTypedDelta) {
           continue;
