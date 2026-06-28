@@ -230,6 +230,7 @@ export class SnapshotBuffer {
       deltaEntities.length,
     );
     const pendingWireSource = getEntitySnapshotWireSource(pendingEntities);
+    const deltaWireSource = getEntitySnapshotWireSource(deltaEntities);
     const canPreservePendingWireSource = pendingWireSource !== undefined &&
       this.canPreservePendingEntityWireSource(
         pendingEntities,
@@ -261,6 +262,18 @@ export class SnapshotBuffer {
       }
       if (delta.changedFields === null) {
         pendingEntities[targetIndex] = cloneNetworkSnapshotEntity(delta);
+        continue;
+      }
+      if (
+        this.patchPendingEntityMotionFromTypedDelta(
+          deltaWireSource,
+          i,
+          target,
+          pendingWireSource,
+          targetIndex,
+          canPreservePendingWireSource,
+        )
+      ) {
         continue;
       }
       if (canPreservePendingWireSource && pendingWireSource !== undefined) {
@@ -306,6 +319,124 @@ export class SnapshotBuffer {
         }
       }
     }
+  }
+
+  private patchPendingEntityMotionFromTypedDelta(
+    deltaSource: EntitySnapshotWireSource | undefined,
+    deltaIndex: number,
+    target: NetworkServerSnapshotEntity,
+    pendingSource: EntitySnapshotWireSource | undefined,
+    targetIndex: number,
+    patchPendingSource: boolean,
+  ): boolean {
+    if (deltaSource === undefined || deltaSource.kinds[deltaIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+      return false;
+    }
+    const deltaRowIndex = deltaSource.rowIndices[deltaIndex];
+    if (deltaRowIndex < 0 || deltaRowIndex >= deltaSource.unitRows.count) return false;
+    const deltaValues = deltaSource.unitRows.values;
+    const deltaBase = deltaRowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    const changedFields = deltaValues[deltaBase + 7] | 0;
+    if (deltaValues[deltaBase + 6] === 0 || changedFields === 0) return false;
+    if ((changedFields & ~ENTITY_MOTION_MERGE_FIELDS) !== 0) return false;
+    if ((deltaValues[deltaBase + 0] | 0) !== target.id) return false;
+
+    let pendingValues: Float64Array | undefined;
+    let pendingBase = 0;
+    if (
+      patchPendingSource &&
+      pendingSource !== undefined &&
+      pendingSource.kinds[targetIndex] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT
+    ) {
+      const pendingRowIndex = pendingSource.rowIndices[targetIndex];
+      if (pendingRowIndex >= 0 && pendingRowIndex < pendingSource.unitRows.count) {
+        const values = pendingSource.unitRows.values;
+        const base = pendingRowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+        if ((values[base + 0] | 0) === target.id) {
+          pendingValues = values;
+          pendingBase = base;
+        }
+      }
+    }
+
+    let patched = false;
+    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+      if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
+      target.pos.x = deltaValues[deltaBase + 1];
+      target.pos.y = deltaValues[deltaBase + 2];
+      target.pos.z = deltaValues[deltaBase + 3];
+      if (pendingValues !== undefined) {
+        pendingValues[pendingBase + 1] = deltaValues[deltaBase + 1];
+        pendingValues[pendingBase + 2] = deltaValues[deltaBase + 2];
+        pendingValues[pendingBase + 3] = deltaValues[deltaBase + 3];
+      }
+      patched = true;
+    }
+    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+      target.rotation = deltaValues[deltaBase + 4];
+      if (pendingValues !== undefined) {
+        pendingValues[pendingBase + 4] = deltaValues[deltaBase + 4];
+      }
+      patched = true;
+    }
+
+    const dstUnit = target.unit;
+    if (dstUnit === null) return patched;
+    if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
+      if (dstUnit.velocity === null) dstUnit.velocity = { x: 0, y: 0, z: 0 };
+      dstUnit.velocity.x = deltaValues[deltaBase + 10];
+      dstUnit.velocity.y = deltaValues[deltaBase + 11];
+      dstUnit.velocity.z = deltaValues[deltaBase + 12];
+      if (pendingValues !== undefined) {
+        pendingValues[pendingBase + 10] = deltaValues[deltaBase + 10];
+        pendingValues[pendingBase + 11] = deltaValues[deltaBase + 11];
+        pendingValues[pendingBase + 12] = deltaValues[deltaBase + 12];
+      }
+      if (deltaValues[deltaBase + 32] !== 0) {
+        if (dstUnit.angularVelocity3 === null) {
+          dstUnit.angularVelocity3 = { x: 0, y: 0, z: 0 };
+        }
+        dstUnit.angularVelocity3.x = deltaValues[deltaBase + 33];
+        dstUnit.angularVelocity3.y = deltaValues[deltaBase + 34];
+        dstUnit.angularVelocity3.z = deltaValues[deltaBase + 35];
+        if (pendingValues !== undefined) {
+          pendingValues[pendingBase + 32] = 1;
+          pendingValues[pendingBase + 33] = deltaValues[deltaBase + 33];
+          pendingValues[pendingBase + 34] = deltaValues[deltaBase + 34];
+          pendingValues[pendingBase + 35] = deltaValues[deltaBase + 35];
+        }
+      }
+      patched = true;
+    }
+    if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && deltaValues[deltaBase + 23] !== 0) {
+      if (dstUnit.surfaceNormal === null) dstUnit.surfaceNormal = { nx: 0, ny: 0, nz: 1000 };
+      dstUnit.surfaceNormal.nx = deltaValues[deltaBase + 24];
+      dstUnit.surfaceNormal.ny = deltaValues[deltaBase + 25];
+      dstUnit.surfaceNormal.nz = deltaValues[deltaBase + 26];
+      if (pendingValues !== undefined) {
+        pendingValues[pendingBase + 23] = 1;
+        pendingValues[pendingBase + 24] = deltaValues[deltaBase + 24];
+        pendingValues[pendingBase + 25] = deltaValues[deltaBase + 25];
+        pendingValues[pendingBase + 26] = deltaValues[deltaBase + 26];
+      }
+      patched = true;
+    }
+    if ((changedFields & ENTITY_CHANGED_ROT) !== 0 && deltaValues[deltaBase + 27] !== 0) {
+      if (dstUnit.orientation === null) dstUnit.orientation = { x: 0, y: 0, z: 0, w: 1 };
+      dstUnit.orientation.x = deltaValues[deltaBase + 28];
+      dstUnit.orientation.y = deltaValues[deltaBase + 29];
+      dstUnit.orientation.z = deltaValues[deltaBase + 30];
+      dstUnit.orientation.w = deltaValues[deltaBase + 31];
+      if (pendingValues !== undefined) {
+        pendingValues[pendingBase + 27] = 1;
+        pendingValues[pendingBase + 28] = deltaValues[deltaBase + 28];
+        pendingValues[pendingBase + 29] = deltaValues[deltaBase + 29];
+        pendingValues[pendingBase + 30] = deltaValues[deltaBase + 30];
+        pendingValues[pendingBase + 31] = deltaValues[deltaBase + 31];
+      }
+      patched = true;
+    }
+    return patched;
   }
 
   private canPreservePendingEntityWireSource(

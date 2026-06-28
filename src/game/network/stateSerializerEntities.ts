@@ -69,6 +69,11 @@ import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 const INITIAL_ENTITY_POOL = 200;
 const MAX_WEAPONS_PER_ENTITY = 8;
 const MAX_ACTIONS_PER_ENTITY = 16;
+const TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_NORMAL;
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
@@ -1153,4 +1158,47 @@ export function serializeEntitySnapshot(
 
   appendEntitySnapshotWireRowDirect(entity, changedFields, world, visibility);
   return ne;
+}
+
+function canUseTypedUnitDeltaPlaceholder(entity: Entity, changedFields: number | undefined): boolean {
+  return changedFields !== undefined &&
+    changedFields !== 0 &&
+    entity.type === 'unit' &&
+    entity.unit !== null &&
+    (changedFields & ~TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS) === 0;
+}
+
+function serializeTypedUnitDeltaPlaceholder(
+  entity: Entity,
+  changedFields: number,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+): NetworkServerSnapshotEntity {
+  const poolEntry = getPooledEntry();
+  const ne = poolEntry.entity;
+  ne.id = entity.id;
+  ne.type = entity.type;
+  ne.playerId = entity.ownership !== null ? entity.ownership.playerId : 1 as PlayerId;
+  ne.changedFields = changedFields;
+  ne.pos = null;
+  ne.rotation = null;
+  ne.unit = null;
+  ne.building = null;
+  appendEntitySnapshotWireRowDirect(entity, changedFields, world, visibility);
+  return ne;
+}
+
+export function serializeEntityDeltaSnapshot(
+  entity: Entity,
+  changedFields: number | undefined,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined = undefined,
+): NetworkServerSnapshotEntity | null {
+  if (
+    changedFields !== undefined &&
+    canUseTypedUnitDeltaPlaceholder(entity, changedFields)
+  ) {
+    return serializeTypedUnitDeltaPlaceholder(entity, changedFields, world, visibility);
+  }
+  return serializeEntitySnapshot(entity, changedFields, world, visibility);
 }

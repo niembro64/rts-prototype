@@ -294,6 +294,36 @@ export function runSnapshotBufferContractTest(): void {
     'motion-only merged entity deltas must patch cloned typed unit rows',
   );
 
+  const typedPlaceholderFullEntity = createSparseDecodedMotionUnitEntity(62, 100);
+  typedPlaceholderFullEntity.changedFields = null;
+  typedPlaceholderFullEntity.rotation = 0;
+  const typedPlaceholderFullEntities = [typedPlaceholderFullEntity];
+  const typedPlaceholderFullSnapshot = createSnapshot(14, [], typedPlaceholderFullEntities);
+  attachTypedUnitMotionSource(typedPlaceholderFullEntities, 62, 100, null);
+  fake.emitSnapshot(typedPlaceholderFullSnapshot);
+  const typedPlaceholderDeltaEntity = createSparseDecodedMotionUnitEntity(62, -1);
+  typedPlaceholderDeltaEntity.pos = null;
+  const typedPlaceholderDeltaEntities = [typedPlaceholderDeltaEntity];
+  attachTypedUnitMotionSource(typedPlaceholderDeltaEntities, 62, 444);
+  const typedPlaceholderDeltaSnapshot = createSnapshot(15, [], typedPlaceholderDeltaEntities);
+  typedPlaceholderDeltaSnapshot.entityDeltaOnly = true;
+  fake.emitSnapshot(typedPlaceholderDeltaSnapshot);
+  const consumedTypedPlaceholderMerge = buffer.consume();
+  assertContract(
+    consumedTypedPlaceholderMerge?.entities[0]?.pos?.x === 444,
+    'typed placeholder motion deltas must patch pending full DTO rows from wire rows',
+  );
+  const preservedPlaceholderSource = consumedTypedPlaceholderMerge !== null
+    ? getEntitySnapshotWireSource(consumedTypedPlaceholderMerge.entities)
+    : undefined;
+  assertContract(
+    preservedPlaceholderSource !== undefined &&
+      preservedPlaceholderSource.unitRows.values[
+        preservedPlaceholderSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 1
+      ] === 444,
+    'typed placeholder motion deltas must patch pending full typed rows from wire rows',
+  );
+
   const typedRemovedEntity = createSparseDecodedMotionUnitEntity(61, 100);
   typedRemovedEntity.changedFields = null;
   typedRemovedEntity.rotation = 0;

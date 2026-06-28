@@ -30,6 +30,7 @@ import {
   getEntitySnapshotPoolStats,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
+  serializeEntityDeltaSnapshot,
   serializeEntitySnapshot,
 } from '../network/stateSerializerEntities';
 import {
@@ -951,7 +952,7 @@ export class ServerSnapshotPublisher {
         entity === undefined ||
         (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
       ) continue;
-      const netEntity = serializeEntitySnapshot(entity, dirtyFields[i], world, visibility);
+      const netEntity = serializeEntityDeltaSnapshot(entity, dirtyFields[i], world, visibility);
       if (netEntity !== null) {
         entities.push(netEntity);
         emittedIds.add(id);
@@ -983,12 +984,9 @@ export class ServerSnapshotPublisher {
         entity === undefined ||
         (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
       ) continue;
-      const netEntity = serializeEntitySnapshot(
-        entity,
-        previousVisibleEntityIds.has(id) ? dirtyFields[i] : undefined,
-        world,
-        visibility,
-      );
+      const netEntity = previousVisibleEntityIds.has(id)
+        ? serializeEntityDeltaSnapshot(entity, dirtyFields[i], world, visibility)
+        : serializeEntitySnapshot(entity, undefined, world, visibility);
       if (netEntity !== null) {
         entities.push(netEntity);
         emittedIds.add(id);
@@ -1232,7 +1230,7 @@ export class ServerSnapshotPublisher {
       const entity = world.getEntity(candidateIds[i]);
       if (entity === undefined) continue;
       if (!visibility.isEntityVisible(entity)) continue;
-      const netEntity = serializeEntitySnapshot(
+      const netEntity = serializeEntityDeltaSnapshot(
         entity,
         ENTITY_MOTION_DELTA_FIELDS,
         world,

@@ -23,6 +23,7 @@ import {
   appendEntitySnapshotWireRowDirect,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
+  serializeEntityDeltaSnapshot,
   serializeEntitySnapshot,
 } from './stateSerializerEntities';
 
@@ -419,6 +420,31 @@ export function runClientSnapshotApplierContractTest(): void {
     typedMotionStats.correction.count === 1 &&
       typedMotionStats.correction.totalDistance > 40,
     'typed unit motion rows must drive local correction targets before DTO fallback',
+  );
+
+  wireMotionEntity.transform.x = 120;
+  const typedPlaceholderRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedPlaceholderRows);
+  const typedPlaceholderRow = serializeEntityDeltaSnapshot(
+    wireMotionEntity,
+    ENTITY_CHANGED_POS,
+    {} as WorldState,
+  );
+  if (typedPlaceholderRow !== null) typedPlaceholderRows.push(typedPlaceholderRow);
+  assertContract(
+    typedPlaceholderRows[0]?.pos === null,
+    'typed unit motion placeholder rows must omit DTO position fields',
+  );
+  const typedPlaceholderStats = view.applyNetworkState(snapshot(4, typedPlaceholderRows), {
+    syncEconomy: undefined,
+    collectCorrectionStats: true,
+  });
+  resetEntitySnapshotPool();
+  assertContract(
+    typedPlaceholderStats.correction.count === 1 &&
+      typedPlaceholderStats.correction.totalDistance > 100,
+    'typed unit motion placeholder rows must apply from wire rows before DTO fallback',
   );
 
   if (wireMotionEntity.unit === null) {
