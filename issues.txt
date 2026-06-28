@@ -34,14 +34,6 @@ Please always commit and push before and after any code changes we make.
     waterFriction, swimHeightUpwardForce, and
     swimGravityCounterUpwardForceRatio.
 
-[23] Optimization - make Rust/WASM SoA state canonical for high-count entities
-    Preserve gameplay exactly. Move hot-path unit/building/projectile state out
-    of JS Map<EntityId, Entity> ownership and into stable slot-indexed
-    Rust/WASM structure-of-arrays slabs. TypeScript may keep debug/editor/API
-    views, but sim, physics, visibility, snapshots, and render prep should read
-    canonical typed state directly. Add replay/checksum parity tests before
-    deleting the old JS-object hot path.
-
 [24] Optimization - port Simulation.updateUnits hot action loop to native batches
     Preserve all command, action, path, arrival, stuck, guard, fight, patrol,
     attack, build, repair, reclaim, capture, resurrect, load, and unload
