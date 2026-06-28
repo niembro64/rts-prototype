@@ -166,6 +166,8 @@ export class UnitForceSystem {
 
     const activeSlots = this.collectPhysicsForceUnitSlots();
     if (activeSlots.length === 0) return;
+    // Support-surface indexing still reads JS Entity transforms, so keep this
+    // bridge until support providers are slot-native.
     this.syncActiveBodyTransforms(activeSlots);
     this.world.refreshSupportSurfaceIndex();
     this.waterDryMaskCache.clear();
@@ -180,13 +182,6 @@ export class UnitForceSystem {
       const body = entity.body.physicsBody;
       const unit = entity.unit;
       const base = count * UNIT_FORCE_BATCH_STRIDE;
-
-      // Sync position from physics before force application for any
-      // consumer that reads transform during this tick. z is fully
-      // dynamic; terrain support is applied by the integrator.
-      entity.transform.x = body.x;
-      entity.transform.y = body.y;
-      entity.transform.z = body.z;
 
       _forceSlots[count] = body.slot;
       _forceEntities[count] = entity;
