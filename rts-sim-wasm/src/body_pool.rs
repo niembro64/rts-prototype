@@ -1391,8 +1391,6 @@ pub fn pool_resolve_sphere_sphere(
         }
         bucket.items.push(i as u32);
     }
-    let range = (((max_radius * 2.0) / cell_size).ceil() as i32).max(1);
-
     // Track "got pushed" per local index so JS can fire wakeBody on
     // exactly the bodies whose state flipped. Reused across calls; only
     // [0, count) is touched, so a longer buffer from a prior call is fine.
@@ -1410,6 +1408,12 @@ pub fn pool_resolve_sphere_sphere(
             let ar = p.radius[slot_a];
             let a_inv_mass = p.inv_mass[slot_a];
             let a_restitution = p.restitution[slot_a];
+            // A global `max_radius * 2` range is correct but expensive:
+            // one queen-class body makes every small unit scan a 5x5x5
+            // neighborhood. For body A, any possible B has radius <=
+            // max_radius, so `ar + max_radius` is the same conservative
+            // broadphase bound with fewer impossible bucket probes.
+            let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
 
             let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
             let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
