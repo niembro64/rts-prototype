@@ -4377,6 +4377,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCommandHotkeysContractTest();
         const { runRosterCommandSurfaceContractTest } = await import('../sim/blueprints/rosterCommandSurfaceContractTest');
         runRosterCommandSurfaceContractTest();
+        const { runLocomotionContractTest } = await import('../sim/blueprints/locomotionContractTest');
+        runLocomotionContractTest();
         const { runBoxSelectionContractTest } = await import('../input/helpers/BoxSelectionContractTest');
         runBoxSelectionContractTest();
         const { runRightClickCommandsContractTest } = await import('../input/helpers/RightClickCommandsContractTest');
