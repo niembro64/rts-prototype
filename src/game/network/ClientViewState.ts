@@ -598,7 +598,7 @@ export class ClientViewState {
     }
   }
 
-  private deleteEntityLocalState(id: EntityId): void {
+  private deleteEntityLocalState(id: EntityId, deferEntitySetChange = false): boolean {
     const existing = this.entities.get(id);
     const wasLineProjectile = existing ? isLineProjectileEntity(existing) : false;
     if (existing !== undefined) {
@@ -622,8 +622,14 @@ export class ClientViewState {
     this.dirtyBuildingRenderIds.delete(id);
     this.renderLifecycleDirtyIds.delete(id);
     if (existing !== undefined) {
-      this.markEntitySetChanged(existing.type !== 'shot');
+      if (!deferEntitySetChange) this.markEntitySetChanged(existing.type !== 'shot');
+      return true;
     }
+    return false;
+  }
+
+  private markSnapshotRemovalsApplied(changed: boolean): void {
+    if (changed) this.markEntitySetChanged(true);
   }
 
   private markEntityPredictionActive(entity: Entity): void {
@@ -1462,9 +1468,11 @@ export class ClientViewState {
     }
 
     if (!projectileDeltaOnly && state.removedEntityIds) {
+      let removedAnyLocalEntity = false;
       for (const id of state.removedEntityIds) {
-        this.deleteEntityLocalState(id);
+        removedAnyLocalEntity = this.deleteEntityLocalState(id, true) || removedAnyLocalEntity;
       }
+      this.markSnapshotRemovalsApplied(removedAnyLocalEntity);
     }
 
     // Full-state snapshot: remove non-projectile entities not present
@@ -1475,12 +1483,14 @@ export class ClientViewState {
       for (const netEntity of state.entities) {
         this._serverIds.add(netEntity.id);
       }
+      let removedAnyLocalEntity = false;
       for (const [id, entity] of this.entities) {
         if (entity.type === 'shot') continue;
         if (!this._serverIds.has(id)) {
-          this.deleteEntityLocalState(id);
+          removedAnyLocalEntity = this.deleteEntityLocalState(id, true) || removedAnyLocalEntity;
         }
       }
+      this.markSnapshotRemovalsApplied(removedAnyLocalEntity);
     }
 
     const projectiles = state.projectiles;
