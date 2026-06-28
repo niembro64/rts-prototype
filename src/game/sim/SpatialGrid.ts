@@ -65,6 +65,10 @@ class SpatialGrid {
   private readonly _rectResult: { units: Entity[]; buildings: Entity[] } = {
     units: [], buildings: [],
   };
+  private readonly _slotQueryResult: { slots: Uint32Array; count: number } = {
+    slots: new Uint32Array(0),
+    count: 0,
+  };
 
   private _projectileBatchCapacity = 0;
   private _projectileBatchSlots = new Uint32Array(0);
@@ -490,6 +494,17 @@ class SpatialGrid {
     const count = this.api().queryUnitsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
     this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultUnits);
     return this.queryResultUnits;
+  }
+
+  queryUnitSlotsAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): { slots: Uint32Array; count: number } {
+    const count = this.api().queryUnitsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
+    this._slotQueryResult.slots = this.scratch(count);
+    this._slotQueryResult.count = count;
+    return this._slotQueryResult;
   }
 
   queryBuildingsAlongLine(

@@ -36,6 +36,7 @@ import {
 import { getActiveShields } from '../combat/shieldTurret';
 import { ENTITY_CHANGED_HP } from '../../../types/network';
 import { getSimWasm } from '../../sim-wasm/init';
+import { entitySlotRegistry } from '../EntitySlotRegistry';
 import {
   BUILDING_CLOSED_DAMAGE_MULTIPLIER,
   buildingBlueprintHasActiveState,
@@ -1302,32 +1303,42 @@ export class DamageSystem {
     const dz = endZ - startZ;
     const segLenSq = dx * dx + dy * dy;
 
-    const nearbyUnits = spatialGrid.queryUnitsAlongLine(startX, startY, startZ, endX, endY, endZ, lineWidth + 60);
+    const nearbyUnitSlots = spatialGrid.queryUnitSlotsAlongLine(
+      startX, startY, startZ,
+      endX, endY, endZ,
+      lineWidth + 60,
+    );
+    const entityViews = entitySlotRegistry.getViews();
+    if (entityViews !== null) {
+      const slots = nearbyUnitSlots.slots;
+      const count = nearbyUnitSlots.count;
+      const halfLineWidth = lineWidth / 2;
+      for (let i = 0; i < count; i++) {
+        const slot = slots[i];
+        if (slot >= entityViews.capacity) continue;
+        const unitId = entityViews.entityId[slot] as EntityId;
+        const isExcludedEntity = unitId === bodyExcludeEntityId;
+        if (isExcludedEntity && bodyExcludePanelIndex < 0) continue;
+        if (entityViews.hp[slot] <= 0) continue;
 
-    for (const unit of nearbyUnits) {
-      const isExcludedEntity = unit.id === bodyExcludeEntityId;
-      if (isExcludedEntity && bodyExcludePanelIndex < 0) continue;
-      if (
-        !unit.unit ||
-        unit.unit.hp <= 0
-      ) continue;
+        // Horizontal-only early-out — the beam may arc vertically past
+        // the unit, but we still require its XY projection to come near
+        // the unit's bounding radius. Reflector surfaces (panels/fields)
+        // are tested by the shared Rust kernel below, not per unit here.
+        const unitX = entityViews.posX[slot];
+        const unitY = entityViews.posY[slot];
+        const unitZ = entityViews.posZ[slot];
+        const ux = unitX - startX, uy = unitY - startY;
+        const crossSq = (ux * dy - uy * dx);
+        const boundR = entityViews.radiusHitbox[slot] + halfLineWidth;
+        if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
-      // Horizontal-only early-out — the beam may arc vertically past
-      // the unit, but we still require its XY projection to come near
-      // the unit's bounding radius. Reflector surfaces (panels/fields)
-      // are tested by the shared Rust kernel below, not per unit here.
-      const ux = unit.transform.x - startX, uy = unit.transform.y - startY;
-      const crossSq = (ux * dy - uy * dx);
-      const boundR = unit.unit.radius.hitbox + lineWidth / 2;
-      if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
-
-      // Unit body: 3D segment-vs-sphere.
-      {
+        // Unit body: 3D segment-vs-sphere.
         const t = lineSphereIntersectionT(
           startX, startY, startZ,
           endX, endY, endZ,
-          unit.transform.x, unit.transform.y, unit.transform.z,
-          unit.unit.radius.hitbox + lineWidth / 2
+          unitX, unitY, unitZ,
+          boundR,
         );
         if (t !== null && t < bestT) {
           bestT = t; found = true;
@@ -1335,7 +1346,7 @@ export class DamageSystem {
           _segHit.x = startX + t * dx;
           _segHit.y = startY + t * dy;
           _segHit.z = startZ + t * dz;
-          _segHit.entityId = unit.id;
+          _segHit.entityId = unitId;
           _segHit.isMirror = false;
           _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
           _segHit.reflectDirX = 0; _segHit.reflectDirY = 0; _segHit.reflectDirZ = 0;
