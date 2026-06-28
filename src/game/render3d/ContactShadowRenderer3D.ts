@@ -135,6 +135,52 @@ export class ContactShadowRenderPacket3D {
     );
   }
 
+  pushUnitState(
+    entityId: number,
+    x: number,
+    y: number,
+    z: number,
+    hp: number,
+    radiusHitbox: number,
+    restHeight: number,
+    mapWidth: number,
+    mapHeight: number,
+    scope: ViewportFootprint,
+  ): void {
+    if (hp <= 0) return;
+    const radius = radiusHitbox * CONTACT_SHADOW_RENDER_CONFIG.unitShotRadiusMultiplier;
+    const bodyRestHeight = Math.max(1, restHeight);
+    const groundZ = getLocomotionSurfaceHeight(
+      x,
+      y,
+      mapWidth,
+      mapHeight,
+      entityId,
+    );
+    const casterHeight = Math.max(0, z - groundZ);
+    const airHeight = Math.max(0, casterHeight - bodyRestHeight);
+    const airFadeHeight = Math.max(
+      UNIT_AIR_SHADOW_FADE_MIN_HEIGHT,
+      bodyRestHeight * UNIT_AIR_SHADOW_FADE_BODY_HEIGHTS,
+    );
+    const airT = clamp01(airHeight / airFadeHeight);
+    const crossScale = 1 + airT * UNIT_AIR_SHADOW_CROSS_SCALE_BOOST;
+    const sunScale = 1 + airT * UNIT_AIR_SHADOW_SUN_SCALE_BOOST;
+    const scopeRadius =
+      radius * Math.max(crossScale, sunScale) +
+      CONTACT_SHADOW_RENDER_CONFIG.maxSunOffset;
+    if (!scope.inScope(x, y, scopeRadius)) return;
+    this.push(
+      x,
+      y,
+      radius * CONTACT_SHADOW_RENDER_CONFIG.crossSunSquash * crossScale,
+      radius * CONTACT_SHADOW_RENDER_CONFIG.sunStretch * sunScale,
+      casterHeight,
+      CONTACT_SHADOW_RENDER_CONFIG.unitSunOffsetPerHeight,
+      1 - airT * (1 - UNIT_AIR_SHADOW_MIN_ALPHA),
+    );
+  }
+
   pushBuilding(entity: Entity, scope: ViewportFootprint): void {
     const building = entity.building;
     if (!building || building.hp <= 0) return;
@@ -155,6 +201,37 @@ export class ContactShadowRenderPacket3D {
       halfWidth,
       halfDepth * CONTACT_SHADOW_RENDER_CONFIG.sunStretch,
       Math.max(20, Math.max(building.width, building.height) * 0.35),
+      CONTACT_SHADOW_RENDER_CONFIG.buildingSunOffsetPerHeight,
+      1,
+    );
+  }
+
+  pushBuildingState(
+    x: number,
+    y: number,
+    hp: number,
+    width: number,
+    footprintDepth: number,
+    scope: ViewportFootprint,
+  ): void {
+    if (hp <= 0) return;
+    const halfWidth = Math.max(
+      CONTACT_SHADOW_RENDER_CONFIG.minBuildingRadius,
+      width * 0.5 * CONTACT_SHADOW_RENDER_CONFIG.buildingRadiusMultiplier,
+    );
+    const halfDepth = Math.max(
+      CONTACT_SHADOW_RENDER_CONFIG.minBuildingRadius,
+      footprintDepth * 0.5 * CONTACT_SHADOW_RENDER_CONFIG.buildingRadiusMultiplier,
+    );
+    if (!scope.inScope(x, y, Math.max(halfWidth, halfDepth))) {
+      return;
+    }
+    this.push(
+      x,
+      y,
+      halfWidth,
+      halfDepth * CONTACT_SHADOW_RENDER_CONFIG.sunStretch,
+      Math.max(20, Math.max(width, footprintDepth) * 0.35),
       CONTACT_SHADOW_RENDER_CONFIG.buildingSunOffsetPerHeight,
       1,
     );

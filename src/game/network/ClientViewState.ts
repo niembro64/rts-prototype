@@ -108,7 +108,13 @@ import type {
   UnitRenderPacket3D,
 } from '../render3d/EntityRenderPackets3D';
 import type { EntityLodEmission3D } from '../render3d/EntityLod3D';
-import { ClientRenderEntityStateSlab } from '../render3d/ClientRenderEntityStateSlab';
+import {
+  CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS,
+  CLIENT_RENDER_ENTITY_FLAG_SELECTED,
+  CLIENT_RENDER_ENTITY_KIND_BUILDING,
+  CLIENT_RENDER_ENTITY_KIND_UNIT,
+  ClientRenderEntityStateSlab,
+} from '../render3d/ClientRenderEntityStateSlab';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -1558,6 +1564,55 @@ export class ClientViewState {
     if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud')) return;
 
     const type = this.hudTypeOf3D(entity);
+    const slot = this.renderEntityState.getSlot(entity.id)
+      ?? this.renderEntityState.refreshEntity(entity);
+    if (slot !== undefined) {
+      const views = this.renderEntityState.getViews();
+      const kind = views.kind[slot];
+      if (
+        kind === CLIENT_RENDER_ENTITY_KIND_UNIT ||
+        kind === CLIENT_RENDER_ENTITY_KIND_BUILDING
+      ) {
+        const stateFlags = views.flags[slot];
+        const selected = (stateFlags & CLIENT_RENDER_ENTITY_FLAG_SELECTED) !== 0;
+        const buildInProgress =
+          (stateFlags & CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS) !== 0;
+        const hp = views.hp[slot];
+        const maxHp = views.maxHp[slot];
+        const healthNotFull = maxHp > 0 && hp < maxHp;
+        const showHealth = this.barVisible3D(
+          options.getEntityHudToggle(type, 'healthBar'),
+          selected,
+          options.selectionHudMode,
+          healthNotFull,
+        );
+        const showBuild = this.barVisible3D(
+          options.getEntityHudToggle(type, 'buildBars'),
+          selected,
+          options.selectionHudMode,
+          buildInProgress,
+        );
+        const showHp = maxHp > 0 && (showHealth || forceVisible)
+          && (buildInProgress || hp > 0);
+        const showBuildBars = showBuild && buildInProgress;
+        if (!showHp && !showBuildBars) return;
+
+        out.bodyHud.pushRow(
+          views.entityIds[slot],
+          views.x[slot],
+          views.hudBarsY[slot],
+          views.y[slot],
+          views.bodyHudWidth[slot],
+          maxHp > 0 ? hp / maxHp : 0,
+          buildInProgress ? views.buildEnergyRatio[slot] : 0,
+          buildInProgress ? views.buildMetalRatio[slot] : 0,
+          showHp,
+          showBuildBars,
+        );
+        return;
+      }
+    }
+
     const selected = entity.selectable?.selected === true;
     const buildable = isBuildInProgress(entity.buildable)
       ? entity.buildable
@@ -1617,6 +1672,23 @@ export class ClientViewState {
     if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames')) return;
     const type = this.hudTypeOf3D(entity);
     const nameToggle = options.getEntityHudToggle(type, 'name');
+    const slot = this.renderEntityState.getSlot(entity.id)
+      ?? this.renderEntityState.refreshEntity(entity);
+    const views = slot !== undefined ? this.renderEntityState.getViews() : undefined;
+    const hasStateRow = slot !== undefined && views !== undefined && (
+      views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT ||
+      views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING
+    );
+    let labelX = entity.transform.x;
+    let labelZ = entity.transform.y;
+    let bodyNameY = entity.unit !== null
+      ? getUnitHudNameY(entity)
+      : getBuildingHudNameY(entity);
+    if (hasStateRow) {
+      labelX = views.x[slot];
+      labelZ = views.y[slot];
+      bodyNameY = views.hudNameY[slot];
+    }
     const bodyName = resolveEntityDisplayName(
       entity,
       nameToggle,
@@ -1626,9 +1698,9 @@ export class ClientViewState {
       out.pieceNames.push(
         entity.id,
         PIECE_TAG_BODY,
-        entity.transform.x,
-        entity.unit !== null ? getUnitHudNameY(entity) : getBuildingHudNameY(entity),
-        entity.transform.y,
+        labelX,
+        bodyNameY,
+        labelZ,
         bodyName,
       );
     }
@@ -1642,9 +1714,9 @@ export class ClientViewState {
       out.pieceNames.push(
         entity.id,
         PIECE_TAG_COMMANDER_OWNER_NAME,
-        entity.transform.x,
-        getUnitHudNameY(entity) + NAME_LABEL_OWNER_Y_OFFSET,
-        entity.transform.y,
+        labelX,
+        bodyNameY + NAME_LABEL_OWNER_Y_OFFSET,
+        labelZ,
         ownerName,
         'owner',
       );
@@ -1673,13 +1745,48 @@ export class ClientViewState {
   ): void {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
+    let views = this.renderEntityState.getViews();
     for (let i = 0; i < units.length; i++) {
-      if (this.entityEmissionUsesFarLod3D(units[i], options, 'contactShadows')) continue;
-      out.contactShadows.pushUnit(units[i], mapWidth, mapHeight, renderScope);
+      const entity = units[i];
+      if (this.entityEmissionUsesFarLod3D(entity, options, 'contactShadows')) continue;
+      const slot = this.renderEntityState.getSlot(entity.id)
+        ?? this.renderEntityState.refreshEntity(entity);
+      views = this.renderEntityState.getViews();
+      if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
+        out.contactShadows.pushUnitState(
+          views.entityIds[slot],
+          views.x[slot],
+          views.y[slot],
+          views.z[slot],
+          views.hp[slot],
+          views.radiusHitbox[slot],
+          Math.max(1, views.bodyCenterHeight[slot] || views.radiusOther[slot]),
+          mapWidth,
+          mapHeight,
+          renderScope,
+        );
+      } else {
+        out.contactShadows.pushUnit(entity, mapWidth, mapHeight, renderScope);
+      }
     }
     for (let i = 0; i < buildings.length; i++) {
-      if (this.entityEmissionUsesFarLod3D(buildings[i], options, 'contactShadows')) continue;
-      out.contactShadows.pushBuilding(buildings[i], renderScope);
+      const entity = buildings[i];
+      if (this.entityEmissionUsesFarLod3D(entity, options, 'contactShadows')) continue;
+      const slot = this.renderEntityState.getSlot(entity.id)
+        ?? this.renderEntityState.refreshEntity(entity);
+      views = this.renderEntityState.getViews();
+      if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING) {
+        out.contactShadows.pushBuildingState(
+          views.x[slot],
+          views.y[slot],
+          views.hp[slot],
+          views.contactShadowWidth[slot],
+          views.contactShadowDepth[slot],
+          renderScope,
+        );
+      } else {
+        out.contactShadows.pushBuilding(entity, renderScope);
+      }
     }
   }
 

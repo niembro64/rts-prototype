@@ -10,6 +10,12 @@ import {
   isShell,
 } from '../sim/buildableHelpers';
 import { getUnitGroundZ } from '../sim/unitGeometry';
+import {
+  getBuildingHudBarsY,
+  getBuildingHudNameY,
+  getUnitHudBarsY,
+  getUnitHudNameY,
+} from './HudAnchor';
 
 const INITIAL_RENDER_ENTITY_STATE_CAP = 4096;
 const NO_OWNER_ID = 0;
@@ -36,6 +42,7 @@ export type ClientRenderEntityStateViews = {
   readonly rotation: Float32Array;
   readonly groundY: Float32Array;
   readonly radiusOther: Float32Array;
+  readonly radiusHitbox: Float32Array;
   readonly normalX: Float32Array;
   readonly normalY: Float32Array;
   readonly normalZ: Float32Array;
@@ -48,6 +55,11 @@ export type ClientRenderEntityStateViews = {
   readonly buildingWidth: Float32Array;
   readonly buildingFootprintDepth: Float32Array;
   readonly buildingProgress: Float32Array;
+  readonly bodyHudWidth: Float32Array;
+  readonly hudBarsY: Float32Array;
+  readonly hudNameY: Float32Array;
+  readonly contactShadowWidth: Float32Array;
+  readonly contactShadowDepth: Float32Array;
   readonly hp: Float32Array;
   readonly maxHp: Float32Array;
   readonly buildEnergyRatio: Float32Array;
@@ -128,6 +140,7 @@ export class ClientRenderEntityStateSlab {
     rotation: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     groundY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     radiusOther: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    radiusHitbox: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalX: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalZ: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -140,6 +153,11 @@ export class ClientRenderEntityStateSlab {
     buildingWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildingFootprintDepth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildingProgress: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    bodyHudWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    hudBarsY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    hudNameY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    contactShadowWidth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    contactShadowDepth: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     hp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     maxHp: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildEnergyRatio: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -206,6 +224,7 @@ export class ClientRenderEntityStateSlab {
     views.rotation[slot] = entity.transform.rotation;
     views.groundY[slot] = getUnitGroundZ(entity);
     views.radiusOther[slot] = unit.radius.other || unit.radius.hitbox || 15;
+    views.radiusHitbox[slot] = unit.radius.hitbox;
     views.normalX[slot] = unit.surfaceNormal.nx;
     views.normalY[slot] = unit.surfaceNormal.ny;
     views.normalZ[slot] = unit.surfaceNormal.nz;
@@ -214,6 +233,11 @@ export class ClientRenderEntityStateSlab {
     views.yawRate[slot] = unit.angularVelocity3?.z ?? 0;
     views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
     views.bodyCenterHeight[slot] = unit.bodyCenterHeight;
+    views.bodyHudWidth[slot] = unit.radius.other * 2;
+    views.hudBarsY[slot] = getUnitHudBarsY(entity);
+    views.hudNameY[slot] = getUnitHudNameY(entity);
+    views.contactShadowWidth[slot] = 0;
+    views.contactShadowDepth[slot] = 0;
     views.hp[slot] = unit.hp;
     views.maxHp[slot] = unit.maxHp;
     views.buildEnergyRatio[slot] = buildable !== null
@@ -258,6 +282,7 @@ export class ClientRenderEntityStateSlab {
     views.y[slot] = entity.transform.y;
     views.z[slot] = entity.transform.z;
     views.rotation[slot] = entity.transform.rotation;
+    views.radiusHitbox[slot] = 0;
     views.buildingBaseY[slot] = entity.transform.z - building.depth / 2;
     views.buildingWidth[slot] = visualConfig !== null
       ? visualConfig.gridWidth * BUILD_GRID_CELL_SIZE
@@ -267,6 +292,11 @@ export class ClientRenderEntityStateSlab {
       : building.height;
     views.buildingProgress[slot] = getConstructionPieceRenderFraction(entity, 'body');
     views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
+    views.bodyHudWidth[slot] = building.width;
+    views.hudBarsY[slot] = getBuildingHudBarsY(entity);
+    views.hudNameY[slot] = getBuildingHudNameY(entity);
+    views.contactShadowWidth[slot] = building.width;
+    views.contactShadowDepth[slot] = building.height;
     views.hp[slot] = building.hp;
     views.maxHp[slot] = building.maxHp;
     views.buildEnergyRatio[slot] = buildable !== null
@@ -294,6 +324,12 @@ export class ClientRenderEntityStateSlab {
     this.views.flags[slot] = 0;
     this.views.turretCount[slot] = 0;
     this.views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
+    this.views.radiusHitbox[slot] = 0;
+    this.views.bodyHudWidth[slot] = 0;
+    this.views.hudBarsY[slot] = 0;
+    this.views.hudNameY[slot] = 0;
+    this.views.contactShadowWidth[slot] = 0;
+    this.views.contactShadowDepth[slot] = 0;
     this.views.unitBlueprintIds[slot] = undefined;
     this.views.buildingBlueprintIds[slot] = undefined;
     this.freeSlots.push(slot);
@@ -323,6 +359,12 @@ export class ClientRenderEntityStateSlab {
     this.views.flags.fill(0);
     this.views.turretCount.fill(0);
     this.views.passiveTurretIndex.fill(NO_PASSIVE_TURRET_INDEX);
+    this.views.radiusHitbox.fill(0);
+    this.views.bodyHudWidth.fill(0);
+    this.views.hudBarsY.fill(0);
+    this.views.hudNameY.fill(0);
+    this.views.contactShadowWidth.fill(0);
+    this.views.contactShadowDepth.fill(0);
     this.views.unitBlueprintIds.length = 0;
     this.views.buildingBlueprintIds.length = 0;
   }
@@ -346,8 +388,12 @@ export class ClientRenderEntityStateSlab {
       }
       assertNear('groundY', views.groundY[slot], getUnitGroundZ(entity));
       assertNear('radiusOther', views.radiusOther[slot], unit.radius.other || unit.radius.hitbox || 15);
+      assertNear('radiusHitbox', views.radiusHitbox[slot], unit.radius.hitbox);
       assertNear('velocityX', views.velocityX[slot], unit.velocityX);
       assertNear('velocityY', views.velocityY[slot], unit.velocityY);
+      assertNear('bodyHudWidth', views.bodyHudWidth[slot], unit.radius.other * 2);
+      assertNear('hudBarsY', views.hudBarsY[slot], getUnitHudBarsY(entity));
+      assertNear('hudNameY', views.hudNameY[slot], getUnitHudNameY(entity));
       assertNear('hp', views.hp[slot], unit.hp);
       assertNear('maxHp', views.maxHp[slot], unit.maxHp);
       if (views.unitBlueprintIds[slot] !== unit.unitBlueprintId) {
@@ -361,6 +407,11 @@ export class ClientRenderEntityStateSlab {
         throw new Error(`[client render entity state] entity ${entity.id} expected building row`);
       }
       assertNear('buildingBaseY', views.buildingBaseY[slot], entity.transform.z - building.depth / 2);
+      assertNear('bodyHudWidth', views.bodyHudWidth[slot], building.width);
+      assertNear('hudBarsY', views.hudBarsY[slot], getBuildingHudBarsY(entity));
+      assertNear('hudNameY', views.hudNameY[slot], getBuildingHudNameY(entity));
+      assertNear('contactShadowWidth', views.contactShadowWidth[slot], building.width);
+      assertNear('contactShadowDepth', views.contactShadowDepth[slot], building.height);
       assertNear('hp', views.hp[slot], building.hp);
       assertNear('maxHp', views.maxHp[slot], building.maxHp);
     }
@@ -381,6 +432,7 @@ export class ClientRenderEntityStateSlab {
       rotation: growFloat32(views.rotation, nextCapacity),
       groundY: growFloat32(views.groundY, nextCapacity),
       radiusOther: growFloat32(views.radiusOther, nextCapacity),
+      radiusHitbox: growFloat32(views.radiusHitbox, nextCapacity),
       normalX: growFloat32(views.normalX, nextCapacity),
       normalY: growFloat32(views.normalY, nextCapacity),
       normalZ: growFloat32(views.normalZ, nextCapacity),
@@ -393,6 +445,11 @@ export class ClientRenderEntityStateSlab {
       buildingWidth: growFloat32(views.buildingWidth, nextCapacity),
       buildingFootprintDepth: growFloat32(views.buildingFootprintDepth, nextCapacity),
       buildingProgress: growFloat32(views.buildingProgress, nextCapacity),
+      bodyHudWidth: growFloat32(views.bodyHudWidth, nextCapacity),
+      hudBarsY: growFloat32(views.hudBarsY, nextCapacity),
+      hudNameY: growFloat32(views.hudNameY, nextCapacity),
+      contactShadowWidth: growFloat32(views.contactShadowWidth, nextCapacity),
+      contactShadowDepth: growFloat32(views.contactShadowDepth, nextCapacity),
       hp: growFloat32(views.hp, nextCapacity),
       maxHp: growFloat32(views.maxHp, nextCapacity),
       buildEnergyRatio: growFloat32(views.buildEnergyRatio, nextCapacity),
