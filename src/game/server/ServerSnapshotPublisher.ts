@@ -893,17 +893,25 @@ export class ServerSnapshotPublisher {
     listener.hasVisibleEntityBaseline = true;
   }
 
-  emitProjectileDelta(input: ServerSnapshotPublisherInput): boolean {
+  emitProjectileDelta(
+    input: ServerSnapshotPublisherInput,
+    includeEntityMotionDeltas = true,
+  ): boolean {
     if (input.listeners.length === 0) return false;
     const emitBaseStages = createSnapshotMaterializationStageDurations();
     let stageStart = performance.now();
     const hasProjectilePresentationEvents = input.simulation.hasPendingProjectilePresentationEvents();
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', stageStart);
-    stageStart = performance.now();
     const motionCandidateIds = this.entityMotionCandidateIdsBuf;
-    const hasEntityMotionDeltas =
-      this.collectEntityMotionDeltaCandidates(input.world, motionCandidateIds) > 0;
-    addMaterializationStage(emitBaseStages, 'entityDtos', stageStart);
+    let hasEntityMotionDeltas = false;
+    if (includeEntityMotionDeltas) {
+      stageStart = performance.now();
+      hasEntityMotionDeltas =
+        this.collectEntityMotionDeltaCandidates(input.world, motionCandidateIds) > 0;
+      addMaterializationStage(emitBaseStages, 'entityDtos', stageStart);
+    } else {
+      motionCandidateIds.length = 0;
+    }
     if (!hasProjectilePresentationEvents && !hasEntityMotionDeltas) return false;
 
     stageStart = performance.now();

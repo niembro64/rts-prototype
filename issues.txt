@@ -19,16 +19,6 @@ Please always commit and push before and after any code changes we make.
 
 
 
-[19] Optimization - stop using 30 Hz JS DTO snapshots as the local motion path
-    Preserve visual smoothness and projectile/audio event timing. Rich
-    presentation snapshots should remain around the configured cadence, but
-    local lockstep render motion should not require per-tick NetworkServerSnapshot
-    entity DTO materialization for hundreds or thousands of units. Either
-    throttle sparse entity-motion deltas to an intentional lower cadence with
-    interpolation, or replace them with direct reads from canonical slot-indexed
-    state. Keep immediate event delivery for projectile spawn/despawn/audio
-    where latency matters.
-
 [20] Optimization - route render-facing high-count state through canonical slabs
     Preserve current visuals until explicit visual-quality issues say otherwise.
     As [23], [30], and [31] mature, render packet construction should read

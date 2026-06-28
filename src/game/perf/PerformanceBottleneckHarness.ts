@@ -123,6 +123,9 @@ type FullStackReport = {
   readonly gpuMs: NumericSummary;
   readonly renderTpsAvg: NumericSummary;
   readonly renderTpsLow: NumericSummary;
+  readonly snapshotTotalSps: NumericSummary;
+  readonly snapshotRichSps: NumericSummary;
+  readonly snapshotDeltaSps: NumericSummary;
   readonly serverTpsAvg: NumericSummary;
   readonly serverCpuAvgPct: NumericSummary;
   readonly serverCpuHiPct: NumericSummary;
@@ -572,6 +575,9 @@ async function runFullStack(
     const gpuMs: number[] = [];
     const renderTpsAvg: number[] = [];
     const renderTpsLow: number[] = [];
+    const snapshotTotalSps: number[] = [];
+    const snapshotRichSps: number[] = [];
+    const snapshotDeltaSps: number[] = [];
     const serverTpsAvg: number[] = [];
     const serverCpuAvgPct: number[] = [];
     const serverCpuHiPct: number[] = [];
@@ -613,6 +619,7 @@ async function runFullStack(
       if (scene === null) continue;
       const timing = scene.getFrameTiming();
       const renderTps = scene.getRenderTpsStats();
+      const snapshotStats = scene.getSnapshotStats();
       const meta = clientViewState.getServerMeta();
       const snapSize = scene.getSnapshotPayloadSizeStats();
 
@@ -626,6 +633,9 @@ async function runFullStack(
       gpuMs.push(timing.gpuTimerSupported ? timing.gpuTimerMs : timing.webglRendererRenderMs);
       renderTpsAvg.push(renderTps.avgRate);
       renderTpsLow.push(renderTps.worstRate);
+      snapshotTotalSps.push(snapshotStats.total.avgRate);
+      snapshotRichSps.push(snapshotStats.rich.avgRate);
+      snapshotDeltaSps.push(snapshotStats.delta.avgRate);
       serverTpsAvg.push(meta?.ticks.avg ?? 0);
       serverCpuAvgPct.push(meta?.cpu?.avg ?? 0);
       serverCpuHiPct.push(meta?.cpu?.hi ?? 0);
@@ -675,6 +685,9 @@ async function runFullStack(
       gpuMs: summarize(gpuMs),
       renderTpsAvg: summarize(renderTpsAvg),
       renderTpsLow: summarize(renderTpsLow),
+      snapshotTotalSps: summarize(snapshotTotalSps),
+      snapshotRichSps: summarize(snapshotRichSps),
+      snapshotDeltaSps: summarize(snapshotDeltaSps),
       serverTpsAvg: summarize(serverTpsAvg),
       serverCpuAvgPct: summarize(serverCpuAvgPct),
       serverCpuHiPct: summarize(serverCpuHiPct),

@@ -19,6 +19,7 @@ import {
   PRESENTATION_SNAPSHOT_RATE_DEFAULT,
   normalizePresentationSnapshotRate,
   presentationSnapshotRateIntervalMs,
+  sparseEntityMotionSnapshotIntervalMs as configuredSparseEntityMotionSnapshotIntervalMs,
 } from '../../presentationSnapshotConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
@@ -91,10 +92,13 @@ export class GameServer {
   private tickLoop = new ServerTickLoop();
   private tickRateHz: number;
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
+  private sparseEntityMotionIntervalMs: number;
   private maxSnapshotsDisplay: SnapshotRate;
   private lastSnapshotTime: number = 0;
+  private lastSparseEntityMotionSnapshotTime: number = 0;
   private pendingPresentationSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingProjectileDeltaSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingProjectileDeltaIncludesEntityMotion = false;
 
   // Background mode — allowed unit blueprints for AI production & UI toggles.
   // Initial set comes from GameServerConfig.initialAllowedUnitBlueprintIds when the
@@ -240,6 +244,7 @@ export class GameServer {
       config.maxSnapshotsPerSec ?? PRESENTATION_SNAPSHOT_RATE_DEFAULT,
     );
     this.maxSnapshotIntervalMs = presentationSnapshotRateIntervalMs(maxSnaps);
+    this.sparseEntityMotionIntervalMs = configuredSparseEntityMotionSnapshotIntervalMs();
     this.maxSnapshotsDisplay = maxSnaps;
 
     // Bootstrap the entire world: terrain, physics, world state, sim,
@@ -282,7 +287,9 @@ export class GameServer {
   startLockstepPresentation(): void {
     if (this.stopped) return;
     acquireSimSlot(this);
-    this.lastSnapshotTime = performance.now();
+    const now = performance.now();
+    this.lastSnapshotTime = now;
+    this.lastSparseEntityMotionSnapshotTime = now;
     this.startupGateOpen = true;
     this.emitSnapshot();
   }
@@ -293,13 +300,32 @@ export class GameServer {
 
   emitLockstepPresentationSnapshot(): boolean {
     if (this.stopped) return false;
-    this.lastSnapshotTime = performance.now();
+    const now = performance.now();
+    this.lastSnapshotTime = now;
+    this.lastSparseEntityMotionSnapshotTime = now;
     return this.snapshotPublisher.emitLockstepPresentation(this.buildSnapshotPublisherInput());
   }
 
   emitLockstepProjectileDeltaSnapshotIfNeeded(): boolean {
     if (this.stopped) return false;
-    return this.emitProjectileDeltaSnapshot();
+    const now = performance.now();
+    const hasProjectilePresentationEvents =
+      this.simulation.hasPendingProjectilePresentationEvents();
+    const includeEntityMotionDeltas = this.sparseEntityMotionSnapshotDue(now);
+    if (!hasProjectilePresentationEvents && !includeEntityMotionDeltas) return false;
+    if (
+      includeEntityMotionDeltas &&
+      !hasProjectilePresentationEvents &&
+      !this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world)
+    ) {
+      this.lastSparseEntityMotionSnapshotTime = now;
+      return false;
+    }
+    const emitted = this.emitProjectileDeltaSnapshot(includeEntityMotionDeltas);
+    if (includeEntityMotionDeltas) {
+      this.lastSparseEntityMotionSnapshotTime = now;
+    }
+    return emitted;
   }
 
   private startGameLoop(): void {
@@ -329,12 +355,20 @@ export class GameServer {
       const interval = this.maxSnapshotIntervalMs;
       if (interval === 0 || elapsed >= interval) {
         this.lastSnapshotTime = tickNow;
-        this.queuePresentationSnapshot();
-      } else if (
-        this.simulation.hasPendingProjectilePresentationEvents() ||
-        this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world)
-      ) {
-        this.queueProjectileDeltaSnapshot();
+        this.queuePresentationSnapshot(tickNow);
+      } else {
+        const hasProjectilePresentationEvents =
+          this.simulation.hasPendingProjectilePresentationEvents();
+        const sparseEntityMotionDue = this.sparseEntityMotionSnapshotDue(tickNow);
+        if (hasProjectilePresentationEvents) {
+          this.queueProjectileDeltaSnapshot(sparseEntityMotionDue);
+        } else if (sparseEntityMotionDue) {
+          if (this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world)) {
+            this.queueProjectileDeltaSnapshot(true);
+          } else {
+            this.lastSparseEntityMotionSnapshotTime = tickNow;
+          }
+        }
       }
 
       this.recordTickWork(performance.now() - workStart);
@@ -348,14 +382,17 @@ export class GameServer {
 
   private emitStartupSnapshot(now: number): void {
     this.lastSnapshotTime = now;
+    this.lastSparseEntityMotionSnapshotTime = now;
     this.emitSnapshot();
   }
 
-  private queuePresentationSnapshot(): void {
+  private queuePresentationSnapshot(now: number): void {
     if (this.pendingProjectileDeltaSnapshotTimer !== null) {
       clearTimeout(this.pendingProjectileDeltaSnapshotTimer);
       this.pendingProjectileDeltaSnapshotTimer = null;
+      this.pendingProjectileDeltaIncludesEntityMotion = false;
     }
+    this.lastSparseEntityMotionSnapshotTime = now;
     if (this.pendingPresentationSnapshotTimer !== null) return;
     this.pendingPresentationSnapshotTimer = setTimeout(() => {
       this.pendingPresentationSnapshotTimer = null;
@@ -364,14 +401,27 @@ export class GameServer {
     }, 0);
   }
 
-  private queueProjectileDeltaSnapshot(): void {
+  private queueProjectileDeltaSnapshot(includeEntityMotionDeltas: boolean): void {
     if (this.pendingPresentationSnapshotTimer !== null) return;
+    if (includeEntityMotionDeltas) {
+      this.pendingProjectileDeltaIncludesEntityMotion = true;
+    }
     if (this.pendingProjectileDeltaSnapshotTimer !== null) return;
+    this.pendingProjectileDeltaIncludesEntityMotion = includeEntityMotionDeltas;
     this.pendingProjectileDeltaSnapshotTimer = setTimeout(() => {
       this.pendingProjectileDeltaSnapshotTimer = null;
+      const shouldIncludeEntityMotion = this.pendingProjectileDeltaIncludesEntityMotion;
+      this.pendingProjectileDeltaIncludesEntityMotion = false;
       if (this.stopped) return;
-      this.emitProjectileDeltaSnapshot();
+      this.emitProjectileDeltaSnapshot(shouldIncludeEntityMotion);
+      if (shouldIncludeEntityMotion) {
+        this.lastSparseEntityMotionSnapshotTime = performance.now();
+      }
     }, 0);
+  }
+
+  private sparseEntityMotionSnapshotDue(now: number): boolean {
+    return now - this.lastSparseEntityMotionSnapshotTime >= this.sparseEntityMotionIntervalMs;
   }
 
   private areStartupClientsReady(): boolean {
@@ -498,8 +548,11 @@ export class GameServer {
     this.snapshotPublisher.emit(this.buildSnapshotPublisherInput());
   }
 
-  private emitProjectileDeltaSnapshot(): boolean {
-    return this.snapshotPublisher.emitProjectileDelta(this.buildSnapshotPublisherInput());
+  private emitProjectileDeltaSnapshot(includeEntityMotionDeltas: boolean): boolean {
+    return this.snapshotPublisher.emitProjectileDelta(
+      this.buildSnapshotPublisherInput(),
+      includeEntityMotionDeltas,
+    );
   }
 
   private buildSnapshotPublisherInput() {

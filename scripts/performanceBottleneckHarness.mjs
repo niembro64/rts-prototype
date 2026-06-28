@@ -238,6 +238,12 @@ function printReport(report) {
   console.log(`  render prep ms avg/p95/max: ${triplet(report.fullStack.renderPrepMs)}`);
   console.log(`  gpu/render-submit ms avg/p95/max: ${triplet(report.fullStack.gpuMs)}`);
   console.log(`  render TPS avg/low p95: ${fmt(report.fullStack.renderTpsAvg.p95)} / ${fmt(report.fullStack.renderTpsLow.p95)}`);
+  console.log(
+    `  snapshot SPS total/rich/delta p95: ` +
+      `${fmt(report.fullStack.snapshotTotalSps?.p95)}/` +
+      `${fmt(report.fullStack.snapshotRichSps?.p95)}/` +
+      `${fmt(report.fullStack.snapshotDeltaSps?.p95)}`,
+  );
   console.log(`  server CPU avg/hi p95: ${fmt(report.fullStack.serverCpuAvgPct.p95)}% / ${fmt(report.fullStack.serverCpuHiPct.p95)}%`);
   console.log(`  draw calls/triangles p95: ${fmt(report.fullStack.drawCalls.p95)} / ${fmt(report.fullStack.triangles.p95)}`);
   console.log(`  buffer upload bytes/calls p95: ${fmt(report.fullStack.bufferUploadBytes.p95)} / ${fmt(report.fullStack.bufferUploadCalls.p95)}`);
@@ -304,6 +310,9 @@ function printSuiteReport(report) {
     console.log(
       `  render prep p95=${fmt(scenario.fullStack.renderPrepMs.p95)}ms, ` +
         `gpu/render p95=${fmt(scenario.fullStack.gpuMs.p95)}ms, ` +
+        `sps total/rich/delta p95=${fmt(scenario.fullStack.snapshotTotalSps?.p95)}/` +
+        `${fmt(scenario.fullStack.snapshotRichSps?.p95)}/` +
+        `${fmt(scenario.fullStack.snapshotDeltaSps?.p95)}, ` +
         `longtask p95=${fmt(scenario.fullStack.longtaskMsPerSec.p95)}ms/s`,
     );
     console.log(

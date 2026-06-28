@@ -65,6 +65,10 @@ function parseLockstepPresentationSnapshotConfig(
       value.nominalSnapshotRateHz,
       'architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz',
     ),
+    sparseEntityMotionRateHz: parsePositiveFiniteNumber(
+      value.sparseEntityMotionRateHz,
+      'architecture.lockstep.presentationSnapshots.sparseEntityMotionRateHz',
+    ),
   };
 }
 
