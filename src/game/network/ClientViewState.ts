@@ -1270,42 +1270,40 @@ export class ClientViewState {
     if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
         const typedEntityKind = typedEntityWireSource?.kinds[entityIndex] ?? 0;
-        if (
-          typedEntityKind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC &&
-          this.tryApplyBasicTypedDeltaWireRow(
-            typedEntityWireSource,
-            entityIndex,
-            now,
-            collectCorrectionStats,
-            applyStats,
-          )
-        ) {
-          continue;
+        let appliedTypedDelta = false;
+        switch (typedEntityKind) {
+          case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+            appliedTypedDelta = this.tryApplyBasicTypedDeltaWireRow(
+              typedEntityWireSource,
+              entityIndex,
+              now,
+              collectCorrectionStats,
+              applyStats,
+            );
+            break;
+          case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+            appliedTypedDelta = this.tryApplyUnitTypedDeltaWireRow(
+              typedEntityWireSource,
+              entityIndex,
+              now,
+              collectCorrectionStats,
+              applyStats,
+            );
+            break;
+          case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+            appliedTypedDelta = this.tryApplyBuildingTypedDeltaWireRow(
+              typedEntityWireSource,
+              entityIndex,
+              now,
+            );
+            break;
         }
-        if (
-          typedEntityKind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT &&
-          this.tryApplyUnitTypedDeltaWireRow(
-            typedEntityWireSource,
-            entityIndex,
-            now,
-            collectCorrectionStats,
-            applyStats,
-          )
-        ) {
-          continue;
-        }
-        if (
-          typedEntityKind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING &&
-          this.tryApplyBuildingTypedDeltaWireRow(
-            typedEntityWireSource,
-            entityIndex,
-            now,
-          )
-        ) {
+        if (appliedTypedDelta) {
           continue;
         }
 
         const netEntity = state.entities[entityIndex];
+        if (netEntity === undefined) continue;
         const cf = netEntity.changedFields;
         const isFull = cf == null;
         // Towers ride the static-entity wire shape (no velocity, has
