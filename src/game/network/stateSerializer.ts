@@ -145,14 +145,16 @@ function appendFullEntityRows(
   world: WorldState,
   visibility: SnapshotVisibility,
 ): void {
+  let write = _entityBuf.length;
   const visibleEntityIds = visibility.getVisibleEntityIds();
   if (visibleEntityIds !== undefined) {
     for (let i = 0; i < visibleEntityIds.length; i++) {
       const entity = world.getEntity(visibleEntityIds[i]);
       if (!entity || !isSerializableSnapshotEntity(entity)) continue;
       const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
-      if (netEntity) _entityBuf.push(netEntity);
+      if (netEntity !== null) _entityBuf[write++] = netEntity;
     }
+    _entityBuf.length = write;
     return;
   }
 
@@ -166,9 +168,10 @@ function appendFullEntityRows(
       const entity = source[i];
       if (!acceptsSerializedEntity(entity, visibility)) continue;
       const netEntity = serializeEntitySnapshot(entity, undefined, world, visibility);
-      if (netEntity) _entityBuf.push(netEntity);
+      if (netEntity !== null) _entityBuf[write++] = netEntity;
     }
   }
+  _entityBuf.length = write;
 }
 
 // Serialize the full WorldState to the renderer presentation format.
