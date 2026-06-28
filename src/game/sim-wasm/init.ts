@@ -57,6 +57,7 @@ import __wbg_init, {
   arrival_completion_step_batch,
   flying_loiter_step_batch,
   stuck_replan_step_batch,
+  unit_action_plan_batch,
   turret_rotation_step_batch,
   step_unit_motion,
   client_predict_unit_motion_batch,
@@ -734,6 +735,11 @@ export interface SimWasm {
     stuckVelocityThreshold: number,
     stuckTickThreshold: number,
     arrivalRadius: number,
+  ) => number;
+  readonly unitActionPlanBatch: (
+    actionTypes: Uint8Array,
+    flags: Uint32Array,
+    outPlan: Uint8Array,
   ) => number;
   readonly turretRotationStepBatch: (
     currentYaw: Float64Array,
@@ -3860,6 +3866,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         arrivalCompletionStepBatch: arrival_completion_step_batch,
         flyingLoiterStepBatch: flying_loiter_step_batch,
         stuckReplanStepBatch: stuck_replan_step_batch,
+        unitActionPlanBatch: unit_action_plan_batch,
         turretRotationStepBatch: turret_rotation_step_batch,
         stepUnitMotion: step_unit_motion,
         clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
@@ -4363,6 +4370,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runRightClickCommandsContractTest();
         const { runCommandExecutionContractTest } = await import('../sim/commandExecutionContractTest');
         runCommandExecutionContractTest();
+        const { runSimulationUnitActionPlannerContractTest } = await import('../sim/SimulationUnitActionPlannerContractTest');
+        runSimulationUnitActionPlannerContractTest();
         const { runEntitySlotRegistryContractTest } = await import('../sim/EntitySlotRegistryContractTest');
         runEntitySlotRegistryContractTest();
         const { runClientRenderEntityStateSlabContractTest } = await import('../render3d/ClientRenderEntityStateSlabContractTest');

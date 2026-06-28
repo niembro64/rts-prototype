@@ -67,6 +67,38 @@ import {
   REPLAN_FAILURE_COOLDOWN,
   SimulationStuckReplanController,
 } from './SimulationStuckReplanController';
+import {
+  SimulationUnitActionPlanner,
+  UNIT_ACTION_FLAG_COMBAT_STOP_ANY,
+  UNIT_ACTION_FLAG_COMBAT_STOP_FIGHT,
+  UNIT_ACTION_FLAG_GUARD_FRIENDLY,
+  UNIT_ACTION_FLAG_GUARD_SERVICE,
+  UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE,
+  UNIT_ACTION_FLAG_LOAD_IN_RANGE,
+  UNIT_ACTION_FLAG_MOVE_STATE_HOLD,
+  UNIT_ACTION_FLAG_MOVE_STATE_ROAM,
+  UNIT_ACTION_FLAG_TARGET_PRESENT,
+  UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE,
+  UNIT_ACTION_PLAN_ATTACK_GROUND_HOLD,
+  UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE,
+  UNIT_ACTION_PLAN_ATTACK_HOLD,
+  UNIT_ACTION_PLAN_ATTACK_MOVE,
+  UNIT_ACTION_PLAN_BUILD_HOLD,
+  UNIT_ACTION_PLAN_BUILD_MOVE,
+  UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD,
+  UNIT_ACTION_PLAN_GUARD_ADVANCE,
+  UNIT_ACTION_PLAN_GUARD_FOLLOW,
+  UNIT_ACTION_PLAN_GUARD_HOLD,
+  UNIT_ACTION_PLAN_GUARD_SERVICE_HOLD,
+  UNIT_ACTION_PLAN_GUARD_SERVICE_MOVE,
+  UNIT_ACTION_PLAN_IDLE_LOITER,
+  UNIT_ACTION_PLAN_LOAD_HOLD,
+  UNIT_ACTION_PLAN_LOAD_MOVE,
+  UNIT_ACTION_PLAN_MOVE_COMPLETION,
+  UNIT_ACTION_PLAN_UNLOAD_ADVANCE,
+  UNIT_ACTION_PLAN_UNLOAD_MOVE,
+  UNIT_ACTION_PLAN_WAIT_LOITER,
+} from './SimulationUnitActionPlanner';
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
@@ -106,6 +138,7 @@ export class Simulation {
   private combatHaltController: SimulationCombatHaltController;
   private flyingLoiter: SimulationFlyingLoiterController;
   private stuckReplanController: SimulationStuckReplanController;
+  private unitActionPlanner: SimulationUnitActionPlanner = new SimulationUnitActionPlanner();
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
@@ -689,12 +722,14 @@ export class Simulation {
     this.releaseReadyGatherWaits();
 
     const units = this.world.getUnits();
+    const planner = this.unitActionPlanner;
+    planner.begin(units.length);
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
       spatialGrid.updateUnit(entity);
       if (!entity.unit || !entity.body) continue;
 
-      const { unit, transform } = entity;
+      const { unit } = entity;
 
       // Construction shells do not execute player actions or acquire
       // combat priority while incomplete, but their physics body remains
@@ -751,9 +786,7 @@ export class Simulation {
 
       // No actions - flying units keep circling their last destination.
       if (unit.actions.length === 0) {
-        unit.activePath = null;
-        unit.stuckTicks = 0;
-        this.flyingLoiter.queue(entity);
+        planner.queue(entity, undefined, 0);
         continue;
       }
 
@@ -763,138 +796,52 @@ export class Simulation {
       const currentAction = unit.actions[0];
       this.flyingLoiter.rememberTarget(unit, currentAction);
 
-      if (currentAction.type === 'wait') {
-        unit.activePath = null;
-        unit.stuckTicks = 0;
-        this.flyingLoiter.queue(entity);
-        continue;
-      }
+      let flags = 0;
+      let serviceTarget: Entity | null = null;
+      if (unit.moveState === 'roam') flags |= UNIT_ACTION_FLAG_MOVE_STATE_ROAM;
+      if (unit.moveState === 'holdPosition') flags |= UNIT_ACTION_FLAG_MOVE_STATE_HOLD;
 
       if (currentAction.type === 'loadTransport') {
         const target = currentAction.targetId !== undefined
           ? this.world.getEntity(currentAction.targetId)
           : undefined;
         if (target !== undefined && isTransportLoadInRange(entity, target)) {
-          unit.stuckTicks = 0;
-          continue;
+          flags |= UNIT_ACTION_FLAG_LOAD_IN_RANGE;
         }
-
-        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-        const dx = movementTarget.x - transform.x;
-        const dy = movementTarget.y - transform.y;
-        const distance = magnitude(dx, dy);
-        if (distance <= 1) {
-          if (!movementTarget.isFinalActionPoint) this.advanceActivePathPoint(entity);
-          unit.stuckTicks = 0;
-          continue;
-        }
-
-        this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-        continue;
-      }
-
-      if (currentAction.type === 'unloadTransport') {
+      } else if (currentAction.type === 'unloadTransport') {
         if (entity.transport?.loadedUnits.length === 0) {
           this.advanceAction(entity);
           unit.stuckTicks = 0;
           continue;
         }
-
-        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-        const dx = movementTarget.x - transform.x;
-        const dy = movementTarget.y - transform.y;
-        const distance = magnitude(dx, dy);
-        if (distance > 15) {
-          this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-        } else if (!movementTarget.isFinalActionPoint) {
-          this.advanceActivePathPoint(entity);
-          unit.stuckTicks = 0;
-        } else {
-          unit.stuckTicks = 0;
-        }
-        continue;
-      }
-
-      // For build/repair/reclaim actions, check if we're in range
-      if (
+      } else if (
         currentAction.type === 'build' ||
         currentAction.type === 'repair' ||
         currentAction.type === 'reclaim' ||
         currentAction.type === 'capture' ||
         currentAction.type === 'resurrect'
       ) {
+        // For build/repair/reclaim actions, check if we're in range.
         const targetId = currentAction.type === 'build'
           ? currentAction.buildingId
           : currentAction.targetId;
         const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
         if (target && isBuildTargetInRange(entity, target)) {
-          unit.stuckTicks = 0;
-          continue;
+          flags |= UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE;
         }
-
-        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-        const dx = movementTarget.x - transform.x;
-        const dy = movementTarget.y - transform.y;
-        const distance = magnitude(dx, dy);
-        if (distance <= 1) {
-          if (!movementTarget.isFinalActionPoint) this.advanceActivePathPoint(entity);
-          unit.stuckTicks = 0;
-          continue;
-        }
-
-        this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-        continue;
-      }
-
-      // Attack action: chase a specific enemy target
-      // (dead-target attack actions are already swept from the queue above)
-      if (currentAction.type === 'attack' && currentAction.targetId !== undefined) {
-        const attackTarget = this.world.getEntity(currentAction.targetId)!;
-
-        // Set priority target for turret system
-        if (entity.combat && !entity.combat.manualLaunchActive) {
-          entity.combat.priorityTargetId = currentAction.targetId;
-        }
-
-        // Stop if any turret is engaged.
-        if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
-          unit.stuckTicks = 0;
-          continue;
-        }
-        if (unit.moveState === 'holdPosition') {
-          unit.stuckTicks = 0;
-          continue;
-        }
-
-        // Move toward the pathfinder-approved approach point, not the
-        // target's raw position. If the target moved and this approach
-        // point no longer gets us into range, replan only after reaching
-        // the approach point so we do not recreate an obstacle beeline.
-        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-        const dx = movementTarget.x - transform.x;
-        const dy = movementTarget.y - transform.y;
-        const distance = magnitude(dx, dy);
-        if (distance > 15) {
-          this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-        } else if (!movementTarget.isFinalActionPoint) {
-          this.advanceActivePathPoint(entity);
-          unit.stuckTicks = 0;
-        } else {
-          if ((unit.stuckTicks ?? 0) < 0) {
-            unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
-            continue;
+      } else if (currentAction.type === 'attack') {
+        if (currentAction.targetId !== undefined) {
+          flags |= UNIT_ACTION_FLAG_TARGET_PRESENT;
+          // Set priority target for turret system.
+          if (entity.combat && !entity.combat.manualLaunchActive) {
+            entity.combat.priorityTargetId = currentAction.targetId;
           }
-          const targetPoint = getEntityTargetPoint(attackTarget);
-          if (!this.tryRefreshAttackApproach(entity, currentAction, targetPoint)) {
-            unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
-            continue;
+          // Stop if any turret is engaged.
+          if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
+            flags |= UNIT_ACTION_FLAG_COMBAT_STOP_ANY;
           }
-          unit.stuckTicks = 0;
         }
-        continue;
-      }
-
-      if (currentAction.type === 'attackGround') {
+      } else if (currentAction.type === 'attackGround') {
         if (entity.combat && !entity.combat.manualLaunchActive) {
           const targetPoint = entity.combat.priorityTargetPoint ??
             (entity.combat.priorityTargetPoint = { x: 0, y: 0, z: 0 });
@@ -904,36 +851,17 @@ export class Simulation {
         }
 
         if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
-          unit.stuckTicks = 0;
-          continue;
+          flags |= UNIT_ACTION_FLAG_COMBAT_STOP_ANY;
         }
-        if (unit.moveState === 'holdPosition') {
-          unit.stuckTicks = 0;
-          continue;
-        }
-
-        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-        const dx = movementTarget.x - transform.x;
-        const dy = movementTarget.y - transform.y;
-        const distance = magnitude(dx, dy);
-        if (distance > 15) {
-          this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-        } else if (!movementTarget.isFinalActionPoint) {
-          this.advanceActivePathPoint(entity);
-          unit.stuckTicks = 0;
-        } else {
-          unit.stuckTicks = 0;
-        }
-        continue;
-      }
-
-      if (currentAction.type === 'guard' && currentAction.targetId !== undefined) {
+      } else if (currentAction.type === 'guard' && currentAction.targetId !== undefined) {
+        flags |= UNIT_ACTION_FLAG_TARGET_PRESENT;
         const guardTarget = this.world.getEntity(currentAction.targetId);
         if (!entity.ownership || !isFriendlyGuardTarget(guardTarget, entity.ownership.playerId)) {
           this.advanceAction(entity);
           unit.stuckTicks = 0;
           continue;
         }
+        flags |= UNIT_ACTION_FLAG_GUARD_FRIENDLY;
 
         // Active defend (BAR): a guarding unit helps fight whatever its
         // guarded ally is currently engaging — prioritize that enemy so the
@@ -958,12 +886,7 @@ export class Simulation {
         }
 
         if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
-          unit.stuckTicks = 0;
-          continue;
-        }
-        if (unit.moveState === 'holdPosition') {
-          unit.stuckTicks = 0;
-          continue;
+          flags |= UNIT_ACTION_FLAG_COMBAT_STOP_ANY;
         }
 
         // BAR: a guarding builder continuously services its target — assist
@@ -974,81 +897,240 @@ export class Simulation {
         if (entity.builder !== null) {
           const service = resolveGuardServiceTarget(this.world, entity);
           if (service !== null) {
+            flags |= UNIT_ACTION_FLAG_GUARD_SERVICE;
+            serviceTarget = service.target;
             if (isBuildTargetInRange(entity, service.target)) {
-              unit.stuckTicks = 0;
-              continue;
+              flags |= UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE;
             }
-            const sp = getEntityTargetPoint(service.target);
-            const sdx = sp.x - transform.x;
-            const sdy = sp.y - transform.y;
-            const sdist = magnitude(sdx, sdy);
-            if (sdist > 15) {
-              this.arrivalController.queueThrust(entity, currentAction, sdx, sdy, sdist, true);
-            }
-            unit.stuckTicks = 0;
-            continue;
           }
         }
-
-        const targetPoint = getEntityTargetPoint(guardTarget);
-        const targetDx = targetPoint.x - transform.x;
-        const targetDy = targetPoint.y - transform.y;
-        const targetDistance = magnitude(targetDx, targetDy);
-        if (targetDistance <= getGuardFollowRadius(entity, guardTarget)) {
-          unit.stuckTicks = 0;
-          continue;
-        }
-
-        // Pin the path goal to the guarded ally's LIVE position every tick so
-        // the guard tracks a moving target continuously, instead of walking to
-        // where the ally was and only re-pathing on arrival (the "lurch and
-        // catch up" lag). sameActionApproachTarget no-ops (1-unit epsilon) when
-        // the ally hasn't moved, so a stationary guard never thrashes pathing.
-        this.tryRefreshGuardApproach(entity, currentAction, targetPoint);
-
-        const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-        const dx = movementTarget.x - transform.x;
-        const dy = movementTarget.y - transform.y;
-        const distance = magnitude(dx, dy);
-        if (distance > 15) {
-          this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-        } else if (!movementTarget.isFinalActionPoint) {
-          this.advanceActivePathPoint(entity);
-          unit.stuckTicks = 0;
-        } else if (this.tryRefreshGuardApproach(entity, currentAction, targetPoint)) {
-          unit.stuckTicks = 0;
-        } else {
-          this.arrivalController.queueThrust(entity, currentAction, targetDx, targetDy, targetDistance);
-        }
-        continue;
-      }
-
-      // Fight/patrol halt is per-mount: unit blueprints mark the exact
-      // turret mount(s) that must be engaged before the unit stops and
-      // brawls. If no mount is marked, the unit keeps moving while
-      // weapons engage opportunistically.
-      if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
+      } else if (currentAction.type === 'fight' || currentAction.type === 'patrol') {
+        // Fight/patrol halt is per-mount: unit blueprints mark the exact
+        // turret mount(s) that must be engaged before the unit stops and
+        // brawls. If no mount is marked, the unit keeps moving while
+        // weapons engage opportunistically.
         if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForFightCombat(entity)) {
-          unit.stuckTicks = 0;
-          continue;
+          flags |= UNIT_ACTION_FLAG_COMBAT_STOP_FIGHT;
         }
       }
 
-      // Calculate direction to the current transient path point for
-      // this durable waypoint.
-      const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-      const dx = movementTarget.x - transform.x;
-      const dy = movementTarget.y - transform.y;
+      planner.queue(entity, currentAction, flags, serviceTarget);
+    }
 
-      // Completion classification is batched below so Rust reads the
-      // current body velocity and applies the final-waypoint brake gate.
-      this.arrivalController.queueCompletion(
-        entity,
-        currentAction,
-        dx,
-        dy,
-        movementTarget.isFinalActionPoint,
-      );
+    const planCount = planner.compute();
+    for (let i = 0; i < planCount; i++) {
+      const entity = planner.entityAt(i);
+      const unit = entity.unit;
+      if (!unit || !entity.body) continue;
+      const transform = entity.transform;
+      const currentAction = planner.actionAt(i);
+
+      switch (planner.planAt(i)) {
+        case UNIT_ACTION_PLAN_IDLE_LOITER:
+        case UNIT_ACTION_PLAN_WAIT_LOITER:
+          unit.activePath = null;
+          unit.stuckTicks = 0;
+          this.flyingLoiter.queue(entity);
+          break;
+
+        case UNIT_ACTION_PLAN_LOAD_HOLD:
+        case UNIT_ACTION_PLAN_BUILD_HOLD:
+        case UNIT_ACTION_PLAN_ATTACK_HOLD:
+        case UNIT_ACTION_PLAN_ATTACK_GROUND_HOLD:
+        case UNIT_ACTION_PLAN_GUARD_HOLD:
+        case UNIT_ACTION_PLAN_GUARD_SERVICE_HOLD:
+        case UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD:
+          unit.stuckTicks = 0;
+          break;
+
+        case UNIT_ACTION_PLAN_UNLOAD_ADVANCE:
+        case UNIT_ACTION_PLAN_GUARD_ADVANCE:
+          this.advanceAction(entity);
+          unit.stuckTicks = 0;
+          break;
+
+        case UNIT_ACTION_PLAN_LOAD_MOVE: {
+          if (currentAction === undefined) break;
+          const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+          const dx = movementTarget.x - transform.x;
+          const dy = movementTarget.y - transform.y;
+          const distance = magnitude(dx, dy);
+          if (distance <= 1) {
+            if (!movementTarget.isFinalActionPoint) this.advanceActivePathPoint(entity);
+            unit.stuckTicks = 0;
+          } else {
+            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          }
+          break;
+        }
+
+        case UNIT_ACTION_PLAN_UNLOAD_MOVE: {
+          if (currentAction === undefined) break;
+          const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+          const dx = movementTarget.x - transform.x;
+          const dy = movementTarget.y - transform.y;
+          const distance = magnitude(dx, dy);
+          if (distance > 15) {
+            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          } else if (!movementTarget.isFinalActionPoint) {
+            this.advanceActivePathPoint(entity);
+            unit.stuckTicks = 0;
+          } else {
+            unit.stuckTicks = 0;
+          }
+          break;
+        }
+
+        case UNIT_ACTION_PLAN_BUILD_MOVE: {
+          if (currentAction === undefined) break;
+          const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+          const dx = movementTarget.x - transform.x;
+          const dy = movementTarget.y - transform.y;
+          const distance = magnitude(dx, dy);
+          if (distance <= 1) {
+            if (!movementTarget.isFinalActionPoint) this.advanceActivePathPoint(entity);
+            unit.stuckTicks = 0;
+          } else {
+            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          }
+          break;
+        }
+
+        case UNIT_ACTION_PLAN_ATTACK_MOVE: {
+          if (currentAction === undefined) break;
+          if (currentAction.type !== 'attack' || currentAction.targetId === undefined) {
+            const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+            this.arrivalController.queueCompletion(
+              entity,
+              currentAction,
+              movementTarget.x - transform.x,
+              movementTarget.y - transform.y,
+              movementTarget.isFinalActionPoint,
+            );
+            break;
+          }
+          const attackTarget = this.world.getEntity(currentAction.targetId);
+          const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+          const dx = movementTarget.x - transform.x;
+          const dy = movementTarget.y - transform.y;
+          const distance = magnitude(dx, dy);
+          if (distance > 15) {
+            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          } else if (!movementTarget.isFinalActionPoint) {
+            this.advanceActivePathPoint(entity);
+            unit.stuckTicks = 0;
+          } else if (attackTarget === undefined) {
+            unit.stuckTicks = 0;
+          } else {
+            if ((unit.stuckTicks ?? 0) < 0) {
+              unit.stuckTicks = (unit.stuckTicks ?? 0) + 1;
+              break;
+            }
+            const targetPoint = getEntityTargetPoint(attackTarget);
+            if (!this.tryRefreshAttackApproach(entity, currentAction, targetPoint)) {
+              unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
+              break;
+            }
+            unit.stuckTicks = 0;
+          }
+          break;
+        }
+
+        case UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE: {
+          if (currentAction === undefined) break;
+          const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+          const dx = movementTarget.x - transform.x;
+          const dy = movementTarget.y - transform.y;
+          const distance = magnitude(dx, dy);
+          if (distance > 15) {
+            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          } else if (!movementTarget.isFinalActionPoint) {
+            this.advanceActivePathPoint(entity);
+            unit.stuckTicks = 0;
+          } else {
+            unit.stuckTicks = 0;
+          }
+          break;
+        }
+
+        case UNIT_ACTION_PLAN_GUARD_SERVICE_MOVE: {
+          if (currentAction === undefined) break;
+          const target = planner.serviceTargetAt(i);
+          if (target === null) {
+            unit.stuckTicks = 0;
+            break;
+          }
+          const sp = getEntityTargetPoint(target);
+          const sdx = sp.x - transform.x;
+          const sdy = sp.y - transform.y;
+          const sdist = magnitude(sdx, sdy);
+          if (sdist > 15) {
+            this.arrivalController.queueThrust(entity, currentAction, sdx, sdy, sdist, true);
+          }
+          unit.stuckTicks = 0;
+          break;
+        }
+
+        case UNIT_ACTION_PLAN_GUARD_FOLLOW: {
+          if (currentAction === undefined || currentAction.type !== 'guard' || currentAction.targetId === undefined) break;
+          const guardTarget = this.world.getEntity(currentAction.targetId);
+          if (!entity.ownership || !isFriendlyGuardTarget(guardTarget, entity.ownership.playerId)) {
+            this.advanceAction(entity);
+            unit.stuckTicks = 0;
+            break;
+          }
+          const targetPoint = getEntityTargetPoint(guardTarget);
+          const targetDx = targetPoint.x - transform.x;
+          const targetDy = targetPoint.y - transform.y;
+          const targetDistance = magnitude(targetDx, targetDy);
+          if (targetDistance <= getGuardFollowRadius(entity, guardTarget)) {
+            unit.stuckTicks = 0;
+            break;
+          }
+
+          // Pin the path goal to the guarded ally's LIVE position every tick so
+          // the guard tracks a moving target continuously, instead of walking to
+          // where the ally was and only re-pathing on arrival. sameActionApproachTarget
+          // no-ops when the ally hasn't moved, so a stationary guard never thrashes pathing.
+          this.tryRefreshGuardApproach(entity, currentAction, targetPoint);
+
+          const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+          const dx = movementTarget.x - transform.x;
+          const dy = movementTarget.y - transform.y;
+          const distance = magnitude(dx, dy);
+          if (distance > 15) {
+            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
+          } else if (!movementTarget.isFinalActionPoint) {
+            this.advanceActivePathPoint(entity);
+            unit.stuckTicks = 0;
+          } else if (this.tryRefreshGuardApproach(entity, currentAction, targetPoint)) {
+            unit.stuckTicks = 0;
+          } else {
+            this.arrivalController.queueThrust(entity, currentAction, targetDx, targetDy, targetDistance);
+          }
+          break;
+        }
+
+        case UNIT_ACTION_PLAN_MOVE_COMPLETION: {
+          if (currentAction === undefined) break;
+          // Calculate direction to the current transient path point for
+          // this durable waypoint.
+          const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
+          const dx = movementTarget.x - transform.x;
+          const dy = movementTarget.y - transform.y;
+
+          // Completion classification is batched below so Rust reads the
+          // current body velocity and applies the final-waypoint brake gate.
+          this.arrivalController.queueCompletion(
+            entity,
+            currentAction,
+            dx,
+            dy,
+            movementTarget.isFinalActionPoint,
+          );
+          break;
+        }
+      }
     }
 
     this.arrivalController.flushCompletion();
@@ -1235,6 +1317,7 @@ export class Simulation {
     this.flyingLoiter.reset();
     this.stuckReplanController.reset();
     this.combatHaltController.reset();
+    this.unitActionPlanner.reset();
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     this.spatialGridBuildingVersion = -1;

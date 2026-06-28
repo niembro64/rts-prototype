@@ -313,6 +313,9 @@ pub(crate) use render_pose::*;
 mod unit_kinetics;
 #[allow(unused_imports)]
 pub(crate) use unit_kinetics::*;
+mod unit_action;
+#[allow(unused_imports)]
+pub(crate) use unit_action::*;
 mod projectile;
 #[allow(unused_imports)]
 pub(crate) use projectile::*;
