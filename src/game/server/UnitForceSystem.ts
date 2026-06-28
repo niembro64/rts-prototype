@@ -144,6 +144,7 @@ export class UnitForceSystem {
 
   private physicsForceUnitSlotsBuf = new Uint32Array(1024);
   private physicsForceUnitSlotCount = 0;
+  private physicsForceSlotEntities: (Entity | undefined)[] = [];
   private physicsCandidateUnitSlotsBuf = new Uint32Array(1024);
   private physicsActiveUnitSlotMarks = new Uint32Array(1024);
   private physicsActiveUnitSlotMark = 1;
@@ -168,7 +169,7 @@ export class UnitForceSystem {
     if (activeSlots.length === 0) return;
     // Support-surface indexing still reads JS Entity transforms, so keep this
     // bridge until support providers are slot-native.
-    this.syncActiveBodyTransforms(activeSlots);
+    this.syncActiveBodyTransforms(activeSlots, this.physicsForceSlotEntities);
     this.world.refreshSupportSurfaceIndex();
     this.waterDryMaskCache.clear();
 
@@ -176,7 +177,8 @@ export class UnitForceSystem {
 
     let count = 0;
     for (let i = 0; i < activeSlots.length; i++) {
-      const entity = entitySlotRegistry.resolveSlot(activeSlots[i]);
+      const entity = this.physicsForceSlotEntities[i];
+      this.physicsForceSlotEntities[i] = undefined;
       if (entity === undefined || entity.body === null || entity.unit === null) continue;
 
       const body = entity.body.physicsBody;
@@ -622,9 +624,13 @@ export class UnitForceSystem {
     this.physicsForceUnitSlotsBuf[this.physicsForceUnitSlotCount++] = slot;
   }
 
-  private syncActiveBodyTransforms(activeSlots: Uint32Array): void {
+  private syncActiveBodyTransforms(
+    activeSlots: Uint32Array,
+    activeEntities: (Entity | undefined)[],
+  ): void {
     for (let i = 0; i < activeSlots.length; i++) {
       const entity = entitySlotRegistry.resolveSlot(activeSlots[i]);
+      activeEntities[i] = entity;
       if (entity === undefined || entity.body === null) continue;
       const body = entity.body.physicsBody;
       entity.transform.x = body.x;
