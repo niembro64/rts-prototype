@@ -19,15 +19,6 @@ Please always commit and push before and after any code changes we make.
 
 
 
-[18] Optimization - reduce snapshot materialization cost and bytes for high unit counts
-    Preserve deterministic replay truth and snapshot semantics. Continue moving
-    snapshot construction away from JS Entity object materialization and
-    duplicated DTO/wire rows. At high caps, entity DTO construction, wire
-    encoding, client apply, and visibility filtering should read canonical
-    slot-indexed typed state with dirty ranges, emit compact deltas, and keep
-    materialization p95 comfortably below frame budget. Keep byte-size and
-    materialization timing telemetry in the harness until this is proven.
-
 [19] Optimization - centralize primitive sphere/cylinder quality and add render LOD controls
     Preserve current visuals by default, but provide a high-level quality
     policy for shared sphere, cylinder, cone, torus, and circle geometry roles.
