@@ -1302,6 +1302,7 @@ export class DamageSystem {
     const dy = endY - startY;
     const dz = endZ - startZ;
     const segLenSq = dx * dx + dy * dy;
+    const halfLineWidth = lineWidth / 2;
 
     const nearbyUnitSlots = spatialGrid.queryUnitSlotsAlongLine(
       startX, startY, startZ,
@@ -1312,7 +1313,6 @@ export class DamageSystem {
     if (entityViews !== null) {
       const slots = nearbyUnitSlots.slots;
       const count = nearbyUnitSlots.count;
-      const halfLineWidth = lineWidth / 2;
       for (let i = 0; i < count; i++) {
         const slot = slots[i];
         if (slot >= entityViews.capacity) continue;
@@ -1500,40 +1500,40 @@ export class DamageSystem {
       queryEndY = startY + bestT * dy;
       queryEndZ = startZ + bestT * dz;
     }
-    const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
+    const nearbyProjectiles = spatialGrid.queryProjectileSlotsAlongLine(
       startX, startY, startZ,
       queryEndX, queryEndY, queryEndZ,
       lineWidth + 60,
     );
-    for (const projectile of nearbyProjectiles) {
-      if (projectile.id === bodyExcludeEntityId) continue;
-      const proj = projectile.projectile;
-      if (
-        proj === null ||
-        proj.projectileType !== 'projectile' ||
-        proj.hp <= 0 ||
-        !isProjectileShot(proj.config.shot)
-      ) {
-        continue;
-      }
-      const t = lineSphereIntersectionT(
-        startX, startY, startZ,
-        endX, endY, endZ,
-        projectile.transform.x, projectile.transform.y, projectile.transform.z,
-        proj.config.shotProfile.runtime.radius.collision + lineWidth / 2,
-      );
-      if (t !== null && t < bestT) {
-        bestT = t; found = true;
-        _segHit.t = t;
-        _segHit.x = startX + t * dx;
-        _segHit.y = startY + t * dy;
-        _segHit.z = startZ + t * dz;
-        _segHit.entityId = projectile.id;
-        _segHit.isMirror = false;
-        _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
-        _segHit.panelIndex = -1;
-        _segHit.reflectorKind = undefined;
-        _segHit.reflectorPlayerId = undefined;
+    if (entityViews !== null) {
+      const slots = nearbyProjectiles.slots;
+      const count = nearbyProjectiles.count;
+      for (let i = 0; i < count; i++) {
+        const slot = slots[i];
+        if (slot >= entityViews.capacity) continue;
+        const projectileId = entityViews.entityId[slot] as EntityId;
+        if (projectileId === bodyExcludeEntityId) continue;
+        if (entityViews.hp[slot] <= 0) continue;
+        const boundR = entityViews.radiusCollision[slot] + halfLineWidth;
+        const t = lineSphereIntersectionT(
+          startX, startY, startZ,
+          endX, endY, endZ,
+          entityViews.posX[slot], entityViews.posY[slot], entityViews.posZ[slot],
+          boundR,
+        );
+        if (t !== null && t < bestT) {
+          bestT = t; found = true;
+          _segHit.t = t;
+          _segHit.x = startX + t * dx;
+          _segHit.y = startY + t * dy;
+          _segHit.z = startZ + t * dz;
+          _segHit.entityId = projectileId;
+          _segHit.isMirror = false;
+          _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
+          _segHit.panelIndex = -1;
+          _segHit.reflectorKind = undefined;
+          _segHit.reflectorPlayerId = undefined;
+        }
       }
     }
 
