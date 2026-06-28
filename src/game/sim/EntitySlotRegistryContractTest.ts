@@ -7,6 +7,7 @@ import {
 import { createProjectileConfigFromShot } from './projectileConfigs';
 import { spatialGrid } from './SpatialGrid';
 import { WorldState } from './WorldState';
+import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { createBuildable } from './buildableHelpers';
 import {
   ENTITY_SLOT_BUILD_FLAG_COMPLETE,
@@ -99,6 +100,29 @@ export function runEntitySlotRegistryContractTest(): void {
   assertContract(buildingSlot >= 0, 'building must receive a slot');
   assertContract(building.entitySlotId === buildingSlot, 'building must cache its stable slot');
   const buildingViews = requireViews();
+  assertContract(
+    buildingViews.posZ[buildingSlot] === getBuildingCombatCenterZ(building),
+    'building slab z must mirror combat center z',
+  );
+  assertContract(
+    buildingViews.aabbHx[buildingSlot] === 40 &&
+    buildingViews.aabbHy[buildingSlot] === 50 &&
+    buildingViews.aabbHz[buildingSlot] === 30,
+    'building slab AABB half extents must mirror building dimensions',
+  );
+  const buildingLineQuery = spatialGrid.queryBuildingSlotsAlongLine(
+    0, 160, getBuildingCombatCenterZ(building),
+    400, 160, getBuildingCombatCenterZ(building),
+    1,
+  );
+  let foundBuildingSlot = false;
+  for (let i = 0; i < buildingLineQuery.count; i++) {
+    if (buildingLineQuery.slots[i] === buildingSlot) {
+      foundBuildingSlot = true;
+      break;
+    }
+  }
+  assertContract(foundBuildingSlot, 'building line query must expose stable building slots');
   assertContract(
     Math.abs(buildingViews.buildProgress[buildingSlot] - 0.75) < 1e-9,
     'building build progress must mirror paid resource fraction',

@@ -521,6 +521,17 @@ class SpatialGrid {
     return this.queryResultBuildings;
   }
 
+  queryBuildingSlotsAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): { slots: Uint32Array; count: number } {
+    const count = this.api().queryBuildingsAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
+    this._slotQueryResult.slots = this.scratch(count);
+    this._slotQueryResult.count = count;
+    return this._slotQueryResult;
+  }
+
   queryProjectilesAlongLine(
     x1: number, y1: number, z1: number,
     x2: number, y2: number, z2: number,

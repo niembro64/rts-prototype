@@ -1452,46 +1452,49 @@ export class DamageSystem {
       queryEndY = startY + bestT * dy;
       queryEndZ = startZ + bestT * dz;
     }
-    const nearbyBuildings = spatialGrid.queryBuildingsAlongLine(
+    const nearbyBuildingSlots = spatialGrid.queryBuildingSlotsAlongLine(
       startX, startY, startZ,
       queryEndX, queryEndY, queryEndZ,
       lineWidth + 100,
     );
-    for (const building of nearbyBuildings) {
-      // Skip the firing building — a tower-mounted turret must not
-      // self-block on its own AABB. Mirrors the unit-source guard
-      // above (bodyExclude* tracks the entity the beam was just
-      // emitted from / last reflected off).
-      if (building.id === bodyExcludeEntityId) continue;
-      if (!building.building || building.building.hp <= 0) continue;
-      const bWidth = building.building.width;
-      const bHeight = building.building.height;
-      const bDepth = building.building.depth;
-      const bCenterZ = getBuildingCombatCenterZ(building);
-      const minX = building.transform.x - bWidth / 2;
-      const minY = building.transform.y - bHeight / 2;
-      const maxX = building.transform.x + bWidth / 2;
-      const maxY = building.transform.y + bHeight / 2;
-      const minZ = bCenterZ - bDepth / 2;
-      const maxZ = bCenterZ + bDepth / 2;
-      const t = rayBoxIntersectionT(
-        startX, startY, startZ,
-        endX, endY, endZ,
-        minX, minY, minZ,
-        maxX, maxY, maxZ,
-      );
-      if (t !== null && t < bestT) {
-        bestT = t; found = true;
-        _segHit.t = t;
-        _segHit.x = startX + t * dx;
-        _segHit.y = startY + t * dy;
-        _segHit.z = startZ + t * dz;
-        _segHit.entityId = building.id;
-        _segHit.isMirror = false;
-        _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
-        _segHit.panelIndex = -1;
-        _segHit.reflectorKind = undefined;
-        _segHit.reflectorPlayerId = undefined;
+    if (entityViews !== null) {
+      const slots = nearbyBuildingSlots.slots;
+      const count = nearbyBuildingSlots.count;
+      for (let i = 0; i < count; i++) {
+        const slot = slots[i];
+        if (slot >= entityViews.capacity) continue;
+        const buildingId = entityViews.entityId[slot] as EntityId;
+        // Skip the firing building — a tower-mounted turret must not
+        // self-block on its own AABB. Mirrors the unit-source guard
+        // above (bodyExclude* tracks the entity the beam was just
+        // emitted from / last reflected off).
+        if (buildingId === bodyExcludeEntityId) continue;
+        if (entityViews.hp[slot] <= 0) continue;
+        const bCenterX = entityViews.posX[slot];
+        const bCenterY = entityViews.posY[slot];
+        const bCenterZ = entityViews.posZ[slot];
+        const bHalfX = entityViews.aabbHx[slot];
+        const bHalfY = entityViews.aabbHy[slot];
+        const bHalfZ = entityViews.aabbHz[slot];
+        const t = rayBoxIntersectionT(
+          startX, startY, startZ,
+          endX, endY, endZ,
+          bCenterX - bHalfX, bCenterY - bHalfY, bCenterZ - bHalfZ,
+          bCenterX + bHalfX, bCenterY + bHalfY, bCenterZ + bHalfZ,
+        );
+        if (t !== null && t < bestT) {
+          bestT = t; found = true;
+          _segHit.t = t;
+          _segHit.x = startX + t * dx;
+          _segHit.y = startY + t * dy;
+          _segHit.z = startZ + t * dz;
+          _segHit.entityId = buildingId;
+          _segHit.isMirror = false;
+          _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 0;
+          _segHit.panelIndex = -1;
+          _segHit.reflectorKind = undefined;
+          _segHit.reflectorPlayerId = undefined;
+        }
       }
     }
 
