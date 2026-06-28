@@ -19,6 +19,7 @@ import type { GraphicsConfig } from '@/types/graphics';
 import {
   createShieldSurfaceMaterial,
   resolveShieldSurfaceColor,
+  resolveShieldSurfaceColorForOwner,
 } from './ShieldReflectorVisual3D';
 import {
   createPrimitiveCylinderGeometry,
@@ -26,13 +27,19 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import type { ClientRenderEntityStateViews } from './ClientRenderEntityStateSlab';
 import { CLIENT_RENDER_ENTITY_KIND_UNIT } from './ClientRenderEntityStateSlab';
+import {
+  CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
+  type ClientRenderTurretHostRows,
+} from './ClientRenderTurretStateSlab';
+import {
+  SHIELD_FIELD_SHAPE_AIMED_CYLINDER,
+  SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER,
+  SHIELD_FIELD_SHAPE_SPHERE,
+} from './ShieldFieldShape3D';
 
 // barrier.alpha (from shieldMaterials.json visual.alpha) is the rendered
 // surface alpha directly — no renderer-side boost, so the authored knob
 // and the on-screen result agree and both shield shapes match.
-const SHIELD_FIELD_SHAPE_SPHERE = 0;
-const SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER = 1;
-const SHIELD_FIELD_SHAPE_AIMED_CYLINDER = 2;
 const FINITE_CYLINDER_INFINITY_VISUAL_MIN_HALF_HEIGHT = 12000;
 const IMPLICIT_FIELD_CAP = 96;
 
@@ -358,6 +365,79 @@ export class ShieldRenderPacket3D {
           : barrier.shape === 'aimedCylinder'
             ? SHIELD_FIELD_SHAPE_AIMED_CYLINDER
           : SHIELD_FIELD_SHAPE_SPHERE,
+      });
+    }
+  }
+
+  pushUnitTurretState(
+    state: ClientRenderEntityStateViews,
+    slot: number,
+    turretRows: ClientRenderTurretHostRows | undefined,
+    scope: ViewportFootprint,
+  ): void {
+    if (
+      turretRows === undefined ||
+      state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT
+    ) {
+      return;
+    }
+    const turretViews = turretRows.views;
+    const hostX = state.x[slot];
+    const hostY = state.y[slot];
+    const hostZ = state.z[slot];
+    const hostRotation = state.rotation[slot];
+    const bodyCenterHeight = state.bodyCenterHeight[slot];
+    const ownerId = state.ownerIds[slot];
+    const fieldColor = resolveShieldSurfaceColorForOwner(ownerId > 0 ? ownerId : undefined);
+    const cos = Math.cos(hostRotation);
+    const sin = Math.sin(hostRotation);
+
+    for (let ti = 0; ti < turretRows.count; ti++) {
+      const row = turretRows.start + ti;
+      if ((turretViews.flags[row] & CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD) === 0) continue;
+      const outerRange = turretViews.barrierOuterRange[row];
+      if (!scope.inScope(hostX, hostY, Math.max(300, outerRange))) continue;
+
+      let targetX = hostX;
+      let targetY = hostY;
+      let targetZ = hostZ;
+      if (turretViews.barrierShape[row] === SHIELD_FIELD_SHAPE_AIMED_CYLINDER) {
+        const mountX = turretViews.mountX[row];
+        const mountY = turretViews.mountY[row];
+        const originX = hostX + mountX * cos - mountY * sin;
+        const originY = hostY + mountX * sin + mountY * cos;
+        const originZ = hostZ - bodyCenterHeight + turretViews.mountZ[row];
+        const pitch = turretViews.pitch[row];
+        const pitchSin = Math.sin(pitch);
+        const pitchCos = Math.cos(pitch);
+        const turretRotation = turretViews.rotation[row];
+        const range = turretViews.range[row];
+        targetX = originX + Math.cos(turretRotation) * pitchCos * range;
+        targetY = originY + Math.sin(turretRotation) * pitchCos * range;
+        targetZ = originZ + pitchSin * range;
+      }
+
+      this.pushRow({
+        hostId: state.entityIds[slot],
+        turretIndex: ti,
+        x: hostX,
+        y: hostY,
+        z: hostZ,
+        rotation: hostRotation,
+        bodyCenterHeight,
+        mountLiftY: turretViews.mountLiftY[row],
+        localX: turretViews.mountX[row],
+        localY: turretViews.mountZ[row] - turretViews.mountLiftY[row],
+        localZ: turretViews.mountY[row],
+        targetX,
+        targetY,
+        targetZ,
+        progress: turretViews.shieldRange[row],
+        outerRange,
+        originOffsetZ: turretViews.barrierOriginOffsetZ[row],
+        barrierAlpha: turretViews.barrierAlpha[row],
+        color: fieldColor,
+        shape: turretViews.barrierShape[row],
       });
     }
   }

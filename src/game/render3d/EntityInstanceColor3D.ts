@@ -1,6 +1,7 @@
 import { COLORS } from '@/colorsConfig';
 import type { Entity, Turret, TurretState } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
+import { CLIENT_RENDER_TURRET_STATE_ENGAGED } from './ClientRenderTurretStateSlab';
 
 const SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS = 900;
 
@@ -10,6 +11,10 @@ export function entityInstanceColorKey(entity: Entity): number {
 
 export function entityInstanceColorHex(entity: Entity): number {
   const pid = entity.ownership?.playerId;
+  return entityInstanceColorHexForPlayer(pid);
+}
+
+export function entityInstanceColorHexForPlayer(pid: number | undefined): number {
   return pid !== undefined ? getPlayerColors(pid).primary : COLORS.units.neutral.colorHex;
 }
 
@@ -33,6 +38,15 @@ export function entityHeadOnlyTurretHeadColorHex(
     : entityInstanceColorHex(entity);
 }
 
+export function entityHeadOnlyTurretHeadColorHexForStateCode(
+  entity: Entity,
+  stateCode: number,
+): number {
+  return stateCode === CLIENT_RENDER_TURRET_STATE_ENGAGED
+    ? entityTurretAccentColorHex(entity)
+    : entityInstanceColorHex(entity);
+}
+
 export function entityShieldSphereTurretHeadColorHex(
   entity: Entity,
   turret: Turret | undefined,
@@ -47,6 +61,20 @@ export function entityShieldSphereTurretHeadColorHex(
   ) {
     return primary;
   }
+  const phase = (timeMs % SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS) /
+    SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS;
+  const towardWhite = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);
+  return blendHexTowardWhite(primary, towardWhite);
+}
+
+export function entityShieldSphereTurretHeadColorHexForRange(
+  entity: Entity,
+  hasShieldBarrier: boolean,
+  shieldRange: number,
+  timeMs: number,
+): number {
+  const primary = entityInstanceColorHex(entity);
+  if (!hasShieldBarrier || shieldRange <= 0) return primary;
   const phase = (timeMs % SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS) /
     SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS;
   const towardWhite = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2);

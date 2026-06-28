@@ -21,8 +21,12 @@ export const SHIELD_SURFACE_OPACITY = Math.min(1, REFLECTIVE_SHIELD_MATERIAL.vis
  *  Shape-independent: the sphere and the panels resolve their color
  *  through the same rule. */
 export function resolveShieldSurfaceColor(entity: Entity): number {
-  return SHIELD_VISUAL.colorMode === 'player' && entity.ownership
-    ? getPlayerPrimaryColor(entity.ownership.playerId)
+  return resolveShieldSurfaceColorForOwner(entity.ownership?.playerId);
+}
+
+export function resolveShieldSurfaceColorForOwner(playerId: number | undefined): number {
+  return SHIELD_VISUAL.colorMode === 'player' && playerId !== undefined
+    ? getPlayerPrimaryColor(playerId)
     : REFLECTIVE_SHIELD_MATERIAL.visual.color;
 }
 

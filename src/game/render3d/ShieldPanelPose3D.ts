@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Entity, Turret } from '../sim/types';
+import type { Entity } from '../sim/types';
 import type { ShieldPanelMesh } from './ShieldPanelMesh3D';
 import {
   SHIELD_PANEL_INPUT_STRIDE,
@@ -15,6 +15,7 @@ import {
   setEulerIfChanged,
   setObjectVisibleIfChanged,
 } from './threeTransformWriteUtils';
+import type { ClientRenderTurretHostRows } from './ClientRenderTurretStateSlab';
 
 export class ShieldPanelPose3D {
   private readonly aimBatch = new UnitTurretAimBatch3D();
@@ -44,10 +45,13 @@ export class ShieldPanelPose3D {
   update(
     entity: Entity,
     mirrors: ShieldPanelMesh,
-    shieldPanelTurret: Turret | undefined,
+    turretRows: ClientRenderTurretHostRows | undefined,
+    shieldPanelTurretIndex: number,
     parentPosition: THREE.Vector3,
     parentQuaternion: THREE.Quaternion,
     chassisTiltInverse: THREE.Quaternion | undefined,
+    legacyRotation?: number,
+    legacyPitch?: number,
   ): void {
     if (!mirrors.supportVisible) {
       setObjectVisibleIfChanged(mirrors.root, true);
@@ -55,8 +59,17 @@ export class ShieldPanelPose3D {
     }
     mirrors.panelSlotsActive = true;
 
-    const shieldPanelRot = shieldPanelTurret?.rotation ?? entity.transform.rotation;
-    const shieldPanelPitch = shieldPanelTurret?.pitch ?? 0;
+    const shieldPanelRow = turretRows !== undefined &&
+      shieldPanelTurretIndex >= 0 &&
+      shieldPanelTurretIndex < turretRows.count
+      ? turretRows.start + shieldPanelTurretIndex
+      : -1;
+    const shieldPanelRot = shieldPanelRow >= 0
+      ? turretRows!.views.rotation[shieldPanelRow]
+      : legacyRotation ?? entity.transform.rotation;
+    const shieldPanelPitch = shieldPanelRow >= 0
+      ? turretRows!.views.pitch[shieldPanelRow]
+      : legacyPitch ?? 0;
     this.enqueueAim(
       entity,
       mirrors,

@@ -115,6 +115,10 @@ import {
   CLIENT_RENDER_ENTITY_KIND_UNIT,
   ClientRenderEntityStateSlab,
 } from '../render3d/ClientRenderEntityStateSlab';
+import {
+  ClientRenderTurretStateSlab,
+  type ClientRenderTurretHostRows,
+} from '../render3d/ClientRenderTurretStateSlab';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
@@ -222,6 +226,7 @@ export class ClientViewState {
   private cache = new EntityCacheManager();
   private renderSpatialIndex = new ClientRenderSpatialIndex();
   private renderEntityState = new ClientRenderEntityStateSlab();
+  private renderTurretState = new ClientRenderTurretStateSlab();
   private readonly scopedRenderIncludedIds = new Set<EntityId>();
   private readonly scopedRenderUnitSlots: number[] = [];
   private readonly scopedRenderBuildingSlots: number[] = [];
@@ -457,6 +462,8 @@ export class ClientViewState {
     this.entities.delete(id);
     this.serverTargets.delete(id);
     this.renderSpatialIndex.remove(id);
+    const renderSlot = this.renderEntityState.getSlot(id);
+    if (renderSlot !== undefined) this.renderTurretState.unsetHostSlot(renderSlot);
     this.renderEntityState.unsetEntity(id);
     this.selectionState.delete(id);
     this.activeEntityPredictionIds.delete(id);
@@ -1142,12 +1149,19 @@ export class ClientViewState {
     return this.renderEntityState.getSlot(id);
   }
 
+  getRenderTurretStateRows(id: EntityId): ClientRenderTurretHostRows | undefined {
+    const slot = this.renderEntityState.getSlot(id);
+    return slot !== undefined ? this.renderTurretState.hostRows(slot) : undefined;
+  }
+
   assertRenderEntityStateParity(id: EntityId): void {
     const entity = this.entities.get(id);
     if (entity === undefined) {
       throw new Error(`[client render entity state] missing entity ${id}`);
     }
     this.renderEntityState.assertParity(entity);
+    const slot = this.renderEntityState.getSlot(id);
+    if (slot !== undefined) this.renderTurretState.assertParity(entity, slot);
   }
 
   collectScopedRenderEntities(
@@ -1313,6 +1327,7 @@ export class ClientViewState {
     this.removedBuildingRenderIds.length = 0;
     this.renderLifecycleDirtyIds.clear();
     this.renderEntityState.consumeDirtySlots();
+    this.renderTurretState.consumeDirtyHostSlots();
   }
 
   private refreshPredictedRenderSpatialIndex(): void {
@@ -1342,6 +1357,7 @@ export class ClientViewState {
   private refreshRenderableEntityStateAndSpatialIndex(entity: Entity): void {
     const slot = this.renderEntityState.refreshEntity(entity);
     if (slot !== undefined) {
+      this.renderTurretState.refreshHost(entity, slot);
       this.renderSpatialIndex.updateSlot(this.renderEntityState.getViews(), slot);
     } else {
       this.renderSpatialIndex.remove(entity.id);
@@ -1350,16 +1366,31 @@ export class ClientViewState {
 
   private refreshRenderEntityStateById(id: EntityId): void {
     const entity = this.entities.get(id);
-    if (entity !== undefined) this.renderEntityState.refreshEntity(entity);
-    else this.renderEntityState.unsetEntity(id);
+    if (entity !== undefined) {
+      const slot = this.renderEntityState.refreshEntity(entity);
+      if (slot !== undefined) this.renderTurretState.refreshHost(entity, slot);
+      return;
+    }
+    const slot = this.renderEntityState.getSlot(id);
+    if (slot !== undefined) this.renderTurretState.unsetHostSlot(slot);
+    this.renderEntityState.unsetEntity(id);
   }
 
   private refreshAllRenderableEntityStates(): void {
     for (const entity of this.entities.values()) {
       if (entity.unit !== null || entity.building !== null) {
-        this.renderEntityState.refreshEntity(entity);
+        const slot = this.renderEntityState.refreshEntity(entity);
+        if (slot !== undefined) this.renderTurretState.refreshHost(entity, slot);
       }
     }
+  }
+
+  private getOrRefreshRenderEntityStateSlot(entity: Entity): number | undefined {
+    const existing = this.renderEntityState.getSlot(entity.id);
+    if (existing !== undefined) return existing;
+    const slot = this.renderEntityState.refreshEntity(entity);
+    if (slot !== undefined) this.renderTurretState.refreshHost(entity, slot);
+    return slot;
   }
 
   private refreshPredictedRenderEntityState(): void {
@@ -1523,13 +1554,13 @@ export class ClientViewState {
     farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
-    const slot = this.renderEntityState.getSlot(entity.id)
-      ?? this.renderEntityState.refreshEntity(entity);
+    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
     if (slot !== undefined) {
       out.unitRows.pushEntityState(
         entity,
         this.renderEntityState.getViews(),
         slot,
+        this.renderTurretState,
         this.activeEntityPredictionIds.has(entity.id),
         this.dirtyUnitRenderIds.has(entity.id),
         this.renderLifecycleDirtyIds.has(entity.id),
@@ -1551,13 +1582,13 @@ export class ClientViewState {
     farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
-    const slot = this.renderEntityState.getSlot(entity.id)
-      ?? this.renderEntityState.refreshEntity(entity);
+    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
     if (slot !== undefined) {
       out.buildingRows.pushEntityState(
         entity,
         this.renderEntityState.getViews(),
         slot,
+        this.renderTurretState,
         this.activeEntityPredictionIds.has(entity.id),
         this.dirtyBuildingRenderIds.has(entity.id),
         this.renderLifecycleDirtyIds.has(entity.id),
@@ -1620,8 +1651,7 @@ export class ClientViewState {
     if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud')) return;
 
     const type = this.hudTypeOf3D(entity);
-    const slot = this.renderEntityState.getSlot(entity.id)
-      ?? this.renderEntityState.refreshEntity(entity);
+    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
     if (slot !== undefined) {
       const views = this.renderEntityState.getViews();
       const kind = views.kind[slot];
@@ -1728,8 +1758,7 @@ export class ClientViewState {
     if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames')) return;
     const type = this.hudTypeOf3D(entity);
     const nameToggle = options.getEntityHudToggle(type, 'name');
-    const slot = this.renderEntityState.getSlot(entity.id)
-      ?? this.renderEntityState.refreshEntity(entity);
+    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
     const views = slot !== undefined ? this.renderEntityState.getViews() : undefined;
     const hasStateRow = slot !== undefined && views !== undefined && (
       views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT ||
@@ -1797,11 +1826,15 @@ export class ClientViewState {
     renderScope: ViewportFootprint,
     out: ClientViewRenderEntityPackets3D,
   ): void {
-    const slot = this.renderEntityState.getSlot(entity.id)
-      ?? this.renderEntityState.refreshEntity(entity);
+    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
     const views = this.renderEntityState.getViews();
     if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
-      out.shields.pushUnitState(entity, views, slot, renderScope);
+      out.shields.pushUnitTurretState(
+        views,
+        slot,
+        this.renderTurretState.hostRows(slot),
+        renderScope,
+      );
     } else {
       out.shields.pushUnit(entity, renderScope);
     }
@@ -1820,8 +1853,7 @@ export class ClientViewState {
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
       if (this.entityEmissionUsesFarLod3D(entity, options, 'contactShadows')) continue;
-      const slot = this.renderEntityState.getSlot(entity.id)
-        ?? this.renderEntityState.refreshEntity(entity);
+      const slot = this.getOrRefreshRenderEntityStateSlot(entity);
       views = this.renderEntityState.getViews();
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
         out.contactShadows.pushUnitState(
@@ -1843,8 +1875,7 @@ export class ClientViewState {
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
       if (this.entityEmissionUsesFarLod3D(entity, options, 'contactShadows')) continue;
-      const slot = this.renderEntityState.getSlot(entity.id)
-        ?? this.renderEntityState.refreshEntity(entity);
+      const slot = this.getOrRefreshRenderEntityStateSlot(entity);
       views = this.renderEntityState.getViews();
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING) {
         out.contactShadows.pushBuildingState(
@@ -1872,8 +1903,7 @@ export class ClientViewState {
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
       if (this.entityEmissionUsesFarLod3D(entity, options, 'groundPrints')) continue;
-      const slot = this.renderEntityState.getSlot(entity.id)
-        ?? this.renderEntityState.refreshEntity(entity);
+      const slot = this.getOrRefreshRenderEntityStateSlot(entity);
       views = this.renderEntityState.getViews();
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
         const entityId = views.entityIds[slot] as EntityId;
@@ -2137,6 +2167,7 @@ export class ClientViewState {
     this.serverMeta = null;
     this.renderSpatialIndex.clear();
     this.renderEntityState.clear();
+    this.renderTurretState.clear();
     this.predictionStepper.reset();
     this.predictionCadence.clearAll();
     this.activeEntityPredictionIds.clear();

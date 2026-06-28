@@ -4,7 +4,9 @@ import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import {
   entityHeadOnlyTurretHeadColorHex,
+  entityHeadOnlyTurretHeadColorHexForStateCode,
   entityShieldSphereTurretHeadColorHex,
+  entityShieldSphereTurretHeadColorHexForRange,
 } from './EntityInstanceColor3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { applyTurretAimPose3D } from './TurretAimPose3D';
@@ -27,6 +29,11 @@ import {
 } from './UnitTurretHeadMatrixBatch3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import type { TurretMountCache3D } from './TurretMountCache3D';
+import {
+  CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
+  CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
+  type ClientRenderTurretHostRows,
+} from './ClientRenderTurretStateSlab';
 import {
   setEulerXIfChanged,
   setEulerYIfChanged,
@@ -85,6 +92,7 @@ export class UnitTurretPose3D {
   update(
     entity: Entity,
     mesh: EntityMesh,
+    turretRows: ClientRenderTurretHostRows | undefined,
     turrets: readonly Turret[],
     bodyVisible: boolean,
     bodyCenterHeight: number,
@@ -99,10 +107,23 @@ export class UnitTurretPose3D {
     turretBeamAimCache: TurretBeamAimCache3D,
     constructionVisuals: ConstructionVisualController3D,
   ): void {
-    for (let turretIdx = 0; turretIdx < mesh.turrets.length && turretIdx < turrets.length; turretIdx++) {
+    const stateViews = turretRows?.views;
+    const stateStart = turretRows?.start ?? 0;
+    const turretCount = turretRows !== undefined ? turretRows.count : turrets.length;
+    for (let turretIdx = 0; turretIdx < mesh.turrets.length && turretIdx < turretCount; turretIdx++) {
       const turretMesh = mesh.turrets[turretIdx];
       const turret = turrets[turretIdx];
-      const headRadius = turretMesh.headRadius ?? getTurretHeadRadius(turret.config);
+      const stateRow = stateStart + turretIdx;
+      const useState = stateViews !== undefined && turretIdx < (turretRows?.count ?? 0);
+      if (!useState && turret === undefined) continue;
+      const flags = useState ? stateViews.flags[stateRow] : 0;
+      const mountX = useState ? stateViews.mountX[stateRow] : turret.mount.x;
+      const mountY = useState ? stateViews.mountY[stateRow] : turret.mount.y;
+      const mountZ = useState ? stateViews.mountZ[stateRow] : turret.mount.z;
+      const aimRotationFromState = useState ? stateViews.rotation[stateRow] : turret.rotation;
+      const aimPitchFromState = useState ? stateViews.pitch[stateRow] : turret.pitch;
+      const headRadius = turretMesh.headRadius
+        ?? (useState ? stateViews.headRadius[stateRow] : getTurretHeadRadius(turret.config));
       const visible = bodyVisible;
       setObjectVisibleIfChanged(turretMesh.root, visible);
       if (!visible) {
@@ -110,15 +131,15 @@ export class UnitTurretPose3D {
         continue;
       }
 
-      const turretHeadCenterY = Number.isFinite(turret.mount.z)
-        ? turret.mount.z
+      const turretHeadCenterY = Number.isFinite(mountZ)
+        ? mountZ
         : bodyCenterHeight;
       const turretMountY = turretHeadCenterY - (mesh.chassisLift ?? 0) - headRadius;
       setVector3IfChanged(
         turretMesh.root.position,
-        turret.mount.x,
+        mountX,
         turretMountY,
-        turret.mount.y,
+        mountY,
       );
 
       if (turretMesh.constructionEmitter) {
@@ -140,7 +161,7 @@ export class UnitTurretPose3D {
         applyTurretAimPose3D(
           turretMesh,
           entity.transform.rotation,
-          turret.rotation,
+          aimRotationFromState,
           0,
           chassisTiltInverse,
         );
@@ -156,8 +177,8 @@ export class UnitTurretPose3D {
 
       let deferAim = false;
       let aimMode = TURRET_AIM_MODE_POSE;
-      let aimRotation = turret.rotation;
-      let aimPitch = turret.pitch;
+      let aimRotation = aimRotationFromState;
+      let aimPitch = aimPitchFromState;
       let aimDirX = 0;
       let aimDirY = 0;
       let aimDirZ = 0;
@@ -176,7 +197,7 @@ export class UnitTurretPose3D {
         deferAim = true;
         // Beam barrels never spin.
         if (turretMesh.spinGroup) setEulerXIfChanged(turretMesh.spinGroup.rotation, 0);
-      } else if (!turret.config.headOnly) {
+      } else if (!(useState ? (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0 : turret.config.headOnly)) {
         deferAim = true;
         if (turretMesh.spinGroup) {
           setEulerXIfChanged(
@@ -193,9 +214,18 @@ export class UnitTurretPose3D {
         turretMesh.headRadius !== undefined
       ) {
         const headColorOverride = turretMesh.headOnly && !turretMesh.barrelFollowsBeam
-          ? entityHeadOnlyTurretHeadColorHex(entity, turret.state)
+          ? useState
+            ? entityHeadOnlyTurretHeadColorHexForStateCode(entity, stateViews.stateCode[stateRow])
+            : entityHeadOnlyTurretHeadColorHex(entity, turret.state)
           : turretMesh.shieldEmitterCore
-            ? entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)
+            ? useState
+              ? entityShieldSphereTurretHeadColorHexForRange(
+                entity,
+                (flags & CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD) !== 0,
+                stateViews.shieldRange[stateRow],
+                timeMs,
+              )
+              : entityShieldSphereTurretHeadColorHex(entity, turret, timeMs)
             : undefined;
         if (deferAim) {
           this.enqueueAim(

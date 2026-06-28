@@ -14,7 +14,12 @@ import type { Entity, PlayerId } from '../sim/types';
 import type { WorldSupportSurface } from '../sim/supportSurface';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
 import { ClientRenderEntityStateSlab } from './ClientRenderEntityStateSlab';
+import {
+  CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
+  ClientRenderTurretStateSlab,
+} from './ClientRenderTurretStateSlab';
 import { UnitRenderPacket3D } from './EntityRenderPackets3D';
+import { ShieldRenderPacket3D } from './ShieldRenderer3D';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -164,7 +169,7 @@ function fullBuildingEntity(
   };
 }
 
-function createTestUnit(id: number, playerId: PlayerId) {
+function createTestUnit(id: number, playerId: PlayerId, unitBlueprintId = 'unitJackal') {
   let nextEntityId = id;
   const entity = createUnitFromBlueprintEntity(
     {
@@ -174,7 +179,7 @@ function createTestUnit(id: number, playerId: PlayerId) {
     10,
     20,
     playerId,
-    'unitJackal',
+    unitBlueprintId,
     { allocateSubEntityIds: false },
   );
   entity.id = id;
@@ -194,6 +199,7 @@ function scopeFromBounds(bounds: FootprintBounds): ViewportFootprint {
 
 export function runClientRenderEntityStateSlabContractTest(): void {
   const slab = new ClientRenderEntityStateSlab();
+  const turretSlab = new ClientRenderTurretStateSlab();
   const unit = createTestUnit(10, 2 as PlayerId);
   if (unit.unit === null) {
     throw new Error('[client render entity state contract] test unit must have a unit component');
@@ -210,11 +216,21 @@ export function runClientRenderEntityStateSlabContractTest(): void {
 
   const slot = slab.refreshUnit(unit);
   assertContract(slot !== undefined, 'unit refresh must allocate a slot');
+  const turretRows = turretSlab.refreshHost(unit, slot!);
   slab.assertParity(unit);
+  turretSlab.assertParity(unit, slot!);
+  assertContract(turretRows !== undefined, 'unit turret refresh must expose host rows');
+  assertContract(turretRows!.count === unit.combat!.turrets.length, 'turret rows must match combat turret count');
+  const firstTurretRow = turretRows!.start;
+  assertContract(
+    turretRows!.views.rotation[firstTurretRow] === Math.fround(unit.combat!.turrets[0].rotation),
+    'turret rotation must be stored in typed rows',
+  );
 
   const packet = new UnitRenderPacket3D();
-  packet.pushEntityState(unit, slab.getViews(), slot!, true, true, true, false);
+  packet.pushEntityState(unit, slab.getViews(), slot!, turretSlab, true, true, true, false);
   assertContract(packet.count === 1, 'packet must accept a unit slab row');
+  assertContract(packet.turretStateAt(0)?.count === unit.combat!.turrets.length, 'packet must expose turret state rows');
   assertContract(packet.entityIdAt(0) === unit.id, 'packet id must come from the slab row');
   assertContract(packet.ownerIdAt(0) === 2, 'packet owner must come from the slab row');
   assertContract(packet.selectedAt(0), 'packet selected flag must come from slab flags');
@@ -228,7 +244,33 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   assertContract(slab.getSlot(unit.id) === undefined, 'unset must remove id-to-slot mapping');
   const reusedUnit = createTestUnit(11, 3 as PlayerId);
   const reusedSlot = slab.refreshUnit(reusedUnit);
+  turretSlab.refreshHost(reusedUnit, reusedSlot!);
   assertContract(reusedSlot === slot, 'freed slots must be reused for stable bounded slabs');
+
+  const shieldUnit = createTestUnit(12, 4 as PlayerId, 'unitDaddy');
+  const shieldSlot = slab.refreshUnit(shieldUnit);
+  assertContract(shieldSlot !== undefined, 'shield unit must allocate a render slot');
+  const shieldTurretIndex = shieldUnit.combat!.turrets.findIndex((turret) =>
+    turret.config.shot?.type === 'shield' && turret.config.shot.barrier !== undefined);
+  assertContract(shieldTurretIndex >= 0, 'test shield unit must have a shield barrier turret');
+  const shieldTurret = shieldUnit.combat!.turrets[shieldTurretIndex];
+  shieldTurret.rotation = 0.5;
+  shieldTurret.pitch = 0.1;
+  shieldTurret.shield = { transition: 1, range: 0.75, onTimeMs: 100 };
+  const shieldRows = turretSlab.refreshHost(shieldUnit, shieldSlot!);
+  turretSlab.assertParity(shieldUnit, shieldSlot!);
+  const shieldRow = shieldRows!.start + shieldTurretIndex;
+  assertContract(
+    (shieldRows!.views.flags[shieldRow] & CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD) !== 0,
+    'shield turret row must carry the shield-field flag',
+  );
+  const shieldPacket = new ShieldRenderPacket3D();
+  const wideScope = scopeFromBounds({ minX: -1000, minY: -1000, maxX: 1000, maxY: 1000 });
+  shieldPacket.pushUnitTurretState(slab.getViews(), shieldSlot!, shieldRows, wideScope);
+  assertContract(shieldPacket.count === 1, 'shield packet must materialize from turret state rows');
+  assertContract(shieldPacket.hostIds[0] === shieldUnit.id, 'shield packet host id must come from slab state');
+  assertContract(shieldPacket.turretIndices[0] === shieldTurretIndex, 'shield packet turret index must match typed row');
+  assertContract(shieldPacket.progress[0] === Math.fround(0.75), 'shield packet progress must come from typed shield range');
 
   const view = new ClientViewState();
   view.applyNetworkState(snapshot(1, [fullUnitEntity(77, 60, 100), fullBuildingEntity(88, 50, 200)]));

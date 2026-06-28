@@ -516,11 +516,11 @@ function createBuildingFromNetwork(
 
   // Mirror the host's combat hydration. Building turret meshes are
   // mounted by BuildingEntityRenderer3D on the client side, and the
-  // per-frame writer positions / aims them from entity.combat.turrets — without
-  // a client-side combat component the turret root stays at default
-  // (0, 0, 0) in building-local space, hiding the head inside the
-  // body slab. Beam updates also reference the source's turret rig
-  // for client-side prediction / aim smoothing.
+  // render turret slab is populated from entity.combat.turrets; without a
+  // client-side combat component the turret root stays at default (0, 0, 0)
+  // in building-local space, hiding the head inside the body slab. Beam
+  // updates also reference the source's turret rig for client-side prediction
+  // / aim smoothing.
   refreshBuildingTurretsFromNetwork(entity, buildingBlueprintId, b.turrets);
   if (entity.buildable !== null) initializeConstructionPieceHealth(entity);
 

@@ -47,6 +47,12 @@ import {
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
 import type { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
+import {
+  CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER,
+  CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
+  CLIENT_RENDER_TURRET_STATE_ENGAGED,
+  type ClientRenderTurretHostRows,
+} from './ClientRenderTurretStateSlab';
 
 const BUILDING_HEIGHT = 120;
 
@@ -83,6 +89,30 @@ type BuildingTurretSpinEntry = {
   turretMesh: TurretMesh;
   active: boolean;
 };
+
+type BuildingTurretStateFields = {
+  rotation: number;
+  pitch: number;
+  headOnly: boolean;
+  constructionEmitter: boolean;
+  engaged: boolean;
+};
+
+function turretStateFields(
+  rows: ClientRenderTurretHostRows | undefined,
+  turretIndex: number,
+): BuildingTurretStateFields | null {
+  if (rows === undefined || turretIndex < 0 || turretIndex >= rows.count) return null;
+  const row = rows.start + turretIndex;
+  const flags = rows.views.flags[row];
+  return {
+    rotation: rows.views.rotation[row],
+    pitch: rows.views.pitch[row],
+    headOnly: (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0,
+    constructionEmitter: (flags & CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER) !== 0,
+    engaged: rows.views.stateCode[row] === CLIENT_RENDER_TURRET_STATE_ENGAGED,
+  };
+}
 
 type BuildingEntityMeshFactoryOptions = {
   entity: Entity;
@@ -814,13 +844,17 @@ export class BuildingEntityRenderer3D {
     rows: BuildingRenderPacket3D,
     row: number,
   ): void {
+    const turretRows = rows.turretStateAt(row);
     const combatTurrets = rows.turretsAt(row);
-    if (!combatTurrets || mesh.turrets.length !== combatTurrets.length) return;
+    const turretCount = turretRows !== undefined ? turretRows.count : combatTurrets.length;
+    if (mesh.turrets.length !== turretCount) return;
     const underConstruction = rows.shellAt(row);
     const bodyVisible = rows.bodyOpacity[row] > 0;
     const ownerId = rows.ownerIdAt(row);
-    for (let turretIndex = 0; turretIndex < combatTurrets.length; turretIndex++) {
+    for (let turretIndex = 0; turretIndex < turretCount; turretIndex++) {
       const turret = combatTurrets[turretIndex];
+      const turretState = turretStateFields(turretRows, turretIndex);
+      if (turretState === null && turret === undefined) continue;
       const turretMesh = mesh.turrets[turretIndex];
       const visible = bodyVisible;
       this.setTurretRootVisible(turretMesh, visible);
@@ -829,7 +863,7 @@ export class BuildingEntityRenderer3D {
       // don't pitch barrels. The root still consumes the authoritative
       // turret yaw/velocity stream so the whole fabricator construction
       // deck can rotate smoothly on the client.
-      if (turret.config.constructionEmitter) {
+      if (turretState?.constructionEmitter === true || turret?.config.constructionEmitter) {
         // Building construction pylons (the fabricator's) hang UNDER the torus
         // and point DOWN at the free-falling shell — flip the rig like the
         // construction drone does (π about Z).
@@ -838,9 +872,9 @@ export class BuildingEntityRenderer3D {
         }
         this.enqueueTurretAim(
           turretMesh,
-          entity.transform.rotation,
+          rows.rotation[row],
           TURRET_AIM_MODE_POSE,
-          turret.rotation,
+          turretState?.rotation ?? turret.rotation,
           0,
           0,
           0,
@@ -854,11 +888,11 @@ export class BuildingEntityRenderer3D {
       // shell override owns the head material during construction, leave
       // it alone; after construction, the engaged state flips the head
       // from player primary to the half-white lock-on cue.
-      if (turret.config.headOnly && !followsBeam) {
+      if ((turretState?.headOnly ?? turret.config.headOnly) && !followsBeam) {
         if (turretMesh.head && !underConstruction) {
           this.setTurretHeadMaterial(
             turretMesh,
-            turret.state === 'engaged'
+            (turretState?.engaged ?? turret.state === 'engaged')
               ? this.getTurretAccentMat(ownerId)
               : this.getPrimaryMat(ownerId),
           );
@@ -880,7 +914,7 @@ export class BuildingEntityRenderer3D {
         if (beamDir) {
           this.enqueueTurretAim(
             turretMesh,
-            entity.transform.rotation,
+            rows.rotation[row],
             TURRET_AIM_MODE_WORLD_DIR,
             0,
             0,
@@ -891,10 +925,10 @@ export class BuildingEntityRenderer3D {
         } else {
           this.enqueueTurretAim(
             turretMesh,
-            entity.transform.rotation,
+            rows.rotation[row],
             TURRET_AIM_MODE_POSE,
-            turret.rotation,
-            turret.pitch,
+            turretState?.rotation ?? turret.rotation,
+            turretState?.pitch ?? turret.pitch,
             0,
             0,
             0,
@@ -903,10 +937,10 @@ export class BuildingEntityRenderer3D {
       } else {
         this.enqueueTurretAim(
           turretMesh,
-          entity.transform.rotation,
+          rows.rotation[row],
           TURRET_AIM_MODE_POSE,
-          turret.rotation,
-          turret.pitch,
+          turretState?.rotation ?? turret.rotation,
+          turretState?.pitch ?? turret.pitch,
           0,
           0,
           0,
@@ -991,7 +1025,13 @@ export class BuildingEntityRenderer3D {
         this.unregisterBuildingSpinTurrets(entityId);
         continue;
       }
-      this.barrelSpin.advance(entity, spinDt);
+      if (!this.barrelSpin.advanceRows(
+        entityId,
+        this.clientViewState.getRenderTurretStateRows(entityId),
+        spinDt,
+      )) {
+        this.barrelSpin.advance(entity, spinDt);
+      }
       for (const entry of entries) {
         if (!entry.active) continue;
         this.setTurretSpinRotation(

@@ -4,6 +4,12 @@ import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
 } from '../sim/combat/targetingInputStamping';
+import {
+  CLIENT_RENDER_TURRET_FLAG_MULTI_BARREL_SPIN,
+  CLIENT_RENDER_TURRET_FLAG_VISUAL_ONLY,
+  CLIENT_RENDER_TURRET_STATE_ENGAGED,
+  type ClientRenderTurretHostRows,
+} from './ClientRenderTurretStateSlab';
 
 type BarrelSpinState = {
   angle: number;
@@ -76,6 +82,36 @@ export class UnitBarrelSpinState3D {
       }
       state.angle = (state.angle + state.speed * dtSec) % (Math.PI * 2);
     }
+  }
+
+  advanceRows(entityId: EntityId, rows: ClientRenderTurretHostRows | undefined, dtSec: number): boolean {
+    if (rows === undefined) return false;
+    const views = rows.views;
+    for (let turretIdx = 0; turretIdx < rows.count; turretIdx++) {
+      const row = rows.start + turretIdx;
+      const flags = views.flags[row];
+      if ((flags & CLIENT_RENDER_TURRET_FLAG_VISUAL_ONLY) !== 0) continue;
+      if ((flags & CLIENT_RENDER_TURRET_FLAG_MULTI_BARREL_SPIN) === 0) continue;
+
+      let perEntity = this.spins.get(entityId);
+      if (!perEntity) {
+        perEntity = new Map();
+        this.spins.set(entityId, perEntity);
+      }
+      let state = perEntity.get(turretIdx);
+      if (!state) {
+        state = { angle: 0, speed: views.spinIdle[row] };
+        perEntity.set(turretIdx, state);
+      }
+
+      if (views.stateCode[row] === CLIENT_RENDER_TURRET_STATE_ENGAGED) {
+        state.speed = Math.min(state.speed + views.spinAccel[row] * dtSec, views.spinMax[row]);
+      } else {
+        state.speed = Math.max(state.speed - views.spinDecel[row] * dtSec, views.spinIdle[row]);
+      }
+      state.angle = (state.angle + state.speed * dtSec) % (Math.PI * 2);
+    }
+    return true;
   }
 
   angleFor(entityId: EntityId, turretIdx: number): number | undefined {

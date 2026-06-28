@@ -20,6 +20,11 @@ import {
   CLIENT_RENDER_UNIT_FLAG_AIRBORNE,
   CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION,
 } from './ClientRenderEntityStateSlab';
+import type {
+  ClientRenderTurretHostRows,
+  ClientRenderTurretStateSlab,
+  ClientRenderTurretStateViews,
+} from './ClientRenderTurretStateSlab';
 
 const ENTITY_RENDER_PACKET_INITIAL_CAP = 4096;
 const ENTITY_RENDER_REMOVAL_INITIAL_CAP = 256;
@@ -66,11 +71,29 @@ function growUint16(
   return next;
 }
 
+function growUint32(
+  source: Uint32Array<ArrayBuffer>,
+  nextCapacity: number,
+): Uint32Array<ArrayBuffer> {
+  const next = new Uint32Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
 function growInt16(
   source: Int16Array<ArrayBuffer>,
   nextCapacity: number,
 ): Int16Array<ArrayBuffer> {
   const next = new Int16Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growInt32(
+  source: Int32Array<ArrayBuffer>,
+  nextCapacity: number,
+): Int32Array<ArrayBuffer> {
+  const next = new Int32Array(nextCapacity);
   next.set(source);
   return next;
 }
@@ -127,6 +150,16 @@ function passiveTurretIndex(turrets: readonly Turret[]): number {
 export class UnitRenderPacket3D {
   private readonly entities: (Entity | undefined)[] = [];
   private readonly turrets: (readonly Turret[] | undefined)[] = [];
+  private turretStateViews: ClientRenderTurretStateViews | undefined;
+  private turretHostSlots = new Int32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  private turretStarts = new Uint32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  private turretStateCounts = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  private readonly turretRowsScratch: ClientRenderTurretHostRows = {
+    hostSlot: -1,
+    start: 0,
+    count: 0,
+    views: undefined as unknown as ClientRenderTurretStateViews,
+  };
   unitBlueprintIds: (string | undefined)[] = [];
   removedIds = new Float64Array(ENTITY_RENDER_REMOVAL_INITIAL_CAP);
   ids = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -156,6 +189,7 @@ export class UnitRenderPacket3D {
     this.removedCount = 0;
     this.entities.length = 0;
     this.turrets.length = 0;
+    this.turretStateViews = undefined;
     this.unitBlueprintIds.length = 0;
   }
 
@@ -181,6 +215,9 @@ export class UnitRenderPacket3D {
     const turretRows = combatTurrets ?? EMPTY_TURRETS;
     this.entities[cursor] = entity;
     this.turrets[cursor] = turretRows;
+    this.turretHostSlots[cursor] = -1;
+    this.turretStarts[cursor] = 0;
+    this.turretStateCounts[cursor] = 0;
     this.unitBlueprintIds[cursor] = unit.unitBlueprintId;
     this.ids[cursor] = entity.id;
     this.ownerIds[cursor] = entity.ownership?.playerId ?? NO_OWNER_ID;
@@ -214,6 +251,7 @@ export class UnitRenderPacket3D {
     entity: Entity,
     state: ClientRenderEntityStateViews,
     slot: number,
+    turretState?: ClientRenderTurretStateSlab,
     activePrediction: boolean = false,
     renderDirty: boolean = false,
     lifecycleDirty: boolean = false,
@@ -224,8 +262,19 @@ export class UnitRenderPacket3D {
     this.ensureCapacity(cursor + 1);
     const combatTurrets = entity.combat?.turrets;
     const turretRows = combatTurrets ?? EMPTY_TURRETS;
+    const turretStateRows = turretState?.hostRows(slot);
     this.entities[cursor] = entity;
     this.turrets[cursor] = turretRows;
+    if (turretStateRows !== undefined) {
+      this.turretStateViews = turretStateRows.views;
+      this.turretHostSlots[cursor] = turretStateRows.hostSlot;
+      this.turretStarts[cursor] = turretStateRows.start;
+      this.turretStateCounts[cursor] = turretStateRows.count;
+    } else {
+      this.turretHostSlots[cursor] = -1;
+      this.turretStarts[cursor] = 0;
+      this.turretStateCounts[cursor] = 0;
+    }
     this.unitBlueprintIds[cursor] = state.unitBlueprintIds[slot];
     this.ids[cursor] = state.entityIds[slot];
     this.ownerIds[cursor] = state.ownerIds[slot];
@@ -261,6 +310,18 @@ export class UnitRenderPacket3D {
 
   turretsAt(row: number): readonly Turret[] {
     return this.turrets[row] ?? EMPTY_TURRETS;
+  }
+
+  turretStateAt(row: number): ClientRenderTurretHostRows | undefined {
+    const views = this.turretStateViews;
+    const hostSlot = this.turretHostSlots[row];
+    if (views === undefined || hostSlot < 0) return undefined;
+    const rows = this.turretRowsScratch;
+    (rows as { hostSlot: number }).hostSlot = hostSlot;
+    (rows as { start: number }).start = this.turretStarts[row];
+    (rows as { count: number }).count = this.turretStateCounts[row];
+    (rows as { views: ClientRenderTurretStateViews }).views = views;
+    return rows;
   }
 
   entityIdAt(row: number): EntityId {
@@ -335,6 +396,9 @@ export class UnitRenderPacket3D {
     this.turretCount = growUint16(this.turretCount, nextCapacity);
     this.passiveTurretIndex = growInt16(this.passiveTurretIndex, nextCapacity);
     this.flags = growUint16(this.flags, nextCapacity);
+    this.turretHostSlots = growInt32(this.turretHostSlots, nextCapacity);
+    this.turretStarts = growUint32(this.turretStarts, nextCapacity);
+    this.turretStateCounts = growUint16(this.turretStateCounts, nextCapacity);
   }
 
   private ensureRemovalCapacity(required: number): void {
@@ -348,6 +412,16 @@ export class UnitRenderPacket3D {
 export class BuildingRenderPacket3D {
   private readonly entities: (Entity | undefined)[] = [];
   private readonly turrets: (readonly Turret[] | undefined)[] = [];
+  private turretStateViews: ClientRenderTurretStateViews | undefined;
+  private turretHostSlots = new Int32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  private turretStarts = new Uint32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  private turretStateCounts = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  private readonly turretRowsScratch: ClientRenderTurretHostRows = {
+    hostSlot: -1,
+    start: 0,
+    count: 0,
+    views: undefined as unknown as ClientRenderTurretStateViews,
+  };
   buildingBlueprintIds: (string | null | undefined)[] = [];
   removedIds = new Float64Array(ENTITY_RENDER_REMOVAL_INITIAL_CAP);
   ids = new Float64Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -371,6 +445,7 @@ export class BuildingRenderPacket3D {
     this.removedCount = 0;
     this.entities.length = 0;
     this.turrets.length = 0;
+    this.turretStateViews = undefined;
     this.buildingBlueprintIds.length = 0;
   }
 
@@ -399,6 +474,9 @@ export class BuildingRenderPacket3D {
     const turretRows = combatTurrets ?? EMPTY_TURRETS;
     this.entities[cursor] = entity;
     this.turrets[cursor] = turretRows;
+    this.turretHostSlots[cursor] = -1;
+    this.turretStarts[cursor] = 0;
+    this.turretStateCounts[cursor] = 0;
     this.buildingBlueprintIds[cursor] = entity.buildingBlueprintId;
     this.ids[cursor] = entity.id;
     this.ownerIds[cursor] = entity.ownership?.playerId ?? NO_OWNER_ID;
@@ -430,6 +508,7 @@ export class BuildingRenderPacket3D {
     entity: Entity,
     state: ClientRenderEntityStateViews,
     slot: number,
+    turretState?: ClientRenderTurretStateSlab,
     activePrediction: boolean = false,
     renderDirty: boolean = false,
     lifecycleDirty: boolean = false,
@@ -440,8 +519,19 @@ export class BuildingRenderPacket3D {
     this.ensureCapacity(cursor + 1);
     const combatTurrets = entity.combat?.turrets;
     const turretRows = combatTurrets ?? EMPTY_TURRETS;
+    const turretStateRows = turretState?.hostRows(slot);
     this.entities[cursor] = entity;
     this.turrets[cursor] = turretRows;
+    if (turretStateRows !== undefined) {
+      this.turretStateViews = turretStateRows.views;
+      this.turretHostSlots[cursor] = turretStateRows.hostSlot;
+      this.turretStarts[cursor] = turretStateRows.start;
+      this.turretStateCounts[cursor] = turretStateRows.count;
+    } else {
+      this.turretHostSlots[cursor] = -1;
+      this.turretStarts[cursor] = 0;
+      this.turretStateCounts[cursor] = 0;
+    }
     this.buildingBlueprintIds[cursor] = state.buildingBlueprintIds[slot];
     this.ids[cursor] = state.entityIds[slot];
     this.ownerIds[cursor] = state.ownerIds[slot];
@@ -471,6 +561,18 @@ export class BuildingRenderPacket3D {
 
   turretsAt(row: number): readonly Turret[] {
     return this.turrets[row] ?? EMPTY_TURRETS;
+  }
+
+  turretStateAt(row: number): ClientRenderTurretHostRows | undefined {
+    const views = this.turretStateViews;
+    const hostSlot = this.turretHostSlots[row];
+    if (views === undefined || hostSlot < 0) return undefined;
+    const rows = this.turretRowsScratch;
+    (rows as { hostSlot: number }).hostSlot = hostSlot;
+    (rows as { start: number }).start = this.turretStarts[row];
+    (rows as { count: number }).count = this.turretStateCounts[row];
+    (rows as { views: ClientRenderTurretStateViews }).views = views;
+    return rows;
   }
 
   entityIdAt(row: number): EntityId {
@@ -535,6 +637,9 @@ export class BuildingRenderPacket3D {
     this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
     this.turretCount = growUint16(this.turretCount, nextCapacity);
     this.flags = growUint16(this.flags, nextCapacity);
+    this.turretHostSlots = growInt32(this.turretHostSlots, nextCapacity);
+    this.turretStarts = growUint32(this.turretStarts, nextCapacity);
+    this.turretStateCounts = growUint16(this.turretStateCounts, nextCapacity);
   }
 
   private ensureRemovalCapacity(required: number): void {

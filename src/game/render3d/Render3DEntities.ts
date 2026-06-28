@@ -563,6 +563,7 @@ export class Render3DEntities {
       const tx = unitRows.x[row];
       const ty = unitRows.y[row];
       const turrets = unitRows.turretsAt(row);
+      const turretRows = unitRows.turretStateAt(row);
       const groundZ = unitRows.groundY[row];
       // Use `scale` (visual) rather than `shot` (collider) for horizontal
       // footprint, matching the 2D renderer. Body height is per-unit
@@ -624,7 +625,11 @@ export class Render3DEntities {
       this.reactivateUnitMeshForLod(entityId, m);
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
-      if (unitGfx.barrelSpin) this.barrelSpinState.advance(e, spinDt);
+      if (unitGfx.barrelSpin) {
+        if (!this.barrelSpinState.advanceRows(entityId, turretRows, spinDt)) {
+          this.barrelSpinState.advance(e, spinDt);
+        }
+      }
       syncUnitDynamicMaterials3D({
         entity: e,
         mesh: m,
@@ -680,6 +685,7 @@ export class Render3DEntities {
       const ty = unitRows.y[row];
       const tRot = unitRows.rotation[row];
       const turrets = unitRows.turretsAt(row);
+      const turretRows = unitRows.turretStateAt(row);
       const groundZ = unitRows.groundY[row];
       const radius = unitRows.radiusOther[row];
       const bodyOpacity = poseBodyOpacity[poseIndex];
@@ -792,6 +798,7 @@ export class Render3DEntities {
       this.turretPose.update(
         e,
         m,
+        turretRows,
         turrets,
         bodyMaterialized,
         unitRows.bodyCenterHeight[row],
@@ -813,15 +820,22 @@ export class Render3DEntities {
         } else {
           const shieldPanelTurretIndex = unitRows.passiveTurretIndex[row];
           const shieldPanelTurret = shieldPanelTurretIndex >= 0 ? turrets[shieldPanelTurretIndex] : undefined;
-          const shieldPanelMaterialized = shieldPanelTurret !== undefined && bodyMaterialized;
+          const shieldPanelMaterialized = bodyMaterialized && (
+            turretRows !== undefined
+              ? shieldPanelTurretIndex >= 0 && shieldPanelTurretIndex < turretRows.count
+              : shieldPanelTurret !== undefined
+          );
           if (shieldPanelMaterialized) {
             this.shieldPanelPose.update(
               e,
               m.mirrors,
-              shieldPanelTurret,
+              turretRows,
+              shieldPanelTurretIndex,
               this._smoothLiftedPos,
               this._smoothParentQuat,
               chassisTilted ? _invTiltQuat : undefined,
+              shieldPanelTurret?.rotation,
+              shieldPanelTurret?.pitch,
             );
           } else {
             this.deactivateShieldPanelMesh(m.mirrors);
