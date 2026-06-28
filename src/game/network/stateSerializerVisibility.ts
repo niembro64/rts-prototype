@@ -21,7 +21,7 @@ import {
   ENTITY_STATE_KIND_UNIT,
   getSimWasm,
 } from '../sim-wasm/init';
-import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
+import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
 import {
   createFloat64WireRows,
   reserveFloat64WireRows,
@@ -484,8 +484,9 @@ export class SnapshotVisibility {
       const radarCovered = (sensorCoverageMask[slot] & viewMask) !== 0;
       const fullSightCovered = (fullSightCoverageMask[slot] & viewMask) !== 0;
       if (fullSightCovered) {
-        const entity = entitySlotRegistry.resolveSlot(slot) ?? this.world.getEntity(id);
-        if (entity !== undefined && this.isEntityVisible(entity)) {
+        const visible = this.isEntityStateSlotVisibleWithLos(entityViews, slot, kind);
+        this.entityVisibilityMemo.set(id, visible);
+        if (visible) {
           this.appendVisibleEntityIdById(id);
           this.appendRadarEntityIdById(id);
           continue;
@@ -494,6 +495,26 @@ export class SnapshotVisibility {
       if (radarCovered || detectorCovered) this.appendRadarEntityIdById(id);
     }
     return stampedRows > 0;
+  }
+
+  private isEntityStateSlotVisibleWithLos(
+    views: EntityStateViews,
+    slot: number,
+    kind: number,
+  ): boolean {
+    const padding = kind === ENTITY_STATE_KIND_UNIT
+      ? Math.max(
+          views.radiusOther[slot],
+          views.radiusHitbox[slot],
+          views.radiusCollision[slot],
+        )
+      : views.radiusOther[slot];
+    return this.isEntityVisibleWithLos(
+      views.posX[slot],
+      views.posY[slot],
+      views.posZ[slot],
+      padding,
+    );
   }
 
   private addOwnedEntityIds(playerId: PlayerId): void {
