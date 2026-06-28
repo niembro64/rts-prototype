@@ -138,9 +138,14 @@ function acceptsSerializedEntity(
   entity: Entity,
   visibility: SnapshotVisibility,
 ): boolean {
+  return isSerializedEntityKind(entity) && visibility.isEntityVisible(entity);
+}
+
+function isSerializedEntityKind(entity: Entity): boolean {
   return (
-    (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower') &&
-    visibility.isEntityVisible(entity)
+    entity.type === 'unit' ||
+    entity.type === 'building' ||
+    entity.type === 'tower'
   );
 }
 
@@ -300,7 +305,7 @@ export class ServerSnapshotDirectWirePreencoder {
     if (visibleEntityIds !== undefined) {
       for (let i = 0; i < visibleEntityIds.length; i++) {
         const entity = input.world.getEntity(visibleEntityIds[i]);
-        if (!entity || !acceptsSerializedEntity(entity, visibility)) continue;
+        if (!entity || !isSerializedEntityKind(entity)) continue;
         if (!canAppendEntitySnapshotWireRowDirect(entity)) return false;
       }
       return true;
@@ -699,7 +704,7 @@ export class ServerSnapshotDirectWirePreencoder {
       let entityCount = 0;
       for (let i = 0; i < visibleEntityIds.length; i++) {
         const entity = input.world.getEntity(visibleEntityIds[i]);
-        if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
+        if (!entity || !isSerializedEntityKind(entity)) continue;
         appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
         entityCount++;
       }
@@ -779,7 +784,7 @@ export class ServerSnapshotDirectWirePreencoder {
     for (const id of currentVisibleEntityIds) {
       if (input.previousVisibleEntityIds.has(id)) continue;
       const entity = input.world.getEntity(id);
-      if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
+      if (!entity || !isSerializedEntityKind(entity)) continue;
       if (!canAppendEntitySnapshotWireRowDirect(entity)) {
         emittedIds.clear();
         return -1;
@@ -794,7 +799,7 @@ export class ServerSnapshotDirectWirePreencoder {
       if (emittedIds.has(id)) continue;
       if (!input.previousVisibleEntityIds.has(id) || !currentVisibleEntityIds.has(id)) continue;
       const entity = input.world.getEntity(id);
-      if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
+      if (!entity || !isSerializedEntityKind(entity)) continue;
       if (!canAppendEntitySnapshotWireRowDirect(entity)) {
         emittedIds.clear();
         return -1;
