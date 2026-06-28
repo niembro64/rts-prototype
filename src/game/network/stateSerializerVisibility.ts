@@ -13,7 +13,15 @@ import {
   getEntityVisibilityPadding,
   isEntityCloaked,
 } from '../sim/sensorCoverage';
-import { getSimWasm } from '../sim-wasm/init';
+import {
+  CT_ENTITY_FLAG_ALIVE,
+  CT_ENTITY_FLAG_CLOAKED,
+  ENTITY_STATE_KIND_BUILDING,
+  ENTITY_STATE_KIND_TOWER,
+  ENTITY_STATE_KIND_UNIT,
+  getSimWasm,
+} from '../sim-wasm/init';
+import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import {
   createFloat64WireRows,
   reserveFloat64WireRows,
@@ -136,6 +144,8 @@ export class SnapshotVisibility {
   private readonly radarEntityIds: EntityId[] = [];
   private readonly visibleEntityIdSet = new Set<EntityId>();
   private readonly radarEntityIdSet = new Set<EntityId>();
+  private readonly fullCandidateEntityIdSet = new Set<EntityId>();
+  private readonly radarCandidateEntityIdSet = new Set<EntityId>();
   private readonly gridW: number;
   private readonly gridH: number;
   private entityIdBuffersReady = false;
@@ -377,6 +387,8 @@ export class SnapshotVisibility {
     this.radarEntityIds.length = 0;
     this.visibleEntityIdSet.clear();
     this.radarEntityIdSet.clear();
+    this.fullCandidateEntityIdSet.clear();
+    this.radarCandidateEntityIdSet.clear();
 
     let pending = this.viewMask;
     while (pending !== 0) {
@@ -391,9 +403,91 @@ export class SnapshotVisibility {
       return;
     }
 
+    if (this.addNativeObservationMaskEntityCandidates()) return;
     this.addSourceEntityCandidates(this.fullSources, true);
     this.addSourceEntityCandidates(this.radarSources, false);
     this.addSourceEntityCandidates(this.detectorSources, true);
+  }
+
+  private addNativeObservationMaskEntityCandidates(): boolean {
+    // Scan pulses are merged into targeting observation masks during the
+    // normal combat stamp, but this serializer owns pulse wire output. Use
+    // the legacy source walk on pulse frames so a just-created pulse cannot
+    // be missed if a snapshot is emitted before the next combat stamp.
+    if (this.world.scanPulses.length > 0) return false;
+    const sim = getSimWasm();
+    const entityViews = entitySlotRegistry.getViews();
+    if (sim === undefined || entityViews === null) return false;
+
+    const targeting = sim.combatTargeting;
+    const combatCapacity = targeting.entityCapacity();
+    const capacity = Math.min(entityViews.capacity, combatCapacity);
+    if (capacity <= 0) return false;
+
+    const buffer = sim.memory.buffer;
+    const combatEntityId = new Int32Array(buffer, targeting.entityIdPtr(), combatCapacity);
+    const combatFlags = new Uint8Array(buffer, targeting.entityFlagsPtr(), combatCapacity);
+    const sensorCoverageMask = new Uint32Array(
+      buffer,
+      targeting.entitySensorCoverageMaskPtr(),
+      combatCapacity,
+    );
+    const fullSightCoverageMask = new Uint32Array(
+      buffer,
+      targeting.entityFullSightCoverageMaskPtr(),
+      combatCapacity,
+    );
+    const detectorCoverageMask = new Uint32Array(
+      buffer,
+      targeting.entityDetectorCoverageMaskPtr(),
+      combatCapacity,
+    );
+
+    const viewMask = this.viewMask >>> 0;
+    let stampedRows = 0;
+    for (let slot = 0; slot < capacity; slot++) {
+      const id = entityViews.entityId[slot];
+      if (id < 0 || combatEntityId[slot] !== id) continue;
+      const flags = combatFlags[slot];
+      if ((flags & CT_ENTITY_FLAG_ALIVE) === 0) continue;
+      const kind = entityViews.kind[slot];
+      if (
+        kind !== ENTITY_STATE_KIND_UNIT &&
+        kind !== ENTITY_STATE_KIND_BUILDING &&
+        kind !== ENTITY_STATE_KIND_TOWER
+      ) {
+        continue;
+      }
+      stampedRows++;
+
+      if (this.visibleEntityIdSet.has(id)) {
+        this.appendRadarEntityIdById(id);
+        continue;
+      }
+
+      const detectorCovered = (detectorCoverageMask[slot] & viewMask) !== 0;
+      const cloaked = (flags & CT_ENTITY_FLAG_CLOAKED) !== 0;
+      if (cloaked) {
+        if (detectorCovered) {
+          this.appendVisibleEntityIdById(id);
+          this.appendRadarEntityIdById(id);
+        }
+        continue;
+      }
+
+      const radarCovered = (sensorCoverageMask[slot] & viewMask) !== 0;
+      const fullSightCovered = (fullSightCoverageMask[slot] & viewMask) !== 0;
+      if (fullSightCovered) {
+        const entity = entitySlotRegistry.resolveSlot(slot) ?? this.world.getEntity(id);
+        if (entity !== undefined && this.isEntityVisible(entity)) {
+          this.appendVisibleEntityIdById(id);
+          this.appendRadarEntityIdById(id);
+          continue;
+        }
+      }
+      if (radarCovered || detectorCovered) this.appendRadarEntityIdById(id);
+    }
+    return stampedRows > 0;
   }
 
   private addOwnedEntityIds(playerId: PlayerId): void {
@@ -448,23 +542,46 @@ export class SnapshotVisibility {
   }
 
   private addCandidateEntity(entity: Entity, canGrantFullVisibility: boolean): void {
-    if (canGrantFullVisibility && this.isEntityVisible(entity)) {
-      this.appendVisibleEntityId(entity);
+    const id = entity.id;
+
+    if (canGrantFullVisibility) {
+      if (this.visibleEntityIdSet.has(id)) {
+        this.appendRadarEntityId(entity);
+        this.radarCandidateEntityIdSet.add(id);
+        return;
+      }
+
+      if (!this.fullCandidateEntityIdSet.has(id)) {
+        this.fullCandidateEntityIdSet.add(id);
+        if (this.isEntityVisible(entity)) {
+          this.appendVisibleEntityId(entity);
+          this.appendRadarEntityId(entity);
+          this.radarCandidateEntityIdSet.add(id);
+          return;
+        }
+      }
     }
-    if (this.isEntityOnRadar(entity)) {
-      this.appendRadarEntityId(entity);
-    }
+
+    if (this.radarEntityIdSet.has(id) || this.radarCandidateEntityIdSet.has(id)) return;
+    this.radarCandidateEntityIdSet.add(id);
+    if (this.isEntityOnRadar(entity)) this.appendRadarEntityId(entity);
   }
 
   private appendVisibleEntityId(entity: Entity): void {
-    const id = entity.id;
+    this.appendVisibleEntityIdById(entity.id);
+  }
+
+  private appendVisibleEntityIdById(id: EntityId): void {
     if (this.visibleEntityIdSet.has(id)) return;
     this.visibleEntityIdSet.add(id);
     this.visibleEntityIds.push(id);
   }
 
   private appendRadarEntityId(entity: Entity): void {
-    const id = entity.id;
+    this.appendRadarEntityIdById(entity.id);
+  }
+
+  private appendRadarEntityIdById(id: EntityId): void {
     if (this.radarEntityIdSet.has(id)) return;
     this.radarEntityIdSet.add(id);
     this.radarEntityIds.push(id);

@@ -285,6 +285,9 @@ import __wbg_init, {
   combat_targeting_entity_flags_ptr,
   combat_targeting_entity_active_turret_mask_ptr,
   combat_targeting_entity_firing_turret_mask_ptr,
+  combat_targeting_entity_sensor_coverage_mask_ptr,
+  combat_targeting_entity_full_sight_coverage_mask_ptr,
+  combat_targeting_entity_detector_coverage_mask_ptr,
   combat_targeting_turret_count_per_entity_ptr,
   combat_targeting_turret_entity_id_ptr,
   combat_targeting_turret_parent_id_ptr,
@@ -2377,6 +2380,9 @@ export interface CombatTargetingApi {
   readonly entityFlagsPtr: () => number;
   readonly entityActiveTurretMaskPtr: () => number;
   readonly entityFiringTurretMaskPtr: () => number;
+  readonly entitySensorCoverageMaskPtr: () => number;
+  readonly entityFullSightCoverageMaskPtr: () => number;
+  readonly entityDetectorCoverageMaskPtr: () => number;
   readonly turretCountPerEntityPtr: () => number;
   readonly turretEntityIdPtr: () => number;
   readonly turretParentIdPtr: () => number;
@@ -3984,6 +3990,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           entityFlagsPtr: combat_targeting_entity_flags_ptr,
           entityActiveTurretMaskPtr: combat_targeting_entity_active_turret_mask_ptr,
           entityFiringTurretMaskPtr: combat_targeting_entity_firing_turret_mask_ptr,
+          entitySensorCoverageMaskPtr: combat_targeting_entity_sensor_coverage_mask_ptr,
+          entityFullSightCoverageMaskPtr: combat_targeting_entity_full_sight_coverage_mask_ptr,
+          entityDetectorCoverageMaskPtr: combat_targeting_entity_detector_coverage_mask_ptr,
           turretCountPerEntityPtr: combat_targeting_turret_count_per_entity_ptr,
           turretEntityIdPtr: combat_targeting_turret_entity_id_ptr,
           turretParentIdPtr: combat_targeting_turret_parent_id_ptr,
@@ -4340,6 +4349,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runNetworkManagerLockstepBufferContractTest();
         const { runClientSnapshotApplierContractTest } = await import('../network/ClientSnapshotApplierContractTest');
         runClientSnapshotApplierContractTest();
+        const { runSnapshotVisibilityContractTest } = await import('../network/SnapshotVisibilityContractTest');
+        runSnapshotVisibilityContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');
         runSnapshotBufferContractTest();
         const { runCommandHotkeysContractTest } = await import('../input/commandHotkeysContractTest');

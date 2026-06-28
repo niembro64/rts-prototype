@@ -63,11 +63,12 @@ Please always commit and push before and after any code changes we make.
     scope should consume shared slot-native broadphase results.
 
 [28] Optimization - move visibility/fog/radar filtering to native aggregate slabs
-    Preserve current visibility gameplay exactly. Implement LOS, radar, fog,
-    recipient masks, and visible entity sets as native aggregate grids/bitsets
-    over stable slots. Snapshot selection, targeting, minimap, and render scope
-    should reuse those slabs instead of rebuilding per-recipient visible lists
-    from JS entities.
+    Preserve current visibility gameplay exactly. Promote visibility/fog/radar
+    from combat-targeting-owned coverage masks into a first-class native
+    aggregate slab with LOS-aware full-sight output, scan-pulse integration,
+    fog/minimap cell state, recipient/team dirty ranges, and direct consumers
+    for render scope. Keep snapshot/minimap slot-mask parity tests in place
+    until the remaining JS LOS/source fallback paths are removed.
 
 [30] Optimization - flatten ClientViewState and prediction into slot-indexed typed state
     Preserve client prediction behavior and reconciliation results. Replace

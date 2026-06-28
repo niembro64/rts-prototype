@@ -650,6 +650,7 @@ impl CombatTargetingPool {
             }
             self.entity_flags[s] = 0;
             self.entity_sensor_coverage_mask[s] = 0;
+            self.entity_full_sight_coverage_mask[s] = 0;
             self.entity_detector_coverage_mask[s] = 0;
             self.entity_active_turret_mask[s] = 0;
             self.entity_firing_turret_mask[s] = 0;
@@ -1448,6 +1449,21 @@ combat_targeting_ptr_export!(
 combat_targeting_ptr_export!(
     combat_targeting_entity_firing_turret_mask_ptr,
     entity_firing_turret_mask,
+    u32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_sensor_coverage_mask_ptr,
+    entity_sensor_coverage_mask,
+    u32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_full_sight_coverage_mask_ptr,
+    entity_full_sight_coverage_mask,
+    u32
+);
+combat_targeting_ptr_export!(
+    combat_targeting_entity_detector_coverage_mask_ptr,
+    entity_detector_coverage_mask,
     u32
 );
 combat_targeting_ptr_export!(
