@@ -341,6 +341,17 @@ export class EntityLodHysteresis3D {
     return useProxy;
   }
 
+  entityEmissionUsesLowLodDistance(
+    camera: THREE.Camera,
+    entity: Entity,
+    highToLowDistance: EmissionLodHighToLowDistance3D,
+  ): boolean {
+    if (highToLowDistance === null) return false;
+    if (!Number.isFinite(highToLowDistance) || highToLowDistance < 0) return false;
+    return this.entityCameraDistanceSq(camera, entity) >
+      highToLowDistance * highToLowDistance;
+  }
+
   private deleteChannelEntity(channel: string, entityId: EntityId): void {
     this.proxyIdsByChannel.get(channel)?.delete(entityId);
     this.lastSeenFrameByChannel.get(channel)?.delete(entityId);

@@ -85,7 +85,6 @@ import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
 import {
   EntityLodHysteresis3D,
   type EntityLodEmission3D,
-  entityEmissionUsesLowLodDistance3D,
 } from '../../render3d/EntityLod3D';
 
 type RtsScene3DRenderPhaseResources = {
@@ -770,7 +769,7 @@ export class RtsScene3DRenderPhase {
     emission: EntityLodEmission3D,
   ): boolean {
     const distance = EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission];
-    return entityEmissionUsesLowLodDistance3D(
+    return this.entityLod.entityEmissionUsesLowLodDistance(
       this.threeApp.camera,
       entity,
       distance === null ? null : distance * this.emissionLodDistanceScale,
