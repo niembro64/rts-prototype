@@ -1446,7 +1446,7 @@ function networkProjectilesFixture(projectiles: ProjectilesFixture): NetworkProj
 }
 
 const PROJ_SPAWN_SCRATCH_STRIDE = 32;
-const PROJ_VEL_SCRATCH_STRIDE = 8;
+const PROJ_VEL_SCRATCH_STRIDE = 9;
 
 function packProjSpawnsIntoScratch(memory: WebAssembly.Memory, spawns: ProjectileSpawnFixture[]): void {
   if (spawns.length === 0) return;

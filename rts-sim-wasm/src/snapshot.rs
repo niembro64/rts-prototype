@@ -569,7 +569,7 @@ pub fn snapshot_encode_entity_unit(
     if has_radius != 0 {
         w.write_str("radius");
         w.write_map_header(3);
-        w.write_str("visual");
+        w.write_str("other");
         w.write_number(radius_visual);
         w.write_str("hitbox");
         w.write_number(radius_hitbox);
@@ -1284,6 +1284,7 @@ pub(crate) const PROJECTILE_BEAM_POINT_FLAG_NORMAL_X: u32 = 0x10;
 pub(crate) const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y: u32 = 0x20;
 pub(crate) const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z: u32 = 0x40;
 pub(crate) const PROJECTILE_VELOCITY_FLAG_CLEAR_HOMING: u32 = 0x01;
+pub(crate) const PROJECTILE_VELOCITY_FLAG_TARGET_ENTITY_ID: u32 = 0x02;
 
 #[derive(Default)]
 pub(crate) struct PackedBinaryWriter {
@@ -1664,11 +1665,14 @@ pub(crate) fn pack_projectile_velocity_updates(count: usize) {
     scratch.reset_velocity_groups();
     for i in 0..count {
         let base = i * SNAPSHOT_ENCODE_PROJ_VEL_STRIDE;
-        let flags = if rows.buf[base + 7] != 0.0 {
+        let mut flags = if rows.buf[base + 7] != 0.0 {
             PROJECTILE_VELOCITY_FLAG_CLEAR_HOMING
         } else {
             0
         };
+        if rows.buf[base + 8] != 0.0 {
+            flags |= PROJECTILE_VELOCITY_FLAG_TARGET_ENTITY_ID;
+        }
         let group_index = scratch.velocity_group_index(flags);
         let group = &mut scratch.velocity_groups[group_index];
         let id = f64_round_i64(rows.buf[base]);
@@ -1680,6 +1684,9 @@ pub(crate) fn pack_projectile_velocity_updates(count: usize) {
         group.writer.write_var_int_from_f64(rows.buf[base + 4]);
         group.writer.write_var_int_from_f64(rows.buf[base + 5]);
         group.writer.write_var_int_from_f64(rows.buf[base + 6]);
+        if flags & PROJECTILE_VELOCITY_FLAG_TARGET_ENTITY_ID != 0 {
+            group.writer.write_var_uint_from_f64(rows.buf[base + 8]);
+        }
         group.count += 1;
     }
 
