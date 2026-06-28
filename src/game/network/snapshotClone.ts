@@ -44,8 +44,6 @@ import {
 import { copySnapshotWireBytes } from './snapshotWireMetadata';
 import { copySnapshotMaterializationMetadata } from './snapshotMaterializationMetadata';
 import {
-  createFloat64WireRows,
-  createUint32WireRows,
   reserveFloat64WireRows,
   reserveUint32WireRows,
   type Float64WireRows,
@@ -58,6 +56,8 @@ import {
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
+  copyEntitySnapshotWireSourceMetadataInto,
+  createEntitySnapshotWireSource,
   getEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
   unregisterEntitySnapshotWireSource,
@@ -91,27 +91,6 @@ function cloneTerrainBuildabilityGrid(grid: TerrainBuildabilityGrid): TerrainBui
   return grid;
 }
 
-function createEntitySnapshotWireSource(): EntitySnapshotWireSource {
-  return {
-    kinds: [],
-    rowIndices: [],
-    basicRows: createFloat64WireRows(),
-    unitRows: createFloat64WireRows(),
-    buildingRows: createFloat64WireRows(),
-    actionRows: createFloat64WireRows(),
-    actionStrings: [],
-    turretRows: createFloat64WireRows(),
-    factorySelectedUnitRows: createUint32WireRows(),
-    waypointRows: createFloat64WireRows(),
-    waypointStrings: [],
-  };
-}
-
-function copyNumberArrayInto(src: readonly number[], dst: number[]): void {
-  dst.length = src.length;
-  for (let i = 0; i < src.length; i++) dst[i] = src[i];
-}
-
 function copyStringArrayInto(src: readonly string[], dst: string[]): void {
   dst.length = src.length;
   for (let i = 0; i < src.length; i++) dst[i] = src[i];
@@ -143,8 +122,7 @@ function copyEntitySnapshotWireSourceInto(
   src: EntitySnapshotWireSource,
   dst: EntitySnapshotWireSource,
 ): void {
-  copyNumberArrayInto(src.kinds, dst.kinds);
-  copyNumberArrayInto(src.rowIndices, dst.rowIndices);
+  copyEntitySnapshotWireSourceMetadataInto(src, dst);
   copyFloat64WireRowsInto(src.basicRows, dst.basicRows, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
   copyFloat64WireRowsInto(src.unitRows, dst.unitRows, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
   copyFloat64WireRowsInto(src.buildingRows, dst.buildingRows, ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
@@ -157,8 +135,7 @@ function copyEntitySnapshotWireSourceInto(
 }
 
 function clearEntitySnapshotWireSource(source: EntitySnapshotWireSource): void {
-  source.kinds.length = 0;
-  source.rowIndices.length = 0;
+  source.count = 0;
   source.basicRows.count = 0;
   source.unitRows.count = 0;
   source.buildingRows.count = 0;
@@ -542,7 +519,7 @@ export class ReusableNetworkSnapshotCloner {
       entities[i] = copyEntityInto(state.entities[i], entities[i] ?? createReusableEntity());
     }
     const entityWireSource = getEntitySnapshotWireSource(state.entities);
-    if (entityWireSource !== undefined && entityWireSource.kinds.length === state.entities.length) {
+    if (entityWireSource !== undefined && entityWireSource.count === state.entities.length) {
       copyEntitySnapshotWireSourceInto(entityWireSource, this.entityWireSource);
       registerEntitySnapshotWireSource(entities, this.entityWireSource);
     } else {

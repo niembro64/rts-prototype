@@ -348,7 +348,7 @@ function v6PackStrings(
 
 function v6SourceHasRawEntity(source: EntitySnapshotWireSource): boolean {
   const kinds = source.kinds;
-  for (let i = 0; i < kinds.length; i++) {
+  for (let i = 0; i < source.count; i++) {
     if (kinds[i] === V6_KIND_RAW) return true;
   }
   return false;
@@ -373,7 +373,7 @@ function fillEntitiesV6Scratch(
 
   const api = sim.snapshotEncode;
   if (!v6ScratchStridesMatch(api)) return null;
-  const entityCount = source.kinds.length;
+  const entityCount = source.count;
 
   v6FillU32FromArray(sim, api.v6KindsScratchEnsure, api.v6KindsScratchPtr, source.kinds, entityCount);
   v6FillU32FromArray(
@@ -788,7 +788,7 @@ function canUseEntityWireSource(
   source: EntitySnapshotWireSource | undefined,
   entities: readonly NetworkServerSnapshotEntity[],
 ): source is EntitySnapshotWireSource {
-  return source !== undefined && source.kinds.length === entities.length;
+  return source !== undefined && source.count === entities.length;
 }
 
 function encodeEntityWireRow(

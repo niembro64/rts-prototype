@@ -1258,7 +1258,7 @@ export class ClientViewState {
       ? getEntitySnapshotWireSource(state.entities)
       : undefined;
     const typedEntityWireSource =
-      entityWireSource !== undefined && entityWireSource.kinds.length === state.entities.length
+      entityWireSource !== undefined && entityWireSource.count === state.entities.length
         ? entityWireSource
         : undefined;
     if (!projectileDeltaOnly) {

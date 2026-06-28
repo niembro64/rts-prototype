@@ -43,6 +43,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   getEntitySnapshotWireSource,
+  removeEntitySnapshotWireSourceRow,
   unregisterEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from '../../network/stateSerializerEntities';
@@ -510,7 +511,7 @@ export class SnapshotBuffer {
     source: EntitySnapshotWireSource,
     indexById: ReadonlyMap<number, number> | undefined,
   ): boolean {
-    if (source.kinds.length !== pendingEntities.length) return false;
+    if (source.count !== pendingEntities.length) return false;
     for (let i = 0; i < deltaEntities.length; i++) {
       const delta = deltaEntities[i];
       const changedFields = delta.changedFields;
@@ -676,8 +677,7 @@ export class SnapshotBuffer {
     }
     pendingEntities.length = write;
     if (wireSource !== undefined) {
-      wireSource.kinds.length = write;
-      wireSource.rowIndices.length = write;
+      wireSource.count = write;
       if (write === 0) unregisterEntitySnapshotWireSource(pendingEntities);
     }
     removedIds.clear();
@@ -690,9 +690,8 @@ export class SnapshotBuffer {
   ): void {
     pendingEntities.splice(index, 1);
     if (wireSource === undefined) return;
-    wireSource.kinds.splice(index, 1);
-    wireSource.rowIndices.splice(index, 1);
-    if (wireSource.kinds.length === 0) unregisterEntitySnapshotWireSource(pendingEntities);
+    removeEntitySnapshotWireSourceRow(wireSource, index);
+    if (wireSource.count === 0) unregisterEntitySnapshotWireSource(pendingEntities);
   }
 
   /** Wire the gameConnection snapshot callback to accumulate events. */

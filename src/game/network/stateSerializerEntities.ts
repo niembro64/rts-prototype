@@ -125,8 +125,9 @@ export const ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE = 11;
 export const ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE = 5;
 
 export type EntitySnapshotWireSource = {
-  kinds: number[];
-  rowIndices: number[];
+  count: number;
+  kinds: Uint32Array;
+  rowIndices: Int32Array;
   basicRows: Float64WireRows;
   unitRows: Float64WireRows;
   buildingRows: Float64WireRows;
@@ -160,20 +161,81 @@ type PooledEntry = {
   route: WaypointDto[];
 };
 
-const entityWireSource: EntitySnapshotWireSource = {
-  kinds: [],
-  rowIndices: [],
-  basicRows: createFloat64WireRows(),
-  unitRows: createFloat64WireRows(),
-  buildingRows: createFloat64WireRows(),
-  actionRows: createFloat64WireRows(),
-  actionStrings: [],
-  turretRows: createFloat64WireRows(),
-  factorySelectedUnitRows: createUint32WireRows(),
-  waypointRows: createFloat64WireRows(),
-  waypointStrings: [],
-};
+const entityWireSource = createEntitySnapshotWireSource(INITIAL_ENTITY_POOL);
 const entityWireSources = new WeakMap<object, EntitySnapshotWireSource>();
+
+export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotWireSource {
+  const capacity = Math.max(0, Math.floor(rowCapacity));
+  return {
+    count: 0,
+    kinds: new Uint32Array(capacity),
+    rowIndices: new Int32Array(capacity),
+    basicRows: createFloat64WireRows(),
+    unitRows: createFloat64WireRows(),
+    buildingRows: createFloat64WireRows(),
+    actionRows: createFloat64WireRows(),
+    actionStrings: [],
+    turretRows: createFloat64WireRows(),
+    factorySelectedUnitRows: createUint32WireRows(),
+    waypointRows: createFloat64WireRows(),
+    waypointStrings: [],
+  };
+}
+
+export function ensureEntitySnapshotWireSourceCapacity(
+  source: EntitySnapshotWireSource,
+  rowCount: number,
+): void {
+  if (rowCount <= source.kinds.length) return;
+  let nextCapacity = Math.max(4, source.kinds.length);
+  while (nextCapacity < rowCount) nextCapacity *= 2;
+  const kinds = new Uint32Array(nextCapacity);
+  const rowIndices = new Int32Array(nextCapacity);
+  if (source.count > 0) {
+    kinds.set(source.kinds.subarray(0, source.count));
+    rowIndices.set(source.rowIndices.subarray(0, source.count));
+  }
+  source.kinds = kinds;
+  source.rowIndices = rowIndices;
+}
+
+export function appendEntitySnapshotWireSourceRow(
+  source: EntitySnapshotWireSource,
+  kind: number,
+  rowIndex: number,
+): void {
+  const index = source.count;
+  ensureEntitySnapshotWireSourceCapacity(source, index + 1);
+  source.kinds[index] = kind;
+  source.rowIndices[index] = rowIndex;
+  source.count = index + 1;
+}
+
+export function copyEntitySnapshotWireSourceMetadataInto(
+  src: EntitySnapshotWireSource,
+  dst: EntitySnapshotWireSource,
+): void {
+  dst.count = 0;
+  ensureEntitySnapshotWireSourceCapacity(dst, src.count);
+  if (src.count > 0) {
+    dst.kinds.set(src.kinds.subarray(0, src.count));
+    dst.rowIndices.set(src.rowIndices.subarray(0, src.count));
+  }
+  dst.count = src.count;
+}
+
+export function removeEntitySnapshotWireSourceRow(
+  source: EntitySnapshotWireSource,
+  index: number,
+): void {
+  if (index < 0 || index >= source.count) return;
+  const nextCount = source.count - 1;
+  if (index < nextCount) {
+    source.kinds.copyWithin(index, index + 1, source.count);
+    source.rowIndices.copyWithin(index, index + 1, source.count);
+  }
+  source.count = nextCount;
+}
 
 function writeTurretsToPool(
   pool: PooledEntry,
@@ -356,8 +418,7 @@ export function unregisterEntitySnapshotWireSource(
 }
 
 function resetEntitySnapshotWireSource(): void {
-  entityWireSource.kinds.length = 0;
-  entityWireSource.rowIndices.length = 0;
+  entityWireSource.count = 0;
   entityWireSource.basicRows.count = 0;
   entityWireSource.unitRows.count = 0;
   entityWireSource.buildingRows.count = 0;
@@ -411,8 +472,11 @@ function appendDirectBasicEntityWireRow(
   values[base + 6] = ownership !== null ? ownership.playerId : 1;
   values[base + 7] = isFull ? 0 : 1;
   values[base + 8] = changedFields ?? 0;
-  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BASIC);
-  entityWireSource.rowIndices.push(rowIndex);
+  appendEntitySnapshotWireSourceRow(
+    entityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+    rowIndex,
+  );
 }
 
 function appendDirectActionWireRows(
@@ -690,8 +754,11 @@ function appendDirectUnitEntityWireRow(
   values[base + 61] = hasCloakState ? 1 : 0;
   values[base + 62] = unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
   values[base + 63] = hasBuild && buildable!.isInterrupted === true ? 1 : 0;
-  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
-  entityWireSource.rowIndices.push(rowIndex);
+  appendEntitySnapshotWireSourceRow(
+    entityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    rowIndex,
+  );
 }
 
 function appendDirectBuildingEntityWireRow(
@@ -801,8 +868,11 @@ function appendDirectBuildingEntityWireRow(
   values[base + 39] = factoryQueue.count;
   values[base + 40] = factoryRoute.offset;
   values[base + 41] = factoryRoute.count;
-  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
-  entityWireSource.rowIndices.push(rowIndex);
+  appendEntitySnapshotWireSourceRow(
+    entityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    rowIndex,
+  );
 }
 
 export function appendEntitySnapshotWireRowDirect(

@@ -22,14 +22,11 @@ import {
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  appendEntitySnapshotWireSourceRow,
+  createEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
-  type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
-import {
-  createFloat64WireRows,
-  createUint32WireRows,
-  reserveFloat64WireRows,
-} from './snapshotWireRows';
+import { reserveFloat64WireRows } from './snapshotWireRows';
 
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
@@ -107,19 +104,7 @@ let _normalPoolIndex = 0;
 const _quatPool: DecodedQuat[] = [];
 let _quatPoolIndex = 0;
 const _scratchDecodedQuat: DecodedQuat = { x: 0, y: 0, z: 0, w: 1 };
-const _decodedEntityWireSource: EntitySnapshotWireSource = {
-  kinds: [],
-  rowIndices: [],
-  basicRows: createFloat64WireRows(),
-  unitRows: createFloat64WireRows(),
-  buildingRows: createFloat64WireRows(),
-  actionRows: createFloat64WireRows(),
-  actionStrings: [],
-  turretRows: createFloat64WireRows(),
-  factorySelectedUnitRows: createUint32WireRows(),
-  waypointRows: createFloat64WireRows(),
-  waypointStrings: [],
-};
+const _decodedEntityWireSource = createEntitySnapshotWireSource();
 let _decodedEntityWireSourceHasTypedRows = false;
 
 function resetDecodePools(): void {
@@ -132,8 +117,7 @@ function resetDecodePools(): void {
 }
 
 function resetDecodedEntityWireSource(): void {
-  _decodedEntityWireSource.kinds.length = 0;
-  _decodedEntityWireSource.rowIndices.length = 0;
+  _decodedEntityWireSource.count = 0;
   _decodedEntityWireSource.basicRows.count = 0;
   _decodedEntityWireSource.unitRows.count = 0;
   _decodedEntityWireSource.buildingRows.count = 0;
@@ -147,8 +131,7 @@ function resetDecodedEntityWireSource(): void {
 }
 
 function appendDecodedFallbackEntityWireSourceRow(): void {
-  _decodedEntityWireSource.kinds.push(0);
-  _decodedEntityWireSource.rowIndices.push(-1);
+  appendEntitySnapshotWireSourceRow(_decodedEntityWireSource, 0, -1);
 }
 
 function appendDecodedUnitEntityWireRow(): { values: Float64Array; base: number } {
@@ -160,8 +143,11 @@ function appendDecodedUnitEntityWireRow(): { values: Float64Array; base: number 
   const values = _decodedEntityWireSource.unitRows.values;
   const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
   values.fill(0, base, base + ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
-  _decodedEntityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
-  _decodedEntityWireSource.rowIndices.push(rowIndex);
+  appendEntitySnapshotWireSourceRow(
+    _decodedEntityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    rowIndex,
+  );
   _decodedEntityWireSourceHasTypedRows = true;
   return { values, base };
 }
@@ -457,7 +443,7 @@ export function unpackEntitiesFromWire(
   }
   if (
     _decodedEntityWireSourceHasTypedRows &&
-    _decodedEntityWireSource.kinds.length === out.length
+    _decodedEntityWireSource.count === out.length
   ) {
     registerEntitySnapshotWireSource(out, _decodedEntityWireSource);
   }

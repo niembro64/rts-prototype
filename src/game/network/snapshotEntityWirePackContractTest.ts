@@ -21,16 +21,14 @@ import {
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  appendEntitySnapshotWireSourceRow,
+  createEntitySnapshotWireSource,
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
 import { unpackEntitiesFromWire, type PackedEntitySnapshotWire } from './snapshotEntityWirePack';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
-import {
-  createFloat64WireRows,
-  createUint32WireRows,
-  reserveFloat64WireRows,
-} from './snapshotWireRows';
+import { reserveFloat64WireRows } from './snapshotWireRows';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -49,19 +47,7 @@ const TURRET_FLAG_SHIELD_RANGE = 1 << 1;
 const ENTITIES_KEY_PREFIX_BYTES = 9;
 
 function createEmptyEntityWireSource(): EntitySnapshotWireSource {
-  return {
-    kinds: [],
-    rowIndices: [],
-    basicRows: createFloat64WireRows(),
-    unitRows: createFloat64WireRows(),
-    buildingRows: createFloat64WireRows(),
-    actionRows: createFloat64WireRows(),
-    actionStrings: [],
-    turretRows: createFloat64WireRows(),
-    factorySelectedUnitRows: createUint32WireRows(),
-    waypointRows: createFloat64WireRows(),
-    waypointStrings: [],
-  };
+  return createEntitySnapshotWireSource();
 }
 
 function createPackedMovementRowWithNormal(): Uint8Array {
@@ -140,8 +126,7 @@ function createV6MovementNormalSource(): EntitySnapshotWireSource {
   values[base + 24] = -125;
   values[base + 25] = 250;
   values[base + 26] = 960;
-  source.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
-  source.rowIndices.push(rowIndex);
+  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex);
   return source;
 }
 

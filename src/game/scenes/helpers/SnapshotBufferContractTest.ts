@@ -21,15 +21,13 @@ import {
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  appendEntitySnapshotWireSourceRow,
+  createEntitySnapshotWireSource,
   getEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from '../../network/stateSerializerEntities';
-import {
-  createFloat64WireRows,
-  createUint32WireRows,
-  reserveFloat64WireRows,
-} from '../../network/snapshotWireRows';
+import { reserveFloat64WireRows } from '../../network/snapshotWireRows';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -69,19 +67,7 @@ function createSparseDecodedMotionUnitEntity(id: number, x: number): NetworkServ
 }
 
 function createEmptyEntityWireSource(): EntitySnapshotWireSource {
-  return {
-    kinds: [],
-    rowIndices: [],
-    basicRows: createFloat64WireRows(),
-    unitRows: createFloat64WireRows(),
-    buildingRows: createFloat64WireRows(),
-    actionRows: createFloat64WireRows(),
-    actionStrings: [],
-    turretRows: createFloat64WireRows(),
-    factorySelectedUnitRows: createUint32WireRows(),
-    waypointRows: createFloat64WireRows(),
-    waypointStrings: [],
-  };
+  return createEntitySnapshotWireSource();
 }
 
 function attachTypedUnitMotionSource(
@@ -112,8 +98,7 @@ function attachTypedUnitMotionSources(
     values[base + 5] = 1;
     values[base + 6] = changedFields === null ? 0 : 1;
     values[base + 7] = changedFields ?? 0;
-    source.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
-    source.rowIndices.push(rowIndex);
+    appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex);
   }
   registerEntitySnapshotWireSource(entities, source);
   return source;
@@ -138,8 +123,7 @@ function attachTypedBasicMotionSource(
   values[base + 6] = 1;
   values[base + 7] = 1;
   values[base + 8] = changedFields;
-  source.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BASIC);
-  source.rowIndices.push(rowIndex);
+  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_BASIC, rowIndex);
   registerEntitySnapshotWireSource(entities, source);
   return source;
 }
@@ -426,7 +410,7 @@ export function runSnapshotBufferContractTest(): void {
     : undefined;
   assertContract(
     preservedPruneKeepSource !== undefined &&
-      preservedPruneKeepSource.kinds.length === 1 &&
+      preservedPruneKeepSource.count === 1 &&
       preservedPruneKeepSource.unitRows.values[
         preservedPruneKeepSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 0
       ] === 65,
