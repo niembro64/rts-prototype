@@ -74,6 +74,27 @@ const TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const TYPED_PLACEHOLDER_UNIT_TRIGGER_FIELDS =
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_NORMAL;
+const TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS =
+  TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS |
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING;
+const TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS =
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING;
+const TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING;
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
@@ -1160,15 +1181,23 @@ export function serializeEntitySnapshot(
   return ne;
 }
 
-function canUseTypedUnitDeltaPlaceholder(entity: Entity, changedFields: number | undefined): boolean {
-  return changedFields !== undefined &&
-    changedFields !== 0 &&
-    entity.type === 'unit' &&
-    entity.unit !== null &&
-    (changedFields & ~TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS) === 0;
+function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: number | undefined): boolean {
+  if (changedFields === undefined || changedFields === 0) return false;
+  if (entity.type === 'unit' && entity.unit !== null) {
+    if ((changedFields & ~TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS) !== 0) return false;
+    const orientationTriggersTypedRow = entity.unit.orientation !== null &&
+      (changedFields & (ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0;
+    return (changedFields & TYPED_PLACEHOLDER_UNIT_TRIGGER_FIELDS) !== 0 ||
+      orientationTriggersTypedRow;
+  }
+  if ((entity.type === 'building' || entity.type === 'tower') && entity.building !== null) {
+    return (changedFields & ~TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS) === 0 &&
+      (changedFields & TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS) !== 0;
+  }
+  return false;
 }
 
-function serializeTypedUnitDeltaPlaceholder(
+function serializeTypedDeltaPlaceholder(
   entity: Entity,
   changedFields: number,
   world: WorldState,
@@ -1196,9 +1225,9 @@ export function serializeEntityDeltaSnapshot(
 ): NetworkServerSnapshotEntity | null {
   if (
     changedFields !== undefined &&
-    canUseTypedUnitDeltaPlaceholder(entity, changedFields)
+    canUseTypedDeltaPlaceholder(entity, changedFields)
   ) {
-    return serializeTypedUnitDeltaPlaceholder(entity, changedFields, world, visibility);
+    return serializeTypedDeltaPlaceholder(entity, changedFields, world, visibility);
   }
   return serializeEntitySnapshot(entity, changedFields, world, visibility);
 }

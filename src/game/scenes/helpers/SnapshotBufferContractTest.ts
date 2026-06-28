@@ -9,7 +9,7 @@ import type {
 import type { NetworkServerSnapshot } from '../../network/NetworkTypes';
 import type { NetworkServerSnapshotEntity } from '../../network/NetworkTypes';
 import { SnapshotBuffer } from './SnapshotBuffer';
-import { ENTITY_CHANGED_POS } from '../../../types/network';
+import { ENTITY_CHANGED_POS, ENTITY_CHANGED_VEL } from '../../../types/network';
 import { decodeNetworkSnapshot } from '../../network/snapshotWireCodec';
 import {
   getPackedProjectileSnapshotWire,
@@ -304,7 +304,12 @@ export function runSnapshotBufferContractTest(): void {
   const typedPlaceholderDeltaEntity = createSparseDecodedMotionUnitEntity(62, -1);
   typedPlaceholderDeltaEntity.pos = null;
   const typedPlaceholderDeltaEntities = [typedPlaceholderDeltaEntity];
-  attachTypedUnitMotionSource(typedPlaceholderDeltaEntities, 62, 444);
+  attachTypedUnitMotionSource(
+    typedPlaceholderDeltaEntities,
+    62,
+    444,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL,
+  );
   const typedPlaceholderDeltaSnapshot = createSnapshot(15, [], typedPlaceholderDeltaEntities);
   typedPlaceholderDeltaSnapshot.entityDeltaOnly = true;
   fake.emitSnapshot(typedPlaceholderDeltaSnapshot);

@@ -4,6 +4,7 @@ import {
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_TURRETS,
+  ENTITY_CHANGED_VEL,
   buildingBlueprintIdToCode,
   unitBlueprintIdToCode,
 } from '../../types/network';
@@ -422,13 +423,28 @@ export function runClientSnapshotApplierContractTest(): void {
     'typed unit motion rows must drive local correction targets before DTO fallback',
   );
 
+  const posOnlyGroundRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(posOnlyGroundRows);
+  const posOnlyGroundRow = serializeEntityDeltaSnapshot(
+    wireMotionEntity,
+    ENTITY_CHANGED_POS,
+    {} as WorldState,
+  );
+  if (posOnlyGroundRow !== null) posOnlyGroundRows.push(posOnlyGroundRow);
+  assertContract(
+    posOnlyGroundRows[0]?.pos !== null,
+    'position-only ground unit deltas must keep DTO position fields when the direct row is basic',
+  );
+  resetEntitySnapshotPool();
+
   wireMotionEntity.transform.x = 120;
   const typedPlaceholderRows: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();
   registerEntitySnapshotWireSource(typedPlaceholderRows);
   const typedPlaceholderRow = serializeEntityDeltaSnapshot(
     wireMotionEntity,
-    ENTITY_CHANGED_POS,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL,
     {} as WorldState,
   );
   if (typedPlaceholderRow !== null) typedPlaceholderRows.push(typedPlaceholderRow);
