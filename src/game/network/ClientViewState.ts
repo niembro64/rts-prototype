@@ -77,6 +77,7 @@ import {
 } from './ClientProjectileStore';
 import { ClientEntityStore } from './ClientEntityStore';
 import { ClientEntityIdSet } from './ClientEntityIdSet';
+import { ClientServerTargetStore } from './ClientServerTargetStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
@@ -223,7 +224,7 @@ export class ClientViewState {
   private entities = new ClientEntityStore();
 
   // Server target state — owned copies of drift-relevant fields per entity
-  private serverTargets: Map<EntityId, ServerTarget> = new Map();
+  private serverTargets: Map<EntityId, ServerTarget> = new ClientServerTargetStore();
   private projectileStore!: ClientProjectileStore;
 
   private sprayTargetStore = new ClientSprayTargetStore();

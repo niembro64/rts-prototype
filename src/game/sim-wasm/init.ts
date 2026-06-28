@@ -4373,6 +4373,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientEntityStoreContractTest();
         const { runClientEntityIdSetContractTest } = await import('../network/ClientEntityIdSetContractTest');
         runClientEntityIdSetContractTest();
+        const { runClientServerTargetStoreContractTest } = await import('../network/ClientServerTargetStoreContractTest');
+        runClientServerTargetStoreContractTest();
         const { runSnapshotVisibilityContractTest } = await import('../network/SnapshotVisibilityContractTest');
         runSnapshotVisibilityContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');
