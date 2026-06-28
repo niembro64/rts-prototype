@@ -329,7 +329,8 @@ export class ClientPredictionStepper {
   private frameCounter = 0;
   private readonly unitPredictionEntities: Entity[] = [];
   private readonly unitPredictionTargets: Array<ServerTarget | undefined> = [];
-  private readonly entitySettlementIds: EntityId[] = [];
+  private readonly entitySettlementEntities: Entity[] = [];
+  private readonly entitySettlementTargets: Array<ServerTarget | undefined> = [];
 
   constructor(private readonly options: ClientPredictionStepperOptions) {}
 
@@ -438,10 +439,12 @@ export class ClientPredictionStepper {
 
     const unitPredictionEntities = this.unitPredictionEntities;
     const unitPredictionTargets = this.unitPredictionTargets;
-    const entitySettlementIds = this.entitySettlementIds;
+    const entitySettlementEntities = this.entitySettlementEntities;
+    const entitySettlementTargets = this.entitySettlementTargets;
     unitPredictionEntities.length = 0;
     unitPredictionTargets.length = 0;
-    entitySettlementIds.length = 0;
+    entitySettlementEntities.length = 0;
+    entitySettlementTargets.length = 0;
 
     for (const id of activeEntityPredictionIds) {
       const entity = entities.get(id);
@@ -468,7 +471,8 @@ export class ClientPredictionStepper {
         });
       }
 
-      entitySettlementIds.push(id);
+      entitySettlementEntities.push(entity);
+      entitySettlementTargets.push(target);
     }
 
     applyClientUnitVisualPredictionBatch({
@@ -480,15 +484,15 @@ export class ClientPredictionStepper {
       mapHeight,
     });
 
-    for (let i = 0; i < entitySettlementIds.length; i++) {
-      const id = entitySettlementIds[i];
-      const entity = entities.get(id);
-      if (entity === undefined || (entity.unit === null && entity.combat === null)) {
+    for (let i = 0; i < entitySettlementEntities.length; i++) {
+      const entity = entitySettlementEntities[i];
+      const id = entity.id;
+      if (entity.unit === null && entity.combat === null) {
         activeEntityPredictionIds.delete(id);
         predictionCadence.clear(id);
         continue;
       }
-      const target = serverTargets.get(id);
+      const target = entitySettlementTargets[i];
       if (clientUnitPredictionIsSettled(entity, target, turretShieldSpheresEnabled)) {
         activeEntityPredictionIds.delete(id);
         predictionCadence.clear(id);
