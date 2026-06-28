@@ -78,7 +78,6 @@ const _directTurretFsm: CombatTargetingTurretFsmOut = {
   targetId: -1,
 };
 
-const ENTITY_SNAPSHOT_WIRE_KIND_RAW = 0;
 export const ENTITY_SNAPSHOT_WIRE_KIND_BASIC = 1;
 export const ENTITY_SNAPSHOT_WIRE_KIND_UNIT = 2;
 export const ENTITY_SNAPSHOT_WIRE_KIND_BUILDING = 3;
@@ -86,7 +85,7 @@ export const ENTITY_SNAPSHOT_WIRE_TYPE_UNIT = 1;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING = 2;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_TOWER = 3;
 export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
-// Unit row layout: see appendUnitEntityWireRow for the exact slot order.
+// Unit row layout: see appendDirectUnitEntityWireRow for the exact slot order.
 // Slots 51+ carry V11 command/build/cloak state that used to force a RAW
 // entity fallback.
 export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 64;
@@ -116,7 +115,6 @@ export type EntitySnapshotWireSource = {
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
 type FactorySub = NonNullable<BuildingSub['factory']>;
-
 type PooledEntry = {
   entity: NetworkServerSnapshotEntity;
   entityPos: { x: number; y: number; z: number };
@@ -345,11 +343,6 @@ function resetEntitySnapshotWireSource(): void {
   entityWireSource.waypointStrings.length = 0;
 }
 
-function appendRawEntityWireRow(): void {
-  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_RAW);
-  entityWireSource.rowIndices.push(-1);
-}
-
 function fireStateToWireCode(value: UnitSub['fireState']): number {
   return value === 'holdFire' ? 2 : value === 'returnFire' ? 1 : 0;
 }
@@ -360,337 +353,6 @@ function trajectoryModeToWireCode(value: UnitSub['trajectoryMode']): number {
 
 function moveStateToWireCode(value: UnitSub['moveState']): number {
   return value === 'roam' ? 2 : value === 'holdPosition' ? 1 : 0;
-}
-
-function cloakStateToWireCode(unit: UnitSub): number {
-  return unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
-}
-
-function appendActionWireRows(actions: readonly NetworkServerSnapshotAction[] | null): number {
-  if (actions === null || actions.length === 0) return -1;
-  const rows = entityWireSource.actionRows;
-  const offset = reserveFloat64WireRows(rows, actions.length, ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE);
-  const values = rows.values;
-  const strings = entityWireSource.actionStrings;
-  for (let i = 0; i < actions.length; i++) {
-    const action = actions[i];
-    const pos = action.pos;
-    const grid = action.grid;
-    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
-    values[base + 0] = action.type;
-    values[base + 1] = pos !== null ? 1 : 0;
-    values[base + 2] = pos !== null ? pos.x : 0;
-    values[base + 3] = pos !== null ? pos.y : 0;
-    values[base + 4] = action.posZ !== null ? 1 : 0;
-    values[base + 5] = action.posZ ?? 0;
-    values[base + 6] = action.pathExp === true ? 1 : 0;
-    values[base + 7] = action.targetId !== null ? 1 : 0;
-    values[base + 8] = action.targetId ?? 0;
-    values[base + 9] = action.buildingBlueprintId !== null ? 1 : 0;
-    values[base + 10] = action.buildingBlueprintId !== null ? strings.length : 0;
-    if (action.buildingBlueprintId !== null) strings.push(action.buildingBlueprintId);
-    values[base + 11] = grid !== null ? 1 : 0;
-    values[base + 12] = grid !== null ? grid.x : 0;
-    values[base + 13] = grid !== null ? grid.y : 0;
-    values[base + 14] = action.buildingId !== null ? 1 : 0;
-    values[base + 15] = action.buildingId ?? 0;
-    values[base + 16] = action.waitGather === true ? 1 : 0;
-    values[base + 17] = action.waitGroupId !== null && action.waitGroupId !== undefined ? 1 : 0;
-    values[base + 18] = action.waitGroupId ?? 0;
-  }
-  return offset;
-}
-
-function appendTurretWireRows(turrets: readonly NetworkServerSnapshotTurret[] | null): number {
-  if (turrets === null || turrets.length === 0) return -1;
-  const rows = entityWireSource.turretRows;
-  const offset = reserveFloat64WireRows(rows, turrets.length, ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE);
-  const values = rows.values;
-  for (let i = 0; i < turrets.length; i++) {
-    const src = turrets[i];
-    const angular = src.turret.angular;
-    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
-    values[base + 0] = angular.rot;
-    values[base + 1] = angular.vel;
-    values[base + 2] = angular.pitch;
-    values[base + 3] = angular.pitchVel;
-    values[base + 4] = src.turret.turretBlueprintCode;
-    values[base + 5] = src.state;
-    values[base + 6] = src.targetId !== null ? 1 : 0;
-    values[base + 7] = src.targetId ?? 0;
-    values[base + 8] = src.currentShieldRange !== null ? 1 : 0;
-    values[base + 9] = src.currentShieldRange ?? 0;
-    values[base + 10] = src.active === false ? 1 : 0;
-  }
-  return offset;
-}
-
-function appendFactorySelectedUnitWireRow(selectedUnitBlueprintCode: number | null | undefined): number {
-  if (selectedUnitBlueprintCode === undefined || selectedUnitBlueprintCode === null) return -1;
-  const rows = entityWireSource.factorySelectedUnitRows;
-  const offset = reserveUint32WireRows(rows, 1, 1);
-  rows.values[offset] = selectedUnitBlueprintCode;
-  return offset;
-}
-
-function appendFactoryQueueWireRows(queue: readonly number[] | null | undefined): { offset: number; count: number } {
-  if (queue === null || queue === undefined) return { offset: -1, count: -1 };
-  if (queue.length === 0) return { offset: -1, count: 0 };
-  const rows = entityWireSource.factorySelectedUnitRows;
-  const offset = reserveUint32WireRows(rows, queue.length, 1);
-  for (let i = 0; i < queue.length; i++) rows.values[offset + i] = queue[i];
-  return { offset, count: queue.length };
-}
-
-function appendFactoryRallyWireRow(rally: FactorySub['rally'] | undefined): number {
-  if (rally === undefined) return -1;
-  const rows = entityWireSource.waypointRows;
-  const offset = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
-  const values = rows.values;
-  const strings = entityWireSource.waypointStrings;
-  const base = offset * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
-  values[base + 0] = rally.pos.x;
-  values[base + 1] = rally.pos.y;
-  values[base + 2] = rally.posZ !== null ? 1 : 0;
-  values[base + 3] = rally.posZ ?? 0;
-  values[base + 4] = strings.length;
-  strings.push(rally.type);
-  return offset;
-}
-
-function appendFactoryRouteWireRows(route: FactorySub['route'] | undefined): { offset: number; count: number } {
-  if (route === null || route === undefined) return { offset: -1, count: -1 };
-  if (route.length === 0) return { offset: -1, count: 0 };
-  const rows = entityWireSource.waypointRows;
-  const offset = reserveFloat64WireRows(rows, route.length, ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE);
-  const values = rows.values;
-  const strings = entityWireSource.waypointStrings;
-  for (let i = 0; i < route.length; i++) {
-    const waypoint = route[i];
-    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
-    values[base + 0] = waypoint.pos.x;
-    values[base + 1] = waypoint.pos.y;
-    values[base + 2] = waypoint.posZ !== null ? 1 : 0;
-    values[base + 3] = waypoint.posZ ?? 0;
-    values[base + 4] = strings.length;
-    strings.push(waypoint.type);
-  }
-  return { offset, count: route.length };
-}
-
-function appendBasicEntityWireRow(entity: NetworkServerSnapshotEntity): void {
-  const rows = entityWireSource.basicRows;
-  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
-  const values = rows.values;
-  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
-  const pos = entity.pos;
-  values[base + 0] = entity.id;
-  values[base + 1] = entity.type === 'unit'
-    ? ENTITY_SNAPSHOT_WIRE_TYPE_UNIT
-    : ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
-  values[base + 2] = pos !== null ? pos.x : 0;
-  values[base + 3] = pos !== null ? pos.y : 0;
-  values[base + 4] = pos !== null ? pos.z : 0;
-  values[base + 5] = entity.rotation ?? 0;
-  values[base + 6] = entity.playerId;
-  values[base + 7] = entity.changedFields !== null ? 1 : 0;
-  values[base + 8] = entity.changedFields ?? 0;
-  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BASIC);
-  entityWireSource.rowIndices.push(rowIndex);
-}
-
-function appendUnitEntityWireRow(
-  entity: NetworkServerSnapshotEntity,
-  unit: UnitSub,
-): void {
-  const rows = entityWireSource.unitRows;
-  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
-  const values = rows.values;
-  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-  const surfaceNormal = unit.surfaceNormal;
-  const orientation = unit.orientation;
-  const angularVelocity = unit.angularVelocity3;
-  const build = unit.build;
-  const radius = unit.radius;
-  const buildTargetId = unit.buildTargetId;
-  const actions = unit.actions;
-  const turrets = unit.turrets;
-  const hp = unit.hp;
-  const velocity = unit.velocity;
-  const actionOffset = appendActionWireRows(actions);
-  const turretOffset = appendTurretWireRows(turrets);
-  const pos = entity.pos;
-
-  values[base + 0] = entity.id;
-  values[base + 1] = pos !== null ? pos.x : 0;
-  values[base + 2] = pos !== null ? pos.y : 0;
-  values[base + 3] = pos !== null ? pos.z : 0;
-  values[base + 4] = entity.rotation ?? 0;
-  values[base + 5] = entity.playerId;
-  values[base + 6] = entity.changedFields !== null ? 1 : 0;
-  values[base + 7] = entity.changedFields ?? 0;
-  values[base + 8] = hp !== null ? hp.curr : 0;
-  values[base + 9] = hp !== null ? hp.max : 0;
-  values[base + 10] = velocity !== null ? velocity.x : 0;
-  values[base + 11] = velocity !== null ? velocity.y : 0;
-  values[base + 12] = velocity !== null ? velocity.z : 0;
-  values[base + 13] = unit.unitBlueprintCode !== null ? 1 : 0;
-  values[base + 14] = unit.unitBlueprintCode ?? 0;
-  values[base + 15] = radius !== null ? 1 : 0;
-  values[base + 16] = radius !== null && radius.other !== null ? radius.other : 0;
-  values[base + 17] = radius !== null && radius.hitbox !== null ? radius.hitbox : 0;
-  values[base + 18] = radius !== null && radius.collision !== null ? radius.collision : 0;
-  values[base + 19] = unit.bodyCenterHeight !== null ? 1 : 0;
-  values[base + 20] = unit.bodyCenterHeight ?? 0;
-  values[base + 21] = unit.mass !== null ? 1 : 0;
-  values[base + 22] = unit.mass ?? 0;
-  values[base + 23] = surfaceNormal !== null ? 1 : 0;
-  values[base + 24] = surfaceNormal !== null ? surfaceNormal.nx : 0;
-  values[base + 25] = surfaceNormal !== null ? surfaceNormal.ny : 0;
-  values[base + 26] = surfaceNormal !== null ? surfaceNormal.nz : 0;
-  values[base + 27] = orientation !== null ? 1 : 0;
-  values[base + 28] = orientation !== null ? orientation.x : 0;
-  values[base + 29] = orientation !== null ? orientation.y : 0;
-  values[base + 30] = orientation !== null ? orientation.z : 0;
-  values[base + 31] = orientation !== null ? orientation.w : 0;
-  values[base + 32] = angularVelocity !== null ? 1 : 0;
-  values[base + 33] = angularVelocity !== null ? angularVelocity.x : 0;
-  values[base + 34] = angularVelocity !== null ? angularVelocity.y : 0;
-  values[base + 35] = angularVelocity !== null ? angularVelocity.z : 0;
-  values[base + 36] = unit.fireEnabled === false ? 1 : 0;
-  values[base + 37] = unit.isCommander === true ? 1 : 0;
-  values[base + 38] = unit.buildTargetIdPresent ? 1 : 0;
-  values[base + 39] = buildTargetId === null ? 1 : 0;
-  values[base + 40] = typeof buildTargetId === 'number' ? buildTargetId : 0;
-  values[base + 41] = actions !== null ? 1 : 0;
-  values[base + 42] = actions !== null ? actions.length : 0;
-  values[base + 43] = turrets !== null ? 1 : 0;
-  values[base + 44] = turrets !== null ? turrets.length : 0;
-  values[base + 45] = build !== null ? 1 : 0;
-  values[base + 46] = build !== null && build.complete === true ? 1 : 0;
-  values[base + 47] = build !== null ? build.paid.energy : 0;
-  values[base + 48] = build !== null ? build.paid.metal : 0;
-  values[base + 49] = turretOffset;
-  values[base + 50] = actionOffset;
-  values[base + 51] = unit.fireState !== null && unit.fireState !== undefined ? 1 : 0;
-  values[base + 52] = fireStateToWireCode(unit.fireState);
-  values[base + 53] = unit.repeatQueue !== null && unit.repeatQueue !== undefined ? 1 : 0;
-  values[base + 54] = unit.repeatQueue === true ? 1 : 0;
-  values[base + 55] = unit.holdPosition !== null && unit.holdPosition !== undefined ? 1 : 0;
-  values[base + 56] = unit.holdPosition === true ? 1 : 0;
-  values[base + 57] = unit.trajectoryMode !== null && unit.trajectoryMode !== undefined ? 1 : 0;
-  values[base + 58] = trajectoryModeToWireCode(unit.trajectoryMode);
-  values[base + 59] = unit.moveState !== null && unit.moveState !== undefined ? 1 : 0;
-  values[base + 60] = moveStateToWireCode(unit.moveState);
-  values[base + 61] = (
-    unit.wantCloak !== null && unit.wantCloak !== undefined
-  ) || (
-    unit.cloaked !== null && unit.cloaked !== undefined
-  ) ? 1 : 0;
-  values[base + 62] = cloakStateToWireCode(unit);
-  values[base + 63] = build !== null && build.interrupted === true ? 1 : 0;
-  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_UNIT);
-  entityWireSource.rowIndices.push(rowIndex);
-}
-
-function appendBuildingEntityWireRow(
-  entity: NetworkServerSnapshotEntity,
-  building: BuildingSub,
-): void {
-  const rows = entityWireSource.buildingRows;
-  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
-  const values = rows.values;
-  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
-  const factory = building.factory;
-  const dim = building.dim;
-  const solar = building.solar;
-  const turrets = building.turrets;
-  const hp = building.hp;
-  const build = building.build;
-  const turretOffset = appendTurretWireRows(turrets);
-  const factorySelectedUnitOffset = appendFactorySelectedUnitWireRow(
-    factory !== null ? factory.selectedUnitBlueprintCode : undefined,
-  );
-  const factoryRallyOffset = appendFactoryRallyWireRow(factory !== null ? factory.rally : undefined);
-  const factoryQueue = appendFactoryQueueWireRows(factory !== null ? factory.queue : undefined);
-  const factoryRoute = appendFactoryRouteWireRows(factory !== null ? factory.route : undefined);
-  const pos = entity.pos;
-  values[base + 0] = entity.id;
-  values[base + 1] = pos !== null ? pos.x : 0;
-  values[base + 2] = pos !== null ? pos.y : 0;
-  values[base + 3] = pos !== null ? pos.z : 0;
-  values[base + 4] = entity.rotation ?? 0;
-  values[base + 5] = entity.playerId;
-  values[base + 6] = entity.changedFields !== null ? 1 : 0;
-  values[base + 7] = entity.changedFields ?? 0;
-  values[base + 8] = building.buildingBlueprintCode !== null ? 1 : 0;
-  values[base + 9] = building.buildingBlueprintCode ?? 0;
-  values[base + 10] = dim !== null ? 1 : 0;
-  values[base + 11] = dim !== null ? dim.x : 0;
-  values[base + 12] = dim !== null ? dim.y : 0;
-  values[base + 13] = hp !== null ? hp.curr : 0;
-  values[base + 14] = hp !== null ? hp.max : 0;
-  values[base + 15] = build !== null && build.complete ? 1 : 0;
-  values[base + 16] = build !== null ? build.paid.energy : 0;
-  values[base + 17] = build !== null ? build.paid.metal : 0;
-  values[base + 18] = building.metalExtractionRate !== null ? 1 : 0;
-  values[base + 19] = building.metalExtractionRate ?? 0;
-  values[base + 20] = solar !== null ? 1 : 0;
-  values[base + 21] = solar !== null && solar.open === true ? 1 : 0;
-  values[base + 22] = turrets !== null ? 1 : 0;
-  values[base + 23] = turrets !== null ? turrets.length : 0;
-  values[base + 24] = factory !== null ? 1 : 0;
-  values[base + 25] = factory !== null && factory.selectedUnitBlueprintCode !== null ? 1 : 0;
-  values[base + 26] = factory !== null ? factory.progress : 0;
-  values[base + 27] = factory !== null && factory.producing === true ? 1 : 0;
-  values[base + 28] = factory !== null ? factory.energyRate : 0;
-  values[base + 29] = factory !== null ? factory.metalRate : 0;
-  values[base + 30] = factory !== null ? 1 : 0;
-  values[base + 31] = turretOffset;
-  values[base + 32] = factorySelectedUnitOffset;
-  values[base + 33] = factoryRallyOffset;
-  values[base + 34] = build !== null && build.interrupted === true ? 1 : 0;
-  values[base + 35] = factory !== null && factory.guardTargetId !== null ? 1 : 0;
-  values[base + 36] = factory !== null && factory.guardTargetId !== null ? factory.guardTargetId : 0;
-  values[base + 37] = factory !== null && factory.repeat === false ? 0 : 1;
-  values[base + 38] = factoryQueue.offset;
-  values[base + 39] = factoryQueue.count;
-  values[base + 40] = factoryRoute.offset;
-  values[base + 41] = factoryRoute.count;
-  entityWireSource.kinds.push(ENTITY_SNAPSHOT_WIRE_KIND_BUILDING);
-  entityWireSource.rowIndices.push(rowIndex);
-}
-
-function appendEntitySnapshotWireRow(entity: NetworkServerSnapshotEntity): void {
-  if (
-    entity.type === 'unit' &&
-    entity.unit !== null &&
-    entity.building === null
-  ) {
-    appendUnitEntityWireRow(entity, entity.unit);
-    return;
-  }
-
-  if (
-    (entity.type === 'building' || entity.type === 'tower') &&
-    entity.building !== null &&
-    entity.unit === null
-  ) {
-    // Towers and buildings share the static wire row (same HP /
-    // optional combat / optional factory shape). The TOWER vs
-    // BUILDING discriminator is reconstructed on the receive side
-    // via isTowerBuildingBlueprintId so the renderer + UI dispatch on the
-    // peer entity-type tag.
-    appendBuildingEntityWireRow(entity, entity.building);
-    return;
-  }
-
-  if (entity.unit === null && entity.building === null) {
-    appendBasicEntityWireRow(entity);
-    return;
-  }
-
-  appendRawEntityWireRow();
 }
 
 function canReferenceSnapshotEntityId(
@@ -1496,6 +1158,6 @@ export function serializeEntitySnapshot(
     }
   }
 
-  appendEntitySnapshotWireRow(ne);
+  appendEntitySnapshotWireRowDirect(entity, changedFields, world, visibility);
   return ne;
 }
