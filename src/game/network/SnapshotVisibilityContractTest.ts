@@ -2,7 +2,7 @@ import { SnapshotVisibility } from './stateSerializerVisibility';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { WorldState } from '../sim/WorldState';
 import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
-import type { Entity, PlayerId } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -77,6 +77,18 @@ export function runSnapshotVisibilityContractTest(): void {
   assertContract(!legacyVisible.includes(radarOnlyEnemy.id), 'radar-only enemy must not be fully visible');
   assertContract(!legacyVisible.includes(hiddenCloakedEnemy.id), 'undetected cloaked enemy must not be visible');
   assertContract(!legacyVisible.includes(outOfRangeEnemy.id), 'out-of-range enemy must not be visible');
+  assertContract(
+    legacyVisibility.canReferenceEntityId(world, fullSightEnemy.id) === true,
+    'visible enemy ids must be referenceable',
+  );
+  assertContract(
+    legacyVisibility.canReferenceEntityId(world, radarOnlyEnemy.id) === false,
+    'radar-only enemy ids must not be referenceable from full-detail payloads',
+  );
+  assertContract(
+    legacyVisibility.canReferenceEntityId(world, 999999 as EntityId) === false,
+    'missing entity ids must not be referenceable',
+  );
 
   assertContract(legacyRadar.includes(observer.id), 'owned observer must be on radar list');
   assertContract(legacyRadar.includes(fullSightEnemy.id), 'full-sight enemy must be on radar list');

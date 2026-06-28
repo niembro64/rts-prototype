@@ -147,6 +147,7 @@ export class SnapshotVisibility {
   private readonly radarEntityIdSet = new Set<EntityId>();
   private readonly fullCandidateEntityIdSet = new Set<EntityId>();
   private readonly radarCandidateEntityIdSet = new Set<EntityId>();
+  private readonly entityReferenceMemo = new Map<EntityId, boolean>();
   private readonly gridW: number;
   private readonly gridH: number;
   private entityIdBuffersReady = false;
@@ -279,8 +280,12 @@ export class SnapshotVisibility {
   canReferenceEntityId(world: WorldState, entityId: EntityId | undefined): boolean {
     if (entityId === undefined) return false;
     if (!this.isFiltered) return true;
+    const cached = this.entityReferenceMemo.get(entityId);
+    if (cached !== undefined) return cached;
     const entity = world.getEntity(entityId);
-    return entity !== undefined && this.isEntityVisible(entity);
+    const result = entity !== undefined && this.isEntityVisible(entity);
+    this.entityReferenceMemo.set(entityId, result);
+    return result;
   }
 
   /** Full-vision check: gates the MAIN snapshot. Owned entities are
