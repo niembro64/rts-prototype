@@ -1912,7 +1912,7 @@ export class DamageSystem {
     const nearbyBuildings = nearby.buildings;
     const nearbyUnitSlots = nearby.unitSlots;
     const nearbyBuildingSlots = nearby.buildingSlots;
-    const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
+    const nearbyProjectileSlots = spatialGrid.queryEnemyProjectileSlotsInRadius(
       source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
     );
 
@@ -2062,36 +2062,90 @@ export class DamageSystem {
     // Travelling shots are small damageable bodies. Sustained beams
     // and shields are not inserted as projectile-type bodies, so this
     // only lets weapons chip down real munitions.
-    ensureAreaDamageCapacity(nearbyProjectiles.length);
+    ensureAreaDamageCapacity(nearbyProjectileSlots.count);
     areaRowCount = 0;
-    for (const projectile of nearbyProjectiles) {
-      if (source.excludeEntities.has(projectile.id)) continue;
-      const proj = projectile.projectile;
+    const entityViews = entitySlotRegistry.getViews();
+    const projectileSlots = nearbyProjectileSlots.slots;
+    if (entityViews !== null) {
+      for (let projectileIndex = 0; projectileIndex < nearbyProjectileSlots.count; projectileIndex++) {
+        const slot = projectileSlots[projectileIndex];
+        if (slot >= entityViews.capacity) continue;
+        const projectileId = entityViews.entityId[slot] as EntityId;
+        if (source.excludeEntities.has(projectileId)) continue;
+        if (entityViews.hp[slot] <= 0) continue;
+
+        const row = areaRowCount++;
+        _areaDamageEntities[row] = undefined;
+        _areaDamageSlots[row] = slot;
+        _areaDamageEnabled[row] = 1;
+        _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_PROJECTILE;
+        _areaDamageTargetX[row] = entityViews.posX[slot];
+        _areaDamageTargetY[row] = entityViews.posY[slot];
+        _areaDamageTargetZ[row] = entityViews.posZ[slot];
+        _areaDamageTargetRadius[row] = entityViews.radiusCollision[slot];
+        _areaDamageBoxHalfX[row] = 0;
+        _areaDamageBoxHalfY[row] = 0;
+        _areaDamageBoxHalfZ[row] = 0;
+        if (import.meta.env.DEV) {
+          const projectile = entitySlotRegistry.resolveSlot(slot);
+          const proj = projectile?.projectile ?? null;
+          if (
+            projectile === undefined ||
+            proj === null ||
+            proj.projectileType !== 'projectile' ||
+            proj.hp <= 0 ||
+            !isProjectileShot(proj.config.shot)
+          ) {
+            areaRowCount--;
+            continue;
+          }
+          _areaDamageEntities[row] = projectile;
+        }
+      }
+    } else {
+      const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
+        source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
+      );
+      ensureAreaDamageCapacity(nearbyProjectiles.length);
+      for (const projectile of nearbyProjectiles) {
+        if (source.excludeEntities.has(projectile.id)) continue;
+        const proj = projectile.projectile;
+        if (
+          proj === null ||
+          proj.projectileType !== 'projectile' ||
+          proj.hp <= 0 ||
+          !isProjectileShot(proj.config.shot)
+        ) {
+          continue;
+        }
+
+        const row = areaRowCount++;
+        _areaDamageEntities[row] = projectile;
+        _areaDamageEnabled[row] = 1;
+        _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_PROJECTILE;
+        _areaDamageTargetX[row] = projectile.transform.x;
+        _areaDamageTargetY[row] = projectile.transform.y;
+        _areaDamageTargetZ[row] = projectile.transform.z;
+        _areaDamageTargetRadius[row] = proj.config.shotProfile.runtime.radius.collision;
+        _areaDamageBoxHalfX[row] = 0;
+        _areaDamageBoxHalfY[row] = 0;
+        _areaDamageBoxHalfZ[row] = 0;
+      }
+    }
+    classifyAreaDamageRows(source, areaRowCount, false, Math.PI);
+    for (let row = 0; row < areaRowCount; row++) {
+      if ((_areaDamageOutFlags[row] & DAMAGE_AREA_FLAG_OVERLAP) === 0) continue;
+      const projectile = entityViews !== null
+        ? entitySlotRegistry.resolveSlot(_areaDamageSlots[row])
+        : _areaDamageEntities[row];
+      const proj = projectile?.projectile ?? null;
       if (
+        projectile === undefined ||
         proj === null ||
         proj.projectileType !== 'projectile' ||
         proj.hp <= 0 ||
         !isProjectileShot(proj.config.shot)
       ) {
-        continue;
-      }
-
-      const row = areaRowCount++;
-      _areaDamageEntities[row] = projectile;
-      _areaDamageEnabled[row] = 1;
-      _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_PROJECTILE;
-      _areaDamageTargetX[row] = projectile.transform.x;
-      _areaDamageTargetY[row] = projectile.transform.y;
-      _areaDamageTargetZ[row] = projectile.transform.z;
-      _areaDamageTargetRadius[row] = proj.config.shotProfile.runtime.radius.collision;
-      _areaDamageBoxHalfX[row] = 0;
-      _areaDamageBoxHalfY[row] = 0;
-      _areaDamageBoxHalfZ[row] = 0;
-    }
-    classifyAreaDamageRows(source, areaRowCount, false, Math.PI);
-    for (let row = 0; row < areaRowCount; row++) {
-      const projectile = _areaDamageEntities[row];
-      if (projectile === undefined || (_areaDamageOutFlags[row] & DAMAGE_AREA_FLAG_OVERLAP) === 0) {
         continue;
       }
 

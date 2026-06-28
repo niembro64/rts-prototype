@@ -175,6 +175,26 @@ export function runEntitySlotRegistryContractTest(): void {
   const projectileViews = requireViews();
   assertContract(projectileViews.posX[projectileSlot] === 70, 'projectile batch must update x');
   assertContract(projectileViews.velY[projectileSlot] === -3, 'projectile batch must update velocity');
+  const enemyProjectileSlots = spatialGrid.queryEnemyProjectileSlotsInRadius(
+    70, 90, 12, 100, 2 as PlayerId,
+  );
+  let foundEnemyProjectileSlot = false;
+  for (let i = 0; i < enemyProjectileSlots.count; i++) {
+    if (enemyProjectileSlots.slots[i] === projectileSlot) {
+      foundEnemyProjectileSlot = true;
+      break;
+    }
+  }
+  assertContract(foundEnemyProjectileSlot, 'enemy projectile radius query must expose stable projectile slots');
+  const alliedProjectileSlots = spatialGrid.queryEnemyProjectileSlotsInRadius(
+    70, 90, 12, 100, 1 as PlayerId,
+  );
+  for (let i = 0; i < alliedProjectileSlots.count; i++) {
+    assertContract(
+      alliedProjectileSlots.slots[i] !== projectileSlot,
+      'enemy projectile radius query must exclude the requesting player projectiles',
+    );
+  }
   assertParity(projectile);
 
   spatialGrid.removeProjectile(projectile.id);

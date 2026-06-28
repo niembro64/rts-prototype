@@ -443,6 +443,15 @@ class SpatialGrid {
     return this.queryResultProjectiles;
   }
 
+  queryEnemyProjectileSlotsInRadius(
+    x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId,
+  ): { slots: Uint32Array; count: number } {
+    const count = this.api().queryEnemyProjectilesInRadius(x, y, z, radius, excludePlayerId);
+    this._slotQueryResult.slots = this.scratch(count);
+    this._slotQueryResult.count = count;
+    return this._slotQueryResult;
+  }
+
   queryEnemyUnitsAndProjectilesInRadius(
     x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId,
   ): { units: Entity[]; projectiles: Entity[] } {
