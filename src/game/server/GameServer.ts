@@ -545,7 +545,7 @@ export class GameServer {
 
   // Emit a snapshot to all listeners (driven by internal snapshot interval)
   private emitSnapshot(): void {
-    this.snapshotPublisher.emit(this.buildSnapshotPublisherInput());
+    this.snapshotPublisher.emitLockstepPresentation(this.buildSnapshotPublisherInput());
   }
 
   private emitProjectileDeltaSnapshot(includeEntityMotionDeltas: boolean): boolean {
