@@ -168,6 +168,24 @@ const CLIENT_BUILDING_TYPED_DELTA_FIELDS =
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING;
 
+function typedEntityWireRowId(
+  source: EntitySnapshotWireSource,
+  entityIndex: number,
+): EntityId | null {
+  const rowIndex = source.rowIndices[entityIndex];
+  if (rowIndex < 0) return null;
+  switch (source.kinds[entityIndex]) {
+    case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+      return source.basicRows.values[rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE] as EntityId;
+    case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+      return source.unitRows.values[rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE] as EntityId;
+    case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+      return source.buildingRows.values[rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE] as EntityId;
+    default:
+      return null;
+  }
+}
+
 type ClientResourcePylonSignedRates = {
   energy: number;
   metal: number;
@@ -1439,8 +1457,16 @@ export class ClientViewState {
     // out-of-sight entities by design.
     if (!presentationDeltaOnly) {
       this._serverIds.clear();
-      for (const netEntity of state.entities) {
-        this._serverIds.add(netEntity.id);
+      for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
+        const netEntity = state.entities[entityIndex];
+        if (netEntity !== undefined) {
+          this._serverIds.add(netEntity.id);
+          continue;
+        }
+        if (typedEntityWireSource !== undefined) {
+          const id = typedEntityWireRowId(typedEntityWireSource, entityIndex);
+          if (id !== null) this._serverIds.add(id);
+        }
       }
       let removedAnyLocalEntity = false;
       for (const [id, entity] of this.entities) {

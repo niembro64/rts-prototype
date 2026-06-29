@@ -388,10 +388,9 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   const metadataOnlyBuilding = metadataOnlyBuildingEntities[0];
   assertContract(
-    metadataOnlyBuilding?.id === 808 &&
-      metadataOnlyBuilding.pos === null &&
-      metadataOnlyBuilding.building === null,
-    'metadata-only building delta decode must keep a placeholder entity without DTO fields',
+    metadataOnlyBuildingEntities.length === 1 &&
+      metadataOnlyBuilding === undefined,
+    'metadata-only building delta decode must omit typed delta DTO placeholders',
   );
   const metadataOnlyBuildingSource = getEntitySnapshotWireSource(metadataOnlyBuildingEntities);
   assertContract(
@@ -461,10 +460,9 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   const metadataOnlyMovement = metadataOnlyMovementEntities[0];
   assertContract(
-    metadataOnlyMovement?.id === 303 &&
-      metadataOnlyMovement.pos === null &&
-      metadataOnlyMovement.unit === null,
-    'metadata-only movement decode must keep a placeholder entity without DTO fields',
+    metadataOnlyMovementEntities.length === 1 &&
+      metadataOnlyMovement === undefined,
+    'metadata-only movement decode must omit typed delta DTO placeholders',
   );
   const metadataOnlyMovementSource = getEntitySnapshotWireSource(metadataOnlyMovementEntities);
   assertContract(
@@ -521,10 +519,9 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   const metadataOnlyTurret = metadataOnlyTurretEntities[0];
   assertContract(
-    metadataOnlyTurret?.id === 505 &&
-      metadataOnlyTurret.changedFields === ENTITY_CHANGED_TURRETS &&
-      metadataOnlyTurret.unit === null,
-    'metadata-only turret decode must keep a placeholder entity without DTO turret fields',
+    metadataOnlyTurretEntities.length === 1 &&
+      metadataOnlyTurret === undefined,
+    'metadata-only turret decode must omit typed delta DTO placeholders',
   );
   const metadataOnlyTurretSource = getEntitySnapshotWireSource(metadataOnlyTurretEntities);
   assertContract(

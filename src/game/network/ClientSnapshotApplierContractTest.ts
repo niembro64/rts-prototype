@@ -518,9 +518,9 @@ export function runClientSnapshotApplierContractTest(): void {
     packedEntityDeltas: 'metadata-only',
   });
   assertContract(
-    decodedPackedMotion.entities[0]?.pos === null &&
-      decodedPackedMotion.entities[0]?.unit === null,
-    'packed metadata-only motion decode must omit DTO fields',
+    decodedPackedMotion.entities.length === 1 &&
+      decodedPackedMotion.entities[0] === undefined,
+    'packed metadata-only motion decode must omit typed delta DTO placeholders',
   );
   assertContract(
     getEntitySnapshotWireSource(decodedPackedMotion.entities) !== undefined,
@@ -811,8 +811,9 @@ export function runClientSnapshotApplierContractTest(): void {
     packedEntityDeltas: 'metadata-only',
   });
   assertContract(
-    decodedPackedTurret.entities[0]?.unit === null,
-    'packed metadata-only turret decode must omit DTO turret fields',
+    decodedPackedTurret.entities.length === 1 &&
+      decodedPackedTurret.entities[0] === undefined,
+    'packed metadata-only turret decode must omit typed delta DTO placeholders',
   );
   assertContract(
     getEntitySnapshotWireSource(decodedPackedTurret.entities) !== undefined,
