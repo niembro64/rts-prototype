@@ -49,6 +49,7 @@ import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import {
+  ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -135,6 +136,9 @@ const ENTITY_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const ENTITY_UNIT_SLAB_DELTA_FIELDS =
+  ENTITY_MOTION_DELTA_FIELDS |
+  ENTITY_CHANGED_HP;
 
 function acceptsSerializedEntity(
   entity: Entity,
@@ -705,7 +709,7 @@ export class ServerSnapshotDirectWirePreencoder {
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
-      if (this.tryAppendUnitMotionRowFromState(id, ENTITY_MOTION_DELTA_FIELDS, entityViews)) {
+      if (this.tryAppendUnitSlabDeltaRowFromState(id, ENTITY_MOTION_DELTA_FIELDS, entityViews)) {
         entityCount++;
         continue;
       }
@@ -722,12 +726,12 @@ export class ServerSnapshotDirectWirePreencoder {
     return entityCount;
   }
 
-  private tryAppendUnitMotionRowFromState(
+  private tryAppendUnitSlabDeltaRowFromState(
     id: EntityId,
     changedFields: number,
     entityViews = entitySlotRegistry.getViews(),
   ): boolean {
-    if (changedFields === 0 || (changedFields & ~ENTITY_MOTION_DELTA_FIELDS) !== 0) {
+    if (changedFields === 0 || (changedFields & ~ENTITY_UNIT_SLAB_DELTA_FIELDS) !== 0) {
       return false;
     }
     if (entityViews === null) return false;
@@ -755,7 +759,7 @@ export class ServerSnapshotDirectWirePreencoder {
         const changedFields = input.previousVisibleEntityIds.has(id) ? input.dirtyFields[i] : undefined;
         if (
           changedFields !== undefined &&
-          this.tryAppendUnitMotionRowFromState(id, changedFields, entityViews)
+          this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews)
         ) {
           emittedIds.add(id);
           entityCount++;
@@ -804,7 +808,7 @@ export class ServerSnapshotDirectWirePreencoder {
       const id = input.dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIds.has(id)) continue;
-      if (this.tryAppendUnitMotionRowFromState(id, input.dirtyFields[i], entityViews)) {
+      if (this.tryAppendUnitSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews)) {
         emittedIds.add(id);
         entityCount++;
         continue;

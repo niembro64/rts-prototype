@@ -83,6 +83,8 @@ function createMotionEntityStateViews(): EntityStateViews {
     angularVelocityX: new Float64Array([0.01]),
     angularVelocityY: new Float64Array([-0.02]),
     angularVelocityZ: new Float64Array([0.03]),
+    hp: new Float64Array([88.5]),
+    maxHp: new Float64Array([120]),
     unitMotionFlags: new Uint32Array([
       ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL |
         ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION |
@@ -208,6 +210,32 @@ export function runSnapshotEntityWirePackContractTest(): void {
       slabSource.unitRows.values[slabWireBase + 32] === 1 &&
       slabSource.unitRows.values[slabWireBase + 34] === -0.02,
     'entity-state motion typed row must mirror canonical slab motion fields',
+  );
+
+  const slabHpEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendUnitMotionEntityWireRowDirectFromState(
+      createMotionEntityStateViews(),
+      0,
+      ENTITY_CHANGED_HP,
+    ),
+    'entity-state HP row must append from slab views',
+  );
+  slabHpEntities.length = 1;
+  registerEntitySnapshotWireSource(slabHpEntities);
+  const slabHpSource = getEntitySnapshotWireSource(slabHpEntities);
+  assertContract(
+    slabHpSource !== undefined,
+    'entity-state HP row must register unit typed wire metadata',
+  );
+  const slabHpWireBase = slabHpSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  assertContract(
+    slabHpSource.unitRows.values[slabHpWireBase + 7] === ENTITY_CHANGED_HP &&
+      slabHpSource.unitRows.values[slabHpWireBase + 8] === 88.5 &&
+      slabHpSource.unitRows.values[slabHpWireBase + 9] === 120 &&
+      slabHpSource.unitRows.values[slabHpWireBase + 23] === 0,
+    'entity-state HP typed row must mirror canonical slab HP without motion fields',
   );
 
   const movementEntities = unpackEntitiesFromWire({

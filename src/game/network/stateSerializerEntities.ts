@@ -82,6 +82,9 @@ const TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const TYPED_PLACEHOLDER_UNIT_SLAB_FIELDS =
+  TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS |
+  ENTITY_CHANGED_HP;
 const TYPED_PLACEHOLDER_UNIT_TRIGGER_FIELDS =
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_HP |
@@ -827,8 +830,19 @@ export function appendUnitMotionEntityWireRowDirectFromState(
   if (views.kind[slot] !== ENTITY_STATE_KIND_UNIT) return false;
   const entityId = views.entityId[slot];
   if (entityId < 0) return false;
+  if (changedFields === 0 || (changedFields & ~TYPED_PLACEHOLDER_UNIT_SLAB_FIELDS) !== 0) {
+    return false;
+  }
   const motionFlags = views.unitMotionFlags[slot];
-  if ((motionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL) === 0) return false;
+  const changedMask = changedFields;
+  const hasPos = (changedMask & ENTITY_CHANGED_POS) !== 0;
+  const hasRot = (changedMask & ENTITY_CHANGED_ROT) !== 0;
+  const hasVel = (changedMask & ENTITY_CHANGED_VEL) !== 0;
+  const hasNormal = (changedMask & ENTITY_CHANGED_NORMAL) !== 0;
+  const hasHp = (changedMask & ENTITY_CHANGED_HP) !== 0;
+  if (hasNormal && (motionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL) === 0) {
+    return false;
+  }
 
   const rows = entityWireSource.unitRows;
   const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
@@ -836,11 +850,6 @@ export function appendUnitMotionEntityWireRowDirectFromState(
   const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
   values.fill(0, base, base + ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
 
-  const changedMask = changedFields;
-  const hasPos = (changedMask & ENTITY_CHANGED_POS) !== 0;
-  const hasRot = (changedMask & ENTITY_CHANGED_ROT) !== 0;
-  const hasVel = (changedMask & ENTITY_CHANGED_VEL) !== 0;
-  const hasNormal = (changedMask & ENTITY_CHANGED_NORMAL) !== 0;
   const hasOrientation =
     hasRot &&
     (motionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION) !== 0;
@@ -857,6 +866,8 @@ export function appendUnitMotionEntityWireRowDirectFromState(
   values[base + 5] = ownerPlayerId !== 0 ? ownerPlayerId : 1;
   values[base + 6] = 1;
   values[base + 7] = changedFields;
+  values[base + 8] = hasHp ? views.hp[slot] : 0;
+  values[base + 9] = hasHp ? views.maxHp[slot] : 0;
   values[base + 10] = hasVel ? qVel(views.velX[slot]) : 0;
   values[base + 11] = hasVel ? qVel(views.velY[slot]) : 0;
   values[base + 12] = hasVel ? qVel(views.velZ[slot]) : 0;
