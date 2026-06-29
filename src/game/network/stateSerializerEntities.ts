@@ -867,6 +867,55 @@ export function appendUnitMotionEntityWireRowDirectFromState(
   return true;
 }
 
+export function appendBasicEntityWireRowDirectFromState(
+  views: EntityStateViews,
+  slot: number,
+  changedFields: number,
+): boolean {
+  if (slot < 0 || slot >= views.capacity) return false;
+  if (
+    changedFields === 0 ||
+    (changedFields & ~(ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0
+  ) {
+    return false;
+  }
+  const kind = views.kind[slot];
+  let typeCode = 0;
+  if (kind === ENTITY_STATE_KIND_UNIT) typeCode = ENTITY_SNAPSHOT_WIRE_TYPE_UNIT;
+  else if (kind === ENTITY_STATE_KIND_BUILDING || kind === ENTITY_STATE_KIND_TOWER) {
+    typeCode = ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+  } else {
+    return false;
+  }
+  const entityId = views.entityId[slot];
+  if (entityId < 0) return false;
+
+  const rows = entityWireSource.basicRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+  const hasPos = (changedFields & ENTITY_CHANGED_POS) !== 0;
+  const hasRot = (changedFields & ENTITY_CHANGED_ROT) !== 0;
+  const ownerPlayerId = views.ownerPlayerId[slot];
+
+  values[base + 0] = entityId;
+  values[base + 1] = typeCode;
+  values[base + 2] = hasPos ? qPos(views.posX[slot]) : 0;
+  values[base + 3] = hasPos ? qPos(views.posY[slot]) : 0;
+  values[base + 4] = hasPos ? qPos(views.posZ[slot]) : 0;
+  values[base + 5] = hasRot ? qRot(views.rotation[slot]) : 0;
+  values[base + 6] = ownerPlayerId !== 0 ? ownerPlayerId : 1;
+  values[base + 7] = 1;
+  values[base + 8] = changedFields;
+
+  appendEntitySnapshotWireSourceRow(
+    entityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+    rowIndex,
+  );
+  return true;
+}
+
 export function appendBuildingHotEntityWireRowDirectFromState(
   views: EntityStateViews,
   slot: number,

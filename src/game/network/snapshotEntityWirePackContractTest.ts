@@ -19,11 +19,15 @@ import {
 } from './snapshotRustWireEncoder';
 import { PackedBinaryWriter, PACKED_BINARY_ROW_COUNT_BYTES } from './snapshotBinaryWire';
 import {
+  ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
   ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  appendBasicEntityWireRowDirectFromState,
   appendBuildingHotEntityWireRowDirectFromState,
   appendEntitySnapshotWireSourceRow,
   appendUnitMotionEntityWireRowDirectFromState,
@@ -431,6 +435,127 @@ export function runSnapshotEntityWirePackContractTest(): void {
     decodedBuildingV6Source !== undefined &&
       decodedBuildingV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     'Rust V6 compact building decode must expose typed building source metadata',
+  );
+
+  const slabBasicUnitEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendBasicEntityWireRowDirectFromState(
+      createMotionEntityStateViews(),
+      0,
+      ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    ),
+    'entity-state unit transform row must append compact basic row from slab views',
+  );
+  slabBasicUnitEntities.length = 1;
+  registerEntitySnapshotWireSource(slabBasicUnitEntities);
+  const slabBasicUnitSource = getEntitySnapshotWireSource(slabBasicUnitEntities);
+  assertContract(
+    slabBasicUnitSource !== undefined &&
+      slabBasicUnitSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+    'entity-state unit transform row must register basic typed wire metadata',
+  );
+  const slabBasicUnitBase =
+    slabBasicUnitSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+  assertContract(
+    slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 0] === 707 &&
+      slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 1] === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT &&
+      slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 2] === 1000 &&
+      slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 3] === 2000 &&
+      slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 4] === 3000 &&
+      slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 5] === 500 &&
+      slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 6] === 2 &&
+      slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 7] === 1 &&
+      slabBasicUnitSource.basicRows.values[slabBasicUnitBase + 8] ===
+        (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'entity-state unit transform basic row must mirror canonical slab transform fields',
+  );
+  const slabBasicUnitV6Bytes = encodeEntitiesV6Bytes(slabBasicUnitSource);
+  assertContract(slabBasicUnitV6Bytes !== null, 'Rust V6 encoder must encode slab basic unit source');
+  const packedBasicUnitV6 = msgpackDecode(
+    slabBasicUnitV6Bytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  assertContract(
+    packedBasicUnitV6.m !== undefined &&
+      packedBasicUnitV6.b === undefined,
+    'Rust V6 slab basic unit source must use compact movement rows',
+  );
+  const decodedBasicUnitV6 = unpackEntitiesFromWire(packedBasicUnitV6)[0];
+  assertContract(
+    decodedBasicUnitV6?.id === 707 &&
+      decodedBasicUnitV6.changedFields === (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT) &&
+      decodedBasicUnitV6.pos?.x === 1000 &&
+      decodedBasicUnitV6.rotation === 500,
+    'Rust V6 slab basic unit row must survive compact round trip',
+  );
+  const decodedBasicUnitV6Source = getEntitySnapshotWireSource(unpackEntitiesFromWire(packedBasicUnitV6, {
+    materializeTypedDeltas: false,
+  }));
+  assertContract(
+    decodedBasicUnitV6Source !== undefined,
+    'Rust V6 slab basic unit decode must expose typed source metadata',
+  );
+
+  const slabBasicBuildingEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendBasicEntityWireRowDirectFromState(
+      createBuildingEntityStateViews(),
+      0,
+      ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    ),
+    'entity-state building transform row must append compact basic row from slab views',
+  );
+  slabBasicBuildingEntities.length = 1;
+  registerEntitySnapshotWireSource(slabBasicBuildingEntities);
+  const slabBasicBuildingSource = getEntitySnapshotWireSource(slabBasicBuildingEntities);
+  assertContract(
+    slabBasicBuildingSource !== undefined &&
+      slabBasicBuildingSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+    'entity-state building transform row must register basic typed wire metadata',
+  );
+  const slabBasicBuildingBase =
+    slabBasicBuildingSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+  assertContract(
+    slabBasicBuildingSource.basicRows.values[slabBasicBuildingBase + 0] === 808 &&
+      slabBasicBuildingSource.basicRows.values[slabBasicBuildingBase + 2] === 1100 &&
+      slabBasicBuildingSource.basicRows.values[slabBasicBuildingBase + 3] === 2200 &&
+      slabBasicBuildingSource.basicRows.values[slabBasicBuildingBase + 4] === 3300 &&
+      slabBasicBuildingSource.basicRows.values[slabBasicBuildingBase + 5] === 250 &&
+      slabBasicBuildingSource.basicRows.values[slabBasicBuildingBase + 6] === 3 &&
+      slabBasicBuildingSource.basicRows.values[slabBasicBuildingBase + 8] ===
+        (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'entity-state building transform basic row must mirror canonical slab transform fields',
+  );
+  const slabBasicBuildingV6Bytes = encodeEntitiesV6Bytes(slabBasicBuildingSource);
+  assertContract(
+    slabBasicBuildingV6Bytes !== null,
+    'Rust V6 encoder must encode slab basic building source',
+  );
+  const packedBasicBuildingV6 = msgpackDecode(
+    slabBasicBuildingV6Bytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  assertContract(
+    packedBasicBuildingV6.b !== undefined &&
+      packedBasicBuildingV6.e === undefined &&
+      packedBasicBuildingV6.m === undefined,
+    'Rust V6 slab basic building source must use compact building rows',
+  );
+  const decodedBasicBuildingV6 = unpackEntitiesFromWire(packedBasicBuildingV6)[0];
+  assertContract(
+    decodedBasicBuildingV6?.id === 808 &&
+      decodedBasicBuildingV6.changedFields === (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT) &&
+      decodedBasicBuildingV6.pos?.x === 1100 &&
+      decodedBasicBuildingV6.rotation === 250,
+    'Rust V6 slab basic building row must survive compact round trip',
+  );
+  const decodedBasicBuildingV6Source = getEntitySnapshotWireSource(unpackEntitiesFromWire(packedBasicBuildingV6, {
+    materializeTypedDeltas: false,
+  }));
+  assertContract(
+    decodedBasicBuildingV6Source !== undefined &&
+      decodedBasicBuildingV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    'Rust V6 slab basic building decode must expose typed building source metadata',
   );
 
   const staleBuildingSlots: number[] = [];

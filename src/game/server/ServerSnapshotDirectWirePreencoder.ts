@@ -9,6 +9,7 @@ import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
 import { writeAudioEventWireRowsDirect } from '../network/stateSerializerAudio';
 import { writeEconomySnapshotWireRowsDirect } from '../network/stateSerializerEconomy';
 import {
+  appendBasicEntityWireRowDirectFromState,
   appendBuildingHotEntityWireRowDirectFromState,
   appendEntitySnapshotWireRowDirect,
   appendUnitMotionEntityWireRowDirectFromState,
@@ -141,6 +142,9 @@ const ENTITY_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const ENTITY_BASIC_TRANSFORM_DELTA_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT;
 const ENTITY_UNIT_SLAB_DELTA_FIELDS =
   ENTITY_MOTION_DELTA_FIELDS |
   ENTITY_CHANGED_HP |
@@ -753,12 +757,10 @@ export class ServerSnapshotDirectWirePreencoder {
     }
     if (entityViews === null) return false;
     const slot = entitySlotRegistry.getSlot(id);
-    return (
-      slot >= 0 &&
-      slot < entityViews.capacity &&
-      entityViews.entityId[slot] === id &&
-      appendUnitMotionEntityWireRowDirectFromState(entityViews, slot, changedFields)
-    );
+    if (slot < 0 || slot >= entityViews.capacity || entityViews.entityId[slot] !== id) {
+      return false;
+    }
+    return appendUnitMotionEntityWireRowDirectFromState(entityViews, slot, changedFields);
   }
 
   private tryAppendBuildingSlabDeltaRowFromState(
@@ -768,12 +770,13 @@ export class ServerSnapshotDirectWirePreencoder {
   ): boolean {
     if (entityViews === null) return false;
     const slot = entitySlotRegistry.getSlot(id);
-    return (
-      slot >= 0 &&
-      slot < entityViews.capacity &&
-      entityViews.entityId[slot] === id &&
-      appendBuildingHotEntityWireRowDirectFromState(entityViews, slot, changedFields)
-    );
+    if (slot < 0 || slot >= entityViews.capacity || entityViews.entityId[slot] !== id) {
+      return false;
+    }
+    if ((changedFields & ~ENTITY_BASIC_TRANSFORM_DELTA_FIELDS) === 0) {
+      return appendBasicEntityWireRowDirectFromState(entityViews, slot, changedFields);
+    }
+    return appendBuildingHotEntityWireRowDirectFromState(entityViews, slot, changedFields);
   }
 
   private writeRichDeltaEntityRows(input: ServerSnapshotRichDeltaDirectWireInput): number {
