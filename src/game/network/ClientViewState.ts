@@ -1730,6 +1730,7 @@ export class ClientViewState {
       );
     if (batchUnitHotMotion) {
       this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
+      if (source.typedPlaceholderRows === source.unitRows.count) return true;
     }
 
     let appliedAny = false;
