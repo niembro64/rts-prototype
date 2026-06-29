@@ -71,7 +71,11 @@ import {
 } from './snapshotQuantization';
 import { encodeFactoryProductionQueue } from './factoryProductionQueueWire';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
-import { ENTITY_STATE_KIND_UNIT } from '../sim-wasm/init';
+import {
+  ENTITY_STATE_KIND_BUILDING,
+  ENTITY_STATE_KIND_TOWER,
+  ENTITY_STATE_KIND_UNIT,
+} from '../sim-wasm/init';
 
 const INITIAL_ENTITY_POOL = 200;
 const INITIAL_TYPED_DELTA_PLACEHOLDER_POOL = 512;
@@ -106,6 +110,10 @@ const TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING;
+const TYPED_PLACEHOLDER_BUILDING_SLAB_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_HP;
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
@@ -888,6 +896,54 @@ export function appendUnitMotionEntityWireRowDirectFromState(
   appendEntitySnapshotWireSourceRow(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    rowIndex,
+  );
+  return true;
+}
+
+export function appendBuildingHotEntityWireRowDirectFromState(
+  views: EntityStateViews,
+  slot: number,
+  changedFields: number,
+): boolean {
+  if (slot < 0 || slot >= views.capacity) return false;
+  const kind = views.kind[slot];
+  if (kind !== ENTITY_STATE_KIND_BUILDING && kind !== ENTITY_STATE_KIND_TOWER) return false;
+  const entityId = views.entityId[slot];
+  if (entityId < 0) return false;
+  if (
+    changedFields === 0 ||
+    (changedFields & ENTITY_CHANGED_HP) === 0 ||
+    (changedFields & ~TYPED_PLACEHOLDER_BUILDING_SLAB_FIELDS) !== 0
+  ) {
+    return false;
+  }
+
+  const rows = entityWireSource.buildingRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  values.fill(0, base, base + ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
+
+  const hasPos = (changedFields & ENTITY_CHANGED_POS) !== 0;
+  const hasRot = (changedFields & ENTITY_CHANGED_ROT) !== 0;
+  const hasHp = (changedFields & ENTITY_CHANGED_HP) !== 0;
+  const ownerPlayerId = views.ownerPlayerId[slot];
+
+  values[base + 0] = entityId;
+  values[base + 1] = hasPos ? qPos(views.posX[slot]) : 0;
+  values[base + 2] = hasPos ? qPos(views.posY[slot]) : 0;
+  values[base + 3] = hasPos ? qPos(views.posZ[slot]) : 0;
+  values[base + 4] = hasRot ? qRot(views.rotation[slot]) : 0;
+  values[base + 5] = ownerPlayerId !== 0 ? ownerPlayerId : 1;
+  values[base + 6] = 1;
+  values[base + 7] = changedFields;
+  values[base + 13] = hasHp ? views.hp[slot] : 0;
+  values[base + 14] = hasHp ? views.maxHp[slot] : 0;
+
+  appendEntitySnapshotWireSourceRow(
+    entityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     rowIndex,
   );
   return true;

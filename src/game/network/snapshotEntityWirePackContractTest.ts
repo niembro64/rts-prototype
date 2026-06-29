@@ -18,9 +18,12 @@ import {
 } from './snapshotRustWireEncoder';
 import { PackedBinaryWriter, PACKED_BINARY_ROW_COUNT_BYTES } from './snapshotBinaryWire';
 import {
+  ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  appendBuildingHotEntityWireRowDirectFromState,
   appendEntitySnapshotWireSourceRow,
   appendUnitMotionEntityWireRowDirectFromState,
   createEntitySnapshotWireSource,
@@ -38,7 +41,7 @@ import {
   ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL,
   type EntityStateViews,
 } from '../sim/EntitySlotRegistry';
-import { ENTITY_STATE_KIND_UNIT } from '../sim-wasm/init';
+import { ENTITY_STATE_KIND_BUILDING, ENTITY_STATE_KIND_UNIT } from '../sim-wasm/init';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -90,6 +93,21 @@ function createMotionEntityStateViews(): EntityStateViews {
         ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION |
         ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
     ]),
+  } as unknown as EntityStateViews;
+}
+
+function createBuildingEntityStateViews(): EntityStateViews {
+  return {
+    capacity: 1,
+    entityId: new Int32Array([808]),
+    kind: new Uint8Array([ENTITY_STATE_KIND_BUILDING]),
+    ownerPlayerId: new Uint32Array([3]),
+    posX: new Float64Array([11]),
+    posY: new Float64Array([22]),
+    posZ: new Float64Array([33]),
+    rotation: new Float64Array([0.25]),
+    hp: new Float64Array([440]),
+    maxHp: new Float64Array([500]),
   } as unknown as EntityStateViews;
 }
 
@@ -236,6 +254,67 @@ export function runSnapshotEntityWirePackContractTest(): void {
       slabHpSource.unitRows.values[slabHpWireBase + 9] === 120 &&
       slabHpSource.unitRows.values[slabHpWireBase + 23] === 0,
     'entity-state HP typed row must mirror canonical slab HP without motion fields',
+  );
+
+  const slabBuildingHpEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendBuildingHotEntityWireRowDirectFromState(
+      createBuildingEntityStateViews(),
+      0,
+      ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    ),
+    'entity-state building HP row must append from slab views',
+  );
+  slabBuildingHpEntities.length = 1;
+  registerEntitySnapshotWireSource(slabBuildingHpEntities);
+  const slabBuildingHpSource = getEntitySnapshotWireSource(slabBuildingHpEntities);
+  assertContract(
+    slabBuildingHpSource !== undefined &&
+      slabBuildingHpSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    'entity-state building HP row must register building typed wire metadata',
+  );
+  const slabBuildingHpWireBase =
+    slabBuildingHpSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  assertContract(
+    slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 0] === 808 &&
+      slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 1] === 1100 &&
+      slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 4] === 250 &&
+      slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 5] === 3 &&
+      slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 6] === 1 &&
+      slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 7] ===
+        (ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT) &&
+      slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 13] === 440 &&
+      slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 14] === 500 &&
+      slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + 15] === 0,
+    'entity-state building HP typed row must mirror canonical slab hot fields only',
+  );
+  const buildingV6Bytes = encodeEntitiesV6Bytes(slabBuildingHpSource);
+  assertContract(buildingV6Bytes !== null, 'Rust V6 encoder must encode slab building HP source');
+  const packedBuildingV6 = msgpackDecode(
+    buildingV6Bytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  assertContract(
+    packedBuildingV6.e !== undefined && packedBuildingV6.m === undefined,
+    'Rust V6 slab building HP source must use detail rows without unit movement fallback',
+  );
+  const decodedBuildingV6 = unpackEntitiesFromWire(packedBuildingV6)[0];
+  assertContract(decodedBuildingV6?.id === 808, 'Rust V6 slab building HP row id must survive');
+  assertContract(
+    decodedBuildingV6.changedFields === (ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'Rust V6 slab building HP row changed mask must survive',
+  );
+  assertContract(
+    decodedBuildingV6.pos?.x === 1100 &&
+      decodedBuildingV6.pos.y === 2200 &&
+      decodedBuildingV6.pos.z === 3300 &&
+      decodedBuildingV6.rotation === 250,
+    'Rust V6 slab building HP row transform must survive',
+  );
+  assertContract(
+    decodedBuildingV6.building?.hp?.curr === 440 &&
+      decodedBuildingV6.building.hp.max === 500,
+    'Rust V6 slab building HP row HP must survive',
   );
 
   const movementEntities = unpackEntitiesFromWire({
