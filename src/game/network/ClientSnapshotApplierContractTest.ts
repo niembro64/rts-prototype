@@ -1097,6 +1097,75 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   buildingView.assertRenderEntityStateParity(buildingId);
 
+  const mixedTypedView = new ClientViewState();
+  const mixedUnitId = 701;
+  const mixedBuildingId = 702;
+  mixedTypedView.applyNetworkState(snapshot(1, [
+    fullUnitEntity(mixedUnitId, 100, 100),
+    fullBuildingEntity(mixedBuildingId, 80, 120),
+  ]));
+  mixedTypedView.applyPrediction(16);
+  mixedTypedView.consumeRenderDirties();
+  const mixedUnitSource = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => mixedUnitId,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    420,
+    115,
+    1 as PlayerId,
+    'unitJackal',
+    { allocateSubEntityIds: false },
+  );
+  mixedUnitSource.transform.rotation = 0.55;
+  const mixedBuildingSource = mixedTypedView.getEntity(mixedBuildingId);
+  if (mixedBuildingSource === undefined || mixedBuildingSource.building === null) {
+    throw new Error('[client snapshot applier contract] mixed typed source must hydrate a building');
+  }
+  mixedBuildingSource.building.hp = 51;
+  mixedBuildingSource.building.maxHp = 120;
+  const mixedTypedRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(mixedTypedRows);
+  const mixedUnitRow = serializeEntityDeltaSnapshot(
+    mixedUnitSource,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    {} as WorldState,
+  );
+  if (mixedUnitRow !== null) mixedTypedRows.push(mixedUnitRow as NetworkServerSnapshotEntity);
+  const mixedBuildingRow = serializeEntityDeltaSnapshot(
+    mixedBuildingSource,
+    ENTITY_CHANGED_HP,
+    {} as WorldState,
+  );
+  if (mixedBuildingRow !== null) mixedTypedRows.push(mixedBuildingRow as NetworkServerSnapshotEntity);
+  mixedBuildingSource.building.hp = 80;
+  mixedBuildingSource.building.maxHp = 120;
+  assertContract(
+    mixedTypedRows.length === 2 &&
+      (mixedTypedRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
+      (mixedTypedRows as Array<NetworkServerSnapshotEntity | undefined>)[1] === undefined,
+    'mixed typed placeholder delta rows must omit DTO placeholders',
+  );
+  const mixedTypedSnapshot = snapshot(6, mixedTypedRows);
+  mixedTypedSnapshot.entityDeltaOnly = true;
+  mixedTypedView.applyNetworkState(mixedTypedSnapshot);
+  resetEntitySnapshotPool();
+  mixedTypedView.applyPrediction(100);
+  const mixedUnit = mixedTypedView.getEntity(mixedUnitId);
+  assertContract(
+    mixedUnit !== undefined &&
+      mixedUnit.transform.x > 1 &&
+      mixedUnit.transform.rotation > 0.01,
+    'mixed typed placeholder delta rows must apply unit transform rows',
+  );
+  assertContract(
+    mixedTypedView.getEntity(mixedBuildingId)?.building?.hp === 51,
+    'mixed typed placeholder delta rows must apply building HP rows',
+  );
+  mixedTypedView.assertRenderEntityStateParity(mixedUnitId);
+  mixedTypedView.assertRenderEntityStateParity(mixedBuildingId);
+
   view.applyNetworkState(snapshot(3, [hpSparseEntity(id, 80, 100)]));
   assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP sparse row must update unit HP');
   assertHudContains(view, id, true);

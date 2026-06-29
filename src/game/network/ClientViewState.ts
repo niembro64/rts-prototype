@@ -1491,6 +1491,50 @@ export class ClientViewState {
     }
   }
 
+  private canApplyTypedPlaceholderDeltaSource(
+    source: EntitySnapshotWireSource,
+    entities: readonly (NetworkServerSnapshotEntity | undefined)[],
+  ): boolean {
+    const count = source.count;
+    if (count === 0 || count !== entities.length) return false;
+    for (let entityIndex = 0; entityIndex < count; entityIndex++) {
+      if (entities[entityIndex] !== undefined) return false;
+    }
+    return true;
+  }
+
+  private applyTypedPlaceholderDeltaSource(
+    source: EntitySnapshotWireSource,
+    now: number,
+    applyStats: ClientSnapshotApplyStats,
+  ): void {
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      switch (source.kinds[entityIndex]) {
+        case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+          this.tryApplyBasicTypedDeltaWireRow(
+            source,
+            entityIndex,
+            now,
+            false,
+            applyStats,
+          );
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+          this.tryApplyUnitTypedDeltaWireRow(
+            source,
+            entityIndex,
+            now,
+            false,
+            applyStats,
+          );
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+          this.tryApplyBuildingTypedDeltaWireRow(source, entityIndex, now);
+          break;
+      }
+    }
+  }
+
   private tryApplyBuildingTypedDeltaWireRow(
     source: EntitySnapshotWireSource,
     entityIndex: number,
@@ -1725,6 +1769,14 @@ export class ClientViewState {
       this.canApplyMetadataTypedDeltaSource(typedEntityWireSource, state.entities)
     ) {
       this.applyMetadataTypedDeltaSource(typedEntityWireSource);
+    } else if (
+      !projectileDeltaOnly &&
+      entityDeltaOnly &&
+      !collectCorrectionStats &&
+      typedEntityWireSource !== undefined &&
+      this.canApplyTypedPlaceholderDeltaSource(typedEntityWireSource, state.entities)
+    ) {
+      this.applyTypedPlaceholderDeltaSource(typedEntityWireSource, now, applyStats);
     } else if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
         let appliedTypedDelta = false;
