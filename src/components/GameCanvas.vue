@@ -1011,6 +1011,8 @@ const {
   renderTpsWorst,
   snapAvgRate,
   snapWorstRate,
+  rawSnapshotReceivedRate,
+  rawSnapshotAppliedRate,
   richSnapAvgRate,
   richSnapWorstRate,
   deltaSnapAvgRate,
@@ -1505,6 +1507,8 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   currentZoom: currentZoom.value,
   snapAvgRate: snapAvgRate.value,
   snapWorstRate: snapWorstRate.value,
+  rawSnapshotReceivedRate: rawSnapshotReceivedRate.value,
+  rawSnapshotAppliedRate: rawSnapshotAppliedRate.value,
   richSnapAvgRate: richSnapAvgRate.value,
   richSnapWorstRate: richSnapWorstRate.value,
   deltaSnapAvgRate: deltaSnapAvgRate.value,
@@ -1706,6 +1710,8 @@ watchEffect(() => {
   m.currentZoom = currentZoom.value;
   m.snapAvgRate = snapAvgRate.value;
   m.snapWorstRate = snapWorstRate.value;
+  m.rawSnapshotReceivedRate = rawSnapshotReceivedRate.value;
+  m.rawSnapshotAppliedRate = rawSnapshotAppliedRate.value;
   m.richSnapAvgRate = richSnapAvgRate.value;
   m.richSnapWorstRate = richSnapWorstRate.value;
   m.deltaSnapAvgRate = deltaSnapAvgRate.value;

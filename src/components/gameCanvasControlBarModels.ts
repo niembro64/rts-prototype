@@ -159,6 +159,8 @@ export type GameCanvasClientControlBarModel = {
   readonly currentZoom: number;
   readonly snapAvgRate: number;
   readonly snapWorstRate: number;
+  readonly rawSnapshotReceivedRate: number;
+  readonly rawSnapshotAppliedRate: number;
   readonly richSnapAvgRate: number;
   readonly richSnapWorstRate: number;
   readonly deltaSnapAvgRate: number;

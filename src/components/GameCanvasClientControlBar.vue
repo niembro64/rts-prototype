@@ -115,7 +115,7 @@ function richSnapshotTargetHz(model: GameCanvasClientControlBarModel): number {
 }
 
 function totalSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
-  return `All snapshots consumed by the local renderer: rich presentation packets plus sparse motion/projectile delta packets. Target ${fmt4(model.displayTickRate)} Hz because total can approach the fixed simulation rate when projectile deltas are active.`;
+  return `EMA of snapshots consumed by the local renderer. ${fmt4(model.displayTickRate)} Hz is the fixed-step publication ceiling, not a required non-empty packet rate; rich snapshots target ${fmt4(richSnapshotTargetHz(model))} Hz and sparse deltas are event-driven.`;
 }
 
 function richSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
@@ -123,7 +123,7 @@ function richSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): strin
 }
 
 function deltaSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
-  return `Sparse no-metadata deltas. Combined avg/low includes entity and projectile deltas. Entity motion target ${fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT)} Hz; projectile presentation deltas can emit up to ${fmt4(model.displayTickRate)} Hz during active combat.`;
+  return `Sparse no-metadata deltas. Combined avg/low includes entity and projectile deltas. Entity motion has ${fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT)} Hz opportunities; projectile presentation deltas can emit up to ${fmt4(model.displayTickRate)} Hz during active combat. Empty opportunities do not count as SPS.`;
 }
 
 const props = defineProps<{
@@ -536,7 +536,7 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarDivider />
         <BarLabel :title="totalSnapshotCadenceTitle(model)">TOTAL SPS:</BarLabel>
-        <span class="fps-label">tgt {{ fmt4(model.displayTickRate) }}</span>
+        <span class="fps-label">ceil {{ fmt4(model.displayTickRate) }}</span>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -572,6 +572,10 @@ function resetEveryCustomHotkey(): void {
               ></div>
             </div>
           </div>
+        </div>
+        <div class="snapshot-delta-split">
+          <span title="Raw snapshots received from the connection over the telemetry sample window.">rx {{ fmt4(model.rawSnapshotReceivedRate) }}</span>
+          <span title="Raw snapshots applied by ClientViewState over the telemetry sample window.">ap {{ fmt4(model.rawSnapshotAppliedRate) }}</span>
         </div>
       </BarControlGroup>
       <BarControlGroup>
@@ -618,7 +622,7 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarDivider />
         <BarLabel :title="deltaSnapshotCadenceTitle(model)">DELTA SPS:</BarLabel>
-        <span class="fps-label">tgt {{ fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT) }}/{{ fmt4(model.displayTickRate) }}</span>
+        <span class="fps-label">ceil {{ fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT) }}/{{ fmt4(model.displayTickRate) }}</span>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">

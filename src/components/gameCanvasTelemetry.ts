@@ -102,6 +102,8 @@ export function useGameCanvasTelemetry({
   const renderTpsWorst = ref(0);
   const snapAvgRate = ref(0);
   const snapWorstRate = ref(0);
+  const rawSnapshotReceivedRate = ref(0);
+  const rawSnapshotAppliedRate = ref(0);
   const richSnapAvgRate = ref(0);
   const richSnapWorstRate = ref(0);
   const deltaSnapAvgRate = ref(0);
@@ -133,6 +135,9 @@ export function useGameCanvasTelemetry({
   const currentZoom = ref(0.4);
   let updateInterval: ReturnType<typeof setInterval> | null = null;
   let renderProfileApi: RenderProfileApi | null = null;
+  let lastSnapshotCounterSampleMs = 0;
+  let lastReceivedSnapshotTotal = 0;
+  let lastAppliedSnapshotTotal = 0;
 
   const displayGpuMs = computed(() =>
     gpuTimerSupported.value ? gpuTimerMs.value : renderMsAvg.value,
@@ -230,6 +235,28 @@ export function useGameCanvasTelemetry({
       setNumberRefIfChanged(entityDeltaSnapWorstRate, snapStats.entityDelta.worstRate, 0.05);
       setNumberRefIfChanged(projectileDeltaSnapAvgRate, snapStats.projectileDelta.avgRate, 0.05);
       setNumberRefIfChanged(projectileDeltaSnapWorstRate, snapStats.projectileDelta.worstRate, 0.05);
+
+      const now = performance.now();
+      const receivedSnapshotCounters = scene.getReceivedSnapshotCounters();
+      const appliedSnapshotCounters = scene.getSnapshotCounters();
+      if (lastSnapshotCounterSampleMs > 0 && now > lastSnapshotCounterSampleMs) {
+        const seconds = (now - lastSnapshotCounterSampleMs) / 1000;
+        if (seconds > 0) {
+          setNumberRefIfChanged(
+            rawSnapshotReceivedRate,
+            Math.max(0, receivedSnapshotCounters.total - lastReceivedSnapshotTotal) / seconds,
+            0.05,
+          );
+          setNumberRefIfChanged(
+            rawSnapshotAppliedRate,
+            Math.max(0, appliedSnapshotCounters.total - lastAppliedSnapshotTotal) / seconds,
+            0.05,
+          );
+        }
+      }
+      lastSnapshotCounterSampleMs = now;
+      lastReceivedSnapshotTotal = receivedSnapshotCounters.total;
+      lastAppliedSnapshotTotal = appliedSnapshotCounters.total;
 
       const payloadSizeStats = scene.getSnapshotPayloadSizeStats();
       setNumberRefIfChanged(snapshotSizeAvgBytes, payloadSizeStats.avgBytes, 1);
@@ -368,6 +395,8 @@ export function useGameCanvasTelemetry({
     renderTpsWorst,
     snapAvgRate,
     snapWorstRate,
+    rawSnapshotReceivedRate,
+    rawSnapshotAppliedRate,
     richSnapAvgRate,
     richSnapWorstRate,
     deltaSnapAvgRate,
