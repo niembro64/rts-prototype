@@ -675,6 +675,27 @@ export function runSnapshotBufferContractTest(): void {
     'typed basic transform deltas must patch pending full typed rows from wire rows',
   );
 
+  const typedAppendFullExisting = createSparseDecodedMotionUnitEntity(69, 100);
+  typedAppendFullExisting.changedFields = null;
+  typedAppendFullExisting.rotation = 0;
+  const typedAppendFullEntities = [typedAppendFullExisting];
+  const typedAppendFullSnapshot = createSnapshot(18, [], typedAppendFullEntities);
+  attachTypedUnitMotionSource(typedAppendFullEntities, 69, 100, null);
+  fake.emitSnapshot(typedAppendFullSnapshot);
+  const appendFullDelta = createSnapshot(19, [], [createUnitEntity(70, 700, null)]);
+  appendFullDelta.entityDeltaOnly = true;
+  fake.emitSnapshot(appendFullDelta);
+  const consumedAppendFullMerge = buffer.consume();
+  assertContract(
+    consumedAppendFullMerge?.entities.some((entity) => entity.id === 70) === true,
+    'full entity delta rows must still append to typed pending snapshots',
+  );
+  assertContract(
+    consumedAppendFullMerge !== null &&
+      getEntitySnapshotWireSource(consumedAppendFullMerge.entities) === undefined,
+    'full entity delta rows must unregister typed pending row metadata',
+  );
+
   const typedPruneKeepA = createSparseDecodedMotionUnitEntity(64, 100);
   typedPruneKeepA.changedFields = null;
   typedPruneKeepA.rotation = 0;

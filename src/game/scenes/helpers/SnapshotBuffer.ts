@@ -258,27 +258,22 @@ export class SnapshotBuffer {
       pendingEntities,
       deltaEntities.length,
     );
-    const pendingWireSource = getEntitySnapshotWireSource(pendingEntities);
+    let preservedPendingWireSource = getEntitySnapshotWireSource(pendingEntities);
     const deltaWireSource = getEntitySnapshotWireSource(deltaEntities);
-    const canPreservePendingWireSource = pendingWireSource !== undefined &&
-      this.canPreservePendingEntityWireSource(
-        pendingEntities,
-        deltaEntities,
-        pendingWireSource,
-        pendingEntityIndexById,
-      );
-    if (
-      !canPreservePendingWireSource &&
-      (deltaEntities.length > 0 || (removedEntityIds !== undefined && removedEntityIds.length > 0))
-    ) {
+    const dropPendingWireSource = (): void => {
+      if (preservedPendingWireSource === undefined) return;
       unregisterEntitySnapshotWireSource(pendingEntities);
-    }
+      preservedPendingWireSource = undefined;
+    };
     for (let i = 0; i < deltaEntities.length; i++) {
       const delta = deltaEntities[i] as NetworkServerSnapshotEntity | undefined;
       const deltaWireRow = delta === undefined
         ? this.getDeltaEntityWireMotionRow(deltaWireSource, i)
         : undefined;
       const deltaId = delta !== undefined ? delta.id : deltaWireRow?.id ?? -1;
+      const changedFields = delta !== undefined
+        ? delta.changedFields
+        : deltaWireRow?.changedFields;
       if (deltaId < 0) continue;
       const targetIndex = this.findPendingEntityIndex(
         pendingEntities,
@@ -288,30 +283,47 @@ export class SnapshotBuffer {
       const target = targetIndex >= 0 ? pendingEntities[targetIndex] : undefined;
       if (target === undefined) {
         if (delta !== undefined && delta.changedFields === null) {
+          dropPendingWireSource();
           pendingEntities.push(cloneNetworkSnapshotEntity(delta));
           pendingEntityIndexById?.set(delta.id, pendingEntities.length - 1);
         }
         continue;
       }
       if (delta !== undefined && delta.changedFields === null) {
+        dropPendingWireSource();
         pendingEntities[targetIndex] = cloneNetworkSnapshotEntity(delta);
         continue;
+      }
+      const pendingWireSourceForPatch =
+        preservedPendingWireSource !== undefined &&
+        this.canPreservePendingEntityWireSourceDelta(
+          changedFields,
+          target,
+          preservedPendingWireSource,
+          pendingEntities.length,
+          targetIndex,
+          deltaWireRow?.kind,
+        )
+          ? preservedPendingWireSource
+          : undefined;
+      if (preservedPendingWireSource !== undefined && pendingWireSourceForPatch === undefined) {
+        dropPendingWireSource();
       }
       if (
         this.patchPendingEntityFromTypedDelta(
           deltaWireSource,
           i,
           target,
-          pendingWireSource,
+          pendingWireSourceForPatch,
           targetIndex,
-          canPreservePendingWireSource,
+          pendingWireSourceForPatch !== undefined,
         )
       ) {
         continue;
       }
       if (delta === undefined) continue;
-      if (canPreservePendingWireSource && pendingWireSource !== undefined) {
-        this.patchPendingEntityWireSourceDelta(pendingWireSource, targetIndex, delta);
+      if (pendingWireSourceForPatch !== undefined) {
+        this.patchPendingEntityWireSourceDelta(pendingWireSourceForPatch, targetIndex, delta);
       }
       if (delta.pos != null) {
         if (target.pos === null) target.pos = { x: 0, y: 0, z: 0 };
@@ -394,16 +406,19 @@ export class SnapshotBuffer {
       }
     }
     if (removedEntityIds !== undefined && removedEntityIds.length > 0) {
-      const preservedWireSource = canPreservePendingWireSource ? pendingWireSource : undefined;
       if (pendingEntities.length * removedEntityIds.length >= INDEXED_ENTITY_MERGE_MIN_WORK) {
-        this.prunePendingEntitiesWithSet(pendingEntities, removedEntityIds, preservedWireSource);
+        this.prunePendingEntitiesWithSet(
+          pendingEntities,
+          removedEntityIds,
+          preservedPendingWireSource,
+        );
         return;
       }
       for (let i = 0; i < removedEntityIds.length; i++) {
         const id = removedEntityIds[i];
         for (let j = pendingEntities.length - 1; j >= 0; j--) {
           if (pendingEntities[j].id === id) {
-            this.prunePendingEntityAt(pendingEntities, j, preservedWireSource);
+            this.prunePendingEntityAt(pendingEntities, j, preservedPendingWireSource);
           }
         }
       }
@@ -730,46 +745,29 @@ export class SnapshotBuffer {
     return patched;
   }
 
-  private canPreservePendingEntityWireSource(
-    pendingEntities: readonly NetworkServerSnapshotEntity[],
-    deltaEntities: readonly NetworkServerSnapshotEntity[],
+  private canPreservePendingEntityWireSourceDelta(
+    changedFields: number | null | undefined,
+    target: NetworkServerSnapshotEntity,
     source: EntitySnapshotWireSource,
-    indexById: ReadonlyMap<number, number> | undefined,
+    pendingEntityCount: number,
+    targetIndex: number,
+    deltaKind: number | undefined,
   ): boolean {
-    if (source.count !== pendingEntities.length) return false;
-    const deltaSource = getEntitySnapshotWireSource(deltaEntities);
-    for (let i = 0; i < deltaEntities.length; i++) {
-      const delta = deltaEntities[i] as NetworkServerSnapshotEntity | undefined;
-      const deltaWireRow = delta === undefined
-        ? this.getDeltaEntityWireMotionRow(deltaSource, i)
-        : undefined;
-      const changedFields = delta !== undefined
-        ? delta.changedFields
-        : deltaWireRow?.changedFields;
-      if (typeof changedFields !== 'number') return false;
-      const deltaId = delta !== undefined ? delta.id : deltaWireRow?.id ?? -1;
-      if (deltaId < 0) return false;
-      const targetIndex = this.findPendingEntityIndex(pendingEntities, deltaId, indexById);
-      if (targetIndex < 0) return false;
-      const target = pendingEntities[targetIndex];
-      const pendingRow = this.getPendingEntityWireMotionRow(source, targetIndex, deltaId);
-      if (pendingRow === undefined) return false;
-      const deltaKind = deltaWireRow?.kind;
-      if (
-        deltaKind !== undefined &&
-        deltaKind !== ENTITY_SNAPSHOT_WIRE_KIND_BASIC &&
-        deltaKind !== pendingRow.kind
-      ) {
-        return false;
-      }
-      const mergeKind = deltaKind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC
-        ? ENTITY_SNAPSHOT_WIRE_KIND_BASIC
-        : pendingRow.kind;
-      if (!this.canMergePendingEntityFields(changedFields, target, mergeKind)) {
-        return false;
-      }
+    if (source.count !== pendingEntityCount) return false;
+    if (typeof changedFields !== 'number') return false;
+    const pendingRow = this.getPendingEntityWireMotionRow(source, targetIndex, target.id);
+    if (pendingRow === undefined) return false;
+    if (
+      deltaKind !== undefined &&
+      deltaKind !== ENTITY_SNAPSHOT_WIRE_KIND_BASIC &&
+      deltaKind !== pendingRow.kind
+    ) {
+      return false;
     }
-    return true;
+    const mergeKind = deltaKind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC
+      ? ENTITY_SNAPSHOT_WIRE_KIND_BASIC
+      : pendingRow.kind;
+    return this.canMergePendingEntityFields(changedFields, target, mergeKind);
   }
 
   private canMergePendingEntityFields(
