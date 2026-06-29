@@ -111,6 +111,11 @@ import {
   getPackedProjectileSnapshotWire,
 } from './snapshotProjectileWirePack';
 import {
+  forEachProjectileWireSourceDespawn,
+  forEachProjectileWireSourceVelocityUpdate,
+  projectileSnapshotWireSourceHasOnlyMotionRows,
+} from './stateSerializerProjectiles';
+import {
   addSnapshotMaterializationStageToSnapshot,
   type SnapshotMaterializationStage,
 } from './snapshotMaterializationMetadata';
@@ -2335,8 +2340,12 @@ export class ClientViewState {
 
     const projectiles = state.projectiles;
     if (projectiles !== undefined && projectiles !== null) {
-      const packedProjectiles = getPackedProjectileSnapshotWire(projectiles);
-      const spawns = projectiles.spawns;
+      const directProjectileMotionRows =
+        projectileSnapshotWireSourceHasOnlyMotionRows(projectiles);
+      const packedProjectiles = directProjectileMotionRows
+        ? undefined
+        : getPackedProjectileSnapshotWire(projectiles);
+      const spawns = directProjectileMotionRows ? undefined : projectiles.spawns;
 
       // Process projectile spawn events
       if (spawns !== undefined && spawns !== null) {
@@ -2352,7 +2361,7 @@ export class ClientViewState {
       // Server-authored live beam/laser paths. These carry current
       // start/end/reflection points so the client can draw beams without
       // running local mirror/unit/building beam traces in applyPrediction.
-      const beamUpdates = projectiles.beamUpdates;
+      const beamUpdates = directProjectileMotionRows ? undefined : projectiles.beamUpdates;
       if (beamUpdates !== undefined && beamUpdates !== null) {
         for (const update of beamUpdates) {
           this.projectileStore.applyBeamUpdate(update, now);
@@ -2360,13 +2369,21 @@ export class ClientViewState {
       }
 
       // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
-      const appliedPackedDespawns = packedProjectiles !== undefined
+      const appliedDirectDespawns = directProjectileMotionRows
+        ? forEachProjectileWireSourceDespawn(
+            projectiles,
+            (id) => this.deleteEntityLocalState(id as EntityId),
+          )
+        : false;
+      const appliedPackedDespawns = !appliedDirectDespawns && packedProjectiles !== undefined
         ? forEachPackedProjectileDespawn(
             packedProjectiles,
             (id) => this.deleteEntityLocalState(id as EntityId),
           )
         : false;
-      const despawns = appliedPackedDespawns ? undefined : projectiles.despawns;
+      const despawns = appliedDirectDespawns || appliedPackedDespawns
+        ? undefined
+        : projectiles.despawns;
       if (despawns !== undefined && despawns !== null) {
         for (const despawn of despawns) {
           this.deleteEntityLocalState(despawn.id);
@@ -2378,7 +2395,35 @@ export class ClientViewState {
       // course corrections become EMA targets: the render-side projectile
       // keeps dead-reckoning, while ClientProjectilePrediction advances the
       // target and drifts position + velocity toward it each frame.
-      const appliedPackedVelocityUpdates = packedProjectiles !== undefined
+      const appliedDirectVelocityUpdates = directProjectileMotionRows
+        ? forEachProjectileWireSourceVelocityUpdate(
+            projectiles,
+            (
+              id,
+              qposX,
+              qposY,
+              qposZ,
+              qvelX,
+              qvelY,
+              qvelZ,
+              targetEntityId,
+              clearHomingTarget,
+            ) => this.applyProjectileVelocityUpdateFields(
+              id as EntityId,
+              qposX,
+              qposY,
+              qposZ,
+              qvelX,
+              qvelY,
+              qvelZ,
+              targetEntityId as EntityId | null,
+              clearHomingTarget,
+              now,
+              reflectedProjectileIds,
+            ),
+          )
+        : false;
+      const appliedPackedVelocityUpdates = !appliedDirectVelocityUpdates && packedProjectiles !== undefined
         ? forEachPackedProjectileVelocityUpdate(
             packedProjectiles,
             (
@@ -2406,7 +2451,9 @@ export class ClientViewState {
             ),
           )
         : false;
-      const velocityUpdates = appliedPackedVelocityUpdates ? undefined : projectiles.velocityUpdates;
+      const velocityUpdates = appliedDirectVelocityUpdates || appliedPackedVelocityUpdates
+        ? undefined
+        : projectiles.velocityUpdates;
       if (velocityUpdates !== undefined && velocityUpdates !== null) {
         for (const vu of velocityUpdates) {
           this.applyProjectileVelocityUpdateFields(

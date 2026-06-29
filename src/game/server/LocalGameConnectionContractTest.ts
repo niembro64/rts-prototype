@@ -6,7 +6,13 @@ import {
   createEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
 } from '../network/stateSerializerEntities';
-import { reserveFloat64WireRows } from '../network/snapshotWireRows';
+import {
+  createProjectileSnapshotWireSource,
+  PROJECTILE_SPAWN_WIRE_STRIDE,
+  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  registerProjectileSnapshotWireSource,
+} from '../network/stateSerializerProjectiles';
+import { reserveFloat64WireRows, reserveUint32WireRows } from '../network/snapshotWireRows';
 import { canDeliverDirectLocalSnapshotState } from './LocalGameConnection';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -56,6 +62,47 @@ function createTypedPlaceholderDeltaSnapshot(): NetworkServerSnapshot {
   return createSnapshot(entities);
 }
 
+function attachDirectProjectileMotionRows(snapshot: NetworkServerSnapshot): void {
+  const projectiles = {
+    spawns: undefined,
+    despawns: new Array(1),
+    velocityUpdates: new Array(1),
+    beamUpdates: undefined,
+  } as NonNullable<NetworkServerSnapshot['projectiles']>;
+  const source = createProjectileSnapshotWireSource();
+  const despawnIndex = reserveUint32WireRows(source.despawns, 1, 1);
+  source.despawns.values[despawnIndex] = 301;
+  const velocityIndex = reserveFloat64WireRows(
+    source.velocityUpdates,
+    1,
+    PROJECTILE_VELOCITY_WIRE_STRIDE,
+  );
+  const velocityBase = velocityIndex * PROJECTILE_VELOCITY_WIRE_STRIDE;
+  source.velocityUpdates.values[velocityBase + 0] = 302;
+  source.velocityUpdates.values[velocityBase + 1] = 10;
+  source.velocityUpdates.values[velocityBase + 2] = 20;
+  source.velocityUpdates.values[velocityBase + 3] = 30;
+  source.velocityUpdates.values[velocityBase + 4] = 1;
+  source.velocityUpdates.values[velocityBase + 5] = 2;
+  source.velocityUpdates.values[velocityBase + 6] = 3;
+  source.velocityUpdates.values[velocityBase + 8] = 401;
+  registerProjectileSnapshotWireSource(projectiles, source);
+  snapshot.projectiles = projectiles;
+}
+
+function attachDirectProjectileSpawnRows(snapshot: NetworkServerSnapshot): void {
+  const projectiles = {
+    spawns: new Array(1),
+    despawns: undefined,
+    velocityUpdates: undefined,
+    beamUpdates: undefined,
+  } as NonNullable<NetworkServerSnapshot['projectiles']>;
+  const source = createProjectileSnapshotWireSource();
+  reserveFloat64WireRows(source.spawns, 1, PROJECTILE_SPAWN_WIRE_STRIDE);
+  registerProjectileSnapshotWireSource(projectiles, source);
+  snapshot.projectiles = projectiles;
+}
+
 export function runLocalGameConnectionContractTest(): void {
   const pureTypedDelta = createTypedPlaceholderDeltaSnapshot();
   assertContract(
@@ -63,16 +110,27 @@ export function runLocalGameConnectionContractTest(): void {
     'pure typed entity delta placeholders may be delivered directly',
   );
 
-  const withProjectileSection = createTypedPlaceholderDeltaSnapshot();
-  withProjectileSection.projectiles = {
-    spawns: [undefined as never],
-    despawns: undefined,
-    velocityUpdates: undefined,
-    beamUpdates: undefined,
-  };
+  const withProjectileMotionRows = createTypedPlaceholderDeltaSnapshot();
+  attachDirectProjectileMotionRows(withProjectileMotionRows);
   assertContract(
-    !canDeliverDirectLocalSnapshotState(withProjectileSection),
-    'direct delivery must reject projectile placeholder sections',
+    canDeliverDirectLocalSnapshotState(withProjectileMotionRows),
+    'typed entity delta plus projectile motion rows may be delivered directly',
+  );
+
+  const pureProjectileMotionRows = createSnapshot([]);
+  pureProjectileMotionRows.entityDeltaOnly = undefined;
+  pureProjectileMotionRows.projectileDeltaOnly = true;
+  attachDirectProjectileMotionRows(pureProjectileMotionRows);
+  assertContract(
+    canDeliverDirectLocalSnapshotState(pureProjectileMotionRows),
+    'pure projectile motion rows may be delivered directly',
+  );
+
+  const withProjectileSpawnRows = createTypedPlaceholderDeltaSnapshot();
+  attachDirectProjectileSpawnRows(withProjectileSpawnRows);
+  assertContract(
+    !canDeliverDirectLocalSnapshotState(withProjectileSpawnRows),
+    'direct delivery must reject projectile spawn placeholder sections',
   );
 
   const fullSnapshot = createTypedPlaceholderDeltaSnapshot();

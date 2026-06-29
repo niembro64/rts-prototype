@@ -21,6 +21,11 @@ import {
   packProjectilesForWire,
 } from '../../network/snapshotProjectileWirePack';
 import {
+  createProjectileSnapshotWireSource,
+  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  registerProjectileSnapshotWireSource,
+} from '../../network/stateSerializerProjectiles';
+import {
   ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
@@ -34,7 +39,7 @@ import {
   registerEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from '../../network/stateSerializerEntities';
-import { reserveFloat64WireRows } from '../../network/snapshotWireRows';
+import { reserveFloat64WireRows, reserveUint32WireRows } from '../../network/snapshotWireRows';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -318,6 +323,38 @@ function createSnapshot(
     visionPlayerMask: undefined,
     removedEntityIds: undefined,
   };
+}
+
+function attachDirectProjectileMotionRows(
+  snapshot: NetworkServerSnapshot,
+  despawnId: number,
+  velocityId: number,
+): void {
+  const projectiles = {
+    spawns: undefined,
+    despawns: new Array(1),
+    velocityUpdates: new Array(1),
+    beamUpdates: undefined,
+  } as NonNullable<NetworkServerSnapshot['projectiles']>;
+  const source = createProjectileSnapshotWireSource();
+  const despawnIndex = reserveUint32WireRows(source.despawns, 1, 1);
+  source.despawns.values[despawnIndex] = despawnId;
+  const velocityIndex = reserveFloat64WireRows(
+    source.velocityUpdates,
+    1,
+    PROJECTILE_VELOCITY_WIRE_STRIDE,
+  );
+  const base = velocityIndex * PROJECTILE_VELOCITY_WIRE_STRIDE;
+  source.velocityUpdates.values[base + 0] = velocityId;
+  source.velocityUpdates.values[base + 1] = 100;
+  source.velocityUpdates.values[base + 2] = 200;
+  source.velocityUpdates.values[base + 3] = 300;
+  source.velocityUpdates.values[base + 4] = 10;
+  source.velocityUpdates.values[base + 5] = 20;
+  source.velocityUpdates.values[base + 6] = 30;
+  source.velocityUpdates.values[base + 8] = 88;
+  registerProjectileSnapshotWireSource(projectiles, source);
+  snapshot.projectiles = projectiles;
 }
 
 function createFakeConnection(): FakeConnectionHarness {
@@ -919,6 +956,26 @@ export function runSnapshotBufferContractTest(): void {
       packedVelocityUpdates[0].velocity.z === 30 &&
       packedVelocityUpdates[0].targetEntityId === 88,
     'snapshot buffer must materialize packed metadata-only velocity updates on consume',
+  );
+
+  const directProjectileDelta = createSnapshot(11, []);
+  directProjectileDelta.projectileDeltaOnly = true;
+  attachDirectProjectileMotionRows(directProjectileDelta, 80, 81);
+  fake.emitSnapshot(directProjectileDelta);
+  const consumedDirectDelta = buffer.consume();
+  const directDespawns = consumedDirectDelta?.projectiles?.despawns ?? [];
+  const directVelocityUpdates = consumedDirectDelta?.projectiles?.velocityUpdates ?? [];
+  assertContract(
+    directDespawns.length === 1 && directDespawns[0].id === 80,
+    'snapshot buffer must materialize direct projectile wire-source despawns on consume',
+  );
+  assertContract(
+    directVelocityUpdates.length === 1 &&
+      directVelocityUpdates[0].id === 81 &&
+      directVelocityUpdates[0].pos.x === 100 &&
+      directVelocityUpdates[0].velocity.z === 30 &&
+      directVelocityUpdates[0].targetEntityId === 88,
+    'snapshot buffer must materialize direct projectile wire-source velocity updates on consume',
   );
 
   buffer.clear();

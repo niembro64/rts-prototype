@@ -31,7 +31,7 @@ import {
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID,
   PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
-  getProjectileSnapshotWireSource,
+  getActiveProjectileSnapshotWireSource,
   type ProjectileSnapshotWireSource,
 } from './stateSerializerProjectiles';
 import {
@@ -110,22 +110,7 @@ export function packProjectilesForWire(
 function getCurrentProjectileWireSource(
   projectiles: ProjectileSnapshot,
 ): ProjectileSnapshotWireSource | undefined {
-  const source = getProjectileSnapshotWireSource(projectiles);
-  if (source === undefined) return undefined;
-  const spawnCount = projectiles.spawns !== undefined ? projectiles.spawns.length : 0;
-  const despawnCount = projectiles.despawns !== undefined ? projectiles.despawns.length : 0;
-  const velocityCount = projectiles.velocityUpdates !== undefined
-    ? projectiles.velocityUpdates.length
-    : 0;
-  const beamCount = projectiles.beamUpdates !== undefined ? projectiles.beamUpdates.length : 0;
-  return (
-    source.spawns.count === spawnCount &&
-    source.despawns.count === despawnCount &&
-    source.velocityUpdates.count === velocityCount &&
-    source.beamUpdates.count === beamCount
-  )
-    ? source
-    : undefined;
+  return getActiveProjectileSnapshotWireSource(projectiles);
 }
 
 export function unpackProjectilesFromWire(

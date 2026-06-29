@@ -18,6 +18,12 @@ import {
   getPackedProjectileSnapshotWire,
   packProjectilesForWire,
 } from './snapshotProjectileWirePack';
+import {
+  createProjectileSnapshotWireSource,
+  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  registerProjectileSnapshotWireSource,
+} from './stateSerializerProjectiles';
+import { reserveFloat64WireRows } from './snapshotWireRows';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -68,6 +74,35 @@ function projectileSnapshot(
     visionPlayerMask: undefined,
     removedEntityIds: undefined,
   };
+}
+
+function directProjectileVelocitySnapshot(
+  tick: number,
+  id: number,
+  x: number,
+  y: number,
+  targetEntityId: number | null,
+): NetworkServerSnapshot {
+  const snapshot = projectileSnapshot(tick, undefined);
+  const projectiles = snapshot.projectiles!;
+  projectiles.velocityUpdates = [undefined as never];
+  const source = createProjectileSnapshotWireSource();
+  const rowIndex = reserveFloat64WireRows(
+    source.velocityUpdates,
+    1,
+    PROJECTILE_VELOCITY_WIRE_STRIDE,
+  );
+  const base = rowIndex * PROJECTILE_VELOCITY_WIRE_STRIDE;
+  source.velocityUpdates.values[base + 0] = id;
+  source.velocityUpdates.values[base + 1] = qProjPos(x);
+  source.velocityUpdates.values[base + 2] = qProjPos(y);
+  source.velocityUpdates.values[base + 3] = qProjPos(35);
+  source.velocityUpdates.values[base + 4] = qVel(30);
+  source.velocityUpdates.values[base + 5] = qVel(5);
+  source.velocityUpdates.values[base + 6] = qVel(0);
+  source.velocityUpdates.values[base + 8] = targetEntityId ?? 0;
+  registerProjectileSnapshotWireSource(projectiles, source);
+  return snapshot;
 }
 
 function rocketSpawn(id: number, x: number, y: number) {
@@ -191,6 +226,13 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
   assertContract(
     view.getEntity(302) === undefined,
     'packed projectile despawn metadata must apply without DTO despawn rows',
+  );
+
+  view.applyNetworkState(directProjectileVelocitySnapshot(3, 301, 145, 155, 555));
+  const directUpdatedProjectile = view.getEntity(301)?.projectile;
+  assertContract(
+    directUpdatedProjectile?.homingTargetId === 555,
+    'direct projectile velocity wire rows must apply without DTO velocity rows',
   );
 
   view.applyNetworkState(projectileSnapshot(3, [plasmaSpawn(303, 700, 700)]));

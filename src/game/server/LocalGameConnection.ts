@@ -19,16 +19,17 @@ import {
 } from '../network/snapshotMaterializationMetadata';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { getEntitySnapshotWireSource } from '../network/stateSerializerEntities';
+import { projectileSnapshotWireSourceHasOnlyMotionRows } from '../network/stateSerializerProjectiles';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 import type { CommandAuthority } from './commandAuthority';
 
 export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot): boolean {
-  if (state.entityDeltaOnly !== true) return false;
+  const entityDeltaOnly = state.entityDeltaOnly === true;
+  const projectileDeltaOnly = state.projectileDeltaOnly === true;
+  if (!entityDeltaOnly && !projectileDeltaOnly) return false;
   if (
-    state.projectileDeltaOnly === true ||
-    state.projectiles !== undefined ||
     state.minimapEntities !== undefined ||
     state.resourceMovements !== undefined ||
     state.sprayTargets !== undefined ||
@@ -41,16 +42,27 @@ export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot)
   ) {
     return false;
   }
-  const entityWireSource = getEntitySnapshotWireSource(state.entities);
-  if (
-    entityWireSource === undefined ||
-    entityWireSource.count !== state.entities.length ||
-    entityWireSource.typedPlaceholderRows !== entityWireSource.count
-  ) {
+
+  if (entityDeltaOnly) {
+    const entityWireSource = getEntitySnapshotWireSource(state.entities);
+    if (
+      entityWireSource === undefined ||
+      entityWireSource.count !== state.entities.length ||
+      entityWireSource.typedPlaceholderRows !== entityWireSource.count
+    ) {
+      return false;
+    }
+    for (let i = 0; i < state.entities.length; i++) {
+      if (state.entities[i] !== undefined) return false;
+    }
+  } else if (state.entities.length !== 0) {
     return false;
   }
-  for (let i = 0; i < state.entities.length; i++) {
-    if (state.entities[i] !== undefined) return false;
+
+  if (state.projectiles !== undefined) {
+    if (!projectileSnapshotWireSourceHasOnlyMotionRows(state.projectiles)) return false;
+  } else if (projectileDeltaOnly) {
+    return false;
   }
   return true;
 }
@@ -64,9 +76,10 @@ export type LocalGameConnectionOptions = {
   recordSnapshotWireCost?: boolean;
   loopbackSnapshotsThroughWire?: boolean;
   /** Request direct Rust snapshot materialization for local presentation.
-   *  Pure typed entity deltas can then skip DTO decode/materialization; full
-   *  or detail-bearing snapshots still decode from the preencoded bytes so
-   *  entity creation and compatibility views stay intact. */
+   *  Pure typed entity deltas and projectile motion rows can then skip DTO
+   *  decode/materialization; full or detail-bearing snapshots still decode
+   *  from the preencoded bytes so entity creation and compatibility views
+   *  stay intact. */
   directLocalSnapshotMaterialization?: boolean;
   sharesAuthoritativeState?: boolean;
 };

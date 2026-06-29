@@ -48,6 +48,11 @@ import {
   type EntitySnapshotWireSource,
 } from '../../network/stateSerializerEntities';
 import {
+  forEachProjectileWireSourceDespawn,
+  forEachProjectileWireSourceVelocityUpdate,
+  projectileSnapshotWireSourceHasOnlyMotionRows,
+} from '../../network/stateSerializerProjectiles';
+import {
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
@@ -245,6 +250,41 @@ export class SnapshotBuffer {
     out.velocity.z = qvelZ;
     out.targetEntityId = targetEntityId;
     out.clearHomingTarget = clearHomingTarget ? true : null;
+  }
+
+  private pushBufferedProjectileWireSourceMotionRows(
+    projectiles: NonNullable<NetworkServerSnapshot['projectiles']>,
+  ): boolean {
+    if (!projectileSnapshotWireSourceHasOnlyMotionRows(projectiles)) return false;
+    forEachProjectileWireSourceDespawn(
+      projectiles,
+      (id) => this.pushBufferedDespawnId(id),
+    );
+    forEachProjectileWireSourceVelocityUpdate(
+      projectiles,
+      (
+        id,
+        qposX,
+        qposY,
+        qposZ,
+        qvelX,
+        qvelY,
+        qvelZ,
+        targetEntityId,
+        clearHomingTarget,
+      ) => this.pushBufferedVelocityFields(
+        id,
+        qposX,
+        qposY,
+        qposZ,
+        qvelX,
+        qvelY,
+        qvelZ,
+        targetEntityId,
+        clearHomingTarget,
+      ),
+    );
+    return true;
   }
 
   private mergeEntityMotionDeltaIntoPending(
@@ -1089,13 +1129,17 @@ export class SnapshotBuffer {
     ) => {
       if (onBufferedSnapshot !== undefined) onBufferedSnapshot(state);
       const proj = state.projectiles;
-      const packedProjectiles = getPackedProjectileSnapshotWire(proj);
-      if (proj !== undefined && proj.spawns !== undefined) {
+      const consumedDirectProjectileRows =
+        proj !== undefined && this.pushBufferedProjectileWireSourceMotionRows(proj);
+      const packedProjectiles = consumedDirectProjectileRows
+        ? undefined
+        : getPackedProjectileSnapshotWire(proj);
+      if (!consumedDirectProjectileRows && proj !== undefined && proj.spawns !== undefined) {
         for (let i = 0; i < proj.spawns.length; i++) {
           this.pushBufferedSpawn(proj.spawns[i]);
         }
       }
-      if (proj !== undefined && proj.despawns !== undefined) {
+      if (!consumedDirectProjectileRows && proj !== undefined && proj.despawns !== undefined) {
         for (let i = 0; i < proj.despawns.length; i++) {
           this.pushBufferedDespawn(proj.despawns[i]);
         }
@@ -1110,7 +1154,7 @@ export class SnapshotBuffer {
           this.pushBufferedAudio(state.audioEvents[i]);
         }
       }
-      if (proj !== undefined && proj.velocityUpdates !== undefined) {
+      if (!consumedDirectProjectileRows && proj !== undefined && proj.velocityUpdates !== undefined) {
         for (let i = 0; i < proj.velocityUpdates.length; i++) {
           const vu = proj.velocityUpdates[i];
           this.pushBufferedVelocityFields(
@@ -1151,7 +1195,7 @@ export class SnapshotBuffer {
           ),
         );
       }
-      if (proj !== undefined && proj.beamUpdates !== undefined) {
+      if (!consumedDirectProjectileRows && proj !== undefined && proj.beamUpdates !== undefined) {
         for (let i = 0; i < proj.beamUpdates.length; i++) {
           const bu = proj.beamUpdates[i];
           let out = this.bufferedBeamUpdates.get(bu.id);
@@ -1199,7 +1243,10 @@ export class SnapshotBuffer {
       const previousBuildability = this.pendingSnapshot?.buildability;
       this.releasePendingSnapshot();
       const cloneStart = performance.now();
-      const pending = this.snapshotCloner.clone(state);
+      const cloneState = consumedDirectProjectileRows
+        ? { ...state, projectiles: undefined }
+        : state;
+      const pending = this.snapshotCloner.clone(cloneState);
       addSnapshotClientMaterializationStage(
         pending,
         'cloneMerge',

@@ -247,6 +247,23 @@ const _directProjectileVelocityScratch = createPooledVelocityUpdate() as PooledV
 const _directBeamUpdateScratch = createPooledBeamUpdate();
 const _directBeamPointScratch = createPooledBeamPoint();
 
+export function createProjectileSnapshotWireSource(): ProjectileSnapshotWireSource {
+  return {
+    spawns: createFloat64WireRows(),
+    despawns: createUint32WireRows(),
+    velocityUpdates: createFloat64WireRows(),
+    beamUpdates: createFloat64WireRows(),
+    beamPoints: createFloat64WireRows(),
+  };
+}
+
+export function registerProjectileSnapshotWireSource(
+  projectiles: ProjectileSnapshot,
+  source: ProjectileSnapshotWireSource,
+): void {
+  projectileWireSources.set(projectiles, source);
+}
+
 function getPooledBeamUpdate(): NetworkServerSnapshotBeamUpdate {
   let update = _beamUpdatePool[_beamUpdatePoolIndex];
   if (!update) {
@@ -487,6 +504,92 @@ export function getProjectileSnapshotWireSource(
   projectiles: ProjectileSnapshot,
 ): ProjectileSnapshotWireSource | undefined {
   return projectileWireSources.get(projectiles);
+}
+
+export function getActiveProjectileSnapshotWireSource(
+  projectiles: ProjectileSnapshot,
+): ProjectileSnapshotWireSource | undefined {
+  const source = getProjectileSnapshotWireSource(projectiles);
+  if (source === undefined) return undefined;
+  const spawnCount = projectiles.spawns !== undefined ? projectiles.spawns.length : 0;
+  const despawnCount = projectiles.despawns !== undefined ? projectiles.despawns.length : 0;
+  const velocityCount = projectiles.velocityUpdates !== undefined
+    ? projectiles.velocityUpdates.length
+    : 0;
+  const beamCount = projectiles.beamUpdates !== undefined ? projectiles.beamUpdates.length : 0;
+  return (
+    source.spawns.count === spawnCount &&
+    source.despawns.count === despawnCount &&
+    source.velocityUpdates.count === velocityCount &&
+    source.beamUpdates.count === beamCount
+  )
+    ? source
+    : undefined;
+}
+
+export function projectileSnapshotWireSourceHasOnlyMotionRows(
+  projectiles: ProjectileSnapshot,
+): boolean {
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  return (
+    source !== undefined &&
+    source.spawns.count === 0 &&
+    source.beamUpdates.count === 0 &&
+    (source.despawns.count > 0 || source.velocityUpdates.count > 0)
+  );
+}
+
+export function forEachProjectileWireSourceDespawn(
+  projectiles: ProjectileSnapshot,
+  visitor: (id: number) => void,
+): boolean {
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  if (source === undefined) return false;
+  const rows = source.despawns;
+  if (rows.count === 0) return false;
+  for (let i = 0; i < rows.count; i++) {
+    visitor(rows.values[i] ?? 0);
+  }
+  return true;
+}
+
+export type ProjectileWireSourceVelocityUpdateVisitor = (
+  id: number,
+  qposX: number,
+  qposY: number,
+  qposZ: number,
+  qvelX: number,
+  qvelY: number,
+  qvelZ: number,
+  targetEntityId: number | null,
+  clearHomingTarget: boolean,
+) => void;
+
+export function forEachProjectileWireSourceVelocityUpdate(
+  projectiles: ProjectileSnapshot,
+  visitor: ProjectileWireSourceVelocityUpdateVisitor,
+): boolean {
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  if (source === undefined) return false;
+  const rows = source.velocityUpdates;
+  if (rows.count === 0) return false;
+  const values = rows.values;
+  for (let i = 0; i < rows.count; i++) {
+    const base = i * PROJECTILE_VELOCITY_WIRE_STRIDE;
+    const targetEntityId = values[base + 8] ?? 0;
+    visitor(
+      values[base + 0] ?? 0,
+      values[base + 1] ?? 0,
+      values[base + 2] ?? 0,
+      values[base + 3] ?? 0,
+      values[base + 4] ?? 0,
+      values[base + 5] ?? 0,
+      values[base + 6] ?? 0,
+      targetEntityId > 0 ? targetEntityId : null,
+      (values[base + 7] ?? 0) !== 0,
+    );
+  }
+  return true;
 }
 
 function shouldSendProjectileAtPoint(
