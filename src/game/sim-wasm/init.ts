@@ -174,6 +174,7 @@ import __wbg_init, {
   entity_state_set_blueprints,
   entity_state_mark_dirty,
   entity_state_clear_dirty,
+  entity_state_collect_dirty_slots,
   entity_state_set_projectiles_hot_batch,
   entity_state_entity_id_ptr,
   entity_state_kind_ptr,
@@ -1885,6 +1886,11 @@ export interface EntityStateApi {
   ) => void;
   markDirty: (slot: number, dirtyMask: number) => void;
   clearDirty: (slot: number) => void;
+  collectDirtySlots: (
+    slotsOut: Uint32Array,
+    dirtyMasksOut: Uint32Array,
+    clear: boolean,
+  ) => number;
   setProjectilesHotBatch: (
     count: number,
     slots: Uint32Array,
@@ -4341,6 +4347,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           setBlueprints: entity_state_set_blueprints,
           markDirty: entity_state_mark_dirty,
           clearDirty: entity_state_clear_dirty,
+          collectDirtySlots: entity_state_collect_dirty_slots,
           setProjectilesHotBatch: entity_state_set_projectiles_hot_batch,
           entityIdPtr: entity_state_entity_id_ptr,
           kindPtr: entity_state_kind_ptr,

@@ -112,6 +112,25 @@ export function runEntitySlotRegistryContractTest(): void {
     motionViews.angularVelocityY[firstSlot] === -0.02,
     'motion dirty update must refresh angular velocity y',
   );
+  const dirtySlotsOut = new Uint32Array(1);
+  const dirtyMasksOut = new Uint32Array(1);
+  const dirtyOverflow = sim.entityState.collectDirtySlots(
+    new Uint32Array(0),
+    new Uint32Array(0),
+    false,
+  );
+  assertContract(dirtyOverflow === -1, 'dirty slot collection must report required capacity');
+  const dirtyCount = sim.entityState.collectDirtySlots(dirtySlotsOut, dirtyMasksOut, false);
+  assertContract(dirtyCount === 1, 'dirty slot collection must find one dirty entity');
+  assertContract(dirtySlotsOut[0] === firstSlot, 'dirty slot collection must report the entity slot');
+  assertContract(
+    dirtyMasksOut[0] === (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL),
+    'dirty slot collection must report the accumulated mask',
+  );
+  assertContract(motionViews.dirtyMask[firstSlot] === dirtyMasksOut[0], 'dirty collection without clear must keep the mask');
+  const dirtyClearCount = sim.entityState.collectDirtySlots(dirtySlotsOut, dirtyMasksOut, true);
+  assertContract(dirtyClearCount === 1, 'dirty slot collection with clear must report the dirty entity');
+  assertContract(motionViews.dirtyMask[firstSlot] === 0, 'dirty slot collection with clear must clear the mask');
   assertParity(reused);
   sim.entityState.clearDirty(firstSlot);
   spatialGrid.updateUnitSpatial(reused);

@@ -411,6 +411,39 @@ pub fn entity_state_clear_dirty(slot: u32) {
 }
 
 #[wasm_bindgen]
+pub fn entity_state_collect_dirty_slots(
+    slots_out: &mut [u32],
+    dirty_masks_out: &mut [u32],
+    clear: bool,
+) -> i32 {
+    let slab = entity_state();
+    let len = slab.dirty_mask.len();
+    let mut required = 0_usize;
+    for slot in 0..len {
+        if slab.entity_id[slot] >= 0 && slab.dirty_mask[slot] != 0 {
+            required += 1;
+        }
+    }
+    if slots_out.len() < required || dirty_masks_out.len() < required {
+        return -(required as i32);
+    }
+    let mut count = 0_usize;
+    for slot in 0..len {
+        let dirty_mask = slab.dirty_mask[slot];
+        if slab.entity_id[slot] < 0 || dirty_mask == 0 {
+            continue;
+        }
+        slots_out[count] = slot as u32;
+        dirty_masks_out[count] = dirty_mask;
+        count += 1;
+        if clear {
+            slab.dirty_mask[slot] = 0;
+        }
+    }
+    count as i32
+}
+
+#[wasm_bindgen]
 pub fn entity_state_set_projectiles_hot_batch(
     count: u32,
     slots: &[u32],
