@@ -79,6 +79,7 @@ import {
   UNIT_ACTION_FLAG_MOVE_STATE_ROAM,
   UNIT_ACTION_FLAG_TARGET_PRESENT,
   UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE,
+  UNIT_ACTION_FLAG_TRANSPORT_EMPTY,
   UNIT_ACTION_PLAN_ATTACK_GROUND_HOLD,
   UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE,
   UNIT_ACTION_PLAN_ATTACK_HOLD,
@@ -822,9 +823,7 @@ export class Simulation {
         }
       } else if (currentAction.type === 'unloadTransport') {
         if (entity.transport?.loadedUnits.length === 0) {
-          this.advanceAction(entity);
-          unit.stuckTicks = 0;
-          continue;
+          flags |= UNIT_ACTION_FLAG_TRANSPORT_EMPTY;
         }
       } else if (
         currentAction.type === 'build' ||
@@ -868,51 +867,52 @@ export class Simulation {
       } else if (currentAction.type === 'guard' && currentAction.targetId !== undefined) {
         flags |= UNIT_ACTION_FLAG_TARGET_PRESENT;
         const guardTarget = this.world.getEntity(currentAction.targetId);
-        if (!entity.ownership || !isFriendlyGuardTarget(guardTarget, entity.ownership.playerId)) {
-          this.advanceAction(entity);
-          unit.stuckTicks = 0;
-          continue;
-        }
-        flags |= UNIT_ACTION_FLAG_GUARD_FRIENDLY;
+        const guardOwnerId = entity.ownership?.playerId;
+        const isFriendlyGuard =
+          guardOwnerId !== undefined &&
+          isFriendlyGuardTarget(guardTarget, guardOwnerId);
+        if (isFriendlyGuard) {
+          flags |= UNIT_ACTION_FLAG_GUARD_FRIENDLY;
 
-        // Active defend (BAR): a guarding unit helps fight whatever its
-        // guarded ally is currently engaging — prioritize that enemy so the
-        // guard's turrets and combat-halt engage it; cleared when the ally
-        // isn't fighting (turrets fall back to opportunistic acquisition).
-        if (entity.combat !== null && !entity.combat.manualLaunchActive) {
-          let defendId: EntityId | null = null;
-          const allyTargetId = guardTarget.combat !== null ? guardTarget.combat.priorityTargetId : null;
-          if (allyTargetId !== null) {
-            const allyTarget = this.world.getEntity(allyTargetId);
-            if (
-              allyTarget !== undefined &&
-              allyTarget.ownership !== null &&
-              allyTarget.ownership.playerId !== entity.ownership.playerId &&
-              ((allyTarget.unit !== null && allyTarget.unit.hp > 0) ||
-                (allyTarget.building !== null && allyTarget.building.hp > 0))
-            ) {
-              defendId = allyTargetId;
+          // Active defend (BAR): a guarding unit helps fight whatever its
+          // guarded ally is currently engaging — prioritize that enemy so the
+          // guard's turrets and combat-halt engage it; cleared when the ally
+          // isn't fighting (turrets fall back to opportunistic acquisition).
+          if (entity.combat !== null && !entity.combat.manualLaunchActive) {
+            let defendId: EntityId | null = null;
+            const allyTargetId = guardTarget.combat !== null ? guardTarget.combat.priorityTargetId : null;
+            if (allyTargetId !== null) {
+              const allyTarget = this.world.getEntity(allyTargetId);
+              if (
+                allyTarget !== undefined &&
+                allyTarget.ownership !== null &&
+                allyTarget.ownership.playerId !== guardOwnerId &&
+                ((allyTarget.unit !== null && allyTarget.unit.hp > 0) ||
+                  (allyTarget.building !== null && allyTarget.building.hp > 0))
+              ) {
+                defendId = allyTargetId;
+              }
             }
+            entity.combat.priorityTargetId = defendId;
           }
-          entity.combat.priorityTargetId = defendId;
-        }
 
-        if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
-          flags |= UNIT_ACTION_FLAG_COMBAT_STOP_ANY;
-        }
+          if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForEngagedCombat(entity)) {
+            flags |= UNIT_ACTION_FLAG_COMBAT_STOP_ANY;
+          }
 
-        // BAR: a guarding builder continuously services its target — assist
-        // its construction, assist a guarded factory's production, or repair
-        // a damaged ally. Approach the serviced thing within build range so
-        // the energy pass can fund it (the funding itself happens there);
-        // otherwise fall through to plain follow.
-        if (entity.builder !== null) {
-          const service = resolveGuardServiceTarget(this.world, entity);
-          if (service !== null) {
-            flags |= UNIT_ACTION_FLAG_GUARD_SERVICE;
-            serviceTarget = service.target;
-            if (isBuildTargetInRange(entity, service.target)) {
-              flags |= UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE;
+          // BAR: a guarding builder continuously services its target — assist
+          // its construction, assist a guarded factory's production, or repair
+          // a damaged ally. Approach the serviced thing within build range so
+          // the energy pass can fund it (the funding itself happens there);
+          // otherwise fall through to plain follow.
+          if (entity.builder !== null) {
+            const service = resolveGuardServiceTarget(this.world, entity);
+            if (service !== null) {
+              flags |= UNIT_ACTION_FLAG_GUARD_SERVICE;
+              serviceTarget = service.target;
+              if (isBuildTargetInRange(entity, service.target)) {
+                flags |= UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE;
+              }
             }
           }
         }
