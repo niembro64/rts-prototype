@@ -115,6 +115,7 @@ type ServerSnapshotRichDeltaDirectWireInput = {
   currentVisibleEntityIdList: readonly EntityId[] | undefined;
   dirtyIds: readonly EntityId[];
   dirtyFields: readonly number[];
+  dirtySlots: readonly number[];
   gamePhase: GamePhase;
   winnerId: PlayerId | undefined;
   sprayTargets: SprayTarget[] | undefined;
@@ -751,32 +752,56 @@ export class ServerSnapshotDirectWirePreencoder {
     id: EntityId,
     changedFields: number,
     entityViews = entitySlotRegistry.getViews(),
+    slot = -1,
   ): boolean {
     if (changedFields === 0 || (changedFields & ~ENTITY_UNIT_SLAB_DELTA_FIELDS) !== 0) {
       return false;
     }
     if (entityViews === null) return false;
-    const slot = entitySlotRegistry.getSlot(id);
-    if (slot < 0 || slot >= entityViews.capacity || entityViews.entityId[slot] !== id) {
+    let resolvedSlot = slot;
+    if (
+      resolvedSlot < 0 ||
+      resolvedSlot >= entityViews.capacity ||
+      entityViews.entityId[resolvedSlot] !== id
+    ) {
+      resolvedSlot = entitySlotRegistry.getSlot(id);
+    }
+    if (
+      resolvedSlot < 0 ||
+      resolvedSlot >= entityViews.capacity ||
+      entityViews.entityId[resolvedSlot] !== id
+    ) {
       return false;
     }
-    return appendUnitMotionEntityWireRowDirectFromState(entityViews, slot, changedFields);
+    return appendUnitMotionEntityWireRowDirectFromState(entityViews, resolvedSlot, changedFields);
   }
 
   private tryAppendBuildingSlabDeltaRowFromState(
     id: EntityId,
     changedFields: number,
     entityViews = entitySlotRegistry.getViews(),
+    slot = -1,
   ): boolean {
     if (entityViews === null) return false;
-    const slot = entitySlotRegistry.getSlot(id);
-    if (slot < 0 || slot >= entityViews.capacity || entityViews.entityId[slot] !== id) {
+    let resolvedSlot = slot;
+    if (
+      resolvedSlot < 0 ||
+      resolvedSlot >= entityViews.capacity ||
+      entityViews.entityId[resolvedSlot] !== id
+    ) {
+      resolvedSlot = entitySlotRegistry.getSlot(id);
+    }
+    if (
+      resolvedSlot < 0 ||
+      resolvedSlot >= entityViews.capacity ||
+      entityViews.entityId[resolvedSlot] !== id
+    ) {
       return false;
     }
     if ((changedFields & ~ENTITY_BASIC_TRANSFORM_DELTA_FIELDS) === 0) {
-      return appendBasicEntityWireRowDirectFromState(entityViews, slot, changedFields);
+      return appendBasicEntityWireRowDirectFromState(entityViews, resolvedSlot, changedFields);
     }
-    return appendBuildingHotEntityWireRowDirectFromState(entityViews, slot, changedFields);
+    return appendBuildingHotEntityWireRowDirectFromState(entityViews, resolvedSlot, changedFields);
   }
 
   private writeRichDeltaEntityRows(input: ServerSnapshotRichDeltaDirectWireInput): number {
@@ -792,10 +817,11 @@ export class ServerSnapshotDirectWirePreencoder {
         const id = input.dirtyIds[i];
         if (emittedIds.has(id)) continue;
         const changedFields = input.previousVisibleEntityIds.has(id) ? input.dirtyFields[i] : undefined;
+        const slot = input.dirtySlots[i] ?? -1;
         if (
           changedFields !== undefined &&
-          (this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews) ||
-            this.tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews))
+          (this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews, slot) ||
+            this.tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews, slot))
         ) {
           emittedIds.add(id);
           entityCount++;
@@ -846,9 +872,10 @@ export class ServerSnapshotDirectWirePreencoder {
       const id = input.dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIds.has(id)) continue;
+      const slot = input.dirtySlots[i] ?? -1;
       if (
-        this.tryAppendUnitSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews) ||
-        this.tryAppendBuildingSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews)
+        this.tryAppendUnitSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews, slot) ||
+        this.tryAppendBuildingSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews, slot)
       ) {
         emittedIds.add(id);
         entityCount++;

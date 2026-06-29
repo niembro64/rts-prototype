@@ -493,10 +493,15 @@ export class WorldState {
     this.pendingDeathCheckIds.clear();
   }
 
-  drainSnapshotDirtyEntities(outIds: EntityId[], outFields: number[]): void {
+  drainSnapshotDirtyEntities(
+    outIds: EntityId[],
+    outFields: number[],
+    outSlots?: number[],
+  ): void {
     outIds.length = 0;
     outFields.length = 0;
-    if (entitySlotRegistry.drainDirtySnapshotEntities(outIds, outFields)) {
+    if (outSlots !== undefined) outSlots.length = 0;
+    if (entitySlotRegistry.drainDirtySnapshotEntities(outIds, outFields, outSlots)) {
       for (let i = 0; i < this.snapshotDirtyIds.length; i++) {
         this.snapshotDirtyFieldsById[this.snapshotDirtyIds[i]] = 0;
       }
@@ -510,6 +515,7 @@ export class WorldState {
       if (fields === 0) continue;
       outIds.push(id);
       outFields.push(fields);
+      if (outSlots !== undefined) outSlots.push(entitySlotRegistry.getSlot(id));
       this.snapshotDirtyFieldsById[id] = 0;
     }
     this.snapshotDirtyIds.length = 0;

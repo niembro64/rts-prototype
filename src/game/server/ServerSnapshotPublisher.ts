@@ -171,6 +171,7 @@ export class ServerSnapshotPublisher {
   private readonly directWirePreencoder = new ServerSnapshotDirectWirePreencoder();
   private readonly dirtyIdsBuf: EntityId[] = [];
   private readonly dirtyFieldsBuf: number[] = [];
+  private readonly dirtySlotsBuf: number[] = [];
   private readonly removedEntitiesBuf: RemovedSnapshotEntity[] = [];
   private readonly visibilityCache = createSnapshotVisibilityCache();
   private readonly teamAudioCache = new Map<string, SerializerAudioOverride>();
@@ -186,6 +187,7 @@ export class ServerSnapshotPublisher {
     this.reset();
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
+    this.dirtySlotsBuf.length = 0;
     this.removedEntitiesBuf.length = 0;
     this.visibilityCache.clear();
     this.teamAudioCache.clear();
@@ -318,8 +320,13 @@ export class ServerSnapshotPublisher {
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
+    this.dirtySlotsBuf.length = 0;
     this.removedEntitiesBuf.length = 0;
-    input.world.drainSnapshotDirtyEntities(this.dirtyIdsBuf, this.dirtyFieldsBuf);
+    input.world.drainSnapshotDirtyEntities(
+      this.dirtyIdsBuf,
+      this.dirtyFieldsBuf,
+      this.dirtySlotsBuf,
+    );
     input.world.drainRemovedSnapshotEntities(this.removedEntitiesBuf);
     // FOW-OPT-21: removedEntities supersedes removedEntityIds in the
     // serializer — when both are present, the entity-records form
@@ -620,8 +627,13 @@ export class ServerSnapshotPublisher {
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
+    this.dirtySlotsBuf.length = 0;
     this.removedEntitiesBuf.length = 0;
-    input.world.drainSnapshotDirtyEntities(this.dirtyIdsBuf, this.dirtyFieldsBuf);
+    input.world.drainSnapshotDirtyEntities(
+      this.dirtyIdsBuf,
+      this.dirtyFieldsBuf,
+      this.dirtySlotsBuf,
+    );
     input.world.drainRemovedSnapshotEntities(this.removedEntitiesBuf);
 
     const hasProjectileEvents =
@@ -703,6 +715,7 @@ export class ServerSnapshotPublisher {
           currentVisibleEntityIdList: currentVisibleList,
           dirtyIds: this.dirtyIdsBuf,
           dirtyFields: this.dirtyFieldsBuf,
+          dirtySlots: this.dirtySlotsBuf,
           gamePhase,
           winnerId,
           sprayTargets,
@@ -759,6 +772,7 @@ export class ServerSnapshotPublisher {
             currentVisible,
             this.dirtyIdsBuf,
             this.dirtyFieldsBuf,
+            this.dirtySlotsBuf,
           )
         : this.serializeUnfilteredDirtyPresentationEntities(
             input.world,
@@ -766,6 +780,7 @@ export class ServerSnapshotPublisher {
             listener.visibleEntityIds,
             this.dirtyIdsBuf,
             this.dirtyFieldsBuf,
+            this.dirtySlotsBuf,
           );
       const removedEntityIds = currentVisible !== undefined
         ? this.serializeDirtyPresentationRemovalsAndPruneVisibleBaseline(
@@ -944,6 +959,7 @@ export class ServerSnapshotPublisher {
     currentVisibleEntityIdSet: ReadonlySet<EntityId>,
     dirtyIds: readonly EntityId[],
     dirtyFields: readonly number[],
+    dirtySlots: readonly number[],
   ): NetworkServerSnapshot['entities'] {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
@@ -971,7 +987,7 @@ export class ServerSnapshotPublisher {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIdSet.has(id)) continue;
-      if (this.tryPushSlabDeltaEntityRowFromState(entities, id, dirtyFields[i])) {
+      if (this.tryPushSlabDeltaEntityRowFromState(entities, id, dirtyFields[i], dirtySlots[i])) {
         emittedIds.add(id);
         continue;
       }
@@ -997,6 +1013,7 @@ export class ServerSnapshotPublisher {
     previousVisibleEntityIds: ReadonlySet<EntityId>,
     dirtyIds: readonly EntityId[],
     dirtyFields: readonly number[],
+    dirtySlots: readonly number[],
   ): NetworkServerSnapshot['entities'] {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
@@ -1010,7 +1027,7 @@ export class ServerSnapshotPublisher {
       const changedFields = previousVisibleEntityIds.has(id) ? dirtyFields[i] : undefined;
       if (
         changedFields !== undefined &&
-        this.tryPushSlabDeltaEntityRowFromState(entities, id, changedFields)
+        this.tryPushSlabDeltaEntityRowFromState(entities, id, changedFields, dirtySlots[i])
       ) {
         emittedIds.add(id);
         continue;
@@ -1293,11 +1310,12 @@ export class ServerSnapshotPublisher {
     entities: NetworkServerSnapshot['entities'],
     id: EntityId,
     changedFields: number,
+    slot = -1,
   ): boolean {
     const entityViews = entitySlotRegistry.getViews();
     if (
-      this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews) ||
-      this.tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews)
+      this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews, slot) ||
+      this.tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews, slot)
     ) {
       entities.push(undefined as unknown as NetworkServerSnapshotEntity);
       return true;
@@ -1309,18 +1327,30 @@ export class ServerSnapshotPublisher {
     id: EntityId,
     changedFields: number,
     entityViews: EntityStateViews | null,
+    slot = -1,
   ): boolean {
     if (changedFields === 0 || (changedFields & ~ENTITY_UNIT_SLAB_DELTA_FIELDS) !== 0) {
       return false;
     }
     if (entityViews === null) return false;
-    const slot = entitySlotRegistry.getSlot(id);
-    if (slot < 0 || slot >= entityViews.capacity || entityViews.entityId[slot] !== id) {
+    let resolvedSlot = slot;
+    if (
+      resolvedSlot < 0 ||
+      resolvedSlot >= entityViews.capacity ||
+      entityViews.entityId[resolvedSlot] !== id
+    ) {
+      resolvedSlot = entitySlotRegistry.getSlot(id);
+    }
+    if (
+      resolvedSlot < 0 ||
+      resolvedSlot >= entityViews.capacity ||
+      entityViews.entityId[resolvedSlot] !== id
+    ) {
       return false;
     }
     return appendUnitMotionEntityWireRowDirectFromState(
       entityViews,
-      slot,
+      resolvedSlot,
       changedFields,
     );
   }
@@ -1329,16 +1359,28 @@ export class ServerSnapshotPublisher {
     id: EntityId,
     changedFields: number,
     entityViews: EntityStateViews | null,
+    slot = -1,
   ): boolean {
     if (entityViews === null) return false;
-    const slot = entitySlotRegistry.getSlot(id);
-    if (slot < 0 || slot >= entityViews.capacity || entityViews.entityId[slot] !== id) {
+    let resolvedSlot = slot;
+    if (
+      resolvedSlot < 0 ||
+      resolvedSlot >= entityViews.capacity ||
+      entityViews.entityId[resolvedSlot] !== id
+    ) {
+      resolvedSlot = entitySlotRegistry.getSlot(id);
+    }
+    if (
+      resolvedSlot < 0 ||
+      resolvedSlot >= entityViews.capacity ||
+      entityViews.entityId[resolvedSlot] !== id
+    ) {
       return false;
     }
     if ((changedFields & ~ENTITY_BASIC_TRANSFORM_DELTA_FIELDS) === 0) {
-      return appendBasicEntityWireRowDirectFromState(entityViews, slot, changedFields);
+      return appendBasicEntityWireRowDirectFromState(entityViews, resolvedSlot, changedFields);
     }
-    return appendBuildingHotEntityWireRowDirectFromState(entityViews, slot, changedFields);
+    return appendBuildingHotEntityWireRowDirectFromState(entityViews, resolvedSlot, changedFields);
   }
 
   private collectEntityMotionDeltaCandidates(

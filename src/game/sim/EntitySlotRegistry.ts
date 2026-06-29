@@ -518,7 +518,11 @@ export class EntitySlotRegistry {
     this.refreshEntityState(entity, fields, teamId);
   }
 
-  drainDirtySnapshotEntities(outIds: EntityId[], outFields: number[]): boolean {
+  drainDirtySnapshotEntities(
+    outIds: EntityId[],
+    outFields: number[],
+    outSlots?: number[],
+  ): boolean {
     const sim = this.sim();
     if (sim === undefined) return false;
     const views = this.ensureViews();
@@ -541,6 +545,7 @@ export class EntitySlotRegistry {
 
     outIds.length = 0;
     outFields.length = 0;
+    if (outSlots !== undefined) outSlots.length = 0;
     for (let i = 0; i < count; i++) {
       const slot = this.dirtyDrainSlots[i];
       if (slot >= views.capacity) continue;
@@ -548,6 +553,7 @@ export class EntitySlotRegistry {
       if (id < 0) continue;
       outIds.push(id);
       outFields.push(this.dirtyDrainMasks[i]);
+      if (outSlots !== undefined) outSlots.push(slot);
     }
     return true;
   }
