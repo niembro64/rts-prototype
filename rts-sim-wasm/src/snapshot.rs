@@ -7915,6 +7915,70 @@ mod sim_kernel_tests {
         result
     }
 
+    fn run_submerged_unit_force(
+        pos_z: f64,
+        velocity: (f64, f64, f64),
+        has_thrust: bool,
+        water_force: f64,
+        water_traction: f64,
+        water_friction: f64,
+        swim_height_force: f64,
+        swim_counter_ratio: f64,
+    ) -> (f64, f64, f64, u32) {
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = pos_z;
+            p.vel_x[i] = velocity.0;
+            p.vel_y[i] = velocity.1;
+            p.vel_z[i] = velocity.2;
+            p.inv_mass[i] = 1.0 / 2100.0;
+        }
+
+        let slots = [slot];
+        let flags = [UF_FLAG_IN_WATER | if has_thrust { UF_FLAG_HAS_THRUST } else { 0 }];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_DIR_X] = if has_thrust { 1.0 } else { 0.0 };
+        rows[UF_ROW_DIR_Y] = 0.0;
+        rows[UF_ROW_DRIVE_FORCE] = 850.0;
+        rows[UF_ROW_TRACTION] = 0.75;
+        rows[UF_ROW_GROUND_Z] = 0.0;
+        rows[UF_ROW_NORMAL_Z] = 1.0;
+        rows[UF_ROW_WATER_FORCE] = water_force;
+        rows[UF_ROW_WATER_TRACTION] = water_traction;
+        rows[UF_ROW_WATER_FRICTION] = water_friction;
+        rows[UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] = swim_counter_ratio;
+        rows[UF_ROW_SWIM_HEIGHT_FORCE] = swim_height_force;
+
+        assert_eq!(
+            unit_force_step_batch(
+                &slots,
+                &flags,
+                &mut rows,
+                &mut out_flags,
+                1,
+                1.0 / 60.0,
+                20.0,
+                150_000.0,
+                100.0,
+                30.0,
+                2.0 * 30.0_f64.sqrt(),
+            ),
+            1,
+        );
+        let result = (
+            rows[UF_ROW_MOVEMENT_ACCEL_X],
+            rows[UF_ROW_MOVEMENT_ACCEL_Y],
+            rows[UF_ROW_MOVEMENT_ACCEL_Z],
+            out_flags[0],
+        );
+        pool_free_slot(slot);
+        result
+    }
+
     #[test]
     pub(crate) fn flying_traction_controls_thrust_and_turn_authority() {
         let _guard = lock_tests();
@@ -7940,6 +8004,63 @@ mod sim_kernel_tests {
         assert!(
             high_yaw_accel > low_yaw_accel * 10.0,
             "higher traction should turn the flying body faster",
+        );
+    }
+
+    #[test]
+    pub(crate) fn submerged_water_drive_can_bottom_walk_without_vertical_lift() {
+        let _guard = lock_tests();
+        let (ax, ay, az, out_flags) =
+            run_submerged_unit_force(4.0, (0.0, 0.0, 0.0), true, 1200.0, 0.5, 0.0, 0.0, 0.25);
+
+        assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert!(
+            ax > 0.0,
+            "waterForce plus waterTraction should drive forward"
+        );
+        assert!(ay.abs() < 1e-12);
+        assert!(
+            az.abs() < 1e-12,
+            "zero swimHeightUpwardForce should not inject vertical lift"
+        );
+    }
+
+    #[test]
+    pub(crate) fn submerged_water_friction_opposes_velocity() {
+        let _guard = lock_tests();
+        let (ax, ay, az, out_flags) =
+            run_submerged_unit_force(4.0, (50.0, -20.0, 10.0), false, 1200.0, 0.5, 1.5, 0.0, 0.25);
+
+        assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert!(ax < 0.0, "water friction should damp positive x velocity");
+        assert!(ay > 0.0, "water friction should damp negative y velocity");
+        assert!(az < 0.0, "water friction should damp upward z velocity");
+    }
+
+    #[test]
+    pub(crate) fn swim_height_lift_targets_authored_water_column_depth() {
+        let _guard = lock_tests();
+        let (_low_x, _low_y, low_z, low_flags) =
+            run_submerged_unit_force(4.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.25);
+        let (_stable_x, _stable_y, stable_z, stable_flags) =
+            run_submerged_unit_force(16.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.25);
+        let (_high_x, _high_y, high_z, high_flags) =
+            run_submerged_unit_force(40.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.25);
+
+        assert_ne!(low_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert_ne!(stable_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert_ne!(high_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert!(
+            low_z > stable_z,
+            "below the swim-height target, lift should exceed equilibrium"
+        );
+        assert!(
+            (stable_z - GRAVITY).abs() < 1e-9,
+            "at the authored target height, lift should cancel integrator gravity"
+        );
+        assert!(
+            high_z < stable_z && high_z < GRAVITY,
+            "above the swim-height target, net gravity should make the unit sink"
         );
     }
 
