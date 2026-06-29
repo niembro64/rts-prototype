@@ -1552,7 +1552,14 @@ export class ClientViewState {
     source: EntitySnapshotWireSource,
     now: number,
   ): void {
-    const values = source.unitRows.values;
+    this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
+  }
+
+  private applyUnitHotMotionTypedRows(
+    values: Float64Array,
+    count: number,
+    now: number,
+  ): void {
     const serverTargets = this.serverTargets;
     const activeEntityPredictionIds = this.activeEntityPredictionIds;
     const posScale = ENTITY_POSITION_WIRE_INV_SCALE;
@@ -1561,7 +1568,7 @@ export class ClientViewState {
     const normalScale = NORMAL_WIRE_INV_SCALE;
     for (
       let rowIndex = 0, base = 0;
-      rowIndex < source.unitRows.count;
+      rowIndex < count;
       rowIndex++, base += ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
     ) {
       const changedFields = values[base + 7] | 0;
@@ -1640,30 +1647,38 @@ export class ClientViewState {
       }
     }
     const unitValues = source.unitRows.values;
-    for (let rowIndex = 0; rowIndex < source.unitRows.count; rowIndex++) {
-      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-      const changedFields = unitValues[base + 7] | 0;
-      if (
-        unitValues[base + 6] !== 0 &&
-        changedFields !== 0 &&
-        (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
-      ) {
-        this.tryApplyUnitHotMotionTypedDeltaWireRow(
-          unitValues,
-          base,
-          changedFields,
+    if (
+      source.unitRows.count > 0 &&
+      source.unitChangedFieldsOr !== 0 &&
+      (source.unitChangedFieldsOr & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
+    ) {
+      this.applyUnitHotMotionTypedRows(unitValues, source.unitRows.count, now);
+    } else {
+      for (let rowIndex = 0; rowIndex < source.unitRows.count; rowIndex++) {
+        const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+        const changedFields = unitValues[base + 7] | 0;
+        if (
+          unitValues[base + 6] !== 0 &&
+          changedFields !== 0 &&
+          (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
+        ) {
+          this.tryApplyUnitHotMotionTypedDeltaWireRow(
+            unitValues,
+            base,
+            changedFields,
+            now,
+          );
+          continue;
+        }
+        this.tryApplyUnitTypedDeltaWireRowAt(
+          source,
+          rowIndex,
           now,
+          false,
+          deferPredictedTurretRenderRefresh,
+          applyStats,
         );
-        continue;
       }
-      this.tryApplyUnitTypedDeltaWireRowAt(
-        source,
-        rowIndex,
-        now,
-        false,
-        deferPredictedTurretRenderRefresh,
-        applyStats,
-      );
     }
     for (let rowIndex = 0; rowIndex < source.buildingRows.count; rowIndex++) {
       this.tryApplyBuildingTypedDeltaWireRowAt(
