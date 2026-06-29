@@ -82,11 +82,15 @@ export function snapshotEntityRowComposition(
   state: NetworkServerSnapshot,
 ): SnapshotEntityRowComposition {
   const entities = state.entities;
-  let entityDtoRows = 0;
-  for (let i = 0; i < entities.length; i++) {
-    if (entities[i] !== undefined) entityDtoRows++;
-  }
   const source = getEntitySnapshotWireSource(entities);
+  let entityDtoRows = 0;
+  if (source !== undefined && source.count === entities.length) {
+    entityDtoRows = source.nonPlaceholderEntityRows;
+  } else {
+    for (let i = 0; i < entities.length; i++) {
+      if (entities[i] !== undefined) entityDtoRows++;
+    }
+  }
   return {
     entityDtoRows,
     entityTypedRows: source?.typedEntityRows ?? 0,

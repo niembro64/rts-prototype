@@ -1356,6 +1356,13 @@ export function runClientSnapshotApplierContractTest(): void {
       mixedGenericSource.nonPlaceholderEntityIndices[0] === 1,
     'mixed generic fixture must expose compact typed and DTO row metadata',
   );
+  const mixedGenericComposition = snapshotEntityRowComposition(snapshot(7, mixedGenericRows));
+  assertContract(
+    mixedGenericComposition.entityDtoRows === 1 &&
+      mixedGenericComposition.entityTypedRows === 1 &&
+      mixedGenericComposition.entityTypedPlaceholderRows === 1,
+    'mixed generic row composition must use compact source counts',
+  );
   const mixedGenericSnapshot = installMaterializationMetadata(snapshot(7, mixedGenericRows));
   mixedGenericSnapshot.entityDeltaOnly = true;
   mixedGenericView.applyNetworkState(mixedGenericSnapshot, {
