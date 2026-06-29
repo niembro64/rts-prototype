@@ -1018,6 +1018,22 @@ export class ClientViewState {
     applyStats: ClientSnapshotApplyStats,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
+    return this.tryApplyUnitTypedDeltaWireRowAt(
+      source,
+      rowIndex,
+      now,
+      collectCorrectionStats,
+      applyStats,
+    );
+  }
+
+  private tryApplyUnitTypedDeltaWireRowAt(
+    source: EntitySnapshotWireSource,
+    rowIndex: number,
+    now: number,
+    collectCorrectionStats: boolean,
+    applyStats: ClientSnapshotApplyStats,
+  ): boolean {
     if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
     const values = source.unitRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
@@ -1508,30 +1524,30 @@ export class ClientViewState {
     now: number,
     applyStats: ClientSnapshotApplyStats,
   ): void {
-    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
-      switch (source.kinds[entityIndex]) {
-        case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
-          this.tryApplyBasicTypedDeltaWireRow(
-            source,
-            entityIndex,
-            now,
-            false,
-            applyStats,
-          );
-          break;
-        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
-          this.tryApplyUnitTypedDeltaWireRow(
-            source,
-            entityIndex,
-            now,
-            false,
-            applyStats,
-          );
-          break;
-        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
-          this.tryApplyBuildingTypedDeltaWireRow(source, entityIndex, now);
-          break;
+    const basicValues = source.basicRows.values;
+    for (let rowIndex = 0; rowIndex < source.basicRows.count; rowIndex++) {
+      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+      const changedFields = basicValues[base + 8] | 0;
+      if (basicValues[base + 7] !== 0 && changedFields !== 0) {
+        this.applyBasicTransformTypedDeltaWireRow(
+          basicValues,
+          base,
+          changedFields,
+          now,
+        );
       }
+    }
+    for (let rowIndex = 0; rowIndex < source.unitRows.count; rowIndex++) {
+      this.tryApplyUnitTypedDeltaWireRowAt(
+        source,
+        rowIndex,
+        now,
+        false,
+        applyStats,
+      );
+    }
+    for (let rowIndex = 0; rowIndex < source.buildingRows.count; rowIndex++) {
+      this.tryApplyBuildingTypedDeltaWireRowAt(source, rowIndex, now);
     }
   }
 
@@ -1541,6 +1557,14 @@ export class ClientViewState {
     now: number,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
+    return this.tryApplyBuildingTypedDeltaWireRowAt(source, rowIndex, now);
+  }
+
+  private tryApplyBuildingTypedDeltaWireRowAt(
+    source: EntitySnapshotWireSource,
+    rowIndex: number,
+    now: number,
+  ): boolean {
     if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
     const values = source.buildingRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
