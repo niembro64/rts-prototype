@@ -40,4 +40,8 @@ export function runClientEntityIdSetContractTest(): void {
   assertContract(clearedSize === 0, 'clear empties Set storage');
   assertContract(!set.has(second), 'clear empties indexed storage');
   assertContract(!set.has(highId), 'clear empties fallback storage');
+
+  set.add(second);
+  assertContract(set.has(second), 'indexed id can be re-added after clear');
+  assertContract([...set].join(',') === '7', 're-add after clear keeps Set iteration semantics');
 }
