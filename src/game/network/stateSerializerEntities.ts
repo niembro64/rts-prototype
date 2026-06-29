@@ -808,7 +808,8 @@ export function appendUnitMotionEntityWireRowDirectFromState(
   const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
   const values = rows.values;
   const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-  values.fill(0, base, base + ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+  values.fill(0, base + 13, base + 23);
+  values.fill(0, base + 36, base + ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
 
   const hasOrientation =
     hasRot &&
@@ -875,7 +876,8 @@ export function appendBuildingHotEntityWireRowDirectFromState(
   const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
   const values = rows.values;
   const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
-  values.fill(0, base, base + ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
+  values.fill(0, base + 8, base + 13);
+  values.fill(0, base + 15, base + ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
 
   const hasPos = (changedFields & ENTITY_CHANGED_POS) !== 0;
   const hasRot = (changedFields & ENTITY_CHANGED_ROT) !== 0;

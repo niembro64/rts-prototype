@@ -255,6 +255,50 @@ export function runSnapshotEntityWirePackContractTest(): void {
     'entity-state motion typed row must mirror canonical slab motion fields',
   );
 
+  const staleUnitSlots = [
+    13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+    36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+    46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
+    56, 57, 58, 59, 60, 61, 62, 63,
+  ];
+  for (let i = 0; i < staleUnitSlots.length; i++) {
+    slabSource.unitRows.values[slabWireBase + staleUnitSlots[i]] = 9000 + i;
+  }
+  const staleSlabMotionEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendUnitMotionEntityWireRowDirectFromState(
+      createMotionEntityStateViews(),
+      0,
+      ENTITY_CHANGED_POS |
+        ENTITY_CHANGED_ROT |
+        ENTITY_CHANGED_VEL |
+        ENTITY_CHANGED_NORMAL,
+    ),
+    'stale-cleared entity-state motion row must append from slab views',
+  );
+  staleSlabMotionEntities.length = 1;
+  registerEntitySnapshotWireSource(staleSlabMotionEntities);
+  const staleSlabMotionSource = getEntitySnapshotWireSource(staleSlabMotionEntities);
+  assertContract(staleSlabMotionSource !== undefined, 'stale-cleared slab source must register');
+  const staleSlabMotionBase =
+    staleSlabMotionSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  for (let i = 0; i < staleUnitSlots.length; i++) {
+    assertContract(
+      staleSlabMotionSource.unitRows.values[staleSlabMotionBase + staleUnitSlots[i]] === 0,
+      `stale unit slab row slot ${staleUnitSlots[i]} must be cleared`,
+    );
+  }
+  const staleMotionV6Bytes = encodeEntitiesV6Bytes(staleSlabMotionSource);
+  assertContract(staleMotionV6Bytes !== null, 'stale-cleared slab motion source must encode');
+  const packedStaleMotionV6 = msgpackDecode(
+    staleMotionV6Bytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  assertContract(
+    packedStaleMotionV6.m !== undefined && packedStaleMotionV6.e === undefined,
+    'stale-cleared slab motion row must stay on compact movement wire path',
+  );
+
   const slabHpEntities: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();
   assertContract(
@@ -350,6 +394,47 @@ export function runSnapshotEntityWirePackContractTest(): void {
     decodedBuildingV6Source !== undefined &&
       decodedBuildingV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     'Rust V6 compact building decode must expose typed building source metadata',
+  );
+
+  const staleBuildingSlots: number[] = [];
+  for (let slot = 8; slot < 13; slot++) staleBuildingSlots.push(slot);
+  for (let slot = 15; slot < ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE; slot++) {
+    staleBuildingSlots.push(slot);
+  }
+  for (let i = 0; i < staleBuildingSlots.length; i++) {
+    slabBuildingHpSource.buildingRows.values[slabBuildingHpWireBase + staleBuildingSlots[i]] =
+      8000 + i;
+  }
+  const staleBuildingEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendBuildingHotEntityWireRowDirectFromState(
+      createBuildingEntityStateViews(),
+      0,
+      ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    ),
+    'stale-cleared building HP row must append from slab views',
+  );
+  staleBuildingEntities.length = 1;
+  registerEntitySnapshotWireSource(staleBuildingEntities);
+  const staleBuildingSource = getEntitySnapshotWireSource(staleBuildingEntities);
+  assertContract(staleBuildingSource !== undefined, 'stale-cleared building source must register');
+  const staleBuildingBase =
+    staleBuildingSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  for (let i = 0; i < staleBuildingSlots.length; i++) {
+    assertContract(
+      staleBuildingSource.buildingRows.values[staleBuildingBase + staleBuildingSlots[i]] === 0,
+      `stale building slab row slot ${staleBuildingSlots[i]} must be cleared`,
+    );
+  }
+  const staleBuildingV6Bytes = encodeEntitiesV6Bytes(staleBuildingSource);
+  assertContract(staleBuildingV6Bytes !== null, 'stale-cleared slab building source must encode');
+  const packedStaleBuildingV6 = msgpackDecode(
+    staleBuildingV6Bytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  assertContract(
+    packedStaleBuildingV6.b !== undefined && packedStaleBuildingV6.e === undefined,
+    'stale-cleared slab building row must stay on compact building wire path',
   );
 
   const buildingDeltaEntities = unpackEntitiesFromWire({
