@@ -732,6 +732,106 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   view.assertRenderEntityStateParity(id);
 
+  wireMotionEntity.unit.hp = 37;
+  wireMotionEntity.unit.maxHp = 100;
+  const metadataOnlyPackedHpRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(metadataOnlyPackedHpRows);
+  const metadataOnlyPackedHpRow = serializeEntityDeltaSnapshot(
+    wireMotionEntity,
+    ENTITY_CHANGED_HP,
+    {} as WorldState,
+  );
+  if (metadataOnlyPackedHpRow !== null) {
+    metadataOnlyPackedHpRows.push(metadataOnlyPackedHpRow as NetworkServerSnapshotEntity);
+  }
+  const metadataOnlyPackedHpSnapshot = snapshot(8, metadataOnlyPackedHpRows);
+  metadataOnlyPackedHpSnapshot.entityDeltaOnly = true;
+  const encodedPackedHp = encodeNetworkSnapshotWithRustFallback(metadataOnlyPackedHpSnapshot);
+  if (encodedPackedHp === null) {
+    throw new Error('[client snapshot applier contract] packed HP fixture must encode');
+  }
+  const decodedPackedHp = decodeNetworkSnapshot(encodedPackedHp.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  assertContract(
+    decodedPackedHp.entities.length === 1 &&
+      decodedPackedHp.entities[0] === undefined,
+    'packed metadata-only HP decode must omit typed delta DTO placeholders',
+  );
+  view.applyNetworkState(decodedPackedHp);
+  resetEntitySnapshotPool();
+  assertContract(
+    view.getEntity(id)?.unit?.hp === 37,
+    'packed metadata-only HP rows must apply from decoded wire rows',
+  );
+  view.assertRenderEntityStateParity(id);
+  assertHudContains(view, id, true);
+
+  wireMotionEntity.buildable = createBuildable(
+    { energy: 100, metal: 50 },
+    {
+      paid: { energy: 45, metal: 22 },
+      isGhost: null,
+      isInterrupted: false,
+      healthBuildFraction: null,
+    },
+  );
+  const metadataOnlyPackedBuildRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(metadataOnlyPackedBuildRows);
+  const metadataOnlyPackedBuildRow = serializeEntityDeltaSnapshot(
+    wireMotionEntity,
+    ENTITY_CHANGED_BUILDING,
+    {} as WorldState,
+  );
+  if (metadataOnlyPackedBuildRow !== null) {
+    metadataOnlyPackedBuildRows.push(metadataOnlyPackedBuildRow as NetworkServerSnapshotEntity);
+  }
+  assertContract(
+    metadataOnlyPackedBuildRows.length === 1 &&
+      (metadataOnlyPackedBuildRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+    'typed metadata-only build rows must omit DTO placeholders',
+  );
+  const metadataOnlyPackedBuildSnapshot = snapshot(9, metadataOnlyPackedBuildRows);
+  metadataOnlyPackedBuildSnapshot.entityDeltaOnly = true;
+  view.applyNetworkState(metadataOnlyPackedBuildSnapshot);
+  resetEntitySnapshotPool();
+  const unitAfterPackedBuild = view.getEntity(id);
+  assertContract(
+    unitAfterPackedBuild?.buildable?.paid.energy === 45 &&
+      unitAfterPackedBuild.buildable.paid.metal === 22,
+    'typed metadata-only build rows must apply from source wire rows',
+  );
+  view.assertRenderEntityStateParity(id);
+
+  wireMotionEntity.buildable = null;
+  const metadataOnlyBuildCompleteRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(metadataOnlyBuildCompleteRows);
+  const metadataOnlyBuildCompleteRow = serializeEntityDeltaSnapshot(
+    wireMotionEntity,
+    ENTITY_CHANGED_BUILDING,
+    {} as WorldState,
+  );
+  if (metadataOnlyBuildCompleteRow !== null) {
+    metadataOnlyBuildCompleteRows.push(metadataOnlyBuildCompleteRow as NetworkServerSnapshotEntity);
+  }
+  assertContract(
+    metadataOnlyBuildCompleteRows.length === 1 &&
+      (metadataOnlyBuildCompleteRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+    'typed metadata-only build completion rows must omit DTO placeholders',
+  );
+  const metadataOnlyBuildCompleteSnapshot = snapshot(10, metadataOnlyBuildCompleteRows);
+  metadataOnlyBuildCompleteSnapshot.entityDeltaOnly = true;
+  view.applyNetworkState(metadataOnlyBuildCompleteSnapshot);
+  resetEntitySnapshotPool();
+  assertContract(
+    view.getEntity(id)?.buildable === null,
+    'typed metadata-only build completion rows must apply from source wire rows',
+  );
+  view.assertRenderEntityStateParity(id);
+
   const buildingView = new ClientViewState();
   const buildingId = 501;
   buildingView.applyNetworkState(snapshot(1, [fullBuildingEntity(buildingId, 80, 120)]));
@@ -842,6 +942,45 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     buildingSource.buildable === null,
     'typed building build completion rows must clear build state from wire rows before DTO fallback',
+  );
+  buildingView.assertRenderEntityStateParity(buildingId);
+
+  buildingSource.building.hp = 33;
+  buildingSource.building.maxHp = 120;
+  const metadataOnlyPackedBuildingHpRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(metadataOnlyPackedBuildingHpRows);
+  const metadataOnlyPackedBuildingHpRow = serializeEntityDeltaSnapshot(
+    buildingSource,
+    ENTITY_CHANGED_HP,
+    {} as WorldState,
+  );
+  if (metadataOnlyPackedBuildingHpRow !== null) {
+    metadataOnlyPackedBuildingHpRows.push(metadataOnlyPackedBuildingHpRow as NetworkServerSnapshotEntity);
+  }
+  buildingSource.building.hp = 80;
+  buildingSource.building.maxHp = 120;
+  const metadataOnlyPackedBuildingHpSnapshot = snapshot(5, metadataOnlyPackedBuildingHpRows);
+  metadataOnlyPackedBuildingHpSnapshot.entityDeltaOnly = true;
+  const encodedPackedBuildingHp = encodeNetworkSnapshotWithRustFallback(
+    metadataOnlyPackedBuildingHpSnapshot,
+  );
+  if (encodedPackedBuildingHp === null) {
+    throw new Error('[client snapshot applier contract] packed building HP fixture must encode');
+  }
+  const decodedPackedBuildingHp = decodeNetworkSnapshot(encodedPackedBuildingHp.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  assertContract(
+    decodedPackedBuildingHp.entities.length === 1 &&
+      decodedPackedBuildingHp.entities[0] === undefined,
+    'packed metadata-only building HP decode must omit typed delta DTO placeholders',
+  );
+  buildingView.applyNetworkState(decodedPackedBuildingHp);
+  resetEntitySnapshotPool();
+  assertContract(
+    buildingView.getEntity(buildingId)?.building?.hp === 33,
+    'packed metadata-only building HP rows must apply from decoded wire rows',
   );
   buildingView.assertRenderEntityStateParity(buildingId);
 

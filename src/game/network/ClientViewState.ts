@@ -161,10 +161,16 @@ const CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const CLIENT_UNIT_METADATA_DELTA_FIELDS =
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_BUILDING;
 const CLIENT_UNIT_TYPED_DELTA_FIELDS =
   CLIENT_UNIT_MOTION_DELTA_FIELDS |
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING;
+const CLIENT_BUILDING_METADATA_DELTA_FIELDS =
+  ENTITY_CHANGED_HP |
   ENTITY_CHANGED_BUILDING;
 const CLIENT_BUILDING_TYPED_DELTA_FIELDS =
   ENTITY_CHANGED_POS |
@@ -994,38 +1000,18 @@ export class ClientViewState {
       );
     }
 
-    const mayAffectHealthBarCache = hasHpFields || hasBuildFields;
-    const healthBarCacheMemberBefore = mayAffectHealthBarCache
-      ? this.unitHealthBarCacheMembership(existing)
-      : false;
+    const refreshHealth = this.applyUnitHpBuildTypedFields(
+      existing,
+      values,
+      base,
+      hasHpFields,
+      hasBuildFields,
+    );
 
-    if (hasHpFields) {
-      existing.unit.hp = values[base + 8];
-      existing.unit.maxHp = values[base + 9];
-    }
-
-    if (hasBuildFields) {
-      const hasBuildPayload = values[base + 45] !== 0;
-      applyNetworkBuildStateFields(
-        existing,
-        !hasBuildPayload || values[base + 46] !== 0,
-        values[base + 63] !== 0,
-        values[base + 47],
-        values[base + 48],
-        getUnitBuildRequired(existing.unit.unitBlueprintId),
-      );
-    }
-
-    if (mayAffectHealthBarCache) {
-      if (healthBarCacheMemberBefore !== this.unitHealthBarCacheMembership(existing)) {
-        this.cache.refreshHealthBarEntity(existing);
-      }
-    }
-
-    if (hasHpFields || hasBuildFields || copiedTurretRows) {
+    if (refreshHealth || copiedTurretRows) {
       this.refreshRenderableEntityStateSnapshotDelta(
         existing,
-        hasHpFields || hasBuildFields,
+        refreshHealth,
         copiedTurretRows,
         hasBuildFields,
       );
@@ -1141,6 +1127,246 @@ export class ClientViewState {
     }
   }
 
+  private canApplyUnitMetadataTypedDeltaWireRow(
+    source: EntitySnapshotWireSource,
+    entityIndex: number,
+  ): boolean {
+    const rowIndex = source.rowIndices[entityIndex];
+    if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
+    const values = source.unitRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    const changedFields = values[base + 7] | 0;
+    if (values[base + 6] === 0 || changedFields === 0) return false;
+    if ((changedFields & ~CLIENT_UNIT_METADATA_DELTA_FIELDS) !== 0) return false;
+    if ((changedFields & CLIENT_UNIT_METADATA_DELTA_FIELDS) === 0) return false;
+
+    const id = values[base + 0] | 0;
+    const playerId = values[base + 5] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.unit === null) return false;
+    const ownership = existing.ownership;
+    return ownership !== null && ownership.playerId === playerId;
+  }
+
+  private applyUnitHpBuildTypedFields(
+    existing: Entity,
+    values: Float64Array,
+    base: number,
+    hasHpFields: boolean,
+    hasBuildFields: boolean,
+  ): boolean {
+    const refreshHealth = hasHpFields || hasBuildFields;
+    if (!refreshHealth) return false;
+    const healthBarCacheMemberBefore = this.unitHealthBarCacheMembership(existing);
+
+    if (hasHpFields && existing.unit !== null) {
+      existing.unit.hp = values[base + 8];
+      existing.unit.maxHp = values[base + 9];
+    }
+
+    if (hasBuildFields && existing.unit !== null) {
+      const hasBuildPayload = values[base + 45] !== 0;
+      applyNetworkBuildStateFields(
+        existing,
+        !hasBuildPayload || values[base + 46] !== 0,
+        values[base + 63] !== 0,
+        values[base + 47],
+        values[base + 48],
+        getUnitBuildRequired(existing.unit.unitBlueprintId),
+      );
+    }
+
+    if (healthBarCacheMemberBefore !== this.unitHealthBarCacheMembership(existing)) {
+      this.cache.refreshHealthBarEntity(existing);
+    }
+    return true;
+  }
+
+  private applyUnitMetadataTypedDeltaWireRow(
+    values: Float64Array,
+    base: number,
+    changedFields: number,
+  ): void {
+    const id = values[base + 0] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.unit === null) return;
+    const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
+    const hasBuildFields = (changedFields & ENTITY_CHANGED_BUILDING) !== 0;
+    const refreshHealth = this.applyUnitHpBuildTypedFields(
+      existing,
+      values,
+      base,
+      hasHpFields,
+      hasBuildFields,
+    );
+
+    this.refreshRenderableEntityStateSnapshotDelta(
+      existing,
+      refreshHealth,
+      false,
+      hasBuildFields,
+    );
+  }
+
+  private canApplyBuildingMetadataTypedDeltaWireRow(
+    source: EntitySnapshotWireSource,
+    entityIndex: number,
+  ): boolean {
+    const rowIndex = source.rowIndices[entityIndex];
+    if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
+    const values = source.buildingRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+    const changedFields = values[base + 7] | 0;
+    if (values[base + 6] === 0 || changedFields === 0) return false;
+    if ((changedFields & ~CLIENT_BUILDING_METADATA_DELTA_FIELDS) !== 0) return false;
+    if ((changedFields & CLIENT_BUILDING_METADATA_DELTA_FIELDS) === 0) return false;
+
+    const id = values[base + 0] | 0;
+    const playerId = values[base + 5] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.building === null) return false;
+    const ownership = existing.ownership;
+    return ownership !== null && ownership.playerId === playerId;
+  }
+
+  private applyBuildingHpBuildTypedFields(
+    existing: Entity,
+    values: Float64Array,
+    base: number,
+    hasHpFields: boolean,
+    hasBuildFields: boolean,
+  ): boolean {
+    const refreshHealth = hasHpFields || hasBuildFields;
+    if (!refreshHealth) return false;
+    const building = existing.building;
+    if (building === null) return false;
+    const healthBarCacheMemberBefore = this.buildingHealthBarCacheMembership(existing);
+
+    if (hasHpFields) {
+      building.hp = values[base + 13];
+      building.maxHp = values[base + 14];
+    }
+
+    if (hasBuildFields) {
+      applyNetworkBuildStateFields(
+        existing,
+        values[base + 15] !== 0,
+        values[base + 34] !== 0,
+        values[base + 16],
+        values[base + 17],
+        getBuildingBuildRequired(existing.buildingBlueprintId),
+      );
+      if (values[base + 18] !== 0) {
+        existing.metalExtractionRate = values[base + 19];
+      }
+      if (values[base + 20] !== 0) {
+        const activeState = building.activeState;
+        building.activeState = {
+          open: values[base + 21] !== 0,
+          damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
+          reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
+        };
+      }
+    }
+
+    if (healthBarCacheMemberBefore !== this.buildingHealthBarCacheMembership(existing)) {
+      this.cache.refreshHealthBarEntity(existing);
+    }
+    return true;
+  }
+
+  private applyBuildingMetadataTypedDeltaWireRow(
+    values: Float64Array,
+    base: number,
+    changedFields: number,
+  ): void {
+    const id = values[base + 0] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.building === null) return;
+    const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
+    const hasBuildFields = (changedFields & ENTITY_CHANGED_BUILDING) !== 0;
+    const refreshHealth = this.applyBuildingHpBuildTypedFields(
+      existing,
+      values,
+      base,
+      hasHpFields,
+      hasBuildFields,
+    );
+
+    this.refreshRenderableEntityStateSnapshotDelta(
+      existing,
+      refreshHealth,
+      false,
+      hasBuildFields,
+    );
+    this.dirtyBuildingRenderIds.add(id);
+  }
+
+  private canApplyMetadataTypedDeltaSource(
+    source: EntitySnapshotWireSource,
+    entities: readonly (NetworkServerSnapshotEntity | undefined)[],
+  ): boolean {
+    const count = source.count;
+    if (count === 0 || count !== entities.length) return false;
+    if (
+      source.basicRows.count !== 0 ||
+      source.actionRows.count !== 0 ||
+      source.turretRows.count !== 0 ||
+      source.factorySelectedUnitRows.count !== 0 ||
+      source.waypointRows.count !== 0
+    ) {
+      return false;
+    }
+
+    let unitRowCount = 0;
+    let buildingRowCount = 0;
+    for (let entityIndex = 0; entityIndex < count; entityIndex++) {
+      if (entities[entityIndex] !== undefined) return false;
+      switch (source.kinds[entityIndex]) {
+        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+          unitRowCount++;
+          if (!this.canApplyUnitMetadataTypedDeltaWireRow(source, entityIndex)) return false;
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+          buildingRowCount++;
+          if (!this.canApplyBuildingMetadataTypedDeltaWireRow(source, entityIndex)) return false;
+          break;
+        default:
+          return false;
+      }
+    }
+    return unitRowCount === source.unitRows.count &&
+      buildingRowCount === source.buildingRows.count;
+  }
+
+  private applyMetadataTypedDeltaSource(source: EntitySnapshotWireSource): void {
+    const unitValues = source.unitRows.values;
+    const buildingValues = source.buildingRows.values;
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      const rowIndex = source.rowIndices[entityIndex];
+      switch (source.kinds[entityIndex]) {
+        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT: {
+          const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+          this.applyUnitMetadataTypedDeltaWireRow(
+            unitValues,
+            base,
+            unitValues[base + 7] | 0,
+          );
+          break;
+        }
+        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING: {
+          const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+          this.applyBuildingMetadataTypedDeltaWireRow(
+            buildingValues,
+            base,
+            buildingValues[base + 7] | 0,
+          );
+          break;
+        }
+      }
+    }
+  }
+
   private tryApplyBuildingTypedDeltaWireRow(
     source: EntitySnapshotWireSource,
     entityIndex: number,
@@ -1204,50 +1430,20 @@ export class ClientViewState {
     }
     if (target !== undefined) target.updatedAtMs = now;
 
-    const mayAffectHealthBarCache = hasHpFields || hasBuildFields;
-    const healthBarCacheMemberBefore = mayAffectHealthBarCache
-      ? this.buildingHealthBarCacheMembership(existing)
-      : false;
-
-    if (hasHpFields) {
-      existing.building.hp = values[base + 13];
-      existing.building.maxHp = values[base + 14];
-    }
-
-    if (hasBuildFields) {
-      applyNetworkBuildStateFields(
-        existing,
-        values[base + 15] !== 0,
-        values[base + 34] !== 0,
-        values[base + 16],
-        values[base + 17],
-        getBuildingBuildRequired(existing.buildingBlueprintId),
-      );
-      if (values[base + 18] !== 0) {
-        existing.metalExtractionRate = values[base + 19];
-      }
-      if (values[base + 20] !== 0) {
-        const activeState = existing.building.activeState;
-        existing.building.activeState = {
-          open: values[base + 21] !== 0,
-          damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
-          reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
-        };
-      }
-    }
-
-    if (mayAffectHealthBarCache) {
-      if (healthBarCacheMemberBefore !== this.buildingHealthBarCacheMembership(existing)) {
-        this.cache.refreshHealthBarEntity(existing);
-      }
-    }
+    const refreshHealth = this.applyBuildingHpBuildTypedFields(
+      existing,
+      values,
+      base,
+      hasHpFields,
+      hasBuildFields,
+    );
 
     if (hasMotionFields) {
       this.refreshRenderableEntityStateFromSnapshot(existing, hasMotionFields);
-    } else if (hasHpFields || hasBuildFields || copiedTurretRows) {
+    } else if (refreshHealth || copiedTurretRows) {
       this.refreshRenderableEntityStateSnapshotDelta(
         existing,
-        hasHpFields || hasBuildFields,
+        refreshHealth,
         copiedTurretRows,
         hasBuildFields,
       );
@@ -1390,6 +1586,13 @@ export class ClientViewState {
       this.canApplyUnitHotMotionTypedDeltaSource(typedEntityWireSource, state.entities);
     if (appliedHotMotionTypedSource && typedEntityWireSource !== undefined) {
       this.applyUnitHotMotionTypedDeltaSource(typedEntityWireSource, now);
+    } else if (
+      !projectileDeltaOnly &&
+      entityDeltaOnly &&
+      typedEntityWireSource !== undefined &&
+      this.canApplyMetadataTypedDeltaSource(typedEntityWireSource, state.entities)
+    ) {
+      this.applyMetadataTypedDeltaSource(typedEntityWireSource);
     } else if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
         let appliedTypedDelta = false;
