@@ -567,6 +567,88 @@ export function runClientSnapshotApplierContractTest(): void {
     'typed unit motion placeholder rows must apply from wire rows before DTO fallback',
   );
 
+  if (wireMotionEntity.unit === null) {
+    throw new Error('[client snapshot applier contract] action wire source must have a unit');
+  }
+  wireMotionEntity.transform.x = 240;
+  wireMotionEntity.unit.actions = [
+    { type: 'move', x: 310, y: 320 },
+    { type: 'fight', x: 330, y: 340 },
+  ];
+  wireMotionEntity.unit.repeatQueue = true;
+  wireMotionEntity.unit.moveState = 'roam';
+  wireMotionEntity.unit.wantCloak = true;
+  const typedActionRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedActionRows);
+  const typedActionRow = serializeEntityDeltaSnapshot(
+    wireMotionEntity,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ACTIONS,
+    {} as WorldState,
+  );
+  if (typedActionRow !== null) {
+    typedActionRows.push(typedActionRow as NetworkServerSnapshotEntity);
+  }
+  assertContract(
+    (typedActionRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+    'typed unit action rows must omit DTO placeholders',
+  );
+  const typedActionSource = getEntitySnapshotWireSource(typedActionRows);
+  const typedActionComposition = snapshotEntityRowComposition(snapshot(4, typedActionRows));
+  assertContract(
+    typedActionSource !== undefined &&
+      typedActionSource.count === 1 &&
+      typedActionSource.typedPlaceholderRows === 1 &&
+      typedActionSource.actionRows.count === 2 &&
+      typedActionComposition.entityDtoRows === 0,
+    'typed unit action rows must expose DTO-free action wire rows',
+  );
+  const typedActionStats = view.applyNetworkState(snapshot(4, typedActionRows), {
+    syncEconomy: undefined,
+    collectCorrectionStats: true,
+  });
+  const actionEntity = view.getEntity(id);
+  assertContract(
+    typedActionStats.correction.count === 1 &&
+      actionEntity?.unit?.actions.length === 2 &&
+      actionEntity.unit.actions[0].x === 310 &&
+      actionEntity.unit.actions[1].type === 'fight' &&
+      actionEntity.unit.repeatQueue === true &&
+      actionEntity.unit.moveState === 'roam' &&
+      actionEntity.unit.wantCloak === true,
+    'typed unit action rows must update action detail and motion without DTO fallback',
+  );
+  const encodedPackedAction = encodeNetworkSnapshotWithRustFallback(snapshot(5, typedActionRows));
+  if (encodedPackedAction === null) {
+    throw new Error('[client snapshot applier contract] packed action fixture must encode');
+  }
+  const decodedPackedAction = decodeNetworkSnapshot(encodedPackedAction.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  const decodedPackedActionSource = getEntitySnapshotWireSource(decodedPackedAction.entities);
+  assertContract(
+    decodedPackedAction.entities.length === 1 &&
+      decodedPackedAction.entities[0] === undefined &&
+      decodedPackedActionSource !== undefined &&
+      decodedPackedActionSource.typedPlaceholderRows === 1 &&
+      decodedPackedActionSource.actionRows.count === 2,
+    'packed metadata-only action rows must omit DTOs and expose action wire rows',
+  );
+  const packedActionView = new ClientViewState();
+  packedActionView.applyNetworkState(snapshot(1, [fullUnitEntity(id, 60, 100)]));
+  packedActionView.applyNetworkState(decodedPackedAction, {
+    syncEconomy: undefined,
+    collectCorrectionStats: true,
+  });
+  const packedActionEntity = packedActionView.getEntity(id);
+  assertContract(
+    packedActionEntity?.unit?.actions.length === 2 &&
+      packedActionEntity.unit.actions[0].x === 310 &&
+      packedActionEntity.unit.moveState === 'roam',
+    'packed metadata-only action rows must apply from reconstructed wire rows',
+  );
+  resetEntitySnapshotPool();
+
   wireMotionEntity.transform.x = 180;
   const metadataOnlyPackedMotionRows: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();

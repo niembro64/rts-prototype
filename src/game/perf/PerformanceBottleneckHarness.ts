@@ -6,8 +6,11 @@ import { createGame, destroyGame, type GameInstance } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
 import {
+  copySnapshotEntityDtoRowBreakdown,
+  createSnapshotEntityDtoRowBreakdown,
   getSnapshotMaterializationMetadata,
   SNAPSHOT_MATERIALIZATION_STAGES,
+  type SnapshotEntityDtoRowBreakdown,
   type SnapshotMaterializationKind,
   type SnapshotMaterializationMetadata,
   type SnapshotMaterializationStage,
@@ -199,6 +202,7 @@ type SnapshotMaterializationKindReport = {
   readonly samples: number;
   readonly entityRows: NumericSummary;
   readonly entityDtoRows: NumericSummary;
+  readonly entityDtoBreakdownAvg: SnapshotEntityDtoRowBreakdown;
   readonly entityTypedRows: NumericSummary;
   readonly entityTypedPlaceholderRows: NumericSummary;
   readonly removedRows: NumericSummary;
@@ -217,6 +221,7 @@ type SnapshotMaterializationBucket = {
   samples: number;
   entityRows: number[];
   entityDtoRows: number[];
+  entityDtoBreakdownSums: SnapshotEntityDtoRowBreakdown;
   entityTypedRows: number[];
   entityTypedPlaceholderRows: number[];
   removedRows: number[];
@@ -889,6 +894,7 @@ function createSnapshotMaterializationBucket(): SnapshotMaterializationBucket {
     samples: 0,
     entityRows: [],
     entityDtoRows: [],
+    entityDtoBreakdownSums: createSnapshotEntityDtoRowBreakdown(),
     entityTypedRows: [],
     entityTypedPlaceholderRows: [],
     removedRows: [],
@@ -909,6 +915,7 @@ function resetSnapshotMaterializationBucket(bucket: SnapshotMaterializationBucke
   bucket.samples = 0;
   bucket.entityRows.length = 0;
   bucket.entityDtoRows.length = 0;
+  resetSnapshotEntityDtoRowBreakdown(bucket.entityDtoBreakdownSums);
   bucket.entityTypedRows.length = 0;
   bucket.entityTypedPlaceholderRows.length = 0;
   bucket.removedRows.length = 0;
@@ -916,6 +923,66 @@ function resetSnapshotMaterializationBucket(bucket: SnapshotMaterializationBucke
   for (let i = 0; i < SNAPSHOT_MATERIALIZATION_STAGES.length; i++) {
     bucket.stages[SNAPSHOT_MATERIALIZATION_STAGES[i]].length = 0;
   }
+}
+
+function resetSnapshotEntityDtoRowBreakdown(breakdown: SnapshotEntityDtoRowBreakdown): void {
+  breakdown.fullRows = 0;
+  breakdown.deltaRows = 0;
+  breakdown.unitRows = 0;
+  breakdown.buildingRows = 0;
+  breakdown.towerRows = 0;
+  breakdown.basicRows = 0;
+  breakdown.motionRows = 0;
+  breakdown.hpRows = 0;
+  breakdown.buildRows = 0;
+  breakdown.actionRows = 0;
+  breakdown.factoryRows = 0;
+  breakdown.turretRows = 0;
+  breakdown.combatModeRows = 0;
+  breakdown.otherDeltaRows = 0;
+}
+
+function addSnapshotEntityDtoRowBreakdown(
+  dst: SnapshotEntityDtoRowBreakdown,
+  src: SnapshotEntityDtoRowBreakdown,
+): void {
+  dst.fullRows += src.fullRows;
+  dst.deltaRows += src.deltaRows;
+  dst.unitRows += src.unitRows;
+  dst.buildingRows += src.buildingRows;
+  dst.towerRows += src.towerRows;
+  dst.basicRows += src.basicRows;
+  dst.motionRows += src.motionRows;
+  dst.hpRows += src.hpRows;
+  dst.buildRows += src.buildRows;
+  dst.actionRows += src.actionRows;
+  dst.factoryRows += src.factoryRows;
+  dst.turretRows += src.turretRows;
+  dst.combatModeRows += src.combatModeRows;
+  dst.otherDeltaRows += src.otherDeltaRows;
+}
+
+function averageSnapshotEntityDtoRowBreakdown(
+  sums: SnapshotEntityDtoRowBreakdown,
+  samples: number,
+): SnapshotEntityDtoRowBreakdown {
+  if (samples <= 0) return createSnapshotEntityDtoRowBreakdown();
+  const out = copySnapshotEntityDtoRowBreakdown(sums);
+  out.fullRows /= samples;
+  out.deltaRows /= samples;
+  out.unitRows /= samples;
+  out.buildingRows /= samples;
+  out.towerRows /= samples;
+  out.basicRows /= samples;
+  out.motionRows /= samples;
+  out.hpRows /= samples;
+  out.buildRows /= samples;
+  out.actionRows /= samples;
+  out.factoryRows /= samples;
+  out.turretRows /= samples;
+  out.combatModeRows /= samples;
+  out.otherDeltaRows /= samples;
+  return out;
 }
 
 function recordSnapshotMaterializationBucket(
@@ -926,6 +993,12 @@ function recordSnapshotMaterializationBucket(
   bucket.samples++;
   bucket.entityRows.push(metadata.entityRows);
   bucket.entityDtoRows.push(metadata.entityDtoRows);
+  if (metadata.entityDtoBreakdown !== undefined) {
+    addSnapshotEntityDtoRowBreakdown(
+      bucket.entityDtoBreakdownSums,
+      metadata.entityDtoBreakdown,
+    );
+  }
   bucket.entityTypedRows.push(metadata.entityTypedRows);
   bucket.entityTypedPlaceholderRows.push(metadata.entityTypedPlaceholderRows);
   bucket.removedRows.push(metadata.removedRows);
@@ -973,6 +1046,10 @@ function summarizeSnapshotMaterializationBucket(
     samples: bucket.samples,
     entityRows: summarize(bucket.entityRows),
     entityDtoRows: summarize(bucket.entityDtoRows),
+    entityDtoBreakdownAvg: averageSnapshotEntityDtoRowBreakdown(
+      bucket.entityDtoBreakdownSums,
+      bucket.samples,
+    ),
     entityTypedRows: summarize(bucket.entityTypedRows),
     entityTypedPlaceholderRows: summarize(bucket.entityTypedPlaceholderRows),
     removedRows: summarize(bucket.removedRows),

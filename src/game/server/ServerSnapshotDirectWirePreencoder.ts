@@ -13,6 +13,7 @@ import {
   appendBuildingHotEntityWireRowDirectFromState,
   appendEntitySnapshotWireRowDirect,
   appendUnitMotionEntityWireRowDirectFromState,
+  canUseTypedDeltaPlaceholder,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
 } from '../network/stateSerializerEntities';
@@ -727,6 +728,7 @@ export class ServerSnapshotDirectWirePreencoder {
         ENTITY_MOTION_DELTA_FIELDS,
         input.world,
         input.visibility,
+        canUseTypedDeltaPlaceholder(entity, ENTITY_MOTION_DELTA_FIELDS),
       );
       entityCount++;
     }
@@ -825,6 +827,7 @@ export class ServerSnapshotDirectWirePreencoder {
           changedFields,
           input.world,
           input.visibility,
+          changedFields !== undefined && canUseTypedDeltaPlaceholder(entity, changedFields),
         );
         emittedIds.add(id);
         entityCount++;
@@ -880,6 +883,7 @@ export class ServerSnapshotDirectWirePreencoder {
         input.dirtyFields[i],
         input.world,
         input.visibility,
+        canUseTypedDeltaPlaceholder(entity, input.dirtyFields[i]),
       );
       emittedIds.add(id);
       entityCount++;

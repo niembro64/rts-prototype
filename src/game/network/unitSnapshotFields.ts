@@ -183,6 +183,48 @@ export function applyNetworkUnitActions(
   unit.activePath = decoded.routePreview;
 }
 
+export function applyNetworkUnitActionWireRows(
+  unit: Unit,
+  values: Float64Array,
+  offset: number,
+  count: number,
+  strings: readonly string[],
+  stride: number,
+): void {
+  const actions = unit.actions;
+  actions.length = 0;
+  let previewPoints: UnitPathPoint[] | null = null;
+  if (offset >= 0 && count > 0) {
+    for (let row = 0; row < count; row++) {
+      const base = (offset + row) * stride;
+      if (values[base + 1] === 0) continue;
+      const action: UnitAction = {
+        type: codeToActionType(values[base + 0]) as UnitAction['type'],
+        x: values[base + 2],
+        y: values[base + 3],
+        z: values[base + 4] !== 0 ? values[base + 5] : undefined,
+        isPathExpansion: values[base + 6] !== 0 ? true : undefined,
+        targetId: values[base + 7] !== 0 ? values[base + 8] : undefined,
+        buildingBlueprintId: values[base + 9] !== 0
+          ? strings[values[base + 10] | 0] as BuildingBlueprintId | undefined
+          : undefined,
+        gridX: values[base + 11] !== 0 ? values[base + 12] : undefined,
+        gridY: values[base + 11] !== 0 ? values[base + 13] : undefined,
+        buildingId: values[base + 14] !== 0 ? values[base + 15] : undefined,
+        waitGather: values[base + 16] !== 0 ? true : undefined,
+        waitGroupId: values[base + 17] !== 0 ? values[base + 18] : undefined,
+      };
+      if (action.isPathExpansion === true) {
+        (previewPoints ??= []).push({ x: action.x, y: action.y, z: action.z });
+      } else {
+        actions.push(action);
+      }
+    }
+  }
+  refreshUnitActionHash(unit);
+  unit.activePath = buildClientRoutePreview(previewPoints, actions);
+}
+
 export function applyNetworkUnitStaticFields(unit: Unit, src: NetworkUnitSnapshot): void {
   const radius = src.radius;
   if (radius) {

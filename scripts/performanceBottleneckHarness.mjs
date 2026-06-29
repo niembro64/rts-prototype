@@ -396,11 +396,19 @@ function printSnapshotMaterializationKind(prefix, kind) {
   const rowShape =
     `entity shape dto/typed/placeholders avg=` +
     `${fmt(kind.entityDtoRows?.avg)}/${fmt(kind.entityTypedRows?.avg)}/${fmt(kind.entityTypedPlaceholderRows?.avg)}`;
+  const dto = kind.entityDtoBreakdownAvg;
+  const dtoShape = dto
+    ? `; dto mix full/delta=${fmt(dto.fullRows)}/${fmt(dto.deltaRows)} ` +
+      `unit/building/tower/basic=${fmt(dto.unitRows)}/${fmt(dto.buildingRows)}/${fmt(dto.towerRows)}/${fmt(dto.basicRows)} ` +
+      `fields motion/hp/build/actions/factory/turrets/combat/other=` +
+      `${fmt(dto.motionRows)}/${fmt(dto.hpRows)}/${fmt(dto.buildRows)}/${fmt(dto.actionRows)}/` +
+      `${fmt(dto.factoryRows)}/${fmt(dto.turretRows)}/${fmt(dto.combatModeRows)}/${fmt(dto.otherDeltaRows)}`
+    : '';
   const stages = (kind.topStages ?? [])
     .slice(0, 5)
     .map((stage) => `${stage.stage} ${fmt(stage.avgMs)}/${fmt(stage.p95Ms)}ms`)
     .join(', ');
-  console.log(`    ${prefix}: samples=${kind.samples} ${rows}; ${rowShape}`);
+  console.log(`    ${prefix}: samples=${kind.samples} ${rows}; ${rowShape}${dtoShape}`);
   if (stages) console.log(`      top avg/p95 stages: ${stages}`);
 }
 

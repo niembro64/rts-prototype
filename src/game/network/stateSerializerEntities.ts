@@ -98,12 +98,14 @@ const TYPED_PLACEHOLDER_UNIT_SLAB_FIELDS =
 const TYPED_PLACEHOLDER_UNIT_TRIGGER_FIELDS =
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_ACTIONS |
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_NORMAL;
 const TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS =
   TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS |
   ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_ACTIONS |
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING;
 const TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS =
@@ -1581,7 +1583,7 @@ export function serializeEntitySnapshot(
   return ne;
 }
 
-function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: number | undefined): boolean {
+export function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: number | undefined): boolean {
   if (changedFields === undefined || changedFields === 0) return false;
   const hasBasicTransformFields = (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0;
   if (entity.type === 'unit' && entity.unit !== null) {

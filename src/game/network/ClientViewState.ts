@@ -32,6 +32,7 @@ import {
   ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_TURRETS,
@@ -79,7 +80,10 @@ import { ClientEntityStore } from './ClientEntityStore';
 import { ClientEntityIdSet } from './ClientEntityIdSet';
 import { ClientServerTargetStore } from './ClientServerTargetStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
-import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
+import {
+  applyNetworkUnitActionWireRows,
+  applyNetworkUnitDriftFieldsToTarget,
+} from './unitSnapshotFields';
 import { createSpawnDto } from './snapshotDtoCopy';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
@@ -95,6 +99,7 @@ import {
 } from './snapshotQuantization';
 import {
   ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
@@ -187,7 +192,8 @@ const CLIENT_UNIT_TYPED_DELTA_FIELDS =
   CLIENT_UNIT_MOTION_DELTA_FIELDS |
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS |
-  ENTITY_CHANGED_BUILDING;
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_ACTIONS;
 const CLIENT_BUILDING_METADATA_DELTA_FIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_BUILDING;
@@ -1106,7 +1112,10 @@ export class ClientViewState {
     const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
     const hasTurretFields = (changedFields & ENTITY_CHANGED_TURRETS) !== 0;
     const hasBuildFields = (changedFields & ENTITY_CHANGED_BUILDING) !== 0;
-    if (!hasMotionFields && !hasHpFields && !hasTurretFields && !hasBuildFields) return false;
+    const hasActionFields = (changedFields & ENTITY_CHANGED_ACTIONS) !== 0;
+    if (!hasMotionFields && !hasHpFields && !hasTurretFields && !hasBuildFields && !hasActionFields) {
+      return false;
+    }
 
     const id = values[base + 0] | 0;
     const playerId = values[base + 5] | 0;
@@ -1197,6 +1206,41 @@ export class ClientViewState {
       hasHpFields,
       hasBuildFields,
     );
+
+    if (hasActionFields) {
+      if (values[base + 41] !== 0) {
+        applyNetworkUnitActionWireRows(
+          existing.unit,
+          source.actionRows.values,
+          values[base + 50] | 0,
+          values[base + 42] | 0,
+          source.actionStrings,
+          ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
+        );
+      }
+      if (values[base + 53] !== 0) {
+        existing.unit.repeatQueue = values[base + 54] !== 0;
+      }
+      if (values[base + 59] !== 0) {
+        const moveStateCode = values[base + 60] | 0;
+        existing.unit.moveState = moveStateCode === 2
+          ? 'roam'
+          : moveStateCode === 1
+            ? 'holdPosition'
+            : 'maneuver';
+      } else if (values[base + 55] !== 0) {
+        existing.unit.moveState = values[base + 56] !== 0 ? 'holdPosition' : 'maneuver';
+      }
+      if (values[base + 61] !== 0) {
+        existing.unit.wantCloak = values[base + 62] >= 1;
+        existing.unit.cloaked = values[base + 62] >= 2;
+      }
+      if (existing.builder !== null && values[base + 38] !== 0) {
+        existing.builder.currentBuildTarget = values[base + 39] === 0
+          ? values[base + 40] as EntityId
+          : NO_ENTITY_ID;
+      }
+    }
 
     const refreshTurretsNow = copiedTurretRows && !deferPredictedTurretRenderRefresh;
     if (refreshHealth || refreshTurretsNow) {

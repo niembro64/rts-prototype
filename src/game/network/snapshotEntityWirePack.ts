@@ -1,5 +1,6 @@
 import type { PlayerId } from '../../types/sim';
 import {
+  ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
@@ -21,6 +22,7 @@ import {
 } from './snapshotBinaryWire';
 import {
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
@@ -184,6 +186,77 @@ function appendDecodedBuildingEntityWireRow(): { values: Float64Array; base: num
   );
   _decodedEntityWireSourceHasTypedRows = true;
   return { values, base };
+}
+
+function appendDecodedActionWireRows(
+  actions: readonly NetworkServerSnapshotAction[] | null,
+): { offset: number; count: number } {
+  const count = actions?.length ?? 0;
+  if (count === 0) return { offset: -1, count: 0 };
+  const offset = reserveFloat64WireRows(
+    _decodedEntityWireSource.actionRows,
+    count,
+    ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
+  );
+  const values = _decodedEntityWireSource.actionRows.values;
+  const strings = _decodedEntityWireSource.actionStrings;
+  for (let i = 0; i < count; i++) {
+    const action = actions![i];
+    const pos = action.pos;
+    const grid = action.grid;
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+    values[base + 0] = action.type;
+    values[base + 1] = pos !== null ? 1 : 0;
+    values[base + 2] = pos !== null ? pos.x : 0;
+    values[base + 3] = pos !== null ? pos.y : 0;
+    values[base + 4] = action.posZ !== null ? 1 : 0;
+    values[base + 5] = action.posZ ?? 0;
+    values[base + 6] = action.pathExp === true ? 1 : 0;
+    values[base + 7] = action.targetId !== null ? 1 : 0;
+    values[base + 8] = action.targetId ?? 0;
+    values[base + 9] = action.buildingBlueprintId !== null ? 1 : 0;
+    values[base + 10] = action.buildingBlueprintId !== null ? strings.length : 0;
+    if (action.buildingBlueprintId !== null) strings.push(action.buildingBlueprintId);
+    values[base + 11] = grid !== null ? 1 : 0;
+    values[base + 12] = grid !== null ? grid.x : 0;
+    values[base + 13] = grid !== null ? grid.y : 0;
+    values[base + 14] = action.buildingId !== null ? 1 : 0;
+    values[base + 15] = action.buildingId ?? 0;
+    values[base + 16] = action.waitGather === true ? 1 : 0;
+    values[base + 17] = action.waitGroupId !== null && action.waitGroupId !== undefined ? 1 : 0;
+    values[base + 18] = action.waitGroupId ?? 0;
+  }
+  return { offset, count };
+}
+
+function appendDecodedTurretWireRows(
+  turrets: readonly NetworkServerSnapshotTurret[] | null,
+): { offset: number; count: number } {
+  const count = turrets?.length ?? 0;
+  if (count === 0) return { offset: -1, count: 0 };
+  const offset = reserveFloat64WireRows(
+    _decodedEntityWireSource.turretRows,
+    count,
+    ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  );
+  const values = _decodedEntityWireSource.turretRows.values;
+  for (let i = 0; i < count; i++) {
+    const src = turrets![i];
+    const angular = src.turret.angular;
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+    values[base + 0] = angular.rot;
+    values[base + 1] = angular.vel;
+    values[base + 2] = angular.pitch;
+    values[base + 3] = angular.pitchVel;
+    values[base + 4] = src.turret.turretBlueprintCode;
+    values[base + 5] = src.state;
+    values[base + 6] = src.targetId !== null ? 1 : 0;
+    values[base + 7] = src.targetId ?? 0;
+    values[base + 8] = src.currentShieldRange !== null ? 1 : 0;
+    values[base + 9] = src.currentShieldRange ?? 0;
+    values[base + 10] = src.active === false ? 1 : 0;
+  }
+  return { offset, count };
 }
 
 function rentDecodedEntity(): NetworkServerSnapshotEntity {
@@ -512,8 +585,13 @@ export function unpackEntitiesFromWire(
   }
   if (detailRows !== undefined) {
     for (let i = 0; i < detailRows.length; i++) {
-      out[outIndex++] = unpackDetailEntityRow(detailRows[i]);
-      appendDecodedFallbackEntityWireSourceRow();
+      const entity = unpackDetailEntityRow(detailRows[i]);
+      if (!materializeTypedDeltas && tryAppendDecodedDetailTypedPlaceholderWireRow(entity)) {
+        outIndex++;
+      } else {
+        out[outIndex++] = entity;
+        appendDecodedFallbackEntityWireSourceRow();
+      }
     }
   }
   if (
@@ -578,6 +656,125 @@ function unpackDetailEntityRow(row: PackedEntityRow): NetworkServerSnapshotEntit
     entity.building = unpackBuilding(row[i++] as unknown[]);
   }
   return entity;
+}
+
+const DECODED_TYPED_UNIT_DETAIL_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_NORMAL |
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_ACTIONS |
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING;
+
+function tryAppendDecodedDetailTypedPlaceholderWireRow(
+  entity: NetworkServerSnapshotEntity,
+): boolean {
+  const changedFields = entity.changedFields;
+  if (changedFields === null || changedFields === 0) return false;
+  if (entity.type !== 'unit') return false;
+  if ((changedFields & ~DECODED_TYPED_UNIT_DETAIL_FIELDS) !== 0) return false;
+  const unit = entity.unit;
+  if (unit === null) return false;
+
+  if ((changedFields & ENTITY_CHANGED_POS) !== 0 && entity.pos === null) return false;
+  if ((changedFields & ENTITY_CHANGED_ROT) !== 0 && entity.rotation === null) return false;
+  if ((changedFields & ENTITY_CHANGED_VEL) !== 0 && unit.velocity === null) return false;
+  if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && unit.surfaceNormal === null) return false;
+  if ((changedFields & ENTITY_CHANGED_HP) !== 0 && unit.hp === null) return false;
+
+  const wireRow = appendDecodedUnitEntityWireRow();
+  const values = wireRow.values;
+  const base = wireRow.base;
+  values[base + 0] = entity.id;
+  if (entity.pos !== null) {
+    values[base + 1] = entity.pos.x;
+    values[base + 2] = entity.pos.y;
+    values[base + 3] = entity.pos.z;
+  }
+  values[base + 4] = entity.rotation ?? 0;
+  values[base + 5] = entity.playerId;
+  values[base + 6] = 1;
+  values[base + 7] = changedFields;
+  recordEntitySnapshotWireSourceChangedFields(
+    _decodedEntityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    changedFields,
+  );
+
+  if (unit.hp !== null) {
+    values[base + 8] = unit.hp.curr;
+    values[base + 9] = unit.hp.max;
+  }
+  if (unit.velocity !== null) {
+    values[base + 10] = unit.velocity.x;
+    values[base + 11] = unit.velocity.y;
+    values[base + 12] = unit.velocity.z;
+  }
+  if (unit.surfaceNormal !== null) {
+    values[base + 23] = 1;
+    values[base + 24] = unit.surfaceNormal.nx;
+    values[base + 25] = unit.surfaceNormal.ny;
+    values[base + 26] = unit.surfaceNormal.nz;
+  }
+  if (unit.orientation !== null) {
+    values[base + 27] = 1;
+    values[base + 28] = unit.orientation.x;
+    values[base + 29] = unit.orientation.y;
+    values[base + 30] = unit.orientation.z;
+    values[base + 31] = unit.orientation.w;
+  }
+  if (unit.angularVelocity3 !== null) {
+    values[base + 32] = 1;
+    values[base + 33] = unit.angularVelocity3.x;
+    values[base + 34] = unit.angularVelocity3.y;
+    values[base + 35] = unit.angularVelocity3.z;
+  }
+  if (unit.buildTargetIdPresent) {
+    values[base + 38] = 1;
+    values[base + 39] = unit.buildTargetId === null ? 1 : 0;
+    values[base + 40] = unit.buildTargetId ?? 0;
+  }
+  if (unit.actions !== null) {
+    const actionRows = appendDecodedActionWireRows(unit.actions);
+    values[base + 41] = 1;
+    values[base + 42] = actionRows.count;
+    values[base + 50] = actionRows.offset;
+  }
+  if (unit.turrets !== null) {
+    const turretRows = appendDecodedTurretWireRows(unit.turrets);
+    values[base + 43] = 1;
+    values[base + 44] = turretRows.count;
+    values[base + 49] = turretRows.offset;
+  }
+  if (unit.build !== null) {
+    values[base + 45] = 1;
+    values[base + 46] = unit.build.complete ? 1 : 0;
+    values[base + 47] = unit.build.paid.energy;
+    values[base + 48] = unit.build.paid.metal;
+    values[base + 63] = unit.build.interrupted ? 1 : 0;
+  }
+  if (unit.repeatQueue !== null && unit.repeatQueue !== undefined) {
+    values[base + 53] = 1;
+    values[base + 54] = unit.repeatQueue ? 1 : 0;
+  }
+  if (unit.holdPosition !== null && unit.holdPosition !== undefined) {
+    values[base + 55] = 1;
+    values[base + 56] = unit.holdPosition ? 1 : 0;
+  }
+  if (unit.moveState !== null && unit.moveState !== undefined) {
+    values[base + 59] = 1;
+    values[base + 60] = unit.moveState === 'roam' ? 2 : unit.moveState === 'holdPosition' ? 1 : 0;
+  }
+  if (
+    unit.wantCloak !== null && unit.wantCloak !== undefined ||
+    unit.cloaked !== null && unit.cloaked !== undefined
+  ) {
+    values[base + 61] = 1;
+    values[base + 62] = unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
+  }
+  return true;
 }
 
 function movementUnitChangedFields(flags: number): number {
