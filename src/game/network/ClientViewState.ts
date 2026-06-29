@@ -345,7 +345,6 @@ export class ClientViewState {
   private removedUnitRenderIds: EntityId[] = [];
   private removedBuildingRenderIds: EntityId[] = [];
   private renderLifecycleDirtyIds: Set<EntityId> = new ClientEntityIdSet();
-  private genericTypedAppliedRows = new Uint8Array(0);
   private predictionSupportSurfaceEntities: Entity[] = [];
   private predictionSupportSurfaceEntityIds = new Set<EntityId>();
   private selectionState = new ClientSelectionState(
@@ -1697,16 +1696,6 @@ export class ClientViewState {
     }
   }
 
-  private ensureGenericTypedAppliedRows(count: number): Uint8Array {
-    if (this.genericTypedAppliedRows.length < count) {
-      let nextCapacity = Math.max(16, this.genericTypedAppliedRows.length);
-      while (nextCapacity < count) nextCapacity *= 2;
-      this.genericTypedAppliedRows = new Uint8Array(nextCapacity);
-    }
-    this.genericTypedAppliedRows.fill(0, 0, count);
-    return this.genericTypedAppliedRows;
-  }
-
   private wireRowsOfKindAreTypedPlaceholders(
     source: EntitySnapshotWireSource,
     kind: number,
@@ -1727,7 +1716,6 @@ export class ClientViewState {
     now: number,
     deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
-    appliedRows: Uint8Array,
   ): boolean {
     if (source.typedPlaceholderRows === 0) return false;
 
@@ -1780,7 +1768,6 @@ export class ClientViewState {
         default:
           continue;
       }
-      appliedRows[entityIndex] = 1;
       appliedAny = true;
     }
     return appliedAny;
@@ -2064,25 +2051,18 @@ export class ClientViewState {
       this.applyMetadataTypedDeltaSource(typedEntityWireSource);
     } else if (!projectileDeltaOnly) {
       entityApplyPath = 'clientApplyEntitiesGeneric';
-      const genericTypedAppliedRows =
+      let genericSubstageStart = collectMaterializationStages ? performance.now() : 0;
+      const genericTypedPlaceholdersApplied =
         !collectCorrectionStats &&
         typedEntityWireSource !== undefined &&
-        typedEntityWireSource.typedPlaceholderRows > 0
-          ? this.ensureGenericTypedAppliedRows(state.entities.length)
-          : undefined;
-      let genericSubstageStart = collectMaterializationStages ? performance.now() : 0;
-      if (
-        genericTypedAppliedRows !== undefined &&
-        typedEntityWireSource !== undefined &&
+        typedEntityWireSource.typedPlaceholderRows > 0 &&
         this.applyMixedTypedPlaceholderRows(
           typedEntityWireSource,
           now,
           deferPredictedTurretRenderRefresh,
           applyStats,
-          genericTypedAppliedRows,
-        ) &&
-        collectMaterializationStages
-      ) {
+        );
+      if (genericTypedPlaceholdersApplied && collectMaterializationStages) {
         addSnapshotMaterializationStageToSnapshot(
           state,
           'clientApplyEntitiesGenericTyped',
@@ -2092,8 +2072,9 @@ export class ClientViewState {
       }
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
         if (
-          genericTypedAppliedRows !== undefined &&
-          genericTypedAppliedRows[entityIndex] !== 0
+          genericTypedPlaceholdersApplied &&
+          typedEntityWireSource !== undefined &&
+          typedEntityWireSource.typedPlaceholderMarks[entityIndex] !== 0
         ) {
           continue;
         }
@@ -2269,7 +2250,7 @@ export class ClientViewState {
         }
       }
       if (
-        genericTypedAppliedRows !== undefined &&
+        genericTypedPlaceholdersApplied &&
         collectMaterializationStages
       ) {
         addSnapshotMaterializationStageToSnapshot(
