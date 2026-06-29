@@ -1759,6 +1759,14 @@ export class ClientViewState {
       entityDeltaOnly &&
       !collectCorrectionStats &&
       typedEntityWireSource !== undefined &&
+      this.canApplyTypedPlaceholderDeltaSource(typedEntityWireSource, state.entities)
+    ) {
+      this.applyTypedPlaceholderDeltaSource(typedEntityWireSource, now, applyStats);
+    } else if (
+      !projectileDeltaOnly &&
+      entityDeltaOnly &&
+      !collectCorrectionStats &&
+      typedEntityWireSource !== undefined &&
       this.canApplyBasicTransformTypedDeltaSource(typedEntityWireSource, state.entities)
     ) {
       this.applyBasicTransformTypedDeltaSource(typedEntityWireSource, now);

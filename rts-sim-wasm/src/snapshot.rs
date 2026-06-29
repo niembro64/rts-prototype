@@ -2353,7 +2353,7 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
 // the DTO sub-fields.
-pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 14;
+pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 15;
 
 pub(crate) const V6_ENTITY_FLAG_HAS_POS: u32 = 1 << 0;
 pub(crate) const V6_ENTITY_FLAG_HAS_ROTATION: u32 = 1 << 1;
@@ -2419,6 +2419,7 @@ pub(crate) const V6_MOVEMENT_FLAG_HP: u32 = 1 << 8;
 pub(crate) const V6_BUILDING_DELTA_FLAG_POS: u32 = 1 << 0;
 pub(crate) const V6_BUILDING_DELTA_FLAG_ROTATION: u32 = 1 << 1;
 pub(crate) const V6_BUILDING_DELTA_FLAG_HP: u32 = 1 << 2;
+pub(crate) const V6_BUILDING_DELTA_FLAG_BUILD: u32 = 1 << 3;
 
 pub(crate) const V6_ACTION_FLAG_POS: u32 = 1 << 0;
 pub(crate) const V6_ACTION_FLAG_POS_Z: u32 = 1 << 1;
@@ -2457,7 +2458,7 @@ pub(crate) fn v6_movement_changed_mask() -> u32 {
 
 #[inline]
 pub(crate) fn v6_building_delta_changed_mask() -> u32 {
-    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_HP
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING
 }
 
 // --- Input scratch (bulk-filled by the TS bridge from entityWireSource) ---
@@ -2841,7 +2842,8 @@ pub(crate) fn v6_is_building_delta(
             return false;
         }
         let cf = input.basic[base + 8] as u32;
-        return cf != 0 && (cf & !mask) == 0;
+        let basic_mask = ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT;
+        return cf != 0 && (cf & !basic_mask) == 0;
     }
     if kind != V6_KIND_BUILDING {
         return false;
@@ -2854,18 +2856,14 @@ pub(crate) fn v6_is_building_delta(
     if cf == 0 || (cf & !mask) != 0 {
         return false;
     }
-    // Full/static metadata, build state, turrets, factories, and active-state
-    // changes still need the detail row shape.
+    // Full/static metadata, turrets, factories, extractor rates, and
+    // active-state changes still need the detail row shape.
     if input.building[base + 8] != 0.0
         || input.building[base + 10] != 0.0
-        || input.building[base + 15] != 0.0
-        || input.building[base + 16] != 0.0
-        || input.building[base + 17] != 0.0
         || input.building[base + 18] != 0.0
         || input.building[base + 20] != 0.0
         || input.building[base + 22] != 0.0
         || input.building[base + 24] != 0.0
-        || input.building[base + 34] != 0.0
     {
         return false;
     }
@@ -2891,6 +2889,9 @@ pub(crate) fn v6_building_delta_flags(
     }
     if (cf & ENTITY_CHANGED_HP) != 0 {
         flags |= V6_BUILDING_DELTA_FLAG_HP;
+    }
+    if (cf & ENTITY_CHANGED_BUILDING) != 0 {
+        flags |= V6_BUILDING_DELTA_FLAG_BUILD;
     }
     flags
 }
@@ -2927,6 +2928,12 @@ pub(crate) fn v6_write_building_delta_payload(
     if (flags & V6_BUILDING_DELTA_FLAG_HP) != 0 {
         writer.write_f64_le(input.building[base + 13]);
         writer.write_f64_le(input.building[base + 14]);
+    }
+    if (flags & V6_BUILDING_DELTA_FLAG_BUILD) != 0 {
+        writer.write_var_uint(if input.building[base + 15] != 0.0 { 1 } else { 0 });
+        writer.write_var_uint(if input.building[base + 34] != 0.0 { 1 } else { 0 });
+        writer.write_f64_le(input.building[base + 16]);
+        writer.write_f64_le(input.building[base + 17]);
     }
 }
 

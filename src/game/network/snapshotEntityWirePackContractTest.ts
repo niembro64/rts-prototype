@@ -12,6 +12,7 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
+  buildingBlueprintIdToCode,
 } from '../../types/network';
 import {
   encodeEntitiesV6Bytes,
@@ -113,7 +114,9 @@ function createMotionEntityStateViews(): EntityStateViews {
   } as unknown as EntityStateViews;
 }
 
-function createBuildingEntityStateViews(): EntityStateViews {
+function createBuildingEntityStateViews(
+  buildingBlueprintCode = buildingBlueprintIdToCode('commandCenter'),
+): EntityStateViews {
   return {
     capacity: 1,
     entityId: new Int32Array([808]),
@@ -125,6 +128,13 @@ function createBuildingEntityStateViews(): EntityStateViews {
     rotation: new Float64Array([0.25]),
     hp: new Float64Array([440]),
     maxHp: new Float64Array([500]),
+    buildingBlueprintCode: new Uint32Array([buildingBlueprintCode]),
+    buildPaidEnergy: new Float64Array([120]),
+    buildPaidMetal: new Float64Array([240]),
+    buildFlags: new Uint32Array([
+      ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE |
+        ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
+    ]),
   } as unknown as EntityStateViews;
 }
 
@@ -435,6 +445,87 @@ export function runSnapshotEntityWirePackContractTest(): void {
     decodedBuildingV6Source !== undefined &&
       decodedBuildingV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     'Rust V6 compact building decode must expose typed building source metadata',
+  );
+
+  const slabBuildingBuildEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendBuildingHotEntityWireRowDirectFromState(
+      createBuildingEntityStateViews(),
+      0,
+      ENTITY_CHANGED_BUILDING,
+    ),
+    'entity-state building build row must append from slab views',
+  );
+  slabBuildingBuildEntities.length = 1;
+  registerEntitySnapshotWireSource(slabBuildingBuildEntities);
+  const slabBuildingBuildSource = getEntitySnapshotWireSource(slabBuildingBuildEntities);
+  assertContract(
+    slabBuildingBuildSource !== undefined &&
+      slabBuildingBuildSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    'entity-state building build row must register building typed wire metadata',
+  );
+  const slabBuildingBuildWireBase =
+    slabBuildingBuildSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  assertContract(
+    slabBuildingBuildSource.buildingRows.values[slabBuildingBuildWireBase + 7] ===
+        ENTITY_CHANGED_BUILDING &&
+      slabBuildingBuildSource.buildingRows.values[slabBuildingBuildWireBase + 13] === 0 &&
+      slabBuildingBuildSource.buildingRows.values[slabBuildingBuildWireBase + 15] === 0 &&
+      slabBuildingBuildSource.buildingRows.values[slabBuildingBuildWireBase + 16] === 120 &&
+      slabBuildingBuildSource.buildingRows.values[slabBuildingBuildWireBase + 17] === 240 &&
+      slabBuildingBuildSource.buildingRows.values[slabBuildingBuildWireBase + 34] === 1,
+    'entity-state building build typed row must mirror canonical slab paid/build flags',
+  );
+  const buildingBuildV6Bytes = encodeEntitiesV6Bytes(slabBuildingBuildSource);
+  assertContract(buildingBuildV6Bytes !== null, 'Rust V6 encoder must encode slab building build source');
+  const packedBuildingBuildV6 = msgpackDecode(
+    buildingBuildV6Bytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  assertContract(
+    packedBuildingBuildV6.b !== undefined &&
+      packedBuildingBuildV6.e === undefined,
+    'Rust V6 slab building build source must use compact building rows for build-state payload',
+  );
+  const decodedBuildingBuildV6 = unpackEntitiesFromWire(packedBuildingBuildV6)[0];
+  assertContract(
+    decodedBuildingBuildV6?.id === 808 &&
+      decodedBuildingBuildV6.changedFields === ENTITY_CHANGED_BUILDING &&
+      decodedBuildingBuildV6.building?.build?.complete === false &&
+      decodedBuildingBuildV6.building.build.interrupted === true &&
+      decodedBuildingBuildV6.building.build.paid.energy === 120 &&
+      decodedBuildingBuildV6.building.build.paid.metal === 240,
+    'Rust V6 slab building build row must survive detailed round trip',
+  );
+  const decodedBuildingBuildV6Source = getEntitySnapshotWireSource(unpackEntitiesFromWire(
+    packedBuildingBuildV6,
+    { materializeTypedDeltas: false },
+  ));
+  assertContract(
+    decodedBuildingBuildV6Source !== undefined &&
+      decodedBuildingBuildV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    'Rust V6 compact building build decode must expose typed building source metadata',
+  );
+  const decodedBuildingBuildBase =
+    decodedBuildingBuildV6Source.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  assertContract(
+    decodedBuildingBuildV6Source.buildingRows.values[decodedBuildingBuildBase + 7] ===
+        ENTITY_CHANGED_BUILDING &&
+      decodedBuildingBuildV6Source.buildingRows.values[decodedBuildingBuildBase + 15] === 0 &&
+      decodedBuildingBuildV6Source.buildingRows.values[decodedBuildingBuildBase + 16] === 120 &&
+      decodedBuildingBuildV6Source.buildingRows.values[decodedBuildingBuildBase + 17] === 240 &&
+      decodedBuildingBuildV6Source.buildingRows.values[decodedBuildingBuildBase + 34] === 1,
+    'metadata-only compact building build row must preserve typed build fields',
+  );
+
+  resetEntitySnapshotPool();
+  assertContract(
+    !appendBuildingHotEntityWireRowDirectFromState(
+      createBuildingEntityStateViews(buildingBlueprintIdToCode('buildingSolar')),
+      0,
+      ENTITY_CHANGED_BUILDING,
+    ),
+    'active-state building build row must fall back until open-state is slab-backed',
   );
 
   const slabBasicUnitEntities: NetworkServerSnapshotEntity[] = [];

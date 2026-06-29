@@ -1,5 +1,6 @@
 import type { PlayerId } from '../../types/sim';
 import {
+  ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
@@ -329,7 +330,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 14;
+const PACKED_ENTITIES_VERSION = 15;
 const PACKED_ENTITIES_MIN_SUPPORTED_VERSION = 13;
 
 // Bit flags for the packed unit row's optional-presence header.
@@ -400,6 +401,7 @@ const MOVEMENT_UNIT_FLAG_HP = 1 << 8;
 const BUILDING_DELTA_FLAG_POS = 1 << 0;
 const BUILDING_DELTA_FLAG_ROTATION = 1 << 1;
 const BUILDING_DELTA_FLAG_HP = 1 << 2;
+const BUILDING_DELTA_FLAG_BUILD = 1 << 3;
 
 const ACTION_FLAG_POS = 1 << 0;
 const ACTION_FLAG_POS_Z = 1 << 1;
@@ -436,7 +438,8 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // normals to the compact movement slab so motion+normal sparse rows avoid
 // detail-row fallback. V13 lets HP ride that same compact unit delta slab
 // so movement/turret/HP rows avoid detail-row fallback. V14 adds compact
-// building POS/ROT/HP delta rows.
+// building POS/ROT/HP delta rows. V15 lets building build-state ride the
+// compact building delta slab.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitBytes = Uint8Array;
 export type PackedUnitTurretBytes = Uint8Array;
@@ -612,6 +615,7 @@ function buildingDeltaChangedFields(flags: number): number {
   if ((flags & BUILDING_DELTA_FLAG_POS) !== 0) changedFields |= ENTITY_CHANGED_POS;
   if ((flags & BUILDING_DELTA_FLAG_ROTATION) !== 0) changedFields |= ENTITY_CHANGED_ROT;
   if ((flags & BUILDING_DELTA_FLAG_HP) !== 0) changedFields |= ENTITY_CHANGED_HP;
+  if ((flags & BUILDING_DELTA_FLAG_BUILD) !== 0) changedFields |= ENTITY_CHANGED_BUILDING;
   return changedFields;
 }
 
@@ -849,6 +853,28 @@ function readBuildingDeltaByteEntity(
     }
     wireValues[wireBase + 13] = curr;
     wireValues[wireBase + 14] = max;
+  }
+  if ((flags & BUILDING_DELTA_FLAG_BUILD) !== 0) {
+    const complete = reader.readVarUint() !== 0;
+    const interrupted = reader.readVarUint() !== 0;
+    const paidEnergy = reader.readFloat64();
+    const paidMetal = reader.readFloat64();
+    if (materializeEntity && entity !== undefined) {
+      const building = entity.building ?? rentDecodedBuildingSub();
+      building.build = {
+        complete,
+        interrupted,
+        paid: {
+          energy: paidEnergy,
+          metal: paidMetal,
+        },
+      };
+      entity.building = building;
+    }
+    wireValues[wireBase + 15] = complete ? 1 : 0;
+    wireValues[wireBase + 16] = paidEnergy;
+    wireValues[wireBase + 17] = paidMetal;
+    wireValues[wireBase + 34] = interrupted ? 1 : 0;
   }
   return entity;
 }

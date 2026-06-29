@@ -119,7 +119,16 @@ const TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS =
 const TYPED_PLACEHOLDER_BUILDING_SLAB_FIELDS =
   ENTITY_CHANGED_POS |
   ENTITY_CHANGED_ROT |
-  ENTITY_CHANGED_HP;
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_BUILDING;
+const BUILDING_ACTIVE_STATE_BLUEPRINT_CODES = new Set<number>([
+  buildingBlueprintIdToCode('buildingSolar'),
+  buildingBlueprintIdToCode('buildingWind'),
+  buildingBlueprintIdToCode('buildingExtractor'),
+  buildingBlueprintIdToCode('buildingExtractorT2'),
+  buildingBlueprintIdToCode('buildingRadar'),
+  buildingBlueprintIdToCode('buildingResourceConverter'),
+]);
 const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
@@ -928,8 +937,14 @@ export function appendBuildingHotEntityWireRowDirectFromState(
   if (entityId < 0) return false;
   if (
     changedFields === 0 ||
-    (changedFields & ENTITY_CHANGED_HP) === 0 ||
     (changedFields & ~TYPED_PLACEHOLDER_BUILDING_SLAB_FIELDS) !== 0
+  ) {
+    return false;
+  }
+  const hasBuild = (changedFields & ENTITY_CHANGED_BUILDING) !== 0;
+  if (
+    hasBuild &&
+    BUILDING_ACTIVE_STATE_BLUEPRINT_CODES.has(views.buildingBlueprintCode[slot])
   ) {
     return false;
   }
@@ -945,6 +960,8 @@ export function appendBuildingHotEntityWireRowDirectFromState(
   const hasRot = (changedFields & ENTITY_CHANGED_ROT) !== 0;
   const hasHp = (changedFields & ENTITY_CHANGED_HP) !== 0;
   const ownerPlayerId = views.ownerPlayerId[slot];
+  const buildFlags = hasBuild ? views.buildFlags[slot] : 0;
+  const hasBuildable = (buildFlags & ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE) !== 0;
 
   values[base + 0] = entityId;
   values[base + 1] = hasPos ? qPos(views.posX[slot]) : 0;
@@ -956,6 +973,10 @@ export function appendBuildingHotEntityWireRowDirectFromState(
   values[base + 7] = changedFields;
   values[base + 13] = hasHp ? views.hp[slot] : 0;
   values[base + 14] = hasHp ? views.maxHp[slot] : 0;
+  values[base + 15] = hasBuild && (buildFlags & ENTITY_SLOT_BUILD_FLAG_COMPLETE) !== 0 ? 1 : 0;
+  values[base + 16] = hasBuild && hasBuildable ? views.buildPaidEnergy[slot] : 0;
+  values[base + 17] = hasBuild && hasBuildable ? views.buildPaidMetal[slot] : 0;
+  values[base + 34] = hasBuild && (buildFlags & ENTITY_SLOT_BUILD_FLAG_INTERRUPTED) !== 0 ? 1 : 0;
 
   appendEntitySnapshotWireSourceRow(
     entityWireSource,
