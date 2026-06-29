@@ -505,6 +505,40 @@ export function runSnapshotBufferContractTest(): void {
     'indexed entity delta merge must prune removed pending rows',
   );
 
+  const cachedIndexEntities: NetworkServerSnapshotEntity[] = [];
+  for (let i = 0; i < 128; i++) {
+    cachedIndexEntities.push(createUnitEntity(3000 + i, i, null));
+  }
+  fake.emitSnapshot(createSnapshot(20, [], cachedIndexEntities));
+  const firstCachedIndexDeltaRows: NetworkServerSnapshotEntity[] = [];
+  for (let i = 0; i < 40; i++) {
+    firstCachedIndexDeltaRows.push(createUnitEntity(3000 + i, 6000 + i, ENTITY_CHANGED_POS));
+  }
+  firstCachedIndexDeltaRows.push(createUnitEntity(9900, 7000, null));
+  const firstCachedIndexDelta = createSnapshot(21, [], firstCachedIndexDeltaRows);
+  firstCachedIndexDelta.entityDeltaOnly = true;
+  fake.emitSnapshot(firstCachedIndexDelta);
+  const secondCachedIndexDelta = createSnapshot(22, [], [
+    createUnitEntity(3005, 8005, ENTITY_CHANGED_POS),
+    createUnitEntity(9900, 9000, ENTITY_CHANGED_POS),
+  ]);
+  secondCachedIndexDelta.entityDeltaOnly = true;
+  secondCachedIndexDelta.removedEntityIds = [3007];
+  fake.emitSnapshot(secondCachedIndexDelta);
+  const consumedCachedIndexMerge = buffer.consume();
+  assertContract(
+    consumedCachedIndexMerge?.entities.find((entity) => entity.id === 3005)?.pos?.x === 8005,
+    'consecutive indexed entity deltas must apply the newest patch to existing rows',
+  );
+  assertContract(
+    consumedCachedIndexMerge?.entities.find((entity) => entity.id === 9900)?.pos?.x === 9000,
+    'consecutive indexed entity deltas must keep appended rows addressable',
+  );
+  assertContract(
+    consumedCachedIndexMerge?.entities.some((entity) => entity.id === 3007) === false,
+    'consecutive indexed entity deltas must invalidate indices after removals',
+  );
+
   const packedProjectileDelta = createSnapshot(10, [60, 60, 61]);
   packedProjectileDelta.projectileDeltaOnly = true;
   packedProjectileDelta.projectiles!.velocityUpdates = [{

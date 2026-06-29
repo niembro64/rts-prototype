@@ -159,6 +159,7 @@ export class SnapshotBuffer {
   private _beamBufToggle = false;
   private bufferedGrid: NetworkServerSnapshot['grid'];
   private readonly pendingEntityIndexById = new Map<number, number>();
+  private pendingEntityIndexReady = false;
   private readonly removedEntityIdSet = new Set<number>();
 
   private pushBufferedSpawn(spawn: NetworkServerSnapshotProjectileSpawn): void {
@@ -325,7 +326,6 @@ export class SnapshotBuffer {
         copyPositionDelta(srcUnit.angularVelocity3, dstUnit.angularVelocity3);
       }
     }
-    pendingEntityIndexById?.clear();
     if (removedEntityIds !== undefined && removedEntityIds.length > 0) {
       const preservedWireSource = canPreservePendingWireSource ? pendingWireSource : undefined;
       if (pendingEntities.length * removedEntityIds.length >= INDEXED_ENTITY_MERGE_MIN_WORK) {
@@ -688,12 +688,14 @@ export class SnapshotBuffer {
     pendingEntities: readonly NetworkServerSnapshotEntity[],
     deltaCount: number,
   ): Map<number, number> | undefined {
+    if (this.pendingEntityIndexReady) return this.pendingEntityIndexById;
     if (pendingEntities.length * deltaCount < INDEXED_ENTITY_MERGE_MIN_WORK) return undefined;
     const indexById = this.pendingEntityIndexById;
     indexById.clear();
     for (let i = 0; i < pendingEntities.length; i++) {
       indexById.set(pendingEntities[i].id, i);
     }
+    this.pendingEntityIndexReady = true;
     return indexById;
   }
 
@@ -735,6 +737,7 @@ export class SnapshotBuffer {
       wireSource.count = write;
       if (write === 0) unregisterEntitySnapshotWireSource(pendingEntities);
     }
+    this.invalidatePendingEntityIndex();
     removedIds.clear();
   }
 
@@ -744,6 +747,7 @@ export class SnapshotBuffer {
     wireSource: EntitySnapshotWireSource | undefined,
   ): void {
     pendingEntities.splice(index, 1);
+    this.invalidatePendingEntityIndex();
     if (wireSource === undefined) return;
     removeEntitySnapshotWireSourceRow(wireSource, index);
     if (wireSource.count === 0) unregisterEntitySnapshotWireSource(pendingEntities);
@@ -905,6 +909,7 @@ export class SnapshotBuffer {
     const releaseSnapshot = this.pendingSnapshotRelease;
     this.pendingSnapshot = null;
     this.pendingSnapshotRelease = null;
+    this.invalidatePendingEntityIndex();
 
     // Swap spawns
     const spawns = this.bufferedSpawns;
@@ -1050,7 +1055,7 @@ export class SnapshotBuffer {
     this.beamStagePool.length = 0;
     this.beamStagePoolIndex = 0;
     this.bufferedGrid = undefined;
-    this.pendingEntityIndexById.clear();
+    this.invalidatePendingEntityIndex();
     this.removedEntityIdSet.clear();
     this._velBufA.length = 0;
     this._velBufB.length = 0;
@@ -1073,5 +1078,11 @@ export class SnapshotBuffer {
     this.pendingSnapshot = null;
     this.pendingSnapshotRelease?.();
     this.pendingSnapshotRelease = null;
+    this.invalidatePendingEntityIndex();
+  }
+
+  private invalidatePendingEntityIndex(): void {
+    this.pendingEntityIndexReady = false;
+    this.pendingEntityIndexById.clear();
   }
 }
