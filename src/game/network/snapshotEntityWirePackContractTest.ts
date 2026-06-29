@@ -220,12 +220,13 @@ function createV6MovementNormalSource(): EntitySnapshotWireSource {
   values[base + 4] = 50;
   values[base + 5] = 3;
   values[base + 6] = 1;
-  values[base + 7] =
+  const changedFields =
     ENTITY_CHANGED_POS |
     ENTITY_CHANGED_ROT |
     ENTITY_CHANGED_VEL |
     ENTITY_CHANGED_NORMAL |
     ENTITY_CHANGED_HP;
+  values[base + 7] = changedFields;
   values[base + 8] = 77.25;
   values[base + 9] = 100;
   values[base + 10] = 11;
@@ -235,7 +236,13 @@ function createV6MovementNormalSource(): EntitySnapshotWireSource {
   values[base + 24] = -125;
   values[base + 25] = 250;
   values[base + 26] = 960;
-  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex);
+  appendEntitySnapshotWireSourceRow(
+    source,
+    ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    rowIndex,
+    false,
+    changedFields,
+  );
   return source;
 }
 
@@ -260,6 +267,15 @@ export function runSnapshotEntityWirePackContractTest(): void {
     slabSource !== undefined &&
       slabSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     'entity-state motion row must register unit typed wire metadata',
+  );
+  assertContract(
+    slabSource.unitChangedFieldsOr === (
+      ENTITY_CHANGED_POS |
+      ENTITY_CHANGED_ROT |
+      ENTITY_CHANGED_VEL |
+      ENTITY_CHANGED_NORMAL
+    ),
+    'entity-state motion source must aggregate unit changed fields',
   );
   const slabWireBase = slabSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
   assertContract(
@@ -339,6 +355,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
     slabHpSource !== undefined,
     'entity-state HP row must register unit typed wire metadata',
   );
+  assertContract(
+    slabHpSource.unitChangedFieldsOr === ENTITY_CHANGED_HP,
+    'entity-state HP source must aggregate unit changed fields',
+  );
   const slabHpWireBase = slabHpSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
   assertContract(
     slabHpSource.unitRows.values[slabHpWireBase + 7] === ENTITY_CHANGED_HP &&
@@ -394,6 +414,11 @@ export function runSnapshotEntityWirePackContractTest(): void {
       slabBuildingHpSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     'entity-state building HP row must register building typed wire metadata',
   );
+  assertContract(
+    slabBuildingHpSource.buildingChangedFieldsOr ===
+      (ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'entity-state building HP source must aggregate building changed fields',
+  );
   const slabBuildingHpWireBase =
     slabBuildingHpSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
   assertContract(
@@ -445,6 +470,11 @@ export function runSnapshotEntityWirePackContractTest(): void {
     decodedBuildingV6Source !== undefined &&
       decodedBuildingV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     'Rust V6 compact building decode must expose typed building source metadata',
+  );
+  assertContract(
+    decodedBuildingV6Source.buildingChangedFieldsOr ===
+      (ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'Rust V6 compact building decode must aggregate building changed fields',
   );
 
   const slabBuildingBuildEntities: NetworkServerSnapshotEntity[] = [];
@@ -546,6 +576,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
       slabBasicUnitSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
     'entity-state unit transform row must register basic typed wire metadata',
   );
+  assertContract(
+    slabBasicUnitSource.basicChangedFieldsOr === (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'entity-state unit transform source must aggregate basic changed fields',
+  );
   const slabBasicUnitBase =
     slabBasicUnitSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
   assertContract(
@@ -585,6 +619,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     decodedBasicUnitV6Source !== undefined,
     'Rust V6 slab basic unit decode must expose typed source metadata',
+  );
+  assertContract(
+    decodedBasicUnitV6Source.unitChangedFieldsOr === (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'Rust V6 slab basic unit decode must aggregate movement changed fields',
   );
 
   const slabBasicBuildingEntities: NetworkServerSnapshotEntity[] = [];
@@ -737,6 +775,11 @@ export function runSnapshotEntityWirePackContractTest(): void {
       metadataOnlyBuildingSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     'metadata-only building delta decode must preserve typed building wire metadata',
   );
+  assertContract(
+    metadataOnlyBuildingSource.buildingChangedFieldsOr ===
+      (ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'metadata-only building delta decode must aggregate building changed fields',
+  );
   const metadataOnlyBuildingWireBase =
     metadataOnlyBuildingSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
   assertContract(
@@ -781,6 +824,16 @@ export function runSnapshotEntityWirePackContractTest(): void {
       movementSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     'movement-normal row must expose decoded typed entity wire source metadata',
   );
+  assertContract(
+    movementSource.unitChangedFieldsOr === (
+      ENTITY_CHANGED_POS |
+      ENTITY_CHANGED_ROT |
+      ENTITY_CHANGED_VEL |
+      ENTITY_CHANGED_NORMAL |
+      ENTITY_CHANGED_HP
+    ),
+    'movement-normal row must aggregate unit changed fields',
+  );
   const movementWireBase = movementSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
   assertContract(
     movementSource.unitRows.values[movementWireBase + 1] === 1000 &&
@@ -808,6 +861,16 @@ export function runSnapshotEntityWirePackContractTest(): void {
     metadataOnlyMovementSource !== undefined &&
       metadataOnlyMovementSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     'metadata-only movement decode must preserve typed entity wire metadata',
+  );
+  assertContract(
+    metadataOnlyMovementSource.unitChangedFieldsOr === (
+      ENTITY_CHANGED_POS |
+      ENTITY_CHANGED_ROT |
+      ENTITY_CHANGED_VEL |
+      ENTITY_CHANGED_NORMAL |
+      ENTITY_CHANGED_HP
+    ),
+    'metadata-only movement decode must aggregate unit changed fields',
   );
   const metadataOnlyMovementWireBase =
     metadataOnlyMovementSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
@@ -868,6 +931,15 @@ export function runSnapshotEntityWirePackContractTest(): void {
       clonedLocalDeltaSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     'local typed delta clone must preserve typed entity wire metadata',
   );
+  assertContract(
+    clonedLocalDeltaSource.unitChangedFieldsOr === (
+      ENTITY_CHANGED_POS |
+      ENTITY_CHANGED_ROT |
+      ENTITY_CHANGED_VEL |
+      ENTITY_CHANGED_NORMAL
+    ),
+    'local typed delta clone must preserve aggregated unit changed fields',
+  );
 
   const turretEntities = unpackEntitiesFromWire({
     v: PACKED_ENTITIES_VERSION_V14,
@@ -887,6 +959,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
     turretSource !== undefined &&
       turretSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     'unit-turret row must expose decoded typed entity wire source metadata',
+  );
+  assertContract(
+    turretSource.unitChangedFieldsOr === ENTITY_CHANGED_TURRETS,
+    'unit-turret row must aggregate unit changed fields',
   );
   const turretUnitWireBase = turretSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
   const turretWireBase =
@@ -918,6 +994,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
     metadataOnlyTurretSource !== undefined &&
       metadataOnlyTurretSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     'metadata-only turret decode must preserve typed entity wire metadata',
+  );
+  assertContract(
+    metadataOnlyTurretSource.unitChangedFieldsOr === ENTITY_CHANGED_TURRETS,
+    'metadata-only turret decode must aggregate unit changed fields',
   );
   const metadataOnlyTurretUnitWireBase =
     metadataOnlyTurretSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;

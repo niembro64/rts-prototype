@@ -164,6 +164,9 @@ export type EntitySnapshotWireSource = {
   rowIndices: Int32Array;
   typedPlaceholderMarks: Uint8Array;
   typedPlaceholderRows: number;
+  basicChangedFieldsOr: number;
+  unitChangedFieldsOr: number;
+  buildingChangedFieldsOr: number;
   basicRows: Float64WireRows;
   unitRows: Float64WireRows;
   buildingRows: Float64WireRows;
@@ -207,6 +210,9 @@ export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotW
     rowIndices: new Int32Array(capacity),
     typedPlaceholderMarks: new Uint8Array(capacity),
     typedPlaceholderRows: 0,
+    basicChangedFieldsOr: 0,
+    unitChangedFieldsOr: 0,
+    buildingChangedFieldsOr: 0,
     basicRows: createFloat64WireRows(),
     unitRows: createFloat64WireRows(),
     buildingRows: createFloat64WireRows(),
@@ -244,6 +250,7 @@ export function appendEntitySnapshotWireSourceRow(
   kind: number,
   rowIndex: number,
   typedPlaceholder = false,
+  changedFields = 0,
 ): void {
   const index = source.count;
   ensureEntitySnapshotWireSourceCapacity(source, index + 1);
@@ -251,7 +258,27 @@ export function appendEntitySnapshotWireSourceRow(
   source.rowIndices[index] = rowIndex;
   source.typedPlaceholderMarks[index] = typedPlaceholder ? 1 : 0;
   if (typedPlaceholder) source.typedPlaceholderRows++;
+  recordEntitySnapshotWireSourceChangedFields(source, kind, changedFields);
   source.count = index + 1;
+}
+
+export function recordEntitySnapshotWireSourceChangedFields(
+  source: EntitySnapshotWireSource,
+  kind: number,
+  changedFields: number,
+): void {
+  if (changedFields === 0) return;
+  switch (kind) {
+    case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+      source.basicChangedFieldsOr |= changedFields;
+      break;
+    case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+      source.unitChangedFieldsOr |= changedFields;
+      break;
+    case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+      source.buildingChangedFieldsOr |= changedFields;
+      break;
+  }
 }
 
 export function copyEntitySnapshotWireSourceMetadataInto(
@@ -266,6 +293,9 @@ export function copyEntitySnapshotWireSourceMetadataInto(
     dst.typedPlaceholderMarks.set(src.typedPlaceholderMarks.subarray(0, src.count));
   }
   dst.typedPlaceholderRows = src.typedPlaceholderRows;
+  dst.basicChangedFieldsOr = src.basicChangedFieldsOr;
+  dst.unitChangedFieldsOr = src.unitChangedFieldsOr;
+  dst.buildingChangedFieldsOr = src.buildingChangedFieldsOr;
   dst.count = src.count;
 }
 
@@ -470,6 +500,9 @@ export function unregisterEntitySnapshotWireSource(
 function resetEntitySnapshotWireSource(): void {
   entityWireSource.count = 0;
   entityWireSource.typedPlaceholderRows = 0;
+  entityWireSource.basicChangedFieldsOr = 0;
+  entityWireSource.unitChangedFieldsOr = 0;
+  entityWireSource.buildingChangedFieldsOr = 0;
   entityWireSource.basicRows.count = 0;
   entityWireSource.unitRows.count = 0;
   entityWireSource.buildingRows.count = 0;
@@ -529,6 +562,7 @@ function appendDirectBasicEntityWireRow(
     ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
     rowIndex,
     typedPlaceholder,
+    changedFields ?? 0,
   );
 }
 
@@ -813,6 +847,7 @@ function appendDirectUnitEntityWireRow(
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     rowIndex,
     typedPlaceholder,
+    changedFields ?? 0,
   );
 }
 
@@ -895,6 +930,7 @@ export function appendUnitMotionEntityWireRowDirectFromState(
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     rowIndex,
     true,
+    changedFields,
   );
   return true;
 }
@@ -945,6 +981,7 @@ export function appendBasicEntityWireRowDirectFromState(
     ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
     rowIndex,
     true,
+    changedFields,
   );
   return true;
 }
@@ -1007,6 +1044,7 @@ export function appendBuildingHotEntityWireRowDirectFromState(
     ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     rowIndex,
     true,
+    changedFields,
   );
   return true;
 }
@@ -1124,6 +1162,7 @@ function appendDirectBuildingEntityWireRow(
     ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     rowIndex,
     typedPlaceholder,
+    changedFields ?? 0,
   );
 }
 

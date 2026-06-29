@@ -51,7 +51,7 @@ function createTypedPlaceholderDeltaSnapshot(): NetworkServerSnapshot {
   source.unitRows.values[base + 5] = 1;
   source.unitRows.values[base + 6] = 1;
   source.unitRows.values[base + 7] = 1;
-  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex, true);
+  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex, true, 1);
   registerEntitySnapshotWireSource(entities, source);
   return createSnapshot(entities);
 }

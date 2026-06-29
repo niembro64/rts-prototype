@@ -191,7 +191,13 @@ function attachTypedUnitMotionSources(
       values[base + 48] = row.build.paidMetal;
       values[base + 63] = row.build.interrupted === true ? 1 : 0;
     }
-    appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex);
+    appendEntitySnapshotWireSourceRow(
+      source,
+      ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+      rowIndex,
+      false,
+      changedFields ?? 0,
+    );
   }
   registerEntitySnapshotWireSource(entities, source);
   return source;
@@ -239,7 +245,13 @@ function attachTypedBuildingSource(
   values[base + 20] = options.solarOpen !== undefined && options.solarOpen !== null ? 1 : 0;
   values[base + 21] = options.solarOpen === true ? 1 : 0;
   values[base + 34] = options.interrupted === true ? 1 : 0;
-  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_BUILDING, rowIndex);
+  appendEntitySnapshotWireSourceRow(
+    source,
+    ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    rowIndex,
+    false,
+    changedFields ?? 0,
+  );
   registerEntitySnapshotWireSource(entities, source);
   return source;
 }
@@ -263,7 +275,13 @@ function attachTypedBasicMotionSource(
   values[base + 6] = 1;
   values[base + 7] = 1;
   values[base + 8] = changedFields;
-  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_BASIC, rowIndex);
+  appendEntitySnapshotWireSourceRow(
+    source,
+    ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+    rowIndex,
+    false,
+    changedFields,
+  );
   registerEntitySnapshotWireSource(entities, source);
   return source;
 }

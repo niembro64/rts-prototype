@@ -1544,23 +1544,8 @@ export class ClientViewState {
     ) {
       return false;
     }
-
-    const values = source.unitRows.values;
-    for (let entityIndex = 0; entityIndex < count; entityIndex++) {
-      if (source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) return false;
-      const rowIndex = source.rowIndices[entityIndex];
-      if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
-      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-      const changedFields = values[base + 7] | 0;
-      if (
-        values[base + 6] === 0 ||
-        changedFields === 0 ||
-        (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) !== 0
-      ) {
-        return false;
-      }
-    }
-    return true;
+    return source.unitChangedFieldsOr !== 0 &&
+      (source.unitChangedFieldsOr & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0;
   }
 
   private applyUnitHotMotionTypedPlaceholderSource(

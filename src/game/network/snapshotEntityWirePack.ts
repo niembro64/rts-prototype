@@ -27,6 +27,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   appendEntitySnapshotWireSourceRow,
   createEntitySnapshotWireSource,
+  recordEntitySnapshotWireSourceChangedFields,
   registerEntitySnapshotWireSource,
 } from './stateSerializerEntities';
 import { reserveFloat64WireRows } from './snapshotWireRows';
@@ -125,6 +126,9 @@ function resetDecodePools(): void {
 function resetDecodedEntityWireSource(): void {
   _decodedEntityWireSource.count = 0;
   _decodedEntityWireSource.typedPlaceholderRows = 0;
+  _decodedEntityWireSource.basicChangedFieldsOr = 0;
+  _decodedEntityWireSource.unitChangedFieldsOr = 0;
+  _decodedEntityWireSource.buildingChangedFieldsOr = 0;
   _decodedEntityWireSource.basicRows.count = 0;
   _decodedEntityWireSource.unitRows.count = 0;
   _decodedEntityWireSource.buildingRows.count = 0;
@@ -682,6 +686,11 @@ function readMovementUnitDeltaByteEntity(
   wireValues[wireBase + 5] = playerId;
   wireValues[wireBase + 6] = 1;
   wireValues[wireBase + 7] = changedFields;
+  recordEntitySnapshotWireSourceChangedFields(
+    _decodedEntityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    changedFields,
+  );
 
   const entity = materializeEntity
     ? rentDecodedTypedDeltaPlaceholder(id, 'unit', playerId, changedFields)
@@ -828,6 +837,11 @@ function readBuildingDeltaByteEntity(
   wireValues[wireBase + 5] = playerId;
   wireValues[wireBase + 6] = 1;
   wireValues[wireBase + 7] = changedFields;
+  recordEntitySnapshotWireSourceChangedFields(
+    _decodedEntityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    changedFields,
+  );
 
   const entity = materializeEntity
     ? rentDecodedTypedDeltaPlaceholder(id, 'building', playerId, changedFields)
@@ -945,6 +959,11 @@ function readUnitTurretDeltaByteEntity(
   wireValues[wireBase + 5] = playerId;
   wireValues[wireBase + 6] = 1;
   wireValues[wireBase + 7] = ENTITY_CHANGED_TURRETS;
+  recordEntitySnapshotWireSourceChangedFields(
+    _decodedEntityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    ENTITY_CHANGED_TURRETS,
+  );
   wireValues[wireBase + 43] = turretCount > 0 ? 1 : 0;
   wireValues[wireBase + 44] = turretCount;
   wireValues[wireBase + 49] = turretRowOffset;
