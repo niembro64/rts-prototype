@@ -62,6 +62,8 @@ const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 type DirectSerializedListenerSnapshot = {
   state: NetworkServerSnapshot;
   wirePayload: SnapshotWirePayload;
+  visibleBaselineAddedIds?: readonly EntityId[];
+  visibleBaselineRemovedIds?: readonly EntityId[];
 };
 
 type ServerSnapshotDirectWireInput = {
@@ -170,6 +172,8 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly removedEntityIds: number[] = [];
   private readonly removedEntityIdSet = new Set<EntityId>();
   private readonly emittedDeltaEntityIds = new Set<EntityId>();
+  private readonly visibleBaselineAddedIds: EntityId[] = [];
+  private readonly visibleBaselineRemovedIds: EntityId[] = [];
   private readonly state: NetworkServerSnapshot = {
     tick: 0,
     entities: this.entityPlaceholders,
@@ -267,6 +271,8 @@ export class ServerSnapshotDirectWirePreencoder {
     if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
 
+    this.visibleBaselineAddedIds.length = 0;
+    this.visibleBaselineRemovedIds.length = 0;
     const state = this.materializeRichDeltaWireState(input);
     if (state === undefined) return undefined;
 
@@ -281,6 +287,7 @@ export class ServerSnapshotDirectWirePreencoder {
       );
     }
     if (encoded === null) return undefined;
+    const includeVisibleBaselineDeltas = input.currentVisibleEntityIds !== undefined;
     return {
       state,
       wirePayload: {
@@ -294,6 +301,12 @@ export class ServerSnapshotDirectWirePreencoder {
           ? [...encoded.rawTopLevelKeys]
           : undefined,
       },
+      visibleBaselineAddedIds: includeVisibleBaselineDeltas
+        ? this.visibleBaselineAddedIds
+        : undefined,
+      visibleBaselineRemovedIds: includeVisibleBaselineDeltas
+        ? this.visibleBaselineRemovedIds
+        : undefined,
     };
   }
 
@@ -804,6 +817,7 @@ export class ServerSnapshotDirectWirePreencoder {
       for (let i = 0; i < currentVisibleEntityIdList.length; i++) {
         const id = currentVisibleEntityIdList[i];
         if (input.previousVisibleEntityIds.has(id)) continue;
+        this.visibleBaselineAddedIds.push(id);
         const entity = input.world.getEntity(id);
         if (!entity || !isSerializedEntityKind(entity)) continue;
         appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
@@ -813,6 +827,7 @@ export class ServerSnapshotDirectWirePreencoder {
     } else {
       for (const id of currentVisibleEntityIds) {
         if (input.previousVisibleEntityIds.has(id)) continue;
+        this.visibleBaselineAddedIds.push(id);
         const entity = input.world.getEntity(id);
         if (!entity || !isSerializedEntityKind(entity)) continue;
         appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
@@ -870,7 +885,10 @@ export class ServerSnapshotDirectWirePreencoder {
 
     if (input.currentVisibleEntityIds !== undefined) {
       for (const id of input.previousVisibleEntityIds) {
-        if (!input.currentVisibleEntityIds.has(id)) pushRemoved(id);
+        if (!input.currentVisibleEntityIds.has(id)) {
+          pushRemoved(id);
+          this.visibleBaselineRemovedIds.push(id);
+        }
       }
     }
 

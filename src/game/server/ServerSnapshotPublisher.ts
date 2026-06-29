@@ -708,7 +708,11 @@ export class ServerSnapshotPublisher {
         if (directSnapshot !== undefined) {
           stageStart = performance.now();
           if (currentVisible !== undefined) {
-            this.copyVisibleBaseline(listener, currentVisibleList ?? currentVisible);
+            this.applyVisibleBaselineDelta(
+              listener,
+              directSnapshot.visibleBaselineAddedIds,
+              directSnapshot.visibleBaselineRemovedIds,
+            );
           } else {
             this.updateUnfilteredVisibleBaseline(
               listener,
@@ -1057,13 +1061,18 @@ export class ServerSnapshotPublisher {
     return removedIds.length > 0 ? removedIds : undefined;
   }
 
-  private copyVisibleBaseline(
+  private applyVisibleBaselineDelta(
     listener: SnapshotListenerEntry,
-    currentVisibleEntityIds: Iterable<EntityId>,
+    addedIds: readonly EntityId[] | undefined,
+    removedIds: readonly EntityId[] | undefined,
   ): void {
     const baseline = listener.visibleEntityIds;
-    baseline.clear();
-    for (const id of currentVisibleEntityIds) baseline.add(id);
+    if (removedIds !== undefined) {
+      for (let i = 0; i < removedIds.length; i++) baseline.delete(removedIds[i]);
+    }
+    if (addedIds !== undefined) {
+      for (let i = 0; i < addedIds.length; i++) baseline.add(addedIds[i]);
+    }
     listener.hasVisibleEntityBaseline = true;
   }
 
