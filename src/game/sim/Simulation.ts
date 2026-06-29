@@ -1104,19 +1104,16 @@ export class Simulation {
           this.tryRefreshGuardApproach(entity, currentAction, targetPoint);
 
           const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-          const dx = movementTarget.x - transform.x;
-          const dy = movementTarget.y - transform.y;
-          const distance = magnitude(dx, dy);
-          if (distance > 15) {
-            this.arrivalController.queueThrust(entity, currentAction, dx, dy, distance, movementTarget.isFinalActionPoint);
-          } else if (!movementTarget.isFinalActionPoint) {
-            this.advanceActivePathPoint(entity);
-            unit.stuckTicks = 0;
-          } else if (this.tryRefreshGuardApproach(entity, currentAction, targetPoint)) {
-            unit.stuckTicks = 0;
-          } else {
-            this.arrivalController.queueThrust(entity, currentAction, targetDx, targetDy, targetDistance);
-          }
+          movementPlanner.queue(
+            entity,
+            currentAction,
+            UNIT_ACTION_PLAN_GUARD_FOLLOW,
+            spatialGrid.getEntitySlot(entity),
+            movementTarget.x,
+            movementTarget.y,
+            15,
+            movementTarget.isFinalActionPoint,
+          );
           break;
         }
 
@@ -1188,6 +1185,32 @@ export class Simulation {
             unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;
             continue;
           }
+        } else if (movementPlanner.planAt(i) === UNIT_ACTION_PLAN_GUARD_FOLLOW) {
+          if (action.type !== 'guard' || action.targetId === undefined) {
+            unit.stuckTicks = 0;
+            continue;
+          }
+          const guardTarget = this.world.getEntity(action.targetId);
+          if (!entity.ownership || !isFriendlyGuardTarget(guardTarget, entity.ownership.playerId)) {
+            this.advanceAction(entity);
+            unit.stuckTicks = 0;
+            continue;
+          }
+          const targetPoint = getEntityTargetPoint(guardTarget);
+          if (this.tryRefreshGuardApproach(entity, action, targetPoint)) {
+            unit.stuckTicks = 0;
+            continue;
+          }
+          const targetDx = targetPoint.x - entity.transform.x;
+          const targetDy = targetPoint.y - entity.transform.y;
+          this.arrivalController.queueThrust(
+            entity,
+            action,
+            targetDx,
+            targetDy,
+            magnitude(targetDx, targetDy),
+          );
+          continue;
         }
         unit.stuckTicks = 0;
       }
