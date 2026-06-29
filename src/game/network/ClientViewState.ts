@@ -311,6 +311,7 @@ export class ClientViewState {
 
   // Reusable Set for full-state membership reconciliation.
   private _serverIds: Set<EntityId> = new ClientEntityIdSet();
+  private readonly _fullReconcileRemoveIds: EntityId[] = [];
   private _projectileReflectionIds: Set<EntityId> = new ClientEntityIdSet();
 
   // Spatial grid debug visualization data
@@ -2125,12 +2126,14 @@ export class ClientViewState {
           if (id !== null) this._serverIds.add(id);
         }
       }
+      const removeIds = this.renderEntityState.collectEntityIdsMissingFrom(
+        this._serverIds,
+        this._fullReconcileRemoveIds,
+      );
       let removedAnyLocalEntity = false;
-      for (const [id, entity] of this.entities) {
-        if (entity.type === 'shot') continue;
-        if (!this._serverIds.has(id)) {
-          removedAnyLocalEntity = this.deleteEntityLocalState(id, true) || removedAnyLocalEntity;
-        }
+      for (let i = 0; i < removeIds.length; i++) {
+        removedAnyLocalEntity =
+          this.deleteEntityLocalState(removeIds[i], true) || removedAnyLocalEntity;
       }
       this.markSnapshotRemovalsApplied(removedAnyLocalEntity);
     }

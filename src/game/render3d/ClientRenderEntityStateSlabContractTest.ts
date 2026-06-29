@@ -11,7 +11,7 @@ import type {
 import { ClientViewState } from '../network/ClientViewState';
 import { quantizeEntityPosition as qEntityPos } from '../network/snapshotQuantization';
 import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
-import type { Entity, PlayerId } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { WorldSupportSurface } from '../sim/supportSurface';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
 import {
@@ -299,6 +299,14 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   const reusedSlot = slab.refreshUnit(reusedUnit);
   turretSlab.refreshHost(reusedUnit, reusedSlot!);
   assertContract(reusedSlot === slot, 'freed slots must be reused for stable bounded slabs');
+  const missingIds: EntityId[] = [];
+  slab.collectEntityIdsMissingFrom(new Set<EntityId>(), missingIds);
+  assertContract(
+    missingIds.length === 1 && missingIds[0] === reusedUnit.id,
+    'missing-id collection must report live render rows',
+  );
+  slab.collectEntityIdsMissingFrom(new Set<EntityId>([reusedUnit.id]), missingIds);
+  assertContract(missingIds.length === 0, 'missing-id collection must honor present ids');
 
   const shieldUnit = createTestUnit(12, 4 as PlayerId, 'unitDaddy');
   const shieldSlot = slab.refreshUnit(shieldUnit);

@@ -502,6 +502,20 @@ export class ClientRenderEntityStateSlab {
     this.markSlotDirty(slot);
   }
 
+  collectEntityIdsMissingFrom(
+    present: ReadonlySet<EntityId>,
+    out: EntityId[] = [],
+  ): EntityId[] {
+    out.length = 0;
+    const views = this.views;
+    for (let slot = 0; slot < this.nextSlot; slot++) {
+      if (views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_NONE) continue;
+      const id = views.entityIds[slot] as EntityId;
+      if (!present.has(id)) out.push(id);
+    }
+    return out;
+  }
+
   consumeDirtySlots(out: number[] = []): number[] {
     out.length = 0;
     for (let i = 0; i < this.dirtySlots.length; i++) {
