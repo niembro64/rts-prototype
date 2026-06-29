@@ -416,8 +416,11 @@ export class SnapshotBuffer {
       }
       for (let i = 0; i < removedEntityIds.length; i++) {
         const id = removedEntityIds[i];
+        const pendingWireSource = preservedPendingWireSource !== undefined
+          ? preservedPendingWireSource
+          : getEntitySnapshotWireSource(pendingEntities);
         for (let j = pendingEntities.length - 1; j >= 0; j--) {
-          if (pendingEntities[j].id === id) {
+          if (this.getPendingEntityId(pendingEntities, pendingWireSource, j) === id) {
             this.prunePendingEntityAt(pendingEntities, j, preservedPendingWireSource);
           }
         }
@@ -964,8 +967,10 @@ export class SnapshotBuffer {
     if (pendingEntities.length * deltaCount < INDEXED_ENTITY_MERGE_MIN_WORK) return undefined;
     const indexById = this.pendingEntityIndexById;
     indexById.clear();
+    const wireSource = getEntitySnapshotWireSource(pendingEntities);
     for (let i = 0; i < pendingEntities.length; i++) {
-      indexById.set(pendingEntities[i].id, i);
+      const id = this.getPendingEntityId(pendingEntities, wireSource, i);
+      if (id >= 0) indexById.set(id, i);
     }
     this.pendingEntityIndexReady = true;
     return indexById;
@@ -977,8 +982,9 @@ export class SnapshotBuffer {
     indexById: ReadonlyMap<number, number> | undefined,
   ): number {
     if (indexById !== undefined) return indexById.get(id) ?? -1;
+    const wireSource = getEntitySnapshotWireSource(pendingEntities);
     for (let i = 0; i < pendingEntities.length; i++) {
-      if (pendingEntities[i].id === id) return i;
+      if (this.getPendingEntityId(pendingEntities, wireSource, i) === id) return i;
     }
     return -1;
   }
@@ -994,7 +1000,8 @@ export class SnapshotBuffer {
     let write = 0;
     for (let read = 0; read < pendingEntities.length; read++) {
       const entity = pendingEntities[read];
-      if (removedIds.has(entity.id)) continue;
+      const id = this.getPendingEntityId(pendingEntities, wireSource, read);
+      if (id >= 0 && removedIds.has(id)) continue;
       if (write !== read) {
         pendingEntities[write] = entity;
         if (wireSource !== undefined) {
@@ -1023,6 +1030,38 @@ export class SnapshotBuffer {
     if (wireSource === undefined) return;
     removeEntitySnapshotWireSourceRow(wireSource, index);
     if (wireSource.count === 0) unregisterEntitySnapshotWireSource(pendingEntities);
+  }
+
+  private getPendingEntityId(
+    pendingEntities: readonly NetworkServerSnapshotEntity[],
+    wireSource: EntitySnapshotWireSource | undefined,
+    index: number,
+  ): number {
+    const entity = pendingEntities[index] as NetworkServerSnapshotEntity | undefined;
+    if (entity !== undefined) return entity.id;
+    return this.getEntityWireRowId(wireSource, index);
+  }
+
+  private getEntityWireRowId(
+    source: EntitySnapshotWireSource | undefined,
+    index: number,
+  ): number {
+    if (source === undefined || index < 0 || index >= source.count) return -1;
+    const kind = source.kinds[index];
+    const rowIndex = source.rowIndices[index];
+    if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+      if (rowIndex < 0 || rowIndex >= source.unitRows.count) return -1;
+      return source.unitRows.values[rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE] | 0;
+    }
+    if (kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) {
+      if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return -1;
+      return source.buildingRows.values[rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE] | 0;
+    }
+    if (kind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC) {
+      if (rowIndex < 0 || rowIndex >= source.basicRows.count) return -1;
+      return source.basicRows.values[rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE] | 0;
+    }
+    return -1;
   }
 
   /** Wire the gameConnection snapshot callback to accumulate events. */

@@ -731,6 +731,38 @@ export function runSnapshotBufferContractTest(): void {
     'removal entity deltas must compact cloned typed row metadata for surviving rows',
   );
 
+  const typedPlaceholderPruneEntities = [
+    undefined,
+    undefined,
+  ] as unknown as NetworkServerSnapshotEntity[];
+  const typedPlaceholderPruneSnapshot = createSnapshot(20, [], typedPlaceholderPruneEntities);
+  attachTypedUnitMotionSources(typedPlaceholderPruneEntities, [
+    { id: 71, x: 100, changedFields: null },
+    { id: 72, x: 200, changedFields: null },
+  ]);
+  fake.emitSnapshot(typedPlaceholderPruneSnapshot);
+  const typedPlaceholderPruneDelta = createSnapshot(21, [], []);
+  typedPlaceholderPruneDelta.entityDeltaOnly = true;
+  typedPlaceholderPruneDelta.removedEntityIds = [71];
+  fake.emitSnapshot(typedPlaceholderPruneDelta);
+  const consumedTypedPlaceholderPrune = buffer.consume();
+  assertContract(
+    consumedTypedPlaceholderPrune?.entities.length === 1 &&
+      consumedTypedPlaceholderPrune.entities[0] === undefined,
+    'removal entity deltas must prune typed placeholder rows without requiring DTO ids',
+  );
+  const preservedPlaceholderPruneSource = consumedTypedPlaceholderPrune !== null
+    ? getEntitySnapshotWireSource(consumedTypedPlaceholderPrune.entities)
+    : undefined;
+  assertContract(
+    preservedPlaceholderPruneSource !== undefined &&
+      preservedPlaceholderPruneSource.count === 1 &&
+      preservedPlaceholderPruneSource.unitRows.values[
+        preservedPlaceholderPruneSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 0
+      ] === 72,
+    'removal entity deltas must compact typed placeholder row metadata for surviving rows',
+  );
+
   const typedRemovedEntity = createSparseDecodedMotionUnitEntity(61, 100);
   typedRemovedEntity.changedFields = null;
   typedRemovedEntity.rotation = 0;
