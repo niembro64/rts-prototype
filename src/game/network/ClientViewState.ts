@@ -1562,6 +1562,8 @@ export class ClientViewState {
   ): void {
     const serverTargets = this.serverTargets;
     const activeEntityPredictionIds = this.activeEntityPredictionIds;
+    const renderEntityState = this.renderEntityState;
+    const renderViews = renderEntityState.getViews();
     const posScale = ENTITY_POSITION_WIRE_INV_SCALE;
     const rotScale = ROTATION_WIRE_INV_SCALE;
     const velScale = VELOCITY_WIRE_INV_SCALE;
@@ -1572,10 +1574,14 @@ export class ClientViewState {
       rowIndex++, base += ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
     ) {
       const changedFields = values[base + 7] | 0;
+      if (values[base + 6] === 0 || changedFields === 0) continue;
       const id = values[base + 0] | 0;
       const playerId = values[base + 5] | 0;
+      const renderSlot = renderEntityState.getSlot(id as EntityId);
       if (
-        !this.renderSlotMatchesSnapshotOwner(id as EntityId, playerId as PlayerId, CLIENT_RENDER_ENTITY_KIND_UNIT)
+        renderSlot === undefined ||
+        renderViews.kind[renderSlot] !== CLIENT_RENDER_ENTITY_KIND_UNIT ||
+        renderViews.ownerIds[renderSlot] !== playerId
       ) {
         const existing = this.entities.get(id);
         if (existing === undefined || existing.unit === null) continue;
@@ -1933,6 +1939,7 @@ export class ClientViewState {
       entityWireSource !== undefined && entityWireSource.count === state.entities.length
         ? entityWireSource
         : undefined;
+    let entityApplyPath: SnapshotMaterializationStage | undefined = undefined;
     if (
       !projectileDeltaOnly &&
       entityDeltaOnly &&
@@ -1946,6 +1953,7 @@ export class ClientViewState {
         applyStats,
       )
     ) {
+      entityApplyPath = 'clientApplyEntitiesTypedPlaceholder';
       // Applied by tryApplyTypedPlaceholderDeltaSource above.
     } else if (
       !projectileDeltaOnly &&
@@ -1954,6 +1962,7 @@ export class ClientViewState {
       typedEntityWireSource !== undefined &&
       this.canApplyBasicTransformTypedDeltaSource(typedEntityWireSource, state.entities)
     ) {
+      entityApplyPath = 'clientApplyEntitiesBasicTyped';
       this.applyBasicTransformTypedDeltaSource(typedEntityWireSource, now);
     } else if (
       !projectileDeltaOnly &&
@@ -1961,8 +1970,10 @@ export class ClientViewState {
       typedEntityWireSource !== undefined &&
       this.canApplyMetadataTypedDeltaSource(typedEntityWireSource, state.entities)
     ) {
+      entityApplyPath = 'clientApplyEntitiesMetadataTyped';
       this.applyMetadataTypedDeltaSource(typedEntityWireSource);
     } else if (!projectileDeltaOnly) {
+      entityApplyPath = 'clientApplyEntitiesGeneric';
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
         let appliedTypedDelta = false;
         if (typedEntityWireSource !== undefined) {
@@ -2135,6 +2146,13 @@ export class ClientViewState {
           this.markNetworkEntityPredictionActive(netEntity, existing);
         }
       }
+    }
+    if (entityApplyPath !== undefined && collectMaterializationStages) {
+      addSnapshotMaterializationStageToSnapshot(
+        state,
+        entityApplyPath,
+        performance.now() - materializationStageStart,
+      );
     }
     materializationStageStart = recordClientApplySubstage(
       state,

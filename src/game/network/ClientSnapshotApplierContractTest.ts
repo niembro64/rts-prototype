@@ -41,6 +41,10 @@ import {
 } from './stateSerializerEntities';
 import { encodeNetworkSnapshotWithRustFallback } from './snapshotRustWireEncoder';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
+import {
+  getSnapshotMaterializationMetadata,
+  setSnapshotMaterializationMetadata,
+} from './snapshotMaterializationMetadata';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -161,6 +165,22 @@ function snapshot(
     visionPlayerMask: undefined,
     removedEntityIds: undefined,
   };
+}
+
+function installMaterializationMetadata(state: NetworkServerSnapshot): NetworkServerSnapshot {
+  setSnapshotMaterializationMetadata(state, {
+    kind: state.entityDeltaOnly === true ? 'rich-delta' : 'rich-full',
+    tick: state.tick,
+    listener: 'contract',
+    playerId: null,
+    entityRows: state.entities.length,
+    removedRows: state.removedEntityIds?.length ?? 0,
+    projectileRows: 0,
+    directWire: true,
+    preencodedWire: false,
+    stages: {},
+  });
+  return state;
 }
 
 function fullUnitEntity(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
@@ -578,15 +598,22 @@ export function runClientSnapshotApplierContractTest(): void {
     getEntitySnapshotWireSource(decodedPackedMotion.entities) !== undefined,
     'packed metadata-only motion decode must expose typed wire rows',
   );
+  installMaterializationMetadata(decodedPackedMotion);
   const metadataOnlyPackedMotionStats = view.applyNetworkState(decodedPackedMotion, {
     syncEconomy: undefined,
     collectCorrectionStats: true,
+    collectMaterializationStages: true,
   });
   resetEntitySnapshotPool();
   assertContract(
     metadataOnlyPackedMotionStats.correction.count === 1 &&
       metadataOnlyPackedMotionStats.correction.totalDistance > 150,
     'packed metadata-only motion rows must apply from decoded wire rows',
+  );
+  const metadataOnlyPackedMotionStages = getSnapshotMaterializationMetadata(decodedPackedMotion)?.stages;
+  assertContract(
+    metadataOnlyPackedMotionStages?.clientApplyEntitiesGeneric !== undefined,
+    'correction-stat motion apply must record the generic entity apply materialization path',
   );
 
   const hotPathView = new ClientViewState();
@@ -620,14 +647,26 @@ export function runClientSnapshotApplierContractTest(): void {
     {} as WorldState,
   );
   if (hotPathRow !== null) hotPathRows.push(hotPathRow as NetworkServerSnapshotEntity);
-  const encodedHotPath = encodeNetworkSnapshotWithRustFallback(snapshot(2, hotPathRows));
+  const hotPathSnapshot = snapshot(2, hotPathRows);
+  hotPathSnapshot.entityDeltaOnly = true;
+  const encodedHotPath = encodeNetworkSnapshotWithRustFallback(hotPathSnapshot);
   if (encodedHotPath === null) {
     throw new Error('[client snapshot applier contract] packed hot motion fixture must encode');
   }
   const decodedHotPath = decodeNetworkSnapshot(encodedHotPath.bytes, {
     packedEntityDeltas: 'metadata-only',
   });
-  hotPathView.applyNetworkState(decodedHotPath, { syncEconomy: undefined });
+  installMaterializationMetadata(decodedHotPath);
+  hotPathView.applyNetworkState(decodedHotPath, {
+    syncEconomy: undefined,
+    collectMaterializationStages: true,
+  });
+  const hotPathStages = getSnapshotMaterializationMetadata(decodedHotPath)?.stages;
+  assertContract(
+    hotPathStages?.clientApplyEntitiesTypedPlaceholder !== undefined &&
+      hotPathStages.clientApplyEntitiesGeneric === undefined,
+    'typed hot-motion rows must record the typed-placeholder entity apply materialization path',
+  );
   const hotPathPacketBeforePrediction = collectMinimalUnitRenderPacket(hotPathView);
   assertContract(
     hotPathPacketBeforePrediction.count === 1 &&
