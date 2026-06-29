@@ -16,6 +16,7 @@ import {
   getUnitHudBarsY,
   getUnitHudNameY,
 } from './HudAnchor';
+import { canIndexClientEntityId } from '../network/ClientEntityIds';
 
 const INITIAL_RENDER_ENTITY_STATE_CAP = 4096;
 const NO_OWNER_ID = 0;
@@ -164,6 +165,7 @@ function assertFlag(
 
 export class ClientRenderEntityStateSlab {
   private readonly slotByEntityId = new Map<EntityId, number>();
+  private readonly slotByIndexedEntityId: Array<number | undefined> = [];
   private readonly freeSlots: number[] = [];
   private readonly dirtySlots: number[] = [];
   private readonly packetFlagSlots: number[] = [];
@@ -216,6 +218,7 @@ export class ClientRenderEntityStateSlab {
   }
 
   getSlot(id: EntityId): number | undefined {
+    if (canIndexClientEntityId(id)) return this.slotByIndexedEntityId[id];
     return this.slotByEntityId.get(id);
   }
 
@@ -239,11 +242,15 @@ export class ClientRenderEntityStateSlab {
   }
 
   slotForEntity(entity: Entity): number {
-    const existing = this.slotByEntityId.get(entity.id);
+    const existing = this.getSlot(entity.id);
     if (existing !== undefined) return existing;
     const slot = this.freeSlots.pop() ?? this.nextSlot++;
     this.ensureCapacity(slot + 1);
-    this.slotByEntityId.set(entity.id, slot);
+    if (canIndexClientEntityId(entity.id)) {
+      this.slotByIndexedEntityId[entity.id] = slot;
+    } else {
+      this.slotByEntityId.set(entity.id, slot);
+    }
     this.views.entityIds[slot] = entity.id;
     this.markSlotDirty(slot);
     return slot;
@@ -257,7 +264,7 @@ export class ClientRenderEntityStateSlab {
   }
 
   refreshHealth(entity: Entity): number | undefined {
-    const slot = this.slotByEntityId.get(entity.id);
+    const slot = this.getSlot(entity.id);
     if (slot === undefined) return this.refreshEntity(entity);
     const views = this.views;
     const unit = entity.unit;
@@ -281,7 +288,7 @@ export class ClientRenderEntityStateSlab {
   }
 
   refreshTurretMetadata(entity: Entity): number | undefined {
-    const slot = this.slotByEntityId.get(entity.id);
+    const slot = this.getSlot(entity.id);
     if (slot === undefined) return this.refreshEntity(entity);
     const views = this.views;
     const turrets = entity.combat?.turrets;
@@ -306,7 +313,7 @@ export class ClientRenderEntityStateSlab {
   }
 
   refreshBuildState(entity: Entity): number | undefined {
-    const slot = this.slotByEntityId.get(entity.id);
+    const slot = this.getSlot(entity.id);
     if (slot === undefined) return this.refreshEntity(entity);
     const views = this.views;
     const buildable = isBuildInProgress(entity.buildable) ? entity.buildable : null;
@@ -468,9 +475,13 @@ export class ClientRenderEntityStateSlab {
   }
 
   unsetEntity(id: EntityId): void {
-    const slot = this.slotByEntityId.get(id);
+    const slot = this.getSlot(id);
     if (slot === undefined) return;
-    this.slotByEntityId.delete(id);
+    if (canIndexClientEntityId(id)) {
+      this.slotByIndexedEntityId[id] = undefined;
+    } else {
+      this.slotByEntityId.delete(id);
+    }
     this.views.kind[slot] = CLIENT_RENDER_ENTITY_KIND_NONE;
     this.views.entityIds[slot] = 0;
     this.views.ownerIds[slot] = NO_OWNER_ID;
@@ -511,6 +522,7 @@ export class ClientRenderEntityStateSlab {
 
   clear(): void {
     this.slotByEntityId.clear();
+    this.slotByIndexedEntityId.length = 0;
     this.freeSlots.length = 0;
     this.dirtySlots.length = 0;
     this.packetFlagSlots.length = 0;
@@ -536,7 +548,7 @@ export class ClientRenderEntityStateSlab {
   }
 
   assertParity(entity: Entity): void {
-    const slot = this.slotByEntityId.get(entity.id);
+    const slot = this.getSlot(entity.id);
     if (slot === undefined) {
       throw new Error(`[client render entity state] missing slot for entity ${entity.id}`);
     }
