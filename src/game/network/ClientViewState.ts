@@ -1096,6 +1096,51 @@ export class ClientViewState {
     return true;
   }
 
+  private canApplyUnitHotMotionTypedDeltaSource(
+    source: EntitySnapshotWireSource,
+    entities: readonly (NetworkServerSnapshotEntity | undefined)[],
+  ): boolean {
+    const count = source.count;
+    if (count === 0 || count !== entities.length) return false;
+    if (
+      source.unitRows.count !== count ||
+      source.basicRows.count !== 0 ||
+      source.buildingRows.count !== 0 ||
+      source.actionRows.count !== 0 ||
+      source.turretRows.count !== 0
+    ) {
+      return false;
+    }
+    const values = source.unitRows.values;
+    for (let entityIndex = 0; entityIndex < count; entityIndex++) {
+      if (entities[entityIndex] !== undefined) return false;
+      if (source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) return false;
+      const rowIndex = source.rowIndices[entityIndex];
+      if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
+      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+      const changedFields = values[base + 7] | 0;
+      if (values[base + 6] === 0 || changedFields === 0) return false;
+      if ((changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) !== 0) return false;
+    }
+    return true;
+  }
+
+  private applyUnitHotMotionTypedDeltaSource(
+    source: EntitySnapshotWireSource,
+    now: number,
+  ): void {
+    const values = source.unitRows.values;
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      const base = source.rowIndices[entityIndex] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+      this.tryApplyUnitHotMotionTypedDeltaWireRow(
+        values,
+        base,
+        values[base + 7] | 0,
+        now,
+      );
+    }
+  }
+
   private tryApplyBuildingTypedDeltaWireRow(
     source: EntitySnapshotWireSource,
     entityIndex: number,
@@ -1337,7 +1382,15 @@ export class ClientViewState {
       entityWireSource !== undefined && entityWireSource.count === state.entities.length
         ? entityWireSource
         : undefined;
-    if (!projectileDeltaOnly) {
+    const appliedHotMotionTypedSource =
+      !projectileDeltaOnly &&
+      entityDeltaOnly &&
+      !collectCorrectionStats &&
+      typedEntityWireSource !== undefined &&
+      this.canApplyUnitHotMotionTypedDeltaSource(typedEntityWireSource, state.entities);
+    if (appliedHotMotionTypedSource && typedEntityWireSource !== undefined) {
+      this.applyUnitHotMotionTypedDeltaSource(typedEntityWireSource, now);
+    } else if (!projectileDeltaOnly) {
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
         let appliedTypedDelta = false;
         if (typedEntityWireSource !== undefined) {
