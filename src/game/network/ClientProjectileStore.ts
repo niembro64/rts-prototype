@@ -51,7 +51,6 @@ export type { ClientProjectileRenderLists } from './ClientProjectileRenderSpatia
 
 type ClientProjectileStoreOptions = {
   entities: Map<EntityId, Entity>;
-  clearPredictionAccum: (id: EntityId) => void;
   markEntitySetChanged: (invalidateCaches: boolean | undefined) => void;
 };
 
@@ -125,7 +124,6 @@ export class ClientProjectileStore {
     this.releaseBeamTarget(id);
     this.releaseBeamPointsForEntity(entity ?? this.options.entities.get(id));
     this.projectileSpawns.remove(id);
-    this.options.clearPredictionAccum(id);
     this.activeProjectilePredictionIds.delete(id);
     this.activeBeamPathIds.delete(id);
     this.renderSpatialIndex.remove(id);
@@ -202,7 +200,6 @@ export class ClientProjectileStore {
       this.activeBeamPathIds.add(update.id);
       this.markRenderListsDirty();
     }
-    this.options.clearPredictionAccum(update.id);
     this.refreshRenderStateAndSpatialIndex(entity);
     this.markLineProjectilesChanged();
   }

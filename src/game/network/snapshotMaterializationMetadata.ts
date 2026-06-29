@@ -19,6 +19,11 @@ export const SNAPSHOT_MATERIALIZATION_STAGES = [
   'wireEncode',
   'cloneMerge',
   'clientApply',
+  'clientApplyPrelude',
+  'clientApplyEntities',
+  'clientApplyRemovals',
+  'clientApplyProjectiles',
+  'clientApplyStores',
   'total',
 ] as const;
 

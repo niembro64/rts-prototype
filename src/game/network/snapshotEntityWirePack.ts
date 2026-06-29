@@ -124,6 +124,7 @@ function resetDecodePools(): void {
 
 function resetDecodedEntityWireSource(): void {
   _decodedEntityWireSource.count = 0;
+  _decodedEntityWireSource.typedPlaceholderRows = 0;
   _decodedEntityWireSource.basicRows.count = 0;
   _decodedEntityWireSource.unitRows.count = 0;
   _decodedEntityWireSource.buildingRows.count = 0;
@@ -153,6 +154,7 @@ function appendDecodedUnitEntityWireRow(): { values: Float64Array; base: number 
     _decodedEntityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     rowIndex,
+    true,
   );
   _decodedEntityWireSourceHasTypedRows = true;
   return { values, base };
@@ -171,6 +173,7 @@ function appendDecodedBuildingEntityWireRow(): { values: Float64Array; base: num
     _decodedEntityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     rowIndex,
+    true,
   );
   _decodedEntityWireSourceHasTypedRows = true;
   return { values, base };

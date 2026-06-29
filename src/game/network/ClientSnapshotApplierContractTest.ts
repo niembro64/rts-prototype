@@ -526,6 +526,13 @@ export function runClientSnapshotApplierContractTest(): void {
     (typedPlaceholderRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
     'typed unit motion rows must omit DTO placeholders',
   );
+  const typedPlaceholderSource = getEntitySnapshotWireSource(typedPlaceholderRows);
+  assertContract(
+    typedPlaceholderSource !== undefined &&
+      typedPlaceholderSource.count === 1 &&
+      typedPlaceholderSource.typedPlaceholderRows === 1,
+    'typed unit motion rows must mark DTO-free typed placeholder rows',
+  );
   const typedPlaceholderStats = view.applyNetworkState(snapshot(4, typedPlaceholderRows), {
     syncEconomy: undefined,
     collectCorrectionStats: true,
@@ -1146,6 +1153,13 @@ export function runClientSnapshotApplierContractTest(): void {
       (mixedTypedRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
       (mixedTypedRows as Array<NetworkServerSnapshotEntity | undefined>)[1] === undefined,
     'mixed typed placeholder delta rows must omit DTO placeholders',
+  );
+  const mixedTypedSource = getEntitySnapshotWireSource(mixedTypedRows);
+  assertContract(
+    mixedTypedSource !== undefined &&
+      mixedTypedSource.count === 2 &&
+      mixedTypedSource.typedPlaceholderRows === 2,
+    'mixed typed placeholder delta rows must mark every DTO-free typed row',
   );
   const mixedTypedSnapshot = snapshot(6, mixedTypedRows);
   mixedTypedSnapshot.entityDeltaOnly = true;

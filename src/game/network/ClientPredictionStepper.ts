@@ -450,7 +450,6 @@ export class ClientPredictionStepper {
       const entity = entities.get(id);
       if (entity === undefined || (entity.unit === null && entity.combat === null)) {
         activeEntityPredictionIds.delete(id);
-        predictionCadence.clear(id);
         continue;
       }
 
@@ -489,13 +488,11 @@ export class ClientPredictionStepper {
       const id = entity.id;
       if (entity.unit === null && entity.combat === null) {
         activeEntityPredictionIds.delete(id);
-        predictionCadence.clear(id);
         continue;
       }
       const target = entitySettlementTargets[i];
       if (clientUnitPredictionIsSettled(entity, target, turretShieldSpheresEnabled)) {
         activeEntityPredictionIds.delete(id);
-        predictionCadence.clear(id);
       }
     }
 

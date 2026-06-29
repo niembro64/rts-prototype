@@ -9,10 +9,6 @@ export class ClientPredictionCadence {
     targetDeltaMs: 0,
   };
 
-  clear(_id: number): void {}
-
-  clearTarget(_id: number): void {}
-
   clearAll(): void {}
 
   consumeDelta(deltaMs: number): PredictionStep {

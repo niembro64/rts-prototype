@@ -481,7 +481,10 @@ async function runSimSnapshot(
   const unsubscribe = connection.onSnapshot((snapshot: NetworkServerSnapshot) => {
     const materialization = getSnapshotMaterializationMetadata(snapshot);
     const applyStart = performance.now();
-    view.applyNetworkState(snapshot, { syncEconomy: false });
+    view.applyNetworkState(snapshot, {
+      syncEconomy: false,
+      collectMaterializationStages: true,
+    });
     const applyMs = performance.now() - applyStart;
     applySamples.push(applyMs);
     recordSnapshotMaterializationSample(materializationSamples, materialization, applyMs);

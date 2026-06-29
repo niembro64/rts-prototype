@@ -192,6 +192,7 @@ export class RtsScene3DSnapshotIntake {
       collectCorrectionStats:
         SNAPSHOT_CADENCE_REGRESSION.enabled ||
         CLIENT_PREDICTION_DIAGNOSTICS.enabled,
+      collectMaterializationStages: true,
     });
     const applyMs = performance.now() - applyStart;
     addSnapshotClientMaterializationStage(state, 'clientApply', applyMs);

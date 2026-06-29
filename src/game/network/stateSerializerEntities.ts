@@ -162,6 +162,8 @@ export type EntitySnapshotWireSource = {
   count: number;
   kinds: Uint32Array;
   rowIndices: Int32Array;
+  typedPlaceholderMarks: Uint8Array;
+  typedPlaceholderRows: number;
   basicRows: Float64WireRows;
   unitRows: Float64WireRows;
   buildingRows: Float64WireRows;
@@ -203,6 +205,8 @@ export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotW
     count: 0,
     kinds: new Uint32Array(capacity),
     rowIndices: new Int32Array(capacity),
+    typedPlaceholderMarks: new Uint8Array(capacity),
+    typedPlaceholderRows: 0,
     basicRows: createFloat64WireRows(),
     unitRows: createFloat64WireRows(),
     buildingRows: createFloat64WireRows(),
@@ -224,23 +228,29 @@ export function ensureEntitySnapshotWireSourceCapacity(
   while (nextCapacity < rowCount) nextCapacity *= 2;
   const kinds = new Uint32Array(nextCapacity);
   const rowIndices = new Int32Array(nextCapacity);
+  const typedPlaceholderMarks = new Uint8Array(nextCapacity);
   if (source.count > 0) {
     kinds.set(source.kinds.subarray(0, source.count));
     rowIndices.set(source.rowIndices.subarray(0, source.count));
+    typedPlaceholderMarks.set(source.typedPlaceholderMarks.subarray(0, source.count));
   }
   source.kinds = kinds;
   source.rowIndices = rowIndices;
+  source.typedPlaceholderMarks = typedPlaceholderMarks;
 }
 
 export function appendEntitySnapshotWireSourceRow(
   source: EntitySnapshotWireSource,
   kind: number,
   rowIndex: number,
+  typedPlaceholder = false,
 ): void {
   const index = source.count;
   ensureEntitySnapshotWireSourceCapacity(source, index + 1);
   source.kinds[index] = kind;
   source.rowIndices[index] = rowIndex;
+  source.typedPlaceholderMarks[index] = typedPlaceholder ? 1 : 0;
+  if (typedPlaceholder) source.typedPlaceholderRows++;
   source.count = index + 1;
 }
 
@@ -253,7 +263,9 @@ export function copyEntitySnapshotWireSourceMetadataInto(
   if (src.count > 0) {
     dst.kinds.set(src.kinds.subarray(0, src.count));
     dst.rowIndices.set(src.rowIndices.subarray(0, src.count));
+    dst.typedPlaceholderMarks.set(src.typedPlaceholderMarks.subarray(0, src.count));
   }
+  dst.typedPlaceholderRows = src.typedPlaceholderRows;
   dst.count = src.count;
 }
 
@@ -262,11 +274,16 @@ export function removeEntitySnapshotWireSourceRow(
   index: number,
 ): void {
   if (index < 0 || index >= source.count) return;
+  if (source.typedPlaceholderMarks[index] !== 0) {
+    source.typedPlaceholderRows = Math.max(0, source.typedPlaceholderRows - 1);
+  }
   const nextCount = source.count - 1;
   if (index < nextCount) {
     source.kinds.copyWithin(index, index + 1, source.count);
     source.rowIndices.copyWithin(index, index + 1, source.count);
+    source.typedPlaceholderMarks.copyWithin(index, index + 1, source.count);
   }
+  source.typedPlaceholderMarks[nextCount] = 0;
   source.count = nextCount;
 }
 
@@ -452,6 +469,7 @@ export function unregisterEntitySnapshotWireSource(
 
 function resetEntitySnapshotWireSource(): void {
   entityWireSource.count = 0;
+  entityWireSource.typedPlaceholderRows = 0;
   entityWireSource.basicRows.count = 0;
   entityWireSource.unitRows.count = 0;
   entityWireSource.buildingRows.count = 0;
@@ -486,6 +504,7 @@ function canReferenceSnapshotEntityId(
 function appendDirectBasicEntityWireRow(
   entity: Entity,
   changedFields: number | undefined,
+  typedPlaceholder = false,
 ): void {
   const rows = entityWireSource.basicRows;
   const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE);
@@ -509,6 +528,7 @@ function appendDirectBasicEntityWireRow(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
     rowIndex,
+    typedPlaceholder,
   );
 }
 
@@ -667,6 +687,7 @@ function appendDirectUnitEntityWireRow(
   changedFields: number | undefined,
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
+  typedPlaceholder = false,
 ): void {
   const unit = entity.unit!;
   const rows = entityWireSource.unitRows;
@@ -791,6 +812,7 @@ function appendDirectUnitEntityWireRow(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     rowIndex,
+    typedPlaceholder,
   );
 }
 
@@ -872,6 +894,7 @@ export function appendUnitMotionEntityWireRowDirectFromState(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     rowIndex,
+    true,
   );
   return true;
 }
@@ -921,6 +944,7 @@ export function appendBasicEntityWireRowDirectFromState(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
     rowIndex,
+    true,
   );
   return true;
 }
@@ -982,6 +1006,7 @@ export function appendBuildingHotEntityWireRowDirectFromState(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     rowIndex,
+    true,
   );
   return true;
 }
@@ -991,6 +1016,7 @@ function appendDirectBuildingEntityWireRow(
   changedFields: number | undefined,
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
+  typedPlaceholder = false,
 ): void {
   const building = entity.building!;
   const rows = entityWireSource.buildingRows;
@@ -1097,6 +1123,7 @@ function appendDirectBuildingEntityWireRow(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     rowIndex,
+    typedPlaceholder,
   );
 }
 
@@ -1105,6 +1132,7 @@ export function appendEntitySnapshotWireRowDirect(
   changedFields: number | undefined,
   world: WorldState,
   visibility: SnapshotVisibility | undefined = undefined,
+  typedPlaceholder = false,
 ): void {
   const isFull = changedFields === undefined;
   const changedMask = changedFields ?? 0;
@@ -1123,19 +1151,19 @@ export function appendEntitySnapshotWireRowDirect(
       hasOrientationFields ||
       hasAngularVelocityFields;
     if (hasUnitFields) {
-      appendDirectUnitEntityWireRow(entity, changedFields, world, visibility);
+      appendDirectUnitEntityWireRow(entity, changedFields, world, visibility, typedPlaceholder);
       return;
     }
   } else if ((entity.type === 'building' || entity.type === 'tower') && entity.building !== null) {
     const buildingFieldMask = ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING |
       ENTITY_CHANGED_FACTORY | ENTITY_CHANGED_TURRETS;
     if (isFull || (changedMask & buildingFieldMask) !== 0) {
-      appendDirectBuildingEntityWireRow(entity, changedFields, world, visibility);
+      appendDirectBuildingEntityWireRow(entity, changedFields, world, visibility, typedPlaceholder);
       return;
     }
   }
 
-  appendDirectBasicEntityWireRow(entity, changedFields);
+  appendDirectBasicEntityWireRow(entity, changedFields, typedPlaceholder);
 }
 
 export function serializeEntitySnapshot(
@@ -1501,7 +1529,7 @@ function serializeTypedDeltaPlaceholder(
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
 ): NetworkServerSnapshotEntity | undefined {
-  appendEntitySnapshotWireRowDirect(entity, changedFields, world, visibility);
+  appendEntitySnapshotWireRowDirect(entity, changedFields, world, visibility, true);
   return undefined;
 }
 

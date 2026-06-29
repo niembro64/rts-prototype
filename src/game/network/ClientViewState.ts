@@ -106,6 +106,10 @@ import {
   forEachPackedProjectileVelocityUpdate,
   getPackedProjectileSnapshotWire,
 } from './snapshotProjectileWirePack';
+import {
+  addSnapshotMaterializationStageToSnapshot,
+  type SnapshotMaterializationStage,
+} from './snapshotMaterializationMetadata';
 import type { EntityHudElement, EntityHudType, SelectionHudMode } from '@/clientBarConfig';
 import { getDefaultPlayerName } from '@/playerNamesConfig';
 import { NAME_LABEL_OWNER_Y_OFFSET } from '@/nameLabelConfig';
@@ -250,7 +254,20 @@ type ClientSnapshotApplyStats = {
 type ClientSnapshotApplyOptions = {
   syncEconomy: boolean | undefined;
   collectCorrectionStats?: boolean | undefined;
+  collectMaterializationStages?: boolean | undefined;
 };
+
+function recordClientApplySubstage(
+  state: NetworkServerSnapshot,
+  enabled: boolean,
+  stage: SnapshotMaterializationStage,
+  startedAt: number,
+): number {
+  if (!enabled) return startedAt;
+  const now = performance.now();
+  addSnapshotMaterializationStageToSnapshot(state, stage, now - startedAt);
+  return now;
+}
 
 export class ClientViewState {
   // Entity storage for rendering (client-predicted positions)
@@ -342,7 +359,6 @@ export class ClientViewState {
   constructor() {
     this.projectileStore = new ClientProjectileStore({
       entities: this.entities,
-      clearPredictionAccum: (id) => this.clearPredictionAccum(id),
       markEntitySetChanged: (invalidateCaches) => this.markEntitySetChanged(invalidateCaches),
     });
     this.predictionStepper = new ClientPredictionStepper({
@@ -408,14 +424,6 @@ export class ClientViewState {
     else this.invalidateProjectileCaches();
   }
 
-  private clearPredictionAccum(id: EntityId): void {
-    this.predictionCadence.clear(id);
-  }
-
-  private clearTargetPredictionAccum(id: EntityId): void {
-    this.predictionCadence.clearTarget(id);
-  }
-
   private addPredictionSupportSurfaceProvider(entity: Entity): void {
     if (this.predictionSupportSurfaceEntityIds.has(entity.id)) return;
     this.predictionSupportSurfaceEntityIds.add(entity.id);
@@ -471,7 +479,6 @@ export class ClientViewState {
     now: number,
   ): void {
     const target = this.getOrCreateServerTarget(id);
-    this.clearTargetPredictionAccum(id);
     target.x = x;
     target.y = y;
     target.z = z;
@@ -527,7 +534,6 @@ export class ClientViewState {
       entity.projectile.velocityY = velocityY;
       entity.projectile.velocityZ = velocityZ;
       this.serverTargets.delete(id);
-      this.clearTargetPredictionAccum(id);
     }
     if (targetEntityId !== null) {
       entity.projectile.homingTargetId = targetEntityId;
@@ -882,7 +888,6 @@ export class ClientViewState {
         if (ownership === null || ownership.playerId !== playerId) return false;
       }
       const target = this.getOrCreateServerTarget(id);
-      this.clearTargetPredictionAccum(id);
       if (hasPos) {
         target.x = deqEntityPos(values[base + 2]);
         target.y = deqEntityPos(values[base + 3]);
@@ -952,7 +957,6 @@ export class ClientViewState {
           ? Math.max(0, now - previousTarget.updatedAtMs)
           : 0;
       const target = this.getOrCreateServerTarget(id);
-      this.clearTargetPredictionAccum(id);
       if (hasPos) {
         const x = deqEntityPos(values[base + 2]);
         const y = deqEntityPos(values[base + 3]);
@@ -1103,7 +1107,6 @@ export class ClientViewState {
         ? Math.max(0, now - previousTarget.updatedAtMs)
         : 0;
     const target = needsServerTarget ? this.getOrCreateServerTarget(id) : undefined;
-    if (target !== undefined) this.clearTargetPredictionAccum(id);
 
     if (target !== undefined && (changedFields & ENTITY_CHANGED_POS) !== 0) {
       target.x = deqEntityPos(values[base + 1]);
@@ -1212,7 +1215,6 @@ export class ClientViewState {
     }
 
     const target = this.getOrCreateServerTarget(id);
-    this.clearTargetPredictionAccum(id);
     if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
       target.x = deqEntityPos(values[base + 1]);
       target.y = deqEntityPos(values[base + 2]);
@@ -1504,9 +1506,7 @@ export class ClientViewState {
   ): boolean {
     const count = source.count;
     if (count === 0 || count !== entities.length) return false;
-    for (let entityIndex = 0; entityIndex < count; entityIndex++) {
-      if (entities[entityIndex] !== undefined) return false;
-    }
+    if (source.typedPlaceholderRows !== count) return false;
     this.applyTypedPlaceholderDeltaSource(source, now, applyStats);
     return true;
   }
@@ -1579,7 +1579,6 @@ export class ClientViewState {
     const needsServerTarget = hasMotionFields || hasTurretFields;
     const target = needsServerTarget ? this.getOrCreateServerTarget(id) : undefined;
     if (target !== undefined) {
-      this.clearTargetPredictionAccum(id);
       if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
         const x = deqEntityPos(values[base + 1]);
         const y = deqEntityPos(values[base + 2]);
@@ -1740,6 +1739,8 @@ export class ClientViewState {
     const projectileDeltaOnly = state.projectileDeltaOnly === true;
     const presentationDeltaOnly = entityDeltaOnly || projectileDeltaOnly;
     const collectCorrectionStats = options.collectCorrectionStats === true;
+    const collectMaterializationStages = options.collectMaterializationStages === true;
+    let materializationStageStart = collectMaterializationStages ? performance.now() : 0;
     if (!presentationDeltaOnly || state.minimapEntities !== undefined) {
       this.minimapOverrideStore.applySnapshot(state.minimapEntities);
     }
@@ -1750,6 +1751,12 @@ export class ClientViewState {
     this.projectileStore.projectileSpawns.drain(
       now,
       (spawn) => this.projectileStore.applySpawn(spawn),
+    );
+    materializationStageStart = recordClientApplySubstage(
+      state,
+      collectMaterializationStages,
+      'clientApplyPrelude',
+      materializationStageStart,
     );
 
     // Process entity records from full snapshots and sparse entity-delta
@@ -1848,7 +1855,6 @@ export class ClientViewState {
           const turretSnapshot = netEntity.building !== null ? netEntity.building.turrets : null;
           if (turretSnapshot) {
             const target = this.getOrCreateServerTarget(netEntity.id);
-            this.clearTargetPredictionAccum(netEntity.id);
             if ((isFull || cf! & ENTITY_CHANGED_POS) && netEntity.pos) {
               target.x = deqEntityPos(netEntity.pos.x);
               target.y = deqEntityPos(netEntity.pos.y);
@@ -1861,16 +1867,10 @@ export class ClientViewState {
             target.updatedAtMs = now;
           } else if (isFull) {
             this.serverTargets.delete(netEntity.id);
-            this.clearPredictionAccum(netEntity.id);
           }
         } else {
           // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
           const target = this.getOrCreateServerTarget(netEntity.id);
-          // A fresh server target supersedes any sparse-prediction time
-          // accumulated before this snapshot. Otherwise an entity can
-          // extrapolate the newest target by time that already belonged
-          // to an older target and visibly overshoot.
-          this.clearTargetPredictionAccum(netEntity.id);
           applyNetworkUnitDriftFieldsToTarget(target, netEntity, isFull, cf);
           this.copyNetworkTurretsToTarget(target, netEntity.unit !== null ? netEntity.unit.turrets : null, isFull);
           target.updatedAtMs = now;
@@ -1969,6 +1969,12 @@ export class ClientViewState {
         }
       }
     }
+    materializationStageStart = recordClientApplySubstage(
+      state,
+      collectMaterializationStages,
+      'clientApplyEntities',
+      materializationStageStart,
+    );
 
     if (!projectileDeltaOnly && state.removedEntityIds) {
       let removedAnyLocalEntity = false;
@@ -2003,6 +2009,12 @@ export class ClientViewState {
       }
       this.markSnapshotRemovalsApplied(removedAnyLocalEntity);
     }
+    materializationStageStart = recordClientApplySubstage(
+      state,
+      collectMaterializationStages,
+      'clientApplyRemovals',
+      materializationStageStart,
+    );
 
     const projectiles = state.projectiles;
     if (projectiles !== undefined && projectiles !== null) {
@@ -2096,6 +2108,12 @@ export class ClientViewState {
         }
       }
     }
+    materializationStageStart = recordClientApplySubstage(
+      state,
+      collectMaterializationStages,
+      'clientApplyProjectiles',
+      materializationStageStart,
+    );
 
     if (cacheNeedsInvalidate) this.invalidateCaches();
 
@@ -2192,6 +2210,12 @@ export class ClientViewState {
     if (!presentationDeltaOnly || state.visionPlayerMask !== undefined) {
       this.visionPlayerMask = state.visionPlayerMask ?? 0;
     }
+    recordClientApplySubstage(
+      state,
+      collectMaterializationStages,
+      'clientApplyStores',
+      materializationStageStart,
+    );
     return applyStats;
   }
 
