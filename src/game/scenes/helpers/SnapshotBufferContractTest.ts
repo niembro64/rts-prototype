@@ -352,6 +352,34 @@ export function runSnapshotBufferContractTest(): void {
     'typed placeholder motion deltas must patch pending full typed rows from wire rows',
   );
 
+  const typedMetadataOnlyFullEntity = createSparseDecodedMotionUnitEntity(66, 100);
+  typedMetadataOnlyFullEntity.changedFields = null;
+  typedMetadataOnlyFullEntity.rotation = 0;
+  const typedMetadataOnlyFullEntities = [typedMetadataOnlyFullEntity];
+  const typedMetadataOnlyFullSnapshot = createSnapshot(15, [], typedMetadataOnlyFullEntities);
+  attachTypedUnitMotionSource(typedMetadataOnlyFullEntities, 66, 100, null);
+  fake.emitSnapshot(typedMetadataOnlyFullSnapshot);
+  const typedMetadataOnlyDeltaEntities = [undefined] as unknown as NetworkServerSnapshotEntity[];
+  attachTypedUnitMotionSource(typedMetadataOnlyDeltaEntities, 66, 666);
+  const typedMetadataOnlyDeltaSnapshot = createSnapshot(16, [], typedMetadataOnlyDeltaEntities);
+  typedMetadataOnlyDeltaSnapshot.entityDeltaOnly = true;
+  fake.emitSnapshot(typedMetadataOnlyDeltaSnapshot);
+  const consumedTypedMetadataOnlyMerge = buffer.consume();
+  assertContract(
+    consumedTypedMetadataOnlyMerge?.entities[0]?.pos?.x === 666,
+    'metadata-only typed motion deltas must patch pending full DTO rows from wire rows',
+  );
+  const preservedMetadataOnlySource = consumedTypedMetadataOnlyMerge !== null
+    ? getEntitySnapshotWireSource(consumedTypedMetadataOnlyMerge.entities)
+    : undefined;
+  assertContract(
+    preservedMetadataOnlySource !== undefined &&
+      preservedMetadataOnlySource.unitRows.values[
+        preservedMetadataOnlySource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 1
+      ] === 666,
+    'metadata-only typed motion deltas must patch pending full typed rows from wire rows',
+  );
+
   const typedBasicFullEntity = createSparseDecodedMotionUnitEntity(63, 100);
   typedBasicFullEntity.changedFields = null;
   typedBasicFullEntity.rotation = 0;

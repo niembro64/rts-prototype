@@ -4,7 +4,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { RemovedSnapshotEntity } from '../sim/WorldState';
 import type { Simulation } from '../sim/Simulation';
 import type { Entity, PlayerId, EntityId } from '../sim/types';
-import type { NetworkServerSnapshot } from '../network/NetworkTypes';
+import type { NetworkServerSnapshot, NetworkServerSnapshotEntity } from '../network/NetworkTypes';
 import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
@@ -965,7 +965,7 @@ export class ServerSnapshotPublisher {
       ) continue;
       const netEntity = serializeEntityDeltaSnapshot(entity, dirtyFields[i], world, visibility);
       if (netEntity !== null) {
-        entities.push(netEntity);
+        entities.push(netEntity as NetworkServerSnapshotEntity);
         emittedIds.add(id);
       }
     }
@@ -999,7 +999,7 @@ export class ServerSnapshotPublisher {
         ? serializeEntityDeltaSnapshot(entity, dirtyFields[i], world, visibility)
         : serializeEntitySnapshot(entity, undefined, world, visibility);
       if (netEntity !== null) {
-        entities.push(netEntity);
+        entities.push(netEntity as NetworkServerSnapshotEntity);
         emittedIds.add(id);
       }
     }
@@ -1251,7 +1251,7 @@ export class ServerSnapshotPublisher {
         world,
         visibility,
       );
-      if (netEntity !== null) entities.push(netEntity);
+      if (netEntity !== null) entities.push(netEntity as NetworkServerSnapshotEntity);
     }
     return entities.length > 0 ? entities : undefined;
   }

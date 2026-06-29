@@ -451,10 +451,12 @@ export function runClientSnapshotApplierContractTest(): void {
     ENTITY_CHANGED_POS,
     {} as WorldState,
   );
-  if (posOnlyGroundRow !== null) posOnlyGroundRows.push(posOnlyGroundRow);
+  if (posOnlyGroundRow !== null) {
+    posOnlyGroundRows.push(posOnlyGroundRow as NetworkServerSnapshotEntity);
+  }
   assertContract(
-    posOnlyGroundRows[0]?.pos === null,
-    'position-only ground unit deltas must omit DTO position fields when the direct row is basic',
+    (posOnlyGroundRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+    'position-only ground unit deltas must omit DTO placeholders when the direct row is basic',
   );
   const basicTypedMotionStats = view.applyNetworkState(snapshot(4, posOnlyGroundRows), {
     syncEconomy: undefined,
@@ -476,10 +478,12 @@ export function runClientSnapshotApplierContractTest(): void {
     ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL,
     {} as WorldState,
   );
-  if (typedPlaceholderRow !== null) typedPlaceholderRows.push(typedPlaceholderRow);
+  if (typedPlaceholderRow !== null) {
+    typedPlaceholderRows.push(typedPlaceholderRow as NetworkServerSnapshotEntity);
+  }
   assertContract(
-    typedPlaceholderRows[0]?.pos === null,
-    'typed unit motion placeholder rows must omit DTO position fields',
+    (typedPlaceholderRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+    'typed unit motion rows must omit DTO placeholders',
   );
   const typedPlaceholderStats = view.applyNetworkState(snapshot(4, typedPlaceholderRows), {
     syncEconomy: undefined,
@@ -502,7 +506,7 @@ export function runClientSnapshotApplierContractTest(): void {
     {} as WorldState,
   );
   if (metadataOnlyPackedMotionRow !== null) {
-    metadataOnlyPackedMotionRows.push(metadataOnlyPackedMotionRow);
+    metadataOnlyPackedMotionRows.push(metadataOnlyPackedMotionRow as NetworkServerSnapshotEntity);
   }
   const encodedPackedMotion = encodeNetworkSnapshotWithRustFallback(
     snapshot(5, metadataOnlyPackedMotionRows),
@@ -565,7 +569,7 @@ export function runClientSnapshotApplierContractTest(): void {
     ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL,
     {} as WorldState,
   );
-  if (hotPathRow !== null) hotPathRows.push(hotPathRow);
+  if (hotPathRow !== null) hotPathRows.push(hotPathRow as NetworkServerSnapshotEntity);
   const encodedHotPath = encodeNetworkSnapshotWithRustFallback(snapshot(2, hotPathRows));
   if (encodedHotPath === null) {
     throw new Error('[client snapshot applier contract] packed hot motion fixture must encode');
