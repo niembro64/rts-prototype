@@ -14,6 +14,7 @@ import type { Entity, EntityId } from '../sim/types';
 import type { PylonTubeFlow, SprayTarget } from '@/types/ui';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
+import { IndexedEntityIdMap, IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import {
   updateLocomotion,
   destroyLocomotion,
@@ -148,7 +149,7 @@ export class Render3DEntities {
    *  draw calls (upper + lower). */
   private legRenderer!: LegInstancedRenderer;
 
-  private unitMeshes = new Map<number, EntityMesh>();
+  private unitMeshes = new IndexedEntityIdMap<EntityMesh>();
   // Shared death-out flow: a dying unit's mesh is kept (instanced slots
   // allocated, pose frozen) and its materialization fade ramped 1 → 0
   // before teardown, so the body/turrets/locomotion scatter and fade while
@@ -161,7 +162,7 @@ export class Render3DEntities {
   // its own VISION_FADE_OUT_MS clock. Assigned in the constructor.
   private vanishingUnits!: DyingMeshFade<EntityMesh>;
   private dyingUnitScatter!: DyingUnitScatter3D;
-  private readonly activeLocomotionUnitIds = new Set<EntityId>();
+  private readonly activeLocomotionUnitIds = new IndexedEntityIdSet();
   private legsRadiusToggle = getLegsRadiusToggle();
   private smokeTrailsEnabled = getSmokeTrails();
   private readonly scopedMeshRetention = new ScopedRenderMeshRetention3D();

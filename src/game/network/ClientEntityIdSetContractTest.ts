@@ -1,6 +1,9 @@
 import type { EntityId } from '../sim/types';
 import { ClientEntityIdSet } from './ClientEntityIdSet';
-import { IndexedEntityIdBooleanMemo } from './IndexedEntityIdCollections';
+import {
+  IndexedEntityIdBooleanMemo,
+  IndexedEntityIdMap,
+} from './IndexedEntityIdCollections';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -57,4 +60,17 @@ export function runClientEntityIdSetContractTest(): void {
   memo.clear();
   assertContract(memo.get(first) === undefined, 'boolean memo clear empties indexed value');
   assertContract(memo.get(highId) === undefined, 'boolean memo clear empties fallback value');
+
+  const map = new IndexedEntityIdMap<string>();
+  assertContract(map.set(first, 'first') === map, 'indexed map set returns map');
+  assertContract(map.get(first) === 'first', 'indexed map gets indexed value');
+  map.set(first, 'second');
+  assertContract(map.get(first) === 'second', 'indexed map replaces indexed value');
+  assertContract([...map.values()].join(',') === 'second', 'indexed map preserves Map iteration');
+  map.set(highId, 'fallback');
+  assertContract(map.get(highId) === 'fallback', 'indexed map gets fallback value');
+  assertContract(map.delete(first), 'indexed map delete reports indexed value');
+  assertContract(map.get(first) === undefined, 'indexed map delete clears indexed value');
+  map.clear();
+  assertContract(map.get(highId) === undefined, 'indexed map clear empties fallback value');
 }

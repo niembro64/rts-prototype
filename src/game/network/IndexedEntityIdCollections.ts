@@ -96,3 +96,32 @@ export class IndexedEntityIdBooleanMemo {
     this.states = states;
   }
 }
+
+export class IndexedEntityIdMap<T> extends Map<EntityId, T> {
+  private readonly byId: Array<T | undefined> = [];
+
+  override get(id: EntityId): T | undefined {
+    if (canIndexClientEntityId(id)) return this.byId[id] ?? super.get(id);
+    return super.get(id);
+  }
+
+  override has(id: EntityId): boolean {
+    if (canIndexClientEntityId(id) && this.byId[id] !== undefined) return true;
+    return super.has(id);
+  }
+
+  override set(id: EntityId, value: T): this {
+    if (canIndexClientEntityId(id)) this.byId[id] = value;
+    return super.set(id, value);
+  }
+
+  override delete(id: EntityId): boolean {
+    if (canIndexClientEntityId(id)) this.byId[id] = undefined;
+    return super.delete(id);
+  }
+
+  override clear(): void {
+    this.byId.length = 0;
+    super.clear();
+  }
+}

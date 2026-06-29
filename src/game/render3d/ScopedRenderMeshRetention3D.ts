@@ -1,4 +1,5 @@
 import type { EntityId } from '../sim/types';
+import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 
 type ScopedMeshChurnBucket = {
   hiddenEvents: number;
@@ -63,8 +64,8 @@ function sampleBucket(bucket: ScopedMeshChurnBucket, sampleMs: number): void {
 }
 
 export class ScopedRenderMeshRetention3D {
-  private readonly hiddenUnitIds = new Set<EntityId>();
-  private readonly hiddenBuildingIds = new Set<EntityId>();
+  private readonly hiddenUnitIds = new IndexedEntityIdSet();
+  private readonly hiddenBuildingIds = new IndexedEntityIdSet();
   private readonly unitChurn = createBucket();
   private readonly buildingChurn = createBucket();
 

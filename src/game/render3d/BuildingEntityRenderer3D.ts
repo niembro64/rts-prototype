@@ -4,6 +4,7 @@ import type { MetalDeposit } from '../../metalDepositConfig';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientViewState } from '../network/ClientViewState';
+import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { getTurretHeadRadius } from '../math';
 import {
   applyEntityGroupFade,
@@ -250,7 +251,7 @@ export class BuildingEntityRenderer3D {
   private readonly scopedMeshRetention: ScopedRenderMeshRetention3D;
   private readonly lodProxyRenderer: EntityLodProxyRenderer3D;
   private readonly animations: BuildingAnimationController3D;
-  private readonly meshes = new Map<EntityId, EntityMesh>();
+  private readonly meshes = new IndexedEntityIdMap<EntityMesh>();
   private renderScopeToken = 0;
   private lastEntitySetVersion = -1;
   // Shared death-out flow (same controller units use, see EntityFade3D): a
