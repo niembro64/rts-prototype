@@ -3,6 +3,7 @@ import {
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_TURRETS,
   ENTITY_CHANGED_VEL,
   buildingBlueprintIdToCode,
@@ -272,6 +273,22 @@ function buildingBuildSparseEntity(
         paid: { energy: paidEnergy, metal: paidMetal },
       },
       solar: { open: true },
+    },
+  };
+}
+
+function buildingMotionHpSparseEntity(id: number): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'building',
+    playerId: 1 as PlayerId,
+    changedFields: ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    pos: { x: 999, y: 999, z: 999 },
+    rotation: 999,
+    unit: null,
+    building: {
+      ...emptyBuildingSnapshot(),
+      hp: { curr: 999, max: 999 },
     },
   };
 }
@@ -629,6 +646,38 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     buildingView.getEntity(buildingId)?.building?.hp === 45,
     'typed building HP rows must update HP from wire rows before DTO fallback',
+  );
+  buildingView.assertRenderEntityStateParity(buildingId);
+
+  buildingSource.transform.x = 12.5;
+  buildingSource.transform.y = 34.75;
+  buildingSource.transform.z = 21.25;
+  buildingSource.transform.rotation = 0.75;
+  buildingSource.building.hp = 44;
+  buildingSource.building.maxHp = 120;
+  const typedBuildingMotionRows = [buildingMotionHpSparseEntity(buildingId)];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedBuildingMotionRows);
+  appendEntitySnapshotWireRowDirect(
+    buildingSource,
+    ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    {} as WorldState,
+  );
+  buildingSource.transform.x = 0;
+  buildingSource.transform.y = 0;
+  buildingSource.transform.z = 20;
+  buildingSource.transform.rotation = 0;
+  buildingSource.building.hp = 80;
+  buildingSource.building.maxHp = 120;
+  buildingView.applyNetworkState(snapshot(3, typedBuildingMotionRows));
+  resetEntitySnapshotPool();
+  assertContract(
+    buildingSource.transform.x === 12.5 &&
+      buildingSource.transform.y === 34.75 &&
+      buildingSource.transform.z === 21.25 &&
+      buildingSource.transform.rotation === 0.75 &&
+      buildingSource.building.hp === 44,
+    'typed building motion/HP rows must snap building state from wire rows before DTO fallback',
   );
   buildingView.assertRenderEntityStateParity(buildingId);
 

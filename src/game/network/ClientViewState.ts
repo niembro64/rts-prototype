@@ -1035,12 +1035,20 @@ export class ClientViewState {
     if (target !== undefined) {
       this.clearTargetPredictionAccum(id);
       if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
-        target.x = deqEntityPos(values[base + 1]);
-        target.y = deqEntityPos(values[base + 2]);
-        target.z = deqEntityPos(values[base + 3]);
+        const x = deqEntityPos(values[base + 1]);
+        const y = deqEntityPos(values[base + 2]);
+        const z = deqEntityPos(values[base + 3]);
+        target.x = x;
+        target.y = y;
+        target.z = z;
+        existing.transform.x = x;
+        existing.transform.y = y;
+        existing.transform.z = z;
       }
       if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
-        target.rotation = deqRot(values[base + 4]);
+        const rotation = deqRot(values[base + 4]);
+        target.rotation = rotation;
+        existing.transform.rotation = rotation;
       }
     }
 
