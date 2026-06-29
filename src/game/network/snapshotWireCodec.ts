@@ -364,6 +364,9 @@ function measurePackedEntityBreakdown(
   if (entities.t !== undefined) {
     addPairBytes(sections, 'entities.turretRows', 't', entities.t);
   }
+  if (entities.b !== undefined) {
+    addPairBytes(sections, 'entities.buildingRows', 'b', entities.b);
+  }
   if (entities.e !== undefined) {
     addPairBytes(sections, 'entities.detailRows', 'e', entities.e);
   }

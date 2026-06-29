@@ -49,12 +49,15 @@ function assertContract(condition: unknown, message: string): asserts condition 
   }
 }
 
-const PACKED_ENTITIES_VERSION_V13 = 13;
+const PACKED_ENTITIES_VERSION_V14 = 14;
 const MOVEMENT_UNIT_FLAG_POS = 1 << 0;
 const MOVEMENT_UNIT_FLAG_ROTATION = 1 << 1;
 const MOVEMENT_UNIT_FLAG_VELOCITY = 1 << 2;
 const MOVEMENT_UNIT_FLAG_SURFACE_NORMAL = 1 << 7;
 const MOVEMENT_UNIT_FLAG_HP = 1 << 8;
+const BUILDING_DELTA_FLAG_POS = 1 << 0;
+const BUILDING_DELTA_FLAG_ROTATION = 1 << 1;
+const BUILDING_DELTA_FLAG_HP = 1 << 2;
 const TURRET_FLAG_TARGET_ID = 1 << 0;
 const TURRET_FLAG_SHIELD_RANGE = 1 << 1;
 const ENTITIES_KEY_PREFIX_BYTES = 9;
@@ -136,6 +139,27 @@ function createPackedMovementRowWithNormal(): Uint8Array {
   writer.writeVarInt(975);
   writer.writeFloat64(88.5);
   writer.writeFloat64(120);
+  writer.setUint32LE(0, 1);
+  return writer.finishBytes().slice();
+}
+
+function createPackedBuildingDeltaRow(): Uint8Array {
+  const flags =
+    BUILDING_DELTA_FLAG_POS |
+    BUILDING_DELTA_FLAG_ROTATION |
+    BUILDING_DELTA_FLAG_HP;
+  const writer = new PackedBinaryWriter(80, PACKED_BINARY_ROW_COUNT_BYTES);
+  writer.writeVarUint(1);
+  writer.writeVarUint(flags);
+  writer.writeVarUint(3);
+  writer.writeVarUint(1);
+  writer.writeVarInt(808);
+  writer.writeVarInt(1100);
+  writer.writeVarInt(2200);
+  writer.writeVarInt(3300);
+  writer.writeVarInt(250);
+  writer.writeFloat64(440);
+  writer.writeFloat64(500);
   writer.setUint32LE(0, 1);
   return writer.finishBytes().slice();
 }
@@ -295,8 +319,10 @@ export function runSnapshotEntityWirePackContractTest(): void {
     buildingV6Bytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
   ) as PackedEntitySnapshotWire;
   assertContract(
-    packedBuildingV6.e !== undefined && packedBuildingV6.m === undefined,
-    'Rust V6 slab building HP source must use detail rows without unit movement fallback',
+    packedBuildingV6.b !== undefined &&
+      packedBuildingV6.e === undefined &&
+      packedBuildingV6.m === undefined,
+    'Rust V6 slab building HP source must use compact building rows without detail fallback',
   );
   const decodedBuildingV6 = unpackEntitiesFromWire(packedBuildingV6)[0];
   assertContract(decodedBuildingV6?.id === 808, 'Rust V6 slab building HP row id must survive');
@@ -314,11 +340,76 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     decodedBuildingV6.building?.hp?.curr === 440 &&
       decodedBuildingV6.building.hp.max === 500,
-    'Rust V6 slab building HP row HP must survive',
+    'Rust V6 slab building HP row HP must survive compact round trip',
+  );
+  const decodedBuildingV6Source = getEntitySnapshotWireSource(unpackEntitiesFromWire(packedBuildingV6, {
+    materializeTypedDeltas: false,
+  }));
+  assertContract(
+    decodedBuildingV6Source !== undefined &&
+      decodedBuildingV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    'Rust V6 compact building decode must expose typed building source metadata',
+  );
+
+  const buildingDeltaEntities = unpackEntitiesFromWire({
+    v: PACKED_ENTITIES_VERSION_V14,
+    m: undefined,
+    t: undefined,
+    b: createPackedBuildingDeltaRow(),
+    e: undefined,
+  });
+  const buildingDelta = buildingDeltaEntities[0];
+  assertContract(buildingDelta?.id === 808, 'building delta row id must decode');
+  assertContract(
+    buildingDelta.changedFields === (ENTITY_CHANGED_HP | ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT),
+    'building delta row changed field mask must include transform and HP',
+  );
+  assertContract(
+    buildingDelta.pos?.x === 1100 &&
+      buildingDelta.pos.y === 2200 &&
+      buildingDelta.pos.z === 3300 &&
+      buildingDelta.rotation === 250,
+    'building delta row transform must decode from compact building slab',
+  );
+  assertContract(
+    buildingDelta.building?.hp?.curr === 440 &&
+      buildingDelta.building.hp.max === 500,
+    'building delta row HP must decode from compact building slab',
+  );
+  const metadataOnlyBuildingEntities = unpackEntitiesFromWire(
+    {
+      v: PACKED_ENTITIES_VERSION_V14,
+      m: undefined,
+      t: undefined,
+      b: createPackedBuildingDeltaRow(),
+      e: undefined,
+    },
+    { materializeTypedDeltas: false },
+  );
+  const metadataOnlyBuilding = metadataOnlyBuildingEntities[0];
+  assertContract(
+    metadataOnlyBuilding?.id === 808 &&
+      metadataOnlyBuilding.pos === null &&
+      metadataOnlyBuilding.building === null,
+    'metadata-only building delta decode must keep a placeholder entity without DTO fields',
+  );
+  const metadataOnlyBuildingSource = getEntitySnapshotWireSource(metadataOnlyBuildingEntities);
+  assertContract(
+    metadataOnlyBuildingSource !== undefined &&
+      metadataOnlyBuildingSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    'metadata-only building delta decode must preserve typed building wire metadata',
+  );
+  const metadataOnlyBuildingWireBase =
+    metadataOnlyBuildingSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  assertContract(
+    metadataOnlyBuildingSource.buildingRows.values[metadataOnlyBuildingWireBase + 1] === 1100 &&
+      metadataOnlyBuildingSource.buildingRows.values[metadataOnlyBuildingWireBase + 4] === 250 &&
+      metadataOnlyBuildingSource.buildingRows.values[metadataOnlyBuildingWireBase + 13] === 440,
+    'metadata-only building typed row metadata must mirror compact decoded fields',
   );
 
   const movementEntities = unpackEntitiesFromWire({
-    v: PACKED_ENTITIES_VERSION_V13,
+    v: PACKED_ENTITIES_VERSION_V14,
     m: createPackedMovementRowWithNormal(),
     t: undefined,
     e: undefined,
@@ -361,7 +452,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   const metadataOnlyMovementEntities = unpackEntitiesFromWire(
     {
-      v: PACKED_ENTITIES_VERSION_V13,
+      v: PACKED_ENTITIES_VERSION_V14,
       m: createPackedMovementRowWithNormal(),
       t: undefined,
       e: undefined,
@@ -391,7 +482,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
 
   const turretEntities = unpackEntitiesFromWire({
-    v: PACKED_ENTITIES_VERSION_V13,
+    v: PACKED_ENTITIES_VERSION_V14,
     m: undefined,
     t: createPackedTurretRow(),
     e: undefined,
@@ -421,7 +512,7 @@ export function runSnapshotEntityWirePackContractTest(): void {
   );
   const metadataOnlyTurretEntities = unpackEntitiesFromWire(
     {
-      v: PACKED_ENTITIES_VERSION_V13,
+      v: PACKED_ENTITIES_VERSION_V14,
       m: undefined,
       t: createPackedTurretRow(),
       e: undefined,

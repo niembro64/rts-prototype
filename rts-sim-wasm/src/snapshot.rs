@@ -2340,10 +2340,10 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 }
 
 // ===========================================================================
-// Entity wire packer. Rust owns the compact `{v,m,t,e}` entity wire format.
-// Movement-only unit deltas and split unit-turret deltas pack into grouped
-// varint slabs (`m` / `t`); every other entity packs as a flat-array detail row
-// (`e`). Reads the entity SoA the TS serializer already builds
+// Entity wire packer. Rust owns the compact `{v,m,t,b,e}` entity wire format.
+// Movement-only unit deltas, split unit-turret deltas, and building hot deltas
+// pack into grouped varint slabs (`m` / `t` / `b`); every other entity packs as
+// a flat-array detail row (`e`). Reads the entity SoA the TS serializer already builds
 // (stateSerializerEntities.ts), bulk-copied into scratch by the bridge — no
 // per-entity JS->WASM crossing.
 //
@@ -2353,7 +2353,7 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
 // the DTO sub-fields.
-pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 13;
+pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 14;
 
 pub(crate) const V6_ENTITY_FLAG_HAS_POS: u32 = 1 << 0;
 pub(crate) const V6_ENTITY_FLAG_HAS_ROTATION: u32 = 1 << 1;
@@ -2416,6 +2416,10 @@ pub(crate) const V6_MOVEMENT_FLAG_YAW_ANGULAR_VELOCITY: u32 = 1 << 6;
 pub(crate) const V6_MOVEMENT_FLAG_SURFACE_NORMAL: u32 = 1 << 7;
 pub(crate) const V6_MOVEMENT_FLAG_HP: u32 = 1 << 8;
 
+pub(crate) const V6_BUILDING_DELTA_FLAG_POS: u32 = 1 << 0;
+pub(crate) const V6_BUILDING_DELTA_FLAG_ROTATION: u32 = 1 << 1;
+pub(crate) const V6_BUILDING_DELTA_FLAG_HP: u32 = 1 << 2;
+
 pub(crate) const V6_ACTION_FLAG_POS: u32 = 1 << 0;
 pub(crate) const V6_ACTION_FLAG_POS_Z: u32 = 1 << 1;
 pub(crate) const V6_ACTION_FLAG_PATH_EXP: u32 = 1 << 2;
@@ -2449,6 +2453,11 @@ pub(crate) fn v6_movement_changed_mask() -> u32 {
         | ENTITY_CHANGED_VEL
         | ENTITY_CHANGED_NORMAL
         | ENTITY_CHANGED_HP
+}
+
+#[inline]
+pub(crate) fn v6_building_delta_changed_mask() -> u32 {
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_HP
 }
 
 // --- Input scratch (bulk-filled by the TS bridge from entityWireSource) ---
@@ -2558,6 +2567,15 @@ pub(crate) struct V6TurretGroup {
 }
 
 #[derive(Default)]
+pub(crate) struct V6BuildingDeltaGroup {
+    flags: u32,
+    player_id: u32,
+    count: u32,
+    last_id: i64,
+    writer: PackedBinaryWriter,
+}
+
+#[derive(Default)]
 pub(crate) struct SnapshotEncodeV6WorkScratch {
     movement_groups: Vec<V6MovementGroup>,
     movement_group_count: usize,
@@ -2565,8 +2583,12 @@ pub(crate) struct SnapshotEncodeV6WorkScratch {
     turret_groups: Vec<V6TurretGroup>,
     turret_group_count: usize,
     turret_row_count: u32,
+    building_groups: Vec<V6BuildingDeltaGroup>,
+    building_group_count: usize,
+    building_row_count: u32,
     m_out: PackedBinaryWriter,
     t_out: PackedBinaryWriter,
+    b_out: PackedBinaryWriter,
     detail: Vec<u32>,
 }
 
@@ -2576,6 +2598,8 @@ impl SnapshotEncodeV6WorkScratch {
         self.movement_row_count = 0;
         self.turret_group_count = 0;
         self.turret_row_count = 0;
+        self.building_group_count = 0;
+        self.building_row_count = 0;
         self.detail.clear();
     }
 
@@ -2618,6 +2642,27 @@ impl SnapshotEncodeV6WorkScratch {
         g.last_id = 0;
         g.writer.reset(0);
         self.turret_group_count += 1;
+        index
+    }
+
+    pub(crate) fn building_group_index(&mut self, flags: u32, player_id: u32) -> usize {
+        for i in 0..self.building_group_count {
+            let g = &self.building_groups[i];
+            if g.flags == flags && g.player_id == player_id {
+                return i;
+            }
+        }
+        let index = self.building_group_count;
+        if index == self.building_groups.len() {
+            self.building_groups.push(V6BuildingDeltaGroup::default());
+        }
+        let g = &mut self.building_groups[index];
+        g.flags = flags;
+        g.player_id = player_id;
+        g.count = 0;
+        g.last_id = 0;
+        g.writer.reset(0);
+        self.building_group_count += 1;
         index
     }
 }
@@ -2779,6 +2824,110 @@ pub(crate) fn v6_has_movement_fields(input: &SnapshotEncodeV6InputScratch, row: 
         || (cf & ENTITY_CHANGED_HP) != 0
         || input.unit[base + 27] != 0.0
         || input.unit[base + 32] != 0.0
+}
+
+pub(crate) fn v6_is_building_delta(
+    input: &SnapshotEncodeV6InputScratch,
+    kind: u32,
+    row: usize,
+) -> bool {
+    let mask = v6_building_delta_changed_mask();
+    if kind == V6_KIND_BASIC {
+        let base = row * V6_BASIC_STRIDE;
+        if input.basic[base + 1] == V6_WIRE_TYPE_UNIT {
+            return false;
+        }
+        if input.basic[base + 7] == 0.0 {
+            return false;
+        }
+        let cf = input.basic[base + 8] as u32;
+        return cf != 0 && (cf & !mask) == 0;
+    }
+    if kind != V6_KIND_BUILDING {
+        return false;
+    }
+    let base = row * V6_BUILDING_STRIDE;
+    if input.building[base + 6] == 0.0 {
+        return false;
+    }
+    let cf = input.building[base + 7] as u32;
+    if cf == 0 || (cf & !mask) != 0 {
+        return false;
+    }
+    // Full/static metadata, build state, turrets, factories, and active-state
+    // changes still need the detail row shape.
+    if input.building[base + 8] != 0.0
+        || input.building[base + 10] != 0.0
+        || input.building[base + 15] != 0.0
+        || input.building[base + 16] != 0.0
+        || input.building[base + 17] != 0.0
+        || input.building[base + 18] != 0.0
+        || input.building[base + 20] != 0.0
+        || input.building[base + 22] != 0.0
+        || input.building[base + 24] != 0.0
+        || input.building[base + 34] != 0.0
+    {
+        return false;
+    }
+    true
+}
+
+pub(crate) fn v6_building_delta_flags(
+    input: &SnapshotEncodeV6InputScratch,
+    kind: u32,
+    row: usize,
+) -> u32 {
+    let cf = if kind == V6_KIND_BASIC {
+        input.basic[row * V6_BASIC_STRIDE + 8] as u32
+    } else {
+        input.building[row * V6_BUILDING_STRIDE + 7] as u32
+    };
+    let mut flags = 0u32;
+    if (cf & ENTITY_CHANGED_POS) != 0 {
+        flags |= V6_BUILDING_DELTA_FLAG_POS;
+    }
+    if (cf & ENTITY_CHANGED_ROT) != 0 {
+        flags |= V6_BUILDING_DELTA_FLAG_ROTATION;
+    }
+    if (cf & ENTITY_CHANGED_HP) != 0 {
+        flags |= V6_BUILDING_DELTA_FLAG_HP;
+    }
+    flags
+}
+
+pub(crate) fn v6_write_building_delta_payload(
+    writer: &mut PackedBinaryWriter,
+    input: &SnapshotEncodeV6InputScratch,
+    kind: u32,
+    row: usize,
+    flags: u32,
+) {
+    if kind == V6_KIND_BASIC {
+        let base = row * V6_BASIC_STRIDE;
+        if (flags & V6_BUILDING_DELTA_FLAG_POS) != 0 {
+            writer.write_var_int_from_f64(input.basic[base + 2]);
+            writer.write_var_int_from_f64(input.basic[base + 3]);
+            writer.write_var_int_from_f64(input.basic[base + 4]);
+        }
+        if (flags & V6_BUILDING_DELTA_FLAG_ROTATION) != 0 {
+            writer.write_var_int_from_f64(input.basic[base + 5]);
+        }
+        return;
+    }
+
+    let base = row * V6_BUILDING_STRIDE;
+    if (flags & V6_BUILDING_DELTA_FLAG_POS) != 0 {
+        writer.write_var_int_from_f64(input.building[base + 1]);
+        writer.write_var_int_from_f64(input.building[base + 2]);
+        writer.write_var_int_from_f64(input.building[base + 3]);
+    }
+    if (flags & V6_BUILDING_DELTA_FLAG_ROTATION) != 0 {
+        writer.write_var_int_from_f64(input.building[base + 4]);
+    }
+    if (flags & V6_BUILDING_DELTA_FLAG_HP) != 0 {
+        writer.write_f64_le(input.building[base + 13]);
+        writer.write_f64_le(input.building[base + 14]);
+    }
 }
 
 #[inline]
@@ -3715,7 +3864,7 @@ pub(crate) fn v6_write_detail_row(
     }
 }
 
-/// Emit the `entities` key + the compact V6 `{v,m,t,e}` value. The caller must
+/// Emit the `entities` key + the compact V6 `{v,m,t,b,e}` value. The caller must
 /// have opened the envelope via snapshot_encode_envelope_begin_packed_entities
 /// and bulk-filled the V6 input scratch + the shared
 /// turret/action/waypoint/factory-queue/string scratches. `entity_count` is the
@@ -3732,6 +3881,7 @@ pub fn snapshot_encode_emit_entities_v6(entity_count: u32, waypoint_string_base:
     work.reset();
     work.m_out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
     work.t_out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
+    work.b_out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
 
     // Pass 1: classify + accumulate movement/turret slabs, collect detail rows.
     for i in 0..entity_count {
@@ -3808,6 +3958,31 @@ pub fn snapshot_encode_emit_entities_v6(entity_count: u32, waypoint_string_base:
             continue;
         }
 
+        if v6_is_building_delta(input, kind, row) {
+            let flags = v6_building_delta_flags(input, kind, row);
+            let player_id = if kind == V6_KIND_BASIC {
+                input.basic[row * V6_BASIC_STRIDE + 6] as u32
+            } else {
+                input.building[row * V6_BUILDING_STRIDE + 5] as u32
+            };
+            let id = if kind == V6_KIND_BASIC {
+                input.basic[row * V6_BASIC_STRIDE] as i64
+            } else {
+                input.building[row * V6_BUILDING_STRIDE] as i64
+            };
+            let gi = work.building_group_index(flags, player_id);
+            let delta = id - work.building_groups[gi].last_id;
+            work.building_groups[gi].writer.write_var_int(delta);
+            work.building_groups[gi].last_id = id;
+            {
+                let group_writer = &mut work.building_groups[gi].writer;
+                v6_write_building_delta_payload(group_writer, input, kind, row, flags);
+            }
+            work.building_groups[gi].count += 1;
+            work.building_row_count += 1;
+            continue;
+        }
+
         work.detail.push(i as u32);
     }
 
@@ -3854,18 +4029,43 @@ pub fn snapshot_encode_emit_entities_v6(entity_count: u32, waypoint_string_base:
         work.t_out.set_u32_le(0, row_count);
     }
 
+    // Finish the building delta slab.
+    if work.building_row_count > 0 {
+        let group_count = work.building_group_count;
+        work.b_out.write_var_uint(group_count as u64);
+        for i in 0..group_count {
+            let flags = work.building_groups[i].flags;
+            let player_id = work.building_groups[i].player_id;
+            let count = work.building_groups[i].count;
+            work.b_out.write_var_uint(flags as u64);
+            work.b_out.write_var_uint(player_id as u64);
+            work.b_out.write_var_uint(count as u64);
+            let bytes_len = work.building_groups[i].writer.as_slice().len();
+            for b in 0..bytes_len {
+                let byte = work.building_groups[i].writer.as_slice()[b];
+                work.b_out.buf.push(byte);
+            }
+        }
+        let row_count = work.building_row_count;
+        work.b_out.set_u32_le(0, row_count);
+    }
+
     let has_m = work.movement_row_count > 0;
     let has_t = work.turret_row_count > 0;
+    let has_b = work.building_row_count > 0;
     let detail_count = work.detail.len();
     // `e` is present if there are detail rows, or if there is no other section
     // (so an empty entities array still emits `e: []`).
-    let has_e = detail_count > 0 || (!has_m && !has_t);
+    let has_e = detail_count > 0 || (!has_m && !has_t && !has_b);
 
     let mut map_size = 1usize; // v
     if has_m {
         map_size += 1;
     }
     if has_t {
+        map_size += 1;
+    }
+    if has_b {
         map_size += 1;
     }
     if has_e {
@@ -3888,6 +4088,10 @@ pub fn snapshot_encode_emit_entities_v6(entity_count: u32, waypoint_string_base:
     if has_t {
         w.write_str("t");
         w.write_bin(work.t_out.as_slice());
+    }
+    if has_b {
+        w.write_str("b");
+        w.write_bin(work.b_out.as_slice());
     }
     if has_e {
         w.write_str("e");
@@ -6782,8 +6986,20 @@ mod sim_kernel_tests {
             let top1 = push_vertex(&mut vertex_coords, &mut vertex_heights, x, y1, HIGH);
             let low0 = push_vertex(&mut vertex_coords, &mut vertex_heights, x, y0, LOW);
             let low1 = push_vertex(&mut vertex_coords, &mut vertex_heights, x, y1, LOW);
-            let t0 = push_triangle(&mut triangle_indices, &mut triangle_levels, top0, top1, low0);
-            let t1 = push_triangle(&mut triangle_indices, &mut triangle_levels, low0, top1, low1);
+            let t0 = push_triangle(
+                &mut triangle_indices,
+                &mut triangle_levels,
+                top0,
+                top1,
+                low0,
+            );
+            let t1 = push_triangle(
+                &mut triangle_indices,
+                &mut triangle_levels,
+                low0,
+                top1,
+                low1,
+            );
             let left_idx = (gy * CELLS_X + CLIFF_X - 1) as usize;
             let right_idx = (gy * CELLS_X + CLIFF_X) as usize;
             cell_refs[left_idx].push(t0);
@@ -7856,7 +8072,6 @@ mod sim_kernel_tests {
 
         assert_eq!(motions, vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
     }
-
 }
 
 #[cfg(test)]
@@ -8036,9 +8251,43 @@ mod lock_on_inclusion_tests {
         // A flagged unit with a friendly (same-owner) host directly above it
         // (overlapping footprints, higher center) is sheltered → no lock-on.
         reset_pools();
-        stamp_entity_with_host_lockon_at_z(0, 10, 1, 0.0, 0.0, CT_ENTITY_FAMILY_UNIT, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0);
+        stamp_entity_with_host_lockon_at_z(
+            0,
+            10,
+            1,
+            0.0,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            0,
+            1,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
         combat_targeting_pool().entity_flags[0] |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
-        stamp_entity_with_host_lockon_at_z(1, 11, 1, 0.0, 50.0, CT_ENTITY_FAMILY_BUILDING, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0);
+        stamp_entity_with_host_lockon_at_z(
+            1,
+            11,
+            1,
+            0.0,
+            50.0,
+            CT_ENTITY_FAMILY_BUILDING,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
         combat_targeting_rebuild_observation_index(combat_targeting_pool());
         assert!(
             combat_targeting_source_sheltered_by_friendly_above(combat_targeting_pool(), 0),
@@ -8047,9 +8296,43 @@ mod lock_on_inclusion_tests {
 
         // The same teammate BELOW does not shelter (an upward shot misses it).
         reset_pools();
-        stamp_entity_with_host_lockon_at_z(0, 10, 1, 0.0, 0.0, CT_ENTITY_FAMILY_UNIT, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0);
+        stamp_entity_with_host_lockon_at_z(
+            0,
+            10,
+            1,
+            0.0,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            0,
+            1,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
         combat_targeting_pool().entity_flags[0] |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
-        stamp_entity_with_host_lockon_at_z(1, 11, 1, 0.0, -50.0, CT_ENTITY_FAMILY_BUILDING, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0);
+        stamp_entity_with_host_lockon_at_z(
+            1,
+            11,
+            1,
+            0.0,
+            -50.0,
+            CT_ENTITY_FAMILY_BUILDING,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
         combat_targeting_rebuild_observation_index(combat_targeting_pool());
         assert!(
             !combat_targeting_source_sheltered_by_friendly_above(combat_targeting_pool(), 0),
@@ -8058,9 +8341,43 @@ mod lock_on_inclusion_tests {
 
         // An ENEMY directly above does not shelter (only friendlies do).
         reset_pools();
-        stamp_entity_with_host_lockon_at_z(0, 10, 1, 0.0, 0.0, CT_ENTITY_FAMILY_UNIT, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0);
+        stamp_entity_with_host_lockon_at_z(
+            0,
+            10,
+            1,
+            0.0,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            0,
+            1,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
         combat_targeting_pool().entity_flags[0] |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
-        stamp_entity_with_host_lockon_at_z(1, 11, 2, 0.0, 50.0, CT_ENTITY_FAMILY_BUILDING, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0);
+        stamp_entity_with_host_lockon_at_z(
+            1,
+            11,
+            2,
+            0.0,
+            50.0,
+            CT_ENTITY_FAMILY_BUILDING,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
         combat_targeting_rebuild_observation_index(combat_targeting_pool());
         assert!(
             !combat_targeting_source_sheltered_by_friendly_above(combat_targeting_pool(), 0),
@@ -8069,8 +8386,42 @@ mod lock_on_inclusion_tests {
 
         // Without the opt-in flag the gate is inert even with a friendly above.
         reset_pools();
-        stamp_entity_with_host_lockon_at_z(0, 10, 1, 0.0, 0.0, CT_ENTITY_FAMILY_UNIT, 0, 1, -1, 0, 0, 0, 0, 0, 0, 0);
-        stamp_entity_with_host_lockon_at_z(1, 11, 1, 0.0, 50.0, CT_ENTITY_FAMILY_BUILDING, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0);
+        stamp_entity_with_host_lockon_at_z(
+            0,
+            10,
+            1,
+            0.0,
+            0.0,
+            CT_ENTITY_FAMILY_UNIT,
+            0,
+            1,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
+        stamp_entity_with_host_lockon_at_z(
+            1,
+            11,
+            1,
+            0.0,
+            50.0,
+            CT_ENTITY_FAMILY_BUILDING,
+            0,
+            0,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        );
         combat_targeting_rebuild_observation_index(combat_targeting_pool());
         assert!(
             !combat_targeting_source_sheltered_by_friendly_above(combat_targeting_pool(), 0),

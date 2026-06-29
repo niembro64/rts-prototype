@@ -19,6 +19,8 @@ import {
   readPackedBinaryRowCount,
 } from './snapshotBinaryWire';
 import {
+  ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
@@ -95,6 +97,8 @@ const _entityPool: NetworkServerSnapshotEntity[] = [];
 let _entityPoolIndex = 0;
 const _unitSubPool: UnitSub[] = [];
 let _unitSubPoolIndex = 0;
+const _buildingSubPool: BuildingSub[] = [];
+let _buildingSubPoolIndex = 0;
 const _vec3Pool: DecodedVec3[] = [];
 let _vec3PoolIndex = 0;
 const _hpPool: DecodedHp[] = [];
@@ -110,6 +114,7 @@ let _decodedEntityWireSourceHasTypedRows = false;
 function resetDecodePools(): void {
   _entityPoolIndex = 0;
   _unitSubPoolIndex = 0;
+  _buildingSubPoolIndex = 0;
   _vec3PoolIndex = 0;
   _hpPoolIndex = 0;
   _normalPoolIndex = 0;
@@ -146,6 +151,24 @@ function appendDecodedUnitEntityWireRow(): { values: Float64Array; base: number 
   appendEntitySnapshotWireSourceRow(
     _decodedEntityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    rowIndex,
+  );
+  _decodedEntityWireSourceHasTypedRows = true;
+  return { values, base };
+}
+
+function appendDecodedBuildingEntityWireRow(): { values: Float64Array; base: number } {
+  const rowIndex = reserveFloat64WireRows(
+    _decodedEntityWireSource.buildingRows,
+    1,
+    ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  );
+  const values = _decodedEntityWireSource.buildingRows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  values.fill(0, base, base + ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE);
+  appendEntitySnapshotWireSourceRow(
+    _decodedEntityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     rowIndex,
   );
   _decodedEntityWireSourceHasTypedRows = true;
@@ -231,6 +254,25 @@ function rentDecodedUnitSub(): UnitSub {
   return u;
 }
 
+function rentDecodedBuildingSub(): BuildingSub {
+  let b = _buildingSubPool[_buildingSubPoolIndex];
+  if (b === undefined) {
+    b = createEmptyBuildingSub();
+    _buildingSubPool[_buildingSubPoolIndex] = b;
+  } else {
+    b.buildingBlueprintCode = null;
+    b.dim = null;
+    b.hp = null;
+    b.build = null;
+    b.metalExtractionRate = null;
+    b.solar = null;
+    b.turrets = null;
+    b.factory = null;
+  }
+  _buildingSubPoolIndex++;
+  return b;
+}
+
 function rentDecodedVec3(x: number, y: number, z: number): DecodedVec3 {
   let v = _vec3Pool[_vec3PoolIndex];
   if (v === undefined) {
@@ -287,7 +329,8 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 13;
+const PACKED_ENTITIES_VERSION = 14;
+const PACKED_ENTITIES_MIN_SUPPORTED_VERSION = 13;
 
 // Bit flags for the packed unit row's optional-presence header.
 // One bit per optional sub-field so the decoder can tell "missing"
@@ -354,6 +397,10 @@ const MOVEMENT_UNIT_FLAG_YAW_ANGULAR_VELOCITY = 1 << 6;
 const MOVEMENT_UNIT_FLAG_SURFACE_NORMAL = 1 << 7;
 const MOVEMENT_UNIT_FLAG_HP = 1 << 8;
 
+const BUILDING_DELTA_FLAG_POS = 1 << 0;
+const BUILDING_DELTA_FLAG_ROTATION = 1 << 1;
+const BUILDING_DELTA_FLAG_HP = 1 << 2;
+
 const ACTION_FLAG_POS = 1 << 0;
 const ACTION_FLAG_POS_Z = 1 << 1;
 const ACTION_FLAG_PATH_EXP = 1 << 2;
@@ -388,15 +435,18 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // sub-object. V11 adds finite factory production queues. V12 adds surface
 // normals to the compact movement slab so motion+normal sparse rows avoid
 // detail-row fallback. V13 lets HP ride that same compact unit delta slab
-// so movement/turret/HP rows avoid detail-row fallback.
+// so movement/turret/HP rows avoid detail-row fallback. V14 adds compact
+// building POS/ROT/HP delta rows.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitBytes = Uint8Array;
 export type PackedUnitTurretBytes = Uint8Array;
+export type PackedBuildingDeltaBytes = Uint8Array;
 
 export type PackedEntitySnapshotWire = {
-  v: typeof PACKED_ENTITIES_VERSION;
+  v: number;
   m: PackedMovementUnitBytes | undefined;
   t: PackedUnitTurretBytes | undefined;
+  b?: PackedBuildingDeltaBytes | undefined;
   e: PackedEntityRow[] | undefined;
 };
 
@@ -413,15 +463,27 @@ export function unpackEntitiesFromWire(
   const materializeTypedDeltas = options.materializeTypedDeltas !== false;
   const movementRows = packed.m;
   const turretRows = packed.t;
+  const buildingRows = packed.b;
   const detailRows = packed.e;
   const movementCount = countMovementUnitDeltaRows(movementRows);
   const turretCount = countUnitTurretDeltaRows(turretRows);
+  const buildingCount = countBuildingDeltaRows(buildingRows);
   const detailCount = detailRows === undefined ? 0 : detailRows.length;
-  const out: NetworkServerSnapshotEntity[] = new Array(movementCount + turretCount + detailCount);
+  const out: NetworkServerSnapshotEntity[] = new Array(
+    movementCount + turretCount + buildingCount + detailCount,
+  );
   let outIndex = 0;
   if (movementRows !== undefined) {
     outIndex = unpackMovementUnitDeltaRows(
       movementRows,
+      out,
+      outIndex,
+      materializeTypedDeltas,
+    );
+  }
+  if (buildingRows !== undefined) {
+    outIndex = unpackBuildingDeltaRows(
+      buildingRows,
       out,
       outIndex,
       materializeTypedDeltas,
@@ -457,10 +519,18 @@ export function isPackedEntitySnapshotWire(
     return false;
   }
   const candidate = value as Partial<PackedEntitySnapshotWire>;
-  if (candidate.v !== PACKED_ENTITIES_VERSION) return false;
+  if (
+    typeof candidate.v !== 'number' ||
+    candidate.v < PACKED_ENTITIES_MIN_SUPPORTED_VERSION ||
+    candidate.v > PACKED_ENTITIES_VERSION
+  ) {
+    return false;
+  }
+  if (candidate.v < 14 && candidate.b !== undefined) return false;
   return (
     (candidate.m === undefined || candidate.m instanceof Uint8Array) &&
     (candidate.t === undefined || candidate.t instanceof Uint8Array) &&
+    (candidate.b === undefined || candidate.b instanceof Uint8Array) &&
     (candidate.e === undefined || Array.isArray(candidate.e))
   );
 }
@@ -532,6 +602,21 @@ function countMovementUnitDeltaRows(
 
 function countUnitTurretDeltaRows(
   rows: PackedUnitTurretBytes | undefined,
+): number {
+  if (rows === undefined) return 0;
+  return readPackedBinaryRowCount(rows);
+}
+
+function buildingDeltaChangedFields(flags: number): number {
+  let changedFields = 0;
+  if ((flags & BUILDING_DELTA_FLAG_POS) !== 0) changedFields |= ENTITY_CHANGED_POS;
+  if ((flags & BUILDING_DELTA_FLAG_ROTATION) !== 0) changedFields |= ENTITY_CHANGED_ROT;
+  if ((flags & BUILDING_DELTA_FLAG_HP) !== 0) changedFields |= ENTITY_CHANGED_HP;
+  return changedFields;
+}
+
+function countBuildingDeltaRows(
+  rows: PackedBuildingDeltaBytes | undefined,
 ): number {
   if (rows === undefined) return 0;
   return readPackedBinaryRowCount(rows);
@@ -684,6 +769,78 @@ function readMovementUnitDeltaByteEntity(
       wireValues[wireBase + 35] = z;
     }
     if (unit !== null) entity.unit = unit;
+  }
+  return entity;
+}
+
+function unpackBuildingDeltaRows(
+  rows: PackedBuildingDeltaBytes,
+  out: NetworkServerSnapshotEntity[],
+  outIndex: number,
+  materializeEntity: boolean,
+): number {
+  const reader = new PackedBinaryReader(rows);
+  const groupCount = reader.readVarUint();
+  for (let groupIndex = 0; groupIndex < groupCount; groupIndex++) {
+    const flags = reader.readVarUint();
+    const playerId = reader.readVarUint() as PlayerId;
+    const count = reader.readVarUint();
+    let id = 0;
+    for (let i = 0; i < count; i++) {
+      id += reader.readVarInt();
+      out[outIndex++] = readBuildingDeltaByteEntity(
+        reader,
+        flags,
+        id,
+        playerId,
+        materializeEntity,
+      );
+    }
+  }
+  return outIndex;
+}
+
+function readBuildingDeltaByteEntity(
+  reader: PackedBinaryReader,
+  flags: number,
+  id: number,
+  playerId: PlayerId,
+  materializeEntity: boolean,
+): NetworkServerSnapshotEntity {
+  const wireRow = appendDecodedBuildingEntityWireRow();
+  const wireValues = wireRow.values;
+  const wireBase = wireRow.base;
+  const changedFields = buildingDeltaChangedFields(flags);
+  wireValues[wireBase + 0] = id;
+  wireValues[wireBase + 5] = playerId;
+  wireValues[wireBase + 6] = 1;
+  wireValues[wireBase + 7] = changedFields;
+
+  const entity = rentDecodedTypedDeltaPlaceholder(id, 'building', playerId, changedFields);
+  if ((flags & BUILDING_DELTA_FLAG_POS) !== 0) {
+    const x = reader.readVarInt();
+    const y = reader.readVarInt();
+    const z = reader.readVarInt();
+    if (materializeEntity) entity.pos = rentDecodedVec3(x, y, z);
+    wireValues[wireBase + 1] = x;
+    wireValues[wireBase + 2] = y;
+    wireValues[wireBase + 3] = z;
+  }
+  if ((flags & BUILDING_DELTA_FLAG_ROTATION) !== 0) {
+    const rotation = reader.readVarInt();
+    if (materializeEntity) entity.rotation = rotation;
+    wireValues[wireBase + 4] = rotation;
+  }
+  if ((flags & BUILDING_DELTA_FLAG_HP) !== 0) {
+    const curr = reader.readFloat64();
+    const max = reader.readFloat64();
+    if (materializeEntity) {
+      const building = rentDecodedBuildingSub();
+      building.hp = rentDecodedHp(curr, max);
+      entity.building = building;
+    }
+    wireValues[wireBase + 13] = curr;
+    wireValues[wireBase + 14] = max;
   }
   return entity;
 }
@@ -928,7 +1085,7 @@ function unpackUnit(row: unknown[]): UnitSub {
 function unpackBuilding(row: unknown[]): BuildingSub {
   let i = 0;
   const flags = row[i++] as number;
-  const building = createEmptyBuildingSub();
+  const building = rentDecodedBuildingSub();
   if ((flags & BUILDING_FLAG_BLUEPRINT_CODE) !== 0) {
     building.buildingBlueprintCode = row[i++] as number;
   }

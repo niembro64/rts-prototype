@@ -448,7 +448,7 @@ function emitEntitiesV6FromSource(
 }
 
 /**
- * Encode the `entities` key + compact V6 `{v,m,t,e}` value into the WASM
+ * Encode the `entities` key + compact V6 `{v,m,t,b,e}` value into the WASM
  * MessagePack writer and return the resulting bytes (key string + value),
  * or null when the Rust packer can't own the bytes (sim unavailable, a RAW
  * entity kind present, or the kernel reports a fallback). The returned bytes
