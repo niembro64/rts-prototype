@@ -1,4 +1,5 @@
 import {
+  ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -53,11 +54,43 @@ function snapshot(tick: number, entities: NetworkServerSnapshot['entities']): Ne
 function createQuietSimulation(): Simulation {
   return {
     hasPendingProjectilePresentationEvents: () => false,
-    getAndClearEvents: () => undefined,
-    getAndClearProjectileSpawns: () => undefined,
-    getAndClearProjectileDespawns: () => undefined,
-    getAndClearProjectileVelocityUpdates: () => undefined,
+    getAndClearEvents: () => [],
+    getAndClearProjectileSpawns: () => [],
+    getAndClearProjectileDespawns: () => [],
+    getAndClearProjectileVelocityUpdates: () => [],
+    getGamePhase: () => 'battle',
+    getWinnerId: () => null,
+    getSprayTargets: () => [],
+    getWindState: () => ({ x: 0, y: 0, z: 0, speed: 0, angle: 0 }),
   } as unknown as Simulation;
+}
+
+function createPublisherInput(world: WorldState, listener: SnapshotListenerEntry) {
+  return {
+    world,
+    simulation: createQuietSimulation(),
+    debugGridPublisher: {
+      isEnabled: () => false,
+      refresh: () => ({
+        cells: undefined,
+        searchCells: undefined,
+        cellSize: undefined,
+      }),
+    } as never,
+    listeners: [listener],
+    terrainTileMap: undefined as never,
+    terrainBuildabilityGrid: undefined as never,
+    tpsAvg: 30,
+    tpsLow: 30,
+    tickRateHz: 30,
+    maxSnapshotsDisplay: 30,
+    ipAddress: '127.0.0.1',
+    backgroundMode: false,
+    backgroundAllowedUnitBlueprintIds: new Set<string>(),
+    tickMsAvg: 0,
+    tickMsHi: 0,
+    tickMsInitialized: true,
+  };
 }
 
 export function runServerSnapshotPublisherContractTest(): void {
@@ -105,24 +138,7 @@ export function runServerSnapshotPublisherContractTest(): void {
   };
   const publisher = new ServerSnapshotPublisher();
   const emitted = publisher.emitProjectileDelta(
-    {
-      world,
-      simulation: createQuietSimulation(),
-      debugGridPublisher: {} as never,
-      listeners: [listener],
-      terrainTileMap: undefined as never,
-      terrainBuildabilityGrid: undefined as never,
-      tpsAvg: 30,
-      tpsLow: 30,
-      tickRateHz: 30,
-      maxSnapshotsDisplay: 30,
-      ipAddress: '127.0.0.1',
-      backgroundMode: false,
-      backgroundAllowedUnitBlueprintIds: new Set<string>(),
-      tickMsAvg: 0,
-      tickMsHi: 0,
-      tickMsInitialized: true,
-    },
+    createPublisherInput(world, listener),
     true,
   );
 
@@ -146,5 +162,50 @@ export function runServerSnapshotPublisherContractTest(): void {
     clientEntity !== undefined &&
       clientEntity.transform.x > 120,
     'client must apply slab-backed sparse motion deltas without DTO fallback',
+  );
+
+  const drainIds: number[] = [];
+  const drainFields: number[] = [];
+  world.drainSnapshotDirtyEntities(drainIds, drainFields);
+  listener.visibleEntityIds.clear();
+  listener.visibleEntityIds.add(unit.id);
+  listener.hasVisibleEntityBaseline = true;
+  const capturedRichSnapshot: { value: NetworkServerSnapshot | null } = { value: null };
+  listener.callback = (state) => {
+    capturedRichSnapshot.value = state;
+  };
+
+  unit.unit.hp = 55;
+  world.markSnapshotDirty(unit.id, ENTITY_CHANGED_HP);
+  const richEmitted = publisher.emitLockstepPresentation(
+    createPublisherInput(world, listener),
+  );
+
+  assertContract(richEmitted, 'publisher must emit a rich dirty presentation delta');
+  const richCaptured = capturedRichSnapshot.value;
+  assertContract(richCaptured !== null, 'listener must receive the rich dirty delta');
+  assertContract(richCaptured.entityDeltaOnly === true, 'rich dirty output must be an entity delta');
+  assertContract(richCaptured.entities.length === 1, 'rich dirty output must contain one entity row');
+  assertContract(
+    richCaptured.entities[0] === undefined,
+    'slab-backed rich unit HP delta must avoid DTO materialization',
+  );
+  const richSource = getEntitySnapshotWireSource(richCaptured.entities);
+  assertContract(
+    richSource !== undefined && richSource.count === 1,
+    'slab-backed rich unit HP delta must expose typed wire metadata',
+  );
+  const richUnitBase = richSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  assertContract(
+    richSource.unitRows.values[richUnitBase + 0] === unit.id &&
+      richSource.unitRows.values[richUnitBase + 7] === ENTITY_CHANGED_HP &&
+      richSource.unitRows.values[richUnitBase + 8] === 55,
+    'typed rich unit HP row must come from canonical slab hot fields',
+  );
+
+  client.applyNetworkState(richCaptured);
+  assertContract(
+    client.getEntity(unit.id)?.unit?.hp === 55,
+    'client must apply slab-backed rich unit HP deltas without DTO fallback',
   );
 }

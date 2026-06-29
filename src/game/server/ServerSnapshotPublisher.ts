@@ -8,6 +8,7 @@ import type { NetworkServerSnapshot, NetworkServerSnapshotEntity } from '../netw
 import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
+  ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -28,6 +29,7 @@ import { serializeResourceMovements } from '../network/stateSerializerResourceMo
 import { serializeGridSnapshot } from '../network/stateSerializerGrid';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import {
+  appendBuildingHotEntityWireRowDirectFromState,
   appendUnitMotionEntityWireRowDirectFromState,
   getEntitySnapshotPoolStats,
   registerEntitySnapshotWireSource,
@@ -68,6 +70,9 @@ const ENTITY_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const ENTITY_UNIT_SLAB_DELTA_FIELDS =
+  ENTITY_MOTION_DELTA_FIELDS |
+  ENTITY_CHANGED_HP;
 const ENTITY_MOTION_SPEED_EPSILON_SQ = 0.01 * 0.01;
 const ENTITY_MOTION_ANGULAR_EPSILON_SQ = 0.0001 * 0.0001;
 
@@ -960,6 +965,10 @@ export class ServerSnapshotPublisher {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIdSet.has(id)) continue;
+      if (this.tryPushSlabDeltaEntityRowFromState(entities, id, dirtyFields[i])) {
+        emittedIds.add(id);
+        continue;
+      }
       const entity = world.getEntity(id);
       if (
         entity === undefined ||
@@ -992,13 +1001,21 @@ export class ServerSnapshotPublisher {
     for (let i = 0; i < dirtyIds.length; i++) {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
+      const changedFields = previousVisibleEntityIds.has(id) ? dirtyFields[i] : undefined;
+      if (
+        changedFields !== undefined &&
+        this.tryPushSlabDeltaEntityRowFromState(entities, id, changedFields)
+      ) {
+        emittedIds.add(id);
+        continue;
+      }
       const entity = world.getEntity(id);
       if (
         entity === undefined ||
         (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
       ) continue;
-      const netEntity = previousVisibleEntityIds.has(id)
-        ? serializeEntityDeltaSnapshot(entity, dirtyFields[i], world, visibility)
+      const netEntity = changedFields !== undefined
+        ? serializeEntityDeltaSnapshot(entity, changedFields, world, visibility)
         : serializeEntitySnapshot(entity, undefined, world, visibility);
       if (netEntity !== null) {
         entities.push(netEntity as NetworkServerSnapshotEntity);
@@ -1248,7 +1265,7 @@ export class ServerSnapshotPublisher {
     for (let i = 0; i < candidateIds.length; i++) {
       const id = candidateIds[i];
       if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
-      if (this.tryAppendUnitMotionSlabDeltaRowFromState(id, entityViews)) {
+      if (this.tryAppendUnitSlabDeltaRowFromState(id, ENTITY_MOTION_DELTA_FIELDS, entityViews)) {
         entities.push(undefined as unknown as NetworkServerSnapshotEntity);
         continue;
       }
@@ -1266,10 +1283,30 @@ export class ServerSnapshotPublisher {
     return entities.length > 0 ? entities : undefined;
   }
 
-  private tryAppendUnitMotionSlabDeltaRowFromState(
+  private tryPushSlabDeltaEntityRowFromState(
+    entities: NetworkServerSnapshot['entities'],
     id: EntityId,
+    changedFields: number,
+  ): boolean {
+    const entityViews = entitySlotRegistry.getViews();
+    if (
+      this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews) ||
+      this.tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews)
+    ) {
+      entities.push(undefined as unknown as NetworkServerSnapshotEntity);
+      return true;
+    }
+    return false;
+  }
+
+  private tryAppendUnitSlabDeltaRowFromState(
+    id: EntityId,
+    changedFields: number,
     entityViews: EntityStateViews | null,
   ): boolean {
+    if (changedFields === 0 || (changedFields & ~ENTITY_UNIT_SLAB_DELTA_FIELDS) !== 0) {
+      return false;
+    }
     if (entityViews === null) return false;
     const slot = entitySlotRegistry.getSlot(id);
     return (
@@ -1279,8 +1316,23 @@ export class ServerSnapshotPublisher {
       appendUnitMotionEntityWireRowDirectFromState(
         entityViews,
         slot,
-        ENTITY_MOTION_DELTA_FIELDS,
+        changedFields,
       )
+    );
+  }
+
+  private tryAppendBuildingSlabDeltaRowFromState(
+    id: EntityId,
+    changedFields: number,
+    entityViews: EntityStateViews | null,
+  ): boolean {
+    if (entityViews === null) return false;
+    const slot = entitySlotRegistry.getSlot(id);
+    return (
+      slot >= 0 &&
+      slot < entityViews.capacity &&
+      entityViews.entityId[slot] === id &&
+      appendBuildingHotEntityWireRowDirectFromState(entityViews, slot, changedFields)
     );
   }
 
