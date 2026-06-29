@@ -95,6 +95,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   getEntitySnapshotWireSource,
@@ -156,6 +157,9 @@ const CLIENT_UNIT_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const CLIENT_BASIC_TRANSFORM_DELTA_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT;
 const CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_POS |
   ENTITY_CHANGED_ROT |
@@ -805,6 +809,79 @@ export class ClientViewState {
     return entity.ownership !== null && entity.ownership.playerId === server.playerId;
   }
 
+  private canApplyBasicTransformTypedDeltaWireRow(
+    source: EntitySnapshotWireSource,
+    entityIndex: number,
+  ): boolean {
+    const rowIndex = source.rowIndices[entityIndex];
+    if (rowIndex < 0 || rowIndex >= source.basicRows.count) return false;
+    const values = source.basicRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+    const changedFields = values[base + 8] | 0;
+    if (values[base + 7] === 0 || changedFields === 0) return false;
+    if ((changedFields & ~CLIENT_BASIC_TRANSFORM_DELTA_FIELDS) !== 0) return false;
+    if ((changedFields & CLIENT_BASIC_TRANSFORM_DELTA_FIELDS) === 0) return false;
+
+    const id = values[base + 0] | 0;
+    const typeCode = values[base + 1] | 0;
+    const playerId = values[base + 6] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined) return false;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== playerId) return false;
+    if (typeCode === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT) return existing.unit !== null;
+    if (typeCode === ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING) return existing.building !== null;
+    return false;
+  }
+
+  private applyBasicTransformTypedDeltaWireRow(
+    values: Float64Array,
+    base: number,
+    changedFields: number,
+    now: number,
+  ): boolean {
+    if ((changedFields & ~CLIENT_BASIC_TRANSFORM_DELTA_FIELDS) !== 0) return false;
+    const hasPos = (changedFields & ENTITY_CHANGED_POS) !== 0;
+    const hasRot = (changedFields & ENTITY_CHANGED_ROT) !== 0;
+    if (!hasPos && !hasRot) return false;
+
+    const id = values[base + 0] | 0;
+    const typeCode = values[base + 1] | 0;
+    const playerId = values[base + 6] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined) return false;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== playerId) return false;
+
+    if (typeCode === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT) {
+      if (existing.unit === null) return false;
+      const target = this.getOrCreateServerTarget(id);
+      this.clearTargetPredictionAccum(id);
+      if (hasPos) {
+        target.x = deqEntityPos(values[base + 2]);
+        target.y = deqEntityPos(values[base + 3]);
+        target.z = deqEntityPos(values[base + 4]);
+      }
+      if (hasRot) target.rotation = deqRot(values[base + 5]);
+      target.updatedAtMs = now;
+      this.activeEntityPredictionIds.add(id);
+      return true;
+    }
+
+    if (typeCode !== ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING || existing.building === null) {
+      return false;
+    }
+    if (hasPos) {
+      existing.transform.x = deqEntityPos(values[base + 2]);
+      existing.transform.y = deqEntityPos(values[base + 3]);
+      existing.transform.z = deqEntityPos(values[base + 4]);
+    }
+    if (hasRot) existing.transform.rotation = deqRot(values[base + 5]);
+    this.refreshRenderableEntityStateFromSnapshot(existing, hasPos);
+    this.dirtyBuildingRenderIds.add(id);
+    return true;
+  }
+
   private tryApplyBasicTypedDeltaWireRow(
     source: EntitySnapshotWireSource,
     entityIndex: number,
@@ -818,7 +895,10 @@ export class ClientViewState {
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
     const changedFields = values[base + 8] | 0;
     if (values[base + 7] === 0 || changedFields === 0) return false;
-    if ((changedFields & ~(ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0) return false;
+    if ((changedFields & ~CLIENT_BASIC_TRANSFORM_DELTA_FIELDS) !== 0) return false;
+    if (!collectCorrectionStats) {
+      return this.applyBasicTransformTypedDeltaWireRow(values, base, changedFields, now);
+    }
 
     const id = values[base + 0] | 0;
     const existing = this.entities.get(id);
@@ -831,7 +911,8 @@ export class ClientViewState {
     const hasRot = (changedFields & ENTITY_CHANGED_ROT) !== 0;
     if (!hasPos && !hasRot) return false;
 
-    if ((values[base + 1] | 0) === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT) {
+    const typeCode = values[base + 1] | 0;
+    if (typeCode === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT) {
       if (existing.unit === null) return false;
       const previousTarget = collectCorrectionStats && hasPos
         ? this.serverTargets.get(id)
@@ -874,7 +955,9 @@ export class ClientViewState {
       return true;
     }
 
-    if (existing.building === null) return false;
+    if (typeCode !== ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING || existing.building === null) {
+      return false;
+    }
     if (hasPos) {
       existing.transform.x = deqEntityPos(values[base + 2]);
       existing.transform.y = deqEntityPos(values[base + 3]);
@@ -884,6 +967,47 @@ export class ClientViewState {
     this.refreshRenderableEntityStateFromSnapshot(existing, hasPos);
     this.dirtyBuildingRenderIds.add(id);
     return true;
+  }
+
+  private canApplyBasicTransformTypedDeltaSource(
+    source: EntitySnapshotWireSource,
+    entities: readonly (NetworkServerSnapshotEntity | undefined)[],
+  ): boolean {
+    const count = source.count;
+    if (count === 0 || count !== entities.length) return false;
+    if (
+      source.basicRows.count !== count ||
+      source.unitRows.count !== 0 ||
+      source.buildingRows.count !== 0 ||
+      source.actionRows.count !== 0 ||
+      source.turretRows.count !== 0 ||
+      source.factorySelectedUnitRows.count !== 0 ||
+      source.waypointRows.count !== 0
+    ) {
+      return false;
+    }
+    for (let entityIndex = 0; entityIndex < count; entityIndex++) {
+      if (entities[entityIndex] !== undefined) return false;
+      if (source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_BASIC) return false;
+      if (!this.canApplyBasicTransformTypedDeltaWireRow(source, entityIndex)) return false;
+    }
+    return true;
+  }
+
+  private applyBasicTransformTypedDeltaSource(
+    source: EntitySnapshotWireSource,
+    now: number,
+  ): void {
+    const values = source.basicRows.values;
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      const base = source.rowIndices[entityIndex] * ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE;
+      this.applyBasicTransformTypedDeltaWireRow(
+        values,
+        base,
+        values[base + 8] | 0,
+        now,
+      );
+    }
   }
 
   private tryApplyUnitTypedDeltaWireRow(
@@ -1586,6 +1710,14 @@ export class ClientViewState {
       this.canApplyUnitHotMotionTypedDeltaSource(typedEntityWireSource, state.entities);
     if (appliedHotMotionTypedSource && typedEntityWireSource !== undefined) {
       this.applyUnitHotMotionTypedDeltaSource(typedEntityWireSource, now);
+    } else if (
+      !projectileDeltaOnly &&
+      entityDeltaOnly &&
+      !collectCorrectionStats &&
+      typedEntityWireSource !== undefined &&
+      this.canApplyBasicTransformTypedDeltaSource(typedEntityWireSource, state.entities)
+    ) {
+      this.applyBasicTransformTypedDeltaSource(typedEntityWireSource, now);
     } else if (
       !projectileDeltaOnly &&
       entityDeltaOnly &&

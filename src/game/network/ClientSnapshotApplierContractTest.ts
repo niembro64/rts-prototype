@@ -647,6 +647,73 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   resetEntitySnapshotPool();
 
+  const basicFastPathView = new ClientViewState();
+  const basicFastPathId = 178;
+  basicFastPathView.applyNetworkState(snapshot(1, [fullUnitEntity(basicFastPathId, 100, 100)]));
+  basicFastPathView.applyPrediction(16);
+  basicFastPathView.consumeRenderDirties();
+  const basicFastPathSource = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => basicFastPathId,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    310,
+    90,
+    1 as PlayerId,
+    'unitJackal',
+    { allocateSubEntityIds: false },
+  );
+  basicFastPathSource.transform.rotation = 0.8;
+  const basicFastPathRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(basicFastPathRows);
+  const basicFastPathRow = serializeEntityDeltaSnapshot(
+    basicFastPathSource,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    {} as WorldState,
+  );
+  if (basicFastPathRow !== null) {
+    basicFastPathRows.push(basicFastPathRow as NetworkServerSnapshotEntity);
+  }
+  assertContract(
+    basicFastPathRows.length === 1 &&
+      (basicFastPathRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+    'typed basic transform rows must omit DTO placeholders',
+  );
+  const basicFastPathSnapshot = snapshot(2, basicFastPathRows);
+  basicFastPathSnapshot.entityDeltaOnly = true;
+  const encodedBasicFastPath = encodeNetworkSnapshotWithRustFallback(basicFastPathSnapshot);
+  if (encodedBasicFastPath === null) {
+    throw new Error('[client snapshot applier contract] packed basic transform fixture must encode');
+  }
+  const decodedBasicFastPath = decodeNetworkSnapshot(encodedBasicFastPath.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  assertContract(
+    decodedBasicFastPath.entities.length === 1 &&
+      decodedBasicFastPath.entities[0] === undefined,
+    'packed basic transform decode must omit typed delta DTO placeholders',
+  );
+  basicFastPathView.applyNetworkState(decodedBasicFastPath, { syncEconomy: undefined });
+  const basicFastPathPacketBeforePrediction = collectMinimalUnitRenderPacket(basicFastPathView);
+  assertContract(
+    basicFastPathPacketBeforePrediction.count === 1 &&
+      basicFastPathPacketBeforePrediction.entityIdAt(0) === basicFastPathId &&
+      basicFastPathPacketBeforePrediction.activePredictionAt(0) &&
+      !basicFastPathPacketBeforePrediction.renderDirtyAt(0),
+    'runtime typed basic transform rows must activate prediction without a redundant snapshot dirty mark',
+  );
+  basicFastPathView.applyPrediction(100);
+  const basicFastPathEntity = basicFastPathView.getEntity(basicFastPathId);
+  assertContract(
+    basicFastPathEntity !== undefined &&
+      basicFastPathEntity.transform.x > 1 &&
+      basicFastPathEntity.transform.rotation > 0.01,
+    'runtime typed basic transform rows must drive position and rotation targets without DTO fallback',
+  );
+  basicFastPathView.assertRenderEntityStateParity(basicFastPathId);
+  resetEntitySnapshotPool();
+
   if (wireMotionEntity.unit === null) {
     throw new Error('[client snapshot applier contract] typed HP source unit must have a unit component');
   }
@@ -888,6 +955,52 @@ export function runClientSnapshotApplierContractTest(): void {
       buildingSource.transform.rotation === 0.75 &&
       buildingSource.building.hp === 44,
     'typed building motion/HP rows must snap building state from wire rows before DTO fallback',
+  );
+  buildingView.assertRenderEntityStateParity(buildingId);
+
+  buildingSource.transform.x = 18.5;
+  buildingSource.transform.y = 38.25;
+  buildingSource.transform.z = 24.5;
+  buildingSource.transform.rotation = 1.25;
+  const basicBuildingMotionRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(basicBuildingMotionRows);
+  const basicBuildingMotionRow = serializeEntityDeltaSnapshot(
+    buildingSource,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    {} as WorldState,
+  );
+  if (basicBuildingMotionRow !== null) {
+    basicBuildingMotionRows.push(basicBuildingMotionRow as NetworkServerSnapshotEntity);
+  }
+  assertContract(
+    basicBuildingMotionRows.length === 1 &&
+      (basicBuildingMotionRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+    'typed basic building transform rows must omit DTO placeholders',
+  );
+  const basicBuildingMotionSnapshot = snapshot(4, basicBuildingMotionRows);
+  basicBuildingMotionSnapshot.entityDeltaOnly = true;
+  const encodedBasicBuildingMotion = encodeNetworkSnapshotWithRustFallback(
+    basicBuildingMotionSnapshot,
+  );
+  if (encodedBasicBuildingMotion === null) {
+    throw new Error('[client snapshot applier contract] packed basic building transform fixture must encode');
+  }
+  const decodedBasicBuildingMotion = decodeNetworkSnapshot(encodedBasicBuildingMotion.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  buildingSource.transform.x = 12.5;
+  buildingSource.transform.y = 34.75;
+  buildingSource.transform.z = 21.25;
+  buildingSource.transform.rotation = 0.75;
+  buildingView.applyNetworkState(decodedBasicBuildingMotion);
+  resetEntitySnapshotPool();
+  assertContract(
+    buildingSource.transform.x === 18.5 &&
+      buildingSource.transform.y === 38.25 &&
+      buildingSource.transform.z === 24.5 &&
+      buildingSource.transform.rotation === 1.25,
+    'runtime typed basic building transform rows must snap building state without DTO fallback',
   );
   buildingView.assertRenderEntityStateParity(buildingId);
 
