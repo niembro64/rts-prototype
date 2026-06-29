@@ -53,6 +53,9 @@ import {
   ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
   ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
@@ -335,6 +338,28 @@ function createReusableEntity(): NetworkServerSnapshotEntity {
   };
 }
 
+function isTypedDeltaPlaceholderEntity(
+  src: NetworkServerSnapshotEntity | undefined,
+): src is NetworkServerSnapshotEntity {
+  return (
+    src !== undefined &&
+    src.changedFields !== null &&
+    src.pos === null &&
+    src.rotation === null &&
+    src.unit === null &&
+    src.building === null
+  );
+}
+
+function wireSourceRowIsTypedDelta(source: EntitySnapshotWireSource, index: number): boolean {
+  const kind = source.kinds[index];
+  return (
+    kind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC ||
+    kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT ||
+    kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING
+  );
+}
+
 export function cloneNetworkSnapshotEntity(
   src: NetworkServerSnapshotEntity,
 ): NetworkServerSnapshotEntity {
@@ -514,12 +539,29 @@ export class ReusableNetworkSnapshotCloner {
     dst.entityDeltaOnly = state.entityDeltaOnly === true ? true : undefined;
     dst.projectileDeltaOnly = state.projectileDeltaOnly === true ? true : undefined;
     const entities = dst.entities;
+    const entityWireSource = getEntitySnapshotWireSource(state.entities);
+    const hasCompleteEntityWireSource =
+      entityWireSource !== undefined && entityWireSource.count === state.entities.length;
+    const skipTypedDeltaPlaceholders =
+      state.entityDeltaOnly === true && hasCompleteEntityWireSource;
     entities.length = state.entities.length;
     for (let i = 0; i < state.entities.length; i++) {
-      entities[i] = copyEntityInto(state.entities[i], entities[i] ?? createReusableEntity());
+      const entity = state.entities[i] as NetworkServerSnapshotEntity | undefined;
+      if (
+        entity === undefined ||
+        (
+          skipTypedDeltaPlaceholders &&
+          entityWireSource !== undefined &&
+          wireSourceRowIsTypedDelta(entityWireSource, i) &&
+          isTypedDeltaPlaceholderEntity(entity)
+        )
+      ) {
+        entities[i] = undefined as unknown as NetworkServerSnapshotEntity;
+        continue;
+      }
+      entities[i] = copyEntityInto(entity, entities[i] ?? createReusableEntity());
     }
-    const entityWireSource = getEntitySnapshotWireSource(state.entities);
-    if (entityWireSource !== undefined && entityWireSource.count === state.entities.length) {
+    if (hasCompleteEntityWireSource && entityWireSource !== undefined) {
       copyEntitySnapshotWireSourceInto(entityWireSource, this.entityWireSource);
       registerEntitySnapshotWireSource(entities, this.entityWireSource);
     } else {

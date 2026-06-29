@@ -34,6 +34,7 @@ import {
 } from './stateSerializerEntities';
 import { unpackEntitiesFromWire, type PackedEntitySnapshotWire } from './snapshotEntityWirePack';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
+import { ReusableNetworkSnapshotCloner } from './snapshotClone';
 import { reserveFloat64WireRows } from './snapshotWireRows';
 import {
   ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
@@ -477,6 +478,57 @@ export function runSnapshotEntityWirePackContractTest(): void {
       metadataOnlyMovementSource.unitRows.values[metadataOnlyMovementWireBase + 8] === 88.5 &&
       metadataOnlyMovementSource.unitRows.values[metadataOnlyMovementWireBase + 23] === 1,
     'metadata-only movement typed row metadata must mirror compact decoded fields',
+  );
+
+  resetEntitySnapshotPool();
+  const localDeltaEntities: NetworkServerSnapshotEntity[] = [{
+    id: 707,
+    type: 'unit',
+    pos: null,
+    rotation: null,
+    playerId: 2,
+    changedFields: ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL,
+    unit: null,
+    building: null,
+  }];
+  assertContract(
+    appendUnitMotionEntityWireRowDirectFromState(createMotionEntityStateViews(), 0),
+    'local typed movement delta fixture must append a typed source row',
+  );
+  registerEntitySnapshotWireSource(localDeltaEntities);
+  const localDeltaSnapshot: NetworkServerSnapshot = {
+    tick: 2,
+    entities: localDeltaEntities,
+    entityDeltaOnly: true,
+    projectileDeltaOnly: undefined,
+    minimapEntities: undefined,
+    economy: {},
+    resourceMovements: undefined,
+    sprayTargets: undefined,
+    audioEvents: undefined,
+    scanPulses: undefined,
+    shroud: undefined,
+    projectiles: undefined,
+    gameState: undefined,
+    serverMeta: undefined,
+    grid: undefined,
+    terrain: undefined,
+    buildability: undefined,
+    visibilityFiltered: undefined,
+    visionPlayerMask: undefined,
+    removedEntityIds: undefined,
+  };
+  const clonedLocalDelta = new ReusableNetworkSnapshotCloner().clone(localDeltaSnapshot);
+  assertContract(
+    clonedLocalDelta.entities.length === 1 &&
+      (clonedLocalDelta.entities as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined,
+    'local typed delta clone must omit typed delta DTO placeholders',
+  );
+  const clonedLocalDeltaSource = getEntitySnapshotWireSource(clonedLocalDelta.entities);
+  assertContract(
+    clonedLocalDeltaSource !== undefined &&
+      clonedLocalDeltaSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    'local typed delta clone must preserve typed entity wire metadata',
   );
 
   const turretEntities = unpackEntitiesFromWire({
