@@ -25,6 +25,8 @@ export const SNAPSHOT_MATERIALIZATION_STAGES = [
   'clientApplyEntitiesBasicTyped',
   'clientApplyEntitiesMetadataTyped',
   'clientApplyEntitiesGeneric',
+  'clientApplyEntitiesGenericTyped',
+  'clientApplyEntitiesGenericDto',
   'clientApplyRemovals',
   'clientApplyProjectiles',
   'clientApplyStores',

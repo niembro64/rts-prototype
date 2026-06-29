@@ -33,6 +33,7 @@ import { refreshUnitActionHash } from '../sim/unitActions';
 import { createBuildable } from '../sim/buildableHelpers';
 import {
   appendEntitySnapshotWireRowDirect,
+  appendEntitySnapshotWireSourceRow,
   getEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
@@ -1299,6 +1300,85 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   mixedTypedView.assertRenderEntityStateParity(mixedUnitId);
   mixedTypedView.assertRenderEntityStateParity(mixedBuildingId);
+
+  const mixedGenericView = new ClientViewState();
+  const mixedGenericMoveId = 1240;
+  const mixedGenericDtoId = 1241;
+  mixedGenericView.applyNetworkState(snapshot(1, [
+    fullUnitEntity(mixedGenericMoveId, 100, 100),
+    fullUnitEntity(mixedGenericDtoId, 100, 100),
+  ]));
+  mixedGenericView.applyPrediction(16);
+  mixedGenericView.consumeRenderDirties();
+  const mixedGenericMoveSource = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => mixedGenericMoveId,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    520,
+    160,
+    1 as PlayerId,
+    'unitJackal',
+    { allocateSubEntityIds: false },
+  );
+  mixedGenericMoveSource.transform.rotation = 0.7;
+  const mixedGenericRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(mixedGenericRows);
+  const mixedGenericMoveRow = serializeEntityDeltaSnapshot(
+    mixedGenericMoveSource,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT,
+    {} as WorldState,
+  );
+  if (mixedGenericMoveRow !== null) {
+    mixedGenericRows.push(mixedGenericMoveRow as NetworkServerSnapshotEntity);
+  }
+  mixedGenericRows.push(hpSparseEntity(mixedGenericDtoId, 74, 100));
+  const mixedGenericSource = getEntitySnapshotWireSource(mixedGenericRows);
+  if (mixedGenericSource === undefined) {
+    throw new Error(
+      '[client snapshot applier contract] mixed generic fixture must expose source metadata',
+    );
+  }
+  assertContract(
+    mixedGenericSource.count === 1 &&
+      mixedGenericSource.typedPlaceholderRows === 1,
+    'mixed generic fixture must start with one DTO-free typed row',
+  );
+  appendEntitySnapshotWireSourceRow(mixedGenericSource, 0, -1);
+  assertContract(
+    mixedGenericSource.count === mixedGenericRows.length &&
+      mixedGenericSource.typedPlaceholderRows === 1,
+    'mixed generic fixture must expose typed and DTO row metadata',
+  );
+  const mixedGenericSnapshot = installMaterializationMetadata(snapshot(7, mixedGenericRows));
+  mixedGenericSnapshot.entityDeltaOnly = true;
+  mixedGenericView.applyNetworkState(mixedGenericSnapshot, {
+    syncEconomy: undefined,
+    collectMaterializationStages: true,
+  });
+  resetEntitySnapshotPool();
+  mixedGenericView.applyPrediction(100);
+  const mixedGenericMoved = mixedGenericView.getEntity(mixedGenericMoveId);
+  assertContract(
+    mixedGenericMoved !== undefined &&
+      mixedGenericMoved.transform.x > 1 &&
+      mixedGenericMoved.transform.rotation > 0.01,
+    'mixed generic typed rows must apply before DTO fallback rows',
+  );
+  assertContract(
+    mixedGenericView.getEntity(mixedGenericDtoId)?.unit?.hp === 74,
+    'mixed generic DTO rows must still apply through the compatibility path',
+  );
+  const mixedGenericStages = getSnapshotMaterializationMetadata(mixedGenericSnapshot)?.stages;
+  assertContract(
+    mixedGenericStages?.clientApplyEntitiesGenericTyped !== undefined &&
+      mixedGenericStages.clientApplyEntitiesGenericDto !== undefined &&
+      mixedGenericStages.clientApplyEntitiesGeneric !== undefined,
+    'mixed generic entity apply must record typed and DTO substages',
+  );
+  mixedGenericView.assertRenderEntityStateParity(mixedGenericMoveId);
+  mixedGenericView.assertRenderEntityStateParity(mixedGenericDtoId);
 
   view.applyNetworkState(snapshot(3, [hpSparseEntity(id, 80, 100)]));
   assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP sparse row must update unit HP');

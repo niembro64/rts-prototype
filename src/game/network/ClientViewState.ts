@@ -345,6 +345,7 @@ export class ClientViewState {
   private removedUnitRenderIds: EntityId[] = [];
   private removedBuildingRenderIds: EntityId[] = [];
   private renderLifecycleDirtyIds: Set<EntityId> = new ClientEntityIdSet();
+  private genericTypedAppliedRows = new Uint8Array(0);
   private predictionSupportSurfaceEntities: Entity[] = [];
   private predictionSupportSurfaceEntityIds = new Set<EntityId>();
   private selectionState = new ClientSelectionState(
@@ -1696,6 +1697,95 @@ export class ClientViewState {
     }
   }
 
+  private ensureGenericTypedAppliedRows(count: number): Uint8Array {
+    if (this.genericTypedAppliedRows.length < count) {
+      let nextCapacity = Math.max(16, this.genericTypedAppliedRows.length);
+      while (nextCapacity < count) nextCapacity *= 2;
+      this.genericTypedAppliedRows = new Uint8Array(nextCapacity);
+    }
+    this.genericTypedAppliedRows.fill(0, 0, count);
+    return this.genericTypedAppliedRows;
+  }
+
+  private wireRowsOfKindAreTypedPlaceholders(
+    source: EntitySnapshotWireSource,
+    kind: number,
+    rowCount: number,
+  ): boolean {
+    if (rowCount === 0) return false;
+    let matchedRows = 0;
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      if (source.kinds[entityIndex] !== kind) continue;
+      matchedRows++;
+      if (source.typedPlaceholderMarks[entityIndex] === 0) return false;
+    }
+    return matchedRows === rowCount;
+  }
+
+  private applyMixedTypedPlaceholderRows(
+    source: EntitySnapshotWireSource,
+    now: number,
+    deferPredictedTurretRenderRefresh: boolean,
+    applyStats: ClientSnapshotApplyStats,
+    appliedRows: Uint8Array,
+  ): boolean {
+    if (source.typedPlaceholderRows === 0) return false;
+
+    const batchUnitHotMotion =
+      source.unitRows.count > 0 &&
+      source.unitChangedFieldsOr !== 0 &&
+      (source.unitChangedFieldsOr & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0 &&
+      this.wireRowsOfKindAreTypedPlaceholders(
+        source,
+        ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+        source.unitRows.count,
+      );
+    if (batchUnitHotMotion) {
+      this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
+    }
+
+    let appliedAny = false;
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      if (source.typedPlaceholderMarks[entityIndex] === 0) continue;
+      switch (source.kinds[entityIndex]) {
+        case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+          this.tryApplyBasicTypedDeltaWireRow(
+            source,
+            entityIndex,
+            now,
+            false,
+            applyStats,
+          );
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+          if (!batchUnitHotMotion) {
+            this.tryApplyUnitTypedDeltaWireRow(
+              source,
+              entityIndex,
+              now,
+              false,
+              deferPredictedTurretRenderRefresh,
+              applyStats,
+            );
+          }
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+          this.tryApplyBuildingTypedDeltaWireRow(
+            source,
+            entityIndex,
+            now,
+            deferPredictedTurretRenderRefresh,
+          );
+          break;
+        default:
+          continue;
+      }
+      appliedRows[entityIndex] = 1;
+      appliedAny = true;
+    }
+    return appliedAny;
+  }
+
   private tryApplyBuildingTypedDeltaWireRow(
     source: EntitySnapshotWireSource,
     entityIndex: number,
@@ -1974,7 +2064,39 @@ export class ClientViewState {
       this.applyMetadataTypedDeltaSource(typedEntityWireSource);
     } else if (!projectileDeltaOnly) {
       entityApplyPath = 'clientApplyEntitiesGeneric';
+      const genericTypedAppliedRows =
+        !collectCorrectionStats &&
+        typedEntityWireSource !== undefined &&
+        typedEntityWireSource.typedPlaceholderRows > 0
+          ? this.ensureGenericTypedAppliedRows(state.entities.length)
+          : undefined;
+      let genericSubstageStart = collectMaterializationStages ? performance.now() : 0;
+      if (
+        genericTypedAppliedRows !== undefined &&
+        typedEntityWireSource !== undefined &&
+        this.applyMixedTypedPlaceholderRows(
+          typedEntityWireSource,
+          now,
+          deferPredictedTurretRenderRefresh,
+          applyStats,
+          genericTypedAppliedRows,
+        ) &&
+        collectMaterializationStages
+      ) {
+        addSnapshotMaterializationStageToSnapshot(
+          state,
+          'clientApplyEntitiesGenericTyped',
+          performance.now() - genericSubstageStart,
+        );
+        genericSubstageStart = performance.now();
+      }
       for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
+        if (
+          genericTypedAppliedRows !== undefined &&
+          genericTypedAppliedRows[entityIndex] !== 0
+        ) {
+          continue;
+        }
         let appliedTypedDelta = false;
         if (typedEntityWireSource !== undefined) {
           switch (typedEntityWireSource.kinds[entityIndex]) {
@@ -2145,6 +2267,16 @@ export class ClientViewState {
           }
           this.markNetworkEntityPredictionActive(netEntity, existing);
         }
+      }
+      if (
+        genericTypedAppliedRows !== undefined &&
+        collectMaterializationStages
+      ) {
+        addSnapshotMaterializationStageToSnapshot(
+          state,
+          'clientApplyEntitiesGenericDto',
+          performance.now() - genericSubstageStart,
+        );
       }
     }
     if (entityApplyPath !== undefined && collectMaterializationStages) {
