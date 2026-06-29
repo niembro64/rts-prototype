@@ -85,7 +85,10 @@ export function snapshotEntityRowComposition(
   const source = getEntitySnapshotWireSource(entities);
   let entityDtoRows = 0;
   if (source !== undefined && source.count === entities.length) {
-    entityDtoRows = source.nonPlaceholderEntityRows;
+    const nonPlaceholderIndices = source.nonPlaceholderEntityIndices;
+    for (let i = 0; i < source.nonPlaceholderEntityRows; i++) {
+      if (entities[nonPlaceholderIndices[i]] !== undefined) entityDtoRows++;
+    }
   } else {
     for (let i = 0; i < entities.length; i++) {
       if (entities[i] !== undefined) entityDtoRows++;
