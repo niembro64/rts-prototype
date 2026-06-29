@@ -46,6 +46,10 @@ export const ENTITY_SLOT_BUILD_FLAG_COMPLETE = 1 << 1;
 export const ENTITY_SLOT_BUILD_FLAG_GHOST = 1 << 2;
 export const ENTITY_SLOT_BUILD_FLAG_INTERRUPTED = 1 << 3;
 
+export const ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL = 1 << 0;
+export const ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION = 1 << 1;
+export const ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY = 1 << 2;
+
 const INITIAL_KIND_CAPACITY = 1024;
 const EPSILON = 1e-9;
 const HOT_MOTION_DIRTY_FIELDS =
@@ -68,6 +72,17 @@ export type EntityStateViews = {
   velX: Float64Array;
   velY: Float64Array;
   velZ: Float64Array;
+  surfaceNormalX: Float64Array;
+  surfaceNormalY: Float64Array;
+  surfaceNormalZ: Float64Array;
+  orientationX: Float64Array;
+  orientationY: Float64Array;
+  orientationZ: Float64Array;
+  orientationW: Float64Array;
+  angularVelocityX: Float64Array;
+  angularVelocityY: Float64Array;
+  angularVelocityZ: Float64Array;
+  unitMotionFlags: Uint32Array;
   hp: Float64Array;
   maxHp: Float64Array;
   radiusCollision: Float64Array;
@@ -98,6 +113,17 @@ type EntityStateExpectation = {
   vx: number;
   vy: number;
   vz: number;
+  surfaceNormalX: number;
+  surfaceNormalY: number;
+  surfaceNormalZ: number;
+  orientationX: number;
+  orientationY: number;
+  orientationZ: number;
+  orientationW: number;
+  angularVelocityX: number;
+  angularVelocityY: number;
+  angularVelocityZ: number;
+  unitMotionFlags: number;
   hp: number;
   maxHp: number;
   radiusCollision: number;
@@ -400,6 +426,20 @@ export class EntitySlotRegistry {
       expected.rotation,
     );
     sim.entityState.setVelocity(slot, expected.vx, expected.vy, expected.vz);
+    sim.entityState.setUnitMotion(
+      slot,
+      expected.surfaceNormalX,
+      expected.surfaceNormalY,
+      expected.surfaceNormalZ,
+      expected.orientationX,
+      expected.orientationY,
+      expected.orientationZ,
+      expected.orientationW,
+      expected.angularVelocityX,
+      expected.angularVelocityY,
+      expected.angularVelocityZ,
+      expected.unitMotionFlags,
+    );
     sim.entityState.setHpBuild(
       slot,
       expected.hp,
@@ -474,6 +514,10 @@ export class EntitySlotRegistry {
         : projectile !== null ? projectile.velocityZ : 0;
     }
 
+    if ((dirtyMask & (ENTITY_CHANGED_NORMAL | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0) {
+      this.writeUnitMotionViews(views, slot, entity);
+    }
+
     sim.entityState.markDirty(slot, dirtyMask);
     return slot;
   }
@@ -510,6 +554,17 @@ export class EntitySlotRegistry {
       velX: new Float64Array(buffer, sim.entityState.velXPtr(), capacity),
       velY: new Float64Array(buffer, sim.entityState.velYPtr(), capacity),
       velZ: new Float64Array(buffer, sim.entityState.velZPtr(), capacity),
+      surfaceNormalX: new Float64Array(buffer, sim.entityState.surfaceNormalXPtr(), capacity),
+      surfaceNormalY: new Float64Array(buffer, sim.entityState.surfaceNormalYPtr(), capacity),
+      surfaceNormalZ: new Float64Array(buffer, sim.entityState.surfaceNormalZPtr(), capacity),
+      orientationX: new Float64Array(buffer, sim.entityState.orientationXPtr(), capacity),
+      orientationY: new Float64Array(buffer, sim.entityState.orientationYPtr(), capacity),
+      orientationZ: new Float64Array(buffer, sim.entityState.orientationZPtr(), capacity),
+      orientationW: new Float64Array(buffer, sim.entityState.orientationWPtr(), capacity),
+      angularVelocityX: new Float64Array(buffer, sim.entityState.angularVelocityXPtr(), capacity),
+      angularVelocityY: new Float64Array(buffer, sim.entityState.angularVelocityYPtr(), capacity),
+      angularVelocityZ: new Float64Array(buffer, sim.entityState.angularVelocityZPtr(), capacity),
+      unitMotionFlags: new Uint32Array(buffer, sim.entityState.unitMotionFlagsPtr(), capacity),
       hp: new Float64Array(buffer, sim.entityState.hpPtr(), capacity),
       maxHp: new Float64Array(buffer, sim.entityState.maxHpPtr(), capacity),
       radiusCollision: new Float64Array(buffer, sim.entityState.radiusCollisionPtr(), capacity),
@@ -557,6 +612,17 @@ export class EntitySlotRegistry {
     this.assertNear(views.velX[slot], expected.vx, entity.id, 'velX');
     this.assertNear(views.velY[slot], expected.vy, entity.id, 'velY');
     this.assertNear(views.velZ[slot], expected.vz, entity.id, 'velZ');
+    this.assertNear(views.surfaceNormalX[slot], expected.surfaceNormalX, entity.id, 'surfaceNormalX');
+    this.assertNear(views.surfaceNormalY[slot], expected.surfaceNormalY, entity.id, 'surfaceNormalY');
+    this.assertNear(views.surfaceNormalZ[slot], expected.surfaceNormalZ, entity.id, 'surfaceNormalZ');
+    this.assertNear(views.orientationX[slot], expected.orientationX, entity.id, 'orientationX');
+    this.assertNear(views.orientationY[slot], expected.orientationY, entity.id, 'orientationY');
+    this.assertNear(views.orientationZ[slot], expected.orientationZ, entity.id, 'orientationZ');
+    this.assertNear(views.orientationW[slot], expected.orientationW, entity.id, 'orientationW');
+    this.assertNear(views.angularVelocityX[slot], expected.angularVelocityX, entity.id, 'angularVelocityX');
+    this.assertNear(views.angularVelocityY[slot], expected.angularVelocityY, entity.id, 'angularVelocityY');
+    this.assertNear(views.angularVelocityZ[slot], expected.angularVelocityZ, entity.id, 'angularVelocityZ');
+    this.assertEqual(views.unitMotionFlags[slot], expected.unitMotionFlags, entity.id, 'unitMotionFlags');
     this.assertNear(views.hp[slot], expected.hp, entity.id, 'hp');
     this.assertNear(views.maxHp[slot], expected.maxHp, entity.id, 'maxHp');
     this.assertNear(views.radiusCollision[slot], expected.radiusCollision, entity.id, 'radiusCollision');
@@ -603,6 +669,57 @@ export class EntitySlotRegistry {
     }
   }
 
+  private writeUnitMotionViews(views: EntityStateViews, slot: number, entity: Entity): void {
+    const unit = entity.unit;
+    if (unit === null) {
+      views.surfaceNormalX[slot] = 0;
+      views.surfaceNormalY[slot] = 0;
+      views.surfaceNormalZ[slot] = 1;
+      views.orientationX[slot] = 0;
+      views.orientationY[slot] = 0;
+      views.orientationZ[slot] = 0;
+      views.orientationW[slot] = 1;
+      views.angularVelocityX[slot] = 0;
+      views.angularVelocityY[slot] = 0;
+      views.angularVelocityZ[slot] = 0;
+      views.unitMotionFlags[slot] = 0;
+      return;
+    }
+
+    views.surfaceNormalX[slot] = unit.surfaceNormal.nx;
+    views.surfaceNormalY[slot] = unit.surfaceNormal.ny;
+    views.surfaceNormalZ[slot] = unit.surfaceNormal.nz;
+    let flags = ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL;
+    const orientation = unit.orientation;
+    const angularVelocity = unit.angularVelocity3;
+    if (orientation !== null) {
+      flags |= ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION;
+      views.orientationX[slot] = orientation.x;
+      views.orientationY[slot] = orientation.y;
+      views.orientationZ[slot] = orientation.z;
+      views.orientationW[slot] = orientation.w;
+      if (angularVelocity !== null && angularVelocity !== undefined) {
+        flags |= ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY;
+        views.angularVelocityX[slot] = angularVelocity.x;
+        views.angularVelocityY[slot] = angularVelocity.y;
+        views.angularVelocityZ[slot] = angularVelocity.z;
+      } else {
+        views.angularVelocityX[slot] = 0;
+        views.angularVelocityY[slot] = 0;
+        views.angularVelocityZ[slot] = 0;
+      }
+    } else {
+      views.orientationX[slot] = 0;
+      views.orientationY[slot] = 0;
+      views.orientationZ[slot] = 0;
+      views.orientationW[slot] = 1;
+      views.angularVelocityX[slot] = 0;
+      views.angularVelocityY[slot] = 0;
+      views.angularVelocityZ[slot] = 0;
+    }
+    views.unitMotionFlags[slot] = flags;
+  }
+
   private expectedState(entity: Entity, slot: number, teamId?: number): EntityStateExpectation {
     const ownerPlayerId = entity.ownership !== null ? entity.ownership.playerId : 0;
     const resolvedTeamId = this.resolveTeamId(slot, ownerPlayerId, teamId);
@@ -616,6 +733,17 @@ export class EntitySlotRegistry {
     let vx = 0;
     let vy = 0;
     let vz = 0;
+    let surfaceNormalX = 0;
+    let surfaceNormalY = 0;
+    let surfaceNormalZ = 1;
+    let orientationX = 0;
+    let orientationY = 0;
+    let orientationZ = 0;
+    let orientationW = 1;
+    let angularVelocityX = 0;
+    let angularVelocityY = 0;
+    let angularVelocityZ = 0;
+    let unitMotionFlags = 0;
     let radiusCollision = 0;
     let radiusHitbox = 0;
     let radiusOther = 0;
@@ -635,6 +763,25 @@ export class EntitySlotRegistry {
       vx = unit.velocityX;
       vy = unit.velocityY;
       vz = unit.velocityZ;
+      surfaceNormalX = unit.surfaceNormal.nx;
+      surfaceNormalY = unit.surfaceNormal.ny;
+      surfaceNormalZ = unit.surfaceNormal.nz;
+      unitMotionFlags = ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL;
+      const orientation = unit.orientation;
+      const angularVelocity = unit.angularVelocity3;
+      if (orientation !== null) {
+        orientationX = orientation.x;
+        orientationY = orientation.y;
+        orientationZ = orientation.z;
+        orientationW = orientation.w;
+        unitMotionFlags |= ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION;
+        if (angularVelocity !== null && angularVelocity !== undefined) {
+          angularVelocityX = angularVelocity.x;
+          angularVelocityY = angularVelocity.y;
+          angularVelocityZ = angularVelocity.z;
+          unitMotionFlags |= ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY;
+        }
+      }
       radiusCollision = unit.radius.collision;
       radiusHitbox = unit.radius.hitbox;
       radiusOther = unit.radius.other;
@@ -691,6 +838,17 @@ export class EntitySlotRegistry {
       vx,
       vy,
       vz,
+      surfaceNormalX,
+      surfaceNormalY,
+      surfaceNormalZ,
+      orientationX,
+      orientationY,
+      orientationZ,
+      orientationW,
+      angularVelocityX,
+      angularVelocityY,
+      angularVelocityZ,
+      unitMotionFlags,
       hp,
       maxHp,
       radiusCollision,

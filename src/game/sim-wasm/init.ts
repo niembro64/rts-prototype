@@ -166,6 +166,7 @@ import __wbg_init, {
   entity_state_set_lifecycle,
   entity_state_set_transform,
   entity_state_set_velocity,
+  entity_state_set_unit_motion,
   entity_state_set_ownership,
   entity_state_set_hp_build,
   entity_state_set_static_shape,
@@ -186,6 +187,17 @@ import __wbg_init, {
   entity_state_vel_x_ptr,
   entity_state_vel_y_ptr,
   entity_state_vel_z_ptr,
+  entity_state_surface_normal_x_ptr,
+  entity_state_surface_normal_y_ptr,
+  entity_state_surface_normal_z_ptr,
+  entity_state_orientation_x_ptr,
+  entity_state_orientation_y_ptr,
+  entity_state_orientation_z_ptr,
+  entity_state_orientation_w_ptr,
+  entity_state_angular_velocity_x_ptr,
+  entity_state_angular_velocity_y_ptr,
+  entity_state_angular_velocity_z_ptr,
+  entity_state_unit_motion_flags_ptr,
   entity_state_hp_ptr,
   entity_state_max_hp_ptr,
   entity_state_radius_collision_ptr,
@@ -1832,6 +1844,20 @@ export interface EntityStateApi {
   ) => void;
   setTransform: (slot: number, x: number, y: number, z: number, rotation: number) => void;
   setVelocity: (slot: number, vx: number, vy: number, vz: number) => void;
+  setUnitMotion: (
+    slot: number,
+    surfaceNormalX: number,
+    surfaceNormalY: number,
+    surfaceNormalZ: number,
+    orientationX: number,
+    orientationY: number,
+    orientationZ: number,
+    orientationW: number,
+    angularVelocityX: number,
+    angularVelocityY: number,
+    angularVelocityZ: number,
+    unitMotionFlags: number,
+  ) => void;
   setOwnership: (slot: number, ownerPlayerId: number, teamId: number) => void;
   setHpBuild: (
     slot: number,
@@ -1888,6 +1914,17 @@ export interface EntityStateApi {
   velXPtr: () => number;
   velYPtr: () => number;
   velZPtr: () => number;
+  surfaceNormalXPtr: () => number;
+  surfaceNormalYPtr: () => number;
+  surfaceNormalZPtr: () => number;
+  orientationXPtr: () => number;
+  orientationYPtr: () => number;
+  orientationZPtr: () => number;
+  orientationWPtr: () => number;
+  angularVelocityXPtr: () => number;
+  angularVelocityYPtr: () => number;
+  angularVelocityZPtr: () => number;
+  unitMotionFlagsPtr: () => number;
   hpPtr: () => number;
   maxHpPtr: () => number;
   radiusCollisionPtr: () => number;
@@ -4296,6 +4333,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           setLifecycle: entity_state_set_lifecycle,
           setTransform: entity_state_set_transform,
           setVelocity: entity_state_set_velocity,
+          setUnitMotion: entity_state_set_unit_motion,
           setOwnership: entity_state_set_ownership,
           setHpBuild: entity_state_set_hp_build,
           setStaticShape: entity_state_set_static_shape,
@@ -4316,6 +4354,17 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           velXPtr: entity_state_vel_x_ptr,
           velYPtr: entity_state_vel_y_ptr,
           velZPtr: entity_state_vel_z_ptr,
+          surfaceNormalXPtr: entity_state_surface_normal_x_ptr,
+          surfaceNormalYPtr: entity_state_surface_normal_y_ptr,
+          surfaceNormalZPtr: entity_state_surface_normal_z_ptr,
+          orientationXPtr: entity_state_orientation_x_ptr,
+          orientationYPtr: entity_state_orientation_y_ptr,
+          orientationZPtr: entity_state_orientation_z_ptr,
+          orientationWPtr: entity_state_orientation_w_ptr,
+          angularVelocityXPtr: entity_state_angular_velocity_x_ptr,
+          angularVelocityYPtr: entity_state_angular_velocity_y_ptr,
+          angularVelocityZPtr: entity_state_angular_velocity_z_ptr,
+          unitMotionFlagsPtr: entity_state_unit_motion_flags_ptr,
           hpPtr: entity_state_hp_ptr,
           maxHpPtr: entity_state_max_hp_ptr,
           radiusCollisionPtr: entity_state_radius_collision_ptr,

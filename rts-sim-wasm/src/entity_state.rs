@@ -31,6 +31,17 @@ pub(crate) struct EntityStateSlab {
     pub(crate) vel_x: Vec<f64>,
     pub(crate) vel_y: Vec<f64>,
     pub(crate) vel_z: Vec<f64>,
+    pub(crate) surface_normal_x: Vec<f64>,
+    pub(crate) surface_normal_y: Vec<f64>,
+    pub(crate) surface_normal_z: Vec<f64>,
+    pub(crate) orientation_x: Vec<f64>,
+    pub(crate) orientation_y: Vec<f64>,
+    pub(crate) orientation_z: Vec<f64>,
+    pub(crate) orientation_w: Vec<f64>,
+    pub(crate) angular_velocity_x: Vec<f64>,
+    pub(crate) angular_velocity_y: Vec<f64>,
+    pub(crate) angular_velocity_z: Vec<f64>,
+    pub(crate) unit_motion_flags: Vec<u32>,
     pub(crate) hp: Vec<f64>,
     pub(crate) max_hp: Vec<f64>,
     pub(crate) radius_collision: Vec<f64>,
@@ -64,6 +75,17 @@ impl EntityStateSlab {
             vel_x: Vec::new(),
             vel_y: Vec::new(),
             vel_z: Vec::new(),
+            surface_normal_x: Vec::new(),
+            surface_normal_y: Vec::new(),
+            surface_normal_z: Vec::new(),
+            orientation_x: Vec::new(),
+            orientation_y: Vec::new(),
+            orientation_z: Vec::new(),
+            orientation_w: Vec::new(),
+            angular_velocity_x: Vec::new(),
+            angular_velocity_y: Vec::new(),
+            angular_velocity_z: Vec::new(),
+            unit_motion_flags: Vec::new(),
             hp: Vec::new(),
             max_hp: Vec::new(),
             radius_collision: Vec::new(),
@@ -100,6 +122,17 @@ impl EntityStateSlab {
         self.vel_x.resize(needed, 0.0);
         self.vel_y.resize(needed, 0.0);
         self.vel_z.resize(needed, 0.0);
+        self.surface_normal_x.resize(needed, 0.0);
+        self.surface_normal_y.resize(needed, 0.0);
+        self.surface_normal_z.resize(needed, 1.0);
+        self.orientation_x.resize(needed, 0.0);
+        self.orientation_y.resize(needed, 0.0);
+        self.orientation_z.resize(needed, 0.0);
+        self.orientation_w.resize(needed, 1.0);
+        self.angular_velocity_x.resize(needed, 0.0);
+        self.angular_velocity_y.resize(needed, 0.0);
+        self.angular_velocity_z.resize(needed, 0.0);
+        self.unit_motion_flags.resize(needed, 0);
         self.hp.resize(needed, 0.0);
         self.max_hp.resize(needed, 0.0);
         self.radius_collision.resize(needed, 0.0);
@@ -139,6 +172,17 @@ impl EntityStateSlab {
         self.vel_x[s] = 0.0;
         self.vel_y[s] = 0.0;
         self.vel_z[s] = 0.0;
+        self.surface_normal_x[s] = 0.0;
+        self.surface_normal_y[s] = 0.0;
+        self.surface_normal_z[s] = 1.0;
+        self.orientation_x[s] = 0.0;
+        self.orientation_y[s] = 0.0;
+        self.orientation_z[s] = 0.0;
+        self.orientation_w[s] = 1.0;
+        self.angular_velocity_x[s] = 0.0;
+        self.angular_velocity_y[s] = 0.0;
+        self.angular_velocity_z[s] = 0.0;
+        self.unit_motion_flags[s] = 0;
         self.hp[s] = 0.0;
         self.max_hp[s] = 0.0;
         self.radius_collision[s] = 0.0;
@@ -244,6 +288,37 @@ pub fn entity_state_set_velocity(slot: u32, vx: f64, vy: f64, vz: f64) {
     slab.vel_x[s] = vx;
     slab.vel_y[s] = vy;
     slab.vel_z[s] = vz;
+}
+
+#[wasm_bindgen]
+pub fn entity_state_set_unit_motion(
+    slot: u32,
+    surface_normal_x: f64,
+    surface_normal_y: f64,
+    surface_normal_z: f64,
+    orientation_x: f64,
+    orientation_y: f64,
+    orientation_z: f64,
+    orientation_w: f64,
+    angular_velocity_x: f64,
+    angular_velocity_y: f64,
+    angular_velocity_z: f64,
+    unit_motion_flags: u32,
+) {
+    let slab = entity_state();
+    let s = slot as usize;
+    slab.ensure_capacity(slot);
+    slab.surface_normal_x[s] = surface_normal_x;
+    slab.surface_normal_y[s] = surface_normal_y;
+    slab.surface_normal_z[s] = surface_normal_z;
+    slab.orientation_x[s] = orientation_x;
+    slab.orientation_y[s] = orientation_y;
+    slab.orientation_z[s] = orientation_z;
+    slab.orientation_w[s] = orientation_w;
+    slab.angular_velocity_x[s] = angular_velocity_x;
+    slab.angular_velocity_y[s] = angular_velocity_y;
+    slab.angular_velocity_z[s] = angular_velocity_z;
+    slab.unit_motion_flags[s] = unit_motion_flags;
 }
 
 #[wasm_bindgen]
@@ -385,6 +460,7 @@ pub fn entity_state_set_projectiles_hot_batch(
         slab.vel_x[s] = vxs[i];
         slab.vel_y[s] = vys[i];
         slab.vel_z[s] = vzs[i];
+        slab.unit_motion_flags[s] = 0;
         slab.hp[s] = hps[i];
         slab.max_hp[s] = max_hps[i];
         slab.flags[s] = flags[i];
@@ -417,6 +493,17 @@ entity_state_ptr_export!(entity_state_rotation_ptr, rotation, f64);
 entity_state_ptr_export!(entity_state_vel_x_ptr, vel_x, f64);
 entity_state_ptr_export!(entity_state_vel_y_ptr, vel_y, f64);
 entity_state_ptr_export!(entity_state_vel_z_ptr, vel_z, f64);
+entity_state_ptr_export!(entity_state_surface_normal_x_ptr, surface_normal_x, f64);
+entity_state_ptr_export!(entity_state_surface_normal_y_ptr, surface_normal_y, f64);
+entity_state_ptr_export!(entity_state_surface_normal_z_ptr, surface_normal_z, f64);
+entity_state_ptr_export!(entity_state_orientation_x_ptr, orientation_x, f64);
+entity_state_ptr_export!(entity_state_orientation_y_ptr, orientation_y, f64);
+entity_state_ptr_export!(entity_state_orientation_z_ptr, orientation_z, f64);
+entity_state_ptr_export!(entity_state_orientation_w_ptr, orientation_w, f64);
+entity_state_ptr_export!(entity_state_angular_velocity_x_ptr, angular_velocity_x, f64);
+entity_state_ptr_export!(entity_state_angular_velocity_y_ptr, angular_velocity_y, f64);
+entity_state_ptr_export!(entity_state_angular_velocity_z_ptr, angular_velocity_z, f64);
+entity_state_ptr_export!(entity_state_unit_motion_flags_ptr, unit_motion_flags, u32);
 entity_state_ptr_export!(entity_state_hp_ptr, hp, f64);
 entity_state_ptr_export!(entity_state_max_hp_ptr, max_hp, f64);
 entity_state_ptr_export!(entity_state_radius_collision_ptr, radius_collision, f64);

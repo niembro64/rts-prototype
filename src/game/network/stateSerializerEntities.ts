@@ -1,6 +1,12 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
+import {
+  ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
+  ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
+  ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL,
+  type EntityStateViews,
+} from '../sim/EntitySlotRegistry';
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
 import {
@@ -65,6 +71,7 @@ import {
 } from './snapshotQuantization';
 import { encodeFactoryProductionQueue } from './factoryProductionQueueWire';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
+import { ENTITY_STATE_KIND_UNIT } from '../sim-wasm/init';
 
 const INITIAL_ENTITY_POOL = 200;
 const INITIAL_TYPED_DELTA_PLACEHOLDER_POOL = 512;
@@ -802,6 +809,70 @@ function appendDirectUnitEntityWireRow(
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     rowIndex,
   );
+}
+
+export function appendUnitMotionEntityWireRowDirectFromState(
+  views: EntityStateViews,
+  slot: number,
+  changedFields: number = TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS,
+): boolean {
+  if (slot < 0 || slot >= views.capacity) return false;
+  if (views.kind[slot] !== ENTITY_STATE_KIND_UNIT) return false;
+  const entityId = views.entityId[slot];
+  if (entityId < 0) return false;
+  const motionFlags = views.unitMotionFlags[slot];
+  if ((motionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL) === 0) return false;
+
+  const rows = entityWireSource.unitRows;
+  const rowIndex = reserveFloat64WireRows(rows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  values.fill(0, base, base + ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+
+  const changedMask = changedFields;
+  const hasPos = (changedMask & ENTITY_CHANGED_POS) !== 0;
+  const hasRot = (changedMask & ENTITY_CHANGED_ROT) !== 0;
+  const hasVel = (changedMask & ENTITY_CHANGED_VEL) !== 0;
+  const hasNormal = (changedMask & ENTITY_CHANGED_NORMAL) !== 0;
+  const hasOrientation =
+    hasRot &&
+    (motionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION) !== 0;
+  const hasAngularVelocity =
+    hasVel &&
+    (motionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY) !== 0;
+  const ownerPlayerId = views.ownerPlayerId[slot];
+
+  values[base + 0] = entityId;
+  values[base + 1] = hasPos ? qPos(views.posX[slot]) : 0;
+  values[base + 2] = hasPos ? qPos(views.posY[slot]) : 0;
+  values[base + 3] = hasPos ? qPos(views.posZ[slot]) : 0;
+  values[base + 4] = hasRot ? qRot(views.rotation[slot]) : 0;
+  values[base + 5] = ownerPlayerId !== 0 ? ownerPlayerId : 1;
+  values[base + 6] = 1;
+  values[base + 7] = changedFields;
+  values[base + 10] = hasVel ? qVel(views.velX[slot]) : 0;
+  values[base + 11] = hasVel ? qVel(views.velY[slot]) : 0;
+  values[base + 12] = hasVel ? qVel(views.velZ[slot]) : 0;
+  values[base + 23] = hasNormal ? 1 : 0;
+  values[base + 24] = hasNormal ? qNormal(views.surfaceNormalX[slot]) : 0;
+  values[base + 25] = hasNormal ? qNormal(views.surfaceNormalY[slot]) : 0;
+  values[base + 26] = hasNormal ? qNormal(views.surfaceNormalZ[slot]) : 0;
+  values[base + 27] = hasOrientation ? 1 : 0;
+  values[base + 28] = hasOrientation ? views.orientationX[slot] : 0;
+  values[base + 29] = hasOrientation ? views.orientationY[slot] : 0;
+  values[base + 30] = hasOrientation ? views.orientationZ[slot] : 0;
+  values[base + 31] = hasOrientation ? views.orientationW[slot] : 0;
+  values[base + 32] = hasAngularVelocity ? 1 : 0;
+  values[base + 33] = hasAngularVelocity ? views.angularVelocityX[slot] : 0;
+  values[base + 34] = hasAngularVelocity ? views.angularVelocityY[slot] : 0;
+  values[base + 35] = hasAngularVelocity ? views.angularVelocityZ[slot] : 0;
+
+  appendEntitySnapshotWireSourceRow(
+    entityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    rowIndex,
+  );
+  return true;
 }
 
 function appendDirectBuildingEntityWireRow(

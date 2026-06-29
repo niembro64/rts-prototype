@@ -1,7 +1,9 @@
 import {
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
 } from '../../types/network';
 import { createProjectileConfigFromShot } from './projectileConfigs';
@@ -73,13 +75,28 @@ export function runEntitySlotRegistryContractTest(): void {
   reused.transform.x = 165;
   reused.transform.y = 145;
   reused.transform.z = 22;
+  reused.transform.rotation = 0.75;
   reused.unit.velocityX = 4.5;
   reused.unit.velocityY = -2.25;
   reused.unit.velocityZ = 1.5;
-  world.markSnapshotDirty(reused.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+  reused.unit.surfaceNormal.nx = 0.25;
+  reused.unit.surfaceNormal.ny = -0.5;
+  reused.unit.surfaceNormal.nz = 0.82915619758885;
+  reused.unit.orientation = { x: 0.1, y: 0.2, z: 0.3, w: 0.9273618495495703 };
+  reused.unit.angularVelocity3 = { x: 0.01, y: -0.02, z: 0.03 };
+  world.markSnapshotDirty(
+    reused.id,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL,
+  );
   const motionViews = requireViews();
   assertContract(motionViews.posX[firstSlot] === 165, 'motion dirty update must refresh position x');
   assertContract(motionViews.velY[firstSlot] === -2.25, 'motion dirty update must refresh velocity y');
+  assertContract(motionViews.surfaceNormalX[firstSlot] === 0.25, 'motion dirty update must refresh normal x');
+  assertContract(motionViews.orientationZ[firstSlot] === 0.3, 'motion dirty update must refresh orientation z');
+  assertContract(
+    motionViews.angularVelocityY[firstSlot] === -0.02,
+    'motion dirty update must refresh angular velocity y',
+  );
   assertParity(reused);
 
   const building = world.createBuilding(

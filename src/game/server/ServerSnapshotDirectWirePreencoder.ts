@@ -10,6 +10,7 @@ import { writeAudioEventWireRowsDirect } from '../network/stateSerializerAudio';
 import { writeEconomySnapshotWireRowsDirect } from '../network/stateSerializerEconomy';
 import {
   appendEntitySnapshotWireRowDirect,
+  appendUnitMotionEntityWireRowDirectFromState,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
 } from '../network/stateSerializerEntities';
@@ -44,6 +45,7 @@ import type {
   SimEvent,
 } from '../sim/combat';
 import { getSimWasm } from '../sim-wasm/init';
+import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import {
@@ -698,8 +700,28 @@ export class ServerSnapshotDirectWirePreencoder {
     resetEntitySnapshotPool();
     let entityCount = 0;
     const ids = input.motionCandidateIds;
+    const visibleEntityIds = input.visibility.getVisibleEntityIdSet();
+    const entityViews = entitySlotRegistry.getViews();
     for (let i = 0; i < ids.length; i++) {
-      const entity = input.world.getEntity(ids[i]);
+      const id = ids[i];
+      if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
+      if (entityViews !== null) {
+        const slot = entitySlotRegistry.getSlot(id);
+        if (
+          slot >= 0 &&
+          slot < entityViews.capacity &&
+          entityViews.entityId[slot] === id &&
+          appendUnitMotionEntityWireRowDirectFromState(
+            entityViews,
+            slot,
+            ENTITY_MOTION_DELTA_FIELDS,
+          )
+        ) {
+          entityCount++;
+          continue;
+        }
+      }
+      const entity = input.world.getEntity(id);
       if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
       appendEntitySnapshotWireRowDirect(
         entity,

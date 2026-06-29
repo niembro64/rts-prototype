@@ -22,13 +22,23 @@ import {
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   appendEntitySnapshotWireSourceRow,
+  appendUnitMotionEntityWireRowDirectFromState,
   createEntitySnapshotWireSource,
   getEntitySnapshotWireSource,
+  registerEntitySnapshotWireSource,
+  resetEntitySnapshotPool,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
 import { unpackEntitiesFromWire, type PackedEntitySnapshotWire } from './snapshotEntityWirePack';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
 import { reserveFloat64WireRows } from './snapshotWireRows';
+import {
+  ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
+  ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
+  ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL,
+  type EntityStateViews,
+} from '../sim/EntitySlotRegistry';
+import { ENTITY_STATE_KIND_UNIT } from '../sim-wasm/init';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -48,6 +58,37 @@ const ENTITIES_KEY_PREFIX_BYTES = 9;
 
 function createEmptyEntityWireSource(): EntitySnapshotWireSource {
   return createEntitySnapshotWireSource();
+}
+
+function createMotionEntityStateViews(): EntityStateViews {
+  return {
+    capacity: 1,
+    entityId: new Int32Array([707]),
+    kind: new Uint8Array([ENTITY_STATE_KIND_UNIT]),
+    ownerPlayerId: new Uint32Array([2]),
+    posX: new Float64Array([10]),
+    posY: new Float64Array([20]),
+    posZ: new Float64Array([30]),
+    rotation: new Float64Array([0.5]),
+    velX: new Float64Array([1.2]),
+    velY: new Float64Array([-2.3]),
+    velZ: new Float64Array([3.4]),
+    surfaceNormalX: new Float64Array([0.25]),
+    surfaceNormalY: new Float64Array([-0.5]),
+    surfaceNormalZ: new Float64Array([0.75]),
+    orientationX: new Float64Array([0.1]),
+    orientationY: new Float64Array([0.2]),
+    orientationZ: new Float64Array([0.3]),
+    orientationW: new Float64Array([0.9273618495495703]),
+    angularVelocityX: new Float64Array([0.01]),
+    angularVelocityY: new Float64Array([-0.02]),
+    angularVelocityZ: new Float64Array([0.03]),
+    unitMotionFlags: new Uint32Array([
+      ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL |
+        ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION |
+        ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
+    ]),
+  } as unknown as EntityStateViews;
 }
 
 function createPackedMovementRowWithNormal(): Uint8Array {
@@ -131,6 +172,44 @@ function createV6MovementNormalSource(): EntitySnapshotWireSource {
 }
 
 export function runSnapshotEntityWirePackContractTest(): void {
+  const slabEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendUnitMotionEntityWireRowDirectFromState(
+      createMotionEntityStateViews(),
+      0,
+      ENTITY_CHANGED_POS |
+        ENTITY_CHANGED_ROT |
+        ENTITY_CHANGED_VEL |
+        ENTITY_CHANGED_NORMAL,
+    ),
+    'entity-state motion row must append from slab views',
+  );
+  slabEntities.length = 1;
+  registerEntitySnapshotWireSource(slabEntities);
+  const slabSource = getEntitySnapshotWireSource(slabEntities);
+  assertContract(
+    slabSource !== undefined &&
+      slabSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    'entity-state motion row must register unit typed wire metadata',
+  );
+  const slabWireBase = slabSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  assertContract(
+    slabSource.unitRows.values[slabWireBase + 0] === 707 &&
+      slabSource.unitRows.values[slabWireBase + 1] === 1000 &&
+      slabSource.unitRows.values[slabWireBase + 4] === 500 &&
+      slabSource.unitRows.values[slabWireBase + 5] === 2 &&
+      slabSource.unitRows.values[slabWireBase + 10] === 12 &&
+      slabSource.unitRows.values[slabWireBase + 11] === -23 &&
+      slabSource.unitRows.values[slabWireBase + 23] === 1 &&
+      slabSource.unitRows.values[slabWireBase + 24] === 250 &&
+      slabSource.unitRows.values[slabWireBase + 27] === 1 &&
+      slabSource.unitRows.values[slabWireBase + 30] === 0.3 &&
+      slabSource.unitRows.values[slabWireBase + 32] === 1 &&
+      slabSource.unitRows.values[slabWireBase + 34] === -0.02,
+    'entity-state motion typed row must mirror canonical slab motion fields',
+  );
+
   const movementEntities = unpackEntitiesFromWire({
     v: PACKED_ENTITIES_VERSION_V13,
     m: createPackedMovementRowWithNormal(),
