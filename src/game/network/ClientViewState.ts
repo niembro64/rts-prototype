@@ -809,6 +809,17 @@ export class ClientViewState {
     return entity.ownership !== null && entity.ownership.playerId === server.playerId;
   }
 
+  private renderSlotMatchesSnapshotOwner(
+    id: EntityId,
+    playerId: PlayerId,
+    expectedKind: number,
+  ): boolean {
+    const slot = this.renderEntityState.getSlot(id);
+    if (slot === undefined) return false;
+    const views = this.renderEntityState.getViews();
+    return views.kind[slot] === expectedKind && views.ownerIds[slot] === playerId;
+  }
+
   private canApplyBasicTransformTypedDeltaWireRow(
     source: EntitySnapshotWireSource,
     entityIndex: number,
@@ -825,6 +836,18 @@ export class ClientViewState {
     const id = values[base + 0] | 0;
     const typeCode = values[base + 1] | 0;
     const playerId = values[base + 6] | 0;
+    if (
+      typeCode === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT &&
+      this.renderSlotMatchesSnapshotOwner(id as EntityId, playerId as PlayerId, CLIENT_RENDER_ENTITY_KIND_UNIT)
+    ) {
+      return true;
+    }
+    if (
+      typeCode === ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING &&
+      this.renderSlotMatchesSnapshotOwner(id as EntityId, playerId as PlayerId, CLIENT_RENDER_ENTITY_KIND_BUILDING)
+    ) {
+      return true;
+    }
     const existing = this.entities.get(id);
     if (existing === undefined) return false;
     const ownership = existing.ownership;
@@ -848,13 +871,16 @@ export class ClientViewState {
     const id = values[base + 0] | 0;
     const typeCode = values[base + 1] | 0;
     const playerId = values[base + 6] | 0;
-    const existing = this.entities.get(id);
-    if (existing === undefined) return false;
-    const ownership = existing.ownership;
-    if (ownership === null || ownership.playerId !== playerId) return false;
 
     if (typeCode === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT) {
-      if (existing.unit === null) return false;
+      if (
+        !this.renderSlotMatchesSnapshotOwner(id as EntityId, playerId as PlayerId, CLIENT_RENDER_ENTITY_KIND_UNIT)
+      ) {
+        const existing = this.entities.get(id);
+        if (existing === undefined || existing.unit === null) return false;
+        const ownership = existing.ownership;
+        if (ownership === null || ownership.playerId !== playerId) return false;
+      }
       const target = this.getOrCreateServerTarget(id);
       this.clearTargetPredictionAccum(id);
       if (hasPos) {
@@ -868,6 +894,10 @@ export class ClientViewState {
       return true;
     }
 
+    const existing = this.entities.get(id);
+    if (existing === undefined) return false;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== playerId) return false;
     if (typeCode !== ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING || existing.building === null) {
       return false;
     }
@@ -1172,10 +1202,14 @@ export class ClientViewState {
   ): boolean {
     const id = values[base + 0] | 0;
     const playerId = values[base + 5] | 0;
-    const existing = this.entities.get(id);
-    if (existing === undefined || existing.unit === null) return false;
-    const ownership = existing.ownership;
-    if (ownership === null || ownership.playerId !== playerId) return false;
+    if (
+      !this.renderSlotMatchesSnapshotOwner(id as EntityId, playerId as PlayerId, CLIENT_RENDER_ENTITY_KIND_UNIT)
+    ) {
+      const existing = this.entities.get(id);
+      if (existing === undefined || existing.unit === null) return false;
+      const ownership = existing.ownership;
+      if (ownership === null || ownership.playerId !== playerId) return false;
+    }
 
     const target = this.getOrCreateServerTarget(id);
     this.clearTargetPredictionAccum(id);
