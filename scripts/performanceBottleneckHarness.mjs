@@ -239,7 +239,7 @@ function printReport(report) {
   console.log(`  gpu/render-submit ms avg/p95/max: ${triplet(report.fullStack.gpuMs)}`);
   console.log(`  render TPS avg/low p95: ${fmt(report.fullStack.renderTpsAvg.p95)} / ${fmt(report.fullStack.renderTpsLow.p95)}`);
   console.log(
-    `  snapshot SPS total/rich/delta/entity/projectile p95: ` +
+    `  snapshot SPS EMA total/rich/delta/entity/projectile p95: ` +
       `${fmt(report.fullStack.snapshotTotalSps?.p95)}/` +
       `${fmt(report.fullStack.snapshotRichSps?.p95)}/` +
       `${fmt(report.fullStack.snapshotDeltaSps?.p95)}/` +
@@ -247,6 +247,36 @@ function printReport(report) {
       `${fmt(report.fullStack.snapshotProjectileDeltaSps?.p95)} ` +
       cadenceTargetsText(report),
   );
+  const receivedRates = report.fullStack.snapshotReceivedRates;
+  const receivedCounts = report.fullStack.snapshotReceivedCounts;
+  if (receivedRates && receivedCounts) {
+    console.log(
+      `  snapshot received rate total/rich/delta/entity/projectile: ` +
+        `${fmt(receivedRates.total)}/` +
+        `${fmt(receivedRates.rich)}/` +
+        `${fmt(receivedRates.delta)}/` +
+        `${fmt(receivedRates.entityDelta)}/` +
+        `${fmt(receivedRates.projectileDelta)} ` +
+        `(${receivedCounts.total}/${receivedCounts.rich}/${receivedCounts.delta}/` +
+        `${receivedCounts.entityDelta}/${receivedCounts.projectileDelta} over ` +
+        `${fmt(receivedRates.measuredSeconds)}s)`,
+    );
+  }
+  const appliedRates = report.fullStack.snapshotAppliedRates;
+  const appliedCounts = report.fullStack.snapshotAppliedCounts;
+  if (appliedRates && appliedCounts) {
+    console.log(
+      `  snapshot applied rate total/rich/delta/entity/projectile: ` +
+        `${fmt(appliedRates.total)}/` +
+        `${fmt(appliedRates.rich)}/` +
+        `${fmt(appliedRates.delta)}/` +
+        `${fmt(appliedRates.entityDelta)}/` +
+        `${fmt(appliedRates.projectileDelta)} ` +
+        `(${appliedCounts.total}/${appliedCounts.rich}/${appliedCounts.delta}/` +
+        `${appliedCounts.entityDelta}/${appliedCounts.projectileDelta} over ` +
+        `${fmt(appliedRates.measuredSeconds)}s)`,
+    );
+  }
   printSnapshotMaterializationStats('  materialization', report.fullStack.snapshotMaterializationStats);
   console.log(`  server CPU avg/hi p95: ${fmt(report.fullStack.serverCpuAvgPct.p95)}% / ${fmt(report.fullStack.serverCpuHiPct.p95)}%`);
   console.log(`  draw calls/triangles p95: ${fmt(report.fullStack.drawCalls.p95)} / ${fmt(report.fullStack.triangles.p95)}`);

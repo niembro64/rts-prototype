@@ -7,6 +7,7 @@ import type { CameraViewMode } from '@/types/client';
 import {
   RtsScene3DSnapshotIntake,
   type RtsScene3DSnapshotApplyStats,
+  type RtsScene3DSnapshotCounters,
   type RtsScene3DSnapshotPayloadSizeStats,
   type RtsScene3DSnapshotRateStats,
 } from './helpers/RtsScene3DSnapshotIntake';
@@ -1300,6 +1301,14 @@ export class RtsScene3D {
 
   public getSnapshotStats(): RtsScene3DSnapshotRateStats {
     return this.snapshotIntake.getSnapshotStats();
+  }
+
+  public getSnapshotCounters(): RtsScene3DSnapshotCounters {
+    return this.snapshotIntake.getSnapshotCounters();
+  }
+
+  public getReceivedSnapshotCounters(): RtsScene3DSnapshotCounters {
+    return this.snapshotIntake.getReceivedSnapshotCounters();
   }
 
   public getSnapshotPayloadSizeStats(): RtsScene3DSnapshotPayloadSizeStats {

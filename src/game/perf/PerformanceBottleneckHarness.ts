@@ -29,6 +29,18 @@ type NumericSummary = {
   readonly max: number;
 };
 
+type SnapshotTrafficCounters = {
+  readonly total: number;
+  readonly rich: number;
+  readonly delta: number;
+  readonly entityDelta: number;
+  readonly projectileDelta: number;
+};
+
+type SnapshotTrafficMeasuredRates = SnapshotTrafficCounters & {
+  readonly measuredSeconds: number;
+};
+
 export type PerformanceBottleneckHarnessOptions = {
   readonly unitCap?: number;
   readonly ticks?: number;
@@ -131,6 +143,10 @@ type FullStackReport = {
   readonly snapshotDeltaSps: NumericSummary;
   readonly snapshotEntityDeltaSps: NumericSummary;
   readonly snapshotProjectileDeltaSps: NumericSummary;
+  readonly snapshotReceivedCounts: SnapshotTrafficCounters;
+  readonly snapshotReceivedRates: SnapshotTrafficMeasuredRates;
+  readonly snapshotAppliedCounts: SnapshotTrafficCounters;
+  readonly snapshotAppliedRates: SnapshotTrafficMeasuredRates;
   readonly serverTpsAvg: NumericSummary;
   readonly serverCpuAvgPct: NumericSummary;
   readonly serverCpuHiPct: NumericSummary;
@@ -575,6 +591,12 @@ async function runFullStack(
     connection.markClientReady();
 
     await waitMs(options.warmupSeconds * 1000);
+    const measurementStartScene = game.getScene();
+    const snapshotReceivedCounterStart =
+      measurementStartScene?.getReceivedSnapshotCounters() ?? EMPTY_SNAPSHOT_TRAFFIC_COUNTERS;
+    const snapshotAppliedCounterStart =
+      measurementStartScene?.getSnapshotCounters() ?? EMPTY_SNAPSHOT_TRAFFIC_COUNTERS;
+    const measurementStartMs = performance.now();
 
     const memory = createMemoryTracker();
     beginWasmBoundaryTracking();
@@ -625,7 +647,7 @@ async function runFullStack(
     let nativePixelRatio = 1;
     let renderBudgetTier = 'normal';
 
-    const deadline = performance.now() + options.seconds * 1000;
+    const deadline = measurementStartMs + options.seconds * 1000;
     while (performance.now() < deadline) {
       await waitMs(250);
       const scene = game.getScene();
@@ -691,7 +713,29 @@ async function runFullStack(
       snapshotBytes.push(snapSize.avgBytes);
       memory.sample();
     }
+    const measurementEndMs = performance.now();
     const scene = game.getScene();
+    const snapshotReceivedCounterEnd =
+      scene?.getReceivedSnapshotCounters() ?? snapshotReceivedCounterStart;
+    const snapshotAppliedCounterEnd =
+      scene?.getSnapshotCounters() ?? snapshotAppliedCounterStart;
+    const measuredSeconds = (measurementEndMs - measurementStartMs) / 1000;
+    const snapshotReceivedCounts = diffSnapshotTrafficCounters(
+      snapshotReceivedCounterEnd,
+      snapshotReceivedCounterStart,
+    );
+    const snapshotReceivedRates = snapshotTrafficRates(
+      snapshotReceivedCounts,
+      measuredSeconds,
+    );
+    const snapshotAppliedCounts = diffSnapshotTrafficCounters(
+      snapshotAppliedCounterEnd,
+      snapshotAppliedCounterStart,
+    );
+    const snapshotAppliedRates = snapshotTrafficRates(
+      snapshotAppliedCounts,
+      measuredSeconds,
+    );
     if (scene !== null) {
       scene.drainSnapshotMaterializationMetadata(drainedSnapshotMaterialization);
       for (let i = 0; i < drainedSnapshotMaterialization.length; i++) {
@@ -729,6 +773,10 @@ async function runFullStack(
       snapshotDeltaSps: summarize(snapshotDeltaSps),
       snapshotEntityDeltaSps: summarize(snapshotEntityDeltaSps),
       snapshotProjectileDeltaSps: summarize(snapshotProjectileDeltaSps),
+      snapshotReceivedCounts,
+      snapshotReceivedRates,
+      snapshotAppliedCounts,
+      snapshotAppliedRates,
       serverTpsAvg: summarize(serverTpsAvg),
       serverCpuAvgPct: summarize(serverCpuAvgPct),
       serverCpuHiPct: summarize(serverCpuHiPct),
@@ -1167,6 +1215,42 @@ function summarize(values: readonly number[]): NumericSummary {
     p50: percentile(finite, 0.5),
     p95: percentile(finite, 0.95),
     max: finite[finite.length - 1],
+  };
+}
+
+const EMPTY_SNAPSHOT_TRAFFIC_COUNTERS: SnapshotTrafficCounters = {
+  total: 0,
+  rich: 0,
+  delta: 0,
+  entityDelta: 0,
+  projectileDelta: 0,
+};
+
+function diffSnapshotTrafficCounters(
+  end: SnapshotTrafficCounters,
+  start: SnapshotTrafficCounters,
+): SnapshotTrafficCounters {
+  return {
+    total: Math.max(0, end.total - start.total),
+    rich: Math.max(0, end.rich - start.rich),
+    delta: Math.max(0, end.delta - start.delta),
+    entityDelta: Math.max(0, end.entityDelta - start.entityDelta),
+    projectileDelta: Math.max(0, end.projectileDelta - start.projectileDelta),
+  };
+}
+
+function snapshotTrafficRates(
+  counts: SnapshotTrafficCounters,
+  measuredSeconds: number,
+): SnapshotTrafficMeasuredRates {
+  const seconds = Math.max(0.001, measuredSeconds);
+  return {
+    measuredSeconds: seconds,
+    total: counts.total / seconds,
+    rich: counts.rich / seconds,
+    delta: counts.delta / seconds,
+    entityDelta: counts.entityDelta / seconds,
+    projectileDelta: counts.projectileDelta / seconds,
   };
 }
 

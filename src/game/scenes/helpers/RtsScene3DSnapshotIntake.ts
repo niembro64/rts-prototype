@@ -67,6 +67,14 @@ export type RtsScene3DSnapshotRateStats = RtsScene3DSnapshotRateLaneStats & {
   projectileDelta: RtsScene3DSnapshotRateLaneStats;
 };
 
+export type RtsScene3DSnapshotCounters = {
+  total: number;
+  rich: number;
+  delta: number;
+  entityDelta: number;
+  projectileDelta: number;
+};
+
 export type RtsScene3DSnapshotPayloadSizeStats = RtsScene3DSnapshotByteLaneStats & {
   total: RtsScene3DSnapshotByteLaneStats;
   rich: RtsScene3DSnapshotByteLaneStats;
@@ -129,6 +137,16 @@ export class RtsScene3DSnapshotIntake {
   private lastDeltaSnapArrivalMs = 0;
   private lastEntityDeltaSnapArrivalMs = 0;
   private lastProjectileDeltaSnapArrivalMs = 0;
+  private snapshotCounterTotal = 0;
+  private snapshotCounterRich = 0;
+  private snapshotCounterDelta = 0;
+  private snapshotCounterEntityDelta = 0;
+  private snapshotCounterProjectileDelta = 0;
+  private receivedSnapshotCounterTotal = 0;
+  private receivedSnapshotCounterRich = 0;
+  private receivedSnapshotCounterDelta = 0;
+  private receivedSnapshotCounterEntityDelta = 0;
+  private receivedSnapshotCounterProjectileDelta = 0;
   private startupReadyAckSent = false;
   private startupSnapshotApplied = false;
   private startupReleased = false;
@@ -145,7 +163,10 @@ export class RtsScene3DSnapshotIntake {
   attach(): void {
     this.snapshotBuffer.attach(
       this.gameConnection,
-      (state) => this.recordSnapshotPayloadSize(state),
+      (state) => {
+        this.recordSnapshotPayloadSize(state);
+        this.recordReceivedSnapshotCounter(snapshotTrafficKind(state));
+      },
     );
   }
 
@@ -178,6 +199,7 @@ export class RtsScene3DSnapshotIntake {
     if (materializationMetadata !== undefined) {
       this.materializationMetadataSamples.push(materializationMetadata);
     }
+    this.recordSnapshotCounter(kind);
     this.recordSnapshotApply(kind, applyMs);
     if (!this.startupReadyAckSent) this.startupSnapshotApplied = true;
 
@@ -258,6 +280,26 @@ export class RtsScene3DSnapshotIntake {
     };
   }
 
+  getSnapshotCounters(): RtsScene3DSnapshotCounters {
+    return {
+      total: this.snapshotCounterTotal,
+      rich: this.snapshotCounterRich,
+      delta: this.snapshotCounterDelta,
+      entityDelta: this.snapshotCounterEntityDelta,
+      projectileDelta: this.snapshotCounterProjectileDelta,
+    };
+  }
+
+  getReceivedSnapshotCounters(): RtsScene3DSnapshotCounters {
+    return {
+      total: this.receivedSnapshotCounterTotal,
+      rich: this.receivedSnapshotCounterRich,
+      delta: this.receivedSnapshotCounterDelta,
+      entityDelta: this.receivedSnapshotCounterEntityDelta,
+      projectileDelta: this.receivedSnapshotCounterProjectileDelta,
+    };
+  }
+
   getSnapshotPayloadSizeStats(): RtsScene3DSnapshotPayloadSizeStats {
     const total = {
       avgBytes: this.snapshotSizeTracker.getAvg(),
@@ -320,6 +362,44 @@ export class RtsScene3DSnapshotIntake {
   clear(): void {
     this.snapshotBuffer.clear();
     this.materializationMetadataSamples.length = 0;
+    this.snapshotCounterTotal = 0;
+    this.snapshotCounterRich = 0;
+    this.snapshotCounterDelta = 0;
+    this.snapshotCounterEntityDelta = 0;
+    this.snapshotCounterProjectileDelta = 0;
+    this.receivedSnapshotCounterTotal = 0;
+    this.receivedSnapshotCounterRich = 0;
+    this.receivedSnapshotCounterDelta = 0;
+    this.receivedSnapshotCounterEntityDelta = 0;
+    this.receivedSnapshotCounterProjectileDelta = 0;
+  }
+
+  private recordSnapshotCounter(kind: RtsScene3DSnapshotTrafficKind): void {
+    this.snapshotCounterTotal++;
+    if (kind === 'rich') {
+      this.snapshotCounterRich++;
+      return;
+    }
+    this.snapshotCounterDelta++;
+    if (kind === 'entity-delta') {
+      this.snapshotCounterEntityDelta++;
+    } else {
+      this.snapshotCounterProjectileDelta++;
+    }
+  }
+
+  private recordReceivedSnapshotCounter(kind: RtsScene3DSnapshotTrafficKind): void {
+    this.receivedSnapshotCounterTotal++;
+    if (kind === 'rich') {
+      this.receivedSnapshotCounterRich++;
+      return;
+    }
+    this.receivedSnapshotCounterDelta++;
+    if (kind === 'entity-delta') {
+      this.receivedSnapshotCounterEntityDelta++;
+    } else {
+      this.receivedSnapshotCounterProjectileDelta++;
+    }
   }
 
   private recordSnapshotArrival(now: number, kind: RtsScene3DSnapshotTrafficKind): void {
