@@ -156,6 +156,10 @@ const CLIENT_UNIT_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
+const CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_VEL |
+  ENTITY_CHANGED_NORMAL;
 const CLIENT_UNIT_TYPED_DELTA_FIELDS =
   CLIENT_UNIT_MOTION_DELTA_FIELDS |
   ENTITY_CHANGED_HP |
@@ -890,6 +894,17 @@ export class ClientViewState {
     const changedFields = values[base + 7] | 0;
     if (values[base + 6] === 0 || changedFields === 0) return false;
     if ((changedFields & ~CLIENT_UNIT_TYPED_DELTA_FIELDS) !== 0) return false;
+    if (
+      !collectCorrectionStats &&
+      (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
+    ) {
+      return this.tryApplyUnitHotMotionTypedDeltaWireRow(
+        values,
+        base,
+        changedFields,
+        now,
+      );
+    }
     const hasMotionFields = (changedFields & CLIENT_UNIT_MOTION_DELTA_FIELDS) !== 0;
     const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
     const hasTurretFields = (changedFields & ENTITY_CHANGED_TURRETS) !== 0;
@@ -1020,6 +1035,42 @@ export class ClientViewState {
       this.activeEntityPredictionIds.add(id);
       this.dirtyUnitRenderIds.add(id);
     }
+    return true;
+  }
+
+  private tryApplyUnitHotMotionTypedDeltaWireRow(
+    values: Float64Array,
+    base: number,
+    changedFields: number,
+    now: number,
+  ): boolean {
+    const id = values[base + 0] | 0;
+    const playerId = values[base + 5] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.unit === null) return false;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== playerId) return false;
+
+    const target = this.getOrCreateServerTarget(id);
+    this.clearTargetPredictionAccum(id);
+    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+      target.x = deqEntityPos(values[base + 1]);
+      target.y = deqEntityPos(values[base + 2]);
+      target.z = deqEntityPos(values[base + 3]);
+    }
+    if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && values[base + 23] !== 0) {
+      target.surfaceNormalX = deqNormal(values[base + 24]);
+      target.surfaceNormalY = deqNormal(values[base + 25]);
+      target.surfaceNormalZ = deqNormal(values[base + 26]);
+    }
+    if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
+      target.velocityX = deqVel(values[base + 10]);
+      target.velocityY = deqVel(values[base + 11]);
+      target.velocityZ = deqVel(values[base + 12]);
+    }
+    target.updatedAtMs = now;
+    this.activeEntityPredictionIds.add(id);
+    this.dirtyUnitRenderIds.add(id);
     return true;
   }
 
