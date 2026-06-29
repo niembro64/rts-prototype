@@ -1559,8 +1559,11 @@ export class ClientViewState {
     const rotScale = ROTATION_WIRE_INV_SCALE;
     const velScale = VELOCITY_WIRE_INV_SCALE;
     const normalScale = NORMAL_WIRE_INV_SCALE;
-    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
-      const base = source.rowIndices[entityIndex] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    for (
+      let rowIndex = 0, base = 0;
+      rowIndex < source.unitRows.count;
+      rowIndex++, base += ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
+    ) {
       const changedFields = values[base + 7] | 0;
       const id = values[base + 0] | 0;
       const playerId = values[base + 5] | 0;
