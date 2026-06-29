@@ -140,6 +140,7 @@ function copyEntitySnapshotWireSourceInto(
 function clearEntitySnapshotWireSource(source: EntitySnapshotWireSource): void {
   source.count = 0;
   source.typedPlaceholderRows = 0;
+  source.nonPlaceholderEntityRows = 0;
   source.basicChangedFieldsOr = 0;
   source.unitChangedFieldsOr = 0;
   source.buildingChangedFieldsOr = 0;

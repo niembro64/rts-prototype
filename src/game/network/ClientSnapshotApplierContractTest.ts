@@ -1344,14 +1344,17 @@ export function runClientSnapshotApplierContractTest(): void {
   }
   assertContract(
     mixedGenericSource.count === 1 &&
-      mixedGenericSource.typedPlaceholderRows === 1,
+      mixedGenericSource.typedPlaceholderRows === 1 &&
+      mixedGenericSource.nonPlaceholderEntityRows === 0,
     'mixed generic fixture must start with one DTO-free typed row',
   );
   appendEntitySnapshotWireSourceRow(mixedGenericSource, 0, -1);
   assertContract(
     mixedGenericSource.count === mixedGenericRows.length &&
-      mixedGenericSource.typedPlaceholderRows === 1,
-    'mixed generic fixture must expose typed and DTO row metadata',
+      mixedGenericSource.typedPlaceholderRows === 1 &&
+      mixedGenericSource.nonPlaceholderEntityRows === 1 &&
+      mixedGenericSource.nonPlaceholderEntityIndices[0] === 1,
+    'mixed generic fixture must expose compact typed and DTO row metadata',
   );
   const mixedGenericSnapshot = installMaterializationMetadata(snapshot(7, mixedGenericRows));
   mixedGenericSnapshot.entityDeltaOnly = true;

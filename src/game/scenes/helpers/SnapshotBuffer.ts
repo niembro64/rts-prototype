@@ -998,6 +998,7 @@ export class SnapshotBuffer {
     removedIds.clear();
     for (let i = 0; i < removedEntityIds.length; i++) removedIds.add(removedEntityIds[i]);
     let write = 0;
+    const previousWireCount = wireSource?.count ?? 0;
     for (let read = 0; read < pendingEntities.length; read++) {
       const entity = pendingEntities[read];
       const id = this.getPendingEntityId(pendingEntities, wireSource, read);
@@ -1007,6 +1008,7 @@ export class SnapshotBuffer {
         if (wireSource !== undefined) {
           wireSource.kinds[write] = wireSource.kinds[read];
           wireSource.rowIndices[write] = wireSource.rowIndices[read];
+          wireSource.typedPlaceholderMarks[write] = wireSource.typedPlaceholderMarks[read];
         }
       }
       write++;
@@ -1014,6 +1016,16 @@ export class SnapshotBuffer {
     pendingEntities.length = write;
     if (wireSource !== undefined) {
       wireSource.count = write;
+      wireSource.typedPlaceholderRows = 0;
+      wireSource.nonPlaceholderEntityRows = 0;
+      for (let i = 0; i < write; i++) {
+        if (wireSource.typedPlaceholderMarks[i] !== 0) {
+          wireSource.typedPlaceholderRows++;
+        } else {
+          wireSource.nonPlaceholderEntityIndices[wireSource.nonPlaceholderEntityRows++] = i;
+        }
+      }
+      if (write < previousWireCount) wireSource.typedPlaceholderMarks.fill(0, write, previousWireCount);
       if (write === 0) unregisterEntitySnapshotWireSource(pendingEntities);
     }
     this.invalidatePendingEntityIndex();

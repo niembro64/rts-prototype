@@ -2071,11 +2071,27 @@ export class ClientViewState {
         );
         genericSubstageStart = performance.now();
       }
-      for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
+      const entityLoopCount =
+        genericTypedPlaceholdersApplied &&
+        typedEntityWireSource !== undefined
+          ? typedEntityWireSource.nonPlaceholderEntityRows
+          : state.entities.length;
+      const entityLoopIndices =
+        genericTypedPlaceholdersApplied &&
+        typedEntityWireSource !== undefined
+          ? typedEntityWireSource.nonPlaceholderEntityIndices
+          : undefined;
+      for (let entityLoopIndex = 0; entityLoopIndex < entityLoopCount; entityLoopIndex++) {
+        const entityIndex = entityLoopIndices !== undefined
+          ? entityLoopIndices[entityLoopIndex]
+          : entityLoopIndex;
         if (
-          genericTypedPlaceholdersApplied &&
-          typedEntityWireSource !== undefined &&
-          typedEntityWireSource.typedPlaceholderMarks[entityIndex] !== 0
+          entityIndex >= state.entities.length ||
+          (
+            genericTypedPlaceholdersApplied &&
+            typedEntityWireSource !== undefined &&
+            typedEntityWireSource.typedPlaceholderMarks[entityIndex] !== 0
+          )
         ) {
           continue;
         }

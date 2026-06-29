@@ -164,6 +164,8 @@ export type EntitySnapshotWireSource = {
   rowIndices: Int32Array;
   typedPlaceholderMarks: Uint8Array;
   typedPlaceholderRows: number;
+  nonPlaceholderEntityIndices: Uint32Array;
+  nonPlaceholderEntityRows: number;
   basicChangedFieldsOr: number;
   unitChangedFieldsOr: number;
   buildingChangedFieldsOr: number;
@@ -210,6 +212,8 @@ export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotW
     rowIndices: new Int32Array(capacity),
     typedPlaceholderMarks: new Uint8Array(capacity),
     typedPlaceholderRows: 0,
+    nonPlaceholderEntityIndices: new Uint32Array(capacity),
+    nonPlaceholderEntityRows: 0,
     basicChangedFieldsOr: 0,
     unitChangedFieldsOr: 0,
     buildingChangedFieldsOr: 0,
@@ -235,14 +239,19 @@ export function ensureEntitySnapshotWireSourceCapacity(
   const kinds = new Uint32Array(nextCapacity);
   const rowIndices = new Int32Array(nextCapacity);
   const typedPlaceholderMarks = new Uint8Array(nextCapacity);
+  const nonPlaceholderEntityIndices = new Uint32Array(nextCapacity);
   if (source.count > 0) {
     kinds.set(source.kinds.subarray(0, source.count));
     rowIndices.set(source.rowIndices.subarray(0, source.count));
     typedPlaceholderMarks.set(source.typedPlaceholderMarks.subarray(0, source.count));
+    nonPlaceholderEntityIndices.set(
+      source.nonPlaceholderEntityIndices.subarray(0, source.nonPlaceholderEntityRows),
+    );
   }
   source.kinds = kinds;
   source.rowIndices = rowIndices;
   source.typedPlaceholderMarks = typedPlaceholderMarks;
+  source.nonPlaceholderEntityIndices = nonPlaceholderEntityIndices;
 }
 
 export function appendEntitySnapshotWireSourceRow(
@@ -258,6 +267,7 @@ export function appendEntitySnapshotWireSourceRow(
   source.rowIndices[index] = rowIndex;
   source.typedPlaceholderMarks[index] = typedPlaceholder ? 1 : 0;
   if (typedPlaceholder) source.typedPlaceholderRows++;
+  else source.nonPlaceholderEntityIndices[source.nonPlaceholderEntityRows++] = index;
   recordEntitySnapshotWireSourceChangedFields(source, kind, changedFields);
   source.count = index + 1;
 }
@@ -291,8 +301,12 @@ export function copyEntitySnapshotWireSourceMetadataInto(
     dst.kinds.set(src.kinds.subarray(0, src.count));
     dst.rowIndices.set(src.rowIndices.subarray(0, src.count));
     dst.typedPlaceholderMarks.set(src.typedPlaceholderMarks.subarray(0, src.count));
+    dst.nonPlaceholderEntityIndices.set(
+      src.nonPlaceholderEntityIndices.subarray(0, src.nonPlaceholderEntityRows),
+    );
   }
   dst.typedPlaceholderRows = src.typedPlaceholderRows;
+  dst.nonPlaceholderEntityRows = src.nonPlaceholderEntityRows;
   dst.basicChangedFieldsOr = src.basicChangedFieldsOr;
   dst.unitChangedFieldsOr = src.unitChangedFieldsOr;
   dst.buildingChangedFieldsOr = src.buildingChangedFieldsOr;
@@ -308,11 +322,19 @@ export function removeEntitySnapshotWireSourceRow(
     source.typedPlaceholderRows = Math.max(0, source.typedPlaceholderRows - 1);
   }
   const nextCount = source.count - 1;
+  let nextNonPlaceholderRows = 0;
   if (index < nextCount) {
     source.kinds.copyWithin(index, index + 1, source.count);
     source.rowIndices.copyWithin(index, index + 1, source.count);
     source.typedPlaceholderMarks.copyWithin(index, index + 1, source.count);
   }
+  for (let i = 0; i < source.nonPlaceholderEntityRows; i++) {
+    const entityIndex = source.nonPlaceholderEntityIndices[i];
+    if (entityIndex === index) continue;
+    source.nonPlaceholderEntityIndices[nextNonPlaceholderRows++] =
+      entityIndex > index ? entityIndex - 1 : entityIndex;
+  }
+  source.nonPlaceholderEntityRows = nextNonPlaceholderRows;
   source.typedPlaceholderMarks[nextCount] = 0;
   source.count = nextCount;
 }
@@ -500,6 +522,7 @@ export function unregisterEntitySnapshotWireSource(
 function resetEntitySnapshotWireSource(): void {
   entityWireSource.count = 0;
   entityWireSource.typedPlaceholderRows = 0;
+  entityWireSource.nonPlaceholderEntityRows = 0;
   entityWireSource.basicChangedFieldsOr = 0;
   entityWireSource.unitChangedFieldsOr = 0;
   entityWireSource.buildingChangedFieldsOr = 0;
