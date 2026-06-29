@@ -62,6 +62,27 @@ export class ClientProjectileRenderStateSlab {
     return this.slotByEntityId.get(id);
   }
 
+  updateProjectilePosition(id: EntityId, x: number, y: number, z: number): number | undefined {
+    const slot = this.slotByEntityId.get(id);
+    if (slot === undefined) return undefined;
+    const views = this.views;
+    if (views.entityIds[slot] !== id || views.flags[slot] === 0) return undefined;
+    if (
+      (views.flags[slot] &
+        (CLIENT_PROJECTILE_RENDER_FLAG_LINE | CLIENT_PROJECTILE_RENDER_FLAG_HAS_POINTS)) !== 0
+    ) {
+      return undefined;
+    }
+    views.x[slot] = x;
+    views.y[slot] = y;
+    views.z[slot] = z;
+    views.minX[slot] = x;
+    views.maxX[slot] = x;
+    views.minY[slot] = y;
+    views.maxY[slot] = y;
+    return slot;
+  }
+
   refreshEntity(entity: Entity): number | undefined {
     const projectile = entity.projectile;
     if (projectile === null) {

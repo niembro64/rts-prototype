@@ -213,11 +213,23 @@ export class ClientProjectileStore {
         this.activeBeamPathIds.add(id);
         this.markRenderListsDirty();
       }
+      this.refreshRenderStateAndSpatialIndex(entity);
+      return;
     } else if (!this.activeProjectilePredictionIds.has(id)) {
       this.activeProjectilePredictionIds.add(id);
       this.markRenderListsDirty();
     }
-    this.refreshRenderStateAndSpatialIndex(entity);
+    const slot = this.renderState.updateProjectilePosition(
+      id,
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.z,
+    );
+    if (slot !== undefined) {
+      this.renderSpatialIndex.updateSlot(this.renderState.getViews(), slot);
+    } else {
+      this.refreshRenderStateAndSpatialIndex(entity);
+    }
   }
 
   markVelocityTargetUpdateActive(entity: Entity, id: EntityId): void {

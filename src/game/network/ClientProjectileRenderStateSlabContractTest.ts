@@ -93,6 +93,28 @@ function rocketSpawn(id: number, x: number, y: number) {
   return spawn;
 }
 
+function plasmaSpawn(id: number, x: number, y: number) {
+  const spawn = createSpawnDto();
+  spawn.id = id;
+  spawn.pos.x = qProjPos(x);
+  spawn.pos.y = qProjPos(y);
+  spawn.pos.z = qProjPos(20);
+  spawn.rotation = qRot(0);
+  spawn.velocity.x = qVel(60);
+  spawn.velocity.y = qVel(0);
+  spawn.velocity.z = qVel(0);
+  spawn.projectileType = projectileTypeToCode('projectile');
+  spawn.turretBlueprintCode = turretBlueprintIdToCode('turretGunLight');
+  spawn.sourceTurretBlueprintCode = turretBlueprintIdToCode('turretGunLight');
+  spawn.shotBlueprintCode = shotBlueprintIdToCode('shotPlasmaLight');
+  spawn.playerId = 1;
+  spawn.sourceEntityId = 700;
+  spawn.sourceHostEntityId = 700;
+  spawn.sourceRootEntityId = 700;
+  spawn.sourceTeamId = 1;
+  return spawn;
+}
+
 function beamSpawn(id: number, x: number, y: number) {
   const spawn = createSpawnDto();
   spawn.id = id;
@@ -171,7 +193,34 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'packed projectile despawn metadata must apply without DTO despawn rows',
   );
 
-  view.applyNetworkState(projectileSnapshot(2, undefined, [301, 302]));
+  view.applyNetworkState(projectileSnapshot(3, [plasmaSpawn(303, 700, 700)]));
+  view.collectProjectileRenderLists({ minX: 650, minY: 650, maxX: 750, maxY: 750 }, lists);
+  assertContract(
+    lists.traveling.length === 1 && lists.traveling[0].id === 303,
+    'scoped projectile query must include newly spawned plasma projectile',
+  );
+
+  const plasmaVelocitySnapshot = projectileSnapshot(4, undefined);
+  plasmaVelocitySnapshot.projectiles!.velocityUpdates = [{
+    id: 303,
+    pos: { x: qProjPos(1500), y: qProjPos(1500), z: qProjPos(35) },
+    velocity: { x: qVel(45), y: qVel(5), z: qVel(0) },
+    targetEntityId: null,
+    clearHomingTarget: null,
+  }];
+  view.applyNetworkState(plasmaVelocitySnapshot);
+  view.collectProjectileRenderLists({ minX: 650, minY: 650, maxX: 750, maxY: 750 }, lists);
+  assertContract(
+    lists.traveling.length === 0,
+    'projectile velocity update must move the render spatial slot out of its old query bounds',
+  );
+  view.collectProjectileRenderLists({ minX: 1450, minY: 1450, maxX: 1550, maxY: 1550 }, lists);
+  assertContract(
+    lists.traveling.length === 1 && lists.traveling[0].id === 303,
+    'projectile velocity update must move the render spatial slot into its new query bounds',
+  );
+
+  view.applyNetworkState(projectileSnapshot(5, undefined, [301, 302, 303]));
   current = view.collectProjectileRenderLists(null, lists);
   assertContract(
     current.traveling.length === 0 &&
