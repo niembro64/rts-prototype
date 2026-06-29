@@ -1,6 +1,10 @@
 import type { FootprintBounds } from '../ViewportFootprint';
 import type { Entity, EntityId } from '../sim/types';
 import {
+  IndexedEntityIdMap,
+  IndexedEntityIdSet,
+} from './IndexedEntityIdCollections';
+import {
   CLIENT_PROJECTILE_RENDER_FLAG_BURN_MARK,
   CLIENT_PROJECTILE_RENDER_FLAG_HAS_POINTS,
   CLIENT_PROJECTILE_RENDER_FLAG_LINE,
@@ -48,9 +52,9 @@ export type ClientProjectileRenderSlotLists = {
 
 export class ClientProjectileRenderSpatialIndex {
   private readonly buckets = new Map<ClientProjectileRenderCellKey, ClientProjectileRenderBucket>();
-  private readonly entries = new Map<EntityId, ClientProjectileRenderSpatialEntry>();
+  private readonly entries = new IndexedEntityIdMap<ClientProjectileRenderSpatialEntry>();
   private readonly unbucketedEntries = new Set<ClientProjectileRenderSpatialEntry>();
-  private readonly querySeenIds = new Set<EntityId>();
+  private readonly querySeenIds = new IndexedEntityIdSet();
 
   clear(): void {
     this.buckets.clear();

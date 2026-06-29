@@ -1,4 +1,5 @@
 import type { FootprintBounds } from '../ViewportFootprint';
+import { IndexedEntityIdMap } from './IndexedEntityIdCollections';
 import {
   CLIENT_RENDER_ENTITY_KIND_BUILDING,
   CLIENT_RENDER_ENTITY_KIND_UNIT,
@@ -26,7 +27,7 @@ type ClientRenderSpatialEntry = {
 
 export class ClientRenderSpatialIndex {
   private readonly buckets = new Map<ClientRenderCellKey, ClientRenderSpatialEntry[]>();
-  private readonly entriesById = new Map<EntityId, ClientRenderSpatialEntry>();
+  private readonly entriesById = new IndexedEntityIdMap<ClientRenderSpatialEntry>();
   private maxEntityPadding = DEFAULT_MAX_ENTITY_PADDING;
 
   clear(): void {
