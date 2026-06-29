@@ -5,6 +5,11 @@ const VELOCITY_WIRE_SCALE = 10;
 const ROTATION_WIRE_SCALE = 1000;
 const NORMAL_WIRE_SCALE = 1000;
 
+export const ENTITY_POSITION_WIRE_INV_SCALE = 1 / ENTITY_POSITION_WIRE_SCALE;
+export const VELOCITY_WIRE_INV_SCALE = 1 / VELOCITY_WIRE_SCALE;
+export const ROTATION_WIRE_INV_SCALE = 1 / ROTATION_WIRE_SCALE;
+export const NORMAL_WIRE_INV_SCALE = 1 / NORMAL_WIRE_SCALE;
+
 function quantizeFixedPoint(value: number, scale: number): number {
   return Math.round(value * scale);
 }

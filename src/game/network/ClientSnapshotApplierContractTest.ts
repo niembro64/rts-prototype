@@ -654,6 +654,87 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   resetEntitySnapshotPool();
 
+  const multiHotPathView = new ClientViewState();
+  const multiHotPathIdA = 179;
+  const multiHotPathIdB = 180;
+  multiHotPathView.applyNetworkState(snapshot(1, [
+    fullUnitEntity(multiHotPathIdA, 100, 100),
+    fullUnitEntity(multiHotPathIdB, 100, 100),
+  ]));
+  multiHotPathView.applyPrediction(16);
+  multiHotPathView.consumeRenderDirties();
+  const multiHotPathSourceA = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => multiHotPathIdA,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    420,
+    70,
+    1 as PlayerId,
+    'unitJackal',
+    { allocateSubEntityIds: false },
+  );
+  const multiHotPathSourceB = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => multiHotPathIdB,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    450,
+    90,
+    1 as PlayerId,
+    'unitJackal',
+    { allocateSubEntityIds: false },
+  );
+  if (multiHotPathSourceA.unit === null || multiHotPathSourceB.unit === null) {
+    throw new Error('[client snapshot applier contract] multi hot motion sources must have unit components');
+  }
+  multiHotPathSourceA.transform.rotation = 0.7;
+  multiHotPathSourceA.unit.velocityX = 6;
+  multiHotPathSourceA.unit.velocityY = 2;
+  multiHotPathSourceB.transform.rotation = 1.1;
+  multiHotPathSourceB.unit.velocityX = 4;
+  multiHotPathSourceB.unit.velocityY = 5;
+  const multiHotPathRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(multiHotPathRows);
+  const multiHotPathRowA = serializeEntityDeltaSnapshot(
+    multiHotPathSourceA,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL,
+    {} as WorldState,
+  );
+  if (multiHotPathRowA !== null) multiHotPathRows.push(multiHotPathRowA as NetworkServerSnapshotEntity);
+  const multiHotPathRowB = serializeEntityDeltaSnapshot(
+    multiHotPathSourceB,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL,
+    {} as WorldState,
+  );
+  if (multiHotPathRowB !== null) multiHotPathRows.push(multiHotPathRowB as NetworkServerSnapshotEntity);
+  const multiHotPathSnapshot = snapshot(2, multiHotPathRows);
+  multiHotPathSnapshot.entityDeltaOnly = true;
+  multiHotPathView.applyNetworkState(multiHotPathSnapshot, { syncEconomy: undefined });
+  const multiHotPathPacketBeforePrediction = collectMinimalUnitRenderPacket(multiHotPathView);
+  assertContract(
+    multiHotPathPacketBeforePrediction.count === 2 &&
+      multiHotPathPacketBeforePrediction.activePredictionAt(0) &&
+      multiHotPathPacketBeforePrediction.activePredictionAt(1) &&
+      !multiHotPathPacketBeforePrediction.renderDirtyAt(0) &&
+      !multiHotPathPacketBeforePrediction.renderDirtyAt(1),
+    'multi-row typed hot-motion placeholders must activate prediction without snapshot render dirties',
+  );
+  multiHotPathView.applyPrediction(100);
+  const multiHotPathEntityA = multiHotPathView.getEntity(multiHotPathIdA);
+  const multiHotPathEntityB = multiHotPathView.getEntity(multiHotPathIdB);
+  assertContract(
+    multiHotPathEntityA !== undefined &&
+      multiHotPathEntityB !== undefined &&
+      multiHotPathEntityA.transform.x > 1 &&
+      multiHotPathEntityB.transform.x > 1 &&
+      multiHotPathEntityA.transform.rotation > 0.01 &&
+      multiHotPathEntityB.transform.rotation > 0.01,
+    'multi-row typed hot-motion placeholders must drive position and rotation targets',
+  );
+  resetEntitySnapshotPool();
+
   const basicFastPathView = new ClientViewState();
   const basicFastPathId = 178;
   basicFastPathView.applyNetworkState(snapshot(1, [fullUnitEntity(basicFastPathId, 100, 100)]));

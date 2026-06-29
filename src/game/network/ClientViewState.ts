@@ -82,6 +82,10 @@ import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
+  ENTITY_POSITION_WIRE_INV_SCALE,
+  NORMAL_WIRE_INV_SCALE,
+  ROTATION_WIRE_INV_SCALE,
+  VELOCITY_WIRE_INV_SCALE,
   dequantizeEntityPosition as deqEntityPos,
   dequantizeNormal as deqNormal,
   dequantizeProjectilePosition as deqProjPos,
@@ -1216,17 +1220,17 @@ export class ClientViewState {
 
     const target = this.getOrCreateServerTarget(id);
     if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
-      target.x = deqEntityPos(values[base + 1]);
-      target.y = deqEntityPos(values[base + 2]);
-      target.z = deqEntityPos(values[base + 3]);
+      target.x = values[base + 1] * ENTITY_POSITION_WIRE_INV_SCALE;
+      target.y = values[base + 2] * ENTITY_POSITION_WIRE_INV_SCALE;
+      target.z = values[base + 3] * ENTITY_POSITION_WIRE_INV_SCALE;
     }
     if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && values[base + 23] !== 0) {
-      target.surfaceNormalX = deqNormal(values[base + 24]);
-      target.surfaceNormalY = deqNormal(values[base + 25]);
-      target.surfaceNormalZ = deqNormal(values[base + 26]);
+      target.surfaceNormalX = values[base + 24] * NORMAL_WIRE_INV_SCALE;
+      target.surfaceNormalY = values[base + 25] * NORMAL_WIRE_INV_SCALE;
+      target.surfaceNormalZ = values[base + 26] * NORMAL_WIRE_INV_SCALE;
     }
     if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
-      target.rotation = deqRot(values[base + 4]);
+      target.rotation = values[base + 4] * ROTATION_WIRE_INV_SCALE;
       if (values[base + 27] !== 0) {
         let orientation = target.orientation;
         if (orientation === null) {
@@ -1240,9 +1244,9 @@ export class ClientViewState {
       }
     }
     if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
-      target.velocityX = deqVel(values[base + 10]);
-      target.velocityY = deqVel(values[base + 11]);
-      target.velocityZ = deqVel(values[base + 12]);
+      target.velocityX = values[base + 10] * VELOCITY_WIRE_INV_SCALE;
+      target.velocityY = values[base + 11] * VELOCITY_WIRE_INV_SCALE;
+      target.velocityZ = values[base + 12] * VELOCITY_WIRE_INV_SCALE;
       if (values[base + 32] !== 0) {
         target.angularVelocityX = values[base + 33];
         target.angularVelocityY = values[base + 34];
@@ -1552,6 +1556,12 @@ export class ClientViewState {
     now: number,
   ): void {
     const values = source.unitRows.values;
+    const serverTargets = this.serverTargets;
+    const activeEntityPredictionIds = this.activeEntityPredictionIds;
+    const posScale = ENTITY_POSITION_WIRE_INV_SCALE;
+    const rotScale = ROTATION_WIRE_INV_SCALE;
+    const velScale = VELOCITY_WIRE_INV_SCALE;
+    const normalScale = NORMAL_WIRE_INV_SCALE;
     for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
       const base = source.rowIndices[entityIndex] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
       const changedFields = values[base + 7] | 0;
@@ -1566,19 +1576,19 @@ export class ClientViewState {
         if (ownership === null || ownership.playerId !== playerId) continue;
       }
 
-      const target = this.getOrCreateServerTarget(id);
+      const target = serverTargets.getOrCreate(id);
       if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
-        target.x = deqEntityPos(values[base + 1]);
-        target.y = deqEntityPos(values[base + 2]);
-        target.z = deqEntityPos(values[base + 3]);
+        target.x = values[base + 1] * posScale;
+        target.y = values[base + 2] * posScale;
+        target.z = values[base + 3] * posScale;
       }
       if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && values[base + 23] !== 0) {
-        target.surfaceNormalX = deqNormal(values[base + 24]);
-        target.surfaceNormalY = deqNormal(values[base + 25]);
-        target.surfaceNormalZ = deqNormal(values[base + 26]);
+        target.surfaceNormalX = values[base + 24] * normalScale;
+        target.surfaceNormalY = values[base + 25] * normalScale;
+        target.surfaceNormalZ = values[base + 26] * normalScale;
       }
       if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
-        target.rotation = deqRot(values[base + 4]);
+        target.rotation = values[base + 4] * rotScale;
         if (values[base + 27] !== 0) {
           let orientation = target.orientation;
           if (orientation === null) {
@@ -1592,9 +1602,9 @@ export class ClientViewState {
         }
       }
       if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
-        target.velocityX = deqVel(values[base + 10]);
-        target.velocityY = deqVel(values[base + 11]);
-        target.velocityZ = deqVel(values[base + 12]);
+        target.velocityX = values[base + 10] * velScale;
+        target.velocityY = values[base + 11] * velScale;
+        target.velocityZ = values[base + 12] * velScale;
         if (values[base + 32] !== 0) {
           target.angularVelocityX = values[base + 33];
           target.angularVelocityY = values[base + 34];
@@ -1606,7 +1616,7 @@ export class ClientViewState {
         }
       }
       target.updatedAtMs = now;
-      this.activeEntityPredictionIds.add(id);
+      activeEntityPredictionIds.add(id);
     }
   }
 
