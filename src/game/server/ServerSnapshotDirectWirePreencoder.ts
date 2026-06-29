@@ -705,21 +705,9 @@ export class ServerSnapshotDirectWirePreencoder {
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
-      if (entityViews !== null) {
-        const slot = entitySlotRegistry.getSlot(id);
-        if (
-          slot >= 0 &&
-          slot < entityViews.capacity &&
-          entityViews.entityId[slot] === id &&
-          appendUnitMotionEntityWireRowDirectFromState(
-            entityViews,
-            slot,
-            ENTITY_MOTION_DELTA_FIELDS,
-          )
-        ) {
-          entityCount++;
-          continue;
-        }
+      if (this.tryAppendUnitMotionRowFromState(id, ENTITY_MOTION_DELTA_FIELDS, entityViews)) {
+        entityCount++;
+        continue;
       }
       const entity = input.world.getEntity(id);
       if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
@@ -734,10 +722,29 @@ export class ServerSnapshotDirectWirePreencoder {
     return entityCount;
   }
 
+  private tryAppendUnitMotionRowFromState(
+    id: EntityId,
+    changedFields: number,
+    entityViews = entitySlotRegistry.getViews(),
+  ): boolean {
+    if (changedFields === 0 || (changedFields & ~ENTITY_MOTION_DELTA_FIELDS) !== 0) {
+      return false;
+    }
+    if (entityViews === null) return false;
+    const slot = entitySlotRegistry.getSlot(id);
+    return (
+      slot >= 0 &&
+      slot < entityViews.capacity &&
+      entityViews.entityId[slot] === id &&
+      appendUnitMotionEntityWireRowDirectFromState(entityViews, slot, changedFields)
+    );
+  }
+
   private writeRichDeltaEntityRows(input: ServerSnapshotRichDeltaDirectWireInput): number {
     resetEntitySnapshotPool();
     const emittedIds = this.emittedDeltaEntityIds;
     emittedIds.clear();
+    const entityViews = entitySlotRegistry.getViews();
 
     const currentVisibleEntityIds = input.currentVisibleEntityIds;
     if (currentVisibleEntityIds === undefined) {
@@ -745,11 +752,20 @@ export class ServerSnapshotDirectWirePreencoder {
       for (let i = 0; i < input.dirtyIds.length; i++) {
         const id = input.dirtyIds[i];
         if (emittedIds.has(id)) continue;
+        const changedFields = input.previousVisibleEntityIds.has(id) ? input.dirtyFields[i] : undefined;
+        if (
+          changedFields !== undefined &&
+          this.tryAppendUnitMotionRowFromState(id, changedFields, entityViews)
+        ) {
+          emittedIds.add(id);
+          entityCount++;
+          continue;
+        }
         const entity = input.world.getEntity(id);
         if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
         appendEntitySnapshotWireRowDirect(
           entity,
-          input.previousVisibleEntityIds.has(id) ? input.dirtyFields[i] : undefined,
+          changedFields,
           input.world,
           input.visibility,
         );
@@ -788,6 +804,11 @@ export class ServerSnapshotDirectWirePreencoder {
       const id = input.dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIds.has(id)) continue;
+      if (this.tryAppendUnitMotionRowFromState(id, input.dirtyFields[i], entityViews)) {
+        emittedIds.add(id);
+        entityCount++;
+        continue;
+      }
       const entity = input.world.getEntity(id);
       if (!entity || !isSerializedEntityKind(entity)) continue;
       appendEntitySnapshotWireRowDirect(
