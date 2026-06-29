@@ -485,6 +485,7 @@ async function runSimSnapshot(
     view.applyNetworkState(snapshot, {
       syncEconomy: false,
       collectMaterializationStages: true,
+      deferPredictedTurretRenderRefresh: true,
     });
     const applyMs = performance.now() - applyStart;
     applySamples.push(applyMs);

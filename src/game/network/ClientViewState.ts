@@ -259,6 +259,7 @@ type ClientSnapshotApplyOptions = {
   syncEconomy: boolean | undefined;
   collectCorrectionStats?: boolean | undefined;
   collectMaterializationStages?: boolean | undefined;
+  deferPredictedTurretRenderRefresh?: boolean | undefined;
 };
 
 function recordClientApplySubstage(
@@ -1054,6 +1055,7 @@ export class ClientViewState {
     entityIndex: number,
     now: number,
     collectCorrectionStats: boolean,
+    deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
@@ -1062,6 +1064,7 @@ export class ClientViewState {
       rowIndex,
       now,
       collectCorrectionStats,
+      deferPredictedTurretRenderRefresh,
       applyStats,
     );
   }
@@ -1071,6 +1074,7 @@ export class ClientViewState {
     rowIndex: number,
     now: number,
     collectCorrectionStats: boolean,
+    deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
   ): boolean {
     if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
@@ -1186,11 +1190,12 @@ export class ClientViewState {
       hasBuildFields,
     );
 
-    if (refreshHealth || copiedTurretRows) {
+    const refreshTurretsNow = copiedTurretRows && !deferPredictedTurretRenderRefresh;
+    if (refreshHealth || refreshTurretsNow) {
       this.refreshRenderableEntityStateSnapshotDelta(
         existing,
         refreshHealth,
-        copiedTurretRows,
+        refreshTurretsNow,
         hasBuildFields,
       );
     }
@@ -1507,6 +1512,7 @@ export class ClientViewState {
     source: EntitySnapshotWireSource,
     entities: readonly (NetworkServerSnapshotEntity | undefined)[],
     now: number,
+    deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
   ): boolean {
     const count = source.count;
@@ -1516,7 +1522,12 @@ export class ClientViewState {
       this.applyUnitHotMotionTypedPlaceholderSource(source, now);
       return true;
     }
-    this.applyTypedPlaceholderDeltaSource(source, now, applyStats);
+    this.applyTypedPlaceholderDeltaSource(
+      source,
+      now,
+      deferPredictedTurretRenderRefresh,
+      applyStats,
+    );
     return true;
   }
 
@@ -1624,6 +1635,7 @@ export class ClientViewState {
   private applyTypedPlaceholderDeltaSource(
     source: EntitySnapshotWireSource,
     now: number,
+    deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
   ): void {
     const basicValues = source.basicRows.values;
@@ -1661,11 +1673,17 @@ export class ClientViewState {
         rowIndex,
         now,
         false,
+        deferPredictedTurretRenderRefresh,
         applyStats,
       );
     }
     for (let rowIndex = 0; rowIndex < source.buildingRows.count; rowIndex++) {
-      this.tryApplyBuildingTypedDeltaWireRowAt(source, rowIndex, now);
+      this.tryApplyBuildingTypedDeltaWireRowAt(
+        source,
+        rowIndex,
+        now,
+        deferPredictedTurretRenderRefresh,
+      );
     }
   }
 
@@ -1673,15 +1691,22 @@ export class ClientViewState {
     source: EntitySnapshotWireSource,
     entityIndex: number,
     now: number,
+    deferPredictedTurretRenderRefresh: boolean,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
-    return this.tryApplyBuildingTypedDeltaWireRowAt(source, rowIndex, now);
+    return this.tryApplyBuildingTypedDeltaWireRowAt(
+      source,
+      rowIndex,
+      now,
+      deferPredictedTurretRenderRefresh,
+    );
   }
 
   private tryApplyBuildingTypedDeltaWireRowAt(
     source: EntitySnapshotWireSource,
     rowIndex: number,
     now: number,
+    deferPredictedTurretRenderRefresh = false,
   ): boolean {
     if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
     const values = source.buildingRows.values;
@@ -1747,17 +1772,25 @@ export class ClientViewState {
       hasBuildFields,
     );
 
+    const refreshTurretsNow = copiedTurretRows && !deferPredictedTurretRenderRefresh;
     if (hasMotionFields) {
       this.refreshRenderableEntityStateFromSnapshot(existing, hasMotionFields);
-    } else if (refreshHealth || copiedTurretRows) {
+    } else if (refreshHealth || refreshTurretsNow) {
       this.refreshRenderableEntityStateSnapshotDelta(
         existing,
         refreshHealth,
-        copiedTurretRows,
+        refreshTurretsNow,
         hasBuildFields,
       );
     }
-    if (hasMotionFields || hasHpFields || hasBuildFields) this.dirtyBuildingRenderIds.add(id);
+    if (
+      hasMotionFields ||
+      hasHpFields ||
+      hasBuildFields ||
+      (copiedTurretRows && deferPredictedTurretRenderRefresh)
+    ) {
+      this.dirtyBuildingRenderIds.add(id);
+    }
     if (copiedTurretRows) this.activeEntityPredictionIds.add(id);
     return true;
   }
@@ -1866,6 +1899,8 @@ export class ClientViewState {
     const presentationDeltaOnly = entityDeltaOnly || projectileDeltaOnly;
     const collectCorrectionStats = options.collectCorrectionStats === true;
     const collectMaterializationStages = options.collectMaterializationStages === true;
+    const deferPredictedTurretRenderRefresh =
+      options.deferPredictedTurretRenderRefresh === true;
     let materializationStageStart = collectMaterializationStages ? performance.now() : 0;
     if (!presentationDeltaOnly || state.minimapEntities !== undefined) {
       this.minimapOverrideStore.applySnapshot(state.minimapEntities);
@@ -1904,6 +1939,7 @@ export class ClientViewState {
         typedEntityWireSource,
         state.entities,
         now,
+        deferPredictedTurretRenderRefresh,
         applyStats,
       )
     ) {
@@ -1943,6 +1979,7 @@ export class ClientViewState {
                 entityIndex,
                 now,
                 collectCorrectionStats,
+                deferPredictedTurretRenderRefresh,
                 applyStats,
               );
               break;
@@ -1951,6 +1988,7 @@ export class ClientViewState {
                 typedEntityWireSource,
                 entityIndex,
                 now,
+                deferPredictedTurretRenderRefresh,
               );
               break;
           }
