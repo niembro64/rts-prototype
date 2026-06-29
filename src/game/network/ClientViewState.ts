@@ -1638,7 +1638,23 @@ export class ClientViewState {
         );
       }
     }
+    const unitValues = source.unitRows.values;
     for (let rowIndex = 0; rowIndex < source.unitRows.count; rowIndex++) {
+      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+      const changedFields = unitValues[base + 7] | 0;
+      if (
+        unitValues[base + 6] !== 0 &&
+        changedFields !== 0 &&
+        (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
+      ) {
+        this.tryApplyUnitHotMotionTypedDeltaWireRow(
+          unitValues,
+          base,
+          changedFields,
+          now,
+        );
+        continue;
+      }
       this.tryApplyUnitTypedDeltaWireRowAt(
         source,
         rowIndex,
