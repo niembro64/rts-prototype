@@ -463,6 +463,19 @@ export class WorldState {
     const entity = this.entities.get(id);
     if (!entity || (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')) return;
     this.refreshEntitySlotState(entity, fields);
+    this.enqueueSnapshotDirty(id, fields);
+  }
+
+  /** Enqueue snapshot dirtiness after the caller has already updated
+   *  EntitySlotRegistry/entity-state hot columns for this entity. */
+  markSnapshotDirtyStateSynced(entity: Entity, fields: number): void {
+    if (fields === 0) return;
+    if (this.entities.get(entity.id) !== entity) return;
+    if (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower') return;
+    this.enqueueSnapshotDirty(entity.id, fields);
+  }
+
+  private enqueueSnapshotDirty(id: EntityId, fields: number): void {
     if (fields & ENTITY_CHANGED_HP) this.pendingDeathCheckIds.add(id);
     const previousFields = this.snapshotDirtyFieldsById[id] ?? 0;
     if (previousFields === 0) this.snapshotDirtyIds.push(id);

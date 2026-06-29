@@ -2,7 +2,7 @@ import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { ENTITY_CHANGED_POS, ENTITY_CHANGED_VEL } from '../../types/network';
 import type { Command, CommandQueue } from '../sim/commands';
 import type { DeathContext } from '../sim/combat';
-import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
+import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
 import { spatialGrid } from '../sim/SpatialGrid';
 import type { Simulation } from '../sim/Simulation';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -204,6 +204,7 @@ export class ServerSimulationCore {
         entitySlotForId,
       );
     }
+    const entityStateViews = entitySlotRegistry.getViews();
     for (let i = 0; i < slotCount; i++) {
       const entity = entitySlotRegistry.resolveSlot(this.physicsSyncEntitySlotsBuf[i]);
       if (entity === undefined) continue;
@@ -249,12 +250,46 @@ export class ServerSimulationCore {
         entity.unit.velocityX = body.vx;
         entity.unit.velocityY = body.vy;
         entity.unit.velocityZ = body.vz;
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+        const dirtyFields = ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL;
+        if (this.writeSyncedMotionToEntityState(entity, dirtyFields, entityStateViews)) {
+          this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
+        } else {
+          this.world.markSnapshotDirty(entity.id, dirtyFields);
+        }
       } else if (entity.building !== null) {
         spatialGrid.addBuilding(entity);
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_POS);
+        const dirtyFields = ENTITY_CHANGED_POS;
+        if (this.writeSyncedMotionToEntityState(entity, dirtyFields, entityStateViews)) {
+          this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
+        } else {
+          this.world.markSnapshotDirty(entity.id, dirtyFields);
+        }
       }
     }
+  }
+
+  private writeSyncedMotionToEntityState(
+    entity: Entity,
+    dirtyFields: number,
+    views: EntityStateViews | null,
+  ): boolean {
+    if (views === null) return false;
+    const slot = entitySlotRegistry.getEntitySlot(entity);
+    if (slot < 0 || slot >= views.capacity || views.entityId[slot] !== entity.id) return false;
+
+    if ((dirtyFields & ENTITY_CHANGED_POS) !== 0) {
+      views.posX[slot] = entity.transform.x;
+      views.posY[slot] = entity.transform.y;
+      views.posZ[slot] = entity.transform.z;
+    }
+    if ((dirtyFields & ENTITY_CHANGED_VEL) !== 0) {
+      const unit = entity.unit;
+      views.velX[slot] = unit !== null ? unit.velocityX : 0;
+      views.velY[slot] = unit !== null ? unit.velocityY : 0;
+      views.velZ[slot] = unit !== null ? unit.velocityZ : 0;
+    }
+    views.dirtyMask[slot] |= dirtyFields;
+    return true;
   }
 
   private ensurePhysicsSyncEntitySlotCapacity(count: number): void {
