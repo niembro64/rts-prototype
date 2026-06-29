@@ -23,8 +23,6 @@ type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
 };
 
-const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
-
 export class ServerSimulationCore {
   readonly physics: PhysicsEngine3D;
   readonly world: WorldState;
@@ -193,15 +191,13 @@ export class ServerSimulationCore {
   }
 
   private syncFromPhysics(): void {
-    let slotCount = this.physics.collectLastStepEntitySlots(
+    let slotCount = this.physics.collectLastStepEntitySlotsFromState(
       this.physicsSyncEntitySlotsBuf,
-      entitySlotForId,
     );
     if (slotCount < 0) {
       this.ensurePhysicsSyncEntitySlotCapacity(-slotCount);
-      slotCount = this.physics.collectLastStepEntitySlots(
+      slotCount = this.physics.collectLastStepEntitySlotsFromState(
         this.physicsSyncEntitySlotsBuf,
-        entitySlotForId,
       );
     }
     const entityStateViews = entitySlotRegistry.getViews();

@@ -171,6 +171,7 @@ import __wbg_init, {
   entity_state_set_hp_build,
   entity_state_set_static_shape,
   entity_state_set_body_slot,
+  entity_state_collect_body_entity_slots,
   entity_state_set_blueprints,
   entity_state_mark_dirty,
   entity_state_clear_dirty,
@@ -1882,6 +1883,7 @@ export interface EntityStateApi {
     aabbHz: number,
   ) => void;
   setBodySlot: (slot: number, bodySlot: number) => void;
+  collectBodyEntitySlots: (bodySlots: Uint32Array, entitySlotsOut: Uint32Array) => number;
   setBlueprints: (
     slot: number,
     unitBlueprintCode: number,
@@ -4352,6 +4354,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           setHpBuild: entity_state_set_hp_build,
           setStaticShape: entity_state_set_static_shape,
           setBodySlot: entity_state_set_body_slot,
+          collectBodyEntitySlots: entity_state_collect_body_entity_slots,
           setBlueprints: entity_state_set_blueprints,
           markDirty: entity_state_mark_dirty,
           clearDirty: entity_state_clear_dirty,

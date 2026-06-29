@@ -51,6 +51,7 @@ pub(crate) struct EntityStateSlab {
     pub(crate) aabb_hy: Vec<f64>,
     pub(crate) aabb_hz: Vec<f64>,
     pub(crate) body_slot: Vec<i32>,
+    pub(crate) entity_slot_by_body_slot: Vec<i32>,
     pub(crate) unit_blueprint_code: Vec<u32>,
     pub(crate) building_blueprint_code: Vec<u32>,
     pub(crate) shot_blueprint_code: Vec<u32>,
@@ -97,6 +98,7 @@ impl EntityStateSlab {
             aabb_hy: Vec::new(),
             aabb_hz: Vec::new(),
             body_slot: Vec::new(),
+            entity_slot_by_body_slot: Vec::new(),
             unit_blueprint_code: Vec::new(),
             building_blueprint_code: Vec::new(),
             shot_blueprint_code: Vec::new(),
@@ -165,6 +167,15 @@ impl EntityStateSlab {
         let s = slot as usize;
         if s >= self.entity_id.len() {
             return;
+        }
+        let old_body_slot = self.body_slot[s];
+        if old_body_slot >= 0 {
+            let body_slot = old_body_slot as usize;
+            if body_slot < self.entity_slot_by_body_slot.len()
+                && self.entity_slot_by_body_slot[body_slot] == slot as i32
+            {
+                self.entity_slot_by_body_slot[body_slot] = -1;
+            }
         }
         self.entity_id[s] = ENTITY_STATE_NO_ENTITY_ID;
         self.kind[s] = ENTITY_STATE_KIND_NONE;
@@ -385,7 +396,84 @@ pub fn entity_state_set_body_slot(slot: u32, body_slot: i32) {
     let slab = entity_state();
     let s = slot as usize;
     slab.ensure_capacity(slot);
+    let old_body_slot = slab.body_slot[s];
+    if old_body_slot >= 0 {
+        let old = old_body_slot as usize;
+        if old < slab.entity_slot_by_body_slot.len()
+            && slab.entity_slot_by_body_slot[old] == slot as i32
+        {
+            slab.entity_slot_by_body_slot[old] = -1;
+        }
+    }
     slab.body_slot[s] = body_slot;
+    if body_slot >= 0 {
+        let body = body_slot as usize;
+        if slab.entity_slot_by_body_slot.len() <= body {
+            slab.entity_slot_by_body_slot.resize(body + 1, -1);
+        }
+        slab.entity_slot_by_body_slot[body] = slot as i32;
+    }
+}
+
+#[inline]
+fn entity_state_body_slot_candidate_valid(
+    slab: &EntityStateSlab,
+    p: &BodyPool,
+    body_slot: usize,
+    entity_slot: usize,
+) -> bool {
+    entity_slot < slab.entity_id.len()
+        && body_slot < POOL_CAPACITY_USIZE
+        && slab.entity_id[entity_slot] >= 0
+        && slab.body_slot[entity_slot] == body_slot as i32
+        && p.entity_id[body_slot] == slab.entity_id[entity_slot]
+}
+
+#[inline]
+fn entity_state_slot_for_body_slot(
+    slab: &EntityStateSlab,
+    p: &BodyPool,
+    body_slot: usize,
+) -> Option<usize> {
+    if body_slot >= POOL_CAPACITY_USIZE {
+        return None;
+    }
+    if body_slot < slab.entity_slot_by_body_slot.len() {
+        let entity_slot_i32 = slab.entity_slot_by_body_slot[body_slot];
+        if entity_slot_i32 >= 0 {
+            let entity_slot = entity_slot_i32 as usize;
+            if entity_state_body_slot_candidate_valid(slab, p, body_slot, entity_slot) {
+                return Some(entity_slot);
+            }
+        }
+    }
+    for entity_slot in 0..slab.body_slot.len() {
+        if entity_state_body_slot_candidate_valid(slab, p, body_slot, entity_slot) {
+            return Some(entity_slot);
+        }
+    }
+    None
+}
+
+#[wasm_bindgen]
+pub fn entity_state_collect_body_entity_slots(
+    body_slots: &[u32],
+    entity_slots_out: &mut [u32],
+) -> i32 {
+    if entity_slots_out.len() < body_slots.len() {
+        return -(body_slots.len() as i32);
+    }
+    let slab = entity_state();
+    let p = pool();
+    let mut count = 0_usize;
+    for &body_slot_u32 in body_slots {
+        let body_slot = body_slot_u32 as usize;
+        if let Some(entity_slot) = entity_state_slot_for_body_slot(slab, p, body_slot) {
+            entity_slots_out[count] = entity_slot as u32;
+            count += 1;
+        }
+    }
+    count as i32
 }
 
 #[wasm_bindgen]

@@ -6399,6 +6399,23 @@ mod sim_kernel_tests {
             2,
         );
         assert_eq!(&collected_entity_slots[..2], &[3, 4]);
+        let mut undersized_body_entity_slots = [0_u32; 1];
+        assert_eq!(
+            entity_state_collect_body_entity_slots(&slots, &mut undersized_body_entity_slots),
+            -2,
+        );
+        let mut collected_body_entity_slots = [0_u32; 2];
+        assert_eq!(
+            entity_state_collect_body_entity_slots(&slots, &mut collected_body_entity_slots),
+            2,
+        );
+        assert_eq!(collected_body_entity_slots, [3, 4]);
+        entity_state_unset_slot(3);
+        assert_eq!(
+            entity_state_collect_body_entity_slots(&slots, &mut collected_body_entity_slots),
+            1,
+        );
+        assert_eq!(collected_body_entity_slots[0], 4);
         entity_state_clear();
 
         {

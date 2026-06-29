@@ -800,6 +800,17 @@ export class PhysicsEngine3D {
     return count;
   }
 
+  collectLastStepEntitySlotsFromState(out: Uint32Array): number {
+    if (out.length < this.stepSyncBodySlotCount) return -this.stepSyncBodySlotCount;
+    if (this.stepSyncBodySlotCount === 0) return 0;
+    const sim = getSimWasm();
+    if (sim === undefined) return 0;
+    return sim.entityState.collectBodyEntitySlots(
+      this.stepSyncBodySlots.subarray(0, this.stepSyncBodySlotCount),
+      out,
+    );
+  }
+
   /** Mark that `dynamicBody` should not collide with `staticBody`.
    *  Used for units spawning inside their factory. */
   setIgnoreStatic(dynamicBody: Body3D, staticBody: Body3D): void {
