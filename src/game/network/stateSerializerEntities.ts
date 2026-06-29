@@ -1,5 +1,5 @@
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, PlayerId, Turret } from '../sim/types';
+import type { Entity, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import {
   ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
@@ -41,7 +41,10 @@ import {
   createWaypointDto,
   type WaypointDto,
 } from './snapshotDtoCopy';
-import { turretAimMotionIsSnapshotVisible } from './turretSnapshotFields';
+import {
+  turretAimMotionIsSnapshotVisible,
+  turretShouldEncodeInactive,
+} from './turretSnapshotFields';
 import {
   createFloat64WireRows,
   createUint32WireRows,
@@ -509,13 +512,6 @@ function canReferenceSnapshotEntityId(
   id: number | undefined,
 ): boolean {
   return id === undefined || visibility === undefined || visibility.canReferenceEntityId(world, id);
-}
-
-function turretShouldEncodeInactive(src: Turret, targetId: number): boolean {
-  return src.id === NO_ENTITY_ID &&
-    targetId === -1 &&
-    src.state === 'idle' &&
-    src.shield === null;
 }
 
 function appendDirectBasicEntityWireRow(

@@ -1,4 +1,8 @@
 import { ENTITY_CHANGED_TURRETS } from '@/types/network';
+import {
+  resetTurretSnapshotDirtyCache,
+  turretSnapshotRowsChangedSinceLastSample,
+} from '../network/turretSnapshotDirty';
 import { getSimWasm } from '../sim-wasm/init';
 import {
   checkProjectileCollisions,
@@ -146,7 +150,9 @@ export class SimulationCombatController {
     this.emitSimEvents(fireResult.events, onSimEvent);
 
     for (const unit of activeCombatUnits) {
-      this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+      if (turretSnapshotRowsChangedSinceLastSample(unit)) {
+        this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+      }
     }
 
     // Update projectile positions and remove orphaned beams (from dead units)
@@ -161,6 +167,7 @@ export class SimulationCombatController {
     resetShieldBuffers();
     resetLaserSoundState();
     resetShieldSoundState();
+    resetTurretSnapshotDirtyCache();
   }
 
   private updateProjectileCombat(

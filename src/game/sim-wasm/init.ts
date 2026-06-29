@@ -4457,6 +4457,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientRenderSpatialIndexContractTest();
         const { runClientProjectileRenderStateSlabContractTest } = await import('../network/ClientProjectileRenderStateSlabContractTest');
         runClientProjectileRenderStateSlabContractTest();
+        const { runTurretSnapshotDirtyContractTest } = await import('../network/turretSnapshotDirtyContractTest');
+        runTurretSnapshotDirtyContractTest();
         const { runPrimitiveGeometryQuality3DContractTest } = await import('../render3d/PrimitiveGeometryQuality3DContractTest');
         runPrimitiveGeometryQuality3DContractTest();
         const { runEntityLod3DContractTest } = await import('../render3d/EntityLod3DContractTest');

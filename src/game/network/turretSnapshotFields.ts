@@ -1,4 +1,5 @@
 import type { Turret } from '../sim/types';
+import { NO_ENTITY_ID } from '../sim/types';
 
 /**
  * Head-only turrets normally have no orientable mesh pose to correct on the
@@ -11,4 +12,11 @@ import type { Turret } from '../sim/types';
  */
 export function turretAimMotionIsSnapshotVisible(turret: Turret): boolean {
   return turret.config.headOnly !== true;
+}
+
+export function turretShouldEncodeInactive(turret: Turret, targetId: number): boolean {
+  return turret.id === NO_ENTITY_ID &&
+    targetId === -1 &&
+    turret.state === 'idle' &&
+    turret.shield === null;
 }
