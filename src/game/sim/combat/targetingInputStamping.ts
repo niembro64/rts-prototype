@@ -185,6 +185,8 @@ let _combatTargetingSourceSlots = new Uint32Array(0);
 let _combatTargetingSourceCount = 0;
 let _combatTargetingSensorSourceSlots = new Uint32Array(0);
 let _combatTargetingSensorSourceCount = 0;
+let _combatTargetingTargetSlots = new Uint32Array(0);
+let _combatTargetingTargetCount = 0;
 const _stampViewMaskByPlayer = new Uint32Array(32);
 let _stampViewMaskComputedBits = 0;
 let _stampSlotUsed = new Uint8Array(0);
@@ -210,6 +212,7 @@ function getEntityViewMask(world: WorldState, playerId: number): number {
 function resetCombatTargetingSources(): void {
   _combatTargetingSourceCount = 0;
   _combatTargetingSensorSourceCount = 0;
+  _combatTargetingTargetCount = 0;
 }
 
 function resetCombatTargetingSlotUse(): void {
@@ -229,6 +232,22 @@ function reserveCombatTargetingSlot(slot: number): void {
   if (slot < 0) return;
   ensureCombatTargetingSlotUseCapacity(slot);
   _stampSlotUsed[slot] = 1;
+}
+
+function ensureCombatTargetingTargetCapacity(count: number): void {
+  if (count <= _combatTargetingTargetSlots.length) return;
+  let next = Math.max(8, _combatTargetingTargetSlots.length);
+  while (next < count) next *= 2;
+  const slots = new Uint32Array(next);
+  slots.set(_combatTargetingTargetSlots.subarray(0, _combatTargetingTargetCount));
+  _combatTargetingTargetSlots = slots;
+}
+
+function queueCombatTargetingTargetSlot(slot: number): void {
+  const idx = _combatTargetingTargetCount;
+  ensureCombatTargetingTargetCapacity(idx + 1);
+  _combatTargetingTargetSlots[idx] = slot;
+  _combatTargetingTargetCount++;
 }
 
 function ensureCombatTargetingSourceCapacity(count: number): void {
@@ -286,6 +305,10 @@ export function getCombatTargetingSourceSlots(): Uint32Array {
 
 export function getCombatTargetingSourceCount(): number {
   return _combatTargetingSourceCount;
+}
+
+export function getCombatTargetingTargetSlots(): Uint32Array {
+  return _combatTargetingTargetSlots.subarray(0, _combatTargetingTargetCount);
 }
 
 export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingStateViews {
@@ -795,6 +818,7 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
   for (const entity of targets) {
     const slot = stampCombatTargetingEntityInto(targeting, world, entity);
     if (slot >= 0) {
+      queueCombatTargetingTargetSlot(slot);
       queueCombatTargetingSourceSlot(entity, slot);
     }
   }

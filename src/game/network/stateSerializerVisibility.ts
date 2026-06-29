@@ -2,7 +2,10 @@ import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
-import { getCombatTargetingStateViews } from '../sim/combat/targetingInputStamping';
+import {
+  getCombatTargetingStateViews,
+  getCombatTargetingTargetSlots,
+} from '../sim/combat/targetingInputStamping';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
   canEntityProvideFullVision,
@@ -452,54 +455,102 @@ export class SnapshotVisibility {
     const detectorCoverageMask = targetingViews.detectorCoverageMask;
 
     const viewMask = this.viewMask >>> 0;
+    const targetSlots = getCombatTargetingTargetSlots();
+    if (targetSlots.length > 0) {
+      let stampedRows = 0;
+      for (let i = 0; i < targetSlots.length; i++) {
+        const slot = targetSlots[i];
+        if (slot >= capacity) continue;
+        const id = entityViews.entityId[slot];
+        if (id < 0 || combatEntityId[slot] !== id) continue;
+        if (this.addNativeObservationMaskEntityCandidate(
+          entityViews,
+          combatFlags,
+          sensorCoverageMask,
+          fullSightCoverageMask,
+          detectorCoverageMask,
+          viewMask,
+          slot,
+          id,
+        )) {
+          stampedRows++;
+        }
+      }
+      return stampedRows > 0;
+    }
+
     let stampedRows = 0;
     for (let slot = 0; slot < capacity; slot++) {
       const id = entityViews.entityId[slot];
       if (id < 0 || combatEntityId[slot] !== id) continue;
-      const flags = combatFlags[slot];
-      const kind = entityViews.kind[slot];
-      if (
-        kind !== ENTITY_STATE_KIND_UNIT &&
-        kind !== ENTITY_STATE_KIND_BUILDING &&
-        kind !== ENTITY_STATE_KIND_TOWER
-      ) {
-        continue;
+      if (this.addNativeObservationMaskEntityCandidate(
+        entityViews,
+        combatFlags,
+        sensorCoverageMask,
+        fullSightCoverageMask,
+        detectorCoverageMask,
+        viewMask,
+        slot,
+        id,
+      )) {
+        stampedRows++;
       }
-      stampedRows++;
-
-      const ownerPlayerId = entityViews.ownerPlayerId[slot];
-      if (ownerPlayerId !== 0 && (viewMask & (1 << (ownerPlayerId - 1))) !== 0) {
-        this.appendVisibleEntityIdByIdUnchecked(id);
-        this.appendRadarEntityIdByIdUnchecked(id);
-        continue;
-      }
-
-      if ((flags & CT_ENTITY_FLAG_ALIVE) === 0) continue;
-
-      const detectorCovered = (detectorCoverageMask[slot] & viewMask) !== 0;
-      const cloaked = (flags & CT_ENTITY_FLAG_CLOAKED) !== 0;
-      if (cloaked) {
-        if (detectorCovered) {
-          this.appendVisibleEntityIdByIdUnchecked(id);
-          this.appendRadarEntityIdByIdUnchecked(id);
-        }
-        continue;
-      }
-
-      const radarCovered = (sensorCoverageMask[slot] & viewMask) !== 0;
-      const fullSightCovered = (fullSightCoverageMask[slot] & viewMask) !== 0;
-      if (fullSightCovered) {
-        const visible = this.isEntityStateSlotVisibleWithLos(entityViews, slot, kind);
-        this.entityVisibilityMemo.set(id, visible);
-        if (visible) {
-          this.appendVisibleEntityIdByIdUnchecked(id);
-          this.appendRadarEntityIdByIdUnchecked(id);
-          continue;
-        }
-      }
-      if (radarCovered || detectorCovered) this.appendRadarEntityIdByIdUnchecked(id);
     }
     return stampedRows > 0;
+  }
+
+  private addNativeObservationMaskEntityCandidate(
+    entityViews: EntityStateViews,
+    combatFlags: Uint8Array,
+    sensorCoverageMask: Uint32Array,
+    fullSightCoverageMask: Uint32Array,
+    detectorCoverageMask: Uint32Array,
+    viewMask: number,
+    slot: number,
+    id: EntityId,
+  ): boolean {
+    const flags = combatFlags[slot];
+    const kind = entityViews.kind[slot];
+    if (
+      kind !== ENTITY_STATE_KIND_UNIT &&
+      kind !== ENTITY_STATE_KIND_BUILDING &&
+      kind !== ENTITY_STATE_KIND_TOWER
+    ) {
+      return false;
+    }
+
+    const ownerPlayerId = entityViews.ownerPlayerId[slot];
+    if (ownerPlayerId !== 0 && (viewMask & (1 << (ownerPlayerId - 1))) !== 0) {
+      this.appendVisibleEntityIdByIdUnchecked(id);
+      this.appendRadarEntityIdByIdUnchecked(id);
+      return true;
+    }
+
+    if ((flags & CT_ENTITY_FLAG_ALIVE) === 0) return true;
+
+    const detectorCovered = (detectorCoverageMask[slot] & viewMask) !== 0;
+    const cloaked = (flags & CT_ENTITY_FLAG_CLOAKED) !== 0;
+    if (cloaked) {
+      if (detectorCovered) {
+        this.appendVisibleEntityIdByIdUnchecked(id);
+        this.appendRadarEntityIdByIdUnchecked(id);
+      }
+      return true;
+    }
+
+    const radarCovered = (sensorCoverageMask[slot] & viewMask) !== 0;
+    const fullSightCovered = (fullSightCoverageMask[slot] & viewMask) !== 0;
+    if (fullSightCovered) {
+      const visible = this.isEntityStateSlotVisibleWithLos(entityViews, slot, kind);
+      this.entityVisibilityMemo.set(id, visible);
+      if (visible) {
+        this.appendVisibleEntityIdByIdUnchecked(id);
+        this.appendRadarEntityIdByIdUnchecked(id);
+        return true;
+      }
+    }
+    if (radarCovered || detectorCovered) this.appendRadarEntityIdByIdUnchecked(id);
+    return true;
   }
 
   private isEntityStateSlotVisibleWithLos(
