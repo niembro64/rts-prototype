@@ -865,7 +865,6 @@ export class ClientViewState {
       if (hasRot) target.rotation = deqRot(values[base + 5]);
       target.updatedAtMs = now;
       this.activeEntityPredictionIds.add(id);
-      this.dirtyUnitRenderIds.add(id);
       return true;
     }
 
@@ -1094,7 +1093,6 @@ export class ClientViewState {
     }
     target.updatedAtMs = now;
     this.activeEntityPredictionIds.add(id);
-    this.dirtyUnitRenderIds.add(id);
     return true;
   }
 

@@ -15,6 +15,16 @@ import type {
 } from './NetworkTypes';
 import { ClientViewState } from './ClientViewState';
 import { snapClientNonVisualState } from './ClientSnapshotApplier';
+import { ViewportFootprint } from '../ViewportFootprint';
+import {
+  BuildingRenderPacket3D,
+  UnitRenderPacket3D,
+} from '../render3d/EntityRenderPackets3D';
+import { BodyHudRenderPacket3D } from '../render3d/HealthBar3D';
+import { PieceNameRenderPacket3D } from '../render3d/NameLabel3D';
+import { ShieldRenderPacket3D } from '../render3d/ShieldRenderer3D';
+import { ContactShadowRenderPacket3D } from '../render3d/ContactShadowRenderer3D';
+import { GroundPrintRenderPacket3D } from '../render3d/GroundPrint3D';
 import { createUnitFromBlueprintEntity } from '../sim/WorldUnitFactory';
 import type { PlayerId } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
@@ -36,6 +46,37 @@ function assertContract(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(`[client snapshot applier contract] ${message}`);
   }
+}
+
+function collectMinimalUnitRenderPacket(view: ClientViewState): UnitRenderPacket3D {
+  const unitRows = new UnitRenderPacket3D();
+  view.prepareRenderEntityPackets3D(
+    {
+      unitRows,
+      buildingRows: new BuildingRenderPacket3D(),
+      bodyHud: new BodyHudRenderPacket3D(),
+      shields: new ShieldRenderPacket3D(),
+      pieceNames: new PieceNameRenderPacket3D(),
+      contactShadows: new ContactShadowRenderPacket3D(),
+      groundPrints: new GroundPrintRenderPacket3D(),
+    },
+    {
+      renderScope: new ViewportFootprint(),
+      includeBodyHud: false,
+      includeBodyNames: false,
+      includeShields: false,
+      includeContactShadows: false,
+      includeGroundPrints: false,
+      hoveredEntity: null,
+      scopedUnitsOut: [],
+      scopedBuildingsOut: [],
+      selectionHudMode: 'whenNotFull',
+      getEntityHudToggle: () => false,
+      lookupPlayerName: () => null,
+      getGroundPrintLocomotionMesh: () => undefined,
+    },
+  );
+  return unitRows;
 }
 
 const FLAT_SUPPORT: WorldSupportSurface = {
@@ -544,6 +585,8 @@ export function runClientSnapshotApplierContractTest(): void {
   const hotPathView = new ClientViewState();
   const hotPathId = 177;
   hotPathView.applyNetworkState(snapshot(1, [fullUnitEntity(hotPathId, 100, 100)]));
+  hotPathView.applyPrediction(16);
+  hotPathView.consumeRenderDirties();
   const hotPathSource = createUnitFromBlueprintEntity(
     {
       generateEntityId: () => hotPathId,
@@ -578,7 +621,23 @@ export function runClientSnapshotApplierContractTest(): void {
     packedEntityDeltas: 'metadata-only',
   });
   hotPathView.applyNetworkState(decodedHotPath, { syncEconomy: undefined });
+  const hotPathPacketBeforePrediction = collectMinimalUnitRenderPacket(hotPathView);
+  assertContract(
+    hotPathPacketBeforePrediction.count === 1 &&
+      hotPathPacketBeforePrediction.entityIdAt(0) === hotPathId &&
+      hotPathPacketBeforePrediction.activePredictionAt(0) &&
+      !hotPathPacketBeforePrediction.renderDirtyAt(0),
+    'runtime typed hot-motion rows must activate prediction without a redundant snapshot dirty mark',
+  );
   hotPathView.applyPrediction(100);
+  const hotPathPacketAfterPrediction = collectMinimalUnitRenderPacket(hotPathView);
+  assertContract(
+    hotPathPacketAfterPrediction.count === 1 &&
+      hotPathPacketAfterPrediction.entityIdAt(0) === hotPathId &&
+      hotPathPacketAfterPrediction.activePredictionAt(0) &&
+      hotPathPacketAfterPrediction.renderDirtyAt(0),
+    'predicted hot-motion units must still dirty render rows after prediction advances them',
+  );
   const hotPathEntity = hotPathView.getEntity(hotPathId);
   assertContract(
     hotPathEntity !== undefined &&
