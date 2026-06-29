@@ -271,6 +271,7 @@ const LOCAL_PLAYER_ID = 1 as PlayerId;
 const LOCAL_PRESENTATION_CONNECTION_OPTIONS = {
   loopbackSnapshotsThroughWire: false,
   recordSnapshotWireCost: false,
+  directLocalSnapshotMaterialization: true,
   sharesAuthoritativeState: true,
 } as const;
 

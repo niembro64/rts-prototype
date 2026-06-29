@@ -948,11 +948,13 @@ async function createDeterministicLockstepBackendRuntime({
     {
       commandDoorway: scheduleCommand,
       // Lockstep snapshots are local presentation data; the canonical
-      // multiplayer truth is the command-frame stream. SnapshotBuffer
-      // clones full DTOs before applying them, so local presentation
-      // does not need to pay the MessagePack wire boundary every frame.
+      // multiplayer truth is the command-frame stream. Local presentation
+      // requests direct typed snapshot materialization so high-count deltas
+      // can skip DTO churn; full/detail rows still decode when compatibility
+      // views need entity creation data.
       loopbackSnapshotsThroughWire: false,
       recordSnapshotWireCost: false,
+      directLocalSnapshotMaterialization: true,
       sharesAuthoritativeState: true,
     },
   );

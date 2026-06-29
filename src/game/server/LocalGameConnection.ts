@@ -17,19 +17,56 @@ import {
   copySnapshotMaterializationMetadata,
 } from '../network/snapshotMaterializationMetadata';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
+import { getEntitySnapshotWireSource } from '../network/stateSerializerEntities';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 import type { CommandAuthority } from './commandAuthority';
 
+export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot): boolean {
+  if (state.entityDeltaOnly !== true) return false;
+  if (
+    state.projectileDeltaOnly === true ||
+    state.projectiles !== undefined ||
+    state.minimapEntities !== undefined ||
+    state.resourceMovements !== undefined ||
+    state.sprayTargets !== undefined ||
+    state.audioEvents !== undefined ||
+    state.scanPulses !== undefined ||
+    state.grid !== undefined ||
+    state.serverMeta !== undefined ||
+    state.gameState !== undefined ||
+    state.removedEntityIds !== undefined
+  ) {
+    return false;
+  }
+  const entityWireSource = getEntitySnapshotWireSource(state.entities);
+  if (
+    entityWireSource === undefined ||
+    entityWireSource.count !== state.entities.length ||
+    entityWireSource.typedPlaceholderRows !== entityWireSource.count
+  ) {
+    return false;
+  }
+  for (let i = 0; i < state.entities.length; i++) {
+    if (state.entities[i] !== undefined) return false;
+  }
+  return true;
+}
+
 export type LocalCommandAuthorityMode = 'player' | 'local-offline';
 export type LocalGameConnectionOptions = {
   commandDoorway?: (command: Command, fromPlayerId: PlayerId) => boolean;
   /** Encode local snapshots only to stamp/diagnose estimated wire size.
-   *  Leave false for lockstep local presentation: gameplay truth is the
-   *  command stream, and SnapshotBuffer clones DTOs before render apply. */
+   *  Leave false for lockstep local presentation unless diagnostics need
+   *  byte accounting beyond the direct-local materialization path. */
   recordSnapshotWireCost?: boolean;
   loopbackSnapshotsThroughWire?: boolean;
+  /** Request direct Rust snapshot materialization for local presentation.
+   *  Pure typed entity deltas can then skip DTO decode/materialization; full
+   *  or detail-bearing snapshots still decode from the preencoded bytes so
+   *  entity creation and compatibility views stay intact. */
+  directLocalSnapshotMaterialization?: boolean;
   sharesAuthoritativeState?: boolean;
 };
 
@@ -53,6 +90,7 @@ export class LocalGameConnection implements GameConnection {
   private readonly commandDoorway: ((command: Command, fromPlayerId: PlayerId) => boolean) | undefined;
   private readonly recordSnapshotWireCost: boolean;
   private readonly loopbackSnapshotsThroughWire: boolean;
+  private readonly directLocalSnapshotMaterialization: boolean;
   /** Whose snapshot view this client receives. `undefined` = global
    *  observer (no fog filter; sees every entity). Decoupled from
    *  commandPlayerId so a true spectator can view-as-N without being
@@ -72,6 +110,8 @@ export class LocalGameConnection implements GameConnection {
     this.commandDoorway = options.commandDoorway;
     this.recordSnapshotWireCost = options.recordSnapshotWireCost === true;
     this.loopbackSnapshotsThroughWire = options.loopbackSnapshotsThroughWire === true;
+    this.directLocalSnapshotMaterialization =
+      options.directLocalSnapshotMaterialization !== false;
     this.sharesAuthoritativeState = options.sharesAuthoritativeState ??
       !this.loopbackSnapshotsThroughWire;
     this.snapshotListenerKey = this.subscribeSnapshots(server, playerId);
@@ -130,7 +170,11 @@ export class LocalGameConnection implements GameConnection {
         deliveredState,
         (deliveredState, releaseSnapshot) => this.receiveSnapshot(deliveredState, releaseSnapshot),
       );
-    }, playerId, { preencodeWire: this.loopbackSnapshotsThroughWire });
+    }, playerId, {
+      preencodeWire:
+        this.loopbackSnapshotsThroughWire ||
+        this.directLocalSnapshotMaterialization,
+    });
   }
 
   private materializeLocalSnapshot(
@@ -139,19 +183,37 @@ export class LocalGameConnection implements GameConnection {
   ): NetworkServerSnapshot {
     if (!this.loopbackSnapshotsThroughWire) {
       this.recordLocalSnapshotWireCostIfNeeded(state, wirePayload);
+      if (
+        this.directLocalSnapshotMaterialization &&
+        wirePayload?.materializationKind === 'direct'
+      ) {
+        if (
+          this.canConsumeMetadataOnlySnapshotImmediately() &&
+          canDeliverDirectLocalSnapshotState(state)
+        ) {
+          return state;
+        }
+        return this.decodePreencodedLocalSnapshot(state, wirePayload);
+      }
       return state;
     }
     const encoded = wirePayload ?? this.encodeSnapshotForDiagnostics(state);
     this.recordLocalSnapshotWireCostIfNeeded(state, encoded);
+    return this.decodePreencodedLocalSnapshot(state, encoded);
+  }
+
+  private canConsumeMetadataOnlySnapshotImmediately(): boolean {
+    return this.snapshotCallback !== null && !this.snapshotImpairment.enabled;
+  }
+
+  private decodePreencodedLocalSnapshot(
+    state: NetworkServerSnapshot,
+    encoded: SnapshotWirePayload,
+  ): NetworkServerSnapshot {
+    const metadataOnly = this.canConsumeMetadataOnlySnapshotImmediately();
     const decoded = decodeNetworkSnapshot(encoded.bytes, {
-      packedProjectileDeltas:
-        this.snapshotCallback !== null && !this.snapshotImpairment.enabled
-          ? 'metadata-only'
-          : 'dto',
-      packedEntityDeltas:
-        this.snapshotCallback !== null && !this.snapshotImpairment.enabled
-          ? 'metadata-only'
-          : 'dto',
+      packedProjectileDeltas: metadataOnly ? 'metadata-only' : 'dto',
+      packedEntityDeltas: metadataOnly ? 'metadata-only' : 'dto',
     });
     setSnapshotWireBytes(decoded, encoded.bytes.byteLength);
     copySnapshotMaterializationMetadata(state, decoded);
