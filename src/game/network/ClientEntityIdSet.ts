@@ -14,7 +14,10 @@ export class ClientEntityIdSet extends Set<EntityId> {
   }
 
   override add(id: EntityId): this {
-    if (canIndexClientEntityId(id)) this.byId[id] = PRESENT;
+    if (canIndexClientEntityId(id)) {
+      if (this.byId[id] === PRESENT) return this;
+      this.byId[id] = PRESENT;
+    }
     return super.add(id);
   }
 

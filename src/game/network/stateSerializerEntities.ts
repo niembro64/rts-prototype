@@ -1,5 +1,5 @@
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, PlayerId } from '../sim/types';
+import type { Entity, PlayerId, Turret } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import {
   ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
@@ -290,7 +290,7 @@ function writeTurretsToPool(
       ? null
       : wireTargetId;
     dst.state = hasTargetingFsm ? _snapshotTurretFsm.stateCode : turretStateToCode(src.state);
-    dst.active = src.id === NO_ENTITY_ID ? false : null;
+    dst.active = turretShouldEncodeInactive(src, targetId) ? false : null;
     const shield = src.shield;
     dst.currentShieldRange = shield !== null ? shield.range : null;
   }
@@ -500,6 +500,13 @@ function canReferenceSnapshotEntityId(
   return id === undefined || visibility === undefined || visibility.canReferenceEntityId(world, id);
 }
 
+function turretShouldEncodeInactive(src: Turret, targetId: number): boolean {
+  return src.id === NO_ENTITY_ID &&
+    targetId === -1 &&
+    src.state === 'idle' &&
+    src.shield === null;
+}
+
 function appendDirectBasicEntityWireRow(
   entity: Entity,
   changedFields: number | undefined,
@@ -612,7 +619,7 @@ function appendDirectTurretWireRows(
     values[base + 7] = canSendTarget ? wireTargetId ?? 0 : 0;
     values[base + 8] = src.shield !== null ? 1 : 0;
     values[base + 9] = src.shield !== null ? src.shield.range : 0;
-    values[base + 10] = src.id === NO_ENTITY_ID ? 1 : 0;
+    values[base + 10] = turretShouldEncodeInactive(src, targetId) ? 1 : 0;
   }
   return { offset, count };
 }

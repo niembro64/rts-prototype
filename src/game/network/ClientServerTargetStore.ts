@@ -48,7 +48,21 @@ export class ClientServerTargetStore extends Map<EntityId, ServerTarget> {
   }
 
   getOrCreate(id: EntityId): ServerTarget {
-    let target = this.get(id);
+    if (canIndexClientEntityId(id)) {
+      let target = this.byId[id];
+      if (target !== undefined) return target;
+      target = super.get(id);
+      if (target !== undefined) {
+        this.byId[id] = target;
+        return target;
+      }
+      target = acquireServerTarget();
+      this.pooledTargets.add(target);
+      this.byId[id] = target;
+      super.set(id, target);
+      return target;
+    }
+    let target = super.get(id);
     if (target !== undefined) return target;
     target = acquireServerTarget();
     this.pooledTargets.add(target);
