@@ -274,8 +274,8 @@ export class ClientViewState {
   private currentTick: number = 0;
 
   // Reusable Set for full-state membership reconciliation.
-  private _serverIds: Set<EntityId> = new Set();
-  private _projectileReflectionIds: Set<EntityId> = new Set();
+  private _serverIds: Set<EntityId> = new ClientEntityIdSet();
+  private _projectileReflectionIds: Set<EntityId> = new ClientEntityIdSet();
 
   // Spatial grid debug visualization data
   private gridCells: NetworkServerSnapshotGridCell[] = [];
