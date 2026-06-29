@@ -496,6 +496,13 @@ export class WorldState {
   drainSnapshotDirtyEntities(outIds: EntityId[], outFields: number[]): void {
     outIds.length = 0;
     outFields.length = 0;
+    if (entitySlotRegistry.drainDirtySnapshotEntities(outIds, outFields)) {
+      for (let i = 0; i < this.snapshotDirtyIds.length; i++) {
+        this.snapshotDirtyFieldsById[this.snapshotDirtyIds[i]] = 0;
+      }
+      this.snapshotDirtyIds.length = 0;
+      return;
+    }
     this.snapshotDirtyIds.sort((a, b) => a - b);
     for (let i = 0; i < this.snapshotDirtyIds.length; i++) {
       const id = this.snapshotDirtyIds[i];

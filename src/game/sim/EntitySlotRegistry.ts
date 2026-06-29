@@ -148,6 +148,8 @@ export class EntitySlotRegistry {
   private readonly unitSlots = new Set<EntityId>();
   private readonly buildingSlots = new Set<EntityId>();
   private readonly projectileSlots = new Set<EntityId>();
+  private dirtyDrainSlots = new Uint32Array(INITIAL_KIND_CAPACITY);
+  private dirtyDrainMasks = new Uint32Array(INITIAL_KIND_CAPACITY);
   private views: EntityStateViews | null = null;
   private viewsBuffer: ArrayBuffer | null = null;
 
@@ -508,6 +510,48 @@ export class EntitySlotRegistry {
       return;
     }
     this.refreshEntityState(entity, fields, teamId);
+  }
+
+  drainDirtySnapshotEntities(outIds: EntityId[], outFields: number[]): boolean {
+    const sim = this.sim();
+    if (sim === undefined) return false;
+    const views = this.ensureViews();
+    if (views === null) return false;
+
+    let count = sim.entityState.collectDirtySlots(
+      this.dirtyDrainSlots,
+      this.dirtyDrainMasks,
+      true,
+    );
+    if (count < 0) {
+      this.ensureDirtyDrainCapacity(-count);
+      count = sim.entityState.collectDirtySlots(
+        this.dirtyDrainSlots,
+        this.dirtyDrainMasks,
+        true,
+      );
+    }
+    if (count < 0) return false;
+
+    outIds.length = 0;
+    outFields.length = 0;
+    for (let i = 0; i < count; i++) {
+      const slot = this.dirtyDrainSlots[i];
+      if (slot >= views.capacity) continue;
+      const id = views.entityId[slot];
+      if (id < 0) continue;
+      outIds.push(id);
+      outFields.push(this.dirtyDrainMasks[i]);
+    }
+    return true;
+  }
+
+  private ensureDirtyDrainCapacity(required: number): void {
+    if (required <= this.dirtyDrainSlots.length) return;
+    let capacity = this.dirtyDrainSlots.length;
+    while (capacity < required) capacity *= 2;
+    this.dirtyDrainSlots = new Uint32Array(capacity);
+    this.dirtyDrainMasks = new Uint32Array(capacity);
   }
 
   private refreshHotMotionState(entity: Entity, dirtyMask: number, teamId?: number): number {

@@ -128,9 +128,12 @@ export function runEntitySlotRegistryContractTest(): void {
     'dirty slot collection must report the accumulated mask',
   );
   assertContract(motionViews.dirtyMask[firstSlot] === dirtyMasksOut[0], 'dirty collection without clear must keep the mask');
-  const dirtyClearCount = sim.entityState.collectDirtySlots(dirtySlotsOut, dirtyMasksOut, true);
-  assertContract(dirtyClearCount === 1, 'dirty slot collection with clear must report the dirty entity');
-  assertContract(motionViews.dirtyMask[firstSlot] === 0, 'dirty slot collection with clear must clear the mask');
+  const drainedIds: number[] = [];
+  const drainedFields: number[] = [];
+  world.drainSnapshotDirtyEntities(drainedIds, drainedFields);
+  assertContract(drainedIds.length === 1 && drainedIds[0] === reused.id, 'world dirty drain must report the dirty entity id');
+  assertContract(drainedFields[0] === dirtyMasksOut[0], 'world dirty drain must report the slab dirty mask');
+  assertContract(motionViews.dirtyMask[firstSlot] === 0, 'world dirty drain must clear the slab dirty mask');
   assertParity(reused);
   sim.entityState.clearDirty(firstSlot);
   spatialGrid.updateUnitSpatial(reused);
