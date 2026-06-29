@@ -1,5 +1,6 @@
 import type { EntityId } from '../sim/types';
 import { ClientEntityIdSet } from './ClientEntityIdSet';
+import { IndexedEntityIdBooleanMemo } from './IndexedEntityIdCollections';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -44,4 +45,16 @@ export function runClientEntityIdSetContractTest(): void {
   set.add(second);
   assertContract(set.has(second), 'indexed id can be re-added after clear');
   assertContract([...set].join(',') === '7', 're-add after clear keeps Set iteration semantics');
+
+  const memo = new IndexedEntityIdBooleanMemo();
+  assertContract(memo.get(first) === undefined, 'boolean memo starts unset');
+  memo.set(first, false);
+  assertContract(memo.get(first) === false, 'boolean memo stores indexed false');
+  memo.set(first, true);
+  assertContract(memo.get(first) === true, 'boolean memo overwrites indexed true');
+  memo.set(highId, false);
+  assertContract(memo.get(highId) === false, 'boolean memo stores fallback false');
+  memo.clear();
+  assertContract(memo.get(first) === undefined, 'boolean memo clear empties indexed value');
+  assertContract(memo.get(highId) === undefined, 'boolean memo clear empties fallback value');
 }

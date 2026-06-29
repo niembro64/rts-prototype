@@ -28,6 +28,10 @@ import {
   reserveFloat64WireRows,
   type Float64WireRows,
 } from './snapshotWireRows';
+import {
+  IndexedEntityIdBooleanMemo,
+  IndexedEntityIdSet,
+} from './IndexedEntityIdCollections';
 
 export {
   canEntityProvideFullVision,
@@ -143,11 +147,11 @@ export class SnapshotVisibility {
   private readonly detectorSourceCells = new Map<number, number[]>();
   private readonly visibleEntityIds: EntityId[] = [];
   private readonly radarEntityIds: EntityId[] = [];
-  private readonly visibleEntityIdSet = new Set<EntityId>();
-  private readonly radarEntityIdSet = new Set<EntityId>();
-  private readonly fullCandidateEntityIdSet = new Set<EntityId>();
-  private readonly radarCandidateEntityIdSet = new Set<EntityId>();
-  private readonly entityReferenceMemo = new Map<EntityId, boolean>();
+  private readonly visibleEntityIdSet = new IndexedEntityIdSet();
+  private readonly radarEntityIdSet = new IndexedEntityIdSet();
+  private readonly fullCandidateEntityIdSet = new IndexedEntityIdSet();
+  private readonly radarCandidateEntityIdSet = new IndexedEntityIdSet();
+  private readonly entityReferenceMemo = new IndexedEntityIdBooleanMemo();
   private readonly gridW: number;
   private readonly gridH: number;
   private entityIdBuffersReady = false;
@@ -186,7 +190,7 @@ export class SnapshotVisibility {
    *  short-circuits to true unconditionally) and only after the
    *  owner-or-ally short-circuit (which is already O(1) — no point
    *  memoizing it). */
-  private readonly entityVisibilityMemo = new Map<EntityId, boolean>();
+  private readonly entityVisibilityMemo = new IndexedEntityIdBooleanMemo();
 
   /** Stable identity for the recipient's view-team — the bitmask of
    *  recipient + allies, rendered as a base-36 string. Two recipients
