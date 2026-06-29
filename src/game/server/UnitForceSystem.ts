@@ -564,16 +564,21 @@ export class UnitForceSystem {
       this.pushPhysicsForceUnitSlot(this.physicsCandidateUnitSlotsBuf[i]);
     }
 
-    candidateCount = this.physics.collectAwakeEntitySlots(
-      this.physicsCandidateUnitSlotsBuf,
-      entitySlotForId,
-    );
-    if (candidateCount < 0) {
-      this.ensurePhysicsCandidateSlotCapacity(-candidateCount);
-      candidateCount = this.physics.collectAwakeEntitySlots(
+    const sim = getSimWasm();
+    candidateCount = sim !== undefined
+      ? sim.entityState.collectAwakeBodyEntitySlots(this.physicsCandidateUnitSlotsBuf)
+      : this.physics.collectAwakeEntitySlots(
         this.physicsCandidateUnitSlotsBuf,
         entitySlotForId,
       );
+    if (candidateCount < 0) {
+      this.ensurePhysicsCandidateSlotCapacity(-candidateCount);
+      candidateCount = sim !== undefined
+        ? sim.entityState.collectAwakeBodyEntitySlots(this.physicsCandidateUnitSlotsBuf)
+        : this.physics.collectAwakeEntitySlots(
+          this.physicsCandidateUnitSlotsBuf,
+          entitySlotForId,
+        );
     }
     for (let i = 0; i < candidateCount; i++) {
       this.pushPhysicsForceUnitSlot(this.physicsCandidateUnitSlotsBuf[i]);

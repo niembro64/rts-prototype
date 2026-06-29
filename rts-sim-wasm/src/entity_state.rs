@@ -455,6 +455,51 @@ pub fn entity_state_collect_dirty_slots(
     count as i32
 }
 
+#[inline]
+fn entity_state_row_has_awake_body(
+    slab: &EntityStateSlab,
+    p: &BodyPool,
+    entity_slot: usize,
+) -> bool {
+    let entity_id = slab.entity_id[entity_slot];
+    if entity_id < 0 {
+        return false;
+    }
+    let body_slot_i32 = slab.body_slot[entity_slot];
+    if body_slot_i32 < 0 {
+        return false;
+    }
+    let body_slot = body_slot_i32 as usize;
+    if body_slot >= POOL_CAPACITY_USIZE || !pool_is_dynamic_sphere(p, body_slot) {
+        return false;
+    }
+    p.entity_id[body_slot] == entity_id && p.flags[body_slot] & BODY_FLAG_SLEEPING == 0
+}
+
+#[wasm_bindgen]
+pub fn entity_state_collect_awake_body_entity_slots(slots_out: &mut [u32]) -> i32 {
+    let slab = entity_state();
+    let p = pool();
+    let len = slab.entity_id.len();
+    let mut required = 0_usize;
+    for slot in 0..len {
+        if entity_state_row_has_awake_body(slab, p, slot) {
+            required += 1;
+        }
+    }
+    if slots_out.len() < required {
+        return -(required as i32);
+    }
+    let mut count = 0_usize;
+    for slot in 0..len {
+        if entity_state_row_has_awake_body(slab, p, slot) {
+            slots_out[count] = slot as u32;
+            count += 1;
+        }
+    }
+    count as i32
+}
+
 #[wasm_bindgen]
 pub fn entity_state_set_projectiles_hot_batch(
     count: u32,

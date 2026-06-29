@@ -6380,6 +6380,27 @@ mod sim_kernel_tests {
         assert_eq!(pool_collect_awake_entity_ids(&slots, &mut collected), 2);
         assert_eq!(collected, [101, 202]);
 
+        entity_state_init(8);
+        entity_state_set_lifecycle(3, 101, ENTITY_STATE_KIND_UNIT, 1, 1, 0);
+        entity_state_set_body_slot(3, awake_slot as i32);
+        entity_state_set_lifecycle(4, 202, ENTITY_STATE_KIND_UNIT, 1, 1, 0);
+        entity_state_set_body_slot(4, boundary_slot as i32);
+        entity_state_set_lifecycle(5, 999, ENTITY_STATE_KIND_UNIT, 1, 1, 0);
+        entity_state_set_body_slot(5, awake_slot as i32);
+
+        let mut undersized_entity_slots = [0_u32; 1];
+        assert_eq!(
+            entity_state_collect_awake_body_entity_slots(&mut undersized_entity_slots),
+            -2,
+        );
+        let mut collected_entity_slots = [0_u32; 3];
+        assert_eq!(
+            entity_state_collect_awake_body_entity_slots(&mut collected_entity_slots),
+            2,
+        );
+        assert_eq!(&collected_entity_slots[..2], &[3, 4]);
+        entity_state_clear();
+
         {
             let p = pool();
             let boundary = boundary_slot as usize;
