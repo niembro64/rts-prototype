@@ -26,6 +26,7 @@ import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMini
 import { serializeProjectileSnapshot } from '../network/stateSerializerProjectiles';
 import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
 import { serializeGridSnapshot } from '../network/stateSerializerGrid';
+import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import {
   getEntitySnapshotPoolStats,
   registerEntitySnapshotWireSource,
@@ -129,7 +130,7 @@ export type SnapshotListenerEntry = {
   needsStatic: boolean;
   startupReady: boolean;
   hasVisibleEntityBaseline: boolean;
-  visibleEntityIds: Set<EntityId>;
+  visibleEntityIds: IndexedEntityIdSet;
 };
 
 type ServerSnapshotPublisherInput = {
@@ -163,8 +164,8 @@ export class ServerSnapshotPublisher {
   private readonly teamSprayCache = new Map<string, SerializerSprayOverride>();
   private readonly teamMinimapCache = new Map<string, SerializerMinimapOverride>();
   private readonly deltaRemovedEntityIdsBuf: EntityId[] = [];
-  private readonly deltaRemovedEntityIdSet = new Set<EntityId>();
-  private readonly deltaEntityIdSet = new Set<EntityId>();
+  private readonly deltaRemovedEntityIdSet = new IndexedEntityIdSet();
+  private readonly deltaEntityIdSet = new IndexedEntityIdSet();
   private readonly entityMotionCandidateIdsBuf: EntityId[] = [];
   reset(): void {}
 

@@ -1,4 +1,5 @@
 import { resetAudioPoolForKey } from '../network/stateSerializerAudio';
+import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import { resetMinimapPoolForKey } from '../network/stateSerializerMinimap';
 import { resetSprayPoolForKey } from '../network/stateSerializerSpray';
 import type { PlayerId } from '../sim/types';
@@ -42,7 +43,7 @@ export class ServerSnapshotListenerRegistry {
       needsStatic: false,
       startupReady: false,
       hasVisibleEntityBaseline: false,
-      visibleEntityIds: new Set(),
+      visibleEntityIds: new IndexedEntityIdSet(),
     });
     return trackingKey;
   }

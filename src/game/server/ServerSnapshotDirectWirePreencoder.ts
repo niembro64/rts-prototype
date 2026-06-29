@@ -33,6 +33,7 @@ import {
   encodeNetworkSnapshotWithRustFallback,
   isRustSnapshotWireEnabled,
 } from '../network/snapshotRustWireEncoder';
+import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import {
   addSnapshotMaterializationStageFromStart,
   type SnapshotMaterializationStageDurations,
@@ -170,8 +171,8 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly gridSearchCellPlaceholders: NetworkServerSnapshotGridCell[] = [];
   private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
   private readonly removedEntityIds: number[] = [];
-  private readonly removedEntityIdSet = new Set<EntityId>();
-  private readonly emittedDeltaEntityIds = new Set<EntityId>();
+  private readonly removedEntityIdSet = new IndexedEntityIdSet();
+  private readonly emittedDeltaEntityIds = new IndexedEntityIdSet();
   private readonly visibleBaselineAddedIds: EntityId[] = [];
   private readonly visibleBaselineRemovedIds: EntityId[] = [];
   private readonly state: NetworkServerSnapshot = {
