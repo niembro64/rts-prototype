@@ -80,6 +80,7 @@ import { ClientEntityIdSet } from './ClientEntityIdSet';
 import { ClientServerTargetStore } from './ClientServerTargetStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import { applyNetworkUnitDriftFieldsToTarget } from './unitSnapshotFields';
+import { createSpawnDto } from './snapshotDtoCopy';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
   ENTITY_POSITION_WIRE_INV_SCALE,
@@ -111,9 +112,10 @@ import {
   getPackedProjectileSnapshotWire,
 } from './snapshotProjectileWirePack';
 import {
+  forEachProjectileWireSourceSpawn,
   forEachProjectileWireSourceDespawn,
   forEachProjectileWireSourceVelocityUpdate,
-  projectileSnapshotWireSourceHasOnlyMotionRows,
+  projectileSnapshotWireSourceHasDirectlyConsumableRows,
 } from './stateSerializerProjectiles';
 import {
   addSnapshotMaterializationStageToSnapshot,
@@ -286,6 +288,7 @@ export class ClientViewState {
   // Server target state — owned copies of drift-relevant fields per entity
   private serverTargets = new ClientServerTargetStore();
   private projectileStore!: ClientProjectileStore;
+  private readonly directProjectileSpawnScratch = createSpawnDto();
 
   private sprayTargetStore = new ClientSprayTargetStore();
   private resourcePylonSignedRates = new Map<EntityId, ClientResourcePylonSignedRates>();
@@ -2340,12 +2343,25 @@ export class ClientViewState {
 
     const projectiles = state.projectiles;
     if (projectiles !== undefined && projectiles !== null) {
-      const directProjectileMotionRows =
-        projectileSnapshotWireSourceHasOnlyMotionRows(projectiles);
-      const packedProjectiles = directProjectileMotionRows
+      const directProjectileRows =
+        projectileSnapshotWireSourceHasDirectlyConsumableRows(projectiles);
+      const packedProjectiles = directProjectileRows
         ? undefined
         : getPackedProjectileSnapshotWire(projectiles);
-      const spawns = directProjectileMotionRows ? undefined : projectiles.spawns;
+      const appliedDirectSpawns = directProjectileRows
+        ? forEachProjectileWireSourceSpawn(
+            projectiles,
+            this.directProjectileSpawnScratch,
+            (spawn) => {
+              if (this.projectileStore.projectileSpawns.shouldSmooth(spawn)) {
+                this.projectileStore.projectileSpawns.enqueue(spawn, now);
+                return;
+              }
+              this.projectileStore.applySpawn(spawn);
+            },
+          )
+        : false;
+      const spawns = appliedDirectSpawns ? undefined : projectiles.spawns;
 
       // Process projectile spawn events
       if (spawns !== undefined && spawns !== null) {
@@ -2361,7 +2377,7 @@ export class ClientViewState {
       // Server-authored live beam/laser paths. These carry current
       // start/end/reflection points so the client can draw beams without
       // running local mirror/unit/building beam traces in applyPrediction.
-      const beamUpdates = directProjectileMotionRows ? undefined : projectiles.beamUpdates;
+      const beamUpdates = directProjectileRows ? undefined : projectiles.beamUpdates;
       if (beamUpdates !== undefined && beamUpdates !== null) {
         for (const update of beamUpdates) {
           this.projectileStore.applyBeamUpdate(update, now);
@@ -2369,7 +2385,7 @@ export class ClientViewState {
       }
 
       // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
-      const appliedDirectDespawns = directProjectileMotionRows
+      const appliedDirectDespawns = directProjectileRows
         ? forEachProjectileWireSourceDespawn(
             projectiles,
             (id) => this.deleteEntityLocalState(id as EntityId),
@@ -2395,7 +2411,7 @@ export class ClientViewState {
       // course corrections become EMA targets: the render-side projectile
       // keeps dead-reckoning, while ClientProjectilePrediction advances the
       // target and drifts position + velocity toward it each frame.
-      const appliedDirectVelocityUpdates = directProjectileMotionRows
+      const appliedDirectVelocityUpdates = directProjectileRows
         ? forEachProjectileWireSourceVelocityUpdate(
             projectiles,
             (

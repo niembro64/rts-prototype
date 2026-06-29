@@ -20,8 +20,10 @@ import {
 } from './snapshotProjectileWirePack';
 import {
   createProjectileSnapshotWireSource,
+  PROJECTILE_SPAWN_WIRE_STRIDE,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
   registerProjectileSnapshotWireSource,
+  writeProjectileSpawnWireRow,
 } from './stateSerializerProjectiles';
 import { reserveFloat64WireRows } from './snapshotWireRows';
 
@@ -101,6 +103,28 @@ function directProjectileVelocitySnapshot(
   source.velocityUpdates.values[base + 5] = qVel(5);
   source.velocityUpdates.values[base + 6] = qVel(0);
   source.velocityUpdates.values[base + 8] = targetEntityId ?? 0;
+  registerProjectileSnapshotWireSource(projectiles, source);
+  return snapshot;
+}
+
+function directProjectileSpawnSnapshot(
+  tick: number,
+  spawn: ReturnType<typeof createSpawnDto>,
+): NetworkServerSnapshot {
+  const snapshot = projectileSnapshot(tick, undefined);
+  const projectiles = snapshot.projectiles!;
+  projectiles.spawns = [undefined as never];
+  const source = createProjectileSnapshotWireSource();
+  const rowIndex = reserveFloat64WireRows(
+    source.spawns,
+    1,
+    PROJECTILE_SPAWN_WIRE_STRIDE,
+  );
+  writeProjectileSpawnWireRow(
+    source.spawns.values,
+    rowIndex * PROJECTILE_SPAWN_WIRE_STRIDE,
+    spawn,
+  );
   registerProjectileSnapshotWireSource(projectiles, source);
   return snapshot;
 }
@@ -235,6 +259,12 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'direct projectile velocity wire rows must apply without DTO velocity rows',
   );
 
+  view.applyNetworkState(directProjectileSpawnSnapshot(3, beamSpawn(304, 300, 300)));
+  assertContract(
+    view.getEntity(304)?.projectile?.projectileType === 'beam',
+    'direct projectile spawn wire rows must create projectile entities without DTO spawn rows',
+  );
+
   view.applyNetworkState(projectileSnapshot(3, [plasmaSpawn(303, 700, 700)]));
   view.collectProjectileRenderLists({ minX: 650, minY: 650, maxX: 750, maxY: 750 }, lists);
   assertContract(
@@ -262,7 +292,7 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'projectile velocity update must move the render spatial slot into its new query bounds',
   );
 
-  view.applyNetworkState(projectileSnapshot(5, undefined, [301, 302, 303]));
+  view.applyNetworkState(projectileSnapshot(5, undefined, [301, 302, 303, 304]));
   current = view.collectProjectileRenderLists(null, lists);
   assertContract(
     current.traveling.length === 0 &&

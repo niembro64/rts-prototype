@@ -48,9 +48,10 @@ import {
   type EntitySnapshotWireSource,
 } from '../../network/stateSerializerEntities';
 import {
+  forEachProjectileWireSourceSpawn,
   forEachProjectileWireSourceDespawn,
   forEachProjectileWireSourceVelocityUpdate,
-  projectileSnapshotWireSourceHasOnlyMotionRows,
+  projectileSnapshotWireSourceHasDirectlyConsumableRows,
 } from '../../network/stateSerializerProjectiles';
 import {
   ENTITY_CHANGED_BUILDING,
@@ -180,6 +181,7 @@ export class SnapshotBuffer {
   private readonly pendingEntityIndexById = new Map<number, number>();
   private pendingEntityIndexReady = false;
   private readonly removedEntityIdSet = new Set<number>();
+  private readonly directProjectileSpawnScratch = createSpawnDto();
 
   private pushBufferedSpawn(spawn: NetworkServerSnapshotProjectileSpawn): void {
     let index = this.bufferedSpawns.length;
@@ -252,10 +254,15 @@ export class SnapshotBuffer {
     out.clearHomingTarget = clearHomingTarget ? true : null;
   }
 
-  private pushBufferedProjectileWireSourceMotionRows(
+  private pushBufferedProjectileWireSourceRows(
     projectiles: NonNullable<NetworkServerSnapshot['projectiles']>,
   ): boolean {
-    if (!projectileSnapshotWireSourceHasOnlyMotionRows(projectiles)) return false;
+    if (!projectileSnapshotWireSourceHasDirectlyConsumableRows(projectiles)) return false;
+    forEachProjectileWireSourceSpawn(
+      projectiles,
+      this.directProjectileSpawnScratch,
+      (spawn) => this.pushBufferedSpawn(spawn),
+    );
     forEachProjectileWireSourceDespawn(
       projectiles,
       (id) => this.pushBufferedDespawnId(id),
@@ -1130,7 +1137,7 @@ export class SnapshotBuffer {
       if (onBufferedSnapshot !== undefined) onBufferedSnapshot(state);
       const proj = state.projectiles;
       const consumedDirectProjectileRows =
-        proj !== undefined && this.pushBufferedProjectileWireSourceMotionRows(proj);
+        proj !== undefined && this.pushBufferedProjectileWireSourceRows(proj);
       const packedProjectiles = consumedDirectProjectileRows
         ? undefined
         : getPackedProjectileSnapshotWire(proj);

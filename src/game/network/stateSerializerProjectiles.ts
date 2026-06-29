@@ -527,16 +527,122 @@ export function getActiveProjectileSnapshotWireSource(
     : undefined;
 }
 
-export function projectileSnapshotWireSourceHasOnlyMotionRows(
+export function projectileSnapshotWireSourceHasDirectlyConsumableRows(
   projectiles: ProjectileSnapshot,
 ): boolean {
   const source = getActiveProjectileSnapshotWireSource(projectiles);
   return (
     source !== undefined &&
-    source.spawns.count === 0 &&
     source.beamUpdates.count === 0 &&
-    (source.despawns.count > 0 || source.velocityUpdates.count > 0)
+    (
+      source.spawns.count > 0 ||
+      source.despawns.count > 0 ||
+      source.velocityUpdates.count > 0
+    )
   );
+}
+
+function copyProjectileWireSourceSpawnRowFromSourceInto(
+  source: ProjectileSnapshotWireSource,
+  rowIndex: number,
+  out: NetworkServerSnapshotProjectileSpawn,
+): boolean {
+  if (rowIndex < 0 || rowIndex >= source.spawns.count) return false;
+  const values = source.spawns.values;
+  const base = rowIndex * PROJECTILE_SPAWN_WIRE_STRIDE;
+  const flags = values[base + 31] | 0;
+  out.id = values[base + 0] | 0;
+  out.pos.x = values[base + 1] ?? 0;
+  out.pos.y = values[base + 2] ?? 0;
+  out.pos.z = values[base + 3] ?? 0;
+  out.rotation = values[base + 4] ?? 0;
+  out.velocity.x = values[base + 5] ?? 0;
+  out.velocity.y = values[base + 6] ?? 0;
+  out.velocity.z = values[base + 7] ?? 0;
+  out.projectileType = values[base + 8] as NetworkServerSnapshotProjectileSpawn['projectileType'];
+  out.maxLifespan = (flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0
+    ? values[base + 9]
+    : null;
+  out.turretBlueprintCode = values[base + 10] as NetworkServerSnapshotProjectileSpawn['turretBlueprintCode'];
+  out.shotBlueprintCode = (flags & PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE) !== 0
+    ? values[base + 11] as NetworkServerSnapshotProjectileSpawn['shotBlueprintCode']
+    : null;
+  out.sourceTurretBlueprintCode = (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) !== 0
+    ? values[base + 12] as NetworkServerSnapshotProjectileSpawn['sourceTurretBlueprintCode']
+    : null;
+  out.playerId = values[base + 13] ?? 1;
+  out.sourceEntityId = values[base + 14] ?? 0;
+  out.turretIndex = values[base + 15] ?? 0;
+  out.barrelIndex = values[base + 16] ?? 0;
+  out.targetEntityId = (flags & PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID) !== 0
+    ? values[base + 23]
+    : null;
+  out.homingTurnRate = (flags & PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE) !== 0
+    ? values[base + 24]
+    : null;
+  out.sourceTurretEntityId = (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID) !== 0
+    ? values[base + 25]
+    : null;
+  out.sourceHostEntityId = values[base + 26] ?? 0;
+  out.sourceRootEntityId = values[base + 27] ?? 0;
+  out.sourceTeamId = values[base + 28] ?? 1;
+  out.spawnTick = values[base + 29] ?? 0;
+  out.parentShotEntityId = (flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID) !== 0
+    ? values[base + 30]
+    : null;
+  if ((flags & PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE) !== 0) {
+    out.isDGun = true;
+  } else if ((flags & PROJECTILE_SPAWN_FLAG_IS_DGUN_FALSE) !== 0) {
+    out.isDGun = false;
+  } else {
+    out.isDGun = null;
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE) !== 0) {
+    out.fromParentDetonation = true;
+  } else if ((flags & PROJECTILE_SPAWN_FLAG_FROM_PARENT_FALSE) !== 0) {
+    out.fromParentDetonation = false;
+  } else {
+    out.fromParentDetonation = null;
+  }
+  if ((flags & PROJECTILE_SPAWN_FLAG_BEAM) !== 0) {
+    if (out.beam === null) {
+      out.beam = { start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 } };
+    }
+    out.beam.start.x = values[base + 17] ?? 0;
+    out.beam.start.y = values[base + 18] ?? 0;
+    out.beam.start.z = values[base + 19] ?? 0;
+    out.beam.end.x = values[base + 20] ?? 0;
+    out.beam.end.y = values[base + 21] ?? 0;
+    out.beam.end.z = values[base + 22] ?? 0;
+  } else {
+    out.beam = null;
+  }
+  return true;
+}
+
+export function copyProjectileWireSourceSpawnRowInto(
+  projectiles: ProjectileSnapshot,
+  rowIndex: number,
+  out: NetworkServerSnapshotProjectileSpawn,
+): boolean {
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  return source !== undefined &&
+    copyProjectileWireSourceSpawnRowFromSourceInto(source, rowIndex, out);
+}
+
+export function forEachProjectileWireSourceSpawn(
+  projectiles: ProjectileSnapshot,
+  scratch: NetworkServerSnapshotProjectileSpawn,
+  visitor: (spawn: NetworkServerSnapshotProjectileSpawn) => void,
+): boolean {
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  if (source === undefined) return false;
+  const rows = source.spawns;
+  if (rows.count === 0) return false;
+  for (let i = 0; i < rows.count; i++) {
+    if (copyProjectileWireSourceSpawnRowFromSourceInto(source, i, scratch)) visitor(scratch);
+  }
+  return true;
 }
 
 export function forEachProjectileWireSourceDespawn(

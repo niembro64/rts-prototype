@@ -19,7 +19,7 @@ import {
 } from '../network/snapshotMaterializationMetadata';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { getEntitySnapshotWireSource } from '../network/stateSerializerEntities';
-import { projectileSnapshotWireSourceHasOnlyMotionRows } from '../network/stateSerializerProjectiles';
+import { projectileSnapshotWireSourceHasDirectlyConsumableRows } from '../network/stateSerializerProjectiles';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
@@ -60,7 +60,7 @@ export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot)
   }
 
   if (state.projectiles !== undefined) {
-    if (!projectileSnapshotWireSourceHasOnlyMotionRows(state.projectiles)) return false;
+    if (!projectileSnapshotWireSourceHasDirectlyConsumableRows(state.projectiles)) return false;
   } else if (projectileDeltaOnly) {
     return false;
   }

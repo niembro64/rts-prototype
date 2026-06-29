@@ -14,6 +14,8 @@ import {
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_VEL,
+  PROJECTILE_TYPE_PROJECTILE,
+  TURRET_BLUEPRINT_CODE_UNKNOWN,
 } from '../../../types/network';
 import { decodeNetworkSnapshot } from '../../network/snapshotWireCodec';
 import {
@@ -22,6 +24,7 @@ import {
 } from '../../network/snapshotProjectileWirePack';
 import {
   createProjectileSnapshotWireSource,
+  PROJECTILE_SPAWN_WIRE_STRIDE,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
   registerProjectileSnapshotWireSource,
 } from '../../network/stateSerializerProjectiles';
@@ -331,12 +334,29 @@ function attachDirectProjectileMotionRows(
   velocityId: number,
 ): void {
   const projectiles = {
-    spawns: undefined,
+    spawns: new Array(1),
     despawns: new Array(1),
     velocityUpdates: new Array(1),
     beamUpdates: undefined,
   } as NonNullable<NetworkServerSnapshot['projectiles']>;
   const source = createProjectileSnapshotWireSource();
+  const spawnIndex = reserveFloat64WireRows(
+    source.spawns,
+    1,
+    PROJECTILE_SPAWN_WIRE_STRIDE,
+  );
+  const spawnBase = spawnIndex * PROJECTILE_SPAWN_WIRE_STRIDE;
+  source.spawns.values[spawnBase + 0] = 79;
+  source.spawns.values[spawnBase + 1] = 11;
+  source.spawns.values[spawnBase + 2] = 12;
+  source.spawns.values[spawnBase + 3] = 13;
+  source.spawns.values[spawnBase + 8] = PROJECTILE_TYPE_PROJECTILE;
+  source.spawns.values[spawnBase + 10] = TURRET_BLUEPRINT_CODE_UNKNOWN;
+  source.spawns.values[spawnBase + 13] = 1;
+  source.spawns.values[spawnBase + 14] = 500;
+  source.spawns.values[spawnBase + 26] = 500;
+  source.spawns.values[spawnBase + 27] = 500;
+  source.spawns.values[spawnBase + 28] = 1;
   const despawnIndex = reserveUint32WireRows(source.despawns, 1, 1);
   source.despawns.values[despawnIndex] = despawnId;
   const velocityIndex = reserveFloat64WireRows(
@@ -963,8 +983,15 @@ export function runSnapshotBufferContractTest(): void {
   attachDirectProjectileMotionRows(directProjectileDelta, 80, 81);
   fake.emitSnapshot(directProjectileDelta);
   const consumedDirectDelta = buffer.consume();
+  const directSpawns = consumedDirectDelta?.projectiles?.spawns ?? [];
   const directDespawns = consumedDirectDelta?.projectiles?.despawns ?? [];
   const directVelocityUpdates = consumedDirectDelta?.projectiles?.velocityUpdates ?? [];
+  assertContract(
+    directSpawns.length === 1 &&
+      directSpawns[0].id === 79 &&
+      directSpawns[0].pos.x === 11,
+    'snapshot buffer must materialize direct projectile wire-source spawns on consume',
+  );
   assertContract(
     directDespawns.length === 1 && directDespawns[0].id === 80,
     'snapshot buffer must materialize direct projectile wire-source despawns on consume',
