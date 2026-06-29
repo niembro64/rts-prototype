@@ -213,6 +213,8 @@ import __wbg_init, {
   entity_state_shot_blueprint_code_ptr,
   entity_state_projectile_type_code_ptr,
   entity_state_build_progress_ptr,
+  entity_state_build_paid_energy_ptr,
+  entity_state_build_paid_metal_ptr,
   entity_state_build_flags_ptr,
   entity_state_dirty_mask_ptr,
   spatial_init,
@@ -1865,6 +1867,8 @@ export interface EntityStateApi {
     hp: number,
     maxHp: number,
     buildProgress: number,
+    buildPaidEnergy: number,
+    buildPaidMetal: number,
     buildFlags: number,
   ) => void;
   setStaticShape: (
@@ -1945,6 +1949,8 @@ export interface EntityStateApi {
   shotBlueprintCodePtr: () => number;
   projectileTypeCodePtr: () => number;
   buildProgressPtr: () => number;
+  buildPaidEnergyPtr: () => number;
+  buildPaidMetalPtr: () => number;
   buildFlagsPtr: () => number;
   dirtyMaskPtr: () => number;
 }
@@ -4386,6 +4392,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           shotBlueprintCodePtr: entity_state_shot_blueprint_code_ptr,
           projectileTypeCodePtr: entity_state_projectile_type_code_ptr,
           buildProgressPtr: entity_state_build_progress_ptr,
+          buildPaidEnergyPtr: entity_state_build_paid_energy_ptr,
+          buildPaidMetalPtr: entity_state_build_paid_metal_ptr,
           buildFlagsPtr: entity_state_build_flags_ptr,
           dirtyMaskPtr: entity_state_dirty_mask_ptr,
         },

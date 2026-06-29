@@ -8,6 +8,7 @@ import type { NetworkServerSnapshot, NetworkServerSnapshotEntity } from '../netw
 import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
+  ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
@@ -72,7 +73,8 @@ const ENTITY_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_NORMAL;
 const ENTITY_UNIT_SLAB_DELTA_FIELDS =
   ENTITY_MOTION_DELTA_FIELDS |
-  ENTITY_CHANGED_HP;
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_BUILDING;
 const ENTITY_MOTION_SPEED_EPSILON_SQ = 0.01 * 0.01;
 const ENTITY_MOTION_ANGULAR_EPSILON_SQ = 0.0001 * 0.0001;
 

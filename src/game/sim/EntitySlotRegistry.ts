@@ -97,6 +97,8 @@ export type EntityStateViews = {
   shotBlueprintCode: Uint32Array;
   projectileTypeCode: Uint32Array;
   buildProgress: Float64Array;
+  buildPaidEnergy: Float64Array;
+  buildPaidMetal: Float64Array;
   buildFlags: Uint32Array;
   dirtyMask: Uint32Array;
 };
@@ -138,6 +140,8 @@ type EntityStateExpectation = {
   shotBlueprintCode: number;
   projectileTypeCode: number;
   buildProgress: number;
+  buildPaidEnergy: number;
+  buildPaidMetal: number;
   buildFlags: number;
 };
 
@@ -479,6 +483,8 @@ export class EntitySlotRegistry {
       expected.hp,
       expected.maxHp,
       expected.buildProgress,
+      expected.buildPaidEnergy,
+      expected.buildPaidMetal,
       expected.buildFlags,
     );
     sim.entityState.setStaticShape(
@@ -655,6 +661,8 @@ export class EntitySlotRegistry {
       shotBlueprintCode: new Uint32Array(buffer, sim.entityState.shotBlueprintCodePtr(), capacity),
       projectileTypeCode: new Uint32Array(buffer, sim.entityState.projectileTypeCodePtr(), capacity),
       buildProgress: new Float64Array(buffer, sim.entityState.buildProgressPtr(), capacity),
+      buildPaidEnergy: new Float64Array(buffer, sim.entityState.buildPaidEnergyPtr(), capacity),
+      buildPaidMetal: new Float64Array(buffer, sim.entityState.buildPaidMetalPtr(), capacity),
       buildFlags: new Uint32Array(buffer, sim.entityState.buildFlagsPtr(), capacity),
       dirtyMask: new Uint32Array(buffer, sim.entityState.dirtyMaskPtr(), capacity),
     };
@@ -713,6 +721,8 @@ export class EntitySlotRegistry {
     this.assertEqual(views.shotBlueprintCode[slot], expected.shotBlueprintCode, entity.id, 'shotBlueprintCode');
     this.assertEqual(views.projectileTypeCode[slot], expected.projectileTypeCode, entity.id, 'projectileTypeCode');
     this.assertNear(views.buildProgress[slot], expected.buildProgress, entity.id, 'buildProgress');
+    this.assertNear(views.buildPaidEnergy[slot], expected.buildPaidEnergy, entity.id, 'buildPaidEnergy');
+    this.assertNear(views.buildPaidMetal[slot], expected.buildPaidMetal, entity.id, 'buildPaidMetal');
     this.assertEqual(views.buildFlags[slot], expected.buildFlags, entity.id, 'buildFlags');
   }
 
@@ -849,6 +859,8 @@ export class EntitySlotRegistry {
     let buildingBlueprintCode = ENTITY_STATE_BLUEPRINT_NONE;
     let shotBlueprintCode = ENTITY_STATE_BLUEPRINT_NONE;
     let projectileTypeCode = ENTITY_STATE_BLUEPRINT_NONE;
+    const buildPaidEnergy = buildable !== null ? buildable.paid.energy : 0;
+    const buildPaidMetal = buildable !== null ? buildable.paid.metal : 0;
 
     if (unit !== null) {
       flags |= ENTITY_SLOT_FLAG_HAS_UNIT;
@@ -958,6 +970,8 @@ export class EntitySlotRegistry {
       shotBlueprintCode: projectile !== null ? shotBlueprintCode : SHOT_BLUEPRINT_CODE_UNKNOWN,
       projectileTypeCode: projectile !== null ? projectileTypeCode : PROJECTILE_TYPE_UNKNOWN,
       buildProgress: buildable !== null ? getBuildFraction(buildable) : 1,
+      buildPaidEnergy,
+      buildPaidMetal,
       buildFlags: this.buildFlags(entity),
     };
   }

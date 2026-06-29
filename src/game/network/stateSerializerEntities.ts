@@ -2,6 +2,9 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import {
+  ENTITY_SLOT_BUILD_FLAG_COMPLETE,
+  ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
+  ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
   ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
   ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
   ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL,
@@ -90,7 +93,8 @@ const TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS =
   ENTITY_CHANGED_NORMAL;
 const TYPED_PLACEHOLDER_UNIT_SLAB_FIELDS =
   TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS |
-  ENTITY_CHANGED_HP;
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_BUILDING;
 const TYPED_PLACEHOLDER_UNIT_TRIGGER_FIELDS =
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_HP |
@@ -800,6 +804,7 @@ export function appendUnitMotionEntityWireRowDirectFromState(
   const hasVel = (changedMask & ENTITY_CHANGED_VEL) !== 0;
   const hasNormal = (changedMask & ENTITY_CHANGED_NORMAL) !== 0;
   const hasHp = (changedMask & ENTITY_CHANGED_HP) !== 0;
+  const hasBuild = (changedMask & ENTITY_CHANGED_BUILDING) !== 0;
   if (hasNormal && (motionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL) === 0) {
     return false;
   }
@@ -818,6 +823,9 @@ export function appendUnitMotionEntityWireRowDirectFromState(
     hasVel &&
     (motionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY) !== 0;
   const ownerPlayerId = views.ownerPlayerId[slot];
+  const buildFlags = hasBuild ? views.buildFlags[slot] : 0;
+  const hasBuildPayload = hasBuild &&
+    (buildFlags & ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE) !== 0;
 
   values[base + 0] = entityId;
   values[base + 1] = hasPos ? qPos(views.posX[slot]) : 0;
@@ -845,6 +853,11 @@ export function appendUnitMotionEntityWireRowDirectFromState(
   values[base + 33] = hasAngularVelocity ? views.angularVelocityX[slot] : 0;
   values[base + 34] = hasAngularVelocity ? views.angularVelocityY[slot] : 0;
   values[base + 35] = hasAngularVelocity ? views.angularVelocityZ[slot] : 0;
+  values[base + 45] = hasBuildPayload ? 1 : 0;
+  values[base + 46] = hasBuildPayload && (buildFlags & ENTITY_SLOT_BUILD_FLAG_COMPLETE) !== 0 ? 1 : 0;
+  values[base + 47] = hasBuildPayload ? views.buildPaidEnergy[slot] : 0;
+  values[base + 48] = hasBuildPayload ? views.buildPaidMetal[slot] : 0;
+  values[base + 63] = hasBuildPayload && (buildFlags & ENTITY_SLOT_BUILD_FLAG_INTERRUPTED) !== 0 ? 1 : 0;
 
   appendEntitySnapshotWireSourceRow(
     entityWireSource,

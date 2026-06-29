@@ -5,6 +5,7 @@ import type {
 } from './NetworkTypes';
 import {
   ACTION_TYPE_WAIT,
+  ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
@@ -37,6 +38,8 @@ import { decodeNetworkSnapshot } from './snapshotWireCodec';
 import { ReusableNetworkSnapshotCloner } from './snapshotClone';
 import { reserveFloat64WireRows } from './snapshotWireRows';
 import {
+  ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
+  ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
   ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
   ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
   ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL,
@@ -92,6 +95,12 @@ function createMotionEntityStateViews(): EntityStateViews {
     angularVelocityZ: new Float64Array([0.03]),
     hp: new Float64Array([88.5]),
     maxHp: new Float64Array([120]),
+    buildPaidEnergy: new Float64Array([25]),
+    buildPaidMetal: new Float64Array([75]),
+    buildFlags: new Uint32Array([
+      ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE |
+        ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
+    ]),
     unitMotionFlags: new Uint32Array([
       ENTITY_SLOT_UNIT_MOTION_HAS_SURFACE_NORMAL |
         ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION |
@@ -323,6 +332,34 @@ export function runSnapshotEntityWirePackContractTest(): void {
       slabHpSource.unitRows.values[slabHpWireBase + 9] === 120 &&
       slabHpSource.unitRows.values[slabHpWireBase + 23] === 0,
     'entity-state HP typed row must mirror canonical slab HP without motion fields',
+  );
+
+  const slabBuildEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  assertContract(
+    appendUnitMotionEntityWireRowDirectFromState(
+      createMotionEntityStateViews(),
+      0,
+      ENTITY_CHANGED_BUILDING,
+    ),
+    'entity-state unit build row must append from slab views',
+  );
+  slabBuildEntities.length = 1;
+  registerEntitySnapshotWireSource(slabBuildEntities);
+  const slabBuildSource = getEntitySnapshotWireSource(slabBuildEntities);
+  assertContract(
+    slabBuildSource !== undefined,
+    'entity-state build row must register unit typed wire metadata',
+  );
+  const slabBuildWireBase = slabBuildSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  assertContract(
+    slabBuildSource.unitRows.values[slabBuildWireBase + 7] === ENTITY_CHANGED_BUILDING &&
+      slabBuildSource.unitRows.values[slabBuildWireBase + 45] === 1 &&
+      slabBuildSource.unitRows.values[slabBuildWireBase + 46] === 0 &&
+      slabBuildSource.unitRows.values[slabBuildWireBase + 47] === 25 &&
+      slabBuildSource.unitRows.values[slabBuildWireBase + 48] === 75 &&
+      slabBuildSource.unitRows.values[slabBuildWireBase + 63] === 1,
+    'entity-state unit build typed row must mirror canonical slab paid/build flags',
   );
 
   const slabBuildingHpEntities: NetworkServerSnapshotEntity[] = [];

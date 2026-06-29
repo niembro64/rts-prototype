@@ -187,6 +187,11 @@ export function runEntitySlotRegistryContractTest(): void {
     'building build progress must mirror paid resource fraction',
   );
   assertContract(
+    buildingViews.buildPaidEnergy[buildingSlot] === 50 &&
+      buildingViews.buildPaidMetal[buildingSlot] === 100,
+    'building build paid counters must mirror exact paid resource state',
+  );
+  assertContract(
     (buildingViews.buildFlags[buildingSlot] & ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE) !== 0,
     'incomplete building must carry buildable flag',
   );

@@ -56,6 +56,8 @@ pub(crate) struct EntityStateSlab {
     pub(crate) shot_blueprint_code: Vec<u32>,
     pub(crate) projectile_type_code: Vec<u32>,
     pub(crate) build_progress: Vec<f64>,
+    pub(crate) build_paid_energy: Vec<f64>,
+    pub(crate) build_paid_metal: Vec<f64>,
     pub(crate) build_flags: Vec<u32>,
     pub(crate) dirty_mask: Vec<u32>,
 }
@@ -100,6 +102,8 @@ impl EntityStateSlab {
             shot_blueprint_code: Vec::new(),
             projectile_type_code: Vec::new(),
             build_progress: Vec::new(),
+            build_paid_energy: Vec::new(),
+            build_paid_metal: Vec::new(),
             build_flags: Vec::new(),
             dirty_mask: Vec::new(),
         }
@@ -151,6 +155,8 @@ impl EntityStateSlab {
         self.projectile_type_code
             .resize(needed, ENTITY_STATE_BLUEPRINT_NONE);
         self.build_progress.resize(needed, 1.0);
+        self.build_paid_energy.resize(needed, 0.0);
+        self.build_paid_metal.resize(needed, 0.0);
         self.build_flags.resize(needed, 0);
         self.dirty_mask.resize(needed, 0);
     }
@@ -197,6 +203,8 @@ impl EntityStateSlab {
         self.shot_blueprint_code[s] = ENTITY_STATE_BLUEPRINT_NONE;
         self.projectile_type_code[s] = ENTITY_STATE_BLUEPRINT_NONE;
         self.build_progress[s] = 1.0;
+        self.build_paid_energy[s] = 0.0;
+        self.build_paid_metal[s] = 0.0;
         self.build_flags[s] = 0;
         self.dirty_mask[s] = 0;
     }
@@ -336,6 +344,8 @@ pub fn entity_state_set_hp_build(
     hp: f64,
     max_hp: f64,
     build_progress: f64,
+    build_paid_energy: f64,
+    build_paid_metal: f64,
     build_flags: u32,
 ) {
     let slab = entity_state();
@@ -344,6 +354,8 @@ pub fn entity_state_set_hp_build(
     slab.hp[s] = hp;
     slab.max_hp[s] = max_hp;
     slab.build_progress[s] = build_progress;
+    slab.build_paid_energy[s] = build_paid_energy;
+    slab.build_paid_metal[s] = build_paid_metal;
     slab.build_flags[s] = build_flags;
 }
 
@@ -559,5 +571,7 @@ entity_state_ptr_export!(
     u32
 );
 entity_state_ptr_export!(entity_state_build_progress_ptr, build_progress, f64);
+entity_state_ptr_export!(entity_state_build_paid_energy_ptr, build_paid_energy, f64);
+entity_state_ptr_export!(entity_state_build_paid_metal_ptr, build_paid_metal, f64);
 entity_state_ptr_export!(entity_state_build_flags_ptr, build_flags, u32);
 entity_state_ptr_export!(entity_state_dirty_mask_ptr, dirty_mask, u32);

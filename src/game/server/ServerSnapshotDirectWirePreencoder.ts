@@ -51,6 +51,7 @@ import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import {
+  ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
@@ -142,7 +143,8 @@ const ENTITY_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_NORMAL;
 const ENTITY_UNIT_SLAB_DELTA_FIELDS =
   ENTITY_MOTION_DELTA_FIELDS |
-  ENTITY_CHANGED_HP;
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_BUILDING;
 
 function acceptsSerializedEntity(
   entity: Entity,
