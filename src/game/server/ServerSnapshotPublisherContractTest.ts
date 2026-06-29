@@ -170,6 +170,66 @@ export function runServerSnapshotPublisherContractTest(): void {
   listener.visibleEntityIds.clear();
   listener.visibleEntityIds.add(unit.id);
   listener.hasVisibleEntityBaseline = true;
+
+  const capturedDeferredRichSnapshot: { value: NetworkServerSnapshot | null } = { value: null };
+  listener.callback = (state) => {
+    capturedDeferredRichSnapshot.value = state;
+  };
+
+  unit.transform.x = 260;
+  unit.transform.rotation = 1.1;
+  unit.unit.velocityX = 18;
+  unit.unit.velocityY = 3;
+  world.refreshEntitySlotState(
+    unit,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL,
+  );
+
+  const deferredRichEmitted = publisher.emitLockstepPresentation(
+    createPublisherInput(world, listener),
+  );
+  assertContract(deferredRichEmitted, 'publisher must still emit rich deltas with only deferred motion rows');
+  const deferredRich = capturedDeferredRichSnapshot.value;
+  assertContract(deferredRich !== null, 'listener must receive deferred-motion rich delta');
+  assertContract(deferredRich.entityDeltaOnly === true, 'deferred-motion rich output must remain an entity delta envelope');
+  assertContract(
+    deferredRich.entities.length === 0,
+    'rich dirty output must defer motion-only flying rows to the sparse motion channel',
+  );
+
+  const capturedDeferredSparseSnapshot: { value: NetworkServerSnapshot | null } = { value: null };
+  listener.callback = (state) => {
+    capturedDeferredSparseSnapshot.value = state;
+  };
+  const deferredSparseEmitted = publisher.emitProjectileDelta(
+    createPublisherInput(world, listener),
+    true,
+  );
+  assertContract(deferredSparseEmitted, 'publisher must emit sparse motion after rich defers motion-only rows');
+  const deferredSparse = capturedDeferredSparseSnapshot.value;
+  assertContract(deferredSparse !== null, 'listener must receive sparse motion after rich deferral');
+  assertContract(deferredSparse.entityDeltaOnly === true, 'deferred sparse motion output must be an entity delta');
+  assertContract(deferredSparse.entities.length === 1, 'deferred sparse motion output must contain one row');
+  assertContract(
+    deferredSparse.entities[0] === undefined,
+    'deferred sparse motion row must stay DTO-free',
+  );
+  const deferredSparseSource = getEntitySnapshotWireSource(deferredSparse.entities);
+  assertContract(
+    deferredSparseSource !== undefined &&
+      deferredSparseSource.count === 1 &&
+      deferredSparseSource.unitRows.values[
+        deferredSparseSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
+      ] === unit.id,
+    'sparse motion channel must carry the row deferred by rich presentation',
+  );
+  client.applyNetworkState(deferredSparse);
+  for (let i = 0; i < 10; i++) client.applyPrediction(100);
+  assertContract(
+    (client.getEntity(unit.id)?.transform.x ?? 0) > 220,
+    'client must apply sparse motion after rich presentation defers the row',
+  );
+
   const capturedRichSnapshot: { value: NetworkServerSnapshot | null } = { value: null };
   listener.callback = (state) => {
     capturedRichSnapshot.value = state;

@@ -8,14 +8,6 @@ import type { NetworkServerSnapshot, NetworkServerSnapshotEntity } from '../netw
 import { serializeGameState } from '../network/stateSerializer';
 import type { SerializeGameStateOptions } from '../network/stateSerializer';
 import {
-  ENTITY_CHANGED_BUILDING,
-  ENTITY_CHANGED_HP,
-  ENTITY_CHANGED_NORMAL,
-  ENTITY_CHANGED_POS,
-  ENTITY_CHANGED_ROT,
-  ENTITY_CHANGED_VEL,
-} from '../../types/network';
-import {
   createSnapshotVisibilityCache,
   getOrBuildVisibility,
   serializeScanPulses,
@@ -63,37 +55,17 @@ import {
 } from './ServerSnapshotWirePayload';
 import { ServerSnapshotDirectWirePreencoder } from './ServerSnapshotDirectWirePreencoder';
 import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
+import {
+  ENTITY_BASIC_TRANSFORM_DELTA_FIELDS,
+  ENTITY_MOTION_DELTA_FIELDS,
+  ENTITY_UNIT_SLAB_DELTA_FIELDS,
+  isEntityMotionDeltaCandidate,
+  shouldDeferToSparseEntityMotionDelta,
+} from './snapshotMotionDeltaPolicy';
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 const PROJECTILE_DELTA_EMPTY_ENTITIES: NetworkServerSnapshot['entities'] = [];
 const PROJECTILE_DELTA_EMPTY_ECONOMY: NetworkServerSnapshot['economy'] = {};
-const ENTITY_MOTION_DELTA_FIELDS =
-  ENTITY_CHANGED_POS |
-  ENTITY_CHANGED_ROT |
-  ENTITY_CHANGED_VEL |
-  ENTITY_CHANGED_NORMAL;
-const ENTITY_BASIC_TRANSFORM_DELTA_FIELDS =
-  ENTITY_CHANGED_POS |
-  ENTITY_CHANGED_ROT;
-const ENTITY_UNIT_SLAB_DELTA_FIELDS =
-  ENTITY_MOTION_DELTA_FIELDS |
-  ENTITY_CHANGED_HP |
-  ENTITY_CHANGED_BUILDING;
-const ENTITY_MOTION_SPEED_EPSILON_SQ = 0.01 * 0.01;
-const ENTITY_MOTION_ANGULAR_EPSILON_SQ = 0.0001 * 0.0001;
-
-function isEntityMotionDeltaCandidate(entity: Entity): boolean {
-  const unit = entity.unit;
-  if (unit === null || unit.hp <= 0 || unit.locomotion.type !== 'flying') return false;
-  const vx = unit.velocityX ?? 0;
-  const vy = unit.velocityY ?? 0;
-  const vz = unit.velocityZ ?? 0;
-  if (vx * vx + vy * vy + vz * vz > ENTITY_MOTION_SPEED_EPSILON_SQ) return true;
-  const av = unit.angularVelocity3;
-  if (av === null) return false;
-  return av.x * av.x + av.y * av.y + av.z * av.z > ENTITY_MOTION_ANGULAR_EPSILON_SQ;
-}
-
 function addMaterializationStage(
   stages: SnapshotMaterializationStageDurations,
   stage: SnapshotMaterializationStage,
@@ -987,6 +959,7 @@ export class ServerSnapshotPublisher {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIdSet.has(id)) continue;
+      if (this.shouldDeferDirtyEntityToSparseMotion(world, id, dirtyFields[i])) continue;
       if (this.tryPushSlabDeltaEntityRowFromState(entities, id, dirtyFields[i], dirtySlots[i])) {
         emittedIds.add(id);
         continue;
@@ -1025,6 +998,12 @@ export class ServerSnapshotPublisher {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
       const changedFields = previousVisibleEntityIds.has(id) ? dirtyFields[i] : undefined;
+      if (
+        changedFields !== undefined &&
+        this.shouldDeferDirtyEntityToSparseMotion(world, id, changedFields)
+      ) {
+        continue;
+      }
       if (
         changedFields !== undefined &&
         this.tryPushSlabDeltaEntityRowFromState(entities, id, changedFields, dirtySlots[i])
@@ -1117,6 +1096,15 @@ export class ServerSnapshotPublisher {
       for (let i = 0; i < addedIds.length; i++) baseline.add(addedIds[i]);
     }
     listener.hasVisibleEntityBaseline = true;
+  }
+
+  private shouldDeferDirtyEntityToSparseMotion(
+    world: WorldState,
+    id: EntityId,
+    changedFields: number,
+  ): boolean {
+    const entity = world.getEntity(id);
+    return entity !== undefined && shouldDeferToSparseEntityMotionDelta(entity, changedFields);
   }
 
   emitProjectileDelta(

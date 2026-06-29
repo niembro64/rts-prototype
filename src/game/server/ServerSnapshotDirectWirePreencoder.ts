@@ -52,13 +52,11 @@ import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import {
-  ENTITY_CHANGED_BUILDING,
-  ENTITY_CHANGED_HP,
-  ENTITY_CHANGED_NORMAL,
-  ENTITY_CHANGED_POS,
-  ENTITY_CHANGED_ROT,
-  ENTITY_CHANGED_VEL,
-} from '../../types/network';
+  ENTITY_BASIC_TRANSFORM_DELTA_FIELDS,
+  ENTITY_MOTION_DELTA_FIELDS,
+  ENTITY_UNIT_SLAB_DELTA_FIELDS,
+  shouldDeferToSparseEntityMotionDelta,
+} from './snapshotMotionDeltaPolicy';
 
 const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 
@@ -137,19 +135,6 @@ const _directGameState: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
   winnerId: undefined,
 };
-
-const ENTITY_MOTION_DELTA_FIELDS =
-  ENTITY_CHANGED_POS |
-  ENTITY_CHANGED_ROT |
-  ENTITY_CHANGED_VEL |
-  ENTITY_CHANGED_NORMAL;
-const ENTITY_BASIC_TRANSFORM_DELTA_FIELDS =
-  ENTITY_CHANGED_POS |
-  ENTITY_CHANGED_ROT;
-const ENTITY_UNIT_SLAB_DELTA_FIELDS =
-  ENTITY_MOTION_DELTA_FIELDS |
-  ENTITY_CHANGED_HP |
-  ENTITY_CHANGED_BUILDING;
 
 function acceptsSerializedEntity(
   entity: Entity,
@@ -820,6 +805,12 @@ export class ServerSnapshotDirectWirePreencoder {
         const slot = input.dirtySlots[i] ?? -1;
         if (
           changedFields !== undefined &&
+          this.shouldDeferDirtyEntityToSparseMotion(input.world, id, changedFields)
+        ) {
+          continue;
+        }
+        if (
+          changedFields !== undefined &&
           (this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews, slot) ||
             this.tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews, slot))
         ) {
@@ -873,6 +864,7 @@ export class ServerSnapshotDirectWirePreencoder {
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIds.has(id)) continue;
       const slot = input.dirtySlots[i] ?? -1;
+      if (this.shouldDeferDirtyEntityToSparseMotion(input.world, id, input.dirtyFields[i])) continue;
       if (
         this.tryAppendUnitSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews, slot) ||
         this.tryAppendBuildingSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews, slot)
@@ -895,6 +887,15 @@ export class ServerSnapshotDirectWirePreencoder {
 
     emittedIds.clear();
     return entityCount;
+  }
+
+  private shouldDeferDirtyEntityToSparseMotion(
+    world: WorldState,
+    id: EntityId,
+    changedFields: number,
+  ): boolean {
+    const entity = world.getEntity(id);
+    return entity !== undefined && shouldDeferToSparseEntityMotionDelta(entity, changedFields);
   }
 
   private writeRichDeltaRemovedIds(input: ServerSnapshotRichDeltaDirectWireInput): void {

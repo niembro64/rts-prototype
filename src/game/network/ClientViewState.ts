@@ -1507,8 +1507,107 @@ export class ClientViewState {
     const count = source.count;
     if (count === 0 || count !== entities.length) return false;
     if (source.typedPlaceholderRows !== count) return false;
+    if (this.canApplyUnitHotMotionTypedPlaceholderSource(source)) {
+      this.applyUnitHotMotionTypedPlaceholderSource(source, now);
+      return true;
+    }
     this.applyTypedPlaceholderDeltaSource(source, now, applyStats);
     return true;
+  }
+
+  private canApplyUnitHotMotionTypedPlaceholderSource(source: EntitySnapshotWireSource): boolean {
+    const count = source.count;
+    if (
+      source.unitRows.count !== count ||
+      source.basicRows.count !== 0 ||
+      source.buildingRows.count !== 0 ||
+      source.actionRows.count !== 0 ||
+      source.turretRows.count !== 0 ||
+      source.factorySelectedUnitRows.count !== 0 ||
+      source.waypointRows.count !== 0
+    ) {
+      return false;
+    }
+
+    const values = source.unitRows.values;
+    for (let entityIndex = 0; entityIndex < count; entityIndex++) {
+      if (source.kinds[entityIndex] !== ENTITY_SNAPSHOT_WIRE_KIND_UNIT) return false;
+      const rowIndex = source.rowIndices[entityIndex];
+      if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
+      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+      const changedFields = values[base + 7] | 0;
+      if (
+        values[base + 6] === 0 ||
+        changedFields === 0 ||
+        (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) !== 0
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private applyUnitHotMotionTypedPlaceholderSource(
+    source: EntitySnapshotWireSource,
+    now: number,
+  ): void {
+    const values = source.unitRows.values;
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      const base = source.rowIndices[entityIndex] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+      const changedFields = values[base + 7] | 0;
+      const id = values[base + 0] | 0;
+      const playerId = values[base + 5] | 0;
+      if (
+        !this.renderSlotMatchesSnapshotOwner(id as EntityId, playerId as PlayerId, CLIENT_RENDER_ENTITY_KIND_UNIT)
+      ) {
+        const existing = this.entities.get(id);
+        if (existing === undefined || existing.unit === null) continue;
+        const ownership = existing.ownership;
+        if (ownership === null || ownership.playerId !== playerId) continue;
+      }
+
+      const target = this.getOrCreateServerTarget(id);
+      if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+        target.x = deqEntityPos(values[base + 1]);
+        target.y = deqEntityPos(values[base + 2]);
+        target.z = deqEntityPos(values[base + 3]);
+      }
+      if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && values[base + 23] !== 0) {
+        target.surfaceNormalX = deqNormal(values[base + 24]);
+        target.surfaceNormalY = deqNormal(values[base + 25]);
+        target.surfaceNormalZ = deqNormal(values[base + 26]);
+      }
+      if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+        target.rotation = deqRot(values[base + 4]);
+        if (values[base + 27] !== 0) {
+          let orientation = target.orientation;
+          if (orientation === null) {
+            orientation = { x: 0, y: 0, z: 0, w: 1 };
+            target.orientation = orientation;
+          }
+          orientation.x = values[base + 28];
+          orientation.y = values[base + 29];
+          orientation.z = values[base + 30];
+          orientation.w = values[base + 31];
+        }
+      }
+      if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
+        target.velocityX = deqVel(values[base + 10]);
+        target.velocityY = deqVel(values[base + 11]);
+        target.velocityZ = deqVel(values[base + 12]);
+        if (values[base + 32] !== 0) {
+          target.angularVelocityX = values[base + 33];
+          target.angularVelocityY = values[base + 34];
+          target.angularVelocityZ = values[base + 35];
+        } else {
+          target.angularVelocityX = null;
+          target.angularVelocityY = null;
+          target.angularVelocityZ = null;
+        }
+      }
+      target.updatedAtMs = now;
+      this.activeEntityPredictionIds.add(id);
+    }
   }
 
   private applyTypedPlaceholderDeltaSource(

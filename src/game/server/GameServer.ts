@@ -302,7 +302,6 @@ export class GameServer {
     if (this.stopped) return false;
     const now = performance.now();
     this.lastSnapshotTime = now;
-    this.lastSparseEntityMotionSnapshotTime = now;
     return this.snapshotPublisher.emitLockstepPresentation(this.buildSnapshotPublisherInput());
   }
 
@@ -355,7 +354,7 @@ export class GameServer {
       const interval = this.maxSnapshotIntervalMs;
       if (interval === 0 || elapsed >= interval) {
         this.lastSnapshotTime = tickNow;
-        this.queuePresentationSnapshot(tickNow);
+        this.queuePresentationSnapshot();
       } else {
         const hasProjectilePresentationEvents =
           this.simulation.hasPendingProjectilePresentationEvents();
@@ -386,13 +385,12 @@ export class GameServer {
     this.emitSnapshot();
   }
 
-  private queuePresentationSnapshot(now: number): void {
+  private queuePresentationSnapshot(): void {
     if (this.pendingProjectileDeltaSnapshotTimer !== null) {
       clearTimeout(this.pendingProjectileDeltaSnapshotTimer);
       this.pendingProjectileDeltaSnapshotTimer = null;
       this.pendingProjectileDeltaIncludesEntityMotion = false;
     }
-    this.lastSparseEntityMotionSnapshotTime = now;
     if (this.pendingPresentationSnapshotTimer !== null) return;
     this.pendingPresentationSnapshotTimer = setTimeout(() => {
       this.pendingPresentationSnapshotTimer = null;
