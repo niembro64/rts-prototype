@@ -349,7 +349,11 @@ export class WorldState {
   refreshEntitySlotState(entity: Entity, dirtyFields = 0): void {
     const ownership = entity.ownership;
     const teamId = ownership !== null ? this.getTeamId(ownership.playerId) : undefined;
-    entitySlotRegistry.refreshEntityState(entity, dirtyFields, teamId);
+    if (dirtyFields !== 0) {
+      entitySlotRegistry.markDirty(entity, dirtyFields, teamId);
+      return;
+    }
+    entitySlotRegistry.refreshEntityState(entity, 0, teamId);
   }
 
   // Get current tick
