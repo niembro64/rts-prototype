@@ -88,26 +88,13 @@ export class EntityCacheManager {
   }
 
   handleEntityAdded(entity: Entity): void {
-    if (entity.type !== 'shot') {
-      this.invalidate();
-      return;
-    }
     if (this.dirty) return;
-    this.addProjectileEntity(entity, true);
+    this.addEntityToCaches(entity, true, true);
   }
 
   handleEntityRemoved(entity: Entity): void {
-    if (entity.type !== 'shot') {
-      this.invalidate();
-      return;
-    }
     if (this.dirty) return;
-    removeEntityFromList(this.cachedAll, entity);
-    removeEntityFromList(this.cachedProjectiles, entity);
-    removeEntityFromList(this.cachedTravelingProjectiles, entity);
-    removeEntityFromList(this.cachedSmokeTrailProjectiles, entity);
-    removeEntityFromList(this.cachedLineProjectiles, entity);
-    removeEntityFromList(this.cachedCombatTargetEntities, entity);
+    this.removeEntityFromCaches(entity);
   }
 
   refreshHealthBarEntity(entity: Entity): void {
@@ -171,166 +158,181 @@ export class EntityCacheManager {
 
     const sortedEntities = this.sortedEntities;
     for (let sortedIndex = 0; sortedIndex < sortedEntities.length; sortedIndex++) {
-      const entity = sortedEntities[sortedIndex];
-      this.cachedAll.push(entity);
-      const ownership = entity.ownership;
-      const buildInProgress = isBuildInProgress(entity.buildable);
-      // Combat capability is host-agnostic: any entity with a
-      // CombatComponent that owns a non-visualOnly turret enters the
-      // armed list, regardless of whether it's a unit or a building.
-      if (entity.combat) {
-        const turrets = entity.combat.turrets;
-        let hasShield = false;
-        let hasBeam = false;
-        let hasCombatTurret = false;
-        for (let i = 0; i < turrets.length; i++) {
-          const config = turrets[i].config;
-          if (config.visualOnly) continue;
-          hasCombatTurret = true;
-          const shot = config.shot;
-          if (shot === null) continue;
-          const t = shot.type;
-          if (t === 'shield' && shot.barrier !== undefined) hasShield = true;
-          else if (t === 'beam') hasBeam = true;
-          if (hasShield && hasBeam) break;
-        }
-        if (hasCombatTurret) this.cachedArmedEntities.push(entity);
-        if (hasShield) this.cachedShieldUnits.push(entity);
-        if (hasBeam) this.cachedBeamUnits.push(entity);
-      }
-      switch (entity.type) {
-        case 'unit':
-          this.cachedUnits.push(entity);
-          this.cachedUnitsAndBuildings.push(entity);
-          this.cachedCombatTargetEntities.push(entity);
-          if (ownership !== null) {
-            this.getOrCreateUnitsByPlayer(ownership.playerId).push(entity);
-          }
-          // Damaged-or-shell list: feeds HealthBar3D.perUnit. A unit
-          // shell (incomplete buildable) belongs here too even though
-          // its hp is 0 at spawn — the bar renderer needs to draw the
-          // build bars regardless of HP.
-          if (
-            entity.unit
-            && (
-              (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
-              || buildInProgress
-            )
-          ) {
-            this.cachedDamagedUnits.push(entity);
-          }
-          // HUD list: body-damaged or build-in-progress. Mounted turrets
-          // no longer have independent health/build bars.
-          if (
-            entity.unit
-            && (
-              (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
-              || buildInProgress
-            )
-          ) {
-            this.cachedHudEntities.push(entity);
-          }
-          if (entity.unit !== null && entity.unit.shieldPanels.length > 0) {
-            this.cachedShieldPanelUnits.push(entity);
-          }
-          if (entity.unit !== null && entity.unit.locomotion.type === 'flying') {
-            this.cachedFlyingUnits.push(entity);
-          }
-          if (entity.commander) this.cachedCommanderUnits.push(entity);
-          if (entity.builder) this.cachedBuilderUnits.push(entity);
-          // A unit that carries a factory component is a mobile factory (a
-          // queen): it produces units exactly like a building factory, so it
-          // joins the per-player factory bucket the production + funding passes
-          // iterate.
-          if (entity.factory) {
-            this.cachedFactoryUnits.push(entity);
-            if (ownership !== null) {
-              this.getOrCreateFactoriesByPlayer(ownership.playerId).push(entity);
-            }
-          }
-          break;
-        case 'building':
-        case 'tower':
-          // Towers and buildings share the static-entity caches —
-          // every getBuildings() / getBuildingsByPlayer() / health-bar
-          // / construction-shell consumer treats them identically.
-          // The entity.type discriminator differentiates them for
-          // selection-panel UI and combat targeting; everything else
-          // reads the building component the same way. The producer
-          // active-state caches (solar/wind/extractor/radar/converter)
-          // are gated on buildingBlueprintId, so towers naturally don't enter
-          // them. Factories (a tower-class buildingBlueprintId) still ride
-          // the cachedFactoryBuildings list because the production
-          // queue lives on the entity.factory component.
-          this.cachedBuildings.push(entity);
-          this.cachedUnitsAndBuildings.push(entity);
-          this.cachedCombatTargetEntities.push(entity);
-          if (ownership !== null) {
-            this.getOrCreateBuildingsByPlayer(ownership.playerId).push(entity);
-          }
-          if (
-            entity.building
-            && (
-              (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
-              || buildInProgress
-            )
-          ) {
-            this.cachedHealthBarBuildings.push(entity);
-          }
-          // HUD list: body-damaged or build-in-progress. Mounted turrets
-          // no longer have independent health/build bars.
-          if (
-            entity.building
-            && (
-              (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
-              || buildInProgress
-            )
-          ) {
-            this.cachedHudEntities.push(entity);
-          }
-          if (entity.buildingBlueprintId === 'buildingWind') {
-            this.cachedWindBuildings.push(entity);
-            this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingBlueprintId === 'buildingSolar') {
-            this.cachedSolarBuildings.push(entity);
-            this.cachedActiveStateBuildings.push(entity);
-          } else if (isMetalExtractorBlueprintId(entity.buildingBlueprintId)) {
-            this.cachedExtractorBuildings.push(entity);
-            this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingBlueprintId === 'buildingResourceConverter') {
-            this.cachedConverterBuildings.push(entity);
-            this.cachedActiveStateBuildings.push(entity);
-          } else if (entity.buildingBlueprintId === 'buildingRadar') {
-            this.cachedActiveStateBuildings.push(entity);
-          }
-          if (entity.factory) {
-            this.cachedFactoryBuildings.push(entity);
-            if (ownership !== null) {
-              this.getOrCreateFactoriesByPlayer(ownership.playerId).push(entity);
-            }
-          }
-          break;
-        case 'shot':
-          this.addProjectileEntity(entity, false);
-          break;
-      }
+      this.addEntityToCaches(sortedEntities[sortedIndex], true, false);
     }
 
     this.dirty = false;
     return true;
   }
 
-  private addProjectileEntity(entity: Entity, includeAll: boolean): void {
-    this.cachedProjectiles.push(entity);
-    if (includeAll) this.cachedAll.push(entity);
+  private addEntityToCaches(entity: Entity, includeAll: boolean, sortedInsert: boolean): void {
+    if (includeAll) addEntityToList(this.cachedAll, entity, sortedInsert);
+    const ownership = entity.ownership;
+    const buildInProgress = isBuildInProgress(entity.buildable);
+    // Combat capability is host-agnostic: any entity with a
+    // CombatComponent that owns a non-visualOnly turret enters the
+    // armed list, regardless of whether it's a unit or a building.
+    if (entity.combat) {
+      const turrets = entity.combat.turrets;
+      let hasShield = false;
+      let hasBeam = false;
+      let hasCombatTurret = false;
+      for (let i = 0; i < turrets.length; i++) {
+        const config = turrets[i].config;
+        if (config.visualOnly) continue;
+        hasCombatTurret = true;
+        const shot = config.shot;
+        if (shot === null) continue;
+        const t = shot.type;
+        if (t === 'shield' && shot.barrier !== undefined) hasShield = true;
+        else if (t === 'beam') hasBeam = true;
+        if (hasShield && hasBeam) break;
+      }
+      if (hasCombatTurret) addEntityToList(this.cachedArmedEntities, entity, sortedInsert);
+      if (hasShield) addEntityToList(this.cachedShieldUnits, entity, sortedInsert);
+      if (hasBeam) addEntityToList(this.cachedBeamUnits, entity, sortedInsert);
+    }
+    switch (entity.type) {
+      case 'unit':
+        addEntityToList(this.cachedUnits, entity, sortedInsert);
+        addEntityToList(this.cachedUnitsAndBuildings, entity, sortedInsert);
+        addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
+        if (ownership !== null) {
+          addEntityToList(this.getOrCreateUnitsByPlayer(ownership.playerId), entity, sortedInsert);
+        }
+        // Damaged-or-shell list: feeds HealthBar3D.perUnit. A unit
+        // shell (incomplete buildable) belongs here too even though
+        // its hp is 0 at spawn — the bar renderer needs to draw the
+        // build bars regardless of HP.
+        if (
+          entity.unit
+          && (
+            (entity.unit.hp > 0 && entity.unit.hp < entity.unit.maxHp)
+            || buildInProgress
+          )
+        ) {
+          addEntityToList(this.cachedDamagedUnits, entity, sortedInsert);
+          addEntityToList(this.cachedHudEntities, entity, sortedInsert);
+        }
+        if (entity.unit !== null && entity.unit.shieldPanels.length > 0) {
+          addEntityToList(this.cachedShieldPanelUnits, entity, sortedInsert);
+        }
+        if (entity.unit !== null && entity.unit.locomotion.type === 'flying') {
+          addEntityToList(this.cachedFlyingUnits, entity, sortedInsert);
+        }
+        if (entity.commander) addEntityToList(this.cachedCommanderUnits, entity, sortedInsert);
+        if (entity.builder) addEntityToList(this.cachedBuilderUnits, entity, sortedInsert);
+        // A unit that carries a factory component is a mobile factory (a
+        // queen): it produces units exactly like a building factory, so it
+        // joins the per-player factory bucket the production + funding passes
+        // iterate.
+        if (entity.factory) {
+          addEntityToList(this.cachedFactoryUnits, entity, sortedInsert);
+          if (ownership !== null) {
+            addEntityToList(this.getOrCreateFactoriesByPlayer(ownership.playerId), entity, sortedInsert);
+          }
+        }
+        break;
+      case 'building':
+      case 'tower':
+        // Towers and buildings share the static-entity caches —
+        // every getBuildings() / getBuildingsByPlayer() / health-bar
+        // / construction-shell consumer treats them identically.
+        // The entity.type discriminator differentiates them for
+        // selection-panel UI and combat targeting; everything else
+        // reads the building component the same way. The producer
+        // active-state caches (solar/wind/extractor/radar/converter)
+        // are gated on buildingBlueprintId, so towers naturally don't enter
+        // them. Factories (a tower-class buildingBlueprintId) still ride
+        // the cachedFactoryBuildings list because the production
+        // queue lives on the entity.factory component.
+        addEntityToList(this.cachedBuildings, entity, sortedInsert);
+        addEntityToList(this.cachedUnitsAndBuildings, entity, sortedInsert);
+        addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
+        if (ownership !== null) {
+          addEntityToList(this.getOrCreateBuildingsByPlayer(ownership.playerId), entity, sortedInsert);
+        }
+        if (
+          entity.building
+          && (
+            (entity.building.hp > 0 && entity.building.hp < entity.building.maxHp)
+            || buildInProgress
+          )
+        ) {
+          addEntityToList(this.cachedHealthBarBuildings, entity, sortedInsert);
+          addEntityToList(this.cachedHudEntities, entity, sortedInsert);
+        }
+        if (entity.buildingBlueprintId === 'buildingWind') {
+          addEntityToList(this.cachedWindBuildings, entity, sortedInsert);
+          addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
+        } else if (entity.buildingBlueprintId === 'buildingSolar') {
+          addEntityToList(this.cachedSolarBuildings, entity, sortedInsert);
+          addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
+        } else if (isMetalExtractorBlueprintId(entity.buildingBlueprintId)) {
+          addEntityToList(this.cachedExtractorBuildings, entity, sortedInsert);
+          addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
+        } else if (entity.buildingBlueprintId === 'buildingResourceConverter') {
+          addEntityToList(this.cachedConverterBuildings, entity, sortedInsert);
+          addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
+        } else if (entity.buildingBlueprintId === 'buildingRadar') {
+          addEntityToList(this.cachedActiveStateBuildings, entity, sortedInsert);
+        }
+        if (entity.factory) {
+          addEntityToList(this.cachedFactoryBuildings, entity, sortedInsert);
+          if (ownership !== null) {
+            addEntityToList(this.getOrCreateFactoriesByPlayer(ownership.playerId), entity, sortedInsert);
+          }
+        }
+        break;
+      case 'shot':
+        this.addProjectileEntity(entity, false, sortedInsert);
+        break;
+    }
+  }
+
+  private removeEntityFromCaches(entity: Entity): void {
+    removeEntityFromList(this.cachedAll, entity);
+    removeEntityFromList(this.cachedUnits, entity);
+    removeEntityFromList(this.cachedBuildings, entity);
+    removeEntityFromList(this.cachedProjectiles, entity);
+    removeEntityFromList(this.cachedTravelingProjectiles, entity);
+    removeEntityFromList(this.cachedSmokeTrailProjectiles, entity);
+    removeEntityFromList(this.cachedLineProjectiles, entity);
+    removeEntityFromList(this.cachedDamagedUnits, entity);
+    removeEntityFromList(this.cachedHealthBarBuildings, entity);
+    removeEntityFromList(this.cachedHudEntities, entity);
+    removeEntityFromList(this.cachedWindBuildings, entity);
+    removeEntityFromList(this.cachedSolarBuildings, entity);
+    removeEntityFromList(this.cachedExtractorBuildings, entity);
+    removeEntityFromList(this.cachedConverterBuildings, entity);
+    removeEntityFromList(this.cachedActiveStateBuildings, entity);
+    removeEntityFromList(this.cachedFactoryBuildings, entity);
+    removeEntityFromList(this.cachedFactoryUnits, entity);
+    removeEntityFromList(this.cachedShieldUnits, entity);
+    removeEntityFromList(this.cachedCommanderUnits, entity);
+    removeEntityFromList(this.cachedBuilderUnits, entity);
+    removeEntityFromList(this.cachedFlyingUnits, entity);
+    removeEntityFromList(this.cachedArmedEntities, entity);
+    removeEntityFromList(this.cachedBeamUnits, entity);
+    removeEntityFromList(this.cachedShieldPanelUnits, entity);
+    removeEntityFromList(this.cachedUnitsAndBuildings, entity);
+    removeEntityFromList(this.cachedCombatTargetEntities, entity);
+    for (const list of this.cachedUnitsByPlayer.values()) removeEntityFromList(list, entity);
+    for (const list of this.cachedBuildingsByPlayer.values()) removeEntityFromList(list, entity);
+    for (const list of this.cachedFactoriesByPlayer.values()) removeEntityFromList(list, entity);
+  }
+
+  private addProjectileEntity(entity: Entity, includeAll: boolean, sortedInsert: boolean): void {
+    addEntityToList(this.cachedProjectiles, entity, sortedInsert);
+    if (includeAll) addEntityToList(this.cachedAll, entity, sortedInsert);
     if (entity.projectile !== null && entity.projectile.projectileType === 'projectile') {
-      this.cachedTravelingProjectiles.push(entity);
-      this.cachedCombatTargetEntities.push(entity);
+      addEntityToList(this.cachedTravelingProjectiles, entity, sortedInsert);
+      addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
       if (entity.projectile.config.shotProfile.visual.smokeTrail) {
-        this.cachedSmokeTrailProjectiles.push(entity);
+        addEntityToList(this.cachedSmokeTrailProjectiles, entity, sortedInsert);
       }
     } else if (entity.projectile && isRayType(entity.projectile.projectileType)) {
-      this.cachedLineProjectiles.push(entity);
+      addEntityToList(this.cachedLineProjectiles, entity, sortedInsert);
     }
   }
 
@@ -476,6 +478,11 @@ export class EntityCacheManager {
   getAll(): Entity[] {
     return this.cachedAll;
   }
+}
+
+function addEntityToList(list: Entity[], entity: Entity, sortedInsert: boolean): void {
+  if (sortedInsert) insertEntityById(list, entity);
+  else list.push(entity);
 }
 
 function removeEntityFromList(list: Entity[], entity: Entity): void {

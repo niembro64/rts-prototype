@@ -4459,6 +4459,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCommandExecutionContractTest();
         const { runSimulationUnitActionPlannerContractTest } = await import('../sim/SimulationUnitActionPlannerContractTest');
         runSimulationUnitActionPlannerContractTest();
+        const { runEntityCacheManagerContractTest } = await import('../sim/EntityCacheManagerContractTest');
+        runEntityCacheManagerContractTest();
         const { runEntitySlotRegistryContractTest } = await import('../sim/EntitySlotRegistryContractTest');
         runEntitySlotRegistryContractTest();
         const { runClientRenderEntityStateSlabContractTest } = await import('../render3d/ClientRenderEntityStateSlabContractTest');
