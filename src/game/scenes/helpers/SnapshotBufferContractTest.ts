@@ -9,7 +9,12 @@ import type {
 import type { NetworkServerSnapshot } from '../../network/NetworkTypes';
 import type { NetworkServerSnapshotEntity } from '../../network/NetworkTypes';
 import { SnapshotBuffer } from './SnapshotBuffer';
-import { ENTITY_CHANGED_POS, ENTITY_CHANGED_VEL } from '../../../types/network';
+import {
+  ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_HP,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_VEL,
+} from '../../../types/network';
 import { decodeNetworkSnapshot } from '../../network/snapshotWireCodec';
 import {
   getPackedProjectileSnapshotWire,
@@ -17,7 +22,9 @@ import {
 } from '../../network/snapshotProjectileWirePack';
 import {
   ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
@@ -58,6 +65,69 @@ function createUnitEntity(
   };
 }
 
+function createFullUnitEntity(
+  id: number,
+  x: number,
+  hp = 100,
+  maxHp = 120,
+): NetworkServerSnapshotEntity {
+  const entity = createUnitEntity(id, x, null);
+  entity.unit = {
+    unitBlueprintCode: null,
+    hp: { curr: hp, max: maxHp },
+    radius: null,
+    bodyCenterHeight: null,
+    mass: null,
+    velocity: null,
+    surfaceNormal: null,
+    orientation: null,
+    angularVelocity3: null,
+    fireEnabled: null,
+    isCommander: null,
+    buildTargetId: null,
+    buildTargetIdPresent: false,
+    actions: null,
+    turrets: null,
+    build: {
+      complete: false,
+      interrupted: false,
+      paid: { energy: 0, metal: 0 },
+    },
+  };
+  return entity;
+}
+
+function createFullBuildingEntity(
+  id: number,
+  x: number,
+  hp = 200,
+  maxHp = 240,
+): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'building',
+    playerId: 1,
+    changedFields: null,
+    pos: { x, y: 0, z: 0 },
+    rotation: 0,
+    unit: null,
+    building: {
+      buildingBlueprintCode: null,
+      dim: null,
+      hp: { curr: hp, max: maxHp },
+      build: {
+        complete: false,
+        interrupted: false,
+        paid: { energy: 0, metal: 0 },
+      },
+      metalExtractionRate: null,
+      solar: null,
+      turrets: null,
+      factory: null,
+    },
+  };
+}
+
 function createSparseDecodedMotionUnitEntity(id: number, x: number): NetworkServerSnapshotEntity {
   const entity = createUnitEntity(id, x, ENTITY_CHANGED_POS);
   entity.unit = {
@@ -79,9 +149,23 @@ function attachTypedUnitMotionSource(
   return attachTypedUnitMotionSources(entities, [{ id, x, changedFields }]);
 }
 
+type TypedUnitRowFixture = {
+  id: number;
+  x: number;
+  changedFields?: number | null;
+  hpCurr?: number;
+  hpMax?: number;
+  build?: {
+    complete: boolean;
+    interrupted?: boolean;
+    paidEnergy: number;
+    paidMetal: number;
+  } | null;
+};
+
 function attachTypedUnitMotionSources(
   entities: NetworkServerSnapshotEntity[],
-  rows: readonly { id: number; x: number; changedFields?: number | null }[],
+  rows: readonly TypedUnitRowFixture[],
 ): EntitySnapshotWireSource {
   const source = createEmptyEntityWireSource();
   for (let i = 0; i < rows.length; i++) {
@@ -98,8 +182,64 @@ function attachTypedUnitMotionSources(
     values[base + 5] = 1;
     values[base + 6] = changedFields === null ? 0 : 1;
     values[base + 7] = changedFields ?? 0;
+    values[base + 8] = row.hpCurr ?? 0;
+    values[base + 9] = row.hpMax ?? 0;
+    if (row.build !== undefined && row.build !== null) {
+      values[base + 45] = 1;
+      values[base + 46] = row.build.complete ? 1 : 0;
+      values[base + 47] = row.build.paidEnergy;
+      values[base + 48] = row.build.paidMetal;
+      values[base + 63] = row.build.interrupted === true ? 1 : 0;
+    }
     appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex);
   }
+  registerEntitySnapshotWireSource(entities, source);
+  return source;
+}
+
+function attachTypedBuildingSource(
+  entities: NetworkServerSnapshotEntity[],
+  id: number,
+  x: number,
+  changedFields: number | null,
+  options: {
+    hpCurr?: number;
+    hpMax?: number;
+    complete?: boolean;
+    paidEnergy?: number;
+    paidMetal?: number;
+    interrupted?: boolean;
+    metalExtractionRate?: number | null;
+    solarOpen?: boolean | null;
+  } = {},
+): EntitySnapshotWireSource {
+  const source = createEmptyEntityWireSource();
+  const rowIndex = reserveFloat64WireRows(
+    source.buildingRows,
+    1,
+    ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  );
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  const values = source.buildingRows.values;
+  values[base + 0] = id;
+  values[base + 1] = x;
+  values[base + 2] = 0;
+  values[base + 3] = 0;
+  values[base + 4] = 0;
+  values[base + 5] = 1;
+  values[base + 6] = changedFields === null ? 0 : 1;
+  values[base + 7] = changedFields ?? 0;
+  values[base + 13] = options.hpCurr ?? 0;
+  values[base + 14] = options.hpMax ?? 0;
+  values[base + 15] = options.complete === true ? 1 : 0;
+  values[base + 16] = options.paidEnergy ?? 0;
+  values[base + 17] = options.paidMetal ?? 0;
+  values[base + 18] = options.metalExtractionRate !== undefined && options.metalExtractionRate !== null ? 1 : 0;
+  values[base + 19] = options.metalExtractionRate ?? 0;
+  values[base + 20] = options.solarOpen !== undefined && options.solarOpen !== null ? 1 : 0;
+  values[base + 21] = options.solarOpen === true ? 1 : 0;
+  values[base + 34] = options.interrupted === true ? 1 : 0;
+  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_BUILDING, rowIndex);
   registerEntitySnapshotWireSource(entities, source);
   return source;
 }
@@ -378,6 +518,131 @@ export function runSnapshotBufferContractTest(): void {
         preservedMetadataOnlySource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 1
       ] === 666,
     'metadata-only typed motion deltas must patch pending full typed rows from wire rows',
+  );
+
+  const typedUnitMetadataFullEntity = createFullUnitEntity(67, 100, 90, 120);
+  const typedUnitMetadataFullEntities = [typedUnitMetadataFullEntity];
+  const typedUnitMetadataFullSnapshot = createSnapshot(16, [], typedUnitMetadataFullEntities);
+  attachTypedUnitMotionSources(typedUnitMetadataFullEntities, [{
+    id: 67,
+    x: 100,
+    changedFields: null,
+    hpCurr: 90,
+    hpMax: 120,
+    build: {
+      complete: false,
+      interrupted: false,
+      paidEnergy: 0,
+      paidMetal: 0,
+    },
+  }]);
+  fake.emitSnapshot(typedUnitMetadataFullSnapshot);
+  const typedUnitMetadataDeltaEntities = [undefined] as unknown as NetworkServerSnapshotEntity[];
+  attachTypedUnitMotionSources(typedUnitMetadataDeltaEntities, [{
+    id: 67,
+    x: 0,
+    changedFields: ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING,
+    hpCurr: 55,
+    hpMax: 120,
+    build: {
+      complete: false,
+      interrupted: true,
+      paidEnergy: 25,
+      paidMetal: 75,
+    },
+  }]);
+  const typedUnitMetadataDeltaSnapshot = createSnapshot(17, [], typedUnitMetadataDeltaEntities);
+  typedUnitMetadataDeltaSnapshot.entityDeltaOnly = true;
+  fake.emitSnapshot(typedUnitMetadataDeltaSnapshot);
+  const consumedTypedUnitMetadataMerge = buffer.consume();
+  const consumedTypedUnit = consumedTypedUnitMetadataMerge?.entities[0]?.unit;
+  assertContract(
+    consumedTypedUnit?.hp?.curr === 55 &&
+      consumedTypedUnit.hp.max === 120 &&
+      consumedTypedUnit.build?.paid.energy === 25 &&
+      consumedTypedUnit.build?.paid.metal === 75 &&
+      consumedTypedUnit.build?.interrupted === true,
+    'metadata-only typed unit HP/build deltas must patch pending full DTO rows',
+  );
+  const preservedUnitMetadataSource = consumedTypedUnitMetadataMerge !== null
+    ? getEntitySnapshotWireSource(consumedTypedUnitMetadataMerge.entities)
+    : undefined;
+  const preservedUnitMetadataBase = preservedUnitMetadataSource !== undefined
+    ? preservedUnitMetadataSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
+    : -1;
+  assertContract(
+    preservedUnitMetadataSource !== undefined &&
+      preservedUnitMetadataSource.unitRows.values[preservedUnitMetadataBase + 8] === 55 &&
+      preservedUnitMetadataSource.unitRows.values[preservedUnitMetadataBase + 45] === 1 &&
+      preservedUnitMetadataSource.unitRows.values[preservedUnitMetadataBase + 47] === 25 &&
+      preservedUnitMetadataSource.unitRows.values[preservedUnitMetadataBase + 48] === 75 &&
+      preservedUnitMetadataSource.unitRows.values[preservedUnitMetadataBase + 63] === 1,
+    'metadata-only typed unit HP/build deltas must patch pending full typed rows',
+  );
+
+  const typedBuildingMetadataFullEntity = createFullBuildingEntity(68, 100, 180, 240);
+  const typedBuildingMetadataFullEntities = [typedBuildingMetadataFullEntity];
+  const typedBuildingMetadataFullSnapshot = createSnapshot(18, [], typedBuildingMetadataFullEntities);
+  attachTypedBuildingSource(typedBuildingMetadataFullEntities, 68, 100, null, {
+    hpCurr: 180,
+    hpMax: 240,
+    complete: false,
+    paidEnergy: 0,
+    paidMetal: 0,
+    interrupted: false,
+    metalExtractionRate: null,
+    solarOpen: null,
+  });
+  fake.emitSnapshot(typedBuildingMetadataFullSnapshot);
+  const typedBuildingMetadataDeltaEntities = [undefined] as unknown as NetworkServerSnapshotEntity[];
+  attachTypedBuildingSource(
+    typedBuildingMetadataDeltaEntities,
+    68,
+    0,
+    ENTITY_CHANGED_HP | ENTITY_CHANGED_BUILDING,
+    {
+      hpCurr: 88,
+      hpMax: 240,
+      complete: false,
+      paidEnergy: 60,
+      paidMetal: 110,
+      interrupted: true,
+      metalExtractionRate: 4.5,
+      solarOpen: true,
+    },
+  );
+  const typedBuildingMetadataDeltaSnapshot = createSnapshot(19, [], typedBuildingMetadataDeltaEntities);
+  typedBuildingMetadataDeltaSnapshot.entityDeltaOnly = true;
+  fake.emitSnapshot(typedBuildingMetadataDeltaSnapshot);
+  const consumedTypedBuildingMetadataMerge = buffer.consume();
+  const consumedTypedBuilding = consumedTypedBuildingMetadataMerge?.entities[0]?.building;
+  assertContract(
+    consumedTypedBuilding?.hp?.curr === 88 &&
+      consumedTypedBuilding.hp.max === 240 &&
+      consumedTypedBuilding.build?.paid.energy === 60 &&
+      consumedTypedBuilding.build?.paid.metal === 110 &&
+      consumedTypedBuilding.build?.interrupted === true &&
+      consumedTypedBuilding.metalExtractionRate === 4.5 &&
+      consumedTypedBuilding.solar?.open === true,
+    'metadata-only typed building HP/build deltas must patch pending full DTO rows',
+  );
+  const preservedBuildingMetadataSource = consumedTypedBuildingMetadataMerge !== null
+    ? getEntitySnapshotWireSource(consumedTypedBuildingMetadataMerge.entities)
+    : undefined;
+  const preservedBuildingMetadataBase = preservedBuildingMetadataSource !== undefined
+    ? preservedBuildingMetadataSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE
+    : -1;
+  assertContract(
+    preservedBuildingMetadataSource !== undefined &&
+      preservedBuildingMetadataSource.buildingRows.values[preservedBuildingMetadataBase + 13] === 88 &&
+      preservedBuildingMetadataSource.buildingRows.values[preservedBuildingMetadataBase + 16] === 60 &&
+      preservedBuildingMetadataSource.buildingRows.values[preservedBuildingMetadataBase + 17] === 110 &&
+      preservedBuildingMetadataSource.buildingRows.values[preservedBuildingMetadataBase + 18] === 1 &&
+      preservedBuildingMetadataSource.buildingRows.values[preservedBuildingMetadataBase + 19] === 4.5 &&
+      preservedBuildingMetadataSource.buildingRows.values[preservedBuildingMetadataBase + 20] === 1 &&
+      preservedBuildingMetadataSource.buildingRows.values[preservedBuildingMetadataBase + 21] === 1 &&
+      preservedBuildingMetadataSource.buildingRows.values[preservedBuildingMetadataBase + 34] === 1,
+    'metadata-only typed building HP/build deltas must patch pending full typed rows',
   );
 
   const typedBasicFullEntity = createSparseDecodedMotionUnitEntity(63, 100);
