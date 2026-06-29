@@ -15,6 +15,7 @@ import {
 import {
   addSnapshotMaterializationStageToSnapshot,
   copySnapshotMaterializationMetadata,
+  refreshSnapshotEntityRowComposition,
 } from '../network/snapshotMaterializationMetadata';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { getEntitySnapshotWireSource } from '../network/stateSerializerEntities';
@@ -217,6 +218,7 @@ export class LocalGameConnection implements GameConnection {
     });
     setSnapshotWireBytes(decoded, encoded.bytes.byteLength);
     copySnapshotMaterializationMetadata(state, decoded);
+    refreshSnapshotEntityRowComposition(decoded);
     return decoded;
   }
 

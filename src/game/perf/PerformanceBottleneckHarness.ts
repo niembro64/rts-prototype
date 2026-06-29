@@ -198,6 +198,9 @@ type SnapshotMaterializationKindReport = {
   readonly kind: SnapshotMaterializationKind | 'all';
   readonly samples: number;
   readonly entityRows: NumericSummary;
+  readonly entityDtoRows: NumericSummary;
+  readonly entityTypedRows: NumericSummary;
+  readonly entityTypedPlaceholderRows: NumericSummary;
   readonly removedRows: NumericSummary;
   readonly projectileRows: NumericSummary;
   readonly stageMs: Partial<Record<SnapshotMaterializationStage, NumericSummary>>;
@@ -213,6 +216,9 @@ type SnapshotMaterializationStatsReport = {
 type SnapshotMaterializationBucket = {
   samples: number;
   entityRows: number[];
+  entityDtoRows: number[];
+  entityTypedRows: number[];
+  entityTypedPlaceholderRows: number[];
   removedRows: number[];
   projectileRows: number[];
   stages: Record<SnapshotMaterializationStage, number[]>;
@@ -882,6 +888,9 @@ function createSnapshotMaterializationBucket(): SnapshotMaterializationBucket {
   return {
     samples: 0,
     entityRows: [],
+    entityDtoRows: [],
+    entityTypedRows: [],
+    entityTypedPlaceholderRows: [],
     removedRows: [],
     projectileRows: [],
     stages: createSnapshotMaterializationStageSampleRows(),
@@ -899,6 +908,9 @@ function createSnapshotMaterializationStageSampleRows(): Record<SnapshotMaterial
 function resetSnapshotMaterializationBucket(bucket: SnapshotMaterializationBucket): void {
   bucket.samples = 0;
   bucket.entityRows.length = 0;
+  bucket.entityDtoRows.length = 0;
+  bucket.entityTypedRows.length = 0;
+  bucket.entityTypedPlaceholderRows.length = 0;
   bucket.removedRows.length = 0;
   bucket.projectileRows.length = 0;
   for (let i = 0; i < SNAPSHOT_MATERIALIZATION_STAGES.length; i++) {
@@ -913,6 +925,9 @@ function recordSnapshotMaterializationBucket(
 ): void {
   bucket.samples++;
   bucket.entityRows.push(metadata.entityRows);
+  bucket.entityDtoRows.push(metadata.entityDtoRows);
+  bucket.entityTypedRows.push(metadata.entityTypedRows);
+  bucket.entityTypedPlaceholderRows.push(metadata.entityTypedPlaceholderRows);
   bucket.removedRows.push(metadata.removedRows);
   bucket.projectileRows.push(metadata.projectileRows);
   for (let i = 0; i < SNAPSHOT_MATERIALIZATION_STAGES.length; i++) {
@@ -957,6 +972,9 @@ function summarizeSnapshotMaterializationBucket(
     kind,
     samples: bucket.samples,
     entityRows: summarize(bucket.entityRows),
+    entityDtoRows: summarize(bucket.entityDtoRows),
+    entityTypedRows: summarize(bucket.entityTypedRows),
+    entityTypedPlaceholderRows: summarize(bucket.entityTypedPlaceholderRows),
     removedRows: summarize(bucket.removedRows),
     projectileRows: summarize(bucket.projectileRows),
     stageMs,

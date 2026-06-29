@@ -45,6 +45,7 @@ import { decodeNetworkSnapshot } from './snapshotWireCodec';
 import {
   getSnapshotMaterializationMetadata,
   setSnapshotMaterializationMetadata,
+  snapshotEntityRowComposition,
 } from './snapshotMaterializationMetadata';
 
 function assertContract(condition: boolean, message: string): void {
@@ -175,6 +176,7 @@ function installMaterializationMetadata(state: NetworkServerSnapshot): NetworkSe
     listener: 'contract',
     playerId: null,
     entityRows: state.entities.length,
+    ...snapshotEntityRowComposition(state),
     removedRows: state.removedEntityIds?.length ?? 0,
     projectileRows: 0,
     directWire: true,

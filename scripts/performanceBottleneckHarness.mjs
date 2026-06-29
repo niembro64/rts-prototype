@@ -393,11 +393,14 @@ function printSnapshotMaterializationKind(prefix, kind) {
   const rows =
     `rows entity/rem/projectile avg=` +
     `${fmt(kind.entityRows.avg)}/${fmt(kind.removedRows.avg)}/${fmt(kind.projectileRows.avg)}`;
+  const rowShape =
+    `entity shape dto/typed/placeholders avg=` +
+    `${fmt(kind.entityDtoRows?.avg)}/${fmt(kind.entityTypedRows?.avg)}/${fmt(kind.entityTypedPlaceholderRows?.avg)}`;
   const stages = (kind.topStages ?? [])
     .slice(0, 5)
     .map((stage) => `${stage.stage} ${fmt(stage.avgMs)}/${fmt(stage.p95Ms)}ms`)
     .join(', ');
-  console.log(`    ${prefix}: samples=${kind.samples} ${rows}`);
+  console.log(`    ${prefix}: samples=${kind.samples} ${rows}; ${rowShape}`);
   if (stages) console.log(`      top avg/p95 stages: ${stages}`);
 }
 

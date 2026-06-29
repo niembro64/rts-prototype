@@ -1,5 +1,6 @@
 import type { PlayerId } from '../sim/types';
 import type { NetworkServerSnapshot } from './NetworkTypes';
+import { getEntitySnapshotWireSource } from './stateSerializerEntities';
 
 export const SNAPSHOT_MATERIALIZATION_STAGES = [
   'lifecycleDrain',
@@ -45,12 +46,21 @@ export type SnapshotMaterializationStageDurations = Partial<
   Record<SnapshotMaterializationStage, number>
 >;
 
+export type SnapshotEntityRowComposition = {
+  entityDtoRows: number;
+  entityTypedRows: number;
+  entityTypedPlaceholderRows: number;
+};
+
 export type SnapshotMaterializationMetadata = {
   kind: SnapshotMaterializationKind;
   tick: number;
   listener: string;
   playerId: PlayerId | null;
   entityRows: number;
+  entityDtoRows: number;
+  entityTypedRows: number;
+  entityTypedPlaceholderRows: number;
   removedRows: number;
   projectileRows: number;
   directWire: boolean;
@@ -66,6 +76,34 @@ type SnapshotMaterializationCarrier = NetworkServerSnapshot & {
 
 export function createSnapshotMaterializationStageDurations(): SnapshotMaterializationStageDurations {
   return {};
+}
+
+export function snapshotEntityRowComposition(
+  state: NetworkServerSnapshot,
+): SnapshotEntityRowComposition {
+  const entities = state.entities;
+  let entityDtoRows = 0;
+  for (let i = 0; i < entities.length; i++) {
+    if (entities[i] !== undefined) entityDtoRows++;
+  }
+  const source = getEntitySnapshotWireSource(entities);
+  return {
+    entityDtoRows,
+    entityTypedRows: source?.count ?? 0,
+    entityTypedPlaceholderRows: source?.typedPlaceholderRows ?? 0,
+  };
+}
+
+export function refreshSnapshotEntityRowComposition(
+  state: NetworkServerSnapshot,
+): void {
+  const metadata = getSnapshotMaterializationMetadata(state);
+  if (metadata === undefined) return;
+  const composition = snapshotEntityRowComposition(state);
+  metadata.entityRows = state.entities.length;
+  metadata.entityDtoRows = composition.entityDtoRows;
+  metadata.entityTypedRows = composition.entityTypedRows;
+  metadata.entityTypedPlaceholderRows = composition.entityTypedPlaceholderRows;
 }
 
 export function copySnapshotMaterializationStageDurations(
@@ -164,6 +202,9 @@ function copySnapshotMaterializationMetadataValue(
     listener: metadata.listener,
     playerId: metadata.playerId,
     entityRows: metadata.entityRows,
+    entityDtoRows: metadata.entityDtoRows,
+    entityTypedRows: metadata.entityTypedRows,
+    entityTypedPlaceholderRows: metadata.entityTypedPlaceholderRows,
     removedRows: metadata.removedRows,
     projectileRows: metadata.projectileRows,
     directWire: metadata.directWire,

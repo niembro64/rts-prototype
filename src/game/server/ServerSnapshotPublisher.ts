@@ -36,6 +36,7 @@ import {
   copySnapshotMaterializationStageDurations,
   createSnapshotMaterializationStageDurations,
   setSnapshotMaterializationMetadata,
+  snapshotEntityRowComposition,
   type SnapshotMaterializationKind,
   type SnapshotMaterializationStage,
   type SnapshotMaterializationStageDurations,
@@ -194,12 +195,14 @@ export class ServerSnapshotPublisher {
   ): void {
     const finalStages = copySnapshotMaterializationStageDurations(stages);
     addMaterializationStage(finalStages, 'total', startedAt);
+    const entityRowComposition = snapshotEntityRowComposition(state);
     setSnapshotMaterializationMetadata(state, {
       kind,
       tick: state.tick,
       listener: listener.trackingKey,
       playerId: listener.playerId ?? null,
       entityRows: state.entities.length,
+      ...entityRowComposition,
       removedRows: state.removedEntityIds?.length ?? 0,
       projectileRows: snapshotProjectileRowCount(state.projectiles),
       directWire: snapshot.wirePayload?.materializationKind === 'direct',
