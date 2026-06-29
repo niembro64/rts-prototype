@@ -537,6 +537,53 @@ export function runClientSnapshotApplierContractTest(): void {
     'packed metadata-only motion rows must apply from decoded wire rows',
   );
 
+  const hotPathView = new ClientViewState();
+  const hotPathId = 177;
+  hotPathView.applyNetworkState(snapshot(1, [fullUnitEntity(hotPathId, 100, 100)]));
+  const hotPathSource = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => hotPathId,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    240,
+    80,
+    1 as PlayerId,
+    'unitJackal',
+    { allocateSubEntityIds: false },
+  );
+  hotPathSource.transform.rotation = 1.2;
+  if (hotPathSource.unit === null) {
+    throw new Error('[client snapshot applier contract] hot motion source must have a unit component');
+  }
+  hotPathSource.unit.velocityX = 8;
+  hotPathSource.unit.velocityY = 3;
+  const hotPathRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(hotPathRows);
+  const hotPathRow = serializeEntityDeltaSnapshot(
+    hotPathSource,
+    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL,
+    {} as WorldState,
+  );
+  if (hotPathRow !== null) hotPathRows.push(hotPathRow);
+  const encodedHotPath = encodeNetworkSnapshotWithRustFallback(snapshot(2, hotPathRows));
+  if (encodedHotPath === null) {
+    throw new Error('[client snapshot applier contract] packed hot motion fixture must encode');
+  }
+  const decodedHotPath = decodeNetworkSnapshot(encodedHotPath.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  hotPathView.applyNetworkState(decodedHotPath, { syncEconomy: undefined });
+  hotPathView.applyPrediction(100);
+  const hotPathEntity = hotPathView.getEntity(hotPathId);
+  assertContract(
+    hotPathEntity !== undefined &&
+      hotPathEntity.transform.x > 1 &&
+      hotPathEntity.transform.rotation > 0.01,
+    'runtime typed hot-motion rows must drive position and rotation targets without DTO fallback',
+  );
+  resetEntitySnapshotPool();
+
   if (wireMotionEntity.unit === null) {
     throw new Error('[client snapshot applier contract] typed HP source unit must have a unit component');
   }

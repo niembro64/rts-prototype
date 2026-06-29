@@ -158,6 +158,7 @@ const CLIENT_UNIT_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_NORMAL;
 const CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS =
   ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_VEL |
   ENTITY_CHANGED_NORMAL;
 const CLIENT_UNIT_TYPED_DELTA_FIELDS =
@@ -1063,10 +1064,33 @@ export class ClientViewState {
       target.surfaceNormalY = deqNormal(values[base + 25]);
       target.surfaceNormalZ = deqNormal(values[base + 26]);
     }
+    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+      target.rotation = deqRot(values[base + 4]);
+      if (values[base + 27] !== 0) {
+        let orientation = target.orientation;
+        if (orientation === null) {
+          orientation = { x: 0, y: 0, z: 0, w: 1 };
+          target.orientation = orientation;
+        }
+        orientation.x = values[base + 28];
+        orientation.y = values[base + 29];
+        orientation.z = values[base + 30];
+        orientation.w = values[base + 31];
+      }
+    }
     if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
       target.velocityX = deqVel(values[base + 10]);
       target.velocityY = deqVel(values[base + 11]);
       target.velocityZ = deqVel(values[base + 12]);
+      if (values[base + 32] !== 0) {
+        target.angularVelocityX = values[base + 33];
+        target.angularVelocityY = values[base + 34];
+        target.angularVelocityZ = values[base + 35];
+      } else {
+        target.angularVelocityX = null;
+        target.angularVelocityY = null;
+        target.angularVelocityZ = null;
+      }
     }
     target.updatedAtMs = now;
     this.activeEntityPredictionIds.add(id);
