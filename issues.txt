@@ -19,14 +19,17 @@ Please always commit and push before and after any code changes we make.
 
 [32] Optimization - reduce snapshot materialization cost
     Preserve deterministic-lockstep truth and current client reconciliation
-    semantics. The real targets are total snapshot publication at 30 Hz, rich
-    scope/full-detail snapshots at 5 Hz, entity delta snapshots at 10 Hz, and
-    projectile deltas at 30 Hz. The work is not to lower the total target to
-    5 Hz; it is to reduce the cost of building, serializing, applying, and
-    materializing each snapshot. Use the existing cadence/bytes/materialization
-    row/stage/client-apply counters to identify the dominant stage, then move
-    high-count snapshot materialization away from JS object/DTO churn and
-    toward typed dirty slot/range reads from the canonical slabs.
+    semantics. The presentation path has a 30 Hz publication opportunity from
+    the fixed-step loop, rich scope/full-detail snapshots at 5 Hz, sparse
+    entity-motion delta opportunities at 10 Hz, and projectile delta
+    opportunities up to 30 Hz. Do not force empty heartbeat snapshots just to
+    make the total SPS display read 30; non-empty entity/projectile deltas are
+    event-driven. The work is to reduce the cost of building, serializing,
+    applying, and materializing each meaningful snapshot. Use the existing
+    received/applied cadence, bytes, materialization row/stage, and
+    client-apply counters to identify the dominant stage, then move high-count
+    snapshot materialization away from JS object/DTO churn and toward typed
+    dirty slot/range reads from the canonical slabs.
 
 [16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
     USER / in-app eyes only: build a Hippo and tune swim/float/sink +

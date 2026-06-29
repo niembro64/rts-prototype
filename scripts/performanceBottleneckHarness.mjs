@@ -385,7 +385,7 @@ function cadenceTargetsText(report) {
   const rich = env.richSnapshotTargetHz;
   const entityDelta = env.sparseEntityMotionSnapshotTargetHz;
   const projectileDelta = env.projectileDeltaSnapshotCeilingHz ?? total;
-  return `(targets total=${fmt(total)}, rich=${fmt(rich)}, delta entity/projectile=${fmt(entityDelta)}/${fmt(projectileDelta)})`;
+  return `(ceilings/opportunities total=${fmt(total)}, rich=${fmt(rich)}, delta entity/projectile=${fmt(entityDelta)}/${fmt(projectileDelta)}; non-empty deltas are event-driven)`;
 }
 
 function printSnapshotMaterializationKind(prefix, kind) {
