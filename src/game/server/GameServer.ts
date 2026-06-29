@@ -315,7 +315,7 @@ export class GameServer {
     if (
       includeEntityMotionDeltas &&
       !hasProjectilePresentationEvents &&
-      !this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world)
+      !this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world, this.simulation)
     ) {
       this.lastSparseEntityMotionSnapshotTime = now;
       return false;
@@ -362,7 +362,7 @@ export class GameServer {
         if (hasProjectilePresentationEvents) {
           this.queueProjectileDeltaSnapshot(sparseEntityMotionDue);
         } else if (sparseEntityMotionDue) {
-          if (this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world)) {
+          if (this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world, this.simulation)) {
             this.queueProjectileDeltaSnapshot(true);
           } else {
             this.lastSparseEntityMotionSnapshotTime = tickNow;

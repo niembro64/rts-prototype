@@ -28,7 +28,7 @@ const ENTITY_MOTION_ANGULAR_EPSILON_SQ = 0.0001 * 0.0001;
 
 export function isEntityMotionDeltaCandidate(entity: Entity): boolean {
   const unit = entity.unit;
-  if (unit === null || unit.hp <= 0 || unit.locomotion.type !== 'flying') return false;
+  if (unit === null || unit.hp <= 0) return false;
   const vx = unit.velocityX ?? 0;
   const vy = unit.velocityY ?? 0;
   const vz = unit.velocityZ ?? 0;

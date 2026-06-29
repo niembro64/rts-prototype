@@ -153,6 +153,8 @@ export class ServerSnapshotPublisher {
   private readonly deltaRemovedEntityIdSet = new IndexedEntityIdSet();
   private readonly deltaEntityIdSet = new IndexedEntityIdSet();
   private readonly entityMotionCandidateIdsBuf: EntityId[] = [];
+  private readonly entityMotionCandidateIdSet = new IndexedEntityIdSet();
+  private readonly deferredEntityMotionIds = new IndexedEntityIdSet();
   reset(): void {}
 
   clear(): void {
@@ -169,10 +171,17 @@ export class ServerSnapshotPublisher {
     this.deltaRemovedEntityIdSet.clear();
     this.deltaEntityIdSet.clear();
     this.entityMotionCandidateIdsBuf.length = 0;
+    this.entityMotionCandidateIdSet.clear();
+    this.deferredEntityMotionIds.clear();
   }
 
-  hasEntityMotionDeltaCandidates(world: WorldState): boolean {
-    return this.collectEntityMotionDeltaCandidates(world, this.entityMotionCandidateIdsBuf) > 0;
+  hasEntityMotionDeltaCandidates(world: WorldState, simulation?: Simulation): boolean {
+    return this.collectEntityMotionDeltaCandidates(
+      world,
+      this.entityMotionCandidateIdsBuf,
+      simulation,
+      false,
+    ) > 0;
   }
 
   private stampSnapshotMaterialization(
@@ -607,6 +616,11 @@ export class ServerSnapshotPublisher {
       this.dirtySlotsBuf,
     );
     input.world.drainRemovedSnapshotEntities(this.removedEntitiesBuf);
+    this.rememberDeferredDirtyEntityMotionRows(
+      input.world,
+      this.dirtyIdsBuf,
+      this.dirtyFieldsBuf,
+    );
 
     const hasProjectileEvents =
       projectileSpawns.length > 0 ||
@@ -1104,7 +1118,27 @@ export class ServerSnapshotPublisher {
     changedFields: number,
   ): boolean {
     const entity = world.getEntity(id);
-    return entity !== undefined && shouldDeferToSparseEntityMotionDelta(entity, changedFields);
+    if (entity === undefined || !shouldDeferToSparseEntityMotionDelta(entity, changedFields)) {
+      return false;
+    }
+    this.deferredEntityMotionIds.add(id);
+    return true;
+  }
+
+  private rememberDeferredDirtyEntityMotionRows(
+    world: WorldState,
+    dirtyIds: readonly EntityId[],
+    dirtyFields: readonly number[],
+  ): void {
+    for (let i = 0; i < dirtyIds.length; i++) {
+      const entity = world.getEntity(dirtyIds[i]);
+      if (
+        entity !== undefined &&
+        shouldDeferToSparseEntityMotionDelta(entity, dirtyFields[i])
+      ) {
+        this.deferredEntityMotionIds.add(entity.id);
+      }
+    }
   }
 
   emitProjectileDelta(
@@ -1121,7 +1155,12 @@ export class ServerSnapshotPublisher {
     if (includeEntityMotionDeltas) {
       stageStart = performance.now();
       hasEntityMotionDeltas =
-        this.collectEntityMotionDeltaCandidates(input.world, motionCandidateIds) > 0;
+        this.collectEntityMotionDeltaCandidates(
+          input.world,
+          motionCandidateIds,
+          input.simulation,
+          true,
+        ) > 0;
       addMaterializationStage(emitBaseStages, 'entityDtos', stageStart);
     } else {
       motionCandidateIds.length = 0;
@@ -1374,13 +1413,41 @@ export class ServerSnapshotPublisher {
   private collectEntityMotionDeltaCandidates(
     world: WorldState,
     out: EntityId[],
+    simulation?: Simulation,
+    drainDeferredMotion = false,
   ): number {
     out.length = 0;
+    const seen = this.entityMotionCandidateIdSet;
+    seen.clear();
+
+    for (const id of this.deferredEntityMotionIds) {
+      const entity = world.getEntity(id);
+      if (entity === undefined || entity.unit === null || entity.unit.hp <= 0) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    if (drainDeferredMotion) this.deferredEntityMotionIds.clear();
+
+    const movingUnits = simulation?.getMovingUnits();
+    if (movingUnits !== undefined) {
+      for (let i = 0; i < movingUnits.length; i++) {
+        const entity = movingUnits[i];
+        if (!isEntityMotionDeltaCandidate(entity) || seen.has(entity.id)) continue;
+        seen.add(entity.id);
+        out.push(entity.id);
+      }
+    }
+
     const flyingUnits = world.getFlyingUnits();
     for (let i = 0; i < flyingUnits.length; i++) {
       const entity = flyingUnits[i];
-      if (isEntityMotionDeltaCandidate(entity)) out.push(entity.id);
+      if (!isEntityMotionDeltaCandidate(entity) || seen.has(entity.id)) continue;
+      seen.add(entity.id);
+      out.push(entity.id);
     }
+    seen.clear();
+    out.sort((a, b) => a - b);
     return out.length;
   }
 
