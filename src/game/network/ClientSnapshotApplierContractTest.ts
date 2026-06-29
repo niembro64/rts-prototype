@@ -1,6 +1,7 @@
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -225,6 +226,41 @@ function fullBuildingEntity(id: number, hp: number, maxHp: number): NetworkServe
         paid: { energy: 0, metal: 0 },
       },
       solar: { open: false },
+    },
+  };
+}
+
+function fullFactoryEntity(id: number): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'tower',
+    playerId: 1 as PlayerId,
+    changedFields: null,
+    pos: { x: 0, y: 0, z: 40 },
+    rotation: 0,
+    unit: null,
+    building: {
+      ...emptyBuildingSnapshot(),
+      buildingBlueprintCode: buildingBlueprintIdToCode('towerFabricator'),
+      dim: { x: 120, y: 120 },
+      hp: { curr: 1200, max: 1200 },
+      build: {
+        complete: true,
+        interrupted: false,
+        paid: { energy: 0, metal: 0 },
+      },
+      factory: {
+        selectedUnitBlueprintCode: unitBlueprintIdToCode('unitJackal'),
+        progress: 0,
+        producing: false,
+        repeat: true,
+        queue: null,
+        energyRate: 0,
+        metalRate: 0,
+        guardTargetId: null,
+        rally: { pos: { x: 100, y: 100 }, posZ: null, type: 'move' },
+        route: null,
+      },
     },
   };
 }
@@ -1308,6 +1344,126 @@ export function runClientSnapshotApplierContractTest(): void {
     'packed metadata-only building HP rows must apply from decoded wire rows',
   );
   buildingView.assertRenderEntityStateParity(buildingId);
+
+  const factoryView = new ClientViewState();
+  const factoryId = 503;
+  factoryView.applyNetworkState(snapshot(1, [fullFactoryEntity(factoryId)]));
+  const factorySource = factoryView.getEntity(factoryId);
+  if (factorySource === undefined || factorySource.building === null || factorySource.factory === null) {
+    throw new Error('[client snapshot applier contract] typed factory fixture must hydrate a factory');
+  }
+  factorySource.factory.selectedUnitBlueprintId = 'unitLynx';
+  factorySource.factory.repeatProduction = false;
+  factorySource.factory.productionQueue = ['unitBee', 'unitTick'];
+  factorySource.factory.currentBuildProgress = 0.625;
+  factorySource.factory.isProducing = true;
+  factorySource.factory.energyRateFraction = 0.75;
+  factorySource.factory.metalRateFraction = 0.5;
+  factorySource.factory.guardTargetId = id;
+  factorySource.factory.rallyX = 180;
+  factorySource.factory.rallyY = 190;
+  factorySource.factory.rallyZ = 12;
+  factorySource.factory.rallyType = 'fight';
+  factorySource.factory.defaultWaypoints = [
+    { x: 180, y: 190, z: 12, type: 'fight' },
+    { x: 210, y: 240, z: null, type: 'patrol' },
+  ];
+  const typedFactoryRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedFactoryRows);
+  const typedFactoryRow = serializeEntityDeltaSnapshot(
+    factorySource,
+    ENTITY_CHANGED_FACTORY,
+    {} as WorldState,
+  );
+  if (typedFactoryRow !== null) {
+    typedFactoryRows.push(typedFactoryRow as NetworkServerSnapshotEntity);
+  }
+  const typedFactorySource = getEntitySnapshotWireSource(typedFactoryRows);
+  const typedFactoryComposition = snapshotEntityRowComposition(snapshot(6, typedFactoryRows));
+  assertContract(
+    typedFactoryRows.length === 1 &&
+      (typedFactoryRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
+      typedFactorySource !== undefined &&
+      typedFactorySource.typedPlaceholderRows === 1 &&
+      typedFactorySource.buildingRows.count === 1 &&
+      typedFactorySource.factorySelectedUnitRows.count === 3 &&
+      typedFactorySource.waypointRows.count === 3 &&
+      typedFactoryComposition.entityDtoRows === 0,
+    'typed factory rows must omit DTO placeholders and expose factory side buffers',
+  );
+  const encodedPackedFactory = encodeNetworkSnapshotWithRustFallback(
+    snapshot(7, typedFactoryRows),
+  );
+  if (encodedPackedFactory === null) {
+    throw new Error('[client snapshot applier contract] packed factory fixture must encode');
+  }
+  const decodedPackedFactory = decodeNetworkSnapshot(encodedPackedFactory.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  const decodedPackedFactorySource = getEntitySnapshotWireSource(decodedPackedFactory.entities);
+  assertContract(
+    decodedPackedFactory.entities.length === 1 &&
+      decodedPackedFactory.entities[0] === undefined &&
+      decodedPackedFactorySource !== undefined &&
+      decodedPackedFactorySource.typedPlaceholderRows === 1 &&
+      decodedPackedFactorySource.buildingRows.count === 1 &&
+      decodedPackedFactorySource.factorySelectedUnitRows.count === 3 &&
+      decodedPackedFactorySource.waypointRows.count === 3,
+    'packed metadata-only factory decode must omit DTOs and expose factory wire rows',
+  );
+
+  factorySource.factory.selectedUnitBlueprintId = null;
+  factorySource.factory.repeatProduction = true;
+  factorySource.factory.productionQueue.length = 0;
+  factorySource.factory.currentBuildProgress = 0;
+  factorySource.factory.isProducing = false;
+  factorySource.factory.energyRateFraction = 0;
+  factorySource.factory.metalRateFraction = 0;
+  factorySource.factory.guardTargetId = null;
+  factorySource.factory.rallyX = 0;
+  factorySource.factory.rallyY = 0;
+  factorySource.factory.rallyZ = null;
+  factorySource.factory.rallyType = 'move';
+  factorySource.factory.defaultWaypoints = null;
+  factoryView.applyNetworkState(snapshot(6, typedFactoryRows));
+  resetEntitySnapshotPool();
+  const appliedFactory = factoryView.getEntity(factoryId)?.factory;
+  assertContract(
+    appliedFactory?.selectedUnitBlueprintId === 'unitLynx' &&
+      appliedFactory.repeatProduction === false &&
+      appliedFactory.productionQueue.join(',') === 'unitBee,unitTick' &&
+      appliedFactory.currentBuildProgress === 0.625 &&
+      appliedFactory.isProducing === true &&
+      appliedFactory.energyRateFraction === 0.75 &&
+      appliedFactory.metalRateFraction === 0.5 &&
+      appliedFactory.guardTargetId === id &&
+      appliedFactory.rallyX === 180 &&
+      appliedFactory.rallyY === 190 &&
+      appliedFactory.rallyZ === 12 &&
+      appliedFactory.rallyType === 'fight' &&
+      appliedFactory.defaultWaypoints?.length === 2 &&
+      appliedFactory.defaultWaypoints[1].type === 'patrol',
+    'typed factory rows must apply factory detail from wire rows before DTO fallback',
+  );
+  factoryView.assertRenderEntityStateParity(factoryId);
+
+  const packedFactoryView = new ClientViewState();
+  packedFactoryView.applyNetworkState(snapshot(1, [fullFactoryEntity(factoryId)]));
+  packedFactoryView.applyNetworkState(decodedPackedFactory);
+  const packedFactory = packedFactoryView.getEntity(factoryId)?.factory;
+  resetEntitySnapshotPool();
+  assertContract(
+    packedFactory?.selectedUnitBlueprintId === 'unitLynx' &&
+      packedFactory.repeatProduction === false &&
+      packedFactory.productionQueue.join(',') === 'unitBee,unitTick' &&
+      packedFactory.currentBuildProgress === 0.625 &&
+      packedFactory.isProducing === true &&
+      packedFactory.defaultWaypoints?.length === 2 &&
+      packedFactory.defaultWaypoints[0].type === 'fight',
+    'packed metadata-only factory rows must apply from reconstructed wire rows',
+  );
+  packedFactoryView.assertRenderEntityStateParity(factoryId);
 
   const mixedTypedView = new ClientViewState();
   const mixedUnitId = 701;

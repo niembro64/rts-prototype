@@ -3,12 +3,14 @@ import {
   unitBlueprintIdToCode,
 } from '../../types/network';
 
-export function decodeFactoryProductionQueue(codes: readonly number[] | null | undefined): string[] {
+type FactoryProductionQueueCodes = readonly number[] | Uint32Array;
+
+export function decodeFactoryProductionQueue(codes: FactoryProductionQueueCodes | null | undefined): string[] {
   return decodeFactoryProductionQueueInto(codes, []);
 }
 
 export function decodeFactoryProductionQueueInto(
-  codes: readonly number[] | null | undefined,
+  codes: FactoryProductionQueueCodes | null | undefined,
   queue: string[],
 ): string[] {
   queue.length = 0;

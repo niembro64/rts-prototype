@@ -2,6 +2,7 @@ import type { PlayerId } from '../../types/sim';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
+  ENTITY_CHANGED_FACTORY,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
   ENTITY_CHANGED_POS,
@@ -27,12 +28,13 @@ import {
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
   appendEntitySnapshotWireSourceRow,
   createEntitySnapshotWireSource,
   recordEntitySnapshotWireSourceChangedFields,
   registerEntitySnapshotWireSource,
 } from './stateSerializerEntities';
-import { reserveFloat64WireRows } from './snapshotWireRows';
+import { reserveFloat64WireRows, reserveUint32WireRows } from './snapshotWireRows';
 
 type UnitSub = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type BuildingSub = NonNullable<NetworkServerSnapshotEntity['building']>;
@@ -255,6 +257,54 @@ function appendDecodedTurretWireRows(
     values[base + 8] = src.currentShieldRange !== null ? 1 : 0;
     values[base + 9] = src.currentShieldRange ?? 0;
     values[base + 10] = src.active === false ? 1 : 0;
+  }
+  return { offset, count };
+}
+
+function appendDecodedFactorySelectedUnitWireRow(
+  selectedUnitBlueprintCode: number | null,
+): { offset: number; hasValue: number } {
+  if (selectedUnitBlueprintCode === null || selectedUnitBlueprintCode === undefined) {
+    return { offset: -1, hasValue: 0 };
+  }
+  const rows = _decodedEntityWireSource.factorySelectedUnitRows;
+  const offset = reserveUint32WireRows(rows, 1, 1);
+  rows.values[offset] = selectedUnitBlueprintCode;
+  return { offset, hasValue: 1 };
+}
+
+function appendDecodedFactoryQueueWireRows(
+  queue: readonly number[] | null | undefined,
+): { offset: number; count: number } {
+  if (queue === null || queue === undefined) return { offset: -1, count: -1 };
+  if (queue.length === 0) return { offset: -1, count: 0 };
+  const rows = _decodedEntityWireSource.factorySelectedUnitRows;
+  const offset = reserveUint32WireRows(rows, queue.length, 1);
+  for (let i = 0; i < queue.length; i++) rows.values[offset + i] = queue[i];
+  return { offset, count: queue.length };
+}
+
+function appendDecodedWaypointWireRows(
+  waypoints: readonly WaypointSub[] | null | undefined,
+): { offset: number; count: number } {
+  const count = waypoints?.length ?? 0;
+  if (count === 0) return { offset: -1, count: 0 };
+  const offset = reserveFloat64WireRows(
+    _decodedEntityWireSource.waypointRows,
+    count,
+    ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
+  );
+  const values = _decodedEntityWireSource.waypointRows.values;
+  const strings = _decodedEntityWireSource.waypointStrings;
+  for (let i = 0; i < count; i++) {
+    const waypoint = waypoints![i];
+    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+    values[base + 0] = waypoint.pos.x;
+    values[base + 1] = waypoint.pos.y;
+    values[base + 2] = waypoint.posZ !== null && waypoint.posZ !== undefined ? 1 : 0;
+    values[base + 3] = waypoint.posZ ?? 0;
+    values[base + 4] = strings.length;
+    strings.push(waypoint.type);
   }
   return { offset, count };
 }
@@ -668,11 +718,32 @@ const DECODED_TYPED_UNIT_DETAIL_FIELDS =
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING;
 
+const DECODED_TYPED_BUILDING_DETAIL_FIELDS =
+  ENTITY_CHANGED_POS |
+  ENTITY_CHANGED_ROT |
+  ENTITY_CHANGED_HP |
+  ENTITY_CHANGED_TURRETS |
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY;
+
 function tryAppendDecodedDetailTypedPlaceholderWireRow(
   entity: NetworkServerSnapshotEntity,
 ): boolean {
   const changedFields = entity.changedFields;
   if (changedFields === null || changedFields === 0) return false;
+  if (entity.type === 'unit') {
+    return tryAppendDecodedUnitDetailTypedPlaceholderWireRow(entity, changedFields);
+  }
+  if (entity.type === 'building') {
+    return tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(entity, changedFields);
+  }
+  return false;
+}
+
+function tryAppendDecodedUnitDetailTypedPlaceholderWireRow(
+  entity: NetworkServerSnapshotEntity,
+  changedFields: number,
+): boolean {
   if (entity.type !== 'unit') return false;
   if ((changedFields & ~DECODED_TYPED_UNIT_DETAIL_FIELDS) !== 0) return false;
   const unit = entity.unit;
@@ -774,6 +845,94 @@ function tryAppendDecodedDetailTypedPlaceholderWireRow(
     values[base + 61] = 1;
     values[base + 62] = unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
   }
+  return true;
+}
+
+function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
+  entity: NetworkServerSnapshotEntity,
+  changedFields: number,
+): boolean {
+  if (entity.type !== 'building') return false;
+  if ((changedFields & ~DECODED_TYPED_BUILDING_DETAIL_FIELDS) !== 0) return false;
+  const building = entity.building;
+  if (building === null) return false;
+
+  if ((changedFields & ENTITY_CHANGED_POS) !== 0 && entity.pos === null) return false;
+  if ((changedFields & ENTITY_CHANGED_ROT) !== 0 && entity.rotation === null) return false;
+  if ((changedFields & ENTITY_CHANGED_HP) !== 0 && building.hp === null) return false;
+  if ((changedFields & ENTITY_CHANGED_BUILDING) !== 0 && building.build === null) return false;
+  if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && building.factory === null) return false;
+
+  const wireRow = appendDecodedBuildingEntityWireRow();
+  const values = wireRow.values;
+  const base = wireRow.base;
+  values[base + 0] = entity.id;
+  if (entity.pos !== null) {
+    values[base + 1] = entity.pos.x;
+    values[base + 2] = entity.pos.y;
+    values[base + 3] = entity.pos.z;
+  }
+  values[base + 4] = entity.rotation ?? 0;
+  values[base + 5] = entity.playerId;
+  values[base + 6] = 1;
+  values[base + 7] = changedFields;
+  recordEntitySnapshotWireSourceChangedFields(
+    _decodedEntityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+    changedFields,
+  );
+
+  if (building.hp !== null) {
+    values[base + 13] = building.hp.curr;
+    values[base + 14] = building.hp.max;
+  }
+  if (building.build !== null) {
+    values[base + 15] = building.build.complete ? 1 : 0;
+    values[base + 16] = building.build.paid.energy;
+    values[base + 17] = building.build.paid.metal;
+    values[base + 34] = building.build.interrupted ? 1 : 0;
+  }
+  if (building.metalExtractionRate !== null) {
+    values[base + 18] = 1;
+    values[base + 19] = building.metalExtractionRate;
+  }
+  if (building.solar !== null) {
+    values[base + 20] = 1;
+    values[base + 21] = building.solar.open ? 1 : 0;
+  }
+  if (building.turrets !== null) {
+    const turretRows = appendDecodedTurretWireRows(building.turrets);
+    values[base + 22] = 1;
+    values[base + 23] = turretRows.count;
+    values[base + 31] = turretRows.offset;
+  }
+
+  const factory = building.factory;
+  if (factory !== null) {
+    const selected = appendDecodedFactorySelectedUnitWireRow(factory.selectedUnitBlueprintCode);
+    const queue = appendDecodedFactoryQueueWireRows(factory.queue);
+    const rally = appendDecodedWaypointWireRows([factory.rally]);
+    const route = factory.route !== null && factory.route !== undefined
+      ? appendDecodedWaypointWireRows(factory.route)
+      : { offset: -1, count: -1 };
+    values[base + 24] = 1;
+    values[base + 25] = selected.hasValue;
+    values[base + 26] = factory.progress;
+    values[base + 27] = factory.producing ? 1 : 0;
+    values[base + 28] = factory.energyRate ?? 0;
+    values[base + 29] = factory.metalRate ?? 0;
+    values[base + 30] = rally.count;
+    values[base + 32] = selected.offset;
+    values[base + 33] = rally.offset;
+    values[base + 35] = factory.guardTargetId !== null && factory.guardTargetId !== undefined ? 1 : 0;
+    values[base + 36] = factory.guardTargetId ?? 0;
+    values[base + 37] = factory.repeat === false ? 0 : 1;
+    values[base + 38] = queue.offset;
+    values[base + 39] = queue.count;
+    values[base + 40] = route.offset;
+    values[base + 41] = route.count;
+  }
+
   return true;
 }
 

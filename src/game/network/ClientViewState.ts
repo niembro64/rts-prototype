@@ -7,7 +7,7 @@
  * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
-import type { Entity, PlayerId, EntityId } from '../sim/types';
+import type { Entity, PlayerId, EntityId, FactoryDefaultWaypoint } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import {
   getResourceFillRatio,
@@ -39,6 +39,7 @@ import {
   RESOURCE_FLOW_OUTBOUND,
   RESOURCE_KIND_ENERGY,
   RESOURCE_KIND_METAL,
+  codeToUnitBlueprintId,
   codeToTurretState,
   type GamePhase,
   type ResourceFlowDirectionCode,
@@ -84,6 +85,7 @@ import {
   applyNetworkUnitActionWireRows,
   applyNetworkUnitDriftFieldsToTarget,
 } from './unitSnapshotFields';
+import { decodeFactoryProductionQueueInto } from './factoryProductionQueueWire';
 import { createSpawnDto } from './snapshotDtoCopy';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
@@ -108,6 +110,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
   getEntitySnapshotWireSource,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
@@ -202,7 +205,8 @@ const CLIENT_BUILDING_TYPED_DELTA_FIELDS =
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS |
-  ENTITY_CHANGED_BUILDING;
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY;
 
 function typedEntityWireRowId(
   source: EntitySnapshotWireSource,
@@ -1468,6 +1472,107 @@ export class ClientViewState {
     return true;
   }
 
+  private readFactoryWaypointFromWire(
+    source: EntitySnapshotWireSource,
+    offset: number,
+  ): FactoryDefaultWaypoint | null {
+    if (offset < 0 || offset >= source.waypointRows.count) return null;
+    const values = source.waypointRows.values;
+    const base = offset * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+    const typeSlot = values[base + 4] | 0;
+    const type = source.waypointStrings[typeSlot];
+    if (type !== 'move' && type !== 'fight' && type !== 'patrol') return null;
+    return {
+      x: values[base + 0],
+      y: values[base + 1],
+      z: values[base + 2] !== 0 ? values[base + 3] : null,
+      type,
+    };
+  }
+
+  private applyBuildingFactoryTypedFields(
+    existing: Entity,
+    source: EntitySnapshotWireSource,
+    values: Float64Array,
+    base: number,
+  ): boolean {
+    const factory = existing.factory;
+    if (factory === null || values[base + 24] === 0) return false;
+
+    const selectedCount = values[base + 25] | 0;
+    const selectedOffset = values[base + 32] | 0;
+    const factoryRows = source.factorySelectedUnitRows.values;
+    if (selectedCount > 0) {
+      if (selectedOffset < 0 || selectedOffset + selectedCount > source.factorySelectedUnitRows.count) {
+        return false;
+      }
+      factory.selectedUnitBlueprintId = codeToUnitBlueprintId(factoryRows[selectedOffset]) ?? null;
+    } else {
+      factory.selectedUnitBlueprintId = null;
+    }
+
+    const queueCount = values[base + 39] | 0;
+    const queueOffset = values[base + 38] | 0;
+    if (queueCount > 0) {
+      if (queueOffset < 0 || queueOffset + queueCount > source.factorySelectedUnitRows.count) {
+        return false;
+      }
+      decodeFactoryProductionQueueInto(
+        factoryRows.subarray(queueOffset, queueOffset + queueCount),
+        factory.productionQueue,
+      );
+    } else {
+      decodeFactoryProductionQueueInto(null, factory.productionQueue);
+    }
+
+    const rallyCount = values[base + 30] | 0;
+    const rallyOffset = values[base + 33] | 0;
+    if (rallyCount <= 0) return false;
+    const rally = this.readFactoryWaypointFromWire(source, rallyOffset);
+    if (rally === null) return false;
+    factory.rallyX = rally.x;
+    factory.rallyY = rally.y;
+    factory.rallyZ = rally.z;
+    factory.rallyType = rally.type;
+
+    const routeCount = values[base + 41] | 0;
+    const routeOffset = values[base + 40] | 0;
+    if (routeCount >= 0) {
+      if (routeCount > 0 && (routeOffset < 0 || routeOffset + routeCount > source.waypointRows.count)) {
+        return false;
+      }
+      const existingRoute = factory.defaultWaypoints;
+      const route = existingRoute !== null && existingRoute.length === routeCount
+        ? existingRoute as FactoryDefaultWaypoint[]
+        : new Array<FactoryDefaultWaypoint>(routeCount);
+      for (let i = 0; i < routeCount; i++) {
+        const waypoint = this.readFactoryWaypointFromWire(source, routeOffset + i);
+        if (waypoint === null) return false;
+        let dst = route[i];
+        if (dst === undefined) {
+          dst = { x: 0, y: 0, z: null, type: 'move' };
+          route[i] = dst;
+        }
+        dst.x = waypoint.x;
+        dst.y = waypoint.y;
+        dst.z = waypoint.z;
+        dst.type = waypoint.type;
+      }
+      factory.defaultWaypoints = route;
+    } else {
+      factory.defaultWaypoints = null;
+    }
+
+    factory.repeatProduction = values[base + 37] !== 0;
+    factory.currentShellId = null;
+    factory.currentBuildProgress = values[base + 26];
+    factory.isProducing = values[base + 27] !== 0;
+    factory.energyRateFraction = values[base + 28];
+    factory.metalRateFraction = values[base + 29];
+    factory.guardTargetId = values[base + 35] !== 0 ? (values[base + 36] | 0) as EntityId : null;
+    return true;
+  }
+
   private applyBuildingMetadataTypedDeltaWireRow(
     values: Float64Array,
     base: number,
@@ -1857,7 +1962,10 @@ export class ClientViewState {
     const hasHpFields = (changedFields & ENTITY_CHANGED_HP) !== 0;
     const hasTurretFields = (changedFields & ENTITY_CHANGED_TURRETS) !== 0;
     const hasBuildFields = (changedFields & ENTITY_CHANGED_BUILDING) !== 0;
-    if (!hasMotionFields && !hasHpFields && !hasTurretFields && !hasBuildFields) return false;
+    const hasFactoryFields = (changedFields & ENTITY_CHANGED_FACTORY) !== 0;
+    if (!hasMotionFields && !hasHpFields && !hasTurretFields && !hasBuildFields && !hasFactoryFields) {
+      return false;
+    }
 
     const id = values[base + 0] | 0;
     const playerId = values[base + 5] | 0;
@@ -1910,11 +2018,15 @@ export class ClientViewState {
       hasHpFields,
       hasBuildFields,
     );
+    const refreshFactory = hasFactoryFields
+      ? this.applyBuildingFactoryTypedFields(existing, source, values, base)
+      : false;
+    if (hasFactoryFields && !refreshFactory) return false;
 
     const refreshTurretsNow = copiedTurretRows && !deferPredictedTurretRenderRefresh;
     if (hasMotionFields) {
       this.refreshRenderableEntityStateFromSnapshot(existing, hasMotionFields);
-    } else if (refreshHealth || refreshTurretsNow) {
+    } else if (refreshHealth || refreshTurretsNow || refreshFactory) {
       this.refreshRenderableEntityStateSnapshotDelta(
         existing,
         refreshHealth,
@@ -1926,6 +2038,7 @@ export class ClientViewState {
       hasMotionFields ||
       hasHpFields ||
       hasBuildFields ||
+      hasFactoryFields ||
       (copiedTurretRows && deferPredictedTurretRenderRefresh)
     ) {
       this.dirtyBuildingRenderIds.add(id);

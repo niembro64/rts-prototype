@@ -111,13 +111,15 @@ const TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS =
 const TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS |
-  ENTITY_CHANGED_BUILDING;
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY;
 const TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS =
   ENTITY_CHANGED_POS |
   ENTITY_CHANGED_ROT |
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS |
-  ENTITY_CHANGED_BUILDING;
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY;
 const TYPED_PLACEHOLDER_BUILDING_SLAB_FIELDS =
   ENTITY_CHANGED_POS |
   ENTITY_CHANGED_ROT |
@@ -1141,7 +1143,7 @@ function appendDirectBuildingEntityWireRow(
         ? getBuildFraction(shell.buildable)
         : factory.currentBuildProgress;
     } else {
-      factoryProgress = 0;
+      factoryProgress = factory.currentBuildProgress;
     }
   }
 
@@ -1595,6 +1597,7 @@ export function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: numbe
       hasBasicTransformFields;
   }
   if ((entity.type === 'building' || entity.type === 'tower') && entity.building !== null) {
+    if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && entity.factory === null) return false;
     return (changedFields & ~TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS) === 0 &&
       ((changedFields & TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS) !== 0 ||
         hasBasicTransformFields);
