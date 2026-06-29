@@ -28,6 +28,7 @@ import { serializeResourceMovements } from '../network/stateSerializerResourceMo
 import { serializeGridSnapshot } from '../network/stateSerializerGrid';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import {
+  appendUnitMotionEntityWireRowDirectFromState,
   getEntitySnapshotPoolStats,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
@@ -57,6 +58,7 @@ import {
   type SerializedListenerSnapshot,
 } from './ServerSnapshotWirePayload';
 import { ServerSnapshotDirectWirePreencoder } from './ServerSnapshotDirectWirePreencoder';
+import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
 
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 const PROJECTILE_DELTA_EMPTY_ENTITIES: NetworkServerSnapshot['entities'] = [];
@@ -1241,8 +1243,16 @@ export class ServerSnapshotPublisher {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
     registerEntitySnapshotWireSource(entities);
+    const visibleEntityIds = visibility.getVisibleEntityIdSet();
+    const entityViews = entitySlotRegistry.getViews();
     for (let i = 0; i < candidateIds.length; i++) {
-      const entity = world.getEntity(candidateIds[i]);
+      const id = candidateIds[i];
+      if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
+      if (this.tryAppendUnitMotionSlabDeltaRowFromState(id, entityViews)) {
+        entities.push(undefined as unknown as NetworkServerSnapshotEntity);
+        continue;
+      }
+      const entity = world.getEntity(id);
       if (entity === undefined) continue;
       if (visibility.isFiltered && !visibility.isEntityVisible(entity)) continue;
       const netEntity = serializeEntityDeltaSnapshot(
@@ -1254,6 +1264,24 @@ export class ServerSnapshotPublisher {
       if (netEntity !== null) entities.push(netEntity as NetworkServerSnapshotEntity);
     }
     return entities.length > 0 ? entities : undefined;
+  }
+
+  private tryAppendUnitMotionSlabDeltaRowFromState(
+    id: EntityId,
+    entityViews: EntityStateViews | null,
+  ): boolean {
+    if (entityViews === null) return false;
+    const slot = entitySlotRegistry.getSlot(id);
+    return (
+      slot >= 0 &&
+      slot < entityViews.capacity &&
+      entityViews.entityId[slot] === id &&
+      appendUnitMotionEntityWireRowDirectFromState(
+        entityViews,
+        slot,
+        ENTITY_MOTION_DELTA_FIELDS,
+      )
+    );
   }
 
   private collectEntityMotionDeltaCandidates(
