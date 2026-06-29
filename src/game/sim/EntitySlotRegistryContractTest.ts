@@ -16,6 +16,7 @@ import {
   ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
   entitySlotRegistry,
 } from './EntitySlotRegistry';
+import { getSimWasm } from '../sim-wasm/init';
 import type { BuildingBlueprintId, Entity, PlayerId } from './types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
@@ -84,6 +85,20 @@ export function runEntitySlotRegistryContractTest(): void {
   reused.unit.surfaceNormal.nz = 0.82915619758885;
   reused.unit.orientation = { x: 0.1, y: 0.2, z: 0.3, w: 0.9273618495495703 };
   reused.unit.angularVelocity3 = { x: 0.01, y: -0.02, z: 0.03 };
+  const sim = getSimWasm();
+  assertContract(sim !== undefined, 'sim-wasm must be initialized for entity-state dirty checks');
+  sim.entityState.clearDirty(firstSlot);
+  spatialGrid.updateUnit(reused);
+  const spatialRefreshViews = requireViews();
+  assertContract(spatialRefreshViews.posX[firstSlot] === 165, 'spatial refresh must update position x');
+  assertContract(spatialRefreshViews.velY[firstSlot] === -2.25, 'spatial refresh must update velocity y');
+  assertContract(spatialRefreshViews.surfaceNormalX[firstSlot] === 0.25, 'spatial refresh must update normal x');
+  assertContract(
+    spatialRefreshViews.angularVelocityY[firstSlot] === -0.02,
+    'spatial refresh must update angular velocity y',
+  );
+  assertContract(spatialRefreshViews.dirtyMask[firstSlot] === 0, 'spatial refresh must not mark snapshot dirty');
+  assertParity(reused);
   world.markSnapshotDirty(
     reused.id,
     ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL,
@@ -97,6 +112,11 @@ export function runEntitySlotRegistryContractTest(): void {
     motionViews.angularVelocityY[firstSlot] === -0.02,
     'motion dirty update must refresh angular velocity y',
   );
+  assertParity(reused);
+  sim.entityState.clearDirty(firstSlot);
+  spatialGrid.updateUnitSpatial(reused);
+  const spatialOnlyViews = requireViews();
+  assertContract(spatialOnlyViews.dirtyMask[firstSlot] === 0, 'spatial-only unit update must not mark snapshot dirty');
   assertParity(reused);
 
   const building = world.createBuilding(

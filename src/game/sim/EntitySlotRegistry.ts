@@ -294,6 +294,38 @@ export class EntitySlotRegistry {
     return slot;
   }
 
+  setUnitSpatial(entity: Entity, teamId?: number): number {
+    const sim = this.sim();
+    if (sim === undefined) return -1;
+    let slot = entity.entitySlotId;
+    if (slot < 0 || this.entityBySlot[slot] !== entity) {
+      slot = this.slotForEntity(entity);
+    }
+    if (slot < 0) return slot;
+    const unit = entity.unit;
+    if (unit === null || !hasMaterializedLiveUnitPiece(entity)) {
+      this.refreshEntityState(entity, 0, teamId);
+      this.removeUnit(entity.id);
+      return slot;
+    }
+    if (!this.hasCurrentEntityStateRow(sim, slot, entity.id)) {
+      this.refreshEntityState(entity, 0, teamId);
+    }
+    if (this.spatialKindBySlot[slot] !== SPATIAL_KIND_UNIT) {
+      this.spatialKindBySlot[slot] = SPATIAL_KIND_UNIT;
+      this.unitSlots.add(entity.id);
+    }
+    const playerId = entity.ownership !== null ? entity.ownership.playerId : 0;
+    sim.spatial.setUnit(
+      slot,
+      entity.transform.x, entity.transform.y, entity.transform.z,
+      unit.radius.collision, unit.radius.hitbox,
+      playerId,
+      unit.hp > 0 ? 1 : 0,
+    );
+    return slot;
+  }
+
   setBuilding(entity: Entity, teamId?: number): number {
     const slot = this.refreshEntityState(entity, 0, teamId);
     const sim = this.sim();
@@ -667,6 +699,25 @@ export class EntitySlotRegistry {
     ) {
       this.refreshViews();
     }
+  }
+
+  private hasCurrentEntityStateRow(sim: SimWasm, slot: number, entityId: EntityId): boolean {
+    const views = this.views;
+    if (
+      views !== null &&
+      this.viewsBuffer === sim.memory.buffer &&
+      views.entityId.byteLength !== 0 &&
+      slot < views.capacity
+    ) {
+      return views.entityId[slot] === entityId;
+    }
+
+    const refreshedViews = this.ensureViews();
+    return (
+      refreshedViews !== null &&
+      slot < refreshedViews.capacity &&
+      refreshedViews.entityId[slot] === entityId
+    );
   }
 
   private writeUnitMotionViews(views: EntityStateViews, slot: number, entity: Entity): void {

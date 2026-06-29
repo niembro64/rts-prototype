@@ -215,6 +215,10 @@ class SpatialGrid {
     entitySlotRegistry.setUnit(entity);
   }
 
+  updateUnitSpatial(entity: Entity): void {
+    entitySlotRegistry.setUnitSpatial(entity);
+  }
+
   removeUnit(id: EntityId): void {
     entitySlotRegistry.removeUnit(id);
   }

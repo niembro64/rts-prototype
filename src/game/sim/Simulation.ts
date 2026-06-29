@@ -733,7 +733,7 @@ export class Simulation {
     planner.begin(units.length);
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      spatialGrid.updateUnit(entity);
+      spatialGrid.updateUnitSpatial(entity);
       if (!entity.unit || !entity.body) continue;
 
       const { unit } = entity;
