@@ -127,6 +127,8 @@ function resetDecodedEntityWireSource(): void {
   _decodedEntityWireSource.count = 0;
   _decodedEntityWireSource.typedPlaceholderRows = 0;
   _decodedEntityWireSource.nonPlaceholderEntityRows = 0;
+  _decodedEntityWireSource.typedEntityRows = 0;
+  _decodedEntityWireSource.rawEntityRows = 0;
   _decodedEntityWireSource.basicChangedFieldsOr = 0;
   _decodedEntityWireSource.unitChangedFieldsOr = 0;
   _decodedEntityWireSource.buildingChangedFieldsOr = 0;

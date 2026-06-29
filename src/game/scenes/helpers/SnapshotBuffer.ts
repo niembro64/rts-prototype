@@ -1018,12 +1018,16 @@ export class SnapshotBuffer {
       wireSource.count = write;
       wireSource.typedPlaceholderRows = 0;
       wireSource.nonPlaceholderEntityRows = 0;
+      wireSource.typedEntityRows = 0;
+      wireSource.rawEntityRows = 0;
       for (let i = 0; i < write; i++) {
         if (wireSource.typedPlaceholderMarks[i] !== 0) {
           wireSource.typedPlaceholderRows++;
         } else {
           wireSource.nonPlaceholderEntityIndices[wireSource.nonPlaceholderEntityRows++] = i;
         }
+        if (wireSource.kinds[i] === 0) wireSource.rawEntityRows++;
+        else wireSource.typedEntityRows++;
       }
       if (write < previousWireCount) wireSource.typedPlaceholderMarks.fill(0, write, previousWireCount);
       if (write === 0) unregisterEntitySnapshotWireSource(pendingEntities);

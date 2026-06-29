@@ -166,6 +166,8 @@ export type EntitySnapshotWireSource = {
   typedPlaceholderRows: number;
   nonPlaceholderEntityIndices: Uint32Array;
   nonPlaceholderEntityRows: number;
+  typedEntityRows: number;
+  rawEntityRows: number;
   basicChangedFieldsOr: number;
   unitChangedFieldsOr: number;
   buildingChangedFieldsOr: number;
@@ -214,6 +216,8 @@ export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotW
     typedPlaceholderRows: 0,
     nonPlaceholderEntityIndices: new Uint32Array(capacity),
     nonPlaceholderEntityRows: 0,
+    typedEntityRows: 0,
+    rawEntityRows: 0,
     basicChangedFieldsOr: 0,
     unitChangedFieldsOr: 0,
     buildingChangedFieldsOr: 0,
@@ -268,6 +272,8 @@ export function appendEntitySnapshotWireSourceRow(
   source.typedPlaceholderMarks[index] = typedPlaceholder ? 1 : 0;
   if (typedPlaceholder) source.typedPlaceholderRows++;
   else source.nonPlaceholderEntityIndices[source.nonPlaceholderEntityRows++] = index;
+  if (kind === 0) source.rawEntityRows++;
+  else source.typedEntityRows++;
   recordEntitySnapshotWireSourceChangedFields(source, kind, changedFields);
   source.count = index + 1;
 }
@@ -307,6 +313,8 @@ export function copyEntitySnapshotWireSourceMetadataInto(
   }
   dst.typedPlaceholderRows = src.typedPlaceholderRows;
   dst.nonPlaceholderEntityRows = src.nonPlaceholderEntityRows;
+  dst.typedEntityRows = src.typedEntityRows;
+  dst.rawEntityRows = src.rawEntityRows;
   dst.basicChangedFieldsOr = src.basicChangedFieldsOr;
   dst.unitChangedFieldsOr = src.unitChangedFieldsOr;
   dst.buildingChangedFieldsOr = src.buildingChangedFieldsOr;
@@ -318,6 +326,11 @@ export function removeEntitySnapshotWireSourceRow(
   index: number,
 ): void {
   if (index < 0 || index >= source.count) return;
+  if (source.kinds[index] === 0) {
+    source.rawEntityRows = Math.max(0, source.rawEntityRows - 1);
+  } else {
+    source.typedEntityRows = Math.max(0, source.typedEntityRows - 1);
+  }
   if (source.typedPlaceholderMarks[index] !== 0) {
     source.typedPlaceholderRows = Math.max(0, source.typedPlaceholderRows - 1);
   }
@@ -523,6 +536,8 @@ function resetEntitySnapshotWireSource(): void {
   entityWireSource.count = 0;
   entityWireSource.typedPlaceholderRows = 0;
   entityWireSource.nonPlaceholderEntityRows = 0;
+  entityWireSource.typedEntityRows = 0;
+  entityWireSource.rawEntityRows = 0;
   entityWireSource.basicChangedFieldsOr = 0;
   entityWireSource.unitChangedFieldsOr = 0;
   entityWireSource.buildingChangedFieldsOr = 0;

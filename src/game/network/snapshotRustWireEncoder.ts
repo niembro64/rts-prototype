@@ -282,7 +282,6 @@ function packOrderedStringsIntoScratch(sim: SimWasm, strings: readonly string[])
 // Bulk-copies the entity SoA (built free by stateSerializerEntities.ts during
 // snapshot construction) into WASM scratch, then calls the Rust V6 packer so
 // WASM owns entity bytes without the per-snapshot TS object-building loop.
-const V6_KIND_RAW = 0;
 
 function v6FillF64Scratch(
   sim: SimWasm,
@@ -347,11 +346,7 @@ function v6PackStrings(
 }
 
 function v6SourceHasRawEntity(source: EntitySnapshotWireSource): boolean {
-  const kinds = source.kinds;
-  for (let i = 0; i < source.count; i++) {
-    if (kinds[i] === V6_KIND_RAW) return true;
-  }
-  return false;
+  return source.rawEntityRows > 0;
 }
 
 function v6ScratchStridesMatch(api: SnapshotEncodeApi): boolean {

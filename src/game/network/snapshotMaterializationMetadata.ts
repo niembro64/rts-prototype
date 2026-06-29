@@ -87,15 +87,9 @@ export function snapshotEntityRowComposition(
     if (entities[i] !== undefined) entityDtoRows++;
   }
   const source = getEntitySnapshotWireSource(entities);
-  let entityTypedRows = 0;
-  if (source !== undefined) {
-    for (let i = 0; i < source.count; i++) {
-      if (source.kinds[i] !== 0) entityTypedRows++;
-    }
-  }
   return {
     entityDtoRows,
-    entityTypedRows,
+    entityTypedRows: source?.typedEntityRows ?? 0,
     entityTypedPlaceholderRows: source?.typedPlaceholderRows ?? 0,
   };
 }
