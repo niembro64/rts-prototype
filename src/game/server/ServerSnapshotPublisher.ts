@@ -608,6 +608,7 @@ export class ServerSnapshotPublisher {
     const projectileSpawns = input.simulation.getAndClearProjectileSpawns();
     const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
     const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
+    const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
 
     this.dirtyIdsBuf.length = 0;
     this.dirtyFieldsBuf.length = 0;
@@ -628,7 +629,8 @@ export class ServerSnapshotPublisher {
     const hasProjectileEvents =
       projectileSpawns.length > 0 ||
       projectileDespawns.length > 0 ||
-      projectileVelocityUpdates.length > 0;
+      projectileVelocityUpdates.length > 0 ||
+      hasLiveLineProjectiles;
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', lifecycleStart);
 
     let stageStart = performance.now();
@@ -865,7 +867,7 @@ export class ServerSnapshotPublisher {
               world: input.world,
               fullStateResync: false,
               visibility,
-              emitBeamUpdates: false,
+              emitBeamUpdates: true,
               projectileSpawns,
               projectileDespawns,
               projectileVelocityUpdates,
@@ -1152,6 +1154,7 @@ export class ServerSnapshotPublisher {
     const emitBaseStages = createSnapshotMaterializationStageDurations();
     let stageStart = performance.now();
     const hasProjectilePresentationEvents = input.simulation.hasPendingProjectilePresentationEvents();
+    const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', stageStart);
     const motionCandidateIds = this.entityMotionCandidateIdsBuf;
     let hasEntityMotionDeltas = false;
@@ -1168,7 +1171,7 @@ export class ServerSnapshotPublisher {
     } else {
       motionCandidateIds.length = 0;
     }
-    if (!hasProjectilePresentationEvents && !hasEntityMotionDeltas) return false;
+    if (!hasProjectilePresentationEvents && !hasLiveLineProjectiles && !hasEntityMotionDeltas) return false;
 
     stageStart = performance.now();
     const audioEvents = hasProjectilePresentationEvents
@@ -1183,7 +1186,7 @@ export class ServerSnapshotPublisher {
     const projectileVelocityUpdates = hasProjectilePresentationEvents
       ? input.simulation.getAndClearProjectileVelocityUpdates()
       : undefined;
-    const hasProjectilesAfterDrain =
+    const hasProjectileEventsAfterDrain =
       projectileSpawns !== undefined &&
       projectileDespawns !== undefined &&
       projectileVelocityUpdates !== undefined &&
@@ -1192,6 +1195,7 @@ export class ServerSnapshotPublisher {
         projectileDespawns.length > 0 ||
         projectileVelocityUpdates.length > 0
       );
+    const hasProjectilesAfterDrain = hasLiveLineProjectiles || hasProjectileEventsAfterDrain;
     if (!hasProjectilesAfterDrain && !hasEntityMotionDeltas) {
       return false;
     }
@@ -1246,7 +1250,7 @@ export class ServerSnapshotPublisher {
               world: input.world,
               fullStateResync: false,
               visibility,
-              emitBeamUpdates: false,
+              emitBeamUpdates: true,
               projectileSpawns,
               projectileDespawns,
               projectileVelocityUpdates,

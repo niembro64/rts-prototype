@@ -54,6 +54,9 @@ export type CameraViewMode = 'overhead' | 'ta' | 'spring';
  *  Only active while exactly one unit is selected. */
 export type CameraFollowMode = 'free' | 'follow' | 'follow-behind';
 export type CameraFovDegrees = 10 | 30 | 45 | 60 | 120;
+/** Renderer entity LOD policy. AUTO keeps distance-based proxy selection.
+ *  HIGH keeps full meshes. LOW forces proxy meshes. */
+export type LodMode = 'auto' | 'high' | 'low';
 /** Waypoint visualization detail. SIMPLE shows only the user-issued
  *  click points and shortcut lines between them — the convention in
  *  most RTS games. DETAILED shows every intermediate waypoint that

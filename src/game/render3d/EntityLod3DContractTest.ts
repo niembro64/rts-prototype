@@ -1,4 +1,8 @@
 import type * as THREE from 'three';
+import {
+  getLodMode,
+  setLodMode,
+} from '../../clientBarConfig';
 import type { Entity } from '../sim/types';
 import {
   EntityLodHysteresis3D,
@@ -42,27 +46,60 @@ export function runEntityLod3DContractTest(): void {
   const lod = new EntityLodHysteresis3D();
   const camera = cameraAt(0, 0, 0);
   const entity = entityAt(101, 3, 4, 0);
+  const previousLodMode = getLodMode();
 
-  lod.beginFrame();
-  assertEmissionParity(lod, camera, entity, null, 'null threshold');
-  assertEmissionParity(lod, camera, entity, Number.NaN, 'nan threshold');
-  assertEmissionParity(lod, camera, entity, -1, 'negative threshold');
-  assertEmissionParity(lod, camera, entity, 4.99, 'outside threshold');
-  assertEmissionParity(lod, camera, entity, 5, 'on threshold');
-  assertEmissionParity(lod, camera, entity, 5.01, 'inside threshold');
+  try {
+    lod.beginFrame();
+    assertEmissionParity(lod, camera, entity, null, 'null threshold');
+    assertEmissionParity(lod, camera, entity, Number.NaN, 'nan threshold');
+    assertEmissionParity(lod, camera, entity, -1, 'negative threshold');
+    assertEmissionParity(lod, camera, entity, 4.99, 'outside threshold');
+    assertEmissionParity(lod, camera, entity, 5, 'on threshold');
+    assertEmissionParity(lod, camera, entity, 5.01, 'inside threshold');
 
-  entity.transform.y = 100;
-  lod.beginFrame();
-  assertEmissionParity(lod, camera, entity, 50, 'new frame refreshes cached distance');
-  assertContract(
-    lod.entityEmissionUsesLowLodDistance(camera, entity, 50) ===
-      simPositionUsesLowEmissionLod3D(
-        camera,
-        entity.transform.x,
-        entity.transform.y,
-        entity.transform.z,
-        50,
-      ),
-    'cached emission LOD matches explicit sim-position calculation',
-  );
+    entity.transform.y = 100;
+    lod.beginFrame();
+    assertEmissionParity(lod, camera, entity, 50, 'new frame refreshes cached distance');
+    assertContract(
+      lod.entityEmissionUsesLowLodDistance(camera, entity, 50) ===
+        simPositionUsesLowEmissionLod3D(
+          camera,
+          entity.transform.x,
+          entity.transform.y,
+          entity.transform.z,
+          50,
+        ),
+      'cached emission LOD matches explicit sim-position calculation',
+    );
+
+    const bodyLod = new EntityLodHysteresis3D();
+    const body = entityAt(202, 0, 0, 0);
+    setLodMode('low');
+    bodyLod.beginFrame();
+    assertContract(
+      bodyLod.entityUsesLodProxy(camera, body),
+      'LOW mode always forces entity LOD proxies',
+    );
+    setLodMode('high');
+    bodyLod.beginFrame();
+    assertContract(
+      !bodyLod.entityUsesLodProxy(camera, body),
+      'HIGH mode never allows entity LOD proxies',
+    );
+    setLodMode('auto');
+    body.transform.x = 0;
+    bodyLod.beginFrame();
+    assertContract(
+      !bodyLod.entityUsesLodProxy(camera, body),
+      'AUTO mode keeps nearby entities in full detail',
+    );
+    body.transform.x = 10000;
+    bodyLod.beginFrame();
+    assertContract(
+      bodyLod.entityUsesLodProxy(camera, body),
+      'AUTO mode keeps existing distance-based proxy selection',
+    );
+  } finally {
+    setLodMode(previousLodMode);
+  }
 }

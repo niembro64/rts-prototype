@@ -24,9 +24,13 @@ import {
 } from '../../network/snapshotProjectileWirePack';
 import {
   createProjectileSnapshotWireSource,
+  PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+  PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
   registerProjectileSnapshotWireSource,
+  writeBeamPointWireRow,
+  writeBeamUpdateWireRow,
 } from '../../network/stateSerializerProjectiles';
 import {
   ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
@@ -337,7 +341,7 @@ function attachDirectProjectileMotionRows(
     spawns: new Array(1),
     despawns: new Array(1),
     velocityUpdates: new Array(1),
-    beamUpdates: undefined,
+    beamUpdates: new Array(1),
   } as NonNullable<NetworkServerSnapshot['projectiles']>;
   const source = createProjectileSnapshotWireSource();
   const spawnIndex = reserveFloat64WireRows(
@@ -373,6 +377,77 @@ function attachDirectProjectileMotionRows(
   source.velocityUpdates.values[base + 5] = 20;
   source.velocityUpdates.values[base + 6] = 30;
   source.velocityUpdates.values[base + 8] = 88;
+  const beamUpdate = {
+    id: 82,
+    obstructionT: null,
+    endpointDamageable: true,
+    points: [
+      {
+        x: 10,
+        y: 20,
+        z: 30,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        reflectorEntityId: null,
+        reflectorKind: null,
+        reflectorPlayerId: null,
+        normalX: null,
+        normalY: null,
+        normalZ: null,
+      },
+      {
+        x: 40,
+        y: 50,
+        z: 60,
+        vx: 1,
+        vy: 2,
+        vz: 3,
+        reflectorEntityId: 900,
+        reflectorKind: 'shield' as const,
+        reflectorPlayerId: 2,
+        normalX: 0,
+        normalY: -1,
+        normalZ: 0,
+      },
+      {
+        x: 70,
+        y: 80,
+        z: 90,
+        vx: 4,
+        vy: 5,
+        vz: 6,
+        reflectorEntityId: null,
+        reflectorKind: null,
+        reflectorPlayerId: null,
+        normalX: null,
+        normalY: null,
+        normalZ: null,
+      },
+    ],
+  };
+  const beamIndex = reserveFloat64WireRows(
+    source.beamUpdates,
+    1,
+    PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+  );
+  writeBeamUpdateWireRow(
+    source.beamUpdates.values,
+    beamIndex * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+    beamUpdate,
+  );
+  for (let i = 0; i < beamUpdate.points.length; i++) {
+    const pointIndex = reserveFloat64WireRows(
+      source.beamPoints,
+      1,
+      PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+    );
+    writeBeamPointWireRow(
+      source.beamPoints.values,
+      pointIndex * PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+      beamUpdate.points[i],
+    );
+  }
   registerProjectileSnapshotWireSource(projectiles, source);
   snapshot.projectiles = projectiles;
 }
@@ -986,6 +1061,7 @@ export function runSnapshotBufferContractTest(): void {
   const directSpawns = consumedDirectDelta?.projectiles?.spawns ?? [];
   const directDespawns = consumedDirectDelta?.projectiles?.despawns ?? [];
   const directVelocityUpdates = consumedDirectDelta?.projectiles?.velocityUpdates ?? [];
+  const directBeamUpdates = consumedDirectDelta?.projectiles?.beamUpdates ?? [];
   assertContract(
     directSpawns.length === 1 &&
       directSpawns[0].id === 79 &&
@@ -1003,6 +1079,38 @@ export function runSnapshotBufferContractTest(): void {
       directVelocityUpdates[0].velocity.z === 30 &&
       directVelocityUpdates[0].targetEntityId === 88,
     'snapshot buffer must materialize direct projectile wire-source velocity updates on consume',
+  );
+  assertContract(
+    directBeamUpdates.length === 1 &&
+      directBeamUpdates[0].id === 82 &&
+      directBeamUpdates[0].points.length === 3 &&
+      directBeamUpdates[0].points[1].reflectorEntityId === 900 &&
+      directBeamUpdates[0].points[1].reflectorKind === 'shield' &&
+      directBeamUpdates[0].points[2].x === 70,
+    'snapshot buffer must materialize direct projectile wire-source beam updates on consume',
+  );
+
+  const projectileCarrierBeforeMotion = createSnapshot(12, []);
+  projectileCarrierBeforeMotion.projectileDeltaOnly = true;
+  attachDirectProjectileMotionRows(projectileCarrierBeforeMotion, 90, 91);
+  fake.emitSnapshot(projectileCarrierBeforeMotion);
+  const motionAfterProjectileCarrier = createSnapshot(13, [], [
+    createSparseDecodedMotionUnitEntity(31, 340),
+  ]);
+  motionAfterProjectileCarrier.entityDeltaOnly = true;
+  fake.emitSnapshot(motionAfterProjectileCarrier);
+  const consumedMotionAfterProjectileCarrier = buffer.consume();
+  assertContract(
+    consumedMotionAfterProjectileCarrier?.entityDeltaOnly === true &&
+      consumedMotionAfterProjectileCarrier.entities.length === 1 &&
+      consumedMotionAfterProjectileCarrier.entities[0]?.id === 31 &&
+      consumedMotionAfterProjectileCarrier.entities[0]?.pos?.x === 340,
+    'entity motion delta must replace a pending projectile-only carrier instead of merging into an empty entity list',
+  );
+  assertContract(
+    (consumedMotionAfterProjectileCarrier.projectiles?.beamUpdates ?? []).length === 1 &&
+      consumedMotionAfterProjectileCarrier.projectiles?.beamUpdates?.[0]?.id === 82,
+    'projectile-only carrier rows must stay buffered when entity motion replaces the carrier',
   );
 
   buffer.clear();

@@ -86,7 +86,7 @@ import {
   applyNetworkUnitDriftFieldsToTarget,
 } from './unitSnapshotFields';
 import { decodeFactoryProductionQueueInto } from './factoryProductionQueueWire';
-import { createSpawnDto } from './snapshotDtoCopy';
+import { createBeamDto, createSpawnDto } from './snapshotDtoCopy';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
   ENTITY_POSITION_WIRE_INV_SCALE,
@@ -121,6 +121,7 @@ import {
 } from './snapshotProjectileWirePack';
 import {
   forEachProjectileWireSourceSpawn,
+  forEachProjectileWireSourceBeamUpdate,
   forEachProjectileWireSourceDespawn,
   forEachProjectileWireSourceVelocityUpdate,
   projectileSnapshotWireSourceHasDirectlyConsumableRows,
@@ -332,6 +333,7 @@ export class ClientViewState {
   private _serverIds: Set<EntityId> = new ClientEntityIdSet();
   private readonly _fullReconcileRemoveIds: EntityId[] = [];
   private _projectileReflectionIds: Set<EntityId> = new ClientEntityIdSet();
+  private readonly directProjectileBeamUpdateScratch = createBeamDto();
 
   // Spatial grid debug visualization data
   private gridCells: NetworkServerSnapshotGridCell[] = [];
@@ -2534,7 +2536,14 @@ export class ClientViewState {
       // Server-authored live beam/laser paths. These carry current
       // start/end/reflection points so the client can draw beams without
       // running local mirror/unit/building beam traces in applyPrediction.
-      const beamUpdates = directProjectileRows ? undefined : projectiles.beamUpdates;
+      const appliedDirectBeamUpdates = directProjectileRows
+        ? forEachProjectileWireSourceBeamUpdate(
+            projectiles,
+            this.directProjectileBeamUpdateScratch,
+            (update) => this.projectileStore.applyBeamUpdate(update, now),
+          )
+        : false;
+      const beamUpdates = appliedDirectBeamUpdates ? undefined : projectiles.beamUpdates;
       if (beamUpdates !== undefined && beamUpdates !== null) {
         for (const update of beamUpdates) {
           this.projectileStore.applyBeamUpdate(update, now);

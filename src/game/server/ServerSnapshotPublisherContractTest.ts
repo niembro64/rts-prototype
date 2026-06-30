@@ -15,8 +15,10 @@ import {
 } from '../network/stateSerializerEntities';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
+import { createProjectileConfigFromTurret } from '../sim/projectileConfigs';
 import type { Simulation } from '../sim/Simulation';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
+import { getTurretConfig } from '../sim/turretConfigs';
 import { WorldState } from '../sim/WorldState';
 import { ServerSnapshotPublisher, type SnapshotListenerEntry } from './ServerSnapshotPublisher';
 
@@ -118,6 +120,34 @@ function createListener(
     hasVisibleEntityBaseline: visibleIds.length > 0,
     visibleEntityIds,
   };
+}
+
+function assertReflectedBeamUpdate(
+  state: NetworkServerSnapshot,
+  beamId: EntityId,
+  reflectorId: EntityId,
+  messagePrefix: string,
+): void {
+  const updates = state.projectiles?.beamUpdates;
+  assertContract(
+    updates !== undefined && updates.length === 1,
+    `${messagePrefix} must emit one beam update`,
+  );
+  const update = updates[0];
+  assertContract(update.id === beamId, `${messagePrefix} beam update must identify the live beam`);
+  assertContract(update.points.length === 3, `${messagePrefix} must preserve reflected beam vertices`);
+  assertContract(
+    update.points[1].reflectorEntityId === reflectorId &&
+      update.points[1].reflectorKind === 'shield' &&
+      update.points[1].reflectorPlayerId === 2,
+    `${messagePrefix} must preserve reflector metadata`,
+  );
+  assertContract(
+    update.points[2].x === 240 &&
+      update.points[2].y === 130 &&
+      update.points[2].z === 14,
+    `${messagePrefix} must preserve the current beam endpoint`,
+  );
 }
 
 export function runServerSnapshotPublisherContractTest(): void {
@@ -410,5 +440,126 @@ export function runServerSnapshotPublisherContractTest(): void {
   assertContract(
     (groundClient.getEntity(groundUnit.id)?.transform.x ?? 0) > 180,
     'client must apply pending deferred ground sparse motion',
+  );
+
+  entitySlotRegistry.clear();
+  const beamWorld = new WorldState(9904, 512, 512);
+  beamWorld.playerCount = 2;
+  const beamSource = beamWorld.createUnitFromBlueprint(40, 50, 1 as PlayerId, 'unitJackal');
+  const reflector = beamWorld.createUnitFromBlueprint(170, 90, 2 as PlayerId, 'unitJackal');
+  beamWorld.addEntity(beamSource);
+  beamWorld.addEntity(reflector);
+  const beamConfig = createProjectileConfigFromTurret(getTurretConfig('turretBeam'));
+  const beam = beamWorld.createBeam(
+    40,
+    50,
+    14,
+    240,
+    130,
+    1 as PlayerId,
+    beamSource.id,
+    beamConfig,
+    'beam',
+  );
+  beamWorld.addEntity(beam);
+  assertContract(
+    beam.projectile !== null && beam.projectile.points !== null,
+    'fixture beam must have editable beam points',
+  );
+  const points = beam.projectile.points;
+  points.length = 0;
+  points.push(
+    {
+      x: 40,
+      y: 50,
+      z: 14,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      reflectorEntityId: null,
+      reflectorKind: null,
+      reflectorPlayerId: null,
+      normalX: null,
+      normalY: null,
+      normalZ: null,
+    },
+    {
+      x: 170,
+      y: 90,
+      z: 14,
+      vx: 3,
+      vy: 2,
+      vz: 0,
+      reflectorEntityId: reflector.id,
+      reflectorKind: 'shield',
+      reflectorPlayerId: 2 as PlayerId,
+      normalX: -1,
+      normalY: 0,
+      normalZ: 0,
+    },
+    {
+      x: 240,
+      y: 130,
+      z: 14,
+      vx: 3,
+      vy: 2,
+      vz: 0,
+      reflectorEntityId: null,
+      reflectorKind: null,
+      reflectorPlayerId: null,
+      normalX: null,
+      normalY: null,
+      normalZ: null,
+    },
+  );
+
+  const beamDrainIds: number[] = [];
+  const beamDrainFields: number[] = [];
+  beamWorld.drainSnapshotDirtyEntities(beamDrainIds, beamDrainFields);
+
+  const beamPublisher = new ServerSnapshotPublisher();
+  const capturedBeamSparse: { value: NetworkServerSnapshot | null } = { value: null };
+  const beamSparseListener = createListener((state) => {
+    capturedBeamSparse.value = state;
+  });
+  const beamSparseEmitted = beamPublisher.emitProjectileDelta(
+    createPublisherInput(beamWorld, beamSparseListener),
+    false,
+  );
+  assertContract(
+    beamSparseEmitted,
+    'publisher must emit sparse projectile deltas for live beams without pending projectile events',
+  );
+  const beamSparse = capturedBeamSparse.value;
+  assertContract(beamSparse !== null, 'listener must receive live-beam sparse delta');
+  assertContract(
+    beamSparse.projectileDeltaOnly === true,
+    'live-beam sparse delta without entity rows must be projectile-only',
+  );
+  assertReflectedBeamUpdate(
+    beamSparse,
+    beam.id,
+    reflector.id,
+    'live-beam sparse delta',
+  );
+
+  const capturedBeamRich: { value: NetworkServerSnapshot | null } = { value: null };
+  const beamRichListener = createListener((state) => {
+    capturedBeamRich.value = state;
+  }, [beam.id]);
+  const beamRichEmitted = beamPublisher.emitLockstepPresentation(
+    createPublisherInput(beamWorld, beamRichListener),
+  );
+  assertContract(
+    beamRichEmitted,
+    'publisher must include live beam paths in rich deltas without pending projectile events',
+  );
+  const beamRich = capturedBeamRich.value;
+  assertContract(beamRich !== null, 'listener must receive live-beam rich delta');
+  assertReflectedBeamUpdate(
+    beamRich,
+    beam.id,
+    reflector.id,
+    'live-beam rich delta',
   );
 }

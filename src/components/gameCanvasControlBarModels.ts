@@ -11,6 +11,7 @@ import type {
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
+  LodMode,
   MasterVolumePercent,
   PositionDriftChannelMode,
   PredictionMode,
@@ -233,7 +234,7 @@ export type GameCanvasClientControlBarModel = {
   readonly allUnitRadiiActive: boolean;
   readonly unitRadiusToggles: Readonly<Record<UnitRadiusType, boolean>>;
   readonly legsRadiusToggle: boolean;
-  readonly forceLodProxy: boolean;
+  readonly lodMode: LodMode;
   readonly cameraFovDegrees: CameraFovDegrees;
   readonly cameraSmoothMode: CameraSmoothMode;
   readonly cameraFollowMode: CameraFollowMode;
@@ -287,7 +288,7 @@ export type GameCanvasClientControlBarModel = {
   toggleAllUnitRadii(): void;
   toggleUnitRadius(type: UnitRadiusType): void;
   toggleLegsRadius(): void;
-  toggleForceLodProxy(): void;
+  changeLodMode(mode: LodMode): void;
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
   setCameraMode(mode: CameraSmoothMode): void;
   setCameraViewMode(mode: CameraViewMode): void;

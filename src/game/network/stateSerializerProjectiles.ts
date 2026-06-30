@@ -533,11 +533,11 @@ export function projectileSnapshotWireSourceHasDirectlyConsumableRows(
   const source = getActiveProjectileSnapshotWireSource(projectiles);
   return (
     source !== undefined &&
-    source.beamUpdates.count === 0 &&
     (
       source.spawns.count > 0 ||
       source.despawns.count > 0 ||
-      source.velocityUpdates.count > 0
+      source.velocityUpdates.count > 0 ||
+      source.beamUpdates.count > 0
     )
   );
 }
@@ -694,6 +694,95 @@ export function forEachProjectileWireSourceVelocityUpdate(
       targetEntityId > 0 ? targetEntityId : null,
       (values[base + 7] ?? 0) !== 0,
     );
+  }
+  return true;
+}
+
+function copyProjectileWireSourceBeamPointRowFromSourceInto(
+  source: ProjectileSnapshotWireSource,
+  rowIndex: number,
+  out: NetworkServerSnapshotBeamPoint,
+): boolean {
+  if (rowIndex < 0 || rowIndex >= source.beamPoints.count) return false;
+  const values = source.beamPoints.values;
+  const base = rowIndex * PROJECTILE_BEAM_POINT_WIRE_STRIDE;
+  const flags = values[base + 6] ?? 0;
+  out.x = values[base + 0] ?? 0;
+  out.y = values[base + 1] ?? 0;
+  out.z = values[base + 2] ?? 0;
+  out.vx = values[base + 3] ?? 0;
+  out.vy = values[base + 4] ?? 0;
+  out.vz = values[base + 5] ?? 0;
+  out.reflectorEntityId = (flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0
+    ? values[base + 7]
+    : null;
+  out.reflectorKind = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0
+    ? 'shield'
+    : null;
+  out.reflectorPlayerId = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0
+    ? values[base + 8] as PlayerId
+    : null;
+  out.normalX = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) !== 0
+    ? values[base + 9]
+    : null;
+  out.normalY = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) !== 0
+    ? values[base + 10]
+    : null;
+  out.normalZ = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0
+    ? values[base + 11]
+    : null;
+  return true;
+}
+
+function ensureBeamUpdateScratchPoint(
+  points: NetworkServerSnapshotBeamPoint[],
+  index: number,
+): NetworkServerSnapshotBeamPoint {
+  let point = points[index];
+  if (point === undefined) {
+    point = createPooledBeamPoint();
+    points[index] = point;
+  }
+  return point;
+}
+
+export function forEachProjectileWireSourceBeamUpdate(
+  projectiles: ProjectileSnapshot,
+  scratch: NetworkServerSnapshotBeamUpdate,
+  visitor: (update: NetworkServerSnapshotBeamUpdate) => void,
+): boolean {
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  if (source === undefined) return false;
+  const rows = source.beamUpdates;
+  if (rows.count === 0) return false;
+  const headers = rows.values;
+  let pointOffset = 0;
+  for (let i = 0; i < rows.count; i++) {
+    const base = i * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
+    const flags = headers[base + 1] ?? 0;
+    const pointCount = Math.max(0, headers[base + 3] ?? 0) | 0;
+    if (pointOffset + pointCount > source.beamPoints.count) return i > 0;
+    scratch.id = headers[base + 0] ?? 0;
+    scratch.obstructionT = (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0
+      ? headers[base + 2]
+      : null;
+    if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE) !== 0) {
+      scratch.endpointDamageable = true;
+    } else if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE) !== 0) {
+      scratch.endpointDamageable = false;
+    } else {
+      scratch.endpointDamageable = null;
+    }
+    scratch.points.length = pointCount;
+    for (let p = 0; p < pointCount; p++) {
+      copyProjectileWireSourceBeamPointRowFromSourceInto(
+        source,
+        pointOffset + p,
+        ensureBeamUpdateScratchPoint(scratch.points, p),
+      );
+    }
+    pointOffset += pointCount;
+    visitor(scratch);
   }
   return true;
 }

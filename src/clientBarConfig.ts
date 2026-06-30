@@ -13,6 +13,7 @@ import type {
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
+  LodMode,
   MasterVolumePercent,
   PositionDriftChannelMode,
   PredictionMode,
@@ -39,6 +40,7 @@ export type { CameraSmoothMode, CameraFollowMode } from './types/client';
 export type {
   EntityHudElement,
   EntityHudType,
+  LodMode,
   SelectionHudMode,
 } from './types/client';
 export type ClientMode = 'demo' | 'real';
@@ -954,21 +956,30 @@ export function setLegsRadiusToggle(show: boolean): void {
   persist(activeStorageKeys().legsRadius, String(show));
 }
 
-// "Only show proxies" debug-view toggle: force every unit / building / tower to
-// render as its level-of-detail PROXY (the hitbox-style simplified mesh)
-// regardless of camera distance. Standalone + global (not per-mode) — it is a
-// pure inspection aid, so it uses a fixed storage key rather than the per-mode
-// client-bar config structure.
+// Entity LOD policy. Standalone + global (not per-mode) because it is a
+// renderer inspection/perf policy rather than a battle/profile setting.
 const FORCE_LOD_PROXY_STORAGE_KEY = 'client-force-lod-proxy';
-let currentForceLodProxy: boolean = readPersisted(FORCE_LOD_PROXY_STORAGE_KEY) === 'true';
+export const LOD_MODE_OPTIONS: OptionList<LodMode> = [
+  { value: 'auto', label: 'AUTO' },
+  { value: 'high', label: 'HIGH' },
+  { value: 'low', label: 'LOW' },
+];
 
-export function getForceLodProxyToggle(): boolean {
-  return currentForceLodProxy;
+function parseStoredLodMode(raw: string | null): LodMode {
+  if (raw === 'low' || raw === 'true') return 'low';
+  if (raw === 'high') return 'high';
+  return 'auto';
 }
 
-export function setForceLodProxyToggle(show: boolean): void {
-  currentForceLodProxy = show;
-  persist(FORCE_LOD_PROXY_STORAGE_KEY, String(show));
+let currentLodMode: LodMode = parseStoredLodMode(readPersisted(FORCE_LOD_PROXY_STORAGE_KEY));
+
+export function getLodMode(): LodMode {
+  return currentLodMode;
+}
+
+export function setLodMode(mode: LodMode): void {
+  currentLodMode = mode;
+  persist(FORCE_LOD_PROXY_STORAGE_KEY, mode);
 }
 
 export function getCameraSmoothMode(): CameraSmoothMode {

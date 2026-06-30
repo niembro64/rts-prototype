@@ -20,9 +20,13 @@ import {
 } from './snapshotProjectileWirePack';
 import {
   createProjectileSnapshotWireSource,
+  PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+  PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
   registerProjectileSnapshotWireSource,
+  writeBeamPointWireRow,
+  writeBeamUpdateWireRow,
   writeProjectileSpawnWireRow,
 } from './stateSerializerProjectiles';
 import { reserveFloat64WireRows } from './snapshotWireRows';
@@ -125,6 +129,89 @@ function directProjectileSpawnSnapshot(
     rowIndex * PROJECTILE_SPAWN_WIRE_STRIDE,
     spawn,
   );
+  registerProjectileSnapshotWireSource(projectiles, source);
+  return snapshot;
+}
+
+function directBeamUpdateSnapshot(
+  tick: number,
+  id: number,
+): NetworkServerSnapshot {
+  const snapshot = projectileSnapshot(tick, undefined);
+  const projectiles = snapshot.projectiles!;
+  projectiles.beamUpdates = [undefined as never];
+  const source = createProjectileSnapshotWireSource();
+  const update = {
+    id,
+    obstructionT: null,
+    endpointDamageable: true,
+    points: [
+      {
+        x: qProjPos(300),
+        y: qProjPos(300),
+        z: qProjPos(25),
+        vx: qVel(0),
+        vy: qVel(0),
+        vz: qVel(0),
+        reflectorEntityId: null,
+        reflectorKind: null,
+        reflectorPlayerId: null,
+        normalX: null,
+        normalY: null,
+        normalZ: null,
+      },
+      {
+        x: qProjPos(375),
+        y: qProjPos(325),
+        z: qProjPos(28),
+        vx: qVel(4),
+        vy: qVel(2),
+        vz: qVel(0),
+        reflectorEntityId: 900,
+        reflectorKind: 'shield' as const,
+        reflectorPlayerId: 2,
+        normalX: 0,
+        normalY: qVel(-1),
+        normalZ: 0,
+      },
+      {
+        x: qProjPos(420),
+        y: qProjPos(390),
+        z: qProjPos(29),
+        vx: qVel(8),
+        vy: qVel(12),
+        vz: qVel(0),
+        reflectorEntityId: null,
+        reflectorKind: null,
+        reflectorPlayerId: null,
+        normalX: null,
+        normalY: null,
+        normalZ: null,
+      },
+    ],
+  };
+  const updateIndex = reserveFloat64WireRows(
+    source.beamUpdates,
+    1,
+    PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+  );
+  writeBeamUpdateWireRow(
+    source.beamUpdates.values,
+    updateIndex * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+    update,
+  );
+  for (let i = 0; i < update.points.length; i++) {
+    const pointIndex = reserveFloat64WireRows(
+      source.beamPoints,
+      1,
+      PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+    );
+    writeBeamPointWireRow(
+      source.beamPoints.values,
+      pointIndex * PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+      update.points[i],
+    );
+  }
   registerProjectileSnapshotWireSource(projectiles, source);
   return snapshot;
 }
@@ -264,15 +351,24 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     view.getEntity(304)?.projectile?.projectileType === 'beam',
     'direct projectile spawn wire rows must create projectile entities without DTO spawn rows',
   );
+  view.applyNetworkState(directBeamUpdateSnapshot(4, 304));
+  const directBeamPoints = view.getEntity(304)?.projectile?.points;
+  assertContract(
+    directBeamPoints?.length === 3 &&
+      directBeamPoints[1].reflectorEntityId === 900 &&
+      directBeamPoints[1].reflectorKind === 'shield' &&
+      directBeamPoints[2].x === 420,
+    'direct projectile beam update wire rows must apply reflected beam paths without DTO beam rows',
+  );
 
-  view.applyNetworkState(projectileSnapshot(3, [plasmaSpawn(303, 700, 700)]));
+  view.applyNetworkState(projectileSnapshot(5, [plasmaSpawn(303, 700, 700)]));
   view.collectProjectileRenderLists({ minX: 650, minY: 650, maxX: 750, maxY: 750 }, lists);
   assertContract(
     lists.traveling.length === 1 && lists.traveling[0].id === 303,
     'scoped projectile query must include newly spawned plasma projectile',
   );
 
-  const plasmaVelocitySnapshot = projectileSnapshot(4, undefined);
+  const plasmaVelocitySnapshot = projectileSnapshot(6, undefined);
   plasmaVelocitySnapshot.projectiles!.velocityUpdates = [{
     id: 303,
     pos: { x: qProjPos(1500), y: qProjPos(1500), z: qProjPos(35) },
@@ -292,7 +388,7 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'projectile velocity update must move the render spatial slot into its new query bounds',
   );
 
-  view.applyNetworkState(projectileSnapshot(5, undefined, [301, 302, 303, 304]));
+  view.applyNetworkState(projectileSnapshot(7, undefined, [301, 302, 303, 304]));
   current = view.collectProjectileRenderLists(null, lists);
   assertContract(
     current.traveling.length === 0 &&

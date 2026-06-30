@@ -49,6 +49,7 @@ import {
 } from '../../network/stateSerializerEntities';
 import {
   forEachProjectileWireSourceSpawn,
+  forEachProjectileWireSourceBeamUpdate,
   forEachProjectileWireSourceDespawn,
   forEachProjectileWireSourceVelocityUpdate,
   projectileSnapshotWireSourceHasDirectlyConsumableRows,
@@ -182,6 +183,7 @@ export class SnapshotBuffer {
   private pendingEntityIndexReady = false;
   private readonly removedEntityIdSet = new Set<number>();
   private readonly directProjectileSpawnScratch = createSpawnDto();
+  private readonly directProjectileBeamUpdateScratch = createBeamDto();
 
   private pushBufferedSpawn(spawn: NetworkServerSnapshotProjectileSpawn): void {
     let index = this.bufferedSpawns.length;
@@ -290,6 +292,20 @@ export class SnapshotBuffer {
         targetEntityId,
         clearHomingTarget,
       ),
+    );
+    forEachProjectileWireSourceBeamUpdate(
+      projectiles,
+      this.directProjectileBeamUpdateScratch,
+      (update) => {
+        let out = this.bufferedBeamUpdates.get(update.id);
+        if (!out) {
+          out = this.beamStagePool[this.beamStagePoolIndex] ?? createBeamDto();
+          this.beamStagePool[this.beamStagePoolIndex] = out;
+          this.beamStagePoolIndex++;
+          this.bufferedBeamUpdates.set(update.id, out);
+        }
+        copyBeamInto(update, out);
+      },
     );
     return true;
   }
@@ -1227,6 +1243,16 @@ export class SnapshotBuffer {
       ) {
         releaseSnapshot?.();
         return;
+      }
+      if (
+        state.entityDeltaOnly === true &&
+        this.pendingSnapshot !== null &&
+        this.pendingSnapshot.projectileDeltaOnly === true
+      ) {
+        // Projectile-only packets are just carriers for buffered projectile
+        // state. Let a following entity-motion delta become the carrier so
+        // sparse unit/fighter motion is not merged into an empty entity list.
+        this.releasePendingSnapshot();
       }
       if (
         state.entityDeltaOnly === true &&

@@ -459,7 +459,7 @@ export class ServerSnapshotDirectWirePreencoder {
       world: input.world,
       fullStateResync: false,
       visibility: input.visibility,
-      emitBeamUpdates: false,
+      emitBeamUpdates: true,
       projectileSpawns: input.projectileSpawns,
       projectileDespawns: input.projectileDespawns,
       projectileVelocityUpdates: input.projectileVelocityUpdates,
@@ -595,14 +595,18 @@ export class ServerSnapshotDirectWirePreencoder {
       addSnapshotMaterializationStageFromStart(stages, 'scanPulses', stageStart);
     }
 
+    const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
     const hasProjectileEvents =
-      input.projectileSpawns !== undefined &&
-      input.projectileDespawns !== undefined &&
-      input.projectileVelocityUpdates !== undefined &&
+      hasLiveLineProjectiles ||
       (
-        input.projectileSpawns.length > 0 ||
-        input.projectileDespawns.length > 0 ||
-        input.projectileVelocityUpdates.length > 0
+        input.projectileSpawns !== undefined &&
+        input.projectileDespawns !== undefined &&
+        input.projectileVelocityUpdates !== undefined &&
+        (
+          input.projectileSpawns.length > 0 ||
+          input.projectileDespawns.length > 0 ||
+          input.projectileVelocityUpdates.length > 0
+        )
       );
     const netProjectiles = hasProjectileEvents
       ? (() => {
@@ -611,7 +615,7 @@ export class ServerSnapshotDirectWirePreencoder {
             world: input.world,
             fullStateResync: false,
             visibility: input.visibility,
-            emitBeamUpdates: false,
+            emitBeamUpdates: true,
             projectileSpawns: input.projectileSpawns,
             projectileDespawns: input.projectileDespawns,
             projectileVelocityUpdates: input.projectileVelocityUpdates,

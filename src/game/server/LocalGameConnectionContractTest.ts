@@ -150,8 +150,8 @@ export function runLocalGameConnectionContractTest(): void {
   const withProjectileBeamRows = createTypedPlaceholderDeltaSnapshot();
   attachDirectProjectileBeamUpdateRows(withProjectileBeamRows);
   assertContract(
-    !canDeliverDirectLocalSnapshotState(withProjectileBeamRows),
-    'direct delivery must reject projectile beam update placeholder sections',
+    canDeliverDirectLocalSnapshotState(withProjectileBeamRows),
+    'projectile beam update rows may be delivered directly',
   );
 
   const fullSnapshot = createTypedPlaceholderDeltaSnapshot();
