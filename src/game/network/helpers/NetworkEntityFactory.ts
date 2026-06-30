@@ -53,6 +53,11 @@ import {
   readNetworkUnitVelocity,
 } from '../unitSnapshotFields';
 
+function orientationFromYaw(yaw: number): { x: number; y: number; z: number; w: number } {
+  const half = (Number.isFinite(yaw) ? yaw : 0) * 0.5;
+  return { x: 0, y: 0, z: Math.sin(half), w: Math.cos(half) };
+}
+
 function decodeNetworkBuildingBlueprintId(buildingBlueprintCode: unknown): BuildingBlueprintId | null {
   if (!isFiniteNumber(buildingBlueprintCode)) return null;
   const decoded = codeToBuildingBlueprintId(buildingBlueprintCode);
@@ -349,6 +354,8 @@ function createUnitFromNetwork(
       movementAccelZ: 0,
       thrustDirX: 0,
       thrustDirY: 0,
+      headingDirX: 0,
+      headingDirY: 0,
       shieldPanels: [],
       shieldBoundRadius: 0,
       // Smoothed surface normal: hydrated from the wire when present.
@@ -358,17 +365,16 @@ function createUnitFromNetwork(
       suspension: createUnitSuspension(
         unitBlueprint !== undefined ? unitBlueprint.suspension : undefined,
       ),
-      // 3-DOF orientation triad — hydrated from the wire for hover-style
-      // units that need roll. Ground units have no orientation field on
-      // the wire, so these stay null.
+      // 3-DOF orientation triad. New snapshots send it for every unit;
+      // yaw fallback keeps older/sparse snapshots usable.
       orientation: unitOrientation !== null
         ? { x: unitOrientation.x, y: unitOrientation.y, z: unitOrientation.z, w: unitOrientation.w }
-        : null,
+        : orientationFromYaw(rotation),
       angularVelocity3: unitAngularVelocity3 !== null
         ? { x: unitAngularVelocity3.x, y: unitAngularVelocity3.y, z: unitAngularVelocity3.z }
-        : (unitOrientation !== null ? { x: 0, y: 0, z: 0 } : null),
+        : { x: 0, y: 0, z: 0 },
       // angularAcceleration3 is sim-only and not on the wire.
-      angularAcceleration3: unitOrientation !== null ? { x: 0, y: 0, z: 0 } : null,
+      angularAcceleration3: { x: 0, y: 0, z: 0 },
       hoverHeightUpwardForceSmoothed: null,
       swimHeightUpwardForceSmoothed: null,
       stuckTicks: 0,

@@ -263,6 +263,11 @@ export type Unit = {
    *  (0, 0). */
   thrustDirX: number;
   thrustDirY: number;
+  /** Desired body-facing vector for this tick. This is intentionally
+   *  separate from thrust: arrival control may request reverse thrust to
+   *  brake, but that should not instantly flip the chassis heading. */
+  headingDirX: number;
+  headingDirY: number;
   /** Runtime spring state for the visible chassis relative to the
    *  locomotion anchor. Null means rigid legacy attachment. */
   suspension: UnitSuspensionState | null;
@@ -289,10 +294,9 @@ export type Unit = {
    *  .swimHeightUpwardForceEMA > 0`; null until first seeded. Tick-only
    *  state, never serialised. */
   swimHeightUpwardForceSmoothed: number | null;
-  /** Full 3-DOF orientation, used by entities that need roll or
-   *  arbitrary orientation (hover drones banking into turns, future
-   *  ragdoll debris). Null for ground units that only need a yaw scalar
-   *  — those continue to read transform.rotation as before.
+  /** Full 3-DOF orientation for the unit body. All units carry this
+   *  state; `transform.rotation` remains the scalar yaw mirror for
+   *  legacy systems that only need heading.
    *
    *  Convention: unit quaternion using ZYX intrinsic Euler order
    *  (yaw about world Z, pitch about body Y after yaw, roll about
@@ -302,10 +306,10 @@ export type Unit = {
    *  quat's yaw component) when only heading matters. */
   orientation: { x: number; y: number; z: number; w: number } | null;
   /** Angular velocity 3-vector in world frame (rad/s). Paired with
-   *  `orientation`; null when orientation is null. */
+   *  `orientation`; legacy/null-safe because older snapshots may omit it. */
   angularVelocity3: { x: number; y: number; z: number } | null;
   /** Angular acceleration 3-vector in world frame (rad/s²). Paired
-   *  with `orientation`; null when orientation is null. */
+   *  with `orientation`; sim-only and legacy/null-safe. */
   angularAcceleration3: { x: number; y: number; z: number } | null;
   /** Consecutive ticks the unit has wanted to move but failed to make
    *  meaningful progress. Reset on either no-movement-intent ticks or

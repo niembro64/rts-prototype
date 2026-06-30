@@ -11,13 +11,17 @@ import {
 import { WATER_LEVEL } from '../sim/Terrain';
 import {
   ENTITY_CHANGED_ROT,
+  ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_NORMAL,
 } from '../../types/network';
 import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
-import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS } from '../../config';
+import {
+  UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
+  UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
+} from '../../config';
 import { createWorldSupportSurface } from '../sim/supportSurface';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
@@ -25,6 +29,7 @@ import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
+import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction';
 
 const WATER_PROBE_DX = [
   1, 0.7071067811865476, 0, -0.7071067811865475,
@@ -36,8 +41,8 @@ const WATER_PROBE_DY = [
 ];
 const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
 
-// Hover orientation spring stiffness. Target pitch/roll stay pinned to
-// zero; renderer-side banking remains visual-only.
+// Legacy WASM ABI knobs. Unit attitude now derives stiffness/damping from
+// torque authority, inertia, and active medium damping in the force kernel.
 const HOVER_ORIENTATION_K = 30;
 const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
@@ -94,6 +99,9 @@ const UF_ROW_SWIM_RANDOM_AMOUNT = 43;
 const UF_ROW_SWIM_EMA_WEIGHT = 44;
 const UF_ROW_SWIM_SMOOTHED_FORCE = 45;
 const UF_ROW_SWIM_RANDOM_SAMPLE = 46;
+const UF_ROW_HEADING_X = 47;
+const UF_ROW_HEADING_Y = 48;
+const UF_ROW_AIR_ANGULAR_DAMPING_RATE = 49;
 
 const UF_FLAG_HAS_THRUST = 1 << 0;
 const UF_FLAG_IS_FLYING = 1 << 1;
@@ -109,6 +117,8 @@ const UF_OUT_CLEAR_COMBAT = 1 << 1;
 const UF_OUT_ROTATION_DIRTY = 1 << 2;
 const UF_OUT_HOVER_ORIENTATION = 1 << 3;
 const UF_OUT_WOKE_BODY = 1 << 4;
+const UNIT_GROUND_ANGULAR_DAMPING_RATE =
+  dragRateFromVelocityFrictionPer60HzFrame(UNIT_GROUND_FRICTION_PER_60HZ_FRAME);
 
 const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
 
@@ -234,9 +244,9 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_HOVER_SMOOTHED_FORCE] =
         suppressAirborneLift ? Number.NaN : unit.hoverHeightUpwardForceSmoothed ?? Number.NaN;
       _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = 0;
-      _forceRows[base + UF_ROW_NORMAL_X] = 0;
-      _forceRows[base + UF_ROW_NORMAL_Y] = 0;
-      _forceRows[base + UF_ROW_NORMAL_Z] = 1;
+      _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
+      _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
+      _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
       _forceRows[base + UF_ROW_EXTERNAL_FX] = 0;
       _forceRows[base + UF_ROW_EXTERNAL_FY] = 0;
       _forceRows[base + UF_ROW_EXTERNAL_FZ] = 0;
@@ -274,6 +284,10 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_SWIM_SMOOTHED_FORCE] =
         unit.swimHeightUpwardForceSmoothed ?? Number.NaN;
       _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = 0;
+      _forceRows[base + UF_ROW_HEADING_X] = 0;
+      _forceRows[base + UF_ROW_HEADING_Y] = 0;
+      _forceRows[base + UF_ROW_AIR_ANGULAR_DAMPING_RATE] =
+        dragRateFromVelocityFrictionPer60HzFrame(unit.airFrictionPer60HzFrame);
 
       let flags = 0;
 
@@ -290,6 +304,8 @@ export class UnitForceSystem {
       const dirY = unit.thrustDirY ?? 0;
       _forceRows[base + UF_ROW_DIR_X] = dirX;
       _forceRows[base + UF_ROW_DIR_Y] = dirY;
+      _forceRows[base + UF_ROW_HEADING_X] = unit.headingDirX ?? 0;
+      _forceRows[base + UF_ROW_HEADING_Y] = unit.headingDirY ?? 0;
       const dirLenSq = dirX * dirX + dirY * dirY;
       const hasThrustDir = dirLenSq > 0.0001;
       if (hasThrustDir) flags |= UF_FLAG_HAS_THRUST;
@@ -309,25 +325,43 @@ export class UnitForceSystem {
 
       _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
 
-      if (liftLocomotionActive) {
-        const orientation = unit.orientation;
-        const omega = unit.angularVelocity3;
-        if (orientation !== null && omega !== null) {
-          flags |= UF_FLAG_HAS_ORIENTATION;
-          _forceRows[base + UF_ROW_ORIENTATION_X] = orientation.x;
-          _forceRows[base + UF_ROW_ORIENTATION_Y] = orientation.y;
-          _forceRows[base + UF_ROW_ORIENTATION_Z] = orientation.z;
-          _forceRows[base + UF_ROW_ORIENTATION_W] = orientation.w;
-          _forceRows[base + UF_ROW_OMEGA_X] = omega.x;
-          _forceRows[base + UF_ROW_OMEGA_Y] = omega.y;
-          _forceRows[base + UF_ROW_OMEGA_Z] = omega.z;
-        }
+      let orientation = unit.orientation;
+      if (orientation === null) {
+        const halfYaw = (Number.isFinite(entity.transform.rotation)
+          ? entity.transform.rotation
+          : 0) * 0.5;
+        orientation = unit.orientation = {
+          x: 0,
+          y: 0,
+          z: Math.sin(halfYaw),
+          w: Math.cos(halfYaw),
+        };
+      }
+      let omega = unit.angularVelocity3;
+      if (omega === null) {
+        omega = unit.angularVelocity3 = { x: 0, y: 0, z: 0 };
+      }
+      if (unit.angularAcceleration3 === null) {
+        unit.angularAcceleration3 = { x: 0, y: 0, z: 0 };
+      }
+      const hasAngularMotionForSleep =
+        omega.x * omega.x + omega.y * omega.y + omega.z * omega.z > 1e-12;
+      flags |= UF_FLAG_HAS_ORIENTATION;
+      _forceRows[base + UF_ROW_ORIENTATION_X] = orientation.x;
+      _forceRows[base + UF_ROW_ORIENTATION_Y] = orientation.y;
+      _forceRows[base + UF_ROW_ORIENTATION_Z] = orientation.z;
+      _forceRows[base + UF_ROW_ORIENTATION_W] = orientation.w;
+      _forceRows[base + UF_ROW_OMEGA_X] = omega.x;
+      _forceRows[base + UF_ROW_OMEGA_Y] = omega.y;
+      _forceRows[base + UF_ROW_OMEGA_Z] = omega.z;
 
+      if (liftLocomotionActive) {
         const willRustSkipSleeping =
           body.sleeping &&
           !isFlying &&
           !hasThrustDir &&
-          externalForce === null;
+          externalForce === null &&
+          !hasAngularMotionForSleep;
         const randAmount =
           unit.locomotion.hoverHeightUpwardForceRandomizationAmount ?? 0;
         if (!willRustSkipSleeping && randAmount > 0) {
@@ -405,7 +439,10 @@ export class UnitForceSystem {
           // Mirror the kernel sleep-skip (isFlying is always false on the
           // in-water paths) so RNG advances in lockstep across peers.
           const willRustSkipSleeping =
-            body.sleeping && !hasThrustDir && externalForce === null;
+            body.sleeping &&
+            !hasThrustDir &&
+            externalForce === null &&
+            !hasAngularMotionForSleep;
           if (!willRustSkipSleeping) {
             _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.rng.next();
           }
@@ -431,6 +468,7 @@ export class UnitForceSystem {
         UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
         HOVER_ORIENTATION_K,
         HOVER_ORIENTATION_C,
+        UNIT_GROUND_ANGULAR_DAMPING_RATE,
       );
     });
 
@@ -469,6 +507,10 @@ export class UnitForceSystem {
         const orientation = unit.orientation;
         const omega = unit.angularVelocity3;
         if (orientation !== null && omega !== null) {
+          const omegaChanged =
+            Math.abs(omega.x - _forceRows[base + UF_ROW_OMEGA_X]) > 1e-9 ||
+            Math.abs(omega.y - _forceRows[base + UF_ROW_OMEGA_Y]) > 1e-9 ||
+            Math.abs(omega.z - _forceRows[base + UF_ROW_OMEGA_Z]) > 1e-9;
           orientation.x = _forceRows[base + UF_ROW_ORIENTATION_X];
           orientation.y = _forceRows[base + UF_ROW_ORIENTATION_Y];
           orientation.z = _forceRows[base + UF_ROW_ORIENTATION_Z];
@@ -476,6 +518,9 @@ export class UnitForceSystem {
           omega.x = _forceRows[base + UF_ROW_OMEGA_X];
           omega.y = _forceRows[base + UF_ROW_OMEGA_Y];
           omega.z = _forceRows[base + UF_ROW_OMEGA_Z];
+          if (omegaChanged) {
+            this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_VEL);
+          }
         }
         const angularAccel = unit.angularAcceleration3;
         if (angularAccel !== null) {

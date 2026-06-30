@@ -1031,6 +1031,7 @@ export interface SimWasm {
     referenceMass: number,
     hoverOrientationK: number,
     hoverOrientationC: number,
+    groundAngularDampingRate: number,
   ) => number;
   /** C1 — splash/area target overlap classifier. TypeScript gathers
    *  spatial candidates and applies damage/event diffs; Rust owns the
@@ -3562,7 +3563,7 @@ export const QUAT_HOVER_BATCH_STRIDE = 14;
 
 /** Layout stride for `unitForceStepBatch`. Mirrors
  *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
-export const UNIT_FORCE_BATCH_STRIDE = 47;
+export const UNIT_FORCE_BATCH_STRIDE = 50;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
@@ -4449,6 +4450,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientEntityIdSetContractTest();
         const { runClientServerTargetStoreContractTest } = await import('../network/ClientServerTargetStoreContractTest');
         runClientServerTargetStoreContractTest();
+        const { runClientUnitPredictionContractTest } = await import('../network/ClientUnitPredictionContractTest');
+        runClientUnitPredictionContractTest();
         const { runSnapshotVisibilityContractTest } = await import('../network/SnapshotVisibilityContractTest');
         runSnapshotVisibilityContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');

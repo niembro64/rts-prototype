@@ -93,6 +93,8 @@ function loadUnitIntoTransport(
   target.unit.stuckTicks = 0;
   target.unit.thrustDirX = 0;
   target.unit.thrustDirY = 0;
+  target.unit.headingDirX = 0;
+  target.unit.headingDirY = 0;
   target.selectable = { selected: false };
   target.transported = {
     transportId: transport.id,
@@ -153,6 +155,8 @@ function unloadTransportCargo(
     passengerUnit.velocityZ = transportUnit?.velocityZ ?? 0;
     passengerUnit.thrustDirX = 0;
     passengerUnit.thrustDirY = 0;
+    passengerUnit.headingDirX = 0;
+    passengerUnit.headingDirY = 0;
     passengerUnit.activePath = null;
     passengerUnit.stuckTicks = 0;
 

@@ -726,6 +726,8 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
     resetFlyingLoiterToCurrentPosition(entity, ctx.world);
     entity.unit.thrustDirX = 0;
     entity.unit.thrustDirY = 0;
+    entity.unit.headingDirX = 0;
+    entity.unit.headingDirY = 0;
     if (entity.builder) entity.builder.currentBuildTarget = NO_ENTITY_ID;
     if (entity.combat) {
       entity.combat.priorityTargetId = null;

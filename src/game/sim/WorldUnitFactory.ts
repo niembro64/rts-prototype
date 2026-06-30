@@ -75,8 +75,6 @@ function createUnitBaseEntity({
   hp,
   spawnSupport,
 }: CreateUnitBaseArgs): Entity {
-  const isAirborneLocomotion =
-    locomotion.type === 'hover' || locomotion.type === 'flying';
   const spawnCenterHeight = bodyCenterHeight + UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND;
 
   return {
@@ -118,6 +116,8 @@ function createUnitBaseEntity({
       movementAccelZ: 0,
       thrustDirX: 0,
       thrustDirY: 0,
+      headingDirX: 0,
+      headingDirY: 0,
       suspension: null,
       shieldPanels: [],
       shieldBoundRadius: 0,
@@ -126,15 +126,9 @@ function createUnitBaseEntity({
         ny: spawnSupport.normalY,
         nz: spawnSupport.normalZ,
       },
-      orientation: isAirborneLocomotion
-        ? { x: 0, y: 0, z: 0, w: 1 }
-        : null,
-      angularVelocity3: isAirborneLocomotion
-        ? { x: 0, y: 0, z: 0 }
-        : null,
-      angularAcceleration3: isAirborneLocomotion
-        ? { x: 0, y: 0, z: 0 }
-        : null,
+      orientation: { x: 0, y: 0, z: 0, w: 1 },
+      angularVelocity3: { x: 0, y: 0, z: 0 },
+      angularAcceleration3: { x: 0, y: 0, z: 0 },
       hoverHeightUpwardForceSmoothed: null,
       swimHeightUpwardForceSmoothed: null,
       stuckTicks: 0,

@@ -167,9 +167,15 @@ export class SimulationArrivalController {
       if (unit) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
+        unit.headingDirX = 0;
+        unit.headingDirY = 0;
       }
       return;
     }
+
+    const invDistance = 1 / distance;
+    unit.headingDirX = dx * invDistance;
+    unit.headingDirY = dy * invDistance;
 
     const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
     const speedLimitFactor = normalizeActionSpeedLimitFactor(action.speedLimitFactor);

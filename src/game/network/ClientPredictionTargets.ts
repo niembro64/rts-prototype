@@ -24,9 +24,9 @@ export type ServerTarget = {
   surfaceNormalZ: number;
   bodyCenterHeight: number;
   predictedGroundContact: boolean;
-  /** Full 3-DOF orientation triad, populated only when the snapshot
-   *  carries an `orientation` field (hover units etc.). Null for ground
-   *  units — the client reads `rotation` (yaw scalar) when absent. */
+  /** Full 3-DOF orientation triad, populated when the snapshot carries
+   *  an `orientation` field. Null for legacy records that only expose
+   *  the scalar yaw channel. */
   orientation: { x: number; y: number; z: number; w: number } | null;
   angularVelocityX: number | null;
   angularVelocityY: number | null;

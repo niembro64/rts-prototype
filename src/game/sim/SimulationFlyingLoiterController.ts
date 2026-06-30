@@ -124,6 +124,8 @@ export class SimulationFlyingLoiterController {
       if (unit) {
         unit.thrustDirX = this.outX[i];
         unit.thrustDirY = this.outY[i];
+        unit.headingDirX = this.outX[i];
+        unit.headingDirY = this.outY[i];
         const turnSign = this.outTurnSign[i];
         unit.flyingLoiterTurnSign = turnSign === 1 || turnSign === -1 ? turnSign : null;
         if (this.active[i] !== 0) movingUnits.push(entity);

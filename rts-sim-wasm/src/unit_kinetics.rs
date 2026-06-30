@@ -80,7 +80,7 @@ pub fn quat_hover_orientation_step_batch(
 //  state that still lives on Entity/Unit objects.
 // ─────────────────────────────────────────────────────────────────
 
-pub const UNIT_FORCE_BATCH_STRIDE: usize = 47;
+pub const UNIT_FORCE_BATCH_STRIDE: usize = 50;
 
 pub(crate) const UF_ROW_DIR_X: usize = 0;
 pub(crate) const UF_ROW_DIR_Y: usize = 1;
@@ -135,6 +135,9 @@ pub(crate) const UF_ROW_SWIM_RANDOM_AMOUNT: usize = 43;
 pub(crate) const UF_ROW_SWIM_EMA_WEIGHT: usize = 44;
 pub(crate) const UF_ROW_SWIM_SMOOTHED_FORCE: usize = 45;
 pub(crate) const UF_ROW_SWIM_RANDOM_SAMPLE: usize = 46;
+pub(crate) const UF_ROW_HEADING_X: usize = 47;
+pub(crate) const UF_ROW_HEADING_Y: usize = 48;
+pub(crate) const UF_ROW_AIR_ANGULAR_DAMPING_RATE: usize = 49;
 
 pub(crate) const UF_FLAG_HAS_THRUST: u32 = 1 << 0;
 pub(crate) const UF_FLAG_IS_FLYING: u32 = 1 << 1;
@@ -150,6 +153,12 @@ pub(crate) const UF_OUT_CLEAR_COMBAT: u32 = 1 << 1;
 pub(crate) const UF_OUT_ROTATION_DIRTY: u32 = 1 << 2;
 pub(crate) const UF_OUT_HOVER_ORIENTATION: u32 = 1 << 3;
 pub(crate) const UF_OUT_WOKE_BODY: u32 = 1 << 4;
+
+const UNIT_ATTITUDE_INERTIA_FACTOR: f64 = 0.25;
+const UNIT_ATTITUDE_TURN_AUTHORITY_SCALE: f64 = 1.0;
+const UNIT_ATTITUDE_MAX_ANGULAR_SPEED: f64 = 2.5;
+const UNIT_ATTITUDE_MIN_RADIUS: f64 = 1.0;
+const UNIT_ATTITUDE_SLEEP_EPSILON_SQ: f64 = 1e-12;
 
 pub(crate) const UNIT_FORCE_WATER_PROBE_DX: [f64; 8] = [
     1.0,
@@ -304,6 +313,194 @@ pub(crate) fn unit_force_idle_brake(
     )
 }
 
+#[inline]
+fn unit_force_normalize3(x: f64, y: f64, z: f64) -> Option<[f64; 3]> {
+    let m = (x * x + y * y + z * z).sqrt();
+    if m > 1e-9 && m.is_finite() {
+        Some([x / m, y / m, z / m])
+    } else {
+        None
+    }
+}
+
+#[inline]
+fn unit_force_cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+#[inline]
+fn unit_force_clamp_magnitude3(v: &mut [f64; 3], max_mag: f64) {
+    if max_mag <= 0.0 || !max_mag.is_finite() {
+        return;
+    }
+    let mag_sq = v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+    let max_sq = max_mag * max_mag;
+    if mag_sq > max_sq && mag_sq.is_finite() {
+        let scale = max_mag / mag_sq.sqrt();
+        v[0] *= scale;
+        v[1] *= scale;
+        v[2] *= scale;
+    }
+}
+
+#[inline]
+fn unit_force_quat_from_forward_up(mut forward: [f64; 3], up_raw: [f64; 3]) -> [f64; 4] {
+    let up = unit_force_normalize3(up_raw[0], up_raw[1], up_raw[2]).unwrap_or([0.0, 0.0, 1.0]);
+    let dot = forward[0] * up[0] + forward[1] * up[1] + forward[2] * up[2];
+    forward[0] -= up[0] * dot;
+    forward[1] -= up[1] * dot;
+    forward[2] -= up[2] * dot;
+    let x_axis = if let Some(n) = unit_force_normalize3(forward[0], forward[1], forward[2]) {
+        n
+    } else if up[2].abs() < 0.9 {
+        unit_force_normalize3(up[1], -up[0], 0.0).unwrap_or([1.0, 0.0, 0.0])
+    } else {
+        [1.0, 0.0, 0.0]
+    };
+    let y_axis = unit_force_normalize3(
+        up[1] * x_axis[2] - up[2] * x_axis[1],
+        up[2] * x_axis[0] - up[0] * x_axis[2],
+        up[0] * x_axis[1] - up[1] * x_axis[0],
+    )
+    .unwrap_or([0.0, 1.0, 0.0]);
+    let z_axis = unit_force_cross(x_axis, y_axis);
+
+    // Rotation matrix columns are local +X forward, +Y left, +Z up.
+    let m00 = x_axis[0];
+    let m01 = y_axis[0];
+    let m02 = z_axis[0];
+    let m10 = x_axis[1];
+    let m11 = y_axis[1];
+    let m12 = z_axis[1];
+    let m20 = x_axis[2];
+    let m21 = y_axis[2];
+    let m22 = z_axis[2];
+    let trace = m00 + m11 + m22;
+    let mut q = if trace > 0.0 {
+        let s = (trace + 1.0).sqrt() * 2.0;
+        [(m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s, 0.25 * s]
+    } else if m00 > m11 && m00 > m22 {
+        let s = (1.0 + m00 - m11 - m22).sqrt() * 2.0;
+        [0.25 * s, (m01 + m10) / s, (m02 + m20) / s, (m21 - m12) / s]
+    } else if m11 > m22 {
+        let s = (1.0 + m11 - m00 - m22).sqrt() * 2.0;
+        [(m01 + m10) / s, 0.25 * s, (m12 + m21) / s, (m02 - m20) / s]
+    } else {
+        let s = (1.0 + m22 - m00 - m11).sqrt() * 2.0;
+        [(m02 + m20) / s, (m12 + m21) / s, 0.25 * s, (m10 - m01) / s]
+    };
+    quat_normalize_inplace(&mut q);
+    q
+}
+
+#[inline]
+fn unit_force_attitude_step(
+    rows: &mut [f64],
+    base: usize,
+    body_mass: f64,
+    radius: f64,
+    traction_force_mag: f64,
+    target_up: [f64; 3],
+    medium_angular_damping: f64,
+    dt_sec: f64,
+) -> bool {
+    if dt_sec <= 0.0 || body_mass <= 0.0 {
+        return false;
+    }
+    let mut orientation = [
+        rows[base + UF_ROW_ORIENTATION_X],
+        rows[base + UF_ROW_ORIENTATION_Y],
+        rows[base + UF_ROW_ORIENTATION_Z],
+        rows[base + UF_ROW_ORIENTATION_W],
+    ];
+    quat_normalize_inplace(&mut orientation);
+    let mut omega = [
+        rows[base + UF_ROW_OMEGA_X],
+        rows[base + UF_ROW_OMEGA_Y],
+        rows[base + UF_ROW_OMEGA_Z],
+    ];
+    let current_yaw = quat_yaw(orientation);
+    let heading_x = rows[base + UF_ROW_HEADING_X];
+    let heading_y = rows[base + UF_ROW_HEADING_Y];
+    let heading_mag_sq = heading_x * heading_x + heading_y * heading_y;
+    let (forward_x, forward_y) = if heading_mag_sq > 1e-9 && heading_mag_sq.is_finite() {
+        let inv = 1.0 / heading_mag_sq.sqrt();
+        (heading_x * inv, heading_y * inv)
+    } else {
+        (current_yaw.cos(), current_yaw.sin())
+    };
+    let target = unit_force_quat_from_forward_up([forward_x, forward_y, 0.0], target_up);
+    let axis_angle = quat_shortest_axis_angle(orientation, target);
+
+    let r = radius.max(UNIT_ATTITUDE_MIN_RADIUS);
+    let inertia = body_mass * r * r * UNIT_ATTITUDE_INERTIA_FACTOR;
+    if inertia <= 1e-9 || !inertia.is_finite() {
+        return false;
+    }
+    let torque = traction_force_mag.max(0.0) * r;
+    let max_alpha = torque * 1_000_000.0 / inertia * UNIT_ATTITUDE_TURN_AUTHORITY_SCALE;
+    if max_alpha <= 1e-9 || !max_alpha.is_finite() {
+        let damp = if medium_angular_damping.is_finite() {
+            (-medium_angular_damping.max(0.0) * dt_sec).exp()
+        } else {
+            1.0
+        };
+        omega[0] *= damp;
+        omega[1] *= damp;
+        omega[2] *= damp;
+        unit_force_clamp_magnitude3(&mut omega, UNIT_ATTITUDE_MAX_ANGULAR_SPEED);
+        quat_integrate_inplace(&mut orientation, omega, dt_sec);
+        rows[base + UF_ROW_ORIENTATION_X] = orientation[0];
+        rows[base + UF_ROW_ORIENTATION_Y] = orientation[1];
+        rows[base + UF_ROW_ORIENTATION_Z] = orientation[2];
+        rows[base + UF_ROW_ORIENTATION_W] = orientation[3];
+        rows[base + UF_ROW_OMEGA_X] = omega[0];
+        rows[base + UF_ROW_OMEGA_Y] = omega[1];
+        rows[base + UF_ROW_OMEGA_Z] = omega[2];
+        rows[base + UF_ROW_ANGULAR_ACCEL_X] = 0.0;
+        rows[base + UF_ROW_ANGULAR_ACCEL_Y] = 0.0;
+        rows[base + UF_ROW_ANGULAR_ACCEL_Z] = 0.0;
+        return true;
+    }
+
+    let k = max_alpha / core::f64::consts::PI;
+    let c = 2.0 * k.sqrt() + medium_angular_damping.max(0.0);
+    let mut alpha = [
+        axis_angle[0] * k - omega[0] * c,
+        axis_angle[1] * k - omega[1] * c,
+        axis_angle[2] * k - omega[2] * c,
+    ];
+    let alpha_mag = (alpha[0] * alpha[0] + alpha[1] * alpha[1] + alpha[2] * alpha[2]).sqrt();
+    if alpha_mag > max_alpha && alpha_mag.is_finite() {
+        let scale = max_alpha / alpha_mag;
+        alpha[0] *= scale;
+        alpha[1] *= scale;
+        alpha[2] *= scale;
+    }
+
+    omega[0] += alpha[0] * dt_sec;
+    omega[1] += alpha[1] * dt_sec;
+    omega[2] += alpha[2] * dt_sec;
+    unit_force_clamp_magnitude3(&mut omega, UNIT_ATTITUDE_MAX_ANGULAR_SPEED);
+    quat_integrate_inplace(&mut orientation, omega, dt_sec);
+
+    rows[base + UF_ROW_ORIENTATION_X] = orientation[0];
+    rows[base + UF_ROW_ORIENTATION_Y] = orientation[1];
+    rows[base + UF_ROW_ORIENTATION_Z] = orientation[2];
+    rows[base + UF_ROW_ORIENTATION_W] = orientation[3];
+    rows[base + UF_ROW_OMEGA_X] = omega[0];
+    rows[base + UF_ROW_OMEGA_Y] = omega[1];
+    rows[base + UF_ROW_OMEGA_Z] = omega[2];
+    rows[base + UF_ROW_ANGULAR_ACCEL_X] = alpha[0];
+    rows[base + UF_ROW_ANGULAR_ACCEL_Y] = alpha[1];
+    rows[base + UF_ROW_ANGULAR_ACCEL_Z] = alpha[2];
+    true
+}
+
 #[wasm_bindgen]
 pub fn unit_force_step_batch(
     slots: &[u32],
@@ -317,6 +514,7 @@ pub fn unit_force_step_batch(
     reference_mass: f64,
     hover_orientation_k: f64,
     hover_orientation_c: f64,
+    ground_angular_damping_rate: f64,
 ) -> u32 {
     if slots.len() < count
         || flags.len() < count
@@ -328,6 +526,7 @@ pub fn unit_force_step_batch(
 
     let p = pool();
     let mut processed = 0_u32;
+    let _legacy_hover_orientation_tuning = (hover_orientation_k, hover_orientation_c);
 
     for i in 0..count {
         out_flags[i] = 0;
@@ -355,8 +554,22 @@ pub fn unit_force_step_batch(
         let is_flying = flag & UF_FLAG_IS_FLYING != 0;
         let is_airborne = flag & UF_FLAG_IS_AIRBORNE != 0;
         let has_external = flag & UF_FLAG_HAS_EXTERNAL_FORCE != 0;
+        let has_orientation = flag & UF_FLAG_HAS_ORIENTATION != 0;
+        let omega_sq = if has_orientation {
+            rows[base + UF_ROW_OMEGA_X] * rows[base + UF_ROW_OMEGA_X]
+                + rows[base + UF_ROW_OMEGA_Y] * rows[base + UF_ROW_OMEGA_Y]
+                + rows[base + UF_ROW_OMEGA_Z] * rows[base + UF_ROW_OMEGA_Z]
+        } else {
+            0.0
+        };
+        let has_angular_motion = omega_sq > UNIT_ATTITUDE_SLEEP_EPSILON_SQ;
 
-        if p.flags[slot] & BODY_FLAG_SLEEPING != 0 && !is_flying && !has_thrust && !has_external {
+        if p.flags[slot] & BODY_FLAG_SLEEPING != 0
+            && !is_flying
+            && !has_thrust
+            && !has_external
+            && !has_angular_motion
+        {
             continue;
         }
 
@@ -382,14 +595,6 @@ pub fn unit_force_step_batch(
             0.0
         };
         let thrust_scale = thrust_input_mag.min(1.0);
-
-        if has_thrust && !is_airborne {
-            let next_rotation = dir_y.atan2(dir_x);
-            if next_rotation != rows[base + UF_ROW_ROTATION] {
-                rows[base + UF_ROW_ROTATION] = next_rotation;
-                out_flags[i] |= UF_OUT_ROTATION_DIRTY;
-            }
-        }
 
         let mut thrust_force_x = 0.0;
         let mut thrust_force_y = 0.0;
@@ -476,60 +681,6 @@ pub fn unit_force_step_batch(
                 } else {
                     thrust_force_x = air_target_dir_x * thrust_mag;
                     thrust_force_y = air_target_dir_y * thrust_mag;
-                }
-            }
-
-            if flag & UF_FLAG_HAS_ORIENTATION != 0 {
-                let mut orientation = [
-                    rows[base + UF_ROW_ORIENTATION_X],
-                    rows[base + UF_ROW_ORIENTATION_Y],
-                    rows[base + UF_ROW_ORIENTATION_Z],
-                    rows[base + UF_ROW_ORIENTATION_W],
-                ];
-                let mut omega = [
-                    rows[base + UF_ROW_OMEGA_X],
-                    rows[base + UF_ROW_OMEGA_Y],
-                    rows[base + UF_ROW_OMEGA_Z],
-                ];
-                let current_yaw = quat_yaw(orientation);
-                let target_yaw = if air_has_target_dir {
-                    air_target_dir_y.atan2(air_target_dir_x)
-                } else {
-                    current_yaw
-                };
-                let target = quat_from_yaw_pitch_roll(target_yaw, 0.0, 0.0);
-                let axis_angle = quat_shortest_axis_angle(orientation, target);
-                let traction_authority = rows[base + UF_ROW_TRACTION].max(0.0).min(2.0);
-                let orientation_k = hover_orientation_k * traction_authority;
-                let orientation_c = if orientation_k > 0.0 && hover_orientation_k > 0.0 {
-                    hover_orientation_c * (orientation_k / hover_orientation_k).sqrt()
-                } else {
-                    0.0
-                };
-                let alpha_x = axis_angle[0] * orientation_k - omega[0] * orientation_c;
-                let alpha_y = axis_angle[1] * orientation_k - omega[1] * orientation_c;
-                let alpha_z = axis_angle[2] * orientation_k - omega[2] * orientation_c;
-                omega[0] += alpha_x * dt_sec;
-                omega[1] += alpha_y * dt_sec;
-                omega[2] += alpha_z * dt_sec;
-                quat_integrate_inplace(&mut orientation, omega, dt_sec);
-
-                rows[base + UF_ROW_ORIENTATION_X] = orientation[0];
-                rows[base + UF_ROW_ORIENTATION_Y] = orientation[1];
-                rows[base + UF_ROW_ORIENTATION_Z] = orientation[2];
-                rows[base + UF_ROW_ORIENTATION_W] = orientation[3];
-                rows[base + UF_ROW_OMEGA_X] = omega[0];
-                rows[base + UF_ROW_OMEGA_Y] = omega[1];
-                rows[base + UF_ROW_OMEGA_Z] = omega[2];
-                rows[base + UF_ROW_ANGULAR_ACCEL_X] = alpha_x;
-                rows[base + UF_ROW_ANGULAR_ACCEL_Y] = alpha_y;
-                rows[base + UF_ROW_ANGULAR_ACCEL_Z] = alpha_z;
-                out_flags[i] |= UF_OUT_HOVER_ORIENTATION;
-
-                let next_rotation = quat_yaw(orientation);
-                if next_rotation != rows[base + UF_ROW_ROTATION] {
-                    rows[base + UF_ROW_ROTATION] = next_rotation;
-                    out_flags[i] |= UF_OUT_ROTATION_DIRTY;
                 }
             }
 
@@ -675,8 +826,7 @@ pub fn unit_force_step_batch(
                         } else {
                             1.0
                         };
-                        let climbing_beyond_traction =
-                            tz > 0.0 && normal_z < traction_min_normal_z;
+                        let climbing_beyond_traction = tz > 0.0 && normal_z < traction_min_normal_z;
                         if !climbing_beyond_traction {
                             thrust_force_x = tx * thrust_mag;
                             thrust_force_y = ty * thrust_mag;
@@ -707,6 +857,71 @@ pub fn unit_force_step_batch(
                     let k = ground_friction * body_mass / 1_000_000.0;
                     thrust_force_x -= k * p.vel_x[slot];
                     thrust_force_y -= k * p.vel_y[slot];
+                }
+            }
+        }
+
+        if flag & UF_FLAG_HAS_ORIENTATION != 0 {
+            let contact_penetration =
+                rows[base + UF_ROW_GROUND_Z] - (p.pos_z[slot] - p.ground_offset[slot]);
+            let attitude_ground_contact = is_in_contact(contact_penetration);
+            let target_up = if attitude_ground_contact {
+                [
+                    rows[base + UF_ROW_NORMAL_X],
+                    rows[base + UF_ROW_NORMAL_Y],
+                    rows[base + UF_ROW_NORMAL_Z],
+                ]
+            } else {
+                [0.0, 0.0, 1.0]
+            };
+            let mut angular_damping = 0.0;
+            if attitude_ground_contact {
+                angular_damping += ground_angular_damping_rate.max(0.0);
+                angular_damping += rows[base + UF_ROW_GROUND_FRICTION].max(0.0);
+            }
+            if flag & UF_FLAG_IN_WATER != 0 {
+                angular_damping += rows[base + UF_ROW_WATER_FRICTION].max(0.0);
+            } else {
+                angular_damping += rows[base + UF_ROW_AIR_ANGULAR_DAMPING_RATE].max(0.0);
+                angular_damping += rows[base + UF_ROW_AIR_FRICTION].max(0.0);
+            }
+
+            if unit_force_attitude_step(
+                rows,
+                base,
+                body_mass,
+                p.radius[slot],
+                traction_force_mag,
+                target_up,
+                angular_damping,
+                dt_sec,
+            ) {
+                out_flags[i] |= UF_OUT_HOVER_ORIENTATION;
+                let next_omega_sq = rows[base + UF_ROW_OMEGA_X] * rows[base + UF_ROW_OMEGA_X]
+                    + rows[base + UF_ROW_OMEGA_Y] * rows[base + UF_ROW_OMEGA_Y]
+                    + rows[base + UF_ROW_OMEGA_Z] * rows[base + UF_ROW_OMEGA_Z];
+                let angular_accel_sq = rows[base + UF_ROW_ANGULAR_ACCEL_X]
+                    * rows[base + UF_ROW_ANGULAR_ACCEL_X]
+                    + rows[base + UF_ROW_ANGULAR_ACCEL_Y] * rows[base + UF_ROW_ANGULAR_ACCEL_Y]
+                    + rows[base + UF_ROW_ANGULAR_ACCEL_Z] * rows[base + UF_ROW_ANGULAR_ACCEL_Z];
+                if next_omega_sq > UNIT_ATTITUDE_SLEEP_EPSILON_SQ
+                    || angular_accel_sq > UNIT_ATTITUDE_SLEEP_EPSILON_SQ
+                {
+                    if p.flags[slot] & BODY_FLAG_SLEEPING != 0 {
+                        out_flags[i] |= UF_OUT_WOKE_BODY;
+                    } else {
+                        p.sleep_ticks[slot] = 0.0;
+                    }
+                }
+                let next_rotation = quat_yaw([
+                    rows[base + UF_ROW_ORIENTATION_X],
+                    rows[base + UF_ROW_ORIENTATION_Y],
+                    rows[base + UF_ROW_ORIENTATION_Z],
+                    rows[base + UF_ROW_ORIENTATION_W],
+                ]);
+                if next_rotation != rows[base + UF_ROW_ROTATION] {
+                    rows[base + UF_ROW_ROTATION] = next_rotation;
+                    out_flags[i] |= UF_OUT_ROTATION_DIRTY;
                 }
             }
         }

@@ -747,6 +747,8 @@ export class Simulation {
       if (isBuildBlockingActivation(entity.buildable)) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
+        unit.headingDirX = 0;
+        unit.headingDirY = 0;
         // Acceleration is sim-only state now (not shipped on the
         // wire); reset it without flagging a delta.
         setUnitMovementAcceleration(unit, 0, 0, 0);
@@ -761,6 +763,8 @@ export class Simulation {
       if (unit.hp <= 0) {
         unit.thrustDirX = 0;
         unit.thrustDirY = 0;
+        unit.headingDirX = 0;
+        unit.headingDirY = 0;
         setUnitMovementAcceleration(unit, 0, 0, 0);
         unit.stuckTicks = 0;
         if (entity.combat) {
@@ -774,6 +778,8 @@ export class Simulation {
       // Default: no thrust (contact braking/drag will slow or hold the unit)
       unit.thrustDirX = 0;
       unit.thrustDirY = 0;
+      unit.headingDirX = 0;
+      unit.headingDirY = 0;
       setUnitMovementAcceleration(unit, 0, 0, 0);
 
       // Clear priority target — re-set below by attack / attack-ground actions.

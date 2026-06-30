@@ -59,12 +59,88 @@ const INITIAL_BATCH_CAPACITY = 64;
 
 type UnitPredictionTarget = ServerTarget;
 type UnitOrientationTarget = NonNullable<UnitPredictionTarget['orientation']>;
+type MutableQuat = { x: number; y: number; z: number; w: number };
 
 function advanceTurretYaw(angle: number, angularVelocity: number, dt: number): number {
   const safeAngle = Number.isFinite(angle) ? angle : 0;
   const safeVelocity = Number.isFinite(angularVelocity) ? angularVelocity : 0;
   const safeDt = Number.isFinite(dt) ? Math.max(0, dt) : 0;
   return normalizeAngle(safeAngle + safeVelocity * safeDt);
+}
+
+export function quatYaw(q: MutableQuat): number {
+  const sinyCosp = 2 * (q.w * q.z + q.x * q.y);
+  const cosyCosp = 1 - 2 * (q.y * q.y + q.z * q.z);
+  return Math.atan2(sinyCosp, cosyCosp);
+}
+
+function normalizeQuatInPlace(q: MutableQuat): void {
+  const m2 = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+  if (m2 > 1e-12 && Number.isFinite(m2)) {
+    const inv = 1 / Math.sqrt(m2);
+    q.x *= inv;
+    q.y *= inv;
+    q.z *= inv;
+    q.w *= inv;
+  } else {
+    q.x = 0;
+    q.y = 0;
+    q.z = 0;
+    q.w = 1;
+  }
+}
+
+function quatAngularDistanceAbs(a: MutableQuat, b: MutableQuat): number {
+  const ax = Number.isFinite(a.x) ? a.x : 0;
+  const ay = Number.isFinite(a.y) ? a.y : 0;
+  const az = Number.isFinite(a.z) ? a.z : 0;
+  const aw = Number.isFinite(a.w) ? a.w : 1;
+  const bx = Number.isFinite(b.x) ? b.x : 0;
+  const by = Number.isFinite(b.y) ? b.y : 0;
+  const bz = Number.isFinite(b.z) ? b.z : 0;
+  const bw = Number.isFinite(b.w) ? b.w : 1;
+  const am = Math.sqrt(ax * ax + ay * ay + az * az + aw * aw);
+  const bm = Math.sqrt(bx * bx + by * by + bz * bz + bw * bw);
+  if (am <= 1e-12 || bm <= 1e-12 || !Number.isFinite(am) || !Number.isFinite(bm)) {
+    return 0;
+  }
+  const dot = Math.abs((ax * bx + ay * by + az * bz + aw * bw) / (am * bm));
+  return 2 * Math.acos(clamp(dot, 0, 1));
+}
+
+export function blendQuatShortestInPlace(current: MutableQuat, target: MutableQuat, t: number): void {
+  if (t >= 1) {
+    current.x = Number.isFinite(target.x) ? target.x : 0;
+    current.y = Number.isFinite(target.y) ? target.y : 0;
+    current.z = Number.isFinite(target.z) ? target.z : 0;
+    current.w = Number.isFinite(target.w) ? target.w : 1;
+    normalizeQuatInPlace(current);
+    return;
+  }
+  const cx = Number.isFinite(current.x) ? current.x : 0;
+  const cy = Number.isFinite(current.y) ? current.y : 0;
+  const cz = Number.isFinite(current.z) ? current.z : 0;
+  const cw = Number.isFinite(current.w) ? current.w : 1;
+  let tx = Number.isFinite(target.x) ? target.x : 0;
+  let ty = Number.isFinite(target.y) ? target.y : 0;
+  let tz = Number.isFinite(target.z) ? target.z : 0;
+  let tw = Number.isFinite(target.w) ? target.w : 1;
+
+  // q and -q represent the same orientation. Flip the target into the same
+  // hemisphere before EMA blending so wrap-boundary snapshots take the short
+  // path instead of rotating through the long arc.
+  if (cx * tx + cy * ty + cz * tz + cw * tw < 0) {
+    tx = -tx;
+    ty = -ty;
+    tz = -tz;
+    tw = -tw;
+  }
+
+  current.x = cx + (tx - cx) * t;
+  current.y = cy + (ty - cy) * t;
+  current.z = cz + (tz - cz) * t;
+  current.w = cw + (tw - cw) * t;
+  normalizeQuatInPlace(current);
 }
 
 // Reused in the per-turret prediction loop; callers copy fields immediately.
@@ -645,28 +721,17 @@ function applyClientUnitVisualDrift(
     );
   }
 
-  // Full 3-DOF orientation drift for hover-style units. The body
-  // quaternion is the rotation-position channel for hovers; we use the
-  // same blend factor as the yaw scalar so changing the rotation-pos
-  // EMA mode affects both ground and hover bodies consistently. We
-  // componentwise-lerp + renormalize rather than slerp because the
-  // per-frame blend is small (a few percent of the remaining error)
-  // and componentwise lerp is much cheaper.
+  // Full 3-DOF orientation drift. The body quaternion is the rotation-position
+  // channel for units; it must use same-hemisphere quaternion blending because
+  // q and -q are the same rotation. Without that sign correction, snapshots on
+  // opposite sides of the 0/360 yaw boundary can EMA through the long arc.
   if (rotPosBlend >= 0 && target.orientation !== null && entity.unit.orientation !== null) {
     const eo = entity.unit.orientation;
-    const to = target.orientation;
-    eo.x = lerp(eo.x, to.x, rotPosBlend);
-    eo.y = lerp(eo.y, to.y, rotPosBlend);
-    eo.z = lerp(eo.z, to.z, rotPosBlend);
-    eo.w = lerp(eo.w, to.w, rotPosBlend);
-    const m2 = eo.x * eo.x + eo.y * eo.y + eo.z * eo.z + eo.w * eo.w;
-    if (m2 > 1e-12) {
-      const inv = 1 / Math.sqrt(m2);
-      eo.x *= inv; eo.y *= inv; eo.z *= inv; eo.w *= inv;
-    }
+    blendQuatShortestInPlace(eo, target.orientation, rotPosBlend);
+    entity.transform.rotation = normalizeAngle(quatYaw(eo));
   }
 
-  // Hover angular velocity — paired with orientation. Blends with the
+  // Angular velocity is paired with orientation and blends with the
   // rotation-velocity channel.
   if (
     rotVelBlend >= 0
@@ -883,18 +948,36 @@ export function clientUnitPredictionIsSettled(
     const vy = unit.velocityY ?? 0;
     const vz = unit.velocityZ ?? 0;
     if (vx * vx + vy * vy + vz * vz > PREDICTION_VEL_EPSILON_SQ) return false;
+    const av = unit.angularVelocity3;
+    if (
+      av !== null &&
+      av.x * av.x + av.y * av.y + av.z * av.z > PREDICTION_VEL_EPSILON_SQ
+    ) {
+      return false;
+    }
 
     if (target) {
       const tvx = target.velocityX ?? 0;
       const tvy = target.velocityY ?? 0;
       const tvz = target.velocityZ ?? 0;
       if (tvx * tvx + tvy * tvy + tvz * tvz > PREDICTION_VEL_EPSILON_SQ) return false;
+      const tavx = target.angularVelocityX ?? 0;
+      const tavy = target.angularVelocityY ?? 0;
+      const tavz = target.angularVelocityZ ?? 0;
+      if (tavx * tavx + tavy * tavy + tavz * tavz > PREDICTION_VEL_EPSILON_SQ) return false;
 
       const dx = entity.transform.x - target.x;
       const dy = entity.transform.y - target.y;
       const dz = entity.transform.z - target.z;
       if (dx * dx + dy * dy + dz * dz > PREDICTION_POS_EPSILON_SQ) return false;
       if (angleDeltaAbs(entity.transform.rotation, target.rotation) > PREDICTION_ROT_EPSILON) return false;
+      if (
+        unit.orientation !== null &&
+        target.orientation !== null &&
+        quatAngularDistanceAbs(unit.orientation, target.orientation) > PREDICTION_ROT_EPSILON
+      ) {
+        return false;
+      }
     }
   }
 

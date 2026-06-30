@@ -181,6 +181,8 @@ function serializeUnit(value: Entity['unit']): CanonicalValue {
     movementAccelZ: _movementAccelZ,
     thrustDirX: _thrustDirX,
     thrustDirY: _thrustDirY,
+    headingDirX: _headingDirX,
+    headingDirY: _headingDirY,
     surfaceNormal: _surfaceNormal,
     // Tick-only EMA accumulator for swim lift; derived from body vz (which is
     // hashed via the physics body), so excluding it keeps the canonical hash

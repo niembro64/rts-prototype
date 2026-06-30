@@ -682,10 +682,8 @@ export function applyNetworkUnitDriftFieldsToTarget(
       target.velocityZ = deqVel(v.z);
     }
   }
-  // Full 3-DOF orientation triad for hover-style entities. The
-  // wire field is gated on the entity having one server-side, so
-  // ground units never produce these and we leave the cached
-  // target fields null.
+  // Full 3-DOF orientation triad. The yaw scalar remains available as
+  // a compact fallback for older records and non-unit entities.
   const o = unit !== null && unit !== undefined ? unit.orientation : null;
   if (o !== null && o !== undefined) {
     let t = target.orientation;

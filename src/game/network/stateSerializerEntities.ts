@@ -1344,15 +1344,11 @@ export function serializeEntitySnapshot(
       } else {
         clearNetworkUnitSurfaceNormal(u);
       }
-      // Orientation + angular velocity for entities that have one —
-      // currently hover units. Ground units have these undefined on
-      // the entity and we omit them from the wire entirely (MessagePack
-      // drops undefined fields), so this adds zero overhead for the
-      // vast majority of snapshots. Angular acceleration is not
-      // shipped: instantaneous second derivative is unstable to
-      // integrate under arbitrary client dt, and the per-channel
-      // rotation-velocity EMA on the client already smooths approach
-      // to a freshly-arrived target.
+      // Orientation + angular velocity for unit attitude prediction.
+      // Angular acceleration is not shipped: instantaneous second derivative
+      // is unstable to integrate under arbitrary client dt, and the
+      // per-channel rotation-velocity EMA on the client already smooths
+      // approach to a freshly-arrived target.
       const orient = entity.unit.orientation;
       if (orient && (isFull || (changedFields! & ENTITY_CHANGED_ROT))) {
         u.orientation = orient;

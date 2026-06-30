@@ -971,12 +971,9 @@ export type NetworkServerSnapshotEntity = {
      *  change enough to send, or where visual detail fields are being
      *  throttled between detail-cadence snapshots. */
     surfaceNormal: { nx: number; ny: number; nz: number } | null;
-    /** Full 3-DOF orientation triad for entities that need roll or
-     *  arbitrary orientation (hover drones banking into turns, future
-     *  free-flying projectiles with spin). Omitted entirely for
-     *  ground units, which continue to ship `rotation` (yaw scalar)
-     *  on the parent NetworkServerSnapshotEntity. The client reads
-     *  this when present and falls back to the yaw scalar otherwise. */
+    /** Full 3-DOF orientation triad for units. The scalar `rotation`
+     *  remains on the parent snapshot entity as the compact yaw mirror
+     *  used by legacy consumers and typed-row dirty detection. */
     orientation: { x: number; y: number; z: number; w: number } | null;
     /** Angular velocity 3-vector in world frame (rad/s). Paired with
      *  `orientation`; PREDICT VEL clients integrate omega forward each

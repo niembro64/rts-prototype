@@ -7924,6 +7924,8 @@ mod sim_kernel_tests {
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_DIR_X] = 0.0;
         rows[UF_ROW_DIR_Y] = 1.0;
+        rows[UF_ROW_HEADING_X] = 0.0;
+        rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
         rows[UF_ROW_DRIVE_FORCE] = 100.0;
         rows[UF_ROW_TRACTION] = traction;
@@ -7945,6 +7947,7 @@ mod sim_kernel_tests {
                 100.0,
                 30.0,
                 2.0 * 30.0_f64.sqrt(),
+                0.0,
             ),
             1,
         );
@@ -7954,6 +7957,68 @@ mod sim_kernel_tests {
         let result = (
             rows[UF_ROW_MOVEMENT_ACCEL_X],
             rows[UF_ROW_MOVEMENT_ACCEL_Y],
+            rows[UF_ROW_ANGULAR_ACCEL_Z],
+        );
+        pool_free_slot(slot);
+        result
+    }
+
+    fn run_eagle_like_attitude_turn(ticks: usize) -> (f64, f64, f64) {
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = 100.0;
+            p.radius[i] = 21.6;
+            p.inv_mass[i] = 1.0 / 1500.0;
+        }
+
+        let slots = [slot];
+        let flags = [UF_FLAG_IS_AIRBORNE
+            | UF_FLAG_IS_FLYING
+            | UF_FLAG_HAS_THRUST
+            | UF_FLAG_HAS_ORIENTATION];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_DIR_X] = 0.0;
+        rows[UF_ROW_DIR_Y] = 1.0;
+        rows[UF_ROW_HEADING_X] = 0.0;
+        rows[UF_ROW_HEADING_Y] = 1.0;
+        rows[UF_ROW_ROTATION] = 0.0;
+        rows[UF_ROW_DRIVE_FORCE] = 2000.0;
+        rows[UF_ROW_TRACTION] = 0.2;
+        rows[UF_ROW_GRAVITY_COUNTER_RATIO] = 0.05;
+        rows[UF_ROW_HOVER_HEIGHT_FORCE] = 380.0;
+        rows[UF_ROW_GROUND_Z] = 0.0;
+        rows[UF_ROW_ORIENTATION_W] = 1.0;
+        rows[UF_ROW_AIR_ANGULAR_DAMPING_RATE] = -(1.0_f64 - 0.2_f64).ln() * 60.0;
+
+        for _ in 0..ticks {
+            out_flags[0] = 0;
+            assert_eq!(
+                unit_force_step_batch(
+                    &slots,
+                    &flags,
+                    &mut rows,
+                    &mut out_flags,
+                    1,
+                    1.0 / 60.0,
+                    20.0,
+                    150_000.0,
+                    100.0,
+                    30.0,
+                    2.0 * 30.0_f64.sqrt(),
+                    0.0,
+                ),
+                1,
+            );
+            assert_ne!(out_flags[0] & UF_OUT_HOVER_ORIENTATION, 0);
+        }
+
+        let result = (
+            rows[UF_ROW_ROTATION],
+            rows[UF_ROW_OMEGA_Z],
             rows[UF_ROW_ANGULAR_ACCEL_Z],
         );
         pool_free_slot(slot);
@@ -8011,6 +8076,7 @@ mod sim_kernel_tests {
                 100.0,
                 30.0,
                 2.0 * 30.0_f64.sqrt(),
+                0.0,
             ),
             1,
         );
@@ -8049,6 +8115,26 @@ mod sim_kernel_tests {
         assert!(
             high_yaw_accel > low_yaw_accel * 10.0,
             "higher traction should turn the flying body faster",
+        );
+    }
+
+    #[test]
+    pub(crate) fn eagle_like_attitude_turn_does_not_spin_runaway() {
+        let _guard = lock_tests();
+        let (yaw, omega_z, alpha_z) = run_eagle_like_attitude_turn(60);
+
+        assert!(yaw > 0.0, "eagle-like body should yaw toward the target heading");
+        assert!(
+            yaw < core::f64::consts::FRAC_PI_2,
+            "eagle-like body should not overshoot the 90-degree target within one second",
+        );
+        assert!(
+            omega_z > 0.0 && omega_z < 1.6,
+            "eagle-like yaw speed should stay controlled instead of spinning",
+        );
+        assert!(
+            alpha_z.abs() < 30.0,
+            "eagle-like yaw acceleration should remain in the tuned attitude envelope",
         );
     }
 
