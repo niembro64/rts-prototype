@@ -29,7 +29,9 @@ import { createWorldSupportSurface } from '../sim/supportSurface';
 import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
-import { getSimWasm, UNIT_FORCE_BATCH_STRIDE } from '../sim-wasm/init';
+import { getSimWasm, UNIT_FORCE_BATCH_STRIDE, type SimWasm } from '../sim-wasm/init';
+import { codeToUnitBlueprintId } from '../../types/network';
+import { getUnitBlueprint, getUnitLocomotion } from '../sim/blueprints';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction';
@@ -58,12 +60,9 @@ const UF_ROW_DIR_X = 0;
 const UF_ROW_DIR_Y = 1;
 const UF_ROW_ROTATION = 2;
 // Row 3 reserved; Rust reads effective mass from BodyPool.
-const UF_ROW_DRIVE_FORCE = 4;
-const UF_ROW_TRACTION = 5;
-const UF_ROW_GRAVITY_COUNTER_RATIO = 6;
-const UF_ROW_HOVER_HEIGHT_FORCE = 7;
-const UF_ROW_HOVER_RANDOM_AMOUNT = 8;
-const UF_ROW_HOVER_EMA_WEIGHT = 9;
+// Rows 4-9 (drive force, traction, gravity-counter ratio, hover force /
+// randomization / EMA weight) are blueprint constants filled by the kernel
+// from the wasm-side profile table — see ensureUnitForceProfileTable.
 const UF_ROW_HOVER_SMOOTHED_FORCE = 10;
 const UF_ROW_HOVER_RANDOM_SAMPLE = 11;
 const UF_ROW_GROUND_Z = 12;
@@ -91,20 +90,13 @@ const UF_ROW_ANGULAR_ACCEL_X = 33;
 const UF_ROW_ANGULAR_ACCEL_Y = 34;
 const UF_ROW_ANGULAR_ACCEL_Z = 35;
 // Fully-abstracted medium force profile (appended; rows 0..36 unchanged).
-const UF_ROW_GROUND_FRICTION = 36;
-const UF_ROW_AIR_FRICTION = 37;
-const UF_ROW_WATER_FORCE = 38;
-const UF_ROW_WATER_TRACTION = 39;
-const UF_ROW_WATER_FRICTION = 40;
-const UF_ROW_SWIM_GRAVITY_COUNTER_RATIO = 41;
-const UF_ROW_SWIM_HEIGHT_FORCE = 42;
-const UF_ROW_SWIM_RANDOM_AMOUNT = 43;
-const UF_ROW_SWIM_EMA_WEIGHT = 44;
+// Rows 36-44 (ground/air/water friction, water force/traction, swim
+// family) and row 49 (air angular damping rate) are blueprint constants
+// filled by the kernel from the wasm-side profile table.
 const UF_ROW_SWIM_SMOOTHED_FORCE = 45;
 const UF_ROW_SWIM_RANDOM_SAMPLE = 46;
 const UF_ROW_HEADING_X = 47;
 const UF_ROW_HEADING_Y = 48;
-const UF_ROW_AIR_ANGULAR_DAMPING_RATE = 49;
 
 const UF_FLAG_HAS_THRUST = 1 << 0;
 const UF_FLAG_IS_FLYING = 1 << 1;
@@ -152,6 +144,57 @@ function ensureForceBatchCapacity(count: number): void {
   }
 }
 
+/** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
+const UF_PROFILE_STRIDE = 16;
+
+let _unitForceProfileTableUploaded = false;
+
+/** Upload the per-blueprint locomotion constants to the wasm-side
+ *  profile table once. The force kernel resolves body slot → entity
+ *  slot → blueprint code and fills the constant row slots itself, so
+ *  the per-tick pack loop no longer copies them per unit. Values must
+ *  mirror exactly what the pack loop used to write (same ??-defaults,
+ *  NaN for an unauthored hover height force). */
+function ensureUnitForceProfileTable(sim: SimWasm): void {
+  if (_unitForceProfileTableUploaded) return;
+  let codeCount = 0;
+  while (codeToUnitBlueprintId(codeCount) !== null) codeCount++;
+  sim.unitForceProfileEnsure(codeCount);
+  const values = new Float64Array(
+    sim.memory.buffer,
+    sim.unitForceProfileValuesPtr(),
+    codeCount * UF_PROFILE_STRIDE,
+  );
+  const flags = new Uint32Array(sim.memory.buffer, sim.unitForceProfileFlagsPtr(), codeCount);
+  for (let code = 0; code < codeCount; code++) {
+    const unitBlueprintId = codeToUnitBlueprintId(code);
+    if (unitBlueprintId === null) continue;
+    const blueprint = getUnitBlueprint(unitBlueprintId);
+    const loco = getUnitLocomotion(unitBlueprintId);
+    const base = code * UF_PROFILE_STRIDE;
+    values[base + 0] = loco.driveForce;
+    values[base + 1] = loco.traction;
+    values[base + 2] = loco.gravityCounterUpwardForceRatio ?? 0;
+    values[base + 3] = loco.hoverHeightUpwardForce ?? Number.NaN;
+    values[base + 4] = loco.hoverHeightUpwardForceRandomizationAmount ?? 0;
+    values[base + 5] = loco.hoverHeightUpwardForceEMA ?? 0;
+    values[base + 6] = loco.groundFriction ?? 0;
+    values[base + 7] = loco.airFriction ?? 0;
+    values[base + 8] = loco.waterForce ?? 0;
+    values[base + 9] = loco.waterTraction ?? 0;
+    values[base + 10] = loco.waterFriction ?? 0;
+    values[base + 11] = loco.swimGravityCounterUpwardForceRatio ?? 0;
+    values[base + 12] = loco.swimHeightUpwardForce ?? 0;
+    values[base + 13] = loco.swimHeightUpwardForceRandomizationAmount ?? 0;
+    values[base + 14] = loco.swimHeightUpwardForceEMA ?? 0;
+    values[base + 15] = dragRateFromVelocityFrictionPer60HzFrame(blueprint.airFrictionPer60HzFrame);
+    flags[code] =
+      (loco.forwardForceRequiresFacing ? UF_FLAG_FORWARD_THRUST_REQUIRES_FACING : 0) |
+      (loco.driveForceScalesWithFacing ? UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING : 0);
+  }
+  _unitForceProfileTableUploaded = true;
+}
+
 export class UnitForceSystem {
   private readonly world: WorldState;
   private readonly simulation: Simulation;
@@ -177,6 +220,7 @@ export class UnitForceSystem {
     // the last tick. See PhysicsEngine3D.step() for the detached-view
     // crash this guards against.
     sim.pool.refreshViews();
+    ensureUnitForceProfileTable(sim);
 
     const forceAccumulator = this.simulation.getForceAccumulator();
 
@@ -203,8 +247,6 @@ export class UnitForceSystem {
       _forceSlots[count] = body.slot;
       _forceEntities[count] = entity;
       _forceRows[base + UF_ROW_ROTATION] = entity.transform.rotation;
-      _forceRows[base + UF_ROW_DRIVE_FORCE] = unit.locomotion.driveForce;
-      _forceRows[base + UF_ROW_TRACTION] = unit.locomotion.traction;
       const supportSurface = this.world.sampleSupportSurfaceFromIndex(
         body.x,
         body.y,
@@ -238,14 +280,10 @@ export class UnitForceSystem {
       const isFlying = locomotionType === 'flying';
       const isAirborneLocomotion = locomotionType === 'hover' || locomotionType === 'flying';
       const suppressAirborneLift = buildInProgress;
-      _forceRows[base + UF_ROW_GRAVITY_COUNTER_RATIO] =
-        suppressAirborneLift ? 0 : unit.locomotion.gravityCounterUpwardForceRatio ?? 0;
-      _forceRows[base + UF_ROW_HOVER_HEIGHT_FORCE] =
-        suppressAirborneLift ? 0 : unit.locomotion.hoverHeightUpwardForce ?? Number.NaN;
-      _forceRows[base + UF_ROW_HOVER_RANDOM_AMOUNT] =
-        suppressAirborneLift ? 0 : unit.locomotion.hoverHeightUpwardForceRandomizationAmount ?? 0;
-      _forceRows[base + UF_ROW_HOVER_EMA_WEIGHT] =
-        suppressAirborneLift ? 0 : unit.locomotion.hoverHeightUpwardForceEMA ?? 0;
+      // Blueprint constants (gravity-counter ratio, hover force family)
+      // are filled by the kernel from the profile table; the kernel only
+      // reads them under IS_AIRBORNE, which already excludes suppressed
+      // (build-in-progress) lift, so the old zeroing was redundant.
       _forceRows[base + UF_ROW_HOVER_SMOOTHED_FORCE] =
         suppressAirborneLift ? Number.NaN : unit.hoverHeightUpwardForceSmoothed ?? Number.NaN;
       _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = 0;
@@ -275,24 +313,14 @@ export class UnitForceSystem {
       // identical.
       const unitIsSwimmer =
         (loco.waterForce ?? 0) > 0 || (loco.swimHeightUpwardForce ?? 0) > 0;
-      _forceRows[base + UF_ROW_GROUND_FRICTION] = loco.groundFriction ?? 0;
-      _forceRows[base + UF_ROW_AIR_FRICTION] = loco.airFriction ?? 0;
-      _forceRows[base + UF_ROW_WATER_FORCE] = loco.waterForce ?? 0;
-      _forceRows[base + UF_ROW_WATER_TRACTION] = loco.waterTraction ?? 0;
-      _forceRows[base + UF_ROW_WATER_FRICTION] = loco.waterFriction ?? 0;
-      _forceRows[base + UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] =
-        loco.swimGravityCounterUpwardForceRatio ?? 0;
-      _forceRows[base + UF_ROW_SWIM_HEIGHT_FORCE] = loco.swimHeightUpwardForce ?? 0;
-      _forceRows[base + UF_ROW_SWIM_RANDOM_AMOUNT] =
-        loco.swimHeightUpwardForceRandomizationAmount ?? 0;
-      _forceRows[base + UF_ROW_SWIM_EMA_WEIGHT] = loco.swimHeightUpwardForceEMA ?? 0;
+      // Ground/air/water friction, water force/traction, the swim family
+      // and the air angular damping rate are blueprint constants filled by
+      // the kernel from the profile table.
       _forceRows[base + UF_ROW_SWIM_SMOOTHED_FORCE] =
         unit.swimHeightUpwardForceSmoothed ?? Number.NaN;
       _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = 0;
       _forceRows[base + UF_ROW_HEADING_X] = 0;
       _forceRows[base + UF_ROW_HEADING_Y] = 0;
-      _forceRows[base + UF_ROW_AIR_ANGULAR_DAMPING_RATE] =
-        dragRateFromVelocityFrictionPer60HzFrame(unit.airFrictionPer60HzFrame);
 
       let flags = 0;
 
@@ -305,13 +333,9 @@ export class UnitForceSystem {
         continue;
       }
 
-      if (loco.forwardForceRequiresFacing) {
-        flags |= UF_FLAG_FORWARD_THRUST_REQUIRES_FACING;
-      }
-      if (loco.driveForceScalesWithFacing) {
-        flags |= UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
-      }
-
+      // The facing flags (forwardForceRequiresFacing /
+      // driveForceScalesWithFacing) are blueprint constants OR'd in by
+      // the kernel from the profile table.
       const dirX = unit.thrustDirX ?? 0;
       const dirY = unit.thrustDirY ?? 0;
       _forceRows[base + UF_ROW_DIR_X] = dirX;

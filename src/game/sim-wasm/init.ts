@@ -110,6 +110,9 @@ import __wbg_init, {
   render_turret_aim_output_scratch_ptr,
   render_turret_aim_scratch_ensure,
   unit_force_step_batch,
+  unit_force_profile_ensure,
+  unit_force_profile_values_ptr,
+  unit_force_profile_flags_ptr,
   projectile_pool_init,
   projectile_pool_capacity,
   projectile_pool_pos_x_ptr,
@@ -1044,6 +1047,12 @@ export interface SimWasm {
     driveAlignmentFullForceDot: number,
     driveAlignmentResponseExponent: number,
   ) => number;
+  /** Blueprint locomotion constants table for unitForceStepBatch,
+   *  code-indexed. Ensure BEFORE taking the pointers (resize moves
+   *  them); fill once when blueprints are ready. */
+  unitForceProfileEnsure: (codeCount: number) => void;
+  unitForceProfileValuesPtr: () => number;
+  unitForceProfileFlagsPtr: () => number;
   /** C1 — splash/area target overlap classifier. TypeScript gathers
    *  spatial candidates and applies damage/event diffs; Rust owns the
    *  unit/projectile sphere tests, building AABB tests, slice filtering,
@@ -3970,6 +3979,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
+        unitForceProfileEnsure: unit_force_profile_ensure,
+        unitForceProfileValuesPtr: unit_force_profile_values_ptr,
+        unitForceProfileFlagsPtr: unit_force_profile_flags_ptr,
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageAreaCandidatesBatch: damage_area_candidates_batch,
         damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,

@@ -82,6 +82,88 @@ pub fn quat_hover_orientation_step_batch(
 
 pub const UNIT_FORCE_BATCH_STRIDE: usize = 50;
 
+// ─────────────────────────────────────────────────────────────────
+//  Blueprint locomotion force profile table
+//
+//  The ~16 per-blueprint locomotion constants the JS pack loop used to
+//  copy into every unit's force row every tick live here instead,
+//  indexed by unit blueprint code. JS uploads the table once when the
+//  blueprints are ready (see UnitForceSystem); the kernel resolves
+//  body slot → entity slot → blueprint code and fills the constant row
+//  slots before the (unchanged) force math reads them. Flags carry the
+//  per-blueprint UF_FLAG facing bits.
+// ─────────────────────────────────────────────────────────────────
+
+pub const UF_PROFILE_STRIDE: usize = 16;
+pub(crate) const UF_PROFILE_DRIVE_FORCE: usize = 0;
+pub(crate) const UF_PROFILE_TRACTION: usize = 1;
+pub(crate) const UF_PROFILE_GRAVITY_COUNTER_RATIO: usize = 2;
+pub(crate) const UF_PROFILE_HOVER_HEIGHT_FORCE: usize = 3;
+pub(crate) const UF_PROFILE_HOVER_RANDOM_AMOUNT: usize = 4;
+pub(crate) const UF_PROFILE_HOVER_EMA_WEIGHT: usize = 5;
+pub(crate) const UF_PROFILE_GROUND_FRICTION: usize = 6;
+pub(crate) const UF_PROFILE_AIR_FRICTION: usize = 7;
+pub(crate) const UF_PROFILE_WATER_FORCE: usize = 8;
+pub(crate) const UF_PROFILE_WATER_TRACTION: usize = 9;
+pub(crate) const UF_PROFILE_WATER_FRICTION: usize = 10;
+pub(crate) const UF_PROFILE_SWIM_GRAVITY_COUNTER_RATIO: usize = 11;
+pub(crate) const UF_PROFILE_SWIM_HEIGHT_FORCE: usize = 12;
+pub(crate) const UF_PROFILE_SWIM_RANDOM_AMOUNT: usize = 13;
+pub(crate) const UF_PROFILE_SWIM_EMA_WEIGHT: usize = 14;
+pub(crate) const UF_PROFILE_AIR_ANGULAR_DAMPING_RATE: usize = 15;
+
+pub(crate) struct UnitForceProfileTable {
+    pub(crate) values: Vec<f64>,
+    pub(crate) flags: Vec<u32>,
+    pub(crate) count: usize,
+}
+
+pub(crate) struct UnitForceProfileTableHolder(
+    ::core::cell::UnsafeCell<Option<UnitForceProfileTable>>,
+);
+unsafe impl Sync for UnitForceProfileTableHolder {}
+pub(crate) static UNIT_FORCE_PROFILE_TABLE: UnitForceProfileTableHolder =
+    UnitForceProfileTableHolder(::core::cell::UnsafeCell::new(None));
+
+#[inline]
+pub(crate) fn unit_force_profile_table() -> &'static mut UnitForceProfileTable {
+    unsafe {
+        let cell = &mut *UNIT_FORCE_PROFILE_TABLE.0.get();
+        if cell.is_none() {
+            *cell = Some(UnitForceProfileTable {
+                values: Vec::new(),
+                flags: Vec::new(),
+                count: 0,
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[wasm_bindgen]
+pub fn unit_force_profile_ensure(code_count: u32) {
+    let table = unit_force_profile_table();
+    let count = code_count as usize;
+    let needed = count * UF_PROFILE_STRIDE;
+    if table.values.len() < needed {
+        table.values.resize(needed, 0.0);
+    }
+    if table.flags.len() < count {
+        table.flags.resize(count, 0);
+    }
+    table.count = count;
+}
+
+#[wasm_bindgen]
+pub fn unit_force_profile_values_ptr() -> *const f64 {
+    unit_force_profile_table().values.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn unit_force_profile_flags_ptr() -> *const u32 {
+    unit_force_profile_table().flags.as_ptr()
+}
+
 pub(crate) const UF_ROW_DIR_X: usize = 0;
 pub(crate) const UF_ROW_DIR_Y: usize = 1;
 pub(crate) const UF_ROW_ROTATION: usize = 2;
@@ -572,6 +654,8 @@ pub fn unit_force_step_batch(
     }
 
     let p = pool();
+    let es = entity_state();
+    let profile = unit_force_profile_table();
     let mut processed = 0_u32;
     let _legacy_hover_orientation_tuning = (hover_orientation_k, hover_orientation_c);
 
@@ -590,11 +674,62 @@ pub fn unit_force_step_batch(
         rows[base + UF_ROW_ANGULAR_ACCEL_Y] = 0.0;
         rows[base + UF_ROW_ANGULAR_ACCEL_Z] = 0.0;
 
-        let flag = flags[i];
+        let mut flag = flags[i];
         if flag & UF_FLAG_BLOCKED_OR_DEAD != 0 {
             out_flags[i] |= UF_OUT_MOVEMENT_ACCEL | UF_OUT_CLEAR_COMBAT;
             processed += 1;
             continue;
+        }
+
+        // Fill the blueprint-constant row slots from the profile table so
+        // the JS pack loop no longer copies them per unit per tick. The
+        // force math below is untouched — it reads the same row slots it
+        // always has. Hover fields are only consumed under IS_AIRBORNE,
+        // which already encodes build-in-progress lift suppression.
+        {
+            let entity_slot = if slot < es.entity_slot_by_body_slot.len() {
+                es.entity_slot_by_body_slot[slot]
+            } else {
+                -1
+            };
+            if entity_slot >= 0 && (entity_slot as usize) < es.unit_blueprint_code.len() {
+                let code = es.unit_blueprint_code[entity_slot as usize] as usize;
+                if code < profile.count {
+                    let pbase = code * UF_PROFILE_STRIDE;
+                    rows[base + UF_ROW_DRIVE_FORCE] =
+                        profile.values[pbase + UF_PROFILE_DRIVE_FORCE];
+                    rows[base + UF_ROW_TRACTION] = profile.values[pbase + UF_PROFILE_TRACTION];
+                    rows[base + UF_ROW_GRAVITY_COUNTER_RATIO] =
+                        profile.values[pbase + UF_PROFILE_GRAVITY_COUNTER_RATIO];
+                    rows[base + UF_ROW_HOVER_HEIGHT_FORCE] =
+                        profile.values[pbase + UF_PROFILE_HOVER_HEIGHT_FORCE];
+                    rows[base + UF_ROW_HOVER_RANDOM_AMOUNT] =
+                        profile.values[pbase + UF_PROFILE_HOVER_RANDOM_AMOUNT];
+                    rows[base + UF_ROW_HOVER_EMA_WEIGHT] =
+                        profile.values[pbase + UF_PROFILE_HOVER_EMA_WEIGHT];
+                    rows[base + UF_ROW_GROUND_FRICTION] =
+                        profile.values[pbase + UF_PROFILE_GROUND_FRICTION];
+                    rows[base + UF_ROW_AIR_FRICTION] =
+                        profile.values[pbase + UF_PROFILE_AIR_FRICTION];
+                    rows[base + UF_ROW_WATER_FORCE] =
+                        profile.values[pbase + UF_PROFILE_WATER_FORCE];
+                    rows[base + UF_ROW_WATER_TRACTION] =
+                        profile.values[pbase + UF_PROFILE_WATER_TRACTION];
+                    rows[base + UF_ROW_WATER_FRICTION] =
+                        profile.values[pbase + UF_PROFILE_WATER_FRICTION];
+                    rows[base + UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] =
+                        profile.values[pbase + UF_PROFILE_SWIM_GRAVITY_COUNTER_RATIO];
+                    rows[base + UF_ROW_SWIM_HEIGHT_FORCE] =
+                        profile.values[pbase + UF_PROFILE_SWIM_HEIGHT_FORCE];
+                    rows[base + UF_ROW_SWIM_RANDOM_AMOUNT] =
+                        profile.values[pbase + UF_PROFILE_SWIM_RANDOM_AMOUNT];
+                    rows[base + UF_ROW_SWIM_EMA_WEIGHT] =
+                        profile.values[pbase + UF_PROFILE_SWIM_EMA_WEIGHT];
+                    rows[base + UF_ROW_AIR_ANGULAR_DAMPING_RATE] =
+                        profile.values[pbase + UF_PROFILE_AIR_ANGULAR_DAMPING_RATE];
+                    flag |= profile.flags[code];
+                }
+            }
         }
 
         let has_thrust = flag & UF_FLAG_HAS_THRUST != 0;
