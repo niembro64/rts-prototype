@@ -757,9 +757,11 @@ function sanitizeUpgradeMetalExtractorAreaCommand(
 }
 
 function sanitizeQueueUnitCommand(command: QueueUnitCommand, tick: number): QueueUnitCommand | null {
+  // Upper bound covers the BAR Ctrl+Shift x100 click multiplier; the sim's
+  // own queue capacity still applies when executing.
   const count = command.count === undefined
     ? 1
-    : Number.isInteger(command.count) && command.count >= 1 && command.count <= 64
+    : Number.isInteger(command.count) && command.count >= 1 && command.count <= 100
       ? command.count
       : null;
   return isEntityId(command.factoryId) && isBuildableUnitBlueprintId(command.unitBlueprintId) && count !== null
@@ -781,9 +783,11 @@ function sanitizeQueueEditIndex(value: number | undefined): number | null {
 }
 
 function sanitizeQueueEditLength(value: number | undefined): number | null {
+  // 100 matches the queueUnit count bound so a client-composed
+  // queueUnit + move(front) pair survives sanitization intact.
   return value === undefined
     ? 1
-    : Number.isInteger(value) && value >= 1 && value <= 64
+    : Number.isInteger(value) && value >= 1 && value <= 100
       ? value
       : null;
 }
@@ -820,7 +824,7 @@ function sanitizeRemoveFactoryUnitProductionCommand(
 ): RemoveFactoryUnitProductionCommand | null {
   const count = command.count === undefined
     ? 1
-    : Number.isInteger(command.count) && command.count >= 1 && command.count <= 64
+    : Number.isInteger(command.count) && command.count >= 1 && command.count <= 100
       ? command.count
       : null;
   return isEntityId(command.factoryId) && isBuildableUnitBlueprintId(command.unitBlueprintId) && count !== null
@@ -864,8 +868,8 @@ function sanitizeChangeFactoryUnitQuotaCommand(
   return isEntityId(command.factoryId) &&
     isBuildableUnitBlueprintId(command.unitBlueprintId) &&
     Number.isInteger(command.delta) &&
-    command.delta >= -64 &&
-    command.delta <= 64 &&
+    command.delta >= -100 &&
+    command.delta <= 100 &&
     command.delta !== 0
     ? {
         type: 'changeFactoryUnitQuota',

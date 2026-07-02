@@ -44,7 +44,6 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       COLORS.ui.selectionPanel.buttons.wait === '#b3a899' &&
       COLORS.ui.selectionPanel.buttons.repair === '#fff2b3' &&
       COLORS.ui.selectionPanel.buttons.reclaim === '#dbffdb' &&
-      COLORS.ui.selectionPanel.buttons.restore === '#c4ffc4' &&
       COLORS.ui.selectionPanel.buttons.capture === '#ffd936' &&
       COLORS.ui.selectionPanel.buttons.resurrect === '#ffbfff' &&
       COLORS.ui.selectionPanel.buttons.build === '#ededed' &&
@@ -366,6 +365,10 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'BAR factory production-cell clicks must follow gui_gridmenu.lua quota-mode bypass semantics: Alt bypasses quota mode, Meta does not',
   );
   assertContract(
+    /function queueFactoryUnitFromClick[\s\S]{0,900}if \(event\.altKey && !productionMode\.repeat && queueLengthBeforeAdd > 0\) \{\s*props\.actions\.editFactoryQueue\(factoryId, 'move', queueLengthBeforeAdd, productionMode\.count, 0\);/.test(selectionPanelSource),
+    'BAR Alt factory clicks must compose queueUnit + editFactoryQueue move-to-front like gui_gridmenu.lua alt insert',
+  );
+  assertContract(
     /const showAttackCommand = computed\(\(\) =>\s*isBarHotkeyPreset\.value \? props\.selection\.hasBarAttackControl : props\.selection\.unitCount > 0,\s*\);/.test(selectionPanelSource),
     'BAR presets must show Attack only for selections with a BAR-equivalent weapon command',
   );
@@ -386,8 +389,10 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'the Area Attack order button must be gated by the BAR-equivalent Area Attack capability',
   );
   assertContract(
-    /<button\s+v-if="showRestoreButton"[\s\S]{0,500}BUTTON_COLORS\.restore[\s\S]{0,500}combat\.restore/.test(selectionPanelSource),
-    'the Restore order button must use BAR gui_ordermenu.lua restore color instead of reusing Repair',
+    !selectionPanelSource.includes('combat.restore') &&
+      !selectionPanelSource.includes('showRestoreButton') &&
+      !selectionPanelSource.includes('toggleRestoreArea'),
+    'the Restore order surface must stay deleted — terrain never deforms, so no dead Restore button/hotkey may exist',
   );
   assertContract(
     /const showFormationCommands = computed\(\(\) => !isBarHotkeyPreset\.value\);/.test(selectionPanelSource),

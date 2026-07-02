@@ -2,9 +2,11 @@ import type {
   Command,
   CaptureCommand,
   ChangeFactoryUnitQuotaCommand,
+  EditFactoryQueueCommand,
   LoadTransportCommand,
   ManualLaunchCommand,
   MoveCommand,
+  QueueUnitCommand,
   RemoveFactoryUnitProductionCommand,
   ResurrectAreaCommand,
   ResurrectCommand,
@@ -116,6 +118,72 @@ export function runCommandSanitizerContractTest(): void {
       removeFactoryUnitProduction.unitBlueprintId === 'unitLynx' &&
       removeFactoryUnitProduction.count === 5,
     'removeFactoryUnitProduction must preserve valid factory, unit, and count fields',
+  );
+
+  // BAR gridmenu multipliers: LMB=1, Shift=5, Ctrl=20, Ctrl+Shift=100. The
+  // sanitizer bound admits the x100 click; the sim's queue capacity still
+  // clamps at execution time.
+  const bulkQueueUnit = sanitizeRequired<QueueUnitCommand>(world, {
+    type: 'queueUnit',
+    tick: 5,
+    factoryId: 42,
+    unitBlueprintId: 'unitLynx',
+    repeat: false,
+    count: 100,
+  });
+  assertContract(
+    bulkQueueUnit.count === 100 && bulkQueueUnit.repeat === false,
+    'queueUnit must accept the BAR Ctrl+Shift x100 click count',
+  );
+  assertContract(
+    sanitizeCommand({
+      type: 'queueUnit',
+      tick: 5,
+      factoryId: 42,
+      unitBlueprintId: 'unitLynx',
+      repeat: false,
+      count: 101,
+    } as Command, world) === null,
+    'queueUnit counts above 100 must stay rejected by the sanitizer bound',
+  );
+  const bulkRemoveProduction = sanitizeRequired<RemoveFactoryUnitProductionCommand>(world, {
+    type: 'removeFactoryUnitProduction',
+    tick: 5,
+    factoryId: 42,
+    unitBlueprintId: 'unitLynx',
+    count: 100,
+  });
+  assertContract(
+    bulkRemoveProduction.count === 100,
+    'removeFactoryUnitProduction must accept the BAR Ctrl+Shift x100 removal count',
+  );
+  const bulkQuota = sanitizeRequired<ChangeFactoryUnitQuotaCommand>(world, {
+    type: 'changeFactoryUnitQuota',
+    tick: 5,
+    factoryId: 42,
+    unitBlueprintId: 'unitLynx',
+    delta: -100,
+  });
+  assertContract(
+    bulkQuota.delta === -100,
+    'changeFactoryUnitQuota must accept the BAR Ctrl+Shift x100 quota delta',
+  );
+  // Alt insert-at-front composes queueUnit + editFactoryQueue move; the move
+  // length must therefore admit the same x100 run size.
+  const frontInsertMove = sanitizeRequired<EditFactoryQueueCommand>(world, {
+    type: 'editFactoryQueue',
+    tick: 5,
+    factoryId: 42,
+    operation: 'move',
+    index: 12,
+    length: 100,
+    toIndex: 0,
+  });
+  assertContract(
+    frontInsertMove.operation === 'move' &&
+      frontInsertMove.length === 100 &&
+      frontInsertMove.toIndex === 0,
+    'editFactoryQueue move must accept a 100-long run for Alt insert-at-front',
   );
 
   const clearFactoryGuard = sanitizeRequired<SetFactoryGuardCommand>(world, {

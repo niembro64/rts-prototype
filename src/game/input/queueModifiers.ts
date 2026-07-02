@@ -24,11 +24,35 @@ const trackedQueueModifiers: QueueModifierEvent = {
   metaKey: false,
 };
 
+// BAR chat_and_ui_keys.txt binds "Any+space commandinsert prepend" — holding
+// Space while issuing a command inserts it at the front of the queue. Space
+// is not a browser modifier, so it is tracked here like the others, and the
+// input layer registers an eligibility provider so the behavior only applies
+// under BAR presets when the selection is not a factory (held Space doubles
+// as the factory-preset overlay there).
+let trackedSpaceHeld = false;
+let spaceQueueFrontEligibilityProvider: (() => boolean) | null = null;
+
+export function setSpaceQueueFrontEligibilityProvider(provider: (() => boolean) | null): void {
+  spaceQueueFrontEligibilityProvider = provider;
+}
+
+export function clearSpaceQueueFrontEligibilityProvider(provider: () => boolean): void {
+  if (spaceQueueFrontEligibilityProvider === provider) {
+    spaceQueueFrontEligibilityProvider = null;
+  }
+}
+
+function spaceQueueFrontHeld(): boolean {
+  return trackedSpaceHeld && spaceQueueFrontEligibilityProvider?.() === true;
+}
+
 export function clearQueueModifierState(): void {
   trackedQueueModifiers.shiftKey = false;
   trackedQueueModifiers.altKey = false;
   trackedQueueModifiers.ctrlKey = false;
   trackedQueueModifiers.metaKey = false;
+  trackedSpaceHeld = false;
 }
 
 export function setQueueModifierKeyState(
@@ -48,8 +72,14 @@ export function setQueueModifierKeyState(
     case 'Meta':
       trackedQueueModifiers.metaKey = held;
       return;
+    case ' ':
+      trackedSpaceHeld = held;
+      return;
   }
   switch (event.code) {
+    case 'Space':
+      trackedSpaceHeld = held;
+      break;
     case 'ShiftLeft':
     case 'ShiftRight':
       trackedQueueModifiers.shiftKey = held;
@@ -83,8 +113,9 @@ export function queueModeFromEvent(
   selectedQueueInsertIndex?: number | null,
 ): QueueCommandMode {
   const modifiers = effectiveQueueModifierEvent(event);
-  const queue = modifiers.shiftKey;
-  const queueFront = queue && (modifiers.ctrlKey || modifiers.metaKey);
+  const spaceFront = spaceQueueFrontHeld();
+  const queue = modifiers.shiftKey || spaceFront;
+  const queueFront = queue && (modifiers.ctrlKey || modifiers.metaKey || spaceFront);
   const requestedInsertIndex = selectedQueueInsertIndex ?? (modifiers.altKey ? 1 : undefined);
   return {
     queue,

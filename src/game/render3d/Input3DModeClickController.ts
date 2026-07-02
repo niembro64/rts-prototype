@@ -100,7 +100,6 @@ type Input3DModeClickControllerConfig = {
   onBuildCommandIssued: (queued: boolean) => void;
   applyCursor: (kind: CommandCursorKind) => void;
   isRepairAreaMode: () => boolean;
-  isRestoreAreaMode: () => boolean;
   isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
@@ -117,7 +116,6 @@ type Input3DModeClickControllerConfig = {
   isTowerTargetMode: () => boolean;
   isTowerTargetNoGroundMode: () => boolean;
   exitRepairAreaMode: () => void;
-  exitRestoreAreaMode: () => void;
   exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
   exitAttackGroundMode: () => void;
@@ -150,7 +148,6 @@ export class Input3DModeClickController {
       this.config.mode.isInBuildMode ||
       this.config.mode.isInDGunMode ||
       this.config.isRepairAreaMode() ||
-      this.config.isRestoreAreaMode() ||
       this.config.isAttackMode() ||
       this.config.isAttackAreaMode() ||
       this.config.isAttackGroundMode() ||
@@ -236,7 +233,6 @@ export class Input3DModeClickController {
     }
     if (this.config.mode.isInDGunMode) return 'dgun';
     if (this.config.isRepairAreaMode()) return 'repair';
-    if (this.config.isRestoreAreaMode()) return 'repair';
     if (this.config.isAttackMode()) return 'attack';
     if (this.config.isAttackAreaMode()) return 'attack';
     if (this.config.isAttackGroundMode()) return 'attack';
@@ -400,7 +396,6 @@ export class Input3DModeClickController {
     if (buildingBlueprintId === AREA_MEX_BLUEPRINT_ID) return 'buildMexArea';
     if (buildingBlueprintId !== null) return 'buildLine';
     if (this.config.isRepairAreaMode()) return 'repairArea';
-    if (this.config.isRestoreAreaMode()) return 'restoreArea';
     if (this.config.isAttackAreaMode()) return 'attackArea';
     if (this.config.isReclaimMode()) return 'reclaimArea';
     if (this.config.isResurrectAreaMode()) return 'resurrectArea';
@@ -426,7 +421,7 @@ export class Input3DModeClickController {
       this.commitBuildGridDrag(drag);
       return;
     }
-    if (drag.kind === 'repairArea' || drag.kind === 'restoreArea') {
+    if (drag.kind === 'repairArea') {
       const cmd = buildRepairAreaCommand(
         this.config.getSelectedCommander(),
         drag.start.x,
@@ -440,10 +435,7 @@ export class Input3DModeClickController {
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('repair');
-      if (!drag.queue) {
-        if (drag.kind === 'restoreArea') this.config.exitRestoreAreaMode();
-        else this.config.exitRepairAreaMode();
-      }
+      if (!drag.queue) this.config.exitRepairAreaMode();
       return;
     }
     if (drag.kind === 'attackArea') {
@@ -656,7 +648,6 @@ export class Input3DModeClickController {
     if (this.config.mode.isInBuildMode) this.handleBuildClick(e);
     else if (this.config.mode.isInDGunMode) this.handleDGunClick(e);
     else if (this.config.isRepairAreaMode()) this.handleRepairAreaClick(e);
-    else if (this.config.isRestoreAreaMode()) this.handleRestoreAreaClick(e);
     else if (this.config.isAttackMode()) this.handleAttackClick(e);
     else if (this.config.isAttackAreaMode()) this.handleAttackAreaClick(e);
     else if (this.config.isAttackGroundMode()) this.handleAttackGroundClick(e);
@@ -678,7 +669,6 @@ export class Input3DModeClickController {
     if (this.config.mode.isInBuildMode) this.config.mode.exitBuildMode();
     else if (this.config.mode.isInDGunMode) this.config.mode.exitDGunMode();
     else if (this.config.isRepairAreaMode()) this.config.exitRepairAreaMode();
-    else if (this.config.isRestoreAreaMode()) this.config.exitRestoreAreaMode();
     else if (this.config.isAttackMode()) this.config.exitAttackMode();
     else if (this.config.isAttackAreaMode()) this.config.exitAttackAreaMode();
     else if (this.config.isAttackGroundMode()) this.config.exitAttackGroundMode();
@@ -841,14 +831,8 @@ export class Input3DModeClickController {
     this.config.commandQueue.enqueue(cmd);
   }
 
-  private handleRepairAreaClick(
-    e: MouseEvent,
-    mode: 'repairArea' | 'restoreArea' = 'repairArea',
-  ): void {
-    const exitMode = () => {
-      if (mode === 'restoreArea') this.config.exitRestoreAreaMode();
-      else this.config.exitRepairAreaMode();
-    };
+  private handleRepairAreaClick(e: MouseEvent): void {
+    const exitMode = () => this.config.exitRepairAreaMode();
     const builder = this.config.getSelectedBuilder();
     if (!builder) {
       exitMode();
@@ -893,10 +877,6 @@ export class Input3DModeClickController {
     this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('repair');
     if (!queueMode.queue) exitMode();
-  }
-
-  private handleRestoreAreaClick(e: MouseEvent): void {
-    this.handleRepairAreaClick(e, 'restoreArea');
   }
 
   private handleAttackAreaClick(e: MouseEvent): void {
@@ -1417,7 +1397,6 @@ function areaDragRadius(drag: AreaDrag): number {
 function defaultAreaRadius(kind: Input3DAreaDragKind): number {
   switch (kind) {
     case 'repairArea': return REPAIR_AREA_RADIUS;
-    case 'restoreArea': return REPAIR_AREA_RADIUS;
     case 'reclaimArea': return RECLAIM_AREA_RADIUS;
     case 'resurrectArea': return RESURRECT_AREA_RADIUS;
     case 'attackArea': return ATTACK_AREA_RADIUS;

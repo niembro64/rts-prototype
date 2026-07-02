@@ -14,7 +14,6 @@ const OUTLINE_SEGMENTS = 96;
 
 const AREA_COLORS: Record<Input3DAreaDragKind, number> = {
   repairArea: ACTION_COLORS.repair,
-  restoreArea: ACTION_COLORS.repair,
   reclaimArea: ACTION_COLORS.reclaim,
   resurrectArea: ACTION_COLORS.resurrect,
   attackArea: ACTION_COLORS.attack,

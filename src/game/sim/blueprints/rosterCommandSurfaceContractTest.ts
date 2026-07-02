@@ -66,7 +66,6 @@ const REQUIRED_BAR_ORDER_COMMAND_IDS = [
   'command.builderPriority',
   'command.carrierSpawn',
   'command.morph',
-  'combat.restore',
 ] as const satisfies readonly CommandHotkeyId[];
 
 const BAR_EQUIVALENT_BUILD_CATEGORY_SLOT_INDEX = new Map<StructureBlueprintId, number>([
@@ -621,13 +620,5 @@ export function runRosterCommandSurfaceContractTest(): void {
   assertContract(
     commandHotkeyLabel('command.morph', 'bar-legacy') === '',
     'BAR-legacy Morph/Upgrade is a visible order command with no source default hotkey',
-  );
-  assertContract(
-    commandHotkeyLabel('combat.restore', 'bar-grid') === 'M',
-    'BAR-grid Restore is a visible order command on M',
-  );
-  assertContract(
-    commandHotkeyLabel('combat.restore', 'bar-legacy') === '',
-    'BAR-legacy Restore must not steal M from Move',
   );
 }

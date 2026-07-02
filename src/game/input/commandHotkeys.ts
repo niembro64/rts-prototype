@@ -75,6 +75,7 @@ export type CommandHotkeyId =
   | 'select.waitingUnits'
   | 'select.sameTypeOnly'
   | 'select.mobileOnly'
+  | 'select.damagedOnly'
   | 'select.invert'
   | 'select.split'
   | 'select.loop'
@@ -91,11 +92,11 @@ export type CommandHotkeyId =
   | 'combat.unloadTransport'
   | 'combat.manualLaunch'
   | 'combat.repair'
-  | 'combat.restore'
   | 'combat.ping'
   | 'combat.towerTargetSet'
   | 'combat.towerTargetSetNoGround'
   | 'combat.towerTargetClear'
+  | 'ui.pause'
   | 'ui.optionsMenu'
   | 'ui.showMapOverview'
   | 'ui.flipCameraYaw'
@@ -230,6 +231,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'select.waitingUnits',
   'select.sameTypeOnly',
   'select.mobileOnly',
+  'select.damagedOnly',
   'select.invert',
   'select.split',
   'select.loop',
@@ -246,11 +248,11 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'combat.unloadTransport',
   'combat.manualLaunch',
   'combat.repair',
-  'combat.restore',
   'combat.ping',
   'combat.towerTargetSet',
   'combat.towerTargetSetNoGround',
   'combat.towerTargetClear',
+  'ui.pause',
   'ui.optionsMenu',
   'ui.showMapOverview',
   'ui.flipCameraYaw',
@@ -423,6 +425,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'select.waitingUnits': 'Waiting Units',
   'select.sameTypeOnly': 'Keep Same Type',
   'select.mobileOnly': 'Keep Mobile',
+  'select.damagedOnly': 'Keep Damaged',
   'select.invert': 'Invert Selection',
   'select.split': 'Split Selection',
   'select.loop': 'Loop Selection',
@@ -439,11 +442,11 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'combat.unloadTransport': 'Unload Transport',
   'combat.manualLaunch': 'Manual Launch',
   'combat.repair': 'Repair',
-  'combat.restore': 'Restore',
   'combat.ping': 'Ping',
   'combat.towerTargetSet': 'Set Target',
   'combat.towerTargetSetNoGround': 'Set Target No Ground',
   'combat.towerTargetClear': 'Clear Tower Target',
+  'ui.pause': 'Pause Game',
   'ui.optionsMenu': 'Options Menu',
   'ui.showMapOverview': 'Map Overview',
   'ui.flipCameraYaw': 'Flip Camera',
@@ -600,6 +603,9 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'select.waitingUnits': [key('Ctrl+Y', 'y', { ctrl: true })],
     'select.sameTypeOnly': [key('Alt+Z', 'z', { alt: true })],
     'select.mobileOnly': [key('Alt+M', 'm', { alt: true })],
+    // Alt+Q is the prototype autogroup-remove chord, so the damaged filter
+    // stays hotkey-less here (BAR presets bind it per BAR defaults).
+    'select.damagedOnly': [],
     'select.invert': [key('Alt+I', 'i', { alt: true })],
     'select.split': [key('Alt+S', 's', { alt: true })],
     'select.loop': [key('Alt+L', 'l', { alt: true })],
@@ -616,11 +622,12 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.unloadTransport': [code('Ctrl+Alt+Shift+Q', 'KeyQ', { ctrl: true, alt: true, shift: true })],
     'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
     'combat.repair': [key('R', 'r', { shift: 'any' })],
-    'combat.restore': [],
     'combat.ping': [key('P', 'p', { shift: 'any' })],
     'combat.towerTargetSet': [key('L', 'l', { shift: 'any' })],
     'combat.towerTargetSetNoGround': [code('Alt+L', 'KeyL', { alt: true, shift: 'any' })],
     'combat.towerTargetClear': [key('J', 'j', { shift: 'any' })],
+    // BAR chat_and_ui_keys.txt binds "Any+pause pause".
+    'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.showMapOverview': [code('Ctrl+T', 'KeyT', { ctrl: true })],
     'ui.flipCameraYaw': [code('Alt+O', 'KeyO', { alt: true })],
@@ -724,14 +731,20 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'select.allUnits': [code('Ctrl+E', 'KeyE', { ctrl: true })],
     'select.matching': [code('Ctrl+W', 'KeyW', { ctrl: true })],
     'select.matchingInView': [code('Q', 'KeyQ', { shift: 'any' })],
-    'select.previous': [code('Ctrl+Q', 'KeyQ', { ctrl: true })],
+    // BAR grid has no dedicated previous-selection bind (Ctrl+Q is the
+    // split-half command below), so previous keeps the freed Ctrl+Alt+S.
+    'select.previous': [code('Ctrl+Alt+S', 'KeyS', { ctrl: true, alt: true })],
     'select.idleBuilders': [key('Ctrl+Tab', 'tab', { ctrl: true })],
     'select.idleTransports': [code('Ctrl+R', 'KeyR', { ctrl: true })],
     'select.waitingUnits': [code('Ctrl+Y', 'KeyY', { ctrl: true })],
     'select.sameTypeOnly': [],
-    'select.mobileOnly': [code('Alt+Q', 'KeyQ', { alt: true })],
+    // BAR covers mobile-only selection with the held-Alt selectbox modifier.
+    'select.mobileOnly': [],
+    // grid_keys.txt: Alt+sc_q select PrevSelection+_Not_Building_Not_RelativeHealth_60+
+    'select.damagedOnly': [code('Alt+Q', 'KeyQ', { alt: true })],
     'select.invert': [code('Alt+I', 'KeyI', { alt: true })],
-    'select.split': [code('Ctrl+Alt+S', 'KeyS', { ctrl: true, alt: true })],
+    // grid_keys.txt: Ctrl+sc_q select PrevSelection++_ClearSelection_SelectPart_50+
+    'select.split': [code('Ctrl+Q', 'KeyQ', { ctrl: true })],
     'select.loop': [code('Alt+L', 'KeyL', { alt: true })],
     'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
     'combat.attackLine': [],
@@ -746,11 +759,12 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
     'combat.repair': [code('R', 'KeyR', { shift: 'any' })],
-    'combat.restore': [code('M', 'KeyM', { shift: 'any' })],
     'combat.ping': [],
     'combat.towerTargetSet': [code('S', 'KeyS', { shift: 'any' })],
     'combat.towerTargetSetNoGround': [code('Alt+S', 'KeyS', { alt: true, shift: 'any' })],
     'combat.towerTargetClear': [code('Ctrl+S', 'KeyS', { ctrl: true, shift: 'any' })],
+    // BAR chat_and_ui_keys.txt binds "Any+pause pause".
+    'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.optionsMenu': [code('F10', 'F10')],
     'ui.showMapOverview': [code('Ctrl+T', 'KeyT', { ctrl: true })],
     'ui.flipCameraYaw': [code('Alt+O', 'KeyO', { alt: true })],
@@ -862,6 +876,10 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'select.waitingUnits': [],
     'select.sameTypeOnly': [],
     'select.mobileOnly': [],
+    // BAR legacy_keys.txt has no damaged-selection or split-selection binds
+    // (Q is drawinmap there), so these stay hotkey-less like the other
+    // legacy selection filters.
+    'select.damagedOnly': [],
     'select.invert': [],
     'select.split': [],
     'select.loop': [],
@@ -878,11 +896,12 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
     'combat.repair': [code('R', 'KeyR', { shift: 'any' })],
-    'combat.restore': [],
     'combat.ping': [],
     'combat.towerTargetSet': [code('Alt+Y', 'KeyY', { alt: true, shift: 'any' })],
     'combat.towerTargetSetNoGround': [code('Y', 'KeyY', { shift: 'any' })],
     'combat.towerTargetClear': [code('J', 'KeyJ', { shift: 'any' })],
+    // BAR chat_and_ui_keys.txt binds "Any+pause pause".
+    'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.optionsMenu': [code('F10', 'F10')],
     'ui.showMapOverview': [key('Tab', 'tab', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.flipCameraYaw': [code('Ctrl+Shift+O', 'KeyO', { ctrl: true, shift: true })],
@@ -933,7 +952,9 @@ const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, Comm
           code('Meta+Q', 'KeyQ', { meta: true }),
         ),
       ],
-      'select.mobileOnly': [code('Ctrl+Alt+Q', 'KeyQ', { ctrl: true, alt: true })],
+      // grid_keys_60pct.txt moves the damaged filter to Ctrl+Alt+sc_q because
+      // Alt+Q is the 60% autogroup-remove chord.
+      'select.damagedOnly': [code('Ctrl+Alt+Q', 'KeyQ', { ctrl: true, alt: true })],
       'camera.viewTa': [code('Ctrl+Meta+5', 'Digit5', { ctrl: true, meta: true })],
       'camera.viewSpring': [code('Ctrl+Meta+6', 'Digit6', { ctrl: true, meta: true })],
       'ui.goToLastPing': [code('Meta+5', 'Digit5', { meta: true })],

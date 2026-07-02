@@ -1,6 +1,5 @@
 export type Input3DAreaDragKind =
   | 'repairArea'
-  | 'restoreArea'
   | 'reclaimArea'
   | 'resurrectArea'
   | 'attackArea'

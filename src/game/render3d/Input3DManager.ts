@@ -58,8 +58,10 @@ import {
 } from '../input/factoryProductionPresets';
 import {
   clearQueueModifierState,
+  clearSpaceQueueFrontEligibilityProvider,
   effectiveQueueModifierEvent,
   setQueueModifierKeyState,
+  setSpaceQueueFrontEligibilityProvider,
 } from '../input/queueModifiers';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import {
@@ -209,7 +211,6 @@ export class Input3DManager {
   public onQueueInsertIndexChange?: (index: number | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
-  public onRestoreAreaModeChange?: (active: boolean) => void;
   public onFormationAssumeModeChange?: (active: boolean) => void;
   public onFormationMoveModeChange?: (active: boolean) => void;
   public onAttackModeChange?: (active: boolean) => void;
@@ -276,6 +277,13 @@ export class Input3DManager {
   private selectBoxSameTypeHeld = false;
   private selectBoxIdleHeld = false;
   private lastSelectionClick: SelectionClickTapState | null = null;
+  // BAR commandinsert: held Space queue-fronts commands under BAR presets,
+  // but only when the selection is not a factory — there Space stays the
+  // factory-preset overlay hold. Registered with queueModifiers so every
+  // queueModeFromEvent call site (clicks, right-drags, panel buttons,
+  // hotkeys) picks it up uniformly.
+  private readonly spaceQueueFrontEligibility = (): boolean =>
+    isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId()) && this.getSelectedFactory() === null;
 
   constructor(
     threeApp: ThreeApp,
@@ -319,7 +327,6 @@ export class Input3DManager {
       onBuildCommandIssued: (queued) => this.handleBuildCommandIssued(queued),
       applyCursor: (kind) => this.applyCursor(kind),
       isRepairAreaMode: () => this.repairAreaMode,
-      isRestoreAreaMode: () => this.restoreAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
@@ -336,7 +343,6 @@ export class Input3DManager {
       isTowerTargetMode: () => this.towerTargetMode,
       isTowerTargetNoGroundMode: () => this.towerTargetNoGroundMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
-      exitRestoreAreaMode: () => this.exitRestoreAreaMode(),
       exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
@@ -464,7 +470,6 @@ export class Input3DManager {
       toggleMexUpgradeMode: () => this.toggleMexUpgradeMode(),
       upgradeSelectedMetalExtractors: () => this.upgradeSelectedMetalExtractors(),
       toggleRepairAreaMode: () => this.toggleRepairAreaMode(),
-      toggleRestoreAreaMode: () => this.toggleRestoreAreaMode(),
       togglePingMode: () => this.togglePingMode(),
       toggleDGunMode: () => this.toggleDGunMode(),
       enqueueScanAtCursor: () => this.enqueueScanAtCursor(),
@@ -480,11 +485,11 @@ export class Input3DManager {
       selectWaitingUnits: () => this.selectWaitingUnits(),
       selectSameTypeOnly: () => this.selectSameTypeOnly(),
       selectMobileOnly: () => this.selectMobileOnly(),
+      selectDamagedOnly: () => this.selectDamagedOnly(),
       invertSelection: () => this.invertSelection(),
       splitArmySelection: () => this.splitArmySelection(),
       loopSelection: () => this.loopSelection(),
       isRepairAreaMode: () => this.repairAreaMode,
-      isRestoreAreaMode: () => this.restoreAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
@@ -501,7 +506,6 @@ export class Input3DManager {
       isTowerTargetMode: () => this.towerTargetMode,
       isTowerTargetNoGroundMode: () => this.towerTargetNoGroundMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
-      exitRestoreAreaMode: () => this.exitRestoreAreaMode(),
       exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
@@ -521,7 +525,6 @@ export class Input3DManager {
     this.specialModes = new Input3DSpecialModes({
       refreshCursor: () => this.refreshCursor(),
       onRepairAreaModeChange: (active) => this.onRepairAreaModeChange?.(active),
-      onRestoreAreaModeChange: (active) => this.onRestoreAreaModeChange?.(active),
       onFormationAssumeModeChange: (active) => this.onFormationAssumeModeChange?.(active),
       onFormationMoveModeChange: (active) => this.onFormationMoveModeChange?.(active),
       onAttackModeChange: (active) => this.onAttackModeChange?.(active),
@@ -554,6 +557,8 @@ export class Input3DManager {
       this.setFactoryPresetOverlayVisible(false);
       clearQueueModifierState();
     };
+
+    setSpaceQueueFrontEligibilityProvider(this.spaceQueueFrontEligibility);
 
     this.canvas.addEventListener('mousedown', this.onMouseDown);
     window.addEventListener('mousemove', this.onMouseMove);
@@ -611,10 +616,6 @@ export class Input3DManager {
 
   private get repairAreaMode(): boolean {
     return this.specialModes.isActive('repairArea');
-  }
-
-  private get restoreAreaMode(): boolean {
-    return this.specialModes.isActive('restoreArea');
   }
 
   private get attackAreaMode(): boolean {
@@ -1290,6 +1291,22 @@ export class Input3DManager {
     this.enqueueSelection(entityIds, false);
   }
 
+  /** BAR grid Alt+Q: reduce the selection to mobile units under 60% HP
+   *  (grid_keys.txt `PrevSelection+_Not_Building_Not_RelativeHealth_60`). */
+  selectDamagedOnly(): void {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    if (selectedUnits.length === 0) return;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i].unit;
+      if (unit === null || unit.maxHp <= 0) continue;
+      if (unit.hp >= unit.maxHp * 0.6) continue;
+      entityIds.push(selectedUnits[i].id);
+    }
+    if (entityIds.length === 0) return;
+    this.enqueueSelection(entityIds, false);
+  }
+
   invertSelection(): void {
     const selectedEntityIds = this.scratchEntityIds;
     selectedEntityIds.clear();
@@ -1485,18 +1502,6 @@ export class Input3DManager {
     this.enterSpecialMode('repairArea');
   }
 
-  toggleRestoreAreaMode(): void {
-    if (this.restoreAreaMode) {
-      this.exitRestoreAreaMode();
-      return;
-    }
-    if (!this.hasSelectedBuilder()) return;
-    this.mode.exitBuildMode();
-    this.mode.exitDGunMode();
-    this.exitSpecialModes();
-    this.enterSpecialMode('restoreArea');
-  }
-
   toggleReclaimMode(): void {
     if (this.reclaimMode) {
       this.exitReclaimMode();
@@ -1658,11 +1663,6 @@ export class Input3DManager {
     return this.repairAreaMode;
   }
 
-  /** True while the next left-click will issue a BAR Restore area command. */
-  isInRestoreAreaMode(): boolean {
-    return this.restoreAreaMode;
-  }
-
   /** True while the next right-click move preserves the selected formation. */
   isInFormationMoveMode(): boolean {
     return this.formationMoveMode;
@@ -1739,10 +1739,6 @@ export class Input3DManager {
 
   private exitRepairAreaMode(): void {
     this.specialModes.exit('repairArea');
-  }
-
-  private exitRestoreAreaMode(): void {
-    this.specialModes.exit('restoreArea');
   }
 
   private exitFormationMoveMode(): void {
@@ -2173,7 +2169,7 @@ export class Input3DManager {
     const slot = this.resolveSelectedFactoryUnitSlot(slotIndex);
     if (slot === null) return false;
     if (count < 0) {
-      const removeCount = Math.max(1, Math.min(64, Math.floor(-count)));
+      const removeCount = Math.max(1, Math.min(100, Math.floor(-count)));
       this.commandSink.enqueue({
         type: 'removeFactoryUnitProduction',
         tick: this.context.getTick(),
@@ -2372,9 +2368,6 @@ export class Input3DManager {
     }
     if (this.repairAreaMode && !this.hasSelectedBuilder()) {
       this.exitRepairAreaMode();
-    }
-    if (this.restoreAreaMode && !this.hasSelectedBuilder()) {
-      this.exitRestoreAreaMode();
     }
     if (this.attackMode && !this.hasSelectedAttackControl()) {
       this.exitAttackMode();
@@ -2748,6 +2741,16 @@ export class Input3DManager {
       return;
     }
 
+    // BAR build placement: mouse4/mouse5 (browser buttons 3/4) step build
+    // spacing while placing, same code path as the Alt+X / Alt+Z hotkeys.
+    if (e.button === 3 || e.button === 4) {
+      if (!this.mode.isInBuildMode) return;
+      e.preventDefault();
+      if (e.button === 3) this.decreaseBuildLineSpacing();
+      else this.increaseBuildLineSpacing();
+      return;
+    }
+
     if (this.modeClicks.handleMouseDown(e)) return;
 
     if (e.button === 0) {
@@ -2894,6 +2897,7 @@ export class Input3DManager {
   }
 
   destroy(): void {
+    clearSpaceQueueFrontEligibilityProvider(this.spaceQueueFrontEligibility);
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mousemove', this.onMouseMove);
     window.removeEventListener('mouseup', this.onMouseUp);
@@ -2915,7 +2919,6 @@ export class Input3DManager {
     this.onQueueInsertIndexChange = undefined;
     this.onDGunModeChange = undefined;
     this.onRepairAreaModeChange = undefined;
-    this.onRestoreAreaModeChange = undefined;
     this.onFormationAssumeModeChange = undefined;
     this.onFormationMoveModeChange = undefined;
     this.onAttackModeChange = undefined;

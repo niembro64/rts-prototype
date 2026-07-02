@@ -158,9 +158,6 @@ const showResurrectButton = computed(() =>
 const showCaptureButton = computed(() =>
   isBarHotkeyPreset.value ? props.selection.hasBarCaptureControl : props.selection.hasCommander,
 );
-const showRestoreButton = computed(() =>
-  isBarHotkeyPreset.value && props.selection.hasBuilder,
-);
 const showTrajectoryButton = computed(() =>
   isBarHotkeyPreset.value ? props.selection.hasBarTrajectoryControl : props.selection.hasTrajectoryControl,
 );
@@ -294,7 +291,6 @@ const barOrderCommandCellCount = computed(() => {
   ) {
     if (props.selection.hasDGun) count += 1;
     if (props.selection.hasBuilder) count += 2; // repair, reclaim
-    if (showRestoreButton.value) count += 1;
     if (showAreaMexButton.value) count += 1;
     if (showBuilderPriorityButton.value) count += 1;
     if (showCarrierSpawnButton.value) count += 1;
@@ -469,7 +465,6 @@ const showCancelHint = computed(() =>
   props.selection.isBuildMode
   || props.selection.isDGunMode
   || props.selection.isRepairAreaMode
-  || props.selection.isRestoreAreaMode
   || props.selection.isAttackMode
   || props.selection.isAttackAreaMode
   || props.selection.isAttackGroundMode
@@ -620,7 +615,6 @@ const BAR_ORDER_TOOLTIP_BY_COMMAND_ID: Partial<Record<CommandHotkeyId, string>> 
   'command.dgun': 'Fire the powerful commander Disintegrator-gun',
   'combat.manualLaunch': 'Launch a missile at a target',
   'combat.repair': 'Repair a damaged unit',
-  'combat.restore': 'Restore an area of the map to its original height',
   'combat.reclaim': 'Suck metal/energy from wrecks or features (trees/stones)',
   'combat.capture': 'Convert units that belong to the enemy (or ally)',
   'combat.resurrect': 'Revive wrecks to become units again (click-drag for area)',
@@ -1405,7 +1399,14 @@ function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, e
     props.actions.changeFactoryUnitQuota(factoryId, unitBlueprintId, productionMode.count);
     return;
   }
+  const queueLengthBeforeAdd = factoryQueuedUnits.value.length;
   props.actions.queueUnit(factoryId, unitBlueprintId, productionMode.repeat, productionMode.count);
+  // BAR gui_gridmenu.lua: Alt-queued clicks insert at the FRONT of the build
+  // queue. queueUnit appends, so compose the insert client-side by moving the
+  // appended run to index 0 (server-authorized editFactoryQueue move).
+  if (event.altKey && !productionMode.repeat && queueLengthBeforeAdd > 0) {
+    props.actions.editFactoryQueue(factoryId, 'move', queueLengthBeforeAdd, productionMode.count, 0);
+  }
 }
 
 function removeFactoryQueuedUnitFromCell(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
@@ -2240,18 +2241,6 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Repair</span>
           <span class="btn-key">{{ hotkey('combat.repair') }}</span>
-        </button>
-        <button
-          v-if="showRestoreButton"
-          type="button"
-          class="action-btn"
-          :class="{ active: selection.isRestoreAreaMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.restore }"
-          :title="actionTitle('Restore', 'combat.restore')"
-          @click="actions.toggleRestoreArea()"
-        >
-          <span class="btn-label">Restore</span>
-          <span class="btn-key">{{ hotkey('combat.restore') }}</span>
         </button>
         <button
           v-if="selection.hasBuilder"

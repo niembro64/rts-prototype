@@ -50,9 +50,13 @@ const props = withDefaults(defineProps<{
   data: MinimapData;
   drawings?: ReadonlyArray<MinimapMapDrawing>;
   dragPan?: boolean;
+  /** BAR: while map-draw mode is active, right-drag erases drawings
+   *  instead of issuing commands. */
+  eraseOnRightDrag?: boolean;
 }>(), {
   drawings: () => [],
   dragPan: true,
+  eraseOnRightDrag: false,
 });
 
 const emit = defineEmits<{
@@ -61,10 +65,14 @@ const emit = defineEmits<{
    *  left = camera, right = order the current selection). `queue`
    *  carries shift-queue. */
   (e: 'command', x: number, y: number, queue: boolean): void;
+  /** Right-drag erase point while map-draw mode is active (BAR erases
+   *  drawings with right-mouse drag in draw mode). */
+  (e: 'erase', x: number, y: number): void;
 }>();
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const draggingPointerId = ref<number | null>(null);
+const erasingPointerId = ref<number | null>(null);
 
 // Minimap display size. The longest side is pinned at MINIMAP_MAX;
 // the other side follows the map's aspect ratio — so a 3000x3000
@@ -544,7 +552,14 @@ function handlePointerDown(event: PointerEvent): void {
     event.preventDefault();
     event.stopPropagation();
     const target = minimapPointerToWorld(event, canvas, props.data);
-    if (target) emit('command', target.x, target.y, event.shiftKey);
+    if (!target) return;
+    if (props.eraseOnRightDrag) {
+      erasingPointerId.value = event.pointerId;
+      canvas.setPointerCapture(event.pointerId);
+      emit('erase', target.x, target.y);
+      return;
+    }
+    emit('command', target.x, target.y, event.shiftKey);
     return;
   }
   if (event.button !== 0) return;
@@ -556,6 +571,19 @@ function handlePointerDown(event: PointerEvent): void {
 }
 
 function handlePointerMove(event: PointerEvent): void {
+  if (erasingPointerId.value === event.pointerId) {
+    if ((event.buttons & 2) === 0) {
+      erasingPointerId.value = null;
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const canvas = canvasRef.value;
+    if (!canvas) return;
+    const target = minimapPointerToWorld(event, canvas, props.data);
+    if (target) emit('erase', target.x, target.y);
+    return;
+  }
   if (draggingPointerId.value !== event.pointerId) return;
   if (!props.dragPan) return;
   if ((event.buttons & 1) === 0) {
@@ -568,6 +596,12 @@ function handlePointerMove(event: PointerEvent): void {
 }
 
 function handlePointerEnd(event: PointerEvent): void {
+  if (erasingPointerId.value === event.pointerId) {
+    erasingPointerId.value = null;
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
   if (draggingPointerId.value !== event.pointerId) return;
   draggingPointerId.value = null;
   event.preventDefault();

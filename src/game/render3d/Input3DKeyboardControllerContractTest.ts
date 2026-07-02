@@ -502,6 +502,51 @@ function runBarFactoryGuardDispatcherContract(): void {
   );
 }
 
+function runBarSelectionFilterDispatcherContract(): void {
+  setActiveCommandHotkeyPresetId('bar-grid');
+  let splitCount = 0;
+  let damagedCount = 0;
+  let previousCount = 0;
+  const controller = new Input3DKeyboardController(new Proxy({
+    moveCameraByKeyboard: () => {},
+    splitArmySelection: () => {
+      splitCount++;
+    },
+    selectDamagedOnly: () => {
+      damagedCount++;
+    },
+    selectPreviousSelection: () => {
+      previousCount++;
+    },
+  }, {
+    get(target, prop: string | symbol) {
+      if (prop in target) return target[prop as keyof typeof target];
+      return () => false;
+    },
+  }) as never);
+
+  const splitEvent = makeKeyboardEvent({ code: 'KeyQ', key: 'q', ctrlKey: true });
+  controller.handleKeyDown(splitEvent);
+  assertContract(
+    splitCount === 1 && splitEvent.defaultPrevented,
+    'BAR-grid Ctrl+Q must dispatch the split-selection filter (BAR SelectPart_50)',
+  );
+
+  const damagedEvent = makeKeyboardEvent({ code: 'KeyQ', key: 'q', altKey: true });
+  controller.handleKeyDown(damagedEvent);
+  assertContract(
+    damagedCount === 1 && damagedEvent.defaultPrevented,
+    'BAR-grid Alt+Q must dispatch the damaged-mobile selection filter',
+  );
+
+  const previousEvent = makeKeyboardEvent({ code: 'KeyS', key: 's', ctrlKey: true, altKey: true });
+  controller.handleKeyDown(previousEvent);
+  assertContract(
+    previousCount === 1 && previousEvent.defaultPrevented,
+    'BAR-grid Ctrl+Alt+S must dispatch previous-selection after the split rebind',
+  );
+}
+
 function runCloakDispatcherContract(): void {
   setActiveCommandHotkeyPresetId('bar-grid');
   let hasCloakControl = false;
@@ -549,6 +594,7 @@ export function runInput3DKeyboardControllerContractTest(): void {
   runBarBuildCategoryClearContract();
   runBarFactoryQueueModeContract();
   runBarFactoryGuardDispatcherContract();
+  runBarSelectionFilterDispatcherContract();
   runCloakDispatcherContract();
 
   const state = makeState();

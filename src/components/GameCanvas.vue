@@ -610,6 +610,16 @@ function eraseAllCommunicationDrawings(): void {
   });
 }
 
+function sendCommunicationMapEraseAt(x: number, y: number): void {
+  sendCommunicationDraft({
+    kind: 'mapErase',
+    clientEventId: nextCommunicationDraftId('erase-radius'),
+    scope: 'radius',
+    center: { x, y },
+    radius: 120,
+  });
+}
+
 function handleCommunicationMapClick(x: number, y: number): boolean {
   const point = { x, y };
   if (communicationMode.value === 'none' || communicationMode.value === 'chat') return false;
@@ -644,19 +654,19 @@ function handleCommunicationMapClick(x: number, y: number): boolean {
     communicationLabelText.value = '';
     return true;
   }
-  sendCommunicationDraft({
-    kind: 'mapErase',
-    clientEventId: nextCommunicationDraftId('erase-radius'),
-    scope: 'radius',
-    center: point,
-    radius: 120,
-  });
+  sendCommunicationMapEraseAt(point.x, point.y);
   return true;
 }
 
 function handleMinimapInteraction(x: number, y: number): void {
   if (handleCommunicationMapClick(x, y)) return;
   centerMinimapCamera(x, y);
+}
+
+// BAR erases drawings by right-dragging while the draw mode is active; the
+// minimap forwards right-drag points as 'erase' events while drawing.
+function handleMinimapErase(x: number, y: number): void {
+  sendCommunicationMapEraseAt(x, y);
 }
 
 function handleMinimapCommandInteraction(x: number, y: number, queue: boolean): void {
@@ -676,6 +686,10 @@ function formatCommunicationTime(createdAtMs: number): string {
 
 function handleGameUiCommandHotkey(commandId: CommandHotkeyId): boolean {
   switch (commandId) {
+    case 'ui.pause':
+      // Same setPaused flow as the control-bar PAUSE button / paused banner.
+      setGamePaused(gamePhase.value !== 'paused');
+      return true;
     case 'ui.optionsMenu':
       toggleOptionsMenu();
       return true;
@@ -2038,8 +2052,10 @@ watchEffect(() => {
             :data="minimapData"
             :drawings="minimapCommunicationDrawings"
             :drag-pan="minimapDragPanEnabled"
+            :erase-on-right-drag="communicationMode === 'draw'"
             @click="handleMinimapInteraction"
             @command="handleMinimapCommandInteraction"
+            @erase="handleMinimapErase"
           />
         </div>
 

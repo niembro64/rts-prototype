@@ -123,7 +123,6 @@ type Input3DKeyboardControllerConfig = {
   toggleMexUpgradeMode: () => void;
   upgradeSelectedMetalExtractors: () => void;
   toggleRepairAreaMode: () => void;
-  toggleRestoreAreaMode: () => void;
   togglePingMode: () => void;
   toggleDGunMode: () => void;
   enqueueScanAtCursor: () => void;
@@ -139,11 +138,11 @@ type Input3DKeyboardControllerConfig = {
   selectWaitingUnits: () => void;
   selectSameTypeOnly: () => void;
   selectMobileOnly: () => void;
+  selectDamagedOnly: () => void;
   invertSelection: () => void;
   splitArmySelection: () => void;
   loopSelection: () => void;
   isRepairAreaMode: () => boolean;
-  isRestoreAreaMode: () => boolean;
   isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
@@ -160,7 +159,6 @@ type Input3DKeyboardControllerConfig = {
   isTowerTargetMode: () => boolean;
   isTowerTargetNoGroundMode: () => boolean;
   exitRepairAreaMode: () => void;
-  exitRestoreAreaMode: () => void;
   exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
   exitAttackGroundMode: () => void;
@@ -1036,9 +1034,6 @@ export class Input3DKeyboardController {
       case 'combat.repair':
         this.config.toggleRepairAreaMode();
         break;
-      case 'combat.restore':
-        this.config.toggleRestoreAreaMode();
-        break;
       case 'combat.ping':
         this.config.togglePingMode();
         break;
@@ -1137,6 +1132,9 @@ export class Input3DKeyboardController {
       case 'select.mobileOnly':
         this.config.selectMobileOnly();
         break;
+      case 'select.damagedOnly':
+        this.config.selectDamagedOnly();
+        break;
       case 'select.invert':
         this.config.invertSelection();
         break;
@@ -1146,6 +1144,7 @@ export class Input3DKeyboardController {
       case 'select.loop':
         this.config.loopSelection();
         break;
+      case 'ui.pause':
       case 'ui.optionsMenu':
       case 'ui.showMapOverview':
       case 'ui.flipCameraYaw':
@@ -1301,7 +1300,6 @@ export class Input3DKeyboardController {
         { isActive: () => this.config.mode.isInBuildMode, cancel: () => this.config.mode.exitBuildMode() },
         { isActive: () => this.config.mode.isInDGunMode, cancel: () => this.config.mode.exitDGunMode() },
         { isActive: this.config.isRepairAreaMode, cancel: this.config.exitRepairAreaMode },
-        { isActive: this.config.isRestoreAreaMode, cancel: this.config.exitRestoreAreaMode },
         { isActive: this.config.isAttackMode, cancel: this.config.exitAttackMode },
         { isActive: this.config.isAttackAreaMode, cancel: this.config.exitAttackAreaMode },
         { isActive: this.config.isAttackGroundMode, cancel: this.config.exitAttackGroundMode },

@@ -16,6 +16,7 @@ import {
   queueModeForDragRelease,
   queueModeFromEvent,
   setQueueModifierKeyState,
+  setSpaceQueueFrontEligibilityProvider,
 } from './queueModifiers';
 
 function assertContract(condition: boolean, message: string): void {
@@ -59,7 +60,7 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
   }
   if (presetId === 'bar-legacy-60pct' && commandId === 'ui.optionsMenu') return true;
   if (isPrototypeLikePreset && commandId === 'command.areaMex') return true;
-  if (isPrototypeLikePreset && commandId === 'combat.restore') return true;
+  if (isPrototypeLikePreset && commandId === 'select.damagedOnly') return true;
   if (commandId === 'command.builderPriority') return true;
   if (commandId === 'command.carrierSpawn') return true;
   if (commandId === 'command.morph') return true;
@@ -83,20 +84,20 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
       (isBarLegacyPreset && commandId === 'command.buildCycle') ||
       (isBarLegacyPreset && commandId.startsWith('build.slot')) ||
       (isBarGridPreset && commandId === 'select.sameTypeOnly') ||
+      commandId === 'select.mobileOnly' ||
       (isBarLegacyPreset && (
         commandId === 'select.matchingInView' ||
         commandId === 'select.previous' ||
         commandId === 'select.idleTransports' ||
         commandId === 'select.waitingUnits' ||
         commandId === 'select.sameTypeOnly' ||
-        commandId === 'select.mobileOnly' ||
+        commandId === 'select.damagedOnly' ||
         commandId === 'select.invert' ||
         commandId === 'select.split' ||
         commandId === 'select.loop'
       )) ||
       commandId === 'combat.ping' ||
       (isBarLegacyPreset && commandId === 'combat.capture') ||
-      (isBarLegacyPreset && commandId === 'combat.restore') ||
       commandId === 'combat.attackLine' ||
       commandId === 'combat.attackGround' ||
       commandId === 'combat.resurrectArea' ||
@@ -131,7 +132,13 @@ export function runCommandHotkeysContractTest(): void {
           : commandId.startsWith('camera.anchor')
             ? 'BAR legacy presets do not bind camera anchors'
           : commandId === 'waypoint.move'
-          ? 'BAR-grid reserves M for restore'
+          ? 'BAR grid does not bind a move order key'
+          : commandId === 'select.mobileOnly'
+          ? 'BAR covers mobile-only selection with the held-Alt selectbox modifier, not a dedicated bind'
+          : commandId === 'select.damagedOnly'
+          ? presetId === 'prototype' || presetId === 'custom'
+            ? 'prototype reserves Alt+Q for autogroup removal, so the damaged filter is panel/BAR-preset-only'
+            : 'BAR legacy does not bind the damaged-selection filter'
           : commandId === 'formation.assume' || commandId === 'formation.move'
             ? 'BAR uses formation drag behavior, not separate formation order buttons'
           : commandId === 'command.clearQueue'
@@ -166,10 +173,6 @@ export function runCommandHotkeysContractTest(): void {
             ? 'BAR legacy does not bind Capture; C is used by legacy build bindings'
           : commandId === 'combat.resurrectArea'
             ? 'BAR resurrect is area-capable without a separate resurrect-area button'
-          : commandId === 'combat.restore'
-            ? presetId === 'bar-legacy' || presetId === 'bar-legacy-60pct'
-              ? 'BAR legacy binds M to Move, not Restore'
-              : 'Restore is a BAR-grid order command; prototype/custom do not add a shortcut'
           : commandId === 'ui.mapErase'
             ? 'BAR erases map drawings through the draw key plus right-mouse drag, not a separate erase hotkey'
           : commandId === 'command.buildCycle'
@@ -439,12 +442,20 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid-60pct Meta+Q must enter the BAR map draw double-tap resolver',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true }), 'bar-grid') === 'select.previous',
-    'bar-grid Ctrl+Q should resolve previous selection',
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true }), 'bar-grid') === 'select.split',
+    'bar-grid Ctrl+Q should resolve the BAR select-half split (grid_keys.txt SelectPart_50)',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('q', 'KeyQ', { altKey: true }), 'bar-grid') === 'select.mobileOnly',
-    'bar-grid Alt+Q should resolve mobile-only selection',
+    resolveCommandHotkey(keyEvent('s', 'KeyS', { ctrlKey: true, altKey: true }), 'bar-grid') === 'select.previous',
+    'bar-grid previous selection should keep the Ctrl+Alt+S slot freed by the split rebind',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { altKey: true }), 'bar-grid') === 'select.damagedOnly',
+    'bar-grid Alt+Q should resolve the BAR damaged-mobile selection filter',
+  );
+  assertContract(
+    commandHotkeyLabel('select.mobileOnly', 'bar-grid') === '',
+    'bar-grid mobile-only must display no hotkey because held-Alt box select covers BAR semantics',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('w', 'KeyW', { altKey: true }), 'bar-grid') === null,
@@ -452,12 +463,20 @@ export function runCommandHotkeysContractTest(): void {
   );
   assertContract(
     resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true, altKey: true }), 'bar-grid-60pct') ===
-      'select.mobileOnly',
-    'bar-grid-60pct Ctrl+Alt+Q should resolve mobile-only selection',
+      'select.damagedOnly',
+    'bar-grid-60pct Ctrl+Alt+Q should resolve the damaged filter like grid_keys_60pct.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true }), 'bar-grid-60pct') === 'select.split',
+    'bar-grid-60pct Ctrl+Q should keep the BAR select-half split',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('q', 'KeyQ', { altKey: true }), 'bar-grid-60pct') === null,
     'bar-grid-60pct Alt+Q must remain unbound because BAR reserves it for remove-from-autogroup',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Q must stay unbound because BAR legacy has no split-selection bind',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('w', 'KeyW', { altKey: true }), 'bar-grid-60pct') === null,
@@ -932,16 +951,12 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid semicolon should resolve move state',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid') === 'combat.restore',
-    'bar-grid M must resolve Restore like BAR grid',
+    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid') === null,
+    'bar-grid M must resolve nothing — Restore was removed because terrain never deforms',
   );
   assertContract(
-    commandHotkeyLabel('combat.restore', 'bar-grid') === 'M',
-    'bar-grid Restore should display the BAR M key',
-  );
-  assertContract(
-    commandHotkeyLabel('combat.restore', 'bar-legacy') === '',
-    'bar-legacy Restore should display no fake M hotkey label',
+    !COMMAND_HOTKEY_IDS.includes('combat.restore' as unknown as (typeof COMMAND_HOTKEY_IDS)[number]),
+    'combat.restore must stay deleted from the command surface (no dead UI)',
   );
   assertContract(
     commandHotkeyLabel('waypoint.move', 'bar-grid') === '',
@@ -1179,6 +1194,16 @@ export function runCommandHotkeysContractTest(): void {
     commandHotkeyLabel('camera.anchorFocus1', 'bar-legacy') === '',
     'bar-legacy camera anchor focus should display no hotkey label',
   );
+  for (const presetId of COMMAND_HOTKEY_PRESET_IDS) {
+    assertContract(
+      resolveCommandHotkey(keyEvent('Pause', 'Pause'), presetId) === 'ui.pause',
+      `${presetId} Pause key must resolve the game pause toggle (BAR Any+pause)`,
+    );
+    assertContract(
+      resolveCommandHotkey(keyEvent('Pause', 'Pause', { ctrlKey: true, shiftKey: true }), presetId) === 'ui.pause',
+      `${presetId} modified Pause must still match because BAR binds Any+pause`,
+    );
+  }
   assertContract(
     queueModeFromEvent(keyEvent('w', 'KeyW')).queue === false,
     'plain command event must replace the active order',
@@ -1284,5 +1309,30 @@ export function runCommandHotkeysContractTest(): void {
     modifierStateQueue.queue === true,
     'browser modifier state must queue commands when shiftKey is false',
   );
+
+  // BAR chat_and_ui_keys.txt: Any+space commandinsert prepend — held Space
+  // queue-fronts commands when the input layer marks the selection eligible
+  // (BAR preset, selection is not a factory).
+  setSpaceQueueFrontEligibilityProvider(() => true);
+  setQueueModifierKeyState(keyEvent(' ', 'Space'), true);
+  const spaceFrontQueue = queueModeFromEvent(keyEvent('w', 'KeyW'), 3);
+  assertContract(
+    spaceFrontQueue.queue === true &&
+      spaceFrontQueue.queueFront === true &&
+      spaceFrontQueue.queueInsertIndex === undefined,
+    'held Space must queue-front commands like BAR commandinsert prepend',
+  );
+  setSpaceQueueFrontEligibilityProvider(() => false);
+  assertContract(
+    queueModeFromEvent(keyEvent('w', 'KeyW')).queue === false,
+    'held Space must stay inert when the input layer reports factory/preset ineligibility',
+  );
+  setSpaceQueueFrontEligibilityProvider(() => true);
+  clearQueueModifierState();
+  assertContract(
+    queueModeFromEvent(keyEvent('w', 'KeyW')).queueFront === false,
+    'clearing tracked modifier state must release the held-Space queue-front',
+  );
+  setSpaceQueueFrontEligibilityProvider(null);
   clearQueueModifierState();
 }

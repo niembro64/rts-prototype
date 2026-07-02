@@ -542,9 +542,6 @@ export class RtsScene3D {
     this.inputManager.onRepairAreaModeChange = (active) => {
       this.selectionSystem.setRepairAreaMode(active);
     };
-    this.inputManager.onRestoreAreaModeChange = (active) => {
-      this.selectionSystem.setRestoreAreaMode(active);
-    };
     this.inputManager.onFormationAssumeModeChange = (active) => {
       this.selectionSystem.setFormationAssumeMode(active);
     };
@@ -1193,10 +1190,6 @@ export class RtsScene3D {
 
   public toggleRepairAreaMode(): void {
     this.inputManager?.toggleRepairAreaMode();
-  }
-
-  public toggleRestoreAreaMode(): void {
-    this.inputManager?.toggleRestoreAreaMode();
   }
 
   public toggleFormationMoveMode(): void {
