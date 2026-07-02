@@ -19,18 +19,19 @@ Please always commit and push before and after any code changes we make.
 
 [32] Optimization - reduce snapshot materialization cost
     Preserve deterministic-lockstep truth and current client reconciliation
-    semantics. The presentation path has a 30 Hz publication opportunity from
-    the fixed-step loop, rich scope/full-detail snapshots at 5 Hz, sparse
-    entity-motion delta opportunities at 10 Hz, and projectile delta
-    opportunities up to 30 Hz. Do not force empty heartbeat snapshots just to
-    make the total SPS display read 30; non-empty entity/projectile deltas are
-    event-driven. The work is to reduce the cost of building, serializing,
-    applying, and materializing each meaningful snapshot. Use the existing
-    received/applied cadence, bytes, materialization row/stage, and
-    client-apply counters to identify the dominant stage, then move high-count
-    snapshot materialization away from JS object/DTO churn and toward typed
-    dirty slot/range reads from the canonical slabs. 
-    
+    semantics. Entity rows now ride the compact V6 packed wire even when raw
+    private-detail DTO rows are present (they travel in the `e` detail array
+    beside the typed slabs), so rich-delta DTO materialization is down to
+    full/spawn rows plus a handful of private-detail rows. Remaining
+    reduction targets, in current cost order at 1k units: the per-snapshot
+    `visibility` stage (~1ms avg, overlaps issue [28]), `clientApplyProjectiles`
+    (~0.9ms avg; beamUpdatesPacked dominates projectile bytes), and the
+    server-side `entityDtos` stage (~0.6ms avg). Do not force empty heartbeat
+    snapshots just to make the total SPS display read 30; non-empty
+    entity/projectile deltas are event-driven. Use the received/applied
+    cadence, bytes, materialization row/stage, and client-apply counters to
+    verify each further reduction.
+
 [24] Optimization - port Simulation.updateUnits hot action loop to native batches
     Preserve all command, action, path, arrival, stuck, guard, fight, patrol,
     attack, build, repair, reclaim, capture, resurrect, load, and unload
