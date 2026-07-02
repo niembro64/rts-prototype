@@ -434,11 +434,11 @@ export class SnapshotVisibility {
   }
 
   private addNativeObservationMaskEntityCandidates(): boolean {
-    // Scan pulses are merged into targeting observation masks during the
-    // normal combat stamp, but this serializer owns pulse wire output. Use
-    // the legacy source walk on pulse frames so a just-created pulse cannot
-    // be missed if a snapshot is emitted before the next combat stamp.
-    if (this.world.scanPulses.length > 0) return false;
+    // Scan pulses are part of the native observation masks at all times:
+    // executeScanCommand injects a new pulse the moment it is created and
+    // the combat stamp re-injects every live pulse after its clear(), so
+    // the native path stays valid on pulse frames (the legacy source walk
+    // used to take over here for up to a pulse's whole 12s lifetime).
     const sim = getSimWasm();
     const entityViews = entitySlotRegistry.getViews();
     if (sim === undefined || entityViews === null) return false;

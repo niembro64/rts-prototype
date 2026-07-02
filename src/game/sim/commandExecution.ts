@@ -1,4 +1,5 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
+import { getSimWasm } from '../sim-wasm/init';
 // Command execution - extracted from Simulation.ts
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
@@ -436,6 +437,15 @@ function executeScanCommand(ctx: CommandContext, command: ScanCommand): void {
     radius: SCAN_PULSE_RADIUS,
     expiresAtTick: ctx.world.getTick() + SCAN_PULSE_DURATION_TICKS,
   });
+  // Inject the pulse into the native observation masks immediately so a
+  // snapshot emitted before the next combat stamp still sees it — the
+  // stamp re-injects every live pulse after its clear(), so coverage
+  // stays continuous from now until expiry. This is what lets the
+  // snapshot serializer keep its native mask path on pulse frames.
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    sim.combatTargeting.addSensorObservationCircle(command.playerId, x, y, SCAN_PULSE_RADIUS);
+  }
   // Pulse the marker visual through the existing ping channel so the
   // player sees where their sweep landed without a separate renderer.
   // The ping author is the scanning player, so isAuthoredByRecipient
