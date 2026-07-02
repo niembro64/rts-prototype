@@ -1,9 +1,9 @@
-// Shared ON/OFF state for producer buildings — solar collectors, wind
-// turbines, and metal extractors. ON (open) = producing + normal
-// damage; OFF (closed) = not producing + 10× damage resistance. A single
-// `open` flag drives both outcomes simultaneously — production gates on
-// it and so does the fortify/pose — so the two can never disagree. See
-// "Producer Buildings Are ON/OFF" in budget_design_philosophy.html.
+// Shared active/fortified state for economy and utility buildings. ON
+// (open) = normal operation + normal damage; OFF (closed) = disabled
+// operation + 10× damage resistance. A single `open` flag drives both
+// outcomes simultaneously — production/sensors/conversion gate on it and
+// so does the fortify/pose — so they can never disagree. See "Producer
+// Buildings Are ON/OFF" in budget_design_philosophy.html.
 //
 // Lifecycle:
 //

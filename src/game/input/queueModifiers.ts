@@ -134,6 +134,22 @@ export function queueModeFromEvent(
   };
 }
 
+export function queueModeFromEventIgnoringControlModifiers(
+  event: QueueModifierEvent,
+  selectedQueueInsertIndex?: number | null,
+): QueueCommandMode {
+  const modifiers = effectiveQueueModifierEvent(event);
+  const spaceFront = spaceQueueFrontHeld();
+  const queue = modifiers.shiftKey || spaceFront;
+  const queueFront = queue && spaceFront;
+  const requestedInsertIndex = selectedQueueInsertIndex ?? (modifiers.altKey ? 1 : undefined);
+  return {
+    queue,
+    queueFront,
+    queueInsertIndex: queue && !queueFront ? requestedInsertIndex : undefined,
+  };
+}
+
 export function factoryProductionClickModeFromEvent(
   event: QueueModifierEvent,
   factoryRepeatsProduction: boolean,
@@ -152,7 +168,7 @@ export function factoryProductionKeyModeFromEvent(
   factoryRepeatsProduction: boolean,
 ): FactoryProductionClickMode {
   const modifiers = effectiveQueueModifierEvent(event);
-  const count = (modifiers.shiftKey ? 5 : 1) * (modifiers.ctrlKey ? -1 : 1);
+  const count = (modifiers.shiftKey ? 5 : 1) * (modifiers.ctrlKey ? 20 : 1);
   return {
     repeat: factoryRepeatsProduction &&
       !(modifiers.shiftKey || modifiers.ctrlKey || modifiers.altKey || modifiers.metaKey),

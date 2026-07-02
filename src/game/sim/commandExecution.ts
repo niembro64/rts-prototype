@@ -36,6 +36,7 @@ import type {
   SetBuilderPriorityCommand,
   SetCarrierSpawnCommand,
   SetCloakStateCommand,
+  SetFactoryAirIdleStateCommand,
   SetRepeatQueueCommand,
   SetFactoryRepeatProductionCommand,
   SetTrajectoryModeCommand,
@@ -88,6 +89,8 @@ import { isReclaimableTarget } from './reclaim';
 import { areaTargetMatchesCommandFilter } from './areaCommandFilters';
 
 const MAX_FACTORY_PRODUCTION_QUOTA = 64;
+const BAR_UNLOAD_AREA_MIN_RADIUS = 64;
+const BAR_UNLOAD_AREA_PHI = (Math.sqrt(5) + 1) / 2;
 import { isCapturableTarget } from './capture';
 import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport, isTransportUnit } from './transports';
@@ -97,6 +100,7 @@ import {
   RECLAIM_AREA_MAX_RADIUS,
   REPAIR_AREA_MAX_RADIUS,
 } from './commandLimits';
+import { entityHasBarStopCommand } from './unitCommandCapabilities';
 import {
   getActionIntentStart,
   getFirstActionIntentEnd,
@@ -107,11 +111,17 @@ import type { BuildingGrid } from './buildGrid';
 import { expandPathPoints, pathTerrainFilterForLocomotion } from './Pathfinder';
 import { canBuilderUpgradeMetalExtractor, isUpgradeableMetalExtractorTarget } from './metalExtractorUpgrade';
 import {
+  entityHasBarAirPlantLandAtCommand,
   entityHasBarAreaAttackCommand,
+  entityHasBarAttackCommand,
   entityHasBarCaptureCommand,
+  entityCanBarAttackTarget,
+  entityHasBarFireControlCommand,
   entityHasBarMoveStateCommand,
   entityHasBarSetTargetCommand,
+  entityCanIssueResurrectCommand,
   entityHasCloakCommand,
+  unitBlueprintHasBarBomberAttackBuildingGroundRule,
 } from './unitCommandCapabilities';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
@@ -202,6 +212,9 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'setUnitMoveState':
       executeSetUnitMoveStateCommand(ctx, command);
+      break;
+    case 'setFactoryAirIdleState':
+      executeSetFactoryAirIdleStateCommand(ctx, command);
       break;
     case 'setTrajectoryMode':
       executeSetTrajectoryModeCommand(ctx, command);
@@ -346,6 +359,7 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       ctx.world.converterTax = command.tax;
       break;
     case 'setPaused':
+    case 'adjustGameSpeed':
     case 'setSendGridInfo':
     case 'setBackgroundUnitBlueprintEnabled':
     case 'setBackgroundBuildingBlueprintEnabled':
@@ -760,29 +774,39 @@ function computeSlowestFormationSpeedFactors(
 function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    if (entity === undefined || entity.unit === null) continue;
+    if (entity === undefined) continue;
+    let changed = false;
 
     // Stop disarms a pending self-destruct (BAR: stop cancels self-d).
     if (ctx.world.armedSelfDestructs.delete(entity.id)) {
       emitSelfDestructEvent(ctx, entity, false);
+      changed = true;
     }
 
-    setUnitActions(entity.unit, []);
-    entity.unit.patrolStartIndex = null;
-    entity.unit.stuckTicks = 0;
-    resetFlyingLoiterToCurrentPosition(entity, ctx.world);
-    entity.unit.thrustDirX = 0;
-    entity.unit.thrustDirY = 0;
-    entity.unit.headingDirX = 0;
-    entity.unit.headingDirY = 0;
-    if (entity.builder) entity.builder.currentBuildTarget = NO_ENTITY_ID;
+    if (entity.unit !== null) {
+      setUnitActions(entity.unit, []);
+      entity.unit.patrolStartIndex = null;
+      entity.unit.stuckTicks = 0;
+      resetFlyingLoiterToCurrentPosition(entity, ctx.world);
+      entity.unit.thrustDirX = 0;
+      entity.unit.thrustDirY = 0;
+      entity.unit.headingDirX = 0;
+      entity.unit.headingDirY = 0;
+      if (entity.builder) entity.builder.currentBuildTarget = NO_ENTITY_ID;
+      changed = true;
+    } else if (!entityHasBarStopCommand(entity)) {
+      if (changed) ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      continue;
+    }
+
     if (entity.combat) {
       entity.combat.priorityTargetId = null;
       entity.combat.priorityTargetPoint = null;
       entity.combat.manualLaunchActive = false;
       entity.combat.nextCombatProbeTick = -1;
+      changed = true;
     }
-    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    if (changed) ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
 }
 
@@ -902,12 +926,19 @@ function executeSetUnitMoveStateCommand(ctx: CommandContext, command: SetUnitMov
   const moveState = command.moveState;
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    const unit = entity !== undefined ? entity.unit : null;
-    if (entity === undefined || unit === null) continue;
+    if (entity === undefined) continue;
     if (!entityHasBarMoveStateCommand(entity)) continue;
-    if (unit.moveState === moveState) continue;
-    unit.moveState = moveState;
-    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    if (entity.unit !== null) {
+      if (entity.unit.moveState === moveState) continue;
+      entity.unit.moveState = moveState;
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      continue;
+    }
+    if (entity.factory !== null) {
+      if (entity.factory.moveState === moveState) continue;
+      entity.factory.moveState = moveState;
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
+    }
   }
 }
 
@@ -985,18 +1016,25 @@ function resolveGatherWaitGroupId(command: WaitCommand): number {
 
 function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
   const units: Entity[] = [];
+  const factories: Entity[] = [];
   let allWaiting = true;
   const gatherWait = command.gather === true;
   const waitGroupId = gatherWait ? resolveGatherWaitGroupId(command) : undefined;
 
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    if (entity === undefined || entity.unit === null) continue;
-    units.push(entity);
-    const firstAction = entity.unit.actions.length > 0 ? entity.unit.actions[0] : undefined;
-    if (firstAction === undefined || firstAction.type !== 'wait') allWaiting = false;
+    if (entity === undefined) continue;
+    if (entity.unit !== null) {
+      units.push(entity);
+      const firstAction = entity.unit.actions.length > 0 ? entity.unit.actions[0] : undefined;
+      if (firstAction === undefined || firstAction.type !== 'wait') allWaiting = false;
+    }
+    if (!gatherWait && entity.factory !== null) {
+      factories.push(entity);
+      if (entity.factory.paused !== true) allWaiting = false;
+    }
   }
-  if (units.length === 0) return;
+  if (units.length === 0 && factories.length === 0) return;
 
   const releaseCurrentWait = !command.queue && allWaiting;
   const queueFront = commandQueuesInFront(command);
@@ -1037,6 +1075,22 @@ function executeWaitCommand(ctx: CommandContext, command: WaitCommand): void {
     }
     refreshPatrolStartIndex(unit);
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+
+  for (let i = 0; i < factories.length; i++) {
+    const entity = factories[i];
+    const factory = entity.factory!;
+    const paused = !releaseCurrentWait;
+    if (factory.paused === paused) continue;
+    factory.paused = paused;
+    if (paused) {
+      factory.isProducing = false;
+      factory.energyRateFraction = 0;
+      factory.metalRateFraction = 0;
+    } else if (factory.currentShellId !== null) {
+      factory.isProducing = true;
+    }
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
   }
 }
 
@@ -1324,6 +1378,24 @@ function executeSetFactoryRepeatProductionCommand(
   ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
 }
 
+function executeSetFactoryAirIdleStateCommand(
+  ctx: CommandContext,
+  command: SetFactoryAirIdleStateCommand,
+): void {
+  const factory = ctx.world.getEntity(command.factoryId);
+  if (
+    factory === undefined ||
+    factory.factory === null ||
+    factory.ownership === null ||
+    !entityHasBarAirPlantLandAtCommand(factory)
+  ) {
+    return;
+  }
+  if (factory.factory.airIdleState === command.airIdleState) return;
+  factory.factory.airIdleState = command.airIdleState;
+  ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+}
+
 function executeChangeFactoryUnitQuotaCommand(ctx: CommandContext, command: ChangeFactoryUnitQuotaCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
   if (factory === undefined || factory.factory === null || factory.ownership === null) return;
@@ -1365,7 +1437,7 @@ function executeSetFactoryGuardCommand(ctx: CommandContext, command: SetFactoryG
   if (
     target === undefined ||
     target.ownership === null ||
-    factory.ownership.playerId !== target.ownership.playerId
+    !ctx.world.arePlayersAllied(factory.ownership.playerId, target.ownership.playerId)
   ) return;
 
   if (target.id === factory.id) {
@@ -1394,8 +1466,18 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   ) return;
 
   const playerId = commander.ownership.playerId;
-  const dx = command.targetX - commander.transform.x;
-  const dy = command.targetY - commander.transform.y;
+  let targetX = command.targetX;
+  let targetY = command.targetY;
+  const targetEntity = command.targetId !== undefined
+    ? ctx.world.getEntity(command.targetId)
+    : undefined;
+  if (targetEntity !== undefined) {
+    const targetPoint = getEntityTargetPoint(targetEntity);
+    targetX = targetPoint.x;
+    targetY = targetPoint.y;
+  }
+  const dx = targetX - commander.transform.x;
+  const dy = targetY - commander.transform.y;
   const dist = magnitude(dx, dy);
   if (!Number.isFinite(dist) || dist <= 1e-6) return;
 
@@ -1555,6 +1637,7 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined) continue;
+    if (!entityHasBarFireControlCommand(entity)) continue;
     applyCombatFireState(ctx, entity, fireState);
   }
 }
@@ -1658,11 +1741,13 @@ function executeSetTowerTargetCommand(
     Number.isFinite(targetZ)
     ? { x: targetX, y: targetY, z: targetZ }
     : null;
+  const isClearTarget = command.targetId === null && resolvedTargetPoint === null;
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined) continue;
     const combat = entity.combat;
     if (combat === null || !entityHasBarSetTargetCommand(entity)) continue;
+    if (!isClearTarget && !entityCanBarAttackTarget(entity, target)) continue;
     combat.priorityTargetId = resolvedTargetId;
     combat.priorityTargetPoint = resolvedTargetPoint === null
       ? null
@@ -1699,6 +1784,13 @@ function emitSelfDestructEvent(ctx: CommandContext, entity: Entity, armed: boole
 
 function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCommand): void {
   const armed = ctx.world.armedSelfDestructs;
+  const queue = command.queue === true;
+  const queueFront = commandQueuesInFront({ queue, queueFront: command.queueFront });
+  const queueInsertIndex = commandQueueInsertIndex({
+    queue,
+    queueFront: command.queueFront,
+    queueInsertIndex: command.queueInsertIndex,
+  });
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined) continue;
@@ -1707,6 +1799,19 @@ function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCo
       (entity.building !== null && entity.building.hp > 0);
     if (!alive) {
       armed.delete(entity.id);
+      continue;
+    }
+    if (queue && entity.unit !== null && entity.unit.actions.length > 0) {
+      const actionAnchor = entity.unit.actions[entity.unit.actions.length - 1];
+      const action: UnitAction = {
+        type: 'selfDestruct',
+        x: actionAnchor?.x ?? entity.transform.x,
+        y: actionAnchor?.y ?? entity.transform.y,
+        z: actionAnchor?.z ?? entity.transform.z,
+      };
+      addQueuedActionToUnit(entity.unit, action, queueFront, queueInsertIndex);
+      refreshPatrolStartIndex(entity.unit);
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       continue;
     }
     // BAR semantics: self-destruct arms a visible countdown instead of
@@ -1766,7 +1871,6 @@ function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaComm
   const commander = ctx.world.getEntity(command.commanderId);
   if (
     commander === undefined ||
-    commander.commander === null ||
     commander.unit === null ||
     commander.builder === null
   ) return;
@@ -1798,12 +1902,7 @@ function executeResurrectCommand(ctx: CommandContext, command: ResurrectCommand)
 
 function executeResurrectAreaCommand(ctx: CommandContext, command: ResurrectAreaCommand): void {
   const commander = ctx.world.getEntity(command.commanderId);
-  if (
-    commander === undefined ||
-    commander.commander === null ||
-    commander.unit === null ||
-    commander.builder === null
-  ) return;
+  if (!entityCanIssueResurrectCommand(commander)) return;
 
   const radius = clampRepairAreaRadius(command.radius);
   const targets = findResurrectAreaTargets(
@@ -1824,9 +1923,55 @@ function executeResurrectAreaCommand(ctx: CommandContext, command: ResurrectArea
 }
 
 function executeLoadTransportCommand(ctx: CommandContext, command: LoadTransportCommand): void {
-  const transport = ctx.world.getEntity(command.transportId);
-  const target = ctx.world.getEntity(command.targetId);
-  if (transport === undefined || target === undefined || !canLoadTransport(transport, target)) return;
+  if ('targetId' in command) {
+    const transport = ctx.world.getEntity(command.transportId);
+    if (!isTransportUnit(transport)) return;
+    const target = ctx.world.getEntity(command.targetId);
+    if (target === undefined || !canLoadTransport(transport, target)) return;
+    enqueueLoadTransportAction(
+      ctx,
+      transport,
+      target,
+      command.queue,
+      commandQueuesInFront(command),
+      commandQueueInsertIndex(command),
+    );
+    return;
+  }
+
+  const transports: Entity[] = [];
+  const seenTransportIds = new Set<EntityId>();
+  for (let i = 0; i < command.transportIds.length; i++) {
+    const transportId = command.transportIds[i];
+    if (seenTransportIds.has(transportId)) continue;
+    seenTransportIds.add(transportId);
+    const transport = ctx.world.getEntity(transportId);
+    if (isTransportUnit(transport)) transports.push(transport);
+  }
+  if (transports.length === 0) return;
+  const targetX = clampToMap(command.targetX, ctx.world.mapWidth);
+  const targetY = clampToMap(command.targetY, ctx.world.mapHeight);
+  enqueueLoadTransportAreaActions(
+    ctx,
+    transports,
+    targetX,
+    targetY,
+    Math.max(1, command.radius),
+    command.queue,
+    commandQueuesInFront(command),
+    commandQueueInsertIndex(command),
+  );
+}
+
+function enqueueLoadTransportAction(
+  ctx: CommandContext,
+  transport: Entity,
+  target: Entity,
+  queue: boolean,
+  queueFront: boolean,
+  queueInsertIndex?: number,
+): void {
+  if (!canLoadTransport(transport, target)) return;
   const targetPoint = getEntityTargetPoint(target);
   const action: UnitAction = {
     type: 'loadTransport',
@@ -1838,10 +1983,10 @@ function executeLoadTransportCommand(ctx: CommandContext, command: LoadTransport
   addPathActionsWithFinal(
     transport,
     action,
-    command.queue,
+    queue,
     ctx,
-    commandQueuesInFront(command),
-    commandQueueInsertIndex(command),
+    queueFront,
+    queueInsertIndex,
   );
 }
 
@@ -1850,16 +1995,32 @@ function executeUnloadTransportCommand(ctx: CommandContext, command: UnloadTrans
   const queueInsertIndex = commandQueueInsertIndex(command);
   const targetX = clampToMap(command.targetX, ctx.world.mapWidth);
   const targetY = clampToMap(command.targetY, ctx.world.mapHeight);
-  const action: UnitAction = {
-    type: 'unloadTransport',
-    x: targetX,
-    y: targetY,
-    z: command.targetZ ?? ctx.world.getGroundZ(targetX, targetY),
-  };
-
+  const transports: Entity[] = [];
   for (let i = 0; i < command.transportIds.length; i++) {
     const transport = ctx.world.getEntity(command.transportIds[i]);
-    if (!isTransportUnit(transport)) continue;
+    if (isTransportUnit(transport)) transports.push(transport);
+  }
+  if (transports.length === 0) return;
+  const areaRadius = command.radius !== undefined && command.radius >= BAR_UNLOAD_AREA_MIN_RADIUS
+    ? command.radius
+    : null;
+  const barAreaInnerCount = areaRadius !== null ? Math.floor(Math.sqrt(transports.length)) : 0;
+
+  for (let i = 0; i < transports.length; i++) {
+    const transport = transports[i];
+    const target = areaRadius !== null
+      ? barUnloadAreaTarget(ctx.world, targetX, targetY, areaRadius, i + 1, transports.length, barAreaInnerCount)
+      : {
+          x: targetX,
+          y: targetY,
+          z: command.targetZ ?? ctx.world.getGroundZ(targetX, targetY),
+        };
+    const action: UnitAction = {
+      type: 'unloadTransport',
+      x: target.x,
+      y: target.y,
+      z: target.z,
+    };
     addPathActionsWithFinal(
       transport,
       action,
@@ -1869,6 +2030,24 @@ function executeUnloadTransportCommand(ctx: CommandContext, command: UnloadTrans
       queueInsertIndex,
     );
   }
+}
+
+function barUnloadAreaTarget(
+  world: WorldState,
+  centerX: number,
+  centerY: number,
+  areaRadius: number,
+  oneBasedIndex: number,
+  totalCount: number,
+  innerCount: number,
+): { x: number; y: number; z: number } {
+  const normalizedRadius = oneBasedIndex > totalCount - innerCount
+    ? 1
+    : Math.sqrt(oneBasedIndex - 0.5) / Math.sqrt(totalCount - ((innerCount + 1) / 2));
+  const theta = (2 * Math.PI * oneBasedIndex) / (BAR_UNLOAD_AREA_PHI * BAR_UNLOAD_AREA_PHI);
+  const x = clampToMap(centerX + normalizedRadius * Math.cos(theta) * areaRadius, world.mapWidth);
+  const y = clampToMap(centerY + normalizedRadius * Math.sin(theta) * areaRadius, world.mapHeight);
+  return { x, y, z: world.getGroundZ(x, y) };
 }
 
 function clampRepairAreaRadius(radius: number): number {
@@ -1974,6 +2153,124 @@ function findRepairAreaTargets(
 
   targets.sort(compareAreaTargets);
   return sortedAreaTargetEntities(targets);
+}
+
+type LoadTransportAreaAssignment = {
+  transport: Entity;
+  target: Entity;
+};
+
+function enqueueLoadTransportAreaActions(
+  ctx: CommandContext,
+  transports: readonly Entity[],
+  x: number,
+  y: number,
+  radius: number,
+  queue: boolean,
+  queueFront: boolean,
+  queueInsertIndex: number | undefined,
+): void {
+  const assignments = findLoadTransportAreaAssignments(ctx, transports, x, y, radius);
+  if (assignments.length === 0) return;
+  const targetsByTransportId = new Map<EntityId, { transport: Entity; targets: Entity[] }>();
+  for (let i = 0; i < assignments.length; i++) {
+    const assignment = assignments[i];
+    let entry = targetsByTransportId.get(assignment.transport.id);
+    if (entry === undefined) {
+      entry = { transport: assignment.transport, targets: [] };
+      targetsByTransportId.set(assignment.transport.id, entry);
+    }
+    entry.targets.push(assignment.target);
+  }
+
+  for (const entry of targetsByTransportId.values()) {
+    const targets = entry.targets;
+    if (queueFront) {
+      for (let i = targets.length - 1; i >= 0; i--) {
+        enqueueLoadTransportAction(ctx, entry.transport, targets[i], true, true);
+      }
+      continue;
+    }
+    for (let i = 0; i < targets.length; i++) {
+      enqueueLoadTransportAction(
+        ctx,
+        entry.transport,
+        targets[i],
+        queue || i > 0,
+        false,
+        queueInsertIndex !== undefined ? queueInsertIndex + i : undefined,
+      );
+    }
+  }
+}
+
+function findLoadTransportAreaAssignments(
+  ctx: CommandContext,
+  transports: readonly Entity[],
+  x: number,
+  y: number,
+  radius: number,
+): LoadTransportAreaAssignment[] {
+  const eligibleTransports: Entity[] = [];
+  const remainingCapacity: number[] = [];
+  for (let i = 0; i < transports.length; i++) {
+    const transport = transports[i];
+    const transportComponent = transport.transport;
+    if (transportComponent === null) continue;
+    const remaining = Math.max(0, transportComponent.capacity - transportComponent.loadedUnits.length);
+    if (remaining <= 0) continue;
+    eligibleTransports.push(transport);
+    remainingCapacity.push(remaining);
+  }
+  if (eligibleTransports.length === 0) return [];
+  const radiusSq = radius * radius;
+  const targets: AreaTarget[] = [];
+
+  const units = ctx.world.getUnits();
+  for (let i = 0; i < units.length; i++) {
+    const target = units[i];
+    let canAnyTransportLoad = false;
+    for (let j = 0; j < eligibleTransports.length; j++) {
+      if (canLoadTransport(eligibleTransports[j], target)) {
+        canAnyTransportLoad = true;
+        break;
+      }
+    }
+    if (!canAnyTransportLoad) continue;
+    const distSq = entityAreaDistanceSq(target, x, y);
+    if (distSq > radiusSq) continue;
+    targets.push({ entity: target, distanceSq: distSq });
+  }
+
+  const assignments: LoadTransportAreaAssignment[] = [];
+  const assignedTargetIds = new Set<EntityId>();
+  for (let transportIndex = 0; transportIndex < eligibleTransports.length; transportIndex++) {
+    const transport = eligibleTransports[transportIndex];
+    while (remainingCapacity[transportIndex] > 0) {
+      let bestTarget: Entity | null = null;
+      let bestDistanceSq = Number.POSITIVE_INFINITY;
+      for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+        const target = targets[targetIndex].entity;
+        if (assignedTargetIds.has(target.id) || !canLoadTransport(transport, target)) continue;
+        const targetPoint = getEntityTargetPoint(target);
+        const dx = targetPoint.x - transport.transform.x;
+        const dy = targetPoint.y - transport.transform.y;
+        const distanceSq = dx * dx + dy * dy;
+        if (
+          distanceSq < bestDistanceSq ||
+          (distanceSq === bestDistanceSq && (bestTarget === null || target.id < bestTarget.id))
+        ) {
+          bestDistanceSq = distanceSq;
+          bestTarget = target;
+        }
+      }
+      if (bestTarget === null) break;
+      assignments.push({ transport, target: bestTarget });
+      assignedTargetIds.add(bestTarget.id);
+      remainingCapacity[transportIndex] -= 1;
+    }
+  }
+  return assignments;
 }
 
 function findReclaimAreaTargets(
@@ -2116,12 +2413,7 @@ function enqueueResurrectAction(
   queueFront: boolean,
   queueInsertIndex?: number,
 ): void {
-  if (
-    commander === undefined ||
-    commander.commander === null ||
-    commander.unit === null ||
-    commander.builder === null
-  ) return;
+  if (!entityCanIssueResurrectCommand(commander)) return;
   if (!isResurrectableWreck(target)) return;
 
   const targetPoint = getEntityTargetPoint(target);
@@ -2303,7 +2595,7 @@ function executeGuardCommand(ctx: CommandContext, command: GuardCommand): void {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined || entity.unit === null || entity.ownership === null) continue;
     if (entity.id === target.id) continue;
-    if (entity.ownership.playerId !== target.ownership.playerId) continue;
+    if (!ctx.world.arePlayersAllied(entity.ownership.playerId, target.ownership.playerId)) continue;
 
     const queueFront = commandQueuesInFront(command);
     const queueInsertIndex = commandQueueInsertIndex(command);
@@ -2328,10 +2620,14 @@ function isAliveAttackTarget(target: Entity | undefined): target is Entity {
   return false;
 }
 
-function isAttackableEnemyTargetForPlayer(target: Entity | undefined, playerId: PlayerId): target is Entity {
+function isAttackableEnemyTargetForPlayer(
+  world: WorldState,
+  target: Entity | undefined,
+  playerId: PlayerId,
+): target is Entity {
   return isAliveAttackTarget(target) &&
     target.ownership !== null &&
-    target.ownership.playerId !== playerId;
+    !world.arePlayersAllied(playerId, target.ownership.playerId);
 }
 
 function findAttackAreaTargets(
@@ -2347,7 +2643,7 @@ function findAttackAreaTargets(
   const units = ctx.world.getUnits();
   for (let i = 0; i < units.length; i++) {
     const target = units[i];
-    if (!isAttackableEnemyTargetForPlayer(target, playerId)) continue;
+    if (!isAttackableEnemyTargetForPlayer(ctx.world, target, playerId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
     targets.push({ entity: target, distanceSq: distSq });
@@ -2356,7 +2652,7 @@ function findAttackAreaTargets(
   const buildings = ctx.world.getBuildings();
   for (let i = 0; i < buildings.length; i++) {
     const target = buildings[i];
-    if (!isAttackableEnemyTargetForPlayer(target, playerId)) continue;
+    if (!isAttackableEnemyTargetForPlayer(ctx.world, target, playerId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
     targets.push({ entity: target, distanceSq: distSq });
@@ -2375,7 +2671,25 @@ function enqueueAttackAction(
   queueInsertIndex?: number,
 ): void {
   if (!entity || entity.type !== 'unit' || !entity.unit) return;
-  if (!entity.ownership || !isAttackableEnemyTargetForPlayer(target, entity.ownership.playerId)) return;
+  if (!entity.ownership || !isAttackableEnemyTargetForPlayer(ctx.world, target, entity.ownership.playerId)) return;
+  if (!entityHasBarAttackCommand(entity)) return;
+  if (!entityCanBarAttackTarget(entity, target)) return;
+  if (
+    target.type !== 'unit' &&
+    unitBlueprintHasBarBomberAttackBuildingGroundRule(entity.unit.unitBlueprintId)
+  ) {
+    enqueueAttackGroundAction(
+      ctx,
+      entity,
+      target.transform.x,
+      target.transform.y,
+      target.transform.z,
+      queue,
+      queueFront,
+      queueInsertIndex,
+    );
+    return;
+  }
 
   // Route the approach through pathfinding so the unit walks around water
   // and mountains. The final waypoint keeps targetId so the targeting

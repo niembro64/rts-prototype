@@ -710,6 +710,9 @@ function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
     hasInactiveTurret(building.turrets) ||
     (factory !== null && factory.guardTargetId !== null) ||
     (factory !== null && factory.lowPriority !== null && factory.lowPriority !== undefined) ||
+    (factory !== null && factory.paused === true) ||
+    (factory !== null && factory.moveState !== null && factory.moveState !== undefined) ||
+    (factory !== null && factory.airIdleState !== null && factory.airIdleState !== undefined) ||
     (factory !== null && factory.repeat === false) ||
     (factory !== null && factory.queue !== null && factory.queue !== undefined && factory.queue.length > 0) ||
     (factory !== null && factory.quotas !== null && factory.quotas !== undefined && factory.quotas.length > 0) ||

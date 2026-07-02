@@ -36,18 +36,34 @@ import {
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
 import {
+  entityHasBarAreaAttackCommand,
+  entityHasBarAttackCommand,
+  entityHasBarFireControlCommand,
+  entityHasBarSetTargetCommand,
+  entityMatchesBarLegacyGroundWeaponSelection,
   unitBlueprintHasBarAreaAttackCommand,
+  unitBlueprintBarDefaultFireState,
+  unitBlueprintBarDefaultMoveState,
+  unitBlueprintHasBarBomberNoAirTargetRule,
+  unitBlueprintHasBarFighterAirTargetOnlyRule,
   unitBlueprintHasBarManualLaunchCommand,
   unitBlueprintHasBarMoveStateCommand,
   unitBlueprintHasBarTrajectoryCommand,
+  unitBlueprintIsBarAirTarget,
   unitBlueprintBarTrajectoryDefaultMode,
   unitBlueprintHasBarCarrierSpawnCommand,
   unitBlueprintHasBarCaptureCommand,
+  unitBlueprintHasBarResurrectCommand,
   unitBlueprintHasBarBuilderPriorityCommand,
+  unitBlueprintHasCloakCommand,
+  buildingBlueprintHasBarAirTargetOnlyRule,
+  buildingBlueprintHasBarAirPlantLandAtCommand,
   buildingBlueprintHasBarBuilderPriorityCommand,
   buildingBlueprintHasBarFactoryGuardCommand,
+  buildingBlueprintHasBarStopCommand,
   buildingBlueprintHasBarTrajectoryCommand,
 } from '../unitCommandCapabilities';
+import { WorldState } from '../WorldState';
 
 const REQUIRED_SPECIAL_COMMAND_IDS = [
   'command.dgun',
@@ -66,6 +82,8 @@ const REQUIRED_BAR_ORDER_COMMAND_IDS = [
   'command.builderPriority',
   'command.carrierSpawn',
   'command.morph',
+  'factory.airIdleState',
+  'combat.restore',
 ] as const satisfies readonly CommandHotkeyId[];
 
 const BAR_EQUIVALENT_BUILD_CATEGORY_SLOT_INDEX = new Map<StructureBlueprintId, number>([
@@ -75,7 +93,7 @@ const BAR_EQUIVALENT_BUILD_CATEGORY_SLOT_INDEX = new Map<StructureBlueprintId, n
   ['buildingResourceConverter', 4],
   ['buildingExtractorT2', 6],
   ['buildingRadar', 0],
-  ['towerFabricator', 0],
+  ['towerFabricator', 2],
   ['towerCannon', 0],
   ['towerBeamMega', 1],
   ['towerAntiAir', 4],
@@ -104,29 +122,165 @@ const BAR_EQUIVALENT_CLASSIC_BUILD_ORDER: readonly StructureBlueprintId[] = [
   'towerAntiAir',
 ];
 
+const BAR_STRUCTURE_UNITDEF_BY_LOCAL_ID = new Map<StructureBlueprintId, string>([
+  ['buildingSolar', 'armsolar'],
+  ['buildingWind', 'armwin'],
+  ['buildingExtractor', 'armmex'],
+  ['buildingExtractorT2', 'armamex'],
+  ['buildingResourceConverter', 'armmakr'],
+  ['towerFabricator', 'armap'],
+  ['buildingRadar', 'armrad'],
+  ['towerCannon', 'armllt'],
+  ['towerBeamMega', 'armbeamer'],
+  ['towerAntiAir', 'armrl'],
+]);
+
+const BAR_FACTORY_UNITDEF_BY_LOCAL_ID = new Map<UnitBlueprintId, string>([
+  ['unitConstructionDrone', 'armca'],
+  ['unitBee', 'armpeep'],
+  ['unitEagle', 'armfig'],
+  ['unitAlbatros', 'armkam'],
+  ['unitDragonfly', 'armthund'],
+  ['unitTransport', 'armatlas'],
+  ['unitLynx', 'armflash'],
+  ['unitJackal', 'armfav'],
+  ['unitMongoose', 'armart'],
+  ['unitBadger', 'armjanus'],
+  ['unitTick', 'armflea'],
+  ['unitTarantula', 'armwar'],
+]);
+
+const BAR_ARMCOM_BUILDOPTIONS = new Set<string>([
+  'armsolar',
+  'armwin',
+  'armmstor',
+  'armestor',
+  'armmex',
+  'armmakr',
+  'armlab',
+  'armvp',
+  'armap',
+  'armeyes',
+  'armrad',
+  'armdrag',
+  'armllt',
+  'armrl',
+  'armdl',
+  'armtide',
+  'armuwms',
+  'armuwes',
+  'armfmkr',
+  'armsy',
+  'armfdrag',
+  'armtl',
+  'armfrt',
+  'armfrad',
+  'armhp',
+  'armfhp',
+]);
+
+const BAR_ARMCA_BUILDOPTIONS = new Set<string>([
+  'armsolar',
+  'armadvsol',
+  'armwin',
+  'armgeo',
+  'armmstor',
+  'armestor',
+  'armmex',
+  'armamex',
+  'armmakr',
+  'armaap',
+  'armlab',
+  'armvp',
+  'armap',
+  'armhp',
+  'armnanotc',
+  'armeyes',
+  'armrad',
+  'armdrag',
+  'armclaw',
+  'armllt',
+  'armbeamer',
+  'armhlt',
+  'armguard',
+  'armrl',
+  'armferret',
+  'armcir',
+  'armdl',
+  'armjamt',
+  'armjuno',
+  'armsy',
+  'armuwgeo',
+]);
+
+const BAR_ARMAP_BUILDOPTIONS = new Set<string>([
+  'armca',
+  'armpeep',
+  'armfig',
+  'armthund',
+  'armatlas',
+  'armkam',
+  'armhvytrans',
+]);
+
+const BAR_ARMVP_BUILDOPTIONS = new Set<string>([
+  'armcv',
+  'armbeaver',
+  'armmlv',
+  'armfav',
+  'armflash',
+  'armpincer',
+  'armstump',
+  'armart',
+  'armjanus',
+  'armsam',
+]);
+
+const BAR_ARMLAB_BUILDOPTIONS = new Set<string>([
+  'armck',
+  'armpw',
+  'armrectr',
+  'armrock',
+  'armham',
+  'armjeth',
+  'armwar',
+  'armflea',
+]);
+
+const BAR_T1_FACTORY_BUILDOPTION_SETS: readonly {
+  name: string;
+  buildoptions: ReadonlySet<string>;
+}[] = [
+  { name: 'armvp', buildoptions: BAR_ARMVP_BUILDOPTIONS },
+  { name: 'armlab', buildoptions: BAR_ARMLAB_BUILDOPTIONS },
+  { name: 'armap', buildoptions: BAR_ARMAP_BUILDOPTIONS },
+];
+
 const BAR_EQUIVALENT_FACTORY_SLOT_INDEX = new Map<UnitBlueprintId, number>([
-  ['unitConstructionDrone', 0],
   ['unitLynx', 2],
   ['unitJackal', 3],
   ['unitBadger', 5],
   ['unitMongoose', 6],
   ['unitTick', BAR_GRID_SLOT_COUNT + 3],
   ['unitTarantula', BAR_GRID_SLOT_COUNT + 6],
+  ['unitConstructionDrone', BAR_GRID_SLOT_COUNT * 2],
   ['unitEagle', (BAR_GRID_SLOT_COUNT * 2) + 1],
+  ['unitAlbatros', (BAR_GRID_SLOT_COUNT * 2) + 2],
   ['unitDragonfly', (BAR_GRID_SLOT_COUNT * 2) + 3],
   ['unitBee', (BAR_GRID_SLOT_COUNT * 2) + 4],
   ['unitTransport', (BAR_GRID_SLOT_COUNT * 2) + 5],
 ]);
 
 const BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
-  'unitConstructionDrone',
   'unitLynx',
   'unitJackal',
   'unitBadger',
   'unitMongoose',
   'unitTick',
   'unitTarantula',
+  'unitConstructionDrone',
   'unitEagle',
+  'unitAlbatros',
   'unitDragonfly',
   'unitBee',
   'unitTransport',
@@ -136,6 +290,7 @@ const BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
   'unitConstructionDrone',
   'unitBee',
   'unitEagle',
+  'unitAlbatros',
   'unitDragonfly',
   'unitTick',
   'unitJackal',
@@ -196,6 +351,39 @@ function assertNoDuplicateMembers(label: string, values: readonly string[]): voi
   );
 }
 
+function assertBarStructureMembershipMatchesUnitdef(
+  localUnitBlueprintId: UnitBlueprintId,
+  barUnitdefName: string,
+  barBuildoptions: ReadonlySet<string>,
+  allowedBuildBlueprintIds: readonly StructureBlueprintId[],
+): void {
+  for (const [structureBlueprintId, barUnitdef] of BAR_STRUCTURE_UNITDEF_BY_LOCAL_ID) {
+    const expected = barBuildoptions.has(barUnitdef);
+    const actual = allowedBuildBlueprintIds.includes(structureBlueprintId);
+    assertContract(
+      actual === expected,
+      `${localUnitBlueprintId}.${structureBlueprintId} BAR build-option membership must mirror ${barUnitdefName}.${barUnitdef}; expected ${expected ? 'present' : 'absent'}`,
+    );
+  }
+}
+
+function assertBarFactoryMembershipMatchesUnitdefs(
+  localFactoryBlueprintId: StructureBlueprintId,
+  allowedUnitBlueprintIds: readonly UnitBlueprintId[],
+): void {
+  for (const [unitBlueprintId, barUnitdef] of BAR_FACTORY_UNITDEF_BY_LOCAL_ID) {
+    const containingFactories = BAR_T1_FACTORY_BUILDOPTION_SETS
+      .filter((factory) => factory.buildoptions.has(barUnitdef))
+      .map((factory) => factory.name);
+    const expected = containingFactories.length > 0;
+    const actual = allowedUnitBlueprintIds.includes(unitBlueprintId);
+    assertContract(
+      actual === expected,
+      `${localFactoryBlueprintId}.${unitBlueprintId} BAR factory membership must mirror ${barUnitdef} in BAR T1 factories; expected ${expected ? 'present' : 'absent'} from [${containingFactories.join(', ')}]`,
+    );
+  }
+}
+
 function currentPlayerBuildableStructureIds(): StructureBlueprintId[] {
   return [...STRUCTURE_BLUEPRINT_IDS];
 }
@@ -232,6 +420,12 @@ export function runRosterCommandSurfaceContractTest(): void {
   }
 
   const commanderBuildBlueprintIds = getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS['unitCommander']);
+  assertBarStructureMembershipMatchesUnitdef(
+    'unitCommander',
+    'armcom',
+    BAR_ARMCOM_BUILDOPTIONS,
+    commanderBuildBlueprintIds,
+  );
   assertContract(
     getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Economy', 0, commanderBuildBlueprintIds) === 'buildingExtractor',
     'commander BAR Economy slot 1 must build the extractor',
@@ -273,8 +467,13 @@ export function runRosterCommandSurfaceContractTest(): void {
     'commander BAR Utility slot 1 must build radar',
   );
   assertContract(
-    getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 0, commanderBuildBlueprintIds) === 'towerFabricator',
-    'commander BAR Build slot 1 must build the fabricator',
+    getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 0, commanderBuildBlueprintIds) === null &&
+      getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 1, commanderBuildBlueprintIds) === null,
+    'commander BAR Build slots 1-2 must stay empty because local towerFabricator maps to BAR armap, not armlab/armvp',
+  );
+  assertContract(
+    getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex('Production', 2, commanderBuildBlueprintIds) === 'towerFabricator',
+    'commander BAR Build slot 3 must build the fabricator in the BAR armap air-plant position',
   );
   const commanderHomeCells = buildBarHomeBuildMenuCells(commanderBuildBlueprintIds);
   assertContract(
@@ -296,6 +495,12 @@ export function runRosterCommandSurfaceContractTest(): void {
   );
 
   const constructionDroneBuildBlueprintIds = getUnitBuilderAllowedBuildBlueprintIds(UNIT_BLUEPRINTS['unitConstructionDrone']);
+  assertBarStructureMembershipMatchesUnitdef(
+    'unitConstructionDrone',
+    'armca',
+    BAR_ARMCA_BUILDOPTIONS,
+    constructionDroneBuildBlueprintIds,
+  );
   assertContract(
     constructionDroneBuildBlueprintIds.includes('towerBeamMega'),
     'construction drone BAR roster must include the beam tower because ARM T1 constructors have armbeamer',
@@ -346,6 +551,15 @@ export function runRosterCommandSurfaceContractTest(): void {
       allowedUnitBlueprintIds,
     );
     if (structureBlueprintId === 'towerFabricator') {
+      assertBarFactoryMembershipMatchesUnitdefs(
+        'towerFabricator',
+        allowedUnitBlueprintIds,
+      );
+      assertSameMembers(
+        'towerFabricator authored BAR-equivalent factory roster',
+        allowedUnitBlueprintIds,
+        BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER,
+      );
       const barGridFactoryUnitCells = buildBarGridFactoryUnitBlueprintCells(allowedUnitBlueprintIds);
       const barGridFactoryUnitBlueprintIds = buildFactoryUnitBlueprintIdsForPreset(
         allowedUnitBlueprintIds,
@@ -359,10 +573,17 @@ export function runRosterCommandSurfaceContractTest(): void {
       }
       assertContract(
         barGridFactoryUnitCells.length === BAR_GRID_SLOT_COUNT * 3,
-        'towerFabricator BAR-grid factory cells must preserve vehicle, bot, and air pages from BAR lab grids',
+        'towerFabricator BAR-grid factory cells must preserve vehicle, bot, and air pages from BAR final labGrids assignments',
       );
       assertContract(
-        barGridFactoryUnitCells[1] === null &&
+        UNIT_BLUEPRINTS.unitConstructionDrone.locomotion.type === 'hover' &&
+          UNIT_BLUEPRINTS.unitConstructionDrone.locomotion.pathfindingBlueprintId === 'airborneAnywhere' &&
+          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT * 2] === 'unitConstructionDrone',
+        'towerFabricator BAR-grid factory cells must place the airborne construction drone in the armap/armca air-constructor slot',
+      );
+      assertContract(
+        barGridFactoryUnitCells[0] === null &&
+          barGridFactoryUnitCells[1] === null &&
           barGridFactoryUnitCells[4] === null &&
           barGridFactoryUnitCells[7] === null &&
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT] === null &&
@@ -370,12 +591,12 @@ export function runRosterCommandSurfaceContractTest(): void {
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 2] === null &&
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 4] === null &&
           barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT + 5] === null &&
-          barGridFactoryUnitCells[BAR_GRID_SLOT_COUNT * 2] === null,
-        'towerFabricator BAR-grid factory cells must keep empty BAR lab slots instead of compacting options',
+          barGridFactoryUnitCells[(BAR_GRID_SLOT_COUNT * 2) + 6] === null,
+        'towerFabricator BAR-grid factory cells must keep empty BAR final labGrids vehicle/bot/air slots instead of compacting options',
       );
       assertContract(
-        buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype').includes('unitLoris'),
-        'towerFabricator prototype factory menu may keep the shield unit with no BAR T1 analogue',
+        !buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype').includes('unitLoris'),
+        'towerFabricator prototype factory menu must not expose unitLoris because it has no BAR T1 analogue',
       );
       assertContract(
         !barGridFactoryUnitBlueprintIds.includes('unitLoris'),
@@ -386,9 +607,8 @@ export function runRosterCommandSurfaceContractTest(): void {
           selectedUnitBlueprintId: 'unitLoris',
           repeatProduction: true,
           productionQueue: [],
-        }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype')))
-          ?.selectedUnitBlueprintId === 'unitLoris',
-        'towerFabricator prototype factory presets may replay unitLoris from the prototype roster',
+        }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype'))) === null,
+        'towerFabricator prototype factory presets must reject unitLoris because it is no longer an authored BAR-equivalent build option',
       );
       assertContract(
         resolveFactoryProductionPresetReplay({
@@ -501,6 +721,9 @@ export function runRosterCommandSurfaceContractTest(): void {
   );
   assertSameMembers('authored dgun units', dgunUnitIds, ['unitCommander']);
 
+  const barCloakUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasCloakCommand);
+  assertSameMembers('BAR-equivalent WANT_CLOAK command units', barCloakUnitIds, ['unitCommander']);
+
   const transportUnitIds = UNIT_BLUEPRINT_IDS.filter(
     (unitBlueprintId) => createTransportComponentForUnitBlueprint(unitBlueprintId) !== null,
   );
@@ -517,17 +740,103 @@ export function runRosterCommandSurfaceContractTest(): void {
 
   const barGroundAreaAttackUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarAreaAttackCommand);
   assertSameMembers('BAR-equivalent ground area-attack command units', barGroundAreaAttackUnitIds, ['unitMongoose']);
+  const capabilityWorld = new WorldState(9501, 512, 512);
+  const mongooseEntity = capabilityWorld.createUnitFromBlueprint(80, 80, 1, 'unitMongoose', {
+    allocateSubEntityIds: false,
+  });
+  const eagleEntity = capabilityWorld.createUnitFromBlueprint(120, 80, 1, 'unitEagle', {
+    allocateSubEntityIds: false,
+  });
+  const dragonflyEntity = capabilityWorld.createUnitFromBlueprint(160, 80, 1, 'unitDragonfly', {
+    allocateSubEntityIds: false,
+  });
+  const beeEntity = capabilityWorld.createUnitFromBlueprint(200, 80, 1, 'unitBee', {
+    allocateSubEntityIds: false,
+  });
+  assertContract(
+    entityHasBarAreaAttackCommand(mongooseEntity),
+    'BAR-equivalent Mongoose entity must expose Area Attack because armart has customParams.canareaattack',
+  );
+  assertContract(
+    !entityHasBarAreaAttackCommand(eagleEntity) &&
+      !entityHasBarAreaAttackCommand(dragonflyEntity) &&
+      !entityHasBarAreaAttackCommand(beeEntity),
+    'BAR Area Attack must not be inferred from flying/hover locomotion; BAR only adds it for canareaattack unitDefs',
+  );
 
   const barMoveStateHiddenUnitIds = UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
     !unitBlueprintHasBarMoveStateCommand(unitBlueprintId),
   );
   assertSameMembers('BAR-equivalent move-state hidden bomber units', barMoveStateHiddenUnitIds, ['unitDragonfly']);
+  const barDefaultHoldPositionUnitIds = UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
+    unitBlueprintBarDefaultMoveState(unitBlueprintId) === 'holdPosition',
+  );
+  assertSameMembers('BAR-equivalent default hold-position units', barDefaultHoldPositionUnitIds, [
+    'unitCommander',
+    'unitJackal',
+    'unitBadger',
+    'unitMongoose',
+    'unitTick',
+    'unitDragonfly',
+  ]);
+  const barDefaultHoldFireUnitIds = UNIT_BLUEPRINT_IDS.filter((unitBlueprintId) =>
+    unitBlueprintBarDefaultFireState(unitBlueprintId) === 'holdFire',
+  );
+  assertSameMembers('BAR-equivalent default hold-fire bomber units', barDefaultHoldFireUnitIds, ['unitDragonfly']);
+  const barNoAirTargetUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarBomberNoAirTargetRule);
+  assertSameMembers('BAR-equivalent air-to-ground-only units', barNoAirTargetUnitIds, [
+    'unitAlbatros',
+    'unitBadger',
+    'unitDragonfly',
+    'unitMongoose',
+  ]);
+  const barFighterAirTargetOnlyUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarFighterAirTargetOnlyRule);
+  assertSameMembers('BAR-equivalent fighter air-target-only units', barFighterAirTargetOnlyUnitIds, ['unitEagle']);
+  const barAirTargetOnlyStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarAirTargetOnlyRule);
+  assertSameMembers('BAR-equivalent air-target-only structures', barAirTargetOnlyStructureIds, ['towerAntiAir']);
+  const barStopStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarStopCommand);
+  assertSameMembers('BAR-equivalent pure-building Stop command structures', barStopStructureIds, [
+    'buildingExtractorT2',
+  ]);
+  const barAirTargetUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintIsBarAirTarget);
+  assertSameMembers('BAR-equivalent air target units', barAirTargetUnitIds, [
+    'unitBee',
+    'unitConstructionDrone',
+    'unitDragonfly',
+    'unitEagle',
+    'unitAlbatros',
+    'unitQueenBee',
+    'unitQueenTick',
+    'unitTransport',
+  ]);
+  assertContract(
+    !entityHasBarAttackCommand(beeEntity) &&
+      !entityHasBarFireControlCommand(beeEntity) &&
+      !entityHasBarSetTargetCommand(beeEntity),
+    'BAR armpeep/unitBee scout analogue must expose no Attack, Fire State, or Set Target command because armpeep has no weapons',
+  );
+  assertContract(
+    entityHasBarAttackCommand(eagleEntity) &&
+      entityHasBarFireControlCommand(eagleEntity) &&
+      entityHasBarSetTargetCommand(eagleEntity),
+    'BAR armfig/unitEagle fighter analogue must retain weapon commands for air-target attacks',
+  );
+  assertContract(
+    entityMatchesBarLegacyGroundWeaponSelection(mongooseEntity) &&
+      !entityMatchesBarLegacyGroundWeaponSelection(eagleEntity) &&
+      !entityMatchesBarLegacyGroundWeaponSelection(dragonflyEntity) &&
+      !entityMatchesBarLegacyGroundWeaponSelection(beeEntity),
+    'BAR legacy Ctrl+W Not_Aircraft_Weapons selector must include armed ground units and exclude aircraft/scouts',
+  );
 
   const barManualLaunchUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarManualLaunchCommand);
   assertSameMembers('BAR-equivalent manual-launch command units', barManualLaunchUnitIds, []);
 
   const barCaptureUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarCaptureCommand);
   assertSameMembers('BAR-equivalent capture command units', barCaptureUnitIds, ['unitCommander']);
+
+  const barResurrectUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarResurrectCommand);
+  assertSameMembers('BAR-equivalent resurrect command units', barResurrectUnitIds, []);
 
   const barCarrierSpawnUnitIds = UNIT_BLUEPRINT_IDS.filter(unitBlueprintHasBarCarrierSpawnCommand);
   assertSameMembers('BAR-equivalent carrier-spawn command units', barCarrierSpawnUnitIds, []);
@@ -544,6 +853,11 @@ export function runRosterCommandSurfaceContractTest(): void {
 
   const barFactoryGuardStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarFactoryGuardCommand);
   assertSameMembers('BAR-equivalent factory-guard command structures', barFactoryGuardStructureIds, [
+    'towerFabricator',
+  ]);
+
+  const barAirPlantLandAtStructureIds = STRUCTURE_BLUEPRINT_IDS.filter(buildingBlueprintHasBarAirPlantLandAtCommand);
+  assertSameMembers('BAR-equivalent air-plant LAND_AT command structures', barAirPlantLandAtStructureIds, [
     'towerFabricator',
   ]);
 

@@ -151,6 +151,7 @@ export type EntityRadii = {
 };
 
 export type UnitMoveState = 'maneuver' | 'holdPosition' | 'roam';
+export type UnitAirIdleState = 'fly' | 'land';
 export type CombatTrajectoryMode = 'auto' | 'low' | 'high';
 export type CombatFireState = 'fireAtWill' | 'returnFire' | 'holdFire';
 
@@ -1044,7 +1045,16 @@ type Factory = {
   /** BAR carrier spawn ON/OFF command mirror. Only mobile unit factories
    *  (queen-style spawn carriers) expose this in the command UI. */
   carrierSpawnEnabled: boolean;
+  /** BAR MOVE_STATE command mirror for labs/factories. Produced land-page
+   *  units inherit this state when they leave the factory. */
+  moveState: UnitMoveState;
+  /** BAR air-plant LAND_AT command mirror. Default `land` matches BAR's
+   *  inserted air-factory command descriptor; `fly` maps to CMD.IDLEMODE 0. */
+  airIdleState: UnitAirIdleState;
   repeatProduction: boolean;
+  /** BAR Wait command mirror for factories/labs. Pauses production without
+   *  clearing the current build selection, finite queue, quotas, or progress. */
+  paused: boolean;
   productionQueue: string[];
   productionQuotas: Record<string, number>;
   /** Current BAR quota counts by unit blueprint, mirrored from the

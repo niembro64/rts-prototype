@@ -25,15 +25,44 @@ function factoryTowerEntity(
     ownership: { playerId: 1 as PlayerId },
     factory: {
       selectedUnitBlueprintId: null,
-      lowPriority: false,
+      lowPriority: true,
       carrierSpawnEnabled: false,
+      moveState: 'holdPosition',
+      airIdleState: 'land',
       repeatProduction: false,
+      paused: false,
       productionQueue: [],
       productionQuotas: {},
       productionQuotaCounts: {},
       currentBuildProgress: 0,
       guardTargetId: null,
       isProducing: false,
+    },
+  } as unknown as Entity;
+}
+
+function activeBuildingEntity(
+  id: number,
+  buildingBlueprintId: StructureBlueprintId,
+): Entity {
+  return {
+    id,
+    type: 'building',
+    unit: null,
+    builder: null,
+    combat: null,
+    buildingBlueprintId,
+    ownership: { playerId: 1 as PlayerId },
+    factory: null,
+    buildable: null,
+    building: {
+      hp: 100,
+      maxHp: 100,
+      activeState: {
+        open: true,
+        damageDelayMs: 0,
+        reopenDelayMs: 0,
+      },
     },
   } as unknown as Entity;
 }
@@ -61,6 +90,12 @@ export function runUIUpdateManagerContractTest(): void {
   const jackal = world.createUnitFromBlueprint(96, 64, 1, 'unitJackal', {
     allocateSubEntityIds: false,
   });
+  const bee = world.createUnitFromBlueprint(128, 64, 1, 'unitBee', {
+    allocateSubEntityIds: false,
+  });
+  const eagle = world.createUnitFromBlueprint(160, 64, 1, 'unitEagle', {
+    allocateSubEntityIds: false,
+  });
 
   const constructionDroneSelection = buildSelectionInfo(
     entitySourceForSelection([constructionDrone], []),
@@ -68,9 +103,10 @@ export function runUIUpdateManagerContractTest(): void {
   );
   assertContract(
     constructionDroneSelection.hasBuilder &&
+      !constructionDroneSelection.hasBarResurrectControl &&
       !constructionDroneSelection.hasBarAttackControl &&
       !constructionDroneSelection.hasFireControl,
-    'construction-drone build pylons must not expose BAR Attack or Fire State controls',
+    'construction-drone/armcv constructor analogue must not expose BAR Resurrect, Attack, or Fire State controls',
   );
 
   const jackalSelection = buildSelectionInfo(
@@ -82,6 +118,26 @@ export function runUIUpdateManagerContractTest(): void {
       jackalSelection.hasFireControl,
     'weapon units must expose BAR Attack and Fire State controls',
   );
+  const beeSelection = buildSelectionInfo(
+    entitySourceForSelection([bee], []),
+    undefined,
+  );
+  assertContract(
+    !beeSelection.hasBarAttackControl &&
+      !beeSelection.hasFireControl &&
+      !beeSelection.hasTowerTargetControl,
+    'unitBee/armpeep scout analogue must not expose BAR weapon command controls',
+  );
+  const eagleSelection = buildSelectionInfo(
+    entitySourceForSelection([eagle], []),
+    undefined,
+  );
+  assertContract(
+    eagleSelection.hasBarAttackControl &&
+      eagleSelection.hasFireControl &&
+      eagleSelection.hasTowerTargetControl,
+    'unitEagle/armfig fighter analogue must expose BAR weapon controls for air-target attacks',
+  );
 
   const fabricatorSelection = buildSelectionInfo(
     entitySourceForSelection([], [factoryTowerEntity(10, 'towerFabricator')]),
@@ -89,8 +145,41 @@ export function runUIUpdateManagerContractTest(): void {
   );
   assertContract(
     fabricatorSelection.hasFactory &&
-      fabricatorSelection.hasFactoryGuardControl,
-    'towerFabricator selection must expose BAR Factory Guard control',
+      fabricatorSelection.hasFactoryGuardControl &&
+      fabricatorSelection.hasFactoryAirIdleControl &&
+      fabricatorSelection.factoryAirIdleState === 'land' &&
+      fabricatorSelection.hasMoveStateControl &&
+      fabricatorSelection.unitMoveState === 'holdPosition' &&
+      fabricatorSelection.hasBuilderPriorityControl &&
+      fabricatorSelection.builderPriorityLow,
+    'towerFabricator selection must expose BAR Factory Guard, Air LandAt, Move State, and default-low Builder Priority controls',
+  );
+
+  const pausedFabricator = factoryTowerEntity(12, 'towerFabricator');
+  pausedFabricator.factory!.paused = true;
+  const pausedFabricatorSelection = buildSelectionInfo(
+    entitySourceForSelection([], [pausedFabricator]),
+    undefined,
+  );
+  assertContract(
+    pausedFabricatorSelection.isWaiting,
+    'paused factory selection must light the shared BAR Wait state',
+  );
+
+  const t1MexSelection = buildSelectionInfo(
+    entitySourceForSelection([], [activeBuildingEntity(20, 'buildingExtractor')]),
+    undefined,
+  );
+  const t2MexSelection = buildSelectionInfo(
+    entitySourceForSelection([], [activeBuildingEntity(21, 'buildingExtractorT2')]),
+    undefined,
+  );
+  assertContract(
+    t1MexSelection.hasBarBuildingActiveControl &&
+      !t1MexSelection.hasBarBuildingStopControl &&
+      t2MexSelection.hasBarBuildingActiveControl &&
+      t2MexSelection.hasBarBuildingStopControl,
+    'BAR armamex/buildingExtractorT2 must expose Stop while armmex/buildingExtractor keeps removestop=true and only exposes ON/OFF',
   );
 
   const nonBarFactorySelection = buildSelectionInfo(
@@ -99,7 +188,8 @@ export function runUIUpdateManagerContractTest(): void {
   );
   assertContract(
     nonBarFactorySelection.hasFactory &&
-      !nonBarFactorySelection.hasFactoryGuardControl,
-    'factory-capable non-BAR-factory-guard structures must not expose Factory Guard control',
+      !nonBarFactorySelection.hasFactoryGuardControl &&
+      !nonBarFactorySelection.hasFactoryAirIdleControl,
+    'factory-capable non-BAR-factory-guard structures must not expose Factory Guard or Air LandAt controls',
   );
 }

@@ -11,6 +11,7 @@ import {
   barSupportCommandForKey,
   cameraKeyboardActionForKey,
   isAutoGroupRemoveKey,
+  isAutoGroupPresetLoadKey,
   isControlGroupUnsetKey,
   recordControlGroupRecallTap,
   resetControlGroupRecallTap,
@@ -69,6 +70,34 @@ function makeKeyboardEvent(
     },
     ...overrides,
   } as KeyboardEvent;
+}
+
+function installSsrCommandHotkeyStorage(): (() => void) | null {
+  if (typeof window !== 'undefined') return null;
+  const values = new Map<string, string>();
+  const localStorage = {
+    get length() {
+      return values.size;
+    },
+    clear: () => {
+      values.clear();
+    },
+    getItem: (key: string) => values.get(key) ?? null,
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+  };
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { localStorage },
+  });
+  return () => {
+    Reflect.deleteProperty(globalThis, 'window');
+  };
 }
 
 function runBarFactoryPresetDispatcherContract(): void {
@@ -138,6 +167,58 @@ function runBarFactoryPresetDispatcherContract(): void {
   assertContract(
     lastSaveEvent.defaultPrevented,
     'BAR-grid Meta+Alt+9 factory preset dispatch must prevent the browser default',
+  );
+}
+
+function runBarAutoGroupPresetDispatcherContract(): void {
+  setActiveCommandHotkeyPresetId('bar-grid');
+  let loadedAutoGroupPreset = -1;
+  let setAutoGroup = 0;
+  let recalledControlGroup = 0;
+  const controller = new Input3DKeyboardController(new Proxy({
+    moveCameraByKeyboard: () => {},
+    setAutoControlGroupSlot: () => {
+      setAutoGroup++;
+    },
+    recallControlGroupSlot: () => {
+      recalledControlGroup++;
+      return true;
+    },
+    loadAutoGroupPreset: (index: number) => {
+      loadedAutoGroupPreset = index;
+    },
+  }, {
+    get(target, prop: string | symbol) {
+      if (prop in target) return target[prop as keyof typeof target];
+      return () => false;
+    },
+  }) as never);
+
+  const event = makeKeyboardEvent({ code: 'Digit3', key: '3', altKey: true, shiftKey: true });
+  controller.handleKeyDown(event);
+  assertContract(
+    loadedAutoGroupPreset === 3,
+    'BAR-grid Shift+Alt+3 must dispatch load_autogroup_preset 3',
+  );
+  assertContract(
+    setAutoGroup === 0 && recalledControlGroup === 0,
+    'BAR-grid Shift+Alt+3 must not assign or recall control group 3',
+  );
+  assertContract(
+    event.defaultPrevented,
+    'BAR-grid Shift+Alt+3 autogroup preset dispatch must prevent the browser default',
+  );
+  assertContract(
+    isAutoGroupPresetLoadKey(makeKeyboardEvent({ code: 'Digit9', key: '9', altKey: true, shiftKey: true }), 'bar-legacy'),
+    'BAR legacy Shift+Alt+9 must match num_keys.txt load_autogroup_preset 9',
+  );
+  assertContract(
+    isAutoGroupPresetLoadKey(makeKeyboardEvent({ code: 'Digit0', key: '0', altKey: true, shiftKey: true }), 'bar-grid-60pct'),
+    'BAR 60% presets must keep num_keys.txt load_autogroup_preset bindings',
+  );
+  assertContract(
+    !isAutoGroupPresetLoadKey(makeKeyboardEvent({ code: 'Digit3', key: '3', altKey: true, shiftKey: true }), 'prototype'),
+    'prototype preset must not claim BAR load_autogroup_preset bindings',
   );
 }
 
@@ -259,11 +340,78 @@ function runBarBuildCategoryClearContract(): void {
   );
 }
 
+function runBarGridNextPageDispatcherContract(): void {
+  setActiveCommandHotkeyPresetId('bar-grid');
+  let buildPage = 0;
+  let factoryPage = 0;
+  const controller = new Input3DKeyboardController(new Proxy({
+    moveCameraByKeyboard: () => {},
+    hasSelectedBuilder: () => true,
+    hasSelectedUnits: () => false,
+    hasSelectedFactory: () => false,
+    stepBuildGridPage: (delta: number) => {
+      buildPage = (buildPage + delta + 2) % 2;
+      return true;
+    },
+    stepFactoryGridPage: (delta: number) => {
+      factoryPage = (factoryPage + delta + 3) % 3;
+      return true;
+    },
+  }, {
+    get(target, prop: string | symbol) {
+      if (prop in target) return target[prop as keyof typeof target];
+      return () => false;
+    },
+  }) as never);
+
+  const buildPageEvent = makeKeyboardEvent({ code: 'KeyB', key: 'b' });
+  controller.handleKeyDown(buildPageEvent);
+  assertContract(
+    buildPage === 1 && factoryPage === 0 && buildPageEvent.defaultPrevented,
+    'BAR-grid plain B must dispatch gui_gridmenu.lua gridmenu_next_page to selected-builder build pages',
+  );
+
+  const buildWrapEvent = makeKeyboardEvent({ code: 'KeyB', key: 'b' });
+  controller.handleKeyDown(buildWrapEvent);
+  assertContract(
+    buildPage === 0 && factoryPage === 0 && buildWrapEvent.defaultPrevented,
+    'BAR-grid builder page stepping must allow gui_gridmenu.lua nextPageHandler-style page wrapping',
+  );
+
+  const factoryController = new Input3DKeyboardController(new Proxy({
+    moveCameraByKeyboard: () => {},
+    hasSelectedBuilder: () => false,
+    hasSelectedUnits: () => false,
+    hasSelectedFactory: () => true,
+    stepBuildGridPage: (delta: number) => {
+      buildPage = (buildPage + delta + 2) % 2;
+      return true;
+    },
+    stepFactoryGridPage: (delta: number) => {
+      factoryPage = (factoryPage + delta + 3) % 3;
+      return true;
+    },
+  }, {
+    get(target, prop: string | symbol) {
+      if (prop in target) return target[prop as keyof typeof target];
+      return () => false;
+    },
+  }) as never);
+
+  const factoryPageEvent = makeKeyboardEvent({ code: 'KeyB', key: 'b' });
+  factoryController.handleKeyDown(factoryPageEvent);
+  assertContract(
+    buildPage === 0 && factoryPage === 1 && factoryPageEvent.defaultPrevented,
+    'BAR-grid plain B must dispatch gui_gridmenu.lua gridmenu_next_page to selected-factory production pages',
+  );
+}
+
 function runBarFactoryQueueModeContract(): void {
   setActiveCommandHotkeyPresetId('bar-grid');
   let factoryQueueMode = false;
   let factoryRepeatsProduction = false;
   let toggleCount = 0;
+  let airIdleToggleCount = 0;
   const factoryRepeatStates: boolean[] = [];
   const queuedSlots: { slotIndex: number; repeat: boolean; count: number }[] = [];
   const quotaSlots: { slotIndex: number; delta: number }[] = [];
@@ -285,6 +433,9 @@ function runBarFactoryQueueModeContract(): void {
     toggleSelectedFactoryRepeatProduction: () => {
       factoryRepeatsProduction = !factoryRepeatsProduction;
       factoryRepeatStates.push(factoryRepeatsProduction);
+    },
+    toggleSelectedFactoryAirIdleState: () => {
+      airIdleToggleCount++;
     },
     queueSelectedFactoryUnitSlot: (slotIndex: number, repeat: boolean, count: number) => {
       queuedSlots.push({ slotIndex, repeat, count });
@@ -346,8 +497,8 @@ function runBarFactoryQueueModeContract(): void {
     queuedSlots.length === 4 &&
       queuedSlots[3].slotIndex === 2 &&
       queuedSlots[3].repeat === false &&
-      queuedSlots[3].count === -1,
-    'BAR-grid Ctrl factory slot hotkeys must remove one queued unit',
+      queuedSlots[3].count === 20,
+    'BAR-grid Ctrl factory slot hotkeys must queue twenty units',
   );
   assertContract(
     ctrlEvent.defaultPrevented,
@@ -360,8 +511,8 @@ function runBarFactoryQueueModeContract(): void {
     queuedSlots.length === 5 &&
       queuedSlots[4].slotIndex === 3 &&
       queuedSlots[4].repeat === false &&
-      queuedSlots[4].count === -5,
-    'BAR-grid Shift+Ctrl factory slot hotkeys must remove five queued units',
+      queuedSlots[4].count === 100,
+    'BAR-grid Shift+Ctrl factory slot hotkeys must queue one hundred units',
   );
   assertContract(
     shiftCtrlEvent.defaultPrevented,
@@ -377,6 +528,10 @@ function runBarFactoryQueueModeContract(): void {
   assertContract(
     toggleEvent.defaultPrevented,
     'BAR-grid Alt+G factory queue mode must prevent the browser default',
+  );
+  assertContract(
+    airIdleToggleCount === 0,
+    'BAR air-plant LandAt has no default hotkey binding',
   );
 
   const queueEvent = makeKeyboardEvent({ code: 'KeyX', key: 'x' });
@@ -407,6 +562,20 @@ function runBarFactoryQueueModeContract(): void {
     'BAR-grid Meta factory quota hotkeys must prevent the browser default',
   );
 
+  const ctrlQueueModeEvent = makeKeyboardEvent({ code: 'KeyV', key: 'v', ctrlKey: true });
+  controller.handleKeyDown(ctrlQueueModeEvent);
+  assertContract(
+    queuedSlots.length === 5 &&
+      quotaSlots.length === 3 &&
+      quotaSlots[2].slotIndex === 3 &&
+      quotaSlots[2].delta === 20,
+    'BAR-grid factory quota mode must treat Ctrl factory grid keys as +20 quota changes',
+  );
+  assertContract(
+    ctrlQueueModeEvent.defaultPrevented,
+    'BAR-grid Ctrl factory quota hotkeys must prevent the browser default',
+  );
+
   const altQueueBypassEvent = makeKeyboardEvent({ code: 'KeyC', key: 'c', altKey: true });
   controller.handleKeyDown(altQueueBypassEvent);
   assertContract(
@@ -414,7 +583,7 @@ function runBarFactoryQueueModeContract(): void {
       queuedSlots[5].slotIndex === 2 &&
       queuedSlots[5].repeat === false &&
       queuedSlots[5].count === 1 &&
-      quotaSlots.length === 2,
+      quotaSlots.length === 3,
     'BAR-grid factory quota mode must let Alt bypass quota mode and queue normally',
   );
   assertContract(
@@ -502,11 +671,156 @@ function runBarFactoryGuardDispatcherContract(): void {
   );
 }
 
+function runBarStateTapDispatcherContract(): void {
+  setActiveCommandHotkeyPresetId('bar-grid');
+  const buildingActiveStates: boolean[] = [];
+  const trajectoryModes: string[] = [];
+  const fireStates: string[] = [];
+  const moveStates: string[] = [];
+  const genericToggleCounts = {
+    buildingActive: 0,
+    fireState: 0,
+    moveState: 0,
+    trajectory: 0,
+  };
+  let hasBuildingActiveControl = true;
+  let hasTrajectoryControl = true;
+  let hasMoveStateControl = true;
+  const controller = new Input3DKeyboardController(new Proxy({
+    moveCameraByKeyboard: () => {},
+    hasSelectedUnits: () => true,
+    hasSelectedFactory: () => false,
+    hasSelectedBuilder: () => false,
+    hasSelectedBuildingActiveControl: () => hasBuildingActiveControl,
+    hasSelectedTrajectoryControl: () => hasTrajectoryControl,
+    hasSelectedMoveStateControl: () => hasMoveStateControl,
+    setBuildingActive: (open: boolean) => {
+      buildingActiveStates.push(open);
+    },
+    setTrajectoryMode: (mode: string) => {
+      trajectoryModes.push(mode);
+    },
+    setSelectedFireState: (state: string) => {
+      fireStates.push(state);
+    },
+    setUnitMoveState: (state: string) => {
+      moveStates.push(state);
+    },
+    toggleBuildingActive: () => {
+      genericToggleCounts.buildingActive++;
+    },
+    toggleTrajectoryMode: () => {
+      genericToggleCounts.trajectory++;
+    },
+    toggleSelectedFire: () => {
+      genericToggleCounts.fireState++;
+    },
+    toggleUnitMoveState: () => {
+      genericToggleCounts.moveState++;
+    },
+  }, {
+    get(target, prop: string | symbol) {
+      if (prop in target) return target[prop as keyof typeof target];
+      return () => false;
+    },
+  }) as never);
+
+  const buildingOnEvent = makeKeyboardEvent({ code: 'KeyB', key: 'b', shiftKey: true });
+  controller.handleKeyDown(buildingOnEvent);
+  assertContract(
+    buildingActiveStates.length === 0 && genericToggleCounts.buildingActive === 0,
+    'BAR-grid single Shift+B must wait briefly for a possible building-off double tap',
+  );
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'F13', key: 'F13' }));
+  assertContract(
+    buildingActiveStates.length === 1 && buildingActiveStates[0] === true,
+    'BAR-grid single Shift+B must set building active on',
+  );
+
+  const buildingOffFirstEvent = makeKeyboardEvent({ code: 'KeyB', key: 'b' });
+  const buildingOffSecondEvent = makeKeyboardEvent({ code: 'KeyB', key: 'b' });
+  controller.handleKeyDown(buildingOffFirstEvent);
+  controller.handleKeyDown(buildingOffSecondEvent);
+  assertContract(
+    buildingActiveStates.length === 2 && buildingActiveStates[1] === false,
+    'BAR-grid double B must set building active off',
+  );
+
+  hasBuildingActiveControl = false;
+  const trajectoryAutoEvent = makeKeyboardEvent({ code: 'KeyB', key: 'b' });
+  controller.handleKeyDown(trajectoryAutoEvent);
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'F13', key: 'F13' }));
+  assertContract(
+    trajectoryModes.length === 1 && trajectoryModes[0] === 'auto',
+    'BAR-grid single B must set trajectory mode to auto when no building active state is shown',
+  );
+
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyB', key: 'b' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyB', key: 'b' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'F13', key: 'F13' }));
+  assertContract(
+    trajectoryModes.length === 2 && trajectoryModes[1] === 'low',
+    'BAR-grid double B must set trajectory mode to low',
+  );
+
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyB', key: 'b' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyB', key: 'b' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyB', key: 'b' }));
+  assertContract(
+    trajectoryModes.length === 3 && trajectoryModes[2] === 'high',
+    'BAR-grid triple B must set trajectory mode to high',
+  );
+
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyL', key: 'l' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'F13', key: 'F13' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyL', key: 'l' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyL', key: 'l' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'F13', key: 'F13' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyL', key: 'l' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyL', key: 'l' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'KeyL', key: 'l' }));
+  assertContract(
+    fireStates.join(',') === 'fireAtWill,holdFire,returnFire',
+    'BAR-grid L taps must dispatch fire-at-will, hold-fire, and return-fire states',
+  );
+
+  hasMoveStateControl = true;
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'Semicolon', key: ';' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'F13', key: 'F13' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'Semicolon', key: ';' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'Semicolon', key: ';' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'F13', key: 'F13' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'Semicolon', key: ';' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'Semicolon', key: ';' }));
+  controller.handleKeyDown(makeKeyboardEvent({ code: 'Semicolon', key: ';' }));
+  assertContract(
+    moveStates.join(',') === 'roam,holdPosition,maneuver',
+    'BAR-grid semicolon taps must dispatch roam, hold-position, and maneuver move states',
+  );
+
+  assertContract(
+    genericToggleCounts.buildingActive === 0 &&
+      genericToggleCounts.trajectory === 0 &&
+      genericToggleCounts.fireState === 0 &&
+      genericToggleCounts.moveState === 0,
+    'BAR-grid state taps must dispatch exact BAR state values instead of generic cycle toggles',
+  );
+  assertContract(
+    buildingOnEvent.defaultPrevented && buildingOffFirstEvent.defaultPrevented &&
+      buildingOffSecondEvent.defaultPrevented && trajectoryAutoEvent.defaultPrevented,
+    'BAR-grid state taps must prevent browser defaults',
+  );
+}
+
 function runBarSelectionFilterDispatcherContract(): void {
   setActiveCommandHotkeyPresetId('bar-grid');
   let splitCount = 0;
   let damagedCount = 0;
+  let matchingCount = 0;
   let previousCount = 0;
+  let previousNotGroupedCount = 0;
+  let previousArmyNotGroupedCount = 0;
+  let groundWeaponCount = 0;
   const controller = new Input3DKeyboardController(new Proxy({
     moveCameraByKeyboard: () => {},
     splitArmySelection: () => {
@@ -515,8 +829,20 @@ function runBarSelectionFilterDispatcherContract(): void {
     selectDamagedOnly: () => {
       damagedCount++;
     },
+    selectAllMatching: () => {
+      matchingCount++;
+    },
     selectPreviousSelection: () => {
       previousCount++;
+    },
+    selectPreviousSelectionNotInControlGroups: () => {
+      previousNotGroupedCount++;
+    },
+    selectPreviousNonBuildersNotInControlGroups: () => {
+      previousArmyNotGroupedCount++;
+    },
+    selectGroundWeaponUnits: () => {
+      groundWeaponCount++;
     },
   }, {
     get(target, prop: string | symbol) {
@@ -539,11 +865,105 @@ function runBarSelectionFilterDispatcherContract(): void {
     'BAR-grid Alt+Q must dispatch the damaged-mobile selection filter',
   );
 
+  const matchingEvent = makeKeyboardEvent({ code: 'KeyW', key: 'w', ctrlKey: true });
+  controller.handleKeyDown(matchingEvent);
+  assertContract(
+    matchingCount === 1 && matchingEvent.defaultPrevented,
+    'BAR-grid Ctrl+W must dispatch AllMap+_InPrevSel same-type selection',
+  );
+
   const previousEvent = makeKeyboardEvent({ code: 'KeyS', key: 's', ctrlKey: true, altKey: true });
   controller.handleKeyDown(previousEvent);
   assertContract(
-    previousCount === 1 && previousEvent.defaultPrevented,
-    'BAR-grid Ctrl+Alt+S must dispatch previous-selection after the split rebind',
+    previousCount === 0 && !previousEvent.defaultPrevented,
+    'BAR-grid Ctrl+Alt+S must stay unbound because BAR grid has no whole previous-selection bind',
+  );
+
+  setActiveCommandHotkeyPresetId('bar-legacy');
+  const previousNotGroupedEvent = makeKeyboardEvent({ code: 'KeyX', key: 'x', ctrlKey: true });
+  controller.handleKeyDown(previousNotGroupedEvent);
+  assertContract(
+    previousNotGroupedCount === 1 && previousNotGroupedEvent.defaultPrevented,
+    'BAR-legacy Ctrl+X must dispatch previous-selection excluding hotkey groups',
+  );
+
+  const previousArmyNotGroupedEvent = makeKeyboardEvent({ code: 'KeyV', key: 'v', ctrlKey: true });
+  controller.handleKeyDown(previousArmyNotGroupedEvent);
+  assertContract(
+    previousArmyNotGroupedCount === 1 && previousArmyNotGroupedEvent.defaultPrevented,
+    'BAR-legacy Ctrl+V must dispatch previous non-builder selection excluding hotkey groups',
+  );
+
+  const groundWeaponEvent = makeKeyboardEvent({ code: 'KeyW', key: 'w', ctrlKey: true });
+  controller.handleKeyDown(groundWeaponEvent);
+  assertContract(
+    groundWeaponCount === 1 && groundWeaponEvent.defaultPrevented,
+    'BAR-legacy Ctrl+W must dispatch Not_Aircraft_Weapons selection',
+  );
+}
+
+function runBarSelfDestructDispatcherContract(): void {
+  const selfDestructModes: { queue?: boolean; queueFront?: boolean; queueInsertIndex?: number }[] = [];
+  const controller = new Input3DKeyboardController(new Proxy({
+    moveCameraByKeyboard: () => {},
+    selfDestructSelected: (queue?: boolean, queueFront?: boolean, queueInsertIndex?: number) => {
+      selfDestructModes.push({ queue, queueFront, queueInsertIndex });
+    },
+  }, {
+    get(target, prop: string | symbol) {
+      if (prop in target) return target[prop as keyof typeof target];
+      return () => false;
+    },
+  }) as never);
+
+  setActiveCommandHotkeyPresetId('bar-grid');
+  const gridSelfdEvent = makeKeyboardEvent({ code: 'KeyB', key: 'b', ctrlKey: true });
+  controller.handleKeyDown(gridSelfdEvent);
+  assertContract(
+    selfDestructModes.length === 1 &&
+      selfDestructModes[0].queue === false &&
+      gridSelfdEvent.defaultPrevented,
+    'BAR-grid Ctrl+B must dispatch grid_keys.txt selfd while CMD.SELFD stays hidden from the order menu',
+  );
+
+  setActiveCommandHotkeyPresetId('bar-grid-60pct');
+  const grid60QueuedSelfdEvent = makeKeyboardEvent({
+    code: 'KeyB',
+    key: 'b',
+    ctrlKey: true,
+    shiftKey: true,
+  });
+  controller.handleKeyDown(grid60QueuedSelfdEvent);
+  assertContract(
+    selfDestructModes.length === 2 &&
+      selfDestructModes[1].queue === true &&
+      selfDestructModes[1].queueFront === false &&
+      grid60QueuedSelfdEvent.defaultPrevented,
+    'BAR-grid-60pct Ctrl+Shift+B must dispatch grid_keys_60pct.txt queued selfd',
+  );
+
+  setActiveCommandHotkeyPresetId('bar-legacy');
+  const legacySelfdEvent = makeKeyboardEvent({ code: 'KeyD', key: 'd', ctrlKey: true });
+  controller.handleKeyDown(legacySelfdEvent);
+  assertContract(
+    selfDestructModes.length === 3 &&
+      selfDestructModes[2].queue === false &&
+      legacySelfdEvent.defaultPrevented,
+    'BAR-legacy Ctrl+D must dispatch legacy_keys.txt selfd',
+  );
+
+  const legacyQueuedSelfdEvent = makeKeyboardEvent({
+    code: 'KeyD',
+    key: 'd',
+    ctrlKey: true,
+    shiftKey: true,
+  });
+  controller.handleKeyDown(legacyQueuedSelfdEvent);
+  assertContract(
+    selfDestructModes.length === 4 &&
+      selfDestructModes[3].queue === true &&
+      legacyQueuedSelfdEvent.defaultPrevented,
+    'BAR-legacy Ctrl+Shift+D must dispatch legacy_keys.txt queued selfd',
   );
 }
 
@@ -588,14 +1008,62 @@ function runCloakDispatcherContract(): void {
   );
 }
 
+function runBarNumpadCameraDispatcherContract(): void {
+  setActiveCommandHotkeyPresetId('bar-grid');
+  const cameraActions: { mode: string; x: number; y: number; fast: boolean }[] = [];
+  const controller = new Input3DKeyboardController(new Proxy({
+    moveCameraByKeyboard: (action: { mode: string; x: number; y: number; fast: boolean }) => {
+      cameraActions.push(action);
+    },
+  }, {
+    get(target, prop: string | symbol) {
+      if (prop in target) return target[prop as keyof typeof target];
+      return () => false;
+    },
+  }) as never);
+
+  const fastDownEvent = makeKeyboardEvent({ code: 'Numpad1', key: '1' });
+  controller.handleKeyDown(fastDownEvent);
+  assertContract(
+    cameraActions.length === 0 && fastDownEvent.defaultPrevented,
+    'BAR Numpad1 must not pan diagonally; it must remain available for FOV down while enabling movefast',
+  );
+
+  const fastPanEvent = makeKeyboardEvent({ code: 'Numpad8', key: '8' });
+  controller.handleKeyDown(fastPanEvent);
+  assertContract(
+    cameraActions.length === 1 &&
+      cameraActions[0]?.mode === 'pan' &&
+      cameraActions[0]?.x === 0 &&
+      cameraActions[0]?.y === 1 &&
+      cameraActions[0]?.fast === true &&
+      fastPanEvent.defaultPrevented,
+    'BAR held Numpad1 movefast must accelerate Numpad8 camera movement',
+  );
+
+  controller.handleKeyUp(makeKeyboardEvent({ code: 'Numpad1', key: '1' }));
+  const normalPanEvent = makeKeyboardEvent({ code: 'Numpad8', key: '8' });
+  controller.handleKeyDown(normalPanEvent);
+  assertContract(
+    cameraActions.length === 2 && cameraActions[1]?.fast === false,
+    'releasing BAR Numpad1 movefast must restore normal numpad camera speed',
+  );
+}
+
 export function runInput3DKeyboardControllerContractTest(): void {
+  const restoreSsrCommandHotkeyStorage = installSsrCommandHotkeyStorage();
   runBarFactoryPresetDispatcherContract();
+  runBarAutoGroupPresetDispatcherContract();
   runBarBuildCategoryDispatcherContract();
   runBarBuildCategoryClearContract();
+  runBarGridNextPageDispatcherContract();
   runBarFactoryQueueModeContract();
   runBarFactoryGuardDispatcherContract();
+  runBarStateTapDispatcherContract();
   runBarSelectionFilterDispatcherContract();
+  runBarSelfDestructDispatcherContract();
   runCloakDispatcherContract();
+  runBarNumpadCameraDispatcherContract();
 
   const state = makeState();
 
@@ -659,16 +1127,44 @@ export function runInput3DKeyboardControllerContractTest(): void {
     'plain arrows must pan the camera',
   );
   assertContract(
-    cameraKeyboardActionForKey(makeKey({ code: 'ArrowLeft', ctrlKey: true }))?.mode === 'height-pan',
-    'Ctrl + arrows must height-pan the camera',
+    cameraKeyboardActionForKey(makeKey({ code: 'ArrowLeft', ctrlKey: true }), 'prototype')?.mode === 'height-pan',
+    'prototype Ctrl + arrows must keep local height-pan camera behavior',
   );
   assertContract(
-    cameraKeyboardActionForKey(makeKey({ code: 'ArrowRight', altKey: true }))?.mode === 'orbit',
-    'Alt + arrows must orbit the camera',
+    cameraKeyboardActionForKey(makeKey({ code: 'ArrowLeft', ctrlKey: true }), 'bar-grid')?.mode === 'pan',
+    'BAR Any+Left must pan instead of using Ctrl as a keyboard height-pan modifier',
   );
   assertContract(
-    cameraKeyboardActionForKey(makeKey({ code: 'Numpad9', shiftKey: true }))?.mode === 'pan',
-    'Shift + keyboard camera input must not switch into a camera fine-control mode',
+    cameraKeyboardActionForKey(makeKey({ code: 'ArrowRight', altKey: true }), 'prototype')?.mode === 'orbit',
+    'prototype Alt + arrows must keep local keyboard orbit behavior',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'ArrowRight', altKey: true }), 'bar-legacy')?.mode === 'pan',
+    'BAR Any+Right must pan instead of using Alt as a keyboard orbit modifier',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'Numpad9', shiftKey: true }), 'bar-grid')?.mode === 'height-pan',
+    'BAR Numpad9 must move the camera up rather than diagonally panning',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'Numpad3' }), 'bar-grid')?.mode === 'height-pan',
+    'BAR Numpad3 must move the camera down rather than diagonally panning',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'PageUp', altKey: true }), 'bar-grid')?.mode === 'height-pan',
+    'BAR Any+PageUp must move the camera up instead of orbiting',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'PageDown', ctrlKey: true }), 'bar-grid')?.mode === 'height-pan',
+    'BAR Any+PageDown must move the camera down',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'Numpad1' })) === null,
+    'BAR Numpad1 must not be claimed as diagonal camera pan because chat_and_ui_keys also binds it to FOV down',
+  );
+  assertContract(
+    cameraKeyboardActionForKey(makeKey({ code: 'Numpad7' })) === null,
+    'BAR Numpad7 must not be claimed as diagonal camera pan because chat_and_ui_keys binds it to FOV up',
   );
   assertContract(
     cameraKeyboardActionForKey(makeKey({ code: 'ArrowDown', metaKey: true })) === null,
@@ -1040,4 +1536,5 @@ export function runInput3DKeyboardControllerContractTest(): void {
       trajectoryHigh.type === 'trajectory' && trajectoryHigh.trajectoryMode === 'high',
     'BAR B trajectory taps must map to auto/low/high',
   );
+  restoreSsrCommandHotkeyStorage?.();
 }

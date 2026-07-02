@@ -12,6 +12,7 @@ export type {
   SetBuilderPriorityCommand,
   SetCarrierSpawnCommand,
   SetUnitMoveStateCommand,
+  SetFactoryAirIdleStateCommand,
   SetTrajectoryModeCommand,
   SetCloakStateCommand,
   PingCommand,
@@ -49,6 +50,7 @@ export type {
   ManualLaunchCommand,
   GuardCommand,
   SetPausedCommand,
+  AdjustGameSpeedCommand,
   SetUnitGroundNormalEmaModeCommand,
   
   

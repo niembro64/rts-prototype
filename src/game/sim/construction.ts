@@ -162,7 +162,10 @@ export class ConstructionSystem {
         selectedUnitBlueprintId: null,
         lowPriority: true,
         carrierSpawnEnabled: true,
+        moveState: 'holdPosition',
+        airIdleState: 'land',
         repeatProduction: false,
+        paused: false,
         productionQueue: [],
         productionQuotas: {},
         productionQuotaCounts: {},
@@ -174,6 +177,8 @@ export class ConstructionSystem {
         rallyY: wp.y,
         rallyZ: null,
         rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+        // BAR cmd_factory_guard_pref.lua enables Factory Guard by default
+        // on factories that can produce constructors.
         guardTargetId: entity.id,
         isProducing: false,
         energyRateFraction: 0,

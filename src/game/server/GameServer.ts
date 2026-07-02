@@ -85,12 +85,45 @@ type ExternalSimulationTelemetrySample = {
   readonly tickRateHz: number;
 };
 
+// BAR cmd_gamespeed.lua includes 0.1 but notes Spring rejects it because the
+// engine enforces speed > 0.2. Keep the effective selectable levels here.
+const BAR_GAME_SPEED_LEVELS: readonly number[] = [
+  0.25,
+  0.5,
+  0.8,
+  1,
+  1.1,
+  1.25,
+  1.5,
+  1.75,
+  2,
+  5,
+  10,
+  20,
+];
+const GAME_SPEED_EPSILON = 0.000001;
+
+function nextBarGameSpeed(currentSpeed: number, direction: 1 | -1): number {
+  if (direction > 0) {
+    for (const speed of BAR_GAME_SPEED_LEVELS) {
+      if (speed > currentSpeed + GAME_SPEED_EPSILON) return speed;
+    }
+    return BAR_GAME_SPEED_LEVELS[BAR_GAME_SPEED_LEVELS.length - 1];
+  }
+  for (let i = BAR_GAME_SPEED_LEVELS.length - 1; i >= 0; i--) {
+    const speed = BAR_GAME_SPEED_LEVELS[i];
+    if (speed < currentSpeed - GAME_SPEED_EPSILON) return speed;
+  }
+  return BAR_GAME_SPEED_LEVELS[0];
+}
+
 export class GameServer {
   private core: ServerSimulationCore;
 
   // Game loop
   private tickLoop = new ServerTickLoop();
   private tickRateHz: number;
+  private gameSpeed = 1;
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
   private sparseEntityMotionIntervalMs: number;
   private maxSnapshotsDisplay: SnapshotRate;
@@ -330,6 +363,7 @@ export class GameServer {
   private startGameLoop(): void {
     // Run simulation at configured tick rate. Snapshot interval is normally
     // uncapped, which emits once at the end of every server tick.
+    this.tickLoop.setTimeScale(this.gameSpeed);
     this.tickLoop.start(this.tickRateHz, (tickNow, delta) => {
       // Measure how much CPU the tick body actually consumed, separately
       // from its *period* (which the TPS EMA tracks). Snapshot emission is
@@ -595,6 +629,11 @@ export class GameServer {
         recordAcceptedCommand(sanitizedCommand);
         this.setPaused(sanitizedCommand.paused);
         return;
+      case 'adjustGameSpeed':
+        if (!canApplyServerControl) return;
+        recordAcceptedCommand(sanitizedCommand);
+        this.adjustGameSpeed(sanitizedCommand.direction);
+        return;
       case 'setUnitGroundNormalEmaMode':
         if (!canApplyServerControl) return;
         recordAcceptedCommand(sanitizedCommand);
@@ -815,6 +854,29 @@ export class GameServer {
 
   setPaused(paused: boolean): void {
     this.simulation.setPaused(paused);
+  }
+
+  adjustGameSpeed(direction: 1 | -1): number {
+    return this.setGameSpeed(nextBarGameSpeed(this.gameSpeed, direction));
+  }
+
+  setGameSpeed(speed: number): number {
+    if (!Number.isFinite(speed)) return this.gameSpeed;
+    let selected = BAR_GAME_SPEED_LEVELS[0];
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const candidate of BAR_GAME_SPEED_LEVELS) {
+      const distance = Math.abs(candidate - speed);
+      if (distance >= bestDistance) continue;
+      bestDistance = distance;
+      selected = candidate;
+    }
+    this.gameSpeed = selected;
+    this.tickLoop.setTimeScale(this.gameSpeed);
+    return this.gameSpeed;
+  }
+
+  getGameSpeed(): number {
+    return this.gameSpeed;
   }
 
   // Get map dimensions (for scene configuration)

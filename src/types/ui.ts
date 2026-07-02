@@ -1,6 +1,6 @@
 // UI component types extracted from Vue components and helpers
 
-import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId, CombatFireState, CombatTrajectoryMode, UnitMoveState } from './sim';
+import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId, CombatFireState, CombatTrajectoryMode, UnitAirIdleState, UnitMoveState } from './sim';
 import type { Vec2 } from './vec2';
 import type { BarBuildCategoryId } from '../game/input/buildMenuLayout';
 
@@ -67,6 +67,8 @@ export type SelectionInfo = {
   hasBarAttackControl: boolean;
   /** True when the selection contains a unit that BAR would expose Capture for. */
   hasBarCaptureControl: boolean;
+  /** True when the selection contains a unit that BAR would expose Resurrect for. */
+  hasBarResurrectControl: boolean;
   /** True when the selection contains a unit that BAR would expose Area Attack for. */
   hasBarAreaAttackControl: boolean;
   /** True when the selection contains a unit that BAR would expose Move State for. */
@@ -91,8 +93,9 @@ export type SelectionInfo = {
   /** True when every selected mobile unit factory has spawning enabled. */
   carrierSpawnEnabled: boolean;
   /** True iff the selection contains at least one building whose
-   *  BuildingBlueprintId uses the ON/OFF active-state mechanic
-   *  (solar/wind/extractor/radar/resourceConverter). Gates the ON/OFF button. */
+   *  BuildingBlueprintId uses the prototype active-state mechanic
+   *  (solar/wind/extractor/radar/resourceConverter). Gates the ON/OFF button
+   *  for prototype presets. */
   hasBuildingActiveControl: boolean;
   /** True when every active-state building in the selection is currently
    *  ON (open). Drives the ON/OFF button label. */
@@ -101,6 +104,9 @@ export type SelectionInfo = {
    *  command (metal extractors and solar collectors), even though the
    *  prototype active-state mechanic covers more economy/utility buildings. */
   hasBarBuildingActiveControl: boolean;
+  /** True when selected pure buildings keep BAR CMD.STOP visible because their
+   *  BAR unitDef does not set customParams.removestop. */
+  hasBarBuildingStopControl: boolean;
   /** True when every BAR-onoff-capable active-state building in the selection
    *  is currently ON. */
   barBuildingsActive: boolean;
@@ -146,6 +152,7 @@ export type SelectionInfo = {
   buildFacingDegrees: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isRestoreAreaMode: boolean;
   isFormationAssumeMode: boolean;
   isFormationMoveMode: boolean;
   isAttackMode: boolean;
@@ -171,6 +178,10 @@ export type SelectionInfo = {
   /** Construction fraction for the selected incomplete factory/tower shell. */
   factoryConstructionProgress?: number;
   factoryRepeatsProduction?: boolean;
+  /** True when the selected factory mirrors BAR's air-plant Land At state. */
+  hasFactoryAirIdleControl: boolean;
+  /** BAR air-plant Fly/Land state for newly produced aircraft. */
+  factoryAirIdleState: UnitAirIdleState;
   factoryQueueMode: boolean;
   /** True when the selected factory exposes BAR's Factory Guard command. */
   hasFactoryGuardControl: boolean;
@@ -252,11 +263,13 @@ export type SelectionActions = {
   rotateBuildFacingCounterClockwise: () => void;
   toggleDGun: () => void;
   toggleRepairArea: () => void;
+  toggleRestoreArea: () => void;
   toggleFormationAssume: () => void;
   toggleFormationMove: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string, repeat?: boolean, count?: number) => void;
   removeFactoryUnitProduction: (factoryId: number, unitBlueprintId: string, count?: number) => void;
   setFactoryRepeatProduction: (factoryId: number, enabled: boolean) => void;
+  setFactoryAirIdleState: (factoryId: number, airIdleState: UnitAirIdleState) => void;
   changeFactoryUnitQuota: (factoryId: number, unitBlueprintId: string, delta: number) => void;
   toggleFactoryQueueMode: () => void;
   editFactoryQueue: (
@@ -378,6 +391,7 @@ export type UIInputState = {
   buildFacingDegrees: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isRestoreAreaMode: boolean;
   isFormationAssumeMode: boolean;
   isFormationMoveMode: boolean;
   isAttackMode: boolean;
@@ -617,4 +631,3 @@ export type EnergyConsumer = {
   playerId: PlayerId;
   maxResourcePerTick: number;
 };
-

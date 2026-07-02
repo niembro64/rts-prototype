@@ -50,12 +50,15 @@ import { isClientTransportUnit } from '../../sim/transports';
 import {
   entityHasBarAttackCommand,
   entityHasBarAreaAttackCommand,
+  entityHasBarAirPlantLandAtCommand,
   entityHasBarFireControlCommand,
   entityHasBarManualLaunchCommand,
   entityHasBarMoveStateCommand,
+  entityHasBarStopCommand,
   entityHasBarTrajectoryCommand,
   entityHasBarCarrierSpawnCommand,
   entityHasBarCaptureCommand,
+  entityHasBarResurrectCommand,
   entityHasBarBuilderPriorityCommand,
   entityHasBarFactoryGuardCommand,
   entityHasBarSetTargetCommand,
@@ -127,6 +130,7 @@ function unitActionLabel(action: UnitAction): string {
     case 'attack': return 'Attack';
     case 'attackGround': return 'Attack Ground';
     case 'guard': return 'Guard';
+    case 'selfDestruct': return 'Self Destruct';
     default: return action.type;
   }
 }
@@ -501,8 +505,16 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
       if (fire !== null) details.push({ label: 'Fire', value: fire });
       const trajectory = trajectoryStateLabel(entity);
       if (trajectory !== null) details.push({ label: 'Trajectory', value: trajectory });
+      if (entity.factory !== null) {
+        details.push({ label: 'Move State', value: unitMoveStateLabel(entity.factory.moveState) });
+      }
       if (bp.sensors.radarRadius > 0) details.push({ label: 'Radar', value: fmtStat(bp.sensors.radarRadius) });
-      if (entity.factory !== null) details.push({ label: 'Factory', value: entity.factory.isProducing ? 'Producing' : 'Idle' });
+      if (entity.factory !== null) {
+        details.push({
+          label: 'Factory',
+          value: entity.factory.paused ? 'Waiting' : entity.factory.isProducing ? 'Producing' : 'Idle',
+        });
+      }
       if (entity.factory?.guardTargetId !== null && entity.factory?.guardTargetId !== undefined) {
         details.push({ label: 'Factory Guard', value: `#${entity.factory.guardTargetId}` });
       }
@@ -665,6 +677,7 @@ export function buildSelectionInfo(
   let manualLaunchControlCount = 0;
   let barAttackControlCount = 0;
   let barCaptureControlCount = 0;
+  let barResurrectControlCount = 0;
   let barAreaAttackControlCount = 0;
   let fireAtWillCount = 0;
   let returnFireCount = 0;
@@ -672,6 +685,7 @@ export function buildSelectionInfo(
   let hasPriorityTarget = false;
   let waitingCount = 0;
   let gatherWaitingCount = 0;
+  let waitableEntityCount = selectedUnits.length;
   let repeatCount = 0;
   let moveStateControlCount = 0;
   let holdPositionCount = 0;
@@ -702,6 +716,7 @@ export function buildSelectionInfo(
     }
     if (entityHasBarAreaAttackCommand(selectedUnit)) barAreaAttackControlCount++;
     if (entityHasBarCaptureCommand(selectedUnit)) barCaptureControlCount++;
+    if (entityHasBarResurrectCommand(selectedUnit)) barResurrectControlCount++;
     if (entityHasCloakCommand(selectedUnit)) {
       cloakControlCount++;
       if (selectedUnit.unit?.wantCloak === true) wantCloakCount++;
@@ -751,6 +766,16 @@ export function buildSelectionInfo(
   // for a unit selection.
   for (let i = 0; i < selectedTowers.length; i++) {
     const selectedTower = selectedTowers[i];
+    if (selectedTower.factory !== null) {
+      waitableEntityCount++;
+      if (selectedTower.factory.paused === true) waitingCount++;
+    }
+    if (entityHasBarMoveStateCommand(selectedTower) && selectedTower.factory !== null) {
+      moveStateControlCount++;
+      if (selectedTower.factory.moveState === 'holdPosition') holdPositionCount++;
+      if (selectedTower.factory.moveState === 'roam') roamCount++;
+      if (selectedTower.factory.moveState === 'maneuver') maneuverCount++;
+    }
     if (entityHasBarBuilderPriorityCommand(selectedTower)) {
       builderPriorityControlCount++;
       if (
@@ -803,15 +828,18 @@ export function buildSelectionInfo(
   let allBuildingsOpen = true;
   let barActiveBuildingCount = 0;
   let allBarBuildingsOpen = true;
+  let barStopBuildingCount = 0;
   for (let i = 0; i < selectedBuildings.length; i++) {
     const b = selectedBuildings[i];
-    if (!buildingBlueprintHasActiveState(b.buildingBlueprintId)) continue;
-    activeBuildingCount++;
-    const state = b.building !== null ? b.building.activeState : null;
-    if (state === null || state.open === false) allBuildingsOpen = false;
-    if (buildingBlueprintHasBarOnOffCommand(b.buildingBlueprintId)) {
-      barActiveBuildingCount++;
-      if (state === null || state.open === false) allBarBuildingsOpen = false;
+    if (entityHasBarStopCommand(b)) barStopBuildingCount++;
+    if (buildingBlueprintHasActiveState(b.buildingBlueprintId)) {
+      activeBuildingCount++;
+      const state = b.building !== null ? b.building.activeState : null;
+      if (state === null || state.open === false) allBuildingsOpen = false;
+      if (buildingBlueprintHasBarOnOffCommand(b.buildingBlueprintId)) {
+        barActiveBuildingCount++;
+        if (state === null || state.open === false) allBarBuildingsOpen = false;
+      }
     }
   }
 
@@ -850,11 +878,15 @@ export function buildSelectionInfo(
   let factoryProductionQueue: { unitBlueprintId: string; label: string }[] | undefined;
   let factoryProductionQuotas: { unitBlueprintId: string; label: string; current: number; quota: number }[] | undefined;
   let hasFactoryGuardControl = false;
+  let hasFactoryAirIdleControl = false;
+  let factoryAirIdleState: SelectionInfo['factoryAirIdleState'] = 'land';
   let factoryGuardTargetId: number | null | undefined;
 
   if (factory?.factory) {
     const f = factory.factory;
     hasFactoryGuardControl = entityHasBarFactoryGuardCommand(factory);
+    hasFactoryAirIdleControl = entityHasBarAirPlantLandAtCommand(factory);
+    factoryAirIdleState = f.airIdleState;
     const factoryBuildable = factory.buildable;
     if (isBuildInProgress(factoryBuildable)) {
       factoryUnderConstruction = true;
@@ -910,6 +942,7 @@ export function buildSelectionInfo(
     hasDGun: dgunner !== undefined,
     hasBarAttackControl: barAttackControlCount > 0,
     hasBarCaptureControl: barCaptureControlCount > 0,
+    hasBarResurrectControl: barResurrectControlCount > 0,
     hasBarAreaAttackControl: barAreaAttackControlCount > 0,
     hasMoveStateControl: moveStateControlCount > 0,
     hasFireControl:
@@ -951,6 +984,7 @@ export function buildSelectionInfo(
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
     hasBarBuildingActiveControl: barActiveBuildingCount > 0,
+    hasBarBuildingStopControl: barStopBuildingCount > 0,
     barBuildingsActive: barActiveBuildingCount > 0 && allBarBuildingsOpen,
     hasSelfDestructable,
     hasReclaimableSelection: activeBuilderType !== null && hasReclaimableSelection,
@@ -959,7 +993,7 @@ export function buildSelectionInfo(
     hasTowerTargetActive: hasPriorityTarget,
     isTowerTargetMode: inputState?.isTowerTargetMode ?? false,
     isTowerTargetNoGroundMode: inputState?.isTowerTargetNoGroundMode ?? false,
-    isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
+    isWaiting: waitableEntityCount > 0 && waitingCount === waitableEntityCount,
     isGatherWaiting: selectedUnits.length > 0 && gatherWaitingCount === selectedUnits.length,
     isRepeatQueue: selectedUnits.length > 0 && repeatCount === selectedUnits.length,
     isHoldPosition: moveStateControlCount > 0 && holdPositionCount === moveStateControlCount,
@@ -991,6 +1025,7 @@ export function buildSelectionInfo(
     buildFacingDegrees: inputState?.buildFacingDegrees ?? 0,
     isDGunMode: inputState?.isDGunMode ?? false,
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
+    isRestoreAreaMode: inputState?.isRestoreAreaMode ?? false,
     isFormationAssumeMode: inputState?.isFormationAssumeMode ?? false,
     isFormationMoveMode: inputState?.isFormationMoveMode ?? false,
     isAttackMode: inputState?.isAttackMode ?? false,
@@ -1012,6 +1047,8 @@ export function buildSelectionInfo(
     factoryUnderConstruction,
     factoryConstructionProgress,
     factoryRepeatsProduction,
+    hasFactoryAirIdleControl,
+    factoryAirIdleState,
     factoryProductionQueue,
     factoryProductionQuotas,
     hasFactoryGuardControl,

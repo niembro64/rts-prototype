@@ -2,7 +2,9 @@ import type { Entity, EntityId, PlayerId, UnitAction } from '../../sim/types';
 import type { SelectionEntitySource } from './SelectionHelper';
 import {
   entityMatchesScreenRectSelectionOptions,
+  resolveScreenRectSelectionModifiers,
   selectEntitiesInScreenRect,
+  selectBoxHeldModifierForKeyCode,
   type ProjectToScreen,
   type ScreenRect,
 } from './BoxSelection';
@@ -101,6 +103,25 @@ export function runBoxSelectionContractTest(): void {
   assertContract(
     selectIds(source([tank, scout], []), { sameTypeOnly: true, previousSelection: [tank] }).join(',') === '1',
     'Z/selectbox_same must keep only unit blueprint ids already selected',
+  );
+  assertContract(
+    selectBoxHeldModifierForKeyCode('KeyZ') === 'sameType',
+    'BAR Any+sc_z must resolve as the held same-type selectbox modifier',
+  );
+  const mergedModifiers = resolveScreenRectSelectionModifiers({
+    shiftKey: true,
+    ctrlKey: true,
+    altKey: true,
+    selectBoxSameTypeHeld: true,
+    previousSelection: [tank],
+  });
+  assertContract(
+    mergedModifiers.subtractive &&
+      !mergedModifiers.additive &&
+      mergedModifiers.options.includeBuildingsWithUnits === true &&
+      mergedModifiers.options.mobileOnly === true &&
+      mergedModifiers.options.sameTypeOnly === true,
+    'BAR selectbox_same must compose with Shift/selectbox_any, Ctrl/deselect, and Alt/mobile modifiers',
   );
   assertContract(
     selectIds(source([tank], []), { sameTypeOnly: true }).length === 0,

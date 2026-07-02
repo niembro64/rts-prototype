@@ -26,6 +26,11 @@ import { findGuardTargetAt, isGuardableFriendlyTarget } from './GuardTargetHelpe
 import type { GuardEntitySource } from './GuardTargetHelper';
 import { getPathLength, assignUnitsToTargets } from './PathDistribution';
 import type { LinePathAccumulator } from './LinePathAccumulator';
+import {
+  entityCanBarAttackTarget,
+  entityHasBarAttackCommand,
+  unitBlueprintHasBarBomberAttackBuildingGroundRule,
+} from '../../sim/unitCommandCapabilities';
 
 /** Treat paths shorter than this as single-point group moves. The
  *  user probably meant "click here" rather than a micro-drag, so
@@ -59,17 +64,47 @@ export function buildAttackCommandForTarget(
   queue: boolean,
   queueFront = false,
   queueInsertIndex?: number,
-): AttackCommand | null {
+  arePlayersAllied: ((a: PlayerId, b: PlayerId) => boolean) | undefined = undefined,
+): AttackCommand | AttackGroundCommand | null {
   if (selectedUnits.length === 0) return null;
-  if (!isAttackableEnemyTarget(target, playerId)) return null;
+  if (!isAttackableEnemyTarget(target, playerId, arePlayersAllied)) return null;
+  const targetableUnits: Entity[] = [];
+  let targetableBomberCount = 0;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const unit = selectedUnits[i];
+    if (entityHasBarAttackCommand(unit) && entityCanBarAttackTarget(unit, target)) {
+      targetableUnits.push(unit);
+      const unitBlueprintId = unit.unit?.unitBlueprintId;
+      if (
+        unitBlueprintId !== undefined &&
+        unitBlueprintHasBarBomberAttackBuildingGroundRule(unitBlueprintId)
+      ) {
+        targetableBomberCount += 1;
+      }
+    }
+  }
+  if (targetableUnits.length === 0) return null;
+  if (target.type !== 'unit' && targetableBomberCount === targetableUnits.length) {
+    return {
+      type: 'attackGround',
+      tick,
+      entityIds: selectedUnitIds(targetableUnits),
+      targetX: target.transform.x,
+      targetY: target.transform.y,
+      targetZ: target.transform.z,
+      queue,
+      queueFront,
+      queueInsertIndex,
+    };
+  }
   // BAR NoDuplicateOrders: on a plain shift append, units that already
   // queue an attack on this target are dropped per-unit; when every
   // selected unit has it, the whole order is dropped.
-  let orderedUnits: readonly Entity[] = selectedUnits;
+  let orderedUnits: readonly Entity[] = targetableUnits;
   if (isPlainQueueAppend(queue, queueFront, queueInsertIndex)) {
     const withoutDuplicates: Entity[] = [];
-    for (let i = 0; i < selectedUnits.length; i++) {
-      const unit = selectedUnits[i];
+    for (let i = 0; i < targetableUnits.length; i++) {
+      const unit = targetableUnits[i];
       if (!unitHasQueuedDuplicateOrder(unit, 'attack', target.id)) withoutDuplicates.push(unit);
     }
     if (withoutDuplicates.length === 0) return null;
@@ -101,9 +136,18 @@ export function buildAttackCommandAt(
   queue: boolean,
   queueFront = false,
   queueInsertIndex?: number,
-): AttackCommand | null {
+): AttackCommand | AttackGroundCommand | null {
   const target = findAttackTargetAt(source, worldX, worldY, playerId);
-  return buildAttackCommandForTarget(target, selectedUnits, playerId, tick, queue, queueFront, queueInsertIndex);
+  return buildAttackCommandForTarget(
+    target,
+    selectedUnits,
+    playerId,
+    tick,
+    queue,
+    queueFront,
+    queueInsertIndex,
+    source.arePlayersAllied,
+  );
 }
 
 export function buildAttackAreaCommand(
@@ -164,8 +208,9 @@ export function buildGuardCommandForTarget(
   queue: boolean,
   queueFront = false,
   queueInsertIndex?: number,
+  arePlayersAllied: ((a: PlayerId, b: PlayerId) => boolean) | undefined = undefined,
 ): GuardCommand | null {
-  if (!isGuardableFriendlyTarget(target, playerId)) return null;
+  if (!isGuardableFriendlyTarget(target, playerId, arePlayersAllied)) return null;
   const entityIds: EntityId[] = [];
   for (const unit of selectedUnits) {
     if (unit.id !== target.id) entityIds.push(unit.id);
@@ -194,7 +239,16 @@ export function buildGuardCommandAt(
   queueInsertIndex?: number,
 ): GuardCommand | null {
   const target = findGuardTargetAt(source, worldX, worldY, playerId);
-  return buildGuardCommandForTarget(target, selectedUnits, playerId, tick, queue, queueFront, queueInsertIndex);
+  return buildGuardCommandForTarget(
+    target,
+    selectedUnits,
+    playerId,
+    tick,
+    queue,
+    queueFront,
+    queueInsertIndex,
+    source.arePlayersAllied,
+  );
 }
 
 /** Turn a finished line path into a MoveCommand. Short paths

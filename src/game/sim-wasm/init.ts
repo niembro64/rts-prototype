@@ -4528,6 +4528,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runInput3DKeyboardControllerContractTest();
         const { runInput3DModeClickControllerContractTest } = await import('../render3d/Input3DModeClickControllerContractTest');
         runInput3DModeClickControllerContractTest();
+        const { runInput3DTargetTypeTrackerContractTest } = await import('../render3d/Input3DTargetTypeTrackerContractTest');
+        runInput3DTargetTypeTrackerContractTest();
         const { runBuildGhost3DContractTest } = await import('../render3d/BuildGhost3DContractTest');
         runBuildGhost3DContractTest();
         const { runResourcePylonFlowController3DContractTest } = await import('../render3d/ResourcePylonFlowController3DContractTest');

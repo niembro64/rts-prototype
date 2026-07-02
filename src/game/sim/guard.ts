@@ -14,10 +14,12 @@ export function isAliveGuardTarget(target: Entity | undefined): target is Entity
 export function isFriendlyGuardTarget(
   target: Entity | undefined,
   playerId: PlayerId,
+  arePlayersAllied: ((a: PlayerId, b: PlayerId) => boolean) | undefined = undefined,
 ): target is Entity {
-  return isAliveGuardTarget(target) &&
-    target.ownership !== null &&
-    target.ownership.playerId === playerId;
+  if (!isAliveGuardTarget(target) || target.ownership === null) return false;
+  return arePlayersAllied !== undefined
+    ? arePlayersAllied(playerId, target.ownership.playerId)
+    : target.ownership.playerId === playerId;
 }
 
 /** What a BUILDER guard should do for its guard target this tick, BAR-style
@@ -105,7 +107,7 @@ export function resolveGuardServiceTarget(
     if (action === undefined || action.type !== 'guard' || action.targetId === undefined) return null;
     const target = world.getEntity(action.targetId);
     if (target === undefined || target.ownership === null) return null;
-    if (target.ownership.playerId !== playerId) return null;
+    if (!world.arePlayersAllied(playerId, target.ownership.playerId)) return null;
     if (visited.has(target.id)) return null; // cycle
     visited.add(target.id);
 

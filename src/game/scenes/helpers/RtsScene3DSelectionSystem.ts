@@ -46,6 +46,7 @@ export class RtsScene3DSelectionSystem {
   private queueInsertIndex: number | null = null;
   private dgunActive = false;
   private repairAreaActive = false;
+  private restoreAreaActive = false;
   private formationAssumeActive = false;
   private formationMoveActive = false;
   private attackActive = false;
@@ -146,6 +147,11 @@ export class RtsScene3DSelectionSystem {
 
   setRepairAreaMode(active: boolean): void {
     this.repairAreaActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setRestoreAreaMode(active: boolean): void {
+    this.restoreAreaActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -327,6 +333,7 @@ export class RtsScene3DSelectionSystem {
       queueInsertIndex: this.queueInsertIndex,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
+      isRestoreAreaMode: this.restoreAreaActive,
       isFormationAssumeMode: this.formationAssumeActive,
       isFormationMoveMode: this.formationMoveActive,
       isAttackMode: this.attackActive,

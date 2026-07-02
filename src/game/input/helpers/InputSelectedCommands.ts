@@ -7,6 +7,7 @@ import {
   entityHasBarCarrierSpawnCommand,
   entityHasBarSetTargetCommand,
   entityHasBarMoveStateCommand,
+  entityHasBarStopCommand,
   entityHasCloakCommand,
 } from '../../sim/unitCommandCapabilities';
 
@@ -100,7 +101,7 @@ export class InputSelectedCommands {
   }
 
   stop(): void {
-    const entityIds = this.selectedUnitIds();
+    const entityIds = this.selectedStopEntityIds();
     if (entityIds.length === 0) return;
     this.commandQueue.enqueue({
       type: 'stop',
@@ -140,7 +141,7 @@ export class InputSelectedCommands {
   }
 
   wait(queue: boolean, queueFront = false, queueInsertIndex?: number): void {
-    const entityIds = this.selectedUnitIds();
+    const entityIds = this.selectedWaitEntityIds();
     if (entityIds.length === 0) return;
     const tick = this.getTick();
     this.commandQueue.enqueue({
@@ -252,6 +253,7 @@ export class InputSelectedCommands {
 
   setUnitMoveState(nextMoveState?: UnitMoveState): void {
     const selectedUnits = this.source.getSelectedUnits();
+    const selectedStatic = this.source.getSelectedBuildings();
     const entityIds: EntityId[] = [];
     let firstMoveState: UnitMoveState | null = null;
     let allSameMoveState = true;
@@ -263,6 +265,15 @@ export class InputSelectedCommands {
       entityIds.push(entity.id);
       if (firstMoveState === null) firstMoveState = unit.moveState;
       else if (unit.moveState !== firstMoveState) allSameMoveState = false;
+    }
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const entity = selectedStatic[i];
+      if (!entityHasBarMoveStateCommand(entity)) continue;
+      const factory = entity.factory;
+      if (factory === null) continue;
+      entityIds.push(entity.id);
+      if (firstMoveState === null) firstMoveState = factory.moveState;
+      else if (factory.moveState !== firstMoveState) allSameMoveState = false;
     }
     if (entityIds.length === 0) return;
     const moveState = nextMoveState ?? (firstMoveState !== null && allSameMoveState
@@ -392,7 +403,7 @@ export class InputSelectedCommands {
     });
   }
 
-  selfDestruct(): void {
+  selfDestruct(queue = false, queueFront = false, queueInsertIndex?: number): void {
     const selectedUnits = this.source.getSelectedUnits();
     const selectedStatic = this.source.getSelectedBuildings();
     const entityIds: EntityId[] = [];
@@ -403,6 +414,9 @@ export class InputSelectedCommands {
       type: 'selfDestruct',
       tick: this.getTick(),
       entityIds,
+      queue,
+      queueFront,
+      queueInsertIndex,
     });
   }
 
@@ -441,6 +455,39 @@ export class InputSelectedCommands {
     return entityIds;
   }
 
+  private selectedStopEntityIds(): EntityId[] {
+    const selectedUnits = this.source.getSelectedUnits();
+    const selectedStatic = this.source.getSelectedBuildings();
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) entityIds.push(selectedUnits[i].id);
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const entity = selectedStatic[i];
+      if (!entityHasBarStopCommand(entity)) continue;
+      entityIds.push(entity.id);
+    }
+    return entityIds;
+  }
+
+  private selectedWaitEntityIds(): EntityId[] {
+    const selectedUnits = this.source.getSelectedUnits();
+    const entityIds: EntityId[] = [];
+    const seen = new Set<EntityId>();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const id = selectedUnits[i].id;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      entityIds.push(id);
+    }
+    const selectedStatic = this.source.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const entity = selectedStatic[i];
+      if (entity.factory === null || seen.has(entity.id)) continue;
+      seen.add(entity.id);
+      entityIds.push(entity.id);
+    }
+    return entityIds;
+  }
+
   private createGatherWaitGroupId(entityIds: readonly EntityId[], tick: number): number {
     this.gatherWaitSerial = (this.gatherWaitSerial + 1) & 0x7FFF_FFFF;
     let hash = Math.imul(tick | 0, 0x45D9F3B) >>> 0;
@@ -453,7 +500,7 @@ export class InputSelectedCommands {
 }
 
 function entityHasBallisticCombat(entity: Entity): boolean {
-  const combat = entity.combat;
+  const combat = entity.combat ?? null;
   if (combat === null || combat.turrets.length === 0) return false;
   for (let i = 0; i < combat.turrets.length; i++) {
     if (isBallisticArcWeapon(combat.turrets[i])) return true;

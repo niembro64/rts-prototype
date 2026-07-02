@@ -8,6 +8,8 @@ const CAMERA_VIEW_MODE_PITCH: Record<CameraViewMode, number> = {
   ta: Math.PI * 0.25,
   spring: Math.PI * 0.36,
 };
+const CAMERA_VIEW_MODE_CYCLE: readonly CameraViewMode[] = ['overhead', 'ta', 'spring'];
+const VIEW_RADIUS_STEP_FACTOR = 1.125;
 
 // Mini "camera" accessor read by GameCanvas.vue for the zoom display.
 // Derives a scalar zoom number from the 3D orbit distance so UI sliders
@@ -109,6 +111,19 @@ export class RtsScene3DCameraControl {
     });
   }
 
+  toggleViewMode(): void {
+    const currentMode = this.closestViewMode(this.threeApp.orbit.pitch);
+    const currentIndex = CAMERA_VIEW_MODE_CYCLE.indexOf(currentMode);
+    const nextMode = CAMERA_VIEW_MODE_CYCLE[(currentIndex + 1) % CAMERA_VIEW_MODE_CYCLE.length] ?? 'ta';
+    this.setViewMode(nextMode);
+  }
+
+  changeViewRadius(direction: 1 | -1): void {
+    const orbit = this.threeApp.orbit;
+    const factor = direction > 0 ? VIEW_RADIUS_STEP_FACTOR : 1 / VIEW_RADIUS_STEP_FACTOR;
+    orbit.setDistance(orbit.distance * factor);
+  }
+
   captureState(): SceneCameraState {
     const orbit = this.threeApp.orbit;
     return {
@@ -144,5 +159,19 @@ export class RtsScene3DCameraControl {
     const cam = this.threeApp.camera;
     const vFov = (cam.fov * Math.PI) / 180;
     return Math.tan(vFov / 2) * this.threeApp.orbit.distance;
+  }
+
+  private closestViewMode(pitch: number): CameraViewMode {
+    let closestMode: CameraViewMode = CAMERA_VIEW_MODE_CYCLE[0] ?? 'ta';
+    let closestDelta = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < CAMERA_VIEW_MODE_CYCLE.length; i++) {
+      const mode = CAMERA_VIEW_MODE_CYCLE[i];
+      const delta = Math.abs(CAMERA_VIEW_MODE_PITCH[mode] - pitch);
+      if (delta < closestDelta) {
+        closestMode = mode;
+        closestDelta = delta;
+      }
+    }
+    return closestMode;
   }
 }

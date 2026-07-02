@@ -8,7 +8,12 @@ export {
 
 export {
   
+  resolveScreenRectSelectionModifiers,
+  selectBoxHeldModifierForKeyCode,
   type ScreenRectSelectionOptions,
+  type ResolvedScreenRectSelectionModifiers,
+  type ScreenRectSelectionModifierState,
+  type SelectBoxHeldModifier,
   entityMatchesScreenRectSelectionOptions,
   selectEntitiesInScreenRect,
 } from './BoxSelection';
@@ -56,6 +61,7 @@ export {
   buildCaptureCommandForTarget,
   buildResurrectAreaCommand,
   buildResurrectCommandForTarget,
+  buildLoadTransportAreaCommand,
   buildLoadTransportCommandForTarget,
   buildUnloadTransportCommand,
   buildFactoryGuardCommands,

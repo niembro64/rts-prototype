@@ -15,6 +15,7 @@ export type ActionType =
   | 'capture'
   | 'resurrect'
   | 'wait'
+  | 'selfDestruct'
   | 'attack'
   | 'attackGround'
   | 'guard'

@@ -3,7 +3,7 @@ import { CommandQueue } from './commands';
 import type { Entity, EntityId, PlayerId, Unit, UnitAction, UnitPathPoint } from './types';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { magnitude } from '../math';
-import { executeCommand, type CommandContext } from './commandExecution';
+import { executeCommand, SELF_DESTRUCT_COUNTDOWN_TICKS, type CommandContext } from './commandExecution';
 import { distributeEnergy, createEnergyBuffers, resetEnergyBuffers, type EnergyBuffers } from './energyDistribution';
 import { resourceMovementSystem } from './resourceMovement';
 import {
@@ -55,6 +55,7 @@ import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlann
 import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
 import { SimulationCombatController } from './SimulationCombatController';
 import { SimulationActionQueueMaintenance } from './SimulationActionQueueMaintenance';
+import { SimulationIdleBuilderAutoRepair } from './SimulationIdleBuilderAutoRepair';
 import {
   ARRIVAL_RADIUS,
   SimulationArrivalController,
@@ -141,6 +142,7 @@ export class Simulation {
   private deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private combatController: SimulationCombatController;
   private actionQueueMaintenance: SimulationActionQueueMaintenance;
+  private idleBuilderAutoRepair: SimulationIdleBuilderAutoRepair;
   private deadEntityCleanup: SimulationDeadEntityCleanup;
   private arrivalController: SimulationArrivalController;
   private combatHaltController: SimulationCombatHaltController;
@@ -238,6 +240,7 @@ export class Simulation {
       this.world,
       (entity) => this.advanceAction(entity),
     );
+    this.idleBuilderAutoRepair = new SimulationIdleBuilderAutoRepair(this.world);
     this.arrivalController = new SimulationArrivalController(this.world, {
       advanceAction: (entity) => this.advanceAction(entity),
       advanceActivePathPoint: (entity) => this.advanceActivePathPoint(entity),
@@ -386,6 +389,11 @@ export class Simulation {
     // single canonical normal source so the renderer, sim turret
     // mounts, and locomotion can never read disagreeing per-unit normals.
     updateUnitGroundNormal(this.world, dtMs);
+
+    // BAR unit_auto_repair_idle_builders.lua parity: idle mobile builders
+    // periodically take a nearby damaged allied unit, then return to the
+    // recorded idle point when the repair finishes or becomes invalid.
+    this.idleBuilderAutoRepair.update(tick);
 
     // Distribute energy equally among all active consumers (factories, construction, commander)
     distributeEnergy(this.world, dtMs, this.energyBuffers);
@@ -755,6 +763,51 @@ export class Simulation {
     }
   }
 
+  private emitSelfDestructEvent(entity: Entity, armed: boolean): void {
+    const event: SimEvent = {
+      type: armed ? 'selfDestructArmed' : 'selfDestructDisarmed',
+      turretBlueprintId: '',
+      sourceType: 'system',
+      sourceKey: 'selfDestruct',
+      playerId: entity.ownership !== null ? entity.ownership.playerId : undefined,
+      entityId: entity.id,
+      pos: {
+        x: entity.transform.x,
+        y: entity.transform.y,
+        z: entity.transform.z,
+      },
+    };
+    if (this.onSimEvent !== null) this.onSimEvent(event);
+    this.eventQueues.simEvents.push(event);
+  }
+
+  private toggleSelfDestructCountdown(entity: Entity): void {
+    const hpState = entity.unit !== null ? entity.unit : entity.building;
+    if (hpState === null || hpState.hp <= 0) {
+      this.world.armedSelfDestructs.delete(entity.id);
+      return;
+    }
+    if (this.world.armedSelfDestructs.has(entity.id)) {
+      this.world.armedSelfDestructs.delete(entity.id);
+      this.emitSelfDestructEvent(entity, false);
+    } else {
+      this.world.armedSelfDestructs.set(entity.id, this.world.getTick() + SELF_DESTRUCT_COUNTDOWN_TICKS);
+      this.emitSelfDestructEvent(entity, true);
+    }
+  }
+
+  private activateQueuedSelfDestructAction(entity: Entity): void {
+    const unit = entity.unit;
+    if (unit === null) return;
+    this.toggleSelfDestructCountdown(entity);
+    shiftUnitAction(unit);
+    const patrolStartIndex = unit.actions.findIndex((action) => action.type === 'patrol');
+    unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
+    unit.activePath = null;
+    unit.stuckTicks = 0;
+    this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+  }
+
   private updateUnits(dtSec: number): void {
     const movingUnits = this._movingUnitsBuf;
     movingUnits.length = 0;
@@ -774,9 +827,19 @@ export class Simulation {
     }
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      if (!entity.unit || !entity.body) continue;
+      if (!entity.unit) continue;
 
       const { unit } = entity;
+      if (!entity.body) {
+        if (
+          unit.hp > 0 &&
+          !isBuildBlockingActivation(entity.buildable) &&
+          unit.actions[0]?.type === 'selfDestruct'
+        ) {
+          this.activateQueuedSelfDestructAction(entity);
+        }
+        continue;
+      }
 
       // Construction shells do not execute player actions or acquire
       // combat priority while incomplete, but their physics body remains
@@ -852,6 +915,10 @@ export class Simulation {
 
       // Get current action
       const currentAction = unit.actions[0];
+      if (currentAction.type === 'selfDestruct') {
+        this.activateQueuedSelfDestructAction(entity);
+        continue;
+      }
       this.flyingLoiter.rememberTarget(unit, currentAction);
 
       let flags = 0;
@@ -918,7 +985,7 @@ export class Simulation {
         const guardOwnerId = entity.ownership?.playerId;
         const isFriendlyGuard =
           guardOwnerId !== undefined &&
-          isFriendlyGuardTarget(guardTarget, guardOwnerId);
+          isFriendlyGuardTarget(guardTarget, guardOwnerId, (a, b) => this.world.arePlayersAllied(a, b));
         if (isFriendlyGuard) {
           flags |= UNIT_ACTION_FLAG_GUARD_FRIENDLY;
 
@@ -1148,7 +1215,14 @@ export class Simulation {
         case UNIT_ACTION_PLAN_GUARD_FOLLOW: {
           if (currentAction === undefined || currentAction.type !== 'guard' || currentAction.targetId === undefined) break;
           const guardTarget = this.world.getEntity(currentAction.targetId);
-          if (!entity.ownership || !isFriendlyGuardTarget(guardTarget, entity.ownership.playerId)) {
+          if (
+            !entity.ownership ||
+            !isFriendlyGuardTarget(
+              guardTarget,
+              entity.ownership.playerId,
+              (a, b) => this.world.arePlayersAllied(a, b),
+            )
+          ) {
             this.advanceAction(entity);
             unit.stuckTicks = 0;
             break;
@@ -1256,7 +1330,14 @@ export class Simulation {
             continue;
           }
           const guardTarget = this.world.getEntity(action.targetId);
-          if (!entity.ownership || !isFriendlyGuardTarget(guardTarget, entity.ownership.playerId)) {
+          if (
+            !entity.ownership ||
+            !isFriendlyGuardTarget(
+              guardTarget,
+              entity.ownership.playerId,
+              (a, b) => this.world.arePlayersAllied(a, b),
+            )
+          ) {
             this.advanceAction(entity);
             unit.stuckTicks = 0;
             continue;
@@ -1465,6 +1546,7 @@ export class Simulation {
     this.flyingLoiter.reset();
     this.stuckReplanController.reset();
     this.combatHaltController.reset();
+    this.idleBuilderAutoRepair.reset();
     this.unitActionPlanner.reset();
     this.unitActionMovementPlanner.reset();
     this.world.clearPendingDeathCheckIds();

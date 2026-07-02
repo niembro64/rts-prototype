@@ -76,6 +76,7 @@ const LOCAL_PRESENTATION_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
 
 const ARCHITECTURE_CONTROL_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'setPaused',
+  'adjustGameSpeed',
 ]);
 
 // Battle settings that change gameplay truth. They frame-schedule like any

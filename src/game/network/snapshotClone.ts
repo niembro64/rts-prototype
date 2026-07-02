@@ -212,6 +212,9 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   dst.progress = src.progress;
   dst.producing = src.producing;
   dst.repeat = src.repeat !== false;
+  dst.paused = src.paused === true;
+  dst.moveState = src.moveState;
+  dst.airIdleState = src.airIdleState;
   const srcQueue = src.queue ?? null;
   if (srcQueue !== null) {
     const queue = dst.queue ?? (dst.queue = []);
@@ -308,6 +311,9 @@ function copyBuildingInto(
         progress: 0,
         producing: false,
         repeat: true,
+        paused: false,
+        moveState: undefined,
+        airIdleState: undefined,
         queue: null,
         quotas: null,
         quotaCounts: null,

@@ -136,6 +136,7 @@ function factoryEntity(id: number, lowPriority: boolean): Entity {
     buildingBlueprintId: 'towerFabricator',
     factory: {
       lowPriority,
+      moveState: 'holdPosition',
     },
   } as Entity;
 }
@@ -179,6 +180,14 @@ function carrierFactoryUnitEntity(id: number, carrierSpawnEnabled: boolean): Ent
   } as Entity;
 }
 
+function factoryTowerEntity(id: number): Entity {
+  return {
+    id,
+    type: 'tower',
+    factory: {},
+  } as Entity;
+}
+
 function lastCommand(commands: readonly Command[]): Command {
   const command = commands[commands.length - 1];
   assertContract(command !== undefined, 'expected a command to be enqueued');
@@ -208,6 +217,39 @@ export function runInputSelectedCommandsContractTest(): void {
     'exact repeat setter must enqueue repeat on',
   );
 
+  selectedUnits = [];
+  selectedBuildings = [
+    factoryTowerEntity(15),
+    { id: 16, type: 'tower', factory: null } as Entity,
+  ];
+  selectedCommands.wait(false);
+  const factoryWaitCommand = lastCommand(commands);
+  assertContract(
+    factoryWaitCommand.type === 'wait' &&
+      factoryWaitCommand.entityIds.length === 1 &&
+      factoryWaitCommand.entityIds[0] === 15,
+    'normal Wait must enqueue selected factory ids so BAR factory wait can pause production',
+  );
+
+  selectedUnits = [unitEntity(17, false, 'maneuver')];
+  selectedBuildings = [
+    targetCommandEntity(18, 'tower'),
+    { id: 19, type: 'building', combat: null } as Entity,
+    { id: 20, type: 'building', buildingBlueprintId: 'buildingExtractorT2', combat: null } as Entity,
+  ];
+  selectedCommands.stop();
+  const stopCommand = lastCommand(commands);
+  assertContract(
+    stopCommand.type === 'stop' &&
+      stopCommand.entityIds.length === 3 &&
+      stopCommand.entityIds[0] === 17 &&
+      stopCommand.entityIds[1] === 18 &&
+      stopCommand.entityIds[2] === 20,
+    'BAR Stop must enqueue selected combat towers and armamex/T2 mex pure buildings as well as units while leaving removestop pure buildings out',
+  );
+
+  selectedUnits = [unitEntity(10, false, 'maneuver')];
+  selectedBuildings = [];
   selectedCommands.setUnitMoveState('roam');
   const moveCommand = lastCommand(commands);
   assertContract(
@@ -215,6 +257,18 @@ export function runInputSelectedCommandsContractTest(): void {
       moveCommand.moveState === 'roam' &&
       moveCommand.entityIds[0] === 10,
     'exact move-state setter must enqueue the requested state',
+  );
+
+  selectedUnits = [];
+  selectedBuildings = [factoryEntity(17, true)];
+  selectedCommands.setUnitMoveState('maneuver');
+  const factoryMoveCommand = lastCommand(commands);
+  assertContract(
+    factoryMoveCommand.type === 'setUnitMoveState' &&
+      factoryMoveCommand.moveState === 'maneuver' &&
+      factoryMoveCommand.entityIds.length === 1 &&
+      factoryMoveCommand.entityIds[0] === 17,
+    'exact move-state setter must enqueue BAR factory ids because factories expose CMD.MOVE_STATE',
   );
 
   selectedUnits = [unitEntity(11, false, 'maneuver', 'unitJackal')];

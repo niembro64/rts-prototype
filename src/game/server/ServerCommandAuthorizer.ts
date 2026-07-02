@@ -6,6 +6,7 @@ import type {
   CaptureCommand,
   ClearQueuedOrdersCommand,
   Command,
+  FireDGunCommand,
   GuardCommand,
   LoadTransportCommand,
   ManualLaunchCommand,
@@ -22,6 +23,7 @@ import type {
   SetBuilderPriorityCommand,
   SetCarrierSpawnCommand,
   SetCloakStateCommand,
+  SetFactoryAirIdleStateCommand,
   SetFireEnabledCommand,
   SetFactoryGuardCommand,
   SetRepeatQueueCommand,
@@ -53,12 +55,17 @@ import { canLoadTransport, isTransportUnit } from '../sim/transports';
 import {
   entityHasBarAttackCommand,
   entityHasBarAreaAttackCommand,
+  entityHasBarAirPlantLandAtCommand,
   entityHasBarBuilderPriorityCommand,
   entityHasBarCarrierSpawnCommand,
   entityHasBarCaptureCommand,
   entityHasBarFactoryGuardCommand,
+  entityHasBarFireControlCommand,
   entityHasBarMoveStateCommand,
   entityHasBarSetTargetCommand,
+  entityHasBarStopCommand,
+  entityCanIssueResurrectCommand,
+  entityCanBarAttackTarget,
   entityHasCloakCommand,
 } from '../sim/unitCommandCapabilities';
 
@@ -116,12 +123,14 @@ export function authorizeGameServerGameplayCommand(
     case 'move':
       return authorizeMoveCommand(world, command, playerId);
 
-    case 'stop':
     case 'clearQueuedOrders':
     case 'removeLastQueuedOrder':
     case 'skipCurrentOrder':
     case 'setRepeatQueue':
       return authorizeUnitListCommand(world, command, playerId);
+
+    case 'stop':
+      return authorizeStopCommand(world, command, playerId);
 
     case 'setUnitMoveState':
       return authorizeSetUnitMoveStateCommand(world, command, playerId);
@@ -136,9 +145,11 @@ export function authorizeGameServerGameplayCommand(
       return authorizeSetCloakStateCommand(world, command, playerId);
 
     case 'wait':
-      return authorizeUnitListCommand(world, command, playerId);
+      return authorizeWaitCommand(world, command, playerId);
 
     case 'setFireEnabled':
+      return authorizeSetFireEnabledCommand(world, command, playerId);
+
     case 'setTrajectoryMode':
     case 'manualLaunch':
       // Combat state controls apply to any owned entity with combat
@@ -186,6 +197,9 @@ export function authorizeGameServerGameplayCommand(
     case 'editFactoryQueue':
       return isOwnedFactory(world, command.factoryId, playerId) ? command : null;
 
+    case 'setFactoryAirIdleState':
+      return authorizeSetFactoryAirIdleStateCommand(world, command, playerId);
+
     case 'changeFactoryUnitQuota':
       return authorizeQueueUnitCommand(world, command, playerId);
 
@@ -193,7 +207,7 @@ export function authorizeGameServerGameplayCommand(
       return authorizeSetFactoryGuardCommand(world, command, playerId);
 
     case 'fireDGun':
-      return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
+      return authorizeFireDGunCommand(world, command, playerId);
 
     case 'repair':
       if (!isOwnedEntity(world, command.commanderId, playerId)) return null;
@@ -233,10 +247,33 @@ function authorizeLoadTransportCommand(
   command: LoadTransportCommand,
   playerId: PlayerId,
 ): LoadTransportCommand | null {
-  const transport = world.getEntity(command.transportId);
-  if (!isTransportUnit(transport) || transport.ownership?.playerId !== playerId) return null;
-  const target = world.getEntity(command.targetId);
-  return canLoadTransport(transport, target) ? command : null;
+  if ('targetId' in command) {
+    const transport = world.getEntity(command.transportId);
+    if (!isTransportUnit(transport) || transport.ownership?.playerId !== playerId) return null;
+    const target = world.getEntity(command.targetId);
+    return canLoadTransport(transport, target) ? command : null;
+  }
+  if (
+    !Number.isFinite(command.targetX) ||
+    !Number.isFinite(command.targetY) ||
+    !Number.isFinite(command.radius) ||
+    command.radius <= 0
+  ) {
+    return null;
+  }
+  const transportIds: EntityId[] = [];
+  const seen = _authorizeSeenEntityIds;
+  seen.clear();
+  for (let i = 0; i < command.transportIds.length; i++) {
+    const id = command.transportIds[i];
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const transport = world.getEntity(id);
+    if (!isTransportUnit(transport) || transport.ownership?.playerId !== playerId) continue;
+    transportIds.push(id);
+  }
+  seen.clear();
+  return transportIds.length > 0 ? { ...command, transportIds } : null;
 }
 
 function authorizeUnloadTransportCommand(
@@ -280,7 +317,12 @@ function authorizeResurrectCommand(
   command: ResurrectCommand,
   playerId: PlayerId,
 ): ResurrectCommand | null {
-  if (!isOwnedEntity(world, command.commanderId, playerId)) return null;
+  const commander = world.getEntity(command.commanderId);
+  if (
+    commander === undefined ||
+    commander.ownership?.playerId !== playerId ||
+    !entityCanIssueResurrectCommand(commander)
+  ) return null;
   return isResurrectableWreck(world.getEntity(command.targetId)) ? command : null;
 }
 
@@ -289,7 +331,12 @@ function authorizeResurrectAreaCommand(
   command: ResurrectAreaCommand,
   playerId: PlayerId,
 ): ResurrectAreaCommand | null {
-  return isOwnedEntity(world, command.commanderId, playerId) ? command : null;
+  const commander = world.getEntity(command.commanderId);
+  return commander !== undefined &&
+    commander.ownership?.playerId === playerId &&
+    entityCanIssueResurrectCommand(commander)
+    ? command
+    : null;
 }
 
 function authorizeStartBuildCommand(
@@ -413,6 +460,48 @@ function authorizeUnitListCommand(
   return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
 }
 
+function authorizeStopCommand(
+  world: WorldState,
+  command: StopCommand,
+  playerId: PlayerId,
+): StopCommand | null {
+  const sourceIds = command.entityIds;
+  if (sourceIds.length === 0) return null;
+
+  const entityIds: EntityId[] = [];
+  for (let i = 0; i < sourceIds.length; i++) {
+    const id = sourceIds[i];
+    if (isOwnedBarStoppableEntity(world, id, playerId)) {
+      entityIds.push(id);
+    }
+  }
+  if (entityIds.length === 0) return null;
+  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+}
+
+function authorizeWaitCommand(
+  world: WorldState,
+  command: WaitCommand,
+  playerId: PlayerId,
+): WaitCommand | null {
+  if (command.gather === true) {
+    return authorizeUnitListCommand(world, command, playerId) as WaitCommand | null;
+  }
+
+  const sourceIds = command.entityIds;
+  if (sourceIds.length === 0) return null;
+
+  const entityIds: EntityId[] = [];
+  for (let i = 0; i < sourceIds.length; i++) {
+    const id = sourceIds[i];
+    if (isOwnedUnit(world, id, playerId) || isOwnedFactory(world, id, playerId)) {
+      entityIds.push(id);
+    }
+  }
+  if (entityIds.length === 0) return null;
+  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+}
+
 function authorizeAttackCommand(
   world: WorldState,
   command: AttackCommand,
@@ -420,6 +509,14 @@ function authorizeAttackCommand(
 ): AttackCommand | null {
   const sourceIds = command.entityIds;
   if (sourceIds.length === 0) return null;
+  const target = world.getEntity(command.targetId);
+  if (
+    target === undefined ||
+    target.ownership === null ||
+    world.arePlayersAllied(playerId, target.ownership.playerId)
+  ) {
+    return null;
+  }
 
   const entityIds: EntityId[] = [];
   for (let i = 0; i < sourceIds.length; i++) {
@@ -427,6 +524,7 @@ function authorizeAttackCommand(
     const entity = world.getEntity(id);
     if (entity === undefined || entity.ownership?.playerId !== playerId) continue;
     if (!entityHasBarAttackCommand(entity)) continue;
+    if (!entityCanBarAttackTarget(entity, target)) continue;
     entityIds.push(id);
   }
   if (entityIds.length === 0) return null;
@@ -478,7 +576,7 @@ function authorizeGuardCommand(
   command: GuardCommand,
   playerId: PlayerId,
 ): GuardCommand | null {
-  if (!isOwnedEntity(world, command.targetId, playerId)) return null;
+  if (!isAlliedEntity(world, command.targetId, playerId)) return null;
 
   const sourceIds = command.entityIds;
   if (sourceIds.length === 0) return null;
@@ -545,11 +643,8 @@ function authorizeSetCarrierSpawnCommand(
 }
 
 /** Authorize a target-lock command: every entityId must be an owned combat
- *  entity with a BAR-equivalent targetable weapon. The lock-on `targetId`
- *  itself may name any entity in the world that has an ID (friendly or enemy);
- *  the receiving turret's exclusion policy decides whether to honor it
- *  (see budget_design_philosophy.html "Lock-on selection: anything with an
- *  ID is a candidate"). */
+ *  entity with a BAR-equivalent targetable weapon, and unit analogues with
+ *  BAR target restrictions keep those restrictions for explicit locks. */
 function authorizeSetTowerTargetCommand(
   world: WorldState,
   command: SetTowerTargetCommand,
@@ -557,6 +652,10 @@ function authorizeSetTowerTargetCommand(
 ): SetTowerTargetCommand | null {
   const sourceIds = command.entityIds;
   if (sourceIds.length === 0) return null;
+  const target = command.targetId !== null ? world.getEntity(command.targetId) : null;
+  const isClearTarget = command.targetId === null &&
+    command.targetX === undefined &&
+    command.targetY === undefined;
   const entityIds: EntityId[] = [];
   for (let i = 0; i < sourceIds.length; i++) {
     const id = sourceIds[i];
@@ -564,8 +663,33 @@ function authorizeSetTowerTargetCommand(
     if (
       entity !== undefined
       && entityHasBarSetTargetCommand(entity)
+      && (isClearTarget || entityCanBarAttackTarget(entity, target))
       && entity.ownership !== null
       && entity.ownership.playerId === playerId
+    ) {
+      entityIds.push(id);
+    }
+  }
+  if (entityIds.length === 0) return null;
+  return entityIds.length === sourceIds.length ? command : { ...command, entityIds };
+}
+
+function authorizeSetFireEnabledCommand(
+  world: WorldState,
+  command: SetFireEnabledCommand,
+  playerId: PlayerId,
+): SetFireEnabledCommand | null {
+  const sourceIds = command.entityIds;
+  if (sourceIds.length === 0) return null;
+
+  const entityIds: EntityId[] = [];
+  for (let i = 0; i < sourceIds.length; i++) {
+    const id = sourceIds[i];
+    const entity = world.getEntity(id);
+    if (
+      entity !== undefined &&
+      entity.ownership?.playerId === playerId &&
+      entityHasBarFireControlCommand(entity)
     ) {
       entityIds.push(id);
     }
@@ -633,13 +757,57 @@ function authorizeSetFactoryGuardCommand(
     return null;
   }
   if (command.targetId === null) return command;
-  return isOwnedEntity(world, command.targetId, playerId) ? command : null;
+  return isAlliedEntity(world, command.targetId, playerId) ? command : null;
+}
+
+function authorizeSetFactoryAirIdleStateCommand(
+  world: WorldState,
+  command: SetFactoryAirIdleStateCommand,
+  playerId: PlayerId,
+): SetFactoryAirIdleStateCommand | null {
+  const factory = world.getEntity(command.factoryId);
+  return factory !== undefined &&
+    factory.factory !== null &&
+    factory.ownership !== null &&
+    factory.ownership.playerId === playerId &&
+    entityHasBarAirPlantLandAtCommand(factory)
+    ? command
+    : null;
+}
+
+function authorizeFireDGunCommand(
+  world: WorldState,
+  command: FireDGunCommand,
+  playerId: PlayerId,
+): FireDGunCommand | null {
+  if (!isOwnedEntity(world, command.commanderId, playerId)) return null;
+  if (command.targetId !== undefined) {
+    const target = world.getEntity(command.targetId);
+    if (target === undefined) return null;
+    if (target.ownership !== null && world.arePlayersAllied(playerId, target.ownership.playerId)) {
+      return {
+        type: 'fireDGun',
+        tick: command.tick,
+        commanderId: command.commanderId,
+        targetX: command.targetX,
+        targetY: command.targetY,
+        targetZ: command.targetZ,
+      };
+    }
+  }
+  return command;
 }
 
 function isOwnedEntity(world: WorldState, entityId: EntityId, playerId: PlayerId): boolean {
   const entity = world.getEntity(entityId);
   if (entity === undefined || entity.ownership === null) return false;
   return entity.ownership.playerId === playerId;
+}
+
+function isAlliedEntity(world: WorldState, entityId: EntityId, playerId: PlayerId): boolean {
+  const entity = world.getEntity(entityId);
+  if (entity === undefined || entity.ownership === null) return false;
+  return world.arePlayersAllied(playerId, entity.ownership.playerId);
 }
 
 function isOwnedUnit(world: WorldState, entityId: EntityId, playerId: PlayerId): boolean {
@@ -659,4 +827,12 @@ function isOwnedFactory(world: WorldState, entityId: EntityId, playerId: PlayerI
     entity.factory !== null &&
     entity.ownership !== null &&
     entity.ownership.playerId === playerId;
+}
+
+function isOwnedBarStoppableEntity(world: WorldState, entityId: EntityId, playerId: PlayerId): boolean {
+  const entity = world.getEntity(entityId);
+  return entity !== undefined &&
+    entity.ownership !== null &&
+    entity.ownership.playerId === playerId &&
+    entityHasBarStopCommand(entity);
 }

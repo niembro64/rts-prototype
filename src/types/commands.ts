@@ -1,6 +1,6 @@
 // Command types extracted from game/sim/commands.ts
 
-import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitMoveState, CombatTrajectoryMode, CombatFireState } from './sim';
+import type { EntityId, WaypointType, BuildingBlueprintId, PlayerId, UnitAirIdleState, UnitMoveState, CombatTrajectoryMode, CombatFireState } from './sim';
 import type { ShieldReflectionMode } from './shotTypes';
 import type { SlopePathMode } from './slopePathMode';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
@@ -16,6 +16,7 @@ type CommandType =
   | 'setBuilderPriority'
   | 'setCarrierSpawn'
   | 'setUnitMoveState'
+  | 'setFactoryAirIdleState'
   | 'setTrajectoryMode'
   | 'setCloakState'
   | 'clearSelection'
@@ -53,6 +54,7 @@ type CommandType =
   | 'manualLaunch'
   | 'guard'
   | 'setPaused'
+  | 'adjustGameSpeed'
   | 'setUnitGroundNormalEmaMode'
   | 'setSendGridInfo'
   | 'setBackgroundUnitBlueprintEnabled'
@@ -145,6 +147,12 @@ export type SetUnitMoveStateCommand = BaseCommand & {
   type: 'setUnitMoveState';
   entityIds: EntityId[];
   moveState: UnitMoveState;
+};
+
+export type SetFactoryAirIdleStateCommand = BaseCommand & {
+  type: 'setFactoryAirIdleState';
+  factoryId: EntityId;
+  airIdleState: UnitAirIdleState;
 };
 
 export type SetTrajectoryModeCommand = BaseCommand & {
@@ -277,6 +285,10 @@ export type SetFactoryGuardCommand = BaseCommand & {
 export type FireDGunCommand = BaseCommand & {
   type: 'fireDGun';
   commanderId: EntityId;
+  /** BAR's DGun command is ICON_UNIT_OR_MAP. When present, resolve the
+   *  target entity's current point at execution time; targetX/Y/Z remain
+   *  the fallback point if the entity is gone by then. */
+  targetId?: EntityId;
   targetX: number;
   targetY: number;
   targetZ?: number;
@@ -305,6 +317,9 @@ export type SetBuildingActiveCommand = BaseCommand & {
 export type SelfDestructCommand = BaseCommand & {
   type: 'selfDestruct';
   entityIds: EntityId[];
+  queue?: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
 };
 
 /** Set (or clear) a combat entity's host-level lock-on target. Entity
@@ -414,7 +429,7 @@ export type ResurrectAreaCommand = BaseCommand & AreaCommandFilterFields & {
   queueInsertIndex?: number;
 };
 
-export type LoadTransportCommand = BaseCommand & {
+export type LoadTransportTargetCommand = BaseCommand & {
   type: 'loadTransport';
   transportId: EntityId;
   targetId: EntityId;
@@ -423,12 +438,29 @@ export type LoadTransportCommand = BaseCommand & {
   queueInsertIndex?: number;
 };
 
+export type LoadTransportAreaCommand = BaseCommand & {
+  type: 'loadTransport';
+  transportIds: EntityId[];
+  targetX: number;
+  targetY: number;
+  targetZ?: number;
+  radius: number;
+  queue: boolean;
+  queueFront?: boolean;
+  queueInsertIndex?: number;
+};
+
+export type LoadTransportCommand = LoadTransportTargetCommand | LoadTransportAreaCommand;
+
 export type UnloadTransportCommand = BaseCommand & {
   type: 'unloadTransport';
   transportIds: EntityId[];
   targetX: number;
   targetY: number;
   targetZ?: number;
+  /** BAR cmd_area_unload.lua applies deterministic spread only for
+   *  unload areas with radius >= 64. Omitted means a point unload. */
+  radius?: number;
   queue: boolean;
   queueFront?: boolean;
   queueInsertIndex?: number;
@@ -496,6 +528,11 @@ export type GuardCommand = BaseCommand & {
 export type SetPausedCommand = BaseCommand & {
   type: 'setPaused';
   paused: boolean;
+};
+
+export type AdjustGameSpeedCommand = BaseCommand & {
+  type: 'adjustGameSpeed';
+  direction: 1 | -1;
 };
 
 /** Pick the smoothing strength for the per-unit ground normal EMA
@@ -587,6 +624,7 @@ export type Command =
   | SetBuilderPriorityCommand
   | SetCarrierSpawnCommand
   | SetUnitMoveStateCommand
+  | SetFactoryAirIdleStateCommand
   | SetTrajectoryModeCommand
   | SetCloakStateCommand
   | ClearSelectionCommand
@@ -624,6 +662,7 @@ export type Command =
   | ManualLaunchCommand
   | GuardCommand
   | SetPausedCommand
+  | AdjustGameSpeedCommand
   | SetUnitGroundNormalEmaModeCommand
   | SetSendGridInfoCommand
   | SetBackgroundUnitBlueprintEnabledCommand

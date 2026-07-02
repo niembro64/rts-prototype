@@ -14,6 +14,7 @@ import { setUnitActions } from './unitActions';
 import { ballSpawnRateForResourceRate } from '@/resourceConfig';
 import { getSimWasm } from '../sim-wasm/init';
 import { isResurrectableWreck, restoreUnitFromWreck } from './wrecks';
+import { entityCanIssueResurrectCommand } from './unitCommandCapabilities';
 
 export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
@@ -68,7 +69,7 @@ class CommanderAbilitiesSystem {
 
     // Walk every builder (commanders + plain construction units). `commander`
     // below is "the acting builder"; reclaim + build/heal sprays apply to all
-    // of them, while capture/resurrect stay gated to commander-class units.
+    // of them, while capture and resurrect have narrower command capabilities.
     for (const commander of world.getBuilderUnits()) {
       if (!commander.builder || !commander.ownership) continue;
       if (!commander.unit || commander.unit.hp <= 0) continue;
@@ -149,7 +150,7 @@ class CommanderAbilitiesSystem {
         continue;
       }
 
-      if (currentAction !== undefined && currentAction.type === 'resurrect' && commander.commander !== null) {
+      if (currentAction !== undefined && currentAction.type === 'resurrect' && entityCanIssueResurrectCommand(commander)) {
         if (
           this.resurrectTarget(
             world,
@@ -365,7 +366,7 @@ class CommanderAbilitiesSystem {
     }
 
     if (currentAction.type === 'resurrect') {
-      return isResurrectableWreck(target) && isBuildTargetInRange(commander, target)
+      return entityCanIssueResurrectCommand(commander) && isResurrectableWreck(target) && isBuildTargetInRange(commander, target)
         ? target
         : null;
     }
@@ -520,7 +521,7 @@ class CommanderAbilitiesSystem {
     sourceY: number,
     sourceZ: number,
   ): boolean {
-    if (!commander.builder || !isResurrectableWreck(target)) return false;
+    if (!entityCanIssueResurrectCommand(commander) || !isResurrectableWreck(target)) return false;
     const wreck = target.wreck;
     if (wreck === null || wreck.resurrectRequiredMs <= 0) return false;
 

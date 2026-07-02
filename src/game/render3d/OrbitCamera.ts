@@ -43,6 +43,7 @@ import type {
 const TOUCH_ROTATE_DEADZONE_RAD = 0.006;
 const TOUCH_ROTATE_MAX_DELTA_RAD = 0.35;
 const KEYBOARD_CAMERA_SCREEN_STEP_PX = 48;
+const KEYBOARD_CAMERA_FAST_MULTIPLIER = 2.5;
 const WHEEL_MOMENTUM_RESET_MS = 240;
 const WHEEL_MOMENTUM_FALLBACK_DT_MS = 120;
 
@@ -946,12 +947,13 @@ export class OrbitCamera {
     mode: 'pan' | 'height-pan' | 'orbit',
     screenX: number,
     screenY: number,
+    fast = false,
   ): void {
     const magnitude = Math.hypot(screenX, screenY);
     if (magnitude <= 0) return;
     const x = screenX / magnitude;
     const y = screenY / magnitude;
-    const step = KEYBOARD_CAMERA_SCREEN_STEP_PX;
+    const step = KEYBOARD_CAMERA_SCREEN_STEP_PX * (fast ? KEYBOARD_CAMERA_FAST_MULTIPLIER : 1);
     if (mode === 'pan') {
       this.panByScreenDelta(-x * step, -y * step, 'pan');
       return;

@@ -1,8 +1,10 @@
 import type {
+  AdjustGameSpeedCommand,
   Command,
   CaptureCommand,
   ChangeFactoryUnitQuotaCommand,
   EditFactoryQueueCommand,
+  FireDGunCommand,
   LoadTransportCommand,
   ManualLaunchCommand,
   MoveCommand,
@@ -17,6 +19,7 @@ import type {
   SetBuilderPriorityCommand,
   SetCarrierSpawnCommand,
   SetCloakStateCommand,
+  SetFactoryAirIdleStateCommand,
   SetUnitMoveStateCommand,
   SkipCurrentOrderCommand,
   StartBuildCommand,
@@ -58,6 +61,24 @@ export function runCommandSanitizerContractTest(): void {
   const world = new WorldState(9001, 128, 128);
   while (world.getTick() < 9001) world.incrementTick();
 
+  const speedUp = sanitizeRequired<AdjustGameSpeedCommand>(world, {
+    type: 'adjustGameSpeed',
+    tick: 4,
+    direction: 1,
+  });
+  assertContract(
+    speedUp.tick === 9001 && speedUp.direction === 1,
+    'adjustGameSpeed must preserve BAR increase direction and normalize tick',
+  );
+  assertContract(
+    sanitizeCommand({
+      type: 'adjustGameSpeed',
+      tick: 4,
+      direction: 0,
+    } as unknown as Command, world) === null,
+    'adjustGameSpeed must reject non-BAR directions',
+  );
+
   const skipCurrent = sanitizeRequired<SkipCurrentOrderCommand>(world, {
     type: 'skipCurrentOrder',
     tick: 4,
@@ -89,6 +110,19 @@ export function runCommandSanitizerContractTest(): void {
       setFactoryRepeatProduction.factoryId === 42 &&
       setFactoryRepeatProduction.enabled === true,
     'setFactoryRepeatProduction must preserve valid repeat state and normalize tick',
+  );
+
+  const setFactoryAirIdleState = sanitizeRequired<SetFactoryAirIdleStateCommand>(world, {
+    type: 'setFactoryAirIdleState',
+    tick: 5,
+    factoryId: 42,
+    airIdleState: 'fly',
+  });
+  assertContract(
+    setFactoryAirIdleState.tick === 9001 &&
+      setFactoryAirIdleState.factoryId === 42 &&
+      setFactoryAirIdleState.airIdleState === 'fly',
+    'setFactoryAirIdleState must preserve BAR air-plant Fly/Land state and normalize tick',
   );
 
   const changeFactoryUnitQuota = sanitizeRequired<ChangeFactoryUnitQuotaCommand>(world, {
@@ -446,10 +480,34 @@ export function runCommandSanitizerContractTest(): void {
   });
   assertContract(
     loadTransport.tick === 9001 &&
+      'targetId' in loadTransport &&
       loadTransport.transportId === 12 &&
       loadTransport.targetId === 13 &&
       loadTransport.queueFront === true,
     'loadTransport command must preserve transport, target, and queue-front insertion',
+  );
+
+  const loadTransportArea = sanitizeRequired<LoadTransportCommand>(world, {
+    type: 'loadTransport',
+    tick: 7,
+    transportIds: [12, 14],
+    targetX: -50,
+    targetY: 500,
+    targetZ: 999,
+    radius: 125,
+    queue: true,
+    queueInsertIndex: 2,
+  });
+  assertContract(
+    loadTransportArea.tick === 9001 &&
+      !('targetId' in loadTransportArea) &&
+      loadTransportArea.transportIds.join(',') === '12,14' &&
+      loadTransportArea.targetX === 0 &&
+      loadTransportArea.targetY === world.mapHeight &&
+      loadTransportArea.targetZ === world.getGroundZ(0, world.mapHeight) &&
+      loadTransportArea.radius === 125 &&
+      loadTransportArea.queueInsertIndex === 2,
+    'loadTransport area command must clamp target point and preserve radius plus queue insertion',
   );
 
   const unloadTransport = sanitizeRequired<UnloadTransportCommand>(world, {
@@ -459,6 +517,7 @@ export function runCommandSanitizerContractTest(): void {
     targetX: 500,
     targetY: -25,
     targetZ: 999,
+    radius: 96,
     queue: true,
     queueInsertIndex: 3,
   });
@@ -468,8 +527,9 @@ export function runCommandSanitizerContractTest(): void {
       unloadTransport.targetX === world.mapWidth &&
       unloadTransport.targetY === 0 &&
       unloadTransport.targetZ === world.getGroundZ(world.mapWidth, 0) &&
+      unloadTransport.radius === 96 &&
       unloadTransport.queueInsertIndex === 3,
-    'unloadTransport command must clamp target point and preserve queue insertion',
+    'unloadTransport command must clamp target point and preserve area radius plus queue insertion',
   );
 
   const manualLaunch = sanitizeRequired<ManualLaunchCommand>(world, {
@@ -485,6 +545,23 @@ export function runCommandSanitizerContractTest(): void {
       manualLaunch.entityIds.join(',') === '7,8' &&
       manualLaunch.targetZ === world.getGroundZ(16.5, 20.25),
     'manualLaunch command must preserve selected entities and derive z from authoritative terrain',
+  );
+
+  const fireDGun = sanitizeRequired<FireDGunCommand>(world, {
+    type: 'fireDGun',
+    tick: 7,
+    commanderId: 7,
+    targetId: 8,
+    targetX: 16.5,
+    targetY: 20.25,
+    targetZ: 999,
+  });
+  assertContract(
+    fireDGun.tick === 9001 &&
+      fireDGun.commanderId === 7 &&
+      fireDGun.targetId === 8 &&
+      fireDGun.targetZ === 999,
+    'fireDGun command must preserve BAR unit target ids and the rendered fallback click altitude',
   );
 
   const formationSpeedMove = sanitizeRequired<MoveCommand>(world, {

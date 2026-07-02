@@ -30,6 +30,7 @@ import { isReclaimableTarget } from '../../sim/reclaim';
 import type { AreaCommandTargetFilter } from '../../sim/areaCommandFilters';
 import { isBuildInProgress } from '../../sim/buildableHelpers';
 import { canLoadTransport, isClientTransportUnit } from '../../sim/transports';
+import { getEntityTargetPoint } from '../../sim/buildingAnchors';
 
 /** True when `target` is a completed friendly mobile constructor.
  *  BAR "Guard damaged constructors" (cmd_guard_damaged_constructors.lua)
@@ -42,6 +43,8 @@ function isCompletedFriendlyConstructorTarget(target: Entity): boolean {
     target.factory === null &&
     !isBuildInProgress(target.buildable);
 }
+
+const BAR_MULTI_TRANSPORT_TARGET_LOAD_RADIUS = 150;
 
 /** Build the default right-click assist command for a ground point: a
  *  RepairCommand when the commander (if any) is right-clicking on a
@@ -287,19 +290,76 @@ export function getSelectedClientTransports(selectedUnits: readonly Entity[]): E
 
 export function buildLoadTransportCommandForTarget(
   target: Entity | null | undefined,
-  transport: Entity | null,
+  transports: readonly Entity[],
   tick: number,
   queue: boolean,
   queueFront = false,
   queueInsertIndex?: number,
 ): LoadTransportCommand | null {
-  if (!canLoadTransport(transport, target)) return null;
-  if (transport === null || target === null || target === undefined) return null;
+  if (target === null || target === undefined) return null;
+  const selectedTransports = getSelectedClientTransports(transports);
+  if (selectedTransports.length === 0) return null;
+  let canAnyTransportLoadTarget = false;
+  for (let i = 0; i < selectedTransports.length; i++) {
+    if (canLoadTransport(selectedTransports[i], target)) {
+      canAnyTransportLoadTarget = true;
+      break;
+    }
+  }
+  if (!canAnyTransportLoadTarget) return null;
+
+  if (selectedTransports.length > 1) {
+    const targetPoint = getEntityTargetPoint(target);
+    return buildLoadTransportAreaCommand(
+      selectedTransports,
+      targetPoint.x,
+      targetPoint.y,
+      BAR_MULTI_TRANSPORT_TARGET_LOAD_RADIUS,
+      tick,
+      queue,
+      targetPoint.z,
+      queueFront,
+      queueInsertIndex,
+    );
+  }
+
+  const transport = selectedTransports[0];
   return {
     type: 'loadTransport',
     tick,
     transportId: transport.id,
     targetId: target.id,
+    queue,
+    queueFront,
+    queueInsertIndex,
+  };
+}
+
+export function buildLoadTransportAreaCommand(
+  transports: readonly Entity[],
+  worldX: number,
+  worldY: number,
+  radius: number,
+  tick: number,
+  queue: boolean,
+  worldZ?: number,
+  queueFront = false,
+  queueInsertIndex?: number,
+): LoadTransportCommand | null {
+  const transportIds: number[] = [];
+  for (let i = 0; i < transports.length; i++) {
+    const transport = transports[i];
+    if (isClientTransportUnit(transport)) transportIds.push(transport.id);
+  }
+  if (transportIds.length === 0) return null;
+  return {
+    type: 'loadTransport',
+    tick,
+    transportIds,
+    targetX: worldX,
+    targetY: worldY,
+    targetZ: worldZ,
+    radius,
     queue,
     queueFront,
     queueInsertIndex,
@@ -315,6 +375,7 @@ export function buildUnloadTransportCommand(
   worldZ?: number,
   queueFront = false,
   queueInsertIndex?: number,
+  radius?: number,
 ): UnloadTransportCommand | null {
   const transportIds: number[] = [];
   for (let i = 0; i < transports.length; i++) {
@@ -322,7 +383,7 @@ export function buildUnloadTransportCommand(
     if (isClientTransportUnit(transport)) transportIds.push(transport.id);
   }
   if (transportIds.length === 0) return null;
-  return {
+  const command: UnloadTransportCommand = {
     type: 'unloadTransport',
     tick,
     transportIds,
@@ -333,6 +394,8 @@ export function buildUnloadTransportCommand(
     queueFront,
     queueInsertIndex,
   };
+  if (radius !== undefined) command.radius = radius;
+  return command;
 }
 
 /** Build one SetRallyPointCommand per selected factory at the
@@ -373,8 +436,9 @@ export function buildFactoryGuardCommands(
   target: Entity | null | undefined,
   playerId: PlayerId,
   tick: number,
+  arePlayersAllied: ((a: PlayerId, b: PlayerId) => boolean) | undefined = undefined,
 ): SetFactoryGuardCommand[] {
-  if (!isGuardableFriendlyTarget(target, playerId)) return [];
+  if (!isGuardableFriendlyTarget(target, playerId, arePlayersAllied)) return [];
   const cmds: SetFactoryGuardCommand[] = [];
   for (const f of factories) {
     if (!f.factory) continue;

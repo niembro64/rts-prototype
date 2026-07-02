@@ -35,6 +35,47 @@ export type ScreenRectSelectionOptions = {
   readonly previousSelection?: readonly Entity[];
 };
 
+export type SelectBoxHeldModifier = 'sameType' | 'idle';
+
+export type ScreenRectSelectionModifierState = {
+  readonly shiftKey?: boolean;
+  readonly ctrlKey?: boolean;
+  readonly metaKey?: boolean;
+  readonly altKey?: boolean;
+  readonly selectBoxIdleHeld?: boolean;
+  readonly selectBoxSameTypeHeld?: boolean;
+  readonly previousSelection?: readonly Entity[];
+};
+
+export type ResolvedScreenRectSelectionModifiers = {
+  readonly additive: boolean;
+  readonly subtractive: boolean;
+  readonly options: ScreenRectSelectionOptions;
+};
+
+export function selectBoxHeldModifierForKeyCode(code: string): SelectBoxHeldModifier | null {
+  if (code === 'KeyZ') return 'sameType';
+  if (code === 'Space') return 'idle';
+  return null;
+}
+
+export function resolveScreenRectSelectionModifiers(
+  state: ScreenRectSelectionModifierState,
+): ResolvedScreenRectSelectionModifiers {
+  const subtractive = Boolean(state.ctrlKey || state.metaKey);
+  return {
+    additive: Boolean(state.shiftKey) && !subtractive,
+    subtractive,
+    options: {
+      includeBuildingsWithUnits: Boolean(state.shiftKey),
+      mobileOnly: Boolean(state.altKey),
+      idleOnly: Boolean(state.selectBoxIdleHeld),
+      sameTypeOnly: Boolean(state.selectBoxSameTypeHeld),
+      previousSelection: state.previousSelection,
+    },
+  };
+}
+
 function isIdleUnit(entity: Entity): boolean {
   return entity.unit?.actions.length === 0;
 }

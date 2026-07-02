@@ -196,6 +196,15 @@ export function snapClientNonVisualState(
       : codeToUnitBlueprintId(sf.selectedUnitBlueprintCode);
     entity.factory.selectedUnitBlueprintId = selectedUnitBlueprintId ?? null;
     entity.factory.repeatProduction = sf.repeat !== false;
+    if (sf.paused !== undefined || isFull) {
+      entity.factory.paused = sf.paused === true;
+    }
+    if (sf.moveState !== undefined || isFull) {
+      entity.factory.moveState = sf.moveState ?? 'holdPosition';
+    }
+    if (sf.airIdleState !== undefined || isFull) {
+      entity.factory.airIdleState = sf.airIdleState ?? 'land';
+    }
     entity.factory.productionQueue = decodeFactoryProductionQueueInto(
       sf.queue,
       entity.factory.productionQueue,

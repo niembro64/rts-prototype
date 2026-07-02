@@ -301,6 +301,20 @@ export function useGameCanvasClientSettings({
     rangeToggles[type] = newValue;
   }
 
+  function cycleAttackRangeDisplay(direction: 1 | -1): void {
+    const maxBitmap = 2 ** RANGE_TYPES.length;
+    let bitmap = 0;
+    RANGE_TYPES.forEach((type, index) => {
+      if (rangeToggles[type]) bitmap += 2 ** index;
+    });
+    const nextBitmap = (bitmap + direction + maxBitmap) % maxBitmap;
+    RANGE_TYPES.forEach((type, index) => {
+      const show = (nextBitmap & (1 << index)) !== 0;
+      setRangeToggle(type, show);
+      rangeToggles[type] = show;
+    });
+  }
+
   function toggleProjRange(type: ProjRangeType): void {
     const newValue = !projRangeToggles[type];
     setProjRangeToggle(type, newValue);
@@ -336,8 +350,13 @@ export function useGameCanvasClientSettings({
 
   function changeCameraFovDegrees(fov: CameraFovDegrees): void {
     setCameraFovDegrees(fov);
-    cameraFovDegrees.value = fov;
-    applyCameraFovDegrees(fov);
+    cameraFovDegrees.value = getCameraFovDegrees();
+    applyCameraFovDegrees(cameraFovDegrees.value);
+  }
+
+  function changeCameraFovBy(deltaDegrees: number): void {
+    const nextFov = cameraFovDegrees.value + deltaDegrees;
+    changeCameraFovDegrees(nextFov);
   }
 
   const allRangesActive = computed(() =>
@@ -741,6 +760,7 @@ export function useGameCanvasClientSettings({
     changeAudioScope,
     changeMasterVolume,
     toggleRange,
+    cycleAttackRangeDisplay,
     toggleProjRange,
     toggleUnitRadius,
     toggleLegsRadius,
@@ -748,6 +768,7 @@ export function useGameCanvasClientSettings({
     setCameraMode,
     setCameraFollow,
     changeCameraFovDegrees,
+    changeCameraFovBy,
     toggleAllRanges,
     toggleAllProjRanges,
     toggleAllUnitRadii,

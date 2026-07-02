@@ -7,7 +7,7 @@ import type {
 import type { RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
-export type MasterVolumePercent = 0 | 25 | 50 | 75 | 100;
+export type MasterVolumePercent = number;
 /** Legacy four-mode smoothing space (snap / fast / mid / slow) still
  *  used by the unit ground normal EMA and the camera-smoothing knob.
  *  Per-channel snapshot drift uses PositionDriftChannelMode /
@@ -53,7 +53,9 @@ export type CameraViewMode = 'overhead' | 'ta' | 'spring';
  *                    still preserving distance and pitch.
  *  Only active while exactly one unit is selected. */
 export type CameraFollowMode = 'free' | 'follow' | 'follow-behind';
-export type CameraFovDegrees = 10 | 30 | 45 | 60 | 120;
+/** Main camera vertical field of view, in degrees. Preset buttons use the
+ *  configured common values, while BAR hotkeys adjust this in 5-degree steps. */
+export type CameraFovDegrees = number;
 /** Renderer entity LOD policy. AUTO keeps distance-based proxy selection.
  *  HIGH keeps full meshes. LOW forces proxy meshes. */
 export type LodMode = 'auto' | 'high' | 'low';

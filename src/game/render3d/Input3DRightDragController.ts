@@ -50,6 +50,7 @@ type RightDragEntitySource = {
   getEntity: (id: EntityId) => Entity | undefined;
   getSelectedUnits: () => Entity[];
   getSelectedBuildings: () => Entity[];
+  arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
 };
 
 type Input3DRightDragControllerConfig = {
@@ -133,20 +134,36 @@ export class Input3DRightDragController {
         queueMode.queue,
         queueMode.queueFront,
         queueMode.queueInsertIndex,
+        source.arePlayersAllied,
       );
       if (meshAttackCmd) {
-        debugLog(
-          GAME_DIAGNOSTICS.commandPlans,
-          '[click] attack-mesh: hit target #%d, %d unit(s)',
-          meshAttackCmd.targetId, selectedUnits.length,
-        );
+        if (meshAttackCmd.type === 'attack') {
+          debugLog(
+            GAME_DIAGNOSTICS.commandPlans,
+            '[click] attack-mesh: hit target #%d, %d unit(s)',
+            meshAttackCmd.targetId, selectedUnits.length,
+          );
+        } else {
+          debugLog(
+            GAME_DIAGNOSTICS.commandPlans,
+            '[click] attack-ground-mesh: (%d, %d, %d), %d unit(s)',
+            Math.round(meshAttackCmd.targetX),
+            Math.round(meshAttackCmd.targetY),
+            Math.round(meshAttackCmd.targetZ ?? 0),
+            selectedUnits.length,
+          );
+        }
         this.config.applyCursor('attack');
         this.config.commandQueue.enqueue(meshAttackCmd);
         return;
       }
     }
 
-    if (!preserveFormationMove && isAttackableEnemyTarget(entityHit, activePlayerId) && isReclaimableTarget(entityHit)) {
+    if (
+      !preserveFormationMove &&
+      isAttackableEnemyTarget(entityHit, activePlayerId, source.arePlayersAllied) &&
+      isReclaimableTarget(entityHit)
+    ) {
       let issued = false;
       for (let i = 0; i < selectedUnits.length; i++) {
         const reclaimer = selectedUnits[i];
@@ -181,6 +198,7 @@ export class Input3DRightDragController {
         entityHit,
         activePlayerId,
         tick,
+        source.arePlayersAllied,
       );
       if (factoryGuardCmds.length > 0) {
         debugLog(
@@ -208,6 +226,7 @@ export class Input3DRightDragController {
         queueMode.queue,
         queueMode.queueFront,
         queueMode.queueInsertIndex,
+        source.arePlayersAllied,
       );
       if (guardCmd) {
         debugLog(
@@ -262,12 +281,24 @@ export class Input3DRightDragController {
           queueMode.queueInsertIndex,
         );
         if (attackCmd) {
-          debugLog(
-            GAME_DIAGNOSTICS.commandPlans,
-            '[click] attack: clicked at (%d, %d, %d) -> target #%d, %d unit(s)',
-            Math.round(world.x), Math.round(world.y), Math.round(world.z),
-            attackCmd.targetId, selectedUnits.length,
-          );
+          if (attackCmd.type === 'attack') {
+            debugLog(
+              GAME_DIAGNOSTICS.commandPlans,
+              '[click] attack: clicked at (%d, %d, %d) -> target #%d, %d unit(s)',
+              Math.round(world.x), Math.round(world.y), Math.round(world.z),
+              attackCmd.targetId, selectedUnits.length,
+            );
+          } else {
+            debugLog(
+              GAME_DIAGNOSTICS.commandPlans,
+              '[click] attack-ground: clicked at (%d, %d, %d) -> ground (%d, %d, %d), %d unit(s)',
+              Math.round(world.x), Math.round(world.y), Math.round(world.z),
+              Math.round(attackCmd.targetX),
+              Math.round(attackCmd.targetY),
+              Math.round(attackCmd.targetZ ?? 0),
+              selectedUnits.length,
+            );
+          }
           this.config.applyCursor('attack');
           this.config.commandQueue.enqueue(attackCmd);
           return;

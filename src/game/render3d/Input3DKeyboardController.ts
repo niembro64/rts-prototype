@@ -33,7 +33,11 @@ import {
   type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from '../input/commandHotkeys';
-import { factoryProductionKeyModeFromEvent, queueModeFromEvent } from '../input/queueModifiers';
+import {
+  factoryProductionKeyModeFromEvent,
+  queueModeFromEvent,
+  queueModeFromEventIgnoringControlModifiers,
+} from '../input/queueModifiers';
 
 type Input3DKeyboardControllerConfig = {
   mode: CommanderModeController;
@@ -46,6 +50,7 @@ type Input3DKeyboardControllerConfig = {
   storeControlGroupSlot: (index: number) => void;
   addToControlGroupSlot: (index: number) => void;
   setAutoControlGroupSlot: (index: number) => void;
+  loadAutoGroupPreset: (index: number) => void;
   removeSelectedFromAutoControlGroups: () => void;
   recallControlGroupSlot: (index: number, additive: boolean) => boolean;
   toggleControlGroupSlot: (index: number) => boolean;
@@ -73,6 +78,7 @@ type Input3DKeyboardControllerConfig = {
   getSelectedFactoryRepeatProduction: () => boolean;
   toggleSelectedFactoryRepeatProduction: () => void;
   setSelectedFactoryRepeatProduction: (enabled: boolean) => void;
+  toggleSelectedFactoryAirIdleState: () => void;
   cycleActiveBuilder: () => boolean;
   getSelectedBuilderAllowedBuildBlueprintIds: () => readonly StructureBlueprintId[];
   setBuildMode: (buildingBlueprintId: StructureBlueprintId) => void;
@@ -105,7 +111,7 @@ type Input3DKeyboardControllerConfig = {
   setSelectedFireState: (fireState: CombatFireState) => void;
   toggleBuildingActive: () => void;
   setBuildingActive: (open: boolean) => void;
-  selfDestructSelected: () => void;
+  selfDestructSelected: (queue?: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
   toggleTowerTargetMode: () => void;
   toggleTowerTargetNoGroundMode: () => void;
   clearTowerTarget: () => void;
@@ -123,6 +129,7 @@ type Input3DKeyboardControllerConfig = {
   toggleMexUpgradeMode: () => void;
   upgradeSelectedMetalExtractors: () => void;
   toggleRepairAreaMode: () => void;
+  toggleRestoreAreaMode: () => void;
   togglePingMode: () => void;
   toggleDGunMode: () => void;
   enqueueScanAtCursor: () => void;
@@ -133,6 +140,9 @@ type Input3DKeyboardControllerConfig = {
   selectAllMatching: () => void;
   selectAllMatchingInView: () => void;
   selectPreviousSelection: () => void;
+  selectPreviousSelectionNotInControlGroups: () => void;
+  selectPreviousNonBuildersNotInControlGroups: () => void;
+  selectGroundWeaponUnits: () => void;
   selectIdleBuilders: () => void;
   selectIdleTransports: () => void;
   selectWaitingUnits: () => void;
@@ -143,6 +153,7 @@ type Input3DKeyboardControllerConfig = {
   splitArmySelection: () => void;
   loopSelection: () => void;
   isRepairAreaMode: () => boolean;
+  isRestoreAreaMode: () => boolean;
   isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
@@ -159,6 +170,7 @@ type Input3DKeyboardControllerConfig = {
   isTowerTargetMode: () => boolean;
   isTowerTargetNoGroundMode: () => boolean;
   exitRepairAreaMode: () => void;
+  exitRestoreAreaMode: () => void;
   exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
   exitAttackGroundMode: () => void;
@@ -215,6 +227,18 @@ export function isAutoGroupRemoveKey(
     && !e.metaKey
     && !e.shiftKey
     && (e.code === 'Backquote' || e.key === '`' || e.code === 'KeyQ');
+}
+
+export function isAutoGroupPresetLoadKey(
+  e: Pick<KeyboardEvent, 'code' | 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'>,
+  presetId: CommandHotkeyPresetId,
+): boolean {
+  return isBarCommandHotkeyPreset(presetId) &&
+    e.altKey &&
+    e.shiftKey &&
+    !e.ctrlKey &&
+    !e.metaKey &&
+    controlGroupIndexForKey(e) >= 0;
 }
 
 type BarManualFireKeyEvent = Pick<
@@ -354,6 +378,7 @@ export type CameraKeyboardAction = {
   mode: CameraKeyboardActionMode;
   x: number;
   y: number;
+  fast: boolean;
 };
 
 type CameraKeyboardEvent = Pick<
@@ -361,50 +386,63 @@ type CameraKeyboardEvent = Pick<
   'code' | 'ctrlKey' | 'metaKey' | 'altKey' | 'shiftKey'
 >;
 
-export function cameraKeyboardActionForKey(e: CameraKeyboardEvent): CameraKeyboardAction | null {
+export function cameraKeyboardActionForKey(
+  e: CameraKeyboardEvent,
+  presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
+): CameraKeyboardAction | null {
   if (e.metaKey) return null;
   let x = 0;
   let y = 0;
+  let forcedMode: CameraKeyboardActionMode | null = null;
+  let arrowPan = false;
   switch (e.code) {
     case 'ArrowUp':
+      arrowPan = true;
+      y = 1;
+      break;
     case 'Numpad8':
       y = 1;
       break;
     case 'ArrowDown':
+      arrowPan = true;
+      y = -1;
+      break;
     case 'Numpad2':
       y = -1;
       break;
     case 'ArrowLeft':
+      arrowPan = true;
+      x = -1;
+      break;
     case 'Numpad4':
       x = -1;
       break;
     case 'ArrowRight':
+      arrowPan = true;
+      x = 1;
+      break;
     case 'Numpad6':
       x = 1;
       break;
-    case 'Numpad7':
-      x = -Math.SQRT1_2;
-      y = Math.SQRT1_2;
-      break;
     case 'Numpad9':
-      x = Math.SQRT1_2;
-      y = Math.SQRT1_2;
-      break;
-    case 'Numpad1':
-      x = -Math.SQRT1_2;
-      y = -Math.SQRT1_2;
+    case 'PageUp':
+      y = 1;
+      forcedMode = 'height-pan';
       break;
     case 'Numpad3':
-      x = Math.SQRT1_2;
-      y = -Math.SQRT1_2;
+    case 'PageDown':
+      y = -1;
+      forcedMode = 'height-pan';
       break;
     default:
       return null;
   }
+  if (arrowPan && isBarCommandHotkeyPreset(presetId)) forcedMode = 'pan';
   return {
-    mode: e.altKey ? 'orbit' : e.ctrlKey ? 'height-pan' : 'pan',
+    mode: forcedMode ?? (e.altKey ? 'orbit' : e.ctrlKey ? 'height-pan' : 'pan'),
     x,
     y,
+    fast: false,
   };
 }
 
@@ -563,12 +601,14 @@ export class Input3DKeyboardController {
   private buildColumnCycleTap: BuildColumnCycleTapState | null = null;
   private barLegacyBuildKeyTap: BarLegacyBuildKeyCycleTapState | null = null;
   private barStateTap: BarStateTapState | null = null;
+  private cameraMoveFastHeld = false;
 
   constructor(config: Input3DKeyboardControllerConfig) {
     this.config = config;
   }
 
   handleKeyUp(e: KeyboardEvent): void {
+    if (e.code === 'Numpad1') this.cameraMoveFastHeld = false;
     if (isTextEntryTarget(e.target)) return;
     if (
       e.code === 'ShiftLeft' &&
@@ -582,18 +622,31 @@ export class Input3DKeyboardController {
   handleKeyDown(e: KeyboardEvent): void {
     if (isTextEntryTarget(e.target)) return;
 
-    const cameraAction = cameraKeyboardActionForKey(e);
+    const activeCommandPresetId = getActiveCommandHotkeyPresetId();
+    const isBarPreset = isBarCommandHotkeyPreset(activeCommandPresetId);
+    if (
+      isBarPreset &&
+      e.code === 'Numpad1' &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.shiftKey
+    ) {
+      this.cameraMoveFastHeld = true;
+    }
+
+    const cameraAction = cameraKeyboardActionForKey(e, activeCommandPresetId);
     if (cameraAction !== null) {
       e.preventDefault();
       this.commandHotkeys.reset();
-      this.config.moveCameraByKeyboard(cameraAction);
+      this.config.moveCameraByKeyboard({
+        ...cameraAction,
+        fast: cameraAction.fast || this.cameraMoveFastHeld,
+      });
       return;
     }
 
     if (e.repeat) return;
-
-    const activeCommandPresetId = getActiveCommandHotkeyPresetId();
-    const isBarPreset = isBarCommandHotkeyPreset(activeCommandPresetId);
 
     if (isControlGroupUnsetKey(e, activeCommandPresetId)) {
       e.preventDefault();
@@ -612,6 +665,13 @@ export class Input3DKeyboardController {
 
     const controlGroupIndex = controlGroupIndexForKey(e);
     if (controlGroupIndex >= 0) {
+      if (isAutoGroupPresetLoadKey(e, activeCommandPresetId)) {
+        e.preventDefault();
+        this.commandHotkeys.reset();
+        resetControlGroupRecallTap(this.controlGroupRecallTap);
+        this.config.loadAutoGroupPreset(controlGroupIndex);
+        return;
+      }
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         e.preventDefault();
         this.commandHotkeys.reset();
@@ -969,7 +1029,12 @@ export class Input3DKeyboardController {
         this.config.toggleBuildingActive();
         break;
       case 'command.selfDestruct':
-        this.config.selfDestructSelected();
+        {
+          const queueMode = isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
+            ? queueModeFromEventIgnoringControlModifiers(e, this.config.getQueueInsertIndex())
+            : queueModeFromEvent(e, this.config.getQueueInsertIndex());
+          this.config.selfDestructSelected(queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex);
+        }
         break;
       case 'combat.towerTargetSet':
         this.config.toggleTowerTargetMode();
@@ -1034,6 +1099,9 @@ export class Input3DKeyboardController {
       case 'combat.repair':
         this.config.toggleRepairAreaMode();
         break;
+      case 'combat.restore':
+        this.config.toggleRestoreAreaMode();
+        break;
       case 'combat.ping':
         this.config.togglePingMode();
         break;
@@ -1060,6 +1128,9 @@ export class Input3DKeyboardController {
         break;
       case 'factory.queueMode':
         this.config.toggleFactoryQueueMode();
+        break;
+      case 'factory.airIdleState':
+        this.config.toggleSelectedFactoryAirIdleState();
         break;
       case 'build.slot1':
         this.enterBuildSlot(0);
@@ -1117,6 +1188,15 @@ export class Input3DKeyboardController {
       case 'select.previous':
         this.config.selectPreviousSelection();
         break;
+      case 'select.previousNotInControlGroups':
+        this.config.selectPreviousSelectionNotInControlGroups();
+        break;
+      case 'select.previousNonBuildersNotInControlGroups':
+        this.config.selectPreviousNonBuildersNotInControlGroups();
+        break;
+      case 'select.groundWeaponUnits':
+        this.config.selectGroundWeaponUnits();
+        break;
       case 'select.idleBuilders':
         this.config.selectIdleBuilders();
         break;
@@ -1145,21 +1225,34 @@ export class Input3DKeyboardController {
         this.config.loopSelection();
         break;
       case 'ui.pause':
+      case 'ui.gameSpeedIncrease':
+      case 'ui.gameSpeedDecrease':
       case 'ui.optionsMenu':
       case 'ui.showMapOverview':
       case 'ui.unitStats':
+      case 'ui.customGameInfo':
       case 'ui.flipCameraYaw':
+      case 'camera.toggleMode':
+      case 'camera.fovDecrease':
+      case 'camera.fovIncrease':
+      case 'camera.viewRadiusIncrease':
+      case 'camera.viewRadiusDecrease':
       case 'camera.viewTa':
       case 'camera.viewSpring':
       case 'ui.goToLastPing':
       case 'ui.toggleUiChrome':
       case 'ui.muteSound':
+      case 'ui.volumeIncrease':
+      case 'ui.volumeDecrease':
       case 'ui.captureScreenshot':
       case 'ui.toggleFullscreen':
       case 'ui.chat':
       case 'ui.mapDraw':
       case 'ui.mapLabel':
       case 'ui.mapErase':
+      case 'ui.attackRangeCycleNext':
+      case 'ui.attackRangeCyclePrevious':
+      case 'ui.toggleLosMap':
       case 'ui.togglePathingMap':
       case 'ui.toggleMetalMap':
       case 'ui.toggleElevationMap':
@@ -1301,6 +1394,7 @@ export class Input3DKeyboardController {
         { isActive: () => this.config.mode.isInBuildMode, cancel: () => this.config.mode.exitBuildMode() },
         { isActive: () => this.config.mode.isInDGunMode, cancel: () => this.config.mode.exitDGunMode() },
         { isActive: this.config.isRepairAreaMode, cancel: this.config.exitRepairAreaMode },
+        { isActive: this.config.isRestoreAreaMode, cancel: this.config.exitRestoreAreaMode },
         { isActive: this.config.isAttackMode, cancel: this.config.exitAttackMode },
         { isActive: this.config.isAttackAreaMode, cancel: this.config.exitAttackAreaMode },
         { isActive: this.config.isAttackGroundMode, cancel: this.config.exitAttackGroundMode },

@@ -50,6 +50,7 @@ export type CommandHotkeyId =
   | 'factoryPreset.save10'
   | 'factory.stopProduction'
   | 'factory.queueMode'
+  | 'factory.airIdleState'
   | 'build.slot1'
   | 'build.slot2'
   | 'build.slot3'
@@ -70,6 +71,9 @@ export type CommandHotkeyId =
   | 'select.matching'
   | 'select.matchingInView'
   | 'select.previous'
+  | 'select.previousNotInControlGroups'
+  | 'select.previousNonBuildersNotInControlGroups'
+  | 'select.groundWeaponUnits'
   | 'select.idleBuilders'
   | 'select.idleTransports'
   | 'select.waitingUnits'
@@ -92,26 +96,40 @@ export type CommandHotkeyId =
   | 'combat.unloadTransport'
   | 'combat.manualLaunch'
   | 'combat.repair'
+  | 'combat.restore'
   | 'combat.ping'
   | 'combat.towerTargetSet'
   | 'combat.towerTargetSetNoGround'
   | 'combat.towerTargetClear'
   | 'ui.pause'
+  | 'ui.gameSpeedIncrease'
+  | 'ui.gameSpeedDecrease'
   | 'ui.optionsMenu'
   | 'ui.showMapOverview'
   | 'ui.unitStats'
+  | 'ui.customGameInfo'
   | 'ui.flipCameraYaw'
+  | 'camera.toggleMode'
+  | 'camera.fovDecrease'
+  | 'camera.fovIncrease'
+  | 'camera.viewRadiusIncrease'
+  | 'camera.viewRadiusDecrease'
   | 'camera.viewTa'
   | 'camera.viewSpring'
   | 'ui.goToLastPing'
   | 'ui.toggleUiChrome'
   | 'ui.muteSound'
+  | 'ui.volumeIncrease'
+  | 'ui.volumeDecrease'
   | 'ui.captureScreenshot'
   | 'ui.toggleFullscreen'
   | 'ui.chat'
   | 'ui.mapDraw'
   | 'ui.mapLabel'
   | 'ui.mapErase'
+  | 'ui.attackRangeCycleNext'
+  | 'ui.attackRangeCyclePrevious'
+  | 'ui.toggleLosMap'
   | 'ui.togglePathingMap'
   | 'ui.toggleMetalMap'
   | 'ui.toggleElevationMap'
@@ -207,6 +225,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'factoryPreset.save10',
   'factory.stopProduction',
   'factory.queueMode',
+  'factory.airIdleState',
   'build.slot1',
   'build.slot2',
   'build.slot3',
@@ -227,6 +246,9 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'select.matching',
   'select.matchingInView',
   'select.previous',
+  'select.previousNotInControlGroups',
+  'select.previousNonBuildersNotInControlGroups',
+  'select.groundWeaponUnits',
   'select.idleBuilders',
   'select.idleTransports',
   'select.waitingUnits',
@@ -249,26 +271,40 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'combat.unloadTransport',
   'combat.manualLaunch',
   'combat.repair',
+  'combat.restore',
   'combat.ping',
   'combat.towerTargetSet',
   'combat.towerTargetSetNoGround',
   'combat.towerTargetClear',
   'ui.pause',
+  'ui.gameSpeedIncrease',
+  'ui.gameSpeedDecrease',
   'ui.optionsMenu',
   'ui.showMapOverview',
   'ui.unitStats',
+  'ui.customGameInfo',
   'ui.flipCameraYaw',
+  'camera.toggleMode',
+  'camera.fovDecrease',
+  'camera.fovIncrease',
+  'camera.viewRadiusIncrease',
+  'camera.viewRadiusDecrease',
   'camera.viewTa',
   'camera.viewSpring',
   'ui.goToLastPing',
   'ui.toggleUiChrome',
   'ui.muteSound',
+  'ui.volumeIncrease',
+  'ui.volumeDecrease',
   'ui.captureScreenshot',
   'ui.toggleFullscreen',
   'ui.chat',
   'ui.mapDraw',
   'ui.mapLabel',
   'ui.mapErase',
+  'ui.attackRangeCycleNext',
+  'ui.attackRangeCyclePrevious',
+  'ui.toggleLosMap',
   'ui.togglePathingMap',
   'ui.toggleMetalMap',
   'ui.toggleElevationMap',
@@ -380,28 +416,29 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.buildCycle': 'Cycle Build',
   'command.dgun': 'Commander DGun',
   'command.selectCommander': 'Select Commander',
-  'factoryPreset.load1': 'Load Factory Preset 1',
-  'factoryPreset.load2': 'Load Factory Preset 2',
-  'factoryPreset.load3': 'Load Factory Preset 3',
-  'factoryPreset.load4': 'Load Factory Preset 4',
-  'factoryPreset.load5': 'Load Factory Preset 5',
-  'factoryPreset.load6': 'Load Factory Preset 6',
-  'factoryPreset.load7': 'Load Factory Preset 7',
-  'factoryPreset.load8': 'Load Factory Preset 8',
-  'factoryPreset.load9': 'Load Factory Preset 9',
-  'factoryPreset.load10': 'Load Factory Preset 10',
-  'factoryPreset.save1': 'Save Factory Preset 1',
-  'factoryPreset.save2': 'Save Factory Preset 2',
-  'factoryPreset.save3': 'Save Factory Preset 3',
-  'factoryPreset.save4': 'Save Factory Preset 4',
-  'factoryPreset.save5': 'Save Factory Preset 5',
-  'factoryPreset.save6': 'Save Factory Preset 6',
-  'factoryPreset.save7': 'Save Factory Preset 7',
-  'factoryPreset.save8': 'Save Factory Preset 8',
-  'factoryPreset.save9': 'Save Factory Preset 9',
-  'factoryPreset.save10': 'Save Factory Preset 10',
+  'factoryPreset.load1': 'Load Factory Preset 0',
+  'factoryPreset.load2': 'Load Factory Preset 1',
+  'factoryPreset.load3': 'Load Factory Preset 2',
+  'factoryPreset.load4': 'Load Factory Preset 3',
+  'factoryPreset.load5': 'Load Factory Preset 4',
+  'factoryPreset.load6': 'Load Factory Preset 5',
+  'factoryPreset.load7': 'Load Factory Preset 6',
+  'factoryPreset.load8': 'Load Factory Preset 7',
+  'factoryPreset.load9': 'Load Factory Preset 8',
+  'factoryPreset.load10': 'Load Factory Preset 9',
+  'factoryPreset.save1': 'Save Factory Preset 0',
+  'factoryPreset.save2': 'Save Factory Preset 1',
+  'factoryPreset.save3': 'Save Factory Preset 2',
+  'factoryPreset.save4': 'Save Factory Preset 3',
+  'factoryPreset.save5': 'Save Factory Preset 4',
+  'factoryPreset.save6': 'Save Factory Preset 5',
+  'factoryPreset.save7': 'Save Factory Preset 6',
+  'factoryPreset.save8': 'Save Factory Preset 7',
+  'factoryPreset.save9': 'Save Factory Preset 8',
+  'factoryPreset.save10': 'Save Factory Preset 9',
   'factory.stopProduction': 'Clear Queue',
   'factory.queueMode': 'Factory Queue Mode',
+  'factory.airIdleState': 'Land At',
   'build.slot1': 'Build Slot 1',
   'build.slot2': 'Build Slot 2',
   'build.slot3': 'Build Slot 3',
@@ -422,6 +459,9 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'select.matching': 'Select Matching',
   'select.matchingInView': 'Select Matching In View',
   'select.previous': 'Previous Selection',
+  'select.previousNotInControlGroups': 'Previous Selection Not Grouped',
+  'select.previousNonBuildersNotInControlGroups': 'Previous Army Not Grouped',
+  'select.groundWeaponUnits': 'Ground Weapon Units',
   'select.idleBuilders': 'Idle Builders',
   'select.idleTransports': 'Idle Transports',
   'select.waitingUnits': 'Waiting Units',
@@ -444,26 +484,40 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'combat.unloadTransport': 'Unload Transport',
   'combat.manualLaunch': 'Manual Launch',
   'combat.repair': 'Repair',
+  'combat.restore': 'Restore',
   'combat.ping': 'Ping',
   'combat.towerTargetSet': 'Set Target',
   'combat.towerTargetSetNoGround': 'Set Target No Ground',
   'combat.towerTargetClear': 'Clear Tower Target',
   'ui.pause': 'Pause Game',
+  'ui.gameSpeedIncrease': 'Increase Game Speed',
+  'ui.gameSpeedDecrease': 'Decrease Game Speed',
   'ui.optionsMenu': 'Options Menu',
   'ui.showMapOverview': 'Map Overview',
   'ui.unitStats': 'Unit Stats (Hold)',
+  'ui.customGameInfo': 'Game Info',
   'ui.flipCameraYaw': 'Flip Camera',
+  'camera.toggleMode': 'Toggle Camera Mode',
+  'camera.fovDecrease': 'Camera FOV Down',
+  'camera.fovIncrease': 'Camera FOV Up',
+  'camera.viewRadiusIncrease': 'Increase View Radius',
+  'camera.viewRadiusDecrease': 'Decrease View Radius',
   'camera.viewTa': 'TA Camera View',
   'camera.viewSpring': 'Spring Camera View',
   'ui.goToLastPing': 'Last Message Position',
   'ui.toggleUiChrome': 'Toggle Interface',
   'ui.muteSound': 'Mute Sound',
+  'ui.volumeIncrease': 'Volume Up',
+  'ui.volumeDecrease': 'Volume Down',
   'ui.captureScreenshot': 'Screenshot',
   'ui.toggleFullscreen': 'Toggle Fullscreen',
   'ui.chat': 'Chat',
   'ui.mapDraw': 'Draw On Map',
   'ui.mapLabel': 'Draw Map Label',
   'ui.mapErase': 'Erase Map Drawings',
+  'ui.attackRangeCycleNext': 'Attack Range Next',
+  'ui.attackRangeCyclePrevious': 'Attack Range Previous',
+  'ui.toggleLosMap': 'Toggle LOS Map',
   'ui.togglePathingMap': 'Toggle Pathing Map',
   'ui.toggleMetalMap': 'Toggle Metal Map',
   'ui.toggleElevationMap': 'Toggle Elevation Map',
@@ -478,7 +532,11 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
 };
 
 function commandHotkeyScope(commandId: CommandHotkeyId): CommandHotkeyScope {
-  if (commandId === 'factory.stopProduction' || commandId === 'factory.queueMode') return 'factory';
+  if (
+    commandId === 'factory.stopProduction' ||
+    commandId === 'factory.queueMode' ||
+    commandId === 'factory.airIdleState'
+  ) return 'factory';
   return commandId.startsWith('build.slot') ? 'buildMenu' : 'global';
 }
 
@@ -581,6 +639,7 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'factoryPreset.save10': [code('Ctrl+Alt+Shift+6', 'Digit6', { ctrl: true, alt: true, shift: true })],
     'factory.stopProduction': [key('S', 's', { shift: 'any' })],
     'factory.queueMode': [code('Alt+G', 'KeyG', { alt: true, shift: 'any' })],
+    'factory.airIdleState': [],
     'build.slot1': [code('1', 'Digit1', { shift: 'any' })],
     'build.slot2': [code('2', 'Digit2', { shift: 'any' })],
     'build.slot3': [code('3', 'Digit3', { shift: 'any' })],
@@ -601,6 +660,9 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'select.matching': [key('Ctrl+Z', 'z', { ctrl: true })],
     'select.matchingInView': [key('Alt+W', 'w', { alt: true })],
     'select.previous': [key('Alt+P', 'p', { alt: true })],
+    'select.previousNotInControlGroups': [],
+    'select.previousNonBuildersNotInControlGroups': [],
+    'select.groundWeaponUnits': [],
     'select.idleBuilders': [key('Ctrl+B', 'b', { ctrl: true })],
     'select.idleTransports': [code('Ctrl+Alt+T', 'KeyT', { ctrl: true, alt: true })],
     'select.waitingUnits': [key('Ctrl+Y', 'y', { ctrl: true })],
@@ -625,29 +687,49 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.unloadTransport': [code('Ctrl+Alt+Shift+Q', 'KeyQ', { ctrl: true, alt: true, shift: true })],
     'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
     'combat.repair': [key('R', 'r', { shift: 'any' })],
+    'combat.restore': [],
     'combat.ping': [key('P', 'p', { shift: 'any' })],
     'combat.towerTargetSet': [key('L', 'l', { shift: 'any' })],
     'combat.towerTargetSetNoGround': [code('Alt+L', 'KeyL', { alt: true, shift: 'any' })],
     'combat.towerTargetClear': [key('J', 'j', { shift: 'any' })],
     // BAR chat_and_ui_keys.txt binds "Any+pause pause".
     'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.gameSpeedIncrease': [
+      code('Alt+=', 'Equal', { alt: true }),
+      code('Alt+Numpad+', 'NumpadAdd', { alt: true }),
+    ],
+    'ui.gameSpeedDecrease': [
+      code('Alt+-', 'Minus', { alt: true }),
+      code('Alt+Numpad-', 'NumpadSubtract', { alt: true }),
+    ],
     'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.showMapOverview': [code('Ctrl+T', 'KeyT', { ctrl: true })],
     // Hold-to-show stats peek (BAR gui_unit_stats). Plain I follows the
     // BAR grid default; prototype has no other plain-I bind (invert is Alt+I).
     'ui.unitStats': [code('I', 'KeyI')],
+    'ui.customGameInfo': [],
     'ui.flipCameraYaw': [code('Alt+O', 'KeyO', { alt: true })],
+    'camera.toggleMode': [],
+    'camera.fovDecrease': [],
+    'camera.fovIncrease': [],
+    'camera.viewRadiusIncrease': [],
+    'camera.viewRadiusDecrease': [],
     'camera.viewTa': [code('Ctrl+F5', 'F5', { ctrl: true })],
     'camera.viewSpring': [code('Ctrl+F6', 'F6', { ctrl: true })],
     'ui.goToLastPing': [code('F5', 'F5', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleUiChrome': [code('Ctrl+F7', 'F7', { ctrl: true })],
     'ui.muteSound': [code('Ctrl+Shift+S', 'KeyS', { ctrl: true, shift: true })],
+    'ui.volumeIncrease': [],
+    'ui.volumeDecrease': [],
     'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleFullscreen': [key('Alt+Backspace', 'backspace', { alt: true })],
     'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
     'ui.mapDraw': [code('Ctrl+Shift+D', 'KeyD', { ctrl: true, shift: true })],
     'ui.mapLabel': [code('Ctrl+Shift+L', 'KeyL', { ctrl: true, shift: true })],
     'ui.mapErase': [code('Ctrl+Shift+E', 'KeyE', { ctrl: true, shift: true })],
+    'ui.attackRangeCycleNext': [],
+    'ui.attackRangeCyclePrevious': [],
+    'ui.toggleLosMap': [],
     'ui.togglePathingMap': [code('Ctrl+Shift+P', 'KeyP', { ctrl: true, shift: true })],
     'ui.toggleMetalMap': [code('Ctrl+Shift+M', 'KeyM', { ctrl: true, shift: true })],
     'ui.toggleElevationMap': [code('Ctrl+Shift+H', 'KeyH', { ctrl: true, shift: true })],
@@ -677,7 +759,7 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'command.carrierSpawn': [],
     'command.moveState': [code(';', 'Semicolon', { shift: 'any' })],
     'command.trajectoryToggle': [code('B', 'KeyB', { shift: 'any' })],
-    'command.cloak': [code('K', 'KeyK', { shift: 'any' })],
+    'command.cloak': [code('K', 'KeyK', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [],
@@ -718,6 +800,7 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'factoryPreset.save10': [code('Meta+Alt+9', 'Digit9', { meta: true, alt: true })],
     'factory.stopProduction': [code('G', 'KeyG', { shift: 'any' })],
     'factory.queueMode': [code('Alt+G', 'KeyG', { alt: true, shift: 'any' })],
+    'factory.airIdleState': [],
     'build.slot1': [code('Z', 'KeyZ', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'build.slot2': [code('X', 'KeyX', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'build.slot3': [code('C', 'KeyC', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
@@ -737,9 +820,12 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'select.allUnits': [code('Ctrl+E', 'KeyE', { ctrl: true })],
     'select.matching': [code('Ctrl+W', 'KeyW', { ctrl: true })],
     'select.matchingInView': [code('Q', 'KeyQ', { shift: 'any' })],
-    // BAR grid has no dedicated previous-selection bind (Ctrl+Q is the
-    // split-half command below), so previous keeps the freed Ctrl+Alt+S.
-    'select.previous': [code('Ctrl+Alt+S', 'KeyS', { ctrl: true, alt: true })],
+    // BAR grid has no dedicated whole-previous-selection bind; Ctrl+Q is
+    // the split-half command and Ctrl+W is same-type/all-map selection.
+    'select.previous': [],
+    'select.previousNotInControlGroups': [],
+    'select.previousNonBuildersNotInControlGroups': [],
+    'select.groundWeaponUnits': [],
     'select.idleBuilders': [key('Ctrl+Tab', 'tab', { ctrl: true })],
     'select.idleTransports': [code('Ctrl+R', 'KeyR', { ctrl: true })],
     'select.waitingUnits': [code('Ctrl+Y', 'KeyY', { ctrl: true })],
@@ -748,10 +834,12 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'select.mobileOnly': [],
     // grid_keys.txt: Alt+sc_q select PrevSelection+_Not_Building_Not_RelativeHealth_60+
     'select.damagedOnly': [code('Alt+Q', 'KeyQ', { alt: true })],
-    'select.invert': [code('Alt+I', 'KeyI', { alt: true })],
+    // BAR uses held selection modifiers for invert/loop selection
+    // (chat_and_ui_keys.txt selectloop_*), not standalone order keys.
+    'select.invert': [],
     // grid_keys.txt: Ctrl+sc_q select PrevSelection++_ClearSelection_SelectPart_50+
     'select.split': [code('Ctrl+Q', 'KeyQ', { ctrl: true })],
-    'select.loop': [code('Alt+L', 'KeyL', { alt: true })],
+    'select.loop': [],
     'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
     'combat.attackLine': [],
     'combat.attackArea': [code('Ctrl+A', 'KeyA', { ctrl: true, shift: 'any' })],
@@ -765,30 +853,71 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
     'combat.repair': [code('R', 'KeyR', { shift: 'any' })],
+    'combat.restore': [code('M', 'KeyM', { shift: 'any' })],
     'combat.ping': [],
     'combat.towerTargetSet': [code('S', 'KeyS', { shift: 'any' })],
     'combat.towerTargetSetNoGround': [code('Alt+S', 'KeyS', { alt: true, shift: 'any' })],
     'combat.towerTargetClear': [code('Ctrl+S', 'KeyS', { ctrl: true, shift: 'any' })],
     // BAR chat_and_ui_keys.txt binds "Any+pause pause".
     'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    // grid_keys.txt/grid_keys_60pct.txt: Alt+sc_= / Alt+numpad+
+    // increasespeed, Alt+sc_- / Alt+numpad- decreasespeed.
+    'ui.gameSpeedIncrease': [
+      code('Alt+=', 'Equal', { alt: true }),
+      code('Alt+Numpad+', 'NumpadAdd', { alt: true }),
+    ],
+    'ui.gameSpeedDecrease': [
+      code('Alt+-', 'Minus', { alt: true }),
+      code('Alt+Numpad-', 'NumpadSubtract', { alt: true }),
+    ],
     'ui.optionsMenu': [code('F10', 'F10')],
     'ui.showMapOverview': [code('Ctrl+T', 'KeyT', { ctrl: true })],
     // grid_keys.txt: "bind sc_i unit_stats" — hold-to-show stats peek
-    // (gui_unit_stats registers press+release actions). Plain I is free
-    // in grid (select.invert is Alt+I).
+    // (gui_unit_stats registers press+release actions). BAR does not bind a
+    // standalone invert-selection hotkey; invert is a held selectbox modifier.
     'ui.unitStats': [code('I', 'KeyI')],
+    // grid_keys.txt/grid_keys_60pct.txt: Ctrl+sc_i customgameinfo.
+    'ui.customGameInfo': [code('Ctrl+I', 'KeyI', { ctrl: true })],
     'ui.flipCameraYaw': [code('Alt+O', 'KeyO', { alt: true })],
+    'camera.toggleMode': [],
+    // chat_and_ui_keys.txt: Ctrl+sc_o / Numpad1 fov_dec 5,
+    // Ctrl+sc_p / Numpad7 fov_inc 5.
+    'camera.fovDecrease': [
+      code('Ctrl+O', 'KeyO', { ctrl: true }),
+      code('Numpad1', 'Numpad1'),
+    ],
+    'camera.fovIncrease': [
+      code('Ctrl+P', 'KeyP', { ctrl: true }),
+      code('Numpad7', 'Numpad7'),
+    ],
+    'camera.viewRadiusIncrease': [],
+    'camera.viewRadiusDecrease': [],
     'camera.viewTa': [code('Ctrl+F5', 'F5', { ctrl: true })],
     'camera.viewSpring': [code('Ctrl+F6', 'F6', { ctrl: true })],
     'ui.goToLastPing': [code('F5', 'F5', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleUiChrome': [code('Ctrl+F7', 'F7', { ctrl: true })],
     'ui.muteSound': [key('Backspace', 'backspace')],
+    // snd_volume_osd.lua: +/- step master volume by 8.
+    'ui.volumeIncrease': [
+      code('Numpad+', 'NumpadAdd'),
+      code('=', 'Equal'),
+    ],
+    'ui.volumeDecrease': [
+      code('-', 'Minus'),
+      code('Numpad-', 'NumpadSubtract'),
+    ],
     'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleFullscreen': [key('Alt+Backspace', 'backspace', { alt: true })],
-    'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
+    'ui.chat': [key('Enter', 'enter', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.mapDraw': [code('`', 'Backquote')],
     'ui.mapLabel': [sequence(code('`', 'Backquote'), code('`', 'Backquote'))],
     'ui.mapErase': [],
+    // chat_and_ui_keys.txt: Alt+sc_. attack_range_inc,
+    // Alt+sc_comma attack_range_dec.
+    'ui.attackRangeCycleNext': [code('Alt+.', 'Period', { alt: true })],
+    'ui.attackRangeCyclePrevious': [code('Alt+,', 'Comma', { alt: true })],
+    // grid_keys.txt/grid_keys_60pct.txt: Any+sc_' togglelos.
+    'ui.toggleLosMap': [code("'", 'Quote', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.togglePathingMap': [code('F6', 'F6', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleMetalMap': [code('F7', 'F7', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleElevationMap': [code('F8', 'F8', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
@@ -818,7 +947,7 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'command.carrierSpawn': [],
     'command.moveState': [],
     'command.trajectoryToggle': [],
-    'command.cloak': [code('K', 'KeyK', { shift: 'any' })],
+    'command.cloak': [code('K', 'KeyK', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
     'command.clearQueue': [],
@@ -837,7 +966,7 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'command.buildCycle': [],
     'command.dgun': [code('D', 'KeyD', { shift: 'any' })],
     'command.selectCommander': [
-      code('Ctrl+C', 'KeyC', { ctrl: true, shift: 'any' }),
+      code('Ctrl+C', 'KeyC', { ctrl: true }),
     ],
     'factoryPreset.load1': [code('Meta+0', 'Digit0', { meta: true })],
     'factoryPreset.load2': [code('Meta+1', 'Digit1', { meta: true })],
@@ -861,6 +990,7 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'factoryPreset.save10': [code('Meta+Alt+9', 'Digit9', { meta: true, alt: true })],
     'factory.stopProduction': [code('Ctrl+S', 'KeyS', { ctrl: true, shift: 'any' })],
     'factory.queueMode': [code('Alt+G', 'KeyG', { alt: true, shift: 'any' })],
+    'factory.airIdleState': [],
     'build.slot1': [],
     'build.slot2': [],
     'build.slot3': [],
@@ -881,6 +1011,9 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'select.matching': [code('Ctrl+Z', 'KeyZ', { ctrl: true })],
     'select.matchingInView': [],
     'select.previous': [],
+    'select.previousNotInControlGroups': [code('Ctrl+X', 'KeyX', { ctrl: true })],
+    'select.previousNonBuildersNotInControlGroups': [code('Ctrl+V', 'KeyV', { ctrl: true })],
+    'select.groundWeaponUnits': [code('Ctrl+W', 'KeyW', { ctrl: true })],
     'select.idleBuilders': [code('Ctrl+B', 'KeyB', { ctrl: true })],
     'select.idleTransports': [],
     'select.waitingUnits': [],
@@ -906,12 +1039,25 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
     'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
     'combat.repair': [code('R', 'KeyR', { shift: 'any' })],
+    'combat.restore': [],
     'combat.ping': [],
     'combat.towerTargetSet': [code('Alt+Y', 'KeyY', { alt: true, shift: 'any' })],
     'combat.towerTargetSetNoGround': [code('Y', 'KeyY', { shift: 'any' })],
     'combat.towerTargetClear': [code('J', 'KeyJ', { shift: 'any' })],
     // BAR chat_and_ui_keys.txt binds "Any+pause pause".
     'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    // legacy_keys.txt/legacy_keys_60pct.txt bind the grid speed chords plus
+    // Alt+Insert / Alt+Delete.
+    'ui.gameSpeedIncrease': [
+      code('Alt+Insert', 'Insert', { alt: true }),
+      code('Alt+=', 'Equal', { alt: true }),
+      code('Alt+Numpad+', 'NumpadAdd', { alt: true }),
+    ],
+    'ui.gameSpeedDecrease': [
+      code('Alt+Delete', 'Delete', { alt: true }),
+      code('Alt+-', 'Minus', { alt: true }),
+      code('Alt+Numpad-', 'NumpadSubtract', { alt: true }),
+    ],
     'ui.optionsMenu': [code('F10', 'F10')],
     'ui.showMapOverview': [key('Tab', 'tab', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     // legacy_keys.txt: "bind Any+space unit_stats". Space doubles as the
@@ -919,18 +1065,47 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     // commandinsert prepend") — the same overlap exists in BAR itself:
     // holding Space both shows the stats peek and prepends commands.
     'ui.unitStats': [code('Space', 'Space', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    // legacy_keys.txt/legacy_keys_60pct.txt: sc_i customgameinfo.
+    'ui.customGameInfo': [code('I', 'KeyI')],
     'ui.flipCameraYaw': [code('Ctrl+Shift+O', 'KeyO', { ctrl: true, shift: true })],
+    'camera.toggleMode': [
+      key('Shift+Backspace', 'backspace', { shift: true }),
+      key('Ctrl+Backspace', 'backspace', { ctrl: true }),
+    ],
+    // chat_and_ui_keys.txt: Ctrl+sc_o / Numpad1 fov_dec 5,
+    // Ctrl+sc_p / Numpad7 fov_inc 5.
+    'camera.fovDecrease': [
+      code('Ctrl+O', 'KeyO', { ctrl: true }),
+      code('Numpad1', 'Numpad1'),
+    ],
+    'camera.fovIncrease': [
+      code('Ctrl+P', 'KeyP', { ctrl: true }),
+      code('Numpad7', 'Numpad7'),
+    ],
+    // legacy_keys.txt/legacy_keys_60pct.txt: Any+home increaseViewRadius,
+    // Any+end decreaseViewRadius.
+    'camera.viewRadiusIncrease': [code('Home', 'Home', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'camera.viewRadiusDecrease': [code('End', 'End', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'camera.viewTa': [code('Ctrl+F2', 'F2', { ctrl: true })],
     'camera.viewSpring': [code('Ctrl+F3', 'F3', { ctrl: true })],
     'ui.goToLastPing': [code('F3', 'F3', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleUiChrome': [code('F5', 'F5', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.muteSound': [code('F6', 'F6', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    // snd_volume_osd.lua: +/- step master volume by 8.
+    'ui.volumeIncrease': [
+      code('Numpad+', 'NumpadAdd'),
+      code('=', 'Equal'),
+    ],
+    'ui.volumeDecrease': [
+      code('-', 'Minus'),
+      code('Numpad-', 'NumpadSubtract'),
+    ],
     'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleFullscreen': [
       key('Alt+Backspace', 'backspace', { alt: true }),
       key('Alt+Enter', 'enter', { alt: true }),
     ],
-    'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
+    'ui.chat': [key('Enter', 'enter', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.mapDraw': [
       code('Q', 'KeyQ'),
       code('`', 'Backquote'),
@@ -940,6 +1115,13 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
       sequence(code('`', 'Backquote'), code('`', 'Backquote')),
     ],
     'ui.mapErase': [],
+    // chat_and_ui_keys.txt: Alt+sc_. attack_range_inc,
+    // Alt+sc_comma attack_range_dec.
+    'ui.attackRangeCycleNext': [code('Alt+.', 'Period', { alt: true })],
+    'ui.attackRangeCyclePrevious': [code('Alt+,', 'Comma', { alt: true })],
+    // legacy_keys.txt/legacy_keys_60pct.txt: Any+sc_l togglelos. Plain
+    // legacy L remains loadunits because BAR also binds that active order.
+    'ui.toggleLosMap': [code('L', 'KeyL', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.togglePathingMap': [code('F2', 'F2', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleMetalMap': [code('F4', 'F4', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.toggleElevationMap': [code('F1', 'F1', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],

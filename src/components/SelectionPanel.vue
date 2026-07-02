@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { COLORS, WAYPOINT_COLOR_CSS } from '@/colorsConfig';
-import type { CombatFireState, UnitMoveState, WaypointType } from '../game/sim/types';
+import type { CombatFireState, UnitAirIdleState, UnitMoveState, WaypointType } from '../game/sim/types';
 import {
   getUnitRosterDisplay,
   structureRosterDisplay,
@@ -125,9 +125,7 @@ const showTowerTargetNoGroundButton = computed(() => showPrototypeOnlyCommandBut
 const showSelfDestructButton = computed(() =>
   showPrototypeOnlyCommandButtons.value && props.selection.hasSelfDestructable,
 );
-const showFactoryQueueModeButton = computed(() =>
-  showPrototypeOnlyCommandButtons.value && props.selection.hasFactory,
-);
+const showFactoryQueueModeButton = computed(() => props.selection.hasFactory);
 const showBuildUtilityGrid = computed(() =>
   showPrototypeOnlyCommandButtons.value &&
   (props.selection.canUpgradeMetalExtractors || props.selection.isBuildMode),
@@ -147,13 +145,18 @@ const showCarrierSpawnButton = computed(() =>
   isBarHotkeyPreset.value && props.selection.hasCarrierSpawnControl,
 );
 const showFactoryGuardButton = computed(() =>
-  props.selection.hasFactoryGuardControl,
+  isBarHotkeyPreset.value && props.selection.hasFactoryGuardControl,
+);
+const showFactoryAirIdleButton = computed(() =>
+  isBarHotkeyPreset.value && props.selection.hasFactoryAirIdleControl,
 );
 const showTowerTargetClearButton = computed(() =>
   showPrototypeOnlyCommandButtons.value || props.selection.hasTowerTargetActive,
 );
 const showResurrectButton = computed(() =>
-  showPrototypeOnlyCommandButtons.value && props.selection.hasCommander,
+  isBarHotkeyPreset.value
+    ? props.selection.hasBarResurrectControl
+    : showPrototypeOnlyCommandButtons.value && props.selection.hasCommander,
 );
 const showCaptureButton = computed(() =>
   isBarHotkeyPreset.value ? props.selection.hasBarCaptureControl : props.selection.hasCommander,
@@ -169,6 +172,22 @@ const visibleTrajectoryStateCount = computed(() =>
 );
 const showManualLaunchButton = computed(() =>
   isBarHotkeyPreset.value ? props.selection.hasManualLaunchControl : props.selection.hasTowerTargetControl,
+);
+// BAR ARM static defenses such as armllt/armbeamer/armrl set removewait=true
+// but do not set removestop, so pure combat-tower selections keep Stop visible
+// while Wait stays absent.
+const showTowerStopButton = computed(() =>
+  isBarHotkeyPreset.value &&
+  showTowerActions.value &&
+  props.selection.hasFireControl &&
+  !props.selection.hasFactory,
+);
+// BAR armamex sets removewait=true but does not set removestop, so the
+// advanced metal extractor keeps Stop visible while T1 mex/solar do not.
+const showBuildingStopButton = computed(() =>
+  isBarHotkeyPreset.value &&
+  showBuildingActions.value &&
+  props.selection.hasBarBuildingStopControl,
 );
 const showBuildingActiveButton = computed(() =>
   isBarHotkeyPreset.value ? props.selection.hasBarBuildingActiveControl : props.selection.hasBuildingActiveControl,
@@ -241,8 +260,8 @@ function barOrderCellMarginVh(
   return cellHeight * cellMarginHeightMultiplier * cellMargin;
 }
 
-function barOrderCellMarginCss(valueVh: number): string {
-  return `max(1px, ${valueVh.toFixed(4)}vh)`;
+function barOrderCellMarginCss(valueVh: number, minPixels: 0 | 1): string {
+  return `max(${minPixels}px, round(up, ${valueVh.toFixed(4)}vh, 1px))`;
 }
 
 const barOrderCommandCellCount = computed(() => {
@@ -260,10 +279,16 @@ const barOrderCommandCellCount = computed(() => {
     count += 1; // guard
     count += 1; // stop
     count += 1; // wait
-    if (showGatherWaitButton.value) count += 1; // BAR-grid gather wait
+    if (showGatherWaitButton.value) count += 1; // prototype Gather Wait
     count += 1; // repeat
     if (props.selection.hasMoveStateControl) count += 1;
     if (props.selection.hasCloakControl) count += 1;
+    if (isBarHotkeyPreset.value) {
+      if (showCombatActions.value) count += 1; // fire state
+      if (showTrajectoryButton.value) count += 1;
+      if (showBuilderPriorityButton.value) count += 1;
+      if (showCarrierSpawnButton.value) count += 1;
+    }
     if (showPrototypeOnly) count += 2; // prototype visible skip/cancel queue buttons
     if (showPrototypeOnly) count += 1; // clear queue
   }
@@ -272,9 +297,10 @@ const barOrderCommandCellCount = computed(() => {
     count += 1 + props.selection.queueInsertOptions.length;
   }
 
-  if (showCombatActions.value) {
+  if (showCombatActions.value && (!isBarHotkeyPreset.value || !showUnitActions.value)) {
     count += 1; // fire state
     if (showTrajectoryButton.value) count += 1;
+    if (showTowerStopButton.value) count += 1;
   }
 
   if (
@@ -283,17 +309,14 @@ const barOrderCommandCellCount = computed(() => {
       props.selection.hasDGun ||
       props.selection.hasBuilder ||
       showCaptureButton.value ||
+      showResurrectButton.value ||
       props.selection.hasCommander ||
-      props.selection.hasTransport ||
-      showBuilderPriorityButton.value ||
-      showCarrierSpawnButton.value
+      props.selection.hasTransport
     )
   ) {
     if (props.selection.hasDGun) count += 1;
-    if (props.selection.hasBuilder) count += 2; // repair, reclaim
+    if (props.selection.hasBuilder) count += isBarHotkeyPreset.value ? 3 : 2; // repair, restore, reclaim
     if (showAreaMexButton.value) count += 1;
-    if (showBuilderPriorityButton.value) count += 1;
-    if (showCarrierSpawnButton.value) count += 1;
     if (showCaptureButton.value) count += 1; // capture
     if (showResurrectButton.value) count += 1;
     if (props.selection.hasCommander && showPrototypeOnly) count += 1; // resurrect area
@@ -310,15 +333,18 @@ const barOrderCommandCellCount = computed(() => {
 
   if (props.selection.hasFactory && props.selection.factoryId && showTowerActions.value) {
     if (showPrototypeOnly) count += 2; // prototype factory status spans two cells
-    count += 2; // stop production, repeat
+    count += 3; // repeat, wait, stop production
+    if (isBarHotkeyPreset.value && props.selection.hasMoveStateControl) count += 1;
+    if (showFactoryAirIdleButton.value) count += 1;
     if (showFactoryGuardButton.value) count += 1;
     if (showBuilderPriorityButton.value) count += 1;
     if (showPrototypeOnly) count += 1; // clear explicit guard target
-    if (showFactoryQueueModeButton.value) count += 1; // prototype queue/quota mode
+    if (showFactoryQueueModeButton.value) count += 1; // factory queue/quota mode
   }
 
   if (props.selection.hasUpgradeableMetalExtractor && showBuildingActions.value) count += 1;
   if (showBuildingActiveButton.value && showBuildingActions.value) count += 1;
+  if (showBuildingStopButton.value) count += 1;
   if (showSelfDestructButton.value) count += 1;
 
   return count;
@@ -328,10 +354,10 @@ const barOrderGridSize = computed(() =>
   barOrderGridSizeForCommandCount(barOrderCommandCellCount.value),
 );
 const barOrderCellMarginPrimary = computed(() =>
-  barOrderCellMarginCss(barOrderCellMarginVh(barOrderGridSize.value, 0.5)),
+  barOrderCellMarginCss(barOrderCellMarginVh(barOrderGridSize.value, 0.5), 1),
 );
 const barOrderCellMarginSecondary = computed(() =>
-  barOrderCellMarginCss(barOrderCellMarginVh(barOrderGridSize.value, 0.18)),
+  barOrderCellMarginCss(barOrderCellMarginVh(barOrderGridSize.value, 0.18), 0),
 );
 
 const selectionPanelStyle = computed(() => ({
@@ -443,11 +469,20 @@ function factoryCellBuildProgressStyle(unitBlueprintId: string): { '--bar-cell-p
     '--bar-cell-progress-remaining': `${((1 - progress) * 100).toFixed(3)}%`,
   };
 }
+
+function builderTypeBuildProgressStyle(active: boolean): { '--bar-builder-progress-remaining': string } | undefined {
+  if (!active || props.selection.factoryUnderConstruction !== true) return undefined;
+  const progress = Math.max(0, Math.min(1, props.selection.factoryConstructionProgress ?? 0));
+  return {
+    '--bar-builder-progress-remaining': `${((1 - progress) * 100).toFixed(3)}%`,
+  };
+}
 const factoryStatusLabel = computed(() => {
   const unitLabel = props.selection.factorySelectedUnit?.label ?? 'No unit';
   if (unitLabel === 'No unit') return `${unitLabel} idle`;
   const modeLabel = props.selection.factoryRepeatsProduction === true ? 'Repeat' : 'Queue';
   const queuedLabel = factoryQueueCount.value > 0 ? ` +${factoryQueueCount.value}` : '';
+  if (props.selection.isWaiting) return `${modeLabel} ${unitLabel} waiting${queuedLabel}`;
   return props.selection.factoryIsProducing === true
     ? `${modeLabel} ${unitLabel} producing${queuedLabel}`
     : `${modeLabel} ${unitLabel} idle${queuedLabel}`;
@@ -465,6 +500,7 @@ const showCancelHint = computed(() =>
   props.selection.isBuildMode
   || props.selection.isDGunMode
   || props.selection.isRepairAreaMode
+  || props.selection.isRestoreAreaMode
   || props.selection.isAttackMode
   || props.selection.isAttackAreaMode
   || props.selection.isAttackGroundMode
@@ -533,7 +569,7 @@ type BarGroupIconId =
 const BAR_GROUP_ICON_BY_STRUCTURE_BLUEPRINT_ID: Partial<Record<StructureBlueprintId, BarGroupIconId>> = {
   buildingExtractor: 'metal',
   buildingExtractorT2: 'metal',
-  buildingResourceConverter: 'energy',
+  buildingResourceConverter: 'metal',
   buildingSolar: 'energy',
   buildingWind: 'energy',
   buildingRadar: 'util',
@@ -546,11 +582,11 @@ const BAR_GROUP_ICON_BY_STRUCTURE_BLUEPRINT_ID: Partial<Record<StructureBlueprin
 const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconId>> = {
   unitAlbatros: 'weapon',
   unitBadger: 'weapon',
-  unitBee: 'weapon',
+  unitBee: 'util',
   unitConstructionDrone: 'builder',
   unitDaddy: 'weapon',
   unitDragonfly: 'weapon',
-  unitEagle: 'weapon',
+  unitEagle: 'aa',
   unitFormik: 'weapon',
   unitHippo: 'weapon',
   unitJackal: 'weapon',
@@ -562,7 +598,6 @@ const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconI
   unitQueenTick: 'weapon',
   unitTarantula: 'weapon',
   unitTick: 'weapon',
-  unitTransport: 'util',
   unitWidow: 'weapon',
 };
 
@@ -615,6 +650,7 @@ const BAR_ORDER_TOOLTIP_BY_COMMAND_ID: Partial<Record<CommandHotkeyId, string>> 
   'command.dgun': 'Fire the powerful commander Disintegrator-gun',
   'combat.manualLaunch': 'Launch a missile at a target',
   'combat.repair': 'Repair a damaged unit',
+  'combat.restore': 'Restore an area of the map to its original height',
   'combat.reclaim': 'Suck metal/energy from wrecks or features (trees/stones)',
   'combat.capture': 'Convert units that belong to the enemy (or ally)',
   'combat.resurrect': 'Revive wrecks to become units again (click-drag for area)',
@@ -625,6 +661,7 @@ const BAR_ORDER_TOOLTIP_BY_COMMAND_ID: Partial<Record<CommandHotkeyId, string>> 
   'combat.unloadTransport': 'Unload unit or multiple units within an area in the transport',
   'factory.stopProduction': 'Clear build queue and quotas for all units on selected factories',
   'command.factoryGuard': 'Builders produced by this factory will automatically guard it',
+  'factory.airIdleState': 'Sets what aircraft do when leaving air factory',
   'factory.queueMode': 'Queue: Build each queued unit once\nQuota: Maintain a minimum quota of each unit on the battlefield',
   'combat.towerTargetSet': 'Set a prioritized target (prioritizes targeting when target in range) ',
   'combat.towerTargetClear': 'Removes the priority target',
@@ -645,6 +682,10 @@ function actionTitle(label: string, commandId: CommandHotkeyId, detail?: string)
 
 function barOrderLabel(barLabel: string, prototypeLabel: string): string {
   return isBarHotkeyPreset.value ? barLabel : prototypeLabel;
+}
+
+function stateActionTitle(barLabel: string, prototypeLabel: string, commandId: CommandHotkeyId): string {
+  return actionTitle(isBarHotkeyPreset.value ? barLabel : prototypeLabel, commandId);
 }
 
 function barStateButtonColor(prototypeColor: string): string {
@@ -673,6 +714,14 @@ function moveStateLabel(moveState: SelectionInfo['unitMoveState']): string {
     case 'mixed': return 'Mixed';
     case 'maneuver': return isBarHotkeyPreset.value ? 'Maneuver' : 'Move';
   }
+}
+
+function factoryAirIdleStateLabel(airIdleState: SelectionInfo['factoryAirIdleState']): string {
+  return airIdleState === 'fly' ? 'Fly' : 'Land';
+}
+
+function nextFactoryAirIdleState(airIdleState: SelectionInfo['factoryAirIdleState']): UnitAirIdleState {
+  return airIdleState === 'fly' ? 'land' : 'fly';
 }
 
 function nextMoveStateLabel(moveState: SelectionInfo['unitMoveState']): string {
@@ -744,6 +793,10 @@ function carrierSpawnLabel(enabled: boolean): string {
 
 function factoryQueueModeLabel(enabled: boolean): string {
   return isBarHotkeyPreset.value ? (enabled ? 'Quota Mode' : 'Queue Mode') : enabled ? 'Quota' : 'Queue';
+}
+
+function factoryGuardStateLabel(active: boolean): string {
+  return isBarHotkeyPreset.value ? 'Factory Guard' : active ? 'Factory guard on' : 'Factory guard off';
 }
 
 function stopFactoryProductionLabel(): string {
@@ -856,10 +909,11 @@ function factoryProductionCellTitle(option: FactoryGridOption): string {
   );
 }
 
-function pageActionTitle(label: string): string {
-  return barGridNextPageHotkey.value === ''
-    ? label
-    : `${label} - ${barGridNextPageHotkey.value}`;
+function barBuildCategoryTitle(category: (typeof BAR_BUILD_CATEGORIES)[number]): string {
+  const key = hotkey(category.keyCommandId);
+  return key === ''
+    ? category.description
+    : `${category.description} - Hotkey: [${key}]`;
 }
 
 const buildingMenuLayout = computed(() =>
@@ -899,6 +953,10 @@ const buildFacingLabel = computed(() => `${props.selection.buildFacingDegrees}de
 const barGridNextPageHotkey = computed(() =>
   isBarGridCommandHotkeyPreset(props.hotkeyPreset) ? 'B' : '',
 );
+const barGridCycleBuilderHotkey = computed(() =>
+  isBarGridCommandHotkeyPreset(props.hotkeyPreset) ? '.' : '',
+);
+const barGridCycleBuilderTitle = computed(() => 'Next Builder');
 const unitOptions = computed<FactoryGridOption[]>(() => {
   return unitOptionsForBlueprintIds(props.selection.factoryAllowedUnitBlueprintIds);
 });
@@ -1153,6 +1211,9 @@ const showBarFactoryPresetOverlay = computed(() =>
   props.selection.hasFactory &&
   props.selection.factoryId !== undefined &&
   showTowerActions.value,
+);
+const barFactoryPresetTitle = computed(() =>
+  props.selection.details.find((detail) => detail.label === 'Name')?.value ?? 'Factory',
 );
 
 const factoryPresetOverlayEntries = computed<FactoryPresetOverlayEntry[]>(() => {
@@ -1678,6 +1739,162 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     <div v-if="showUnitActions" class="button-group">
       <div class="group-label">Movement</div>
       <div class="buttons bar-command-grid">
+        <template v-if="isBarHotkeyPreset">
+          <button
+            type="button"
+            class="action-btn bar-order-state"
+            :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+            :title="actionTitle(repeatStateLabel(selection.isRepeatQueue), 'command.repeat')"
+            @click="actions.toggleRepeatQueue()"
+          >
+            <span class="btn-label">{{ repeatStateLabel(selection.isRepeatQueue) }}</span>
+            <span class="btn-key">{{ hotkey('command.repeat') }}</span>
+            <span class="bar-state-lights" aria-hidden="true">
+              <span
+                v-for="light in binaryStateLights(selection.isRepeatQueue)"
+                :key="light.key"
+                class="bar-state-light"
+                :class="[light.tone, { active: light.active }]"
+              ></span>
+            </span>
+          </button>
+          <button
+            v-if="selection.hasMoveStateControl"
+            type="button"
+            class="action-btn bar-order-state"
+            :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+            :title="stateActionTitle(moveStateLabel(selection.unitMoveState), `Move state: ${moveStateLabel(selection.unitMoveState)}; next ${nextMoveStateLabel(selection.unitMoveState)}`, 'command.moveState')"
+            @click="actions.toggleUnitMoveState()"
+            @contextmenu.prevent="reverseUnitMoveStateFromClick"
+          >
+            <span class="btn-label">{{ moveStateLabel(selection.unitMoveState) }}</span>
+            <span class="btn-key">{{ hotkey('command.moveState') }}</span>
+            <span class="bar-state-lights" aria-hidden="true">
+              <span
+                v-for="light in moveStateLights(selection.unitMoveState)"
+                :key="light.key"
+                class="bar-state-light"
+                :class="[light.tone, { active: light.active }]"
+              ></span>
+            </span>
+          </button>
+          <button
+            v-if="selection.hasCloakControl"
+            type="button"
+            class="action-btn bar-order-state"
+            :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+            :title="stateActionTitle(cloakStateLabel(selection), selection.wantsCloak ? 'Disable cloak' : 'Enable cloak', 'command.cloak')"
+            @click="actions.toggleCloakState()"
+          >
+            <span class="btn-label">{{ cloakStateLabel(selection) }}</span>
+            <span class="btn-key">{{ hotkey('command.cloak') }}</span>
+            <span class="bar-state-lights" aria-hidden="true">
+              <span
+                v-for="light in binaryStateLights(selection.wantsCloak || selection.isCloaked)"
+                :key="light.key"
+                class="bar-state-light"
+                :class="[light.tone, { active: light.active }]"
+              ></span>
+            </span>
+          </button>
+          <button
+            v-if="showCombatActions"
+            type="button"
+            class="action-btn bar-order-state"
+            :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.fireControl) }"
+            :title="stateActionTitle(fireStateLabel(selection.fireState), `Fire state: ${fireStateLabel(selection.fireState)}; next ${nextFireStateLabel(selection.fireState)}`, 'command.fireToggle')"
+            @click="actions.toggleSelectedFire()"
+            @contextmenu.prevent="reverseFireStateFromClick"
+          >
+            <span class="btn-label">{{ fireStateLabel(selection.fireState) }}</span>
+            <span class="btn-key">{{ hotkey('command.fireToggle') }}</span>
+            <span class="bar-state-lights" aria-hidden="true">
+              <span
+                v-for="light in fireStateLights(selection.fireState)"
+                :key="light.key"
+                class="bar-state-light"
+                :class="[light.tone, { active: light.active }]"
+              ></span>
+            </span>
+          </button>
+          <button
+            v-if="showTrajectoryButton"
+            type="button"
+            class="action-btn bar-order-state"
+            :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.fireControl) }"
+            :title="actionTitle(trajectoryModeLabel(visibleTrajectoryMode), 'command.trajectoryToggle')"
+            @click="actions.toggleTrajectoryMode()"
+          >
+            <span class="btn-label">{{ trajectoryModeLabel(visibleTrajectoryMode) }}</span>
+            <span class="btn-key">{{ hotkey('command.trajectoryToggle') }}</span>
+            <span class="bar-state-lights" aria-hidden="true">
+              <span
+                v-for="light in trajectoryStateLights(visibleTrajectoryMode)"
+                :key="light.key"
+                class="bar-state-light"
+                :class="[light.tone, { active: light.active }]"
+              ></span>
+            </span>
+          </button>
+          <button
+            v-if="showBuilderPriorityButton"
+            type="button"
+            class="action-btn bar-order-state"
+            :class="{ active: selection.builderPriorityLow }"
+            :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+            :title="actionTitle(builderPriorityLabel(selection.builderPriorityLow), 'command.builderPriority', 'Assigns resources to use for this builder when not having enough for all')"
+            @click="actions.toggleBuilderPriority()"
+          >
+            <span class="btn-label">{{ builderPriorityLabel(selection.builderPriorityLow) }}</span>
+            <span class="btn-key">{{ hotkey('command.builderPriority') }}</span>
+            <span class="bar-state-lights" aria-hidden="true">
+              <span
+                v-for="light in binaryStateLights(selection.builderPriorityLow)"
+                :key="light.key"
+                class="bar-state-light"
+                :class="[light.tone, { active: light.active }]"
+              ></span>
+            </span>
+          </button>
+          <button
+            v-if="showCarrierSpawnButton"
+            type="button"
+            class="action-btn bar-order-state"
+            :class="{ active: selection.carrierSpawnEnabled }"
+            :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+            :title="actionTitle(carrierSpawnLabel(selection.carrierSpawnEnabled), 'command.carrierSpawn', 'Enable/Disable drone spawning')"
+            @click="actions.toggleCarrierSpawn()"
+          >
+            <span class="btn-label">{{ carrierSpawnLabel(selection.carrierSpawnEnabled) }}</span>
+            <span class="btn-key">{{ hotkey('command.carrierSpawn') }}</span>
+            <span class="bar-state-lights" aria-hidden="true">
+              <span
+                v-for="light in binaryStateLights(selection.carrierSpawnEnabled)"
+                :key="light.key"
+                class="bar-state-light"
+                :class="[light.tone, { active: light.active }]"
+              ></span>
+            </span>
+          </button>
+          <button
+            type="button"
+            class="action-btn bar-order-wait"
+            :style="{ '--btn-color': BUTTON_COLORS.wait }"
+            :title="actionTitle('Wait', 'command.wait', 'Shift-click queues; Ctrl/Cmd+Shift-click inserts next')"
+            @click="toggleWaitFromClick"
+          >
+            <span class="btn-label">Wait</span>
+            <span class="btn-key">{{ hotkey('command.wait') }}</span>
+            <span class="bar-state-lights" aria-hidden="true">
+              <span
+                v-for="light in binaryStateLights(selection.isWaiting)"
+                :key="light.key"
+                class="bar-state-light"
+                :class="[light.tone, { active: light.active }]"
+              ></span>
+            </span>
+          </button>
+        </template>
         <button
           v-for="wm in waypointModes"
           :key="wm.mode"
@@ -1797,6 +2014,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('command.stop') }}</span>
         </button>
         <button
+          v-if="!isBarHotkeyPreset"
           type="button"
           class="action-btn bar-order-wait"
           :style="{ '--btn-color': BUTTON_COLORS.wait }"
@@ -1834,10 +2052,11 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           </span>
         </button>
         <button
+          v-if="!isBarHotkeyPreset"
           type="button"
           class="action-btn bar-order-state"
           :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
-          :title="actionTitle(selection.isRepeatQueue ? 'Repeat orders off' : 'Repeat orders', 'command.repeat')"
+          :title="actionTitle(repeatStateLabel(selection.isRepeatQueue), 'command.repeat')"
           @click="actions.toggleRepeatQueue()"
         >
           <span class="btn-label">{{ repeatStateLabel(selection.isRepeatQueue) }}</span>
@@ -1852,11 +2071,11 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           </span>
         </button>
         <button
-          v-if="selection.hasMoveStateControl"
+          v-if="!isBarHotkeyPreset && selection.hasMoveStateControl"
           type="button"
           class="action-btn bar-order-state"
           :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
-          :title="actionTitle(`Move state: ${moveStateLabel(selection.unitMoveState)}; next ${nextMoveStateLabel(selection.unitMoveState)}`, 'command.moveState')"
+          :title="stateActionTitle(moveStateLabel(selection.unitMoveState), `Move state: ${moveStateLabel(selection.unitMoveState)}; next ${nextMoveStateLabel(selection.unitMoveState)}`, 'command.moveState')"
           @click="actions.toggleUnitMoveState()"
           @contextmenu.prevent="reverseUnitMoveStateFromClick"
         >
@@ -1872,11 +2091,11 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           </span>
         </button>
         <button
-          v-if="selection.hasCloakControl"
+          v-if="!isBarHotkeyPreset && selection.hasCloakControl"
           type="button"
           class="action-btn bar-order-state"
           :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
-          :title="actionTitle(selection.wantsCloak ? 'Disable cloak' : 'Enable cloak', 'command.cloak')"
+          :title="stateActionTitle(cloakStateLabel(selection), selection.wantsCloak ? 'Disable cloak' : 'Enable cloak', 'command.cloak')"
           @click="actions.toggleCloakState()"
         >
           <span class="btn-label">{{ cloakStateLabel(selection) }}</span>
@@ -1962,14 +2181,14 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
          See budget_design_philosophy.html "Selection Menus Are Uniform Per
          Entity Type": both unit and tower selection panels list a
          fire-control toggle. -->
-    <div v-if="showCombatActions" class="button-group">
+    <div v-if="showCombatActions && (!isBarHotkeyPreset || !showUnitActions)" class="button-group">
       <div class="group-label">{{ isStaticOnlySelection ? 'Tower' : 'Combat' }}</div>
       <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn bar-order-state"
           :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.fireControl) }"
-          :title="actionTitle(`Fire state: ${fireStateLabel(selection.fireState)}; next ${nextFireStateLabel(selection.fireState)}`, 'command.fireToggle')"
+          :title="stateActionTitle(fireStateLabel(selection.fireState), `Fire state: ${fireStateLabel(selection.fireState)}; next ${nextFireStateLabel(selection.fireState)}`, 'command.fireToggle')"
           @click="actions.toggleSelectedFire()"
           @contextmenu.prevent="reverseFireStateFromClick"
         >
@@ -2003,6 +2222,17 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             ></span>
           </span>
         </button>
+        <button
+          v-if="showTowerStopButton"
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.stop }"
+          :title="actionTitle('Stop', 'command.stop')"
+          @click="actions.stopSelectedUnits()"
+        >
+          <span class="btn-label">Stop</span>
+          <span class="btn-key">{{ hotkey('command.stop') }}</span>
+        </button>
       </div>
     </div>
 
@@ -2031,17 +2261,23 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
                 <span v-else class="bar-builder-thumb-fallback">{{ builderType.shortName }}</span>
               </span>
               <span v-if="builderType.count > 1" class="bar-builder-count">{{ builderType.count }}</span>
+              <span
+                v-if="builderTypeBuildProgressStyle(builderType.active)"
+                class="bar-builder-build-progress"
+                :style="builderTypeBuildProgressStyle(builderType.active)"
+                aria-hidden="true"
+              ></span>
             </button>
           </div>
           <button
             v-if="showBuilderCycleButton"
             type="button"
             class="bar-grid-footer-btn bar-builder-cycle-btn"
-            title="Next builder - ."
+            :title="barGridCycleBuilderTitle"
             @click="cycleActiveBuilder()"
           >
             <span class="bar-builder-cycle-label">›</span>
-            <span class="bar-category-key">.</span>
+            <span v-if="barGridCycleBuilderHotkey" class="bar-category-key">{{ barGridCycleBuilderHotkey }}</span>
           </button>
         </div>
         <div class="bar-option-grid">
@@ -2096,7 +2332,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
               :key="category.id"
               type="button"
               class="bar-grid-category-btn"
-              :title="`${category.label} buildings - ${hotkey(category.keyCommandId)}`"
+              :title="barBuildCategoryTitle(category)"
               @click="selectBuildGridCategory(category.id)"
             >
               <img
@@ -2112,7 +2348,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             <button
               type="button"
               class="bar-grid-footer-btn bar-grid-back-btn"
-              title="Back to build categories - Shift"
+              title="Go back to main view"
               @click="clearBuildGridCategory()"
             >
               <span class="bar-back-arrow" aria-hidden="true">⟵</span>
@@ -2134,10 +2370,10 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
               v-if="showBuildGridPager"
               type="button"
               class="bar-grid-footer-btn bar-grid-next-page-btn"
-              :title="pageActionTitle('Next build page')"
+              title="Next page"
               @click="stepBuildGridPage(1)"
             >
-              <span class="bar-page-label">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }} 🠚</span>
+              <span class="bar-page-label">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }}&nbsp;&nbsp;🠚</span>
               <span v-if="barGridNextPageHotkey" class="bar-category-key">{{ barGridNextPageHotkey }}</span>
             </button>
           </template>
@@ -2145,10 +2381,10 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             v-else-if="showBuildGridPager"
             type="button"
             class="bar-grid-footer-btn bar-grid-next-page-btn"
-            :title="pageActionTitle('Next build page')"
+            title="Next page"
             @click="stepBuildGridPage(1)"
           >
-            <span class="bar-page-label">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }} 🠚</span>
+            <span class="bar-page-label">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }}&nbsp;&nbsp;🠚</span>
             <span v-if="barGridNextPageHotkey" class="bar-category-key">{{ barGridNextPageHotkey }}</span>
           </button>
         </div>
@@ -2215,7 +2451,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     </div>
 
     <!-- Unit specials -->
-    <div v-if="(selection.hasDGun || selection.hasBuilder || selection.hasCommander || showCaptureButton || selection.hasTransport || showBuilderPriorityButton) && showUnitActions" class="button-group">
+    <div v-if="(selection.hasDGun || selection.hasBuilder || selection.hasCommander || showCaptureButton || showResurrectButton || selection.hasTransport) && showUnitActions" class="button-group">
       <div class="group-label">Special</div>
       <div class="buttons bar-command-grid">
         <button
@@ -2243,6 +2479,18 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('combat.repair') }}</span>
         </button>
         <button
+          v-if="selection.hasBuilder && isBarHotkeyPreset"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isRestoreAreaMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.restore }"
+          :title="actionTitle('Restore', 'combat.restore')"
+          @click="actions.toggleRestoreArea()"
+        >
+          <span class="btn-label">Restore</span>
+          <span class="btn-key">{{ hotkey('combat.restore') }}</span>
+        </button>
+        <button
           v-if="selection.hasBuilder"
           type="button"
           class="action-btn"
@@ -2265,46 +2513,6 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         >
           <span class="btn-label">Area Mex</span>
           <span class="btn-key">{{ hotkey('command.areaMex') }}</span>
-        </button>
-        <button
-          v-if="showBuilderPriorityButton"
-          type="button"
-          class="action-btn bar-order-state"
-          :class="{ active: selection.builderPriorityLow }"
-          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
-          :title="actionTitle(builderPriorityLabel(selection.builderPriorityLow), 'command.builderPriority', 'Assigns resources to use for this builder when not having enough for all')"
-          @click="actions.toggleBuilderPriority()"
-        >
-          <span class="btn-label">{{ builderPriorityLabel(selection.builderPriorityLow) }}</span>
-          <span class="btn-key">{{ hotkey('command.builderPriority') }}</span>
-          <span class="bar-state-lights" aria-hidden="true">
-            <span
-              v-for="light in binaryStateLights(selection.builderPriorityLow)"
-              :key="light.key"
-              class="bar-state-light"
-              :class="[light.tone, { active: light.active }]"
-            ></span>
-          </span>
-        </button>
-        <button
-          v-if="showCarrierSpawnButton"
-          type="button"
-          class="action-btn bar-order-state"
-          :class="{ active: selection.carrierSpawnEnabled }"
-          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
-          :title="actionTitle(carrierSpawnLabel(selection.carrierSpawnEnabled), 'command.carrierSpawn', 'Enable/Disable drone spawning')"
-          @click="actions.toggleCarrierSpawn()"
-        >
-          <span class="btn-label">{{ carrierSpawnLabel(selection.carrierSpawnEnabled) }}</span>
-          <span class="btn-key">{{ hotkey('command.carrierSpawn') }}</span>
-          <span class="bar-state-lights" aria-hidden="true">
-            <span
-              v-for="light in binaryStateLights(selection.carrierSpawnEnabled)"
-              :key="light.key"
-              class="bar-state-light"
-              :class="[light.tone, { active: light.active }]"
-            ></span>
-          </span>
         </button>
         <button
           v-if="showCaptureButton"
@@ -2359,7 +2567,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           class="action-btn"
           :class="{ active: selection.isLoadTransportMode }"
           :style="{ '--btn-color': BUTTON_COLORS.loadTransport }"
-          :title="actionTitle(barOrderLabel('Load units', 'Load transport'), 'combat.loadTransport', 'Click a friendly unit')"
+          :title="actionTitle(barOrderLabel('Load units', 'Load transport'), 'combat.loadTransport', 'Click a friendly unit or click-drag an area')"
           @click="actions.toggleLoadTransport()"
         >
           <span class="btn-label">{{ barOrderLabel('Load units', 'Load') }}</span>
@@ -2371,7 +2579,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           class="action-btn"
           :class="{ active: selection.isUnloadTransportMode }"
           :style="{ '--btn-color': BUTTON_COLORS.unloadTransport }"
-          :title="actionTitle(barOrderLabel('Unload units', 'Unload transport'), 'combat.unloadTransport', 'Click ground')"
+          :title="actionTitle(barOrderLabel('Unload units', 'Unload transport'), 'combat.unloadTransport', 'Click ground or click-drag an area')"
           @click="actions.toggleUnloadTransport()"
         >
           <span class="btn-label">{{ barOrderLabel('Unload units', 'Unload') }}</span>
@@ -2440,24 +2648,13 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           >Del</button>
         </div>
       </div>
-      <div class="buttons">
-        <button
-          type="button"
-          class="action-btn"
-          :disabled="!hasFactoryProduction"
-          :style="{ '--btn-color': factoryStopProductionButtonColor() }"
-          :title="actionTitle(stopFactoryProductionLabel(), 'factory.stopProduction', isBarHotkeyPreset ? 'Clear build queue and quotas for all units on selected factories' : undefined)"
-          @click="actions.stopFactoryProduction(selection.factoryId!)"
-        >
-          <span class="btn-label">{{ stopFactoryProductionLabel() }}</span>
-          <span class="btn-key">{{ hotkey('factory.stopProduction') }}</span>
-        </button>
+      <div class="buttons bar-command-grid">
         <button
           type="button"
           class="action-btn bar-order-state"
           :class="{ active: selection.factoryRepeatsProduction === true }"
           :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
-          :title="actionTitle(selection.factoryRepeatsProduction === true ? 'Factory repeat on' : 'Factory repeat off', 'command.repeat')"
+          :title="actionTitle(repeatStateLabel(selection.factoryRepeatsProduction === true), 'command.repeat')"
           @click="actions.setFactoryRepeatProduction(selection.factoryId!, selection.factoryRepeatsProduction !== true)"
         >
           <span class="btn-label">{{ repeatStateLabel(selection.factoryRepeatsProduction === true) }}</span>
@@ -2465,6 +2662,47 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="bar-state-lights" aria-hidden="true">
             <span
               v-for="light in binaryStateLights(selection.factoryRepeatsProduction === true)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
+        </button>
+        <button
+          v-if="isBarHotkeyPreset && selection.hasMoveStateControl"
+          type="button"
+          class="action-btn bar-order-state"
+          :class="{ active: selection.unitMoveState === 'holdPosition' }"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+          :title="stateActionTitle(moveStateLabel(selection.unitMoveState), `Move state: ${moveStateLabel(selection.unitMoveState)}; next ${nextMoveStateLabel(selection.unitMoveState)}`, 'command.moveState')"
+          @click="actions.toggleUnitMoveState()"
+          @contextmenu.prevent="reverseUnitMoveStateFromClick"
+        >
+          <span class="btn-label">{{ moveStateLabel(selection.unitMoveState) }}</span>
+          <span class="btn-key">{{ hotkey('command.moveState') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in moveStateLights(selection.unitMoveState)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
+        </button>
+        <button
+          v-if="showFactoryAirIdleButton"
+          type="button"
+          class="action-btn bar-order-state"
+          :class="{ active: selection.factoryAirIdleState === 'land' }"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+          :title="actionTitle(factoryAirIdleStateLabel(selection.factoryAirIdleState), 'factory.airIdleState', 'Sets what aircraft do when leaving air factory')"
+          @click="actions.setFactoryAirIdleState(selection.factoryId!, nextFactoryAirIdleState(selection.factoryAirIdleState))"
+        >
+          <span class="btn-label">{{ factoryAirIdleStateLabel(selection.factoryAirIdleState) }}</span>
+          <span class="btn-key">{{ hotkey('factory.airIdleState') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.factoryAirIdleState === 'land')"
               :key="light.key"
               class="bar-state-light"
               :class="[light.tone, { active: light.active }]"
@@ -2496,7 +2734,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           type="button"
           class="action-btn bar-order-state"
           :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.guard) }"
-          :title="actionTitle(selection.factoryGuardTargetId === selection.factoryId ? 'Factory guard on' : 'Factory guard off', 'command.factoryGuard')"
+          :title="actionTitle(factoryGuardStateLabel(selection.factoryGuardTargetId === selection.factoryId), 'command.factoryGuard')"
           @click="actions.toggleFactoryGuard(selection.factoryId!)"
         >
           <span class="btn-label">{{ barOrderLabel('Factory Guard', 'Guard') }}</span>
@@ -2541,6 +2779,35 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             ></span>
           </span>
         </button>
+        <button
+          type="button"
+          class="action-btn bar-order-wait"
+          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          :title="actionTitle('Wait', 'command.wait', 'Shift-click queues; Ctrl/Cmd+Shift-click inserts next')"
+          @click="toggleWaitFromClick"
+        >
+          <span class="btn-label">Wait</span>
+          <span class="btn-key">{{ hotkey('command.wait') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.isWaiting)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
+        </button>
+        <button
+          type="button"
+          class="action-btn"
+          :disabled="!isBarHotkeyPreset && !hasFactoryProduction"
+          :style="{ '--btn-color': factoryStopProductionButtonColor() }"
+          :title="actionTitle(stopFactoryProductionLabel(), 'factory.stopProduction', isBarHotkeyPreset ? 'Clear build queue and quotas for all units on selected factories' : undefined)"
+          @click="actions.stopFactoryProduction(selection.factoryId!)"
+        >
+          <span class="btn-label">{{ stopFactoryProductionLabel() }}</span>
+          <span class="btn-key">{{ hotkey('factory.stopProduction') }}</span>
+        </button>
       </div>
     </div>
 
@@ -2579,8 +2846,15 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
 
     <div v-if="showBarFactoryPresetOverlay" class="bar-factory-preset-overlay" aria-label="Factory presets">
       <div class="bar-factory-preset-title">
-        <span class="bar-factory-preset-title-main">Factory Presets</span>
-        <span class="bar-factory-preset-title-sub">{{ selection.factorySelectedUnit?.label ?? 'Idle' }}</span>
+        <span class="bar-factory-preset-title-thumb" aria-hidden="true">
+          <img
+            v-if="structureThumbnailSrc('towerFabricator')"
+            class="bar-factory-preset-title-thumb-img"
+            :src="structureThumbnailSrc('towerFabricator')!"
+            alt=""
+          >
+        </span>
+        <span class="bar-factory-preset-title-main">{{ barFactoryPresetTitle }}</span>
       </div>
       <button
         v-for="entry in factoryPresetOverlayEntries"
@@ -2688,13 +2962,13 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             Under Construction
           </div>
           <button
-            v-else
+            v-if="factoryGridPageCount > 1"
             type="button"
             class="bar-grid-footer-btn bar-grid-next-page-btn"
-            :title="pageActionTitle('Next unit page')"
+            title="Next page"
             @click="stepFactoryGridPage(1)"
           >
-            <span class="bar-page-label">Page {{ factoryGridPage + 1 }}/{{ factoryGridPageCount }} 🠚</span>
+            <span class="bar-page-label">Page {{ factoryGridPage + 1 }}/{{ factoryGridPageCount }}&nbsp;&nbsp;🠚</span>
             <span v-if="barGridNextPageHotkey" class="bar-category-key">{{ barGridNextPageHotkey }}</span>
           </button>
         </div>
@@ -2710,7 +2984,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           class="action-btn"
           :class="{ active: selection.isTowerTargetMode }"
           :style="{ '--btn-color': BUTTON_COLORS.setTarget }"
-          :title="actionTitle('Set target', 'combat.towerTargetSet', 'Click an entity or ground point to lock on')"
+          :title="actionTitle(barOrderLabel('Set Target', 'Set target'), 'combat.towerTargetSet', 'Click an entity or ground point to lock on')"
           @click="actions.setTowerTargetMode()"
         >
           <span class="btn-label">Set Target</span>
@@ -2746,7 +3020,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           class="action-btn"
           :disabled="!selection.hasTowerTargetActive"
           :style="{ '--btn-color': BUTTON_COLORS.cancelTarget }"
-          :title="actionTitle('Clear target', 'combat.towerTargetClear')"
+          :title="actionTitle(barOrderLabel('Clear Target', 'Clear target'), 'combat.towerTargetClear')"
           @click="actions.clearTowerTarget()"
         >
           <span class="btn-label">{{ barOrderLabel('Clear Target', 'Clear') }}</span>
@@ -2773,10 +3047,10 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <!-- Building ON/OFF. Producer Buildings Are ON/OFF in
-         budget_design_philosophy.html: solar/wind/extractor selections expose
-         this toggle. ON = producing + normal damage; OFF = not
-         producing + 10x damage resistance. -->
+    <!-- Building ON/OFF. Prototype active-state covers the broader
+         budget_design_philosophy.html mechanic; BAR-visible ON/OFF follows
+         BAR onoffable unit defs, so only solar and metal extractor analogues
+         expose this command in BAR presets. -->
     <div v-if="showBuildingActiveButton && showBuildingActions" class="button-group">
       <div class="group-label">Power</div>
       <div class="buttons bar-command-grid">
@@ -2784,7 +3058,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           type="button"
           class="action-btn bar-order-state"
           :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.buildingActive) }"
-          :title="actionTitle(selectedBuildingsActive ? 'Turn off' : 'Turn on', 'command.buildingActive')"
+          :title="stateActionTitle(selectedBuildingsActive ? 'On' : 'Off', selectedBuildingsActive ? 'Turn off' : 'Turn on', 'command.buildingActive')"
           @click="actions.toggleBuildingActive()"
         >
           <span class="btn-label">{{ selectedBuildingsActive ? 'On' : 'Off' }}</span>
@@ -2797,6 +3071,24 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
               :class="[light.tone, { active: light.active }]"
             ></span>
           </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- BAR armamex keeps CMD.STOP because it omits customParams.removestop;
+         T1 mex and solar set removestop=true, so this is capability-gated. -->
+    <div v-if="showBuildingStopButton" class="button-group">
+      <div class="group-label">Orders</div>
+      <div class="buttons bar-command-grid">
+        <button
+          type="button"
+          class="action-btn"
+          :style="{ '--btn-color': BUTTON_COLORS.stop }"
+          :title="actionTitle('Stop', 'command.stop')"
+          @click="actions.stopSelectedUnits()"
+        >
+          <span class="btn-label">Stop</span>
+          <span class="btn-key">{{ hotkey('command.stop') }}</span>
         </button>
       </div>
     </div>
@@ -2838,15 +3130,15 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
   --bar-order-active-padding: calc(var(--bar-flow-element-padding) * 1.4);
   --bar-order-bottom-active-padding: calc(var(--bar-order-active-padding) / 3);
   --bar-order-button-padding: max(1px, calc(var(--bar-flow-element-padding) * 0.52));
-  --bar-order-corner-size: clamp(2px, 0.22vh, 3px);
+  --bar-order-corner-size: calc(var(--bar-order-cell-width) * 0.019);
   --bar-order-active-height: calc(var(--bar-order-panel-height) - var(--bar-order-active-padding) - var(--bar-order-bottom-active-padding));
   --bar-order-active-width: calc(var(--bar-order-panel-width) - (var(--bar-order-active-padding) * 2));
-  --bar-order-cell-width: calc(var(--bar-order-active-width) / var(--bar-order-columns));
-  --bar-order-cell-height: calc(var(--bar-order-active-height) / var(--bar-order-rows));
-  --bar-order-cell-inner-width: calc(var(--bar-order-cell-width) - var(--bar-order-cell-margin-primary) - var(--bar-order-cell-margin-secondary));
-  --bar-order-cell-inner-height: calc(var(--bar-order-cell-height) - var(--bar-order-cell-margin-primary) - var(--bar-order-cell-margin-secondary));
+  --bar-order-cell-width: round(down, calc(var(--bar-order-active-width) / var(--bar-order-columns)), 1px);
+  --bar-order-cell-height: round(down, calc(var(--bar-order-active-height) / var(--bar-order-rows)), 1px);
+  --bar-order-cell-inner-width: round(down, calc(var(--bar-order-cell-width) - var(--bar-order-cell-margin-primary) - var(--bar-order-cell-margin-secondary)), 1px);
+  --bar-order-cell-inner-height: round(down, calc(var(--bar-order-cell-height) - var(--bar-order-cell-margin-primary) - var(--bar-order-cell-margin-secondary)), 1px);
   --bar-order-label-max-size: calc(var(--bar-order-cell-inner-width) / 7);
-  --bar-order-state-light-height: calc((var(--bar-order-active-height) / var(--bar-order-rows)) * 0.14);
+  --bar-order-state-light-height: calc(var(--bar-order-cell-inner-height) * 0.14);
   --bar-order-font-size: clamp(9px, 1.18vh, 13px);
   --bar-order-key-font-size: clamp(9px, 1.05vh, 12px);
   position: fixed;
@@ -3171,60 +3463,82 @@ kbd {
 }
 
 .bar-factory-preset-overlay {
+  --bar-factory-preset-width: round(nearest, 31.0416667vh, 1px);
+  --bar-factory-preset-row-height: round(nearest, 4.1666667vh, 1px);
+  --bar-factory-preset-title-height: round(nearest, 5.2083333vh, 1px);
+  --bar-factory-preset-icon-border: round(nearest, 0.3125vh, 1px);
+  --bar-factory-preset-font-title: round(nearest, 1.6666667vh, 1px);
+  --bar-factory-preset-font-group: round(nearest, 1.6666667vh, 1px);
+  --bar-factory-preset-font-unit-count: round(nearest, 1.25vh, 1px);
+  --bar-factory-preset-group-label-margin: round(nearest, 3.125vh, 1px);
+  --bar-factory-preset-title-text-x: round(nearest, 1.0416667vh, 1px);
+  --bar-factory-preset-unit-gap: round(nearest, 0.5208333vh, 1px);
+  --bar-factory-preset-unit-size: calc(var(--bar-factory-preset-row-height) - (var(--bar-factory-preset-icon-border) * 2));
   position: fixed;
   right: 18px;
   bottom: calc(var(--selection-panel-playable-bottom, 0px) + 134px);
   z-index: 1004;
-  width: 298px;
+  width: var(--bar-factory-preset-width);
   color: var(--selection-panel-text);
   filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.55));
 }
 
 .bar-factory-preset-title,
 .bar-factory-preset-row {
-  width: 298px;
+  width: var(--bar-factory-preset-width);
   box-sizing: border-box;
   border: 1px solid rgba(170, 194, 178, 0.34);
   background: rgba(9, 12, 14, 0.94);
 }
 
 .bar-factory-preset-title {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--bar-factory-preset-title-height) minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  height: 50px;
-  padding: 0 12px;
+  height: var(--bar-factory-preset-title-height);
+  padding: 0;
   border-bottom: 0;
 }
 
-.bar-factory-preset-title-main {
-  color: #88ff9a;
-  font-size: 13px;
-  font-weight: 700;
+.bar-factory-preset-title-thumb {
+  display: block;
+  width: calc(var(--bar-factory-preset-title-height) - var(--bar-factory-preset-icon-border));
+  height: calc(var(--bar-factory-preset-title-height) - (var(--bar-factory-preset-icon-border) * 2));
+  margin-left: var(--bar-factory-preset-icon-border);
+  overflow: hidden;
 }
 
-.bar-factory-preset-title-sub {
-  max-width: 150px;
+.bar-factory-preset-title-thumb-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bar-factory-preset-title-main {
+  min-width: 0;
   overflow: hidden;
-  color: var(--selection-panel-hint);
-  font-size: 10px;
-  text-align: right;
+  color: rgb(128, 255, 128);
+  font-size: var(--bar-factory-preset-font-title);
+  font-weight: 700;
+  line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transform: translateX(var(--bar-factory-preset-title-text-x));
 }
 
 .bar-factory-preset-row {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-columns: var(--bar-factory-preset-group-label-margin) minmax(0, 1fr);
   align-items: center;
-  height: 40px;
-  padding: 3px;
+  height: var(--bar-factory-preset-row-height);
+  padding: 0;
   color: inherit;
   cursor: pointer;
 }
 
 .bar-factory-preset-row + .bar-factory-preset-row {
-  margin-top: 3px;
+  margin-top: 0;
 }
 
 .bar-factory-preset-row:hover:not(:disabled),
@@ -3240,37 +3554,37 @@ kbd {
 
 .bar-factory-preset-number {
   justify-self: center;
-  font-size: 16px;
+  font-size: var(--bar-factory-preset-font-group);
   font-weight: 800;
 }
 
 .bar-factory-preset-row.repeat .bar-factory-preset-number {
-  color: #49ff5d;
+  color: rgb(0, 255, 0);
 }
 
 .bar-factory-preset-row.queue .bar-factory-preset-number {
-  color: #f0f0f0;
+  color: rgb(255, 255, 255);
 }
 
 .bar-factory-preset-units {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
+  gap: var(--bar-factory-preset-unit-gap);
   overflow: hidden;
 }
 
 .bar-factory-preset-unit {
   position: relative;
-  flex: 0 0 34px;
-  width: 34px;
-  height: 34px;
+  flex: 0 0 var(--bar-factory-preset-unit-size);
+  width: var(--bar-factory-preset-unit-size);
+  height: var(--bar-factory-preset-unit-size);
 }
 
 .bar-factory-preset-thumb {
   display: flex;
-  width: 34px;
-  height: 34px;
+  width: var(--bar-factory-preset-unit-size);
+  height: var(--bar-factory-preset-unit-size);
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -3281,6 +3595,7 @@ kbd {
 .bar-factory-preset-thumb-img {
   width: 100%;
   height: 100%;
+  filter: brightness(0.8);
   object-fit: cover;
 }
 
@@ -3295,7 +3610,7 @@ kbd {
   right: 1px;
   bottom: 0;
   color: #fff;
-  font-size: 10px;
+  font-size: var(--bar-factory-preset-font-unit-count);
   font-weight: 800;
   text-shadow: 0 1px 2px #000, 0 0 3px #000;
 }
@@ -3487,7 +3802,6 @@ kbd {
     var(--bar-order-cell-margin-secondary)
     var(--bar-order-cell-margin-primary);
   padding: var(--bar-order-button-padding);
-  padding-bottom: calc(var(--bar-order-button-padding) + 4px);
   border-radius: var(--bar-order-corner-size);
   font-size: var(--bar-order-font-size);
 }
@@ -3580,30 +3894,43 @@ kbd {
 }
 
 .bar-grid-menu {
-  --bar-grid-bg-padding: clamp(3px, 0.35vh, 5px);
-  --bar-grid-cell-size: calc((37.825vh - (var(--bar-grid-bg-padding) * 2)) / 4);
-  --bar-grid-cell-padding: max(1px, calc(var(--bar-grid-cell-size) * 0.007));
-  --bar-grid-icon-padding: max(1px, calc(var(--bar-grid-cell-size) * 0.015));
-  --bar-grid-corner-size: calc(var(--bar-grid-cell-size) * 0.025);
+  --bar-grid-bg-padding: var(--bar-flow-element-padding);
+  --bar-grid-icon-margin: round(nearest, calc(var(--bar-grid-bg-padding) * 0.5), 1px);
+  --bar-grid-cell-size: round(down, calc((37.825vh - (var(--bar-grid-bg-padding) * 2)) / 4), 1px);
+  --bar-grid-cell-padding: round(down, calc(var(--bar-grid-cell-size) * 0.007), 1px);
+  --bar-grid-icon-padding: max(1px, round(down, calc(var(--bar-grid-cell-size) * 0.015), 1px));
+  --bar-grid-corner-size: round(down, calc(var(--bar-grid-cell-size) * 0.025), 1px);
   --bar-grid-progress-corner-size: calc(var(--bar-grid-cell-size) * 0.03);
   --bar-grid-cell-inner-size: calc(var(--bar-grid-cell-size) - (var(--bar-grid-cell-padding) * 2));
+  --bar-grid-icon-inner-size: calc(var(--bar-grid-cell-inner-size) - (var(--bar-grid-icon-padding) * 2));
+  --bar-grid-default-unit-scale: 1.0610079576;
+  --bar-grid-hover-unit-scale: 1.2048192771;
+  --bar-grid-selected-unit-scale: 1.2861736334;
+  --bar-grid-unit-base-outline-width: max(1px, round(down, calc(var(--bar-grid-icon-inner-size) * 0.044), 1px));
+  --bar-grid-unit-border-size: min(max(1px, round(down, calc(var(--bar-grid-icon-inner-size) * 0.024), 1px)), round(nearest, 0.15vh, 1px));
+  --bar-grid-group-icon-size: round(down, calc(var(--bar-grid-icon-inner-size) * 0.3), 1px);
   --bar-grid-queue-font-size: calc(var(--bar-grid-cell-inner-size) * 0.29);
-  --bar-grid-queue-badge-height: calc(var(--bar-grid-cell-inner-size) * 0.365);
-  --bar-grid-queue-text-padding: calc(var(--bar-grid-cell-inner-size) * 0.1);
+  --bar-grid-queue-badge-height: round(down, calc(var(--bar-grid-cell-inner-size) * 0.365), 1px);
+  --bar-grid-queue-text-padding: round(down, calc(var(--bar-grid-cell-inner-size) * 0.1), 1px);
   --bar-grid-queue-corner-size: calc(var(--bar-grid-corner-size) * 3.3);
   --bar-grid-footer-third-width: calc(var(--bar-grid-cell-size) * 1.3333333333);
   --bar-grid-category-font-size: 1.3vh;
   --bar-grid-page-font-size: var(--bar-grid-category-font-size);
   --bar-grid-hotkey-font-size: calc(var(--bar-grid-category-font-size) + 5px);
-  --bar-grid-category-button-height: calc(var(--bar-grid-category-font-size) * 2.3 * 1.4);
+  --bar-grid-category-button-base-height: round(down, calc(var(--bar-grid-category-font-size) * 2.3), 1px);
+  --bar-grid-category-button-height: calc(var(--bar-grid-category-button-base-height) * 1.4);
   --bar-grid-button-padding: max(1px, calc(var(--bar-grid-bg-padding) * 0.52));
   --bar-grid-active-area-margin: calc(var(--bar-grid-bg-padding) * 0.1);
   --bar-grid-category-rect-height: calc(var(--bar-grid-category-button-height) - var(--bar-grid-active-area-margin) - (var(--bar-grid-button-padding) * 2));
+  --bar-grid-category-icon-size: min(calc(var(--bar-grid-category-rect-height) * 1.1), var(--bar-grid-category-button-height));
   --bar-grid-footer-button-height: calc(var(--bar-grid-category-button-height) - (var(--bar-grid-button-padding) * 2));
-  --bar-builder-button-size: calc(var(--bar-grid-category-font-size) * 2.3 * 2);
+  --bar-builder-button-size: calc(var(--bar-grid-category-button-base-height) * 2);
   --bar-builder-next-height: calc(var(--bar-builder-button-size) * 0.6);
   --bar-builder-next-width: calc((var(--bar-builder-button-size) * 0.45) + (var(--bar-grid-bg-padding) * 2) + 1ch);
-  --bar-grid-price-font-size: calc(var(--bar-grid-cell-inner-size) * 0.16);
+  --bar-builder-count-font-size: calc(var(--bar-builder-button-size) * 0.3);
+  --bar-builder-count-pad: round(down, calc(var(--bar-builder-button-size) * 0.03), 1px);
+  --bar-builder-progress-corner-size: min(max(1px, round(down, calc(var(--bar-builder-button-size) * 0.024), 1px)), round(nearest, 0.15vh, 1px));
+  --bar-grid-price-font-size: round(nearest, calc(var(--bar-grid-cell-inner-size) * 0.16), 1px);
   --bar-grid-key-font-size: calc(var(--bar-grid-price-font-size) * 1.1);
   --bar-grid-label-font-size: 1.2vh;
   position: relative;
@@ -3677,13 +4004,14 @@ kbd {
   border: 0;
   background: rgba(255, 255, 255, 0.035);
   border-radius: var(--bar-grid-corner-size);
+  box-shadow: 0 0 0 var(--bar-grid-unit-base-outline-width) rgba(0, 0, 0, 0.22);
 }
 
 .bar-grid-cell .btn-thumb::before {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
   border-radius: inherit;
   pointer-events: none;
 }
@@ -3691,10 +4019,14 @@ kbd {
 .bar-grid-cell .btn-thumb::after {
   content: "";
   position: absolute;
-  inset: auto 0 0;
+  inset: 0;
   z-index: 1;
-  height: 55%;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 40%, rgba(255, 255, 255, 0) 100%),
+    linear-gradient(to top, rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0));
+  box-shadow:
+    inset 0 0 0 var(--bar-grid-unit-border-size) rgba(255, 255, 255, 0.14),
+    inset 0 0 calc(var(--bar-grid-unit-border-size) * 2) rgba(255, 255, 255, 0.1);
   pointer-events: none;
 }
 
@@ -3704,18 +4036,17 @@ kbd {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scale(2.2);
+  transform: scale(var(--bar-grid-default-unit-scale));
   transform-origin: center;
-  transition: transform 0.08s linear;
 }
 
 .bar-grid-cell:hover .btn-thumb-img,
 .bar-grid-cell:focus-visible .btn-thumb-img {
-  transform: scale(2.3);
+  transform: scale(var(--bar-grid-hover-unit-scale));
 }
 
 .bar-grid-cell.active .btn-thumb-img {
-  transform: scale(2.35);
+  transform: scale(var(--bar-grid-selected-unit-scale));
 }
 
 .bar-grid-cell.factory-under-construction:not(:hover):not(:focus-visible) .btn-thumb-img {
@@ -3746,15 +4077,15 @@ kbd {
   top: 0;
   left: 0;
   z-index: 2;
-  width: 30%;
-  height: 30%;
+  width: var(--bar-grid-group-icon-size);
+  height: var(--bar-grid-group-icon-size);
   object-fit: contain;
   pointer-events: none;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+  filter: none;
 }
 
 .bar-grid-cell.factory-under-construction:not(:hover):not(:focus-visible) .bar-cell-group-icon {
-  filter: brightness(0.63) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+  filter: brightness(0.63);
 }
 
 .bar-grid-cell .btn-label {
@@ -3860,6 +4191,7 @@ kbd {
 
 .bar-grid-category-btn {
   width: var(--bar-grid-cell-size);
+  overflow: visible;
 }
 
 .bar-grid-footer:not(.category-active):not(.page-only) .bar-grid-category-btn {
@@ -3944,12 +4276,12 @@ kbd {
 .bar-builder-type-list {
   display: flex;
   align-items: center;
-  gap: calc(var(--bar-grid-bg-padding) * 1.5);
+  gap: calc(var(--bar-grid-bg-padding) + var(--bar-grid-icon-margin));
   padding:
-    calc(var(--bar-grid-bg-padding) * 0.5)
+    var(--bar-grid-icon-margin)
     calc(var(--bar-grid-bg-padding) * 2)
-    calc(var(--bar-grid-bg-padding) * 2)
-    calc(var(--bar-grid-bg-padding) * 1.5);
+    calc(var(--bar-grid-bg-padding) + var(--bar-grid-icon-margin))
+    calc(var(--bar-grid-bg-padding) + var(--bar-grid-icon-margin));
   background: rgba(5, 7, 10, 0.88);
   border-radius: 0 3px 3px 0;
 }
@@ -3984,7 +4316,6 @@ kbd {
   filter: brightness(0.5);
   transform: scale(2.1);
   transform-origin: center;
-  transition: filter 0.08s linear, transform 0.08s linear;
 }
 
 .bar-builder-type-btn:hover .bar-builder-thumb-img,
@@ -4013,21 +4344,36 @@ kbd {
 
 .bar-builder-count {
   position: absolute;
-  left: 3px;
-  bottom: 2px;
-  color: #ffffff;
+  left: calc(var(--bar-builder-count-pad) * 2);
+  bottom: var(--bar-builder-count-pad);
+  color: rgb(240, 240, 240);
   font-family: monospace;
-  font-size: 1.2vh;
+  font-size: var(--bar-builder-count-font-size);
   font-weight: bold;
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
 }
 
+.bar-builder-build-progress {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: var(--bar-builder-progress-corner-size);
+  background: conic-gradient(
+    from 0deg,
+    rgba(13, 13, 13, 0.72) 0 var(--bar-builder-progress-remaining),
+    transparent var(--bar-builder-progress-remaining) 100%
+  );
+  pointer-events: none;
+  transform: scaleX(-1);
+}
+
 .bar-builder-cycle-btn {
-  align-self: center;
+  align-self: flex-start;
   width: var(--bar-builder-next-width);
   min-width: var(--bar-builder-next-width);
   height: var(--bar-builder-next-height);
+  margin-top: calc(var(--bar-grid-icon-margin) + (var(--bar-builder-button-size) * 0.2));
   margin-left: 0;
 }
 
@@ -4064,8 +4410,8 @@ kbd {
   position: absolute;
   top: calc(var(--bar-grid-bg-padding) * 0.5);
   left: calc(var(--bar-grid-bg-padding) * 0.5);
-  width: min(calc(var(--bar-grid-category-rect-height) * 1.1), var(--bar-grid-category-button-height), calc(100% - var(--bar-grid-bg-padding)));
-  height: calc(100% - var(--bar-grid-bg-padding));
+  width: var(--bar-grid-category-icon-size);
+  height: var(--bar-grid-category-icon-size);
   object-fit: contain;
   opacity: 0.9;
   pointer-events: none;
@@ -4155,6 +4501,10 @@ kbd {
   --btn-color: var(--selection-panel-button-default);
 }
 
+.options-panel.bar-hotkey-preset .action-btn {
+  transition: none;
+}
+
 .action-btn:hover {
   background: var(--selection-panel-button-hover-bg);
   border-color: var(--btn-color);
@@ -4177,10 +4527,12 @@ kbd {
 }
 
 .options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state) {
-  background: linear-gradient(to top, rgba(168, 168, 168, 0.9), rgba(255, 255, 255, 0.9));
+  background: linear-gradient(to top, rgba(168, 168, 168, 0.75), rgba(255, 255, 255, 0.75));
   border-color: rgba(255, 255, 255, 0.88);
   color: rgb(20, 20, 20);
   box-shadow: none;
+  transform: scale(1.05);
+  z-index: 2;
 }
 
 .options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state) > .btn-label {
@@ -4237,9 +4589,17 @@ kbd {
 
 .options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state):hover:not(:disabled),
 .options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state):focus-visible:not(:disabled) {
-  background: linear-gradient(to top, rgba(168, 168, 168, 0.9), rgba(255, 255, 255, 0.9));
+  background: linear-gradient(to top, rgba(168, 168, 168, 0.75), rgba(255, 255, 255, 0.75));
   border-color: rgba(255, 255, 255, 0.88);
   color: rgb(20, 20, 20);
+  transform: scale(1.05);
+  z-index: 2;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):hover:not(:disabled),
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):focus-visible:not(:disabled) {
+  transform: scale(1.035);
+  z-index: 1;
 }
 
 .options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):hover:not(:disabled)::before,
@@ -4327,7 +4687,7 @@ kbd {
 .bar-grid-cell > .btn-key.bar-cell-key {
   right: calc(var(--bar-grid-cell-padding) + (var(--bar-grid-cell-inner-size) * 0.048));
   left: auto;
-  top: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding) + 1px);
+  top: var(--bar-grid-cell-padding);
   bottom: auto;
   display: block;
   min-width: 0;

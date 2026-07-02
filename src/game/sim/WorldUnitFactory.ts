@@ -24,6 +24,10 @@ import { buildShieldPanelCache } from './shieldPanelCache';
 import { cloneUnitSupportSurface } from './unitSupportSurface';
 import { createTransportComponentForUnitBlueprint } from './transports';
 import { REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../config';
+import {
+  unitBlueprintBarDefaultFireState,
+  unitBlueprintBarDefaultMoveState,
+} from './unitCommandCapabilities';
 
 export type CreateUnitFromBlueprintOptions = {
   allocateSubEntityIds?: boolean;
@@ -173,6 +177,10 @@ export function createUnitFromBlueprintEntity(
     entity.id,
     allocateSubEntityIds ? context.generateEntityId : null,
   ));
+  entity.unit!.moveState = unitBlueprintBarDefaultMoveState(unitBlueprintId);
+  const defaultFireState = unitBlueprintBarDefaultFireState(unitBlueprintId);
+  entity.combat.fireState = defaultFireState;
+  entity.combat.fireEnabled = defaultFireState !== 'holdFire';
   entity.unit!.shieldBoundRadius = buildShieldPanelCache(
     bp,
     entity.unit!.shieldPanels,
@@ -194,11 +202,14 @@ export function createUnitFromBlueprintEntity(
   // block on the unit blueprint.
   const spawnMount = bp.turrets.find((m) => m.producedBlueprintId != null);
   if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
-    entity.factory = {
-      selectedUnitBlueprintId: spawnMount.producedBlueprintId,
-      lowPriority: false,
-      carrierSpawnEnabled: true,
-      repeatProduction: true,
+      entity.factory = {
+        selectedUnitBlueprintId: spawnMount.producedBlueprintId,
+        lowPriority: false,
+        carrierSpawnEnabled: true,
+        moveState: 'maneuver',
+        airIdleState: 'fly',
+        repeatProduction: true,
+      paused: false,
       productionQueue: [],
       productionQuotas: {},
       productionQuotaCounts: {},

@@ -382,8 +382,24 @@ function applyCameraFovDegrees(fov: CameraFovDegrees): void {
 // Active connection for sending commands (set when server/connection is created)
 let activeConnection: GameConnection | null = null;
 
+const BAR_VOLUME_STEP_PERCENT = 8;
+const BAR_VOLUME_MIN_PERCENT = 0;
+const BAR_VOLUME_MAX_PERCENT = 200;
+
 function setGamePaused(paused: boolean): void {
   activeConnection?.sendCommand({ type: 'setPaused', tick: 0, paused });
+}
+
+function adjustGameSpeed(direction: 1 | -1): void {
+  activeConnection?.sendCommand({ type: 'adjustGameSpeed', tick: 0, direction });
+}
+
+function changeMasterVolumeByBarStep(direction: 1 | -1): void {
+  const nextVolume = Math.max(
+    BAR_VOLUME_MIN_PERCENT,
+    Math.min(BAR_VOLUME_MAX_PERCENT, masterVolume.value + (direction * BAR_VOLUME_STEP_PERCENT)),
+  );
+  changeMasterVolume(nextVolume);
 }
 
 function syncFullscreenActive(): void {
@@ -460,6 +476,14 @@ function setCameraViewMode(mode: CameraViewMode): void {
   getActiveGameScene()?.setCameraViewMode(mode);
 }
 
+function toggleCameraViewMode(): void {
+  getActiveGameScene()?.toggleCameraViewMode();
+}
+
+function changeCameraViewRadius(direction: 1 | -1): void {
+  getActiveGameScene()?.changeCameraViewRadius(direction);
+}
+
 function setCameraAnchor(index: number): void {
   getActiveGameScene()?.setCameraAnchor(index);
 }
@@ -477,6 +501,7 @@ const communicationMessages = ref<CommunicationChatEvent[]>([]);
 const communicationDrawings = ref<NetworkCommunicationMapDrawingEvent[]>([]);
 const communicationDraftText = ref('');
 const communicationLabelText = ref('');
+const clearMapMarksContinuous = ref(false);
 const pendingDrawStart = ref<NetworkCommunicationPoint | null>(null);
 const chatInputRef = ref<HTMLInputElement | null>(null);
 const gameUiHotkeys = new CommandHotkeySequenceResolver();
@@ -564,6 +589,7 @@ function applyCommunicationEvent(event: NetworkCommunicationEvent): void {
     return;
   }
   if (event.kind === 'mapDrawing') {
+    if (clearMapMarksContinuous.value) return;
     communicationDrawings.value = [
       ...communicationDrawings.value.filter((drawing) => drawing.drawingId !== event.drawingId),
       event,
@@ -576,6 +602,7 @@ function applyCommunicationEvent(event: NetworkCommunicationEvent): void {
 }
 
 function sendCommunicationDraft(draft: NetworkCommunicationDraft): void {
+  if (draft.kind === 'mapDrawing' && clearMapMarksContinuous.value) return;
   const role = networkManager.getRole();
   if (role === 'host' || role === 'client') {
     networkManager.sendCommunication(draft);
@@ -611,6 +638,16 @@ function eraseAllCommunicationDrawings(): void {
     clientEventId: nextCommunicationDraftId('erase-all'),
     scope: 'all',
   });
+}
+
+function handleClearMapMarksClick(event: MouseEvent): void {
+  eraseAllCommunicationDrawings();
+  if (!event.ctrlKey) return;
+  clearMapMarksContinuous.value = !clearMapMarksContinuous.value;
+  if (clearMapMarksContinuous.value) {
+    communicationDrawings.value = [];
+    pendingDrawStart.value = null;
+  }
 }
 
 function sendCommunicationMapEraseAt(x: number, y: number): void {
@@ -733,9 +770,18 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId, event?: KeyboardE
       // Same setPaused flow as the control-bar PAUSE button / paused banner.
       setGamePaused(gamePhase.value !== 'paused');
       return true;
+    case 'ui.gameSpeedIncrease':
+      adjustGameSpeed(1);
+      return true;
+    case 'ui.gameSpeedDecrease':
+      adjustGameSpeed(-1);
+      return true;
     case 'ui.unitStats':
       // Hold semantics: keydown shows, the matching keyup hides.
       beginUnitStatsHold(event?.code ?? null);
+      return true;
+    case 'ui.customGameInfo':
+      toggleMapDetails();
       return true;
     case 'ui.optionsMenu':
       toggleOptionsMenu();
@@ -745,6 +791,21 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId, event?: KeyboardE
       return true;
     case 'ui.flipCameraYaw':
       flipCameraYaw();
+      return true;
+    case 'camera.toggleMode':
+      toggleCameraViewMode();
+      return true;
+    case 'camera.fovDecrease':
+      changeCameraFovBy(-5);
+      return true;
+    case 'camera.fovIncrease':
+      changeCameraFovBy(5);
+      return true;
+    case 'camera.viewRadiusIncrease':
+      changeCameraViewRadius(1);
+      return true;
+    case 'camera.viewRadiusDecrease':
+      changeCameraViewRadius(-1);
       return true;
     case 'camera.viewTa':
       setCameraViewMode('ta');
@@ -760,6 +821,12 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId, event?: KeyboardE
       return true;
     case 'ui.muteSound':
       toggleAllSounds();
+      return true;
+    case 'ui.volumeIncrease':
+      changeMasterVolumeByBarStep(1);
+      return true;
+    case 'ui.volumeDecrease':
+      changeMasterVolumeByBarStep(-1);
       return true;
     case 'ui.captureScreenshot':
       captureScreenshot();
@@ -778,6 +845,15 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId, event?: KeyboardE
       return true;
     case 'ui.mapErase':
       setCommunicationMode(communicationMode.value === 'erase' ? 'none' : 'erase');
+      return true;
+    case 'ui.attackRangeCycleNext':
+      cycleAttackRangeDisplay(1);
+      return true;
+    case 'ui.attackRangeCyclePrevious':
+      cycleAttackRangeDisplay(-1);
+      return true;
+    case 'ui.toggleLosMap':
+      toggleSightBoundary();
       return true;
     case 'ui.togglePathingMap':
       togglePathingMap();
@@ -892,13 +968,17 @@ function handleGameUiKeydown(event: KeyboardEvent): void {
     event.preventDefault();
     return;
   }
-  if (event.key === 'Escape' && (communicationMode.value !== 'none' || optionsMenuOpen.value)) {
+  if (
+    event.key === 'Escape' &&
+    (communicationMode.value !== 'none' || optionsMenuOpen.value || mapDetailsVisible.value)
+  ) {
     event.preventDefault();
     gameUiHotkeys.reset();
     clearBarMapDrawTap();
     communicationMode.value = 'none';
     pendingDrawStart.value = null;
     optionsMenuOpen.value = false;
+    mapDetailsVisible.value = false;
   }
 }
 
@@ -1024,6 +1104,7 @@ const {
   changeAudioScope,
   changeMasterVolume,
   toggleRange,
+  cycleAttackRangeDisplay,
   toggleProjRange,
   toggleUnitRadius,
   toggleLegsRadius,
@@ -1031,6 +1112,7 @@ const {
   setCameraMode,
   setCameraFollow,
   changeCameraFovDegrees,
+  changeCameraFovBy,
   toggleAllRanges,
   toggleAllProjRanges,
   toggleAllUnitRadii,
@@ -2166,8 +2248,9 @@ watchEffect(() => {
             >ERASE</button>
             <button
               type="button"
-              title="Erase all drawings"
-              @click="eraseAllCommunicationDrawings"
+              :class="{ active: clearMapMarksContinuous }"
+              title="Clear mapmarks/drawings - CTRL-click to continuously clear"
+              @click="handleClearMapMarksClick"
             >CLEAR</button>
           </div>
 

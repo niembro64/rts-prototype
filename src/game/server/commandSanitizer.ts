@@ -31,6 +31,7 @@ import type {
   SetBuilderPriorityCommand,
   SetCarrierSpawnCommand,
   SetCloakStateCommand,
+  SetFactoryAirIdleStateCommand,
   SetFactoryRepeatProductionCommand,
   SetRepeatQueueCommand,
   SetTrajectoryModeCommand,
@@ -67,6 +68,7 @@ import { normalizeAngle } from '../math';
 
 const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
 const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition', 'roam'];
+const UNIT_AIR_IDLE_STATES: readonly string[] = ['fly', 'land'];
 const TRAJECTORY_MODES: readonly string[] = ['auto', 'low', 'high'];
 const COMBAT_FIRE_STATES: readonly string[] = ['fireAtWill', 'returnFire', 'holdFire'];
 
@@ -119,6 +121,8 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return sanitizeSetCarrierSpawnCommand(command, tick);
     case 'setUnitMoveState':
       return sanitizeSetUnitMoveStateCommand(command, tick);
+    case 'setFactoryAirIdleState':
+      return sanitizeSetFactoryAirIdleStateCommand(command, tick);
     case 'setTrajectoryMode':
       return sanitizeSetTrajectoryModeCommand(command, tick);
     case 'setCloakState':
@@ -182,11 +186,15 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
     case 'resurrectArea':
       return sanitizeResurrectAreaCommand(command, world, tick);
     case 'loadTransport':
-      return sanitizeLoadTransportCommand(command, tick);
+      return sanitizeLoadTransportCommand(command, world, tick);
     case 'unloadTransport':
       return sanitizeUnloadTransportCommand(command, world, tick);
     case 'setPaused':
       return typeof command.paused === 'boolean' ? { ...command, tick } : null;
+    case 'adjustGameSpeed':
+      return command.direction === 1 || command.direction === -1
+        ? { ...command, tick, direction: command.direction }
+        : null;
     case 'setUnitGroundNormalEmaMode':
       return SERVER_CONFIG.unitGroundNormalEma.options.includes(command.mode)
         ? { ...command, tick }
@@ -561,6 +569,20 @@ function sanitizeSetUnitMoveStateCommand(
     : { type: 'setUnitMoveState', tick, entityIds, moveState: command.moveState };
 }
 
+function sanitizeSetFactoryAirIdleStateCommand(
+  command: SetFactoryAirIdleStateCommand,
+  tick: number,
+): SetFactoryAirIdleStateCommand | null {
+  return isEntityId(command.factoryId) && UNIT_AIR_IDLE_STATES.includes(command.airIdleState)
+    ? {
+        type: 'setFactoryAirIdleState',
+        tick,
+        factoryId: command.factoryId,
+        airIdleState: command.airIdleState,
+      }
+    : null;
+}
+
 function sanitizeSetTrajectoryModeCommand(
   command: SetTrajectoryModeCommand,
   tick: number,
@@ -586,7 +608,20 @@ function sanitizeSelfDestructCommand(
   tick: number,
 ): SelfDestructCommand | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
-  return entityIds === null ? null : { ...command, tick, entityIds };
+  if (entityIds === null) return null;
+  if (command.queue !== undefined && typeof command.queue !== 'boolean') return null;
+  const queue = command.queue === true;
+  const queued = sanitizeQueuedCommandFields(queue, command.queueFront, command.queueInsertIndex);
+  return queued === null
+    ? null
+    : {
+        type: 'selfDestruct',
+        tick,
+        entityIds,
+        queue,
+        queueFront: queued.queueFront,
+        queueInsertIndex: queued.queueInsertIndex,
+      };
 }
 
 function sanitizeSetTowerTargetCommand(
@@ -947,17 +982,19 @@ function sanitizeFireDgunCommand(
   world: WorldState,
   tick: number,
 ): FireDGunCommand | null {
+  if (command.targetId !== undefined && !isEntityId(command.targetId)) return null;
   const point = sanitizeGroundPoint(world, command.targetX, command.targetY, command.targetZ);
-  return !isEntityId(command.commanderId) || point === null
-    ? null
-    : {
-        type: 'fireDGun',
-        tick,
-        commanderId: command.commanderId,
-        targetX: point.x,
-        targetY: point.y,
-        targetZ: point.z,
-      };
+  if (!isEntityId(command.commanderId) || point === null) return null;
+  const sanitized: FireDGunCommand = {
+    type: 'fireDGun',
+    tick,
+    commanderId: command.commanderId,
+    targetX: point.x,
+    targetY: point.y,
+    targetZ: point.z,
+  };
+  if (command.targetId !== undefined) sanitized.targetId = command.targetId;
+  return sanitized;
 }
 
 function sanitizeRepairCommand(command: RepairCommand, tick: number): RepairCommand | null {
@@ -1104,26 +1141,46 @@ function sanitizeResurrectAreaCommand(
   };
 }
 
-function sanitizeLoadTransportCommand(command: LoadTransportCommand, tick: number): LoadTransportCommand | null {
+function sanitizeLoadTransportCommand(
+  command: LoadTransportCommand,
+  world: WorldState,
+  tick: number,
+): LoadTransportCommand | null {
   if (
-    !isEntityId(command.transportId) ||
-    !isEntityId(command.targetId) ||
     typeof command.queue !== 'boolean'
   ) {
     return null;
   }
   const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
-  return queued === null
-    ? null
-    : {
-        type: 'loadTransport',
-        tick,
-        transportId: command.transportId,
-        targetId: command.targetId,
-        queue: command.queue,
-        queueFront: queued.queueFront,
-        queueInsertIndex: queued.queueInsertIndex,
-      };
+  if (queued === null) return null;
+  if ('targetId' in command) {
+    if (!isEntityId(command.transportId) || !isEntityId(command.targetId)) return null;
+    return {
+      type: 'loadTransport',
+      tick,
+      transportId: command.transportId,
+      targetId: command.targetId,
+      queue: command.queue,
+      queueFront: queued.queueFront,
+      queueInsertIndex: queued.queueInsertIndex,
+    };
+  }
+  const transportIds = sanitizeEntityIdArray(command.transportIds);
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  if (transportIds === null || point === null) return null;
+  const radius = sanitizeAreaCommandRadius(command.radius, REPAIR_AREA_MAX_RADIUS);
+  return {
+    type: 'loadTransport',
+    tick,
+    transportIds,
+    targetX: point.x,
+    targetY: point.y,
+    targetZ: point.z,
+    radius,
+    queue: command.queue,
+    queueFront: queued.queueFront,
+    queueInsertIndex: queued.queueInsertIndex,
+  };
 }
 
 function sanitizeUnloadTransportCommand(
@@ -1134,9 +1191,10 @@ function sanitizeUnloadTransportCommand(
   const transportIds = sanitizeEntityIdArray(command.transportIds);
   const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
   if (transportIds === null || point === null || typeof command.queue !== 'boolean') return null;
+  if (command.radius !== undefined && (!Number.isFinite(command.radius) || command.radius <= 0)) return null;
   const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
   if (queued === null) return null;
-  return {
+  const sanitized: UnloadTransportCommand = {
     type: 'unloadTransport',
     tick,
     transportIds,
@@ -1147,6 +1205,8 @@ function sanitizeUnloadTransportCommand(
     queueFront: queued.queueFront,
     queueInsertIndex: queued.queueInsertIndex,
   };
+  if (command.radius !== undefined) sanitized.radius = Math.max(1, command.radius);
+  return sanitized;
 }
 
 function sanitizeReclaimAreaCommand(

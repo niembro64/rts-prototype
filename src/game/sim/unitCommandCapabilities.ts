@@ -1,4 +1,4 @@
-import type { BuildingBlueprintId, CombatTrajectoryMode, Entity } from './types';
+import type { BuildingBlueprintId, CombatFireState, CombatTrajectoryMode, Entity, UnitMoveState } from './types';
 
 export type BarTrajectoryCommandKind = 'standardHighLow' | 'smartAutoLowHigh';
 
@@ -10,6 +10,71 @@ const BAR_BOMBER_MOVE_STATE_HIDDEN_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR hides CMD.MOVE_STATE on AircraftBomb bombers. Dragonfly is the current
   // local buildable bomber analogue with a drop-weapon turret.
   'unitDragonfly',
+]);
+const BAR_BOMBER_DEFAULT_HOLD_FIRE_UNIT_BLUEPRINT_IDS = new Set<string>([
+  // BAR's BombersDefaultHoldFire widget orders AircraftBomb bombers to
+  // FIRE_STATE=0 and MOVE_STATE=0 immediately after creation.
+  'unitDragonfly',
+]);
+const BAR_DEFAULT_HOLD_POSITION_UNIT_BLUEPRINT_IDS = new Set<string>([
+  // BAR ARM unitdefs that explicitly author movestate=0 among the current
+  // local analogues, plus AircraftBomb bombers adjusted by
+  // unit_bombers_default_hold_fire.lua.
+  'unitCommander',
+  'unitJackal',
+  'unitMongoose',
+  'unitBadger',
+  'unitTick',
+  'unitDragonfly',
+]);
+const BAR_BOMBER_NO_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
+  // BAR's Bomber No Air Target gadget blocks CMD.ATTACK against VTOL targets
+  // for AircraftBomb/TorpedoLauncher bombers.
+  'unitDragonfly',
+  // armart and armjanus expose ground-to-ground weapons with
+  // onlytargetcategory="SURFACE"; their local analogues must not accept air
+  // targets even though prototype projectile data still has VTOL damage.
+  'unitMongoose',
+  'unitBadger',
+  // armkam has onlytargetcategory="SURFACE"; the local Albatross is the
+  // current BAR T1 gunship analogue in the armap production slot.
+  'unitAlbatros',
+]);
+const BAR_BOMBER_ATTACK_BUILDING_GROUND_UNIT_BLUEPRINT_IDS = new Set<string>([
+  // BAR's Bomber Attack Building Ground widget rewrites AircraftBomb bomber
+  // attacks on buildings to ground attacks at the building position.
+  'unitDragonfly',
+]);
+const BAR_FIGHTER_AIR_TARGET_ONLY_UNIT_BLUEPRINT_IDS = new Set<string>([
+  // armfig weapons have canattackground=false and onlytargetcategory="VTOL".
+  'unitEagle',
+]);
+const BAR_AIR_TARGET_ONLY_STRUCTURE_BLUEPRINT_IDS = new Set<BuildingBlueprintId>([
+  // armrl has canattackground=false and targets VTOL-only categories.
+  'towerAntiAir',
+]);
+const BAR_STOP_STRUCTURE_BLUEPRINT_IDS = new Set<BuildingBlueprintId>([
+  // armamex sets removewait=true but does not set removestop, so BAR keeps
+  // CMD.STOP visible on the advanced metal extractor.
+  'buildingExtractorT2',
+]);
+const BAR_NO_PLAYER_WEAPON_COMMAND_UNIT_BLUEPRINT_IDS = new Set<string>([
+  // armpeep has no weapons; the local scout may keep prototype combat
+  // behavior, but BAR exposes no Attack/Fire/Set Target command for it.
+  'unitBee',
+]);
+const BAR_AIR_TARGET_UNIT_BLUEPRINT_IDS = new Set<string>([
+  // BAR air-plant analogues in the current local roster.
+  'unitBee',
+  'unitConstructionDrone',
+  'unitDragonfly',
+  'unitEagle',
+  'unitAlbatros',
+  'unitTransport',
+  // Local flying factory aircraft outside the T1 BAR production page still
+  // count as air targets for BAR command restrictions when present in a scenario.
+  'unitQueenBee',
+  'unitQueenTick',
 ]);
 const BAR_MANUAL_LAUNCH_UNIT_BLUEPRINT_IDS = new Set<string>();
 const BAR_CARRIER_SPAWN_UNIT_BLUEPRINT_IDS = new Set<string>();
@@ -23,12 +88,29 @@ const BAR_BUILDER_PRIORITY_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
 const BAR_FACTORY_GUARD_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
   'towerFabricator',
 ]);
+const BAR_AIR_PLANT_LAND_AT_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
+  'towerFabricator',
+]);
+const BAR_FACTORY_MOVE_STATE_STRUCTURE_BLUEPRINT_IDS = new Set<string>([
+  'towerFabricator',
+]);
 const BAR_CAPTURE_UNIT_BLUEPRINT_IDS = new Set<string>([
   // BAR ARM parity: armcom has cancapture=true; current T1 constructors do not.
   'unitCommander',
 ]);
+// BAR ARM parity: armrectr is the T1 bot-lab resurrector, but the current
+// local roster has no armrectr analogue. unitConstructionDrone maps to the
+// build-option constructor slots instead.
+const BAR_RESURRECT_UNIT_BLUEPRINT_IDS = new Set<string>();
 
 export function entityHasBarSetTargetCommand(entity: Entity): boolean {
+  const unitBlueprintId = entity.unit?.unitBlueprintId;
+  if (
+    unitBlueprintId !== undefined &&
+    BAR_NO_PLAYER_WEAPON_COMMAND_UNIT_BLUEPRINT_IDS.has(unitBlueprintId)
+  ) {
+    return false;
+  }
   const turrets = entity.combat?.turrets ?? [];
   for (let i = 0; i < turrets.length; i++) {
     const config = turrets[i].config;
@@ -51,8 +133,29 @@ export function entityHasBarAttackCommand(entity: Entity): boolean {
   return entity.unit !== null && entityHasBarSetTargetCommand(entity);
 }
 
+export function entityMatchesBarLegacyGroundWeaponSelection(entity: Entity): boolean {
+  return entityHasBarAttackCommand(entity) && !entityIsBarAirTarget(entity);
+}
+
 export function entityHasBarFireControlCommand(entity: Entity): boolean {
   return entityHasBarSetTargetCommand(entity);
+}
+
+export function buildingBlueprintHasBarStopCommand(
+  buildingBlueprintId: BuildingBlueprintId | null | undefined,
+): boolean {
+  return buildingBlueprintId !== null &&
+    buildingBlueprintId !== undefined &&
+    BAR_STOP_STRUCTURE_BLUEPRINT_IDS.has(buildingBlueprintId);
+}
+
+export function entityHasBarStopCommand(entity: Entity): boolean {
+  if ((entity.unit ?? null) !== null) return true;
+  if (entity.type === 'tower') {
+    const combat = entity.combat ?? null;
+    return combat !== null && combat.turrets.length > 0;
+  }
+  return buildingBlueprintHasBarStopCommand(entity.buildingBlueprintId);
 }
 
 function unitBlueprintHasBarGroundAreaAttackCommand(unitBlueprintId: string): boolean {
@@ -62,14 +165,7 @@ function unitBlueprintHasBarGroundAreaAttackCommand(unitBlueprintId: string): bo
 export function entityHasBarAreaAttackCommand(entity: Entity): boolean {
   const unit = entity.unit;
   if (unit === null) return false;
-  if (unitBlueprintHasBarGroundAreaAttackCommand(unit.unitBlueprintId)) return true;
-  if (
-    (unit.locomotion.type === 'hover' || unit.locomotion.type === 'flying') &&
-    entityHasBarSetTargetCommand(entity)
-  ) {
-    return true;
-  }
-  return false;
+  return unitBlueprintHasBarGroundAreaAttackCommand(unit.unitBlueprintId);
 }
 
 export function unitBlueprintHasBarAreaAttackCommand(unitBlueprintId: string): boolean {
@@ -80,9 +176,70 @@ export function unitBlueprintHasBarMoveStateCommand(unitBlueprintId: string): bo
   return !BAR_BOMBER_MOVE_STATE_HIDDEN_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
 }
 
+export function unitBlueprintBarDefaultMoveState(unitBlueprintId: string): UnitMoveState {
+  return BAR_DEFAULT_HOLD_POSITION_UNIT_BLUEPRINT_IDS.has(unitBlueprintId)
+    ? 'holdPosition'
+    : 'maneuver';
+}
+
+export function unitBlueprintBarDefaultFireState(unitBlueprintId: string): CombatFireState {
+  return BAR_BOMBER_DEFAULT_HOLD_FIRE_UNIT_BLUEPRINT_IDS.has(unitBlueprintId)
+    ? 'holdFire'
+    : 'fireAtWill';
+}
+
+export function unitBlueprintHasBarBomberNoAirTargetRule(unitBlueprintId: string): boolean {
+  return BAR_BOMBER_NO_AIR_TARGET_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
+}
+
+export function unitBlueprintHasBarBomberAttackBuildingGroundRule(unitBlueprintId: string): boolean {
+  return BAR_BOMBER_ATTACK_BUILDING_GROUND_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
+}
+
+export function unitBlueprintHasBarFighterAirTargetOnlyRule(unitBlueprintId: string): boolean {
+  return BAR_FIGHTER_AIR_TARGET_ONLY_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
+}
+
+export function buildingBlueprintHasBarAirTargetOnlyRule(
+  buildingBlueprintId: BuildingBlueprintId | null | undefined,
+): boolean {
+  return buildingBlueprintId !== null &&
+    buildingBlueprintId !== undefined &&
+    BAR_AIR_TARGET_ONLY_STRUCTURE_BLUEPRINT_IDS.has(buildingBlueprintId);
+}
+
+export function unitBlueprintIsBarAirTarget(unitBlueprintId: string): boolean {
+  return BAR_AIR_TARGET_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
+}
+
+export function entityIsBarAirTarget(entity: Entity | null | undefined): boolean {
+  const unitBlueprintId = entity?.unit?.unitBlueprintId;
+  return unitBlueprintId !== undefined && unitBlueprintIsBarAirTarget(unitBlueprintId);
+}
+
+export function entityCanBarAttackTarget(source: Entity, target: Entity | null | undefined): boolean {
+  const unitBlueprintId = source.unit?.unitBlueprintId;
+  if (unitBlueprintId === undefined) {
+    return !buildingBlueprintHasBarAirTargetOnlyRule(source.buildingBlueprintId) ||
+      entityIsBarAirTarget(target);
+  }
+  if (unitBlueprintHasBarFighterAirTargetOnlyRule(unitBlueprintId)) return entityIsBarAirTarget(target);
+  return !unitBlueprintHasBarBomberNoAirTargetRule(unitBlueprintId) || !entityIsBarAirTarget(target);
+}
+
+export function buildingBlueprintHasBarFactoryMoveStateCommand(
+  buildingBlueprintId: BuildingBlueprintId | null | undefined,
+): boolean {
+  return buildingBlueprintId !== null &&
+    buildingBlueprintId !== undefined &&
+    BAR_FACTORY_MOVE_STATE_STRUCTURE_BLUEPRINT_IDS.has(buildingBlueprintId);
+}
+
 export function entityHasBarMoveStateCommand(entity: Entity): boolean {
-  const unit = entity.unit;
-  return unit !== null && unitBlueprintHasBarMoveStateCommand(unit.unitBlueprintId);
+  const unit = entity.unit ?? null;
+  if (unit !== null) return unitBlueprintHasBarMoveStateCommand(unit.unitBlueprintId);
+  if ((entity.factory ?? null) === null) return false;
+  return buildingBlueprintHasBarFactoryMoveStateCommand(entity.buildingBlueprintId);
 }
 
 export function unitBlueprintHasCloakCommand(unitBlueprintId: string): boolean {
@@ -190,6 +347,20 @@ export function entityHasBarCaptureCommand(entity: Entity): boolean {
   return unit !== null && unitBlueprintHasBarCaptureCommand(unit.unitBlueprintId);
 }
 
+export function unitBlueprintHasBarResurrectCommand(unitBlueprintId: string): boolean {
+  return BAR_RESURRECT_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
+}
+
+export function entityHasBarResurrectCommand(entity: Entity): boolean {
+  const unit = entity.unit ?? null;
+  return unit !== null && unitBlueprintHasBarResurrectCommand(unit.unitBlueprintId);
+}
+
+export function entityCanIssueResurrectCommand(entity: Entity | null | undefined): entity is Entity {
+  if (entity === null || entity === undefined || entity.unit === null || entity.builder === null) return false;
+  return entity.commander !== null || entityHasBarResurrectCommand(entity);
+}
+
 export function unitBlueprintHasBarBuilderPriorityCommand(unitBlueprintId: string): boolean {
   // BAR's Builder Priority gadget inserts GameCMD.PRIORITY on build-speed
   // units that can assist or have build options: commanders/constructors and
@@ -225,4 +396,18 @@ export function entityHasBarFactoryGuardCommand(entity: Entity): boolean {
   const unit = entity.unit ?? null;
   if (unit !== null) return false;
   return buildingBlueprintHasBarFactoryGuardCommand(entity.buildingBlueprintId);
+}
+
+export function buildingBlueprintHasBarAirPlantLandAtCommand(
+  buildingBlueprintId: BuildingBlueprintId | null | undefined,
+): boolean {
+  return buildingBlueprintId !== null &&
+    buildingBlueprintId !== undefined &&
+    BAR_AIR_PLANT_LAND_AT_STRUCTURE_BLUEPRINT_IDS.has(buildingBlueprintId);
+}
+
+export function entityHasBarAirPlantLandAtCommand(entity: Entity): boolean {
+  const unit = entity.unit ?? null;
+  if (unit !== null || entity.factory === null) return false;
+  return buildingBlueprintHasBarAirPlantLandAtCommand(entity.buildingBlueprintId);
 }

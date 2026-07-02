@@ -476,9 +476,12 @@ function createPooledEntry(): PooledEntry {
       queue: null,
       quotas: null,
       quotaCounts: null,
+      moveState: undefined,
+      airIdleState: undefined,
       energyRate: 0, metalRate: 0,
       guardTargetId: null,
       lowPriority: false,
+      paused: false,
       rally,
       route: null,
     },
@@ -1635,6 +1638,21 @@ export function serializeEntitySnapshot(
           }
           f.producing = entity.factory.isProducing;
           f.repeat = entity.factory.repeatProduction;
+          f.paused = entity.factory.paused === true
+            ? true
+            : isFull
+              ? undefined
+              : false;
+          f.moveState = entity.factory.moveState !== 'holdPosition'
+            ? entity.factory.moveState
+            : isFull
+              ? undefined
+              : 'holdPosition';
+          f.airIdleState = entity.factory.airIdleState !== 'land'
+            ? entity.factory.airIdleState
+            : isFull
+              ? undefined
+              : 'land';
           f.queue = encodeFactoryProductionQueue(entity.factory.productionQueue);
           f.quotas = encodeFactoryProductionQuotas(entity.factory.productionQuotas);
           f.quotaCounts = encodeFactoryProductionQuotaCounts(

@@ -97,6 +97,7 @@ export function useGameCanvasSceneUi({
     hasDGun: false,
     hasBarAttackControl: false,
     hasBarCaptureControl: false,
+    hasBarResurrectControl: false,
     hasBarAreaAttackControl: false,
     hasMoveStateControl: false,
     hasFireControl: false,
@@ -117,6 +118,7 @@ export function useGameCanvasSceneUi({
     hasBuildingActiveControl: false,
     buildingsActive: false,
     hasBarBuildingActiveControl: false,
+    hasBarBuildingStopControl: false,
     barBuildingsActive: false,
     hasSelfDestructable: false,
     hasReclaimableSelection: false,
@@ -148,6 +150,7 @@ export function useGameCanvasSceneUi({
     buildFacingDegrees: 0,
     isDGunMode: false,
     isRepairAreaMode: false,
+    isRestoreAreaMode: false,
     isFormationAssumeMode: false,
     isFormationMoveMode: false,
     isAttackMode: false,
@@ -167,6 +170,8 @@ export function useGameCanvasSceneUi({
     factoryProgress: 0,
     factoryIsProducing: false,
     factoryRepeatsProduction: false,
+    hasFactoryAirIdleControl: false,
+    factoryAirIdleState: 'land',
     factoryQueueMode: false,
     factoryProductionQueue: [],
     factoryProductionQuotas: [],
@@ -474,6 +479,9 @@ export function useGameCanvasSceneUi({
     toggleRepairArea: () => {
       getActiveBattleScene()?.toggleRepairAreaMode();
     },
+    toggleRestoreArea: () => {
+      getActiveBattleScene()?.toggleRestoreAreaMode();
+    },
     toggleFormationAssume: () => {
       getActiveBattleScene()?.toggleFormationAssumeMode();
     },
@@ -488,6 +496,9 @@ export function useGameCanvasSceneUi({
     },
     setFactoryRepeatProduction: (factoryId, enabled) => {
       getActiveBattleScene()?.setFactoryRepeatProduction(factoryId, enabled);
+    },
+    setFactoryAirIdleState: (factoryId, airIdleState) => {
+      getActiveBattleScene()?.setFactoryAirIdleState(factoryId, airIdleState);
     },
     changeFactoryUnitQuota: (factoryId, unitBlueprintId, delta) => {
       getActiveBattleScene()?.changeFactoryUnitQuota(factoryId, unitBlueprintId, delta);

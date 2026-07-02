@@ -131,5 +131,5 @@ export const ACTION_COLOR_HEX: Record<ActionType, number> = {
   attack: COLORS.ui.actionColors.attack.colorHex,
   attackGround: COLORS.ui.actionColors.attackGround.colorHex,
   guard: COLORS.ui.actionColors.guard.colorHex,
+  selfDestruct: COLORS.ui.actionColors.attack.colorHex,
 };
-

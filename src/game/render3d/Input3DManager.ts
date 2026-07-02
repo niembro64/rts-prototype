@@ -41,12 +41,15 @@ import {
   findClosestSelectableEntityToPoint,
   SelectionChangeTracker,
   CommanderModeController,
+  CONTROL_GROUP_COUNT,
   InputControlGroups,
   InputSelectedCommands,
   getSelectedClientTransports,
+  resolveScreenRectSelectionModifiers,
   type AutoGroupRuleSnapshot,
   type ControlGroupSlotSnapshot,
   type ScreenRectSelectionOptions,
+  selectBoxHeldModifierForKeyCode,
 } from '../input/helpers';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
@@ -83,12 +86,14 @@ import {
   entityHasBarAreaAttackCommand,
   entityHasBarManualLaunchCommand,
   entityHasBarMoveStateCommand,
+  entityHasBarResurrectCommand,
   entityHasBarTrajectoryCommand,
   entityBarTrajectoryCommandKind,
   entityEffectiveBarTrajectoryMode,
   entityHasBarCaptureCommand,
   entityHasBarFactoryGuardCommand,
   entityHasCloakCommand,
+  entityMatchesBarLegacyGroundWeaponSelection,
 } from '../sim/unitCommandCapabilities';
 import { isReclaimableTarget } from '../sim/reclaim';
 import {
@@ -107,6 +112,7 @@ import {
 import { Input3DPicker } from './Input3DPicker';
 import { Input3DRightDragController, type Input3DLineDragState } from './Input3DRightDragController';
 import { Input3DModeClickController } from './Input3DModeClickController';
+import { Input3DTargetTypeTracker } from './Input3DTargetTypeTracker';
 import type { Input3DAreaDragState } from './Input3DAreaDragState';
 import type { BuildFacingInfo, BuildLineSpacingInfo } from './Input3DBuildPlacementState';
 import {
@@ -167,6 +173,7 @@ type EntitySource = {
   getSelectedBuildings: () => Entity[];
   getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
   getUnitsByPlayer: (playerId: PlayerId) => Entity[];
+  arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
   getEntitySetVersion?: () => number;
   getTerrainBuildabilityGrid?: () => TerrainBuildabilityGrid | null;
 };
@@ -179,6 +186,12 @@ type SelectionClickTapState = {
 };
 
 const AUTO_GROUP_PRESET_STORAGE_KEY = 'budget-annihilation.autoControlGroups.v1';
+const AUTO_GROUP_PRESET_BANK_STORAGE_KEY = 'budget-annihilation.autoControlGroupPresets.v2';
+const BAR_AUTO_GROUP_PRESET_COUNT = CONTROL_GROUP_COUNT;
+const BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX = 1;
+
+type AutoGroupPresetSlots = (AutoGroupRuleSnapshot | null)[];
+type AutoGroupPresetBank = AutoGroupPresetSlots[];
 
 export class Input3DManager {
   private canvas: HTMLCanvasElement;
@@ -213,6 +226,7 @@ export class Input3DManager {
   public onQueueInsertIndexChange?: (index: number | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
+  public onRestoreAreaModeChange?: (active: boolean) => void;
   public onFormationAssumeModeChange?: (active: boolean) => void;
   public onFormationMoveModeChange?: (active: boolean) => void;
   public onAttackModeChange?: (active: boolean) => void;
@@ -255,6 +269,8 @@ export class Input3DManager {
   // don't accidentally inherit 'fight'/'patrol' from a prior group.
   private selectionChangeTracker = new SelectionChangeTracker();
   private controlGroups: InputControlGroups;
+  private autoGroupPresetIndex = BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX;
+  private autoGroupPresets: AutoGroupPresetBank = createEmptyAutoGroupPresetBank();
   private previousSelectionIds: EntityId[] = [];
   private loopSelectionIds: EntityId[] = [];
   private loopSelectionCursor = -1;
@@ -263,6 +279,7 @@ export class Input3DManager {
   private readonly scratchBlueprintIds = new Set<string>();
   private readonly scratchBlueprintIds2 = new Set<string>();
   private selectedCommands: InputSelectedCommands;
+  private targetTypeTracker: Input3DTargetTypeTracker;
   private keyboard: Input3DKeyboardController;
   private rightDrag: Input3DRightDragController;
   private modeClicks: Input3DModeClickController;
@@ -314,21 +331,32 @@ export class Input3DManager {
     this.entitySource = entitySource;
     this.commandSink = commandSink;
     this.picker = new Input3DPicker(threeApp, cursorGround, () => this.entitySource);
+    const savedAutoGroupPresets = loadAutoGroupPresets();
+    this.autoGroupPresets = savedAutoGroupPresets.presets;
+    this.autoGroupPresetIndex = savedAutoGroupPresets.activeIndex;
     this.controlGroups = new InputControlGroups(
       entitySource,
       (entity) => this.isSelectableByActivePlayer(entity),
       (entityIds, additive) => this.enqueueSelection(entityIds, additive),
     );
     this.controlGroups.onChange = () => {
-      saveAutoGroupPreset(this.controlGroups.getAutoGroupPresetSnapshot());
+      this.autoGroupPresets[this.autoGroupPresetIndex] = this.controlGroups.getAutoGroupPresetSnapshot();
+      saveAutoGroupPresets(this.autoGroupPresets);
       this.emitControlGroupSnapshots();
     };
-    this.controlGroups.loadAutoGroupPreset(loadAutoGroupPreset());
+    this.controlGroups.loadAutoGroupPreset(this.autoGroupPresets[this.autoGroupPresetIndex] ?? []);
     this.selectedCommands = new InputSelectedCommands(
       entitySource,
       commandSink,
       () => this.context.getTick(),
     );
+    this.targetTypeTracker = new Input3DTargetTypeTracker({
+      getEntitySource: () => this.entitySource,
+      commandQueue: this.commandSink,
+      getTick: () => this.context.getTick(),
+      getActivePlayerId: () => this.context.activePlayerId,
+      getSelectedTargetableEntities: () => this.selectedCommands.selectedTargetableCombatEntities(),
+    });
     this.modeClicks = new Input3DModeClickController({
       getEntitySource: () => this.entitySource,
       commandQueue: this.commandSink,
@@ -340,9 +368,11 @@ export class Input3DManager {
       getQueueInsertIndex: () => this.queueInsertIndex,
       getSelectedCommander: () => this.getSelectedCommander(),
       getSelectedBuilder: () => this.getSelectedBuilder(),
+      getSelectedResurrectSource: () => this.getSelectedResurrectSourceForActivePreset(),
       onBuildCommandIssued: (queued) => this.handleBuildCommandIssued(queued),
       applyCursor: (kind) => this.applyCursor(kind),
       isRepairAreaMode: () => this.repairAreaMode,
+      isRestoreAreaMode: () => this.restoreAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
@@ -352,6 +382,7 @@ export class Input3DManager {
       isCaptureMode: () => this.captureMode,
       isResurrectMode: () => this.resurrectMode,
       isResurrectAreaMode: () => this.resurrectAreaMode,
+      isResurrectModeAreaCapable: () => isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId()),
       isLoadTransportMode: () => this.loadTransportMode,
       isUnloadTransportMode: () => this.unloadTransportMode,
       isMexUpgradeMode: () => this.mexUpgradeMode,
@@ -359,6 +390,7 @@ export class Input3DManager {
       isTowerTargetMode: () => this.towerTargetMode,
       isTowerTargetNoGroundMode: () => this.towerTargetNoGroundMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
+      exitRestoreAreaMode: () => this.exitRestoreAreaMode(),
       exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
@@ -374,6 +406,9 @@ export class Input3DManager {
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
       exitTowerTargetNoGroundMode: () => this.exitTowerTargetNoGroundMode(),
+      registerBarTargetTypeTracking: (targetId) => this.targetTypeTracker.trackSelectedTargetType(targetId),
+      registerNearestBarTargetTypeTracking: (point) => this.targetTypeTracker.trackNearestEnemyTypeAt(point),
+      clearBarTargetTypeTrackingForSelected: () => this.targetTypeTracker.clearSelected(),
       isBuildSplitModifierHeld: () => this.buildSplitModifierHeld(),
     });
     this.rightDrag = new Input3DRightDragController({
@@ -403,6 +438,7 @@ export class Input3DManager {
       storeControlGroupSlot: (index) => this.storeControlGroupSlot(index),
       addToControlGroupSlot: (index) => this.addToControlGroupSlot(index),
       setAutoControlGroupSlot: (index) => this.setAutoControlGroupSlot(index),
+      loadAutoGroupPreset: (index) => this.loadAutoGroupPreset(index),
       removeSelectedFromAutoControlGroups: () => this.removeSelectedFromAutoControlGroups(),
       recallControlGroupSlot: (index, additive) => this.recallControlGroupSlot(index, additive),
       toggleControlGroupSlot: (index) => this.toggleControlGroupSlot(index),
@@ -433,6 +469,7 @@ export class Input3DManager {
       getSelectedFactoryRepeatProduction: () => this.getSelectedFactoryRepeatProduction(),
       toggleSelectedFactoryRepeatProduction: () => this.toggleSelectedFactoryRepeatProduction(),
       setSelectedFactoryRepeatProduction: (enabled) => this.setSelectedFactoryRepeatProduction(enabled),
+      toggleSelectedFactoryAirIdleState: () => this.toggleSelectedFactoryAirIdleState(),
       cycleActiveBuilder: () => this.cycleActiveBuilder(),
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
       setBuildMode: (buildingBlueprintId) => this.setBuildMode(buildingBlueprintId),
@@ -469,7 +506,8 @@ export class Input3DManager {
       setSelectedFireState: (fireState) => this.setSelectedFireState(fireState),
       toggleBuildingActive: () => this.toggleBuildingActive(),
       setBuildingActive: (open) => this.setBuildingActive(open),
-      selfDestructSelected: () => this.selfDestructSelected(),
+      selfDestructSelected: (queue = false, queueFront = false, queueInsertIndex?: number) =>
+        this.selfDestructSelected(queue, queueFront, queueInsertIndex),
       toggleTowerTargetMode: () => this.toggleTowerTargetMode(),
       toggleTowerTargetNoGroundMode: () => this.toggleTowerTargetNoGroundMode(),
       clearTowerTarget: () => this.clearTowerTarget(),
@@ -487,6 +525,7 @@ export class Input3DManager {
       toggleMexUpgradeMode: () => this.toggleMexUpgradeMode(),
       upgradeSelectedMetalExtractors: () => this.upgradeSelectedMetalExtractors(),
       toggleRepairAreaMode: () => this.toggleRepairAreaMode(),
+      toggleRestoreAreaMode: () => this.toggleRestoreAreaMode(),
       togglePingMode: () => this.togglePingMode(),
       toggleDGunMode: () => this.toggleDGunMode(),
       enqueueScanAtCursor: () => this.enqueueScanAtCursor(),
@@ -497,6 +536,9 @@ export class Input3DManager {
       selectAllMatching: () => this.selectAllMatching(),
       selectAllMatchingInView: () => this.selectAllMatchingInView(),
       selectPreviousSelection: () => this.selectPreviousSelection(),
+      selectPreviousSelectionNotInControlGroups: () => this.selectPreviousSelectionNotInControlGroups(),
+      selectPreviousNonBuildersNotInControlGroups: () => this.selectPreviousNonBuildersNotInControlGroups(),
+      selectGroundWeaponUnits: () => this.selectGroundWeaponUnits(),
       selectIdleBuilders: () => this.selectIdleBuilders(),
       selectIdleTransports: () => this.selectIdleTransports(),
       selectWaitingUnits: () => this.selectWaitingUnits(),
@@ -507,6 +549,7 @@ export class Input3DManager {
       splitArmySelection: () => this.splitArmySelection(),
       loopSelection: () => this.loopSelection(),
       isRepairAreaMode: () => this.repairAreaMode,
+      isRestoreAreaMode: () => this.restoreAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
@@ -523,6 +566,7 @@ export class Input3DManager {
       isTowerTargetMode: () => this.towerTargetMode,
       isTowerTargetNoGroundMode: () => this.towerTargetNoGroundMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
+      exitRestoreAreaMode: () => this.exitRestoreAreaMode(),
       exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
@@ -542,6 +586,7 @@ export class Input3DManager {
     this.specialModes = new Input3DSpecialModes({
       refreshCursor: () => this.refreshCursor(),
       onRepairAreaModeChange: (active) => this.onRepairAreaModeChange?.(active),
+      onRestoreAreaModeChange: (active) => this.onRestoreAreaModeChange?.(active),
       onFormationAssumeModeChange: (active) => this.onFormationAssumeModeChange?.(active),
       onFormationMoveModeChange: (active) => this.onFormationMoveModeChange?.(active),
       onAttackModeChange: (active) => this.onAttackModeChange?.(active),
@@ -633,6 +678,10 @@ export class Input3DManager {
 
   private get repairAreaMode(): boolean {
     return this.specialModes.isActive('repairArea');
+  }
+
+  private get restoreAreaMode(): boolean {
+    return this.specialModes.isActive('restoreArea');
   }
 
   private get attackAreaMode(): boolean {
@@ -975,6 +1024,7 @@ export class Input3DManager {
   }
 
   stopSelectedUnits(): void {
+    this.targetTypeTracker.clearSelected();
     this.selectedCommands.stop();
   }
 
@@ -1159,8 +1209,8 @@ export class Input3DManager {
     this.selectedCommands.setBuildingActive(open, this.selectedBuildingActivePredicateForActivePreset());
   }
 
-  selfDestructSelected(): void {
-    this.selectedCommands.selfDestruct();
+  selfDestructSelected(queue = false, queueFront = false, queueInsertIndex?: number): void {
+    this.selectedCommands.selfDestruct(queue, queueFront, queueInsertIndex);
   }
 
   selectAllOwnedUnits(): void {
@@ -1178,6 +1228,18 @@ export class Input3DManager {
 
   selectAllMatchingInView(): void {
     this.selectMatching(true);
+  }
+
+  selectGroundWeaponUnits(): void {
+    const entityIds: EntityId[] = [];
+    const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i];
+      if (!this.isSelectableByActivePlayer(unit)) continue;
+      if (!entityMatchesBarLegacyGroundWeaponSelection(unit)) continue;
+      entityIds.push(unit.id);
+    }
+    this.enqueueSelection(entityIds, false);
   }
 
   private selectMatching(inView: boolean): void {
@@ -1447,6 +1509,41 @@ export class Input3DManager {
     this.enqueueSelection(entityIds, false);
   }
 
+  selectPreviousSelectionNotInControlGroups(): void {
+    this.selectPreviousSelectionWithBarLegacyFilters(false);
+  }
+
+  selectPreviousNonBuildersNotInControlGroups(): void {
+    this.selectPreviousSelectionWithBarLegacyFilters(true);
+  }
+
+  private selectPreviousSelectionWithBarLegacyFilters(excludeBuilders: boolean): void {
+    const previousIds = this.getLiveEntityIds(this.previousSelectionIds);
+    if (previousIds.length === 0) return;
+
+    const groupedIds = this.scratchEntityIds;
+    groupedIds.clear();
+    const liveGroupedIds = this.controlGroups.getLiveGroupedEntityIds();
+    for (let i = 0; i < liveGroupedIds.length; i++) groupedIds.add(liveGroupedIds[i]);
+
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < previousIds.length; i++) {
+      const id = previousIds[i];
+      if (groupedIds.has(id)) continue;
+      const entity = this.entitySource.getEntity(id);
+      if (entity === undefined || !this.isSelectableByActivePlayer(entity)) continue;
+      if (excludeBuilders && (entity.builder !== null || entity.factory !== null)) continue;
+      entityIds.push(id);
+    }
+    groupedIds.clear();
+
+    if (entityIds.length === 0) {
+      this.enqueueClearSelection();
+      return;
+    }
+    this.enqueueSelection(entityIds, false);
+  }
+
   selectOnlyEntityType(entityType: 'unit' | 'tower' | 'building'): void {
     const entityIds: EntityId[] = [];
     if (entityType === 'unit') {
@@ -1563,6 +1660,18 @@ export class Input3DManager {
     this.enterSpecialMode('repairArea');
   }
 
+  toggleRestoreAreaMode(): void {
+    if (this.restoreAreaMode) {
+      this.exitRestoreAreaMode();
+      return;
+    }
+    if (!this.hasSelectedBuilder()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes();
+    this.enterSpecialMode('restoreArea');
+  }
+
   toggleReclaimMode(): void {
     if (this.reclaimMode) {
       this.exitReclaimMode();
@@ -1592,7 +1701,7 @@ export class Input3DManager {
       this.exitResurrectMode();
       return;
     }
-    if (!this.hasSelectedCommander()) return;
+    if (!this.hasSelectedResurrectControlForActivePreset()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes(false);
@@ -1604,7 +1713,7 @@ export class Input3DManager {
       this.exitResurrectAreaMode();
       return;
     }
-    if (!this.hasSelectedCommander()) return;
+    if (!this.hasSelectedResurrectControlForActivePreset()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes(false);
@@ -1659,6 +1768,15 @@ export class Input3DManager {
     this.controlGroups.setAutoGroupSlot(index);
   }
 
+  loadAutoGroupPreset(index: number): void {
+    if (index < 0 || index >= BAR_AUTO_GROUP_PRESET_COUNT) return;
+    this.autoGroupPresets[this.autoGroupPresetIndex] = this.controlGroups.getAutoGroupPresetSnapshot();
+    this.autoGroupPresetIndex = index;
+    this.controlGroups.loadAutoGroupPreset(this.autoGroupPresets[index] ?? []);
+    saveAutoGroupPresets(this.autoGroupPresets);
+    this.emitControlGroupSnapshots();
+  }
+
   removeSelectedFromAutoControlGroups(): void {
     this.controlGroups.removeSelectedFromAutoGroups();
   }
@@ -1711,7 +1829,7 @@ export class Input3DManager {
     orbit: ThreeApp['orbit'],
     action: CameraKeyboardAction,
   ): void {
-    orbit.moveByKeyboardScreenDirection(action.mode, action.x, action.y);
+    orbit.moveByKeyboardScreenDirection(action.mode, action.x, action.y, action.fast);
   }
 
   /** True if D-gun mode is currently active. */
@@ -1722,6 +1840,10 @@ export class Input3DManager {
   /** True while the next left-click will issue an area-repair command. */
   isInRepairAreaMode(): boolean {
     return this.repairAreaMode;
+  }
+
+  isInRestoreAreaMode(): boolean {
+    return this.restoreAreaMode;
   }
 
   /** True while the next right-click move preserves the selected formation. */
@@ -1800,6 +1922,10 @@ export class Input3DManager {
 
   private exitRepairAreaMode(): void {
     this.specialModes.exit('repairArea');
+  }
+
+  private exitRestoreAreaMode(): void {
+    this.specialModes.exit('restoreArea');
   }
 
   private exitFormationMoveMode(): void {
@@ -1900,6 +2026,7 @@ export class Input3DManager {
   }
 
   clearTowerTarget(): void {
+    this.targetTypeTracker.clearSelected();
     this.selectedCommands.setTowerTarget(null);
   }
 
@@ -1994,9 +2121,18 @@ export class Input3DManager {
   }
 
   private hasSelectedResurrectControlForActivePreset(): boolean {
-    return isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
-      ? false
-      : this.hasSelectedCommander();
+    return this.getSelectedResurrectSourceForActivePreset() !== null;
+  }
+
+  private getSelectedResurrectSourceForActivePreset(): Entity | null {
+    if (!isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())) {
+      return this.getSelectedCommander();
+    }
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (entityHasBarResurrectCommand(selectedUnits[i])) return selectedUnits[i];
+    }
+    return null;
   }
 
   private hasSelectedCaptureControlForActivePreset(): boolean {
@@ -2030,6 +2166,10 @@ export class Input3DManager {
     const selectedUnits = this.entitySource.getSelectedUnits();
     for (let i = 0; i < selectedUnits.length; i++) {
       if (entityHasBarMoveStateCommand(selectedUnits[i])) return true;
+    }
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      if (entityHasBarMoveStateCommand(selectedStatic[i])) return true;
     }
     return false;
   }
@@ -2301,6 +2441,18 @@ export class Input3DManager {
     });
   }
 
+  private toggleSelectedFactoryAirIdleState(): void {
+    const factory = this.getSelectedFactory();
+    const factoryComp = factory?.factory ?? null;
+    if (factory === null || factoryComp === null) return;
+    this.commandSink.enqueue({
+      type: 'setFactoryAirIdleState',
+      tick: this.context.getTick(),
+      factoryId: factory.id,
+      airIdleState: factoryComp.airIdleState === 'fly' ? 'land' : 'fly',
+    });
+  }
+
   private saveFactoryProductionPreset(index: number): void {
     const factory = this.getSelectedFactory();
     const factoryComp = factory?.factory ?? null;
@@ -2415,6 +2567,7 @@ export class Input3DManager {
    *  "once-per-frame" input bookkeeping should live here so the
    *  scene has one call site. Mirrors InputManager.update() on 2D. */
   tick(): void {
+    this.targetTypeTracker.tick();
     this.controlGroups.refreshAutoGroups();
     const changed = this.selectionChangeTracker.poll(
       this.entitySource,
@@ -2429,6 +2582,9 @@ export class Input3DManager {
     }
     if (this.repairAreaMode && !this.hasSelectedBuilder()) {
       this.exitRepairAreaMode();
+    }
+    if (this.restoreAreaMode && !this.hasSelectedBuilder()) {
+      this.exitRestoreAreaMode();
     }
     if (this.attackMode && !this.hasSelectedAttackControl()) {
       this.exitAttackMode();
@@ -2514,9 +2670,10 @@ export class Input3DManager {
 
   private updateHeldSelectBoxModifier(e: KeyboardEvent, held: boolean): void {
     if (isTextEntryTarget(e.target)) return;
-    if (e.code === 'KeyZ') {
+    const modifier = selectBoxHeldModifierForKeyCode(e.code);
+    if (modifier === 'sameType') {
       this.selectBoxSameTypeHeld = held;
-    } else if (e.code === 'Space') {
+    } else if (modifier === 'idle') {
       this.selectBoxIdleHeld = held;
       const presetId = getActiveCommandHotkeyPresetId();
       if (hasBarFactoryPresetHotkeys(presetId)) {
@@ -2538,18 +2695,15 @@ export class Input3DManager {
     options: ScreenRectSelectionOptions;
   } {
     const modifiers = effectiveQueueModifierEvent(e);
-    const subtractive = modifiers.ctrlKey || modifiers.metaKey;
-    return {
-      additive: modifiers.shiftKey && !subtractive,
-      subtractive,
-      options: {
-        includeBuildingsWithUnits: modifiers.shiftKey,
-        mobileOnly: modifiers.altKey,
-        idleOnly: this.selectBoxIdleHeld,
-        sameTypeOnly: this.selectBoxSameTypeHeld,
-        previousSelection: this.getCurrentSelectedEntities(),
-      },
-    };
+    return resolveScreenRectSelectionModifiers({
+      shiftKey: modifiers.shiftKey,
+      ctrlKey: modifiers.ctrlKey,
+      metaKey: modifiers.metaKey,
+      altKey: modifiers.altKey,
+      selectBoxIdleHeld: this.selectBoxIdleHeld,
+      selectBoxSameTypeHeld: this.selectBoxSameTypeHeld,
+      previousSelection: this.getCurrentSelectedEntities(),
+    });
   }
 
   private selectClickedEntity(
@@ -2980,6 +3134,7 @@ export class Input3DManager {
     this.onQueueInsertIndexChange = undefined;
     this.onDGunModeChange = undefined;
     this.onRepairAreaModeChange = undefined;
+    this.onRestoreAreaModeChange = undefined;
     this.onFormationAssumeModeChange = undefined;
     this.onFormationMoveModeChange = undefined;
     this.onAttackModeChange = undefined;
@@ -2999,22 +3154,70 @@ export class Input3DManager {
   }
 }
 
-function loadAutoGroupPreset(): (AutoGroupRuleSnapshot | null)[] {
-  if (typeof window === 'undefined') return [];
+function createEmptyAutoGroupPresetSlots(): AutoGroupPresetSlots {
+  const slots = new Array<AutoGroupRuleSnapshot | null>(CONTROL_GROUP_COUNT);
+  for (let i = 0; i < slots.length; i++) slots[i] = null;
+  return slots;
+}
+
+function createEmptyAutoGroupPresetBank(): AutoGroupPresetBank {
+  const presets = new Array<AutoGroupPresetSlots>(BAR_AUTO_GROUP_PRESET_COUNT);
+  for (let i = 0; i < presets.length; i++) presets[i] = createEmptyAutoGroupPresetSlots();
+  return presets;
+}
+
+function sanitizeAutoGroupPresetSlots(value: unknown): AutoGroupPresetSlots {
+  const slots = createEmptyAutoGroupPresetSlots();
+  if (!Array.isArray(value)) return slots;
+  const count = Math.min(value.length, CONTROL_GROUP_COUNT);
+  for (let i = 0; i < count; i++) {
+    const entry = value[i];
+    if (entry === null) continue;
+    if (typeof entry !== 'object') continue;
+    const candidate = entry as Partial<AutoGroupRuleSnapshot>;
+    const unitBlueprintIds = Array.isArray(candidate.unitBlueprintIds)
+      ? candidate.unitBlueprintIds.filter((id): id is string => typeof id === 'string')
+      : [];
+    const buildingBlueprintIds = Array.isArray(candidate.buildingBlueprintIds)
+      ? candidate.buildingBlueprintIds.filter((id): id is string => typeof id === 'string')
+      : [];
+    if (unitBlueprintIds.length === 0 && buildingBlueprintIds.length === 0) continue;
+    slots[i] = { unitBlueprintIds, buildingBlueprintIds };
+  }
+  return slots;
+}
+
+function loadAutoGroupPresets(): { presets: AutoGroupPresetBank; activeIndex: number } {
+  const presets = createEmptyAutoGroupPresetBank();
+  if (typeof window === 'undefined') return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
+  try {
+    const raw = window.localStorage.getItem(AUTO_GROUP_PRESET_BANK_STORAGE_KEY);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const count = Math.min(parsed.length, BAR_AUTO_GROUP_PRESET_COUNT);
+        for (let i = 0; i < count; i++) presets[i] = sanitizeAutoGroupPresetSlots(parsed[i]);
+        return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
+      }
+    }
+  } catch {
+    // Fall through to v1 migration.
+  }
   try {
     const raw = window.localStorage.getItem(AUTO_GROUP_PRESET_STORAGE_KEY);
-    if (raw === null) return [];
+    if (raw === null) return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed as (AutoGroupRuleSnapshot | null)[] : [];
+    presets[BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX] = sanitizeAutoGroupPresetSlots(parsed);
+    return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
   } catch {
-    return [];
+    return { presets, activeIndex: BAR_DEFAULT_AUTO_GROUP_PRESET_INDEX };
   }
 }
 
-function saveAutoGroupPreset(rules: readonly (AutoGroupRuleSnapshot | null)[]): void {
+function saveAutoGroupPresets(presets: readonly (readonly (AutoGroupRuleSnapshot | null)[])[]): void {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(AUTO_GROUP_PRESET_STORAGE_KEY, JSON.stringify(rules));
+    window.localStorage.setItem(AUTO_GROUP_PRESET_BANK_STORAGE_KEY, JSON.stringify(presets));
   } catch {
     // localStorage may be unavailable or over quota; auto-groups still work in-memory.
   }

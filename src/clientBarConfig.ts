@@ -53,6 +53,8 @@ export type ClientMode = 'demo' | 'real';
 
 type OptionList<T> = ReadonlyArray<{ value: T; label: string }>;
 const PLAYER_CLIENT_MAX_GRAPHICS_CONFIG = rawPlayerClientGraphicsConfig as GraphicsConfig;
+const MIN_CAMERA_FOV_DEGREES = 1;
+const MAX_CAMERA_FOV_DEGREES = 179;
 
 type ClientDefaults = {
   readonly render: RenderMode;
@@ -546,11 +548,17 @@ function isPathingDebugUnitId(value: unknown): value is PathingDebugUnitId {
 }
 
 function isCameraFovDegrees(value: number): value is CameraFovDegrees {
-  return _cd.cameraFov.options.some((opt) => opt.value === value);
+  return Number.isFinite(value) &&
+    value >= MIN_CAMERA_FOV_DEGREES &&
+    value <= MAX_CAMERA_FOV_DEGREES;
+}
+
+function normalizeCameraFovDegrees(value: CameraFovDegrees): CameraFovDegrees {
+  return Math.min(MAX_CAMERA_FOV_DEGREES, Math.max(MIN_CAMERA_FOV_DEGREES, value));
 }
 
 function isMasterVolumePercent(value: number): value is MasterVolumePercent {
-  return _cd.masterVolume.options.some((opt) => opt.value === value);
+  return Number.isFinite(value) && value >= 0 && value <= 200;
 }
 
 function isCameraFollowMode(value: unknown): value is CameraFollowMode {
@@ -1005,8 +1013,9 @@ export function getCameraFovDegrees(): CameraFovDegrees {
 }
 
 export function setCameraFovDegrees(fov: CameraFovDegrees): void {
-  currentCameraFovDegrees = fov;
-  persist(activeStorageKeys().cameraFov, String(fov));
+  const nextFov = normalizeCameraFovDegrees(fov);
+  currentCameraFovDegrees = nextFov;
+  persist(activeStorageKeys().cameraFov, String(nextFov));
 }
 
 export function getAudioScope(): AudioScope {
@@ -1023,8 +1032,8 @@ export function getMasterVolume(): MasterVolumePercent {
 }
 
 export function setMasterVolume(volume: MasterVolumePercent): void {
-  currentMasterVolume = volume;
-  persist(activeStorageKeys().masterVolume, String(volume));
+  currentMasterVolume = Math.max(0, Math.min(200, Math.round(volume)));
+  persist(activeStorageKeys().masterVolume, String(currentMasterVolume));
 }
 
 export function getAudioSmoothing(): boolean {

@@ -96,6 +96,7 @@ import type {
   PlayerId,
   WaypointType,
   CombatFireState,
+  UnitAirIdleState,
   UnitMoveState,
   BuildingBlueprintId,
 } from '../sim/types';
@@ -238,6 +239,7 @@ export class RtsScene3D {
     getSelectedBuildings: () => Entity[];
     getBuildingsByPlayer: (playerId: PlayerId) => Entity[];
     getUnitsByPlayer: (playerId: PlayerId) => Entity[];
+    arePlayersAllied: (a: PlayerId, b: PlayerId) => boolean;
     getEntitySetVersion: () => number;
     getTerrainBuildabilityGrid: () => ReturnType<ClientViewState['getTerrainBuildabilityGrid']>;
   };
@@ -398,6 +400,7 @@ export class RtsScene3D {
       getSelectedBuildings: () => this.selectionSystem.getSelectedBuildings(),
       getBuildingsByPlayer: (pid) => this.clientViewState.getBuildingsByPlayer(pid),
       getUnitsByPlayer: (pid) => this.clientViewState.getUnitsByPlayer(pid),
+      arePlayersAllied: (a, b) => this.arePlayersAlliedForInput(a, b),
       getEntitySetVersion: () => this.clientViewState.getEntitySetVersion(),
       getTerrainBuildabilityGrid: () => this.clientViewState.getTerrainBuildabilityGrid(),
     };
@@ -552,6 +555,9 @@ export class RtsScene3D {
     };
     this.inputManager.onRepairAreaModeChange = (active) => {
       this.selectionSystem.setRepairAreaMode(active);
+    };
+    this.inputManager.onRestoreAreaModeChange = (active) => {
+      this.selectionSystem.setRestoreAreaMode(active);
     };
     this.inputManager.onFormationAssumeModeChange = (active) => {
       this.selectionSystem.setFormationAssumeMode(active);
@@ -954,6 +960,13 @@ export class RtsScene3D {
     this.onPlayerChange?.(playerId);
   }
 
+  private arePlayersAlliedForInput(a: PlayerId, b: PlayerId): boolean {
+    if (a === b) return true;
+    if (a !== this.localPlayerId && b !== this.localPlayerId) return false;
+    const other = a === this.localPlayerId ? b : a;
+    return this.clientViewState.getVisionPlayerIds(this.localPlayerId).includes(other);
+  }
+
   public togglePlayer(): void {
     const currentIndex = this.playerIds.indexOf(this.localPlayerId);
     const nextIndex = (currentIndex + 1) % this.playerIds.length;
@@ -1049,8 +1062,8 @@ export class RtsScene3D {
     this.inputManager?.toggleBuildingActive();
   }
 
-  public selfDestructSelected(): void {
-    this.inputManager?.selfDestructSelected();
+  public selfDestructSelected(queue = false, queueFront = false, queueInsertIndex?: number): void {
+    this.inputManager?.selfDestructSelected(queue, queueFront, queueInsertIndex);
   }
 
   public selectOnlyEntityType(entityType: 'unit' | 'tower' | 'building'): void {
@@ -1263,6 +1276,10 @@ export class RtsScene3D {
     this.inputManager?.toggleRepairAreaMode();
   }
 
+  public toggleRestoreAreaMode(): void {
+    this.inputManager?.toggleRestoreAreaMode();
+  }
+
   public toggleFormationMoveMode(): void {
     this.inputManager?.toggleFormationMoveMode();
   }
@@ -1298,6 +1315,15 @@ export class RtsScene3D {
       tick: this.clientViewState.getTick(),
       factoryId,
       enabled,
+    });
+  }
+
+  public setFactoryAirIdleState(factoryId: number, airIdleState: UnitAirIdleState): void {
+    this.submitClientCommand({
+      type: 'setFactoryAirIdleState',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      airIdleState,
     });
   }
 
@@ -1392,6 +1418,14 @@ export class RtsScene3D {
 
   public setCameraViewMode(mode: CameraViewMode): void {
     this.cameraControl.setViewMode(mode);
+  }
+
+  public toggleCameraViewMode(): void {
+    this.cameraControl.toggleViewMode();
+  }
+
+  public changeCameraViewRadius(direction: 1 | -1): void {
+    this.cameraControl.changeViewRadius(direction);
   }
 
   public setCameraAnchor(index: number): void {

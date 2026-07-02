@@ -27,8 +27,8 @@
       "unitMongoose",
       "unitDragonfly",
       "unitTransport",
-      "unitLoris",
-      "unitEagle"
+      "unitEagle",
+      "unitAlbatros"
     ],
     "renderProfile": "towerFabricator",
     "visualHeight": 30,

@@ -100,6 +100,11 @@ export function runInputControlGroupsContractTest(): void {
     restored.getLiveSlotEntityIds(2).join(',') === '3,4',
     'auto-group preset load must rebuild matching live units from saved blueprint rules',
   );
+  restored.setAutoGroupSlot(1);
+  assertContract(
+    restored.getLiveGroupedEntityIds().join(',') === '3,4',
+    'live grouped ids helper must return unique live ids across manual and auto-group slots',
+  );
   assertContract(
     restored.getSlotSnapshots()[2]?.auto === true,
     'auto-group slot snapshots must mark saved auto-group slots',

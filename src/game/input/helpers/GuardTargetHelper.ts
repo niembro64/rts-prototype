@@ -9,8 +9,15 @@ import type { GuardEntitySource } from '@/types/input';
 export function isGuardableFriendlyTarget(
   entity: Entity | null | undefined,
   playerId: PlayerId,
+  arePlayersAllied: ((a: PlayerId, b: PlayerId) => boolean) | undefined = undefined,
 ): entity is Entity {
-  if (!entity?.ownership || entity.ownership.playerId !== playerId) return false;
+  if (!entity?.ownership) return false;
+  const targetPlayerId = entity.ownership.playerId;
+  if (arePlayersAllied !== undefined) {
+    if (!arePlayersAllied(playerId, targetPlayerId)) return false;
+  } else if (targetPlayerId !== playerId) {
+    return false;
+  }
   if (entity.unit) return entity.unit.hp > 0;
   if (entity.building) return entity.building.hp > 0;
   return false;
@@ -24,9 +31,10 @@ function findFriendlyUnitAt(
 ): Entity | null {
   let closest: Entity | null = null;
   let closestDist = Infinity;
+  const arePlayersAllied = entitySource.arePlayersAllied;
 
   for (const unit of entitySource.getUnits()) {
-    if (!isGuardableFriendlyTarget(unit, playerId) || !unit.unit) continue;
+    if (!isGuardableFriendlyTarget(unit, playerId, arePlayersAllied) || !unit.unit) continue;
     const dx = unit.transform.x - worldX;
     const dy = unit.transform.y - worldY;
     const dist = magnitude(dx, dy);
@@ -47,9 +55,10 @@ function findFriendlyBuildingAt(
 ): Entity | null {
   let closest: Entity | null = null;
   let closestDist = Infinity;
+  const arePlayersAllied = entitySource.arePlayersAllied;
 
   for (const building of entitySource.getBuildings()) {
-    if (!isGuardableFriendlyTarget(building, playerId) || !building.building) continue;
+    if (!isGuardableFriendlyTarget(building, playerId, arePlayersAllied) || !building.building) continue;
     const { x, y } = building.transform;
     const halfW = building.building.width / 2;
     const halfH = building.building.height / 2;

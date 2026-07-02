@@ -13,7 +13,7 @@ import type {
   UnitBlueprintId,
 } from './blueprintIds';
 import type { SnapshotRate, TickRate } from './server';
-import type { BeamReflectorKind, CombatFireState, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitMoveState } from './sim';
+import type { BeamReflectorKind, CombatFireState, CombatTrajectoryMode, EntityType, PlayerId, TurretState, UnitAirIdleState, UnitMoveState } from './sim';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
 // Single source of truth for the wire codes TS and Rust must agree on.
 // Rust generates its constants from this same file via build.rs.
@@ -56,7 +56,8 @@ const ACTION_TYPE_CAPTURE = 10;
 const ACTION_TYPE_RESURRECT = 11;
 const ACTION_TYPE_LOAD_TRANSPORT = 12;
 const ACTION_TYPE_UNLOAD_TRANSPORT = 13;
-export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
+const ACTION_TYPE_SELF_DESTRUCT = 14;
+export type ActionTypeCode = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14;
 
 const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   move: ACTION_TYPE_MOVE,
@@ -73,6 +74,7 @@ const _ACTION_TO_CODE: Record<string, ActionTypeCode> = {
   guard: ACTION_TYPE_GUARD,
   loadTransport: ACTION_TYPE_LOAD_TRANSPORT,
   unloadTransport: ACTION_TYPE_UNLOAD_TRANSPORT,
+  selfDestruct: ACTION_TYPE_SELF_DESTRUCT,
 };
 const _CODE_TO_ACTION: string[] = [
   'move',
@@ -89,6 +91,7 @@ const _CODE_TO_ACTION: string[] = [
   'resurrect',
   'loadTransport',
   'unloadTransport',
+  'selfDestruct',
 ];
 
 export function actionTypeToCode(s: string): ActionTypeCode {
@@ -1077,6 +1080,9 @@ export type NetworkServerSnapshotEntity = {
       /** False means the selected unit is a one-shot queue item; omitted/true
        *  means the selected unit repeats after each completed shell. */
       repeat?: boolean;
+      /** BAR Wait command state for factories/labs. True means production is
+       *  paused while selection, queue, quotas, and progress remain intact. */
+      paused?: boolean;
       /** Finite production queue after the selected/current item. */
       queue?: number[] | null;
       /** Unit blueprint code/quota pairs for BAR factory quota mode. */
@@ -1092,6 +1098,12 @@ export type NetworkServerSnapshotEntity = {
       guardTargetId: number | null;
       /** BAR builder-priority mirror for factory/lab resource priority. */
       lowPriority?: boolean;
+      /** BAR MOVE_STATE for factories/labs. Omitted defaults to hold-position,
+       *  matching BAR's factory hold-position widget for local land labs. */
+      moveState?: UnitMoveState;
+      /** BAR air-plant LAND_AT state. Omitted defaults to `land`, matching
+       *  BAR's inserted air-factory command descriptor. */
+      airIdleState?: UnitAirIdleState;
       /** Static rally point. `posZ` carries the click-altitude of the
        *  player-issued rally; null falls back to terrain sample. */
       rally: { pos: Vec2; posZ: number | null; type: string };

@@ -47,13 +47,15 @@ const BAR_QUOTA_REPLACE_MAX_BUILD_PROGRESS = 0.075;
 const BAR_QUOTA_REPLACE_MAX_METAL = 500;
 const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
 const BAR_AIR_FACTORY_OUTPUT_UNIT_BLUEPRINT_IDS = new Set<string>([
+  'unitConstructionDrone',
   'unitBee',
   'unitDragonfly',
   'unitEagle',
+  'unitAlbatros',
   'unitTransport',
 ]);
 
-function shouldApplyBarFactoryHoldPosition(factory: Entity, unit: Entity): boolean {
+function producedUnitInheritsBarFactoryMoveState(factory: Entity, unit: Entity): boolean {
   if (factory.buildingBlueprintId !== 'towerFabricator') return false;
   const unitBlueprintId = unit.unit?.unitBlueprintId;
   if (unitBlueprintId === undefined) return false;
@@ -172,6 +174,19 @@ class FactoryProductionSystem {
       if (!factory.ownership) continue;
 
       const factoryComp = factory.factory;
+      if (factoryComp.paused) {
+        if (
+          factoryComp.isProducing ||
+          factoryComp.energyRateFraction !== 0 ||
+          factoryComp.metalRateFraction !== 0
+        ) {
+          factoryComp.isProducing = false;
+          factoryComp.energyRateFraction = 0;
+          factoryComp.metalRateFraction = 0;
+          world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+        }
+        continue;
+      }
       if (
         this.preemptLowProgressShellForQuota(world, factory) ||
         this.fillIdleQuotaSelection(world, factory)
@@ -476,12 +491,11 @@ class FactoryProductionSystem {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
     if (unit.unit) {
-      // BAR's enabled "Factory hold position" widget sets non-air labs to
-      // MOVE_STATE 0, and produced land units inherit that hold-position
-      // state. The prototype fabricator combines land and air pages, so keep
-      // the BAR air-factory page at the normal unit default.
-      if (shouldApplyBarFactoryHoldPosition(factory, unit)) {
-        unit.unit.moveState = 'holdPosition';
+      // BAR units inherit their lab's MOVE_STATE. The prototype fabricator
+      // combines land and air pages, so keep the BAR air-factory page at the
+      // normal unit default while land-page outputs inherit the factory state.
+      if (producedUnitInheritsBarFactoryMoveState(factory, unit)) {
+        unit.unit.moveState = factoryComp.moveState;
       }
 
       const guardTarget = factoryComp.guardTargetId !== null
@@ -493,7 +507,7 @@ class FactoryProductionSystem {
         (!isSelfFactoryGuard || unit.builder !== null) &&
         factory.ownership !== null &&
         guardTarget.ownership !== null &&
-        guardTarget.ownership.playerId === factory.ownership.playerId
+        world.arePlayersAllied(factory.ownership.playerId, guardTarget.ownership.playerId)
       ) {
         const targetPoint = getEntityTargetPoint(guardTarget);
         setUnitActions(unit.unit, [{

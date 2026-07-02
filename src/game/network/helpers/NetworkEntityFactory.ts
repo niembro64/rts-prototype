@@ -342,7 +342,7 @@ function createUnitFromNetwork(
       actions,
       actionHash: computeUnitActionHash(actions),
       repeatQueue: u !== null && u.repeatQueue === true,
-      moveState: readNetworkUnitMoveState(u),
+      moveState: readNetworkUnitMoveState(u, unitBlueprintId),
       wantCloak: u !== null && u.wantCloak === true,
       cloaked: u !== null && u.cloaked === true,
       cloakRestoreFireState: null,
@@ -392,7 +392,7 @@ function createUnitFromNetwork(
   const turrets = createTurretsFromNetwork(unitBlueprintId, entity.unit!.radius.other, unitTurrets);
   if (turrets) {
     const combat = createCombatComponent(turrets);
-    combat.fireState = readNetworkCombatFireState(u);
+    combat.fireState = readNetworkCombatFireState(u, unitBlueprintId);
     combat.fireEnabled = combat.fireState !== 'holdFire';
     combat.trajectoryMode = u?.trajectoryMode ?? 'auto';
     entity.combat = combat;
@@ -433,7 +433,10 @@ function createUnitFromNetwork(
         selectedUnitBlueprintId: spawnMount.producedBlueprintId,
         lowPriority: false,
         carrierSpawnEnabled: u?.carrierSpawnEnabled !== false,
+        moveState: 'maneuver',
+        airIdleState: 'fly',
         repeatProduction: true,
+        paused: false,
         productionQueue: [],
         productionQuotas: {},
         productionQuotaCounts: {},
@@ -589,7 +592,10 @@ function createBuildingFromNetwork(
       selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
       lowPriority: f.lowPriority === true,
       carrierSpawnEnabled: true,
+      moveState: f.moveState ?? 'holdPosition',
+      airIdleState: f.airIdleState ?? 'land',
       repeatProduction: f.repeat !== false,
+      paused: f.paused === true,
       productionQueue: decodeFactoryProductionQueue(f.queue),
       productionQuotas: decodeFactoryProductionQuotas(f.quotas),
       productionQuotaCounts: decodeFactoryProductionQuotaCounts(f.quotaCounts),

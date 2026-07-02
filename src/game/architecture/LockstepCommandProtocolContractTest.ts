@@ -1,4 +1,5 @@
 import type {
+  AdjustGameSpeedCommand,
   MoveCommand,
   PingCommand,
   SetPausedCommand,
@@ -239,6 +240,11 @@ export function runLockstepCommandProtocolContractTest(): void {
     tick: 0,
     paused: true,
   };
+  const speedUp: AdjustGameSpeedCommand = {
+    type: 'adjustGameSpeed',
+    tick: 0,
+    direction: 1,
+  };
   const unitGroundNormal: SetUnitGroundNormalEmaModeCommand = {
     type: 'setUnitGroundNormalEmaMode',
     tick: 0,
@@ -252,6 +258,10 @@ export function runLockstepCommandProtocolContractTest(): void {
   assertContract(
     classifyCommandForArchitecture(paused) === 'architecture-control',
     'pause/resume must use architecture-control protocol',
+  );
+  assertContract(
+    classifyCommandForArchitecture(speedUp) === 'architecture-control',
+    'BAR game-speed changes must use architecture-control protocol',
   );
   assertContract(
     classifyCommandForArchitecture(unitGroundNormal) === 'gameplay-truth',
@@ -331,6 +341,18 @@ export function runLockstepCommandProtocolContractTest(): void {
       command: paused,
     }),
     'architecture-control commands must not be lockstep gameplay envelopes',
+  );
+  assertThrows(
+    () => createLockstepCommandEnvelope({
+      gameId: 'contract-game',
+      currentKnownFrame: 1,
+      inputDelayTicks: 6,
+      playerId: 1 as PlayerId,
+      playerSequence: 6,
+      commandIndex: 0,
+      command: speedUp,
+    }),
+    'game-speed architecture-control commands must not be lockstep gameplay envelopes',
   );
   assertContract(
     createLockstepCommandEnvelope({

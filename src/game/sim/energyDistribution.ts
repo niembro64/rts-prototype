@@ -459,7 +459,12 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       } else if (svc.kind === 'factory') {
         // Assist the guarded factory's current unit production.
         const factory = svc.target.factory;
-        if (factory !== null && factory.currentShellId !== null && isBuildTargetInRange(entity, svc.target)) {
+        if (
+          factory !== null &&
+          !factory.paused &&
+          factory.currentShellId !== null &&
+          isBuildTargetInRange(entity, svc.target)
+        ) {
           factoryAssistRateById.set(
             svc.target.id,
             (factoryAssistRateById.get(svc.target.id) ?? 0) + builderRate,
@@ -576,17 +581,18 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
   }
 
-  // 3) Commander consumers — building or healing targets.
+  // 3) Direct build/repair consumers. Commander build actions keep their
+  //    existing special path; repair actions are BAR-builder generic, so any
+  //    mobile builder with a repair order can fund the damaged allied unit.
   for (const commander of world.getCommanderUnits()) {
     if (!commander.commander || !commander.builder || !commander.ownership) continue;
     if (!commander.unit || commander.unit.hp <= 0) continue;
     const actions = commander.unit.actions;
     if (actions.length === 0) continue;
     const action = actions[0];
-    if (action.type !== 'build' && action.type !== 'repair') continue;
-    const targetId = action.type === 'build' ? action.buildingId : action.targetId;
-    if (!targetId) continue;
-    const target = world.getEntity(targetId);
+    if (action.type !== 'build') continue;
+    if (action.buildingId === undefined) continue;
+    const target = world.getEntity(action.buildingId);
     if (!target) continue;
     if (!isBuildTargetInRange(commander, target)) continue;
     const commanderRateCap = getBuilderConstructionRate(commander) * dtSec;
@@ -606,17 +612,43 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           );
         }
       }
+    }
+  }
+
+  for (const entity of world.getBuilderUnits()) {
+    if (entity.builder === null || entity.unit === null || entity.ownership === null) continue;
+    if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
+    const action = entity.unit.actions[0];
+    if (action === undefined || action.type !== 'repair' || action.targetId === undefined) continue;
+    const target = world.getEntity(action.targetId);
+    if (!target || !isBuildTargetInRange(entity, target)) continue;
+    const builderRateCap = getBuilderConstructionRate(entity) * dtSec;
+    if (isBuildInProgress(target.buildable)) {
+      if (!buildingConsumerIds.has(target.id)) {
+        const remainingCost = getTotalRemainingCost(target.buildable);
+        if (remainingCost > 0) {
+          addConsumer(
+            entity.ownership.playerId,
+            target,
+            'build',
+            remainingCost,
+            builderRateCap,
+            entity.id,
+            null,
+          );
+        }
+      }
     } else if (target.unit && target.unit.hp > 0 && target.unit.hp < target.unit.maxHp) {
       const hpToHeal = target.unit.maxHp - target.unit.hp;
       const remaining = hpToHeal * HEAL_COST_PER_HP;
       if (remaining > 0) {
         addConsumer(
-          commander.ownership.playerId,
+          entity.ownership.playerId,
           target,
           'heal',
           remaining,
-          commanderRateCap,
-          commander.id,
+          builderRateCap,
+          entity.id,
           null,
         );
       }

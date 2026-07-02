@@ -36,7 +36,7 @@ function createEmptyAutoGroupRules(): (AutoGroupRule | null)[] {
   return rules;
 }
 
-export function controlGroupIndexForKey(e: KeyboardEvent): number {
+export function controlGroupIndexForKey(e: Pick<KeyboardEvent, 'code' | 'key'>): number {
   if (/^Numpad[0-9]$/.test(e.code)) return -1;
   const codeMatch = /^Digit([0-9])$/.exec(e.code);
   if (codeMatch) return Number(codeMatch[1]);
@@ -328,6 +328,23 @@ export class InputControlGroups {
       const entity = this.source.getEntity(group[i]) ?? null;
       if (this.isSelectable(entity)) entityIds.push(group[i]);
     }
+    return entityIds;
+  }
+
+  getLiveGroupedEntityIds(): EntityId[] {
+    const entityIds: EntityId[] = [];
+    const seen = this.scratchEntityIds;
+    seen.clear();
+    for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
+      const slotIds = this.getLiveSlotEntityIds(i);
+      for (let j = 0; j < slotIds.length; j++) {
+        const id = slotIds[j];
+        if (seen.has(id)) continue;
+        seen.add(id);
+        entityIds.push(id);
+      }
+    }
+    seen.clear();
     return entityIds;
   }
 

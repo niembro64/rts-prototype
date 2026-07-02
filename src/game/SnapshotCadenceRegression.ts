@@ -107,6 +107,7 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'select':
     case 'clearSelection':
     case 'setPaused':
+    case 'adjustGameSpeed':
     case 'setUnitGroundNormalEmaMode':
     case 'setSendGridInfo':
     case 'setBackgroundUnitBlueprintEnabled':

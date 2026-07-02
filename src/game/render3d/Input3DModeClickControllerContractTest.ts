@@ -54,7 +54,19 @@ function makeUnit(id: number, playerId: number): Entity {
     type: 'unit',
     transform: createTransform(0, 0, 0, 0),
     ownership: { playerId },
-    unit: { unitBlueprintId: 'unitJackal' } as Entity['unit'],
+    unit: { unitBlueprintId: 'unitJackal', hp: 100, maxHp: 100 } as Entity['unit'],
+  };
+}
+
+function makeTransport(id: number, playerId: number): Entity {
+  return {
+    ...createEmptyEntityComponentSlots(),
+    id,
+    type: 'unit',
+    transform: createTransform(0, 0, 0, 0),
+    ownership: { playerId },
+    unit: { unitBlueprintId: 'unitTransport', hp: 100, maxHp: 100 } as Entity['unit'],
+    transport: { capacity: 6, loadedUnits: [] },
   };
 }
 
@@ -109,9 +121,11 @@ function makeController(
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => null,
     getSelectedBuilder: () => builders[0],
+    getSelectedResurrectSource: () => builders[0],
     onBuildCommandIssued: (queued) => buildCommandQueuedStates.push(queued),
     applyCursor: () => {},
     isRepairAreaMode: () => false,
+    isRestoreAreaMode: () => false,
     isAttackMode: () => false,
     isAttackAreaMode: () => false,
     isAttackGroundMode: () => false,
@@ -121,6 +135,7 @@ function makeController(
     isCaptureMode: () => false,
     isResurrectMode: () => false,
     isResurrectAreaMode: () => false,
+    isResurrectModeAreaCapable: () => false,
     isLoadTransportMode: () => false,
     isUnloadTransportMode: () => false,
     isMexUpgradeMode: () => false,
@@ -128,6 +143,7 @@ function makeController(
     isTowerTargetMode: () => false,
     isTowerTargetNoGroundMode: () => false,
     exitRepairAreaMode: () => {},
+    exitRestoreAreaMode: () => {},
     exitAttackMode: () => {},
     exitAttackAreaMode: () => {},
     exitAttackGroundMode: () => {},
@@ -241,6 +257,91 @@ export function runInput3DModeClickControllerContractTest(): void {
     'split-modifier build commit must distribute placements round-robin across capable builders',
   );
 
+  const dgunMode = new CommanderModeController();
+  dgunMode.enterDGunMode();
+  const dgunCommander = makeCommanderBuilder(401);
+  const dgunAlly = makeUnit(402, 1);
+  const dgunEnemy = makeUnit(403, 2);
+  const dgunEntities = [dgunCommander, dgunAlly, dgunEnemy];
+  const dgunCommands: Command[] = [];
+  let dgunHitId: number | null = dgunEnemy.id;
+  const dgunController = new Input3DModeClickController({
+    getEntitySource: () => ({
+      getUnits: () => dgunEntities,
+      getBuildings: () => [],
+      getEntity: (id: number) => dgunEntities.find((entity) => entity.id === id),
+      getSelectedUnits: () => [dgunCommander],
+    }),
+    commandQueue: { enqueue: (command) => dgunCommands.push(command) },
+    picker: {
+      raycastEntity: () => dgunHitId,
+      raycastGround: () => ({ x: 320, y: 192, z: 7 }),
+    } as never,
+    mode: dgunMode,
+    selectedCommands: {} as never,
+    getTick: () => 123,
+    getActivePlayerId: () => 1,
+    getQueueInsertIndex: () => null,
+    getSelectedCommander: () => dgunCommander,
+    getSelectedBuilder: () => null,
+    getSelectedResurrectSource: () => null,
+    onBuildCommandIssued: () => {},
+    applyCursor: () => {},
+    isRepairAreaMode: () => false,
+    isRestoreAreaMode: () => false,
+    isAttackMode: () => false,
+    isAttackAreaMode: () => false,
+    isAttackGroundMode: () => false,
+    isManualLaunchMode: () => false,
+    isGuardMode: () => false,
+    isReclaimMode: () => false,
+    isCaptureMode: () => false,
+    isResurrectMode: () => false,
+    isResurrectAreaMode: () => false,
+    isResurrectModeAreaCapable: () => false,
+    isLoadTransportMode: () => false,
+    isUnloadTransportMode: () => false,
+    isMexUpgradeMode: () => false,
+    isPingMode: () => false,
+    isTowerTargetMode: () => false,
+    isTowerTargetNoGroundMode: () => false,
+    exitRepairAreaMode: () => {},
+    exitRestoreAreaMode: () => {},
+    exitAttackMode: () => {},
+    exitAttackAreaMode: () => {},
+    exitAttackGroundMode: () => {},
+    exitManualLaunchMode: () => {},
+    exitGuardMode: () => {},
+    exitReclaimMode: () => {},
+    exitCaptureMode: () => {},
+    exitResurrectMode: () => {},
+    exitResurrectAreaMode: () => {},
+    exitLoadTransportMode: () => {},
+    exitUnloadTransportMode: () => {},
+    exitMexUpgradeMode: () => {},
+    exitPingMode: () => {},
+    exitTowerTargetMode: () => {},
+    exitTowerTargetNoGroundMode: () => {},
+    isBuildSplitModifierHeld: () => false,
+  });
+  dgunController.handleMouseDown(mouseEvent({ button: 0, clientX: 12, clientY: 34 }));
+  assertContract(
+    dgunCommands.length === 1 &&
+      dgunCommands[0].type === 'fireDGun' &&
+      dgunCommands[0].targetId === dgunEnemy.id &&
+      dgunCommands[0].targetX === 320 &&
+      dgunCommands[0].targetY === 192,
+    'BAR DGun ICON_UNIT_OR_MAP click must preserve enemy unit target ids while keeping a ground fallback point',
+  );
+  dgunHitId = dgunAlly.id;
+  dgunController.handleMouseDown(mouseEvent({ button: 0, clientX: 12, clientY: 34 }));
+  assertContract(
+    dgunCommands.length === 2 &&
+      dgunCommands[1].type === 'fireDGun' &&
+      !('targetId' in dgunCommands[1]),
+    'BAR DGun no-ally behavior must fall back to the ground point instead of snapping to allied unit ids',
+  );
+
   const attacker = makeUnit(201, 1);
   const ally = makeUnit(202, 1);
   const attackCommands: Command[] = [];
@@ -264,9 +365,11 @@ export function runInput3DModeClickControllerContractTest(): void {
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => null,
     getSelectedBuilder: () => null,
+    getSelectedResurrectSource: () => null,
     onBuildCommandIssued: () => {},
     applyCursor: () => {},
     isRepairAreaMode: () => false,
+    isRestoreAreaMode: () => false,
     isAttackMode: () => true,
     isAttackAreaMode: () => false,
     isAttackGroundMode: () => false,
@@ -276,6 +379,7 @@ export function runInput3DModeClickControllerContractTest(): void {
     isCaptureMode: () => false,
     isResurrectMode: () => false,
     isResurrectAreaMode: () => false,
+    isResurrectModeAreaCapable: () => false,
     isLoadTransportMode: () => false,
     isUnloadTransportMode: () => false,
     isMexUpgradeMode: () => false,
@@ -283,6 +387,7 @@ export function runInput3DModeClickControllerContractTest(): void {
     isTowerTargetMode: () => false,
     isTowerTargetNoGroundMode: () => false,
     exitRepairAreaMode: () => {},
+    exitRestoreAreaMode: () => {},
     exitAttackMode: () => { exitAttackModeCount++; },
     exitAttackAreaMode: () => {},
     exitAttackGroundMode: () => {},
@@ -312,4 +417,320 @@ export function runInput3DModeClickControllerContractTest(): void {
     'BAR attack-no-ally behavior should redirect allied attack clicks to an attack-ground order',
   );
   assertContract(exitAttackModeCount === 1, 'unqueued allied attack-ground redirect must exit attack mode');
+
+  const resurrector = makeCommanderBuilder(303);
+  const resurrectCommands: Command[] = [];
+  let exitResurrectModeCount = 0;
+  const resurrectController = new Input3DModeClickController({
+    getEntitySource: () => ({
+      getUnits: () => [resurrector],
+      getBuildings: () => [],
+      getEntity: () => undefined,
+      getSelectedUnits: () => [resurrector],
+    }),
+    commandQueue: { enqueue: (command) => resurrectCommands.push(command) },
+    picker: {
+      raycastEntity: () => null,
+      raycastGround: (clientX: number, clientY: number) => ({ x: clientX, y: clientY, z: 0 }),
+    } as never,
+    mode: new CommanderModeController(),
+    selectedCommands: {} as never,
+    getTick: () => 456,
+    getActivePlayerId: () => 1,
+    getQueueInsertIndex: () => null,
+    getSelectedCommander: () => null,
+    getSelectedBuilder: () => resurrector,
+    getSelectedResurrectSource: () => resurrector,
+    onBuildCommandIssued: () => {},
+    applyCursor: () => {},
+    isRepairAreaMode: () => false,
+    isRestoreAreaMode: () => false,
+    isAttackMode: () => false,
+    isAttackAreaMode: () => false,
+    isAttackGroundMode: () => false,
+    isManualLaunchMode: () => false,
+    isGuardMode: () => false,
+    isReclaimMode: () => false,
+    isCaptureMode: () => false,
+    isResurrectMode: () => true,
+    isResurrectAreaMode: () => false,
+    isResurrectModeAreaCapable: () => true,
+    isLoadTransportMode: () => false,
+    isUnloadTransportMode: () => false,
+    isMexUpgradeMode: () => false,
+    isPingMode: () => false,
+    isTowerTargetMode: () => false,
+    isTowerTargetNoGroundMode: () => false,
+    exitRepairAreaMode: () => {},
+    exitRestoreAreaMode: () => {},
+    exitAttackMode: () => {},
+    exitAttackAreaMode: () => {},
+    exitAttackGroundMode: () => {},
+    exitManualLaunchMode: () => {},
+    exitGuardMode: () => {},
+    exitReclaimMode: () => {},
+    exitCaptureMode: () => {},
+    exitResurrectMode: () => { exitResurrectModeCount++; },
+    exitResurrectAreaMode: () => {},
+    exitLoadTransportMode: () => {},
+    exitUnloadTransportMode: () => {},
+    exitMexUpgradeMode: () => {},
+    exitPingMode: () => {},
+    exitTowerTargetMode: () => {},
+    exitTowerTargetNoGroundMode: () => {},
+    isBuildSplitModifierHeld: () => false,
+  });
+  resurrectController.handleMouseDown(mouseEvent({ button: 0, clientX: 0, clientY: 0 }));
+  resurrectController.handleMouseUp(mouseEvent({ button: 0, clientX: 24, clientY: 0 }));
+  assertContract(resurrectCommands.length === 1, 'area-capable resurrect drag must enqueue one area resurrect command');
+  const resurrectDragCommand = resurrectCommands[0];
+  assertContract(
+    resurrectDragCommand.type === 'resurrectArea' &&
+      resurrectDragCommand.commanderId === resurrector.id &&
+      resurrectDragCommand.targetX === 0 &&
+      resurrectDragCommand.targetY === 0 &&
+      resurrectDragCommand.radius === 24,
+    'regular Resurrect mode must use the area command path when click-dragged while area-capable',
+  );
+  assertContract(exitResurrectModeCount === 1, 'unqueued resurrect drag must exit regular resurrect mode');
+
+  const transport = makeTransport(401, 1);
+  const loadTransportCommands: Command[] = [];
+  let exitLoadTransportModeCount = 0;
+  const loadTransportController = new Input3DModeClickController({
+    getEntitySource: () => ({
+      getUnits: () => [transport],
+      getBuildings: () => [],
+      getEntity: (id: number) => id === transport.id ? transport : undefined,
+      getSelectedUnits: () => [transport],
+    }),
+    commandQueue: { enqueue: (command) => loadTransportCommands.push(command) },
+    picker: {
+      raycastEntity: () => null,
+      raycastGround: (clientX: number, clientY: number) => ({ x: clientX, y: clientY, z: 2 }),
+    } as never,
+    mode: new CommanderModeController(),
+    selectedCommands: {} as never,
+    getTick: () => 789,
+    getActivePlayerId: () => 1,
+    getQueueInsertIndex: () => null,
+    getSelectedCommander: () => null,
+    getSelectedBuilder: () => null,
+    getSelectedResurrectSource: () => null,
+    onBuildCommandIssued: () => {},
+    applyCursor: () => {},
+    isRepairAreaMode: () => false,
+    isRestoreAreaMode: () => false,
+    isAttackMode: () => false,
+    isAttackAreaMode: () => false,
+    isAttackGroundMode: () => false,
+    isManualLaunchMode: () => false,
+    isGuardMode: () => false,
+    isReclaimMode: () => false,
+    isCaptureMode: () => false,
+    isResurrectMode: () => false,
+    isResurrectAreaMode: () => false,
+    isResurrectModeAreaCapable: () => false,
+    isLoadTransportMode: () => true,
+    isUnloadTransportMode: () => false,
+    isMexUpgradeMode: () => false,
+    isPingMode: () => false,
+    isTowerTargetMode: () => false,
+    isTowerTargetNoGroundMode: () => false,
+    exitRepairAreaMode: () => {},
+    exitRestoreAreaMode: () => {},
+    exitAttackMode: () => {},
+    exitAttackAreaMode: () => {},
+    exitAttackGroundMode: () => {},
+    exitManualLaunchMode: () => {},
+    exitGuardMode: () => {},
+    exitReclaimMode: () => {},
+    exitCaptureMode: () => {},
+    exitResurrectMode: () => {},
+    exitResurrectAreaMode: () => {},
+    exitLoadTransportMode: () => { exitLoadTransportModeCount++; },
+    exitUnloadTransportMode: () => {},
+    exitMexUpgradeMode: () => {},
+    exitPingMode: () => {},
+    exitTowerTargetMode: () => {},
+    exitTowerTargetNoGroundMode: () => {},
+    isBuildSplitModifierHeld: () => false,
+  });
+  loadTransportController.handleMouseDown(mouseEvent({ button: 0, clientX: 10, clientY: 10 }));
+  loadTransportController.handleMouseUp(mouseEvent({ button: 0, clientX: 40, clientY: 10 }));
+  assertContract(loadTransportCommands.length === 1, 'BAR Load units drag must enqueue one area load command');
+  const loadDragCommand = loadTransportCommands[0];
+  assertContract(
+    loadDragCommand.type === 'loadTransport' &&
+      !('targetId' in loadDragCommand) &&
+      loadDragCommand.transportIds.length === 1 &&
+      loadDragCommand.transportIds[0] === transport.id &&
+      loadDragCommand.targetX === 10 &&
+      loadDragCommand.targetY === 10 &&
+      loadDragCommand.targetZ === 2 &&
+      loadDragCommand.radius === 30,
+    'BAR Load units mode must use the area command path when click-dragged',
+  );
+  assertContract(exitLoadTransportModeCount === 1, 'unqueued BAR Load units drag must exit load mode');
+
+  const unloadTransportCommands: Command[] = [];
+  let exitUnloadTransportModeCount = 0;
+  const unloadTransportController = new Input3DModeClickController({
+    getEntitySource: () => ({
+      getUnits: () => [transport],
+      getBuildings: () => [],
+      getEntity: (id: number) => id === transport.id ? transport : undefined,
+      getSelectedUnits: () => [transport],
+    }),
+    commandQueue: { enqueue: (command) => unloadTransportCommands.push(command) },
+    picker: {
+      raycastEntity: () => null,
+      raycastGround: (clientX: number, clientY: number) => ({ x: clientX, y: clientY, z: 2 }),
+    } as never,
+    mode: new CommanderModeController(),
+    selectedCommands: {} as never,
+    getTick: () => 790,
+    getActivePlayerId: () => 1,
+    getQueueInsertIndex: () => null,
+    getSelectedCommander: () => null,
+    getSelectedBuilder: () => null,
+    getSelectedResurrectSource: () => null,
+    onBuildCommandIssued: () => {},
+    applyCursor: () => {},
+    isRepairAreaMode: () => false,
+    isRestoreAreaMode: () => false,
+    isAttackMode: () => false,
+    isAttackAreaMode: () => false,
+    isAttackGroundMode: () => false,
+    isManualLaunchMode: () => false,
+    isGuardMode: () => false,
+    isReclaimMode: () => false,
+    isCaptureMode: () => false,
+    isResurrectMode: () => false,
+    isResurrectAreaMode: () => false,
+    isResurrectModeAreaCapable: () => false,
+    isLoadTransportMode: () => false,
+    isUnloadTransportMode: () => true,
+    isMexUpgradeMode: () => false,
+    isPingMode: () => false,
+    isTowerTargetMode: () => false,
+    isTowerTargetNoGroundMode: () => false,
+    exitRepairAreaMode: () => {},
+    exitRestoreAreaMode: () => {},
+    exitAttackMode: () => {},
+    exitAttackAreaMode: () => {},
+    exitAttackGroundMode: () => {},
+    exitManualLaunchMode: () => {},
+    exitGuardMode: () => {},
+    exitReclaimMode: () => {},
+    exitCaptureMode: () => {},
+    exitResurrectMode: () => {},
+    exitResurrectAreaMode: () => {},
+    exitLoadTransportMode: () => {},
+    exitUnloadTransportMode: () => { exitUnloadTransportModeCount++; },
+    exitMexUpgradeMode: () => {},
+    exitPingMode: () => {},
+    exitTowerTargetMode: () => {},
+    exitTowerTargetNoGroundMode: () => {},
+    isBuildSplitModifierHeld: () => false,
+  });
+  unloadTransportController.handleMouseDown(mouseEvent({ button: 0, clientX: 10, clientY: 10 }));
+  unloadTransportController.handleMouseUp(mouseEvent({ button: 0, clientX: 90, clientY: 10 }));
+  assertContract(unloadTransportCommands.length === 1, 'BAR Unload units drag must enqueue one area unload command');
+  const unloadDragCommand = unloadTransportCommands[0];
+  assertContract(
+    unloadDragCommand.type === 'unloadTransport' &&
+      unloadDragCommand.transportIds.length === 1 &&
+      unloadDragCommand.transportIds[0] === transport.id &&
+      unloadDragCommand.targetX === 10 &&
+      unloadDragCommand.targetY === 10 &&
+      unloadDragCommand.targetZ === 2 &&
+      unloadDragCommand.radius === 80,
+    'BAR Unload units mode must preserve an area radius for drags at least 64 elmos like cmd_area_unload.lua',
+  );
+  assertContract(exitUnloadTransportModeCount === 1, 'unqueued BAR Unload units drag must exit unload mode');
+
+  const firstTransport = makeTransport(501, 1);
+  const secondTransport = makeTransport(502, 1);
+  const transportTarget = makeUnit(503, 1);
+  transportTarget.transform = createTransform(80, 88, 3, 0);
+  const targetLoadCommands: Command[] = [];
+  const targetLoadController = new Input3DModeClickController({
+    getEntitySource: () => ({
+      getUnits: () => [firstTransport, secondTransport, transportTarget],
+      getBuildings: () => [],
+      getEntity: (id: number) => {
+        if (id === firstTransport.id) return firstTransport;
+        if (id === secondTransport.id) return secondTransport;
+        if (id === transportTarget.id) return transportTarget;
+        return undefined;
+      },
+      getSelectedUnits: () => [firstTransport, secondTransport],
+    }),
+    commandQueue: { enqueue: (command) => targetLoadCommands.push(command) },
+    picker: {
+      raycastEntity: () => transportTarget.id,
+      raycastGround: () => ({ x: 80, y: 88, z: 3 }),
+    } as never,
+    mode: new CommanderModeController(),
+    selectedCommands: {} as never,
+    getTick: () => 790,
+    getActivePlayerId: () => 1,
+    getQueueInsertIndex: () => null,
+    getSelectedCommander: () => null,
+    getSelectedBuilder: () => null,
+    getSelectedResurrectSource: () => null,
+    onBuildCommandIssued: () => {},
+    applyCursor: () => {},
+    isRepairAreaMode: () => false,
+    isRestoreAreaMode: () => false,
+    isAttackMode: () => false,
+    isAttackAreaMode: () => false,
+    isAttackGroundMode: () => false,
+    isManualLaunchMode: () => false,
+    isGuardMode: () => false,
+    isReclaimMode: () => false,
+    isCaptureMode: () => false,
+    isResurrectMode: () => false,
+    isResurrectAreaMode: () => false,
+    isResurrectModeAreaCapable: () => false,
+    isLoadTransportMode: () => true,
+    isUnloadTransportMode: () => false,
+    isMexUpgradeMode: () => false,
+    isPingMode: () => false,
+    isTowerTargetMode: () => false,
+    isTowerTargetNoGroundMode: () => false,
+    exitRepairAreaMode: () => {},
+    exitRestoreAreaMode: () => {},
+    exitAttackMode: () => {},
+    exitAttackAreaMode: () => {},
+    exitAttackGroundMode: () => {},
+    exitManualLaunchMode: () => {},
+    exitGuardMode: () => {},
+    exitReclaimMode: () => {},
+    exitCaptureMode: () => {},
+    exitResurrectMode: () => {},
+    exitResurrectAreaMode: () => {},
+    exitLoadTransportMode: () => {},
+    exitUnloadTransportMode: () => {},
+    exitMexUpgradeMode: () => {},
+    exitPingMode: () => {},
+    exitTowerTargetMode: () => {},
+    exitTowerTargetNoGroundMode: () => {},
+    isBuildSplitModifierHeld: () => false,
+  });
+  targetLoadController.handleMouseDown(mouseEvent({ button: 0, clientX: 80, clientY: 88 }));
+  targetLoadController.handleMouseUp(mouseEvent({ button: 0, clientX: 80, clientY: 88 }));
+  assertContract(targetLoadCommands.length === 1, 'multi-transport Load units target click must enqueue one command');
+  const targetLoadCommand = targetLoadCommands[0];
+  assertContract(
+    targetLoadCommand.type === 'loadTransport' &&
+      !('targetId' in targetLoadCommand) &&
+      targetLoadCommand.transportIds.join(',') === `${firstTransport.id},${secondTransport.id}` &&
+      targetLoadCommand.targetX === 80 &&
+      targetLoadCommand.targetY === 88 &&
+      targetLoadCommand.targetZ === 3 &&
+      targetLoadCommand.radius === 150,
+    'BAR multi-transport target Load units must convert to a small area command around the target unit',
+  );
 }

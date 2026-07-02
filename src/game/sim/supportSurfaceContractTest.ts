@@ -454,7 +454,10 @@ function assertFactoryShellContract(): void {
     selectedUnitBlueprintId: hoverUnitBlueprintId,
     lowPriority: true,
     carrierSpawnEnabled: true,
+    moveState: 'holdPosition',
+    airIdleState: 'land',
     repeatProduction: true,
+    paused: false,
     productionQueue: [],
     productionQuotas: {},
     productionQuotaCounts: {},
@@ -530,7 +533,7 @@ function assertFactoryShellContract(): void {
     world.sampleSupportSurface(dry.x + 120, dry.y).groundZ,
     'factory action z must be sampled from shared support',
   );
-
+  factory.factory.moveState = 'roam';
   factory.factory.selectedUnitBlueprintId = 'unitConstructionDrone';
   factory.factory.repeatProduction = false;
   factory.factory.productionQueue.length = 0;
@@ -553,8 +556,8 @@ function assertFactoryShellContract(): void {
     'builder output guard order must target the producing factory',
   );
   assertContract(
-    completedBuilderUnit.moveState === 'holdPosition',
-    'BAR land-factory outputs must inherit hold-position move state',
+    completedBuilderUnit.moveState === 'maneuver',
+    'BAR armap/armca air-constructor output must keep the normal maneuver move state instead of inheriting the land-factory MOVE_STATE',
   );
 
   factory.factory.selectedUnitBlueprintId = 'unitBee';
@@ -620,6 +623,10 @@ function assertFactoryShellContract(): void {
   assertContract(
     queuedCompleted.length === 1 && queuedCompleted[0] === queuedShell,
     'queued factory must complete the advanced shell',
+  );
+  assertContract(
+    queuedShell.unit?.moveState === 'roam',
+    'BAR land-factory page outputs must inherit the selected factory MOVE_STATE',
   );
   assertContract(factory.factory.selectedUnitBlueprintId === null, 'one-shot factory must clear selected unit when queue is empty');
   assertContract(factory.factory.repeatProduction === false, 'one-shot factory must keep repeat off when empty');
@@ -793,11 +800,19 @@ function assertFactoryGuardDefaultContract(): void {
   assertContract(factory.factory !== null, 'fabricator must initialize a factory component');
   assertContract(
     factory.factory.guardTargetId === factory.id,
-    'BAR factory guard default-on widget must make new fabricators guard themselves',
+    'BAR factory guard widget must default builder-producing factories to self-guard',
+  );
+  assertContract(
+    factory.factory.lowPriority === true,
+    'BAR builder-priority widget must default labs/nanos to low priority',
   );
   assertContract(
     factory.factory.repeatProduction === false,
     'BAR factory auto-repeat widget is disabled by default',
+  );
+  assertContract(
+    factory.factory.moveState === 'holdPosition',
+    'BAR factory hold-position widget must default new factories to hold-position move state',
   );
 }
 

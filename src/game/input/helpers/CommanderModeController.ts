@@ -9,7 +9,7 @@
 // builder selected" for build or "is a commander selected" for D-gun)
 // before calling `enter*`.
 
-import type { Entity, BuildingBlueprintId } from '../../sim/types';
+import type { Entity, EntityId, BuildingBlueprintId } from '../../sim/types';
 import type { StartBuildCommand, FireDGunCommand } from '../../sim/commands';
 import { getAllStructures } from '../../sim/buildConfigs';
 import { getSnappedBuildPosition } from './BuildPlacementValidator';
@@ -136,8 +136,9 @@ export class CommanderModeController {
     worldY: number,
     tick: number,
     worldZ?: number,
+    targetId?: EntityId,
   ): FireDGunCommand {
-    return {
+    const command: FireDGunCommand = {
       type: 'fireDGun',
       tick,
       commanderId: commander.id,
@@ -145,5 +146,7 @@ export class CommanderModeController {
       targetY: worldY,
       targetZ: worldZ,
     };
+    if (targetId !== undefined) command.targetId = targetId;
+    return command;
   }
 }

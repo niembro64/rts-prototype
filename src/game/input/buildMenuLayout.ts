@@ -38,15 +38,16 @@ type BarBuildCategory = {
   id: BarBuildCategoryId;
   sourceCategory: BuildMenuCategory;
   label: string;
+  description: string;
   iconPath: string;
   keyCommandId: CommandHotkeyId;
 };
 
 export const BAR_BUILD_CATEGORIES: readonly BarBuildCategory[] = [
-  { id: 'Economy', sourceCategory: 'Economy', label: 'Economy', iconPath: 'assets/bar/groupicons/energy.png', keyCommandId: 'build.slot1' },
-  { id: 'Combat', sourceCategory: 'Defense', label: 'Combat', iconPath: 'assets/bar/groupicons/weapon.png', keyCommandId: 'build.slot2' },
-  { id: 'Utility', sourceCategory: 'Intel', label: 'Utility', iconPath: 'assets/bar/groupicons/util.png', keyCommandId: 'build.slot3' },
-  { id: 'Production', sourceCategory: 'Production', label: 'Build', iconPath: 'assets/bar/groupicons/builder.png', keyCommandId: 'build.slot4' },
+  { id: 'Economy', sourceCategory: 'Economy', label: 'Economy', description: 'Show economy structures', iconPath: 'assets/bar/groupicons/energy.png', keyCommandId: 'build.slot1' },
+  { id: 'Combat', sourceCategory: 'Defense', label: 'Combat', description: 'Show combat and defensive structures', iconPath: 'assets/bar/groupicons/weapon.png', keyCommandId: 'build.slot2' },
+  { id: 'Utility', sourceCategory: 'Intel', label: 'Utility', description: 'Show utility structures', iconPath: 'assets/bar/groupicons/util.png', keyCommandId: 'build.slot3' },
+  { id: 'Production', sourceCategory: 'Production', label: 'Build', description: 'Show production structures', iconPath: 'assets/bar/groupicons/builder.png', keyCommandId: 'build.slot4' },
 ];
 
 export type BuildMenuLayoutItem = {
@@ -77,6 +78,7 @@ const BAR_EQUIVALENT_FACTORY_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitConstructionDrone',
   'unitBee',
   'unitEagle',
+  'unitAlbatros',
   'unitDragonfly',
   'unitTick',
   'unitJackal',
@@ -88,22 +90,24 @@ const BAR_EQUIVALENT_FACTORY_UNIT_BLUEPRINT_IDS = new Set<string>([
 ]);
 
 const BAR_GRID_FACTORY_UNIT_SLOT_INDEX = new Map<string, number>([
-  // Page 1 follows BAR armvp vehicle-plant slots:
-  // armcv, empty armmlv analogue, armflash, armfav,
+  // Page 1 follows BAR's final labGrids["armvp"] vehicle-plant slots:
+  // empty armcv/armmlv analogue slots, armflash, armfav,
   // empty armstump analogue, armjanus, armart.
-  ['unitConstructionDrone', 0],
   ['unitLynx', 2],
   ['unitJackal', 3],
   ['unitBadger', 5],
   ['unitMongoose', 6],
-  // Page 2 follows BAR armlab bot-lab slots for the current bot analogues:
-  // empty constructor/resurrect/peewee slots, armflea, empty armrock/armham, armwar.
+  // Page 2 follows BAR's final labGrids["armlab"] bot-lab slots:
+  // empty constructor/resurrect/peewee slots, armflea,
+  // empty armrock/armham analogue slots, armwar.
   ['unitTick', BAR_GRID_SLOT_COUNT + 3],
   ['unitTarantula', BAR_GRID_SLOT_COUNT + 6],
   // Page 3 follows BAR armap air-plant slots:
-  // empty air-con analogue, armfig, empty armkam analogue, armthund,
+  // armca, armfig, armkam, armthund,
   // armpeep, armatlas.
+  ['unitConstructionDrone', BAR_GRID_SLOT_COUNT * 2],
   ['unitEagle', (BAR_GRID_SLOT_COUNT * 2) + 1],
+  ['unitAlbatros', (BAR_GRID_SLOT_COUNT * 2) + 2],
   ['unitDragonfly', (BAR_GRID_SLOT_COUNT * 2) + 3],
   ['unitBee', (BAR_GRID_SLOT_COUNT * 2) + 4],
   ['unitTransport', (BAR_GRID_SLOT_COUNT * 2) + 5],
@@ -394,7 +398,7 @@ function categoryOrderIndex(category: BuildMenuCategory): number {
 function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
   switch (id) {
     // BAR buildmenu_sorting.lua ARM commander/assist-drone order:
-    // armmex, armmakr, armwin, armsolar, armvp/armlab,
+    // armmex, armmakr, armwin, armsolar, armap,
     // armrad, armllt, armbeamer, armrl.
     case 'buildingExtractor':
       return 100000;
@@ -407,7 +411,7 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
     case 'buildingSolar':
       return 101070;
     case 'towerFabricator':
-      return 102150;
+      return 102200;
     case 'buildingRadar':
       return 103100;
     case 'towerCannon':
@@ -424,14 +428,16 @@ function barClassicBuildSortIndex(id: BuildingBlueprintId): number {
 function barClassicFactoryUnitSortIndex(id: string): number {
   switch (id) {
     // BAR buildmenu_sorting.lua ARM factory analogues:
-    // constructor, scout/light air, fighter, bomber, flea, flash,
+    // air constructor, scout/light air, fighter, bomber, flea, flash,
     // janus, artillery, warrior, atlas.
     case 'unitConstructionDrone':
-      return 1120; // armcv/armca constructor
+      return 1160; // armca air constructor
     case 'unitBee':
       return 4030; // armpeep scout/light air
     case 'unitEagle':
       return 4300; // armfig fighter
+    case 'unitAlbatros':
+      return 4320; // armkam gunship
     case 'unitDragonfly':
       return 4350; // armthund bomber
     case 'unitTick':
@@ -537,9 +543,11 @@ function preferredStructureBuildGridSlotIndex(id: BuildingBlueprintId): number {
     // BAR utility page: radar in the bottom-left slot.
     case 'buildingRadar':
       return 0;
-    // BAR production page: first factory/lab in the bottom-left slot.
+    // Local towerFabricator is the ARM air-plant analogue (armap), so
+    // keep the armlab/armvp production slots empty and place it in the
+    // bottom-row third cell like BAR's unitGrids["armcom"]["armap"].
     case 'towerFabricator':
-      return 0;
+      return 2;
     // BAR T1 constructor combat pages put light ground/beam defenses on
     // the bottom row and basic AA at the middle-left slot. The ARM
     // commander omits armbeamer, while ARM T1 constructors include it.

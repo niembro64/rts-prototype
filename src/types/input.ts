@@ -37,12 +37,14 @@ export type RepairEntitySource = {
 export type AttackEntitySource = {
   getUnits(): Entity[];
   getBuildings(): Entity[];
+  arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
 };
 
 // Entity source for guard/assist target queries
 export type GuardEntitySource = {
   getUnits(): Entity[];
   getBuildings(): Entity[];
+  arePlayersAllied?: (a: PlayerId, b: PlayerId) => boolean;
 };
 
 // Entity source for reclaim target queries

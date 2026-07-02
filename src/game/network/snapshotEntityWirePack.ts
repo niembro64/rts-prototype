@@ -467,7 +467,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 15;
+const PACKED_ENTITIES_VERSION = 18;
 const PACKED_ENTITIES_MIN_SUPPORTED_VERSION = 13;
 
 // Bit flags for the packed unit row's optional-presence header.
@@ -576,7 +576,9 @@ const WAYPOINT_FLAG_POS_Z = 1 << 0;
 // detail-row fallback. V13 lets HP ride that same compact unit delta slab
 // so movement/turret/HP rows avoid detail-row fallback. V14 adds compact
 // building POS/ROT/HP delta rows. V15 lets building build-state ride the
-// compact building delta slab.
+// compact building delta slab. V16 appends factory paused state to the
+// detail-row factory sub-object. V17 appends factory move state. V18 appends
+// factory air-idle LAND_AT state.
 export type PackedEntityRow = unknown[];
 export type PackedMovementUnitBytes = Uint8Array;
 export type PackedUnitTurretBytes = Uint8Array;
@@ -1665,11 +1667,17 @@ function unpackFactory(row: unknown[], producing: boolean): FactorySub {
   const quotas = row.length > 9 ? row[9] as number[] | null : null;
   const quotaCounts = row.length > 10 ? row[10] as number[] | null : null;
   const lowPriority = row.length > 11 ? row[11] === true || row[11] === 1 : undefined;
+  const paused = row.length > 12 ? row[12] === true || row[12] === 1 : undefined;
+  const moveState = row.length > 13 ? row[13] as FactorySub['moveState'] : undefined;
+  const airIdleState = row.length > 14 ? row[14] as FactorySub['airIdleState'] : undefined;
   return {
     selectedUnitBlueprintCode,
     progress,
     producing,
     repeat,
+    paused,
+    moveState,
+    airIdleState,
     queue,
     quotas,
     quotaCounts,

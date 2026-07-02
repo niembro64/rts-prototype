@@ -61,8 +61,21 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
   if (presetId === 'bar-legacy-60pct' && commandId === 'ui.optionsMenu') return true;
   if (isPrototypeLikePreset && commandId === 'command.areaMex') return true;
   if (isPrototypeLikePreset && commandId === 'select.damagedOnly') return true;
+  if (isPrototypeLikePreset && commandId === 'ui.customGameInfo') return true;
+  if (isPrototypeLikePreset && commandId === 'ui.toggleLosMap') return true;
+  if (isPrototypeLikePreset && commandId.startsWith('ui.attackRangeCycle')) return true;
+  if (isPrototypeLikePreset && commandId.startsWith('ui.volume')) return true;
+  if (isPrototypeLikePreset && commandId.startsWith('camera.fov')) return true;
+  if (!isBarLegacyPreset && commandId.startsWith('camera.viewRadius')) return true;
+  if (!isBarLegacyPreset && commandId === 'camera.toggleMode') return true;
+  if (isBarPreset && commandId === 'select.previous') return true;
+  if (!isBarLegacyPreset && commandId === 'select.previousNotInControlGroups') return true;
+  if (!isBarLegacyPreset && commandId === 'select.previousNonBuildersNotInControlGroups') return true;
+  if (!isBarLegacyPreset && commandId === 'select.groundWeaponUnits') return true;
+  if (!isBarGridPreset && commandId === 'combat.restore') return true;
   if (commandId === 'command.builderPriority') return true;
   if (commandId === 'command.carrierSpawn') return true;
+  if (commandId === 'factory.airIdleState') return true;
   if (commandId === 'command.morph') return true;
   if (
     isBarPreset &&
@@ -84,6 +97,8 @@ function isIntentionallyUnboundCommand(presetId: string, commandId: string): boo
       (isBarLegacyPreset && commandId === 'command.buildCycle') ||
       (isBarLegacyPreset && commandId.startsWith('build.slot')) ||
       (isBarGridPreset && commandId === 'select.sameTypeOnly') ||
+      (isBarGridPreset && commandId === 'select.invert') ||
+      (isBarGridPreset && commandId === 'select.loop') ||
       commandId === 'select.mobileOnly' ||
       (isBarLegacyPreset && (
         commandId === 'select.matchingInView' ||
@@ -127,8 +142,24 @@ export function runCommandHotkeysContractTest(): void {
           ? 'BAR 60% hotkey configs explicitly unbind factory presets and their held-space preview'
           : commandId === 'factory.queueMode'
             ? 'BAR 60% hotkey configs do not bind factoryqueuemode'
+          : commandId === 'factory.airIdleState'
+            ? 'BAR air-plant aplandat has no default hotkey binding'
           : commandId === 'ui.optionsMenu'
             ? 'BAR legacy 60% does not bind the options menu'
+          : commandId === 'ui.customGameInfo'
+            ? 'prototype/custom do not expose BAR customgameinfo'
+          : commandId === 'ui.toggleLosMap'
+            ? 'prototype/custom do not have BAR togglelos view-mode semantics'
+          : commandId.startsWith('ui.attackRangeCycle')
+            ? 'prototype/custom do not expose BAR Attack Range GL4 cycle hotkeys'
+          : commandId.startsWith('ui.volume')
+            ? 'prototype/custom do not expose BAR snd_volume_osd hotkeys'
+          : commandId.startsWith('camera.fov')
+            ? 'prototype/custom do not expose BAR camera FOV step hotkeys'
+          : commandId.startsWith('camera.viewRadius')
+            ? 'BAR only binds increase/decreaseViewRadius in the legacy hotkey presets'
+          : commandId === 'camera.toggleMode'
+            ? 'BAR only binds togglecammode in the legacy hotkey presets'
           : commandId.startsWith('camera.anchor')
             ? 'BAR legacy presets do not bind camera anchors'
           : commandId === 'waypoint.move'
@@ -136,9 +167,13 @@ export function runCommandHotkeysContractTest(): void {
           : commandId === 'select.mobileOnly'
           ? 'BAR covers mobile-only selection with the held-Alt selectbox modifier, not a dedicated bind'
           : commandId === 'select.damagedOnly'
-          ? presetId === 'prototype' || presetId === 'custom'
-            ? 'prototype reserves Alt+Q for autogroup removal, so the damaged filter is panel/BAR-preset-only'
-            : 'BAR legacy does not bind the damaged-selection filter'
+            ? presetId === 'prototype' || presetId === 'custom'
+              ? 'prototype reserves Alt+Q for autogroup removal, so the damaged filter is panel/BAR-preset-only'
+              : 'BAR legacy does not bind the damaged-selection filter'
+          : commandId === 'select.invert'
+            ? 'BAR exposes invert selection through held selectbox/loop modifiers, not a standalone invert-selection hotkey'
+          : commandId === 'select.loop'
+            ? 'BAR exposes loop selection through held Space selectloop behavior, not a standalone loop-selection hotkey'
           : commandId === 'formation.assume' || commandId === 'formation.move'
             ? 'BAR uses formation drag behavior, not separate formation order buttons'
           : commandId === 'command.clearQueue'
@@ -147,6 +182,8 @@ export function runCommandHotkeysContractTest(): void {
             ? 'BAR does not bind a separate scanner sweep; those F-keys are map overlay toggles'
           : commandId === 'command.areaMex'
             ? 'Area Mex is exposed as a BAR order command; prototype/custom do not add a shortcut and BAR-grid keeps Z for build-grid slot 1'
+          : commandId === 'combat.restore'
+            ? 'BAR grid binds Restore on M; prototype/custom and BAR legacy leave M for their existing move semantics'
           : commandId === 'command.builderPriority'
             ? 'BAR exposes builder priority as a visible state command without a default keyboard shortcut'
           : commandId === 'command.carrierSpawn'
@@ -325,6 +362,43 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid map erase should display no separate hotkey label',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('.', 'Period', { altKey: true }), 'bar-grid') === 'ui.attackRangeCycleNext',
+    'bar-grid Alt+Period should resolve BAR attack_range_inc',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent(',', 'Comma', { altKey: true }), 'bar-grid') === 'ui.attackRangeCyclePrevious',
+    'bar-grid Alt+Comma should resolve BAR attack_range_dec',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('.', 'Period'), 'bar-grid') === null,
+    'bar-grid plain Period is handled by gridmenu builder cycling, not the attack range widget',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('.', 'Period', { altKey: true }), 'bar-grid-60pct') === 'ui.attackRangeCycleNext',
+    'bar-grid-60pct Alt+Period should resolve BAR attack_range_inc',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent(',', 'Comma', { altKey: true }), 'bar-legacy') === 'ui.attackRangeCyclePrevious',
+    'bar-legacy Alt+Comma should resolve BAR attack_range_dec from chat_and_ui_keys.txt',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.attackRangeCycleNext', 'bar-grid') === 'Alt+.',
+    'bar-grid attack range increment should display the BAR Alt+Period key',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent("'", 'Quote'), 'bar-grid') === 'ui.toggleLosMap',
+    "bar-grid quote should resolve BAR togglelos",
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('"', 'Quote', { ctrlKey: true, shiftKey: true }), 'bar-grid-60pct') ===
+      'ui.toggleLosMap',
+    'bar-grid-60pct modified quote should resolve BAR Any+togglelos',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.toggleLosMap', 'bar-grid') === "'",
+    'bar-grid LOS map toggle should display the BAR quote key',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('F6', 'F6'), 'bar-grid') === 'ui.togglePathingMap',
     'bar-grid F6 should toggle the path traversability overlay',
   );
@@ -365,8 +439,44 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid Ctrl+F7 should hide or show the interface',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('o', 'KeyO', { ctrlKey: true }), 'bar-grid') === 'camera.fovDecrease',
+    'bar-grid Ctrl+O should decrease camera FOV like chat_and_ui_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('p', 'KeyP', { ctrlKey: true }), 'bar-grid') === 'camera.fovIncrease',
+    'bar-grid Ctrl+P should increase camera FOV like chat_and_ui_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('1', 'Numpad1'), 'bar-grid') === 'camera.fovDecrease',
+    'bar-grid Numpad1 should decrease camera FOV like chat_and_ui_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('7', 'Numpad7'), 'bar-grid') === 'camera.fovIncrease',
+    'bar-grid Numpad7 should increase camera FOV like chat_and_ui_keys.txt',
+  );
+  assertContract(
+    commandHotkeyLabel('camera.fovDecrease', 'bar-grid') === 'Ctrl+O',
+    'bar-grid FOV decrease should display the first BAR FOV decrease binding',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('Backspace', 'Backspace'), 'bar-grid') === 'ui.muteSound',
     'bar-grid Backspace should mute or unmute sound',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('+', 'NumpadAdd'), 'bar-grid') === 'ui.volumeIncrease',
+    'bar-grid Numpad+ should resolve BAR snd_volume_increase',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('=', 'Equal'), 'bar-grid') === 'ui.volumeIncrease',
+    'bar-grid = should resolve BAR snd_volume_increase',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('-', 'Minus'), 'bar-grid') === 'ui.volumeDecrease',
+    'bar-grid - should resolve BAR snd_volume_decrease',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('-', 'NumpadSubtract'), 'bar-grid') === 'ui.volumeDecrease',
+    'bar-grid Numpad- should resolve BAR snd_volume_decrease',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('F12', 'F12'), 'bar-grid') === 'ui.captureScreenshot',
@@ -385,6 +495,12 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid Alt+Backspace should toggle fullscreen',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('Enter', 'Enter', { ctrlKey: true }), 'bar-grid') === 'ui.chat' &&
+      resolveCommandHotkey(keyEvent('Enter', 'Enter', { altKey: true }), 'bar-grid') === 'ui.chat' &&
+      commandHotkeyLabel('ui.chat', 'bar-grid') === 'Enter',
+    'bar-grid modified Enter should still open chat because chat_and_ui_keys.txt binds Any+enter chat',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('o', 'KeyO', { altKey: true }), 'bar-grid') === 'ui.flipCameraYaw',
     'bar-grid Alt+O should flip the camera',
   );
@@ -394,8 +510,20 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid plain I should hold the unit stats peek (grid_keys.txt sc_i unit_stats)',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('i', 'KeyI', { altKey: true }), 'bar-grid') === 'select.invert',
-    'bar-grid Alt+I must stay the selection invert, not the stats peek',
+    resolveCommandHotkey(keyEvent('i', 'KeyI', { ctrlKey: true }), 'bar-grid') === 'ui.customGameInfo',
+    'bar-grid Ctrl+I should toggle customgameinfo like grid_keys.txt',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.customGameInfo', 'bar-grid') === 'Ctrl+I',
+    'bar-grid custom game info should display the BAR Ctrl+I key',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI', { altKey: true }), 'bar-grid') === null,
+    'bar-grid Alt+I must stay unbound because BAR uses held selectbox/loop modifiers rather than a standalone invert-selection hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('l', 'KeyL', { altKey: true }), 'bar-grid') === null,
+    'bar-grid Alt+L must stay unbound because BAR has no standalone loop-selection hotkey',
   );
   assertContract(
     resolveCommandHotkey(keyEvent(' ', 'Space'), 'bar-grid') === null,
@@ -450,6 +578,16 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid-60pct Backspace should mute or unmute sound',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('+', 'NumpadAdd'), 'bar-grid-60pct') === 'ui.volumeIncrease' &&
+      resolveCommandHotkey(keyEvent('-', 'NumpadSubtract'), 'bar-grid-60pct') === 'ui.volumeDecrease',
+    'bar-grid-60pct should inherit BAR snd_volume_osd numpad hotkeys',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Enter', 'Enter', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') ===
+      'ui.chat',
+    'bar-grid-60pct modified Enter should still open chat because chat_and_ui_keys.txt binds Any+enter chat',
+  );
+  assertContract(
     barMapDrawHotkeySignature(keyEvent('q', 'KeyQ', { metaKey: true }), 'bar-grid-60pct') ===
       'bar-grid-60pct:Meta+KeyQ',
     'bar-grid-60pct Meta+Q must enter the BAR map draw double-tap resolver',
@@ -460,12 +598,29 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid-60pct plain I should hold the unit stats peek',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI', { ctrlKey: true }), 'bar-grid-60pct') === 'ui.customGameInfo',
+    'bar-grid-60pct Ctrl+I should toggle customgameinfo like grid_keys_60pct.txt',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true }), 'bar-grid') === 'select.split',
     'bar-grid Ctrl+Q should resolve the BAR select-half split (grid_keys.txt SelectPart_50)',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('s', 'KeyS', { ctrlKey: true, altKey: true }), 'bar-grid') === 'select.previous',
-    'bar-grid previous selection should keep the Ctrl+Alt+S slot freed by the split rebind',
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { ctrlKey: true }), 'bar-grid') === 'select.matching',
+    'bar-grid Ctrl+W should resolve BAR AllMap+_InPrevSel same-type selection',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('b', 'KeyB', { ctrlKey: true }), 'bar-grid') === 'command.selfDestruct',
+    'bar-grid Ctrl+B should resolve BAR grid_keys.txt selfd',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('b', 'KeyB', { ctrlKey: true, shiftKey: true }), 'bar-grid-60pct') ===
+      'command.selfDestruct',
+    'bar-grid-60pct Ctrl+Shift+B should resolve BAR grid_keys_60pct.txt queued selfd',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('s', 'KeyS', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
+    'bar-grid must not expose a fake Ctrl+Alt+S previous-selection binding',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('q', 'KeyQ', { altKey: true }), 'bar-grid') === 'select.damagedOnly',
@@ -594,23 +749,30 @@ export function runCommandHotkeysContractTest(): void {
   );
   assertContract(
     resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true }), 'bar-grid') === 'factoryPreset.load1',
-    'bar-grid Meta+0 should resolve BAR factory preset slot 1 load',
+    'bar-grid Meta+0 should resolve BAR factory preset slot 0 load',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('3', 'Digit3', { metaKey: true }), 'bar-grid') === 'factoryPreset.load4',
-    'bar-grid Meta+3 should resolve BAR factory preset slot 4 load',
+    'bar-grid Meta+3 should resolve BAR factory preset slot 3 load',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('9', 'Digit9', { metaKey: true }), 'bar-grid') === 'factoryPreset.load10',
-    'bar-grid Meta+9 should resolve BAR factory preset slot 10 load',
+    'bar-grid Meta+9 should resolve BAR factory preset slot 9 load',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true, altKey: true }), 'bar-grid') === 'factoryPreset.save1',
-    'bar-grid Meta+Alt+0 should resolve BAR factory preset slot 1 save',
+    'bar-grid Meta+Alt+0 should resolve BAR factory preset slot 0 save',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('9', 'Digit9', { metaKey: true, altKey: true }), 'bar-grid') === 'factoryPreset.save10',
-    'bar-grid Meta+Alt+9 should resolve BAR factory preset slot 10 save',
+    'bar-grid Meta+Alt+9 should resolve BAR factory preset slot 9 save',
+  );
+  assertContract(
+    COMMAND_HOTKEY_DISPLAY_LABELS['factoryPreset.load1'] === 'Load Factory Preset 0' &&
+      COMMAND_HOTKEY_DISPLAY_LABELS['factoryPreset.load10'] === 'Load Factory Preset 9' &&
+      COMMAND_HOTKEY_DISPLAY_LABELS['factoryPreset.save1'] === 'Save Factory Preset 0' &&
+      COMMAND_HOTKEY_DISPLAY_LABELS['factoryPreset.save10'] === 'Save Factory Preset 9',
+    'BAR factory preset display labels must mirror num_keys.txt factory_preset load/save groups 0..9',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('g', 'KeyG', { altKey: true }), 'bar-grid', 'factory') === 'factory.queueMode',
@@ -626,11 +788,11 @@ export function runCommandHotkeysContractTest(): void {
   );
   assertContract(
     resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true }), 'bar-legacy') === 'factoryPreset.load1',
-    'bar-legacy Meta+0 should resolve BAR factory preset slot 1 load',
+    'bar-legacy Meta+0 should resolve BAR factory preset slot 0 load',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('9', 'Digit9', { metaKey: true }), 'bar-legacy') === 'factoryPreset.load10',
-    'bar-legacy Meta+9 should resolve BAR factory preset slot 10 load',
+    'bar-legacy Meta+9 should resolve BAR factory preset slot 9 load',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('g', 'KeyG', { altKey: true }), 'bar-legacy', 'factory') === 'factory.queueMode',
@@ -661,6 +823,11 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid-60pct must retain BAR grid build-menu slot keys',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI', { altKey: true }), 'bar-grid-60pct') === null &&
+      resolveCommandHotkey(keyEvent('l', 'KeyL', { altKey: true }), 'bar-grid-60pct') === null,
+    'bar-grid-60pct must keep standalone invert/loop selection hotkeys unbound like BAR grid_keys_60pct.txt',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('z', 'KeyZ', { ctrlKey: true, altKey: true }), 'prototype') === 'factoryPreset.load1',
     'prototype Ctrl+Alt+Z should keep the prototype factory preset load binding',
   );
@@ -671,6 +838,15 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     resolveCommandHotkey(keyEvent('l', 'KeyL'), 'bar-legacy') === 'combat.loadTransport',
     'bar-legacy L should resolve load transport',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, altKey: true }), 'bar-legacy') ===
+      'ui.toggleLosMap',
+    'bar-legacy modified L should resolve BAR Any+togglelos where it does not collide with load transport',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.toggleLosMap', 'bar-legacy') === 'L',
+    'bar-legacy LOS map toggle should display the BAR L key',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('u', 'KeyU'), 'bar-legacy') === 'combat.unloadTransport',
@@ -757,8 +933,9 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy map label should display BAR double-Q first',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, shiftKey: true }), 'bar-legacy') === null,
-    'bar-legacy Ctrl+Shift+L must not resolve a fake map-label hotkey',
+    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, shiftKey: true }), 'bar-legacy') ===
+      'ui.toggleLosMap',
+    'bar-legacy Ctrl+Shift+L should resolve BAR Any+togglelos instead of a fake map-label hotkey',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('Tab', 'Tab'), 'bar-legacy') === 'ui.showMapOverview',
@@ -771,6 +948,14 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     resolveCommandHotkey(keyEvent('c', 'KeyC', { ctrlKey: true }), 'bar-legacy') === 'command.selectCommander',
     'bar-legacy Ctrl+C should select the commander',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('c', 'KeyC', { ctrlKey: true, shiftKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Shift+C must not match commander selection because BAR binds only Ctrl+C',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('c', 'KeyC', { ctrlKey: true, shiftKey: true }), 'bar-legacy-60pct') === null,
+    'bar-legacy-60pct Ctrl+Shift+C must not inherit a fake commander-selection binding',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('a', 'KeyA', { ctrlKey: true }), 'bar-legacy') === 'select.allUnits',
@@ -789,6 +974,16 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy Alt+W must not expose the prototype matching-in-view selector',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { ctrlKey: true }), 'bar-legacy') ===
+      'select.groundWeaponUnits',
+    'bar-legacy Ctrl+W should resolve BAR Not_Aircraft_Weapons selection',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { ctrlKey: true }), 'bar-legacy-60pct') ===
+      'select.groundWeaponUnits',
+    'bar-legacy-60pct Ctrl+W should resolve BAR Not_Aircraft_Weapons selection',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('p', 'KeyP', { altKey: true }), 'bar-legacy') === null,
     'bar-legacy Alt+P must not expose the prototype previous-selection selector',
   );
@@ -801,8 +996,24 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy Ctrl+Y must not expose the BAR-grid waiting-units selector',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('x', 'KeyX', { ctrlKey: true }), 'bar-legacy') === null,
-    'bar-legacy Ctrl+X must stay unbound until the BAR not-in-hotkey-group selector is modeled',
+    resolveCommandHotkey(keyEvent('x', 'KeyX', { ctrlKey: true }), 'bar-legacy') ===
+      'select.previousNotInControlGroups',
+    'bar-legacy Ctrl+X should resolve BAR previous-selection Not_InHotkeyGroup selector',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('x', 'KeyX', { ctrlKey: true }), 'bar-legacy-60pct') ===
+      'select.previousNotInControlGroups',
+    'bar-legacy-60pct Ctrl+X should resolve BAR previous-selection Not_InHotkeyGroup selector',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('v', 'KeyV', { ctrlKey: true }), 'bar-legacy') ===
+      'select.previousNonBuildersNotInControlGroups',
+    'bar-legacy Ctrl+V should resolve BAR previous non-builder Not_InHotkeyGroup selector',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('v', 'KeyV', { ctrlKey: true }), 'bar-legacy-60pct') ===
+      'select.previousNonBuildersNotInControlGroups',
+    'bar-legacy-60pct Ctrl+V should resolve BAR previous non-builder Not_InHotkeyGroup selector',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('m', 'KeyM', { altKey: true }), 'bar-legacy') === null,
@@ -813,12 +1024,67 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy Ctrl+Shift+O should flip the camera',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('o', 'KeyO', { ctrlKey: true }), 'bar-legacy') === 'camera.fovDecrease',
+    'bar-legacy Ctrl+O should decrease camera FOV like chat_and_ui_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('p', 'KeyP', { ctrlKey: true }), 'bar-legacy') === 'camera.fovIncrease',
+    'bar-legacy Ctrl+P should increase camera FOV like chat_and_ui_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('1', 'Numpad1'), 'bar-legacy-60pct') === 'camera.fovDecrease' &&
+      resolveCommandHotkey(keyEvent('7', 'Numpad7'), 'bar-legacy-60pct') === 'camera.fovIncrease',
+    'bar-legacy-60pct should inherit BAR common Numpad FOV step hotkeys',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Home', 'Home'), 'bar-legacy') === 'camera.viewRadiusIncrease',
+    'bar-legacy Home should resolve BAR increaseViewRadius',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Home', 'Home', { ctrlKey: true, shiftKey: true, altKey: true }), 'bar-legacy') ===
+      'camera.viewRadiusIncrease',
+    'bar-legacy modified Home should still resolve BAR Any+home increaseViewRadius',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('End', 'End'), 'bar-legacy') === 'camera.viewRadiusDecrease',
+    'bar-legacy End should resolve BAR decreaseViewRadius',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Home', 'Home'), 'bar-legacy-60pct') === 'camera.viewRadiusIncrease' &&
+      resolveCommandHotkey(keyEvent('End', 'End'), 'bar-legacy-60pct') === 'camera.viewRadiusDecrease',
+    'bar-legacy-60pct should retain BAR legacy view-radius hotkeys',
+  );
+  assertContract(
+    commandHotkeyLabel('camera.viewRadiusIncrease', 'bar-legacy') === 'Home',
+    'bar-legacy view-radius increase should display the BAR Home key',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('q', 'KeyQ'), 'bar-legacy-60pct') === 'ui.mapDraw',
     'bar-legacy-60pct Q should resolve BAR map draw',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('F2', 'F2', { ctrlKey: true }), 'bar-legacy') === 'camera.viewTa',
     'bar-legacy Ctrl+F2 should switch to TA camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Backspace', 'Backspace', { shiftKey: true }), 'bar-legacy') ===
+      'camera.toggleMode',
+    'bar-legacy Shift+Backspace should toggle camera mode like legacy_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Backspace', 'Backspace', { ctrlKey: true }), 'bar-legacy') ===
+      'camera.toggleMode',
+    'bar-legacy Ctrl+Backspace should toggle camera mode like legacy_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('d', 'KeyD', { ctrlKey: true }), 'bar-legacy') === 'command.selfDestruct' &&
+      resolveCommandHotkey(keyEvent('d', 'KeyD', { ctrlKey: true, shiftKey: true }), 'bar-legacy-60pct') ===
+        'command.selfDestruct',
+    'BAR legacy presets should resolve legacy_keys.txt Ctrl+D/Ctrl+Shift+D selfd bindings',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('b', 'KeyB', { ctrlKey: true }), 'bar-legacy') === 'select.idleBuilders',
+    'bar-legacy Ctrl+B must remain idle-builder selection, not grid self-destruct',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('F1', 'F1'), 'bar-legacy') === 'ui.toggleElevationMap',
@@ -849,6 +1115,22 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy F6 should mute or unmute sound',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('+', 'NumpadAdd'), 'bar-legacy') === 'ui.volumeIncrease',
+    'bar-legacy Numpad+ should resolve BAR snd_volume_increase',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('=', 'Equal'), 'bar-legacy') === 'ui.volumeIncrease',
+    'bar-legacy = should resolve BAR snd_volume_increase',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('-', 'Minus'), 'bar-legacy') === 'ui.volumeDecrease',
+    'bar-legacy - should resolve BAR snd_volume_decrease',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('-', 'NumpadSubtract'), 'bar-legacy') === 'ui.volumeDecrease',
+    'bar-legacy Numpad- should resolve BAR snd_volume_decrease',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('F12', 'F12'), 'bar-legacy') === 'ui.captureScreenshot',
     'bar-legacy F12 should capture a screenshot',
   );
@@ -869,8 +1151,25 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy Alt+Enter should toggle fullscreen',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('Enter', 'Enter', { ctrlKey: true }), 'bar-legacy') === 'ui.chat' &&
+      commandHotkeyLabel('ui.chat', 'bar-legacy') === 'Enter',
+    'bar-legacy modified Enter should open chat except for the exact Alt+Enter fullscreen override',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('F4', 'F4'), 'bar-legacy') !== 'command.scan',
     'bar-legacy F4 must not trigger the prototype scanner sweep',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI'), 'bar-legacy') === 'ui.customGameInfo',
+    'bar-legacy plain I should toggle customgameinfo like legacy_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI'), 'bar-legacy-60pct') === 'ui.customGameInfo',
+    'bar-legacy-60pct plain I should toggle customgameinfo like legacy_keys_60pct.txt',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.customGameInfo', 'bar-legacy') === 'I',
+    'bar-legacy custom game info should display the BAR I key',
   );
   // legacy_keys.txt: "bind Any+space unit_stats" (Space also stays the
   // queue-front modifier, matching BAR's own overlap).
@@ -883,16 +1182,17 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy modified Space must still match because BAR binds Any+space',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('i', 'KeyI'), 'bar-legacy') === null,
-    'bar-legacy plain I must stay unbound (legacy keeps the stats peek on Space)',
-  );
-  assertContract(
     resolveCommandHotkey(keyEvent('1', 'Digit1', { metaKey: true }), 'bar-legacy-60pct') === 'ui.toggleElevationMap',
     'bar-legacy-60pct Meta+1 should toggle the elevation map overlay',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('2', 'Digit2', { ctrlKey: true, metaKey: true }), 'bar-legacy-60pct') === 'camera.viewTa',
     'bar-legacy-60pct Ctrl+Meta+2 should switch to TA camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Backspace', 'Backspace', { shiftKey: true }), 'bar-legacy-60pct') ===
+      'camera.toggleMode',
+    'bar-legacy-60pct Shift+Backspace should retain BAR legacy togglecammode',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('2', 'Digit2', { metaKey: true }), 'bar-legacy-60pct') === 'ui.togglePathingMap',
@@ -919,12 +1219,22 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy-60pct Meta+6 should mute or unmute sound',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('+', 'NumpadAdd'), 'bar-legacy-60pct') === 'ui.volumeIncrease' &&
+      resolveCommandHotkey(keyEvent('-', 'Minus'), 'bar-legacy-60pct') === 'ui.volumeDecrease',
+    'bar-legacy-60pct should inherit BAR snd_volume_osd volume hotkeys',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('8', 'Digit8', { metaKey: true }), 'bar-legacy-60pct') === 'ui.captureScreenshot',
     'bar-legacy-60pct Meta+8 should capture a screenshot',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('Enter', 'Enter', { altKey: true }), 'bar-legacy-60pct') === 'ui.toggleFullscreen',
     'bar-legacy-60pct Alt+Enter should toggle fullscreen',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Enter', 'Enter', { ctrlKey: true, metaKey: true }), 'bar-legacy-60pct') ===
+      'ui.chat',
+    'bar-legacy-60pct modified Enter should open chat except for the exact Alt+Enter fullscreen override',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('Tab', 'Tab'), 'bar-legacy-60pct') === 'ui.showMapOverview',
@@ -997,12 +1307,21 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid semicolon should resolve move state',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid') === null,
-    'bar-grid M must resolve nothing — Restore was removed because terrain never deforms',
+    resolveCommandHotkey(keyEvent('k', 'KeyK', { altKey: true }), 'bar-grid') === 'command.cloak' &&
+      resolveCommandHotkey(keyEvent('k', 'KeyK', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'command.cloak' &&
+      resolveCommandHotkey(keyEvent('k', 'KeyK', { ctrlKey: true }), 'bar-legacy') === 'command.cloak' &&
+      resolveCommandHotkey(keyEvent('k', 'KeyK', { altKey: true, metaKey: true }), 'bar-legacy-60pct') === 'command.cloak' &&
+      commandHotkeyLabel('command.cloak', 'bar-grid') === 'K',
+    'BAR presets must resolve Any+K to wantcloak/command.cloak while displaying the plain K label like the hotkey files',
   );
   assertContract(
-    !COMMAND_HOTKEY_IDS.includes('combat.restore' as unknown as (typeof COMMAND_HOTKEY_IDS)[number]),
-    'combat.restore must stay deleted from the command surface (no dead UI)',
+    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid') === 'combat.restore',
+    'bar-grid M must resolve BAR restore like grid_keys.txt',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid-60pct') === 'combat.restore' &&
+      commandHotkeyLabel('combat.restore', 'bar-grid') === 'M',
+    'BAR grid presets must expose Restore on M like grid_keys.txt and grid_keys_60pct.txt',
   );
   assertContract(
     commandHotkeyLabel('waypoint.move', 'bar-grid') === '',
@@ -1232,6 +1551,44 @@ export function runCommandHotkeysContractTest(): void {
     resolveCommandHotkey(keyEvent('8', 'Digit8', { metaKey: true }), 'bar-grid-60pct') === 'ui.toggleElevationMap',
     'bar-grid-60pct Meta+8 should toggle the elevation map overlay',
   );
+  const barGridSpeedPresetIds = ['bar-grid', 'bar-grid-60pct'] as const;
+  for (const presetId of barGridSpeedPresetIds) {
+    assertContract(
+      resolveCommandHotkey(keyEvent('=', 'Equal', { altKey: true }), presetId) === 'ui.gameSpeedIncrease',
+      `${presetId} Alt+= must resolve BAR increasespeed`,
+    );
+    assertContract(
+      resolveCommandHotkey(keyEvent('+', 'NumpadAdd', { altKey: true }), presetId) === 'ui.gameSpeedIncrease',
+      `${presetId} Alt+Numpad+ must resolve BAR increasespeed`,
+    );
+    assertContract(
+      resolveCommandHotkey(keyEvent('-', 'Minus', { altKey: true }), presetId) === 'ui.gameSpeedDecrease',
+      `${presetId} Alt+- must resolve BAR decreasespeed`,
+    );
+    assertContract(
+      resolveCommandHotkey(keyEvent('-', 'NumpadSubtract', { altKey: true }), presetId) === 'ui.gameSpeedDecrease',
+      `${presetId} Alt+Numpad- must resolve BAR decreasespeed`,
+    );
+  }
+  const barLegacySpeedPresetIds = ['bar-legacy', 'bar-legacy-60pct'] as const;
+  for (const presetId of barLegacySpeedPresetIds) {
+    assertContract(
+      resolveCommandHotkey(keyEvent('Insert', 'Insert', { altKey: true }), presetId) === 'ui.gameSpeedIncrease',
+      `${presetId} Alt+Insert must resolve BAR legacy increasespeed`,
+    );
+    assertContract(
+      resolveCommandHotkey(keyEvent('Delete', 'Delete', { altKey: true }), presetId) === 'ui.gameSpeedDecrease',
+      `${presetId} Alt+Delete must resolve BAR legacy decreasespeed`,
+    );
+    assertContract(
+      resolveCommandHotkey(keyEvent('=', 'Equal', { altKey: true }), presetId) === 'ui.gameSpeedIncrease',
+      `${presetId} Alt+= must resolve BAR increasespeed`,
+    );
+    assertContract(
+      resolveCommandHotkey(keyEvent('-', 'Minus', { altKey: true }), presetId) === 'ui.gameSpeedDecrease',
+      `${presetId} Alt+- must resolve BAR decreasespeed`,
+    );
+  }
   assertContract(
     resolveCommandHotkey(keyEvent('F1', 'F1'), 'bar-legacy') === 'ui.toggleElevationMap',
     'bar-legacy F1 must be elevation overlay, not a camera anchor',
@@ -1307,13 +1664,13 @@ export function runCommandHotkeysContractTest(): void {
   );
   const ctrlFactoryKey = factoryProductionKeyModeFromEvent(keyEvent('z', 'KeyZ', { ctrlKey: true }), false);
   assertContract(
-    ctrlFactoryKey.repeat === false && ctrlFactoryKey.count === -1,
-    'BAR factory Ctrl grid key should remove one queued unit',
+    ctrlFactoryKey.repeat === false && ctrlFactoryKey.count === 20,
+    'BAR factory Ctrl grid key should queue twenty units',
   );
   const shiftCtrlFactoryKey = factoryProductionKeyModeFromEvent(keyEvent('z', 'KeyZ', { ctrlKey: true, shiftKey: true }), false);
   assertContract(
-    shiftCtrlFactoryKey.repeat === false && shiftCtrlFactoryKey.count === -5,
-    'BAR factory Shift+Ctrl grid key should remove five queued units',
+    shiftCtrlFactoryKey.repeat === false && shiftCtrlFactoryKey.count === 100,
+    'BAR factory Shift+Ctrl grid key should queue one hundred units',
   );
   const queuedDragStart = queueModeFromEvent(keyEvent('w', 'KeyW', { shiftKey: true }), 4);
   const plainDragRelease = queueModeFromEvent(keyEvent('w', 'KeyW'));
