@@ -55,6 +55,20 @@ const UNIT_ACTION_MOVEMENT_DECISION_THRUST: u8 = 0;
 const UNIT_ACTION_MOVEMENT_DECISION_ADVANCE_PATH: u8 = 1;
 const UNIT_ACTION_MOVEMENT_DECISION_HOLD: u8 = 2;
 
+// Range request kinds resolved natively against the entity-state slab.
+// Kept in lockstep with SimulationUnitActionPlanner.ts.
+const UNIT_ACTION_RANGE_KIND_NONE: u8 = 0;
+const UNIT_ACTION_RANGE_KIND_BUILD: u8 = 1;
+const UNIT_ACTION_RANGE_KIND_LOAD: u8 = 2;
+const UNIT_ACTION_RANGE_KIND_GUARD_SERVICE: u8 = 3;
+
+// Mirrors EntitySlotRegistry.ts slot flag bits (lockstep contract).
+const ENTITY_SLOT_FLAG_HAS_UNIT: u32 = 1 << 3;
+const ENTITY_SLOT_FLAG_HAS_BUILDING: u32 = 1 << 4;
+
+// Mirrors TRANSPORT_LOAD_RANGE_PADDING in src/game/sim/transports.ts.
+const TRANSPORT_LOAD_RANGE_PADDING: f64 = 24.0;
+
 #[inline]
 fn has(flags: u32, bit: u32) -> bool {
     flags & bit != 0
@@ -86,16 +100,132 @@ fn movement_blocked_by_hold(flags: u32) -> bool {
     has(flags, UNIT_ACTION_FLAG_MOVE_STATE_HOLD)
 }
 
+/// Horizontal reach distance from the acting slot to the target slot,
+/// mirroring `build_target_horizontal_distance` (lib.rs) with the
+/// target shape read from the entity-state slab: buildings resolve to
+/// their footprint rectangle (aabb halves = width/2, height/2), units
+/// to their collision-radius disc, anything else to the raw point.
+#[inline]
+fn slab_build_target_distance(
+    slab: &EntityStateSlab,
+    self_slot: usize,
+    target_slot: usize,
+) -> f64 {
+    let bx = slab.pos_x[self_slot];
+    let by = slab.pos_y[self_slot];
+    let tx = slab.pos_x[target_slot];
+    let ty = slab.pos_y[target_slot];
+    let target_flags = slab.flags[target_slot];
+    if has(target_flags, ENTITY_SLOT_FLAG_HAS_BUILDING) {
+        let half_w = slab.aabb_hx[target_slot];
+        let half_h = slab.aabb_hy[target_slot];
+        let min_x = tx - half_w;
+        let max_x = tx + half_w;
+        let min_y = ty - half_h;
+        let max_y = ty + half_h;
+        let closest_x = js_max(min_x, js_min(bx, max_x));
+        let closest_y = js_max(min_y, js_min(by, max_y));
+        let dx = closest_x - bx;
+        let dy = closest_y - by;
+        return (dx * dx + dy * dy).sqrt();
+    }
+    let dx = tx - bx;
+    let dy = ty - by;
+    let distance = (dx * dx + dy * dy).sqrt();
+    let radius = if has(target_flags, ENTITY_SLOT_FLAG_HAS_UNIT) {
+        slab.radius_collision[target_slot]
+    } else {
+        0.0
+    };
+    js_max(0.0, distance - radius)
+}
+
+/// Resolve one row's native range request into its flag bit, reading
+/// self/target state straight from the entity-state slab. A missing or
+/// out-of-bounds slot contributes no flag — the JS predicates treated a
+/// vanished target the same way.
+#[inline]
+fn resolve_range_flag(
+    slab: &EntityStateSlab,
+    kind: u8,
+    self_slot: u32,
+    target_slot: i32,
+    range_param: f64,
+) -> u32 {
+    if kind == UNIT_ACTION_RANGE_KIND_NONE || target_slot < 0 {
+        return 0;
+    }
+    let s = self_slot as usize;
+    let t = target_slot as usize;
+    if s >= slab.pos_x.len() || t >= slab.pos_x.len() {
+        return 0;
+    }
+    match kind {
+        UNIT_ACTION_RANGE_KIND_BUILD => {
+            if range_param > 0.0 && slab_build_target_distance(slab, s, t) <= range_param {
+                UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE
+            } else {
+                0
+            }
+        }
+        UNIT_ACTION_RANGE_KIND_GUARD_SERVICE => {
+            if range_param > 0.0 && slab_build_target_distance(slab, s, t) <= range_param {
+                UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE
+            } else {
+                0
+            }
+        }
+        UNIT_ACTION_RANGE_KIND_LOAD => {
+            let self_radius = if has(slab.flags[s], ENTITY_SLOT_FLAG_HAS_UNIT) {
+                slab.radius_collision[s]
+            } else {
+                0.0
+            };
+            let target_radius = if has(slab.flags[t], ENTITY_SLOT_FLAG_HAS_UNIT) {
+                slab.radius_collision[t]
+            } else {
+                0.0
+            };
+            let dx = slab.pos_x[t] - slab.pos_x[s];
+            let dy = slab.pos_y[t] - slab.pos_y[s];
+            let range = self_radius + target_radius + TRANSPORT_LOAD_RANGE_PADDING;
+            if dx * dx + dy * dy <= range * range {
+                UNIT_ACTION_FLAG_LOAD_IN_RANGE
+            } else {
+                0
+            }
+        }
+        _ => 0,
+    }
+}
+
 #[wasm_bindgen]
-pub fn unit_action_plan_batch(action_type: &[u8], flags: &[u32], out_plan: &mut [u8]) -> u32 {
+pub fn unit_action_plan_batch(
+    action_type: &[u8],
+    flags: &mut [u32],
+    slots: &[u32],
+    range_kind: &[u8],
+    target_slot: &[i32],
+    range_param: &[f64],
+    out_plan: &mut [u8],
+) -> u32 {
     let count = action_type.len();
-    if flags.len() < count || out_plan.len() < count {
+    if flags.len() < count
+        || slots.len() < count
+        || range_kind.len() < count
+        || target_slot.len() < count
+        || range_param.len() < count
+        || out_plan.len() < count
+    {
         return 0;
     }
 
+    let slab = entity_state();
     for i in 0..count {
         let action = action_type[i];
-        let f = flags[i];
+        let f = flags[i]
+            | resolve_range_flag(slab, range_kind[i], slots[i], target_slot[i], range_param[i]);
+        flags[i] = f;
         out_plan[i] = if action == ACTION_TYPE_NONE {
             UNIT_ACTION_PLAN_IDLE_LOITER
         } else if action == ACTION_TYPE_WAIT {

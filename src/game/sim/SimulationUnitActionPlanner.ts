@@ -16,6 +16,13 @@ export const UNIT_ACTION_FLAG_GUARD_SERVICE = 1 << 8;
 export const UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE = 1 << 9;
 export const UNIT_ACTION_FLAG_TARGET_PRESENT = 1 << 10;
 
+/** Range checks resolved natively inside unit_action_plan_batch against
+ *  the entity-state slab. Kept in lockstep with unit_action.rs. */
+export const UNIT_ACTION_RANGE_KIND_NONE = 0;
+export const UNIT_ACTION_RANGE_KIND_BUILD = 1;
+export const UNIT_ACTION_RANGE_KIND_LOAD = 2;
+export const UNIT_ACTION_RANGE_KIND_GUARD_SERVICE = 3;
+
 export const UNIT_ACTION_PLAN_IDLE_LOITER = 0;
 export const UNIT_ACTION_PLAN_WAIT_LOITER = 1;
 export const UNIT_ACTION_PLAN_LOAD_HOLD = 2;
@@ -63,6 +70,10 @@ export class SimulationUnitActionPlanner {
   private readonly serviceTargets: (Entity | null)[] = [];
   private actionTypes = new Uint8Array(0);
   private flags = new Uint32Array(0);
+  private slots = new Uint32Array(0);
+  private rangeKinds = new Uint8Array(0);
+  private targetSlots = new Int32Array(0);
+  private rangeParams = new Float64Array(0);
   private plans = new Uint8Array(0);
   private count = 0;
 
@@ -76,6 +87,9 @@ export class SimulationUnitActionPlanner {
     action: UnitAction | undefined,
     flags: number,
     serviceTarget: Entity | null = null,
+    rangeKind: number = UNIT_ACTION_RANGE_KIND_NONE,
+    targetSlot: number = -1,
+    rangeParam: number = 0,
   ): number {
     const index = this.count++;
     this.ensureCapacity(this.count);
@@ -86,6 +100,10 @@ export class SimulationUnitActionPlanner {
       ? actionTypeToCode(action.type)
       : ACTION_TYPE_NONE;
     this.flags[index] = flags;
+    this.slots[index] = entity.entitySlotId >= 0 ? entity.entitySlotId : 0xffffffff;
+    this.rangeKinds[index] = rangeKind;
+    this.targetSlots[index] = targetSlot;
+    this.rangeParams[index] = rangeParam;
     return index;
   }
 
@@ -99,12 +117,22 @@ export class SimulationUnitActionPlanner {
     const ok = sim.unitActionPlanBatch(
       this.actionTypes.subarray(0, count),
       this.flags.subarray(0, count),
+      this.slots.subarray(0, count),
+      this.rangeKinds.subarray(0, count),
+      this.targetSlots.subarray(0, count),
+      this.rangeParams.subarray(0, count),
       this.plans.subarray(0, count),
     );
     if (ok === 0) {
       throw new Error('SimulationUnitActionPlanner.compute: unit_action_plan_batch rejected its buffers');
     }
     return count;
+  }
+
+  /** Effective flags after the native batch OR'd in the range bits it
+   *  resolved from the entity-state slab. */
+  flagsAt(index: number): number {
+    return this.flags[index];
   }
 
   entityAt(index: number): Entity {
@@ -139,6 +167,18 @@ export class SimulationUnitActionPlanner {
     const flags = new Uint32Array(next);
     flags.set(this.flags);
     this.flags = flags;
+    const slots = new Uint32Array(next);
+    slots.set(this.slots);
+    this.slots = slots;
+    const rangeKinds = new Uint8Array(next);
+    rangeKinds.set(this.rangeKinds);
+    this.rangeKinds = rangeKinds;
+    const targetSlots = new Int32Array(next);
+    targetSlots.set(this.targetSlots);
+    this.targetSlots = targetSlots;
+    const rangeParams = new Float64Array(next);
+    rangeParams.set(this.rangeParams);
+    this.rangeParams = rangeParams;
     const plans = new Uint8Array(next);
     plans.set(this.plans);
     this.plans = plans;

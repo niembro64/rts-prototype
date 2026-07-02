@@ -761,6 +761,10 @@ export interface SimWasm {
   readonly unitActionPlanBatch: (
     actionTypes: Uint8Array,
     flags: Uint32Array,
+    slots: Uint32Array,
+    rangeKind: Uint8Array,
+    targetSlot: Int32Array,
+    rangeParam: Float64Array,
     outPlan: Uint8Array,
   ) => number;
   readonly unitActionMovementBatch: (

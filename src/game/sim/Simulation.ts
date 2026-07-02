@@ -36,10 +36,10 @@ import { getTerrainVersion } from './Terrain';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget, resolveGuardServiceTarget } from './guard';
-import { isTransportLoadInRange, updateTransportActions } from './transports';
+import { updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
-import { isBuildTargetInRange } from './builderRange';
 import { setUnitMovementAcceleration } from './unitMovementAcceleration';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 import {
   rotateFirstUnitActionToEnd,
   refreshUnitActionHash,
@@ -73,13 +73,14 @@ import {
   UNIT_ACTION_FLAG_COMBAT_STOP_FIGHT,
   UNIT_ACTION_FLAG_GUARD_FRIENDLY,
   UNIT_ACTION_FLAG_GUARD_SERVICE,
-  UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE,
-  UNIT_ACTION_FLAG_LOAD_IN_RANGE,
   UNIT_ACTION_FLAG_MOVE_STATE_HOLD,
   UNIT_ACTION_FLAG_MOVE_STATE_ROAM,
   UNIT_ACTION_FLAG_TARGET_PRESENT,
-  UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE,
   UNIT_ACTION_FLAG_TRANSPORT_EMPTY,
+  UNIT_ACTION_RANGE_KIND_BUILD,
+  UNIT_ACTION_RANGE_KIND_GUARD_SERVICE,
+  UNIT_ACTION_RANGE_KIND_LOAD,
+  UNIT_ACTION_RANGE_KIND_NONE,
   UNIT_ACTION_PLAN_ATTACK_GROUND_HOLD,
   UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE,
   UNIT_ACTION_PLAN_ATTACK_HOLD,
@@ -732,9 +733,15 @@ export class Simulation {
     const units = this.world.getUnits();
     const planner = this.unitActionPlanner;
     planner.begin(units.length);
+    // Sync every unit's canonical slot state before flag gathering so the
+    // native plan batch reads current slab positions for actors AND their
+    // range targets (Phase 1 never mutates positions, so hoisting the
+    // sweep is behavior-identical to the old interleaved order).
+    for (let i = 0; i < units.length; i++) {
+      spatialGrid.updateUnitSpatial(units[i]);
+    }
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      spatialGrid.updateUnitSpatial(entity);
       if (!entity.unit || !entity.body) continue;
 
       const { unit } = entity;
@@ -817,15 +824,18 @@ export class Simulation {
 
       let flags = 0;
       let serviceTarget: Entity | null = null;
+      // In-range checks resolve natively inside the plan batch from the
+      // entity-state slab; Phase 1 only names the target slot and range.
+      let rangeKind: number = UNIT_ACTION_RANGE_KIND_NONE;
+      let rangeTargetSlot = -1;
+      let rangeParam = 0;
       if (unit.moveState === 'roam') flags |= UNIT_ACTION_FLAG_MOVE_STATE_ROAM;
       if (unit.moveState === 'holdPosition') flags |= UNIT_ACTION_FLAG_MOVE_STATE_HOLD;
 
       if (currentAction.type === 'loadTransport') {
-        const target = currentAction.targetId !== undefined
-          ? this.world.getEntity(currentAction.targetId)
-          : undefined;
-        if (target !== undefined && isTransportLoadInRange(entity, target)) {
-          flags |= UNIT_ACTION_FLAG_LOAD_IN_RANGE;
+        if (currentAction.targetId !== undefined) {
+          rangeKind = UNIT_ACTION_RANGE_KIND_LOAD;
+          rangeTargetSlot = entitySlotRegistry.getSlot(currentAction.targetId);
         }
       } else if (currentAction.type === 'unloadTransport') {
         if (entity.transport?.loadedUnits.length === 0) {
@@ -838,13 +848,13 @@ export class Simulation {
         currentAction.type === 'capture' ||
         currentAction.type === 'resurrect'
       ) {
-        // For build/repair/reclaim actions, check if we're in range.
         const targetId = currentAction.type === 'build'
           ? currentAction.buildingId
           : currentAction.targetId;
-        const target = targetId !== undefined ? this.world.getEntity(targetId) : undefined;
-        if (target && isBuildTargetInRange(entity, target)) {
-          flags |= UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE;
+        if (targetId !== undefined) {
+          rangeKind = UNIT_ACTION_RANGE_KIND_BUILD;
+          rangeTargetSlot = entitySlotRegistry.getSlot(targetId);
+          rangeParam = entity.builder !== null ? entity.builder.buildRange : 0;
         }
       } else if (currentAction.type === 'attack') {
         if (currentAction.targetId !== undefined) {
@@ -916,9 +926,9 @@ export class Simulation {
             if (service !== null) {
               flags |= UNIT_ACTION_FLAG_GUARD_SERVICE;
               serviceTarget = service.target;
-              if (isBuildTargetInRange(entity, service.target)) {
-                flags |= UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE;
-              }
+              rangeKind = UNIT_ACTION_RANGE_KIND_GUARD_SERVICE;
+              rangeTargetSlot = entitySlotRegistry.getSlot(service.target.id);
+              rangeParam = entity.builder.buildRange;
             }
           }
         }
@@ -932,7 +942,15 @@ export class Simulation {
         }
       }
 
-      planner.queue(entity, currentAction, flags, serviceTarget);
+      planner.queue(
+        entity,
+        currentAction,
+        flags,
+        serviceTarget,
+        rangeKind,
+        rangeTargetSlot,
+        rangeParam,
+      );
     }
 
     const planCount = planner.compute();
