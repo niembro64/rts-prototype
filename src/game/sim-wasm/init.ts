@@ -469,6 +469,10 @@ import __wbg_init, {
   snapshot_encode_v6_unit_scratch_ensure,
   snapshot_encode_v6_building_scratch_ptr,
   snapshot_encode_v6_building_scratch_ensure,
+  snapshot_encode_v6_raw_bytes_scratch_ptr,
+  snapshot_encode_v6_raw_bytes_scratch_ensure,
+  snapshot_encode_v6_raw_spans_scratch_ptr,
+  snapshot_encode_v6_raw_spans_scratch_ensure,
   snapshot_encode_string_scratch_bytes_ptr,
   snapshot_encode_string_scratch_table_ptr,
   snapshot_encode_string_scratch_ensure_bytes,
@@ -3127,13 +3131,16 @@ export interface SnapshotEncodeApi {
    *  Transitional DP-02 bridge for low-frequency fields such as
    *  debug grids while their dedicated Rust encoders are still pending. */
   emitRawKeyValue: (key: string, value: Uint8Array) => number;
-  /** Emit the `entities` key + compact V6 `{v,m,t,e}` value.
+  /** Emit the `entities` key + compact V6 `{v,m,t,b,e}` value.
    *  Caller must first bulk-fill the V6 input scratches (kinds /
    *  rowIndices / basic / unit / building) + the shared turret / action /
    *  waypoint / factory selected-unit / string scratches from entityWireSource.
+   *  RAW (private-detail DTO) rows must be pre-encoded to MessagePack and
+   *  bulk-filled into the raw-bytes/raw-spans scratches in entity-index
+   *  order; the kernel copies them verbatim into the `e` array.
    *  `waypointStringBase` is the slot where waypoint-type strings begin in
    *  the (action ++ waypoint) ordered string scratch. Returns the writer
-   *  length, or 0xFFFFFFFF if a RAW entity kind is present. */
+   *  length. */
   emitEntitiesV6: (entityCount: number, waypointStringBase: number) => number;
   v6KindsScratchPtr: () => number;
   v6KindsScratchEnsure: (count: number) => void;
@@ -3148,6 +3155,10 @@ export interface SnapshotEncodeApi {
   v6BuildingScratchPtr: () => number;
   v6BuildingScratchEnsure: (rowCount: number) => void;
   readonly v6BuildingScratchStride: number;
+  v6RawBytesScratchPtr: () => number;
+  v6RawBytesScratchEnsure: (byteLen: number) => void;
+  v6RawSpansScratchPtr: () => number;
+  v6RawSpansScratchEnsure: (rawRowCount: number) => void;
   /** Emit `serverMeta: {...}` in ServerSnapshotMetaBuilder field
    *  order. String values must already be packed into string scratch;
    *  the `units.allowed` array uses contiguous string slots beginning
@@ -4296,6 +4307,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           v6BuildingScratchPtr: snapshot_encode_v6_building_scratch_ptr,
           v6BuildingScratchEnsure: snapshot_encode_v6_building_scratch_ensure,
           v6BuildingScratchStride: 42,
+          v6RawBytesScratchPtr: snapshot_encode_v6_raw_bytes_scratch_ptr,
+          v6RawBytesScratchEnsure: snapshot_encode_v6_raw_bytes_scratch_ensure,
+          v6RawSpansScratchPtr: snapshot_encode_v6_raw_spans_scratch_ptr,
+          v6RawSpansScratchEnsure: snapshot_encode_v6_raw_spans_scratch_ensure,
           writerPtr: messagepack_writer_ptr,
           writerLen: messagepack_writer_len,
           writerClear: messagepack_writer_clear,

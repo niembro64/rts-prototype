@@ -587,8 +587,22 @@ export type PackedEntitySnapshotWire = {
   m: PackedMovementUnitBytes | undefined;
   t: PackedUnitTurretBytes | undefined;
   b?: PackedBuildingDeltaBytes | undefined;
-  e: PackedEntityRow[] | undefined;
+  /** Detail rows: packed arrays for typed detail rows, plain DTO maps
+   *  for RAW (private-detail) rows carried verbatim through the packer. */
+  e: Array<PackedEntityRow | NetworkServerSnapshotEntity> | undefined;
 };
+
+/** The Rust wire encoder omits absent optional keys from raw DTO maps
+ *  (sparse MessagePack), while consumers expect the JS serializer's
+ *  explicit-null envelope. Restore the envelope contract on one entity. */
+export function normalizeRawWireEntity(e: NetworkServerSnapshotEntity): NetworkServerSnapshotEntity {
+  if (e.pos === undefined) e.pos = null;
+  if (e.rotation === undefined) e.rotation = null;
+  if (e.changedFields === undefined) e.changedFields = null;
+  if (e.unit === undefined) e.unit = null;
+  if (e.building === undefined) e.building = null;
+  return e;
+}
 
 type UnpackEntitiesFromWireOptions = {
   materializeTypedDeltas?: boolean;
@@ -639,7 +653,14 @@ export function unpackEntitiesFromWire(
   }
   if (detailRows !== undefined) {
     for (let i = 0; i < detailRows.length; i++) {
-      const entity = unpackDetailEntityRow(detailRows[i]);
+      const row = detailRows[i];
+      if (!Array.isArray(row)) {
+        // RAW private-detail DTO carried verbatim through the packer.
+        out[outIndex++] = normalizeRawWireEntity(row);
+        appendDecodedFallbackEntityWireSourceRow();
+        continue;
+      }
+      const entity = unpackDetailEntityRow(row);
       if (!materializeTypedDeltas && tryAppendDecodedDetailTypedPlaceholderWireRow(entity)) {
         outIndex++;
       } else {

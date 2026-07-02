@@ -19,6 +19,7 @@ import {
 } from './snapshotAudioWirePack';
 import {
   isPackedEntitySnapshotWire,
+  normalizeRawWireEntity,
   type PackedEntitySnapshotWire,
   unpackEntitiesFromWire,
 } from './snapshotEntityWirePack';
@@ -253,12 +254,7 @@ function packNetworkSnapshotForWire(
  *  as null explicitly. */
 function normalizeRawWireEntities(entities: NetworkServerSnapshotEntity[]): void {
   for (let i = 0; i < entities.length; i++) {
-    const e = entities[i];
-    if (e.pos === undefined) e.pos = null;
-    if (e.rotation === undefined) e.rotation = null;
-    if (e.changedFields === undefined) e.changedFields = null;
-    if (e.unit === undefined) e.unit = null;
-    if (e.building === undefined) e.building = null;
+    normalizeRawWireEntity(entities[i]);
   }
 }
 
@@ -495,7 +491,7 @@ function rustPackEntitiesForWire(
   if (entities === undefined) return undefined;
   const source = getEntitySnapshotWireSource(entities);
   if (source === undefined) return undefined;
-  const bytes = encodeEntitiesV6Bytes(source);
+  const bytes = encodeEntitiesV6Bytes(source, entities);
   if (bytes === null) return undefined;
   const packed = msgpackDecode(bytes.subarray(RUST_ENTITIES_KEY_PREFIX_BYTES));
   return isPackedEntitySnapshotWire(packed) ? packed : undefined;

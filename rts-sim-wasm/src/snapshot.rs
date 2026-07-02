@@ -2468,6 +2468,11 @@ pub(crate) struct SnapshotEncodeV6InputScratch {
     basic: Vec<f64>,
     unit: Vec<f64>,
     building: Vec<f64>,
+    /// Pre-encoded MessagePack values for RAW (private-detail DTO) rows,
+    /// concatenated in entity-index order. Spans are (offset, len) u32
+    /// pairs, one per RAW row in the same order.
+    raw_bytes: Vec<u8>,
+    raw_spans: Vec<u32>,
 }
 
 pub(crate) struct SnapshotEncodeV6InputScratchHolder(
@@ -2544,6 +2549,29 @@ pub fn snapshot_encode_v6_building_scratch_ensure(row_count: u32) {
     let needed = row_count as usize * V6_BUILDING_STRIDE;
     if s.building.len() < needed {
         s.building.resize(needed, 0.0);
+    }
+}
+#[wasm_bindgen]
+pub fn snapshot_encode_v6_raw_bytes_scratch_ptr() -> *const u8 {
+    snapshot_encode_v6_input_scratch().raw_bytes.as_ptr()
+}
+#[wasm_bindgen]
+pub fn snapshot_encode_v6_raw_bytes_scratch_ensure(byte_len: u32) {
+    let s = snapshot_encode_v6_input_scratch();
+    if s.raw_bytes.len() < byte_len as usize {
+        s.raw_bytes.resize(byte_len as usize, 0);
+    }
+}
+#[wasm_bindgen]
+pub fn snapshot_encode_v6_raw_spans_scratch_ptr() -> *const u32 {
+    snapshot_encode_v6_input_scratch().raw_spans.as_ptr()
+}
+#[wasm_bindgen]
+pub fn snapshot_encode_v6_raw_spans_scratch_ensure(raw_row_count: u32) {
+    let s = snapshot_encode_v6_input_scratch();
+    let needed = raw_row_count as usize * 2;
+    if s.raw_spans.len() < needed {
+        s.raw_spans.resize(needed, 0);
     }
 }
 
@@ -3898,10 +3926,14 @@ pub fn snapshot_encode_emit_entities_v6(entity_count: u32, waypoint_string_base:
     work.b_out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
 
     // Pass 1: classify + accumulate movement/turret slabs, collect detail rows.
+    // RAW rows (private-detail DTOs pre-encoded by JS) ride the `e` array
+    // alongside typed detail rows instead of forcing the whole entities
+    // section off the packed path.
     for i in 0..entity_count {
         let kind = input.kinds[i];
         if kind == V6_KIND_RAW {
-            return u32::MAX;
+            work.detail.push(i as u32);
+            continue;
         }
         let row = input.row_indices[i] as usize;
 
@@ -4110,9 +4142,20 @@ pub fn snapshot_encode_emit_entities_v6(entity_count: u32, waypoint_string_base:
     if has_e {
         w.write_str("e");
         w.write_array_header(detail_count);
+        // RAW spans are consumed in entity-index order, which matches the
+        // order JS marshalled them and the order pass 1 pushed detail rows.
+        let mut raw_ordinal = 0usize;
         for d in 0..detail_count {
             let i = work.detail[d] as usize;
             let kind = input.kinds[i];
+            if kind == V6_KIND_RAW {
+                let span_base = raw_ordinal * 2;
+                let offset = input.raw_spans[span_base] as usize;
+                let len = input.raw_spans[span_base + 1] as usize;
+                w.append_raw_value(&input.raw_bytes[offset..offset + len]);
+                raw_ordinal += 1;
+                continue;
+            }
             let row = input.row_indices[i] as usize;
             v6_write_detail_row(
                 w,

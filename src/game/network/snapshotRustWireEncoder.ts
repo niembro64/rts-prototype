@@ -33,6 +33,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
   ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_KIND_RAW,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
@@ -363,12 +364,18 @@ function v6ScratchStridesMatch(api: SnapshotEncodeApi): boolean {
 function fillEntitiesV6Scratch(
   sim: SimWasm,
   source: EntitySnapshotWireSource,
+  entities: readonly NetworkServerSnapshotEntity[],
 ): { entityCount: number; waypointStringBase: number } | null {
-  if (v6SourceHasRawEntity(source)) return null;
-
   const api = sim.snapshotEncode;
   if (!v6ScratchStridesMatch(api)) return null;
   const entityCount = source.count;
+
+  // RAW rows (private-detail DTOs) ride the V6 `e` array as pre-encoded
+  // MessagePack values. Marshal them in entity-index order; the kernel
+  // consumes the spans in the same order.
+  if (v6SourceHasRawEntity(source)) {
+    if (!fillRawEntityScratch(sim, source, entities, entityCount)) return null;
+  }
 
   v6FillU32FromArray(sim, api.v6KindsScratchEnsure, api.v6KindsScratchPtr, source.kinds, entityCount);
   v6FillU32FromArray(
@@ -432,11 +439,49 @@ function fillEntitiesV6Scratch(
   return { entityCount, waypointStringBase };
 }
 
+function fillRawEntityScratch(
+  sim: SimWasm,
+  source: EntitySnapshotWireSource,
+  entities: readonly NetworkServerSnapshotEntity[],
+  entityCount: number,
+): boolean {
+  if (entities.length < entityCount) return false;
+  const api = sim.snapshotEncode;
+  _rawEntityBytes.length = 0;
+  let totalBytes = 0;
+  for (let i = 0; i < entityCount; i++) {
+    if (source.kinds[i] !== ENTITY_SNAPSHOT_WIRE_KIND_RAW) continue;
+    const entity = entities[i];
+    if (entity === undefined) return false;
+    const bytes = msgpackEncode(entity, SNAPSHOT_ENCODE_OPTIONS);
+    _rawEntityBytes.push(bytes);
+    totalBytes += bytes.length;
+  }
+  const rawRowCount = _rawEntityBytes.length;
+  api.v6RawSpansScratchEnsure(rawRowCount);
+  api.v6RawBytesScratchEnsure(totalBytes);
+  const spanView = new Uint32Array(sim.memory.buffer, api.v6RawSpansScratchPtr(), rawRowCount * 2);
+  const byteView = new Uint8Array(sim.memory.buffer, api.v6RawBytesScratchPtr(), totalBytes);
+  let offset = 0;
+  for (let i = 0; i < rawRowCount; i++) {
+    const bytes = _rawEntityBytes[i];
+    byteView.set(bytes, offset);
+    spanView[i * 2] = offset;
+    spanView[i * 2 + 1] = bytes.length;
+    offset += bytes.length;
+  }
+  _rawEntityBytes.length = 0;
+  return true;
+}
+
+const _rawEntityBytes: Uint8Array[] = [];
+
 function emitEntitiesV6FromSource(
   sim: SimWasm,
   source: EntitySnapshotWireSource,
+  entities: readonly NetworkServerSnapshotEntity[],
 ): number | null {
-  const input = fillEntitiesV6Scratch(sim, source);
+  const input = fillEntitiesV6Scratch(sim, source, entities);
   if (input === null) return null;
   const result = sim.snapshotEncode.emitEntitiesV6(input.entityCount, input.waypointStringBase);
   return result === U32_MAX ? null : result;
@@ -451,13 +496,14 @@ function emitEntitiesV6FromSource(
  */
 export function encodeEntitiesV6Bytes(
   source: EntitySnapshotWireSource,
+  entities: readonly NetworkServerSnapshotEntity[] = [],
 ): Uint8Array | null {
   const sim = getSimWasm();
   if (!sim) return null;
 
   const api = sim.snapshotEncode;
   api.writerClear();
-  if (emitEntitiesV6FromSource(sim, source) === null) return null;
+  if (emitEntitiesV6FromSource(sim, source, entities) === null) return null;
   return new Uint8Array(sim.memory.buffer, api.writerPtr(), api.writerLen()).slice();
 }
 
@@ -2469,10 +2515,11 @@ export function encodeNetworkSnapshotWithRustFallback(
     const entityWireSource = getEntitySnapshotWireSource(entities);
     const useEntityWireSource = canUseEntityWireSource(entityWireSource, entities);
     let emittedEntitiesV6 = false;
-    if (useEntityWireSource && !v6SourceHasRawEntity(entityWireSource)) {
+    if (useEntityWireSource) {
       api.envelopeBeginPackedEntities(state.tick, keys.length);
-      if (emitEntitiesV6FromSource(sim, entityWireSource) !== null) {
-        rustEntityCount = entities.length;
+      if (emitEntitiesV6FromSource(sim, entityWireSource, entities) !== null) {
+        rustEntityCount = entityWireSource.typedEntityRows;
+        rawEntityCount = entityWireSource.rawEntityRows;
         emittedEntitiesV6 = true;
       }
     }

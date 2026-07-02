@@ -5,6 +5,7 @@ import type {
 } from './NetworkTypes';
 import {
   ACTION_TYPE_WAIT,
+  ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_BUILDING,
   ENTITY_CHANGED_HP,
   ENTITY_CHANGED_NORMAL,
@@ -24,6 +25,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
   ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
   ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_KIND_RAW,
   ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
   ENTITY_SNAPSHOT_WIRE_TYPE_UNIT,
   ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
@@ -1039,6 +1041,100 @@ export function runSnapshotEntityWirePackContractTest(): void {
     decodedV6Source !== undefined &&
       decodedV6Source.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
     'Rust V6 movement-normal compact decode must expose typed source metadata',
+  );
+
+  // Mixed source: a RAW private-detail DTO row rides the `e` array beside
+  // the compact movement slab instead of forcing the whole entities
+  // section off the packed path.
+  const mixedRawSource = createV6MovementNormalSource();
+  appendEntitySnapshotWireSourceRow(
+    mixedRawSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_RAW,
+    -1,
+    false,
+    ENTITY_CHANGED_ACTIONS,
+  );
+  const rawDetailEntity: NetworkServerSnapshotEntity = {
+    id: 505,
+    type: 'unit',
+    pos: { x: 7, y: 8, z: 9 },
+    rotation: 25,
+    playerId: 2,
+    changedFields: ENTITY_CHANGED_ACTIONS,
+    building: null,
+    unit: {
+      unitBlueprintCode: null,
+      hp: null,
+      radius: null,
+      bodyCenterHeight: null,
+      mass: null,
+      velocity: null,
+      surfaceNormal: null,
+      orientation: null,
+      angularVelocity3: null,
+      fireEnabled: null,
+      fireState: null,
+      trajectoryMode: null,
+      repeatQueue: null,
+      moveState: null,
+      holdPosition: null,
+      wantCloak: null,
+      builderPriorityLow: null,
+      carrierSpawnEnabled: null,
+      cloaked: null,
+      isCommander: null,
+      buildTargetId: 606,
+      buildTargetIdPresent: true,
+      actions: null,
+      turrets: null,
+      build: null,
+    },
+  };
+  const mixedRawEntities: NetworkServerSnapshotEntity[] = [];
+  mixedRawEntities.length = 2;
+  mixedRawEntities[1] = rawDetailEntity;
+  const mixedRawBytes = encodeEntitiesV6Bytes(mixedRawSource, mixedRawEntities);
+  assertContract(mixedRawBytes !== null, 'Rust V6 mixed source with a RAW row must encode');
+  const packedMixedRaw = msgpackDecode(
+    mixedRawBytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  assertContract(
+    packedMixedRaw.m !== undefined,
+    'Rust V6 mixed RAW source must keep the compact movement slab',
+  );
+  assertContract(
+    packedMixedRaw.e !== undefined &&
+      packedMixedRaw.e.length === 1 &&
+      !Array.isArray(packedMixedRaw.e[0]),
+    'Rust V6 mixed RAW source must carry the RAW DTO in the detail array',
+  );
+  const decodedMixedRaw = unpackEntitiesFromWire(packedMixedRaw);
+  assertContract(
+    decodedMixedRaw.length === 2,
+    'Rust V6 mixed RAW decode must materialize both rows',
+  );
+  const decodedRawDetail = decodedMixedRaw.find((entity) => entity.id === 505);
+  assertContract(
+    decodedRawDetail !== undefined && decodedRawDetail.playerId === 2,
+    'RAW detail row identity must survive the compact round trip',
+  );
+  assertContract(
+    decodedRawDetail.changedFields === ENTITY_CHANGED_ACTIONS,
+    'RAW detail row changed fields must survive the compact round trip',
+  );
+  assertContract(
+    decodedRawDetail.unit !== null &&
+      decodedRawDetail.unit.buildTargetId === 606 &&
+      decodedRawDetail.unit.buildTargetIdPresent === true,
+    'RAW detail row private build target must survive the compact round trip',
+  );
+  const decodedMovementBeside = decodedMixedRaw.find((entity) => entity.id === 404);
+  assertContract(
+    decodedMovementBeside !== undefined &&
+      decodedMovementBeside.unit !== null &&
+      decodedMovementBeside.unit.hp !== null &&
+      decodedMovementBeside.unit.hp.curr === 77.25,
+    'typed movement row beside a RAW row must survive the compact round trip',
   );
 
   const factoryEntity: NetworkServerSnapshotEntity = {
