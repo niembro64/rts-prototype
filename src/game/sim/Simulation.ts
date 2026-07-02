@@ -24,7 +24,7 @@ import { updateUnitGroundNormal } from './unitGroundNormal';
 import { ForceAccumulator } from './ForceAccumulator';
 import { spatialGrid } from './SpatialGrid';
 import { transitionPhase } from '@/gamePhase';
-import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
@@ -363,6 +363,11 @@ export class Simulation {
     for (let i = 0; i < commands.length; i++) {
       executeCommand(cmdCtx, commands[i]);
     }
+
+    // Fire due self-destruct countdowns AFTER command processing so a
+    // Stop or re-toggle arriving on the fire tick wins the tie. The
+    // zero-hp write routes the blast through the normal death path.
+    this.fireDueSelfDestructs(tick);
 
     // Solar collectors, wind turbines, and metal extractors share a
     // fortifiable-producer lifecycle: a 2 s grace timer arms on the
@@ -723,6 +728,33 @@ export class Simulation {
   // force. The authoritative physics velocity stays in unit.velocityX/Y/Z
   // and is only overwritten by syncFromPhysics, so lead-prediction in
   // turretSystem reads the real velocity, not this thrust target.
+  /** Detonate armed self-destructs whose countdown expired. Entries
+   *  whose entity died or vanished by other means are dropped lazily
+   *  here. Map iteration is insertion-ordered and the map is only
+   *  mutated by deterministic commands + this pass, so peers agree. */
+  private fireDueSelfDestructs(tick: number): void {
+    const armed = this.world.armedSelfDestructs;
+    if (armed.size === 0) return;
+    for (const [entityId, fireTick] of armed) {
+      const entity = this.world.getEntity(entityId);
+      if (entity === undefined) {
+        armed.delete(entityId);
+        continue;
+      }
+      const hpState = entity.unit !== null ? entity.unit : entity.building;
+      if (hpState === null || hpState.hp <= 0) {
+        armed.delete(entityId);
+        continue;
+      }
+      if (tick < fireTick) continue;
+      // Zero hp routes through the shared pendingDeathCheck cleanup,
+      // which emits the death event + explosion like normal damage.
+      hpState.hp = 0;
+      this.world.markSnapshotDirty(entityId, ENTITY_CHANGED_HP);
+      armed.delete(entityId);
+    }
+  }
+
   private updateUnits(dtSec: number): void {
     const movingUnits = this._movingUnitsBuf;
     movingUnits.length = 0;

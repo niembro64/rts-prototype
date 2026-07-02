@@ -46,7 +46,16 @@ export function dispatchSimEvent3DVisual(
     warnNonFiniteVisualEvent(event);
     return;
   }
-  if (event.type === 'ping' || event.type === 'attackAlert') return;
+  if (
+    event.type === 'ping' ||
+    event.type === 'attackAlert' ||
+    event.type === 'selfDestructArmed' ||
+    event.type === 'selfDestructDisarmed'
+  ) {
+    // Marker/state events: handled by the scene (ping marker,
+    // self-destruct blink), no world-space effect to spawn here.
+    return;
+  }
 
   const effectGfx = getGraphicsConfig();
   if (!effectGfx) return;

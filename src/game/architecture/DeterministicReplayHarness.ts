@@ -245,8 +245,10 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-simultaneous-projectile-death-cleanup-2p-90t',
-    ticks: 90,
+    id: 'real-simultaneous-projectile-death-cleanup-2p-250t',
+    // Self-destruct arms a 150-tick countdown (BAR semantics) before
+    // the zero-hp detonation; budget the countdown plus cleanup.
+    ticks: 250,
     config: BASE_REAL_CONFIG,
     buildCommands: (core, frame) => {
       if (frame !== 0) return [];
@@ -291,8 +293,9 @@ const CASES: readonly DeterministicReplayCase[] = [
     },
   },
   {
-    id: 'real-self-destruct-death-cleanup-2p-90t',
-    ticks: 90,
+    id: 'real-self-destruct-death-cleanup-2p-250t',
+    // Covers the 150-tick self-destruct countdown plus death cleanup.
+    ticks: 250,
     config: BASE_REAL_CONFIG,
     buildCommands: (core, frame) => {
       if (frame !== 0) return [];

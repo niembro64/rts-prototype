@@ -310,6 +310,18 @@ export class HealthBar3D {
    *  zoom-out fade + cull and per-sprite opacity. */
   private _fade: HudFade | null = null;
 
+  /** Entities with an armed self-destruct countdown. Client-only
+   *  presentation fed by selfDestructArmed/Disarmed SimEvents (see
+   *  RtsScene3D); the hp bar of an armed entity flashes empty at
+   *  ~3.3 Hz. Stale ids are harmless — an entity without a body-HUD
+   *  row is never consulted. */
+  private readonly selfDestructArmed = new Set<number>();
+
+  setSelfDestructArmed(entityId: number, armed: boolean): void {
+    if (armed) this.selfDestructArmed.add(entityId);
+    else this.selfDestructArmed.delete(entityId);
+  }
+
   /** Fused-iteration entry: reset frame state. Caller follows with a
    *  series of perUnit / perBuilding calls and finishes with endFrame. */
   beginFrame(fade: HudFade, frustum?: THREE.Frustum): void {
@@ -494,7 +506,17 @@ export class HealthBar3D {
     const worldWidth = packet.width[row];
     let stack = 0;
     if (showHp) {
-      this.placeBar(packet.healthRatio[row], 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
+      let healthRatio = packet.healthRatio[row];
+      if (
+        this.selfDestructArmed.size > 0 &&
+        this.selfDestructArmed.has(packet.ids[row]) &&
+        Math.floor(performance.now() / 150) % 2 === 0
+      ) {
+        // Armed self-destruct: flash the hp bar empty (render-side
+        // clock — pure presentation, nothing downstream reads it).
+        healthRatio = 0;
+      }
+      this.placeBar(healthRatio, 'health', worldX, worldY, worldZ, worldWidth, stack, alpha);
       stack++;
     }
     if (showBuild) {

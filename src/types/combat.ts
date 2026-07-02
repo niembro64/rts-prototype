@@ -77,7 +77,9 @@ export type SimEvent = {
     | 'ping'
     | 'attackAlert'
     | 'projectileExpire'
-    | 'waterSplash';
+    | 'waterSplash'
+    | 'selfDestructArmed'
+    | 'selfDestructDisarmed';
   /** Legacy wire field for the one-shot audio routing key. Fire,
    *  laser, and shield events use turret blueprint ids; hit/projectile
    *  expire events use shot blueprint ids; death events may use a unit blueprint id. Keep

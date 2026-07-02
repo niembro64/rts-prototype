@@ -60,6 +60,9 @@ const AUDIO_EVENT_TYPES = [
   'attackAlert',
   'projectileExpire',
   'waterSplash',
+  // Append-only: wire codes are positional.
+  'selfDestructArmed',
+  'selfDestructDisarmed',
 ] as const satisfies readonly NetworkServerSnapshotSimEvent['type'][];
 
 const AUDIO_EVENT_SOURCE_TYPES = [

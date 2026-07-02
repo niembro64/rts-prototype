@@ -33,6 +33,9 @@ export const AUDIO_EVENT_TYPE_CODES: Record<NetworkServerSnapshotSimEvent['type'
   attackAlert: 9,
   projectileExpire: 10,
   waterSplash: 11,
+  // Append-only: wire codes are positional.
+  selfDestructArmed: 12,
+  selfDestructDisarmed: 13,
 };
 
 export const AUDIO_EVENT_SOURCE_TYPE_CODES: Record<string, number> = {

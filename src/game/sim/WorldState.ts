@@ -163,6 +163,15 @@ export class WorldState {
    *  reveal mid-sweep. */
   public scanPulses: ScanPulse[] = [];
 
+  /** Armed self-destruct countdowns: entity id → the tick the blast
+   *  fires (BAR-style). Armed by the selfDestruct command (which
+   *  toggles), cancelled by Stop or by re-issuing selfDestruct;
+   *  Simulation fires due entries once per tick after command
+   *  processing so a same-tick Stop wins the tie. Command-driven and
+   *  iterated in insertion order, so the map stays deterministic
+   *  across lockstep peers. */
+  public readonly armedSelfDestructs = new Map<EntityId, number>();
+
   // Map dimensions
   public readonly mapWidth: number;
   public readonly mapHeight: number;

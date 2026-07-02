@@ -2,6 +2,7 @@ import { ConstructionSystem } from './construction';
 import { CommandQueue } from './commands';
 import { BUILD_GRID_CELL_SIZE } from './buildGrid';
 import {
+  SELF_DESTRUCT_COUNTDOWN_TICKS,
   buildMassAwareGroupFormationSlots,
   executeCommand,
   resolvePathableFormationTarget,
@@ -960,6 +961,57 @@ export function runCommandExecutionContractTest(): void {
     areaAttacker.unit.actions.filter((action) => action.type === 'attack'),
     [nearFoe.id, midFoe.id, farFoe.id],
     'area attack should enqueue every circled enemy nearest to farthest',
+  );
+
+  // Self-destruct arms a BAR-style countdown: toggling or Stop cancels
+  // it, and the expiry detonates through the normal death path.
+  const doomed = captureWorld.createUnitFromBlueprint(400, 400, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  captureWorld.addEntity(doomed);
+  assertContract(doomed.unit !== null, 'self-destruct test unit must have a unit component');
+  const armedMap = captureWorld.armedSelfDestructs;
+  const selfdTick = captureWorld.getTick();
+  executeCommand(captureCtx, { type: 'selfDestruct', tick: selfdTick, entityIds: [doomed.id] });
+  assertContract(
+    armedMap.get(doomed.id) === selfdTick + SELF_DESTRUCT_COUNTDOWN_TICKS,
+    'self-destruct should arm a countdown instead of detonating instantly',
+  );
+  assertContract(
+    captureCtx.pendingSimEvents[captureCtx.pendingSimEvents.length - 1]?.type === 'selfDestructArmed',
+    'arming self-destruct should emit the armed sim event',
+  );
+  assertContract(doomed.unit.hp > 0, 'armed unit must still be alive during the countdown');
+  executeCommand(captureCtx, { type: 'selfDestruct', tick: selfdTick, entityIds: [doomed.id] });
+  assertContract(
+    !armedMap.has(doomed.id),
+    're-issuing self-destruct should toggle the countdown off',
+  );
+  assertContract(
+    captureCtx.pendingSimEvents[captureCtx.pendingSimEvents.length - 1]?.type === 'selfDestructDisarmed',
+    'disarming self-destruct should emit the disarmed sim event',
+  );
+  executeCommand(captureCtx, { type: 'selfDestruct', tick: selfdTick, entityIds: [doomed.id] });
+  executeCommand(captureCtx, { type: 'stop', tick: selfdTick, entityIds: [doomed.id] });
+  assertContract(
+    !armedMap.has(doomed.id),
+    'Stop should cancel an armed self-destruct',
+  );
+  executeCommand(captureCtx, { type: 'selfDestruct', tick: captureWorld.getTick(), entityIds: [doomed.id] });
+  for (
+    let step = 0;
+    step <= SELF_DESTRUCT_COUNTDOWN_TICKS + 2 && doomed.unit.hp > 0;
+    step++
+  ) {
+    captureSim.update(1000 / 30);
+  }
+  assertContract(
+    doomed.unit.hp <= 0,
+    'self-destruct countdown expiry should detonate the unit through the death path',
+  );
+  assertContract(
+    !armedMap.has(doomed.id),
+    'fired self-destruct entries should leave the armed map',
   );
   assertContract(
     capturer.unit.actions.length === 0,

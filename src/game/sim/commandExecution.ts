@@ -64,7 +64,7 @@ import {
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { factoryCanProduceUnit } from './factoryProductionRoster';
-import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
+import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { setBuildingActiveOpen } from './buildingActiveState';
 import { resetDisabledTurretJsOnlyFields } from './combat/combatActivity';
 import { getEntityTargetPoint } from './buildingAnchors';
@@ -749,6 +749,11 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined || entity.unit === null) continue;
+
+    // Stop disarms a pending self-destruct (BAR: stop cancels self-d).
+    if (ctx.world.armedSelfDestructs.delete(entity.id)) {
+      emitSelfDestructEvent(ctx, entity, false);
+    }
 
     setUnitActions(entity.unit, []);
     entity.unit.patrolStartIndex = null;
@@ -1656,20 +1661,52 @@ function executeSetTowerTargetCommand(
   }
 }
 
+/** BAR-style self-destruct countdown, in simulation ticks (~5s at the
+ *  lockstep 30 Hz step). The blast itself still goes through the
+ *  normal zero-hp death path (Simulation.fireDueSelfDestructs) when
+ *  the countdown expires. */
+export const SELF_DESTRUCT_COUNTDOWN_TICKS = 150;
+
+function emitSelfDestructEvent(ctx: CommandContext, entity: Entity, armed: boolean): void {
+  const event: SimEvent = {
+    type: armed ? 'selfDestructArmed' : 'selfDestructDisarmed',
+    turretBlueprintId: '',
+    sourceType: 'system',
+    sourceKey: 'selfDestruct',
+    playerId: entity.ownership !== null ? entity.ownership.playerId : undefined,
+    entityId: entity.id,
+    pos: {
+      x: entity.transform.x,
+      y: entity.transform.y,
+      z: entity.transform.z,
+    },
+  };
+  if (ctx.onSimEvent !== null) ctx.onSimEvent(event);
+  ctx.pendingSimEvents.push(event);
+}
+
 function executeSelfDestructCommand(ctx: CommandContext, command: SelfDestructCommand): void {
+  const armed = ctx.world.armedSelfDestructs;
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined) continue;
-    // Set hp to 0 and mark the row dirty on the HP field. The shared
-    // pendingDeathCheck queue picks the row up in the next cleanup
-    // pass, which emits the synthetic death event + removes the entity
-    // through the same path normal damage takes.
-    if (entity.unit !== null && entity.unit.hp > 0) {
-      entity.unit.hp = 0;
-      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
-    } else if (entity.building !== null && entity.building.hp > 0) {
-      entity.building.hp = 0;
-      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
+    const alive =
+      (entity.unit !== null && entity.unit.hp > 0) ||
+      (entity.building !== null && entity.building.hp > 0);
+    if (!alive) {
+      armed.delete(entity.id);
+      continue;
+    }
+    // BAR semantics: self-destruct arms a visible countdown instead of
+    // detonating instantly; issuing it again (or Stop, for units)
+    // cancels. The zero-hp detonation happens in Simulation's per-tick
+    // pass once the countdown expires.
+    if (armed.has(entity.id)) {
+      armed.delete(entity.id);
+      emitSelfDestructEvent(ctx, entity, false);
+    } else {
+      armed.set(entity.id, ctx.world.getTick() + SELF_DESTRUCT_COUNTDOWN_TICKS);
+      emitSelfDestructEvent(ctx, entity, true);
     }
   }
 }

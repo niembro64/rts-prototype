@@ -837,6 +837,15 @@ export class RtsScene3D {
     ) {
       this.lastPingPoint = { x: event.pos.x, y: event.pos.y };
     }
+    if (event.entityId !== null && this.healthBar3D !== null) {
+      // Self-destruct countdown blink: armed entities flash their hp
+      // bar; disarm or death clears the flag.
+      if (event.type === 'selfDestructArmed') {
+        this.healthBar3D.setSelfDestructArmed(event.entityId, true);
+      } else if (event.type === 'selfDestructDisarmed' || event.type === 'death') {
+        this.healthBar3D.setSelfDestructArmed(event.entityId, false);
+      }
+    }
     dispatchSimEvent3DVisual(event, {
       clientViewState: this.clientViewState,
       entityRenderer: this.entityRenderer,

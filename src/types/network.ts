@@ -527,7 +527,9 @@ export type NetworkServerSnapshotSimEvent = {
     | 'ping'
     | 'attackAlert'
     | 'projectileExpire'
-    | 'waterSplash';
+    | 'waterSplash'
+    | 'selfDestructArmed'
+    | 'selfDestructDisarmed';
   turretBlueprintId: SimEventAudioKey;
   sourceType: SimEventSourceType | null;
   sourceKey: string | null;
