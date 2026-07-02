@@ -13,10 +13,13 @@ import {
   setTerrainTeamCount,
   type TerrainRuntimeConfig,
 } from './Terrain';
+import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { BUILD_GRID_CELL_SIZE, BuildingGrid } from './buildGrid';
-import { getAllUnitBlueprints } from './blueprints';
+import { fabricatorTorusHoverHeight, getAllUnitBlueprints } from './blueprints';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { getBuildingConfig } from './buildConfigs';
+import { ConstructionSystem } from './construction';
+import { executeCommand } from './commandExecution';
 import {
   factoryProductionSystem,
   getFactoryShellSpawnClearanceAboveSurface,
@@ -51,6 +54,23 @@ const SUPPORT_SURFACE_CONTRACT_TERRAIN: TerrainRuntimeConfig = {
   metalDepositStep: 0,
   terrainDetail: 1,
 };
+
+function createAllBuildableTerrainGrid(mapWidth: number, mapHeight: number): TerrainBuildabilityGrid {
+  const cellsX = Math.ceil(mapWidth / BUILD_GRID_CELL_SIZE);
+  const cellsY = Math.ceil(mapHeight / BUILD_GRID_CELL_SIZE);
+  const cellCount = cellsX * cellsY;
+  return {
+    mapWidth,
+    mapHeight,
+    cellSize: BUILD_GRID_CELL_SIZE,
+    cellsX,
+    cellsY,
+    version: 1,
+    configKey: 'support-surface-contract:all-buildable',
+    flags: new Array(cellCount).fill(1),
+    levels: new Array(cellCount).fill(0),
+  };
+}
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -162,10 +182,11 @@ function assertFactoryShellSpawnedAboveSupport(
   unitEntity: Entity,
   supportTopZ: number,
   message: string,
+  clearanceOverride?: number,
 ): void {
   const unit = unitEntity.unit;
   assertContract(unit !== null, `${message}: spawned entity must be a unit`);
-  const clearance = getFactoryShellSpawnClearanceAboveSurface(unit);
+  const clearance = clearanceOverride ?? getFactoryShellSpawnClearanceAboveSurface(unit);
   assertContract(
     clearance > UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
     `${message}: factory shell must use extra freefall clearance`,
@@ -251,6 +272,14 @@ function assertUnitActionCount(entity: Entity, count: number, message: string): 
   assertContract(unit !== null, `${message}: entity must be a unit`);
   assertContract(unit.actions.length === count, message);
   return unit;
+}
+
+function factoryRepeatProduction(entity: Entity): boolean | undefined {
+  return entity.factory?.repeatProduction;
+}
+
+function factoryResumeRepeatUnitBlueprintId(entity: Entity): string | null | undefined {
+  return entity.factory?.resumeRepeatUnitBlueprintId;
 }
 
 function firstBlueprintIdByLocomotionType(): Map<UnitLocomotion['type'], string> {
@@ -420,10 +449,16 @@ function assertFactoryShellContract(): void {
   const hoverUnitBlueprintId = firstBlueprintIdByLocomotionType().get('hover');
   assertContract(hoverUnitBlueprintId !== undefined, 'missing hover unit blueprint for factory shell contract');
   const factory = world.createBuilding(dry.x, dry.y, 180, 180, 60, TEST_PLAYER_ID);
+  factory.buildingBlueprintId = 'towerFabricator' as BuildingBlueprintId;
   factory.factory = {
     selectedUnitBlueprintId: hoverUnitBlueprintId,
+    lowPriority: true,
+    carrierSpawnEnabled: true,
     repeatProduction: true,
     productionQueue: [],
+    productionQuotas: {},
+    productionQuotaCounts: {},
+    resumeRepeatUnitBlueprintId: null,
     currentShellId: null,
     currentBuildProgress: 0,
     defaultWaypoints: [
@@ -443,11 +478,39 @@ function assertFactoryShellContract(): void {
 
   const buildingGrid = new BuildingGrid(world.mapWidth, world.mapHeight);
   const forceAccumulator = new ForceAccumulator();
+  const originalRoute = factory.factory.defaultWaypoints;
+  const originalRallyX = factory.factory.rallyX;
+  const originalRallyY = factory.factory.rallyY;
+  executeCommand({
+    world,
+    constructionSystem: null as never,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setFactoryGuard',
+    tick: 0,
+    factoryId: factory.id,
+    targetId: factory.id,
+  });
+  assertContract(factory.factory.guardTargetId === factory.id, 'self factory guard command must enable factory guard mode');
+  assertContract(factory.factory.defaultWaypoints === originalRoute, 'self factory guard must not clear the default rally route');
+  assertContract(
+    factory.factory.rallyX === originalRallyX && factory.factory.rallyY === originalRallyY,
+    'self factory guard must not overwrite the factory rally point',
+  );
+
   const spawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
   assertContract(spawned.length === 1, 'factory must spawn exactly one shell');
   const shell = spawned[0];
   const shellSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
-  assertFactoryShellSpawnedAboveSupport(shell, shellSupport.groundZ, 'factory shell spawn must use shared support');
+  const fabricatorSpawnClearance = fabricatorTorusHoverHeight();
+  assertFactoryShellSpawnedAboveSupport(
+    shell,
+    shellSupport.groundZ,
+    'factory shell spawn must use shared support',
+    fabricatorSpawnClearance,
+  );
   assertFactoryShellPhysicsKeepsRoofSupport(world, factory, shell, shellSupport.groundZ);
   assertContract(shell.buildable !== null && !shell.buildable.isComplete, 'spawned shell must be an incomplete buildable');
   assertUnitActionCount(shell, 0, 'incomplete shell must not inherit movement actions');
@@ -468,12 +531,68 @@ function assertFactoryShellContract(): void {
     'factory action z must be sampled from shared support',
   );
 
+  factory.factory.selectedUnitBlueprintId = 'unitConstructionDrone';
   factory.factory.repeatProduction = false;
+  factory.factory.productionQueue.length = 0;
+  factory.factory.currentShellId = null;
+  factory.factory.isProducing = false;
+  const builderSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  assertContract(builderSpawned.length === 1, 'factory guard mode must still produce builder shells');
+  const builderShell = builderSpawned[0];
+  assertContract(builderShell.buildable !== null, 'builder shell must be buildable');
+  builderShell.buildable.isComplete = true;
+  const builderCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  assertContract(
+    builderCompleted.length === 1 && builderCompleted[0] === builderShell,
+    'factory guard mode must complete builder shells',
+  );
+  const completedBuilderUnit = assertUnitActionCount(builderShell, 1, 'builder output must receive factory guard order');
+  assertContract(completedBuilderUnit.actions[0].type === 'guard', 'builder output must guard the factory');
+  assertContract(
+    completedBuilderUnit.actions[0].targetId === factory.id,
+    'builder output guard order must target the producing factory',
+  );
+  assertContract(
+    completedBuilderUnit.moveState === 'holdPosition',
+    'BAR land-factory outputs must inherit hold-position move state',
+  );
+
+  factory.factory.selectedUnitBlueprintId = 'unitBee';
+  factory.factory.repeatProduction = false;
+  factory.factory.guardTargetId = null;
+  factory.factory.productionQueue.length = 0;
+  factory.factory.currentShellId = null;
+  factory.factory.currentBuildProgress = 0;
+  factory.factory.isProducing = false;
+  const airPageSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  assertContract(airPageSpawned.length === 1, 'air-page factory fixture must spawn one shell');
+  const airPageShell = airPageSpawned[0];
+  assertContract(airPageShell.buildable !== null, 'air-page shell must be buildable');
+  airPageShell.buildable.isComplete = true;
+  const airPageCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  assertContract(
+    airPageCompleted.length === 1 && airPageCompleted[0] === airPageShell,
+    'air-page factory fixture must complete its shell',
+  );
+  assertContract(
+    airPageShell.unit?.moveState === 'maneuver',
+    'BAR air-factory page outputs must keep the normal maneuver move state',
+  );
+
+  factory.factory.selectedUnitBlueprintId = hoverUnitBlueprintId;
+  factory.factory.repeatProduction = false;
+  factory.factory.guardTargetId = null;
+  factory.factory.productionQueue.length = 0;
   factory.factory.productionQueue.push('unitLynx');
   const oneShotSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
   assertContract(oneShotSpawned.length === 1, 'one-shot factory must spawn one selected shell');
   const oneShotShell = oneShotSpawned[0];
-  assertFactoryShellSpawnedAboveSupport(oneShotShell, shellSupport.groundZ, 'one-shot shell spawn must use shared support');
+  assertFactoryShellSpawnedAboveSupport(
+    oneShotShell,
+    shellSupport.groundZ,
+    'one-shot shell spawn must use shared support',
+    fabricatorSpawnClearance,
+  );
   assertContract(oneShotShell.buildable !== null, 'one-shot shell must be buildable');
   oneShotShell.buildable.isComplete = true;
   const oneShotCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
@@ -489,7 +608,12 @@ function assertFactoryShellContract(): void {
   const queuedSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
   assertContract(queuedSpawned.length === 1, 'queued factory must spawn the advanced shell');
   const queuedShell = queuedSpawned[0];
-  assertFactoryShellSpawnedAboveSupport(queuedShell, shellSupport.groundZ, 'queued shell spawn must use shared support');
+  assertFactoryShellSpawnedAboveSupport(
+    queuedShell,
+    shellSupport.groundZ,
+    'queued shell spawn must use shared support',
+    fabricatorSpawnClearance,
+  );
   assertContract(queuedShell.buildable !== null, 'queued shell must be buildable');
   queuedShell.buildable.isComplete = true;
   const queuedCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
@@ -498,7 +622,7 @@ function assertFactoryShellContract(): void {
     'queued factory must complete the advanced shell',
   );
   assertContract(factory.factory.selectedUnitBlueprintId === null, 'one-shot factory must clear selected unit when queue is empty');
-  assertContract(Boolean(factory.factory.repeatProduction), 'one-shot factory must reset to repeat mode when empty');
+  assertContract(factory.factory.repeatProduction === false, 'one-shot factory must keep repeat off when empty');
 
   factory.factory.productionQueue.push('unitJackal', 'unitLynx', 'unitLynx');
   assertContract(
@@ -524,6 +648,156 @@ function assertFactoryShellContract(): void {
   assertContract(
     factory.factory.productionQueue.join(',') === 'unitLynx',
     'factory queue remove edit must delete the selected run',
+  );
+
+  factory.factory.selectedUnitBlueprintId = 'unitLynx';
+  factory.factory.repeatProduction = false;
+  factory.factory.currentShellId = null;
+  factory.factory.currentBuildProgress = 0;
+  factory.factory.isProducing = false;
+  factory.factory.productionQueue.length = 0;
+  factory.factory.productionQueue.push('unitJackal', 'unitLynx');
+  assertContract(
+    factoryProductionSystem.removeUnitProduction(factory, world, 'unitLynx', 1),
+    'BAR factory cell removal must remove matching queued tail before active selection',
+  );
+  assertContract(
+    factory.factory.selectedUnitBlueprintId === 'unitLynx' &&
+      factory.factory.productionQueue.join(',') === 'unitJackal',
+    'BAR factory cell removal must preserve active selection while a matching tail was removed',
+  );
+
+  const removableActiveSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  assertContract(removableActiveSpawned.length === 1, 'BAR factory removal fixture must spawn the active shell');
+  assertContract(
+    factoryProductionSystem.removeUnitProduction(factory, world, 'unitLynx', 1),
+    'BAR factory cell removal must cancel the active one-shot build when no matching tail remains',
+  );
+  assertContract(
+    factory.factory.selectedUnitBlueprintId === null &&
+      factory.factory.currentShellId === null &&
+      world.getEntity(removableActiveSpawned[0].id) === undefined,
+    'BAR factory cell removal must clear active one-shot selection and remove its shell',
+  );
+
+  factory.factory.selectedUnitBlueprintId = null;
+  factory.factory.currentShellId = null;
+  factory.factory.currentBuildProgress = 0;
+  factory.factory.isProducing = false;
+  factory.factory.productionQueue.length = 0;
+  factory.factory.productionQuotas.unitJackal = 2;
+  factory.factory.productionQuotaCounts.unitJackal = 1;
+  assertContract(
+    factoryProductionSystem.stopProduction(factory, world),
+    'BAR factory clear queue must apply when only quotas are present',
+  );
+  assertContract(
+    Object.keys(factory.factory.productionQuotas).length === 0 &&
+      Object.keys(factory.factory.productionQuotaCounts).length === 0,
+    'BAR factory clear queue must clear quota targets and quota counts',
+  );
+
+  factory.factory.selectedUnitBlueprintId = hoverUnitBlueprintId;
+  factory.factory.currentShellId = null;
+  factory.factory.isProducing = false;
+  factory.factory.repeatProduction = false;
+  factory.factory.productionQueue.length = 0;
+  factory.factory.productionQueue.push('unitLynx');
+  factory.factory.productionQuotas.unitJackal = 1;
+  const preQuotaSpawned = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  assertContract(preQuotaSpawned.length === 1, 'pre-quota finite factory must spawn the active selected unit');
+  const preQuotaShell = preQuotaSpawned[0];
+  assertContract(preQuotaShell.buildable !== null, 'pre-quota shell must be buildable');
+  preQuotaShell.buildable.isComplete = true;
+  const preQuotaCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  assertContract(preQuotaCompleted.length === 1, 'pre-quota finite factory must complete the active selected unit');
+  assertContract(factory.factory.selectedUnitBlueprintId === 'unitJackal', 'factory quota must preempt the normal finite queue');
+  assertContract(factory.factory.productionQueue.join(',') === 'unitLynx', 'quota preemption must preserve the normal finite queue');
+  assertContract(factory.factory.repeatProduction === false, 'factory quota must use finite production');
+
+  for (const key of Object.keys(factory.factory.productionQuotas)) delete factory.factory.productionQuotas[key];
+  for (const key of Object.keys(factory.factory.productionQuotaCounts)) delete factory.factory.productionQuotaCounts[key];
+  factory.factory.selectedUnitBlueprintId = 'unitLynx';
+  factory.factory.currentShellId = null;
+  factory.factory.currentBuildProgress = 0;
+  factory.factory.isProducing = false;
+  factory.factory.repeatProduction = true;
+  factory.factory.resumeRepeatUnitBlueprintId = null;
+  factory.factory.productionQueue.length = 0;
+  factory.factory.productionQuotas.unitJackal = 1;
+  const repeatPreemptInitial = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  assertContract(repeatPreemptInitial.length === 1, 'repeat factory must spawn the original shell before quota replacement');
+  const repeatPreemptShell = repeatPreemptInitial[0];
+  assertContract(repeatPreemptShell.unit?.unitBlueprintId === 'unitLynx', 'repeat preempt fixture must start with the repeat unit');
+  assertContract(repeatPreemptShell.buildable !== null, 'repeat preempt shell must be buildable');
+  repeatPreemptShell.buildable.paid.energy = repeatPreemptShell.buildable.required.energy * 0.01;
+  repeatPreemptShell.buildable.paid.metal = repeatPreemptShell.buildable.required.metal * 0.01;
+  const quotaReplacement = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  assertContract(
+    quotaReplacement.length === 1 && quotaReplacement[0].unit?.unitBlueprintId === 'unitJackal',
+    'low-progress repeat shell must be replaced by the most-needed quota unit',
+  );
+  assertContract(world.getEntity(repeatPreemptShell.id) === undefined, 'low-progress replaced shell must be cancelled');
+  assertContract(
+    factoryResumeRepeatUnitBlueprintId(factory) === 'unitLynx' &&
+      factoryRepeatProduction(factory) === false,
+    'quota replacement must remember the interrupted repeat selection as a one-shot quota runs',
+  );
+  const quotaReplacementShell = quotaReplacement[0];
+  assertContract(quotaReplacementShell.buildable !== null, 'quota replacement shell must be buildable');
+  quotaReplacementShell.buildable.isComplete = true;
+  const quotaReplacementCompleted = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
+  assertContract(quotaReplacementCompleted.length === 1, 'quota replacement shell must complete');
+  assertContract(
+    factory.factory.selectedUnitBlueprintId === 'unitLynx' &&
+      factoryRepeatProduction(factory) === true &&
+      factoryResumeRepeatUnitBlueprintId(factory) === null,
+    'factory must resume the interrupted repeat selection after quota demand is satisfied',
+  );
+
+  factory.factory.selectedUnitBlueprintId = 'unitLynx';
+  factory.factory.currentShellId = null;
+  factory.factory.currentBuildProgress = 0;
+  factory.factory.isProducing = false;
+  factory.factory.repeatProduction = true;
+  factory.factory.resumeRepeatUnitBlueprintId = null;
+  factory.factory.productionQueue.length = 0;
+  factory.factory.productionQuotas.unitBadger = 1;
+  const highProgressInitial = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  assertContract(highProgressInitial.length === 1, 'high-progress fixture must spawn the repeat shell');
+  const highProgressShell = highProgressInitial[0];
+  assertContract(highProgressShell.buildable !== null, 'high-progress fixture shell must be buildable');
+  highProgressShell.buildable.paid.energy = highProgressShell.buildable.required.energy * 0.2;
+  highProgressShell.buildable.paid.metal = highProgressShell.buildable.required.metal * 0.2;
+  const highProgressReplacement = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).spawnedUnits;
+  assertContract(highProgressReplacement.length === 0, 'high-progress active shell must not be quota-replaced');
+  assertContract(
+    factory.factory.currentShellId === highProgressShell.id &&
+      factory.factory.selectedUnitBlueprintId === 'unitLynx',
+    'high-progress shell must remain active while quota waits behind it',
+  );
+}
+
+function assertFactoryGuardDefaultContract(): void {
+  const world = new WorldState(1240, 512, 512);
+  world.playerCount = 2;
+  const construction = new ConstructionSystem(
+    world.mapWidth,
+    world.mapHeight,
+    createAllBuildableTerrainGrid(world.mapWidth, world.mapHeight),
+  );
+  const factory = construction.startBuilding(world, 'towerFabricator', 8, 8, TEST_PLAYER_ID, 0, 0, {
+    skipBuilderAuthorization: true,
+  });
+  assertContract(factory !== null, 'factory guard default fixture must place a fabricator');
+  assertContract(factory.factory !== null, 'fabricator must initialize a factory component');
+  assertContract(
+    factory.factory.guardTargetId === factory.id,
+    'BAR factory guard default-on widget must make new fabricators guard themselves',
+  );
+  assertContract(
+    factory.factory.repeatProduction === false,
+    'BAR factory auto-repeat widget is disabled by default',
   );
 }
 
@@ -604,6 +878,7 @@ export function runSupportSurfaceContractTest(): void {
     assertUnitSupportContract();
     assertRenderLocomotionContract();
     assertFactoryShellContract();
+    assertFactoryGuardDefaultContract();
     assertExtractorTierCoverageContract();
   });
 }

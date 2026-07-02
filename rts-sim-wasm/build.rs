@@ -103,7 +103,9 @@ fn generate_wire_enums(manifest_dir: &Path) {
             .pointer(pointer)
             .and_then(Value::as_i64)
             .unwrap_or_else(|| panic!("missing integer {pointer} in {}", enums_path.display()));
-        generated.push_str(&format!("#[allow(dead_code)]\n{vis}const {name}: {ty} = {value};\n"));
+        generated.push_str(&format!(
+            "#[allow(dead_code)]\n{vis}const {name}: {ty} = {value};\n"
+        ));
     }
 
     let out_path =
@@ -214,9 +216,8 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
     // Arrival tolerance (world units). Single source of truth, also consumed by
     // SimulationArrivalController via pathfindingTuning.ts; the pathfinder folds
     // it into per-unit clearance so a unit cannot corner-cut into a blocker.
-    let arrival_radius = read_number_field(&raw, "arrivalRadius").unwrap_or_else(|| {
-        panic!("missing numeric arrivalRadius in {}", config_path.display())
-    });
+    let arrival_radius = read_number_field(&raw, "arrivalRadius")
+        .unwrap_or_else(|| panic!("missing numeric arrivalRadius in {}", config_path.display()));
     if !arrival_radius.is_finite() || arrival_radius < 0.0 {
         panic!(
             "invalid arrivalRadius in {}: expected non-negative number, got {}",
@@ -227,8 +228,8 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
     // Fraction of the arrival tolerance baked into clearance (the corner-cut
     // dial). 1.0 = fully absorb it; lower trades a tighter standoff for some
     // residual corner-cut risk.
-    let arrival_clearance_factor =
-        read_number_field(&raw, "arrivalClearanceFactor").unwrap_or_else(|| {
+    let arrival_clearance_factor = read_number_field(&raw, "arrivalClearanceFactor")
+        .unwrap_or_else(|| {
             panic!(
                 "missing numeric arrivalClearanceFactor in {}",
                 config_path.display()

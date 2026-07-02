@@ -287,8 +287,9 @@ pool_ptr_export!(pool_sleep_ticks_ptr, sleep_ticks, f64);
 pool_ptr_export!(pool_flags_ptr, flags, u8);
 pool_ptr_export!(pool_entity_id_ptr, entity_id, i32);
 
+pub(crate) const ARRIVAL_FLAG_MAINTAIN_FULL_THRUST: u8 = 1 << 0;
 pub(crate) const ARRIVAL_FLAG_LAST_ACTION: u8 = 1 << 1;
-pub(crate) const ARRIVAL_COMPLETION_FLAG_FLYING: u8 = 1 << 2;
+pub(crate) const ARRIVAL_COMPLETION_FLAG_MAINTAIN_FULL_THRUST: u8 = 1 << 2;
 
 #[inline]
 pub(crate) fn arrival_horizontal_drive_accel(
@@ -341,7 +342,7 @@ pub(crate) fn compute_arrival_control_thrust(
     }
 
     let inv_distance = 1.0 / distance;
-    if flags & ARRIVAL_FLAG_LAST_ACTION == 0 {
+    if flags & ARRIVAL_FLAG_MAINTAIN_FULL_THRUST != 0 || flags & ARRIVAL_FLAG_LAST_ACTION == 0 {
         return (dx * inv_distance, dy * inv_distance, 1);
     }
 
@@ -478,7 +479,7 @@ pub(crate) fn compute_arrival_completion(
         return (distance, 0);
     }
 
-    if flags & ARRIVAL_COMPLETION_FLAG_FLYING != 0 || !is_last_action {
+    if flags & ARRIVAL_COMPLETION_FLAG_MAINTAIN_FULL_THRUST != 0 || !is_last_action {
         return (distance, 1);
     }
 

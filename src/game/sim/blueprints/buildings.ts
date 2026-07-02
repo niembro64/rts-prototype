@@ -15,6 +15,7 @@ import type {
   ResourceCost,
 } from '../types';
 import { isTowerBuildingBlueprintId } from '../../../types/buildingTypes';
+import type { UnitBlueprintId } from '../../../types/blueprintIds';
 import type {
   BuildingTurretMount,
   EntityBaseLedger,
@@ -34,9 +35,13 @@ import {
   assertTowerLockOnInclusionConfigIds,
   getTowerLockOnInclusions,
 } from './lockOnConfig';
-import { STRUCTURE_BLUEPRINT_IDS } from '../../../types/blueprintIds';
+import {
+  isUnitBlueprintId,
+  STRUCTURE_BLUEPRINT_IDS,
+} from '../../../types/blueprintIds';
 import { TURRET_BLUEPRINTS } from './turrets';
 import { UNIT_BLUEPRINTS } from './units';
+import { isBuildableUnitBlueprintId } from './unitRoster';
 import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import {
   assertValidShotArmingRadius,
@@ -72,6 +77,10 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
    *  the other resource minus the configured CONVERTER TAX. `null` for
    *  any non-converter building. */
   conversionRate: number | null;
+  /** Unit production roster for static factories. This is BAR-style
+   *  `buildoptions` data for unit-producing buildings/towers: null for
+   *  non-factories, non-empty for any host that mounts a unit spawn turret. */
+  allowedUnitBlueprintIds: readonly UnitBlueprintId[] | null;
   renderProfile: BuildingRenderProfile;
   /** Primary visual/anchor height above ground, in world units. */
   visualHeight: number;
@@ -152,6 +161,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'metalProduction',
   'constructionRate',
   'conversionRate',
+  'allowedUnitBlueprintIds',
   'placementGridWidth',
   'placementGridHeight',
   'supportSurface',
@@ -296,6 +306,49 @@ function validateSensorCapabilityConfig(
   }
 }
 
+function buildingBlueprintHasUnitSpawnTurret(blueprint: BuildingBlueprint): boolean {
+  for (const mount of blueprint.turrets) {
+    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+    if (turretBlueprint?.spawn?.producedKind === 'units') return true;
+  }
+  return false;
+}
+
+function validateFactoryUnitRoster(
+  id: string,
+  blueprint: BuildingBlueprint,
+): void {
+  const hasUnitSpawnTurret = buildingBlueprintHasUnitSpawnTurret(blueprint);
+  const roster = blueprint.allowedUnitBlueprintIds;
+  if (!hasUnitSpawnTurret) {
+    if (roster !== null) {
+      throw new Error(
+        `Invalid building blueprint ${id}: allowedUnitBlueprintIds must be null without a unit spawn turret`,
+      );
+    }
+    return;
+  }
+  if (!Array.isArray(roster) || roster.length === 0) {
+    throw new Error(
+      `Invalid building blueprint ${id}: unit-producing factories must author a non-empty allowedUnitBlueprintIds roster`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const unitBlueprintId of roster) {
+    if (!isUnitBlueprintId(unitBlueprintId) || !isBuildableUnitBlueprintId(unitBlueprintId)) {
+      throw new Error(
+        `Invalid building blueprint ${id}: unknown or non-buildable allowedUnitBlueprintId "${unitBlueprintId}"`,
+      );
+    }
+    if (seen.has(unitBlueprintId)) {
+      throw new Error(
+        `Invalid building blueprint ${id}: duplicate allowedUnitBlueprintId "${unitBlueprintId}"`,
+      );
+    }
+    seen.add(unitBlueprintId);
+  }
+}
+
 for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   assertExplicitFields(`building blueprint ${id}`, blueprint, BUILDING_EXPLICIT_FIELDS);
   const towerBlueprint = isTowerBuildingBlueprintId(id as BuildingBlueprintId);
@@ -338,6 +391,7 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
       );
     }
   }
+  validateFactoryUnitRoster(id, blueprint);
   if (!Number.isFinite(blueprint.gridWidth) || blueprint.gridWidth <= 0) {
     throw new Error(`Invalid building blueprint ${id}: gridWidth must be positive`);
   }

@@ -1,5 +1,6 @@
 export type Input3DSpecialMode =
   | 'repairArea'
+  | 'restoreArea'
   | 'formationAssume'
   | 'formationMove'
   | 'attack'
@@ -15,10 +16,12 @@ export type Input3DSpecialMode =
   | 'unloadTransport'
   | 'mexUpgrade'
   | 'ping'
-  | 'towerTarget';
+  | 'towerTarget'
+  | 'towerTargetNoGround';
 
 type Input3DSpecialModeCallbacks = {
   onRepairAreaModeChange: (active: boolean) => void;
+  onRestoreAreaModeChange: (active: boolean) => void;
   onFormationAssumeModeChange: (active: boolean) => void;
   onFormationMoveModeChange: (active: boolean) => void;
   onAttackModeChange: (active: boolean) => void;
@@ -35,6 +38,7 @@ type Input3DSpecialModeCallbacks = {
   onMexUpgradeModeChange: (active: boolean) => void;
   onPingModeChange: (active: boolean) => void;
   onTowerTargetModeChange: (active: boolean) => void;
+  onTowerTargetNoGroundModeChange: (active: boolean) => void;
 };
 
 type Input3DSpecialModesOptions = Input3DSpecialModeCallbacks & {
@@ -43,6 +47,7 @@ type Input3DSpecialModesOptions = Input3DSpecialModeCallbacks & {
 
 const SPECIAL_MODE_ORDER: readonly Input3DSpecialMode[] = [
   'repairArea',
+  'restoreArea',
   'formationAssume',
   'formationMove',
   'attack',
@@ -59,11 +64,13 @@ const SPECIAL_MODE_ORDER: readonly Input3DSpecialMode[] = [
   'mexUpgrade',
   'ping',
   'towerTarget',
+  'towerTargetNoGround',
 ];
 
 export class Input3DSpecialModes {
   private active: Record<Input3DSpecialMode, boolean> = {
     repairArea: false,
+    restoreArea: false,
     formationAssume: false,
     formationMove: false,
     attack: false,
@@ -80,6 +87,7 @@ export class Input3DSpecialModes {
     mexUpgrade: false,
     ping: false,
     towerTarget: false,
+    towerTargetNoGround: false,
   };
 
   constructor(private readonly options: Input3DSpecialModesOptions) {}
@@ -104,7 +112,7 @@ export class Input3DSpecialModes {
 
   exitAll(includeTowerTarget = true): void {
     for (const mode of SPECIAL_MODE_ORDER) {
-      if (!includeTowerTarget && mode === 'towerTarget') continue;
+      if (!includeTowerTarget && (mode === 'towerTarget' || mode === 'towerTargetNoGround')) continue;
       this.exit(mode);
     }
   }
@@ -113,6 +121,9 @@ export class Input3DSpecialModes {
     switch (mode) {
       case 'repairArea':
         this.options.onRepairAreaModeChange(active);
+        break;
+      case 'restoreArea':
+        this.options.onRestoreAreaModeChange(active);
         break;
       case 'formationAssume':
         this.options.onFormationAssumeModeChange(active);
@@ -161,6 +172,9 @@ export class Input3DSpecialModes {
         break;
       case 'towerTarget':
         this.options.onTowerTargetModeChange(active);
+        break;
+      case 'towerTargetNoGround':
+        this.options.onTowerTargetNoGroundModeChange(active);
         break;
     }
   }

@@ -60,6 +60,8 @@ function createEmptyUnitSub(): UnitSub {
     moveState: null,
     holdPosition: null,
     wantCloak: null,
+    builderPriorityLow: null,
+    carrierSpawnEnabled: null,
     cloaked: null,
     isCommander: null,
     buildTargetId: null,
@@ -376,6 +378,8 @@ function rentDecodedUnitSub(): UnitSub {
     u.moveState = null;
     u.holdPosition = null;
     u.wantCloak = null;
+    u.builderPriorityLow = null;
+    u.carrierSpawnEnabled = null;
     u.cloaked = null;
     u.isCommander = null;
     u.buildTargetId = null;
@@ -862,6 +866,7 @@ function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
   if ((changedFields & ENTITY_CHANGED_HP) !== 0 && building.hp === null) return false;
   if ((changedFields & ENTITY_CHANGED_BUILDING) !== 0 && building.build === null) return false;
   if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && building.factory === null) return false;
+  if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && building.factory !== null) return false;
 
   const wireRow = appendDecodedBuildingEntityWireRow();
   const values = wireRow.values;
@@ -1636,7 +1641,24 @@ function unpackFactory(row: unknown[], producing: boolean): FactorySub {
   const guardTargetId = row.length > 6 ? row[6] as number | null : null;
   const repeat = row.length > 7 ? row[7] !== 0 : true;
   const queue = row.length > 8 ? row[8] as number[] | null : null;
-  return { selectedUnitBlueprintCode, progress, producing, repeat, queue, energyRate, metalRate, guardTargetId, rally, route };
+  const quotas = row.length > 9 ? row[9] as number[] | null : null;
+  const quotaCounts = row.length > 10 ? row[10] as number[] | null : null;
+  const lowPriority = row.length > 11 ? row[11] === true || row[11] === 1 : undefined;
+  return {
+    selectedUnitBlueprintCode,
+    progress,
+    producing,
+    repeat,
+    queue,
+    quotas,
+    quotaCounts,
+    energyRate,
+    metalRate,
+    guardTargetId,
+    lowPriority,
+    rally,
+    route,
+  };
 }
 
 function unpackWaypointRoute(rows: unknown[]): WaypointSub[] {

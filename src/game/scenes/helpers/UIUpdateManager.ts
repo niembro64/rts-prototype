@@ -13,14 +13,41 @@ import {
   getQueuedActionIntentCount,
   hasQueuedActionIntents,
 } from '../../sim/unitActionIntents';
-import { buildingBlueprintHasActiveState } from '../../sim/buildingActiveState';
-import { getSelectedBuilderAllowedBuildBlueprintIds } from '../../sim/builderBuildRoster';
+import {
+  buildingBlueprintHasActiveState,
+  buildingBlueprintHasBarOnOffCommand,
+} from '../../sim/buildingActiveState';
+import {
+  getActiveSelectedBuilderTypeInfo,
+  getBarVisibleSelectedBuilderTypeInfos,
+} from '../../sim/builderBuildRoster';
+import { getFactoryAllowedUnitBlueprintIds } from '../../sim/factoryProductionRoster';
 import { isReclaimableTarget } from '../../sim/reclaim';
 import {
   canBuilderUpgradeMetalExtractor,
   isUpgradeableMetalExtractorTarget,
 } from '../../sim/metalExtractorUpgrade';
+import {
+  getBuildFraction,
+  isBuildInProgress,
+} from '../../sim/buildableHelpers';
 import { isClientTransportUnit } from '../../sim/transports';
+import {
+  entityHasBarAttackCommand,
+  entityHasBarAreaAttackCommand,
+  entityHasBarFireControlCommand,
+  entityHasBarManualLaunchCommand,
+  entityHasBarMoveStateCommand,
+  entityHasBarTrajectoryCommand,
+  entityHasBarCarrierSpawnCommand,
+  entityHasBarCaptureCommand,
+  entityHasBarBuilderPriorityCommand,
+  entityHasBarFactoryGuardCommand,
+  entityHasBarSetTargetCommand,
+  entityBarTrajectoryCommandKind,
+  entityEffectiveBarTrajectoryMode,
+  entityHasCloakCommand,
+} from '../../sim/unitCommandCapabilities';
 
 const MAX_QUEUE_INSERT_OPTIONS = 24;
 
@@ -29,6 +56,14 @@ function unitLabel(unitBlueprintId: string): string {
     return getUnitBlueprint(unitBlueprintId).name;
   } catch {
     return unitBlueprintId;
+  }
+}
+
+function unitShortLabel(unitBlueprintId: string): string {
+  try {
+    return getUnitBlueprint(unitBlueprintId).shortName;
+  } catch {
+    return unitBlueprintId.toUpperCase().slice(0, 3);
   }
 }
 
@@ -139,8 +174,7 @@ function addMultiSelectionQueueDetails(
 }
 
 function isFireControllable(entity: Entity): boolean {
-  const combat = entity.combat;
-  return combat !== null && combat.turrets.length > 0;
+  return entityHasBarFireControlCommand(entity);
 }
 
 function isTrajectoryControllable(entity: Entity): boolean {
@@ -560,19 +594,30 @@ export function buildSelectionInfo(
   // Check for capabilities. Every commander has a d-gun, so the
   // commander unit IS the dgunner — no second find call needed.
   let commander: typeof selectedUnits[number] | undefined;
-  let builder: typeof selectedUnits[number] | undefined;
   let hasTransport = false;
   let canUpgradeMetalExtractors = false;
   for (let i = 0; i < selectedUnits.length; i++) {
     const unit = selectedUnits[i];
     if (commander === undefined && isCommander(unit)) commander = unit;
-    if (builder === undefined && unit.builder !== null) builder = unit;
     if (!hasTransport && isClientTransportUnit(unit)) hasTransport = true;
     if (!canUpgradeMetalExtractors && canBuilderUpgradeMetalExtractor(unit)) {
       canUpgradeMetalExtractors = true;
     }
   }
-  const allowedBuildBlueprintIds = getSelectedBuilderAllowedBuildBlueprintIds(selectedUnits);
+  const builderTypeInfos = getBarVisibleSelectedBuilderTypeInfos(selectedUnits);
+  const activeBuilderType = getActiveSelectedBuilderTypeInfo(
+    selectedUnits,
+    inputState?.activeBuilderUnitBlueprintId,
+  );
+  const activeBuilderUnitBlueprintId = activeBuilderType?.unitBlueprintId ?? null;
+  const selectedBuilderTypes = builderTypeInfos.map((builderType) => ({
+    unitBlueprintId: builderType.unitBlueprintId,
+    label: unitLabel(builderType.unitBlueprintId),
+    shortName: unitShortLabel(builderType.unitBlueprintId),
+    count: builderType.count,
+    active: builderType.unitBlueprintId === activeBuilderUnitBlueprintId,
+  }));
+  const allowedBuildBlueprintIds = activeBuilderType?.allowedBuildBlueprintIds ?? [];
   const selectedPlayerId = selectedUnits[0]?.ownership?.playerId ?? selectedStatic[0]?.ownership?.playerId;
   let hasOwnedMetalExtractorUpgradeBuilder = false;
   if (selectedPlayerId !== undefined) {
@@ -597,7 +642,15 @@ export function buildSelectionInfo(
   let trajectoryControlCount = 0;
   let highTrajectoryCount = 0;
   let lowTrajectoryCount = 0;
+  let barTrajectoryControlCount = 0;
+  let barHighTrajectoryCount = 0;
+  let barLowTrajectoryCount = 0;
+  let barSmartTrajectoryControlCount = 0;
   let targetControlCount = 0;
+  let manualLaunchControlCount = 0;
+  let barAttackControlCount = 0;
+  let barCaptureControlCount = 0;
+  let barAreaAttackControlCount = 0;
   let fireAtWillCount = 0;
   let returnFireCount = 0;
   let holdFireCount = 0;
@@ -605,11 +658,17 @@ export function buildSelectionInfo(
   let waitingCount = 0;
   let gatherWaitingCount = 0;
   let repeatCount = 0;
+  let moveStateControlCount = 0;
   let holdPositionCount = 0;
   let maneuverCount = 0;
   let roamCount = 0;
+  let cloakControlCount = 0;
   let wantCloakCount = 0;
   let cloakedCount = 0;
+  let builderPriorityControlCount = 0;
+  let builderLowPriorityCount = 0;
+  let carrierSpawnControlCount = 0;
+  let carrierSpawnEnabledCount = 0;
   let hasQueuedOrders = false;
   for (let i = 0; i < selectedUnits.length; i++) {
     const selectedUnit = selectedUnits[i];
@@ -619,25 +678,55 @@ export function buildSelectionInfo(
       if (actions[0].waitGather === true) gatherWaitingCount++;
     }
     if (selectedUnit.unit?.repeatQueue === true) repeatCount++;
-    if (selectedUnit.unit?.moveState === 'holdPosition') holdPositionCount++;
-    if (selectedUnit.unit?.moveState === 'roam') roamCount++;
-    if (selectedUnit.unit?.moveState === 'maneuver') maneuverCount++;
-    if (selectedUnit.unit?.wantCloak === true) wantCloakCount++;
-    if (selectedUnit.unit?.cloaked === true) cloakedCount++;
+    if (entityHasBarAttackCommand(selectedUnit)) barAttackControlCount++;
+    if (entityHasBarMoveStateCommand(selectedUnit)) {
+      moveStateControlCount++;
+      if (selectedUnit.unit?.moveState === 'holdPosition') holdPositionCount++;
+      if (selectedUnit.unit?.moveState === 'roam') roamCount++;
+      if (selectedUnit.unit?.moveState === 'maneuver') maneuverCount++;
+    }
+    if (entityHasBarAreaAttackCommand(selectedUnit)) barAreaAttackControlCount++;
+    if (entityHasBarCaptureCommand(selectedUnit)) barCaptureControlCount++;
+    if (entityHasCloakCommand(selectedUnit)) {
+      cloakControlCount++;
+      if (selectedUnit.unit?.wantCloak === true) wantCloakCount++;
+      if (selectedUnit.unit?.cloaked === true) cloakedCount++;
+    }
+    if (entityHasBarBuilderPriorityCommand(selectedUnit)) {
+      builderPriorityControlCount++;
+      if (
+        (selectedUnit.builder === null || selectedUnit.builder.lowPriority === true) &&
+        (selectedUnit.factory === null || selectedUnit.factory.lowPriority === true)
+      ) {
+        builderLowPriorityCount++;
+      }
+    }
+    if (selectedUnit.factory !== null && entityHasBarCarrierSpawnCommand(selectedUnit)) {
+      carrierSpawnControlCount++;
+      if (selectedUnit.factory.carrierSpawnEnabled === true) carrierSpawnEnabledCount++;
+    }
     if (actions && hasQueuedActionIntents(actions)) hasQueuedOrders = true;
     const combat = selectedUnit.combat;
-    if (combat && combat.turrets.length > 0) {
+    if (combat && isFireControllable(selectedUnit)) {
       fireControlCount++;
-      targetControlCount++;
+      if (entityHasBarSetTargetCommand(selectedUnit)) targetControlCount++;
+      if (entityHasBarManualLaunchCommand(selectedUnit)) manualLaunchControlCount++;
       const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
       if (fireState === 'fireAtWill') fireAtWillCount++;
       if (fireState === 'returnFire') returnFireCount++;
       if (fireState === 'holdFire') holdFireCount++;
-      if (combat.priorityTargetId !== null) hasPriorityTarget = true;
+      if (combat.priorityTargetId !== null || combat.priorityTargetPoint !== null) hasPriorityTarget = true;
       if (isTrajectoryControllable(selectedUnit)) {
         trajectoryControlCount++;
         if (combat.trajectoryMode === 'high') highTrajectoryCount++;
         if (combat.trajectoryMode === 'low') lowTrajectoryCount++;
+      }
+      if (entityHasBarTrajectoryCommand(selectedUnit) && isTrajectoryControllable(selectedUnit)) {
+        const barTrajectoryMode = entityEffectiveBarTrajectoryMode(selectedUnit);
+        barTrajectoryControlCount++;
+        if (entityBarTrajectoryCommandKind(selectedUnit) === 'smartAutoLowHigh') barSmartTrajectoryControlCount++;
+        if (barTrajectoryMode === 'high') barHighTrajectoryCount++;
+        if (barTrajectoryMode === 'low') barLowTrajectoryCount++;
       }
     }
   }
@@ -646,19 +735,37 @@ export function buildSelectionInfo(
   // can toggle hold-fire on a tower selection the same way it does
   // for a unit selection.
   for (let i = 0; i < selectedTowers.length; i++) {
-    const combat = selectedTowers[i].combat;
-    if (combat && combat.turrets.length > 0) {
+    const selectedTower = selectedTowers[i];
+    if (entityHasBarBuilderPriorityCommand(selectedTower)) {
+      builderPriorityControlCount++;
+      if (
+        (selectedTower.builder === null || selectedTower.builder.lowPriority === true) &&
+        (selectedTower.factory === null || selectedTower.factory.lowPriority === true)
+      ) {
+        builderLowPriorityCount++;
+      }
+    }
+    const combat = selectedTower.combat;
+    if (combat && isFireControllable(selectedTower)) {
       fireControlCount++;
-      targetControlCount++;
+      if (entityHasBarSetTargetCommand(selectedTower)) targetControlCount++;
+      if (entityHasBarManualLaunchCommand(selectedTower)) manualLaunchControlCount++;
       const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
       if (fireState === 'fireAtWill') fireAtWillCount++;
       if (fireState === 'returnFire') returnFireCount++;
       if (fireState === 'holdFire') holdFireCount++;
-      if (combat.priorityTargetId !== null) hasPriorityTarget = true;
-      if (isTrajectoryControllable(selectedTowers[i])) {
+      if (combat.priorityTargetId !== null || combat.priorityTargetPoint !== null) hasPriorityTarget = true;
+      if (isTrajectoryControllable(selectedTower)) {
         trajectoryControlCount++;
         if (combat.trajectoryMode === 'high') highTrajectoryCount++;
         if (combat.trajectoryMode === 'low') lowTrajectoryCount++;
+      }
+      if (entityHasBarTrajectoryCommand(selectedTower) && isTrajectoryControllable(selectedTower)) {
+        const barTrajectoryMode = entityEffectiveBarTrajectoryMode(selectedTower);
+        barTrajectoryControlCount++;
+        if (entityBarTrajectoryCommandKind(selectedTower) === 'smartAutoLowHigh') barSmartTrajectoryControlCount++;
+        if (barTrajectoryMode === 'high') barHighTrajectoryCount++;
+        if (barTrajectoryMode === 'low') barLowTrajectoryCount++;
       }
     }
   }
@@ -675,17 +782,22 @@ export function buildSelectionInfo(
   }
 
   // Building ON/OFF (Producer Buildings Are ON/OFF in budget_design_philosophy.html).
-  // Only solar/wind/extractor expose a player-toggleable active state;
-  // radar/converter do not. The button is gated to selections that
-  // contain at least one of those buildings.
+  // Prototype active-state covers the full local mechanic; BAR-visible on/off is
+  // narrower and follows BAR unit defs with onoffable=true.
   let activeBuildingCount = 0;
   let allBuildingsOpen = true;
+  let barActiveBuildingCount = 0;
+  let allBarBuildingsOpen = true;
   for (let i = 0; i < selectedBuildings.length; i++) {
     const b = selectedBuildings[i];
     if (!buildingBlueprintHasActiveState(b.buildingBlueprintId)) continue;
     activeBuildingCount++;
     const state = b.building !== null ? b.building.activeState : null;
     if (state === null || state.open === false) allBuildingsOpen = false;
+    if (buildingBlueprintHasBarOnOffCommand(b.buildingBlueprintId)) {
+      barActiveBuildingCount++;
+      if (state === null || state.open === false) allBarBuildingsOpen = false;
+    }
   }
 
   // Self-destruct is available whenever any selected entity (unit,
@@ -713,16 +825,29 @@ export function buildSelectionInfo(
     }
   }
 
-  // Get factory repeat-build selection if a factory is selected.
+  // Get factory production selection if a factory is selected.
   let factorySelectedUnit: { unitBlueprintId: string; label: string } | null | undefined;
   let factoryProgress: number | undefined;
   let factoryIsProducing: boolean | undefined;
+  let factoryUnderConstruction: boolean | undefined;
+  let factoryConstructionProgress: number | undefined;
   let factoryRepeatsProduction: boolean | undefined;
   let factoryProductionQueue: { unitBlueprintId: string; label: string }[] | undefined;
+  let factoryProductionQuotas: { unitBlueprintId: string; label: string; current: number; quota: number }[] | undefined;
+  let hasFactoryGuardControl = false;
   let factoryGuardTargetId: number | null | undefined;
 
   if (factory?.factory) {
     const f = factory.factory;
+    hasFactoryGuardControl = entityHasBarFactoryGuardCommand(factory);
+    const factoryBuildable = factory.buildable;
+    if (isBuildInProgress(factoryBuildable)) {
+      factoryUnderConstruction = true;
+      factoryConstructionProgress = getBuildFraction(factoryBuildable);
+    } else {
+      factoryUnderConstruction = false;
+      factoryConstructionProgress = 1;
+    }
     factorySelectedUnit = f.selectedUnitBlueprintId === null
       ? null
       : {
@@ -740,6 +865,18 @@ export function buildSelectionInfo(
         label: unitLabel(unitBlueprintId),
       };
     }
+    const quotaEntries = Object.entries(f.productionQuotas);
+    factoryProductionQuotas = [];
+    for (let i = 0; i < quotaEntries.length; i++) {
+      const [unitBlueprintId, quota] = quotaEntries[i];
+      if (!Number.isFinite(quota) || quota <= 0) continue;
+      factoryProductionQuotas.push({
+        unitBlueprintId,
+        label: unitLabel(unitBlueprintId),
+        current: Math.max(0, Math.floor(f.productionQuotaCounts[unitBlueprintId] ?? 0)),
+        quota: Math.floor(quota),
+      });
+    }
     factoryGuardTargetId = f.guardTargetId;
   }
 
@@ -748,12 +885,18 @@ export function buildSelectionInfo(
     towerCount: selectedTowers.length,
     buildingCount: selectedBuildings.length,
     hasCommander: commander !== undefined,
-    hasBuilder: builder !== undefined,
+    hasBuilder: activeBuilderType !== null,
+    activeBuilderUnitBlueprintId,
+    selectedBuilderTypes,
     hasTransport,
     allowedBuildBlueprintIds,
     canUpgradeMetalExtractors,
     hasUpgradeableMetalExtractor,
     hasDGun: dgunner !== undefined,
+    hasBarAttackControl: barAttackControlCount > 0,
+    hasBarCaptureControl: barCaptureControlCount > 0,
+    hasBarAreaAttackControl: barAreaAttackControlCount > 0,
+    hasMoveStateControl: moveStateControlCount > 0,
     hasFireControl:
       fireControlCount > 0
       && fireControlCount === selectedUnits.length + selectedTowers.length
@@ -774,42 +917,66 @@ export function buildSelectionInfo(
       : lowTrajectoryCount === trajectoryControlCount
         ? 'low'
         : 'auto',
-    hasCloakControl: selectedUnits.length > 0 && selectedTowers.length === 0 && selectedBuildings.length === 0,
-    wantsCloak: selectedUnits.length > 0 && wantCloakCount === selectedUnits.length,
-    isCloaked: selectedUnits.length > 0 && cloakedCount === selectedUnits.length,
+    hasBarTrajectoryControl: barTrajectoryControlCount > 0,
+    barTrajectoryMode: barTrajectoryControlCount === 0
+      ? 'auto'
+      : barHighTrajectoryCount === barTrajectoryControlCount
+      ? 'high'
+      : barLowTrajectoryCount === barTrajectoryControlCount
+        ? 'low'
+        : 'auto',
+    barTrajectoryStateCount: barSmartTrajectoryControlCount > 0 ? 3 : 2,
+    hasCloakControl: cloakControlCount > 0 && selectedTowers.length === 0 && selectedBuildings.length === 0,
+    wantsCloak: cloakControlCount > 0 && wantCloakCount === cloakControlCount,
+    isCloaked: cloakControlCount > 0 && cloakedCount === cloakControlCount,
+    hasBuilderPriorityControl: builderPriorityControlCount > 0,
+    builderPriorityLow: builderPriorityControlCount > 0 && builderLowPriorityCount === builderPriorityControlCount,
+    hasCarrierSpawnControl: carrierSpawnControlCount > 0,
+    carrierSpawnEnabled: carrierSpawnControlCount > 0 && carrierSpawnEnabledCount === carrierSpawnControlCount,
     hasBuildingActiveControl: activeBuildingCount > 0,
     buildingsActive: activeBuildingCount > 0 && allBuildingsOpen,
+    hasBarBuildingActiveControl: barActiveBuildingCount > 0,
+    barBuildingsActive: barActiveBuildingCount > 0 && allBarBuildingsOpen,
     hasSelfDestructable,
-    hasReclaimableSelection: commander !== undefined && hasReclaimableSelection,
+    hasReclaimableSelection: activeBuilderType !== null && hasReclaimableSelection,
     hasTowerTargetControl: targetControlCount > 0,
+    hasManualLaunchControl: manualLaunchControlCount > 0,
     hasTowerTargetActive: hasPriorityTarget,
     isTowerTargetMode: inputState?.isTowerTargetMode ?? false,
+    isTowerTargetNoGroundMode: inputState?.isTowerTargetNoGroundMode ?? false,
     isWaiting: selectedUnits.length > 0 && waitingCount === selectedUnits.length,
     isGatherWaiting: selectedUnits.length > 0 && gatherWaitingCount === selectedUnits.length,
     isRepeatQueue: selectedUnits.length > 0 && repeatCount === selectedUnits.length,
-    isHoldPosition: selectedUnits.length > 0 && holdPositionCount === selectedUnits.length,
-    unitMoveState: selectedUnits.length === 0
+    isHoldPosition: moveStateControlCount > 0 && holdPositionCount === moveStateControlCount,
+    unitMoveState: moveStateControlCount === 0
       ? 'maneuver'
-      : holdPositionCount === selectedUnits.length
+      : holdPositionCount === moveStateControlCount
         ? 'holdPosition'
-        : roamCount === selectedUnits.length
+        : roamCount === moveStateControlCount
           ? 'roam'
-          : maneuverCount === selectedUnits.length
+          : maneuverCount === moveStateControlCount
             ? 'maneuver'
             : 'mixed',
     hasQueuedOrders,
     queueInsertIndex: inputState?.queueInsertIndex ?? null,
     queueInsertOptions: buildQueueInsertOptions(selectedUnits),
     hasFactory: factory !== undefined,
+    factoryAllowedUnitBlueprintIds: getFactoryAllowedUnitBlueprintIds(factory),
     factoryId: factory?.id,
+    factoryPresetOverlayVisible: inputState?.factoryPresetOverlayVisible ?? false,
     commanderId: commander?.id,
     waypointMode: inputState?.waypointMode ?? 'move' as WaypointType,
+    buildGridCategory: inputState?.buildGridCategory ?? null,
+    buildGridPage: inputState?.buildGridPage ?? 0,
+    factoryGridPage: inputState?.factoryGridPage ?? 0,
+    factoryQueueMode: inputState?.factoryQueueMode ?? false,
     isBuildMode: inputState?.isBuildMode ?? false,
     selectedBuildingBlueprintId: inputState?.selectedBuildingBlueprintId ?? null,
     buildLineSpacingMultiplier: inputState?.buildLineSpacingMultiplier ?? 1,
     buildFacingDegrees: inputState?.buildFacingDegrees ?? 0,
     isDGunMode: inputState?.isDGunMode ?? false,
     isRepairAreaMode: inputState?.isRepairAreaMode ?? false,
+    isRestoreAreaMode: inputState?.isRestoreAreaMode ?? false,
     isFormationAssumeMode: inputState?.isFormationAssumeMode ?? false,
     isFormationMoveMode: inputState?.isFormationMoveMode ?? false,
     isAttackMode: inputState?.isAttackMode ?? false,
@@ -828,8 +995,12 @@ export function buildSelectionInfo(
     factorySelectedUnit,
     factoryProgress,
     factoryIsProducing,
+    factoryUnderConstruction,
+    factoryConstructionProgress,
     factoryRepeatsProduction,
     factoryProductionQueue,
+    factoryProductionQuotas,
+    hasFactoryGuardControl,
     factoryGuardTargetId,
     controlGroups: inputState?.controlGroups ?? [],
     details: buildSelectionDetails(selectedUnits, selectedTowers, selectedBuildings),

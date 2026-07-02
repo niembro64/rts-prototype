@@ -38,8 +38,7 @@ macro_rules! snapshot_scratch_pool {
 
         pub(crate) struct $holder(::core::cell::UnsafeCell<Option<$struct>>);
         unsafe impl Sync for $holder {}
-        pub(crate) static $static: $holder =
-            $holder(::core::cell::UnsafeCell::new(None));
+        pub(crate) static $static: $holder = $holder(::core::cell::UnsafeCell::new(None));
 
         #[inline]
         pub(crate) fn $getter() -> &'static mut $struct {
@@ -2930,8 +2929,16 @@ pub(crate) fn v6_write_building_delta_payload(
         writer.write_f64_le(input.building[base + 14]);
     }
     if (flags & V6_BUILDING_DELTA_FLAG_BUILD) != 0 {
-        writer.write_var_uint(if input.building[base + 15] != 0.0 { 1 } else { 0 });
-        writer.write_var_uint(if input.building[base + 34] != 0.0 { 1 } else { 0 });
+        writer.write_var_uint(if input.building[base + 15] != 0.0 {
+            1
+        } else {
+            0
+        });
+        writer.write_var_uint(if input.building[base + 34] != 0.0 {
+            1
+        } else {
+            0
+        });
         writer.write_f64_le(input.building[base + 16]);
         writer.write_f64_le(input.building[base + 17]);
     }
@@ -7820,11 +7827,10 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn flying_final_waypoints_use_velocity_aware_arrival() {
-        let legacy_flying_flag = 1 << 0;
+    pub(crate) fn full_thrust_arrival_keeps_final_waypoint_thrust() {
         let (x, y, active) = compute_arrival_control_thrust(
-            10.0,
-            0.0,
+            6.0,
+            8.0,
             10.0,
             20.0,
             0.0,
@@ -7832,7 +7838,7 @@ mod sim_kernel_tests {
             100.0,
             1.0,
             100.0,
-            legacy_flying_flag | ARRIVAL_FLAG_LAST_ACTION,
+            ARRIVAL_FLAG_MAINTAIN_FULL_THRUST | ARRIVAL_FLAG_LAST_ACTION,
             1.0 / 30.0,
             8.0,
             150_000.0,
@@ -7844,10 +7850,13 @@ mod sim_kernel_tests {
         );
         assert_eq!(active, 1);
         assert!(
-            x < 0.0,
-            "flying arrival should brake against overshoot velocity"
+            (x - 0.6).abs() < 1e-12 && (y - 0.8).abs() < 1e-12,
+            "full-thrust arrival should steer toward the waypoint without braking"
         );
-        assert!(y.abs() < 1e-12);
+        assert!(
+            (x * x + y * y - 1.0).abs() < 1e-12,
+            "full-thrust arrival should keep full-throttle input magnitude"
+        );
     }
 
     #[test]
@@ -7873,14 +7882,14 @@ mod sim_kernel_tests {
             0.0,
             100.0,
             0.0,
-            ARRIVAL_FLAG_LAST_ACTION | ARRIVAL_COMPLETION_FLAG_FLYING,
+            ARRIVAL_FLAG_LAST_ACTION | ARRIVAL_COMPLETION_FLAG_MAINTAIN_FULL_THRUST,
             30.0,
             15.0,
             10.0,
         );
         assert_eq!(
             arrived, 1,
-            "flying final waypoint keeps legacy immediate completion"
+            "full-thrust arrival final waypoint keeps immediate completion"
         );
     }
 
@@ -7905,7 +7914,14 @@ mod sim_kernel_tests {
         assert!(y > 0.0, "existing positive orbit should win over velocity");
     }
 
-    fn run_flying_unit_force_with_traction(traction: f64) -> (f64, f64, f64) {
+    const UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT: f64 = -1.0;
+    const UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT: f64 = 1.0;
+    const UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT: f64 = 6.0;
+
+    fn run_flying_unit_force_with_traction(
+        traction: f64,
+        drive_force_scales_with_facing: bool,
+    ) -> (f64, f64, f64) {
         pool_init();
         let slot = pool_alloc_slot();
         {
@@ -7916,10 +7932,16 @@ mod sim_kernel_tests {
         }
 
         let slots = [slot];
+        let alignment_flag = if drive_force_scales_with_facing {
+            UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING
+        } else {
+            0
+        };
         let flags = [UF_FLAG_IS_AIRBORNE
             | UF_FLAG_IS_FLYING
             | UF_FLAG_HAS_THRUST
-            | UF_FLAG_HAS_ORIENTATION];
+            | UF_FLAG_HAS_ORIENTATION
+            | alignment_flag];
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_DIR_X] = 0.0;
@@ -7948,6 +7970,9 @@ mod sim_kernel_tests {
                 30.0,
                 2.0 * 30.0_f64.sqrt(),
                 0.0,
+                UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
             ),
             1,
         );
@@ -7959,6 +7984,120 @@ mod sim_kernel_tests {
             rows[UF_ROW_MOVEMENT_ACCEL_Y],
             rows[UF_ROW_ANGULAR_ACCEL_Z],
         );
+        pool_free_slot(slot);
+        result
+    }
+
+    fn run_ground_unit_force_with_forward_constraint(enabled: bool) -> (f64, f64) {
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = 0.0;
+            p.ground_offset[i] = 0.0;
+            p.inv_mass[i] = 0.001;
+        }
+
+        let slots = [slot];
+        let forward_constraint_flag = if enabled {
+            UF_FLAG_FORWARD_THRUST_REQUIRES_FACING
+        } else {
+            0
+        };
+        let flags = [UF_FLAG_HAS_THRUST | UF_FLAG_HAS_ORIENTATION | forward_constraint_flag];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_DIR_X] = 0.0;
+        rows[UF_ROW_DIR_Y] = 1.0;
+        rows[UF_ROW_HEADING_X] = 0.0;
+        rows[UF_ROW_HEADING_Y] = 1.0;
+        rows[UF_ROW_ROTATION] = 0.0;
+        rows[UF_ROW_DRIVE_FORCE] = 100.0;
+        rows[UF_ROW_TRACTION] = 1.0;
+        rows[UF_ROW_GROUND_Z] = 0.0;
+        rows[UF_ROW_NORMAL_Z] = 1.0;
+        rows[UF_ROW_ORIENTATION_W] = 1.0;
+
+        assert_eq!(
+            unit_force_step_batch(
+                &slots,
+                &flags,
+                &mut rows,
+                &mut out_flags,
+                1,
+                1.0 / 60.0,
+                20.0,
+                150_000.0,
+                100.0,
+                30.0,
+                2.0 * 30.0_f64.sqrt(),
+                0.0,
+                UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+            ),
+            1,
+        );
+        assert_ne!(out_flags[0] & UF_OUT_MOVEMENT_ACCEL, 0);
+        let result = (rows[UF_ROW_MOVEMENT_ACCEL_X], rows[UF_ROW_MOVEMENT_ACCEL_Y]);
+        pool_free_slot(slot);
+        result
+    }
+
+    fn run_ground_unit_force_with_alignment_scaling(rotation: f64, enabled: bool) -> (f64, f64) {
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = 0.0;
+            p.ground_offset[i] = 0.0;
+            p.inv_mass[i] = 0.001;
+        }
+
+        let slots = [slot];
+        let alignment_flag = if enabled {
+            UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING
+        } else {
+            0
+        };
+        let flags = [UF_FLAG_HAS_THRUST | UF_FLAG_HAS_ORIENTATION | alignment_flag];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_DIR_X] = 0.0;
+        rows[UF_ROW_DIR_Y] = 1.0;
+        rows[UF_ROW_HEADING_X] = 0.0;
+        rows[UF_ROW_HEADING_Y] = 1.0;
+        rows[UF_ROW_ROTATION] = rotation;
+        rows[UF_ROW_DRIVE_FORCE] = 100.0;
+        rows[UF_ROW_TRACTION] = 1.0;
+        rows[UF_ROW_GROUND_Z] = 0.0;
+        rows[UF_ROW_NORMAL_Z] = 1.0;
+        rows[UF_ROW_ORIENTATION_W] = 1.0;
+
+        assert_eq!(
+            unit_force_step_batch(
+                &slots,
+                &flags,
+                &mut rows,
+                &mut out_flags,
+                1,
+                1.0 / 60.0,
+                20.0,
+                150_000.0,
+                100.0,
+                30.0,
+                2.0 * 30.0_f64.sqrt(),
+                0.0,
+                UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+            ),
+            1,
+        );
+        assert_ne!(out_flags[0] & UF_OUT_MOVEMENT_ACCEL, 0);
+        let result = (rows[UF_ROW_MOVEMENT_ACCEL_X], rows[UF_ROW_MOVEMENT_ACCEL_Y]);
         pool_free_slot(slot);
         result
     }
@@ -8010,6 +8149,9 @@ mod sim_kernel_tests {
                     30.0,
                     2.0 * 30.0_f64.sqrt(),
                     0.0,
+                    UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+                    UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+                    UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
                 ),
                 1,
             );
@@ -8077,6 +8219,9 @@ mod sim_kernel_tests {
                 30.0,
                 2.0 * 30.0_f64.sqrt(),
                 0.0,
+                UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
             ),
             1,
         );
@@ -8093,8 +8238,8 @@ mod sim_kernel_tests {
     #[test]
     pub(crate) fn flying_traction_controls_thrust_and_turn_authority() {
         let _guard = lock_tests();
-        let (low_ax, low_ay, low_yaw_accel) = run_flying_unit_force_with_traction(0.05);
-        let (high_ax, high_ay, high_yaw_accel) = run_flying_unit_force_with_traction(1.0);
+        let (low_ax, low_ay, low_yaw_accel) = run_flying_unit_force_with_traction(0.05, false);
+        let (high_ax, high_ay, high_yaw_accel) = run_flying_unit_force_with_traction(1.0, false);
 
         assert!(
             low_ax > 0.0,
@@ -8119,11 +8264,91 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn ground_forward_force_constraint_uses_body_facing() {
+        let _guard = lock_tests();
+        let (free_ax, free_ay) = run_ground_unit_force_with_forward_constraint(false);
+        let (strict_ax, strict_ay) = run_ground_unit_force_with_forward_constraint(true);
+
+        assert!(
+            free_ax.abs() < 1e-12 && free_ay > 0.0,
+            "default ground force should follow the requested movement vector",
+        );
+        assert!(
+            strict_ax > 0.0 && strict_ay.abs() < 1e-12,
+            "strict ground force should follow the unit body's current facing",
+        );
+    }
+
+    #[test]
+    pub(crate) fn ground_drive_force_alignment_scaling_uses_configured_180_degree_curve() {
+        let _guard = lock_tests();
+        let (_free_ax, free_ay) = run_ground_unit_force_with_alignment_scaling(0.0, false);
+        let (_aligned_ax, aligned_ay) =
+            run_ground_unit_force_with_alignment_scaling(core::f64::consts::FRAC_PI_2, true);
+        let (_diagonal_ax, diagonal_ay) =
+            run_ground_unit_force_with_alignment_scaling(core::f64::consts::FRAC_PI_4, true);
+        let (_right_angle_ax, right_angle_ay) =
+            run_ground_unit_force_with_alignment_scaling(0.0, true);
+        let (_opposite_ax, opposite_ay) =
+            run_ground_unit_force_with_alignment_scaling(-core::f64::consts::FRAC_PI_2, true);
+
+        assert!(
+            (aligned_ay - free_ay).abs() < 1e-9,
+            "aligned facing should keep full requested drive force",
+        );
+        let diagonal_scale = unit_force_drive_alignment_scale(
+            core::f64::consts::FRAC_1_SQRT_2,
+            UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+            UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+            UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+        );
+        let right_angle_scale = unit_force_drive_alignment_scale(
+            0.0,
+            UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+            UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+            UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+        );
+        assert!(
+            (diagonal_ay - free_ay * diagonal_scale).abs() < 1e-9,
+            "45 degree facing error should apply the configured alignment curve",
+        );
+        assert!(
+            (right_angle_ay - free_ay * right_angle_scale).abs() < 1e-9,
+            "90 degree facing error should keep only a small configured drive force",
+        );
+        assert!(
+            right_angle_scale > 0.0 && right_angle_scale < 0.1,
+            "default curve should make 90 degrees small but non-zero",
+        );
+        assert!(
+            opposite_ay.abs() < 1e-9,
+            "opposite facing should suppress requested drive force",
+        );
+    }
+
+    #[test]
+    pub(crate) fn flying_drive_force_ignores_alignment_scaling() {
+        let _guard = lock_tests();
+        let (free_ax, free_ay, _) = run_flying_unit_force_with_traction(1.0, false);
+        let (scaled_ax, scaled_ay, _) = run_flying_unit_force_with_traction(1.0, true);
+
+        assert!((scaled_ax - free_ax).abs() < 1e-9);
+        assert!((scaled_ay - free_ay).abs() < 1e-9);
+        assert!(
+            scaled_ax > 0.0,
+            "flying thrust remains forward even when requested direction is sideways"
+        );
+    }
+
+    #[test]
     pub(crate) fn eagle_like_attitude_turn_does_not_spin_runaway() {
         let _guard = lock_tests();
         let (yaw, omega_z, alpha_z) = run_eagle_like_attitude_turn(60);
 
-        assert!(yaw > 0.0, "eagle-like body should yaw toward the target heading");
+        assert!(
+            yaw > 0.0,
+            "eagle-like body should yaw toward the target heading"
+        );
         assert!(
             yaw < core::f64::consts::FRAC_PI_2,
             "eagle-like body should not overshoot the 90-degree target within one second",

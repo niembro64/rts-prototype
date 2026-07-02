@@ -6,9 +6,10 @@ import type { UnitLocomotion } from './types';
 import rawLocomotionConfig from './locomotionConfig.json';
 
 // Canonical set of locomotion discriminants. The live per-type physics
-// tuning (drive-force multiplier) and the global force scale are authored
-// in locomotionConfig.json (Config Is Data, Not Code); per-unit traction
-// is authored on each blueprint's physics.traction.
+// tuning (drive-force multiplier, force-direction rules, and arrival thrust
+// behaviour) and the global force scale are authored in locomotionConfig.json
+// (Config Is Data, Not Code); per-unit traction is authored on each
+// blueprint's physics.traction.
 const LOCOMOTION_TYPES = ['wheels', 'treads', 'legs', 'hover', 'flying'] as const;
 
 type LocomotionType = (typeof LOCOMOTION_TYPES)[number];
@@ -16,6 +17,9 @@ type LocomotionType = (typeof LOCOMOTION_TYPES)[number];
 type LocomotionTypeConfig = {
   physics: {
     driveForceMultiplier: number;
+    forwardForceRequiresFacing: boolean;
+    driveForceScalesWithFacing: boolean;
+    maintainFullThrustAtWaypoints: boolean;
   };
 };
 
@@ -27,6 +31,12 @@ type LocomotionConfig = {
 function assertPositiveFinite(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`Invalid locomotion ${label}: expected positive finite number, got ${value}`);
+  }
+}
+
+function assertBoolean(label: string, value: unknown): asserts value is boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`Invalid locomotion ${label}: expected boolean, got ${value}`);
   }
 }
 
@@ -111,6 +121,18 @@ function readLocomotionConfig(): LocomotionConfig {
       `types.${type}.physics.driveForceMultiplier`,
       typeConfig.physics.driveForceMultiplier,
     );
+    assertBoolean(
+      `types.${type}.physics.forwardForceRequiresFacing`,
+      typeConfig.physics.forwardForceRequiresFacing,
+    );
+    assertBoolean(
+      `types.${type}.physics.driveForceScalesWithFacing`,
+      typeConfig.physics.driveForceScalesWithFacing,
+    );
+    assertBoolean(
+      `types.${type}.physics.maintainFullThrustAtWaypoints`,
+      typeConfig.physics.maintainFullThrustAtWaypoints,
+    );
   }
   for (const type of Object.keys(types)) {
     if (!(LOCOMOTION_TYPES as readonly string[]).includes(type)) {
@@ -129,6 +151,18 @@ export const LOCOMOTION_FORCE_SCALE: number = LOCOMOTION_CONFIG.forceScale;
 
 function getLocomotionDriveForceMultiplier(type: LocomotionType): number {
   return LOCOMOTION_CONFIG.types[type].physics.driveForceMultiplier;
+}
+
+function getLocomotionForwardForceRequiresFacing(type: LocomotionType): boolean {
+  return LOCOMOTION_CONFIG.types[type].physics.forwardForceRequiresFacing;
+}
+
+function getLocomotionDriveForceScalesWithFacing(type: LocomotionType): boolean {
+  return LOCOMOTION_CONFIG.types[type].physics.driveForceScalesWithFacing;
+}
+
+function getLocomotionMaintainFullThrustAtWaypoints(type: LocomotionType): boolean {
+  return LOCOMOTION_CONFIG.types[type].physics.maintainFullThrustAtWaypoints;
 }
 
 function getEffectiveLocomotionDriveForce(
@@ -217,6 +251,9 @@ export function createUnitLocomotion(
     type,
     driveForce: getEffectiveLocomotionDriveForce(type, physics.driveForce),
     traction: physics.traction,
+    forwardForceRequiresFacing: getLocomotionForwardForceRequiresFacing(type),
+    driveForceScalesWithFacing: getLocomotionDriveForceScalesWithFacing(type),
+    maintainFullThrustAtWaypoints: getLocomotionMaintainFullThrustAtWaypoints(type),
     pathfinding,
     gravityCounterUpwardForceRatio,
     hoverHeightUpwardForce,
@@ -268,6 +305,9 @@ export function cloneUnitLocomotion(
     type: locomotion.type,
     driveForce: locomotion.driveForce,
     traction: locomotion.traction,
+    forwardForceRequiresFacing: locomotion.forwardForceRequiresFacing,
+    driveForceScalesWithFacing: locomotion.driveForceScalesWithFacing,
+    maintainFullThrustAtWaypoints: locomotion.maintainFullThrustAtWaypoints,
     pathfinding: { ...locomotion.pathfinding },
     gravityCounterUpwardForceRatio: locomotion.gravityCounterUpwardForceRatio,
     hoverHeightUpwardForce: locomotion.hoverHeightUpwardForce,

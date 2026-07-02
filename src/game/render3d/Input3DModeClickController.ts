@@ -14,6 +14,7 @@ import {
   buildReclaimAreaCommand,
   buildReclaimCommandForTarget,
   buildRepairAreaCommand,
+  buildRepairCommandForTarget,
   buildResurrectAreaCommand,
   buildResurrectCommandForTarget,
   buildUnloadTransportCommand,
@@ -96,8 +97,10 @@ type Input3DModeClickControllerConfig = {
   getQueueInsertIndex: () => number | null;
   getSelectedCommander: () => Entity | null;
   getSelectedBuilder: () => Entity | null;
+  onBuildCommandIssued: (queued: boolean) => void;
   applyCursor: (kind: CommandCursorKind) => void;
   isRepairAreaMode: () => boolean;
+  isRestoreAreaMode: () => boolean;
   isAttackMode: () => boolean;
   isAttackAreaMode: () => boolean;
   isAttackGroundMode: () => boolean;
@@ -112,7 +115,9 @@ type Input3DModeClickControllerConfig = {
   isMexUpgradeMode: () => boolean;
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
+  isTowerTargetNoGroundMode: () => boolean;
   exitRepairAreaMode: () => void;
+  exitRestoreAreaMode: () => void;
   exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
   exitAttackGroundMode: () => void;
@@ -127,6 +132,7 @@ type Input3DModeClickControllerConfig = {
   exitMexUpgradeMode: () => void;
   exitPingMode: () => void;
   exitTowerTargetMode: () => void;
+  exitTowerTargetNoGroundMode: () => void;
 };
 
 export class Input3DModeClickController {
@@ -144,6 +150,7 @@ export class Input3DModeClickController {
       this.config.mode.isInBuildMode ||
       this.config.mode.isInDGunMode ||
       this.config.isRepairAreaMode() ||
+      this.config.isRestoreAreaMode() ||
       this.config.isAttackMode() ||
       this.config.isAttackAreaMode() ||
       this.config.isAttackGroundMode() ||
@@ -157,7 +164,8 @@ export class Input3DModeClickController {
       this.config.isUnloadTransportMode() ||
       this.config.isMexUpgradeMode() ||
       this.config.isPingMode() ||
-      this.config.isTowerTargetMode();
+      this.config.isTowerTargetMode() ||
+      this.config.isTowerTargetNoGroundMode();
   }
 
   get buildDiagnostics() {
@@ -228,6 +236,7 @@ export class Input3DModeClickController {
     }
     if (this.config.mode.isInDGunMode) return 'dgun';
     if (this.config.isRepairAreaMode()) return 'repair';
+    if (this.config.isRestoreAreaMode()) return 'repair';
     if (this.config.isAttackMode()) return 'attack';
     if (this.config.isAttackAreaMode()) return 'attack';
     if (this.config.isAttackGroundMode()) return 'attack';
@@ -242,6 +251,7 @@ export class Input3DModeClickController {
     if (this.config.isMexUpgradeMode()) return 'build';
     if (this.config.isPingMode()) return 'ping';
     if (this.config.isTowerTargetMode()) return 'attack';
+    if (this.config.isTowerTargetNoGroundMode()) return 'attack';
     return null;
   }
 
@@ -390,6 +400,7 @@ export class Input3DModeClickController {
     if (buildingBlueprintId === AREA_MEX_BLUEPRINT_ID) return 'buildMexArea';
     if (buildingBlueprintId !== null) return 'buildLine';
     if (this.config.isRepairAreaMode()) return 'repairArea';
+    if (this.config.isRestoreAreaMode()) return 'restoreArea';
     if (this.config.isAttackAreaMode()) return 'attackArea';
     if (this.config.isReclaimMode()) return 'reclaimArea';
     if (this.config.isResurrectAreaMode()) return 'resurrectArea';
@@ -415,7 +426,7 @@ export class Input3DModeClickController {
       this.commitBuildGridDrag(drag);
       return;
     }
-    if (drag.kind === 'repairArea') {
+    if (drag.kind === 'repairArea' || drag.kind === 'restoreArea') {
       const cmd = buildRepairAreaCommand(
         this.config.getSelectedCommander(),
         drag.start.x,
@@ -429,7 +440,10 @@ export class Input3DModeClickController {
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('repair');
-      if (!drag.queue) this.config.exitRepairAreaMode();
+      if (!drag.queue) {
+        if (drag.kind === 'restoreArea') this.config.exitRestoreAreaMode();
+        else this.config.exitRepairAreaMode();
+      }
       return;
     }
     if (drag.kind === 'attackArea') {
@@ -607,19 +621,25 @@ export class Input3DModeClickController {
       });
     }
     this.config.applyCursor('build');
+    this.config.onBuildCommandIssued(drag.queue);
     if (!drag.queue) this.config.mode.exitBuildMode();
   }
 
   private getSelectedBuildersForBlueprint(buildingBlueprintId: BuildingBlueprintId): Entity[] {
+    const activeBuilder = this.config.getSelectedBuilder();
+    if (activeBuilder === null) return [];
+    if (!entityCanBuild(activeBuilder, buildingBlueprintId)) return [];
+    const activeUnitBlueprintId = activeBuilder?.unit?.unitBlueprintId;
+    if (activeUnitBlueprintId === undefined) return [activeBuilder];
+
     const builders: Entity[] = [];
     const selectedUnits = this.config.getEntitySource().getSelectedUnits();
     for (let i = 0; i < selectedUnits.length; i++) {
       const unit = selectedUnits[i];
+      if (unit.unit?.unitBlueprintId !== activeUnitBlueprintId) continue;
       if (entityCanBuild(unit, buildingBlueprintId)) builders.push(unit);
     }
-    if (builders.length > 0) return builders;
-    const builder = this.config.getSelectedBuilder();
-    return entityCanBuild(builder, buildingBlueprintId) && builder !== null ? [builder] : [];
+    return builders.length > 0 ? builders : [activeBuilder];
   }
 
   private getSelectedMetalExtractorUpgradeBuilderIds(): EntityId[] {
@@ -636,6 +656,7 @@ export class Input3DModeClickController {
     if (this.config.mode.isInBuildMode) this.handleBuildClick(e);
     else if (this.config.mode.isInDGunMode) this.handleDGunClick(e);
     else if (this.config.isRepairAreaMode()) this.handleRepairAreaClick(e);
+    else if (this.config.isRestoreAreaMode()) this.handleRestoreAreaClick(e);
     else if (this.config.isAttackMode()) this.handleAttackClick(e);
     else if (this.config.isAttackAreaMode()) this.handleAttackAreaClick(e);
     else if (this.config.isAttackGroundMode()) this.handleAttackGroundClick(e);
@@ -648,7 +669,8 @@ export class Input3DModeClickController {
     else if (this.config.isLoadTransportMode()) this.handleLoadTransportClick(e);
     else if (this.config.isUnloadTransportMode()) this.handleUnloadTransportClick(e);
     else if (this.config.isMexUpgradeMode()) this.handleMexUpgradeClick(e);
-    else if (this.config.isTowerTargetMode()) this.handleTowerTargetClick(e);
+    else if (this.config.isTowerTargetMode()) this.handleTowerTargetClick(e, true);
+    else if (this.config.isTowerTargetNoGroundMode()) this.handleTowerTargetClick(e, false);
     else this.handlePingClick(e);
   }
 
@@ -656,6 +678,7 @@ export class Input3DModeClickController {
     if (this.config.mode.isInBuildMode) this.config.mode.exitBuildMode();
     else if (this.config.mode.isInDGunMode) this.config.mode.exitDGunMode();
     else if (this.config.isRepairAreaMode()) this.config.exitRepairAreaMode();
+    else if (this.config.isRestoreAreaMode()) this.config.exitRestoreAreaMode();
     else if (this.config.isAttackMode()) this.config.exitAttackMode();
     else if (this.config.isAttackAreaMode()) this.config.exitAttackAreaMode();
     else if (this.config.isAttackGroundMode()) this.config.exitAttackGroundMode();
@@ -669,6 +692,7 @@ export class Input3DModeClickController {
     else if (this.config.isUnloadTransportMode()) this.config.exitUnloadTransportMode();
     else if (this.config.isMexUpgradeMode()) this.config.exitMexUpgradeMode();
     else if (this.config.isTowerTargetMode()) this.config.exitTowerTargetMode();
+    else if (this.config.isTowerTargetNoGroundMode()) this.config.exitTowerTargetNoGroundMode();
     else this.config.exitPingMode();
   }
 
@@ -786,6 +810,7 @@ export class Input3DModeClickController {
     );
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
+    this.config.onBuildCommandIssued(queueMode.queue);
     if (!queueMode.queue) this.config.mode.exitBuildMode();
   }
 
@@ -816,21 +841,49 @@ export class Input3DModeClickController {
     this.config.commandQueue.enqueue(cmd);
   }
 
-  private handleRepairAreaClick(e: MouseEvent): void {
-    const commander = this.config.getSelectedCommander();
-    if (!commander) {
-      this.config.exitRepairAreaMode();
+  private handleRepairAreaClick(
+    e: MouseEvent,
+    mode: 'repairArea' | 'restoreArea' = 'repairArea',
+  ): void {
+    const exitMode = () => {
+      if (mode === 'restoreArea') this.config.exitRestoreAreaMode();
+      else this.config.exitRepairAreaMode();
+    };
+    const builder = this.config.getSelectedBuilder();
+    if (!builder) {
+      exitMode();
       return;
     }
+    const tick = this.config.getTick();
+    const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
+    const entityHit = entityHitId !== null
+      ? this.config.getEntitySource().getEntity(entityHitId)
+      : null;
+    const queueMode = this.resolveClickQueueMode(e);
+
+    const targetRepairCmd = buildRepairCommandForTarget(
+      entityHit,
+      builder,
+      tick,
+      queueMode.queue,
+      queueMode.queueFront,
+      queueMode.queueInsertIndex,
+    );
+    if (targetRepairCmd) {
+      this.config.commandQueue.enqueue(targetRepairCmd);
+      this.config.applyCursor('repair');
+      if (!queueMode.queue) exitMode();
+      return;
+    }
+
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
-    const queueMode = this.resolveClickQueueMode(e);
     const cmd = buildRepairAreaCommand(
-      commander,
+      builder,
       world.x,
       world.y,
       REPAIR_AREA_RADIUS,
-      this.config.getTick(),
+      tick,
       queueMode.queue,
       world.z,
       queueMode.queueFront,
@@ -839,7 +892,11 @@ export class Input3DModeClickController {
     if (!cmd) return;
     this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('repair');
-    if (!queueMode.queue) this.config.exitRepairAreaMode();
+    if (!queueMode.queue) exitMode();
+  }
+
+  private handleRestoreAreaClick(e: MouseEvent): void {
+    this.handleRepairAreaClick(e, 'restoreArea');
   }
 
   private handleAttackAreaClick(e: MouseEvent): void {
@@ -875,6 +932,7 @@ export class Input3DModeClickController {
       return;
     }
     const tick = this.config.getTick();
+    const activePlayerId = this.config.getActivePlayerId();
     const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
     const entityHit = entityHitId !== null
       ? this.config.getEntitySource().getEntity(entityHitId)
@@ -883,7 +941,7 @@ export class Input3DModeClickController {
     const meshAttackCmd = buildAttackCommandForTarget(
       entityHit,
       selectedUnits,
-      this.config.getActivePlayerId(),
+      activePlayerId,
       tick,
       queueMode.queue,
       queueMode.queueFront,
@@ -898,12 +956,29 @@ export class Input3DModeClickController {
 
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
+    if (isAlliedTargetForPlayer(entityHit, activePlayerId)) {
+      const allyGroundAttackCmd = buildAttackGroundCommand(
+        selectedUnits,
+        world.x,
+        world.y,
+        tick,
+        queueMode.queue,
+        world.z,
+        queueMode.queueFront,
+        queueMode.queueInsertIndex,
+      );
+      if (!allyGroundAttackCmd) return;
+      this.config.commandQueue.enqueue(allyGroundAttackCmd);
+      this.config.applyCursor('attack');
+      if (!queueMode.queue) this.config.exitAttackMode();
+      return;
+    }
     const attackCmd = buildAttackCommandAt(
       this.config.getEntitySource(),
       world.x,
       world.y,
       selectedUnits,
-      this.config.getActivePlayerId(),
+      activePlayerId,
       tick,
       queueMode.queue,
       queueMode.queueFront,
@@ -1065,8 +1140,8 @@ export class Input3DModeClickController {
   }
 
   private handleReclaimClick(e: MouseEvent): void {
-    const commander = this.config.getSelectedCommander();
-    if (!commander) {
+    const builder = this.config.getSelectedBuilder();
+    if (!builder) {
       this.config.exitReclaimMode();
       return;
     }
@@ -1079,7 +1154,7 @@ export class Input3DModeClickController {
 
     const meshReclaimCmd = buildReclaimCommandForTarget(
       entityHit,
-      commander,
+      builder,
       tick,
       queueMode.queue,
       queueMode.queueFront,
@@ -1095,7 +1170,7 @@ export class Input3DModeClickController {
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     const reclaimCmd = buildReclaimAreaCommand(
-      commander,
+      builder,
       world.x,
       world.y,
       RECLAIM_AREA_RADIUS,
@@ -1278,12 +1353,26 @@ export class Input3DModeClickController {
     if (!queueMode.queue) this.config.exitMexUpgradeMode();
   }
 
-  private handleTowerTargetClick(e: MouseEvent): void {
+  private handleTowerTargetClick(e: MouseEvent, allowGround: boolean): void {
     const entityHitId = this.config.picker.raycastEntity(e.clientX, e.clientY);
-    if (entityHitId === null) return;
-    this.config.selectedCommands.setTowerTarget(entityHitId);
-    if (!this.resolveClickQueueMode(e).queue) this.config.exitTowerTargetMode();
+    if (entityHitId !== null) {
+      this.config.selectedCommands.setTowerTarget(entityHitId);
+    } else if (allowGround) {
+      const world = this.config.picker.raycastGround(e.clientX, e.clientY);
+      if (!world) return;
+      this.config.selectedCommands.setTowerTarget(null, world);
+    } else {
+      return;
+    }
+    if (!this.resolveClickQueueMode(e).queue) {
+      if (allowGround) this.config.exitTowerTargetMode();
+      else this.config.exitTowerTargetNoGroundMode();
+    }
   }
+}
+
+function isAlliedTargetForPlayer(target: Entity | null | undefined, playerId: PlayerId): boolean {
+  return target?.ownership?.playerId === playerId;
 }
 
 function buildFightMoveCommand(
@@ -1328,6 +1417,7 @@ function areaDragRadius(drag: AreaDrag): number {
 function defaultAreaRadius(kind: Input3DAreaDragKind): number {
   switch (kind) {
     case 'repairArea': return REPAIR_AREA_RADIUS;
+    case 'restoreArea': return REPAIR_AREA_RADIUS;
     case 'reclaimArea': return RECLAIM_AREA_RADIUS;
     case 'resurrectArea': return RESURRECT_AREA_RADIUS;
     case 'attackArea': return ATTACK_AREA_RADIUS;

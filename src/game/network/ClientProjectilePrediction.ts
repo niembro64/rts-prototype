@@ -21,6 +21,9 @@ import {
   addProjectileForwardPropulsionAcceleration,
   getProjectileAirDragCoefficient,
   getProjectileAirFrictionPer60HzFrame,
+  getProjectileHomingEngagementScale,
+  getProjectileHomingThrustAcceleration,
+  getProjectileRocketCounterGravityCarryAcceleration,
 } from '../sim/projectileMotion';
 import { windVelocityForAirFriction } from '../sim/motionFriction';
 import {
@@ -155,11 +158,6 @@ type ProjectileAccelScratch = {
 const _clientProjectileEntityAccel = { x: 0, y: 0, z: 0, isHoming: false };
 const _clientProjectileTargetAccel = { x: 0, y: 0, z: 0, isHoming: false };
 
-function getHomingMaxThrustAccel(shot: ProjectileShot): number {
-  const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
-  return (shot.homingThrust ?? 0) / mass;
-}
-
 function resolveClientHomingAimPoint(options: {
   entity: Entity;
   position: { x: number; y: number; z: number };
@@ -275,10 +273,20 @@ function resolveClientHomingThrust(options: {
   if (!proj || proj.homingTurnRate === undefined) return null;
   const shot = proj.config.shot as ProjectileShot;
   if (shot.type === 'missile') return null;
-  if (timeAliveForHomingMs < (shot.homingDelayMs ?? 0)) return null;
-  const maxThrustAccel = getHomingMaxThrustAccel(shot);
+  const engagementScale = getProjectileHomingEngagementScale(
+    shot,
+    timeAliveForHomingMs,
+    dt * 1000,
+  );
+  const maxThrustAccel = getProjectileHomingThrustAcceleration(shot);
   if (maxThrustAccel <= 0) return null;
   const projectileGravity = GRAVITY * shot.gravityForceMultiplier;
+  const counterGravityCarry = getProjectileRocketCounterGravityCarryAcceleration(
+    shot,
+    engagementScale,
+    projectileGravity,
+  );
+  if (engagementScale <= 0 && counterGravityCarry <= 0) return null;
   const aimPoint = resolveClientHomingAimPoint({
     entity,
     position,
@@ -288,18 +296,24 @@ function resolveClientHomingThrust(options: {
   });
   if (aimPoint === null) return null;
 
-  const thrust = computeHomingThrust(
-    velocity.x, velocity.y, velocity.z,
-    aimPoint.x, aimPoint.y, aimPoint.z,
-    position.x, position.y, position.z,
-    proj.homingTurnRate ?? 0,
-    maxThrustAccel,
-    projectileGravity,
-    dt,
-  );
-  _clientThrustResult.x = thrust.thrustX;
-  _clientThrustResult.y = thrust.thrustY;
-  _clientThrustResult.z = thrust.thrustZ;
+  if (engagementScale > 0) {
+    const thrust = computeHomingThrust(
+      velocity.x, velocity.y, velocity.z,
+      aimPoint.x, aimPoint.y, aimPoint.z,
+      position.x, position.y, position.z,
+      (proj.homingTurnRate ?? 0) * engagementScale,
+      maxThrustAccel * engagementScale,
+      projectileGravity,
+      dt,
+    );
+    _clientThrustResult.x = thrust.thrustX;
+    _clientThrustResult.y = thrust.thrustY;
+    _clientThrustResult.z = thrust.thrustZ + counterGravityCarry;
+  } else {
+    _clientThrustResult.x = 0;
+    _clientThrustResult.y = 0;
+    _clientThrustResult.z = counterGravityCarry;
+  }
   return _clientThrustResult;
 }
 
@@ -316,7 +330,12 @@ function applyClientMissileHomingVelocity(options: {
   if (!proj || proj.homingTurnRate === undefined) return false;
   const shot = proj.config.shot as ProjectileShot;
   if (shot.type !== 'missile') return false;
-  if (timeAliveForHomingMs < (shot.homingDelayMs ?? 0)) return false;
+  const engagementScale = getProjectileHomingEngagementScale(
+    shot,
+    timeAliveForHomingMs,
+    dt * 1000,
+  );
+  if (engagementScale <= 0) return false;
   const aimPoint = resolveClientHomingAimPoint({
     entity,
     position,
@@ -329,7 +348,7 @@ function applyClientMissileHomingVelocity(options: {
     velocity.x, velocity.y, velocity.z,
     aimPoint.x, aimPoint.y, aimPoint.z,
     position.x, position.y, position.z,
-    proj.homingTurnRate ?? 0,
+    (proj.homingTurnRate ?? 0) * engagementScale,
     dt,
   );
   velocity.x = guided.velocityX;

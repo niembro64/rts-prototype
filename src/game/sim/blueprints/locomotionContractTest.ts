@@ -81,6 +81,7 @@ export function runLocomotionContractTest(): void {
   assertOwnsWaterTerm(hippoLocomotion, 'waterFriction', 1.5);
   assertOwnsWaterTerm(hippoLocomotion, 'swimHeightUpwardForce', 12);
   assertOwnsWaterTerm(hippoLocomotion, 'swimGravityCounterUpwardForceRatio', 0.25);
+  assertEqual(hippoLocomotion.maintainFullThrustAtWaypoints, false, 'Hippo waypoint thrust mode');
 
   const clonedHippoLocomotion = cloneUnitLocomotion(hippoLocomotion);
   assertOwnsWaterTerm(clonedHippoLocomotion, 'waterForce', 1200);
@@ -88,6 +89,20 @@ export function runLocomotionContractTest(): void {
   assertOwnsWaterTerm(clonedHippoLocomotion, 'waterFriction', 1.5);
   assertOwnsWaterTerm(clonedHippoLocomotion, 'swimHeightUpwardForce', 12);
   assertOwnsWaterTerm(clonedHippoLocomotion, 'swimGravityCounterUpwardForceRatio', 0.25);
+  assertEqual(
+    clonedHippoLocomotion.maintainFullThrustAtWaypoints,
+    false,
+    'cloned Hippo waypoint thrust mode',
+  );
+
+  const eagleLocomotion = getUnitLocomotion('unitEagle');
+  assertEqual(eagleLocomotion.type, 'flying', 'Eagle locomotion type');
+  assertEqual(eagleLocomotion.maintainFullThrustAtWaypoints, true, 'Eagle waypoint thrust mode');
+  assertEqual(
+    cloneUnitLocomotion(eagleLocomotion).maintainFullThrustAtWaypoints,
+    true,
+    'cloned Eagle waypoint thrust mode',
+  );
 
   const nonAmphibiousLocomotion = getUnitLocomotion('unitJackal');
   for (const key of [

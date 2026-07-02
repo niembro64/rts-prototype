@@ -5,11 +5,13 @@ import { getAllBuildings, getAllTowers } from '../buildConfigs';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './unitRoster';
 import { UNIT_BLUEPRINTS } from './units';
 
-type UnitRosterDisplay = {
+export type UnitRosterDisplay = {
   unitBlueprintId: string;
   label: string;
   shortName: string;
   cost: number;
+  energyCost: number;
+  metalCost: number;
   locomotion: string;
 };
 
@@ -18,6 +20,8 @@ type BuildingRosterDisplay = {
   label: string;
   key: string;
   cost: number;
+  energyCost: number;
+  metalCost: number;
   category: BuildMenuCategory;
 };
 
@@ -32,6 +36,10 @@ export const BUILD_MENU_CATEGORY_ORDER: readonly BuildMenuCategory[] = [
 
 function scaledTotalCost(cost: ResourceCost): number {
   return (cost.energy + cost.metal) * COST_MULTIPLIER;
+}
+
+function scaledCostPart(value: number): number {
+  return value * COST_MULTIPLIER;
 }
 
 function fallbackShortName(id: string): string {
@@ -49,6 +57,8 @@ function buildUnitRosterDisplay(): UnitRosterDisplay[] {
         label: id,
         shortName: fallbackShortName(id),
         cost: 0,
+        energyCost: 0,
+        metalCost: 0,
         locomotion: 'unknown',
       };
       continue;
@@ -58,6 +68,8 @@ function buildUnitRosterDisplay(): UnitRosterDisplay[] {
       label: bp.name,
       shortName: bp.shortName,
       cost: scaledTotalCost(bp.cost),
+      energyCost: scaledCostPart(bp.cost.energy),
+      metalCost: scaledCostPart(bp.cost.metal),
       locomotion: bp.locomotion.type,
     };
   }
@@ -82,6 +94,10 @@ export function getUnitDisplayShortName(unitBlueprintId: string): string {
   return display !== undefined ? display.shortName : fallbackShortName(unitBlueprintId);
 }
 
+export function getUnitRosterDisplay(unitBlueprintId: string): UnitRosterDisplay | null {
+  return unitRosterDisplayById.get(unitBlueprintId) ?? null;
+}
+
 function buildStructureRosterDisplay(
   configs: readonly { buildingBlueprintId: BuildingBlueprintId; name: string; cost: ResourceCost }[],
   keyOffset: number,
@@ -94,6 +110,8 @@ function buildStructureRosterDisplay(
       label: bp.name,
       key: `${keyOffset + i + 1}`,
       cost: scaledTotalCost(bp.cost),
+      energyCost: scaledCostPart(bp.cost.energy),
+      metalCost: scaledCostPart(bp.cost.metal),
       category: structureBuildCategory(bp.buildingBlueprintId),
     };
   }

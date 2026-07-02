@@ -9,6 +9,8 @@ export type CommandHotkeyId =
   | 'command.gatherWait'
   | 'command.repeat'
   | 'command.factoryGuard'
+  | 'command.builderPriority'
+  | 'command.carrierSpawn'
   | 'command.moveState'
   | 'command.trajectoryToggle'
   | 'command.cloak'
@@ -19,6 +21,8 @@ export type CommandHotkeyId =
   | 'command.buildingActive'
   | 'command.selfDestruct'
   | 'command.scan'
+  | 'command.areaMex'
+  | 'command.morph'
   | 'command.upgradeMexSelected'
   | 'command.upgradeMexArea'
   | 'command.buildCycle'
@@ -28,11 +32,24 @@ export type CommandHotkeyId =
   | 'factoryPreset.load2'
   | 'factoryPreset.load3'
   | 'factoryPreset.load4'
+  | 'factoryPreset.load5'
+  | 'factoryPreset.load6'
+  | 'factoryPreset.load7'
+  | 'factoryPreset.load8'
+  | 'factoryPreset.load9'
+  | 'factoryPreset.load10'
   | 'factoryPreset.save1'
   | 'factoryPreset.save2'
   | 'factoryPreset.save3'
   | 'factoryPreset.save4'
+  | 'factoryPreset.save5'
+  | 'factoryPreset.save6'
+  | 'factoryPreset.save7'
+  | 'factoryPreset.save8'
+  | 'factoryPreset.save9'
+  | 'factoryPreset.save10'
   | 'factory.stopProduction'
+  | 'factory.queueMode'
   | 'build.slot1'
   | 'build.slot2'
   | 'build.slot3'
@@ -68,20 +85,49 @@ export type CommandHotkeyId =
   | 'combat.guard'
   | 'combat.reclaim'
   | 'combat.capture'
+  | 'combat.resurrect'
+  | 'combat.resurrectArea'
   | 'combat.loadTransport'
   | 'combat.unloadTransport'
   | 'combat.manualLaunch'
-  | 'combat.repairArea'
+  | 'combat.repair'
+  | 'combat.restore'
   | 'combat.ping'
   | 'combat.towerTargetSet'
+  | 'combat.towerTargetSetNoGround'
   | 'combat.towerTargetClear'
   | 'ui.optionsMenu'
+  | 'ui.showMapOverview'
+  | 'ui.flipCameraYaw'
+  | 'camera.viewTa'
+  | 'camera.viewSpring'
+  | 'ui.goToLastPing'
+  | 'ui.toggleUiChrome'
+  | 'ui.muteSound'
+  | 'ui.captureScreenshot'
+  | 'ui.toggleFullscreen'
   | 'ui.chat'
   | 'ui.mapDraw'
   | 'ui.mapLabel'
-  | 'ui.mapErase';
+  | 'ui.mapErase'
+  | 'ui.togglePathingMap'
+  | 'ui.toggleMetalMap'
+  | 'ui.toggleElevationMap'
+  | 'camera.anchorFocus1'
+  | 'camera.anchorFocus2'
+  | 'camera.anchorFocus3'
+  | 'camera.anchorFocus4'
+  | 'camera.anchorSet1'
+  | 'camera.anchorSet2'
+  | 'camera.anchorSet3'
+  | 'camera.anchorSet4';
 
-export type BuiltInCommandHotkeyPresetId = 'prototype' | 'bar-grid' | 'bar-legacy';
+export type BuiltInCommandHotkeyPresetId =
+  | 'prototype'
+  | 'bar-grid'
+  | 'bar-grid-60pct'
+  | 'bar-legacy'
+  | 'bar-legacy-60pct';
 export type CommandHotkeyPresetId = BuiltInCommandHotkeyPresetId | 'custom';
 type CommandHotkeyScope = 'global' | 'buildMenu' | 'factory';
 
@@ -105,6 +151,7 @@ type CustomCommandHotkeyOverrides = Partial<Record<CommandHotkeyId, CommandHotke
 const COMMAND_HOTKEY_STORAGE_KEY = 'budget-annihilation.commandHotkeyPreset';
 const COMMAND_HOTKEY_CUSTOM_STORAGE_KEY = 'budget-annihilation.customCommandHotkeys';
 export const DEFAULT_COMMAND_HOTKEY_PRESET: CommandHotkeyPresetId = 'bar-grid';
+export const BAR_MAP_DRAW_DOUBLE_TAP_MS = 500;
 
 export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'waypoint.move',
@@ -117,6 +164,8 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.gatherWait',
   'command.repeat',
   'command.factoryGuard',
+  'command.builderPriority',
+  'command.carrierSpawn',
   'command.moveState',
   'command.trajectoryToggle',
   'command.cloak',
@@ -127,6 +176,8 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'command.buildingActive',
   'command.selfDestruct',
   'command.scan',
+  'command.areaMex',
+  'command.morph',
   'command.upgradeMexSelected',
   'command.upgradeMexArea',
   'command.buildCycle',
@@ -136,11 +187,24 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'factoryPreset.load2',
   'factoryPreset.load3',
   'factoryPreset.load4',
+  'factoryPreset.load5',
+  'factoryPreset.load6',
+  'factoryPreset.load7',
+  'factoryPreset.load8',
+  'factoryPreset.load9',
+  'factoryPreset.load10',
   'factoryPreset.save1',
   'factoryPreset.save2',
   'factoryPreset.save3',
   'factoryPreset.save4',
+  'factoryPreset.save5',
+  'factoryPreset.save6',
+  'factoryPreset.save7',
+  'factoryPreset.save8',
+  'factoryPreset.save9',
+  'factoryPreset.save10',
   'factory.stopProduction',
+  'factory.queueMode',
   'build.slot1',
   'build.slot2',
   'build.slot3',
@@ -176,26 +240,111 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'combat.guard',
   'combat.reclaim',
   'combat.capture',
+  'combat.resurrect',
+  'combat.resurrectArea',
   'combat.loadTransport',
   'combat.unloadTransport',
   'combat.manualLaunch',
-  'combat.repairArea',
+  'combat.repair',
+  'combat.restore',
   'combat.ping',
   'combat.towerTargetSet',
+  'combat.towerTargetSetNoGround',
   'combat.towerTargetClear',
   'ui.optionsMenu',
+  'ui.showMapOverview',
+  'ui.flipCameraYaw',
+  'camera.viewTa',
+  'camera.viewSpring',
+  'ui.goToLastPing',
+  'ui.toggleUiChrome',
+  'ui.muteSound',
+  'ui.captureScreenshot',
+  'ui.toggleFullscreen',
   'ui.chat',
   'ui.mapDraw',
   'ui.mapLabel',
   'ui.mapErase',
+  'ui.togglePathingMap',
+  'ui.toggleMetalMap',
+  'ui.toggleElevationMap',
+  'camera.anchorFocus1',
+  'camera.anchorFocus2',
+  'camera.anchorFocus3',
+  'camera.anchorFocus4',
+  'camera.anchorSet1',
+  'camera.anchorSet2',
+  'camera.anchorSet3',
+  'camera.anchorSet4',
 ];
 
 export const COMMAND_HOTKEY_PRESET_IDS: readonly CommandHotkeyPresetId[] = [
   'prototype',
   'bar-grid',
+  'bar-grid-60pct',
   'bar-legacy',
+  'bar-legacy-60pct',
   'custom',
 ];
+
+export function isBarGridCommandHotkeyPreset(presetId: CommandHotkeyPresetId): boolean {
+  return presetId === 'bar-grid' || presetId === 'bar-grid-60pct';
+}
+
+export function isBarLegacyCommandHotkeyPreset(presetId: CommandHotkeyPresetId): boolean {
+  return presetId === 'bar-legacy' || presetId === 'bar-legacy-60pct';
+}
+
+export function isBarCommandHotkeyPreset(presetId: CommandHotkeyPresetId): boolean {
+  return isBarGridCommandHotkeyPreset(presetId) || isBarLegacyCommandHotkeyPreset(presetId);
+}
+
+export function hasBarFactoryPresetHotkeys(presetId: CommandHotkeyPresetId): boolean {
+  return presetId === 'bar-grid' || presetId === 'bar-legacy';
+}
+
+type BarMapDrawKeyEvent = Pick<
+  KeyboardEvent,
+  'code' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'
+>;
+
+export function barMapDrawHotkeySignature(
+  event: BarMapDrawKeyEvent,
+  presetId: CommandHotkeyPresetId,
+): string | null {
+  if (presetId === 'bar-grid') {
+    return isPlainCode(event, 'Backquote') ? 'bar-grid:Backquote' : null;
+  }
+  if (presetId === 'bar-grid-60pct') {
+    return event.code === 'KeyQ' &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey &&
+      event.metaKey
+      ? 'bar-grid-60pct:Meta+KeyQ'
+      : null;
+  }
+  if (presetId === 'bar-legacy') {
+    if (isPlainCode(event, 'KeyQ')) return 'bar-legacy:KeyQ';
+    return isPlainCode(event, 'Backquote') ? 'bar-legacy:Backquote' : null;
+  }
+  if (presetId === 'bar-legacy-60pct') {
+    return isPlainCode(event, 'KeyQ') ? 'bar-legacy-60pct:KeyQ' : null;
+  }
+  return null;
+}
+
+export function barMapDrawCommandForTapCount(tapCount: number): Extract<CommandHotkeyId, 'ui.mapDraw' | 'ui.mapLabel'> {
+  return tapCount >= 2 ? 'ui.mapLabel' : 'ui.mapDraw';
+}
+
+function isPlainCode(event: BarMapDrawKeyEvent, codeValue: string): boolean {
+  return event.code === codeValue &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    !event.metaKey;
+}
 
 export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, string>> = {
   'waypoint.move': 'Waypoint: Move',
@@ -208,6 +357,8 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.gatherWait': 'Gather Wait',
   'command.repeat': 'Repeat Orders',
   'command.factoryGuard': 'Factory Guard',
+  'command.builderPriority': 'Builder Priority',
+  'command.carrierSpawn': 'Carrier Spawning',
   'command.moveState': 'Move State',
   'command.trajectoryToggle': 'Trajectory Mode',
   'command.cloak': 'Cloak',
@@ -218,6 +369,8 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'command.buildingActive': 'Building On/Off',
   'command.selfDestruct': 'Self Destruct',
   'command.scan': 'Scanner Sweep',
+  'command.areaMex': 'Area Mex',
+  'command.morph': 'Upgrade',
   'command.upgradeMexSelected': 'Upgrade Metal Extractor',
   'command.upgradeMexArea': 'Upgrade Metal Extractor Area',
   'command.buildCycle': 'Cycle Build',
@@ -227,11 +380,24 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'factoryPreset.load2': 'Load Factory Preset 2',
   'factoryPreset.load3': 'Load Factory Preset 3',
   'factoryPreset.load4': 'Load Factory Preset 4',
+  'factoryPreset.load5': 'Load Factory Preset 5',
+  'factoryPreset.load6': 'Load Factory Preset 6',
+  'factoryPreset.load7': 'Load Factory Preset 7',
+  'factoryPreset.load8': 'Load Factory Preset 8',
+  'factoryPreset.load9': 'Load Factory Preset 9',
+  'factoryPreset.load10': 'Load Factory Preset 10',
   'factoryPreset.save1': 'Save Factory Preset 1',
   'factoryPreset.save2': 'Save Factory Preset 2',
   'factoryPreset.save3': 'Save Factory Preset 3',
   'factoryPreset.save4': 'Save Factory Preset 4',
-  'factory.stopProduction': 'Stop Factory Production',
+  'factoryPreset.save5': 'Save Factory Preset 5',
+  'factoryPreset.save6': 'Save Factory Preset 6',
+  'factoryPreset.save7': 'Save Factory Preset 7',
+  'factoryPreset.save8': 'Save Factory Preset 8',
+  'factoryPreset.save9': 'Save Factory Preset 9',
+  'factoryPreset.save10': 'Save Factory Preset 10',
+  'factory.stopProduction': 'Clear Queue',
+  'factory.queueMode': 'Factory Queue Mode',
   'build.slot1': 'Build Slot 1',
   'build.slot2': 'Build Slot 2',
   'build.slot3': 'Build Slot 3',
@@ -267,22 +433,46 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'combat.guard': 'Guard',
   'combat.reclaim': 'Reclaim',
   'combat.capture': 'Capture',
+  'combat.resurrect': 'Resurrect',
+  'combat.resurrectArea': 'Resurrect Area',
   'combat.loadTransport': 'Load Transport',
   'combat.unloadTransport': 'Unload Transport',
   'combat.manualLaunch': 'Manual Launch',
-  'combat.repairArea': 'Repair Area',
+  'combat.repair': 'Repair',
+  'combat.restore': 'Restore',
   'combat.ping': 'Ping',
-  'combat.towerTargetSet': 'Tower Target',
+  'combat.towerTargetSet': 'Set Target',
+  'combat.towerTargetSetNoGround': 'Set Target No Ground',
   'combat.towerTargetClear': 'Clear Tower Target',
   'ui.optionsMenu': 'Options Menu',
+  'ui.showMapOverview': 'Map Overview',
+  'ui.flipCameraYaw': 'Flip Camera',
+  'camera.viewTa': 'TA Camera View',
+  'camera.viewSpring': 'Spring Camera View',
+  'ui.goToLastPing': 'Last Message Position',
+  'ui.toggleUiChrome': 'Toggle Interface',
+  'ui.muteSound': 'Mute Sound',
+  'ui.captureScreenshot': 'Screenshot',
+  'ui.toggleFullscreen': 'Toggle Fullscreen',
   'ui.chat': 'Chat',
   'ui.mapDraw': 'Draw On Map',
   'ui.mapLabel': 'Draw Map Label',
   'ui.mapErase': 'Erase Map Drawings',
+  'ui.togglePathingMap': 'Toggle Pathing Map',
+  'ui.toggleMetalMap': 'Toggle Metal Map',
+  'ui.toggleElevationMap': 'Toggle Elevation Map',
+  'camera.anchorFocus1': 'Focus Camera Anchor 1',
+  'camera.anchorFocus2': 'Focus Camera Anchor 2',
+  'camera.anchorFocus3': 'Focus Camera Anchor 3',
+  'camera.anchorFocus4': 'Focus Camera Anchor 4',
+  'camera.anchorSet1': 'Set Camera Anchor 1',
+  'camera.anchorSet2': 'Set Camera Anchor 2',
+  'camera.anchorSet3': 'Set Camera Anchor 3',
+  'camera.anchorSet4': 'Set Camera Anchor 4',
 };
 
 function commandHotkeyScope(commandId: CommandHotkeyId): CommandHotkeyScope {
-  if (commandId === 'factory.stopProduction') return 'factory';
+  if (commandId === 'factory.stopProduction' || commandId === 'factory.queueMode') return 'factory';
   return commandId.startsWith('build.slot') ? 'buildMenu' : 'global';
 }
 
@@ -294,7 +484,11 @@ function code(label: string, codeValue: string, options: ChordOptions = {}): Com
   return [{ code: codeValue, label, ...options }];
 }
 
-function sequence(...chords: CommandKeyChord[]): CommandHotkeyBinding {
+function sequence(...bindings: readonly CommandHotkeyBinding[]): CommandHotkeyBinding {
+  const chords: CommandKeyChord[] = [];
+  for (const binding of bindings) {
+    for (const chord of binding) chords.push(chord);
+  }
   return chords;
 }
 
@@ -304,7 +498,28 @@ function commandPreset(
   return entries;
 }
 
-const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, CommandHotkeyPreset>> = {
+function withoutFactoryPresetBindings(preset: CommandHotkeyPreset): CommandHotkeyPreset {
+  const entries = { ...preset } as Record<CommandHotkeyId, readonly CommandHotkeyBinding[]>;
+  for (const commandId of COMMAND_HOTKEY_IDS) {
+    if (commandId.startsWith('factoryPreset.')) entries[commandId] = [];
+  }
+  return commandPreset(entries);
+}
+
+function withCommandHotkeyOverrides(
+  preset: CommandHotkeyPreset,
+  overrides: Partial<Record<CommandHotkeyId, readonly CommandHotkeyBinding[]>>,
+): CommandHotkeyPreset {
+  return commandPreset({
+    ...preset,
+    ...overrides,
+  } as Record<CommandHotkeyId, readonly CommandHotkeyBinding[]>);
+}
+
+const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
+  Exclude<BuiltInCommandHotkeyPresetId, 'bar-grid-60pct' | 'bar-legacy-60pct'>,
+  CommandHotkeyPreset
+>> = {
   prototype: commandPreset({
     'waypoint.move': [key('M', 'm', { shift: 'any' })],
     'waypoint.fight': [key('F', 'f', { shift: 'any' })],
@@ -319,6 +534,8 @@ const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, Comm
     'command.gatherWait': [code('Ctrl+Alt+W', 'KeyW', { ctrl: true, alt: true })],
     'command.repeat': [key('Alt+R', 'r', { alt: true })],
     'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
+    'command.builderPriority': [],
+    'command.carrierSpawn': [],
     'command.moveState': [key('Alt+H', 'h', { alt: true })],
     'command.trajectoryToggle': [key('Alt+J', 'j', { alt: true })],
     'command.cloak': [key('Alt+C', 'c', { alt: true })],
@@ -329,6 +546,8 @@ const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, Comm
     'command.buildingActive': [key('O', 'o', { shift: 'any' })],
     'command.selfDestruct': [key('K', 'k', { shift: 'any' })],
     'command.scan': [key('Y', 'y', { shift: 'any' })],
+    'command.areaMex': [],
+    'command.morph': [],
     'command.upgradeMexSelected': [code('Alt+U', 'KeyU', { alt: true })],
     'command.upgradeMexArea': [code('Ctrl+Alt+U', 'KeyU', { ctrl: true, alt: true })],
     'command.buildCycle': [key('B', 'b', { shift: 'any' })],
@@ -338,11 +557,24 @@ const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, Comm
     'factoryPreset.load2': [code('Ctrl+Alt+X', 'KeyX', { ctrl: true, alt: true })],
     'factoryPreset.load3': [code('Ctrl+Alt+C', 'KeyC', { ctrl: true, alt: true })],
     'factoryPreset.load4': [code('Ctrl+Alt+V', 'KeyV', { ctrl: true, alt: true })],
+    'factoryPreset.load5': [code('Ctrl+Alt+1', 'Digit1', { ctrl: true, alt: true })],
+    'factoryPreset.load6': [code('Ctrl+Alt+2', 'Digit2', { ctrl: true, alt: true })],
+    'factoryPreset.load7': [code('Ctrl+Alt+3', 'Digit3', { ctrl: true, alt: true })],
+    'factoryPreset.load8': [code('Ctrl+Alt+4', 'Digit4', { ctrl: true, alt: true })],
+    'factoryPreset.load9': [code('Ctrl+Alt+5', 'Digit5', { ctrl: true, alt: true })],
+    'factoryPreset.load10': [code('Ctrl+Alt+6', 'Digit6', { ctrl: true, alt: true })],
     'factoryPreset.save1': [code('Ctrl+Alt+Shift+Z', 'KeyZ', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
     'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save5': [code('Ctrl+Alt+Shift+1', 'Digit1', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save6': [code('Ctrl+Alt+Shift+2', 'Digit2', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save7': [code('Ctrl+Alt+Shift+3', 'Digit3', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save8': [code('Ctrl+Alt+Shift+4', 'Digit4', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save9': [code('Ctrl+Alt+Shift+5', 'Digit5', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.save10': [code('Ctrl+Alt+Shift+6', 'Digit6', { ctrl: true, alt: true, shift: true })],
     'factory.stopProduction': [key('S', 's', { shift: 'any' })],
+    'factory.queueMode': [code('Alt+G', 'KeyG', { alt: true, shift: 'any' })],
     'build.slot1': [code('1', 'Digit1', { shift: 'any' })],
     'build.slot2': [code('2', 'Digit2', { shift: 'any' })],
     'build.slot3': [code('3', 'Digit3', { shift: 'any' })],
@@ -378,209 +610,365 @@ const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, Comm
     'combat.guard': [key('G', 'g', { shift: 'any' })],
     'combat.reclaim': [key('C', 'c', { shift: 'any' })],
     'combat.capture': [key('Alt+E', 'e', { alt: true })],
+    'combat.resurrect': [code('Alt+Shift+E', 'KeyE', { alt: true, shift: true })],
+    'combat.resurrectArea': [code('Ctrl+Alt+Shift+E', 'KeyE', { ctrl: true, alt: true, shift: true })],
     'combat.loadTransport': [code('Ctrl+Alt+Q', 'KeyQ', { ctrl: true, alt: true })],
     'combat.unloadTransport': [code('Ctrl+Alt+Shift+Q', 'KeyQ', { ctrl: true, alt: true, shift: true })],
     'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
-    'combat.repairArea': [key('R', 'r', { shift: 'any' })],
+    'combat.repair': [key('R', 'r', { shift: 'any' })],
+    'combat.restore': [],
     'combat.ping': [key('P', 'p', { shift: 'any' })],
     'combat.towerTargetSet': [key('L', 'l', { shift: 'any' })],
+    'combat.towerTargetSetNoGround': [code('Alt+L', 'KeyL', { alt: true, shift: 'any' })],
     'combat.towerTargetClear': [key('J', 'j', { shift: 'any' })],
     'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.showMapOverview': [code('Ctrl+T', 'KeyT', { ctrl: true })],
+    'ui.flipCameraYaw': [code('Alt+O', 'KeyO', { alt: true })],
+    'camera.viewTa': [code('Ctrl+F5', 'F5', { ctrl: true })],
+    'camera.viewSpring': [code('Ctrl+F6', 'F6', { ctrl: true })],
+    'ui.goToLastPing': [code('F5', 'F5', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleUiChrome': [code('Ctrl+F7', 'F7', { ctrl: true })],
+    'ui.muteSound': [code('Ctrl+Shift+S', 'KeyS', { ctrl: true, shift: true })],
+    'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleFullscreen': [key('Alt+Backspace', 'backspace', { alt: true })],
     'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
     'ui.mapDraw': [code('Ctrl+Shift+D', 'KeyD', { ctrl: true, shift: true })],
     'ui.mapLabel': [code('Ctrl+Shift+L', 'KeyL', { ctrl: true, shift: true })],
     'ui.mapErase': [code('Ctrl+Shift+E', 'KeyE', { ctrl: true, shift: true })],
+    'ui.togglePathingMap': [code('Ctrl+Shift+P', 'KeyP', { ctrl: true, shift: true })],
+    'ui.toggleMetalMap': [code('Ctrl+Shift+M', 'KeyM', { ctrl: true, shift: true })],
+    'ui.toggleElevationMap': [code('Ctrl+Shift+H', 'KeyH', { ctrl: true, shift: true })],
+    'camera.anchorFocus1': [code('F1', 'F1')],
+    'camera.anchorFocus2': [code('F2', 'F2')],
+    'camera.anchorFocus3': [code('F3', 'F3')],
+    'camera.anchorFocus4': [code('F4', 'F4')],
+    'camera.anchorSet1': [code('Ctrl+F1', 'F1', { ctrl: true })],
+    'camera.anchorSet2': [code('Ctrl+F2', 'F2', { ctrl: true })],
+    'camera.anchorSet3': [code('Ctrl+F3', 'F3', { ctrl: true })],
+    'camera.anchorSet4': [code('Ctrl+F4', 'F4', { ctrl: true })],
   }),
   'bar-grid': commandPreset({
-    'waypoint.move': [code('M', 'KeyM', { shift: 'any' })],
+    'waypoint.move': [],
     'waypoint.fight': [code('F', 'KeyF', { shift: 'any' })],
     'waypoint.patrol': [code('H', 'KeyH', { shift: 'any' })],
-    'formation.assume': [code('Ctrl+Alt+M', 'KeyM', { ctrl: true, alt: true })],
-    'formation.move': [code('Ctrl+Alt+F', 'KeyF', { ctrl: true, alt: true })],
+    'formation.assume': [],
+    'formation.move': [],
     'command.stop': [code('G', 'KeyG', { shift: 'any' })],
     'command.wait': [
       code('Y', 'KeyY', { shift: 'any' }),
-      code('Ctrl+Shift+Y', 'KeyY', { ctrl: true, shift: true }),
     ],
     'command.gatherWait': [code('P', 'KeyP', { shift: 'any' })],
     'command.repeat': [code('T', 'KeyT', { shift: 'any' })],
     'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
+    'command.builderPriority': [],
+    'command.carrierSpawn': [],
     'command.moveState': [code(';', 'Semicolon', { shift: 'any' })],
-    'command.trajectoryToggle': [code('Alt+J', 'KeyJ', { alt: true })],
+    'command.trajectoryToggle': [code('B', 'KeyB', { shift: 'any' })],
     'command.cloak': [code('K', 'KeyK', { shift: 'any' })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
-    'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],
-    'command.fireToggle': [
-      sequence(
-        { code: 'KeyL', label: 'L' },
-        { code: 'KeyL', label: 'L' },
-      ),
-      code('L', 'KeyL', { shift: 'any' }),
-    ],
-    'command.buildingActive': [
-      sequence(
-        { code: 'KeyB', label: 'B' },
-        { code: 'KeyB', label: 'B' },
-      ),
-      code('B', 'KeyB', { shift: 'any' }),
-    ],
+    'command.clearQueue': [],
+    'command.fireToggle': [code('L', 'KeyL', { shift: 'any' })],
+    'command.buildingActive': [code('B', 'KeyB', { shift: 'any' })],
     'command.selfDestruct': [code('Ctrl+B', 'KeyB', { ctrl: true, shift: 'any' })],
-    'command.scan': [code('F7', 'F7', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
-    'command.upgradeMexSelected': [code('Alt+U', 'KeyU', { alt: true, shift: 'any' })],
-    'command.upgradeMexArea': [code('Ctrl+Alt+U', 'KeyU', { ctrl: true, alt: true, shift: 'any' })],
-    'command.buildCycle': [code('Alt+B', 'KeyB', { alt: true, shift: 'any' })],
+    'command.scan': [],
+    'command.areaMex': [],
+    'command.morph': [],
+    'command.upgradeMexSelected': [],
+    'command.upgradeMexArea': [],
+    // BAR-grid period cycles the active selected builder type, not the current build blueprint.
+    'command.buildCycle': [],
     'command.dgun': [code('D', 'KeyD', { shift: 'any' })],
     'command.selectCommander': [
       key('Tab', 'tab'),
       key('Shift+Tab', 'tab', { shift: true }),
     ],
-    'factoryPreset.load1': [code('Ctrl+Alt+Z', 'KeyZ', { ctrl: true, alt: true })],
-    'factoryPreset.load2': [code('Ctrl+Alt+X', 'KeyX', { ctrl: true, alt: true })],
-    'factoryPreset.load3': [code('Ctrl+Alt+C', 'KeyC', { ctrl: true, alt: true })],
-    'factoryPreset.load4': [code('Ctrl+Alt+V', 'KeyV', { ctrl: true, alt: true })],
-    'factoryPreset.save1': [code('Ctrl+Alt+Shift+Z', 'KeyZ', { ctrl: true, alt: true, shift: true })],
-    'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
-    'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
-    'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.load1': [code('Meta+0', 'Digit0', { meta: true })],
+    'factoryPreset.load2': [code('Meta+1', 'Digit1', { meta: true })],
+    'factoryPreset.load3': [code('Meta+2', 'Digit2', { meta: true })],
+    'factoryPreset.load4': [code('Meta+3', 'Digit3', { meta: true })],
+    'factoryPreset.load5': [code('Meta+4', 'Digit4', { meta: true })],
+    'factoryPreset.load6': [code('Meta+5', 'Digit5', { meta: true })],
+    'factoryPreset.load7': [code('Meta+6', 'Digit6', { meta: true })],
+    'factoryPreset.load8': [code('Meta+7', 'Digit7', { meta: true })],
+    'factoryPreset.load9': [code('Meta+8', 'Digit8', { meta: true })],
+    'factoryPreset.load10': [code('Meta+9', 'Digit9', { meta: true })],
+    'factoryPreset.save1': [code('Meta+Alt+0', 'Digit0', { meta: true, alt: true })],
+    'factoryPreset.save2': [code('Meta+Alt+1', 'Digit1', { meta: true, alt: true })],
+    'factoryPreset.save3': [code('Meta+Alt+2', 'Digit2', { meta: true, alt: true })],
+    'factoryPreset.save4': [code('Meta+Alt+3', 'Digit3', { meta: true, alt: true })],
+    'factoryPreset.save5': [code('Meta+Alt+4', 'Digit4', { meta: true, alt: true })],
+    'factoryPreset.save6': [code('Meta+Alt+5', 'Digit5', { meta: true, alt: true })],
+    'factoryPreset.save7': [code('Meta+Alt+6', 'Digit6', { meta: true, alt: true })],
+    'factoryPreset.save8': [code('Meta+Alt+7', 'Digit7', { meta: true, alt: true })],
+    'factoryPreset.save9': [code('Meta+Alt+8', 'Digit8', { meta: true, alt: true })],
+    'factoryPreset.save10': [code('Meta+Alt+9', 'Digit9', { meta: true, alt: true })],
     'factory.stopProduction': [code('G', 'KeyG', { shift: 'any' })],
-    'build.slot1': [code('Z', 'KeyZ', { shift: 'any' })],
-    'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
-    'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
-    'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
-    'build.slot5': [code('A', 'KeyA', { shift: 'any' })],
-    'build.slot6': [code('S', 'KeyS', { shift: 'any' })],
-    'build.slot7': [code('D', 'KeyD', { shift: 'any' })],
-    'build.slot8': [code('F', 'KeyF', { shift: 'any' })],
-    'build.slot9': [code('Q', 'KeyQ', { shift: 'any' })],
-    'build.slot10': [code('W', 'KeyW', { shift: 'any' })],
-    'build.slot11': [code('E', 'KeyE', { shift: 'any' })],
-    'build.slot12': [code('R', 'KeyR', { shift: 'any' })],
+    'factory.queueMode': [code('Alt+G', 'KeyG', { alt: true, shift: 'any' })],
+    'build.slot1': [code('Z', 'KeyZ', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot2': [code('X', 'KeyX', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot3': [code('C', 'KeyC', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot4': [code('V', 'KeyV', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot5': [code('A', 'KeyA', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot6': [code('S', 'KeyS', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot7': [code('D', 'KeyD', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot8': [code('F', 'KeyF', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot9': [code('Q', 'KeyQ', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot10': [code('W', 'KeyW', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot11': [code('E', 'KeyE', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'build.slot12': [code('R', 'KeyR', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'build.spacingIncrease': [code('Alt+Z', 'KeyZ', { alt: true, shift: 'any' })],
     'build.spacingDecrease': [code('Alt+X', 'KeyX', { alt: true, shift: 'any' })],
     'build.rotateClockwise': [code(']', 'BracketRight', { shift: 'any' })],
     'build.rotateCounterClockwise': [code('[', 'BracketLeft', { shift: 'any' })],
     'select.allUnits': [code('Ctrl+E', 'KeyE', { ctrl: true })],
     'select.matching': [code('Ctrl+W', 'KeyW', { ctrl: true })],
-    'select.matchingInView': [code('Alt+W', 'KeyW', { alt: true })],
+    'select.matchingInView': [code('Q', 'KeyQ', { shift: 'any' })],
     'select.previous': [code('Ctrl+Q', 'KeyQ', { ctrl: true })],
     'select.idleBuilders': [key('Ctrl+Tab', 'tab', { ctrl: true })],
     'select.idleTransports': [code('Ctrl+R', 'KeyR', { ctrl: true })],
     'select.waitingUnits': [code('Ctrl+Y', 'KeyY', { ctrl: true })],
-    'select.sameTypeOnly': [code('Q', 'KeyQ', { shift: 'any' })],
+    'select.sameTypeOnly': [],
     'select.mobileOnly': [code('Alt+Q', 'KeyQ', { alt: true })],
     'select.invert': [code('Alt+I', 'KeyI', { alt: true })],
-    'select.split': [code('Alt+S', 'KeyS', { alt: true })],
+    'select.split': [code('Ctrl+Alt+S', 'KeyS', { ctrl: true, alt: true })],
     'select.loop': [code('Alt+L', 'KeyL', { alt: true })],
     'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
-    'combat.attackLine': [code('Ctrl+Alt+A', 'KeyA', { ctrl: true, alt: true, shift: 'any' })],
+    'combat.attackLine': [],
     'combat.attackArea': [code('Ctrl+A', 'KeyA', { ctrl: true, shift: 'any' })],
-    'combat.attackGround': [code('Alt+T', 'KeyT', { alt: true, shift: 'any' })],
+    'combat.attackGround': [],
     'combat.guard': [code('O', 'KeyO', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
-    'combat.capture': [code('C', 'KeyC', { shift: 'any' })],
+    'combat.capture': [code('W', 'KeyW', { shift: 'any' })],
+    'combat.resurrect': [code('W', 'KeyW', { shift: 'any' })],
+    'combat.resurrectArea': [],
     'combat.loadTransport': [code('J', 'KeyJ', { shift: 'any' })],
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
-    'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
-    'combat.repairArea': [code('R', 'KeyR', { shift: 'any' })],
-    'combat.ping': [code('`', 'Backquote', { shift: 'any' })],
+    'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
+    'combat.repair': [code('R', 'KeyR', { shift: 'any' })],
+    'combat.restore': [code('M', 'KeyM', { shift: 'any' })],
+    'combat.ping': [],
     'combat.towerTargetSet': [code('S', 'KeyS', { shift: 'any' })],
+    'combat.towerTargetSetNoGround': [code('Alt+S', 'KeyS', { alt: true, shift: 'any' })],
     'combat.towerTargetClear': [code('Ctrl+S', 'KeyS', { ctrl: true, shift: 'any' })],
-    'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.optionsMenu': [code('F10', 'F10')],
+    'ui.showMapOverview': [code('Ctrl+T', 'KeyT', { ctrl: true })],
+    'ui.flipCameraYaw': [code('Alt+O', 'KeyO', { alt: true })],
+    'camera.viewTa': [code('Ctrl+F5', 'F5', { ctrl: true })],
+    'camera.viewSpring': [code('Ctrl+F6', 'F6', { ctrl: true })],
+    'ui.goToLastPing': [code('F5', 'F5', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleUiChrome': [code('Ctrl+F7', 'F7', { ctrl: true })],
+    'ui.muteSound': [key('Backspace', 'backspace')],
+    'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleFullscreen': [key('Alt+Backspace', 'backspace', { alt: true })],
     'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
-    'ui.mapDraw': [code('Ctrl+Alt+D', 'KeyD', { ctrl: true, alt: true, shift: 'any' })],
-    'ui.mapLabel': [code('Ctrl+Alt+L', 'KeyL', { ctrl: true, alt: true, shift: 'any' })],
-    'ui.mapErase': [code('Ctrl+Alt+E', 'KeyE', { ctrl: true, alt: true, shift: 'any' })],
+    'ui.mapDraw': [code('`', 'Backquote')],
+    'ui.mapLabel': [sequence(code('`', 'Backquote'), code('`', 'Backquote'))],
+    'ui.mapErase': [],
+    'ui.togglePathingMap': [code('F6', 'F6', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleMetalMap': [code('F7', 'F7', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleElevationMap': [code('F8', 'F8', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'camera.anchorFocus1': [code('F1', 'F1')],
+    'camera.anchorFocus2': [code('F2', 'F2')],
+    'camera.anchorFocus3': [code('F3', 'F3')],
+    'camera.anchorFocus4': [code('F4', 'F4')],
+    'camera.anchorSet1': [code('Ctrl+F1', 'F1', { ctrl: true })],
+    'camera.anchorSet2': [code('Ctrl+F2', 'F2', { ctrl: true })],
+    'camera.anchorSet3': [code('Ctrl+F3', 'F3', { ctrl: true })],
+    'camera.anchorSet4': [code('Ctrl+F4', 'F4', { ctrl: true })],
   }),
   'bar-legacy': commandPreset({
     'waypoint.move': [code('M', 'KeyM', { shift: 'any' })],
     'waypoint.fight': [code('F', 'KeyF', { shift: 'any' })],
     'waypoint.patrol': [code('P', 'KeyP', { shift: 'any' })],
-    'formation.assume': [code('Ctrl+Alt+M', 'KeyM', { ctrl: true, alt: true })],
-    'formation.move': [code('Ctrl+Alt+F', 'KeyF', { ctrl: true, alt: true })],
+    'formation.assume': [],
+    'formation.move': [],
     'command.stop': [code('S', 'KeyS', { shift: 'any' })],
     'command.wait': [
       code('W', 'KeyW', { shift: 'any' }),
-      code('Ctrl+Shift+W', 'KeyW', { ctrl: true, shift: true }),
     ],
-    'command.gatherWait': [code('Ctrl+Alt+W', 'KeyW', { ctrl: true, alt: true })],
-    'command.repeat': [code('Alt+R', 'KeyR', { alt: true })],
-    'command.factoryGuard': [code('Ctrl+G', 'KeyG', { ctrl: true })],
-    'command.moveState': [code('Alt+H', 'KeyH', { alt: true })],
-    'command.trajectoryToggle': [code('Alt+J', 'KeyJ', { alt: true })],
+    'command.gatherWait': [],
+    'command.repeat': [],
+    'command.factoryGuard': [],
+    'command.builderPriority': [],
+    'command.carrierSpawn': [],
+    'command.moveState': [],
+    'command.trajectoryToggle': [],
     'command.cloak': [code('K', 'KeyK', { shift: 'any' })],
     'command.skipCurrent': [code('N', 'KeyN', { shift: 'any' })],
     'command.undoQueue': [code('Ctrl+N', 'KeyN', { ctrl: true })],
-    'command.clearQueue': [code('Ctrl+Shift+N', 'KeyN', { ctrl: true, shift: true })],
-    'command.fireToggle': [code('Ctrl+Alt+L', 'KeyL', { ctrl: true, alt: true, shift: 'any' })],
-    'command.buildingActive': [code('O', 'KeyO', { shift: 'any' })],
+    'command.clearQueue': [],
+    'command.fireToggle': [],
+    'command.buildingActive': [code('X', 'KeyX', { shift: 'any' })],
     'command.selfDestruct': [code('Ctrl+D', 'KeyD', { ctrl: true, shift: 'any' })],
-    'command.scan': [code('F4', 'F4', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
-    'command.upgradeMexSelected': [code('Alt+U', 'KeyU', { alt: true, shift: 'any' })],
-    'command.upgradeMexArea': [code('Ctrl+Alt+U', 'KeyU', { ctrl: true, alt: true, shift: 'any' })],
-    'command.buildCycle': [code('B', 'KeyB', { shift: 'any' })],
+    'command.scan': [],
+    'command.areaMex': [
+      code('Z', 'KeyZ'),
+      code('Shift+Z', 'KeyZ', { shift: true }),
+      code('Ctrl+Alt+Z', 'KeyZ', { ctrl: true, alt: true }),
+    ],
+    'command.morph': [],
+    'command.upgradeMexSelected': [],
+    'command.upgradeMexArea': [],
+    'command.buildCycle': [],
     'command.dgun': [code('D', 'KeyD', { shift: 'any' })],
     'command.selectCommander': [
       code('Ctrl+C', 'KeyC', { ctrl: true, shift: 'any' }),
-      key('Tab', 'tab', { shift: 'any' }),
     ],
-    'factoryPreset.load1': [code('Ctrl+Alt+Z', 'KeyZ', { ctrl: true, alt: true })],
-    'factoryPreset.load2': [code('Ctrl+Alt+X', 'KeyX', { ctrl: true, alt: true })],
-    'factoryPreset.load3': [code('Ctrl+Alt+C', 'KeyC', { ctrl: true, alt: true })],
-    'factoryPreset.load4': [code('Ctrl+Alt+V', 'KeyV', { ctrl: true, alt: true })],
-    'factoryPreset.save1': [code('Ctrl+Alt+Shift+Z', 'KeyZ', { ctrl: true, alt: true, shift: true })],
-    'factoryPreset.save2': [code('Ctrl+Alt+Shift+X', 'KeyX', { ctrl: true, alt: true, shift: true })],
-    'factoryPreset.save3': [code('Ctrl+Alt+Shift+C', 'KeyC', { ctrl: true, alt: true, shift: true })],
-    'factoryPreset.save4': [code('Ctrl+Alt+Shift+V', 'KeyV', { ctrl: true, alt: true, shift: true })],
+    'factoryPreset.load1': [code('Meta+0', 'Digit0', { meta: true })],
+    'factoryPreset.load2': [code('Meta+1', 'Digit1', { meta: true })],
+    'factoryPreset.load3': [code('Meta+2', 'Digit2', { meta: true })],
+    'factoryPreset.load4': [code('Meta+3', 'Digit3', { meta: true })],
+    'factoryPreset.load5': [code('Meta+4', 'Digit4', { meta: true })],
+    'factoryPreset.load6': [code('Meta+5', 'Digit5', { meta: true })],
+    'factoryPreset.load7': [code('Meta+6', 'Digit6', { meta: true })],
+    'factoryPreset.load8': [code('Meta+7', 'Digit7', { meta: true })],
+    'factoryPreset.load9': [code('Meta+8', 'Digit8', { meta: true })],
+    'factoryPreset.load10': [code('Meta+9', 'Digit9', { meta: true })],
+    'factoryPreset.save1': [code('Meta+Alt+0', 'Digit0', { meta: true, alt: true })],
+    'factoryPreset.save2': [code('Meta+Alt+1', 'Digit1', { meta: true, alt: true })],
+    'factoryPreset.save3': [code('Meta+Alt+2', 'Digit2', { meta: true, alt: true })],
+    'factoryPreset.save4': [code('Meta+Alt+3', 'Digit3', { meta: true, alt: true })],
+    'factoryPreset.save5': [code('Meta+Alt+4', 'Digit4', { meta: true, alt: true })],
+    'factoryPreset.save6': [code('Meta+Alt+5', 'Digit5', { meta: true, alt: true })],
+    'factoryPreset.save7': [code('Meta+Alt+6', 'Digit6', { meta: true, alt: true })],
+    'factoryPreset.save8': [code('Meta+Alt+7', 'Digit7', { meta: true, alt: true })],
+    'factoryPreset.save9': [code('Meta+Alt+8', 'Digit8', { meta: true, alt: true })],
+    'factoryPreset.save10': [code('Meta+Alt+9', 'Digit9', { meta: true, alt: true })],
     'factory.stopProduction': [code('Ctrl+S', 'KeyS', { ctrl: true, shift: 'any' })],
-    'build.slot1': [code('Z', 'KeyZ', { shift: 'any' })],
-    'build.slot2': [code('X', 'KeyX', { shift: 'any' })],
-    'build.slot3': [code('C', 'KeyC', { shift: 'any' })],
-    'build.slot4': [code('V', 'KeyV', { shift: 'any' })],
-    'build.slot5': [code('5', 'Digit5', { shift: 'any' })],
-    'build.slot6': [code('6', 'Digit6', { shift: 'any' })],
-    'build.slot7': [code('7', 'Digit7', { shift: 'any' })],
-    'build.slot8': [code('8', 'Digit8', { shift: 'any' })],
-    'build.slot9': [code('9', 'Digit9', { shift: 'any' })],
-    'build.slot10': [code('0', 'Digit0', { shift: 'any' })],
-    'build.slot11': [code('-', 'Minus', { shift: 'any' })],
-    'build.slot12': [code('=', 'Equal', { shift: 'any' })],
+    'factory.queueMode': [code('Alt+G', 'KeyG', { alt: true, shift: 'any' })],
+    'build.slot1': [],
+    'build.slot2': [],
+    'build.slot3': [],
+    'build.slot4': [],
+    'build.slot5': [],
+    'build.slot6': [],
+    'build.slot7': [],
+    'build.slot8': [],
+    'build.slot9': [],
+    'build.slot10': [],
+    'build.slot11': [],
+    'build.slot12': [],
     'build.spacingIncrease': [code('Alt+Z', 'KeyZ', { alt: true, shift: 'any' })],
     'build.spacingDecrease': [code('Alt+X', 'KeyX', { alt: true, shift: 'any' })],
     'build.rotateClockwise': [code(']', 'BracketRight', { shift: 'any' })],
     'build.rotateCounterClockwise': [code('[', 'BracketLeft', { shift: 'any' })],
     'select.allUnits': [code('Ctrl+A', 'KeyA', { ctrl: true })],
     'select.matching': [code('Ctrl+Z', 'KeyZ', { ctrl: true })],
-    'select.matchingInView': [code('Alt+W', 'KeyW', { alt: true })],
-    'select.previous': [code('Alt+P', 'KeyP', { alt: true })],
+    'select.matchingInView': [],
+    'select.previous': [],
     'select.idleBuilders': [code('Ctrl+B', 'KeyB', { ctrl: true })],
-    'select.idleTransports': [code('Ctrl+Alt+T', 'KeyT', { ctrl: true, alt: true })],
-    'select.waitingUnits': [code('Ctrl+Y', 'KeyY', { ctrl: true })],
-    'select.sameTypeOnly': [code('Ctrl+X', 'KeyX', { ctrl: true })],
-    'select.mobileOnly': [code('Alt+M', 'KeyM', { alt: true })],
-    'select.invert': [code('Alt+I', 'KeyI', { alt: true })],
-    'select.split': [code('Alt+S', 'KeyS', { alt: true })],
-    'select.loop': [code('Alt+L', 'KeyL', { alt: true })],
+    'select.idleTransports': [],
+    'select.waitingUnits': [],
+    'select.sameTypeOnly': [],
+    'select.mobileOnly': [],
+    'select.invert': [],
+    'select.split': [],
+    'select.loop': [],
     'combat.attack': [code('A', 'KeyA', { shift: 'any' })],
-    'combat.attackLine': [code('Ctrl+Alt+A', 'KeyA', { ctrl: true, alt: true, shift: 'any' })],
+    'combat.attackLine': [],
     'combat.attackArea': [code('Alt+A', 'KeyA', { alt: true, shift: 'any' })],
-    'combat.attackGround': [code('T', 'KeyT', { shift: 'any' })],
+    'combat.attackGround': [],
     'combat.guard': [code('G', 'KeyG', { shift: 'any' })],
     'combat.reclaim': [code('E', 'KeyE', { shift: 'any' })],
-    'combat.capture': [code('C', 'KeyC', { shift: 'any' })],
+    'combat.capture': [],
+    'combat.resurrect': [code('Ctrl+R', 'KeyR', { ctrl: true, shift: 'any' })],
+    'combat.resurrectArea': [],
     'combat.loadTransport': [code('L', 'KeyL', { shift: 'any' })],
     'combat.unloadTransport': [code('U', 'KeyU', { shift: 'any' })],
-    'combat.manualLaunch': [code('Alt+D', 'KeyD', { alt: true, shift: 'any' })],
-    'combat.repairArea': [code('R', 'KeyR', { shift: 'any' })],
-    'combat.ping': [code('`', 'Backquote', { shift: 'any' })],
+    'combat.manualLaunch': [code('D', 'KeyD', { shift: 'any' })],
+    'combat.repair': [code('R', 'KeyR', { shift: 'any' })],
+    'combat.restore': [],
+    'combat.ping': [],
     'combat.towerTargetSet': [code('Alt+Y', 'KeyY', { alt: true, shift: 'any' })],
+    'combat.towerTargetSetNoGround': [code('Y', 'KeyY', { shift: 'any' })],
     'combat.towerTargetClear': [code('J', 'KeyJ', { shift: 'any' })],
-    'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.optionsMenu': [code('F10', 'F10')],
+    'ui.showMapOverview': [key('Tab', 'tab', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.flipCameraYaw': [code('Ctrl+Shift+O', 'KeyO', { ctrl: true, shift: true })],
+    'camera.viewTa': [code('Ctrl+F2', 'F2', { ctrl: true })],
+    'camera.viewSpring': [code('Ctrl+F3', 'F3', { ctrl: true })],
+    'ui.goToLastPing': [code('F3', 'F3', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleUiChrome': [code('F5', 'F5', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.muteSound': [code('F6', 'F6', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.captureScreenshot': [code('F12', 'F12', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleFullscreen': [
+      key('Alt+Backspace', 'backspace', { alt: true }),
+      key('Alt+Enter', 'enter', { alt: true }),
+    ],
     'ui.chat': [key('Enter', 'enter', { shift: 'any' })],
-    'ui.mapDraw': [code('Ctrl+Alt+D', 'KeyD', { ctrl: true, alt: true, shift: 'any' })],
-    'ui.mapLabel': [code('Ctrl+Shift+L', 'KeyL', { ctrl: true, shift: true })],
-    'ui.mapErase': [code('Ctrl+Alt+E', 'KeyE', { ctrl: true, alt: true, shift: 'any' })],
+    'ui.mapDraw': [
+      code('Q', 'KeyQ'),
+      code('`', 'Backquote'),
+    ],
+    'ui.mapLabel': [
+      sequence(code('Q', 'KeyQ'), code('Q', 'KeyQ')),
+      sequence(code('`', 'Backquote'), code('`', 'Backquote')),
+    ],
+    'ui.mapErase': [],
+    'ui.togglePathingMap': [code('F2', 'F2', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleMetalMap': [code('F4', 'F4', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'ui.toggleElevationMap': [code('F1', 'F1', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    'camera.anchorFocus1': [],
+    'camera.anchorFocus2': [],
+    'camera.anchorFocus3': [],
+    'camera.anchorFocus4': [],
+    'camera.anchorSet1': [],
+    'camera.anchorSet2': [],
+    'camera.anchorSet3': [],
+    'camera.anchorSet4': [],
   }),
+};
+
+const COMMAND_HOTKEY_PRESETS: Readonly<Record<BuiltInCommandHotkeyPresetId, CommandHotkeyPreset>> = {
+  ...BASE_COMMAND_HOTKEY_PRESETS,
+  'bar-grid-60pct': withCommandHotkeyOverrides(
+    withoutFactoryPresetBindings(BASE_COMMAND_HOTKEY_PRESETS['bar-grid']),
+    {
+      'factory.queueMode': [],
+      'ui.mapDraw': [code('Meta+Q', 'KeyQ', { meta: true })],
+      'ui.mapLabel': [
+        sequence(
+          code('Meta+Q', 'KeyQ', { meta: true }),
+          code('Meta+Q', 'KeyQ', { meta: true }),
+        ),
+      ],
+      'select.mobileOnly': [code('Ctrl+Alt+Q', 'KeyQ', { ctrl: true, alt: true })],
+      'camera.viewTa': [code('Ctrl+Meta+5', 'Digit5', { ctrl: true, meta: true })],
+      'camera.viewSpring': [code('Ctrl+Meta+6', 'Digit6', { ctrl: true, meta: true })],
+      'ui.goToLastPing': [code('Meta+5', 'Digit5', { meta: true })],
+      'ui.toggleUiChrome': [code('Ctrl+Meta+7', 'Digit7', { ctrl: true, meta: true })],
+      'camera.anchorFocus1': [code('Meta+1', 'Digit1', { meta: true })],
+      'camera.anchorFocus2': [code('Meta+2', 'Digit2', { meta: true })],
+      'camera.anchorFocus3': [code('Meta+3', 'Digit3', { meta: true })],
+      'camera.anchorFocus4': [code('Meta+4', 'Digit4', { meta: true })],
+      'camera.anchorSet1': [code('Ctrl+Meta+1', 'Digit1', { ctrl: true, meta: true })],
+      'camera.anchorSet2': [code('Ctrl+Meta+2', 'Digit2', { ctrl: true, meta: true })],
+      'camera.anchorSet3': [code('Ctrl+Meta+3', 'Digit3', { ctrl: true, meta: true })],
+      'camera.anchorSet4': [code('Ctrl+Meta+4', 'Digit4', { ctrl: true, meta: true })],
+      'ui.togglePathingMap': [code('Meta+6', 'Digit6', { meta: true })],
+      'ui.toggleMetalMap': [code('Meta+7', 'Digit7', { meta: true })],
+      'ui.toggleElevationMap': [code('Meta+8', 'Digit8', { meta: true })],
+    },
+  ),
+  'bar-legacy-60pct': withCommandHotkeyOverrides(
+    withoutFactoryPresetBindings(BASE_COMMAND_HOTKEY_PRESETS['bar-legacy']),
+    {
+      'factory.queueMode': [],
+      'ui.mapDraw': [code('Q', 'KeyQ')],
+      'ui.mapLabel': [sequence(code('Q', 'KeyQ'), code('Q', 'KeyQ'))],
+      'ui.optionsMenu': [],
+      'camera.viewTa': [code('Ctrl+Meta+2', 'Digit2', { ctrl: true, meta: true })],
+      'camera.viewSpring': [code('Ctrl+Meta+3', 'Digit3', { ctrl: true, meta: true })],
+      'ui.goToLastPing': [code('Meta+3', 'Digit3', { meta: true })],
+      'ui.toggleUiChrome': [code('Meta+5', 'Digit5', { meta: true })],
+      'ui.muteSound': [code('Meta+6', 'Digit6', { meta: true })],
+      'ui.captureScreenshot': [code('Meta+8', 'Digit8', { meta: true })],
+      'ui.togglePathingMap': [code('Meta+2', 'Digit2', { meta: true })],
+      'ui.toggleMetalMap': [code('Meta+4', 'Digit4', { meta: true })],
+      'ui.toggleElevationMap': [code('Meta+1', 'Digit1', { meta: true })],
+    },
+  ),
 };
 
 type CommandHotkeyConflict = {
@@ -676,6 +1064,7 @@ export function commandHotkeyLabel(
   presetId: CommandHotkeyPresetId = getActiveCommandHotkeyPresetId(),
 ): string {
   const firstBinding = getCommandHotkeyPreset(presetId)[commandId][0];
+  if (firstBinding === undefined) return '';
   return bindingLabel(firstBinding);
 }
 
@@ -811,11 +1200,52 @@ export function getCommandHotkeyConflicts(
       }
       if (!seen) uniqueCommandIds.push(commandId);
     }
-    if (uniqueCommandIds.length > 1) {
+    if (
+      uniqueCommandIds.length > 1 &&
+      !isAllowedContextualCommandHotkeyConflict(presetId, signature, uniqueCommandIds) &&
+      !isAllowedContextualStateHotkeyConflict(presetId, signature, uniqueCommandIds) &&
+      !isAllowedContextualSupportHotkeyConflict(presetId, signature, uniqueCommandIds)
+    ) {
       conflicts.push({ presetId, signature, commandIds: uniqueCommandIds });
     }
   }
   return conflicts;
+}
+
+function isAllowedContextualCommandHotkeyConflict(
+  presetId: CommandHotkeyPresetId,
+  signature: string,
+  commandIds: readonly CommandHotkeyId[],
+): boolean {
+  if (!isBarCommandHotkeyPreset(presetId)) return false;
+  if (signature !== 'ctrl:0+shift:any+alt:0+meta:0+keyd') return false;
+  return commandIds.length === 2 &&
+    commandIds.includes('command.dgun') &&
+    commandIds.includes('combat.manualLaunch');
+}
+
+function isAllowedContextualStateHotkeyConflict(
+  presetId: CommandHotkeyPresetId,
+  signature: string,
+  commandIds: readonly CommandHotkeyId[],
+): boolean {
+  if (!isBarGridCommandHotkeyPreset(presetId)) return false;
+  if (signature !== 'ctrl:0+shift:any+alt:0+meta:0+keyb') return false;
+  return commandIds.length === 2 &&
+    commandIds.includes('command.trajectoryToggle') &&
+    commandIds.includes('command.buildingActive');
+}
+
+function isAllowedContextualSupportHotkeyConflict(
+  presetId: CommandHotkeyPresetId,
+  signature: string,
+  commandIds: readonly CommandHotkeyId[],
+): boolean {
+  if (!isBarGridCommandHotkeyPreset(presetId)) return false;
+  if (signature !== 'ctrl:0+shift:any+alt:0+meta:0+keyw') return false;
+  return commandIds.length === 2 &&
+    commandIds.includes('combat.capture') &&
+    commandIds.includes('combat.resurrect');
 }
 
 function loadCustomCommandHotkeyOverrides(): CustomCommandHotkeyOverrides {

@@ -1355,6 +1355,10 @@ export function runClientSnapshotApplierContractTest(): void {
   factorySource.factory.selectedUnitBlueprintId = 'unitLynx';
   factorySource.factory.repeatProduction = false;
   factorySource.factory.productionQueue = ['unitBee', 'unitTick'];
+  factorySource.factory.productionQuotas.unitJackal = 3;
+  factorySource.factory.productionQuotas.unitLynx = 1;
+  factorySource.factory.productionQuotaCounts.unitJackal = 2;
+  factorySource.factory.productionQuotaCounts.unitLynx = 1;
   factorySource.factory.currentBuildProgress = 0.625;
   factorySource.factory.isProducing = true;
   factorySource.factory.energyRateFraction = 0.75;
@@ -1383,14 +1387,12 @@ export function runClientSnapshotApplierContractTest(): void {
   const typedFactoryComposition = snapshotEntityRowComposition(snapshot(6, typedFactoryRows));
   assertContract(
     typedFactoryRows.length === 1 &&
-      (typedFactoryRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
+      (typedFactoryRows as Array<NetworkServerSnapshotEntity | undefined>)[0] !== undefined &&
       typedFactorySource !== undefined &&
-      typedFactorySource.typedPlaceholderRows === 1 &&
-      typedFactorySource.buildingRows.count === 1 &&
-      typedFactorySource.factorySelectedUnitRows.count === 3 &&
-      typedFactorySource.waypointRows.count === 3 &&
-      typedFactoryComposition.entityDtoRows === 0,
-    'typed factory rows must omit DTO placeholders and expose factory side buffers',
+      typedFactorySource.rawEntityRows === 1 &&
+      typedFactorySource.typedPlaceholderRows === 0 &&
+      typedFactoryComposition.entityDtoRows === 1,
+    'factory-private rows must materialize DTOs so quota state cannot be lost in typed rows',
   );
   const encodedPackedFactory = encodeNetworkSnapshotWithRustFallback(
     snapshot(7, typedFactoryRows),
@@ -1404,18 +1406,16 @@ export function runClientSnapshotApplierContractTest(): void {
   const decodedPackedFactorySource = getEntitySnapshotWireSource(decodedPackedFactory.entities);
   assertContract(
     decodedPackedFactory.entities.length === 1 &&
-      decodedPackedFactory.entities[0] === undefined &&
-      decodedPackedFactorySource !== undefined &&
-      decodedPackedFactorySource.typedPlaceholderRows === 1 &&
-      decodedPackedFactorySource.buildingRows.count === 1 &&
-      decodedPackedFactorySource.factorySelectedUnitRows.count === 3 &&
-      decodedPackedFactorySource.waypointRows.count === 3,
-    'packed metadata-only factory decode must omit DTOs and expose factory wire rows',
+      decodedPackedFactory.entities[0] !== undefined &&
+      decodedPackedFactorySource === undefined,
+    'packed factory decode must keep DTOs when factory quota state is present',
   );
 
   factorySource.factory.selectedUnitBlueprintId = null;
   factorySource.factory.repeatProduction = true;
   factorySource.factory.productionQueue.length = 0;
+  factorySource.factory.productionQuotas = {};
+  factorySource.factory.productionQuotaCounts = {};
   factorySource.factory.currentBuildProgress = 0;
   factorySource.factory.isProducing = false;
   factorySource.factory.energyRateFraction = 0;
@@ -1438,13 +1438,17 @@ export function runClientSnapshotApplierContractTest(): void {
       appliedFactory.energyRateFraction === 0.75 &&
       appliedFactory.metalRateFraction === 0.5 &&
       appliedFactory.guardTargetId === id &&
+      appliedFactory.productionQuotas.unitJackal === 3 &&
+      appliedFactory.productionQuotas.unitLynx === 1 &&
+      appliedFactory.productionQuotaCounts.unitJackal === 2 &&
+      appliedFactory.productionQuotaCounts.unitLynx === 1 &&
       appliedFactory.rallyX === 180 &&
       appliedFactory.rallyY === 190 &&
       appliedFactory.rallyZ === 12 &&
       appliedFactory.rallyType === 'fight' &&
       appliedFactory.defaultWaypoints?.length === 2 &&
       appliedFactory.defaultWaypoints[1].type === 'patrol',
-    'typed factory rows must apply factory detail from wire rows before DTO fallback',
+    'factory DTO rows must apply queue, quota, and route detail',
   );
   factoryView.assertRenderEntityStateParity(factoryId);
 
@@ -1457,11 +1461,15 @@ export function runClientSnapshotApplierContractTest(): void {
     packedFactory?.selectedUnitBlueprintId === 'unitLynx' &&
       packedFactory.repeatProduction === false &&
       packedFactory.productionQueue.join(',') === 'unitBee,unitTick' &&
+      packedFactory.productionQuotas.unitJackal === 3 &&
+      packedFactory.productionQuotas.unitLynx === 1 &&
+      packedFactory.productionQuotaCounts.unitJackal === 2 &&
+      packedFactory.productionQuotaCounts.unitLynx === 1 &&
       packedFactory.currentBuildProgress === 0.625 &&
       packedFactory.isProducing === true &&
       packedFactory.defaultWaypoints?.length === 2 &&
       packedFactory.defaultWaypoints[0].type === 'fight',
-    'packed metadata-only factory rows must apply from reconstructed wire rows',
+    'packed factory DTO rows must apply quota state after decode',
   );
   packedFactoryView.assertRenderEntityStateParity(factoryId);
 

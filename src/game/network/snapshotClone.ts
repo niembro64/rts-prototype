@@ -220,9 +220,26 @@ function copyFactoryInto(src: ReusableFactory, dst: ReusableFactory): ReusableFa
   } else {
     dst.queue = null;
   }
+  const srcQuotas = src.quotas ?? null;
+  if (srcQuotas !== null) {
+    const quotas = dst.quotas ?? (dst.quotas = []);
+    quotas.length = srcQuotas.length;
+    for (let i = 0; i < srcQuotas.length; i++) quotas[i] = srcQuotas[i];
+  } else {
+    dst.quotas = null;
+  }
+  const srcQuotaCounts = src.quotaCounts ?? null;
+  if (srcQuotaCounts !== null) {
+    const quotaCounts = dst.quotaCounts ?? (dst.quotaCounts = []);
+    quotaCounts.length = srcQuotaCounts.length;
+    for (let i = 0; i < srcQuotaCounts.length; i++) quotaCounts[i] = srcQuotaCounts[i];
+  } else {
+    dst.quotaCounts = null;
+  }
   dst.energyRate = src.energyRate;
   dst.metalRate = src.metalRate;
   dst.guardTargetId = src.guardTargetId ?? null;
+  dst.lowPriority = src.lowPriority === true;
   copyWaypointInto(src.rally, dst.rally);
   // Guard against `undefined` too so cloning remains tolerant of older
   // decode paths that omitted the route field.
@@ -292,9 +309,12 @@ function copyBuildingInto(
         producing: false,
         repeat: true,
         queue: null,
+        quotas: null,
+        quotaCounts: null,
         energyRate: 0,
         metalRate: 0,
         guardTargetId: null,
+        lowPriority: false,
         rally: createWaypointDto(),
         route: null,
       };

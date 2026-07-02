@@ -17,6 +17,7 @@ import { economyManager } from './economy';
 import {
   cloneResourceCost,
   createBuildable,
+  getBuildFraction,
   isEntityActive,
 } from './buildableHelpers';
 import {
@@ -29,6 +30,7 @@ import type { WindState } from './wind';
 
 import type { FactoryProductionResult } from '@/types/ui';
 import type { UnitAction } from './types';
+import { factoryCanProduceUnit } from './factoryProductionRoster';
 
 const FACTORY_SELECTED_NONE = 0;
 const FACTORY_SELECTED_VALID = 1;
@@ -41,7 +43,22 @@ const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
 const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
 const FACTORY_SHELL_MIN_FREEFALL_CLEARANCE = 36;
+const BAR_QUOTA_REPLACE_MAX_BUILD_PROGRESS = 0.075;
+const BAR_QUOTA_REPLACE_MAX_METAL = 500;
 const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
+const BAR_AIR_FACTORY_OUTPUT_UNIT_BLUEPRINT_IDS = new Set<string>([
+  'unitBee',
+  'unitDragonfly',
+  'unitEagle',
+  'unitTransport',
+]);
+
+function shouldApplyBarFactoryHoldPosition(factory: Entity, unit: Entity): boolean {
+  if (factory.buildingBlueprintId !== 'towerFabricator') return false;
+  const unitBlueprintId = unit.unit?.unitBlueprintId;
+  if (unitBlueprintId === undefined) return false;
+  return !BAR_AIR_FACTORY_OUTPUT_UNIT_BLUEPRINT_IDS.has(unitBlueprintId);
+}
 
 export function shiftFactoryProductionQueue(queue: string[]): string | null {
   if (queue.length === 0) return null;
@@ -155,6 +172,12 @@ class FactoryProductionSystem {
       if (!factory.ownership) continue;
 
       const factoryComp = factory.factory;
+      if (
+        this.preemptLowProgressShellForQuota(world, factory) ||
+        this.fillIdleQuotaSelection(world, factory)
+      ) {
+        world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+      }
       const playerId = factory.ownership.playerId;
       const row = factoryRows.length;
       factoryRows.push(factory);
@@ -188,6 +211,8 @@ class FactoryProductionSystem {
             factoryShellRequiredMetal[row] = buildable.required.metal;
           }
         }
+      } else if (factory.unit !== null && factoryComp.carrierSpawnEnabled === false) {
+        factorySelectedState[row] = FACTORY_SELECTED_NONE;
       } else {
         const selectedUnitBlueprintId = factoryComp.selectedUnitBlueprintId;
         if (selectedUnitBlueprintId === null) {
@@ -195,10 +220,14 @@ class FactoryProductionSystem {
         } else {
           try {
             getUnitBlueprint(selectedUnitBlueprintId);
-            factorySelectedState[row] = FACTORY_SELECTED_VALID;
-            // Honour the unit cap at SHELL SPAWN time — once a shell is in
-            // the world it counts toward the cap.
-            factoryCanBuildUnit[row] = world.canPlayerBuildUnit(playerId) ? 1 : 0;
+            if (factoryCanProduceUnit(factory, selectedUnitBlueprintId)) {
+              factorySelectedState[row] = FACTORY_SELECTED_VALID;
+              // Honour the unit cap at SHELL SPAWN time — once a shell is in
+              // the world it counts toward the cap.
+              factoryCanBuildUnit[row] = world.canPlayerBuildUnit(playerId) ? 1 : 0;
+            } else {
+              factorySelectedState[row] = FACTORY_SELECTED_INVALID;
+            }
           } catch {
             factorySelectedState[row] = FACTORY_SELECTED_INVALID;
           }
@@ -261,14 +290,12 @@ class FactoryProductionSystem {
         factoryComp.isProducing = false;
         factoryComp.currentBuildProgress = 0;
         if (!factoryComp.repeatProduction) {
-          const nextQueuedUnitBlueprintId = shiftFactoryProductionQueue(factoryComp.productionQueue);
-          factoryComp.selectedUnitBlueprintId = nextQueuedUnitBlueprintId;
-          factoryComp.repeatProduction = nextQueuedUnitBlueprintId === null;
+          factoryComp.selectedUnitBlueprintId = this.takeNextFiniteSelection(world, factory);
         }
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       } else if (action === FACTORY_ACTION_CLEAR_INVALID_SELECTION) {
         factoryComp.selectedUnitBlueprintId = null;
-        factoryComp.repeatProduction = true;
+        factoryComp.resumeRepeatUnitBlueprintId = null;
         factoryComp.productionQueue.length = 0;
         world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
       } else if (action === FACTORY_ACTION_STOP_PRODUCING) {
@@ -341,10 +368,98 @@ class FactoryProductionSystem {
     }
     initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
+    world.recordFactoryProducedUnit(factory.id, unit);
     // The factory's spawn turret brought this shell into existence — flash a
     // brief init beam from the factory to it.
     world.registerSpawnBeam(unit.id, factory.id);
     return unit;
+  }
+
+  private fillIdleQuotaSelection(world: WorldState, factory: Entity): boolean {
+    const factoryComp = factory.factory;
+    const ownership = factory.ownership;
+    if (factoryComp === null || ownership === null) return false;
+    if (factoryComp.currentShellId !== null || factoryComp.selectedUnitBlueprintId !== null) return false;
+    const unitBlueprintId = this.takeNextFiniteSelection(world, factory);
+    if (unitBlueprintId === null) return false;
+    factoryComp.selectedUnitBlueprintId = unitBlueprintId;
+    factoryComp.repeatProduction = false;
+    return true;
+  }
+
+  private takeNextFiniteSelection(world: WorldState, factory: Entity): string | null {
+    const quotaUnitBlueprintId = this.mostUnderQuotaUnitBlueprintId(world, factory);
+    if (quotaUnitBlueprintId !== null) return quotaUnitBlueprintId;
+    const factoryComp = factory.factory;
+    if (factoryComp === null) return null;
+    const queuedUnitBlueprintId = shiftFactoryProductionQueue(factoryComp.productionQueue);
+    if (queuedUnitBlueprintId !== null) return queuedUnitBlueprintId;
+    const resumeUnitBlueprintId = factoryComp.resumeRepeatUnitBlueprintId;
+    if (resumeUnitBlueprintId === null) return null;
+    factoryComp.resumeRepeatUnitBlueprintId = null;
+    if (!factoryCanProduceUnit(factory, resumeUnitBlueprintId)) return null;
+    factoryComp.repeatProduction = true;
+    return resumeUnitBlueprintId;
+  }
+
+  private mostUnderQuotaUnitBlueprintId(world: WorldState, factory: Entity): string | null {
+    const factoryComp = factory.factory;
+    if (factoryComp === null || factory.ownership === null) return null;
+    let bestUnitBlueprintId: string | null = null;
+    let bestRatio = Number.POSITIVE_INFINITY;
+    for (const [unitBlueprintId, rawQuota] of Object.entries(factoryComp.productionQuotas)) {
+      const quota = Math.floor(rawQuota);
+      if (quota <= 0 || !factoryCanProduceUnit(factory, unitBlueprintId)) continue;
+      const count = world.getFactoryProducedUnitCount(factory.id, unitBlueprintId);
+      if (count >= quota) continue;
+      const ratio = count / quota;
+      if (ratio < bestRatio) {
+        bestRatio = ratio;
+        bestUnitBlueprintId = unitBlueprintId;
+      }
+    }
+    return bestUnitBlueprintId;
+  }
+
+  private preemptLowProgressShellForQuota(world: WorldState, factory: Entity): boolean {
+    const factoryComp = factory.factory;
+    if (factoryComp === null || factory.ownership === null) return false;
+    const activeUnitBlueprintId = factoryComp.selectedUnitBlueprintId;
+    if (activeUnitBlueprintId === null || factoryComp.currentShellId === null) return false;
+
+    const quotaUnitBlueprintId = this.mostUnderQuotaUnitBlueprintId(world, factory);
+    if (quotaUnitBlueprintId === null || quotaUnitBlueprintId === activeUnitBlueprintId) return false;
+
+    const shell = world.getEntity(factoryComp.currentShellId);
+    const buildable = shell?.buildable ?? null;
+    if (buildable === null) return false;
+    if (buildable.isComplete) return false;
+
+    const progress = getBuildFraction(buildable);
+    if (progress >= BAR_QUOTA_REPLACE_MAX_BUILD_PROGRESS) return false;
+
+    let activeUnitMetalCost = 0;
+    try {
+      activeUnitMetalCost = getUnitBlueprint(activeUnitBlueprintId).cost.metal;
+    } catch {
+      return false;
+    }
+    if (progress * activeUnitMetalCost >= BAR_QUOTA_REPLACE_MAX_METAL) return false;
+
+    this.cancelActiveShell(world, factory);
+    if (factoryComp.repeatProduction) {
+      factoryComp.resumeRepeatUnitBlueprintId = activeUnitBlueprintId;
+    } else {
+      factoryComp.productionQueue.unshift(activeUnitBlueprintId);
+      if (factoryComp.productionQueue.length > MAX_FACTORY_PRODUCTION_QUEUE_LENGTH) {
+        factoryComp.productionQueue.length = MAX_FACTORY_PRODUCTION_QUEUE_LENGTH;
+      }
+    }
+    factoryComp.selectedUnitBlueprintId = quotaUnitBlueprintId;
+    factoryComp.repeatProduction = false;
+    factoryComp.isProducing = false;
+    factoryComp.currentBuildProgress = 0;
+    return true;
   }
 
   // Called when a unit shell completes. Stamps the static factory rally
@@ -361,11 +476,21 @@ class FactoryProductionSystem {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
     if (unit.unit) {
+      // BAR's enabled "Factory hold position" widget sets non-air labs to
+      // MOVE_STATE 0, and produced land units inherit that hold-position
+      // state. The prototype fabricator combines land and air pages, so keep
+      // the BAR air-factory page at the normal unit default.
+      if (shouldApplyBarFactoryHoldPosition(factory, unit)) {
+        unit.unit.moveState = 'holdPosition';
+      }
+
       const guardTarget = factoryComp.guardTargetId !== null
         ? world.getEntity(factoryComp.guardTargetId)
         : undefined;
+      const isSelfFactoryGuard = guardTarget?.id === factory.id;
       if (
         guardTarget !== undefined &&
+        (!isSelfFactoryGuard || unit.builder !== null) &&
         factory.ownership !== null &&
         guardTarget.ownership !== null &&
         guardTarget.ownership.playerId === factory.ownership.playerId
@@ -415,6 +540,9 @@ class FactoryProductionSystem {
     if (!factory.factory || !isEntityActive(factory)) {
       return false;
     }
+    if (!factoryCanProduceUnit(factory, unitBlueprintId)) {
+      return false;
+    }
     try {
       getUnitBlueprint(unitBlueprintId);
     } catch {
@@ -452,6 +580,7 @@ class FactoryProductionSystem {
       factoryComp.selectedUnitBlueprintId = null;
       factoryComp.isProducing = false;
       factoryComp.repeatProduction = true;
+      factoryComp.resumeRepeatUnitBlueprintId = null;
       factoryComp.productionQueue.length = 0;
     } else {
       // Replace — cancel any active shell of the previous type, then
@@ -460,6 +589,7 @@ class FactoryProductionSystem {
       this.cancelActiveShell(world, factory);
       factoryComp.selectedUnitBlueprintId = unitBlueprintId;
       factoryComp.repeatProduction = true;
+      factoryComp.resumeRepeatUnitBlueprintId = null;
       factoryComp.productionQueue.length = 0;
     }
     return true;
@@ -474,11 +604,15 @@ class FactoryProductionSystem {
       || factoryComp.currentShellId !== null
       || factoryComp.isProducing
       || factoryComp.currentBuildProgress !== 0
-      || factoryComp.productionQueue.length > 0;
+      || factoryComp.productionQueue.length > 0
+      || Object.keys(factoryComp.productionQuotas).length > 0
+      || Object.keys(factoryComp.productionQuotaCounts).length > 0;
     this.cancelActiveShell(world, factory);
     factoryComp.selectedUnitBlueprintId = null;
-    factoryComp.repeatProduction = true;
+    factoryComp.resumeRepeatUnitBlueprintId = null;
     factoryComp.productionQueue.length = 0;
+    for (const key of Object.keys(factoryComp.productionQuotas)) delete factoryComp.productionQuotas[key];
+    for (const key of Object.keys(factoryComp.productionQuotaCounts)) delete factoryComp.productionQuotaCounts[key];
     factoryComp.isProducing = false;
     factoryComp.currentBuildProgress = 0;
     return changed;
@@ -536,6 +670,45 @@ class FactoryProductionSystem {
     }
 
     return false;
+  }
+
+  removeUnitProduction(factory: Entity, world: WorldState, unitBlueprintId: string, count = 1): boolean {
+    if (!factory.factory || !isEntityActive(factory)) {
+      return false;
+    }
+    if (!factoryCanProduceUnit(factory, unitBlueprintId)) {
+      return false;
+    }
+    try {
+      getUnitBlueprint(unitBlueprintId);
+    } catch {
+      return false;
+    }
+
+    const factoryComp = factory.factory;
+    let remaining = Math.max(1, Math.min(MAX_FACTORY_PRODUCTION_QUEUE_LENGTH, Math.floor(count)));
+    let changed = false;
+
+    for (let i = factoryComp.productionQueue.length - 1; i >= 0 && remaining > 0; i--) {
+      if (factoryComp.productionQueue[i] !== unitBlueprintId) continue;
+      factoryComp.productionQueue.splice(i, 1);
+      remaining--;
+      changed = true;
+    }
+
+    if (
+      remaining > 0 &&
+      factoryComp.selectedUnitBlueprintId === unitBlueprintId &&
+      !factoryComp.repeatProduction
+    ) {
+      this.cancelActiveShell(world, factory);
+      factoryComp.selectedUnitBlueprintId = null;
+      factoryComp.isProducing = false;
+      factoryComp.currentBuildProgress = 0;
+      changed = true;
+    }
+
+    return changed;
   }
 
   // Cancel the in-progress shell. An unfinished factory unit is never

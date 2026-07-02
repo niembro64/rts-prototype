@@ -1,7 +1,9 @@
 import {
+  COMMAND_HOTKEY_DISPLAY_LABELS,
   COMMAND_HOTKEY_IDS,
   COMMAND_HOTKEY_PRESET_IDS,
-  CommandHotkeySequenceResolver,
+  barMapDrawCommandForTapCount,
+  barMapDrawHotkeySignature,
   commandHotkeyLabel,
   getCommandHotkeyPreset,
   getCommandHotkeyConflicts,
@@ -9,6 +11,8 @@ import {
 } from './commandHotkeys';
 import {
   clearQueueModifierState,
+  factoryProductionClickModeFromEvent,
+  factoryProductionKeyModeFromEvent,
   queueModeForDragRelease,
   queueModeFromEvent,
   setQueueModifierKeyState,
@@ -36,20 +40,163 @@ function keyEvent(
   } as KeyboardEvent;
 }
 
+function isIntentionallyUnboundCommand(presetId: string, commandId: string): boolean {
+  const isBarGridPreset = presetId === 'bar-grid' || presetId === 'bar-grid-60pct';
+  const isBarLegacyPreset = presetId === 'bar-legacy' || presetId === 'bar-legacy-60pct';
+  const isBarPreset = isBarGridPreset || isBarLegacyPreset;
+  const isPrototypeLikePreset = presetId === 'prototype' || presetId === 'custom';
+  if (
+    (presetId === 'bar-grid-60pct' || presetId === 'bar-legacy-60pct') &&
+    commandId.startsWith('factoryPreset.')
+  ) {
+    return true;
+  }
+  if (
+    (presetId === 'bar-grid-60pct' || presetId === 'bar-legacy-60pct') &&
+    commandId === 'factory.queueMode'
+  ) {
+    return true;
+  }
+  if (presetId === 'bar-legacy-60pct' && commandId === 'ui.optionsMenu') return true;
+  if (isPrototypeLikePreset && commandId === 'command.areaMex') return true;
+  if (isPrototypeLikePreset && commandId === 'combat.restore') return true;
+  if (commandId === 'command.builderPriority') return true;
+  if (commandId === 'command.carrierSpawn') return true;
+  if (commandId === 'command.morph') return true;
+  if (
+    isBarPreset &&
+    (
+      commandId === 'command.clearQueue' ||
+      commandId === 'command.scan' ||
+      (commandId === 'command.areaMex' && isBarGridPreset) ||
+      commandId === 'command.upgradeMexSelected' ||
+      commandId === 'command.upgradeMexArea' ||
+      (isBarLegacyPreset && commandId.startsWith('camera.anchor')) ||
+      (isBarLegacyPreset && commandId === 'formation.assume') ||
+      (isBarLegacyPreset && commandId === 'formation.move') ||
+      (isBarLegacyPreset && commandId === 'command.gatherWait') ||
+      (isBarLegacyPreset && commandId === 'command.repeat') ||
+      (isBarLegacyPreset && commandId === 'command.factoryGuard') ||
+      (isBarLegacyPreset && commandId === 'command.moveState') ||
+      (isBarLegacyPreset && commandId === 'command.trajectoryToggle') ||
+      (isBarLegacyPreset && commandId === 'command.fireToggle') ||
+      (isBarLegacyPreset && commandId === 'command.buildCycle') ||
+      (isBarLegacyPreset && commandId.startsWith('build.slot')) ||
+      (isBarGridPreset && commandId === 'select.sameTypeOnly') ||
+      (isBarLegacyPreset && (
+        commandId === 'select.matchingInView' ||
+        commandId === 'select.previous' ||
+        commandId === 'select.idleTransports' ||
+        commandId === 'select.waitingUnits' ||
+        commandId === 'select.sameTypeOnly' ||
+        commandId === 'select.mobileOnly' ||
+        commandId === 'select.invert' ||
+        commandId === 'select.split' ||
+        commandId === 'select.loop'
+      )) ||
+      commandId === 'combat.ping' ||
+      (isBarLegacyPreset && commandId === 'combat.capture') ||
+      (isBarLegacyPreset && commandId === 'combat.restore') ||
+      commandId === 'combat.attackLine' ||
+      commandId === 'combat.attackGround' ||
+      commandId === 'combat.resurrectArea' ||
+      commandId === 'ui.mapErase'
+    )
+  ) {
+    return true;
+  }
+  return isBarGridPreset && (
+    commandId === 'waypoint.move'
+    || commandId === 'formation.assume'
+    || commandId === 'formation.move'
+    || commandId === 'command.buildCycle'
+    || commandId === 'combat.attackLine'
+    || commandId === 'combat.attackGround'
+  );
+}
+
 export function runCommandHotkeysContractTest(): void {
   clearQueueModifierState();
   for (const presetId of COMMAND_HOTKEY_PRESET_IDS) {
     const preset = getCommandHotkeyPreset(presetId);
     for (const commandId of COMMAND_HOTKEY_IDS) {
       const bindings = preset[commandId];
-      assertContract(
-        bindings.length > 0,
-        `${presetId}.${commandId} must have at least one binding`,
-      );
-      assertContract(
-        commandHotkeyLabel(commandId, presetId).length > 0,
-        `${presetId}.${commandId} must have a visible label`,
-      );
+      if (isIntentionallyUnboundCommand(presetId, commandId)) {
+        const reason = commandId.startsWith('factoryPreset.')
+          ? 'BAR 60% hotkey configs explicitly unbind factory presets and their held-space preview'
+          : commandId === 'factory.queueMode'
+            ? 'BAR 60% hotkey configs do not bind factoryqueuemode'
+          : commandId === 'ui.optionsMenu'
+            ? 'BAR legacy 60% does not bind the options menu'
+          : commandId.startsWith('camera.anchor')
+            ? 'BAR legacy presets do not bind camera anchors'
+          : commandId === 'waypoint.move'
+          ? 'BAR-grid reserves M for restore'
+          : commandId === 'formation.assume' || commandId === 'formation.move'
+            ? 'BAR uses formation drag behavior, not separate formation order buttons'
+          : commandId === 'command.clearQueue'
+            ? 'BAR exposes skip-current and cancel-last queue commands, not clear-all queue'
+          : commandId === 'command.scan'
+            ? 'BAR does not bind a separate scanner sweep; those F-keys are map overlay toggles'
+          : commandId === 'command.areaMex'
+            ? 'Area Mex is exposed as a BAR order command; prototype/custom do not add a shortcut and BAR-grid keeps Z for build-grid slot 1'
+          : commandId === 'command.builderPriority'
+            ? 'BAR exposes builder priority as a visible state command without a default keyboard shortcut'
+          : commandId === 'command.carrierSpawn'
+            ? 'BAR exposes carrier spawning as a visible state command without a default keyboard shortcut'
+          : commandId === 'command.morph'
+            ? 'BAR exposes morph as a visible Upgrade command without a default keyboard shortcut'
+          : commandId === 'command.upgradeMexSelected' || commandId === 'command.upgradeMexArea'
+            ? 'BAR exposes mex placement/upgrades through areamex, buildunit, morph, and quick-build behavior, not prototype Alt+U shortcuts'
+          : commandId === 'command.gatherWait'
+            ? 'BAR legacy does not bind Gather Wait'
+          : commandId === 'command.repeat'
+            ? 'BAR legacy does not bind Repeat'
+          : commandId === 'command.factoryGuard'
+            ? 'BAR legacy does not bind Factory Guard'
+          : commandId === 'command.moveState'
+            ? 'BAR legacy does not bind Move State'
+          : commandId === 'command.trajectoryToggle'
+            ? 'BAR legacy does not bind Trajectory'
+          : commandId === 'command.fireToggle'
+            ? 'BAR legacy does not bind Fire State'
+          : commandId === 'combat.ping'
+            ? 'BAR uses map-draw/map-label commands for pings, not a separate Ping order button'
+          : commandId === 'combat.capture'
+            ? 'BAR legacy does not bind Capture; C is used by legacy build bindings'
+          : commandId === 'combat.resurrectArea'
+            ? 'BAR resurrect is area-capable without a separate resurrect-area button'
+          : commandId === 'combat.restore'
+            ? presetId === 'bar-legacy' || presetId === 'bar-legacy-60pct'
+              ? 'BAR legacy binds M to Move, not Restore'
+              : 'Restore is a BAR-grid order command; prototype/custom do not add a shortcut'
+          : commandId === 'ui.mapErase'
+            ? 'BAR erases map drawings through the draw key plus right-mouse drag, not a separate erase hotkey'
+          : commandId === 'command.buildCycle'
+            ? presetId === 'bar-grid' || presetId === 'bar-grid-60pct'
+              ? 'BAR-grid period cycles the active builder type, not build blueprints'
+              : 'BAR legacy B is reserved by buildmenu/build-unit context, not cycle-build'
+            : commandId === 'combat.attackLine'
+              ? 'BAR exposes attack and area attack, not a separate Attack Line order'
+              : 'BAR exposes ground targeting through Attack, not a separate Attack Ground order';
+        assertContract(
+          bindings.length === 0,
+          `${presetId}.${commandId} must stay unbound because ${reason}`,
+        );
+        assertContract(
+          commandHotkeyLabel(commandId, presetId) === '',
+          `${presetId}.${commandId} must display no fake hotkey label`,
+        );
+      } else {
+        assertContract(
+          bindings.length > 0,
+          `${presetId}.${commandId} must have at least one binding`,
+        );
+        assertContract(
+          commandHotkeyLabel(commandId, presetId).length > 0,
+          `${presetId}.${commandId} must have a visible label`,
+        );
+      }
     }
 
     const conflicts = getCommandHotkeyConflicts(presetId);
@@ -61,20 +208,25 @@ export function runCommandHotkeysContractTest(): void {
     );
   }
 
-  const sequenceResolver = new CommandHotkeySequenceResolver();
-  const firstFireToggleChord = sequenceResolver.resolve(keyEvent('l', 'KeyL'), 'bar-grid', 0);
   assertContract(
-    firstFireToggleChord.commandId === null && firstFireToggleChord.pending,
-    'bar-grid command.fireToggle first L should start a pending L L sequence',
+    resolveCommandHotkey(keyEvent('l', 'KeyL'), 'bar-grid') === 'command.fireToggle',
+    'bar-grid L should resolve the visible fire-state command',
   );
-  const secondFireToggleChord = sequenceResolver.resolve(keyEvent('l', 'KeyL'), 'bar-grid', 100);
   assertContract(
-    secondFireToggleChord.commandId === 'command.fireToggle' && !secondFireToggleChord.pending,
-    'bar-grid command.fireToggle L L sequence should resolve on the second L',
+    commandHotkeyLabel('command.fireToggle', 'bar-grid') === 'L',
+    'bar-grid fire state should display the BAR L key',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('a', 'KeyA'), 'bar-grid') === 'combat.attack',
     'single-chord hotkey resolution should still resolve bar-grid A attack',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ'), 'bar-grid', 'buildMenu') === 'build.slot1',
+    'build-menu hotkey resolution should resolve bar-grid Z as build slot/category 1',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('v', 'KeyV'), 'bar-grid', 'buildMenu') === 'build.slot4',
+    'build-menu hotkey resolution should resolve bar-grid V as build slot/category 4',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('a', 'KeyA'), 'bar-grid', 'buildMenu') === 'build.slot5',
@@ -85,12 +237,206 @@ export function runCommandHotkeysContractTest(): void {
     'build-menu hotkey resolution should resolve bar-grid Q as build slot 9',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ', { ctrlKey: true }), 'bar-grid', 'buildMenu') === 'build.slot1',
+    'BAR-grid build-menu keys must match BAR Any+ grid bindings for Ctrl+Z',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('x', 'KeyX', { shiftKey: true, altKey: true }), 'bar-grid', 'buildMenu') === 'build.slot2',
+    'BAR-grid build-menu keys must match BAR Any+ grid bindings for Alt+Shift+X',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ'), 'bar-grid') === 'select.matchingInView',
+    'bar-grid Q should resolve matching-in-view selection',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('t', 'KeyT'), 'bar-grid') === 'command.repeat',
     'bar-grid T should resolve repeat orders',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('p', 'KeyP'), 'bar-grid') === 'command.gatherWait',
     'bar-grid P should resolve gather wait',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('n', 'KeyN'), 'bar-grid') === 'command.skipCurrent',
+    'bar-grid N should resolve BAR skip-current queue command',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('n', 'KeyN', { ctrlKey: true }), 'bar-grid') === 'command.undoQueue',
+    'bar-grid Ctrl+N should resolve BAR cancel-last queue command',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('y', 'KeyY', { shiftKey: true }), 'bar-grid') === 'command.wait',
+    'bar-grid Shift+Y should resolve queued wait',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('y', 'KeyY', { ctrlKey: true, shiftKey: true }), 'bar-grid') === null,
+    'bar-grid Ctrl+Shift+Y must not resolve a fake wait binding',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('`', 'Backquote'), 'bar-grid') === 'ui.mapDraw',
+    'bar-grid backquote should resolve BAR map draw, not a separate Ping order',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('~', 'Backquote', { shiftKey: true }), 'bar-grid') === null,
+    'bar-grid Shift+Backquote must not resolve BAR map draw',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.ping', 'bar-grid') === '',
+    'bar-grid ping command must display no fake BAR order-menu hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.mapDraw', 'bar-grid') === '`',
+    'bar-grid map draw should display the BAR backquote key',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.mapLabel', 'bar-grid') === '` `',
+    'bar-grid map label should display BAR double-backquote',
+  );
+  assertContract(
+    barMapDrawHotkeySignature(keyEvent('`', 'Backquote'), 'bar-grid') === 'bar-grid:Backquote',
+    'bar-grid backquote must enter the BAR map draw double-tap resolver',
+  );
+  assertContract(
+    barMapDrawCommandForTapCount(1) === 'ui.mapDraw' &&
+      barMapDrawCommandForTapCount(2) === 'ui.mapLabel',
+    'BAR map draw tap resolver must map single tap to draw and double tap to label',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { metaKey: true }), 'bar-grid-60pct') === 'ui.mapDraw',
+    'bar-grid-60pct Meta+Q should resolve BAR map draw',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.mapDraw', 'bar-grid-60pct') === 'Meta+Q',
+    'bar-grid-60pct map draw should display BAR Meta+Q',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.mapLabel', 'bar-grid-60pct') === 'Meta+Q Meta+Q',
+    'bar-grid-60pct map label should display BAR double Meta+Q',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('e', 'KeyE', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
+    'bar-grid must not expose a fake map-erase hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.mapErase', 'bar-grid') === '',
+    'bar-grid map erase should display no separate hotkey label',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F6', 'F6'), 'bar-grid') === 'ui.togglePathingMap',
+    'bar-grid F6 should toggle the path traversability overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F7', 'F7'), 'bar-grid') === 'ui.toggleMetalMap',
+    'bar-grid F7 should toggle the metal map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F8', 'F8'), 'bar-grid') === 'ui.toggleElevationMap',
+    'bar-grid F8 should toggle the elevation map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('t', 'KeyT', { ctrlKey: true }), 'bar-grid') === 'ui.showMapOverview',
+    'bar-grid Ctrl+T should toggle BAR overview',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Tab', 'Tab'), 'bar-grid') === 'command.selectCommander',
+    'bar-grid Tab should still select the commander',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('t', 'KeyT'), 'bar-grid') === 'command.repeat',
+    'bar-grid plain T should remain repeat orders',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F5', 'F5', { ctrlKey: true }), 'bar-grid') === 'camera.viewTa',
+    'bar-grid Ctrl+F5 should switch to TA camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F5', 'F5'), 'bar-grid') === 'ui.goToLastPing',
+    'bar-grid F5 should jump to the last message position',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F6', 'F6', { ctrlKey: true }), 'bar-grid') === 'camera.viewSpring',
+    'bar-grid Ctrl+F6 should switch to Spring camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F7', 'F7', { ctrlKey: true }), 'bar-grid') === 'ui.toggleUiChrome',
+    'bar-grid Ctrl+F7 should hide or show the interface',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Backspace', 'Backspace'), 'bar-grid') === 'ui.muteSound',
+    'bar-grid Backspace should mute or unmute sound',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F12', 'F12'), 'bar-grid') === 'ui.captureScreenshot',
+    'bar-grid F12 should capture a screenshot',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F10', 'F10'), 'bar-grid') === 'ui.optionsMenu',
+    'bar-grid plain F10 should open options',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F10', 'F10', { ctrlKey: true }), 'bar-grid') === null,
+    'bar-grid Ctrl+F10 must not expose a fake options binding',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Backspace', 'Backspace', { altKey: true }), 'bar-grid') === 'ui.toggleFullscreen',
+    'bar-grid Alt+Backspace should toggle fullscreen',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('o', 'KeyO', { altKey: true }), 'bar-grid') === 'ui.flipCameraYaw',
+    'bar-grid Alt+O should flip the camera',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F7', 'F7'), 'bar-grid') !== 'command.scan',
+    'bar-grid F7 must not trigger the prototype scanner sweep',
+  );
+  assertContract(
+    commandHotkeyLabel('command.scan', 'bar-grid') === '',
+    'bar-grid scanner sweep should display no fake F7 hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('6', 'Digit6', { metaKey: true }), 'bar-grid-60pct') === 'ui.togglePathingMap',
+    'bar-grid-60pct Meta+6 should toggle the path traversability overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('7', 'Digit7', { metaKey: true }), 'bar-grid-60pct') === 'ui.toggleMetalMap',
+    'bar-grid-60pct Meta+7 should toggle the metal map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('8', 'Digit8', { metaKey: true }), 'bar-grid-60pct') === 'ui.toggleElevationMap',
+    'bar-grid-60pct Meta+8 should toggle the elevation map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('t', 'KeyT', { ctrlKey: true }), 'bar-grid-60pct') === 'ui.showMapOverview',
+    'bar-grid-60pct Ctrl+T should toggle BAR overview',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('5', 'Digit5', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'camera.viewTa',
+    'bar-grid-60pct Ctrl+Meta+5 should switch to TA camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('5', 'Digit5', { metaKey: true }), 'bar-grid-60pct') === 'ui.goToLastPing',
+    'bar-grid-60pct Meta+5 should jump to the last message position',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('6', 'Digit6', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'camera.viewSpring',
+    'bar-grid-60pct Ctrl+Meta+6 should switch to Spring camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('7', 'Digit7', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'ui.toggleUiChrome',
+    'bar-grid-60pct Ctrl+Meta+7 should hide or show the interface',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F12', 'F12'), 'bar-grid-60pct') === 'ui.captureScreenshot',
+    'bar-grid-60pct F12 should capture a screenshot',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Backspace', 'Backspace'), 'bar-grid-60pct') === 'ui.muteSound',
+    'bar-grid-60pct Backspace should mute or unmute sound',
+  );
+  assertContract(
+    barMapDrawHotkeySignature(keyEvent('q', 'KeyQ', { metaKey: true }), 'bar-grid-60pct') ===
+      'bar-grid-60pct:Meta+KeyQ',
+    'bar-grid-60pct Meta+Q must enter the BAR map draw double-tap resolver',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true }), 'bar-grid') === 'select.previous',
@@ -101,12 +447,69 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid Alt+Q should resolve mobile-only selection',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('c', 'KeyC'), 'bar-grid') === 'combat.capture',
-    'bar-grid C should resolve capture',
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { altKey: true }), 'bar-grid') === null,
+    'bar-grid Alt+W must remain unbound because BAR grid has no same-type selection bind',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('d', 'KeyD', { altKey: true }), 'bar-grid') === 'combat.manualLaunch',
-    'bar-grid Alt+D should resolve manual launch',
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true, altKey: true }), 'bar-grid-60pct') ===
+      'select.mobileOnly',
+    'bar-grid-60pct Ctrl+Alt+Q should resolve mobile-only selection',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ', { altKey: true }), 'bar-grid-60pct') === null,
+    'bar-grid-60pct Alt+Q must remain unbound because BAR reserves it for remove-from-autogroup',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { altKey: true }), 'bar-grid-60pct') === null,
+    'bar-grid-60pct Alt+W must remain unbound because BAR grid has no same-type selection bind',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('w', 'KeyW'), 'bar-grid') === 'combat.capture',
+    'bar-grid W should resolve capture',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.resurrect', 'bar-grid') === 'W',
+    'bar-grid resurrect should display the BAR W key',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
+    'bar-grid Ctrl+Alt+W must not expose a separate resurrect-area hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.resurrectArea', 'bar-grid') === '',
+    'bar-grid resurrect-area command must display no extra BAR order-menu hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('d', 'KeyD'), 'bar-grid') === 'command.dgun',
+    'bar-grid D should resolve the default manual-fire command as commander DGun',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.manualLaunch', 'bar-grid') === 'D',
+    'bar-grid manual launch should display the BAR manual-fire D key',
+  );
+  assertContract(
+    commandHotkeyLabel('command.trajectoryToggle', 'bar-grid') === 'B',
+    'bar-grid trajectory state should display the BAR B key',
+  );
+  assertContract(
+    commandHotkeyLabel('command.buildingActive', 'bar-grid') === 'B',
+    'bar-grid building active state should display the BAR B key',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('.', 'Period'), 'bar-grid') === null,
+    'bar-grid period must not resolve the prototype build-cycle command because BAR cycles active builders',
+  );
+  assertContract(
+    commandHotkeyLabel('command.buildCycle', 'bar-grid') === '',
+    'bar-grid build-cycle command must display no fake BAR period hotkey label',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('b', 'KeyB'), 'bar-legacy') === null,
+    'bar-legacy B must not resolve the prototype build-cycle command because BAR legacy reserves B for buildmenu context',
+  );
+  assertContract(
+    commandHotkeyLabel('command.buildCycle', 'bar-legacy') === '',
+    'bar-legacy build-cycle command must display no fake B hotkey label',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('j', 'KeyJ'), 'bar-grid') === 'combat.loadTransport',
@@ -117,8 +520,116 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid U should resolve unload transport',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('s', 'KeyS'), 'bar-grid') === 'combat.towerTargetSet',
+    'bar-grid S should resolve set target',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('s', 'KeyS', { altKey: true }), 'bar-grid') === 'combat.towerTargetSetNoGround',
+    'bar-grid Alt+S should resolve no-ground target',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('s', 'KeyS', { ctrlKey: true }), 'bar-grid') === 'combat.towerTargetClear',
+    'bar-grid Ctrl+S should resolve cancel target',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('a', 'KeyA', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
+    'bar-grid Ctrl+Alt+A must not expose a separate attack-line hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.attackLine', 'bar-grid') === '',
+    'bar-grid attack-line command must display no extra BAR order-menu hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('t', 'KeyT', { altKey: true }), 'bar-grid') === null,
+    'bar-grid Alt+T must not expose a separate attack-ground hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.attackGround', 'bar-grid') === '',
+    'bar-grid attack-ground command must display no extra BAR order-menu hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('r', 'KeyR'), 'bar-grid') === 'combat.repair',
+    'bar-grid R should resolve generic repair',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('r', 'KeyR', { ctrlKey: true }), 'bar-grid') === 'select.idleTransports',
     'bar-grid Ctrl+R should resolve idle transports',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true }), 'bar-grid') === 'factoryPreset.load1',
+    'bar-grid Meta+0 should resolve BAR factory preset slot 1 load',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('3', 'Digit3', { metaKey: true }), 'bar-grid') === 'factoryPreset.load4',
+    'bar-grid Meta+3 should resolve BAR factory preset slot 4 load',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('9', 'Digit9', { metaKey: true }), 'bar-grid') === 'factoryPreset.load10',
+    'bar-grid Meta+9 should resolve BAR factory preset slot 10 load',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true, altKey: true }), 'bar-grid') === 'factoryPreset.save1',
+    'bar-grid Meta+Alt+0 should resolve BAR factory preset slot 1 save',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('9', 'Digit9', { metaKey: true, altKey: true }), 'bar-grid') === 'factoryPreset.save10',
+    'bar-grid Meta+Alt+9 should resolve BAR factory preset slot 10 save',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('g', 'KeyG', { altKey: true }), 'bar-grid', 'factory') === 'factory.queueMode',
+    'bar-grid Alt+G should resolve BAR factory queue mode in factory scope',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('g', 'KeyG', { altKey: true }), 'bar-grid-60pct', 'factory') === null,
+    'bar-grid-60pct Alt+G must stay unbound because BAR grid 60% omits factoryqueuemode',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ', { ctrlKey: true, altKey: true }), 'bar-grid') !== 'factoryPreset.load1',
+    'bar-grid Ctrl+Alt+Z must not keep the old prototype factory preset load binding',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true }), 'bar-legacy') === 'factoryPreset.load1',
+    'bar-legacy Meta+0 should resolve BAR factory preset slot 1 load',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('9', 'Digit9', { metaKey: true }), 'bar-legacy') === 'factoryPreset.load10',
+    'bar-legacy Meta+9 should resolve BAR factory preset slot 10 load',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('g', 'KeyG', { altKey: true }), 'bar-legacy', 'factory') === 'factory.queueMode',
+    'bar-legacy Alt+G should resolve BAR factory queue mode in factory scope',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('g', 'KeyG', { altKey: true }), 'bar-legacy-60pct', 'factory') === null,
+    'bar-legacy-60pct Alt+G must stay unbound because BAR legacy 60% omits factoryqueuemode',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true }), 'bar-grid-60pct') === null,
+    'bar-grid-60pct must keep BAR factory preset loading unbound',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true, altKey: true }), 'bar-grid-60pct') === null,
+    'bar-grid-60pct must keep BAR factory preset saving unbound',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true }), 'bar-legacy-60pct') === null,
+    'bar-legacy-60pct must keep BAR factory preset loading unbound',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('0', 'Digit0', { metaKey: true, altKey: true }), 'bar-legacy-60pct') === null,
+    'bar-legacy-60pct must keep BAR factory preset saving unbound',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ'), 'bar-grid-60pct', 'buildMenu') === 'build.slot1',
+    'bar-grid-60pct must retain BAR grid build-menu slot keys',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ', { ctrlKey: true, altKey: true }), 'prototype') === 'factoryPreset.load1',
+    'prototype Ctrl+Alt+Z should keep the prototype factory preset load binding',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('g', 'KeyG', { altKey: true }), 'prototype', 'factory') === 'factory.queueMode',
+    'prototype Alt+G should expose the factory queue mode command',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('l', 'KeyL'), 'bar-legacy') === 'combat.loadTransport',
@@ -129,12 +640,288 @@ export function runCommandHotkeysContractTest(): void {
     'bar-legacy U should resolve unload transport',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, altKey: true }), 'bar-legacy') === 'command.fireToggle',
-    'bar-legacy Ctrl+Alt+L should resolve fire state without swallowing load transport',
+    resolveCommandHotkey(keyEvent('y', 'KeyY', { altKey: true }), 'bar-legacy') === 'combat.towerTargetSet',
+    'bar-legacy Alt+Y should resolve BAR settarget',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, shiftKey: true }), 'bar-legacy') === 'ui.mapLabel',
-    'bar-legacy Ctrl+Shift+L should resolve map label without colliding with fire state',
+    resolveCommandHotkey(keyEvent('y', 'KeyY', { altKey: true, shiftKey: true }), 'bar-legacy-60pct') === 'combat.towerTargetSet',
+    'bar-legacy-60pct Shift+Alt+Y should resolve BAR settarget',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('y', 'KeyY'), 'bar-legacy') === 'combat.towerTargetSetNoGround',
+    'bar-legacy Y should resolve BAR settargetnoground',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('y', 'KeyY', { shiftKey: true }), 'bar-legacy-60pct') === 'combat.towerTargetSetNoGround',
+    'bar-legacy-60pct Shift+Y should resolve BAR settargetnoground',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.towerTargetSet', 'bar-legacy') === 'Alt+Y',
+    'bar-legacy Set Target should display BAR Alt+Y',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.towerTargetSetNoGround', 'bar-legacy') === 'Y',
+    'bar-legacy Set Target No Ground should display BAR Y even though BAR hides the order-menu button',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('j', 'KeyJ'), 'bar-legacy') === 'combat.towerTargetClear',
+    'bar-legacy J should resolve cancel target',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { shiftKey: true }), 'bar-legacy') === 'command.wait',
+    'bar-legacy Shift+W should resolve queued wait',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { ctrlKey: true, shiftKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Shift+W must not resolve a fake wait binding',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('a', 'KeyA', { altKey: true }), 'bar-legacy') === 'combat.attackArea',
+    'bar-legacy Alt+A should resolve BAR area attack',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('a', 'KeyA', { ctrlKey: true, altKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Alt+A must not resolve a fake Attack Line hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.attackLine', 'bar-legacy') === '',
+    'bar-legacy attack line should display no fake Ctrl+Alt+A hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('t', 'KeyT'), 'bar-legacy') === null,
+    'bar-legacy T must not resolve a fake Attack Ground hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.attackGround', 'bar-legacy') === '',
+    'bar-legacy attack ground should display no fake T hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, altKey: true }), 'bar-legacy') !== 'command.fireToggle',
+    'bar-legacy Ctrl+Alt+L must not resolve a fake fire-state hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('command.fireToggle', 'bar-legacy') === '',
+    'bar-legacy fire state should display no fake Ctrl+Alt+L hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('`', 'Backquote'), 'bar-legacy') === 'ui.mapDraw',
+    'bar-legacy backquote should resolve BAR map draw, not a separate Ping order',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ'), 'bar-legacy') === 'ui.mapDraw',
+    'bar-legacy Q should resolve BAR map draw',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.ping', 'bar-legacy') === '',
+    'bar-legacy ping command must display no fake BAR order-menu hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.mapLabel', 'bar-legacy') === 'Q Q',
+    'bar-legacy map label should display BAR double-Q first',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('l', 'KeyL', { ctrlKey: true, shiftKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Shift+L must not resolve a fake map-label hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Tab', 'Tab'), 'bar-legacy') === 'ui.showMapOverview',
+    'bar-legacy Tab should toggle BAR overview, not select commander',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Tab', 'Tab', { shiftKey: true }), 'bar-legacy') === 'ui.showMapOverview',
+    'bar-legacy Shift+Tab should still match BAR Any+Tab overview',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('c', 'KeyC', { ctrlKey: true }), 'bar-legacy') === 'command.selectCommander',
+    'bar-legacy Ctrl+C should select the commander',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('a', 'KeyA', { ctrlKey: true }), 'bar-legacy') === 'select.allUnits',
+    'bar-legacy Ctrl+A should select all units',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('b', 'KeyB', { ctrlKey: true }), 'bar-legacy') === 'select.idleBuilders',
+    'bar-legacy Ctrl+B should select one idle builder',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ', { ctrlKey: true }), 'bar-legacy') === 'select.matching',
+    'bar-legacy Ctrl+Z should select all matching previous-selection units',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('w', 'KeyW', { altKey: true }), 'bar-legacy') === null,
+    'bar-legacy Alt+W must not expose the prototype matching-in-view selector',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('p', 'KeyP', { altKey: true }), 'bar-legacy') === null,
+    'bar-legacy Alt+P must not expose the prototype previous-selection selector',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('t', 'KeyT', { ctrlKey: true, altKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Alt+T must not expose the prototype idle-transport selector',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('y', 'KeyY', { ctrlKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Y must not expose the BAR-grid waiting-units selector',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('x', 'KeyX', { ctrlKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+X must stay unbound until the BAR not-in-hotkey-group selector is modeled',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('m', 'KeyM', { altKey: true }), 'bar-legacy') === null,
+    'bar-legacy Alt+M must not expose the prototype mobile-only selector',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('o', 'KeyO', { ctrlKey: true, shiftKey: true }), 'bar-legacy') === 'ui.flipCameraYaw',
+    'bar-legacy Ctrl+Shift+O should flip the camera',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('q', 'KeyQ'), 'bar-legacy-60pct') === 'ui.mapDraw',
+    'bar-legacy-60pct Q should resolve BAR map draw',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F2', 'F2', { ctrlKey: true }), 'bar-legacy') === 'camera.viewTa',
+    'bar-legacy Ctrl+F2 should switch to TA camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F1', 'F1'), 'bar-legacy') === 'ui.toggleElevationMap',
+    'bar-legacy F1 should toggle the elevation map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F2', 'F2'), 'bar-legacy') === 'ui.togglePathingMap',
+    'bar-legacy F2 should toggle the path traversability overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F3', 'F3', { ctrlKey: true }), 'bar-legacy') === 'camera.viewSpring',
+    'bar-legacy Ctrl+F3 should switch to Spring camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F3', 'F3'), 'bar-legacy') === 'ui.goToLastPing',
+    'bar-legacy F3 should jump to the last message position',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F4', 'F4'), 'bar-legacy') === 'ui.toggleMetalMap',
+    'bar-legacy F4 should toggle the metal map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F5', 'F5'), 'bar-legacy') === 'ui.toggleUiChrome',
+    'bar-legacy F5 should hide or show the interface',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F6', 'F6'), 'bar-legacy') === 'ui.muteSound',
+    'bar-legacy F6 should mute or unmute sound',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F12', 'F12'), 'bar-legacy') === 'ui.captureScreenshot',
+    'bar-legacy F12 should capture a screenshot',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F10', 'F10'), 'bar-legacy') === 'ui.optionsMenu',
+    'bar-legacy plain F10 should open options',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F10', 'F10', { shiftKey: true }), 'bar-legacy') === null,
+    'bar-legacy Shift+F10 must not expose a fake options binding',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Backspace', 'Backspace', { altKey: true }), 'bar-legacy') === 'ui.toggleFullscreen',
+    'bar-legacy Alt+Backspace should toggle fullscreen',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Enter', 'Enter', { altKey: true }), 'bar-legacy') === 'ui.toggleFullscreen',
+    'bar-legacy Alt+Enter should toggle fullscreen',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F4', 'F4'), 'bar-legacy') !== 'command.scan',
+    'bar-legacy F4 must not trigger the prototype scanner sweep',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('1', 'Digit1', { metaKey: true }), 'bar-legacy-60pct') === 'ui.toggleElevationMap',
+    'bar-legacy-60pct Meta+1 should toggle the elevation map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('2', 'Digit2', { ctrlKey: true, metaKey: true }), 'bar-legacy-60pct') === 'camera.viewTa',
+    'bar-legacy-60pct Ctrl+Meta+2 should switch to TA camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('2', 'Digit2', { metaKey: true }), 'bar-legacy-60pct') === 'ui.togglePathingMap',
+    'bar-legacy-60pct Meta+2 should toggle the path traversability overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('3', 'Digit3', { ctrlKey: true, metaKey: true }), 'bar-legacy-60pct') === 'camera.viewSpring',
+    'bar-legacy-60pct Ctrl+Meta+3 should switch to Spring camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('3', 'Digit3', { metaKey: true }), 'bar-legacy-60pct') === 'ui.goToLastPing',
+    'bar-legacy-60pct Meta+3 should jump to the last message position',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('4', 'Digit4', { metaKey: true }), 'bar-legacy-60pct') === 'ui.toggleMetalMap',
+    'bar-legacy-60pct Meta+4 should toggle the metal map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('5', 'Digit5', { metaKey: true }), 'bar-legacy-60pct') === 'ui.toggleUiChrome',
+    'bar-legacy-60pct Meta+5 should hide or show the interface',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('6', 'Digit6', { metaKey: true }), 'bar-legacy-60pct') === 'ui.muteSound',
+    'bar-legacy-60pct Meta+6 should mute or unmute sound',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('8', 'Digit8', { metaKey: true }), 'bar-legacy-60pct') === 'ui.captureScreenshot',
+    'bar-legacy-60pct Meta+8 should capture a screenshot',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Enter', 'Enter', { altKey: true }), 'bar-legacy-60pct') === 'ui.toggleFullscreen',
+    'bar-legacy-60pct Alt+Enter should toggle fullscreen',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('Tab', 'Tab'), 'bar-legacy-60pct') === 'ui.showMapOverview',
+    'bar-legacy-60pct Tab should toggle BAR overview',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F10', 'F10'), 'bar-legacy-60pct') === null,
+    'bar-legacy-60pct must not bind F10 options because BAR legacy 60% omits it',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.optionsMenu', 'bar-legacy-60pct') === '',
+    'bar-legacy-60pct options menu should display no F10 hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('ui.mapLabel', 'bar-legacy-60pct') === 'Q Q',
+    'bar-legacy-60pct map label should display BAR double-Q',
+  );
+  assertContract(
+    barMapDrawHotkeySignature(keyEvent('q', 'KeyQ'), 'bar-legacy-60pct') === 'bar-legacy-60pct:KeyQ',
+    'bar-legacy-60pct Q must enter the BAR map draw double-tap resolver',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('x', 'KeyX'), 'bar-legacy') === 'command.buildingActive',
+    'bar-legacy X should resolve BAR on/off',
+  );
+  assertContract(
+    commandHotkeyLabel('command.buildingActive', 'bar-legacy') === 'X',
+    'bar-legacy on/off should display the BAR X key',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('x', 'KeyX'), 'bar-legacy', 'buildMenu') === null,
+    'bar-legacy X must not resolve a fake positional build slot; the controller handles BAR buildunit cycling',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('c', 'KeyC'), 'bar-legacy') === null,
+    'bar-legacy C must not resolve capture because BAR legacy uses C for build bindings',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.capture', 'bar-legacy') === '',
+    'bar-legacy capture should display no fake C hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('r', 'KeyR', { ctrlKey: true }), 'bar-legacy') === 'combat.resurrect',
+    'bar-legacy Ctrl+R should resolve resurrect',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.resurrect', 'bar-legacy') === 'Ctrl+R',
+    'bar-legacy resurrect should display the BAR Ctrl+R key',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',
@@ -145,20 +932,76 @@ export function runCommandHotkeysContractTest(): void {
     'bar-grid semicolon should resolve move state',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('m', 'KeyM', { ctrlKey: true, altKey: true }), 'bar-grid') === 'formation.assume',
-    'bar-grid Ctrl+Alt+M should resolve assume formation',
+    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-grid') === 'combat.restore',
+    'bar-grid M must resolve Restore like BAR grid',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('f', 'KeyF', { ctrlKey: true, altKey: true }), 'bar-grid') === 'formation.move',
-    'bar-grid Ctrl+Alt+F should resolve move in formation',
+    commandHotkeyLabel('combat.restore', 'bar-grid') === 'M',
+    'bar-grid Restore should display the BAR M key',
+  );
+  assertContract(
+    commandHotkeyLabel('combat.restore', 'bar-legacy') === '',
+    'bar-legacy Restore should display no fake M hotkey label',
+  );
+  assertContract(
+    commandHotkeyLabel('waypoint.move', 'bar-grid') === '',
+    'bar-grid Move should display no fake M hotkey label',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('m', 'KeyM'), 'bar-legacy') === 'waypoint.move',
+    'bar-legacy M should still resolve Move',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('m', 'KeyM', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
+    'bar-grid Ctrl+Alt+M must not expose a separate assume-formation hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('m', 'KeyM', { ctrlKey: true, altKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Alt+M must not expose a separate assume-formation hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('formation.assume', 'bar-grid') === '',
+    'bar-grid assume-formation command must display no extra BAR order-menu hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('formation.assume', 'bar-legacy') === '',
+    'bar-legacy assume-formation command must display no extra BAR order-menu hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('f', 'KeyF', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
+    'bar-grid Ctrl+Alt+F must not expose a separate move-in-formation hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('f', 'KeyF', { ctrlKey: true, altKey: true }), 'bar-legacy') === null,
+    'bar-legacy Ctrl+Alt+F must not expose a separate move-in-formation hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('formation.move', 'bar-grid') === '',
+    'bar-grid move-in-formation command must display no extra BAR order-menu hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('formation.move', 'bar-legacy') === '',
+    'bar-legacy move-in-formation command must display no extra BAR order-menu hotkey',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('z', 'KeyZ', { altKey: true }), 'bar-grid') === 'build.spacingIncrease',
     'bar-grid Alt+Z should resolve build spacing increase',
   );
   assertContract(
+    resolveCommandHotkey(keyEvent('[', 'BracketLeft'), 'bar-grid') === 'build.rotateCounterClockwise',
+    'bar-grid [ should resolve BAR buildfacing inc',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent(']', 'BracketRight'), 'bar-grid') === 'build.rotateClockwise',
-    'bar-grid ] should resolve build rotate clockwise',
+    'bar-grid ] should resolve BAR buildfacing dec',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('[', 'BracketLeft', { shiftKey: true }), 'bar-grid-60pct') === 'build.rotateCounterClockwise',
+    'bar-grid-60pct Shift+[ should resolve BAR buildfacing inc',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent(']', 'BracketRight', { shiftKey: true }), 'bar-legacy') === 'build.rotateClockwise',
+    'bar-legacy Shift+] should resolve BAR buildfacing dec',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('g', 'KeyG', { ctrlKey: true }), 'bar-grid') === 'command.factoryGuard',
@@ -169,16 +1012,172 @@ export function runCommandHotkeysContractTest(): void {
     'factory-scoped bar-grid G should resolve stop production',
   );
   assertContract(
+    commandHotkeyLabel('factory.stopProduction', 'bar-grid') === 'G',
+    'factory stop production BAR-grid hotkey label must remain G',
+  );
+  assertContract(
+    COMMAND_HOTKEY_DISPLAY_LABELS['factory.stopProduction'] === 'Clear Queue',
+    'factory stop production must use BAR order-menu label Clear Queue',
+  );
+  assertContract(
+    commandHotkeyLabel('factory.stopProduction', 'prototype').length > 0,
+    'factory stop production command must expose a visible label in the prototype preset',
+  );
+  assertContract(
     resolveCommandHotkey(keyEvent('g', 'KeyG'), 'bar-grid') === 'command.stop',
     'global bar-grid G should still resolve unit stop',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('u', 'KeyU', { altKey: true }), 'bar-grid') === 'command.upgradeMexSelected',
-    'bar-grid Alt+U should resolve selected metal extractor upgrade',
+    resolveCommandHotkey(keyEvent('n', 'KeyN'), 'bar-legacy') === 'command.skipCurrent',
+    'bar-legacy N should resolve BAR skip-current queue command',
   );
   assertContract(
-    resolveCommandHotkey(keyEvent('u', 'KeyU', { ctrlKey: true, altKey: true }), 'bar-grid') === 'command.upgradeMexArea',
-    'bar-grid Ctrl+Alt+U should resolve area metal extractor upgrade',
+    resolveCommandHotkey(keyEvent('n', 'KeyN', { ctrlKey: true }), 'bar-legacy') === 'command.undoQueue',
+    'bar-legacy Ctrl+N should resolve BAR cancel-last queue command',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('n', 'KeyN', { ctrlKey: true, shiftKey: true }), 'bar-grid') === null,
+    'bar-grid Ctrl+Shift+N must not expose a clear-all queue hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('command.clearQueue', 'bar-grid') === '',
+    'bar-grid clear queue command must display no fake BAR queue hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ'), 'bar-grid') === null,
+    'bar-grid plain Z must not resolve Area Mex because Z belongs to build slot 1 in build-menu scope',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ'), 'bar-grid', 'buildMenu') === 'build.slot1',
+    'bar-grid build-menu Z should remain build slot/category 1',
+  );
+  assertContract(
+    commandHotkeyLabel('command.areaMex', 'bar-grid') === '',
+    'bar-grid Area Mex button must display no fake Z hotkey label',
+  );
+  assertContract(
+    commandHotkeyLabel('command.builderPriority', 'bar-grid') === '',
+    'bar-grid Builder Priority button must display no fake hotkey label',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ'), 'bar-legacy') === 'command.areaMex',
+    'bar-legacy Z should resolve BAR Area Mex',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ', { shiftKey: true }), 'bar-legacy') === 'command.areaMex',
+    'bar-legacy Shift+Z should resolve BAR Area Mex',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('z', 'KeyZ', { ctrlKey: true, altKey: true }), 'bar-legacy') === 'command.areaMex',
+    'bar-legacy Ctrl+Alt+Z should resolve BAR Area Mex',
+  );
+  assertContract(
+    commandHotkeyLabel('command.areaMex', 'bar-legacy') === 'Z',
+    'bar-legacy Area Mex should display the BAR Z key',
+  );
+  assertContract(
+    commandHotkeyLabel('command.builderPriority', 'bar-legacy') === '',
+    'bar-legacy Builder Priority button must display no fake hotkey label',
+  );
+  assertContract(
+    commandHotkeyLabel('command.carrierSpawn', 'bar-grid') === '',
+    'bar-grid Carrier Spawning button must display no fake hotkey label',
+  );
+  assertContract(
+    commandHotkeyLabel('command.carrierSpawn', 'bar-legacy') === '',
+    'bar-legacy Carrier Spawning button must display no fake hotkey label',
+  );
+  assertContract(
+    commandHotkeyLabel('command.morph', 'bar-grid') === '',
+    'bar-grid Morph/Upgrade button must display no fake hotkey label',
+  );
+  assertContract(
+    commandHotkeyLabel('command.morph', 'bar-legacy') === '',
+    'bar-legacy Morph/Upgrade button must display no fake hotkey label',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('u', 'KeyU', { altKey: true }), 'bar-grid') === null,
+    'bar-grid Alt+U must not expose a fake selected metal extractor upgrade hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('u', 'KeyU', { ctrlKey: true, altKey: true }), 'bar-grid') === null,
+    'bar-grid Ctrl+Alt+U must not expose a fake area metal extractor upgrade hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('command.upgradeMexSelected', 'bar-grid') === '',
+    'bar-grid selected metal extractor upgrade must display no fake BAR hotkey',
+  );
+  assertContract(
+    commandHotkeyLabel('command.upgradeMexArea', 'bar-grid') === '',
+    'bar-grid area metal extractor upgrade must display no fake BAR hotkey',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F1', 'F1'), 'bar-grid') === 'camera.anchorFocus1',
+    'bar-grid F1 should focus camera anchor 1',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F4', 'F4'), 'bar-grid') === 'camera.anchorFocus4',
+    'bar-grid F4 should focus camera anchor 4',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F1', 'F1', { ctrlKey: true }), 'bar-grid') === 'camera.anchorSet1',
+    'bar-grid Ctrl+F1 should set camera anchor 1',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F4', 'F4', { ctrlKey: true }), 'bar-grid') === 'camera.anchorSet4',
+    'bar-grid Ctrl+F4 should set camera anchor 4',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('1', 'Digit1', { metaKey: true }), 'bar-grid-60pct') === 'camera.anchorFocus1',
+    'bar-grid-60pct Meta+1 should focus camera anchor 1',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('4', 'Digit4', { metaKey: true }), 'bar-grid-60pct') === 'camera.anchorFocus4',
+    'bar-grid-60pct Meta+4 should focus camera anchor 4',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('1', 'Digit1', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'camera.anchorSet1',
+    'bar-grid-60pct Ctrl+Meta+1 should set camera anchor 1',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('4', 'Digit4', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'camera.anchorSet4',
+    'bar-grid-60pct Ctrl+Meta+4 should set camera anchor 4',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('5', 'Digit5', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'camera.viewTa',
+    'bar-grid-60pct Ctrl+Meta+5 should switch to TA camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('6', 'Digit6', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'camera.viewSpring',
+    'bar-grid-60pct Ctrl+Meta+6 should switch to Spring camera view',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('5', 'Digit5', { metaKey: true }), 'bar-grid-60pct') === 'ui.goToLastPing',
+    'bar-grid-60pct Meta+5 should jump to the last message position',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('6', 'Digit6', { metaKey: true }), 'bar-grid-60pct') === 'ui.togglePathingMap',
+    'bar-grid-60pct Meta+6 should toggle the path traversability overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('7', 'Digit7', { ctrlKey: true, metaKey: true }), 'bar-grid-60pct') === 'ui.toggleUiChrome',
+    'bar-grid-60pct Ctrl+Meta+7 should hide or show the interface',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('7', 'Digit7', { metaKey: true }), 'bar-grid-60pct') === 'ui.toggleMetalMap',
+    'bar-grid-60pct Meta+7 should toggle the metal map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('8', 'Digit8', { metaKey: true }), 'bar-grid-60pct') === 'ui.toggleElevationMap',
+    'bar-grid-60pct Meta+8 should toggle the elevation map overlay',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('F1', 'F1'), 'bar-legacy') === 'ui.toggleElevationMap',
+    'bar-legacy F1 must be elevation overlay, not a camera anchor',
+  );
+  assertContract(
+    commandHotkeyLabel('camera.anchorFocus1', 'bar-legacy') === '',
+    'bar-legacy camera anchor focus should display no hotkey label',
   );
   assertContract(
     queueModeFromEvent(keyEvent('w', 'KeyW')).queue === false,
@@ -209,6 +1208,41 @@ export function runCommandHotkeysContractTest(): void {
       pickedFrontQueue.queueFront === true &&
       pickedFrontQueue.queueInsertIndex === undefined,
     'ctrl/cmd+shift command event must override the selected queue insertion slot',
+  );
+  const plainFactoryQueue = factoryProductionClickModeFromEvent(keyEvent('z', 'KeyZ'), false);
+  assertContract(
+    plainFactoryQueue.repeat === false && plainFactoryQueue.count === 1,
+    'BAR factory plain grid key should queue one unit while factory repeat is off',
+  );
+  const repeatFactoryQueue = factoryProductionClickModeFromEvent(keyEvent('z', 'KeyZ'), true);
+  assertContract(
+    repeatFactoryQueue.repeat === true && repeatFactoryQueue.count === 1,
+    'BAR factory plain grid key should repeat one unit while factory repeat is on',
+  );
+  const shiftFactoryQueue = factoryProductionClickModeFromEvent(keyEvent('z', 'KeyZ', { shiftKey: true }), false);
+  assertContract(
+    shiftFactoryQueue.repeat === false && shiftFactoryQueue.count === 5,
+    'BAR factory Shift grid key should queue five units',
+  );
+  const ctrlFactoryQueue = factoryProductionClickModeFromEvent(keyEvent('z', 'KeyZ', { ctrlKey: true }), false);
+  assertContract(
+    ctrlFactoryQueue.repeat === false && ctrlFactoryQueue.count === 20,
+    'BAR factory Ctrl mouse click should queue twenty units',
+  );
+  const shiftCtrlFactoryQueue = factoryProductionClickModeFromEvent(keyEvent('z', 'KeyZ', { ctrlKey: true, shiftKey: true }), false);
+  assertContract(
+    shiftCtrlFactoryQueue.repeat === false && shiftCtrlFactoryQueue.count === 100,
+    'BAR factory Shift+Ctrl mouse click should queue one hundred units',
+  );
+  const ctrlFactoryKey = factoryProductionKeyModeFromEvent(keyEvent('z', 'KeyZ', { ctrlKey: true }), false);
+  assertContract(
+    ctrlFactoryKey.repeat === false && ctrlFactoryKey.count === -1,
+    'BAR factory Ctrl grid key should remove one queued unit',
+  );
+  const shiftCtrlFactoryKey = factoryProductionKeyModeFromEvent(keyEvent('z', 'KeyZ', { ctrlKey: true, shiftKey: true }), false);
+  assertContract(
+    shiftCtrlFactoryKey.repeat === false && shiftCtrlFactoryKey.count === -5,
+    'BAR factory Shift+Ctrl grid key should remove five queued units',
   );
   const queuedDragStart = queueModeFromEvent(keyEvent('w', 'KeyW', { shiftKey: true }), 4);
   const plainDragRelease = queueModeFromEvent(keyEvent('w', 'KeyW'));

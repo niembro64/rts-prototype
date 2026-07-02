@@ -3,6 +3,7 @@ import type {
   AttackCommand,
   AttackGroundCommand,
   CaptureCommand,
+  ChangeFactoryUnitQuotaCommand,
   ClearQueuedOrdersCommand,
   Command,
   EditFactoryQueueCommand,
@@ -17,6 +18,7 @@ import type {
   ReclaimAreaCommand,
   RepairAreaCommand,
   RepairCommand,
+  RemoveFactoryUnitProductionCommand,
   RemoveLastQueuedOrderCommand,
   ResurrectAreaCommand,
   ResurrectCommand,
@@ -25,7 +27,10 @@ import type {
   StopFactoryProductionCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
+  SetBuilderPriorityCommand,
+  SetCarrierSpawnCommand,
   SetCloakStateCommand,
+  SetFactoryRepeatProductionCommand,
   SetRepeatQueueCommand,
   SetTrajectoryModeCommand,
   SetUnitMoveStateCommand,
@@ -106,6 +111,10 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return sanitizeUnitListCommand(command, tick);
     case 'setRepeatQueue':
       return sanitizeSetRepeatQueueCommand(command, tick);
+    case 'setBuilderPriority':
+      return sanitizeSetBuilderPriorityCommand(command, tick);
+    case 'setCarrierSpawn':
+      return sanitizeSetCarrierSpawnCommand(command, tick);
     case 'setUnitMoveState':
       return sanitizeSetUnitMoveStateCommand(command, tick);
     case 'setTrajectoryMode':
@@ -121,7 +130,7 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
     case 'selfDestruct':
       return sanitizeSelfDestructCommand(command, tick);
     case 'setTowerTarget':
-      return sanitizeSetTowerTargetCommand(command, tick);
+      return sanitizeSetTowerTargetCommand(command, world, tick);
     case 'attack':
       return sanitizeAttackCommand(command, tick);
     case 'attackGround':
@@ -142,8 +151,14 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return sanitizeQueueUnitCommand(command, tick);
     case 'editFactoryQueue':
       return sanitizeEditFactoryQueueCommand(command, tick);
+    case 'removeFactoryUnitProduction':
+      return sanitizeRemoveFactoryUnitProductionCommand(command, tick);
     case 'stopFactoryProduction':
       return sanitizeStopFactoryProductionCommand(command, tick);
+    case 'setFactoryRepeatProduction':
+      return sanitizeSetFactoryRepeatProductionCommand(command, tick);
+    case 'changeFactoryUnitQuota':
+      return sanitizeChangeFactoryUnitQuotaCommand(command, tick);
     case 'setRallyPoint':
       return sanitizeSetRallyPointCommand(command, world, tick);
     case 'setFactoryGuard':
@@ -489,6 +504,26 @@ function sanitizeSetRepeatQueueCommand(
     : { type: 'setRepeatQueue', tick, entityIds, enabled: command.enabled };
 }
 
+function sanitizeSetBuilderPriorityCommand(
+  command: SetBuilderPriorityCommand,
+  tick: number,
+): SetBuilderPriorityCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  return entityIds === null || typeof command.lowPriority !== 'boolean'
+    ? null
+    : { type: 'setBuilderPriority', tick, entityIds, lowPriority: command.lowPriority };
+}
+
+function sanitizeSetCarrierSpawnCommand(
+  command: SetCarrierSpawnCommand,
+  tick: number,
+): SetCarrierSpawnCommand | null {
+  const entityIds = sanitizeEntityIdArray(command.entityIds);
+  return entityIds === null || typeof command.enabled !== 'boolean'
+    ? null
+    : { type: 'setCarrierSpawn', tick, entityIds, enabled: command.enabled };
+}
+
 function sanitizeSetUnitMoveStateCommand(
   command: SetUnitMoveStateCommand,
   tick: number,
@@ -529,14 +564,31 @@ function sanitizeSelfDestructCommand(
 
 function sanitizeSetTowerTargetCommand(
   command: SetTowerTargetCommand,
+  world: WorldState,
   tick: number,
 ): SetTowerTargetCommand | null {
   const entityIds = sanitizeEntityIdArray(command.entityIds);
   if (entityIds === null) return null;
-  // `null` is the canonical "clear lock" sentinel; otherwise the
-  // targetId must be a real entity id.
+  // `null` with no point is the canonical "clear lock" sentinel;
+  // otherwise the targetId must be a real entity id.
   if (command.targetId !== null && !isEntityId(command.targetId)) return null;
-  return { ...command, tick, entityIds, targetId: command.targetId };
+  if (command.targetId !== null) {
+    return { type: 'setTowerTarget', tick, entityIds, targetId: command.targetId };
+  }
+  const hasGroundTarget = command.targetX !== undefined || command.targetY !== undefined || command.targetZ !== undefined;
+  if (!hasGroundTarget) return { type: 'setTowerTarget', tick, entityIds, targetId: null };
+  const point = sanitizeTerrainGroundPoint(world, command.targetX, command.targetY, command.targetZ);
+  return point === null
+    ? null
+    : {
+        type: 'setTowerTarget',
+        tick,
+        entityIds,
+        targetId: null,
+        targetX: point.x,
+        targetY: point.y,
+        targetZ: point.z,
+      };
 }
 
 function sanitizeAttackCommand(command: AttackCommand, tick: number): AttackCommand | null {
@@ -762,12 +814,66 @@ function sanitizeEditFactoryQueueCommand(
   return null;
 }
 
+function sanitizeRemoveFactoryUnitProductionCommand(
+  command: RemoveFactoryUnitProductionCommand,
+  tick: number,
+): RemoveFactoryUnitProductionCommand | null {
+  const count = command.count === undefined
+    ? 1
+    : Number.isInteger(command.count) && command.count >= 1 && command.count <= 64
+      ? command.count
+      : null;
+  return isEntityId(command.factoryId) && isBuildableUnitBlueprintId(command.unitBlueprintId) && count !== null
+    ? {
+        type: 'removeFactoryUnitProduction',
+        tick,
+        factoryId: command.factoryId,
+        unitBlueprintId: command.unitBlueprintId,
+        count,
+      }
+    : null;
+}
+
 function sanitizeStopFactoryProductionCommand(
   command: StopFactoryProductionCommand,
   tick: number,
 ): StopFactoryProductionCommand | null {
   return isEntityId(command.factoryId)
     ? { type: 'stopFactoryProduction', tick, factoryId: command.factoryId }
+    : null;
+}
+
+function sanitizeSetFactoryRepeatProductionCommand(
+  command: SetFactoryRepeatProductionCommand,
+  tick: number,
+): SetFactoryRepeatProductionCommand | null {
+  return isEntityId(command.factoryId) && typeof command.enabled === 'boolean'
+    ? {
+        type: 'setFactoryRepeatProduction',
+        tick,
+        factoryId: command.factoryId,
+        enabled: command.enabled,
+      }
+    : null;
+}
+
+function sanitizeChangeFactoryUnitQuotaCommand(
+  command: ChangeFactoryUnitQuotaCommand,
+  tick: number,
+): ChangeFactoryUnitQuotaCommand | null {
+  return isEntityId(command.factoryId) &&
+    isBuildableUnitBlueprintId(command.unitBlueprintId) &&
+    Number.isInteger(command.delta) &&
+    command.delta >= -64 &&
+    command.delta <= 64 &&
+    command.delta !== 0
+    ? {
+        type: 'changeFactoryUnitQuota',
+        tick,
+        factoryId: command.factoryId,
+        unitBlueprintId: command.unitBlueprintId,
+        delta: command.delta,
+      }
     : null;
 }
 

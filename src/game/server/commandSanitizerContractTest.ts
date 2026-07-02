@@ -1,13 +1,18 @@
 import type {
   Command,
   CaptureCommand,
+  ChangeFactoryUnitQuotaCommand,
   LoadTransportCommand,
   ManualLaunchCommand,
   MoveCommand,
+  RemoveFactoryUnitProductionCommand,
   ResurrectAreaCommand,
   ResurrectCommand,
   SetFactoryGuardCommand,
+  SetFactoryRepeatProductionCommand,
   SetFireEnabledCommand,
+  SetBuilderPriorityCommand,
+  SetCarrierSpawnCommand,
   SetCloakStateCommand,
   SetUnitMoveStateCommand,
   SkipCurrentOrderCommand,
@@ -15,6 +20,7 @@ import type {
   StopFactoryProductionCommand,
   SetForceFieldsVisibleCommand,
   SetShieldReflectionModeCommand,
+  SetTowerTargetCommand,
   SetTurretShieldPanelsEnabledCommand,
   SetTurretShieldSpheresEnabledCommand,
   UnloadTransportCommand,
@@ -69,6 +75,49 @@ export function runCommandSanitizerContractTest(): void {
     'stopFactoryProduction must preserve a valid factory id and normalize tick',
   );
 
+  const setFactoryRepeatProduction = sanitizeRequired<SetFactoryRepeatProductionCommand>(world, {
+    type: 'setFactoryRepeatProduction',
+    tick: 5,
+    factoryId: 42,
+    enabled: true,
+  });
+  assertContract(
+    setFactoryRepeatProduction.tick === 9001 &&
+      setFactoryRepeatProduction.factoryId === 42 &&
+      setFactoryRepeatProduction.enabled === true,
+    'setFactoryRepeatProduction must preserve valid repeat state and normalize tick',
+  );
+
+  const changeFactoryUnitQuota = sanitizeRequired<ChangeFactoryUnitQuotaCommand>(world, {
+    type: 'changeFactoryUnitQuota',
+    tick: 5,
+    factoryId: 42,
+    unitBlueprintId: 'unitLynx',
+    delta: 5,
+  });
+  assertContract(
+    changeFactoryUnitQuota.tick === 9001 &&
+      changeFactoryUnitQuota.factoryId === 42 &&
+      changeFactoryUnitQuota.unitBlueprintId === 'unitLynx' &&
+      changeFactoryUnitQuota.delta === 5,
+    'changeFactoryUnitQuota must preserve valid factory, unit, and delta fields',
+  );
+
+  const removeFactoryUnitProduction = sanitizeRequired<RemoveFactoryUnitProductionCommand>(world, {
+    type: 'removeFactoryUnitProduction',
+    tick: 5,
+    factoryId: 42,
+    unitBlueprintId: 'unitLynx',
+    count: 5,
+  });
+  assertContract(
+    removeFactoryUnitProduction.tick === 9001 &&
+      removeFactoryUnitProduction.factoryId === 42 &&
+      removeFactoryUnitProduction.unitBlueprintId === 'unitLynx' &&
+      removeFactoryUnitProduction.count === 5,
+    'removeFactoryUnitProduction must preserve valid factory, unit, and count fields',
+  );
+
   const clearFactoryGuard = sanitizeRequired<SetFactoryGuardCommand>(world, {
     type: 'setFactoryGuard',
     tick: 5,
@@ -80,6 +129,32 @@ export function runCommandSanitizerContractTest(): void {
     clearFactoryGuard.factoryId === 42 &&
     clearFactoryGuard.targetId === null,
     'setFactoryGuard must preserve null target for factory guard clear',
+  );
+
+  const setBuilderPriority = sanitizeRequired<SetBuilderPriorityCommand>(world, {
+    type: 'setBuilderPriority',
+    tick: 5,
+    entityIds: [7, 8],
+    lowPriority: true,
+  });
+  assertContract(
+    setBuilderPriority.tick === 9001 &&
+      setBuilderPriority.entityIds.join(',') === '7,8' &&
+      setBuilderPriority.lowPriority === true,
+    'setBuilderPriority must preserve valid entity ids and low-priority state',
+  );
+
+  const setCarrierSpawn = sanitizeRequired<SetCarrierSpawnCommand>(world, {
+    type: 'setCarrierSpawn',
+    tick: 5,
+    entityIds: [7, 8],
+    enabled: false,
+  });
+  assertContract(
+    setCarrierSpawn.tick === 9001 &&
+      setCarrierSpawn.entityIds.join(',') === '7,8' &&
+      setCarrierSpawn.enabled === false,
+    'setCarrierSpawn must preserve valid entity ids and enabled state',
   );
 
   const queueFrontMove = sanitizeRequired<MoveCommand>(world, {
@@ -174,6 +249,23 @@ export function runCommandSanitizerContractTest(): void {
   assertContract(
     gatherWait.gather === true && gatherWait.waitGroupId === 99,
     'wait command must accept gather wait state and group id',
+  );
+
+  const towerGroundTarget = sanitizeRequired<SetTowerTargetCommand>(world, {
+    type: 'setTowerTarget',
+    tick: 7,
+    entityIds: [17],
+    targetId: null,
+    targetX: 44.5,
+    targetY: 12.25,
+    targetZ: 999,
+  });
+  assertContract(
+    towerGroundTarget.targetId === null &&
+      towerGroundTarget.targetX === 44.5 &&
+      towerGroundTarget.targetY === 12.25 &&
+      towerGroundTarget.targetZ === world.getGroundZ(44.5, 12.25),
+    'setTowerTarget must preserve and normalize ground target points',
   );
 
   const capture = sanitizeRequired<CaptureCommand>(world, {

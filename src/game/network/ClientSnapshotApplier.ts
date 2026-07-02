@@ -34,7 +34,11 @@ import {
 } from './ClientBuildStateApplier';
 import { getBuildingConfig } from '../sim/buildConfigs';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
-import { decodeFactoryProductionQueueInto } from './factoryProductionQueueWire';
+import {
+  decodeFactoryProductionQueueInto,
+  decodeFactoryProductionQuotaCountsInto,
+  decodeFactoryProductionQuotasInto,
+} from './factoryProductionQueueWire';
 import { cloneBuildingSupportSurface } from '../sim/buildingSupportSurface';
 
 /**
@@ -96,6 +100,18 @@ export function snapClientNonVisualState(
       || cf! & ENTITY_CHANGED_ACTIONS
     )) {
       entity.builder.currentBuildTarget = su.buildTargetId ?? NO_ENTITY_ID;
+    }
+    if (entity.builder && (
+      su.builderPriorityLow !== null && su.builderPriorityLow !== undefined ||
+      isFull
+    )) {
+      entity.builder.lowPriority = su.builderPriorityLow === true;
+    }
+    if (entity.factory && (
+      su.carrierSpawnEnabled !== null && su.carrierSpawnEnabled !== undefined ||
+      isFull
+    )) {
+      entity.factory.carrierSpawnEnabled = su.carrierSpawnEnabled !== false;
     }
   }
 
@@ -184,12 +200,17 @@ export function snapClientNonVisualState(
       sf.queue,
       entity.factory.productionQueue,
     );
+    decodeFactoryProductionQuotasInto(sf.quotas, entity.factory.productionQuotas);
+    decodeFactoryProductionQuotaCountsInto(sf.quotaCounts, entity.factory.productionQuotaCounts);
     entity.factory.currentShellId = null;
     entity.factory.currentBuildProgress = sf.progress;
     entity.factory.isProducing = sf.producing;
     entity.factory.energyRateFraction = sf.energyRate ?? 0;
     entity.factory.metalRateFraction = sf.metalRate ?? 0;
     entity.factory.guardTargetId = sf.guardTargetId ?? null;
+    if (sf.lowPriority !== undefined || isFull) {
+      entity.factory.lowPriority = sf.lowPriority === true;
+    }
     entity.factory.rallyX = sf.rally.pos.x;
     entity.factory.rallyY = sf.rally.pos.y;
     entity.factory.rallyZ = sf.rally.posZ;

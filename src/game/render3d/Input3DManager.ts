@@ -25,7 +25,17 @@ import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { InputContext } from '@/types/input';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import type { PlayerId, Entity, EntityId, WaypointType, BuildingBlueprintId, StructureBlueprintId } from '../sim/types';
+import type {
+  CombatFireState,
+  CombatTrajectoryMode,
+  PlayerId,
+  Entity,
+  EntityId,
+  UnitMoveState,
+  WaypointType,
+  BuildingBlueprintId,
+  StructureBlueprintId,
+} from '../sim/types';
 import {
   entityMatchesScreenRectSelectionOptions,
   findClosestSelectableEntityToPoint,
@@ -41,7 +51,9 @@ import {
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { getCommandCursorStyle, type CommandCursorKind } from '../input/CommandCursors';
 import {
+  createFactoryProductionPresetSnapshot,
   getFactoryProductionPresetSlot,
+  resolveFactoryProductionPresetReplay,
   setFactoryProductionPresetSlot,
 } from '../input/factoryProductionPresets';
 import {
@@ -50,8 +62,31 @@ import {
   setQueueModifierKeyState,
 } from '../input/queueModifiers';
 import { isBuildInProgress } from '../sim/buildableHelpers';
-import { getSelectedBuilderAllowedBuildBlueprintIds } from '../sim/builderBuildRoster';
-import { isCommander } from '../sim/combat/combatUtils';
+import {
+  getActiveSelectedBuilder,
+  getActiveSelectedBuilderAllowedBuildBlueprintIds,
+  getBarVisibleSelectedBuilderTypeInfos,
+} from '../sim/builderBuildRoster';
+import {
+  getFactoryAllowedUnitBlueprintIds,
+} from '../sim/factoryProductionRoster';
+import { isBallisticArcWeapon, isCommander } from '../sim/combat/combatUtils';
+import {
+  buildingBlueprintHasActiveState,
+  buildingBlueprintHasBarOnOffCommand,
+} from '../sim/buildingActiveState';
+import {
+  entityHasBarAttackCommand,
+  entityHasBarAreaAttackCommand,
+  entityHasBarManualLaunchCommand,
+  entityHasBarMoveStateCommand,
+  entityHasBarTrajectoryCommand,
+  entityBarTrajectoryCommandKind,
+  entityEffectiveBarTrajectoryMode,
+  entityHasBarCaptureCommand,
+  entityHasBarFactoryGuardCommand,
+  entityHasCloakCommand,
+} from '../sim/unitCommandCapabilities';
 import { isReclaimableTarget } from '../sim/reclaim';
 import {
   canBuilderUpgradeMetalExtractor,
@@ -70,17 +105,52 @@ import { Input3DRightDragController, type Input3DLineDragState } from './Input3D
 import { Input3DModeClickController } from './Input3DModeClickController';
 import type { Input3DAreaDragState } from './Input3DAreaDragState';
 import type { BuildFacingInfo, BuildLineSpacingInfo } from './Input3DBuildPlacementState';
+import {
+  BAR_GRID_SLOT_COUNT,
+  buildFactoryUnitBlueprintIdsForPreset,
+  buildFactoryUnitGridCellsForPreset,
+  getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex,
+  getBarCategoryBuildMenuPageCount,
+  type BarBuildCategoryId,
+} from '../input/buildMenuLayout';
+import {
+  getActiveCommandHotkeyPresetId,
+  hasBarFactoryPresetHotkeys,
+  isBarCommandHotkeyPreset,
+  isBarGridCommandHotkeyPreset,
+} from '../input/commandHotkeys';
 import { getEdgeScrollEnabled } from '../../clientBarConfig';
 
 const SELECTABLE_GROUND_MIN_UNIT_RADIUS = 8;
 const SAME_TYPE_DOUBLE_CLICK_MS = 450;
 const SAME_TYPE_DOUBLE_CLICK_MAX_DIST_PX = 8;
 const EDGE_SCROLL_MARGIN_PX = 36;
+const BAR_STANDARD_TRAJECTORY_MODE_CYCLE: readonly CombatTrajectoryMode[] = ['high', 'low'];
+const BAR_SMART_TRAJECTORY_MODE_CYCLE: readonly CombatTrajectoryMode[] = ['auto', 'low', 'high'];
 
 function isTextEntryTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
   const tag = element?.tagName;
   return tag === 'INPUT' || tag === 'TEXTAREA' || Boolean(element?.isContentEditable);
+}
+
+function entityHasBallisticCombat(entity: Entity): boolean {
+  const combat = entity.combat;
+  if (combat === null || combat.turrets.length === 0) return false;
+  for (let i = 0; i < combat.turrets.length; i++) {
+    if (isBallisticArcWeapon(combat.turrets[i])) return true;
+  }
+  return false;
+}
+
+function entityHasBarTrajectoryControl(entity: Entity): boolean {
+  return entityHasBarTrajectoryCommand(entity) && entityHasBallisticCombat(entity);
+}
+
+function normalizeGridPageIndex(pageIndex: number, pageCount: number): number {
+  const count = Math.max(1, Math.floor(pageCount));
+  const index = Math.floor(pageIndex);
+  return ((index % count) + count) % count;
 }
 
 type EntitySource = {
@@ -128,11 +198,18 @@ export class Input3DManager {
   // handleLeftMouseDown.
   private mode = new CommanderModeController();
   public onBuildModeChange?: (buildingBlueprintId: BuildingBlueprintId | null) => void;
+  public onBuildGridCategoryChange?: (categoryId: BarBuildCategoryId | null) => void;
+  public onBuildGridPageChange?: (pageIndex: number) => void;
+  public onFactoryGridPageChange?: (pageIndex: number) => void;
+  public onFactoryQueueModeChange?: (active: boolean) => void;
+  public onFactoryPresetOverlayChange?: (active: boolean) => void;
+  public onActiveBuilderChange?: (unitBlueprintId: string | null) => void;
   public onBuildLineSpacingChange?: (spacing: BuildLineSpacingInfo) => void;
   public onBuildFacingChange?: (facing: BuildFacingInfo) => void;
   public onQueueInsertIndexChange?: (index: number | null) => void;
   public onDGunModeChange?: (active: boolean) => void;
   public onRepairAreaModeChange?: (active: boolean) => void;
+  public onRestoreAreaModeChange?: (active: boolean) => void;
   public onFormationAssumeModeChange?: (active: boolean) => void;
   public onFormationMoveModeChange?: (active: boolean) => void;
   public onAttackModeChange?: (active: boolean) => void;
@@ -149,7 +226,14 @@ export class Input3DManager {
   public onMexUpgradeModeChange?: (active: boolean) => void;
   public onPingModeChange?: (active: boolean) => void;
   public onTowerTargetModeChange?: (active: boolean) => void;
+  public onTowerTargetNoGroundModeChange?: (active: boolean) => void;
   private specialModes: Input3DSpecialModes;
+  private buildGridCategory: BarBuildCategoryId | null = null;
+  private buildGridPage = 0;
+  private factoryGridPage = 0;
+  private factoryQueueMode = false;
+  private factoryPresetOverlayVisible = false;
+  private activeBuilderUnitBlueprintId: string | null = null;
   private hoverState = new Input3DHoverState();
   private appliedCursor: CommandCursorKind = 'default';
 
@@ -232,8 +316,10 @@ export class Input3DManager {
       getQueueInsertIndex: () => this.queueInsertIndex,
       getSelectedCommander: () => this.getSelectedCommander(),
       getSelectedBuilder: () => this.getSelectedBuilder(),
+      onBuildCommandIssued: (queued) => this.handleBuildCommandIssued(queued),
       applyCursor: (kind) => this.applyCursor(kind),
       isRepairAreaMode: () => this.repairAreaMode,
+      isRestoreAreaMode: () => this.restoreAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
@@ -248,7 +334,9 @@ export class Input3DManager {
       isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
+      isTowerTargetNoGroundMode: () => this.towerTargetNoGroundMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
+      exitRestoreAreaMode: () => this.exitRestoreAreaMode(),
       exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
@@ -263,6 +351,7 @@ export class Input3DManager {
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
+      exitTowerTargetNoGroundMode: () => this.exitTowerTargetNoGroundMode(),
     });
     this.rightDrag = new Input3DRightDragController({
       getEntitySource: () => this.entitySource,
@@ -303,7 +392,31 @@ export class Input3DManager {
       hasSelectedUnits: () => this.entitySource.getSelectedUnits().length > 0,
       hasSelectedFactory: () => this.getSelectedFactory() !== null,
       hasSelectedBuilder: () => this.hasSelectedBuilder(),
+      hasSelectedCommander: () => this.hasSelectedCommander(),
+      hasSelectedManualLaunchEntities: () => this.hasSelectedManualLaunchEntitiesForActivePreset(),
+      hasSelectedCaptureControl: () => this.hasSelectedCaptureControlForActivePreset(),
+      hasSelectedResurrectControl: () => this.hasSelectedResurrectControlForActivePreset(),
+      hasSelectedMoveStateControl: () => this.hasSelectedMoveStateControl(),
+      hasSelectedTrajectoryControl: () => this.hasSelectedTrajectoryControl(),
+      hasSelectedCloakControl: () => this.hasSelectedCloakControl(),
+      hasSelectedBuildingActiveControl: () => this.hasSelectedBuildingActiveControl(),
+      getBuildGridCategory: () => this.buildGridCategory,
+      setBuildGridCategory: (categoryId) => this.setBuildGridCategory(categoryId),
+      getBuildGridPage: () => this.getBuildGridPage(),
+      stepBuildGridPage: (delta) => this.stepBuildGridPage(delta),
+      stepFactoryGridPage: (delta) => this.stepFactoryGridPage(delta),
+      getFactoryQueueMode: () => this.getFactoryQueueMode(),
+      toggleFactoryQueueMode: () => this.toggleFactoryQueueMode(),
+      getSelectedFactoryRepeatProduction: () => this.getSelectedFactoryRepeatProduction(),
+      toggleSelectedFactoryRepeatProduction: () => this.toggleSelectedFactoryRepeatProduction(),
+      setSelectedFactoryRepeatProduction: (enabled) => this.setSelectedFactoryRepeatProduction(enabled),
+      cycleActiveBuilder: () => this.cycleActiveBuilder(),
       getSelectedBuilderAllowedBuildBlueprintIds: () => this.getSelectedBuilderAllowedBuildBlueprintIds(),
+      setBuildMode: (buildingBlueprintId) => this.setBuildMode(buildingBlueprintId),
+      queueSelectedFactoryUnitSlot: (slotIndex, repeat, count) =>
+        this.queueSelectedFactoryUnitSlot(slotIndex, repeat, count),
+      changeSelectedFactoryUnitSlotQuota: (slotIndex, delta) =>
+        this.changeSelectedFactoryUnitSlotQuota(slotIndex, delta),
       exitSpecialModes: (includeTowerTarget) => this.exitSpecialModes(includeTowerTarget),
       increaseBuildLineSpacing: () => this.increaseBuildLineSpacing(),
       decreaseBuildLineSpacing: () => this.decreaseBuildLineSpacing(),
@@ -318,15 +431,24 @@ export class Input3DManager {
       toggleSelectedGatherWait: (queue, queueFront, queueInsertIndex) =>
         this.toggleSelectedGatherWait(queue, queueFront, queueInsertIndex),
       toggleRepeatQueue: () => this.toggleRepeatQueue(),
-      clearSelectedFactoryGuard: () => this.clearSelectedFactoryGuard(),
+      setRepeatQueueEnabled: (enabled) => this.setRepeatQueueEnabled(enabled),
+      toggleBuilderPriority: () => this.toggleBuilderPriority(),
+      toggleCarrierSpawn: () => this.toggleCarrierSpawn(),
+      setSelectedFactoryGuardEnabled: (enabled) => this.setSelectedFactoryGuardEnabled(enabled),
+      toggleSelectedFactoryGuard: () => this.toggleSelectedFactoryGuard(),
       stopSelectedFactoryProduction: () => this.stopSelectedFactoryProduction(),
       toggleUnitMoveState: () => this.toggleUnitMoveState(),
+      setUnitMoveState: (moveState) => this.setUnitMoveState(moveState),
       toggleTrajectoryMode: () => this.toggleTrajectoryMode(),
+      setTrajectoryMode: (trajectoryMode) => this.setTrajectoryMode(trajectoryMode),
       toggleCloakState: () => this.toggleCloakState(),
       toggleSelectedFire: () => this.toggleSelectedFire(),
+      setSelectedFireState: (fireState) => this.setSelectedFireState(fireState),
       toggleBuildingActive: () => this.toggleBuildingActive(),
+      setBuildingActive: (open) => this.setBuildingActive(open),
       selfDestructSelected: () => this.selfDestructSelected(),
       toggleTowerTargetMode: () => this.toggleTowerTargetMode(),
+      toggleTowerTargetNoGroundMode: () => this.toggleTowerTargetNoGroundMode(),
       clearTowerTarget: () => this.clearTowerTarget(),
       toggleAttackMode: () => this.toggleAttackMode(),
       toggleAttackAreaMode: () => this.toggleAttackAreaMode(),
@@ -342,6 +464,7 @@ export class Input3DManager {
       toggleMexUpgradeMode: () => this.toggleMexUpgradeMode(),
       upgradeSelectedMetalExtractors: () => this.upgradeSelectedMetalExtractors(),
       toggleRepairAreaMode: () => this.toggleRepairAreaMode(),
+      toggleRestoreAreaMode: () => this.toggleRestoreAreaMode(),
       togglePingMode: () => this.togglePingMode(),
       toggleDGunMode: () => this.toggleDGunMode(),
       enqueueScanAtCursor: () => this.enqueueScanAtCursor(),
@@ -361,6 +484,7 @@ export class Input3DManager {
       splitArmySelection: () => this.splitArmySelection(),
       loopSelection: () => this.loopSelection(),
       isRepairAreaMode: () => this.repairAreaMode,
+      isRestoreAreaMode: () => this.restoreAreaMode,
       isAttackMode: () => this.attackMode,
       isAttackAreaMode: () => this.attackAreaMode,
       isAttackGroundMode: () => this.attackGroundMode,
@@ -375,7 +499,9 @@ export class Input3DManager {
       isMexUpgradeMode: () => this.mexUpgradeMode,
       isPingMode: () => this.pingMode,
       isTowerTargetMode: () => this.towerTargetMode,
+      isTowerTargetNoGroundMode: () => this.towerTargetNoGroundMode,
       exitRepairAreaMode: () => this.exitRepairAreaMode(),
+      exitRestoreAreaMode: () => this.exitRestoreAreaMode(),
       exitAttackMode: () => this.exitAttackMode(),
       exitAttackAreaMode: () => this.exitAttackAreaMode(),
       exitAttackGroundMode: () => this.exitAttackGroundMode(),
@@ -390,10 +516,12 @@ export class Input3DManager {
       exitMexUpgradeMode: () => this.exitMexUpgradeMode(),
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
+      exitTowerTargetNoGroundMode: () => this.exitTowerTargetNoGroundMode(),
     });
     this.specialModes = new Input3DSpecialModes({
       refreshCursor: () => this.refreshCursor(),
       onRepairAreaModeChange: (active) => this.onRepairAreaModeChange?.(active),
+      onRestoreAreaModeChange: (active) => this.onRestoreAreaModeChange?.(active),
       onFormationAssumeModeChange: (active) => this.onFormationAssumeModeChange?.(active),
       onFormationMoveModeChange: (active) => this.onFormationMoveModeChange?.(active),
       onAttackModeChange: (active) => this.onAttackModeChange?.(active),
@@ -410,6 +538,7 @@ export class Input3DManager {
       onMexUpgradeModeChange: (active) => this.onMexUpgradeModeChange?.(active),
       onPingModeChange: (active) => this.onPingModeChange?.(active),
       onTowerTargetModeChange: (active) => this.onTowerTargetModeChange?.(active),
+      onTowerTargetNoGroundModeChange: (active) => this.onTowerTargetNoGroundModeChange?.(active),
     });
     this.selectionDrag = new Input3DSelectionDragState(this.canvas);
 
@@ -422,6 +551,7 @@ export class Input3DManager {
     this.onKeyUp = (e) => this.handleKeyUp(e);
     this.onWindowBlur = () => {
       this.clearHeldSelectBoxModifiers();
+      this.setFactoryPresetOverlayVisible(false);
       clearQueueModifierState();
     };
 
@@ -481,6 +611,10 @@ export class Input3DManager {
 
   private get repairAreaMode(): boolean {
     return this.specialModes.isActive('repairArea');
+  }
+
+  private get restoreAreaMode(): boolean {
+    return this.specialModes.isActive('restoreArea');
   }
 
   private get attackAreaMode(): boolean {
@@ -547,6 +681,10 @@ export class Input3DManager {
     return this.specialModes.isActive('towerTarget');
   }
 
+  private get towerTargetNoGroundMode(): boolean {
+    return this.specialModes.isActive('towerTargetNoGround');
+  }
+
   private exitSpecialModes(includeTowerTarget = true): void {
     this.specialModes.exitAll(includeTowerTarget);
   }
@@ -572,6 +710,9 @@ export class Input3DManager {
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes();
+    this.setBuildGridCategory(null);
+    this.setBuildGridPage(0);
+    this.setFactoryGridPage(0);
     this.setWaypointMode('move');
     this.clearHoveredEntities();
     this.refreshControlGroupsForActivePlayer();
@@ -589,6 +730,176 @@ export class Input3DManager {
   setBuildMode(buildingBlueprintId: BuildingBlueprintId): void {
     this.exitSpecialModes();
     this.mode.enterBuildMode(buildingBlueprintId);
+  }
+
+  setBuildGridCategory(categoryId: BarBuildCategoryId | null): void {
+    const previousCategoryId = this.buildGridCategory;
+    if (this.buildGridCategory === categoryId) return;
+    this.buildGridCategory = categoryId;
+    this.onBuildGridCategoryChange?.(categoryId);
+    this.setBuildGridPage(categoryId === null ? 0 : this.buildGridPage);
+    if (categoryId === null) {
+      if (previousCategoryId !== null) this.mode.exitBuildMode();
+      this.refreshCursor();
+      return;
+    }
+    if (
+      previousCategoryId !== categoryId &&
+      isBarGridCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
+    ) {
+      this.enterFirstBuildOptionForCategory(categoryId);
+    }
+    this.refreshCursor();
+  }
+
+  getBuildGridCategory(): BarBuildCategoryId | null {
+    return this.buildGridCategory;
+  }
+
+  setBuildGridPage(pageIndex: number): void {
+    const nextPageIndex = normalizeGridPageIndex(pageIndex, this.getBuildGridPageCount());
+    if (this.buildGridPage === nextPageIndex) return;
+    this.buildGridPage = nextPageIndex;
+    this.onBuildGridPageChange?.(nextPageIndex);
+  }
+
+  getBuildGridPage(): number {
+    return normalizeGridPageIndex(this.buildGridPage, this.getBuildGridPageCount());
+  }
+
+  stepBuildGridPage(delta: number): boolean {
+    const pageCount = this.getBuildGridPageCount();
+    if (pageCount < 2) return false;
+    this.setBuildGridPage(this.buildGridPage + delta);
+    return true;
+  }
+
+  getActiveBuilderUnitBlueprintId(): string | null {
+    return this.normalizeActiveBuilderUnitBlueprintId();
+  }
+
+  setActiveBuilderUnitBlueprintId(unitBlueprintId: string): boolean {
+    const builderTypes = getBarVisibleSelectedBuilderTypeInfos(this.entitySource.getSelectedUnits());
+    for (let i = 0; i < builderTypes.length; i++) {
+      if (builderTypes[i].unitBlueprintId !== unitBlueprintId) continue;
+      this.setNormalizedActiveBuilderUnitBlueprintId(unitBlueprintId);
+      return true;
+    }
+    return false;
+  }
+
+  cycleActiveBuilder(): boolean {
+    const builderTypes = getBarVisibleSelectedBuilderTypeInfos(this.entitySource.getSelectedUnits());
+    if (builderTypes.length < 2) return false;
+    const activeBuilderUnitBlueprintId = this.normalizeActiveBuilderUnitBlueprintId();
+    const activeIndex = Math.max(
+      0,
+      builderTypes.findIndex((builderType) => builderType.unitBlueprintId === activeBuilderUnitBlueprintId),
+    );
+    const next = builderTypes[(activeIndex + 1) % builderTypes.length];
+    this.setNormalizedActiveBuilderUnitBlueprintId(next.unitBlueprintId);
+    return true;
+  }
+
+  setFactoryGridPage(pageIndex: number): void {
+    const nextPageIndex = normalizeGridPageIndex(pageIndex, this.getFactoryGridPageCount());
+    if (this.factoryGridPage === nextPageIndex) return;
+    this.factoryGridPage = nextPageIndex;
+    this.onFactoryGridPageChange?.(nextPageIndex);
+  }
+
+  getFactoryGridPage(): number {
+    return normalizeGridPageIndex(this.factoryGridPage, this.getFactoryGridPageCount());
+  }
+
+  stepFactoryGridPage(delta: number): boolean {
+    const pageCount = this.getFactoryGridPageCount();
+    if (pageCount < 2) return false;
+    this.setFactoryGridPage(this.factoryGridPage + delta);
+    return true;
+  }
+
+  getFactoryQueueMode(): boolean {
+    return this.factoryQueueMode;
+  }
+
+  getFactoryPresetOverlayVisible(): boolean {
+    return this.factoryPresetOverlayVisible;
+  }
+
+  private setFactoryPresetOverlayVisible(active: boolean): void {
+    if (this.factoryPresetOverlayVisible === active) return;
+    this.factoryPresetOverlayVisible = active;
+    this.onFactoryPresetOverlayChange?.(active);
+  }
+
+  toggleFactoryQueueMode(): void {
+    this.factoryQueueMode = !this.factoryQueueMode;
+    this.onFactoryQueueModeChange?.(this.factoryQueueMode);
+  }
+
+  getSelectedFactoryRepeatProduction(): boolean {
+    return this.getSelectedFactory()?.factory?.repeatProduction === true;
+  }
+
+  private getBuildGridPageCount(): number {
+    return getBarCategoryBuildMenuPageCount(
+      this.buildGridCategory,
+      this.getSelectedBuilderAllowedBuildBlueprintIds(),
+    );
+  }
+
+  private handleBuildCommandIssued(queued: boolean): void {
+    if (!queued && this.buildGridCategory !== null) {
+      this.setBuildGridCategory(null);
+    }
+  }
+
+  private enterFirstBuildOptionForCategory(categoryId: BarBuildCategoryId): boolean {
+    const allowedBuildBlueprintIds = this.getSelectedBuilderAllowedBuildBlueprintIds();
+    for (let slotIndex = 0; slotIndex < BAR_GRID_SLOT_COUNT; slotIndex++) {
+      const buildingBlueprintId = getBarCategoryBuildMenuStructureBlueprintIdBySlotIndex(
+        categoryId,
+        slotIndex,
+        allowedBuildBlueprintIds,
+        0,
+      );
+      if (buildingBlueprintId === null) continue;
+      this.setBuildMode(buildingBlueprintId);
+      return true;
+    }
+    return false;
+  }
+
+  private normalizeActiveBuilderUnitBlueprintId(): string | null {
+    const builderTypes = getBarVisibleSelectedBuilderTypeInfos(this.entitySource.getSelectedUnits());
+    const active = this.activeBuilderUnitBlueprintId;
+    if (active !== null) {
+      for (let i = 0; i < builderTypes.length; i++) {
+        if (builderTypes[i].unitBlueprintId === active) return active;
+      }
+    }
+    const next = builderTypes[0]?.unitBlueprintId ?? null;
+    this.setNormalizedActiveBuilderUnitBlueprintId(next);
+    return next;
+  }
+
+  private resetActiveBuilderUnitBlueprintIdForSelection(): void {
+    const next = getBarVisibleSelectedBuilderTypeInfos(this.entitySource.getSelectedUnits())[0]?.unitBlueprintId ?? null;
+    this.setNormalizedActiveBuilderUnitBlueprintId(next);
+  }
+
+  private setNormalizedActiveBuilderUnitBlueprintId(unitBlueprintId: string | null): void {
+    if (this.activeBuilderUnitBlueprintId === unitBlueprintId) return;
+    this.activeBuilderUnitBlueprintId = unitBlueprintId;
+    this.onActiveBuilderChange?.(unitBlueprintId);
+    this.setBuildGridPage(this.buildGridPage);
+  }
+
+  private getFactoryGridPageCount(): number {
+    const factory = this.getSelectedFactory();
+    if (factory === null) return 1;
+    return Math.max(1, Math.ceil(this.getSelectedFactoryGridUnitBlueprintCells(factory).length / BAR_GRID_SLOT_COUNT));
   }
 
   /** Exit build mode (from UI or internal flow). No-op if not in build mode. */
@@ -640,7 +951,7 @@ export class Input3DManager {
   /** Toggle D-gun mode from UI. Only enters if a commander is
    *  selected — mirrors the 2D BuildingPlacementController's gate. */
   toggleDGunMode(): void {
-    if (!this.hasSelectedCommander()) return;
+    if (!this.hasSelectedResurrectControlForActivePreset()) return;
     this.exitSpecialModes();
     this.mode.toggleDGunMode();
   }
@@ -682,6 +993,18 @@ export class Input3DManager {
     this.selectedCommands.setRepeatQueue();
   }
 
+  setRepeatQueueEnabled(enabled: boolean): void {
+    this.selectedCommands.setRepeatQueue(enabled);
+  }
+
+  toggleBuilderPriority(): void {
+    this.selectedCommands.setBuilderPriority();
+  }
+
+  toggleCarrierSpawn(): void {
+    this.selectedCommands.setCarrierSpawn();
+  }
+
   clearSelectedFactoryGuard(): void {
     const selectedStatic = this.entitySource.getSelectedBuildings();
     const tick = this.context.getTick();
@@ -690,6 +1013,7 @@ export class Input3DManager {
       if (
         factory.factory === null ||
         factory.ownership?.playerId !== this.context.activePlayerId ||
+        !entityHasBarFactoryGuardCommand(factory) ||
         factory.factory.guardTargetId === null
       ) continue;
       this.commandSink.enqueue({
@@ -701,12 +1025,89 @@ export class Input3DManager {
     }
   }
 
+  toggleSelectedFactoryGuard(): void {
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    let shouldEnable = false;
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const factory = selectedStatic[i];
+      if (
+        factory.factory !== null &&
+        factory.ownership?.playerId === this.context.activePlayerId &&
+        entityHasBarFactoryGuardCommand(factory) &&
+        factory.factory.guardTargetId !== factory.id
+      ) {
+        shouldEnable = true;
+        break;
+      }
+    }
+
+    const tick = this.context.getTick();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const factory = selectedStatic[i];
+      if (
+        factory.factory === null ||
+        factory.ownership?.playerId !== this.context.activePlayerId ||
+        !entityHasBarFactoryGuardCommand(factory)
+      ) continue;
+      this.commandSink.enqueue({
+        type: 'setFactoryGuard',
+        tick,
+        factoryId: factory.id,
+        targetId: shouldEnable ? factory.id : null,
+      });
+    }
+  }
+
+  setSelectedFactoryGuardEnabled(enabled: boolean): void {
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    const tick = this.context.getTick();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const factory = selectedStatic[i];
+      if (
+        factory.factory === null ||
+        factory.ownership?.playerId !== this.context.activePlayerId ||
+        !entityHasBarFactoryGuardCommand(factory)
+      ) continue;
+      const targetId = enabled ? factory.id : null;
+      if (factory.factory.guardTargetId === targetId) continue;
+      this.commandSink.enqueue({
+        type: 'setFactoryGuard',
+        tick,
+        factoryId: factory.id,
+        targetId,
+      });
+    }
+  }
+
   toggleUnitMoveState(): void {
     this.selectedCommands.setUnitMoveState();
   }
 
+  setUnitMoveState(moveState: UnitMoveState): void {
+    this.selectedCommands.setUnitMoveState(moveState);
+  }
+
   toggleTrajectoryMode(): void {
-    this.selectedCommands.setTrajectoryMode();
+    if (isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())) {
+      this.selectedCommands.setTrajectoryMode(
+        undefined,
+        this.selectedTrajectoryPredicateForActivePreset(),
+        entityEffectiveBarTrajectoryMode,
+        this.selectedBarTrajectoryModeCycle(),
+      );
+      return;
+    }
+    this.selectedCommands.setTrajectoryMode(
+      undefined,
+      this.selectedTrajectoryPredicateForActivePreset(),
+    );
+  }
+
+  setTrajectoryMode(trajectoryMode: CombatTrajectoryMode): void {
+    this.selectedCommands.setTrajectoryMode(
+      trajectoryMode,
+      this.selectedTrajectoryPredicateForActivePreset(),
+    );
   }
 
   toggleCloakState(): void {
@@ -728,8 +1129,16 @@ export class Input3DManager {
     this.selectedCommands.setFireEnabled();
   }
 
+  setSelectedFireState(fireState: CombatFireState): void {
+    this.selectedCommands.setFireEnabled(fireState);
+  }
+
   toggleBuildingActive(): void {
-    this.selectedCommands.setBuildingActive();
+    this.selectedCommands.setBuildingActive(undefined, this.selectedBuildingActivePredicateForActivePreset());
+  }
+
+  setBuildingActive(open: boolean): void {
+    this.selectedCommands.setBuildingActive(open, this.selectedBuildingActivePredicateForActivePreset());
   }
 
   selfDestructSelected(): void {
@@ -983,7 +1392,7 @@ export class Input3DManager {
       this.exitAttackAreaMode();
       return;
     }
-    if (this.entitySource.getSelectedUnits().length === 0) return;
+    if (!this.hasSelectedAttackAreaControl()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes();
@@ -1021,7 +1430,7 @@ export class Input3DManager {
       this.exitAttackMode();
       return;
     }
-    if (this.entitySource.getSelectedUnits().length === 0) return;
+    if (!this.hasSelectedAttackControl()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes();
@@ -1045,7 +1454,7 @@ export class Input3DManager {
       this.exitManualLaunchMode();
       return;
     }
-    if (!this.hasSelectedManualLaunchEntities()) return;
+    if (!this.hasSelectedManualLaunchEntitiesForActivePreset()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes();
@@ -1069,11 +1478,23 @@ export class Input3DManager {
       this.exitRepairAreaMode();
       return;
     }
-    if (!this.hasSelectedCommander()) return;
+    if (!this.hasSelectedBuilder()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes();
     this.enterSpecialMode('repairArea');
+  }
+
+  toggleRestoreAreaMode(): void {
+    if (this.restoreAreaMode) {
+      this.exitRestoreAreaMode();
+      return;
+    }
+    if (!this.hasSelectedBuilder()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes();
+    this.enterSpecialMode('restoreArea');
   }
 
   toggleReclaimMode(): void {
@@ -1081,7 +1502,7 @@ export class Input3DManager {
       this.exitReclaimMode();
       return;
     }
-    if (!this.hasSelectedCommander()) return;
+    if (!this.hasSelectedBuilder()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes(false);
@@ -1093,7 +1514,7 @@ export class Input3DManager {
       this.exitCaptureMode();
       return;
     }
-    if (!this.hasSelectedCommander()) return;
+    if (!this.hasSelectedCaptureControlForActivePreset()) return;
     this.mode.exitBuildMode();
     this.mode.exitDGunMode();
     this.exitSpecialModes(false);
@@ -1237,6 +1658,11 @@ export class Input3DManager {
     return this.repairAreaMode;
   }
 
+  /** True while the next left-click will issue a BAR Restore area command. */
+  isInRestoreAreaMode(): boolean {
+    return this.restoreAreaMode;
+  }
+
   /** True while the next right-click move preserves the selected formation. */
   isInFormationMoveMode(): boolean {
     return this.formationMoveMode;
@@ -1315,6 +1741,10 @@ export class Input3DManager {
     this.specialModes.exit('repairArea');
   }
 
+  private exitRestoreAreaMode(): void {
+    this.specialModes.exit('restoreArea');
+  }
+
   private exitFormationMoveMode(): void {
     this.specialModes.exit('formationMove');
   }
@@ -1384,6 +1814,10 @@ export class Input3DManager {
     this.specialModes.exit('towerTarget');
   }
 
+  private exitTowerTargetNoGroundMode(): void {
+    this.specialModes.exit('towerTargetNoGround');
+  }
+
   toggleTowerTargetMode(): void {
     if (this.towerTargetMode) {
       this.exitTowerTargetMode();
@@ -1396,18 +1830,30 @@ export class Input3DManager {
     this.enterSpecialMode('towerTarget');
   }
 
+  toggleTowerTargetNoGroundMode(): void {
+    if (this.towerTargetNoGroundMode) {
+      this.exitTowerTargetNoGroundMode();
+      return;
+    }
+    if (!this.hasSelectedTargetableCombatEntities()) return;
+    this.mode.exitBuildMode();
+    this.mode.exitDGunMode();
+    this.exitSpecialModes(false);
+    this.enterSpecialMode('towerTargetNoGround');
+  }
+
   clearTowerTarget(): void {
     this.selectedCommands.setTowerTarget(null);
   }
 
   reclaimSelected(): void {
-    const commander = this.getSelectedCommander();
-    if (commander === null) return;
+    const builder = this.getSelectedBuilder();
+    if (builder === null) return;
     const targets: Entity[] = [];
     const selectedUnits = this.entitySource.getSelectedUnits();
     for (let i = 0; i < selectedUnits.length; i++) {
       const target = selectedUnits[i];
-      if (target.id !== commander.id && isReclaimableTarget(target)) targets.push(target);
+      if (target.id !== builder.id && isReclaimableTarget(target)) targets.push(target);
     }
     const selectedStatic = this.entitySource.getSelectedBuildings();
     for (let i = 0; i < selectedStatic.length; i++) {
@@ -1420,7 +1866,7 @@ export class Input3DManager {
       this.commandSink.enqueue({
         type: 'reclaim',
         tick,
-        commanderId: commander.id,
+        commanderId: builder.id,
         targetId: targets[i].id,
         queue: i > 0,
         queueFront: false,
@@ -1456,7 +1902,7 @@ export class Input3DManager {
   }
 
   isInTowerTargetMode(): boolean {
-    return this.towerTargetMode;
+    return this.towerTargetMode || this.towerTargetNoGroundMode;
   }
 
   private hasSelectedTargetableCombatEntities(): boolean {
@@ -1473,6 +1919,122 @@ export class Input3DManager {
       }
     }
     return false;
+  }
+
+  private hasSelectedBarManualLaunchEntities(): boolean {
+    const entities = this.selectedCommands.selectedTargetableCombatEntities();
+    for (let i = 0; i < entities.length; i++) {
+      if (entityHasBarManualLaunchCommand(entities[i])) return true;
+    }
+    return false;
+  }
+
+  private hasSelectedManualLaunchEntitiesForActivePreset(): boolean {
+    const presetId = getActiveCommandHotkeyPresetId();
+    return isBarCommandHotkeyPreset(presetId)
+      ? this.hasSelectedBarManualLaunchEntities()
+      : this.hasSelectedManualLaunchEntities();
+  }
+
+  private hasSelectedResurrectControlForActivePreset(): boolean {
+    return isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
+      ? false
+      : this.hasSelectedCommander();
+  }
+
+  private hasSelectedCaptureControlForActivePreset(): boolean {
+    if (!isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())) {
+      return this.hasSelectedCommander();
+    }
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (entityHasBarCaptureCommand(selectedUnits[i])) return true;
+    }
+    return false;
+  }
+
+  private hasSelectedAttackAreaControl(): boolean {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (entityHasBarAreaAttackCommand(selectedUnits[i])) return true;
+    }
+    return false;
+  }
+
+  private hasSelectedAttackControl(): boolean {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (entityHasBarAttackCommand(selectedUnits[i])) return true;
+    }
+    return false;
+  }
+
+  private hasSelectedMoveStateControl(): boolean {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (entityHasBarMoveStateCommand(selectedUnits[i])) return true;
+    }
+    return false;
+  }
+
+  private hasSelectedTrajectoryControl(): boolean {
+    const includeEntity = this.selectedTrajectoryPredicateForActivePreset();
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (includeEntity(selectedUnits[i])) return true;
+    }
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      if (includeEntity(selectedStatic[i])) return true;
+    }
+    return false;
+  }
+
+  private selectedBarTrajectoryModeCycle(): readonly CombatTrajectoryMode[] {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (entityBarTrajectoryCommandKind(selectedUnits[i]) === 'smartAutoLowHigh') {
+        return BAR_SMART_TRAJECTORY_MODE_CYCLE;
+      }
+    }
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      if (entityBarTrajectoryCommandKind(selectedStatic[i]) === 'smartAutoLowHigh') {
+        return BAR_SMART_TRAJECTORY_MODE_CYCLE;
+      }
+    }
+    return BAR_STANDARD_TRAJECTORY_MODE_CYCLE;
+  }
+
+  private selectedTrajectoryPredicateForActivePreset(): (entity: Entity) => boolean {
+    return isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
+      ? entityHasBarTrajectoryControl
+      : entityHasBallisticCombat;
+  }
+
+  private hasSelectedCloakControl(): boolean {
+    const selectedUnits = this.entitySource.getSelectedUnits();
+    for (let i = 0; i < selectedUnits.length; i++) {
+      if (entityHasCloakCommand(selectedUnits[i])) return true;
+    }
+    return false;
+  }
+
+  private hasSelectedBuildingActiveControl(): boolean {
+    const includeBuilding = this.selectedBuildingActivePredicateForActivePreset();
+    const selectedStatic = this.entitySource.getSelectedBuildings();
+    for (let i = 0; i < selectedStatic.length; i++) {
+      const entity = selectedStatic[i];
+      if (entity.type !== 'building') continue;
+      if (includeBuilding(entity.buildingBlueprintId)) return true;
+    }
+    return false;
+  }
+
+  private selectedBuildingActivePredicateForActivePreset(): typeof buildingBlueprintHasActiveState {
+    return isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId())
+      ? buildingBlueprintHasBarOnOffCommand
+      : buildingBlueprintHasActiveState;
   }
 
   private hasSelectedCommander(): boolean {
@@ -1508,12 +2070,10 @@ export class Input3DManager {
   }
 
   private getSelectedBuilder(): Entity | null {
-    const selectedUnits = this.entitySource.getSelectedUnits();
-    for (let i = 0; i < selectedUnits.length; i++) {
-      const unit = selectedUnits[i];
-      if (unit.builder !== null) return unit;
-    }
-    return null;
+    return getActiveSelectedBuilder(
+      this.entitySource.getSelectedUnits(),
+      this.activeBuilderUnitBlueprintId,
+    );
   }
 
   private getSelectedMetalExtractorUpgradeBuilders(): Entity[] {
@@ -1544,7 +2104,10 @@ export class Input3DManager {
   }
 
   private getSelectedBuilderAllowedBuildBlueprintIds(): readonly StructureBlueprintId[] {
-    return getSelectedBuilderAllowedBuildBlueprintIds(this.entitySource.getSelectedUnits());
+    return getActiveSelectedBuilderAllowedBuildBlueprintIds(
+      this.entitySource.getSelectedUnits(),
+      this.activeBuilderUnitBlueprintId,
+    );
   }
 
   private getSelectedFactory(): Entity | null {
@@ -1561,26 +2124,99 @@ export class Input3DManager {
     return null;
   }
 
+  private getSelectedFactoryDisplayUnitBlueprintIds(factory: Entity): string[] {
+    return buildFactoryUnitBlueprintIdsForPreset(
+      getFactoryAllowedUnitBlueprintIds(factory),
+      getActiveCommandHotkeyPresetId(),
+    );
+  }
+
+  private getSelectedFactoryGridUnitBlueprintCells(factory: Entity): (string | null)[] {
+    return buildFactoryUnitGridCellsForPreset(
+      getFactoryAllowedUnitBlueprintIds(factory),
+      getActiveCommandHotkeyPresetId(),
+    );
+  }
+
   private loadFactoryProductionPreset(index: number): void {
     const factory = this.getSelectedFactory();
     if (factory === null) return;
-    const unitBlueprintId = getFactoryProductionPresetSlot(index);
+    const snapshot = getFactoryProductionPresetSlot(index);
+    const allowedUnitBlueprintIds = new Set<string>(this.getSelectedFactoryDisplayUnitBlueprintIds(factory));
+    const replay = resolveFactoryProductionPresetReplay(snapshot, allowedUnitBlueprintIds);
+    if (replay === null) return;
     const tick = this.context.getTick();
-    if (unitBlueprintId === null) {
-      this.commandSink.enqueue({
-        type: 'stopFactoryProduction',
-        tick,
-        factoryId: factory.id,
-      });
-      return;
-    }
+    this.commandSink.enqueue({
+      type: 'stopFactoryProduction',
+      tick,
+      factoryId: factory.id,
+    });
     this.commandSink.enqueue({
       type: 'queueUnit',
       tick,
       factoryId: factory.id,
-      unitBlueprintId,
-      repeat: true,
+      unitBlueprintId: replay.selectedUnitBlueprintId,
+      repeat: replay.repeatProduction,
     });
+    for (let i = 0; i < replay.productionQueue.length; i++) {
+      this.commandSink.enqueue({
+        type: 'queueUnit',
+        tick,
+        factoryId: factory.id,
+        unitBlueprintId: replay.productionQueue[i],
+        repeat: false,
+      });
+    }
+  }
+
+  private queueSelectedFactoryUnitSlot(slotIndex: number, repeat: boolean, count: number): boolean {
+    const slot = this.resolveSelectedFactoryUnitSlot(slotIndex);
+    if (slot === null) return false;
+    if (count < 0) {
+      const removeCount = Math.max(1, Math.min(64, Math.floor(-count)));
+      this.commandSink.enqueue({
+        type: 'removeFactoryUnitProduction',
+        tick: this.context.getTick(),
+        factoryId: slot.factory.id,
+        unitBlueprintId: slot.unitBlueprintId,
+        count: removeCount,
+      });
+      return true;
+    }
+    this.commandSink.enqueue({
+      type: 'queueUnit',
+      tick: this.context.getTick(),
+      factoryId: slot.factory.id,
+      unitBlueprintId: slot.unitBlueprintId,
+      repeat,
+      count,
+    });
+    return true;
+  }
+
+  private changeSelectedFactoryUnitSlotQuota(slotIndex: number, delta: number): boolean {
+    const slot = this.resolveSelectedFactoryUnitSlot(slotIndex);
+    if (slot === null) return false;
+    this.commandSink.enqueue({
+      type: 'changeFactoryUnitQuota',
+      tick: this.context.getTick(),
+      factoryId: slot.factory.id,
+      unitBlueprintId: slot.unitBlueprintId,
+      delta,
+    });
+    return true;
+  }
+
+  private resolveSelectedFactoryUnitSlot(slotIndex: number): { factory: Entity; unitBlueprintId: string } | null {
+    const factory = this.getSelectedFactory();
+    if (factory === null) return null;
+    const allowedUnitBlueprintIds = this.getSelectedFactoryGridUnitBlueprintCells(factory);
+    const pageIndex = normalizeGridPageIndex(
+      this.factoryGridPage,
+      Math.max(1, Math.ceil(allowedUnitBlueprintIds.length / BAR_GRID_SLOT_COUNT)),
+    );
+    const unitBlueprintId = allowedUnitBlueprintIds[(pageIndex * BAR_GRID_SLOT_COUNT) + slotIndex];
+    return unitBlueprintId === undefined || unitBlueprintId === null ? null : { factory, unitBlueprintId };
   }
 
   private stopSelectedFactoryProduction(): void {
@@ -1593,11 +2229,30 @@ export class Input3DManager {
     });
   }
 
+  private toggleSelectedFactoryRepeatProduction(): void {
+    this.setSelectedFactoryRepeatProduction(!this.getSelectedFactoryRepeatProduction());
+  }
+
+  private setSelectedFactoryRepeatProduction(enabled: boolean): void {
+    const factory = this.getSelectedFactory();
+    if (factory === null) return;
+    this.commandSink.enqueue({
+      type: 'setFactoryRepeatProduction',
+      tick: this.context.getTick(),
+      factoryId: factory.id,
+      enabled,
+    });
+  }
+
   private saveFactoryProductionPreset(index: number): void {
     const factory = this.getSelectedFactory();
-    const unitBlueprintId = factory?.factory?.selectedUnitBlueprintId ?? null;
-    if (unitBlueprintId === null) return;
-    setFactoryProductionPresetSlot(index, unitBlueprintId);
+    const factoryComp = factory?.factory ?? null;
+    if (factoryComp === null) return;
+    setFactoryProductionPresetSlot(index, createFactoryProductionPresetSnapshot(
+      factoryComp.selectedUnitBlueprintId,
+      factoryComp.repeatProduction,
+      factoryComp.productionQueue,
+    ));
   }
 
   private applyCursor(kind: CommandCursorKind): void {
@@ -1708,38 +2363,44 @@ export class Input3DManager {
       this.entitySource,
       this.context.activePlayerId,
     );
-    if (changed) this.setWaypointMode('move');
+    if (changed) {
+      this.setWaypointMode('move');
+      this.resetActiveBuilderUnitBlueprintIdForSelection();
+    }
     if (this.mode.isInBuildMode && !this.hasSelectedBuilder()) {
       this.mode.exitBuildMode();
     }
-    if (this.repairAreaMode && !this.hasSelectedCommander()) {
+    if (this.repairAreaMode && !this.hasSelectedBuilder()) {
       this.exitRepairAreaMode();
     }
-    if (this.attackMode && this.entitySource.getSelectedUnits().length === 0) {
+    if (this.restoreAreaMode && !this.hasSelectedBuilder()) {
+      this.exitRestoreAreaMode();
+    }
+    if (this.attackMode && !this.hasSelectedAttackControl()) {
       this.exitAttackMode();
     }
-    if (this.attackAreaMode && this.entitySource.getSelectedUnits().length === 0) {
+    if (this.attackAreaMode && !this.hasSelectedAttackAreaControl()) {
       this.exitAttackAreaMode();
     }
     if (this.attackGroundMode && this.entitySource.getSelectedUnits().length === 0) {
       this.exitAttackGroundMode();
     }
-    if (this.manualLaunchMode && !this.hasSelectedManualLaunchEntities()) {
+    if (this.manualLaunchMode && !this.hasSelectedManualLaunchEntitiesForActivePreset()) {
       this.exitManualLaunchMode();
     }
     if (this.guardMode && this.entitySource.getSelectedUnits().length === 0) {
       this.exitGuardMode();
     }
-    if (this.reclaimMode && !this.hasSelectedCommander()) {
+    if (this.reclaimMode && !this.hasSelectedBuilder()) {
       this.exitReclaimMode();
     }
-    if (this.captureMode && !this.hasSelectedCommander()) {
+    if (this.captureMode && !this.hasSelectedCaptureControlForActivePreset()) {
       this.exitCaptureMode();
     }
-    if (this.resurrectMode && !this.hasSelectedCommander()) {
+    if (this.resurrectMode && !this.hasSelectedResurrectControlForActivePreset()) {
       this.exitResurrectMode();
     }
-    if (this.resurrectAreaMode && !this.hasSelectedCommander()) {
+    if (this.resurrectAreaMode && !this.hasSelectedResurrectControlForActivePreset()) {
       this.exitResurrectAreaMode();
     }
     if (this.loadTransportMode && !this.hasSelectedTransports()) {
@@ -1753,6 +2414,9 @@ export class Input3DManager {
     }
     if (this.towerTargetMode && !this.hasSelectedTargetableCombatEntities()) {
       this.exitTowerTargetMode();
+    }
+    if (this.towerTargetNoGroundMode && !this.hasSelectedTargetableCombatEntities()) {
+      this.exitTowerTargetNoGroundMode();
     }
     this.applyEdgeScroll();
     this.refreshCursor();
@@ -1791,6 +2455,7 @@ export class Input3DManager {
 
   private handleKeyUp(e: KeyboardEvent): void {
     this.updateHeldSelectBoxModifier(e, false);
+    this.keyboard.handleKeyUp(e);
   }
 
   private updateHeldSelectBoxModifier(e: KeyboardEvent, held: boolean): void {
@@ -1799,6 +2464,10 @@ export class Input3DManager {
       this.selectBoxSameTypeHeld = held;
     } else if (e.code === 'Space') {
       this.selectBoxIdleHeld = held;
+      const presetId = getActiveCommandHotkeyPresetId();
+      if (hasBarFactoryPresetHotkeys(presetId)) {
+        this.setFactoryPresetOverlayVisible(held);
+      }
       e.preventDefault();
     }
   }
@@ -1806,6 +2475,7 @@ export class Input3DManager {
   private clearHeldSelectBoxModifiers(): void {
     this.selectBoxSameTypeHeld = false;
     this.selectBoxIdleHeld = false;
+    this.setFactoryPresetOverlayVisible(false);
   }
 
   private resolveSelectionModifiers(e: MouseEvent): {
@@ -2071,6 +2741,13 @@ export class Input3DManager {
     this.pointerClientY = e.clientY;
     // Button 0 = left (select / mode-click), Button 2 = right
     // (command / cancel), Button 1 (middle) is handled by OrbitCamera.
+    if (e.button === 2 && this.buildGridCategory !== null) {
+      e.preventDefault();
+      this.setBuildGridCategory(null);
+      this.refreshCursor();
+      return;
+    }
+
     if (this.modeClicks.handleMouseDown(e)) return;
 
     if (e.button === 0) {
@@ -2229,9 +2906,16 @@ export class Input3DManager {
     this.onWaypointModeChange = undefined;
     this.onControlGroupFocus = undefined;
     this.onBuildModeChange = undefined;
+    this.onBuildGridCategoryChange = undefined;
+    this.onBuildGridPageChange = undefined;
+    this.onFactoryGridPageChange = undefined;
+    this.onFactoryQueueModeChange = undefined;
+    this.onFactoryPresetOverlayChange = undefined;
+    this.onActiveBuilderChange = undefined;
     this.onQueueInsertIndexChange = undefined;
     this.onDGunModeChange = undefined;
     this.onRepairAreaModeChange = undefined;
+    this.onRestoreAreaModeChange = undefined;
     this.onFormationAssumeModeChange = undefined;
     this.onFormationMoveModeChange = undefined;
     this.onAttackModeChange = undefined;
@@ -2246,6 +2930,7 @@ export class Input3DManager {
     this.onMexUpgradeModeChange = undefined;
     this.onPingModeChange = undefined;
     this.onTowerTargetModeChange = undefined;
+    this.onTowerTargetNoGroundModeChange = undefined;
     this.selectionDrag.destroy();
   }
 }

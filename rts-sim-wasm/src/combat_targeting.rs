@@ -2,9 +2,9 @@
 
 #[allow(unused_imports)]
 use crate::*;
+use std::cell::Cell;
 #[allow(unused_imports)]
 use wasm_bindgen::prelude::*;
-use std::cell::Cell;
 
 // ─────────────────────────────────────────────────────────────────
 // AIM-08.1 — Targeting input slabs
@@ -547,7 +547,8 @@ impl CombatTargetingPool {
             self.entity_radar_radius.resize(entity_needed, 0.0);
             self.entity_detector_radius.resize(entity_needed, 0.0);
             self.entity_sensor_coverage_mask.resize(entity_needed, 0);
-            self.entity_full_sight_coverage_mask.resize(entity_needed, 0);
+            self.entity_full_sight_coverage_mask
+                .resize(entity_needed, 0);
             self.entity_detector_coverage_mask.resize(entity_needed, 0);
             self.entity_detection_padding.resize(entity_needed, 0.0);
             self.entity_priority_target_id.resize(entity_needed, -1);
@@ -559,8 +560,10 @@ impl CombatTargetingPool {
             self.entity_active_turret_mask.resize(entity_needed, 0);
             self.entity_firing_turret_mask.resize(entity_needed, 0);
             self.entity_stamp_epoch.resize(entity_needed, 0);
-            self.entity_shelter_memo_epoch.resize_with(entity_needed, || Cell::new(0));
-            self.entity_shelter_memo_value.resize_with(entity_needed, || Cell::new(0));
+            self.entity_shelter_memo_epoch
+                .resize_with(entity_needed, || Cell::new(0));
+            self.entity_shelter_memo_value
+                .resize_with(entity_needed, || Cell::new(0));
             self.entity_stamp_same_entity.resize(entity_needed, 0);
             self.turret_count_per_entity.resize(entity_needed, 0);
         }
@@ -2360,9 +2363,30 @@ pub fn combat_targeting_add_sensor_observation_circle(
     // A scan pulse is a full-sight source: it reveals identity in its area, so
     // it seeds the merged sensor mask (radar-level), the full-sight-only mask,
     // and the detector mask.
-    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, CT_OBSERVATION_MASK_SENSOR);
-    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, CT_OBSERVATION_MASK_FULL_SIGHT);
-    combat_targeting_mark_observation_circle(pool, x, y, radius, owner_bit, CT_OBSERVATION_MASK_DETECTOR);
+    combat_targeting_mark_observation_circle(
+        pool,
+        x,
+        y,
+        radius,
+        owner_bit,
+        CT_OBSERVATION_MASK_SENSOR,
+    );
+    combat_targeting_mark_observation_circle(
+        pool,
+        x,
+        y,
+        radius,
+        owner_bit,
+        CT_OBSERVATION_MASK_FULL_SIGHT,
+    );
+    combat_targeting_mark_observation_circle(
+        pool,
+        x,
+        y,
+        radius,
+        owner_bit,
+        CT_OBSERVATION_MASK_DETECTOR,
+    );
 }
 
 pub(crate) fn combat_targeting_view_mask_covers_entity(
@@ -2842,7 +2866,8 @@ pub(crate) fn combat_targeting_source_sheltered_by_friendly_above(
     source_entity_slot: usize,
 ) -> bool {
     if source_entity_slot >= pool.entity_flags.len()
-        || (pool.entity_flags[source_entity_slot] & CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE) == 0
+        || (pool.entity_flags[source_entity_slot] & CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE)
+            == 0
     {
         return false;
     }

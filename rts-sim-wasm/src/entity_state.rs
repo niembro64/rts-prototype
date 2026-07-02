@@ -691,13 +691,21 @@ entity_state_ptr_export!(entity_state_aabb_hx_ptr, aabb_hx, f64);
 entity_state_ptr_export!(entity_state_aabb_hy_ptr, aabb_hy, f64);
 entity_state_ptr_export!(entity_state_aabb_hz_ptr, aabb_hz, f64);
 entity_state_ptr_export!(entity_state_body_slot_ptr, body_slot, i32);
-entity_state_ptr_export!(entity_state_unit_blueprint_code_ptr, unit_blueprint_code, u32);
+entity_state_ptr_export!(
+    entity_state_unit_blueprint_code_ptr,
+    unit_blueprint_code,
+    u32
+);
 entity_state_ptr_export!(
     entity_state_building_blueprint_code_ptr,
     building_blueprint_code,
     u32
 );
-entity_state_ptr_export!(entity_state_shot_blueprint_code_ptr, shot_blueprint_code, u32);
+entity_state_ptr_export!(
+    entity_state_shot_blueprint_code_ptr,
+    shot_blueprint_code,
+    u32
+);
 entity_state_ptr_export!(
     entity_state_projectile_type_code_ptr,
     projectile_type_code,

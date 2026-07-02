@@ -14,8 +14,10 @@ import {
   appendEntitySnapshotWireRowDirect,
   appendUnitMotionEntityWireRowDirectFromState,
   canUseTypedDeltaPlaceholder,
+  entityPrivateSnapshotRequiresDto,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
+  serializeEntitySnapshot,
 } from '../network/stateSerializerEntities';
 import { writeGridSnapshotWireRowsDirect } from '../network/stateSerializerGrid';
 import { writeMinimapSnapshotWireRowsDirect } from '../network/stateSerializerMinimap';
@@ -190,6 +192,31 @@ export class ServerSnapshotDirectWirePreencoder {
     visibilityFiltered: undefined,
     visionPlayerMask: undefined,
   };
+
+  private writeEntityRow(
+    index: number,
+    entity: Entity,
+    changedFields: number | undefined,
+    world: WorldState,
+    visibility: SnapshotVisibility,
+    typedPlaceholder = false,
+  ): boolean {
+    if (entityPrivateSnapshotRequiresDto(entity, changedFields, visibility)) {
+      const row = serializeEntitySnapshot(entity, changedFields, world, visibility);
+      if (row === null) return false;
+      this.entityPlaceholders[index] = row;
+      return true;
+    }
+    this.entityPlaceholders[index] = undefined as unknown as NetworkServerSnapshot['entities'][number];
+    appendEntitySnapshotWireRowDirect(
+      entity,
+      changedFields,
+      world,
+      visibility,
+      typedPlaceholder,
+    );
+    return true;
+  }
 
   tryEncode(input: ServerSnapshotDirectWireInput): DirectSerializedListenerSnapshot | undefined {
     if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
@@ -687,7 +714,7 @@ export class ServerSnapshotDirectWirePreencoder {
       for (let i = 0; i < visibleEntityIds.length; i++) {
         const entity = input.world.getEntity(visibleEntityIds[i]);
         if (!entity || !isSerializedEntityKind(entity)) continue;
-        appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
+        if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
         entityCount++;
       }
       return entityCount;
@@ -703,7 +730,7 @@ export class ServerSnapshotDirectWirePreencoder {
       for (let i = 0; i < source.length; i++) {
         const entity = source[i];
         if (!acceptsSerializedEntity(entity, input.visibility)) continue;
-        appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
+        if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
         entityCount++;
       }
     }
@@ -727,13 +754,14 @@ export class ServerSnapshotDirectWirePreencoder {
       }
       const entity = input.world.getEntity(id);
       if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
-      appendEntitySnapshotWireRowDirect(
+      if (!this.writeEntityRow(
+        entityCount,
         entity,
         ENTITY_MOTION_DELTA_FIELDS,
         input.world,
         input.visibility,
         canUseTypedDeltaPlaceholder(entity, ENTITY_MOTION_DELTA_FIELDS),
-      );
+      )) continue;
       entityCount++;
     }
     return entityCount;
@@ -826,13 +854,14 @@ export class ServerSnapshotDirectWirePreencoder {
         }
         const entity = input.world.getEntity(id);
         if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
-        appendEntitySnapshotWireRowDirect(
+        if (!this.writeEntityRow(
+          entityCount,
           entity,
           changedFields,
           input.world,
           input.visibility,
           changedFields !== undefined && canUseTypedDeltaPlaceholder(entity, changedFields),
-        );
+        )) continue;
         emittedIds.add(id);
         entityCount++;
       }
@@ -850,7 +879,7 @@ export class ServerSnapshotDirectWirePreencoder {
         this.visibleBaselineAddedIds.push(id);
         const entity = input.world.getEntity(id);
         if (!entity || !isSerializedEntityKind(entity)) continue;
-        appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
+        if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
         emittedIds.add(id);
         entityCount++;
       }
@@ -860,7 +889,7 @@ export class ServerSnapshotDirectWirePreencoder {
         this.visibleBaselineAddedIds.push(id);
         const entity = input.world.getEntity(id);
         if (!entity || !isSerializedEntityKind(entity)) continue;
-        appendEntitySnapshotWireRowDirect(entity, undefined, input.world, input.visibility);
+        if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
         emittedIds.add(id);
         entityCount++;
       }
@@ -882,13 +911,14 @@ export class ServerSnapshotDirectWirePreencoder {
       }
       const entity = input.world.getEntity(id);
       if (!entity || !isSerializedEntityKind(entity)) continue;
-      appendEntitySnapshotWireRowDirect(
+      if (!this.writeEntityRow(
+        entityCount,
         entity,
         input.dirtyFields[i],
         input.world,
         input.visibility,
         canUseTypedDeltaPlaceholder(entity, input.dirtyFields[i]),
-      );
+      )) continue;
       emittedIds.add(id);
       entityCount++;
     }

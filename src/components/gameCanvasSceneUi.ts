@@ -87,26 +87,43 @@ export function useGameCanvasSceneUi({
     buildingCount: 0,
     hasCommander: false,
     hasBuilder: false,
+    activeBuilderUnitBlueprintId: null,
+    selectedBuilderTypes: [],
     hasTransport: false,
     allowedBuildBlueprintIds: [],
     canUpgradeMetalExtractors: false,
     hasUpgradeableMetalExtractor: false,
     hasDGun: false,
+    hasBarAttackControl: false,
+    hasBarCaptureControl: false,
+    hasBarAreaAttackControl: false,
+    hasMoveStateControl: false,
     hasFireControl: false,
     fireEnabled: false,
     fireState: 'fireAtWill',
     hasTrajectoryControl: false,
     trajectoryMode: 'auto',
+    hasBarTrajectoryControl: false,
+    barTrajectoryMode: 'auto',
+    barTrajectoryStateCount: 2,
     hasCloakControl: false,
     wantsCloak: false,
     isCloaked: false,
+    hasBuilderPriorityControl: false,
+    builderPriorityLow: false,
+    hasCarrierSpawnControl: false,
+    carrierSpawnEnabled: false,
     hasBuildingActiveControl: false,
     buildingsActive: false,
+    hasBarBuildingActiveControl: false,
+    barBuildingsActive: false,
     hasSelfDestructable: false,
     hasReclaimableSelection: false,
     hasTowerTargetControl: false,
+    hasManualLaunchControl: false,
     hasTowerTargetActive: false,
     isTowerTargetMode: false,
+    isTowerTargetNoGroundMode: false,
     isWaiting: false,
     isGatherWaiting: false,
     isRepeatQueue: false,
@@ -116,15 +133,21 @@ export function useGameCanvasSceneUi({
     queueInsertIndex: null,
     queueInsertOptions: [],
     hasFactory: false,
+    factoryAllowedUnitBlueprintIds: [],
     factoryId: undefined,
+    factoryPresetOverlayVisible: false,
     commanderId: undefined,
     waypointMode: 'move',
+    buildGridCategory: null,
+    buildGridPage: 0,
+    factoryGridPage: 0,
     isBuildMode: false,
     selectedBuildingBlueprintId: null,
     buildLineSpacingMultiplier: 1,
     buildFacingDegrees: 0,
     isDGunMode: false,
     isRepairAreaMode: false,
+    isRestoreAreaMode: false,
     isFormationAssumeMode: false,
     isFormationMoveMode: false,
     isAttackMode: false,
@@ -143,8 +166,11 @@ export function useGameCanvasSceneUi({
     factorySelectedUnit: null,
     factoryProgress: 0,
     factoryIsProducing: false,
-    factoryRepeatsProduction: true,
+    factoryRepeatsProduction: false,
+    factoryQueueMode: false,
     factoryProductionQueue: [],
+    factoryProductionQuotas: [],
+    hasFactoryGuardControl: false,
     factoryGuardTargetId: null,
     controlGroups: [],
     details: [],
@@ -254,6 +280,15 @@ export function useGameCanvasSceneUi({
     toggleUnitMoveState: () => {
       getActiveBattleScene()?.toggleUnitMoveState();
     },
+    setUnitMoveState: (moveState) => {
+      getActiveBattleScene()?.setUnitMoveState(moveState);
+    },
+    toggleBuilderPriority: () => {
+      getActiveBattleScene()?.toggleBuilderPriority();
+    },
+    toggleCarrierSpawn: () => {
+      getActiveBattleScene()?.toggleCarrierSpawn();
+    },
     toggleTrajectoryMode: () => {
       getActiveBattleScene()?.toggleTrajectoryMode();
     },
@@ -268,6 +303,9 @@ export function useGameCanvasSceneUi({
     },
     toggleSelectedFire: () => {
       getActiveBattleScene()?.toggleSelectedFire();
+    },
+    setSelectedFireState: (fireState) => {
+      getActiveBattleScene()?.setSelectedFireState(fireState);
     },
     toggleBuildingActive: () => {
       getActiveBattleScene()?.toggleBuildingActive();
@@ -316,6 +354,9 @@ export function useGameCanvasSceneUi({
     },
     setTowerTargetMode: () => {
       getActiveBattleScene()?.toggleTowerTargetMode();
+    },
+    setTowerTargetNoGroundMode: () => {
+      getActiveBattleScene()?.toggleTowerTargetNoGroundMode();
     },
     clearTowerTarget: () => {
       getActiveBattleScene()?.clearTowerTarget();
@@ -377,6 +418,21 @@ export function useGameCanvasSceneUi({
     cancelBuild: () => {
       getActiveBattleScene()?.cancelBuildMode();
     },
+    setActiveBuilder: (unitBlueprintId) => {
+      getActiveBattleScene()?.setActiveBuilder(unitBlueprintId);
+    },
+    cycleActiveBuilder: () => {
+      getActiveBattleScene()?.cycleActiveBuilder();
+    },
+    setBuildGridCategory: (categoryId) => {
+      getActiveBattleScene()?.setBuildGridCategory(categoryId);
+    },
+    stepBuildGridPage: (delta) => {
+      getActiveBattleScene()?.stepBuildGridPage(delta);
+    },
+    stepFactoryGridPage: (delta) => {
+      getActiveBattleScene()?.stepFactoryGridPage(delta);
+    },
     increaseBuildLineSpacing: () => {
       getActiveBattleScene()?.increaseBuildLineSpacing();
     },
@@ -395,20 +451,38 @@ export function useGameCanvasSceneUi({
     toggleRepairArea: () => {
       getActiveBattleScene()?.toggleRepairAreaMode();
     },
+    toggleRestoreArea: () => {
+      getActiveBattleScene()?.toggleRestoreAreaMode();
+    },
     toggleFormationAssume: () => {
       getActiveBattleScene()?.toggleFormationAssumeMode();
     },
     toggleFormationMove: () => {
       getActiveBattleScene()?.toggleFormationMoveMode();
     },
-    queueUnit: (factoryId, unitBlueprintId, repeat = true, count = 1) => {
+    queueUnit: (factoryId, unitBlueprintId, repeat = false, count = 1) => {
       getActiveBattleScene()?.queueFactoryUnit(factoryId, unitBlueprintId, repeat, count);
+    },
+    removeFactoryUnitProduction: (factoryId, unitBlueprintId, count = 1) => {
+      getActiveBattleScene()?.removeFactoryUnitProduction(factoryId, unitBlueprintId, count);
+    },
+    setFactoryRepeatProduction: (factoryId, enabled) => {
+      getActiveBattleScene()?.setFactoryRepeatProduction(factoryId, enabled);
+    },
+    changeFactoryUnitQuota: (factoryId, unitBlueprintId, delta) => {
+      getActiveBattleScene()?.changeFactoryUnitQuota(factoryId, unitBlueprintId, delta);
+    },
+    toggleFactoryQueueMode: () => {
+      getActiveBattleScene()?.toggleFactoryQueueMode();
     },
     editFactoryQueue: (factoryId, operation, index, length, toIndex, count) => {
       getActiveBattleScene()?.editFactoryQueue(factoryId, operation, index, length, toIndex, count);
     },
     stopFactoryProduction: (factoryId) => {
       getActiveBattleScene()?.stopFactoryProduction(factoryId);
+    },
+    toggleFactoryGuard: (factoryId) => {
+      getActiveBattleScene()?.toggleFactoryGuard(factoryId);
     },
     clearFactoryGuard: (factoryId) => {
       getActiveBattleScene()?.clearFactoryGuard(factoryId);

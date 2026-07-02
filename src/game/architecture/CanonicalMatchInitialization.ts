@@ -29,7 +29,7 @@ import { SERVER_WORLD_SEED } from '../server/ServerBootstrap';
 import type { PlayerId } from '../sim/types';
 import type { LobbySettings } from '@/types/network';
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v3';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v4';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 

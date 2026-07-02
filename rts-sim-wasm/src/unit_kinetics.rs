@@ -147,6 +147,8 @@ pub(crate) const UF_FLAG_HAS_EXTERNAL_FORCE: u32 = 1 << 4;
 pub(crate) const UF_FLAG_IN_WATER: u32 = 1 << 5;
 pub(crate) const UF_FLAG_AHEAD_IN_WATER: u32 = 1 << 6;
 pub(crate) const UF_FLAG_HAS_ORIENTATION: u32 = 1 << 7;
+pub(crate) const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING: u32 = 1 << 8;
+pub(crate) const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING: u32 = 1 << 9;
 
 pub(crate) const UF_OUT_MOVEMENT_ACCEL: u32 = 1 << 0;
 pub(crate) const UF_OUT_CLEAR_COMBAT: u32 = 1 << 1;
@@ -209,6 +211,48 @@ pub(crate) fn unit_force_locomotion_magnitudes(
             0.0
         },
     )
+}
+
+#[inline]
+pub(crate) fn unit_force_drive_alignment_scale(
+    dot: f64,
+    zero_force_dot: f64,
+    full_force_dot: f64,
+    response_exponent: f64,
+) -> f64 {
+    if !dot.is_finite() {
+        return 0.0;
+    }
+
+    let mut zero = if zero_force_dot.is_finite() {
+        zero_force_dot.max(-1.0).min(1.0)
+    } else {
+        -1.0
+    };
+    let mut full = if full_force_dot.is_finite() {
+        full_force_dot.max(-1.0).min(1.0)
+    } else {
+        1.0
+    };
+    if full <= zero {
+        zero = -1.0;
+        full = 1.0;
+    }
+
+    let t = ((dot.max(-1.0).min(1.0) - zero) / (full - zero))
+        .max(0.0)
+        .min(1.0);
+    let exponent = if response_exponent.is_finite() && response_exponent > 0.0 {
+        response_exponent
+    } else {
+        1.0
+    };
+    let scale = t.powf(exponent);
+    if scale.is_finite() {
+        scale.max(0.0).min(1.0)
+    } else {
+        0.0
+    }
 }
 
 #[inline]
@@ -515,6 +559,9 @@ pub fn unit_force_step_batch(
     hover_orientation_k: f64,
     hover_orientation_c: f64,
     ground_angular_damping_rate: f64,
+    drive_alignment_zero_force_dot: f64,
+    drive_alignment_full_force_dot: f64,
+    drive_alignment_response_exponent: f64,
 ) -> u32 {
     if slots.len() < count
         || flags.len() < count
@@ -555,6 +602,8 @@ pub fn unit_force_step_batch(
         let is_airborne = flag & UF_FLAG_IS_AIRBORNE != 0;
         let has_external = flag & UF_FLAG_HAS_EXTERNAL_FORCE != 0;
         let has_orientation = flag & UF_FLAG_HAS_ORIENTATION != 0;
+        let forward_thrust_requires_facing = flag & UF_FLAG_FORWARD_THRUST_REQUIRES_FACING != 0;
+        let drive_force_scales_with_facing = flag & UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING != 0;
         let omega_sq = if has_orientation {
             rows[base + UF_ROW_OMEGA_X] * rows[base + UF_ROW_OMEGA_X]
                 + rows[base + UF_ROW_OMEGA_Y] * rows[base + UF_ROW_OMEGA_Y]
@@ -595,15 +644,46 @@ pub fn unit_force_step_batch(
             0.0
         };
         let thrust_scale = thrust_input_mag.min(1.0);
+        let rotation = if rows[base + UF_ROW_ROTATION].is_finite() {
+            rows[base + UF_ROW_ROTATION]
+        } else {
+            0.0
+        };
+        let forward_x = rotation.cos();
+        let forward_y = rotation.sin();
+        let (requested_dir_x, requested_dir_y) = if has_thrust && thrust_input_mag > 0.0 {
+            let inv_dir_mag = 1.0 / thrust_input_mag;
+            (dir_x * inv_dir_mag, dir_y * inv_dir_mag)
+        } else {
+            (0.0, 0.0)
+        };
+        let drive_alignment_scale =
+            if drive_force_scales_with_facing && !is_flying && has_thrust && thrust_input_mag > 0.0
+            {
+                unit_force_drive_alignment_scale(
+                    forward_x * requested_dir_x + forward_y * requested_dir_y,
+                    drive_alignment_zero_force_dot,
+                    drive_alignment_full_force_dot,
+                    drive_alignment_response_exponent,
+                )
+            } else {
+                1.0
+            };
+        let (drive_dir_x, drive_dir_y, has_drive_dir) = if has_thrust && thrust_input_mag > 0.0 {
+            if forward_thrust_requires_facing {
+                (forward_x, forward_y, true)
+            } else {
+                (requested_dir_x, requested_dir_y, true)
+            }
+        } else {
+            (0.0, 0.0, false)
+        };
 
         let mut thrust_force_x = 0.0;
         let mut thrust_force_y = 0.0;
         let mut thrust_force_z = 0.0;
 
         if is_airborne {
-            let rotation = rows[base + UF_ROW_ROTATION];
-            let forward_x = rotation.cos();
-            let forward_y = rotation.sin();
             let mut air_target_dir_x = 0.0;
             let mut air_target_dir_y = 0.0;
             let mut air_has_target_dir = false;
@@ -614,10 +694,9 @@ pub fn unit_force_step_batch(
             } else {
                 0.0
             };
-            if has_thrust && thrust_input_mag > 0.0 {
-                let inv_dir_mag = 1.0 / thrust_input_mag;
-                air_target_dir_x = dir_x * inv_dir_mag;
-                air_target_dir_y = dir_y * inv_dir_mag;
+            if has_drive_dir {
+                air_target_dir_x = drive_dir_x;
+                air_target_dir_y = drive_dir_y;
                 air_has_target_dir = true;
             } else if is_flying {
                 air_target_dir_x = forward_x;
@@ -670,8 +749,8 @@ pub fn unit_force_step_batch(
             }
 
             if air_has_target_dir {
-                let thrust_mag = traction_force_mag * air_thrust_scale;
-                if is_flying {
+                let thrust_mag = traction_force_mag * air_thrust_scale * drive_alignment_scale;
+                if is_flying || forward_thrust_requires_facing {
                     // Aircraft-style locomotion: engine thrust follows the nose, while
                     // the requested movement direction is only the yaw target below.
                     // Low traction therefore creates visible drift/wide turns instead
@@ -708,7 +787,7 @@ pub fn unit_force_step_batch(
 
             // Water drive: horizontal thrust toward the requested direction,
             // coupled by water traction. No slope projection (open water).
-            if has_thrust && thrust_input_mag > 0.0 && water_force > 0.0 {
+            if has_drive_dir && water_force > 0.0 {
                 let (_water_raw, water_traction_mag) = unit_force_locomotion_magnitudes(
                     water_force,
                     rows[base + UF_ROW_WATER_TRACTION],
@@ -716,10 +795,9 @@ pub fn unit_force_step_batch(
                     thrust_multiplier,
                     force_scale,
                 );
-                let inv_dir_mag = 1.0 / thrust_input_mag;
-                let mag = water_traction_mag * thrust_scale;
-                thrust_force_x += dir_x * inv_dir_mag * mag;
-                thrust_force_y += dir_y * inv_dir_mag * mag;
+                let mag = water_traction_mag * thrust_scale * drive_alignment_scale;
+                thrust_force_x += drive_dir_x * mag;
+                thrust_force_y += drive_dir_y * mag;
             }
 
             // Swim lift: the hover lift law referenced to the lake bed (ground_z
@@ -785,10 +863,9 @@ pub fn unit_force_step_batch(
                         thrust_force_x = out_x * wall_push;
                         thrust_force_y = out_y * wall_push;
                     }
-                } else if has_thrust && thrust_input_mag > 0.0 {
-                    let inv_dir_mag = 1.0 / thrust_input_mag;
-                    let mut use_dir_x = dir_x * inv_dir_mag;
-                    let mut use_dir_y = dir_y * inv_dir_mag;
+                } else if has_drive_dir {
+                    let mut use_dir_x = drive_dir_x;
+                    let mut use_dir_y = drive_dir_y;
 
                     if flag & UF_FLAG_AHEAD_IN_WATER != 0 {
                         let mask = rows[base + UF_ROW_WATER_AHEAD_MASK] as u32;
@@ -811,7 +888,7 @@ pub fn unit_force_step_batch(
                     }
 
                     if use_dir_x != 0.0 || use_dir_y != 0.0 {
-                        let thrust_mag = traction_force_mag * thrust_scale;
+                        let thrust_mag = traction_force_mag * thrust_scale * drive_alignment_scale;
                         let normal_z = rows[base + UF_ROW_NORMAL_Z];
                         let (tx, ty, tz) = unit_force_project_horizontal_onto_slope(
                             use_dir_x,

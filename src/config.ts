@@ -638,6 +638,19 @@ export const UNIT_LOCOMOTION_FORCE_REFERENCE_MASS =
   physicsTuningConfigJson.unit.locomotionForceReferenceMass;
 
 /**
+ * Drive-force alignment response used by locomotion profiles that enable
+ * driveForceScalesWithFacing. Dot products are normalized from
+ * zeroForceDot..fullForceDot, then raised to responseExponent. With the
+ * default -1..1, 180 deg = 0 force, 90 deg = small force, and 0 deg = full.
+ */
+export const UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT =
+  physicsTuningConfigJson.unit.driveForceAlignment.zeroForceDot;
+export const UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT =
+  physicsTuningConfigJson.unit.driveForceAlignment.fullForceDot;
+export const UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT =
+  physicsTuningConfigJson.unit.driveForceAlignment.responseExponent;
+
+/**
  * Global mass multiplier for all projectiles.
  * Scales recoil on shooter and knockback on target.
  * 1.0 = use raw mass values from PROJECTILE_STATS

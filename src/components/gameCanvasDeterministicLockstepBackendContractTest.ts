@@ -160,11 +160,11 @@ function assertInitializationHashMismatch(): void {
   const first = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization(base));
   const second = hashCanonicalMatchInitialization(buildCanonicalMatchInitialization({
     ...base,
-    settings: {
-      ...base.settings,
-      converterTax: 0.25,
-    },
-  }));
+      settings: {
+        ...base.settings,
+        converterTax: 0.25,
+      },
+    }));
   assertContract(first !== second, 'canonical initialization hash must catch config mismatches');
 }
 

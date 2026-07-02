@@ -4,6 +4,7 @@ import type { WorldState } from './WorldState';
 import type { PlayerId } from './types';
 import { BUILDABLE_UNIT_BLUEPRINT_IDS, getNormalizedUnitCost, getUnitBlueprint } from './blueprints';
 import { factoryProductionSystem } from './factoryProduction';
+import { getFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import { isEntityActive } from './buildableHelpers';
 import { DEMO_CONFIG } from '../../demoConfig';
 import { ENTITY_CHANGED_FACTORY } from '../../types/network';
@@ -52,6 +53,19 @@ function pickRandomUnit(world: WorldState, allowedUnitBlueprintIds: ReadonlySet<
   return weights[weights.length - 1].id;
 }
 
+function allowedUnitsForFactory(
+  factory: Parameters<typeof getFactoryAllowedUnitBlueprintIds>[0],
+  globalAllowedUnitBlueprintIds: ReadonlySet<string> | null,
+): ReadonlySet<string> {
+  const factoryRoster = getFactoryAllowedUnitBlueprintIds(factory);
+  const allowed = new Set<string>();
+  for (const unitBlueprintId of factoryRoster) {
+    if (globalAllowedUnitBlueprintIds !== null && !globalAllowedUnitBlueprintIds.has(unitBlueprintId)) continue;
+    allowed.add(unitBlueprintId);
+  }
+  return allowed;
+}
+
 /**
  * For each AI player, find idle factories and select a random repeat-build unit.
  * Called once per tick from Simulation.update().
@@ -78,10 +92,12 @@ export function updateAiProduction(
     if (!entity.factory || !isEntityActive(entity)) continue;
     if (!entity.ownership) continue;
     if (!aiPlayerIds.has(entity.ownership.playerId)) continue;
+    const factoryAllowedUnitBlueprintIds = allowedUnitsForFactory(entity, allowedUnitBlueprintIds);
+    if (factoryAllowedUnitBlueprintIds.size === 0) continue;
 
     // Pick a repeat-build type for the factory if it has none set.
     if (entity.factory.selectedUnitBlueprintId === null && world.canPlayerQueueUnit(entity.ownership.playerId)) {
-      if (factoryProductionSystem.selectUnit(entity, pickRandomUnit(world, allowedUnitBlueprintIds), world)) {
+      if (factoryProductionSystem.selectUnit(entity, pickRandomUnit(world, factoryAllowedUnitBlueprintIds), world)) {
         world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
       }
     }

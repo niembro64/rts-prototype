@@ -17,8 +17,8 @@
 //   9  pathfinder              — A* over the walk grid
 //  10  snapshot serializer     — per-entity quantize + delta path
 
-use std::cell::UnsafeCell;
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use std::cell::UnsafeCell;
 use wasm_bindgen::prelude::*;
 
 // ─────────────────────────────────────────────────────────────────

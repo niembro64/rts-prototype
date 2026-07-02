@@ -16,8 +16,9 @@ const ARRIVAL_FINAL_STOP_SPEED = 100;
 const ARRIVAL_CONTROL_RADIUS = 20;
 const ARRIVAL_RESPONSE_TIME_SEC = 0.22;
 const ARRIVAL_MIN_ACCEL = 0.001;
+const ARRIVAL_BATCH_FLAG_MAINTAIN_FULL_THRUST = 1 << 0;
 const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
-const ARRIVAL_COMPLETION_BATCH_FLAG_FLYING = 1 << 2;
+const ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST = 1 << 2;
 
 export class SimulationArrivalController {
   private readonly world: WorldState;
@@ -94,7 +95,9 @@ export class SimulationArrivalController {
       && isFinalActionPoint
       ? ARRIVAL_BATCH_FLAG_LAST_ACTION
       : 0;
-    if (unit.locomotion.type === 'flying') flags |= ARRIVAL_COMPLETION_BATCH_FLAG_FLYING;
+    if (unit.locomotion.maintainFullThrustAtWaypoints) {
+      flags |= ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST;
+    }
     this.completionFlags[index] = flags;
     this.completionFinalPoint[index] = isFinalActionPoint ? 1 : 0;
   }
@@ -177,8 +180,11 @@ export class SimulationArrivalController {
     unit.headingDirX = dx * invDistance;
     unit.headingDirY = dy * invDistance;
 
+    const maintainFullThrustAtWaypoints = unit.locomotion.maintainFullThrustAtWaypoints;
     const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
-    const speedLimitFactor = normalizeActionSpeedLimitFactor(action.speedLimitFactor);
+    const speedLimitFactor = maintainFullThrustAtWaypoints
+      ? 1
+      : normalizeActionSpeedLimitFactor(action.speedLimitFactor);
     const index = this.count++;
     this.ensureCapacity(this.count);
     this.entities[index] = entity;
@@ -191,7 +197,9 @@ export class SimulationArrivalController {
     this.traction[index] = unit.locomotion.traction;
     this.mass[index] = unit.mass;
     this.speedLimitFactor[index] = speedLimitFactor;
-    this.flags[index] = isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0;
+    this.flags[index] =
+      (maintainFullThrustAtWaypoints ? ARRIVAL_BATCH_FLAG_MAINTAIN_FULL_THRUST : 0)
+      | (isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0);
   }
 
   flushThrust(movingUnits: Entity[], dtSec: number): void {

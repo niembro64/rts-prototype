@@ -72,6 +72,8 @@ export function createNetworkUnitSnapshot(): NetworkUnitSnapshot {
     moveState: null,
     holdPosition: null,
     wantCloak: null,
+    builderPriorityLow: null,
+    carrierSpawnEnabled: null,
     cloaked: null,
     isCommander: null,
     buildTargetId: null,
@@ -613,6 +615,8 @@ export function copyNetworkUnitSnapshotInto(
   dst.moveState = src.moveState ?? null;
   dst.holdPosition = src.holdPosition ?? null;
   dst.wantCloak = src.wantCloak ?? null;
+  dst.builderPriorityLow = src.builderPriorityLow ?? null;
+  dst.carrierSpawnEnabled = src.carrierSpawnEnabled ?? null;
   dst.cloaked = src.cloaked ?? null;
   dst.isCommander = src.isCommander ?? null;
   dst.buildTargetId = src.buildTargetId ?? null;

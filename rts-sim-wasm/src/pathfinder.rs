@@ -300,14 +300,7 @@ pub(crate) fn pathfinder_sample_cell_terrain(gx: i32, gy: i32) -> (bool, f32, f3
             min_normal_z = nz;
         }
     }
-    terrain_accumulate_touching_triangle_safety(
-        x0,
-        y0,
-        x1,
-        y1,
-        &mut has_water,
-        &mut min_normal_z,
-    );
+    terrain_accumulate_touching_triangle_safety(x0, y0, x1, y1, &mut has_water, &mut min_normal_z);
     (has_water, min_normal_z, center_h as f32)
 }
 
@@ -399,7 +392,9 @@ pub fn pathfinder_rebuild_mask_and_cc(
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
     state.blocked.copy_from_slice(&state.terrain_blocked);
-    state.terrain_height.copy_from_slice(&state.terrain_base_height);
+    state
+        .terrain_height
+        .copy_from_slice(&state.terrain_base_height);
 
     let mut i = 0usize;
     while i + 2 < building_cells.len() {
@@ -670,12 +665,7 @@ pub(crate) fn pathfinder_can_step_between(
     min_normal_z: f32,
     ignore_terrain_blocking: bool,
 ) -> bool {
-    if !pathfinder_is_cell_passable(
-        state,
-        to_idx,
-        min_normal_z,
-        ignore_terrain_blocking,
-    ) {
+    if !pathfinder_is_cell_passable(state, to_idx, min_normal_z, ignore_terrain_blocking) {
         return false;
     }
     ignore_terrain_blocking
@@ -720,13 +710,7 @@ pub(crate) fn pathfinder_find_nearest_open_toward(
     let vy = target_gy - gy;
     let v_len_sq = vx * vx + vy * vy;
     if v_len_sq <= 0 {
-        return pathfinder_find_nearest_open(
-            state,
-            gx,
-            gy,
-            min_normal_z,
-            ignore_terrain_blocking,
-        );
+        return pathfinder_find_nearest_open(state, gx, gy, min_normal_z, ignore_terrain_blocking);
     }
 
     let mut best: Option<(i32, i32, i32, f64)> = None;
@@ -791,12 +775,7 @@ pub(crate) fn pathfinder_find_nearest_in_component(
         }
         let idx = (ny * grid_w + nx) as usize;
         if state.cc_labels[idx] == component
-            && pathfinder_is_cell_passable(
-                state,
-                idx,
-                min_normal_z,
-                ignore_terrain_blocking,
-            )
+            && pathfinder_is_cell_passable(state, idx, min_normal_z, ignore_terrain_blocking)
         {
             return Some((nx, ny));
         }
@@ -811,12 +790,7 @@ pub(crate) fn pathfinder_find_nearest_in_component(
             if state.cc_labels[idx] != component {
                 continue;
             }
-            if !pathfinder_is_cell_passable(
-                state,
-                idx,
-                min_normal_z,
-                ignore_terrain_blocking,
-            ) {
+            if !pathfinder_is_cell_passable(state, idx, min_normal_z, ignore_terrain_blocking) {
                 continue;
             }
             let dx = nx - gx;
@@ -974,7 +948,11 @@ pub(crate) fn pathfinder_a_star(
         // sharing (cardinal) cells, the last four are the corner-sharing
         // (diagonal) cells. PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS picks 8-way
         // (edges + corners) vs 4-way (edges only) adjacency.
-        let neighbor_count = if PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS { 8 } else { 4 };
+        let neighbor_count = if PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS {
+            8
+        } else {
+            4
+        };
         for k in 0..neighbor_count {
             let nx = cgx + PATHFINDER_NEIGHBOR_DX[k];
             let ny = cgy + PATHFINDER_NEIGHBOR_DY[k];
@@ -1063,13 +1041,7 @@ pub(crate) fn pathfinder_has_los(
             return false;
         }
         let current_idx = (gy * state.grid_w + gx) as usize;
-        if !pathfinder_is_grid_cell_passable(
-            state,
-            gx,
-            gy,
-            min_normal_z,
-            ignore_terrain_blocking,
-        ) {
+        if !pathfinder_is_grid_cell_passable(state, gx, gy, min_normal_z, ignore_terrain_blocking) {
             return false;
         }
         if gx == tgx && gy == tgy {
@@ -1191,12 +1163,7 @@ pub fn pathfinder_find_path(
     let mut start_cell_gx = sgx;
     let mut start_cell_gy = sgy;
     let mut start_was_snapped = false;
-    if !pathfinder_is_cell_passable(
-        state,
-        start_idx,
-        min_normal_z,
-        ignore_terrain_blocking,
-    ) {
+    if !pathfinder_is_cell_passable(state, start_idx, min_normal_z, ignore_terrain_blocking) {
         match pathfinder_find_nearest_open_toward(
             state,
             sgx,
@@ -1226,13 +1193,7 @@ pub fn pathfinder_find_path(
     let ggy_idx = (ggy * grid_w + ggx) as usize;
     if ignore_terrain_blocking {
         if !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, true) {
-            match pathfinder_find_nearest_open(
-                state,
-                ggx,
-                ggy,
-                min_normal_z,
-                true,
-            ) {
+            match pathfinder_find_nearest_open(state, ggx, ggy, min_normal_z, true) {
                 Some((nx, ny)) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -1249,12 +1210,7 @@ pub fn pathfinder_find_path(
         // Snap goal to start's component for terrain-bound locomotion.
         let start_label = state.cc_labels[(start_cell_gy * grid_w + start_cell_gx) as usize];
         if state.cc_labels[ggy_idx] != start_label
-            || !pathfinder_is_cell_passable(
-                state,
-                ggy_idx,
-                min_normal_z,
-                false,
-            )
+            || !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, false)
         {
             match pathfinder_find_nearest_in_component(
                 state,

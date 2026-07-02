@@ -23,7 +23,13 @@ import {
   networkManager,
   type NetworkRole,
 } from '../game/network/NetworkManager';
-import { CommandHotkeySequenceResolver, type CommandHotkeyId } from '../game/input/commandHotkeys';
+import {
+  BAR_MAP_DRAW_DOUBLE_TAP_MS,
+  CommandHotkeySequenceResolver,
+  barMapDrawCommandForTapCount,
+  barMapDrawHotkeySignature,
+  type CommandHotkeyId,
+} from '../game/input/commandHotkeys';
 import { BACKGROUND_UNIT_BLUEPRINT_IDS } from '../game/server/BackgroundBattleStandalone';
 import { BUILDING_BLUEPRINT_IDS, TOWER_BLUEPRINT_IDS } from '../types/blueprintIds';
 import {
@@ -472,6 +478,11 @@ const pendingDrawStart = ref<NetworkCommunicationPoint | null>(null);
 const chatInputRef = ref<HTMLInputElement | null>(null);
 const gameUiHotkeys = new CommandHotkeySequenceResolver();
 let communicationDraftSequence = 0;
+let barMapDrawTap: {
+  signature: string;
+  count: number;
+  timeoutId: ReturnType<typeof setTimeout> | null;
+} | null = null;
 
 const minimapCommunicationDrawings = computed(() => communicationDrawings.value.map((drawing) => ({
   id: drawing.drawingId,
@@ -668,6 +679,33 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId): boolean {
     case 'ui.optionsMenu':
       toggleOptionsMenu();
       return true;
+    case 'ui.showMapOverview':
+      showMapOverview();
+      return true;
+    case 'ui.flipCameraYaw':
+      flipCameraYaw();
+      return true;
+    case 'camera.viewTa':
+      setCameraViewMode('ta');
+      return true;
+    case 'camera.viewSpring':
+      setCameraViewMode('spring');
+      return true;
+    case 'ui.goToLastPing':
+      goToLastPing();
+      return true;
+    case 'ui.toggleUiChrome':
+      toggleUiChrome();
+      return true;
+    case 'ui.muteSound':
+      toggleAllSounds();
+      return true;
+    case 'ui.captureScreenshot':
+      captureScreenshot();
+      return true;
+    case 'ui.toggleFullscreen':
+      void toggleFullscreen();
+      return true;
     case 'ui.chat':
       setCommunicationMode('chat');
       return true;
@@ -680,9 +718,98 @@ function handleGameUiCommandHotkey(commandId: CommandHotkeyId): boolean {
     case 'ui.mapErase':
       setCommunicationMode(communicationMode.value === 'erase' ? 'none' : 'erase');
       return true;
+    case 'ui.togglePathingMap':
+      togglePathingMap();
+      return true;
+    case 'ui.toggleMetalMap':
+      toggleMetalMap();
+      return true;
+    case 'ui.toggleElevationMap':
+      toggleElevationMap();
+      return true;
+    case 'camera.anchorFocus1':
+      focusCameraAnchor(0);
+      return true;
+    case 'camera.anchorFocus2':
+      focusCameraAnchor(1);
+      return true;
+    case 'camera.anchorFocus3':
+      focusCameraAnchor(2);
+      return true;
+    case 'camera.anchorFocus4':
+      focusCameraAnchor(3);
+      return true;
+    case 'camera.anchorSet1':
+      setCameraAnchor(0);
+      return true;
+    case 'camera.anchorSet2':
+      setCameraAnchor(1);
+      return true;
+    case 'camera.anchorSet3':
+      setCameraAnchor(2);
+      return true;
+    case 'camera.anchorSet4':
+      setCameraAnchor(3);
+      return true;
     default:
       return false;
   }
+}
+
+function clearBarMapDrawTap(): void {
+  const timeoutId = barMapDrawTap?.timeoutId ?? null;
+  if (timeoutId !== null) clearTimeout(timeoutId);
+  barMapDrawTap = null;
+}
+
+function flushBarMapDrawTap(): void {
+  const tap = barMapDrawTap;
+  if (tap === null) return;
+  if (tap.timeoutId !== null) clearTimeout(tap.timeoutId);
+  barMapDrawTap = null;
+  handleGameUiCommandHotkey(barMapDrawCommandForTapCount(tap.count));
+}
+
+function recordBarMapDrawTap(signature: string): void {
+  if (barMapDrawTap !== null && barMapDrawTap.signature !== signature) {
+    flushBarMapDrawTap();
+  }
+
+  if (barMapDrawTap === null) {
+    barMapDrawTap = {
+      signature,
+      count: 1,
+      timeoutId: null,
+    };
+  } else {
+    barMapDrawTap.count++;
+  }
+
+  if (barMapDrawTap.timeoutId !== null) {
+    clearTimeout(barMapDrawTap.timeoutId);
+    barMapDrawTap.timeoutId = null;
+  }
+
+  if (barMapDrawTap.count >= 2) {
+    flushBarMapDrawTap();
+    return;
+  }
+
+  barMapDrawTap.timeoutId = setTimeout(() => {
+    flushBarMapDrawTap();
+  }, BAR_MAP_DRAW_DOUBLE_TAP_MS);
+}
+
+function handleBarMapDrawKeydown(event: KeyboardEvent): boolean {
+  const signature = barMapDrawHotkeySignature(event, commandHotkeyPreset.value);
+  if (signature === null) {
+    flushBarMapDrawTap();
+    return false;
+  }
+  event.preventDefault();
+  gameUiHotkeys.reset();
+  recordBarMapDrawTap(signature);
+  return true;
 }
 
 function handleGameUiKeydown(event: KeyboardEvent): void {
@@ -694,6 +821,7 @@ function handleGameUiKeydown(event: KeyboardEvent): void {
   ) {
     return;
   }
+  if (handleBarMapDrawKeydown(event)) return;
   const hotkey = gameUiHotkeys.resolve(event);
   if (hotkey.pending) {
     event.preventDefault();
@@ -706,6 +834,7 @@ function handleGameUiKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && (communicationMode.value !== 'none' || optionsMenuOpen.value)) {
     event.preventDefault();
     gameUiHotkeys.reset();
+    clearBarMapDrawTap();
     communicationMode.value = 'none';
     pendingDrawStart.value = null;
     optionsMenuOpen.value = false;
@@ -724,6 +853,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', syncFullscreenActive);
   window.removeEventListener('keydown', handleGameUiKeydown);
+  clearBarMapDrawTap();
   bottomControlsResizeObserver?.disconnect();
   bottomControlsResizeObserver = null;
 });

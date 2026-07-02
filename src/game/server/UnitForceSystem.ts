@@ -19,6 +19,9 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
 import {
+  UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
+  UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT,
+  UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT,
   UNIT_GROUND_FRICTION_PER_60HZ_FRAME,
   UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
 } from '../../config';
@@ -111,6 +114,8 @@ const UF_FLAG_HAS_EXTERNAL_FORCE = 1 << 4;
 const UF_FLAG_IN_WATER = 1 << 5;
 const UF_FLAG_AHEAD_IN_WATER = 1 << 6;
 const UF_FLAG_HAS_ORIENTATION = 1 << 7;
+const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING = 1 << 8;
+const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING = 1 << 9;
 
 const UF_OUT_MOVEMENT_ACCEL = 1 << 0;
 const UF_OUT_CLEAR_COMBAT = 1 << 1;
@@ -300,6 +305,13 @@ export class UnitForceSystem {
         continue;
       }
 
+      if (loco.forwardForceRequiresFacing) {
+        flags |= UF_FLAG_FORWARD_THRUST_REQUIRES_FACING;
+      }
+      if (loco.driveForceScalesWithFacing) {
+        flags |= UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
+      }
+
       const dirX = unit.thrustDirX ?? 0;
       const dirY = unit.thrustDirY ?? 0;
       _forceRows[base + UF_ROW_DIR_X] = dirX;
@@ -400,8 +412,12 @@ export class UnitForceSystem {
         } else {
           if (hasThrustDir) {
             const invDirMag = 1 / thrustInputMag;
-            const useDirX = dirX * invDirMag;
-            const useDirY = dirY * invDirMag;
+            const useDirX = loco.forwardForceRequiresFacing
+              ? Math.cos(entity.transform.rotation)
+              : dirX * invDirMag;
+            const useDirY = loco.forwardForceRequiresFacing
+              ? Math.sin(entity.transform.rotation)
+              : dirY * invDirMag;
             const probe = radius + 5;
             const aheadX = body.x + useDirX * probe;
             const aheadY = body.y + useDirY * probe;
@@ -469,6 +485,9 @@ export class UnitForceSystem {
         HOVER_ORIENTATION_K,
         HOVER_ORIENTATION_C,
         UNIT_GROUND_ANGULAR_DAMPING_RATE,
+        UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT,
+        UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
+        UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT,
       );
     });
 

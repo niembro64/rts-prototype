@@ -55,7 +55,7 @@ export function getBrowserRenderRuntimeProfile(): BrowserRenderRuntimeProfile {
       label: 'browser-mobile',
       mobileLike: true,
       tauri: false,
-      antialias: false,
+      antialias: true,
       precision: 'highp',
       dynamicPixelRatio: false,
       pixelRatioCap: 1,

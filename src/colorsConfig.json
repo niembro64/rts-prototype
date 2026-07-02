@@ -675,23 +675,31 @@
       },
       "buttons": {
         "default": "#888888",
-        "attackArea": "#ff5a5a",
-        "attackGround": "#ff7a18",
+        "attackArea": "#ff8059",
+        "attackGround": "#ff5926",
         "ping": "#f7fbff",
-        "guard": "#9ef28d",
-        "stop": "#d6d6d6",
-        "wait": "#e8e8e8",
+        "guard": "#54ebff",
+        "stop": "#ff4d4d",
+        "wait": "#b3a899",
         "skipQueue": "#9fe8d4",
         "undoQueue": "#b9f1ff",
         "clearQueue": "#c7d0ff",
-        "fireControl": "#ff9f5a",
+        "fireControl": "#ffaa59",
         "buildingActive": "#ffd66b",
         "selfDestruct": "#ff4444",
-        "repair": "#63e7ff",
-        "reclaim": "#d6b45f",
-        "build": "#00cc00",
-        "dgun": "#ff6600",
-        "vehicleProduce": "#0088ff",
+        "repair": "#fff2b3",
+        "reclaim": "#dbffdb",
+        "restore": "#c4ffc4",
+        "capture": "#ffd936",
+        "resurrect": "#ffbfff",
+        "build": "#ededed",
+        "dgun": "#ffb3b3",
+        "manualFire": "#ffb3b3",
+        "setTarget": "#ffa859",
+        "cancelTarget": "#cc8c33",
+        "loadTransport": "#1ab3ff",
+        "unloadTransport": "#0080ff",
+        "vehicleProduce": "#1ab3ff",
         "botProduce": "#88ff00",
         "groupAccent": "#8fd2ff",
         "background": "#272a30",
@@ -704,8 +712,8 @@
         "actionDisabledOpacity": 0.45
       },
       "cost": {
-        "energy": "#ffcc00",
-        "resource": "#c8c8d8"
+        "energy": "#ffff00",
+        "resource": "#f5f5f5"
       }
     },
     "worldDirectionHud": {
@@ -800,74 +808,74 @@
     },
     "waypointColors": {
       "move": {
-        "colorHex": "#00ff00",
-        "cssColor": "#00ff00"
+        "colorHex": "#a3ffa3",
+        "cssColor": "#a3ffa3"
       },
       "patrol": {
-        "colorHex": "#0088ff",
-        "cssColor": "#0088ff"
+        "colorHex": "#babaff",
+        "cssColor": "#babaff"
       },
       "fight": {
-        "colorHex": "#ff4444",
-        "cssColor": "#ff4444"
+        "colorHex": "#e680ff",
+        "cssColor": "#e680ff"
       }
     },
     "actionColors": {
       "move": {
-        "colorHex": "#00ff00",
-        "cssColor": "#00ff00"
+        "colorHex": "#a3ffa3",
+        "cssColor": "#a3ffa3"
       },
       "patrol": {
-        "colorHex": "#0088ff",
-        "cssColor": "#0088ff"
+        "colorHex": "#babaff",
+        "cssColor": "#babaff"
       },
       "fight": {
-        "colorHex": "#ff4444",
-        "cssColor": "#ff4444"
+        "colorHex": "#e680ff",
+        "cssColor": "#e680ff"
       },
       "build": {
         "colorHex": "#ffcc00",
         "cssColor": "#ffcc00"
       },
       "repair": {
-        "colorHex": "#44ff44",
-        "cssColor": "#44ff44"
+        "colorHex": "#fff2b3",
+        "cssColor": "#fff2b3"
       },
       "reclaim": {
-        "colorHex": "#d6b45f",
-        "cssColor": "#d6b45f"
+        "colorHex": "#dbffdb",
+        "cssColor": "#dbffdb"
       },
       "capture": {
-        "colorHex": "#b28cff",
-        "cssColor": "#b28cff"
+        "colorHex": "#ffd936",
+        "cssColor": "#ffd936"
       },
       "resurrect": {
-        "colorHex": "#68f0b8",
-        "cssColor": "#68f0b8"
+        "colorHex": "#ffbfff",
+        "cssColor": "#ffbfff"
       },
       "loadTransport": {
-        "colorHex": "#60d8ff",
-        "cssColor": "#60d8ff"
+        "colorHex": "#1ab3ff",
+        "cssColor": "#1ab3ff"
       },
       "unloadTransport": {
-        "colorHex": "#8fb6ff",
-        "cssColor": "#8fb6ff"
+        "colorHex": "#0080ff",
+        "cssColor": "#0080ff"
       },
       "wait": {
-        "colorHex": "#e8e8e8",
-        "cssColor": "#e8e8e8"
+        "colorHex": "#b3a899",
+        "cssColor": "#b3a899"
       },
       "attack": {
-        "colorHex": "#ff0000",
-        "cssColor": "#ff0000"
+        "colorHex": "#ff8059",
+        "cssColor": "#ff8059"
       },
       "attackGround": {
-        "colorHex": "#ff7a18",
-        "cssColor": "#ff7a18"
+        "colorHex": "#ff5926",
+        "cssColor": "#ff5926"
       },
       "guard": {
-        "colorHex": "#9ef28d",
-        "cssColor": "#9ef28d"
+        "colorHex": "#54ebff",
+        "cssColor": "#54ebff"
       }
     },
     "commandCursor": {

@@ -24,7 +24,7 @@ import { getBuildingConfig } from '../../sim/buildConfigs';
 import { cloneBuildingSupportSurface } from '../../sim/buildingSupportSurface';
 import { cloneUnitSupportSurface } from '../../sim/unitSupportSurface';
 import { BUILD_GRID_CELL_SIZE } from '../../sim/buildGrid';
-import { COST_MULTIPLIER } from '../../../config';
+import { COST_MULTIPLIER, REAL_BATTLE_FACTORY_WAYPOINT_TYPE } from '../../../config';
 import { buildShieldPanelCache } from '../../sim/shieldPanelCache';
 import {
   createBuildingRuntimeTurrets,
@@ -36,7 +36,11 @@ import { isFiniteNumber } from '../../math';
 import { createUnitSuspension } from '../../sim/unitSuspension';
 import { computeUnitActionHash } from '../../sim/unitActions';
 import { createTransportComponentForUnitBlueprint } from '../../sim/transports';
-import { decodeFactoryProductionQueue } from '../factoryProductionQueueWire';
+import {
+  decodeFactoryProductionQueue,
+  decodeFactoryProductionQuotaCounts,
+  decodeFactoryProductionQuotas,
+} from '../factoryProductionQueueWire';
 import {
   dequantizeEntityPosition as deqEntityPos,
   dequantizeRotation as deqRot,
@@ -338,6 +342,7 @@ function createUnitFromNetwork(
       moveState: readNetworkUnitMoveState(u),
       wantCloak: u !== null && u.wantCloak === true,
       cloaked: u !== null && u.cloaked === true,
+      cloakRestoreFireState: null,
       patrolStartIndex: null,
       activePath: decodedActions.routePreview,
       flyingLoiterTargetX: null,
@@ -412,8 +417,35 @@ function createUnitFromNetwork(
     const builder = unitBlueprint.builder;
     entity.builder = {
       buildRange: builder.buildRange,
+      lowPriority: u !== null && u.builderPriorityLow === true,
       currentBuildTarget: u !== null && u.buildTargetId !== null ? u.buildTargetId : NO_ENTITY_ID,
     };
+  }
+  if (unitBlueprint !== undefined) {
+    const spawnMount = unitBlueprint.turrets.find((m) => m.producedBlueprintId != null);
+    if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
+      entity.factory = {
+        selectedUnitBlueprintId: spawnMount.producedBlueprintId,
+        lowPriority: false,
+        carrierSpawnEnabled: u?.carrierSpawnEnabled !== false,
+        repeatProduction: true,
+        productionQueue: [],
+        productionQuotas: {},
+        productionQuotaCounts: {},
+        resumeRepeatUnitBlueprintId: null,
+        currentShellId: null,
+        currentBuildProgress: 0,
+        defaultWaypoints: null,
+        rallyX: x,
+        rallyY: y,
+        rallyZ: null,
+        rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+        guardTargetId: null,
+        isProducing: u?.carrierSpawnEnabled !== false,
+        energyRateFraction: 0,
+        metalRateFraction: 0,
+      };
+    }
   }
   entity.transport = createTransportComponentForUnitBlueprint(unitBlueprintId);
 
@@ -550,8 +582,13 @@ function createBuildingFromNetwork(
     }
     entity.factory = {
       selectedUnitBlueprintId: selectedUnitBlueprintId ?? null,
+      lowPriority: f.lowPriority === true,
+      carrierSpawnEnabled: true,
       repeatProduction: f.repeat !== false,
       productionQueue: decodeFactoryProductionQueue(f.queue),
+      productionQuotas: decodeFactoryProductionQuotas(f.quotas),
+      productionQuotaCounts: decodeFactoryProductionQuotaCounts(f.quotaCounts),
+      resumeRepeatUnitBlueprintId: null,
       // Client-side currentShellId stays null — the actual shell entity
       // is in the world separately. currentBuildProgress mirrors the
       // wire's avg-fill so the UI can draw the production progress

@@ -234,6 +234,9 @@ export type Unit = {
   /** Authoritative visibility state. Filtered snapshots suppress
    *  foreign cloaked units unless the recipient has detector coverage. */
   cloaked: boolean;
+  /** BAR cloak-firestate widget mirror. Cloaking stores the current fire
+   *  state here, forces hold fire, and decloaking restores this value. */
+  cloakRestoreFireState: CombatFireState | null;
   patrolStartIndex: number | null;
   /** Current route resolution for actions[0]. This is sim-only state:
    *  actions are durable player/factory waypoints, while activePath
@@ -914,6 +917,10 @@ export type Buildable = {
  *  aircraft will use the same component with a hover locomotion. */
 export type Builder = {
   buildRange: number;
+  /** BAR builder priority command mirror. Low priority is a resource-allocation
+   *  preference; the prototype records the state for command/UI parity while
+   *  current resource distribution remains unchanged. */
+  lowPriority: boolean;
   /** Sentinel `NO_ENTITY_ID` means no direct construction target. */
   currentBuildTarget: EntityId;
 };
@@ -1010,8 +1017,9 @@ export type UnitBuildConfig = {
 // **units** from a fixed launch spot at the center of its footprint. The factory
 // carries one active build selection: `selectedUnitBlueprintId` is either
 // the unit blueprint to produce next/currently or null for off.
-// `repeatProduction` decides whether that selection repeats forever or
-// advances through `productionQueue` / clears after one completed unit.
+// `repeatProduction` is the factory's BAR-style repeat switch: when true,
+// the selected unit repeats; when false, completion advances through
+// `productionQueue` / clears after the finite queue drains.
 // The factory
 // spawns that selected unit as an airborne shell above its center bay; the
 // shell then falls through normal physics and absorbs resources from the
@@ -1031,8 +1039,19 @@ export type UnitBuildConfig = {
 // client it is populated from the wire's f.progress field.
 type Factory = {
   selectedUnitBlueprintId: string | null;
+  /** BAR builder-priority command mirror for factory/lab resource priority. */
+  lowPriority: boolean;
+  /** BAR carrier spawn ON/OFF command mirror. Only mobile unit factories
+   *  (queen-style spawn carriers) expose this in the command UI. */
+  carrierSpawnEnabled: boolean;
   repeatProduction: boolean;
   productionQueue: string[];
+  productionQuotas: Record<string, number>;
+  /** Current BAR quota counts by unit blueprint, mirrored from the
+   *  authoritative factory-produced-unit provenance index. */
+  productionQuotaCounts: Record<string, number>;
+  /** Repeat selection to restore after BAR quota one-shots finish. */
+  resumeRepeatUnitBlueprintId: string | null;
   currentShellId: EntityId | null;
   currentBuildProgress: number;
   /** Server-owned default route for units this factory produces.

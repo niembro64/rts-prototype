@@ -860,7 +860,6 @@ export class GameServer {
         }
         if (factoryComp.selectedUnitBlueprintId === unitBlueprintId) {
           factoryComp.selectedUnitBlueprintId = null;
-          factoryComp.repeatProduction = true;
           touched = true;
         }
         const queueLengthBefore = factoryComp.productionQueue.length;
@@ -879,7 +878,6 @@ export class GameServer {
         }
         if (factoryComp.selectedUnitBlueprintId === null && factoryComp.productionQueue.length > 0) {
           factoryComp.selectedUnitBlueprintId = shiftFactoryProductionQueue(factoryComp.productionQueue);
-          factoryComp.repeatProduction = factoryComp.selectedUnitBlueprintId === null;
           touched = true;
         }
         if (!touched) continue;

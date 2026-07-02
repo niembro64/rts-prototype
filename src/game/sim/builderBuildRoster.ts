@@ -7,6 +7,15 @@ type BuilderCapability = {
   allowedBuildBlueprintIds: readonly StructureBlueprintId[];
 };
 
+export type SelectedBuilderTypeInfo = {
+  unitBlueprintId: string;
+  count: number;
+  firstEntity: Entity;
+  allowedBuildBlueprintIds: readonly StructureBlueprintId[];
+};
+
+export const BAR_MAX_SELECTED_BUILDER_TYPES = 5;
+
 function getUnitBuilderCapability(unitBlueprint: UnitBlueprint): BuilderCapability {
   let constructionRate = 0;
   let allowedBuildBlueprintIds: readonly StructureBlueprintId[] = [];
@@ -71,6 +80,72 @@ export function getUnitBuilderAllowedBuildBlueprintIds(
 
 export function getUnitBuilderConstructionRate(unitBlueprint: UnitBlueprint): number {
   return getUnitBuilderCapability(unitBlueprint).constructionRate;
+}
+
+export function getSelectedBuilderTypeInfos(
+  selectedUnits: readonly Entity[],
+): readonly SelectedBuilderTypeInfo[] {
+  const byUnitBlueprintId = new Map<string, SelectedBuilderTypeInfo>();
+
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const unit = selectedUnits[i];
+    if (unit.builder === null || unit.unit === null) continue;
+    const unitBlueprintId = unit.unit.unitBlueprintId;
+    const existing = byUnitBlueprintId.get(unitBlueprintId);
+    if (existing !== undefined) {
+      existing.count++;
+      continue;
+    }
+    byUnitBlueprintId.set(unitBlueprintId, {
+      unitBlueprintId,
+      count: 1,
+      firstEntity: unit,
+      allowedBuildBlueprintIds: getBuilderAllowedBuildBlueprintIds(unit),
+    });
+  }
+
+  return Array.from(byUnitBlueprintId.values())
+    .sort((a, b) => a.unitBlueprintId.localeCompare(b.unitBlueprintId));
+}
+
+export function getBarVisibleSelectedBuilderTypeInfos(
+  selectedUnits: readonly Entity[],
+): readonly SelectedBuilderTypeInfo[] {
+  return getSelectedBuilderTypeInfos(selectedUnits).slice(0, BAR_MAX_SELECTED_BUILDER_TYPES);
+}
+
+export function getActiveSelectedBuilderTypeInfo(
+  selectedUnits: readonly Entity[],
+  activeBuilderUnitBlueprintId: string | null | undefined,
+): SelectedBuilderTypeInfo | null {
+  const builderTypes = getBarVisibleSelectedBuilderTypeInfos(selectedUnits);
+  if (builderTypes.length === 0) return null;
+  if (activeBuilderUnitBlueprintId !== null && activeBuilderUnitBlueprintId !== undefined) {
+    for (let i = 0; i < builderTypes.length; i++) {
+      if (builderTypes[i].unitBlueprintId === activeBuilderUnitBlueprintId) return builderTypes[i];
+    }
+  }
+  return builderTypes[0];
+}
+
+export function getActiveSelectedBuilderAllowedBuildBlueprintIds(
+  selectedUnits: readonly Entity[],
+  activeBuilderUnitBlueprintId: string | null | undefined,
+): readonly StructureBlueprintId[] {
+  return getActiveSelectedBuilderTypeInfo(
+    selectedUnits,
+    activeBuilderUnitBlueprintId,
+  )?.allowedBuildBlueprintIds ?? [];
+}
+
+export function getActiveSelectedBuilder(
+  selectedUnits: readonly Entity[],
+  activeBuilderUnitBlueprintId: string | null | undefined,
+): Entity | null {
+  return getActiveSelectedBuilderTypeInfo(
+    selectedUnits,
+    activeBuilderUnitBlueprintId,
+  )?.firstEntity ?? null;
 }
 
 export function getSelectedBuilderAllowedBuildBlueprintIds(

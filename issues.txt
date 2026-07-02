@@ -29,14 +29,8 @@ Please always commit and push before and after any code changes we make.
     received/applied cadence, bytes, materialization row/stage, and
     client-apply counters to identify the dominant stage, then move high-count
     snapshot materialization away from JS object/DTO churn and toward typed
-    dirty slot/range reads from the canonical slabs.
-
-[16] Fully-abstracted ground/air/water locomotion physics (USER REQUEST - keep until user closes)
-    USER / in-app eyes only: build a Hippo and tune swim/float/sink +
-    walk-on-bottom feel. Starter knobs: waterForce, waterTraction,
-    waterFriction, swimHeightUpwardForce, and
-    swimGravityCounterUpwardForceRatio.
-
+    dirty slot/range reads from the canonical slabs. 
+    
 [24] Optimization - port Simulation.updateUnits hot action loop to native batches
     Preserve all command, action, path, arrival, stuck, guard, fight, patrol,
     attack, build, repair, reclaim, capture, resurrect, load, and unload

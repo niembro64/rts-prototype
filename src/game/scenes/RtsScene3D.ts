@@ -32,6 +32,7 @@ import { simPositionUsesLowEmissionLod3D } from '../render3d/EntityLod3D';
 import { EMISSION_LOD_HIGH_TO_LOW_DISTANCES } from '@/config';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
+import type { BarBuildCategoryId } from '../input/buildMenuLayout';
 import { ThreeApp } from '../render3d/ThreeApp';
 import { Render3DEntities } from '../render3d/Render3DEntities';
 import { Input3DManager } from '../render3d/Input3DManager';
@@ -88,6 +89,8 @@ import type {
   EntityId,
   PlayerId,
   WaypointType,
+  CombatFireState,
+  UnitMoveState,
   BuildingBlueprintId,
 } from '../sim/types';
 
@@ -498,6 +501,30 @@ export class RtsScene3D {
     this.inputManager.onBuildModeChange = (buildingBlueprintId) => {
       this.selectionSystem.setBuildMode(buildingBlueprintId);
     };
+    this.inputManager.onBuildGridCategoryChange = (categoryId) => {
+      this.selectionSystem.setBuildGridCategory(categoryId);
+    };
+    this.selectionSystem.setBuildGridCategory(this.inputManager.getBuildGridCategory());
+    this.inputManager.onBuildGridPageChange = (pageIndex) => {
+      this.selectionSystem.setBuildGridPage(pageIndex);
+    };
+    this.selectionSystem.setBuildGridPage(this.inputManager.getBuildGridPage());
+    this.inputManager.onFactoryGridPageChange = (pageIndex) => {
+      this.selectionSystem.setFactoryGridPage(pageIndex);
+    };
+    this.selectionSystem.setFactoryGridPage(this.inputManager.getFactoryGridPage());
+    this.inputManager.onFactoryQueueModeChange = (active) => {
+      this.selectionSystem.setFactoryQueueMode(active);
+    };
+    this.selectionSystem.setFactoryQueueMode(this.inputManager.getFactoryQueueMode());
+    this.inputManager.onFactoryPresetOverlayChange = (active) => {
+      this.selectionSystem.setFactoryPresetOverlayVisible(active);
+    };
+    this.selectionSystem.setFactoryPresetOverlayVisible(this.inputManager.getFactoryPresetOverlayVisible());
+    this.inputManager.onActiveBuilderChange = (unitBlueprintId) => {
+      this.selectionSystem.setActiveBuilder(unitBlueprintId);
+    };
+    this.selectionSystem.setActiveBuilder(this.inputManager.getActiveBuilderUnitBlueprintId());
     this.inputManager.onBuildLineSpacingChange = (spacing) => {
       this.selectionSystem.setBuildLineSpacing(spacing);
     };
@@ -514,6 +541,9 @@ export class RtsScene3D {
     };
     this.inputManager.onRepairAreaModeChange = (active) => {
       this.selectionSystem.setRepairAreaMode(active);
+    };
+    this.inputManager.onRestoreAreaModeChange = (active) => {
+      this.selectionSystem.setRestoreAreaMode(active);
     };
     this.inputManager.onFormationAssumeModeChange = (active) => {
       this.selectionSystem.setFormationAssumeMode(active);
@@ -562,6 +592,9 @@ export class RtsScene3D {
     };
     this.inputManager.onTowerTargetModeChange = (active) => {
       this.selectionSystem.setTowerTargetMode(active);
+    };
+    this.inputManager.onTowerTargetNoGroundModeChange = (active) => {
+      this.selectionSystem.setTowerTargetNoGroundMode(active);
     };
 
     this.renderPhase = new RtsScene3DRenderPhase(
@@ -932,8 +965,20 @@ export class RtsScene3D {
     this.inputManager?.toggleRepeatQueue();
   }
 
+  public toggleBuilderPriority(): void {
+    this.inputManager?.toggleBuilderPriority();
+  }
+
+  public toggleCarrierSpawn(): void {
+    this.inputManager?.toggleCarrierSpawn();
+  }
+
   public toggleUnitMoveState(): void {
     this.inputManager?.toggleUnitMoveState();
+  }
+
+  public setUnitMoveState(moveState: UnitMoveState): void {
+    this.inputManager?.setUnitMoveState(moveState);
   }
 
   public toggleTrajectoryMode(): void {
@@ -946,6 +991,10 @@ export class RtsScene3D {
 
   public toggleSelectedFire(): void {
     this.inputManager?.toggleSelectedFire();
+  }
+
+  public setSelectedFireState(fireState: CombatFireState): void {
+    this.inputManager?.setSelectedFireState(fireState);
   }
 
   public toggleBuildingActive(): void {
@@ -1010,6 +1059,10 @@ export class RtsScene3D {
 
   public toggleTowerTargetMode(): void {
     this.inputManager?.toggleTowerTargetMode();
+  }
+
+  public toggleTowerTargetNoGroundMode(): void {
+    this.inputManager?.toggleTowerTargetNoGroundMode();
   }
 
   public clearTowerTarget(): void {
@@ -1094,6 +1147,30 @@ export class RtsScene3D {
     this.inputManager?.cancelBuildMode();
   }
 
+  public setActiveBuilder(unitBlueprintId: string): void {
+    this.inputManager?.setActiveBuilderUnitBlueprintId(unitBlueprintId);
+  }
+
+  public cycleActiveBuilder(): void {
+    this.inputManager?.cycleActiveBuilder();
+  }
+
+  public setBuildGridCategory(categoryId: BarBuildCategoryId | null): void {
+    this.inputManager?.setBuildGridCategory(categoryId);
+  }
+
+  public stepBuildGridPage(delta: number): void {
+    this.inputManager?.stepBuildGridPage(delta);
+  }
+
+  public stepFactoryGridPage(delta: number): void {
+    this.inputManager?.stepFactoryGridPage(delta);
+  }
+
+  public toggleFactoryQueueMode(): void {
+    this.inputManager?.toggleFactoryQueueMode();
+  }
+
   public increaseBuildLineSpacing(): void {
     this.inputManager?.increaseBuildLineSpacing();
   }
@@ -1118,6 +1195,10 @@ export class RtsScene3D {
     this.inputManager?.toggleRepairAreaMode();
   }
 
+  public toggleRestoreAreaMode(): void {
+    this.inputManager?.toggleRestoreAreaMode();
+  }
+
   public toggleFormationMoveMode(): void {
     this.inputManager?.toggleFormationMoveMode();
   }
@@ -1126,7 +1207,7 @@ export class RtsScene3D {
     this.inputManager?.toggleFormationAssumeMode();
   }
 
-  public queueFactoryUnit(factoryId: number, unitBlueprintId: string, repeat = true, count = 1): void {
+  public queueFactoryUnit(factoryId: number, unitBlueprintId: string, repeat = false, count = 1): void {
     this.submitClientCommand({
       type: 'queueUnit',
       tick: this.clientViewState.getTick(),
@@ -1134,6 +1215,35 @@ export class RtsScene3D {
       unitBlueprintId,
       repeat,
       count,
+    });
+  }
+
+  public removeFactoryUnitProduction(factoryId: number, unitBlueprintId: string, count = 1): void {
+    this.submitClientCommand({
+      type: 'removeFactoryUnitProduction',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      unitBlueprintId,
+      count,
+    });
+  }
+
+  public setFactoryRepeatProduction(factoryId: number, enabled: boolean): void {
+    this.submitClientCommand({
+      type: 'setFactoryRepeatProduction',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      enabled,
+    });
+  }
+
+  public changeFactoryUnitQuota(factoryId: number, unitBlueprintId: string, delta: number): void {
+    this.submitClientCommand({
+      type: 'changeFactoryUnitQuota',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      unitBlueprintId,
+      delta,
     });
   }
 
@@ -1171,6 +1281,16 @@ export class RtsScene3D {
       tick: this.clientViewState.getTick(),
       factoryId,
       targetId: null,
+    });
+  }
+
+  public toggleFactoryGuard(factoryId: number): void {
+    const factory = this.clientViewState.getEntity(factoryId);
+    this.submitClientCommand({
+      type: 'setFactoryGuard',
+      tick: this.clientViewState.getTick(),
+      factoryId,
+      targetId: factory?.factory?.guardTargetId === factoryId ? null : factoryId,
     });
   }
 

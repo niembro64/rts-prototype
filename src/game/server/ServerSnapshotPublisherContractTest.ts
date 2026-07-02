@@ -103,6 +103,7 @@ function createPublisherInput(
 function createListener(
   callback: SnapshotListenerEntry['callback'],
   visibleIds: readonly EntityId[] = [],
+  preencodeWire = false,
 ): SnapshotListenerEntry {
   const visibleEntityIds = new IndexedEntityIdSet();
   for (let i = 0; i < visibleIds.length; i++) visibleEntityIds.add(visibleIds[i]);
@@ -111,7 +112,7 @@ function createListener(
     playerId: undefined,
     trackingKey: 'contract',
     cacheKey: 'contract',
-    preencodeWire: false,
+    preencodeWire,
     lastStaticTerrainTileMap: undefined,
     lastStaticBuildabilityGrid: undefined,
     needsFullState: false,
@@ -151,6 +152,37 @@ function assertReflectedBeamUpdate(
 }
 
 export function runServerSnapshotPublisherContractTest(): void {
+  entitySlotRegistry.clear();
+  const startupWorld = new WorldState(9901, 512, 512);
+  startupWorld.playerCount = 2;
+  const startupBuilder = startupWorld.createUnitFromBlueprint(96, 112, 1 as PlayerId, 'unitConstructionDrone');
+  const startupFighter = startupWorld.createUnitFromBlueprint(160, 176, 1 as PlayerId, 'unitEagle');
+  startupWorld.addEntity(startupBuilder);
+  startupWorld.addEntity(startupFighter);
+  const capturedStartup: {
+    state: NetworkServerSnapshot | null;
+    wirePayloadKind: string | undefined;
+  } = { state: null, wirePayloadKind: undefined };
+  const startupListener = createListener((state, _releaseSnapshot, wirePayload) => {
+    capturedStartup.state = state;
+    capturedStartup.wirePayloadKind = wirePayload?.materializationKind;
+  }, [], true);
+  new ServerSnapshotPublisher().emit(createPublisherInput(startupWorld, startupListener));
+  const startupSnapshot = capturedStartup.state;
+  assertContract(startupSnapshot !== null, 'preencoded startup snapshot must be emitted');
+  const startupSource = getEntitySnapshotWireSource(startupSnapshot.entities);
+  assertContract(
+    startupSource !== undefined &&
+      startupSource.count === startupSnapshot.entities.length &&
+      startupSource.rawEntityRows === 1 &&
+      startupSource.typedEntityRows >= 1,
+    'preencoded startup snapshot must align private DTO rows with compact typed rows',
+  );
+  assertContract(
+    capturedStartup.wirePayloadKind === undefined || capturedStartup.wirePayloadKind === 'direct',
+    'preencoded startup snapshot must not crash or fall back to malformed mixed entity metadata',
+  );
+
   entitySlotRegistry.clear();
   const world = new WorldState(9902, 512, 512);
   world.playerCount = 2;

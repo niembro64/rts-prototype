@@ -354,21 +354,26 @@ export class RtsScene3DRenderPhase {
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
     const updateEffectsThisFrame = effectFrameStride <= 1 || this.renderFrameIndex % effectFrameStride === 0;
-    const updateEntityHudThisFrame = updateHudThisFrame && (healthBar3D !== null || nameLabel3D !== null);
-    const unitNameHudEnabled = updateEntityHudThisFrame &&
+    // Body bars are motion anchors, not just HUD content. They must follow
+    // fast units every render frame even when the budget throttles heavier HUD
+    // work with hudFrameStride; otherwise flyers visibly jump between stale and
+    // current bar positions.
+    const updateNameHudThisFrame = updateHudThisFrame && nameLabel3D !== null;
+    const updateBodyHudThisFrame = healthBar3D !== null;
+    const unitNameHudEnabled = updateNameHudThisFrame &&
       nameLabel3D !== null &&
       getEntityHudToggle('unit', 'name');
-    const towerNameHudEnabled = updateEntityHudThisFrame &&
+    const towerNameHudEnabled = updateNameHudThisFrame &&
       nameLabel3D !== null &&
       getEntityHudToggle('tower', 'name');
-    const buildingNameHudEnabled = updateEntityHudThisFrame &&
+    const buildingNameHudEnabled = updateNameHudThisFrame &&
       nameLabel3D !== null &&
       getEntityHudToggle('building', 'name');
     const bodyNamesEnabled = unitNameHudEnabled || towerNameHudEnabled || buildingNameHudEnabled;
-    const turretNamesEnabled = updateEntityHudThisFrame &&
+    const turretNamesEnabled = updateNameHudThisFrame &&
       nameLabel3D !== null &&
       getEntityHudToggle('turret', 'name');
-    const shotNamesEnabled = updateEntityHudThisFrame &&
+    const shotNamesEnabled = updateNameHudThisFrame &&
       nameLabel3D !== null &&
       getEntityHudToggle('shot', 'name');
     const selectionHudMode = getSelectionHudMode();
@@ -419,8 +424,7 @@ export class RtsScene3DRenderPhase {
     );
     const inputManager = this.getInputManager();
     const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
-    const bodyHudEnabled = updateEntityHudThisFrame &&
-      healthBar3D !== null &&
+    const bodyHudEnabled = updateBodyHudThisFrame &&
       (
         hoveredEntity !== null ||
         getEntityHudToggle('unit', 'healthBar') ||
@@ -635,7 +639,7 @@ export class RtsScene3DRenderPhase {
     }
 
     let hudFrustum: THREE.Frustum | undefined;
-    if (updateEntityHudThisFrame) {
+    if (bodyHudEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
       const cam = this.threeApp.camera;
       if (this.renderScope.getMode() !== 'all') {
         this.frustumMatrix.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
@@ -662,8 +666,13 @@ export class RtsScene3DRenderPhase {
       shieldRenderer.clear();
     }
 
-    if (updateEntityHudThisFrame) {
-      this.drawEntityHud(healthBar3D, nameLabel3D, hudFrustum, entityLists);
+    if (bodyHudEnabled || bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled) {
+      this.drawEntityHud(
+        bodyHudEnabled ? healthBar3D : null,
+        bodyNamesEnabled || turretNamesEnabled || shotNamesEnabled ? nameLabel3D : null,
+        hudFrustum,
+        entityLists,
+      );
     }
 
     if (updateHudThisFrame) {

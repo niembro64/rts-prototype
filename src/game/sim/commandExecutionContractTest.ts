@@ -87,6 +87,42 @@ function createAllBuildableTerrainGrid(mapWidth: number, mapHeight: number): Ter
   };
 }
 
+function createQuotaTestFactory(world: WorldState, x: number, y: number): Entity {
+  const factory = world.createBuilding(x, y, 180, 180, 60, 1);
+  factory.buildingBlueprintId = 'towerFabricator';
+  factory.factory = {
+    selectedUnitBlueprintId: null,
+    lowPriority: true,
+    carrierSpawnEnabled: true,
+    repeatProduction: false,
+    productionQueue: [],
+    productionQuotas: {},
+    productionQuotaCounts: {},
+    resumeRepeatUnitBlueprintId: null,
+    currentShellId: null,
+    currentBuildProgress: 0,
+    defaultWaypoints: null,
+    rallyX: x,
+    rallyY: y,
+    rallyZ: null,
+    rallyType: 'move',
+    guardTargetId: null,
+    isProducing: false,
+    energyRateFraction: 0,
+    metalRateFraction: 0,
+  };
+  if (factory.building !== null) {
+    factory.building.hp = factory.building.maxHp;
+  }
+  factory.buildable = null;
+  world.addEntity(factory);
+  return factory;
+}
+
+function factoryQuotaCount(factory: Entity, unitBlueprintId: string): number {
+  return factory.factory?.productionQuotaCounts[unitBlueprintId] ?? 0;
+}
+
 export function runCommandExecutionContractTest(): void {
   const layoutWorld = new WorldState(1, 512, 512);
   const sameRadiusUnits = [
@@ -144,6 +180,117 @@ export function runCommandExecutionContractTest(): void {
     unit.unit?.moveState === 'roam',
     'setUnitMoveState command should apply roam movement state',
   );
+
+  const priorityBuilder = world.createUnitFromBlueprint(120, 240, 1, 'unitCommander', {
+    allocateSubEntityIds: false,
+  });
+  world.addEntity(priorityBuilder);
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setFireEnabled',
+    tick: 1,
+    entityIds: [priorityBuilder.id],
+    fireState: 'returnFire',
+  });
+  assertContract(
+    priorityBuilder.combat?.fireState === 'returnFire' && priorityBuilder.combat.fireEnabled === true,
+    'setFireEnabled command should apply return-fire state to the cloak-capable commander analogue',
+  );
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setBuilderPriority',
+    tick: 1,
+    entityIds: [priorityBuilder.id],
+    lowPriority: true,
+  });
+  assertContract(
+    priorityBuilder.builder?.lowPriority === true,
+    'setBuilderPriority command should apply low-priority state to builders',
+  );
+
+  const carrierFactory = world.createUnitFromBlueprint(180, 240, 1, 'unitQueenBee', {
+    allocateSubEntityIds: false,
+  });
+  world.addEntity(carrierFactory);
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setCarrierSpawn',
+    tick: 1,
+    entityIds: [carrierFactory.id],
+    enabled: false,
+  });
+  assertContract(
+    carrierFactory.factory?.carrierSpawnEnabled === false,
+    'setCarrierSpawn command should disable mobile factory spawning',
+  );
+
+  const quotaWorld = new WorldState(2, 512, 512);
+  const quotaConstruction = new ConstructionSystem(quotaWorld.mapWidth, quotaWorld.mapHeight);
+  const quotaFactoryA = createQuotaTestFactory(quotaWorld, 96, 96);
+  const quotaFactoryB = createQuotaTestFactory(quotaWorld, 320, 96);
+  const quotaUnitA = quotaWorld.createUnitFromBlueprint(96, 160, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const quotaUnitB = quotaWorld.createUnitFromBlueprint(320, 160, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  quotaWorld.addEntity(quotaUnitA);
+  quotaWorld.addEntity(quotaUnitB);
+  quotaWorld.recordFactoryProducedUnit(quotaFactoryA.id, quotaUnitA);
+  quotaWorld.recordFactoryProducedUnit(quotaFactoryB.id, quotaUnitB);
+  const quotaCtx: CommandContext = {
+    world: quotaWorld,
+    constructionSystem: quotaConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  executeCommand(quotaCtx, {
+    type: 'changeFactoryUnitQuota',
+    tick: 1,
+    factoryId: quotaFactoryA.id,
+    unitBlueprintId: 'unitJackal',
+    delta: 2,
+  });
+  executeCommand(quotaCtx, {
+    type: 'changeFactoryUnitQuota',
+    tick: 1,
+    factoryId: quotaFactoryB.id,
+    unitBlueprintId: 'unitJackal',
+    delta: 2,
+  });
+  assertContract(
+    factoryQuotaCount(quotaFactoryA, 'unitJackal') === 1 &&
+      factoryQuotaCount(quotaFactoryB, 'unitJackal') === 1,
+    'factory quota counts must track units produced by each factory, not all owned units',
+  );
+  quotaWorld.removeEntity(quotaUnitA.id);
+  assertContract(
+    factoryQuotaCount(quotaFactoryA, 'unitJackal') === 0 &&
+      factoryQuotaCount(quotaFactoryB, 'unitJackal') === 1,
+    'destroying one factory-produced unit must only decrement that factory quota count',
+  );
+  quotaWorld.setEntityOwner(quotaUnitB, 2);
+  assertContract(
+    factoryQuotaCount(quotaFactoryB, 'unitJackal') === 0,
+    'transferring a factory-produced unit away must remove it from the producing factory quota count',
+  );
+
   executeCommand({
     world,
     constructionSystem: construction,
@@ -169,12 +316,42 @@ export function runCommandExecutionContractTest(): void {
   }, {
     type: 'setCloakState',
     tick: 1,
-    entityIds: [unit.id],
+    entityIds: [priorityBuilder.id],
     enabled: true,
   });
+  const cloakedCommander = world.getEntity(priorityBuilder.id);
+  const cloakedCommanderUnit = cloakedCommander?.unit;
+  const cloakedCommanderCombat = cloakedCommander?.combat;
   assertContract(
-    unit.unit?.wantCloak === true && unit.unit.cloaked === true,
-    'setCloakState command should apply desired and active cloak state',
+    cloakedCommanderUnit?.wantCloak === true &&
+      cloakedCommanderUnit.cloaked === true &&
+      cloakedCommanderUnit.cloakRestoreFireState === 'returnFire' &&
+      cloakedCommanderCombat?.fireState === 'holdFire' &&
+      cloakedCommanderCombat.fireEnabled === false,
+    'BAR cloak command should cloak the commander, store its previous fire state, and force hold fire',
+  );
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setCloakState',
+    tick: 1,
+    entityIds: [priorityBuilder.id],
+    enabled: false,
+  });
+  const decloakedCommander = world.getEntity(priorityBuilder.id);
+  const decloakedCommanderUnit = decloakedCommander?.unit;
+  const decloakedCommanderCombat = decloakedCommander?.combat;
+  assertContract(
+    decloakedCommanderUnit?.wantCloak === false &&
+      decloakedCommanderUnit.cloaked === false &&
+      decloakedCommanderUnit.cloakRestoreFireState === null &&
+      decloakedCommanderCombat?.fireState === 'returnFire' &&
+      decloakedCommanderCombat.fireEnabled === true,
+    'BAR decloak command should restore the fire state saved when cloak was enabled',
   );
   executeCommand({
     world,
@@ -197,6 +374,179 @@ export function runCommandExecutionContractTest(): void {
       unit.combat.priorityTargetPoint?.y === 240 &&
       unit.combat.priorityTargetPoint?.z === world.getGroundZ(120, 240),
     'manualLaunch command should force a one-shot ground target on armed combat entities',
+  );
+  executeCommand({
+    world,
+    constructionSystem: construction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'setTowerTarget',
+    tick: 1,
+    entityIds: [unit.id],
+    targetId: null,
+    targetX: 140,
+    targetY: 260,
+    targetZ: world.getGroundZ(140, 260),
+  });
+  const combatAfterSetTarget = world.getEntity(unit.id)?.combat;
+  assertContract(
+    combatAfterSetTarget?.manualLaunchActive === false &&
+      combatAfterSetTarget.priorityTargetId === null &&
+      combatAfterSetTarget.priorityTargetPoint?.x === 140 &&
+      combatAfterSetTarget.priorityTargetPoint?.y === 260 &&
+      combatAfterSetTarget.priorityTargetPoint?.z === world.getGroundZ(140, 260),
+    'setTowerTarget command should set a durable ground lock-on point',
+  );
+
+  const holdFireWorld = new WorldState(2, 512, 512);
+  const holdFireConstruction = new ConstructionSystem(holdFireWorld.mapWidth, holdFireWorld.mapHeight);
+  const holdFireCtx: CommandContext = {
+    world: holdFireWorld,
+    constructionSystem: holdFireConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  const holdFireUnit = holdFireWorld.createUnitFromBlueprint(40, 40, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const holdFireTarget = holdFireWorld.createUnitFromBlueprint(160, 40, 2, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  holdFireWorld.addEntity(holdFireUnit);
+  holdFireWorld.addEntity(holdFireTarget);
+  executeCommand(holdFireCtx, {
+    type: 'attack',
+    tick: 1,
+    entityIds: [holdFireUnit.id],
+    targetId: holdFireTarget.id,
+    queue: false,
+  });
+  executeCommand(holdFireCtx, {
+    type: 'attackGround',
+    tick: 1,
+    entityIds: [holdFireUnit.id],
+    targetX: 180,
+    targetY: 40,
+    targetZ: holdFireWorld.getGroundZ(180, 40),
+    queue: true,
+  });
+  assertContract(
+    holdFireUnit.unit?.actions.length === 2 &&
+      holdFireUnit.unit.actions[0].type === 'attack' &&
+      holdFireUnit.unit.actions[1].type === 'attackGround',
+    'attack and attack-ground commands should enqueue combat attack intents before hold-fire cleanup',
+  );
+  assertContract(holdFireUnit.combat !== null, 'hold-fire cleanup test unit must have combat');
+  holdFireUnit.combat.priorityTargetId = holdFireTarget.id;
+  holdFireUnit.combat.manualLaunchActive = true;
+  executeCommand(holdFireCtx, {
+    type: 'setFireEnabled',
+    tick: 2,
+    entityIds: [holdFireUnit.id],
+    fireState: 'holdFire',
+  });
+  const holdFireUnitAfter = holdFireWorld.getEntity(holdFireUnit.id);
+  const holdFireCombatAfter = holdFireUnitAfter?.combat;
+  const holdFireActionsAfter = holdFireUnitAfter?.unit?.actions ?? [];
+  assertContract(
+    holdFireCombatAfter !== undefined &&
+      holdFireCombatAfter !== null &&
+      holdFireCombatAfter.fireState === 'holdFire' &&
+      holdFireCombatAfter.fireEnabled === false &&
+      holdFireCombatAfter.priorityTargetId === null &&
+      holdFireCombatAfter.priorityTargetPoint === null &&
+      holdFireCombatAfter.manualLaunchActive === false &&
+      holdFireActionsAfter.length === 0,
+    'BAR hold-fire behavior should stop active combat attack orders and cancel target locks',
+  );
+  setUnitActions(holdFireUnit.unit!, [
+    { type: 'move', x: 96, y: 96 },
+    { type: 'attackGround', x: 120, y: 96, z: holdFireWorld.getGroundZ(120, 96) },
+  ]);
+  executeCommand(holdFireCtx, {
+    type: 'setFireEnabled',
+    tick: 3,
+    entityIds: [holdFireUnit.id],
+    fireState: 'holdFire',
+  });
+  const repeatedHoldFireActions = holdFireWorld.getEntity(holdFireUnit.id)?.unit?.actions ?? [];
+  assertContract(
+    repeatedHoldFireActions.length === 1 &&
+      repeatedHoldFireActions[0].type === 'move',
+    'repeated BAR hold-fire commands should keep non-combat orders while dropping stale attack intents',
+  );
+
+  const guardRemoveWorld = new WorldState(1, 512, 512);
+  const guardRemoveConstruction = new ConstructionSystem(guardRemoveWorld.mapWidth, guardRemoveWorld.mapHeight);
+  const guardRemoveCtx: CommandContext = {
+    world: guardRemoveWorld,
+    constructionSystem: guardRemoveConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  const guardingBuilder = guardRemoveWorld.createUnitFromBlueprint(60, 60, 1, 'unitCommander', {
+    allocateSubEntityIds: false,
+  });
+  const guardedAlly = guardRemoveWorld.createUnitFromBlueprint(90, 60, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  guardRemoveWorld.addEntity(guardingBuilder);
+  guardRemoveWorld.addEntity(guardedAlly);
+  setUnitActions(guardingBuilder.unit!, [
+    { type: 'guard', x: guardedAlly.transform.x, y: guardedAlly.transform.y, z: guardedAlly.transform.z, targetId: guardedAlly.id },
+  ]);
+  executeCommand(guardRemoveCtx, {
+    type: 'move',
+    tick: 4,
+    entityIds: [guardingBuilder.id],
+    targetX: 140,
+    targetY: 60,
+    targetZ: guardRemoveWorld.getGroundZ(140, 60),
+    waypointType: 'move',
+    queue: true,
+  });
+  assertContract(
+    guardingBuilder.unit?.actions.length === 1 &&
+      guardingBuilder.unit.actions[0].type === 'move',
+    'BAR Guard Remove should drop an old builder guard order before queued work',
+  );
+
+  const guardingFighter = guardRemoveWorld.createUnitFromBlueprint(60, 120, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const guardedFighterAlly = guardRemoveWorld.createUnitFromBlueprint(90, 120, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  guardRemoveWorld.addEntity(guardingFighter);
+  guardRemoveWorld.addEntity(guardedFighterAlly);
+  setUnitActions(guardingFighter.unit!, [
+    {
+      type: 'guard',
+      x: guardedFighterAlly.transform.x,
+      y: guardedFighterAlly.transform.y,
+      z: guardedFighterAlly.transform.z,
+      targetId: guardedFighterAlly.id,
+    },
+  ]);
+  executeCommand(guardRemoveCtx, {
+    type: 'move',
+    tick: 4,
+    entityIds: [guardingFighter.id],
+    targetX: 140,
+    targetY: 120,
+    targetZ: guardRemoveWorld.getGroundZ(140, 120),
+    waypointType: 'move',
+    queue: true,
+  });
+  assertContract(
+    guardingFighter.unit?.actions.length === 2 &&
+      guardingFighter.unit.actions[0].type === 'guard' &&
+      guardingFighter.unit.actions[1].type === 'move',
+    'BAR Guard Remove must not strip guard queues from non-builder combat units',
   );
 
   const gatherA = world.createUnitFromBlueprint(100, 240, 1, 'unitJackal', {

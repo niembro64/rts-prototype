@@ -2738,11 +2738,7 @@ pub(crate) fn terrain_accumulate_touching_triangle_safety(
                 if !terrain_triangle_touches_rect(sample, min_x, min_y, max_x, max_y) {
                     continue;
                 }
-                terrain_accumulate_touching_triangle_safety_sample(
-                    sample,
-                    has_water,
-                    min_normal_z,
-                );
+                terrain_accumulate_touching_triangle_safety_sample(sample, has_water, min_normal_z);
             }
         }
     }

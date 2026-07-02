@@ -13,6 +13,8 @@ type CommandType =
   | 'removeLastQueuedOrder'
   | 'skipCurrentOrder'
   | 'setRepeatQueue'
+  | 'setBuilderPriority'
+  | 'setCarrierSpawn'
   | 'setUnitMoveState'
   | 'setTrajectoryMode'
   | 'setCloakState'
@@ -24,7 +26,10 @@ type CommandType =
   | 'upgradeMetalExtractorArea'
   | 'queueUnit'
   | 'editFactoryQueue'
+  | 'removeFactoryUnitProduction'
   | 'stopFactoryProduction'
+  | 'setFactoryRepeatProduction'
+  | 'changeFactoryUnitQuota'
   | 'setRallyPoint'
   | 'setFactoryGuard'
   | 'fireDGun'
@@ -124,6 +129,18 @@ export type SetRepeatQueueCommand = BaseCommand & {
   enabled: boolean;
 };
 
+export type SetBuilderPriorityCommand = BaseCommand & {
+  type: 'setBuilderPriority';
+  entityIds: EntityId[];
+  lowPriority: boolean;
+};
+
+export type SetCarrierSpawnCommand = BaseCommand & {
+  type: 'setCarrierSpawn';
+  entityIds: EntityId[];
+  enabled: boolean;
+};
+
 export type SetUnitMoveStateCommand = BaseCommand & {
   type: 'setUnitMoveState';
   entityIds: EntityId[];
@@ -217,9 +234,29 @@ export type EditFactoryQueueCommand = BaseCommand & {
   count?: number;
 };
 
+export type RemoveFactoryUnitProductionCommand = BaseCommand & {
+  type: 'removeFactoryUnitProduction';
+  factoryId: EntityId;
+  unitBlueprintId: string;
+  count?: number;
+};
+
 export type StopFactoryProductionCommand = BaseCommand & {
   type: 'stopFactoryProduction';
   factoryId: EntityId;
+};
+
+export type SetFactoryRepeatProductionCommand = BaseCommand & {
+  type: 'setFactoryRepeatProduction';
+  factoryId: EntityId;
+  enabled: boolean;
+};
+
+export type ChangeFactoryUnitQuotaCommand = BaseCommand & {
+  type: 'changeFactoryUnitQuota';
+  factoryId: EntityId;
+  unitBlueprintId: string;
+  delta: number;
 };
 
 export type SetRallyPointCommand = BaseCommand & {
@@ -270,15 +307,19 @@ export type SelfDestructCommand = BaseCommand & {
   entityIds: EntityId[];
 };
 
-/** Set (or clear) a combat entity's host-level lock-on target. Writes
- *  CombatComponent.priorityTargetId directly; host-directed turrets
- *  inherit the target through the normal acquisition flow, gated by
- *  their own exclusion masks. `targetId === null` clears the lock-on
- *  and the entity reverts to autonomous acquisition. */
+/** Set (or clear) a combat entity's host-level lock-on target. Entity
+ *  targets write CombatComponent.priorityTargetId; ground targets write
+ *  CombatComponent.priorityTargetPoint. Host-directed turrets inherit the
+ *  target through the normal acquisition flow, gated by their own
+ *  exclusion masks. `targetId === null` with no targetX/targetY clears
+ *  the lock-on and reverts to autonomous acquisition. */
 export type SetTowerTargetCommand = BaseCommand & {
   type: 'setTowerTarget';
   entityIds: EntityId[];
   targetId: EntityId | null;
+  targetX?: number;
+  targetY?: number;
+  targetZ?: number;
 };
 
 export type RepairCommand = BaseCommand & {
@@ -523,6 +564,8 @@ export type Command =
   | RemoveLastQueuedOrderCommand
   | SkipCurrentOrderCommand
   | SetRepeatQueueCommand
+  | SetBuilderPriorityCommand
+  | SetCarrierSpawnCommand
   | SetUnitMoveStateCommand
   | SetTrajectoryModeCommand
   | SetCloakStateCommand
@@ -534,7 +577,10 @@ export type Command =
   | UpgradeMetalExtractorAreaCommand
   | QueueUnitCommand
   | EditFactoryQueueCommand
+  | RemoveFactoryUnitProductionCommand
   | StopFactoryProductionCommand
+  | SetFactoryRepeatProductionCommand
+  | ChangeFactoryUnitQuotaCommand
   | SetRallyPointCommand
   | SetFactoryGuardCommand
   | FireDGunCommand

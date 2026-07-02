@@ -64,6 +64,23 @@ export function isBallisticArcWeapon(weapon: Turret): boolean {
   );
 }
 
+export function hasManualFireShotWeapon(entity: Entity): boolean {
+  const turrets = entity.combat?.turrets;
+  if (turrets === undefined || turrets.length === 0) return false;
+  for (let i = 0; i < turrets.length; i++) {
+    const config = turrets[i].config;
+    if (
+      config.isManualFire === true &&
+      !config.visualOnly &&
+      !config.passive &&
+      config.shot !== null
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isWeaponAimedForFire(weapon: Turret): boolean {
   if (weapon.config.verticalLauncher) return true;
   const pitchTolerance = isBallisticArcWeapon(weapon)
@@ -524,4 +541,3 @@ export function updateProjectileSourceClearance(
   }
   return false;
 }
-

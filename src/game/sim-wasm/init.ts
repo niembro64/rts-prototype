@@ -1032,6 +1032,9 @@ export interface SimWasm {
     hoverOrientationK: number,
     hoverOrientationC: number,
     groundAngularDampingRate: number,
+    driveAlignmentZeroForceDot: number,
+    driveAlignmentFullForceDot: number,
+    driveAlignmentResponseExponent: number,
   ) => number;
   /** C1 — splash/area target overlap classifier. TypeScript gathers
    *  spatial candidates and applies damage/event diffs; Rust owns the
@@ -4462,6 +4465,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runRosterCommandSurfaceContractTest();
         const { runLocomotionContractTest } = await import('../sim/blueprints/locomotionContractTest');
         runLocomotionContractTest();
+        const { runProjectileMotionContractTest } = await import('../sim/projectileMotionContractTest');
+        runProjectileMotionContractTest();
         const { runBoxSelectionContractTest } = await import('../input/helpers/BoxSelectionContractTest');
         runBoxSelectionContractTest();
         const { runRightClickCommandsContractTest } = await import('../input/helpers/RightClickCommandsContractTest');

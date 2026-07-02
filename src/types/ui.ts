@@ -2,11 +2,17 @@
 
 import type { PlayerId, EntityId, WaypointType, Entity, BuildingBlueprintId, EntityType, StructureBlueprintId, CombatFireState, CombatTrajectoryMode, UnitMoveState } from './sim';
 import type { Vec2 } from './vec2';
+import type { BarBuildCategoryId } from '../game/input/buildMenuLayout';
 
 // Selection panel types
 export type FactorySelectionItem = {
   unitBlueprintId: string;
   label: string;
+};
+
+export type FactoryQuotaItem = FactorySelectionItem & {
+  current: number;
+  quota: number;
 };
 
 export type ControlGroupInfo = {
@@ -26,6 +32,14 @@ export type QueueInsertOption = {
   label: string;
 };
 
+export type SelectionBuilderTypeInfo = {
+  unitBlueprintId: string;
+  label: string;
+  shortName: string;
+  count: number;
+  active: boolean;
+};
+
 export type SelectionEntityType = 'unit' | 'tower' | 'building';
 
 export type SelectionInfo = {
@@ -42,19 +56,40 @@ export type SelectionInfo = {
   buildingCount: number;
   hasCommander: boolean;
   hasBuilder: boolean;
+  activeBuilderUnitBlueprintId: string | null;
+  selectedBuilderTypes: readonly SelectionBuilderTypeInfo[];
   hasTransport: boolean;
   allowedBuildBlueprintIds: readonly StructureBlueprintId[];
   canUpgradeMetalExtractors: boolean;
   hasUpgradeableMetalExtractor: boolean;
   hasDGun: boolean;
+  /** True when the selection contains a unit that BAR would expose Attack for. */
+  hasBarAttackControl: boolean;
+  /** True when the selection contains a unit that BAR would expose Capture for. */
+  hasBarCaptureControl: boolean;
+  /** True when the selection contains a unit that BAR would expose Area Attack for. */
+  hasBarAreaAttackControl: boolean;
+  /** True when the selection contains a unit that BAR would expose Move State for. */
+  hasMoveStateControl: boolean;
   hasFireControl: boolean;
   fireEnabled: boolean;
   fireState: CombatFireState | 'mixed';
   hasTrajectoryControl: boolean;
   trajectoryMode: CombatTrajectoryMode;
+  hasBarTrajectoryControl: boolean;
+  barTrajectoryMode: CombatTrajectoryMode;
+  barTrajectoryStateCount: 2 | 3;
   hasCloakControl: boolean;
   wantsCloak: boolean;
   isCloaked: boolean;
+  /** BAR builder priority command is available on builders and factories. */
+  hasBuilderPriorityControl: boolean;
+  /** True when every priority-capable entity in the selection is low priority. */
+  builderPriorityLow: boolean;
+  /** BAR carrier-spawn command is available on mobile unit factories. */
+  hasCarrierSpawnControl: boolean;
+  /** True when every selected mobile unit factory has spawning enabled. */
+  carrierSpawnEnabled: boolean;
   /** True iff the selection contains at least one building whose
    *  BuildingBlueprintId uses the ON/OFF active-state mechanic
    *  (solar/wind/extractor/radar/resourceConverter). Gates the ON/OFF button. */
@@ -62,20 +97,32 @@ export type SelectionInfo = {
   /** True when every active-state building in the selection is currently
    *  ON (open). Drives the ON/OFF button label. */
   buildingsActive: boolean;
+  /** BAR exposes ON/OFF only for buildings whose BAR analogues have the onoff
+   *  command (metal extractors and solar collectors), even though the
+   *  prototype active-state mechanic covers more economy/utility buildings. */
+  hasBarBuildingActiveControl: boolean;
+  /** True when every BAR-onoff-capable active-state building in the selection
+   *  is currently ON. */
+  barBuildingsActive: boolean;
   /** True when any selected entity belongs to the local player and can
    *  be removed by a self-destruct command. */
   hasSelfDestructable: boolean;
-  /** True when a commander is selected alongside at least one reclaimable
+  /** True when a builder is selected alongside at least one reclaimable
    *  selected target. Enables the direct reclaim-selected command. */
   hasReclaimableSelection: boolean;
   /** True when selected combat units/towers expose Set Target / Clear Target. */
   hasTowerTargetControl: boolean;
+  /** True when at least one selected combat unit/tower has a BAR-style
+   *  manual-fire shot weapon. Gates the Manual Launch button. */
+  hasManualLaunchControl: boolean;
   /** True when at least one selected combat entity has a host-level
    *  lock-on target set. Enables the Clear Target button. */
   hasTowerTargetActive: boolean;
   /** True while the user is in the click-to-pick mode for setting a
    *  tower's lock-on target. Highlights the Set Target button. */
   isTowerTargetMode: boolean;
+  /** True while the no-ground variant of tower target pick mode is active. */
+  isTowerTargetNoGroundMode: boolean;
   isWaiting: boolean;
   isGatherWaiting: boolean;
   isRepeatQueue: boolean;
@@ -85,15 +132,21 @@ export type SelectionInfo = {
   queueInsertIndex: number | null;
   queueInsertOptions: QueueInsertOption[];
   hasFactory: boolean;
+  factoryAllowedUnitBlueprintIds: readonly string[];
   factoryId?: number;
+  factoryPresetOverlayVisible: boolean;
   commanderId?: number;
   waypointMode: WaypointType;
+  buildGridCategory: BarBuildCategoryId | null;
+  buildGridPage: number;
+  factoryGridPage: number;
   isBuildMode: boolean;
   selectedBuildingBlueprintId: string | null;
   buildLineSpacingMultiplier: number;
   buildFacingDegrees: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isRestoreAreaMode: boolean;
   isFormationAssumeMode: boolean;
   isFormationMoveMode: boolean;
   isAttackMode: boolean;
@@ -111,9 +164,17 @@ export type SelectionInfo = {
   isPingMode: boolean;
   factorySelectedUnit?: FactorySelectionItem | null;
   factoryProductionQueue?: FactorySelectionItem[];
+  factoryProductionQuotas?: FactoryQuotaItem[];
   factoryProgress?: number;
   factoryIsProducing?: boolean;
+  /** True while the selected factory/tower shell itself is incomplete. */
+  factoryUnderConstruction?: boolean;
+  /** Construction fraction for the selected incomplete factory/tower shell. */
+  factoryConstructionProgress?: number;
   factoryRepeatsProduction?: boolean;
+  factoryQueueMode: boolean;
+  /** True when the selected factory exposes BAR's Factory Guard command. */
+  hasFactoryGuardControl: boolean;
   factoryGuardTargetId?: number | null;
   controlGroups: ControlGroupInfo[];
   details: SelectionDetailItem[];
@@ -128,11 +189,15 @@ export type SelectionActions = {
   toggleRepeatQueue: () => void;
   setQueueInsertIndex: (index: number | null) => void;
   toggleUnitMoveState: () => void;
+  setUnitMoveState: (moveState: UnitMoveState) => void;
+  toggleBuilderPriority: () => void;
+  toggleCarrierSpawn: () => void;
   toggleTrajectoryMode: () => void;
   toggleCloakState: () => void;
   toggleSelectedWait: (queue?: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
   toggleSelectedGatherWait: (queue?: boolean, queueFront?: boolean, queueInsertIndex?: number) => void;
   toggleSelectedFire: () => void;
+  setSelectedFireState: (fireState: CombatFireState) => void;
   /** ON/OFF for producer buildings in the selection. */
   toggleBuildingActive: () => void;
   /** Demolish every owned entity in the selection. */
@@ -154,6 +219,8 @@ export type SelectionActions = {
   /** Enter click-pick mode for setting the host lock-on target on the
    *  selected towers. Right-click / Esc cancels. */
   setTowerTargetMode: () => void;
+  /** Enter click-pick mode for setting an entity-only host lock-on target. */
+  setTowerTargetNoGroundMode: () => void;
   /** Clear the host lock-on target on the selected towers. */
   clearTowerTarget: () => void;
   toggleAttackArea: () => void;
@@ -175,15 +242,25 @@ export type SelectionActions = {
   recallControlGroup: (index: number, additive: boolean) => void;
   startBuild: (buildingBlueprintId: BuildingBlueprintId) => void;
   cancelBuild: () => void;
+  setActiveBuilder: (unitBlueprintId: string) => void;
+  cycleActiveBuilder: () => void;
+  setBuildGridCategory: (categoryId: BarBuildCategoryId | null) => void;
+  stepBuildGridPage: (delta: number) => void;
+  stepFactoryGridPage: (delta: number) => void;
   increaseBuildLineSpacing: () => void;
   decreaseBuildLineSpacing: () => void;
   rotateBuildFacingClockwise: () => void;
   rotateBuildFacingCounterClockwise: () => void;
   toggleDGun: () => void;
   toggleRepairArea: () => void;
+  toggleRestoreArea: () => void;
   toggleFormationAssume: () => void;
   toggleFormationMove: () => void;
   queueUnit: (factoryId: number, unitBlueprintId: string, repeat?: boolean, count?: number) => void;
+  removeFactoryUnitProduction: (factoryId: number, unitBlueprintId: string, count?: number) => void;
+  setFactoryRepeatProduction: (factoryId: number, enabled: boolean) => void;
+  changeFactoryUnitQuota: (factoryId: number, unitBlueprintId: string, delta: number) => void;
+  toggleFactoryQueueMode: () => void;
   editFactoryQueue: (
     factoryId: number,
     operation: 'remove' | 'move' | 'setCount',
@@ -193,6 +270,7 @@ export type SelectionActions = {
     count?: number,
   ) => void;
   stopFactoryProduction: (factoryId: number) => void;
+  toggleFactoryGuard: (factoryId: number) => void;
   clearFactoryGuard: (factoryId: number) => void;
 };
 
@@ -290,12 +368,19 @@ export type UIEntitySource = {
 // UI input state (minimal subset for UI updates)
 export type UIInputState = {
   waypointMode: WaypointType;
+  buildGridCategory: BarBuildCategoryId | null;
+  buildGridPage: number;
+  factoryGridPage: number;
+  factoryQueueMode: boolean;
+  factoryPresetOverlayVisible: boolean;
+  activeBuilderUnitBlueprintId: string | null;
   isBuildMode: boolean;
   selectedBuildingBlueprintId: string | null;
   buildLineSpacingMultiplier: number;
   buildFacingDegrees: number;
   isDGunMode: boolean;
   isRepairAreaMode: boolean;
+  isRestoreAreaMode: boolean;
   isFormationAssumeMode: boolean;
   isFormationMoveMode: boolean;
   isAttackMode: boolean;
@@ -314,6 +399,7 @@ export type UIInputState = {
   /** True while in the click-to-pick mode for setting a tower's host
    *  lock-on target. Mirrors the attack-area / guard mode pattern. */
   isTowerTargetMode: boolean;
+  isTowerTargetNoGroundMode: boolean;
   controlGroups: ControlGroupInfo[];
   queueInsertIndex: number | null;
 };

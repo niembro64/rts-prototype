@@ -7,6 +7,7 @@ import type {
   AttackCommand,
   AttackGroundCommand,
   CaptureCommand,
+  ChangeFactoryUnitQuotaCommand,
   ClearQueuedOrdersCommand,
   Command,
   EditFactoryQueueCommand,
@@ -22,6 +23,7 @@ import type {
   ReclaimAreaCommand,
   RepairAreaCommand,
   RepairCommand,
+  RemoveFactoryUnitProductionCommand,
   RemoveLastQueuedOrderCommand,
   ResurrectAreaCommand,
   ResurrectCommand,
@@ -29,8 +31,11 @@ import type {
   SkipCurrentOrderCommand,
   SetFireEnabledCommand,
   SetBuildingActiveCommand,
+  SetBuilderPriorityCommand,
+  SetCarrierSpawnCommand,
   SetCloakStateCommand,
   SetRepeatQueueCommand,
+  SetFactoryRepeatProductionCommand,
   SetTrajectoryModeCommand,
   SetUnitMoveStateCommand,
   SelfDestructCommand,
@@ -58,6 +63,7 @@ import {
 } from './combat/combatUtils';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
+import { factoryCanProduceUnit } from './factoryProductionRoster';
 import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_COMBAT_MODE, ENTITY_CHANGED_FACTORY, ENTITY_CHANGED_HP, ENTITY_CHANGED_TURRETS } from '../../types/network';
 import { setBuildingActiveOpen } from './buildingActiveState';
 import { resetDisabledTurretJsOnlyFields } from './combat/combatActivity';
@@ -77,6 +83,8 @@ import {
 import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
+
+const MAX_FACTORY_PRODUCTION_QUOTA = 64;
 import { isCapturableTarget } from './capture';
 import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport, isTransportUnit } from './transports';
@@ -95,6 +103,13 @@ import {
 import type { BuildingGrid } from './buildGrid';
 import { expandPathPoints, pathTerrainFilterForLocomotion } from './Pathfinder';
 import { canBuilderUpgradeMetalExtractor, isUpgradeableMetalExtractorTarget } from './metalExtractorUpgrade';
+import {
+  entityHasBarAreaAttackCommand,
+  entityHasBarCaptureCommand,
+  entityHasBarMoveStateCommand,
+  entityHasBarSetTargetCommand,
+  entityHasCloakCommand,
+} from './unitCommandCapabilities';
 
 const _dgunMount = { x: 0, y: 0, z: 0 };
 const MIN_GROUP_FORMATION_SPACING = 40;
@@ -176,6 +191,12 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'setRepeatQueue':
       executeSetRepeatQueueCommand(ctx, command);
       break;
+    case 'setBuilderPriority':
+      executeSetBuilderPriorityCommand(ctx, command);
+      break;
+    case 'setCarrierSpawn':
+      executeSetCarrierSpawnCommand(ctx, command);
+      break;
     case 'setUnitMoveState':
       executeSetUnitMoveStateCommand(ctx, command);
       break;
@@ -212,8 +233,17 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
     case 'editFactoryQueue':
       executeEditFactoryQueueCommand(ctx, command);
       break;
+    case 'removeFactoryUnitProduction':
+      executeRemoveFactoryUnitProductionCommand(ctx, command);
+      break;
     case 'stopFactoryProduction':
       executeStopFactoryProductionCommand(ctx, command);
+      break;
+    case 'setFactoryRepeatProduction':
+      executeSetFactoryRepeatProductionCommand(ctx, command);
+      break;
+    case 'changeFactoryUnitQuota':
+      executeChangeFactoryUnitQuotaCommand(ctx, command);
       break;
     case 'setRallyPoint':
       executeSetRallyPointCommand(ctx, command);
@@ -820,12 +850,44 @@ function executeSetRepeatQueueCommand(ctx: CommandContext, command: SetRepeatQue
   }
 }
 
+function executeSetBuilderPriorityCommand(ctx: CommandContext, command: SetBuilderPriorityCommand): void {
+  const lowPriority = command.lowPriority === true;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (entity === undefined) continue;
+    if (entity.builder !== null && entity.builder.lowPriority !== lowPriority) {
+      entity.builder.lowPriority = lowPriority;
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    }
+    if (entity.factory !== null && entity.factory.lowPriority !== lowPriority) {
+      entity.factory.lowPriority = lowPriority;
+      ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
+    }
+  }
+}
+
+function executeSetCarrierSpawnCommand(ctx: CommandContext, command: SetCarrierSpawnCommand): void {
+  const enabled = command.enabled === true;
+  for (let i = 0; i < command.entityIds.length; i++) {
+    const entity = ctx.world.getEntity(command.entityIds[i]);
+    if (entity === undefined || entity.type !== 'unit' || entity.factory === null) continue;
+    if (entity.factory.carrierSpawnEnabled === enabled) continue;
+    entity.factory.carrierSpawnEnabled = enabled;
+    if (!enabled && entity.factory.currentShellId === null) {
+      entity.factory.isProducing = false;
+      entity.factory.currentBuildProgress = 0;
+    }
+    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
+  }
+}
+
 function executeSetUnitMoveStateCommand(ctx: CommandContext, command: SetUnitMoveStateCommand): void {
   const moveState = command.moveState;
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     const unit = entity !== undefined ? entity.unit : null;
     if (entity === undefined || unit === null) continue;
+    if (!entityHasBarMoveStateCommand(entity)) continue;
     if (unit.moveState === moveState) continue;
     unit.moveState = moveState;
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
@@ -858,9 +920,28 @@ function executeSetCloakStateCommand(ctx: CommandContext, command: SetCloakState
     const entity = ctx.world.getEntity(command.entityIds[i]);
     const unit = entity !== undefined ? entity.unit : null;
     if (entity === undefined || unit === null) continue;
-    if (unit.wantCloak === enabled && unit.cloaked === enabled) continue;
-    unit.wantCloak = enabled;
-    unit.cloaked = enabled;
+    if (!entityHasCloakCommand(entity)) continue;
+
+    if (enabled) {
+      if (unit.cloakRestoreFireState === null) {
+        unit.cloakRestoreFireState = entity.combat?.fireState ?? 'holdFire';
+      }
+      const cloakStateChanged = unit.wantCloak !== true || unit.cloaked !== true;
+      unit.wantCloak = true;
+      unit.cloaked = true;
+      applyCombatFireState(ctx, entity, 'holdFire');
+      if (cloakStateChanged) {
+        ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_ACTIONS);
+      }
+      continue;
+    }
+
+    if (unit.wantCloak !== true && unit.cloaked !== true && unit.cloakRestoreFireState === null) continue;
+    const restoreFireState = unit.cloakRestoreFireState ?? 'holdFire';
+    unit.wantCloak = false;
+    unit.cloaked = false;
+    unit.cloakRestoreFireState = null;
+    applyCombatFireState(ctx, entity, restoreFireState);
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_ACTIONS);
   }
 }
@@ -1155,6 +1236,7 @@ function findMetalExtractorUpgradeTargetsInArea(
 function executeQueueUnitCommand(ctx: CommandContext, command: QueueUnitCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
   if (factory === undefined || factory.factory === null || factory.ownership === null) return;
+  if (!factoryCanProduceUnit(factory, command.unitBlueprintId)) return;
 
   // Repeat-build selections persist even at unit cap so production resumes
   // automatically when an existing unit dies. One-shot selections clear after
@@ -1187,6 +1269,23 @@ function executeEditFactoryQueueCommand(ctx: CommandContext, command: EditFactor
   }
 }
 
+function executeRemoveFactoryUnitProductionCommand(
+  ctx: CommandContext,
+  command: RemoveFactoryUnitProductionCommand,
+): void {
+  const factory = ctx.world.getEntity(command.factoryId);
+  if (factory === undefined || factory.factory === null || factory.ownership === null) return;
+
+  if (factoryProductionSystem.removeUnitProduction(
+    factory,
+    ctx.world,
+    command.unitBlueprintId,
+    command.count ?? 1,
+  )) {
+    ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+  }
+}
+
 function executeStopFactoryProductionCommand(ctx: CommandContext, command: StopFactoryProductionCommand): void {
   const factory = ctx.world.getEntity(command.factoryId);
   if (factory === undefined || factory.factory === null || factory.ownership === null) return;
@@ -1194,6 +1293,32 @@ function executeStopFactoryProductionCommand(ctx: CommandContext, command: StopF
   if (factoryProductionSystem.stopProduction(factory, ctx.world)) {
     ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
   }
+}
+
+function executeSetFactoryRepeatProductionCommand(
+  ctx: CommandContext,
+  command: SetFactoryRepeatProductionCommand,
+): void {
+  const factory = ctx.world.getEntity(command.factoryId);
+  if (factory === undefined || factory.factory === null || factory.ownership === null) return;
+  const enabled = command.enabled === true;
+  if (factory.factory.repeatProduction === enabled) return;
+  factory.factory.repeatProduction = enabled;
+  ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+}
+
+function executeChangeFactoryUnitQuotaCommand(ctx: CommandContext, command: ChangeFactoryUnitQuotaCommand): void {
+  const factory = ctx.world.getEntity(command.factoryId);
+  if (factory === undefined || factory.factory === null || factory.ownership === null) return;
+  if (!factoryCanProduceUnit(factory, command.unitBlueprintId)) return;
+  const quotas = factory.factory.productionQuotas;
+  const current = Math.max(0, Math.floor(quotas[command.unitBlueprintId] ?? 0));
+  const next = Math.max(0, Math.min(MAX_FACTORY_PRODUCTION_QUOTA, current + command.delta));
+  if (next === current) return;
+  if (next === 0) delete quotas[command.unitBlueprintId];
+  else quotas[command.unitBlueprintId] = next;
+  ctx.world.syncFactoryProductionQuotaCounts(factory);
+  ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
 }
 
 function executeSetRallyPointCommand(ctx: CommandContext, command: SetRallyPointCommand): void {
@@ -1225,6 +1350,12 @@ function executeSetFactoryGuardCommand(ctx: CommandContext, command: SetFactoryG
     target.ownership === null ||
     factory.ownership.playerId !== target.ownership.playerId
   ) return;
+
+  if (target.id === factory.id) {
+    factory.factory.guardTargetId = factory.id;
+    ctx.world.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+    return;
+  }
 
   const targetPoint = getEntityTargetPoint(target);
   factory.factory.guardTargetId = target.id;
@@ -1406,31 +1537,61 @@ function executeSetFireEnabledCommand(ctx: CommandContext, command: SetFireEnabl
     (command.enabled === false ? 'holdFire' : 'fireAtWill');
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
-    const combat = entity !== undefined ? entity.combat : null;
-    if (entity === undefined || combat === null) continue;
+    if (entity === undefined) continue;
+    applyCombatFireState(ctx, entity, fireState);
+  }
+}
 
-    const enabled = fireState !== 'holdFire';
-    if (combat.fireState === fireState && combat.fireEnabled === enabled) continue;
+function applyCombatFireState(ctx: CommandContext, entity: Entity, fireState: CombatFireState): boolean {
+  const combat = entity.combat;
+  if (combat === null) return false;
+
+  const enabled = fireState !== 'holdFire';
+  const stateChanged = combat.fireState !== fireState || combat.fireEnabled !== enabled;
+  if (stateChanged) {
     combat.fireState = fireState;
     combat.fireEnabled = enabled;
-    if (fireState === 'holdFire') {
-      combat.priorityTargetId = null;
-      combat.priorityTargetPoint = null;
-      combat.manualLaunchActive = false;
-      combat.nextCombatProbeTick = -1;
-      // Drop every turret's lock everywhere in one call per turret:
-      // JS Turret target + state, beam inverse index, and the slab
-      // FSM tuple. The previous version only touched the JS Turret
-      // side, leaving the slab with stale (target, state) that
-      // same-tick slab-first readers would still see.
-      for (let wi = 0; wi < combat.turrets.length; wi++) {
-        dropTurretLockMidTick(entity, wi);
-      }
-    } else {
-      combat.nextCombatProbeTick = -1;
-    }
-    ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);
   }
+  if (fireState === 'holdFire') {
+    combat.priorityTargetId = null;
+    combat.priorityTargetPoint = null;
+    combat.manualLaunchActive = false;
+    combat.nextCombatProbeTick = -1;
+    clearHoldFireAttackActions(ctx, entity);
+    // Drop every turret's lock everywhere in one call per turret:
+    // JS Turret target + state, beam inverse index, and the slab
+    // FSM tuple. The previous version only touched the JS Turret
+    // side, leaving the slab with stale (target, state) that
+    // same-tick slab-first readers would still see.
+    for (let wi = 0; wi < combat.turrets.length; wi++) {
+      dropTurretLockMidTick(entity, wi);
+    }
+  } else if (stateChanged) {
+    combat.nextCombatProbeTick = -1;
+  } else {
+    return false;
+  }
+  ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE | ENTITY_CHANGED_TURRETS);
+  return true;
+}
+
+function clearHoldFireAttackActions(ctx: CommandContext, entity: Entity): void {
+  const unit = entity.unit;
+  if (unit === null || unit.actions.length === 0) return;
+  let removed = false;
+  const keptActions: UnitAction[] = [];
+  for (let i = 0; i < unit.actions.length; i++) {
+    const action = unit.actions[i];
+    if (action.type === 'attack' || action.type === 'attackGround') {
+      removed = true;
+      continue;
+    }
+    keptActions.push(action);
+  }
+  if (!removed) return;
+  setUnitActions(unit, keptActions);
+  refreshPatrolStartIndex(unit);
+  ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
 }
 
 function executeSetBuildingActiveCommand(
@@ -1449,9 +1610,10 @@ function executeSetTowerTargetCommand(
   ctx: CommandContext,
   command: SetTowerTargetCommand,
 ): void {
-  // Resolve the target entity once; null/-1 means "clear the lock".
-  // The lock-on is honored by host-directed turrets whose
-  // exclusion policy accepts the candidate (see budget_design_philosophy.html
+  // Resolve the target once. Entity targets go through the normal target
+  // validation; ground targets store a point directly on the combat host.
+  // The lock-on is honored by host-directed turrets whose exclusion policy
+  // accepts the candidate (see budget_design_philosophy.html
   // "Host-directed turrets carry the host lock-on...").
   const target = command.targetId === null
     ? undefined
@@ -1467,13 +1629,27 @@ function executeSetTowerTargetCommand(
     else if (target.building !== null) targetHp = target.building.hp;
     if (targetHp > 0) resolvedTargetId = target.id;
   }
+  const targetX = command.targetX;
+  const targetY = command.targetY;
+  const targetZ = command.targetZ;
+  const resolvedTargetPoint = command.targetId === null &&
+    typeof targetX === 'number' &&
+    typeof targetY === 'number' &&
+    typeof targetZ === 'number' &&
+    Number.isFinite(targetX) &&
+    Number.isFinite(targetY) &&
+    Number.isFinite(targetZ)
+    ? { x: targetX, y: targetY, z: targetZ }
+    : null;
   for (let i = 0; i < command.entityIds.length; i++) {
     const entity = ctx.world.getEntity(command.entityIds[i]);
     if (entity === undefined) continue;
     const combat = entity.combat;
-    if (combat === null || combat.turrets.length === 0) continue;
+    if (combat === null || !entityHasBarSetTargetCommand(entity)) continue;
     combat.priorityTargetId = resolvedTargetId;
-    combat.priorityTargetPoint = null;
+    combat.priorityTargetPoint = resolvedTargetPoint === null
+      ? null
+      : { x: resolvedTargetPoint.x, y: resolvedTargetPoint.y, z: resolvedTargetPoint.z };
     combat.manualLaunchActive = false;
     combat.nextCombatProbeTick = -1;
     ctx.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_COMBAT_MODE);
@@ -1508,7 +1684,6 @@ function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaComman
   const commander = ctx.world.getEntity(command.commanderId);
   if (
     commander === undefined ||
-    commander.commander === null ||
     commander.unit === null ||
     commander.builder === null
   ) return;
@@ -1812,7 +1987,6 @@ function enqueueRepairAction(
 ): void {
   if (
     commander === undefined ||
-    commander.commander === null ||
     commander.unit === null ||
     commander.builder === null
   ) return;
@@ -1909,7 +2083,8 @@ function enqueueCaptureAction(
     commander.commander === null ||
     commander.unit === null ||
     commander.builder === null ||
-    commander.ownership === null
+    commander.ownership === null ||
+    !entityHasBarCaptureCommand(commander)
   ) return;
   if (!isCapturableTarget(target, commander.ownership.playerId)) return;
 
@@ -1984,18 +2159,15 @@ function executeManualLaunchCommand(ctx: CommandContext, command: ManualLaunchCo
 }
 
 function hasManualLaunchWeapon(entity: Entity): boolean {
-  const turrets = entity.combat?.turrets;
-  if (turrets === undefined || turrets.length === 0) return false;
-  for (let i = 0; i < turrets.length; i++) {
-    const config = turrets[i].config;
-    if (!config.visualOnly && !config.passive && config.shot !== null) return true;
-  }
-  return false;
+  return entityHasBarSetTargetCommand(entity);
 }
 
 function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaCommand): void {
   const radius = clampAttackAreaRadius(command.radius);
-  const playerId = getCommandUnitPlayerId(ctx, command.entityIds);
+  const entities = getAttackAreaCommandEntities(ctx, command.entityIds);
+  if (entities.length === 0) return;
+
+  const playerId = entities[0].ownership?.playerId;
   if (playerId === undefined) return;
 
   const target = findAttackAreaTarget(
@@ -2010,7 +2182,7 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
     executeMoveCommand(ctx, {
       type: 'move',
       tick: command.tick,
-      entityIds: command.entityIds,
+      entityIds: entityIdsFromEntities(entities),
       targetX: command.targetX,
       targetY: command.targetY,
       targetZ: command.targetZ,
@@ -2024,10 +2196,26 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
 
   const queueFront = commandQueuesInFront(command);
   const queueInsertIndex = commandQueueInsertIndex(command);
-  for (let i = 0; i < command.entityIds.length; i++) {
-    const entity = ctx.world.getEntity(command.entityIds[i]);
-    enqueueAttackAction(ctx, entity, target, command.queue, queueFront, queueInsertIndex);
+  for (let i = 0; i < entities.length; i++) {
+    enqueueAttackAction(ctx, entities[i], target, command.queue, queueFront, queueInsertIndex);
   }
+}
+
+function getAttackAreaCommandEntities(ctx: CommandContext, entityIds: readonly number[]): Entity[] {
+  const entities: Entity[] = [];
+  for (let i = 0; i < entityIds.length; i++) {
+    const entity = ctx.world.getEntity(entityIds[i]);
+    if (entity === undefined || entity.ownership === null) continue;
+    if (!entityHasBarAreaAttackCommand(entity)) continue;
+    entities.push(entity);
+  }
+  return entities;
+}
+
+function entityIdsFromEntities(entities: readonly Entity[]): EntityId[] {
+  const entityIds: EntityId[] = new Array(entities.length);
+  for (let i = 0; i < entities.length; i++) entityIds[i] = entities[i].id;
+  return entityIds;
 }
 
 function executeGuardCommand(ctx: CommandContext, command: GuardCommand): void {
@@ -2054,16 +2242,6 @@ function executeGuardCommand(ctx: CommandContext, command: GuardCommand): void {
 function clampAttackAreaRadius(radius: number): number {
   if (!Number.isFinite(radius)) return ATTACK_AREA_MAX_RADIUS;
   return Math.max(1, Math.min(radius, ATTACK_AREA_MAX_RADIUS));
-}
-
-function getCommandUnitPlayerId(ctx: CommandContext, entityIds: readonly number[]): PlayerId | undefined {
-  for (let i = 0; i < entityIds.length; i++) {
-    const entity = ctx.world.getEntity(entityIds[i]);
-    if (entity !== undefined && entity.unit !== null && entity.ownership !== null) {
-      return entity.ownership.playerId;
-    }
-  }
-  return undefined;
 }
 
 function isAliveAttackTarget(target: Entity | undefined): target is Entity {
@@ -2210,6 +2388,7 @@ function addActionToUnit(
     // Replace all actions
     setUnitActions(entity.unit, [action]);
   } else {
+    removeBuilderBlockingGuardActions(entity, action);
     addQueuedActionToUnit(entity.unit, action, queueFront, queueInsertIndex);
   }
 
@@ -2218,6 +2397,25 @@ function addActionToUnit(
   if (world !== undefined) {
     world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
   }
+}
+
+function removeBuilderBlockingGuardActions(entity: Entity, nextAction: UnitAction): void {
+  const unit = entity.unit;
+  if (unit === null || entity.builder === null || entity.factory !== null) return;
+  if (nextAction.type === 'guard' || nextAction.type === 'patrol') return;
+  let removed = false;
+  const keptActions: UnitAction[] = [];
+  for (let i = 0; i < unit.actions.length; i++) {
+    const action = unit.actions[i];
+    if (action.type === 'guard' || action.type === 'patrol') {
+      removed = true;
+      continue;
+    }
+    keptActions.push(action);
+  }
+  if (!removed) return;
+  setUnitActions(unit, keptActions);
+  refreshPatrolStartIndex(unit);
 }
 
 /** Enqueue one durable command waypoint. Route resolution between

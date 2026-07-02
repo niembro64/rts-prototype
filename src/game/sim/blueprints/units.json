@@ -61,7 +61,7 @@
       "type": "wheels",
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
-        "driveForce": 150,
+        "driveForce": 55,
         "traction": 0.45
       },
       "config": {
@@ -156,7 +156,7 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 80,
+        "driveForce": 50,
         "traction": 0.75
       },
       "config": {
@@ -1224,7 +1224,7 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 220,
+        "driveForce": 140,
         "traction": 1
       },
       "config": {
@@ -1662,11 +1662,12 @@
           "buildingSolar",
           "buildingWind",
           "buildingExtractor",
+          "buildingExtractorT2",
           "buildingRadar",
           "buildingResourceConverter",
           "towerFabricator",
-          "towerBeamMega",
           "towerCannon",
+          "towerBeamMega",
           "towerAntiAir"
         ],
         "hostDirected": true,
@@ -2481,7 +2482,6 @@
           "buildingRadar",
           "buildingResourceConverter",
           "towerFabricator",
-          "towerBeamMega",
           "towerCannon",
           "towerAntiAir"
         ],

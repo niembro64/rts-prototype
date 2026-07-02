@@ -61,7 +61,10 @@ import { rollTurretCooldownDuration } from '../turretCooldown';
 import {
   getProjectileAirDragCoefficient,
   getProjectileAirFrictionPer60HzFrame,
+  getProjectileHomingEngagementScale,
+  getProjectileHomingThrustAcceleration,
   getProjectilePropulsionAcceleration,
+  getProjectileRocketCounterGravityCarryAcceleration,
 } from '../projectileMotion';
 import {
   CT_TURRET_STATE_ENGAGED,
@@ -380,11 +383,6 @@ const _updateBeamAim: BeamAimScratch = {
   targetEntityId: NO_ENTITY_ID,
 };
 const HOMING_TARGET_UPDATE_UNCHANGED = -2;
-
-function getHomingMaxThrustAccel(shot: ProjectileShot): number {
-  const mass = shot.mass > 1e-6 ? shot.mass : 1e-6;
-  return (shot.homingThrust ?? 0) / mass;
-}
 
 function getTurretProjectileLaunchSpeed(config: TurretConfig, shot: Pick<ProjectileShot, 'mass'>): number {
   const mass = shot.mass;
@@ -1596,8 +1594,21 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileHomingTargetId[index] = NO_ENTITY_ID;
     _travelingProjectileTargetUpdateId[index] = HOMING_TARGET_UPDATE_UNCHANGED;
 
-    const homingDelayMs = shotConfig.homingDelayMs ?? 0;
-    if (!isDGunWave && (shotConfig.homingTurnRate ?? 0) > 0 && timeAliveBeforeStep >= homingDelayMs) {
+    const homingEngagementScale = getProjectileHomingEngagementScale(
+      shotConfig,
+      timeAliveBeforeStep,
+      dtMs,
+    );
+    const maxHomingThrustAccel = getProjectileHomingThrustAcceleration(shotConfig);
+    const canCarryRocketCounterGravity =
+      shotConfig.type === 'rocket' &&
+      maxHomingThrustAccel > 0 &&
+      projectileGravity > 0;
+    if (
+      !isDGunWave &&
+      (shotConfig.homingTurnRate ?? 0) > 0 &&
+      (homingEngagementScale > 0 || canCarryRocketCounterGravity)
+    ) {
       const previousHomingTargetId = proj.homingTargetId;
       let homingTarget = previousHomingTargetId !== NO_ENTITY_ID
         ? world.getEntity(previousHomingTargetId)
@@ -1619,89 +1630,97 @@ function _updateTravelingProjectilesJS(
         _travelingProjectileTargetUpdateId[index] = resolvedHomingTargetId;
       }
       if (homingTarget !== undefined) {
-        _travelingProjectileHomingTargetId[index] = homingTarget.id;
-        policyFlags |= TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING;
-        _travelingProjectilePolicyFlags[index] = policyFlags;
-        const aimPoint = resolveTargetAimPoint(
-          homingTarget,
-          position.x, position.y, position.z,
-          _homingAimPoint,
+        aNetZ += getProjectileRocketCounterGravityCarryAcceleration(
+          shotConfig,
+          homingEngagementScale,
+          projectileGravity,
         );
-        let steerX = aimPoint.x;
-        let steerY = aimPoint.y;
-        let steerZ = aimPoint.z;
-        const targetVelocity = getEntityVelocity3d(homingTarget, _homingTargetVelocity);
-        const targetAcceleration = getEntityAcceleration3d(
-          homingTarget,
-          _homingTargetAcceleration,
-        );
-        const targetSpeedSq =
-          targetVelocity.x * targetVelocity.x +
-          targetVelocity.y * targetVelocity.y +
-          targetVelocity.z * targetVelocity.z;
-        const targetAccelSq =
-          targetAcceleration.x * targetAcceleration.x +
-          targetAcceleration.y * targetAcceleration.y +
-          targetAcceleration.z * targetAcceleration.z;
-        const projectileSpeed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
-        let solveIntercept = false;
-        let originVelocityX = 0;
-        let originVelocityY = 0;
-        let originVelocityZ = 0;
-        let originAccelerationX = 0;
-        let originAccelerationY = 0;
-        let originAccelerationZ = 0;
-        if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
-          solveIntercept = true;
-          const originVelocity = getEntityVelocity3d(entity, _homingOriginVelocity);
-          const originAcceleration = getEntityAcceleration3d(entity, _homingOriginAcceleration);
-          originVelocityX = originVelocity.x;
-          originVelocityY = originVelocity.y;
-          originVelocityZ = originVelocity.z;
-          originAccelerationX = originAcceleration.x;
-          originAccelerationY = originAcceleration.y;
-          originAccelerationZ = originAcceleration.z;
+        if (homingEngagementScale > 0) {
+          _travelingProjectileHomingTargetId[index] = homingTarget.id;
+          policyFlags |= TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING;
+          _travelingProjectilePolicyFlags[index] = policyFlags;
+          const aimPoint = resolveTargetAimPoint(
+            homingTarget,
+            position.x, position.y, position.z,
+            _homingAimPoint,
+          );
+          let steerX = aimPoint.x;
+          let steerY = aimPoint.y;
+          let steerZ = aimPoint.z;
+          const targetVelocity = getEntityVelocity3d(homingTarget, _homingTargetVelocity);
+          const targetAcceleration = getEntityAcceleration3d(
+            homingTarget,
+            _homingTargetAcceleration,
+          );
+          const targetSpeedSq =
+            targetVelocity.x * targetVelocity.x +
+            targetVelocity.y * targetVelocity.y +
+            targetVelocity.z * targetVelocity.z;
+          const targetAccelSq =
+            targetAcceleration.x * targetAcceleration.x +
+            targetAcceleration.y * targetAcceleration.y +
+            targetAcceleration.z * targetAcceleration.z;
+          const projectileSpeed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
+          let solveIntercept = false;
+          let originVelocityX = 0;
+          let originVelocityY = 0;
+          let originVelocityZ = 0;
+          let originAccelerationX = 0;
+          let originAccelerationY = 0;
+          let originAccelerationZ = 0;
+          if ((targetSpeedSq > 1e-6 || targetAccelSq > 1e-6) && projectileSpeed > 1e-6) {
+            solveIntercept = true;
+            const originVelocity = getEntityVelocity3d(entity, _homingOriginVelocity);
+            const originAcceleration = getEntityAcceleration3d(entity, _homingOriginAcceleration);
+            originVelocityX = originVelocity.x;
+            originVelocityY = originVelocity.y;
+            originVelocityZ = originVelocity.z;
+            originAccelerationX = originAcceleration.x;
+            originAccelerationY = originAcceleration.y;
+            originAccelerationZ = originAcceleration.z;
+          }
+          const shot = proj.config.shot as ProjectileShot;
+          const remainingSec = Number.isFinite(proj.maxLifespan)
+            ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
+            : 0;
+          const homingIndex = homingGuidanceCount++;
+          ensureHomingGuidanceBatchCapacity(homingGuidanceCount);
+          _homingGuidanceProjectileIndex[homingIndex] = index;
+          const base = homingIndex * HOMING_GUIDANCE_BATCH_STRIDE;
+          _homingGuidanceRows[base + HG_ROW_VEL_X] = proj.velocityX;
+          _homingGuidanceRows[base + HG_ROW_VEL_Y] = proj.velocityY;
+          _homingGuidanceRows[base + HG_ROW_VEL_Z] = proj.velocityZ;
+          _homingGuidanceRows[base + HG_ROW_STEER_X] = steerX;
+          _homingGuidanceRows[base + HG_ROW_STEER_Y] = steerY;
+          _homingGuidanceRows[base + HG_ROW_STEER_Z] = steerZ;
+          _homingGuidanceRows[base + HG_ROW_CURRENT_X] = position.x;
+          _homingGuidanceRows[base + HG_ROW_CURRENT_Y] = position.y;
+          _homingGuidanceRows[base + HG_ROW_CURRENT_Z] = position.z;
+          _homingGuidanceRows[base + HG_ROW_TARGET_VEL_X] = targetVelocity.x;
+          _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Y] = targetVelocity.y;
+          _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Z] = targetVelocity.z;
+          _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_X] = targetAcceleration.x;
+          _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Y] = targetAcceleration.y;
+          _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Z] = targetAcceleration.z;
+          _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_X] = originVelocityX;
+          _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Y] = originVelocityY;
+          _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Z] = originVelocityZ;
+          _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_X] = originAccelerationX;
+          _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Y] = originAccelerationY;
+          _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Z] = originAccelerationZ;
+          _homingGuidanceRows[base + HG_ROW_PROJECTILE_SPEED] = projectileSpeed;
+          _homingGuidanceRows[base + HG_ROW_PROJECTILE_GRAVITY] = _travelingProjectileGravity[index];
+          _homingGuidanceRows[base + HG_ROW_MAX_TIME_SEC] = remainingSec;
+          _homingGuidanceRows[base + HG_ROW_HOMING_TURN_RATE] =
+            (proj.homingTurnRate ?? 0) * homingEngagementScale;
+          _homingGuidanceRows[base + HG_ROW_MAX_THRUST_ACCEL] =
+            maxHomingThrustAccel * homingEngagementScale;
+          _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] = solveIntercept ? 1 : 0;
+          _homingGuidanceRows[base + HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] =
+            getProjectileAirFrictionPer60HzFrame(shot);
+          _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shot.mass;
+          _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] = shot.type === 'missile' ? 1 : 0;
         }
-        const shot = proj.config.shot as ProjectileShot;
-        const maxThrustAccel = getHomingMaxThrustAccel(shot);
-        const remainingSec = Number.isFinite(proj.maxLifespan)
-          ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
-          : 0;
-        const homingIndex = homingGuidanceCount++;
-        ensureHomingGuidanceBatchCapacity(homingGuidanceCount);
-        _homingGuidanceProjectileIndex[homingIndex] = index;
-        const base = homingIndex * HOMING_GUIDANCE_BATCH_STRIDE;
-        _homingGuidanceRows[base + HG_ROW_VEL_X] = proj.velocityX;
-        _homingGuidanceRows[base + HG_ROW_VEL_Y] = proj.velocityY;
-        _homingGuidanceRows[base + HG_ROW_VEL_Z] = proj.velocityZ;
-        _homingGuidanceRows[base + HG_ROW_STEER_X] = steerX;
-        _homingGuidanceRows[base + HG_ROW_STEER_Y] = steerY;
-        _homingGuidanceRows[base + HG_ROW_STEER_Z] = steerZ;
-        _homingGuidanceRows[base + HG_ROW_CURRENT_X] = position.x;
-        _homingGuidanceRows[base + HG_ROW_CURRENT_Y] = position.y;
-        _homingGuidanceRows[base + HG_ROW_CURRENT_Z] = position.z;
-        _homingGuidanceRows[base + HG_ROW_TARGET_VEL_X] = targetVelocity.x;
-        _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Y] = targetVelocity.y;
-        _homingGuidanceRows[base + HG_ROW_TARGET_VEL_Z] = targetVelocity.z;
-        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_X] = targetAcceleration.x;
-        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Y] = targetAcceleration.y;
-        _homingGuidanceRows[base + HG_ROW_TARGET_ACCEL_Z] = targetAcceleration.z;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_X] = originVelocityX;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Y] = originVelocityY;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_VEL_Z] = originVelocityZ;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_X] = originAccelerationX;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Y] = originAccelerationY;
-        _homingGuidanceRows[base + HG_ROW_ORIGIN_ACCEL_Z] = originAccelerationZ;
-        _homingGuidanceRows[base + HG_ROW_PROJECTILE_SPEED] = projectileSpeed;
-        _homingGuidanceRows[base + HG_ROW_PROJECTILE_GRAVITY] = _travelingProjectileGravity[index];
-        _homingGuidanceRows[base + HG_ROW_MAX_TIME_SEC] = remainingSec;
-        _homingGuidanceRows[base + HG_ROW_HOMING_TURN_RATE] = proj.homingTurnRate ?? 0;
-        _homingGuidanceRows[base + HG_ROW_MAX_THRUST_ACCEL] = maxThrustAccel;
-        _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] = solveIntercept ? 1 : 0;
-        _homingGuidanceRows[base + HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] =
-          getProjectileAirFrictionPer60HzFrame(shot);
-        _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shot.mass;
-        _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] = shot.type === 'missile' ? 1 : 0;
       }
     }
 

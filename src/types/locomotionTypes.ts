@@ -25,6 +25,15 @@ export type UnitLocomotion = {
    *  flying units use it as thrust plus turn authority, so low values
    *  produce wider, aircraft-like turns. */
   traction: number;
+  /** True when powered drive force can only act along the body's current
+   *  forward-facing direction instead of directly along the requested vector. */
+  forwardForceRequiresFacing: boolean;
+  /** True when non-flying drive force is scaled by the configured
+   *  facing-alignment curve before being applied. */
+  driveForceScalesWithFacing: boolean;
+  /** True when waypoint arrival keeps full directed thrust instead of
+   *  braking/slowing at final waypoints or honoring action speed limits. */
+  maintainFullThrustAtWaypoints: boolean;
   /** Named pathfinding profile resolved from pathfindingConfig.json. */
   pathfinding: UnitPathfindingConfig;
   /** Hover/flying-only: constant upward force as a ratio of gravity.

@@ -160,8 +160,13 @@ export class ConstructionSystem {
       );
       entity.factory = {
         selectedUnitBlueprintId: null,
-        repeatProduction: true,
+        lowPriority: true,
+        carrierSpawnEnabled: true,
+        repeatProduction: false,
         productionQueue: [],
+        productionQuotas: {},
+        productionQuotaCounts: {},
+        resumeRepeatUnitBlueprintId: null,
         currentShellId: null,
         currentBuildProgress: 0,
         defaultWaypoints: null,
@@ -169,7 +174,7 @@ export class ConstructionSystem {
         rallyY: wp.y,
         rallyZ: null,
         rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
-        guardTargetId: null,
+        guardTargetId: entity.id,
         isProducing: false,
         energyRateFraction: 0,
         metalRateFraction: 0,

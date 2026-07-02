@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { COLORS, WAYPOINT_COLOR_CSS } from '@/colorsConfig';
-import type { WaypointType } from '../game/sim/types';
+import type { CombatFireState, UnitMoveState, WaypointType } from '../game/sim/types';
 import {
+  getUnitRosterDisplay,
   structureRosterDisplay,
-  unitRosterDisplay,
   type BuildMenuCategory,
 } from '../game/sim/blueprints/displayRosters';
 import {
   commandHotkeyLabel,
+  hasBarFactoryPresetHotkeys,
+  isBarCommandHotkeyPreset,
+  isBarGridCommandHotkeyPreset,
+  isBarLegacyCommandHotkeyPreset,
   type CommandHotkeyId,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
@@ -16,6 +20,9 @@ import {
   BAR_BUILD_CATEGORIES,
   BAR_GRID_SLOT_COUNT,
   BUILD_MENU_GRID_SLOT_COMMAND_IDS,
+  buildBarClassicBuildMenuItems,
+  buildFactoryUnitBlueprintIdsForPreset,
+  buildFactoryUnitGridCellsForPreset,
   buildBarHomeBuildMenuCells,
   buildStructureMenuLayout,
   type BuildMenuLayoutItem,
@@ -34,11 +41,15 @@ import {
   FACTORY_PRODUCTION_PRESET_COUNT,
   FACTORY_PRODUCTION_PRESET_STORAGE_KEY,
   FACTORY_PRODUCTION_PRESETS_CHANGED_EVENT,
+  createFactoryProductionPresetSnapshot,
+  getFactoryProductionPresetUnitBlueprintIds,
   getFactoryProductionPresetSlot,
   loadFactoryProductionPresetSlots,
+  resolveFactoryProductionPresetReplay,
   setFactoryProductionPresetSlot,
+  type FactoryProductionPresetSnapshot,
 } from '../game/input/factoryProductionPresets';
-import { queueModeFromEvent } from '../game/input/queueModifiers';
+import { factoryProductionClickModeFromEvent, queueModeFromEvent } from '../game/input/queueModifiers';
 import { isTowerBuildingBlueprintId } from '@/types/buildingTypes';
 import type { StructureBlueprintId } from '@/types/blueprintIds';
 
@@ -67,6 +78,7 @@ const showPanel = computed(() =>
   || props.selection.buildingCount > 0
   || props.selection.hasFactory,
 );
+const AREA_MEX_BLUEPRINT_ID: StructureBlueprintId = 'buildingExtractor';
 const selectedEntityTypeCount = computed(() =>
   (props.selection.unitCount > 0 ? 1 : 0)
   + (props.selection.towerCount > 0 ? 1 : 0)
@@ -94,8 +106,83 @@ const showBuildingActions = computed(() => isPureBuildingSelection.value);
 const showCombatActions = computed(() =>
   props.selection.hasFireControl && props.selection.buildingCount === 0,
 );
+const isBarHotkeyPreset = computed(() => isBarCommandHotkeyPreset(props.hotkeyPreset));
+const showBarGridBuildCategories = computed(() => isBarGridCommandHotkeyPreset(props.hotkeyPreset));
+const showBarClassicBuildMenu = computed(() => isBarLegacyCommandHotkeyPreset(props.hotkeyPreset));
+const showFormationCommands = computed(() => !isBarHotkeyPreset.value);
+const showAttackCommand = computed(() =>
+  isBarHotkeyPreset.value ? props.selection.hasBarAttackControl : props.selection.unitCount > 0,
+);
+const showAttackLineCommand = computed(() => !isBarHotkeyPreset.value);
+const showAttackGroundCommand = computed(() => !isBarHotkeyPreset.value);
+const showPrototypeOnlyCommandButtons = computed(() => !isBarHotkeyPreset.value);
+const showAttackAreaCommand = computed(() => props.selection.hasBarAreaAttackControl);
+// BAR's order menu hides CMD.GATHERWAIT, settargetnoground, and CMD.SELFD even
+// though several remain hotkey-accessible. Keep those as prototype-only visible
+// affordances so BAR presets match the in-game order surface.
+const showGatherWaitButton = computed(() => showPrototypeOnlyCommandButtons.value);
+const showTowerTargetNoGroundButton = computed(() => showPrototypeOnlyCommandButtons.value);
+const showSelfDestructButton = computed(() =>
+  showPrototypeOnlyCommandButtons.value && props.selection.hasSelfDestructable,
+);
+const showFactoryQueueModeButton = computed(() =>
+  showPrototypeOnlyCommandButtons.value && props.selection.hasFactory,
+);
+const showBuildUtilityGrid = computed(() =>
+  showPrototypeOnlyCommandButtons.value &&
+  (props.selection.canUpgradeMetalExtractors || props.selection.isBuildMode),
+);
+const showAreaMexButton = computed(() =>
+  isBarHotkeyPreset.value &&
+  props.selection.hasBuilder &&
+  props.selection.allowedBuildBlueprintIds.includes(AREA_MEX_BLUEPRINT_ID),
+);
+const selectedMetalExtractorUpgradeCommandId = computed<CommandHotkeyId>(() =>
+  isBarHotkeyPreset.value ? 'command.morph' : 'command.upgradeMexSelected',
+);
+const showBuilderPriorityButton = computed(() =>
+  isBarHotkeyPreset.value && props.selection.hasBuilderPriorityControl,
+);
+const showCarrierSpawnButton = computed(() =>
+  isBarHotkeyPreset.value && props.selection.hasCarrierSpawnControl,
+);
+const showFactoryGuardButton = computed(() =>
+  props.selection.hasFactoryGuardControl,
+);
+const showTowerTargetClearButton = computed(() =>
+  showPrototypeOnlyCommandButtons.value || props.selection.hasTowerTargetActive,
+);
+const showResurrectButton = computed(() =>
+  showPrototypeOnlyCommandButtons.value && props.selection.hasCommander,
+);
+const showCaptureButton = computed(() =>
+  isBarHotkeyPreset.value ? props.selection.hasBarCaptureControl : props.selection.hasCommander,
+);
+const showRestoreButton = computed(() =>
+  isBarHotkeyPreset.value && props.selection.hasBuilder,
+);
+const showTrajectoryButton = computed(() =>
+  isBarHotkeyPreset.value ? props.selection.hasBarTrajectoryControl : props.selection.hasTrajectoryControl,
+);
+const visibleTrajectoryMode = computed(() =>
+  isBarHotkeyPreset.value ? props.selection.barTrajectoryMode : props.selection.trajectoryMode,
+);
+const visibleTrajectoryStateCount = computed(() =>
+  isBarHotkeyPreset.value ? props.selection.barTrajectoryStateCount : 3,
+);
+const showManualLaunchButton = computed(() =>
+  isBarHotkeyPreset.value ? props.selection.hasManualLaunchControl : props.selection.hasTowerTargetControl,
+);
+const showBuildingActiveButton = computed(() =>
+  isBarHotkeyPreset.value ? props.selection.hasBarBuildingActiveControl : props.selection.hasBuildingActiveControl,
+);
+const selectedBuildingsActive = computed(() =>
+  isBarHotkeyPreset.value ? props.selection.barBuildingsActive : props.selection.buildingsActive,
+);
 const showQueueInsertPicker = computed(() =>
-  showUnitActions.value && props.selection.queueInsertOptions.length > 0,
+  !isBarHotkeyPreset.value
+  && showUnitActions.value
+  && props.selection.queueInsertOptions.length > 0,
 );
 const selectOnlyOptions = computed<
   { entityType: SelectionEntityType; label: string; count: number }[]
@@ -122,7 +209,140 @@ const isStaticOnlySelection = computed(() =>
 );
 const SELECTION_PANEL = COLORS.ui.selectionPanel;
 const BUTTON_COLORS = SELECTION_PANEL.buttons;
+const BAR_WAYPOINT_COMMAND_COUNT = 3;
+const BAR_ORDER_PANEL_HEIGHT_VH = 14;
+const BAR_FLOW_ELEMENT_PADDING_VH = 0.3;
+const BAR_ORDER_ACTIVE_PADDING_VH = BAR_FLOW_ELEMENT_PADDING_VH * 1.4;
+const BAR_ORDER_BOTTOM_ACTIVE_PADDING_VH = BAR_ORDER_ACTIVE_PADDING_VH / 3;
+const BAR_ORDER_ACTIVE_HEIGHT_VH =
+  BAR_ORDER_PANEL_HEIGHT_VH - BAR_ORDER_ACTIVE_PADDING_VH - BAR_ORDER_BOTTOM_ACTIVE_PADDING_VH;
+const BAR_ORDER_CELL_MARGIN_ORIGINAL = 0.055;
+
+type BarOrderGridSize = {
+  columns: number;
+  rows: number;
+};
+
+function barOrderGridSizeForCommandCount(commandCount: number): BarOrderGridSize {
+  const count = Math.max(1, Math.floor(commandCount));
+  if (count <= 16) return { columns: 4, rows: 4 };
+  if (count <= 20) return { columns: 5, rows: 4 };
+  if (count <= 25) return { columns: 5, rows: 5 };
+  if (count <= 30) return { columns: 5, rows: 6 };
+  if (count <= 36) return { columns: 6, rows: 6 };
+  if (count <= 42) return { columns: 6, rows: 7 };
+  return { columns: 7, rows: 7 };
+}
+
+function barOrderCellMarginVh(
+  gridSize: BarOrderGridSize,
+  cellMarginHeightMultiplier: number,
+): number {
+  const sizeDivider = (gridSize.columns + gridSize.rows) / 16;
+  const cellMargin = BAR_ORDER_CELL_MARGIN_ORIGINAL / sizeDivider;
+  const cellHeight = BAR_ORDER_ACTIVE_HEIGHT_VH / gridSize.rows;
+  return cellHeight * cellMarginHeightMultiplier * cellMargin;
+}
+
+function barOrderCellMarginCss(valueVh: number): string {
+  return `max(1px, ${valueVh.toFixed(4)}vh)`;
+}
+
+const barOrderCommandCellCount = computed(() => {
+  let count = 0;
+  const showPrototypeOnly = showPrototypeOnlyCommandButtons.value;
+
+  if (showUnitActions.value) {
+    count += BAR_WAYPOINT_COMMAND_COUNT;
+    if (showFormationCommands.value) count += 2;
+    if (showAttackCommand.value) count += 1; // attack
+    if (showAttackLineCommand.value) count += 1;
+    if (showAttackAreaCommand.value) count += 1;
+    if (showAttackGroundCommand.value) count += 1;
+    if (showPrototypeOnly) count += 1; // ping
+    count += 1; // guard
+    count += 1; // stop
+    count += 1; // wait
+    if (showGatherWaitButton.value) count += 1; // BAR-grid gather wait
+    count += 1; // repeat
+    if (props.selection.hasMoveStateControl) count += 1;
+    if (props.selection.hasCloakControl) count += 1;
+    if (showPrototypeOnly) count += 2; // prototype visible skip/cancel queue buttons
+    if (showPrototypeOnly) count += 1; // clear queue
+  }
+
+  if (showQueueInsertPicker.value) {
+    count += 1 + props.selection.queueInsertOptions.length;
+  }
+
+  if (showCombatActions.value) {
+    count += 1; // fire state
+    if (showTrajectoryButton.value) count += 1;
+  }
+
+  if (
+    showUnitActions.value &&
+    (
+      props.selection.hasDGun ||
+      props.selection.hasBuilder ||
+      showCaptureButton.value ||
+      props.selection.hasCommander ||
+      props.selection.hasTransport ||
+      showBuilderPriorityButton.value ||
+      showCarrierSpawnButton.value
+    )
+  ) {
+    if (props.selection.hasDGun) count += 1;
+    if (props.selection.hasBuilder) count += 2; // repair, reclaim
+    if (showRestoreButton.value) count += 1;
+    if (showAreaMexButton.value) count += 1;
+    if (showBuilderPriorityButton.value) count += 1;
+    if (showCarrierSpawnButton.value) count += 1;
+    if (showCaptureButton.value) count += 1; // capture
+    if (showResurrectButton.value) count += 1;
+    if (props.selection.hasCommander && showPrototypeOnly) count += 1; // resurrect area
+    if (props.selection.hasBuilder && showPrototypeOnly) count += 1; // reclaim selected
+    if (props.selection.hasTransport) count += 2; // load, unload
+  }
+
+  if (props.selection.hasTowerTargetControl && showCombatActions.value) {
+    count += 1; // set target
+    if (showTowerTargetNoGroundButton.value) count += 1;
+    if (showManualLaunchButton.value) count += 1;
+    if (showTowerTargetClearButton.value) count += 1;
+  }
+
+  if (props.selection.hasFactory && props.selection.factoryId && showTowerActions.value) {
+    if (showPrototypeOnly) count += 2; // prototype factory status spans two cells
+    count += 2; // stop production, repeat
+    if (showFactoryGuardButton.value) count += 1;
+    if (showBuilderPriorityButton.value) count += 1;
+    if (showPrototypeOnly) count += 1; // clear explicit guard target
+    if (showFactoryQueueModeButton.value) count += 1; // prototype queue/quota mode
+  }
+
+  if (props.selection.hasUpgradeableMetalExtractor && showBuildingActions.value) count += 1;
+  if (showBuildingActiveButton.value && showBuildingActions.value) count += 1;
+  if (showSelfDestructButton.value) count += 1;
+
+  return count;
+});
+
+const barOrderGridSize = computed(() =>
+  barOrderGridSizeForCommandCount(barOrderCommandCellCount.value),
+);
+const barOrderCellMarginPrimary = computed(() =>
+  barOrderCellMarginCss(barOrderCellMarginVh(barOrderGridSize.value, 0.5)),
+);
+const barOrderCellMarginSecondary = computed(() =>
+  barOrderCellMarginCss(barOrderCellMarginVh(barOrderGridSize.value, 0.18)),
+);
+
 const selectionPanelStyle = computed(() => ({
+  '--bar-order-columns': String(barOrderGridSize.value.columns),
+  '--bar-order-rows': String(barOrderGridSize.value.rows),
+  '--bar-order-cell-margin-primary': barOrderCellMarginPrimary.value,
+  '--bar-order-cell-margin-secondary': barOrderCellMarginSecondary.value,
   '--selection-panel-bg': SELECTION_PANEL.surface.background,
   '--selection-panel-border': SELECTION_PANEL.surface.border,
   '--selection-panel-text': SELECTION_PANEL.surface.text,
@@ -152,8 +372,8 @@ const selectionPanelStyle = computed(() => ({
   '--selection-panel-playable-bottom': `${Math.max(0, Math.round(props.playableBottomInsetPx))}px`,
 }) as const);
 
-// Repeat-build: selected unit blueprint currently being looped. Used to
-// light up the matching button.
+// Factory-selected unit blueprint, whether it is a finite active job or a
+// repeated selection. Used to light up the matching production button.
 const selectedBuildUnitBlueprintId = computed(() =>
   props.selection.factorySelectedUnit?.unitBlueprintId ?? null,
 );
@@ -184,22 +404,53 @@ const factoryQueueRuns = computed<FactoryQueueRun[]>(() => {
   }
   return runs;
 });
+const factoryQueuedCountByUnitBlueprintId = computed(() => {
+  const counts = new Map<string, number>();
+  for (const unit of factoryQueuedUnits.value) {
+    counts.set(unit.unitBlueprintId, (counts.get(unit.unitBlueprintId) ?? 0) + 1);
+  }
+  const selectedUnitBlueprintId = selectedBuildUnitBlueprintId.value;
+  if (selectedUnitBlueprintId !== null && props.selection.factoryRepeatsProduction !== true) {
+    counts.set(selectedUnitBlueprintId, (counts.get(selectedUnitBlueprintId) ?? 0) + 1);
+  }
+  return counts;
+});
+const factoryQuotaByUnitBlueprintId = computed(() => {
+  const quotas = new Map<string, { current: number; quota: number }>();
+  for (const quota of props.selection.factoryProductionQuotas ?? []) {
+    quotas.set(quota.unitBlueprintId, { current: quota.current, quota: quota.quota });
+  }
+  return quotas;
+});
 const hasFactoryProduction = computed(() =>
   selectedBuildUnitBlueprintId.value !== null ||
     props.selection.factoryIsProducing === true ||
-    factoryQueueCount.value > 0,
+    factoryQueueCount.value > 0 ||
+    (props.selection.factoryProductionQuotas?.length ?? 0) > 0,
 );
-const hasFactoryPresetToSave = computed(() => selectedBuildUnitBlueprintId.value !== null);
+const hasFactoryPresetToSave = computed(() => props.selection.factoryId !== undefined);
 const factoryProgressPercent = computed(() =>
   Math.max(0, Math.min(100, Math.round((props.selection.factoryProgress ?? 0) * 100))),
 );
 const factoryProgressStyle = computed(() => ({
   width: `${factoryProgressPercent.value}%`,
 }));
+function factoryCellShowsBuildProgress(unitBlueprintId: string): boolean {
+  return props.selection.factoryIsProducing === true &&
+    selectedBuildUnitBlueprintId.value === unitBlueprintId;
+}
+
+function factoryCellBuildProgressStyle(unitBlueprintId: string): { '--bar-cell-progress-remaining': string } | undefined {
+  if (!factoryCellShowsBuildProgress(unitBlueprintId)) return undefined;
+  const progress = Math.max(0, Math.min(1, props.selection.factoryProgress ?? 0));
+  return {
+    '--bar-cell-progress-remaining': `${((1 - progress) * 100).toFixed(3)}%`,
+  };
+}
 const factoryStatusLabel = computed(() => {
   const unitLabel = props.selection.factorySelectedUnit?.label ?? 'No unit';
   if (unitLabel === 'No unit') return `${unitLabel} idle`;
-  const modeLabel = props.selection.factoryRepeatsProduction === false ? 'Queue' : 'Repeat';
+  const modeLabel = props.selection.factoryRepeatsProduction === true ? 'Repeat' : 'Queue';
   const queuedLabel = factoryQueueCount.value > 0 ? ` +${factoryQueueCount.value}` : '';
   return props.selection.factoryIsProducing === true
     ? `${modeLabel} ${unitLabel} producing${queuedLabel}`
@@ -218,20 +469,23 @@ const showCancelHint = computed(() =>
   props.selection.isBuildMode
   || props.selection.isDGunMode
   || props.selection.isRepairAreaMode
+  || props.selection.isRestoreAreaMode
   || props.selection.isAttackMode
   || props.selection.isAttackAreaMode
   || props.selection.isAttackGroundMode
   || props.selection.isGuardMode
   || props.selection.isReclaimMode
   || props.selection.isCaptureMode
+  || props.selection.isResurrectMode
+  || props.selection.isResurrectAreaMode
   || props.selection.isLoadTransportMode
   || props.selection.isUnloadTransportMode
   || props.selection.isManualLaunchMode
   || props.selection.isMexUpgradeMode
   || props.selection.isPingMode
-  || props.selection.isTowerTargetMode,
+  || props.selection.isTowerTargetMode
+  || props.selection.isTowerTargetNoGroundMode,
 );
-
 type WaypointModeOption = {
   mode: WaypointType;
   label: string;
@@ -245,7 +499,10 @@ type BuildingGridOption = {
   label: string;
   key: string;
   cost: number;
+  energyCost: number;
+  metalCost: number;
   category: BuildMenuCategory;
+  slotIndex: number;
   commandId: CommandHotkeyId;
   gridRow: number;
   gridColumn: number;
@@ -256,16 +513,76 @@ type FactoryGridOption = {
   label: string;
   shortName: string;
   cost: number;
+  energyCost: number;
+  metalCost: number;
   locomotion: string;
 };
-
-const buildGridCategory = ref<BarBuildCategoryId | null>(null);
-const buildGridPage = ref(0);
-const factoryGridPage = ref(0);
 
 function hotkey(commandId: CommandHotkeyId): string {
   void props.hotkeyRevision;
   return commandHotkeyLabel(commandId, props.hotkeyPreset);
+}
+
+function publicAssetSrc(path: string): string {
+  return `${import.meta.env.BASE_URL}${path}`;
+}
+
+type BarGroupIconId =
+  | 'aa'
+  | 'builder'
+  | 'energy'
+  | 'metal'
+  | 'util'
+  | 'weapon';
+
+const BAR_GROUP_ICON_BY_STRUCTURE_BLUEPRINT_ID: Partial<Record<StructureBlueprintId, BarGroupIconId>> = {
+  buildingExtractor: 'metal',
+  buildingExtractorT2: 'metal',
+  buildingResourceConverter: 'energy',
+  buildingSolar: 'energy',
+  buildingWind: 'energy',
+  buildingRadar: 'util',
+  towerFabricator: 'builder',
+  towerAntiAir: 'aa',
+  towerBeamMega: 'weapon',
+  towerCannon: 'weapon',
+};
+
+const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconId>> = {
+  unitAlbatros: 'weapon',
+  unitBadger: 'weapon',
+  unitBee: 'weapon',
+  unitConstructionDrone: 'builder',
+  unitDaddy: 'weapon',
+  unitDragonfly: 'weapon',
+  unitEagle: 'weapon',
+  unitFormik: 'weapon',
+  unitHippo: 'weapon',
+  unitJackal: 'weapon',
+  unitLoris: 'weapon',
+  unitLynx: 'weapon',
+  unitMammoth: 'weapon',
+  unitMongoose: 'weapon',
+  unitQueenBee: 'weapon',
+  unitQueenTick: 'weapon',
+  unitTarantula: 'weapon',
+  unitTick: 'weapon',
+  unitTransport: 'util',
+  unitWidow: 'weapon',
+};
+
+function barGroupIconSrc(groupId: BarGroupIconId): string {
+  return publicAssetSrc(`assets/bar/groupicons/${groupId}.png`);
+}
+
+function buildingGroupIconSrc(buildingBlueprintId: StructureBlueprintId): string | null {
+  const groupId = BAR_GROUP_ICON_BY_STRUCTURE_BLUEPRINT_ID[buildingBlueprintId];
+  return groupId === undefined ? null : barGroupIconSrc(groupId);
+}
+
+function unitGroupIconSrc(unitBlueprintId: string): string | null {
+  const groupId = BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID[unitBlueprintId];
+  return groupId === undefined ? null : barGroupIconSrc(groupId);
 }
 
 const waypointModes = computed<WaypointModeOption[]>(() => [
@@ -286,22 +603,81 @@ function compactBuildingLabel(label: string): string {
   return COMPACT_BUILDING_LABELS[label] ?? label.slice(0, 5);
 }
 
+const BAR_ORDER_TOOLTIP_BY_COMMAND_ID: Partial<Record<CommandHotkeyId, string>> = {
+  'waypoint.move': 'Move a unit towards a position or follow other units',
+  'waypoint.patrol': 'Patrol along one or more waypoints',
+  'waypoint.fight': 'Order units to take action while moving to a position',
+  'combat.attack': 'Attack a unit or ground position',
+  'combat.attackArea': 'Area attack everything within a circle (click-drag)',
+  'combat.guard': 'Guard another unit against enemy units attacking it',
+  'command.stop': 'Cancel the units current actions',
+  'command.wait': 'Pause a unit/factory on processing command/build queues',
+  'command.repeat': 'Repeat unit command queue',
+  'command.moveState': 'Set how far out of its way a unit should move to attack enemies',
+  'command.fireToggle': 'Set under what conditions a unit should start firing at enemies (without explicit attack order)',
+  'command.cloak': 'Visibility state',
+  'command.trajectoryToggle': 'Switch artillery firing angle between low, high and automatic trajectory',
+  'command.dgun': 'Fire the powerful commander Disintegrator-gun',
+  'combat.manualLaunch': 'Launch a missile at a target',
+  'combat.repair': 'Repair a damaged unit',
+  'combat.restore': 'Restore an area of the map to its original height',
+  'combat.reclaim': 'Suck metal/energy from wrecks or features (trees/stones)',
+  'combat.capture': 'Convert units that belong to the enemy (or ally)',
+  'combat.resurrect': 'Revive wrecks to become units again (click-drag for area)',
+  'command.areaMex': 'Click-drag an area to auto queue metal extractors for all available metal spots',
+  'command.builderPriority': 'Assigns resources to use for this builder when not having enough for all',
+  'command.carrierSpawn': 'Sets the spawning state of the carrier',
+  'combat.loadTransport': 'Load unit or multiple units within an area in the transport',
+  'combat.unloadTransport': 'Unload unit or multiple units within an area in the transport',
+  'factory.stopProduction': 'Clear build queue and quotas for all units on selected factories',
+  'command.factoryGuard': 'Builders produced by this factory will automatically guard it',
+  'factory.queueMode': 'Queue: Build each queued unit once\nQuota: Maintain a minimum quota of each unit on the battlefield',
+  'combat.towerTargetSet': 'Set a prioritized target (prioritizes targeting when target in range) ',
+  'combat.towerTargetClear': 'Removes the priority target',
+  'command.morph': 'Upgrade to next Tech-level (second click to cancel)',
+  'command.buildingActive': 'Active state: turn a unit on/off',
+};
+
 function actionTitle(label: string, commandId: CommandHotkeyId, detail?: string): string {
   const key = hotkey(commandId);
+  const barTooltip = isBarHotkeyPreset.value ? BAR_ORDER_TOOLTIP_BY_COMMAND_ID[commandId] : undefined;
+  if (barTooltip !== undefined) {
+    const hotkeyText = key === '' ? '' : `${key.toUpperCase()} - `;
+    return `${label} - ${hotkeyText}${barTooltip}`;
+  }
   const hotkeyText = key === '' ? '' : ` - Hotkey ${key}`;
   return `${label}${hotkeyText}${detail === undefined ? '' : ` - ${detail}`}`;
 }
 
+function barOrderLabel(barLabel: string, prototypeLabel: string): string {
+  return isBarHotkeyPreset.value ? barLabel : prototypeLabel;
+}
+
+function barStateButtonColor(prototypeColor: string): string {
+  return isBarHotkeyPreset.value ? BUTTON_COLORS.default : prototypeColor;
+}
+
+function factoryStopProductionButtonColor(): string {
+  return isBarHotkeyPreset.value ? BUTTON_COLORS.default : BUTTON_COLORS.stop;
+}
+
 function trajectoryModeLabel(mode: SelectionInfo['trajectoryMode']): string {
+  if (isBarHotkeyPreset.value) {
+    switch (mode) {
+      case 'high': return 'High Trajectory';
+      case 'low': return 'Low Trajectory';
+      case 'auto': return visibleTrajectoryStateCount.value === 3 ? 'Auto Trajectory' : 'High Trajectory';
+    }
+  }
   return mode === 'high' ? 'Arc Hi' : mode === 'low' ? 'Arc Lo' : 'Arc Auto';
 }
 
 function moveStateLabel(moveState: SelectionInfo['unitMoveState']): string {
   switch (moveState) {
-    case 'holdPosition': return 'Hold';
+    case 'holdPosition': return isBarHotkeyPreset.value ? 'Hold pos' : 'Hold';
     case 'roam': return 'Roam';
     case 'mixed': return 'Mixed';
-    case 'maneuver': return 'Move';
+    case 'maneuver': return isBarHotkeyPreset.value ? 'Maneuver' : 'Move';
   }
 }
 
@@ -309,32 +685,136 @@ function nextMoveStateLabel(moveState: SelectionInfo['unitMoveState']): string {
   switch (moveState) {
     case 'holdPosition': return 'Roam';
     case 'roam': return 'Maneuver';
-    case 'maneuver': return 'Hold';
-    case 'mixed': return 'Hold';
+    case 'maneuver': return isBarHotkeyPreset.value ? 'Hold pos' : 'Hold';
+    case 'mixed': return isBarHotkeyPreset.value ? 'Hold pos' : 'Hold';
+  }
+}
+
+function previousMoveState(moveState: SelectionInfo['unitMoveState']): UnitMoveState {
+  switch (moveState) {
+    case 'holdPosition': return 'maneuver';
+    case 'maneuver': return 'roam';
+    case 'roam': return 'holdPosition';
+    case 'mixed': return 'roam';
   }
 }
 
 function fireStateLabel(fireState: SelectionInfo['fireState']): string {
   switch (fireState) {
-    case 'fireAtWill': return 'Fire';
-    case 'returnFire': return 'Return';
-    case 'holdFire': return 'Hold';
+    case 'fireAtWill': return isBarHotkeyPreset.value ? 'Fire at will' : 'Fire';
+    case 'returnFire': return isBarHotkeyPreset.value ? 'Return fire' : 'Return';
+    case 'holdFire': return isBarHotkeyPreset.value ? 'Hold fire' : 'Hold';
     case 'mixed': return 'Mixed';
   }
 }
 
 function nextFireStateLabel(fireState: SelectionInfo['fireState']): string {
   switch (fireState) {
-    case 'fireAtWill': return 'Return';
-    case 'returnFire': return 'Hold';
-    case 'holdFire': return 'Fire';
-    case 'mixed': return 'Fire';
+    case 'fireAtWill': return isBarHotkeyPreset.value ? 'Return fire' : 'Return';
+    case 'returnFire': return isBarHotkeyPreset.value ? 'Hold fire' : 'Hold';
+    case 'holdFire': return isBarHotkeyPreset.value ? 'Fire at will' : 'Fire';
+    case 'mixed': return isBarHotkeyPreset.value ? 'Fire at will' : 'Fire';
+  }
+}
+
+function previousFireState(fireState: SelectionInfo['fireState']): CombatFireState {
+  switch (fireState) {
+    case 'fireAtWill': return 'holdFire';
+    case 'holdFire': return 'returnFire';
+    case 'returnFire': return 'fireAtWill';
+    case 'mixed': return 'holdFire';
   }
 }
 
 function cloakStateLabel(selection: SelectionInfo): string {
+  if (isBarHotkeyPreset.value) return selection.wantsCloak || selection.isCloaked ? 'Cloaked' : 'Visible';
   if (selection.isCloaked) return 'Cloaked';
   return selection.wantsCloak ? 'Cloaking' : 'Cloak';
+}
+
+function repeatStateLabel(active: boolean): string {
+  return isBarHotkeyPreset.value ? (active ? 'Repeat On' : 'Repeat Off') : 'Repeat';
+}
+
+function builderPriorityLabel(lowPriority: boolean): string {
+  return isBarHotkeyPreset.value
+    ? lowPriority ? 'Low Priority' : 'High Priority'
+    : lowPriority ? 'Low Prio' : 'High Prio';
+}
+
+function carrierSpawnLabel(enabled: boolean): string {
+  return isBarHotkeyPreset.value
+    ? enabled ? 'Spawning enabled' : 'Spawning disabled'
+    : enabled ? 'Spawning Enabled' : 'Spawning Disabled';
+}
+
+function factoryQueueModeLabel(enabled: boolean): string {
+  return isBarHotkeyPreset.value ? (enabled ? 'Quota Mode' : 'Queue Mode') : enabled ? 'Quota' : 'Queue';
+}
+
+function stopFactoryProductionLabel(): string {
+  return isBarHotkeyPreset.value ? 'Clear Queue' : 'Stop Production';
+}
+
+type BarStateLightTone = 'off' | 'mid' | 'on';
+type BarStateLight = {
+  key: string;
+  tone: BarStateLightTone;
+  active: boolean;
+};
+
+const BINARY_STATE_LIGHT_TONES = ['off', 'on'] as const satisfies readonly BarStateLightTone[];
+const THREE_STATE_LIGHT_TONES = ['off', 'mid', 'on'] as const satisfies readonly BarStateLightTone[];
+
+function stateLights(
+  activeIndex: number | null,
+  tones: readonly BarStateLightTone[],
+): BarStateLight[] {
+  return tones.map((tone, index) => ({
+    key: `${tone}-${index}`,
+    tone,
+    active: activeIndex === index,
+  }));
+}
+
+function binaryStateLights(active: boolean): BarStateLight[] {
+  return stateLights(active ? 1 : 0, BINARY_STATE_LIGHT_TONES);
+}
+
+function moveStateLights(moveState: SelectionInfo['unitMoveState']): BarStateLight[] {
+  switch (moveState) {
+    case 'holdPosition': return stateLights(0, THREE_STATE_LIGHT_TONES);
+    case 'maneuver': return stateLights(1, THREE_STATE_LIGHT_TONES);
+    case 'roam': return stateLights(2, THREE_STATE_LIGHT_TONES);
+    case 'mixed': return stateLights(null, THREE_STATE_LIGHT_TONES);
+  }
+}
+
+function fireStateLights(fireState: SelectionInfo['fireState']): BarStateLight[] {
+  switch (fireState) {
+    case 'holdFire': return stateLights(0, THREE_STATE_LIGHT_TONES);
+    case 'returnFire': return stateLights(1, THREE_STATE_LIGHT_TONES);
+    case 'fireAtWill': return stateLights(2, THREE_STATE_LIGHT_TONES);
+    case 'mixed': return stateLights(null, THREE_STATE_LIGHT_TONES);
+  }
+}
+
+function trajectoryStateLights(mode: SelectionInfo['trajectoryMode']): BarStateLight[] {
+  if (isBarHotkeyPreset.value) {
+    if (visibleTrajectoryStateCount.value === 3) {
+      switch (mode) {
+        case 'low': return stateLights(0, THREE_STATE_LIGHT_TONES);
+        case 'high': return stateLights(1, THREE_STATE_LIGHT_TONES);
+        case 'auto': return stateLights(2, THREE_STATE_LIGHT_TONES);
+      }
+    }
+    return stateLights(mode === 'low' ? 0 : 1, BINARY_STATE_LIGHT_TONES);
+  }
+  switch (mode) {
+    case 'low': return stateLights(0, THREE_STATE_LIGHT_TONES);
+    case 'auto': return stateLights(1, THREE_STATE_LIGHT_TONES);
+    case 'high': return stateLights(2, THREE_STATE_LIGHT_TONES);
+  }
 }
 
 function queueInsertOptionTitle(option: QueueInsertOption): string {
@@ -343,9 +823,49 @@ function queueInsertOptionTitle(option: QueueInsertOption): string {
     : `Insert queued commands after order ${option.label.replace('+', '')}`;
 }
 
-function costTitle(label: string, cost: number, key?: string): string {
+function formatCostPart(cost: number): string {
+  const rounded = Math.round(cost);
+  if (rounded < 1000) return String(rounded);
+  const leading = Math.floor(rounded / 1000);
+  const remainder = String(rounded % 1000).padStart(3, '0');
+  return `${leading} ${remainder}`;
+}
+
+function costTitle(
+  label: string,
+  cost: number,
+  key?: string,
+  metalCost?: number,
+  energyCost?: number,
+): string {
   const hotkey = key === undefined ? '' : ` - Hotkey ${key}`;
-  return `${label}${hotkey} - Cost ${cost}`;
+  const resourceBreakdown = metalCost === undefined || energyCost === undefined
+    ? ''
+    : ` (${formatCostPart(metalCost)}M / ${formatCostPart(energyCost)}E)`;
+  return `${label}${hotkey} - Cost ${formatCostPart(cost)}${resourceBreakdown}`;
+}
+
+function factoryProductionCellTitle(option: FactoryGridOption): string {
+  const modeLabel = props.selection.factoryQueueMode
+    ? 'Quota'
+    : props.selection.factoryRepeatsProduction === true
+      ? 'Repeat'
+      : 'Queue';
+  const queueModeKey = hotkey('factory.queueMode');
+  const queueModeHint = queueModeKey === '' ? '' : `; ${queueModeKey} toggles quota mode`;
+  return costTitle(
+    `${modeLabel} ${option.label}; T toggles repeat${queueModeHint}; Shift adds five; Ctrl adds twenty; Shift+Ctrl adds one hundred; right-click removes queued/quota with the same multipliers`,
+    option.cost,
+    undefined,
+    option.metalCost,
+    option.energyCost,
+  );
+}
+
+function pageActionTitle(label: string): string {
+  return barGridNextPageHotkey.value === ''
+    ? label
+    : `${label} - ${barGridNextPageHotkey.value}`;
 }
 
 const buildingMenuLayout = computed(() =>
@@ -362,6 +882,7 @@ function buildingOptionForLayoutItem(item: BuildMenuLayoutItem): BuildingGridOpt
       buildingBlueprintId: option.buildingBlueprintId as StructureBlueprintId,
       key: hotkey(commandId),
       commandId,
+      slotIndex: item.slotIndex,
       gridRow: item.gridRow,
       gridColumn: item.gridColumn,
     };
@@ -372,11 +893,43 @@ const buildingOptions = computed(() =>
     .map(buildingOptionForLayoutItem)
     .filter((option) => option !== null),
 );
+const barClassicBuildOptions = computed(() =>
+  buildBarClassicBuildMenuItems(props.selection.allowedBuildBlueprintIds)
+    .map(buildingOptionForLayoutItem)
+    .filter((option) => option !== null),
+);
 const buildLineSpacingLabel = computed(() =>
   `${Math.round(props.selection.buildLineSpacingMultiplier * 100)}%`,
 );
 const buildFacingLabel = computed(() => `${props.selection.buildFacingDegrees}deg`);
-const unitOptions = unitRosterDisplay;
+const barGridNextPageHotkey = computed(() =>
+  isBarGridCommandHotkeyPreset(props.hotkeyPreset) ? 'B' : '',
+);
+const unitOptions = computed<FactoryGridOption[]>(() => {
+  return unitOptionsForBlueprintIds(props.selection.factoryAllowedUnitBlueprintIds);
+});
+const factoryDisplayUnitBlueprintIds = computed(() =>
+  buildFactoryUnitBlueprintIdsForPreset(
+    props.selection.factoryAllowedUnitBlueprintIds,
+    props.hotkeyPreset,
+  ),
+);
+const factoryGridUnitBlueprintCells = computed(() =>
+  buildFactoryUnitGridCellsForPreset(
+    props.selection.factoryAllowedUnitBlueprintIds,
+    props.hotkeyPreset,
+  ),
+);
+
+function unitOptionsForBlueprintIds(unitBlueprintIds: readonly string[]): FactoryGridOption[] {
+  const options: FactoryGridOption[] = [];
+  for (const unitBlueprintId of unitBlueprintIds) {
+    const option = getUnitRosterDisplay(unitBlueprintId);
+    if (option !== null) options.push(option);
+  }
+  return options;
+}
+const factoryDisplayUnitSet = computed(() => new Set(factoryDisplayUnitBlueprintIds.value));
 
 const thumbnailRevision = ref(0);
 let unsubscribeEntityThumbnails: (() => void) | null = null;
@@ -392,9 +945,9 @@ const buildOptionsByBarCategory = computed(() => {
 });
 
 const currentBuildCategory = computed(() =>
-  buildGridCategory.value === null
+  !showBarGridBuildCategories.value || props.selection.buildGridCategory === null
     ? null
-    : BAR_BUILD_CATEGORIES.find((category) => category.id === buildGridCategory.value) ?? null,
+    : BAR_BUILD_CATEGORIES.find((category) => category.id === props.selection.buildGridCategory) ?? null,
 );
 
 const currentBuildCategoryOptions = computed(() => {
@@ -403,34 +956,77 @@ const currentBuildCategoryOptions = computed(() => {
 });
 
 const buildGridPageCount = computed(() =>
-  Math.max(1, Math.ceil(currentBuildCategoryOptions.value.length / BAR_GRID_SLOT_COUNT)),
+  showBarClassicBuildMenu.value
+    ? Math.max(1, Math.ceil(barClassicBuildOptions.value.length / BAR_GRID_SLOT_COUNT))
+    : Math.max(1, Math.ceil(currentBuildCategoryOptions.value.length / BAR_GRID_SLOT_COUNT)),
 );
 
-const homeBuildGridCells = computed<(BuildingGridOption | null)[]>(() =>
-  buildBarHomeBuildMenuCells(props.selection.allowedBuildBlueprintIds)
-    .map((item) => item === null ? null : buildingOptionForLayoutItem(item)),
+const buildGridPage = computed(() =>
+  normalizeGridPageIndex(props.selection.buildGridPage, buildGridPageCount.value),
 );
 
 const buildGridCells = computed<(BuildingGridOption | null)[]>(() => {
-  if (currentBuildCategory.value !== null) {
+  if (showBarClassicBuildMenu.value) {
     const start = buildGridPage.value * BAR_GRID_SLOT_COUNT;
-    return gridCells(currentBuildCategoryOptions.value.slice(start, start + BAR_GRID_SLOT_COUNT));
+    return gridCells(barClassicBuildOptions.value.slice(start, start + BAR_GRID_SLOT_COUNT));
   }
 
-  return homeBuildGridCells.value;
+  if (currentBuildCategory.value !== null) {
+    const start = buildGridPage.value * BAR_GRID_SLOT_COUNT;
+    return gridCellsBySlotIndex(currentBuildCategoryOptions.value.slice(start, start + BAR_GRID_SLOT_COUNT));
+  }
+
+  return buildBarHomeBuildMenuCells(props.selection.allowedBuildBlueprintIds)
+    .map((item) => item === null ? null : buildingOptionForLayoutItem(item));
 });
 
 const showBuildGridPager = computed(() =>
-  currentBuildCategory.value !== null && buildGridPageCount.value > 1,
+  (showBarClassicBuildMenu.value || currentBuildCategory.value !== null) &&
+  buildGridPageCount.value > 1,
+);
+const showBuildGridFooter = computed(() =>
+  showBarGridBuildCategories.value || showBuildGridPager.value,
 );
 
+const showBuilderTypeStrip = computed(() =>
+  props.selection.selectedBuilderTypes.length > 1,
+);
+const showBuilderCycleButton = computed(() => isBarGridCommandHotkeyPreset(props.hotkeyPreset));
+
+function setActiveBuilder(unitBlueprintId: string): void {
+  props.actions.setActiveBuilder(unitBlueprintId);
+}
+
+function cycleActiveBuilder(): void {
+  props.actions.cycleActiveBuilder();
+}
+
+function factoryGridCellHotkey(index: number): string {
+  const commandId = BUILD_MENU_GRID_SLOT_COMMAND_IDS[index];
+  return commandId === undefined ? '' : hotkey(commandId);
+}
+
+function buildGridCellHotkey(option: BuildingGridOption): string {
+  return showBarGridBuildCategories.value && currentBuildCategory.value === null
+    ? ''
+    : option.key;
+}
+
 const factoryGridPageCount = computed(() =>
-  Math.max(1, Math.ceil(unitOptions.length / BAR_GRID_SLOT_COUNT)),
+  Math.max(1, Math.ceil(factoryGridUnitBlueprintCells.value.length / BAR_GRID_SLOT_COUNT)),
+);
+
+const factoryGridPage = computed(() =>
+  normalizeGridPageIndex(props.selection.factoryGridPage, factoryGridPageCount.value),
 );
 
 const factoryGridCells = computed<(FactoryGridOption | null)[]>(() => {
   const start = factoryGridPage.value * BAR_GRID_SLOT_COUNT;
-  return gridCells(unitOptions.slice(start, start + BAR_GRID_SLOT_COUNT));
+  return factoryGridUnitBlueprintCells.value
+    .slice(start, start + BAR_GRID_SLOT_COUNT)
+    .map((unitBlueprintId) =>
+      unitBlueprintId === null ? null : getUnitRosterDisplay(unitBlueprintId),
+    );
 });
 
 function emptyGridCells<T>(): (T | null)[] {
@@ -445,24 +1041,52 @@ function gridCells<T>(items: readonly T[]): (T | null)[] {
   return cells;
 }
 
+function gridCellsBySlotIndex<T extends { slotIndex: number }>(items: readonly T[]): (T | null)[] {
+  const cells = emptyGridCells<T>();
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    if (item.slotIndex < 0 || item.slotIndex >= cells.length) continue;
+    cells[item.slotIndex] = item;
+  }
+  return cells;
+}
+
+function normalizeGridPageIndex(pageIndex: number, pageCount: number): number {
+  const count = Math.max(1, Math.floor(pageCount));
+  const index = Math.floor(pageIndex);
+  return ((index % count) + count) % count;
+}
+
 function selectBuildGridCategory(categoryId: BarBuildCategoryId): void {
-  buildGridCategory.value = buildGridCategory.value === categoryId ? null : categoryId;
-  buildGridPage.value = 0;
+  props.actions.setBuildGridCategory(props.selection.buildGridCategory === categoryId ? null : categoryId);
 }
 
 function clearBuildGridCategory(): void {
-  buildGridCategory.value = null;
-  buildGridPage.value = 0;
+  props.actions.setBuildGridCategory(null);
 }
 
 function stepBuildGridPage(delta: number): void {
-  const pageCount = buildGridPageCount.value;
-  buildGridPage.value = (buildGridPage.value + delta + pageCount) % pageCount;
+  props.actions.stepBuildGridPage(delta);
 }
 
 function stepFactoryGridPage(delta: number): void {
-  const pageCount = factoryGridPageCount.value;
-  factoryGridPage.value = (factoryGridPage.value + delta + pageCount) % pageCount;
+  props.actions.stepFactoryGridPage(delta);
+}
+
+function clickBuildGridOption(buildingBlueprintId: StructureBlueprintId): void {
+  if (
+    !isBarHotkeyPreset.value &&
+    props.selection.isBuildMode &&
+    props.selection.selectedBuildingBlueprintId === buildingBlueprintId
+  ) {
+    props.actions.cancelBuild();
+    return;
+  }
+  props.actions.startBuild(buildingBlueprintId);
+}
+
+function startAreaMexBuild(): void {
+  props.actions.startBuild(AREA_MEX_BLUEPRINT_ID);
 }
 
 function buildGridCellKey(option: BuildingGridOption | null, index: number): string {
@@ -473,9 +1097,17 @@ function factoryGridCellKey(option: FactoryGridOption | null, index: number): st
   return option === null ? `empty-factory-${index}` : option.unitBlueprintId;
 }
 
-function gridSlotHotkey(index: number): string {
-  const commandId = BUILD_MENU_GRID_SLOT_COMMAND_IDS[index];
-  return commandId === undefined ? '' : hotkey(commandId);
+function factoryQueuedCount(unitBlueprintId: string): number {
+  return factoryQueuedCountByUnitBlueprintId.value.get(unitBlueprintId) ?? 0;
+}
+
+function factoryQuotaTarget(unitBlueprintId: string): number {
+  return factoryQuotaByUnitBlueprintId.value.get(unitBlueprintId)?.quota ?? 0;
+}
+
+function factoryQuotaLabel(unitBlueprintId: string): string {
+  const quota = factoryQuotaByUnitBlueprintId.value.get(unitBlueprintId);
+  return quota === undefined ? '' : `${quota.current}/${quota.quota}`;
 }
 
 const FACTORY_PRESET_LOAD_COMMAND_IDS = [
@@ -483,15 +1115,67 @@ const FACTORY_PRESET_LOAD_COMMAND_IDS = [
   'factoryPreset.load2',
   'factoryPreset.load3',
   'factoryPreset.load4',
+  'factoryPreset.load5',
+  'factoryPreset.load6',
+  'factoryPreset.load7',
+  'factoryPreset.load8',
+  'factoryPreset.load9',
+  'factoryPreset.load10',
 ] as const satisfies readonly CommandHotkeyId[];
 const FACTORY_PRESET_SAVE_COMMAND_IDS = [
   'factoryPreset.save1',
   'factoryPreset.save2',
   'factoryPreset.save3',
   'factoryPreset.save4',
+  'factoryPreset.save5',
+  'factoryPreset.save6',
+  'factoryPreset.save7',
+  'factoryPreset.save8',
+  'factoryPreset.save9',
+  'factoryPreset.save10',
 ] as const satisfies readonly CommandHotkeyId[];
 
-const factoryPresetSlots = ref<(string | null)[]>(loadFactoryProductionPresetSlots());
+const factoryPresetSlots = ref<(FactoryProductionPresetSnapshot | null)[]>(loadFactoryProductionPresetSlots());
+const FACTORY_PRESET_OVERLAY_ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0] as const;
+const FACTORY_PRESET_OVERLAY_MAX_RUNS = 7;
+
+type FactoryPresetOverlayEntry = {
+  index: number;
+  label: string;
+  snapshot: FactoryProductionPresetSnapshot;
+  unitBlueprintIds: string[];
+  canLoad: boolean;
+};
+
+type FactoryPresetOverlayRun = {
+  unitBlueprintId: string;
+  shortName: string;
+  count: number;
+};
+
+const showBarFactoryPresetOverlay = computed(() =>
+  hasBarFactoryPresetHotkeys(props.hotkeyPreset) &&
+  props.selection.factoryPresetOverlayVisible &&
+  props.selection.hasFactory &&
+  props.selection.factoryId !== undefined &&
+  showTowerActions.value,
+);
+
+const factoryPresetOverlayEntries = computed<FactoryPresetOverlayEntry[]>(() => {
+  const entries: FactoryPresetOverlayEntry[] = [];
+  for (const index of FACTORY_PRESET_OVERLAY_ORDER) {
+    const snapshot = factoryPresetSlots.value[index] ?? null;
+    if (snapshot === null) continue;
+    entries.push({
+      index,
+      label: String(index),
+      snapshot,
+      unitBlueprintIds: getFactoryProductionPresetUnitBlueprintIds(snapshot),
+      canLoad: resolveFactoryProductionPresetReplay(snapshot, factoryDisplayUnitSet.value) !== null,
+    });
+  }
+  return entries;
+});
 
 function refreshFactoryPresetSlots(): void {
   factoryPresetSlots.value = loadFactoryProductionPresetSlots();
@@ -546,10 +1230,13 @@ function prefetchBuildButtonThumbnails(): void {
       const blueprintId = option.buildingBlueprintId as StructureBlueprintId;
       void requestEntityThumbnail(structurePreviewKind(blueprintId), blueprintId);
     }
+    for (const builderType of props.selection.selectedBuilderTypes) {
+      void requestEntityThumbnail('unit', builderType.unitBlueprintId as LoadingEntityBlueprintId);
+    }
   }
 
   if (props.selection.hasFactory && showTowerActions.value) {
-    for (const option of unitOptions) {
+    for (const option of unitOptions.value) {
       void requestEntityThumbnail('unit', option.unitBlueprintId as LoadingEntityBlueprintId);
     }
   }
@@ -560,8 +1247,10 @@ watch(
     props.selection.hasBuilder,
     showUnitActions.value,
     buildingOptions.value.map((option) => option.buildingBlueprintId).join('|'),
+    props.selection.selectedBuilderTypes.map((builderType) => builderType.unitBlueprintId).join('|'),
     props.selection.hasFactory,
     showTowerActions.value,
+    unitOptions.value.map((option) => option.unitBlueprintId).join('|'),
   ],
   () => prefetchBuildButtonThumbnails(),
   { immediate: true },
@@ -574,14 +1263,6 @@ watch(
   },
 );
 
-watch(buildGridPageCount, (pageCount) => {
-  if (buildGridPage.value >= pageCount) buildGridPage.value = Math.max(0, pageCount - 1);
-});
-
-watch(factoryGridPageCount, (pageCount) => {
-  if (factoryGridPage.value >= pageCount) factoryGridPage.value = Math.max(0, pageCount - 1);
-});
-
 function factoryPresetLoadCommandId(index: number): CommandHotkeyId {
   return FACTORY_PRESET_LOAD_COMMAND_IDS[index] ?? 'factoryPreset.load1';
 }
@@ -590,18 +1271,64 @@ function factoryPresetSaveCommandId(index: number): CommandHotkeyId {
   return FACTORY_PRESET_SAVE_COMMAND_IDS[index] ?? 'factoryPreset.save1';
 }
 
-function factoryPresetShortName(unitBlueprintId: string | null): string {
+function unitShortName(unitBlueprintId: string | null): string {
   if (unitBlueprintId === null) return '-';
-  return unitOptions.find((unit) => unit.unitBlueprintId === unitBlueprintId)?.shortName
+  return unitOptions.value.find((unit) => unit.unitBlueprintId === unitBlueprintId)?.shortName
     ?? unitBlueprintId.slice(0, 3).toUpperCase();
 }
 
+function unitFullName(unitBlueprintId: string): string {
+  return unitOptions.value.find((unit) => unit.unitBlueprintId === unitBlueprintId)?.label
+    ?? unitBlueprintId;
+}
+
+function factoryPresetShortName(snapshot: FactoryProductionPresetSnapshot | null): string {
+  const unitIds = getFactoryProductionPresetUnitBlueprintIds(snapshot);
+  if (unitIds.length === 0) return '-';
+  const suffix = unitIds.length > 1 ? `+${unitIds.length - 1}` : '';
+  return `${unitShortName(unitIds[0])}${suffix}`;
+}
+
+function factoryPresetOverlayRuns(entry: FactoryPresetOverlayEntry): FactoryPresetOverlayRun[] {
+  const runs: FactoryPresetOverlayRun[] = [];
+  const counts = new Map<string, number>();
+  for (const unitBlueprintId of entry.unitBlueprintIds) {
+    counts.set(unitBlueprintId, (counts.get(unitBlueprintId) ?? 0) + 1);
+  }
+  for (const [unitBlueprintId, count] of counts) {
+    runs.push({
+      unitBlueprintId,
+      shortName: unitShortName(unitBlueprintId),
+      count,
+    });
+    if (runs.length >= FACTORY_PRESET_OVERLAY_MAX_RUNS) break;
+  }
+  return runs;
+}
+
+function factoryPresetOverlayOverflow(entry: FactoryPresetOverlayEntry): number {
+  const shown = factoryPresetOverlayRuns(entry).reduce((sum, run) => sum + run.count, 0);
+  return Math.max(0, entry.unitBlueprintIds.length - shown);
+}
+
+function factoryPresetMatchesCurrent(snapshot: FactoryProductionPresetSnapshot | null): boolean {
+  if (snapshot === null) return false;
+  if (snapshot.selectedUnitBlueprintId !== selectedBuildUnitBlueprintId.value) return false;
+  if (snapshot.repeatProduction !== (props.selection.factoryRepeatsProduction === true)) return false;
+  if (snapshot.productionQueue.length !== factoryQueuedUnits.value.length) return false;
+  for (let i = 0; i < snapshot.productionQueue.length; i++) {
+    if (snapshot.productionQueue[i] !== factoryQueuedUnits.value[i].unitBlueprintId) return false;
+  }
+  return true;
+}
+
 function factoryPresetTitle(index: number): string {
-  const unitBlueprintId = factoryPresetSlots.value[index] ?? null;
-  const label = unitBlueprintId === null
+  const snapshot = factoryPresetSlots.value[index] ?? null;
+  const unitIds = getFactoryProductionPresetUnitBlueprintIds(snapshot);
+  const label = snapshot === null || unitIds.length === 0
     ? 'empty'
-    : (unitOptions.find((unit) => unit.unitBlueprintId === unitBlueprintId)?.label ?? unitBlueprintId);
-  return `Factory preset ${index + 1}: ${label}`;
+    : `${snapshot.repeatProduction ? 'Repeat' : 'Queue'} ${unitIds.map(unitFullName).join(' -> ')}`;
+  return `Factory preset ${index}: ${label}`;
 }
 
 function factoryPresetActionTitle(index: number, commandId: CommandHotkeyId, action: string): string {
@@ -618,11 +1345,18 @@ function factoryPresetSaveKey(index: number): string {
   return hotkey(factoryPresetSaveCommandId(index));
 }
 
+function canLoadFactoryPreset(index: number): boolean {
+  const snapshot = factoryPresetSlots.value[index] ?? null;
+  return resolveFactoryProductionPresetReplay(snapshot, factoryDisplayUnitSet.value) !== null;
+}
+
 function saveFactoryPreset(index: number): void {
   if (index < 0 || index >= FACTORY_PRODUCTION_PRESET_COUNT) return;
-  const unitBlueprintId = selectedBuildUnitBlueprintId.value;
-  if (unitBlueprintId === null) return;
-  setFactoryProductionPresetSlot(index, unitBlueprintId);
+  setFactoryProductionPresetSlot(index, createFactoryProductionPresetSnapshot(
+    selectedBuildUnitBlueprintId.value,
+    props.selection.factoryRepeatsProduction,
+    factoryQueuedUnits.value.map((unit) => unit.unitBlueprintId),
+  ));
   refreshFactoryPresetSlots();
 }
 
@@ -630,12 +1364,18 @@ function loadFactoryPreset(index: number): void {
   if (index < 0 || index >= FACTORY_PRODUCTION_PRESET_COUNT) return;
   const factoryId = props.selection.factoryId;
   if (factoryId === undefined) return;
-  const unitBlueprintId = getFactoryProductionPresetSlot(index);
-  if (unitBlueprintId === null) {
-    props.actions.stopFactoryProduction(factoryId);
-    return;
+  const snapshot = getFactoryProductionPresetSlot(index);
+  const replay = resolveFactoryProductionPresetReplay(snapshot, factoryDisplayUnitSet.value);
+  if (replay === null) return;
+  props.actions.stopFactoryProduction(factoryId);
+  props.actions.queueUnit(
+    factoryId,
+    replay.selectedUnitBlueprintId,
+    replay.repeatProduction,
+  );
+  for (let i = 0; i < replay.productionQueue.length; i++) {
+    props.actions.queueUnit(factoryId, replay.productionQueue[i], false);
   }
-  props.actions.queueUnit(factoryId, unitBlueprintId, true);
 }
 
 function toggleWaitFromClick(event: MouseEvent): void {
@@ -648,10 +1388,40 @@ function toggleGatherWaitFromClick(event: MouseEvent): void {
   props.actions.toggleSelectedGatherWait(queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex);
 }
 
+function reverseUnitMoveStateFromClick(): void {
+  props.actions.setUnitMoveState(previousMoveState(props.selection.unitMoveState));
+}
+
+function reverseFireStateFromClick(): void {
+  props.actions.setSelectedFireState(previousFireState(props.selection.fireState));
+}
+
 function queueFactoryUnitFromClick(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
-  const repeat = !event.shiftKey;
-  const count = !repeat && event.altKey ? 5 : 1;
-  props.actions.queueUnit(factoryId, unitBlueprintId, repeat, count);
+  const productionMode = factoryProductionClickModeFromEvent(
+    event,
+    props.selection.factoryRepeatsProduction === true,
+  );
+  if (props.selection.factoryQueueMode && !event.altKey) {
+    props.actions.changeFactoryUnitQuota(factoryId, unitBlueprintId, productionMode.count);
+    return;
+  }
+  props.actions.queueUnit(factoryId, unitBlueprintId, productionMode.repeat, productionMode.count);
+}
+
+function removeFactoryQueuedUnitFromCell(factoryId: number, unitBlueprintId: string, event: MouseEvent): void {
+  const productionMode = factoryProductionClickModeFromEvent(event, false);
+  const quotaDelta = -productionMode.count;
+  if (props.selection.factoryQueueMode && !event.altKey && factoryQuotaTarget(unitBlueprintId) > 0) {
+    props.actions.changeFactoryUnitQuota(factoryId, unitBlueprintId, quotaDelta);
+    return;
+  }
+  if (factoryQueuedCount(unitBlueprintId) > 0) {
+    props.actions.removeFactoryUnitProduction(factoryId, unitBlueprintId, productionMode.count);
+    return;
+  }
+  if (factoryQuotaTarget(unitBlueprintId) > 0) {
+    props.actions.changeFactoryUnitQuota(factoryId, unitBlueprintId, quotaDelta);
+  }
 }
 
 function editFactoryQueueRun(
@@ -686,13 +1456,18 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
 
 <template>
   <!-- OPTIONS PANEL (left side) -->
-  <div v-if="showPanel" class="options-panel" :style="selectionPanelStyle">
+  <div
+    v-if="showPanel"
+    class="options-panel"
+    :class="{ 'bar-hotkey-preset': isBarHotkeyPreset }"
+    :style="selectionPanelStyle"
+  >
     <!-- Selection header. Per budget_design_philosophy.html "Selection Menus
          Are Uniform Per Entity Type": the header reflects the
          selection's entity type. Commanders read as Commander,
          fabricator-class towers as Fabricator, other towers as Tower,
          pure-infrastructure buildings as Building, otherwise N units. -->
-    <div class="panel-header">
+    <div v-if="showPrototypeOnlyCommandButtons" class="panel-header">
       <div class="selection-title">
         <span v-if="selection.hasCommander" class="unit-type commander">Commander</span>
         <span v-else-if="selection.hasFactory" class="unit-type factory">Fabricator</span>
@@ -730,7 +1505,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <div v-if="selection.controlGroups.length > 0" class="control-group-strip" aria-label="Control groups">
+    <div v-if="selection.controlGroups.length > 0 && showPrototypeOnlyCommandButtons" class="control-group-strip" aria-label="Control groups">
       <button
         v-for="group in selection.controlGroups"
         :key="group.index"
@@ -761,7 +1536,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </div>
     </div>
 
-    <div class="button-group selection-command-group">
+    <div v-if="showPrototypeOnlyCommandButtons" class="button-group selection-command-group">
       <div class="group-label">Select</div>
       <div class="buttons bar-command-grid">
         <button
@@ -916,6 +1691,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ wm.key }}</span>
         </button>
         <button
+          v-if="showFormationCommands"
           type="button"
           class="action-btn"
           :class="{ active: selection.isFormationAssumeMode }"
@@ -927,6 +1703,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('formation.assume') }}</span>
         </button>
         <button
+          v-if="showFormationCommands"
           type="button"
           class="action-btn"
           :class="{ active: selection.isFormationMoveMode }"
@@ -938,6 +1715,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('formation.move') }}</span>
         </button>
         <button
+          v-if="showAttackCommand"
           type="button"
           class="action-btn"
           :class="{ active: selection.isAttackMode }"
@@ -949,6 +1727,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('combat.attack') }}</span>
         </button>
         <button
+          v-if="showAttackLineCommand"
           type="button"
           class="action-btn"
           :class="{ active: selection.waypointMode === 'fight' }"
@@ -960,17 +1739,19 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('combat.attackLine') }}</span>
         </button>
         <button
+          v-if="showAttackAreaCommand"
           type="button"
           class="action-btn"
           :class="{ active: selection.isAttackAreaMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
-          :title="actionTitle('Area attack', 'combat.attackArea', 'Toggle targeting for selected units')"
+          :style="{ '--btn-color': BUTTON_COLORS.attackGround }"
+          :title="actionTitle(barOrderLabel('Area Attack', 'Area attack'), 'combat.attackArea', 'Toggle targeting for selected units')"
           @click="actions.toggleAttackArea()"
         >
-          <span class="btn-label">Area</span>
+          <span class="btn-label">{{ barOrderLabel('Area Attack', 'Area') }}</span>
           <span class="btn-key">{{ hotkey('combat.attackArea') }}</span>
         </button>
         <button
+          v-if="showAttackGroundCommand"
           type="button"
           class="action-btn"
           :class="{ active: selection.isAttackGroundMode }"
@@ -982,6 +1763,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('combat.attackGround') }}</span>
         </button>
         <button
+          v-if="showPrototypeOnlyCommandButtons"
           type="button"
           class="action-btn"
           :class="{ active: selection.isPingMode }"
@@ -1015,61 +1797,100 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         </button>
         <button
           type="button"
-          class="action-btn"
-          :class="{ active: selection.isWaiting }"
+          class="action-btn bar-order-wait"
           :style="{ '--btn-color': BUTTON_COLORS.wait }"
           :title="actionTitle('Wait', 'command.wait', 'Shift-click queues; Ctrl/Cmd+Shift-click inserts next')"
           @click="toggleWaitFromClick"
         >
           <span class="btn-label">Wait</span>
           <span class="btn-key">{{ hotkey('command.wait') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.isWaiting)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
         <button
+          v-if="showGatherWaitButton"
           type="button"
-          class="action-btn"
-          :class="{ active: selection.isGatherWaiting }"
+          class="action-btn bar-order-wait"
           :style="{ '--btn-color': BUTTON_COLORS.wait }"
           :title="actionTitle('Gather Wait', 'command.gatherWait', 'Shift-click queues; Ctrl/Cmd+Shift-click inserts next')"
           @click="toggleGatherWaitFromClick"
         >
           <span class="btn-label">Gather</span>
           <span class="btn-key">{{ hotkey('command.gatherWait') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.isGatherWaiting)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
         <button
           type="button"
-          class="action-btn"
-          :class="{ active: selection.isRepeatQueue }"
-          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          class="action-btn bar-order-state"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
           :title="actionTitle(selection.isRepeatQueue ? 'Repeat orders off' : 'Repeat orders', 'command.repeat')"
           @click="actions.toggleRepeatQueue()"
         >
-          <span class="btn-label">Repeat</span>
+          <span class="btn-label">{{ repeatStateLabel(selection.isRepeatQueue) }}</span>
           <span class="btn-key">{{ hotkey('command.repeat') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.isRepeatQueue)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
         <button
+          v-if="selection.hasMoveStateControl"
           type="button"
-          class="action-btn"
-          :class="{ active: selection.unitMoveState !== 'maneuver' }"
-          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          class="action-btn bar-order-state"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
           :title="actionTitle(`Move state: ${moveStateLabel(selection.unitMoveState)}; next ${nextMoveStateLabel(selection.unitMoveState)}`, 'command.moveState')"
           @click="actions.toggleUnitMoveState()"
+          @contextmenu.prevent="reverseUnitMoveStateFromClick"
         >
           <span class="btn-label">{{ moveStateLabel(selection.unitMoveState) }}</span>
           <span class="btn-key">{{ hotkey('command.moveState') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in moveStateLights(selection.unitMoveState)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
         <button
           v-if="selection.hasCloakControl"
           type="button"
-          class="action-btn"
-          :class="{ active: selection.wantsCloak || selection.isCloaked }"
-          :style="{ '--btn-color': BUTTON_COLORS.wait }"
+          class="action-btn bar-order-state"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
           :title="actionTitle(selection.wantsCloak ? 'Disable cloak' : 'Enable cloak', 'command.cloak')"
           @click="actions.toggleCloakState()"
         >
           <span class="btn-label">{{ cloakStateLabel(selection) }}</span>
           <span class="btn-key">{{ hotkey('command.cloak') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.wantsCloak || selection.isCloaked)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
         <button
+          v-if="showPrototypeOnlyCommandButtons"
           type="button"
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
@@ -1077,21 +1898,23 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           :title="actionTitle('Skip current order', 'command.skipCurrent')"
           @click="actions.skipCurrentOrder()"
         >
-          <span class="btn-label">Skip Q</span>
+          <span class="btn-label">Skip</span>
           <span class="btn-key">{{ hotkey('command.skipCurrent') }}</span>
         </button>
         <button
+          v-if="showPrototypeOnlyCommandButtons"
           type="button"
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
           :style="{ '--btn-color': BUTTON_COLORS.undoQueue }"
-          :title="actionTitle('Undo queued order', 'command.undoQueue')"
+          :title="actionTitle('Cancel last order', 'command.undoQueue')"
           @click="actions.removeLastQueuedOrder()"
         >
-          <span class="btn-label">Undo Q</span>
+          <span class="btn-label">Cancel</span>
           <span class="btn-key">{{ hotkey('command.undoQueue') }}</span>
         </button>
         <button
+          v-if="showPrototypeOnlyCommandButtons"
           type="button"
           class="action-btn"
           :disabled="!selection.hasQueuedOrders"
@@ -1143,26 +1966,41 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       <div class="buttons bar-command-grid">
         <button
           type="button"
-          class="action-btn"
-          :class="{ active: selection.fireState !== 'holdFire' }"
-          :style="{ '--btn-color': BUTTON_COLORS.fireControl }"
+          class="action-btn bar-order-state"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.fireControl) }"
           :title="actionTitle(`Fire state: ${fireStateLabel(selection.fireState)}; next ${nextFireStateLabel(selection.fireState)}`, 'command.fireToggle')"
           @click="actions.toggleSelectedFire()"
+          @contextmenu.prevent="reverseFireStateFromClick"
         >
           <span class="btn-label">{{ fireStateLabel(selection.fireState) }}</span>
           <span class="btn-key">{{ hotkey('command.fireToggle') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in fireStateLights(selection.fireState)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
         <button
-          v-if="selection.hasTrajectoryControl"
+          v-if="showTrajectoryButton"
           type="button"
-          class="action-btn"
-          :class="{ active: selection.trajectoryMode !== 'auto' }"
-          :style="{ '--btn-color': BUTTON_COLORS.fireControl }"
-          :title="actionTitle(`Trajectory ${selection.trajectoryMode}`, 'command.trajectoryToggle')"
+          class="action-btn bar-order-state"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.fireControl) }"
+          :title="actionTitle(trajectoryModeLabel(visibleTrajectoryMode), 'command.trajectoryToggle')"
           @click="actions.toggleTrajectoryMode()"
         >
-          <span class="btn-label">{{ trajectoryModeLabel(selection.trajectoryMode) }}</span>
+          <span class="btn-label">{{ trajectoryModeLabel(visibleTrajectoryMode) }}</span>
           <span class="btn-key">{{ hotkey('command.trajectoryToggle') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in trajectoryStateLights(visibleTrajectoryMode)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
       </div>
     </div>
@@ -1170,9 +2008,40 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     <!-- Build options (for units with builder capability) -->
     <div v-if="selection.hasBuilder && showUnitActions" class="button-group bar-menu-group build-menu-group">
       <div class="group-label">Build</div>
-      <div class="bar-grid-menu">
-        <div v-if="showBuildGridPager" class="bar-grid-heading">
-          <span v-if="currentBuildCategory && buildGridPageCount > 1">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }}</span>
+      <div class="bar-grid-menu" @contextmenu.prevent>
+        <div v-if="showBuilderTypeStrip" class="bar-builder-strip" aria-label="Selected builder types">
+          <div class="bar-builder-type-list">
+            <button
+              v-for="builderType in selection.selectedBuilderTypes"
+              :key="builderType.unitBlueprintId"
+              type="button"
+              class="bar-builder-type-btn"
+              :class="{ active: builderType.active }"
+              :title="`${builderType.label} x${builderType.count}`"
+              @click="setActiveBuilder(builderType.unitBlueprintId)"
+            >
+              <span class="bar-builder-thumb" aria-hidden="true">
+                <img
+                  v-if="unitThumbnailSrc(builderType.unitBlueprintId)"
+                  class="bar-builder-thumb-img"
+                  :src="unitThumbnailSrc(builderType.unitBlueprintId)!"
+                  alt=""
+                >
+                <span v-else class="bar-builder-thumb-fallback">{{ builderType.shortName }}</span>
+              </span>
+              <span v-if="builderType.count > 1" class="bar-builder-count">{{ builderType.count }}</span>
+            </button>
+          </div>
+          <button
+            v-if="showBuilderCycleButton"
+            type="button"
+            class="bar-grid-footer-btn bar-builder-cycle-btn"
+            title="Next builder - ."
+            @click="cycleActiveBuilder()"
+          >
+            <span class="bar-builder-cycle-label">›</span>
+            <span class="bar-category-key">.</span>
+          </button>
         </div>
         <div class="bar-option-grid">
         <div
@@ -1185,10 +2054,9 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
             type="button"
             class="action-btn build-btn thumbnail-action-btn bar-grid-cell"
             :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId }"
-            :title="costTitle(`Build ${bo.label}`, bo.cost, gridSlotHotkey(index) || bo.key)"
-            @click="selection.isBuildMode && selection.selectedBuildingBlueprintId === bo.buildingBlueprintId ? actions.cancelBuild() : actions.startBuild(bo.buildingBlueprintId)"
+            :title="costTitle(`Build ${bo.label}`, bo.cost, undefined, bo.metalCost, bo.energyCost)"
+            @click="clickBuildGridOption(bo.buildingBlueprintId)"
           >
-            <span v-if="gridSlotHotkey(index)" class="bar-cell-key">{{ gridSlotHotkey(index) }}</span>
             <span class="btn-thumb" aria-hidden="true">
               <img
                 v-if="structureThumbnailSrc(bo.buildingBlueprintId)"
@@ -1197,38 +2065,93 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
                 alt=""
               >
               <span v-else class="btn-thumb-fallback">{{ compactBuildingLabel(bo.label) }}</span>
+              <img
+                v-if="buildingGroupIconSrc(bo.buildingBlueprintId)"
+                class="bar-cell-group-icon"
+                :src="buildingGroupIconSrc(bo.buildingBlueprintId)!"
+                alt=""
+              >
             </span>
-            <span class="btn-label">{{ compactBuildingLabel(bo.label) }}</span>
-            <span class="btn-cost"><span class="cost-resource">{{ bo.cost }}</span></span>
-            <span class="btn-key">{{ gridSlotHotkey(index) || bo.key }}</span>
+            <span class="btn-cost bar-cost-stack">
+              <span class="cost-metal">{{ formatCostPart(bo.metalCost) }}</span>
+              <span class="cost-energy">{{ formatCostPart(bo.energyCost) }}</span>
+            </span>
+            <span v-if="buildGridCellHotkey(bo)" class="btn-key bar-cell-key">{{ buildGridCellHotkey(bo) }}</span>
           </button>
           <div v-else class="bar-grid-cell empty" aria-hidden="true"></div>
         </div>
         </div>
-        <div class="bar-grid-footer">
+        <div
+          v-if="showBuildGridFooter"
+          class="bar-grid-footer"
+          :class="{
+            'category-active': showBarGridBuildCategories && currentBuildCategory !== null,
+            'page-only': !showBarGridBuildCategories,
+          }"
+        >
+          <template v-if="showBarGridBuildCategories && currentBuildCategory === null">
+            <button
+              v-for="category in BAR_BUILD_CATEGORIES"
+              :key="category.id"
+              type="button"
+              class="bar-grid-category-btn"
+              :title="`${category.label} buildings - ${hotkey(category.keyCommandId)}`"
+              @click="selectBuildGridCategory(category.id)"
+            >
+              <img
+                class="bar-category-icon"
+                :src="publicAssetSrc(category.iconPath)"
+                alt=""
+              >
+              <span class="bar-category-label">{{ category.label }}</span>
+              <span class="bar-category-key">{{ hotkey(category.keyCommandId) }}</span>
+            </button>
+          </template>
+          <template v-else-if="showBarGridBuildCategories && currentBuildCategory !== null">
+            <button
+              type="button"
+              class="bar-grid-footer-btn bar-grid-back-btn"
+              title="Back to build categories - Shift"
+              @click="clearBuildGridCategory()"
+            >
+              <span class="bar-back-arrow" aria-hidden="true">⟵</span>
+              <span class="bar-back-label">Back</span>
+              <span class="bar-category-key">Shift</span>
+            </button>
+            <div
+              class="bar-grid-category-btn bar-grid-current-category active"
+              aria-current="true"
+            >
+              <img
+                class="bar-category-icon"
+                :src="publicAssetSrc(currentBuildCategory.iconPath)"
+                alt=""
+              >
+              <span class="bar-category-label">{{ currentBuildCategory.label }}</span>
+            </div>
+            <button
+              v-if="showBuildGridPager"
+              type="button"
+              class="bar-grid-footer-btn bar-grid-next-page-btn"
+              :title="pageActionTitle('Next build page')"
+              @click="stepBuildGridPage(1)"
+            >
+              <span class="bar-page-label">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }} 🠚</span>
+              <span v-if="barGridNextPageHotkey" class="bar-category-key">{{ barGridNextPageHotkey }}</span>
+            </button>
+          </template>
           <button
-            v-for="category in BAR_BUILD_CATEGORIES"
-            :key="category.id"
+            v-else-if="showBuildGridPager"
             type="button"
-            class="bar-grid-category-btn"
-            :class="{ active: buildGridCategory === category.id }"
-            :title="buildGridCategory === category.id ? 'Back to build categories' : `${category.label} buildings - ${hotkey(category.keyCommandId)}`"
-            @click="selectBuildGridCategory(category.id)"
-          >
-            <span class="bar-category-key">{{ hotkey(category.keyCommandId) }}</span>
-            <span>{{ category.label }}</span>
-          </button>
-          <button
-            v-if="showBuildGridPager"
-            type="button"
-            class="bar-grid-footer-btn"
-            title="Next build page"
+            class="bar-grid-footer-btn bar-grid-next-page-btn"
+            :title="pageActionTitle('Next build page')"
             @click="stepBuildGridPage(1)"
           >
-            Next
+            <span class="bar-page-label">Page {{ buildGridPage + 1 }}/{{ buildGridPageCount }} 🠚</span>
+            <span v-if="barGridNextPageHotkey" class="bar-category-key">{{ barGridNextPageHotkey }}</span>
           </button>
         </div>
-        <div class="buttons bar-command-grid build-utility-grid">
+        <div v-if="showBuildUtilityGrid" class="buttons bar-command-grid build-utility-grid">
         <button
           v-if="selection.canUpgradeMetalExtractors"
           type="button"
@@ -1291,7 +2214,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     </div>
 
     <!-- Unit specials -->
-    <div v-if="(selection.hasDGun || selection.hasCommander || selection.hasTransport) && showUnitActions" class="button-group">
+    <div v-if="(selection.hasDGun || selection.hasBuilder || selection.hasCommander || showCaptureButton || selection.hasTransport || showBuilderPriorityButton) && showUnitActions" class="button-group">
       <div class="group-label">Special</div>
       <div class="buttons bar-command-grid">
         <button
@@ -1307,19 +2230,31 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('command.dgun') }}</span>
         </button>
         <button
-          v-if="selection.hasCommander"
+          v-if="selection.hasBuilder"
           type="button"
           class="action-btn"
           :class="{ active: selection.isRepairAreaMode }"
           :style="{ '--btn-color': BUTTON_COLORS.repair }"
-          :title="actionTitle('Repair area', 'combat.repairArea')"
+          :title="actionTitle('Repair', 'combat.repair')"
           @click="actions.toggleRepairArea()"
         >
           <span class="btn-label">Repair</span>
-          <span class="btn-key">{{ hotkey('combat.repairArea') }}</span>
+          <span class="btn-key">{{ hotkey('combat.repair') }}</span>
         </button>
         <button
-          v-if="selection.hasCommander"
+          v-if="showRestoreButton"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isRestoreAreaMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.restore }"
+          :title="actionTitle('Restore', 'combat.restore')"
+          @click="actions.toggleRestoreArea()"
+        >
+          <span class="btn-label">Restore</span>
+          <span class="btn-key">{{ hotkey('combat.restore') }}</span>
+        </button>
+        <button
+          v-if="selection.hasBuilder"
           type="button"
           class="action-btn"
           :class="{ active: selection.isReclaimMode }"
@@ -1331,11 +2266,63 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('combat.reclaim') }}</span>
         </button>
         <button
-          v-if="selection.hasCommander"
+          v-if="showAreaMexButton"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isBuildMode && selection.selectedBuildingBlueprintId === AREA_MEX_BLUEPRINT_ID }"
+          :style="{ '--btn-color': BUTTON_COLORS.build }"
+          :title="actionTitle('Area Mex', 'command.areaMex', 'Click-drag an area to auto queue metal extractors for all available metal spots')"
+          @click="startAreaMexBuild()"
+        >
+          <span class="btn-label">Area Mex</span>
+          <span class="btn-key">{{ hotkey('command.areaMex') }}</span>
+        </button>
+        <button
+          v-if="showBuilderPriorityButton"
+          type="button"
+          class="action-btn bar-order-state"
+          :class="{ active: selection.builderPriorityLow }"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+          :title="actionTitle(builderPriorityLabel(selection.builderPriorityLow), 'command.builderPriority', 'Assigns resources to use for this builder when not having enough for all')"
+          @click="actions.toggleBuilderPriority()"
+        >
+          <span class="btn-label">{{ builderPriorityLabel(selection.builderPriorityLow) }}</span>
+          <span class="btn-key">{{ hotkey('command.builderPriority') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.builderPriorityLow)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
+        </button>
+        <button
+          v-if="showCarrierSpawnButton"
+          type="button"
+          class="action-btn bar-order-state"
+          :class="{ active: selection.carrierSpawnEnabled }"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+          :title="actionTitle(carrierSpawnLabel(selection.carrierSpawnEnabled), 'command.carrierSpawn', 'Enable/Disable drone spawning')"
+          @click="actions.toggleCarrierSpawn()"
+        >
+          <span class="btn-label">{{ carrierSpawnLabel(selection.carrierSpawnEnabled) }}</span>
+          <span class="btn-key">{{ hotkey('command.carrierSpawn') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.carrierSpawnEnabled)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
+        </button>
+        <button
+          v-if="showCaptureButton"
           type="button"
           class="action-btn"
           :class="{ active: selection.isCaptureMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.reclaim }"
+          :style="{ '--btn-color': BUTTON_COLORS.capture }"
           :title="actionTitle('Capture', 'combat.capture')"
           @click="actions.toggleCapture()"
         >
@@ -1343,7 +2330,31 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           <span class="btn-key">{{ hotkey('combat.capture') }}</span>
         </button>
         <button
-          v-if="selection.hasCommander"
+          v-if="showResurrectButton"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isResurrectMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.resurrect }"
+          :title="actionTitle('Resurrect', 'combat.resurrect')"
+          @click="actions.toggleResurrect()"
+        >
+          <span class="btn-label">Resurrect</span>
+          <span class="btn-key">{{ hotkey('combat.resurrect') }}</span>
+        </button>
+        <button
+          v-if="selection.hasCommander && showPrototypeOnlyCommandButtons"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isResurrectAreaMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.resurrect }"
+          :title="actionTitle('Resurrect area', 'combat.resurrectArea')"
+          @click="actions.toggleResurrectArea()"
+        >
+          <span class="btn-label">Res Area</span>
+          <span class="btn-key">{{ hotkey('combat.resurrectArea') }}</span>
+        </button>
+        <button
+          v-if="selection.hasBuilder && showPrototypeOnlyCommandButtons"
           type="button"
           class="action-btn"
           :disabled="!selection.hasReclaimableSelection"
@@ -1358,11 +2369,11 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           type="button"
           class="action-btn"
           :class="{ active: selection.isLoadTransportMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.guard }"
-          :title="actionTitle('Load transport', 'combat.loadTransport', 'Click a friendly unit')"
+          :style="{ '--btn-color': BUTTON_COLORS.loadTransport }"
+          :title="actionTitle(barOrderLabel('Load units', 'Load transport'), 'combat.loadTransport', 'Click a friendly unit')"
           @click="actions.toggleLoadTransport()"
         >
-          <span class="btn-label">Load</span>
+          <span class="btn-label">{{ barOrderLabel('Load units', 'Load') }}</span>
           <span class="btn-key">{{ hotkey('combat.loadTransport') }}</span>
         </button>
         <button
@@ -1370,11 +2381,11 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           type="button"
           class="action-btn"
           :class="{ active: selection.isUnloadTransportMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.move }"
-          :title="actionTitle('Unload transport', 'combat.unloadTransport', 'Click ground')"
+          :style="{ '--btn-color': BUTTON_COLORS.unloadTransport }"
+          :title="actionTitle(barOrderLabel('Unload units', 'Unload transport'), 'combat.unloadTransport', 'Click ground')"
           @click="actions.toggleUnloadTransport()"
         >
-          <span class="btn-label">Unload</span>
+          <span class="btn-label">{{ barOrderLabel('Unload units', 'Unload') }}</span>
           <span class="btn-key">{{ hotkey('combat.unloadTransport') }}</span>
         </button>
       </div>
@@ -1384,6 +2395,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group">
       <div class="group-label">Factory</div>
       <div
+        v-if="showPrototypeOnlyCommandButtons"
         class="factory-status"
         :class="{ producing: selection.factoryIsProducing }"
         :title="factoryStatusTitle"
@@ -1397,7 +2409,7 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
         </div>
         <div v-if="factoryQueueSummary" class="factory-queue-row">{{ factoryQueueSummary }}</div>
       </div>
-      <div v-if="factoryQueueRuns.length > 0" class="factory-queue-controls">
+      <div v-if="factoryQueueRuns.length > 0 && showPrototypeOnlyCommandButtons" class="factory-queue-controls">
         <div
           v-for="(run, runIndex) in factoryQueueRuns"
           :key="`${run.startIndex}-${run.unitBlueprintId}`"
@@ -1444,28 +2456,106 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           type="button"
           class="action-btn"
           :disabled="!hasFactoryProduction"
-          :style="{ '--btn-color': BUTTON_COLORS.stop }"
-          :title="actionTitle('Stop production', 'factory.stopProduction')"
+          :style="{ '--btn-color': factoryStopProductionButtonColor() }"
+          :title="actionTitle(stopFactoryProductionLabel(), 'factory.stopProduction', isBarHotkeyPreset ? 'Clear build queue and quotas for all units on selected factories' : undefined)"
           @click="actions.stopFactoryProduction(selection.factoryId!)"
         >
-          <span class="btn-label">Stop</span>
+          <span class="btn-label">{{ stopFactoryProductionLabel() }}</span>
           <span class="btn-key">{{ hotkey('factory.stopProduction') }}</span>
         </button>
         <button
           type="button"
+          class="action-btn bar-order-state"
+          :class="{ active: selection.factoryRepeatsProduction === true }"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+          :title="actionTitle(selection.factoryRepeatsProduction === true ? 'Factory repeat on' : 'Factory repeat off', 'command.repeat')"
+          @click="actions.setFactoryRepeatProduction(selection.factoryId!, selection.factoryRepeatsProduction !== true)"
+        >
+          <span class="btn-label">{{ repeatStateLabel(selection.factoryRepeatsProduction === true) }}</span>
+          <span class="btn-key">{{ hotkey('command.repeat') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.factoryRepeatsProduction === true)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
+        </button>
+        <button
+          v-if="showBuilderPriorityButton"
+          type="button"
+          class="action-btn bar-order-state"
+          :class="{ active: selection.builderPriorityLow }"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+          :title="actionTitle(builderPriorityLabel(selection.builderPriorityLow), 'command.builderPriority', 'Assigns resources to use for this builder when not having enough for all')"
+          @click="actions.toggleBuilderPriority()"
+        >
+          <span class="btn-label">{{ builderPriorityLabel(selection.builderPriorityLow) }}</span>
+          <span class="btn-key">{{ hotkey('command.builderPriority') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.builderPriorityLow)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
+        </button>
+        <button
+          v-if="showFactoryGuardButton"
+          type="button"
+          class="action-btn bar-order-state"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.guard) }"
+          :title="actionTitle(selection.factoryGuardTargetId === selection.factoryId ? 'Factory guard on' : 'Factory guard off', 'command.factoryGuard')"
+          @click="actions.toggleFactoryGuard(selection.factoryId!)"
+        >
+          <span class="btn-label">{{ barOrderLabel('Factory Guard', 'Guard') }}</span>
+          <span class="btn-key">{{ hotkey('command.factoryGuard') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.factoryGuardTargetId === selection.factoryId)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
+        </button>
+        <button
+          v-if="showPrototypeOnlyCommandButtons"
+          type="button"
           class="action-btn"
-          :disabled="selection.factoryGuardTargetId === null || selection.factoryGuardTargetId === undefined"
+          :disabled="selection.factoryGuardTargetId === null || selection.factoryGuardTargetId === undefined || selection.factoryGuardTargetId === selection.factoryId"
           :style="{ '--btn-color': BUTTON_COLORS.guard }"
-          :title="actionTitle('Clear factory guard', 'command.factoryGuard')"
+          title="Clear explicit factory guard target"
           @click="actions.clearFactoryGuard(selection.factoryId!)"
         >
-          <span class="btn-label">Clr Guard</span>
-          <span class="btn-key">{{ hotkey('command.factoryGuard') }}</span>
+          <span class="btn-label">Clr Target</span>
+        </button>
+        <button
+          v-if="showFactoryQueueModeButton"
+          type="button"
+          class="action-btn bar-order-state"
+          :class="{ active: selection.factoryQueueMode }"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.wait) }"
+          :title="actionTitle(factoryQueueModeLabel(selection.factoryQueueMode), 'factory.queueMode')"
+          @click="actions.toggleFactoryQueueMode()"
+        >
+          <span class="btn-label">{{ factoryQueueModeLabel(selection.factoryQueueMode) }}</span>
+          <span class="btn-key">{{ hotkey('factory.queueMode') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selection.factoryQueueMode)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
       </div>
     </div>
 
-    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group factory-preset-group">
+    <div v-if="selection.hasFactory && selection.factoryId && showTowerActions && showPrototypeOnlyCommandButtons" class="button-group factory-preset-group">
       <div class="group-label">Presets</div>
       <div class="factory-preset-grid">
         <button
@@ -1473,13 +2563,13 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           :key="`load-${index}`"
           type="button"
           class="action-btn factory-preset-btn"
-          :class="{ active: factoryPresetSlots[index] === selectedBuildUnitBlueprintId && factoryPresetSlots[index] !== null }"
-          :disabled="factoryPresetSlots[index] === null && !hasFactoryProduction"
+          :class="{ active: factoryPresetMatchesCurrent(factoryPresetSlots[index] ?? null) }"
+          :disabled="!canLoadFactoryPreset(index)"
           :style="{ '--btn-color': BUTTON_COLORS.vehicleProduce }"
           :title="factoryPresetActionTitle(index, factoryPresetLoadCommandId(index), 'Load')"
           @click="loadFactoryPreset(index)"
         >
-          <span class="btn-label">P{{ index + 1 }}</span>
+          <span class="btn-label">P{{ index }}</span>
           <span class="btn-key">{{ factoryPresetLoadKey(index) }} / {{ factoryPresetShortName(factoryPresetSlots[index]) }}</span>
         </button>
         <button
@@ -1492,10 +2582,55 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           :title="factoryPresetActionTitle(index, factoryPresetSaveCommandId(index), 'Save current')"
           @click="saveFactoryPreset(index)"
         >
-          <span class="btn-label">S{{ index + 1 }}</span>
+          <span class="btn-label">S{{ index }}</span>
           <span class="btn-key">{{ factoryPresetSaveKey(index) }}</span>
         </button>
       </div>
+    </div>
+
+    <div v-if="showBarFactoryPresetOverlay" class="bar-factory-preset-overlay" aria-label="Factory presets">
+      <div class="bar-factory-preset-title">
+        <span class="bar-factory-preset-title-main">Factory Presets</span>
+        <span class="bar-factory-preset-title-sub">{{ selection.factorySelectedUnit?.label ?? 'Idle' }}</span>
+      </div>
+      <button
+        v-for="entry in factoryPresetOverlayEntries"
+        :key="entry.index"
+        type="button"
+        class="bar-factory-preset-row"
+        :class="{
+          repeat: entry.snapshot.repeatProduction,
+          queue: !entry.snapshot.repeatProduction,
+          disabled: !entry.canLoad,
+          active: factoryPresetMatchesCurrent(entry.snapshot),
+        }"
+        :disabled="!entry.canLoad"
+        :title="factoryPresetActionTitle(entry.index, factoryPresetLoadCommandId(entry.index), 'Load')"
+        @click="loadFactoryPreset(entry.index)"
+      >
+        <span class="bar-factory-preset-number">{{ entry.label }}</span>
+        <span class="bar-factory-preset-units">
+          <span
+            v-for="run in factoryPresetOverlayRuns(entry)"
+            :key="run.unitBlueprintId"
+            class="bar-factory-preset-unit"
+          >
+            <span class="bar-factory-preset-thumb" aria-hidden="true">
+              <img
+                v-if="unitThumbnailSrc(run.unitBlueprintId)"
+                class="bar-factory-preset-thumb-img"
+                :src="unitThumbnailSrc(run.unitBlueprintId)!"
+                alt=""
+              >
+              <span v-else class="bar-factory-preset-thumb-fallback">{{ run.shortName }}</span>
+            </span>
+            <span class="bar-factory-preset-count">{{ run.count }}</span>
+          </span>
+          <span v-if="factoryPresetOverlayOverflow(entry) > 0" class="bar-factory-preset-more">
+            +{{ factoryPresetOverlayOverflow(entry) }}
+          </span>
+        </span>
+      </button>
     </div>
 
     <!-- Factory production (for fabricator towers). BAR labs use a
@@ -1503,9 +2638,6 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
     <div v-if="selection.hasFactory && selection.factoryId && showTowerActions" class="button-group bar-menu-group">
       <div class="group-label">Produce</div>
       <div class="bar-grid-menu">
-        <div v-if="factoryGridPageCount > 1" class="bar-grid-heading">
-          <span>Page {{ factoryGridPage + 1 }}/{{ factoryGridPageCount }}</span>
-        </div>
         <div class="bar-option-grid">
           <div
             v-for="(uo, index) in factoryGridCells"
@@ -1518,12 +2650,16 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
               class="action-btn produce-btn thumbnail-action-btn bar-grid-cell"
               :class="{
                 active: selectedBuildUnitBlueprintId === uo.unitBlueprintId,
+                'factory-under-construction': selection.factoryUnderConstruction === true,
                 'vehicle-btn': uo.locomotion !== 'legs',
                 'bot-btn': uo.locomotion === 'legs',
               }"
-              :title="costTitle(`Repeat ${uo.label}; Shift-click queue; Shift+Alt queues five`, uo.cost)"
+              :title="factoryProductionCellTitle(uo)"
               @click="(event) => queueFactoryUnitFromClick(selection.factoryId!, uo.unitBlueprintId, event)"
+              @contextmenu.prevent="(event) => removeFactoryQueuedUnitFromCell(selection.factoryId!, uo.unitBlueprintId, event)"
             >
+              <span v-if="factoryQuotaTarget(uo.unitBlueprintId) > 0" class="bar-cell-quota-count">{{ factoryQuotaLabel(uo.unitBlueprintId) }}</span>
+              <span v-if="factoryQueuedCount(uo.unitBlueprintId) > 0" class="bar-cell-queue-count">{{ factoryQueuedCount(uo.unitBlueprintId) }}</span>
               <span class="btn-thumb" aria-hidden="true">
                 <img
                   v-if="unitThumbnailSrc(uo.unitBlueprintId)"
@@ -1532,39 +2668,51 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
                   alt=""
                 >
                 <span v-else class="btn-thumb-fallback">{{ uo.shortName }}</span>
+                <img
+                  v-if="unitGroupIconSrc(uo.unitBlueprintId)"
+                  class="bar-cell-group-icon"
+                  :src="unitGroupIconSrc(uo.unitBlueprintId)!"
+                  alt=""
+                >
               </span>
-              <span class="btn-label">{{ uo.shortName }}</span>
-              <span class="btn-cost"><span class="cost-resource">{{ uo.cost }}</span></span>
+              <span
+                v-if="factoryCellShowsBuildProgress(uo.unitBlueprintId)"
+                class="bar-cell-build-progress"
+                :style="factoryCellBuildProgressStyle(uo.unitBlueprintId)"
+                aria-hidden="true"
+              ></span>
+              <span class="btn-cost bar-cost-stack">
+                <span class="cost-metal">{{ formatCostPart(uo.metalCost) }}</span>
+                <span class="cost-energy">{{ formatCostPart(uo.energyCost) }}</span>
+              </span>
+              <span v-if="factoryGridCellHotkey(index)" class="btn-key bar-cell-key">{{ factoryGridCellHotkey(index) }}</span>
             </button>
             <div v-else class="bar-grid-cell empty" aria-hidden="true"></div>
           </div>
         </div>
-        <div v-if="factoryGridPageCount > 1" class="bar-grid-footer">
+        <div
+          v-if="selection.factoryUnderConstruction === true || factoryGridPageCount > 1"
+          class="bar-grid-footer page-only"
+          :class="{ 'under-construction': selection.factoryUnderConstruction === true }"
+        >
+          <div v-if="selection.factoryUnderConstruction === true" class="bar-grid-under-construction">
+            Under Construction
+          </div>
           <button
+            v-else
             type="button"
-            class="bar-grid-footer-btn"
-            title="Previous unit page"
-            @click="stepFactoryGridPage(-1)"
-          >
-            Prev
-          </button>
-          <button
-            type="button"
-            class="bar-grid-footer-btn"
-            title="Next unit page"
+            class="bar-grid-footer-btn bar-grid-next-page-btn"
+            :title="pageActionTitle('Next unit page')"
             @click="stepFactoryGridPage(1)"
           >
-            Next
+            <span class="bar-page-label">Page {{ factoryGridPage + 1 }}/{{ factoryGridPageCount }} 🠚</span>
+            <span v-if="barGridNextPageHotkey" class="bar-category-key">{{ barGridNextPageHotkey }}</span>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Combat lock-on. Set Target enters a no-ground click-pick mode
-         (the next left-click on any entity with an ID sets the host-level
-         priorityTargetId; ground clicks are ignored); Clear Target
-         drops the lock and reverts to autonomous acquisition.
-         Applies to selected combat units and towers with turrets. -->
+    <!-- Combat lock-on. Applies to selected combat units and towers with turrets. -->
     <div v-if="selection.hasTowerTargetControl && showCombatActions" class="button-group">
       <div class="group-label">Target</div>
       <div class="buttons bar-command-grid">
@@ -1572,33 +2720,47 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           type="button"
           class="action-btn"
           :class="{ active: selection.isTowerTargetMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
-          :title="actionTitle('Set target no ground', 'combat.towerTargetSet', 'Click an entity to lock on; ground clicks are ignored')"
+          :style="{ '--btn-color': BUTTON_COLORS.setTarget }"
+          :title="actionTitle('Set target', 'combat.towerTargetSet', 'Click an entity or ground point to lock on')"
           @click="actions.setTowerTargetMode()"
         >
-          <span class="btn-label">No Ground</span>
+          <span class="btn-label">Set Target</span>
           <span class="btn-key">{{ hotkey('combat.towerTargetSet') }}</span>
         </button>
         <button
+          v-if="showTowerTargetNoGroundButton"
+          type="button"
+          class="action-btn"
+          :class="{ active: selection.isTowerTargetNoGroundMode }"
+          :style="{ '--btn-color': BUTTON_COLORS.setTarget }"
+          :title="actionTitle('Set target no ground', 'combat.towerTargetSetNoGround', 'Click an entity to lock on; ground clicks are ignored')"
+          @click="actions.setTowerTargetNoGroundMode()"
+        >
+          <span class="btn-label">No Ground</span>
+          <span class="btn-key">{{ hotkey('combat.towerTargetSetNoGround') }}</span>
+        </button>
+        <button
+          v-if="showManualLaunchButton"
           type="button"
           class="action-btn"
           :class="{ active: selection.isManualLaunchMode }"
-          :style="{ '--btn-color': BUTTON_COLORS.attackArea }"
-          :title="actionTitle('Manual launch', 'combat.manualLaunch', 'Click ground to force one volley')"
+          :style="{ '--btn-color': BUTTON_COLORS.manualFire }"
+          :title="actionTitle(barOrderLabel('Launch', 'Manual launch'), 'combat.manualLaunch', 'Click ground to force one volley')"
           @click="actions.toggleManualLaunch()"
         >
-          <span class="btn-label">Launch</span>
+          <span class="btn-label">{{ barOrderLabel('Launch', 'Launch') }}</span>
           <span class="btn-key">{{ hotkey('combat.manualLaunch') }}</span>
         </button>
         <button
+          v-if="showTowerTargetClearButton"
           type="button"
           class="action-btn"
           :disabled="!selection.hasTowerTargetActive"
-          :style="{ '--btn-color': BUTTON_COLORS.stop }"
+          :style="{ '--btn-color': BUTTON_COLORS.cancelTarget }"
           :title="actionTitle('Clear target', 'combat.towerTargetClear')"
           @click="actions.clearTowerTarget()"
         >
-          <span class="btn-label">Clear</span>
+          <span class="btn-label">{{ barOrderLabel('Clear Target', 'Clear') }}</span>
           <span class="btn-key">{{ hotkey('combat.towerTargetClear') }}</span>
         </button>
       </div>
@@ -1613,11 +2775,11 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
           type="button"
           class="action-btn"
           :style="{ '--btn-color': BUTTON_COLORS.build }"
-          :title="actionTitle('Upgrade selected metal extractor', 'command.upgradeMexSelected')"
+          :title="actionTitle(barOrderLabel('Upgrade', 'Upgrade selected metal extractor'), selectedMetalExtractorUpgradeCommandId)"
           @click="actions.upgradeSelectedMetalExtractors()"
         >
-          <span class="btn-label">T2 Mex</span>
-          <span class="btn-key">{{ hotkey('command.upgradeMexSelected') }}</span>
+          <span class="btn-label">{{ barOrderLabel('Upgrade', 'T2 Mex') }}</span>
+          <span class="btn-key">{{ hotkey(selectedMetalExtractorUpgradeCommandId) }}</span>
         </button>
       </div>
     </div>
@@ -1626,27 +2788,33 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
          budget_design_philosophy.html: solar/wind/extractor selections expose
          this toggle. ON = producing + normal damage; OFF = not
          producing + 10x damage resistance. -->
-    <div v-if="selection.hasBuildingActiveControl && showBuildingActions" class="button-group">
+    <div v-if="showBuildingActiveButton && showBuildingActions" class="button-group">
       <div class="group-label">Power</div>
       <div class="buttons bar-command-grid">
         <button
           type="button"
-          class="action-btn"
-          :class="{ active: selection.buildingsActive }"
-          :style="{ '--btn-color': BUTTON_COLORS.buildingActive }"
-          :title="actionTitle(selection.buildingsActive ? 'Turn off' : 'Turn on', 'command.buildingActive')"
+          class="action-btn bar-order-state"
+          :style="{ '--btn-color': barStateButtonColor(BUTTON_COLORS.buildingActive) }"
+          :title="actionTitle(selectedBuildingsActive ? 'Turn off' : 'Turn on', 'command.buildingActive')"
           @click="actions.toggleBuildingActive()"
         >
-          <span class="btn-label">{{ selection.buildingsActive ? 'On' : 'Off' }}</span>
+          <span class="btn-label">{{ selectedBuildingsActive ? 'On' : 'Off' }}</span>
           <span class="btn-key">{{ hotkey('command.buildingActive') }}</span>
+          <span class="bar-state-lights" aria-hidden="true">
+            <span
+              v-for="light in binaryStateLights(selectedBuildingsActive)"
+              :key="light.key"
+              class="bar-state-light"
+              :class="[light.tone, { active: light.active }]"
+            ></span>
+          </span>
         </button>
       </div>
     </div>
 
-    <!-- Self-Destruct. Per "Selection Menus Are Uniform Per Entity Type"
-         every unit / tower / building selection panel exposes a
-         self-destruct affordance. -->
-    <div v-if="selection.hasSelfDestructable" class="button-group">
+    <!-- Self-Destruct. Prototype presets keep the budget affordance visible;
+         BAR presets match BAR's order menu, where CMD.SELFD is hotkey-only. -->
+    <div v-if="showSelfDestructButton" class="button-group">
       <div class="group-label">Demolish</div>
       <div class="buttons bar-command-grid">
         <button
@@ -1674,20 +2842,45 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
  * (dark semi-transparent base + muted gray border). Rounded
  * corners stay so the panel still reads as a discrete card. */
 .options-panel {
+  --bar-order-panel-width: 37.825vh;
+  --bar-order-panel-height: 14vh;
+  --bar-flow-element-margin: 0.45vh;
+  --bar-flow-element-padding: 0.3vh;
+  --bar-order-active-padding: calc(var(--bar-flow-element-padding) * 1.4);
+  --bar-order-bottom-active-padding: calc(var(--bar-order-active-padding) / 3);
+  --bar-order-button-padding: max(1px, calc(var(--bar-flow-element-padding) * 0.52));
+  --bar-order-corner-size: clamp(2px, 0.22vh, 3px);
+  --bar-order-active-height: calc(var(--bar-order-panel-height) - var(--bar-order-active-padding) - var(--bar-order-bottom-active-padding));
+  --bar-order-active-width: calc(var(--bar-order-panel-width) - (var(--bar-order-active-padding) * 2));
+  --bar-order-cell-width: calc(var(--bar-order-active-width) / var(--bar-order-columns));
+  --bar-order-cell-height: calc(var(--bar-order-active-height) / var(--bar-order-rows));
+  --bar-order-cell-inner-width: calc(var(--bar-order-cell-width) - var(--bar-order-cell-margin-primary) - var(--bar-order-cell-margin-secondary));
+  --bar-order-cell-inner-height: calc(var(--bar-order-cell-height) - var(--bar-order-cell-margin-primary) - var(--bar-order-cell-margin-secondary));
+  --bar-order-label-max-size: calc(var(--bar-order-cell-inner-width) / 7);
+  --bar-order-state-light-height: calc((var(--bar-order-active-height) / var(--bar-order-rows)) * 0.14);
+  --bar-order-font-size: clamp(9px, 1.18vh, 13px);
+  --bar-order-key-font-size: clamp(9px, 1.05vh, 12px);
   position: fixed;
-  left: max(272px, calc(50% - 252px));
+  left: calc(var(--bar-order-panel-width) + var(--bar-flow-element-margin));
   bottom: var(--selection-panel-playable-bottom, 0px);
   display: grid;
-  grid-template-columns: repeat(12, 38px);
-  grid-auto-rows: 22px;
+  grid-template-columns: repeat(var(--bar-order-columns), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--bar-order-rows), minmax(0, 1fr));
   grid-auto-flow: row;
   align-items: stretch;
-  gap: 2px;
-  width: auto;
+  justify-items: stretch;
+  gap: 0;
+  width: var(--bar-order-panel-width);
+  height: var(--bar-order-panel-height);
+  box-sizing: border-box;
   background: var(--selection-panel-bg);
   border: 1px solid var(--selection-panel-border);
   border-radius: 4px 4px 0 0;
-  padding: 4px;
+  padding:
+    var(--bar-order-active-padding)
+    var(--bar-order-active-padding)
+    var(--bar-order-bottom-active-padding)
+    var(--bar-order-active-padding);
   max-width: calc(100vw - 280px);
   overflow: visible;
   font-family: monospace;
@@ -1713,7 +2906,8 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
   .options-panel {
     right: 0;
     left: auto;
-    grid-template-columns: repeat(8, 38px);
+    --bar-order-panel-width: min(calc(100vw - 4px), clamp(232px, 76vw, 360px));
+    --bar-order-panel-height: clamp(104px, 28vw, 150px);
     max-width: calc(100vw - 4px);
   }
 }
@@ -1987,14 +3181,151 @@ kbd {
   opacity: 0.88;
 }
 
-.factory-status {
-  grid-column: span 3;
-  align-self: stretch;
-  flex: 0 1 150px;
-  min-width: 0;
-  height: 22px;
+.bar-factory-preset-overlay {
+  position: fixed;
+  right: 18px;
+  bottom: calc(var(--selection-panel-playable-bottom, 0px) + 134px);
+  z-index: 1004;
+  width: 298px;
+  color: var(--selection-panel-text);
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.55));
+}
+
+.bar-factory-preset-title,
+.bar-factory-preset-row {
+  width: 298px;
   box-sizing: border-box;
-  padding: 2px 5px;
+  border: 1px solid rgba(170, 194, 178, 0.34);
+  background: rgba(9, 12, 14, 0.94);
+}
+
+.bar-factory-preset-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 50px;
+  padding: 0 12px;
+  border-bottom: 0;
+}
+
+.bar-factory-preset-title-main {
+  color: #88ff9a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bar-factory-preset-title-sub {
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--selection-panel-hint);
+  font-size: 10px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-factory-preset-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  height: 40px;
+  padding: 3px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.bar-factory-preset-row + .bar-factory-preset-row {
+  margin-top: 3px;
+}
+
+.bar-factory-preset-row:hover:not(:disabled),
+.bar-factory-preset-row.active {
+  background: rgba(23, 31, 27, 0.98);
+  border-color: rgba(148, 224, 167, 0.62);
+}
+
+.bar-factory-preset-row:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.bar-factory-preset-number {
+  justify-self: center;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.bar-factory-preset-row.repeat .bar-factory-preset-number {
+  color: #49ff5d;
+}
+
+.bar-factory-preset-row.queue .bar-factory-preset-number {
+  color: #f0f0f0;
+}
+
+.bar-factory-preset-units {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.bar-factory-preset-unit {
+  position: relative;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+}
+
+.bar-factory-preset-thumb {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #14181c;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.bar-factory-preset-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.bar-factory-preset-thumb-fallback {
+  color: var(--selection-panel-key);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.bar-factory-preset-count {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  text-shadow: 0 1px 2px #000, 0 0 3px #000;
+}
+
+.bar-factory-preset-more {
+  flex: 0 0 auto;
+  color: var(--selection-panel-hint);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.factory-status {
+  grid-column: span 2;
+  align-self: stretch;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: calc(var(--bar-order-button-padding) + 1px) calc(var(--bar-order-button-padding) + 3px);
   background: #14161a;
   border: 1px solid var(--selection-panel-button-border);
   border-radius: 3px;
@@ -2157,11 +3488,85 @@ kbd {
 }
 
 .options-panel > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn {
-  width: 38px;
-  min-width: 38px;
-  height: 22px;
-  padding: 0 2px;
-  font-size: 8px;
+  width: calc(100% - var(--bar-order-cell-margin-primary) - var(--bar-order-cell-margin-secondary));
+  min-width: 0;
+  height: calc(100% - var(--bar-order-cell-margin-primary) - var(--bar-order-cell-margin-secondary));
+  box-sizing: border-box;
+  margin:
+    var(--bar-order-cell-margin-primary)
+    var(--bar-order-cell-margin-secondary)
+    var(--bar-order-cell-margin-secondary)
+    var(--bar-order-cell-margin-primary);
+  padding: var(--bar-order-button-padding);
+  padding-bottom: calc(var(--bar-order-button-padding) + 4px);
+  border-radius: var(--bar-order-corner-size);
+  font-size: var(--bar-order-font-size);
+}
+
+.options-panel .bar-order-state {
+  order: 0;
+}
+
+.options-panel .bar-order-wait {
+  order: 1;
+}
+
+.options-panel .bar-order-command {
+  order: 2;
+}
+
+.options-panel > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-order-state):not(.bar-order-wait):not(.bar-order-command) {
+  order: 2;
+}
+
+.options-panel .bar-state-lights {
+  --bar-state-light-count: 2;
+  --bar-state-light-width: calc((var(--bar-order-cell-inner-width) / var(--bar-state-light-count)) - (var(--bar-order-button-padding) * 2));
+  --bar-state-light-gap: calc((var(--bar-state-light-width) * 0.075) + (var(--bar-order-button-padding) * 2));
+  position: absolute;
+  right: calc(var(--bar-order-button-padding) * 2);
+  bottom: var(--bar-order-button-padding);
+  left: calc(var(--bar-order-button-padding) * 2);
+  display: grid;
+  grid-template-columns: repeat(var(--bar-state-light-count), minmax(0, 1fr));
+  gap: var(--bar-state-light-gap);
+  height: var(--bar-order-state-light-height);
+  pointer-events: none;
+}
+
+.options-panel .bar-state-lights:has(.bar-state-light:nth-child(3)) {
+  --bar-state-light-count: 3;
+}
+
+.options-panel .bar-state-light {
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.36);
+  border-radius: 0;
+}
+
+.options-panel .bar-state-light:first-child {
+  border-top-left-radius: calc(var(--bar-order-state-light-height) * 0.33);
+  border-bottom-left-radius: calc(var(--bar-order-state-light-height) * 0.33);
+}
+
+.options-panel .bar-state-light:last-child {
+  border-top-right-radius: calc(var(--bar-order-state-light-height) * 0.33);
+  border-bottom-right-radius: calc(var(--bar-order-state-light-height) * 0.33);
+}
+
+.options-panel .bar-state-light.off.active {
+  background: rgba(255, 26, 26, 0.8);
+  box-shadow: 0 0 calc(var(--bar-order-state-light-height) * 8) rgba(255, 26, 26, 0.09);
+}
+
+.options-panel .bar-state-light.mid.active {
+  background: rgba(255, 255, 26, 0.8);
+  box-shadow: 0 0 calc(var(--bar-order-state-light-height) * 8) rgba(255, 255, 26, 0.09);
+}
+
+.options-panel .bar-state-light.on.active {
+  background: rgba(26, 255, 26, 0.8);
+  box-shadow: 0 0 calc(var(--bar-order-state-light-height) * 8) rgba(26, 255, 26, 0.09);
 }
 
 .bar-menu-group {
@@ -2172,12 +3577,11 @@ kbd {
   z-index: 1001;
   align-items: flex-start;
   margin: 0;
-  padding: 4px;
-  background: var(--selection-panel-bg);
-  border: 1px solid var(--selection-panel-border);
-  border-left: 0;
-  border-radius: 0 6px 6px 0;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 @media (max-width: 900px) {
@@ -2187,28 +3591,47 @@ kbd {
 }
 
 .bar-grid-menu {
+  --bar-grid-bg-padding: clamp(3px, 0.35vh, 5px);
+  --bar-grid-cell-size: calc((37.825vh - (var(--bar-grid-bg-padding) * 2)) / 4);
+  --bar-grid-cell-padding: max(1px, calc(var(--bar-grid-cell-size) * 0.007));
+  --bar-grid-icon-padding: max(1px, calc(var(--bar-grid-cell-size) * 0.015));
+  --bar-grid-corner-size: calc(var(--bar-grid-cell-size) * 0.025);
+  --bar-grid-progress-corner-size: calc(var(--bar-grid-cell-size) * 0.03);
+  --bar-grid-cell-inner-size: calc(var(--bar-grid-cell-size) - (var(--bar-grid-cell-padding) * 2));
+  --bar-grid-queue-font-size: calc(var(--bar-grid-cell-inner-size) * 0.29);
+  --bar-grid-queue-badge-height: calc(var(--bar-grid-cell-inner-size) * 0.365);
+  --bar-grid-queue-text-padding: calc(var(--bar-grid-cell-inner-size) * 0.1);
+  --bar-grid-queue-corner-size: calc(var(--bar-grid-corner-size) * 3.3);
+  --bar-grid-footer-third-width: calc(var(--bar-grid-cell-size) * 1.3333333333);
+  --bar-grid-category-font-size: 1.3vh;
+  --bar-grid-page-font-size: var(--bar-grid-category-font-size);
+  --bar-grid-hotkey-font-size: calc(var(--bar-grid-category-font-size) + 5px);
+  --bar-grid-category-button-height: calc(var(--bar-grid-category-font-size) * 2.3 * 1.4);
+  --bar-grid-button-padding: max(1px, calc(var(--bar-grid-bg-padding) * 0.52));
+  --bar-grid-active-area-margin: calc(var(--bar-grid-bg-padding) * 0.1);
+  --bar-grid-category-rect-height: calc(var(--bar-grid-category-button-height) - var(--bar-grid-active-area-margin) - (var(--bar-grid-button-padding) * 2));
+  --bar-grid-footer-button-height: calc(var(--bar-grid-category-button-height) - (var(--bar-grid-button-padding) * 2));
+  --bar-builder-button-size: calc(var(--bar-grid-category-font-size) * 2.3 * 2);
+  --bar-builder-next-height: calc(var(--bar-builder-button-size) * 0.6);
+  --bar-builder-next-width: calc((var(--bar-builder-button-size) * 0.45) + (var(--bar-grid-bg-padding) * 2) + 1ch);
+  --bar-grid-price-font-size: calc(var(--bar-grid-cell-inner-size) * 0.16);
+  --bar-grid-key-font-size: calc(var(--bar-grid-price-font-size) * 1.1);
+  --bar-grid-label-font-size: 1.2vh;
+  position: relative;
   display: grid;
-  gap: 3px;
+  gap: 0;
   min-width: 0;
-}
-
-.bar-grid-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--selection-panel-label);
-  font-size: 8px;
-  font-weight: bold;
-  line-height: 1;
-  text-transform: uppercase;
+  padding: var(--bar-grid-bg-padding);
+  background: rgba(5, 7, 10, 0.88);
+  border: 1px solid var(--selection-panel-border);
+  border-radius: 3px;
 }
 
 .bar-option-grid {
   display: grid;
-  grid-template-columns: repeat(4, 66px);
-  grid-auto-rows: 62px;
-  gap: 2px;
+  grid-template-columns: repeat(4, var(--bar-grid-cell-size));
+  grid-auto-rows: var(--bar-grid-cell-size);
+  gap: 0;
 }
 
 .bar-grid-slot {
@@ -2216,64 +3639,144 @@ kbd {
   min-height: 0;
 }
 
+.bar-grid-slot:nth-child(n + 1):nth-child(-n + 4) {
+  grid-row: 3;
+}
+
+.bar-grid-slot:nth-child(n + 5):nth-child(-n + 8) {
+  grid-row: 2;
+}
+
+.bar-grid-slot:nth-child(n + 9):nth-child(-n + 12) {
+  grid-row: 1;
+}
+
 .bar-grid-cell {
-  width: 66px;
-  min-width: 66px;
-  height: 62px;
-  border-radius: 3px;
+  width: var(--bar-grid-cell-size);
+  min-width: var(--bar-grid-cell-size);
+  height: var(--bar-grid-cell-size);
+  border-radius: var(--bar-grid-corner-size);
 }
 
 .bar-grid-cell.empty {
-  background:
-    linear-gradient(135deg, transparent 47%, rgba(237, 243, 255, 0.08) 48%, rgba(237, 243, 255, 0.08) 52%, transparent 53%),
-    #14161a;
-  border: 1px solid rgba(237, 243, 255, 0.08);
+  position: relative;
+  background: transparent;
+  border: 0;
+}
+
+.bar-grid-cell.empty::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding));
+  background: rgba(26, 26, 26, 0.7);
+  border-radius: var(--bar-grid-corner-size);
+  pointer-events: none;
 }
 
 .bar-grid-cell.thumbnail-action-btn {
-  width: 66px;
-  min-width: 66px;
-  height: 62px;
-  padding: 0;
+  width: var(--bar-grid-cell-size);
+  min-width: var(--bar-grid-cell-size);
+  height: var(--bar-grid-cell-size);
+  padding: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding));
   overflow: hidden;
 }
 
 .bar-grid-cell .btn-thumb {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding));
+  isolation: isolate;
   border: 0;
   background: rgba(255, 255, 255, 0.035);
-  border-radius: 0;
+  border-radius: var(--bar-grid-corner-size);
+}
+
+.bar-grid-cell .btn-thumb::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
 }
 
 .bar-grid-cell .btn-thumb::after {
   content: "";
   position: absolute;
   inset: auto 0 0;
+  z-index: 1;
   height: 55%;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0));
   pointer-events: none;
 }
 
 .bar-grid-cell .btn-thumb-img {
+  position: relative;
+  z-index: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   transform: scale(2.2);
   transform-origin: center;
+  transition: transform 0.08s linear;
+}
+
+.bar-grid-cell:hover .btn-thumb-img,
+.bar-grid-cell:focus-visible .btn-thumb-img {
+  transform: scale(2.3);
+}
+
+.bar-grid-cell.active .btn-thumb-img {
+  transform: scale(2.35);
+}
+
+.bar-grid-cell.factory-under-construction:not(:hover):not(:focus-visible) .btn-thumb-img {
+  filter: brightness(0.77);
+}
+
+.bar-grid-cell.active .btn-thumb::before {
+  background: rgba(255, 217, 51, 0.25);
+  mix-blend-mode: screen;
+}
+
+.bar-cell-build-progress {
+  position: absolute;
+  inset: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding));
+  z-index: 3;
+  border-radius: var(--bar-grid-progress-corner-size);
+  background: conic-gradient(
+    from 0deg,
+    rgba(20, 20, 20, 0.6) 0 var(--bar-cell-progress-remaining),
+    transparent var(--bar-cell-progress-remaining) 100%
+  );
+  pointer-events: none;
+  transform: scaleX(-1);
+}
+
+.bar-cell-group-icon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  width: 30%;
+  height: 30%;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
+}
+
+.bar-grid-cell.factory-under-construction:not(:hover):not(:focus-visible) .bar-cell-group-icon {
+  filter: brightness(0.63) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.9));
 }
 
 .bar-grid-cell .btn-label {
   position: absolute;
-  right: 2px;
-  bottom: 12px;
-  left: 2px;
+  right: calc(var(--bar-grid-cell-padding) + 2px);
+  bottom: calc(var(--bar-grid-price-font-size) + var(--bar-grid-cell-padding) + 8px);
+  left: calc(var(--bar-grid-cell-padding) + 2px);
   z-index: 1;
   max-width: none;
   color: #ffffff;
-  font-size: 8px;
+  font-size: var(--bar-grid-label-font-size);
   line-height: 1;
   text-align: center;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
@@ -2281,85 +3784,358 @@ kbd {
 
 .bar-grid-cell .btn-cost {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  right: calc(var(--bar-grid-cell-padding) + (var(--bar-grid-cell-inner-size) * 0.048));
+  bottom: calc(var(--bar-grid-cell-padding) + (var(--bar-grid-price-font-size) * 0.35));
   z-index: 1;
-  display: block;
-  font-size: 8px;
+  display: grid;
+  justify-items: end;
+  font-size: var(--bar-grid-price-font-size);
   font-weight: bold;
   line-height: 1;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
-.bar-cell-key {
+.bar-cost-stack {
+  gap: 0;
+  text-align: right;
+}
+
+.bar-cell-queue-count,
+.bar-cell-quota-count {
   position: absolute;
-  left: 3px;
-  top: 3px;
+  left: 0;
+  z-index: 2;
   display: grid;
   place-items: center;
-  min-width: 12px;
-  height: 12px;
-  padding: 0 2px;
-  background: #05070a;
-  border: 1px solid color-mix(in srgb, var(--btn-color) 52%, transparent);
-  border-radius: 2px;
-  color: var(--selection-panel-key);
-  font-size: 8px;
+  min-width: 0;
+  height: var(--bar-grid-queue-badge-height);
+  padding: 0 var(--bar-grid-queue-text-padding);
+  box-sizing: border-box;
+  background: linear-gradient(to top, rgba(38, 38, 38, 0.95), rgba(64, 64, 64, 0.95));
+  border: 0;
+  font-size: var(--bar-grid-queue-font-size);
   font-weight: bold;
   line-height: 1;
-  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
+}
+
+.bar-cell-queue-count {
+  top: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding));
+  border-radius: 0 0 var(--bar-grid-queue-corner-size) 0;
+  color: rgb(190, 255, 190);
+}
+
+.bar-cell-quota-count {
+  bottom: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding));
+  border-radius: 0 var(--bar-grid-queue-corner-size) 0 0;
+  color: rgb(255, 130, 190);
 }
 
 .bar-grid-footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(4, var(--bar-grid-cell-size));
+  gap: 0;
+}
+
+.bar-grid-footer:not(.category-active):not(.page-only) {
+  height: var(--bar-grid-category-button-height);
+}
+
+.bar-grid-footer.category-active,
+.bar-grid-footer.page-only {
+  position: relative;
+  display: block;
+  width: calc(var(--bar-grid-cell-size) * 4);
+  height: var(--bar-grid-category-button-height);
 }
 
 .bar-grid-category-btn,
 .bar-grid-footer-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 6px;
+  height: var(--bar-grid-category-button-height);
+  padding: 0;
+  overflow: hidden;
   background: var(--selection-panel-button-bg);
   border: 1px solid var(--selection-panel-button-border);
   border-radius: 3px;
   color: var(--selection-panel-text);
   font-family: monospace;
-  font-size: 8px;
+  font-size: var(--bar-grid-category-font-size);
   font-weight: bold;
   line-height: 1;
   cursor: pointer;
 }
 
 .bar-grid-category-btn {
-  width: 66px;
-  justify-content: flex-start;
-  padding: 0 4px;
+  width: var(--bar-grid-cell-size);
+}
+
+.bar-grid-footer:not(.category-active):not(.page-only) .bar-grid-category-btn {
+  align-self: start;
+  height: var(--bar-grid-category-rect-height);
+  margin-top: var(--bar-grid-button-padding);
+}
+
+.bar-grid-footer.category-active .bar-grid-back-btn,
+.bar-grid-footer.category-active .bar-grid-next-page-btn,
+.bar-grid-footer.category-active .bar-grid-current-category,
+.bar-grid-footer.page-only .bar-grid-next-page-btn {
+  position: absolute;
+  top: var(--bar-grid-button-padding);
+}
+
+.bar-grid-footer.category-active .bar-grid-current-category {
+  height: var(--bar-grid-category-rect-height);
+}
+
+.bar-grid-footer.category-active .bar-grid-back-btn,
+.bar-grid-footer.category-active .bar-grid-next-page-btn,
+.bar-grid-footer.page-only .bar-grid-next-page-btn {
+  height: var(--bar-grid-footer-button-height);
+}
+
+.bar-grid-footer.category-active .bar-grid-back-btn,
+.bar-grid-footer.category-active .bar-grid-next-page-btn,
+.bar-grid-footer.page-only .bar-grid-next-page-btn {
+  width: calc(var(--bar-grid-footer-third-width) - (var(--bar-grid-bg-padding) * 2));
+}
+
+.bar-grid-footer.category-active .bar-grid-back-btn {
+  left: 0;
+  justify-content: space-between;
+}
+
+.bar-grid-footer.category-active .bar-grid-next-page-btn,
+.bar-grid-footer.page-only .bar-grid-next-page-btn {
+  right: 0;
+}
+
+.bar-grid-under-construction {
+  position: absolute;
+  top: var(--bar-grid-button-padding);
+  right: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  height: var(--bar-grid-footer-button-height);
+  color: rgb(255, 200, 50);
+  font-size: calc(var(--bar-grid-page-font-size) * 1.1);
+  font-weight: bold;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
+  pointer-events: none;
+}
+
+.bar-grid-footer.category-active .bar-grid-current-category {
+  left: 50%;
+  width: var(--bar-grid-footer-third-width);
+  transform: translateX(-50%);
+}
+
+.bar-grid-current-category {
+  cursor: default;
+}
+
+.bar-builder-strip {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--bar-grid-bg-padding);
+  width: max-content;
+  min-height: 0;
+  margin: 0;
+}
+
+.bar-builder-type-list {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--bar-grid-bg-padding) * 1.5);
+  padding:
+    calc(var(--bar-grid-bg-padding) * 0.5)
+    calc(var(--bar-grid-bg-padding) * 2)
+    calc(var(--bar-grid-bg-padding) * 2)
+    calc(var(--bar-grid-bg-padding) * 1.5);
+  background: rgba(5, 7, 10, 0.88);
+  border-radius: 0 3px 3px 0;
+}
+
+.bar-builder-type-btn {
+  position: relative;
+  width: var(--bar-builder-button-size);
+  height: var(--bar-builder-button-size);
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.bar-builder-type-btn:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 1px;
+}
+
+.bar-builder-thumb,
+.bar-builder-thumb-img,
+.bar-builder-thumb-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.bar-builder-thumb-img {
+  object-fit: cover;
+  filter: brightness(0.5);
+  transform: scale(2.1);
+  transform-origin: center;
+  transition: filter 0.08s linear, transform 0.08s linear;
+}
+
+.bar-builder-type-btn:hover .bar-builder-thumb-img,
+.bar-builder-type-btn:focus-visible .bar-builder-thumb-img {
+  filter: brightness(0.75);
+  transform: scale(2.2);
+}
+
+.bar-builder-type-btn.active .bar-builder-thumb-img {
+  filter: brightness(1);
+}
+
+.bar-builder-type-btn.active:hover .bar-builder-thumb-img,
+.bar-builder-type-btn.active:focus-visible .bar-builder-thumb-img {
+  filter: brightness(1.25);
+}
+
+.bar-builder-thumb-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--selection-panel-text);
+  font-family: monospace;
+  font-size: var(--bar-grid-category-font-size);
+  font-weight: bold;
+}
+
+.bar-builder-count {
+  position: absolute;
+  left: 3px;
+  bottom: 2px;
+  color: #ffffff;
+  font-family: monospace;
+  font-size: 1.2vh;
+  font-weight: bold;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
+}
+
+.bar-builder-cycle-btn {
+  align-self: center;
+  width: var(--bar-builder-next-width);
+  min-width: var(--bar-builder-next-width);
+  height: var(--bar-builder-next-height);
+  margin-left: 0;
+}
+
+.bar-builder-cycle-label {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--bar-builder-next-height) * 0.2);
+  color: #ffffff;
+  font-size: calc(var(--bar-builder-next-height) * 1.2);
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.bar-builder-cycle-btn .bar-category-key {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--bar-grid-bg-padding) * 2);
+  transform: translateY(-50%);
 }
 
 .bar-grid-category-btn:hover,
-.bar-grid-footer-btn:hover,
-.bar-grid-category-btn.active {
-  border-color: var(--selection-panel-build);
+.bar-grid-footer-btn:hover {
+  border-color: var(--selection-panel-button-border);
   background: var(--selection-panel-button-hover-bg);
 }
 
 .bar-grid-category-btn.active {
-  box-shadow: 0 0 5px var(--selection-panel-build);
+  background: rgba(51, 51, 51, 0.9);
+  border-color: var(--selection-panel-button-border);
+  box-shadow: none;
+}
+
+.bar-category-icon {
+  position: absolute;
+  top: calc(var(--bar-grid-bg-padding) * 0.5);
+  left: calc(var(--bar-grid-bg-padding) * 0.5);
+  width: min(calc(var(--bar-grid-category-rect-height) * 1.1), var(--bar-grid-category-button-height), calc(100% - var(--bar-grid-bg-padding)));
+  height: calc(100% - var(--bar-grid-bg-padding));
+  object-fit: contain;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.bar-category-label {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--bar-grid-bg-padding) * 2);
+  left: calc(var(--bar-grid-bg-padding) * 7);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: clip;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+.bar-back-arrow {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--bar-grid-bg-padding) * 2);
+  transform: translateY(-50%);
+}
+
+.bar-back-label {
+  position: absolute;
+  top: 50%;
+  left: 25%;
+  transform: translate(-50%, -50%);
+}
+
+.bar-page-label {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--bar-grid-bg-padding) * 2);
+  left: calc(var(--bar-grid-bg-padding) * 3);
+  overflow: hidden;
+  text-align: left;
+  text-overflow: clip;
+  transform: translateY(-50%);
+  white-space: nowrap;
 }
 
 .bar-category-key {
-  display: grid;
-  place-items: center;
-  min-width: 13px;
-  height: 13px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 2px;
-  color: var(--selection-panel-key);
+  display: block;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: transparent;
+  color: rgb(215, 255, 215);
+  font-size: var(--bar-grid-hotkey-font-size);
+  line-height: 1;
+}
+
+.bar-grid-footer .bar-category-key {
+  position: absolute;
+  top: 50%;
+  right: calc(var(--bar-grid-bg-padding) * 2);
+  transform: translateY(-50%);
 }
 
 .build-utility-grid {
@@ -2411,6 +4187,93 @@ kbd {
   box-shadow: 0 0 5px var(--btn-color);
 }
 
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state) {
+  background: linear-gradient(to top, rgba(168, 168, 168, 0.9), rgba(255, 255, 255, 0.9));
+  border-color: rgba(255, 255, 255, 0.88);
+  color: rgb(20, 20, 20);
+  box-shadow: none;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state) > .btn-label {
+  color: rgb(20, 20, 20);
+  text-shadow: none;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell) {
+  --bar-order-hover-top-alpha: 0.28;
+  --bar-order-hover-top-fade-alpha: 0.035;
+  --bar-order-hover-bottom-alpha: 0.095;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state) {
+  --bar-order-hover-top-alpha: 0.112;
+  --bar-order-hover-top-fade-alpha: 0.014;
+  --bar-order-hover-bottom-alpha: 0.038;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell)::before,
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell)::after {
+  content: "";
+  position: absolute;
+  right: calc(var(--bar-order-button-padding) * 2);
+  left: calc(var(--bar-order-button-padding) * 2);
+  z-index: 1;
+  border-radius: var(--bar-order-corner-size);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell)::before {
+  top: calc(var(--bar-order-button-padding) * 2);
+  height: 42%;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, var(--bar-order-hover-top-alpha)), rgba(255, 255, 255, var(--bar-order-hover-top-fade-alpha)));
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell)::after {
+  bottom: calc(var(--bar-order-button-padding) * 2);
+  height: 50%;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, var(--bar-order-hover-bottom-alpha)), rgba(255, 255, 255, 0));
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):hover:not(:disabled),
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):focus-visible:not(:disabled) {
+  background: var(--selection-panel-button-bg);
+  border-color: var(--selection-panel-button-border);
+  box-shadow: none;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state):hover:not(:disabled),
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn.active:not(.bar-grid-cell):not(.bar-order-state):focus-visible:not(:disabled) {
+  background: linear-gradient(to top, rgba(168, 168, 168, 0.9), rgba(255, 255, 255, 0.9));
+  border-color: rgba(255, 255, 255, 0.88);
+  color: rgb(20, 20, 20);
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):hover:not(:disabled)::before,
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):hover:not(:disabled)::after,
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):focus-visible:not(:disabled)::before,
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell):focus-visible:not(:disabled)::after {
+  opacity: 1;
+}
+
+.options-panel.bar-hotkey-preset .bar-order-state.active {
+  background: var(--selection-panel-button-bg);
+  border-color: var(--selection-panel-button-border);
+  box-shadow: none;
+}
+
+.options-panel.bar-hotkey-preset .bar-grid-cell.action-btn:hover,
+.options-panel.bar-hotkey-preset .bar-grid-cell.action-btn:focus-visible,
+.options-panel.bar-hotkey-preset .bar-grid-cell.action-btn.active {
+  background: var(--selection-panel-button-bg);
+  border-color: var(--selection-panel-button-border);
+  box-shadow: none;
+}
+
 .btn-label {
   display: block;
   max-width: 8ch;
@@ -2418,6 +4281,16 @@ kbd {
   font-weight: bold;
   text-overflow: clip;
   white-space: nowrap;
+}
+
+.options-panel.bar-hotkey-preset > .button-group:not(.bar-menu-group):not(.selection-command-group):not(.details-group) .action-btn:not(.bar-grid-cell) > .btn-label {
+  max-width: 100%;
+  font-size: min(var(--bar-order-font-size), var(--bar-order-label-max-size));
+  letter-spacing: 0;
+  line-height: 0.95;
+  overflow-wrap: anywhere;
+  text-align: center;
+  white-space: normal;
 }
 
 .btn-cost {
@@ -2428,8 +4301,7 @@ kbd {
   color: var(--selection-panel-cost-energy);
 }
 
-/* Unified construction cost across energy and metal. */
-.cost-resource {
+.cost-metal {
   color: var(--selection-panel-cost-resource);
 }
 
@@ -2442,7 +4314,7 @@ kbd {
   border: 1px solid var(--btn-color);
   border-radius: 3px;
   color: var(--selection-panel-key);
-  font-size: 10px;
+  font-size: var(--bar-order-key-font-size, 10px);
   font-weight: bold;
   line-height: 1;
   opacity: 0;
@@ -2453,10 +4325,37 @@ kbd {
   z-index: 2;
 }
 
+.options-panel.bar-hotkey-preset .action-btn:not(.bar-grid-cell) > .btn-key {
+  display: none;
+}
+
 .action-btn:hover .btn-key,
 .action-btn:focus-visible .btn-key {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+.bar-grid-cell > .btn-key.bar-cell-key {
+  right: calc(var(--bar-grid-cell-padding) + (var(--bar-grid-cell-inner-size) * 0.048));
+  left: auto;
+  top: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding) + 1px);
+  bottom: auto;
+  display: block;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: rgb(215, 255, 215);
+  font-size: var(--bar-grid-key-font-size);
+  opacity: 1;
+  transform: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
+}
+
+.bar-grid-cell:hover > .btn-key.bar-cell-key,
+.bar-grid-cell:focus-visible > .btn-key.bar-cell-key {
+  transform: none;
 }
 
 .build-btn {

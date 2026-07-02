@@ -1063,6 +1063,8 @@ export function runSnapshotEntityWirePackContractTest(): void {
         producing: true,
         repeat: false,
         queue: [1, 2, 1],
+        quotas: [1, 3, 2, 1],
+        quotaCounts: [1, 2, 2, 1],
         energyRate: 0.75,
         metalRate: 0.5,
         guardTargetId: null,
@@ -1172,6 +1174,14 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     decoded?.building?.factory?.queue?.join(',') === '1,2,1',
     'factory finite queue must survive compact entity wire round trip',
+  );
+  assertContract(
+    decoded?.building?.factory?.quotas?.join(',') === '1,3,2,1',
+    'factory quota pairs must survive compact entity wire round trip',
+  );
+  assertContract(
+    decoded?.building?.factory?.quotaCounts?.join(',') === '1,2,2,1',
+    'factory quota count pairs must survive compact entity wire round trip',
   );
   const decodedRoamUnit = decodedEntities.find((entity) => entity.id === 202);
   assertContract(

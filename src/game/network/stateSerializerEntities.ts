@@ -75,7 +75,11 @@ import {
   quantizeRotation as qRot,
   quantizeVelocity as qVel,
 } from './snapshotQuantization';
-import { encodeFactoryProductionQueue } from './factoryProductionQueueWire';
+import {
+  encodeFactoryProductionQueue,
+  encodeFactoryProductionQuotaCounts,
+  encodeFactoryProductionQuotas,
+} from './factoryProductionQueueWire';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
 import {
   ENTITY_STATE_KIND_BUILDING,
@@ -142,6 +146,7 @@ const _directTurretFsm: CombatTargetingTurretFsmOut = {
   targetId: -1,
 };
 
+export const ENTITY_SNAPSHOT_WIRE_KIND_RAW = 0;
 export const ENTITY_SNAPSHOT_WIRE_KIND_BASIC = 1;
 export const ENTITY_SNAPSHOT_WIRE_KIND_UNIT = 2;
 export const ENTITY_SNAPSHOT_WIRE_KIND_BUILDING = 3;
@@ -280,6 +285,16 @@ export function appendEntitySnapshotWireSourceRow(
   else source.typedEntityRows++;
   recordEntitySnapshotWireSourceChangedFields(source, kind, changedFields);
   source.count = index + 1;
+}
+
+function appendRawEntitySnapshotWireSourceRow(changedFields: number | undefined): void {
+  appendEntitySnapshotWireSourceRow(
+    entityWireSource,
+    ENTITY_SNAPSHOT_WIRE_KIND_RAW,
+    -1,
+    false,
+    changedFields ?? 0,
+  );
 }
 
 export function recordEntitySnapshotWireSourceChangedFields(
@@ -459,8 +474,11 @@ function createPooledEntry(): PooledEntry {
       selectedUnitBlueprintCode: null, progress: 0, producing: false,
       repeat: true,
       queue: null,
+      quotas: null,
+      quotaCounts: null,
       energyRate: 0, metalRate: 0,
       guardTargetId: null,
+      lowPriority: false,
       rally,
       route: null,
     },
@@ -574,6 +592,58 @@ function canReferenceSnapshotEntityId(
   id: number | undefined,
 ): boolean {
   return id === undefined || visibility === undefined || visibility.canReferenceEntityId(world, id);
+}
+
+export function factoryPrivateSnapshotRequiresDto(
+  entity: Entity,
+  changedFields: number | undefined,
+  visibility: SnapshotVisibility | undefined = undefined,
+): boolean {
+  if (
+    entity.type !== 'building' &&
+    entity.type !== 'tower'
+  ) {
+    return false;
+  }
+  if (entity.building === null || entity.factory === null) return false;
+  if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_FACTORY) === 0) return false;
+  if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
+  // The current 42-slot typed building row predates factory quotas. Use the
+  // DTO shape for factory-private rows so quota set and quota clear updates
+  // cannot be compacted into a lossy row.
+  return true;
+}
+
+export function unitBuilderPrivateSnapshotRequiresDto(
+  entity: Entity,
+  changedFields: number | undefined,
+  visibility: SnapshotVisibility | undefined = undefined,
+): boolean {
+  if (entity.type !== 'unit' || entity.builder === null) return false;
+  if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_ACTIONS) === 0) return false;
+  if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
+  return true;
+}
+
+export function unitFactoryPrivateSnapshotRequiresDto(
+  entity: Entity,
+  changedFields: number | undefined,
+  visibility: SnapshotVisibility | undefined = undefined,
+): boolean {
+  if (entity.type !== 'unit' || entity.factory === null) return false;
+  if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_FACTORY) === 0) return false;
+  if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
+  return true;
+}
+
+export function entityPrivateSnapshotRequiresDto(
+  entity: Entity,
+  changedFields: number | undefined,
+  visibility: SnapshotVisibility | undefined = undefined,
+): boolean {
+  return factoryPrivateSnapshotRequiresDto(entity, changedFields, visibility) ||
+    unitBuilderPrivateSnapshotRequiresDto(entity, changedFields, visibility) ||
+    unitFactoryPrivateSnapshotRequiresDto(entity, changedFields, visibility);
 }
 
 function appendDirectBasicEntityWireRow(
@@ -1128,6 +1198,16 @@ function appendDirectBuildingEntityWireRow(
   const factoryRoute = shouldEmitFactory
     ? appendDirectFactoryRouteWireRows(entity)
     : { offset: -1, count: -1 };
+  if (shouldEmitFactory && !typedPlaceholder) {
+    appendEntitySnapshotWireSourceRow(
+      entityWireSource,
+      0,
+      -1,
+      false,
+      changedFields ?? 0,
+    );
+    return;
+  }
   const hasPos = isFull || (changedMask & ENTITY_CHANGED_POS) !== 0;
   const hasRot = isFull || (changedMask & ENTITY_CHANGED_ROT) !== 0;
   const hasHp = isFull || (changedMask & ENTITY_CHANGED_HP) !== 0;
@@ -1256,6 +1336,7 @@ export function serializeEntitySnapshot(
   const poolEntry = getPooledEntry();
   const ne = poolEntry.entity;
   const isFull = changedFields === undefined;
+  const privateSnapshotRequiresDto = entityPrivateSnapshotRequiresDto(entity, changedFields, visibility);
   const canSeePrivateDetails = visibility !== undefined
     ? visibility.canSeePrivateEntityDetails(entity)
     : true;
@@ -1286,7 +1367,7 @@ export function serializeEntitySnapshot(
   if (entity.type === 'unit' && entity.unit) {
     const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
       ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
-      ENTITY_CHANGED_BUILDING;
+      ENTITY_CHANGED_BUILDING | ENTITY_CHANGED_FACTORY;
     const hasSurfaceNormalFields = isFull ||
       (changedFields! & ENTITY_CHANGED_NORMAL);
     const hasOrientationFields = entity.unit.orientation !== null &&
@@ -1310,6 +1391,8 @@ export function serializeEntitySnapshot(
       u.moveState = null;
       u.holdPosition = null;
       u.wantCloak = null;
+      u.builderPriorityLow = null;
+      u.carrierSpawnEnabled = null;
       u.cloaked = null;
 
       if (isFull) {
@@ -1416,6 +1499,19 @@ export function serializeEntitySnapshot(
           : isFull
             ? null
             : false;
+        u.builderPriorityLow = entity.builder?.lowPriority === true
+          ? true
+          : entity.builder !== null && !isFull
+            ? false
+            : null;
+      }
+
+      if (canSeePrivateDetails && entity.factory !== null && (isFull || (changedFields! & ENTITY_CHANGED_FACTORY))) {
+        u.carrierSpawnEnabled = entity.factory.carrierSpawnEnabled === false
+          ? false
+          : isFull
+            ? null
+            : true;
       }
 
       u.turrets = null;
@@ -1540,11 +1636,21 @@ export function serializeEntitySnapshot(
           f.producing = entity.factory.isProducing;
           f.repeat = entity.factory.repeatProduction;
           f.queue = encodeFactoryProductionQueue(entity.factory.productionQueue);
+          f.quotas = encodeFactoryProductionQuotas(entity.factory.productionQuotas);
+          f.quotaCounts = encodeFactoryProductionQuotaCounts(
+            entity.factory.productionQuotas,
+            entity.factory.productionQuotaCounts,
+          );
           f.energyRate = entity.factory.energyRateFraction;
           f.metalRate = entity.factory.metalRateFraction;
           f.guardTargetId = canReferenceEntityId(entity.factory.guardTargetId ?? undefined)
             ? entity.factory.guardTargetId
             : null;
+          f.lowPriority = entity.factory.lowPriority === true
+            ? true
+            : isFull
+              ? undefined
+              : false;
 
           poolEntry.rally.pos.x = entity.factory.rallyX;
           poolEntry.rally.pos.y = entity.factory.rallyY;
@@ -1577,7 +1683,11 @@ export function serializeEntitySnapshot(
     }
   }
 
-  appendEntitySnapshotWireRowDirect(entity, changedFields, world, visibility);
+  if (privateSnapshotRequiresDto) {
+    appendRawEntitySnapshotWireSourceRow(changedFields);
+  } else {
+    appendEntitySnapshotWireRowDirect(entity, changedFields, world, visibility);
+  }
   return ne;
 }
 
@@ -1585,6 +1695,8 @@ export function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: numbe
   if (changedFields === undefined || changedFields === 0) return false;
   const hasBasicTransformFields = (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0;
   if (entity.type === 'unit' && entity.unit !== null) {
+    if (unitBuilderPrivateSnapshotRequiresDto(entity, changedFields)) return false;
+    if (unitFactoryPrivateSnapshotRequiresDto(entity, changedFields)) return false;
     if ((changedFields & ~TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS) !== 0) return false;
     const orientationTriggersTypedRow = entity.unit.orientation !== null &&
       (changedFields & (ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL)) !== 0;
@@ -1594,6 +1706,7 @@ export function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: numbe
   }
   if ((entity.type === 'building' || entity.type === 'tower') && entity.building !== null) {
     if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && entity.factory === null) return false;
+    if (factoryPrivateSnapshotRequiresDto(entity, changedFields)) return false;
     return (changedFields & ~TYPED_PLACEHOLDER_BUILDING_DELTA_FIELDS) === 0 &&
       ((changedFields & TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS) !== 0 ||
         hasBasicTransformFields);

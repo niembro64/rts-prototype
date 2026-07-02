@@ -102,6 +102,7 @@ function createUnitBaseEntity({
       moveState: 'maneuver',
       wantCloak: false,
       cloaked: false,
+      cloakRestoreFireState: null,
       patrolStartIndex: null,
       activePath: null,
       flyingLoiterTargetX: null,
@@ -180,6 +181,7 @@ export function createUnitFromBlueprintEntity(
   if (bp.builder) {
     entity.builder = {
       buildRange: bp.builder.buildRange,
+      lowPriority: false,
       currentBuildTarget: NO_ENTITY_ID,
     };
   }
@@ -194,8 +196,13 @@ export function createUnitFromBlueprintEntity(
   if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
     entity.factory = {
       selectedUnitBlueprintId: spawnMount.producedBlueprintId,
+      lowPriority: false,
+      carrierSpawnEnabled: true,
       repeatProduction: true,
       productionQueue: [],
+      productionQuotas: {},
+      productionQuotaCounts: {},
+      resumeRepeatUnitBlueprintId: null,
       currentShellId: null,
       currentBuildProgress: 0,
       defaultWaypoints: null,

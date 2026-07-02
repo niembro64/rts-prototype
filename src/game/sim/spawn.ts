@@ -6,7 +6,7 @@ import { economyManager } from './economy';
 import { aimTurretsToward } from './turretInit';
 import { setUnitFacingYaw } from './unitOrientation';
 import { getBuildingConfig } from './buildConfigs';
-import { BUILDABLE_UNIT_BLUEPRINT_IDS } from './blueprints';
+import { getStructureFactoryAllowedUnitBlueprintIds } from './factoryProductionRoster';
 import { DEMO_CONFIG } from '../../demoConfig';
 import type { WaypointType } from '../../types/commandTypes';
 import {
@@ -375,8 +375,9 @@ function getAvailableDemoFactoryUnitBlueprintIds(
   availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): string[] {
   const unitBlueprintIds: string[] = [];
-  for (let i = 0; i < BUILDABLE_UNIT_BLUEPRINT_IDS.length; i++) {
-    const unitBlueprintId = BUILDABLE_UNIT_BLUEPRINT_IDS[i];
+  const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
+  for (let i = 0; i < factoryRoster.length; i++) {
+    const unitBlueprintId = factoryRoster[i];
     if (availableUnitBlueprintIds !== undefined && !availableUnitBlueprintIds.has(unitBlueprintId)) continue;
     unitBlueprintIds.push(unitBlueprintId);
   }

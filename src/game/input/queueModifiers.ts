@@ -12,6 +12,11 @@ export type QueueCommandMode = {
   queueInsertIndex?: number;
 };
 
+export type FactoryProductionClickMode = {
+  repeat: boolean;
+  count: number;
+};
+
 const trackedQueueModifiers: QueueModifierEvent = {
   shiftKey: false,
   altKey: false,
@@ -85,6 +90,32 @@ export function queueModeFromEvent(
     queue,
     queueFront,
     queueInsertIndex: queue && !queueFront ? requestedInsertIndex : undefined,
+  };
+}
+
+export function factoryProductionClickModeFromEvent(
+  event: QueueModifierEvent,
+  factoryRepeatsProduction: boolean,
+): FactoryProductionClickMode {
+  const modifiers = effectiveQueueModifierEvent(event);
+  const count = (modifiers.shiftKey ? 5 : 1) * (modifiers.ctrlKey ? 20 : 1);
+  return {
+    repeat: factoryRepeatsProduction &&
+      !(modifiers.shiftKey || modifiers.ctrlKey || modifiers.altKey || modifiers.metaKey),
+    count,
+  };
+}
+
+export function factoryProductionKeyModeFromEvent(
+  event: QueueModifierEvent,
+  factoryRepeatsProduction: boolean,
+): FactoryProductionClickMode {
+  const modifiers = effectiveQueueModifierEvent(event);
+  const count = (modifiers.shiftKey ? 5 : 1) * (modifiers.ctrlKey ? -1 : 1);
+  return {
+    repeat: factoryRepeatsProduction &&
+      !(modifiers.shiftKey || modifiers.ctrlKey || modifiers.altKey || modifiers.metaKey),
+    count,
   };
 }
 

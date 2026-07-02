@@ -3,27 +3,42 @@
   "types": {
     "wheels": {
       "physics": {
-        "driveForceMultiplier": 2.0
+        "driveForceMultiplier": 2.0,
+        "forwardForceRequiresFacing": true,
+        "driveForceScalesWithFacing": true,
+        "maintainFullThrustAtWaypoints": false
       }
     },
     "treads": {
       "physics": {
-        "driveForceMultiplier": 2.0
+        "driveForceMultiplier": 2.0,
+        "forwardForceRequiresFacing": true,
+        "driveForceScalesWithFacing": true,
+        "maintainFullThrustAtWaypoints": false
       }
     },
     "legs": {
       "physics": {
-        "driveForceMultiplier": 1.0
+        "driveForceMultiplier": 1.0,
+        "forwardForceRequiresFacing": true,
+        "driveForceScalesWithFacing": true,
+        "maintainFullThrustAtWaypoints": false
       }
     },
     "hover": {
       "physics": {
-        "driveForceMultiplier": 0.3
+        "driveForceMultiplier": 0.3,
+        "forwardForceRequiresFacing": false,
+        "driveForceScalesWithFacing": false,
+        "maintainFullThrustAtWaypoints": false
       }
     },
     "flying": {
       "physics": {
-        "driveForceMultiplier": 1.0
+        "driveForceMultiplier": 1.0,
+        "forwardForceRequiresFacing": true,
+        "driveForceScalesWithFacing": false,
+        "maintainFullThrustAtWaypoints": true
       }
     }
   }

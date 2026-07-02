@@ -107,6 +107,8 @@ export class WorldState {
   private snapshotDirtyIds: EntityId[] = [];
   private snapshotDirtyFieldsById: number[] = [];
   private pendingDeathCheckIds = new Set<EntityId>();
+  private readonly factoryProducedUnitIdsByFactory = new Map<EntityId, Map<string, Set<EntityId>>>();
+  private readonly factoryProducedUnitByUnitId = new Map<EntityId, { factoryId: EntityId; unitBlueprintId: string }>();
   private readonly supportSurfaceSampler: WorldSupportSurfaceSampler;
   // Monotonically-growing upper bound on `getTargetRadius(e)` across all
   // unit/building entities ever added to this world. Used by the
@@ -375,6 +377,114 @@ export class WorldState {
     this.spawnBeams.push({ targetId, sourceId, untilTick: this.tick + SPAWN_BEAM_DURATION_TICKS });
   }
 
+  recordFactoryProducedUnit(factoryId: EntityId, unit: Entity): void {
+    const unitBlueprintId = unit.unit?.unitBlueprintId;
+    if (unitBlueprintId === undefined) return;
+    const factory = this.entities.get(factoryId);
+    if (factory?.factory === null || factory?.factory === undefined) return;
+
+    this.removeFactoryProducedUnitReference(unit.id);
+
+    let byUnitBlueprint = this.factoryProducedUnitIdsByFactory.get(factoryId);
+    if (byUnitBlueprint === undefined) {
+      byUnitBlueprint = new Map();
+      this.factoryProducedUnitIdsByFactory.set(factoryId, byUnitBlueprint);
+    }
+    let unitIds = byUnitBlueprint.get(unitBlueprintId);
+    if (unitIds === undefined) {
+      unitIds = new Set();
+      byUnitBlueprint.set(unitBlueprintId, unitIds);
+    }
+    unitIds.add(unit.id);
+    this.factoryProducedUnitByUnitId.set(unit.id, { factoryId, unitBlueprintId });
+    if (this.syncFactoryProductionQuotaCountForUnit(factory, unitBlueprintId)) {
+      this.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+    }
+  }
+
+  getFactoryProducedUnitCount(factoryId: EntityId, unitBlueprintId: string): number {
+    return this.factoryProducedUnitIdsByFactory.get(factoryId)?.get(unitBlueprintId)?.size ?? 0;
+  }
+
+  syncFactoryProductionQuotaCounts(factory: Entity): boolean {
+    const factoryComp = factory.factory;
+    if (factoryComp === null) return false;
+
+    let changed = false;
+    const counts = factoryComp.productionQuotaCounts;
+    for (const unitBlueprintId of Object.keys(counts)) {
+      const quota = factoryComp.productionQuotas[unitBlueprintId];
+      if (!Number.isFinite(quota) || quota <= 0) {
+        delete counts[unitBlueprintId];
+        changed = true;
+      }
+    }
+
+    for (const [unitBlueprintId, rawQuota] of Object.entries(factoryComp.productionQuotas)) {
+      const quota = Math.floor(rawQuota);
+      if (quota <= 0 || !Number.isFinite(rawQuota)) continue;
+      const current = this.getFactoryProducedUnitCount(factory.id, unitBlueprintId);
+      if (counts[unitBlueprintId] !== current) {
+        counts[unitBlueprintId] = current;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  private syncFactoryProductionQuotaCountForUnit(factory: Entity, unitBlueprintId: string): boolean {
+    const factoryComp = factory.factory;
+    if (factoryComp === null) return false;
+
+    const quota = factoryComp.productionQuotas[unitBlueprintId];
+    if (!Number.isFinite(quota) || quota <= 0) {
+      if (factoryComp.productionQuotaCounts[unitBlueprintId] === undefined) return false;
+      delete factoryComp.productionQuotaCounts[unitBlueprintId];
+      return true;
+    }
+
+    const current = this.getFactoryProducedUnitCount(factory.id, unitBlueprintId);
+    if (factoryComp.productionQuotaCounts[unitBlueprintId] === current) return false;
+    factoryComp.productionQuotaCounts[unitBlueprintId] = current;
+    return true;
+  }
+
+  private removeFactoryProducedUnitReference(unitId: EntityId): void {
+    const produced = this.factoryProducedUnitByUnitId.get(unitId);
+    if (produced === undefined) return;
+
+    this.factoryProducedUnitByUnitId.delete(unitId);
+    const byUnitBlueprint = this.factoryProducedUnitIdsByFactory.get(produced.factoryId);
+    if (byUnitBlueprint !== undefined) {
+      const unitIds = byUnitBlueprint.get(produced.unitBlueprintId);
+      if (unitIds !== undefined) {
+        unitIds.delete(unitId);
+        if (unitIds.size === 0) byUnitBlueprint.delete(produced.unitBlueprintId);
+      }
+      if (byUnitBlueprint.size === 0) {
+        this.factoryProducedUnitIdsByFactory.delete(produced.factoryId);
+      }
+    }
+
+    const factory = this.entities.get(produced.factoryId);
+    if (factory?.factory !== null && factory?.factory !== undefined) {
+      if (this.syncFactoryProductionQuotaCountForUnit(factory, produced.unitBlueprintId)) {
+        this.markSnapshotDirty(factory.id, ENTITY_CHANGED_FACTORY);
+      }
+    }
+  }
+
+  private clearFactoryProductionProvenanceForFactory(factoryId: EntityId): void {
+    const byUnitBlueprint = this.factoryProducedUnitIdsByFactory.get(factoryId);
+    if (byUnitBlueprint === undefined) return;
+    for (const unitIds of byUnitBlueprint.values()) {
+      for (const unitId of unitIds) {
+        this.factoryProducedUnitByUnitId.delete(unitId);
+      }
+    }
+    this.factoryProducedUnitIdsByFactory.delete(factoryId);
+  }
+
   // Increment tick
   incrementTick(): void {
     this.tick++;
@@ -424,6 +534,12 @@ export class WorldState {
   removeEntity(id: EntityId): void {
     const entity = this.entities.get(id);
     if (entity !== undefined && this.onEntityRemoving !== null) this.onEntityRemoving(entity);
+    if (entity !== undefined) {
+      this.removeFactoryProducedUnitReference(entity.id);
+      if (entity.factory !== null) {
+        this.clearFactoryProductionProvenanceForFactory(entity.id);
+      }
+    }
     if (entity !== undefined && entity.type === 'unit') this.unitSetVersion++;
     if (entity !== undefined && (entity.type === 'building' || entity.type === 'tower')) this.buildingVersion++;
     if (entity !== undefined && (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower')) {
@@ -445,6 +561,12 @@ export class WorldState {
 
   setEntityOwner(entity: Entity, playerId: PlayerId): void {
     if (entity.ownership !== null && entity.ownership.playerId === playerId) return;
+    this.removeFactoryProducedUnitReference(entity.id);
+    if (entity.factory !== null) {
+      this.clearFactoryProductionProvenanceForFactory(entity.id);
+      for (const key of Object.keys(entity.factory.productionQuotas)) delete entity.factory.productionQuotas[key];
+      for (const key of Object.keys(entity.factory.productionQuotaCounts)) delete entity.factory.productionQuotaCounts[key];
+    }
     entity.ownership = { playerId };
     entitySlotRegistry.setOwnership(entity, this.getTeamId(playerId));
     this.cache.invalidate();

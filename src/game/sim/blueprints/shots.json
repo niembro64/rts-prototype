@@ -137,7 +137,7 @@
       "collision": 2
     },
     "detonateOnExpiry": true,
-    "maxLifespan": 16000,
+    "maxLifespan": 10000,
     "hitSound": {
       "$audio": "event.hit.shotRocketLight"
     },
@@ -146,7 +146,7 @@
     "homingThrust": 3000,
     "homingDelayMs": 3000,
     "propulsionForce": 350,
-    "gravityForceMultiplier": 0,
+    "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.0,
     "smokeTrail": null,
     "base": {

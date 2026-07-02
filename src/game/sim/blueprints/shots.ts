@@ -117,6 +117,11 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
       `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
     );
   }
+  if (blueprint.type === 'rocket' && blueprint.gravityForceMultiplier !== 1) {
+    throw new Error(
+      `Shot blueprint ${id} must use gravityForceMultiplier 1: rocket thrust should counter gravity instead of opting out of it.`,
+    );
+  }
   if (blueprint.homingDelayMs !== null && (!Number.isFinite(blueprint.homingDelayMs) || blueprint.homingDelayMs < 0)) {
     throw new Error(
       `Shot blueprint ${id} has invalid homingDelayMs: expected null or finite non-negative milliseconds.`,

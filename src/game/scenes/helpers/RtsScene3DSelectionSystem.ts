@@ -9,6 +9,7 @@ import type {
   WaypointType,
 } from '../../sim/types';
 import type { ControlGroupInfo, SelectionInfo, UIEntitySource, UIInputState } from '@/types/ui';
+import type { BarBuildCategoryId } from '../../input/buildMenuLayout';
 import { CONTROL_GROUP_COUNT, type ControlGroupSlotSnapshot } from '../../input/helpers';
 import type {
   BuildFacingInfo,
@@ -33,12 +34,19 @@ export class RtsScene3DSelectionSystem {
   private selectedEntityCacheDirty = true;
   private selectionInfoDirty = true;
   private waypointMode: WaypointType = 'move';
+  private buildGridCategory: BarBuildCategoryId | null = null;
+  private buildGridPage = 0;
+  private factoryGridPage = 0;
+  private factoryQueueMode = false;
+  private factoryPresetOverlayVisible = false;
+  private activeBuilderUnitBlueprintId: string | null = null;
   private activeBuildingBlueprintId: BuildingBlueprintId | null = null;
   private buildLineSpacingMultiplier = 1;
   private buildFacingDegrees = 0;
   private queueInsertIndex: number | null = null;
   private dgunActive = false;
   private repairAreaActive = false;
+  private restoreAreaActive = false;
   private formationAssumeActive = false;
   private formationMoveActive = false;
   private attackActive = false;
@@ -55,6 +63,7 @@ export class RtsScene3DSelectionSystem {
   private mexUpgradeActive = false;
   private pingActive = false;
   private towerTargetActive = false;
+  private towerTargetNoGroundActive = false;
 
   constructor(
     private readonly clientViewState: ClientViewState,
@@ -86,6 +95,36 @@ export class RtsScene3DSelectionSystem {
     this.selectionInfoDirty = true;
   }
 
+  setBuildGridCategory(categoryId: BarBuildCategoryId | null): void {
+    this.buildGridCategory = categoryId;
+    this.selectionInfoDirty = true;
+  }
+
+  setBuildGridPage(pageIndex: number): void {
+    this.buildGridPage = pageIndex;
+    this.selectionInfoDirty = true;
+  }
+
+  setFactoryGridPage(pageIndex: number): void {
+    this.factoryGridPage = pageIndex;
+    this.selectionInfoDirty = true;
+  }
+
+  setFactoryQueueMode(active: boolean): void {
+    this.factoryQueueMode = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setFactoryPresetOverlayVisible(active: boolean): void {
+    this.factoryPresetOverlayVisible = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setActiveBuilder(unitBlueprintId: string | null): void {
+    this.activeBuilderUnitBlueprintId = unitBlueprintId;
+    this.selectionInfoDirty = true;
+  }
+
   setBuildLineSpacing(spacing: BuildLineSpacingInfo): void {
     this.buildLineSpacingMultiplier = spacing.multiplier;
     this.selectionInfoDirty = true;
@@ -108,6 +147,11 @@ export class RtsScene3DSelectionSystem {
 
   setRepairAreaMode(active: boolean): void {
     this.repairAreaActive = active;
+    this.selectionInfoDirty = true;
+  }
+
+  setRestoreAreaMode(active: boolean): void {
+    this.restoreAreaActive = active;
     this.selectionInfoDirty = true;
   }
 
@@ -191,6 +235,11 @@ export class RtsScene3DSelectionSystem {
     this.selectionInfoDirty = true;
   }
 
+  setTowerTargetNoGroundMode(active: boolean): void {
+    this.towerTargetNoGroundActive = active;
+    this.selectionInfoDirty = true;
+  }
+
   setControlGroups(groups: readonly ControlGroupSlotSnapshot[]): void {
     for (let i = 0; i < CONTROL_GROUP_COUNT; i++) {
       const group = groups[i];
@@ -271,6 +320,12 @@ export class RtsScene3DSelectionSystem {
   private getInputState(): UIInputState {
     return {
       waypointMode: this.waypointMode,
+      buildGridCategory: this.buildGridCategory,
+      buildGridPage: this.buildGridPage,
+      factoryGridPage: this.factoryGridPage,
+      factoryQueueMode: this.factoryQueueMode,
+      factoryPresetOverlayVisible: this.factoryPresetOverlayVisible,
+      activeBuilderUnitBlueprintId: this.activeBuilderUnitBlueprintId,
       isBuildMode: this.activeBuildingBlueprintId !== null,
       selectedBuildingBlueprintId: this.activeBuildingBlueprintId,
       buildLineSpacingMultiplier: this.buildLineSpacingMultiplier,
@@ -278,6 +333,7 @@ export class RtsScene3DSelectionSystem {
       queueInsertIndex: this.queueInsertIndex,
       isDGunMode: this.dgunActive,
       isRepairAreaMode: this.repairAreaActive,
+      isRestoreAreaMode: this.restoreAreaActive,
       isFormationAssumeMode: this.formationAssumeActive,
       isFormationMoveMode: this.formationMoveActive,
       isAttackMode: this.attackActive,
@@ -294,6 +350,7 @@ export class RtsScene3DSelectionSystem {
       isMexUpgradeMode: this.mexUpgradeActive,
       isPingMode: this.pingActive,
       isTowerTargetMode: this.towerTargetActive,
+      isTowerTargetNoGroundMode: this.towerTargetNoGroundActive,
       controlGroups: this.buildControlGroupInfo(),
     };
   }

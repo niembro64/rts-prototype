@@ -572,6 +572,8 @@ function unitNeedsRawFallback(unit: SnapshotUnit): boolean {
     (unit.moveState !== null && unit.moveState !== undefined) ||
     (unit.holdPosition !== null && unit.holdPosition !== undefined) ||
     (unit.wantCloak !== null && unit.wantCloak !== undefined) ||
+    (unit.builderPriorityLow !== null && unit.builderPriorityLow !== undefined) ||
+    (unit.carrierSpawnEnabled !== null && unit.carrierSpawnEnabled !== undefined) ||
     (unit.cloaked !== null && unit.cloaked !== undefined) ||
     hasGatherWaitAction(unit.actions) ||
     unit.isCommander === false ||
@@ -661,8 +663,14 @@ function buildingNeedsRawFallback(building: SnapshotBuilding): boolean {
     building.build?.interrupted === true ||
     hasInactiveTurret(building.turrets) ||
     (factory !== null && factory.guardTargetId !== null) ||
+    (factory !== null && factory.lowPriority !== null && factory.lowPriority !== undefined) ||
     (factory !== null && factory.repeat === false) ||
     (factory !== null && factory.queue !== null && factory.queue !== undefined && factory.queue.length > 0) ||
+    (factory !== null && factory.quotas !== null && factory.quotas !== undefined && factory.quotas.length > 0) ||
+    (factory !== null &&
+      factory.quotaCounts !== null &&
+      factory.quotaCounts !== undefined &&
+      factory.quotaCounts.length > 0) ||
     (factory !== null &&
       factory.selectedUnitBlueprintCode !== null &&
       !isUint(factory.selectedUnitBlueprintCode, 0xFFFF_FFFF))
@@ -2473,10 +2481,14 @@ export function encodeNetworkSnapshotWithRustFallback(
       api.envelopeBegin(state.tick, entities.length, keys.length);
       for (let i = 0; i < entities.length; i++) {
         const entity = entities[i];
-        if (
-          (useEntityWireSource && encodeEntityWireRow(sim, entityWireSource, i)) ||
-          encodeEntity(sim, entity)
-        ) {
+        if (useEntityWireSource && encodeEntityWireRow(sim, entityWireSource, i)) {
+          rustEntityCount++;
+          continue;
+        }
+        if (entity === undefined) {
+          return null;
+        }
+        if (encodeEntity(sim, entity)) {
           rustEntityCount++;
         } else {
           rawEntityCount++;

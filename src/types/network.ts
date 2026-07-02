@@ -1006,6 +1006,14 @@ export type NetworkServerSnapshotEntity = {
     /** Private owner command intent for cloak. Present on full private
      *  records when enabled and on deltas that explicitly toggle it. */
     wantCloak?: boolean | null;
+    /** Private owner command-state mirror for BAR builder priority. Present
+     *  on full private builder records when low, and on deltas that
+     *  explicitly toggle it. */
+    builderPriorityLow?: boolean | null;
+    /** Private owner command-state mirror for BAR carrier spawning. Present
+     *  for mobile unit factories when disabled, and on deltas that
+     *  explicitly toggle it. */
+    carrierSpawnEnabled?: boolean | null;
     /** Public active cloak state. Present when active and on deltas that
      *  explicitly clear it; filtered snapshots hide foreign cloaked units
      *  unless detector coverage reveals them. */
@@ -1069,6 +1077,10 @@ export type NetworkServerSnapshotEntity = {
       repeat?: boolean;
       /** Finite production queue after the selected/current item. */
       queue?: number[] | null;
+      /** Unit blueprint code/quota pairs for BAR factory quota mode. */
+      quotas?: number[] | null;
+      /** Unit blueprint code/current-count pairs for BAR factory quota mode. */
+      quotaCounts?: number[] | null;
       /** Per-resource transfer rate this tick (0..1 fraction of the
        *  factory's max rate cap). Drives the resource-ball flow at the
        *  factory's pylons. */
@@ -1076,6 +1088,8 @@ export type NetworkServerSnapshotEntity = {
       metalRate: number;
       /** Friendly entity this factory will assign produced units to guard. */
       guardTargetId: number | null;
+      /** BAR builder-priority mirror for factory/lab resource priority. */
+      lowPriority?: boolean;
       /** Static rally point. `posZ` carries the click-altitude of the
        *  player-issued rally; null falls back to terrain sample. */
       rally: { pos: Vec2; posZ: number | null; type: string };
