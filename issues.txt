@@ -16,7 +16,6 @@ Do not document "PROGRESS" in this file, just document or update issues that nee
 Please always commit and push before and after any code changes we make.
 ================================================================================
 
-
 [32] Optimization - reduce snapshot materialization cost
     Preserve deterministic-lockstep truth and current client reconciliation
     semantics. Entity rows now ride the compact V6 packed wire even when raw
