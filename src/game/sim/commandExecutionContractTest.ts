@@ -920,6 +920,47 @@ export function runCommandExecutionContractTest(): void {
     enemy.ownership?.playerId === 1,
     'capture ability should transfer ownership once progress completes',
   );
+
+  // BAR area attack queues every target inside the circle, nearest to
+  // farthest, instead of stopping after the single closest enemy.
+  const areaAttacker = captureWorld.createUnitFromBlueprint(60, 200, 1, 'unitEagle', {
+    allocateSubEntityIds: false,
+  });
+  const nearFoe = captureWorld.createUnitFromBlueprint(100, 200, 2, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const midFoe = captureWorld.createUnitFromBlueprint(120, 200, 2, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const farFoe = captureWorld.createUnitFromBlueprint(140, 200, 2, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  captureWorld.addEntity(areaAttacker);
+  captureWorld.addEntity(nearFoe);
+  captureWorld.addEntity(midFoe);
+  captureWorld.addEntity(farFoe);
+  assertContract(areaAttacker.unit !== null, 'area attacker must have a unit component');
+  const captureCtx: CommandContext = {
+    world: captureWorld,
+    constructionSystem: new ConstructionSystem(captureWorld.mapWidth, captureWorld.mapHeight),
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  executeCommand(captureCtx, {
+    type: 'attackArea',
+    tick: 7,
+    entityIds: [areaAttacker.id],
+    targetX: 100,
+    targetY: 200,
+    radius: 60,
+    queue: false,
+  });
+  assertActionTargetIds(
+    areaAttacker.unit.actions.filter((action) => action.type === 'attack'),
+    [nearFoe.id, midFoe.id, farFoe.id],
+    'area attack should enqueue every circled enemy nearest to farthest',
+  );
   assertContract(
     capturer.unit.actions.length === 0,
     'completed capture should advance the commander action queue',

@@ -2170,7 +2170,10 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
   const playerId = entities[0].ownership?.playerId;
   if (playerId === undefined) return;
 
-  const target = findAttackAreaTarget(
+  // BAR area attack queues an attack on EVERY target inside the dragged
+  // circle, nearest-to-farthest, so the unit sweeps the area instead of
+  // stopping after one kill. No targets degrades to a fight-move.
+  const targets = findAttackAreaTargets(
     ctx,
     playerId,
     command.targetX,
@@ -2178,7 +2181,7 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
     radius,
   );
 
-  if (!target) {
+  if (targets.length === 0) {
     executeMoveCommand(ctx, {
       type: 'move',
       tick: command.tick,
@@ -2197,7 +2200,15 @@ function executeAttackAreaCommand(ctx: CommandContext, command: AttackAreaComman
   const queueFront = commandQueuesInFront(command);
   const queueInsertIndex = commandQueueInsertIndex(command);
   for (let i = 0; i < entities.length; i++) {
-    enqueueAttackAction(ctx, entities[i], target, command.queue, queueFront, queueInsertIndex);
+    const entity = entities[i];
+    enqueueAreaTargetActionsInOrder(
+      targets,
+      command.queue,
+      queueFront,
+      queueInsertIndex,
+      (target, queue, targetQueueFront, targetQueueInsertIndex) =>
+        enqueueAttackAction(ctx, entity, target, queue, targetQueueFront, targetQueueInsertIndex),
+    );
   }
 }
 
@@ -2257,25 +2268,23 @@ function isAttackableEnemyTargetForPlayer(target: Entity | undefined, playerId: 
     target.ownership.playerId !== playerId;
 }
 
-function findAttackAreaTarget(
+function findAttackAreaTargets(
   ctx: CommandContext,
   playerId: PlayerId,
   x: number,
   y: number,
   radius: number,
-): Entity | undefined {
+): Entity[] {
   const radiusSq = radius * radius;
-  let bestTarget: Entity | undefined;
-  let bestDistanceSq = Infinity;
+  const targets: AreaTarget[] = [];
 
   const units = ctx.world.getUnits();
   for (let i = 0; i < units.length; i++) {
     const target = units[i];
     if (!isAttackableEnemyTargetForPlayer(target, playerId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
-    bestDistanceSq = distSq;
-    bestTarget = target;
+    if (distSq > radiusSq) continue;
+    targets.push({ entity: target, distanceSq: distSq });
   }
 
   const buildings = ctx.world.getBuildings();
@@ -2283,12 +2292,12 @@ function findAttackAreaTarget(
     const target = buildings[i];
     if (!isAttackableEnemyTargetForPlayer(target, playerId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
-    if (distSq > radiusSq || distSq >= bestDistanceSq) continue;
-    bestDistanceSq = distSq;
-    bestTarget = target;
+    if (distSq > radiusSq) continue;
+    targets.push({ entity: target, distanceSq: distSq });
   }
 
-  return bestTarget;
+  targets.sort(compareAreaTargets);
+  return sortedAreaTargetEntities(targets);
 }
 
 function enqueueAttackAction(
