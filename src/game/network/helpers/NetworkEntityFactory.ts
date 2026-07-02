@@ -271,7 +271,10 @@ function createUnitFromNetwork(
   const unitBlueprintId = decodeNetworkUnitBlueprintId(u !== null ? u.unitBlueprintCode : undefined);
   if (!unitBlueprintId) return null;
   const unitHp = u !== null ? u.hp : null;
-  const unitBuild = u !== null ? u.build : null;
+  // Rust raw-entity wire rows omit absent optional keys entirely, so a
+  // completed unit arrives with no `build` key at all — treat that the
+  // same as the JS serializer's explicit `build: null`.
+  const unitBuild = u !== null && u.build !== undefined ? u.build : null;
   const unitOrientation = u !== null ? u.orientation : null;
   const unitAngularVelocity3 = u !== null ? u.angularVelocity3 : null;
   const unitTurrets = u !== null ? u.turrets : null;
@@ -418,7 +421,9 @@ function createUnitFromNetwork(
     entity.builder = {
       buildRange: builder.buildRange,
       lowPriority: u !== null && u.builderPriorityLow === true,
-      currentBuildTarget: u !== null && u.buildTargetId !== null ? u.buildTargetId : NO_ENTITY_ID,
+      currentBuildTarget: u !== null && u.buildTargetId !== null && u.buildTargetId !== undefined
+        ? u.buildTargetId
+        : NO_ENTITY_ID,
     };
   }
   if (unitBlueprint !== undefined) {

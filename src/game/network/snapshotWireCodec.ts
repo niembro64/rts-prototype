@@ -245,6 +245,23 @@ function packNetworkSnapshotForWire(
   return wire;
 }
 
+/** The Rust wire encoder omits absent optional keys entirely (sparse
+ *  msgpack maps), while consumers were written against the JS
+ *  serializer's explicit-null DTOs. Restore the envelope contract in
+ *  one pass so every downstream `x !== null` guard stays valid. Sub
+ *  fields (unit.build etc.) stay sparse; their readers treat missing
+ *  as null explicitly. */
+function normalizeRawWireEntities(entities: NetworkServerSnapshotEntity[]): void {
+  for (let i = 0; i < entities.length; i++) {
+    const e = entities[i];
+    if (e.pos === undefined) e.pos = null;
+    if (e.rotation === undefined) e.rotation = null;
+    if (e.changedFields === undefined) e.changedFields = null;
+    if (e.unit === undefined) e.unit = null;
+    if (e.building === undefined) e.building = null;
+  }
+}
+
 function unpackNetworkSnapshotFromWire(
   state: NetworkServerSnapshotWire,
   options: DecodeNetworkSnapshotOptions = {},
@@ -261,6 +278,10 @@ function unpackNetworkSnapshotFromWire(
   const hasPackedEntities = isPackedEntitySnapshotWire(entities);
   const hasPackedTerrain = isPackedTerrainTileMapWire(terrain);
   const hasPackedBuildability = isPackedBuildabilityGridWire(buildability);
+
+  if (!hasPackedEntities && Array.isArray(entities)) {
+    normalizeRawWireEntities(entities as NetworkServerSnapshotEntity[]);
+  }
 
   if (
     !hasPackedAudioEvents &&
