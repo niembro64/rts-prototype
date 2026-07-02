@@ -2,6 +2,7 @@ import type {
   AttackAreaCommand,
   AttackCommand,
   CaptureCommand,
+  EditFactoryQueueCommand,
   GuardCommand,
   SetBuilderPriorityCommand,
   SetCarrierSpawnCommand,
@@ -374,5 +375,31 @@ export function runServerCommandAuthorizerContractTest(): void {
       authorizedFactorySelfGuard.factoryId === fabricator.id &&
       authorizedFactorySelfGuard.targetId === fabricator.id,
     'setFactoryGuard must authorize owned BAR-equivalent builder-producing factories',
+  );
+
+  const editFactoryQueueCommand: EditFactoryQueueCommand = {
+    type: 'editFactoryQueue',
+    tick: 1,
+    factoryId: fabricator.id,
+    operation: 'remove',
+    index: 0,
+  };
+  const authorizedEditFactoryQueue = authorizeGameServerGameplayCommand(world, editFactoryQueueCommand, {
+    mode: 'player',
+    playerId: 1,
+  });
+  assertContract(
+    authorizedEditFactoryQueue?.type === 'editFactoryQueue' &&
+      authorizedEditFactoryQueue.factoryId === fabricator.id,
+    'editFactoryQueue must authorize the factory owner so queue-edit UI is never dead',
+  );
+
+  const rejectedEditFactoryQueue = authorizeGameServerGameplayCommand(world, editFactoryQueueCommand, {
+    mode: 'player',
+    playerId: 2,
+  });
+  assertContract(
+    rejectedEditFactoryQueue === null,
+    'editFactoryQueue must reject players who do not own the factory',
   );
 }

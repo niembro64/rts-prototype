@@ -951,7 +951,7 @@ export class Input3DManager {
   /** Toggle D-gun mode from UI. Only enters if a commander is
    *  selected — mirrors the 2D BuildingPlacementController's gate. */
   toggleDGunMode(): void {
-    if (!this.hasSelectedResurrectControlForActivePreset()) return;
+    if (!this.hasSelectedCommander()) return;
     this.exitSpecialModes();
     this.mode.toggleDGunMode();
   }

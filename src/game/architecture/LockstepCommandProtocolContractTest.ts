@@ -1,5 +1,6 @@
 import type {
   MoveCommand,
+  PingCommand,
   SetPausedCommand,
   SetUnitGroundNormalEmaModeCommand,
   StopCommand,
@@ -21,6 +22,7 @@ import {
 } from './LockstepCommandProtocol';
 
 type SetConverterTaxCommand = Extract<import('../sim/commands').Command, { type: 'setConverterTax' }>;
+type SetSlopePathModeCommand = Extract<import('../sim/commands').Command, { type: 'setSlopePathMode' }>;
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -154,7 +156,8 @@ export function runLockstepCommandProtocolContractTest(): void {
       entityIds: [playerOneUnit.id],
     },
   };
-  const accepted = validateLockstepCommandForPeer(validStopEnvelope, world);
+  const hostPlayerId = 1 as PlayerId;
+  const accepted = validateLockstepCommandForPeer(validStopEnvelope, world, hostPlayerId);
   assertContract(
     accepted.accepted &&
       accepted.command.tick === envelope.executeFrame &&
@@ -170,7 +173,7 @@ export function runLockstepCommandProtocolContractTest(): void {
       ...stop,
       entityIds: [playerTwoUnit.id],
     },
-  }, world, (rejection) => {
+  }, world, hostPlayerId, (rejection) => {
     rejections.push(`${rejection.reason}:${rejection.playerId}:${rejection.playerSequence}`);
   });
   assertContract(
@@ -187,7 +190,7 @@ export function runLockstepCommandProtocolContractTest(): void {
       ...stop,
       entityIds: [],
     },
-  }, world);
+  }, world, hostPlayerId);
   assertContract(
     !sanitizerRejected.accepted &&
       sanitizerRejected.rejection.reason === 'sanitizer-rejected',
@@ -207,7 +210,7 @@ export function runLockstepCommandProtocolContractTest(): void {
       commandIndex: 0,
       command: { ...stop, entityIds: [playerTwoUnit.id] },
     },
-  ], world);
+  ], world, hostPlayerId);
   assertContract(
     acceptedFrame.length === 1 &&
       (acceptedFrame[0] as StopCommand).entityIds[0] === playerOneUnit.id,
@@ -257,6 +260,65 @@ export function runLockstepCommandProtocolContractTest(): void {
   assertContract(
     classifyCommandForArchitecture(converterTax) === 'gameplay-truth',
     'converter tax changes gameplay truth and must be frame-scheduled',
+  );
+
+  const slopePathMode: SetSlopePathModeCommand = {
+    type: 'setSlopePathMode',
+    tick: 0,
+    mode: 'directional',
+  };
+  assertContract(
+    classifyCommandForArchitecture(slopePathMode) === 'gameplay-truth',
+    'slope path mode changes pathfinding truth and must be frame-scheduled',
+  );
+
+  const ping: PingCommand = {
+    type: 'ping',
+    tick: 0,
+    targetX: 32,
+    targetY: 48,
+  };
+  assertContract(
+    classifyCommandForArchitecture(ping) === 'gameplay-truth',
+    'ping is team-shared and must frame-schedule so every peer sees the marker',
+  );
+
+  const nonHostPing = validateLockstepCommandForPeer({
+    ...validStopEnvelope,
+    playerId: 2 as PlayerId,
+    playerSequence: 30,
+    command: ping,
+  }, world, hostPlayerId);
+  assertContract(
+    nonHostPing.accepted &&
+      nonHostPing.command.type === 'ping' &&
+      (nonHostPing.command as PingCommand).playerId === 2,
+    'ping must stay any-player and stamp the envelope playerId for attribution',
+  );
+
+  const nonHostSetting = validateLockstepCommandForPeer({
+    ...validStopEnvelope,
+    playerId: 2 as PlayerId,
+    playerSequence: 31,
+    command: slopePathMode,
+  }, world, hostPlayerId);
+  assertContract(
+    !nonHostSetting.accepted &&
+      nonHostSetting.rejection.reason === 'authorization-rejected',
+    'gameplay setting commands from non-host players must be rejected at validation',
+  );
+
+  const hostSetting = validateLockstepCommandForPeer({
+    ...validStopEnvelope,
+    playerId: hostPlayerId,
+    playerSequence: 32,
+    command: slopePathMode,
+  }, world, hostPlayerId);
+  assertContract(
+    hostSetting.accepted &&
+      hostSetting.command.type === 'setSlopePathMode' &&
+      hostSetting.command.tick === validStopEnvelope.executeFrame,
+    'gameplay setting commands from the host must schedule on the envelope frame',
   );
   assertThrows(
     () => createLockstepCommandEnvelope({

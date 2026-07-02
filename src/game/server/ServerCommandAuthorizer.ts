@@ -183,6 +183,7 @@ export function authorizeGameServerGameplayCommand(
     case 'stopFactoryProduction':
     case 'setFactoryRepeatProduction':
     case 'setRallyPoint':
+    case 'editFactoryQueue':
       return isOwnedFactory(world, command.factoryId, playerId) ? command : null;
 
     case 'changeFactoryUnitQuota':

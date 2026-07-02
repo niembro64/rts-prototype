@@ -61,10 +61,13 @@ type LockstepCommandValidationResult =
 
 type LockstepCommandRejectionLogger = (rejection: LockstepCommandRejection) => void;
 
+// Ping is deliberately NOT local-presentation: it is team-shared, so in
+// lockstep it frame-schedules like any gameplay command. The authorizer's
+// ping case stamps the envelope playerId, giving every peer the same
+// attributed marker without mutating gameplay truth beyond a SimEvent.
 const LOCAL_PRESENTATION_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'select',
   'clearSelection',
-  'ping',
   'setSendGridInfo',
   'setBackgroundUnitBlueprintEnabled',
   'setBackgroundBuildingBlueprintEnabled',
@@ -75,6 +78,11 @@ const ARCHITECTURE_CONTROL_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set
   'setPaused',
 ]);
 
+// Battle settings that change gameplay truth. They frame-schedule like any
+// other gameplay command, but they carry no per-entity ownership, so instead
+// of authorizeGameServerGameplayCommand they are restricted to the host
+// player at validation time — mirroring the authoritative path's host-only
+// server-control gate.
 const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'setUnitGroundNormalEmaMode',
   'setMaxTotalUnits',
@@ -84,6 +92,7 @@ const LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES: ReadonlySet<Command['type']> = ne
   'setShieldsObstructSight',
   'setShieldReflectionMode',
   'setFogOfWarEnabled',
+  'setSlopePathMode',
   'setConverterTax',
 ]);
 
@@ -183,6 +192,7 @@ export function materializeLockstepCommandFrame(
 export function validateLockstepCommandForPeer(
   envelope: LockstepCommandEnvelope,
   world: WorldState,
+  hostPlayerId: PlayerId,
   onRejected: LockstepCommandRejectionLogger | null = null,
 ): LockstepCommandValidationResult {
   const invalidReason = validateLockstepCommandEnvelope(envelope);
@@ -193,6 +203,18 @@ export function validateLockstepCommandForPeer(
   const materialized = sanitizeCommandForScheduledFrame(envelope.command, world, envelope.executeFrame);
   if (materialized === null) {
     return rejectLockstepCommand(envelope, 'sanitizer-rejected', 'scheduled command failed sanitizer', onRejected);
+  }
+
+  if (
+    LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES.has(materialized.type) &&
+    envelope.playerId !== hostPlayerId
+  ) {
+    return rejectLockstepCommand(
+      envelope,
+      'authorization-rejected',
+      'gameplay setting commands are host-only',
+      onRejected,
+    );
   }
 
   const authorized = authorizeLockstepGameplayTruthCommand(world, materialized, envelope.playerId);
@@ -208,6 +230,9 @@ function authorizeLockstepGameplayTruthCommand(
   command: Command,
   playerId: PlayerId,
 ): Command | null {
+  // Gameplay settings carry no per-entity ownership; host-only authority is
+  // already enforced against the envelope playerId in
+  // validateLockstepCommandForPeer before this bypass applies.
   if (LOCKSTEP_GAMEPLAY_SETTING_COMMAND_TYPES.has(command.type)) return command;
   return authorizeGameServerGameplayCommand(
     world,
@@ -219,12 +244,13 @@ function authorizeLockstepGameplayTruthCommand(
 export function validateLockstepCommandFrameForPeer(
   envelopes: readonly LockstepCommandEnvelope[],
   world: WorldState,
+  hostPlayerId: PlayerId,
   onRejected: LockstepCommandRejectionLogger | null = null,
 ): Command[] {
   const acceptedCommands: Command[] = [];
   const ordered = [...envelopes].sort(compareLockstepCommandEnvelopes);
   for (let i = 0; i < ordered.length; i++) {
-    const result = validateLockstepCommandForPeer(ordered[i], world, onRejected);
+    const result = validateLockstepCommandForPeer(ordered[i], world, hostPlayerId, onRejected);
     if (result.accepted) acceptedCommands.push(result.command);
   }
   return acceptedCommands;

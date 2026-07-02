@@ -26,6 +26,7 @@ export function runLockstepFrameSchedulerContractTest(): void {
   const scheduler = new LockstepFrameScheduler({
     core,
     expectedPlayerIds: [1 as PlayerId, 2 as PlayerId],
+    hostPlayerId: 1 as PlayerId,
     checksumIntervalTicks: 2,
     requirePeerReady: true,
     nowMs: () => nowMs,

@@ -81,6 +81,9 @@ type LockstepFrameSchedulerAdvanceResult = {
 export type LockstepFrameSchedulerOptions = {
   readonly core: Pick<ServerSimulationCore, 'world' | 'stepFixedTick' | 'getCanonicalStateHash'>;
   readonly expectedPlayerIds: readonly PlayerId[];
+  /** Host player for the match. Host-only gameplay setting commands from
+   *  other players are rejected during command-frame validation. */
+  readonly hostPlayerId: PlayerId;
   readonly checksumIntervalTicks?: number;
   readonly fixedDtMs?: number;
   readonly requirePeerReady?: boolean;
@@ -108,6 +111,7 @@ const RECENT_FRAME_LIMIT = 180;
 export class LockstepFrameScheduler {
   private readonly core: Pick<ServerSimulationCore, 'world' | 'stepFixedTick' | 'getCanonicalStateHash'>;
   private readonly expectedPlayerIds: readonly PlayerId[];
+  private readonly hostPlayerId: PlayerId;
   private readonly checksumIntervalTicks: number;
   private readonly fixedDtMs: number;
   private readonly requirePeerReady: boolean;
@@ -141,13 +145,14 @@ export class LockstepFrameScheduler {
   constructor(options: LockstepFrameSchedulerOptions) {
     this.core = options.core;
     this.expectedPlayerIds = [...options.expectedPlayerIds].sort((a, b) => a - b);
+    this.hostPlayerId = options.hostPlayerId;
     this.checksumIntervalTicks = options.checksumIntervalTicks ??
       ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks;
     this.fixedDtMs = options.fixedDtMs ?? LOCKSTEP_FIXED_DT_MS;
     this.requirePeerReady = options.requirePeerReady === true;
     this.materializeCommandFrame = options.materializeCommandFrame ??
       ((frame, core, onRejected) =>
-        validateLockstepCommandFrameForPeer(frame.commands, core.world, onRejected));
+        validateLockstepCommandFrameForPeer(frame.commands, core.world, this.hostPlayerId, onRejected));
     this.nowMs = options.nowMs ?? defaultNowMs;
     this.onFrameAdvanced = options.onFrameAdvanced;
     this.onChecksum = options.onChecksum;

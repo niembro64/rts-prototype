@@ -590,6 +590,7 @@ async function createDeterministicLockstepBackendRuntime({
   const scheduler = new LockstepFrameScheduler({
     core: lockstepCore,
     expectedPlayerIds: playerIds,
+    hostPlayerId: matchContext.hostPlayerId,
     nowMs: () => performance.now(),
     onChecksum: ({ frame, stateHash }) => {
       desyncMonitor?.recordChecksum({ playerId: localPlayerId, frame, stateHash });
@@ -889,7 +890,6 @@ async function createDeterministicLockstepBackendRuntime({
         lockstepCore.world.clearSelection();
         return true;
       }
-      if (command.type === 'ping') return true;
       server.receiveCommand(command, { mode: 'host-admin' });
       return true;
     }
