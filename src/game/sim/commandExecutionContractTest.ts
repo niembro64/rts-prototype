@@ -909,7 +909,13 @@ export function runCommandExecutionContractTest(): void {
       targetId: enemy.id,
     },
   ]);
-  captureSim.update(4000);
+  // Capture progress accrues at constructionRate / targetMaxHp per
+  // second, so completion time scales with the target's effective max
+  // hp. Budget generously instead of pinning one blueprint tuning:
+  // stop as soon as ownership flips, fail if it never does.
+  for (let captureStep = 0; captureStep < 8 && enemy.ownership?.playerId !== 1; captureStep++) {
+    captureSim.update(4000);
+  }
   assertContract(
     enemy.ownership?.playerId === 1,
     'capture ability should transfer ownership once progress completes',
