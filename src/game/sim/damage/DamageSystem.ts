@@ -34,7 +34,7 @@ import {
   type RayConfigRangeCylinder,
 } from '../combat/lineShotRange';
 import { getActiveShields } from '../combat/shieldTurret';
-import { ENTITY_CHANGED_HP } from '../../../types/network';
+import { ENTITY_CHANGED_HP, PROJECTILE_TYPE_PROJECTILE } from '../../../types/network';
 import { getSimWasm, type SimWasm } from '../../sim-wasm/init';
 import { entitySlotRegistry } from '../EntitySlotRegistry';
 import {
@@ -1604,10 +1604,6 @@ export class DamageSystem {
         source.prev.x, source.prev.y, source.prev.z,
         source.current.x, source.current.y, source.current.z, sweptQueryWidth,
       );
-    const nearbyProjectiles = spatialGrid.queryProjectilesAlongLine(
-      source.prev.x, source.prev.y, source.prev.z,
-      source.current.x, source.current.y, source.current.z, sweptQueryWidth,
-    );
 
     // Pack swept-damage candidates. Unit/building bodies and turret
     // sub-hitboxes use the combat-targeting slab; projectile rows stay on
@@ -1721,29 +1717,40 @@ export class DamageSystem {
     }
 
     const slabRowCount = segmentRowCount;
-    for (const projectile of nearbyProjectiles) {
-      if (source.excludeEntities.has(projectile.id)) continue;
-      const proj = projectile.projectile;
-      if (
-        proj === null ||
-        proj.projectileType !== 'projectile' ||
-        proj.hp <= 0 ||
-        !isProjectileShot(proj.config.shot)
-      ) {
-        continue;
+    // Slot-native projectile rows: a 'projectile' type code implies a
+    // travelling shot emission (plasma/rocket/missile) — projectileType
+    // is derived from the emission kind at spawn, so the old
+    // isProjectileShot(config.shot) re-check is equivalent. Slab
+    // radiusCollision mirrors shotProfile.runtime.radius.collision.
+    // Queried here (not earlier) because the slot result is a live view
+    // over the shared query scratch — consume before any other query.
+    const nearbyProjectileSlots = spatialGrid.queryProjectileSlotsAlongLine(
+      source.prev.x, source.prev.y, source.prev.z,
+      source.current.x, source.current.y, source.current.z, sweptQueryWidth,
+    );
+    const projectileViews = entitySlotRegistry.getViews();
+    if (projectileViews !== null) {
+      const slots = nearbyProjectileSlots.slots;
+      const count = nearbyProjectileSlots.count;
+      for (let i = 0; i < count; i++) {
+        const slot = slots[i];
+        if (slot >= projectileViews.capacity) continue;
+        if (projectileViews.projectileTypeCode[slot] !== PROJECTILE_TYPE_PROJECTILE) continue;
+        if (projectileViews.hp[slot] <= 0) continue;
+        const projectileId = projectileViews.entityId[slot] as EntityId;
+        if (source.excludeEntities.has(projectileId)) continue;
+        segmentRowCount = appendSegmentDamageSphereRow(
+          segmentRowCount,
+          projectileId,
+          projectileId,
+          false,
+          true,
+          projectileViews.posX[slot],
+          projectileViews.posY[slot],
+          projectileViews.posZ[slot],
+          projectileViews.radiusCollision[slot] + sphereInflation,
+        );
       }
-
-      segmentRowCount = appendSegmentDamageSphereRow(
-        segmentRowCount,
-        projectile.id,
-        projectile.id,
-        false,
-        true,
-        projectile.transform.x,
-        projectile.transform.y,
-        projectile.transform.z,
-        proj.config.shotProfile.runtime.radius.collision + sphereInflation,
-      );
     }
 
     classifySegmentDamageRowsMixed(
@@ -2108,42 +2115,14 @@ export class DamageSystem {
           _areaDamageEntities[row] = projectile;
         }
       }
-    } else {
-      const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
-        source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
-      );
-      ensureAreaDamageCapacity(nearbyProjectiles.length);
-      for (const projectile of nearbyProjectiles) {
-        if (source.excludeEntities.has(projectile.id)) continue;
-        const proj = projectile.projectile;
-        if (
-          proj === null ||
-          proj.projectileType !== 'projectile' ||
-          proj.hp <= 0 ||
-          !isProjectileShot(proj.config.shot)
-        ) {
-          continue;
-        }
-
-        const row = areaRowCount++;
-        _areaDamageEntities[row] = projectile;
-        _areaDamageEnabled[row] = 1;
-        _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_PROJECTILE;
-        _areaDamageTargetX[row] = projectile.transform.x;
-        _areaDamageTargetY[row] = projectile.transform.y;
-        _areaDamageTargetZ[row] = projectile.transform.z;
-        _areaDamageTargetRadius[row] = proj.config.shotProfile.runtime.radius.collision;
-        _areaDamageBoxHalfX[row] = 0;
-        _areaDamageBoxHalfY[row] = 0;
-        _areaDamageBoxHalfZ[row] = 0;
-      }
     }
+    // No JS fallback when the slab views are unavailable: the sim
+    // cannot run without wasm, so rows only ever populate through the
+    // slot-native branch above.
     classifyAreaDamageRows(source, areaRowCount, false, Math.PI);
     for (let row = 0; row < areaRowCount; row++) {
       if ((_areaDamageOutFlags[row] & DAMAGE_AREA_FLAG_OVERLAP) === 0) continue;
-      const projectile = entityViews !== null
-        ? entitySlotRegistry.resolveSlot(_areaDamageSlots[row])
-        : _areaDamageEntities[row];
+      const projectile = entitySlotRegistry.resolveSlot(_areaDamageSlots[row]);
       const proj = projectile?.projectile ?? null;
       if (
         projectile === undefined ||
