@@ -972,6 +972,15 @@ export class Simulation {
         if (unit.moveState !== 'roam' && this.combatHaltController.shouldStopForFightCombat(entity)) {
           flags |= UNIT_ACTION_FLAG_COMBAT_STOP_FIGHT;
         }
+        // BAR patrol-service: the energy pass (which ran earlier this
+        // tick) marked this builder as funding a sweep assist/heal —
+        // hold it in place while it services, then resume the leg.
+        if (
+          entity.builder !== null &&
+          this.energyBuffers.sweepServicingBuilderIds.has(entity.id)
+        ) {
+          flags |= UNIT_ACTION_FLAG_GUARD_SERVICE;
+        }
       }
 
       planner.queue(

@@ -582,6 +582,12 @@ export type EnergyBuffers = {
    *  builder unit has already registered, in O(1) instead of an
    *  O(consumers-per-player) linear walk. */
   buildingConsumerIds: Set<EntityId>;
+  /** Builders whose head action is fight/patrol that funded a build
+   *  assist or heal this tick (BAR patrol-service). updateUnits runs
+   *  after the energy pass in the same tick and holds these units in
+   *  place while they service; membership is derived deterministically
+   *  from the same funding decision every peer computes. */
+  sweepServicingBuilderIds: Set<EntityId>;
 };
 
 export type EnergySource = {

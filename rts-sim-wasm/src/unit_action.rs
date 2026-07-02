@@ -281,6 +281,12 @@ pub fn unit_action_plan_batch(
         } else if action == ACTION_TYPE_FIGHT || action == ACTION_TYPE_PATROL {
             if movement_blocked_by_combat(f, true) {
                 UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD
+            } else if has(f, UNIT_ACTION_FLAG_GUARD_SERVICE)
+                && !has(f, UNIT_ACTION_FLAG_MOVE_STATE_ROAM)
+            {
+                // BAR patrol-service: a builder funding a sweep
+                // assist/heal holds in place until the job completes.
+                UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD
             } else {
                 UNIT_ACTION_PLAN_MOVE_COMPLETION
             }

@@ -115,6 +115,7 @@ export function createEnergyBuffers(): EnergyBuffers {
     constructionSourceTailByTarget: new Map(),
     constructionSources: [],
     buildingConsumerIds: new Set(),
+    sweepServicingBuilderIds: new Set(),
   };
 }
 
@@ -127,6 +128,7 @@ export function resetEnergyBuffers(buffers: EnergyBuffers): void {
   buffers.constructionSourceTailByTarget.clear();
   buffers.constructionSources.length = 0;
   buffers.buildingConsumerIds.clear();
+  buffers.sweepServicingBuilderIds.clear();
 }
 
 const DEFAULT_CONSUMER_DEBIT_CAPACITY = 32;
@@ -361,6 +363,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   byPlayer.clear();
   const buildingConsumerIds = buffers.buildingConsumerIds;
   buildingConsumerIds.clear();
+  const sweepServicingBuilderIds = buffers.sweepServicingBuilderIds;
+  sweepServicingBuilderIds.clear();
 
   // Zero every factory's per-resource rate fractions up front. The
   // build-consumer loop below sets them on the factories that actually
@@ -469,13 +473,18 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     } else {
       targetId = builder.currentBuildTarget;
     }
+    let sweepAssist = false;
     if (targetId === NO_ENTITY_ID) {
       // Idle builder with no order: its construction pylons auto-continue the
-      // nearest friendly nanoframe already in build range (no movement). Only
-      // when truly idle, so a builder traveling to a real build site or doing
-      // anything else is never diverted.
+      // nearest friendly nanoframe already in build range (no movement). A
+      // builder whose head order is fight/patrol services the same way as it
+      // sweeps past (BAR patrol-assist); updateUnits holds it in place while
+      // it funds. Builders traveling to a real build site or doing anything
+      // else are never diverted.
+      const head = entity.unit !== null ? entity.unit.actions[0] : undefined;
       const idle = entity.unit !== null && entity.unit.actions.length === 0;
-      if (!idle || autoAssistCandidates.length === 0) continue;
+      sweepAssist = head !== undefined && (head.type === 'fight' || head.type === 'patrol');
+      if ((!idle && !sweepAssist) || autoAssistCandidates.length === 0) continue;
       const assist = findAutoAssistTarget(entity, autoAssistCandidates);
       if (assist === null) continue;
       targetId = assist.id;
@@ -483,6 +492,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     }
     const target = world.getEntity(targetId);
     if (!target || !isBuildTargetInRange(entity, target)) continue;
+    if (sweepAssist) sweepServicingBuilderIds.add(entity.id);
     buildTargets.add(targetId);
     const rate = builderRate;
     constructionRateByTarget.set(targetId, (constructionRateByTarget.get(targetId) ?? 0) + rate);
@@ -645,15 +655,20 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
 
   // 5) Idle-builder auto-repair. A builder with no order and no guard that
   //    isn't already auto-assisting a build repairs the nearest damaged,
-  //    complete friendly unit already in range (BAR idle-assist; never moves).
-  //    Shares guardHealedTargetIds so one target gets one healer per tick.
+  //    complete friendly unit already in range (BAR idle-assist; never
+  //    moves). Builders whose head order is fight/patrol repair the same
+  //    way as they sweep past (BAR patrol-service); updateUnits holds them
+  //    while they fund. Shares guardHealedTargetIds so one target gets one
+  //    healer per tick.
   const damagedUnits = world.getDamagedUnits();
   if (damagedUnits.length > 0) {
     for (const entity of world.getBuilderUnits()) {
       const builder = entity.builder;
       if (builder === null || entity.unit === null || entity.ownership === null) continue;
       if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
-      if (entity.unit.actions.length !== 0) continue; // idle only
+      const head = entity.unit.actions[0];
+      const sweepHeal = head !== undefined && (head.type === 'fight' || head.type === 'patrol');
+      if (entity.unit.actions.length !== 0 && !sweepHeal) continue;
       if (builder.currentBuildTarget !== NO_ENTITY_ID) continue;
       if (autoAssistedBuilderIds.has(entity.id)) continue; // already assisting a build
       const target = findNearestDamagedUnit(entity, damagedUnits, guardHealedTargetIds);
@@ -661,6 +676,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;
       if (remaining <= 0) continue;
       guardHealedTargetIds.add(target.id);
+      if (sweepHeal) sweepServicingBuilderIds.add(entity.id);
       addConsumer(
         entity.ownership.playerId,
         target,

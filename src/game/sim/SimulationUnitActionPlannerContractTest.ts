@@ -13,6 +13,7 @@ import {
   UNIT_ACTION_FLAG_GUARD_SERVICE_IN_RANGE,
   UNIT_ACTION_FLAG_LOAD_IN_RANGE,
   UNIT_ACTION_FLAG_MOVE_STATE_HOLD,
+  UNIT_ACTION_FLAG_MOVE_STATE_ROAM,
   UNIT_ACTION_FLAG_TARGET_PRESENT,
   UNIT_ACTION_FLAG_TARGET_IN_BUILD_RANGE,
   UNIT_ACTION_FLAG_TRANSPORT_EMPTY,
@@ -181,6 +182,21 @@ export function runSimulationUnitActionPlannerContractTest(): void {
     'fight action holds on fight-specific combat halt',
   );
   assertContract(classify(action('patrol')) === UNIT_ACTION_PLAN_MOVE_COMPLETION, 'patrol otherwise moves');
+  assertContract(
+    classify(action('fight'), UNIT_ACTION_FLAG_GUARD_SERVICE) === UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD,
+    'fighting builder funding a sweep service holds in place',
+  );
+  assertContract(
+    classify(action('patrol'), UNIT_ACTION_FLAG_GUARD_SERVICE) === UNIT_ACTION_PLAN_FIGHT_PATROL_HOLD,
+    'patrolling builder funding a sweep service holds in place',
+  );
+  assertContract(
+    classify(
+      action('patrol'),
+      UNIT_ACTION_FLAG_GUARD_SERVICE | UNIT_ACTION_FLAG_MOVE_STATE_ROAM,
+    ) === UNIT_ACTION_PLAN_MOVE_COMPLETION,
+    'roam move state keeps a sweeping builder moving through its patrol',
+  );
   assertContract(classify(action('move')) === UNIT_ACTION_PLAN_MOVE_COMPLETION, 'move uses completion batch');
 
   // Native range resolution: the plan batch reads self/target state from
