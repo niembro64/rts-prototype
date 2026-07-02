@@ -1,11 +1,26 @@
 // UI Update Manager - handles selection, economy, and minimap data updates
 
 import { COST_MULTIPLIER } from '../../../config';
-import type { CombatFireState, Entity, PlayerId, UnitAction, UnitMoveState, WaypointType } from '../../sim/types';
+import type {
+  CombatFireState,
+  Entity,
+  EntityId,
+  PlayerId,
+  TurretConfig,
+  UnitAction,
+  UnitMoveState,
+  WaypointType,
+} from '../../sim/types';
 import { getPlayerPrimaryColor } from '../../sim/types';
 import { economyManager } from '../../sim/economy';
-import { getUnitBlueprint } from '../../sim/blueprints';
+import {
+  getRayBlueprint,
+  getShotBlueprint,
+  getTurretBlueprint,
+  getUnitBlueprint,
+} from '../../sim/blueprints';
 import { getBuildingConfig } from '../../sim/buildConfigs';
+import { isIdleBuilderUnit } from '../../sim/idleBuilders';
 import { isMetalExtractorBlueprintId } from '../../../types/buildingTypes';
 import { isBallisticArcWeapon, isCommander } from '../../sim/combat/combatUtils';
 import {
@@ -1057,6 +1072,251 @@ export function buildEconomyInfo(
     units: { count: unitCount, cap: unitCap },
     buildings: { solar: solarCount, wind: windCount, factory: factoryCount, extractor: extractorCount },
   };
+}
+
+// ── Idle-builders HUD panel (BAR gui_idle_builders) ──
+
+export type IdleBuilderGroupInfo = {
+  unitBlueprintId: string;
+  label: string;
+  shortName: string;
+  count: number;
+};
+
+/** One chip per idle-builder blueprint with a live count, sorted by
+ *  blueprint id (BAR sorts its icons by unitDefID). Built on the scene's
+ *  existing ~100 ms economy/UI cadence — callers gate publishing on a
+ *  change signature so idle Vue frames cost nothing. */
+export function buildIdleBuilderGroups(
+  entitySource: UIEntitySource,
+  playerId: PlayerId,
+): IdleBuilderGroupInfo[] {
+  const groupsByBlueprintId = new Map<string, IdleBuilderGroupInfo>();
+  const units = entitySource.getUnitsByPlayer(playerId);
+  for (let i = 0; i < units.length; i++) {
+    const unit = units[i];
+    if (!isIdleBuilderUnit(unit)) continue;
+    const unitBlueprintId = unit.unit?.unitBlueprintId;
+    if (!unitBlueprintId) continue;
+    const existing = groupsByBlueprintId.get(unitBlueprintId);
+    if (existing !== undefined) {
+      existing.count++;
+      continue;
+    }
+    groupsByBlueprintId.set(unitBlueprintId, {
+      unitBlueprintId,
+      label: unitLabel(unitBlueprintId),
+      shortName: unitShortLabel(unitBlueprintId),
+      count: 1,
+    });
+  }
+  const groups = [...groupsByBlueprintId.values()];
+  groups.sort((a, b) => (a.unitBlueprintId < b.unitBlueprintId ? -1 : 1));
+  return groups;
+}
+
+// ── Hold-I unit stats overlay (BAR gui_unit_stats) ──
+
+export type UnitStatsWeaponInfo = {
+  turretBlueprintId: string;
+  name: string;
+  /** WeaponKind: attack | construction | repair | spawn | resourcePylon. */
+  kind: string;
+  /** Emission presentation kind: shot | beam | laser | shield | null. */
+  emission: string | null;
+  /** Identical turret mounts grouped BAR-style. */
+  count: number;
+  range: number;
+  cooldownMs: number | null;
+  /** Damage of one full volley (per-shot damage × pellets × burst). */
+  volleyDamage: number | null;
+  /** Derived damage/second where the blueprint data allows it. */
+  dps: number | null;
+};
+
+export type UnitStatsFactoryInfo = {
+  currentUnitLabel: string | null;
+  progress: number;
+  queueLength: number;
+  isProducing: boolean;
+  repeat: boolean;
+};
+
+export type UnitStatsOverlayInfo = {
+  entityId: EntityId;
+  source: 'hover' | 'selection';
+  kind: 'unit' | 'tower' | 'building';
+  name: string;
+  blueprintId: string;
+  hp: number;
+  maxHp: number;
+  mass: number | null;
+  costEnergy: number | null;
+  costMetal: number | null;
+  locomotion: { type: string; driveForce: number; traction: number } | null;
+  weapons: UnitStatsWeaponInfo[];
+  factory: UnitStatsFactoryInfo | null;
+};
+
+function buildUnitStatsWeaponInfo(config: TurretConfig): UnitStatsWeaponInfo {
+  let name: string = config.turretBlueprintId;
+  let kind = 'attack';
+  let emission: string | null = null;
+  let cooldownMs: number | null = config.cooldown?.duration ?? null;
+  let volleyDamage: number | null = null;
+  let dps: number | null = null;
+  try {
+    const turretBp = getTurretBlueprint(config.turretBlueprintId);
+    name = turretBp.name;
+    kind = turretBp.kind;
+    emission = turretBp.emissionKind;
+    if (turretBp.spawn) {
+      emission = emission ?? 'spawn';
+      cooldownMs = cooldownMs ?? turretBp.spawn.cooldownMs;
+    }
+    const emissionBlueprintId = turretBp.emissionBlueprintId;
+    if (turretBp.emissionKind === 'shot' && emissionBlueprintId !== null) {
+      const shotBp = getShotBlueprint(emissionBlueprintId);
+      const shotsPerVolley = (config.spread?.pelletCount ?? 1) * (config.burst?.count ?? 1);
+      volleyDamage = shotBp.base.deathExplosion.damage * shotsPerVolley;
+      if (cooldownMs !== null && cooldownMs > 0) {
+        dps = volleyDamage / (cooldownMs / 1000);
+      }
+    } else if (turretBp.emissionKind === 'ray' && emissionBlueprintId !== null) {
+      const rayBp = getRayBlueprint(emissionBlueprintId);
+      emission = rayBp.type;
+      if (rayBp.type === 'laser') {
+        volleyDamage = rayBp.dps * (rayBp.duration / 1000);
+        dps = cooldownMs !== null && cooldownMs > 0
+          ? volleyDamage / (cooldownMs / 1000)
+          : rayBp.dps;
+      } else {
+        // Continuous beam: dps applies for as long as the beam holds.
+        dps = rayBp.dps;
+      }
+    }
+  } catch {
+    // Unknown turret blueprint: fall back to the raw runtime config values.
+  }
+  return {
+    turretBlueprintId: config.turretBlueprintId,
+    name,
+    kind,
+    emission,
+    count: 1,
+    range: config.range,
+    cooldownMs,
+    volleyDamage,
+    dps,
+  };
+}
+
+function buildUnitStatsWeapons(entity: Entity): UnitStatsWeaponInfo[] {
+  const turrets = entity.combat?.turrets;
+  if (turrets === undefined || turrets.length === 0) return [];
+  const byBlueprintId = new Map<string, UnitStatsWeaponInfo>();
+  for (let i = 0; i < turrets.length; i++) {
+    const config = turrets[i].config;
+    if (config.visualOnly) continue;
+    const existing = byBlueprintId.get(config.turretBlueprintId);
+    if (existing !== undefined) {
+      existing.count++;
+      continue;
+    }
+    byBlueprintId.set(config.turretBlueprintId, buildUnitStatsWeaponInfo(config));
+  }
+  return [...byBlueprintId.values()];
+}
+
+function buildUnitStatsFactoryInfo(entity: Entity): UnitStatsFactoryInfo | null {
+  const factory = entity.factory;
+  if (factory === null) return null;
+  return {
+    currentUnitLabel: factory.selectedUnitBlueprintId === null
+      ? null
+      : unitLabel(factory.selectedUnitBlueprintId),
+    progress: factory.currentBuildProgress,
+    queueLength: factory.productionQueue.length,
+    isProducing: factory.isProducing,
+    repeat: factory.repeatProduction,
+  };
+}
+
+/** Detailed display-only stats for the hold-I overlay. All numbers come
+ *  from blueprints plus the live hp/production fields already present on
+ *  the ClientViewState entity — no sim access. */
+export function buildUnitStatsOverlayInfo(
+  entity: Entity,
+  source: 'hover' | 'selection',
+): UnitStatsOverlayInfo | null {
+  const hp = hpPair(entity);
+  if (entity.unit !== null) {
+    const unitBlueprintId = entity.unit.unitBlueprintId;
+    let name = unitBlueprintId;
+    let mass: number | null = null;
+    let costEnergy: number | null = null;
+    let costMetal: number | null = null;
+    let locomotion: UnitStatsOverlayInfo['locomotion'] = null;
+    try {
+      const bp = getUnitBlueprint(unitBlueprintId);
+      name = bp.name;
+      mass = bp.mass;
+      costEnergy = bp.cost.energy * COST_MULTIPLIER;
+      costMetal = bp.cost.metal * COST_MULTIPLIER;
+      locomotion = {
+        type: bp.locomotion.type,
+        driveForce: bp.locomotion.physics.driveForce,
+        traction: bp.locomotion.physics.traction,
+      };
+    } catch {
+      // Unknown blueprint: show the raw id + live hp only.
+    }
+    return {
+      entityId: entity.id,
+      source,
+      kind: 'unit',
+      name,
+      blueprintId: unitBlueprintId,
+      hp: hp?.hp ?? 0,
+      maxHp: hp?.maxHp ?? 0,
+      mass,
+      costEnergy,
+      costMetal,
+      locomotion,
+      weapons: buildUnitStatsWeapons(entity),
+      factory: buildUnitStatsFactoryInfo(entity),
+    };
+  }
+  if (entity.building !== null && entity.buildingBlueprintId !== null) {
+    let name: string = entity.buildingBlueprintId;
+    let costEnergy: number | null = null;
+    let costMetal: number | null = null;
+    try {
+      const bp = getBuildingConfig(entity.buildingBlueprintId);
+      name = bp.name;
+      // BuildingConfig cost is already COST_MULTIPLIER-scaled.
+      costEnergy = bp.cost.energy;
+      costMetal = bp.cost.metal;
+    } catch {
+      // Unknown blueprint: show the raw id + live hp only.
+    }
+    return {
+      entityId: entity.id,
+      source,
+      kind: entity.type === 'tower' ? 'tower' : 'building',
+      name,
+      blueprintId: entity.buildingBlueprintId,
+      hp: hp?.hp ?? 0,
+      maxHp: hp?.maxHp ?? 0,
+      mass: null,
+      costEnergy,
+      costMetal,
+      locomotion: null,
+      weapons: buildUnitStatsWeapons(entity),
+      factory: buildUnitStatsFactoryInfo(entity),
+    };
+  }
+  return null;
 }
 
 // Build minimap data from entities and the terrain background.

@@ -388,6 +388,19 @@ export function runCommandHotkeysContractTest(): void {
     resolveCommandHotkey(keyEvent('o', 'KeyO', { altKey: true }), 'bar-grid') === 'ui.flipCameraYaw',
     'bar-grid Alt+O should flip the camera',
   );
+  // BAR grid_keys.txt: "bind sc_i unit_stats" — plain I holds the stats peek.
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI'), 'bar-grid') === 'ui.unitStats',
+    'bar-grid plain I should hold the unit stats peek (grid_keys.txt sc_i unit_stats)',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI', { altKey: true }), 'bar-grid') === 'select.invert',
+    'bar-grid Alt+I must stay the selection invert, not the stats peek',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent(' ', 'Space'), 'bar-grid') === null,
+    'bar-grid Space is the queue-front modifier only, never the stats peek',
+  );
   assertContract(
     resolveCommandHotkey(keyEvent('F7', 'F7'), 'bar-grid') !== 'command.scan',
     'bar-grid F7 must not trigger the prototype scanner sweep',
@@ -440,6 +453,11 @@ export function runCommandHotkeysContractTest(): void {
     barMapDrawHotkeySignature(keyEvent('q', 'KeyQ', { metaKey: true }), 'bar-grid-60pct') ===
       'bar-grid-60pct:Meta+KeyQ',
     'bar-grid-60pct Meta+Q must enter the BAR map draw double-tap resolver',
+  );
+  // grid_keys_60pct.txt keeps "bind sc_i unit_stats".
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI'), 'bar-grid-60pct') === 'ui.unitStats',
+    'bar-grid-60pct plain I should hold the unit stats peek',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('q', 'KeyQ', { ctrlKey: true }), 'bar-grid') === 'select.split',
@@ -854,6 +872,20 @@ export function runCommandHotkeysContractTest(): void {
     resolveCommandHotkey(keyEvent('F4', 'F4'), 'bar-legacy') !== 'command.scan',
     'bar-legacy F4 must not trigger the prototype scanner sweep',
   );
+  // legacy_keys.txt: "bind Any+space unit_stats" (Space also stays the
+  // queue-front modifier, matching BAR's own overlap).
+  assertContract(
+    resolveCommandHotkey(keyEvent(' ', 'Space'), 'bar-legacy') === 'ui.unitStats',
+    'bar-legacy Space should hold the unit stats peek (legacy_keys.txt Any+space unit_stats)',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent(' ', 'Space', { ctrlKey: true, shiftKey: true }), 'bar-legacy') === 'ui.unitStats',
+    'bar-legacy modified Space must still match because BAR binds Any+space',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI'), 'bar-legacy') === null,
+    'bar-legacy plain I must stay unbound (legacy keeps the stats peek on Space)',
+  );
   assertContract(
     resolveCommandHotkey(keyEvent('1', 'Digit1', { metaKey: true }), 'bar-legacy-60pct') === 'ui.toggleElevationMap',
     'bar-legacy-60pct Meta+1 should toggle the elevation map overlay',
@@ -897,6 +929,11 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     resolveCommandHotkey(keyEvent('Tab', 'Tab'), 'bar-legacy-60pct') === 'ui.showMapOverview',
     'bar-legacy-60pct Tab should toggle BAR overview',
+  );
+  // legacy_keys_60pct.txt keeps "bind Any+space unit_stats".
+  assertContract(
+    resolveCommandHotkey(keyEvent(' ', 'Space'), 'bar-legacy-60pct') === 'ui.unitStats',
+    'bar-legacy-60pct Space should hold the unit stats peek',
   );
   assertContract(
     resolveCommandHotkey(keyEvent('F10', 'F10'), 'bar-legacy-60pct') === null,
@@ -945,6 +982,15 @@ export function runCommandHotkeysContractTest(): void {
   assertContract(
     resolveCommandHotkey(keyEvent('e', 'KeyE', { altKey: true }), 'prototype') === 'combat.capture',
     'prototype Alt+E should resolve capture without colliding with reclaim',
+  );
+  // Prototype adopts the BAR-grid plain-I stats peek; Alt+I stays invert.
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI'), 'prototype') === 'ui.unitStats',
+    'prototype plain I should hold the unit stats peek',
+  );
+  assertContract(
+    resolveCommandHotkey(keyEvent('i', 'KeyI', { altKey: true }), 'prototype') === 'select.invert',
+    'prototype Alt+I must stay the selection invert, not the stats peek',
   );
   assertContract(
     resolveCommandHotkey(keyEvent(';', 'Semicolon'), 'bar-grid') === 'command.moveState',

@@ -13,8 +13,14 @@ import {
 } from './helpers/RtsScene3DSnapshotIntake';
 import type { SnapshotMaterializationMetadata } from '../network/snapshotMaterializationMetadata';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
-import { buildEconomyInfo } from './helpers';
-import type { EconomyInfo, MinimapData, SelectionInfo } from './helpers';
+import { buildEconomyInfo, buildIdleBuilderGroups, buildUnitStatsOverlayInfo } from './helpers';
+import type {
+  EconomyInfo,
+  IdleBuilderGroupInfo,
+  MinimapData,
+  SelectionInfo,
+  UnitStatsOverlayInfo,
+} from './helpers';
 import { RtsScene3DCameraControl, type CameraShim } from './helpers/RtsScene3DCameraControl';
 import { RtsScene3DCameraFootprintSystem } from './helpers/RtsScene3DCameraFootprintSystem';
 import { RtsScene3DCameraFramingSystem } from './helpers/RtsScene3DCameraFramingSystem';
@@ -241,6 +247,11 @@ export class RtsScene3D {
   public onPlayerChange?: (playerId: PlayerId) => void;
   public onSelectionChange?: (info: SelectionInfo) => void;
   public onEconomyChange?: (info: EconomyInfo) => void;
+  /** Idle-builder chips for the persistent HUD panel. Published on the
+   *  economy UI cadence (ECONOMY_UPDATE_INTERVAL) and only when the
+   *  group signature actually changed, so idle frames publish nothing. */
+  public onIdleBuildersChange?: (groups: IdleBuilderGroupInfo[]) => void;
+  private lastIdleBuildersSignature = '';
   public onMinimapUpdate?: (data: MinimapData) => void;
   /** Separate per-frame callback for just the camera footprint quad.
    *  Decoupling this from `onMinimapUpdate` keeps the box animation
@@ -718,6 +729,7 @@ export class RtsScene3D {
       if (this.economyUpdateTimer >= this.ECONOMY_UPDATE_INTERVAL) {
         this.economyUpdateTimer = 0;
         this.updateEconomyInfo();
+        this.updateIdleBuildersInfo();
       }
 
       this.rendererWarmup?.markClientReadyForStartupIfPossible();
@@ -776,6 +788,7 @@ export class RtsScene3D {
     if (this.economyUpdateTimer >= this.ECONOMY_UPDATE_INTERVAL) {
       this.economyUpdateTimer = 0;
       this.updateEconomyInfo();
+      this.updateIdleBuildersInfo();
     }
 
     this.minimapSystem.tick(
@@ -869,6 +882,33 @@ export class RtsScene3D {
     if (info) this.onEconomyChange(info);
   }
 
+  /** Rebuild the idle-builder chip list on the economy UI cadence and
+   *  publish only when it changed since the last publish. */
+  public updateIdleBuildersInfo(): void {
+    if (!this.onIdleBuildersChange) return;
+    const groups = buildIdleBuilderGroups(this.entitySourceAdapter, this.localPlayerId);
+    let signature = '';
+    for (let i = 0; i < groups.length; i++) {
+      signature += `${groups[i].unitBlueprintId}:${groups[i].count};`;
+    }
+    if (signature === this.lastIdleBuildersSignature) return;
+    this.lastIdleBuildersSignature = signature;
+    this.onIdleBuildersChange(groups);
+  }
+
+  /** Hold-I stats peek target: the hovered entity (any owner, same
+   *  raycastEntity-backed hover the smart cursor uses) or, when nothing
+   *  is hovered, the single selected entity. Display-only. */
+  public getUnitStatsInfo(): UnitStatsOverlayInfo | null {
+    const hovered = this.inputManager?.getHoveredEntity() ?? null;
+    if (hovered !== null) return buildUnitStatsOverlayInfo(hovered, 'hover');
+    const selectedUnits = this.selectionSystem.getSelectedUnits();
+    const selectedBuildings = this.selectionSystem.getSelectedBuildings();
+    if (selectedUnits.length + selectedBuildings.length !== 1) return null;
+    const entity = selectedUnits.length === 1 ? selectedUnits[0] : selectedBuildings[0];
+    return buildUnitStatsOverlayInfo(entity, 'selection');
+  }
+
   public updateMinimapData(): void {
     // The camera quad is already computed once per frame for the shared
     // ViewportFootprint; the minimap system consumes it without raycasting.
@@ -900,6 +940,8 @@ export class RtsScene3D {
     // connections don't expose this — the network recipient is fixed.
     this.gameConnection.setRecipientPlayerId?.(playerId);
     this.markSelectionDirty();
+    // Force a fresh idle-builders publish for the new seat.
+    this.lastIdleBuildersSignature = '';
     this.onPlayerChange?.(playerId);
   }
 
@@ -1024,6 +1066,26 @@ export class RtsScene3D {
 
   public selectIdleBuilders(): void {
     this.inputManager?.selectIdleBuilders();
+  }
+
+  /** Idle-builders panel left-click: select the next idle builder of the
+   *  chip's type and center the camera on it. */
+  public cycleIdleBuilder(unitBlueprintId: string): void {
+    const builder = this.inputManager?.cycleIdleBuilderSelection(unitBlueprintId) ?? null;
+    if (builder !== null) this.cameraControl.centerOn(builder.transform.x, builder.transform.y);
+  }
+
+  /** Idle-builders panel Shift+click: add all idle builders of the
+   *  chip's type to the current selection. */
+  public addIdleBuildersToSelection(unitBlueprintId: string): void {
+    this.inputManager?.addIdleBuildersToSelection(unitBlueprintId);
+  }
+
+  /** Idle-builders panel right-click: center the camera on the next idle
+   *  builder of the chip's type without changing the selection. */
+  public focusIdleBuilder(unitBlueprintId: string): void {
+    const builder = this.inputManager?.nextIdleBuilder(unitBlueprintId) ?? null;
+    if (builder !== null) this.cameraControl.centerOn(builder.transform.x, builder.transform.y);
   }
 
   public selectIdleTransports(): void {

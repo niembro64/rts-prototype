@@ -99,6 +99,7 @@ export type CommandHotkeyId =
   | 'ui.pause'
   | 'ui.optionsMenu'
   | 'ui.showMapOverview'
+  | 'ui.unitStats'
   | 'ui.flipCameraYaw'
   | 'camera.viewTa'
   | 'camera.viewSpring'
@@ -255,6 +256,7 @@ export const COMMAND_HOTKEY_IDS: readonly CommandHotkeyId[] = [
   'ui.pause',
   'ui.optionsMenu',
   'ui.showMapOverview',
+  'ui.unitStats',
   'ui.flipCameraYaw',
   'camera.viewTa',
   'camera.viewSpring',
@@ -449,6 +451,7 @@ export const COMMAND_HOTKEY_DISPLAY_LABELS: Readonly<Record<CommandHotkeyId, str
   'ui.pause': 'Pause Game',
   'ui.optionsMenu': 'Options Menu',
   'ui.showMapOverview': 'Map Overview',
+  'ui.unitStats': 'Unit Stats (Hold)',
   'ui.flipCameraYaw': 'Flip Camera',
   'camera.viewTa': 'TA Camera View',
   'camera.viewSpring': 'Spring Camera View',
@@ -630,6 +633,9 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.optionsMenu': [code('F10', 'F10', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.showMapOverview': [code('Ctrl+T', 'KeyT', { ctrl: true })],
+    // Hold-to-show stats peek (BAR gui_unit_stats). Plain I follows the
+    // BAR grid default; prototype has no other plain-I bind (invert is Alt+I).
+    'ui.unitStats': [code('I', 'KeyI')],
     'ui.flipCameraYaw': [code('Alt+O', 'KeyO', { alt: true })],
     'camera.viewTa': [code('Ctrl+F5', 'F5', { ctrl: true })],
     'camera.viewSpring': [code('Ctrl+F6', 'F6', { ctrl: true })],
@@ -767,6 +773,10 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.optionsMenu': [code('F10', 'F10')],
     'ui.showMapOverview': [code('Ctrl+T', 'KeyT', { ctrl: true })],
+    // grid_keys.txt: "bind sc_i unit_stats" — hold-to-show stats peek
+    // (gui_unit_stats registers press+release actions). Plain I is free
+    // in grid (select.invert is Alt+I).
+    'ui.unitStats': [code('I', 'KeyI')],
     'ui.flipCameraYaw': [code('Alt+O', 'KeyO', { alt: true })],
     'camera.viewTa': [code('Ctrl+F5', 'F5', { ctrl: true })],
     'camera.viewSpring': [code('Ctrl+F6', 'F6', { ctrl: true })],
@@ -904,6 +914,11 @@ const BASE_COMMAND_HOTKEY_PRESETS: Readonly<Record<
     'ui.pause': [code('Pause', 'Pause', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.optionsMenu': [code('F10', 'F10')],
     'ui.showMapOverview': [key('Tab', 'tab', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
+    // legacy_keys.txt: "bind Any+space unit_stats". Space doubles as the
+    // BAR queue-front modifier (chat_and_ui_keys.txt "Any+space
+    // commandinsert prepend") — the same overlap exists in BAR itself:
+    // holding Space both shows the stats peek and prepends commands.
+    'ui.unitStats': [code('Space', 'Space', { ctrl: 'any', shift: 'any', alt: 'any', meta: 'any' })],
     'ui.flipCameraYaw': [code('Ctrl+Shift+O', 'KeyO', { ctrl: true, shift: true })],
     'camera.viewTa': [code('Ctrl+F2', 'F2', { ctrl: true })],
     'camera.viewSpring': [code('Ctrl+F3', 'F3', { ctrl: true })],

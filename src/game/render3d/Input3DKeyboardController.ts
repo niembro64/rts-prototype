@@ -1147,6 +1147,7 @@ export class Input3DKeyboardController {
       case 'ui.pause':
       case 'ui.optionsMenu':
       case 'ui.showMapOverview':
+      case 'ui.unitStats':
       case 'ui.flipCameraYaw':
       case 'camera.viewTa':
       case 'camera.viewSpring':

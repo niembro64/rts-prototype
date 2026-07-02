@@ -2,11 +2,13 @@ import type { GameScene } from '@/types/game';
 import type { PlayerId } from '@/types/sim';
 import type { CameraViewBasis, EconomyInfo, MinimapData, SelectionInfo } from '@/types/ui';
 import type { GamePhase, NetworkServerSnapshotMeta } from '@/types/network';
+import type { IdleBuilderGroupInfo } from '../game/scenes/helpers';
 
 type SceneUiBindings = {
   onPlayerChange: (playerId: PlayerId) => void;
   onSelectionChange: (info: SelectionInfo) => void;
   onEconomyChange: (info: EconomyInfo) => void;
+  onIdleBuildersChange: (groups: IdleBuilderGroupInfo[]) => void;
   onMinimapUpdate: (data: MinimapData) => void;
   onCameraQuadUpdate: (
     quad: MinimapData['cameraQuad'],
@@ -27,6 +29,7 @@ export function bindSceneUiCallbacks(
   scene.onPlayerChange = bindings.onPlayerChange;
   scene.onSelectionChange = bindings.onSelectionChange;
   scene.onEconomyChange = bindings.onEconomyChange;
+  scene.onIdleBuildersChange = bindings.onIdleBuildersChange;
   scene.onMinimapUpdate = bindings.onMinimapUpdate;
   scene.onCameraQuadUpdate = bindings.onCameraQuadUpdate;
   scene.onServerMetaUpdate = bindings.onServerMetaUpdate;

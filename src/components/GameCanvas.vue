@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, reactive, watch, watchEffect, onMounted, onBeforeUnmount, nextTick } from 'vue';
+import { ref, computed, reactive, shallowRef, watch, watchEffect, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import type { GameInstance } from '../game/createGame';
 import type { PlayerId } from '../game/sim/types';
 import type { BackgroundBattleState } from '../game/lobby/LobbyManager';
 import SelectionPanel from './SelectionPanel.vue';
 import TopBar from './TopBar.vue';
 import Minimap from './Minimap.vue';
+import IdleBuildersPanel from './IdleBuildersPanel.vue';
+import UnitStatsOverlay from './UnitStatsOverlay.vue';
+import type { UnitStatsOverlayInfo } from '../game/scenes/helpers';
 import LobbyModal, { type LobbyPlayer } from './LobbyModal.vue';
 import GameCanvasOverlays from './GameCanvasOverlays.vue';
 import GameCanvasBattleControlBar from './GameCanvasBattleControlBar.vue';
@@ -684,11 +687,55 @@ function formatCommunicationTime(createdAtMs: number): string {
   return `${hours}:${minutes}`;
 }
 
-function handleGameUiCommandHotkey(commandId: CommandHotkeyId): boolean {
+// ── Hold-I unit stats peek (BAR gui_unit_stats: press shows, release
+// hides). The overlay polls the active scene for hovered/selected entity
+// stats on a coarse interval instead of hooking per-frame reactivity. ──
+const UNIT_STATS_POLL_MS = 150;
+const unitStatsOverlayInfo = shallowRef<UnitStatsOverlayInfo | null>(null);
+const unitStatsHeld = ref(false);
+let unitStatsHoldCode: string | null = null;
+let unitStatsPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function refreshUnitStatsOverlay(): void {
+  unitStatsOverlayInfo.value = getActiveGameScene()?.getUnitStatsInfo() ?? null;
+}
+
+function beginUnitStatsHold(code: string | null): void {
+  if (code !== null) unitStatsHoldCode = code;
+  if (unitStatsHeld.value) return;
+  unitStatsHeld.value = true;
+  refreshUnitStatsOverlay();
+  unitStatsPollTimer = setInterval(refreshUnitStatsOverlay, UNIT_STATS_POLL_MS);
+}
+
+function endUnitStatsHold(): void {
+  unitStatsHoldCode = null;
+  if (!unitStatsHeld.value) return;
+  unitStatsHeld.value = false;
+  if (unitStatsPollTimer !== null) {
+    clearInterval(unitStatsPollTimer);
+    unitStatsPollTimer = null;
+  }
+  unitStatsOverlayInfo.value = null;
+}
+
+function handleGameUiKeyup(event: KeyboardEvent): void {
+  if (unitStatsHoldCode !== null && event.code === unitStatsHoldCode) endUnitStatsHold();
+}
+
+function handleGameUiWindowBlur(): void {
+  endUnitStatsHold();
+}
+
+function handleGameUiCommandHotkey(commandId: CommandHotkeyId, event?: KeyboardEvent): boolean {
   switch (commandId) {
     case 'ui.pause':
       // Same setPaused flow as the control-bar PAUSE button / paused banner.
       setGamePaused(gamePhase.value !== 'paused');
+      return true;
+    case 'ui.unitStats':
+      // Hold semantics: keydown shows, the matching keyup hides.
+      beginUnitStatsHold(event?.code ?? null);
       return true;
     case 'ui.optionsMenu':
       toggleOptionsMenu();
@@ -841,7 +888,7 @@ function handleGameUiKeydown(event: KeyboardEvent): void {
     event.preventDefault();
     return;
   }
-  if (hotkey.commandId !== null && handleGameUiCommandHotkey(hotkey.commandId)) {
+  if (hotkey.commandId !== null && handleGameUiCommandHotkey(hotkey.commandId, event)) {
     event.preventDefault();
     return;
   }
@@ -859,6 +906,8 @@ onMounted(() => {
   syncFullscreenActive();
   document.addEventListener('fullscreenchange', syncFullscreenActive);
   window.addEventListener('keydown', handleGameUiKeydown);
+  window.addEventListener('keyup', handleGameUiKeyup);
+  window.addEventListener('blur', handleGameUiWindowBlur);
   bottomControlsResizeObserver = new ResizeObserver(updatePlayableBottomInset);
   if (bottomControlsRef.value !== null) bottomControlsResizeObserver.observe(bottomControlsRef.value);
   updatePlayableBottomInset();
@@ -867,6 +916,9 @@ onMounted(() => {
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', syncFullscreenActive);
   window.removeEventListener('keydown', handleGameUiKeydown);
+  window.removeEventListener('keyup', handleGameUiKeyup);
+  window.removeEventListener('blur', handleGameUiWindowBlur);
+  endUnitStatsHold();
   clearBarMapDrawTap();
   bottomControlsResizeObserver?.disconnect();
   bottomControlsResizeObserver = null;
@@ -1030,9 +1082,13 @@ const {
   selectionInfo,
   economyInfo,
   minimapData,
+  idleBuilders,
   bindGameSceneUi,
   handleMinimapClick: centerMinimapCamera,
   handleMinimapCommand: issueMinimapCommand,
+  cycleIdleBuilder,
+  addIdleBuildersToSelection,
+  focusIdleBuilder,
   gamePhase,
   selectionActions,
 } = useGameCanvasSceneUi({
@@ -2044,6 +2100,21 @@ watchEffect(() => {
           :hotkey-preset="commandHotkeyPreset"
           :hotkey-revision="commandHotkeyRevision"
           :playable-bottom-inset-px="playableBottomInsetPx"
+        />
+
+        <!-- Idle builders (bottom-center, BAR gui_idle_builders) -->
+        <IdleBuildersPanel
+          :groups="idleBuilders"
+          :playable-bottom-inset-px="playableBottomInsetPx"
+          @cycle="cycleIdleBuilder"
+          @add-all="addIdleBuildersToSelection"
+          @center="focusIdleBuilder"
+        />
+
+        <!-- Hold-I unit stats peek (BAR gui_unit_stats) -->
+        <UnitStatsOverlay
+          v-if="unitStatsHeld && unitStatsOverlayInfo !== null"
+          :info="unitStatsOverlayInfo"
         />
 
         <!-- Minimap -->

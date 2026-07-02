@@ -11,6 +11,7 @@ import {
 } from './minimapHelpers';
 import { bindSceneUiCallbacks } from './gameSceneBindings';
 import type { GameCanvasForegroundGame } from './gameCanvasForegroundGame';
+import type { IdleBuilderGroupInfo } from '../game/scenes/helpers';
 
 type UseGameCanvasSceneUiOptions = {
   activePlayer: Ref<PlayerId>;
@@ -192,6 +193,11 @@ export function useGameCanvasSceneUi({
 
   const minimapData = shallowReactive<MinimapData>(createInitialMinimapData());
 
+  /** Idle-builder chips for the persistent HUD panel. The scene publishes
+   *  a fresh array on its economy UI cadence only when the counts change,
+   *  so replacing the ref wholesale stays cheap. */
+  const idleBuilders = ref<IdleBuilderGroupInfo[]>([]);
+
   /** Authoritative game phase from snapshots — drives the HUD pause
    *  toggle/indicator. */
   const gamePhase = ref<GamePhase>('init');
@@ -209,6 +215,9 @@ export function useGameCanvasSceneUi({
       },
       onEconomyChange: (info) => {
         applyEconomyInfo(economyInfo, info);
+      },
+      onIdleBuildersChange: (groups) => {
+        idleBuilders.value = groups;
       },
       onMinimapUpdate: (data) => {
         applyMinimapContentData(minimapData, data);
@@ -246,6 +255,21 @@ export function useGameCanvasSceneUi({
 
   function handleMinimapClick(x: number, y: number): void {
     getActiveBattleScene()?.centerCameraOn(x, y);
+  }
+
+  // Idle-builders panel chip interactions (BAR gui_idle_builders):
+  // left-click cycles + selects + centers, Shift+click adds all of the
+  // type to the selection, right-click centers without selecting.
+  function cycleIdleBuilder(unitBlueprintId: string): void {
+    getActiveBattleScene()?.cycleIdleBuilder(unitBlueprintId);
+  }
+
+  function addIdleBuildersToSelection(unitBlueprintId: string): void {
+    getActiveBattleScene()?.addIdleBuildersToSelection(unitBlueprintId);
+  }
+
+  function focusIdleBuilder(unitBlueprintId: string): void {
+    getActiveBattleScene()?.focusIdleBuilder(unitBlueprintId);
   }
 
   /** Minimap right-click (BAR convention): issue the standard
@@ -489,10 +513,14 @@ export function useGameCanvasSceneUi({
     selectionInfo,
     economyInfo,
     minimapData,
+    idleBuilders,
     bindGameSceneUi,
     togglePlayer,
     handleMinimapClick,
     handleMinimapCommand,
+    cycleIdleBuilder,
+    addIdleBuildersToSelection,
+    focusIdleBuilder,
     gamePhase,
     selectionActions,
   };

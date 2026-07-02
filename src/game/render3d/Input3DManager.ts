@@ -95,6 +95,7 @@ import {
   isUpgradeableMetalExtractorTarget,
 } from '../sim/metalExtractorUpgrade';
 import { isClientTransportUnit } from '../sim/transports';
+import { isIdleBuilderUnit } from '../sim/idleBuilders';
 import { Input3DSpecialModes, type Input3DSpecialMode } from './Input3DSpecialModes';
 import { Input3DHoverState } from './Input3DHoverState';
 import { Input3DSelectionDragState } from './Input3DSelectionDragState';
@@ -237,6 +238,9 @@ export class Input3DManager {
   private activeBuilderUnitBlueprintId: string | null = null;
   private hoverState = new Input3DHoverState();
   private appliedCursor: CommandCursorKind = 'default';
+  /** Per-blueprint click cursor for the idle-builders panel cycling
+   *  (BAR gui_idle_builders `clicks[unitDefID]`). */
+  private idleBuilderCycleClicks = new Map<string, number>();
 
   // Drag state (screen coords only — box select is screen-space)
   private selectionDrag: Input3DSelectionDragState;
@@ -1223,15 +1227,59 @@ export class Input3DManager {
   }
 
   selectIdleBuilders(): void {
+    const idleBuilders = this.collectIdleBuilders();
     const entityIds: EntityId[] = [];
+    for (let i = 0; i < idleBuilders.length; i++) entityIds.push(idleBuilders[i].id);
+    this.enqueueSelection(entityIds, false);
+  }
+
+  /** Owned idle builders, optionally restricted to one unit blueprint.
+   *  Shares the isIdleBuilderUnit predicate with the idle-builders HUD
+   *  panel so the chips and the click actions agree on membership. */
+  private collectIdleBuilders(unitBlueprintId?: string): Entity[] {
+    const idleBuilders: Entity[] = [];
     const units = this.entitySource.getUnitsByPlayer(this.context.activePlayerId);
     for (let i = 0; i < units.length; i++) {
       const unit = units[i];
       if (!this.isSelectableByActivePlayer(unit)) continue;
-      if (unit.builder === null || unit.unit === null) continue;
-      if (unit.unit.actions.length === 0) entityIds.push(unit.id);
+      if (!isIdleBuilderUnit(unit)) continue;
+      if (unitBlueprintId !== undefined && unit.unit?.unitBlueprintId !== unitBlueprintId) continue;
+      idleBuilders.push(unit);
     }
-    this.enqueueSelection(entityIds, false);
+    return idleBuilders;
+  }
+
+  /** Advance the per-blueprint idle-builder cycle cursor and return the
+   *  next idle builder of that type (BAR gui_idle_builders clicks[unitDefID]
+   *  cycling). Returns null when none are idle. */
+  nextIdleBuilder(unitBlueprintId: string): Entity | null {
+    const idleBuilders = this.collectIdleBuilders(unitBlueprintId);
+    if (idleBuilders.length === 0) {
+      this.idleBuilderCycleClicks.delete(unitBlueprintId);
+      return null;
+    }
+    const clicks = (this.idleBuilderCycleClicks.get(unitBlueprintId) ?? -1) + 1;
+    this.idleBuilderCycleClicks.set(unitBlueprintId, clicks);
+    return idleBuilders[clicks % idleBuilders.length];
+  }
+
+  /** Idle-builders panel left-click: select the next idle builder of the
+   *  chip's type (cycling through duplicates on repeat clicks). Returns
+   *  the selected entity so the scene can center the camera on it. */
+  cycleIdleBuilderSelection(unitBlueprintId: string): Entity | null {
+    const nextBuilder = this.nextIdleBuilder(unitBlueprintId);
+    if (nextBuilder !== null) this.enqueueSelection([nextBuilder.id], false);
+    return nextBuilder;
+  }
+
+  /** Idle-builders panel Shift+click: add every idle builder of the
+   *  chip's type to the current selection. */
+  addIdleBuildersToSelection(unitBlueprintId: string): void {
+    const idleBuilders = this.collectIdleBuilders(unitBlueprintId);
+    if (idleBuilders.length === 0) return;
+    const entityIds: EntityId[] = [];
+    for (let i = 0; i < idleBuilders.length; i++) entityIds.push(idleBuilders[i].id);
+    this.enqueueSelection(entityIds, true);
   }
 
   selectIdleTransports(): void {
