@@ -21,6 +21,7 @@ import type {
 } from '../../sim/commands';
 import { findAttackTargetAt, isAttackableEnemyTarget } from './AttackTargetHelper';
 import type { AttackEntitySource } from './AttackTargetHelper';
+import { isPlainQueueAppend, unitHasQueuedDuplicateOrder } from './duplicateOrderGuard';
 import { findGuardTargetAt, isGuardableFriendlyTarget } from './GuardTargetHelper';
 import type { GuardEntitySource } from './GuardTargetHelper';
 import { getPathLength, assignUnitsToTargets } from './PathDistribution';
@@ -61,10 +62,23 @@ export function buildAttackCommandForTarget(
 ): AttackCommand | null {
   if (selectedUnits.length === 0) return null;
   if (!isAttackableEnemyTarget(target, playerId)) return null;
+  // BAR NoDuplicateOrders: on a plain shift append, units that already
+  // queue an attack on this target are dropped per-unit; when every
+  // selected unit has it, the whole order is dropped.
+  let orderedUnits: readonly Entity[] = selectedUnits;
+  if (isPlainQueueAppend(queue, queueFront, queueInsertIndex)) {
+    const withoutDuplicates: Entity[] = [];
+    for (let i = 0; i < selectedUnits.length; i++) {
+      const unit = selectedUnits[i];
+      if (!unitHasQueuedDuplicateOrder(unit, 'attack', target.id)) withoutDuplicates.push(unit);
+    }
+    if (withoutDuplicates.length === 0) return null;
+    orderedUnits = withoutDuplicates;
+  }
   return {
     type: 'attack',
     tick,
-    entityIds: selectedUnitIds(selectedUnits),
+    entityIds: selectedUnitIds(orderedUnits),
     targetId: target.id,
     queue,
     queueFront,

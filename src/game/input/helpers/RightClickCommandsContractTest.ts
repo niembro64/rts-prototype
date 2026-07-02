@@ -1,9 +1,15 @@
-import type { Entity } from '../../sim/types';
+import { createEmptyEntityComponentSlots, createTransform, NO_ENTITY_ID } from '@/types/sim';
+import type { Entity, UnitAction } from '../../sim/types';
 import { LinePathAccumulator } from './LinePathAccumulator';
 import {
+  buildAttackCommandForTarget,
   buildFormationPreservingMoveTargets,
   buildLinePathMoveCommand,
 } from './RightClickCommands';
+import {
+  buildRepairCommandForTarget,
+  buildRepairOrGuardCommandAt,
+} from './CommanderCommands';
 
 function assertContract(condition: boolean, message: string): asserts condition {
   if (!condition) {
@@ -98,4 +104,125 @@ export function runRightClickCommandsContractTest(): void {
     Math.abs(targetDistance(wideTargets, 0, 1) - 160) < 1e-6,
     'preserved formation targets must leave already-wide spacing unchanged',
   );
+
+  // BAR NoDuplicateOrders (cmd_no_duplicate_orders.lua): a plain shift
+  // append of an attack/repair the unit already has queued is dropped,
+  // per unit within the selection.
+  const enemy = combatant(30, 2, 100, 40, 0);
+  const dupAttacker = combatant(31, 1, 100, 0, 0, [
+    { type: 'attack', x: 40, y: 0, targetId: enemy.id },
+  ]);
+  const freshAttacker = combatant(32, 1, 100, 0, 20);
+
+  assertContract(
+    buildAttackCommandForTarget(enemy, [dupAttacker], 1, 3, true) === null,
+    'shift-appending an already-queued attack must be dropped',
+  );
+  const partialAttack = buildAttackCommandForTarget(enemy, [dupAttacker, freshAttacker], 1, 3, true);
+  assertContract(
+    partialAttack !== null &&
+      partialAttack.entityIds.length === 1 &&
+      partialAttack.entityIds[0] === freshAttacker.id,
+    'duplicate attack blocking must drop only the units that already queue it',
+  );
+  const replaceAttack = buildAttackCommandForTarget(enemy, [dupAttacker], 1, 3, false);
+  assertContract(
+    replaceAttack !== null && replaceAttack.entityIds[0] === dupAttacker.id,
+    'an unqueued attack must not be duplicate-blocked',
+  );
+  assertContract(
+    buildAttackCommandForTarget(enemy, [dupAttacker], 1, 3, true, true) !== null,
+    'a queue-front attack insert must not be duplicate-blocked',
+  );
+
+  const damagedAlly = combatant(40, 1, 50, 60, 0);
+  const repairer = combatant(41, 1, 100, 0, 0, [
+    { type: 'repair', x: 60, y: 0, targetId: damagedAlly.id },
+  ]);
+  assertContract(
+    buildRepairCommandForTarget(damagedAlly, repairer, 4, true) === null,
+    'shift-appending an already-queued repair must be dropped',
+  );
+  const freshRepair = buildRepairCommandForTarget(damagedAlly, repairer, 4, false);
+  assertContract(
+    freshRepair !== null && freshRepair.targetId === damagedAlly.id,
+    'an unqueued repair must not be duplicate-blocked',
+  );
+  const buildingShell: Entity = {
+    ...createEmptyEntityComponentSlots(),
+    id: 42,
+    type: 'building',
+    transform: createTransform(100, 100, 0, 0),
+    ownership: { playerId: 1 },
+    building: { hp: 10, maxHp: 100, width: 40, height: 40 } as Entity['building'],
+    buildable: {
+      isComplete: false,
+      isGhost: false,
+      isInterrupted: false,
+    } as Entity['buildable'],
+  };
+  const assistingBuilder = combatant(43, 1, 100, 0, 0, [
+    { type: 'build', x: 100, y: 100, buildingId: buildingShell.id },
+  ]);
+  assertContract(
+    buildRepairCommandForTarget(buildingShell, assistingBuilder, 4, true) === null,
+    'shift-appending a repair that duplicates a queued build assist must be dropped',
+  );
+
+  // BAR Guard damaged constructors (cmd_guard_damaged_constructors.lua):
+  // the default right-click assist on a damaged, completed friendly
+  // constructor becomes GUARD for the selection; other damaged friendlies
+  // keep plain repair.
+  const commander = combatant(50, 1, 100, 0, 0);
+  commander.builder = { buildRange: 1000, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
+  const damagedConstructor = combatant(51, 1, 40, 10, 10);
+  damagedConstructor.builder = { buildRange: 500, lowPriority: false, currentBuildTarget: NO_ENTITY_ID };
+  const damagedTank = combatant(52, 1, 40, 80, 10);
+  const assistSource = {
+    getUnits: () => [commander, damagedConstructor, damagedTank],
+    getBuildings: () => [] as Entity[],
+  };
+  const constructorAssist = buildRepairOrGuardCommandAt(
+    assistSource, 10, 10, commander, [commander], 5, false,
+  );
+  assertContract(
+    constructorAssist !== null &&
+      constructorAssist.type === 'guard' &&
+      constructorAssist.targetId === damagedConstructor.id &&
+      constructorAssist.entityIds.length === 1 &&
+      constructorAssist.entityIds[0] === commander.id,
+    'right-click assist on a damaged friendly constructor must issue guard, not repair',
+  );
+  const tankAssist = buildRepairOrGuardCommandAt(
+    assistSource, 80, 10, commander, [commander], 5, false,
+  );
+  assertContract(
+    tankAssist !== null &&
+      tankAssist.type === 'repair' &&
+      tankAssist.targetId === damagedTank.id,
+    'right-click assist on a damaged friendly non-constructor must stay a repair order',
+  );
+}
+
+function combatant(
+  id: number,
+  playerId: number,
+  hp: number,
+  x: number,
+  y: number,
+  actions: UnitAction[] = [],
+): Entity {
+  return {
+    ...createEmptyEntityComponentSlots(),
+    id,
+    type: 'unit',
+    transform: createTransform(x, y, 0, 0),
+    ownership: { playerId },
+    unit: {
+      hp,
+      maxHp: 100,
+      radius: { collision: 10, hitbox: 12, other: 10 },
+      actions,
+    } as Entity['unit'],
+  };
 }

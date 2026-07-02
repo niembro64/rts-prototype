@@ -11,7 +11,7 @@ import {
   buildGuardCommandForTarget,
   buildLinePathMoveCommand,
   buildReclaimCommandForTarget,
-  buildRepairCommandAt,
+  buildRepairOrGuardCommandAt,
   LinePathAccumulator,
   shouldCollapseLinePathToSingleMove,
 } from '../input/helpers';
@@ -225,10 +225,11 @@ export class Input3DRightDragController {
     if (!world) return;
 
     if (!preserveFormationMove) {
-      const repairCmd = buildRepairCommandAt(
+      const repairCmd = buildRepairOrGuardCommandAt(
         source,
         world.x, world.y,
         this.config.getSelectedCommander(),
+        selectedUnits,
         tick,
         queueMode.queue,
         queueMode.queueFront,
@@ -237,11 +238,12 @@ export class Input3DRightDragController {
       if (repairCmd) {
         debugLog(
           GAME_DIAGNOSTICS.commandPlans,
-          '[click] repair: clicked at (%d, %d, %d) -> target #%d',
+          '[click] %s: clicked at (%d, %d, %d) -> target #%d',
+          repairCmd.type,
           Math.round(world.x), Math.round(world.y), Math.round(world.z),
           repairCmd.targetId,
         );
-        this.config.applyCursor('repair');
+        this.config.applyCursor(repairCmd.type === 'guard' ? 'guard' : 'repair');
         this.config.commandQueue.enqueue(repairCmd);
         return;
       }
@@ -312,16 +314,18 @@ export class Input3DRightDragController {
       const finalPoint = points[points.length - 1];
       const preserveFormation = this.shouldUseFormationOffsets(e);
       if (!preserveFormation) {
-        const repairCmd = buildRepairCommandAt(
+        const repairCmd = buildRepairOrGuardCommandAt(
           source,
           finalPoint.x, finalPoint.y,
           this.config.getSelectedCommander(),
+          selectedUnits,
           tick, queueMode.queue, queueMode.queueFront, queueMode.queueInsertIndex,
         );
         if (repairCmd) {
           debugLog(
             GAME_DIAGNOSTICS.commandPlans,
-            '[click] repair-on-release: released at (%d, %d, %d) -> target #%d',
+            '[click] %s-on-release: released at (%d, %d, %d) -> target #%d',
+            repairCmd.type,
             Math.round(finalPoint.x), Math.round(finalPoint.y),
             finalPoint.z !== undefined ? Math.round(finalPoint.z) : -1,
             repairCmd.targetId,
@@ -387,10 +391,11 @@ export class Input3DRightDragController {
     const z = getSurfaceHeight(x, y, bounds.width, bounds.height, LAND_CELL_SIZE);
 
     if (selectedUnits.length > 0) {
-      const repairCmd = buildRepairCommandAt(
+      const repairCmd = buildRepairOrGuardCommandAt(
         source,
         x, y,
         this.config.getSelectedCommander(),
+        selectedUnits,
         tick,
         queueMode.queue,
         queueMode.queueFront,

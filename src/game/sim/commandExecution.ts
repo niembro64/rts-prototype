@@ -2399,15 +2399,21 @@ function addActionToUnit(
   }
 }
 
+// BAR "Guard Remove" (luaui/Widgets/cmd_guard_remove.lua): a shift-queued
+// order on a builder strips the non-terminating guard/patrol orders already
+// in its queue, so the new order actually runs instead of sitting behind an
+// infinite guard. A queued patrol keeps the existing patrol orders (patrol
+// chains are sequential in BAR); any other order — including a new guard —
+// clears both. Non-builder combat units are untouched.
 function removeBuilderBlockingGuardActions(entity: Entity, nextAction: UnitAction): void {
   const unit = entity.unit;
   if (unit === null || entity.builder === null || entity.factory !== null) return;
-  if (nextAction.type === 'guard' || nextAction.type === 'patrol') return;
+  const keepPatrolChain = nextAction.type === 'patrol';
   let removed = false;
   const keptActions: UnitAction[] = [];
   for (let i = 0; i < unit.actions.length; i++) {
     const action = unit.actions[i];
-    if (action.type === 'guard' || action.type === 'patrol') {
+    if (action.type === 'guard' || (action.type === 'patrol' && !keepPatrolChain)) {
       removed = true;
       continue;
     }

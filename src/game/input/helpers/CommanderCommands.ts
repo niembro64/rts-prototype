@@ -7,6 +7,7 @@
 import type { Entity, WaypointType } from '../../sim/types';
 import type {
   CaptureCommand,
+  GuardCommand,
   LoadTransportCommand,
   ReclaimCommand,
   ReclaimAreaCommand,
@@ -22,29 +23,58 @@ import type { PlayerId } from '../../sim/types';
 import { findRepairTargetAt, isRepairableFriendlyTarget } from './RepairTargetHelper';
 import type { RepairEntitySource } from './RepairTargetHelper';
 import { isGuardableFriendlyTarget } from './GuardTargetHelper';
+import { buildGuardCommandForTarget } from './RightClickCommands';
+import { isPlainQueueAppend, unitHasQueuedDuplicateOrder } from './duplicateOrderGuard';
 import { isCapturableTarget } from '../../sim/capture';
 import { isReclaimableTarget } from '../../sim/reclaim';
+import { isBuildInProgress } from '../../sim/buildableHelpers';
 import { canLoadTransport, isClientTransportUnit } from '../../sim/transports';
 
-/** Build a RepairCommand if the commander (if any) is right-clicking
- *  on a repairable target — an incomplete friendly building or a
- *  damaged friendly unit. Returns null if no commander is given, no
+/** True when `target` is a completed friendly mobile constructor.
+ *  BAR "Guard damaged constructors" (cmd_guard_damaged_constructors.lua)
+ *  turns the default right-click REPAIR on such a target into GUARD so the
+ *  helpers keep assisting instead of stopping at full health. A target
+ *  still under construction keeps plain repair (finish the build). */
+function isCompletedFriendlyConstructorTarget(target: Entity): boolean {
+  return target.unit !== null &&
+    target.builder !== null &&
+    target.factory === null &&
+    !isBuildInProgress(target.buildable);
+}
+
+/** Build the default right-click assist command for a ground point: a
+ *  RepairCommand when the commander (if any) is right-clicking on a
+ *  repairable target — an incomplete friendly building or a damaged
+ *  friendly unit — or, per BAR's guard-damaged-constructors default, a
+ *  GuardCommand for the selection when that target is a completed
+ *  friendly constructor. Returns null if no commander is given, no
  *  owner info, or no repair target is under the point. */
-export function buildRepairCommandAt(
+export function buildRepairOrGuardCommandAt(
   source: RepairEntitySource,
   worldX: number,
   worldY: number,
   commander: Entity | null,
+  selectedUnits: readonly Entity[],
   tick: number,
   queue: boolean,
   queueFront = false,
   queueInsertIndex?: number,
-): RepairCommand | null {
+): RepairCommand | GuardCommand | null {
   if (!commander?.ownership) return null;
-  const target = findRepairTargetAt(
-    source, worldX, worldY, commander.ownership.playerId,
-  );
+  const playerId = commander.ownership.playerId;
+  const target = findRepairTargetAt(source, worldX, worldY, playerId);
   if (!target) return null;
+  if (isCompletedFriendlyConstructorTarget(target)) {
+    return buildGuardCommandForTarget(
+      target, selectedUnits, playerId, tick, queue, queueFront, queueInsertIndex,
+    );
+  }
+  // BAR NoDuplicateOrders: drop a shift-appended repair the commander
+  // already has queued (including the build assist on the same target).
+  if (
+    isPlainQueueAppend(queue, queueFront, queueInsertIndex) &&
+    unitHasQueuedDuplicateOrder(commander, 'repair', target.id)
+  ) return null;
   return {
     type: 'repair',
     tick,
@@ -70,6 +100,12 @@ export function buildRepairCommandForTarget(
 ): RepairCommand | null {
   if (!commander?.ownership) return null;
   if (!isRepairableFriendlyTarget(target, commander.ownership.playerId)) return null;
+  // BAR NoDuplicateOrders: drop a shift-appended repair the builder
+  // already has queued (including the build assist on the same target).
+  if (
+    isPlainQueueAppend(queue, queueFront, queueInsertIndex) &&
+    unitHasQueuedDuplicateOrder(commander, 'repair', target.id)
+  ) return null;
   return {
     type: 'repair',
     tick,

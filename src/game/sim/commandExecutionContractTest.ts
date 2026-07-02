@@ -9,7 +9,7 @@ import {
 } from './commandExecution';
 import { applyCompletedBuildingEffects } from './buildingCompletion';
 import { Simulation } from './Simulation';
-import type { Entity } from './types';
+import type { Entity, UnitAction } from './types';
 import {
   getUnitGroundNormalEmaMode,
   setUnitGroundNormalEmaMode,
@@ -547,6 +547,75 @@ export function runCommandExecutionContractTest(): void {
       guardingFighter.unit.actions[0].type === 'guard' &&
       guardingFighter.unit.actions[1].type === 'move',
     'BAR Guard Remove must not strip guard queues from non-builder combat units',
+  );
+
+  setUnitActions(guardingBuilder.unit!, [
+    {
+      type: 'guard',
+      x: guardedAlly.transform.x,
+      y: guardedAlly.transform.y,
+      z: guardedAlly.transform.z,
+      targetId: guardedAlly.id,
+    },
+  ]);
+  executeCommand(guardRemoveCtx, {
+    type: 'move',
+    tick: 5,
+    entityIds: [guardingBuilder.id],
+    targetX: 160,
+    targetY: 80,
+    targetZ: guardRemoveWorld.getGroundZ(160, 80),
+    waypointType: 'patrol',
+    queue: true,
+  });
+  const patrolAfterGuardActions: readonly UnitAction[] = guardingBuilder.unit?.actions ?? [];
+  assertContract(
+    patrolAfterGuardActions.length === 1 && patrolAfterGuardActions[0].type === 'patrol',
+    'BAR Guard Remove should drop a builder guard order before a queued patrol',
+  );
+  executeCommand(guardRemoveCtx, {
+    type: 'move',
+    tick: 5,
+    entityIds: [guardingBuilder.id],
+    targetX: 200,
+    targetY: 80,
+    targetZ: guardRemoveWorld.getGroundZ(200, 80),
+    waypointType: 'patrol',
+    queue: true,
+  });
+  const patrolChainActions: readonly UnitAction[] = guardingBuilder.unit?.actions ?? [];
+  assertContract(
+    patrolChainActions.length === 2 &&
+      patrolChainActions[0].type === 'patrol' &&
+      patrolChainActions[1].type === 'patrol',
+    'a queued patrol must keep an existing builder patrol chain',
+  );
+  const guardSwapAlly = guardRemoveWorld.createUnitFromBlueprint(120, 60, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  guardRemoveWorld.addEntity(guardSwapAlly);
+  setUnitActions(guardingBuilder.unit!, [
+    {
+      type: 'guard',
+      x: guardedAlly.transform.x,
+      y: guardedAlly.transform.y,
+      z: guardedAlly.transform.z,
+      targetId: guardedAlly.id,
+    },
+  ]);
+  executeCommand(guardRemoveCtx, {
+    type: 'guard',
+    tick: 5,
+    entityIds: [guardingBuilder.id],
+    targetId: guardSwapAlly.id,
+    queue: true,
+  });
+  const guardSwapActions: readonly UnitAction[] = guardingBuilder.unit?.actions ?? [];
+  assertContract(
+    guardSwapActions.length === 1 &&
+      guardSwapActions[0].type === 'guard' &&
+      guardSwapActions[0].targetId === guardSwapAlly.id,
+    'a queued builder guard must replace the old guard instead of queueing behind it',
   );
 
   const gatherA = world.createUnitFromBlueprint(100, 240, 1, 'unitJackal', {

@@ -49,7 +49,7 @@ export {
 
 export {
   buildRepairAreaCommand,
-  buildRepairCommandAt,
+  buildRepairOrGuardCommandAt,
   buildRepairCommandForTarget,
   buildReclaimAreaCommand,
   buildReclaimCommandForTarget,
