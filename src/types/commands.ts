@@ -331,7 +331,27 @@ export type RepairCommand = BaseCommand & {
   queueInsertIndex?: number;
 };
 
-export type RepairAreaCommand = BaseCommand & {
+/** Broad target buckets for BAR-style area-command filters
+ *  (cmd_area_commands_filter.lua). BAR distinguishes units from
+ *  features (wrecks); ours adds buildings since our area commands
+ *  can target them too. */
+export type AreaCommandFilterCategory = 'unit' | 'building' | 'wreck';
+
+/** Optional BAR cmd_area_commands_filter parity fields shared by the
+ *  area repair/reclaim/resurrect commands. Both derive from the entity
+ *  hovered at the area-drag anchor; absent = unfiltered (default).
+ *  - Ctrl (BAR: "targets all units in the area / all wrecks of the same
+ *    tech level"): `filterCategory` keeps only targets in the hovered
+ *    target's broad category.
+ *  - Alt (BAR: "targets all units that share the same unitDefId"):
+ *    `filterBlueprintId` keeps only targets with the hovered target's
+ *    exact blueprint (wrecks match on their source blueprint). */
+type AreaCommandFilterFields = {
+  filterCategory?: AreaCommandFilterCategory;
+  filterBlueprintId?: string;
+};
+
+export type RepairAreaCommand = BaseCommand & AreaCommandFilterFields & {
   type: 'repairArea';
   commanderId: EntityId;
   targetX: number;
@@ -352,7 +372,7 @@ export type ReclaimCommand = BaseCommand & {
   queueInsertIndex?: number;
 };
 
-export type ReclaimAreaCommand = BaseCommand & {
+export type ReclaimAreaCommand = BaseCommand & AreaCommandFilterFields & {
   type: 'reclaimArea';
   commanderId: EntityId;
   targetX: number;
@@ -382,7 +402,7 @@ export type ResurrectCommand = BaseCommand & {
   queueInsertIndex?: number;
 };
 
-export type ResurrectAreaCommand = BaseCommand & {
+export type ResurrectAreaCommand = BaseCommand & AreaCommandFilterFields & {
   type: 'resurrectArea';
   commanderId: EntityId;
   targetX: number;

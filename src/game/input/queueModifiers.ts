@@ -47,6 +47,16 @@ function spaceQueueFrontHeld(): boolean {
   return trackedSpaceHeld && spaceQueueFrontEligibilityProvider?.() === true;
 }
 
+/** Raw held-state of Space, independent of the queue-front eligibility
+ *  gate. BAR binds `Any+space buildsplit` alongside `Any+space
+ *  commandinsert prepend`; during build placement the input layer reads
+ *  this as the build-split modifier (and the queue-front eligibility
+ *  provider turns commandinsert off there, mirroring how BAR's
+ *  cmd_buildsplit consumes build commands before the insert applies). */
+export function isSpaceModifierHeld(): boolean {
+  return trackedSpaceHeld;
+}
+
 export function clearQueueModifierState(): void {
   trackedQueueModifiers.shiftKey = false;
   trackedQueueModifiers.altKey = false;

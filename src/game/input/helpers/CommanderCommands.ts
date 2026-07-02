@@ -27,6 +27,7 @@ import { buildGuardCommandForTarget } from './RightClickCommands';
 import { isPlainQueueAppend, unitHasQueuedDuplicateOrder } from './duplicateOrderGuard';
 import { isCapturableTarget } from '../../sim/capture';
 import { isReclaimableTarget } from '../../sim/reclaim';
+import type { AreaCommandTargetFilter } from '../../sim/areaCommandFilters';
 import { isBuildInProgress } from '../../sim/buildableHelpers';
 import { canLoadTransport, isClientTransportUnit } from '../../sim/transports';
 
@@ -127,6 +128,7 @@ export function buildRepairAreaCommand(
   worldZ?: number,
   queueFront = false,
   queueInsertIndex?: number,
+  targetFilter?: AreaCommandTargetFilter,
 ): RepairAreaCommand | null {
   if (!commander?.ownership) return null;
   return {
@@ -140,6 +142,8 @@ export function buildRepairAreaCommand(
     queue,
     queueFront,
     queueInsertIndex,
+    filterCategory: targetFilter?.filterCategory,
+    filterBlueprintId: targetFilter?.filterBlueprintId,
   };
 }
 
@@ -175,6 +179,7 @@ export function buildReclaimAreaCommand(
   worldZ?: number,
   queueFront = false,
   queueInsertIndex?: number,
+  targetFilter?: AreaCommandTargetFilter,
 ): ReclaimAreaCommand | null {
   if (!commander?.ownership) return null;
   return {
@@ -188,6 +193,8 @@ export function buildReclaimAreaCommand(
     queue,
     queueFront,
     queueInsertIndex,
+    filterCategory: targetFilter?.filterCategory,
+    filterBlueprintId: targetFilter?.filterBlueprintId,
   };
 }
 
@@ -250,6 +257,7 @@ export function buildResurrectAreaCommand(
   worldZ?: number,
   queueFront = false,
   queueInsertIndex?: number,
+  targetFilter?: AreaCommandTargetFilter,
 ): ResurrectAreaCommand | null {
   if (!commander?.ownership || commander.builder === null) return null;
   return {
@@ -263,6 +271,8 @@ export function buildResurrectAreaCommand(
     queue,
     queueFront,
     queueInsertIndex,
+    filterCategory: targetFilter?.filterCategory,
+    filterBlueprintId: targetFilter?.filterBlueprintId,
   };
 }
 

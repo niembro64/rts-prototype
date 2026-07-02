@@ -270,10 +270,16 @@ export class Input3DBuildPlacementState {
     const xCount = Math.max(1, Math.floor((maxX - minX) / Math.max(1, spacingX)) + 1);
     const yCount = Math.max(1, Math.floor((maxY - minY) / Math.max(1, spacingY)) + 1);
 
+    // BAR's grid fill (gui_pregame_build.lua getBuildPositionsGrid,
+    // mirroring the engine) walks rows serpentine — every other row is
+    // filled right-to-left — so a single builder sweeps the rectangle
+    // without doubling back across each row.
     for (let yi = 0; yi < yCount; yi++) {
       const ty = yCount === 1 ? 0 : yi / (yCount - 1);
       const y = minY + (maxY - minY) * ty;
-      for (let xi = 0; xi < xCount; xi++) {
+      const reversed = yi % 2 === 1;
+      for (let step = 0; step < xCount; step++) {
+        const xi = reversed ? xCount - 1 - step : step;
         const tx = xCount === 1 ? 0 : xi / (xCount - 1);
         const x = minX + (maxX - minX) * tx;
         this.tryAddPlannedBuildPlacement(context, x, y);

@@ -828,6 +828,65 @@ export function runCommandExecutionContractTest(): void {
     'inserted repair area should preserve existing orders after the requested index',
   );
 
+  // BAR cmd_area_commands_filter parity: Alt restricts the area command
+  // to the hovered target's exact blueprint (filterBlueprintId); Ctrl to
+  // its broad category (filterCategory). Absent fields keep the default
+  // unfiltered behavior asserted above.
+  const damagedEagle = damageUnit(queueWorld.createUnitFromBlueprint(95, 100, 1, 'unitEagle', {
+    allocateSubEntityIds: false,
+  }));
+  queueWorld.addEntity(damagedEagle);
+  setUnitActions(commander.unit, []);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 4,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: false,
+    filterBlueprintId: 'unitJackal',
+  });
+  assertActionTargetIds(
+    commander.unit.actions,
+    [near.id, mid.id, far.id],
+    'blueprint-filtered repair area should skip damaged units of other blueprints',
+  );
+
+  setUnitActions(commander.unit, []);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 4,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: false,
+    filterCategory: 'unit',
+  });
+  assertActionTargetIds(
+    commander.unit.actions,
+    [near.id, damagedEagle.id, mid.id, far.id],
+    'unit-category-filtered repair area should keep every damaged unit regardless of blueprint',
+  );
+
+  setUnitActions(commander.unit, []);
+  executeCommand(queueCtx, {
+    type: 'repairArea',
+    tick: 4,
+    commanderId: commander.id,
+    targetX: 100,
+    targetY: 100,
+    radius: 50,
+    queue: false,
+    filterCategory: 'building',
+  });
+  assertContract(
+    commander.unit.actions.length === 0,
+    'building-category-filtered repair area should exclude every unit target',
+  );
+  queueWorld.removeEntity(damagedEagle.id);
+
   const capturable = queueWorld.createUnitFromBlueprint(88, 100, 2, 'unitJackal', {
     allocateSubEntityIds: false,
   });

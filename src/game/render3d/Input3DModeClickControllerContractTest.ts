@@ -35,15 +35,15 @@ type BuildCommitHarness = {
   ): void;
 };
 
-function makeCommanderBuilder(): Entity {
+function makeCommanderBuilder(id = 101): Entity {
   return {
     ...createEmptyEntityComponentSlots(),
-    id: 101,
+    id,
     type: 'unit',
     transform: createTransform(0, 0, 0, 0),
     ownership: { playerId: 1 },
     builder: { buildRange: 1000, lowPriority: false, currentBuildTarget: NO_ENTITY_ID },
-    unit: { unitBlueprintId: 'unitCommander' } as Entity['unit'],
+    unit: { unitBlueprintId: 'unitCommander', hp: 100, maxHp: 100 } as Entity['unit'],
   };
 }
 
@@ -86,15 +86,16 @@ function mouseEvent(init: Partial<MouseEvent> = {}): MouseEvent {
 
 function makeController(
   mode: CommanderModeController,
-  builder: Entity,
+  builders: Entity[],
   commands: Command[],
   buildCommandQueuedStates: boolean[],
+  splitModifier: { held: boolean },
 ): Input3DModeClickController {
   const entitySource = {
-    getUnits: () => [builder],
+    getUnits: () => builders,
     getBuildings: () => [],
-    getEntity: (id: number) => id === builder.id ? builder : undefined,
-    getSelectedUnits: () => [builder],
+    getEntity: (id: number) => builders.find((builder) => builder.id === id),
+    getSelectedUnits: () => builders,
   };
 
   return new Input3DModeClickController({
@@ -107,7 +108,7 @@ function makeController(
     getActivePlayerId: () => 1,
     getQueueInsertIndex: () => null,
     getSelectedCommander: () => null,
-    getSelectedBuilder: () => builder,
+    getSelectedBuilder: () => builders[0],
     onBuildCommandIssued: (queued) => buildCommandQueuedStates.push(queued),
     applyCursor: () => {},
     isRepairAreaMode: () => false,
@@ -142,6 +143,7 @@ function makeController(
     exitPingMode: () => {},
     exitTowerTargetMode: () => {},
     exitTowerTargetNoGroundMode: () => {},
+    isBuildSplitModifierHeld: () => splitModifier.held,
   });
 }
 
@@ -150,7 +152,14 @@ export function runInput3DModeClickControllerContractTest(): void {
   const builder = makeCommanderBuilder();
   const commands: Command[] = [];
   const buildCommandQueuedStates: boolean[] = [];
-  const controller = makeController(mode, builder, commands, buildCommandQueuedStates) as unknown as BuildCommitHarness;
+  const splitModifier = { held: false };
+  const controller = makeController(
+    mode,
+    [builder],
+    commands,
+    buildCommandQueuedStates,
+    splitModifier,
+  ) as unknown as BuildCommitHarness;
   const planner = () => [{ gridX: 0, gridY: 0 }];
 
   mode.enterBuildMode('buildingSolar');
@@ -170,6 +179,67 @@ export function runInput3DModeClickControllerContractTest(): void {
     'queued build commit must report a queued build command',
   );
   assertContract(mode.isInBuildMode, 'queued build commit must keep active build mode');
+
+  // BAR multi-builder batch semantics: without the split modifier the
+  // active builder owns the whole queue and the other capable selected
+  // builders are sent to guard-assist it; with the split modifier
+  // (BAR `Any+space buildsplit`) placements distribute round-robin.
+  const multiMode = new CommanderModeController();
+  const leader = makeCommanderBuilder(301);
+  const helper = makeCommanderBuilder(302);
+  const multiCommands: Command[] = [];
+  const multiSplit = { held: false };
+  const multiController = makeController(
+    multiMode,
+    [leader, helper],
+    multiCommands,
+    [],
+    multiSplit,
+  ) as unknown as BuildCommitHarness;
+  const multiPlanner = () => [
+    { gridX: 0, gridY: 0 },
+    { gridX: 4, gridY: 0 },
+    { gridX: 8, gridY: 0 },
+  ];
+
+  multiMode.enterBuildMode('buildingSolar');
+  multiController.commitBuildShapePlacements(makeBuildDrag(true), 'buildingSolar', multiPlanner);
+  assertContract(
+    multiCommands.length === 4,
+    'shared-queue build commit must enqueue every startBuild plus one guard command',
+  );
+  assertContract(
+    multiCommands.slice(0, 3).every(
+      (command) => command.type === 'startBuild' && command.builderId === leader.id,
+    ),
+    'without the split modifier every placement must go to the active builder',
+  );
+  const guardCommand = multiCommands[3];
+  assertContract(
+    guardCommand.type === 'guard' &&
+      guardCommand.targetId === leader.id &&
+      guardCommand.entityIds.length === 1 &&
+      guardCommand.entityIds[0] === helper.id,
+    'without the split modifier the other capable builders must guard-assist the active builder',
+  );
+
+  multiCommands.length = 0;
+  multiSplit.held = true;
+  multiController.commitBuildShapePlacements(makeBuildDrag(true), 'buildingSolar', multiPlanner);
+  assertContract(
+    multiCommands.length === 3 &&
+      multiCommands.every((command) => command.type === 'startBuild'),
+    'split-modifier build commit must enqueue only startBuild commands',
+  );
+  const splitBuilderIds = multiCommands.map(
+    (command) => command.type === 'startBuild' ? command.builderId : NO_ENTITY_ID,
+  );
+  assertContract(
+    splitBuilderIds[0] === leader.id &&
+      splitBuilderIds[1] === helper.id &&
+      splitBuilderIds[2] === leader.id,
+    'split-modifier build commit must distribute placements round-robin across capable builders',
+  );
 
   const attacker = makeUnit(201, 1);
   const ally = makeUnit(202, 1);
@@ -228,6 +298,7 @@ export function runInput3DModeClickControllerContractTest(): void {
     exitPingMode: () => {},
     exitTowerTargetMode: () => {},
     exitTowerTargetNoGroundMode: () => {},
+    isBuildSplitModifierHeld: () => false,
   });
   attackController.handleMouseDown(mouseEvent({ button: 0, clientX: 12, clientY: 34 }));
   assertContract(attackCommands.length === 1, 'active attack click on allied mesh must enqueue one command');

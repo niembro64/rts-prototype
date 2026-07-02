@@ -34,6 +34,7 @@ export type {
   SetTowerTargetCommand,
   RepairCommand,
   RepairAreaCommand,
+  AreaCommandFilterCategory,
   ReclaimCommand,
   ReclaimAreaCommand,
   CaptureCommand,

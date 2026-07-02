@@ -8,6 +8,7 @@ import type {
   MoveCommand,
   QueueUnitCommand,
   RemoveFactoryUnitProductionCommand,
+  RepairAreaCommand,
   ResurrectAreaCommand,
   ResurrectCommand,
   SetFactoryGuardCommand,
@@ -379,6 +380,60 @@ export function runCommandSanitizerContractTest(): void {
       resurrectArea.radius === 500 &&
       resurrectArea.queueInsertIndex === 4,
     'resurrect-area command must normalize terrain z, radius, and queue insertion',
+  );
+  assertContract(
+    resurrectArea.filterCategory === undefined &&
+      resurrectArea.filterBlueprintId === undefined,
+    'area commands without filter fields must stay unfiltered',
+  );
+
+  // BAR cmd_area_commands_filter fields: known categories/blueprints pass
+  // through unchanged; unknown values reject the whole command.
+  const filteredRepairArea = sanitizeRequired<RepairAreaCommand>(world, {
+    type: 'repairArea',
+    tick: 7,
+    commanderId: 7,
+    targetX: 24.5,
+    targetY: 32.25,
+    radius: 100,
+    queue: false,
+    filterCategory: 'unit',
+    filterBlueprintId: 'unitJackal',
+  });
+  assertContract(
+    filteredRepairArea.filterCategory === 'unit' &&
+      filteredRepairArea.filterBlueprintId === 'unitJackal',
+    'repair-area command must preserve valid area target filter fields',
+  );
+
+  const invalidFilterCategory = sanitizeCommand({
+    type: 'reclaimArea',
+    tick: 7,
+    commanderId: 7,
+    targetX: 24.5,
+    targetY: 32.25,
+    radius: 100,
+    queue: false,
+    filterCategory: 'bogus',
+  } as unknown as Command, world);
+  assertContract(
+    invalidFilterCategory === null,
+    'reclaim-area command with an unknown filter category must be rejected',
+  );
+
+  const invalidFilterBlueprint = sanitizeCommand({
+    type: 'resurrectArea',
+    tick: 7,
+    commanderId: 7,
+    targetX: 24.5,
+    targetY: 32.25,
+    radius: 100,
+    queue: false,
+    filterBlueprintId: 'unitDoesNotExist',
+  } as unknown as Command, world);
+  assertContract(
+    invalidFilterBlueprint === null,
+    'resurrect-area command with an unknown filter blueprint must be rejected',
   );
 
   const loadTransport = sanitizeRequired<LoadTransportCommand>(world, {

@@ -1,4 +1,5 @@
 import type {
+  AreaCommandFilterCategory,
   AttackAreaCommand,
   AttackCommand,
   AttackGroundCommand,
@@ -56,7 +57,8 @@ import type { WorldState } from '../sim/WorldState';
 import type { BuildingBlueprintId, CombatFireState, EntityId, WaypointType } from '../sim/types';
 import { STRUCTURE_CONFIGS } from '../sim/buildConfigs';
 import { isBuildableUnitBlueprintId } from '../sim/blueprints/unitRoster';
-import { isBuildingBlueprintId, isTowerBlueprintId } from '../../types/blueprintIds';
+import { isAreaCommandFilterCategory } from '../sim/areaCommandFilters';
+import { isBuildingBlueprintId, isTowerBlueprintId, isUnitBlueprintId } from '../../types/blueprintIds';
 import { SERVER_CONFIG } from '../../serverBarConfig';
 import { BATTLE_CONFIG } from '../../battleBarConfig';
 import { isShieldReflectionMode } from '../../types/shotTypes';
@@ -360,6 +362,31 @@ function sanitizeAreaCommandRadius(radius: unknown, maxRadius: number): number {
   return Number.isFinite(radius)
     ? clamp(radius as number, 1, maxRadius)
     : maxRadius;
+}
+
+// Shared BAR-style area target filter sanitization used by the area
+// repair/reclaim/resurrect commands. Both fields are optional and default
+// to absent (unfiltered); a present field must be a known category /
+// blueprint id or the whole command is rejected.
+function sanitizeAreaCommandFilterFields(
+  filterCategory: unknown,
+  filterBlueprintId: unknown,
+): {
+  filterCategory: AreaCommandFilterCategory | undefined;
+  filterBlueprintId: string | undefined;
+} | null {
+  if (filterCategory !== undefined && !isAreaCommandFilterCategory(filterCategory)) return null;
+  if (filterBlueprintId !== undefined) {
+    if (typeof filterBlueprintId !== 'string') return null;
+    const knownBlueprint = isUnitBlueprintId(filterBlueprintId) ||
+      isBuildingBlueprintId(filterBlueprintId) ||
+      isTowerBlueprintId(filterBlueprintId);
+    if (!knownBlueprint) return null;
+  }
+  return {
+    filterCategory: filterCategory as AreaCommandFilterCategory | undefined,
+    filterBlueprintId: filterBlueprintId as string | undefined,
+  };
 }
 
 function sanitizeWaitGroupId(value: unknown): number | undefined | null {
@@ -964,6 +991,8 @@ function sanitizeRepairAreaCommand(
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
   const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
   if (queued === null) return null;
+  const filter = sanitizeAreaCommandFilterFields(command.filterCategory, command.filterBlueprintId);
+  if (filter === null) return null;
   const radius = sanitizeAreaCommandRadius(command.radius, REPAIR_AREA_MAX_RADIUS);
   return {
     type: 'repairArea',
@@ -976,6 +1005,8 @@ function sanitizeRepairAreaCommand(
     queue: command.queue,
     queueFront: queued.queueFront,
     queueInsertIndex: queued.queueInsertIndex,
+    filterCategory: filter.filterCategory,
+    filterBlueprintId: filter.filterBlueprintId,
   };
 }
 
@@ -1054,6 +1085,8 @@ function sanitizeResurrectAreaCommand(
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
   const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
   if (queued === null) return null;
+  const filter = sanitizeAreaCommandFilterFields(command.filterCategory, command.filterBlueprintId);
+  if (filter === null) return null;
   const radius = sanitizeAreaCommandRadius(command.radius, REPAIR_AREA_MAX_RADIUS);
   return {
     type: 'resurrectArea',
@@ -1066,6 +1099,8 @@ function sanitizeResurrectAreaCommand(
     queue: command.queue,
     queueFront: queued.queueFront,
     queueInsertIndex: queued.queueInsertIndex,
+    filterCategory: filter.filterCategory,
+    filterBlueprintId: filter.filterBlueprintId,
   };
 }
 
@@ -1123,6 +1158,8 @@ function sanitizeReclaimAreaCommand(
   if (!isEntityId(command.commanderId) || point === null || typeof command.queue !== 'boolean') return null;
   const queued = sanitizeQueuedCommandFields(command.queue, command.queueFront, command.queueInsertIndex);
   if (queued === null) return null;
+  const filter = sanitizeAreaCommandFilterFields(command.filterCategory, command.filterBlueprintId);
+  if (filter === null) return null;
   const radius = sanitizeAreaCommandRadius(command.radius, RECLAIM_AREA_MAX_RADIUS);
   return {
     type: 'reclaimArea',
@@ -1135,6 +1172,8 @@ function sanitizeReclaimAreaCommand(
     queue: command.queue,
     queueFront: queued.queueFront,
     queueInsertIndex: queued.queueInsertIndex,
+    filterCategory: filter.filterCategory,
+    filterBlueprintId: filter.filterBlueprintId,
   };
 }
 

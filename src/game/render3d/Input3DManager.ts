@@ -60,6 +60,7 @@ import {
   clearQueueModifierState,
   clearSpaceQueueFrontEligibilityProvider,
   effectiveQueueModifierEvent,
+  isSpaceModifierHeld,
   setQueueModifierKeyState,
   setSpaceQueueFrontEligibilityProvider,
 } from '../input/queueModifiers';
@@ -285,9 +286,20 @@ export class Input3DManager {
   // but only when the selection is not a factory — there Space stays the
   // factory-preset overlay hold. Registered with queueModifiers so every
   // queueModeFromEvent call site (clicks, right-drags, panel buttons,
-  // hotkeys) picks it up uniformly.
+  // hotkeys) picks it up uniformly. Build placement mode is excluded:
+  // there Space is the BAR build-split modifier (cmd_buildsplit binds
+  // `Any+space buildsplit` and consumes build commands before the
+  // commandinsert prepend would apply).
   private readonly spaceQueueFrontEligibility = (): boolean =>
-    isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId()) && this.getSelectedFactory() === null;
+    isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId()) &&
+    this.getSelectedFactory() === null &&
+    !this.mode.isInBuildMode;
+
+  // BAR cmd_buildsplit: Space held during build placement distributes
+  // the queued placements round-robin across the capable selected
+  // builders. Gated to BAR presets like the other Space behaviors.
+  private readonly buildSplitModifierHeld = (): boolean =>
+    isSpaceModifierHeld() && isBarCommandHotkeyPreset(getActiveCommandHotkeyPresetId());
 
   constructor(
     threeApp: ThreeApp,
@@ -362,6 +374,7 @@ export class Input3DManager {
       exitPingMode: () => this.exitPingMode(),
       exitTowerTargetMode: () => this.exitTowerTargetMode(),
       exitTowerTargetNoGroundMode: () => this.exitTowerTargetNoGroundMode(),
+      isBuildSplitModifierHeld: () => this.buildSplitModifierHeld(),
     });
     this.rightDrag = new Input3DRightDragController({
       getEntitySource: () => this.entitySource,

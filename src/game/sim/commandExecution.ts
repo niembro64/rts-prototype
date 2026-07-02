@@ -3,6 +3,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Handles all player command types (select, move, build, queue, rally, dgun, repair)
 
 import type {
+  AreaCommandFilterCategory,
   AttackAreaCommand,
   AttackCommand,
   AttackGroundCommand,
@@ -83,6 +84,7 @@ import {
 import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
+import { areaTargetMatchesCommandFilter } from './areaCommandFilters';
 
 const MAX_FACTORY_PRODUCTION_QUOTA = 64;
 import { isCapturableTarget } from './capture';
@@ -1732,6 +1734,8 @@ function executeRepairAreaCommand(ctx: CommandContext, command: RepairAreaComman
     command.targetX,
     command.targetY,
     radius,
+    command.filterCategory,
+    command.filterBlueprintId,
   );
   enqueueAreaTargetActionsInOrder(
     targets,
@@ -1764,6 +1768,8 @@ function executeReclaimAreaCommand(ctx: CommandContext, command: ReclaimAreaComm
     command.targetX,
     command.targetY,
     radius,
+    command.filterCategory,
+    command.filterBlueprintId,
   );
   enqueueAreaTargetActionsInOrder(
     targets,
@@ -1795,6 +1801,8 @@ function executeResurrectAreaCommand(ctx: CommandContext, command: ResurrectArea
     command.targetX,
     command.targetY,
     radius,
+    command.filterCategory,
+    command.filterBlueprintId,
   );
   enqueueAreaTargetActionsInOrder(
     targets,
@@ -1928,6 +1936,8 @@ function findRepairAreaTargets(
   x: number,
   y: number,
   radius: number,
+  filterCategory: AreaCommandFilterCategory | undefined,
+  filterBlueprintId: string | undefined,
 ): Entity[] {
   const radiusSq = radius * radius;
   const targets: AreaTarget[] = [];
@@ -1936,6 +1946,7 @@ function findRepairAreaTargets(
   for (let i = 0; i < buildings.length; i++) {
     const target = buildings[i];
     if (!isRepairableByCommander(commander, target)) continue;
+    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
     targets.push({ entity: target, distanceSq: distSq });
@@ -1945,6 +1956,7 @@ function findRepairAreaTargets(
   for (let i = 0; i < units.length; i++) {
     const target = units[i];
     if (!isRepairableByCommander(commander, target)) continue;
+    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
     targets.push({ entity: target, distanceSq: distSq });
@@ -1960,6 +1972,8 @@ function findReclaimAreaTargets(
   x: number,
   y: number,
   radius: number,
+  filterCategory: AreaCommandFilterCategory | undefined,
+  filterBlueprintId: string | undefined,
 ): Entity[] {
   const radiusSq = radius * radius;
   const targets: AreaTarget[] = [];
@@ -1968,6 +1982,7 @@ function findReclaimAreaTargets(
   for (let i = 0; i < buildings.length; i++) {
     const target = buildings[i];
     if (target.id === commander.id || !isReclaimableTarget(target)) continue;
+    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
     targets.push({ entity: target, distanceSq: distSq });
@@ -1977,6 +1992,7 @@ function findReclaimAreaTargets(
   for (let i = 0; i < units.length; i++) {
     const target = units[i];
     if (target.id === commander.id || !isReclaimableTarget(target)) continue;
+    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
     targets.push({ entity: target, distanceSq: distSq });
@@ -1991,6 +2007,8 @@ function findResurrectAreaTargets(
   x: number,
   y: number,
   radius: number,
+  filterCategory: AreaCommandFilterCategory | undefined,
+  filterBlueprintId: string | undefined,
 ): Entity[] {
   const radiusSq = radius * radius;
   const targets: AreaTarget[] = [];
@@ -1999,6 +2017,7 @@ function findResurrectAreaTargets(
   for (let i = 0; i < buildings.length; i++) {
     const target = buildings[i];
     if (!isResurrectableWreck(target)) continue;
+    if (!areaTargetMatchesCommandFilter(target, filterCategory, filterBlueprintId)) continue;
     const distSq = entityAreaDistanceSq(target, x, y);
     if (distSq > radiusSq) continue;
     targets.push({ entity: target, distanceSq: distSq });

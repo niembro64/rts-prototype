@@ -45,7 +45,15 @@ import {
   type Input3DAreaDragState,
 } from './Input3DAreaDragState';
 import { resolveProjectileSelectionGroundReach } from './ProjectileBallisticPreview';
-import { queueModeFromEvent, type QueueCommandMode } from '../input/queueModifiers';
+import {
+  effectiveQueueModifierEvent,
+  queueModeFromEvent,
+  type QueueCommandMode,
+} from '../input/queueModifiers';
+import {
+  resolveAreaCommandTargetFilter,
+  type AreaCommandTargetFilter,
+} from '../sim/areaCommandFilters';
 
 const REPAIR_AREA_RADIUS = 220;
 const RECLAIM_AREA_RADIUS = 220;
@@ -64,6 +72,11 @@ type AreaDrag = {
   queue: boolean;
   queueFront: boolean;
   queueInsertIndex?: number;
+  /** Entity under the cursor at the drag anchor (the area center) for
+   *  the filterable area commands. BAR's cmd_area_commands_filter picks
+   *  its Ctrl/Alt filter reference from the unit/feature at the command
+   *  position, which is where our drag starts. Null = open ground. */
+  anchorEntityId: EntityId | null;
 };
 
 type BuildPreviewTarget = {
@@ -115,6 +128,9 @@ type Input3DModeClickControllerConfig = {
   isPingMode: () => boolean;
   isTowerTargetMode: () => boolean;
   isTowerTargetNoGroundMode: () => boolean;
+  /** BAR cmd_buildsplit parity: true while the build-split modifier
+   *  (held Space, BAR's `bind Any+space buildsplit`) is active. */
+  isBuildSplitModifierHeld: () => boolean;
   exitRepairAreaMode: () => void;
   exitAttackMode: () => void;
   exitAttackAreaMode: () => void;
@@ -140,6 +156,11 @@ export class Input3DModeClickController {
   private clickQueueModeOverride: QueueCommandMode | null = null;
   private areaHoverPreview: Input3DAreaDragState = EMPTY_AREA_DRAG_STATE;
   private lastBuildPreviewTarget: BuildPreviewTarget | null = null;
+  /** Round-robin cursor for split-mode single-click placements: with
+   *  the build-split modifier held, successive queued build clicks
+   *  cycle through the capable selected builders instead of piling
+   *  onto the active builder. Reset when build mode changes. */
+  private buildSplitClickCursor = 0;
 
   constructor(private readonly config: Input3DModeClickControllerConfig) {}
 
@@ -220,6 +241,7 @@ export class Input3DModeClickController {
   handleBuildModeChange(buildingBlueprintId: BuildingBlueprintId | null): void {
     this.buildPlacement.reset();
     this.lastBuildPreviewTarget = null;
+    this.buildSplitClickCursor = 0;
     if (buildingBlueprintId === null) {
       this.buildGhost?.hide();
     }
@@ -304,7 +326,7 @@ export class Input3DModeClickController {
       else this.handleRightCancel();
       return true;
     }
-    this.commitAreaDrag(drag);
+    this.commitAreaDrag(drag, e);
     return true;
   }
 
@@ -362,6 +384,9 @@ export class Input3DModeClickController {
       queue: queueMode.queue,
       queueFront: queueMode.queueFront,
       queueInsertIndex: queueMode.queueInsertIndex,
+      anchorEntityId: isFilterableAreaDragKind(resolvedKind)
+        ? this.config.picker.raycastEntity(e.clientX, e.clientY)
+        : null,
     };
     return true;
   }
@@ -369,6 +394,10 @@ export class Input3DModeClickController {
   private updateAreaDrag(e: MouseEvent): void {
     const drag = this.areaDrag;
     if (drag === null) return;
+    // BAR's engine re-reads Alt/Ctrl while a placement drag is live, so
+    // pressing Alt mid-drag flips line -> grid fill (and Alt+Ctrl -> the
+    // hollow box) with immediate preview feedback.
+    if (isBuildShapeDragKind(drag.kind)) drag.kind = resolveBuildDragKind(e);
     const world = this.config.picker.raycastGround(e.clientX, e.clientY);
     if (!world) return;
     drag.current = { x: world.x, y: world.y, z: world.z };
@@ -403,7 +432,7 @@ export class Input3DModeClickController {
     return null;
   }
 
-  private commitAreaDrag(drag: AreaDrag): void {
+  private commitAreaDrag(drag: AreaDrag, releaseEvent: MouseEvent): void {
     const radius = Math.max(1, areaDragRadius(drag));
     if (drag.kind === 'buildMexArea') {
       this.commitBuildMexAreaDrag(drag, radius);
@@ -421,6 +450,11 @@ export class Input3DModeClickController {
       this.commitBuildGridDrag(drag);
       return;
     }
+    // BAR cmd_area_commands_filter: Ctrl/Alt held when the area command
+    // is issued (drag release) filter its targets by the entity at the
+    // area center. Modifier state is read at release; the reference
+    // entity was captured at the drag anchor.
+    const targetFilter = this.resolveAreaDragTargetFilter(drag, releaseEvent);
     if (drag.kind === 'repairArea') {
       const cmd = buildRepairAreaCommand(
         this.config.getSelectedCommander(),
@@ -432,6 +466,7 @@ export class Input3DModeClickController {
         drag.start.z,
         drag.queueFront,
         drag.queueInsertIndex,
+        targetFilter,
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('repair');
@@ -466,6 +501,7 @@ export class Input3DModeClickController {
         drag.start.z,
         drag.queueFront,
         drag.queueInsertIndex,
+        targetFilter,
       );
       if (cmd) this.config.commandQueue.enqueue(cmd);
       this.config.applyCursor('repair');
@@ -504,10 +540,38 @@ export class Input3DModeClickController {
       drag.start.z,
       drag.queueFront,
       drag.queueInsertIndex,
+      targetFilter,
     );
     if (cmd) this.config.commandQueue.enqueue(cmd);
     this.config.applyCursor('reclaim');
     if (!drag.queue) this.config.exitReclaimMode();
+  }
+
+  /** BAR cmd_area_commands_filter parity. Ctrl at release keeps only
+   *  targets in the anchor entity's broad category (BAR: "all units in
+   *  the area" / same-tech wrecks — our blueprints have no tech levels,
+   *  so all wrecks); Alt keeps only targets with its exact blueprint
+   *  (BAR: same unitDefId / featureDefId). No anchor entity or no
+   *  modifier = unfiltered. Note: when the drag also queues (Shift held
+   *  at press), Ctrl doubles as the queue-front modifier — both
+   *  meanings apply, mirroring how BAR stacks its area filters on top
+   *  of whatever queue options the command carries. */
+  private resolveAreaDragTargetFilter(
+    drag: AreaDrag,
+    releaseEvent: MouseEvent,
+  ): AreaCommandTargetFilter | undefined {
+    if (drag.anchorEntityId === null) return undefined;
+    const hovered = this.config.getEntitySource().getEntity(drag.anchorEntityId);
+    if (hovered === undefined) return undefined;
+    const modifiers = effectiveQueueModifierEvent(releaseEvent);
+    const filter = resolveAreaCommandTargetFilter(
+      hovered,
+      modifiers.ctrlKey || modifiers.metaKey,
+      modifiers.altKey,
+    );
+    return filter.filterCategory !== undefined || filter.filterBlueprintId !== undefined
+      ? filter
+      : undefined;
   }
 
   private commitBuildMexAreaDrag(drag: AreaDrag, radius: number): void {
@@ -574,13 +638,27 @@ export class Input3DModeClickController {
     );
   }
 
+  /** BAR multi-builder semantics for a batch of placements:
+   *  - Default (no split modifier): the whole batch is one shared queue.
+   *    BAR gives every capable selected builder the identical order list
+   *    so they collectively build placement 1, then 2, ... Our
+   *    startBuild creates the ghost at execution time (a second
+   *    startBuild on the same cell is a no-op), so the closest
+   *    equivalent is: the active builder owns the queue and every other
+   *    capable selected builder guards it — guard is our canonical
+   *    build-assist channel, so the group works each building together
+   *    exactly like BAR's shared queue.
+   *  - Split modifier held (Space, BAR `bind Any+space buildsplit`):
+   *    placements are distributed round-robin across all capable
+   *    selected builders, each working its own fork in parallel
+   *    (cmd_buildsplit.lua via api_build_orders). */
   private commitBuildShapePlacements(
     drag: AreaDrag,
     buildingBlueprintId: BuildingBlueprintId,
     planner: BuildShapePlacementPlanner,
   ): void {
-    const builders = this.getSelectedBuildersForBlueprint(buildingBlueprintId);
-    if (builders.length === 0) {
+    const capable = this.getSelectedCapableBuilders(buildingBlueprintId);
+    if (capable === null) {
       this.config.applyCursor('blocked');
       return;
     }
@@ -592,11 +670,13 @@ export class Input3DModeClickController {
       return;
     }
 
+    const split = this.config.isBuildSplitModifierHeld() && capable.builders.length > 1;
+    const assignees = split ? capable.builders : [capable.leader];
     const tick = this.config.getTick();
     const perBuilderCounts = new Map<number, number>();
     for (let i = 0; i < placements.length; i++) {
       const placement = placements[i];
-      const builder = builders[i % builders.length];
+      const builder = assignees[i % assignees.length];
       const assignedCount = perBuilderCounts.get(builder.id) ?? 0;
       perBuilderCounts.set(builder.id, assignedCount + 1);
       this.config.commandQueue.enqueue({
@@ -612,26 +692,54 @@ export class Input3DModeClickController {
         queueInsertIndex: assignedCount === 0 ? drag.queueInsertIndex : undefined,
       });
     }
+
+    if (!split && capable.builders.length > 1) {
+      const helpers: Entity[] = [];
+      for (let i = 0; i < capable.builders.length; i++) {
+        const builder = capable.builders[i];
+        if (builder.id !== capable.leader.id) helpers.push(builder);
+      }
+      const guardCmd = buildGuardCommandForTarget(
+        capable.leader,
+        helpers,
+        this.config.getActivePlayerId(),
+        tick,
+        drag.queue,
+        drag.queueFront,
+        drag.queueInsertIndex,
+      );
+      if (guardCmd) this.config.commandQueue.enqueue(guardCmd);
+    }
+
     this.config.applyCursor('build');
     this.config.onBuildCommandIssued(drag.queue);
     if (!drag.queue) this.config.mode.exitBuildMode();
   }
 
-  private getSelectedBuildersForBlueprint(buildingBlueprintId: BuildingBlueprintId): Entity[] {
+  /** The active builder plus every other selected unit able to build
+   *  this blueprint. BAR distributes multi-builder work across all
+   *  capable selected builders regardless of unit type (the engine
+   *  filters build orders per-unit by build option), so capability is
+   *  the only gate. Null when the active builder is missing or cannot
+   *  build the blueprint. */
+  private getSelectedCapableBuilders(
+    buildingBlueprintId: BuildingBlueprintId,
+  ): { leader: Entity; builders: Entity[] } | null {
     const activeBuilder = this.config.getSelectedBuilder();
-    if (activeBuilder === null) return [];
-    if (!entityCanBuild(activeBuilder, buildingBlueprintId)) return [];
-    const activeUnitBlueprintId = activeBuilder?.unit?.unitBlueprintId;
-    if (activeUnitBlueprintId === undefined) return [activeBuilder];
+    if (activeBuilder === null) return null;
+    if (!entityCanBuild(activeBuilder, buildingBlueprintId)) return null;
 
     const builders: Entity[] = [];
+    let leaderIncluded = false;
     const selectedUnits = this.config.getEntitySource().getSelectedUnits();
     for (let i = 0; i < selectedUnits.length; i++) {
       const unit = selectedUnits[i];
-      if (unit.unit?.unitBlueprintId !== activeUnitBlueprintId) continue;
-      if (entityCanBuild(unit, buildingBlueprintId)) builders.push(unit);
+      if (!entityCanBuild(unit, buildingBlueprintId)) continue;
+      builders.push(unit);
+      if (unit.id === activeBuilder.id) leaderIncluded = true;
     }
-    return builders.length > 0 ? builders : [activeBuilder];
+    if (!leaderIncluded) builders.unshift(activeBuilder);
+    return { leader: activeBuilder, builders };
   }
 
   private getSelectedMetalExtractorUpgradeBuilderIds(): EntityId[] {
@@ -792,8 +900,19 @@ export class Input3DModeClickController {
       return;
     }
     const queueMode = this.resolveClickQueueMode(e);
+    // BAR cmd_buildsplit: with the split modifier held, successive
+    // queued click placements rotate round-robin through the capable
+    // selected builders instead of stacking on the active builder.
+    let assignee = builder;
+    if (this.config.isBuildSplitModifierHeld()) {
+      const capable = this.getSelectedCapableBuilders(buildingBlueprintId);
+      if (capable !== null && capable.builders.length > 1) {
+        assignee = capable.builders[this.buildSplitClickCursor % capable.builders.length];
+        this.buildSplitClickCursor++;
+      }
+    }
     const cmd = this.config.mode.buildStartBuildCommand(
-      builder, world.x, world.y,
+      assignee, world.x, world.y,
       this.config.getTick(), queueMode.queue, queueMode.queueFront,
       queueMode.queueInsertIndex,
       this.buildPlacement.facingInfo.rotation,
@@ -1382,10 +1501,25 @@ function buildFightMoveCommand(
   };
 }
 
+/** BAR placement-drag modes (engine GuiHandler, mirrored by
+ *  gui_pregame_build.lua determineBuildMode): Alt+drag = GRID (fill the
+ *  dragged rectangle), Alt+Ctrl+drag = BOX (hollow frame), plain drag =
+ *  LINE. BAR additionally requires Shift because unqueued orders would
+ *  overwrite each other there; our batch queues its tail internally, so
+ *  Shift stays the orthogonal queue modifier. */
 function resolveBuildDragKind(e: MouseEvent): Input3DAreaDragKind {
-  if (e.ctrlKey || e.metaKey) return 'buildGrid';
-  if (e.altKey) return 'buildBorder';
+  const modifiers = effectiveQueueModifierEvent(e);
+  if (modifiers.altKey && (modifiers.ctrlKey || modifiers.metaKey)) return 'buildBorder';
+  if (modifiers.altKey) return 'buildGrid';
   return 'buildLine';
+}
+
+function isBuildShapeDragKind(kind: Input3DAreaDragKind): boolean {
+  return kind === 'buildLine' || kind === 'buildBorder' || kind === 'buildGrid';
+}
+
+function isFilterableAreaDragKind(kind: Input3DAreaDragKind): boolean {
+  return kind === 'repairArea' || kind === 'reclaimArea' || kind === 'resurrectArea';
 }
 
 function areaDragRadius(drag: AreaDrag): number {
