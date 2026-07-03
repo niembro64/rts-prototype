@@ -170,7 +170,7 @@ export class Render3DEntities {
    *  units that have newly entered vision. Keyed by entity id so it survives
    *  mesh rebuilds (LOD / owner recolor) and only resets when the unit truly
    *  leaves the live set, so re-entering vision fades in afresh. */
-  private readonly spawnFadeElapsed = new Map<EntityId, number>();
+  private readonly spawnFadeElapsed = new IndexedEntityIdMap<number>();
   // Scoped render pruning stamps visible meshes with this token instead
   // of building a JS Set of all visible unit ids every frame.
   private unitRenderScopeToken = 0;

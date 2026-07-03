@@ -263,7 +263,7 @@ export class BuildingEntityRenderer3D {
   private readonly vanishingBuildings: DyingMeshFade<EntityMesh>;
   /** Per-entity vision fade-IN clock. Kept outside row updates because
    *  buildings are usually submitted only when dirty, unlike units. */
-  private readonly spawnFadeElapsed = new Map<EntityId, number>();
+  private readonly spawnFadeElapsed = new IndexedEntityIdMap<number>();
   /** Gatling spin for tower-mounted multi-barrel turrets (e.g. the
    *  Anti-Air rocket gatling). Towers render per-Mesh, so they keep
    *  their own spin state separate from the unit renderer's. */
