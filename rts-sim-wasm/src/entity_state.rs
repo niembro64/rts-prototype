@@ -477,6 +477,38 @@ pub fn entity_state_collect_body_entity_slots(
 }
 
 #[wasm_bindgen]
+pub fn entity_state_sync_body_motion(body_slots: &[u32]) -> i32 {
+    let slab = entity_state();
+    let p = pool();
+    let mut count = 0_i32;
+    for &body_slot_u32 in body_slots {
+        let body_slot = body_slot_u32 as usize;
+        let Some(entity_slot) = entity_state_slot_for_body_slot(slab, p, body_slot) else {
+            continue;
+        };
+        slab.pos_x[entity_slot] = p.pos_x[body_slot];
+        slab.pos_y[entity_slot] = p.pos_y[body_slot];
+        slab.pos_z[entity_slot] = p.pos_z[body_slot];
+
+        let dirty_mask = match slab.kind[entity_slot] {
+            ENTITY_STATE_KIND_UNIT => {
+                slab.vel_x[entity_slot] = p.vel_x[body_slot];
+                slab.vel_y[entity_slot] = p.vel_y[body_slot];
+                slab.vel_z[entity_slot] = p.vel_z[body_slot];
+                ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL
+            }
+            ENTITY_STATE_KIND_BUILDING | ENTITY_STATE_KIND_TOWER => ENTITY_CHANGED_POS,
+            _ => 0,
+        };
+        if dirty_mask != 0 {
+            slab.dirty_mask[entity_slot] |= dirty_mask;
+            count += 1;
+        }
+    }
+    count
+}
+
+#[wasm_bindgen]
 pub fn entity_state_set_blueprints(
     slot: u32,
     unit_blueprint_code: u32,
@@ -760,5 +792,36 @@ mod tests {
         entity_state_sort_slots_by_id_in_slab(&slab, &mut slots);
 
         assert_eq!(slots, [4, 1, 3, 2, 0, 5, 99]);
+    }
+
+    #[test]
+    fn sync_body_motion_updates_entity_state_and_dirty_mask() {
+        pool_init();
+        entity_state_init(4);
+        let body_slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let b = body_slot as usize;
+            p.entity_id[b] = 101;
+            p.pos_x[b] = 10.0;
+            p.pos_y[b] = 20.0;
+            p.pos_z[b] = 30.0;
+            p.vel_x[b] = 1.0;
+            p.vel_y[b] = 2.0;
+            p.vel_z[b] = 3.0;
+        }
+
+        entity_state_set_lifecycle(2, 101, ENTITY_STATE_KIND_UNIT, 1, 1, 0);
+        entity_state_set_body_slot(2, body_slot as i32);
+
+        assert_eq!(entity_state_sync_body_motion(&[body_slot]), 1);
+        let slab = entity_state();
+        assert_eq!(slab.pos_x[2], 10.0);
+        assert_eq!(slab.pos_y[2], 20.0);
+        assert_eq!(slab.pos_z[2], 30.0);
+        assert_eq!(slab.vel_x[2], 1.0);
+        assert_eq!(slab.vel_y[2], 2.0);
+        assert_eq!(slab.vel_z[2], 3.0);
+        assert_eq!(slab.dirty_mask[2], ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
     }
 }

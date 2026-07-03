@@ -200,7 +200,6 @@ export class ServerSimulationCore {
         this.physicsSyncEntitySlotsBuf,
       );
     }
-    const entityStateViews = entitySlotRegistry.getViews();
     for (let i = 0; i < slotCount; i++) {
       const entitySlot = this.physicsSyncEntitySlotsBuf[i];
       const entity = entitySlotRegistry.resolveSlot(entitySlot);
@@ -247,16 +246,31 @@ export class ServerSimulationCore {
         entity.unit.velocityX = body.vx;
         entity.unit.velocityY = body.vy;
         entity.unit.velocityZ = body.vz;
+      } else if (entity.building !== null) {
+        spatialGrid.addBuilding(entity);
+      }
+    }
+
+    const nativeSyncedMotion = this.physics.syncLastStepBodyMotionToEntityState() >= 0;
+    const entityStateViews = nativeSyncedMotion ? null : entitySlotRegistry.getViews();
+    for (let i = 0; i < slotCount; i++) {
+      const entitySlot = this.physicsSyncEntitySlotsBuf[i];
+      const entity = entitySlotRegistry.resolveSlot(entitySlot);
+      if (entity === undefined || entity.body === null) continue;
+      if (entity.unit !== null) {
         const dirtyFields = ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL;
-        if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
+        if (nativeSyncedMotion) {
+          this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
+        } else if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
           this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
         } else {
           this.world.markSnapshotDirty(entity.id, dirtyFields);
         }
       } else if (entity.building !== null) {
-        spatialGrid.addBuilding(entity);
         const dirtyFields = ENTITY_CHANGED_POS;
-        if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
+        if (nativeSyncedMotion) {
+          this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
+        } else if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
           this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
         } else {
           this.world.markSnapshotDirty(entity.id, dirtyFields);

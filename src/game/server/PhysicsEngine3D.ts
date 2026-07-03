@@ -811,6 +811,15 @@ export class PhysicsEngine3D {
     );
   }
 
+  syncLastStepBodyMotionToEntityState(): number {
+    if (this.stepSyncBodySlotCount === 0) return 0;
+    const sim = getSimWasm();
+    if (sim === undefined) return -1;
+    return sim.entityState.syncBodyMotion(
+      this.stepSyncBodySlots.subarray(0, this.stepSyncBodySlotCount),
+    );
+  }
+
   /** Mark that `dynamicBody` should not collide with `staticBody`.
    *  Used for units spawning inside their factory. */
   setIgnoreStatic(dynamicBody: Body3D, staticBody: Body3D): void {
