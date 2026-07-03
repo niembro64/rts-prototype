@@ -737,7 +737,7 @@ export class ClientViewState {
     this.removePredictionSupportSurfaceProvider(id);
     this.projectileStore.remove(id, wasLineProjectile, existing);
     this.entities.delete(id);
-    this.serverTargets.delete(id);
+    if (this.serverTargets.has(id)) this.serverTargets.delete(id);
     this.renderSpatialIndex.remove(id);
     const renderSlot = this.renderEntityState.getSlot(id);
     if (renderSlot !== undefined) this.renderTurretState.unsetHostSlot(renderSlot);
