@@ -633,10 +633,9 @@ export class UnitForceSystem {
     }
 
     const forceAccumulator = this.simulation.getForceAccumulator();
-    const units = this.world.getUnits();
     const activeForceCount = forceAccumulator.activeEntityCount();
     this.ensurePhysicsCandidateSlotCapacity(
-      Math.max(units.length, activeForceCount),
+      activeForceCount,
     );
     let candidateCount = 0;
     if (activeForceCount > 0) {
