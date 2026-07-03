@@ -203,7 +203,7 @@ const _mountReadContext: CombatTargetingEntityReadContext = {
 };
 let _mountReadEntity: Entity | null = null;
 let _mountReadTick = -1;
-let _mountReadBuffer: ArrayBuffer | null = null;
+let _mountReadSim: SimWasm | null = null;
 
 function playerMaskBit(playerId: number): number {
   if (playerId < 1 || playerId > 31) return 0;
@@ -436,11 +436,10 @@ function getCombatTargetingMountReadContext(
 ): CombatTargetingEntityReadContext | null {
   const sim = getSimWasm();
   if (sim === undefined) return null;
-  const buffer = sim.memory.buffer;
   if (
     _mountReadEntity === entity &&
     _mountReadTick === currentTick &&
-    _mountReadBuffer === buffer &&
+    _mountReadSim === sim &&
     _mountReadContext.views.state.byteLength > 0
   ) {
     return _mountReadContext;
@@ -454,7 +453,7 @@ function getCombatTargetingMountReadContext(
   _mountReadContext.turretCount = views.turretCountPerEntity[slot];
   _mountReadEntity = entity;
   _mountReadTick = currentTick;
-  _mountReadBuffer = buffer;
+  _mountReadSim = sim;
   return _mountReadContext;
 }
 
