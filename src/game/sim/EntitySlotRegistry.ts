@@ -156,6 +156,47 @@ export class EntitySlotRegistry {
   private dirtyDrainMasks = new Uint32Array(INITIAL_KIND_CAPACITY);
   private views: EntityStateViews | null = null;
   private viewsBuffer: ArrayBuffer | null = null;
+  private readonly expectedScratch: EntityStateExpectation = {
+    kind: 0,
+    flags: 0,
+    ownerPlayerId: 0,
+    teamId: 0,
+    x: 0,
+    y: 0,
+    z: 0,
+    rotation: 0,
+    vx: 0,
+    vy: 0,
+    vz: 0,
+    surfaceNormalX: 0,
+    surfaceNormalY: 0,
+    surfaceNormalZ: 1,
+    orientationX: 0,
+    orientationY: 0,
+    orientationZ: 0,
+    orientationW: 1,
+    angularVelocityX: 0,
+    angularVelocityY: 0,
+    angularVelocityZ: 0,
+    unitMotionFlags: 0,
+    hp: 0,
+    maxHp: 0,
+    radiusCollision: 0,
+    radiusHitbox: 0,
+    radiusOther: 0,
+    aabbHx: 0,
+    aabbHy: 0,
+    aabbHz: 0,
+    bodySlot: ENTITY_STATE_NO_BODY_SLOT,
+    unitBlueprintCode: ENTITY_STATE_BLUEPRINT_NONE,
+    buildingBlueprintCode: ENTITY_STATE_BLUEPRINT_NONE,
+    shotBlueprintCode: ENTITY_STATE_BLUEPRINT_NONE,
+    projectileTypeCode: ENTITY_STATE_BLUEPRINT_NONE,
+    buildProgress: 1,
+    buildPaidEnergy: 0,
+    buildPaidMetal: 0,
+    buildFlags: ENTITY_SLOT_BUILD_FLAG_COMPLETE,
+  };
 
   private sim(): SimWasm | undefined {
     return getSimWasm();
@@ -939,47 +980,47 @@ export class EntitySlotRegistry {
       flags |= ENTITY_SLOT_FLAG_ACTIVE;
     }
 
-    return {
-      kind: this.entityKindCode(entity),
-      flags,
-      ownerPlayerId,
-      teamId: resolvedTeamId,
-      x: entity.transform.x,
-      y: entity.transform.y,
-      z: entity.transform.z,
-      rotation: entity.transform.rotation,
-      vx,
-      vy,
-      vz,
-      surfaceNormalX,
-      surfaceNormalY,
-      surfaceNormalZ,
-      orientationX,
-      orientationY,
-      orientationZ,
-      orientationW,
-      angularVelocityX,
-      angularVelocityY,
-      angularVelocityZ,
-      unitMotionFlags,
-      hp,
-      maxHp,
-      radiusCollision,
-      radiusHitbox,
-      radiusOther,
-      aabbHx,
-      aabbHy,
-      aabbHz,
-      bodySlot: entity.body !== null ? entity.body.physicsBody.slot : ENTITY_STATE_NO_BODY_SLOT,
-      unitBlueprintCode: unit !== null ? unitBlueprintCode : UNIT_BLUEPRINT_CODE_UNKNOWN,
-      buildingBlueprintCode: building !== null ? buildingBlueprintCode : BUILDING_BLUEPRINT_CODE_UNKNOWN,
-      shotBlueprintCode: projectile !== null ? shotBlueprintCode : SHOT_BLUEPRINT_CODE_UNKNOWN,
-      projectileTypeCode: projectile !== null ? projectileTypeCode : PROJECTILE_TYPE_UNKNOWN,
-      buildProgress: buildable !== null ? getBuildFraction(buildable) : 1,
-      buildPaidEnergy,
-      buildPaidMetal,
-      buildFlags: this.buildFlags(entity),
-    };
+    const expected = this.expectedScratch;
+    expected.kind = this.entityKindCode(entity);
+    expected.flags = flags;
+    expected.ownerPlayerId = ownerPlayerId;
+    expected.teamId = resolvedTeamId;
+    expected.x = entity.transform.x;
+    expected.y = entity.transform.y;
+    expected.z = entity.transform.z;
+    expected.rotation = entity.transform.rotation;
+    expected.vx = vx;
+    expected.vy = vy;
+    expected.vz = vz;
+    expected.surfaceNormalX = surfaceNormalX;
+    expected.surfaceNormalY = surfaceNormalY;
+    expected.surfaceNormalZ = surfaceNormalZ;
+    expected.orientationX = orientationX;
+    expected.orientationY = orientationY;
+    expected.orientationZ = orientationZ;
+    expected.orientationW = orientationW;
+    expected.angularVelocityX = angularVelocityX;
+    expected.angularVelocityY = angularVelocityY;
+    expected.angularVelocityZ = angularVelocityZ;
+    expected.unitMotionFlags = unitMotionFlags;
+    expected.hp = hp;
+    expected.maxHp = maxHp;
+    expected.radiusCollision = radiusCollision;
+    expected.radiusHitbox = radiusHitbox;
+    expected.radiusOther = radiusOther;
+    expected.aabbHx = aabbHx;
+    expected.aabbHy = aabbHy;
+    expected.aabbHz = aabbHz;
+    expected.bodySlot = entity.body !== null ? entity.body.physicsBody.slot : ENTITY_STATE_NO_BODY_SLOT;
+    expected.unitBlueprintCode = unit !== null ? unitBlueprintCode : UNIT_BLUEPRINT_CODE_UNKNOWN;
+    expected.buildingBlueprintCode = building !== null ? buildingBlueprintCode : BUILDING_BLUEPRINT_CODE_UNKNOWN;
+    expected.shotBlueprintCode = projectile !== null ? shotBlueprintCode : SHOT_BLUEPRINT_CODE_UNKNOWN;
+    expected.projectileTypeCode = projectile !== null ? projectileTypeCode : PROJECTILE_TYPE_UNKNOWN;
+    expected.buildProgress = buildable !== null ? getBuildFraction(buildable) : 1;
+    expected.buildPaidEnergy = buildPaidEnergy;
+    expected.buildPaidMetal = buildPaidMetal;
+    expected.buildFlags = this.buildFlags(entity);
+    return expected;
   }
 
   private resolveTeamId(slot: number, ownerPlayerId: number, teamId: number | undefined): number {
