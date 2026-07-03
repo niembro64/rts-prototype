@@ -46,6 +46,19 @@ function emptyLists(): ClientProjectileRenderLists {
   };
 }
 
+type BeamTargetDebug = {
+  predictedAgeMs: number;
+  points: Array<{ x: number }>;
+};
+
+type ProjectileStoreDebug = {
+  beamPathTargets: Map<number, BeamTargetDebug>;
+};
+
+function getProjectileStoreDebug(view: ClientViewState): ProjectileStoreDebug {
+  return (view as unknown as { projectileStore: ProjectileStoreDebug }).projectileStore;
+}
+
 function projectileSnapshot(
   tick: number,
   spawns: ReturnType<typeof createSpawnDto>[] | undefined,
@@ -380,8 +393,26 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     view.getLineProjectileRenderVersion() === lineVersionAfterInitialBeamPrediction,
     'steady beam target snapshots must not invalidate line rendering before display points move',
   );
+  const beamTarget = getProjectileStoreDebug(view).beamPathTargets.get(304);
+  if (beamTarget === undefined) {
+    assertContract(false, 'steady beam target must remain tracked for prediction');
+    return;
+  }
+  const authoritativeEndpointX = beamTarget.points[2].x;
+  view.applyPrediction(16);
+  assertContract(
+    beamTarget.points[2].x === authoritativeEndpointX &&
+      beamTarget.predictedAgeMs === 16,
+    'beam prediction must project display without mutating authoritative target points',
+  );
+  view.applyNetworkState(directBeamUpdateSnapshot(6, 304));
+  assertContract(
+    beamTarget.points[2].x === authoritativeEndpointX &&
+      beamTarget.predictedAgeMs === 0,
+    'steady beam target snapshots must reset local projection age without rewriting display state',
+  );
 
-  view.applyNetworkState(projectileSnapshot(6, [plasmaSpawn(303, 700, 700)]));
+  view.applyNetworkState(projectileSnapshot(7, [plasmaSpawn(303, 700, 700)]));
   assertContract(
     view.getProjectiles().some((entity) => entity.id === 303),
     'projectile spawns must incrementally enter the client entity cache',
@@ -392,7 +423,7 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'scoped projectile query must include newly spawned plasma projectile',
   );
 
-  const plasmaVelocitySnapshot = projectileSnapshot(7, undefined);
+  const plasmaVelocitySnapshot = projectileSnapshot(8, undefined);
   plasmaVelocitySnapshot.projectiles!.velocityUpdates = [{
     id: 303,
     pos: { x: qProjPos(1500), y: qProjPos(1500), z: qProjPos(35) },
@@ -412,7 +443,7 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'projectile velocity update must move the render spatial slot into its new query bounds',
   );
 
-  view.applyNetworkState(projectileSnapshot(8, undefined, [301, 302, 303, 304]));
+  view.applyNetworkState(projectileSnapshot(9, undefined, [301, 302, 303, 304]));
   assertContract(
     !view.getProjectiles().some((entity) => entity.id === 303),
     'projectile despawns must incrementally leave the client entity cache',

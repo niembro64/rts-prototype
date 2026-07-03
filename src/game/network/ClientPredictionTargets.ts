@@ -52,6 +52,7 @@ export function createServerTarget(): ServerTarget {
 
 export type BeamPathTarget = {
   updatedAtMs: number;
+  predictedAgeMs: number;
   points: BeamPoint[];
   obstructionT: number | null;
   endpointDamageable: boolean | null;
@@ -61,6 +62,7 @@ export type BeamPathTarget = {
 export function createBeamPathTarget(): BeamPathTarget {
   return {
     updatedAtMs: 0,
+    predictedAgeMs: 0,
     points: [],
     obstructionT: null,
     endpointDamageable: null,

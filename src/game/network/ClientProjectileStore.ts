@@ -162,12 +162,9 @@ export class ClientProjectileStore {
     }
   }
 
-  private prepareBeamUpdateTarget(
+  private getBeamUpdateTarget(
     entity: Entity,
     id: EntityId,
-    obstructionT: number | null,
-    endpointDamageable: boolean | null,
-    pointCount: number,
     now: number,
   ): BeamPathTarget | null {
     const proj = entity.projectile;
@@ -179,18 +176,31 @@ export class ClientProjectileStore {
       this.beamPathTargets.set(id, target);
     }
     target.updatedAtMs = now;
-    target.obstructionT = obstructionT === null
-      ? null
-      : deqRot(obstructionT);
+    target.predictedAgeMs = 0;
+    return target;
+  }
+
+  private applyBeamUpdateHeader(
+    target: BeamPathTarget,
+    obstructionT: number | null,
+    endpointDamageable: boolean | null,
+    pointCount: number,
+  ): boolean {
+    const nextObstructionT = obstructionT === null ? null : deqRot(obstructionT);
+    let changed = target.obstructionT !== nextObstructionT ||
+      target.endpointDamageable !== endpointDamageable;
+    target.obstructionT = nextObstructionT;
     target.endpointDamageable = endpointDamageable;
 
     const dstTarget = target.points;
     if (dstTarget.length > pointCount) {
       shrinkBeamPoints(dstTarget, pointCount);
+      changed = true;
     } else if (dstTarget.length < pointCount) {
       dstTarget.length = pointCount;
+      changed = true;
     }
-    return target;
+    return changed;
   }
 
   private finishBeamUpdate(entity: Entity, id: EntityId, target: BeamPathTarget): void {
@@ -222,28 +232,58 @@ export class ClientProjectileStore {
     const entity = this.options.entities.get(update.id);
     if (entity === undefined) return;
     const srcPts = update.points;
-    const target = this.prepareBeamUpdateTarget(
+    const target = this.getBeamUpdateTarget(
       entity,
       update.id,
-      update.obstructionT,
-      update.endpointDamageable,
-      srcPts.length,
       now,
     );
     if (target === null) return;
+    let changed = this.applyBeamUpdateHeader(
+      target,
+      update.obstructionT,
+      update.endpointDamageable,
+      srcPts.length,
+    );
     const dstTarget = target.points;
     for (let i = 0; i < srcPts.length; i++) {
       const sp = srcPts[i];
-      const dp = ensureBeamPoint(dstTarget, i);
-      dp.x = deqProjPos(sp.x); dp.y = deqProjPos(sp.y); dp.z = deqProjPos(sp.z);
-      dp.vx = deqVel(sp.vx); dp.vy = deqVel(sp.vy); dp.vz = deqVel(sp.vz);
+      const x = deqProjPos(sp.x);
+      const y = deqProjPos(sp.y);
+      const z = deqProjPos(sp.z);
+      const vx = deqVel(sp.vx);
+      const vy = deqVel(sp.vy);
+      const vz = deqVel(sp.vz);
+      const normalX = sp.normalX === null ? null : deqNormal(sp.normalX);
+      const normalY = sp.normalY === null ? null : deqNormal(sp.normalY);
+      const normalZ = sp.normalZ === null ? null : deqNormal(sp.normalZ);
+      let dp = dstTarget[i];
+      if (dp === undefined) {
+        dp = ensureBeamPoint(dstTarget, i);
+        changed = true;
+      } else if (
+        dp.x !== x || dp.y !== y || dp.z !== z ||
+        dp.vx !== vx || dp.vy !== vy || dp.vz !== vz ||
+        dp.reflectorEntityId !== sp.reflectorEntityId ||
+        dp.reflectorKind !== sp.reflectorKind ||
+        dp.reflectorPlayerId !== sp.reflectorPlayerId ||
+        dp.normalX !== normalX ||
+        dp.normalY !== normalY ||
+        dp.normalZ !== normalZ
+      ) {
+        changed = true;
+      } else {
+        continue;
+      }
+      dp.x = x; dp.y = y; dp.z = z;
+      dp.vx = vx; dp.vy = vy; dp.vz = vz;
       dp.reflectorEntityId = sp.reflectorEntityId;
       dp.reflectorKind = sp.reflectorKind;
       dp.reflectorPlayerId = sp.reflectorPlayerId;
-      dp.normalX = sp.normalX === null ? null : deqNormal(sp.normalX);
-      dp.normalY = sp.normalY === null ? null : deqNormal(sp.normalY);
-      dp.normalZ = sp.normalZ === null ? null : deqNormal(sp.normalZ);
+      dp.normalX = normalX;
+      dp.normalY = normalY;
+      dp.normalZ = normalZ;
     }
+    if (!changed && this.activeBeamPathIds.has(update.id) && !target.initialSnapPending) return;
     this.finishBeamUpdate(entity, update.id, target);
   }
 
@@ -258,45 +298,74 @@ export class ClientProjectileStore {
   ): void {
     const entity = this.options.entities.get(id);
     if (entity === undefined) return;
-    const target = this.prepareBeamUpdateTarget(
+    const target = this.getBeamUpdateTarget(
       entity,
       id,
-      obstructionT,
-      endpointDamageable,
-      pointCount,
       now,
     );
     if (target === null) return;
+    let changed = this.applyBeamUpdateHeader(
+      target,
+      obstructionT,
+      endpointDamageable,
+      pointCount,
+    );
     const dstTarget = target.points;
     for (let i = 0; i < pointCount; i++) {
       const base = (pointOffset + i) * PROJECTILE_BEAM_POINT_WIRE_STRIDE;
       const flags = pointValues[base + 6];
-      const dp = ensureBeamPoint(dstTarget, i);
-      dp.x = deqProjPos(pointValues[base + 0]);
-      dp.y = deqProjPos(pointValues[base + 1]);
-      dp.z = deqProjPos(pointValues[base + 2]);
-      dp.vx = deqVel(pointValues[base + 3]);
-      dp.vy = deqVel(pointValues[base + 4]);
-      dp.vz = deqVel(pointValues[base + 5]);
-      dp.reflectorEntityId = (flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0
+      const x = deqProjPos(pointValues[base + 0]);
+      const y = deqProjPos(pointValues[base + 1]);
+      const z = deqProjPos(pointValues[base + 2]);
+      const vx = deqVel(pointValues[base + 3]);
+      const vy = deqVel(pointValues[base + 4]);
+      const vz = deqVel(pointValues[base + 5]);
+      const reflectorEntityId = (flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0
         ? pointValues[base + 7] as EntityId
         : null;
-      dp.reflectorKind = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0
+      const reflectorKind = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0
         ? 'shield'
         : null;
-      dp.reflectorPlayerId = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0
+      const reflectorPlayerId = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0
         ? pointValues[base + 8] as PlayerId
         : null;
-      dp.normalX = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) !== 0
+      const normalX = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) !== 0
         ? deqNormal(pointValues[base + 9])
         : null;
-      dp.normalY = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) !== 0
+      const normalY = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) !== 0
         ? deqNormal(pointValues[base + 10])
         : null;
-      dp.normalZ = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0
+      const normalZ = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0
         ? deqNormal(pointValues[base + 11])
         : null;
+      let dp = dstTarget[i];
+      if (dp === undefined) {
+        dp = ensureBeamPoint(dstTarget, i);
+        changed = true;
+      } else if (
+        dp.x !== x || dp.y !== y || dp.z !== z ||
+        dp.vx !== vx || dp.vy !== vy || dp.vz !== vz ||
+        dp.reflectorEntityId !== reflectorEntityId ||
+        dp.reflectorKind !== reflectorKind ||
+        dp.reflectorPlayerId !== reflectorPlayerId ||
+        dp.normalX !== normalX ||
+        dp.normalY !== normalY ||
+        dp.normalZ !== normalZ
+      ) {
+        changed = true;
+      } else {
+        continue;
+      }
+      dp.x = x; dp.y = y; dp.z = z;
+      dp.vx = vx; dp.vy = vy; dp.vz = vz;
+      dp.reflectorEntityId = reflectorEntityId;
+      dp.reflectorKind = reflectorKind;
+      dp.reflectorPlayerId = reflectorPlayerId;
+      dp.normalX = normalX;
+      dp.normalY = normalY;
+      dp.normalZ = normalZ;
     }
+    if (!changed && this.activeBeamPathIds.has(id) && !target.initialSnapPending) return;
     this.finishBeamUpdate(entity, id, target);
   }
 

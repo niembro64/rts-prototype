@@ -111,6 +111,23 @@ function copyBeamPointState(dst: BeamPoint, src: BeamPoint): void {
   dst.normalZ = src.normalZ;
 }
 
+function copyBeamPointStateAtPosition(
+  dst: BeamPoint,
+  src: BeamPoint,
+  x: number,
+  y: number,
+  z: number,
+): void {
+  dst.x = x; dst.y = y; dst.z = z;
+  dst.vx = src.vx; dst.vy = src.vy; dst.vz = src.vz;
+  dst.reflectorEntityId = src.reflectorEntityId;
+  dst.reflectorKind = src.reflectorKind;
+  dst.reflectorPlayerId = src.reflectorPlayerId;
+  dst.normalX = src.normalX;
+  dst.normalY = src.normalY;
+  dst.normalZ = src.normalZ;
+}
+
 function seedBeamPointPositionScalars(
   dst: BeamPoint,
   x: number,
@@ -171,7 +188,6 @@ function applyBeamPathPrediction(
     return snapBeamPathDisplayToTarget(entity, target);
   }
 
-  const dt = deltaMs / 1000;
   let changed = false;
 
   const projPts = proj.points ?? (proj.points = []);
@@ -203,39 +219,36 @@ function applyBeamPathPrediction(
     changed = true;
   }
 
-  // PREDICT mode gates whether we step the snapshot beam-path target
-  // forward each frame. 'pos' freezes the target at its last snapshot
-  // value (the per-channel movement-pos EMA below still pulls the
-  // rendered point toward it). 'vel' steps position from velocity only
-  // while the path is still an unreflected open ray. A shield reflection
-  // vertex is not a particle: it is a ray/plane constraint point, and
-  // all later vertices are only valid as the result of that full
-  // reflected trace. Without a local re-trace, independently
-  // dead-reckoning those vertices can manufacture paths that cross
-  // shield planes before the next authoritative snapshot arrives.
-  // Acceleration is not on the wire, so there is no ACC mode.
+  // PREDICT mode gates whether we project the snapshot beam-path target
+  // forward for display. Keep the target object itself authoritative so
+  // stable snapshot rows can skip point copies in ClientProjectileStore.
+  // 'pos' freezes the target at its last snapshot value. 'vel' projects
+  // from velocity only while the path is still an unreflected open ray.
+  // A shield reflection vertex is not a particle: it is a ray/plane
+  // constraint point, and all later vertices are only valid as the
+  // result of that full reflected trace.
   if (predictionMode !== 'pos') {
-    let canDeadReckonVertex = true;
-    for (let i = 0; i < tgtPts.length; i++) {
-      const tp = tgtPts[i];
-      if (!canDeadReckonVertex || beamPointIsReflector(tp)) {
-        canDeadReckonVertex = false;
-        continue;
-      }
-      tp.x += tp.vx * dt;
-      tp.y += tp.vy * dt;
-      tp.z += tp.vz * dt;
-    }
+    target.predictedAgeMs += deltaMs;
+  } else {
+    target.predictedAgeMs = 0;
   }
+  const targetDt = target.predictedAgeMs / 1000;
+  let canDeadReckonVertex = predictionMode !== 'pos';
 
   for (let i = 0; i < tgtPts.length; i++) {
     const tp = tgtPts[i];
+    const targetIsReflector = beamPointIsReflector(tp);
+    const useProjectedTarget = canDeadReckonVertex && !targetIsReflector;
+    if (targetIsReflector) canDeadReckonVertex = false;
+    const targetX = useProjectedTarget ? tp.x + tp.vx * targetDt : tp.x;
+    const targetY = useProjectedTarget ? tp.y + tp.vy * targetDt : tp.y;
+    const targetZ = useProjectedTarget ? tp.z + tp.vz * targetDt : tp.z;
     let pp = projPts[i];
     const isNewPoint = !pp || i >= oldLen;
     if (isNewPoint) {
       pp = ensureBeamPoint(projPts, i);
-      if (beamPointIsReflector(tp) || !hasOldLastPointSeed) {
-        copyBeamPointState(pp, tp);
+      if (targetIsReflector || !hasOldLastPointSeed) {
+        copyBeamPointStateAtPosition(pp, tp, targetX, targetY, targetZ);
         changed = true;
         continue;
       }
@@ -256,18 +269,18 @@ function applyBeamPathPrediction(
       pp.normalZ = tp.normalZ;
       changed = true;
     } else if (shouldSnapExistingBeamPoint(pp, tp)) {
-      copyBeamPointState(pp, tp);
+      copyBeamPointStateAtPosition(pp, tp, targetX, targetY, targetZ);
       changed = true;
       continue;
-    } else if (beamPointIsReflector(tp)) {
+    } else if (targetIsReflector) {
       if (beamPointStateDiffers(pp, tp)) changed = true;
       copyBeamPointState(pp, tp);
       continue;
     }
     const px = pp.x, py = pp.y, pz = pp.z;
-    const nx = movPosBlend < 0 ? px : lerp(px, tp.x, movPosBlend);
-    const ny = movPosBlend < 0 ? py : lerp(py, tp.y, movPosBlend);
-    const nz = movPosBlend < 0 ? pz : lerp(pz, tp.z, movPosBlend);
+    const nx = movPosBlend < 0 ? px : lerp(px, targetX, movPosBlend);
+    const ny = movPosBlend < 0 ? py : lerp(py, targetY, movPosBlend);
+    const nz = movPosBlend < 0 ? pz : lerp(pz, targetZ, movPosBlend);
     const pvx = pp.vx, pvy = pp.vy, pvz = pp.vz;
     let nvx = pvx, nvy = pvy, nvz = pvz;
     if (movVelBlend >= 1) {
