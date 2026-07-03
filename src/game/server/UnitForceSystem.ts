@@ -634,15 +634,19 @@ export class UnitForceSystem {
 
     const forceAccumulator = this.simulation.getForceAccumulator();
     const units = this.world.getUnits();
+    const activeForceCount = forceAccumulator.activeEntityCount();
     this.ensurePhysicsCandidateSlotCapacity(
-      Math.max(units.length, forceAccumulator.activeEntityCount()),
+      Math.max(units.length, activeForceCount),
     );
-    let candidateCount = forceAccumulator.collectActiveEntitySlots(
-      this.physicsCandidateUnitSlotsBuf,
-      entitySlotForId,
-    );
-    for (let i = 0; i < candidateCount; i++) {
-      this.pushPhysicsForceUnitSlot(this.physicsCandidateUnitSlotsBuf[i]);
+    let candidateCount = 0;
+    if (activeForceCount > 0) {
+      candidateCount = forceAccumulator.collectActiveEntitySlots(
+        this.physicsCandidateUnitSlotsBuf,
+        entitySlotForId,
+      );
+      for (let i = 0; i < candidateCount; i++) {
+        this.pushPhysicsForceUnitSlot(this.physicsCandidateUnitSlotsBuf[i]);
+      }
     }
 
     const sim = getSimWasm();
