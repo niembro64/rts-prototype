@@ -629,9 +629,9 @@ export class UnitForceSystem {
     this.physicsForceUnitSlotCount = 0;
     this.beginPhysicsActiveUnitSlotMarkFrame();
 
-    const movingUnits = this.simulation.getMovingUnits();
-    for (let i = 0; i < movingUnits.length; i++) {
-      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getEntitySlot(movingUnits[i]));
+    const movingUnitSlots = this.simulation.getMovingUnitSlots();
+    for (let i = 0; i < movingUnitSlots.length; i++) {
+      this.pushPhysicsForceUnitSlot(movingUnitSlots[i]);
     }
 
     const flyingUnits = this.world.getFlyingUnits();

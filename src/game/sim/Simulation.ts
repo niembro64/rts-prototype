@@ -191,6 +191,7 @@ export class Simulation {
   private eventQueues = new SimulationEventQueues();
 
   private _movingUnitsBuf: Entity[] = [];
+  private _movingUnitSlotsBuf: number[] = [];
   private _gatherWaitGroups: Map<string, GatherWaitGroup> = new Map();
   private readonly _gatherWaitGroupList: GatherWaitGroup[] = [];
   private readonly _gatherWaitGroupPool: GatherWaitGroup[] = [];
@@ -1552,6 +1553,15 @@ export class Simulation {
     // tick budget on planning — units that don't get a slot this
     // tick stay at the threshold and try again next tick.
     this.stuckReplanController.evaluate(movingUnits);
+    this.refreshMovingUnitSlots(movingUnits);
+  }
+
+  private refreshMovingUnitSlots(movingUnits: readonly Entity[]): void {
+    const slots = this._movingUnitSlotsBuf;
+    slots.length = movingUnits.length;
+    for (let i = 0; i < movingUnits.length; i++) {
+      slots[i] = entitySlotRegistry.getEntitySlot(movingUnits[i]);
+    }
   }
 
   /** Replan the given unit's active route from its current position to
@@ -1652,6 +1662,10 @@ export class Simulation {
   // Reference is valid until the next update(); callers must not mutate.
   getMovingUnits(): readonly Entity[] {
     return this._movingUnitsBuf;
+  }
+
+  getMovingUnitSlots(): readonly number[] {
+    return this._movingUnitSlotsBuf;
   }
 
   // Advance to next action (with patrol loop support)

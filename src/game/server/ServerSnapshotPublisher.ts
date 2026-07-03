@@ -1440,9 +1440,17 @@ export class ServerSnapshotPublisher {
 
     const movingUnits = simulation?.getMovingUnits();
     if (movingUnits !== undefined) {
+      const movingUnitSlots = simulation?.getMovingUnitSlots();
       for (let i = 0; i < movingUnits.length; i++) {
         const entity = movingUnits[i];
-        if (!this.isEntityMotionDeltaCandidateFromState(entity, entityViews) || seen.has(entity.id)) {
+        if (
+          !this.isEntityMotionDeltaCandidateFromState(
+            entity,
+            entityViews,
+            movingUnitSlots?.[i],
+          ) ||
+          seen.has(entity.id)
+        ) {
           continue;
         }
         seen.add(entity.id);
@@ -1467,8 +1475,8 @@ export class ServerSnapshotPublisher {
   private isEntityMotionDeltaCandidateFromState(
     entity: Entity,
     entityViews: EntityStateViews | null,
+    slot = entitySlotRegistry.getEntitySlot(entity),
   ): boolean {
-    const slot = entitySlotRegistry.getEntitySlot(entity);
     return isEntityMotionDeltaCandidateSlot(entityViews, slot, entity.id) ||
       isEntityMotionDeltaCandidate(entity);
   }
