@@ -5,9 +5,6 @@ import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
 import { getCombatTargetingTargetSlots } from '../sim/combat/targetingInputStamping';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
-  canEntityProvideFullVision,
-  canEntityProvideCloakDetection,
-  canEntityProvideRadarVision,
   getEntityCloakDetectionRadius,
   getEntityFullVisionRadius,
   getEntityRadarRadius,
@@ -723,15 +720,15 @@ export class SnapshotVisibility {
         // height — units on flat ground can still see over a small
         // bump, units behind a tall ridge can't.
         const eyeZ = entity.transform.z + VISION_SOURCE_EYE_HEIGHT;
-        if (canEntityProvideFullVision(entity)) {
-          const radius = getEntityFullVisionRadius(entity);
+        const fullSightRadius = getEntityFullVisionRadius(entity);
+        if (fullSightRadius > 0) {
           const sourceIndex = this.addSource(
             this.fullSources,
             this.fullSourceCells,
             entity.transform.x,
             entity.transform.y,
             eyeZ,
-            radius,
+            fullSightRadius,
           );
           if (sourceIndex >= 0) {
             this.addSourceCells(
@@ -739,28 +736,30 @@ export class SnapshotVisibility {
               sourceIndex,
               entity.transform.x,
               entity.transform.y,
-              radius + EARSHOT_PAD,
+              fullSightRadius + EARSHOT_PAD,
             );
           }
         }
-        if (canEntityProvideRadarVision(entity)) {
+        const radarRadius = getEntityRadarRadius(entity);
+        if (radarRadius > 0) {
           this.addSource(
             this.radarSources,
             this.radarSourceCells,
             entity.transform.x,
             entity.transform.y,
             eyeZ,
-            getEntityRadarRadius(entity),
+            radarRadius,
           );
         }
-        if (canEntityProvideCloakDetection(entity)) {
+        const detectorRadius = getEntityCloakDetectionRadius(entity);
+        if (detectorRadius > 0) {
           this.addSource(
             this.detectorSources,
             this.detectorSourceCells,
             entity.transform.x,
             entity.transform.y,
             eyeZ,
-            getEntityCloakDetectionRadius(entity),
+            detectorRadius,
           );
         }
       }
