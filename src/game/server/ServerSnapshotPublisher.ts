@@ -69,6 +69,7 @@ import {
 const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 const PROJECTILE_DELTA_EMPTY_ENTITIES: NetworkServerSnapshot['entities'] = [];
 const PROJECTILE_DELTA_EMPTY_ECONOMY: NetworkServerSnapshot['economy'] = {};
+const MOTION_CANDIDATE_SLOT_PACK_BASE = 1 << 20;
 function addMaterializationStage(
   stages: SnapshotMaterializationStageDurations,
   stage: SnapshotMaterializationStage,
@@ -156,6 +157,8 @@ export class ServerSnapshotPublisher {
   private readonly deltaRemovedEntityIdSet = new IndexedEntityIdSet();
   private readonly deltaEntityIdSet = new IndexedEntityIdSet();
   private readonly entityMotionCandidateIdsBuf: EntityId[] = [];
+  private readonly entityMotionCandidateSlotsBuf: number[] = [];
+  private readonly entityMotionCandidatePackedBuf: number[] = [];
   private readonly entityMotionCandidateIdSet = new IndexedEntityIdSet();
   private readonly deferredEntityMotionIds = new IndexedEntityIdSet();
   reset(): void {}
@@ -174,6 +177,8 @@ export class ServerSnapshotPublisher {
     this.deltaRemovedEntityIdSet.clear();
     this.deltaEntityIdSet.clear();
     this.entityMotionCandidateIdsBuf.length = 0;
+    this.entityMotionCandidateSlotsBuf.length = 0;
+    this.entityMotionCandidatePackedBuf.length = 0;
     this.entityMotionCandidateIdSet.clear();
     this.deferredEntityMotionIds.clear();
   }
@@ -182,6 +187,7 @@ export class ServerSnapshotPublisher {
     return this.collectEntityMotionDeltaCandidates(
       world,
       this.entityMotionCandidateIdsBuf,
+      this.entityMotionCandidateSlotsBuf,
       simulation,
       false,
     ) > 0;
@@ -1160,6 +1166,7 @@ export class ServerSnapshotPublisher {
     const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', stageStart);
     const motionCandidateIds = this.entityMotionCandidateIdsBuf;
+    const motionCandidateSlots = this.entityMotionCandidateSlotsBuf;
     let hasEntityMotionDeltas = false;
     if (includeEntityMotionDeltas) {
       stageStart = performance.now();
@@ -1167,12 +1174,14 @@ export class ServerSnapshotPublisher {
         this.collectEntityMotionDeltaCandidates(
           input.world,
           motionCandidateIds,
+          motionCandidateSlots,
           input.simulation,
           true,
         ) > 0;
       addMaterializationStage(emitBaseStages, 'entityDtos', stageStart);
     } else {
       motionCandidateIds.length = 0;
+      motionCandidateSlots.length = 0;
     }
     if (!hasProjectilePresentationEvents && !hasLiveLineProjectiles && !hasEntityMotionDeltas) return false;
 
@@ -1218,6 +1227,7 @@ export class ServerSnapshotPublisher {
           world: input.world,
           visibility,
           motionCandidateIds,
+          motionCandidateSlots,
           audioEvents,
           projectileSpawns,
           projectileDespawns,
@@ -1242,7 +1252,12 @@ export class ServerSnapshotPublisher {
         ? timeMaterializationStage(
             stages,
             'entityDtos',
-            () => this.serializeEntityMotionDelta(input.world, visibility, motionCandidateIds),
+            () => this.serializeEntityMotionDelta(
+              input.world,
+              visibility,
+              motionCandidateIds,
+              motionCandidateSlots,
+            ),
           )
         : undefined;
       const projectiles = hasProjectilesAfterDrain
@@ -1316,6 +1331,7 @@ export class ServerSnapshotPublisher {
     world: WorldState,
     visibility: SnapshotVisibility,
     candidateIds: readonly EntityId[],
+    candidateSlots: readonly number[],
   ): NetworkServerSnapshot['entities'] | undefined {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
@@ -1325,7 +1341,14 @@ export class ServerSnapshotPublisher {
     for (let i = 0; i < candidateIds.length; i++) {
       const id = candidateIds[i];
       if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
-      if (this.tryAppendUnitSlabDeltaRowFromState(id, ENTITY_MOTION_DELTA_FIELDS, entityViews)) {
+      if (
+        this.tryAppendUnitSlabDeltaRowFromState(
+          id,
+          ENTITY_MOTION_DELTA_FIELDS,
+          entityViews,
+          candidateSlots[i] ?? -1,
+        )
+      ) {
         entities.push(undefined as unknown as NetworkServerSnapshotEntity);
         continue;
       }
@@ -1423,20 +1446,27 @@ export class ServerSnapshotPublisher {
   private collectEntityMotionDeltaCandidates(
     world: WorldState,
     out: EntityId[],
+    outSlots: number[],
     simulation?: Simulation,
     drainDeferredMotion = false,
   ): number {
     out.length = 0;
+    outSlots.length = 0;
+    const packed = this.entityMotionCandidatePackedBuf;
+    packed.length = 0;
     const seen = this.entityMotionCandidateIdSet;
     seen.clear();
     const entityViews = entitySlotRegistry.getViews();
+    const pushCandidate = (id: EntityId, slot: number): void => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      packed.push(id * MOTION_CANDIDATE_SLOT_PACK_BASE + slot + 1);
+    };
 
     for (const id of this.deferredEntityMotionIds) {
       const entity = world.getEntity(id);
       if (entity === undefined || entity.unit === null || entity.unit.hp <= 0) continue;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      out.push(id);
+      pushCandidate(id, entitySlotRegistry.getEntitySlot(entity));
     }
     if (drainDeferredMotion) this.deferredEntityMotionIds.clear();
 
@@ -1445,32 +1475,38 @@ export class ServerSnapshotPublisher {
       const movingUnitSlots = simulation?.getMovingUnitSlots();
       for (let i = 0; i < movingUnits.length; i++) {
         const entity = movingUnits[i];
+        const slot = movingUnitSlots?.[i] ?? entitySlotRegistry.getEntitySlot(entity);
         if (
           !this.isEntityMotionDeltaCandidateFromState(
             entity,
             entityViews,
-            movingUnitSlots?.[i],
+            slot,
           ) ||
           seen.has(entity.id)
         ) {
           continue;
         }
-        seen.add(entity.id);
-        out.push(entity.id);
+        pushCandidate(entity.id, slot);
       }
     }
 
     const flyingUnits = world.getFlyingUnits();
     for (let i = 0; i < flyingUnits.length; i++) {
       const entity = flyingUnits[i];
-      if (!this.isEntityMotionDeltaCandidateFromState(entity, entityViews) || seen.has(entity.id)) {
+      const slot = entitySlotRegistry.getEntitySlot(entity);
+      if (!this.isEntityMotionDeltaCandidateFromState(entity, entityViews, slot) || seen.has(entity.id)) {
         continue;
       }
-      seen.add(entity.id);
-      out.push(entity.id);
+      pushCandidate(entity.id, slot);
     }
     seen.clear();
-    out.sort((a, b) => a - b);
+    packed.sort((a, b) => a - b);
+    for (let i = 0; i < packed.length; i++) {
+      const value = packed[i];
+      out.push(Math.floor(value / MOTION_CANDIDATE_SLOT_PACK_BASE) as EntityId);
+      outSlots.push((value % MOTION_CANDIDATE_SLOT_PACK_BASE) - 1);
+    }
+    packed.length = 0;
     return out.length;
   }
 

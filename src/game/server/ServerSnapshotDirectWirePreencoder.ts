@@ -100,6 +100,7 @@ type ServerSnapshotSparseDeltaDirectWireInput = {
   world: WorldState;
   visibility: SnapshotVisibility;
   motionCandidateIds: readonly EntityId[];
+  motionCandidateSlots: readonly number[];
   audioEvents: SimEvent[] | undefined;
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
@@ -746,10 +747,18 @@ export class ServerSnapshotDirectWirePreencoder {
     const ids = input.motionCandidateIds;
     const visibleEntityIds = input.visibility.getVisibleEntityIdSet();
     const entityViews = entitySlotRegistry.getViews();
+    const slots = input.motionCandidateSlots;
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
       if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
-      if (this.tryAppendUnitSlabDeltaRowFromState(id, ENTITY_MOTION_DELTA_FIELDS, entityViews)) {
+      if (
+        this.tryAppendUnitSlabDeltaRowFromState(
+          id,
+          ENTITY_MOTION_DELTA_FIELDS,
+          entityViews,
+          slots[i] ?? -1,
+        )
+      ) {
         entityCount++;
         continue;
       }
