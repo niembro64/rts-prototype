@@ -60,7 +60,7 @@ export type { ClientProjectileRenderLists } from './ClientProjectileRenderSpatia
 
 type ClientProjectileStoreOptions = {
   entities: Map<EntityId, Entity>;
-  markEntitySetChanged: (invalidateCaches: boolean | undefined) => void;
+  handleEntityAdded: (entity: Entity) => void;
 };
 
 const PROJECTILE_RENDER_SCOPE_PADDING = 250;
@@ -146,8 +146,8 @@ export class ClientProjectileStore {
     if (entities.has(spawn.id)) return false;
     try {
       const entity = this.createProjectileFromSpawn(spawn);
-      this.options.markEntitySetChanged(false);
       entities.set(spawn.id, entity);
+      this.options.handleEntityAdded(entity);
       this.refreshRenderStateAndSpatialIndex(entity);
       if (isLineProjectileTypeCode(spawn.projectileType)) {
         this.activeBeamPathIds.add(spawn.id);

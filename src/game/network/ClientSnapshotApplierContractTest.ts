@@ -530,6 +530,18 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(view.getEntity(id)?.unit?.hp === 60, 'full snapshot must seed unit HP');
   assertHudContains(view, id, true);
 
+  const cacheView = new ClientViewState();
+  cacheView.applyNetworkState(snapshot(1, [fullUnitEntity(501, 100, 100)]));
+  assertContract(
+    cacheView.getUnits().map((unit) => unit.id).join(',') === '501',
+    'client entity cache must expose a full-snapshot-created unit',
+  );
+  cacheView.applyNetworkState(snapshot(2, [fullUnitEntity(502, 100, 100)]));
+  assertContract(
+    cacheView.getUnits().map((unit) => unit.id).join(',') === '502',
+    'client entity cache must handle same-snapshot unit add and visible-set removal',
+  );
+
   const projectileDelta = snapshot(2, []);
   projectileDelta.projectileDeltaOnly = true;
   view.applyNetworkState(projectileDelta);

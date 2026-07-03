@@ -382,6 +382,10 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
   );
 
   view.applyNetworkState(projectileSnapshot(6, [plasmaSpawn(303, 700, 700)]));
+  assertContract(
+    view.getProjectiles().some((entity) => entity.id === 303),
+    'projectile spawns must incrementally enter the client entity cache',
+  );
   view.collectProjectileRenderLists({ minX: 650, minY: 650, maxX: 750, maxY: 750 }, lists);
   assertContract(
     lists.traveling.length === 1 && lists.traveling[0].id === 303,
@@ -409,6 +413,10 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
   );
 
   view.applyNetworkState(projectileSnapshot(8, undefined, [301, 302, 303, 304]));
+  assertContract(
+    !view.getProjectiles().some((entity) => entity.id === 303),
+    'projectile despawns must incrementally leave the client entity cache',
+  );
   current = view.collectProjectileRenderLists(null, lists);
   assertContract(
     current.traveling.length === 0 &&

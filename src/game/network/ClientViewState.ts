@@ -368,7 +368,6 @@ export class ClientViewState {
   private readonly scopedRenderUnitSlots: number[] = [];
   private readonly scopedRenderBuildingSlots: number[] = [];
   private entitySetVersion = 0;
-  private projectileCacheDirty = false;
 
   private predictionCadence = new ClientPredictionCadence();
   private activeEntityPredictionIds: Set<EntityId> = new ClientEntityIdSet();
@@ -397,7 +396,7 @@ export class ClientViewState {
   constructor() {
     this.projectileStore = new ClientProjectileStore({
       entities: this.entities,
-      markEntitySetChanged: (invalidateCaches) => this.markEntitySetChanged(invalidateCaches),
+      handleEntityAdded: (entity) => this.handleLocalEntityAdded(entity),
     });
     this.predictionStepper = new ClientPredictionStepper({
       entities: this.entities,
@@ -448,18 +447,17 @@ export class ClientViewState {
   getMapHeight(): number { return this.mapHeight; }
 
   private invalidateCaches(): void {
-    this.projectileCacheDirty = false;
     this.cache.invalidate();
   }
 
-  private invalidateProjectileCaches(): void {
-    this.projectileCacheDirty = true;
+  private handleLocalEntityAdded(entity: Entity): void {
+    this.cache.handleEntityAdded(entity);
+    this.entitySetVersion++;
   }
 
-  private markEntitySetChanged(invalidateCaches = true): void {
-    this.entitySetVersion++;
-    if (invalidateCaches) this.invalidateCaches();
-    else this.invalidateProjectileCaches();
+  private handleLocalEntityRemoved(entity: Entity, deferEntitySetChange: boolean): void {
+    this.cache.handleEntityRemoved(entity);
+    if (!deferEntitySetChange) this.entitySetVersion++;
   }
 
   private addPredictionSupportSurfaceProvider(entity: Entity): void {
@@ -751,14 +749,14 @@ export class ClientViewState {
     this.dirtyBuildingRenderIds.delete(id);
     this.renderLifecycleDirtyIds.delete(id);
     if (existing !== undefined) {
-      if (!deferEntitySetChange) this.markEntitySetChanged(existing.type !== 'shot');
+      this.handleLocalEntityRemoved(existing, deferEntitySetChange);
       return true;
     }
     return false;
   }
 
   private markSnapshotRemovalsApplied(changed: boolean): void {
-    if (changed) this.markEntitySetChanged(true);
+    if (changed) this.entitySetVersion++;
   }
 
   private markEntityPredictionActive(entity: Entity): void {
@@ -2253,14 +2251,8 @@ export class ClientViewState {
       isBuildInProgress(entity.buildable);
   }
 
-  private rebuildCachesIfNeeded(includeProjectileChanges = false): void {
-    if (includeProjectileChanges && this.projectileCacheDirty) {
-      this.projectileCacheDirty = false;
-      this.cache.invalidate();
-    }
-    if (this.cache.rebuildIfNeeded(this.entities)) {
-      this.projectileCacheDirty = false;
-    }
+  private rebuildCachesIfNeeded(): void {
+    this.cache.rebuildIfNeeded(this.entities);
   }
 
   /**
@@ -2529,12 +2521,11 @@ export class ClientViewState {
               newEntity.selectable.selected = true;
             }
             this.entities.set(netEntity.id, newEntity);
+            this.handleLocalEntityAdded(newEntity);
             this.refreshRenderableEntityStateAndSpatialIndex(newEntity);
             this.markEntityPredictionActive(newEntity);
             this.refreshPredictionSupportSurfaceProvider(newEntity);
-            this.entitySetVersion++;
             this.renderLifecycleDirtyIds.add(netEntity.id);
-            cacheNeedsInvalidate = true;
           }
         } else {
           // Existing entity — snap non-visual state immediately. The entity
@@ -2915,7 +2906,7 @@ export class ClientViewState {
   }
 
   getAllEntities(): Entity[] {
-    this.rebuildCachesIfNeeded(true);
+    this.rebuildCachesIfNeeded();
     return this.cache.getAll();
   }
 
@@ -3884,22 +3875,22 @@ export class ClientViewState {
   }
 
   getProjectiles(): Entity[] {
-    this.rebuildCachesIfNeeded(true);
+    this.rebuildCachesIfNeeded();
     return this.cache.getProjectiles();
   }
 
   getTravelingProjectiles(): Entity[] {
-    this.rebuildCachesIfNeeded(true);
+    this.rebuildCachesIfNeeded();
     return this.cache.getTravelingProjectiles();
   }
 
   getSmokeTrailProjectiles(): Entity[] {
-    this.rebuildCachesIfNeeded(true);
+    this.rebuildCachesIfNeeded();
     return this.cache.getSmokeTrailProjectiles();
   }
 
   getLineProjectiles(): Entity[] {
-    this.rebuildCachesIfNeeded(true);
+    this.rebuildCachesIfNeeded();
     return this.cache.getLineProjectiles();
   }
 
