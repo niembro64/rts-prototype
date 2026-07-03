@@ -1440,6 +1440,16 @@ export class DamageSystem {
         const ux = unitX - startX, uy = unitY - startY;
         const crossSq = (ux * dy - uy * dx);
         const boundR = radiusHitbox[slot] + halfLineWidth;
+        if (
+          unitX + boundR < segMinX ||
+          unitX - boundR > segMaxX ||
+          unitY + boundR < segMinY ||
+          unitY - boundR > segMaxY ||
+          unitZ + boundR < segMinZ ||
+          unitZ - boundR > segMaxZ
+        ) {
+          continue;
+        }
         if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
         // Unit body: 3D segment-vs-sphere.
@@ -1644,6 +1654,12 @@ export class DamageSystem {
       queryEndY = startY + bestT * dy;
       queryEndZ = startZ + bestT * dz;
     }
+    const querySegMinX = startX < queryEndX ? startX : queryEndX;
+    const querySegMaxX = startX > queryEndX ? startX : queryEndX;
+    const querySegMinY = startY < queryEndY ? startY : queryEndY;
+    const querySegMaxY = startY > queryEndY ? startY : queryEndY;
+    const querySegMinZ = startZ < queryEndZ ? startZ : queryEndZ;
+    const querySegMaxZ = startZ > queryEndZ ? startZ : queryEndZ;
     const nearbyProjectiles = spatialGrid.queryProjectileSlotsAlongLine(
       startX, startY, startZ,
       queryEndX, queryEndY, queryEndZ,
@@ -1666,11 +1682,24 @@ export class DamageSystem {
         if (projectileId === bodyExcludeEntityId) continue;
         if (hp[slot] <= 0) continue;
         const boundR = radiusCollision[slot] + halfLineWidth;
+        const projectileX = posX[slot];
+        const projectileY = posY[slot];
+        const projectileZ = posZ[slot];
+        if (
+          projectileX + boundR < querySegMinX ||
+          projectileX - boundR > querySegMaxX ||
+          projectileY + boundR < querySegMinY ||
+          projectileY - boundR > querySegMaxY ||
+          projectileZ + boundR < querySegMinZ ||
+          projectileZ - boundR > querySegMaxZ
+        ) {
+          continue;
+        }
         const t = lineSphereIntersectionTWithDelta(
           startX, startY, startZ,
           dx, dy, dz,
           segLen3Sq,
-          posX[slot], posY[slot], posZ[slot],
+          projectileX, projectileY, projectileZ,
           boundR,
         );
         if (t !== null && (t < bestT || (bestHitIsGround && t === bestT))) {
