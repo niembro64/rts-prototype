@@ -589,7 +589,8 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     typedPlaceholderSource !== undefined &&
       typedPlaceholderSource.count === 1 &&
-      typedPlaceholderSource.typedPlaceholderRows === 1,
+      typedPlaceholderSource.typedPlaceholderRows === 1 &&
+      typedPlaceholderSource.typedPlaceholderEntityIndices[0] === 0,
     'typed unit motion rows must mark DTO-free typed placeholder rows',
   );
   const typedPlaceholderStats = view.applyNetworkState(snapshot(4, typedPlaceholderRows), {
@@ -1527,7 +1528,9 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     mixedTypedSource !== undefined &&
       mixedTypedSource.count === 2 &&
-      mixedTypedSource.typedPlaceholderRows === 2,
+      mixedTypedSource.typedPlaceholderRows === 2 &&
+      mixedTypedSource.typedPlaceholderEntityIndices[0] === 0 &&
+      mixedTypedSource.typedPlaceholderEntityIndices[1] === 1,
     'mixed typed placeholder delta rows must mark every DTO-free typed row',
   );
   const mixedTypedSnapshot = snapshot(6, mixedTypedRows);
@@ -1591,6 +1594,7 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     mixedGenericSource.count === 1 &&
       mixedGenericSource.typedPlaceholderRows === 1 &&
+      mixedGenericSource.typedPlaceholderEntityIndices[0] === 0 &&
       mixedGenericSource.nonPlaceholderEntityRows === 0,
     'mixed generic fixture must start with one DTO-free typed row',
   );
@@ -1598,6 +1602,7 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     mixedGenericSource.count === mixedGenericRows.length &&
       mixedGenericSource.typedPlaceholderRows === 1 &&
+      mixedGenericSource.typedPlaceholderEntityIndices[0] === 0 &&
       mixedGenericSource.nonPlaceholderEntityRows === 1 &&
       mixedGenericSource.nonPlaceholderEntityIndices[0] === 1,
     'mixed generic fixture must expose compact typed and DTO row metadata',

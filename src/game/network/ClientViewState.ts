@@ -1863,11 +1863,13 @@ export class ClientViewState {
     rowCount: number,
   ): boolean {
     if (rowCount === 0) return false;
+    if (source.typedPlaceholderRows < rowCount) return false;
     let matchedRows = 0;
-    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+    const placeholderIndices = source.typedPlaceholderEntityIndices;
+    for (let i = 0; i < source.typedPlaceholderRows; i++) {
+      const entityIndex = placeholderIndices[i];
       if (source.kinds[entityIndex] !== kind) continue;
       matchedRows++;
-      if (source.typedPlaceholderMarks[entityIndex] === 0) return false;
     }
     return matchedRows === rowCount;
   }
@@ -1895,8 +1897,9 @@ export class ClientViewState {
     }
 
     let appliedAny = false;
-    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
-      if (source.typedPlaceholderMarks[entityIndex] === 0) continue;
+    const placeholderIndices = source.typedPlaceholderEntityIndices;
+    for (let i = 0; i < source.typedPlaceholderRows; i++) {
+      const entityIndex = placeholderIndices[i];
       switch (source.kinds[entityIndex]) {
         case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
           this.tryApplyBasicTypedDeltaWireRow(
@@ -2254,14 +2257,7 @@ export class ClientViewState {
         const entityIndex = entityLoopIndices !== undefined
           ? entityLoopIndices[entityLoopIndex]
           : entityLoopIndex;
-        if (
-          entityIndex >= state.entities.length ||
-          (
-            genericTypedPlaceholdersApplied &&
-            typedEntityWireSource !== undefined &&
-            typedEntityWireSource.typedPlaceholderMarks[entityIndex] !== 0
-          )
-        ) {
+        if (entityIndex >= state.entities.length) {
           continue;
         }
         let appliedTypedDelta = false;

@@ -1085,7 +1085,7 @@ export class SnapshotBuffer {
       wireSource.rawEntityRows = 0;
       for (let i = 0; i < write; i++) {
         if (wireSource.typedPlaceholderMarks[i] !== 0) {
-          wireSource.typedPlaceholderRows++;
+          wireSource.typedPlaceholderEntityIndices[wireSource.typedPlaceholderRows++] = i;
         } else {
           wireSource.nonPlaceholderEntityIndices[wireSource.nonPlaceholderEntityRows++] = i;
         }

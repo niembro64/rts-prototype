@@ -173,6 +173,7 @@ export type EntitySnapshotWireSource = {
   rowIndices: Int32Array;
   typedPlaceholderMarks: Uint8Array;
   typedPlaceholderRows: number;
+  typedPlaceholderEntityIndices: Uint32Array;
   nonPlaceholderEntityIndices: Uint32Array;
   nonPlaceholderEntityRows: number;
   typedEntityRows: number;
@@ -223,6 +224,7 @@ export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotW
     rowIndices: new Int32Array(capacity),
     typedPlaceholderMarks: new Uint8Array(capacity),
     typedPlaceholderRows: 0,
+    typedPlaceholderEntityIndices: new Uint32Array(capacity),
     nonPlaceholderEntityIndices: new Uint32Array(capacity),
     nonPlaceholderEntityRows: 0,
     typedEntityRows: 0,
@@ -252,11 +254,15 @@ export function ensureEntitySnapshotWireSourceCapacity(
   const kinds = new Uint32Array(nextCapacity);
   const rowIndices = new Int32Array(nextCapacity);
   const typedPlaceholderMarks = new Uint8Array(nextCapacity);
+  const typedPlaceholderEntityIndices = new Uint32Array(nextCapacity);
   const nonPlaceholderEntityIndices = new Uint32Array(nextCapacity);
   if (source.count > 0) {
     kinds.set(source.kinds.subarray(0, source.count));
     rowIndices.set(source.rowIndices.subarray(0, source.count));
     typedPlaceholderMarks.set(source.typedPlaceholderMarks.subarray(0, source.count));
+    typedPlaceholderEntityIndices.set(
+      source.typedPlaceholderEntityIndices.subarray(0, source.typedPlaceholderRows),
+    );
     nonPlaceholderEntityIndices.set(
       source.nonPlaceholderEntityIndices.subarray(0, source.nonPlaceholderEntityRows),
     );
@@ -264,6 +270,7 @@ export function ensureEntitySnapshotWireSourceCapacity(
   source.kinds = kinds;
   source.rowIndices = rowIndices;
   source.typedPlaceholderMarks = typedPlaceholderMarks;
+  source.typedPlaceholderEntityIndices = typedPlaceholderEntityIndices;
   source.nonPlaceholderEntityIndices = nonPlaceholderEntityIndices;
 }
 
@@ -279,8 +286,11 @@ export function appendEntitySnapshotWireSourceRow(
   source.kinds[index] = kind;
   source.rowIndices[index] = rowIndex;
   source.typedPlaceholderMarks[index] = typedPlaceholder ? 1 : 0;
-  if (typedPlaceholder) source.typedPlaceholderRows++;
-  else source.nonPlaceholderEntityIndices[source.nonPlaceholderEntityRows++] = index;
+  if (typedPlaceholder) {
+    source.typedPlaceholderEntityIndices[source.typedPlaceholderRows++] = index;
+  } else {
+    source.nonPlaceholderEntityIndices[source.nonPlaceholderEntityRows++] = index;
+  }
   if (kind === 0) source.rawEntityRows++;
   else source.typedEntityRows++;
   recordEntitySnapshotWireSourceChangedFields(source, kind, changedFields);
@@ -326,6 +336,9 @@ export function copyEntitySnapshotWireSourceMetadataInto(
     dst.kinds.set(src.kinds.subarray(0, src.count));
     dst.rowIndices.set(src.rowIndices.subarray(0, src.count));
     dst.typedPlaceholderMarks.set(src.typedPlaceholderMarks.subarray(0, src.count));
+    dst.typedPlaceholderEntityIndices.set(
+      src.typedPlaceholderEntityIndices.subarray(0, src.typedPlaceholderRows),
+    );
     dst.nonPlaceholderEntityIndices.set(
       src.nonPlaceholderEntityIndices.subarray(0, src.nonPlaceholderEntityRows),
     );
@@ -350,22 +363,22 @@ export function removeEntitySnapshotWireSourceRow(
   } else {
     source.typedEntityRows = Math.max(0, source.typedEntityRows - 1);
   }
-  if (source.typedPlaceholderMarks[index] !== 0) {
-    source.typedPlaceholderRows = Math.max(0, source.typedPlaceholderRows - 1);
-  }
   const nextCount = source.count - 1;
+  let nextTypedPlaceholderRows = 0;
   let nextNonPlaceholderRows = 0;
   if (index < nextCount) {
     source.kinds.copyWithin(index, index + 1, source.count);
     source.rowIndices.copyWithin(index, index + 1, source.count);
     source.typedPlaceholderMarks.copyWithin(index, index + 1, source.count);
   }
-  for (let i = 0; i < source.nonPlaceholderEntityRows; i++) {
-    const entityIndex = source.nonPlaceholderEntityIndices[i];
-    if (entityIndex === index) continue;
-    source.nonPlaceholderEntityIndices[nextNonPlaceholderRows++] =
-      entityIndex > index ? entityIndex - 1 : entityIndex;
+  for (let i = 0; i < nextCount; i++) {
+    if (source.typedPlaceholderMarks[i] !== 0) {
+      source.typedPlaceholderEntityIndices[nextTypedPlaceholderRows++] = i;
+    } else {
+      source.nonPlaceholderEntityIndices[nextNonPlaceholderRows++] = i;
+    }
   }
+  source.typedPlaceholderRows = nextTypedPlaceholderRows;
   source.nonPlaceholderEntityRows = nextNonPlaceholderRows;
   source.typedPlaceholderMarks[nextCount] = 0;
   source.count = nextCount;
