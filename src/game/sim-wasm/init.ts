@@ -71,6 +71,7 @@ import __wbg_init, {
   pool_finalize_dynamic_step,
   pool_step_integrate,
   pool_resolve_sphere_sphere,
+  pool_resolve_sphere_sphere_active,
   engine_statics_create,
   engine_statics_destroy,
   engine_statics_add,
@@ -928,6 +929,16 @@ export interface SimWasm {
    *  Returns the count of bodies that need wake bookkeeping
    *  (slot ids are written into wake_transitions_out[0..return_value]). */
   readonly poolResolveSphereSphere: (
+    sphereSlots: Uint32Array,
+    iterations: number,
+    cellSize: number,
+    wakeTransitionsOut: Uint32Array,
+  ) => number;
+  /** Variant of poolResolveSphereSphere that builds candidates from all
+   *  dynamic slots but only drives pair scans from this step's active
+   *  body slots. Awake bodies can still push/wake sleeping candidates. */
+  readonly poolResolveSphereSphereActive: (
+    activeSlots: Uint32Array,
     sphereSlots: Uint32Array,
     iterations: number,
     cellSize: number,
@@ -3997,6 +4008,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         poolFinalizeDynamicStep: pool_finalize_dynamic_step,
         poolStepIntegrate: pool_step_integrate,
         poolResolveSphereSphere: pool_resolve_sphere_sphere,
+        poolResolveSphereSphereActive: pool_resolve_sphere_sphere_active,
         engineStaticsCreate: engine_statics_create,
         engineStaticsDestroy: engine_statics_destroy,
         engineStaticsAdd: engine_statics_add,

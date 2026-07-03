@@ -984,7 +984,7 @@ export class PhysicsEngine3D {
     const stepSlots = _integrateAwakeSlots.subarray(0, integrateCount);
     this.resolveSphereCuboidContacts(stepSlots);
     const sphereIterations = this.getSphereIterationBudget();
-    this.resolveSphereSphereContacts(sphereIterations, dynamicSlots);
+    this.resolveSphereSphereContacts(sphereIterations, stepSlots, dynamicSlots);
     this.collectFinalStepSyncEntitiesAndClearForces(dynamicSlots);
   }
 
@@ -1448,21 +1448,33 @@ export class PhysicsEngine3D {
    *  velocities / upward-contact flag bit directly into the pool;
    *  JS only marshals the slot list and a wake-transition output
    *  buffer. */
-  private resolveSphereSphereContacts(iterations: number, dynamicSlots: Uint32Array): void {
+  private resolveSphereSphereContacts(
+    iterations: number,
+    activeSlots: Uint32Array,
+    dynamicSlots: Uint32Array,
+  ): void {
     const sim = getSimWasm()!;
     const maxCount = dynamicSlots.length;
-    if (maxCount === 0 || iterations <= 0) return;
+    if (maxCount === 0 || activeSlots.length === 0 || iterations <= 0) return;
     if (_sphereSphereWakeTransitions.length < maxCount) {
       _sphereSphereWakeTransitions = new Uint32Array(maxCount);
     }
     const wakeView = _sphereSphereWakeTransitions.subarray(0, maxCount);
     const wakeCount = measureWasmBoundary('physics.poolResolveSphereSphere', () =>
-      sim.poolResolveSphereSphere(
-        dynamicSlots,
-        iterations,
-        CONTACT_CELL_SIZE,
-        wakeView,
-      )
+      activeSlots.length >= maxCount
+        ? sim.poolResolveSphereSphere(
+            dynamicSlots,
+            iterations,
+            CONTACT_CELL_SIZE,
+            wakeView,
+          )
+        : sim.poolResolveSphereSphereActive(
+            activeSlots,
+            dynamicSlots,
+            iterations,
+            CONTACT_CELL_SIZE,
+            wakeView,
+          )
     );
     for (let i = 0; i < wakeCount; i++) {
       const slot = wakeView[i];
