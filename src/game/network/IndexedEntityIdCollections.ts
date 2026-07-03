@@ -24,6 +24,19 @@ export class IndexedEntityIdSet extends Set<EntityId> {
     return super.add(id);
   }
 
+  addIfAbsent(id: EntityId): boolean {
+    if (canIndexClientEntityId(id)) {
+      this.ensureMarkCapacity(id + 1);
+      if (this.marks[id] === this.mark) return false;
+      this.marks[id] = this.mark;
+      super.add(id);
+      return true;
+    }
+    if (super.has(id)) return false;
+    super.add(id);
+    return true;
+  }
+
   override has(id: EntityId): boolean {
     if (canIndexClientEntityId(id) && id < this.marks.length && this.marks[id] === this.mark) {
       return true;

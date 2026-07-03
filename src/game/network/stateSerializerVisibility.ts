@@ -615,9 +615,7 @@ export class SnapshotVisibility {
   }
 
   private appendVisibleEntityIdById(id: EntityId): void {
-    if (this.visibleEntityIdSet.has(id)) return;
-    this.visibleEntityIdSet.add(id);
-    this.visibleEntityIds.push(id);
+    if (this.visibleEntityIdSet.addIfAbsent(id)) this.visibleEntityIds.push(id);
   }
 
   private appendRadarEntityId(entity: Entity): void {
@@ -625,9 +623,7 @@ export class SnapshotVisibility {
   }
 
   private appendRadarEntityIdById(id: EntityId): void {
-    if (this.radarEntityIdSet.has(id)) return;
-    this.radarEntityIdSet.add(id);
-    this.radarEntityIds.push(id);
+    if (this.radarEntityIdSet.addIfAbsent(id)) this.radarEntityIds.push(id);
   }
 
   /** Full-vision point test. Audio events and projectile spawns hang

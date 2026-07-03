@@ -22,6 +22,8 @@ export function runClientEntityIdSetContractTest(): void {
 
   set.add(first);
   assertContract(set.size === 1, 'duplicate indexed add keeps Set semantics');
+  assertContract(!set.addIfAbsent(first), 'addIfAbsent reports duplicate indexed id');
+  assertContract(set.size === 1, 'duplicate addIfAbsent keeps indexed Set size');
 
   set.add(second);
   assertContract([...set].join(',') === '42,7', 'iteration preserves insertion order');
@@ -33,6 +35,10 @@ export function runClientEntityIdSetContractTest(): void {
   const highId = 1_000_001 as EntityId;
   set.add(highId);
   assertContract(set.has(highId), 'high id falls back to Set storage');
+  assertContract(!set.addIfAbsent(highId), 'addIfAbsent reports duplicate fallback id');
+  const highNext = 1_000_002 as EntityId;
+  assertContract(set.addIfAbsent(highNext), 'addIfAbsent inserts new fallback id');
+  assertContract(set.has(highNext), 'addIfAbsent stores new fallback id');
 
   const restored = new ClientEntityIdSet([first, highId]);
   assertContract(restored.has(first), 'constructor indexes iterable values');
