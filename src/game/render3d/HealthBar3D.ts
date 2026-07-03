@@ -491,13 +491,10 @@ export class HealthBar3D {
   }
 
   private perBodyHudRow(packet: BodyHudRenderPacket3D, row: number): void {
-    const key = packPieceKey(packet.ids[row], PIECE_TAG_BODY);
-    if (this._seenEntityFrame.get(key) === this._frameToken) return;
     const flags = packet.flags[row];
     const showHp = (flags & BODY_HUD_SHOW_HEALTH) !== 0;
     const showBuild = (flags & BODY_HUD_SHOW_BUILD) !== 0;
     if (!showHp && !showBuild) return;
-    this._seenEntityFrame.set(key, this._frameToken);
     const worldX = packet.x[row];
     const worldY = packet.y[row];
     const worldZ = packet.z[row];
