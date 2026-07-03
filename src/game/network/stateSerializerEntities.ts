@@ -193,6 +193,9 @@ export type EntitySnapshotWireSource = {
   unitTypedPlaceholderRows: number;
   buildingTypedPlaceholderRows: number;
   typedPlaceholderEntityIndices: Uint32Array;
+  basicTypedPlaceholderEntityIndices: Uint32Array;
+  unitTypedPlaceholderEntityIndices: Uint32Array;
+  buildingTypedPlaceholderEntityIndices: Uint32Array;
   nonPlaceholderEntityIndices: Uint32Array;
   nonPlaceholderEntityRows: number;
   typedEntityRows: number;
@@ -247,6 +250,9 @@ export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotW
     unitTypedPlaceholderRows: 0,
     buildingTypedPlaceholderRows: 0,
     typedPlaceholderEntityIndices: new Uint32Array(capacity),
+    basicTypedPlaceholderEntityIndices: new Uint32Array(capacity),
+    unitTypedPlaceholderEntityIndices: new Uint32Array(capacity),
+    buildingTypedPlaceholderEntityIndices: new Uint32Array(capacity),
     nonPlaceholderEntityIndices: new Uint32Array(capacity),
     nonPlaceholderEntityRows: 0,
     typedEntityRows: 0,
@@ -277,6 +283,9 @@ export function ensureEntitySnapshotWireSourceCapacity(
   const rowIndices = new Int32Array(nextCapacity);
   const typedPlaceholderMarks = new Uint8Array(nextCapacity);
   const typedPlaceholderEntityIndices = new Uint32Array(nextCapacity);
+  const basicTypedPlaceholderEntityIndices = new Uint32Array(nextCapacity);
+  const unitTypedPlaceholderEntityIndices = new Uint32Array(nextCapacity);
+  const buildingTypedPlaceholderEntityIndices = new Uint32Array(nextCapacity);
   const nonPlaceholderEntityIndices = new Uint32Array(nextCapacity);
   if (source.count > 0) {
     kinds.set(source.kinds.subarray(0, source.count));
@@ -284,6 +293,15 @@ export function ensureEntitySnapshotWireSourceCapacity(
     typedPlaceholderMarks.set(source.typedPlaceholderMarks.subarray(0, source.count));
     typedPlaceholderEntityIndices.set(
       source.typedPlaceholderEntityIndices.subarray(0, source.typedPlaceholderRows),
+    );
+    basicTypedPlaceholderEntityIndices.set(
+      source.basicTypedPlaceholderEntityIndices.subarray(0, source.basicTypedPlaceholderRows),
+    );
+    unitTypedPlaceholderEntityIndices.set(
+      source.unitTypedPlaceholderEntityIndices.subarray(0, source.unitTypedPlaceholderRows),
+    );
+    buildingTypedPlaceholderEntityIndices.set(
+      source.buildingTypedPlaceholderEntityIndices.subarray(0, source.buildingTypedPlaceholderRows),
     );
     nonPlaceholderEntityIndices.set(
       source.nonPlaceholderEntityIndices.subarray(0, source.nonPlaceholderEntityRows),
@@ -293,6 +311,9 @@ export function ensureEntitySnapshotWireSourceCapacity(
   source.rowIndices = rowIndices;
   source.typedPlaceholderMarks = typedPlaceholderMarks;
   source.typedPlaceholderEntityIndices = typedPlaceholderEntityIndices;
+  source.basicTypedPlaceholderEntityIndices = basicTypedPlaceholderEntityIndices;
+  source.unitTypedPlaceholderEntityIndices = unitTypedPlaceholderEntityIndices;
+  source.buildingTypedPlaceholderEntityIndices = buildingTypedPlaceholderEntityIndices;
   source.nonPlaceholderEntityIndices = nonPlaceholderEntityIndices;
 }
 
@@ -312,12 +333,15 @@ export function appendEntitySnapshotWireSourceRow(
     source.typedPlaceholderEntityIndices[source.typedPlaceholderRows++] = index;
     switch (kind) {
       case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+        source.basicTypedPlaceholderEntityIndices[source.basicTypedPlaceholderRows] = index;
         source.basicTypedPlaceholderRows++;
         break;
       case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+        source.unitTypedPlaceholderEntityIndices[source.unitTypedPlaceholderRows] = index;
         source.unitTypedPlaceholderRows++;
         break;
       case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+        source.buildingTypedPlaceholderEntityIndices[source.buildingTypedPlaceholderRows] = index;
         source.buildingTypedPlaceholderRows++;
         break;
     }
@@ -372,6 +396,15 @@ export function copyEntitySnapshotWireSourceMetadataInto(
     dst.typedPlaceholderEntityIndices.set(
       src.typedPlaceholderEntityIndices.subarray(0, src.typedPlaceholderRows),
     );
+    dst.basicTypedPlaceholderEntityIndices.set(
+      src.basicTypedPlaceholderEntityIndices.subarray(0, src.basicTypedPlaceholderRows),
+    );
+    dst.unitTypedPlaceholderEntityIndices.set(
+      src.unitTypedPlaceholderEntityIndices.subarray(0, src.unitTypedPlaceholderRows),
+    );
+    dst.buildingTypedPlaceholderEntityIndices.set(
+      src.buildingTypedPlaceholderEntityIndices.subarray(0, src.buildingTypedPlaceholderRows),
+    );
     dst.nonPlaceholderEntityIndices.set(
       src.nonPlaceholderEntityIndices.subarray(0, src.nonPlaceholderEntityRows),
     );
@@ -415,12 +448,15 @@ export function removeEntitySnapshotWireSourceRow(
       source.typedPlaceholderEntityIndices[nextTypedPlaceholderRows++] = i;
       switch (source.kinds[i]) {
         case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+          source.basicTypedPlaceholderEntityIndices[nextBasicTypedPlaceholderRows] = i;
           nextBasicTypedPlaceholderRows++;
           break;
         case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+          source.unitTypedPlaceholderEntityIndices[nextUnitTypedPlaceholderRows] = i;
           nextUnitTypedPlaceholderRows++;
           break;
         case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+          source.buildingTypedPlaceholderEntityIndices[nextBuildingTypedPlaceholderRows] = i;
           nextBuildingTypedPlaceholderRows++;
           break;
       }

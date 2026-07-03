@@ -1080,12 +1080,32 @@ export class SnapshotBuffer {
     if (wireSource !== undefined) {
       wireSource.count = write;
       wireSource.typedPlaceholderRows = 0;
+      wireSource.basicTypedPlaceholderRows = 0;
+      wireSource.unitTypedPlaceholderRows = 0;
+      wireSource.buildingTypedPlaceholderRows = 0;
       wireSource.nonPlaceholderEntityRows = 0;
       wireSource.typedEntityRows = 0;
       wireSource.rawEntityRows = 0;
       for (let i = 0; i < write; i++) {
         if (wireSource.typedPlaceholderMarks[i] !== 0) {
           wireSource.typedPlaceholderEntityIndices[wireSource.typedPlaceholderRows++] = i;
+          switch (wireSource.kinds[i]) {
+            case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+              wireSource.basicTypedPlaceholderEntityIndices[
+                wireSource.basicTypedPlaceholderRows++
+              ] = i;
+              break;
+            case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+              wireSource.unitTypedPlaceholderEntityIndices[
+                wireSource.unitTypedPlaceholderRows++
+              ] = i;
+              break;
+            case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+              wireSource.buildingTypedPlaceholderEntityIndices[
+                wireSource.buildingTypedPlaceholderRows++
+              ] = i;
+              break;
+          }
         } else {
           wireSource.nonPlaceholderEntityIndices[wireSource.nonPlaceholderEntityRows++] = i;
         }

@@ -2031,6 +2031,27 @@ export class ClientViewState {
     if (batchUnitHotMotion) {
       this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
       if (source.typedPlaceholderRows === source.unitRows.count) return true;
+
+      const basicPlaceholderIndices = source.basicTypedPlaceholderEntityIndices;
+      for (let i = 0; i < source.basicTypedPlaceholderRows; i++) {
+        this.tryApplyBasicTypedDeltaWireRow(
+          source,
+          basicPlaceholderIndices[i],
+          now,
+          false,
+          applyStats,
+        );
+      }
+      const buildingPlaceholderIndices = source.buildingTypedPlaceholderEntityIndices;
+      for (let i = 0; i < source.buildingTypedPlaceholderRows; i++) {
+        this.tryApplyBuildingTypedDeltaWireRow(
+          source,
+          buildingPlaceholderIndices[i],
+          now,
+          deferPredictedTurretRenderRefresh,
+        );
+      }
+      return true;
     }
 
     let appliedAny = false;

@@ -207,7 +207,7 @@ function attachTypedUnitMotionSources(
       source,
       ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
       rowIndex,
-      false,
+      entities[i] === undefined,
       changedFields ?? 0,
     );
   }
@@ -261,7 +261,7 @@ function attachTypedBuildingSource(
     source,
     ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
     rowIndex,
-    false,
+    entities[0] === undefined,
     changedFields ?? 0,
   );
   registerEntitySnapshotWireSource(entities, source);
@@ -291,7 +291,7 @@ function attachTypedBasicMotionSource(
     source,
     ENTITY_SNAPSHOT_WIRE_KIND_BASIC,
     rowIndex,
-    false,
+    entities[0] === undefined,
     changedFields,
   );
   registerEntitySnapshotWireSource(entities, source);
@@ -907,6 +907,10 @@ export function runSnapshotBufferContractTest(): void {
   assertContract(
     preservedPlaceholderPruneSource !== undefined &&
       preservedPlaceholderPruneSource.count === 1 &&
+      preservedPlaceholderPruneSource.typedPlaceholderRows === 1 &&
+      preservedPlaceholderPruneSource.unitTypedPlaceholderRows === 1 &&
+      preservedPlaceholderPruneSource.typedPlaceholderEntityIndices[0] === 0 &&
+      preservedPlaceholderPruneSource.unitTypedPlaceholderEntityIndices[0] === 0 &&
       preservedPlaceholderPruneSource.unitRows.values[
         preservedPlaceholderPruneSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 0
       ] === 72,
