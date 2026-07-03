@@ -36,6 +36,7 @@
 
 import * as THREE from 'three';
 import type { Entity, EntityId } from '../sim/types';
+import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import { COLORS } from '@/colorsConfig';
 import { getGraphicsConfig, getLocomotionMarks } from '@/clientBarConfig';
 import type { ViewportFootprint } from '../ViewportFootprint';
@@ -332,8 +333,8 @@ export class GroundPrint3D {
   private _seenTrailKeys = new Set<TrailKey>();
   private stamps = new Map<TrailKey, StampState>();
   private _seenStampKeys = new Set<TrailKey>();
-  private _activeUnitIds = new Set<EntityId>();
-  private _groundedUnitIds = new Set<EntityId>();
+  private _activeUnitIds = new IndexedEntityIdSet();
+  private _groundedUnitIds = new IndexedEntityIdSet();
 
   /** EMA-smoothed copy of mark density. -1 = "not
    *  initialized yet" so the first update snaps to the resolved

@@ -17,6 +17,7 @@
 
 import * as THREE from 'three';
 import type { EntityId } from '../sim/types';
+import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { UNIT_DEATH_FADE_MS } from '@/visionConfig';
 
 /** Shared death-out fade duration (ms). Build-in is driven by the sim's
@@ -211,7 +212,7 @@ export function disposeEntityGroupFade(group: THREE.Object3D): void {
  *  so units (instanced) and buildings (per-Mesh) share one implementation.
  */
 export class DyingMeshFade<TMesh> {
-  private readonly dying = new Map<EntityId, { mesh: TMesh; fade: number }>();
+  private readonly dying = new IndexedEntityIdMap<{ mesh: TMesh; fade: number }>();
 
   constructor(
     private readonly durationMs: number,

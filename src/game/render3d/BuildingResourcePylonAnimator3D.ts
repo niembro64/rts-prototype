@@ -11,6 +11,7 @@ import {
 import { WIND_SPEED_MAX } from '../../config';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import { halfLifeBlend } from '../network/driftEma';
+import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId } from '../sim/types';
 import { getBuildingConfig } from '../sim/buildConfigs';
@@ -85,9 +86,9 @@ export class BuildingResourcePylonAnimator3D {
   private readonly pylonDescriptors: readonly ResourcePylonHostDescriptor[];
   private readonly tipRelationshipDescriptors: readonly ResourcePylonTipRelationshipDescriptor[];
   private resourcePylonBuildings: AnimatedBuildingEntry[] = [];
-  private resourcePylonBuildingIndexById = new Map<EntityId, number>();
+  private resourcePylonBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeResourcePylonBuildings: AnimatedBuildingEntry[] = [];
-  private activeResourcePylonBuildingIndexById = new Map<EntityId, number>();
+  private activeResourcePylonBuildingIndexById = new IndexedEntityIdMap<number>();
 
   constructor(
     clientViewState: ClientViewState,

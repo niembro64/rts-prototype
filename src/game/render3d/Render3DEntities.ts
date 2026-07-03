@@ -201,7 +201,7 @@ export class Render3DEntities {
   // Per-entity leg-state snapshots stashed right before a mesh teardown
   // mesh teardown and consumed immediately after rebuild, so feet keep
   // their world-space planted positions instead of snapping to rest.
-  private legStateCache = new Map<EntityId, LegStateSnapshot>();
+  private legStateCache = new IndexedEntityIdMap<LegStateSnapshot>();
 
   // Per-frame graphics state.
   private frameState: RenderFrameState3D = createRenderFrameState();

@@ -8,11 +8,12 @@ import {
 } from '../sim/metalDeposits';
 import type { Entity, EntityId } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
+import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ResourcePylonRig } from './ConstructionEmitterMesh3D';
 
 export class BuildingResourcePylonSources3D {
-  private readonly extractorDepositSourceCache = new Map<EntityId, THREE.Vector3>();
+  private readonly extractorDepositSourceCache = new IndexedEntityIdMap<THREE.Vector3>();
   private readonly extractorCoverageCells: MetalDepositFootprintCell[] = [];
   private readonly pylonSourceWorld = new THREE.Vector3();
   private readonly pylonSourceDirection = new THREE.Vector3();

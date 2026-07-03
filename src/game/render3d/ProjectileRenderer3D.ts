@@ -4,6 +4,7 @@ import { COLORS } from '@/colorsConfig';
 import type { Entity, EntityId } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
 import type { ClientViewState } from '../network/ClientViewState';
+import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { RenderFrameState3D } from './RenderFrameState3D';
 import type { EntityLodEmission3D } from './EntityLod3D';
@@ -198,7 +199,7 @@ export class ProjectileRenderer3D {
   private readonly seenProjectileIds = new Set<number>();
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
-  private readonly trailStamps = new Map<EntityId, TrailStampBuffer>();
+  private readonly trailStamps = new IndexedEntityIdMap<TrailStampBuffer>();
   // Scratch buffers reused across projectiles to avoid per-frame allocs.
   // resampleTrailCenterline fills tailCenterline with the drawn ring
   // centers, tailRingDist with each ring's arc distance behind the head,

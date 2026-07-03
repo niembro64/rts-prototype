@@ -1,4 +1,5 @@
 import type { Entity, EntityId } from '../sim/types';
+import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { CT_TURRET_STATE_ENGAGED } from '../sim-wasm/init';
 import {
   readCombatTargetingTurretFsmInto,
@@ -31,7 +32,7 @@ export class UnitBarrelSpinState3D {
   // Per-turret spin state: each multi-barrel turret on a unit keeps
   // its own angle + speed so one engaged turret doesn't spin up its
   // neighbors. Outer key = entity id, inner key = turretIndex.
-  private readonly spins = new Map<EntityId, Map<number, BarrelSpinState>>();
+  private readonly spins = new IndexedEntityIdMap<Map<number, BarrelSpinState>>();
   private lastSpinMs = performance.now();
 
   beginFrame(): BarrelSpinFrameState {

@@ -283,7 +283,7 @@ export class BuildingEntityRenderer3D {
   private readonly buildingPoseMeshes: EntityMesh[] = [];
   private readonly buildingPoseRotations: number[] = [];
   private readonly buildingSpinEntries: BuildingTurretSpinEntry[] = [];
-  private readonly buildingSpinEntriesByEntity = new Map<EntityId, BuildingTurretSpinEntry[]>();
+  private readonly buildingSpinEntriesByEntity = new IndexedEntityIdMap<BuildingTurretSpinEntry[]>();
   private buildingSpinDeadEntries = 0;
   private buildingSpinResetPending = false;
   private lastFrameStateKey: string | null = null;

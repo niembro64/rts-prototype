@@ -17,6 +17,7 @@ import {
 } from '@/types/network';
 import type { ClientResourcePylonFlow, ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../network/driftEma';
+import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
@@ -64,7 +65,7 @@ export class ConstructionVisualController3D {
   private clientViewState: ClientViewState;
   private readonly resourcePylonFlows: ResourcePylonFlowController3D;
   private _resourceEndpointWorld = new THREE.Vector3();
-  private factoryConstructionTargetBySource = new Map<EntityId, EntityId>();
+  private factoryConstructionTargetBySource = new IndexedEntityIdMap<EntityId>();
   private _factoryBuildSpot: FactoryBuildSpot = {
     x: 0,
     y: 0,

@@ -19,6 +19,7 @@ import {
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
 import { halfLifeBlend } from '../network/driftEma';
+import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
 import {
@@ -68,25 +69,25 @@ export class BuildingAnimationController3D {
   private readonly constructionVisuals: ConstructionVisualController3D;
   private readonly resourcePylonAnimator: BuildingResourcePylonAnimator3D;
   private solarBuildings: AnimatedBuildingEntry[] = [];
-  private solarBuildingIndexById = new Map<EntityId, number>();
+  private solarBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeSolarBuildings: AnimatedBuildingEntry[] = [];
-  private activeSolarBuildingIndexById = new Map<EntityId, number>();
+  private activeSolarBuildingIndexById = new IndexedEntityIdMap<number>();
   private windBuildings: AnimatedBuildingEntry[] = [];
-  private windBuildingIndexById = new Map<EntityId, number>();
+  private windBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeWindBuildings: AnimatedBuildingEntry[] = [];
-  private activeWindBuildingIndexById = new Map<EntityId, number>();
+  private activeWindBuildingIndexById = new IndexedEntityIdMap<number>();
   private extractorBuildings: AnimatedBuildingEntry[] = [];
-  private extractorBuildingIndexById = new Map<EntityId, number>();
+  private extractorBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeExtractorBuildings: AnimatedBuildingEntry[] = [];
-  private activeExtractorBuildingIndexById = new Map<EntityId, number>();
+  private activeExtractorBuildingIndexById = new IndexedEntityIdMap<number>();
   private factoryBuildings: AnimatedBuildingEntry[] = [];
-  private factoryBuildingIndexById = new Map<EntityId, number>();
+  private factoryBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeFactoryBuildings: AnimatedBuildingEntry[] = [];
-  private activeFactoryBuildingIndexById = new Map<EntityId, number>();
+  private activeFactoryBuildingIndexById = new IndexedEntityIdMap<number>();
   private radarBuildings: AnimatedBuildingEntry[] = [];
-  private radarBuildingIndexById = new Map<EntityId, number>();
+  private radarBuildingIndexById = new IndexedEntityIdMap<number>();
   private activeRadarBuildings: AnimatedBuildingEntry[] = [];
-  private activeRadarBuildingIndexById = new Map<EntityId, number>();
+  private activeRadarBuildingIndexById = new IndexedEntityIdMap<number>();
   private windFanYaw: number | null = null;
   private windFanPitch: number | null = null;
   private windVisualSpeed: number | null = null;
@@ -97,28 +98,28 @@ export class BuildingAnimationController3D {
    *  bare ground stays stationary while one fully covering a deposit
    *  spins at full speed. Indexed by entity id; entries get pruned
    *  when the extractor despawns. */
-  private extractorRotorPhases = new Map<EntityId, number>();
+  private extractorRotorPhases = new IndexedEntityIdMap<number>();
   /** Courtesy ROT VEL binding for extractor rotor spin-up/spin-down.
    *  The value is a local visual angular speed, not snapshot drift. */
-  private extractorRotorSpeeds = new Map<EntityId, number>();
+  private extractorRotorSpeeds = new IndexedEntityIdMap<number>();
   /** Per-entity "closed amount" for the extractor's blade fold (0 =
    *  spinning open, 1 = folded flat against the pyramid). Smoothed
    *  toward the server's open flag with BUILDING_FORTIFY_ANIM_ALPHA. */
-  private extractorCloseAmounts = new Map<EntityId, number>();
+  private extractorCloseAmounts = new IndexedEntityIdMap<number>();
   /** Last applied extractor rotor yaw. Kept monotonic in the negative
    *  spin direction so open/close transitions can pause at an aligned
    *  pose, but never visibly reverse. */
-  private extractorRotorYaws = new Map<EntityId, number>();
+  private extractorRotorYaws = new IndexedEntityIdMap<number>();
   /** Per-entity "closed amount" for the wind turbine's stowed pose
    *  (nacelle tilts skyward + blades fold against the pole). */
-  private windCloseAmounts = new Map<EntityId, number>();
-  private windAppliedCloseAmounts = new Map<EntityId, number>();
+  private windCloseAmounts = new IndexedEntityIdMap<number>();
+  private windAppliedCloseAmounts = new IndexedEntityIdMap<number>();
   /** Courtesy ROT VEL binding for radar decorative angular speeds. */
-  private radarHeadPhases = new Map<EntityId, number>();
-  private radarSweepPhases = new Map<EntityId, number>();
-  private radarHeadSpeeds = new Map<EntityId, number>();
-  private radarSweepSpeeds = new Map<EntityId, number>();
-  private extractorAppliedCloseAmounts = new Map<EntityId, number>();
+  private radarHeadPhases = new IndexedEntityIdMap<number>();
+  private radarSweepPhases = new IndexedEntityIdMap<number>();
+  private radarHeadSpeeds = new IndexedEntityIdMap<number>();
+  private radarSweepSpeeds = new IndexedEntityIdMap<number>();
+  private extractorAppliedCloseAmounts = new IndexedEntityIdMap<number>();
 
   constructor(
     clientViewState: ClientViewState,
