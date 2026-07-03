@@ -197,17 +197,25 @@ export class ClientProjectileStore {
     const proj = entity.projectile;
     if (proj === null) return;
     const projPts = proj.points ?? (proj.points = []);
+    let displayChanged = false;
     if (target.initialSnapPending || projPts.length === 0) {
-      snapBeamPathDisplayToTarget(entity, target);
+      displayChanged = snapBeamPathDisplayToTarget(entity, target) || displayChanged;
     }
+    const previousEndpointDamageable = proj.endpointDamageable !== false;
+    const nextEndpointDamageable = target.endpointDamageable !== false;
     proj.obstructionT = target.obstructionT;
-    proj.endpointDamageable = target.endpointDamageable !== false;
+    proj.endpointDamageable = nextEndpointDamageable;
+    displayChanged = displayChanged || previousEndpointDamageable !== nextEndpointDamageable;
+    let addedActivePath = false;
     if (!this.activeBeamPathIds.has(id)) {
       this.activeBeamPathIds.add(id);
       this.markRenderListsDirty();
+      addedActivePath = true;
     }
-    this.refreshLineRenderStateAndSpatialIndex(entity, id);
-    this.markLineProjectilesChanged();
+    if (displayChanged || addedActivePath) {
+      this.refreshLineRenderStateAndSpatialIndex(entity, id);
+      this.markLineProjectilesChanged();
+    }
   }
 
   applyBeamUpdate(update: NetworkServerSnapshotBeamUpdate, now = performance.now()): void {

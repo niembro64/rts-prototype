@@ -368,15 +368,27 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
       lists.burnMark[0].id === 304,
     'direct projectile beam update wire rows must refresh line render query bounds',
   );
+  const lineVersionAfterInitialBeamApply = view.getLineProjectileRenderVersion();
+  view.applyPrediction(16);
+  const lineVersionAfterInitialBeamPrediction = view.getLineProjectileRenderVersion();
+  assertContract(
+    lineVersionAfterInitialBeamPrediction !== lineVersionAfterInitialBeamApply,
+    'initial beam target prediction must invalidate line rendering when it snaps display points',
+  );
+  view.applyNetworkState(directBeamUpdateSnapshot(5, 304));
+  assertContract(
+    view.getLineProjectileRenderVersion() === lineVersionAfterInitialBeamPrediction,
+    'steady beam target snapshots must not invalidate line rendering before display points move',
+  );
 
-  view.applyNetworkState(projectileSnapshot(5, [plasmaSpawn(303, 700, 700)]));
+  view.applyNetworkState(projectileSnapshot(6, [plasmaSpawn(303, 700, 700)]));
   view.collectProjectileRenderLists({ minX: 650, minY: 650, maxX: 750, maxY: 750 }, lists);
   assertContract(
     lists.traveling.length === 1 && lists.traveling[0].id === 303,
     'scoped projectile query must include newly spawned plasma projectile',
   );
 
-  const plasmaVelocitySnapshot = projectileSnapshot(6, undefined);
+  const plasmaVelocitySnapshot = projectileSnapshot(7, undefined);
   plasmaVelocitySnapshot.projectiles!.velocityUpdates = [{
     id: 303,
     pos: { x: qProjPos(1500), y: qProjPos(1500), z: qProjPos(35) },
@@ -396,7 +408,7 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'projectile velocity update must move the render spatial slot into its new query bounds',
   );
 
-  view.applyNetworkState(projectileSnapshot(7, undefined, [301, 302, 303, 304]));
+  view.applyNetworkState(projectileSnapshot(8, undefined, [301, 302, 303, 304]));
   current = view.collectProjectileRenderLists(null, lists);
   assertContract(
     current.traveling.length === 0 &&
