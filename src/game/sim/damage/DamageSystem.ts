@@ -1388,6 +1388,7 @@ export class DamageSystem {
   ): typeof _segHit | null {
     let bestT = Infinity;
     let found = false;
+    let bestHitIsGround = false;
 
     const dx = endX - startX;
     const dy = endY - startY;
@@ -1445,6 +1446,7 @@ export class DamageSystem {
         );
         if (t !== null && t < bestT) {
           bestT = t; found = true;
+          bestHitIsGround = false;
           _segHit.t = t;
           _segHit.x = startX + t * dx;
           _segHit.y = startY + t * dy;
@@ -1518,6 +1520,7 @@ export class DamageSystem {
       );
       if (_beamReflOutKind[0] !== REFLECTOR_HIT_KIND_NONE && _beamReflOutT[0] < bestT) {
         bestT = _beamReflOutT[0]; found = true;
+        bestHitIsGround = false;
         _segHit.t = _beamReflOutT[0];
         _segHit.x = _beamReflOutX[0];
         _segHit.y = _beamReflOutY[0];
@@ -1578,6 +1581,7 @@ export class DamageSystem {
         );
         if (t !== null && t < bestT) {
           bestT = t; found = true;
+          bestHitIsGround = false;
           _segHit.t = t;
           _segHit.x = startX + t * dx;
           _segHit.y = startY + t * dy;
@@ -1590,6 +1594,30 @@ export class DamageSystem {
           _segHit.reflectorPlayerId = undefined;
         }
       }
+    }
+
+    const groundT = this.findGroundSegmentT(
+      startX,
+      startY,
+      startZ,
+      endX,
+      endY,
+      endZ,
+      bestT,
+    );
+    if (groundT !== null && groundT < bestT) {
+      bestT = groundT; found = true;
+      bestHitIsGround = true;
+      _segHit.t = groundT;
+      _segHit.x = startX + groundT * dx;
+      _segHit.y = startY + groundT * dy;
+      _segHit.z = this.world.getGroundZ(_segHit.x, _segHit.y);
+      _segHit.entityId = 0 as EntityId;
+      _segHit.isMirror = false;
+      _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 1;
+      _segHit.panelIndex = -1;
+      _segHit.reflectorKind = undefined;
+      _segHit.reflectorPlayerId = undefined;
     }
 
     let queryEndX = endX;
@@ -1629,8 +1657,9 @@ export class DamageSystem {
           posX[slot], posY[slot], posZ[slot],
           boundR,
         );
-        if (t !== null && t < bestT) {
+        if (t !== null && (t < bestT || (bestHitIsGround && t === bestT))) {
           bestT = t; found = true;
+          bestHitIsGround = false;
           _segHit.t = t;
           _segHit.x = startX + t * dx;
           _segHit.y = startY + t * dy;
@@ -1643,29 +1672,6 @@ export class DamageSystem {
           _segHit.reflectorPlayerId = undefined;
         }
       }
-    }
-
-    const groundT = this.findGroundSegmentT(
-      startX,
-      startY,
-      startZ,
-      endX,
-      endY,
-      endZ,
-      bestT,
-    );
-    if (groundT !== null && groundT < bestT) {
-      bestT = groundT; found = true;
-      _segHit.t = groundT;
-      _segHit.x = startX + groundT * dx;
-      _segHit.y = startY + groundT * dy;
-      _segHit.z = this.world.getGroundZ(_segHit.x, _segHit.y);
-      _segHit.entityId = 0 as EntityId;
-      _segHit.isMirror = false;
-      _segHit.normalX = 0; _segHit.normalY = 0; _segHit.normalZ = 1;
-      _segHit.panelIndex = -1;
-      _segHit.reflectorKind = undefined;
-      _segHit.reflectorPlayerId = undefined;
     }
 
     return found ? _segHit : null;
