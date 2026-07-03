@@ -567,19 +567,22 @@ export class SnapshotVisibility {
     const maxPadding = this.world.getMaxVisibilityPadding();
     for (let i = 0; i < sources.length; i++) {
       const source = sources[i];
-      const candidates = spatialGrid.queryUnitsAndBuildingsInRadius(
+      const candidates = spatialGrid.queryUnitBuildingSlotRangesInRadius(
         source.x,
         source.y,
         source.z,
         source.radius + maxPadding,
       );
-      const units = candidates.units;
-      for (let u = 0; u < units.length; u++) {
-        this.addCandidateEntity(units[u], canGrantFullVisibility);
+      const slots = candidates.slots;
+      const unitEnd = candidates.unitStart + candidates.unitCount;
+      for (let u = candidates.unitStart; u < unitEnd; u++) {
+        const entity = spatialGrid.resolveSlot(slots[u]);
+        if (entity !== undefined) this.addCandidateEntity(entity, canGrantFullVisibility);
       }
-      const buildings = candidates.buildings;
-      for (let b = 0; b < buildings.length; b++) {
-        this.addCandidateEntity(buildings[b], canGrantFullVisibility);
+      const buildingEnd = candidates.buildingStart + candidates.buildingCount;
+      for (let b = candidates.buildingStart; b < buildingEnd; b++) {
+        const entity = spatialGrid.resolveSlot(slots[b]);
+        if (entity !== undefined) this.addCandidateEntity(entity, canGrantFullVisibility);
       }
     }
   }

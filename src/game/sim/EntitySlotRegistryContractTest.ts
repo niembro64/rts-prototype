@@ -182,6 +182,34 @@ export function runEntitySlotRegistryContractTest(): void {
     }
   }
   assertContract(foundBuildingSlot, 'building line query must expose stable building slots');
+  const unitBuildingRangeQuery = spatialGrid.queryUnitBuildingSlotRangesInRadius(
+    200,
+    150,
+    getBuildingCombatCenterZ(building),
+    300,
+  );
+  let foundRangeUnitSlot = false;
+  const unitEnd = unitBuildingRangeQuery.unitStart + unitBuildingRangeQuery.unitCount;
+  for (let i = unitBuildingRangeQuery.unitStart; i < unitEnd; i++) {
+    if (unitBuildingRangeQuery.slots[i] === firstSlot) {
+      foundRangeUnitSlot = true;
+      break;
+    }
+  }
+  let foundRangeBuildingSlot = false;
+  const buildingEnd =
+    unitBuildingRangeQuery.buildingStart + unitBuildingRangeQuery.buildingCount;
+  for (let i = unitBuildingRangeQuery.buildingStart; i < buildingEnd; i++) {
+    if (unitBuildingRangeQuery.slots[i] === buildingSlot) {
+      foundRangeBuildingSlot = true;
+      break;
+    }
+  }
+  assertContract(foundRangeUnitSlot, 'unit/building radius slot range must expose unit slots');
+  assertContract(
+    foundRangeBuildingSlot,
+    'unit/building radius slot range must expose building slots',
+  );
   assertContract(
     Math.abs(buildingViews.buildProgress[buildingSlot] - 0.75) < 1e-9,
     'building build progress must mirror paid resource fraction',

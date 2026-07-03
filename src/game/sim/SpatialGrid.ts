@@ -69,6 +69,21 @@ class SpatialGrid {
     slots: new Uint32Array(0),
     count: 0,
   };
+  private readonly _unitBuildingSlotRangeResult: {
+    slots: Uint32Array;
+    total: number;
+    unitStart: number;
+    unitCount: number;
+    buildingStart: number;
+    buildingCount: number;
+  } = {
+    slots: new Uint32Array(0),
+    total: 0,
+    unitStart: 2,
+    unitCount: 0,
+    buildingStart: 2,
+    buildingCount: 0,
+  };
 
   private _projectileBatchCapacity = 0;
   private _projectileBatchSlots = new Uint32Array(0);
@@ -421,6 +436,30 @@ class SpatialGrid {
     this._unitsAndBuildingsSlotsResult.unitSlots = this._queryResultUnitSlots;
     this._unitsAndBuildingsSlotsResult.buildingSlots = this._queryResultBuildingSlots;
     return this._unitsAndBuildingsSlotsResult;
+  }
+
+  queryUnitBuildingSlotRangesInRadius(
+    x: number, y: number, z: number, radius: number,
+  ): {
+    slots: Uint32Array;
+    total: number;
+    unitStart: number;
+    unitCount: number;
+    buildingStart: number;
+    buildingCount: number;
+  } {
+    const total = this.api().queryUnitsAndBuildingsInRadius(x, y, z, radius);
+    const slots = this.scratch(total);
+    const unitCount = slots[0];
+    const buildingCount = slots[1];
+    const result = this._unitBuildingSlotRangeResult;
+    result.slots = slots;
+    result.total = total;
+    result.unitStart = 2;
+    result.unitCount = unitCount;
+    result.buildingStart = 2 + unitCount;
+    result.buildingCount = buildingCount;
+    return result;
   }
 
   queryUnitsAndBuildingsInRect2D(
