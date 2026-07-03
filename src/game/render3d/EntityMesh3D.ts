@@ -179,6 +179,9 @@ export type EntityMesh = {
    *  sphere emitter cores. Instanced heads carry this through
    *  instanceColor instead. */
   unitDynamicTurretHeadColorHex?: number[];
+  /** Cached answer for whether this unit has material state that must
+   *  animate even when the snapshot/render row is otherwise steady. */
+  unitHasSteadyDynamicMaterialWork?: boolean;
   unitOverlayVersion?: number;
   /** Set when the sim reports this entity was DESTROYED (a 'death' SimEvent),
    *  as opposed to merely leaving the local player's vision. Read when the

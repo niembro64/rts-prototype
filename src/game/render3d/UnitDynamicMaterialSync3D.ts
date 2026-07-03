@@ -5,6 +5,19 @@ import type { EntityMesh } from './EntityMesh3D';
 import type { EntityMaterialPalette3D } from './EntityMaterialPalette3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 
+export function unitHasSteadyDynamicMaterialWork3D(mesh: EntityMesh): boolean {
+  const cached = mesh.unitHasSteadyDynamicMaterialWork;
+  if (cached !== undefined) return cached;
+  for (let i = 0; i < mesh.turrets.length; i++) {
+    if (mesh.turrets[i].shieldEmitterCore === true) {
+      mesh.unitHasSteadyDynamicMaterialWork = true;
+      return true;
+    }
+  }
+  mesh.unitHasSteadyDynamicMaterialWork = false;
+  return false;
+}
+
 export function syncUnitDynamicMaterials3D(params: {
   entity: Entity;
   mesh: EntityMesh;

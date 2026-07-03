@@ -77,7 +77,10 @@ import {
   applyAirborneBankToParentQuat3D,
 } from './UnitAirborneBank3D';
 import { EntityMaterialPalette3D } from './EntityMaterialPalette3D';
-import { syncUnitDynamicMaterials3D } from './UnitDynamicMaterialSync3D';
+import {
+  syncUnitDynamicMaterials3D,
+  unitHasSteadyDynamicMaterialWork3D,
+} from './UnitDynamicMaterialSync3D';
 import { advanceUnitVisionFadeIn, applyUnitEntityFade3D } from './UnitEntityFade3D';
 import { AirborneEmitterUpdateScratch3D } from './AirborneEmitterUpdateScratch3D';
 import {
@@ -603,6 +606,7 @@ export class Render3DEntities {
         this.destroyUnitMesh(entityId, m);
         m = undefined;
       }
+      let meshCreated = false;
       if (!m) {
         const legSnap = this.legStateCache.get(entityId);
         const ownerKey = pid ?? 'neutral';
@@ -620,6 +624,7 @@ export class Render3DEntities {
         if (legSnap !== undefined) this.legStateCache.delete(entityId);
         this.unitMeshes.set(entityId, m);
         if (m.locomotion) this.activeLocomotionUnitIds.add(entityId);
+        meshCreated = true;
       }
       this.reactivateUnitMeshForScope(entityId, m);
       this.reactivateUnitMeshForLod(entityId, m);
@@ -630,14 +635,22 @@ export class Render3DEntities {
           this.barrelSpinState.advance(e, spinDt);
         }
       }
-      syncUnitDynamicMaterials3D({
-        entity: e,
-        mesh: m,
-        turrets,
-        currentTimeMs: this._currentTimeMs,
-        materialPalette: this.materialPalette,
-        unitDetailInstances: this.unitDetailInstances,
-      });
+      if (
+        meshCreated ||
+        unitRows.activePredictionAt(row) ||
+        unitRows.renderDirtyAt(row) ||
+        unitRows.lifecycleDirtyAt(row) ||
+        unitHasSteadyDynamicMaterialWork3D(m)
+      ) {
+        syncUnitDynamicMaterials3D({
+          entity: e,
+          mesh: m,
+          turrets,
+          currentTimeMs: this._currentTimeMs,
+          materialPalette: this.materialPalette,
+          unitDetailInstances: this.unitDetailInstances,
+        });
+      }
 
       // Build-in materialization: the body reveals via per-instance
       // alpha, not by growing the chassis from a point.
