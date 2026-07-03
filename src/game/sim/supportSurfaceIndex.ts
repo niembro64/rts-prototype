@@ -278,26 +278,46 @@ export class SupportSurfaceIndex {
 
     let bestProxy: SupportSurfaceProxy | null = null;
     let bestTopZ = Number.NEGATIVE_INFINITY;
+    const includeBuildings = options.includeBuildings !== false;
+    const includeUnits = options.includeUnits !== false;
+    const ignoreEntityId = options.ignoreEntityId;
+    const bodyZ = options.bodyZ;
+    const requireBodyHeight = bodyZ !== undefined && Number.isFinite(bodyZ);
+    const contactEpsilon = SUPPORT_SURFACE_CONTACT_EPSILON;
+    const footprintEpsilon = SUPPORT_SURFACE_FOOTPRINT_EPSILON;
     for (let i = 0; i < bucket.length; i++) {
       const proxy = bucket[i];
       const entity = proxy.entity;
       if (entity === null) continue;
       if (proxy.kind === 'building') {
-        if (options.includeBuildings === false) continue;
+        if (!includeBuildings) continue;
       } else {
-        if (options.includeUnits === false) continue;
-        if (options.ignoreEntityId !== undefined && options.ignoreEntityId === proxy.entityId) {
+        if (!includeUnits) continue;
+        if (ignoreEntityId !== undefined && ignoreEntityId === proxy.entityId) {
           continue;
         }
         if (entity.unit === null || entity.unit.hp <= 0) continue;
       }
 
-      const topZ = this.getProxyTopZ(proxy);
-      if (topZ === null) continue;
+      let topZ: number;
+      const dx = x - entity.transform.x;
+      const dy = y - entity.transform.y;
+      if (proxy.kind === 'building') {
+        const building = entity.building;
+        if (building === null) continue;
+        if (Math.abs(dx) > proxy.supportHalfX + footprintEpsilon) continue;
+        if (Math.abs(dy) > proxy.supportHalfY + footprintEpsilon) continue;
+        topZ = entity.transform.z - building.depth / 2 + proxy.supportTopOffsetZ;
+      } else {
+        const unit = entity.unit;
+        if (unit === null || unit.hp <= 0) continue;
+        const radius = proxy.supportRadius + footprintEpsilon;
+        if (dx * dx + dy * dy > radius * radius) continue;
+        topZ = entity.transform.z - unit.bodyCenterHeight + proxy.supportTopOffsetZ;
+      }
       if (topZ <= bestTopZ) continue;
-      if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-      if (!this.containsPoint(proxy, x, y)) continue;
-      if (!this.acceptsBodyHeight(topZ, options)) continue;
+      if (topZ < terrainGroundZ - contactEpsilon) continue;
+      if (requireBodyHeight && bodyZ! < topZ - contactEpsilon) continue;
 
       bestProxy = proxy;
       bestTopZ = topZ;
@@ -305,46 +325,6 @@ export class SupportSurfaceIndex {
 
     this.bestTopZ = bestTopZ;
     return bestProxy;
-  }
-
-  private getProxyTopZ(proxy: SupportSurfaceProxy): number | null {
-    const entity = proxy.entity;
-    if (entity === null) return null;
-    if (proxy.kind === 'building') {
-      const building = entity.building;
-      if (building === null) return null;
-      return entity.transform.z - building.depth / 2 + proxy.supportTopOffsetZ;
-    }
-
-    const unit = entity.unit;
-    if (unit === null || unit.hp <= 0) return null;
-    return entity.transform.z - unit.bodyCenterHeight + proxy.supportTopOffsetZ;
-  }
-
-  private containsPoint(proxy: SupportSurfaceProxy, x: number, y: number): boolean {
-    const entity = proxy.entity;
-    if (entity === null) return false;
-    const dx = x - entity.transform.x;
-    const dy = y - entity.transform.y;
-    if (proxy.kind === 'building') {
-      if (Math.abs(dx) > proxy.supportHalfX + SUPPORT_SURFACE_FOOTPRINT_EPSILON) {
-        return false;
-      }
-      return Math.abs(dy) <= proxy.supportHalfY + SUPPORT_SURFACE_FOOTPRINT_EPSILON;
-    }
-
-    const radius = proxy.supportRadius + SUPPORT_SURFACE_FOOTPRINT_EPSILON;
-    return dx * dx + dy * dy <= radius * radius;
-  }
-
-  private acceptsBodyHeight(
-    topZ: number,
-    options: SupportSurfaceIndexQueryOptions,
-  ): boolean {
-    const bodyZ = options.bodyZ;
-    if (bodyZ === undefined || !Number.isFinite(bodyZ)) return true;
-
-    return bodyZ >= topZ - SUPPORT_SURFACE_CONTACT_EPSILON;
   }
 
   private cellCoord(value: number): number {
