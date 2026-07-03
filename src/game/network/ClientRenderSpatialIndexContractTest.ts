@@ -58,6 +58,7 @@ export function runClientRenderSpatialIndexContractTest(): void {
   writeSlot(views, 2, 202, CLIENT_RENDER_ENTITY_KIND_BUILDING, 140, 160, 30);
   index.updateSlot(views, 1);
   index.updateSlot(views, 2);
+  assertContract(index.getMaxEntityPadding() === 350, 'default padding floor must be stable');
 
   index.queryFilteredSlots(bounds(0, 0, 200, 200), unitSlots, buildingSlots);
   assertContract(unitSlots.length === 1 && unitSlots[0] === 1, 'unit slot must query in scope');
@@ -85,6 +86,13 @@ export function runClientRenderSpatialIndexContractTest(): void {
   index.remove(202);
   index.queryFilteredSlots(bounds(0, 0, 200, 200), unitSlots, buildingSlots);
   assertContract(buildingSlots.length === 0, 'removed building must leave query results');
+  assertContract(index.getMaxEntityPadding() === 350, 'default-padding removal must keep padding floor');
+
+  writeSlot(views, 5, 505, CLIENT_RENDER_ENTITY_KIND_BUILDING, 256, 256, 900);
+  index.updateSlot(views, 5);
+  assertContract(index.getMaxEntityPadding() === 900, 'large padding entry must raise max padding');
+  index.remove(505);
+  assertContract(index.getMaxEntityPadding() === 350, 'large padding removal must recompute max padding');
 
   writeSlot(views, 3, 303, CLIENT_RENDER_ENTITY_KIND_UNIT, 64, 64);
   writeSlot(views, 4, 404, CLIENT_RENDER_ENTITY_KIND_UNIT, 96, 96);

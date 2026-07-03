@@ -104,7 +104,12 @@ export class ClientRenderSpatialIndex {
       if (bucket.length === 0) this.buckets.delete(entry.cellKey);
     }
     this.entriesById.delete(id);
-    if (entry.padding >= this.maxEntityPadding) this.recomputeMaxEntityPadding();
+    if (
+      entry.padding > DEFAULT_MAX_ENTITY_PADDING &&
+      entry.padding >= this.maxEntityPadding
+    ) {
+      this.recomputeMaxEntityPadding();
+    }
   }
 
   queryFilteredSlots(
