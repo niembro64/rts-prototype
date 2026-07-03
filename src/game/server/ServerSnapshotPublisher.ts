@@ -218,9 +218,9 @@ export class ServerSnapshotPublisher {
     visibility: SnapshotVisibility,
   ): void {
     const baseline = listener.visibleEntityIds;
-    const visibleEntityIdSet = visibility.getVisibleEntityIdSet();
-    if (visibleEntityIdSet !== undefined) {
-      this.copyVisibleIdsInto(baseline, visibleEntityIdSet);
+    const visibleEntityIds = visibility.getVisibleEntityIds();
+    if (visibleEntityIds !== undefined) {
+      this.copyVisibleIdsInto(baseline, visibleEntityIds);
     } else {
       this.collectCurrentVisibleEntityIds(world, visibility, baseline);
     }
@@ -228,11 +228,11 @@ export class ServerSnapshotPublisher {
   }
 
   private copyVisibleIdsInto(
-    out: Set<EntityId>,
-    visibleEntityIds: Iterable<EntityId>,
+    out: IndexedEntityIdSet,
+    visibleEntityIds: readonly EntityId[],
   ): void {
     out.clear();
-    for (const id of visibleEntityIds) out.add(id);
+    for (let i = 0; i < visibleEntityIds.length; i++) out.add(visibleEntityIds[i]);
   }
 
   private collectCurrentVisibleEntityIds(

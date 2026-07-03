@@ -79,6 +79,7 @@ import {
 } from './ClientProjectileStore';
 import { ClientEntityStore } from './ClientEntityStore';
 import { ClientEntityIdSet } from './ClientEntityIdSet';
+import { IndexedEntityIdMap, IndexedEntityIdSet } from './IndexedEntityIdCollections';
 import { ClientServerTargetStore } from './ClientServerTargetStore';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import {
@@ -305,8 +306,8 @@ export class ClientViewState {
   private readonly directProjectileSpawnScratch = createSpawnDto();
 
   private sprayTargetStore = new ClientSprayTargetStore();
-  private resourcePylonSignedRates = new Map<EntityId, ClientResourcePylonSignedRates>();
-  private resourcePylonFlowsBySource = new Map<EntityId, ClientResourcePylonFlow[]>();
+  private resourcePylonSignedRates = new IndexedEntityIdMap<ClientResourcePylonSignedRates>();
+  private resourcePylonFlowsBySource = new IndexedEntityIdMap<ClientResourcePylonFlow[]>();
   private readonly resourcePylonSourceIds: EntityId[] = [];
 
   // Audio events from last state update
@@ -354,7 +355,7 @@ export class ClientViewState {
   private renderSpatialIndex = new ClientRenderSpatialIndex();
   private renderEntityState = new ClientRenderEntityStateSlab();
   private renderTurretState = new ClientRenderTurretStateSlab();
-  private readonly scopedRenderIncludedIds = new Set<EntityId>();
+  private readonly scopedRenderIncludedIds = new IndexedEntityIdSet();
   private readonly scopedRenderUnitSlots: number[] = [];
   private readonly scopedRenderBuildingSlots: number[] = [];
   private entitySetVersion = 0;
@@ -368,7 +369,7 @@ export class ClientViewState {
   private removedBuildingRenderIds: EntityId[] = [];
   private renderLifecycleDirtyIds: Set<EntityId> = new ClientEntityIdSet();
   private predictionSupportSurfaceEntities: Entity[] = [];
-  private predictionSupportSurfaceEntityIds = new Set<EntityId>();
+  private predictionSupportSurfaceEntityIds = new IndexedEntityIdSet();
   private selectionState = new ClientSelectionState(
     this.entities,
     this.dirtyUnitRenderIds,
