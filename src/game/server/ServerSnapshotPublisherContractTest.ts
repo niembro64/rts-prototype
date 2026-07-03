@@ -54,6 +54,7 @@ function snapshot(tick: number, entities: NetworkServerSnapshot['entities']): Ne
 }
 
 function createQuietSimulation(movingUnits: readonly Entity[] = []): Simulation {
+  const movingUnitSlots = movingUnits.map((entity) => entitySlotRegistry.getEntitySlot(entity));
   return {
     hasPendingProjectilePresentationEvents: () => false,
     getAndClearEvents: () => [],
@@ -65,6 +66,7 @@ function createQuietSimulation(movingUnits: readonly Entity[] = []): Simulation 
     getSprayTargets: () => [],
     getWindState: () => ({ x: 0, y: 0, z: 0, speed: 0, angle: 0 }),
     getMovingUnits: () => movingUnits,
+    getMovingUnitSlots: () => movingUnitSlots,
   } as unknown as Simulation;
 }
 
@@ -157,6 +159,8 @@ export function runServerSnapshotPublisherContractTest(): void {
   startupWorld.playerCount = 2;
   const startupBuilder = startupWorld.createUnitFromBlueprint(96, 112, 1 as PlayerId, 'unitConstructionDrone');
   const startupFighter = startupWorld.createUnitFromBlueprint(160, 176, 1 as PlayerId, 'unitEagle');
+  assertContract(startupBuilder.builder !== null, 'startup builder fixture must have builder state');
+  startupBuilder.builder.lowPriority = true;
   startupWorld.addEntity(startupBuilder);
   startupWorld.addEntity(startupFighter);
   const capturedStartup: {
