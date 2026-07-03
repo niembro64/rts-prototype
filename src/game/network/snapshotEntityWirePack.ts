@@ -483,7 +483,7 @@ function rentDecodedQuat(x: number, y: number, z: number, w: number): DecodedQua
   return q;
 }
 
-const PACKED_ENTITIES_VERSION = 18;
+const PACKED_ENTITIES_VERSION = 19;
 const PACKED_ENTITIES_MIN_SUPPORTED_VERSION = 13;
 
 // Bit flags for the packed unit row's optional-presence header.
@@ -759,7 +759,8 @@ const DECODED_TYPED_UNIT_DETAIL_FIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_ACTIONS |
   ENTITY_CHANGED_TURRETS |
-  ENTITY_CHANGED_BUILDING;
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY;
 
 const DECODED_TYPED_BUILDING_DETAIL_FIELDS =
   ENTITY_CHANGED_POS |
@@ -798,6 +799,12 @@ function tryAppendDecodedUnitDetailTypedPlaceholderWireRow(
   if ((changedFields & ENTITY_CHANGED_VEL) !== 0 && unit.velocity === null) return false;
   if ((changedFields & ENTITY_CHANGED_NORMAL) !== 0 && unit.surfaceNormal === null) return false;
   if ((changedFields & ENTITY_CHANGED_HP) !== 0 && unit.hp === null) return false;
+  if (
+    (changedFields & ENTITY_CHANGED_FACTORY) !== 0 &&
+    (unit.carrierSpawnEnabled === null || unit.carrierSpawnEnabled === undefined)
+  ) {
+    return false;
+  }
 
   const wireRow = appendDecodedUnitEntityWireRow();
   const values = wireRow.values;
@@ -888,6 +895,10 @@ function tryAppendDecodedUnitDetailTypedPlaceholderWireRow(
   ) {
     values[base + 61] = 1;
     values[base + 62] = unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
+  }
+  if (unit.carrierSpawnEnabled !== null && unit.carrierSpawnEnabled !== undefined) {
+    values[base + 64] = 1;
+    values[base + 65] = unit.carrierSpawnEnabled ? 1 : 0;
   }
   return true;
 }
@@ -1560,6 +1571,9 @@ function unpackUnit(row: unknown[]): UnitSub {
       interrupted: (flags & UNIT_FLAG_BUILD_INTERRUPTED) !== 0,
       paid: { energy, metal },
     };
+  }
+  if (i < row.length) {
+    unit.carrierSpawnEnabled = (row[i++] as number) !== 0;
   }
   return unit;
 }

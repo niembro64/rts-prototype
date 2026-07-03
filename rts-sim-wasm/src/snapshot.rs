@@ -2347,12 +2347,12 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // per-entity JS->WASM crossing.
 //
 // SoA row layouts (must match stateSerializerEntities.ts strides/slots):
-//   basic[9], unit[64], building[50], action[19], turret[11], waypoint[5].
+//   basic[9], unit[66], building[50], action[19], turret[11], waypoint[5].
 // hp/velocity (unit) and hp/build (building) presence is NOT stored in the SoA
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
 // the DTO sub-fields.
-pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 18;
+pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 19;
 
 pub(crate) const V6_ENTITY_FLAG_HAS_POS: u32 = 1 << 0;
 pub(crate) const V6_ENTITY_FLAG_HAS_ROTATION: u32 = 1 << 1;
@@ -2437,7 +2437,7 @@ pub(crate) const V6_TURRET_FLAG_INACTIVE: u32 = 1 << 2;
 pub(crate) const V6_WAYPOINT_FLAG_POS_Z: u32 = 1 << 0;
 
 pub(crate) const V6_BASIC_STRIDE: usize = 9;
-pub(crate) const V6_UNIT_STRIDE: usize = 64;
+pub(crate) const V6_UNIT_STRIDE: usize = 66;
 pub(crate) const V6_BUILDING_STRIDE: usize = 50;
 
 pub(crate) const V6_KIND_RAW: u32 = 0;
@@ -3460,6 +3460,7 @@ pub(crate) fn v6_write_detail_unit(
     let move_state_code = unit_buf[base + 60] as u32;
     let cloak_present = unit_buf[base + 61] != 0.0;
     let build_interrupted = unit_buf[base + 63] != 0.0;
+    let carrier_spawn_present = unit_buf[base + 64] != 0.0;
 
     let mut flags = 0u32;
     if hp_present {
@@ -3597,6 +3598,9 @@ pub(crate) fn v6_write_detail_unit(
     if has_build {
         len += 2;
     }
+    if carrier_spawn_present {
+        len += 1;
+    }
 
     w.write_array_header(len);
     w.write_number(flags as f64);
@@ -3673,6 +3677,9 @@ pub(crate) fn v6_write_detail_unit(
     if has_build {
         w.write_number(unit_buf[base + 47]);
         w.write_number(unit_buf[base + 48]);
+    }
+    if carrier_spawn_present {
+        w.write_number(unit_buf[base + 65]);
     }
 }
 

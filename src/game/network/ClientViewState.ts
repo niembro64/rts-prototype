@@ -206,7 +206,8 @@ const CLIENT_UNIT_TYPED_DELTA_FIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING |
-  ENTITY_CHANGED_ACTIONS;
+  ENTITY_CHANGED_ACTIONS |
+  ENTITY_CHANGED_FACTORY;
 const CLIENT_BUILDING_METADATA_DELTA_FIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_BUILDING;
@@ -1127,7 +1128,8 @@ export class ClientViewState {
     const hasTurretFields = (changedFields & ENTITY_CHANGED_TURRETS) !== 0;
     const hasBuildFields = (changedFields & ENTITY_CHANGED_BUILDING) !== 0;
     const hasActionFields = (changedFields & ENTITY_CHANGED_ACTIONS) !== 0;
-    if (!hasMotionFields && !hasHpFields && !hasTurretFields && !hasBuildFields && !hasActionFields) {
+    const hasFactoryFields = (changedFields & ENTITY_CHANGED_FACTORY) !== 0;
+    if (!hasMotionFields && !hasHpFields && !hasTurretFields && !hasBuildFields && !hasActionFields && !hasFactoryFields) {
       return false;
     }
 
@@ -1257,6 +1259,10 @@ export class ClientViewState {
           ? values[base + 40] as EntityId
           : NO_ENTITY_ID;
       }
+    }
+    if (hasFactoryFields) {
+      if (existing.factory === null || values[base + 64] === 0) return false;
+      existing.factory.carrierSpawnEnabled = values[base + 65] !== 0;
     }
 
     const refreshTurretsNow = copiedTurretRows && !deferPredictedTurretRenderRefresh;

@@ -229,6 +229,25 @@ function fullUnitEntity(id: number, hp: number, maxHp: number): NetworkServerSna
   };
 }
 
+function fullCarrierUnitEntity(id: number): NetworkServerSnapshotEntity {
+  return {
+    id,
+    type: 'unit',
+    playerId: 1 as PlayerId,
+    changedFields: null,
+    pos: { x: 0, y: 0, z: 0 },
+    rotation: 0,
+    unit: {
+      ...emptyUnitSnapshot(),
+      unitBlueprintCode: unitBlueprintIdToCode('unitQueenBee'),
+      hp: { curr: 9000, max: 9000 },
+      velocity: { x: 0, y: 0, z: 0 },
+      surfaceNormal: { nx: 0, ny: 0, nz: 1000 },
+    },
+    building: null,
+  };
+}
+
 function fullBuildingEntity(id: number, hp: number, maxHp: number): NetworkServerSnapshotEntity {
   return {
     id,
@@ -766,6 +785,87 @@ export function runClientSnapshotApplierContractTest(): void {
       appliedBuilderEntity.unit?.actions.length === 1 &&
       appliedBuilderEntity.unit.actions[0].x === 420,
     'priority-free typed builder rows must apply actions/build target and clear stale priority',
+  );
+  resetEntitySnapshotPool();
+
+  const carrierId = 616;
+  const carrierEntity = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => carrierId,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    64,
+    96,
+    1 as PlayerId,
+    'unitQueenBee',
+    { allocateSubEntityIds: false },
+  );
+  if (carrierEntity.unit === null || carrierEntity.factory === null) {
+    throw new Error('[client snapshot applier contract] carrier fixture must have unit + factory');
+  }
+  carrierEntity.factory.carrierSpawnEnabled = false;
+  const carrierRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(carrierRows);
+  const carrierRow = serializeEntityDeltaSnapshot(
+    carrierEntity,
+    ENTITY_CHANGED_FACTORY,
+    {} as WorldState,
+  );
+  if (carrierRow !== null) {
+    carrierRows.push(carrierRow as NetworkServerSnapshotEntity);
+  }
+  const carrierSource = getEntitySnapshotWireSource(carrierRows);
+  assertContract(
+    carrierRows.length === 1 &&
+      (carrierRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
+      carrierSource !== undefined &&
+      carrierSource.rawEntityRows === 0 &&
+      carrierSource.typedPlaceholderRows === 1 &&
+      carrierSource.unitRows.count === 1,
+    'carrier-spawn unit factory rows must use DTO-free typed unit placeholders',
+  );
+  const carrierView = new ClientViewState();
+  carrierView.applyNetworkState(snapshot(1, [fullCarrierUnitEntity(carrierId)]));
+  const staleCarrierFactory = carrierView.getEntity(carrierId)?.factory;
+  if (staleCarrierFactory === undefined || staleCarrierFactory === null) {
+    throw new Error('[client snapshot applier contract] carrier fixture must hydrate a factory');
+  }
+  staleCarrierFactory.carrierSpawnEnabled = true;
+  carrierView.applyNetworkState(deltaSnapshot(5, carrierRows));
+  assertContract(
+    carrierView.getEntity(carrierId)?.factory?.carrierSpawnEnabled === false,
+    'typed unit factory rows must apply carrier-spawn state without DTO fallback',
+  );
+  const encodedPackedCarrier = encodeNetworkSnapshotWithRustFallback(
+    deltaSnapshot(6, carrierRows),
+  );
+  if (encodedPackedCarrier === null) {
+    throw new Error('[client snapshot applier contract] packed carrier fixture must encode');
+  }
+  const decodedPackedCarrier = decodeNetworkSnapshot(encodedPackedCarrier.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  const decodedPackedCarrierSource = getEntitySnapshotWireSource(decodedPackedCarrier.entities);
+  assertContract(
+    decodedPackedCarrier.entities.length === 1 &&
+      decodedPackedCarrier.entities[0] === undefined &&
+      decodedPackedCarrierSource !== undefined &&
+      decodedPackedCarrierSource.typedPlaceholderRows === 1 &&
+      decodedPackedCarrierSource.unitRows.count === 1,
+    'packed carrier-spawn rows must reconstruct typed unit placeholders',
+  );
+  const packedCarrierView = new ClientViewState();
+  packedCarrierView.applyNetworkState(snapshot(1, [fullCarrierUnitEntity(carrierId)]));
+  const stalePackedCarrierFactory = packedCarrierView.getEntity(carrierId)?.factory;
+  if (stalePackedCarrierFactory === undefined || stalePackedCarrierFactory === null) {
+    throw new Error('[client snapshot applier contract] packed carrier fixture must hydrate a factory');
+  }
+  stalePackedCarrierFactory.carrierSpawnEnabled = true;
+  packedCarrierView.applyNetworkState(decodedPackedCarrier);
+  assertContract(
+    packedCarrierView.getEntity(carrierId)?.factory?.carrierSpawnEnabled === false,
+    'packed typed unit factory rows must apply carrier-spawn state after decode',
   );
   resetEntitySnapshotPool();
 

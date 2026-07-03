@@ -105,13 +105,15 @@ const TYPED_PLACEHOLDER_UNIT_TRIGGER_FIELDS =
   ENTITY_CHANGED_ACTIONS |
   ENTITY_CHANGED_TURRETS |
   ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY |
   ENTITY_CHANGED_NORMAL;
 const TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS =
   TYPED_PLACEHOLDER_UNIT_MOTION_FIELDS |
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_ACTIONS |
   ENTITY_CHANGED_TURRETS |
-  ENTITY_CHANGED_BUILDING;
+  ENTITY_CHANGED_BUILDING |
+  ENTITY_CHANGED_FACTORY;
 const TYPED_PLACEHOLDER_BUILDING_TRIGGER_FIELDS =
   ENTITY_CHANGED_HP |
   ENTITY_CHANGED_TURRETS |
@@ -157,7 +159,7 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // Unit/building row layouts: see appendDirect*EntityWireRow for the exact slot
 // order. Unit slots 51+ and building factory-private slots carry command/build
 // state that used to force a RAW entity fallback.
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 64;
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 66;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 50;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 19;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
@@ -653,7 +655,9 @@ export function unitFactoryPrivateSnapshotRequiresDto(
   if (entity.type !== 'unit' || entity.factory === null) return false;
   if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_FACTORY) === 0) return false;
   if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
-  return true;
+  // Mobile unit factories currently expose one private command bit,
+  // carrierSpawnEnabled, which rides the typed unit row.
+  return false;
 }
 
 export function entityPrivateSnapshotRequiresDto(
@@ -913,6 +917,9 @@ function appendDirectUnitEntityWireRow(
   const hasWantCloak = shouldEmitActions && (unit.wantCloak === true || !isFull);
   const hasCloaked = combatModeChanged && (unit.cloaked === true || !isFull);
   const hasCloakState = hasWantCloak || hasCloaked;
+  const shouldEmitUnitFactory = canSeePrivateDetails &&
+    entity.factory !== null &&
+    (isFull || (changedMask & ENTITY_CHANGED_FACTORY) !== 0);
 
   values[base + 0] = entity.id;
   values[base + 1] = hasPos ? qPos(entity.transform.x) : 0;
@@ -982,6 +989,8 @@ function appendDirectUnitEntityWireRow(
   values[base + 61] = hasCloakState ? 1 : 0;
   values[base + 62] = unit.cloaked === true ? 2 : unit.wantCloak === true ? 1 : 0;
   values[base + 63] = hasBuild && buildable!.isInterrupted === true ? 1 : 0;
+  values[base + 64] = shouldEmitUnitFactory ? 1 : 0;
+  values[base + 65] = shouldEmitUnitFactory && entity.factory!.carrierSpawnEnabled !== false ? 1 : 0;
   appendEntitySnapshotWireSourceRow(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
@@ -1335,7 +1344,7 @@ export function appendEntitySnapshotWireRowDirect(
   if (entity.type === 'unit' && entity.unit !== null) {
     const unitFieldMask = ENTITY_CHANGED_VEL | ENTITY_CHANGED_HP |
       ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS |
-      ENTITY_CHANGED_BUILDING;
+      ENTITY_CHANGED_BUILDING | ENTITY_CHANGED_FACTORY;
     const hasSurfaceNormalFields = isFull || (changedMask & ENTITY_CHANGED_NORMAL) !== 0;
     const hasOrientationFields = entity.unit.orientation !== null &&
       (isFull || (changedMask & ENTITY_CHANGED_ROT) !== 0);
@@ -1745,6 +1754,7 @@ export function canUseTypedDeltaPlaceholder(entity: Entity, changedFields: numbe
   if (changedFields === undefined || changedFields === 0) return false;
   const hasBasicTransformFields = (changedFields & (ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT)) !== 0;
   if (entity.type === 'unit' && entity.unit !== null) {
+    if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && entity.factory === null) return false;
     if (unitBuilderPrivateSnapshotRequiresDto(entity, changedFields)) return false;
     if (unitFactoryPrivateSnapshotRequiresDto(entity, changedFields)) return false;
     if ((changedFields & ~TYPED_PLACEHOLDER_UNIT_DELTA_FIELDS) !== 0) return false;
