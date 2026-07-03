@@ -2443,43 +2443,50 @@ export class DamageSystem {
       }
     }
 
-    // Travelling shots remain live-geometry rows by design: their
-    // post-integration position is authoritative after movement, while
-    // the combat slab is a once-per-tick targeting snapshot.
-    const nearbyProjectiles = spatialGrid.queryEnemyProjectilesInRadius(
+    // Travelling shots use the entity-state hot projectile rows: SpatialGrid
+    // refreshes these from post-integration projectile slots, so we can avoid
+    // resolving every broadphase candidate before the overlap classifier.
+    const nearbyProjectiles = spatialGrid.queryEnemyProjectileSlotsInRadius(
       source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
     );
-    ensureAreaDamageCapacity(nearbyProjectiles.length);
+    ensureAreaDamageCapacity(nearbyProjectiles.count);
     let projectileRowCount = 0;
-    for (const projectile of nearbyProjectiles) {
-      if (source.excludeEntities.has(projectile.id)) continue;
-      const proj = projectile.projectile;
-      if (
-        proj === null ||
-        proj.projectileType !== 'projectile' ||
-        proj.hp <= 0 ||
-        !isProjectileShot(proj.config.shot)
-      ) {
-        continue;
-      }
+    const projectileViews = entitySlotRegistry.getViews();
+    if (projectileViews !== null) {
+      const projectileSlots = nearbyProjectiles.slots;
+      const capacity = projectileViews.capacity;
+      for (let projectileIndex = 0; projectileIndex < nearbyProjectiles.count; projectileIndex++) {
+        const slot = projectileSlots[projectileIndex];
+        if (slot >= capacity) continue;
+        const projectileId = projectileViews.entityId[slot] as EntityId;
+        if (projectileId < 0 || source.excludeEntities.has(projectileId)) continue;
+        if (projectileViews.projectileTypeCode[slot] !== PROJECTILE_TYPE_PROJECTILE) continue;
+        if (projectileViews.hp[slot] <= 0) continue;
 
-      const row = projectileRowCount++;
-      _areaDamageEntities[row] = projectile;
-      _areaDamageEnabled[row] = 1;
-      _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_PROJECTILE;
-      _areaDamageTargetX[row] = projectile.transform.x;
-      _areaDamageTargetY[row] = projectile.transform.y;
-      _areaDamageTargetZ[row] = projectile.transform.z;
-      _areaDamageTargetRadius[row] = proj.config.shotProfile.runtime.radius.collision;
-      _areaDamageBoxHalfX[row] = 0;
-      _areaDamageBoxHalfY[row] = 0;
-      _areaDamageBoxHalfZ[row] = 0;
+        const row = projectileRowCount++;
+        _areaDamageEntities[row] = undefined;
+        _areaDamageSlots[row] = slot;
+        _areaDamageEnabled[row] = 1;
+        _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_PROJECTILE;
+        _areaDamageTargetX[row] = projectileViews.posX[slot];
+        _areaDamageTargetY[row] = projectileViews.posY[slot];
+        _areaDamageTargetZ[row] = projectileViews.posZ[slot];
+        _areaDamageTargetRadius[row] = projectileViews.radiusCollision[slot];
+        _areaDamageBoxHalfX[row] = 0;
+        _areaDamageBoxHalfY[row] = 0;
+        _areaDamageBoxHalfZ[row] = 0;
+      }
     }
     classifyAreaDamageRows(source, projectileRowCount, false, Math.PI);
     for (let row = 0; row < projectileRowCount; row++) {
-      const projectile = _areaDamageEntities[row];
+      const projectile = _areaDamageEntities[row] ?? entitySlotRegistry.resolveSlot(_areaDamageSlots[row]);
+      const proj = projectile?.projectile ?? null;
       if (
         projectile === undefined ||
+        proj === null ||
+        proj.projectileType !== 'projectile' ||
+        proj.hp <= 0 ||
+        !isProjectileShot(proj.config.shot) ||
         (_areaDamageOutFlags[row] & DAMAGE_AREA_FLAG_OVERLAP) === 0
       ) {
         continue;
