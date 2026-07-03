@@ -620,6 +620,16 @@ fn entity_state_row_has_awake_body(
     p.entity_id[body_slot] == entity_id && p.flags[body_slot] & BODY_FLAG_SLEEPING == 0
 }
 
+#[inline]
+fn entity_state_row_has_awake_unit_body(
+    slab: &EntityStateSlab,
+    p: &BodyPool,
+    entity_slot: usize,
+) -> bool {
+    slab.kind.get(entity_slot).copied() == Some(ENTITY_STATE_KIND_UNIT)
+        && entity_state_row_has_awake_body(slab, p, entity_slot)
+}
+
 #[wasm_bindgen]
 pub fn entity_state_collect_awake_body_entity_slots(slots_out: &mut [u32]) -> i32 {
     let slab = entity_state();
@@ -637,6 +647,30 @@ pub fn entity_state_collect_awake_body_entity_slots(slots_out: &mut [u32]) -> i3
     let mut count = 0_usize;
     for slot in 0..len {
         if entity_state_row_has_awake_body(slab, p, slot) {
+            slots_out[count] = slot as u32;
+            count += 1;
+        }
+    }
+    count as i32
+}
+
+#[wasm_bindgen]
+pub fn entity_state_collect_awake_unit_body_entity_slots(slots_out: &mut [u32]) -> i32 {
+    let slab = entity_state();
+    let p = pool();
+    let len = slab.entity_id.len();
+    let mut required = 0_usize;
+    for slot in 0..len {
+        if entity_state_row_has_awake_unit_body(slab, p, slot) {
+            required += 1;
+        }
+    }
+    if slots_out.len() < required {
+        return -(required as i32);
+    }
+    let mut count = 0_usize;
+    for slot in 0..len {
+        if entity_state_row_has_awake_unit_body(slab, p, slot) {
             slots_out[count] = slot as u32;
             count += 1;
         }
@@ -823,5 +857,44 @@ mod tests {
         assert_eq!(slab.vel_y[2], 2.0);
         assert_eq!(slab.vel_z[2], 3.0);
         assert_eq!(slab.dirty_mask[2], ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+    }
+
+    #[test]
+    fn collect_awake_unit_body_entity_slots_filters_non_units_and_sleeping_units() {
+        pool_init();
+        entity_state_init(8);
+
+        let awake_unit_body = pool_alloc_slot();
+        let awake_shot_body = pool_alloc_slot();
+        let awake_building_body = pool_alloc_slot();
+        let sleeping_unit_body = pool_alloc_slot();
+        {
+            let p = pool();
+            p.entity_id[awake_unit_body as usize] = 101;
+            p.entity_id[awake_shot_body as usize] = 202;
+            p.entity_id[awake_building_body as usize] = 303;
+            p.entity_id[sleeping_unit_body as usize] = 404;
+            p.flags[sleeping_unit_body as usize] |= BODY_FLAG_SLEEPING;
+        }
+
+        entity_state_set_lifecycle(1, 101, ENTITY_STATE_KIND_UNIT, 1, 1, 0);
+        entity_state_set_body_slot(1, awake_unit_body as i32);
+        entity_state_set_lifecycle(2, 202, ENTITY_STATE_KIND_SHOT, 1, 1, 0);
+        entity_state_set_body_slot(2, awake_shot_body as i32);
+        entity_state_set_lifecycle(3, 303, ENTITY_STATE_KIND_BUILDING, 1, 1, 0);
+        entity_state_set_body_slot(3, awake_building_body as i32);
+        entity_state_set_lifecycle(4, 404, ENTITY_STATE_KIND_UNIT, 1, 1, 0);
+        entity_state_set_body_slot(4, sleeping_unit_body as i32);
+
+        let mut all_awake = [0_u32; 8];
+        assert_eq!(entity_state_collect_awake_body_entity_slots(&mut all_awake), 3);
+        assert_eq!(&all_awake[..3], &[1, 2, 3]);
+
+        let mut awake_units = [0_u32; 8];
+        assert_eq!(
+            entity_state_collect_awake_unit_body_entity_slots(&mut awake_units),
+            1,
+        );
+        assert_eq!(&awake_units[..1], &[1]);
     }
 }

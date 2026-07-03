@@ -650,7 +650,7 @@ export class UnitForceSystem {
 
     const sim = getSimWasm();
     candidateCount = sim !== undefined
-      ? sim.entityState.collectAwakeBodyEntitySlots(this.physicsCandidateUnitSlotsBuf)
+      ? sim.entityState.collectAwakeUnitBodyEntitySlots(this.physicsCandidateUnitSlotsBuf)
       : this.physics.collectAwakeEntitySlots(
         this.physicsCandidateUnitSlotsBuf,
         entitySlotForId,
@@ -658,7 +658,7 @@ export class UnitForceSystem {
     if (candidateCount < 0) {
       this.ensurePhysicsCandidateSlotCapacity(-candidateCount);
       candidateCount = sim !== undefined
-        ? sim.entityState.collectAwakeBodyEntitySlots(this.physicsCandidateUnitSlotsBuf)
+        ? sim.entityState.collectAwakeUnitBodyEntitySlots(this.physicsCandidateUnitSlotsBuf)
         : this.physics.collectAwakeEntitySlots(
           this.physicsCandidateUnitSlotsBuf,
           entitySlotForId,
