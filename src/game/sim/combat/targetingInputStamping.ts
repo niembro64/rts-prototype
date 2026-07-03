@@ -195,6 +195,15 @@ let _combatTargetingTargetCount = 0;
 const _stampViewMaskByPlayer = new Uint32Array(32);
 let _stampViewMaskComputedBits = 0;
 let _stampSlotUsed = new Uint8Array(0);
+const _mountReadContext: CombatTargetingEntityReadContext = {
+  views: null as never,
+  slot: -1,
+  turretBase: -1,
+  turretCount: 0,
+};
+let _mountReadEntity: Entity | null = null;
+let _mountReadTick = -1;
+let _mountReadBuffer: ArrayBuffer | null = null;
 
 function playerMaskBit(playerId: number): number {
   if (playerId < 1 || playerId > 31) return 0;
@@ -421,6 +430,34 @@ export function getCombatTargetingEntityReadContext(
   return true;
 }
 
+function getCombatTargetingMountReadContext(
+  entity: Entity,
+  currentTick: number,
+): CombatTargetingEntityReadContext | null {
+  const sim = getSimWasm();
+  if (sim === undefined) return null;
+  const buffer = sim.memory.buffer;
+  if (
+    _mountReadEntity === entity &&
+    _mountReadTick === currentTick &&
+    _mountReadBuffer === buffer &&
+    _mountReadContext.views.state.byteLength > 0
+  ) {
+    return _mountReadContext;
+  }
+  const views = getCombatTargetingStateViews(sim);
+  const slot = entitySlotRegistry.getEntitySlot(entity);
+  if (slot < 0 || slot >= views.entityCapacity) return null;
+  _mountReadContext.views = views;
+  _mountReadContext.slot = slot;
+  _mountReadContext.turretBase = slot * views.maxTurretsPerEntity;
+  _mountReadContext.turretCount = views.turretCountPerEntity[slot];
+  _mountReadEntity = entity;
+  _mountReadTick = currentTick;
+  _mountReadBuffer = buffer;
+  return _mountReadContext;
+}
+
 export function readCombatTargetingTurretFsmFromContextInto(
   context: CombatTargetingEntityReadContext,
   turretIndex: number,
@@ -508,11 +545,11 @@ export function readCombatTargetingTurretMountInto(
   currentTick: number,
   out: CombatTargetingTurretMountOut,
 ): boolean {
-  const sim = getSimWasm();
-  if (sim === undefined) return false;
-  const views = getCombatTargetingStateViews(sim);
-  const idx = getCombatTargetingTurretStateIndexFromViews(views, entity, turretIndex);
-  if (idx < 0) return false;
+  const context = getCombatTargetingMountReadContext(entity, currentTick);
+  if (context === null) return false;
+  if (turretIndex < 0 || turretIndex >= context.turretCount) return false;
+  const views = context.views;
+  const idx = context.turretBase + turretIndex;
   if (views.worldPosTick[idx] !== currentTick) return false;
   out.x = views.mountX[idx];
   out.y = views.mountY[idx];
@@ -533,11 +570,11 @@ export function readCombatTargetingTurretMountKinematicsInto(
   outPos: { x: number; y: number; z: number },
   outVel: { x: number; y: number; z: number },
 ): boolean {
-  const sim = getSimWasm();
-  if (sim === undefined) return false;
-  const views = getCombatTargetingStateViews(sim);
-  const idx = getCombatTargetingTurretStateIndexFromViews(views, entity, turretIndex);
-  if (idx < 0) return false;
+  const context = getCombatTargetingMountReadContext(entity, currentTick);
+  if (context === null) return false;
+  if (turretIndex < 0 || turretIndex >= context.turretCount) return false;
+  const views = context.views;
+  const idx = context.turretBase + turretIndex;
   if (views.worldPosTick[idx] !== currentTick) return false;
   outPos.x = views.mountX[idx];
   outPos.y = views.mountY[idx];
