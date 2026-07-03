@@ -57,6 +57,10 @@ import {
 import { ServerSnapshotDirectWirePreencoder } from './ServerSnapshotDirectWirePreencoder';
 import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
 import {
+  ENTITY_STATE_KIND_UNIT,
+  getSimWasm,
+} from '../sim-wasm/init';
+import {
   dirtyFieldsAreMotionOnly,
   ENTITY_BASIC_TRANSFORM_DELTA_FIELDS,
   ENTITY_MOTION_DELTA_FIELDS,
@@ -70,6 +74,7 @@ const NO_MINIMAP_OVERRIDE: SerializerMinimapOverride = { value: undefined };
 const PROJECTILE_DELTA_EMPTY_ENTITIES: NetworkServerSnapshot['entities'] = [];
 const PROJECTILE_DELTA_EMPTY_ECONOMY: NetworkServerSnapshot['economy'] = {};
 const MOTION_CANDIDATE_SLOT_PACK_BASE = 1 << 20;
+const MOTION_CANDIDATE_MARK_MAX = 0xffffffff;
 function addMaterializationStage(
   stages: SnapshotMaterializationStageDurations,
   stage: SnapshotMaterializationStage,
@@ -160,6 +165,10 @@ export class ServerSnapshotPublisher {
   private readonly entityMotionCandidateSlotsBuf: number[] = [];
   private readonly entityMotionCandidatePackedBuf: number[] = [];
   private readonly entityMotionCandidateIdSet = new IndexedEntityIdSet();
+  private entityMotionCandidateSlotScratch = new Uint32Array(1024);
+  private entityMotionCandidateSlotMarks = new Uint32Array(1024);
+  private entityMotionCandidateSlotMark = 1;
+  private entityMotionCandidateSlotCount = 0;
   private readonly deferredEntityMotionIds = new IndexedEntityIdSet();
   reset(): void {}
 
@@ -1482,6 +1491,31 @@ export class ServerSnapshotPublisher {
     simulation?: Simulation,
     drainDeferredMotion = false,
   ): number {
+    const slotNativeCount = this.collectEntityMotionDeltaCandidatesFromSlots(
+      world,
+      out,
+      outSlots,
+      simulation,
+      drainDeferredMotion,
+    );
+    if (slotNativeCount >= 0) return slotNativeCount;
+
+    return this.collectEntityMotionDeltaCandidatesFromEntities(
+      world,
+      out,
+      outSlots,
+      simulation,
+      drainDeferredMotion,
+    );
+  }
+
+  private collectEntityMotionDeltaCandidatesFromEntities(
+    world: WorldState,
+    out: EntityId[],
+    outSlots: number[],
+    simulation?: Simulation,
+    drainDeferredMotion = false,
+  ): number {
     out.length = 0;
     outSlots.length = 0;
     const packed = this.entityMotionCandidatePackedBuf;
@@ -1501,7 +1535,6 @@ export class ServerSnapshotPublisher {
       pushCandidate(id, entitySlotRegistry.getEntitySlot(entity));
     }
     if (drainDeferredMotion) this.deferredEntityMotionIds.clear();
-
     const movingUnits = simulation?.getMovingUnits();
     if (movingUnits !== undefined) {
       const movingUnitSlots = simulation?.getMovingUnitSlots();
@@ -1540,6 +1573,151 @@ export class ServerSnapshotPublisher {
     }
     packed.length = 0;
     return out.length;
+  }
+
+  private collectEntityMotionDeltaCandidatesFromSlots(
+    world: WorldState,
+    out: EntityId[],
+    outSlots: number[],
+    simulation?: Simulation,
+    drainDeferredMotion = false,
+  ): number {
+    const sim = getSimWasm();
+    const entityViews = entitySlotRegistry.getViews();
+    if (sim === undefined || entityViews === null) return -1;
+
+    out.length = 0;
+    outSlots.length = 0;
+    this.beginEntityMotionCandidateSlotMarkFrame();
+
+    for (const id of this.deferredEntityMotionIds) {
+      const slot = entitySlotRegistry.getSlot(id);
+      if (this.slotHasLiveUnit(entityViews, slot, id)) {
+        this.pushEntityMotionCandidateSlot(slot);
+        continue;
+      }
+      const entity = world.getEntity(id);
+      if (entity === undefined || entity.unit === null || entity.unit.hp <= 0) continue;
+      const entitySlot = entitySlotRegistry.getEntitySlot(entity);
+      if (
+        entitySlot < 0 ||
+        entitySlot >= entityViews.capacity ||
+        entityViews.entityId[entitySlot] !== id
+      ) {
+        return -1;
+      }
+      this.pushEntityMotionCandidateSlot(entitySlot);
+    }
+    const movingUnits = simulation?.getMovingUnits();
+    const movingUnitSlots = simulation?.getMovingUnitSlots();
+    if (movingUnits !== undefined) {
+      for (let i = 0; i < movingUnits.length; i++) {
+        const entity = movingUnits[i];
+        const slot = movingUnitSlots?.[i] ?? entitySlotRegistry.getEntitySlot(entity);
+        if (this.slotIsMotionCandidate(entityViews, slot, entity.id)) {
+          this.pushEntityMotionCandidateSlot(slot);
+          continue;
+        }
+        if (!isEntityMotionDeltaCandidate(entity)) continue;
+        if (
+          slot < 0 ||
+          slot >= entityViews.capacity ||
+          entityViews.entityId[slot] !== entity.id
+        ) {
+          return -1;
+        }
+        this.pushEntityMotionCandidateSlot(slot);
+      }
+    }
+
+    const flyingUnits = world.getFlyingUnits();
+    for (let i = 0; i < flyingUnits.length; i++) {
+      const entity = flyingUnits[i];
+      const slot = entitySlotRegistry.getEntitySlot(entity);
+      if (this.slotIsMotionCandidate(entityViews, slot, entity.id)) {
+        this.pushEntityMotionCandidateSlot(slot);
+        continue;
+      }
+      if (!isEntityMotionDeltaCandidate(entity)) continue;
+      if (
+        slot < 0 ||
+        slot >= entityViews.capacity ||
+        entityViews.entityId[slot] !== entity.id
+      ) {
+        return -1;
+      }
+      this.pushEntityMotionCandidateSlot(slot);
+    }
+
+    const count = this.entityMotionCandidateSlotCount;
+    if (count === 0) {
+      if (drainDeferredMotion) this.deferredEntityMotionIds.clear();
+      return 0;
+    }
+    const slots = this.entityMotionCandidateSlotScratch.subarray(0, count);
+    sim.entityState.sortSlotsByEntityId(slots);
+    for (let i = 0; i < count; i++) {
+      const slot = slots[i];
+      const id = entityViews.entityId[slot] as EntityId;
+      if (id < 0) continue;
+      out.push(id);
+      outSlots.push(slot);
+    }
+    if (drainDeferredMotion) this.deferredEntityMotionIds.clear();
+    return out.length;
+  }
+
+  private slotHasLiveUnit(
+    views: EntityStateViews,
+    slot: number,
+    entityId: EntityId,
+  ): boolean {
+    return slot >= 0 &&
+      slot < views.capacity &&
+      views.entityId[slot] === entityId &&
+      views.kind[slot] === ENTITY_STATE_KIND_UNIT &&
+      views.hp[slot] > 0;
+  }
+
+  private slotIsMotionCandidate(
+    views: EntityStateViews,
+    slot: number,
+    entityId: EntityId,
+  ): boolean {
+    return isEntityMotionDeltaCandidateSlot(views, slot, entityId);
+  }
+
+  private beginEntityMotionCandidateSlotMarkFrame(): void {
+    this.entityMotionCandidateSlotCount = 0;
+    if (this.entityMotionCandidateSlotMark >= MOTION_CANDIDATE_MARK_MAX) {
+      this.entityMotionCandidateSlotMarks.fill(0);
+      this.entityMotionCandidateSlotMark = 1;
+      return;
+    }
+    this.entityMotionCandidateSlotMark++;
+  }
+
+  private pushEntityMotionCandidateSlot(slot: number): void {
+    if (slot < 0 || !Number.isInteger(slot)) return;
+    if (slot >= this.entityMotionCandidateSlotMarks.length) {
+      let cap = this.entityMotionCandidateSlotMarks.length;
+      while (cap <= slot) cap *= 2;
+      const next = new Uint32Array(cap);
+      next.set(this.entityMotionCandidateSlotMarks);
+      this.entityMotionCandidateSlotMarks = next;
+    }
+    if (this.entityMotionCandidateSlotMarks[slot] === this.entityMotionCandidateSlotMark) {
+      return;
+    }
+    this.entityMotionCandidateSlotMarks[slot] = this.entityMotionCandidateSlotMark;
+    const count = this.entityMotionCandidateSlotCount;
+    if (count >= this.entityMotionCandidateSlotScratch.length) {
+      const next = new Uint32Array(this.entityMotionCandidateSlotScratch.length * 2);
+      next.set(this.entityMotionCandidateSlotScratch);
+      this.entityMotionCandidateSlotScratch = next;
+    }
+    this.entityMotionCandidateSlotScratch[count] = slot;
+    this.entityMotionCandidateSlotCount = count + 1;
   }
 
   private isEntityMotionDeltaCandidateFromState(
