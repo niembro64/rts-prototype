@@ -57,6 +57,7 @@ import {
 import { ServerSnapshotDirectWirePreencoder } from './ServerSnapshotDirectWirePreencoder';
 import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
 import {
+  dirtyFieldsAreMotionOnly,
   ENTITY_BASIC_TRANSFORM_DELTA_FIELDS,
   ENTITY_MOTION_DELTA_FIELDS,
   ENTITY_UNIT_SLAB_DELTA_FIELDS,
@@ -1123,6 +1124,7 @@ export class ServerSnapshotPublisher {
     id: EntityId,
     changedFields: number,
   ): boolean {
+    if (!dirtyFieldsAreMotionOnly(changedFields)) return false;
     const entity = world.getEntity(id);
     if (entity === undefined || !shouldDeferToSparseEntityMotionDelta(entity, changedFields)) {
       return false;

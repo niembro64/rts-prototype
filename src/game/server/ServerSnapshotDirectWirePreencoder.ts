@@ -55,6 +55,7 @@ import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import {
+  dirtyFieldsAreMotionOnly,
   ENTITY_BASIC_TRANSFORM_DELTA_FIELDS,
   ENTITY_MOTION_DELTA_FIELDS,
   ENTITY_UNIT_SLAB_DELTA_FIELDS,
@@ -932,6 +933,7 @@ export class ServerSnapshotDirectWirePreencoder {
     id: EntityId,
     changedFields: number,
   ): boolean {
+    if (!dirtyFieldsAreMotionOnly(changedFields)) return false;
     const entity = world.getEntity(id);
     return entity !== undefined && shouldDeferToSparseEntityMotionDelta(entity, changedFields);
   }
