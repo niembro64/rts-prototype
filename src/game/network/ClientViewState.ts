@@ -493,17 +493,17 @@ export class ClientViewState {
 
   private collectProjectileReflectionIds(
     events: NetworkServerSnapshot['audioEvents'],
-  ): Set<EntityId> {
+  ): Set<EntityId> | null {
     const ids = this._projectileReflectionIds;
     ids.clear();
-    if (events === undefined || events === null || events.length === 0) return ids;
+    if (events === undefined || events === null || events.length === 0) return null;
     for (let i = 0; i < events.length; i++) {
       const evt = events[i];
       if (evt.type === 'shieldImpact' && evt.entityId !== null) {
         ids.add(evt.entityId);
       }
     }
-    return ids;
+    return ids.size > 0 ? ids : null;
   }
 
   private writeRocketVelocityTarget(
@@ -548,7 +548,7 @@ export class ClientViewState {
     targetEntityId: EntityId | null,
     clearHomingTarget: boolean,
     now: number,
-    reflectedProjectileIds: Set<EntityId>,
+    reflectedProjectileIds: Set<EntityId> | null,
   ): void {
     const entity = this.entities.get(id);
     if (entity === undefined || entity.projectile === null) return;
@@ -561,7 +561,7 @@ export class ClientViewState {
     const velocityZ = deqVel(qvelZ);
     const shouldSmoothRocket =
       entity.projectile.config.shotProfile.runtime.isRocketLike === true &&
-      !reflectedProjectileIds.has(id);
+      (reflectedProjectileIds === null || !reflectedProjectileIds.has(id));
     if (shouldSmoothRocket) {
       this.writeRocketVelocityTarget(id, x, y, z, velocityX, velocityY, velocityZ, now);
     } else {
@@ -601,7 +601,7 @@ export class ClientViewState {
   private applyProjectileWireSourceVelocityUpdates(
     source: ProjectileSnapshotWireSource | undefined,
     now: number,
-    reflectedProjectileIds: Set<EntityId>,
+    reflectedProjectileIds: Set<EntityId> | null,
   ): boolean {
     if (source === undefined) return false;
     const rows = source.velocityUpdates;
