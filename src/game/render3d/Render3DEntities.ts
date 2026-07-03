@@ -561,6 +561,16 @@ export class Render3DEntities {
       if (this.vanishingUnits.size > 0 && this.vanishingUnits.has(entityId)) {
         this.vanishingUnits.finalize(entityId);
       }
+      const useLodProxy = unitRows.lodProxyAt(row);
+      let m = this.unitMeshes.get(entityId);
+      if (useLodProxy) {
+        this.lodProxyRenderer.pushUnit(e);
+        if (m !== undefined) {
+          if (pruneUnits) m.renderSeenToken = pruneToken;
+          this.deactivateUnitMeshForLod(entityId, m);
+        }
+        continue;
+      }
       const tx = unitRows.x[row];
       const ty = unitRows.y[row];
       const turrets = unitRows.turretsAt(row);
@@ -575,17 +585,6 @@ export class Render3DEntities {
       const unitBlueprintId = unitRows.unitBlueprintIds[row];
       const unitTurretCount = unitRows.turretCount[row];
       const fullUnitDetail = true;
-      const useLodProxy = unitRows.lodProxyAt(row);
-
-      let m = this.unitMeshes.get(entityId);
-      if (useLodProxy) {
-        this.lodProxyRenderer.pushUnit(e);
-        if (m !== undefined) {
-          if (pruneUnits) m.renderSeenToken = pruneToken;
-          this.deactivateUnitMeshForLod(entityId, m);
-        }
-        continue;
-      }
       if (
         m &&
         (
