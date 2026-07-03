@@ -264,7 +264,7 @@ export class WorldState {
   }
 
   refreshSupportSurfaceIndex(): void {
-    this.supportSurfaceSampler.refreshSupportSurfaceIndex(this.getUnitsAndBuildings());
+    this.supportSurfaceSampler.refreshSupportSurfaceIndex(this.getSupportSurfaceEntities());
   }
 
   sampleSupportSurface(
@@ -273,7 +273,7 @@ export class WorldState {
     options: SupportSurfaceQueryOptions = {},
     out?: WorldSupportSurface,
   ): WorldSupportSurface {
-    return this.supportSurfaceSampler.sampleSupportSurface(x, y, this.getUnitsAndBuildings(), options, out);
+    return this.supportSurfaceSampler.sampleSupportSurface(x, y, this.getSupportSurfaceEntities(), options, out);
   }
 
   sampleSupportSurfaceFromIndex(
@@ -731,6 +731,11 @@ export class WorldState {
   getUnitsAndBuildings(): Entity[] {
     this.rebuildCachesIfNeeded();
     return this.cache.getUnitsAndBuildings();
+  }
+
+  getSupportSurfaceEntities(): Entity[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getSupportSurfaceEntities();
   }
 
   getCombatTargetEntities(): Entity[] {

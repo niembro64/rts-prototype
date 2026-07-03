@@ -73,6 +73,11 @@ export class EntityCacheManager {
    *  (minimap, name labels) want both kinds with one iteration; without
    *  this they were back-to-back walking getUnits() then getBuildings(). */
   private cachedUnitsAndBuildings: Entity[] = [];
+  /** Entities whose authored top surface can be sampled as locomotion
+   *  support. This is usually just buildings/towers; most units have
+   *  supportSurface.none and should not be walked by the support index
+   *  rebuild every force tick. */
+  private cachedSupportSurfaceEntities: Entity[] = [];
   /** Every entity addressable by the combat targeting slab. Units,
    *  buildings, towers, and traveling shots all occupy target rows, so
    *  the per-tick stamp walks this maintained set instead of stitching
@@ -147,6 +152,7 @@ export class EntityCacheManager {
     this.cachedShieldPanelUnits.length = 0;
     this.cachedAll.length = 0;
     this.cachedUnitsAndBuildings.length = 0;
+    this.cachedSupportSurfaceEntities.length = 0;
     this.cachedCombatTargetEntities.length = 0;
     for (const list of this.cachedUnitsByPlayer.values()) list.length = 0;
     for (const list of this.cachedBuildingsByPlayer.values()) list.length = 0;
@@ -197,6 +203,9 @@ export class EntityCacheManager {
         addEntityToList(this.cachedUnits, entity, sortedInsert);
         addEntityToList(this.cachedUnitsAndBuildings, entity, sortedInsert);
         addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
+        if (entity.unit !== null && entity.unit.supportSurface.kind === 'discTop') {
+          addEntityToList(this.cachedSupportSurfaceEntities, entity, sortedInsert);
+        }
         if (ownership !== null) {
           addEntityToList(this.getOrCreateUnitsByPlayer(ownership.playerId), entity, sortedInsert);
         }
@@ -249,6 +258,9 @@ export class EntityCacheManager {
         addEntityToList(this.cachedBuildings, entity, sortedInsert);
         addEntityToList(this.cachedUnitsAndBuildings, entity, sortedInsert);
         addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
+        if (entity.building !== null && entity.building.supportSurface.kind === 'boxTop') {
+          addEntityToList(this.cachedSupportSurfaceEntities, entity, sortedInsert);
+        }
         if (ownership !== null) {
           addEntityToList(this.getOrCreateBuildingsByPlayer(ownership.playerId), entity, sortedInsert);
         }
@@ -316,6 +328,7 @@ export class EntityCacheManager {
     removeEntityFromList(this.cachedBeamUnits, entity);
     removeEntityFromList(this.cachedShieldPanelUnits, entity);
     removeEntityFromList(this.cachedUnitsAndBuildings, entity);
+    removeEntityFromList(this.cachedSupportSurfaceEntities, entity);
     removeEntityFromList(this.cachedCombatTargetEntities, entity);
     for (const list of this.cachedUnitsByPlayer.values()) removeEntityFromList(list, entity);
     for (const list of this.cachedBuildingsByPlayer.values()) removeEntityFromList(list, entity);
@@ -373,6 +386,10 @@ export class EntityCacheManager {
 
   getUnitsAndBuildings(): Entity[] {
     return this.cachedUnitsAndBuildings;
+  }
+
+  getSupportSurfaceEntities(): Entity[] {
+    return this.cachedSupportSurfaceEntities;
   }
 
   getCombatTargetEntities(): Entity[] {

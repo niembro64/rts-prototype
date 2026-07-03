@@ -136,7 +136,6 @@ export class SupportSurfaceIndex {
     if (building !== null) {
       const support = building.supportSurface;
       if (support.kind !== 'boxTop') {
-        this.removeProxyById(entity.id);
         return;
       }
       kind = 'building';
@@ -146,7 +145,6 @@ export class SupportSurfaceIndex {
     } else {
       const unit = entity.unit;
       if (unit === null || unit.hp <= 0 || unit.supportSurface.kind !== 'discTop') {
-        this.removeProxyById(entity.id);
         return;
       }
       kind = 'unit';
