@@ -224,6 +224,7 @@ export class UnitForceSystem {
     ensureUnitForceProfileTable(sim);
 
     const forceAccumulator = this.simulation.getForceAccumulator();
+    const hasExternalForces = forceAccumulator.activeEntityCount() > 0;
 
     const activeSlots = this.collectPhysicsForceUnitSlots();
     if (activeSlots.length === 0) return;
@@ -339,7 +340,7 @@ export class UnitForceSystem {
       if (isFlying && liftLocomotionActive) flags |= UF_FLAG_IS_FLYING;
       if (liftLocomotionActive) flags |= UF_FLAG_IS_AIRBORNE;
 
-      const externalForce = forceAccumulator.getFinalForce(entity.id);
+      const externalForce = hasExternalForces ? forceAccumulator.getFinalForce(entity.id) : null;
       if (externalForce !== null) {
         flags |= UF_FLAG_HAS_EXTERNAL_FORCE;
         _forceRows[base + UF_ROW_EXTERNAL_FX] = externalForce.fx;
