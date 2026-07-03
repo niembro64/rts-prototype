@@ -126,11 +126,14 @@ import {
 } from './snapshotProjectileWirePack';
 import {
   forEachProjectileWireSourceSpawnFromSource,
-  forEachProjectileWireSourceBeamUpdateFieldsFromSource,
-  forEachProjectileWireSourceDespawnFromSource,
-  forEachProjectileWireSourceVelocityUpdateFromSource,
   getActiveProjectileSnapshotWireSource,
+  PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE,
+  PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE,
+  PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T,
+  PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+  PROJECTILE_VELOCITY_WIRE_STRIDE,
   projectileWireSourceHasDirectlyConsumableRows,
+  type ProjectileSnapshotWireSource,
 } from './stateSerializerProjectiles';
 import {
   addSnapshotMaterializationStageToSnapshot,
@@ -580,6 +583,87 @@ export class ClientViewState {
     } else {
       this.projectileStore.markVelocityUpdateActive(entity, id);
     }
+  }
+
+  private applyProjectileWireSourceDespawns(
+    source: ProjectileSnapshotWireSource | undefined,
+  ): boolean {
+    if (source === undefined) return false;
+    const rows = source.despawns;
+    if (rows.count === 0) return false;
+    const values = rows.values;
+    for (let i = 0; i < rows.count; i++) {
+      this.deleteEntityLocalState(values[i] as EntityId);
+    }
+    return true;
+  }
+
+  private applyProjectileWireSourceVelocityUpdates(
+    source: ProjectileSnapshotWireSource | undefined,
+    now: number,
+    reflectedProjectileIds: Set<EntityId>,
+  ): boolean {
+    if (source === undefined) return false;
+    const rows = source.velocityUpdates;
+    if (rows.count === 0) return false;
+    const values = rows.values;
+    for (let i = 0; i < rows.count; i++) {
+      const base = i * PROJECTILE_VELOCITY_WIRE_STRIDE;
+      const targetEntityId = values[base + 8];
+      this.applyProjectileVelocityUpdateFields(
+        values[base + 0] as EntityId,
+        values[base + 1],
+        values[base + 2],
+        values[base + 3],
+        values[base + 4],
+        values[base + 5],
+        values[base + 6],
+        targetEntityId > 0 ? targetEntityId as EntityId : null,
+        values[base + 7] !== 0,
+        now,
+        reflectedProjectileIds,
+      );
+    }
+    return true;
+  }
+
+  private applyProjectileWireSourceBeamUpdates(
+    source: ProjectileSnapshotWireSource | undefined,
+    now: number,
+  ): boolean {
+    if (source === undefined) return false;
+    const rows = source.beamUpdates;
+    if (rows.count === 0) return false;
+    const headers = rows.values;
+    const pointValues = source.beamPoints.values;
+    let pointOffset = 0;
+    for (let i = 0; i < rows.count; i++) {
+      const base = i * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
+      const flags = headers[base + 1];
+      const pointCount = Math.max(0, headers[base + 3]) | 0;
+      if (pointOffset + pointCount > source.beamPoints.count) return i > 0;
+      let endpointDamageable: boolean | null;
+      if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE) !== 0) {
+        endpointDamageable = true;
+      } else if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE) !== 0) {
+        endpointDamageable = false;
+      } else {
+        endpointDamageable = null;
+      }
+      this.projectileStore.applyBeamUpdateWireFields(
+        headers[base + 0] as EntityId,
+        (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0
+          ? headers[base + 2]
+          : null,
+        endpointDamageable,
+        pointValues,
+        pointOffset,
+        pointCount,
+        now,
+      );
+      pointOffset += pointCount;
+    }
+    return true;
   }
 
   private copyNetworkTurretsToTarget(
@@ -2591,25 +2675,7 @@ export class ClientViewState {
       // start/end/reflection points so the client can draw beams without
       // running local mirror/unit/building beam traces in applyPrediction.
       const appliedDirectBeamUpdates = directProjectileRows
-        ? forEachProjectileWireSourceBeamUpdateFieldsFromSource(
-            directProjectileSource,
-            (
-              id,
-              obstructionT,
-              endpointDamageable,
-              pointValues,
-              pointOffset,
-              pointCount,
-            ) => this.projectileStore.applyBeamUpdateWireFields(
-              id as EntityId,
-              obstructionT,
-              endpointDamageable,
-              pointValues,
-              pointOffset,
-              pointCount,
-              now,
-            ),
-          )
+        ? this.applyProjectileWireSourceBeamUpdates(directProjectileSource, now)
         : false;
       const beamUpdates = appliedDirectBeamUpdates ? undefined : projectiles.beamUpdates;
       if (beamUpdates !== undefined && beamUpdates !== null) {
@@ -2620,10 +2686,7 @@ export class ClientViewState {
 
       // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
       const appliedDirectDespawns = directProjectileRows
-        ? forEachProjectileWireSourceDespawnFromSource(
-            directProjectileSource,
-            (id) => this.deleteEntityLocalState(id as EntityId),
-          )
+        ? this.applyProjectileWireSourceDespawns(directProjectileSource)
         : false;
       const appliedPackedDespawns = !appliedDirectDespawns && packedProjectiles !== undefined
         ? forEachPackedProjectileDespawn(
@@ -2646,31 +2709,10 @@ export class ClientViewState {
       // keeps dead-reckoning, while ClientProjectilePrediction advances the
       // target and drifts position + velocity toward it each frame.
       const appliedDirectVelocityUpdates = directProjectileRows
-        ? forEachProjectileWireSourceVelocityUpdateFromSource(
+        ? this.applyProjectileWireSourceVelocityUpdates(
             directProjectileSource,
-            (
-              id,
-              qposX,
-              qposY,
-              qposZ,
-              qvelX,
-              qvelY,
-              qvelZ,
-              targetEntityId,
-              clearHomingTarget,
-            ) => this.applyProjectileVelocityUpdateFields(
-              id as EntityId,
-              qposX,
-              qposY,
-              qposZ,
-              qvelX,
-              qvelY,
-              qvelZ,
-              targetEntityId as EntityId | null,
-              clearHomingTarget,
-              now,
-              reflectedProjectileIds,
-            ),
+            now,
+            reflectedProjectileIds,
           )
         : false;
       const appliedPackedVelocityUpdates = !appliedDirectVelocityUpdates && packedProjectiles !== undefined
