@@ -10,7 +10,11 @@ import { getUnitGroundZ } from '../unitGeometry';
 import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';
 import { getBuildingConfig } from '../buildConfigs';
 import { GRAVITY } from '../../../config';
-import { readCombatTargetingTurretMountKinematicsInto } from './targetingInputStamping';
+import {
+  readCombatTargetingTurretMountKinematicsFromContextInto,
+  readCombatTargetingTurretMountKinematicsInto,
+  type CombatTargetingEntityReadContext,
+} from './targetingInputStamping';
 
 /** True iff the entity carries the optional `commander` block — i.e.
  *  it's the player's commander unit. Centralized so a future tweak to
@@ -135,12 +139,14 @@ type WeaponKinematicsOptions = {
   dtMs: number | undefined;
   unitGroundZ: number | undefined;
   surfaceN: SurfaceNormal | undefined;
+  targetingContext?: CombatTargetingEntityReadContext | null;
 };
 
 type WeaponWorldMountOptions = {
   currentTick: number | undefined;
   unitGroundZ: number | undefined;
   surfaceN: SurfaceNormal | undefined;
+  targetingContext?: CombatTargetingEntityReadContext | null;
 };
 
 export function resolveWeaponWorldMount(
@@ -165,8 +171,22 @@ export function resolveWeaponWorldMount(
   // source of truth and saves a chassis-tilt recompute.
   if (
     currentTick !== undefined &&
-    readCombatTargetingTurretMountKinematicsInto(
-      unit, turretIndex, currentTick, out, _mountKinematicsVelScratch,
+    (
+      options?.targetingContext !== undefined && options.targetingContext !== null
+        ? readCombatTargetingTurretMountKinematicsFromContextInto(
+          options.targetingContext,
+          turretIndex,
+          currentTick,
+          out,
+          _mountKinematicsVelScratch,
+        )
+        : readCombatTargetingTurretMountKinematicsInto(
+          unit,
+          turretIndex,
+          currentTick,
+          out,
+          _mountKinematicsVelScratch,
+        )
     )
   ) {
     return out;
@@ -232,8 +252,22 @@ export function updateWeaponWorldKinematics(
   // velocity inheritance) see the same numbers.
   if (
     currentTick !== undefined &&
-    readCombatTargetingTurretMountKinematicsInto(
-      unit, turretIndex, currentTick, out, _mountKinematicsVelScratch,
+    (
+      options.targetingContext !== undefined && options.targetingContext !== null
+        ? readCombatTargetingTurretMountKinematicsFromContextInto(
+          options.targetingContext,
+          turretIndex,
+          currentTick,
+          out,
+          _mountKinematicsVelScratch,
+        )
+        : readCombatTargetingTurretMountKinematicsInto(
+          unit,
+          turretIndex,
+          currentTick,
+          out,
+          _mountKinematicsVelScratch,
+        )
     )
   ) {
     worldPos.x = out.x;

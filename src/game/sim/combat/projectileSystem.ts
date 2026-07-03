@@ -829,6 +829,7 @@ export function fireTurrets(
           dtMs,
           unitGroundZ,
           surfaceN: unit.unit !== null ? unit.unit.surfaceNormal : undefined,
+          targetingContext: hasTargetingContext ? _fireTargetingContext : null,
         },
         _fireWeaponMount,
       );

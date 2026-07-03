@@ -572,6 +572,22 @@ export function readCombatTargetingTurretMountKinematicsInto(
 ): boolean {
   const context = getCombatTargetingMountReadContext(entity, currentTick);
   if (context === null) return false;
+  return readCombatTargetingTurretMountKinematicsFromContextInto(
+    context,
+    turretIndex,
+    currentTick,
+    outPos,
+    outVel,
+  );
+}
+
+export function readCombatTargetingTurretMountKinematicsFromContextInto(
+  context: CombatTargetingEntityReadContext,
+  turretIndex: number,
+  currentTick: number,
+  outPos: { x: number; y: number; z: number },
+  outVel: { x: number; y: number; z: number },
+): boolean {
   if (turretIndex < 0 || turretIndex >= context.turretCount) return false;
   const views = context.views;
   const idx = context.turretBase + turretIndex;
