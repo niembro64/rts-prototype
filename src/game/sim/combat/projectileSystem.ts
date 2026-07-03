@@ -44,8 +44,6 @@ import {
 import { isBuildBlockingActivation } from '../buildableHelpers';
 import {
   dropTurretLockMidTick,
-  readActiveTurretMaskForUnit,
-  readFiringTurretMaskForUnit,
   readTurretBurstCooldownForFire,
   readTurretCooldownForFire,
   refreshSlabActivityMasksForUnit,
@@ -71,7 +69,10 @@ import {
   getSimWasm,
 } from '../../sim-wasm/init';
 import {
+  getCombatTargetingEntityReadContext,
+  readCombatTargetingTurretFsmFromContextInto,
   readCombatTargetingTurretFsmInto,
+  type CombatTargetingEntityReadContext,
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
 import {
@@ -106,6 +107,12 @@ type PendingLaunchVelocityFinalization = {
 };
 const _pendingLaunchVelocityFinalizations: PendingLaunchVelocityFinalization[] = [];
 const _pendingLaunchVelocityIds = new Set<EntityId>();
+const _fireTargetingContext: CombatTargetingEntityReadContext = {
+  views: null as never,
+  slot: -1,
+  turretBase: -1,
+  turretCount: 0,
+};
 const TWO_PI = Math.PI * 2;
 const PROJECTILE_VELOCITY_REPORT_MAGNITUDE_RATIO = 0.0001;
 const PROJECTILE_VELOCITY_REPORT_DIRECTION_RADIANS = snapshotRotationThresholdRadians(0.0001);
@@ -739,8 +746,13 @@ export function fireTurrets(
     const combat = unit.combat;
     const playerId = unit.ownership.playerId;
     const { cos: unitCos, sin: unitSin } = getTransformCosSin(unit.transform);
-    const firingMask = readFiringTurretMaskForUnit(unit);
-    const activeMask = readActiveTurretMaskForUnit(unit);
+    const hasTargetingContext = getCombatTargetingEntityReadContext(unit, _fireTargetingContext);
+    const firingMask = hasTargetingContext
+      ? _fireTargetingContext.views.firingTurretMask[_fireTargetingContext.slot]
+      : 0;
+    const activeMask = hasTargetingContext
+      ? _fireTargetingContext.views.activeTurretMask[_fireTargetingContext.slot]
+      : 0;
     const currentTick = world.getTick();
     const unitGroundZ = getUnitGroundZ(unit);
     const hostShotArmingRadius = getHostShotArmingRadius(unit);
@@ -759,7 +771,8 @@ export function fireTurrets(
       if (!turretMaskIncludes(mask, weaponIndex)) continue;
       if (config.passive) continue; // Passive turrets track/engage but never fire
       const isBeamWeapon = isRayConfig(shot);
-      const hasTargetingFsm = readCombatTargetingTurretFsmInto(unit, weaponIndex, _fireFsm);
+      const hasTargetingFsm = hasTargetingContext &&
+        readCombatTargetingTurretFsmFromContextInto(_fireTargetingContext, weaponIndex, _fireFsm);
       const targetingTargetId = hasTargetingFsm ? _fireFsm.targetId : (weapon.target ?? -1);
       if (isProjectileShot(shot) && !weapon.ballisticAimInRange) {
         // Drop the lock everywhere in one call: JS Turret target +

@@ -121,7 +121,7 @@ function getHostLockOnMasks(entity: Entity): LockOnMasks {
   return EMPTY_LOCK_ON_MASKS;
 }
 
-type CombatTargetingStateViews = {
+export type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
   length: number;
   entityCapacity: number;
@@ -151,6 +151,13 @@ type CombatTargetingStateViews = {
   sensorCoverageMask: Uint32Array;
   fullSightCoverageMask: Uint32Array;
   detectorCoverageMask: Uint32Array;
+};
+
+export type CombatTargetingEntityReadContext = {
+  views: CombatTargetingStateViews;
+  slot: number;
+  turretBase: number;
+  turretCount: number;
 };
 
 export type CombatTargetingTurretStateCode =
@@ -398,6 +405,36 @@ function getCombatTargetingTurretStateIndexFromViews(
   return slot * views.maxTurretsPerEntity + turretIndex;
 }
 
+export function getCombatTargetingEntityReadContext(
+  entity: Entity,
+  out: CombatTargetingEntityReadContext,
+): boolean {
+  const sim = getSimWasm();
+  if (sim === undefined) return false;
+  const views = getCombatTargetingStateViews(sim);
+  const slot = entitySlotRegistry.getEntitySlot(entity);
+  if (slot < 0 || slot >= views.entityCapacity) return false;
+  out.views = views;
+  out.slot = slot;
+  out.turretBase = slot * views.maxTurretsPerEntity;
+  out.turretCount = views.turretCountPerEntity[slot];
+  return true;
+}
+
+export function readCombatTargetingTurretFsmFromContextInto(
+  context: CombatTargetingEntityReadContext,
+  turretIndex: number,
+  out: CombatTargetingTurretFsmOut,
+): boolean {
+  if (turretIndex < 0 || turretIndex >= context.turretCount) return false;
+  const idx = context.turretBase + turretIndex;
+  const views = context.views;
+  out.stateCode = views.state[idx] as CombatTargetingTurretStateCode;
+  const targetId = views.targetId[idx];
+  out.targetId = targetId < 0 ? -1 : targetId;
+  return true;
+}
+
 /** Read the Rust-owned target/state tuple for one turret into `out`.
  *  Returns false when the entity has no stamped targeting slab row
  *  (for example on a non-sim client path), so callers can fall back
@@ -424,6 +461,20 @@ function readCombatTargetingTurretFsmFromSimInto(
   out.stateCode = views.state[idx] as CombatTargetingTurretStateCode;
   const targetId = views.targetId[idx];
   out.targetId = targetId < 0 ? -1 : targetId;
+  return true;
+}
+
+export function readCombatTargetingTurretAimFromContextInto(
+  context: CombatTargetingEntityReadContext,
+  turretIndex: number,
+  out: CombatTargetingTurretAimOut,
+): boolean {
+  if (turretIndex < 0 || turretIndex >= context.turretCount) return false;
+  const idx = context.turretBase + turretIndex;
+  const views = context.views;
+  out.hasSolution = views.aimHasSolution[idx] !== 0;
+  out.yaw = views.aimYaw[idx];
+  out.pitch = views.aimPitch[idx];
   return true;
 }
 

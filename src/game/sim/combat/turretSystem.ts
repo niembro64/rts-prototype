@@ -27,13 +27,14 @@ import type { CombatComponent, Entity, Turret } from '../types';
 import { turretMaskIncludes } from './combatUtils';
 import {
   dropTurretLockMidTick,
-  readActiveTurretMaskForUnit,
   refreshSlabActivityMasksForUnit,
 } from './combatActivitySlab';
 import { isBuildBlockingActivation } from '../buildableHelpers';
 import {
-  readCombatTargetingTurretAimInto,
-  readCombatTargetingTurretFsmInto,
+  getCombatTargetingEntityReadContext,
+  readCombatTargetingTurretAimFromContextInto,
+  readCombatTargetingTurretFsmFromContextInto,
+  type CombatTargetingEntityReadContext,
   type CombatTargetingTurretAimOut,
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
@@ -52,6 +53,12 @@ const _turretAimPose: CombatTargetingTurretAimOut = {
 const _turretRotationFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
+};
+const _turretTargetingContext: CombatTargetingEntityReadContext = {
+  views: null as never,
+  slot: -1,
+  turretBase: -1,
+  turretCount: 0,
 };
 const _turretRotationWeapons: Turret[] = [];
 const _turretRotationRefreshUnits: Entity[] = [];
@@ -212,7 +219,10 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
     if (isBuildBlockingActivation(unit.buildable)) continue;
     _turretRotationRefreshUnits.push(unit);
 
-    const activeMask = readActiveTurretMaskForUnit(unit);
+    const hasTargetingContext = getCombatTargetingEntityReadContext(unit, _turretTargetingContext);
+    const activeMask = hasTargetingContext
+      ? _turretTargetingContext.views.activeTurretMask[_turretTargetingContext.slot]
+      : 0;
 
     const turrets = combat.turrets;
     for (let weaponIndex = 0; weaponIndex < turrets.length; weaponIndex++) {
@@ -243,11 +253,12 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
       let targetPitch = 0;
       let hasActiveTarget = false;
       weapon.ballisticAimInRange = true;
-      const targetingTargetId = readCombatTargetingTurretFsmInto(
-        unit,
-        weaponIndex,
-        _turretRotationFsm,
-      )
+      const targetingTargetId = hasTargetingContext &&
+        readCombatTargetingTurretFsmFromContextInto(
+          _turretTargetingContext,
+          weaponIndex,
+          _turretRotationFsm,
+        )
         ? _turretRotationFsm.targetId
         : (weapon.target ?? -1);
 
@@ -256,7 +267,14 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           targetAngle = weapon.rotation;
           targetPitch = weapon.pitch;
           hasActiveTarget = true;
-        } else if (readCombatTargetingTurretAimInto(unit, weaponIndex, _turretAimPose)) {
+        } else if (
+          hasTargetingContext &&
+          readCombatTargetingTurretAimFromContextInto(
+            _turretTargetingContext,
+            weaponIndex,
+            _turretAimPose,
+          )
+        ) {
           weapon.ballisticAimInRange = _turretAimPose.hasSolution;
           if (!_turretAimPose.hasSolution) {
             // Drop the lock everywhere in one call (JS Turret target +
@@ -276,7 +294,14 @@ export function updateTurretRotation(world: WorldState, dtMs: number, units: rea
           targetAngle = weapon.rotation;
           targetPitch = weapon.pitch;
           hasActiveTarget = true;
-        } else if (readCombatTargetingTurretAimInto(unit, weaponIndex, _turretAimPose)) {
+        } else if (
+          hasTargetingContext &&
+          readCombatTargetingTurretAimFromContextInto(
+            _turretTargetingContext,
+            weaponIndex,
+            _turretAimPose,
+          )
+        ) {
           weapon.ballisticAimInRange = _turretAimPose.hasSolution;
           if (!_turretAimPose.hasSolution) {
             // Drop the lock everywhere in one call (JS Turret target +
