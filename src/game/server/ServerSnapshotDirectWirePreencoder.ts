@@ -51,7 +51,7 @@ import type {
   SimEvent,
 } from '../sim/combat';
 import { getSimWasm } from '../sim-wasm/init';
-import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
+import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import {
@@ -59,6 +59,7 @@ import {
   ENTITY_BASIC_TRANSFORM_DELTA_FIELDS,
   ENTITY_MOTION_DELTA_FIELDS,
   ENTITY_UNIT_SLAB_DELTA_FIELDS,
+  isEntityMotionDeltaCandidateSlot,
   shouldDeferToSparseEntityMotionDelta,
 } from './snapshotMotionDeltaPolicy';
 
@@ -849,7 +850,13 @@ export class ServerSnapshotDirectWirePreencoder {
         const slot = input.dirtySlots[i] ?? -1;
         if (
           changedFields !== undefined &&
-          this.shouldDeferDirtyEntityToSparseMotion(input.world, id, changedFields)
+          this.shouldDeferDirtyEntityToSparseMotion(
+            input.world,
+            id,
+            changedFields,
+            slot,
+            entityViews,
+          )
         ) {
           continue;
         }
@@ -910,7 +917,15 @@ export class ServerSnapshotDirectWirePreencoder {
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIds.has(id)) continue;
       const slot = input.dirtySlots[i] ?? -1;
-      if (this.shouldDeferDirtyEntityToSparseMotion(input.world, id, input.dirtyFields[i])) continue;
+      if (
+        this.shouldDeferDirtyEntityToSparseMotion(
+          input.world,
+          id,
+          input.dirtyFields[i],
+          slot,
+          entityViews,
+        )
+      ) continue;
       if (
         this.tryAppendUnitSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews, slot) ||
         this.tryAppendBuildingSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews, slot)
@@ -941,8 +956,22 @@ export class ServerSnapshotDirectWirePreencoder {
     world: WorldState,
     id: EntityId,
     changedFields: number,
+    slot = -1,
+    entityViews: EntityStateViews | null = entitySlotRegistry.getViews(),
   ): boolean {
     if (!dirtyFieldsAreMotionOnly(changedFields)) return false;
+    let resolvedSlot = slot;
+    if (
+      entityViews !== null &&
+      (
+        resolvedSlot < 0 ||
+        resolvedSlot >= entityViews.capacity ||
+        entityViews.entityId[resolvedSlot] !== id
+      )
+    ) {
+      resolvedSlot = entitySlotRegistry.getSlot(id);
+    }
+    if (isEntityMotionDeltaCandidateSlot(entityViews, resolvedSlot, id)) return true;
     const entity = world.getEntity(id);
     return entity !== undefined && shouldDeferToSparseEntityMotionDelta(entity, changedFields);
   }

@@ -632,6 +632,7 @@ export class ServerSnapshotPublisher {
       input.world,
       this.dirtyIdsBuf,
       this.dirtyFieldsBuf,
+      this.dirtySlotsBuf,
     );
 
     const hasProjectileEvents =
@@ -986,7 +987,14 @@ export class ServerSnapshotPublisher {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIdSet.has(id)) continue;
-      if (this.shouldDeferDirtyEntityToSparseMotion(world, id, dirtyFields[i])) continue;
+      if (
+        this.shouldDeferDirtyEntityToSparseMotion(
+          world,
+          id,
+          dirtyFields[i],
+          dirtySlots[i],
+        )
+      ) continue;
       if (this.tryPushSlabDeltaEntityRowFromState(entities, id, dirtyFields[i], dirtySlots[i])) {
         emittedIds.add(id);
         continue;
@@ -1027,7 +1035,12 @@ export class ServerSnapshotPublisher {
       const changedFields = previousVisibleEntityIds.has(id) ? dirtyFields[i] : undefined;
       if (
         changedFields !== undefined &&
-        this.shouldDeferDirtyEntityToSparseMotion(world, id, changedFields)
+        this.shouldDeferDirtyEntityToSparseMotion(
+          world,
+          id,
+          changedFields,
+          dirtySlots[i],
+        )
       ) {
         continue;
       }
@@ -1129,8 +1142,25 @@ export class ServerSnapshotPublisher {
     world: WorldState,
     id: EntityId,
     changedFields: number,
+    slot = -1,
+    entityViews: EntityStateViews | null = entitySlotRegistry.getViews(),
   ): boolean {
     if (!dirtyFieldsAreMotionOnly(changedFields)) return false;
+    let resolvedSlot = slot;
+    if (
+      entityViews !== null &&
+      (
+        resolvedSlot < 0 ||
+        resolvedSlot >= entityViews.capacity ||
+        entityViews.entityId[resolvedSlot] !== id
+      )
+    ) {
+      resolvedSlot = entitySlotRegistry.getSlot(id);
+    }
+    if (isEntityMotionDeltaCandidateSlot(entityViews, resolvedSlot, id)) {
+      this.deferredEntityMotionIds.add(id);
+      return true;
+    }
     const entity = world.getEntity(id);
     if (entity === undefined || !shouldDeferToSparseEntityMotionDelta(entity, changedFields)) {
       return false;
@@ -1143,15 +1173,17 @@ export class ServerSnapshotPublisher {
     world: WorldState,
     dirtyIds: readonly EntityId[],
     dirtyFields: readonly number[],
+    dirtySlots: readonly number[],
   ): void {
+    const entityViews = entitySlotRegistry.getViews();
     for (let i = 0; i < dirtyIds.length; i++) {
-      const entity = world.getEntity(dirtyIds[i]);
-      if (
-        entity !== undefined &&
-        shouldDeferToSparseEntityMotionDelta(entity, dirtyFields[i])
-      ) {
-        this.deferredEntityMotionIds.add(entity.id);
-      }
+      this.shouldDeferDirtyEntityToSparseMotion(
+        world,
+        dirtyIds[i],
+        dirtyFields[i],
+        dirtySlots[i],
+        entityViews,
+      );
     }
   }
 
