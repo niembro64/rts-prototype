@@ -124,6 +124,7 @@ let _forceFlags: Uint32Array = new Uint32Array(0);
 let _forceRows: Float64Array = new Float64Array(0);
 let _forceOutFlags: Uint32Array = new Uint32Array(0);
 let _forceEntities: (Entity | undefined)[] = [];
+const _forceTerrainSurface = createWorldSupportSurface();
 const _forceSupportSurface = createWorldSupportSurface();
 const _forceProbeSupportSurface = createWorldSupportSurface();
 
@@ -207,6 +208,7 @@ export class UnitForceSystem {
   private physicsActiveUnitSlotMarks = new Uint32Array(1024);
   private physicsActiveUnitSlotMark = 1;
   private waterDryMaskCache = new Map<number, number>();
+  private waterProbeSupportIndexReady = false;
 
   constructor(world: WorldState, simulation: Simulation, physics: PhysicsEngine3D) {
     this.world = world;
@@ -226,11 +228,9 @@ export class UnitForceSystem {
 
     const activeSlots = this.collectPhysicsForceUnitSlots();
     if (activeSlots.length === 0) return;
-    // Support-surface indexing still reads JS Entity transforms, so keep this
-    // bridge until support providers are slot-native.
-    this.syncActiveBodyTransforms(activeSlots, this.physicsForceSlotEntities);
-    this.world.refreshSupportSurfaceIndex();
+    this.resolveActiveBodyEntities(activeSlots, this.physicsForceSlotEntities);
     this.waterDryMaskCache.clear();
+    this.waterProbeSupportIndexReady = false;
 
     ensureForceBatchCapacity(activeSlots.length);
 
@@ -247,16 +247,7 @@ export class UnitForceSystem {
       _forceSlots[count] = body.slot;
       _forceEntities[count] = entity;
       _forceRows[base + UF_ROW_ROTATION] = entity.transform.rotation;
-      const supportSurface = this.world.sampleSupportSurfaceFromIndex(
-        body.x,
-        body.y,
-        {
-          bodyZ: body.z,
-          groundOffset: body.groundOffset,
-          ignoreEntityId: entity.id,
-        },
-        _forceSupportSurface,
-      );
+      const supportSurface = this.sampleBodySupportSurface(body, _forceSupportSurface);
       const supportSurfaceContact =
         supportSurface.supportKind === 'building' || supportSurface.supportKind === 'unit';
       const supportPenetration = supportSurface.groundZ - (body.z - body.groundOffset);
@@ -445,10 +436,10 @@ export class UnitForceSystem {
             const probe = radius + 5;
             const aheadX = body.x + useDirX * probe;
             const aheadY = body.y + useDirY * probe;
-            const aheadSurface = this.world.sampleSupportSurfaceFromIndex(
+            const aheadSurface = this.sampleWaterProbeSurface(
               aheadX,
               aheadY,
-              { ignoreEntityId: entity.id },
+              entity.id,
               _forceProbeSupportSurface,
             );
             if (aheadSurface.materialKind === 'water') {
@@ -721,19 +712,47 @@ export class UnitForceSystem {
     this.physicsForceUnitSlotsBuf[this.physicsForceUnitSlotCount++] = slot;
   }
 
-  private syncActiveBodyTransforms(
+  private resolveActiveBodyEntities(
     activeSlots: Uint32Array,
     activeEntities: (Entity | undefined)[],
   ): void {
     for (let i = 0; i < activeSlots.length; i++) {
-      const entity = entitySlotRegistry.resolveSlot(activeSlots[i]);
-      activeEntities[i] = entity;
-      if (entity === undefined || entity.body === null) continue;
-      const body = entity.body.physicsBody;
-      entity.transform.x = body.x;
-      entity.transform.y = body.y;
-      entity.transform.z = body.z;
+      activeEntities[i] = entitySlotRegistry.resolveSlot(activeSlots[i]);
     }
+  }
+
+  private sampleBodySupportSurface(
+    body: NonNullable<Entity['body']>['physicsBody'],
+    out: SupportSurfaceContact,
+  ): SupportSurfaceContact {
+    const x = body.x;
+    const y = body.y;
+    const terrainSurface = this.world.writeTerrainSupportSurfaceAt(
+      x,
+      y,
+      this.world.getGroundZ(x, y),
+      this.world.getCachedSurfaceNormal(x, y),
+      _forceTerrainSurface,
+    );
+    return this.physics.sampleSupportSurface(body, terrainSurface, out);
+  }
+
+  private ensureWaterProbeSupportIndex(): void {
+    if (this.waterProbeSupportIndexReady) return;
+    this.world.refreshSupportSurfaceIndex();
+    this.waterProbeSupportIndexReady = true;
+  }
+
+  private sampleWaterProbeSurface(
+    x: number,
+    y: number,
+    ignoreEntityId: EntityId | undefined,
+    out: SupportSurfaceContact,
+  ): SupportSurfaceContact {
+    this.ensureWaterProbeSupportIndex();
+    return ignoreEntityId === undefined
+      ? this.world.sampleSupportSurfaceFromIndex(x, y, undefined, out)
+      : this.world.sampleSupportSurfaceFromIndex(x, y, { ignoreEntityId }, out);
   }
 
   private waterOutCacheKey(x: number, y: number, probeR: number): number {
@@ -757,10 +776,10 @@ export class UnitForceSystem {
 
     let mask = 0;
     for (let i = 0; i < WATER_PROBE_DX.length; i++) {
-      const surface = this.world.sampleSupportSurfaceFromIndex(
+      const surface = this.sampleWaterProbeSurface(
         x + WATER_PROBE_DX[i] * probeR,
         y + WATER_PROBE_DY[i] * probeR,
-        {},
+        undefined,
         _forceProbeSupportSurface,
       );
       if (surface.materialKind !== 'water') {
