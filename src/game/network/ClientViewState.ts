@@ -1570,6 +1570,8 @@ export class ClientViewState {
     }
 
     factory.repeatProduction = values[base + 37] !== 0;
+    for (const key of Object.keys(factory.productionQuotas)) delete factory.productionQuotas[key];
+    for (const key of Object.keys(factory.productionQuotaCounts)) delete factory.productionQuotaCounts[key];
     factory.currentShellId = null;
     factory.currentBuildProgress = values[base + 26];
     factory.isProducing = values[base + 27] !== 0;

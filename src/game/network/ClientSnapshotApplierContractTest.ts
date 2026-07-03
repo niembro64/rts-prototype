@@ -1474,6 +1474,83 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   packedFactoryView.assertRenderEntityStateParity(factoryId);
 
+  const quotaFreeFactory = factorySource.factory;
+  quotaFreeFactory.selectedUnitBlueprintId = 'unitTick';
+  quotaFreeFactory.repeatProduction = true;
+  quotaFreeFactory.productionQueue = ['unitBee'];
+  for (const key of Object.keys(quotaFreeFactory.productionQuotas)) {
+    delete quotaFreeFactory.productionQuotas[key];
+  }
+  for (const key of Object.keys(quotaFreeFactory.productionQuotaCounts)) {
+    delete quotaFreeFactory.productionQuotaCounts[key];
+  }
+  quotaFreeFactory.currentBuildProgress = 0.375;
+  quotaFreeFactory.isProducing = true;
+  quotaFreeFactory.energyRateFraction = 0.25;
+  quotaFreeFactory.metalRateFraction = 0.125;
+  quotaFreeFactory.guardTargetId = null;
+  quotaFreeFactory.rallyX = 225;
+  quotaFreeFactory.rallyY = 235;
+  quotaFreeFactory.rallyZ = null;
+  quotaFreeFactory.rallyType = 'move';
+  quotaFreeFactory.defaultWaypoints = null;
+  const quotaFreeFactoryRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(quotaFreeFactoryRows);
+  const quotaFreeFactoryRow = serializeEntityDeltaSnapshot(
+    factorySource,
+    ENTITY_CHANGED_FACTORY,
+    {} as WorldState,
+  );
+  if (quotaFreeFactoryRow !== null) {
+    quotaFreeFactoryRows.push(quotaFreeFactoryRow as NetworkServerSnapshotEntity);
+  }
+  const quotaFreeFactorySource = getEntitySnapshotWireSource(quotaFreeFactoryRows);
+  assertContract(
+    quotaFreeFactoryRows.length === 1 &&
+      (quotaFreeFactoryRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
+      quotaFreeFactorySource !== undefined &&
+      quotaFreeFactorySource.rawEntityRows === 0 &&
+      quotaFreeFactorySource.typedPlaceholderRows === 1 &&
+      quotaFreeFactorySource.buildingRows.count === 1,
+    'quota-free factory-private rows must use DTO-free typed building placeholders',
+  );
+  const quotaFreeFactoryView = new ClientViewState();
+  quotaFreeFactoryView.applyNetworkState(snapshot(1, [fullFactoryEntity(factoryId)]));
+  const staleQuotaFactory = quotaFreeFactoryView.getEntity(factoryId)?.factory;
+  if (staleQuotaFactory === undefined || staleQuotaFactory === null) {
+    throw new Error('[client snapshot applier contract] quota-free factory fixture must hydrate');
+  }
+  staleQuotaFactory.productionQuotas.unitJackal = 7;
+  staleQuotaFactory.productionQuotaCounts.unitJackal = 4;
+  quotaFreeFactoryView.applyNetworkState(snapshot(8, quotaFreeFactoryRows));
+  const appliedQuotaFreeFactory = quotaFreeFactoryView.getEntity(factoryId)?.factory;
+  assertContract(
+    appliedQuotaFreeFactory?.selectedUnitBlueprintId === 'unitTick' &&
+      appliedQuotaFreeFactory.productionQueue.join(',') === 'unitBee' &&
+      Object.keys(appliedQuotaFreeFactory.productionQuotas).length === 0 &&
+      Object.keys(appliedQuotaFreeFactory.productionQuotaCounts).length === 0,
+    'quota-free typed factory rows must apply detail and clear stale quota maps',
+  );
+  const encodedQuotaFreeFactory = encodeNetworkSnapshotWithRustFallback(
+    snapshot(9, quotaFreeFactoryRows),
+  );
+  if (encodedQuotaFreeFactory === null) {
+    throw new Error('[client snapshot applier contract] quota-free factory fixture must encode');
+  }
+  const decodedQuotaFreeFactory = decodeNetworkSnapshot(encodedQuotaFreeFactory.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  const decodedQuotaFreeFactorySource = getEntitySnapshotWireSource(decodedQuotaFreeFactory.entities);
+  assertContract(
+    decodedQuotaFreeFactory.entities.length === 1 &&
+      decodedQuotaFreeFactory.entities[0] === undefined &&
+      decodedQuotaFreeFactorySource !== undefined &&
+      decodedQuotaFreeFactorySource.typedPlaceholderRows === 1 &&
+      decodedQuotaFreeFactorySource.buildingRows.count === 1,
+    'packed quota-free factory rows must reconstruct typed building placeholders',
+  );
+
   const mixedTypedView = new ClientViewState();
   const mixedUnitId = 701;
   const mixedBuildingId = 702;

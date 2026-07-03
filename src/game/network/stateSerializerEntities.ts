@@ -624,10 +624,10 @@ export function factoryPrivateSnapshotRequiresDto(
   if (entity.building === null || entity.factory === null) return false;
   if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_FACTORY) === 0) return false;
   if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
-  // The current 42-slot typed building row predates factory quotas. Use the
-  // DTO shape for factory-private rows so quota set and quota clear updates
-  // cannot be compacted into a lossy row.
-  return true;
+  // The current typed building row carries selection, queue, route, guard,
+  // repeat, progress, and rate fields, but not quota pairs. Keep quota-bearing
+  // factory rows DTO-backed; quota-free rows can ride the typed detail path.
+  return factoryHasQuotaWireState(entity.factory);
 }
 
 export function unitBuilderPrivateSnapshotRequiresDto(
@@ -660,6 +660,11 @@ export function entityPrivateSnapshotRequiresDto(
   return factoryPrivateSnapshotRequiresDto(entity, changedFields, visibility) ||
     unitBuilderPrivateSnapshotRequiresDto(entity, changedFields, visibility) ||
     unitFactoryPrivateSnapshotRequiresDto(entity, changedFields, visibility);
+}
+
+function factoryHasQuotaWireState(factory: NonNullable<Entity['factory']>): boolean {
+  if (Object.keys(factory.productionQuotas).length > 0) return true;
+  return Object.keys(factory.productionQuotaCounts).length > 0;
 }
 
 function appendDirectBasicEntityWireRow(
@@ -1201,6 +1206,7 @@ function appendDirectBuildingEntityWireRow(
   const shouldEmitFactory = canSeePrivateDetails &&
     entity.factory !== null &&
     (isFull || (changedMask & ENTITY_CHANGED_FACTORY) !== 0);
+  const factory = entity.factory;
   const turretRows = shouldEmitTurrets
     ? appendDirectTurretWireRows(entity, world, visibility, canSeePrivateDetails)
     : { offset: -1, count: 0 };
@@ -1214,7 +1220,7 @@ function appendDirectBuildingEntityWireRow(
   const factoryRoute = shouldEmitFactory
     ? appendDirectFactoryRouteWireRows(entity)
     : { offset: -1, count: -1 };
-  if (shouldEmitFactory && !typedPlaceholder) {
+  if (shouldEmitFactory && !typedPlaceholder && factoryHasQuotaWireState(factory!)) {
     appendEntitySnapshotWireSourceRow(
       entityWireSource,
       0,
@@ -1230,7 +1236,6 @@ function appendDirectBuildingEntityWireRow(
   const hasBuild = isFull || (changedMask & ENTITY_CHANGED_BUILDING) !== 0;
   const buildable = entity.buildable;
   const activeState = building.activeState;
-  const factory = entity.factory;
   let factoryProgress = 0;
   if (shouldEmitFactory && factory !== null) {
     if (factory.currentShellId != null) {

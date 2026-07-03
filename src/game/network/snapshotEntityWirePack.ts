@@ -889,7 +889,13 @@ function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
   if ((changedFields & ENTITY_CHANGED_HP) !== 0 && building.hp === null) return false;
   if ((changedFields & ENTITY_CHANGED_BUILDING) !== 0 && building.build === null) return false;
   if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && building.factory === null) return false;
-  if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && building.factory !== null) return false;
+  if (
+    (changedFields & ENTITY_CHANGED_FACTORY) !== 0 &&
+    building.factory !== null &&
+    decodedFactoryHasQuotaWireState(building.factory)
+  ) {
+    return false;
+  }
 
   const wireRow = appendDecodedBuildingEntityWireRow();
   const values = wireRow.values;
@@ -962,6 +968,11 @@ function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
   }
 
   return true;
+}
+
+function decodedFactoryHasQuotaWireState(factory: FactorySub): boolean {
+  return (factory.quotas !== null && factory.quotas !== undefined && factory.quotas.length > 0) ||
+    (factory.quotaCounts !== null && factory.quotaCounts !== undefined && factory.quotaCounts.length > 0);
 }
 
 function movementUnitChangedFields(flags: number): number {
