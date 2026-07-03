@@ -3798,11 +3798,15 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         entityId: pool_entity_id_ptr(),
       };
 
+      let bodyPoolBuffer: ArrayBuffer = memory.buffer;
       const pool: BodyPoolViews = {
         capacity,
         allocSlot: pool_alloc_slot,
         freeSlot: pool_free_slot,
         refreshViews: () => {
+          const buffer = memory.buffer;
+          if (bodyPoolBuffer === buffer && pool.posX.byteLength !== 0) return;
+          bodyPoolBuffer = buffer;
           pool.posX = f64View(ptrs.posX);
           pool.posY = f64View(ptrs.posY);
           pool.posZ = f64View(ptrs.posZ);
@@ -3888,9 +3892,13 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         spawnTick: projectile_pool_spawn_tick_ptr(),
         parentShotEntityId: projectile_pool_parent_shot_entity_id_ptr(),
       };
+      let projectilePoolBuffer: ArrayBuffer = memory.buffer;
       const projectilePool: ProjectilePoolViews = {
         capacity: projCapacity,
         refreshViews: () => {
+          const buffer = memory.buffer;
+          if (projectilePoolBuffer === buffer && projectilePool.posX.byteLength !== 0) return;
+          projectilePoolBuffer = buffer;
           projectilePool.posX = projF64View(projPtrs.posX);
           projectilePool.posY = projF64View(projPtrs.posY);
           projectilePool.posZ = projF64View(projPtrs.posZ);
