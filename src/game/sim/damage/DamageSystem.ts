@@ -4,7 +4,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // PERFORMANCE: Uses spatial grid for O(k) queries instead of O(n) full entity scans
 
 import type { WorldState } from '../WorldState';
-import type { BeamReflectorKind, Entity, EntityId, PlayerId, Turret } from '../types';
+import type { BeamReflectorKind, Entity, EntityId, PlayerId } from '../types';
 import { isProjectileShot, NO_ENTITY_ID } from '../types';
 import type {
   AnyDamageSource,
@@ -435,10 +435,6 @@ function trimDamageBuffers(): void {
   _segmentDamageOutT = new Float64Array(0);
   _segmentDamageRefFlags = new Uint8Array(0);
   _segmentDamageRefT = new Float64Array(0);
-}
-
-function isTurretDamageable(turret: Turret): boolean {
-  return turret.id !== NO_ENTITY_ID && !turret.config.visualOnly;
 }
 
 function ensureDamageBatchCapacity(count: number): void {
@@ -1747,7 +1743,7 @@ export class DamageSystem {
         }
         for (let i = 0; i < combat.turrets.length; i++) {
           const turret = combat.turrets[i];
-          if (!isTurretDamageable(turret)) continue;
+          if (turret.id === NO_ENTITY_ID || turret.config.visualOnly) continue;
           const row = segmentRowCount;
           segmentRowCount = appendSegmentDamageSlabRow(
             segmentRowCount,
@@ -2103,7 +2099,7 @@ export class DamageSystem {
         }
         for (let i = 0; i < combat.turrets.length; i++) {
           const turret = combat.turrets[i];
-          if (!isTurretDamageable(turret)) continue;
+          if (turret.id === NO_ENTITY_ID || turret.config.visualOnly) continue;
           ensureAreaTurretDamageCapacity(areaTurretRowCount + 1);
           const turretRow = areaTurretRowCount++;
           _areaTurretDamageSlots[turretRow] = _areaDamageSlots[row];
