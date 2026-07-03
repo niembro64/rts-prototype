@@ -69,6 +69,7 @@ type VisionSource = {
   z: number;
   radius: number;
 };
+type VisionSourceCells = Array<number[] | undefined>;
 
 /** Three-way classification returned by classifyPointVisibility
  *  (FOW-OPT-08). The audio serializer is the primary
@@ -150,12 +151,12 @@ function appendScanPulseWireRow(
  *  isEntityOnRadar(). */
 export class SnapshotVisibility {
   private readonly fullSources: VisionSource[] = [];
-  private readonly fullSourceCells = new Map<number, number[]>();
-  private readonly earshotSourceCells = new Map<number, number[]>();
+  private readonly fullSourceCells: VisionSourceCells = [];
+  private readonly earshotSourceCells: VisionSourceCells = [];
   private readonly radarSources: VisionSource[] = [];
-  private readonly radarSourceCells = new Map<number, number[]>();
+  private readonly radarSourceCells: VisionSourceCells = [];
   private readonly detectorSources: VisionSource[] = [];
-  private readonly detectorSourceCells = new Map<number, number[]>();
+  private readonly detectorSourceCells: VisionSourceCells = [];
   private readonly visibleEntityIds: EntityId[] = [];
   private readonly radarEntityIds: EntityId[] = [];
   private readonly visibleEntityIdSet = new IndexedEntityIdSet();
@@ -345,7 +346,7 @@ export class SnapshotVisibility {
     const cx = Math.floor(x / VISION_CELL_SIZE);
     const cy = Math.floor(y / VISION_CELL_SIZE);
     if (cx < 0 || cy < 0 || cx >= this.gridW || cy >= this.gridH) return false;
-    const sourceIndexes = this.fullSourceCells.get(this.cellKey(cx, cy));
+    const sourceIndexes = this.fullSourceCells[this.cellKey(cx, cy)];
     if (!sourceIndexes) return false;
     const targetZ = z + VISION_TARGET_BODY_HEIGHT;
     for (let i = 0; i < sourceIndexes.length; i++) {
@@ -664,7 +665,7 @@ export class SnapshotVisibility {
     if (cx < 0 || cy < 0 || cx >= this.gridW || cy >= this.gridH) {
       return VISIBILITY_CLASS_OUT_OF_RANGE;
     }
-    const sourceIndexes = this.earshotSourceCells.get(this.cellKey(cx, cy));
+    const sourceIndexes = this.earshotSourceCells[this.cellKey(cx, cy)];
     if (!sourceIndexes) return VISIBILITY_CLASS_OUT_OF_RANGE;
     let result: VisibilityClass = VISIBILITY_CLASS_OUT_OF_RANGE;
     for (let i = 0; i < sourceIndexes.length; i++) {
@@ -866,7 +867,7 @@ export class SnapshotVisibility {
 
   private addSource(
     sources: VisionSource[],
-    cells: Map<number, number[]>,
+    cells: VisionSourceCells,
     x: number,
     y: number,
     z: number,
@@ -880,7 +881,7 @@ export class SnapshotVisibility {
   }
 
   private addSourceCells(
-    cells: Map<number, number[]>,
+    cells: VisionSourceCells,
     sourceIndex: number,
     x: number,
     y: number,
@@ -893,10 +894,10 @@ export class SnapshotVisibility {
     for (let cy = minCy; cy <= maxCy; cy++) {
       for (let cx = minCx; cx <= maxCx; cx++) {
         const key = this.cellKey(cx, cy);
-        let bucket = cells.get(key);
+        let bucket = cells[key];
         if (!bucket) {
           bucket = [];
-          cells.set(key, bucket);
+          cells[key] = bucket;
         }
         bucket.push(sourceIndex);
       }
@@ -905,7 +906,7 @@ export class SnapshotVisibility {
 
   private isPointVisibleIn(
     sources: VisionSource[],
-    cells: Map<number, number[]>,
+    cells: VisionSourceCells,
     x: number,
     y: number,
     padding: number,
@@ -913,7 +914,7 @@ export class SnapshotVisibility {
     const cx = Math.floor(x / VISION_CELL_SIZE);
     const cy = Math.floor(y / VISION_CELL_SIZE);
     if (cx < 0 || cy < 0 || cx >= this.gridW || cy >= this.gridH) return false;
-    const sourceIndexes = cells.get(this.cellKey(cx, cy));
+    const sourceIndexes = cells[this.cellKey(cx, cy)];
     if (!sourceIndexes) return false;
     for (let i = 0; i < sourceIndexes.length; i++) {
       const source = sources[sourceIndexes[i]];
