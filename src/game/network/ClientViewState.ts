@@ -171,10 +171,7 @@ import type {
 } from '../render3d/EntityRenderPackets3D';
 import type { EntityLodEmission3D } from '../render3d/EntityLod3D';
 import {
-  CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION,
   CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS,
-  CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY,
-  CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY,
   CLIENT_RENDER_ENTITY_FLAG_SELECTED,
   CLIENT_RENDER_ENTITY_KIND_BUILDING,
   CLIENT_RENDER_ENTITY_KIND_UNIT,
@@ -3042,8 +3039,6 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
     options: ClientViewRenderPacketOptions3D,
   ): ClientViewRenderEntityPackets3D {
-    this.renderEntityState.clearPacketFlags();
-    this.stampRenderPacketFlags3D();
     out.unitRows.reset();
     out.buildingRows.reset();
     out.bodyHud.reset();
@@ -3161,7 +3156,6 @@ export class ClientViewState {
   }
 
   consumeRenderDirties(): void {
-    this.renderEntityState.clearPacketFlags();
     this.dirtyUnitRenderIds.clear();
     this.dirtyBuildingRenderIds.clear();
     this.removedUnitRenderIds.length = 0;
@@ -3169,46 +3163,6 @@ export class ClientViewState {
     this.renderLifecycleDirtyIds.clear();
     this.renderEntityState.clearDirtySlots();
     this.renderTurretState.clearDirtyHostSlots();
-  }
-
-  private stampRenderPacketFlags3D(): void {
-    this.stampRenderPacketFlagSet(
-      this.activeEntityPredictionIds,
-      CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION,
-    );
-    this.stampRenderPacketFlagSet(
-      this.dirtyUnitRenderIds,
-      CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY,
-    );
-    this.stampRenderPacketFlagSet(
-      this.dirtyBuildingRenderIds,
-      CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY,
-    );
-    this.stampRenderPacketFlagSet(
-      this.renderLifecycleDirtyIds,
-      CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY,
-    );
-  }
-
-  private stampRenderPacketFlagSet(ids: Iterable<EntityId>, flag: number): void {
-    for (const id of ids) {
-      const slot = this.renderEntityState.getSlot(id);
-      if (slot !== undefined) this.renderEntityState.markPacketFlags(slot, flag);
-    }
-  }
-
-  private stampRenderPacketFlagsForSlot(id: EntityId, slot: number): void {
-    let flags = 0;
-    if (this.activeEntityPredictionIds.has(id)) {
-      flags |= CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION;
-    }
-    if (this.dirtyUnitRenderIds.has(id) || this.dirtyBuildingRenderIds.has(id)) {
-      flags |= CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY;
-    }
-    if (this.renderLifecycleDirtyIds.has(id)) {
-      flags |= CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY;
-    }
-    if (flags !== 0) this.renderEntityState.markPacketFlags(slot, flags);
   }
 
   private refreshRenderSpatialIndexBySlot(id: EntityId, slot: number | undefined): void {
@@ -3468,24 +3422,22 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const id = entity.id;
-    const existingSlot = this.renderEntityState.getSlot(id);
-    const slot = existingSlot ?? this.getOrRefreshRenderEntityStateSlot(entity);
+    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
+    const activePrediction = this.activeEntityPredictionIds.has(id);
+    const renderDirty = this.dirtyUnitRenderIds.has(id);
+    const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
     if (slot !== undefined) {
-      if (existingSlot === undefined) this.stampRenderPacketFlagsForSlot(id, slot);
       out.unitRows.pushEntityState(
         entity,
         this.renderEntityState.getViews(),
         slot,
         this.renderTurretState,
-        false,
-        false,
-        false,
+        activePrediction,
+        renderDirty,
+        lifecycleDirty,
         farLod,
       );
     } else {
-      const activePrediction = this.activeEntityPredictionIds.has(id);
-      const renderDirty = this.dirtyUnitRenderIds.has(id);
-      const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
       out.unitRows.pushEntity(
         entity,
         activePrediction,
@@ -3503,19 +3455,23 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const views = this.renderEntityState.getViews();
+    const id = entity.id;
+    const activePrediction = this.activeEntityPredictionIds.has(id);
+    const renderDirty = this.dirtyUnitRenderIds.has(id);
+    const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
     if (
       slot >= 0 &&
       views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT &&
-      views.entityIds[slot] === entity.id
+      views.entityIds[slot] === id
     ) {
       out.unitRows.pushEntityState(
         entity,
         views,
         slot,
         this.renderTurretState,
-        false,
-        false,
-        false,
+        activePrediction,
+        renderDirty,
+        lifecycleDirty,
         farLod,
       );
       return;
@@ -3529,24 +3485,22 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const id = entity.id;
-    const existingSlot = this.renderEntityState.getSlot(id);
-    const slot = existingSlot ?? this.getOrRefreshRenderEntityStateSlot(entity);
+    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
+    const activePrediction = this.activeEntityPredictionIds.has(id);
+    const renderDirty = this.dirtyBuildingRenderIds.has(id);
+    const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
     if (slot !== undefined) {
-      if (existingSlot === undefined) this.stampRenderPacketFlagsForSlot(id, slot);
       out.buildingRows.pushEntityState(
         entity,
         this.renderEntityState.getViews(),
         slot,
         this.renderTurretState,
-        false,
-        false,
-        false,
+        activePrediction,
+        renderDirty,
+        lifecycleDirty,
         farLod,
       );
     } else {
-      const activePrediction = this.activeEntityPredictionIds.has(id);
-      const renderDirty = this.dirtyBuildingRenderIds.has(id);
-      const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
       out.buildingRows.pushEntity(
         entity,
         activePrediction,
@@ -3564,19 +3518,23 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const views = this.renderEntityState.getViews();
+    const id = entity.id;
+    const activePrediction = this.activeEntityPredictionIds.has(id);
+    const renderDirty = this.dirtyBuildingRenderIds.has(id);
+    const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
     if (
       slot >= 0 &&
       views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING &&
-      views.entityIds[slot] === entity.id
+      views.entityIds[slot] === id
     ) {
       out.buildingRows.pushEntityState(
         entity,
         views,
         slot,
         this.renderTurretState,
-        false,
-        false,
-        false,
+        activePrediction,
+        renderDirty,
+        lifecycleDirty,
         farLod,
       );
       return;
