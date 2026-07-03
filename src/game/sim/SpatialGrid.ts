@@ -62,6 +62,13 @@ class SpatialGrid {
     unitSlots: [],
     buildingSlots: [],
   };
+  private readonly _unitBuildingSlotArraysResult: {
+    unitSlots: number[];
+    buildingSlots: number[];
+  } = {
+    unitSlots: this._queryResultUnitSlots,
+    buildingSlots: this._queryResultBuildingSlots,
+  };
   private readonly _rectResult: { units: Entity[]; buildings: Entity[] } = {
     units: [], buildings: [],
   };
@@ -382,6 +389,18 @@ class SpatialGrid {
     }
   }
 
+  private copySlotsRange(
+    slots: Uint32Array,
+    start: number,
+    end: number,
+    outSlots: number[],
+  ): void {
+    outSlots.length = 0;
+    for (let i = start; i < end; i++) {
+      outSlots.push(slots[i]);
+    }
+  }
+
   // ===================== Queries =====================
 
   queryUnitsInRadius(x: number, y: number, z: number, radius: number): Entity[] {
@@ -460,6 +479,28 @@ class SpatialGrid {
     result.buildingStart = 2 + unitCount;
     result.buildingCount = buildingCount;
     return result;
+  }
+
+  queryUnitBuildingSlotArraysInRadius(
+    x: number, y: number, z: number, radius: number,
+  ): { unitSlots: number[]; buildingSlots: number[] } {
+    const total = this.api().queryUnitsAndBuildingsInRadius(x, y, z, radius);
+    const slots = this.scratch(total);
+    const unitCount = slots[0];
+    const buildingCount = slots[1];
+    this.copySlotsRange(
+      slots,
+      2,
+      2 + unitCount,
+      this._queryResultUnitSlots,
+    );
+    this.copySlotsRange(
+      slots,
+      2 + unitCount,
+      2 + unitCount + buildingCount,
+      this._queryResultBuildingSlots,
+    );
+    return this._unitBuildingSlotArraysResult;
   }
 
   queryUnitBuildingSlotRangesAlongLine(

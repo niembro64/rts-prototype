@@ -36,7 +36,11 @@ import {
 import { getActiveShields } from '../combat/shieldTurret';
 import { ENTITY_CHANGED_HP, PROJECTILE_TYPE_PROJECTILE } from '../../../types/network';
 import { getSimWasm, type SimWasm } from '../../sim-wasm/init';
-import { entitySlotRegistry } from '../EntitySlotRegistry';
+import {
+  ENTITY_SLOT_FLAG_HAS_BUILDING,
+  ENTITY_SLOT_FLAG_HAS_UNIT,
+  entitySlotRegistry,
+} from '../EntitySlotRegistry';
 import {
   BUILDING_CLOSED_DAMAGE_MULTIPLIER,
   buildingBlueprintHasActiveState,
@@ -2008,45 +2012,64 @@ export class DamageSystem {
     // pad is the larger of the two old pads (+100) so neither broadphase
     // misses a candidate; the per-entity distance checks below stay
     // precise.
-    const nearby = spatialGrid.queryUnitsAndBuildingsSlotsInRadius(
+    const nearby = spatialGrid.queryUnitBuildingSlotArraysInRadius(
       source.center.x, source.center.y, source.center.z, source.radius + 100,
     );
-    const nearbyUnits = nearby.units;
-    const nearbyBuildings = nearby.buildings;
     const nearbyUnitSlots = nearby.unitSlots;
     const nearbyBuildingSlots = nearby.buildingSlots;
     const nearbyProjectileSlots = spatialGrid.queryEnemyProjectileSlotsInRadius(
       source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
     );
+    const entityViews = entitySlotRegistry.getViews();
 
     // Check units. Rust owns the full 3D sphere-vs-sphere overlap and
     // optional slice-cone filter; TypeScript keeps entity graph write-back,
     // turret sub-hitbox fallback, and event/death side effects.
-    ensureAreaDamageCapacity(nearbyUnits.length);
+    ensureAreaDamageCapacity(nearbyUnitSlots.length);
     let areaRowCount = 0;
-    for (let unitIndex = 0; unitIndex < nearbyUnits.length; unitIndex++) {
-      const unit = nearbyUnits[unitIndex];
-      if (source.excludeEntities.has(unit.id)) continue;
-      if (source.excludeCommanders && unit.commander) continue;
-      const unitComponent = unit.unit;
-      if (!unitComponent) continue;
+    if (entityViews !== null) {
+      const entityIds = entityViews.entityId;
+      const flags = entityViews.flags;
+      const capacity = entityViews.capacity;
+      for (let unitIndex = 0; unitIndex < nearbyUnitSlots.length; unitIndex++) {
+        const slot = nearbyUnitSlots[unitIndex];
+        if (slot >= capacity) continue;
+        const unitId = entityIds[slot] as EntityId;
+        if (unitId < 0 || source.excludeEntities.has(unitId)) continue;
+        if ((flags[slot] & ENTITY_SLOT_FLAG_HAS_UNIT) === 0) continue;
 
-      const row = areaRowCount++;
-      _areaDamageEntities[row] = unit;
-      // Slab path: pack the combat-targeting slot; Rust reads pos + hitbox
-      // radius from the slab. Units don't move between the once-per-tick
-      // stamp and damage, so the slab geometry is coherent here.
-      _areaDamageSlots[row] = nearbyUnitSlots[unitIndex];
-      if (import.meta.env.DEV) {
-        _areaDamageEnabled[row] = 1;
-        _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_UNIT;
-        _areaDamageTargetX[row] = unit.transform.x;
-        _areaDamageTargetY[row] = unit.transform.y;
-        _areaDamageTargetZ[row] = unit.transform.z;
-        _areaDamageTargetRadius[row] = unitComponent.radius.hitbox;
-        _areaDamageBoxHalfX[row] = 0;
-        _areaDamageBoxHalfY[row] = 0;
-        _areaDamageBoxHalfZ[row] = 0;
+        let unit: Entity | undefined;
+        if (source.excludeCommanders || import.meta.env.DEV) {
+          unit = entitySlotRegistry.resolveSlot(slot);
+          const unitComponent = unit?.unit;
+          if (
+            unit === undefined ||
+            unitComponent === undefined ||
+            unitComponent === null ||
+            (source.excludeCommanders && unit.commander)
+          ) {
+            continue;
+          }
+        }
+
+        const row = areaRowCount++;
+        _areaDamageEntities[row] = unit;
+        // Slab path: pack the combat-targeting slot; Rust reads pos + hitbox
+        // radius from the slab. Units don't move between the once-per-tick
+        // stamp and damage, so the slab geometry is coherent here.
+        _areaDamageSlots[row] = slot;
+        if (import.meta.env.DEV) {
+          const unitComponent = unit!.unit!;
+          _areaDamageEnabled[row] = 1;
+          _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_UNIT;
+          _areaDamageTargetX[row] = unit!.transform.x;
+          _areaDamageTargetY[row] = unit!.transform.y;
+          _areaDamageTargetZ[row] = unit!.transform.z;
+          _areaDamageTargetRadius[row] = unitComponent.radius.hitbox;
+          _areaDamageBoxHalfX[row] = 0;
+          _areaDamageBoxHalfY[row] = 0;
+          _areaDamageBoxHalfZ[row] = 0;
+        }
       }
     }
     classifyAreaDamageRowsViaSlab(source, areaRowCount, hasSlice, sliceHalfAngle);
@@ -2054,16 +2077,23 @@ export class DamageSystem {
     for (let row = 0; row < areaRowCount; row++) {
       _areaDamageTurretStart[row] = -1;
       _areaDamageTurretEnd[row] = -1;
-      const unit = _areaDamageEntities[row];
-      const unitComponent = unit?.unit;
-      if (unit === undefined || unitComponent === undefined || unitComponent === null) continue;
-
       const rowFlags = _areaDamageOutFlags[row];
       if ((rowFlags & DAMAGE_AREA_FLAG_SLICE_PASS) === 0) continue;
+      const slot = _areaDamageSlots[row];
       const bodyOverlaps =
-        unitComponent.hp > 0 && (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) !== 0;
+        entityViews !== null &&
+        slot < entityViews.capacity &&
+        entityViews.hp[slot] > 0 &&
+        (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) !== 0;
+      if (bodyOverlaps) continue;
+
+      const unit = _areaDamageEntities[row] ?? entitySlotRegistry.resolveSlot(slot);
+      const unitComponent = unit?.unit;
+      if (unit === undefined || unitComponent === undefined || unitComponent === null) continue;
+      _areaDamageEntities[row] = unit;
+
       const combat = unit.combat;
-      if (combat !== null && !bodyOverlaps) {
+      if (combat !== null) {
         const fallbackStart = areaTurretRowCount;
         let unitCS: ReturnType<typeof getTransformCosSin> | undefined;
         let unitGroundZ = 0;
@@ -2107,14 +2137,14 @@ export class DamageSystem {
     }
     classifyAreaTurretDamageRows(source, areaTurretRowCount);
     for (let row = 0; row < areaRowCount; row++) {
-      const unit = _areaDamageEntities[row];
-      const unitComponent = unit?.unit;
-      if (unit === undefined || unitComponent === undefined || unitComponent === null) continue;
-
       const rowFlags = _areaDamageOutFlags[row];
       if ((rowFlags & DAMAGE_AREA_FLAG_SLICE_PASS) === 0) continue;
+      const slot = _areaDamageSlots[row];
       const bodyOverlaps =
-        unitComponent.hp > 0 && (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) !== 0;
+        entityViews !== null &&
+        slot < entityViews.capacity &&
+        entityViews.hp[slot] > 0 &&
+        (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) !== 0;
       const fallbackStart = _areaDamageTurretStart[row];
       const fallbackEnd = _areaDamageTurretEnd[row];
       if (
@@ -2123,6 +2153,19 @@ export class DamageSystem {
       ) {
         continue;
       }
+
+      const unit = _areaDamageEntities[row] ?? entitySlotRegistry.resolveSlot(slot);
+      const unitComponent = unit?.unit;
+      if (unit === undefined || unitComponent === undefined || unitComponent === null) continue;
+      const liveBodyOverlaps =
+        unitComponent.hp > 0 && (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) !== 0;
+      if (
+        !liveBodyOverlaps &&
+        (fallbackStart < 0 || fallbackStart >= fallbackEnd)
+      ) {
+        continue;
+      }
+      _areaDamageEntities[row] = unit;
 
       const damage = source.damage;
       const dirX = _areaDamageOutDirX[row];
@@ -2133,7 +2176,7 @@ export class DamageSystem {
       const forceY = dirY * force;
       const forceZ = dirZ * force;
 
-      if (bodyOverlaps) {
+      if (liveBodyOverlaps) {
         // For area damage, penetration direction is from explosion center
         // through unit (same as knockback direction - outward from center).
         this.queueDamageToEntityBatch(unit, damage, result, source.sourceEntityId, {
@@ -2167,7 +2210,6 @@ export class DamageSystem {
     // only lets weapons chip down real munitions.
     ensureAreaDamageCapacity(nearbyProjectileSlots.count);
     areaRowCount = 0;
-    const entityViews = entitySlotRegistry.getViews();
     const projectileSlots = nearbyProjectileSlots.slots;
     if (entityViews !== null) {
       for (let projectileIndex = 0; projectileIndex < nearbyProjectileSlots.count; projectileIndex++) {
@@ -2232,39 +2274,71 @@ export class DamageSystem {
     // Check buildings — full 3D. Buildings are axis-aligned combat boxes
     // (width × height × depth). Rust owns the sphere-vs-AABB overlap and
     // horizontal slice filter.
-    ensureAreaDamageCapacity(nearbyBuildings.length);
+    ensureAreaDamageCapacity(nearbyBuildingSlots.length);
     areaRowCount = 0;
-    for (let buildingIndex = 0; buildingIndex < nearbyBuildings.length; buildingIndex++) {
-      const building = nearbyBuildings[buildingIndex];
-      if (source.excludeEntities.has(building.id)) continue;
-      if (!building.building || building.building.hp <= 0) continue;
+    if (entityViews !== null) {
+      const entityIds = entityViews.entityId;
+      const flags = entityViews.flags;
+      const hp = entityViews.hp;
+      const capacity = entityViews.capacity;
+      for (let buildingIndex = 0; buildingIndex < nearbyBuildingSlots.length; buildingIndex++) {
+        const slot = nearbyBuildingSlots[buildingIndex];
+        if (slot >= capacity) continue;
+        const buildingId = entityIds[slot] as EntityId;
+        if (buildingId < 0 || source.excludeEntities.has(buildingId)) continue;
+        if ((flags[slot] & ENTITY_SLOT_FLAG_HAS_BUILDING) === 0 || hp[slot] <= 0) continue;
 
-      const row = areaRowCount++;
-      _areaDamageEntities[row] = building;
-      // Slab path: buildings are static, so their stamped slab geometry
-      // (targetRadius in entity_radius_hitbox + AABB half-extents) is always
-      // coherent at damage time.
-      _areaDamageSlots[row] = nearbyBuildingSlots[buildingIndex];
-      if (import.meta.env.DEV) {
-        _areaDamageEnabled[row] = 1;
-        _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;
-        _areaDamageTargetX[row] = building.transform.x;
-        _areaDamageTargetY[row] = building.transform.y;
-        _areaDamageTargetZ[row] = getBuildingCombatCenterZ(building);
-        _areaDamageTargetRadius[row] = getTargetRadius(building);
-        _areaDamageBoxHalfX[row] = building.building.width / 2;
-        _areaDamageBoxHalfY[row] = building.building.height / 2;
-        _areaDamageBoxHalfZ[row] = building.building.depth / 2;
+        let building: Entity | undefined;
+        if (import.meta.env.DEV) {
+          building = entitySlotRegistry.resolveSlot(slot);
+          const buildingComponent = building?.building;
+          if (
+            building === undefined ||
+            buildingComponent === undefined ||
+            buildingComponent === null ||
+            buildingComponent.hp <= 0
+          ) {
+            continue;
+          }
+        }
+
+        const row = areaRowCount++;
+        _areaDamageEntities[row] = building;
+        // Slab path: buildings are static, so their stamped slab geometry
+        // (targetRadius in entity_radius_hitbox + AABB half-extents) is always
+        // coherent at damage time.
+        _areaDamageSlots[row] = slot;
+        if (import.meta.env.DEV) {
+          const buildingComponent = building!.building!;
+          _areaDamageEnabled[row] = 1;
+          _areaDamageTargetKind[row] = DAMAGE_TARGET_KIND_BUILDING;
+          _areaDamageTargetX[row] = building!.transform.x;
+          _areaDamageTargetY[row] = building!.transform.y;
+          _areaDamageTargetZ[row] = getBuildingCombatCenterZ(building!);
+          _areaDamageTargetRadius[row] = getTargetRadius(building!);
+          _areaDamageBoxHalfX[row] = buildingComponent.width / 2;
+          _areaDamageBoxHalfY[row] = buildingComponent.height / 2;
+          _areaDamageBoxHalfZ[row] = buildingComponent.depth / 2;
+        }
       }
     }
     classifyAreaDamageRowsViaSlab(source, areaRowCount, hasSlice, sliceHalfAngle);
     for (let row = 0; row < areaRowCount; row++) {
-      const building = _areaDamageEntities[row];
       const rowFlags = _areaDamageOutFlags[row];
       if (
-        building === undefined ||
         (rowFlags & DAMAGE_AREA_FLAG_OVERLAP) === 0 ||
         (rowFlags & DAMAGE_AREA_FLAG_SLICE_PASS) === 0
+      ) {
+        continue;
+      }
+      const building = _areaDamageEntities[row] ?? entitySlotRegistry.resolveSlot(_areaDamageSlots[row]);
+      const buildingComponent = building?.building;
+      if (
+        building === undefined ||
+        buildingComponent === undefined ||
+        buildingComponent === null ||
+        buildingComponent.hp <= 0 ||
+        source.excludeEntities.has(building.id)
       ) {
         continue;
       }
