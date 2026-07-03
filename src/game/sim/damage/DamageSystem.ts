@@ -1388,16 +1388,17 @@ export class DamageSystem {
     const halfLineWidth = lineWidth / 2;
     const unitProjectileQueryWidth = lineWidth + 60;
     const buildingQueryWidth = lineWidth + 100;
+    const bodyQueryWidth = Math.max(unitProjectileQueryWidth, buildingQueryWidth);
 
-    const nearbyUnitSlots = spatialGrid.queryUnitSlotsAlongLine(
+    const nearbyBodySlots = spatialGrid.queryUnitBuildingSlotRangesAlongLine(
       startX, startY, startZ,
       endX, endY, endZ,
-      unitProjectileQueryWidth,
+      bodyQueryWidth,
     );
     const entityViews = entitySlotRegistry.getViews();
     if (entityViews !== null) {
-      const slots = nearbyUnitSlots.slots;
-      const count = nearbyUnitSlots.count;
+      const slots = nearbyBodySlots.slots;
+      const unitEnd = nearbyBodySlots.unitStart + nearbyBodySlots.unitCount;
       const capacity = entityViews.capacity;
       const entityIds = entityViews.entityId;
       const hp = entityViews.hp;
@@ -1405,7 +1406,7 @@ export class DamageSystem {
       const posY = entityViews.posY;
       const posZ = entityViews.posZ;
       const radiusHitbox = entityViews.radiusHitbox;
-      for (let i = 0; i < count; i++) {
+      for (let i = nearbyBodySlots.unitStart; i < unitEnd; i++) {
         const slot = slots[i];
         if (slot >= capacity) continue;
         const unitId = entityIds[slot] as EntityId;
@@ -1532,22 +1533,9 @@ export class DamageSystem {
 
     // Buildings: 3D ray-vs-AABB (x/y footprint × z depth). A beam arcing
     // over a short building correctly misses; clipping the wall stops.
-    let queryEndX = endX;
-    let queryEndY = endY;
-    let queryEndZ = endZ;
-    if (bestT < 1) {
-      queryEndX = startX + bestT * dx;
-      queryEndY = startY + bestT * dy;
-      queryEndZ = startZ + bestT * dz;
-    }
-    const nearbyBuildingSlots = spatialGrid.queryBuildingSlotsAlongLine(
-      startX, startY, startZ,
-      queryEndX, queryEndY, queryEndZ,
-      buildingQueryWidth,
-    );
     if (entityViews !== null) {
-      const slots = nearbyBuildingSlots.slots;
-      const count = nearbyBuildingSlots.count;
+      const slots = nearbyBodySlots.slots;
+      const buildingEnd = nearbyBodySlots.buildingStart + nearbyBodySlots.buildingCount;
       const capacity = entityViews.capacity;
       const entityIds = entityViews.entityId;
       const hp = entityViews.hp;
@@ -1557,7 +1545,7 @@ export class DamageSystem {
       const aabbHx = entityViews.aabbHx;
       const aabbHy = entityViews.aabbHy;
       const aabbHz = entityViews.aabbHz;
-      for (let i = 0; i < count; i++) {
+      for (let i = nearbyBodySlots.buildingStart; i < buildingEnd; i++) {
         const slot = slots[i];
         if (slot >= capacity) continue;
         const buildingId = entityIds[slot] as EntityId;
@@ -1595,6 +1583,9 @@ export class DamageSystem {
       }
     }
 
+    let queryEndX = endX;
+    let queryEndY = endY;
+    let queryEndZ = endZ;
     if (bestT < 1) {
       queryEndX = startX + bestT * dx;
       queryEndY = startY + bestT * dy;

@@ -462,6 +462,32 @@ class SpatialGrid {
     return result;
   }
 
+  queryUnitBuildingSlotRangesAlongLine(
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    lineWidth: number,
+  ): {
+    slots: Uint32Array;
+    total: number;
+    unitStart: number;
+    unitCount: number;
+    buildingStart: number;
+    buildingCount: number;
+  } {
+    const total = this.api().queryEntitiesAlongLine(x1, y1, z1, x2, y2, z2, lineWidth);
+    const slots = this.scratch(total);
+    const unitCount = slots[0];
+    const buildingCount = slots[1];
+    const result = this._unitBuildingSlotRangeResult;
+    result.slots = slots;
+    result.total = total;
+    result.unitStart = 2;
+    result.unitCount = unitCount;
+    result.buildingStart = 2 + unitCount;
+    result.buildingCount = buildingCount;
+    return result;
+  }
+
   queryUnitsAndBuildingsInRect2D(
     minX: number, maxX: number, minY: number, maxY: number,
   ): { units: Entity[]; buildings: Entity[] } {
