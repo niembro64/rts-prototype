@@ -544,16 +544,13 @@ export class SnapshotVisibility {
   }
 
   private addWorldScanEntityCandidates(): void {
-    const sources: ReadonlyArray<readonly Entity[]> = [
-      this.world.getUnits(),
-      this.world.getBuildings(),
-    ];
-    for (let s = 0; s < sources.length; s++) {
-      const source = sources[s];
-      for (let i = 0; i < source.length; i++) {
-        const entity = source[i];
-        this.addCandidateEntity(entity, true);
-      }
+    const units = this.world.getUnits();
+    for (let i = 0; i < units.length; i++) {
+      this.addCandidateEntity(units[i], true);
+    }
+    const buildings = this.world.getBuildings();
+    for (let i = 0; i < buildings.length; i++) {
+      this.addCandidateEntity(buildings[i], true);
     }
   }
 
@@ -706,62 +703,63 @@ export class SnapshotVisibility {
   }
 
   private addPlayerSources(world: WorldState, playerId: PlayerId): void {
-    const sources: ReadonlyArray<readonly Entity[]> = [
-      world.getUnitsByPlayer(playerId),
-      world.getBuildingsByPlayer(playerId),
-    ];
-    for (let s = 0; s < sources.length; s++) {
-      const source = sources[s];
-      for (let i = 0; i < source.length; i++) {
-        const entity = source[i];
-        // Eye z = entity's ground height plus a fixed offset (FOW-04).
-        // A unit standing on a hill already has transform.z lifted by
-        // the hill, so the constant just adds the body / turret mount
-        // height — units on flat ground can still see over a small
-        // bump, units behind a tall ridge can't.
-        const eyeZ = entity.transform.z + VISION_SOURCE_EYE_HEIGHT;
-        const fullSightRadius = getEntityFullVisionRadius(entity);
-        if (fullSightRadius > 0) {
-          const sourceIndex = this.addSource(
-            this.fullSources,
-            this.fullSourceCells,
-            entity.transform.x,
-            entity.transform.y,
-            eyeZ,
-            fullSightRadius,
-          );
-          if (sourceIndex >= 0) {
-            this.addSourceCells(
-              this.earshotSourceCells,
-              sourceIndex,
-              entity.transform.x,
-              entity.transform.y,
-              fullSightRadius + EARSHOT_PAD,
-            );
-          }
-        }
-        const radarRadius = getEntityRadarRadius(entity);
-        if (radarRadius > 0) {
-          this.addSource(
-            this.radarSources,
-            this.radarSourceCells,
-            entity.transform.x,
-            entity.transform.y,
-            eyeZ,
-            radarRadius,
+    this.addPlayerSourceEntities(world.getUnitsByPlayer(playerId));
+    this.addPlayerSourceEntities(world.getBuildingsByPlayer(playerId));
+  }
+
+  private addPlayerSourceEntities(source: readonly Entity[]): void {
+    for (let i = 0; i < source.length; i++) {
+      const entity = source[i];
+      const transform = entity.transform;
+      const x = transform.x;
+      const y = transform.y;
+      // Eye z = entity's ground height plus a fixed offset (FOW-04).
+      // A unit standing on a hill already has transform.z lifted by
+      // the hill, so the constant just adds the body / turret mount
+      // height — units on flat ground can still see over a small
+      // bump, units behind a tall ridge can't.
+      const eyeZ = transform.z + VISION_SOURCE_EYE_HEIGHT;
+      const fullSightRadius = getEntityFullVisionRadius(entity);
+      if (fullSightRadius > 0) {
+        const sourceIndex = this.addSource(
+          this.fullSources,
+          this.fullSourceCells,
+          x,
+          y,
+          eyeZ,
+          fullSightRadius,
+        );
+        if (sourceIndex >= 0) {
+          this.addSourceCells(
+            this.earshotSourceCells,
+            sourceIndex,
+            x,
+            y,
+            fullSightRadius + EARSHOT_PAD,
           );
         }
-        const detectorRadius = getEntityCloakDetectionRadius(entity);
-        if (detectorRadius > 0) {
-          this.addSource(
-            this.detectorSources,
-            this.detectorSourceCells,
-            entity.transform.x,
-            entity.transform.y,
-            eyeZ,
-            detectorRadius,
-          );
-        }
+      }
+      const radarRadius = getEntityRadarRadius(entity);
+      if (radarRadius > 0) {
+        this.addSource(
+          this.radarSources,
+          this.radarSourceCells,
+          x,
+          y,
+          eyeZ,
+          radarRadius,
+        );
+      }
+      const detectorRadius = getEntityCloakDetectionRadius(entity);
+      if (detectorRadius > 0) {
+        this.addSource(
+          this.detectorSources,
+          this.detectorSourceCells,
+          x,
+          y,
+          eyeZ,
+          detectorRadius,
+        );
       }
     }
   }
@@ -889,11 +887,13 @@ export class SnapshotVisibility {
     const maxCx = Math.min(this.gridW - 1, Math.floor((x + radius) / VISION_CELL_SIZE));
     const minCy = Math.max(0, Math.floor((y - radius) / VISION_CELL_SIZE));
     const maxCy = Math.min(this.gridH - 1, Math.floor((y + radius) / VISION_CELL_SIZE));
+    const gridW = this.gridW;
     for (let cy = minCy; cy <= maxCy; cy++) {
+      const rowBase = cy * gridW;
       for (let cx = minCx; cx <= maxCx; cx++) {
-        const key = this.cellKey(cx, cy);
+        const key = rowBase + cx;
         let bucket = cells[key];
-        if (!bucket) {
+        if (bucket === undefined) {
           bucket = [];
           cells[key] = bucket;
         }
