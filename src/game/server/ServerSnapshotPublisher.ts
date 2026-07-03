@@ -61,6 +61,7 @@ import {
   ENTITY_MOTION_DELTA_FIELDS,
   ENTITY_UNIT_SLAB_DELTA_FIELDS,
   isEntityMotionDeltaCandidate,
+  isEntityMotionDeltaCandidateSlot,
   shouldDeferToSparseEntityMotionDelta,
 } from './snapshotMotionDeltaPolicy';
 
@@ -1426,6 +1427,7 @@ export class ServerSnapshotPublisher {
     out.length = 0;
     const seen = this.entityMotionCandidateIdSet;
     seen.clear();
+    const entityViews = entitySlotRegistry.getViews();
 
     for (const id of this.deferredEntityMotionIds) {
       const entity = world.getEntity(id);
@@ -1440,7 +1442,9 @@ export class ServerSnapshotPublisher {
     if (movingUnits !== undefined) {
       for (let i = 0; i < movingUnits.length; i++) {
         const entity = movingUnits[i];
-        if (!isEntityMotionDeltaCandidate(entity) || seen.has(entity.id)) continue;
+        if (!this.isEntityMotionDeltaCandidateFromState(entity, entityViews) || seen.has(entity.id)) {
+          continue;
+        }
         seen.add(entity.id);
         out.push(entity.id);
       }
@@ -1449,13 +1453,24 @@ export class ServerSnapshotPublisher {
     const flyingUnits = world.getFlyingUnits();
     for (let i = 0; i < flyingUnits.length; i++) {
       const entity = flyingUnits[i];
-      if (!isEntityMotionDeltaCandidate(entity) || seen.has(entity.id)) continue;
+      if (!this.isEntityMotionDeltaCandidateFromState(entity, entityViews) || seen.has(entity.id)) {
+        continue;
+      }
       seen.add(entity.id);
       out.push(entity.id);
     }
     seen.clear();
     out.sort((a, b) => a - b);
     return out.length;
+  }
+
+  private isEntityMotionDeltaCandidateFromState(
+    entity: Entity,
+    entityViews: EntityStateViews | null,
+  ): boolean {
+    const slot = entitySlotRegistry.getEntitySlot(entity);
+    return isEntityMotionDeltaCandidateSlot(entityViews, slot, entity.id) ||
+      isEntityMotionDeltaCandidate(entity);
   }
 
   private listenerNeedsStaticMap(

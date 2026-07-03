@@ -6,6 +6,8 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
 } from '../../types/network';
+import { ENTITY_STATE_KIND_UNIT } from '../sim-wasm/init';
+import type { EntityStateViews } from '../sim/EntitySlotRegistry';
 import type { Entity } from '../sim/types';
 
 export const ENTITY_MOTION_DELTA_FIELDS =
@@ -36,6 +38,24 @@ export function isEntityMotionDeltaCandidate(entity: Entity): boolean {
   const av = unit.angularVelocity3;
   if (av === null) return false;
   return av.x * av.x + av.y * av.y + av.z * av.z > ENTITY_MOTION_ANGULAR_EPSILON_SQ;
+}
+
+export function isEntityMotionDeltaCandidateSlot(
+  views: EntityStateViews | null,
+  slot: number,
+  entityId?: number,
+): boolean {
+  if (views === null || slot < 0 || slot >= views.capacity) return false;
+  if (entityId !== undefined && views.entityId[slot] !== entityId) return false;
+  if (views.kind[slot] !== ENTITY_STATE_KIND_UNIT || views.hp[slot] <= 0) return false;
+  const vx = views.velX[slot];
+  const vy = views.velY[slot];
+  const vz = views.velZ[slot];
+  if (vx * vx + vy * vy + vz * vz > ENTITY_MOTION_SPEED_EPSILON_SQ) return true;
+  const avx = views.angularVelocityX[slot];
+  const avy = views.angularVelocityY[slot];
+  const avz = views.angularVelocityZ[slot];
+  return avx * avx + avy * avy + avz * avz > ENTITY_MOTION_ANGULAR_EPSILON_SQ;
 }
 
 export function dirtyFieldsAreMotionOnly(changedFields: number): boolean {
