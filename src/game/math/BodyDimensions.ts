@@ -23,6 +23,7 @@ function circleCenterYFrac(part: {
   return part.centerYFrac ?? circleYFrac(part.radiusFrac, part.yFrac);
 }
 
+const BODY_SHAPE_KEY_CACHE: WeakMap<UnitBodyShape, string> = new WeakMap();
 const TOP_Y_CACHE: Map<string, number> = new Map();
 
 export const TREAD_CHASSIS_LIFT_Y = 10;
@@ -31,7 +32,11 @@ export const TREAD_CHASSIS_LIFT_Y = 10;
  *  key for chassis geometry; unit blueprints author bodyShape, not a
  *  second renderer id that can drift from the actual geometry. */
 export function getUnitBodyShapeKey(bodyShape: UnitBodyShape): string {
-  return JSON.stringify(bodyShape);
+  const cached = BODY_SHAPE_KEY_CACHE.get(bodyShape);
+  if (cached !== undefined) return cached;
+  const key = JSON.stringify(bodyShape);
+  BODY_SHAPE_KEY_CACHE.set(bodyShape, key);
+  return key;
 }
 
 
