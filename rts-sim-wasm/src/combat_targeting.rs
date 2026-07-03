@@ -1401,6 +1401,150 @@ pub fn combat_targeting_can_player_observe_entity(target_id: i32, viewer_player_
     }
 }
 
+#[inline]
+fn combat_targeting_player_mask_includes_owner(view_mask: u32, owner_player_id: u32) -> bool {
+    (1..=32).contains(&owner_player_id) && (view_mask & (1_u32 << (owner_player_id - 1))) != 0
+}
+
+#[inline]
+fn combat_targeting_entity_state_kind_is_observable(kind: u8) -> bool {
+    kind == crate::entity_state::ENTITY_STATE_KIND_UNIT
+        || kind == crate::entity_state::ENTITY_STATE_KIND_BUILDING
+        || kind == crate::entity_state::ENTITY_STATE_KIND_TOWER
+}
+
+/// Snapshot-visibility bridge over the targeting observation masks.
+///
+/// JS still owns terrain/material LOS, so rows covered by full-sight sources
+/// are returned as slots in `los_slots_out`. Owned and detector-visible
+/// cloaked rows can be materialized immediately as visible ids, while radar
+/// contacts are returned as ids for the minimap/radar serializer.
+///
+/// `counts_out` receives [handled_rows, visible_count, radar_count, los_count].
+/// A negative return means one of the output buffers was too small; its
+/// absolute value is the required row capacity.
+#[wasm_bindgen]
+pub fn combat_targeting_collect_observation_visibility(
+    view_mask: u32,
+    target_slots: &[u32],
+    visible_ids_out: &mut [i32],
+    radar_ids_out: &mut [i32],
+    los_slots_out: &mut [u32],
+    counts_out: &mut [u32],
+) -> i32 {
+    if counts_out.len() < 4 || view_mask == 0 {
+        return 0;
+    }
+
+    let pool = combat_targeting_pool();
+    let state = crate::entity_state::entity_state();
+    let capacity = pool
+        .entity_id
+        .len()
+        .min(pool.entity_flags.len())
+        .min(pool.entity_sensor_coverage_mask.len())
+        .min(pool.entity_full_sight_coverage_mask.len())
+        .min(pool.entity_detector_coverage_mask.len())
+        .min(state.entity_id.len())
+        .min(state.kind.len())
+        .min(state.owner_player_id.len());
+
+    let mut handled_rows = 0_usize;
+    let mut visible_count = 0_usize;
+    let mut radar_count = 0_usize;
+    let mut los_count = 0_usize;
+
+    let mut collect_slot = |slot: usize| {
+        if slot >= capacity {
+            return;
+        }
+
+        let id = state.entity_id[slot];
+        if id < 0 || pool.entity_id[slot] != id {
+            return;
+        }
+
+        let kind = state.kind[slot];
+        if !combat_targeting_entity_state_kind_is_observable(kind) {
+            return;
+        }
+
+        handled_rows += 1;
+        if combat_targeting_player_mask_includes_owner(view_mask, state.owner_player_id[slot]) {
+            if visible_count < visible_ids_out.len() {
+                visible_ids_out[visible_count] = id;
+            }
+            visible_count += 1;
+            if radar_count < radar_ids_out.len() {
+                radar_ids_out[radar_count] = id;
+            }
+            radar_count += 1;
+            return;
+        }
+
+        let flags = pool.entity_flags[slot];
+        if (flags & CT_ENTITY_FLAG_ALIVE) == 0 {
+            return;
+        }
+
+        let detector_covered = (pool.entity_detector_coverage_mask[slot] & view_mask) != 0;
+        if (flags & CT_ENTITY_FLAG_CLOAKED) != 0 {
+            if detector_covered {
+                if visible_count < visible_ids_out.len() {
+                    visible_ids_out[visible_count] = id;
+                }
+                visible_count += 1;
+                if radar_count < radar_ids_out.len() {
+                    radar_ids_out[radar_count] = id;
+                }
+                radar_count += 1;
+            }
+            return;
+        }
+
+        let full_sight_covered = (pool.entity_full_sight_coverage_mask[slot] & view_mask) != 0;
+        let radar_covered =
+            (pool.entity_sensor_coverage_mask[slot] & view_mask) != 0 || full_sight_covered;
+        if full_sight_covered {
+            if los_count < los_slots_out.len() {
+                los_slots_out[los_count] = slot as u32;
+            }
+            los_count += 1;
+        }
+        if radar_covered || detector_covered {
+            if radar_count < radar_ids_out.len() {
+                radar_ids_out[radar_count] = id;
+            }
+            radar_count += 1;
+        }
+    };
+
+    if target_slots.is_empty() {
+        for slot in 0..capacity {
+            collect_slot(slot);
+        }
+    } else {
+        for &slot in target_slots {
+            collect_slot(slot as usize);
+        }
+    }
+
+    counts_out[0] = handled_rows as u32;
+    counts_out[1] = visible_count as u32;
+    counts_out[2] = radar_count as u32;
+    counts_out[3] = los_count as u32;
+
+    let required = visible_count.max(radar_count).max(los_count);
+    if visible_count > visible_ids_out.len()
+        || radar_count > radar_ids_out.len()
+        || los_count > los_slots_out.len()
+    {
+        return -(required as i32);
+    }
+
+    handled_rows as i32
+}
+
 macro_rules! combat_targeting_ptr_export {
     ($name:ident, $field:ident, $ty:ty) => {
         #[wasm_bindgen]
@@ -9765,6 +9909,62 @@ mod tests {
             (actual - expected).abs() <= 1e-9,
             "expected {expected}, got {actual}"
         );
+    }
+
+    #[test]
+    fn observation_visibility_collector_compacts_visible_radar_and_los_rows() {
+        {
+            let state = crate::entity_state::entity_state();
+            *state = crate::entity_state::EntityStateSlab::empty();
+            state.ensure_capacity(3);
+            state.entity_id[0] = 10;
+            state.kind[0] = crate::entity_state::ENTITY_STATE_KIND_UNIT;
+            state.owner_player_id[0] = 1;
+            state.entity_id[1] = 11;
+            state.kind[1] = crate::entity_state::ENTITY_STATE_KIND_UNIT;
+            state.owner_player_id[1] = 2;
+            state.entity_id[2] = 12;
+            state.kind[2] = crate::entity_state::ENTITY_STATE_KIND_UNIT;
+            state.owner_player_id[2] = 2;
+            state.entity_id[3] = 13;
+            state.kind[3] = crate::entity_state::ENTITY_STATE_KIND_SHOT;
+            state.owner_player_id[3] = 2;
+        }
+        {
+            let pool = combat_targeting_pool();
+            *pool = CombatTargetingPool::empty();
+            pool.ensure_entity_capacity(3);
+            pool.entity_id[0] = 10;
+            pool.entity_flags[0] = CT_ENTITY_FLAG_ALIVE;
+            pool.entity_id[1] = 11;
+            pool.entity_flags[1] = CT_ENTITY_FLAG_ALIVE;
+            pool.entity_full_sight_coverage_mask[1] = 1;
+            pool.entity_id[2] = 12;
+            pool.entity_flags[2] = CT_ENTITY_FLAG_ALIVE | CT_ENTITY_FLAG_CLOAKED;
+            pool.entity_detector_coverage_mask[2] = 1;
+            pool.entity_id[3] = 13;
+            pool.entity_flags[3] = CT_ENTITY_FLAG_ALIVE;
+            pool.entity_sensor_coverage_mask[3] = 1;
+        }
+
+        let mut visible = [0_i32; 4];
+        let mut radar = [0_i32; 4];
+        let mut los = [0_u32; 4];
+        let mut counts = [0_u32; 4];
+        let handled = combat_targeting_collect_observation_visibility(
+            1,
+            &[],
+            &mut visible,
+            &mut radar,
+            &mut los,
+            &mut counts,
+        );
+
+        assert_eq!(handled, 3);
+        assert_eq!(counts, [3, 2, 3, 1]);
+        assert_eq!(&visible[..2], &[10, 12]);
+        assert_eq!(&radar[..3], &[10, 11, 12]);
+        assert_eq!(los[0], 1);
     }
 
     #[test]

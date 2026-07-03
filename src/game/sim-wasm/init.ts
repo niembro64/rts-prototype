@@ -286,6 +286,7 @@ import __wbg_init, {
   combat_targeting_unset_entity,
   combat_targeting_rebuild_observation_masks,
   combat_targeting_rebuild_observation_masks_for_sources,
+  combat_targeting_collect_observation_visibility,
   combat_targeting_add_sensor_observation_circle,
   combat_targeting_set_wind,
   combat_targeting_set_turret,
@@ -2349,6 +2350,18 @@ export interface CombatTargetingApi {
    *  slots supplied by JS. The caller must have cleared the targeting
    *  pool earlier in the tick. */
   rebuildObservationMasksForSources: (sourceSlots: Uint32Array) => void;
+  /** Snapshot visibility collector over the native observation masks.
+   *  Writes compact [visible ids, radar ids, LOS slots] output rows and
+   *  returns the number of handled entity rows, or a negative required
+   *  capacity if an output buffer is too small. */
+  collectObservationVisibility: (
+    viewMask: number,
+    targetSlots: Uint32Array,
+    visibleIdsOut: Int32Array,
+    radarIdsOut: Int32Array,
+    losSlotsOut: Uint32Array,
+    countsOut: Uint32Array,
+  ) => number;
   /** Adds a temporary full-sight source, currently scan pulses. Full
    *  sight is included in radar-level coverage. */
   addSensorObservationCircle: (
@@ -4074,6 +4087,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           unsetEntity: combat_targeting_unset_entity,
           rebuildObservationMasks: combat_targeting_rebuild_observation_masks,
           rebuildObservationMasksForSources: combat_targeting_rebuild_observation_masks_for_sources,
+          collectObservationVisibility: combat_targeting_collect_observation_visibility,
           addSensorObservationCircle: combat_targeting_add_sensor_observation_circle,
           setWind: combat_targeting_set_wind,
           setTurret: combat_targeting_set_turret,

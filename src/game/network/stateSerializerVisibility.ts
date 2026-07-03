@@ -2,10 +2,7 @@ import type { RemovedSnapshotEntity, WorldState } from '../sim/WorldState';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { NetworkServerSnapshotScanPulse } from '../../types/network';
 import { hasFogOfWarLineOfSight } from '../sim/combat/lineOfSight';
-import {
-  getCombatTargetingStateViews,
-  getCombatTargetingTargetSlots,
-} from '../sim/combat/targetingInputStamping';
+import { getCombatTargetingTargetSlots } from '../sim/combat/targetingInputStamping';
 import { spatialGrid } from '../sim/SpatialGrid';
 import {
   canEntityProvideFullVision,
@@ -18,8 +15,6 @@ import {
   isEntityCloaked,
 } from '../sim/sensorCoverage';
 import {
-  CT_ENTITY_FLAG_ALIVE,
-  CT_ENTITY_FLAG_CLOAKED,
   ENTITY_STATE_KIND_BUILDING,
   ENTITY_STATE_KIND_TOWER,
   ENTITY_STATE_KIND_UNIT,
@@ -94,6 +89,19 @@ type MutableScanPulseWireRow = Float64Array | number[];
 const scanPulseWireSources = new WeakMap<object, ScanPulseWireSource>();
 const directScanPulseWireSource = createFloat64WireRows();
 const _scanPulseWireSource = createFloat64WireRows();
+let nativeObservationVisibleIds = new Int32Array(0);
+let nativeObservationRadarIds = new Int32Array(0);
+let nativeObservationLosSlots = new Uint32Array(0);
+const nativeObservationCounts = new Uint32Array(4);
+
+function ensureNativeObservationScratch(capacity: number): void {
+  if (capacity <= nativeObservationVisibleIds.length) return;
+  let next = Math.max(8, nativeObservationVisibleIds.length);
+  while (next < capacity) next *= 2;
+  nativeObservationVisibleIds = new Int32Array(next);
+  nativeObservationRadarIds = new Int32Array(next);
+  nativeObservationLosSlots = new Uint32Array(next);
+}
 
 export function getScanPulseWireSource(
   pulses: readonly NetworkServerSnapshotScanPulse[],
@@ -443,114 +451,65 @@ export class SnapshotVisibility {
     const entityViews = entitySlotRegistry.getViews();
     if (sim === undefined || entityViews === null) return false;
 
-    const targetingViews = getCombatTargetingStateViews(sim);
-    const combatCapacity = targetingViews.entityCapacity;
+    const combatCapacity = sim.combatTargeting.entityCapacity();
     const capacity = Math.min(entityViews.capacity, combatCapacity);
     if (capacity <= 0) return false;
 
-    const combatEntityId = targetingViews.entityId;
-    const combatFlags = targetingViews.entityFlags;
-    const sensorCoverageMask = targetingViews.sensorCoverageMask;
-    const fullSightCoverageMask = targetingViews.fullSightCoverageMask;
-    const detectorCoverageMask = targetingViews.detectorCoverageMask;
-
-    const viewMask = this.viewMask >>> 0;
     const targetSlots = getCombatTargetingTargetSlots();
-    if (targetSlots.length > 0) {
-      let stampedRows = 0;
-      for (let i = 0; i < targetSlots.length; i++) {
-        const slot = targetSlots[i];
-        if (slot >= capacity) continue;
-        const id = entityViews.entityId[slot];
-        if (id < 0 || combatEntityId[slot] !== id) continue;
-        if (this.addNativeObservationMaskEntityCandidate(
-          entityViews,
-          combatFlags,
-          sensorCoverageMask,
-          fullSightCoverageMask,
-          detectorCoverageMask,
-          viewMask,
-          slot,
-          id,
-        )) {
-          stampedRows++;
-        }
-      }
-      return stampedRows > 0;
-    }
+    ensureNativeObservationScratch(Math.max(capacity, targetSlots.length));
+    nativeObservationCounts[0] = 0;
+    nativeObservationCounts[1] = 0;
+    nativeObservationCounts[2] = 0;
+    nativeObservationCounts[3] = 0;
 
-    let stampedRows = 0;
-    for (let slot = 0; slot < capacity; slot++) {
-      const id = entityViews.entityId[slot];
-      if (id < 0 || combatEntityId[slot] !== id) continue;
-      if (this.addNativeObservationMaskEntityCandidate(
-        entityViews,
-        combatFlags,
-        sensorCoverageMask,
-        fullSightCoverageMask,
-        detectorCoverageMask,
-        viewMask,
-        slot,
-        id,
-      )) {
-        stampedRows++;
-      }
-    }
-    return stampedRows > 0;
-  }
+    const handledRows = sim.combatTargeting.collectObservationVisibility(
+      this.viewMask >>> 0,
+      targetSlots,
+      nativeObservationVisibleIds,
+      nativeObservationRadarIds,
+      nativeObservationLosSlots,
+      nativeObservationCounts,
+    );
+    if (handledRows <= 0) return false;
 
-  private addNativeObservationMaskEntityCandidate(
-    entityViews: EntityStateViews,
-    combatFlags: Uint8Array,
-    sensorCoverageMask: Uint32Array,
-    fullSightCoverageMask: Uint32Array,
-    detectorCoverageMask: Uint32Array,
-    viewMask: number,
-    slot: number,
-    id: EntityId,
-  ): boolean {
-    const flags = combatFlags[slot];
-    const kind = entityViews.kind[slot];
+    const visibleCount = nativeObservationCounts[1];
+    const radarCount = nativeObservationCounts[2];
+    const losCount = nativeObservationCounts[3];
     if (
-      kind !== ENTITY_STATE_KIND_UNIT &&
-      kind !== ENTITY_STATE_KIND_BUILDING &&
-      kind !== ENTITY_STATE_KIND_TOWER
+      visibleCount > nativeObservationVisibleIds.length ||
+      radarCount > nativeObservationRadarIds.length ||
+      losCount > nativeObservationLosSlots.length
     ) {
       return false;
     }
 
-    const ownerPlayerId = entityViews.ownerPlayerId[slot];
-    if (ownerPlayerId !== 0 && (viewMask & (1 << (ownerPlayerId - 1))) !== 0) {
-      this.appendVisibleEntityIdByIdUnchecked(id);
-      this.appendRadarEntityIdByIdUnchecked(id);
-      return true;
+    for (let i = 0; i < visibleCount; i++) {
+      this.appendVisibleEntityIdById(nativeObservationVisibleIds[i] as EntityId);
     }
-
-    if ((flags & CT_ENTITY_FLAG_ALIVE) === 0) return true;
-
-    const detectorCovered = (detectorCoverageMask[slot] & viewMask) !== 0;
-    const cloaked = (flags & CT_ENTITY_FLAG_CLOAKED) !== 0;
-    if (cloaked) {
-      if (detectorCovered) {
-        this.appendVisibleEntityIdByIdUnchecked(id);
-        this.appendRadarEntityIdByIdUnchecked(id);
+    for (let i = 0; i < radarCount; i++) {
+      this.appendRadarEntityIdById(nativeObservationRadarIds[i] as EntityId);
+    }
+    for (let i = 0; i < losCount; i++) {
+      const slot = nativeObservationLosSlots[i];
+      if (slot >= capacity) continue;
+      const id = entityViews.entityId[slot] as EntityId;
+      if (id < 0) continue;
+      const kind = entityViews.kind[slot];
+      if (
+        kind !== ENTITY_STATE_KIND_UNIT &&
+        kind !== ENTITY_STATE_KIND_BUILDING &&
+        kind !== ENTITY_STATE_KIND_TOWER
+      ) {
+        continue;
       }
-      return true;
-    }
-
-    const radarCovered = (sensorCoverageMask[slot] & viewMask) !== 0;
-    const fullSightCovered = (fullSightCoverageMask[slot] & viewMask) !== 0;
-    if (fullSightCovered) {
       const visible = this.isEntityStateSlotVisibleWithLos(entityViews, slot, kind);
       this.entityVisibilityMemo.set(id, visible);
       if (visible) {
-        this.appendVisibleEntityIdByIdUnchecked(id);
-        this.appendRadarEntityIdByIdUnchecked(id);
-        return true;
+        this.appendVisibleEntityIdById(id);
+        this.appendRadarEntityIdById(id);
       }
     }
-    if (radarCovered || detectorCovered) this.appendRadarEntityIdByIdUnchecked(id);
-    return true;
+    return nativeObservationCounts[0] > 0;
   }
 
   private isEntityStateSlotVisibleWithLos(
@@ -660,22 +619,12 @@ export class SnapshotVisibility {
     this.visibleEntityIds.push(id);
   }
 
-  private appendVisibleEntityIdByIdUnchecked(id: EntityId): void {
-    this.visibleEntityIdSet.add(id);
-    this.visibleEntityIds.push(id);
-  }
-
   private appendRadarEntityId(entity: Entity): void {
     this.appendRadarEntityIdById(entity.id);
   }
 
   private appendRadarEntityIdById(id: EntityId): void {
     if (this.radarEntityIdSet.has(id)) return;
-    this.radarEntityIdSet.add(id);
-    this.radarEntityIds.push(id);
-  }
-
-  private appendRadarEntityIdByIdUnchecked(id: EntityId): void {
     this.radarEntityIdSet.add(id);
     this.radarEntityIds.push(id);
   }
