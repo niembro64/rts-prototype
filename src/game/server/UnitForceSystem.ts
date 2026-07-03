@@ -203,7 +203,6 @@ export class UnitForceSystem {
 
   private physicsForceUnitSlotsBuf = new Uint32Array(1024);
   private physicsForceUnitSlotCount = 0;
-  private physicsForceSlotEntities: (Entity | undefined)[] = [];
   private physicsCandidateUnitSlotsBuf = new Uint32Array(1024);
   private physicsActiveUnitSlotMarks = new Uint32Array(1024);
   private physicsActiveUnitSlotMark = 1;
@@ -228,7 +227,6 @@ export class UnitForceSystem {
 
     const activeSlots = this.collectPhysicsForceUnitSlots();
     if (activeSlots.length === 0) return;
-    this.resolveActiveBodyEntities(activeSlots, this.physicsForceSlotEntities);
     this.waterDryMaskCache.clear();
     this.waterProbeSupportIndexReady = false;
 
@@ -236,8 +234,7 @@ export class UnitForceSystem {
 
     let count = 0;
     for (let i = 0; i < activeSlots.length; i++) {
-      const entity = this.physicsForceSlotEntities[i];
-      this.physicsForceSlotEntities[i] = undefined;
+      const entity = entitySlotRegistry.resolveSlot(activeSlots[i]);
       if (entity === undefined || entity.body === null || entity.unit === null) continue;
 
       const body = entity.body.physicsBody;
@@ -710,15 +707,6 @@ export class UnitForceSystem {
       this.physicsForceUnitSlotsBuf = next;
     }
     this.physicsForceUnitSlotsBuf[this.physicsForceUnitSlotCount++] = slot;
-  }
-
-  private resolveActiveBodyEntities(
-    activeSlots: Uint32Array,
-    activeEntities: (Entity | undefined)[],
-  ): void {
-    for (let i = 0; i < activeSlots.length; i++) {
-      activeEntities[i] = entitySlotRegistry.resolveSlot(activeSlots[i]);
-    }
   }
 
   private sampleBodySupportSurface(
