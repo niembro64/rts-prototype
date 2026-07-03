@@ -275,24 +275,9 @@ export class UnitForceSystem {
       // (build-in-progress) lift, so the old zeroing was redundant.
       _forceRows[base + UF_ROW_HOVER_SMOOTHED_FORCE] =
         suppressAirborneLift ? Number.NaN : unit.hoverHeightUpwardForceSmoothed ?? Number.NaN;
-      _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = 0;
       _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
       _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
       _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
-      _forceRows[base + UF_ROW_EXTERNAL_FX] = 0;
-      _forceRows[base + UF_ROW_EXTERNAL_FY] = 0;
-      _forceRows[base + UF_ROW_EXTERNAL_FZ] = 0;
-      _forceRows[base + UF_ROW_ORIENTATION_X] = 0;
-      _forceRows[base + UF_ROW_ORIENTATION_Y] = 0;
-      _forceRows[base + UF_ROW_ORIENTATION_Z] = 0;
-      _forceRows[base + UF_ROW_ORIENTATION_W] = 1;
-      _forceRows[base + UF_ROW_OMEGA_X] = 0;
-      _forceRows[base + UF_ROW_OMEGA_Y] = 0;
-      _forceRows[base + UF_ROW_OMEGA_Z] = 0;
-      _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_0] = 0;
-      _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_1] = 0;
-      _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_2] = 0;
-      _forceRows[base + UF_ROW_WATER_AHEAD_MASK] = 0;
 
       // Fully-abstracted medium force profile (all opt-in, default 0/inert).
       const loco = unit.locomotion;
@@ -307,9 +292,6 @@ export class UnitForceSystem {
       // the kernel from the profile table.
       _forceRows[base + UF_ROW_SWIM_SMOOTHED_FORCE] =
         unit.swimHeightUpwardForceSmoothed ?? Number.NaN;
-      _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = 0;
-      _forceRows[base + UF_ROW_HEADING_X] = 0;
-      _forceRows[base + UF_ROW_HEADING_Y] = 0;
 
       let flags = 0;
 
@@ -396,10 +378,6 @@ export class UnitForceSystem {
         if (supportSurfaceContact) {
           this.writeSupportSurfaceNormal(entity, supportSurface);
         }
-        _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
-        _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
-        _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
-        _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
         const radius = body.radius || 10;
         const inWater = supportSurface.materialKind === 'water';
         if (inWater) {
