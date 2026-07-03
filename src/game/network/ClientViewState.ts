@@ -121,11 +121,12 @@ import {
   getPackedProjectileSnapshotWire,
 } from './snapshotProjectileWirePack';
 import {
-  forEachProjectileWireSourceSpawn,
-  forEachProjectileWireSourceBeamUpdateFields,
-  forEachProjectileWireSourceDespawn,
-  forEachProjectileWireSourceVelocityUpdate,
-  projectileSnapshotWireSourceHasDirectlyConsumableRows,
+  forEachProjectileWireSourceSpawnFromSource,
+  forEachProjectileWireSourceBeamUpdateFieldsFromSource,
+  forEachProjectileWireSourceDespawnFromSource,
+  forEachProjectileWireSourceVelocityUpdateFromSource,
+  getActiveProjectileSnapshotWireSource,
+  projectileWireSourceHasDirectlyConsumableRows,
 } from './stateSerializerProjectiles';
 import {
   addSnapshotMaterializationStageToSnapshot,
@@ -2501,14 +2502,15 @@ export class ClientViewState {
 
     const projectiles = state.projectiles;
     if (projectiles !== undefined && projectiles !== null) {
+      const directProjectileSource = getActiveProjectileSnapshotWireSource(projectiles);
       const directProjectileRows =
-        projectileSnapshotWireSourceHasDirectlyConsumableRows(projectiles);
+        projectileWireSourceHasDirectlyConsumableRows(directProjectileSource);
       const packedProjectiles = directProjectileRows
         ? undefined
         : getPackedProjectileSnapshotWire(projectiles);
       const appliedDirectSpawns = directProjectileRows
-        ? forEachProjectileWireSourceSpawn(
-            projectiles,
+        ? forEachProjectileWireSourceSpawnFromSource(
+            directProjectileSource,
             this.directProjectileSpawnScratch,
             (spawn) => {
               if (this.projectileStore.projectileSpawns.shouldSmooth(spawn)) {
@@ -2536,8 +2538,8 @@ export class ClientViewState {
       // start/end/reflection points so the client can draw beams without
       // running local mirror/unit/building beam traces in applyPrediction.
       const appliedDirectBeamUpdates = directProjectileRows
-        ? forEachProjectileWireSourceBeamUpdateFields(
-            projectiles,
+        ? forEachProjectileWireSourceBeamUpdateFieldsFromSource(
+            directProjectileSource,
             (
               id,
               obstructionT,
@@ -2565,8 +2567,8 @@ export class ClientViewState {
 
       // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
       const appliedDirectDespawns = directProjectileRows
-        ? forEachProjectileWireSourceDespawn(
-            projectiles,
+        ? forEachProjectileWireSourceDespawnFromSource(
+            directProjectileSource,
             (id) => this.deleteEntityLocalState(id as EntityId),
           )
         : false;
@@ -2591,8 +2593,8 @@ export class ClientViewState {
       // keeps dead-reckoning, while ClientProjectilePrediction advances the
       // target and drifts position + velocity toward it each frame.
       const appliedDirectVelocityUpdates = directProjectileRows
-        ? forEachProjectileWireSourceVelocityUpdate(
-            projectiles,
+        ? forEachProjectileWireSourceVelocityUpdateFromSource(
+            directProjectileSource,
             (
               id,
               qposX,

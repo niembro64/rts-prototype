@@ -262,14 +262,14 @@ export class ClientProjectileStore {
     const dstTarget = target.points;
     for (let i = 0; i < pointCount; i++) {
       const base = (pointOffset + i) * PROJECTILE_BEAM_POINT_WIRE_STRIDE;
-      const flags = pointValues[base + 6] ?? 0;
+      const flags = pointValues[base + 6];
       const dp = ensureBeamPoint(dstTarget, i);
-      dp.x = deqProjPos(pointValues[base + 0] ?? 0);
-      dp.y = deqProjPos(pointValues[base + 1] ?? 0);
-      dp.z = deqProjPos(pointValues[base + 2] ?? 0);
-      dp.vx = deqVel(pointValues[base + 3] ?? 0);
-      dp.vy = deqVel(pointValues[base + 4] ?? 0);
-      dp.vz = deqVel(pointValues[base + 5] ?? 0);
+      dp.x = deqProjPos(pointValues[base + 0]);
+      dp.y = deqProjPos(pointValues[base + 1]);
+      dp.z = deqProjPos(pointValues[base + 2]);
+      dp.vx = deqVel(pointValues[base + 3]);
+      dp.vy = deqVel(pointValues[base + 4]);
+      dp.vz = deqVel(pointValues[base + 5]);
       dp.reflectorEntityId = (flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0
         ? pointValues[base + 7] as EntityId
         : null;
@@ -280,13 +280,13 @@ export class ClientProjectileStore {
         ? pointValues[base + 8] as PlayerId
         : null;
       dp.normalX = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) !== 0
-        ? deqNormal(pointValues[base + 9] ?? 0)
+        ? deqNormal(pointValues[base + 9])
         : null;
       dp.normalY = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) !== 0
-        ? deqNormal(pointValues[base + 10] ?? 0)
+        ? deqNormal(pointValues[base + 10])
         : null;
       dp.normalZ = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0
-        ? deqNormal(pointValues[base + 11] ?? 0)
+        ? deqNormal(pointValues[base + 11])
         : null;
     }
     this.finishBeamUpdate(entity, id, target);

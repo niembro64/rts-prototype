@@ -531,6 +531,12 @@ export function projectileSnapshotWireSourceHasDirectlyConsumableRows(
   projectiles: ProjectileSnapshot,
 ): boolean {
   const source = getActiveProjectileSnapshotWireSource(projectiles);
+  return projectileWireSourceHasDirectlyConsumableRows(source);
+}
+
+export function projectileWireSourceHasDirectlyConsumableRows(
+  source: ProjectileSnapshotWireSource | undefined,
+): source is ProjectileSnapshotWireSource {
   return (
     source !== undefined &&
     (
@@ -552,13 +558,13 @@ function copyProjectileWireSourceSpawnRowFromSourceInto(
   const base = rowIndex * PROJECTILE_SPAWN_WIRE_STRIDE;
   const flags = values[base + 31] | 0;
   out.id = values[base + 0] | 0;
-  out.pos.x = values[base + 1] ?? 0;
-  out.pos.y = values[base + 2] ?? 0;
-  out.pos.z = values[base + 3] ?? 0;
-  out.rotation = values[base + 4] ?? 0;
-  out.velocity.x = values[base + 5] ?? 0;
-  out.velocity.y = values[base + 6] ?? 0;
-  out.velocity.z = values[base + 7] ?? 0;
+  out.pos.x = values[base + 1];
+  out.pos.y = values[base + 2];
+  out.pos.z = values[base + 3];
+  out.rotation = values[base + 4];
+  out.velocity.x = values[base + 5];
+  out.velocity.y = values[base + 6];
+  out.velocity.z = values[base + 7];
   out.projectileType = values[base + 8] as NetworkServerSnapshotProjectileSpawn['projectileType'];
   out.maxLifespan = (flags & PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN) !== 0
     ? values[base + 9]
@@ -570,10 +576,10 @@ function copyProjectileWireSourceSpawnRowFromSourceInto(
   out.sourceTurretBlueprintCode = (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) !== 0
     ? values[base + 12] as NetworkServerSnapshotProjectileSpawn['sourceTurretBlueprintCode']
     : null;
-  out.playerId = values[base + 13] ?? 1;
-  out.sourceEntityId = values[base + 14] ?? 0;
-  out.turretIndex = values[base + 15] ?? 0;
-  out.barrelIndex = values[base + 16] ?? 0;
+  out.playerId = values[base + 13];
+  out.sourceEntityId = values[base + 14];
+  out.turretIndex = values[base + 15];
+  out.barrelIndex = values[base + 16];
   out.targetEntityId = (flags & PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID) !== 0
     ? values[base + 23]
     : null;
@@ -583,10 +589,10 @@ function copyProjectileWireSourceSpawnRowFromSourceInto(
   out.sourceTurretEntityId = (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID) !== 0
     ? values[base + 25]
     : null;
-  out.sourceHostEntityId = values[base + 26] ?? 0;
-  out.sourceRootEntityId = values[base + 27] ?? 0;
-  out.sourceTeamId = values[base + 28] ?? 1;
-  out.spawnTick = values[base + 29] ?? 0;
+  out.sourceHostEntityId = values[base + 26];
+  out.sourceRootEntityId = values[base + 27];
+  out.sourceTeamId = values[base + 28];
+  out.spawnTick = values[base + 29];
   out.parentShotEntityId = (flags & PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID) !== 0
     ? values[base + 30]
     : null;
@@ -608,12 +614,12 @@ function copyProjectileWireSourceSpawnRowFromSourceInto(
     if (out.beam === null) {
       out.beam = { start: { x: 0, y: 0, z: 0 }, end: { x: 0, y: 0, z: 0 } };
     }
-    out.beam.start.x = values[base + 17] ?? 0;
-    out.beam.start.y = values[base + 18] ?? 0;
-    out.beam.start.z = values[base + 19] ?? 0;
-    out.beam.end.x = values[base + 20] ?? 0;
-    out.beam.end.y = values[base + 21] ?? 0;
-    out.beam.end.z = values[base + 22] ?? 0;
+    out.beam.start.x = values[base + 17];
+    out.beam.start.y = values[base + 18];
+    out.beam.start.z = values[base + 19];
+    out.beam.end.x = values[base + 20];
+    out.beam.end.y = values[base + 21];
+    out.beam.end.z = values[base + 22];
   } else {
     out.beam = null;
   }
@@ -636,6 +642,14 @@ export function forEachProjectileWireSourceSpawn(
   visitor: (spawn: NetworkServerSnapshotProjectileSpawn) => void,
 ): boolean {
   const source = getActiveProjectileSnapshotWireSource(projectiles);
+  return forEachProjectileWireSourceSpawnFromSource(source, scratch, visitor);
+}
+
+export function forEachProjectileWireSourceSpawnFromSource(
+  source: ProjectileSnapshotWireSource | undefined,
+  scratch: NetworkServerSnapshotProjectileSpawn,
+  visitor: (spawn: NetworkServerSnapshotProjectileSpawn) => void,
+): boolean {
   if (source === undefined) return false;
   const rows = source.spawns;
   if (rows.count === 0) return false;
@@ -650,11 +664,18 @@ export function forEachProjectileWireSourceDespawn(
   visitor: (id: number) => void,
 ): boolean {
   const source = getActiveProjectileSnapshotWireSource(projectiles);
+  return forEachProjectileWireSourceDespawnFromSource(source, visitor);
+}
+
+export function forEachProjectileWireSourceDespawnFromSource(
+  source: ProjectileSnapshotWireSource | undefined,
+  visitor: (id: number) => void,
+): boolean {
   if (source === undefined) return false;
   const rows = source.despawns;
   if (rows.count === 0) return false;
   for (let i = 0; i < rows.count; i++) {
-    visitor(rows.values[i] ?? 0);
+    visitor(rows.values[i]);
   }
   return true;
 }
@@ -676,23 +697,30 @@ export function forEachProjectileWireSourceVelocityUpdate(
   visitor: ProjectileWireSourceVelocityUpdateVisitor,
 ): boolean {
   const source = getActiveProjectileSnapshotWireSource(projectiles);
+  return forEachProjectileWireSourceVelocityUpdateFromSource(source, visitor);
+}
+
+export function forEachProjectileWireSourceVelocityUpdateFromSource(
+  source: ProjectileSnapshotWireSource | undefined,
+  visitor: ProjectileWireSourceVelocityUpdateVisitor,
+): boolean {
   if (source === undefined) return false;
   const rows = source.velocityUpdates;
   if (rows.count === 0) return false;
   const values = rows.values;
   for (let i = 0; i < rows.count; i++) {
     const base = i * PROJECTILE_VELOCITY_WIRE_STRIDE;
-    const targetEntityId = values[base + 8] ?? 0;
+    const targetEntityId = values[base + 8];
     visitor(
-      values[base + 0] ?? 0,
-      values[base + 1] ?? 0,
-      values[base + 2] ?? 0,
-      values[base + 3] ?? 0,
-      values[base + 4] ?? 0,
-      values[base + 5] ?? 0,
-      values[base + 6] ?? 0,
+      values[base + 0],
+      values[base + 1],
+      values[base + 2],
+      values[base + 3],
+      values[base + 4],
+      values[base + 5],
+      values[base + 6],
       targetEntityId > 0 ? targetEntityId : null,
-      (values[base + 7] ?? 0) !== 0,
+      values[base + 7] !== 0,
     );
   }
   return true;
@@ -801,6 +829,13 @@ export function forEachProjectileWireSourceBeamUpdateFields(
   visitor: ProjectileWireSourceBeamUpdateFieldsVisitor,
 ): boolean {
   const source = getActiveProjectileSnapshotWireSource(projectiles);
+  return forEachProjectileWireSourceBeamUpdateFieldsFromSource(source, visitor);
+}
+
+export function forEachProjectileWireSourceBeamUpdateFieldsFromSource(
+  source: ProjectileSnapshotWireSource | undefined,
+  visitor: ProjectileWireSourceBeamUpdateFieldsVisitor,
+): boolean {
   if (source === undefined) return false;
   const rows = source.beamUpdates;
   if (rows.count === 0) return false;
@@ -809,8 +844,8 @@ export function forEachProjectileWireSourceBeamUpdateFields(
   let pointOffset = 0;
   for (let i = 0; i < rows.count; i++) {
     const base = i * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
-    const flags = headers[base + 1] ?? 0;
-    const pointCount = Math.max(0, headers[base + 3] ?? 0) | 0;
+    const flags = headers[base + 1];
+    const pointCount = Math.max(0, headers[base + 3]) | 0;
     if (pointOffset + pointCount > source.beamPoints.count) return i > 0;
     let endpointDamageable: boolean | null;
     if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE) !== 0) {
@@ -821,7 +856,7 @@ export function forEachProjectileWireSourceBeamUpdateFields(
       endpointDamageable = null;
     }
     visitor(
-      headers[base + 0] ?? 0,
+      headers[base + 0],
       (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0
         ? headers[base + 2]
         : null,
