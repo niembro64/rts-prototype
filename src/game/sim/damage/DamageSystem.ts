@@ -1386,34 +1386,43 @@ export class DamageSystem {
     const segLenSq = dx * dx + dy * dy;
     const segLen3Sq = segLenSq + dz * dz;
     const halfLineWidth = lineWidth / 2;
+    const unitProjectileQueryWidth = lineWidth + 60;
+    const buildingQueryWidth = lineWidth + 100;
 
     const nearbyUnitSlots = spatialGrid.queryUnitSlotsAlongLine(
       startX, startY, startZ,
       endX, endY, endZ,
-      lineWidth + 60,
+      unitProjectileQueryWidth,
     );
     const entityViews = entitySlotRegistry.getViews();
     if (entityViews !== null) {
       const slots = nearbyUnitSlots.slots;
       const count = nearbyUnitSlots.count;
+      const capacity = entityViews.capacity;
+      const entityIds = entityViews.entityId;
+      const hp = entityViews.hp;
+      const posX = entityViews.posX;
+      const posY = entityViews.posY;
+      const posZ = entityViews.posZ;
+      const radiusHitbox = entityViews.radiusHitbox;
       for (let i = 0; i < count; i++) {
         const slot = slots[i];
-        if (slot >= entityViews.capacity) continue;
-        const unitId = entityViews.entityId[slot] as EntityId;
+        if (slot >= capacity) continue;
+        const unitId = entityIds[slot] as EntityId;
         const isExcludedEntity = unitId === bodyExcludeEntityId;
         if (isExcludedEntity && bodyExcludePanelIndex < 0) continue;
-        if (entityViews.hp[slot] <= 0) continue;
+        if (hp[slot] <= 0) continue;
 
         // Horizontal-only early-out — the beam may arc vertically past
         // the unit, but we still require its XY projection to come near
         // the unit's bounding radius. Reflector surfaces (panels/fields)
         // are tested by the shared Rust kernel below, not per unit here.
-        const unitX = entityViews.posX[slot];
-        const unitY = entityViews.posY[slot];
-        const unitZ = entityViews.posZ[slot];
+        const unitX = posX[slot];
+        const unitY = posY[slot];
+        const unitZ = posZ[slot];
         const ux = unitX - startX, uy = unitY - startY;
         const crossSq = (ux * dy - uy * dx);
-        const boundR = entityViews.radiusHitbox[slot] + halfLineWidth;
+        const boundR = radiusHitbox[slot] + halfLineWidth;
         if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
         // Unit body: 3D segment-vs-sphere.
@@ -1534,27 +1543,36 @@ export class DamageSystem {
     const nearbyBuildingSlots = spatialGrid.queryBuildingSlotsAlongLine(
       startX, startY, startZ,
       queryEndX, queryEndY, queryEndZ,
-      lineWidth + 100,
+      buildingQueryWidth,
     );
     if (entityViews !== null) {
       const slots = nearbyBuildingSlots.slots;
       const count = nearbyBuildingSlots.count;
+      const capacity = entityViews.capacity;
+      const entityIds = entityViews.entityId;
+      const hp = entityViews.hp;
+      const posX = entityViews.posX;
+      const posY = entityViews.posY;
+      const posZ = entityViews.posZ;
+      const aabbHx = entityViews.aabbHx;
+      const aabbHy = entityViews.aabbHy;
+      const aabbHz = entityViews.aabbHz;
       for (let i = 0; i < count; i++) {
         const slot = slots[i];
-        if (slot >= entityViews.capacity) continue;
-        const buildingId = entityViews.entityId[slot] as EntityId;
+        if (slot >= capacity) continue;
+        const buildingId = entityIds[slot] as EntityId;
         // Skip the firing building — a tower-mounted turret must not
         // self-block on its own AABB. Mirrors the unit-source guard
         // above (bodyExclude* tracks the entity the beam was just
         // emitted from / last reflected off).
         if (buildingId === bodyExcludeEntityId) continue;
-        if (entityViews.hp[slot] <= 0) continue;
-        const bCenterX = entityViews.posX[slot];
-        const bCenterY = entityViews.posY[slot];
-        const bCenterZ = entityViews.posZ[slot];
-        const bHalfX = entityViews.aabbHx[slot];
-        const bHalfY = entityViews.aabbHy[slot];
-        const bHalfZ = entityViews.aabbHz[slot];
+        if (hp[slot] <= 0) continue;
+        const bCenterX = posX[slot];
+        const bCenterY = posY[slot];
+        const bCenterZ = posZ[slot];
+        const bHalfX = aabbHx[slot];
+        const bHalfY = aabbHy[slot];
+        const bHalfZ = aabbHz[slot];
         const t = rayBoxIntersectionTWithDelta(
           startX, startY, startZ,
           dx, dy, dz,
@@ -1585,23 +1603,30 @@ export class DamageSystem {
     const nearbyProjectiles = spatialGrid.queryProjectileSlotsAlongLine(
       startX, startY, startZ,
       queryEndX, queryEndY, queryEndZ,
-      lineWidth + 60,
+      unitProjectileQueryWidth,
     );
     if (entityViews !== null) {
       const slots = nearbyProjectiles.slots;
       const count = nearbyProjectiles.count;
+      const capacity = entityViews.capacity;
+      const entityIds = entityViews.entityId;
+      const hp = entityViews.hp;
+      const posX = entityViews.posX;
+      const posY = entityViews.posY;
+      const posZ = entityViews.posZ;
+      const radiusCollision = entityViews.radiusCollision;
       for (let i = 0; i < count; i++) {
         const slot = slots[i];
-        if (slot >= entityViews.capacity) continue;
-        const projectileId = entityViews.entityId[slot] as EntityId;
+        if (slot >= capacity) continue;
+        const projectileId = entityIds[slot] as EntityId;
         if (projectileId === bodyExcludeEntityId) continue;
-        if (entityViews.hp[slot] <= 0) continue;
-        const boundR = entityViews.radiusCollision[slot] + halfLineWidth;
+        if (hp[slot] <= 0) continue;
+        const boundR = radiusCollision[slot] + halfLineWidth;
         const t = lineSphereIntersectionTWithDelta(
           startX, startY, startZ,
           dx, dy, dz,
           segLen3Sq,
-          entityViews.posX[slot], entityViews.posY[slot], entityViews.posZ[slot],
+          posX[slot], posY[slot], posZ[slot],
           boundR,
         );
         if (t !== null && t < bestT) {
