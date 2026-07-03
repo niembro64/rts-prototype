@@ -17,6 +17,9 @@ const FLAT_ZONE_BUCKET_SIZE = LAND_CELL_SIZE;
 const FLAT_ZONE_BUCKET_BIAS = 10000;
 const FLAT_ZONE_BUCKET_BASE = 20000;
 const EMPTY_FLAT_ZONES: readonly TerrainFlatZone[] = [];
+let cachedDepositFlatZoneBucketGx = Number.NaN;
+let cachedDepositFlatZoneBucketGy = Number.NaN;
+let cachedDepositFlatZoneCandidates: readonly TerrainFlatZone[] = EMPTY_FLAT_ZONES;
 const depositOverrideBlendWeights: number[] = [];
 const depositOverrideBlendHeights: number[] = [];
 
@@ -26,6 +29,9 @@ function flatZoneBucketKey(gx: number, gy: number): number {
 }
 
 function rebuildDepositFlatZoneBuckets(): void {
+  cachedDepositFlatZoneBucketGx = Number.NaN;
+  cachedDepositFlatZoneBucketGy = Number.NaN;
+  cachedDepositFlatZoneCandidates = EMPTY_FLAT_ZONES;
   const buckets = new Map<number, TerrainFlatZone[]>();
   const size = FLAT_ZONE_BUCKET_SIZE;
   for (const z of depositFlatZones) {
@@ -69,7 +75,17 @@ function getDepositFlatZoneCandidates(
   if (depositFlatZoneBuckets.size === 0) return EMPTY_FLAT_ZONES;
   const gx = Math.floor(x / FLAT_ZONE_BUCKET_SIZE);
   const gy = Math.floor(y / FLAT_ZONE_BUCKET_SIZE);
-  return depositFlatZoneBuckets.get(flatZoneBucketKey(gx, gy)) ?? EMPTY_FLAT_ZONES;
+  if (
+    gx === cachedDepositFlatZoneBucketGx &&
+    gy === cachedDepositFlatZoneBucketGy
+  ) {
+    return cachedDepositFlatZoneCandidates;
+  }
+  const candidates = depositFlatZoneBuckets.get(flatZoneBucketKey(gx, gy)) ?? EMPTY_FLAT_ZONES;
+  cachedDepositFlatZoneBucketGx = gx;
+  cachedDepositFlatZoneBucketGy = gy;
+  cachedDepositFlatZoneCandidates = candidates;
+  return candidates;
 }
 
 export function findDepositFlatZoneAt(x: number, y: number): TerrainFlatZone | null {
