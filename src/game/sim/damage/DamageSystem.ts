@@ -1395,6 +1395,12 @@ export class DamageSystem {
     const dz = endZ - startZ;
     const segLenSq = dx * dx + dy * dy;
     const segLen3Sq = segLenSq + dz * dz;
+    const segMinX = startX < endX ? startX : endX;
+    const segMaxX = startX > endX ? startX : endX;
+    const segMinY = startY < endY ? startY : endY;
+    const segMaxY = startY > endY ? startY : endY;
+    const segMinZ = startZ < endZ ? startZ : endZ;
+    const segMaxZ = startZ > endZ ? startZ : endZ;
     const halfLineWidth = lineWidth / 2;
     const unitProjectileQueryWidth = lineWidth + 60;
     const buildingQueryWidth = lineWidth + 100;
@@ -1573,6 +1579,16 @@ export class DamageSystem {
         const bHalfX = aabbHx[slot];
         const bHalfY = aabbHy[slot];
         const bHalfZ = aabbHz[slot];
+        if (
+          segMaxX < bCenterX - bHalfX ||
+          segMinX > bCenterX + bHalfX ||
+          segMaxY < bCenterY - bHalfY ||
+          segMinY > bCenterY + bHalfY ||
+          segMaxZ < bCenterZ - bHalfZ ||
+          segMinZ > bCenterZ + bHalfZ
+        ) {
+          continue;
+        }
         const t = rayBoxIntersectionTWithDelta(
           startX, startY, startZ,
           dx, dy, dz,
