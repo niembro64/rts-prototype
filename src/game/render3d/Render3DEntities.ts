@@ -497,6 +497,14 @@ export class Render3DEntities {
     this.activeLocomotionUnitIds.delete(id);
   }
 
+  private detachUnitMeshGroup(m: EntityMesh): void {
+    if (m.group.parent === this.world) this.world.remove(m.group);
+  }
+
+  private attachUnitMeshGroup(m: EntityMesh): void {
+    if (m.group.parent !== this.world) this.world.add(m.group);
+  }
+
   private applyUnitEntityFade(
     m: EntityMesh,
     bodyFade: number,
@@ -995,6 +1003,7 @@ export class Render3DEntities {
     if (m.mirrors) this.deactivateShieldPanelMesh(m.mirrors);
     this.applyUnitEntityFade(m, 0, null);
     setObjectVisibleIfChanged(m.group, false);
+    this.detachUnitMeshGroup(m);
     this.activeLocomotionUnitIds.delete(id);
     this.barrelSpinState.delete(id);
     this.turretBeamAimCache.delete(id);
@@ -1010,6 +1019,7 @@ export class Render3DEntities {
     if (m.mirrors) this.deactivateShieldPanelMesh(m.mirrors);
     this.applyUnitEntityFade(m, 0, null);
     setObjectVisibleIfChanged(m.group, false);
+    this.detachUnitMeshGroup(m);
     this.activeLocomotionUnitIds.delete(id);
     this.barrelSpinState.delete(id);
     this.turretBeamAimCache.delete(id);
@@ -1018,12 +1028,14 @@ export class Render3DEntities {
 
   private reactivateUnitMeshForScope(id: EntityId, m: EntityMesh): void {
     if (!this.scopedMeshRetention.markUnitActive(id)) return;
+    this.attachUnitMeshGroup(m);
     setObjectVisibleIfChanged(m.group, true);
   }
 
   private reactivateUnitMeshForLod(id: EntityId, m: EntityMesh): void {
     if (m.renderLodProxyActive !== true) return;
     m.renderLodProxyActive = false;
+    this.attachUnitMeshGroup(m);
     setObjectVisibleIfChanged(m.group, true);
     if (m.locomotion) this.activeLocomotionUnitIds.add(id);
   }

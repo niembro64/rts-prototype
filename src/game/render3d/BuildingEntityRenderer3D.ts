@@ -482,6 +482,14 @@ export class BuildingEntityRenderer3D {
     this.disposeWorldParentedOverlays(mesh);
   }
 
+  private detachBuildingMeshGroup(mesh: EntityMesh): void {
+    if (mesh.group.parent === this.world) this.world.remove(mesh.group);
+  }
+
+  private attachBuildingMeshGroup(mesh: EntityMesh): void {
+    if (mesh.group.parent !== this.world) this.world.add(mesh.group);
+  }
+
   private currentSpawnFadeIn(id: EntityId): number {
     if (VISION_FADE_IN_MS <= 0) return 1;
     const elapsed = this.spawnFadeElapsed.get(id);
@@ -578,6 +586,7 @@ export class BuildingEntityRenderer3D {
     this.disposeWorldParentedOverlays(mesh);
     this.applyBuildingEntityFade(mesh, 0);
     setObjectVisibleIfChanged(mesh.group, false);
+    this.detachBuildingMeshGroup(mesh);
   }
 
   private deactivateBuildingMeshForLod(
@@ -593,10 +602,12 @@ export class BuildingEntityRenderer3D {
     this.disposeWorldParentedOverlays(mesh);
     this.applyBuildingEntityFade(mesh, 0);
     setObjectVisibleIfChanged(mesh.group, false);
+    this.detachBuildingMeshGroup(mesh);
   }
 
   private reactivateBuildingMeshForScope(entity: Entity, mesh: EntityMesh): void {
     if (!this.scopedMeshRetention.markBuildingActive(entity.id)) return;
+    this.attachBuildingMeshGroup(mesh);
     setObjectVisibleIfChanged(mesh.group, true);
     this.animations.register(entity, mesh);
     this.registerBuildingSpinTurrets(entity, mesh);
@@ -609,6 +620,7 @@ export class BuildingEntityRenderer3D {
   private reactivateBuildingMeshForLod(entity: Entity, mesh: EntityMesh): void {
     if (mesh.renderLodProxyActive !== true) return;
     mesh.renderLodProxyActive = false;
+    this.attachBuildingMeshGroup(mesh);
     setObjectVisibleIfChanged(mesh.group, true);
     this.animations.register(entity, mesh);
     this.registerBuildingSpinTurrets(entity, mesh);
