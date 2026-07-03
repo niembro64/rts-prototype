@@ -21,7 +21,7 @@ import {
 } from '../../../config';
 import { spatialGrid } from '../SpatialGrid';
 import { getBuildingCombatCenterZ } from '../buildingAnchors';
-import { magnitude, lineSphereIntersectionT, rayBoxIntersectionT, getTransformCosSin } from '../../math';
+import { magnitude, getTransformCosSin } from '../../math';
 import {
   REFLECTOR_HIT_KIND_NONE,
   SHIELD_REFLECTION_ENTITY_BEAM,
@@ -208,6 +208,77 @@ const DAMAGE_AREA_FLAG_SLICE_PASS = 1 << 0;
 const DAMAGE_AREA_FLAG_OVERLAP = 1 << 1;
 const DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT = 1 << 2;
 const DAMAGE_SEGMENT_HIT_FLAG_HIT = 1 << 0;
+
+function lineSphereIntersectionTWithDelta(
+  startX: number, startY: number, startZ: number,
+  dx: number, dy: number, dz: number,
+  segmentLenSq: number,
+  cx: number, cy: number, cz: number,
+  r: number,
+): number | null {
+  const fx = startX - cx;
+  const fy = startY - cy;
+  const fz = startZ - cz;
+  const b = 2 * (fx * dx + fy * dy + fz * dz);
+  const c = fx * fx + fy * fy + fz * fz - r * r;
+  if (c <= 0) return 0;
+  if (segmentLenSq === 0) return null;
+
+  let discriminant = b * b - 4 * segmentLenSq * c;
+  if (discriminant < 0) return null;
+  discriminant = Math.sqrt(discriminant);
+
+  const invDenom = 1 / (2 * segmentLenSq);
+  const t1 = (-b - discriminant) * invDenom;
+  if (t1 >= 0 && t1 <= 1) return t1;
+  const t2 = (-b + discriminant) * invDenom;
+  if (t2 >= 0 && t2 <= 1) return t2;
+  return null;
+}
+
+function rayBoxIntersectionTWithDelta(
+  sx: number, sy: number, sz: number,
+  dx: number, dy: number, dz: number,
+  minX: number, minY: number, minZ: number,
+  maxX: number, maxY: number, maxZ: number,
+): number | null {
+  let tmin = 0;
+  let tmax = 1;
+
+  if (Math.abs(dx) > 1e-9) {
+    let t1 = (minX - sx) / dx;
+    let t2 = (maxX - sx) / dx;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
+  } else if (sx < minX || sx > maxX) {
+    return null;
+  }
+  if (tmin > tmax) return null;
+
+  if (Math.abs(dy) > 1e-9) {
+    let t1 = (minY - sy) / dy;
+    let t2 = (maxY - sy) / dy;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
+  } else if (sy < minY || sy > maxY) {
+    return null;
+  }
+  if (tmin > tmax) return null;
+
+  if (Math.abs(dz) > 1e-9) {
+    let t1 = (minZ - sz) / dz;
+    let t2 = (maxZ - sz) / dz;
+    if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+    if (t1 > tmin) tmin = t1;
+    if (t2 < tmax) tmax = t2;
+  } else if (sz < minZ || sz > maxZ) {
+    return null;
+  }
+  if (tmin > tmax || tmax < 0) return null;
+  return Math.max(tmin, 0);
+}
 
 let _damageBatchCapacity = 0;
 let _damageBatchCount = 0;
@@ -1313,6 +1384,7 @@ export class DamageSystem {
     const dy = endY - startY;
     const dz = endZ - startZ;
     const segLenSq = dx * dx + dy * dy;
+    const segLen3Sq = segLenSq + dz * dz;
     const halfLineWidth = lineWidth / 2;
 
     const nearbyUnitSlots = spatialGrid.queryUnitSlotsAlongLine(
@@ -1345,9 +1417,10 @@ export class DamageSystem {
         if (crossSq * crossSq > boundR * boundR * segLenSq) continue;
 
         // Unit body: 3D segment-vs-sphere.
-        const t = lineSphereIntersectionT(
+        const t = lineSphereIntersectionTWithDelta(
           startX, startY, startZ,
-          endX, endY, endZ,
+          dx, dy, dz,
+          segLen3Sq,
           unitX, unitY, unitZ,
           boundR,
         );
@@ -1482,9 +1555,9 @@ export class DamageSystem {
         const bHalfX = entityViews.aabbHx[slot];
         const bHalfY = entityViews.aabbHy[slot];
         const bHalfZ = entityViews.aabbHz[slot];
-        const t = rayBoxIntersectionT(
+        const t = rayBoxIntersectionTWithDelta(
           startX, startY, startZ,
-          endX, endY, endZ,
+          dx, dy, dz,
           bCenterX - bHalfX, bCenterY - bHalfY, bCenterZ - bHalfZ,
           bCenterX + bHalfX, bCenterY + bHalfY, bCenterZ + bHalfZ,
         );
@@ -1524,9 +1597,10 @@ export class DamageSystem {
         if (projectileId === bodyExcludeEntityId) continue;
         if (entityViews.hp[slot] <= 0) continue;
         const boundR = entityViews.radiusCollision[slot] + halfLineWidth;
-        const t = lineSphereIntersectionT(
+        const t = lineSphereIntersectionTWithDelta(
           startX, startY, startZ,
-          endX, endY, endZ,
+          dx, dy, dz,
+          segLen3Sq,
           entityViews.posX[slot], entityViews.posY[slot], entityViews.posZ[slot],
           boundR,
         );
