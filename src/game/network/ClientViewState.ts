@@ -367,6 +367,8 @@ export class ClientViewState {
   private readonly scopedRenderIncludedIds = new IndexedEntityIdSet();
   private readonly scopedRenderUnitSlots: number[] = [];
   private readonly scopedRenderBuildingSlots: number[] = [];
+  private readonly scopedRenderUnitRowSlots: number[] = [];
+  private readonly scopedRenderBuildingRowSlots: number[] = [];
   private entitySetVersion = 0;
 
   private predictionCadence = new ClientPredictionCadence();
@@ -2979,6 +2981,8 @@ export class ClientViewState {
     if (included !== null) included.clear();
     const unitSlots = this.scopedRenderUnitSlots;
     const buildingSlots = this.scopedRenderBuildingSlots;
+    const unitRowSlots = this.scopedRenderUnitRowSlots;
+    const buildingRowSlots = this.scopedRenderBuildingRowSlots;
     this.renderSpatialIndex.queryFilteredSlots(
       bounds,
       unitSlots,
@@ -2987,22 +2991,45 @@ export class ClientViewState {
     );
     outUnits.length = 0;
     outBuildings.length = 0;
-    this.resolveScopedRenderSlots(unitSlots, outUnits, included, CLIENT_RENDER_ENTITY_KIND_UNIT);
+    unitRowSlots.length = 0;
+    buildingRowSlots.length = 0;
+    this.resolveScopedRenderSlots(
+      unitSlots,
+      outUnits,
+      unitRowSlots,
+      included,
+      CLIENT_RENDER_ENTITY_KIND_UNIT,
+    );
     this.resolveScopedRenderSlots(
       buildingSlots,
       outBuildings,
+      buildingRowSlots,
       included,
       CLIENT_RENDER_ENTITY_KIND_BUILDING,
     );
 
     if (included === null) return;
     if (hoveredEntity !== null) {
-      this.pushScopedRenderException(hoveredEntity, outUnits, outBuildings, included);
+      this.pushScopedRenderException(
+        hoveredEntity,
+        outUnits,
+        outBuildings,
+        unitRowSlots,
+        buildingRowSlots,
+        included,
+      );
     }
     for (const id of selectedIds) {
       const entity = this.entities.get(id);
       if (entity !== undefined) {
-        this.pushScopedRenderException(entity, outUnits, outBuildings, included);
+        this.pushScopedRenderException(
+          entity,
+          outUnits,
+          outBuildings,
+          unitRowSlots,
+          buildingRowSlots,
+          included,
+        );
       }
     }
   }
@@ -3060,11 +3087,13 @@ export class ClientViewState {
       renderScope,
     );
 
+    const unitRowSlots = this.scopedRenderUnitRowSlots;
+    const buildingRowSlots = this.scopedRenderBuildingRowSlots;
     let hoveredBodyHudPushed = false;
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
       const farLod = this.entityUsesFarLod3D(entity, options);
-      this.pushUnitRenderRow3D(entity, farLod, out);
+      this.pushUnitRenderKnownSlot3D(entity, unitRowSlots[i] ?? -1, farLod, out);
       if (
         !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
         options.includeBodyHud &&
@@ -3092,7 +3121,7 @@ export class ClientViewState {
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
       const farLod = this.entityUsesFarLod3D(entity, options);
-      this.pushBuildingRenderRow3D(entity, farLod, out);
+      this.pushBuildingRenderKnownSlot3D(entity, buildingRowSlots[i] ?? -1, farLod, out);
       if (
         !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
         options.includeBodyHud &&
@@ -3293,14 +3322,18 @@ export class ClientViewState {
     entity: Entity,
     outUnits: Entity[],
     outBuildings: Entity[],
+    outUnitSlots: number[],
+    outBuildingSlots: number[],
     included: Set<EntityId>,
   ): void {
     if (included.has(entity.id)) return;
     if (entity.unit !== null) {
       outUnits.push(entity);
+      outUnitSlots.push(this.renderEntityState.getSlot(entity.id) ?? -1);
       included.add(entity.id);
     } else if (entity.building !== null) {
       outBuildings.push(entity);
+      outBuildingSlots.push(this.renderEntityState.getSlot(entity.id) ?? -1);
       included.add(entity.id);
     }
   }
@@ -3308,6 +3341,7 @@ export class ClientViewState {
   private resolveScopedRenderSlots(
     slots: readonly number[],
     out: Entity[],
+    outSlots: number[],
     included: Set<EntityId> | null,
     expectedKind: number,
   ): void {
@@ -3326,6 +3360,7 @@ export class ClientViewState {
         continue;
       }
       out.push(entity);
+      outSlots.push(slot);
       if (included !== null) included.add(entityId);
     }
   }
@@ -3457,6 +3492,33 @@ export class ClientViewState {
     }
   }
 
+  private pushUnitRenderKnownSlot3D(
+    entity: Entity,
+    slot: number,
+    farLod: boolean,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    const views = this.renderEntityState.getViews();
+    if (
+      slot >= 0 &&
+      views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT &&
+      views.entityIds[slot] === entity.id
+    ) {
+      out.unitRows.pushEntityState(
+        entity,
+        views,
+        slot,
+        this.renderTurretState,
+        false,
+        false,
+        false,
+        farLod,
+      );
+      return;
+    }
+    this.pushUnitRenderRow3D(entity, farLod, out);
+  }
+
   private pushBuildingRenderRow3D(
     entity: Entity,
     farLod: boolean,
@@ -3489,6 +3551,33 @@ export class ClientViewState {
         farLod,
       );
     }
+  }
+
+  private pushBuildingRenderKnownSlot3D(
+    entity: Entity,
+    slot: number,
+    farLod: boolean,
+    out: ClientViewRenderEntityPackets3D,
+  ): void {
+    const views = this.renderEntityState.getViews();
+    if (
+      slot >= 0 &&
+      views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING &&
+      views.entityIds[slot] === entity.id
+    ) {
+      out.buildingRows.pushEntityState(
+        entity,
+        views,
+        slot,
+        this.renderTurretState,
+        false,
+        false,
+        false,
+        farLod,
+      );
+      return;
+    }
+    this.pushBuildingRenderRow3D(entity, farLod, out);
   }
 
   private populateRenderRemovalRows3D(out: ClientViewRenderEntityPackets3D): void {
