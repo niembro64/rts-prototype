@@ -568,7 +568,7 @@ export class ClientViewState {
       entity.projectile.velocityX = velocityX;
       entity.projectile.velocityY = velocityY;
       entity.projectile.velocityZ = velocityZ;
-      this.serverTargets.delete(id);
+      if (this.serverTargets.has(id)) this.serverTargets.delete(id);
     }
     if (targetEntityId !== null) {
       entity.projectile.homingTargetId = targetEntityId;
