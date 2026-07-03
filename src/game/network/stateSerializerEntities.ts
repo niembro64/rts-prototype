@@ -13,7 +13,9 @@ import {
 import { getBuildFraction } from '../sim/buildableHelpers';
 import { isCommander } from '../sim/combat/combatUtils';
 import {
-  readCombatTargetingTurretFsmInto,
+  getCombatTargetingEntityReadContext,
+  readCombatTargetingTurretFsmFromContextInto,
+  type CombatTargetingEntityReadContext,
   type CombatTargetingTurretFsmOut,
 } from '../sim/combat/targetingInputStamping';
 import type {
@@ -146,6 +148,18 @@ const _snapshotTurretFsm: CombatTargetingTurretFsmOut = {
 const _directTurretFsm: CombatTargetingTurretFsmOut = {
   stateCode: 0,
   targetId: -1,
+};
+const _snapshotTargetingContext: CombatTargetingEntityReadContext = {
+  views: null as never,
+  slot: -1,
+  turretBase: -1,
+  turretCount: 0,
+};
+const _directTargetingContext: CombatTargetingEntityReadContext = {
+  views: null as never,
+  slot: -1,
+  turretBase: -1,
+  turretCount: 0,
 };
 
 export const ENTITY_SNAPSHOT_WIRE_KIND_RAW = 0;
@@ -395,6 +409,7 @@ function writeTurretsToPool(
   const count = weapons.length;
   while (pool.turrets.length < count) pool.turrets.push(createTurretDto());
   pool.turrets.length = count;
+  const hasTargetingContext = getCombatTargetingEntityReadContext(entity, _snapshotTargetingContext);
   for (let i = 0; i < count; i++) {
     const src = weapons[i];
     const dst = pool.turrets[i];
@@ -419,7 +434,8 @@ function writeTurretsToPool(
       t.angular.pitch = qRot(src.pitch);
       t.angular.pitchVel = qRot(src.pitchVelocity);
     }
-    const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _snapshotTurretFsm);
+    const hasTargetingFsm = hasTargetingContext &&
+      readCombatTargetingTurretFsmFromContextInto(_snapshotTargetingContext, i, _snapshotTurretFsm);
     const targetId = hasTargetingFsm ? _snapshotTurretFsm.targetId : (src.target ?? -1);
     const wireTargetId = targetId === -1 ? null : targetId;
     dst.targetId = wireTargetId !== null &&
@@ -760,6 +776,7 @@ function appendDirectTurretWireRows(
   const rows = entityWireSource.turretRows;
   const offset = reserveFloat64WireRows(rows, count, ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE);
   const values = rows.values;
+  const hasTargetingContext = getCombatTargetingEntityReadContext(entity, _directTargetingContext);
   for (let i = 0; i < count; i++) {
     const src = turrets![i];
     const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
@@ -774,7 +791,8 @@ function appendDirectTurretWireRows(
       values[base + 2] = qRot(src.pitch);
       values[base + 3] = qRot(src.pitchVelocity);
     }
-    const hasTargetingFsm = readCombatTargetingTurretFsmInto(entity, i, _directTurretFsm);
+    const hasTargetingFsm = hasTargetingContext &&
+      readCombatTargetingTurretFsmFromContextInto(_directTargetingContext, i, _directTurretFsm);
     const targetId = hasTargetingFsm ? _directTurretFsm.targetId : (src.target ?? -1);
     const wireTargetId = targetId === -1 ? undefined : targetId;
     const canSendTarget = canSeePrivateDetails &&
