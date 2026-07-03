@@ -1999,15 +1999,16 @@ export class ClientViewState {
     rowCount: number,
   ): boolean {
     if (rowCount === 0) return false;
-    if (source.typedPlaceholderRows < rowCount) return false;
-    let matchedRows = 0;
-    const placeholderIndices = source.typedPlaceholderEntityIndices;
-    for (let i = 0; i < source.typedPlaceholderRows; i++) {
-      const entityIndex = placeholderIndices[i];
-      if (source.kinds[entityIndex] !== kind) continue;
-      matchedRows++;
+    switch (kind) {
+      case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+        return source.basicTypedPlaceholderRows === rowCount;
+      case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+        return source.unitTypedPlaceholderRows === rowCount;
+      case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+        return source.buildingTypedPlaceholderRows === rowCount;
+      default:
+        return false;
     }
-    return matchedRows === rowCount;
   }
 
   private applyMixedTypedPlaceholderRows(

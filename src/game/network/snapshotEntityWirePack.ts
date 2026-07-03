@@ -136,6 +136,9 @@ function resetDecodePools(): void {
 function resetDecodedEntityWireSource(): void {
   _decodedEntityWireSource.count = 0;
   _decodedEntityWireSource.typedPlaceholderRows = 0;
+  _decodedEntityWireSource.basicTypedPlaceholderRows = 0;
+  _decodedEntityWireSource.unitTypedPlaceholderRows = 0;
+  _decodedEntityWireSource.buildingTypedPlaceholderRows = 0;
   _decodedEntityWireSource.nonPlaceholderEntityRows = 0;
   _decodedEntityWireSource.typedEntityRows = 0;
   _decodedEntityWireSource.rawEntityRows = 0;

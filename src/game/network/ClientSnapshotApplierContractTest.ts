@@ -644,6 +644,7 @@ export function runClientSnapshotApplierContractTest(): void {
     typedPlaceholderSource !== undefined &&
       typedPlaceholderSource.count === 1 &&
       typedPlaceholderSource.typedPlaceholderRows === 1 &&
+      typedPlaceholderSource.unitTypedPlaceholderRows === 1 &&
       typedPlaceholderSource.typedPlaceholderEntityIndices[0] === 0,
     'typed unit motion rows must mark DTO-free typed placeholder rows',
   );

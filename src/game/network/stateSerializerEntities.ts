@@ -189,6 +189,9 @@ export type EntitySnapshotWireSource = {
   rowIndices: Int32Array;
   typedPlaceholderMarks: Uint8Array;
   typedPlaceholderRows: number;
+  basicTypedPlaceholderRows: number;
+  unitTypedPlaceholderRows: number;
+  buildingTypedPlaceholderRows: number;
   typedPlaceholderEntityIndices: Uint32Array;
   nonPlaceholderEntityIndices: Uint32Array;
   nonPlaceholderEntityRows: number;
@@ -240,6 +243,9 @@ export function createEntitySnapshotWireSource(rowCapacity = 0): EntitySnapshotW
     rowIndices: new Int32Array(capacity),
     typedPlaceholderMarks: new Uint8Array(capacity),
     typedPlaceholderRows: 0,
+    basicTypedPlaceholderRows: 0,
+    unitTypedPlaceholderRows: 0,
+    buildingTypedPlaceholderRows: 0,
     typedPlaceholderEntityIndices: new Uint32Array(capacity),
     nonPlaceholderEntityIndices: new Uint32Array(capacity),
     nonPlaceholderEntityRows: 0,
@@ -304,6 +310,17 @@ export function appendEntitySnapshotWireSourceRow(
   source.typedPlaceholderMarks[index] = typedPlaceholder ? 1 : 0;
   if (typedPlaceholder) {
     source.typedPlaceholderEntityIndices[source.typedPlaceholderRows++] = index;
+    switch (kind) {
+      case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+        source.basicTypedPlaceholderRows++;
+        break;
+      case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+        source.unitTypedPlaceholderRows++;
+        break;
+      case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+        source.buildingTypedPlaceholderRows++;
+        break;
+    }
   } else {
     source.nonPlaceholderEntityIndices[source.nonPlaceholderEntityRows++] = index;
   }
@@ -360,6 +377,9 @@ export function copyEntitySnapshotWireSourceMetadataInto(
     );
   }
   dst.typedPlaceholderRows = src.typedPlaceholderRows;
+  dst.basicTypedPlaceholderRows = src.basicTypedPlaceholderRows;
+  dst.unitTypedPlaceholderRows = src.unitTypedPlaceholderRows;
+  dst.buildingTypedPlaceholderRows = src.buildingTypedPlaceholderRows;
   dst.nonPlaceholderEntityRows = src.nonPlaceholderEntityRows;
   dst.typedEntityRows = src.typedEntityRows;
   dst.rawEntityRows = src.rawEntityRows;
@@ -381,6 +401,9 @@ export function removeEntitySnapshotWireSourceRow(
   }
   const nextCount = source.count - 1;
   let nextTypedPlaceholderRows = 0;
+  let nextBasicTypedPlaceholderRows = 0;
+  let nextUnitTypedPlaceholderRows = 0;
+  let nextBuildingTypedPlaceholderRows = 0;
   let nextNonPlaceholderRows = 0;
   if (index < nextCount) {
     source.kinds.copyWithin(index, index + 1, source.count);
@@ -390,11 +413,25 @@ export function removeEntitySnapshotWireSourceRow(
   for (let i = 0; i < nextCount; i++) {
     if (source.typedPlaceholderMarks[i] !== 0) {
       source.typedPlaceholderEntityIndices[nextTypedPlaceholderRows++] = i;
+      switch (source.kinds[i]) {
+        case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+          nextBasicTypedPlaceholderRows++;
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+          nextUnitTypedPlaceholderRows++;
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+          nextBuildingTypedPlaceholderRows++;
+          break;
+      }
     } else {
       source.nonPlaceholderEntityIndices[nextNonPlaceholderRows++] = i;
     }
   }
   source.typedPlaceholderRows = nextTypedPlaceholderRows;
+  source.basicTypedPlaceholderRows = nextBasicTypedPlaceholderRows;
+  source.unitTypedPlaceholderRows = nextUnitTypedPlaceholderRows;
+  source.buildingTypedPlaceholderRows = nextBuildingTypedPlaceholderRows;
   source.nonPlaceholderEntityRows = nextNonPlaceholderRows;
   source.typedPlaceholderMarks[nextCount] = 0;
   source.count = nextCount;
@@ -591,6 +628,9 @@ export function unregisterEntitySnapshotWireSource(
 function resetEntitySnapshotWireSource(): void {
   entityWireSource.count = 0;
   entityWireSource.typedPlaceholderRows = 0;
+  entityWireSource.basicTypedPlaceholderRows = 0;
+  entityWireSource.unitTypedPlaceholderRows = 0;
+  entityWireSource.buildingTypedPlaceholderRows = 0;
   entityWireSource.nonPlaceholderEntityRows = 0;
   entityWireSource.typedEntityRows = 0;
   entityWireSource.rawEntityRows = 0;
