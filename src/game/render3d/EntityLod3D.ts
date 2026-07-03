@@ -12,6 +12,7 @@ import {
 } from '@/config';
 import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
 import { getLodMode } from '@/clientBarConfig';
+import { canIndexClientEntityId } from '../network/ClientEntityIds';
 import type { Entity, EntityId } from '../sim/types';
 
 const FALLBACK_MIN_ENTITY_LOD_RADIUS = 1;
@@ -272,6 +273,14 @@ export class EntityLodHysteresis3D {
   private readonly radiusFrameByEntityId = new Map<EntityId, number>();
   private readonly distanceSqByEntityId = new Map<EntityId, number>();
   private readonly distanceSqFrameByEntityId = new Map<EntityId, number>();
+  private readonly radiusByIndexedEntityId: Array<number | undefined> = [];
+  private readonly radiusFrameByIndexedEntityId: Array<number | undefined> = [];
+  private readonly radiusIndexedEntityIds: EntityId[] = [];
+  private readonly radiusIndexedEntityIdTracked: Array<boolean | undefined> = [];
+  private readonly distanceSqByIndexedEntityId: Array<number | undefined> = [];
+  private readonly distanceSqFrameByIndexedEntityId: Array<number | undefined> = [];
+  private readonly distanceSqIndexedEntityIds: EntityId[] = [];
+  private readonly distanceSqIndexedEntityIdTracked: Array<boolean | undefined> = [];
   private distanceScale = 1;
   private frame = 0;
 
@@ -304,6 +313,18 @@ export class EntityLodHysteresis3D {
       this.distanceSqFrameByEntityId.delete(entityId);
       this.distanceSqByEntityId.delete(entityId);
     }
+    this.pruneIndexedEntityCache(
+      this.radiusIndexedEntityIds,
+      this.radiusIndexedEntityIdTracked,
+      this.radiusByIndexedEntityId,
+      this.radiusFrameByIndexedEntityId,
+    );
+    this.pruneIndexedEntityCache(
+      this.distanceSqIndexedEntityIds,
+      this.distanceSqIndexedEntityIdTracked,
+      this.distanceSqByIndexedEntityId,
+      this.distanceSqFrameByIndexedEntityId,
+    );
   }
 
   clear(): void {
@@ -313,6 +334,14 @@ export class EntityLodHysteresis3D {
     this.radiusFrameByEntityId.clear();
     this.distanceSqByEntityId.clear();
     this.distanceSqFrameByEntityId.clear();
+    this.radiusByIndexedEntityId.length = 0;
+    this.radiusFrameByIndexedEntityId.length = 0;
+    this.radiusIndexedEntityIds.length = 0;
+    this.radiusIndexedEntityIdTracked.length = 0;
+    this.distanceSqByIndexedEntityId.length = 0;
+    this.distanceSqFrameByIndexedEntityId.length = 0;
+    this.distanceSqIndexedEntityIds.length = 0;
+    this.distanceSqIndexedEntityIdTracked.length = 0;
   }
 
   delete(entityId: EntityId): void {
@@ -326,6 +355,12 @@ export class EntityLodHysteresis3D {
     this.radiusFrameByEntityId.delete(entityId);
     this.distanceSqByEntityId.delete(entityId);
     this.distanceSqFrameByEntityId.delete(entityId);
+    if (canIndexClientEntityId(entityId)) {
+      this.radiusByIndexedEntityId[entityId] = undefined;
+      this.radiusFrameByIndexedEntityId[entityId] = undefined;
+      this.distanceSqByIndexedEntityId[entityId] = undefined;
+      this.distanceSqFrameByIndexedEntityId[entityId] = undefined;
+    }
   }
 
   entityUsesLodProxy(
@@ -407,6 +442,22 @@ export class EntityLodHysteresis3D {
   }
 
   private entityLodRadius(entity: Entity): number {
+    if (canIndexClientEntityId(entity.id)) {
+      const frame = this.radiusFrameByIndexedEntityId[entity.id];
+      if (frame === this.frame) {
+        const cachedRadius = this.radiusByIndexedEntityId[entity.id];
+        if (cachedRadius !== undefined) return cachedRadius;
+      }
+      const radius = entityLodRadius3D(entity);
+      this.trackIndexedEntityCache(
+        entity.id,
+        this.radiusIndexedEntityIds,
+        this.radiusIndexedEntityIdTracked,
+      );
+      this.radiusByIndexedEntityId[entity.id] = radius;
+      this.radiusFrameByIndexedEntityId[entity.id] = this.frame;
+      return radius;
+    }
     const frame = this.radiusFrameByEntityId.get(entity.id);
     if (frame === this.frame) {
       const cachedRadius = this.radiusByEntityId.get(entity.id);
@@ -419,6 +470,22 @@ export class EntityLodHysteresis3D {
   }
 
   private entityCameraDistanceSq(camera: THREE.Camera, entity: Entity): number {
+    if (canIndexClientEntityId(entity.id)) {
+      const frame = this.distanceSqFrameByIndexedEntityId[entity.id];
+      if (frame === this.frame) {
+        const cachedDistanceSq = this.distanceSqByIndexedEntityId[entity.id];
+        if (cachedDistanceSq !== undefined) return cachedDistanceSq;
+      }
+      const distanceSq = entityCameraDistanceSq3D(camera, entity);
+      this.trackIndexedEntityCache(
+        entity.id,
+        this.distanceSqIndexedEntityIds,
+        this.distanceSqIndexedEntityIdTracked,
+      );
+      this.distanceSqByIndexedEntityId[entity.id] = distanceSq;
+      this.distanceSqFrameByIndexedEntityId[entity.id] = this.frame;
+      return distanceSq;
+    }
     const frame = this.distanceSqFrameByEntityId.get(entity.id);
     if (frame === this.frame) {
       const cachedDistanceSq = this.distanceSqByEntityId.get(entity.id);
@@ -428,5 +495,40 @@ export class EntityLodHysteresis3D {
     this.distanceSqByEntityId.set(entity.id, distanceSq);
     this.distanceSqFrameByEntityId.set(entity.id, this.frame);
     return distanceSq;
+  }
+
+  private trackIndexedEntityCache(
+    entityId: EntityId,
+    entityIds: EntityId[],
+    trackedByEntityId: Array<boolean | undefined>,
+  ): void {
+    if (trackedByEntityId[entityId] === true) return;
+    trackedByEntityId[entityId] = true;
+    entityIds.push(entityId);
+  }
+
+  private pruneIndexedEntityCache(
+    entityIds: EntityId[],
+    trackedByEntityId: Array<boolean | undefined>,
+    valueByEntityId: Array<number | undefined>,
+    frameByEntityId: Array<number | undefined>,
+  ): void {
+    let writeIndex = 0;
+    for (let i = 0; i < entityIds.length; i++) {
+      const entityId = entityIds[i];
+      const frame = frameByEntityId[entityId];
+      if (
+        frame === undefined ||
+        this.frame - frame > LOD_HYSTERESIS_STALE_FRAME_LIMIT
+      ) {
+        trackedByEntityId[entityId] = undefined;
+        valueByEntityId[entityId] = undefined;
+        frameByEntityId[entityId] = undefined;
+        continue;
+      }
+      entityIds[writeIndex] = entityId;
+      writeIndex++;
+    }
+    entityIds.length = writeIndex;
   }
 }
