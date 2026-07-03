@@ -360,6 +360,14 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
       directBeamPoints[2].x === 420,
     'direct projectile beam update wire rows must apply reflected beam paths without DTO beam rows',
   );
+  view.collectProjectileRenderLists({ minX: 395, minY: 365, maxX: 430, maxY: 410 }, lists);
+  assertContract(
+    lists.line.length === 1 &&
+      lists.line[0].id === 304 &&
+      lists.burnMark.length === 1 &&
+      lists.burnMark[0].id === 304,
+    'direct projectile beam update wire rows must refresh line render query bounds',
+  );
 
   view.applyNetworkState(projectileSnapshot(5, [plasmaSpawn(303, 700, 700)]));
   view.collectProjectileRenderLists({ minX: 650, minY: 650, maxX: 750, maxY: 750 }, lists);

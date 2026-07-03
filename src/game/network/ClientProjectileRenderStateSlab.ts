@@ -1,4 +1,4 @@
-import type { Entity, EntityId } from '../sim/types';
+import type { BeamPoint, Entity, EntityId } from '../sim/types';
 
 const INITIAL_PROJECTILE_RENDER_STATE_CAP = 4096;
 
@@ -80,6 +80,46 @@ export class ClientProjectileRenderStateSlab {
     views.maxX[slot] = x;
     views.minY[slot] = y;
     views.maxY[slot] = y;
+    return slot;
+  }
+
+  updateLineProjectilePath(
+    id: EntityId,
+    x: number,
+    y: number,
+    z: number,
+    points: readonly BeamPoint[] | null,
+  ): number | undefined {
+    const slot = this.slotByEntityId.get(id);
+    if (slot === undefined) return undefined;
+    const views = this.views;
+    if (views.entityIds[slot] !== id || views.flags[slot] === 0) return undefined;
+    views.x[slot] = x;
+    views.y[slot] = y;
+    views.z[slot] = z;
+
+    let flags =
+      CLIENT_PROJECTILE_RENDER_FLAG_LINE |
+      CLIENT_PROJECTILE_RENDER_FLAG_BURN_MARK;
+    let minX = x;
+    let maxX = x;
+    let minY = y;
+    let maxY = y;
+    if (points !== null && points.length > 0) {
+      flags |= CLIENT_PROJECTILE_RENDER_FLAG_HAS_POINTS;
+      for (let i = 0; i < points.length; i++) {
+        const point = points[i];
+        if (point.x < minX) minX = point.x;
+        if (point.x > maxX) maxX = point.x;
+        if (point.y < minY) minY = point.y;
+        if (point.y > maxY) maxY = point.y;
+      }
+    }
+    views.minX[slot] = minX;
+    views.maxX[slot] = maxX;
+    views.minY[slot] = minY;
+    views.maxY[slot] = maxY;
+    views.flags[slot] = flags;
     return slot;
   }
 

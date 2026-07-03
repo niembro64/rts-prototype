@@ -206,7 +206,7 @@ export class ClientProjectileStore {
       this.activeBeamPathIds.add(id);
       this.markRenderListsDirty();
     }
-    this.refreshRenderStateAndSpatialIndex(entity);
+    this.refreshLineRenderStateAndSpatialIndex(entity, id);
     this.markLineProjectilesChanged();
   }
 
@@ -298,7 +298,7 @@ export class ClientProjectileStore {
         this.activeBeamPathIds.add(id);
         this.markRenderListsDirty();
       }
-      this.refreshRenderStateAndSpatialIndex(entity);
+      this.refreshLineRenderStateAndSpatialIndex(entity, id);
       return;
     } else if (!this.activeProjectilePredictionIds.has(id)) {
       this.activeProjectilePredictionIds.add(id);
@@ -413,6 +413,24 @@ export class ClientProjectileStore {
       this.renderSpatialIndex.remove(entity.id);
     }
     return slot;
+  }
+
+  private refreshLineRenderStateAndSpatialIndex(entity: Entity, id: EntityId): number | undefined {
+    const projectile = entity.projectile;
+    const slot = projectile === null
+      ? undefined
+      : this.renderState.updateLineProjectilePath(
+          id,
+          entity.transform.x,
+          entity.transform.y,
+          entity.transform.z,
+          projectile.points,
+        );
+    if (slot !== undefined) {
+      this.renderSpatialIndex.updateSlot(this.renderState.getViews(), slot);
+      return slot;
+    }
+    return this.refreshRenderStateAndSpatialIndex(entity);
   }
 
   private pushSlotRenderLists(
