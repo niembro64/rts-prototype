@@ -314,6 +314,7 @@ let _areaDamageOutDirY = new Float64Array(0);
 let _areaDamageOutDirZ = new Float64Array(0);
 let _areaDamageOutDistance = new Float64Array(0);
 let _areaDamageSlots = new Uint32Array(0);
+let _areaBuildingSlotScratch = new Uint32Array(0);
 // DEV-only scratch: the slab kernel is authoritative; dev builds also run
 // the array-based damageAreaOverlapBatch into these and assert per-row
 // output matches (catches slot-mapping / slab-coherence drift).
@@ -391,6 +392,7 @@ function trimDamageBuffers(): void {
   _areaDamageOutDirZ = new Float64Array(0);
   _areaDamageOutDistance = new Float64Array(0);
   _areaDamageSlots = new Uint32Array(0);
+  _areaBuildingSlotScratch = new Uint32Array(0);
   _areaDamageRefFlags = new Uint8Array(0);
   _areaDamageRefDirX = new Float64Array(0);
   _areaDamageRefDirY = new Float64Array(0);
@@ -492,6 +494,13 @@ function ensureAreaDamageCapacity(count: number): void {
   _areaDamageRefDistance = new Float64Array(next);
   _areaDamageTurretStart = new Int32Array(next);
   _areaDamageTurretEnd = new Int32Array(next);
+}
+
+function ensureAreaBuildingSlotScratchCapacity(count: number): void {
+  if (count <= _areaBuildingSlotScratch.length) return;
+  let next = Math.max(16, _areaBuildingSlotScratch.length);
+  while (next < count) next *= 2;
+  _areaBuildingSlotScratch = new Uint32Array(next);
 }
 
 function clearAreaDamageEntities(count: number): void {
@@ -2008,27 +2017,31 @@ export class DamageSystem {
     // pad is the larger of the two old pads (+100) so neither broadphase
     // misses a candidate; the per-entity distance checks below stay
     // precise.
-    const nearby = spatialGrid.queryUnitBuildingSlotArraysInRadius(
+    const nearby = spatialGrid.queryUnitBuildingSlotRangesInRadius(
       source.center.x, source.center.y, source.center.z, source.radius + 100,
     );
-    const nearbyUnitSlots = nearby.unitSlots;
-    const nearbyBuildingSlots = nearby.buildingSlots;
-    const nearbyProjectileSlots = spatialGrid.queryEnemyProjectileSlotsInRadius(
-      source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
-    );
+    const nearbySlots = nearby.slots;
+    const nearbyUnitStart = nearby.unitStart;
+    const nearbyUnitEnd = nearbyUnitStart + nearby.unitCount;
+    const nearbyBuildingStart = nearby.buildingStart;
+    const nearbyBuildingCount = nearby.buildingCount;
+    ensureAreaBuildingSlotScratchCapacity(nearbyBuildingCount);
+    for (let i = 0; i < nearbyBuildingCount; i++) {
+      _areaBuildingSlotScratch[i] = nearbySlots[nearbyBuildingStart + i];
+    }
     const entityViews = entitySlotRegistry.getViews();
 
     // Check units. Rust owns the full 3D sphere-vs-sphere overlap and
     // optional slice-cone filter; TypeScript keeps entity graph write-back,
     // turret sub-hitbox fallback, and event/death side effects.
-    ensureAreaDamageCapacity(nearbyUnitSlots.length);
+    ensureAreaDamageCapacity(nearby.unitCount);
     let areaRowCount = 0;
     if (entityViews !== null) {
       const entityIds = entityViews.entityId;
       const flags = entityViews.flags;
       const capacity = entityViews.capacity;
-      for (let unitIndex = 0; unitIndex < nearbyUnitSlots.length; unitIndex++) {
-        const slot = nearbyUnitSlots[unitIndex];
+      for (let unitIndex = nearbyUnitStart; unitIndex < nearbyUnitEnd; unitIndex++) {
+        const slot = nearbySlots[unitIndex];
         if (slot >= capacity) continue;
         const unitId = entityIds[slot] as EntityId;
         if (unitId < 0 || source.excludeEntities.has(unitId)) continue;
@@ -2204,6 +2217,9 @@ export class DamageSystem {
     // Travelling shots are small damageable bodies. Sustained beams
     // and shields are not inserted as projectile-type bodies, so this
     // only lets weapons chip down real munitions.
+    const nearbyProjectileSlots = spatialGrid.queryEnemyProjectileSlotsInRadius(
+      source.center.x, source.center.y, source.center.z, source.radius + 100, source.ownerId,
+    );
     ensureAreaDamageCapacity(nearbyProjectileSlots.count);
     areaRowCount = 0;
     const projectileSlots = nearbyProjectileSlots.slots;
@@ -2270,15 +2286,15 @@ export class DamageSystem {
     // Check buildings — full 3D. Buildings are axis-aligned combat boxes
     // (width × height × depth). Rust owns the sphere-vs-AABB overlap and
     // horizontal slice filter.
-    ensureAreaDamageCapacity(nearbyBuildingSlots.length);
+    ensureAreaDamageCapacity(nearbyBuildingCount);
     areaRowCount = 0;
     if (entityViews !== null) {
       const entityIds = entityViews.entityId;
       const flags = entityViews.flags;
       const hp = entityViews.hp;
       const capacity = entityViews.capacity;
-      for (let buildingIndex = 0; buildingIndex < nearbyBuildingSlots.length; buildingIndex++) {
-        const slot = nearbyBuildingSlots[buildingIndex];
+      for (let buildingIndex = 0; buildingIndex < nearbyBuildingCount; buildingIndex++) {
+        const slot = _areaBuildingSlotScratch[buildingIndex];
         if (slot >= capacity) continue;
         const buildingId = entityIds[slot] as EntityId;
         if (buildingId < 0 || source.excludeEntities.has(buildingId)) continue;
