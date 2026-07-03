@@ -34,8 +34,6 @@ import {
   weaponRequiresNonObstructedLineOfSight,
 } from './lineOfSight';
 import {
-  getEntityPosition3d,
-  getEntityVelocity3d,
   getProjectileLaunchSpeed,
   resolveWeaponWorldMount,
 } from './combatUtils';
@@ -114,7 +112,6 @@ import {
 } from '../types';
 
 const _stampPos = { x: 0, y: 0, z: 0 };
-const _stampVel = { x: 0, y: 0, z: 0 };
 
 function getHostLockOnMasks(entity: Entity): LockOnMasks {
   if (entity.unit !== null) return getUnitHostLockOnMasks(entity.unit.unitBlueprintId);
@@ -128,6 +125,7 @@ type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
   length: number;
   entityCapacity: number;
+  maxTurretsPerEntity: number;
   entityId: Int32Array;
   entityFlags: Uint8Array;
   turretCountPerEntity: Uint8Array;
@@ -314,7 +312,8 @@ export function getCombatTargetingTargetSlots(): Uint32Array {
 export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingStateViews {
   const targeting = sim.combatTargeting;
   const entityCapacity = targeting.entityCapacity();
-  const length = entityCapacity * targeting.maxTurretsPerEntity();
+  const maxTurretsPerEntity = targeting.maxTurretsPerEntity();
+  const length = entityCapacity * maxTurretsPerEntity;
   const buffer = sim.memory.buffer;
   const cached = _stateViews;
   if (
@@ -322,6 +321,7 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     cached.buffer === buffer &&
     cached.length === length &&
     cached.entityCapacity === entityCapacity &&
+    cached.maxTurretsPerEntity === maxTurretsPerEntity &&
     cached.state.byteLength > 0
   ) {
     return cached;
@@ -331,6 +331,7 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     buffer,
     length,
     entityCapacity,
+    maxTurretsPerEntity,
     entityId: new Int32Array(buffer, targeting.entityIdPtr(), entityCapacity),
     entityFlags: new Uint8Array(buffer, targeting.entityFlagsPtr(), entityCapacity),
     turretCountPerEntity: new Uint8Array(
@@ -384,17 +385,17 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
   return _stateViews;
 }
 
-function getCombatTargetingTurretStateIndex(
-  sim: SimWasm,
+function getCombatTargetingTurretStateIndexFromViews(
+  views: CombatTargetingStateViews,
   entity: Entity,
   turretIndex: number,
 ): number {
   if (turretIndex < 0) return -1;
   const slot = entitySlotRegistry.getEntitySlot(entity);
   if (slot < 0) return -1;
-  const targeting = sim.combatTargeting;
-  if (turretIndex >= targeting.turretCount(slot)) return -1;
-  return slot * targeting.maxTurretsPerEntity() + turretIndex;
+  if (slot >= views.entityCapacity) return -1;
+  if (turretIndex >= views.turretCountPerEntity[slot]) return -1;
+  return slot * views.maxTurretsPerEntity + turretIndex;
 }
 
 /** Read the Rust-owned target/state tuple for one turret into `out`.
@@ -417,9 +418,9 @@ function readCombatTargetingTurretFsmFromSimInto(
   turretIndex: number,
   out: CombatTargetingTurretFsmOut,
 ): boolean {
-  const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
-  if (idx < 0) return false;
   const views = getCombatTargetingStateViews(sim);
+  const idx = getCombatTargetingTurretStateIndexFromViews(views, entity, turretIndex);
+  if (idx < 0) return false;
   out.stateCode = views.state[idx] as CombatTargetingTurretStateCode;
   const targetId = views.targetId[idx];
   out.targetId = targetId < 0 ? -1 : targetId;
@@ -437,9 +438,9 @@ export function readCombatTargetingTurretAimInto(
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return false;
-  const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
-  if (idx < 0) return false;
   const views = getCombatTargetingStateViews(sim);
+  const idx = getCombatTargetingTurretStateIndexFromViews(views, entity, turretIndex);
+  if (idx < 0) return false;
   out.hasSolution = views.aimHasSolution[idx] !== 0;
   out.yaw = views.aimYaw[idx];
   out.pitch = views.aimPitch[idx];
@@ -458,9 +459,9 @@ export function readCombatTargetingTurretMountInto(
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return false;
-  const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
-  if (idx < 0) return false;
   const views = getCombatTargetingStateViews(sim);
+  const idx = getCombatTargetingTurretStateIndexFromViews(views, entity, turretIndex);
+  if (idx < 0) return false;
   if (views.worldPosTick[idx] !== currentTick) return false;
   out.x = views.mountX[idx];
   out.y = views.mountY[idx];
@@ -483,9 +484,9 @@ export function readCombatTargetingTurretMountKinematicsInto(
 ): boolean {
   const sim = getSimWasm();
   if (sim === undefined) return false;
-  const idx = getCombatTargetingTurretStateIndex(sim, entity, turretIndex);
-  if (idx < 0) return false;
   const views = getCombatTargetingStateViews(sim);
+  const idx = getCombatTargetingTurretStateIndexFromViews(views, entity, turretIndex);
+  if (idx < 0) return false;
   if (views.worldPosTick[idx] !== currentTick) return false;
   outPos.x = views.mountX[idx];
   outPos.y = views.mountY[idx];
@@ -572,17 +573,30 @@ function stampCombatTargetingEntityInto(
   const ownership = entity.ownership;
   const playerId = ownership ? ownership.playerId : 0;
   const viewMask = getEntityViewMask(world, playerId);
-  const pos = getEntityPosition3d(entity, _stampPos);
+  _stampPos.x = entity.transform.x;
+  _stampPos.y = entity.transform.y;
+  _stampPos.z = entity.transform.z;
   // A hovering building's combat box is in the air (the fabricator torus), so
   // stamp its combat center z for the targeting/aim solver instead of the
   // ground-level transform.z. Non-hovering buildings are unaffected.
   if (entity.building !== null && entity.building.hovering) {
-    pos.z = getBuildingCombatCenterZ(entity);
+    _stampPos.z = getBuildingCombatCenterZ(entity);
   }
-  const vel = getEntityVelocity3d(entity, _stampVel);
   const unit = entity.unit;
   const building = entity.building;
   const projectile = entity.projectile;
+  let velX = 0;
+  let velY = 0;
+  let velZ = 0;
+  if (unit !== null) {
+    velX = unit.velocityX ?? 0;
+    velY = unit.velocityY ?? 0;
+    velZ = unit.velocityZ ?? 0;
+  } else if (projectile !== null) {
+    velX = projectile.velocityX;
+    velY = projectile.velocityY;
+    velZ = projectile.velocityZ;
+  }
   const groundZ = getUnitGroundZ(entity);
   const rotCos = DMath.cos(entity.transform.rotation);
   const rotSin = DMath.sin(entity.transform.rotation);
@@ -694,8 +708,8 @@ function stampCombatTargetingEntityInto(
   // constants on slot reuse, keyed off setEntity's same-entity check.
   targeting.setEntity(
     slot, entity.id, playerId, viewMask,
-    pos.x, pos.y, pos.z,
-    vel.x, vel.y, vel.z,
+    _stampPos.x, _stampPos.y, _stampPos.z,
+    velX, velY, velZ,
     groundZ,
     rotCos, rotSin,
     surfaceNx, surfaceNy, surfaceNz,
