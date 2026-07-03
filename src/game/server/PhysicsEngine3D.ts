@@ -1184,6 +1184,11 @@ export class PhysicsEngine3D {
 
     this.clearExitedStaticIgnoreForBody(body);
     const ignoredStatic = this.ignoreStatic.get(body);
+    const bodyX = body.x;
+    const bodyY = body.y;
+    const bodyZ = body.z;
+    const contactEpsilon = SUPPORT_SURFACE_CONTACT_EPSILON;
+    const footprintEpsilon = SUPPORT_SURFACE_FOOTPRINT_EPSILON;
     let best: StaticSupportSurfaceContact | null = null;
 
     // Only the static support cuboids whose footprint covers the probe's cell
@@ -1191,7 +1196,7 @@ export class PhysicsEngine3D {
     // scan to that cell instead of every static body. The per-candidate checks
     // are unchanged, so the selected surface is identical to the full scan.
     const cell = this.staticSupportGrid.get(
-      packSupportCell(supportCellCoord(body.x), supportCellCoord(body.y)),
+      packSupportCell(supportCellCoord(bodyX), supportCellCoord(bodyY)),
     );
     if (cell === undefined) return null;
 
@@ -1201,22 +1206,25 @@ export class PhysicsEngine3D {
       if (st.supportTopZ === null) continue;
 
       const topZ = st.supportTopZ;
-      if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-      if (body.z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+      if (topZ < terrainGroundZ - contactEpsilon) continue;
+      if (bodyZ < topZ - contactEpsilon) continue;
 
-      const dx = body.x - st.x;
-      const dy = body.y - st.y;
-      if (Math.abs(dx) > st.supportHalfX + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
-      if (Math.abs(dy) > st.supportHalfY + SUPPORT_SURFACE_FOOTPRINT_EPSILON) continue;
+      const supportHalfX = st.supportHalfX;
+      const supportHalfY = st.supportHalfY;
+      const dx = bodyX - st.x;
+      const dy = bodyY - st.y;
+      if (Math.abs(dx) > supportHalfX + footprintEpsilon) continue;
+      if (Math.abs(dy) > supportHalfY + footprintEpsilon) continue;
 
       if (best === null || topZ > best.groundZ) {
         const candidate = _findStaticSupportScratch;
         candidate.staticBody = st;
+        const supportEntityId = st.entityId;
         best = writeBuildingSupportSurface(
           candidate,
           topZ,
-          st.entityId ?? null,
-          st.entityId ?? st.slot,
+          supportEntityId ?? null,
+          supportEntityId ?? st.slot,
         ) as StaticSupportSurfaceContact;
         best.staticBody = st;
       }
@@ -1231,15 +1239,20 @@ export class PhysicsEngine3D {
   ): DynamicSupportSurfaceContact | null {
     if (body.isStatic || body.shape !== 'sphere') return null;
 
-    const groundPointZ = body.z - body.groundOffset;
-    const sphereBottomZ = body.z - body.radius;
+    const bodyX = body.x;
+    const bodyY = body.y;
+    const bodyZ = body.z;
+    const groundPointZ = bodyZ - body.groundOffset;
+    const sphereBottomZ = bodyZ - body.radius;
+    const contactEpsilon = SUPPORT_SURFACE_CONTACT_EPSILON;
+    const footprintEpsilon = SUPPORT_SURFACE_FOOTPRINT_EPSILON;
     let best: DynamicSupportSurfaceContact | null = null;
 
     if (this.dynamicSupportGridDirty) this.rebuildDynamicSupportGrid();
     // Only dynamic support discs whose radius covers the probe's cell can pass
     // the distance test below; the broadphase narrows the scan to that cell.
     const cell = this.dynamicSupportGrid.get(
-      packSupportCell(supportCellCoord(body.x), supportCellCoord(body.y)),
+      packSupportCell(supportCellCoord(bodyX), supportCellCoord(bodyY)),
     );
     if (cell === undefined) return null;
 
@@ -1249,27 +1262,29 @@ export class PhysicsEngine3D {
       const supportTopOffsetZ = supportBody.unitSupportTopOffsetZ;
       if (supportTopOffsetZ === null) continue;
 
-      const topZ = supportBody.z - supportBody.groundOffset + supportTopOffsetZ;
-      if (topZ < terrainGroundZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
-      if (body.z < topZ - SUPPORT_SURFACE_CONTACT_EPSILON) continue;
+      const supportZ = supportBody.z;
+      const topZ = supportZ - supportBody.groundOffset + supportTopOffsetZ;
+      if (topZ < terrainGroundZ - contactEpsilon) continue;
+      if (bodyZ < topZ - contactEpsilon) continue;
 
-      const dx = body.x - supportBody.x;
-      const dy = body.y - supportBody.y;
-      const radius = supportBody.unitSupportRadius + SUPPORT_SURFACE_FOOTPRINT_EPSILON;
+      const dx = bodyX - supportBody.x;
+      const dy = bodyY - supportBody.y;
+      const radius = supportBody.unitSupportRadius + footprintEpsilon;
       if (dx * dx + dy * dy > radius * radius) continue;
 
-      const groundPointNearTop = groundPointZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
-      const sphereBottomNearTop = sphereBottomZ <= topZ + SUPPORT_SURFACE_CONTACT_EPSILON;
+      const groundPointNearTop = groundPointZ <= topZ + contactEpsilon;
+      const sphereBottomNearTop = sphereBottomZ <= topZ + contactEpsilon;
       if (!groundPointNearTop && !sphereBottomNearTop) continue;
 
       if (best === null || topZ > best.groundZ) {
         const candidate = _findDynamicSupportScratch;
         candidate.dynamicBody = supportBody;
+        const supportEntityId = supportBody.entityId;
         best = writeUnitSupportSurface(
           candidate,
           topZ,
-          supportBody.entityId ?? null,
-          supportBody.entityId ?? supportBody.slot,
+          supportEntityId ?? null,
+          supportEntityId ?? supportBody.slot,
           { x: supportBody.vx, y: supportBody.vy, z: supportBody.vz },
         ) as DynamicSupportSurfaceContact;
         best.dynamicBody = supportBody;
