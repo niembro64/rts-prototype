@@ -2800,7 +2800,11 @@ export class ClientViewState {
     // velocity updates still snap above; ordinary rocket corrections use an
     // EMA target instead. Audio event pos is unquantized f64.
     const audioEventsForReflection = this.pendingAudioEvents;
-    if (audioEventsForReflection !== undefined && audioEventsForReflection.length > 0) {
+    if (
+      reflectedProjectileIds !== null &&
+      audioEventsForReflection !== undefined &&
+      audioEventsForReflection.length > 0
+    ) {
       for (let i = 0; i < audioEventsForReflection.length; i++) {
         const evt = audioEventsForReflection[i];
         if (evt.type !== 'shieldImpact' || evt.entityId === null) continue;
