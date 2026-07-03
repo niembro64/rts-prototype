@@ -504,12 +504,16 @@ export class UnitForceSystem {
     });
 
     for (let i = 0; i < count; i++) {
+      const outFlags = _forceOutFlags[i];
+      if (outFlags === 0) {
+        _forceEntities[i] = undefined;
+        continue;
+      }
       const entity = _forceEntities[i];
       _forceEntities[i] = undefined;
       if (entity === undefined || entity.unit === null || entity.body === null) continue;
       const unit = entity.unit;
       const body = entity.body.physicsBody;
-      const outFlags = _forceOutFlags[i];
       const base = i * UNIT_FORCE_BATCH_STRIDE;
 
       if ((outFlags & UF_OUT_WOKE_BODY) !== 0) {
