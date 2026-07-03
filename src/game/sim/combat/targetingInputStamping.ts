@@ -186,6 +186,7 @@ export type CombatTargetingTurretAimOut = {
 };
 
 let _stateViews: CombatTargetingStateViews | null = null;
+let _stateViewsSim: SimWasm | null = null;
 let _combatTargetingSourceSlots = new Uint32Array(0);
 let _combatTargetingSourceCount = 0;
 let _combatTargetingSensorSourceSlots = new Uint32Array(0);
@@ -326,14 +327,22 @@ export function getCombatTargetingTargetSlots(): Uint32Array {
 }
 
 export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingStateViews {
+  const cached = _stateViews;
+  if (
+    cached !== null &&
+    _stateViewsSim === sim &&
+    cached.state.byteLength > 0
+  ) {
+    return cached;
+  }
   const targeting = sim.combatTargeting;
   const entityCapacity = targeting.entityCapacity();
   const maxTurretsPerEntity = targeting.maxTurretsPerEntity();
   const length = entityCapacity * maxTurretsPerEntity;
   const buffer = sim.memory.buffer;
-  const cached = _stateViews;
   if (
     cached &&
+    _stateViewsSim === sim &&
     cached.buffer === buffer &&
     cached.length === length &&
     cached.entityCapacity === entityCapacity &&
@@ -343,6 +352,7 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     return cached;
   }
 
+  _stateViewsSim = sim;
   _stateViews = {
     buffer,
     length,
@@ -399,6 +409,18 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     ),
   };
   return _stateViews;
+}
+
+function invalidateCombatTargetingStateViews(): void {
+  _stateViews = null;
+  _stateViewsSim = null;
+}
+
+function invalidateCombatTargetingStateViewsIfSlotWillGrow(slot: number): void {
+  const cached = _stateViews;
+  if (cached !== null && slot >= cached.entityCapacity) {
+    invalidateCombatTargetingStateViews();
+  }
 }
 
 function getCombatTargetingTurretStateIndexFromViews(
@@ -672,6 +694,7 @@ function stampCombatTargetingEntityInto(
   // off-grid would be invisible to it anyway.
   if (slot < 0) return -1;
   reserveCombatTargetingSlot(slot);
+  invalidateCombatTargetingStateViewsIfSlotWillGrow(slot);
 
   const ownership = entity.ownership;
   const playerId = ownership ? ownership.playerId : 0;
