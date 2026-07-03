@@ -686,6 +686,66 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   resetEntitySnapshotPool();
 
+  const builderEntity = createUnitFromBlueprintEntity(
+    {
+      generateEntityId: () => nextEntityId++,
+      sampleSupportSurface: () => FLAT_SUPPORT,
+    },
+    32,
+    48,
+    2 as PlayerId,
+    'unitCommander',
+    { allocateSubEntityIds: false },
+  );
+  if (builderEntity.unit === null || builderEntity.builder === null) {
+    throw new Error('[client snapshot applier contract] builder fixture must have unit + builder');
+  }
+  builderEntity.builder.lowPriority = false;
+  builderEntity.builder.currentBuildTarget = 606;
+  builderEntity.unit.actions = [{ type: 'move', x: 420, y: 430 }];
+  const builderRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(builderRows);
+  const builderRow = serializeEntityDeltaSnapshot(
+    builderEntity,
+    ENTITY_CHANGED_ACTIONS,
+    {} as WorldState,
+  );
+  if (builderRow !== null) {
+    builderRows.push(builderRow as NetworkServerSnapshotEntity);
+  }
+  const builderSource = getEntitySnapshotWireSource(builderRows);
+  assertContract(
+    builderRows.length === 1 &&
+      (builderRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
+      builderSource !== undefined &&
+      builderSource.typedPlaceholderRows === 1 &&
+      builderSource.actionRows.count === 1,
+    'priority-free builder action rows must use DTO-free typed unit placeholders',
+  );
+  const builderView = new ClientViewState();
+  const builderFull = serializeEntitySnapshot(builderEntity, undefined, {} as WorldState);
+  if (builderFull === null) {
+    throw new Error('[client snapshot applier contract] builder full fixture must serialize');
+  }
+  builderView.applyNetworkState(snapshot(1, [builderFull]));
+  const staleBuilder = builderView.getEntity(builderEntity.id)?.builder;
+  if (staleBuilder === undefined || staleBuilder === null) {
+    throw new Error('[client snapshot applier contract] builder full fixture must hydrate');
+  }
+  staleBuilder.lowPriority = true;
+  staleBuilder.currentBuildTarget = 101;
+  builderView.applyNetworkState(snapshot(5, builderRows));
+  const appliedBuilderEntity = builderView.getEntity(builderEntity.id);
+  assertContract(
+    appliedBuilderEntity?.builder?.lowPriority === false &&
+      appliedBuilderEntity.builder.currentBuildTarget === 606 &&
+      appliedBuilderEntity.unit?.actions.length === 1 &&
+      appliedBuilderEntity.unit.actions[0].x === 420,
+    'priority-free typed builder rows must apply actions/build target and clear stale priority',
+  );
+  resetEntitySnapshotPool();
+
   wireMotionEntity.transform.x = 180;
   const metadataOnlyPackedMotionRows: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();

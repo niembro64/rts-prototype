@@ -775,6 +775,7 @@ function tryAppendDecodedUnitDetailTypedPlaceholderWireRow(
   if ((changedFields & ~DECODED_TYPED_UNIT_DETAIL_FIELDS) !== 0) return false;
   const unit = entity.unit;
   if (unit === null) return false;
+  if (unit.builderPriorityLow === true) return false;
 
   if ((changedFields & ENTITY_CHANGED_POS) !== 0 && entity.pos === null) return false;
   if ((changedFields & ENTITY_CHANGED_ROT) !== 0 && entity.rotation === null) return false;

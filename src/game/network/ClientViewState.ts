@@ -1246,6 +1246,7 @@ export class ClientViewState {
         existing.unit.cloaked = values[base + 62] >= 2;
       }
       if (existing.builder !== null && values[base + 38] !== 0) {
+        existing.builder.lowPriority = false;
         existing.builder.currentBuildTarget = values[base + 39] === 0
           ? values[base + 40] as EntityId
           : NO_ENTITY_ID;

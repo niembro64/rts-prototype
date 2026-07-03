@@ -638,7 +638,10 @@ export function unitBuilderPrivateSnapshotRequiresDto(
   if (entity.type !== 'unit' || entity.builder === null) return false;
   if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_ACTIONS) === 0) return false;
   if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
-  return true;
+  // Typed unit action rows carry action queues and current build target, but
+  // not BAR builder-priority. Keep priority-on rows DTO-backed; priority-free
+  // rows can ride the typed path and clear stale priority on apply.
+  return entity.builder.lowPriority === true;
 }
 
 export function unitFactoryPrivateSnapshotRequiresDto(
