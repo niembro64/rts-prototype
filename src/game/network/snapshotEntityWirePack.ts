@@ -42,6 +42,10 @@ type FactorySub = NonNullable<BuildingSub['factory']>;
 type WaypointSub = FactorySub['rally'];
 type TurretAngular = NetworkServerSnapshotTurret['turret']['angular'];
 
+function factoryMoveStateToWireCode(value: FactorySub['moveState'] | null | undefined): number {
+  return value === 'roam' ? 2 : value === 'holdPosition' ? 1 : 0;
+}
+
 function createEmptyUnitSub(): UnitSub {
   return {
     unitBlueprintCode: null,
@@ -284,6 +288,18 @@ function appendDecodedFactoryQueueWireRows(
   const offset = reserveUint32WireRows(rows, queue.length, 1);
   for (let i = 0; i < queue.length; i++) rows.values[offset + i] = queue[i];
   return { offset, count: queue.length };
+}
+
+function appendDecodedFactoryQuotaWireRows(
+  rowsIn: readonly number[] | null | undefined,
+): { offset: number; count: number } {
+  if (rowsIn === null || rowsIn === undefined || rowsIn.length === 0) {
+    return { offset: -1, count: 0 };
+  }
+  const rows = _decodedEntityWireSource.factorySelectedUnitRows;
+  const offset = reserveUint32WireRows(rows, rowsIn.length, 1);
+  for (let i = 0; i < rowsIn.length; i++) rows.values[offset + i] = rowsIn[i];
+  return { offset, count: rowsIn.length };
 }
 
 function appendDecodedWaypointWireRows(
@@ -890,14 +906,16 @@ function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
   if ((changedFields & ENTITY_CHANGED_HP) !== 0 && building.hp === null) return false;
   if ((changedFields & ENTITY_CHANGED_BUILDING) !== 0 && building.build === null) return false;
   if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && building.factory === null) return false;
-  if (
-    (changedFields & ENTITY_CHANGED_FACTORY) !== 0 &&
-    building.factory !== null &&
-    decodedFactoryHasQuotaWireState(building.factory)
-  ) {
-    return false;
+  if ((changedFields & ENTITY_CHANGED_FACTORY) !== 0 && building.factory !== null) {
+    if (
+      building.factory.lowPriority === undefined ||
+      building.factory.paused === undefined ||
+      building.factory.moveState === undefined ||
+      building.factory.airIdleState === undefined
+    ) {
+      return false;
+    }
   }
-
   const wireRow = appendDecodedBuildingEntityWireRow();
   const values = wireRow.values;
   const base = wireRow.base;
@@ -946,6 +964,8 @@ function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
   if (factory !== null) {
     const selected = appendDecodedFactorySelectedUnitWireRow(factory.selectedUnitBlueprintCode);
     const queue = appendDecodedFactoryQueueWireRows(factory.queue);
+    const quotas = appendDecodedFactoryQuotaWireRows(factory.quotas);
+    const quotaCounts = appendDecodedFactoryQuotaWireRows(factory.quotaCounts);
     const rally = appendDecodedWaypointWireRows([factory.rally]);
     const route = factory.route !== null && factory.route !== undefined
       ? appendDecodedWaypointWireRows(factory.route)
@@ -966,14 +986,17 @@ function tryAppendDecodedBuildingDetailTypedPlaceholderWireRow(
     values[base + 39] = queue.count;
     values[base + 40] = route.offset;
     values[base + 41] = route.count;
+    values[base + 42] = quotas.offset;
+    values[base + 43] = quotas.count;
+    values[base + 44] = quotaCounts.offset;
+    values[base + 45] = quotaCounts.count;
+    values[base + 46] = factory.lowPriority === true ? 1 : 0;
+    values[base + 47] = factory.paused === true ? 1 : 0;
+    values[base + 48] = factoryMoveStateToWireCode(factory.moveState);
+    values[base + 49] = factory.airIdleState === 'fly' ? 1 : 0;
   }
 
   return true;
-}
-
-function decodedFactoryHasQuotaWireState(factory: FactorySub): boolean {
-  return (factory.quotas !== null && factory.quotas !== undefined && factory.quotas.length > 0) ||
-    (factory.quotaCounts !== null && factory.quotaCounts !== undefined && factory.quotaCounts.length > 0);
 }
 
 function movementUnitChangedFields(flags: number): number {

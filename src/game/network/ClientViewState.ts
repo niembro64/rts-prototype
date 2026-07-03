@@ -86,7 +86,11 @@ import {
   applyNetworkUnitActionWireRows,
   applyNetworkUnitDriftFieldsToTarget,
 } from './unitSnapshotFields';
-import { decodeFactoryProductionQueueInto } from './factoryProductionQueueWire';
+import {
+  decodeFactoryProductionQueueInto,
+  decodeFactoryProductionQuotaCountsInto,
+  decodeFactoryProductionQuotasInto,
+} from './factoryProductionQueueWire';
 import { createSpawnDto } from './snapshotDtoCopy';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
@@ -1166,6 +1170,8 @@ export class ClientViewState {
         orientation.y = values[base + 29];
         orientation.z = values[base + 30];
         orientation.w = values[base + 31];
+      } else {
+        target.orientation = null;
       }
     }
     if (target !== undefined && (changedFields & ENTITY_CHANGED_VEL) !== 0) {
@@ -1310,6 +1316,8 @@ export class ClientViewState {
         orientation.y = values[base + 29];
         orientation.z = values[base + 30];
         orientation.w = values[base + 31];
+      } else {
+        target.orientation = null;
       }
     }
     if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {
@@ -1571,14 +1579,48 @@ export class ClientViewState {
     }
 
     factory.repeatProduction = values[base + 37] !== 0;
-    for (const key of Object.keys(factory.productionQuotas)) delete factory.productionQuotas[key];
-    for (const key of Object.keys(factory.productionQuotaCounts)) delete factory.productionQuotaCounts[key];
+    const quotaOffset = values[base + 42] | 0;
+    const quotaCount = values[base + 43] | 0;
+    if (quotaCount > 0) {
+      if (quotaOffset < 0 || quotaOffset + quotaCount > source.factorySelectedUnitRows.count) {
+        return false;
+      }
+      decodeFactoryProductionQuotasInto(
+        factoryRows.subarray(quotaOffset, quotaOffset + quotaCount),
+        factory.productionQuotas,
+      );
+    } else {
+      decodeFactoryProductionQuotasInto(null, factory.productionQuotas);
+    }
+
+    const quotaCountOffset = values[base + 44] | 0;
+    const quotaCountCount = values[base + 45] | 0;
+    if (quotaCountCount > 0) {
+      if (quotaCountOffset < 0 || quotaCountOffset + quotaCountCount > source.factorySelectedUnitRows.count) {
+        return false;
+      }
+      decodeFactoryProductionQuotaCountsInto(
+        factoryRows.subarray(quotaCountOffset, quotaCountOffset + quotaCountCount),
+        factory.productionQuotaCounts,
+      );
+    } else {
+      decodeFactoryProductionQuotaCountsInto(null, factory.productionQuotaCounts);
+    }
     factory.currentShellId = null;
     factory.currentBuildProgress = values[base + 26];
     factory.isProducing = values[base + 27] !== 0;
     factory.energyRateFraction = values[base + 28];
     factory.metalRateFraction = values[base + 29];
     factory.guardTargetId = values[base + 35] !== 0 ? (values[base + 36] | 0) as EntityId : null;
+    factory.lowPriority = values[base + 46] !== 0;
+    factory.paused = values[base + 47] !== 0;
+    const moveStateCode = values[base + 48] | 0;
+    factory.moveState = moveStateCode === 2
+      ? 'roam'
+      : moveStateCode === 1
+        ? 'holdPosition'
+        : 'maneuver';
+    factory.airIdleState = values[base + 49] !== 0 ? 'fly' : 'land';
     return true;
   }
 
@@ -1778,6 +1820,8 @@ export class ClientViewState {
           orientation.y = values[base + 29];
           orientation.z = values[base + 30];
           orientation.w = values[base + 31];
+        } else {
+          target.orientation = null;
         }
       }
       if ((changedFields & ENTITY_CHANGED_VEL) !== 0) {

@@ -2347,12 +2347,12 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // per-entity JS->WASM crossing.
 //
 // SoA row layouts (must match stateSerializerEntities.ts strides/slots):
-//   basic[9], unit[64], building[42], action[19], turret[11], waypoint[5].
+//   basic[9], unit[64], building[50], action[19], turret[11], waypoint[5].
 // hp/velocity (unit) and hp/build (building) presence is NOT stored in the SoA
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
 // the DTO sub-fields.
-pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 15;
+pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 18;
 
 pub(crate) const V6_ENTITY_FLAG_HAS_POS: u32 = 1 << 0;
 pub(crate) const V6_ENTITY_FLAG_HAS_ROTATION: u32 = 1 << 1;
@@ -2438,7 +2438,7 @@ pub(crate) const V6_WAYPOINT_FLAG_POS_Z: u32 = 1 << 0;
 
 pub(crate) const V6_BASIC_STRIDE: usize = 9;
 pub(crate) const V6_UNIT_STRIDE: usize = 64;
-pub(crate) const V6_BUILDING_STRIDE: usize = 42;
+pub(crate) const V6_BUILDING_STRIDE: usize = 50;
 
 pub(crate) const V6_KIND_RAW: u32 = 0;
 pub(crate) const V6_KIND_BASIC: u32 = 1;
@@ -3307,7 +3307,7 @@ pub(crate) fn v6_write_detail_factory(
     waypoint_buf: &[f64],
     waypoint_string_base: u32,
 ) {
-    w.write_array_header(9);
+    w.write_array_header(15);
     // selectedUnitBlueprintCode: code or nil
     let selected_count = building_buf[base + 25] as usize;
     let selected_offset = building_buf[base + 32] as i64;
@@ -3366,6 +3366,60 @@ pub(crate) fn v6_write_detail_factory(
         }
     } else {
         w.write_nil();
+    }
+
+    let quota_count = building_buf[base + 43] as i64;
+    let quota_offset = building_buf[base + 42] as i64;
+    if quota_count >= 0 {
+        let count = quota_count as usize;
+        w.write_array_header(count);
+        if quota_offset >= 0 {
+            let off = quota_offset as usize;
+            for q in 0..count {
+                w.write_number(queue_buf[off + q] as f64);
+            }
+        }
+    } else {
+        w.write_nil();
+    }
+
+    let quota_count_count = building_buf[base + 45] as i64;
+    let quota_count_offset = building_buf[base + 44] as i64;
+    if quota_count_count >= 0 {
+        let count = quota_count_count as usize;
+        w.write_array_header(count);
+        if quota_count_offset >= 0 {
+            let off = quota_count_offset as usize;
+            for q in 0..count {
+                w.write_number(queue_buf[off + q] as f64);
+            }
+        }
+    } else {
+        w.write_nil();
+    }
+
+    w.write_number(if building_buf[base + 46] != 0.0 {
+        1.0
+    } else {
+        0.0
+    });
+    w.write_number(if building_buf[base + 47] != 0.0 {
+        1.0
+    } else {
+        0.0
+    });
+    let move_state_code = building_buf[base + 48] as u32;
+    if move_state_code == 2 {
+        w.write_str("roam");
+    } else if move_state_code == 1 {
+        w.write_str("holdPosition");
+    } else {
+        w.write_str("maneuver");
+    }
+    if building_buf[base + 49] != 0.0 {
+        w.write_str("fly");
+    } else {
+        w.write_str("land");
     }
 }
 

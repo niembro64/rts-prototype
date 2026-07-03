@@ -32,6 +32,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { WorldSupportSurface } from '../sim/supportSurface';
 import { refreshUnitActionHash } from '../sim/unitActions';
 import { createBuildable } from '../sim/buildableHelpers';
+import { setQuatFromYaw } from '../math/Quaternion';
 import {
   appendEntitySnapshotWireRowDirect,
   appendEntitySnapshotWireSourceRow,
@@ -84,6 +85,19 @@ function collectMinimalUnitRenderPacket(view: ClientViewState): UnitRenderPacket
     },
   );
   return unitRows;
+}
+
+function setUnitSourceRotation(
+  entity: {
+    transform: { rotation: number };
+    unit: { orientation: { x: number; y: number; z: number; w: number } | null } | null;
+  },
+  rotation: number,
+): void {
+  entity.transform.rotation = rotation;
+  if (entity.unit?.orientation !== null && entity.unit?.orientation !== undefined) {
+    setQuatFromYaw(entity.unit.orientation, rotation);
+  }
 }
 
 const FLAT_SUPPORT: WorldSupportSurface = {
@@ -168,6 +182,15 @@ function snapshot(
     visionPlayerMask: undefined,
     removedEntityIds: undefined,
   };
+}
+
+function deltaSnapshot(
+  tick: number,
+  entities: NetworkServerSnapshotEntity[],
+): NetworkServerSnapshot {
+  const state = snapshot(tick, entities);
+  state.entityDeltaOnly = true;
+  return state;
 }
 
 function installMaterializationMetadata(state: NetworkServerSnapshot): NetworkServerSnapshot {
@@ -703,6 +726,11 @@ export function runClientSnapshotApplierContractTest(): void {
   builderEntity.builder.lowPriority = false;
   builderEntity.builder.currentBuildTarget = 606;
   builderEntity.unit.actions = [{ type: 'move', x: 420, y: 430 }];
+  const builderView = new ClientViewState();
+  const builderFull = serializeEntitySnapshot(builderEntity, undefined, {} as WorldState);
+  if (builderFull === null) {
+    throw new Error('[client snapshot applier contract] builder full fixture must serialize');
+  }
   const builderRows: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();
   registerEntitySnapshotWireSource(builderRows);
@@ -723,11 +751,6 @@ export function runClientSnapshotApplierContractTest(): void {
       builderSource.actionRows.count === 1,
     'priority-free builder action rows must use DTO-free typed unit placeholders',
   );
-  const builderView = new ClientViewState();
-  const builderFull = serializeEntitySnapshot(builderEntity, undefined, {} as WorldState);
-  if (builderFull === null) {
-    throw new Error('[client snapshot applier contract] builder full fixture must serialize');
-  }
   builderView.applyNetworkState(snapshot(1, [builderFull]));
   const staleBuilder = builderView.getEntity(builderEntity.id)?.builder;
   if (staleBuilder === undefined || staleBuilder === null) {
@@ -735,7 +758,7 @@ export function runClientSnapshotApplierContractTest(): void {
   }
   staleBuilder.lowPriority = true;
   staleBuilder.currentBuildTarget = 101;
-  builderView.applyNetworkState(snapshot(5, builderRows));
+  builderView.applyNetworkState(deltaSnapshot(5, builderRows));
   const appliedBuilderEntity = builderView.getEntity(builderEntity.id);
   assertContract(
     appliedBuilderEntity?.builder?.lowPriority === false &&
@@ -814,7 +837,7 @@ export function runClientSnapshotApplierContractTest(): void {
     'unitJackal',
     { allocateSubEntityIds: false },
   );
-  hotPathSource.transform.rotation = 1.2;
+  setUnitSourceRotation(hotPathSource, 1.2);
   if (hotPathSource.unit === null) {
     throw new Error('[client snapshot applier contract] hot motion source must have a unit component');
   }
@@ -909,10 +932,10 @@ export function runClientSnapshotApplierContractTest(): void {
   if (multiHotPathSourceA.unit === null || multiHotPathSourceB.unit === null) {
     throw new Error('[client snapshot applier contract] multi hot motion sources must have unit components');
   }
-  multiHotPathSourceA.transform.rotation = 0.7;
+  setUnitSourceRotation(multiHotPathSourceA, 0.7);
   multiHotPathSourceA.unit.velocityX = 6;
   multiHotPathSourceA.unit.velocityY = 2;
-  multiHotPathSourceB.transform.rotation = 1.1;
+  setUnitSourceRotation(multiHotPathSourceB, 1.1);
   multiHotPathSourceB.unit.velocityX = 4;
   multiHotPathSourceB.unit.velocityY = 5;
   const multiHotPathRows: NetworkServerSnapshotEntity[] = [];
@@ -972,7 +995,7 @@ export function runClientSnapshotApplierContractTest(): void {
     'unitJackal',
     { allocateSubEntityIds: false },
   );
-  basicFastPathSource.transform.rotation = 0.8;
+  setUnitSourceRotation(basicFastPathSource, 0.8);
   const basicFastPathRows: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();
   registerEntitySnapshotWireSource(basicFastPathRows);
@@ -1036,7 +1059,7 @@ export function runClientSnapshotApplierContractTest(): void {
     ENTITY_CHANGED_HP,
     {} as WorldState,
   );
-  view.applyNetworkState(snapshot(4, typedHpRows));
+  view.applyNetworkState(deltaSnapshot(4, typedHpRows));
   resetEntitySnapshotPool();
   assertContract(
     view.getEntity(id)?.unit?.hp === 45,
@@ -1054,7 +1077,7 @@ export function runClientSnapshotApplierContractTest(): void {
     ENTITY_CHANGED_HP,
     {} as WorldState,
   );
-  view.applyNetworkState(snapshot(5, typedHealRows));
+  view.applyNetworkState(deltaSnapshot(5, typedHealRows));
   resetEntitySnapshotPool();
   assertContract(
     view.getEntity(id)?.unit?.hp === 100,
@@ -1080,7 +1103,7 @@ export function runClientSnapshotApplierContractTest(): void {
     ENTITY_CHANGED_BUILDING,
     {} as WorldState,
   );
-  view.applyNetworkState(snapshot(6, typedBuildRows));
+  view.applyNetworkState(deltaSnapshot(6, typedBuildRows));
   resetEntitySnapshotPool();
   const unitAfterBuild = view.getEntity(id);
   assertContract(
@@ -1100,7 +1123,7 @@ export function runClientSnapshotApplierContractTest(): void {
     ENTITY_CHANGED_BUILDING,
     {} as WorldState,
   );
-  view.applyNetworkState(snapshot(7, typedBuildCompleteRows));
+  view.applyNetworkState(deltaSnapshot(7, typedBuildCompleteRows));
   resetEntitySnapshotPool();
   assertContract(
     view.getEntity(id)?.buildable === null,
@@ -1227,7 +1250,7 @@ export function runClientSnapshotApplierContractTest(): void {
   );
   buildingSource.building.hp = 80;
   buildingSource.building.maxHp = 120;
-  buildingView.applyNetworkState(snapshot(2, typedBuildingHpRows));
+  buildingView.applyNetworkState(deltaSnapshot(2, typedBuildingHpRows));
   resetEntitySnapshotPool();
   assertContract(
     buildingView.getEntity(buildingId)?.building?.hp === 45,
@@ -1255,7 +1278,7 @@ export function runClientSnapshotApplierContractTest(): void {
   buildingSource.transform.rotation = 0;
   buildingSource.building.hp = 80;
   buildingSource.building.maxHp = 120;
-  buildingView.applyNetworkState(snapshot(3, typedBuildingMotionRows));
+  buildingView.applyNetworkState(deltaSnapshot(3, typedBuildingMotionRows));
   resetEntitySnapshotPool();
   assertContract(
     buildingSource.transform.x === 12.5 &&
@@ -1331,7 +1354,7 @@ export function runClientSnapshotApplierContractTest(): void {
     {} as WorldState,
   );
   buildingSource.buildable = null;
-  buildingView.applyNetworkState(snapshot(3, typedBuildingBuildRows));
+  buildingView.applyNetworkState(deltaSnapshot(3, typedBuildingBuildRows));
   resetEntitySnapshotPool();
   const buildingAfterBuild = buildingView.getEntity(buildingId)?.buildable;
   assertContract(
@@ -1359,7 +1382,7 @@ export function runClientSnapshotApplierContractTest(): void {
       healthBuildFraction: null,
     },
   );
-  buildingView.applyNetworkState(snapshot(4, typedBuildingCompleteRows));
+  buildingView.applyNetworkState(deltaSnapshot(4, typedBuildingCompleteRows));
   resetEntitySnapshotPool();
   assertContract(
     buildingSource.buildable === null,
@@ -1425,6 +1448,10 @@ export function runClientSnapshotApplierContractTest(): void {
   factorySource.factory.energyRateFraction = 0.75;
   factorySource.factory.metalRateFraction = 0.5;
   factorySource.factory.guardTargetId = id;
+  factorySource.factory.lowPriority = true;
+  factorySource.factory.paused = true;
+  factorySource.factory.moveState = 'roam';
+  factorySource.factory.airIdleState = 'fly';
   factorySource.factory.rallyX = 180;
   factorySource.factory.rallyY = 190;
   factorySource.factory.rallyZ = 12;
@@ -1445,18 +1472,19 @@ export function runClientSnapshotApplierContractTest(): void {
     typedFactoryRows.push(typedFactoryRow as NetworkServerSnapshotEntity);
   }
   const typedFactorySource = getEntitySnapshotWireSource(typedFactoryRows);
-  const typedFactoryComposition = snapshotEntityRowComposition(snapshot(6, typedFactoryRows));
+  const typedFactoryComposition = snapshotEntityRowComposition(deltaSnapshot(6, typedFactoryRows));
   assertContract(
     typedFactoryRows.length === 1 &&
-      (typedFactoryRows as Array<NetworkServerSnapshotEntity | undefined>)[0] !== undefined &&
+      (typedFactoryRows as Array<NetworkServerSnapshotEntity | undefined>)[0] === undefined &&
       typedFactorySource !== undefined &&
-      typedFactorySource.rawEntityRows === 1 &&
-      typedFactorySource.typedPlaceholderRows === 0 &&
-      typedFactoryComposition.entityDtoRows === 1,
-    'factory-private rows must materialize DTOs so quota state cannot be lost in typed rows',
+      typedFactorySource.rawEntityRows === 0 &&
+      typedFactorySource.typedPlaceholderRows === 1 &&
+      typedFactorySource.buildingRows.count === 1 &&
+      typedFactoryComposition.entityDtoRows === 0,
+    'quota-bearing factory-private rows must use DTO-free typed building placeholders',
   );
   const encodedPackedFactory = encodeNetworkSnapshotWithRustFallback(
-    snapshot(7, typedFactoryRows),
+    deltaSnapshot(7, typedFactoryRows),
   );
   if (encodedPackedFactory === null) {
     throw new Error('[client snapshot applier contract] packed factory fixture must encode');
@@ -1467,9 +1495,11 @@ export function runClientSnapshotApplierContractTest(): void {
   const decodedPackedFactorySource = getEntitySnapshotWireSource(decodedPackedFactory.entities);
   assertContract(
     decodedPackedFactory.entities.length === 1 &&
-      decodedPackedFactory.entities[0] !== undefined &&
-      decodedPackedFactorySource === undefined,
-    'packed factory decode must keep DTOs when factory quota state is present',
+      decodedPackedFactory.entities[0] === undefined &&
+      decodedPackedFactorySource !== undefined &&
+      decodedPackedFactorySource.typedPlaceholderRows === 1 &&
+      decodedPackedFactorySource.buildingRows.count === 1,
+    'packed quota-bearing factory rows must reconstruct typed building placeholders',
   );
 
   factorySource.factory.selectedUnitBlueprintId = null;
@@ -1482,12 +1512,16 @@ export function runClientSnapshotApplierContractTest(): void {
   factorySource.factory.energyRateFraction = 0;
   factorySource.factory.metalRateFraction = 0;
   factorySource.factory.guardTargetId = null;
+  factorySource.factory.lowPriority = false;
+  factorySource.factory.paused = false;
+  factorySource.factory.moveState = 'holdPosition';
+  factorySource.factory.airIdleState = 'land';
   factorySource.factory.rallyX = 0;
   factorySource.factory.rallyY = 0;
   factorySource.factory.rallyZ = null;
   factorySource.factory.rallyType = 'move';
   factorySource.factory.defaultWaypoints = null;
-  factoryView.applyNetworkState(snapshot(6, typedFactoryRows));
+  factoryView.applyNetworkState(deltaSnapshot(6, typedFactoryRows));
   resetEntitySnapshotPool();
   const appliedFactory = factoryView.getEntity(factoryId)?.factory;
   assertContract(
@@ -1499,6 +1533,10 @@ export function runClientSnapshotApplierContractTest(): void {
       appliedFactory.energyRateFraction === 0.75 &&
       appliedFactory.metalRateFraction === 0.5 &&
       appliedFactory.guardTargetId === id &&
+      appliedFactory.lowPriority === true &&
+      appliedFactory.paused === true &&
+      appliedFactory.moveState === 'roam' &&
+      appliedFactory.airIdleState === 'fly' &&
       appliedFactory.productionQuotas.unitJackal === 3 &&
       appliedFactory.productionQuotas.unitLynx === 1 &&
       appliedFactory.productionQuotaCounts.unitJackal === 2 &&
@@ -1509,7 +1547,7 @@ export function runClientSnapshotApplierContractTest(): void {
       appliedFactory.rallyType === 'fight' &&
       appliedFactory.defaultWaypoints?.length === 2 &&
       appliedFactory.defaultWaypoints[1].type === 'patrol',
-    'factory DTO rows must apply queue, quota, and route detail',
+    'typed factory rows must apply queue, quota, and route detail',
   );
   factoryView.assertRenderEntityStateParity(factoryId);
 
@@ -1528,9 +1566,13 @@ export function runClientSnapshotApplierContractTest(): void {
       packedFactory.productionQuotaCounts.unitLynx === 1 &&
       packedFactory.currentBuildProgress === 0.625 &&
       packedFactory.isProducing === true &&
+      packedFactory.lowPriority === true &&
+      packedFactory.paused === true &&
+      packedFactory.moveState === 'roam' &&
+      packedFactory.airIdleState === 'fly' &&
       packedFactory.defaultWaypoints?.length === 2 &&
       packedFactory.defaultWaypoints[0].type === 'fight',
-    'packed factory DTO rows must apply quota state after decode',
+    'packed typed factory rows must apply quota state after decode',
   );
   packedFactoryView.assertRenderEntityStateParity(factoryId);
 
@@ -1549,6 +1591,10 @@ export function runClientSnapshotApplierContractTest(): void {
   quotaFreeFactory.energyRateFraction = 0.25;
   quotaFreeFactory.metalRateFraction = 0.125;
   quotaFreeFactory.guardTargetId = null;
+  quotaFreeFactory.lowPriority = false;
+  quotaFreeFactory.paused = false;
+  quotaFreeFactory.moveState = 'holdPosition';
+  quotaFreeFactory.airIdleState = 'land';
   quotaFreeFactory.rallyX = 225;
   quotaFreeFactory.rallyY = 235;
   quotaFreeFactory.rallyZ = null;
@@ -1583,17 +1629,25 @@ export function runClientSnapshotApplierContractTest(): void {
   }
   staleQuotaFactory.productionQuotas.unitJackal = 7;
   staleQuotaFactory.productionQuotaCounts.unitJackal = 4;
-  quotaFreeFactoryView.applyNetworkState(snapshot(8, quotaFreeFactoryRows));
+  staleQuotaFactory.lowPriority = true;
+  staleQuotaFactory.paused = true;
+  staleQuotaFactory.moveState = 'roam';
+  staleQuotaFactory.airIdleState = 'fly';
+  quotaFreeFactoryView.applyNetworkState(deltaSnapshot(8, quotaFreeFactoryRows));
   const appliedQuotaFreeFactory = quotaFreeFactoryView.getEntity(factoryId)?.factory;
   assertContract(
-    appliedQuotaFreeFactory?.selectedUnitBlueprintId === 'unitTick' &&
+      appliedQuotaFreeFactory?.selectedUnitBlueprintId === 'unitTick' &&
       appliedQuotaFreeFactory.productionQueue.join(',') === 'unitBee' &&
       Object.keys(appliedQuotaFreeFactory.productionQuotas).length === 0 &&
-      Object.keys(appliedQuotaFreeFactory.productionQuotaCounts).length === 0,
-    'quota-free typed factory rows must apply detail and clear stale quota maps',
+      Object.keys(appliedQuotaFreeFactory.productionQuotaCounts).length === 0 &&
+      appliedQuotaFreeFactory.lowPriority === false &&
+      appliedQuotaFreeFactory.paused === false &&
+      appliedQuotaFreeFactory.moveState === 'holdPosition' &&
+      appliedQuotaFreeFactory.airIdleState === 'land',
+    'quota-free typed factory rows must apply detail and clear stale factory state',
   );
   const encodedQuotaFreeFactory = encodeNetworkSnapshotWithRustFallback(
-    snapshot(9, quotaFreeFactoryRows),
+    deltaSnapshot(9, quotaFreeFactoryRows),
   );
   if (encodedQuotaFreeFactory === null) {
     throw new Error('[client snapshot applier contract] quota-free factory fixture must encode');
@@ -1631,7 +1685,7 @@ export function runClientSnapshotApplierContractTest(): void {
     'unitJackal',
     { allocateSubEntityIds: false },
   );
-  mixedUnitSource.transform.rotation = 0.55;
+  setUnitSourceRotation(mixedUnitSource, 0.55);
   const mixedBuildingSource = mixedTypedView.getEntity(mixedBuildingId);
   if (mixedBuildingSource === undefined || mixedBuildingSource.building === null) {
     throw new Error('[client snapshot applier contract] mixed typed source must hydrate a building');
@@ -1709,7 +1763,7 @@ export function runClientSnapshotApplierContractTest(): void {
     'unitJackal',
     { allocateSubEntityIds: false },
   );
-  mixedGenericMoveSource.transform.rotation = 0.7;
+  setUnitSourceRotation(mixedGenericMoveSource, 0.7);
   const mixedGenericRows: NetworkServerSnapshotEntity[] = [];
   resetEntitySnapshotPool();
   registerEntitySnapshotWireSource(mixedGenericRows);

@@ -154,11 +154,11 @@ export const ENTITY_SNAPSHOT_WIRE_TYPE_UNIT = 1;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING = 2;
 export const ENTITY_SNAPSHOT_WIRE_TYPE_TOWER = 3;
 export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
-// Unit row layout: see appendDirectUnitEntityWireRow for the exact slot order.
-// Slots 51+ carry V11 command/build/cloak state that used to force a RAW
-// entity fallback.
+// Unit/building row layouts: see appendDirect*EntityWireRow for the exact slot
+// order. Unit slots 51+ and building factory-private slots carry command/build
+// state that used to force a RAW entity fallback.
 export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 64;
-export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 42;
+export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 50;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 19;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
 // targetId, hasShieldRange, shieldRange, inactive. Stride shrank from
@@ -602,6 +602,10 @@ function moveStateToWireCode(value: UnitSub['moveState']): number {
   return value === 'roam' ? 2 : value === 'holdPosition' ? 1 : 0;
 }
 
+function factoryMoveStateToWireCode(value: string | null | undefined): number {
+  return value === 'roam' ? 2 : value === 'holdPosition' ? 1 : 0;
+}
+
 function canReferenceSnapshotEntityId(
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
@@ -624,10 +628,7 @@ export function factoryPrivateSnapshotRequiresDto(
   if (entity.building === null || entity.factory === null) return false;
   if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_FACTORY) === 0) return false;
   if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
-  // The current typed building row carries selection, queue, route, guard,
-  // repeat, progress, and rate fields, but not quota pairs. Keep quota-bearing
-  // factory rows DTO-backed; quota-free rows can ride the typed detail path.
-  return factoryHasQuotaWireState(entity.factory);
+  return false;
 }
 
 export function unitBuilderPrivateSnapshotRequiresDto(
@@ -663,11 +664,6 @@ export function entityPrivateSnapshotRequiresDto(
   return factoryPrivateSnapshotRequiresDto(entity, changedFields, visibility) ||
     unitBuilderPrivateSnapshotRequiresDto(entity, changedFields, visibility) ||
     unitFactoryPrivateSnapshotRequiresDto(entity, changedFields, visibility);
-}
-
-function factoryHasQuotaWireState(factory: NonNullable<Entity['factory']>): boolean {
-  if (Object.keys(factory.productionQuotas).length > 0) return true;
-  return Object.keys(factory.productionQuotaCounts).length > 0;
 }
 
 function appendDirectBasicEntityWireRow(
@@ -811,6 +807,14 @@ function appendDirectFactoryQueueWireRows(entity: Entity): { offset: number; cou
   const offset = reserveUint32WireRows(rows, queue.length, 1);
   for (let i = 0; i < queue.length; i++) rows.values[offset + i] = queue[i];
   return { offset, count: queue.length };
+}
+
+function appendDirectFactoryQuotaWireRows(codes: readonly number[] | null): { offset: number; count: number } {
+  if (codes === null || codes.length === 0) return { offset: -1, count: 0 };
+  const rows = entityWireSource.factorySelectedUnitRows;
+  const offset = reserveUint32WireRows(rows, codes.length, 1);
+  for (let i = 0; i < codes.length; i++) rows.values[offset + i] = codes[i];
+  return { offset, count: codes.length };
 }
 
 function appendDirectFactoryRallyWireRow(entity: Entity): number {
@@ -1223,16 +1227,15 @@ function appendDirectBuildingEntityWireRow(
   const factoryRoute = shouldEmitFactory
     ? appendDirectFactoryRouteWireRows(entity)
     : { offset: -1, count: -1 };
-  if (shouldEmitFactory && !typedPlaceholder && factoryHasQuotaWireState(factory!)) {
-    appendEntitySnapshotWireSourceRow(
-      entityWireSource,
-      0,
-      -1,
-      false,
-      changedFields ?? 0,
-    );
-    return;
-  }
+  const factoryQuotas = shouldEmitFactory && factory !== null
+    ? appendDirectFactoryQuotaWireRows(encodeFactoryProductionQuotas(factory.productionQuotas))
+    : { offset: -1, count: 0 };
+  const factoryQuotaCounts = shouldEmitFactory && factory !== null
+    ? appendDirectFactoryQuotaWireRows(encodeFactoryProductionQuotaCounts(
+        factory.productionQuotas,
+        factory.productionQuotaCounts,
+      ))
+    : { offset: -1, count: 0 };
   const hasPos = isFull || (changedMask & ENTITY_CHANGED_POS) !== 0;
   const hasRot = isFull || (changedMask & ENTITY_CHANGED_ROT) !== 0;
   const hasHp = isFull || (changedMask & ENTITY_CHANGED_HP) !== 0;
@@ -1303,6 +1306,14 @@ function appendDirectBuildingEntityWireRow(
   values[base + 39] = factoryQueue.count;
   values[base + 40] = factoryRoute.offset;
   values[base + 41] = factoryRoute.count;
+  values[base + 42] = factoryQuotas.offset;
+  values[base + 43] = factoryQuotas.count;
+  values[base + 44] = factoryQuotaCounts.offset;
+  values[base + 45] = factoryQuotaCounts.count;
+  values[base + 46] = shouldEmitFactory && factory!.lowPriority === true ? 1 : 0;
+  values[base + 47] = shouldEmitFactory && factory!.paused === true ? 1 : 0;
+  values[base + 48] = shouldEmitFactory ? factoryMoveStateToWireCode(factory!.moveState) : 0;
+  values[base + 49] = shouldEmitFactory && factory!.airIdleState === 'fly' ? 1 : 0;
   appendEntitySnapshotWireSourceRow(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
