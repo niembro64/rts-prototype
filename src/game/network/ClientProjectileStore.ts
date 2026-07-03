@@ -1,4 +1,4 @@
-import type { Entity, EntityId } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 import { createEmptyEntityComponentSlots, createTransform, getEmissionBlueprintId, isProjectileShot, NO_ENTITY_ID, PROJECTILE_ABSENCE_SLOTS } from '../sim/types';
 import type { FootprintBounds } from '../ViewportFootprint';
 import type {
@@ -46,6 +46,15 @@ import {
   type ClientProjectileRenderStateViews,
 } from './ClientProjectileRenderStateSlab';
 import { ClientEntityIdSet } from './ClientEntityIdSet';
+import {
+  PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_X,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y,
+  PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z,
+  PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND,
+  PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID,
+  PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+} from './stateSerializerProjectiles';
 
 export type { ClientProjectileRenderLists } from './ClientProjectileRenderSpatialIndex';
 
@@ -153,30 +162,68 @@ export class ClientProjectileStore {
     }
   }
 
+  private prepareBeamUpdateTarget(
+    entity: Entity,
+    id: EntityId,
+    obstructionT: number | null,
+    endpointDamageable: boolean | null,
+    pointCount: number,
+    now: number,
+  ): BeamPathTarget | null {
+    const proj = entity.projectile;
+    if (proj === null) return null;
+
+    let target = this.beamPathTargets.get(id);
+    if (!target) {
+      target = createBeamPathTarget();
+      this.beamPathTargets.set(id, target);
+    }
+    target.updatedAtMs = now;
+    target.obstructionT = obstructionT === null
+      ? null
+      : deqRot(obstructionT);
+    target.endpointDamageable = endpointDamageable;
+
+    const dstTarget = target.points;
+    if (dstTarget.length > pointCount) {
+      shrinkBeamPoints(dstTarget, pointCount);
+    } else if (dstTarget.length < pointCount) {
+      dstTarget.length = pointCount;
+    }
+    return target;
+  }
+
+  private finishBeamUpdate(entity: Entity, id: EntityId, target: BeamPathTarget): void {
+    const proj = entity.projectile;
+    if (proj === null) return;
+    const projPts = proj.points ?? (proj.points = []);
+    if (target.initialSnapPending || projPts.length === 0) {
+      snapBeamPathDisplayToTarget(entity, target);
+    }
+    proj.obstructionT = target.obstructionT;
+    proj.endpointDamageable = target.endpointDamageable !== false;
+    if (!this.activeBeamPathIds.has(id)) {
+      this.activeBeamPathIds.add(id);
+      this.markRenderListsDirty();
+    }
+    this.refreshRenderStateAndSpatialIndex(entity);
+    this.markLineProjectilesChanged();
+  }
+
   applyBeamUpdate(update: NetworkServerSnapshotBeamUpdate, now = performance.now()): void {
     const entity = this.options.entities.get(update.id);
     if (entity === undefined) return;
-    const proj = entity.projectile;
-    if (proj === null) return;
-
-    let target = this.beamPathTargets.get(update.id);
-    if (!target) {
-      target = createBeamPathTarget();
-      this.beamPathTargets.set(update.id, target);
-    }
-    target.updatedAtMs = now;
-    target.obstructionT = update.obstructionT === null
-      ? null
-      : deqRot(update.obstructionT);
-    target.endpointDamageable = update.endpointDamageable;
-
     const srcPts = update.points;
+    const target = this.prepareBeamUpdateTarget(
+      entity,
+      update.id,
+      update.obstructionT,
+      update.endpointDamageable,
+      srcPts.length,
+      now,
+    );
+    if (target === null) return;
     const dstTarget = target.points;
-    if (dstTarget.length > srcPts.length) {
-      shrinkBeamPoints(dstTarget, srcPts.length);
-    } else if (dstTarget.length < srcPts.length) {
-      dstTarget.length = srcPts.length;
-    }
     for (let i = 0; i < srcPts.length; i++) {
       const sp = srcPts[i];
       const dp = ensureBeamPoint(dstTarget, i);
@@ -189,19 +236,60 @@ export class ClientProjectileStore {
       dp.normalY = sp.normalY === null ? null : deqNormal(sp.normalY);
       dp.normalZ = sp.normalZ === null ? null : deqNormal(sp.normalZ);
     }
+    this.finishBeamUpdate(entity, update.id, target);
+  }
 
-    const projPts = proj.points ?? (proj.points = []);
-    if (target.initialSnapPending || projPts.length === 0) {
-      snapBeamPathDisplayToTarget(entity, target);
+  applyBeamUpdateWireFields(
+    id: EntityId,
+    obstructionT: number | null,
+    endpointDamageable: boolean | null,
+    pointValues: Float64Array,
+    pointOffset: number,
+    pointCount: number,
+    now = performance.now(),
+  ): void {
+    const entity = this.options.entities.get(id);
+    if (entity === undefined) return;
+    const target = this.prepareBeamUpdateTarget(
+      entity,
+      id,
+      obstructionT,
+      endpointDamageable,
+      pointCount,
+      now,
+    );
+    if (target === null) return;
+    const dstTarget = target.points;
+    for (let i = 0; i < pointCount; i++) {
+      const base = (pointOffset + i) * PROJECTILE_BEAM_POINT_WIRE_STRIDE;
+      const flags = pointValues[base + 6] ?? 0;
+      const dp = ensureBeamPoint(dstTarget, i);
+      dp.x = deqProjPos(pointValues[base + 0] ?? 0);
+      dp.y = deqProjPos(pointValues[base + 1] ?? 0);
+      dp.z = deqProjPos(pointValues[base + 2] ?? 0);
+      dp.vx = deqVel(pointValues[base + 3] ?? 0);
+      dp.vy = deqVel(pointValues[base + 4] ?? 0);
+      dp.vz = deqVel(pointValues[base + 5] ?? 0);
+      dp.reflectorEntityId = (flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0
+        ? pointValues[base + 7] as EntityId
+        : null;
+      dp.reflectorKind = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND) !== 0
+        ? 'shield'
+        : null;
+      dp.reflectorPlayerId = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0
+        ? pointValues[base + 8] as PlayerId
+        : null;
+      dp.normalX = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) !== 0
+        ? deqNormal(pointValues[base + 9] ?? 0)
+        : null;
+      dp.normalY = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) !== 0
+        ? deqNormal(pointValues[base + 10] ?? 0)
+        : null;
+      dp.normalZ = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0
+        ? deqNormal(pointValues[base + 11] ?? 0)
+        : null;
     }
-    proj.obstructionT = target.obstructionT;
-    proj.endpointDamageable = update.endpointDamageable !== false;
-    if (!this.activeBeamPathIds.has(update.id)) {
-      this.activeBeamPathIds.add(update.id);
-      this.markRenderListsDirty();
-    }
-    this.refreshRenderStateAndSpatialIndex(entity);
-    this.markLineProjectilesChanged();
+    this.finishBeamUpdate(entity, id, target);
   }
 
   markVelocityUpdateActive(entity: Entity, id: EntityId): void {

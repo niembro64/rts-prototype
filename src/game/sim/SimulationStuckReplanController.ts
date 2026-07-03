@@ -3,9 +3,10 @@ import { ARRIVAL_RADIUS } from './SimulationArrivalController';
 import type { Entity } from './types';
 
 const STUCK_VEL_THRESHOLD = 5;
-const STUCK_TICK_THRESHOLD = 30;
+const STUCK_TICK_THRESHOLD = 60;
 const MAX_REPLANS_PER_TICK = 5;
-export const REPLAN_FAILURE_COOLDOWN = -60;
+export const REPLAN_COOLDOWN = -150;
+export const REPLAN_FAILURE_COOLDOWN = REPLAN_COOLDOWN;
 const STUCK_REPLAN_BATCH_FLAG_SETTLING_CHECK = 1 << 0;
 
 export class SimulationStuckReplanController {
@@ -97,7 +98,7 @@ export class SimulationStuckReplanController {
         continue;
       }
       if (this.tryReplan(entity)) {
-        unit.stuckTicks = 0;
+        unit.stuckTicks = REPLAN_COOLDOWN;
         this.replansThisTick++;
       } else {
         unit.stuckTicks = REPLAN_FAILURE_COOLDOWN;

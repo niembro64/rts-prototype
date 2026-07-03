@@ -787,6 +787,54 @@ export function forEachProjectileWireSourceBeamUpdate(
   return true;
 }
 
+export type ProjectileWireSourceBeamUpdateFieldsVisitor = (
+  id: number,
+  obstructionT: number | null,
+  endpointDamageable: boolean | null,
+  pointValues: Float64Array,
+  pointOffset: number,
+  pointCount: number,
+) => void;
+
+export function forEachProjectileWireSourceBeamUpdateFields(
+  projectiles: ProjectileSnapshot,
+  visitor: ProjectileWireSourceBeamUpdateFieldsVisitor,
+): boolean {
+  const source = getActiveProjectileSnapshotWireSource(projectiles);
+  if (source === undefined) return false;
+  const rows = source.beamUpdates;
+  if (rows.count === 0) return false;
+  const headers = rows.values;
+  const pointValues = source.beamPoints.values;
+  let pointOffset = 0;
+  for (let i = 0; i < rows.count; i++) {
+    const base = i * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
+    const flags = headers[base + 1] ?? 0;
+    const pointCount = Math.max(0, headers[base + 3] ?? 0) | 0;
+    if (pointOffset + pointCount > source.beamPoints.count) return i > 0;
+    let endpointDamageable: boolean | null;
+    if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE) !== 0) {
+      endpointDamageable = true;
+    } else if ((flags & PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE) !== 0) {
+      endpointDamageable = false;
+    } else {
+      endpointDamageable = null;
+    }
+    visitor(
+      headers[base + 0] ?? 0,
+      (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0
+        ? headers[base + 2]
+        : null,
+      endpointDamageable,
+      pointValues,
+      pointOffset,
+      pointCount,
+    );
+    pointOffset += pointCount;
+  }
+  return true;
+}
+
 function shouldSendProjectileAtPoint(
   ownerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,

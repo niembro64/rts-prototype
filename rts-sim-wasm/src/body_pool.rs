@@ -697,6 +697,10 @@ pub(crate) fn compute_stuck_replan_step(
     stuck_tick_threshold: i32,
     arrival_radius: f64,
 ) -> (i32, u8) {
+    if current_stuck_ticks < 0 {
+        return (current_stuck_ticks.saturating_add(1), 0);
+    }
+
     let speed_sq = body_vx * body_vx + body_vy * body_vy;
     let stuck_velocity_threshold_sq = stuck_velocity_threshold * stuck_velocity_threshold;
     if speed_sq >= stuck_velocity_threshold_sq {

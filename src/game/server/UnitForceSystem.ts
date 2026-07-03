@@ -673,11 +673,15 @@ export class UnitForceSystem {
     }
 
     const slots = this.physicsForceUnitSlotsBuf.subarray(0, this.physicsForceUnitSlotCount);
-    const views = entitySlotRegistry.getViews();
-    if (views !== null) {
-      slots.sort((a, b) => views.entityId[a] - views.entityId[b]);
+    if (sim !== undefined) {
+      sim.entityState.sortSlotsByEntityId(slots);
     } else {
-      slots.sort();
+      const views = entitySlotRegistry.getViews();
+      if (views !== null) {
+        slots.sort((a, b) => views.entityId[a] - views.entityId[b]);
+      } else {
+        slots.sort();
+      }
     }
     return slots;
   }

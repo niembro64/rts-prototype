@@ -197,6 +197,59 @@ export function runCommandExecutionContractTest(): void {
     'large collision unit must widen neighboring formation columns',
   );
 
+  const formationCommandWorld = new WorldState(1, 512, 512);
+  const formationCommandConstruction = new ConstructionSystem(
+    formationCommandWorld.mapWidth,
+    formationCommandWorld.mapHeight,
+  );
+  const formationA = formationCommandWorld.createUnitFromBlueprint(100, 100, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  const formationB = formationCommandWorld.createUnitFromBlueprint(140, 100, 1, 'unitFormik', {
+    allocateSubEntityIds: false,
+  });
+  formationCommandWorld.addEntity(formationA);
+  formationCommandWorld.addEntity(formationB);
+  executeCommand({
+    world: formationCommandWorld,
+    constructionSystem: formationCommandConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'move',
+    tick: 1,
+    entityIds: [formationA.id, formationB.id],
+    targetX: 260,
+    targetY: 280,
+    waypointType: 'move',
+    queue: false,
+  });
+  const formationActionA = formationA.unit?.actions[0];
+  const formationActionB = formationB.unit?.actions[0];
+  assertContract(
+    formationActionA !== undefined && formationActionB !== undefined,
+    'group move must assign actions to every valid unit',
+  );
+  assertContract(
+    formationActionA.formationRouteStartX === formationActionB.formationRouteStartX &&
+      formationActionA.formationRouteStartY === formationActionB.formationRouteStartY &&
+      formationActionA.formationRouteGoalX === 260 &&
+      formationActionB.formationRouteGoalX === 260 &&
+      formationActionA.formationRouteGoalY === 280 &&
+      formationActionB.formationRouteGoalY === 280,
+    'group move actions must share one formation route anchor',
+  );
+  assertContract(
+    formationActionA.formationRouteRadius === formationActionB.formationRouteRadius &&
+      formationActionA.formationRouteRadius !== undefined &&
+      formationActionA.formationRouteRadius >= Math.max(
+        formationA.unit!.radius.collision,
+        formationB.unit!.radius.collision,
+      ),
+    'shared formation route must use the largest selected collision radius',
+  );
+
   const world = new WorldState(1, 512, 512);
   const construction = new ConstructionSystem(world.mapWidth, world.mapHeight);
   const grid = construction.getGrid();

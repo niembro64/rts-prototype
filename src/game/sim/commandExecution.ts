@@ -140,6 +140,17 @@ type GroupFormationSlot = {
   offsetY: number;
 };
 
+type FormationRouteMetadata = Pick<
+  UnitAction,
+  | 'formationRouteStartX'
+  | 'formationRouteStartY'
+  | 'formationRouteGoalX'
+  | 'formationRouteGoalY'
+  | 'formationRouteOffsetX'
+  | 'formationRouteOffsetY'
+  | 'formationRouteRadius'
+>;
+
 function commandQueuesInFront(command: { queue: boolean; queueFront?: boolean }): boolean {
   return command.queue && command.queueFront === true;
 }
@@ -527,30 +538,45 @@ function executeMoveCommand(ctx: CommandContext, command: MoveCommand): void {
   } else if (command.targetX !== undefined && command.targetY !== undefined) {
     // Group move with formation spreading
     const queueFront = commandQueuesInFront(command);
-    const buildingGrid = ctx.constructionSystem.getGrid();
     const slots = buildMassAwareGroupFormationSlots(validUnits);
+    let routeStartX = 0;
+    let routeStartY = 0;
+    for (let i = 0; i < validUnits.length; i++) {
+      routeStartX += validUnits[i].transform.x;
+      routeStartY += validUnits[i].transform.y;
+    }
+    routeStartX /= validUnits.length;
+    routeStartY /= validUnits.length;
+    const routeGoalX = clampToMap(command.targetX, ctx.world.mapWidth);
+    const routeGoalY = clampToMap(command.targetY, ctx.world.mapHeight);
+    const formationRouteRadius = maxFormationUnitRadius(validUnits);
 
     for (let i = 0; i < slots.length; i++) {
       const slot = slots[i];
       const unit = slot.unit;
-      const target = resolvePathableFormationTarget(
-        ctx.world,
-        buildingGrid,
-        unit,
-        command.targetX! + slot.offsetX,
-        command.targetY! + slot.offsetY,
-      );
+      const targetX = clampToMap(routeGoalX + slot.offsetX, ctx.world.mapWidth);
+      const targetY = clampToMap(routeGoalY + slot.offsetY, ctx.world.mapHeight);
+      const routeMetadata: FormationRouteMetadata = {
+        formationRouteStartX: routeStartX,
+        formationRouteStartY: routeStartY,
+        formationRouteGoalX: routeGoalX,
+        formationRouteGoalY: routeGoalY,
+        formationRouteOffsetX: slot.offsetX,
+        formationRouteOffsetY: slot.offsetY,
+        formationRouteRadius,
+      };
       addPathActions(
         unit,
-        target.x,
-        target.y,
+        targetX,
+        targetY,
         command.waypointType,
         command.queue,
         ctx,
-        target.z,
+        ctx.world.getGroundZ(targetX, targetY),
         queueFront,
         commandQueueInsertIndex(command),
         speedLimitFactors?.get(unit.id),
+        routeMetadata,
       );
     }
   }
@@ -627,6 +653,14 @@ function formationUnitRadius(unit: Entity): number {
   return Number.isFinite(radius) && radius !== undefined && radius > 0
     ? radius
     : MIN_GROUP_FORMATION_SPACING / COLLISION_GROUP_FORMATION_SPACING_MULTIPLIER;
+}
+
+function maxFormationUnitRadius(units: readonly Entity[]): number {
+  let radius = 0;
+  for (let i = 0; i < units.length; i++) {
+    radius = Math.max(radius, formationUnitRadius(units[i]));
+  }
+  return radius;
 }
 
 function formationUnitMass(unit: Entity): number {
@@ -2827,10 +2861,14 @@ function addPathActions(
   queueFront = false,
   queueInsertIndex?: number,
   speedLimitFactor?: number,
+  formationRouteMetadata?: FormationRouteMetadata,
 ): void {
   const action: UnitAction = { type, x: goalX, y: goalY };
   if (goalZ !== null) action.z = goalZ;
   if (speedLimitFactor !== undefined) action.speedLimitFactor = speedLimitFactor;
+  if (formationRouteMetadata !== undefined) {
+    Object.assign(action, formationRouteMetadata);
+  }
   if (GAME_DIAGNOSTICS.commandPlans) {
     const unitComponent = unit.unit;
     const beforeLen = unitComponent !== null ? unitComponent.actions.length : 0;

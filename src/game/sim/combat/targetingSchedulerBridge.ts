@@ -42,9 +42,20 @@ let _targetingBatchHasActiveWork = new Uint8Array(0);
 let _targetingBatchCachedFireRanks = new Uint8Array(0);
 let _targetingBatchCachedFireDistSqs = new Float64Array(0);
 let _targetingBatchMaxTurrets = 0;
+const TARGETING_REACQUIRE_PERIOD_TICKS = 16;
 
-function nextTargetingReacquireTick(tick: number): number {
-  return tick + 1;
+function positiveModulo(value: number, divisor: number): number {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function nextTargetingReacquireTick(tick: number, entityId: number): number {
+  const nextTick = tick + 1;
+  const phase = positiveModulo(entityId, TARGETING_REACQUIRE_PERIOD_TICKS);
+  const delta = positiveModulo(
+    phase - positiveModulo(nextTick, TARGETING_REACQUIRE_PERIOD_TICKS),
+    TARGETING_REACQUIRE_PERIOD_TICKS,
+  );
+  return nextTick + delta;
 }
 
 function ensureTargetingBatchCapacity(entityCount: number, maxTurrets: number): void {
@@ -136,7 +147,7 @@ function flushTargetingBatch(
     } else if (mode === CT_TARGETING_TICK_MODE_AUTO) {
       combat.nextCombatProbeTick = _targetingBatchHasCooldown[i] !== 0
         ? tick + 1
-        : nextTargetingReacquireTick(tick);
+        : nextTargetingReacquireTick(tick, unit.id);
     } else {
       combat.nextCombatProbeTick = -1;
     }

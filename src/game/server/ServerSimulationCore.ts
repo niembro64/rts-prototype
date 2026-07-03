@@ -202,7 +202,8 @@ export class ServerSimulationCore {
     }
     const entityStateViews = entitySlotRegistry.getViews();
     for (let i = 0; i < slotCount; i++) {
-      const entity = entitySlotRegistry.resolveSlot(this.physicsSyncEntitySlotsBuf[i]);
+      const entitySlot = this.physicsSyncEntitySlotsBuf[i];
+      const entity = entitySlotRegistry.resolveSlot(entitySlot);
       if (entity === undefined) continue;
       const bodySlot = entity.body;
       if (bodySlot === null) continue;
@@ -247,7 +248,7 @@ export class ServerSimulationCore {
         entity.unit.velocityY = body.vy;
         entity.unit.velocityZ = body.vz;
         const dirtyFields = ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL;
-        if (this.writeSyncedMotionToEntityState(entity, dirtyFields, entityStateViews)) {
+        if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
           this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
         } else {
           this.world.markSnapshotDirty(entity.id, dirtyFields);
@@ -255,7 +256,7 @@ export class ServerSimulationCore {
       } else if (entity.building !== null) {
         spatialGrid.addBuilding(entity);
         const dirtyFields = ENTITY_CHANGED_POS;
-        if (this.writeSyncedMotionToEntityState(entity, dirtyFields, entityStateViews)) {
+        if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
           this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
         } else {
           this.world.markSnapshotDirty(entity.id, dirtyFields);
@@ -266,11 +267,11 @@ export class ServerSimulationCore {
 
   private writeSyncedMotionToEntityState(
     entity: Entity,
+    slot: number,
     dirtyFields: number,
     views: EntityStateViews | null,
   ): boolean {
     if (views === null) return false;
-    const slot = entitySlotRegistry.getEntitySlot(entity);
     if (slot < 0 || slot >= views.capacity || views.entityId[slot] !== entity.id) return false;
 
     if ((dirtyFields & ENTITY_CHANGED_POS) !== 0) {

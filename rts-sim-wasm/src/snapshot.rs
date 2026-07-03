@@ -8472,6 +8472,14 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn stuck_replan_step_counts_down_cooldown_before_motion_reset() {
+        let (ticks, should_replan) =
+            compute_stuck_replan_step(5.0, 0.0, -150, 100.0, 0.0, 0, 5.0, 30, 30.0);
+        assert_eq!(ticks, -149);
+        assert_eq!(should_replan, 0);
+    }
+
+    #[test]
     pub(crate) fn stuck_replan_step_resets_when_settling_at_final_waypoint() {
         let (ticks, should_replan) = compute_stuck_replan_step(
             0.0,

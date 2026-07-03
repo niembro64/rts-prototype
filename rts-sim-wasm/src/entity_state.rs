@@ -544,6 +544,30 @@ pub fn entity_state_collect_dirty_slots(
 }
 
 #[inline]
+fn entity_state_slot_sort_id(slab: &EntityStateSlab, slot: u32) -> i32 {
+    slab.entity_id
+        .get(slot as usize)
+        .copied()
+        .unwrap_or(i32::MAX)
+}
+
+#[inline]
+fn entity_state_sort_slots_by_id_in_slab(slab: &EntityStateSlab, slots: &mut [u32]) {
+    slots.sort_unstable_by(|a, b| {
+        entity_state_slot_sort_id(slab, *a)
+            .cmp(&entity_state_slot_sort_id(slab, *b))
+            .then_with(|| a.cmp(b))
+    });
+}
+
+#[wasm_bindgen]
+pub fn entity_state_sort_slots_by_entity_id(slots: &mut [u32]) -> u32 {
+    let slab = entity_state();
+    entity_state_sort_slots_by_id_in_slab(slab, slots);
+    slots.len() as u32
+}
+
+#[inline]
 fn entity_state_row_has_awake_body(
     slab: &EntityStateSlab,
     p: &BodyPool,
@@ -716,3 +740,25 @@ entity_state_ptr_export!(entity_state_build_paid_energy_ptr, build_paid_energy, 
 entity_state_ptr_export!(entity_state_build_paid_metal_ptr, build_paid_metal, f64);
 entity_state_ptr_export!(entity_state_build_flags_ptr, build_flags, u32);
 entity_state_ptr_export!(entity_state_dirty_mask_ptr, dirty_mask, u32);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sort_slots_by_entity_id_uses_entity_slab_order() {
+        let mut slab = EntityStateSlab::empty();
+        slab.ensure_capacity(5);
+        slab.entity_id[0] = 30;
+        slab.entity_id[1] = 10;
+        slab.entity_id[2] = 20;
+        slab.entity_id[3] = 10;
+        slab.entity_id[4] = ENTITY_STATE_NO_ENTITY_ID;
+        slab.entity_id[5] = 40;
+
+        let mut slots = [5, 2, 99, 0, 3, 4, 1];
+        entity_state_sort_slots_by_id_in_slab(&slab, &mut slots);
+
+        assert_eq!(slots, [4, 1, 3, 2, 0, 5, 99]);
+    }
+}

@@ -52,6 +52,19 @@ export type EntityLodEmission3D =
   | 'hitImpacts'
   | 'projectileExpireImpacts';
 
+export const ENTITY_LOD_PROXY_GLYPH_CIRCLE = 0;
+export const ENTITY_LOD_PROXY_GLYPH_DIAMOND = 1;
+export const ENTITY_LOD_PROXY_GLYPH_TRIANGLE = 2;
+export const ENTITY_LOD_PROXY_GLYPH_SQUARE = 3;
+export const ENTITY_LOD_PROXY_GLYPH_CROSS = 4;
+
+export type EntityLodProxyGlyph3D =
+  | typeof ENTITY_LOD_PROXY_GLYPH_CIRCLE
+  | typeof ENTITY_LOD_PROXY_GLYPH_DIAMOND
+  | typeof ENTITY_LOD_PROXY_GLYPH_TRIANGLE
+  | typeof ENTITY_LOD_PROXY_GLYPH_SQUARE
+  | typeof ENTITY_LOD_PROXY_GLYPH_CROSS;
+
 type EntityLodCutoffDistance3D = number | null;
 type EmissionLodHighToLowDistance3D = number | null;
 
@@ -182,6 +195,23 @@ export function entityLodProxyRadius3D(entity: Entity): number {
   }
 
   return minEntityLodRadius();
+}
+
+export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {
+  if (entity.commander !== null) return ENTITY_LOD_PROXY_GLYPH_CROSS;
+
+  const unit = entity.unit;
+  if (unit !== null) {
+    if (entity.builder !== null) return ENTITY_LOD_PROXY_GLYPH_DIAMOND;
+    if (entity.transport !== null || entity.factory !== null) {
+      return ENTITY_LOD_PROXY_GLYPH_SQUARE;
+    }
+    if (unit.locomotion.type === 'flying') return ENTITY_LOD_PROXY_GLYPH_TRIANGLE;
+    return ENTITY_LOD_PROXY_GLYPH_CIRCLE;
+  }
+
+  if (entity.building !== null) return ENTITY_LOD_PROXY_GLYPH_SQUARE;
+  return ENTITY_LOD_PROXY_GLYPH_CIRCLE;
 }
 
 function entityLodFullDetailDistance3D(

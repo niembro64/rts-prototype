@@ -23,9 +23,10 @@ Please always commit and push before and after any code changes we make.
     beside the typed slabs), so rich-delta DTO materialization is down to
     full/spawn rows plus a handful of private-detail rows. Remaining
     reduction targets, in current cost order at 1k units: the per-snapshot
-    `visibility` stage (~1ms avg, overlaps issue [28]), `clientApplyProjectiles`
-    (~0.9ms avg; beamUpdatesPacked dominates projectile bytes), and the
-    server-side `entityDtos` stage (~0.6ms avg). Do not force empty heartbeat
+    `visibility` stage (~0.6-0.8ms avg, overlaps issue [28]),
+    `clientApplyProjectiles` (~0.5ms avg after direct beam-row apply; remaining
+    cost is beam target/render-state updates), and the server-side `entityDtos`
+    stage (~0.4-0.6ms avg). Do not force empty heartbeat
     snapshots just to make the total SPS display read 30; non-empty
     entity/projectile deltas are event-driven. Use the received/applied
     cadence, bytes, materialization row/stage, and client-apply counters to

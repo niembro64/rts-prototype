@@ -10,7 +10,10 @@ import {
 import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
 import type { Entity } from '../sim/types';
 import { entityInstanceColorHex } from './EntityInstanceColor3D';
-import { entityLodProxyRadius3D } from './EntityLod3D';
+import {
+  entityLodProxyGlyph3D,
+  entityLodProxyRadius3D,
+} from './EntityLod3D';
 import { EntityLodProxyWebGpuRenderer3D } from './EntityLodProxyWebGpuRenderer3D';
 
 const ENTITY_LOD_PROXY_NEUTRAL_COLOR = 0xffffff;
@@ -18,20 +21,23 @@ const ENTITY_LOD_PROXY_NEUTRAL_COLOR = 0xffffff;
 const POINT_VERTEX_SHADER = `
 attribute vec3 color;
 attribute float aRadius;
+attribute float aGlyph;
 uniform float uViewportHeight;
 varying vec3 vColor;
+varying float vGlyph;
 varying float vViewZ;
 varying float vViewRadius;
 varying vec4 vDepthProjection;
 
 void main() {
   vColor = color;
+  vGlyph = aGlyph;
   vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   float viewDistance = max(1.0, -mvPosition.z);
-  // The proxy is ALWAYS the entity's true collision boundary in world space:
-  // project that world radius straight to pixels with no min/max clamp, so the
-  // marker exactly tracks the collision sphere at every zoom level.
+  // Glyphs are bounded by the entity's true collision radius in world space:
+  // project that radius straight to pixels with no min/max clamp, so the
+  // marker tracks the collision volume at every zoom level.
   gl_PointSize = aRadius * projectionMatrix[1][1] * uViewportHeight / viewDistance;
   vViewZ = mvPosition.z;
   vViewRadius = aRadius;
@@ -47,14 +53,39 @@ void main() {
 const POINT_FRAGMENT_SHADER = `
 uniform float uOpacity;
 varying vec3 vColor;
+varying float vGlyph;
 varying float vViewZ;
 varying float vViewRadius;
 varying vec4 vDepthProjection;
 
+float proxyGlyphMask(vec2 p, float glyph) {
+  float glyphId = floor(glyph + 0.5);
+  if (glyphId < 0.5) {
+    return dot(p, p) <= 1.0 ? 1.0 : 0.0;
+  }
+  if (glyphId < 1.5) {
+    return abs(p.x) + abs(p.y) <= 1.0 ? 1.0 : 0.0;
+  }
+  if (glyphId < 2.5) {
+    return p.y >= -0.85 && p.y <= 0.95 && abs(p.x) <= (0.95 - p.y) * 0.58
+      ? 1.0
+      : 0.0;
+  }
+  if (glyphId < 3.5) {
+    return max(abs(p.x), abs(p.y)) <= 0.78 ? 1.0 : 0.0;
+  }
+  if (glyphId < 4.5) {
+    return max(abs(p.x), abs(p.y)) <= 0.9 && (abs(p.x) <= 0.26 || abs(p.y) <= 0.26)
+      ? 1.0
+      : 0.0;
+  }
+  return dot(p, p) <= 1.0 ? 1.0 : 0.0;
+}
+
 void main() {
   vec2 p = gl_PointCoord * 2.0 - 1.0;
   float radialSq = dot(p, p);
-  if (radialSq > 1.0) discard;
+  if (proxyGlyphMask(p, vGlyph) < 0.5) discard;
 
   float frontShell = sqrt(max(0.0, 1.0 - radialSq)) * vViewRadius;
   float viewZ = vViewZ + frontShell;
@@ -79,12 +110,15 @@ type ProxyPointBatch = {
   positions: Float32Array;
   colors: Float32Array;
   radii: Float32Array;
+  glyphs: Float32Array;
   positionAttr: THREE.BufferAttribute;
   colorAttr: THREE.BufferAttribute;
   radiusAttr: THREE.BufferAttribute;
+  glyphAttr: THREE.BufferAttribute;
   positionDirty: DirtySpan;
   colorDirty: DirtySpan;
   radiusDirty: DirtySpan;
+  glyphDirty: DirtySpan;
   count: number;
   drawRangeCount: number;
 };
@@ -148,15 +182,19 @@ function createProxyPointBatch(): ProxyPointBatch {
   const positions = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
   const colors = new Float32Array(ENTITY_LOD_PROXY_CAP * 3);
   const radii = new Float32Array(ENTITY_LOD_PROXY_CAP);
+  const glyphs = new Float32Array(ENTITY_LOD_PROXY_CAP);
   const positionAttr = new THREE.BufferAttribute(positions, 3);
   const colorAttr = new THREE.BufferAttribute(colors, 3);
   const radiusAttr = new THREE.BufferAttribute(radii, 1);
+  const glyphAttr = new THREE.BufferAttribute(glyphs, 1);
   positionAttr.setUsage(THREE.DynamicDrawUsage);
   colorAttr.setUsage(THREE.DynamicDrawUsage);
   radiusAttr.setUsage(THREE.DynamicDrawUsage);
+  glyphAttr.setUsage(THREE.DynamicDrawUsage);
   geometry.setAttribute('position', positionAttr);
   geometry.setAttribute('color', colorAttr);
   geometry.setAttribute('aRadius', radiusAttr);
+  geometry.setAttribute('aGlyph', glyphAttr);
   geometry.setDrawRange(0, 0);
 
   const material = createProxyPointMaterial();
@@ -170,12 +208,15 @@ function createProxyPointBatch(): ProxyPointBatch {
     positions,
     colors,
     radii,
+    glyphs,
     positionAttr,
     colorAttr,
     radiusAttr,
+    glyphAttr,
     positionDirty: createDirtySpan(),
     colorDirty: createDirtySpan(),
     radiusDirty: createDirtySpan(),
+    glyphDirty: createDirtySpan(),
     count: 0,
     drawRangeCount: 0,
   };
@@ -201,6 +242,7 @@ function writePoint(
   y: number,
   z: number,
   radius: number,
+  glyph: number,
   colorHex: number,
 ): void {
   const posOffset = slot * 3;
@@ -223,6 +265,11 @@ function writePoint(
     batch.radii[slot] = nextRadius;
     markDirty(batch.radiusDirty, slot);
   }
+  const nextGlyph = Math.fround(glyph);
+  if (batch.glyphs[slot] !== nextGlyph) {
+    batch.glyphs[slot] = nextGlyph;
+    markDirty(batch.glyphDirty, slot);
+  }
   writeColorHex(batch, slot, colorHex);
 }
 
@@ -237,6 +284,7 @@ function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
   uploadDirty(batch.positionAttr, batch.positionDirty, 3);
   uploadDirty(batch.colorAttr, batch.colorDirty, 3);
   uploadDirty(batch.radiusAttr, batch.radiusDirty, 1);
+  uploadDirty(batch.glyphAttr, batch.glyphDirty, 1);
 }
 
 class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
@@ -269,6 +317,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       entity.transform.z,
       entity.transform.y,
       entityLodProxyRadius3D(entity),
+      entityLodProxyGlyph3D(entity),
       ENTITY_LOD_PROXY_USE_TEAM_COLOR
         ? entityInstanceColorHex(entity)
         : ENTITY_LOD_PROXY_NEUTRAL_COLOR,
@@ -287,6 +336,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       entity.transform.z,
       entity.transform.y,
       entityLodProxyRadius3D(entity),
+      entityLodProxyGlyph3D(entity),
       ENTITY_LOD_PROXY_USE_TEAM_COLOR
         ? entityInstanceColorHex(entity)
         : ENTITY_LOD_PROXY_NEUTRAL_COLOR,

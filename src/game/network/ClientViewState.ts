@@ -86,7 +86,7 @@ import {
   applyNetworkUnitDriftFieldsToTarget,
 } from './unitSnapshotFields';
 import { decodeFactoryProductionQueueInto } from './factoryProductionQueueWire';
-import { createBeamDto, createSpawnDto } from './snapshotDtoCopy';
+import { createSpawnDto } from './snapshotDtoCopy';
 import { ClientRenderSpatialIndex } from './ClientRenderSpatialIndex';
 import {
   ENTITY_POSITION_WIRE_INV_SCALE,
@@ -121,7 +121,7 @@ import {
 } from './snapshotProjectileWirePack';
 import {
   forEachProjectileWireSourceSpawn,
-  forEachProjectileWireSourceBeamUpdate,
+  forEachProjectileWireSourceBeamUpdateFields,
   forEachProjectileWireSourceDespawn,
   forEachProjectileWireSourceVelocityUpdate,
   projectileSnapshotWireSourceHasDirectlyConsumableRows,
@@ -333,7 +333,6 @@ export class ClientViewState {
   private _serverIds: Set<EntityId> = new ClientEntityIdSet();
   private readonly _fullReconcileRemoveIds: EntityId[] = [];
   private _projectileReflectionIds: Set<EntityId> = new ClientEntityIdSet();
-  private readonly directProjectileBeamUpdateScratch = createBeamDto();
 
   // Spatial grid debug visualization data
   private gridCells: NetworkServerSnapshotGridCell[] = [];
@@ -2537,10 +2536,24 @@ export class ClientViewState {
       // start/end/reflection points so the client can draw beams without
       // running local mirror/unit/building beam traces in applyPrediction.
       const appliedDirectBeamUpdates = directProjectileRows
-        ? forEachProjectileWireSourceBeamUpdate(
+        ? forEachProjectileWireSourceBeamUpdateFields(
             projectiles,
-            this.directProjectileBeamUpdateScratch,
-            (update) => this.projectileStore.applyBeamUpdate(update, now),
+            (
+              id,
+              obstructionT,
+              endpointDamageable,
+              pointValues,
+              pointOffset,
+              pointCount,
+            ) => this.projectileStore.applyBeamUpdateWireFields(
+              id as EntityId,
+              obstructionT,
+              endpointDamageable,
+              pointValues,
+              pointOffset,
+              pointCount,
+              now,
+            ),
           )
         : false;
       const beamUpdates = appliedDirectBeamUpdates ? undefined : projectiles.beamUpdates;

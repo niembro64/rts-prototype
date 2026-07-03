@@ -1249,6 +1249,32 @@ pub fn pathfinder_find_path(
 
     // Enable the collision-clearance gate for the actual search + smoothing.
     state.cur_required_clearance = required_clearance;
+
+    // BAR-style raw move: if the current leg has direct line-of-sight through
+    // passable cells, do not touch A*. This is the common case for open-field
+    // move/fight/formation orders and keeps the planner out of the tick path
+    // unless terrain or structures actually require a route.
+    if !start_was_snapped {
+        let (raw_goal_x, raw_goal_y) = if goal_was_snapped {
+            pathfinder_cell_center(goal_cell_gx, goal_cell_gy)
+        } else {
+            (goal_x, goal_y)
+        };
+        if pathfinder_has_los(
+            state,
+            start_x,
+            start_y,
+            raw_goal_x,
+            raw_goal_y,
+            min_normal_z,
+            ignore_terrain_blocking,
+        ) {
+            state.waypoint_scratch.push(raw_goal_x);
+            state.waypoint_scratch.push(raw_goal_y);
+            return 1;
+        }
+    }
+
     let mut a_star_result = pathfinder_a_star(
         state,
         start_cell_gx,

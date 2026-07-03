@@ -5,14 +5,17 @@ import {
 } from '@/config';
 import type { Entity } from '../sim/types';
 import { entityInstanceColorHex } from './EntityInstanceColor3D';
-import { entityLodProxyRadius3D } from './EntityLod3D';
+import {
+  entityLodProxyGlyph3D,
+  entityLodProxyRadius3D,
+} from './EntityLod3D';
 
 const GPU_BUFFER_USAGE_COPY_DST = 0x0008;
 const GPU_BUFFER_USAGE_VERTEX = 0x0020;
 const GPU_BUFFER_USAGE_UNIFORM = 0x0040;
 const GPU_SHADER_STAGE_VERTEX = 0x1;
 
-const INSTANCE_FLOATS = 8;
+const INSTANCE_FLOATS = 9;
 const INSTANCE_BYTES = INSTANCE_FLOATS * Float32Array.BYTES_PER_ELEMENT;
 const UNIFORM_FLOATS = 40;
 const UNIFORM_BYTES = UNIFORM_FLOATS * Float32Array.BYTES_PER_ELEMENT;
@@ -42,12 +45,14 @@ struct VertexInput {
   @location(1) center: vec3<f32>,
   @location(2) radius: f32,
   @location(3) color: vec4<f32>,
+  @location(4) glyph: f32,
 };
 
 struct VertexOutput {
   @builtin(position) position: vec4<f32>,
   @location(0) local: vec2<f32>,
   @location(1) color: vec4<f32>,
+  @location(2) glyph: f32,
 };
 
 @vertex
@@ -58,6 +63,7 @@ fn vsMain(input: VertexInput) -> VertexOutput {
     output.position = vec4<f32>(2.0, 2.0, 0.0, 1.0);
     output.local = vec2<f32>(2.0, 2.0);
     output.color = input.color;
+    output.glyph = input.glyph;
     return output;
   }
 
@@ -65,9 +71,9 @@ fn vsMain(input: VertexInput) -> VertexOutput {
   let viewport = max(uniforms.params.xy, vec2<f32>(1.0, 1.0));
   let projectionYScale = uniforms.params.z;
   let viewDistance = max(1.0, -viewPosition.z);
-  // The proxy is ALWAYS the entity's true collision boundary in world space:
-  // project that world radius straight to pixels with no min/max clamp so the
-  // marker exactly tracks the collision sphere at every zoom level.
+  // Glyphs are bounded by the entity's true collision radius in world space:
+  // project that radius straight to pixels with no min/max clamp so the marker
+  // tracks the collision volume at every zoom level.
   let diameterPixels = input.radius * projectionYScale * viewport.y / viewDistance;
   let radiusPixels = diameterPixels * 0.5;
   let ndcOffset = vec2<f32>(
@@ -78,12 +84,33 @@ fn vsMain(input: VertexInput) -> VertexOutput {
   output.position = centerClip + vec4<f32>(ndcOffset * centerClip.w, 0.0, 0.0);
   output.local = input.corner;
   output.color = input.color;
+  output.glyph = input.glyph;
   return output;
+}
+
+fn proxyGlyphVisible(p: vec2<f32>, glyph: f32) -> bool {
+  let glyphId = floor(glyph + 0.5);
+  if (glyphId < 0.5) {
+    return dot(p, p) <= 1.0;
+  }
+  if (glyphId < 1.5) {
+    return abs(p.x) + abs(p.y) <= 1.0;
+  }
+  if (glyphId < 2.5) {
+    return p.y >= -0.85 && p.y <= 0.95 && abs(p.x) <= (0.95 - p.y) * 0.58;
+  }
+  if (glyphId < 3.5) {
+    return max(abs(p.x), abs(p.y)) <= 0.78;
+  }
+  if (glyphId < 4.5) {
+    return max(abs(p.x), abs(p.y)) <= 0.9 && (abs(p.x) <= 0.26 || abs(p.y) <= 0.26);
+  }
+  return dot(p, p) <= 1.0;
 }
 
 @fragment
 fn fsMain(input: VertexOutput) -> @location(0) vec4<f32> {
-  if (dot(input.local, input.local) > 1.0) {
+  if (!proxyGlyphVisible(input.local, input.glyph)) {
     discard;
   }
   return input.color;
@@ -237,6 +264,7 @@ function writeProxyInstance(batch: GpuProxyBatch, slot: number, entity: Entity):
     data,
     offset + 4,
   );
+  data[offset + 8] = Math.fround(entityLodProxyGlyph3D(entity));
 }
 
 export class EntityLodProxyWebGpuRenderer3D {
@@ -349,6 +377,11 @@ export class EntityLodProxyWebGpuRenderer3D {
                 shaderLocation: 3,
                 offset: 4 * Float32Array.BYTES_PER_ELEMENT,
                 format: 'float32x4',
+              },
+              {
+                shaderLocation: 4,
+                offset: 8 * Float32Array.BYTES_PER_ELEMENT,
+                format: 'float32',
               },
             ],
           },

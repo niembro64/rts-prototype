@@ -119,6 +119,16 @@ type GatherWaitGroup = {
   members: Entity[];
 };
 
+type FormationRouteMetadata = {
+  startX: number;
+  startY: number;
+  goalX: number;
+  goalY: number;
+  offsetX: number;
+  offsetY: number;
+  radius: number;
+};
+
 // ── Stuck-detection / replanning constants ────────────────────────
 //
 // A unit that wants to move (thrust set) but isn't actually moving
@@ -151,6 +161,7 @@ export class Simulation {
   private unitActionPlanner: SimulationUnitActionPlanner = new SimulationUnitActionPlanner();
   private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
+  private readonly formationRouteCache = new Map<string, UnitPathPoint[]>();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
   // Accumulated sim time (ms). Drives deterministic systems like wind
@@ -541,7 +552,143 @@ export class Simulation {
       plan.buildingId === action.buildingId;
   }
 
-  private ensureActivePathPlan(entity: Entity, action: UnitAction): Unit['activePath'] {
+  private getFormationRouteMetadata(action: UnitAction): FormationRouteMetadata | null {
+    const {
+      formationRouteStartX,
+      formationRouteStartY,
+      formationRouteGoalX,
+      formationRouteGoalY,
+      formationRouteOffsetX,
+      formationRouteOffsetY,
+      formationRouteRadius,
+    } = action;
+    if (
+      typeof formationRouteStartX !== 'number' ||
+      typeof formationRouteStartY !== 'number' ||
+      typeof formationRouteGoalX !== 'number' ||
+      typeof formationRouteGoalY !== 'number' ||
+      typeof formationRouteOffsetX !== 'number' ||
+      typeof formationRouteOffsetY !== 'number' ||
+      typeof formationRouteRadius !== 'number' ||
+      !Number.isFinite(formationRouteStartX) ||
+      !Number.isFinite(formationRouteStartY) ||
+      !Number.isFinite(formationRouteGoalX) ||
+      !Number.isFinite(formationRouteGoalY) ||
+      !Number.isFinite(formationRouteOffsetX) ||
+      !Number.isFinite(formationRouteOffsetY) ||
+      !Number.isFinite(formationRouteRadius) ||
+      formationRouteRadius <= 0
+    ) {
+      return null;
+    }
+    return {
+      startX: formationRouteStartX,
+      startY: formationRouteStartY,
+      goalX: formationRouteGoalX,
+      goalY: formationRouteGoalY,
+      offsetX: formationRouteOffsetX,
+      offsetY: formationRouteOffsetY,
+      radius: formationRouteRadius,
+    };
+  }
+
+  private pathTerrainFilterKey(filter: PathTerrainFilter | null): string {
+    if (filter === null) return 'default';
+    if (filter.ignoreTerrainBlocking) return 'any';
+    return `min:${filter.minSurfaceNormalZ ?? 'null'}`;
+  }
+
+  private formationRouteCacheKey(
+    metadata: FormationRouteMetadata,
+    terrainVersion: number,
+    buildingGridVersion: number,
+    filter: PathTerrainFilter | null,
+  ): string {
+    return [
+      terrainVersion,
+      buildingGridVersion,
+      this.world.slopePathMode,
+      this.pathTerrainFilterKey(filter),
+      metadata.radius,
+      metadata.startX,
+      metadata.startY,
+      metadata.goalX,
+      metadata.goalY,
+    ].join(':');
+  }
+
+  private clampPathX(x: number): number {
+    if (!Number.isFinite(x)) return 0;
+    return Math.max(0, Math.min(this.world.mapWidth, x));
+  }
+
+  private clampPathY(y: number): number {
+    if (!Number.isFinite(y)) return 0;
+    return Math.max(0, Math.min(this.world.mapHeight, y));
+  }
+
+  private offsetFormationRoutePoints(
+    points: readonly UnitPathPoint[],
+    offsetX: number,
+    offsetY: number,
+  ): UnitPathPoint[] {
+    const out = new Array<UnitPathPoint>(points.length);
+    for (let i = 0; i < points.length; i++) {
+      const x = this.clampPathX(points[i].x + offsetX);
+      const y = this.clampPathY(points[i].y + offsetY);
+      out[i] = {
+        x,
+        y,
+        z: this.world.getGroundZ(x, y),
+      };
+    }
+    return out;
+  }
+
+  private expandFormationRoutePoints(
+    action: UnitAction,
+    metadata: FormationRouteMetadata,
+    buildingGrid: ReturnType<ConstructionSystem['getGrid']>,
+    terrainVersion: number,
+    buildingGridVersion: number,
+    terrainFilter: PathTerrainFilter | null,
+  ): UnitPathPoint[] {
+    const key = this.formationRouteCacheKey(
+      metadata,
+      terrainVersion,
+      buildingGridVersion,
+      terrainFilter,
+    );
+    let anchorPoints = this.formationRouteCache.get(key);
+    if (anchorPoints === undefined) {
+      if (this.formationRouteCache.size > 256) this.formationRouteCache.clear();
+      anchorPoints = expandPathPoints(
+        metadata.startX,
+        metadata.startY,
+        metadata.goalX,
+        metadata.goalY,
+        this.world.mapWidth,
+        this.world.mapHeight,
+        buildingGrid,
+        action.z ?? null,
+        terrainFilter,
+        metadata.radius,
+        this.world.slopePathMode === 'symmetric',
+      );
+      this.formationRouteCache.set(key, anchorPoints);
+    }
+    return this.offsetFormationRoutePoints(
+      anchorPoints,
+      metadata.offsetX,
+      metadata.offsetY,
+    );
+  }
+
+  private ensureActivePathPlan(
+    entity: Entity,
+    action: UnitAction,
+    forceLocalPlan = false,
+  ): Unit['activePath'] {
     const unit = entity.unit;
     if (!unit) return null;
 
@@ -552,19 +699,48 @@ export class Simulation {
       return unit.activePath;
     }
 
-    const points = expandPathPoints(
-      entity.transform.x,
-      entity.transform.y,
-      action.x,
-      action.y,
-      this.world.mapWidth,
-      this.world.mapHeight,
-      buildingGrid,
-      action.z ?? null,
-      this.pathTerrainFilterForUnit(entity),
-      unit.radius.collision,
-      this.world.slopePathMode === 'symmetric',
-    );
+    const previousPath = unit.activePath;
+    const terrainFilter = this.pathTerrainFilterForUnit(entity);
+    const formationRoute = !forceLocalPlan && previousPath === null
+      ? this.getFormationRouteMetadata(action)
+      : null;
+    let points = formationRoute !== null
+      ? this.expandFormationRoutePoints(
+          action,
+          formationRoute,
+          buildingGrid,
+          terrainVersion,
+          buildingGridVersion,
+          terrainFilter,
+        )
+      : expandPathPoints(
+          entity.transform.x,
+          entity.transform.y,
+          action.x,
+          action.y,
+          this.world.mapWidth,
+          this.world.mapHeight,
+          buildingGrid,
+          action.z ?? null,
+          terrainFilter,
+          unit.radius.collision,
+          this.world.slopePathMode === 'symmetric',
+        );
+    if (formationRoute !== null && points.length <= 1) {
+      points = expandPathPoints(
+        entity.transform.x,
+        entity.transform.y,
+        action.x,
+        action.y,
+        this.world.mapWidth,
+        this.world.mapHeight,
+        buildingGrid,
+        action.z ?? null,
+        terrainFilter,
+        unit.radius.collision,
+        this.world.slopePathMode === 'symmetric',
+      );
+    }
     unit.activePath = {
       points,
       index: 0,
@@ -1402,7 +1578,7 @@ export class Simulation {
 
     const previousPath = unit.activePath;
     unit.activePath = null;
-    const nextPath = this.ensureActivePathPlan(entity, action);
+    const nextPath = this.ensureActivePathPlan(entity, action, true);
     if (nextPath === null || nextPath.points.length === 0) {
       unit.activePath = previousPath;
       return false;

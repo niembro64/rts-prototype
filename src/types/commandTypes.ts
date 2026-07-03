@@ -38,6 +38,17 @@ export type UnitAction = {
   isPathExpansion?: boolean;
   waitGather?: boolean;
   waitGroupId?: number;
+  /** Sim-local formation route metadata. These fields are intentionally
+   *  omitted from network action serialization; clients only need the
+   *  authored waypoint while the server sim uses them to share one
+   *  initial path corridor across a group move. */
+  formationRouteStartX?: number;
+  formationRouteStartY?: number;
+  formationRouteGoalX?: number;
+  formationRouteGoalY?: number;
+  formationRouteOffsetX?: number;
+  formationRouteOffsetY?: number;
+  formationRouteRadius?: number;
 };
 
 export type UnitPathPoint = {
