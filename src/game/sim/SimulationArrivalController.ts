@@ -1,6 +1,6 @@
 import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS, UNIT_MASS_MULTIPLIER } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
-import { LOCOMOTION_FORCE_SCALE } from './locomotion';
+import { LOCOMOTION_FORCE_SCALE, getLocomotionPrimaryDrivePhysics } from './locomotion';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
@@ -193,8 +193,9 @@ export class SimulationArrivalController {
     this.dy[index] = dy;
     this.distance[index] = distance;
     this.radiusPush[index] = unit.radius.collision;
-    this.driveForce[index] = unit.locomotion.driveForce * speedLimitFactor;
-    this.traction[index] = unit.locomotion.traction;
+    const drivePhysics = getLocomotionPrimaryDrivePhysics(unit.locomotion);
+    this.driveForce[index] = drivePhysics.force * speedLimitFactor;
+    this.traction[index] = drivePhysics.traction;
     this.mass[index] = unit.mass;
     this.speedLimitFactor[index] = speedLimitFactor;
     this.flags[index] =

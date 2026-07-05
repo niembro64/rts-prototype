@@ -38,12 +38,14 @@ import {
   getEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
   resetEntitySnapshotPool,
+  serializeEntitySnapshot,
   type EntitySnapshotWireSource,
 } from './stateSerializerEntities';
 import { unpackEntitiesFromWire, type PackedEntitySnapshotWire } from './snapshotEntityWirePack';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
 import { ReusableNetworkSnapshotCloner } from './snapshotClone';
 import { reserveFloat64WireRows } from './snapshotWireRows';
+import { WorldState } from '../sim/WorldState';
 import {
   ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
   ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
@@ -338,6 +340,52 @@ export function runSnapshotEntityWirePackContractTest(): void {
   assertContract(
     packedStaleMotionV6.m !== undefined && packedStaleMotionV6.e === undefined,
     'stale-cleared slab motion row must stay on compact movement wire path',
+  );
+
+  const fireStateWorld = new WorldState(9101, 512, 512);
+  const defendEntity = fireStateWorld.createUnitFromBlueprint(80, 80, 1, 'unitMongoose', {
+    allocateSubEntityIds: false,
+  });
+  const fireAtAllEntity = fireStateWorld.createUnitFromBlueprint(120, 80, 1, 'unitMongoose', {
+    allocateSubEntityIds: false,
+  });
+  defendEntity.combat!.fireState = 'defend';
+  defendEntity.combat!.fireEnabled = true;
+  fireAtAllEntity.combat!.fireState = 'fireAtAll';
+  fireAtAllEntity.combat!.fireEnabled = true;
+  fireStateWorld.addEntity(defendEntity);
+  fireStateWorld.addEntity(fireAtAllEntity);
+  const compactFireStateEntities: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(compactFireStateEntities);
+  const defendSnapshot = serializeEntitySnapshot(defendEntity, undefined, fireStateWorld);
+  const fireAtAllSnapshot = serializeEntitySnapshot(fireAtAllEntity, undefined, fireStateWorld);
+  assertContract(
+    defendSnapshot !== null && fireAtAllSnapshot !== null,
+    'BAR direct fire-state fixtures must serialize',
+  );
+  compactFireStateEntities.push(defendSnapshot, fireAtAllSnapshot);
+  const compactFireStateSource = getEntitySnapshotWireSource(compactFireStateEntities);
+  assertContract(compactFireStateSource !== undefined, 'BAR direct fire-state rows must register');
+  const compactDefendBase = compactFireStateSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  const compactFireAtAllBase = compactFireStateSource.rowIndices[1] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  assertContract(
+    compactFireStateSource.unitRows.values[compactDefendBase + 51] === 1 &&
+      compactFireStateSource.unitRows.values[compactDefendBase + 52] === 3 &&
+      compactFireStateSource.unitRows.values[compactFireAtAllBase + 51] === 1 &&
+      compactFireStateSource.unitRows.values[compactFireAtAllBase + 52] === 4,
+    'compact unit rows must encode BAR Defend and Fire-at-all fire-state codes',
+  );
+  const compactFireStateBytes = encodeEntitiesV6Bytes(compactFireStateSource, compactFireStateEntities);
+  assertContract(compactFireStateBytes !== null, 'BAR direct fire-state rows must encode compactly');
+  const compactFireStatePacked = msgpackDecode(
+    compactFireStateBytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  const compactFireStateDecoded = unpackEntitiesFromWire(compactFireStatePacked);
+  assertContract(
+    compactFireStateDecoded[0]?.unit?.fireState === 'defend' &&
+      compactFireStateDecoded[1]?.unit?.fireState === 'fireAtAll',
+    'compact unit rows must decode BAR Defend and Fire-at-all fire states',
   );
 
   const slabHpEntities: NetworkServerSnapshotEntity[] = [];

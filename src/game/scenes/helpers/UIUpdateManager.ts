@@ -18,7 +18,9 @@ import {
   getShotBlueprint,
   getTurretBlueprint,
   getUnitBlueprint,
+  getUnitLocomotion,
 } from '../../sim/blueprints';
+import { getLocomotionPrimaryDrivePhysics } from '../../sim/locomotion';
 import { getBuildingConfig } from '../../sim/buildConfigs';
 import { isIdleBuilderUnit } from '../../sim/idleBuilders';
 import { isMetalExtractorBlueprintId } from '../../../types/buildingTypes';
@@ -217,6 +219,8 @@ function combatFireStateLabel(fireState: CombatFireState): string {
     case 'fireAtWill': return 'Fire';
     case 'returnFire': return 'Return';
     case 'holdFire': return 'Hold';
+    case 'defend': return 'Defend';
+    case 'fireAtAll': return 'Fire all';
   }
 }
 
@@ -257,6 +261,8 @@ function addMultiSelectionStateDetails(
   let fireAtWillCount = 0;
   let returnFireCount = 0;
   let holdFireCount = 0;
+  let defendCount = 0;
+  let fireAtAllCount = 0;
   for (const entity of selectedUnits) {
     if (!isFireControllable(entity)) continue;
     fireControlCount++;
@@ -265,6 +271,8 @@ function addMultiSelectionStateDetails(
     if (fireState === 'fireAtWill') fireAtWillCount++;
     if (fireState === 'returnFire') returnFireCount++;
     if (fireState === 'holdFire') holdFireCount++;
+    if (fireState === 'defend') defendCount++;
+    if (fireState === 'fireAtAll') fireAtAllCount++;
   }
   for (const entity of selectedTowers) {
     if (!isFireControllable(entity)) continue;
@@ -274,6 +282,8 @@ function addMultiSelectionStateDetails(
     if (fireState === 'fireAtWill') fireAtWillCount++;
     if (fireState === 'returnFire') returnFireCount++;
     if (fireState === 'holdFire') holdFireCount++;
+    if (fireState === 'defend') defendCount++;
+    if (fireState === 'fireAtAll') fireAtAllCount++;
   }
   if (fireControlCount > 0) {
     const value = fireAtWillCount === fireControlCount
@@ -282,7 +292,11 @@ function addMultiSelectionStateDetails(
         ? 'Return'
         : holdFireCount === fireControlCount
         ? 'Hold'
-        : 'Mixed';
+        : defendCount === fireControlCount
+          ? 'Defend'
+          : fireAtAllCount === fireControlCount
+            ? 'Fire all'
+            : 'Mixed';
     details.push({ label: 'Fire', value });
   }
 
@@ -682,6 +696,8 @@ export function buildSelectionInfo(
   let fireAtWillCount = 0;
   let returnFireCount = 0;
   let holdFireCount = 0;
+  let defendCount = 0;
+  let fireAtAllCount = 0;
   let hasPriorityTarget = false;
   let waitingCount = 0;
   let gatherWaitingCount = 0;
@@ -745,6 +761,8 @@ export function buildSelectionInfo(
       if (fireState === 'fireAtWill') fireAtWillCount++;
       if (fireState === 'returnFire') returnFireCount++;
       if (fireState === 'holdFire') holdFireCount++;
+      if (fireState === 'defend') defendCount++;
+      if (fireState === 'fireAtAll') fireAtAllCount++;
       if (combat.priorityTargetId !== null || combat.priorityTargetPoint !== null) hasPriorityTarget = true;
       if (isTrajectoryControllable(selectedUnit)) {
         trajectoryControlCount++;
@@ -794,6 +812,8 @@ export function buildSelectionInfo(
       if (fireState === 'fireAtWill') fireAtWillCount++;
       if (fireState === 'returnFire') returnFireCount++;
       if (fireState === 'holdFire') holdFireCount++;
+      if (fireState === 'defend') defendCount++;
+      if (fireState === 'fireAtAll') fireAtAllCount++;
       if (combat.priorityTargetId !== null || combat.priorityTargetPoint !== null) hasPriorityTarget = true;
       if (isTrajectoryControllable(selectedTower)) {
         trajectoryControlCount++;
@@ -949,7 +969,7 @@ export function buildSelectionInfo(
       fireControlCount > 0
       && fireControlCount === selectedUnits.length + selectedTowers.length
       && selectedBuildings.length === 0,
-    fireEnabled: fireControlCount > 0 && fireAtWillCount === fireControlCount,
+    fireEnabled: fireControlCount > 0 && holdFireCount === 0,
     fireState: fireControlCount === 0
       ? 'fireAtWill'
       : fireAtWillCount === fireControlCount
@@ -958,7 +978,11 @@ export function buildSelectionInfo(
           ? 'returnFire'
           : holdFireCount === fireControlCount
             ? 'holdFire'
-            : 'mixed',
+            : defendCount === fireControlCount
+              ? 'defend'
+              : fireAtAllCount === fireControlCount
+                ? 'fireAtAll'
+                : 'mixed',
     hasTrajectoryControl: trajectoryControlCount > 0,
     trajectoryMode: highTrajectoryCount === trajectoryControlCount
       ? 'high'
@@ -1190,7 +1214,7 @@ export type UnitStatsOverlayInfo = {
   mass: number | null;
   costEnergy: number | null;
   costMetal: number | null;
-  locomotion: { type: string; driveForce: number; traction: number } | null;
+  locomotion: { type: string; force: number; traction: number } | null;
   weapons: UnitStatsWeaponInfo[];
   factory: UnitStatsFactoryInfo | null;
 };
@@ -1300,10 +1324,12 @@ export function buildUnitStatsOverlayInfo(
       mass = bp.mass;
       costEnergy = bp.cost.energy * COST_MULTIPLIER;
       costMetal = bp.cost.metal * COST_MULTIPLIER;
+      const runtimeLocomotion = getUnitLocomotion(unitBlueprintId);
+      const primaryPhysics = getLocomotionPrimaryDrivePhysics(runtimeLocomotion);
       locomotion = {
-        type: bp.locomotion.type,
-        driveForce: bp.locomotion.physics.driveForce,
-        traction: bp.locomotion.physics.traction,
+        type: runtimeLocomotion.type,
+        force: primaryPhysics.force,
+        traction: primaryPhysics.traction,
       };
     } catch {
       // Unknown blueprint: show the raw id + live hp only.

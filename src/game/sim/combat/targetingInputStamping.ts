@@ -287,7 +287,7 @@ function queueCombatTargetingSourceSlot(entity: Entity, slot: number): void {
 function combatCanFire(combat: Entity['combat']): boolean {
   if (combat === null) return false;
   const fireState = combat.fireState ?? (combat.fireEnabled === false ? 'holdFire' : 'fireAtWill');
-  if (fireState === 'fireAtWill') return true;
+  if (fireState === 'fireAtWill' || fireState === 'defend' || fireState === 'fireAtAll') return true;
   if (fireState === 'returnFire') {
     return combat.priorityTargetId !== null || combat.priorityTargetPoint !== null;
   }

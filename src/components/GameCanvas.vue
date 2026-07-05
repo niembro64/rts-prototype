@@ -68,6 +68,8 @@ import type { GameServer } from '../game/server/GameServer';
 import type { GameConnection } from '../game/server/GameConnection';
 import type { CameraFovDegrees, CameraViewMode } from '../types/client';
 import {
+  resolveGameCanvasChromeVisibility,
+  resolveGameCanvasPresentationPhase,
   setPlayerClientRenderEnabled,
   useGameCanvasChromeState,
 } from './gameCanvasChromeState';
@@ -131,6 +133,9 @@ const gameOverWinner = ref<PlayerId | null>(null);
 const battleLoading = ref(false);
 const rendererWarmupLoading = ref(true);
 const showLoadingOverlay = computed(() => battleLoading.value || rendererWarmupLoading.value);
+const activeSurfaceLoading = computed(
+  () => gameStarted.value ? battleLoading.value : showLoadingOverlay.value,
+);
 const loadingProgress = ref(0);
 const loadingPhase = ref('Preparing battle');
 const displayedLoadingProgress = computed(() => loadingProgress.value);
@@ -256,9 +261,10 @@ const {
 
 // The startup BUDGET ANNIHILATION screen is now a non-blocking sidebar
 // (see LobbyModal). Only the connecting / in-lobby screens are still
-// full-screen blocking modals, so only those should hide the demo game
-// chrome and bottom bars — the startup sidebar leaves the demo fully
-// visible and interactive whether it is open or closed.
+// full-screen blocking modals, so only those and explicit loading phases
+// should hide the demo game chrome and bottom bars. The startup sidebar
+// leaves the demo fully visible and interactive whether it is open or
+// closed.
 const lobbyFullscreenVisible = computed(
   () => lobbyModalVisible.value && (isConnecting.value || roomCode.value !== ''),
 );
@@ -268,25 +274,35 @@ const lobbyFullscreenVisible = computed(
 const menuSidebarOpen = computed(
   () => lobbyModalVisible.value && !lobbyFullscreenVisible.value,
 );
-const gameChromeVisible = computed(
-  () => uiChromeVisible.value && (isMobile ? mobileBarsVisible.value : !lobbyFullscreenVisible.value),
+const presentationPhase = computed(() =>
+  resolveGameCanvasPresentationPhase({
+    currentBattleMode: currentBattleMode.value,
+    gameStarted: gameStarted.value,
+    lobbyFullscreenVisible: lobbyFullscreenVisible.value,
+    loading: activeSurfaceLoading.value,
+    playerClientEnabled: playerClientEnabled.value,
+  }),
 );
-const bottomChromeVisible = computed(
-  () => uiChromeVisible.value && !showLoadingOverlay.value && (isMobile ? mobileBarsVisible.value : !lobbyFullscreenVisible.value),
+const chromeVisibility = computed(() =>
+  resolveGameCanvasChromeVisibility({
+    phase: presentationPhase.value,
+    uiChromeVisible: uiChromeVisible.value,
+    isMobile,
+    mobileBarsVisible: mobileBarsVisible.value,
+    lobbyFullscreenVisible: lobbyFullscreenVisible.value,
+  }),
 );
-
-const loadingInLobbyPreview = computed(
-  () =>
-    !gameStarted.value &&
-    currentBattleMode.value === 'real' &&
-    lobbyFullscreenVisible.value &&
-    showLoadingOverlay.value,
-);
+const topChromeVisible = computed(() => chromeVisibility.value.topBar);
+const bottomChromeVisible = computed(() => chromeVisibility.value.bottomBars);
+const gameplayHudVisible = computed(() => chromeVisibility.value.gameplayHud);
+const overlayControlsVisible = computed(() => chromeVisibility.value.overlayControls);
+const playerClientOffOverlayVisible = computed(() => chromeVisibility.value.playerClientOffOverlay);
+const loadingInLobbyPreview = computed(() => presentationPhase.value === 'lobby-preview-loading');
 const showDemoLoadingOverlay = computed(
-  () => showLoadingOverlay.value && !gameStarted.value && !loadingInLobbyPreview.value,
+  () => presentationPhase.value === 'background-loading',
 );
 const showRealLoadingOverlay = computed(
-  () => battleLoading.value && gameStarted.value,
+  () => presentationPhase.value === 'real-battle-loading',
 );
 const loadingNextLabel = computed(() => {
   if (gameStarted.value) return 'LOADING ONLINE BATTLE';
@@ -323,7 +339,7 @@ watch(bottomControlsRef, (controls, previousControls) => {
 });
 
 watch(
-  [bottomChromeVisible, bottomBarsCollapsed, mobileBarsVisible, showLoadingOverlay],
+  [bottomChromeVisible, bottomBarsCollapsed, mobileBarsVisible],
   () => {
     void nextTick(updatePlayableBottomInset);
   },
@@ -365,7 +381,7 @@ function setInstanceCameraFovDegrees(
 }
 
 const effectivePlayerClientRenderEnabled = computed(
-  () => playerClientEnabled.value && !showLoadingOverlay.value,
+  () => playerClientEnabled.value && !activeSurfaceLoading.value,
 );
 function applyPlayerClientEnabled(): void {
   const enabled = effectivePlayerClientRenderEnabled.value;
@@ -1180,6 +1196,12 @@ const {
   foregroundGame,
   getBackgroundBattle: () => getBackgroundBattle(),
 });
+const pauseBannerVisible = computed(
+  () =>
+    presentationPhase.value === 'real-battle-interactive' &&
+    gamePhase.value === 'paused' &&
+    gameOverWinner.value === null,
+);
 
 ({
   getBackgroundBattle,
@@ -2079,7 +2101,7 @@ watchEffect(() => {
   >
     <!-- Top status bar lives outside the 3D game area, like the bottom controls. -->
     <div
-      v-if="gameChromeVisible"
+      v-if="topChromeVisible"
       class="top-controls-shell"
     >
       <TopBar
@@ -2148,7 +2170,7 @@ watchEffect(() => {
       </div>
 
       <div
-        v-if="!playerClientEnabled && !showLoadingOverlay"
+        v-if="playerClientOffOverlayVisible"
         class="player-client-off-overlay"
         role="status"
         aria-live="polite"
@@ -2163,7 +2185,7 @@ watchEffect(() => {
       <!-- Authoritative pause banner (BAR-style center-screen indicator).
            Click resumes — the same setPaused command the PAUSE button sends. -->
       <div
-        v-if="gameStarted && gamePhase === 'paused' && gameOverWinner === null"
+        v-if="pauseBannerVisible"
         class="game-paused-banner"
         role="status"
         aria-live="polite"
@@ -2173,8 +2195,8 @@ watchEffect(() => {
         ⏸ PAUSED
       </div>
 
-      <!-- Game UI (desktop: hidden when lobby modal visible; mobile: follows hamburger toggle) -->
-      <template v-if="playerClientEnabled && gameChromeVisible">
+      <!-- Game UI (hidden during loading/client-off; desktop also hides behind full-screen lobby) -->
+      <template v-if="gameplayHudVisible">
         <!-- Selection panel (bottom-left) -->
         <SelectionPanel
           :selection="selectionInfo"
@@ -2548,7 +2570,7 @@ watchEffect(() => {
       :is-mobile="isMobile"
       :show-lobby="showLobby"
       :spectate-mode="spectateMode"
-      :ui-chrome-visible="uiChromeVisible"
+      :hud-visible="overlayControlsVisible"
       :mobile-bars-visible="mobileBarsVisible"
       :game-started="gameStarted"
       :current-battle-mode="currentBattleMode"

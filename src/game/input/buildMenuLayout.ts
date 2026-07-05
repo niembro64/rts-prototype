@@ -85,6 +85,7 @@ const BAR_EQUIVALENT_FACTORY_UNIT_BLUEPRINT_IDS = new Set<string>([
   'unitLynx',
   'unitBadger',
   'unitMongoose',
+  'unitSeaTurtle',
   'unitTarantula',
   'unitTransport',
 ]);
@@ -97,6 +98,7 @@ const BAR_GRID_FACTORY_UNIT_SLOT_INDEX = new Map<string, number>([
   ['unitJackal', 3],
   ['unitBadger', 5],
   ['unitMongoose', 6],
+  ['unitSeaTurtle', 8],
   // Page 2 follows BAR's final labGrids["armlab"] bot-lab slots:
   // empty constructor/resurrect/peewee slots, armflea,
   // empty armrock/armham analogue slots, armwar.
@@ -450,6 +452,8 @@ function barClassicFactoryUnitSortIndex(id: string): number {
       return 5200; // armjanus rocket tank
     case 'unitMongoose':
       return 5420; // armart artillery
+    case 'unitSeaTurtle':
+      return 5500; // prototype amphibious combat vehicle
     case 'unitTarantula':
       return 5600; // armwar assault bot
     case 'unitTransport':

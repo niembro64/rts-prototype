@@ -1905,45 +1905,58 @@
       },
       "additionalProperties": false
     },
-    "LocomotionPhysics": {
+    "LocomotionMediumPhysics": {
       "type": "object",
       "required": [
-        "driveForce",
-        "traction"
+        "force",
+        "traction",
+        "friction",
+        "gravityCounterUpwardForceRatio",
+        "heightUpwardForce",
+        "heightUpwardForceRandomizationAmount",
+        "heightUpwardForceEMA"
       ],
       "properties": {
-        "driveForce": {
+        "force": {
           "type": "number"
         },
         "traction": {
           "type": "number"
         },
-        "groundFriction": {
+        "friction": {
           "type": "number"
         },
-        "airFriction": {
+        "gravityCounterUpwardForceRatio": {
           "type": "number"
         },
-        "waterForce": {
+        "heightUpwardForce": {
           "type": "number"
         },
-        "waterTraction": {
+        "heightUpwardForceRandomizationAmount": {
           "type": "number"
         },
-        "waterFriction": {
+        "heightUpwardForceEMA": {
           "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionPhysics": {
+      "type": "object",
+      "required": [
+        "ground",
+        "air",
+        "water"
+      ],
+      "properties": {
+        "ground": {
+          "$ref": "#/$defs/LocomotionMediumPhysics"
         },
-        "swimGravityCounterUpwardForceRatio": {
-          "type": "number"
+        "air": {
+          "$ref": "#/$defs/LocomotionMediumPhysics"
         },
-        "swimHeightUpwardForce": {
-          "type": "number"
-        },
-        "swimHeightUpwardForceRandomizationAmount": {
-          "type": "number"
-        },
-        "swimHeightUpwardForceEMA": {
-          "type": "number"
+        "water": {
+          "$ref": "#/$defs/LocomotionMediumPhysics"
         }
       },
       "additionalProperties": false
@@ -1984,26 +1997,12 @@
     "HoverConfig": {
       "type": "object",
       "required": [
-        "gravityCounterUpwardForceRatio",
-        "hoverHeightUpwardForce",
         "fanDistX",
         "fanDistY",
         "fanRadius",
         "fanRingTubeRadius"
       ],
       "properties": {
-        "gravityCounterUpwardForceRatio": {
-          "type": "number"
-        },
-        "hoverHeightUpwardForce": {
-          "type": "number"
-        },
-        "hoverHeightUpwardForceRandomizationAmount": {
-          "type": "number"
-        },
-        "hoverHeightUpwardForceEMA": {
-          "type": "number"
-        },
         "fanDistX": {
           "type": "number"
         },
@@ -2050,8 +2049,6 @@
     "FlyingConfig": {
       "type": "object",
       "required": [
-        "gravityCounterUpwardForceRatio",
-        "hoverHeightUpwardForce",
         "jetOffsetX",
         "jetOffsetY",
         "jetOffsetZ",
@@ -2059,18 +2056,6 @@
         "jetLength"
       ],
       "properties": {
-        "gravityCounterUpwardForceRatio": {
-          "type": "number"
-        },
-        "hoverHeightUpwardForce": {
-          "type": "number"
-        },
-        "hoverHeightUpwardForceRandomizationAmount": {
-          "type": "number"
-        },
-        "hoverHeightUpwardForceEMA": {
-          "type": "number"
-        },
         "wingEnabled": {
           "type": "boolean"
         },
@@ -2700,7 +2685,6 @@
         "fullVisionRadius",
         "sensors",
         "mass",
-        "airFrictionPer60HzFrame",
         "cost",
         "turrets",
         "bodyShape",
@@ -2752,9 +2736,6 @@
           "$ref": "#/$defs/SensorCapabilityConfig"
         },
         "mass": {
-          "type": "number"
-        },
-        "airFrictionPer60HzFrame": {
           "type": "number"
         },
         "cost": {

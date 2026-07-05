@@ -31,7 +31,7 @@ import { isBuildInProgress } from '../sim/buildableHelpers';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { getSimWasm, UNIT_FORCE_BATCH_STRIDE, type SimWasm } from '../sim-wasm/init';
 import { codeToUnitBlueprintId } from '../../types/network';
-import { getUnitBlueprint, getUnitLocomotion } from '../sim/blueprints';
+import { getUnitLocomotion } from '../sim/blueprints';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction';
@@ -60,9 +60,9 @@ const UF_ROW_DIR_X = 0;
 const UF_ROW_DIR_Y = 1;
 const UF_ROW_ROTATION = 2;
 // Row 3 reserved; Rust reads effective mass from BodyPool.
-// Rows 4-9 (drive force, traction, gravity-counter ratio, hover force /
-// randomization / EMA weight) are blueprint constants filled by the kernel
-// from the wasm-side profile table — see ensureUnitForceProfileTable.
+// Rows 4-9 (ground drive plus air lift family) are blueprint constants filled
+// by the kernel from the wasm-side profile table — see
+// ensureUnitForceProfileTable.
 const UF_ROW_HOVER_SMOOTHED_FORCE = 10;
 const UF_ROW_HOVER_RANDOM_SAMPLE = 11;
 const UF_ROW_GROUND_Z = 12;
@@ -90,9 +90,9 @@ const UF_ROW_ANGULAR_ACCEL_X = 33;
 const UF_ROW_ANGULAR_ACCEL_Y = 34;
 const UF_ROW_ANGULAR_ACCEL_Z = 35;
 // Fully-abstracted medium force profile (appended; rows 0..36 unchanged).
-// Rows 36-44 (ground/air/water friction, water force/traction, swim
-// family) and row 49 (air angular damping rate) are blueprint constants
-// filled by the kernel from the wasm-side profile table.
+// Rows 36-44 (ground/air/water friction, water force/traction, swim family)
+// and rows 49-50 (air force/traction) are blueprint constants filled by the
+// kernel from the wasm-side profile table.
 const UF_ROW_SWIM_SMOOTHED_FORCE = 45;
 const UF_ROW_SWIM_RANDOM_SAMPLE = 46;
 const UF_ROW_HEADING_X = 47;
@@ -108,6 +108,7 @@ const UF_FLAG_AHEAD_IN_WATER = 1 << 6;
 const UF_FLAG_HAS_ORIENTATION = 1 << 7;
 const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING = 1 << 8;
 const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING = 1 << 9;
+const UF_FLAG_ON_GROUND = 1 << 10;
 
 const UF_OUT_MOVEMENT_ACCEL = 1 << 0;
 const UF_OUT_CLEAR_COMBAT = 1 << 1;
@@ -146,7 +147,7 @@ function ensureForceBatchCapacity(count: number): void {
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
-const UF_PROFILE_STRIDE = 16;
+const UF_PROFILE_STRIDE = 17;
 
 let _unitForceProfileTableUploaded = false;
 
@@ -154,8 +155,7 @@ let _unitForceProfileTableUploaded = false;
  *  profile table once. The force kernel resolves body slot → entity
  *  slot → blueprint code and fills the constant row slots itself, so
  *  the per-tick pack loop no longer copies them per unit. Values must
- *  mirror exactly what the pack loop used to write (same ??-defaults,
- *  NaN for an unauthored hover height force). */
+ *  mirror the row constants consumed by the Rust kernel. */
 function ensureUnitForceProfileTable(sim: SimWasm): void {
   if (_unitForceProfileTableUploaded) return;
   let codeCount = 0;
@@ -170,25 +170,26 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
   for (let code = 0; code < codeCount; code++) {
     const unitBlueprintId = codeToUnitBlueprintId(code);
     if (unitBlueprintId === null) continue;
-    const blueprint = getUnitBlueprint(unitBlueprintId);
     const loco = getUnitLocomotion(unitBlueprintId);
+    const { ground, air, water } = loco.physics;
     const base = code * UF_PROFILE_STRIDE;
-    values[base + 0] = loco.driveForce;
-    values[base + 1] = loco.traction;
-    values[base + 2] = loco.gravityCounterUpwardForceRatio ?? 0;
-    values[base + 3] = loco.hoverHeightUpwardForce ?? Number.NaN;
-    values[base + 4] = loco.hoverHeightUpwardForceRandomizationAmount ?? 0;
-    values[base + 5] = loco.hoverHeightUpwardForceEMA ?? 0;
-    values[base + 6] = loco.groundFriction ?? 0;
-    values[base + 7] = loco.airFriction ?? 0;
-    values[base + 8] = loco.waterForce ?? 0;
-    values[base + 9] = loco.waterTraction ?? 0;
-    values[base + 10] = loco.waterFriction ?? 0;
-    values[base + 11] = loco.swimGravityCounterUpwardForceRatio ?? 0;
-    values[base + 12] = loco.swimHeightUpwardForce ?? 0;
-    values[base + 13] = loco.swimHeightUpwardForceRandomizationAmount ?? 0;
-    values[base + 14] = loco.swimHeightUpwardForceEMA ?? 0;
-    values[base + 15] = dragRateFromVelocityFrictionPer60HzFrame(blueprint.airFrictionPer60HzFrame);
+    values[base + 0] = ground.force;
+    values[base + 1] = ground.traction;
+    values[base + 2] = air.gravityCounterUpwardForceRatio;
+    values[base + 3] = air.heightUpwardForce;
+    values[base + 4] = air.heightUpwardForceRandomizationAmount;
+    values[base + 5] = air.heightUpwardForceEMA;
+    values[base + 6] = ground.friction;
+    values[base + 7] = air.friction;
+    values[base + 8] = water.force;
+    values[base + 9] = water.traction;
+    values[base + 10] = water.friction;
+    values[base + 11] = water.gravityCounterUpwardForceRatio;
+    values[base + 12] = water.heightUpwardForce;
+    values[base + 13] = water.heightUpwardForceRandomizationAmount;
+    values[base + 14] = water.heightUpwardForceEMA;
+    values[base + 15] = air.force;
+    values[base + 16] = air.traction;
     flags[code] =
       (loco.forwardForceRequiresFacing ? UF_FLAG_FORWARD_THRUST_REQUIRES_FACING : 0) |
       (loco.driveForceScalesWithFacing ? UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING : 0);
@@ -286,7 +287,7 @@ export class UnitForceSystem {
       // unit) keep their exact pre-profile UF_FLAG_IN_WATER and stay byte-
       // identical.
       const unitIsSwimmer =
-        (loco.waterForce ?? 0) > 0 || (loco.swimHeightUpwardForce ?? 0) > 0;
+        loco.physics.water.force > 0 || loco.physics.water.heightUpwardForce > 0;
       // Ground/air/water friction, water force/traction, the swim family
       // and the air angular damping rate are blueprint constants filled by
       // the kernel from the profile table.
@@ -317,6 +318,8 @@ export class UnitForceSystem {
       const hasThrustDir = dirLenSq > 0.0001;
       if (hasThrustDir) flags |= UF_FLAG_HAS_THRUST;
       const thrustInputMag = hasThrustDir ? DMath.sqrt(dirLenSq) : 0;
+
+      if (surfaceContact) flags |= UF_FLAG_ON_GROUND;
 
       const liftLocomotionActive = isAirborneLocomotion && !buildInProgress;
       if (isFlying && liftLocomotionActive) flags |= UF_FLAG_IS_FLYING;
@@ -370,7 +373,7 @@ export class UnitForceSystem {
           externalForce === null &&
           !hasAngularMotionForSleep;
         const randAmount =
-          unit.locomotion.hoverHeightUpwardForceRandomizationAmount ?? 0;
+          unit.locomotion.physics.air.heightUpwardForceRandomizationAmount;
         if (!willRustSkipSleeping && randAmount > 0) {
           _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = this.world.rng.next();
         }
@@ -440,8 +443,8 @@ export class UnitForceSystem {
       // non-zero swim randomization + force, body not sleep-skipped). For
       // non-swimmers swimForce is 0, so the RNG stream is untouched.
       if ((flags & UF_FLAG_IN_WATER) !== 0) {
-        const swimRand = loco.swimHeightUpwardForceRandomizationAmount ?? 0;
-        const swimForce = loco.swimHeightUpwardForce ?? 0;
+        const swimRand = loco.physics.water.heightUpwardForceRandomizationAmount;
+        const swimForce = loco.physics.water.heightUpwardForce;
         if (swimRand > 0 && swimForce > 0) {
           // Mirror the kernel sleep-skip (isFlying is always false on the
           // in-water paths) so RNG advances in lockstep across peers.
@@ -551,13 +554,14 @@ export class UnitForceSystem {
       ) {
         const smoothedHoverForce = _forceRows[base + UF_ROW_HOVER_SMOOTHED_FORCE];
         unit.hoverHeightUpwardForceSmoothed =
-          (unit.locomotion.hoverHeightUpwardForceEMA ?? 0) > 0 && Number.isFinite(smoothedHoverForce)
+          unit.locomotion.physics.air.heightUpwardForceEMA > 0 &&
+          Number.isFinite(smoothedHoverForce)
             ? smoothedHoverForce
             : null;
       }
 
       if (
-        (unit.locomotion.swimHeightUpwardForceEMA ?? 0) > 0 &&
+        unit.locomotion.physics.water.heightUpwardForceEMA > 0 &&
         (outFlags & UF_OUT_MOVEMENT_ACCEL) !== 0
       ) {
         // Persist the swim-lift EMA accumulator. When the unit was not
@@ -701,13 +705,19 @@ export class UnitForceSystem {
   ): SupportSurfaceContact {
     const x = body.x;
     const y = body.y;
+    const terrainBedNormal = this.world.getCachedTerrainBedNormal(x, y);
     const terrainSurface = this.world.writeTerrainSupportSurfaceAt(
       x,
       y,
-      this.world.getGroundZ(x, y),
-      this.world.getCachedSurfaceNormal(x, y),
+      this.world.getTerrainBedZ(x, y),
+      terrainBedNormal,
       _forceTerrainSurface,
     );
+    if (terrainSurface.materialKind === 'water') {
+      terrainSurface.normalX = terrainBedNormal.nx;
+      terrainSurface.normalY = terrainBedNormal.ny;
+      terrainSurface.normalZ = terrainBedNormal.nz;
+    }
     return this.physics.sampleSupportSurface(body, terrainSurface, out);
   }
 

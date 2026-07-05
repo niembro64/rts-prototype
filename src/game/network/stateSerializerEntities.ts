@@ -685,7 +685,15 @@ function resetEntitySnapshotWireSource(): void {
 }
 
 function fireStateToWireCode(value: UnitSub['fireState']): number {
-  return value === 'holdFire' ? 2 : value === 'returnFire' ? 1 : 0;
+  return value === 'fireAtAll'
+    ? 4
+    : value === 'defend'
+      ? 3
+      : value === 'holdFire'
+        ? 2
+        : value === 'returnFire'
+          ? 1
+          : 0;
 }
 
 function trajectoryModeToWireCode(value: UnitSub['trajectoryMode']): number {

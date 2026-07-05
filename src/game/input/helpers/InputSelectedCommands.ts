@@ -39,6 +39,8 @@ function nextCombatFireState(state: CombatFireState): CombatFireState {
     case 'fireAtWill': return 'returnFire';
     case 'returnFire': return 'holdFire';
     case 'holdFire': return 'fireAtWill';
+    case 'defend': return 'holdFire';
+    case 'fireAtAll': return 'holdFire';
   }
 }
 

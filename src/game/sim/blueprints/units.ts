@@ -40,7 +40,6 @@ const UNIT_EXPLICIT_FIELDS = [
   'base',
   'supportSurface',
   'sensors',
-  'airFrictionPer60HzFrame',
   'legAttachHeightFrac',
   'suspension',
   'builder',
@@ -67,9 +66,9 @@ function resolveInlineLocomotion(
       `Invalid unit blueprint ${unitBlueprintId}: unknown locomotion.pathfindingBlueprintId "${locomotion.pathfindingBlueprintId}"`,
     );
   }
-  if (!locomotion.physics || locomotion.physics.driveForce <= 0) {
+  if (!locomotion.physics || typeof locomotion.physics !== 'object') {
     throw new Error(
-      `Invalid unit blueprint ${unitBlueprintId}: locomotion physics.driveForce must be positive`,
+      `Invalid unit blueprint ${unitBlueprintId}: locomotion missing physics`,
     );
   }
   if (
@@ -80,10 +79,12 @@ function resolveInlineLocomotion(
       `Invalid unit blueprint ${unitBlueprintId}: locomotion physics.maxSlopeDeg moved to pathfindingConfig.json`,
     );
   }
-  return {
+  const resolved = {
     ...locomotion,
     pathfinding,
   } as LocomotionBlueprint;
+  createUnitLocomotion(resolved);
+  return resolved;
 }
 
 function buildUnitBlueprints(): Record<string, UnitBlueprint> {
@@ -107,15 +108,6 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
         radius: blueprint.radius,
       },
     );
-    if (
-      !Number.isFinite(blueprint.airFrictionPer60HzFrame) ||
-      blueprint.airFrictionPer60HzFrame < 0 ||
-      blueprint.airFrictionPer60HzFrame >= 1
-    ) {
-      throw new Error(
-        `Invalid unit blueprint ${id}: airFrictionPer60HzFrame must be a finite value in [0, 1)`,
-      );
-    }
     for (const mount of blueprint.turrets) {
       const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
       if (!turretBlueprint) {

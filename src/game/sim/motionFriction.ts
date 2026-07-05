@@ -56,3 +56,11 @@ export function dragCoefficientFromVelocityFrictionPer60HzFrame(
   const dragRate = dragRateFromVelocityFrictionPer60HzFrame(frictionPer60HzFrame, scale);
   return Number.isFinite(dragRate) && dragRate > 0 ? dragRate * mass : 0;
 }
+
+export function dragCoefficientFromDragRate(
+  dragRate: number,
+  mass: number,
+): number {
+  if (!Number.isFinite(mass) || mass <= 1e-6) return 0;
+  return Number.isFinite(dragRate) && dragRate > 0 ? dragRate * mass : 0;
+}

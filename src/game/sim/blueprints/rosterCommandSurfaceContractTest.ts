@@ -261,6 +261,7 @@ const BAR_EQUIVALENT_FACTORY_SLOT_INDEX = new Map<UnitBlueprintId, number>([
   ['unitJackal', 3],
   ['unitBadger', 5],
   ['unitMongoose', 6],
+  ['unitSeaTurtle', 8],
   ['unitTick', BAR_GRID_SLOT_COUNT + 3],
   ['unitTarantula', BAR_GRID_SLOT_COUNT + 6],
   ['unitConstructionDrone', BAR_GRID_SLOT_COUNT * 2],
@@ -276,6 +277,7 @@ const BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
   'unitJackal',
   'unitBadger',
   'unitMongoose',
+  'unitSeaTurtle',
   'unitTick',
   'unitTarantula',
   'unitConstructionDrone',
@@ -297,6 +299,7 @@ const BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
   'unitLynx',
   'unitBadger',
   'unitMongoose',
+  'unitSeaTurtle',
   'unitTarantula',
   'unitTransport',
 ];
@@ -557,7 +560,9 @@ export function runRosterCommandSurfaceContractTest(): void {
       );
       assertSameMembers(
         'towerFabricator authored BAR-equivalent factory roster',
-        allowedUnitBlueprintIds,
+        allowedUnitBlueprintIds.filter((unitBlueprintId) =>
+          BAR_EQUIVALENT_FACTORY_SLOT_INDEX.has(unitBlueprintId),
+        ),
         BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER,
       );
       const barGridFactoryUnitCells = buildBarGridFactoryUnitBlueprintCells(allowedUnitBlueprintIds);
@@ -594,38 +599,40 @@ export function runRosterCommandSurfaceContractTest(): void {
           barGridFactoryUnitCells[(BAR_GRID_SLOT_COUNT * 2) + 6] === null,
         'towerFabricator BAR-grid factory cells must keep empty BAR final labGrids vehicle/bot/air slots instead of compacting options',
       );
-      assertContract(
-        !buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype').includes('unitLoris'),
-        'towerFabricator prototype factory menu must not expose unitLoris because it has no BAR T1 analogue',
-      );
-      assertContract(
-        !barGridFactoryUnitBlueprintIds.includes('unitLoris'),
-        'towerFabricator BAR-grid factory menu must hide unitLoris because it has no BAR T1 analogue',
-      );
-      assertContract(
-        resolveFactoryProductionPresetReplay({
-          selectedUnitBlueprintId: 'unitLoris',
-          repeatProduction: true,
-          productionQueue: [],
-        }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype'))) === null,
-        'towerFabricator prototype factory presets must reject unitLoris because it is no longer an authored BAR-equivalent build option',
-      );
-      assertContract(
-        resolveFactoryProductionPresetReplay({
-          selectedUnitBlueprintId: 'unitLoris',
-          repeatProduction: true,
-          productionQueue: [],
-        }, new Set(barGridFactoryUnitBlueprintIds)) === null,
-        'towerFabricator BAR-grid factory presets must reject hidden unitLoris',
-      );
-      assertContract(
-        resolveFactoryProductionPresetReplay({
-          selectedUnitBlueprintId: 'unitLoris',
-          repeatProduction: true,
-          productionQueue: [],
-        }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-legacy'))) === null,
-        'towerFabricator BAR-legacy factory presets must reject hidden unitLoris',
-      );
+      for (const hiddenNonBarUnitBlueprintId of ['unitLoris'] as const) {
+        assertContract(
+          !buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype').includes(hiddenNonBarUnitBlueprintId),
+          `towerFabricator prototype factory menu must not expose ${hiddenNonBarUnitBlueprintId} because it has no BAR T1 analogue`,
+        );
+        assertContract(
+          !barGridFactoryUnitBlueprintIds.includes(hiddenNonBarUnitBlueprintId),
+          `towerFabricator BAR-grid factory menu must hide ${hiddenNonBarUnitBlueprintId} because it has no BAR T1 analogue`,
+        );
+        assertContract(
+          resolveFactoryProductionPresetReplay({
+            selectedUnitBlueprintId: hiddenNonBarUnitBlueprintId,
+            repeatProduction: true,
+            productionQueue: [],
+          }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'prototype'))) === null,
+          `towerFabricator prototype factory presets must reject ${hiddenNonBarUnitBlueprintId} because it is not an authored BAR-equivalent build option`,
+        );
+        assertContract(
+          resolveFactoryProductionPresetReplay({
+            selectedUnitBlueprintId: hiddenNonBarUnitBlueprintId,
+            repeatProduction: true,
+            productionQueue: [],
+          }, new Set(barGridFactoryUnitBlueprintIds)) === null,
+          `towerFabricator BAR-grid factory presets must reject hidden ${hiddenNonBarUnitBlueprintId}`,
+        );
+        assertContract(
+          resolveFactoryProductionPresetReplay({
+            selectedUnitBlueprintId: hiddenNonBarUnitBlueprintId,
+            repeatProduction: true,
+            productionQueue: [],
+          }, new Set(buildFactoryUnitBlueprintIdsForPreset(allowedUnitBlueprintIds, 'bar-legacy'))) === null,
+          `towerFabricator BAR-legacy factory presets must reject hidden ${hiddenNonBarUnitBlueprintId}`,
+        );
+      }
       assertContract(
         buildBarClassicFactoryUnitBlueprintIds(allowedUnitBlueprintIds).join('|') ===
           BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER.join('|'),

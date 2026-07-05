@@ -106,11 +106,7 @@ fn movement_blocked_by_hold(flags: u32) -> bool {
 /// their footprint rectangle (aabb halves = width/2, height/2), units
 /// to their collision-radius disc, anything else to the raw point.
 #[inline]
-fn slab_build_target_distance(
-    slab: &EntityStateSlab,
-    self_slot: usize,
-    target_slot: usize,
-) -> f64 {
+fn slab_build_target_distance(slab: &EntityStateSlab, self_slot: usize, target_slot: usize) -> f64 {
     let bx = slab.pos_x[self_slot];
     let by = slab.pos_y[self_slot];
     let tx = slab.pos_x[target_slot];
@@ -224,7 +220,13 @@ pub fn unit_action_plan_batch(
     for i in 0..count {
         let action = action_type[i];
         let f = flags[i]
-            | resolve_range_flag(slab, range_kind[i], slots[i], target_slot[i], range_param[i]);
+            | resolve_range_flag(
+                slab,
+                range_kind[i],
+                slots[i],
+                target_slot[i],
+                range_param[i],
+            );
         flags[i] = f;
         out_plan[i] = if action == ACTION_TYPE_NONE {
             UNIT_ACTION_PLAN_IDLE_LOITER

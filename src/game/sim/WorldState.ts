@@ -253,6 +253,12 @@ export class WorldState {
     return this.supportSurfaceSampler.getGroundZ(x, y);
   }
 
+  /** Raw terrain mesh height under water as well as on land. Physics uses this
+   *  as solid ground; gameplay surface queries should keep using getGroundZ(). */
+  getTerrainBedZ(x: number, y: number): number {
+    return this.supportSurfaceSampler.getTerrainBedZ(x, y);
+  }
+
   writeTerrainSupportSurfaceAt(
     x: number,
     y: number,
@@ -287,6 +293,10 @@ export class WorldState {
 
   getCachedSurfaceNormal(x: number, y: number): SurfaceNormal {
     return this.supportSurfaceSampler.getCachedSurfaceNormal(x, y);
+  }
+
+  getCachedTerrainBedNormal(x: number, y: number): SurfaceNormal {
+    return this.supportSurfaceSampler.getCachedTerrainBedNormal(x, y);
   }
 
   private rebuildCachesIfNeeded(): void {

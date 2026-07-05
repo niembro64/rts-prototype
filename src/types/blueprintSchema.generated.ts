@@ -441,18 +441,20 @@ export type LegConfig = {
   leftSide: LegLayoutEntry[];
 };
 
-export type LocomotionPhysics = {
-  driveForce: number;
+export type LocomotionMediumPhysics = {
+  force: number;
   traction: number;
-  groundFriction?: number;
-  airFriction?: number;
-  waterForce?: number;
-  waterTraction?: number;
-  waterFriction?: number;
-  swimGravityCounterUpwardForceRatio?: number;
-  swimHeightUpwardForce?: number;
-  swimHeightUpwardForceRandomizationAmount?: number;
-  swimHeightUpwardForceEMA?: number;
+  friction: number;
+  gravityCounterUpwardForceRatio: number;
+  heightUpwardForce: number;
+  heightUpwardForceRandomizationAmount: number;
+  heightUpwardForceEMA: number;
+};
+
+export type LocomotionPhysics = {
+  ground: LocomotionMediumPhysics;
+  air: LocomotionMediumPhysics;
+  water: LocomotionMediumPhysics;
 };
 
 export type PathfindingTerrainMode = 'land' | 'anywhere';
@@ -464,10 +466,6 @@ export type PathfindingBlueprint = {
 };
 
 export type HoverConfig = {
-  gravityCounterUpwardForceRatio: number;
-  hoverHeightUpwardForce: number;
-  hoverHeightUpwardForceRandomizationAmount?: number;
-  hoverHeightUpwardForceEMA?: number;
   fanDistX: number;
   fanDistY: number;
   fanPositionRadius?: number;
@@ -483,10 +481,6 @@ export type HoverConfig = {
 };
 
 export type FlyingConfig = {
-  gravityCounterUpwardForceRatio: number;
-  hoverHeightUpwardForce: number;
-  hoverHeightUpwardForceRandomizationAmount?: number;
-  hoverHeightUpwardForceEMA?: number;
   wingEnabled?: boolean;
   wingSpan?: number;
   wingChord?: number;
@@ -673,7 +667,6 @@ export type UnitBlueprint = {
   fullVisionRadius: number;
   sensors: SensorCapabilityConfig;
   mass: number;
-  airFrictionPer60HzFrame: number;
   cost: ResourceCost;
   turrets: TurretMount[];
   bodyShape: UnitBodyShape;

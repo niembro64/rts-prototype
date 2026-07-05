@@ -279,7 +279,7 @@ type UnitFixture = BasicEntityFixture & {
     orientation?: { x: number; y: number; z: number; w: number };
     angularVelocity3?: { x: number; y: number; z: number };
     fireEnabled?: false;
-    fireState?: 'fireAtWill' | 'returnFire' | 'holdFire';
+    fireState?: 'fireAtWill' | 'returnFire' | 'holdFire' | 'defend' | 'fireAtAll';
     isCommander?: true;
     buildTargetId?: number | null;
     actions?: ActionFixture[];

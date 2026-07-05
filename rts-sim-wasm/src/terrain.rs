@@ -2849,6 +2849,22 @@ pub fn terrain_get_surface_height(x: f64, z: f64) -> f64 {
     }
 }
 
+/// Sample raw terrain-bed height at world-space (x, z), without clamping
+/// below-water terrain up to the water plane. Unit physics uses this as the
+/// universal solid-ground contact height.
+#[wasm_bindgen]
+pub fn terrain_get_bed_height(x: f64, z: f64) -> f64 {
+    let t = terrain_grid();
+    if !t.installed {
+        return f64::NAN;
+    }
+    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
+    match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+        Some(sample) => terrain_height_from_triangle_sample(sample),
+        None => f64::NAN,
+    }
+}
+
 /// Segment-vs-terrain line-of-sight test. Walks the line from
 /// (sx, sy, sz) to (tx, ty, tz) in `step_len`-spaced samples and
 /// returns:
@@ -3011,11 +3027,17 @@ pub fn fog_mark_circle_scanline_rgba(
 pub(crate) fn terrain_normal_from_triangle_sample(
     sample: TerrainTriangleSample,
 ) -> (f64, f64, f64) {
-    let (_, _, _, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
     let h0 = terrain_height_from_triangle_sample(sample);
     if h0 < TERRAIN_WATER_LEVEL {
         return (0.0, 0.0, 1.0);
     }
+    terrain_bed_normal_from_triangle_sample(sample)
+}
+
+pub(crate) fn terrain_bed_normal_from_triangle_sample(
+    sample: TerrainTriangleSample,
+) -> (f64, f64, f64) {
+    let (_, _, _, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
     // Triangle-plane normal — same math as terrainMeshNormalFromSample.
     let ux = bx - ax;
     let uy = bh - ah;
@@ -3074,12 +3096,34 @@ pub fn terrain_get_surface_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
     1
 }
 
-/// Batch terrain ground samples for pool-backed dynamic body slots.
+/// Sample raw terrain-bed normal at world-space (x, z). Unlike
+/// terrain_get_surface_normal, below-water samples return the terrain mesh
+/// normal instead of the flat water-surface normal.
+#[wasm_bindgen]
+pub fn terrain_get_bed_normal(x: f64, z: f64, out_buf: &mut [f64]) -> u32 {
+    debug_assert!(out_buf.len() >= 3);
+    let t = terrain_grid();
+    if !t.installed {
+        return 0;
+    }
+    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
+    let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+        Some(s) => s,
+        None => return 0,
+    };
+    let (nx, ny, nz) = terrain_bed_normal_from_triangle_sample(sample);
+    out_buf[0] = nx;
+    out_buf[1] = ny;
+    out_buf[2] = nz;
+    1
+}
+
+/// Batch terrain bed samples for pool-backed dynamic body slots.
 /// Writes `ground_z_out[i]` and `ground_normals_out[i * 3..i * 3 + 3]`
 /// for each `body_slots[i]`, using the body's current pool position
 /// and ground offset. Normals are only computed for slots at or near
-/// contact, preserving the JS integrator's "skip normal while airborne"
-/// rule. Returns 1 on a complete WASM sample; returns 0 if no terrain
+/// terrain-bed contact, preserving the JS integrator's "skip normal while
+/// airborne" rule. Returns 1 on a complete WASM sample; returns 0 if no terrain
 /// mesh is installed, a slot is invalid, or any triangle sample
 /// degenerates so JS can fall back to the compatibility sampler.
 #[wasm_bindgen]
@@ -3108,13 +3152,13 @@ pub fn terrain_sample_ground_for_slots(
             Some(s) => s,
             None => return 0,
         };
-        let ground_z = terrain_height_from_triangle_sample(sample).max(TERRAIN_WATER_LEVEL);
+        let ground_z = terrain_height_from_triangle_sample(sample);
         ground_z_out[i] = ground_z;
 
         let base = i * 3;
         let penetration = ground_z - (p.pos_z[slot] - p.ground_offset[slot]);
         if is_in_contact(penetration) {
-            let (nx, ny, nz) = terrain_normal_from_triangle_sample(sample);
+            let (nx, ny, nz) = terrain_bed_normal_from_triangle_sample(sample);
             ground_normals_out[base] = nx;
             ground_normals_out[base + 1] = ny;
             ground_normals_out[base + 2] = nz;

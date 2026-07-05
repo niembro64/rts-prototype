@@ -594,6 +594,7 @@ const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconI
   unitLynx: 'weapon',
   unitMammoth: 'weapon',
   unitMongoose: 'weapon',
+  unitSeaTurtle: 'weapon',
   unitQueenBee: 'weapon',
   unitQueenTick: 'weapon',
   unitTarantula: 'weapon',
@@ -747,6 +748,8 @@ function fireStateLabel(fireState: SelectionInfo['fireState']): string {
     case 'fireAtWill': return isBarHotkeyPreset.value ? 'Fire at will' : 'Fire';
     case 'returnFire': return isBarHotkeyPreset.value ? 'Return fire' : 'Return';
     case 'holdFire': return isBarHotkeyPreset.value ? 'Hold fire' : 'Hold';
+    case 'defend': return 'Defend';
+    case 'fireAtAll': return isBarHotkeyPreset.value ? 'Fire at all' : 'Fire all';
     case 'mixed': return 'Mixed';
   }
 }
@@ -756,6 +759,8 @@ function nextFireStateLabel(fireState: SelectionInfo['fireState']): string {
     case 'fireAtWill': return isBarHotkeyPreset.value ? 'Return fire' : 'Return';
     case 'returnFire': return isBarHotkeyPreset.value ? 'Hold fire' : 'Hold';
     case 'holdFire': return isBarHotkeyPreset.value ? 'Fire at will' : 'Fire';
+    case 'defend': return isBarHotkeyPreset.value ? 'Hold fire' : 'Hold';
+    case 'fireAtAll': return isBarHotkeyPreset.value ? 'Hold fire' : 'Hold';
     case 'mixed': return isBarHotkeyPreset.value ? 'Fire at will' : 'Fire';
   }
 }
@@ -765,6 +770,8 @@ function previousFireState(fireState: SelectionInfo['fireState']): CombatFireSta
     case 'fireAtWill': return 'holdFire';
     case 'holdFire': return 'returnFire';
     case 'returnFire': return 'fireAtWill';
+    case 'defend': return 'fireAtWill';
+    case 'fireAtAll': return 'fireAtWill';
     case 'mixed': return 'holdFire';
   }
 }
@@ -842,6 +849,12 @@ function fireStateLights(fireState: SelectionInfo['fireState']): BarStateLight[]
     case 'holdFire': return stateLights(0, THREE_STATE_LIGHT_TONES);
     case 'returnFire': return stateLights(1, THREE_STATE_LIGHT_TONES);
     case 'fireAtWill': return stateLights(2, THREE_STATE_LIGHT_TONES);
+    case 'defend': return stateLights(1, THREE_STATE_LIGHT_TONES);
+    case 'fireAtAll': return THREE_STATE_LIGHT_TONES.map((tone, index) => ({
+      key: String(index),
+      active: true,
+      tone,
+    }));
     case 'mixed': return stateLights(null, THREE_STATE_LIGHT_TONES);
   }
 }

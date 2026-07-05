@@ -1528,7 +1528,15 @@ function unpackUnit(row: unknown[]): UnitSub {
   }
   if ((flags & UNIT_FLAG_FIRE_STATE_PRESENT) !== 0) {
     const code = row[i++] as number;
-    unit.fireState = code === 2 ? 'holdFire' : code === 1 ? 'returnFire' : 'fireAtWill';
+    unit.fireState = code === 4
+      ? 'fireAtAll'
+      : code === 3
+        ? 'defend'
+        : code === 2
+          ? 'holdFire'
+          : code === 1
+            ? 'returnFire'
+            : 'fireAtWill';
   }
   if ((flags & UNIT_FLAG_CLOAK_STATE_PRESENT) !== 0) {
     const code = row[i++] as number;

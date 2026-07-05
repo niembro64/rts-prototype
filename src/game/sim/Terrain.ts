@@ -43,6 +43,8 @@ export {
 } from './terrain/terrainBuildability';
 export {
   applySurfaceTilt,
+  getTerrainBedHeight,
+  getTerrainBedNormal,
   getSurfaceHeight,
   getSurfaceNormal,
   isFarFromWater,

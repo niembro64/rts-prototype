@@ -887,7 +887,10 @@ mod tests {
         entity_state_set_body_slot(4, sleeping_unit_body as i32);
 
         let mut all_awake = [0_u32; 8];
-        assert_eq!(entity_state_collect_awake_body_entity_slots(&mut all_awake), 3);
+        assert_eq!(
+            entity_state_collect_awake_body_entity_slots(&mut all_awake),
+            3
+        );
         assert_eq!(&all_awake[..3], &[1, 2, 3]);
 
         let mut awake_units = [0_u32; 8];

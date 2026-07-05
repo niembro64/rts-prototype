@@ -10,7 +10,7 @@ defineProps<{
   isMobile: boolean;
   showLobby: boolean;
   spectateMode: boolean;
-  uiChromeVisible: boolean;
+  hudVisible: boolean;
   mobileBarsVisible: boolean;
   gameStarted: boolean;
   currentBattleMode: BattleMode;
@@ -38,13 +38,13 @@ function handleCameraTutorialDone(): void {
 
 <template>
   <CameraTutorial
-    v-if="uiChromeVisible && gameStarted && currentBattleMode === 'real' && !cameraTutorialDone"
+    v-if="hudVisible && gameStarted && currentBattleMode === 'real' && !cameraTutorialDone"
     :get-orbit="getOrbit"
     @done="handleCameraTutorialDone"
   />
 
   <button
-    v-if="uiChromeVisible && isMobile"
+    v-if="hudVisible && isMobile"
     class="mobile-bars-toggle"
     :class="{ active: mobileBarsVisible }"
     :title="mobileBarsVisible ? 'Hide Controls' : 'Show Controls'"

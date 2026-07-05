@@ -329,6 +329,25 @@ export function runCommandSanitizerContractTest(): void {
     returnFireState.fireState === 'returnFire' && returnFireState.enabled === true,
     'setFireEnabled must accept and normalize the return-fire state',
   );
+  const defendFireState = sanitizeRequired<SetFireEnabledCommand>(world, {
+    type: 'setFireEnabled',
+    tick: 7,
+    entityIds: [7],
+    fireState: 'defend',
+  });
+  const fireAtAllState = sanitizeRequired<SetFireEnabledCommand>(world, {
+    type: 'setFireEnabled',
+    tick: 7,
+    entityIds: [7],
+    fireState: 'fireAtAll',
+  });
+  assertContract(
+    defendFireState.fireState === 'defend' &&
+      defendFireState.enabled === true &&
+      fireAtAllState.fireState === 'fireAtAll' &&
+      fireAtAllState.enabled === true,
+    'setFireEnabled must accept BAR Defend and Fire-at-all direct states',
+  );
 
   const cloakState = sanitizeRequired<SetCloakStateCommand>(world, {
     type: 'setCloakState',

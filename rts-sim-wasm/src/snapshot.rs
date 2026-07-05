@@ -8053,8 +8053,8 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_X] = 0.0;
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
-        rows[UF_ROW_DRIVE_FORCE] = 100.0;
-        rows[UF_ROW_TRACTION] = traction;
+        rows[UF_ROW_AIR_FORCE] = 100.0;
+        rows[UF_ROW_AIR_TRACTION] = traction;
         rows[UF_ROW_GRAVITY_COUNTER_RATIO] = 0.0;
         rows[UF_ROW_HOVER_HEIGHT_FORCE] = 100.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
@@ -8117,8 +8117,8 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_X] = 0.0;
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
-        rows[UF_ROW_DRIVE_FORCE] = 100.0;
-        rows[UF_ROW_TRACTION] = 1.0;
+        rows[UF_ROW_GROUND_FORCE] = 100.0;
+        rows[UF_ROW_GROUND_TRACTION] = 1.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_NORMAL_Z] = 1.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
@@ -8174,8 +8174,8 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_X] = 0.0;
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = rotation;
-        rows[UF_ROW_DRIVE_FORCE] = 100.0;
-        rows[UF_ROW_TRACTION] = 1.0;
+        rows[UF_ROW_GROUND_FORCE] = 100.0;
+        rows[UF_ROW_GROUND_TRACTION] = 1.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_NORMAL_Z] = 1.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
@@ -8229,13 +8229,13 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_X] = 0.0;
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
-        rows[UF_ROW_DRIVE_FORCE] = 2000.0;
-        rows[UF_ROW_TRACTION] = 0.2;
+        rows[UF_ROW_AIR_FORCE] = 2000.0;
+        rows[UF_ROW_AIR_TRACTION] = 0.2;
         rows[UF_ROW_GRAVITY_COUNTER_RATIO] = 0.05;
         rows[UF_ROW_HOVER_HEIGHT_FORCE] = 380.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
-        rows[UF_ROW_AIR_ANGULAR_DAMPING_RATE] = -(1.0_f64 - 0.2_f64).ln() * 60.0;
+        rows[UF_ROW_AIR_FRICTION] = -(1.0_f64 - 0.2_f64).ln() * 60.0;
 
         for _ in 0..ticks {
             out_flags[0] = 0;
@@ -8299,8 +8299,8 @@ mod sim_kernel_tests {
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_DIR_X] = if has_thrust { 1.0 } else { 0.0 };
         rows[UF_ROW_DIR_Y] = 0.0;
-        rows[UF_ROW_DRIVE_FORCE] = 850.0;
-        rows[UF_ROW_TRACTION] = 0.75;
+        rows[UF_ROW_GROUND_FORCE] = 850.0;
+        rows[UF_ROW_GROUND_TRACTION] = 0.75;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_NORMAL_Z] = 1.0;
         rows[UF_ROW_WATER_FORCE] = water_force;
@@ -8482,6 +8482,26 @@ mod sim_kernel_tests {
         assert!(
             az.abs() < 1e-12,
             "zero swimHeightUpwardForce should not inject vertical lift"
+        );
+    }
+
+    #[test]
+    pub(crate) fn submerged_ground_contact_adds_bed_locomotion_to_water_medium() {
+        let _guard = lock_tests();
+        let (open_ax, _, _, _) =
+            run_submerged_unit_force(4.0, (0.0, 0.0, 0.0), true, 1200.0, 0.5, 0.0, 0.0, 0.25);
+        let (bed_ax, bed_ay, bed_az, out_flags) =
+            run_submerged_unit_force(0.0, (0.0, 0.0, 0.0), true, 1200.0, 0.5, 0.0, 0.0, 0.25);
+
+        assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert!(
+            bed_ax > open_ax * 1.5,
+            "touching the terrain bed should add ground traction while water drive remains active",
+        );
+        assert!(bed_ay.abs() < 1e-12);
+        assert!(
+            bed_az.abs() < 1e-12,
+            "flat bed ground drive plus zero swim lift should stay horizontal",
         );
     }
 

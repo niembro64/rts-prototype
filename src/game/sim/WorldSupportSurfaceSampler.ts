@@ -2,6 +2,8 @@ import { LAND_CELL_SIZE } from '../../config';
 import {
   getSurfaceHeight,
   getSurfaceNormal,
+  getTerrainBedHeight,
+  getTerrainBedNormal,
   getTerrainVersion,
   isWaterAt,
 } from './Terrain';
@@ -23,6 +25,7 @@ export type SupportSurfaceQueryOptions = SupportSurfaceIndexQueryOptions;
 
 export class WorldSupportSurfaceSampler {
   private surfaceNormalCache = new Map<number, SurfaceNormal>();
+  private terrainBedNormalCache = new Map<number, SurfaceNormal>();
   private supportSurfaceIndex = new SupportSurfaceIndex();
 
   constructor(
@@ -32,6 +35,10 @@ export class WorldSupportSurfaceSampler {
 
   getGroundZ(x: number, y: number): number {
     return getSurfaceHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
+  }
+
+  getTerrainBedZ(x: number, y: number): number {
+    return getTerrainBedHeight(x, y, this.mapWidth, this.mapHeight, LAND_CELL_SIZE);
   }
 
   writeTerrainSupportSurfaceAt(
@@ -95,6 +102,20 @@ export class WorldSupportSurfaceSampler {
         LAND_CELL_SIZE,
       );
       this.surfaceNormalCache.set(key, normal);
+    }
+    return normal;
+  }
+
+  getCachedTerrainBedNormal(x: number, y: number): SurfaceNormal {
+    const key = this.surfaceNormalCacheKey(x, y);
+    let normal = this.terrainBedNormalCache.get(key);
+    if (!normal) {
+      normal = getTerrainBedNormal(
+        x, y,
+        this.mapWidth, this.mapHeight,
+        LAND_CELL_SIZE,
+      );
+      this.terrainBedNormalCache.set(key, normal);
     }
     return normal;
   }

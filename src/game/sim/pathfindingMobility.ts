@@ -8,6 +8,7 @@ import type { UnitLocomotion } from './types';
 import {
   LOCOMOTION_FORCE_SCALE,
   getLocomotionForceProfile,
+  getLocomotionGroundDrivePhysics,
 } from './locomotion';
 import {
   PATHFINDING_FORCE_SAFETY_RATIO,
@@ -53,8 +54,9 @@ export function computeLocomotionClimbProfile(
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
   }
 
+  const groundPhysics = getLocomotionGroundDrivePhysics(locomotion);
   const forceProfile = getLocomotionForceProfile(
-    locomotion,
+    groundPhysics,
     UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
     thrustMultiplier,
     LOCOMOTION_FORCE_SCALE,
@@ -64,7 +66,7 @@ export function computeLocomotionClimbProfile(
     forceProfile.tractionForceMagnitude * PATHFINDING_FORCE_SAFETY_RATIO;
   const safeDriveAccel = safeDriveForceMagnitude * 1_000_000 / effectiveMass;
   const driveLimitedSlopeDeg = Math.asin(clamp01(safeDriveAccel / GRAVITY)) * RAD_TO_DEG;
-  const tractionLimitedSlopeDeg = Math.atan(Math.max(0, locomotion.traction)) * RAD_TO_DEG;
+  const tractionLimitedSlopeDeg = Math.atan(Math.max(0, groundPhysics.traction)) * RAD_TO_DEG;
   const stabilityLimitedSlopeDeg = PATHFINDING_STABILITY_MAX_SLOPE_DEG;
   const maxSlopeDeg = Math.max(
     0,

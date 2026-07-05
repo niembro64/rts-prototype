@@ -23,7 +23,6 @@
       "scanRadius": 0
     },
     "mass": 45,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 60,
       "metal": 60
@@ -61,8 +60,33 @@
       "type": "wheels",
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
-        "driveForce": 55,
-        "traction": 0.45
+        "ground": {
+          "force": 55,
+          "traction": 0.45,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "wheelDistX": 0.6,
@@ -118,7 +142,6 @@
       "scanRadius": 0
     },
     "mass": 75,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 110,
       "metal": 110
@@ -156,8 +179,33 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 50,
-        "traction": 0.75
+        "ground": {
+          "force": 50,
+          "traction": 0.75,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "treadOffset": 0.8,
@@ -212,7 +260,6 @@
       "scanRadius": 0
     },
     "mass": 220,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 520,
       "metal": 520
@@ -258,8 +305,33 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 130,
-        "traction": 1
+        "ground": {
+          "force": 130,
+          "traction": 1,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "upperThickness": 2.5,
@@ -336,7 +408,6 @@
       "scanRadius": 0
     },
     "mass": 430,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 430,
       "metal": 430
@@ -374,8 +445,33 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 160,
-        "traction": 0.75
+        "ground": {
+          "force": 160,
+          "traction": 0.75,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "treadOffset": 0.85,
@@ -430,7 +526,6 @@
       "scanRadius": 0
     },
     "mass": 300,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 360,
       "metal": 360
@@ -468,8 +563,33 @@
       "type": "wheels",
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
-        "driveForce": 250,
-        "traction": 0.45
+        "ground": {
+          "force": 250,
+          "traction": 0.45,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "wheelDistX": 0.65,
@@ -525,7 +645,6 @@
       "scanRadius": 0
     },
     "mass": 29.5,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 50,
       "metal": 50
@@ -561,8 +680,33 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 25,
-        "traction": 1
+        "ground": {
+          "force": 25,
+          "traction": 1,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "upperThickness": 2,
@@ -639,7 +783,6 @@
       "scanRadius": 0
     },
     "mass": 1500,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 1600,
       "metal": 1600
@@ -677,8 +820,33 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 620,
-        "traction": 0.75
+        "ground": {
+          "force": 620,
+          "traction": 0.75,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "treadOffset": 0.9,
@@ -733,7 +901,6 @@
       "scanRadius": 0
     },
     "mass": 3400,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 5200,
       "metal": 5200
@@ -789,8 +956,33 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 900,
-        "traction": 1
+        "ground": {
+          "force": 900,
+          "traction": 1,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "upperThickness": 9,
@@ -877,7 +1069,6 @@
       "scanRadius": 0
     },
     "mass": 2600,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 6200,
       "metal": 6200
@@ -999,8 +1190,33 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 920,
-        "traction": 1
+        "ground": {
+          "force": 920,
+          "traction": 1,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "upperThickness": 7,
@@ -1077,7 +1293,6 @@
       "scanRadius": 0
     },
     "mass": 2100,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 3400,
       "metal": 3400
@@ -1114,13 +1329,33 @@
       "type": "treads",
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
-        "driveForce": 850,
-        "traction": 0.75,
-        "waterForce": 1200,
-        "waterTraction": 0.5,
-        "waterFriction": 1.5,
-        "swimHeightUpwardForce": 12,
-        "swimGravityCounterUpwardForceRatio": 0.25
+        "ground": {
+          "force": 850,
+          "traction": 0.75,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 600,
+          "traction": 0.5,
+          "friction": 1.5,
+          "gravityCounterUpwardForceRatio": 0.25,
+          "heightUpwardForce": 12,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "treadOffset": 1.1,
@@ -1151,6 +1386,135 @@
     },
     "preventLockOnIfMyTeamIsAboveMe": true
   },
+  "unitSeaTurtle": {
+    "unitBlueprintId": "unitSeaTurtle",
+    "name": "Sea Turtle",
+    "shortName": "STL",
+    "hp": 1800,
+    "radius": {
+      "other": 28,
+      "hitbox": 24,
+      "collision": 48,
+      "shotArmingRadius": 48
+    },
+    "bodyCenterHeight": 14,
+    "supportSurface": {
+      "kind": "none"
+    },
+    "fullVisionRadius": 1200,
+    "sensors": {
+      "fullSightRadius": 1200,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "mass": 1500,
+    "cost": {
+      "energy": 2600,
+      "metal": 2600
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretGunBurst",
+        "mount": {
+          "x": 0.1,
+          "y": 0,
+          "z": 1.35
+        },
+        "hostDirected": true,
+        "requiredEngagedForFightStop": true
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.2,
+          "xFrac": 1.15,
+          "yFrac": 0.78,
+          "zFrac": 0.42
+        },
+        {
+          "kind": "circle",
+          "offsetForward": 0.55,
+          "radiusFrac": 0.32,
+          "yFrac": 0.32
+        }
+      ]
+    },
+    "hud": {
+      "barsOffsetAboveTop": 12
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHippo"
+    },
+    "locomotion": {
+      "type": "treads",
+      "pathfindingBlueprintId": "amphibiousAnywhere",
+      "physics": {
+        "ground": {
+          "force": 70,
+          "traction": 0.25,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 1350,
+          "traction": 1.1,
+          "friction": 1.2,
+          "gravityCounterUpwardForceRatio": 0.45,
+          "heightUpwardForce": 18,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
+      },
+      "config": {
+        "treadOffset": 0.9,
+        "treadLength": 1.8,
+        "treadWidth": 0.5,
+        "wheelRadius": 0.16,
+        "rotationSpeed": 0.8
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 2600,
+        "metal": 2600
+      },
+      "mass": 1500,
+      "health": 1800,
+      "deathExplosion": {
+        "radius": 56,
+        "force": 120000,
+        "damage": 1100
+      },
+      "radius": {
+        "other": 28,
+        "hitbox": 24,
+        "collision": 48,
+        "shotArmingRadius": 48
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
+  },
   "unitTarantula": {
     "unitBlueprintId": "unitTarantula",
     "name": "Tarantula",
@@ -1175,7 +1539,6 @@
       "scanRadius": 0
     },
     "mass": 70,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 330,
       "metal": 330
@@ -1224,8 +1587,33 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 140,
-        "traction": 1
+        "ground": {
+          "force": 140,
+          "traction": 1,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "upperThickness": 6.5,
@@ -1302,7 +1690,6 @@
       "scanRadius": 0
     },
     "mass": 180,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 600,
       "metal": 600
@@ -1345,8 +1732,33 @@
       "type": "treads",
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "driveForce": 220,
-        "traction": 0.75
+        "ground": {
+          "force": 220,
+          "traction": 0.75,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "treadOffset": 0.85,
@@ -1400,7 +1812,6 @@
       "scanRadius": 0
     },
     "mass": 40,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 150,
       "metal": 150
@@ -1436,14 +1847,35 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 60,
-        "traction": 1
+        "ground": {
+          "force": 60,
+          "traction": 0.5,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 60,
+          "traction": 1,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0.05,
+          "heightUpwardForce": 160,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.1
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 160,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.1,
         "fanDistX": 0.58,
         "fanDistY": 0.62,
         "fanLayout": "twin",
@@ -1498,7 +1930,6 @@
       "scanRadius": 0
     },
     "mass": 170,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 560,
       "metal": 560
@@ -1559,14 +1990,35 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 80,
-        "traction": 1
+        "ground": {
+          "force": 80,
+          "traction": 0.5,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 80,
+          "traction": 1,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0.05,
+          "heightUpwardForce": 500,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.9
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 500,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.9,
         "fanDistX": 0,
         "fanDistY": 2,
         "fanRadius": 1.4,
@@ -1621,7 +2073,6 @@
       "scanRadius": 0
     },
     "mass": 90,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 280,
       "metal": 240
@@ -1710,14 +2161,35 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 75,
-        "traction": 1
+        "ground": {
+          "force": 75,
+          "traction": 0.5,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 75,
+          "traction": 1,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0.05,
+          "heightUpwardForce": 230,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.5
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 230,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.5,
         "fanDistX": 0.58,
         "fanDistY": 0.58,
         "fanLayout": "triFront",
@@ -1771,7 +2243,6 @@
       "scanRadius": 0
     },
     "mass": 150,
-    "airFrictionPer60HzFrame": 0.2,
     "cost": {
       "energy": 800,
       "metal": 800
@@ -1814,14 +2285,35 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 2000,
-        "traction": 0.2
+        "ground": {
+          "force": 2000,
+          "traction": 0.05,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 2000,
+          "traction": 0.2,
+          "friction": 13.388613078852583,
+          "gravityCounterUpwardForceRatio": 0.05,
+          "heightUpwardForce": 380,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.3
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 380,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.3,
         "wingEnabled": false,
         "tailWingSpan": 2.9,
         "tailWingChord": 1.18,
@@ -1884,7 +2376,6 @@
       "scanRadius": 0
     },
     "mass": 40000,
-    "airFrictionPer60HzFrame": 0.005,
     "cost": {
       "energy": 12000,
       "metal": 12000
@@ -1947,14 +2438,35 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 6000,
-        "traction": 0.3
+        "ground": {
+          "force": 6000,
+          "traction": 0.075,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 6000,
+          "traction": 0.3,
+          "friction": 0.3007525094126572,
+          "gravityCounterUpwardForceRatio": 0.05,
+          "heightUpwardForce": 700,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.99
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 700,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.99,
         "wingSpan": 2.8,
         "wingChord": 0.62,
         "wingOffsetX": -0.08,
@@ -2023,7 +2535,6 @@
       "scanRadius": 0
     },
     "mass": 18000,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 14000,
       "metal": 14000
@@ -2099,14 +2610,35 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 20200,
-        "traction": 1
+        "ground": {
+          "force": 20200,
+          "traction": 0.5,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 20200,
+          "traction": 1,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0.05,
+          "heightUpwardForce": 760,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.99
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 760,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.99,
         "fanDistX": 0.56,
         "fanDistY": 0.62,
         "fanLayout": "triFront",
@@ -2160,7 +2692,6 @@
       "scanRadius": 0
     },
     "mass": 20000,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 15000,
       "metal": 15000
@@ -2235,14 +2766,35 @@
       "type": "flying",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 9000,
-        "traction": 0.45
+        "ground": {
+          "force": 9000,
+          "traction": 0.1125,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 9000,
+          "traction": 0.45,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0.05,
+          "heightUpwardForce": 780,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.99
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 780,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.99,
         "wingSpan": 2.85,
         "wingChord": 0.66,
         "wingOffsetX": -0.12,
@@ -2310,7 +2862,6 @@
       "scanRadius": 0
     },
     "mass": 220,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 500,
       "metal": 500
@@ -2357,14 +2908,35 @@
       "type": "hover",
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "driveForce": 110,
-        "traction": 1
+        "ground": {
+          "force": 110,
+          "traction": 0.5,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 110,
+          "traction": 1,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0.05,
+          "heightUpwardForce": 260,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.99
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
-        "gravityCounterUpwardForceRatio": 0.05,
-        "hoverHeightUpwardForce": 260,
-        "hoverHeightUpwardForceRandomizationAmount": 0.99,
-        "hoverHeightUpwardForceEMA": 0.99,
         "fanDistX": 0.72,
         "fanDistY": 0.8,
         "fanLayout": "quad",
@@ -2418,7 +2990,6 @@
       "scanRadius": 0
     },
     "mass": 650,
-    "airFrictionPer60HzFrame": 0.05,
     "cost": {
       "energy": 2500,
       "metal": 2500
@@ -2533,8 +3104,33 @@
       "type": "legs",
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "driveForce": 450,
-        "traction": 1
+        "ground": {
+          "force": 450,
+          "traction": 1,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "force": 0,
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "force": 0,
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForce": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       },
       "config": {
         "upperThickness": 8,

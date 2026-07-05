@@ -74,8 +74,8 @@ pub(crate) struct BodyPool {
     pub(crate) restitution: Vec<f64>,
     pub(crate) ground_offset: Vec<f64>,
     // Per-body wind-relative air drag coefficient. Dynamic units author
-    // airFrictionPer60HzFrame, then JS converts that value plus mass into
-    // this coefficient before allocation. 0.0 = no wind/air coupling.
+    // locomotion.physics.air.friction, then JS converts that value plus mass
+    // into this coefficient before allocation. 0.0 = no wind/air coupling.
     pub(crate) air_drag_coefficient: Vec<f64>,
     // Per-body ground-friction multiplier. 1.0 = the full global
     // ground-contact tangential damping; 0.0 = frictionless (keeps all

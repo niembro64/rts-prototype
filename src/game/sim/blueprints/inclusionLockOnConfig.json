@@ -35,6 +35,7 @@
         "unitFormik",
         "unitWidow",
         "unitHippo",
+        "unitSeaTurtle",
         "unitTarantula",
         "unitLoris",
         "unitBee",
@@ -182,6 +183,15 @@
       }
     },
     "unitHippo": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
+    },
+    "unitSeaTurtle": {
       "targets": {
         "enemy": {
           "buildings": "all",

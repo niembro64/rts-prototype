@@ -6,15 +6,5 @@ function clampScale(value: number, fallback = 1): number {
 }
 
 export function getUnitGroundFrictionScale(unit: Unit): number {
-  const traction = clampScale(unit.locomotion.traction);
-  switch (unit.locomotion.type) {
-    case 'flying':
-      return traction * 0.25;
-    case 'hover':
-      return traction * 0.5;
-    case 'legs':
-    case 'treads':
-    case 'wheels':
-      return traction;
-  }
+  return clampScale(unit.locomotion.physics.ground.traction);
 }

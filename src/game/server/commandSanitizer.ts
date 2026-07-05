@@ -70,7 +70,7 @@ const WAYPOINT_TYPES: readonly WaypointType[] = ['move', 'fight', 'patrol'];
 const UNIT_MOVE_STATES: readonly string[] = ['maneuver', 'holdPosition', 'roam'];
 const UNIT_AIR_IDLE_STATES: readonly string[] = ['fly', 'land'];
 const TRAJECTORY_MODES: readonly string[] = ['auto', 'low', 'high'];
-const COMBAT_FIRE_STATES: readonly string[] = ['fireAtWill', 'returnFire', 'holdFire'];
+const COMBAT_FIRE_STATES: readonly string[] = ['fireAtWill', 'returnFire', 'holdFire', 'defend', 'fireAtAll'];
 
 type GroundPoint = { x: number; y: number; z: number | undefined };
 

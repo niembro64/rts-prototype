@@ -15,32 +15,21 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
   );
 }
 
-function assertOwnsWaterTerm(
-  locomotion: Record<string, unknown>,
+function assertOwnsMediumTerm(
+  medium: Record<string, unknown>,
   key: string,
   expected: number,
+  messagePrefix: string,
 ): void {
   assertContract(
-    Object.prototype.hasOwnProperty.call(locomotion, key),
-    `runtime Hippo locomotion must preserve authored ${key}`,
+    Object.prototype.hasOwnProperty.call(medium, key),
+    `${messagePrefix} must own ${key}`,
   );
-  assertEqual(locomotion[key], expected, `runtime Hippo ${key}`);
-}
-
-function assertOmitsWaterTerm(locomotion: Record<string, unknown>, key: string): void {
-  assertContract(
-    !Object.prototype.hasOwnProperty.call(locomotion, key),
-    `non-amphibious locomotion must omit unauthored ${key}`,
-  );
+  assertEqual(medium[key], expected, `${messagePrefix} ${key}`);
 }
 
 function cloneLocomotionBlueprint(locomotion: LocomotionBlueprint): LocomotionBlueprint {
-  return {
-    ...locomotion,
-    physics: { ...locomotion.physics },
-    pathfinding: { ...locomotion.pathfinding },
-    config: { ...locomotion.config },
-  } as LocomotionBlueprint;
+  return JSON.parse(JSON.stringify(locomotion)) as LocomotionBlueprint;
 }
 
 function expectLocomotionError(
@@ -76,19 +65,29 @@ export function runLocomotionContractTest(): void {
   assertEqual(hippoLocomotion.pathfinding.ignoreTerrainBlocking, true, 'Hippo ignores terrain blocking');
   assertEqual(hippoLocomotion.pathfinding.maxSlopeDeg, null, 'Hippo max slope');
   assertEqual(hippoLocomotion.pathfinding.minSurfaceNormalZ, 0, 'Hippo min surface normal');
-  assertOwnsWaterTerm(hippoLocomotion, 'waterForce', 1200);
-  assertOwnsWaterTerm(hippoLocomotion, 'waterTraction', 0.5);
-  assertOwnsWaterTerm(hippoLocomotion, 'waterFriction', 1.5);
-  assertOwnsWaterTerm(hippoLocomotion, 'swimHeightUpwardForce', 12);
-  assertOwnsWaterTerm(hippoLocomotion, 'swimGravityCounterUpwardForceRatio', 0.25);
+  assertOwnsMediumTerm(hippoLocomotion.physics.water, 'force', 1200, 'runtime Hippo water');
+  assertOwnsMediumTerm(hippoLocomotion.physics.water, 'traction', 0.5, 'runtime Hippo water');
+  assertOwnsMediumTerm(hippoLocomotion.physics.water, 'friction', 1.5, 'runtime Hippo water');
+  assertOwnsMediumTerm(hippoLocomotion.physics.water, 'heightUpwardForce', 12, 'runtime Hippo water');
+  assertOwnsMediumTerm(
+    hippoLocomotion.physics.water,
+    'gravityCounterUpwardForceRatio',
+    0.25,
+    'runtime Hippo water',
+  );
   assertEqual(hippoLocomotion.maintainFullThrustAtWaypoints, false, 'Hippo waypoint thrust mode');
 
   const clonedHippoLocomotion = cloneUnitLocomotion(hippoLocomotion);
-  assertOwnsWaterTerm(clonedHippoLocomotion, 'waterForce', 1200);
-  assertOwnsWaterTerm(clonedHippoLocomotion, 'waterTraction', 0.5);
-  assertOwnsWaterTerm(clonedHippoLocomotion, 'waterFriction', 1.5);
-  assertOwnsWaterTerm(clonedHippoLocomotion, 'swimHeightUpwardForce', 12);
-  assertOwnsWaterTerm(clonedHippoLocomotion, 'swimGravityCounterUpwardForceRatio', 0.25);
+  assertOwnsMediumTerm(clonedHippoLocomotion.physics.water, 'force', 1200, 'cloned Hippo water');
+  assertOwnsMediumTerm(clonedHippoLocomotion.physics.water, 'traction', 0.5, 'cloned Hippo water');
+  assertOwnsMediumTerm(clonedHippoLocomotion.physics.water, 'friction', 1.5, 'cloned Hippo water');
+  assertOwnsMediumTerm(clonedHippoLocomotion.physics.water, 'heightUpwardForce', 12, 'cloned Hippo water');
+  assertOwnsMediumTerm(
+    clonedHippoLocomotion.physics.water,
+    'gravityCounterUpwardForceRatio',
+    0.25,
+    'cloned Hippo water',
+  );
   assertEqual(
     clonedHippoLocomotion.maintainFullThrustAtWaypoints,
     false,
@@ -106,26 +105,43 @@ export function runLocomotionContractTest(): void {
 
   const nonAmphibiousLocomotion = getUnitLocomotion('unitJackal');
   for (const key of [
-    'waterForce',
-    'waterTraction',
-    'waterFriction',
-    'swimHeightUpwardForce',
-    'swimGravityCounterUpwardForceRatio',
-  ]) {
-    assertOmitsWaterTerm(nonAmphibiousLocomotion, key);
-    assertOmitsWaterTerm(cloneUnitLocomotion(nonAmphibiousLocomotion), key);
+    'force',
+    'traction',
+    'friction',
+    'heightUpwardForce',
+    'gravityCounterUpwardForceRatio',
+  ] as const) {
+    assertOwnsMediumTerm(nonAmphibiousLocomotion.physics.water, key, 0, 'non-amphibious water');
+    assertOwnsMediumTerm(
+      cloneUnitLocomotion(nonAmphibiousLocomotion).physics.water,
+      key,
+      0,
+      'cloned non-amphibious water',
+    );
   }
 
+  const seaTurtleLocomotion = getUnitLocomotion('unitSeaTurtle');
+  const seaTurtleWaterDrive =
+    seaTurtleLocomotion.physics.water.force * seaTurtleLocomotion.physics.water.traction;
+  const seaTurtleGroundDrive =
+    seaTurtleLocomotion.physics.ground.force * seaTurtleLocomotion.physics.ground.traction;
+  assertContract(
+    seaTurtleWaterDrive >= seaTurtleGroundDrive * 50,
+    'Sea Turtle must be much stronger in water than on ground',
+  );
+  assertEqual(seaTurtleLocomotion.physics.water.force, 2700, 'Sea Turtle runtime water force');
+  assertEqual(seaTurtleLocomotion.physics.ground.force, 140, 'Sea Turtle runtime ground force');
+
   const zeroWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
-  zeroWaterForce.physics.waterForce = 0;
+  zeroWaterForce.physics.water.force = 0;
   const zeroWaterRuntime = createUnitLocomotion(zeroWaterForce);
-  assertOwnsWaterTerm(zeroWaterRuntime, 'waterForce', 0);
+  assertOwnsMediumTerm(zeroWaterRuntime.physics.water, 'force', 0, 'zero-water Hippo water');
 
   const negativeWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
-  negativeWaterForce.physics.waterForce = -1;
-  expectLocomotionError(negativeWaterForce, 'waterForce');
+  negativeWaterForce.physics.water.force = -1;
+  expectLocomotionError(negativeWaterForce, 'water.force');
 
   const invalidSwimCounter = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
-  invalidSwimCounter.physics.swimGravityCounterUpwardForceRatio = 1;
-  expectLocomotionError(invalidSwimCounter, 'swimGravityCounterUpwardForceRatio');
+  invalidSwimCounter.physics.water.gravityCounterUpwardForceRatio = 1;
+  expectLocomotionError(invalidSwimCounter, 'water.gravityCounterUpwardForceRatio');
 }

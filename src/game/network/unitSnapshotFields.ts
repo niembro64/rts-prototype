@@ -45,7 +45,11 @@ function isNetworkUnitMoveState(value: unknown): value is UnitMoveState {
 }
 
 function isNetworkCombatFireState(value: unknown): value is CombatFireState {
-  return value === 'fireAtWill' || value === 'returnFire' || value === 'holdFire';
+  return value === 'fireAtWill' ||
+    value === 'returnFire' ||
+    value === 'holdFire' ||
+    value === 'defend' ||
+    value === 'fireAtAll';
 }
 
 export function readNetworkCombatFireState(

@@ -135,8 +135,8 @@ export class ServerBootstrap {
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
     physics.setGroundLookup(
-      (x, y) => world.getGroundZ(x, y),
-      (x, y) => world.getCachedSurfaceNormal(x, y),
+      (x, y) => world.getTerrainBedZ(x, y),
+      (x, y) => world.getCachedTerrainBedNormal(x, y),
     );
     world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     world.setActivePlayer(0 as PlayerId);
@@ -301,15 +301,11 @@ export class ServerBootstrap {
     const world = new WorldState(SERVER_WORLD_SEED, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
-    // Wire the heightmap into physics so ground contacts settle units
-    // on top of their terrain cube tile AND project their velocity
-    // onto the slope tangent each tick — keeps units glued to the
-    // surface as they climb / descend instead of bobbing or
-    // launching off slope transitions. Both lookups return flat-up
-    // outside the ripple disc, so corner spawns stay flat.
+    // Wire the terrain bed into physics so solid ground contacts remain
+    // independent of the air/water medium occupying the same XY.
     physics.setGroundLookup(
-      (x, y) => world.getGroundZ(x, y),
-      (x, y) => world.getCachedSurfaceNormal(x, y),
+      (x, y) => world.getTerrainBedZ(x, y),
+      (x, y) => world.getCachedTerrainBedNormal(x, y),
     );
     world.thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME;
     world.setActivePlayer(0 as PlayerId); // Server has no active player

@@ -58,6 +58,7 @@ import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
+import { getLocomotionPrimaryDrivePhysics } from './locomotion';
 import { magnitude, getTransformCosSin } from '../math';
 import {
   getHostShotArmingRadius,
@@ -767,9 +768,10 @@ function unitFormationAcceleration(entity: Entity): number {
   const locomotion = unit?.locomotion;
   if (unit === null || locomotion === undefined) return 0;
   const mass = Number.isFinite(unit.mass) && unit.mass > 0 ? unit.mass : 1;
+  const drivePhysics = getLocomotionPrimaryDrivePhysics(locomotion);
   // Match the physics solver's relative behavior: bigger engines help,
   // but heavier bodies still accelerate more slowly for a given force.
-  return (locomotion.driveForce * locomotion.traction) / mass;
+  return (drivePhysics.force * drivePhysics.traction) / mass;
 }
 
 function computeSlowestFormationSpeedFactors(

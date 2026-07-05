@@ -15,16 +15,36 @@ export type UnitPathfindingConfig = {
   minSurfaceNormalZ: number;
 };
 
+export type UnitLocomotionMediumPhysics = {
+  /** Propulsion scalar for this medium, after locomotion-type force scaling. */
+  force: number;
+  /** Movement authority coefficient for coupling force into directed thrust
+   *  and attitude torque in this medium. */
+  traction: number;
+  /** Passive velocity damping rate for this medium, in 1/s. */
+  friction: number;
+  /** Constant upward force as a ratio of gravity. Must be in [0, 1). */
+  gravityCounterUpwardForceRatio: number;
+  /** Inverse-distance upward force coefficient, referenced to the relevant
+   *  support surface: terrain/water surface for air, lake bed for water. */
+  heightUpwardForce: number;
+  /** Per-tick uniform randomization of `heightUpwardForce`, as a fraction. */
+  heightUpwardForceRandomizationAmount: number;
+  /** EMA smoothing weight for the jittered height force, in [0, 1). */
+  heightUpwardForceEMA: number;
+};
+
+export type UnitLocomotionPhysics = {
+  ground: UnitLocomotionMediumPhysics;
+  air: UnitLocomotionMediumPhysics;
+  water: UnitLocomotionMediumPhysics;
+};
+
 export type UnitLocomotion = {
   type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
-  /** Effective propulsion scalar: authored `physics.driveForce` after the
-   *  per-locomotion global multiplier from locomotionConfig.json. */
-  driveForce: number;
-  /** Movement authority coefficient. Ground units use this as terrain
-   *  coupling; hover units use it as direct horizontal-thrust authority;
-   *  flying units use it as thrust plus turn authority, so low values
-   *  produce wider, aircraft-like turns. */
-  traction: number;
+  /** Fully-abstracted medium physics. Every unit owns every medium profile;
+   *  zero values make a medium inert instead of omitting fields. */
+  physics: UnitLocomotionPhysics;
   /** True when powered drive force can only act along the body's current
    *  forward-facing direction instead of directly along the requested vector. */
   forwardForceRequiresFacing: boolean;
@@ -36,73 +56,6 @@ export type UnitLocomotion = {
   maintainFullThrustAtWaypoints: boolean;
   /** Named pathfinding profile resolved from pathfindingConfig.json. */
   pathfinding: UnitPathfindingConfig;
-  /** Hover/flying-only: constant upward force as a ratio of gravity.
-   *  0.8 means the locomotion cancels 80% of gravity at every altitude.
-   *  Must be < 1 for a finite terrain-following equilibrium. */
-  gravityCounterUpwardForceRatio?: number;
-  /** Hover/flying-only: inverse-distance ground-effect lift coefficient,
-   *  in world units. The force term is m·g·hoverHeightUpwardForce / d,
-   *  where d is altitude above terrain. Undefined for ground locomotion. */
-  hoverHeightUpwardForce?: number;
-  /** Hover/flying-only: per-tick uniform randomization of
-   *  `hoverHeightUpwardForce` expressed as a fraction. Each tick the
-   *  lift force uses hoverHeightUpwardForce * (1 + U(-amount, +amount)).
-   *  Undefined or 0 means no randomization. */
-  hoverHeightUpwardForceRandomizationAmount?: number;
-  /** Hover/flying-only: EMA smoothing weight on the per-tick (jittered)
-   *  hoverHeightUpwardForce. In [0, 1):
-   *    smoothed = α · smoothed_prev + (1 − α) · raw
-   *  0 (or undefined) disables smoothing. Pairs with the per-unit
-   *  `Unit.hoverHeightUpwardForceSmoothed` accumulator. */
-  hoverHeightUpwardForceEMA?: number;
-
-  // ── Fully-abstracted medium force profile (ground / air / water) ──
-  //
-  // `driveForce` + `traction` above are the GROUND drive terms (and the
-  // airborne branch reads them as its air thrust). The fields below add the
-  // remaining behaviour-preserving slice of the per-medium profile from the
-  // design doc ("Locomotion is one fully-abstracted force profile across
-  // ground, air, and water"): per-medium passive friction, the full water
-  // drive medium, and the swim-lift family. Every term defaults to 0/inert,
-  // so a unit that authors none of them moves bit-for-bit as before; a unit
-  // specialises into a medium purely by setting its terms non-zero. The full
-  // air/ground force-traction split (separate from driveForce/traction) is a
-  // future behaviour-changing migration noted in the design doc.
-
-  /** Passive horizontal velocity damping applied while in ground contact, as
-   *  an acceleration rate (1/s). 0 = no extra ground drag (current units). */
-  groundFriction?: number;
-  /** Passive isotropic velocity damping applied while airborne (hover/flying),
-   *  as an acceleration rate (1/s). 0 = no air drag (current units). */
-  airFriction?: number;
-  /** Water medium drive force (analogue of `driveForce` for the submerged
-   *  medium). 0 = cannot propel itself in water. Effective drive after the
-   *  per-locomotion global multiplier is NOT applied to water terms; they are
-   *  authored directly. */
-  waterForce?: number;
-  /** Water medium traction: couples `waterForce` into directed thrust, the
-   *  submerged analogue of `traction`. 0 with a non-zero waterForce yields no
-   *  coupled thrust. */
-  waterTraction?: number;
-  /** Passive isotropic velocity damping applied while submerged (water drag),
-   *  as an acceleration rate (1/s). 0 = no water drag. */
-  waterFriction?: number;
-  /** Swim lift: constant upward force as a ratio of gravity, the water-medium
-   *  analogue of `gravityCounterUpwardForceRatio`. Must be < 1. 0 (default) =
-   *  pure depth-seeking lift with no constant buoyancy. */
-  swimGravityCounterUpwardForceRatio?: number;
-  /** Swim lift: depth-seeking upward force that holds a target height above
-   *  the lake bed (the same inverse-distance force shape as
-   *  `hoverHeightUpwardForce`, referenced to the bed under water). 0 = sinks
-   *  (bottom-walker); balanced = neutral mid-column; high = floats. */
-  swimHeightUpwardForce?: number;
-  /** Swim lift: per-tick uniform randomization of `swimHeightUpwardForce`
-   *  expressed as a fraction (mirrors the hover sibling). */
-  swimHeightUpwardForceRandomizationAmount?: number;
-  /** Swim lift: EMA smoothing weight on the per-tick (jittered)
-   *  swimHeightUpwardForce, in [0, 1). Pairs with the per-unit
-   *  `Unit.swimHeightUpwardForceSmoothed` accumulator. */
-  swimHeightUpwardForceEMA?: number;
 };
 
 /** Runtime chassis suspension profile. Offsets are in chassis-local

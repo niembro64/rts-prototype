@@ -154,6 +154,8 @@ import __wbg_init, {
   terrain_count_cell_triangle_refs,
   terrain_fill_cell_triangle_indices,
   terrain_build_adaptive_mesh,
+  terrain_get_bed_height,
+  terrain_get_bed_normal,
   terrain_get_surface_height,
   terrain_get_surface_normal,
   terrain_sample_ground_for_slots,
@@ -1682,11 +1684,16 @@ export interface SimWasm {
    *  handles the bilinear-quad-over-noise path. The mesh-installed
    *  return is max(WATER_LEVEL, triangle_height). */
   readonly terrainGetSurfaceHeight: (x: number, z: number) => number;
+  /** Raw terrain-bed height at world-space (x, z), without water-plane clamp. */
+  readonly terrainGetBedHeight: (x: number, z: number) => number;
   /** Sample terrain surface normal at world-space (x, z). Writes
    *  (nx, ny, nz) into out[0..3] and returns 1 on success, 0 if no
    *  mesh is installed or the triangle walk fails. Below-water
    *  samples return (0, 0, 1) — flat water surface normal. */
   readonly terrainGetSurfaceNormal: (x: number, z: number, out: Float64Array) => number;
+  /** Raw terrain-bed normal at world-space (x, z), without flattening
+   *  below-water samples to the water-surface normal. */
+  readonly terrainGetBedNormal: (x: number, z: number, out: Float64Array) => number;
   /** Batch terrain ground sampling for pool-backed body slots.
    *  Writes groundZ[i] and groundNormals[i * 3..i * 3 + 3] for
    *  each awake body slot, using body positions from the WASM
@@ -3620,7 +3627,7 @@ export const QUAT_HOVER_BATCH_STRIDE = 14;
 
 /** Layout stride for `unitForceStepBatch`. Mirrors
  *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
-export const UNIT_FORCE_BATCH_STRIDE = 50;
+export const UNIT_FORCE_BATCH_STRIDE = 51;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
@@ -4062,6 +4069,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         terrainCountCellTriangleRefs: terrain_count_cell_triangle_refs,
         terrainFillCellTriangleIndices: terrain_fill_cell_triangle_indices,
         terrainBuildAdaptiveMesh: terrain_build_adaptive_mesh,
+        terrainGetBedHeight: terrain_get_bed_height,
+        terrainGetBedNormal: terrain_get_bed_normal,
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainSampleGroundForSlots: terrain_sample_ground_for_slots,

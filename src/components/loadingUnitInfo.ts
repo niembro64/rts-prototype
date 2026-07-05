@@ -11,12 +11,13 @@ import { BUILD_GRID_CELL_SIZE } from '@/game/sim/buildGrid';
 import { getUnitBuilderConstructionRate } from '@/game/sim/builderBuildRoster';
 import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
 import { computeLocomotionClimbProfile } from '@/game/sim/pathfindingMobility';
+import { getLocomotionPrimaryDrivePhysics } from '@/game/sim/locomotion';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
-  LocomotionBlueprint,
   ShotBlueprint,
   UnitBlueprint,
 } from '@/types/blueprints';
+import type { UnitLocomotion, UnitLocomotionMediumPhysics } from '@/types/locomotionTypes';
 import type {
   EmissionConfig,
   ProjectileShot,
@@ -237,27 +238,19 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
   const runtime = getUnitLocomotion(blueprint.unitBlueprintId);
   const locomotion = blueprint.locomotion;
   const climb = computeLocomotionClimbProfile(runtime, blueprint.mass);
+  const primaryPhysics = getLocomotionPrimaryDrivePhysics(runtime);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
-    stat('Drive force', fmt(runtime.driveForce)),
-    stat('Traction', fmt(runtime.traction, 2)),
+    stat('Drive force', fmt(primaryPhysics.force)),
+    stat('Traction', fmt(primaryPhysics.traction, 2)),
     node('Pathfinding', locomotion.pathfindingBlueprintId, undefined, [
       stat('Terrain mode', runtime.pathfinding.terrainMode),
       stat('Ignores blocking', yesNo(runtime.pathfinding.ignoreTerrainBlocking)),
       stat('Max slope', climb.maxSlopeDeg === null ? 'any' : `${fmt(climb.maxSlopeDeg)} deg`),
       stat('Surface normal floor', climb.minSurfaceNormalZ === null ? 'any' : fmt(climb.minSurfaceNormalZ, 3)),
     ]),
-    ...describeLocomotionConfig(locomotion),
+    ...describeLocomotionPhysics(runtime),
   ];
-  if (
-    runtime.gravityCounterUpwardForceRatio !== undefined &&
-    runtime.hoverHeightUpwardForce !== undefined
-  ) {
-    const gravityDeficit = 1 - runtime.gravityCounterUpwardForceRatio;
-    if (gravityDeficit > 0) {
-      items.push(stat('Stable altitude', fmt(runtime.hoverHeightUpwardForce / gravityDeficit)));
-    }
-  }
   return { id: 'movement', title: 'Movement', items };
 }
 
@@ -407,15 +400,60 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
   return node('Emission', label, undefined, children);
 }
 
-function describeLocomotionConfig(locomotion: LocomotionBlueprint): LoadingUnitInfoNode[] {
-  if (locomotion.type === 'hover' || locomotion.type === 'flying') {
-    const config = locomotion.config;
-    return [
-      stat('Counter-gravity', `${fmt(config.gravityCounterUpwardForceRatio * 100)}%`),
-      stat('Ground-effect lift', fmt(config.hoverHeightUpwardForce)),
+function mediumStableHeight(physics: UnitLocomotionMediumPhysics): number | null {
+  const gravityDeficit = 1 - physics.gravityCounterUpwardForceRatio;
+  if (physics.heightUpwardForce <= 0 || gravityDeficit <= 0) return null;
+  return physics.heightUpwardForce / gravityDeficit;
+}
+
+function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoNode[] {
+  const items: LoadingUnitInfoNode[] = [];
+  const air = locomotion.physics.air;
+  if (
+    air.force > 0 ||
+    air.friction > 0 ||
+    air.gravityCounterUpwardForceRatio > 0 ||
+    air.heightUpwardForce > 0
+  ) {
+    const airChildren = [
+      stat('Force', fmt(air.force)),
+      stat('Traction', fmt(air.traction, 2)),
+      stat('Friction', fmt(air.friction, 2)),
     ];
+    if (air.gravityCounterUpwardForceRatio > 0 || air.heightUpwardForce > 0) {
+      airChildren.push(
+        stat('Counter-gravity', `${fmt(air.gravityCounterUpwardForceRatio * 100)}%`),
+        stat('Height lift', fmt(air.heightUpwardForce)),
+      );
+      const stableHeight = mediumStableHeight(air);
+      if (stableHeight !== null) airChildren.push(stat('Stable height', fmt(stableHeight)));
+    }
+    items.push(node('Air medium', undefined, undefined, airChildren));
   }
-  return [];
+
+  const water = locomotion.physics.water;
+  if (
+    water.force > 0 ||
+    water.friction > 0 ||
+    water.gravityCounterUpwardForceRatio > 0 ||
+    water.heightUpwardForce > 0
+  ) {
+    const waterChildren = [
+      stat('Force', fmt(water.force)),
+      stat('Traction', fmt(water.traction, 2)),
+      stat('Friction', fmt(water.friction, 2)),
+    ];
+    if (water.gravityCounterUpwardForceRatio > 0 || water.heightUpwardForce > 0) {
+      waterChildren.push(
+        stat('Counter-gravity', `${fmt(water.gravityCounterUpwardForceRatio * 100)}%`),
+        stat('Bed height lift', fmt(water.heightUpwardForce)),
+      );
+      const stableHeight = mediumStableHeight(water);
+      if (stableHeight !== null) waterChildren.push(stat('Stable bed height', fmt(stableHeight)));
+    }
+    items.push(node('Water medium', undefined, undefined, waterChildren));
+  }
+  return items;
 }
 
 function describeLockOnInclusions(blueprint: ReturnType<typeof getTurretBlueprint>): LoadingUnitInfoNode[] {

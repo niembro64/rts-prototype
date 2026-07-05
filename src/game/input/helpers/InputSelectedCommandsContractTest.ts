@@ -313,7 +313,35 @@ export function runInputSelectedCommandsContractTest(): void {
       fireCommand.entityIds[0] === 20,
     'exact fire-state setter must enqueue hold fire with firing disabled',
   );
+  selectedCommands.setFireEnabled('fireAtAll');
+  const fireAtAllCommand = lastCommand(commands);
+  assertContract(
+    fireAtAllCommand.type === 'setFireEnabled' &&
+      fireAtAllCommand.fireState === 'fireAtAll' &&
+      fireAtAllCommand.enabled === true &&
+      fireAtAllCommand.entityIds[0] === 20,
+    'exact fire-state setter must enqueue BAR fire-at-all with firing enabled',
+  );
+  selectedUnits = [ballisticCombatEntity(201, 'defend', 'auto')];
+  selectedCommands.setFireEnabled();
+  const defendCycleCommand = lastCommand(commands);
+  assertContract(
+    defendCycleCommand.type === 'setFireEnabled' &&
+      defendCycleCommand.fireState === 'holdFire' &&
+      defendCycleCommand.enabled === false,
+    'BAR Defend state must cycle forward to Hold fire like the order-menu helper',
+  );
+  selectedUnits = [ballisticCombatEntity(202, 'fireAtAll', 'auto')];
+  selectedCommands.setFireEnabled();
+  const fireAtAllCycleCommand = lastCommand(commands);
+  assertContract(
+    fireAtAllCycleCommand.type === 'setFireEnabled' &&
+      fireAtAllCycleCommand.fireState === 'holdFire' &&
+      fireAtAllCycleCommand.enabled === false,
+    'BAR Fire-at-all state must cycle forward to Hold fire like the order-menu helper',
+  );
 
+  selectedUnits = [ballisticCombatEntity(20, 'fireAtWill', 'auto')];
   selectedCommands.setTrajectoryMode('high');
   const trajectoryCommand = lastCommand(commands);
   assertContract(

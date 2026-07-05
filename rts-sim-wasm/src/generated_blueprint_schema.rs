@@ -632,18 +632,21 @@ pub struct LegConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionPhysics {
-    pub driveForce: f64,
+pub struct LocomotionMediumPhysics {
+    pub force: f64,
     pub traction: f64,
-    pub groundFriction: Option<f64>,
-    pub airFriction: Option<f64>,
-    pub waterForce: Option<f64>,
-    pub waterTraction: Option<f64>,
-    pub waterFriction: Option<f64>,
-    pub swimGravityCounterUpwardForceRatio: Option<f64>,
-    pub swimHeightUpwardForce: Option<f64>,
-    pub swimHeightUpwardForceRandomizationAmount: Option<f64>,
-    pub swimHeightUpwardForceEMA: Option<f64>,
+    pub friction: f64,
+    pub gravityCounterUpwardForceRatio: f64,
+    pub heightUpwardForce: f64,
+    pub heightUpwardForceRandomizationAmount: f64,
+    pub heightUpwardForceEMA: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionPhysics {
+    pub ground: LocomotionMediumPhysics,
+    pub air: LocomotionMediumPhysics,
+    pub water: LocomotionMediumPhysics,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -661,10 +664,6 @@ pub struct PathfindingBlueprint {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct HoverConfig {
-    pub gravityCounterUpwardForceRatio: f64,
-    pub hoverHeightUpwardForce: f64,
-    pub hoverHeightUpwardForceRandomizationAmount: Option<f64>,
-    pub hoverHeightUpwardForceEMA: Option<f64>,
     pub fanDistX: f64,
     pub fanDistY: f64,
     pub fanPositionRadius: Option<f64>,
@@ -681,10 +680,6 @@ pub struct HoverConfig {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct FlyingConfig {
-    pub gravityCounterUpwardForceRatio: f64,
-    pub hoverHeightUpwardForce: f64,
-    pub hoverHeightUpwardForceRandomizationAmount: Option<f64>,
-    pub hoverHeightUpwardForceEMA: Option<f64>,
     pub wingEnabled: Option<bool>,
     pub wingSpan: Option<f64>,
     pub wingChord: Option<f64>,
@@ -917,7 +912,6 @@ pub struct UnitBlueprint {
     pub fullVisionRadius: f64,
     pub sensors: SensorCapabilityConfig,
     pub mass: f64,
-    pub airFrictionPer60HzFrame: f64,
     pub cost: BlueprintJsonValue,
     pub turrets: Vec<TurretMount>,
     pub bodyShape: UnitBodyShape,

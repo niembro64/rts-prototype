@@ -19,6 +19,7 @@ const WATER_CLEARANCE_SAMPLES = 8;
 // normal-result object allocation too; callers that omit it keep the
 // existing fresh-object API contract.
 const _normalWasmScratch = new Float64Array(3);
+const _bedNormalWasmScratch = new Float64Array(3);
 
 export function getSurfaceNormal(
   x: number,
@@ -115,6 +116,52 @@ export function getSurfaceHeight(
     WATER_LEVEL,
     getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize),
   );
+}
+
+export function getTerrainBedHeight(
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number = LAND_CELL_SIZE,
+): number {
+  const sim = getSimWasm();
+  if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
+    const h = sim.terrainGetBedHeight(x, z);
+    if (!Number.isNaN(h)) return h;
+  }
+  return getTerrainMeshHeight(x, z, mapWidth, mapHeight, cellSize);
+}
+
+export function getTerrainBedNormal(
+  x: number,
+  z: number,
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number = LAND_CELL_SIZE,
+  out?: { nx: number; ny: number; nz: number },
+): { nx: number; ny: number; nz: number } {
+  const sim = getSimWasm();
+  if (sim !== undefined && sim.terrainIsInstalled() !== 0) {
+    const ok = sim.terrainGetBedNormal(x, z, _bedNormalWasmScratch);
+    if (ok !== 0) {
+      if (out !== undefined) {
+        out.nx = _bedNormalWasmScratch[0];
+        out.ny = _bedNormalWasmScratch[1];
+        out.nz = _bedNormalWasmScratch[2];
+        return out;
+      }
+      return {
+        nx: _bedNormalWasmScratch[0],
+        ny: _bedNormalWasmScratch[1],
+        nz: _bedNormalWasmScratch[2],
+      };
+    }
+  }
+  const sample = getTerrainMeshSample(x, z, mapWidth, mapHeight, cellSize);
+  return out !== undefined
+    ? terrainMeshNormalFromSampleInto(sample, out)
+    : terrainMeshNormalFromSample(sample);
 }
 
 export function isWaterAt(

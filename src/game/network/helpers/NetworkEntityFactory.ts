@@ -292,10 +292,6 @@ function createUnitFromNetwork(
   const blueprintMass = unitBlueprint !== undefined && unitBlueprint.mass !== undefined
     ? unitBlueprint.mass
     : 25;
-  const blueprintAirFrictionPer60HzFrame =
-    unitBlueprint !== undefined && Number.isFinite(unitBlueprint.airFrictionPer60HzFrame)
-      ? unitBlueprint.airFrictionPer60HzFrame
-      : 0;
   const radius = readNetworkUnitRadius(
     u,
     blueprintRadius,
@@ -338,7 +334,6 @@ function createUnitFromNetwork(
       sensors: { ...sensors },
       locomotion: getUnitLocomotion(unitBlueprintId),
       mass: readNetworkUnitMass(u, blueprintMass),
-      airFrictionPer60HzFrame: blueprintAirFrictionPer60HzFrame,
       actions,
       actionHash: computeUnitActionHash(actions),
       repeatQueue: u !== null && u.repeatQueue === true,

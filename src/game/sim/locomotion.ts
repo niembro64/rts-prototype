@@ -2,17 +2,23 @@ import type {
   LocomotionBlueprint,
   PathfindingBlueprint,
 } from '@/types/blueprints';
-import type { UnitLocomotion } from './types';
+import type {
+  UnitLocomotion,
+  UnitLocomotionMediumPhysics,
+  UnitLocomotionPhysics,
+} from '@/types/locomotionTypes';
 import rawLocomotionConfig from './locomotionConfig.json';
 
-// Canonical set of locomotion discriminants. The live per-type physics
-// tuning (drive-force multiplier, force-direction rules, and arrival thrust
-// behaviour) and the global force scale are authored in locomotionConfig.json
-// (Config Is Data, Not Code); per-unit traction is authored on each
-// blueprint's physics.traction.
+// Canonical set of locomotion discriminants. The live per-type tuning
+// (force multiplier, force-direction rules, and arrival thrust behaviour)
+// remains in locomotionConfig.json; per-unit physics now lives in a single
+// ground/air/water medium profile on each unit blueprint.
 const LOCOMOTION_TYPES = ['wheels', 'treads', 'legs', 'hover', 'flying'] as const;
+const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
 
 type LocomotionType = (typeof LOCOMOTION_TYPES)[number];
+type LocomotionMediumName = (typeof LOCOMOTION_MEDIUM_NAMES)[number];
+type AuthoredLocomotionMediumPhysics = LocomotionBlueprint['physics'][LocomotionMediumName];
 
 type LocomotionTypeConfig = {
   physics: {
@@ -34,15 +40,21 @@ function assertPositiveFinite(label: string, value: number): void {
   }
 }
 
-function assertBoolean(label: string, value: unknown): asserts value is boolean {
-  if (typeof value !== 'boolean') {
-    throw new Error(`Invalid locomotion ${label}: expected boolean, got ${value}`);
+function assertNonNegativeFinite(label: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`Invalid locomotion ${label}: expected finite >= 0, got ${value}`);
   }
 }
 
-function assertCounterGravityRatio(label: string, value: number): void {
+function assertUnitFraction(label: string, value: number): void {
   if (!Number.isFinite(value) || value < 0 || value >= 1) {
-    throw new Error(`Invalid locomotion ${label}: expected finite ratio in [0, 1), got ${value}`);
+    throw new Error(`Invalid locomotion ${label}: expected finite [0, 1), got ${value}`);
+  }
+}
+
+function assertBoolean(label: string, value: unknown): asserts value is boolean {
+  if (typeof value !== 'boolean') {
+    throw new Error(`Invalid locomotion ${label}: expected boolean, got ${value}`);
   }
 }
 
@@ -50,49 +62,6 @@ function assertSlopeDegrees(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0 || value >= 90) {
     throw new Error(`Invalid locomotion ${label}: expected finite degrees in (0, 90), got ${value}`);
   }
-}
-
-/** Optional medium force/traction/friction term. Returns undefined when the
- *  field is absent so it is OMITTED from the runtime locomotion object (and
- *  thus from the canonical state hash, keeping existing units byte-identical);
- *  the force code reads it back as 0 via `?? 0`. Zero is still a meaningful
- *  authored value when explicitly present. */
-function readOptionalNonNegative(label: string, value: number | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`Invalid locomotion ${label}: expected finite >= 0, got ${value}`);
-  }
-  return value;
-}
-
-/** Optional fraction in [0, 1): absent => undefined (omitted). Used by the
- *  swim-lift gravity counter ratio and the randomization/EMA siblings. */
-function readOptionalUnitFraction(label: string, value: number | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  if (!Number.isFinite(value) || value < 0 || value >= 1) {
-    throw new Error(`Invalid locomotion ${label}: expected finite [0, 1), got ${value}`);
-  }
-  return value;
-}
-
-/** Copy an optional locomotion term only when present, so absent fields stay
- *  absent (never materialised as a `0`/`undefined` key that would alter the
- *  canonical state hash). */
-function assignOptionalLocomotionTerm(
-  target: UnitLocomotion,
-  key:
-    | 'groundFriction'
-    | 'airFriction'
-    | 'waterForce'
-    | 'waterTraction'
-    | 'waterFriction'
-    | 'swimGravityCounterUpwardForceRatio'
-    | 'swimHeightUpwardForce'
-    | 'swimHeightUpwardForceRandomizationAmount'
-    | 'swimHeightUpwardForceEMA',
-  value: number | undefined,
-): void {
-  if (value !== undefined) target[key] = value;
 }
 
 function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
@@ -165,12 +134,81 @@ function getLocomotionMaintainFullThrustAtWaypoints(type: LocomotionType): boole
   return LOCOMOTION_CONFIG.types[type].physics.maintainFullThrustAtWaypoints;
 }
 
-function getEffectiveLocomotionDriveForce(
+function getEffectiveLocomotionForce(
   type: LocomotionType,
-  authoredDriveForce: number,
+  medium: LocomotionMediumName,
+  authoredForce: number,
 ): number {
-  assertPositiveFinite(`${type}.physics.driveForce`, authoredDriveForce);
-  return authoredDriveForce * getLocomotionDriveForceMultiplier(type);
+  assertNonNegativeFinite(`${type}.physics.${medium}.force`, authoredForce);
+  return authoredForce * getLocomotionDriveForceMultiplier(type);
+}
+
+function createRuntimeMediumPhysics(
+  type: LocomotionType,
+  medium: LocomotionMediumName,
+  authored: AuthoredLocomotionMediumPhysics,
+): UnitLocomotionMediumPhysics {
+  if (!authored || typeof authored !== 'object') {
+    throw new Error(`Invalid locomotion ${type}.physics.${medium}: missing medium physics`);
+  }
+  assertNonNegativeFinite(`${type}.physics.${medium}.traction`, authored.traction);
+  assertNonNegativeFinite(`${type}.physics.${medium}.friction`, authored.friction);
+  assertUnitFraction(
+    `${type}.physics.${medium}.gravityCounterUpwardForceRatio`,
+    authored.gravityCounterUpwardForceRatio,
+  );
+  assertNonNegativeFinite(
+    `${type}.physics.${medium}.heightUpwardForce`,
+    authored.heightUpwardForce,
+  );
+  assertUnitFraction(
+    `${type}.physics.${medium}.heightUpwardForceRandomizationAmount`,
+    authored.heightUpwardForceRandomizationAmount,
+  );
+  assertUnitFraction(
+    `${type}.physics.${medium}.heightUpwardForceEMA`,
+    authored.heightUpwardForceEMA,
+  );
+  return {
+    force: getEffectiveLocomotionForce(type, medium, authored.force),
+    traction: authored.traction,
+    friction: authored.friction,
+    gravityCounterUpwardForceRatio: authored.gravityCounterUpwardForceRatio,
+    heightUpwardForce: authored.heightUpwardForce,
+    heightUpwardForceRandomizationAmount: authored.heightUpwardForceRandomizationAmount,
+    heightUpwardForceEMA: authored.heightUpwardForceEMA,
+  };
+}
+
+function createRuntimeLocomotionPhysics(
+  type: LocomotionType,
+  authored: LocomotionBlueprint['physics'],
+): UnitLocomotionPhysics {
+  if (!authored || typeof authored !== 'object') {
+    throw new Error(`Invalid locomotion ${type}.physics: missing physics object`);
+  }
+  return {
+    ground: createRuntimeMediumPhysics(type, 'ground', authored.ground),
+    air: createRuntimeMediumPhysics(type, 'air', authored.air),
+    water: createRuntimeMediumPhysics(type, 'water', authored.water),
+  };
+}
+
+function isAirborneLocomotionType(type: LocomotionType): boolean {
+  return type === 'hover' || type === 'flying';
+}
+
+function assertPrimaryMediumCanMove(
+  type: LocomotionType,
+  physics: UnitLocomotionPhysics,
+): void {
+  const primaryMedium: LocomotionMediumName = isAirborneLocomotionType(type) ? 'air' : 'ground';
+  const primary = physics[primaryMedium];
+  assertPositiveFinite(`${type}.physics.${primaryMedium}.force`, primary.force);
+  assertPositiveFinite(`${type}.physics.${primaryMedium}.traction`, primary.traction);
+  if (primaryMedium === 'air') {
+    assertPositiveFinite(`${type}.physics.air.heightUpwardForce`, physics.air.heightUpwardForce);
+  }
 }
 
 function createRuntimePathfindingConfig(
@@ -206,131 +244,74 @@ function createRuntimePathfindingConfig(
 export function createUnitLocomotion(
   locomotion: LocomotionBlueprint,
 ): UnitLocomotion {
-  const { type, physics } = locomotion;
-  assertPositiveFinite(`${type}.driveForce`, physics.driveForce);
-  assertPositiveFinite(`${type}.traction`, physics.traction);
+  const { type } = locomotion;
+  const physics = createRuntimeLocomotionPhysics(type, locomotion.physics);
+  assertPrimaryMediumCanMove(type, physics);
   const pathfinding = createRuntimePathfindingConfig(
     `${type}.pathfinding(${locomotion.pathfindingBlueprintId})`,
     locomotion.pathfinding,
   );
-  const isAirborne = type === 'hover' || type === 'flying';
-  const gravityCounterUpwardForceRatio = isAirborne
-    ? locomotion.config.gravityCounterUpwardForceRatio
-    : undefined;
-  const hoverHeightUpwardForce = isAirborne
-    ? locomotion.config.hoverHeightUpwardForce
-    : undefined;
-  let hoverHeightUpwardForceRandomizationAmount: number | undefined;
-  let hoverHeightUpwardForceEMA: number | undefined;
-  if (isAirborne) {
-    assertCounterGravityRatio(
-      `${type}.gravityCounterUpwardForceRatio`,
-      gravityCounterUpwardForceRatio ?? NaN,
-    );
-    assertPositiveFinite(`${type}.hoverHeightUpwardForce`, hoverHeightUpwardForce ?? NaN);
-    const raw = locomotion.config.hoverHeightUpwardForceRandomizationAmount;
-    if (raw !== undefined) {
-      if (!Number.isFinite(raw) || raw < 0 || raw >= 1) {
-        throw new Error(
-          `Invalid locomotion ${type}.hoverHeightUpwardForceRandomizationAmount: expected finite [0,1), got ${raw}`,
-        );
-      }
-      hoverHeightUpwardForceRandomizationAmount = raw > 0 ? raw : undefined;
-    }
-    const rawEMA = locomotion.config.hoverHeightUpwardForceEMA;
-    if (rawEMA !== undefined) {
-      if (!Number.isFinite(rawEMA) || rawEMA < 0 || rawEMA >= 1) {
-        throw new Error(
-          `Invalid locomotion ${type}.hoverHeightUpwardForceEMA: expected finite [0,1), got ${rawEMA}`,
-        );
-      }
-      hoverHeightUpwardForceEMA = rawEMA > 0 ? rawEMA : undefined;
-    }
-  }
-  const result: UnitLocomotion = {
+  return {
     type,
-    driveForce: getEffectiveLocomotionDriveForce(type, physics.driveForce),
-    traction: physics.traction,
+    physics,
     forwardForceRequiresFacing: getLocomotionForwardForceRequiresFacing(type),
     driveForceScalesWithFacing: getLocomotionDriveForceScalesWithFacing(type),
     maintainFullThrustAtWaypoints: getLocomotionMaintainFullThrustAtWaypoints(type),
     pathfinding,
-    gravityCounterUpwardForceRatio,
-    hoverHeightUpwardForce,
-    hoverHeightUpwardForceRandomizationAmount,
-    hoverHeightUpwardForceEMA,
   };
-  // Fully-abstracted medium profile: opt-in terms, included only when authored
-  // so a unit that sets none of them is byte-identical to the pre-profile model.
-  assignOptionalLocomotionTerm(
-    result, 'groundFriction',
-    readOptionalNonNegative(`${type}.groundFriction`, physics.groundFriction));
-  assignOptionalLocomotionTerm(
-    result, 'airFriction',
-    readOptionalNonNegative(`${type}.airFriction`, physics.airFriction));
-  assignOptionalLocomotionTerm(
-    result, 'waterForce',
-    readOptionalNonNegative(`${type}.waterForce`, physics.waterForce));
-  assignOptionalLocomotionTerm(
-    result, 'waterTraction',
-    readOptionalNonNegative(`${type}.waterTraction`, physics.waterTraction));
-  assignOptionalLocomotionTerm(
-    result, 'waterFriction',
-    readOptionalNonNegative(`${type}.waterFriction`, physics.waterFriction));
-  assignOptionalLocomotionTerm(
-    result, 'swimGravityCounterUpwardForceRatio',
-    readOptionalUnitFraction(
-      `${type}.swimGravityCounterUpwardForceRatio`,
-      physics.swimGravityCounterUpwardForceRatio));
-  assignOptionalLocomotionTerm(
-    result, 'swimHeightUpwardForce',
-    readOptionalNonNegative(`${type}.swimHeightUpwardForce`, physics.swimHeightUpwardForce));
-  assignOptionalLocomotionTerm(
-    result, 'swimHeightUpwardForceRandomizationAmount',
-    readOptionalUnitFraction(
-      `${type}.swimHeightUpwardForceRandomizationAmount`,
-      physics.swimHeightUpwardForceRandomizationAmount));
-  assignOptionalLocomotionTerm(
-    result, 'swimHeightUpwardForceEMA',
-    readOptionalUnitFraction(
-      `${type}.swimHeightUpwardForceEMA`,
-      physics.swimHeightUpwardForceEMA));
-  return result;
+}
+
+function cloneMediumPhysics(
+  physics: UnitLocomotionMediumPhysics,
+): UnitLocomotionMediumPhysics {
+  return { ...physics };
 }
 
 export function cloneUnitLocomotion(
   locomotion: UnitLocomotion,
 ): UnitLocomotion {
-  const result: UnitLocomotion = {
+  return {
     type: locomotion.type,
-    driveForce: locomotion.driveForce,
-    traction: locomotion.traction,
+    physics: {
+      ground: cloneMediumPhysics(locomotion.physics.ground),
+      air: cloneMediumPhysics(locomotion.physics.air),
+      water: cloneMediumPhysics(locomotion.physics.water),
+    },
     forwardForceRequiresFacing: locomotion.forwardForceRequiresFacing,
     driveForceScalesWithFacing: locomotion.driveForceScalesWithFacing,
     maintainFullThrustAtWaypoints: locomotion.maintainFullThrustAtWaypoints,
     pathfinding: { ...locomotion.pathfinding },
-    gravityCounterUpwardForceRatio: locomotion.gravityCounterUpwardForceRatio,
-    hoverHeightUpwardForce: locomotion.hoverHeightUpwardForce,
-    hoverHeightUpwardForceRandomizationAmount:
-      locomotion.hoverHeightUpwardForceRandomizationAmount,
-    hoverHeightUpwardForceEMA: locomotion.hoverHeightUpwardForceEMA,
   };
-  // Preserve absent-stays-absent for the opt-in medium profile terms.
-  assignOptionalLocomotionTerm(result, 'groundFriction', locomotion.groundFriction);
-  assignOptionalLocomotionTerm(result, 'airFriction', locomotion.airFriction);
-  assignOptionalLocomotionTerm(result, 'waterForce', locomotion.waterForce);
-  assignOptionalLocomotionTerm(result, 'waterTraction', locomotion.waterTraction);
-  assignOptionalLocomotionTerm(result, 'waterFriction', locomotion.waterFriction);
-  assignOptionalLocomotionTerm(
-    result, 'swimGravityCounterUpwardForceRatio',
-    locomotion.swimGravityCounterUpwardForceRatio);
-  assignOptionalLocomotionTerm(result, 'swimHeightUpwardForce', locomotion.swimHeightUpwardForce);
-  assignOptionalLocomotionTerm(
-    result, 'swimHeightUpwardForceRandomizationAmount',
-    locomotion.swimHeightUpwardForceRandomizationAmount);
-  assignOptionalLocomotionTerm(
-    result, 'swimHeightUpwardForceEMA', locomotion.swimHeightUpwardForceEMA);
-  return result;
+}
+
+export function getLocomotionPrimaryDrivePhysics(
+  locomotion: UnitLocomotion,
+): UnitLocomotionMediumPhysics {
+  return isAirborneLocomotionType(locomotion.type)
+    ? locomotion.physics.air
+    : locomotion.physics.ground;
+}
+
+export function getLocomotionGroundDrivePhysics(
+  locomotion: UnitLocomotion,
+): UnitLocomotionMediumPhysics {
+  return locomotion.physics.ground;
+}
+
+export function getLocomotionBestDrivePhysics(
+  locomotion: UnitLocomotion,
+): UnitLocomotionMediumPhysics {
+  let best = getLocomotionPrimaryDrivePhysics(locomotion);
+  let bestScore = best.force * best.traction;
+  for (const medium of LOCOMOTION_MEDIUM_NAMES) {
+    const candidate = locomotion.physics[medium];
+    const score = candidate.force * candidate.traction;
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 type LocomotionForceProfile = {
@@ -342,15 +323,15 @@ type LocomotionForceProfile = {
 
 function writeLocomotionForceProfile(
   out: LocomotionForceProfile,
-  locomotion: UnitLocomotion,
+  physics: UnitLocomotionMediumPhysics,
   referenceMass: number,
   thrustMultiplier: number,
   forceScale: number,
 ): LocomotionForceProfile {
-  assertPositiveFinite(`${locomotion.type}.referenceMass`, referenceMass);
+  assertPositiveFinite('referenceMass', referenceMass);
   assertPositiveFinite('forceScale', forceScale);
-  const rawDriveForce = locomotion.driveForce * thrustMultiplier;
-  const tractionDriveForce = rawDriveForce * locomotion.traction;
+  const rawDriveForce = physics.force * thrustMultiplier;
+  const tractionDriveForce = rawDriveForce * physics.traction;
   out.rawDriveForce = rawDriveForce;
   out.tractionDriveForce = tractionDriveForce;
   out.rawForceMagnitude = (rawDriveForce * referenceMass) / forceScale;
@@ -359,7 +340,7 @@ function writeLocomotionForceProfile(
 }
 
 export function getLocomotionForceProfile(
-  locomotion: UnitLocomotion,
+  physics: UnitLocomotionMediumPhysics,
   referenceMass: number,
   thrustMultiplier: number,
   forceScale: number,
@@ -371,7 +352,7 @@ export function getLocomotionForceProfile(
       rawForceMagnitude: 0,
       tractionForceMagnitude: 0,
     },
-    locomotion,
+    physics,
     referenceMass,
     thrustMultiplier,
     forceScale,

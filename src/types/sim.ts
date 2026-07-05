@@ -153,7 +153,7 @@ export type EntityRadii = {
 export type UnitMoveState = 'maneuver' | 'holdPosition' | 'roam';
 export type UnitAirIdleState = 'fly' | 'land';
 export type CombatTrajectoryMode = 'auto' | 'low' | 'high';
-export type CombatFireState = 'fireAtWill' | 'returnFire' | 'holdFire';
+export type CombatFireState = 'fireAtWill' | 'returnFire' | 'holdFire' | 'defend' | 'fireAtAll';
 
 // Cached shield panel geometry (pre-computed from blueprint at entity creation).
 // halfWidth — half the panel's edge length (square panel, so the same
@@ -213,7 +213,6 @@ export type Unit = {
    *  sensors.fullSightRadius. */
   sensors: SensorCapabilityConfig;
   mass: number;
-  airFrictionPer60HzFrame: number;
   hp: number;
   maxHp: number;
   actions: UnitAction[];
@@ -286,17 +285,15 @@ export type Unit = {
    *  the raw normal at the spawn position; written by the unit ground
    *  normal system. */
   surfaceNormal: { nx: number; ny: number; nz: number };
-  /** Per-unit EMA accumulator for the jittered hoverHeightUpwardForce
-   *  (airborne locomotion only). Updated each tick by UnitForceSystem
-   *  when `locomotion.hoverHeightUpwardForceEMA > 0`; null until the
-   *  first tick seeds it from the raw sample. Tick-only state, never
-   *  serialised. */
+  /** Per-unit EMA accumulator for the jittered air heightUpwardForce.
+   *  Updated each tick by UnitForceSystem when
+   *  `locomotion.physics.air.heightUpwardForceEMA > 0`; null until the first
+   *  tick seeds it from the raw sample. Tick-only state, never serialised. */
   hoverHeightUpwardForceSmoothed: number | null;
-  /** Per-unit EMA accumulator for the jittered swimHeightUpwardForce, the
-   *  water-medium analogue of `hoverHeightUpwardForceSmoothed`. Updated each
-   *  tick by UnitForceSystem when submerged and `locomotion
-   *  .swimHeightUpwardForceEMA > 0`; null until first seeded. Tick-only
-   *  state, never serialised. */
+  /** Per-unit EMA accumulator for the jittered water heightUpwardForce.
+   *  Updated each tick by UnitForceSystem when submerged and
+   *  `locomotion.physics.water.heightUpwardForceEMA > 0`; null until first
+   *  seeded. Tick-only state, never serialised. */
   swimHeightUpwardForceSmoothed: number | null;
   /** Full 3-DOF orientation for the unit body. All units carry this
    *  state; `transform.rotation` remains the scalar yaw mirror for
@@ -344,9 +341,9 @@ export type CombatComponent = {
   /** Legacy player-controlled fire permission mirror. False is hard
    *  hold-fire for older snapshot consumers. */
   fireEnabled: boolean;
-  /** Player-controlled fire state. `fireAtWill` acquires autonomously,
-   *  `returnFire` only fires at explicit priority targets, and
-   *  `holdFire` drops every lock and refuses to fire. */
+  /** Player-controlled fire state. BAR exposes Fire at will / Return fire /
+   *  Hold fire by default, while its order-menu helper also supports direct
+   *  Defend and Fire at all states. */
   fireState: CombatFireState;
   /** Ballistic arc override for hosts with ballistic weapons. `auto`
    *  uses each turret blueprint's authored low/high arc; player
@@ -1009,7 +1006,6 @@ export type UnitBuildConfig = {
   supportSurface: UnitSupportSurface;
   locomotion: UnitLocomotion;
   mass: number;
-  airFrictionPer60HzFrame: number;
   hp: number;
   fireRange: number | undefined;
 };
