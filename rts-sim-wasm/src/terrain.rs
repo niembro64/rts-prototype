@@ -45,7 +45,8 @@ pub(crate) const TERRAIN_WATER_LEVEL: f64 =
 pub(crate) const TERRAIN_MESH_EPSILON: f64 = 1e-6;
 pub(crate) const TERRAIN_MESH_EDGE_EPSILON: f64 = 1e-4;
 pub(crate) const TERRAIN_PLATEAU_CONSTRAINT_EPSILON: f64 = 1e-7;
-pub(crate) const TERRAIN_PLATEAU_CONSTRAINT_MAX_CHORD_CELLS: f64 = 0.5;
+pub(crate) const TERRAIN_PLATEAU_CONSTRAINT_MAX_CHORD_CELLS: f64 = 1.0;
+pub(crate) const TERRAIN_PLATEAU_CONSTRAINT_SNAP_CELLS: f64 = 0.025;
 pub(crate) const TERRAIN_INV_SQRT3: f64 = 0.5773502691896258;
 pub(crate) const TERRAIN_EDGE_LINE_KEY_BIAS: i64 = 0x100000000;
 pub(crate) const TERRAIN_EDGE_LINE_KEY_STRIDE: i64 = 0x200000000;
@@ -878,6 +879,7 @@ pub(crate) struct TerrainMeshBuildConfig {
     smoothing_steps: i32,
     smoothing_amount: f64,
     plateau_constraint_max_chord: f64,
+    plateau_constraint_snap_distance: f64,
 }
 
 #[derive(Default)]
@@ -1870,12 +1872,69 @@ pub(crate) fn terrain_plateau_boundary_intersection(
     }
 }
 
+#[inline]
+pub(crate) fn terrain_mesh_point_distance_2d(a: TerrainMeshPoint, b: TerrainMeshPoint) -> f64 {
+    ((b.x - a.x).powi(2) + (b.z - a.z).powi(2)).sqrt()
+}
+
+#[inline]
+pub(crate) fn terrain_plateau_boundary_values_cross(a: f64, b: f64) -> bool {
+    (a < -TERRAIN_PLATEAU_CONSTRAINT_EPSILON && b > TERRAIN_PLATEAU_CONSTRAINT_EPSILON)
+        || (a > TERRAIN_PLATEAU_CONSTRAINT_EPSILON && b < -TERRAIN_PLATEAU_CONSTRAINT_EPSILON)
+}
+
+pub(crate) fn terrain_snap_polygon_vertices_to_plateau_boundary(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    after_key: i32,
+) -> Vec<TerrainMeshPoint> {
+    if points.len() < 3 || c.plateau_constraint_snap_distance <= 0.0 {
+        return points.to_vec();
+    }
+
+    let mut snapped = points.to_vec();
+    let mut best_dist =
+        vec![c.plateau_constraint_snap_distance + TERRAIN_MESH_EPSILON; points.len()];
+    for i in 0..points.len() {
+        let j = (i + 1) % points.len();
+        let Some(fa) =
+            terrain_plateau_boundary_value_at_world(c, points[i].x, points[i].z, after_key)
+        else {
+            continue;
+        };
+        let Some(fb) =
+            terrain_plateau_boundary_value_at_world(c, points[j].x, points[j].z, after_key)
+        else {
+            continue;
+        };
+        if !terrain_plateau_boundary_values_cross(fa, fb) {
+            continue;
+        }
+
+        let boundary = terrain_plateau_boundary_intersection(c, points[i], points[j], after_key);
+        let da = terrain_mesh_point_distance_2d(points[i], boundary);
+        if da <= c.plateau_constraint_snap_distance && da < best_dist[i] {
+            snapped[i] = boundary;
+            best_dist[i] = da;
+        }
+        let db = terrain_mesh_point_distance_2d(points[j], boundary);
+        if db <= c.plateau_constraint_snap_distance && db < best_dist[j] {
+            snapped[j] = boundary;
+            best_dist[j] = db;
+        }
+    }
+
+    terrain_remove_duplicate_mesh_points(&snapped)
+}
+
 pub(crate) fn terrain_clip_polygon_by_plateau_boundary(
     c: &TerrainMeshBuildConfig,
     points: &[TerrainMeshPoint],
     after_key: i32,
     keep_lower: bool,
 ) -> Vec<TerrainMeshPoint> {
+    let snapped_points = terrain_snap_polygon_vertices_to_plateau_boundary(c, points, after_key);
+    let points = snapped_points.as_slice();
     if points.len() < 3 {
         return Vec::new();
     }
@@ -3068,6 +3127,7 @@ pub fn terrain_build_adaptive_mesh(
         smoothing_steps: lod_config[8] as i32,
         smoothing_amount: lod_config[9],
         plateau_constraint_max_chord: cell_size * TERRAIN_PLATEAU_CONSTRAINT_MAX_CHORD_CELLS,
+        plateau_constraint_snap_distance: cell_size * TERRAIN_PLATEAU_CONSTRAINT_SNAP_CELLS,
     };
 
     let Some(mesh) = terrain_build_adaptive_mesh_internal(&c, cells_x, cells_y, cell_size) else {
