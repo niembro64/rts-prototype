@@ -180,6 +180,43 @@ function terrainRenderFaceNormal(
   return { x: nx / len, y: ny / len, z: nz / len, weight: len };
 }
 
+function terrainRenderFaceNormalFromRenderPositions(
+  positions: readonly number[],
+  ia: number,
+  ib: number,
+  ic: number,
+): TerrainRenderNormal {
+  const a3 = ia * 3;
+  const b3 = ib * 3;
+  const c3 = ic * 3;
+  const ax = positions[a3];
+  const ay = positions[a3 + 2];
+  const az = positions[a3 + 1];
+  const bx = positions[b3];
+  const by = positions[b3 + 2];
+  const bz = positions[b3 + 1];
+  const cx = positions[c3];
+  const cy = positions[c3 + 2];
+  const cz = positions[c3 + 1];
+  const ux = bx - ax;
+  const uy = by - ay;
+  const uz = bz - az;
+  const vx = cx - ax;
+  const vy = cy - ay;
+  const vz = cz - az;
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  if (nz < 0) {
+    nx = -nx;
+    ny = -ny;
+    nz = -nz;
+  }
+  const len = Math.hypot(nx, ny, nz);
+  if (len <= 1.0e-9) return { x: 0, y: 0, z: 1, weight: 0 };
+  return { x: nx / len, y: ny / len, z: nz / len, weight: len };
+}
+
 function terrainRenderSurfaceClass(
   normal: TerrainRenderNormal,
   heightSpan: number,
@@ -647,7 +684,8 @@ export class TerrainTileRenderer3D {
             'float shoreline = 1.0 - smoothstep(uTerrainWaterLevel + 10.0, uTerrainWaterLevel + 140.0, vTerrainWorldPos.y);',
             'float upland = smoothstep(0.16, 0.58, terrainHeightT);',
             'float exposedRock = smoothstep(0.38, 0.86, terrainHeightT);',
-            'float steepRock = smoothstep(0.20, 0.56, vTerrainSlope);',
+            'float wallMask = clamp(vTerrainWall, 0.0, 1.0);',
+            'float steepRock = max(smoothstep(0.20, 0.56, vTerrainSlope), wallMask);',
             'float highDry = smoothstep(0.68, 1.0, terrainHeightT);',
             'vec3 wetSoil = vec3(0.18, 0.25, 0.18);',
             'vec3 lowGrass = vec3(0.31, 0.41, 0.22);',
@@ -662,7 +700,6 @@ export class TerrainTileRenderer3D {
             'vec3 dpdy = dFdy(vTerrainWorldPos);',
             'vec3 geomNormal = normalize(cross(dpdx, dpdy));',
             'float geomSlope = 1.0 - abs(geomNormal.y);',
-            'float wallMask = clamp(vTerrainWall, 0.0, 1.0);',
             'if (uGroundDetailEnabled > 0.0 || uRockDetailEnabled > 0.0) {',
             '  // ===== Shared mask infrastructure (used by both detail textures) =====',
             '  // Per-fragment geometric slope from world-position derivatives - the',
@@ -679,7 +716,8 @@ export class TerrainTileRenderer3D {
             '  // edge instead of snapping to full green right at the base.',
             '  // The smooth-shaded vTerrainSlope still contributes to the local',
             '  // transition without forcing a per-triangle hard boundary.',
-            '  float bufferSlope = clamp(max(max(vTerrainSlope * 2.5, vTerrainNeighborhoodSlope), wallMask), 0.0, 1.0);',
+            '  float flatRegionSlope = max(vTerrainSlope * 2.5, vTerrainNeighborhoodSlope);',
+            '  float bufferSlope = mix(clamp(flatRegionSlope, 0.0, 1.0), 1.0, wallMask);',
             '  float verticalCliffMask = max(wallMask, smoothstep(0.78, 0.96, geomSlope));',
             '  float flatDetail = (1.0 - smoothstep(0.02, 0.72, bufferSlope)) * (1.0 - verticalCliffMask) * (1.0 - shoreline);',
             '  // Restrict the grass texture to flat triangles on the world-0 plane.',
@@ -778,7 +816,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v33';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v34';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -1558,10 +1596,16 @@ export class TerrainTileRenderer3D {
         );
         return { x: fallback.nx, y: fallback.ny, z: fallback.nz, weight: 1 };
       };
-      const allocateTerrainVertex = (i: number, surfaceClass: number): number => {
+      const pushTerrainVertex = (
+        i: number,
+        surfaceClass: number,
+        reuseVertex: boolean,
+      ): number => {
         const vertexMap = meshVertexToTerrainVertexBySurface[surfaceClass];
-        const existing = vertexMap[i];
-        if (existing >= 0) return existing;
+        if (reuseVertex) {
+          const existing = vertexMap[i];
+          if (existing >= 0) return existing;
+        }
         const coordOffset = i * 2;
         const wx = authoritativeMesh.vertexCoords[coordOffset];
         const wz = authoritativeMesh.vertexCoords[coordOffset + 1];
@@ -1569,31 +1613,40 @@ export class TerrainTileRenderer3D {
         const normal = getAveragedRenderNormal(i, surfaceClass, wx, wz);
         const isWall = surfaceClass === TERRAIN_RENDER_SURFACE_WALL;
         const idx = terrainPositions.length / 3;
-        vertexMap[i] = idx;
+        if (reuseVertex) vertexMap[i] = idx;
         terrainPositions.push(wx, terrainHeight + LAND_TILE_GROUND_LIFT, wz);
         terrainNormals.push(normal.x, normal.z, normal.y);
         terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
         terrainWalls.push(isWall ? 1 : 0);
-        const vertexSlope = isWall ? 1 : 1 - Math.min(1, Math.abs(normal.z));
-        terrainNeighborhoodSlopes.push(
-          computeNeighborhoodSlope(
-            wx,
-            wz,
-            vertexSlope,
-            this.mapWidth,
-            this.mapHeight,
-            cellSize,
-          ),
-        );
-        const precomputedShadow = getPrecomputedShadowForVertex(i, wx, wz, terrainHeight);
-        terrainShades.push(
-          terrainSunShade(
-            { x: normal.x, y: normal.y, z: normal.z },
-            precomputedShadow,
-          ),
-        );
+        if (isWall) {
+          terrainNeighborhoodSlopes.push(1);
+          terrainShades.push(1);
+        } else {
+          const vertexSlope = 1 - Math.min(1, Math.abs(normal.z));
+          terrainNeighborhoodSlopes.push(
+            computeNeighborhoodSlope(
+              wx,
+              wz,
+              vertexSlope,
+              this.mapWidth,
+              this.mapHeight,
+              cellSize,
+            ),
+          );
+          const precomputedShadow = getPrecomputedShadowForVertex(i, wx, wz, terrainHeight);
+          terrainShades.push(
+            terrainSunShade(
+              { x: normal.x, y: normal.y, z: normal.z },
+              precomputedShadow,
+            ),
+          );
+        }
         return idx;
       };
+      const allocateTerrainVertex = (i: number, surfaceClass: number): number =>
+        pushTerrainVertex(i, surfaceClass, true);
+      const pushUniqueTerrainVertex = (i: number, surfaceClass: number): number =>
+        pushTerrainVertex(i, surfaceClass, false);
 
       for (let tri = 0; tri < authoritativeMesh.triangleCount; tri++) {
         if (!triangleIsRendered[tri]) continue;
@@ -1602,10 +1655,17 @@ export class TerrainTileRenderer3D {
         const ib = authoritativeMesh.triangleIndices[triOffset + 1];
         const ic = authoritativeMesh.triangleIndices[triOffset + 2];
         const surfaceClass = triangleSurfaceClasses[tri];
+        const useUniqueVertices = surfaceClass === TERRAIN_RENDER_SURFACE_WALL;
         terrainIndices.push(
-          allocateTerrainVertex(ia, surfaceClass),
-          allocateTerrainVertex(ib, surfaceClass),
-          allocateTerrainVertex(ic, surfaceClass),
+          useUniqueVertices
+            ? pushUniqueTerrainVertex(ia, surfaceClass)
+            : allocateTerrainVertex(ia, surfaceClass),
+          useUniqueVertices
+            ? pushUniqueTerrainVertex(ib, surfaceClass)
+            : allocateTerrainVertex(ib, surfaceClass),
+          useUniqueVertices
+            ? pushUniqueTerrainVertex(ic, surfaceClass)
+            : allocateTerrainVertex(ic, surfaceClass),
         );
         terrainDebugLevels.push(authoritativeMesh.triangleLevels[tri] ?? 0);
       }
@@ -1684,21 +1744,31 @@ export class TerrainTileRenderer3D {
             this.mapHeight,
           );
           if (midFade >= 1) continue;
-          const topA = allocateTerrainVertex(edge.a, TERRAIN_RENDER_SURFACE_SMOOTH);
-          const topB = allocateTerrainVertex(edge.b, TERRAIN_RENDER_SURFACE_SMOOTH);
-          const topAOff = topA * 3;
-          const topBOff = topB * 3;
+          const topA = pushWallVertex(
+            ax,
+            authoritativeMesh.vertexHeights[edge.a] + LAND_TILE_GROUND_LIFT,
+            az,
+            normal.nx,
+            normal.nz,
+          );
+          const topB = pushWallVertex(
+            bx,
+            authoritativeMesh.vertexHeights[edge.b] + LAND_TILE_GROUND_LIFT,
+            bz,
+            normal.nx,
+            normal.nz,
+          );
           const floorA = pushWallVertex(
-            terrainPositions[topAOff],
+            ax,
             CUBE_FLOOR_Y,
-            terrainPositions[topAOff + 2],
+            az,
             normal.nx,
             normal.nz,
           );
           const floorB = pushWallVertex(
-            terrainPositions[topBOff],
+            bx,
             CUBE_FLOOR_Y,
-            terrainPositions[topBOff + 2],
+            bz,
             normal.nx,
             normal.nz,
           );
@@ -1753,6 +1823,58 @@ export class TerrainTileRenderer3D {
       pushShelfQuad(W, 0, W + outer, H);
     };
     addInfinityShelf();
+
+    const bakeWallTriangleLighting = (): void => {
+      for (let i = 0; i < terrainIndices.length; i += 3) {
+        const ia = terrainIndices[i];
+        const ib = terrainIndices[i + 1];
+        const ic = terrainIndices[i + 2];
+        if (
+          terrainWalls[ia] < 0.5 ||
+          terrainWalls[ib] < 0.5 ||
+          terrainWalls[ic] < 0.5
+        ) {
+          continue;
+        }
+        let normal = terrainRenderFaceNormalFromRenderPositions(
+          terrainPositions,
+          ia,
+          ib,
+          ic,
+        );
+        const ia3 = ia * 3;
+        const ib3 = ib * 3;
+        const ic3 = ic * 3;
+        const refX = terrainNormals[ia3] + terrainNormals[ib3] + terrainNormals[ic3];
+        const refY = terrainNormals[ia3 + 2] + terrainNormals[ib3 + 2] + terrainNormals[ic3 + 2];
+        const refZ = terrainNormals[ia3 + 1] + terrainNormals[ib3 + 1] + terrainNormals[ic3 + 1];
+        if (normal.x * refX + normal.y * refY + normal.z * refZ < 0) {
+          normal = {
+            x: -normal.x,
+            y: -normal.y,
+            z: -normal.z,
+            weight: normal.weight,
+          };
+        }
+        const shade = terrainSunShade(
+          { x: normal.x, y: normal.y, z: normal.z },
+          1,
+        );
+        const writeVertex = (idx: number): void => {
+          const off = idx * 3;
+          terrainNormals[off] = normal.x;
+          terrainNormals[off + 1] = normal.z;
+          terrainNormals[off + 2] = normal.y;
+          terrainShades[idx] = shade;
+          terrainNeighborhoodSlopes[idx] = 1;
+          terrainWalls[idx] = 1;
+        };
+        writeVertex(ia);
+        writeVertex(ib);
+        writeVertex(ic);
+      }
+    };
+    bakeWallTriangleLighting();
 
     const geometry = new THREE.BufferGeometry();
     if (triangleDebug) {

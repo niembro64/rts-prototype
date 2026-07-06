@@ -64,8 +64,8 @@
           "tileWorldSize": 10000
         },
         "wallTexture": {
-          "blend": 0.32,
-          "tileWorldSize": 1400
+          "blend": 0.1,
+          "tileWorldSize": 10000
         },
         "shadePaletteRgb": [
           "#36322b",
