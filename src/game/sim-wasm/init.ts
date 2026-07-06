@@ -1675,7 +1675,8 @@ export interface SimWasm {
    *  entire topology generation + crack-repair loop; TypeScript only
    *  assembles the config slice and splats the returned flat buffer into
    *  a TerrainTileMap. Returns `[status, vertexCount, triangleCount,
-   *  cellOffsetsLen, cellRefsCount, ...sections]`; `[0]` on failure. */
+   *  cellOffsetsLen, cellRefsCount, ...sections]`; sections include
+   *  triangleWallFlags after triangleLevels. `[0]` on failure. */
   readonly terrainBuildAdaptiveMesh: (
     mapWidth: number,
     mapHeight: number,
@@ -3397,7 +3398,7 @@ export interface SnapshotEncodeApi {
   shroudScratchPtr: () => number;
   /** Pre-grow the shroud scratch to hold `byteCount` bytes. */
   shroudScratchEnsure: (byteCount: number) => void;
-  /** Emit compact `terrain: {v,m,vc,vh,ti}` from raw TerrainTileMap
+  /** Emit compact `terrain: {v,m,vc,vh,ti,tw}` from raw TerrainTileMap
    *  arrays copied into number scratch. */
   emitPackedTerrain: (
     mapWidth: number,
@@ -3415,6 +3416,8 @@ export interface SnapshotEncodeApi {
     meshVertexHeightsCount: number,
     meshTriangleIndicesOffset: number,
     meshTriangleIndicesCount: number,
+    meshTriangleWallFlagsOffset: number,
+    meshTriangleWallFlagsCount: number,
   ) => number;
   /** Emit full `terrain: TerrainTileMap`. Retained for byte-parity
    *  fixtures and raw DTO fallback diagnostics. */
@@ -3436,6 +3439,8 @@ export interface SnapshotEncodeApi {
     meshTriangleIndicesCount: number,
     meshTriangleLevelsOffset: number,
     meshTriangleLevelsCount: number,
+    meshTriangleWallFlagsOffset: number,
+    meshTriangleWallFlagsCount: number,
     meshTriangleNeighborIndicesOffset: number,
     meshTriangleNeighborIndicesCount: number,
     meshTriangleNeighborLevelsOffset: number,

@@ -69,6 +69,7 @@ type ClientDefaults = {
   readonly materialExplosions: boolean;
   readonly beamSnapToTurret: boolean;
   readonly triangleDebug: boolean;
+  readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly metalMap: boolean;
   readonly elevationMap: boolean;
@@ -141,6 +142,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     materialExplosions: pickDefault(clientBarConfig.materialExplosions, mode),
     beamSnapToTurret: pickDefault(clientBarConfig.beamSnapToTurret, mode),
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
+    wallTriangleDebug: pickDefault(clientBarConfig.wallTriangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
     metalMap: pickDefault(clientBarConfig.metalMap, mode),
     elevationMap: pickDefault(clientBarConfig.elevationMap, mode),
@@ -219,6 +221,7 @@ export const CLIENT_CONFIG = {
   materialExplosions: { default: DEMO_CLIENT_DEFAULTS.materialExplosions },
   beamSnapToTurret: { default: DEMO_CLIENT_DEFAULTS.beamSnapToTurret },
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
+  wallTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.wallTriangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
   metalMap: { default: DEMO_CLIENT_DEFAULTS.metalMap },
   elevationMap: { default: DEMO_CLIENT_DEFAULTS.elevationMap },
@@ -320,6 +323,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     materialExplosions: { default: defaults.materialExplosions },
     beamSnapToTurret: { default: defaults.beamSnapToTurret },
     triangleDebug: { default: defaults.triangleDebug },
+    wallTriangleDebug: { default: defaults.wallTriangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
     metalMap: { default: defaults.metalMap },
     elevationMap: { default: defaults.elevationMap },
@@ -378,6 +382,7 @@ type ClientStorageKeyName =
   | 'beamSnapToTurret'
   | 'resourceBallDensity'
   | 'triangleDebug'
+  | 'wallTriangleDebug'
   | 'buildGridDebug'
   | 'metalMap'
   | 'elevationMap'
@@ -422,6 +427,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'beamSnapToTurret',
   'resourceBallDensity',
   'triangleDebug',
+  'wallTriangleDebug',
   'buildGridDebug',
   'metalMap',
   'elevationMap',
@@ -515,6 +521,7 @@ let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
 let currentResourceBallDensity: number = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
+let currentWallTriangleDebug: boolean = _cd.wallTriangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
 let currentMetalMap: boolean = _cd.metalMap.default;
 let currentElevationMap: boolean = _cd.elevationMap.default;
@@ -620,6 +627,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentBeamSnapToTurret = cd.beamSnapToTurret.default;
   applyResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
   currentTriangleDebug = cd.triangleDebug.default;
+  currentWallTriangleDebug = cd.wallTriangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
   currentMetalMap = cd.metalMap.default;
   currentElevationMap = cd.elevationMap.default;
@@ -721,6 +729,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedTriangleDebug = readPersisted(keys.triangleDebug);
   if (storedTriangleDebug !== null) {
     currentTriangleDebug = storedTriangleDebug === 'true';
+  }
+  const storedWallTriangleDebug = readPersisted(keys.wallTriangleDebug);
+  if (storedWallTriangleDebug !== null) {
+    currentWallTriangleDebug = storedWallTriangleDebug === 'true';
   }
   const storedBuildGridDebug = readPersisted(keys.buildGridDebug);
   if (storedBuildGridDebug !== null) {
@@ -1144,6 +1156,15 @@ export function getTriangleDebug(): boolean {
 export function setTriangleDebug(enabled: boolean): void {
   currentTriangleDebug = enabled;
   persist(activeStorageKeys().triangleDebug, String(enabled));
+}
+
+export function getWallTriangleDebug(): boolean {
+  return currentWallTriangleDebug;
+}
+
+export function setWallTriangleDebug(enabled: boolean): void {
+  currentWallTriangleDebug = enabled;
+  persist(activeStorageKeys().wallTriangleDebug, String(enabled));
 }
 
 export function getBuildGridDebug(): boolean {

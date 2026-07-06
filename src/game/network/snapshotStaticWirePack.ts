@@ -5,9 +5,10 @@ import {
 } from './snapshotBinaryWire';
 import { buildTerrainCellTriangleIndex } from '../sim/terrain/terrainCellTriangleIndex';
 
-const PACKED_TERRAIN_VERSION = 4;
+const PACKED_TERRAIN_VERSION = 5;
 const LEGACY_PACKED_TERRAIN_V2_VERSION = 2;
 const LEGACY_PACKED_TERRAIN_V3_VERSION = 3;
+const LEGACY_PACKED_TERRAIN_V4_VERSION = 4;
 const PACKED_BUILDABILITY_VERSION = 1;
 const TERRAIN_TRIANGLE_INDICES_U32 = 1 << 0;
 const TERRAIN_CELL_TRIANGLE_INDICES_U32 = 1 << 1;
@@ -68,18 +69,28 @@ export type LegacyPackedTerrainTileMapWireV3 = {
   ci: Uint8Array;
 };
 
-export type PackedTerrainTileMapWireV4 = {
-  v: typeof PACKED_TERRAIN_VERSION;
+export type LegacyPackedTerrainTileMapWireV4 = {
+  v: typeof LEGACY_PACKED_TERRAIN_V4_VERSION;
   m: TerrainMeta;
   vc: Uint8Array;
   vh: Uint8Array;
   ti: Uint8Array;
 };
 
+export type PackedTerrainTileMapWireV5 = {
+  v: typeof PACKED_TERRAIN_VERSION;
+  m: TerrainMeta;
+  vc: Uint8Array;
+  vh: Uint8Array;
+  ti: Uint8Array;
+  tw: Uint8Array;
+};
+
 export type PackedTerrainTileMapWire =
   | LegacyPackedTerrainTileMapWire
   | LegacyPackedTerrainTileMapWireV3
-  | PackedTerrainTileMapWireV4;
+  | LegacyPackedTerrainTileMapWireV4
+  | PackedTerrainTileMapWireV5;
 
 export type PackedTerrainBuildabilityGridWire = {
   v: typeof PACKED_BUILDABILITY_VERSION;
@@ -112,6 +123,7 @@ export function packTerrainForWire(
     vc: writeFloat32Bytes(terrain.meshVertexCoords),
     vh: writeFloat32Bytes(terrain.meshVertexHeights),
     ti: triangleIndices,
+    tw: writeUint8Bytes(terrain.meshTriangleWallFlags),
   };
 }
 
@@ -120,6 +132,7 @@ export function unpackTerrainFromWire(
 ): TerrainTileMap {
   const meta = packed.m;
   if (packed.v === LEGACY_PACKED_TERRAIN_V2_VERSION) {
+    const meshTriangleIndices = readUint32Bytes(packed.ti);
     return {
       mapWidth: meta[0],
       mapHeight: meta[1],
@@ -132,8 +145,9 @@ export function unpackTerrainFromWire(
       version: meta[8],
       meshVertexCoords: readFloat32Bytes(packed.vc),
       meshVertexHeights: readFloat32Bytes(packed.vh),
-      meshTriangleIndices: readUint32Bytes(packed.ti),
+      meshTriangleIndices,
       meshTriangleLevels: readInt8Bytes(packed.tl),
+      meshTriangleWallFlags: makeZeroWallFlags(Math.floor(meshTriangleIndices.length / 3)),
       meshTriangleNeighborIndices: readInt32Bytes(packed.ni),
       meshTriangleNeighborLevels: readInt8Bytes(packed.nl),
       meshCellTriangleOffsets: readUint32Bytes(packed.co),
@@ -146,6 +160,10 @@ export function unpackTerrainFromWire(
   const meshVertexCoords = readFloat32Bytes(packed.vc);
   const meshVertexHeights = readFloat32Bytes(packed.vh);
   const meshTriangleIndices = readTerrainTriangleIndices(packed.ti, flags);
+  const triangleCount = Math.floor(meshTriangleIndices.length / 3);
+  const meshTriangleWallFlags = packed.v === PACKED_TERRAIN_VERSION
+    ? normalizeWallFlags(readUint8Bytes(packed.tw), triangleCount)
+    : makeZeroWallFlags(triangleCount);
   const cellIndex = packed.v === LEGACY_PACKED_TERRAIN_V3_VERSION
     ? {
         cellTriangleOffsets: readUint32Bytes(packed.co),
@@ -173,6 +191,7 @@ export function unpackTerrainFromWire(
     meshVertexCoords,
     meshVertexHeights,
     meshTriangleIndices,
+    meshTriangleWallFlags,
     // These hierarchy/neighbor arrays were only consumed during mesh
     // baking. Runtime sampling uses vertices, triangles, and cell buckets.
     meshTriangleLevels: [],
@@ -217,12 +236,24 @@ export function isPackedTerrainTileMapWire(
     return true;
   }
 
+  if (
+    candidate.v === LEGACY_PACKED_TERRAIN_V4_VERSION &&
+    Array.isArray(candidate.m) &&
+    candidate.m.length === 10 &&
+    isBytes(candidate.vc) &&
+    isBytes(candidate.vh) &&
+    isBytes(candidate.ti)
+  ) {
+    return true;
+  }
+
   return candidate.v === PACKED_TERRAIN_VERSION &&
     Array.isArray(candidate.m) &&
     candidate.m.length === 10 &&
     isBytes(candidate.vc) &&
     isBytes(candidate.vh) &&
-    isBytes(candidate.ti);
+    isBytes(candidate.ti) &&
+    isBytes((candidate as Partial<PackedTerrainTileMapWireV5>).tw);
 }
 
 export function packBuildabilityForWire(
@@ -337,12 +368,41 @@ function writeFloat32Bytes(values: readonly number[]): Uint8Array {
   return bytes;
 }
 
+function writeUint8Bytes(values: readonly number[]): Uint8Array {
+  const bytes = new Uint8Array(values.length);
+  for (let i = 0; i < values.length; i++) {
+    bytes[i] = values[i] === 0 ? 0 : 1;
+  }
+  return bytes;
+}
+
 function readFloat32Bytes(bytes: Uint8Array): number[] {
   const count = Math.floor(bytes.byteLength / 4);
   const view = new DataView(bytes.buffer, bytes.byteOffset, count * 4);
   const out = new Array<number>(count);
   for (let i = 0; i < count; i++) {
     out[i] = view.getFloat32(i * 4, true);
+  }
+  return out;
+}
+
+function readUint8Bytes(bytes: Uint8Array): number[] {
+  const out = new Array<number>(bytes.byteLength);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    out[i] = bytes[i] === 0 ? 0 : 1;
+  }
+  return out;
+}
+
+function makeZeroWallFlags(triangleCount: number): number[] {
+  return new Array<number>(Math.max(0, triangleCount)).fill(0);
+}
+
+function normalizeWallFlags(values: readonly number[], triangleCount: number): number[] {
+  const count = Math.max(0, triangleCount);
+  const out = new Array<number>(count);
+  for (let i = 0; i < count; i++) {
+    out[i] = values[i] === 0 ? 0 : 1;
   }
   return out;
 }

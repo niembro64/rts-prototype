@@ -2202,6 +2202,7 @@ function canEncodeTerrain(terrain: TerrainTileMap): boolean {
     isFiniteNumberArray(terrain.meshVertexHeights) &&
     isFiniteNumberArray(terrain.meshTriangleIndices) &&
     isFiniteNumberArray(terrain.meshTriangleLevels) &&
+    isFiniteNumberArray(terrain.meshTriangleWallFlags) &&
     isFiniteNumberArray(terrain.meshTriangleNeighborIndices) &&
     isFiniteNumberArray(terrain.meshTriangleNeighborLevels) &&
     isFiniteNumberArray(terrain.meshCellTriangleOffsets) &&
@@ -2214,6 +2215,7 @@ function emitPackedTerrain(sim: SimWasm, terrain: TerrainTileMap): void {
     terrain.meshVertexCoords,
     terrain.meshVertexHeights,
     terrain.meshTriangleIndices,
+    terrain.meshTriangleWallFlags,
   ] as const;
   const offsets = packNumberArraysIntoScratch(sim, arrays);
   sim.snapshotEncode.emitPackedTerrain(
@@ -2229,6 +2231,7 @@ function emitPackedTerrain(sim: SimWasm, terrain: TerrainTileMap): void {
     offsets[0], terrain.meshVertexCoords.length,
     offsets[1], terrain.meshVertexHeights.length,
     offsets[2], terrain.meshTriangleIndices.length,
+    offsets[3], terrain.meshTriangleWallFlags.length,
   );
 }
 

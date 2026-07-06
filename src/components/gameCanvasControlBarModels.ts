@@ -218,6 +218,7 @@ export type GameCanvasClientControlBarModel = {
   readonly edgeScrollEnabled: boolean;
   readonly showServerControls: boolean;
   readonly triangleDebug: boolean;
+  readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
   readonly metalMap: boolean;
   readonly elevationMap: boolean;
@@ -274,6 +275,7 @@ export type GameCanvasClientControlBarModel = {
   toggleDragPan(): void;
   toggleEdgeScroll(): void;
   toggleTriangleDebug(): void;
+  toggleWallTriangleDebug(): void;
   toggleBuildGridDebug(): void;
   toggleMetalMap(): void;
   toggleElevationMap(): void;

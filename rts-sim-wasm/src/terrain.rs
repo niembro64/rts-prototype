@@ -43,8 +43,11 @@ pub(crate) const TERRAIN_WATER_LEVEL: f64 =
 // Matches terrainTileMap.ts TERRAIN_MESH_EPSILON for the degenerate
 // barycentric guard.
 pub(crate) const TERRAIN_MESH_EPSILON: f64 = 1e-6;
+pub(crate) const TERRAIN_WALL_TRIANGLE_AREA_EPSILON: f64 = 1e-10;
 pub(crate) const TERRAIN_MESH_EDGE_EPSILON: f64 = 1e-4;
 pub(crate) const TERRAIN_PLATEAU_CONSTRAINT_EPSILON: f64 = 1e-7;
+pub(crate) const TERRAIN_PLATEAU_KEY_RANGE_EDGE_SAMPLES: usize = 32;
+pub(crate) const TERRAIN_PLATEAU_KEY_RANGE_RADIAL_SAMPLES: usize = 8;
 pub(crate) const TERRAIN_PLATEAU_CONSTRAINT_MAX_CHORD_CELLS: f64 = 1.0;
 pub(crate) const TERRAIN_PLATEAU_CONSTRAINT_SNAP_CELLS: f64 = 0.025;
 pub(crate) const TERRAIN_INV_SQRT3: f64 = 0.5773502691896258;
@@ -893,6 +896,7 @@ pub(crate) struct TerrainMeshTopologyRust {
     vertex_heights: Vec<f64>,
     triangle_indices: Vec<i32>,
     triangle_levels: Vec<i32>,
+    triangle_wall_flags: Vec<i32>,
     triangle_leaf_indices: Vec<i32>,
 }
 
@@ -901,6 +905,7 @@ pub(crate) struct TerrainBuiltMeshRust {
     vertex_heights: Vec<f64>,
     triangle_indices: Vec<i32>,
     triangle_levels: Vec<i32>,
+    triangle_wall_flags: Vec<i32>,
     neighbor_indices: Vec<i32>,
     neighbor_levels: Vec<i32>,
     cell_offsets: Vec<i32>,
@@ -2247,26 +2252,6 @@ pub(crate) fn terrain_plateau_key_range_for_polygon(
     }
     let mut min_key: Option<i32> = None;
     let mut max_key: Option<i32> = None;
-    let mut observe = |key: Option<i32>| {
-        let Some(key) = key else {
-            return;
-        };
-        min_key = Some(min_key.map_or(key, |min| min.min(key)));
-        max_key = Some(max_key.map_or(key, |max| max.max(key)));
-    };
-
-    for &p in points {
-        observe(terrain_plateau_region_key_at_world(c, p.x, p.z));
-    }
-    for i in 0..points.len() {
-        let a = points[i];
-        let b = points[(i + 1) % points.len()];
-        observe(terrain_plateau_region_key_at_world(
-            c,
-            (a.x + b.x) * 0.5,
-            (a.z + b.z) * 0.5,
-        ));
-    }
 
     let mut cx = 0.0;
     let mut cz = 0.0;
@@ -2275,13 +2260,74 @@ pub(crate) fn terrain_plateau_key_range_for_polygon(
         cz += p.z;
     }
     let inv_n = 1.0 / points.len() as f64;
-    observe(terrain_plateau_region_key_at_world(
-        c,
-        cx * inv_n,
-        cz * inv_n,
-    ));
+    let centroid_x = cx * inv_n;
+    let centroid_z = cz * inv_n;
+
+    for i in 0..points.len() {
+        let a = points[i];
+        let b = points[(i + 1) % points.len()];
+        let mut prev_key = terrain_plateau_region_key_at_world(c, a.x, a.z);
+        terrain_observe_plateau_key_range(&mut min_key, &mut max_key, prev_key);
+
+        for step in 1..=TERRAIN_PLATEAU_KEY_RANGE_EDGE_SAMPLES {
+            let t = step as f64 / TERRAIN_PLATEAU_KEY_RANGE_EDGE_SAMPLES as f64;
+            let x = a.x + (b.x - a.x) * t;
+            let z = a.z + (b.z - a.z) * t;
+            let key = terrain_plateau_region_key_at_world(c, x, z);
+            terrain_observe_plateau_key_range(&mut min_key, &mut max_key, key);
+            terrain_observe_plateau_key_span(&mut min_key, &mut max_key, prev_key, key);
+            prev_key = key;
+        }
+    }
+
+    let centroid_key = terrain_plateau_region_key_at_world(c, centroid_x, centroid_z);
+    terrain_observe_plateau_key_range(&mut min_key, &mut max_key, centroid_key);
+    for &p in points {
+        let mut prev_key = centroid_key;
+        for step in 1..=TERRAIN_PLATEAU_KEY_RANGE_RADIAL_SAMPLES {
+            let t = step as f64 / TERRAIN_PLATEAU_KEY_RANGE_RADIAL_SAMPLES as f64;
+            let x = centroid_x + (p.x - centroid_x) * t;
+            let z = centroid_z + (p.z - centroid_z) * t;
+            let key = terrain_plateau_region_key_at_world(c, x, z);
+            terrain_observe_plateau_key_range(&mut min_key, &mut max_key, key);
+            terrain_observe_plateau_key_span(&mut min_key, &mut max_key, prev_key, key);
+            prev_key = key;
+        }
+    }
 
     Some((min_key?, max_key?))
+}
+
+pub(crate) fn terrain_observe_plateau_key_range(
+    min_key: &mut Option<i32>,
+    max_key: &mut Option<i32>,
+    key: Option<i32>,
+) {
+    let Some(key) = key else {
+        return;
+    };
+    *min_key = Some(min_key.map_or(key, |min| min.min(key)));
+    *max_key = Some(max_key.map_or(key, |max| max.max(key)));
+}
+
+pub(crate) fn terrain_observe_plateau_key_span(
+    min_key: &mut Option<i32>,
+    max_key: &mut Option<i32>,
+    a: Option<i32>,
+    b: Option<i32>,
+) {
+    let (Some(a), Some(b)) = (a, b) else {
+        return;
+    };
+    let low = a.min(b);
+    let high = a.max(b);
+    for key in low..=high {
+        terrain_observe_plateau_key_range(min_key, max_key, Some(key));
+    }
+}
+
+pub(crate) fn terrain_plateau_key_range_contains_wall(low_key: i32, high_key: i32) -> bool {
+    (low_key..=high_key).any(|key| key % 2 != 0)
 }
 
 #[inline]
@@ -2341,14 +2387,22 @@ pub(crate) fn terrain_triangulate_convex_polygon(
     vc: &[f64],
     polygon: &[i32],
     level: i32,
+    wall_flag: i32,
     leaf_index: i32,
     out_indices: &mut Vec<i32>,
     out_levels: &mut Vec<i32>,
+    out_wall_flags: &mut Vec<i32>,
+    out_wall_vertex_sides: &mut Vec<i32>,
     out_leaf_indices: &mut Vec<i32>,
-) {
+) -> usize {
+    let start_indices = out_indices.len();
+    let start_levels = out_levels.len();
+    let start_wall_flags = out_wall_flags.len();
+    let start_wall_vertex_sides = out_wall_vertex_sides.len();
+    let start_leaf_indices = out_leaf_indices.len();
     let mut work: Vec<i32> = polygon.to_vec();
     if work.len() < 3 {
-        return;
+        return 0;
     }
     if terrain_polygon_signed_area_from_vertex_ids(vc, &work) < 0.0 {
         work.reverse();
@@ -2374,13 +2428,20 @@ pub(crate) fn terrain_triangulate_convex_polygon(
             }
         }
         let Some(i) = best_index else {
-            return;
+            out_indices.truncate(start_indices);
+            out_levels.truncate(start_levels);
+            out_wall_flags.truncate(start_wall_flags);
+            out_wall_vertex_sides.truncate(start_wall_vertex_sides);
+            out_leaf_indices.truncate(start_leaf_indices);
+            return 0;
         };
         let n = work.len();
         out_indices.push(work[(i + n - 1) % n]);
         out_indices.push(work[i]);
         out_indices.push(work[(i + 1) % n]);
         out_levels.push(level);
+        out_wall_flags.push(wall_flag);
+        out_wall_vertex_sides.push(0);
         out_leaf_indices.push(leaf_index);
         work.remove(i);
     }
@@ -2393,8 +2454,606 @@ pub(crate) fn terrain_triangulate_convex_polygon(
         out_indices.push(work[1]);
         out_indices.push(work[2]);
         out_levels.push(level);
+        out_wall_flags.push(wall_flag);
+        out_wall_vertex_sides.push(0);
         out_leaf_indices.push(leaf_index);
+    } else if work.len() == 3 {
+        out_indices.truncate(start_indices);
+        out_levels.truncate(start_levels);
+        out_wall_flags.truncate(start_wall_flags);
+        out_wall_vertex_sides.truncate(start_wall_vertex_sides);
+        out_leaf_indices.truncate(start_leaf_indices);
+        return 0;
     }
+
+    (out_indices.len() - start_indices) / 3
+}
+
+#[inline]
+pub(crate) fn terrain_encode_wall_vertex_sides(a: i32, b: i32, c: i32) -> i32 {
+    (a & 1) | ((b & 1) << 1) | ((c & 1) << 2)
+}
+
+#[inline]
+pub(crate) fn terrain_wall_vertex_side(mask: i32, index: usize) -> i32 {
+    (mask >> index) & 1
+}
+
+#[inline]
+pub(crate) fn terrain_wall_triangle_side_count(a: i32, b: i32, c: i32) -> i32 {
+    (a & 1) + (b & 1) + (c & 1)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_push_preserved_triangle(
+    vc: &[f64],
+    a: i32,
+    mut b: i32,
+    mut cc: i32,
+    wall_flag: i32,
+    wall_side_mask: i32,
+    level: i32,
+    leaf_index: i32,
+    out_indices: &mut Vec<i32>,
+    out_levels: &mut Vec<i32>,
+    out_wall_flags: &mut Vec<i32>,
+    out_wall_vertex_sides: &mut Vec<i32>,
+    out_leaf_indices: &mut Vec<i32>,
+) -> bool {
+    let side_a = terrain_wall_vertex_side(wall_side_mask, 0);
+    let mut side_b = terrain_wall_vertex_side(wall_side_mask, 1);
+    let mut side_c = terrain_wall_vertex_side(wall_side_mask, 2);
+    let area = terrain_triangle_area_from_vertex_ids(vc, a, b, cc);
+    if area.abs() <= TERRAIN_WALL_TRIANGLE_AREA_EPSILON {
+        return false;
+    }
+    if area < 0.0 {
+        std::mem::swap(&mut b, &mut cc);
+        std::mem::swap(&mut side_b, &mut side_c);
+    }
+
+    out_indices.push(a);
+    out_indices.push(b);
+    out_indices.push(cc);
+    out_levels.push(level);
+    out_wall_flags.push(wall_flag);
+    out_wall_vertex_sides.push(terrain_encode_wall_vertex_sides(side_a, side_b, side_c));
+    out_leaf_indices.push(leaf_index);
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_emit_labeled_wall_triangle_from_ids(
+    vc: &[f64],
+    a: i32,
+    mut b: i32,
+    mut cc: i32,
+    side_a: i32,
+    mut side_b: i32,
+    mut side_c: i32,
+    level: i32,
+    leaf_index: i32,
+    out_indices: &mut Vec<i32>,
+    out_levels: &mut Vec<i32>,
+    out_wall_flags: &mut Vec<i32>,
+    out_wall_vertex_sides: &mut Vec<i32>,
+    out_leaf_indices: &mut Vec<i32>,
+) -> bool {
+    let side_count = terrain_wall_triangle_side_count(side_a, side_b, side_c);
+    if side_count != 1 && side_count != 2 {
+        return false;
+    }
+    let area = terrain_triangle_area_from_vertex_ids(vc, a, b, cc);
+    if area.abs() <= TERRAIN_WALL_TRIANGLE_AREA_EPSILON {
+        return false;
+    }
+    if area < 0.0 {
+        std::mem::swap(&mut b, &mut cc);
+        std::mem::swap(&mut side_b, &mut side_c);
+    }
+
+    out_indices.push(a);
+    out_indices.push(b);
+    out_indices.push(cc);
+    out_levels.push(level);
+    out_wall_flags.push(1);
+    out_wall_vertex_sides.push(terrain_encode_wall_vertex_sides(side_a, side_b, side_c));
+    out_leaf_indices.push(leaf_index);
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_try_emit_labeled_wall_triangles_from_ids(
+    vc: &[f64],
+    triangles: &[(i32, i32, i32, i32, i32, i32)],
+    level: i32,
+    leaf_index: i32,
+    out_indices: &mut Vec<i32>,
+    out_levels: &mut Vec<i32>,
+    out_wall_flags: &mut Vec<i32>,
+    out_wall_vertex_sides: &mut Vec<i32>,
+    out_leaf_indices: &mut Vec<i32>,
+) -> bool {
+    let mut staged_indices: Vec<i32> = Vec::with_capacity(triangles.len() * 3);
+    let mut staged_levels: Vec<i32> = Vec::with_capacity(triangles.len());
+    let mut staged_wall_flags: Vec<i32> = Vec::with_capacity(triangles.len());
+    let mut staged_wall_vertex_sides: Vec<i32> = Vec::with_capacity(triangles.len());
+    let mut staged_leaf_indices: Vec<i32> = Vec::with_capacity(triangles.len());
+
+    for &(a, b, cc, side_a, side_b, side_c) in triangles {
+        if !terrain_emit_labeled_wall_triangle_from_ids(
+            vc,
+            a,
+            b,
+            cc,
+            side_a,
+            side_b,
+            side_c,
+            level,
+            leaf_index,
+            &mut staged_indices,
+            &mut staged_levels,
+            &mut staged_wall_flags,
+            &mut staged_wall_vertex_sides,
+            &mut staged_leaf_indices,
+        ) {
+            return false;
+        }
+    }
+
+    out_indices.extend(staged_indices);
+    out_levels.extend(staged_levels);
+    out_wall_flags.extend(staged_wall_flags);
+    out_wall_vertex_sides.extend(staged_wall_vertex_sides);
+    out_leaf_indices.extend(staged_leaf_indices);
+    true
+}
+
+pub(crate) fn terrain_point_edge_parameter(
+    a: TerrainMeshPoint,
+    b: TerrainMeshPoint,
+    p: TerrainMeshPoint,
+) -> f64 {
+    let dx = b.x - a.x;
+    let dz = b.z - a.z;
+    if dx.abs() >= dz.abs() && dx.abs() > TERRAIN_MESH_EPSILON {
+        ((p.x - a.x) / dx).clamp(0.0, 1.0)
+    } else if dz.abs() > TERRAIN_MESH_EPSILON {
+        ((p.z - a.z) / dz).clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+pub(crate) fn terrain_collect_plateau_boundary_chain_points(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    after_key: i32,
+) -> Vec<TerrainMeshPoint> {
+    if points.len() < 2 {
+        return Vec::new();
+    }
+
+    let n = points.len();
+    let mut collected: Vec<(f64, TerrainMeshPoint)> = Vec::new();
+    for i in 0..n {
+        let a = points[i];
+        let b = points[(i + 1) % n];
+        let Some(fa) = terrain_plateau_boundary_value_at_world(c, a.x, a.z, after_key) else {
+            continue;
+        };
+        let Some(fb) = terrain_plateau_boundary_value_at_world(c, b.x, b.z, after_key) else {
+            continue;
+        };
+        if fa.abs() <= TERRAIN_PLATEAU_CONSTRAINT_EPSILON {
+            collected.push((i as f64, a));
+        }
+        if terrain_plateau_boundary_values_cross(fa, fb) {
+            let p = terrain_plateau_boundary_intersection(c, a, b, after_key);
+            collected.push((i as f64 + terrain_point_edge_parameter(a, b, p), p));
+        }
+    }
+
+    if collected.is_empty() {
+        return Vec::new();
+    }
+
+    collected.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let mut deduped: Vec<(f64, TerrainMeshPoint)> = Vec::with_capacity(collected.len());
+    for (position, point) in collected {
+        if deduped
+            .last()
+            .map(|(_, prev)| {
+                terrain_mesh_point_distance_2d(*prev, point) <= TERRAIN_MESH_EDGE_EPSILON
+            })
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        deduped.push((position, point));
+    }
+    if deduped.len() > 1 {
+        let first = deduped[0].1;
+        let last = deduped[deduped.len() - 1].1;
+        if terrain_mesh_point_distance_2d(first, last) <= TERRAIN_MESH_EDGE_EPSILON {
+            deduped.pop();
+        }
+    }
+    if deduped.len() <= 2 {
+        return deduped.into_iter().map(|(_, point)| point).collect();
+    }
+
+    let mut largest_gap = f64::NEG_INFINITY;
+    let mut rotate_start = 0usize;
+    for i in 0..deduped.len() {
+        let next = (i + 1) % deduped.len();
+        let gap = if next == 0 {
+            deduped[0].0 + n as f64 - deduped[i].0
+        } else {
+            deduped[next].0 - deduped[i].0
+        };
+        if gap > largest_gap {
+            largest_gap = gap;
+            rotate_start = next;
+        }
+    }
+
+    let mut out = Vec::with_capacity(deduped.len());
+    for offset in 0..deduped.len() {
+        out.push(deduped[(rotate_start + offset) % deduped.len()].1);
+    }
+    out
+}
+
+pub(crate) fn terrain_polyline_length(points: &[TerrainMeshPoint]) -> f64 {
+    let mut length = 0.0;
+    for i in 0..points.len().saturating_sub(1) {
+        length += terrain_mesh_point_distance_2d(points[i], points[i + 1]);
+    }
+    length
+}
+
+pub(crate) fn terrain_push_wall_chain_station(stations: &mut Vec<f64>, station: f64) {
+    if !station.is_finite() {
+        return;
+    }
+    let station = station.clamp(0.0, 1.0);
+    if stations
+        .iter()
+        .any(|existing| (existing - station).abs() <= TERRAIN_MESH_EDGE_EPSILON)
+    {
+        return;
+    }
+    stations.push(station);
+}
+
+pub(crate) fn terrain_wall_chain_stations(
+    lower: &[TerrainMeshPoint],
+    upper: &[TerrainMeshPoint],
+) -> Vec<f64> {
+    let mut stations = Vec::new();
+    terrain_push_wall_chain_station(&mut stations, 0.0);
+    terrain_push_wall_chain_station(&mut stations, 1.0);
+
+    for points in [lower, upper] {
+        let length = terrain_polyline_length(points);
+        if length <= TERRAIN_MESH_EDGE_EPSILON {
+            continue;
+        }
+        let mut distance = 0.0;
+        for i in 0..points.len().saturating_sub(1) {
+            distance += terrain_mesh_point_distance_2d(points[i], points[i + 1]);
+            terrain_push_wall_chain_station(&mut stations, distance / length);
+        }
+    }
+
+    stations.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    stations
+}
+
+pub(crate) fn terrain_interpolate_wall_chain_point(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    station: f64,
+) -> Option<TerrainMeshPoint> {
+    if points.is_empty() {
+        return None;
+    }
+    if points.len() == 1 {
+        return Some(points[0]);
+    }
+
+    let length = terrain_polyline_length(points);
+    if length <= TERRAIN_MESH_EDGE_EPSILON {
+        return Some(points[0]);
+    }
+    let target = station.clamp(0.0, 1.0) * length;
+    let mut distance = 0.0;
+    for i in 0..points.len() - 1 {
+        let a = points[i];
+        let b = points[i + 1];
+        let segment = terrain_mesh_point_distance_2d(a, b);
+        if segment <= TERRAIN_MESH_EDGE_EPSILON {
+            continue;
+        }
+        if distance + segment >= target - TERRAIN_MESH_EDGE_EPSILON {
+            let t = ((target - distance) / segment).clamp(0.0, 1.0);
+            let x = a.x + (b.x - a.x) * t;
+            let z = a.z + (b.z - a.z) * t;
+            return Some(TerrainMeshPoint {
+                x,
+                z,
+                h: terrain_mesh_height_at_world(c, x, z),
+            });
+        }
+        distance += segment;
+    }
+
+    points.last().copied()
+}
+
+pub(crate) fn terrain_orient_wall_boundary_chains(
+    lower: &[TerrainMeshPoint],
+    upper: &[TerrainMeshPoint],
+) -> (Vec<TerrainMeshPoint>, Vec<TerrainMeshPoint>) {
+    let lower = lower.to_vec();
+    let mut upper = upper.to_vec();
+    if lower.len() >= 2 && upper.len() >= 2 {
+        let same_cost = terrain_mesh_point_distance_2d(lower[0], upper[0])
+            + terrain_mesh_point_distance_2d(lower[lower.len() - 1], upper[upper.len() - 1]);
+        let opposite_cost = terrain_mesh_point_distance_2d(lower[0], upper[upper.len() - 1])
+            + terrain_mesh_point_distance_2d(lower[lower.len() - 1], upper[0]);
+        if opposite_cost < same_cost {
+            upper.reverse();
+        }
+    }
+    (lower, upper)
+}
+
+pub(crate) fn terrain_mesh_vertex_id_for_point(
+    c: &TerrainMeshBuildConfig,
+    p: TerrainMeshPoint,
+    vertex_ids: &mut HashMap<(i64, i64, i32), i32>,
+    vertex_coords: &mut Vec<f64>,
+    vertex_heights: &mut Vec<f64>,
+) -> i32 {
+    terrain_mesh_vertex_id_for_namespaced_point(c, p, 0, vertex_ids, vertex_coords, vertex_heights)
+}
+
+pub(crate) fn terrain_mesh_vertex_id_for_namespaced_point(
+    c: &TerrainMeshBuildConfig,
+    p: TerrainMeshPoint,
+    namespace: i32,
+    vertex_ids: &mut HashMap<(i64, i64, i32), i32>,
+    vertex_coords: &mut Vec<f64>,
+    vertex_heights: &mut Vec<f64>,
+) -> i32 {
+    let x = terrain_mesh_clamp_to_map(p.x, c.map_width);
+    let z = terrain_mesh_clamp_to_map(p.z, c.map_height);
+    let (kx, kz) = terrain_world_vertex_key(x, z, c.vertex_key_scale);
+    let key = (kx, kz, namespace);
+    if let Some(&existing) = vertex_ids.get(&key) {
+        return existing;
+    }
+
+    let id = vertex_heights.len() as i32;
+    vertex_ids.insert(key, id);
+    vertex_coords.push(x);
+    vertex_coords.push(z);
+    vertex_heights.push(terrain_mesh_height_at_world(c, x, z));
+    id
+}
+
+#[inline]
+pub(crate) fn terrain_wall_vertex_namespace(wall_key: i32, side: i32) -> i32 {
+    wall_key.saturating_mul(2).saturating_add((side & 1) + 1)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_emit_labeled_wall_strip_segment(
+    c: &TerrainMeshBuildConfig,
+    wall_key: i32,
+    lower_a: TerrainMeshPoint,
+    lower_b: TerrainMeshPoint,
+    upper_a: TerrainMeshPoint,
+    upper_b: TerrainMeshPoint,
+    level: i32,
+    leaf_index: i32,
+    vertex_ids: &mut HashMap<(i64, i64, i32), i32>,
+    vertex_coords: &mut Vec<f64>,
+    vertex_heights: &mut Vec<f64>,
+    triangle_indices: &mut Vec<i32>,
+    triangle_levels: &mut Vec<i32>,
+    triangle_wall_flags: &mut Vec<i32>,
+    triangle_wall_vertex_sides: &mut Vec<i32>,
+    triangle_leaf_indices: &mut Vec<i32>,
+) -> bool {
+    let lower_len = terrain_mesh_point_distance_2d(lower_a, lower_b);
+    let upper_len = terrain_mesh_point_distance_2d(upper_a, upper_b);
+
+    if lower_len <= TERRAIN_MESH_EDGE_EPSILON && upper_len <= TERRAIN_MESH_EDGE_EPSILON {
+        return false;
+    }
+
+    let id_lower_a = terrain_mesh_vertex_id_for_namespaced_point(
+        c,
+        lower_a,
+        terrain_wall_vertex_namespace(wall_key, 0),
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+    );
+    let id_lower_b = terrain_mesh_vertex_id_for_namespaced_point(
+        c,
+        lower_b,
+        terrain_wall_vertex_namespace(wall_key, 0),
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+    );
+    let id_upper_a = terrain_mesh_vertex_id_for_namespaced_point(
+        c,
+        upper_a,
+        terrain_wall_vertex_namespace(wall_key, 1),
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+    );
+    let id_upper_b = terrain_mesh_vertex_id_for_namespaced_point(
+        c,
+        upper_b,
+        terrain_wall_vertex_namespace(wall_key, 1),
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+    );
+
+    if lower_len <= TERRAIN_MESH_EDGE_EPSILON {
+        return terrain_try_emit_labeled_wall_triangles_from_ids(
+            vertex_coords,
+            &[(id_upper_a, id_lower_a, id_upper_b, 1, 0, 1)],
+            level,
+            leaf_index,
+            triangle_indices,
+            triangle_levels,
+            triangle_wall_flags,
+            triangle_wall_vertex_sides,
+            triangle_leaf_indices,
+        );
+    }
+
+    if upper_len <= TERRAIN_MESH_EDGE_EPSILON {
+        return terrain_try_emit_labeled_wall_triangles_from_ids(
+            vertex_coords,
+            &[(id_upper_a, id_lower_a, id_lower_b, 1, 0, 0)],
+            level,
+            leaf_index,
+            triangle_indices,
+            triangle_levels,
+            triangle_wall_flags,
+            triangle_wall_vertex_sides,
+            triangle_leaf_indices,
+        );
+    }
+
+    if terrain_try_emit_labeled_wall_triangles_from_ids(
+        vertex_coords,
+        &[
+            (id_upper_a, id_lower_a, id_lower_b, 1, 0, 0),
+            (id_upper_a, id_lower_b, id_upper_b, 1, 0, 1),
+        ],
+        level,
+        leaf_index,
+        triangle_indices,
+        triangle_levels,
+        triangle_wall_flags,
+        triangle_wall_vertex_sides,
+        triangle_leaf_indices,
+    ) {
+        return true;
+    }
+
+    terrain_try_emit_labeled_wall_triangles_from_ids(
+        vertex_coords,
+        &[
+            (id_upper_a, id_lower_a, id_upper_b, 1, 0, 1),
+            (id_lower_a, id_lower_b, id_upper_b, 0, 0, 1),
+        ],
+        level,
+        leaf_index,
+        triangle_indices,
+        triangle_levels,
+        triangle_wall_flags,
+        triangle_wall_vertex_sides,
+        triangle_leaf_indices,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_emit_plateau_wall_polygon(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    wall_key: i32,
+    level: i32,
+    leaf_index: i32,
+    vertex_ids: &mut HashMap<(i64, i64, i32), i32>,
+    vertex_coords: &mut Vec<f64>,
+    vertex_heights: &mut Vec<f64>,
+    triangle_indices: &mut Vec<i32>,
+    triangle_levels: &mut Vec<i32>,
+    triangle_wall_flags: &mut Vec<i32>,
+    triangle_wall_vertex_sides: &mut Vec<i32>,
+    triangle_leaf_indices: &mut Vec<i32>,
+) -> bool {
+    if wall_key % 2 == 0 {
+        return false;
+    }
+    let lower = terrain_collect_plateau_boundary_chain_points(c, points, wall_key - 1);
+    let upper = terrain_collect_plateau_boundary_chain_points(c, points, wall_key);
+    if lower.is_empty() || upper.is_empty() || lower.len() + upper.len() < 3 {
+        return false;
+    }
+    let (lower, upper) = terrain_orient_wall_boundary_chains(&lower, &upper);
+    let stations = terrain_wall_chain_stations(&lower, &upper);
+    if stations.len() < 2 {
+        return false;
+    }
+
+    let mut staged_indices: Vec<i32> = Vec::new();
+    let mut staged_levels: Vec<i32> = Vec::new();
+    let mut staged_wall_flags: Vec<i32> = Vec::new();
+    let mut staged_wall_vertex_sides: Vec<i32> = Vec::new();
+    let mut staged_leaf_indices: Vec<i32> = Vec::new();
+    for i in 0..stations.len() - 1 {
+        let s0 = stations[i];
+        let s1 = stations[i + 1];
+        if (s1 - s0).abs() <= TERRAIN_MESH_EDGE_EPSILON {
+            continue;
+        }
+        let Some(lower_a) = terrain_interpolate_wall_chain_point(c, &lower, s0) else {
+            return false;
+        };
+        let Some(lower_b) = terrain_interpolate_wall_chain_point(c, &lower, s1) else {
+            return false;
+        };
+        let Some(upper_a) = terrain_interpolate_wall_chain_point(c, &upper, s0) else {
+            return false;
+        };
+        let Some(upper_b) = terrain_interpolate_wall_chain_point(c, &upper, s1) else {
+            return false;
+        };
+
+        if !terrain_emit_labeled_wall_strip_segment(
+            c,
+            wall_key,
+            lower_a,
+            lower_b,
+            upper_a,
+            upper_b,
+            level,
+            leaf_index,
+            vertex_ids,
+            vertex_coords,
+            vertex_heights,
+            &mut staged_indices,
+            &mut staged_levels,
+            &mut staged_wall_flags,
+            &mut staged_wall_vertex_sides,
+            &mut staged_leaf_indices,
+        ) {
+            return false;
+        }
+    }
+
+    if staged_indices.is_empty() {
+        return false;
+    }
+    triangle_indices.extend(staged_indices);
+    triangle_levels.extend(staged_levels);
+    triangle_wall_flags.extend(staged_wall_flags);
+    triangle_wall_vertex_sides.extend(staged_wall_vertex_sides);
+    triangle_leaf_indices.extend(staged_leaf_indices);
+    true
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2403,48 +3062,69 @@ pub(crate) fn terrain_emit_mesh_polygon(
     points: &[TerrainMeshPoint],
     level: i32,
     leaf_index: i32,
-    vertex_ids: &mut HashMap<(i64, i64), i32>,
+    vertex_ids: &mut HashMap<(i64, i64, i32), i32>,
     vertex_coords: &mut Vec<f64>,
     vertex_heights: &mut Vec<f64>,
     triangle_indices: &mut Vec<i32>,
     triangle_levels: &mut Vec<i32>,
+    triangle_wall_flags: &mut Vec<i32>,
+    triangle_wall_vertex_sides: &mut Vec<i32>,
     triangle_leaf_indices: &mut Vec<i32>,
-) {
+    wall_flag: i32,
+) -> bool {
     let points = terrain_remove_duplicate_mesh_points(points);
     if !terrain_polygon_has_area(&points) {
-        return;
+        return false;
     }
 
     let mut polygon_ids: Vec<i32> = Vec::with_capacity(points.len());
     for &p in &points {
-        let x = terrain_mesh_clamp_to_map(p.x, c.map_width);
-        let z = terrain_mesh_clamp_to_map(p.z, c.map_height);
-        let key = terrain_world_vertex_key(x, z, c.vertex_key_scale);
-        let id = if let Some(&existing) = vertex_ids.get(&key) {
-            existing
-        } else {
-            let id = vertex_heights.len() as i32;
-            vertex_ids.insert(key, id);
-            vertex_coords.push(x);
-            vertex_coords.push(z);
-            vertex_heights.push(terrain_mesh_height_at_world(c, x, z));
-            id
-        };
+        let id = terrain_mesh_vertex_id_for_point(c, p, vertex_ids, vertex_coords, vertex_heights);
         terrain_push_unique_vertex(&mut polygon_ids, id);
     }
     if polygon_ids.len() > 1 && polygon_ids[0] == polygon_ids[polygon_ids.len() - 1] {
         polygon_ids.pop();
     }
 
-    terrain_triangulate_convex_polygon(
+    if terrain_triangulate_convex_polygon(
         vertex_coords,
         &polygon_ids,
         level,
+        wall_flag,
         leaf_index,
         triangle_indices,
         triangle_levels,
+        triangle_wall_flags,
+        triangle_wall_vertex_sides,
         triangle_leaf_indices,
-    );
+    ) > 0
+    {
+        return true;
+    }
+
+    if polygon_ids.len() < 3 {
+        return false;
+    }
+    let anchor = polygon_ids[0];
+    let mut emitted = false;
+    for i in 1..polygon_ids.len().saturating_sub(1) {
+        emitted |= terrain_push_preserved_triangle(
+            vertex_coords,
+            anchor,
+            polygon_ids[i],
+            polygon_ids[i + 1],
+            wall_flag,
+            0,
+            level,
+            leaf_index,
+            triangle_indices,
+            triangle_levels,
+            triangle_wall_flags,
+            triangle_wall_vertex_sides,
+            triangle_leaf_indices,
+        );
+    }
+    emitted
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2456,11 +3136,13 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
     depth: i32,
     level: i32,
     leaf_index: i32,
-    vertex_ids: &mut HashMap<(i64, i64), i32>,
+    vertex_ids: &mut HashMap<(i64, i64, i32), i32>,
     vertex_coords: &mut Vec<f64>,
     vertex_heights: &mut Vec<f64>,
     triangle_indices: &mut Vec<i32>,
     triangle_levels: &mut Vec<i32>,
+    triangle_wall_flags: &mut Vec<i32>,
+    triangle_wall_vertex_sides: &mut Vec<i32>,
     triangle_leaf_indices: &mut Vec<i32>,
 ) {
     let points = terrain_remove_duplicate_mesh_points(points);
@@ -2469,6 +3151,41 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
     }
 
     if high_key <= low_key || depth >= 64 {
+        if low_key % 2 != 0 {
+            if terrain_emit_plateau_wall_polygon(
+                c,
+                &points,
+                low_key,
+                level,
+                leaf_index,
+                vertex_ids,
+                vertex_coords,
+                vertex_heights,
+                triangle_indices,
+                triangle_levels,
+                triangle_wall_flags,
+                triangle_wall_vertex_sides,
+                triangle_leaf_indices,
+            ) {
+                return;
+            }
+            terrain_emit_mesh_polygon(
+                c,
+                &points,
+                level,
+                leaf_index,
+                vertex_ids,
+                vertex_coords,
+                vertex_heights,
+                triangle_indices,
+                triangle_levels,
+                triangle_wall_flags,
+                triangle_wall_vertex_sides,
+                triangle_leaf_indices,
+                1,
+            );
+            return;
+        }
         terrain_emit_mesh_polygon(
             c,
             &points,
@@ -2479,7 +3196,10 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
             vertex_heights,
             triangle_indices,
             triangle_levels,
+            triangle_wall_flags,
+            triangle_wall_vertex_sides,
             triangle_leaf_indices,
+            0,
         );
         return;
     }
@@ -2497,7 +3217,10 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
             vertex_heights,
             triangle_indices,
             triangle_levels,
+            triangle_wall_flags,
+            triangle_wall_vertex_sides,
             triangle_leaf_indices,
+            0,
         );
         return;
     }
@@ -2515,6 +3238,8 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
         vertex_heights,
         triangle_indices,
         triangle_levels,
+        triangle_wall_flags,
+        triangle_wall_vertex_sides,
         triangle_leaf_indices,
     );
     terrain_emit_plateau_constrained_polygon(
@@ -2530,6 +3255,8 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
         vertex_heights,
         triangle_indices,
         triangle_levels,
+        triangle_wall_flags,
+        triangle_wall_vertex_sides,
         triangle_leaf_indices,
     );
 }
@@ -2653,15 +3380,108 @@ pub(crate) fn terrain_sorted_split_vertices_for_triangle_edge(
     out
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_emit_repaired_labeled_wall_triangle(
+    vc: &[f64],
+    a: i32,
+    b: i32,
+    cc: i32,
+    side_a: i32,
+    side_b: i32,
+    side_c: i32,
+    split_vertices_by_edge: &HashMap<usize, Vec<i32>>,
+    edge_key_a_b: usize,
+    edge_key_b_c: usize,
+    edge_key_c_a: usize,
+    level: i32,
+    leaf_index: i32,
+    out_indices: &mut Vec<i32>,
+    out_levels: &mut Vec<i32>,
+    out_wall_flags: &mut Vec<i32>,
+    out_wall_vertex_sides: &mut Vec<i32>,
+    out_leaf_indices: &mut Vec<i32>,
+) -> bool {
+    let side_count = terrain_wall_triangle_side_count(side_a, side_b, side_c);
+    if side_count != 1 && side_count != 2 {
+        return false;
+    }
+
+    let Some((same_start, same_end, same_side, opposite, opposite_side, edge_key)) =
+        (if side_a == side_b {
+            Some((a, b, side_a, cc, side_c, edge_key_a_b))
+        } else if side_b == side_c {
+            Some((b, cc, side_b, a, side_a, edge_key_b_c))
+        } else if side_c == side_a {
+            Some((cc, a, side_c, b, side_b, edge_key_c_a))
+        } else {
+            None
+        })
+    else {
+        return false;
+    };
+
+    let mut chain: Vec<i32> = Vec::new();
+    terrain_push_unique_vertex(&mut chain, same_start);
+    for v in terrain_sorted_split_vertices_for_triangle_edge(
+        vc,
+        same_start,
+        same_end,
+        split_vertices_by_edge.get(&edge_key),
+    ) {
+        terrain_push_unique_vertex(&mut chain, v);
+    }
+    terrain_push_unique_vertex(&mut chain, same_end);
+    if chain.len() < 2 {
+        return false;
+    }
+
+    let mut staged_indices: Vec<i32> = Vec::with_capacity(chain.len().saturating_sub(1) * 3);
+    let mut staged_levels: Vec<i32> = Vec::with_capacity(chain.len().saturating_sub(1));
+    let mut staged_wall_flags: Vec<i32> = Vec::with_capacity(chain.len().saturating_sub(1));
+    let mut staged_wall_vertex_sides: Vec<i32> = Vec::with_capacity(chain.len().saturating_sub(1));
+    let mut staged_leaf_indices: Vec<i32> = Vec::with_capacity(chain.len().saturating_sub(1));
+    for i in 0..chain.len().saturating_sub(1) {
+        if !terrain_emit_labeled_wall_triangle_from_ids(
+            vc,
+            opposite,
+            chain[i],
+            chain[i + 1],
+            opposite_side,
+            same_side,
+            same_side,
+            level,
+            leaf_index,
+            &mut staged_indices,
+            &mut staged_levels,
+            &mut staged_wall_flags,
+            &mut staged_wall_vertex_sides,
+            &mut staged_leaf_indices,
+        ) {
+            return false;
+        }
+    }
+
+    out_indices.extend(staged_indices);
+    out_levels.extend(staged_levels);
+    out_wall_flags.extend(staged_wall_flags);
+    out_wall_vertex_sides.extend(staged_wall_vertex_sides);
+    out_leaf_indices.extend(staged_leaf_indices);
+    true
+}
+
 pub(crate) fn terrain_resolve_mesh_triangle_edge_splits(
     c: &TerrainMeshBuildConfig,
     vc: &[f64],
     triangle_indices: Vec<i32>,
     triangle_levels: Vec<i32>,
+    triangle_wall_flags: Vec<i32>,
+    triangle_wall_vertex_sides: Vec<i32>,
     triangle_leaf_indices: Vec<i32>,
-) -> (Vec<i32>, Vec<i32>, Vec<i32>) {
+) -> (Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>) {
     let mut indices = triangle_indices;
     let mut levels = triangle_levels;
+    let mut wall_flags = triangle_wall_flags;
+    let mut wall_vertex_sides = triangle_wall_vertex_sides;
     let mut leaf_indices = triangle_leaf_indices;
     let max_iterations = terrain_triangle_hierarchy_level(c, 1) + 2;
 
@@ -2673,6 +3493,8 @@ pub(crate) fn terrain_resolve_mesh_triangle_edge_splits(
 
         let mut next_indices: Vec<i32> = Vec::new();
         let mut next_levels: Vec<i32> = Vec::new();
+        let mut next_wall_flags: Vec<i32> = Vec::new();
+        let mut next_wall_vertex_sides: Vec<i32> = Vec::new();
         let mut next_leaf_indices: Vec<i32> = Vec::new();
 
         let tri_count = indices.len() / 3;
@@ -2681,55 +3503,189 @@ pub(crate) fn terrain_resolve_mesh_triangle_edge_splits(
             let a = indices[base];
             let b = indices[base + 1];
             let cc = indices[base + 2];
+            let wall_flag = wall_flags.get(tri).copied().unwrap_or(0);
+            let wall_side_mask = wall_vertex_sides.get(tri).copied().unwrap_or(0);
+            let side_a = terrain_wall_vertex_side(wall_side_mask, 0);
+            let side_b = terrain_wall_vertex_side(wall_side_mask, 1);
+            let side_c = terrain_wall_vertex_side(wall_side_mask, 2);
             let mut polygon: Vec<i32> = Vec::new();
-            terrain_push_unique_vertex(&mut polygon, a);
-            for v in terrain_sorted_split_vertices_for_triangle_edge(
-                vc,
-                a,
-                b,
-                split_vertices_by_edge.get(&base),
-            ) {
-                terrain_push_unique_vertex(&mut polygon, v);
+            let level = levels.get(tri).copied().unwrap_or(0);
+            let leaf_index = leaf_indices.get(tri).copied().unwrap_or(-1);
+            let wall_side_count = terrain_wall_triangle_side_count(side_a, side_b, side_c);
+            if wall_flag != 0 && (wall_side_count == 1 || wall_side_count == 2) {
+                if !terrain_emit_repaired_labeled_wall_triangle(
+                    vc,
+                    a,
+                    b,
+                    cc,
+                    side_a,
+                    side_b,
+                    side_c,
+                    &split_vertices_by_edge,
+                    base,
+                    base + 1,
+                    base + 2,
+                    level,
+                    leaf_index,
+                    &mut next_indices,
+                    &mut next_levels,
+                    &mut next_wall_flags,
+                    &mut next_wall_vertex_sides,
+                    &mut next_leaf_indices,
+                ) {
+                    terrain_push_preserved_triangle(
+                        vc,
+                        a,
+                        b,
+                        cc,
+                        wall_flag,
+                        wall_side_mask,
+                        level,
+                        leaf_index,
+                        &mut next_indices,
+                        &mut next_levels,
+                        &mut next_wall_flags,
+                        &mut next_wall_vertex_sides,
+                        &mut next_leaf_indices,
+                    );
+                }
+            } else {
+                terrain_push_unique_vertex(&mut polygon, a);
+                for v in terrain_sorted_split_vertices_for_triangle_edge(
+                    vc,
+                    a,
+                    b,
+                    split_vertices_by_edge.get(&base),
+                ) {
+                    terrain_push_unique_vertex(&mut polygon, v);
+                }
+                terrain_push_unique_vertex(&mut polygon, b);
+                for v in terrain_sorted_split_vertices_for_triangle_edge(
+                    vc,
+                    b,
+                    cc,
+                    split_vertices_by_edge.get(&(base + 1)),
+                ) {
+                    terrain_push_unique_vertex(&mut polygon, v);
+                }
+                terrain_push_unique_vertex(&mut polygon, cc);
+                for v in terrain_sorted_split_vertices_for_triangle_edge(
+                    vc,
+                    cc,
+                    a,
+                    split_vertices_by_edge.get(&(base + 2)),
+                ) {
+                    terrain_push_unique_vertex(&mut polygon, v);
+                }
+                if polygon.len() > 1 && polygon[0] == polygon[polygon.len() - 1] {
+                    polygon.pop();
+                }
+                if terrain_triangulate_convex_polygon(
+                    vc,
+                    &polygon,
+                    level,
+                    wall_flag,
+                    leaf_index,
+                    &mut next_indices,
+                    &mut next_levels,
+                    &mut next_wall_flags,
+                    &mut next_wall_vertex_sides,
+                    &mut next_leaf_indices,
+                ) == 0
+                {
+                    terrain_push_preserved_triangle(
+                        vc,
+                        a,
+                        b,
+                        cc,
+                        wall_flag,
+                        wall_side_mask,
+                        level,
+                        leaf_index,
+                        &mut next_indices,
+                        &mut next_levels,
+                        &mut next_wall_flags,
+                        &mut next_wall_vertex_sides,
+                        &mut next_leaf_indices,
+                    );
+                }
             }
-            terrain_push_unique_vertex(&mut polygon, b);
-            for v in terrain_sorted_split_vertices_for_triangle_edge(
-                vc,
-                b,
-                cc,
-                split_vertices_by_edge.get(&(base + 1)),
-            ) {
-                terrain_push_unique_vertex(&mut polygon, v);
-            }
-            terrain_push_unique_vertex(&mut polygon, cc);
-            for v in terrain_sorted_split_vertices_for_triangle_edge(
-                vc,
-                cc,
-                a,
-                split_vertices_by_edge.get(&(base + 2)),
-            ) {
-                terrain_push_unique_vertex(&mut polygon, v);
-            }
-            if polygon.len() > 1 && polygon[0] == polygon[polygon.len() - 1] {
-                polygon.pop();
-            }
-
-            terrain_triangulate_convex_polygon(
-                vc,
-                &polygon,
-                levels.get(tri).copied().unwrap_or(0),
-                leaf_indices.get(tri).copied().unwrap_or(-1),
-                &mut next_indices,
-                &mut next_levels,
-                &mut next_leaf_indices,
-            );
         }
 
         indices = next_indices;
         levels = next_levels;
+        wall_flags = next_wall_flags;
+        wall_vertex_sides = next_wall_vertex_sides;
         leaf_indices = next_leaf_indices;
     }
 
-    (indices, levels, leaf_indices)
+    (indices, levels, wall_flags, leaf_indices)
+}
+
+pub(crate) fn terrain_recompute_logical_wall_flags(
+    c: &TerrainMeshBuildConfig,
+    vc: &[f64],
+    triangle_indices: &[i32],
+    existing_wall_flags: &[i32],
+) -> Vec<i32> {
+    let triangle_count = triangle_indices.len() / 3;
+    let mut out = Vec::with_capacity(triangle_count);
+    for tri in 0..triangle_count {
+        if existing_wall_flags.get(tri).copied().unwrap_or(0) != 0 {
+            out.push(1);
+            continue;
+        }
+        let base = tri * 3;
+        let ia = triangle_indices[base] as usize;
+        let ib = triangle_indices[base + 1] as usize;
+        let ic = triangle_indices[base + 2] as usize;
+        let Some(&ax) = vc.get(ia * 2) else {
+            out.push(0);
+            continue;
+        };
+        let Some(&az) = vc.get(ia * 2 + 1) else {
+            out.push(0);
+            continue;
+        };
+        let Some(&bx) = vc.get(ib * 2) else {
+            out.push(0);
+            continue;
+        };
+        let Some(&bz) = vc.get(ib * 2 + 1) else {
+            out.push(0);
+            continue;
+        };
+        let Some(&cx) = vc.get(ic * 2) else {
+            out.push(0);
+            continue;
+        };
+        let Some(&cz) = vc.get(ic * 2 + 1) else {
+            out.push(0);
+            continue;
+        };
+        let points = [
+            TerrainMeshPoint {
+                x: ax,
+                z: az,
+                h: 0.0,
+            },
+            TerrainMeshPoint {
+                x: bx,
+                z: bz,
+                h: 0.0,
+            },
+            TerrainMeshPoint {
+                x: cx,
+                z: cz,
+                h: 0.0,
+            },
+        ];
+        let is_wall = terrain_plateau_key_range_for_polygon(c, &points)
+            .map(|(low_key, high_key)| terrain_plateau_key_range_contains_wall(low_key, high_key))
+            .unwrap_or(false);
+        out.push(if is_wall { 1 } else { 0 });
+    }
+    out
 }
 
 pub(crate) fn terrain_build_conforming_topology(
@@ -2744,11 +3700,13 @@ pub(crate) fn terrain_build_conforming_topology(
         }
     }
 
-    let mut vertex_ids: HashMap<(i64, i64), i32> = HashMap::default();
+    let mut vertex_ids: HashMap<(i64, i64, i32), i32> = HashMap::default();
     let mut vertex_coords: Vec<f64> = Vec::new();
     let mut vertex_heights: Vec<f64> = Vec::new();
     let mut triangle_indices: Vec<i32> = Vec::new();
     let mut triangle_levels: Vec<i32> = Vec::new();
+    let mut triangle_wall_flags: Vec<i32> = Vec::new();
+    let mut triangle_wall_vertex_sides: Vec<i32> = Vec::new();
     let mut triangle_leaf_indices: Vec<i32> = Vec::new();
 
     let mut boundary: Vec<(i32, i32)> = Vec::new();
@@ -2783,6 +3741,8 @@ pub(crate) fn terrain_build_conforming_topology(
                 &mut vertex_heights,
                 &mut triangle_indices,
                 &mut triangle_levels,
+                &mut triangle_wall_flags,
+                &mut triangle_wall_vertex_sides,
                 &mut triangle_leaf_indices,
             );
         } else {
@@ -2796,25 +3756,37 @@ pub(crate) fn terrain_build_conforming_topology(
                 &mut vertex_heights,
                 &mut triangle_indices,
                 &mut triangle_levels,
+                &mut triangle_wall_flags,
+                &mut triangle_wall_vertex_sides,
                 &mut triangle_leaf_indices,
+                0,
             );
         }
     }
 
-    let (resolved_indices, resolved_levels, resolved_leaf_indices) =
+    let (resolved_indices, resolved_levels, resolved_wall_flags, resolved_leaf_indices) =
         terrain_resolve_mesh_triangle_edge_splits(
             c,
             &vertex_coords,
             triangle_indices,
             triangle_levels,
+            triangle_wall_flags,
+            triangle_wall_vertex_sides,
             triangle_leaf_indices,
         );
+    let resolved_wall_flags = terrain_recompute_logical_wall_flags(
+        c,
+        &vertex_coords,
+        &resolved_indices,
+        &resolved_wall_flags,
+    );
 
     TerrainMeshTopologyRust {
         vertex_coords,
         vertex_heights,
         triangle_indices: resolved_indices,
         triangle_levels: resolved_levels,
+        triangle_wall_flags: resolved_wall_flags,
         triangle_leaf_indices: resolved_leaf_indices,
     }
 }
@@ -2933,6 +3905,7 @@ pub(crate) fn terrain_finalize_conforming_topology(
         vertex_heights,
         triangle_indices: topology.triangle_indices,
         triangle_levels: topology.triangle_levels,
+        triangle_wall_flags: topology.triangle_wall_flags,
         neighbor_indices,
         neighbor_levels,
         cell_offsets,
@@ -3059,8 +4032,9 @@ pub(crate) fn terrain_build_adaptive_mesh_internal(
 ///
 /// Layout: `[status, vertexCount, triangleCount, cellOffsetsLen, cellRefsCount,
 ///   vertexCoords(2V), vertexHeights(V), triangleIndices(3T), triangleLevels(T),
-///   neighborIndices(3T), neighborLevels(3T), cellOffsets(cellsX*cellsY+1),
-///   cellIndices(R)]`. On any failure the buffer is `[0.0]`. `terrain_config`
+///   triangleWallFlags(T), neighborIndices(3T), neighborLevels(3T),
+///   cellOffsets(cellsX*cellsY+1), cellIndices(R)]`. On any failure the buffer
+/// is `[0.0]`. `terrain_config`
 /// is the 23-value generation slice (see metal_deposit_terrain_config_from_slice);
 /// `flat_zones` is the 5-stride deposit override list; `lod_config` packs the 10
 /// triangle/repair tuning values.
@@ -3139,7 +4113,7 @@ pub fn terrain_build_adaptive_mesh(
     let cell_offsets_len = mesh.cell_offsets.len();
     let refs = mesh.cell_indices.len();
     let mut out: Vec<f64> =
-        Vec::with_capacity(5 + 2 * v + v + 3 * t + t + 3 * t + 3 * t + cell_offsets_len + refs);
+        Vec::with_capacity(5 + 2 * v + v + 3 * t + t + t + 3 * t + 3 * t + cell_offsets_len + refs);
     out.push(1.0);
     out.push(v as f64);
     out.push(t as f64);
@@ -3155,6 +4129,9 @@ pub fn terrain_build_adaptive_mesh(
         out.push(value as f64);
     }
     for &value in &mesh.triangle_levels {
+        out.push(value as f64);
+    }
+    for &value in &mesh.triangle_wall_flags {
         out.push(value as f64);
     }
     for &value in &mesh.neighbor_indices {

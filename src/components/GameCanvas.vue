@@ -1108,6 +1108,7 @@ const {
   beamSnapToTurret,
   resourceBallDensity,
   triangleDebug,
+  wallTriangleDebug,
   buildGridDebug,
   metalMap,
   elevationMap,
@@ -1174,6 +1175,7 @@ const {
   toggleBeamSnapToTurret,
   changeResourceBallDensity,
   toggleTriangleDebug,
+  toggleWallTriangleDebug,
   toggleBuildGridDebug,
   toggleMetalMap,
   toggleElevationMap,
@@ -1933,6 +1935,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   edgeScrollEnabled: edgeScrollEnabled.value,
   showServerControls: showServerControls.value,
   triangleDebug: triangleDebug.value,
+  wallTriangleDebug: wallTriangleDebug.value,
   buildGridDebug: buildGridDebug.value,
   metalMap: metalMap.value,
   elevationMap: elevationMap.value,
@@ -1989,6 +1992,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleDragPan,
   toggleEdgeScroll,
   toggleTriangleDebug,
+  toggleWallTriangleDebug,
   toggleBuildGridDebug,
   toggleMetalMap,
   toggleElevationMap,
@@ -2136,6 +2140,7 @@ watchEffect(() => {
   m.edgeScrollEnabled = edgeScrollEnabled.value;
   m.showServerControls = showServerControls.value;
   m.triangleDebug = triangleDebug.value;
+  m.wallTriangleDebug = wallTriangleDebug.value;
   m.buildGridDebug = buildGridDebug.value;
   m.metalMap = metalMap.value;
   m.elevationMap = elevationMap.value;

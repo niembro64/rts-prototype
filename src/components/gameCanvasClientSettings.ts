@@ -43,6 +43,7 @@ import {
   getResourceBallDensity,
   getSoundToggle,
   getTriangleDebug,
+  getWallTriangleDebug,
   getUnitRadiusToggle,
   getWaypointDetail,
   getEntityHudToggle,
@@ -84,6 +85,7 @@ import {
   setResourceBallDensity,
   setSoundToggle,
   setTriangleDebug,
+  setWallTriangleDebug,
   setUnitRadiusToggle,
   setWaypointDetail,
   setEntityHudToggle,
@@ -146,6 +148,7 @@ export function useGameCanvasClientSettings({
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const resourceBallDensity = ref<number>(getResourceBallDensity());
   const triangleDebug = ref<boolean>(getTriangleDebug());
+  const wallTriangleDebug = ref<boolean>(getWallTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
   const metalMap = ref<boolean>(getMetalMap());
   const elevationMap = ref<boolean>(getElevationMap());
@@ -235,6 +238,7 @@ export function useGameCanvasClientSettings({
     beamSnapToTurret.value = getBeamSnapToTurret();
     resourceBallDensity.value = getResourceBallDensity();
     triangleDebug.value = getTriangleDebug();
+    wallTriangleDebug.value = getWallTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
     metalMap.value = getMetalMap();
     elevationMap.value = getElevationMap();
@@ -452,6 +456,12 @@ export function useGameCanvasClientSettings({
     triangleDebug.value = newValue;
   }
 
+  function toggleWallTriangleDebug(): void {
+    const newValue = !wallTriangleDebug.value;
+    setWallTriangleDebug(newValue);
+    wallTriangleDebug.value = newValue;
+  }
+
   function toggleBuildGridDebug(): void {
     const newValue = !buildGridDebug.value;
     setBuildGridDebug(newValue);
@@ -623,6 +633,8 @@ export function useGameCanvasClientSettings({
     changeResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
     setTriangleDebug(cd.triangleDebug.default);
     triangleDebug.value = cd.triangleDebug.default;
+    setWallTriangleDebug(cd.wallTriangleDebug.default);
+    wallTriangleDebug.value = cd.wallTriangleDebug.default;
     setBuildGridDebug(cd.buildGridDebug.default);
     buildGridDebug.value = cd.buildGridDebug.default;
     setMetalMap(cd.metalMap.default);
@@ -716,6 +728,7 @@ export function useGameCanvasClientSettings({
     beamSnapToTurret,
     resourceBallDensity,
     triangleDebug,
+    wallTriangleDebug,
     buildGridDebug,
     metalMap,
     elevationMap,
@@ -782,6 +795,7 @@ export function useGameCanvasClientSettings({
     toggleBeamSnapToTurret,
     changeResourceBallDensity,
     toggleTriangleDebug,
+    toggleWallTriangleDebug,
     toggleBuildGridDebug,
     toggleMetalMap,
     toggleElevationMap,

@@ -13,6 +13,9 @@
  *  terrain topology.
  *
  *  `meshTriangleLevels` gives each rendered triangle's hierarchy level.
+ *  `meshTriangleWallFlags` is a D-PLATEAU wall-region bit on the final mesh:
+ *  1 for triangles emitted by explicit wall strips or whose centroid resolves
+ *  to an odd plateau wall band after conforming repair.
  *  `meshTriangleNeighborIndices` and `meshTriangleNeighborLevels` are
  *  per-edge metadata: three entries per triangle. Map boundary edges use
  *  `-1`; non-boundary edges are repaired until they have either an exact
@@ -41,6 +44,7 @@ export type TerrainTileMap = {
   readonly meshVertexHeights: readonly number[];
   readonly meshTriangleIndices: readonly number[];
   readonly meshTriangleLevels: readonly number[];
+  readonly meshTriangleWallFlags: readonly number[];
   readonly meshTriangleNeighborIndices: readonly number[];
   readonly meshTriangleNeighborLevels: readonly number[];
   readonly meshCellTriangleOffsets: readonly number[];

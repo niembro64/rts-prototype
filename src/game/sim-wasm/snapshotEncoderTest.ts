@@ -1961,6 +1961,7 @@ type TerrainFixture = {
   meshVertexHeights: number[];
   meshTriangleIndices: number[];
   meshTriangleLevels: number[];
+  meshTriangleWallFlags: number[];
   meshTriangleNeighborIndices: number[];
   meshTriangleNeighborLevels: number[];
   meshCellTriangleOffsets: number[];
@@ -1973,6 +1974,7 @@ function emitTerrainFixture(memory: WebAssembly.Memory, terrain: TerrainFixture)
     terrain.meshVertexHeights,
     terrain.meshTriangleIndices,
     terrain.meshTriangleLevels,
+    terrain.meshTriangleWallFlags,
     terrain.meshTriangleNeighborIndices,
     terrain.meshTriangleNeighborLevels,
     terrain.meshCellTriangleOffsets,
@@ -1993,10 +1995,11 @@ function emitTerrainFixture(memory: WebAssembly.Memory, terrain: TerrainFixture)
     offsets[1], terrain.meshVertexHeights.length,
     offsets[2], terrain.meshTriangleIndices.length,
     offsets[3], terrain.meshTriangleLevels.length,
-    offsets[4], terrain.meshTriangleNeighborIndices.length,
-    offsets[5], terrain.meshTriangleNeighborLevels.length,
-    offsets[6], terrain.meshCellTriangleOffsets.length,
-    offsets[7], terrain.meshCellTriangleIndices.length,
+    offsets[4], terrain.meshTriangleWallFlags.length,
+    offsets[5], terrain.meshTriangleNeighborIndices.length,
+    offsets[6], terrain.meshTriangleNeighborLevels.length,
+    offsets[7], terrain.meshCellTriangleOffsets.length,
+    offsets[8], terrain.meshCellTriangleIndices.length,
   );
 }
 
@@ -2005,6 +2008,7 @@ function emitPackedTerrainFixture(memory: WebAssembly.Memory, terrain: TerrainFi
     terrain.meshVertexCoords,
     terrain.meshVertexHeights,
     terrain.meshTriangleIndices,
+    terrain.meshTriangleWallFlags,
   ] as const;
   const offsets = packNumberArraysIntoScratch(memory, arrays);
   snapshot_encode_envelope_emit_packed_terrain(
@@ -2020,6 +2024,7 @@ function emitPackedTerrainFixture(memory: WebAssembly.Memory, terrain: TerrainFi
     offsets[0], terrain.meshVertexCoords.length,
     offsets[1], terrain.meshVertexHeights.length,
     offsets[2], terrain.meshTriangleIndices.length,
+    offsets[3], terrain.meshTriangleWallFlags.length,
   );
 }
 
@@ -2967,6 +2972,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         meshVertexHeights: [0, 1.5, -2],
         meshTriangleIndices: [0, 1, 2],
         meshTriangleLevels: [0],
+        meshTriangleWallFlags: [1],
         meshTriangleNeighborIndices: [-1, 2, 3],
         meshTriangleNeighborLevels: [-1, 1, 1],
         meshCellTriangleOffsets: [0, 1, 1],
@@ -3603,6 +3609,7 @@ function runPackedStaticCases(memory: WebAssembly.Memory): { passed: number; fai
         meshVertexHeights: [0, 1.5, -2, 3.25],
         meshTriangleIndices: [0, 1, 2, 1, 3, 2],
         meshTriangleLevels: [],
+        meshTriangleWallFlags: [0, 1],
         meshTriangleNeighborIndices: [],
         meshTriangleNeighborLevels: [],
         meshCellTriangleOffsets: [],

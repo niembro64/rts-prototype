@@ -45,28 +45,32 @@
           "hash": "4e07bc7584f7e863"
         },
         "meshTriangleIndices": {
-          "length": 252,
-          "hash": "86387f8c8561d29f"
+          "length": 258,
+          "hash": "5edb9ff118c91535"
         },
         "meshTriangleLevels": {
-          "length": 84,
-          "hash": "bb3ee071ad3aa3a9"
+          "length": 86,
+          "hash": "20289992616086ab"
+        },
+        "meshTriangleWallFlags": {
+          "length": 86,
+          "hash": "0c1581e70dd66863"
         },
         "meshTriangleNeighborIndices": {
-          "length": 252,
-          "hash": "3e989bdeb7a2c4ee"
+          "length": 258,
+          "hash": "28c67e8907fbfde7"
         },
         "meshTriangleNeighborLevels": {
-          "length": 252,
-          "hash": "1f5ae3c1acbd39bc"
+          "length": 258,
+          "hash": "d447cda5d2d97e69"
         },
         "meshCellTriangleOffsets": {
           "length": 50,
-          "hash": "e12663f3b6ea40e1"
+          "hash": "59594f25acebd1a0"
         },
         "meshCellTriangleIndices": {
-          "length": 290,
-          "hash": "2c3ef47f05077d12"
+          "length": 297,
+          "hash": "05e8b77d7afda9db"
         }
       },
       "buildability": {
@@ -123,36 +127,40 @@
           "verticesY": 36
         },
         "meshVertexCoords": {
-          "length": 2670,
-          "hash": "2105b1ed7396df10"
+          "length": 2934,
+          "hash": "b66f2d5cb5e29844"
         },
         "meshVertexHeights": {
-          "length": 1335,
-          "hash": "79f8190fd8db7c16"
+          "length": 1467,
+          "hash": "d3b49892e1af0e9f"
         },
         "meshTriangleIndices": {
-          "length": 6789,
-          "hash": "5be784690e7ec929"
+          "length": 6909,
+          "hash": "4f89a1a2bd8501ee"
         },
         "meshTriangleLevels": {
-          "length": 2263,
-          "hash": "ec69efe764b4be46"
+          "length": 2303,
+          "hash": "163544f66dd2acc6"
+        },
+        "meshTriangleWallFlags": {
+          "length": 2303,
+          "hash": "7c971675cbbe5e1b"
         },
         "meshTriangleNeighborIndices": {
-          "length": 6789,
-          "hash": "53ba65abdfd04013"
+          "length": 6909,
+          "hash": "d807ec5a7cdfcf4e"
         },
         "meshTriangleNeighborLevels": {
-          "length": 6789,
-          "hash": "2eb4f79c03130c6b"
+          "length": 6909,
+          "hash": "dc4fa01f24ed2f6e"
         },
         "meshCellTriangleOffsets": {
           "length": 78,
-          "hash": "e2f112bb096a7cab"
+          "hash": "acc9ca07d82dd015"
         },
         "meshCellTriangleIndices": {
-          "length": 3398,
-          "hash": "6d71badbe578affb"
+          "length": 3447,
+          "hash": "40c880a671aebada"
         }
       },
       "buildability": {
@@ -209,36 +217,40 @@
           "verticesY": 151
         },
         "meshVertexCoords": {
-          "length": 14484,
-          "hash": "e24a9f33e3379ec7"
+          "length": 15316,
+          "hash": "a8130cb19811ee3a"
         },
         "meshVertexHeights": {
-          "length": 7242,
-          "hash": "83d8d7d47479a1f7"
+          "length": 7658,
+          "hash": "414841b6e31224fd"
         },
         "meshTriangleIndices": {
-          "length": 36768,
-          "hash": "6c070e2a3112527a"
+          "length": 38109,
+          "hash": "c29f93443a3eeafb"
         },
         "meshTriangleLevels": {
-          "length": 12256,
-          "hash": "cc4b99a03bf30554"
+          "length": 12703,
+          "hash": "5f326506d97abc29"
+        },
+        "meshTriangleWallFlags": {
+          "length": 12703,
+          "hash": "c9389ddbd6633bc8"
         },
         "meshTriangleNeighborIndices": {
-          "length": 36768,
-          "hash": "c7a094c9b24fb8c3"
+          "length": 38109,
+          "hash": "cf1e0e0a394f5006"
         },
         "meshTriangleNeighborLevels": {
-          "length": 36768,
-          "hash": "a18c2e949a2b85a8"
+          "length": 38109,
+          "hash": "a32d604056bdc9a4"
         },
         "meshCellTriangleOffsets": {
           "length": 226,
-          "hash": "eb4df2915030becd"
+          "hash": "e54c494bc1aace4f"
         },
         "meshCellTriangleIndices": {
-          "length": 16557,
-          "hash": "4c629ab4485232fa"
+          "length": 17115,
+          "hash": "7404996bfd7ab80a"
         }
       },
       "buildability": {
@@ -295,36 +307,40 @@
           "verticesY": 151
         },
         "meshVertexCoords": {
-          "length": 11344,
-          "hash": "c170a99b353d9fcb"
+          "length": 11482,
+          "hash": "1a77116ef4321666"
         },
         "meshVertexHeights": {
-          "length": 5672,
-          "hash": "c3ea1afad62d6d9d"
+          "length": 5741,
+          "hash": "624137db7b282efd"
         },
         "meshTriangleIndices": {
-          "length": 28971,
-          "hash": "dba435bc3037a305"
+          "length": 30099,
+          "hash": "14cebc64b492cfbd"
         },
         "meshTriangleLevels": {
-          "length": 9657,
-          "hash": "858bd862b6413e5f"
+          "length": 10033,
+          "hash": "dc233545f61e08d1"
+        },
+        "meshTriangleWallFlags": {
+          "length": 10033,
+          "hash": "543cfb95f4151834"
         },
         "meshTriangleNeighborIndices": {
-          "length": 28971,
-          "hash": "35c9a8d8adb9151d"
+          "length": 30099,
+          "hash": "017d622e9ffcec44"
         },
         "meshTriangleNeighborLevels": {
-          "length": 28971,
-          "hash": "d35fac1d930b442c"
+          "length": 30099,
+          "hash": "4f082fdc04993369"
         },
         "meshCellTriangleOffsets": {
           "length": 226,
-          "hash": "8b0bb2170c032f33"
+          "hash": "06dc58c269a33b07"
         },
         "meshCellTriangleIndices": {
-          "length": 13591,
-          "hash": "b5666e6e19496a22"
+          "length": 14043,
+          "hash": "3a52b478b6ebf366"
         }
       },
       "buildability": {
@@ -381,36 +397,40 @@
           "verticesY": 166
         },
         "meshVertexCoords": {
-          "length": 19692,
-          "hash": "3ca5e1efb693c645"
+          "length": 20366,
+          "hash": "61746fd321f5212a"
         },
         "meshVertexHeights": {
-          "length": 9846,
-          "hash": "e89fdfc99f47ffba"
+          "length": 10183,
+          "hash": "fa511b24d4522f56"
         },
         "meshTriangleIndices": {
-          "length": 51207,
-          "hash": "42e503b7686c821b"
+          "length": 53211,
+          "hash": "9fe5c37cd97f6ec0"
         },
         "meshTriangleLevels": {
-          "length": 17069,
-          "hash": "c2d2d9a0c79d5240"
+          "length": 17737,
+          "hash": "8b24845a437fd533"
+        },
+        "meshTriangleWallFlags": {
+          "length": 17737,
+          "hash": "3983cc6c0208770b"
         },
         "meshTriangleNeighborIndices": {
-          "length": 51207,
-          "hash": "6882452681fb1fcf"
+          "length": 53211,
+          "hash": "7ff065ad8fc7095a"
         },
         "meshTriangleNeighborLevels": {
-          "length": 51207,
-          "hash": "a9fd3d0e9fd15ab8"
+          "length": 53211,
+          "hash": "32dce3b7979ff2bd"
         },
         "meshCellTriangleOffsets": {
           "length": 254,
-          "hash": "fb41e1062a8a6a00"
+          "hash": "9d1f821bebc3e0ef"
         },
         "meshCellTriangleIndices": {
-          "length": 21728,
-          "hash": "0ab4bf279ba70371"
+          "length": 22525,
+          "hash": "333225abd7627b8b"
         }
       },
       "buildability": {
@@ -467,36 +487,40 @@
           "verticesY": 481
         },
         "meshVertexCoords": {
-          "length": 38128,
-          "hash": "37a654739177b26c"
+          "length": 38968,
+          "hash": "62fb86246a5e8984"
         },
         "meshVertexHeights": {
-          "length": 19064,
-          "hash": "03d236c8446dcc71"
+          "length": 19484,
+          "hash": "b2112123f6f533bb"
         },
         "meshTriangleIndices": {
-          "length": 96342,
-          "hash": "334aed0409482a21"
+          "length": 100983,
+          "hash": "faea232df6d5150e"
         },
         "meshTriangleLevels": {
-          "length": 32114,
-          "hash": "3e4372a0d4b2b4b8"
+          "length": 33661,
+          "hash": "66c63cc9560fee59"
+        },
+        "meshTriangleWallFlags": {
+          "length": 33661,
+          "hash": "edd614f538de8679"
         },
         "meshTriangleNeighborIndices": {
-          "length": 96342,
-          "hash": "7d0d6d12349bd693"
+          "length": 100983,
+          "hash": "ccfe59b50e2f0f3d"
         },
         "meshTriangleNeighborLevels": {
-          "length": 96342,
-          "hash": "1808d38abc639e6a"
+          "length": 100983,
+          "hash": "fdabc4005a0a44d6"
         },
         "meshCellTriangleOffsets": {
           "length": 226,
-          "hash": "77c17f433ffb0123"
+          "hash": "8b70eb72e813dcbd"
         },
         "meshCellTriangleIndices": {
-          "length": 37680,
-          "hash": "9b7c170960c4529e"
+          "length": 39388,
+          "hash": "d4acaa898b297c89"
         }
       },
       "buildability": {

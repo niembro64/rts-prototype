@@ -14,6 +14,7 @@ import {
   getPathingMap,
   getPathingDebugUnit,
   getTriangleDebug,
+  getWallTriangleDebug,
 } from '@/clientBarConfig';
 import {
   getTerrainLightSmoothing,
@@ -90,8 +91,6 @@ import {
   type BuildGridOverlayUniforms,
 } from './BuildGridOverlayShader';
 
-type TerrainMeshView = NonNullable<ReturnType<typeof getTerrainMeshView>>;
-
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_GEOMETRY_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING = 24;
@@ -101,9 +100,7 @@ const SIDE_WALL_TERRAIN_SHADE = 0.68;
 const TERRAIN_RENDER_SURFACE_SMOOTH = 0;
 const TERRAIN_RENDER_SURFACE_WALL = 1;
 const TERRAIN_RENDER_SURFACE_CLASS_COUNT = 2;
-const TERRAIN_RENDER_GEOMETRY_CACHE_VERSION = 3;
-const TERRAIN_RENDER_WALL_NORMAL_UP_MAX = 0.82;
-const TERRAIN_RENDER_WALL_MIN_HEIGHT_SPAN = 1.0;
+const TERRAIN_RENDER_GEOMETRY_CACHE_VERSION = 5;
 const TERRAIN_TEXTURE_SMOOTHING_RADIUS_SCALE = [0, 1, 1.75, 2.5] as const;
 const TERRAIN_LIGHT_SMOOTHING_RINGS = [
   { radiusCells: 0.65, count: 6, weight: 0.72 },
@@ -150,58 +147,6 @@ function rawSrgbVec3(hex: number): THREE.Vector3 {
 function triangleDebugHash01(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
   return x - Math.floor(x);
-}
-
-type TerrainRenderNormal = { x: number; y: number; z: number; weight: number };
-
-function terrainRenderFaceNormal(
-  mesh: TerrainMeshView,
-  ia: number,
-  ib: number,
-  ic: number,
-): TerrainRenderNormal {
-  const a2 = ia * 2;
-  const b2 = ib * 2;
-  const c2 = ic * 2;
-  const ax = mesh.vertexCoords[a2];
-  const ay = mesh.vertexCoords[a2 + 1];
-  const az = mesh.vertexHeights[ia];
-  const bx = mesh.vertexCoords[b2];
-  const by = mesh.vertexCoords[b2 + 1];
-  const bz = mesh.vertexHeights[ib];
-  const cx = mesh.vertexCoords[c2];
-  const cy = mesh.vertexCoords[c2 + 1];
-  const cz = mesh.vertexHeights[ic];
-  const ux = bx - ax;
-  const uy = by - ay;
-  const uz = bz - az;
-  const vx = cx - ax;
-  const vy = cy - ay;
-  const vz = cz - az;
-  let nx = uy * vz - uz * vy;
-  let ny = uz * vx - ux * vz;
-  let nz = ux * vy - uy * vx;
-  if (nz < 0) {
-    nx = -nx;
-    ny = -ny;
-    nz = -nz;
-  }
-  const len = Math.hypot(nx, ny, nz);
-  if (len <= 1.0e-9) return { x: 0, y: 0, z: 1, weight: 0 };
-  return { x: nx / len, y: ny / len, z: nz / len, weight: len };
-}
-
-function terrainRenderSurfaceClass(
-  normal: TerrainRenderNormal,
-  heightSpan: number,
-): number {
-  if (
-    heightSpan >= TERRAIN_RENDER_WALL_MIN_HEIGHT_SPAN &&
-    normal.z <= TERRAIN_RENDER_WALL_NORMAL_UP_MAX
-  ) {
-    return TERRAIN_RENDER_SURFACE_WALL;
-  }
-  return TERRAIN_RENDER_SURFACE_SMOOTH;
 }
 
 // Polar offset + falloff weight for sampling slope around a mesh vertex when
@@ -484,6 +429,7 @@ export class TerrainTileRenderer3D {
   private currentTerrainGeometryCacheKey = '';
 
   private triangleDebugEnabledUniform = { value: 0 };
+  private wallTriangleDebugEnabledUniform = { value: 0 };
   private terrainWaterLevelUniform = { value: WATER_LEVEL };
   private terrainMaxHeightUniform = { value: TERRAIN_MAX_RENDER_Y };
   private terrainHorizonBlendEnabledUniform = {
@@ -601,6 +547,7 @@ export class TerrainTileRenderer3D {
   private installTerrainShader(): void {
     this.terrainMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.uTriangleDebugEnabled = this.triangleDebugEnabledUniform;
+      shader.uniforms.uWallTriangleDebugEnabled = this.wallTriangleDebugEnabledUniform;
       shader.uniforms.uTerrainWaterLevel = this.terrainWaterLevelUniform;
       shader.uniforms.uTerrainMaxHeight = this.terrainMaxHeightUniform;
       shader.uniforms.uTerrainHorizonBlendEnabled = this.terrainHorizonBlendEnabledUniform;
@@ -634,6 +581,7 @@ export class TerrainTileRenderer3D {
             'attribute float terrainHorizonFade;',
             'attribute float terrainTextureSlope;',
             'attribute float terrainWall;',
+            'attribute float terrainWallDebug;',
             'attribute vec3 triangleDebugColor;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
@@ -641,6 +589,7 @@ export class TerrainTileRenderer3D {
             'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
             'varying float vTerrainWall;',
+            'varying float vTerrainWallDebug;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
@@ -655,6 +604,7 @@ export class TerrainTileRenderer3D {
             'vTerrainNeighborhoodSlope = terrainNeighborhoodSlope;',
             'vTerrainHorizonFade = terrainHorizonFade;',
             'vTerrainWall = terrainWall;',
+            'vTerrainWallDebug = terrainWallDebug;',
             'vTriangleDebugColor = triangleDebugColor;',
           ].join('\n'),
         );
@@ -663,6 +613,7 @@ export class TerrainTileRenderer3D {
           '#include <common>',
           [
             'uniform float uTriangleDebugEnabled;',
+            'uniform float uWallTriangleDebugEnabled;',
             'uniform float uTerrainWaterLevel;',
             'uniform float uTerrainMaxHeight;',
             'uniform float uTerrainHorizonBlendEnabled;',
@@ -693,6 +644,7 @@ export class TerrainTileRenderer3D {
             'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
             'varying float vTerrainWall;',
+            'varying float vTerrainWallDebug;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
@@ -701,6 +653,7 @@ export class TerrainTileRenderer3D {
           '#include <color_fragment>',
           [
             '#include <color_fragment>',
+            'if (uWallTriangleDebugEnabled > 0.0 && vTerrainWallDebug < 0.5) discard;',
             'float terrainHeightT = clamp((vTerrainWorldPos.y - uTerrainWaterLevel) / max(1.0, uTerrainMaxHeight - uTerrainWaterLevel), 0.0, 1.0);',
             'float shoreline = 1.0 - smoothstep(uTerrainWaterLevel + 10.0, uTerrainWaterLevel + 140.0, vTerrainWorldPos.y);',
             'float upland = smoothstep(0.16, 0.58, terrainHeightT);',
@@ -836,7 +789,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v36';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v38';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -1497,6 +1450,7 @@ export class TerrainTileRenderer3D {
     const terrainNeighborhoodSlopes: number[] = [];
     const terrainHorizonFades: number[] = [];
     const terrainWalls: number[] = [];
+    const terrainWallDebugs: number[] = [];
     const terrainIndices: number[] = [];
     const terrainDebugLevels: number[] = [];
 
@@ -1536,9 +1490,9 @@ export class TerrainTileRenderer3D {
         const ha = authoritativeMesh.vertexHeights[ia];
         const hb = authoritativeMesh.vertexHeights[ib];
         const hc = authoritativeMesh.vertexHeights[ic];
-        const heightSpan = Math.max(ha, hb, hc) - Math.min(ha, hb, hc);
-        const faceNormal = terrainRenderFaceNormal(authoritativeMesh, ia, ib, ic);
-        const surfaceClass = terrainRenderSurfaceClass(faceNormal, heightSpan);
+        const surfaceClass = (authoritativeMesh.triangleWallFlags[tri] ?? 0) !== 0
+          ? TERRAIN_RENDER_SURFACE_WALL
+          : TERRAIN_RENDER_SURFACE_SMOOTH;
         triangleSurfaceClasses[tri] = surfaceClass;
         if (
           WATER_FULLY_OPAQUE &&
@@ -1608,6 +1562,7 @@ export class TerrainTileRenderer3D {
         terrainNormals.push(lightNormal.nx, lightNormal.nz, lightNormal.ny);
         terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
         terrainWalls.push(isWall ? 1 : 0);
+        terrainWallDebugs.push(isWall ? 1 : 0);
         const vertexSlope = 1 - Math.min(1, Math.abs(sampleNormal.nz));
         terrainTextureSlopes.push(vertexSlope);
         terrainNeighborhoodSlopes.push(
@@ -1686,6 +1641,7 @@ export class TerrainTileRenderer3D {
           terrainNeighborhoodSlopes.push(1);
           terrainHorizonFades.push(this.getTerrainHorizonFade(x, z));
           terrainWalls.push(1);
+          terrainWallDebugs.push(0);
           return idx;
         };
         const boundaryEps = 1e-4;
@@ -1780,6 +1736,7 @@ export class TerrainTileRenderer3D {
           terrainNeighborhoodSlopes.push(0);
           terrainHorizonFades.push(1);
           terrainWalls.push(0);
+          terrainWallDebugs.push(0);
         }
         terrainIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
         terrainDebugLevels.push(-1, -1);
@@ -1802,6 +1759,7 @@ export class TerrainTileRenderer3D {
       const debugTerrainNeighborhoodSlopes = new Float32Array(debugVertexCount);
       const debugTerrainHorizonFades = new Float32Array(debugVertexCount);
       const debugTerrainWalls = new Float32Array(debugVertexCount);
+      const debugTerrainWallDebugs = new Float32Array(debugVertexCount);
       const debugTriangleColors = new Float32Array(debugVertexCount * 3);
 
       for (let dst = 0; dst < debugVertexCount; dst++) {
@@ -1819,6 +1777,7 @@ export class TerrainTileRenderer3D {
         debugTerrainNeighborhoodSlopes[dst] = terrainNeighborhoodSlopes[src];
         debugTerrainHorizonFades[dst] = terrainHorizonFades[src];
         debugTerrainWalls[dst] = terrainWalls[src];
+        debugTerrainWallDebugs[dst] = terrainWallDebugs[src];
         const triangleIndex = Math.floor(dst / 3);
         writeTriangleDebugColor(
           debugTriangleColors,
@@ -1835,6 +1794,7 @@ export class TerrainTileRenderer3D {
       geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(debugTerrainNeighborhoodSlopes, 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(debugTerrainHorizonFades, 1));
       geometry.setAttribute('terrainWall', new THREE.BufferAttribute(debugTerrainWalls, 1));
+      geometry.setAttribute('terrainWallDebug', new THREE.BufferAttribute(debugTerrainWallDebugs, 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(debugTriangleColors, 3));
     } else {
       const vertexCount = terrainPositions.length / 3;
@@ -1845,6 +1805,7 @@ export class TerrainTileRenderer3D {
       geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(new Float32Array(terrainNeighborhoodSlopes), 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(new Float32Array(terrainHorizonFades), 1));
       geometry.setAttribute('terrainWall', new THREE.BufferAttribute(new Float32Array(terrainWalls), 1));
+      geometry.setAttribute('terrainWallDebug', new THREE.BufferAttribute(new Float32Array(terrainWallDebugs), 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));
       geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     }
@@ -1865,6 +1826,7 @@ export class TerrainTileRenderer3D {
 
     const triangleDebug = getTriangleDebug();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
+    this.wallTriangleDebugEnabledUniform.value = getWallTriangleDebug() ? 1 : 0;
     this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
     this.rebuildGeometryIfNeeded(
       cellSize,

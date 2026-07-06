@@ -208,6 +208,7 @@ function summarizeTerrain(map) {
     meshVertexHeights: summarizeNumberArray(map.meshVertexHeights),
     meshTriangleIndices: summarizeNumberArray(map.meshTriangleIndices),
     meshTriangleLevels: summarizeNumberArray(map.meshTriangleLevels),
+    meshTriangleWallFlags: summarizeNumberArray(map.meshTriangleWallFlags),
     meshTriangleNeighborIndices: summarizeNumberArray(
       map.meshTriangleNeighborIndices,
     ),

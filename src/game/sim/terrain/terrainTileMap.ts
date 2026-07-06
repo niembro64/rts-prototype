@@ -51,6 +51,7 @@ type TerrainMeshView = {
   vertexHeights: readonly number[];
   triangleIndices: readonly number[];
   triangleLevels: readonly number[];
+  triangleWallFlags: readonly number[];
   triangleNeighborIndices: readonly number[];
   triangleNeighborLevels: readonly number[];
 };
@@ -80,6 +81,7 @@ type BuiltTerrainMesh = {
   vertexHeights: number[];
   triangleIndices: number[];
   triangleLevels: number[];
+  triangleWallFlags: number[];
   triangleNeighborIndices: number[];
   triangleNeighborLevels: number[];
   cellTriangleOffsets: number[];
@@ -135,6 +137,7 @@ export function buildTerrainTileMap(
     meshVertexHeights: mesh.vertexHeights,
     meshTriangleIndices: mesh.triangleIndices,
     meshTriangleLevels: mesh.triangleLevels,
+    meshTriangleWallFlags: mesh.triangleWallFlags,
     meshTriangleNeighborIndices: mesh.triangleNeighborIndices,
     meshTriangleNeighborLevels: mesh.triangleNeighborLevels,
     meshCellTriangleOffsets: mesh.cellTriangleOffsets,
@@ -219,6 +222,7 @@ function buildAdaptiveEquilateralTerrainMesh(
   const vertexHeights = take(vertexCount);
   const triangleIndices = take(triangleCount * 3);
   const triangleLevels = take(triangleCount);
+  const triangleWallFlags = take(triangleCount);
   const triangleNeighborIndices = take(triangleCount * 3);
   const triangleNeighborLevels = take(triangleCount * 3);
   const cellTriangleOffsets = take(cellOffsetsLen);
@@ -229,6 +233,7 @@ function buildAdaptiveEquilateralTerrainMesh(
     vertexHeights,
     triangleIndices,
     triangleLevels,
+    triangleWallFlags,
     triangleNeighborIndices,
     triangleNeighborLevels,
     cellTriangleOffsets,
@@ -282,6 +287,7 @@ export function getTerrainMeshView(
     vertexHeights: map.meshVertexHeights,
     triangleIndices: map.meshTriangleIndices,
     triangleLevels: map.meshTriangleLevels,
+    triangleWallFlags: map.meshTriangleWallFlags,
     triangleNeighborIndices: map.meshTriangleNeighborIndices,
     triangleNeighborLevels: map.meshTriangleNeighborLevels,
   };
