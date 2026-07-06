@@ -37,6 +37,8 @@ export type BattlePreset = {
    *  terrain baker clamps to one triangle edge subdivision per cell.
    *  Drives `TERRAIN_FINE_TRIANGLE_SUBDIV`. */
   readonly terrainDetail: number;
+  readonly terrainTextureSmoothing: number;
+  readonly terrainLightSmoothing: number;
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
   /** Whether the host's grid-debug overlay is on by default. */
@@ -103,6 +105,11 @@ const STRUCTURE_DEFAULTS = {
   towers: allTowers(),
 };
 
+const TERRAIN_RENDER_DEFAULTS = {
+  terrainTextureSmoothing: 2,
+  terrainLightSmoothing: 2,
+};
+
 function buildPresets(): readonly BattlePreset[] {
   return [
     {
@@ -121,6 +128,7 @@ function buildPresets(): readonly BattlePreset[] {
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
       terrainDetail: 0,
+      ...TERRAIN_RENDER_DEFAULTS,
       mapWidthLandCells: 23,
       mapLengthLandCells: 23,
       grid: true,
@@ -141,7 +149,8 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDTerrain: 1,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
-      terrainDetail: 1,
+      terrainDetail: 8,
+      ...TERRAIN_RENDER_DEFAULTS,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
       grid: false,
@@ -163,6 +172,7 @@ function buildPresets(): readonly BattlePreset[] {
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
       terrainDetail: 16,
+      ...TERRAIN_RENDER_DEFAULTS,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
       grid: false,
@@ -184,6 +194,7 @@ function buildPresets(): readonly BattlePreset[] {
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
       terrainDetail: 16,
+      ...TERRAIN_RENDER_DEFAULTS,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
       grid: false,
@@ -204,7 +215,8 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 400,
-      terrainDetail: 1,
+      terrainDetail: 8,
+      ...TERRAIN_RENDER_DEFAULTS,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
       grid: false,
@@ -226,6 +238,7 @@ function buildPresets(): readonly BattlePreset[] {
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
       terrainDetail: 8,
+      ...TERRAIN_RENDER_DEFAULTS,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
       grid: false,
@@ -247,6 +260,7 @@ function buildPresets(): readonly BattlePreset[] {
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
       terrainDetail: 8,
+      ...TERRAIN_RENDER_DEFAULTS,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
       grid: false,
@@ -268,6 +282,7 @@ function buildPresets(): readonly BattlePreset[] {
       plateauWallSlopeDegrees: 89,
       metalDepositStep: 3200,
       terrainDetail: 16,
+      ...TERRAIN_RENDER_DEFAULTS,
       mapWidthLandCells: 35,
       mapLengthLandCells: 35,
       grid: false,
@@ -328,6 +343,8 @@ function presetMatchesCurrent(
     p.plateauWallSlopeDegrees === c.plateauWallSlopeDegrees &&
     p.metalDepositStep === c.metalDepositStep &&
     p.terrainDetail === c.terrainDetail &&
+    p.terrainTextureSmoothing === c.terrainTextureSmoothing &&
+    p.terrainLightSmoothing === c.terrainLightSmoothing &&
     p.mapWidthLandCells === c.mapWidthLandCells &&
     p.mapLengthLandCells === c.mapLengthLandCells
   );

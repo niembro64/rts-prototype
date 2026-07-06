@@ -254,6 +254,38 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>TEX SMOOTH:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.terrainTextureSmoothing.options"
+            :key="opt"
+            :active="model.terrainTextureSmoothing === opt"
+            :title="opt === 0
+              ? 'Texture mask smoothing off — use only local triangle slope'
+              : opt === 1
+                ? 'Texture mask smoothing radius: current/default'
+                : `Texture mask smoothing radius level ${opt}`"
+            @click="model.applyTerrainTextureSmoothing(opt)"
+          >{{ opt }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>LIGHT SMOOTH:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.terrainLightSmoothing.options"
+            :key="opt"
+            :active="model.terrainLightSmoothing === opt"
+            :title="opt === 0
+              ? 'Lighting normal smoothing off — current sampled terrain normal'
+              : `Lighting normal smoothing radius level ${opt}`"
+            @click="model.applyTerrainLightSmoothing(opt)"
+          >{{ opt }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel title="Total units alive / unit cap">UNITS:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">

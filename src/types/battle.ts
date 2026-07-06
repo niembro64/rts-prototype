@@ -60,6 +60,12 @@ export type BattleBarConfig = {
    *  refine the mesh inside each cell so terrain features become
    *  smoother at the cost of more triangles. */
   readonly terrainDetail: OptionsConfig<number>;
+  /** Render-only terrain texture smoothing level. 0 = local only,
+   *  1 = current/default radius, 2/3 = progressively wider sampling. */
+  readonly terrainTextureSmoothing: OptionsConfig<number>;
+  /** Render-only terrain lighting normal smoothing level. 0 = current
+   *  sampled terrain normal, 1/2/3 = progressively wider normal averaging. */
+  readonly terrainLightSmoothing: OptionsConfig<number>;
   /** Tax (fraction in [0, 1)) applied to a resource converter's
    *  per-tick output. 0.0 = lossless conversion; 0.5 = lose half of
    *  the source amount on every conversion. */

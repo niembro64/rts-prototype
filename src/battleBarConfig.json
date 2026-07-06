@@ -26,6 +26,12 @@
   "terrainDetail": {
     "options": [0, 1, 2, 4, 8, 16, 32]
   },
+  "terrainTextureSmoothing": {
+    "options": [0, 1, 2, 3]
+  },
+  "terrainLightSmoothing": {
+    "options": [0, 1, 2, 3]
+  },
   "converterTax": {
     "options": [0.0, 0.1, 0.5]
   },
@@ -66,6 +72,10 @@
     "realMetalDepositStep": "real-battle-metal-deposit-step",
     "demoTerrainDetail": "demo-battle-terrain-detail",
     "realTerrainDetail": "real-battle-terrain-detail",
+    "demoTerrainTextureSmoothing": "demo-battle-terrain-texture-smoothing",
+    "realTerrainTextureSmoothing": "real-battle-terrain-texture-smoothing",
+    "demoTerrainLightSmoothing": "demo-battle-terrain-light-smoothing",
+    "realTerrainLightSmoothing": "real-battle-terrain-light-smoothing",
     "demoConverterTax": "demo-battle-converter-tax",
     "realConverterTax": "real-battle-converter-tax",
     "demoMapLandCells": "demo-battle-map-land-cells",

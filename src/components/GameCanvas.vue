@@ -45,8 +45,15 @@ import {
   loadStoredMetalDepositStep,
   loadStoredPlateauWallSlopeDegrees,
   loadStoredTerrainDetail,
+  loadStoredTerrainTextureSmoothing,
+  loadStoredTerrainLightSmoothing,
   loadStoredPerimeterMagnitude,
   loadStoredMapLandDimensions,
+  normalizeTerrainTextureSmoothing,
+  normalizeTerrainLightSmoothing,
+  saveTerrainTextureSmoothing,
+  saveTerrainLightSmoothing,
+  setActiveTerrainRenderSmoothing,
   type BattleMode,
 } from '../battleBarConfig';
 import type {
@@ -1048,6 +1055,24 @@ const plateauWallSlopeDegrees = ref<number>(
 );
 const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
+const terrainTextureSmoothing = ref<number>(
+  loadStoredTerrainTextureSmoothing('demo'),
+);
+const terrainLightSmoothing = ref<number>(
+  loadStoredTerrainLightSmoothing('demo'),
+);
+setActiveTerrainRenderSmoothing(
+  terrainTextureSmoothing.value,
+  terrainLightSmoothing.value,
+);
+watch(currentBattleMode, (mode) => {
+  terrainTextureSmoothing.value = loadStoredTerrainTextureSmoothing(mode);
+  terrainLightSmoothing.value = loadStoredTerrainLightSmoothing(mode);
+  setActiveTerrainRenderSmoothing(
+    terrainTextureSmoothing.value,
+    terrainLightSmoothing.value,
+  );
+});
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
 const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
@@ -1065,6 +1090,8 @@ const mapDetailsRows = computed(() => [
   { label: 'PLATEAU WALL', value: `${plateauWallSlopeDegrees.value} deg` },
   { label: 'METAL STEP', value: metalDepositStep.value === 0 ? 'NONE' : String(metalDepositStep.value) },
   { label: 'DETAIL', value: String(terrainDetail.value) },
+  { label: 'TEX SMOOTH', value: String(terrainTextureSmoothing.value) },
+  { label: 'LIGHT SMOOTH', value: String(terrainLightSmoothing.value) },
   { label: 'PLAYERS', value: String(lobbyPlayerCount.value) },
 ]);
 const {
@@ -1441,6 +1468,26 @@ const {
   startBackgroundBattle,
 });
 
+function applyTerrainTextureSmoothing(value: number): void {
+  const normalized = normalizeTerrainTextureSmoothing(value);
+  terrainTextureSmoothing.value = normalized;
+  saveTerrainTextureSmoothing(normalized, currentBattleMode.value);
+  setActiveTerrainRenderSmoothing(
+    terrainTextureSmoothing.value,
+    terrainLightSmoothing.value,
+  );
+}
+
+function applyTerrainLightSmoothing(value: number): void {
+  const normalized = normalizeTerrainLightSmoothing(value);
+  terrainLightSmoothing.value = normalized;
+  saveTerrainLightSmoothing(normalized, currentBattleMode.value);
+  setActiveTerrainRenderSmoothing(
+    terrainTextureSmoothing.value,
+    terrainLightSmoothing.value,
+  );
+}
+
 const {
   resetServerDefaults: resetUnitGroundNormalEmaDefault,
   setUnitGroundNormalEmaModeValue,
@@ -1497,6 +1544,8 @@ const {
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyTerrainTextureSmoothing,
+  applyTerrainLightSmoothing,
   applyMapLandDimensions,
 });
 
@@ -1639,6 +1688,8 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
+  terrainTextureSmoothing: terrainTextureSmoothing.value,
+  terrainLightSmoothing: terrainLightSmoothing.value,
   displayUnitCount: displayUnitCount.value,
   currentForceFieldsVisible: currentForceFieldsVisible.value,
   currentShieldsObstructSight: currentShieldsObstructSight.value,
@@ -1665,6 +1716,8 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyTerrainTextureSmoothing,
+  applyTerrainLightSmoothing,
   setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
@@ -1698,6 +1751,8 @@ watchEffect(() => {
   m.plateauWallSlopeDegrees = plateauWallSlopeDegrees.value;
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
+  m.terrainTextureSmoothing = terrainTextureSmoothing.value;
+  m.terrainLightSmoothing = terrainLightSmoothing.value;
   m.displayUnitCount = displayUnitCount.value;
   m.currentForceFieldsVisible = currentForceFieldsVisible.value;
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;
@@ -1725,6 +1780,8 @@ watchEffect(() => {
     plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
     metalDepositStep: metalDepositStep.value,
     terrainDetail: terrainDetail.value,
+    terrainTextureSmoothing: terrainTextureSmoothing.value,
+    terrainLightSmoothing: terrainLightSmoothing.value,
     mapWidthLandCells: mapWidthLandCells.value,
     mapLengthLandCells: mapLengthLandCells.value,
     grid: displayGridInfo.value,

@@ -81,6 +81,8 @@ type GameCanvasBattleSettingsOptions = {
   applyPlateauWallSlopeDegrees: (value: number, broadcast?: boolean) => void;
   applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
   applyTerrainDetail: (value: number, broadcast?: boolean) => void;
+  applyTerrainTextureSmoothing: (value: number) => void;
+  applyTerrainLightSmoothing: (value: number) => void;
   applyMapLandDimensions: (
     dimensions: MapLandCellDimensions,
     broadcast?: boolean,
@@ -103,6 +105,8 @@ export function useGameCanvasBattleSettings({
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyTerrainTextureSmoothing,
+  applyTerrainLightSmoothing,
   applyMapLandDimensions,
 }: GameCanvasBattleSettingsOptions): GameCanvasBattleSettings {
   const currentAllowedUnits = computed<readonly string[]>(
@@ -385,6 +389,8 @@ export function useGameCanvasBattleSettings({
     applyPlateauWallSlopeDegrees(preset.plateauWallSlopeDegrees, false);
     applyMetalDepositStep(preset.metalDepositStep, false);
     applyTerrainDetail(preset.terrainDetail, false);
+    applyTerrainTextureSmoothing(preset.terrainTextureSmoothing);
+    applyTerrainLightSmoothing(preset.terrainLightSmoothing);
     applyMapLandDimensions(
       {
         widthLandCells: preset.mapWidthLandCells,
