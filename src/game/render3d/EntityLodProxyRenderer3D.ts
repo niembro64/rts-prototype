@@ -291,9 +291,29 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
   private readonly unitBatch = createProxyPointBatch();
   private readonly buildingBatch = createProxyPointBatch();
 
-  constructor(private readonly world: THREE.Group) {
+  constructor(
+    private readonly world: THREE.Group,
+    private readonly canvas?: HTMLCanvasElement,
+  ) {
     this.world.add(this.unitBatch.points);
     this.world.add(this.buildingBatch.points);
+  }
+
+  /**
+   * The glyph shader sizes `gl_PointSize` in physical framebuffer pixels, so it
+   * must be fed the drawing-buffer height, NOT the CSS height. `canvas.height`
+   * is exactly that (Three.js keeps it at cssHeight * activePixelRatio), so it
+   * stays correct at any resolution and pixel density — and tracks the dynamic
+   * pixel-ratio the renderer may drop to under load. The passed CSS height is
+   * only a fallback for when no canvas is wired (e.g. tests).
+   */
+  private physicalViewportHeight(cssViewportHeight: number): number {
+    const bufferHeight = this.canvas?.height ?? 0;
+    if (Number.isFinite(bufferHeight) && bufferHeight > 0) return bufferHeight;
+    const dpr = typeof globalThis !== 'undefined' && globalThis.devicePixelRatio > 0
+      ? globalThis.devicePixelRatio
+      : 1;
+    return cssViewportHeight * dpr;
   }
 
   setVisible(visible: boolean): void {
@@ -345,8 +365,9 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
   }
 
   flush(viewportHeight: number): void {
-    markBatchRange(this.unitBatch, viewportHeight);
-    markBatchRange(this.buildingBatch, viewportHeight);
+    const physicalHeight = this.physicalViewportHeight(viewportHeight);
+    markBatchRange(this.unitBatch, physicalHeight);
+    markBatchRange(this.buildingBatch, physicalHeight);
   }
 
   destroy(): void {
@@ -374,7 +395,10 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
 
   constructor(options: THREE.Group | EntityLodProxyRenderer3DOptions) {
     const normalizedOptions = normalizeOptions(options);
-    this.webGlBackend = new EntityLodProxyWebGlRenderer3D(normalizedOptions.world);
+    this.webGlBackend = new EntityLodProxyWebGlRenderer3D(
+      normalizedOptions.world,
+      normalizedOptions.canvas,
+    );
     this.activeBackend = this.webGlBackend;
     const runtimeProfile = getBrowserRenderRuntimeProfile();
     // The WebGPU overlay is a separate canvas, so it cannot share the
