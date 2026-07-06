@@ -1140,19 +1140,6 @@ pub(crate) fn terrain_plateau_region_key_at_world(
     }
 }
 
-pub(crate) fn terrain_plateau_region_key_at_lattice(
-    c: &TerrainMeshBuildConfig,
-    i: i32,
-    j: i32,
-) -> Option<i32> {
-    let x = c.fine_edge * (i as f64 + j as f64 * 0.5);
-    let z = c.fine_height * j as f64;
-    if !terrain_point_inside_map(c, x, z) {
-        return None;
-    }
-    terrain_plateau_region_key_at_world(c, x, z)
-}
-
 /// Boundary after a plateau-region key in height order:
 /// shelf L -> wall L uses q - L - flatHalf = 0; wall L -> shelf L+1
 /// uses q - (L + 1) + flatHalf = 0.
@@ -1248,17 +1235,6 @@ pub(crate) fn terrain_can_collapse_triangle(
     let max_x = c.map_width + TERRAIN_MESH_EPSILON;
     let max_z = c.map_height + TERRAIN_MESH_EPSILON;
     let mut checked: i64 = 0;
-    let mut first_plateau_key: Option<i32> = None;
-    let mut observe_plateau_key = |key: Option<i32>| -> bool {
-        let Some(key) = key else {
-            return false;
-        };
-        if let Some(first) = first_plateau_key {
-            return first != key;
-        }
-        first_plateau_key = Some(key);
-        false
-    };
 
     for offset_i in 0..=n {
         let (lo_j, hi_j) = if !tri.down {
@@ -1275,9 +1251,6 @@ pub(crate) fn terrain_can_collapse_triangle(
                 continue;
             }
             checked += 1;
-            if observe_plateau_key(terrain_plateau_region_key_at_lattice(c, i, j)) {
-                return false;
-            }
             if !terrain_collapse_sample_ok(
                 c,
                 cache,
@@ -1310,11 +1283,6 @@ pub(crate) fn terrain_can_collapse_triangle(
     let centroid_x = (a.x + b.x + cc.x) / 3.0;
     let centroid_z = (a.z + b.z + cc.z) / 3.0;
     if c.sample_centroid && terrain_point_inside_map(c, centroid_x, centroid_z) {
-        if observe_plateau_key(terrain_plateau_region_key_at_world(
-            c, centroid_x, centroid_z,
-        )) {
-            return false;
-        }
         let actual = terrain_mesh_height_at_world(c, centroid_x, centroid_z);
         let approx = (a.h + b.h + cc.h) / 3.0;
         if c.preserve_waterline && (actual < c.water_level) != (approx < c.water_level) {
