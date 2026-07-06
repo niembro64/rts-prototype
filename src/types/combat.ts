@@ -179,6 +179,9 @@ export type ProjectileVelocityUpdateEvent = {
   id: EntityId;
   pos: Vec3;
   velocity: Vec3;
+  /** Server-only visibility context. Lets snapshot serialization avoid
+   *  resolving the projectile entity again when filtering presentation rows. */
+  ownerId?: PlayerId;
   /** Set when authoritative homing retargets to a new visible entity. */
   targetEntityId?: EntityId;
   /** Clear the projectile's inherited homing target on clients when

@@ -104,6 +104,9 @@ export class ServerBootstrap {
       perimeterMagnitude,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
+      plateauWallSlopeDegrees:
+        config.plateauWallSlopeDegrees ??
+        terrainRuntimeConfig.plateauWallSlopeDegrees,
       metalDepositStep:
         config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
       terrainDetail:
@@ -270,6 +273,9 @@ export class ServerBootstrap {
       perimeterMagnitude,
       terrainDTerrain:
         config.terrainDTerrain ?? terrainRuntimeConfig.terrainDTerrain,
+      plateauWallSlopeDegrees:
+        config.plateauWallSlopeDegrees ??
+        terrainRuntimeConfig.plateauWallSlopeDegrees,
       metalDepositStep:
         config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
       terrainDetail:

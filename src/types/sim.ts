@@ -187,12 +187,13 @@ export type CachedShieldPanel = {
 // the client). Anyone reading "how fast is this unit moving" — lead
 // prediction, debris recoil, locomotion animation — should read these.
 //
-// `thrustDirX/Y` is the desired horizontal thrust vector that
-// GameServer.applyForces reads to push the body. Its direction is the
-// desired acceleration direction; its magnitude is clamped to [0, 1]
-// and scales the unit's available drive force. Decoupling thrust from
-// velocity prevents the action system from clobbering the velocity
-// field mid-tick before turretSystem's lead math runs.
+// `thrustDirX/Y` is the desired horizontal thrust vector mirrored into
+// native entity-state drive-input rows for the force kernel. Its
+// direction is the desired acceleration direction; its magnitude is
+// clamped to [0, 1] and scales the unit's available drive force.
+// Decoupling thrust from velocity prevents the action system from
+// clobbering the velocity field mid-tick before turretSystem's lead
+// math runs.
 export type Unit = {
   unitBlueprintId: string;
   locomotion: UnitLocomotion;
@@ -253,14 +254,6 @@ export type Unit = {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
-  /** Authoritative movement/traction acceleration applied this tick,
-   *  excluding gravity, terrain spring, air/ground damping, and
-   *  transient external forces. Sim-only server force state: it is not
-   *  shipped on the wire and client prediction integrates from the
-   *  last-seen velocity instead. */
-  movementAccelX: number;
-  movementAccelY: number;
-  movementAccelZ: number;
   /** Desired thrust vector for this tick. Magnitude is a force fraction
    *  (0..1 after clamping); the action system encodes "stationary" as
    *  (0, 0). */
@@ -285,16 +278,6 @@ export type Unit = {
    *  the raw normal at the spawn position; written by the unit ground
    *  normal system. */
   surfaceNormal: { nx: number; ny: number; nz: number };
-  /** Per-unit EMA accumulator for the jittered air heightUpwardForce.
-   *  Updated each tick by UnitForceSystem when
-   *  `locomotion.physics.air.heightUpwardForceEMA > 0`; null until the first
-   *  tick seeds it from the raw sample. Tick-only state, never serialised. */
-  hoverHeightUpwardForceSmoothed: number | null;
-  /** Per-unit EMA accumulator for the jittered water heightUpwardForce.
-   *  Updated each tick by UnitForceSystem when submerged and
-   *  `locomotion.physics.water.heightUpwardForceEMA > 0`; null until first
-   *  seeded. Tick-only state, never serialised. */
-  swimHeightUpwardForceSmoothed: number | null;
   /** Full 3-DOF orientation for the unit body. All units carry this
    *  state; `transform.rotation` remains the scalar yaw mirror for
    *  legacy systems that only need heading.
@@ -309,9 +292,6 @@ export type Unit = {
   /** Angular velocity 3-vector in world frame (rad/s). Paired with
    *  `orientation`; legacy/null-safe because older snapshots may omit it. */
   angularVelocity3: { x: number; y: number; z: number } | null;
-  /** Angular acceleration 3-vector in world frame (rad/s²). Paired
-   *  with `orientation`; sim-only and legacy/null-safe. */
-  angularAcceleration3: { x: number; y: number; z: number } | null;
   /** Consecutive ticks the unit has wanted to move but failed to make
    *  meaningful progress. Reset on either no-movement-intent ticks or
    *  ticks where physics velocity exceeds the stuck threshold. When

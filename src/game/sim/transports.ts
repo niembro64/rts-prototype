@@ -3,6 +3,7 @@ import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
 import type { Entity, EntityId, Transport } from './types';
 import type { WorldState } from './WorldState';
 import { getEntityTargetPoint } from './buildingAnchors';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 import { shiftUnitAction, setUnitActions } from './unitActions';
 
 const TRANSPORT_UNIT_BLUEPRINT_ID = 'unitTransport';
@@ -91,10 +92,7 @@ function loadUnitIntoTransport(
   setUnitActions(target.unit, []);
   target.unit.patrolStartIndex = null;
   target.unit.stuckTicks = 0;
-  target.unit.thrustDirX = 0;
-  target.unit.thrustDirY = 0;
-  target.unit.headingDirX = 0;
-  target.unit.headingDirY = 0;
+  entitySlotRegistry.setUnitDriveInput(target, 0, 0, 0, 0, target.entitySlotId);
   target.selectable = { selected: false };
   target.transported = {
     transportId: transport.id,
@@ -153,10 +151,7 @@ function unloadTransportCargo(
     passengerUnit.velocityX = transportUnit?.velocityX ?? 0;
     passengerUnit.velocityY = transportUnit?.velocityY ?? 0;
     passengerUnit.velocityZ = transportUnit?.velocityZ ?? 0;
-    passengerUnit.thrustDirX = 0;
-    passengerUnit.thrustDirY = 0;
-    passengerUnit.headingDirX = 0;
-    passengerUnit.headingDirY = 0;
+    entitySlotRegistry.setUnitDriveInput(passenger, 0, 0, 0, 0, passenger.entitySlotId);
     passengerUnit.activePath = null;
     passengerUnit.stuckTicks = 0;
 

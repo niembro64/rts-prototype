@@ -2347,12 +2347,12 @@ pub fn snapshot_encode_removed_ids_scratch_ensure(count: u32) {
 // per-entity JS->WASM crossing.
 //
 // SoA row layouts (must match stateSerializerEntities.ts strides/slots):
-//   basic[9], unit[66], building[50], action[19], turret[11], waypoint[5].
+//   basic[9], unit[68], building[50], action[19], turret[11], waypoint[5].
 // hp/velocity (unit) and hp/build (building) presence is NOT stored in the SoA
 // (the legacy verbose encoder always emitted them); it is re-derived here as
 // `isFull || (changedFields & bit)`, exactly how serializeEntitySnapshot sets
 // the DTO sub-fields.
-pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 19;
+pub(crate) const V6_PACKED_ENTITIES_VERSION: u64 = 20;
 
 pub(crate) const V6_ENTITY_FLAG_HAS_POS: u32 = 1 << 0;
 pub(crate) const V6_ENTITY_FLAG_HAS_ROTATION: u32 = 1 << 1;
@@ -2391,6 +2391,7 @@ pub(crate) const V6_UNIT_FLAG_MOVE_STATE_PRESENT: u32 = 1 << 27;
 pub(crate) const V6_UNIT_FLAG_MOVE_STATE_HOLD: u32 = 1 << 28;
 pub(crate) const V6_UNIT_FLAG_MOVE_STATE_ROAM: u32 = 1 << 29;
 pub(crate) const V6_UNIT_FLAG_FIRE_STATE_PRESENT: u32 = 1 << 30;
+pub(crate) const V6_UNIT_FLAG_BUILDER_PRIORITY_PRESENT: u32 = 1 << 31;
 
 pub(crate) const V6_BUILDING_FLAG_BLUEPRINT_CODE: u32 = 1 << 0;
 pub(crate) const V6_BUILDING_FLAG_DIM: u32 = 1 << 1;
@@ -2437,7 +2438,7 @@ pub(crate) const V6_TURRET_FLAG_INACTIVE: u32 = 1 << 2;
 pub(crate) const V6_WAYPOINT_FLAG_POS_Z: u32 = 1 << 0;
 
 pub(crate) const V6_BASIC_STRIDE: usize = 9;
-pub(crate) const V6_UNIT_STRIDE: usize = 66;
+pub(crate) const V6_UNIT_STRIDE: usize = 68;
 pub(crate) const V6_BUILDING_STRIDE: usize = 50;
 
 pub(crate) const V6_KIND_RAW: u32 = 0;
@@ -3461,6 +3462,8 @@ pub(crate) fn v6_write_detail_unit(
     let cloak_present = unit_buf[base + 61] != 0.0;
     let build_interrupted = unit_buf[base + 63] != 0.0;
     let carrier_spawn_present = unit_buf[base + 64] != 0.0;
+    let builder_priority_present = unit_buf[base + 66] != 0.0;
+    let builder_priority_low = unit_buf[base + 67] != 0.0;
 
     let mut flags = 0u32;
     if hp_present {
@@ -3551,6 +3554,9 @@ pub(crate) fn v6_write_detail_unit(
             flags |= V6_UNIT_FLAG_BUILD_INTERRUPTED;
         }
     }
+    if builder_priority_present {
+        flags |= V6_UNIT_FLAG_BUILDER_PRIORITY_PRESENT;
+    }
 
     let mut len = 1usize;
     if hp_present {
@@ -3597,6 +3603,9 @@ pub(crate) fn v6_write_detail_unit(
     }
     if has_build {
         len += 2;
+    }
+    if builder_priority_present {
+        len += 1;
     }
     if carrier_spawn_present {
         len += 1;
@@ -3677,6 +3686,9 @@ pub(crate) fn v6_write_detail_unit(
     if has_build {
         w.write_number(unit_buf[base + 47]);
         w.write_number(unit_buf[base + 48]);
+    }
+    if builder_priority_present {
+        w.write_number(if builder_priority_low { 1.0 } else { 0.0 });
     }
     if carrier_spawn_present {
         w.write_number(unit_buf[base + 65]);
@@ -7755,7 +7767,7 @@ mod sim_kernel_tests {
 
     #[test]
     pub(crate) fn terrain_adaptive_mesh_build_is_deterministic_and_conforming() {
-        // 22-value generation slice: round-island perimeter (negative
+        // 23-value generation slice: round-island perimeter (negative
         // magnitude), 2 teams, ripple + ridge so the LOD walk actually
         // varies triangle sizes.
         let terrain_config = [
@@ -7769,13 +7781,14 @@ mod sim_kernel_tests {
             0.39,    // perimeter_inner_radius_fraction
             0.04,    // generation_edge_transition_width_fraction
             0.99,    // plateau_shelf_fraction_of_step
-            0.0,     // plateau_ramp_edge_sharpness
+            1.0,     // plateau_ramp_edge_sharpness
             0.4,     // ripple_radius_fraction
             1.7,     // ripple_phase
             700.0, 0.9, // ripple component 0 wavelength/magnitude
             600.0, 0.0, // ripple component 1
             600.0, 0.0, // ripple component 2
             0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+            89.0, // plateau_wall_slope_degrees
         ];
         // 10-value LOD slice mirroring terrainConfig.json defaults.
         let lod_config = [
@@ -7859,6 +7872,61 @@ mod sim_kernel_tests {
             let tri = a[cell_idx_start + k] as i64;
             assert!(tri >= 0 && (tri as usize) < t, "cell triangle ref in range");
         }
+    }
+
+    #[test]
+    pub(crate) fn terrain_water_probe_masks_mark_center_water_and_compass_dry_bits() {
+        let _guard = lock_tests();
+        let cell_size = 100.0;
+        let cells_x = 2;
+        let cells_y = 1;
+        let vertex_coords = [
+            0.0, 0.0, 100.0, 0.0, 200.0, 0.0, 0.0, 100.0, 100.0, 100.0, 200.0, 100.0,
+        ];
+        let vertex_heights = [-200.0, -200.0, 0.0, -200.0, -200.0, 0.0];
+        let triangle_indices = [0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4];
+        let triangle_levels = [0, 0, 0, 0];
+        let neighbor_indices = vec![-1; triangle_indices.len()];
+        let neighbor_levels = vec![-1; triangle_indices.len()];
+        let cell_triangle_offsets = [0, 2, 4];
+        let cell_triangle_indices = [0, 1, 2, 3];
+        terrain_clear();
+        terrain_install_mesh(
+            &vertex_coords,
+            &vertex_heights,
+            &triangle_indices,
+            &triangle_levels,
+            &neighbor_indices,
+            &neighbor_levels,
+            &cell_triangle_offsets,
+            &cell_triangle_indices,
+            200.0,
+            100.0,
+            cell_size,
+            1,
+            cells_x,
+            cells_y,
+        );
+
+        let centers_x = [75.0];
+        let centers_y = [50.0];
+        let probe_radii = [130.0];
+        let mut center_water = [0_u32];
+        let mut dry_masks = [0_u32];
+
+        assert_eq!(
+            terrain_sample_water_probe_masks(
+                &centers_x,
+                &centers_y,
+                &probe_radii,
+                &mut center_water,
+                &mut dry_masks,
+            ),
+            1,
+        );
+        assert_eq!(center_water[0], 1);
+        assert_ne!(dry_masks[0] & 0b0000_0001, 0, "east probe reaches dry land");
+        assert_eq!(dry_masks[0] & 0b0001_0000, 0, "west probe remains water");
     }
 
     #[test]

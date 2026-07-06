@@ -566,8 +566,6 @@ export class Render3DEntities {
 
     for (let row = 0; row < unitRows.count; row++) {
       const entityId = unitRows.entityIdAt(row);
-      const e = unitRows.entityAt(row);
-      if (e === undefined || e.unit === null) continue;
       // If this entity id is mid fade-out (death scatter OR vision fade)
       // and has reappeared (id reuse, re-add, or vision regained before
       // the fade finished), finalize the old mesh now so we don't draw the
@@ -581,13 +579,22 @@ export class Render3DEntities {
       const useLodProxy = unitRows.lodProxyAt(row);
       let m = this.unitMeshes.get(entityId);
       if (useLodProxy) {
-        this.lodProxyRenderer.pushUnit(e);
+        this.lodProxyRenderer.pushUnitProxy(
+          unitRows.x[row],
+          unitRows.y[row],
+          unitRows.z[row],
+          unitRows.lodProxyRadius[row],
+          unitRows.lodProxyGlyph[row],
+          unitRows.ownerIdAt(row),
+        );
         if (m !== undefined) {
           if (pruneUnits) m.renderSeenToken = pruneToken;
           this.deactivateUnitMeshForLod(entityId, m);
         }
         continue;
       }
+      const e = unitRows.entityAt(row);
+      if (e === undefined || e.unit === null) continue;
       const tx = unitRows.x[row];
       const ty = unitRows.y[row];
       const turrets = unitRows.turretsAt(row);

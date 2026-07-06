@@ -543,6 +543,122 @@ function buildSingleSelectionDetails(entity: Entity): SelectionInfo['details'] {
   return [];
 }
 
+function selectedEntityTypeLabel(kind: NonNullable<SelectionInfo['selectedEntityInfo']>['kind']): string {
+  if (kind === 'selection') return 'Selection';
+  if (kind === 'tower') return 'Tower';
+  if (kind === 'building') return 'Building';
+  return 'Unit';
+}
+
+function buildEntitySelectionInfo(
+  entity: Entity,
+  kind: 'unit' | 'tower' | 'building',
+): SelectionInfo['selectedEntityInfo'] {
+  if (entity.unit !== null) {
+    let label = entity.unit.unitBlueprintId;
+    try {
+      label = getUnitBlueprint(entity.unit.unitBlueprintId).name;
+    } catch {
+      // Keep the authored id when a display roster entry is missing.
+    }
+    return {
+      kind,
+      blueprintKind: 'unit',
+      blueprintId: entity.unit.unitBlueprintId,
+      label,
+      subtitle: selectedEntityTypeLabel(kind),
+      count: 1,
+      hp: entity.unit.hp,
+      maxHp: entity.unit.maxHp,
+      buildProgress: entity.buildable === null ? null : getBuildFraction(entity.buildable),
+    };
+  }
+
+  if (entity.building !== null && entity.buildingBlueprintId !== null) {
+    let label: string = entity.buildingBlueprintId;
+    try {
+      label = getBuildingConfig(entity.buildingBlueprintId).name;
+    } catch {
+      // Keep the authored id when a display roster entry is missing.
+    }
+    return {
+      kind,
+      blueprintKind: kind,
+      blueprintId: entity.buildingBlueprintId,
+      label,
+      subtitle: selectedEntityTypeLabel(kind),
+      count: 1,
+      hp: entity.building.hp,
+      maxHp: entity.building.maxHp,
+      buildProgress: entity.buildable === null ? null : getBuildFraction(entity.buildable),
+    };
+  }
+
+  return {
+    kind,
+    blueprintKind: null,
+    blueprintId: null,
+    label: selectedEntityTypeLabel(kind),
+    subtitle: 'Selected entity',
+    count: 1,
+    hp: null,
+    maxHp: null,
+    buildProgress: null,
+  };
+}
+
+function buildSelectionEntityInfo(
+  selectedUnits: Entity[],
+  selectedTowers: Entity[],
+  selectedBuildings: Entity[],
+): SelectionInfo['selectedEntityInfo'] {
+  const totalSelected = selectedUnits.length + selectedTowers.length + selectedBuildings.length;
+  if (totalSelected === 0) return null;
+  if (totalSelected === 1) {
+    if (selectedUnits[0] !== undefined) return buildEntitySelectionInfo(selectedUnits[0], 'unit');
+    if (selectedTowers[0] !== undefined) return buildEntitySelectionInfo(selectedTowers[0], 'tower');
+    if (selectedBuildings[0] !== undefined) return buildEntitySelectionInfo(selectedBuildings[0], 'building');
+  }
+
+  let hp = 0;
+  let maxHp = 0;
+  for (let i = 0; i < selectedUnits.length; i++) {
+    const pair = hpPair(selectedUnits[i]);
+    if (pair === null) continue;
+    hp += pair.hp;
+    maxHp += pair.maxHp;
+  }
+  for (let i = 0; i < selectedTowers.length; i++) {
+    const pair = hpPair(selectedTowers[i]);
+    if (pair === null) continue;
+    hp += pair.hp;
+    maxHp += pair.maxHp;
+  }
+  for (let i = 0; i < selectedBuildings.length; i++) {
+    const pair = hpPair(selectedBuildings[i]);
+    if (pair === null) continue;
+    hp += pair.hp;
+    maxHp += pair.maxHp;
+  }
+
+  const typeLabels: string[] = [];
+  if (selectedUnits.length > 0) typeLabels.push(`${selectedUnits.length} unit${selectedUnits.length === 1 ? '' : 's'}`);
+  if (selectedTowers.length > 0) typeLabels.push(`${selectedTowers.length} tower${selectedTowers.length === 1 ? '' : 's'}`);
+  if (selectedBuildings.length > 0) typeLabels.push(`${selectedBuildings.length} building${selectedBuildings.length === 1 ? '' : 's'}`);
+
+  return {
+    kind: 'selection',
+    blueprintKind: null,
+    blueprintId: null,
+    label: `${totalSelected} selected`,
+    subtitle: typeLabels.join(', '),
+    count: totalSelected,
+    hp: maxHp > 0 ? hp : null,
+    maxHp: maxHp > 0 ? maxHp : null,
+    buildProgress: null,
+  };
+}
+
 const _minimapColorCache = new Map<number, string>();
 
 function minimapColor(color: number): string {
@@ -843,7 +959,8 @@ export function buildSelectionInfo(
 
   // Building ON/OFF (Producer Buildings Are ON/OFF in budget_design_philosophy.html).
   // Prototype active-state covers the full local mechanic; BAR-visible on/off is
-  // narrower and follows BAR unit defs with onoffable=true.
+  // narrower and follows BAR economy structures with player-facing active state
+  // controls, including energy converters.
   let activeBuildingCount = 0;
   let allBuildingsOpen = true;
   let barActiveBuildingCount = 0;
@@ -1033,6 +1150,7 @@ export function buildSelectionInfo(
     hasQueuedOrders,
     queueInsertIndex: inputState?.queueInsertIndex ?? null,
     queueInsertOptions: buildQueueInsertOptions(selectedUnits),
+    selectedEntityInfo: buildSelectionEntityInfo(selectedUnits, selectedTowers, selectedBuildings),
     hasFactory: factory !== undefined,
     factoryAllowedUnitBlueprintIds: getFactoryAllowedUnitBlueprintIds(factory),
     factoryId: factory?.id,

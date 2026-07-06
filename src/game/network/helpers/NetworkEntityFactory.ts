@@ -43,9 +43,12 @@ import {
 } from '../factoryProductionQueueWire';
 import {
   dequantizeEntityPosition as deqEntityPos,
+  dequantizeNormal as deqNormal,
   dequantizeRotation as deqRot,
+  dequantizeVelocity as deqVel,
 } from '../snapshotQuantization';
 import {
+  applyNetworkUnitActionWireRows,
   decodeNetworkUnitActions,
   decodeNetworkUnitBlueprintId,
   readNetworkCombatFireState,
@@ -56,6 +59,37 @@ import {
   readNetworkUnitSurfaceNormal,
   readNetworkUnitVelocity,
 } from '../unitSnapshotFields';
+import {
+  ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE,
+  type EntitySnapshotWireSource,
+} from '../stateSerializerEntities';
+import { unitBlueprintBarDefaultMoveState } from '../../sim/unitCommandCapabilities';
+
+function unitMoveStateFromWireCode(code: number): 'maneuver' | 'holdPosition' | 'roam' {
+  return code === 2 ? 'roam' : code === 1 ? 'holdPosition' : 'maneuver';
+}
+
+function unitFireStateFromWireCode(code: number): 'fireAtWill' | 'returnFire' | 'holdFire' | 'defend' | 'fireAtAll' {
+  return code === 4
+    ? 'fireAtAll'
+    : code === 3
+      ? 'defend'
+      : code === 2
+        ? 'holdFire'
+        : code === 1
+          ? 'returnFire'
+          : 'fireAtWill';
+}
+
+function trajectoryModeFromWireCode(code: number): 'low' | 'high' | 'auto' {
+  return code === 2 ? 'auto' : code === 1 ? 'high' : 'low';
+}
 
 function orientationFromYaw(yaw: number): { x: number; y: number; z: number; w: number } {
   const half = (Number.isFinite(yaw) ? yaw : 0) * 0.5;
@@ -101,6 +135,38 @@ function applyNetworkTurretState(turret: Turret, nw: NetworkServerSnapshotTurret
         onTimeMs: nw.currentShieldRange > 0 && shield !== null ? shield.onTimeMs : 0,
       }
     : null;
+}
+
+function applyWireTurretState(
+  turret: Turret,
+  source: EntitySnapshotWireSource,
+  rowIndex: number,
+): boolean {
+  if (rowIndex < 0 || rowIndex >= source.turretRows.count) return false;
+  const rows = source.turretRows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
+  const wireTurretBlueprintId = codeToTurretBlueprintId(rows[base + 4]);
+  if (wireTurretBlueprintId !== turret.config.turretBlueprintId) return false;
+  if (rows[base + 10] !== 0) {
+    turret.target = null;
+    turret.state = 'idle';
+    turret.shield = null;
+    return true;
+  }
+  turret.rotation = deqRot(rows[base + 0]);
+  turret.angularVelocity = deqRot(rows[base + 1]);
+  turret.pitch = deqRot(rows[base + 2]);
+  turret.pitchVelocity = deqRot(rows[base + 3]);
+  turret.target = rows[base + 6] !== 0 ? rows[base + 7] : null;
+  turret.state = codeToTurretState(rows[base + 5]);
+  turret.shield = rows[base + 8] !== 0
+    ? {
+        range: rows[base + 9],
+        transition: turret.shield !== null ? turret.shield.transition : 0,
+        onTimeMs: rows[base + 9] > 0 && turret.shield !== null ? turret.shield.onTimeMs : 0,
+      }
+    : null;
+  return true;
 }
 
 function preserveClientTurretVisualState(next: Turret, prev: Turret): void {
@@ -171,6 +237,63 @@ function createTurretsFromNetwork(
   } catch {
     return undefined;
   }
+}
+
+function createUnitTurretsFromWire(
+  unitBlueprintId: string,
+  unitBodyRadius: number,
+  source: EntitySnapshotWireSource,
+  offset: number,
+  count: number,
+): Turret[] | undefined {
+  if (offset < 0 || count <= 0 || offset + count > source.turretRows.count) return undefined;
+  try {
+    const canonical = createUnitRuntimeTurrets(unitBlueprintId, unitBodyRadius);
+    if (canonical.length !== count) return undefined;
+    for (let i = 0; i < count; i++) {
+      if (!applyWireTurretState(canonical[i], source, offset + i)) return undefined;
+    }
+    return canonical;
+  } catch {
+    return undefined;
+  }
+}
+
+function createBuildingTurretsFromWire(
+  buildingBlueprintId: BuildingBlueprintId,
+  source: EntitySnapshotWireSource,
+  offset: number,
+  count: number,
+): Turret[] | undefined {
+  if (offset < 0 || count <= 0 || offset + count > source.turretRows.count) return undefined;
+  try {
+    const canonical = createBuildingRuntimeTurrets(buildingBlueprintId);
+    if (canonical.length !== count) return undefined;
+    for (let i = 0; i < count; i++) {
+      if (!applyWireTurretState(canonical[i], source, offset + i)) return undefined;
+    }
+    return canonical;
+  } catch {
+    return undefined;
+  }
+}
+
+function readFactoryWaypointFromWire(
+  source: EntitySnapshotWireSource,
+  offset: number,
+): FactoryDefaultWaypoint | null {
+  if (offset < 0 || offset >= source.waypointRows.count) return null;
+  const values = source.waypointRows.values;
+  const base = offset * ENTITY_SNAPSHOT_WIRE_WAYPOINT_STRIDE;
+  const typeSlot = values[base + 4] | 0;
+  const type = source.waypointStrings[typeSlot];
+  if (type !== 'move' && type !== 'fight' && type !== 'patrol') return null;
+  return {
+    x: values[base + 0],
+    y: values[base + 1],
+    z: values[base + 2] !== 0 ? values[base + 3] : null,
+    type,
+  };
 }
 
 export function refreshUnitTurretsFromNetwork(
@@ -254,6 +377,20 @@ export function createEntityFromNetwork(netEntity: NetworkServerSnapshotEntity):
     return createBuildingFromNetwork(netEntity, id, x, y, z, rot, playerId);
   }
 
+  return null;
+}
+
+export function createEntityFromTypedFullWireRow(
+  source: EntitySnapshotWireSource,
+  entityIndex: number,
+): Entity | null {
+  const kind = source.kinds[entityIndex];
+  if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT) {
+    return createUnitFromTypedFullWireRow(source, entityIndex);
+  }
+  if (kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) {
+    return createBuildingFromTypedFullWireRow(source, entityIndex);
+  }
   return null;
 }
 
@@ -350,11 +487,6 @@ function createUnitFromNetwork(
       velocityX: velocity.x,
       velocityY: velocity.y,
       velocityZ: velocity.z,
-      // movementAccelX/Y/Z are server-side force inputs. The client
-      // does not receive them and integrates position from velocity.
-      movementAccelX: 0,
-      movementAccelY: 0,
-      movementAccelZ: 0,
       thrustDirX: 0,
       thrustDirY: 0,
       headingDirX: 0,
@@ -376,10 +508,6 @@ function createUnitFromNetwork(
       angularVelocity3: unitAngularVelocity3 !== null
         ? { x: unitAngularVelocity3.x, y: unitAngularVelocity3.y, z: unitAngularVelocity3.z }
         : { x: 0, y: 0, z: 0 },
-      // angularAcceleration3 is sim-only and not on the wire.
-      angularAcceleration3: { x: 0, y: 0, z: 0 },
-      hoverHeightUpwardForceSmoothed: null,
-      swimHeightUpwardForceSmoothed: null,
       stuckTicks: 0,
     },
   };
@@ -465,6 +593,234 @@ function createUnitFromNetwork(
         paid: unitBuild.paid,
         isGhost: null,
         isInterrupted: unitBuild.interrupted === true,
+        healthBuildFraction: null,
+      },
+    );
+    entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
+    initializeConstructionPieceHealth(entity);
+  }
+
+  return entity;
+}
+
+function createUnitFromTypedFullWireRow(
+  source: EntitySnapshotWireSource,
+  entityIndex: number,
+): Entity | null {
+  const rowIndex = source.rowIndices[entityIndex];
+  if (rowIndex < 0 || rowIndex >= source.unitRows.count) return null;
+  const values = source.unitRows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  if (values[base + 6] !== 0 || (values[base + 7] | 0) !== 0 || values[base + 13] === 0) {
+    return null;
+  }
+
+  const unitBlueprintId = codeToUnitBlueprintId(values[base + 14]);
+  if (unitBlueprintId === null) return null;
+
+  let unitBlueprint: ReturnType<typeof getUnitBlueprint> | undefined;
+  try {
+    unitBlueprint = getUnitBlueprint(unitBlueprintId);
+  } catch { /* unknown unit blueprint fallback handled by existing defaults */ }
+  const blueprintRadius = unitBlueprint !== undefined && unitBlueprint.radius !== undefined
+    ? unitBlueprint.radius
+    : { other: 15, hitbox: 15, collision: 15 };
+  const blueprintMass = unitBlueprint !== undefined && unitBlueprint.mass !== undefined
+    ? unitBlueprint.mass
+    : 25;
+  const radius = {
+    other: blueprintRadius.other ?? 15,
+    hitbox: blueprintRadius.hitbox ?? 15,
+    collision: blueprintRadius.collision ?? 15,
+  };
+  const blueprintBodyCenterHeight = unitBlueprint !== undefined &&
+    unitBlueprint.bodyCenterHeight !== undefined
+    ? unitBlueprint.bodyCenterHeight
+    : radius.collision;
+  const fullVisionRadius = unitBlueprint !== undefined &&
+    unitBlueprint.fullVisionRadius !== undefined
+    ? unitBlueprint.fullVisionRadius
+    : 1200;
+  const sensors = unitBlueprint !== undefined && unitBlueprint.sensors !== undefined
+    ? unitBlueprint.sensors
+    : {
+      fullSightRadius: fullVisionRadius,
+      radarRadius: 0,
+      detectorRadius: 0,
+      trackingRadius: 0,
+      scanRadius: 0,
+    };
+  const rotation = deqRot(values[base + 4]);
+  const entity: Entity = {
+    ...createEmptyEntityComponentSlots(),
+    id: values[base + 0] | 0,
+    type: 'unit',
+    transform: createTransform(
+      deqEntityPos(values[base + 1]),
+      deqEntityPos(values[base + 2]),
+      deqEntityPos(values[base + 3]),
+      rotation,
+    ),
+    ownership: { playerId: values[base + 5] | 0 },
+    selectable: { selected: false },
+    unit: {
+      unitBlueprintId,
+      hp: values[base + 8],
+      maxHp: values[base + 9],
+      radius,
+      bodyCenterHeight: blueprintBodyCenterHeight,
+      supportSurface: cloneUnitSupportSurface(unitBlueprint?.supportSurface),
+      fullVisionRadius,
+      sensors: { ...sensors },
+      locomotion: getUnitLocomotion(unitBlueprintId),
+      mass: blueprintMass,
+      actions: [],
+      actionHash: 0,
+      repeatQueue: values[base + 53] !== 0 && values[base + 54] !== 0,
+      moveState: values[base + 59] !== 0
+        ? unitMoveStateFromWireCode(values[base + 60] | 0)
+        : values[base + 55] !== 0
+          ? (values[base + 56] !== 0 ? 'holdPosition' : 'maneuver')
+          : unitBlueprintBarDefaultMoveState(unitBlueprintId),
+      wantCloak: values[base + 61] !== 0 && values[base + 62] >= 1,
+      cloaked: values[base + 61] !== 0 && values[base + 62] >= 2,
+      cloakRestoreFireState: null,
+      patrolStartIndex: null,
+      activePath: null,
+      flyingLoiterTargetX: null,
+      flyingLoiterTargetY: null,
+      flyingLoiterTargetZ: null,
+      flyingLoiterTurnSign: null,
+      velocityX: deqVel(values[base + 10]),
+      velocityY: deqVel(values[base + 11]),
+      velocityZ: deqVel(values[base + 12]),
+      thrustDirX: 0,
+      thrustDirY: 0,
+      headingDirX: 0,
+      headingDirY: 0,
+      shieldPanels: [],
+      shieldBoundRadius: 0,
+      surfaceNormal: values[base + 23] !== 0
+        ? {
+            nx: deqNormal(values[base + 24]),
+            ny: deqNormal(values[base + 25]),
+            nz: deqNormal(values[base + 26]),
+          }
+        : { nx: 0, ny: 0, nz: 1 },
+      suspension: createUnitSuspension(
+        unitBlueprint !== undefined ? unitBlueprint.suspension : undefined,
+      ),
+      orientation: values[base + 27] !== 0
+        ? { x: values[base + 28], y: values[base + 29], z: values[base + 30], w: values[base + 31] }
+        : orientationFromYaw(rotation),
+      angularVelocity3: values[base + 32] !== 0
+        ? { x: values[base + 33], y: values[base + 34], z: values[base + 35] }
+        : { x: 0, y: 0, z: 0 },
+      stuckTicks: 0,
+    },
+  };
+
+  if (values[base + 41] !== 0) {
+    applyNetworkUnitActionWireRows(
+      entity.unit!,
+      source.actionRows.values,
+      values[base + 50] | 0,
+      values[base + 42] | 0,
+      source.actionStrings,
+      ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
+    );
+  } else {
+    entity.unit!.actionHash = computeUnitActionHash(entity.unit!.actions);
+  }
+
+  if (values[base + 43] !== 0) {
+    const turrets = createUnitTurretsFromWire(
+      unitBlueprintId,
+      entity.unit!.radius.other,
+      source,
+      values[base + 49] | 0,
+      values[base + 44] | 0,
+    );
+    if (turrets === undefined) return null;
+    const combat = createCombatComponent(turrets);
+    const fireState = values[base + 51] !== 0
+      ? unitFireStateFromWireCode(values[base + 52] | 0)
+      : 'fireAtWill';
+    combat.fireState = fireState;
+    combat.fireEnabled = fireState !== 'holdFire';
+    combat.trajectoryMode = values[base + 57] !== 0
+      ? trajectoryModeFromWireCode(values[base + 58] | 0)
+      : 'auto';
+    entity.combat = combat;
+  }
+
+  try {
+    const bp = unitBlueprint ?? getUnitBlueprint(entity.unit!.unitBlueprintId);
+    entity.unit!.shieldBoundRadius = buildShieldPanelCache(
+      bp, entity.unit!.shieldPanels,
+    );
+  } catch { /* */ }
+
+  if (values[base + 37] !== 0) {
+    if (unitBlueprint !== undefined && unitBlueprint.dgun !== undefined && unitBlueprint.dgun !== null) {
+      const dgun = unitBlueprint.dgun;
+      entity.commander = {
+        isDGunActive: false,
+        dgunEnergyCost: dgun.energyCost,
+      };
+    }
+  }
+  if (unitBlueprint !== undefined && unitBlueprint.builder !== undefined && unitBlueprint.builder !== null) {
+    const builder = unitBlueprint.builder;
+    entity.builder = {
+      buildRange: builder.buildRange,
+      lowPriority: values[base + 66] !== 0 && values[base + 67] !== 0,
+      currentBuildTarget: values[base + 38] !== 0 && values[base + 39] === 0
+        ? values[base + 40]
+        : NO_ENTITY_ID,
+    };
+  }
+  if (unitBlueprint !== undefined) {
+    const spawnMount = unitBlueprint.turrets.find((m) => m.producedBlueprintId != null);
+    if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
+      entity.factory = {
+        selectedUnitBlueprintId: spawnMount.producedBlueprintId,
+        lowPriority: false,
+        carrierSpawnEnabled: values[base + 64] !== 0 ? values[base + 65] !== 0 : true,
+        moveState: 'maneuver',
+        airIdleState: 'fly',
+        repeatProduction: true,
+        paused: false,
+        productionQueue: [],
+        productionQuotas: {},
+        productionQuotaCounts: {},
+        resumeRepeatUnitBlueprintId: null,
+        currentShellId: null,
+        currentBuildProgress: 0,
+        defaultWaypoints: null,
+        rallyX: entity.transform.x,
+        rallyY: entity.transform.y,
+        rallyZ: null,
+        rallyType: REAL_BATTLE_FACTORY_WAYPOINT_TYPE,
+        guardTargetId: null,
+        isProducing: values[base + 64] !== 0 ? values[base + 65] !== 0 : true,
+        energyRateFraction: 0,
+        metalRateFraction: 0,
+      };
+    }
+  }
+  entity.transport = createTransportComponentForUnitBlueprint(unitBlueprintId);
+
+  if (values[base + 45] !== 0 && values[base + 46] === 0 && unitBlueprint !== undefined) {
+    entity.buildable = createBuildable(
+      {
+        energy: unitBlueprint.cost.energy * COST_MULTIPLIER,
+        metal: unitBlueprint.cost.metal * COST_MULTIPLIER,
+      },
+      {
+        paid: { energy: values[base + 47], metal: values[base + 48] },
+        isGhost: null,
+        isInterrupted: values[base + 63] !== 0,
         healthBuildFraction: null,
       },
     );
@@ -615,6 +971,200 @@ function createBuildingFromNetwork(
       metalRateFraction: f.metalRate ?? 0,
     };
   }
+
+  return entity;
+}
+
+function createBuildingFromTypedFullWireRow(
+  source: EntitySnapshotWireSource,
+  entityIndex: number,
+): Entity | null {
+  const rowIndex = source.rowIndices[entityIndex];
+  if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return null;
+  const values = source.buildingRows.values;
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+  if (values[base + 6] !== 0 || (values[base + 7] | 0) !== 0) return null;
+  if (values[base + 8] === 0) return null;
+
+  const buildingBlueprintId = decodeNetworkBuildingBlueprintId(values[base + 9]);
+  if (buildingBlueprintId === null) return null;
+  const config = getBuildingConfig(buildingBlueprintId);
+  const width = config.gridWidth * BUILD_GRID_CELL_SIZE;
+  const height = config.gridHeight * BUILD_GRID_CELL_SIZE;
+  const depth = config.gridDepth * BUILD_GRID_CELL_SIZE;
+  if (
+    values[base + 10] !== 0 &&
+    (values[base + 11] !== width || values[base + 12] !== height)
+  ) {
+    return null;
+  }
+
+  const hasActiveState = buildingBlueprintId === 'buildingSolar' ||
+    buildingBlueprintId === 'buildingWind' ||
+    isMetalExtractorBlueprintId(buildingBlueprintId) ||
+    buildingBlueprintId === 'buildingRadar' ||
+    buildingBlueprintId === 'buildingResourceConverter';
+  const entity: Entity = {
+    ...createEmptyEntityComponentSlots(),
+    id: values[base + 0] | 0,
+    type: isTowerBuildingBlueprintId(buildingBlueprintId) ? 'tower' : 'building',
+    transform: createTransform(
+      deqEntityPos(values[base + 1]),
+      deqEntityPos(values[base + 2]),
+      deqEntityPos(values[base + 3]),
+      deqRot(values[base + 4]),
+    ),
+    ownership: { playerId: values[base + 5] | 0 },
+    selectable: { selected: false },
+    building: {
+      width,
+      height,
+      depth,
+      supportSurface: cloneBuildingSupportSurface(config.supportSurface),
+      hovering: config.hovering,
+      hp: values[base + 13],
+      maxHp: values[base + 14],
+      targetRadius: Math.sqrt(width * width + height * height) / 2,
+      activeState: hasActiveState
+        ? {
+            open: values[base + 20] !== 0
+              ? values[base + 21] !== 0
+              : buildingBlueprintId !== 'buildingSolar',
+            damageDelayMs: 0,
+            reopenDelayMs: 0,
+          }
+        : null,
+    },
+    buildingBlueprintId,
+    metalExtractionRate: isMetalExtractorBlueprintId(buildingBlueprintId)
+      ? (values[base + 18] !== 0 ? values[base + 19] : 0)
+      : null,
+  };
+
+  if (values[base + 15] === 0) {
+    entity.buildable = createBuildable(config.cost, {
+      paid: { energy: values[base + 16], metal: values[base + 17] },
+      isGhost: null,
+      isInterrupted: values[base + 34] !== 0,
+      healthBuildFraction: null,
+    });
+    entity.buildable.healthBuildFraction = getBuildFraction(entity.buildable);
+  }
+
+  if (values[base + 22] !== 0) {
+    const turrets = createBuildingTurretsFromWire(
+      buildingBlueprintId,
+      source,
+      values[base + 31] | 0,
+      values[base + 23] | 0,
+    );
+    if (turrets === undefined) return null;
+    entity.combat = createCombatComponent(turrets);
+  }
+  if (values[base + 24] !== 0) {
+    const factoryRows = source.factorySelectedUnitRows.values;
+    const selectedCount = values[base + 25] | 0;
+    const selectedOffset = values[base + 32] | 0;
+    let selectedUnitBlueprintId: string | null = null;
+    if (selectedCount > 0) {
+      if (
+        selectedOffset < 0 ||
+        selectedOffset + selectedCount > source.factorySelectedUnitRows.count
+      ) {
+        return null;
+      }
+      selectedUnitBlueprintId = codeToUnitBlueprintId(factoryRows[selectedOffset]) ?? null;
+    }
+
+    const queueCount = values[base + 39] | 0;
+    const queueOffset = values[base + 38] | 0;
+    if (queueCount > 0 && (
+      queueOffset < 0 ||
+      queueOffset + queueCount > source.factorySelectedUnitRows.count
+    )) {
+      return null;
+    }
+
+    const rallyCount = values[base + 30] | 0;
+    const rallyOffset = values[base + 33] | 0;
+    if (rallyCount <= 0) return null;
+    const rally = readFactoryWaypointFromWire(source, rallyOffset);
+    if (rally === null) return null;
+
+    const routeCount = values[base + 41] | 0;
+    const routeOffset = values[base + 40] | 0;
+    let defaultWaypoints: FactoryDefaultWaypoint[] | null = null;
+    if (routeCount >= 0) {
+      if (
+        routeCount > 0 &&
+        (routeOffset < 0 || routeOffset + routeCount > source.waypointRows.count)
+      ) {
+        return null;
+      }
+      defaultWaypoints = new Array<FactoryDefaultWaypoint>(routeCount);
+      for (let i = 0; i < routeCount; i++) {
+        const waypoint = readFactoryWaypointFromWire(source, routeOffset + i);
+        if (waypoint === null) return null;
+        defaultWaypoints[i] = waypoint;
+      }
+    }
+
+    const quotaOffset = values[base + 42] | 0;
+    const quotaCount = values[base + 43] | 0;
+    if (
+      quotaCount > 0 &&
+      (quotaOffset < 0 || quotaOffset + quotaCount > source.factorySelectedUnitRows.count)
+    ) {
+      return null;
+    }
+    const quotaCountOffset = values[base + 44] | 0;
+    const quotaCountCount = values[base + 45] | 0;
+    if (
+      quotaCountCount > 0 &&
+      (
+        quotaCountOffset < 0 ||
+        quotaCountOffset + quotaCountCount > source.factorySelectedUnitRows.count
+      )
+    ) {
+      return null;
+    }
+
+    entity.factory = {
+      selectedUnitBlueprintId,
+      lowPriority: values[base + 46] !== 0,
+      carrierSpawnEnabled: true,
+      moveState: unitMoveStateFromWireCode(values[base + 48] | 0),
+      airIdleState: values[base + 49] !== 0 ? 'fly' : 'land',
+      repeatProduction: values[base + 37] !== 0,
+      paused: values[base + 47] !== 0,
+      productionQueue: queueCount > 0
+        ? decodeFactoryProductionQueue(factoryRows.subarray(queueOffset, queueOffset + queueCount))
+        : [],
+      productionQuotas: quotaCount > 0
+        ? decodeFactoryProductionQuotas(factoryRows.subarray(quotaOffset, quotaOffset + quotaCount))
+        : {},
+      productionQuotaCounts: quotaCountCount > 0
+        ? decodeFactoryProductionQuotaCounts(
+            factoryRows.subarray(quotaCountOffset, quotaCountOffset + quotaCountCount),
+          )
+        : {},
+      resumeRepeatUnitBlueprintId: null,
+      currentShellId: null,
+      currentBuildProgress: values[base + 26],
+      defaultWaypoints,
+      rallyX: rally.x,
+      rallyY: rally.y,
+      rallyZ: rally.z,
+      rallyType: rally.type,
+      guardTargetId: values[base + 35] !== 0
+        ? (values[base + 36] | 0)
+        : null,
+      isProducing: values[base + 27] !== 0,
+      energyRateFraction: values[base + 28],
+      metalRateFraction: values[base + 29],
+    };
+  }
+  if (entity.buildable !== null) initializeConstructionPieceHealth(entity);
 
   return entity;
 }

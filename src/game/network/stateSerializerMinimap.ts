@@ -1,5 +1,11 @@
 import type { WorldState } from '../sim/WorldState';
 import type { Entity, PlayerId } from '../sim/types';
+import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
+import {
+  ENTITY_STATE_KIND_BUILDING,
+  ENTITY_STATE_KIND_TOWER,
+  ENTITY_STATE_KIND_UNIT,
+} from '../sim-wasm/init';
 import type { NetworkServerSnapshotMinimapEntity } from './NetworkManager';
 import { createMinimapEntityDto } from './snapshotDtoCopy';
 import type { SnapshotVisibility } from './stateSerializerVisibility';
@@ -65,6 +71,50 @@ function writeMinimapEntity(
   return out;
 }
 
+function minimapDtoTypeFromEntityStateKind(
+  kind: number,
+): NetworkServerSnapshotMinimapEntity['type'] | null {
+  if (kind === ENTITY_STATE_KIND_UNIT) return 'unit';
+  if (kind === ENTITY_STATE_KIND_TOWER) return 'tower';
+  if (kind === ENTITY_STATE_KIND_BUILDING) return 'building';
+  return null;
+}
+
+function minimapWireTypeFromEntityStateKind(kind: number): number {
+  if (kind === ENTITY_STATE_KIND_UNIT) return ENTITY_SNAPSHOT_WIRE_TYPE_UNIT;
+  if (kind === ENTITY_STATE_KIND_TOWER) return ENTITY_SNAPSHOT_WIRE_TYPE_TOWER;
+  return ENTITY_SNAPSHOT_WIRE_TYPE_BUILDING;
+}
+
+function canReadMinimapEntityStateSlot(
+  views: EntityStateViews | null,
+  slot: number,
+  entityId: number,
+): views is EntityStateViews {
+  if (views === null || slot < 0 || slot >= views.capacity) return false;
+  if (views.entityId[slot] !== entityId) return false;
+  return minimapDtoTypeFromEntityStateKind(views.kind[slot]) !== null;
+}
+
+function writeMinimapEntityFromSlot(
+  out: NetworkServerSnapshotMinimapEntity,
+  views: EntityStateViews,
+  slot: number,
+  radarOnly: boolean,
+): NetworkServerSnapshotMinimapEntity {
+  const type = minimapDtoTypeFromEntityStateKind(views.kind[slot]);
+  if (type === null) {
+    throw new Error('writeMinimapEntityFromSlot called with non-minimap entity state kind');
+  }
+  out.id = views.entityId[slot];
+  out.type = type;
+  out.playerId = (views.ownerPlayerId[slot] || 1) as PlayerId;
+  out.pos.x = qPos(views.posX[slot]);
+  out.pos.y = qPos(views.posY[slot]);
+  out.radarOnly = radarOnly ? true : null;
+  return out;
+}
+
 function getOrCreateMinimapWireSource(
   key: string,
   entries: NetworkServerSnapshotMinimapEntity[],
@@ -102,6 +152,25 @@ function appendMinimapWireRow(
   values[base + 5] = flags;
 }
 
+function appendMinimapWireRowFromSlot(
+  source: MinimapSnapshotWireSource,
+  views: EntityStateViews,
+  slot: number,
+  radarOnly: boolean,
+): void {
+  const rowIndex = reserveFloat64WireRows(source, 1, MINIMAP_SNAPSHOT_WIRE_STRIDE);
+  const values = source.values;
+  const base = rowIndex * MINIMAP_SNAPSHOT_WIRE_STRIDE;
+  values[base + 0] = views.entityId[slot];
+  values[base + 1] = qPos(views.posX[slot]);
+  values[base + 2] = qPos(views.posY[slot]);
+  values[base + 3] = minimapWireTypeFromEntityStateKind(views.kind[slot]);
+  values[base + 4] = views.ownerPlayerId[slot] || 1;
+  let flags = 0;
+  if (radarOnly) flags |= 0x01;
+  values[base + 5] = flags;
+}
+
 export function getMinimapSnapshotWireSource(
   entries: readonly NetworkServerSnapshotMinimapEntity[],
 ): MinimapSnapshotWireSource | undefined {
@@ -120,7 +189,15 @@ export function writeMinimapSnapshotWireRowsDirect(
   const radarEntityIds = visibility?.getRadarEntityIds();
   if (radarEntityIds !== undefined) {
     const visibleEntityIdSet = visibility!.getVisibleEntityIdSet();
+    const radarEntitySlots = visibility!.getRadarEntitySlots();
+    const views = entitySlotRegistry.getViews();
     for (let i = 0; i < radarEntityIds.length; i++) {
+      const slot = radarEntitySlots !== undefined ? radarEntitySlots[i] : -1;
+      if (canReadMinimapEntityStateSlot(views, slot, radarEntityIds[i])) {
+        const radarOnly = visibleEntityIdSet !== undefined && !visibleEntityIdSet.has(radarEntityIds[i]);
+        appendMinimapWireRowFromSlot(directMinimapWireSource, views, slot, radarOnly);
+        continue;
+      }
       const entity = world.getEntity(radarEntityIds[i]);
       if (!entity) continue;
       const radarOnly = visibleEntityIdSet !== undefined && !visibleEntityIdSet.has(entity.id);
@@ -164,7 +241,18 @@ export function serializeMinimapSnapshotEntities(
   const radarEntityIds = visibility?.getRadarEntityIds();
   if (radarEntityIds !== undefined) {
     const visibleEntityIdSet = visibility!.getVisibleEntityIdSet();
+    const radarEntitySlots = visibility!.getRadarEntitySlots();
+    const views = entitySlotRegistry.getViews();
     for (let i = 0; i < radarEntityIds.length; i++) {
+      const slot = radarEntitySlots !== undefined ? radarEntitySlots[i] : -1;
+      if (canReadMinimapEntityStateSlot(views, slot, radarEntityIds[i])) {
+        const radarOnly = visibleEntityIdSet !== undefined && !visibleEntityIdSet.has(radarEntityIds[i]);
+        const out = getPooledItem(state, createMinimapEntityDto);
+        writeMinimapEntityFromSlot(out, views, slot, radarOnly);
+        appendMinimapWireRowFromSlot(wireSource, views, slot, radarOnly);
+        state.buf.push(out);
+        continue;
+      }
       const entity = world.getEntity(radarEntityIds[i]);
       if (!entity) continue;
       const radarOnly = visibleEntityIdSet !== undefined && !visibleEntityIdSet.has(entity.id);

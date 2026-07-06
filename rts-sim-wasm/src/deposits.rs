@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
 pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
-pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 22;
+pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 23;
 pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 5;
 pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
@@ -55,6 +55,7 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     generation_edge_transition_width_fraction: f64,
     plateau_shelf_fraction_of_step: f64,
     plateau_ramp_edge_sharpness: f64,
+    plateau_wall_slope_degrees: f64,
     ripple_radius_fraction: f64,
     ripple_phase: f64,
     ripple_wavelengths: [f64; 3],
@@ -94,6 +95,7 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         ridge_inner_radius_fraction: values[19],
         ridge_outer_radius_fraction: values[20],
         ridge_half_width_fraction: values[21],
+        plateau_wall_slope_degrees: values[22],
     })
 }
 
@@ -166,7 +168,30 @@ pub(crate) fn terrain_plateau_ramp_curve(t: f64, cfg: &MetalDepositTerrainConfig
     smooth + (t - smooth) * sharpness
 }
 
-pub(crate) fn terrain_apply_plateaus(height: f64, cfg: &MetalDepositTerrainConfigRust) -> f64 {
+pub(crate) fn terrain_plateau_flat_half_for_gradient(
+    gradient_magnitude: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let authored_flat_half = (cfg.plateau_shelf_fraction_of_step * 0.5)
+        .max(0.0)
+        .min(0.49);
+    let angle = cfg.plateau_wall_slope_degrees.clamp(1.0, 89.0);
+    if angle >= 89.0 {
+        return authored_flat_half;
+    }
+
+    let gradient = gradient_magnitude.abs().max(0.0);
+    let tan_angle = (angle * std::f64::consts::PI / 180.0).tan().max(1e-6);
+    let ramp_q_span = (gradient / tan_angle).clamp(0.0, 1.0);
+    let angle_flat_half = ((1.0 - ramp_q_span) * 0.5).clamp(0.0, 0.49);
+    authored_flat_half.min(angle_flat_half)
+}
+
+pub(crate) fn terrain_apply_plateaus(
+    height: f64,
+    gradient_magnitude: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
     if !height.is_finite() {
         return height;
     }
@@ -175,9 +200,7 @@ pub(crate) fn terrain_apply_plateaus(height: f64, cfg: &MetalDepositTerrainConfi
         return height;
     }
 
-    let flat_half = (cfg.plateau_shelf_fraction_of_step * 0.5)
-        .max(0.0)
-        .min(0.49);
+    let flat_half = terrain_plateau_flat_half_for_gradient(gradient_magnitude, cfg);
     let q = height / step;
     let nearest_level = terrain_js_round(q);
     let signed_from_nearest = q - nearest_level;
@@ -270,6 +293,44 @@ pub(crate) fn terrain_apply_map_boundary_for_sample(
         return cfg.perimeter_magnitude;
     }
     height + (cfg.perimeter_magnitude - height) * w
+}
+
+pub(crate) fn terrain_shaped_height_before_plateaus(
+    x: f64,
+    y: f64,
+    metrics: &MapOvalMetricsRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let oval = terrain_sample_map_oval_at(metrics, x, y);
+    let natural = terrain_generated_natural_height(metrics, &oval, cfg);
+    terrain_apply_map_boundary_for_sample(natural, metrics, &oval, cfg)
+}
+
+pub(crate) fn terrain_estimate_shaped_gradient_before_plateaus(
+    x: f64,
+    y: f64,
+    metrics: &MapOvalMetricsRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    if cfg.terrain_d_terrain <= 0.0 || cfg.plateau_wall_slope_degrees >= 89.0 {
+        return 0.0;
+    }
+    let step = 8.0;
+    let map_width = metrics.cx * 2.0;
+    let map_height = metrics.cy * 2.0;
+    let x0 = (x - step).max(0.0);
+    let x1 = (x + step).min(map_width);
+    let y0 = (y - step).max(0.0);
+    let y1 = (y + step).min(map_height);
+    let dx_span = (x1 - x0).max(1e-6);
+    let dy_span = (y1 - y0).max(1e-6);
+    let hx0 = terrain_shaped_height_before_plateaus(x0, y, metrics, cfg);
+    let hx1 = terrain_shaped_height_before_plateaus(x1, y, metrics, cfg);
+    let hy0 = terrain_shaped_height_before_plateaus(x, y0, metrics, cfg);
+    let hy1 = terrain_shaped_height_before_plateaus(x, y1, metrics, cfg);
+    let gx = (hx1 - hx0) / dx_span;
+    let gy = (hy1 - hy0) / dy_span;
+    (gx * gx + gy * gy).sqrt()
 }
 
 pub(crate) fn terrain_generated_natural_height(
@@ -440,10 +501,9 @@ pub(crate) fn metal_deposit_terrain_height_with_explicit_zones(
     cfg: &MetalDepositTerrainConfigRust,
     explicit_flat_zones: &[f64],
 ) -> f64 {
-    let oval = terrain_sample_map_oval_at(metrics, x, y);
-    let natural = terrain_generated_natural_height(metrics, &oval, cfg);
-    let shaped = terrain_apply_map_boundary_for_sample(natural, metrics, &oval, cfg);
-    let terraced = terrain_apply_plateaus(shaped, cfg);
+    let shaped = terrain_shaped_height_before_plateaus(x, y, metrics, cfg);
+    let gradient = terrain_estimate_shaped_gradient_before_plateaus(x, y, metrics, cfg);
+    let terraced = terrain_apply_plateaus(shaped, gradient, cfg);
     let (weight, pad_height) =
         metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
     let blended = pad_height * (1.0 - weight) + terraced * weight;

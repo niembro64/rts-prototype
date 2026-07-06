@@ -147,6 +147,10 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.terrainDTerrain,
     options: battleBarConfig.terrainDTerrain.options as readonly number[],
   },
+  plateauWallSlopeDegrees: {
+    default: _demoPreset.plateauWallSlopeDegrees,
+    options: battleBarConfig.plateauWallSlopeDegrees.options as readonly number[],
+  },
   metalDepositStep: {
     default: _demoPreset.metalDepositStep,
     options: battleBarConfig.metalDepositStep.options as readonly number[],
@@ -209,6 +213,8 @@ const STORAGE_DEMO_PERIMETER_MAGNITUDE = sk.demoPerimeterMagnitude;
 const STORAGE_REAL_PERIMETER_MAGNITUDE = sk.realPerimeterMagnitude;
 const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
+const STORAGE_DEMO_PLATEAU_WALL_SLOPE_DEGREES = sk.demoPlateauWallSlopeDegrees;
+const STORAGE_REAL_PLATEAU_WALL_SLOPE_DEGREES = sk.realPlateauWallSlopeDegrees;
 const STORAGE_DEMO_METAL_DEPOSIT_STEP = sk.demoMetalDepositStep;
 const STORAGE_REAL_METAL_DEPOSIT_STEP = sk.realMetalDepositStep;
 const STORAGE_DEMO_TERRAIN_DETAIL = sk.demoTerrainDetail;
@@ -413,10 +419,12 @@ export type BattleTerrainRuntimeConfig = {
   perimeterMagnitude: number;
   /** Plateau lattice step in world units. 0 = NONE (no terracing). */
   terrainDTerrain: number;
+  /** D-PLATEAU wall slope angle in degrees from horizontal. */
+  plateauWallSlopeDegrees: number;
   /** Metal-extractor pad altitude step in world units. */
   metalDepositStep: number;
-  /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
-   *  per cell); 5/10/15/20 = progressively finer mesh detail. */
+  /** Fine-triangle subdivisions per land cell. 0 = off, which the
+   *  terrain baker clamps to one triangle edge subdivision per cell. */
   terrainDetail: number;
 };
 
@@ -592,6 +600,10 @@ export function normalizePerimeterMagnitude(value: number): number {
 
 export function normalizeTerrainDTerrain(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.terrainDTerrain);
+}
+
+export function normalizePlateauWallSlopeDegrees(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.plateauWallSlopeDegrees);
 }
 
 export function normalizeMetalDepositStep(value: number): number {
@@ -789,6 +801,27 @@ export function saveTerrainDTerrain(value: number, mode: BattleMode): void {
   );
 }
 
+export function loadStoredPlateauWallSlopeDegrees(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_PLATEAU_WALL_SLOPE_DEGREES,
+    STORAGE_DEMO_PLATEAU_WALL_SLOPE_DEGREES,
+    BATTLE_CONFIG.plateauWallSlopeDegrees,
+  );
+}
+
+export function savePlateauWallSlopeDegrees(
+  value: number,
+  mode: BattleMode,
+): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_PLATEAU_WALL_SLOPE_DEGREES
+      : STORAGE_DEMO_PLATEAU_WALL_SLOPE_DEGREES,
+    String(normalizePlateauWallSlopeDegrees(value)),
+  );
+}
+
 export function loadStoredMetalDepositStep(mode: BattleMode): number {
   return loadModeNumberOption(
     mode,
@@ -831,6 +864,7 @@ export function loadStoredTerrainRuntimeConfig(
     dividersMagnitude: loadStoredDividersMagnitude(mode),
     perimeterMagnitude: loadStoredPerimeterMagnitude(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),
+    plateauWallSlopeDegrees: loadStoredPlateauWallSlopeDegrees(mode),
     metalDepositStep: loadStoredMetalDepositStep(mode),
     terrainDetail: loadStoredTerrainDetail(mode),
   };

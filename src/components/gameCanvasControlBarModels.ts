@@ -54,6 +54,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly dividersMagnitude: number;
   readonly perimeterMagnitude: number;
   readonly terrainDTerrain: number;
+  readonly plateauWallSlopeDegrees: number;
   readonly metalDepositStep: number;
   readonly terrainDetail: number;
   readonly displayUnitCount: number;
@@ -79,6 +80,7 @@ export type GameCanvasBattleControlBarModel = {
   applyDividersMagnitude(value: number): void;
   applyPerimeterMagnitude(value: number): void;
   applyTerrainDTerrain(value: number): void;
+  applyPlateauWallSlopeDegrees(value: number): void;
   applyMetalDepositStep(value: number): void;
   applyTerrainDetail(value: number): void;
   setForceFieldsVisible(enabled: boolean): void;

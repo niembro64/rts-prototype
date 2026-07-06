@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { pickRandomLoadingEntity } from './loadingEntitySelection';
 import {
-  mountLoadingUnitPreview,
-  pickRandomLoadingEntity,
-  type LoadingUnitPreviewRuntime,
-} from './loadingUnitPreview3d';
-import { isMobileLikeBrowser } from '@/browserRuntime';
+  getCachedEntityPreviewImage,
+  requestEntityPreviewImage,
+  subscribeEntityThumbnailCache,
+} from './entityPreviewThumbnails';
 import { buildLoadingEntityInfo } from './loadingUnitInfo';
 import LoadingInfoColumn from './LoadingInfoColumn.vue';
 
@@ -32,35 +32,37 @@ const progressBarStyle = computed(() => ({
 }));
 const phaseText = computed(() => props.phase.trim() || 'Preparing battle');
 const nextLabelText = computed(() => props.nextLabel.trim());
-const previewHost = ref<HTMLElement | null>(null);
 const previewEntity = pickRandomLoadingEntity();
 const entityInfo = buildLoadingEntityInfo(previewEntity.kind, previewEntity.id);
-const previewEnabled = !isMobileLikeBrowser();
-const previewReady = ref(false);
-let previewRuntime: LoadingUnitPreviewRuntime | null = null;
+const previewImageSrc = ref<string | null>(
+  getCachedEntityPreviewImage('loading', previewEntity.kind, previewEntity.id),
+);
+const previewReady = ref(previewImageSrc.value !== null);
+let unsubscribeEntityThumbnails: (() => void) | null = null;
+let componentMounted = false;
+
+function refreshPreviewImage(): void {
+  const thumbnailSrc = getCachedEntityPreviewImage('loading', previewEntity.kind, previewEntity.id);
+  if (thumbnailSrc === null) return;
+  previewImageSrc.value = thumbnailSrc;
+  previewReady.value = true;
+}
 
 onMounted(() => {
-  if (!previewEnabled) {
+  componentMounted = true;
+  unsubscribeEntityThumbnails = subscribeEntityThumbnailCache(refreshPreviewImage);
+  refreshPreviewImage();
+  void requestEntityPreviewImage('loading', previewEntity.kind, previewEntity.id).then((thumbnailSrc) => {
+    if (!componentMounted) return;
+    if (thumbnailSrc !== null) previewImageSrc.value = thumbnailSrc;
     previewReady.value = true;
-    return;
-  }
-  if (!previewHost.value) return;
-  previewRuntime = mountLoadingUnitPreview(
-    previewHost.value,
-    previewEntity.kind,
-    previewEntity.id,
-    {
-      fullBleed: true,
-      onReady: () => {
-        previewReady.value = true;
-      },
-    },
-  );
+  });
 });
 
 onBeforeUnmount(() => {
-  previewRuntime?.destroy();
-  previewRuntime = null;
+  componentMounted = false;
+  unsubscribeEntityThumbnails?.();
+  unsubscribeEntityThumbnails = null;
 });
 </script>
 
@@ -77,12 +79,18 @@ onBeforeUnmount(() => {
         <div class="loader-unit-name">{{ previewEntity.name }}</div>
         <div class="loader-stage">
           <div
-            v-if="previewEnabled"
-            ref="previewHost"
             class="loader-unit-preview"
             :class="{ ready: previewReady }"
             aria-hidden="true"
-          ></div>
+          >
+            <img
+              v-if="previewImageSrc"
+              class="loader-unit-image"
+              :src="previewImageSrc"
+              alt=""
+            >
+            <div v-else class="loader-unit-fallback">{{ previewEntity.name }}</div>
+          </div>
         </div>
         <div class="loader-summary-strip">
           <div
@@ -202,7 +210,7 @@ onBeforeUnmount(() => {
     0 18px 46px rgba(0, 0, 0, 0.34);
 }
 
-/* Center column: name above the visual, summary strip below it. */
+/* Center column: name above the entity image, summary strip below it. */
 .loader-stage-col {
   flex: 1.5 1 0;
   min-width: 0;
@@ -233,6 +241,10 @@ onBeforeUnmount(() => {
   inset: 0;
   width: 100%;
   height: 100%;
+  display: grid;
+  place-items: center;
+  padding: clamp(22px, 5vmin, 72px);
+  box-sizing: border-box;
   pointer-events: none;
   opacity: 0;
   transition: opacity 520ms ease-out;
@@ -248,16 +260,28 @@ onBeforeUnmount(() => {
   }
 }
 
-.loader-unit-preview :deep(.loader-unit-stage) {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
-
-.loader-unit-preview :deep(.loader-unit-canvas) {
+.loader-unit-image {
   width: 100%;
   height: 100%;
+  object-fit: contain;
+  transform: scale(1.06);
+  transform-origin: center;
   display: block;
+  filter:
+    drop-shadow(0 0 18px rgba(74, 158, 255, 0.42))
+    drop-shadow(0 18px 24px rgba(0, 0, 0, 0.44));
+}
+
+.loader-unit-fallback {
+  max-width: min(78%, 440px);
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  font-size: clamp(22px, 4vw, 56px);
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  color: rgba(237, 243, 255, 0.24);
+  text-shadow: 0 0 24px rgba(74, 158, 255, 0.22);
 }
 
 .loader-unit-name {

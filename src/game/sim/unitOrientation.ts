@@ -18,11 +18,4 @@ export function setUnitFacingYaw(entity: Entity, yaw: number): void {
     omega.y = 0;
     omega.z = 0;
   }
-
-  const alpha = unit.angularAcceleration3;
-  if (alpha) {
-    alpha.x = 0;
-    alpha.y = 0;
-    alpha.z = 0;
-  }
 }

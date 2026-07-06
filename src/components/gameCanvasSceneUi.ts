@@ -135,6 +135,7 @@ export function useGameCanvasSceneUi({
     hasQueuedOrders: false,
     queueInsertIndex: null,
     queueInsertOptions: [],
+    selectedEntityInfo: null,
     hasFactory: false,
     factoryAllowedUnitBlueprintIds: [],
     factoryId: undefined,

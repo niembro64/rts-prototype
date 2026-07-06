@@ -790,6 +790,11 @@ export class WorldState {
     return this.cache.getFlyingUnits();
   }
 
+  getFlyingUnitSlots(): readonly number[] {
+    this.rebuildCachesIfNeeded();
+    return this.cache.getFlyingUnitSlots();
+  }
+
   /** Every entity that carries a CombatComponent with at least one
    *  non-visualOnly turret. Includes both armed units and armed
    *  buildings (megaBeam towers etc.) — the combat pipeline iterates

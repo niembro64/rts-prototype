@@ -42,6 +42,18 @@ export type SelectionBuilderTypeInfo = {
 
 export type SelectionEntityType = 'unit' | 'tower' | 'building';
 
+export type SelectedEntityInfo = {
+  kind: SelectionEntityType | 'selection';
+  blueprintKind: SelectionEntityType | null;
+  blueprintId: string | null;
+  label: string;
+  subtitle: string;
+  count: number;
+  hp: number | null;
+  maxHp: number | null;
+  buildProgress: number | null;
+};
+
 export type SelectionInfo = {
   // Per-type selection counts. The action panel branches on these so
   // each entity type gets its own uniform action set
@@ -100,9 +112,9 @@ export type SelectionInfo = {
   /** True when every active-state building in the selection is currently
    *  ON (open). Drives the ON/OFF button label. */
   buildingsActive: boolean;
-  /** BAR exposes ON/OFF only for buildings whose BAR analogues have the onoff
-   *  command (metal extractors and solar collectors), even though the
-   *  prototype active-state mechanic covers more economy/utility buildings. */
+  /** BAR exposes ON/OFF only for the matching player-facing economy active
+   *  states (metal extractors, solar collectors, and energy converters), even
+   *  though the prototype active-state mechanic covers more utility buildings. */
   hasBarBuildingActiveControl: boolean;
   /** True when selected pure buildings keep BAR CMD.STOP visible because their
    *  BAR unitDef does not set customParams.removestop. */
@@ -137,6 +149,7 @@ export type SelectionInfo = {
   hasQueuedOrders: boolean;
   queueInsertIndex: number | null;
   queueInsertOptions: QueueInsertOption[];
+  selectedEntityInfo: SelectedEntityInfo | null;
   hasFactory: boolean;
   factoryAllowedUnitBlueprintIds: readonly string[];
   factoryId?: number;

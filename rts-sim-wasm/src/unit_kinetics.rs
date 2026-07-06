@@ -21,8 +21,8 @@ use wasm_bindgen::prelude::*;
 //
 //  Caller responsibility: build target_yaw/pitch/roll JS-side from
 //  thrust direction + body-frame velocity (as the existing TS code
-//  does). Read alpha into entity.unit.angularAcceleration3, write
-//  yaw into entity.transform.rotation, push snapshot dirty.
+//  does). The force kernel owns alpha internally, writes yaw into
+//  entity.transform.rotation, and pushes snapshot dirty.
 // ─────────────────────────────────────────────────────────────────
 
 pub const QUAT_HOVER_BATCH_STRIDE: usize = 14;
@@ -91,7 +91,9 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 51;
 //  blueprints are ready (see UnitForceSystem); the kernel resolves
 //  body slot → entity slot → blueprint code and fills the constant row
 //  slots before the (unchanged) force math reads them. Flags carry the
-//  per-blueprint UF_FLAG facing bits.
+//  per-blueprint UF_FLAG facing bits. The flag table also carries
+//  TypeScript-side profile metadata in higher bits; the kernel masks
+//  those out before OR-ing runtime flags.
 // ─────────────────────────────────────────────────────────────────
 
 pub const UF_PROFILE_STRIDE: usize = 17;
@@ -119,12 +121,24 @@ pub(crate) struct UnitForceProfileTable {
     pub(crate) count: usize,
 }
 
+pub(crate) struct UnitForceRuntimeTable {
+    pub(crate) entity_id: Vec<i32>,
+    pub(crate) hover_smoothed_force: Vec<f64>,
+    pub(crate) swim_smoothed_force: Vec<f64>,
+}
+
 pub(crate) struct UnitForceProfileTableHolder(
     ::core::cell::UnsafeCell<Option<UnitForceProfileTable>>,
 );
 unsafe impl Sync for UnitForceProfileTableHolder {}
 pub(crate) static UNIT_FORCE_PROFILE_TABLE: UnitForceProfileTableHolder =
     UnitForceProfileTableHolder(::core::cell::UnsafeCell::new(None));
+pub(crate) struct UnitForceRuntimeTableHolder(
+    ::core::cell::UnsafeCell<Option<UnitForceRuntimeTable>>,
+);
+unsafe impl Sync for UnitForceRuntimeTableHolder {}
+pub(crate) static UNIT_FORCE_RUNTIME_TABLE: UnitForceRuntimeTableHolder =
+    UnitForceRuntimeTableHolder(::core::cell::UnsafeCell::new(None));
 
 #[inline]
 pub(crate) fn unit_force_profile_table() -> &'static mut UnitForceProfileTable {
@@ -139,6 +153,45 @@ pub(crate) fn unit_force_profile_table() -> &'static mut UnitForceProfileTable {
         }
         cell.as_mut().unwrap()
     }
+}
+
+#[inline]
+pub(crate) fn unit_force_runtime_table() -> &'static mut UnitForceRuntimeTable {
+    unsafe {
+        let cell = &mut *UNIT_FORCE_RUNTIME_TABLE.0.get();
+        if cell.is_none() {
+            *cell = Some(UnitForceRuntimeTable {
+                entity_id: Vec::new(),
+                hover_smoothed_force: Vec::new(),
+                swim_smoothed_force: Vec::new(),
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[inline]
+fn unit_force_runtime_slot(
+    runtime: &mut UnitForceRuntimeTable,
+    es: &EntityStateSlab,
+    entity_slot: Option<usize>,
+) -> Option<usize> {
+    let slot = entity_slot?;
+    if slot >= es.entity_id.len() || es.entity_id[slot] < 0 {
+        return None;
+    }
+    let needed = slot + 1;
+    if runtime.entity_id.len() < needed {
+        runtime.entity_id.resize(needed, ENTITY_STATE_NO_ENTITY_ID);
+        runtime.hover_smoothed_force.resize(needed, f64::NAN);
+        runtime.swim_smoothed_force.resize(needed, f64::NAN);
+    }
+    if runtime.entity_id[slot] != es.entity_id[slot] {
+        runtime.entity_id[slot] = es.entity_id[slot];
+        runtime.hover_smoothed_force[slot] = f64::NAN;
+        runtime.swim_smoothed_force[slot] = f64::NAN;
+    }
+    Some(slot)
 }
 
 #[wasm_bindgen]
@@ -163,6 +216,14 @@ pub fn unit_force_profile_values_ptr() -> *const f64 {
 #[wasm_bindgen]
 pub fn unit_force_profile_flags_ptr() -> *const u32 {
     unit_force_profile_table().flags.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn unit_force_runtime_clear() {
+    let runtime = unit_force_runtime_table();
+    runtime.entity_id.fill(ENTITY_STATE_NO_ENTITY_ID);
+    runtime.hover_smoothed_force.fill(f64::NAN);
+    runtime.swim_smoothed_force.fill(f64::NAN);
 }
 
 pub(crate) const UF_ROW_DIR_X: usize = 0;
@@ -232,12 +293,44 @@ pub(crate) const UF_FLAG_HAS_ORIENTATION: u32 = 1 << 7;
 pub(crate) const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING: u32 = 1 << 8;
 pub(crate) const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING: u32 = 1 << 9;
 pub(crate) const UF_FLAG_ON_GROUND: u32 = 1 << 10;
+pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
+    UF_FLAG_FORWARD_THRUST_REQUIRES_FACING | UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
 
 pub(crate) const UF_OUT_MOVEMENT_ACCEL: u32 = 1 << 0;
 pub(crate) const UF_OUT_CLEAR_COMBAT: u32 = 1 << 1;
 pub(crate) const UF_OUT_ROTATION_DIRTY: u32 = 1 << 2;
 pub(crate) const UF_OUT_HOVER_ORIENTATION: u32 = 1 << 3;
 pub(crate) const UF_OUT_WOKE_BODY: u32 = 1 << 4;
+pub(crate) const UF_OUT_ENTITY_STATE_SYNCED: u32 = 1 << 5;
+
+const ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION: u32 = 1 << 1;
+const ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY: u32 = 1 << 2;
+
+#[inline]
+fn unit_force_entity_slot_for_body(
+    es: &EntityStateSlab,
+    p: &BodyPool,
+    body_slot: usize,
+) -> Option<usize> {
+    if body_slot >= POOL_CAPACITY_USIZE || body_slot >= es.entity_slot_by_body_slot.len() {
+        return None;
+    }
+    let entity_slot_i32 = es.entity_slot_by_body_slot[body_slot];
+    if entity_slot_i32 < 0 {
+        return None;
+    }
+    let entity_slot = entity_slot_i32 as usize;
+    if entity_slot >= es.entity_id.len() {
+        return None;
+    }
+    if es.body_slot[entity_slot] != body_slot as i32 {
+        return None;
+    }
+    if p.entity_id[body_slot] != es.entity_id[entity_slot] {
+        return None;
+    }
+    Some(entity_slot)
+}
 
 const UNIT_ATTITUDE_INERTIA_FACTOR: f64 = 0.25;
 const UNIT_ATTITUDE_TURN_AUTHORITY_SCALE: f64 = 1.0;
@@ -657,6 +750,7 @@ pub fn unit_force_step_batch(
     let p = pool();
     let es = entity_state();
     let profile = unit_force_profile_table();
+    let runtime = unit_force_runtime_table();
     let mut processed = 0_u32;
     let _legacy_hover_orientation_tuning = (hover_orientation_k, hover_orientation_c);
 
@@ -666,6 +760,8 @@ pub fn unit_force_step_batch(
         if slot >= POOL_CAPACITY_USIZE || !pool_is_dynamic_sphere(p, slot) {
             continue;
         }
+        let entity_slot = unit_force_entity_slot_for_body(es, p, slot);
+        let runtime_slot = unit_force_runtime_slot(runtime, es, entity_slot);
 
         let base = i * UNIT_FORCE_BATCH_STRIDE;
         rows[base + UF_ROW_MOVEMENT_ACCEL_X] = 0.0;
@@ -682,19 +778,16 @@ pub fn unit_force_step_batch(
             continue;
         }
 
-        // Fill the blueprint-constant row slots from the profile table so
-        // the JS pack loop no longer copies them per unit per tick. The
-        // force math below is untouched — it reads the same row slots it
-        // always has. Hover fields are only consumed under IS_AIRBORNE,
-        // which already encodes build-in-progress lift suppression.
+        // Fill slab-owned input rows before the force math reads them. The
+        // TypeScript pack loop still supplies terrain/support/probe rows, but
+        // movement intent and blueprint constants live on native state now.
         {
-            let entity_slot = if slot < es.entity_slot_by_body_slot.len() {
-                es.entity_slot_by_body_slot[slot]
-            } else {
-                -1
-            };
-            if entity_slot >= 0 && (entity_slot as usize) < es.unit_blueprint_code.len() {
-                let code = es.unit_blueprint_code[entity_slot as usize] as usize;
+            if let Some(entity_slot) = entity_slot {
+                rows[base + UF_ROW_DIR_X] = es.unit_thrust_dir_x[entity_slot];
+                rows[base + UF_ROW_DIR_Y] = es.unit_thrust_dir_y[entity_slot];
+                rows[base + UF_ROW_HEADING_X] = es.unit_heading_dir_x[entity_slot];
+                rows[base + UF_ROW_HEADING_Y] = es.unit_heading_dir_y[entity_slot];
+                let code = es.unit_blueprint_code[entity_slot] as usize;
                 if code < profile.count {
                     let pbase = code * UF_PROFILE_STRIDE;
                     rows[base + UF_ROW_GROUND_FORCE] =
@@ -730,9 +823,17 @@ pub fn unit_force_step_batch(
                     rows[base + UF_ROW_AIR_FORCE] = profile.values[pbase + UF_PROFILE_AIR_FORCE];
                     rows[base + UF_ROW_AIR_TRACTION] =
                         profile.values[pbase + UF_PROFILE_AIR_TRACTION];
-                    flag |= profile.flags[code];
+                    flag |= profile.flags[code] & UF_PROFILE_KERNEL_FLAG_MASK;
                 }
             }
+        }
+
+        let input_dir_len_sq = rows[base + UF_ROW_DIR_X] * rows[base + UF_ROW_DIR_X]
+            + rows[base + UF_ROW_DIR_Y] * rows[base + UF_ROW_DIR_Y];
+        if input_dir_len_sq > 0.0001 {
+            flag |= UF_FLAG_HAS_THRUST;
+        } else {
+            flag &= !UF_FLAG_HAS_THRUST;
         }
 
         let has_thrust = flag & UF_FLAG_HAS_THRUST != 0;
@@ -742,6 +843,20 @@ pub fn unit_force_step_batch(
         let has_orientation = flag & UF_FLAG_HAS_ORIENTATION != 0;
         let forward_thrust_requires_facing = flag & UF_FLAG_FORWARD_THRUST_REQUIRES_FACING != 0;
         let drive_force_scales_with_facing = flag & UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING != 0;
+        if let Some(runtime_slot) = runtime_slot {
+            if is_airborne {
+                rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] =
+                    runtime.hover_smoothed_force[runtime_slot];
+            } else {
+                rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
+                runtime.hover_smoothed_force[runtime_slot] = f64::NAN;
+            }
+            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = if rows[base + UF_ROW_SWIM_EMA_WEIGHT] > 0.0 {
+                runtime.swim_smoothed_force[runtime_slot]
+            } else {
+                f64::NAN
+            };
+        }
         let omega_sq = if has_orientation {
             rows[base + UF_ROW_OMEGA_X] * rows[base + UF_ROW_OMEGA_X]
                 + rows[base + UF_ROW_OMEGA_Y] * rows[base + UF_ROW_OMEGA_Y]
@@ -1079,6 +1194,9 @@ pub fn unit_force_step_batch(
         if flag & UF_FLAG_HAS_ORIENTATION != 0 {
             let attitude_ground_contact = ground_contact;
             let attitude_water_medium = water_medium_active;
+            let prev_omega_x = rows[base + UF_ROW_OMEGA_X];
+            let prev_omega_y = rows[base + UF_ROW_OMEGA_Y];
+            let prev_omega_z = rows[base + UF_ROW_OMEGA_Z];
             let target_up = if attitude_ground_contact {
                 [
                     rows[base + UF_ROW_NORMAL_X],
@@ -1117,6 +1235,9 @@ pub fn unit_force_step_batch(
                 dt_sec,
             ) {
                 out_flags[i] |= UF_OUT_HOVER_ORIENTATION;
+                let omega_changed = (prev_omega_x - rows[base + UF_ROW_OMEGA_X]).abs() > 1e-9
+                    || (prev_omega_y - rows[base + UF_ROW_OMEGA_Y]).abs() > 1e-9
+                    || (prev_omega_z - rows[base + UF_ROW_OMEGA_Z]).abs() > 1e-9;
                 let next_omega_sq = rows[base + UF_ROW_OMEGA_X] * rows[base + UF_ROW_OMEGA_X]
                     + rows[base + UF_ROW_OMEGA_Y] * rows[base + UF_ROW_OMEGA_Y]
                     + rows[base + UF_ROW_OMEGA_Z] * rows[base + UF_ROW_OMEGA_Z];
@@ -1139,9 +1260,27 @@ pub fn unit_force_step_batch(
                     rows[base + UF_ROW_ORIENTATION_Z],
                     rows[base + UF_ROW_ORIENTATION_W],
                 ]);
+                let mut synced_dirty_mask = if omega_changed { ENTITY_CHANGED_VEL } else { 0 };
                 if next_rotation != rows[base + UF_ROW_ROTATION] {
                     rows[base + UF_ROW_ROTATION] = next_rotation;
                     out_flags[i] |= UF_OUT_ROTATION_DIRTY;
+                    synced_dirty_mask |= ENTITY_CHANGED_ROT;
+                }
+                if let Some(entity_slot) = entity_slot {
+                    es.orientation_x[entity_slot] = rows[base + UF_ROW_ORIENTATION_X];
+                    es.orientation_y[entity_slot] = rows[base + UF_ROW_ORIENTATION_Y];
+                    es.orientation_z[entity_slot] = rows[base + UF_ROW_ORIENTATION_Z];
+                    es.orientation_w[entity_slot] = rows[base + UF_ROW_ORIENTATION_W];
+                    es.angular_velocity_x[entity_slot] = rows[base + UF_ROW_OMEGA_X];
+                    es.angular_velocity_y[entity_slot] = rows[base + UF_ROW_OMEGA_Y];
+                    es.angular_velocity_z[entity_slot] = rows[base + UF_ROW_OMEGA_Z];
+                    es.rotation[entity_slot] = rows[base + UF_ROW_ROTATION];
+                    es.unit_motion_flags[entity_slot] |= ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION
+                        | ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY;
+                    if synced_dirty_mask != 0 {
+                        es.dirty_mask[entity_slot] |= synced_dirty_mask;
+                        out_flags[i] |= UF_OUT_ENTITY_STATE_SYNCED;
+                    }
                 }
             }
         }
@@ -1174,6 +1313,15 @@ pub fn unit_force_step_batch(
         rows[base + UF_ROW_MOVEMENT_ACCEL_Y] = thrust_force_y * movement_accel_scale;
         rows[base + UF_ROW_MOVEMENT_ACCEL_Z] = thrust_force_z * movement_accel_scale;
         out_flags[i] |= UF_OUT_MOVEMENT_ACCEL;
+        if let Some(runtime_slot) = runtime_slot {
+            if is_airborne {
+                runtime.hover_smoothed_force[runtime_slot] =
+                    rows[base + UF_ROW_HOVER_SMOOTHED_FORCE];
+            }
+            if rows[base + UF_ROW_SWIM_EMA_WEIGHT] > 0.0 {
+                runtime.swim_smoothed_force[runtime_slot] = rows[base + UF_ROW_SWIM_SMOOTHED_FORCE];
+            }
+        }
 
         if total_force_x != 0.0 || total_force_y != 0.0 || total_force_z != 0.0 {
             if p.flags[slot] & BODY_FLAG_SLEEPING != 0 {

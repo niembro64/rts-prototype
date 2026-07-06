@@ -4,6 +4,7 @@ import {
   loadStoredDividersMagnitude,
   loadStoredMapLandDimensions,
   loadStoredMetalDepositStep,
+  loadStoredPlateauWallSlopeDegrees,
   loadStoredPerimeterMagnitude,
   loadStoredTerrainDTerrain,
   loadStoredTerrainDetail,
@@ -24,6 +25,7 @@ type GameCanvasLobbyPreviewOptions = {
   dividersMagnitude: Ref<number>;
   perimeterMagnitude: Ref<number>;
   terrainDTerrain: Ref<number>;
+  plateauWallSlopeDegrees: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
   mapWidthLandCells: Ref<number>;
@@ -45,6 +47,7 @@ export function useGameCanvasLobbyPreview({
   dividersMagnitude,
   perimeterMagnitude,
   terrainDTerrain,
+  plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
   mapWidthLandCells,
@@ -70,6 +73,7 @@ export function useGameCanvasLobbyPreview({
     dividersMagnitude.value = loadStoredDividersMagnitude(mode);
     perimeterMagnitude.value = loadStoredPerimeterMagnitude(mode);
     terrainDTerrain.value = loadStoredTerrainDTerrain(mode);
+    plateauWallSlopeDegrees.value = loadStoredPlateauWallSlopeDegrees(mode);
     metalDepositStep.value = loadStoredMetalDepositStep(mode);
     terrainDetail.value = loadStoredTerrainDetail(mode);
     const mapDimensions = loadStoredMapLandDimensions(mode);

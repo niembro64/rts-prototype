@@ -2,7 +2,14 @@ import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { ENTITY_CHANGED_POS, ENTITY_CHANGED_VEL } from '../../types/network';
 import type { Command, CommandQueue } from '../sim/commands';
 import type { DeathContext } from '../sim/combat';
-import { entitySlotRegistry, type EntityStateViews } from '../sim/EntitySlotRegistry';
+import {
+  ENTITY_SLOT_BUILD_FLAG_COMPLETE,
+  ENTITY_SLOT_BUILD_FLAG_GHOST,
+  ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
+  ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
+  entitySlotRegistry,
+  type EntityStateViews,
+} from '../sim/EntitySlotRegistry';
 import { spatialGrid } from '../sim/SpatialGrid';
 import type { Simulation } from '../sim/Simulation';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -18,6 +25,7 @@ import { UnitForceSystem } from './UnitForceSystem';
 import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysicsBody';
 import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/projectileSystem';
 import { isBuildInProgress } from '../sim/buildableHelpers';
+import { getSimWasm } from '../sim-wasm/init';
 
 type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
@@ -200,14 +208,34 @@ export class ServerSimulationCore {
         this.physicsSyncEntitySlotsBuf,
       );
     }
+    const entityStateViews = entitySlotRegistry.getViews();
+    const bodyPool = getSimWasm()?.pool;
+    bodyPool?.refreshViews();
     for (let i = 0; i < slotCount; i++) {
       const entitySlot = this.physicsSyncEntitySlotsBuf[i];
       const entity = entitySlotRegistry.resolveSlot(entitySlot);
       if (entity === undefined) continue;
-      const bodySlot = entity.body;
-      if (bodySlot === null) continue;
-      const body = bodySlot.physicsBody;
-      if (!hasFiniteBodyKinematics(body)) {
+      const bodyRef = entity.body;
+      if (bodyRef === null) continue;
+      const body = bodyRef.physicsBody;
+      const hasEntityState =
+        entityStateViews !== null &&
+        entitySlot >= 0 &&
+        entitySlot < entityStateViews.capacity &&
+        entityStateViews.entityId[entitySlot] === entity.id;
+      const bodySlot = hasEntityState ? entityStateViews.bodySlot[entitySlot] : -1;
+      const useBodyPool =
+        bodyPool !== undefined &&
+        bodySlot >= 0 &&
+        bodySlot < bodyPool.capacity &&
+        body.slot === bodySlot;
+      let x = useBodyPool ? bodyPool.posX[bodySlot] : body.x;
+      let y = useBodyPool ? bodyPool.posY[bodySlot] : body.y;
+      let z = useBodyPool ? bodyPool.posZ[bodySlot] : body.z;
+      let vx = useBodyPool ? bodyPool.velX[bodySlot] : body.vx;
+      let vy = useBodyPool ? bodyPool.velY[bodySlot] : body.vy;
+      let vz = useBodyPool ? bodyPool.velZ[bodySlot] : body.vz;
+      if (!hasFiniteKinematicsValues(x, y, z, vx, vy, vz)) {
         this.repairInvalidUnitBody(entity);
         continue;
       }
@@ -218,7 +246,18 @@ export class ServerSimulationCore {
       //  - attached to a mobile host (buildLockHostId set): X/Y/Z all pinned to
       //    the host body so the shell rides along as the host moves (a queen
       //    building its bee/tick); released, it free-falls from there.
-      if (isBuildInProgress(entity.buildable)) {
+      const buildFlags = hasEntityState ? entityStateViews.buildFlags[entitySlot] : 0;
+      const buildInProgress = hasEntityState
+        ? (
+            (buildFlags & ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE) !== 0 &&
+            (buildFlags & (
+              ENTITY_SLOT_BUILD_FLAG_COMPLETE |
+              ENTITY_SLOT_BUILD_FLAG_GHOST |
+              ENTITY_SLOT_BUILD_FLAG_INTERRUPTED
+            )) === 0
+          )
+        : isBuildInProgress(entity.buildable);
+      if (buildInProgress && entity.buildable !== null) {
         const lockHostId = entity.buildable.buildLockHostId;
         const lockHost = lockHostId !== null ? this.world.getEntity(lockHostId) : undefined;
         if (lockHost !== undefined) {
@@ -226,51 +265,68 @@ export class ServerSimulationCore {
           // reads as carried and has somewhere to fall on release. Tunable; the
           // queen-mount spawn pose will refine the exact anchor.
           const ATTACHED_BUILD_SHELL_ELEVATION = 60;
-          body.x = lockHost.transform.x;
-          body.y = lockHost.transform.y;
-          body.z = lockHost.transform.z + ATTACHED_BUILD_SHELL_ELEVATION;
-          body.vx = 0;
-          body.vy = 0;
-          body.vz = 0;
+          x = lockHost.transform.x;
+          y = lockHost.transform.y;
+          z = lockHost.transform.z + ATTACHED_BUILD_SHELL_ELEVATION;
+          vx = 0;
+          vy = 0;
+          vz = 0;
         } else {
-          body.x = entity.transform.x;
-          body.y = entity.transform.y;
-          body.vx = 0;
-          body.vy = 0;
+          x = entity.transform.x;
+          y = entity.transform.y;
+          vx = 0;
+          vy = 0;
+        }
+        if (useBodyPool) {
+          bodyPool.posX[bodySlot] = x;
+          bodyPool.posY[bodySlot] = y;
+          bodyPool.posZ[bodySlot] = z;
+          bodyPool.velX[bodySlot] = vx;
+          bodyPool.velY[bodySlot] = vy;
+          bodyPool.velZ[bodySlot] = vz;
+        } else {
+          body.x = x;
+          body.y = y;
+          body.z = z;
+          body.vx = vx;
+          body.vy = vy;
+          body.vz = vz;
         }
       }
-      entity.transform.x = body.x;
-      entity.transform.y = body.y;
-      entity.transform.z = body.z;
+      entity.transform.x = x;
+      entity.transform.y = y;
+      entity.transform.z = z;
       if (entity.unit !== null) {
-        entity.unit.velocityX = body.vx;
-        entity.unit.velocityY = body.vy;
-        entity.unit.velocityZ = body.vz;
+        entity.unit.velocityX = vx;
+        entity.unit.velocityY = vy;
+        entity.unit.velocityZ = vz;
       } else if (entity.building !== null) {
         spatialGrid.addBuilding(entity);
       }
     }
 
-    const nativeSyncedMotion = this.physics.syncLastStepBodyMotionToEntityState() >= 0;
-    const entityStateViews = nativeSyncedMotion ? null : entitySlotRegistry.getViews();
+    const syncedEntitySlots = this.physicsSyncEntitySlotsBuf.subarray(0, slotCount);
+    let nativeSyncedMotion =
+      this.physics.syncEntitySlotBodyMotionToEntityState(syncedEntitySlots) >= 0;
+    if (!nativeSyncedMotion) {
+      nativeSyncedMotion = this.physics.syncLastStepBodyMotionToEntityState() >= 0;
+    }
+    if (nativeSyncedMotion) return;
+
     for (let i = 0; i < slotCount; i++) {
       const entitySlot = this.physicsSyncEntitySlotsBuf[i];
       const entity = entitySlotRegistry.resolveSlot(entitySlot);
       if (entity === undefined || entity.body === null) continue;
       if (entity.unit !== null) {
         const dirtyFields = ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL;
-        if (nativeSyncedMotion) {
-          this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
-        } else if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
+        if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
           this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
         } else {
           this.world.markSnapshotDirty(entity.id, dirtyFields);
         }
       } else if (entity.building !== null) {
         const dirtyFields = ENTITY_CHANGED_POS;
-        if (nativeSyncedMotion) {
-          this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
-        } else if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
+        if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
           this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
         } else {
           this.world.markSnapshotDirty(entity.id, dirtyFields);
@@ -415,13 +471,24 @@ export class ServerSimulationCore {
 }
 
 function hasFiniteBodyKinematics(body: import('./PhysicsEngine3D').Body3D): boolean {
+  return hasFiniteKinematicsValues(body.x, body.y, body.z, body.vx, body.vy, body.vz);
+}
+
+function hasFiniteKinematicsValues(
+  x: number,
+  y: number,
+  z: number,
+  vx: number,
+  vy: number,
+  vz: number,
+): boolean {
   return (
-    Number.isFinite(body.x) &&
-    Number.isFinite(body.y) &&
-    Number.isFinite(body.z) &&
-    Number.isFinite(body.vx) &&
-    Number.isFinite(body.vy) &&
-    Number.isFinite(body.vz)
+    Number.isFinite(x) &&
+    Number.isFinite(y) &&
+    Number.isFinite(z) &&
+    Number.isFinite(vx) &&
+    Number.isFinite(vy) &&
+    Number.isFinite(vz)
   );
 }
 

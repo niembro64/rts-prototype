@@ -1956,6 +1956,290 @@ export function runClientSnapshotApplierContractTest(): void {
   mixedGenericView.assertRenderEntityStateParity(mixedGenericMoveId);
   mixedGenericView.assertRenderEntityStateParity(mixedGenericDtoId);
 
+  const typedFullView = new ClientViewState();
+  const typedFullUnitId = 1310;
+  const typedFullBuildingId = 1311;
+  const typedFullFactoryId = 1312;
+  typedFullView.applyNetworkState(snapshot(1, [
+    fullUnitEntity(typedFullUnitId, 100, 100),
+    fullBuildingEntity(typedFullBuildingId, 80, 120),
+    fullFactoryEntity(typedFullFactoryId),
+  ]));
+  typedFullView.applyPrediction(16);
+  typedFullView.consumeRenderDirties();
+  const typedFullUnitSourceView = new ClientViewState();
+  typedFullUnitSourceView.applyNetworkState(snapshot(1, [
+    fullUnitEntity(typedFullUnitId, 41, 100),
+  ]));
+  const typedFullUnitSource = typedFullUnitSourceView.getEntity(typedFullUnitId);
+  if (typedFullUnitSource === undefined || typedFullUnitSource.unit === null) {
+    throw new Error('[client snapshot applier contract] typed full unit source must hydrate');
+  }
+  typedFullUnitSource.transform.x = 740;
+  typedFullUnitSource.transform.y = 220;
+  typedFullUnitSource.transform.z = 0;
+  setUnitSourceRotation(typedFullUnitSource, 0.9);
+  typedFullUnitSource.unit.hp = 41;
+  typedFullUnitSource.unit.maxHp = 100;
+
+  const typedFullBuildingSourceView = new ClientViewState();
+  typedFullBuildingSourceView.applyNetworkState(snapshot(1, [
+    fullBuildingEntity(typedFullBuildingId, 52, 120),
+  ]));
+  const typedFullBuildingSource = typedFullBuildingSourceView.getEntity(typedFullBuildingId);
+  if (typedFullBuildingSource === undefined || typedFullBuildingSource.building === null) {
+    throw new Error('[client snapshot applier contract] typed full building source must hydrate');
+  }
+  typedFullBuildingSource.transform.x = 340;
+  typedFullBuildingSource.transform.y = 180;
+  typedFullBuildingSource.transform.z = 24;
+  typedFullBuildingSource.transform.rotation = 0.35;
+  typedFullBuildingSource.building.hp = 52;
+  typedFullBuildingSource.building.maxHp = 120;
+  if (typedFullBuildingSource.building.activeState !== null) {
+    typedFullBuildingSource.building.activeState.open = true;
+  }
+
+  const typedFullFactorySourceView = new ClientViewState();
+  typedFullFactorySourceView.applyNetworkState(snapshot(1, [
+    fullFactoryEntity(typedFullFactoryId),
+  ]));
+  const typedFullFactorySource = typedFullFactorySourceView.getEntity(typedFullFactoryId);
+  if (
+    typedFullFactorySource === undefined ||
+    typedFullFactorySource.building === null ||
+    typedFullFactorySource.factory === null
+  ) {
+    throw new Error('[client snapshot applier contract] typed full factory source must hydrate');
+  }
+  typedFullFactorySource.transform.x = 460;
+  typedFullFactorySource.transform.y = 260;
+  typedFullFactorySource.transform.z = 32;
+  typedFullFactorySource.transform.rotation = 0.2;
+  typedFullFactorySource.building.hp = 88;
+  typedFullFactorySource.building.maxHp = 1200;
+  typedFullFactorySource.factory.selectedUnitBlueprintId = 'unitLynx';
+  typedFullFactorySource.factory.repeatProduction = false;
+  typedFullFactorySource.factory.productionQueue = ['unitBee', 'unitTick'];
+  typedFullFactorySource.factory.productionQuotas.unitJackal = 3;
+  typedFullFactorySource.factory.productionQuotaCounts.unitJackal = 2;
+  typedFullFactorySource.factory.currentBuildProgress = 0.5;
+  typedFullFactorySource.factory.isProducing = true;
+  typedFullFactorySource.factory.energyRateFraction = 0.25;
+  typedFullFactorySource.factory.metalRateFraction = 0.75;
+  typedFullFactorySource.factory.lowPriority = true;
+  typedFullFactorySource.factory.paused = true;
+  typedFullFactorySource.factory.moveState = 'roam';
+  typedFullFactorySource.factory.airIdleState = 'fly';
+  typedFullFactorySource.factory.rallyX = 180;
+  typedFullFactorySource.factory.rallyY = 190;
+  typedFullFactorySource.factory.rallyZ = 12;
+  typedFullFactorySource.factory.rallyType = 'fight';
+  typedFullFactorySource.factory.defaultWaypoints = [
+    { x: 180, y: 190, z: 12, type: 'fight' },
+    { x: 210, y: 240, z: null, type: 'patrol' },
+  ];
+
+  const typedFullRows: NetworkServerSnapshotEntity[] = [];
+  resetEntitySnapshotPool();
+  registerEntitySnapshotWireSource(typedFullRows);
+  const typedFullUnitDto = serializeEntitySnapshot(
+    typedFullUnitSource,
+    undefined,
+    {} as WorldState,
+  );
+  const typedFullBuildingDto = serializeEntitySnapshot(
+    typedFullBuildingSource,
+    undefined,
+    {} as WorldState,
+  );
+  const typedFullFactoryDto = serializeEntitySnapshot(
+    typedFullFactorySource,
+    undefined,
+    {} as WorldState,
+  );
+  if (
+    typedFullUnitDto === null ||
+    typedFullBuildingDto === null ||
+    typedFullFactoryDto === null
+  ) {
+    throw new Error('[client snapshot applier contract] typed full rows must serialize');
+  }
+  typedFullRows.push(undefined as unknown as NetworkServerSnapshotEntity);
+  typedFullRows.push(undefined as unknown as NetworkServerSnapshotEntity);
+  typedFullRows.push(undefined as unknown as NetworkServerSnapshotEntity);
+  const typedFullSource = getEntitySnapshotWireSource(typedFullRows);
+  assertContract(
+    typedFullSource !== undefined &&
+      typedFullSource.count === 3 &&
+      typedFullSource.unitRows.count === 1 &&
+      typedFullSource.buildingRows.count === 2 &&
+      typedFullSource.rawEntityRows === 0,
+    'DTO-free full snapshot fixture must expose unit and building typed rows',
+  );
+  const typedFullComposition = snapshotEntityRowComposition(snapshot(8, typedFullRows));
+  assertContract(
+    typedFullComposition.entityDtoRows === 0 &&
+      typedFullComposition.entityTypedRows === 3,
+    'DTO-free full snapshot composition must count typed rows without DTO rows',
+  );
+  const encodedTypedFull = encodeNetworkSnapshotWithRustFallback(snapshot(9, typedFullRows));
+  if (encodedTypedFull === null) {
+    throw new Error('[client snapshot applier contract] DTO-free full typed rows must encode');
+  }
+  const decodedTypedFull = decodeNetworkSnapshot(encodedTypedFull.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  const decodedTypedFullSource = getEntitySnapshotWireSource(decodedTypedFull.entities);
+  assertContract(
+    decodedTypedFullSource !== undefined &&
+      decodedTypedFullSource.count === 3 &&
+      decodedTypedFullSource.typedEntityRows === 3 &&
+      decodedTypedFullSource.typedPlaceholderRows === 0 &&
+      decodedTypedFullSource.unitRows.count === 1 &&
+      decodedTypedFullSource.buildingRows.count === 2 &&
+      decodedTypedFull.entities[0] !== undefined &&
+      decodedTypedFull.entities[1] !== undefined &&
+      decodedTypedFull.entities[2] !== undefined,
+    'packed full typed rows must decode with typed metadata and DTO fallback rows',
+  );
+
+  const decodedTypedFullDelta = decodeNetworkSnapshot(encodedTypedFull.bytes, {
+    packedEntityDeltas: 'metadata-only',
+  });
+  decodedTypedFullDelta.entityDeltaOnly = true;
+  const decodedTypedFullDeltaUnitDto = decodedTypedFullDelta.entities[0];
+  if (
+    decodedTypedFullDeltaUnitDto === undefined ||
+    decodedTypedFullDeltaUnitDto.unit === null ||
+    decodedTypedFullDeltaUnitDto.unit.hp === null
+  ) {
+    throw new Error('[client snapshot applier contract] decoded typed-full delta DTO must carry unit HP');
+  }
+  decodedTypedFullDeltaUnitDto.unit.hp.curr = 7;
+  const typedFullDeltaCreateView = new ClientViewState();
+  typedFullDeltaCreateView.applyNetworkState(decodedTypedFullDelta);
+  typedFullDeltaCreateView.applyPrediction(100);
+  assertContract(
+    typedFullDeltaCreateView.getEntity(typedFullUnitId)?.unit?.hp === 41,
+    'entity-delta full typed rows must create from typed rows before DTO fallback',
+  );
+
+  const typedFullSnapshot = installMaterializationMetadata(snapshot(8, typedFullRows));
+  typedFullView.applyNetworkState(typedFullSnapshot, {
+    syncEconomy: undefined,
+    collectMaterializationStages: true,
+  });
+  const typedFullStages = getSnapshotMaterializationMetadata(typedFullSnapshot)?.stages;
+  assertContract(
+    typedFullStages?.clientApplyEntitiesTypedFull !== undefined &&
+      typedFullStages.clientApplyEntitiesGeneric === undefined,
+    'DTO-free full typed rows must record the typed-full entity apply materialization path',
+  );
+  typedFullView.applyPrediction(100);
+  const typedFullUnit = typedFullView.getEntity(typedFullUnitId);
+  const typedFullBuilding = typedFullView.getEntity(typedFullBuildingId);
+  const typedFullFactory = typedFullView.getEntity(typedFullFactoryId);
+  assertContract(
+    typedFullUnit !== undefined &&
+      typedFullUnit.unit?.hp === 41 &&
+      typedFullUnit.transform.x > 1 &&
+      typedFullUnit.transform.rotation > 0.01,
+    'DTO-free full unit typed row must snap state and drive prediction',
+  );
+  assertContract(
+    typedFullBuilding !== undefined &&
+      typedFullBuilding.building?.hp === 52 &&
+      typedFullBuilding.transform.x === 340 &&
+      typedFullBuilding.transform.rotation > 0.01 &&
+      typedFullBuilding.building.activeState?.open === true,
+    'DTO-free full building typed row must snap state without DTO fallback',
+  );
+  assertContract(
+    typedFullFactory !== undefined &&
+      typedFullFactory.factory?.selectedUnitBlueprintId === 'unitLynx' &&
+      typedFullFactory.factory.productionQueue.join(',') === 'unitBee,unitTick' &&
+      typedFullFactory.factory.productionQuotas.unitJackal === 3 &&
+      typedFullFactory.factory.productionQuotaCounts.unitJackal === 2 &&
+      typedFullFactory.factory.defaultWaypoints?.[1]?.type === 'patrol',
+    'DTO-free full factory typed row must snap factory detail without DTO fallback',
+  );
+  typedFullView.assertRenderEntityStateParity(typedFullUnitId);
+  typedFullView.assertRenderEntityStateParity(typedFullBuildingId);
+  typedFullView.assertRenderEntityStateParity(typedFullFactoryId);
+
+  const typedFullCreateView = new ClientViewState();
+  typedFullCreateView.applyNetworkState(installMaterializationMetadata(snapshot(10, typedFullRows)));
+  typedFullCreateView.applyPrediction(100);
+  const typedFullCreatedUnit = typedFullCreateView.getEntity(typedFullUnitId);
+  const typedFullCreatedBuilding = typedFullCreateView.getEntity(typedFullBuildingId);
+  const typedFullCreatedFactory = typedFullCreateView.getEntity(typedFullFactoryId);
+  assertContract(
+    typedFullCreatedUnit !== undefined &&
+      typedFullCreatedUnit.unit?.hp === 41 &&
+      typedFullCreatedUnit.transform.x > 1 &&
+      typedFullCreatedUnit.transform.rotation > 0.01,
+    'DTO-free full unit typed row must create a missing client entity',
+  );
+  assertContract(
+    typedFullCreatedBuilding !== undefined &&
+      typedFullCreatedBuilding.building?.hp === 52 &&
+      typedFullCreatedBuilding.transform.x === 340 &&
+      typedFullCreatedBuilding.building.activeState?.open === true,
+    'DTO-free full building typed row must create a missing client entity',
+  );
+  assertContract(
+    typedFullCreatedFactory !== undefined &&
+      typedFullCreatedFactory.factory?.selectedUnitBlueprintId === 'unitLynx' &&
+      typedFullCreatedFactory.factory.productionQueue.join(',') === 'unitBee,unitTick' &&
+      typedFullCreatedFactory.factory.productionQuotas.unitJackal === 3 &&
+      typedFullCreatedFactory.factory.productionQuotaCounts.unitJackal === 2 &&
+      typedFullCreatedFactory.factory.defaultWaypoints?.[1]?.type === 'patrol',
+    'DTO-free full factory typed row must create a missing client factory entity',
+  );
+  typedFullCreateView.assertRenderEntityStateParity(typedFullUnitId);
+  typedFullCreateView.assertRenderEntityStateParity(typedFullBuildingId);
+  typedFullCreateView.assertRenderEntityStateParity(typedFullFactoryId);
+
+  const decodedTypedFullView = new ClientViewState();
+  decodedTypedFullView.applyNetworkState(snapshot(1, [
+    fullUnitEntity(typedFullUnitId, 100, 100),
+    fullBuildingEntity(typedFullBuildingId, 80, 120),
+    fullFactoryEntity(typedFullFactoryId),
+  ]));
+  decodedTypedFullView.applyPrediction(16);
+  decodedTypedFullView.consumeRenderDirties();
+  decodedTypedFullView.applyNetworkState(decodedTypedFull);
+  decodedTypedFullView.applyPrediction(100);
+  const decodedTypedFullUnit = decodedTypedFullView.getEntity(typedFullUnitId);
+  const decodedTypedFullBuilding = decodedTypedFullView.getEntity(typedFullBuildingId);
+  const decodedTypedFullFactory = decodedTypedFullView.getEntity(typedFullFactoryId);
+  assertContract(
+    decodedTypedFullUnit !== undefined &&
+      decodedTypedFullUnit.unit?.hp === 41 &&
+      decodedTypedFullUnit.transform.x > 1 &&
+      decodedTypedFullUnit.transform.rotation > 0.01,
+    'packed full unit typed row must apply through decoded typed metadata',
+  );
+  assertContract(
+    decodedTypedFullBuilding !== undefined &&
+      decodedTypedFullBuilding.building?.hp === 52 &&
+      decodedTypedFullBuilding.transform.x === 340 &&
+      decodedTypedFullBuilding.building.activeState?.open === true,
+    'packed full building typed row must apply through decoded typed metadata',
+  );
+  assertContract(
+    decodedTypedFullFactory !== undefined &&
+      decodedTypedFullFactory.factory?.selectedUnitBlueprintId === 'unitLynx' &&
+      decodedTypedFullFactory.factory.productionQueue.join(',') === 'unitBee,unitTick' &&
+      decodedTypedFullFactory.factory.defaultWaypoints?.[1]?.type === 'patrol',
+    'packed full factory typed row must apply through decoded typed metadata',
+  );
+  decodedTypedFullView.assertRenderEntityStateParity(typedFullUnitId);
+  decodedTypedFullView.assertRenderEntityStateParity(typedFullBuildingId);
+  decodedTypedFullView.assertRenderEntityStateParity(typedFullFactoryId);
+  resetEntitySnapshotPool();
+
   view.applyNetworkState(snapshot(3, [hpSparseEntity(id, 80, 100)]));
   assertContract(view.getEntity(id)?.unit?.hp === 80, 'HP sparse row must update unit HP');
   assertHudContains(view, id, true);

@@ -13,6 +13,10 @@ function ids(list: readonly Entity[]): string {
   return list.map((entity) => entity.id).join(',');
 }
 
+function values(list: readonly number[]): string {
+  return list.join(',');
+}
+
 function entityBase(id: EntityId, type: EntityType, playerId: PlayerId | null): Entity {
   const entity = {
     ...createEmptyEntityComponentSlots(),
@@ -162,6 +166,7 @@ function snapshot(manager: EntityCacheManager): Record<string, string> {
     commanderUnits: ids(manager.getCommanderUnits()),
     builderUnits: ids(manager.getBuilderUnits()),
     flyingUnits: ids(manager.getFlyingUnits()),
+    flyingUnitSlots: values(manager.getFlyingUnitSlots()),
     armedEntities: ids(manager.getArmedEntities()),
     beamUnits: ids(manager.getBeamUnits()),
     shieldPanelUnits: ids(manager.getShieldPanelUnits()),

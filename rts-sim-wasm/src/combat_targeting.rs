@@ -1428,7 +1428,9 @@ pub fn combat_targeting_collect_observation_visibility(
     view_mask: u32,
     target_slots: &[u32],
     visible_ids_out: &mut [i32],
+    visible_slots_out: &mut [u32],
     radar_ids_out: &mut [i32],
+    radar_slots_out: &mut [u32],
     los_slots_out: &mut [u32],
     counts_out: &mut [u32],
 ) -> i32 {
@@ -1474,9 +1476,15 @@ pub fn combat_targeting_collect_observation_visibility(
             if visible_count < visible_ids_out.len() {
                 visible_ids_out[visible_count] = id;
             }
+            if visible_count < visible_slots_out.len() {
+                visible_slots_out[visible_count] = slot as u32;
+            }
             visible_count += 1;
             if radar_count < radar_ids_out.len() {
                 radar_ids_out[radar_count] = id;
+            }
+            if radar_count < radar_slots_out.len() {
+                radar_slots_out[radar_count] = slot as u32;
             }
             radar_count += 1;
             return;
@@ -1493,9 +1501,15 @@ pub fn combat_targeting_collect_observation_visibility(
                 if visible_count < visible_ids_out.len() {
                     visible_ids_out[visible_count] = id;
                 }
+                if visible_count < visible_slots_out.len() {
+                    visible_slots_out[visible_count] = slot as u32;
+                }
                 visible_count += 1;
                 if radar_count < radar_ids_out.len() {
                     radar_ids_out[radar_count] = id;
+                }
+                if radar_count < radar_slots_out.len() {
+                    radar_slots_out[radar_count] = slot as u32;
                 }
                 radar_count += 1;
             }
@@ -1514,6 +1528,9 @@ pub fn combat_targeting_collect_observation_visibility(
         if radar_covered || detector_covered {
             if radar_count < radar_ids_out.len() {
                 radar_ids_out[radar_count] = id;
+            }
+            if radar_count < radar_slots_out.len() {
+                radar_slots_out[radar_count] = slot as u32;
             }
             radar_count += 1;
         }
@@ -1536,7 +1553,9 @@ pub fn combat_targeting_collect_observation_visibility(
 
     let required = visible_count.max(radar_count).max(los_count);
     if visible_count > visible_ids_out.len()
+        || visible_count > visible_slots_out.len()
         || radar_count > radar_ids_out.len()
+        || radar_count > radar_slots_out.len()
         || los_count > los_slots_out.len()
     {
         return -(required as i32);
@@ -9913,6 +9932,10 @@ mod tests {
 
     #[test]
     fn observation_visibility_collector_compacts_visible_radar_and_los_rows() {
+        let _guard = match crate::COMBAT_TARGETING_TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         {
             let state = crate::entity_state::entity_state();
             *state = crate::entity_state::EntityStateSlab::empty();
@@ -9948,14 +9971,18 @@ mod tests {
         }
 
         let mut visible = [0_i32; 4];
+        let mut visible_slots = [0_u32; 4];
         let mut radar = [0_i32; 4];
+        let mut radar_slots = [0_u32; 4];
         let mut los = [0_u32; 4];
         let mut counts = [0_u32; 4];
         let handled = combat_targeting_collect_observation_visibility(
             1,
             &[],
             &mut visible,
+            &mut visible_slots,
             &mut radar,
+            &mut radar_slots,
             &mut los,
             &mut counts,
         );
@@ -9963,7 +9990,9 @@ mod tests {
         assert_eq!(handled, 3);
         assert_eq!(counts, [3, 2, 3, 1]);
         assert_eq!(&visible[..2], &[10, 12]);
+        assert_eq!(&visible_slots[..2], &[0, 2]);
         assert_eq!(&radar[..3], &[10, 11, 12]);
+        assert_eq!(&radar_slots[..3], &[0, 1, 2]);
         assert_eq!(los[0], 1);
     }
 

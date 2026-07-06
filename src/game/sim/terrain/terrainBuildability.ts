@@ -4,7 +4,12 @@ import { assertCanonicalLandCellSize } from '../../landGrid';
 import { BUILD_GRID_CELL_SIZE } from '../buildGrid';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { getSimWasm } from '../../sim-wasm/init';
-import { TERRAIN_D_TERRAIN, TERRAIN_PLATEAU_CONFIG, WATER_LEVEL } from './terrainConfig';
+import {
+  TERRAIN_D_TERRAIN,
+  TERRAIN_PLATEAU_CONFIG,
+  TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+  WATER_LEVEL,
+} from './terrainConfig';
 import { findDepositFlatZoneAt, getMetalDepositFlatZones } from './terrainFlatZones';
 import { getTerrainMeshHeight, getTerrainMeshNormal } from './terrainTileMap';
 import { getTerrainVersion } from './terrainState';
@@ -18,6 +23,7 @@ export function getTerrainBuildabilityConfigKey(): string {
   // D-PLATEAU "NONE" option and short-circuits terracing.
   return [
     TERRAIN_D_TERRAIN,
+    TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     TERRAIN_PLATEAU_CONFIG.buildableShelfHeightTolerance,
     BUILD_CONFIG.maxBuildableSlopeAngleDegrees,
   ].join(':');

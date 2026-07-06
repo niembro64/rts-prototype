@@ -30,8 +30,18 @@ export class ClientServerTargetStore extends Map<EntityId, ServerTarget> {
   }
 
   override delete(id: EntityId): boolean {
-    const target = this.get(id);
-    if (canIndexClientEntityId(id)) this.byId[id] = undefined;
+    let target: ServerTarget | undefined;
+    if (canIndexClientEntityId(id)) {
+      target = this.byId[id];
+      if (target === undefined) {
+        target = super.get(id);
+        if (target === undefined) return false;
+      }
+      this.byId[id] = undefined;
+    } else {
+      target = super.get(id);
+      if (target === undefined) return false;
+    }
     const deleted = super.delete(id);
     if (deleted && target !== undefined && this.pooledTargets.delete(target)) {
       releaseServerTarget(target);

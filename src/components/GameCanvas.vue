@@ -43,6 +43,7 @@ import {
   loadStoredGrid,
   loadStoredTerrainDTerrain,
   loadStoredMetalDepositStep,
+  loadStoredPlateauWallSlopeDegrees,
   loadStoredTerrainDetail,
   loadStoredPerimeterMagnitude,
   loadStoredMapLandDimensions,
@@ -1042,6 +1043,9 @@ const centerMagnitude = ref<number>(loadStoredCenterMagnitude('demo'));
 const dividersMagnitude = ref<number>(loadStoredDividersMagnitude('demo'));
 const perimeterMagnitude = ref<number>(loadStoredPerimeterMagnitude('demo'));
 const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
+const plateauWallSlopeDegrees = ref<number>(
+  loadStoredPlateauWallSlopeDegrees('demo'),
+);
 const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
@@ -1058,6 +1062,7 @@ const mapDetailsRows = computed(() => [
   { label: 'DIVIDERS', value: String(dividersMagnitude.value) },
   { label: 'PERIMETER', value: String(perimeterMagnitude.value) },
   { label: 'D-TERRAIN', value: terrainDTerrain.value === 0 ? 'NONE' : String(terrainDTerrain.value) },
+  { label: 'PLATEAU WALL', value: `${plateauWallSlopeDegrees.value} deg` },
   { label: 'METAL STEP', value: metalDepositStep.value === 0 ? 'NONE' : String(metalDepositStep.value) },
   { label: 'DETAIL', value: String(terrainDetail.value) },
   { label: 'PLAYERS', value: String(lobbyPlayerCount.value) },
@@ -1253,6 +1258,7 @@ useGameCanvasLobbyPreview({
   dividersMagnitude,
   perimeterMagnitude,
   terrainDTerrain,
+  plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
   mapWidthLandCells,
@@ -1411,6 +1417,7 @@ const {
   applyDividersMagnitude,
   applyPerimeterMagnitude,
   applyTerrainDTerrain,
+  applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
   applyMapLandDimensions,
@@ -1425,6 +1432,7 @@ const {
   dividersMagnitude,
   perimeterMagnitude,
   terrainDTerrain,
+  plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
   mapWidthLandCells,
@@ -1486,6 +1494,7 @@ const {
   applyDividersMagnitude,
   applyPerimeterMagnitude,
   applyTerrainDTerrain,
+  applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
   applyMapLandDimensions,
@@ -1627,6 +1636,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   dividersMagnitude: dividersMagnitude.value,
   perimeterMagnitude: perimeterMagnitude.value,
   terrainDTerrain: terrainDTerrain.value,
+  plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
   displayUnitCount: displayUnitCount.value,
@@ -1652,6 +1662,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyDividersMagnitude,
   applyPerimeterMagnitude,
   applyTerrainDTerrain,
+  applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
   setForceFieldsVisible,
@@ -1684,6 +1695,7 @@ watchEffect(() => {
   m.dividersMagnitude = dividersMagnitude.value;
   m.perimeterMagnitude = perimeterMagnitude.value;
   m.terrainDTerrain = terrainDTerrain.value;
+  m.plateauWallSlopeDegrees = plateauWallSlopeDegrees.value;
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
   m.displayUnitCount = displayUnitCount.value;
@@ -1710,6 +1722,7 @@ watchEffect(() => {
     dividersMagnitude: dividersMagnitude.value,
     perimeterMagnitude: perimeterMagnitude.value,
     terrainDTerrain: terrainDTerrain.value,
+    plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
     metalDepositStep: metalDepositStep.value,
     terrainDetail: terrainDetail.value,
     mapWidthLandCells: mapWidthLandCells.value,
@@ -2518,6 +2531,7 @@ watchEffect(() => {
       :dividers-magnitude="dividersMagnitude"
       :perimeter-magnitude="perimeterMagnitude"
       :terrain-d-terrain="terrainDTerrain"
+      :plateau-wall-slope-degrees="plateauWallSlopeDegrees"
       :metal-deposit-step="metalDepositStep"
       :terrain-detail="terrainDetail"
       :map-width-land-cells="mapWidthLandCells"
@@ -2548,6 +2562,7 @@ watchEffect(() => {
       @set-dividers-magnitude="(v) => applyDividersMagnitude(v)"
       @set-perimeter-magnitude="(v) => applyPerimeterMagnitude(v)"
       @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
+      @set-plateau-wall-slope-degrees="(v) => applyPlateauWallSlopeDegrees(v)"
       @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"
       @set-terrain-detail="(v) => applyTerrainDetail(v)"
       @set-preset="(p) => applyPreset(p)"

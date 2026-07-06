@@ -24,6 +24,10 @@ import {
   CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD,
   ClientRenderTurretStateSlab,
 } from './ClientRenderTurretStateSlab';
+import {
+  entityLodProxyGlyph3D,
+  entityLodProxyRadius3D,
+} from './EntityLod3D';
 import { UnitRenderPacket3D } from './EntityRenderPackets3D';
 import { ShieldRenderPacket3D } from './ShieldRenderer3D';
 
@@ -273,6 +277,28 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   assertContract(packet.lifecycleDirtyAt(0), 'packet lifecycle-dirty bit must be composed');
   assertContract(packet.x[0] === Math.fround(unit.transform.x), 'packet x must match slab x');
   assertContract(packet.velocityX[0] === Math.fround(unit.unit.velocityX), 'packet velocity must match slab velocity');
+  assertContract(
+    packet.lodProxyRadius[0] === Math.fround(entityLodProxyRadius3D(unit)),
+    'packet LOD proxy radius must come from the slab row',
+  );
+  assertContract(
+    packet.lodProxyGlyph[0] === entityLodProxyGlyph3D(unit),
+    'packet LOD proxy glyph must come from the slab row',
+  );
+  const lodProxyPacket = new UnitRenderPacket3D();
+  lodProxyPacket.pushEntityState(unit, slab.getViews(), slot!, turretSlab, false, false, false, true);
+  assertContract(lodProxyPacket.count === 1, 'LOD proxy packet must accept a unit slab row');
+  assertContract(lodProxyPacket.lodProxyAt(0), 'LOD proxy packet must carry the proxy bit');
+  assertContract(lodProxyPacket.entityAt(0) === undefined, 'LOD proxy packet must not retain an entity object');
+  assertContract(lodProxyPacket.turretStateAt(0) === undefined, 'LOD proxy packet must skip turret rows');
+  assertContract(
+    lodProxyPacket.lodProxyRadius[0] === Math.fround(entityLodProxyRadius3D(unit)),
+    'LOD proxy packet radius must come from typed slab state',
+  );
+  assertContract(
+    lodProxyPacket.lodProxyGlyph[0] === entityLodProxyGlyph3D(unit),
+    'LOD proxy packet glyph must come from typed slab state',
+  );
 
   const slabFlagPacket = new UnitRenderPacket3D();
   slab.clearPacketFlags();
@@ -307,6 +333,53 @@ export function runClientRenderEntityStateSlabContractTest(): void {
   );
   slab.collectEntityIdsMissingFrom(new Set<EntityId>([reusedUnit.id]), missingIds);
   assertContract(missingIds.length === 0, 'missing-id collection must honor present ids');
+  const highIdUnit = createTestUnit(1_000_005, 3 as PlayerId);
+  slab.refreshUnit(highIdUnit);
+  slab.collectEntityIdsMissingFromTypedWireRows(
+    new Float64Array([reusedUnit.id, 0]),
+    1,
+    2,
+    new Float64Array([highIdUnit.id, 0, 0]),
+    1,
+    3,
+    new Float64Array(0),
+    0,
+    1,
+    missingIds,
+  );
+  assertContract(missingIds.length === 0, 'typed-row missing-id collection must honor indexed and fallback ids');
+  slab.collectEntityIdsMissingFromTypedWireRows(
+    new Float64Array([reusedUnit.id, 0]),
+    1,
+    2,
+    new Float64Array(0),
+    0,
+    1,
+    new Float64Array(0),
+    0,
+    1,
+    missingIds,
+  );
+  assertContract(
+    missingIds.length === 1 && missingIds[0] === highIdUnit.id,
+    'typed-row missing-id collection must report fallback ids absent from typed rows',
+  );
+  slab.collectEntityIdsMissingFromTypedWireRows(
+    new Float64Array([reusedUnit.id, 0]),
+    1,
+    2,
+    new Float64Array([reusedUnit.id, 0, 0]),
+    1,
+    3,
+    new Float64Array(0),
+    0,
+    1,
+    missingIds,
+  );
+  assertContract(
+    missingIds.length === 1 && missingIds[0] === highIdUnit.id,
+    'typed-row missing-id fast path must not hide duplicate incoming ids',
+  );
 
   const shieldUnit = createTestUnit(12, 4 as PlayerId, 'unitDaddy');
   const shieldSlot = slab.refreshUnit(shieldUnit);

@@ -278,6 +278,26 @@ export function runResourceMovementConformanceContractTest(): void {
     (converterConfig.conversionRate ?? 0) * (1 - world.converterTax),
     'converter produced flow rate after tax',
   );
+  economyManager.setEconomyState(playerId, {
+    ...createEconomyState(),
+    stockpile: { curr: 100, max: 200 },
+    metal: {
+      ...createEconomyState().metal,
+      stockpile: { curr: 0, max: 200 },
+    },
+  });
+  const converterActiveState = converter.building?.activeState ?? null;
+  if (converterActiveState !== null) converterActiveState.open = false;
+  resourceMovementSystem.beginTick(world);
+  economyManager.processConverters(world, 1000);
+  const closedConverterEconomy = economyManager.getEconomy(playerId);
+  assertContract(closedConverterEconomy !== undefined, 'closed converter test must keep economy state');
+  assertContract(
+    !world.resourceMovements.some((movement) => movement.reason === 'conversion'),
+    'OFF converter must not publish conversion pylon movements',
+  );
+  assertNear(closedConverterEconomy.stockpile.curr, 100, 'OFF converter must not consume energy');
+  assertNear(closedConverterEconomy.metal.stockpile.curr, 0, 'OFF converter must not produce metal');
 
   economyManager.reset();
 }

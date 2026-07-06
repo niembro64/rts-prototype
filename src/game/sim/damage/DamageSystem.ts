@@ -71,7 +71,7 @@ const _reusableResult: DamageResult = {
 // to the pool before clearing the result.
 const _knockbackPool: KnockbackInfo[] = [];
 function rentKnockback(): KnockbackInfo {
-  return _knockbackPool.pop() ?? { entityId: 0, force: { x: 0, y: 0 } };
+  return _knockbackPool.pop() ?? { entityId: 0, entitySlot: -1, force: { x: 0, y: 0 } };
 }
 function pushKnockback(
   result: DamageResult,
@@ -79,9 +79,11 @@ function pushKnockback(
   fx: number,
   fy: number,
   fz: number = 0,
+  entitySlot: number = -1,
 ): void {
   const k = rentKnockback();
   k.entityId = entityId;
+  k.entitySlot = entitySlot;
   k.force.x = fx;
   k.force.y = fy;
   k.forceZ = fz;
@@ -2050,7 +2052,7 @@ export class DamageSystem {
 
     // Add knockback for units (buildings don't get pushed).
     if (isUnit && projMass > 0) {
-      pushKnockback(result, entity.id, forceX, forceY);
+      pushKnockback(result, entity.id, forceX, forceY, 0, entity.entitySlotId);
     }
   }
 
@@ -2248,7 +2250,7 @@ export class DamageSystem {
 
         // Add knockback (direction is from center outward)
         if (force > 0 && _areaDamageOutDistance[row] > 0) {
-          pushKnockback(result, unit.id, forceX, forceY, forceZ);
+          pushKnockback(result, unit.id, forceX, forceY, forceZ, slot);
         }
         continue;
       }
@@ -2468,7 +2470,7 @@ export class DamageSystem {
         force > 0 &&
         _deathExplosionDamageOutDistance[row] > 0
       ) {
-        pushKnockback(result, unit.id, forceX, forceY, forceZ);
+        pushKnockback(result, unit.id, forceX, forceY, forceZ, unit.entitySlotId);
       }
     }
 

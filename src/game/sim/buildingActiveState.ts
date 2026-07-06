@@ -58,7 +58,8 @@ export function buildingBlueprintHasBarOnOffCommand(
   buildingBlueprintId: BuildingBlueprintId | null | undefined,
 ): boolean {
   return buildingBlueprintId === 'buildingSolar'
-    || isMetalExtractorBlueprintId(buildingBlueprintId);
+    || isMetalExtractorBlueprintId(buildingBlueprintId)
+    || buildingBlueprintId === 'buildingResourceConverter';
 }
 
 function createInitialBuildingActiveState(): BuildingActiveState {

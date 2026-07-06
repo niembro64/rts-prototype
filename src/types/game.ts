@@ -126,6 +126,8 @@ export type GameServerConfig = {
   perimeterMagnitude?: number;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain?: number;
+  /** D-PLATEAU wall slope angle in degrees from horizontal. */
+  plateauWallSlopeDegrees?: number;
   /** Metal-extractor pad altitude step (world units). */
   metalDepositStep?: number;
   /** Fine-triangle subdivisions per land cell. 0 = off; higher values

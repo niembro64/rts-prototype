@@ -51,6 +51,9 @@ export type AnyDamageSource = SweptDamageSource | AreaDamageSource;
 
 export type KnockbackInfo = {
   entityId: EntityId;
+  /** Entity-slot cache for hot force application. `-1` means the caller only
+   *  had an id and ForceAccumulator should resolve the current slot. */
+  entitySlot: number;
   force: Vec2;
   /** Optional vertical force component for 3D pushes. Splash explosions
    *  pass `dirZ * force` so a blast below a unit lifts it. Omitted/0

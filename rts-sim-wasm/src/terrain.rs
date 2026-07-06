@@ -2316,7 +2316,7 @@ pub(crate) fn terrain_build_adaptive_mesh_internal(
 ///   vertexCoords(2V), vertexHeights(V), triangleIndices(3T), triangleLevels(T),
 ///   neighborIndices(3T), neighborLevels(3T), cellOffsets(cellsX*cellsY+1),
 ///   cellIndices(R)]`. On any failure the buffer is `[0.0]`. `terrain_config`
-/// is the 22-value generation slice (see metal_deposit_terrain_config_from_slice);
+/// is the 23-value generation slice (see metal_deposit_terrain_config_from_slice);
 /// `flat_zones` is the 5-stride deposit override list; `lod_config` packs the 10
 /// triangle/repair tuning values.
 #[allow(clippy::too_many_arguments)]
@@ -3168,6 +3168,129 @@ pub fn terrain_sample_ground_for_slots(
             ground_normals_out[base + 2] = 1.0;
         }
     }
+    1
+}
+
+/// Batch terrain bed samples for force/support input rows.
+/// Unlike `terrain_sample_ground_for_slots`, this always writes the terrain-bed
+/// normal and whether the sampled bed is below the water plane, so callers can
+/// build terrain support rows without re-sampling terrain in TypeScript.
+#[wasm_bindgen]
+pub fn terrain_sample_force_support_for_slots(
+    body_slots: &[u32],
+    ground_z_out: &mut [f64],
+    ground_normals_out: &mut [f64],
+    material_flags_out: &mut [u32],
+) -> u32 {
+    let count = body_slots.len();
+    debug_assert!(ground_z_out.len() >= count);
+    debug_assert!(ground_normals_out.len() >= 3 * count);
+    debug_assert!(material_flags_out.len() >= count);
+
+    let t = terrain_grid();
+    if !t.installed {
+        return 0;
+    }
+    let p = pool();
+    for i in 0..count {
+        let slot = body_slots[i] as usize;
+        if slot >= POOL_CAPACITY_USIZE || p.flags[slot] & BODY_FLAG_OCCUPIED == 0 {
+            return 0;
+        }
+
+        let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, p.pos_x[slot], p.pos_y[slot]);
+        let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+            Some(s) => s,
+            None => return 0,
+        };
+        let ground_z = terrain_height_from_triangle_sample(sample);
+        let (nx, ny, nz) = terrain_bed_normal_from_triangle_sample(sample);
+        let base = i * 3;
+        ground_z_out[i] = ground_z;
+        ground_normals_out[base] = nx;
+        ground_normals_out[base + 1] = ny;
+        ground_normals_out[base + 2] = nz;
+        material_flags_out[i] = if ground_z < TERRAIN_WATER_LEVEL { 1 } else { 0 };
+    }
+    1
+}
+
+const TERRAIN_WATER_PROBE_DX: [f64; 8] = [
+    1.0,
+    0.7071067811865476,
+    0.0,
+    -0.7071067811865475,
+    -1.0,
+    -0.7071067811865477,
+    0.0,
+    0.7071067811865474,
+];
+const TERRAIN_WATER_PROBE_DY: [f64; 8] = [
+    0.0,
+    0.7071067811865475,
+    1.0,
+    0.7071067811865476,
+    0.0,
+    -0.7071067811865475,
+    -1.0,
+    -0.7071067811865477,
+];
+
+#[inline]
+fn terrain_sample_is_water(t: &TerrainGrid, x: f64, z: f64) -> Option<bool> {
+    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
+    let sample = terrain_triangle_sample_at(t, px, pz, cell_x, cell_y)?;
+    Some(terrain_height_from_triangle_sample(sample) < TERRAIN_WATER_LEVEL)
+}
+
+/// Batch terrain-only water escape probes. `center_water_flags_out[i]` is 1
+/// when the probe center is under the water plane. `dry_masks_out[i]` uses the
+/// same eight compass bits as UnitForceSystem's JS waterDryMask path, with a bit
+/// set when that offset point is not water.
+#[wasm_bindgen]
+pub fn terrain_sample_water_probe_masks(
+    centers_x: &[f64],
+    centers_z: &[f64],
+    probe_radii: &[f64],
+    center_water_flags_out: &mut [u32],
+    dry_masks_out: &mut [u32],
+) -> u32 {
+    let count = centers_x.len();
+    debug_assert!(centers_z.len() >= count);
+    debug_assert!(probe_radii.len() >= count);
+    debug_assert!(center_water_flags_out.len() >= count);
+    debug_assert!(dry_masks_out.len() >= count);
+
+    let t = terrain_grid();
+    if !t.installed {
+        return 0;
+    }
+
+    for i in 0..count {
+        let x = centers_x[i];
+        let z = centers_z[i];
+        let radius = probe_radii[i].max(0.0);
+        let center_is_water = match terrain_sample_is_water(t, x, z) {
+            Some(value) => value,
+            None => return 0,
+        };
+        center_water_flags_out[i] = if center_is_water { 1 } else { 0 };
+
+        let mut mask = 0u32;
+        for probe in 0..8 {
+            let px = x + TERRAIN_WATER_PROBE_DX[probe] * radius;
+            let pz = z + TERRAIN_WATER_PROBE_DY[probe] * radius;
+            let probe_is_water = match terrain_sample_is_water(t, px, pz) {
+                Some(value) => value,
+                None => return 0,
+            };
+            if !probe_is_water {
+                mask |= 1 << probe;
+            }
+        }
+        dry_masks_out[i] = mask;
+    }
+
     1
 }
 

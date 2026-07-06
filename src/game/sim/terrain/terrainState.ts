@@ -11,6 +11,7 @@ import {
   TERRAIN_DIVIDERS_MAGNITUDE,
   TERRAIN_FINE_TRIANGLE_SUBDIV,
   TERRAIN_PERIMETER_MAGNITUDE,
+  TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
   type TerrainRuntimeConfig,
 } from './terrainConfig';
 
@@ -96,6 +97,7 @@ export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
+    plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   };
@@ -117,6 +119,7 @@ export function setTerrainCenterMagnitude(value: number): void {
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
+    plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   });
@@ -131,6 +134,7 @@ export function setTerrainDividersMagnitude(value: number): void {
     dividersMagnitude: value,
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
+    plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   });
@@ -145,6 +149,7 @@ export function setTerrainPerimeterMagnitude(value: number): void {
     dividersMagnitude: TERRAIN_DIVIDERS_MAGNITUDE,
     perimeterMagnitude: value,
     terrainDTerrain: TERRAIN_D_TERRAIN,
+    plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   });

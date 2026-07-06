@@ -181,6 +181,16 @@ export function runUIUpdateManagerContractTest(): void {
       t2MexSelection.hasBarBuildingStopControl,
     'BAR armamex/buildingExtractorT2 must expose Stop while armmex/buildingExtractor keeps removestop=true and only exposes ON/OFF',
   );
+  const converterSelection = buildSelectionInfo(
+    entitySourceForSelection([], [activeBuildingEntity(22, 'buildingResourceConverter')]),
+    undefined,
+  );
+  assertContract(
+    converterSelection.hasBarBuildingActiveControl &&
+      !converterSelection.hasBarBuildingStopControl &&
+      converterSelection.details.some((row) => row.label === 'Power' && row.value === 'On'),
+    'BAR armmakr/buildingResourceConverter analogue must expose ON/OFF and selected-info active state without Stop',
+  );
 
   const nonBarFactorySelection = buildSelectionInfo(
     entitySourceForSelection([], [factoryTowerEntity(11, 'towerCannon')]),

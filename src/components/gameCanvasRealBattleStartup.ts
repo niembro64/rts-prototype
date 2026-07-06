@@ -186,6 +186,8 @@ function buildRealBattleLobbySettingsFromTerrain(
     dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
     perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
     terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
+    plateauWallSlopeDegrees:
+      terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
     metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
     terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
     mapWidthLandCells: terrain.mapDimensions.widthLandCells,
@@ -313,6 +315,7 @@ function assertTerrainMatchesSettings(
   pushMismatch(mismatches, 'dividersMagnitude', terrain.terrainRuntimeConfig.dividersMagnitude, settings.dividersMagnitude);
   pushMismatch(mismatches, 'perimeterMagnitude', terrain.terrainRuntimeConfig.perimeterMagnitude, settings.perimeterMagnitude);
   pushMismatch(mismatches, 'terrainDTerrain', terrain.terrainRuntimeConfig.terrainDTerrain, settings.terrainDTerrain);
+  pushMismatch(mismatches, 'plateauWallSlopeDegrees', terrain.terrainRuntimeConfig.plateauWallSlopeDegrees, settings.plateauWallSlopeDegrees);
   pushMismatch(mismatches, 'metalDepositStep', terrain.terrainRuntimeConfig.metalDepositStep, settings.metalDepositStep);
   pushMismatch(mismatches, 'terrainDetail', terrain.terrainRuntimeConfig.terrainDetail, settings.terrainDetail);
   pushMismatch(mismatches, 'mapWidthLandCells', terrain.mapDimensions.widthLandCells, settings.mapWidthLandCells);
@@ -461,6 +464,8 @@ async function createRealBattleServer({
       dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
       terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
+      plateauWallSlopeDegrees:
+        terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
       metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
       terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
       mapWidthLandCells: terrain.mapDimensions.widthLandCells,
@@ -1178,6 +1183,8 @@ async function createWorkerAuthoritativeBackendRuntime({
       dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
       terrainDTerrain: terrain.terrainRuntimeConfig.terrainDTerrain,
+      plateauWallSlopeDegrees:
+        terrain.terrainRuntimeConfig.plateauWallSlopeDegrees,
       metalDepositStep: terrain.terrainRuntimeConfig.metalDepositStep,
       terrainDetail: terrain.terrainRuntimeConfig.terrainDetail,
       mapWidthLandCells: terrain.mapDimensions.widthLandCells,

@@ -84,6 +84,7 @@ import {
   spliceUnitActions,
   unshiftUnitAction,
 } from './unitActions';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 import { dropTurretLockMidTick } from './combat/combatActivitySlab';
 import { isAliveGuardTarget } from './guard';
 import { isReclaimableTarget } from './reclaim';
@@ -824,10 +825,7 @@ function executeStopCommand(ctx: CommandContext, command: StopCommand): void {
       entity.unit.patrolStartIndex = null;
       entity.unit.stuckTicks = 0;
       resetFlyingLoiterToCurrentPosition(entity, ctx.world);
-      entity.unit.thrustDirX = 0;
-      entity.unit.thrustDirY = 0;
-      entity.unit.headingDirX = 0;
-      entity.unit.headingDirY = 0;
+      entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entity.entitySlotId);
       if (entity.builder) entity.builder.currentBuildTarget = NO_ENTITY_ID;
       changed = true;
     } else if (!entityHasBarStopCommand(entity)) {

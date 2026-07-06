@@ -20,6 +20,7 @@ import {
 } from './snapshotProjectileWirePack';
 import {
   createProjectileSnapshotWireSource,
+  getActiveProjectileSnapshotWireSource,
   PROJECTILE_BEAM_POINT_WIRE_STRIDE,
   PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
@@ -412,7 +413,39 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'steady beam target snapshots must reset local projection age without rewriting display state',
   );
 
-  view.applyNetworkState(projectileSnapshot(7, [plasmaSpawn(303, 700, 700)]));
+  view.applyNetworkState(directProjectileSpawnSnapshot(7, beamSpawn(305, 360, 300)));
+  const packedBeamSnapshot = directBeamUpdateSnapshot(8, 305);
+  const packedBeamProjectiles = packProjectilesForWire(packedBeamSnapshot.projectiles);
+  assertContract(packedBeamProjectiles !== undefined, 'test beam update must pack for wire');
+  const decodedPackedBeamSnapshot = decodeNetworkSnapshot(
+    msgpackEncode({
+      ...packedBeamSnapshot,
+      projectiles: packedBeamProjectiles,
+    }, { ignoreUndefined: true }),
+    { packedProjectileDeltas: 'metadata-only' },
+  );
+  const decodedPackedBeamProjectiles = decodedPackedBeamSnapshot.projectiles;
+  if (decodedPackedBeamProjectiles === undefined) {
+    assertContract(false, 'packed metadata-only beam decode must keep a projectile section');
+    return;
+  }
+  const packedBeamSource = getActiveProjectileSnapshotWireSource(decodedPackedBeamProjectiles);
+  assertContract(
+    decodedPackedBeamProjectiles.beamUpdates === undefined &&
+      packedBeamSource?.beamUpdates.count === 1 &&
+      packedBeamSource.beamPoints.count === 3,
+    'packed metadata-only beam decode must expose wire rows without DTO beam updates',
+  );
+  view.applyNetworkState(decodedPackedBeamSnapshot);
+  const packedBeamPoints = view.getEntity(305)?.projectile?.points;
+  assertContract(
+    packedBeamPoints?.length === 3 &&
+      packedBeamPoints[1].reflectorEntityId === 900 &&
+      packedBeamPoints[2].x === 420,
+    'packed metadata-only beam wire rows must apply reflected beam paths without DTO beam rows',
+  );
+
+  view.applyNetworkState(projectileSnapshot(9, [plasmaSpawn(303, 700, 700)]));
   assertContract(
     view.getProjectiles().some((entity) => entity.id === 303),
     'projectile spawns must incrementally enter the client entity cache',
@@ -423,7 +456,7 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'scoped projectile query must include newly spawned plasma projectile',
   );
 
-  const plasmaVelocitySnapshot = projectileSnapshot(8, undefined);
+  const plasmaVelocitySnapshot = projectileSnapshot(10, undefined);
   plasmaVelocitySnapshot.projectiles!.velocityUpdates = [{
     id: 303,
     pos: { x: qProjPos(1500), y: qProjPos(1500), z: qProjPos(35) },
@@ -443,7 +476,7 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'projectile velocity update must move the render spatial slot into its new query bounds',
   );
 
-  view.applyNetworkState(projectileSnapshot(9, undefined, [301, 302, 303, 304]));
+  view.applyNetworkState(projectileSnapshot(11, undefined, [301, 302, 303, 304, 305]));
   assertContract(
     !view.getProjectiles().some((entity) => entity.id === 303),
     'projectile despawns must incrementally leave the client entity cache',

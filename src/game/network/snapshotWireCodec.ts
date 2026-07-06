@@ -301,7 +301,11 @@ function unpackNetworkSnapshotFromWire(
     snapshot.projectiles = unpackProjectilesFromWire(
       projectiles,
       options.packedProjectileDeltas === 'metadata-only'
-        ? { materializeDespawns: false, materializeVelocityUpdates: false }
+        ? {
+            materializeDespawns: false,
+            materializeVelocityUpdates: false,
+            materializeBeamUpdates: false,
+          }
         : undefined,
     );
   }

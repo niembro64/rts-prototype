@@ -1,5 +1,6 @@
 import type { EntityId } from './types';
 import { magnitude } from '../math';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 
 import type { ForceContribution } from '@/types/ui';
 import type { KnockbackInfo } from '@/types/damage';
@@ -9,6 +10,7 @@ import type { KnockbackInfo } from '@/types/damage';
  */
 type EntityForces = {
   entityId: EntityId;
+  entitySlot: number;
   contributions: ForceContribution[];
   contributionCount: number;  // How many contributions are active (avoids .length = 0 + push overhead)
   finalFx: number;
@@ -33,6 +35,15 @@ type EntityForces = {
 export class ForceAccumulator {
   private forces: Map<EntityId, EntityForces> = new Map();
   private activeEntries: EntityForces[] = [];
+  private activeSlotMarks = new Uint32Array(1024);
+  private activeSlotMark = 1;
+  private activeSlots = new Uint32Array(1024);
+  private activeSlotCount = 0;
+  private slotFinalFx = new Float64Array(1024);
+  private slotFinalFy = new Float64Array(1024);
+  private slotFinalFz = new Float64Array(1024);
+  private slotEntityId = new Int32Array(1024);
+  private slotCacheValid = false;
 
   /**
    * Clear all accumulated forces (call at start of each frame).
@@ -48,6 +59,7 @@ export class ForceAccumulator {
       entry.active = false;
     }
     this.activeEntries.length = 0;
+    this.slotCacheValid = false;
   }
 
   /**
@@ -57,6 +69,7 @@ export class ForceAccumulator {
   reset(): void {
     this.forces.clear();
     this.activeEntries.length = 0;
+    this.slotCacheValid = false;
   }
 
   /**
@@ -71,12 +84,16 @@ export class ForceAccumulator {
     fy: number,
     source: string = 'unknown',
     fz: number = 0,
+    entitySlot: number = -1,
   ): void {
     if (!Number.isFinite(fx) || !Number.isFinite(fy) || !Number.isFinite(fz)) return;
+    this.slotCacheValid = false;
+    const resolvedSlot = entitySlot >= 0 ? entitySlot : entitySlotRegistry.getSlot(entityId);
     let entry = this.forces.get(entityId);
     if (!entry) {
       entry = {
         entityId,
+        entitySlot: resolvedSlot,
         contributions: [],
         contributionCount: 0,
         finalFx: 0,
@@ -85,6 +102,8 @@ export class ForceAccumulator {
         active: false,
       };
       this.forces.set(entityId, entry);
+    } else if (resolvedSlot >= 0 && entry.entitySlot !== resolvedSlot) {
+      entry.entitySlot = resolvedSlot;
     }
     if (!entry.active) {
       entry.active = true;
@@ -121,6 +140,7 @@ export class ForceAccumulator {
         knockback.force.y,
         'knockback',
         knockback.forceZ ?? 0,
+        knockback.entitySlot,
       );
     }
   }
@@ -203,6 +223,7 @@ export class ForceAccumulator {
    * Finalize forces by summing all contributions.
    */
   finalize(): void {
+    this.slotCacheValid = false;
     for (let a = 0; a < this.activeEntries.length; a++) {
       const entry = this.activeEntries[a];
       entry.finalFx = 0;
@@ -218,64 +239,115 @@ export class ForceAccumulator {
     }
   }
 
-  /** Reusable scratch for `readFinalForce`. */
-  private _scratchForce: { fx: number; fy: number; fz: number } = { fx: 0, fy: 0, fz: 0 };
-
-  /**
-   * Get the final force for an entity (after finalize). Returns null
-   * when the entity has no contributions; otherwise returns a SHARED
-   * scratch object whose fields are mutated on each call — the caller
-   * must read the components immediately and not retain the reference.
-   * Avoids ~one allocation per dynamic unit per tick.
-   */
-  getFinalForce(entityId: EntityId): { fx: number; fy: number; fz: number } | null {
-    const entry = this.forces.get(entityId);
-    if (!entry || entry.contributionCount === 0) return null;
-    const out = this._scratchForce;
-    out.fx = entry.finalFx;
-    out.fy = entry.finalFy;
-    out.fz = entry.finalFz;
-    return out;
-  }
-
-  /**
-   * Check if entity has any force contributions.
-   */
-  hasForce(entityId: EntityId): boolean {
-    const entry = this.forces.get(entityId);
-    return entry !== undefined && entry.contributionCount > 0;
-  }
-
   activeEntityCount(): number {
     return this.activeEntries.length;
   }
 
-  /**
-   * Append entity IDs that have live force contributions this frame.
-   * Unlike getEntityIds(), this ignores warm cached entries whose
-   * contributionCount was reset by clear().
-   */
-  collectActiveEntityIds(out: EntityId[]): void {
-    for (let i = 0; i < this.activeEntries.length; i++) {
-      const entry = this.activeEntries[i];
-      if (entry.contributionCount > 0) out.push(entry.entityId);
-    }
-    out.sort((a, b) => a - b);
-  }
-
   collectActiveEntitySlots(
     out: Uint32Array,
-    slotForEntityId: (entityId: EntityId) => number,
+    slotForEntityId?: (entityId: EntityId) => number,
   ): number {
-    let count = 0;
+    this.prepareSlotCache(slotForEntityId);
+    out.set(this.activeSlots.subarray(0, this.activeSlotCount));
+    return this.activeSlotCount;
+  }
+
+  copyFinalForceBySlot(
+    slot: number,
+    out: Float64Array,
+    offset: number,
+    expectedEntityId?: EntityId,
+  ): boolean {
+    if (
+      !this.slotCacheValid ||
+      slot < 0 ||
+      slot >= this.activeSlotMarks.length ||
+      this.activeSlotMarks[slot] !== this.activeSlotMark ||
+      (expectedEntityId !== undefined && this.slotEntityId[slot] !== expectedEntityId) ||
+      offset < 0 ||
+      offset + 2 >= out.length
+    ) {
+      return false;
+    }
+    out[offset] = this.slotFinalFx[slot];
+    out[offset + 1] = this.slotFinalFy[slot];
+    out[offset + 2] = this.slotFinalFz[slot];
+    return true;
+  }
+
+  private prepareSlotCache(slotForEntityId?: (entityId: EntityId) => number): void {
+    if (this.slotCacheValid) return;
+    this.beginSlotCacheFrame();
+    this.activeSlotCount = 0;
     for (let i = 0; i < this.activeEntries.length; i++) {
       const entry = this.activeEntries[i];
       if (entry.contributionCount <= 0) continue;
-      const slot = slotForEntityId(entry.entityId);
-      if (slot < 0) continue;
-      out[count++] = slot;
+      let slot = entry.entitySlot;
+      if (slot < 0 || !Number.isInteger(slot)) {
+        slot = slotForEntityId !== undefined
+          ? slotForEntityId(entry.entityId)
+          : entitySlotRegistry.getSlot(entry.entityId);
+        if (slot >= 0 && Number.isInteger(slot)) entry.entitySlot = slot;
+      }
+      if (slot < 0 || !Number.isInteger(slot)) continue;
+      this.ensureSlotCacheCapacity(slot);
+      if (this.activeSlotMarks[slot] !== this.activeSlotMark) {
+        this.activeSlotMarks[slot] = this.activeSlotMark;
+        this.ensureActiveSlotListCapacity(this.activeSlotCount + 1);
+        this.activeSlots[this.activeSlotCount++] = slot;
+        this.slotFinalFx[slot] = entry.finalFx;
+        this.slotFinalFy[slot] = entry.finalFy;
+        this.slotFinalFz[slot] = entry.finalFz;
+        this.slotEntityId[slot] = entry.entityId;
+      } else {
+        this.slotFinalFx[slot] += entry.finalFx;
+        this.slotFinalFy[slot] += entry.finalFy;
+        this.slotFinalFz[slot] += entry.finalFz;
+        if (this.slotEntityId[slot] !== entry.entityId) {
+          this.slotEntityId[slot] = -1;
+        }
+      }
     }
-    return count;
+    this.slotCacheValid = true;
+  }
+
+  private beginSlotCacheFrame(): void {
+    if (this.activeSlotMark >= 0xffffffff) {
+      this.activeSlotMarks.fill(0);
+      this.activeSlotMark = 1;
+      return;
+    }
+    this.activeSlotMark++;
+  }
+
+  private ensureSlotCacheCapacity(slot: number): void {
+    if (slot < this.activeSlotMarks.length) return;
+    let capacity = this.activeSlotMarks.length;
+    while (capacity <= slot) capacity *= 2;
+    const marks = new Uint32Array(capacity);
+    marks.set(this.activeSlotMarks);
+    this.activeSlotMarks = marks;
+    const fx = new Float64Array(capacity);
+    fx.set(this.slotFinalFx);
+    this.slotFinalFx = fx;
+    const fy = new Float64Array(capacity);
+    fy.set(this.slotFinalFy);
+    this.slotFinalFy = fy;
+    const fz = new Float64Array(capacity);
+    fz.set(this.slotFinalFz);
+    this.slotFinalFz = fz;
+    const entityIds = new Int32Array(capacity);
+    entityIds.set(this.slotEntityId);
+    this.slotEntityId = entityIds;
+  }
+
+  private ensureActiveSlotListCapacity(required: number): void {
+    if (required <= this.activeSlots.length) return;
+    let capacity = this.activeSlots.length;
+    while (capacity < required) capacity *= 2;
+    const next = new Uint32Array(capacity);
+    next.set(this.activeSlots);
+    this.activeSlots = next;
   }
 
   /**

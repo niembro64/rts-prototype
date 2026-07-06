@@ -51,6 +51,7 @@ const SUPPORT_SURFACE_CONTRACT_TERRAIN: TerrainRuntimeConfig = {
   // test can find both ground and water support surfaces (round-island).
   perimeterMagnitude: -800,
   terrainDTerrain: 0,
+  plateauWallSlopeDegrees: 89,
   metalDepositStep: 0,
   terrainDetail: 1,
 };

@@ -17,11 +17,14 @@
   "terrainDTerrain": {
     "options": [100, 200, 400, 800, 0]
   },
+  "plateauWallSlopeDegrees": {
+    "options": [89, 85, 80, 70, 45]
+  },
   "metalDepositStep": {
     "options": [0, 100, 200, 400, 800, 1600, 3200, 6400]
   },
   "terrainDetail": {
-    "options": [0, 1, 2, 4, 8, 16]
+    "options": [0, 1, 2, 4, 8, 16, 32]
   },
   "converterTax": {
     "options": [0.0, 0.1, 0.5]
@@ -57,6 +60,8 @@
     "realPerimeterMagnitude": "real-battle-perimeter-magnitude",
     "demoTerrainDTerrain": "demo-battle-terrain-d-terrain",
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
+    "demoPlateauWallSlopeDegrees": "demo-battle-plateau-wall-slope-degrees",
+    "realPlateauWallSlopeDegrees": "real-battle-plateau-wall-slope-degrees",
     "demoMetalDepositStep": "demo-battle-metal-deposit-step",
     "realMetalDepositStep": "real-battle-metal-deposit-step",
     "demoTerrainDetail": "demo-battle-terrain-detail",

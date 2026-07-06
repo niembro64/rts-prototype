@@ -103,6 +103,10 @@ export type TerrainRuntimeConfig = {
   /** Plateau lattice step (D-PLATEAU bar). 0 = NONE (terracing
    *  disabled — the sim short-circuits on step <= 0). */
   terrainDTerrain: number;
+  /** Plateau wall slope angle in degrees from horizontal. Values near
+   *  90 produce cliff-like walls; lower values widen each wall into a
+   *  gentler heightfield ramp. */
+  plateauWallSlopeDegrees: number;
   /** Metal-extractor pad altitude step (D-DEPOSIT bar). */
   metalDepositStep: number;
   /** Fine-triangle subdivisions per land cell (TERRAIN DETAIL bar).
@@ -142,6 +146,12 @@ export let TERRAIN_MAX_RENDER_Y = computeTerrainMaxRenderY(
  *  plateau snapping in `applyTerrainPlateaus` and building-footprint
  *  level snapping in `terrainBuildability`. */
 export let TERRAIN_D_TERRAIN = BATTLE_CONFIG.terrainDTerrain.default;
+
+/** Slope angle of the D-PLATEAU transition band, measured from horizontal.
+ *  89deg keeps the old near-cliff behavior; lower values widen the band
+ *  before deposit flat zones are blended in. */
+export let TERRAIN_PLATEAU_WALL_SLOPE_DEGREES =
+  BATTLE_CONFIG.plateauWallSlopeDegrees.default;
 
 /** Vertical step (world units) between metal-extractor pad altitude
  *  levels. A deposit ring's `dTerrainLevels` is multiplied by this
@@ -211,6 +221,17 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     changed = true;
   }
 
+  const rawPlateauWallSlopeDegrees = Number(config.plateauWallSlopeDegrees);
+  const nextPlateauWallSlopeDegrees = Number.isFinite(
+    rawPlateauWallSlopeDegrees,
+  )
+    ? Math.max(1, Math.min(89, Math.floor(rawPlateauWallSlopeDegrees)))
+    : TERRAIN_PLATEAU_WALL_SLOPE_DEGREES;
+  if (TERRAIN_PLATEAU_WALL_SLOPE_DEGREES !== nextPlateauWallSlopeDegrees) {
+    TERRAIN_PLATEAU_WALL_SLOPE_DEGREES = nextPlateauWallSlopeDegrees;
+    changed = true;
+  }
+
   const nextDepositStep = Math.max(0, config.metalDepositStep);
   if (METAL_DEPOSIT_STEP !== nextDepositStep) {
     METAL_DEPOSIT_STEP = nextDepositStep;
@@ -218,8 +239,8 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
   }
 
   // Subdivision count must stay >= 1 — terrainTileMap divides by it
-  // and indexes from `subdiv - 1`. Battle bar options are {0,5,10,15,20};
-  // 0 lands on 1 internally ("off" = one triangle per land cell).
+  // and indexes from `subdiv - 1`. Battle bar option 0 lands on 1
+  // internally ("off" = one triangle-edge subdivision per land cell).
   const nextTerrainDetail = Math.max(1, Math.floor(config.terrainDetail));
   if (TERRAIN_FINE_TRIANGLE_SUBDIV !== nextTerrainDetail) {
     TERRAIN_FINE_TRIANGLE_SUBDIV = nextTerrainDetail;

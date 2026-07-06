@@ -23,6 +23,10 @@ import {
   CLIENT_RENDER_UNIT_FLAG_AIRBORNE,
   CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION,
 } from './ClientRenderEntityStateSlab';
+import {
+  entityLodProxyGlyph3D,
+  entityLodProxyRadius3D,
+} from './EntityLod3D';
 import type {
   ClientRenderTurretHostRows,
   ClientRenderTurretStateSlab,
@@ -61,6 +65,15 @@ function growFloat64(
   nextCapacity: number,
 ): Float64Array<ArrayBuffer> {
   const next = new Float64Array(nextCapacity);
+  next.set(source);
+  return next;
+}
+
+function growUint8(
+  source: Uint8Array<ArrayBuffer>,
+  nextCapacity: number,
+): Uint8Array<ArrayBuffer> {
+  const next = new Uint8Array(nextCapacity);
   next.set(source);
   return next;
 }
@@ -173,6 +186,8 @@ export class UnitRenderPacket3D {
   rotation = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   groundY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   radiusOther = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  lodProxyRadius = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  lodProxyGlyph = new Uint8Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalX = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   normalZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -230,6 +245,8 @@ export class UnitRenderPacket3D {
     this.rotation[cursor] = entity.transform.rotation;
     this.groundY[cursor] = getUnitGroundZ(entity);
     this.radiusOther[cursor] = unit.radius.other || unit.radius.hitbox || 15;
+    this.lodProxyRadius[cursor] = entityLodProxyRadius3D(entity);
+    this.lodProxyGlyph[cursor] = entityLodProxyGlyph3D(entity);
     this.normalX[cursor] = unit.surfaceNormal.nx;
     this.normalY[cursor] = unit.surfaceNormal.ny;
     this.normalZ[cursor] = unit.surfaceNormal.nz;
@@ -260,9 +277,37 @@ export class UnitRenderPacket3D {
     lifecycleDirty: boolean = false,
     lodProxy: boolean = false,
   ): void {
-    if (entity.unit === null || state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return;
+    if (state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return;
+    if (!lodProxy && entity.unit === null) return;
     const cursor = this.count;
     this.ensureCapacity(cursor + 1);
+    const flags = entityRenderFlagsFromState(
+      state.flags[slot],
+      activePrediction,
+      renderDirty,
+      lifecycleDirty,
+      lodProxy,
+    );
+    if (lodProxy) {
+      this.entities[cursor] = undefined;
+      this.turrets[cursor] = EMPTY_TURRETS;
+      this.turretHostSlots[cursor] = -1;
+      this.turretStarts[cursor] = 0;
+      this.turretStateCounts[cursor] = 0;
+      this.unitBlueprintIds[cursor] = undefined;
+      this.ids[cursor] = state.entityIds[slot];
+      this.ownerIds[cursor] = state.ownerIds[slot];
+      this.x[cursor] = state.x[slot];
+      this.y[cursor] = state.y[slot];
+      this.z[cursor] = state.z[slot];
+      this.lodProxyRadius[cursor] = state.lodProxyRadius[slot];
+      this.lodProxyGlyph[cursor] = state.lodProxyGlyph[slot];
+      this.turretCount[cursor] = 0;
+      this.passiveTurretIndex[cursor] = NO_PASSIVE_TURRET_INDEX;
+      this.flags[cursor] = flags;
+      this.count = cursor + 1;
+      return;
+    }
     const combatTurrets = entity.combat?.turrets;
     const turretRows = combatTurrets ?? EMPTY_TURRETS;
     const turretStateRows = turretState?.hostRows(slot);
@@ -287,6 +332,8 @@ export class UnitRenderPacket3D {
     this.rotation[cursor] = state.rotation[slot];
     this.groundY[cursor] = state.groundY[slot];
     this.radiusOther[cursor] = state.radiusOther[slot];
+    this.lodProxyRadius[cursor] = state.lodProxyRadius[slot];
+    this.lodProxyGlyph[cursor] = state.lodProxyGlyph[slot];
     this.normalX[cursor] = state.normalX[slot];
     this.normalY[cursor] = state.normalY[slot];
     this.normalZ[cursor] = state.normalZ[slot];
@@ -297,13 +344,7 @@ export class UnitRenderPacket3D {
     this.bodyCenterHeight[cursor] = state.bodyCenterHeight[slot];
     this.turretCount[cursor] = state.turretCount[slot];
     this.passiveTurretIndex[cursor] = state.passiveTurretIndex[slot];
-    this.flags[cursor] = entityRenderFlagsFromState(
-      state.flags[slot],
-      activePrediction,
-      renderDirty,
-      lifecycleDirty,
-      lodProxy,
-    );
+    this.flags[cursor] = flags;
     this.count = cursor + 1;
   }
 
@@ -388,6 +429,8 @@ export class UnitRenderPacket3D {
     this.rotation = growFloat32(this.rotation, nextCapacity);
     this.groundY = growFloat32(this.groundY, nextCapacity);
     this.radiusOther = growFloat32(this.radiusOther, nextCapacity);
+    this.lodProxyRadius = growFloat32(this.lodProxyRadius, nextCapacity);
+    this.lodProxyGlyph = growUint8(this.lodProxyGlyph, nextCapacity);
     this.normalX = growFloat32(this.normalX, nextCapacity);
     this.normalY = growFloat32(this.normalY, nextCapacity);
     this.normalZ = growFloat32(this.normalZ, nextCapacity);
@@ -438,6 +481,8 @@ export class BuildingRenderPacket3D {
   footprintDepth = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   progress = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   bodyOpacity = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  lodProxyRadius = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  lodProxyGlyph = new Uint8Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   count = 0;
@@ -496,6 +541,8 @@ export class BuildingRenderPacket3D {
       : building.height;
     this.progress[cursor] = getConstructionPieceRenderFraction(entity, 'body');
     this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
+    this.lodProxyRadius[cursor] = entityLodProxyRadius3D(entity);
+    this.lodProxyGlyph[cursor] = entityLodProxyGlyph3D(entity);
     this.turretCount[cursor] = turretRows.length;
     this.flags[cursor] = entityRenderFlags(
       entity,
@@ -517,9 +564,36 @@ export class BuildingRenderPacket3D {
     lifecycleDirty: boolean = false,
     lodProxy: boolean = false,
   ): void {
-    if (entity.building === null || state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return;
+    if (state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return;
+    if (!lodProxy && entity.building === null) return;
     const cursor = this.count;
     this.ensureCapacity(cursor + 1);
+    const flags = entityRenderFlagsFromState(
+      state.flags[slot],
+      activePrediction,
+      renderDirty,
+      lifecycleDirty,
+      lodProxy,
+    );
+    if (lodProxy) {
+      this.entities[cursor] = undefined;
+      this.turrets[cursor] = EMPTY_TURRETS;
+      this.turretHostSlots[cursor] = -1;
+      this.turretStarts[cursor] = 0;
+      this.turretStateCounts[cursor] = 0;
+      this.buildingBlueprintIds[cursor] = undefined;
+      this.ids[cursor] = state.entityIds[slot];
+      this.ownerIds[cursor] = state.ownerIds[slot];
+      this.x[cursor] = state.x[slot];
+      this.y[cursor] = state.y[slot];
+      this.z[cursor] = state.z[slot];
+      this.lodProxyRadius[cursor] = state.lodProxyRadius[slot];
+      this.lodProxyGlyph[cursor] = state.lodProxyGlyph[slot];
+      this.turretCount[cursor] = 0;
+      this.flags[cursor] = flags;
+      this.count = cursor + 1;
+      return;
+    }
     const combatTurrets = entity.combat?.turrets;
     const turretRows = combatTurrets ?? EMPTY_TURRETS;
     const turretStateRows = turretState?.hostRows(slot);
@@ -547,14 +621,10 @@ export class BuildingRenderPacket3D {
     this.footprintDepth[cursor] = state.buildingFootprintDepth[slot];
     this.progress[cursor] = state.buildingProgress[slot];
     this.bodyOpacity[cursor] = state.bodyOpacity[slot];
+    this.lodProxyRadius[cursor] = state.lodProxyRadius[slot];
+    this.lodProxyGlyph[cursor] = state.lodProxyGlyph[slot];
     this.turretCount[cursor] = state.turretCount[slot];
-    this.flags[cursor] = entityRenderFlagsFromState(
-      state.flags[slot],
-      activePrediction,
-      renderDirty,
-      lifecycleDirty,
-      lodProxy,
-    );
+    this.flags[cursor] = flags;
     this.count = cursor + 1;
   }
 
@@ -638,6 +708,8 @@ export class BuildingRenderPacket3D {
     this.footprintDepth = growFloat32(this.footprintDepth, nextCapacity);
     this.progress = growFloat32(this.progress, nextCapacity);
     this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
+    this.lodProxyRadius = growFloat32(this.lodProxyRadius, nextCapacity);
+    this.lodProxyGlyph = growUint8(this.lodProxyGlyph, nextCapacity);
     this.turretCount = growUint16(this.turretCount, nextCapacity);
     this.flags = growUint16(this.flags, nextCapacity);
     this.turretHostSlots = growInt32(this.turretHostSlots, nextCapacity);

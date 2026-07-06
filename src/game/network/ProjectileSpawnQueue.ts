@@ -23,6 +23,27 @@ export function decodeProjectileSourceTurretBlueprintId(
   return codeToTurretBlueprintId(spawn.turretBlueprintCode) ?? undefined;
 }
 
+export function projectileSpawnFieldsShouldSmooth(
+  projectileType: number,
+  turretBlueprintCode: number,
+  sourceTurretBlueprintCode: number | null,
+  fromParentDetonation: boolean,
+): boolean {
+  const sourceTurretBlueprintId = sourceTurretBlueprintCode !== null
+    ? codeToTurretBlueprintId(sourceTurretBlueprintCode) ?? undefined
+    : undefined;
+  const fallbackTurretBlueprintId = sourceTurretBlueprintId ??
+    codeToTurretBlueprintId(turretBlueprintCode) ??
+    undefined;
+  const sourceTurretConfig = fallbackTurretBlueprintId !== undefined
+    ? TURRET_CONFIGS[fallbackTurretBlueprintId]
+    : undefined;
+  return projectileType === PROJECTILE_TYPE_PROJECTILE &&
+    !fromParentDetonation &&
+    sourceTurretConfig !== undefined &&
+    sourceTurretConfig.eventsSmooth;
+}
+
 export class ProjectileSpawnQueue {
   private queue: QueuedProjectileSpawn[] = [];
   private pool: QueuedProjectileSpawn[] = [];
@@ -52,14 +73,12 @@ export class ProjectileSpawnQueue {
   }
 
   shouldSmooth(spawn: NetworkServerSnapshotProjectileSpawn): boolean {
-    const sourceTurretBlueprintId = decodeProjectileSourceTurretBlueprintId(spawn);
-    const sourceTurretConfig = sourceTurretBlueprintId !== undefined
-      ? TURRET_CONFIGS[sourceTurretBlueprintId]
-      : undefined;
-    return spawn.projectileType === PROJECTILE_TYPE_PROJECTILE &&
-      !spawn.fromParentDetonation &&
-      sourceTurretConfig !== undefined &&
-      sourceTurretConfig.eventsSmooth;
+    return projectileSpawnFieldsShouldSmooth(
+      spawn.projectileType,
+      spawn.turretBlueprintCode,
+      spawn.sourceTurretBlueprintCode,
+      spawn.fromParentDetonation === true,
+    );
   }
 
   enqueue(spawn: NetworkServerSnapshotProjectileSpawn, now: number): void {

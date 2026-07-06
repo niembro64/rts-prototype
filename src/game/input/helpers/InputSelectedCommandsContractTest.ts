@@ -1,6 +1,7 @@
 import type { ClientCommandSink } from '../ClientCommandSink';
 import type { Command } from '../../sim/commands';
 import type { BuildingBlueprintId, CombatFireState, CombatTrajectoryMode, Entity, UnitMoveState } from '../../sim/types';
+import { buildingBlueprintHasBarOnOffCommand } from '../../sim/buildingActiveState';
 import {
   entityEffectiveBarTrajectoryMode,
   entityHasBarTrajectoryCommand,
@@ -431,6 +432,17 @@ export function runInputSelectedCommandsContractTest(): void {
       filteredActiveCommand.entityIds.length === 1 &&
       filteredActiveCommand.entityIds[0] === 31,
     'building active setter must honor the provided building filter',
+  );
+
+  selectedBuildings = [activeBuildingEntity(33, true, 'buildingResourceConverter')];
+  selectedCommands.setBuildingActive(undefined, buildingBlueprintHasBarOnOffCommand);
+  const converterActiveCommand = lastCommand(commands);
+  assertContract(
+    converterActiveCommand.type === 'setBuildingActive' &&
+      converterActiveCommand.open === false &&
+      converterActiveCommand.entityIds.length === 1 &&
+      converterActiveCommand.entityIds[0] === 33,
+    'BAR building active setter must include the armmakr/buildingResourceConverter analogue',
   );
 
   selectedUnits = [

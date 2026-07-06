@@ -797,7 +797,14 @@ export function fireTurrets(
         const turretAngle = weapon.rotation;
         const dirX = DMath.cos(turretAngle);
         const dirY = DMath.sin(turretAngle);
-        forceAccumulator.addForce(unit.id, -dirX * knockBackPerTick, -dirY * knockBackPerTick, 'recoil');
+        forceAccumulator.addForce(
+          unit.id,
+          -dirX * knockBackPerTick,
+          -dirY * knockBackPerTick,
+          'recoil',
+          0,
+          unit.entitySlotId,
+        );
       }
 
       const groundTargetPoint = combat.priorityTargetPoint;
@@ -963,7 +970,14 @@ export function fireTurrets(
 
           if (forceAccumulator && projShot.mass > 0) {
             const recoilForce = projShot.launchForce * PROJECTILE_MASS_MULTIPLIER;
-            forceAccumulator.addForce(unit.id, -dirX * recoilForce, -dirY * recoilForce, 'recoil');
+            forceAccumulator.addForce(
+              unit.id,
+              -dirX * recoilForce,
+              -dirY * recoilForce,
+              'recoil',
+              0,
+              unit.entitySlotId,
+            );
           }
         }
         weapon.barrelFireIndex = (fireBaseIndex + pellets) % barrelCount;
@@ -1244,7 +1258,14 @@ export function fireTurrets(
           // firing axis, not a shared central one.
           if (forceAccumulator && projShot.mass > 0) {
             const recoilForce = config.launchForce * PROJECTILE_MASS_MULTIPLIER;
-            forceAccumulator.addForce(unit.id, -dirX * recoilForce, -dirY * recoilForce, 'recoil');
+            forceAccumulator.addForce(
+              unit.id,
+              -dirX * recoilForce,
+              -dirY * recoilForce,
+              'recoil',
+              0,
+              unit.entitySlotId,
+            );
           }
           manualLaunchFired = true;
         }
@@ -1874,6 +1895,7 @@ function _updateTravelingProjectilesJS(
           id: entity.id,
           pos: { x, y, z },
           velocity: { x: vx, y: vy, z: vz },
+          ownerId: proj.ownerId,
           targetEntityId: proj.homingTargetId !== NO_ENTITY_ID ? proj.homingTargetId : undefined,
           clearHomingTarget: proj.homingTargetId === NO_ENTITY_ID && homingTargetChanged ? true : undefined,
         });

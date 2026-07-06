@@ -219,6 +219,12 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
     'BAR order menu command groups must flatten into one gui_ordermenu.lua-style command grid and hide local group labels',
   );
   assertContract(
+    /class="selection-info-panel"/.test(selectionPanelSource) &&
+      /getCachedEntityPreviewImage\('panel',/.test(selectionPanelSource) &&
+      /\.selection-info-panel \{[\s\S]{0,120}position:\s*fixed;[\s\S]{0,80}left:\s*0;[\s\S]{0,120}bottom:\s*var\(--selection-panel-playable-bottom,\s*0px\);[\s\S]{0,160}width:\s*var\(--bar-order-panel-width\);/.test(selectionPanelSource),
+    'BAR selected entity info must occupy the bottom-left gui_info.lua slot and use panel-resolution entity images instead of staying hidden in the command grid',
+  );
+  assertContract(
     /const showQueueInsertPicker = computed\(\(\) =>\s*!isBarHotkeyPreset\.value\s*&&\s*showUnitActions\.value\s*&&\s*props\.selection\.queueInsertOptions\.length > 0,\s*\);/.test(selectionPanelSource),
     'BAR presets must not expose the prototype queue-insert picker because BAR command insertion is not a visible gui_ordermenu.lua command button',
   );
@@ -318,7 +324,8 @@ export function runSelectionPanelCommandSurfaceContractTest(): void {
       !/\.bar-grid-cell \.btn-thumb-img \{[\s\S]{0,220}transition:\s*transform/.test(selectionPanelSource) &&
       /--bar-grid-unit-base-outline-width:\s*max\(1px,\s*round\(down,\s*calc\(var\(--bar-grid-icon-inner-size\) \* 0\.044\),\s*1px\)\);/.test(selectionPanelSource) &&
       /--bar-grid-unit-border-size:\s*min\(max\(1px,\s*round\(down,\s*calc\(var\(--bar-grid-icon-inner-size\) \* 0\.024\),\s*1px\)\),\s*round\(nearest,\s*0\.15vh,\s*1px\)\);/.test(selectionPanelSource) &&
-      /\.bar-grid-cell \.btn-thumb \{[\s\S]{0,260}box-shadow:\s*0 0 0 var\(--bar-grid-unit-base-outline-width\) rgba\(0,\s*0,\s*0,\s*0\.22\);/.test(selectionPanelSource) &&
+      /\.bar-grid-cell \.btn-thumb \{[\s\S]{0,160}width:\s*auto;[\s\S]{0,40}height:\s*auto;/.test(selectionPanelSource) &&
+      /\.bar-grid-cell \.btn-thumb \{[\s\S]{0,340}box-shadow:\s*0 0 0 var\(--bar-grid-unit-base-outline-width\) rgba\(0,\s*0,\s*0,\s*0\.22\);/.test(selectionPanelSource) &&
       /\.bar-grid-cell \.btn-thumb::after \{[\s\S]{0,420}box-shadow:\s*inset 0 0 0 var\(--bar-grid-unit-border-size\) rgba\(255,\s*255,\s*255,\s*0\.14\),[\s\S]{0,120}inset 0 0 calc\(var\(--bar-grid-unit-border-size\) \* 2\) rgba\(255,\s*255,\s*255,\s*0\.1\);/.test(selectionPanelSource),
     'BAR build-cell thumbnails must use gui_gridmenu.lua/FlowUI Unit texture zoom, base outline, and capped feathered edge highlight formulas',
   );

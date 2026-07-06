@@ -9,7 +9,7 @@ import {
   SHIELD_REFLECTION_ENTITY_ROCKET,
   SHIELD_PANEL_PROJECTILE_QUERY_PAD,
 } from './reflectorBatch';
-import { getEmissionBlueprintId, isRayType, isProjectileShot, isRocketLikeShot } from '../types';
+import { getEmissionBlueprintId, isRayType, isProjectileShot, isRocketLikeShot, NO_ENTITY_ID } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -1284,6 +1284,10 @@ export function checkProjectileCollisions(
               z: projEntity.transform.z,
             },
             velocity: { x: reflectedX, y: reflectedY, z: reflectedZ },
+            ownerId: proj.ownerId,
+            visibilityHomingTargetId: proj.homingTargetId !== NO_ENTITY_ID
+              ? proj.homingTargetId
+              : undefined,
           });
           reflectedProjectile = true;
           if (reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS) {

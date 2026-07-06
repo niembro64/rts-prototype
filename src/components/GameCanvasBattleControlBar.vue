@@ -213,6 +213,19 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
+        <BarLabel>PLATEAU WALL:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.plateauWallSlopeDegrees.options"
+            :key="opt"
+            :active="model.plateauWallSlopeDegrees === opt"
+            :title="`D-PLATEAU transition slope angle from horizontal: ${opt} degrees`"
+            @click="model.applyPlateauWallSlopeDegrees(opt)"
+          >{{ opt }} DEG</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
         <BarLabel>D-DEPOSIT:</BarLabel>
         <BarButtonGroup>
           <BarButton

@@ -315,6 +315,14 @@ export function runSimulationUnitActionPlannerContractTest(): void {
       isFinalActionPoint,
     );
     assertContract(movementPlanner.compute() === 1, 'single queued movement must produce one decision');
+    assertContract(
+      movementPlanner.planAt(0) === UNIT_ACTION_PLAN_MOVE_COMPLETION,
+      'movement planner preserves plan code after native batch',
+    );
+    assertContract(
+      movementPlanner.isFinalActionPointAt(0) === isFinalActionPoint,
+      'movement planner preserves final action point flag after native batch',
+    );
     return movementPlanner.decisionAt(0);
   };
 

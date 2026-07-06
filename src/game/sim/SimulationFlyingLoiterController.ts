@@ -2,6 +2,7 @@ import { magnitude } from '../math';
 import { getSimWasm } from '../sim-wasm/init';
 import type { Entity, Unit, UnitAction } from './types';
 import type { WorldState } from './WorldState';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 
 export const SIMULATION_INVALID_BODY_SLOT = 0xffffffff;
 
@@ -12,6 +13,7 @@ const FLYING_LOITER_RADIAL_GAIN = 0.65;
 export class SimulationFlyingLoiterController {
   private readonly world: WorldState;
   private readonly entities: Entity[] = [];
+  private entitySlots = new Int32Array(0);
   private slots = new Uint32Array(0);
   private dx = new Float64Array(0);
   private dy = new Float64Array(0);
@@ -74,6 +76,7 @@ export class SimulationFlyingLoiterController {
     const index = this.count++;
     this.ensureCapacity(this.count);
     this.entities[index] = entity;
+    this.entitySlots[index] = entity.entitySlotId;
     const body = entity.body;
     this.slots[index] = body === null
       ? SIMULATION_INVALID_BODY_SLOT
@@ -122,10 +125,14 @@ export class SimulationFlyingLoiterController {
       const entity = this.entities[i];
       const unit = entity.unit;
       if (unit) {
-        unit.thrustDirX = this.outX[i];
-        unit.thrustDirY = this.outY[i];
-        unit.headingDirX = this.outX[i];
-        unit.headingDirY = this.outY[i];
+        entitySlotRegistry.setUnitDriveInput(
+          entity,
+          this.outX[i],
+          this.outY[i],
+          this.outX[i],
+          this.outY[i],
+          this.entitySlots[i],
+        );
         const turnSign = this.outTurnSign[i];
         unit.flyingLoiterTurnSign = turnSign === 1 || turnSign === -1 ? turnSign : null;
         if (this.active[i] !== 0) movingUnits.push(entity);
@@ -146,6 +153,9 @@ export class SimulationFlyingLoiterController {
     const slots = new Uint32Array(next);
     slots.set(this.slots);
     this.slots = slots;
+    const entitySlots = new Int32Array(next);
+    entitySlots.set(this.entitySlots);
+    this.entitySlots = entitySlots;
     const dx = new Float64Array(next);
     dx.set(this.dx);
     this.dx = dx;

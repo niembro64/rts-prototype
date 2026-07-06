@@ -88,16 +88,28 @@ const scanPulseWireSources = new WeakMap<object, ScanPulseWireSource>();
 const directScanPulseWireSource = createFloat64WireRows();
 const _scanPulseWireSource = createFloat64WireRows();
 let nativeObservationVisibleIds = new Int32Array(0);
+let nativeObservationVisibleSlots = new Uint32Array(0);
 let nativeObservationRadarIds = new Int32Array(0);
+let nativeObservationRadarSlots = new Uint32Array(0);
 let nativeObservationLosSlots = new Uint32Array(0);
 const nativeObservationCounts = new Uint32Array(4);
 
 function ensureNativeObservationScratch(capacity: number): void {
-  if (capacity <= nativeObservationVisibleIds.length) return;
+  if (
+    capacity <= nativeObservationVisibleIds.length &&
+    capacity <= nativeObservationVisibleSlots.length &&
+    capacity <= nativeObservationRadarIds.length &&
+    capacity <= nativeObservationRadarSlots.length &&
+    capacity <= nativeObservationLosSlots.length
+  ) {
+    return;
+  }
   let next = Math.max(8, nativeObservationVisibleIds.length);
   while (next < capacity) next *= 2;
   nativeObservationVisibleIds = new Int32Array(next);
+  nativeObservationVisibleSlots = new Uint32Array(next);
   nativeObservationRadarIds = new Int32Array(next);
+  nativeObservationRadarSlots = new Uint32Array(next);
   nativeObservationLosSlots = new Uint32Array(next);
 }
 
@@ -155,7 +167,9 @@ export class SnapshotVisibility {
   private readonly detectorSources: VisionSource[] = [];
   private readonly detectorSourceCells: VisionSourceCells = [];
   private readonly visibleEntityIds: EntityId[] = [];
+  private readonly visibleEntitySlots: number[] = [];
   private readonly radarEntityIds: EntityId[] = [];
+  private readonly radarEntitySlots: number[] = [];
   private readonly visibleEntityIdSet = new IndexedEntityIdSet();
   private readonly radarEntityIdSet = new IndexedEntityIdSet();
   private readonly fullCandidateEntityIdSet = new IndexedEntityIdSet();
@@ -164,6 +178,9 @@ export class SnapshotVisibility {
   private readonly gridW: number;
   private readonly gridH: number;
   private entityIdBuffersReady = false;
+  private entityIdBuffersComplete = false;
+  private auxiliaryObservationSourcesReady = false;
+  private earshotSourceCellsReady = false;
   /** Recipient + their declared allies (FOW-06). Populated whenever a
    *  recipient is set, regardless of fog status. Used by
    *  isOwnedByRecipientOrAlly so every ownership check across the
@@ -295,9 +312,13 @@ export class SnapshotVisibility {
     if (!this.isFiltered) return true;
     const cached = this.entityReferenceMemo.get(entityId);
     if (cached !== undefined) return cached;
-    if (this.entityIdBuffersReady && this.visibleEntityIdSet.has(entityId)) {
+    if (this.entityIdBuffersComplete && this.visibleEntityIdSet.has(entityId)) {
       this.entityReferenceMemo.set(entityId, true);
       return true;
+    }
+    if (this.entityIdBuffersComplete) {
+      this.entityReferenceMemo.set(entityId, false);
+      return false;
     }
     const entity = world.getEntity(entityId);
     const result = entity !== undefined && this.isEntityVisible(entity);
@@ -316,6 +337,11 @@ export class SnapshotVisibility {
     if (this.isOwnedByRecipientOrAlly(ownership !== null ? ownership.playerId : null)) return true;
     const cached = this.entityVisibilityMemo.get(entity.id);
     if (cached !== undefined) return cached;
+    if (this.entityIdBuffersComplete) {
+      const result = this.visibleEntityIdSet.has(entity.id);
+      this.entityVisibilityMemo.set(entity.id, result);
+      return result;
+    }
     const padding = getEntityVisibilityPadding(entity);
     const result = isEntityCloaked(entity)
       ? this.isEntityDetected(entity.transform.x, entity.transform.y, padding)
@@ -364,6 +390,7 @@ export class SnapshotVisibility {
   }
 
   private isEntityDetected(x: number, y: number, padding: number): boolean {
+    this.ensureAuxiliaryObservationSources();
     return this.isPointVisibleIn(this.detectorSources, this.detectorSourceCells, x, y, padding);
   }
 
@@ -374,6 +401,9 @@ export class SnapshotVisibility {
     if (!this.isFiltered) return true;
     const ownership = entity.ownership;
     if (this.isOwnedByRecipientOrAlly(ownership !== null ? ownership.playerId : null)) return true;
+    if (this.entityIdBuffersComplete) {
+      return this.radarEntityIdSet.has(entity.id);
+    }
     const padding = getEntityVisibilityPadding(entity);
     if (isEntityCloaked(entity)) {
       return this.isEntityDetected(entity.transform.x, entity.transform.y, padding);
@@ -381,6 +411,7 @@ export class SnapshotVisibility {
     if (this.isPointVisibleIn(this.fullSources, this.fullSourceCells, entity.transform.x, entity.transform.y, padding)) {
       return true;
     }
+    this.ensureAuxiliaryObservationSources();
     return this.isPointVisibleIn(this.radarSources, this.radarSourceCells, entity.transform.x, entity.transform.y, padding);
   }
 
@@ -396,6 +427,12 @@ export class SnapshotVisibility {
     return this.visibleEntityIds;
   }
 
+  getVisibleEntitySlots(): readonly number[] | undefined {
+    if (!this.isFiltered) return undefined;
+    this.ensureEntityIdBuffers();
+    return this.visibleEntitySlots;
+  }
+
   getVisibleEntityIdSet(): ReadonlySet<EntityId> | undefined {
     if (!this.isFiltered) return undefined;
     this.ensureEntityIdBuffers();
@@ -409,34 +446,48 @@ export class SnapshotVisibility {
     return this.radarEntityIds;
   }
 
+  getRadarEntitySlots(): readonly number[] | undefined {
+    if (!this.isFiltered) return undefined;
+    this.ensureEntityIdBuffers();
+    return this.radarEntitySlots;
+  }
+
   private ensureEntityIdBuffers(): void {
     if (this.entityIdBuffersReady) return;
     this.entityIdBuffersReady = true;
+    this.entityIdBuffersComplete = false;
     this.visibleEntityIds.length = 0;
+    this.visibleEntitySlots.length = 0;
     this.radarEntityIds.length = 0;
+    this.radarEntitySlots.length = 0;
     this.visibleEntityIdSet.clear();
     this.radarEntityIdSet.clear();
     this.fullCandidateEntityIdSet.clear();
     this.radarCandidateEntityIdSet.clear();
 
-    if (this.addNativeObservationMaskEntityCandidates()) return;
+    try {
+      if (this.addNativeObservationMaskEntityCandidates()) return;
 
-    let pending = this.viewMask;
-    while (pending !== 0) {
-      const lowBit = pending & -pending;
-      const playerId = (32 - Math.clz32(lowBit)) as PlayerId;
-      this.addOwnedEntityIds(playerId);
-      pending ^= lowBit;
+      let pending = this.viewMask;
+      while (pending !== 0) {
+        const lowBit = pending & -pending;
+        const playerId = (32 - Math.clz32(lowBit)) as PlayerId;
+        this.addOwnedEntityIds(playerId);
+        pending ^= lowBit;
+      }
+
+      if (getSimWasm() === undefined) {
+        this.addWorldScanEntityCandidates();
+        return;
+      }
+
+      this.ensureAuxiliaryObservationSources();
+      this.addSourceEntityCandidates(this.fullSources, true);
+      this.addSourceEntityCandidates(this.radarSources, false);
+      this.addSourceEntityCandidates(this.detectorSources, true);
+    } finally {
+      this.entityIdBuffersComplete = true;
     }
-
-    if (getSimWasm() === undefined) {
-      this.addWorldScanEntityCandidates();
-      return;
-    }
-
-    this.addSourceEntityCandidates(this.fullSources, true);
-    this.addSourceEntityCandidates(this.radarSources, false);
-    this.addSourceEntityCandidates(this.detectorSources, true);
   }
 
   private addNativeObservationMaskEntityCandidates(): boolean {
@@ -464,7 +515,9 @@ export class SnapshotVisibility {
       this.viewMask >>> 0,
       targetSlots,
       nativeObservationVisibleIds,
+      nativeObservationVisibleSlots,
       nativeObservationRadarIds,
+      nativeObservationRadarSlots,
       nativeObservationLosSlots,
       nativeObservationCounts,
     );
@@ -475,17 +528,25 @@ export class SnapshotVisibility {
     const losCount = nativeObservationCounts[3];
     if (
       visibleCount > nativeObservationVisibleIds.length ||
+      visibleCount > nativeObservationVisibleSlots.length ||
       radarCount > nativeObservationRadarIds.length ||
+      radarCount > nativeObservationRadarSlots.length ||
       losCount > nativeObservationLosSlots.length
     ) {
       return false;
     }
 
     for (let i = 0; i < visibleCount; i++) {
-      this.appendVisibleEntityIdById(nativeObservationVisibleIds[i] as EntityId);
+      this.appendVisibleEntityIdById(
+        nativeObservationVisibleIds[i] as EntityId,
+        nativeObservationVisibleSlots[i],
+      );
     }
     for (let i = 0; i < radarCount; i++) {
-      this.appendRadarEntityIdById(nativeObservationRadarIds[i] as EntityId);
+      this.appendRadarEntityIdById(
+        nativeObservationRadarIds[i] as EntityId,
+        nativeObservationRadarSlots[i],
+      );
     }
     for (let i = 0; i < losCount; i++) {
       const slot = nativeObservationLosSlots[i];
@@ -503,8 +564,7 @@ export class SnapshotVisibility {
       const visible = this.isEntityStateSlotVisibleWithLos(entityViews, slot, kind);
       this.entityVisibilityMemo.set(id, visible);
       if (visible) {
-        this.appendVisibleEntityIdById(id);
-        this.appendRadarEntityIdById(id);
+        this.appendVisibleEntityIdById(id, slot);
       }
     }
     return nativeObservationCounts[0] > 0;
@@ -608,19 +668,31 @@ export class SnapshotVisibility {
   }
 
   private appendVisibleEntityId(entity: Entity): void {
-    this.appendVisibleEntityIdById(entity.id);
+    const slot = entity.entitySlotId >= 0
+      ? entity.entitySlotId
+      : entitySlotRegistry.getSlot(entity.id);
+    this.appendVisibleEntityIdById(entity.id, slot);
   }
 
-  private appendVisibleEntityIdById(id: EntityId): void {
-    if (this.visibleEntityIdSet.addIfAbsent(id)) this.visibleEntityIds.push(id);
+  private appendVisibleEntityIdById(id: EntityId, slot = entitySlotRegistry.getSlot(id)): void {
+    if (this.visibleEntityIdSet.addIfAbsent(id)) {
+      this.visibleEntityIds.push(id);
+      this.visibleEntitySlots.push(slot);
+    }
   }
 
   private appendRadarEntityId(entity: Entity): void {
-    this.appendRadarEntityIdById(entity.id);
+    const slot = entity.entitySlotId >= 0
+      ? entity.entitySlotId
+      : entitySlotRegistry.getSlot(entity.id);
+    this.appendRadarEntityIdById(entity.id, slot);
   }
 
-  private appendRadarEntityIdById(id: EntityId): void {
-    if (this.radarEntityIdSet.addIfAbsent(id)) this.radarEntityIds.push(id);
+  private appendRadarEntityIdById(id: EntityId, slot = entitySlotRegistry.getSlot(id)): void {
+    if (this.radarEntityIdSet.addIfAbsent(id)) {
+      this.radarEntityIds.push(id);
+      this.radarEntitySlots.push(slot);
+    }
   }
 
   /** Full-vision point test. Audio events and projectile spawns hang
@@ -638,6 +710,7 @@ export class SnapshotVisibility {
    *  off, so admin observers still hear everything. */
   isPointWithinEarshot(x: number, y: number): boolean {
     if (!this.isFiltered) return true;
+    this.ensureEarshotSourceCells();
     return this.isPointVisibleIn(this.fullSources, this.earshotSourceCells, x, y, EARSHOT_PAD);
   }
 
@@ -653,6 +726,7 @@ export class SnapshotVisibility {
    *  so it returns IN_VISION unconditionally. */
   classifyPointVisibility(x: number, y: number): VisibilityClass {
     if (!this.isFiltered) return VISIBILITY_CLASS_IN_VISION;
+    this.ensureEarshotSourceCells();
     const cx = Math.floor(x / VISION_CELL_SIZE);
     const cy = Math.floor(y / VISION_CELL_SIZE);
     if (cx < 0 || cy < 0 || cx >= this.gridW || cy >= this.gridH) {
@@ -721,7 +795,7 @@ export class SnapshotVisibility {
       const eyeZ = transform.z + VISION_SOURCE_EYE_HEIGHT;
       const fullSightRadius = getEntityFullVisionRadius(entity);
       if (fullSightRadius > 0) {
-        const sourceIndex = this.addSource(
+        this.addSource(
           this.fullSources,
           this.fullSourceCells,
           x,
@@ -729,16 +803,46 @@ export class SnapshotVisibility {
           eyeZ,
           fullSightRadius,
         );
-        if (sourceIndex >= 0) {
-          this.addSourceCells(
-            this.earshotSourceCells,
-            sourceIndex,
-            x,
-            y,
-            fullSightRadius + EARSHOT_PAD,
-          );
-        }
       }
+    }
+  }
+
+  private ensureAuxiliaryObservationSources(): void {
+    if (this.auxiliaryObservationSourcesReady) return;
+    this.auxiliaryObservationSourcesReady = true;
+
+    let pending = this.viewMask;
+    while (pending !== 0) {
+      const lowBit = pending & -pending;
+      const playerId = (32 - Math.clz32(lowBit)) as PlayerId;
+      this.addAuxiliaryObservationSourceEntities(this.world.getUnitsByPlayer(playerId));
+      this.addAuxiliaryObservationSourceEntities(this.world.getBuildingsByPlayer(playerId));
+      pending ^= lowBit;
+    }
+
+    const pulses = this.world.scanPulses;
+    if (pulses.length === 0) return;
+    for (let i = 0; i < pulses.length; i++) {
+      const pulse = pulses[i];
+      if ((this.viewMask & (1 << (pulse.playerId - 1))) === 0) continue;
+      this.addSource(
+        this.detectorSources,
+        this.detectorSourceCells,
+        pulse.x,
+        pulse.y,
+        pulse.z + VISION_SOURCE_EYE_HEIGHT,
+        pulse.radius,
+      );
+    }
+  }
+
+  private addAuxiliaryObservationSourceEntities(source: readonly Entity[]): void {
+    for (let i = 0; i < source.length; i++) {
+      const entity = source[i];
+      const transform = entity.transform;
+      const x = transform.x;
+      const y = transform.y;
+      const eyeZ = transform.z + VISION_SOURCE_EYE_HEIGHT;
       const radarRadius = getEntityRadarRadius(entity);
       if (radarRadius > 0) {
         this.addSource(
@@ -789,7 +893,7 @@ export class SnapshotVisibility {
     for (let i = 0; i < pulses.length; i++) {
       const pulse = pulses[i];
       if ((this.viewMask & (1 << (pulse.playerId - 1))) === 0) continue;
-      const sourceIndex = this.addSource(
+      this.addSource(
         this.fullSources,
         this.fullSourceCells,
         pulse.x,
@@ -797,24 +901,22 @@ export class SnapshotVisibility {
         pulse.z + VISION_SOURCE_EYE_HEIGHT,
         pulse.radius,
       );
-      this.addSource(
-        this.detectorSources,
-        this.detectorSourceCells,
-        pulse.x,
-        pulse.y,
-        pulse.z + VISION_SOURCE_EYE_HEIGHT,
-        pulse.radius,
-      );
-      if (sourceIndex >= 0) {
-        this.addSourceCells(
-          this.earshotSourceCells,
-          sourceIndex,
-          pulse.x,
-          pulse.y,
-          pulse.radius + EARSHOT_PAD,
-        );
-      }
       appendScanPulseWireRow(this.cachedScanPulseWireSource, pulse);
+    }
+  }
+
+  private ensureEarshotSourceCells(): void {
+    if (this.earshotSourceCellsReady) return;
+    this.earshotSourceCellsReady = true;
+    for (let i = 0; i < this.fullSources.length; i++) {
+      const source = this.fullSources[i];
+      this.addSourceCells(
+        this.earshotSourceCells,
+        i,
+        source.x,
+        source.y,
+        source.radius + EARSHOT_PAD,
+      );
     }
   }
 

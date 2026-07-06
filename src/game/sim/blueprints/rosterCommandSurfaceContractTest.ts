@@ -882,6 +882,7 @@ export function runRosterCommandSurfaceContractTest(): void {
     'buildingSolar',
     'buildingExtractor',
     'buildingExtractorT2',
+    'buildingResourceConverter',
   ]);
 
   for (const commandId of REQUIRED_SPECIAL_COMMAND_IDS) {

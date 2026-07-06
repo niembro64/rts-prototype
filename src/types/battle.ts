@@ -45,6 +45,9 @@ export type BattleBarConfig = {
    *  this bar replaces the old PLATEAU on/off toggle plus the step
    *  picker in one control. */
   readonly terrainDTerrain: OptionsConfig<number>;
+  /** Slope angle in degrees for the D-PLATEAU transition band. Measured
+   *  from horizontal: 89 = cliff-like, 45 = broad ramps. */
+  readonly plateauWallSlopeDegrees: OptionsConfig<number>;
   /** Vertical step (world units) between metal-extractor pad altitude
    *  levels — a deposit ring's `dTerrainLevels` is multiplied by this
    *  to get its pad `height`. Independent from `terrainDTerrain` so

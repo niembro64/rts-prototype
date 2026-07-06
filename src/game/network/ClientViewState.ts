@@ -7,7 +7,15 @@
  * - Smooth at any snapshot rate, from 1/sec to 60/sec
  */
 
-import type { Entity, PlayerId, EntityId, FactoryDefaultWaypoint } from '../sim/types';
+import type {
+  CombatFireState,
+  CombatTrajectoryMode,
+  Entity,
+  PlayerId,
+  EntityId,
+  FactoryDefaultWaypoint,
+  UnitMoveState,
+} from '../sim/types';
 import { NO_ENTITY_ID } from '../sim/types';
 import {
   getResourceFillRatio,
@@ -25,7 +33,7 @@ import type { MinimapEntity } from '@/types/ui';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import type { FootprintBounds, ViewportFootprint } from '../ViewportFootprint';
 import { economyManager } from '../sim/economy';
-import { createEntityFromNetwork } from './helpers';
+import { createEntityFromNetwork, createEntityFromTypedFullWireRow } from './helpers';
 import {
   ENTITY_CHANGED_POS,
   ENTITY_CHANGED_ROT,
@@ -39,6 +47,7 @@ import {
   RESOURCE_FLOW_OUTBOUND,
   RESOURCE_KIND_ENERGY,
   RESOURCE_KIND_METAL,
+  codeToBuildingBlueprintId,
   codeToUnitBlueprintId,
   codeToTurretState,
   type GamePhase,
@@ -125,16 +134,20 @@ import {
   getPackedProjectileSnapshotWire,
 } from './snapshotProjectileWirePack';
 import {
-  forEachProjectileWireSourceSpawnFromSource,
+  copyProjectileWireSourceSpawnRowFromSourceInto,
   getActiveProjectileSnapshotWireSource,
   PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE,
   PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE,
   PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T,
   PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+  PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE,
+  PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
+  PROJECTILE_SPAWN_WIRE_STRIDE,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
   projectileWireSourceHasDirectlyConsumableRows,
   type ProjectileSnapshotWireSource,
 } from './stateSerializerProjectiles';
+import { projectileSpawnFieldsShouldSmooth } from './ProjectileSpawnQueue';
 import {
   addSnapshotMaterializationStageToSnapshot,
   type SnapshotMaterializationStage,
@@ -171,7 +184,10 @@ import type {
 } from '../render3d/EntityRenderPackets3D';
 import type { EntityLodEmission3D } from '../render3d/EntityLod3D';
 import {
+  CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION,
   CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS,
+  CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY,
+  CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY,
   CLIENT_RENDER_ENTITY_FLAG_SELECTED,
   CLIENT_RENDER_ENTITY_KIND_BUILDING,
   CLIENT_RENDER_ENTITY_KIND_UNIT,
@@ -182,6 +198,10 @@ import {
   type ClientRenderTurretHostRows,
 } from '../render3d/ClientRenderTurretStateSlab';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
+import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
+import {
+  unitBlueprintBarDefaultMoveState,
+} from '../sim/unitCommandCapabilities';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -219,6 +239,26 @@ const CLIENT_BUILDING_TYPED_DELTA_FIELDS =
   ENTITY_CHANGED_BUILDING |
   ENTITY_CHANGED_FACTORY;
 
+function unitFireStateFromWireCode(code: number): CombatFireState {
+  return code === 4
+    ? 'fireAtAll'
+    : code === 3
+      ? 'defend'
+      : code === 2
+        ? 'holdFire'
+        : code === 1
+          ? 'returnFire'
+          : 'fireAtWill';
+}
+
+function trajectoryModeFromWireCode(code: number): CombatTrajectoryMode {
+  return code === 2 ? 'auto' : code === 1 ? 'high' : 'low';
+}
+
+function unitMoveStateFromWireCode(code: number): UnitMoveState {
+  return code === 2 ? 'roam' : code === 1 ? 'holdPosition' : 'maneuver';
+}
+
 function typedEntityWireRowId(
   source: EntitySnapshotWireSource,
   entityIndex: number,
@@ -234,6 +274,30 @@ function typedEntityWireRowId(
       return source.buildingRows.values[rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE] as EntityId;
     default:
       return null;
+  }
+}
+
+function typedEntityWireRowIsFull(
+  source: EntitySnapshotWireSource,
+  entityIndex: number,
+): boolean {
+  const rowIndex = source.rowIndices[entityIndex];
+  if (rowIndex < 0) return false;
+  switch (source.kinds[entityIndex]) {
+    case ENTITY_SNAPSHOT_WIRE_KIND_UNIT: {
+      if (rowIndex >= source.unitRows.count) return false;
+      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+      const values = source.unitRows.values;
+      return values[base + 6] === 0 && (values[base + 7] | 0) === 0;
+    }
+    case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING: {
+      if (rowIndex >= source.buildingRows.count) return false;
+      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+      const values = source.buildingRows.values;
+      return values[base + 6] === 0 && (values[base + 7] | 0) === 0;
+    }
+    default:
+      return false;
   }
 }
 
@@ -343,6 +407,8 @@ export class ClientViewState {
   private _serverIds: Set<EntityId> = new ClientEntityIdSet();
   private readonly _fullReconcileRemoveIds: EntityId[] = [];
   private _projectileReflectionIds: Set<EntityId> = new ClientEntityIdSet();
+  private readonly typedFullCreationScratch: Entity[] = [];
+  private readonly typedFullCreationIds: Set<EntityId> = new ClientEntityIdSet();
 
   // Spatial grid debug visualization data
   private gridCells: NetworkServerSnapshotGridCell[] = [];
@@ -449,9 +515,21 @@ export class ClientViewState {
     this.cache.invalidate();
   }
 
-  private handleLocalEntityAdded(entity: Entity): void {
+  private handleLocalEntityAdded(entity: Entity, deferEntitySetChange = false): void {
     this.cache.handleEntityAdded(entity);
-    this.entitySetVersion++;
+    if (!deferEntitySetChange) this.entitySetVersion++;
+  }
+
+  private attachCreatedNetworkEntity(entity: Entity, deferEntitySetChange = false): void {
+    if (entity.selectable && this.selectionState.has(entity.id)) {
+      entity.selectable.selected = true;
+    }
+    this.entities.set(entity.id, entity);
+    this.handleLocalEntityAdded(entity, deferEntitySetChange);
+    this.refreshRenderableEntityStateAndSpatialIndex(entity);
+    this.markEntityPredictionActive(entity);
+    this.refreshPredictionSupportSurfaceProvider(entity);
+    this.renderLifecycleDirtyIds.add(entity.id);
   }
 
   private handleLocalEntityRemoved(entity: Entity, deferEntitySetChange: boolean): void {
@@ -568,7 +646,7 @@ export class ClientViewState {
       entity.projectile.velocityX = velocityX;
       entity.projectile.velocityY = velocityY;
       entity.projectile.velocityZ = velocityZ;
-      if (this.serverTargets.has(id)) this.serverTargets.delete(id);
+      this.serverTargets.delete(id);
     }
     if (targetEntityId !== null) {
       entity.projectile.homingTargetId = targetEntityId;
@@ -590,7 +668,39 @@ export class ClientViewState {
     if (rows.count === 0) return false;
     const values = rows.values;
     for (let i = 0; i < rows.count; i++) {
-      this.deleteEntityLocalState(values[i] as EntityId);
+      this.deleteProjectileLocalState(values[i] as EntityId);
+    }
+    return true;
+  }
+
+  private applyProjectileWireSourceSpawns(
+    source: ProjectileSnapshotWireSource | undefined,
+    now: number,
+  ): boolean {
+    if (source === undefined) return false;
+    const rows = source.spawns;
+    if (rows.count === 0) return false;
+    const values = rows.values;
+    const queue = this.projectileStore.projectileSpawns;
+    const scratch = this.directProjectileSpawnScratch;
+    for (let i = 0; i < rows.count; i++) {
+      const base = i * PROJECTILE_SPAWN_WIRE_STRIDE;
+      const flags = values[base + 31] | 0;
+      const shouldSmooth = projectileSpawnFieldsShouldSmooth(
+        values[base + 8],
+        values[base + 10],
+        (flags & PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE) !== 0
+          ? values[base + 12]
+          : null,
+        (flags & PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE) !== 0,
+      );
+      if (shouldSmooth) {
+        if (copyProjectileWireSourceSpawnRowFromSourceInto(source, i, scratch)) {
+          queue.enqueue(scratch, now);
+        }
+        continue;
+      }
+      this.projectileStore.applySpawnWireFields(values, base);
     }
     return true;
   }
@@ -737,7 +847,7 @@ export class ClientViewState {
     this.removePredictionSupportSurfaceProvider(id);
     this.projectileStore.remove(id, wasLineProjectile, existing);
     this.entities.delete(id);
-    if (this.serverTargets.has(id)) this.serverTargets.delete(id);
+    this.serverTargets.delete(id);
     this.renderSpatialIndex.remove(id);
     const renderSlot = this.renderEntityState.getSlot(id);
     if (renderSlot !== undefined) this.renderTurretState.unsetHostSlot(renderSlot);
@@ -749,6 +859,23 @@ export class ClientViewState {
     this.renderLifecycleDirtyIds.delete(id);
     if (existing !== undefined) {
       this.handleLocalEntityRemoved(existing, deferEntitySetChange);
+      return true;
+    }
+    return false;
+  }
+
+  private deleteProjectileLocalState(id: EntityId): boolean {
+    const existing = this.entities.get(id);
+    if (existing !== undefined && existing.projectile === null) {
+      return this.deleteEntityLocalState(id);
+    }
+    const wasLineProjectile = existing !== undefined && isLineProjectileEntity(existing);
+    this.projectileStore.remove(id, wasLineProjectile, existing);
+    this.entities.delete(id);
+    this.serverTargets.delete(id);
+    this.selectionState.delete(id);
+    if (existing !== undefined) {
+      this.handleLocalEntityRemoved(existing, false);
       return true;
     }
     return false;
@@ -1334,11 +1461,17 @@ export class ClientViewState {
         existing.unit.wantCloak = values[base + 62] >= 1;
         existing.unit.cloaked = values[base + 62] >= 2;
       }
-      if (existing.builder !== null && values[base + 38] !== 0) {
-        existing.builder.lowPriority = false;
-        existing.builder.currentBuildTarget = values[base + 39] === 0
-          ? values[base + 40] as EntityId
-          : NO_ENTITY_ID;
+      if (existing.builder !== null) {
+        if (values[base + 66] !== 0) {
+          existing.builder.lowPriority = values[base + 67] !== 0;
+        } else if (values[base + 38] !== 0) {
+          existing.builder.lowPriority = false;
+        }
+        if (values[base + 38] !== 0) {
+          existing.builder.currentBuildTarget = values[base + 39] === 0
+            ? values[base + 40] as EntityId
+            : NO_ENTITY_ID;
+        }
       }
     }
     if (hasFactoryFields) {
@@ -1357,6 +1490,175 @@ export class ClientViewState {
     }
 
     if (hasMotionFields || copiedTurretRows) {
+      this.activeEntityPredictionIds.add(id);
+      this.dirtyUnitRenderIds.add(id);
+    }
+    return true;
+  }
+
+  private tryApplyUnitTypedFullWireRow(
+    source: EntitySnapshotWireSource,
+    entityIndex: number,
+    now: number,
+  ): boolean {
+    const rowIndex = source.rowIndices[entityIndex];
+    return this.tryApplyUnitTypedFullWireRowAt(source, rowIndex, now);
+  }
+
+  private tryApplyUnitTypedFullWireRowAt(
+    source: EntitySnapshotWireSource,
+    rowIndex: number,
+    now: number,
+  ): boolean {
+    if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
+    const values = source.unitRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+    if (values[base + 6] !== 0 || (values[base + 7] | 0) !== 0) return false;
+    if (values[base + 13] === 0) return false;
+
+    const id = values[base + 0] | 0;
+    const playerId = values[base + 5] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.unit === null) return false;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== playerId) return false;
+
+    const unitBlueprintId = codeToUnitBlueprintId(values[base + 14]);
+    if (unitBlueprintId === null || unitBlueprintId !== existing.unit.unitBlueprintId) {
+      return false;
+    }
+
+    const target = this.getOrCreateServerTarget(id);
+    target.x = deqEntityPos(values[base + 1]);
+    target.y = deqEntityPos(values[base + 2]);
+    target.z = deqEntityPos(values[base + 3]);
+    target.bodyCenterHeight = existing.unit.bodyCenterHeight;
+    target.rotation = deqRot(values[base + 4]);
+    target.velocityX = deqVel(values[base + 10]);
+    target.velocityY = deqVel(values[base + 11]);
+    target.velocityZ = deqVel(values[base + 12]);
+    if (values[base + 23] !== 0) {
+      target.surfaceNormalX = deqNormal(values[base + 24]);
+      target.surfaceNormalY = deqNormal(values[base + 25]);
+      target.surfaceNormalZ = deqNormal(values[base + 26]);
+    }
+    if (values[base + 27] !== 0) {
+      let orientation = target.orientation;
+      if (orientation === null) {
+        orientation = { x: 0, y: 0, z: 0, w: 1 };
+        target.orientation = orientation;
+      }
+      orientation.x = values[base + 28];
+      orientation.y = values[base + 29];
+      orientation.z = values[base + 30];
+      orientation.w = values[base + 31];
+    } else {
+      target.orientation = null;
+    }
+    if (values[base + 32] !== 0) {
+      target.angularVelocityX = values[base + 33];
+      target.angularVelocityY = values[base + 34];
+      target.angularVelocityZ = values[base + 35];
+    } else {
+      target.angularVelocityX = null;
+      target.angularVelocityY = null;
+      target.angularVelocityZ = null;
+    }
+
+    let copiedTurretRows = false;
+    if (values[base + 43] !== 0) {
+      const turretCount = values[base + 44] | 0;
+      const turretOffset = values[base + 49] | 0;
+      if (existing.combat === null || existing.combat.turrets.length !== turretCount) {
+        return false;
+      }
+      copiedTurretRows = this.copyWireUnitTurretsToTarget(
+        source,
+        turretOffset,
+        turretCount,
+        target,
+        existing,
+      );
+      if (!copiedTurretRows) return false;
+    }
+    target.updatedAtMs = now;
+
+    this.applyUnitHpBuildTypedFields(
+      existing,
+      values,
+      base,
+      true,
+      true,
+    );
+
+    if (values[base + 41] !== 0) {
+      applyNetworkUnitActionWireRows(
+        existing.unit,
+        source.actionRows.values,
+        values[base + 50] | 0,
+        values[base + 42] | 0,
+        source.actionStrings,
+        ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
+      );
+    }
+
+    const combat = existing.combat;
+    if (combat !== null) {
+      const fireState = values[base + 51] !== 0
+        ? unitFireStateFromWireCode(values[base + 52] | 0)
+        : 'fireAtWill';
+      combat.fireState = fireState;
+      combat.fireEnabled = fireState !== 'holdFire';
+      combat.trajectoryMode = values[base + 57] !== 0
+        ? trajectoryModeFromWireCode(values[base + 58] | 0)
+        : 'auto';
+    }
+
+    existing.unit.repeatQueue = values[base + 53] !== 0
+      ? values[base + 54] !== 0
+      : false;
+    if (values[base + 59] !== 0) {
+      existing.unit.moveState = unitMoveStateFromWireCode(values[base + 60] | 0);
+    } else if (values[base + 55] !== 0) {
+      existing.unit.moveState = values[base + 56] !== 0 ? 'holdPosition' : 'maneuver';
+    } else {
+      existing.unit.moveState = unitBlueprintBarDefaultMoveState(existing.unit.unitBlueprintId);
+    }
+    if (values[base + 61] !== 0) {
+      existing.unit.wantCloak = values[base + 62] >= 1;
+      existing.unit.cloaked = values[base + 62] >= 2;
+    } else {
+      existing.unit.wantCloak = false;
+      existing.unit.cloaked = false;
+    }
+    if (existing.builder !== null) {
+      existing.builder.currentBuildTarget = values[base + 38] !== 0 && values[base + 39] === 0
+        ? values[base + 40] as EntityId
+        : NO_ENTITY_ID;
+      existing.builder.lowPriority = values[base + 66] !== 0 && values[base + 67] !== 0;
+    }
+    if (existing.factory !== null) {
+      existing.factory.carrierSpawnEnabled = values[base + 64] !== 0
+        ? values[base + 65] !== 0
+        : true;
+    }
+
+    this.refreshRenderableEntityStateSnapshotDelta(
+      existing,
+      true,
+      copiedTurretRows,
+      true,
+    );
+    if (existing.unit.supportSurface.kind === 'discTop') {
+      this.refreshPredictionSupportSurfaceProvider(existing);
+    }
+    if (
+      !clientUnitPredictionIsSettled(
+        existing,
+        target,
+        this.turretShieldSpheresEnabledForPrediction,
+      )
+    ) {
       this.activeEntityPredictionIds.add(id);
       this.dirtyUnitRenderIds.add(id);
     }
@@ -1426,13 +1728,10 @@ export class ClientViewState {
     return true;
   }
 
-  private canApplyUnitMetadataTypedDeltaWireRow(
-    source: EntitySnapshotWireSource,
-    entityIndex: number,
+  private canApplyUnitMetadataTypedDeltaWireRowAt(
+    values: Float64Array,
+    rowIndex: number,
   ): boolean {
-    const rowIndex = source.rowIndices[entityIndex];
-    if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
-    const values = source.unitRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
     const changedFields = values[base + 7] | 0;
     if (values[base + 6] === 0 || changedFields === 0) return false;
@@ -1507,13 +1806,10 @@ export class ClientViewState {
     );
   }
 
-  private canApplyBuildingMetadataTypedDeltaWireRow(
-    source: EntitySnapshotWireSource,
-    entityIndex: number,
+  private canApplyBuildingMetadataTypedDeltaWireRowAt(
+    values: Float64Array,
+    rowIndex: number,
   ): boolean {
-    const rowIndex = source.rowIndices[entityIndex];
-    if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
-    const values = source.buildingRows.values;
     const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
     const changedFields = values[base + 7] | 0;
     if (values[base + 6] === 0 || changedFields === 0) return false;
@@ -1745,6 +2041,8 @@ export class ClientViewState {
     const count = source.count;
     if (count === 0 || count !== entities.length) return false;
     if (
+      source.rawEntityRows !== 0 ||
+      source.typedEntityRows !== count ||
       source.basicRows.count !== 0 ||
       source.actionRows.count !== 0 ||
       source.turretRows.count !== 0 ||
@@ -1753,53 +2051,42 @@ export class ClientViewState {
     ) {
       return false;
     }
+    if (source.unitRows.count + source.buildingRows.count !== count) return false;
 
-    let unitRowCount = 0;
-    let buildingRowCount = 0;
     for (let entityIndex = 0; entityIndex < count; entityIndex++) {
       if (entities[entityIndex] !== undefined) return false;
-      switch (source.kinds[entityIndex]) {
-        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
-          unitRowCount++;
-          if (!this.canApplyUnitMetadataTypedDeltaWireRow(source, entityIndex)) return false;
-          break;
-        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
-          buildingRowCount++;
-          if (!this.canApplyBuildingMetadataTypedDeltaWireRow(source, entityIndex)) return false;
-          break;
-        default:
-          return false;
-      }
     }
-    return unitRowCount === source.unitRows.count &&
-      buildingRowCount === source.buildingRows.count;
+    const unitValues = source.unitRows.values;
+    for (let rowIndex = 0; rowIndex < source.unitRows.count; rowIndex++) {
+      if (!this.canApplyUnitMetadataTypedDeltaWireRowAt(unitValues, rowIndex)) return false;
+    }
+    const buildingValues = source.buildingRows.values;
+    for (let rowIndex = 0; rowIndex < source.buildingRows.count; rowIndex++) {
+      if (!this.canApplyBuildingMetadataTypedDeltaWireRowAt(buildingValues, rowIndex)) return false;
+    }
+    return true;
   }
 
   private applyMetadataTypedDeltaSource(source: EntitySnapshotWireSource): void {
     const unitValues = source.unitRows.values;
+    for (let rowIndex = 0, base = 0; rowIndex < source.unitRows.count; rowIndex++, base += ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE) {
+      this.applyUnitMetadataTypedDeltaWireRow(
+        unitValues,
+        base,
+        unitValues[base + 7] | 0,
+      );
+    }
     const buildingValues = source.buildingRows.values;
-    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
-      const rowIndex = source.rowIndices[entityIndex];
-      switch (source.kinds[entityIndex]) {
-        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT: {
-          const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
-          this.applyUnitMetadataTypedDeltaWireRow(
-            unitValues,
-            base,
-            unitValues[base + 7] | 0,
-          );
-          break;
-        }
-        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING: {
-          const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
-          this.applyBuildingMetadataTypedDeltaWireRow(
-            buildingValues,
-            base,
-            buildingValues[base + 7] | 0,
-          );
-          break;
-        }
-      }
+    for (
+      let rowIndex = 0, base = 0;
+      rowIndex < source.buildingRows.count;
+      rowIndex++, base += ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE
+    ) {
+      this.applyBuildingMetadataTypedDeltaWireRow(
+        buildingValues,
+        base,
+        buildingValues[base + 7] | 0,
+      );
     }
   }
 
@@ -1930,6 +2217,34 @@ export class ClientViewState {
     }
   }
 
+  private applyUnitHotMotionTypedPlaceholderRows(
+    source: EntitySnapshotWireSource,
+    now: number,
+  ): void {
+    const values = source.unitRows.values;
+    const entityIndices = source.unitTypedPlaceholderEntityIndices;
+    const rowIndices = source.rowIndices;
+    for (let i = 0; i < source.unitTypedPlaceholderRows; i++) {
+      const rowIndex = rowIndices[entityIndices[i]];
+      if (rowIndex < 0 || rowIndex >= source.unitRows.count) continue;
+      const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+      const changedFields = values[base + 7] | 0;
+      if (
+        values[base + 6] === 0 ||
+        changedFields === 0 ||
+        (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) !== 0
+      ) {
+        continue;
+      }
+      this.tryApplyUnitHotMotionTypedDeltaWireRow(
+        values,
+        base,
+        changedFields,
+        now,
+      );
+    }
+  }
+
   private applyTypedPlaceholderDeltaSource(
     source: EntitySnapshotWireSource,
     now: number,
@@ -2019,6 +2334,72 @@ export class ClientViewState {
   ): boolean {
     if (source.typedPlaceholderRows === 0) return false;
 
+    if (
+      source.basicRows.count === 0 &&
+      source.unitTypedPlaceholderRows === source.unitRows.count &&
+      source.buildingTypedPlaceholderRows === source.buildingRows.count &&
+      source.typedPlaceholderRows === source.unitRows.count + source.buildingRows.count
+    ) {
+      if (
+        source.unitRows.count > 0 &&
+        source.unitChangedFieldsOr !== 0 &&
+        (source.unitChangedFieldsOr & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
+      ) {
+        this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
+      } else {
+        for (let rowIndex = 0; rowIndex < source.unitRows.count; rowIndex++) {
+          this.tryApplyUnitTypedDeltaWireRowAt(
+            source,
+            rowIndex,
+            now,
+            false,
+            deferPredictedTurretRenderRefresh,
+            applyStats,
+          );
+        }
+      }
+      for (let rowIndex = 0; rowIndex < source.buildingRows.count; rowIndex++) {
+        this.tryApplyBuildingTypedDeltaWireRowAt(
+          source,
+          rowIndex,
+          now,
+          deferPredictedTurretRenderRefresh,
+        );
+      }
+      return true;
+    }
+
+    const unitHotMotionPlaceholders =
+      source.unitTypedPlaceholderRows > 0 &&
+      source.unitTypedPlaceholderRows !== source.unitRows.count &&
+      source.unitChangedFieldsOr !== 0 &&
+      (source.unitChangedFieldsOr & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0;
+    if (unitHotMotionPlaceholders) {
+      this.applyUnitHotMotionTypedPlaceholderRows(source, now);
+      if (source.typedPlaceholderRows === source.unitTypedPlaceholderRows) return true;
+
+      const basicPlaceholderIndices = source.basicTypedPlaceholderEntityIndices;
+      for (let i = 0; i < source.basicTypedPlaceholderRows; i++) {
+        this.tryApplyBasicTypedDeltaWireRow(
+          source,
+          basicPlaceholderIndices[i],
+          now,
+          false,
+          applyStats,
+        );
+      }
+      const buildingPlaceholderIndices = source.buildingTypedPlaceholderEntityIndices;
+      for (let i = 0; i < source.buildingTypedPlaceholderRows; i++) {
+        this.tryApplyBuildingTypedDeltaWireRow(
+          source,
+          buildingPlaceholderIndices[i],
+          now,
+          deferPredictedTurretRenderRefresh,
+        );
+      }
+      return true;
+    }
+
     const batchUnitHotMotion =
       source.unitRows.count > 0 &&
       source.unitChangedFieldsOr !== 0 &&
@@ -2094,6 +2475,91 @@ export class ClientViewState {
       appliedAny = true;
     }
     return appliedAny;
+  }
+
+  private canApplyTypedFullSnapshotSource(source: EntitySnapshotWireSource): boolean {
+    if (
+      source.count === 0 ||
+      source.typedPlaceholderRows !== 0 ||
+      source.rawEntityRows !== 0 ||
+      source.typedEntityRows !== source.count ||
+      source.basicRows.count !== 0
+    ) {
+      return false;
+    }
+    if (source.unitRows.count + source.buildingRows.count !== source.count) return false;
+    return source.unitChangedFieldsOr === 0 && source.buildingChangedFieldsOr === 0;
+  }
+
+  private tryApplyTypedFullSnapshotSource(
+    source: EntitySnapshotWireSource,
+    now: number,
+  ): boolean {
+    if (this.tryCreateInitialTypedFullSnapshotSource(source)) {
+      return true;
+    }
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      let applied = false;
+      switch (source.kinds[entityIndex]) {
+        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+          applied = this.tryApplyUnitTypedFullWireRow(source, entityIndex, now);
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+          applied = this.tryApplyBuildingTypedFullWireRow(source, entityIndex, now);
+          break;
+        default:
+          return false;
+      }
+      if (applied) continue;
+
+      const typedEntityId = typedEntityWireRowId(source, entityIndex);
+      const createdEntity = typedEntityId !== null && !this.entities.has(typedEntityId)
+        ? createEntityFromTypedFullWireRow(source, entityIndex)
+        : null;
+      if (createdEntity === null || createdEntity.id !== typedEntityId) {
+        return false;
+      }
+      this.attachCreatedNetworkEntity(createdEntity);
+    }
+    return true;
+  }
+
+  private tryCreateInitialTypedFullSnapshotSource(
+    source: EntitySnapshotWireSource,
+  ): boolean {
+    if (this.entities.size !== 0) return false;
+    const createdEntities = this.typedFullCreationScratch;
+    const createdIds = this.typedFullCreationIds;
+    createdEntities.length = 0;
+    createdIds.clear();
+    for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
+      const typedEntityId = typedEntityWireRowId(source, entityIndex);
+      if (
+        typedEntityId === null ||
+        this.entities.has(typedEntityId) ||
+        createdIds.has(typedEntityId)
+      ) {
+        createdEntities.length = 0;
+        createdIds.clear();
+        return false;
+      }
+      const createdEntity = createEntityFromTypedFullWireRow(source, entityIndex);
+      if (createdEntity === null || createdEntity.id !== typedEntityId) {
+        createdEntities.length = 0;
+        createdIds.clear();
+        return false;
+      }
+      createdIds.add(typedEntityId);
+      createdEntities.push(createdEntity);
+    }
+
+    for (let i = 0; i < createdEntities.length; i++) {
+      this.attachCreatedNetworkEntity(createdEntities[i], true);
+    }
+    if (createdEntities.length > 0) this.entitySetVersion++;
+    createdEntities.length = 0;
+    createdIds.clear();
+    return true;
   }
 
   private tryApplyBuildingTypedDeltaWireRow(
@@ -2210,6 +2676,223 @@ export class ClientViewState {
     }
     if (copiedTurretRows) this.activeEntityPredictionIds.add(id);
     return true;
+  }
+
+  private tryApplyBuildingTypedFullWireRow(
+    source: EntitySnapshotWireSource,
+    entityIndex: number,
+    now: number,
+  ): boolean {
+    const rowIndex = source.rowIndices[entityIndex];
+    return this.tryApplyBuildingTypedFullWireRowAt(source, rowIndex, now);
+  }
+
+  private tryApplyBuildingTypedFullWireRowAt(
+    source: EntitySnapshotWireSource,
+    rowIndex: number,
+    now: number,
+  ): boolean {
+    if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
+    const values = source.buildingRows.values;
+    const base = rowIndex * ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE;
+    if (values[base + 6] !== 0 || (values[base + 7] | 0) !== 0) return false;
+
+    const id = values[base + 0] | 0;
+    const playerId = values[base + 5] | 0;
+    const existing = this.entities.get(id);
+    if (existing === undefined || existing.building === null) return false;
+    const ownership = existing.ownership;
+    if (ownership === null || ownership.playerId !== playerId) return false;
+
+    if (values[base + 8] === 0) return false;
+    const buildingBlueprintId = codeToBuildingBlueprintId(values[base + 9]);
+    if (
+      buildingBlueprintId === null ||
+      existing.buildingBlueprintId !== buildingBlueprintId
+    ) {
+      return false;
+    }
+    if (
+      values[base + 10] !== 0 &&
+      (
+        existing.building.width !== values[base + 11] ||
+        existing.building.height !== values[base + 12]
+      )
+    ) {
+      return false;
+    }
+
+    const x = deqEntityPos(values[base + 1]);
+    const y = deqEntityPos(values[base + 2]);
+    const z = deqEntityPos(values[base + 3]);
+    const rotation = deqRot(values[base + 4]);
+    const transformChanged =
+      existing.transform.x !== x ||
+      existing.transform.y !== y ||
+      existing.transform.z !== z ||
+      existing.transform.rotation !== rotation;
+    existing.transform.x = x;
+    existing.transform.y = y;
+    existing.transform.z = z;
+    existing.transform.rotation = rotation;
+
+    let copiedTurretRows = false;
+    if (values[base + 22] !== 0) {
+      const turretCount = values[base + 23] | 0;
+      const turretOffset = values[base + 31] | 0;
+      if (existing.combat === null || existing.combat.turrets.length !== turretCount) {
+        return false;
+      }
+      const target = this.getOrCreateServerTarget(id);
+      target.x = x;
+      target.y = y;
+      target.z = z;
+      target.rotation = rotation;
+      copiedTurretRows = this.copyWireUnitTurretsToTarget(
+        source,
+        turretOffset,
+        turretCount,
+        target,
+        existing,
+      );
+      if (!copiedTurretRows) return false;
+      target.updatedAtMs = now;
+    } else {
+      this.serverTargets.delete(id);
+    }
+
+    this.applyBuildingHpBuildTypedFields(
+      existing,
+      values,
+      base,
+      true,
+      true,
+    );
+    if (
+      values[base + 20] === 0 &&
+      (
+        buildingBlueprintId === 'buildingSolar' ||
+        buildingBlueprintId === 'buildingWind' ||
+        isMetalExtractorBlueprintId(buildingBlueprintId)
+      )
+    ) {
+      const activeState = existing.building.activeState;
+      existing.building.activeState = {
+        open: buildingBlueprintId !== 'buildingSolar',
+        damageDelayMs: activeState === null ? 0 : activeState.damageDelayMs,
+        reopenDelayMs: activeState === null ? 0 : activeState.reopenDelayMs,
+      };
+    }
+    if (values[base + 18] === 0 && !isMetalExtractorBlueprintId(buildingBlueprintId)) {
+      existing.metalExtractionRate = null;
+    }
+
+    if (values[base + 24] !== 0 && !this.applyBuildingFactoryTypedFields(
+      existing,
+      source,
+      values,
+      base,
+    )) {
+      return false;
+    }
+
+    if (transformChanged) {
+      this.refreshRenderableEntityStateFromSnapshot(existing, true);
+    } else {
+      this.refreshRenderableEntityStateSnapshotDelta(
+        existing,
+        true,
+        copiedTurretRows,
+        true,
+      );
+    }
+    this.refreshPredictionSupportSurfaceProvider(existing);
+    this.dirtyBuildingRenderIds.add(id);
+    if (copiedTurretRows) this.activeEntityPredictionIds.add(id);
+    return true;
+  }
+
+  private collectFullSnapshotServerIds(
+    entities: readonly (NetworkServerSnapshotEntity | undefined)[],
+    typedEntityWireSource: EntitySnapshotWireSource | undefined,
+  ): void {
+    this._serverIds.clear();
+
+    if (
+      typedEntityWireSource !== undefined &&
+      typedEntityWireSource.count === entities.length &&
+      typedEntityWireSource.rawEntityRows === 0 &&
+      typedEntityWireSource.typedEntityRows === typedEntityWireSource.count
+    ) {
+      const basicValues = typedEntityWireSource.basicRows.values;
+      for (
+        let rowIndex = 0, base = 0;
+        rowIndex < typedEntityWireSource.basicRows.count;
+        rowIndex++, base += ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE
+      ) {
+        this._serverIds.add(basicValues[base] as EntityId);
+      }
+      const unitValues = typedEntityWireSource.unitRows.values;
+      for (
+        let rowIndex = 0, base = 0;
+        rowIndex < typedEntityWireSource.unitRows.count;
+        rowIndex++, base += ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
+      ) {
+        this._serverIds.add(unitValues[base] as EntityId);
+      }
+      const buildingValues = typedEntityWireSource.buildingRows.values;
+      for (
+        let rowIndex = 0, base = 0;
+        rowIndex < typedEntityWireSource.buildingRows.count;
+        rowIndex++, base += ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE
+      ) {
+        this._serverIds.add(buildingValues[base] as EntityId);
+      }
+      return;
+    }
+
+    for (let entityIndex = 0; entityIndex < entities.length; entityIndex++) {
+      const netEntity = entities[entityIndex];
+      if (netEntity !== undefined) {
+        this._serverIds.add(netEntity.id);
+        continue;
+      }
+      if (typedEntityWireSource !== undefined) {
+        const id = typedEntityWireRowId(typedEntityWireSource, entityIndex);
+        if (id !== null) this._serverIds.add(id);
+      }
+    }
+  }
+
+  private collectFullSnapshotRemoveIds(
+    entities: readonly (NetworkServerSnapshotEntity | undefined)[],
+    typedEntityWireSource: EntitySnapshotWireSource | undefined,
+  ): EntityId[] {
+    if (
+      typedEntityWireSource !== undefined &&
+      typedEntityWireSource.count === entities.length &&
+      typedEntityWireSource.rawEntityRows === 0 &&
+      typedEntityWireSource.typedEntityRows === typedEntityWireSource.count
+    ) {
+      return this.renderEntityState.collectEntityIdsMissingFromTypedWireRows(
+        typedEntityWireSource.basicRows.values,
+        typedEntityWireSource.basicRows.count,
+        ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
+        typedEntityWireSource.unitRows.values,
+        typedEntityWireSource.unitRows.count,
+        ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+        typedEntityWireSource.buildingRows.values,
+        typedEntityWireSource.buildingRows.count,
+        ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE,
+        this._fullReconcileRemoveIds,
+      );
+    }
+
+    this.collectFullSnapshotServerIds(entities, typedEntityWireSource);
+    return this.renderEntityState.collectEntityIdsMissingFrom(
+      this._serverIds,
+      this._fullReconcileRemoveIds,
+    );
   }
 
   private recordWireMotionCorrectionStats(
@@ -2344,6 +3027,16 @@ export class ClientViewState {
     let entityApplyPath: SnapshotMaterializationStage | undefined = undefined;
     if (
       !projectileDeltaOnly &&
+      !entityDeltaOnly &&
+      !collectCorrectionStats &&
+      typedEntityWireSource !== undefined &&
+      this.canApplyTypedFullSnapshotSource(typedEntityWireSource) &&
+      this.tryApplyTypedFullSnapshotSource(typedEntityWireSource, now)
+    ) {
+      entityApplyPath = 'clientApplyEntitiesTypedFull';
+      // Applied by tryApplyTypedFullSnapshotSource above.
+    } else if (
+      !projectileDeltaOnly &&
       entityDeltaOnly &&
       !collectCorrectionStats &&
       typedEntityWireSource !== undefined &&
@@ -2412,11 +3105,11 @@ export class ClientViewState {
         if (entityIndex >= state.entities.length) {
           continue;
         }
-        let appliedTypedDelta = false;
+        let appliedTypedEntity = false;
         if (typedEntityWireSource !== undefined) {
           switch (typedEntityWireSource.kinds[entityIndex]) {
             case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
-              appliedTypedDelta = this.tryApplyBasicTypedDeltaWireRow(
+              appliedTypedEntity = this.tryApplyBasicTypedDeltaWireRow(
                 typedEntityWireSource,
                 entityIndex,
                 now,
@@ -2425,27 +3118,70 @@ export class ClientViewState {
               );
               break;
             case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
-              appliedTypedDelta = this.tryApplyUnitTypedDeltaWireRow(
-                typedEntityWireSource,
-                entityIndex,
-                now,
-                collectCorrectionStats,
-                deferPredictedTurretRenderRefresh,
-                applyStats,
-              );
+              if (
+                !collectCorrectionStats &&
+                typedEntityWireRowIsFull(typedEntityWireSource, entityIndex)
+              ) {
+                appliedTypedEntity = this.tryApplyUnitTypedFullWireRow(
+                  typedEntityWireSource,
+                  entityIndex,
+                  now,
+                );
+              } else {
+                appliedTypedEntity = this.tryApplyUnitTypedDeltaWireRow(
+                  typedEntityWireSource,
+                  entityIndex,
+                  now,
+                  collectCorrectionStats,
+                  deferPredictedTurretRenderRefresh,
+                  applyStats,
+                );
+              }
               break;
             case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
-              appliedTypedDelta = this.tryApplyBuildingTypedDeltaWireRow(
-                typedEntityWireSource,
-                entityIndex,
-                now,
-                deferPredictedTurretRenderRefresh,
-              );
+              if (
+                !collectCorrectionStats &&
+                typedEntityWireRowIsFull(typedEntityWireSource, entityIndex)
+              ) {
+                appliedTypedEntity = this.tryApplyBuildingTypedFullWireRow(
+                  typedEntityWireSource,
+                  entityIndex,
+                  now,
+                );
+              } else {
+                appliedTypedEntity = this.tryApplyBuildingTypedDeltaWireRow(
+                  typedEntityWireSource,
+                  entityIndex,
+                  now,
+                  deferPredictedTurretRenderRefresh,
+                );
+              }
               break;
           }
         }
-        if (appliedTypedDelta) {
+        if (appliedTypedEntity) {
           continue;
+        }
+
+        if (
+          typedEntityWireSource !== undefined &&
+          !collectCorrectionStats &&
+          typedEntityWireRowIsFull(typedEntityWireSource, entityIndex)
+        ) {
+          const typedEntityId = typedEntityWireRowId(typedEntityWireSource, entityIndex);
+          const createdEntity = typedEntityId !== null && !this.entities.has(typedEntityId)
+            ? createEntityFromTypedFullWireRow(
+                typedEntityWireSource,
+                entityIndex,
+              )
+            : null;
+          if (
+            createdEntity !== null &&
+            createdEntity.id === typedEntityId
+          ) {
+            this.attachCreatedNetworkEntity(createdEntity);
+            continue;
+          }
         }
 
         const netEntity = state.entities[entityIndex];
@@ -2538,15 +3274,7 @@ export class ClientViewState {
 
           const newEntity = createEntityFromNetwork(netEntity);
           if (newEntity) {
-            if (newEntity.selectable && this.selectionState.has(newEntity.id)) {
-              newEntity.selectable.selected = true;
-            }
-            this.entities.set(netEntity.id, newEntity);
-            this.handleLocalEntityAdded(newEntity);
-            this.refreshRenderableEntityStateAndSpatialIndex(newEntity);
-            this.markEntityPredictionActive(newEntity);
-            this.refreshPredictionSupportSurfaceProvider(newEntity);
-            this.renderLifecycleDirtyIds.add(netEntity.id);
+            this.attachCreatedNetworkEntity(newEntity);
           }
         } else {
           // Existing entity — snap non-visual state immediately. The entity
@@ -2619,21 +3347,9 @@ export class ClientViewState {
     // in the visible snapshot. Visibility-filtered snapshots omit
     // out-of-sight entities by design.
     if (!presentationDeltaOnly) {
-      this._serverIds.clear();
-      for (let entityIndex = 0; entityIndex < state.entities.length; entityIndex++) {
-        const netEntity = state.entities[entityIndex];
-        if (netEntity !== undefined) {
-          this._serverIds.add(netEntity.id);
-          continue;
-        }
-        if (typedEntityWireSource !== undefined) {
-          const id = typedEntityWireRowId(typedEntityWireSource, entityIndex);
-          if (id !== null) this._serverIds.add(id);
-        }
-      }
-      const removeIds = this.renderEntityState.collectEntityIdsMissingFrom(
-        this._serverIds,
-        this._fullReconcileRemoveIds,
+      const removeIds = this.collectFullSnapshotRemoveIds(
+        state.entities,
+        typedEntityWireSource,
       );
       let removedAnyLocalEntity = false;
       for (let i = 0; i < removeIds.length; i++) {
@@ -2651,24 +3367,21 @@ export class ClientViewState {
 
     const projectiles = state.projectiles;
     if (projectiles !== undefined && projectiles !== null) {
+      let projectileSubstageStart = collectMaterializationStages ? performance.now() : 0;
       const directProjectileSource = getActiveProjectileSnapshotWireSource(projectiles);
       const directProjectileRows =
         projectileWireSourceHasDirectlyConsumableRows(directProjectileSource);
       const packedProjectiles = directProjectileRows
         ? undefined
         : getPackedProjectileSnapshotWire(projectiles);
+      projectileSubstageStart = recordClientApplySubstage(
+        state,
+        collectMaterializationStages,
+        'clientApplyProjectileSetup',
+        projectileSubstageStart,
+      );
       const appliedDirectSpawns = directProjectileRows
-        ? forEachProjectileWireSourceSpawnFromSource(
-            directProjectileSource,
-            this.directProjectileSpawnScratch,
-            (spawn) => {
-              if (this.projectileStore.projectileSpawns.shouldSmooth(spawn)) {
-                this.projectileStore.projectileSpawns.enqueue(spawn, now);
-                return;
-              }
-              this.projectileStore.applySpawn(spawn);
-            },
-          )
+        ? this.applyProjectileWireSourceSpawns(directProjectileSource, now)
         : false;
       const spawns = appliedDirectSpawns ? undefined : projectiles.spawns;
 
@@ -2682,6 +3395,12 @@ export class ClientViewState {
           this.projectileStore.applySpawn(spawn);
         }
       }
+      projectileSubstageStart = recordClientApplySubstage(
+        state,
+        collectMaterializationStages,
+        'clientApplyProjectileSpawns',
+        projectileSubstageStart,
+      );
 
       // Server-authored live beam/laser paths. These carry current
       // start/end/reflection points so the client can draw beams without
@@ -2695,6 +3414,12 @@ export class ClientViewState {
           this.projectileStore.applyBeamUpdate(update, now);
         }
       }
+      projectileSubstageStart = recordClientApplySubstage(
+        state,
+        collectMaterializationStages,
+        'clientApplyProjectileBeams',
+        projectileSubstageStart,
+      );
 
       // Process projectile despawn events (after spawns, so same-snapshot spawn+despawn works)
       const appliedDirectDespawns = directProjectileRows
@@ -2703,7 +3428,7 @@ export class ClientViewState {
       const appliedPackedDespawns = !appliedDirectDespawns && packedProjectiles !== undefined
         ? forEachPackedProjectileDespawn(
             packedProjectiles,
-            (id) => this.deleteEntityLocalState(id as EntityId),
+            (id) => this.deleteProjectileLocalState(id as EntityId),
           )
         : false;
       const despawns = appliedDirectDespawns || appliedPackedDespawns
@@ -2711,9 +3436,15 @@ export class ClientViewState {
         : projectiles.despawns;
       if (despawns !== undefined && despawns !== null) {
         for (const despawn of despawns) {
-          this.deleteEntityLocalState(despawn.id);
+          this.deleteProjectileLocalState(despawn.id);
         }
       }
+      projectileSubstageStart = recordClientApplySubstage(
+        state,
+        collectMaterializationStages,
+        'clientApplyProjectileDespawns',
+        projectileSubstageStart,
+      );
 
       // Process projectile velocity updates. Shield reflections are hard
       // topology events and still snap so the trail kink stays exact. Rocket
@@ -2775,6 +3506,12 @@ export class ClientViewState {
           );
         }
       }
+      recordClientApplySubstage(
+        state,
+        collectMaterializationStages,
+        'clientApplyProjectileVelocity',
+        projectileSubstageStart,
+      );
     }
     materializationStageStart = recordClientApplySubstage(
       state,
@@ -3070,111 +3807,126 @@ export class ClientViewState {
     out.groundPrints.reset();
     this.populateRenderRemovalRows3D(out);
 
-    const renderScope = options.renderScope;
-    if (renderScope.getMode() === 'all') {
-      const units = this.getUnits();
-      const buildings = this.getBuildings();
-      this.populateUnitRenderRows3D(units, options, out);
-      if (options.isEntityFarLod !== undefined) {
-        this.populateBuildingRenderRows3D(buildings, options, out);
-      } else {
-        this.populateQueuedBuildingRenderRows3D(options, out);
+    this.renderEntityState.clearPacketFlags();
+    try {
+      this.markRenderEntityPacketFlags();
+
+      const renderScope = options.renderScope;
+      if (renderScope.getMode() === 'all') {
+        const units = this.getUnits();
+        const buildings = this.getBuildings();
+        this.populateUnitRenderRows3D(units, options, out);
+        if (options.isEntityFarLod !== undefined) {
+          this.populateBuildingRenderRows3D(buildings, options, out);
+        } else {
+          this.populateQueuedBuildingRenderRows3D(options, out);
+        }
+        if (options.includeBodyHud) {
+          this.populateBodyHudPacket3D(this.getHudEntities(), options.hoveredEntity, options, out);
+        }
+        if (options.includeBodyNames) {
+          this.populateBodyNamePacket3D(this.getUnitsAndBuildings(), options, out);
+        }
+        if (options.includeShields) {
+          this.populateShieldPacket3D(this.getShieldUnits(), renderScope, options, out);
+        }
+        if (options.includeContactShadows) {
+          this.populateContactShadowPacket3D(units, buildings, renderScope, options, out);
+        }
+        if (options.includeGroundPrints) {
+          this.populateGroundPrintPacket3D(units, options, out);
+        }
+        return out;
       }
-      if (options.includeBodyHud) {
-        this.populateBodyHudPacket3D(this.getHudEntities(), options.hoveredEntity, options, out);
+
+      const units = options.scopedUnitsOut;
+      const buildings = options.scopedBuildingsOut;
+      this.collectScopedRenderEntities(
+        renderScope.getCullingBounds(this.getRenderSpatialEntityPadding()),
+        units,
+        buildings,
+        options.hoveredEntity,
+        renderScope,
+      );
+
+      const unitRowSlots = this.scopedRenderUnitRowSlots;
+      const buildingRowSlots = this.scopedRenderBuildingRowSlots;
+      let hoveredBodyHudPushed = false;
+      for (let i = 0; i < units.length; i++) {
+        const entity = units[i];
+        const farLod = this.entityUsesFarLod3D(entity, options);
+        this.pushUnitRenderKnownSlot3D(entity, unitRowSlots[i] ?? -1, farLod, out);
+        if (
+          !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
+          options.includeBodyHud &&
+          this.entityNeedsBodyHud3D(entity)
+        ) {
+          const forceVisible = entity === options.hoveredEntity;
+          if (forceVisible) hoveredBodyHudPushed = true;
+          this.pushBodyHudEntity3D(entity, forceVisible, options, out, unitRowSlots[i] ?? -1);
+        }
+        if (
+          !this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames') &&
+          options.includeBodyNames
+        ) {
+          this.pushBodyNamesForEntity3D(entity, options, out, unitRowSlots[i] ?? -1);
+        }
+        if (
+          options.includeShields &&
+          entity.unit !== null &&
+          entity.combat !== null &&
+          !this.entityEmissionUsesFarLod3D(entity, options, 'shieldFields')
+        ) {
+          this.pushShieldUnit3D(entity, renderScope, out, unitRowSlots[i] ?? -1);
+        }
       }
-      if (options.includeBodyNames) {
-        this.populateBodyNamePacket3D(this.getUnitsAndBuildings(), options, out);
+      for (let i = 0; i < buildings.length; i++) {
+        const entity = buildings[i];
+        const farLod = this.entityUsesFarLod3D(entity, options);
+        this.pushBuildingRenderKnownSlot3D(entity, buildingRowSlots[i] ?? -1, farLod, out);
+        if (
+          !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
+          options.includeBodyHud &&
+          this.entityNeedsBodyHud3D(entity)
+        ) {
+          const forceVisible = entity === options.hoveredEntity;
+          if (forceVisible) hoveredBodyHudPushed = true;
+          this.pushBodyHudEntity3D(entity, forceVisible, options, out, buildingRowSlots[i] ?? -1);
+        }
+        if (
+          !this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames') &&
+          options.includeBodyNames
+        ) {
+          this.pushBodyNamesForEntity3D(entity, options, out, buildingRowSlots[i] ?? -1);
+        }
       }
-      if (options.includeShields) {
-        this.populateShieldPacket3D(this.getShieldUnits(), renderScope, options, out);
+
+      if (
+        options.includeBodyHud &&
+        options.hoveredEntity !== null &&
+        !hoveredBodyHudPushed &&
+        !this.entityEmissionUsesFarLod3D(options.hoveredEntity, options, 'bodyHud')
+      ) {
+        this.pushBodyHudEntity3D(options.hoveredEntity, true, options, out);
       }
       if (options.includeContactShadows) {
-        this.populateContactShadowPacket3D(units, buildings, renderScope, options, out);
+        this.populateContactShadowPacket3D(
+          units,
+          buildings,
+          renderScope,
+          options,
+          out,
+          unitRowSlots,
+          buildingRowSlots,
+        );
       }
       if (options.includeGroundPrints) {
-        this.populateGroundPrintPacket3D(units, options, out);
+        this.populateGroundPrintPacket3D(units, options, out, unitRowSlots);
       }
       return out;
+    } finally {
+      this.renderEntityState.clearPacketFlags();
     }
-
-    const units = options.scopedUnitsOut;
-    const buildings = options.scopedBuildingsOut;
-    this.collectScopedRenderEntities(
-      renderScope.getCullingBounds(this.getRenderSpatialEntityPadding()),
-      units,
-      buildings,
-      options.hoveredEntity,
-      renderScope,
-    );
-
-    const unitRowSlots = this.scopedRenderUnitRowSlots;
-    const buildingRowSlots = this.scopedRenderBuildingRowSlots;
-    let hoveredBodyHudPushed = false;
-    for (let i = 0; i < units.length; i++) {
-      const entity = units[i];
-      const farLod = this.entityUsesFarLod3D(entity, options);
-      this.pushUnitRenderKnownSlot3D(entity, unitRowSlots[i] ?? -1, farLod, out);
-      if (
-        !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
-        options.includeBodyHud &&
-        this.entityNeedsBodyHud3D(entity)
-      ) {
-        const forceVisible = entity === options.hoveredEntity;
-        if (forceVisible) hoveredBodyHudPushed = true;
-        this.pushBodyHudEntity3D(entity, forceVisible, options, out);
-      }
-      if (
-        !this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames') &&
-        options.includeBodyNames
-      ) {
-        this.pushBodyNamesForEntity3D(entity, options, out);
-      }
-      if (
-        options.includeShields &&
-        entity.unit !== null &&
-        entity.combat !== null &&
-        !this.entityEmissionUsesFarLod3D(entity, options, 'shieldFields')
-      ) {
-        this.pushShieldUnit3D(entity, renderScope, out);
-      }
-    }
-    for (let i = 0; i < buildings.length; i++) {
-      const entity = buildings[i];
-      const farLod = this.entityUsesFarLod3D(entity, options);
-      this.pushBuildingRenderKnownSlot3D(entity, buildingRowSlots[i] ?? -1, farLod, out);
-      if (
-        !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
-        options.includeBodyHud &&
-        this.entityNeedsBodyHud3D(entity)
-      ) {
-        const forceVisible = entity === options.hoveredEntity;
-        if (forceVisible) hoveredBodyHudPushed = true;
-        this.pushBodyHudEntity3D(entity, forceVisible, options, out);
-      }
-      if (
-        !this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames') &&
-        options.includeBodyNames
-      ) {
-        this.pushBodyNamesForEntity3D(entity, options, out);
-      }
-    }
-
-    if (
-      options.includeBodyHud &&
-      options.hoveredEntity !== null &&
-      !hoveredBodyHudPushed &&
-      !this.entityEmissionUsesFarLod3D(options.hoveredEntity, options, 'bodyHud')
-    ) {
-      this.pushBodyHudEntity3D(options.hoveredEntity, true, options, out);
-    }
-    if (options.includeContactShadows) {
-      this.populateContactShadowPacket3D(units, buildings, renderScope, options, out);
-    }
-    if (options.includeGroundPrints) {
-      this.populateGroundPrintPacket3D(units, options, out);
-    }
-    return out;
   }
 
   consumeRenderDirties(): void {
@@ -3296,6 +4048,48 @@ export class ClientViewState {
       }
       this.refreshRenderEntityStateById(id);
     }
+  }
+
+  private markRenderEntityPacketFlags(): void {
+    for (const id of this.activeEntityPredictionIds) {
+      this.markRenderEntityPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION);
+    }
+    for (const id of this.dirtyUnitRenderIds) {
+      this.markRenderEntityPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY);
+    }
+    for (const id of this.dirtyBuildingRenderIds) {
+      this.markRenderEntityPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY);
+    }
+    for (const id of this.renderLifecycleDirtyIds) {
+      this.markRenderEntityPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY);
+    }
+  }
+
+  private markRenderEntityPacketFlagById(id: EntityId, flag: number): void {
+    const slot = this.renderEntityState.getSlot(id);
+    if (slot !== undefined) this.renderEntityState.markPacketFlags(slot, flag);
+  }
+
+  private markRenderEntityPacketFlagsForFreshSlot(
+    id: EntityId,
+    slot: number,
+    unitRow: boolean,
+  ): void {
+    let flags = 0;
+    if (this.activeEntityPredictionIds.has(id)) {
+      flags |= CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION;
+    }
+    if (
+      unitRow
+        ? this.dirtyUnitRenderIds.has(id)
+        : this.dirtyBuildingRenderIds.has(id)
+    ) {
+      flags |= CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY;
+    }
+    if (this.renderLifecycleDirtyIds.has(id)) {
+      flags |= CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY;
+    }
+    if (flags !== 0) this.renderEntityState.markPacketFlags(slot, flags);
   }
 
   private pushScopedRenderException(
@@ -3444,22 +4238,26 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const id = entity.id;
-    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
-    const activePrediction = this.activeEntityPredictionIds.has(id);
-    const renderDirty = this.dirtyUnitRenderIds.has(id);
-    const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
+    const existingSlot = this.renderEntityState.getSlot(id);
+    const slot = existingSlot ?? this.refreshRenderableEntityState(entity);
     if (slot !== undefined) {
+      if (existingSlot === undefined) {
+        this.markRenderEntityPacketFlagsForFreshSlot(id, slot, true);
+      }
       out.unitRows.pushEntityState(
         entity,
         this.renderEntityState.getViews(),
         slot,
         this.renderTurretState,
-        activePrediction,
-        renderDirty,
-        lifecycleDirty,
+        false,
+        false,
+        false,
         farLod,
       );
     } else {
+      const activePrediction = this.activeEntityPredictionIds.has(id);
+      const renderDirty = this.dirtyUnitRenderIds.has(id);
+      const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
       out.unitRows.pushEntity(
         entity,
         activePrediction,
@@ -3478,9 +4276,6 @@ export class ClientViewState {
   ): void {
     const views = this.renderEntityState.getViews();
     const id = entity.id;
-    const activePrediction = this.activeEntityPredictionIds.has(id);
-    const renderDirty = this.dirtyUnitRenderIds.has(id);
-    const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
     if (
       slot >= 0 &&
       views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT &&
@@ -3491,9 +4286,9 @@ export class ClientViewState {
         views,
         slot,
         this.renderTurretState,
-        activePrediction,
-        renderDirty,
-        lifecycleDirty,
+        false,
+        false,
+        false,
         farLod,
       );
       return;
@@ -3507,22 +4302,26 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const id = entity.id;
-    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
-    const activePrediction = this.activeEntityPredictionIds.has(id);
-    const renderDirty = this.dirtyBuildingRenderIds.has(id);
-    const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
+    const existingSlot = this.renderEntityState.getSlot(id);
+    const slot = existingSlot ?? this.refreshRenderableEntityState(entity);
     if (slot !== undefined) {
+      if (existingSlot === undefined) {
+        this.markRenderEntityPacketFlagsForFreshSlot(id, slot, false);
+      }
       out.buildingRows.pushEntityState(
         entity,
         this.renderEntityState.getViews(),
         slot,
         this.renderTurretState,
-        activePrediction,
-        renderDirty,
-        lifecycleDirty,
+        false,
+        false,
+        false,
         farLod,
       );
     } else {
+      const activePrediction = this.activeEntityPredictionIds.has(id);
+      const renderDirty = this.dirtyBuildingRenderIds.has(id);
+      const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
       out.buildingRows.pushEntity(
         entity,
         activePrediction,
@@ -3541,9 +4340,6 @@ export class ClientViewState {
   ): void {
     const views = this.renderEntityState.getViews();
     const id = entity.id;
-    const activePrediction = this.activeEntityPredictionIds.has(id);
-    const renderDirty = this.dirtyBuildingRenderIds.has(id);
-    const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
     if (
       slot >= 0 &&
       views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING &&
@@ -3554,9 +4350,9 @@ export class ClientViewState {
         views,
         slot,
         this.renderTurretState,
-        activePrediction,
-        renderDirty,
-        lifecycleDirty,
+        false,
+        false,
+        false,
         farLod,
       );
       return;
@@ -3603,6 +4399,7 @@ export class ClientViewState {
     forceVisible: boolean,
     options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
+    knownSlot = -1,
   ): void {
     const unit = entity.unit;
     const building = entity.building;
@@ -3610,9 +4407,21 @@ export class ClientViewState {
     if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud')) return;
 
     const type = this.hudTypeOf3D(entity);
-    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
+    let views = this.renderEntityState.getViews();
+    let slot: number | undefined =
+      knownSlot >= 0 &&
+      (
+        views.kind[knownSlot] === CLIENT_RENDER_ENTITY_KIND_UNIT ||
+        views.kind[knownSlot] === CLIENT_RENDER_ENTITY_KIND_BUILDING
+      ) &&
+      views.entityIds[knownSlot] === entity.id
+        ? knownSlot
+        : undefined;
+    if (slot === undefined) {
+      slot = this.getOrRefreshRenderEntityStateSlot(entity);
+      views = this.renderEntityState.getViews();
+    }
     if (slot !== undefined) {
-      const views = this.renderEntityState.getViews();
       const kind = views.kind[slot];
       if (
         kind === CLIENT_RENDER_ENTITY_KIND_UNIT ||
@@ -3713,22 +4522,37 @@ export class ClientViewState {
     entity: Entity,
     options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
+    knownSlot = -1,
   ): void {
     if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames')) return;
     const type = this.hudTypeOf3D(entity);
     const nameToggle = options.getEntityHudToggle(type, 'name');
-    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
-    const views = slot !== undefined ? this.renderEntityState.getViews() : undefined;
-    const hasStateRow = slot !== undefined && views !== undefined && (
-      views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT ||
-      views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING
-    );
+    let views = this.renderEntityState.getViews();
+    let slot: number | undefined =
+      knownSlot >= 0 &&
+      (
+        views.kind[knownSlot] === CLIENT_RENDER_ENTITY_KIND_UNIT ||
+        views.kind[knownSlot] === CLIENT_RENDER_ENTITY_KIND_BUILDING
+      ) &&
+      views.entityIds[knownSlot] === entity.id
+        ? knownSlot
+        : undefined;
+    if (slot === undefined) {
+      slot = this.getOrRefreshRenderEntityStateSlot(entity);
+      views = this.renderEntityState.getViews();
+    }
     let labelX = entity.transform.x;
     let labelZ = entity.transform.y;
     let bodyNameY = entity.unit !== null
       ? getUnitHudNameY(entity)
       : getBuildingHudNameY(entity);
-    if (hasStateRow) {
+    if (
+      slot !== undefined &&
+      (
+        views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT ||
+        views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING
+      )
+    ) {
       labelX = views.x[slot];
       labelZ = views.y[slot];
       bodyNameY = views.hudNameY[slot];
@@ -3784,9 +4608,19 @@ export class ClientViewState {
     entity: Entity,
     renderScope: ViewportFootprint,
     out: ClientViewRenderEntityPackets3D,
+    knownSlot = -1,
   ): void {
-    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
-    const views = this.renderEntityState.getViews();
+    let views = this.renderEntityState.getViews();
+    let slot: number | undefined =
+      knownSlot >= 0 &&
+      views.kind[knownSlot] === CLIENT_RENDER_ENTITY_KIND_UNIT &&
+      views.entityIds[knownSlot] === entity.id
+        ? knownSlot
+        : undefined;
+    if (slot === undefined) {
+      slot = this.getOrRefreshRenderEntityStateSlot(entity);
+      views = this.renderEntityState.getViews();
+    }
     if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
       out.shields.pushUnitTurretState(
         views,
@@ -3805,6 +4639,8 @@ export class ClientViewState {
     renderScope: ViewportFootprint,
     options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
+    unitSlots?: readonly number[],
+    buildingSlots?: readonly number[],
   ): void {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
@@ -3812,8 +4648,17 @@ export class ClientViewState {
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
       if (this.entityEmissionUsesFarLod3D(entity, options, 'contactShadows')) continue;
-      const slot = this.getOrRefreshRenderEntityStateSlot(entity);
-      views = this.renderEntityState.getViews();
+      const knownSlot = unitSlots?.[i] ?? -1;
+      let slot: number | undefined =
+        knownSlot >= 0 &&
+        views.kind[knownSlot] === CLIENT_RENDER_ENTITY_KIND_UNIT &&
+        views.entityIds[knownSlot] === entity.id
+          ? knownSlot
+          : undefined;
+      if (slot === undefined) {
+        slot = this.getOrRefreshRenderEntityStateSlot(entity);
+        views = this.renderEntityState.getViews();
+      }
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
         out.contactShadows.pushUnitState(
           views.entityIds[slot],
@@ -3834,8 +4679,17 @@ export class ClientViewState {
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
       if (this.entityEmissionUsesFarLod3D(entity, options, 'contactShadows')) continue;
-      const slot = this.getOrRefreshRenderEntityStateSlot(entity);
-      views = this.renderEntityState.getViews();
+      const knownSlot = buildingSlots?.[i] ?? -1;
+      let slot: number | undefined =
+        knownSlot >= 0 &&
+        views.kind[knownSlot] === CLIENT_RENDER_ENTITY_KIND_BUILDING &&
+        views.entityIds[knownSlot] === entity.id
+          ? knownSlot
+          : undefined;
+      if (slot === undefined) {
+        slot = this.getOrRefreshRenderEntityStateSlot(entity);
+        views = this.renderEntityState.getViews();
+      }
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING) {
         out.contactShadows.pushBuildingState(
           views.x[slot],
@@ -3855,6 +4709,7 @@ export class ClientViewState {
     units: readonly Entity[],
     options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
+    unitSlots?: readonly number[],
   ): void {
     const mapWidth = this.getMapWidth();
     const mapHeight = this.getMapHeight();
@@ -3862,8 +4717,17 @@ export class ClientViewState {
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
       if (this.entityEmissionUsesFarLod3D(entity, options, 'groundPrints')) continue;
-      const slot = this.getOrRefreshRenderEntityStateSlot(entity);
-      views = this.renderEntityState.getViews();
+      const knownSlot = unitSlots?.[i] ?? -1;
+      let slot: number | undefined =
+        knownSlot >= 0 &&
+        views.kind[knownSlot] === CLIENT_RENDER_ENTITY_KIND_UNIT &&
+        views.entityIds[knownSlot] === entity.id
+          ? knownSlot
+          : undefined;
+      if (slot === undefined) {
+        slot = this.getOrRefreshRenderEntityStateSlot(entity);
+        views = this.renderEntityState.getViews();
+      }
       if (slot !== undefined && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
         const entityId = views.entityIds[slot] as EntityId;
         const loc = options.getGroundPrintLocomotionMesh(entityId);

@@ -242,11 +242,6 @@ function createPooledVelocityUpdate(): NetworkServerSnapshotVelocityUpdate {
   return update;
 }
 
-const _directProjectileSpawnScratch = createPooledProjectileSpawn() as PooledProjectileSpawn;
-const _directProjectileVelocityScratch = createPooledVelocityUpdate() as PooledVelocityUpdate;
-const _directBeamUpdateScratch = createPooledBeamUpdate();
-const _directBeamPointScratch = createPooledBeamPoint();
-
 export function createProjectileSnapshotWireSource(): ProjectileSnapshotWireSource {
   return {
     spawns: createFloat64WireRows(),
@@ -402,6 +397,202 @@ function copyProjectileSpawnIntoWireRow(spawn: NetworkServerSnapshotProjectileSp
   );
 }
 
+function writeProjectileSpawnSourceProvenanceWireFields(
+  values: Float64Array,
+  base: number,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+  playerId: PlayerId,
+  sourceEntityId: EntityId,
+  sourceTurretEntityId: EntityId | null | undefined,
+  sourceHostEntityId: EntityId | null | undefined,
+  sourceRootEntityId: EntityId | null | undefined,
+  sourceTeamId: number | null | undefined,
+  spawnTick: number | null | undefined,
+  parentShotEntityId: EntityId | null | undefined,
+): number {
+  const sourceHostId = sourceHostEntityId ?? sourceEntityId;
+  const sourceRootId = sourceRootEntityId ?? sourceHostId;
+  const canReferenceSource = canReferenceEntityId(world, visibility, sourceEntityId);
+  const canReferenceSourceHost = canReferenceEntityId(world, visibility, sourceHostId);
+  const canReferenceSourceRoot = canReferenceEntityId(world, visibility, sourceRootId);
+  const wireSourceTurretEntityId = canReferenceSourceHost
+    ? sourceTurretEntityId ?? null
+    : null;
+  const wireParentShotEntityId = parentShotEntityId ?? null;
+  values[base + 14] = canReferenceSource ? sourceEntityId : 0;
+  values[base + 25] = wireSourceTurretEntityId ?? 0;
+  values[base + 26] = canReferenceSourceHost ? sourceHostId : 0;
+  values[base + 27] = canReferenceSourceRoot ? sourceRootId : 0;
+  values[base + 28] = sourceTeamId ?? world.getTeamId(playerId);
+  values[base + 29] = spawnTick ?? world.getTick();
+  values[base + 30] = wireParentShotEntityId ?? 0;
+  let flags = 0;
+  if (wireSourceTurretEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID;
+  if (wireParentShotEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_PARENT_SHOT_ENTITY_ID;
+  return flags;
+}
+
+function reserveProjectileSpawnWireRow(): { values: Float64Array; base: number } {
+  const rows = projectileWireSource.spawns;
+  const rowIndex = reserveFloat64WireRows(rows, 1, PROJECTILE_SPAWN_WIRE_STRIDE);
+  return {
+    values: rows.values,
+    base: rowIndex * PROJECTILE_SPAWN_WIRE_STRIDE,
+  };
+}
+
+function copyProjectileSpawnEventIntoWireRowDirect(
+  spawn: ProjectileSpawnEvent,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+): void {
+  const { values, base } = reserveProjectileSpawnWireRow();
+  const maxLifespan = typeof spawn.maxLifespan === 'number' && Number.isFinite(spawn.maxLifespan)
+    ? spawn.maxLifespan
+    : null;
+  const sourceTurretBlueprintCode = spawn.sourceTurretBlueprintId !== undefined
+    ? turretBlueprintIdToCode(spawn.sourceTurretBlueprintId)
+    : null;
+  const targetEntityId = canReferenceEntityId(world, visibility, spawn.targetEntityId)
+    ? spawn.targetEntityId ?? null
+    : null;
+  const homingTurnRate = spawn.homingTurnRate ?? null;
+  const beam = spawn.beam;
+
+  values[base + 0] = spawn.id;
+  values[base + 1] = qPos(spawn.pos.x);
+  values[base + 2] = qPos(spawn.pos.y);
+  values[base + 3] = qPos(spawn.pos.z);
+  values[base + 4] = qRot(spawn.rotation);
+  values[base + 5] = qVel(spawn.velocity.x);
+  values[base + 6] = qVel(spawn.velocity.y);
+  values[base + 7] = qVel(spawn.velocity.z);
+  values[base + 8] = projectileTypeToCode(spawn.projectileType);
+  values[base + 9] = maxLifespan ?? 0;
+  values[base + 10] = turretBlueprintIdToCode(spawn.turretBlueprintId);
+  values[base + 11] = shotBlueprintIdToCode(spawn.shotBlueprintId);
+  values[base + 12] = sourceTurretBlueprintCode ?? 0;
+  values[base + 13] = spawn.playerId;
+  values[base + 15] = spawn.turretIndex;
+  values[base + 16] = spawn.barrelIndex;
+  values[base + 17] = beam !== undefined ? qPos(beam.start.x) : 0;
+  values[base + 18] = beam !== undefined ? qPos(beam.start.y) : 0;
+  values[base + 19] = beam !== undefined ? qPos(beam.start.z) : 0;
+  values[base + 20] = beam !== undefined ? qPos(beam.end.x) : 0;
+  values[base + 21] = beam !== undefined ? qPos(beam.end.y) : 0;
+  values[base + 22] = beam !== undefined ? qPos(beam.end.z) : 0;
+  values[base + 23] = targetEntityId ?? 0;
+  values[base + 24] = homingTurnRate ?? 0;
+
+  let flags = writeProjectileSpawnSourceProvenanceWireFields(
+    values,
+    base,
+    world,
+    visibility,
+    spawn.playerId,
+    spawn.sourceEntityId,
+    spawn.sourceTurretEntityId,
+    spawn.sourceHostEntityId,
+    spawn.sourceRootEntityId,
+    spawn.sourceTeamId,
+    spawn.spawnTick,
+    spawn.parentShotEntityId,
+  );
+  if (maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
+  flags |= PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE;
+  if (sourceTurretBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE;
+  if (spawn.isDGun === true) flags |= PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE;
+  if (spawn.fromParentDetonation === true) flags |= PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE;
+  if (beam !== undefined) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
+  if (targetEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
+  if (homingTurnRate !== null) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
+  values[base + 31] = flags;
+}
+
+function copyProjectileEntitySpawnIntoWireRowDirect(
+  entity: Entity,
+  projectile: Projectile,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+): void {
+  const { values, base } = reserveProjectileSpawnWireRow();
+  const sourceTurretBlueprintId = projectile.sourceTurretBlueprintId;
+  const maxLifespan = Number.isFinite(projectile.maxLifespan)
+    ? projectile.maxLifespan
+    : null;
+  const sourceTurretBlueprintCode = sourceTurretBlueprintId !== null
+    ? turretBlueprintIdToCode(sourceTurretBlueprintId)
+    : null;
+  const targetEntityId = canReferenceEntityId(world, visibility, projectile.homingTargetId)
+    ? projectile.homingTargetId ?? null
+    : null;
+  const homingTurnRate = projectile.homingTurnRate ?? null;
+  const points = projectile.points;
+  const hasBeam = points !== null && points.length >= 2;
+
+  values[base + 0] = entity.id;
+  values[base + 1] = qPos(entity.transform.x);
+  values[base + 2] = qPos(entity.transform.y);
+  values[base + 3] = qPos(entity.transform.z);
+  values[base + 4] = qRot(entity.transform.rotation);
+  values[base + 5] = qVel(projectile.velocityX);
+  values[base + 6] = qVel(projectile.velocityY);
+  values[base + 7] = qVel(projectile.velocityZ);
+  values[base + 8] = projectileTypeToCode(projectile.projectileType);
+  values[base + 9] = maxLifespan ?? 0;
+  values[base + 10] = sourceTurretBlueprintCode ?? TURRET_BLUEPRINT_CODE_UNKNOWN;
+  values[base + 11] = shotBlueprintIdToCode(projectile.shotBlueprintId);
+  values[base + 12] = sourceTurretBlueprintCode ?? 0;
+  values[base + 13] = projectile.ownerId;
+  values[base + 15] = projectile.config.turretIndex ?? 0;
+  values[base + 16] = projectile.sourceBarrelIndex ?? 0;
+  if (hasBeam) {
+    const start = points[0];
+    const end = points[points.length - 1];
+    values[base + 17] = qPos(start.x);
+    values[base + 18] = qPos(start.y);
+    values[base + 19] = qPos(start.z);
+    values[base + 20] = qPos(end.x);
+    values[base + 21] = qPos(end.y);
+    values[base + 22] = qPos(end.z);
+  } else {
+    values[base + 17] = 0;
+    values[base + 18] = 0;
+    values[base + 19] = 0;
+    values[base + 20] = 0;
+    values[base + 21] = 0;
+    values[base + 22] = 0;
+  }
+  values[base + 23] = targetEntityId ?? 0;
+  values[base + 24] = homingTurnRate ?? 0;
+
+  let flags = writeProjectileSpawnSourceProvenanceWireFields(
+    values,
+    base,
+    world,
+    visibility,
+    projectile.ownerId,
+    projectile.sourceEntityId,
+    projectile.shotSource.sourceTurretEntityId,
+    projectile.shotSource.sourceHostEntityId,
+    projectile.shotSource.sourceRootEntityId,
+    projectile.shotSource.sourceTeamId,
+    projectile.shotSource.spawnTick,
+    projectile.shotSource.parentShotEntityId,
+  );
+  if (maxLifespan !== null) flags |= PROJECTILE_SPAWN_FLAG_MAX_LIFESPAN;
+  flags |= PROJECTILE_SPAWN_FLAG_SHOT_BLUEPRINT_CODE;
+  if (sourceTurretBlueprintCode !== null) flags |= PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE;
+  const dgunProjectile = entity.dgunProjectile;
+  if (dgunProjectile !== null && dgunProjectile.isDGun) flags |= PROJECTILE_SPAWN_FLAG_IS_DGUN_TRUE;
+  flags |= PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE;
+  if (hasBeam) flags |= PROJECTILE_SPAWN_FLAG_BEAM;
+  if (targetEntityId !== null) flags |= PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID;
+  if (homingTurnRate !== null) flags |= PROJECTILE_SPAWN_FLAG_HOMING_TURN_RATE;
+  values[base + 31] = flags;
+}
+
 function copyProjectileDespawnIntoWireRow(despawn: NetworkServerSnapshotProjectileDespawn): void {
   const rows = projectileWireSource.despawns;
   const rowIndex = reserveUint32WireRows(rows, 1, PROJECTILE_DESPAWN_WIRE_STRIDE);
@@ -432,6 +623,33 @@ function copyProjectileVelocityUpdateIntoWireRow(update: NetworkServerSnapshotVe
     rowIndex * PROJECTILE_VELOCITY_WIRE_STRIDE,
     update,
   );
+}
+
+function copyProjectileVelocityUpdateEventIntoWireRowDirect(
+  update: ProjectileVelocityUpdateEvent,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+): void {
+  const rows = projectileWireSource.velocityUpdates;
+  const rowIndex = reserveFloat64WireRows(rows, 1, PROJECTILE_VELOCITY_WIRE_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * PROJECTILE_VELOCITY_WIRE_STRIDE;
+  const targetEntityId = update.targetEntityId;
+  const canSendTarget = targetEntityId !== undefined &&
+    canReferenceEntityId(world, visibility, targetEntityId);
+  values[base + 0] = update.id;
+  values[base + 1] = qPos(update.pos.x);
+  values[base + 2] = qPos(update.pos.y);
+  values[base + 3] = qPos(update.pos.z);
+  values[base + 4] = qVel(update.velocity.x);
+  values[base + 5] = qVel(update.velocity.y);
+  values[base + 6] = qVel(update.velocity.z);
+  values[base + 7] =
+    update.clearHomingTarget === true ||
+    (targetEntityId !== undefined && !canSendTarget)
+      ? 1
+      : 0;
+  values[base + 8] = canSendTarget && targetEntityId !== undefined ? targetEntityId : 0;
 }
 
 export function writeBeamPointWireRow(
@@ -472,6 +690,52 @@ function copyBeamPointIntoWireRow(point: NetworkServerSnapshotBeamPoint): void {
   );
 }
 
+function copyBeamPointSourceIntoWireRow(
+  sp: BeamPoint,
+  world: WorldState,
+  visibility: SnapshotVisibility | undefined,
+): void {
+  const rows = projectileWireSource.beamPoints;
+  const rowIndex = reserveFloat64WireRows(rows, 1, PROJECTILE_BEAM_POINT_WIRE_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * PROJECTILE_BEAM_POINT_WIRE_STRIDE;
+  values[base + 0] = qPos(sp.x);
+  values[base + 1] = qPos(sp.y);
+  values[base + 2] = qPos(sp.z);
+  if (sp.vx === 0 && sp.vy === 0 && sp.vz === 0) {
+    values[base + 3] = 0;
+    values[base + 4] = 0;
+    values[base + 5] = 0;
+  } else {
+    values[base + 3] = qVel(sp.vx);
+    values[base + 4] = qVel(sp.vy);
+    values[base + 5] = qVel(sp.vz);
+  }
+  const canReferenceReflector = sp.reflectorEntityId !== null &&
+    canReferenceEntityId(world, visibility, sp.reflectorEntityId);
+  let flags = 0;
+  if (canReferenceReflector) {
+    flags |= PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID;
+    if (sp.reflectorKind !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_KIND;
+    if (sp.reflectorPlayerId !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID;
+    if (sp.normalX !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_X;
+    if (sp.normalY !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y;
+    if (sp.normalZ !== null) flags |= PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z;
+    values[base + 7] = sp.reflectorEntityId as EntityId;
+    values[base + 8] = sp.reflectorPlayerId ?? 0;
+    values[base + 9] = sp.normalX !== null ? qNormal(sp.normalX) : 0;
+    values[base + 10] = sp.normalY !== null ? qNormal(sp.normalY) : 0;
+    values[base + 11] = sp.normalZ !== null ? qNormal(sp.normalZ) : 0;
+  } else {
+    values[base + 7] = 0;
+    values[base + 8] = 0;
+    values[base + 9] = 0;
+    values[base + 10] = 0;
+    values[base + 11] = 0;
+  }
+  values[base + 6] = flags;
+}
+
 export function writeBeamUpdateWireRow(
   values: MutableNumberRow,
   base: number,
@@ -500,6 +764,29 @@ function copyBeamUpdateIntoWireRow(update: NetworkServerSnapshotBeamUpdate): voi
   );
 }
 
+function copyBeamUpdateFieldsIntoWireRow(
+  id: EntityId,
+  obstructionT: number | null,
+  endpointDamageable: boolean | null,
+  pointCount: number,
+): void {
+  const rows = projectileWireSource.beamUpdates;
+  const rowIndex = reserveFloat64WireRows(rows, 1, PROJECTILE_BEAM_UPDATE_WIRE_STRIDE);
+  const values = rows.values;
+  const base = rowIndex * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
+  values[base + 0] = id;
+  let flags = 0;
+  if (obstructionT !== null) flags |= PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T;
+  if (endpointDamageable !== null) {
+    flags |= endpointDamageable
+      ? PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_TRUE
+      : PROJECTILE_BEAM_UPDATE_FLAG_ENDPOINT_DAMAGEABLE_FALSE;
+  }
+  values[base + 1] = flags;
+  values[base + 2] = obstructionT ?? 0;
+  values[base + 3] = pointCount;
+}
+
 export function getProjectileSnapshotWireSource(
   projectiles: ProjectileSnapshot,
 ): ProjectileSnapshotWireSource | undefined {
@@ -511,12 +798,18 @@ export function getActiveProjectileSnapshotWireSource(
 ): ProjectileSnapshotWireSource | undefined {
   const source = getProjectileSnapshotWireSource(projectiles);
   if (source === undefined) return undefined;
-  const spawnCount = projectiles.spawns !== undefined ? projectiles.spawns.length : 0;
-  const despawnCount = projectiles.despawns !== undefined ? projectiles.despawns.length : 0;
+  const spawnCount = projectiles.spawns !== undefined
+    ? projectiles.spawns.length
+    : source.spawns.count;
+  const despawnCount = projectiles.despawns !== undefined
+    ? projectiles.despawns.length
+    : source.despawns.count;
   const velocityCount = projectiles.velocityUpdates !== undefined
     ? projectiles.velocityUpdates.length
-    : 0;
-  const beamCount = projectiles.beamUpdates !== undefined ? projectiles.beamUpdates.length : 0;
+    : source.velocityUpdates.count;
+  const beamCount = projectiles.beamUpdates !== undefined
+    ? projectiles.beamUpdates.length
+    : source.beamUpdates.count;
   return (
     source.spawns.count === spawnCount &&
     source.despawns.count === despawnCount &&
@@ -548,7 +841,7 @@ export function projectileWireSourceHasDirectlyConsumableRows(
   );
 }
 
-function copyProjectileWireSourceSpawnRowFromSourceInto(
+export function copyProjectileWireSourceSpawnRowFromSourceInto(
   source: ProjectileSnapshotWireSource,
   rowIndex: number,
   out: NetworkServerSnapshotProjectileSpawn,
@@ -897,6 +1190,55 @@ function shouldSendProjectileAtPoint(
   return false;
 }
 
+function isRecipientOwnedProjectileTarget(
+  targetId: EntityId | number | undefined,
+  visibility: SnapshotVisibility,
+  world: WorldState,
+): boolean {
+  if (targetId === undefined || targetId <= 0 || targetId === NO_ENTITY_ID) return false;
+  const target = world.getEntity(targetId as EntityId);
+  const targetOwnerId = target !== undefined && target.ownership !== null
+    ? target.ownership.playerId
+    : undefined;
+  return visibility.isOwnedByRecipientOrAlly(targetOwnerId);
+}
+
+function getVelocityUpdateEventTargetId(vu: ProjectileVelocityUpdateEvent): EntityId | undefined {
+  if (vu.targetEntityId !== undefined && vu.targetEntityId > 0 && vu.targetEntityId !== NO_ENTITY_ID) {
+    return vu.targetEntityId;
+  }
+  const visibilityTargetId = vu.visibilityHomingTargetId;
+  return visibilityTargetId !== undefined && visibilityTargetId > 0 && visibilityTargetId !== NO_ENTITY_ID
+    ? visibilityTargetId
+    : undefined;
+}
+
+function shouldSendProjectileVelocityUpdate(
+  vu: ProjectileVelocityUpdateEvent,
+  visibility: SnapshotVisibility | undefined,
+  world: WorldState,
+): boolean {
+  if (visibility === undefined || !visibility.isFiltered) return true;
+  if (visibility.isOwnedByRecipientOrAlly(vu.ownerId)) return true;
+  if (visibility.isPointVisible(vu.pos.x, vu.pos.y)) return true;
+  if (isRecipientOwnedProjectileTarget(getVelocityUpdateEventTargetId(vu), visibility, world)) {
+    return true;
+  }
+  if (vu.ownerId !== undefined) return false;
+
+  const projectileEntity = world.getEntity(vu.id);
+  const projectile = projectileEntity === undefined ? undefined : projectileEntity.projectile;
+  if (projectile === undefined || projectile === null) return false;
+  if (visibility.isOwnedByRecipientOrAlly(projectile.ownerId)) return true;
+  return isRecipientOwnedProjectileTarget(
+    projectile.homingTargetId !== NO_ENTITY_ID
+      ? projectile.homingTargetId
+      : vu.visibilityHomingTargetId,
+    visibility,
+    world,
+  );
+}
+
 function shouldSendBeamPath(
   ownerId: PlayerId | undefined,
   visibility: SnapshotVisibility | undefined,
@@ -1238,23 +1580,7 @@ export function serializeProjectileSnapshot({
     _velUpdateBuf.length = 0;
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
-      const projectileEntity = world.getEntity(vu.id);
-      const projectile = projectileEntity === undefined ? undefined : projectileEntity.projectile;
-      const ownerId = projectile !== null && projectile !== undefined ? projectile.ownerId : undefined;
-      if (
-        !shouldSendProjectileAtPoint(
-          ownerId,
-          visibility,
-          vu.pos.x,
-          vu.pos.y,
-          projectile !== null && projectile !== undefined && projectile.homingTargetId !== NO_ENTITY_ID
-            ? projectile.homingTargetId
-            : vu.visibilityHomingTargetId,
-          world,
-        )
-      ) {
-        continue;
-      }
+      if (!shouldSendProjectileVelocityUpdate(vu, visibility, world)) continue;
       const out = getPooledVelocityUpdate();
       fillProjectileVelocityUpdate(out, vu, world, visibility);
       _velUpdateBuf.push(out);
@@ -1334,9 +1660,7 @@ export function writeProjectileSnapshotWireRowsDirect({
       for (let i = 0; i < tickSpawnCount; i++) {
         const ps = projectileSpawns[i];
         if (!shouldSendProjectileSpawnEvent(ps, visibility, world)) continue;
-        const out = _directProjectileSpawnScratch;
-        fillProjectileSpawnFromEvent(out, ps, world, visibility);
-        copyProjectileSpawnIntoWireRow(out);
+        copyProjectileSpawnEventIntoWireRowDirect(ps, world, visibility);
         if (wantProjectileResync) _resyncSeenIds.add(ps.id);
       }
     }
@@ -1360,9 +1684,7 @@ export function writeProjectileSnapshotWireRowsDirect({
         ) {
           continue;
         }
-        const out = _directProjectileSpawnScratch;
-        fillProjectileSpawnFromEntity(out, entity, proj, world, visibility);
-        copyProjectileSpawnIntoWireRow(out);
+        copyProjectileEntitySpawnIntoWireRowDirect(entity, proj, world, visibility);
       }
     }
   }
@@ -1378,26 +1700,8 @@ export function writeProjectileSnapshotWireRowsDirect({
   if (projectileVelocityUpdates && projectileVelocityUpdates.length > 0) {
     for (let i = 0; i < projectileVelocityUpdates.length; i++) {
       const vu = projectileVelocityUpdates[i];
-      const projectileEntity = world.getEntity(vu.id);
-      const projectile = projectileEntity === undefined ? undefined : projectileEntity.projectile;
-      const ownerId = projectile !== null && projectile !== undefined ? projectile.ownerId : undefined;
-      if (
-        !shouldSendProjectileAtPoint(
-          ownerId,
-          visibility,
-          vu.pos.x,
-          vu.pos.y,
-          projectile !== null && projectile !== undefined && projectile.homingTargetId !== NO_ENTITY_ID
-            ? projectile.homingTargetId
-            : vu.visibilityHomingTargetId,
-          world,
-        )
-      ) {
-        continue;
-      }
-      const out = _directProjectileVelocityScratch;
-      fillProjectileVelocityUpdate(out, vu, world, visibility);
-      copyProjectileVelocityUpdateIntoWireRow(out);
+      if (!shouldSendProjectileVelocityUpdate(vu, visibility, world)) continue;
+      copyProjectileVelocityUpdateEventIntoWireRowDirect(vu, world, visibility);
     }
   }
 
@@ -1411,20 +1715,13 @@ export function writeProjectileSnapshotWireRowsDirect({
       if (!srcPts || srcPts.length < 2) continue;
       if (!shouldSendBeamPath(proj.ownerId, visibility, srcPts)) continue;
 
-      const update = _directBeamUpdateScratch;
-      update.id = entity.id;
-      update.obstructionT = proj.obstructionT === null ? null : qRot(proj.obstructionT);
-      update.endpointDamageable = proj.endpointDamageable === false ? false : null;
       const wirePointCount = getBeamWirePointCount(srcPts.length);
-      update.points.length = wirePointCount;
+      const obstructionT = proj.obstructionT === null ? null : qRot(proj.obstructionT);
+      const endpointDamageable = proj.endpointDamageable === false ? false : null;
       for (let p = 0; p < wirePointCount; p++) {
-        const sp = srcPts[p];
-        const out = _directBeamPointScratch;
-        fillBeamPoint(out, sp, world, visibility);
-        copyBeamPointIntoWireRow(out);
+        copyBeamPointSourceIntoWireRow(srcPts[p], world, visibility);
       }
-
-      copyBeamUpdateIntoWireRow(update);
+      copyBeamUpdateFieldsIntoWireRow(entity.id, obstructionT, endpointDamageable, wirePointCount);
     }
   }
 

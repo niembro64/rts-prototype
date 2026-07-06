@@ -42,6 +42,10 @@ pub(crate) struct EntityStateSlab {
     pub(crate) angular_velocity_y: Vec<f64>,
     pub(crate) angular_velocity_z: Vec<f64>,
     pub(crate) unit_motion_flags: Vec<u32>,
+    pub(crate) unit_thrust_dir_x: Vec<f64>,
+    pub(crate) unit_thrust_dir_y: Vec<f64>,
+    pub(crate) unit_heading_dir_x: Vec<f64>,
+    pub(crate) unit_heading_dir_y: Vec<f64>,
     pub(crate) hp: Vec<f64>,
     pub(crate) max_hp: Vec<f64>,
     pub(crate) radius_collision: Vec<f64>,
@@ -89,6 +93,10 @@ impl EntityStateSlab {
             angular_velocity_y: Vec::new(),
             angular_velocity_z: Vec::new(),
             unit_motion_flags: Vec::new(),
+            unit_thrust_dir_x: Vec::new(),
+            unit_thrust_dir_y: Vec::new(),
+            unit_heading_dir_x: Vec::new(),
+            unit_heading_dir_y: Vec::new(),
             hp: Vec::new(),
             max_hp: Vec::new(),
             radius_collision: Vec::new(),
@@ -139,6 +147,10 @@ impl EntityStateSlab {
         self.angular_velocity_y.resize(needed, 0.0);
         self.angular_velocity_z.resize(needed, 0.0);
         self.unit_motion_flags.resize(needed, 0);
+        self.unit_thrust_dir_x.resize(needed, 0.0);
+        self.unit_thrust_dir_y.resize(needed, 0.0);
+        self.unit_heading_dir_x.resize(needed, 0.0);
+        self.unit_heading_dir_y.resize(needed, 0.0);
         self.hp.resize(needed, 0.0);
         self.max_hp.resize(needed, 0.0);
         self.radius_collision.resize(needed, 0.0);
@@ -200,6 +212,10 @@ impl EntityStateSlab {
         self.angular_velocity_y[s] = 0.0;
         self.angular_velocity_z[s] = 0.0;
         self.unit_motion_flags[s] = 0;
+        self.unit_thrust_dir_x[s] = 0.0;
+        self.unit_thrust_dir_y[s] = 0.0;
+        self.unit_heading_dir_x[s] = 0.0;
+        self.unit_heading_dir_y[s] = 0.0;
         self.hp[s] = 0.0;
         self.max_hp[s] = 0.0;
         self.radius_collision[s] = 0.0;
@@ -341,6 +357,23 @@ pub fn entity_state_set_unit_motion(
 }
 
 #[wasm_bindgen]
+pub fn entity_state_set_unit_drive_input(
+    slot: u32,
+    thrust_dir_x: f64,
+    thrust_dir_y: f64,
+    heading_dir_x: f64,
+    heading_dir_y: f64,
+) {
+    let slab = entity_state();
+    let s = slot as usize;
+    slab.ensure_capacity(slot);
+    slab.unit_thrust_dir_x[s] = thrust_dir_x;
+    slab.unit_thrust_dir_y[s] = thrust_dir_y;
+    slab.unit_heading_dir_x[s] = heading_dir_x;
+    slab.unit_heading_dir_y[s] = heading_dir_y;
+}
+
+#[wasm_bindgen]
 pub fn entity_state_set_ownership(slot: u32, owner_player_id: u32, team_id: u32) {
     let slab = entity_state();
     let s = slot as usize;
@@ -455,6 +488,40 @@ fn entity_state_slot_for_body_slot(
     None
 }
 
+fn entity_state_sync_body_motion_for_entity_slot(
+    slab: &mut EntityStateSlab,
+    p: &BodyPool,
+    entity_slot: usize,
+) -> Option<u32> {
+    let body_slot_i32 = *slab.body_slot.get(entity_slot)?;
+    if body_slot_i32 < 0 {
+        return None;
+    }
+    let body_slot = body_slot_i32 as usize;
+    if !entity_state_body_slot_candidate_valid(slab, p, body_slot, entity_slot) {
+        return None;
+    }
+
+    slab.pos_x[entity_slot] = p.pos_x[body_slot];
+    slab.pos_y[entity_slot] = p.pos_y[body_slot];
+    slab.pos_z[entity_slot] = p.pos_z[body_slot];
+
+    let dirty_mask = match slab.kind[entity_slot] {
+        ENTITY_STATE_KIND_UNIT => {
+            slab.vel_x[entity_slot] = p.vel_x[body_slot];
+            slab.vel_y[entity_slot] = p.vel_y[body_slot];
+            slab.vel_z[entity_slot] = p.vel_z[body_slot];
+            ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL
+        }
+        ENTITY_STATE_KIND_BUILDING | ENTITY_STATE_KIND_TOWER => ENTITY_CHANGED_POS,
+        _ => 0,
+    };
+    if dirty_mask != 0 {
+        slab.dirty_mask[entity_slot] |= dirty_mask;
+    }
+    Some(dirty_mask)
+}
+
 #[wasm_bindgen]
 pub fn entity_state_collect_body_entity_slots(
     body_slots: &[u32],
@@ -486,22 +553,21 @@ pub fn entity_state_sync_body_motion(body_slots: &[u32]) -> i32 {
         let Some(entity_slot) = entity_state_slot_for_body_slot(slab, p, body_slot) else {
             continue;
         };
-        slab.pos_x[entity_slot] = p.pos_x[body_slot];
-        slab.pos_y[entity_slot] = p.pos_y[body_slot];
-        slab.pos_z[entity_slot] = p.pos_z[body_slot];
+        if entity_state_sync_body_motion_for_entity_slot(slab, p, entity_slot).unwrap_or(0) != 0 {
+            count += 1;
+        }
+    }
+    count
+}
 
-        let dirty_mask = match slab.kind[entity_slot] {
-            ENTITY_STATE_KIND_UNIT => {
-                slab.vel_x[entity_slot] = p.vel_x[body_slot];
-                slab.vel_y[entity_slot] = p.vel_y[body_slot];
-                slab.vel_z[entity_slot] = p.vel_z[body_slot];
-                ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL
-            }
-            ENTITY_STATE_KIND_BUILDING | ENTITY_STATE_KIND_TOWER => ENTITY_CHANGED_POS,
-            _ => 0,
-        };
-        if dirty_mask != 0 {
-            slab.dirty_mask[entity_slot] |= dirty_mask;
+#[wasm_bindgen]
+pub fn entity_state_sync_entity_body_motion(entity_slots: &[u32]) -> i32 {
+    let slab = entity_state();
+    let p = pool();
+    let mut count = 0_i32;
+    for &entity_slot_u32 in entity_slots {
+        let entity_slot = entity_slot_u32 as usize;
+        if entity_state_sync_body_motion_for_entity_slot(slab, p, entity_slot).unwrap_or(0) != 0 {
             count += 1;
         }
     }
@@ -772,6 +838,10 @@ entity_state_ptr_export!(entity_state_angular_velocity_x_ptr, angular_velocity_x
 entity_state_ptr_export!(entity_state_angular_velocity_y_ptr, angular_velocity_y, f64);
 entity_state_ptr_export!(entity_state_angular_velocity_z_ptr, angular_velocity_z, f64);
 entity_state_ptr_export!(entity_state_unit_motion_flags_ptr, unit_motion_flags, u32);
+entity_state_ptr_export!(entity_state_unit_thrust_dir_x_ptr, unit_thrust_dir_x, f64);
+entity_state_ptr_export!(entity_state_unit_thrust_dir_y_ptr, unit_thrust_dir_y, f64);
+entity_state_ptr_export!(entity_state_unit_heading_dir_x_ptr, unit_heading_dir_x, f64);
+entity_state_ptr_export!(entity_state_unit_heading_dir_y_ptr, unit_heading_dir_y, f64);
 entity_state_ptr_export!(entity_state_hp_ptr, hp, f64);
 entity_state_ptr_export!(entity_state_max_hp_ptr, max_hp, f64);
 entity_state_ptr_export!(entity_state_radius_collision_ptr, radius_collision, f64);
@@ -810,6 +880,14 @@ entity_state_ptr_export!(entity_state_dirty_mask_ptr, dirty_mask, u32);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::MutexGuard;
+
+    fn lock_global_state_tests() -> MutexGuard<'static, ()> {
+        match crate::COMBAT_TARGETING_TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
 
     #[test]
     fn sort_slots_by_entity_id_uses_entity_slab_order() {
@@ -830,6 +908,7 @@ mod tests {
 
     #[test]
     fn sync_body_motion_updates_entity_state_and_dirty_mask() {
+        let _guard = lock_global_state_tests();
         pool_init();
         entity_state_init(4);
         let body_slot = pool_alloc_slot();
@@ -857,10 +936,33 @@ mod tests {
         assert_eq!(slab.vel_y[2], 2.0);
         assert_eq!(slab.vel_z[2], 3.0);
         assert_eq!(slab.dirty_mask[2], ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+
+        slab.dirty_mask[2] = 0;
+        {
+            let p = pool();
+            let b = body_slot as usize;
+            p.pos_x[b] = 40.0;
+            p.pos_y[b] = 50.0;
+            p.pos_z[b] = 60.0;
+            p.vel_x[b] = 4.0;
+            p.vel_y[b] = 5.0;
+            p.vel_z[b] = 6.0;
+        }
+        assert_eq!(entity_state_sync_entity_body_motion(&[2]), 1);
+        let slab = entity_state();
+        assert_eq!(slab.pos_x[2], 40.0);
+        assert_eq!(slab.pos_y[2], 50.0);
+        assert_eq!(slab.pos_z[2], 60.0);
+        assert_eq!(slab.vel_x[2], 4.0);
+        assert_eq!(slab.vel_y[2], 5.0);
+        assert_eq!(slab.vel_z[2], 6.0);
+        assert_eq!(slab.dirty_mask[2], ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+        assert_eq!(entity_state_sync_entity_body_motion(&[99]), 0);
     }
 
     #[test]
     fn collect_awake_unit_body_entity_slots_filters_non_units_and_sleeping_units() {
+        let _guard = lock_global_state_tests();
         pool_init();
         entity_state_init(8);
 

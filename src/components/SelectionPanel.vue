@@ -29,7 +29,9 @@ import {
   type BarBuildCategoryId,
 } from '../game/input/buildMenuLayout';
 import {
+  getCachedEntityPreviewImage,
   getCachedEntityThumbnail,
+  requestEntityPreviewImage,
   requestEntityThumbnail,
   subscribeEntityThumbnailCache,
 } from './entityPreviewThumbnails';
@@ -1292,6 +1294,48 @@ function unitThumbnailSrc(unitBlueprintId: string): string | null {
   return entityThumbnailSrc('unit', unitBlueprintId as LoadingEntityBlueprintId);
 }
 
+function selectedEntityPreviewKind(): LoadingPreviewKind | null {
+  const info = props.selection.selectedEntityInfo;
+  if (info === null || info.blueprintKind === null || info.blueprintId === null) return null;
+  return info.blueprintKind;
+}
+
+function selectedEntityImageSrc(): string | null {
+  thumbnailRevision.value;
+  const info = props.selection.selectedEntityInfo;
+  const kind = selectedEntityPreviewKind();
+  if (info === null || kind === null || info.blueprintId === null) return null;
+  return getCachedEntityPreviewImage('panel', kind, info.blueprintId as LoadingEntityBlueprintId);
+}
+
+const selectedEntityDetailRows = computed(() =>
+  props.selection.details
+    .filter((detail) => detail.label !== 'Name' && detail.label !== 'HP')
+    .slice(0, 8),
+);
+
+const selectedEntityHealthLabel = computed(() => {
+  const info = props.selection.selectedEntityInfo;
+  if (info === null || info.hp === null || info.maxHp === null || info.maxHp <= 0) return '';
+  return `${formatCostPart(info.hp)}/${formatCostPart(info.maxHp)}`;
+});
+
+const selectedEntityHealthStyle = computed(() => {
+  const info = props.selection.selectedEntityInfo;
+  if (info === null || info.hp === null || info.maxHp === null || info.maxHp <= 0) {
+    return { width: '0%' };
+  }
+  const fraction = Math.max(0, Math.min(1, info.hp / info.maxHp));
+  return { width: `${(fraction * 100).toFixed(2)}%` };
+});
+
+const selectedEntityBuildProgressStyle = computed(() => {
+  const progress = props.selection.selectedEntityInfo?.buildProgress;
+  if (progress === null || progress === undefined || progress >= 1) return null;
+  const fraction = Math.max(0, Math.min(1, progress));
+  return { width: `${(fraction * 100).toFixed(2)}%` };
+});
+
 function prefetchBuildButtonThumbnails(): void {
   if (props.selection.hasBuilder && showUnitActions.value) {
     for (const option of buildingOptions.value) {
@@ -1308,6 +1352,16 @@ function prefetchBuildButtonThumbnails(): void {
       void requestEntityThumbnail('unit', option.unitBlueprintId as LoadingEntityBlueprintId);
     }
   }
+
+  const selectedInfo = props.selection.selectedEntityInfo;
+  const selectedKind = selectedEntityPreviewKind();
+  if (selectedInfo !== null && selectedKind !== null && selectedInfo.blueprintId !== null) {
+    void requestEntityPreviewImage(
+      'panel',
+      selectedKind,
+      selectedInfo.blueprintId as LoadingEntityBlueprintId,
+    );
+  }
 }
 
 watch(
@@ -1319,6 +1373,8 @@ watch(
     props.selection.hasFactory,
     showTowerActions.value,
     unitOptions.value.map((option) => option.unitBlueprintId).join('|'),
+    props.selection.selectedEntityInfo?.blueprintKind ?? '',
+    props.selection.selectedEntityInfo?.blueprintId ?? '',
   ],
   () => prefetchBuildButtonThumbnails(),
   { immediate: true },
@@ -1597,16 +1653,55 @@ function setFactoryQueueRunCount(run: FactoryQueueRun, count: number): void {
       </button>
     </div>
 
-    <div v-if="selection.details.length > 0" class="button-group details-group">
-      <div class="group-label">Details</div>
-      <div class="details-grid">
-        <div
-          v-for="detail in selection.details"
-          :key="detail.label"
-          class="detail-item"
+    <div
+      v-if="selection.selectedEntityInfo !== null"
+      class="selection-info-panel"
+      aria-label="Selected entity information"
+    >
+      <div class="selection-info-portrait" aria-hidden="true">
+        <img
+          v-if="selectedEntityImageSrc()"
+          class="selection-info-image"
+          :src="selectedEntityImageSrc()!"
+          alt=""
         >
-          <span class="detail-label">{{ detail.label }}</span>
-          <span class="detail-value">{{ detail.value }}</span>
+        <div v-else class="selection-info-fallback">
+          {{ selection.selectedEntityInfo.label.slice(0, 3).toUpperCase() }}
+        </div>
+      </div>
+      <div class="selection-info-main">
+        <div class="selection-info-title-row">
+          <div class="selection-info-title">{{ selection.selectedEntityInfo.label }}</div>
+          <div v-if="selection.selectedEntityInfo.count > 1" class="selection-info-count">
+            x{{ selection.selectedEntityInfo.count }}
+          </div>
+        </div>
+        <div class="selection-info-subtitle">{{ selection.selectedEntityInfo.subtitle }}</div>
+        <div
+          v-if="selectedEntityHealthLabel"
+          class="selection-info-meter health"
+          aria-hidden="true"
+        >
+          <div class="selection-info-meter-fill" :style="selectedEntityHealthStyle"></div>
+          <span>{{ selectedEntityHealthLabel }}</span>
+        </div>
+        <div
+          v-if="selectedEntityBuildProgressStyle"
+          class="selection-info-meter build"
+          aria-hidden="true"
+        >
+          <div class="selection-info-meter-fill" :style="selectedEntityBuildProgressStyle"></div>
+          <span>Build</span>
+        </div>
+        <div class="selection-info-details">
+          <div
+            v-for="detail in selectedEntityDetailRows"
+            :key="detail.label"
+            class="selection-info-detail"
+          >
+            <span>{{ detail.label }}</span>
+            <strong>{{ detail.value }}</strong>
+          </div>
         </div>
       </div>
     </div>
@@ -3421,6 +3516,190 @@ kbd {
   align-items: stretch;
 }
 
+.selection-info-panel {
+  position: fixed;
+  left: 0;
+  bottom: var(--selection-panel-playable-bottom, 0px);
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: minmax(76px, 34%) minmax(0, 1fr);
+  gap: calc(var(--bar-flow-element-padding) * 2);
+  width: var(--bar-order-panel-width);
+  height: var(--bar-order-panel-height);
+  box-sizing: border-box;
+  padding: calc(var(--bar-flow-element-padding) * 2.1);
+  overflow: hidden;
+  background: rgba(5, 7, 10, 0.9);
+  border: 1px solid var(--selection-panel-border);
+  border-radius: 4px 4px 0 0;
+  color: var(--selection-panel-text);
+  font-family: monospace;
+  pointer-events: auto;
+}
+
+.selection-info-portrait {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 58%, rgba(92, 132, 162, 0.2), transparent 67%),
+    rgba(20, 22, 26, 0.96);
+  border: 1px solid rgba(237, 243, 255, 0.13);
+  border-radius: 3px;
+}
+
+.selection-info-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scale(1.08);
+  transform-origin: center;
+  filter: drop-shadow(0 9px 12px rgba(0, 0, 0, 0.48));
+}
+
+.selection-info-fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--selection-panel-hint);
+  font-size: clamp(18px, 3.2vh, 34px);
+  font-weight: 900;
+  line-height: 1;
+}
+
+.selection-info-main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: calc(var(--bar-flow-element-padding) * 1.2);
+}
+
+.selection-info-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.selection-info-title {
+  min-width: 0;
+  overflow: hidden;
+  color: rgb(125, 255, 125);
+  font-size: clamp(12px, 1.7vh, 18px);
+  font-weight: 800;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
+}
+
+.selection-info-count {
+  color: var(--selection-panel-key);
+  font-size: clamp(10px, 1.25vh, 13px);
+  font-weight: 800;
+}
+
+.selection-info-subtitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--selection-panel-label);
+  font-size: clamp(8px, 1.08vh, 11px);
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.selection-info-meter {
+  position: relative;
+  height: clamp(12px, 1.7vh, 18px);
+  overflow: hidden;
+  background: rgba(12, 16, 18, 0.9);
+  border: 1px solid rgba(237, 243, 255, 0.13);
+  border-radius: 2px;
+}
+
+.selection-info-meter-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  transition: width 0.12s ease-out;
+}
+
+.selection-info-meter.health .selection-info-meter-fill {
+  background: linear-gradient(90deg, rgb(75, 180, 82), rgb(135, 230, 118));
+}
+
+.selection-info-meter.build .selection-info-meter-fill {
+  background: linear-gradient(90deg, rgb(206, 155, 48), rgb(255, 210, 74));
+}
+
+.selection-info-meter span {
+  position: relative;
+  z-index: 1;
+  display: block;
+  color: rgba(246, 255, 246, 0.95);
+  font-size: clamp(8px, 1.05vh, 11px);
+  font-weight: 800;
+  line-height: clamp(12px, 1.7vh, 18px);
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 1);
+}
+
+.selection-info-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.selection-info-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1fr);
+  gap: 4px;
+  min-width: 0;
+  color: var(--selection-panel-text);
+  font-size: clamp(8px, 1.02vh, 10px);
+  line-height: 1.12;
+}
+
+.selection-info-detail span,
+.selection-info-detail strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selection-info-detail span {
+  color: var(--selection-panel-label);
+  font-weight: 500;
+  text-align: right;
+}
+
+.selection-info-detail strong {
+  color: rgba(242, 247, 250, 0.94);
+  font-weight: 700;
+  text-align: left;
+}
+
+@media (max-width: 900px) {
+  .selection-info-panel {
+    right: calc(var(--bar-order-panel-width) + 4px);
+    width: auto;
+    min-width: 0;
+  }
+
+  .selection-info-details {
+    grid-template-columns: 1fr;
+  }
+}
+
 .build-menu-group {
   order: 3;
 }
@@ -4013,6 +4292,8 @@ kbd {
 .bar-grid-cell .btn-thumb {
   position: absolute;
   inset: calc(var(--bar-grid-cell-padding) + var(--bar-grid-icon-padding));
+  width: auto;
+  height: auto;
   isolation: isolate;
   border: 0;
   background: rgba(255, 255, 255, 0.035);

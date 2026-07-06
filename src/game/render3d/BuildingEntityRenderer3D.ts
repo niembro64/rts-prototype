@@ -372,18 +372,25 @@ export class BuildingEntityRenderer3D {
 
     for (let row = 0; row < rows.count; row++) {
       const entityId = rows.entityIdAt(row);
-      const entity = rows.entityAt(row);
-      if (entity === undefined || entity.building === null) continue;
 
       const mesh = this.meshes.get(entityId);
       if (rows.lodProxyAt(row)) {
-        this.lodProxyRenderer.pushBuilding(entity);
+        this.lodProxyRenderer.pushBuildingProxy(
+          rows.x[row],
+          rows.y[row],
+          rows.z[row],
+          rows.lodProxyRadius[row],
+          rows.lodProxyGlyph[row],
+          rows.ownerIdAt(row),
+        );
         if (mesh !== undefined) {
           if (pruneBuildings) mesh.renderSeenToken = pruneToken;
           this.deactivateBuildingMeshForLod(entityId, mesh, beamAimCache);
         }
         continue;
       }
+      const entity = rows.entityAt(row);
+      if (entity === undefined || entity.building === null) continue;
       const wasLodProxyActive = mesh?.renderLodProxyActive === true;
       if (mesh !== undefined) {
         this.reactivateBuildingMeshForScope(entity, mesh);

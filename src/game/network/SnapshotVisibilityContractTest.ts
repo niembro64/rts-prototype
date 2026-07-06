@@ -1,5 +1,14 @@
-import { SnapshotVisibility } from './stateSerializerVisibility';
+import {
+  getScanPulseWireSource,
+  serializeScanPulses,
+  SnapshotVisibility,
+} from './stateSerializerVisibility';
+import {
+  getMinimapSnapshotWireSource,
+  serializeMinimapSnapshotEntities,
+} from './stateSerializerMinimap';
 import { spatialGrid } from '../sim/SpatialGrid';
+import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { WorldState } from '../sim/WorldState';
 import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -70,6 +79,38 @@ export function runSnapshotVisibilityContractTest(): void {
   const nativeVisibility = SnapshotVisibility.forRecipient(world, 1 as PlayerId);
   assertSameIds(nativeVisibility.getVisibleEntityIds(), legacyVisible, 'native visible ids must match legacy source walk');
   assertSameIds(nativeVisibility.getRadarEntityIds(), legacyRadar, 'native radar ids must match legacy source walk');
+  const nativeVisibleIds = nativeVisibility.getVisibleEntityIds();
+  const nativeVisibleSlots = nativeVisibility.getVisibleEntitySlots();
+  const nativeRadarIds = nativeVisibility.getRadarEntityIds();
+  const nativeRadarSlots = nativeVisibility.getRadarEntitySlots();
+  const entityViews = entitySlotRegistry.getViews();
+  assertContract(
+    nativeVisibleIds !== undefined &&
+      nativeVisibleSlots !== undefined &&
+      entityViews !== null &&
+      nativeVisibleIds.length === nativeVisibleSlots.length &&
+      nativeVisibleIds.every((id, index) => entityViews.entityId[nativeVisibleSlots[index]] === id),
+    'native visible ids must expose aligned entity-state slots for slot-native serializers',
+  );
+  assertContract(
+    nativeRadarIds !== undefined &&
+      nativeRadarSlots !== undefined &&
+      entityViews !== null &&
+      nativeRadarIds.length === nativeRadarSlots.length &&
+      nativeRadarIds.every((id, index) => entityViews.entityId[nativeRadarSlots[index]] === id),
+    'native radar ids must expose aligned entity-state slots for direct minimap serialization',
+  );
+  const minimapEntities = serializeMinimapSnapshotEntities(world, nativeVisibility, 'visibility-contract');
+  assertContract(
+    minimapEntities !== undefined &&
+      getMinimapSnapshotWireSource(minimapEntities)?.count === minimapEntities.length,
+    'native minimap serialization must expose direct wire rows for every minimap entry',
+  );
+  const radarOnlyMinimap = minimapEntities.find((entry) => entry.id === radarOnlyEnemy.id);
+  assertContract(
+    radarOnlyMinimap?.radarOnly === true,
+    'native minimap serialization must preserve radar-only contacts from entity-state slots',
+  );
 
   assertContract(legacyVisible.includes(observer.id), 'owned observer must be fully visible');
   assertContract(legacyVisible.includes(fullSightEnemy.id), 'enemy inside full sight must be visible');
@@ -96,4 +137,38 @@ export function runSnapshotVisibilityContractTest(): void {
   assertContract(legacyRadar.includes(detectedCloakedEnemy.id), 'detected cloaked enemy must be on radar list');
   assertContract(!legacyRadar.includes(hiddenCloakedEnemy.id), 'undetected cloaked enemy must not be on radar list');
   assertContract(!legacyRadar.includes(outOfRangeEnemy.id), 'out-of-range enemy must not be on radar list');
+
+  const pulseWorld = new WorldState(6102, 4096, 4096);
+  pulseWorld.playerCount = 2;
+  pulseWorld.fogOfWarEnabled = true;
+  pulseWorld.scanPulses.push({
+    playerId: 1 as PlayerId,
+    x: 1024,
+    y: 1024,
+    z: 0,
+    radius: 128,
+    expiresAtTick: 90,
+  });
+  const pulseVisibility = SnapshotVisibility.forRecipient(pulseWorld, 1 as PlayerId);
+  const pulses = serializeScanPulses(pulseWorld, pulseVisibility);
+  const pulseWireSource = pulses !== undefined ? getScanPulseWireSource(pulses) : undefined;
+  assertContract(
+    pulses !== undefined &&
+      pulses.length === 1 &&
+      pulseWireSource !== undefined &&
+      pulseWireSource.count === 1,
+    'filtered scan pulses must expose cached DTOs and wire rows',
+  );
+  assertContract(
+    pulseVisibility.isPointVisible(1040, 1040) === true,
+    'scan pulse source must grant full point visibility inside the pulse radius',
+  );
+  assertContract(
+    pulseVisibility.isPointVisible(1500, 1500) === false,
+    'scan pulse source must not grant point visibility outside the pulse radius',
+  );
+  assertContract(
+    serializeScanPulses(pulseWorld, SnapshotVisibility.forRecipient(pulseWorld, 2 as PlayerId)) === undefined,
+    'filtered scan pulses must stay team-owned',
+  );
 }

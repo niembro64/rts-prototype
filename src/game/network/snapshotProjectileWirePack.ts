@@ -31,7 +31,9 @@ import {
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID,
   PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
   PROJECTILE_VELOCITY_WIRE_STRIDE,
+  createProjectileSnapshotWireSource,
   getActiveProjectileSnapshotWireSource,
+  registerProjectileSnapshotWireSource,
   type ProjectileSnapshotWireSource,
 } from './stateSerializerProjectiles';
 import {
@@ -43,6 +45,8 @@ import {
 import {
   activeFloat64WireValues,
   activeUint32WireValues,
+  reserveFloat64WireRows,
+  reserveUint32WireRows,
 } from './snapshotWireRows';
 
 type ProjectileSnapshot = NonNullable<NetworkServerSnapshot['projectiles']>;
@@ -74,6 +78,7 @@ export type PackedProjectileSnapshotWire = {
 export type PackedProjectileUnpackOptions = {
   materializeDespawns?: boolean;
   materializeVelocityUpdates?: boolean;
+  materializeBeamUpdates?: boolean;
 };
 
 export function packProjectilesForWire(
@@ -121,17 +126,39 @@ export function unpackProjectilesFromWire(
   const spawns = packed.s !== undefined ? unpackProjectileSpawns(packed.s) : undefined;
   const materializeDespawns = options.materializeDespawns !== false;
   const materializeVelocityUpdates = options.materializeVelocityUpdates !== false;
+  const materializeBeamUpdates = options.materializeBeamUpdates !== false;
+  let decodedWireSource: ProjectileSnapshotWireSource | undefined;
+  const ensureDecodedWireSource = (): ProjectileSnapshotWireSource => {
+    if (decodedWireSource === undefined) {
+      decodedWireSource = createProjectileSnapshotWireSource();
+    }
+    return decodedWireSource;
+  };
   const despawns = packed.d !== undefined && materializeDespawns
     ? unpackProjectileDespawns(packed.d)
     : undefined;
+  if (packed.d !== undefined && !materializeDespawns) {
+    unpackProjectileDespawnsIntoWireSource(packed.d, ensureDecodedWireSource());
+  }
   const velocityUpdates = packed.u !== undefined && materializeVelocityUpdates
     ? unpackProjectileVelocityUpdates(packed.u)
     : undefined;
-  const beamUpdates = packed.b !== undefined ? unpackBeamUpdates(packed.b) : undefined;
+  if (packed.u !== undefined && !materializeVelocityUpdates) {
+    unpackProjectileVelocityUpdatesIntoWireSource(packed.u, ensureDecodedWireSource());
+  }
+  const beamUpdates = packed.b !== undefined && materializeBeamUpdates
+    ? unpackBeamUpdates(packed.b)
+    : undefined;
+  if (packed.b !== undefined && !materializeBeamUpdates) {
+    unpackBeamUpdatesIntoWireSource(packed.b, ensureDecodedWireSource());
+  }
   if (spawns !== undefined) projectiles.spawns = spawns;
   if (despawns !== undefined) projectiles.despawns = despawns;
   if (velocityUpdates !== undefined) projectiles.velocityUpdates = velocityUpdates;
   if (beamUpdates !== undefined) projectiles.beamUpdates = beamUpdates;
+  if (decodedWireSource !== undefined) {
+    registerProjectileSnapshotWireSource(projectiles, decodedWireSource);
+  }
   packedProjectileWireByDto.set(projectiles, packed);
   return projectiles;
 }
@@ -572,6 +599,23 @@ function unpackProjectileDespawns(
   return out;
 }
 
+function unpackProjectileDespawnsIntoWireSource(
+  bytes: Uint8Array,
+  source: ProjectileSnapshotWireSource,
+): boolean {
+  const total = readPackedBinaryRowCount(bytes);
+  if (total === 0) return false;
+  const offset = reserveUint32WireRows(source.despawns, total, 1);
+  const values = source.despawns.values;
+  const reader = new PackedBinaryReader(bytes);
+  let id = 0;
+  for (let i = 0; i < total; i++) {
+    id += reader.readVarInt();
+    values[offset + i] = id;
+  }
+  return true;
+}
+
 export function forEachPackedProjectileDespawn(
   packed: PackedProjectileSnapshotWire,
   visitor: (id: number) => void,
@@ -760,6 +804,45 @@ function unpackProjectileVelocityUpdates(
   }
   if (outIndex < out.length) out.length = outIndex;
   return out;
+}
+
+function unpackProjectileVelocityUpdatesIntoWireSource(
+  bytes: Uint8Array,
+  source: ProjectileSnapshotWireSource,
+): boolean {
+  const total = readPackedBinaryRowCount(bytes);
+  if (total === 0) return false;
+  const offset = reserveFloat64WireRows(
+    source.velocityUpdates,
+    total,
+    PROJECTILE_VELOCITY_WIRE_STRIDE,
+  );
+  const values = source.velocityUpdates.values;
+  const reader = new PackedBinaryReader(bytes);
+  const groupCount = reader.readVarUint();
+  let outIndex = 0;
+  for (let g = 0; g < groupCount; g++) {
+    const flags = reader.readVarUint();
+    const count = reader.readVarUint();
+    const clearHomingTarget = (flags & VELOCITY_FLAG_CLEAR_HOMING) !== 0;
+    const hasTargetEntityId = (flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0;
+    let id = 0;
+    for (let i = 0; i < count; i++) {
+      id += reader.readVarInt();
+      const base = (offset + outIndex) * PROJECTILE_VELOCITY_WIRE_STRIDE;
+      values[base + 0] = id;
+      values[base + 1] = reader.readVarInt();
+      values[base + 2] = reader.readVarInt();
+      values[base + 3] = reader.readVarInt();
+      values[base + 4] = reader.readVarInt();
+      values[base + 5] = reader.readVarInt();
+      values[base + 6] = reader.readVarInt();
+      values[base + 7] = clearHomingTarget ? 1 : 0;
+      values[base + 8] = hasTargetEntityId ? reader.readVarUint() : 0;
+      outIndex++;
+    }
+  }
+  return outIndex > 0;
 }
 
 export type PackedProjectileVelocityUpdateVisitor = (
@@ -1005,6 +1088,49 @@ function unpackBeamUpdates(
   return out;
 }
 
+function unpackBeamUpdatesIntoWireSource(
+  bytes: Uint8Array,
+  source: ProjectileSnapshotWireSource,
+): boolean {
+  const total = readPackedBinaryRowCount(bytes);
+  if (total === 0) return false;
+  const headerOffset = reserveFloat64WireRows(
+    source.beamUpdates,
+    total,
+    PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
+  );
+  const headers = source.beamUpdates.values;
+  const reader = new PackedBinaryReader(bytes);
+  let id = 0;
+  for (let i = 0; i < total; i++) {
+    id += reader.readVarInt();
+    const flags = reader.readVarUint();
+    const obstructionT = (flags & PROJECTILE_BEAM_UPDATE_FLAG_OBSTRUCTION_T) !== 0
+      ? reader.readVarInt()
+      : 0;
+    const pointCount = reader.readVarUint();
+    const headerBase = (headerOffset + i) * PROJECTILE_BEAM_UPDATE_WIRE_STRIDE;
+    headers[headerBase + 0] = id;
+    headers[headerBase + 1] = flags;
+    headers[headerBase + 2] = obstructionT;
+    headers[headerBase + 3] = pointCount;
+    const pointOffset = reserveFloat64WireRows(
+      source.beamPoints,
+      pointCount,
+      PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+    );
+    const points = source.beamPoints.values;
+    for (let p = 0; p < pointCount; p++) {
+      readBeamPointIntoWireRow(
+        reader,
+        points,
+        (pointOffset + p) * PROJECTILE_BEAM_POINT_WIRE_STRIDE,
+      );
+    }
+  }
+  return true;
+}
+
 function readBeamPoint(reader: PackedBinaryReader): NetworkServerSnapshotBeamPoint {
   const flags = reader.readVarUint();
   const point: NetworkServerSnapshotBeamPoint = {
@@ -1040,4 +1166,34 @@ function readBeamPoint(reader: PackedBinaryReader): NetworkServerSnapshotBeamPoi
     point.normalZ = reader.readVarInt();
   }
   return point;
+}
+
+function readBeamPointIntoWireRow(
+  reader: PackedBinaryReader,
+  values: Float64Array,
+  base: number,
+): void {
+  const flags = reader.readVarUint();
+  values[base + 6] = flags;
+  values[base + 0] = reader.readVarInt();
+  values[base + 1] = reader.readVarInt();
+  values[base + 2] = reader.readVarInt();
+  values[base + 3] = reader.readVarInt();
+  values[base + 4] = reader.readVarInt();
+  values[base + 5] = reader.readVarInt();
+  values[base + 7] = (flags & PROJECTILE_BEAM_POINT_FLAG_MIRROR_ENTITY_ID) !== 0
+    ? reader.readVarUint()
+    : 0;
+  values[base + 8] = (flags & PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID) !== 0
+    ? reader.readVarUint()
+    : 0;
+  values[base + 9] = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_X) !== 0
+    ? reader.readVarInt()
+    : 0;
+  values[base + 10] = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y) !== 0
+    ? reader.readVarInt()
+    : 0;
+  values[base + 11] = (flags & PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z) !== 0
+    ? reader.readVarInt()
+    : 0;
 }

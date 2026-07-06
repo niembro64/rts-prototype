@@ -83,6 +83,10 @@ export type EntityStateViews = {
   angularVelocityY: Float64Array;
   angularVelocityZ: Float64Array;
   unitMotionFlags: Uint32Array;
+  unitThrustDirX: Float64Array;
+  unitThrustDirY: Float64Array;
+  unitHeadingDirX: Float64Array;
+  unitHeadingDirY: Float64Array;
   hp: Float64Array;
   maxHp: Float64Array;
   radiusCollision: Float64Array;
@@ -126,6 +130,10 @@ type EntityStateExpectation = {
   angularVelocityY: number;
   angularVelocityZ: number;
   unitMotionFlags: number;
+  unitThrustDirX: number;
+  unitThrustDirY: number;
+  unitHeadingDirX: number;
+  unitHeadingDirY: number;
   hp: number;
   maxHp: number;
   radiusCollision: number;
@@ -179,6 +187,10 @@ export class EntitySlotRegistry {
     angularVelocityY: 0,
     angularVelocityZ: 0,
     unitMotionFlags: 0,
+    unitThrustDirX: 0,
+    unitThrustDirY: 0,
+    unitHeadingDirX: 0,
+    unitHeadingDirY: 0,
     hp: 0,
     maxHp: 0,
     radiusCollision: 0,
@@ -519,6 +531,13 @@ export class EntitySlotRegistry {
       expected.angularVelocityZ,
       expected.unitMotionFlags,
     );
+    sim.entityState.setUnitDriveInput(
+      slot,
+      expected.unitThrustDirX,
+      expected.unitThrustDirY,
+      expected.unitHeadingDirX,
+      expected.unitHeadingDirY,
+    );
     sim.entityState.setHpBuild(
       slot,
       expected.hp,
@@ -660,6 +679,72 @@ export class EntitySlotRegistry {
     sim.entityState.setOwnership(slot, ownerPlayerId, this.resolveTeamId(slot, ownerPlayerId, teamId));
   }
 
+  setUnitDriveInput(
+    entity: Entity,
+    thrustDirX: number,
+    thrustDirY: number,
+    headingDirX: number,
+    headingDirY: number,
+    knownSlot = -1,
+  ): void {
+    const unit = entity.unit;
+    const unitMatches = unit !== null &&
+      unit.thrustDirX === thrustDirX &&
+      unit.thrustDirY === thrustDirY &&
+      unit.headingDirX === headingDirX &&
+      unit.headingDirY === headingDirY;
+
+    const sim = this.sim();
+    if (sim !== undefined) {
+      const slot = knownSlot >= 0 ? knownSlot : this.getEntitySlot(entity);
+      if (slot >= 0) {
+        const views = this.ensureViews();
+        if (
+          views !== null &&
+          slot < views.capacity &&
+          views.entityId[slot] === entity.id
+        ) {
+          const slabMatches =
+            views.unitThrustDirX[slot] === thrustDirX &&
+            views.unitThrustDirY[slot] === thrustDirY &&
+            views.unitHeadingDirX[slot] === headingDirX &&
+            views.unitHeadingDirY[slot] === headingDirY;
+          if (unitMatches && slabMatches) return;
+          if (unit !== null && !unitMatches) {
+            unit.thrustDirX = thrustDirX;
+            unit.thrustDirY = thrustDirY;
+            unit.headingDirX = headingDirX;
+            unit.headingDirY = headingDirY;
+          }
+          if (!slabMatches) {
+            views.unitThrustDirX[slot] = thrustDirX;
+            views.unitThrustDirY[slot] = thrustDirY;
+            views.unitHeadingDirX[slot] = headingDirX;
+            views.unitHeadingDirY[slot] = headingDirY;
+          }
+          return;
+        }
+
+        if (unit !== null && !unitMatches) {
+          unit.thrustDirX = thrustDirX;
+          unit.thrustDirY = thrustDirY;
+          unit.headingDirX = headingDirX;
+          unit.headingDirY = headingDirY;
+        }
+        this.ensureStateCapacity(sim, slot);
+        sim.entityState.setUnitDriveInput(slot, thrustDirX, thrustDirY, headingDirX, headingDirY);
+        return;
+      }
+    }
+
+    if (unit !== null && !unitMatches) {
+      unit.thrustDirX = thrustDirX;
+      unit.thrustDirY = thrustDirY;
+      unit.headingDirX = headingDirX;
+      unit.headingDirY = headingDirY;
+    }
+  }
+
   refreshViews(): EntityStateViews | null {
     const sim = this.sim();
     if (sim === undefined) {
@@ -694,6 +779,10 @@ export class EntitySlotRegistry {
       angularVelocityY: new Float64Array(buffer, sim.entityState.angularVelocityYPtr(), capacity),
       angularVelocityZ: new Float64Array(buffer, sim.entityState.angularVelocityZPtr(), capacity),
       unitMotionFlags: new Uint32Array(buffer, sim.entityState.unitMotionFlagsPtr(), capacity),
+      unitThrustDirX: new Float64Array(buffer, sim.entityState.unitThrustDirXPtr(), capacity),
+      unitThrustDirY: new Float64Array(buffer, sim.entityState.unitThrustDirYPtr(), capacity),
+      unitHeadingDirX: new Float64Array(buffer, sim.entityState.unitHeadingDirXPtr(), capacity),
+      unitHeadingDirY: new Float64Array(buffer, sim.entityState.unitHeadingDirYPtr(), capacity),
       hp: new Float64Array(buffer, sim.entityState.hpPtr(), capacity),
       maxHp: new Float64Array(buffer, sim.entityState.maxHpPtr(), capacity),
       radiusCollision: new Float64Array(buffer, sim.entityState.radiusCollisionPtr(), capacity),
@@ -754,6 +843,10 @@ export class EntitySlotRegistry {
     this.assertNear(views.angularVelocityY[slot], expected.angularVelocityY, entity.id, 'angularVelocityY');
     this.assertNear(views.angularVelocityZ[slot], expected.angularVelocityZ, entity.id, 'angularVelocityZ');
     this.assertEqual(views.unitMotionFlags[slot], expected.unitMotionFlags, entity.id, 'unitMotionFlags');
+    this.assertNear(views.unitThrustDirX[slot], expected.unitThrustDirX, entity.id, 'unitThrustDirX');
+    this.assertNear(views.unitThrustDirY[slot], expected.unitThrustDirY, entity.id, 'unitThrustDirY');
+    this.assertNear(views.unitHeadingDirX[slot], expected.unitHeadingDirX, entity.id, 'unitHeadingDirX');
+    this.assertNear(views.unitHeadingDirY[slot], expected.unitHeadingDirY, entity.id, 'unitHeadingDirY');
     this.assertNear(views.hp[slot], expected.hp, entity.id, 'hp');
     this.assertNear(views.maxHp[slot], expected.maxHp, entity.id, 'maxHp');
     this.assertNear(views.radiusCollision[slot], expected.radiusCollision, entity.id, 'radiusCollision');
@@ -896,6 +989,10 @@ export class EntitySlotRegistry {
     let angularVelocityY = 0;
     let angularVelocityZ = 0;
     let unitMotionFlags = 0;
+    let unitThrustDirX = 0;
+    let unitThrustDirY = 0;
+    let unitHeadingDirX = 0;
+    let unitHeadingDirY = 0;
     let radiusCollision = 0;
     let radiusHitbox = 0;
     let radiusOther = 0;
@@ -917,6 +1014,10 @@ export class EntitySlotRegistry {
       vx = unit.velocityX;
       vy = unit.velocityY;
       vz = unit.velocityZ;
+      unitThrustDirX = unit.thrustDirX;
+      unitThrustDirY = unit.thrustDirY;
+      unitHeadingDirX = unit.headingDirX;
+      unitHeadingDirY = unit.headingDirY;
       surfaceNormalX = unit.surfaceNormal.nx;
       surfaceNormalY = unit.surfaceNormal.ny;
       surfaceNormalZ = unit.surfaceNormal.nz;
@@ -1003,6 +1104,10 @@ export class EntitySlotRegistry {
     expected.angularVelocityY = angularVelocityY;
     expected.angularVelocityZ = angularVelocityZ;
     expected.unitMotionFlags = unitMotionFlags;
+    expected.unitThrustDirX = unitThrustDirX;
+    expected.unitThrustDirY = unitThrustDirY;
+    expected.unitHeadingDirX = unitHeadingDirX;
+    expected.unitHeadingDirY = unitHeadingDirY;
     expected.hp = hp;
     expected.maxHp = maxHp;
     expected.radiusCollision = radiusCollision;

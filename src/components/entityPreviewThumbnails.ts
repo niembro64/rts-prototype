@@ -6,10 +6,22 @@ import {
   acquireAuxiliaryRendererContext,
 } from '@/game/render3d/RendererContextBudget';
 
-const THUMBNAIL_SIZE = 96;
-const THUMBNAIL_DPR = 2;
+export type EntityPreviewImageUse = 'grid' | 'panel' | 'loading';
+
+type EntityPreviewImageSpec = {
+  size: number;
+  dpr: number;
+  quality: number;
+  fullBleed: boolean;
+};
+
+const ENTITY_PREVIEW_IMAGE_SPECS = {
+  grid: { size: 144, dpr: 2, quality: 0.88, fullBleed: false },
+  panel: { size: 320, dpr: 2, quality: 0.9, fullBleed: false },
+  loading: { size: 640, dpr: 2, quality: 0.92, fullBleed: false },
+} as const satisfies Record<EntityPreviewImageUse, EntityPreviewImageSpec>;
+
 const THUMBNAIL_MIME_TYPE = 'image/webp';
-const THUMBNAIL_QUALITY = 0.86;
 const THUMBNAIL_YAW = -0.62;
 const THUMBNAIL_PITCH = -0.16;
 const THUMBNAIL_RETRY_DELAYS_MS = [120, 300, 700, 1500, 3000];
@@ -28,8 +40,12 @@ type ThumbnailRenderResult =
   | { status: 'temporarily-unavailable' }
   | { status: 'unsupported' };
 
-function thumbnailKey(kind: LoadingPreviewKind, blueprintId: LoadingEntityBlueprintId): string {
-  return `${kind}:${blueprintId}`;
+function thumbnailKey(
+  imageUse: EntityPreviewImageUse,
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
+): string {
+  return `${imageUse}:${kind}:${blueprintId}`;
 }
 
 function notifyThumbnailListeners(): void {
@@ -51,10 +67,11 @@ function delay(ms: number): Promise<void> {
 }
 
 function scheduleDeferredThumbnailRetry(
+  imageUse: EntityPreviewImageUse,
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
 ): void {
-  const key = thumbnailKey(kind, blueprintId);
+  const key = thumbnailKey(imageUse, kind, blueprintId);
   if (
     cachedThumbnails.has(key) ||
     pendingThumbnails.has(key) ||
@@ -73,17 +90,18 @@ function scheduleDeferredThumbnailRetry(
     ) {
       return;
     }
-    void requestEntityThumbnail(kind, blueprintId);
+    void requestEntityPreviewImage(imageUse, kind, blueprintId);
   }, THUMBNAIL_DEFERRED_RETRY_MS);
   deferredRetryTimers.set(key, timer);
 }
 
 async function renderEntityThumbnailWithRetries(
+  imageUse: EntityPreviewImageUse,
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
 ): Promise<ThumbnailRenderResult> {
   for (let attempt = 0; attempt <= THUMBNAIL_RETRY_DELAYS_MS.length; attempt++) {
-    const result = await renderEntityThumbnail(kind, blueprintId);
+    const result = await renderEntityThumbnail(imageUse, kind, blueprintId);
     if (
       result.status !== 'temporarily-unavailable' ||
       attempt === THUMBNAIL_RETRY_DELAYS_MS.length
@@ -107,14 +125,30 @@ export function getCachedEntityThumbnail(
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
 ): string | null {
-  return cachedThumbnails.get(thumbnailKey(kind, blueprintId)) ?? null;
+  return getCachedEntityPreviewImage('grid', kind, blueprintId);
+}
+
+export function getCachedEntityPreviewImage(
+  imageUse: EntityPreviewImageUse,
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
+): string | null {
+  return cachedThumbnails.get(thumbnailKey(imageUse, kind, blueprintId)) ?? null;
 }
 
 export function requestEntityThumbnail(
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
 ): Promise<string | null> {
-  const key = thumbnailKey(kind, blueprintId);
+  return requestEntityPreviewImage('grid', kind, blueprintId);
+}
+
+export function requestEntityPreviewImage(
+  imageUse: EntityPreviewImageUse,
+  kind: LoadingPreviewKind,
+  blueprintId: LoadingEntityBlueprintId,
+): Promise<string | null> {
+  const key = thumbnailKey(imageUse, kind, blueprintId);
   const cached = cachedThumbnails.get(key);
   if (cached !== undefined) return Promise.resolve(cached);
   if (failedThumbnails.has(key)) return Promise.resolve(null);
@@ -122,7 +156,7 @@ export function requestEntityThumbnail(
   if (pending !== undefined) return pending;
 
   const task = renderQueue
-    .then(() => renderEntityThumbnailWithRetries(kind, blueprintId))
+    .then(() => renderEntityThumbnailWithRetries(imageUse, kind, blueprintId))
     .then((result) => {
       pendingThumbnails.delete(key);
       if (result.status === 'ready') {
@@ -130,7 +164,7 @@ export function requestEntityThumbnail(
       } else if (result.status === 'unsupported') {
         failedThumbnails.add(key);
       } else {
-        scheduleDeferredThumbnailRetry(kind, blueprintId);
+        scheduleDeferredThumbnailRetry(imageUse, kind, blueprintId);
       }
       notifyThumbnailListeners();
       return result.status === 'ready' ? result.dataUrl : null;
@@ -149,15 +183,17 @@ export function requestEntityThumbnail(
 }
 
 async function renderEntityThumbnail(
+  imageUse: EntityPreviewImageUse,
   kind: LoadingPreviewKind,
   blueprintId: LoadingEntityBlueprintId,
 ): Promise<ThumbnailRenderResult> {
   if (typeof document === 'undefined') return { status: 'unsupported' };
 
   await nextFrame();
+  const spec = ENTITY_PREVIEW_IMAGE_SPECS[imageUse];
 
   const canvas = document.createElement('canvas');
-  const contextToken = acquireAuxiliaryRendererContext('entity-thumbnail', canvas);
+  const contextToken = acquireAuxiliaryRendererContext(`entity-${imageUse}-image`, canvas);
   if (contextToken === null) return { status: 'temporarily-unavailable' };
 
   let scene: import('./loadingUnitPreviewScene').LoadingUnitPreviewScene | null = null;
@@ -167,7 +203,7 @@ async function renderEntityThumbnail(
       canvas,
       kind,
       blueprintId,
-      fullBleed: false,
+      fullBleed: spec.fullBleed,
       preserveDrawingBuffer: true,
     });
     scene.updateControls({
@@ -177,15 +213,15 @@ async function renderEntityThumbnail(
       pitch: THUMBNAIL_PITCH,
     });
     scene.resize({
-      width: THUMBNAIL_SIZE,
-      height: THUMBNAIL_SIZE,
-      dpr: THUMBNAIL_DPR,
+      width: spec.size,
+      height: spec.size,
+      dpr: spec.dpr,
     });
     scene.render(typeof performance !== 'undefined' ? performance.now() : Date.now());
 
     return {
       status: 'ready',
-      dataUrl: canvas.toDataURL(THUMBNAIL_MIME_TYPE, THUMBNAIL_QUALITY),
+      dataUrl: canvas.toDataURL(THUMBNAIL_MIME_TYPE, spec.quality),
     };
   } finally {
     scene?.dispose();

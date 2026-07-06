@@ -14,8 +14,7 @@ export type UnitActionMovementDecision =
 export class SimulationUnitActionMovementPlanner {
   private readonly entities: Entity[] = [];
   private readonly actions: UnitAction[] = [];
-  private readonly plans: UnitActionPlanCode[] = [];
-  private readonly finalPoints: boolean[] = [];
+  private plans = new Uint8Array(0);
   private slots = new Uint32Array(0);
   private targetX = new Float64Array(0);
   private targetY = new Float64Array(0);
@@ -47,7 +46,6 @@ export class SimulationUnitActionMovementPlanner {
     this.entities[index] = entity;
     this.actions[index] = action;
     this.plans[index] = plan;
-    this.finalPoints[index] = isFinalActionPoint;
     this.slots[index] = slot >= 0 ? slot : 0xffffffff;
     this.targetX[index] = targetX;
     this.targetY[index] = targetY;
@@ -89,7 +87,7 @@ export class SimulationUnitActionMovementPlanner {
   }
 
   planAt(index: number): UnitActionPlanCode {
-    return this.plans[index];
+    return this.plans[index] as UnitActionPlanCode;
   }
 
   dxAt(index: number): number {
@@ -105,7 +103,7 @@ export class SimulationUnitActionMovementPlanner {
   }
 
   isFinalActionPointAt(index: number): boolean {
-    return this.finalPoints[index];
+    return this.finalPoint[index] !== 0;
   }
 
   decisionAt(index: number): UnitActionMovementDecision {
@@ -116,13 +114,14 @@ export class SimulationUnitActionMovementPlanner {
     this.count = 0;
     this.entities.length = 0;
     this.actions.length = 0;
-    this.plans.length = 0;
-    this.finalPoints.length = 0;
   }
 
   private ensureCapacity(required: number): void {
     if (this.slots.length >= required) return;
     const next = Math.max(required, this.slots.length * 2, 128);
+    const plans = new Uint8Array(next);
+    plans.set(this.plans);
+    this.plans = plans;
     const slots = new Uint32Array(next);
     slots.set(this.slots);
     this.slots = slots;

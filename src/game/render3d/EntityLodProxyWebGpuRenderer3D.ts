@@ -3,8 +3,8 @@ import {
   ENTITY_LOD_PROXY_CAP,
   ENTITY_LOD_PROXY_USE_TEAM_COLOR,
 } from '@/config';
-import type { Entity } from '../sim/types';
-import { entityInstanceColorHex } from './EntityInstanceColor3D';
+import type { Entity, PlayerId } from '../sim/types';
+import { entityInstanceColorHexForPlayer } from './EntityInstanceColor3D';
 import {
   entityLodProxyGlyph3D,
   entityLodProxyRadius3D,
@@ -220,6 +220,12 @@ function normalizeColorHex(colorHex: number, out: Float32Array, offset: number):
   out[offset + 3] = 1;
 }
 
+function lodProxyColorHex(ownerId: PlayerId | undefined): number {
+  return ENTITY_LOD_PROXY_USE_TEAM_COLOR
+    ? entityInstanceColorHexForPlayer(ownerId)
+    : ENTITY_LOD_PROXY_NEUTRAL_COLOR;
+}
+
 function createGpuBatch(
   device: GpuDeviceLike,
   bindGroupLayout: unknown,
@@ -251,20 +257,36 @@ function createGpuBatch(
 }
 
 function writeProxyInstance(batch: GpuProxyBatch, slot: number, entity: Entity): void {
+  writeProxyInstanceValues(
+    batch,
+    slot,
+    entity.transform.x,
+    entity.transform.y,
+    entity.transform.z,
+    entityLodProxyRadius3D(entity),
+    entityLodProxyGlyph3D(entity),
+    entity.ownership?.playerId,
+  );
+}
+
+function writeProxyInstanceValues(
+  batch: GpuProxyBatch,
+  slot: number,
+  simX: number,
+  simY: number,
+  simZ: number,
+  radius: number,
+  glyph: number,
+  ownerId: PlayerId | undefined,
+): void {
   const data = batch.data;
   const offset = slot * INSTANCE_FLOATS;
-  data[offset] = Math.fround(entity.transform.x);
-  data[offset + 1] = Math.fround(entity.transform.z);
-  data[offset + 2] = Math.fround(entity.transform.y);
-  data[offset + 3] = Math.fround(entityLodProxyRadius3D(entity));
-  normalizeColorHex(
-    ENTITY_LOD_PROXY_USE_TEAM_COLOR
-      ? entityInstanceColorHex(entity)
-      : ENTITY_LOD_PROXY_NEUTRAL_COLOR,
-    data,
-    offset + 4,
-  );
-  data[offset + 8] = Math.fround(entityLodProxyGlyph3D(entity));
+  data[offset] = Math.fround(simX);
+  data[offset + 1] = Math.fround(simZ);
+  data[offset + 2] = Math.fround(simY);
+  data[offset + 3] = Math.fround(radius);
+  normalizeColorHex(lodProxyColorHex(ownerId), data, offset + 4);
+  data[offset + 8] = Math.fround(glyph);
 }
 
 export class EntityLodProxyWebGpuRenderer3D {
@@ -413,11 +435,39 @@ export class EntityLodProxyWebGpuRenderer3D {
     this.unitBatch.count = slot + 1;
   }
 
+  pushUnitProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    ownerId: PlayerId | undefined,
+  ): void {
+    const slot = this.unitBatch.count;
+    if (slot >= ENTITY_LOD_PROXY_CAP) return;
+    writeProxyInstanceValues(this.unitBatch, slot, simX, simY, simZ, radius, glyph, ownerId);
+    this.unitBatch.count = slot + 1;
+  }
+
   pushBuilding(entity: Entity): void {
     const building = entity.building;
     const slot = this.buildingBatch.count;
     if (building === null || slot >= ENTITY_LOD_PROXY_CAP) return;
     writeProxyInstance(this.buildingBatch, slot, entity);
+    this.buildingBatch.count = slot + 1;
+  }
+
+  pushBuildingProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    ownerId: PlayerId | undefined,
+  ): void {
+    const slot = this.buildingBatch.count;
+    if (slot >= ENTITY_LOD_PROXY_CAP) return;
+    writeProxyInstanceValues(this.buildingBatch, slot, simX, simY, simZ, radius, glyph, ownerId);
     this.buildingBatch.count = slot + 1;
   }
 

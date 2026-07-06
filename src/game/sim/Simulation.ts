@@ -38,7 +38,6 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget, resolveGuardServiceTarget } from './guard';
 import { updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
-import { setUnitMovementAcceleration } from './unitMovementAcceleration';
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import {
   rotateFirstUnitActionToEnd,
@@ -908,11 +907,12 @@ export class Simulation {
   }
 
   // Update unit movement with action queue processing.
-  // unit.thrustDirX/Y is what GameServer.applyForces reads — a (0, 0)
-  // means "no powered thrust this tick"; vector magnitude scales drive
-  // force. The authoritative physics velocity stays in unit.velocityX/Y/Z
-  // and is only overwritten by syncFromPhysics, so lead-prediction in
-  // turretSystem reads the real velocity, not this thrust target.
+  // unit.thrustDirX/Y is mirrored into native entity-state drive input for
+  // UnitForceSystem — a (0, 0) means "no powered thrust this tick"; vector
+  // magnitude scales drive force. The authoritative physics velocity stays in
+  // unit.velocityX/Y/Z and is only overwritten by syncFromPhysics, so
+  // lead-prediction in turretSystem reads the real velocity, not this thrust
+  // target.
   /** Detonate armed self-destructs whose countdown expired. Entries
    *  whose entity died or vanished by other means are dropped lazily
    *  here. Map iteration is insertion-ordered and the map is only
@@ -1007,6 +1007,7 @@ export class Simulation {
       if (!entity.unit) continue;
 
       const { unit } = entity;
+      const entitySlot = entity.entitySlotId;
       if (!entity.body) {
         if (
           unit.hp > 0 &&
@@ -1024,13 +1025,7 @@ export class Simulation {
       // so shells can fall, collide, and settle like ordinary units
       // before activation.
       if (isBuildBlockingActivation(entity.buildable)) {
-        unit.thrustDirX = 0;
-        unit.thrustDirY = 0;
-        unit.headingDirX = 0;
-        unit.headingDirY = 0;
-        // Acceleration is sim-only state now (not shipped on the
-        // wire); reset it without flagging a delta.
-        setUnitMovementAcceleration(unit, 0, 0, 0);
+        entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
         if (entity.combat) {
           entity.combat.priorityTargetId = null;
           entity.combat.priorityTargetPoint = null;
@@ -1040,11 +1035,7 @@ export class Simulation {
       }
 
       if (unit.hp <= 0) {
-        unit.thrustDirX = 0;
-        unit.thrustDirY = 0;
-        unit.headingDirX = 0;
-        unit.headingDirY = 0;
-        setUnitMovementAcceleration(unit, 0, 0, 0);
+        entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
         unit.stuckTicks = 0;
         if (entity.combat) {
           entity.combat.priorityTargetId = null;
@@ -1055,11 +1046,7 @@ export class Simulation {
       }
 
       // Default: no thrust (contact braking/drag will slow or hold the unit)
-      unit.thrustDirX = 0;
-      unit.thrustDirY = 0;
-      unit.headingDirX = 0;
-      unit.headingDirY = 0;
-      setUnitMovementAcceleration(unit, 0, 0, 0);
+      entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
 
       // Clear priority target — re-set below by attack / attack-ground actions.
       if (entity.combat) {
@@ -1247,6 +1234,9 @@ export class Simulation {
       if (!unit || !entity.body) continue;
       const transform = entity.transform;
       const currentAction = planner.actionAt(i);
+      const entitySlot = entity.entitySlotId >= 0
+        ? entity.entitySlotId
+        : spatialGrid.getEntitySlot(entity);
 
       switch (planner.planAt(i)) {
         case UNIT_ACTION_PLAN_IDLE_LOITER:
@@ -1279,7 +1269,7 @@ export class Simulation {
             entity,
             currentAction,
             UNIT_ACTION_PLAN_LOAD_MOVE,
-            spatialGrid.getEntitySlot(entity),
+            entitySlot,
             movementTarget.x,
             movementTarget.y,
             1,
@@ -1295,7 +1285,7 @@ export class Simulation {
             entity,
             currentAction,
             UNIT_ACTION_PLAN_UNLOAD_MOVE,
-            spatialGrid.getEntitySlot(entity),
+            entitySlot,
             movementTarget.x,
             movementTarget.y,
             15,
@@ -1311,7 +1301,7 @@ export class Simulation {
             entity,
             currentAction,
             UNIT_ACTION_PLAN_BUILD_MOVE,
-            spatialGrid.getEntitySlot(entity),
+            entitySlot,
             movementTarget.x,
             movementTarget.y,
             1,
@@ -1343,7 +1333,7 @@ export class Simulation {
             entity,
             currentAction,
             UNIT_ACTION_PLAN_ATTACK_MOVE,
-            spatialGrid.getEntitySlot(entity),
+            entitySlot,
             movementTarget.x,
             movementTarget.y,
             15,
@@ -1359,7 +1349,7 @@ export class Simulation {
             entity,
             currentAction,
             UNIT_ACTION_PLAN_ATTACK_GROUND_MOVE,
-            spatialGrid.getEntitySlot(entity),
+            entitySlot,
             movementTarget.x,
             movementTarget.y,
             15,
@@ -1380,7 +1370,7 @@ export class Simulation {
             entity,
             currentAction,
             UNIT_ACTION_PLAN_GUARD_SERVICE_MOVE,
-            spatialGrid.getEntitySlot(entity),
+            entitySlot,
             sp.x,
             sp.y,
             15,
@@ -1424,7 +1414,7 @@ export class Simulation {
             entity,
             currentAction,
             UNIT_ACTION_PLAN_GUARD_FOLLOW,
-            spatialGrid.getEntitySlot(entity),
+            entitySlot,
             movementTarget.x,
             movementTarget.y,
             15,
@@ -1560,7 +1550,10 @@ export class Simulation {
     const slots = this._movingUnitSlotsBuf;
     slots.length = movingUnits.length;
     for (let i = 0; i < movingUnits.length; i++) {
-      slots[i] = entitySlotRegistry.getEntitySlot(movingUnits[i]);
+      const entity = movingUnits[i];
+      slots[i] = entity.entitySlotId >= 0
+        ? entity.entitySlotId
+        : entitySlotRegistry.getEntitySlot(entity);
     }
   }
 

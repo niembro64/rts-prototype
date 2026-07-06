@@ -31,10 +31,11 @@ export type BattlePreset = {
    *  outer ring below water (round-island); positive raises a rim. */
   readonly perimeterMagnitude: number;
   readonly terrainDTerrain: number;
+  readonly plateauWallSlopeDegrees: number;
   readonly metalDepositStep: number;
-  /** Fine-triangle subdivisions per land cell. 0 = off (one triangle
-   *  per cell, current default); 5/10/15/20 = progressively finer mesh
-   *  detail. Drives `TERRAIN_FINE_TRIANGLE_SUBDIV`. */
+  /** Fine-triangle subdivisions per land cell. 0 = off, which the
+   *  terrain baker clamps to one triangle edge subdivision per cell.
+   *  Drives `TERRAIN_FINE_TRIANGLE_SUBDIV`. */
   readonly terrainDetail: number;
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
@@ -117,6 +118,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: 0,
       perimeterMagnitude: 0,
       terrainDTerrain: 0,
+      plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
       terrainDetail: 0,
       mapWidthLandCells: 23,
@@ -137,6 +139,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: 400,
       perimeterMagnitude: -800,
       terrainDTerrain: 1,
+      plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
       terrainDetail: 1,
       mapWidthLandCells: 53,
@@ -157,6 +160,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: 0,
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
+      plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
       terrainDetail: 16,
       mapWidthLandCells: 119,
@@ -177,6 +181,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: 1600,
       perimeterMagnitude: -800,
       terrainDTerrain: 400,
+      plateauWallSlopeDegrees: 89,
       metalDepositStep: 0,
       terrainDetail: 16,
       mapWidthLandCells: 53,
@@ -197,6 +202,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: 800,
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
+      plateauWallSlopeDegrees: 89,
       metalDepositStep: 400,
       terrainDetail: 1,
       mapWidthLandCells: 119,
@@ -217,6 +223,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: 1600,
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
+      plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
       terrainDetail: 8,
       mapWidthLandCells: 53,
@@ -237,6 +244,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: -3200,
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
+      plateauWallSlopeDegrees: 89,
       metalDepositStep: 200,
       terrainDetail: 8,
       mapWidthLandCells: 53,
@@ -257,6 +265,7 @@ function buildPresets(): readonly BattlePreset[] {
       dividersMagnitude: 6400,
       perimeterMagnitude: -800,
       terrainDTerrain: 200,
+      plateauWallSlopeDegrees: 89,
       metalDepositStep: 3200,
       terrainDetail: 16,
       mapWidthLandCells: 35,
@@ -316,6 +325,7 @@ function presetMatchesCurrent(
     p.dividersMagnitude === c.dividersMagnitude &&
     p.perimeterMagnitude === c.perimeterMagnitude &&
     p.terrainDTerrain === c.terrainDTerrain &&
+    p.plateauWallSlopeDegrees === c.plateauWallSlopeDegrees &&
     p.metalDepositStep === c.metalDepositStep &&
     p.terrainDetail === c.terrainDetail &&
     p.mapWidthLandCells === c.mapWidthLandCells &&

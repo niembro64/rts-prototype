@@ -8,9 +8,11 @@ import {
   normalizeConverterTax,
   normalizeDividersMagnitude,
   normalizeMetalDepositStep,
+  normalizePlateauWallSlopeDegrees,
   normalizePerimeterMagnitude,
   normalizeTerrainDTerrain,
   normalizeTerrainDetail,
+  savePlateauWallSlopeDegrees,
   saveCenterMagnitude,
   saveConverterTax,
   saveDividersMagnitude,
@@ -37,6 +39,7 @@ type GameCanvasLobbySettings = {
   applyDividersMagnitude(value: number, broadcast?: boolean): void;
   applyPerimeterMagnitude(value: number, broadcast?: boolean): void;
   applyTerrainDTerrain(value: number, broadcast?: boolean): void;
+  applyPlateauWallSlopeDegrees(value: number, broadcast?: boolean): void;
   applyMetalDepositStep(value: number, broadcast?: boolean): void;
   applyTerrainDetail(value: number, broadcast?: boolean): void;
   applyMapLandDimensions(
@@ -60,6 +63,7 @@ type GameCanvasLobbySettingsOptions = {
   dividersMagnitude: Ref<number>;
   perimeterMagnitude: Ref<number>;
   terrainDTerrain: Ref<number>;
+  plateauWallSlopeDegrees: Ref<number>;
   metalDepositStep: Ref<number>;
   terrainDetail: Ref<number>;
   mapWidthLandCells: Ref<number>;
@@ -88,6 +92,7 @@ export function useGameCanvasLobbySettings({
   dividersMagnitude,
   perimeterMagnitude,
   terrainDTerrain,
+  plateauWallSlopeDegrees,
   metalDepositStep,
   terrainDetail,
   mapWidthLandCells,
@@ -114,6 +119,7 @@ export function useGameCanvasLobbySettings({
       dividersMagnitude: dividersMagnitude.value,
       perimeterMagnitude: perimeterMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
+      plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
       metalDepositStep: metalDepositStep.value,
       terrainDetail: terrainDetail.value,
     });
@@ -125,6 +131,7 @@ export function useGameCanvasLobbySettings({
       dividersMagnitude: dividersMagnitude.value,
       perimeterMagnitude: perimeterMagnitude.value,
       terrainDTerrain: terrainDTerrain.value,
+      plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
       metalDepositStep: metalDepositStep.value,
       terrainDetail: terrainDetail.value,
       mapWidthLandCells: mapWidthLandCells.value,
@@ -182,6 +189,21 @@ export function useGameCanvasLobbySettings({
     const changed = terrainDTerrain.value !== normalized;
     terrainDTerrain.value = normalized;
     saveTerrainDTerrain(normalized, mode);
+    if (!changed) return;
+    applyCurrentTerrainRuntimeConfig();
+    restartPreviewIfNeeded();
+    if (broadcast) broadcastLobbySettingsIfHost();
+  }
+
+  function applyPlateauWallSlopeDegrees(
+    value: number,
+    broadcast = true,
+  ): void {
+    const mode = currentBattleMode.value;
+    const normalized = normalizePlateauWallSlopeDegrees(value);
+    const changed = plateauWallSlopeDegrees.value !== normalized;
+    plateauWallSlopeDegrees.value = normalized;
+    savePlateauWallSlopeDegrees(normalized, mode);
     if (!changed) return;
     applyCurrentTerrainRuntimeConfig();
     restartPreviewIfNeeded();
@@ -247,6 +269,10 @@ export function useGameCanvasLobbySettings({
       settings.terrainDTerrain === undefined
         ? terrainDTerrain.value
         : normalizeTerrainDTerrain(settings.terrainDTerrain);
+    const nextPlateauWallSlopeDegrees =
+      settings.plateauWallSlopeDegrees === undefined
+        ? plateauWallSlopeDegrees.value
+        : normalizePlateauWallSlopeDegrees(settings.plateauWallSlopeDegrees);
     const nextMetalDepositStep =
       settings.metalDepositStep === undefined
         ? metalDepositStep.value
@@ -260,6 +286,7 @@ export function useGameCanvasLobbySettings({
       nextDividersMagnitude !== dividersMagnitude.value ||
       nextPerimeterMagnitude !== perimeterMagnitude.value ||
       nextDTerrain !== terrainDTerrain.value ||
+      nextPlateauWallSlopeDegrees !== plateauWallSlopeDegrees.value ||
       nextMetalDepositStep !== metalDepositStep.value ||
       nextTerrainDetail !== terrainDetail.value ||
       settings.mapWidthLandCells !== mapWidthLandCells.value ||
@@ -269,6 +296,7 @@ export function useGameCanvasLobbySettings({
     dividersMagnitude.value = nextDividersMagnitude;
     perimeterMagnitude.value = nextPerimeterMagnitude;
     terrainDTerrain.value = nextDTerrain;
+    plateauWallSlopeDegrees.value = nextPlateauWallSlopeDegrees;
     metalDepositStep.value = nextMetalDepositStep;
     terrainDetail.value = nextTerrainDetail;
     mapWidthLandCells.value = settings.mapWidthLandCells;
@@ -277,6 +305,7 @@ export function useGameCanvasLobbySettings({
     saveDividersMagnitude(nextDividersMagnitude, 'real');
     savePerimeterMagnitude(nextPerimeterMagnitude, 'real');
     saveTerrainDTerrain(nextDTerrain, 'real');
+    savePlateauWallSlopeDegrees(nextPlateauWallSlopeDegrees, 'real');
     saveMetalDepositStep(nextMetalDepositStep, 'real');
     saveTerrainDetail(nextTerrainDetail, 'real');
     saveMapLandDimensions(
@@ -317,6 +346,8 @@ export function useGameCanvasLobbySettings({
     const dividersMagnitudeDefault = BATTLE_CONFIG.dividersMagnitude.default;
     const perimeterMagnitudeDefault = BATTLE_CONFIG.perimeterMagnitude.default;
     const dTerrainDefault = BATTLE_CONFIG.terrainDTerrain.default;
+    const plateauWallSlopeDegreesDefault =
+      BATTLE_CONFIG.plateauWallSlopeDegrees.default;
     const metalDepositStepDefault = BATTLE_CONFIG.metalDepositStep.default;
     const terrainDetailDefault = BATTLE_CONFIG.terrainDetail.default;
     const mapDimensionsDefault = getDefaultMapLandDimensions();
@@ -325,6 +356,7 @@ export function useGameCanvasLobbySettings({
       dividersMagnitude.value === dividersMagnitudeDefault &&
       perimeterMagnitude.value === perimeterMagnitudeDefault &&
       terrainDTerrain.value === dTerrainDefault &&
+      plateauWallSlopeDegrees.value === plateauWallSlopeDegreesDefault &&
       metalDepositStep.value === metalDepositStepDefault &&
       terrainDetail.value === terrainDetailDefault &&
       sameMapLandDimensions(
@@ -342,6 +374,7 @@ export function useGameCanvasLobbySettings({
     dividersMagnitude.value = dividersMagnitudeDefault;
     perimeterMagnitude.value = perimeterMagnitudeDefault;
     terrainDTerrain.value = dTerrainDefault;
+    plateauWallSlopeDegrees.value = plateauWallSlopeDegreesDefault;
     metalDepositStep.value = metalDepositStepDefault;
     terrainDetail.value = terrainDetailDefault;
     mapWidthLandCells.value = mapDimensionsDefault.widthLandCells;
@@ -350,6 +383,7 @@ export function useGameCanvasLobbySettings({
     saveDividersMagnitude(dividersMagnitudeDefault, mode);
     savePerimeterMagnitude(perimeterMagnitudeDefault, mode);
     saveTerrainDTerrain(dTerrainDefault, mode);
+    savePlateauWallSlopeDegrees(plateauWallSlopeDegreesDefault, mode);
     saveMetalDepositStep(metalDepositStepDefault, mode);
     saveTerrainDetail(terrainDetailDefault, mode);
     saveMapLandDimensions(mapDimensionsDefault, mode);
@@ -364,6 +398,7 @@ export function useGameCanvasLobbySettings({
     applyDividersMagnitude,
     applyPerimeterMagnitude,
     applyTerrainDTerrain,
+    applyPlateauWallSlopeDegrees,
     applyMetalDepositStep,
     applyTerrainDetail,
     applyMapLandDimensions,

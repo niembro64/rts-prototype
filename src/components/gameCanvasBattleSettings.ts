@@ -78,6 +78,7 @@ type GameCanvasBattleSettingsOptions = {
   applyDividersMagnitude: (value: number, broadcast?: boolean) => void;
   applyPerimeterMagnitude: (value: number, broadcast?: boolean) => void;
   applyTerrainDTerrain: (value: number, broadcast?: boolean) => void;
+  applyPlateauWallSlopeDegrees: (value: number, broadcast?: boolean) => void;
   applyMetalDepositStep: (value: number, broadcast?: boolean) => void;
   applyTerrainDetail: (value: number, broadcast?: boolean) => void;
   applyMapLandDimensions: (
@@ -99,6 +100,7 @@ export function useGameCanvasBattleSettings({
   applyDividersMagnitude,
   applyPerimeterMagnitude,
   applyTerrainDTerrain,
+  applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
   applyMapLandDimensions,
@@ -380,6 +382,7 @@ export function useGameCanvasBattleSettings({
     applyDividersMagnitude(preset.dividersMagnitude, false);
     applyPerimeterMagnitude(preset.perimeterMagnitude, false);
     applyTerrainDTerrain(preset.terrainDTerrain, false);
+    applyPlateauWallSlopeDegrees(preset.plateauWallSlopeDegrees, false);
     applyMetalDepositStep(preset.metalDepositStep, false);
     applyTerrainDetail(preset.terrainDetail, false);
     applyMapLandDimensions(

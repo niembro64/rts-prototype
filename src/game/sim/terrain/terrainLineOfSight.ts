@@ -7,6 +7,8 @@ import type { WorldState } from '../WorldState';
  *  is the natural floor: terrain features authored at cell scale cannot
  *  hide between samples. */
 const TERRAIN_LOS_STEP_FRAC = 0.5;
+const TERRAIN_LOS_STEP_LEN = LAND_CELL_SIZE * TERRAIN_LOS_STEP_FRAC;
+const TERRAIN_LOS_STEP_LEN_SQ = TERRAIN_LOS_STEP_LEN * TERRAIN_LOS_STEP_LEN;
 
 /** True if the straight line from (sx,sy,sz) to (tx,ty,tz) clears the
  *  terrain surface. Higher-level callers compose this with any
@@ -16,18 +18,17 @@ export function hasTerrainLineOfSight(
   sx: number, sy: number, sz: number,
   tx: number, ty: number, tz: number,
 ): boolean {
-  const stepLen = LAND_CELL_SIZE * TERRAIN_LOS_STEP_FRAC;
-  const sim = getSimWasm();
-  if (sim !== undefined) {
-    const result = sim.terrainHasLineOfSight(sx, sy, sz, tx, ty, tz, stepLen);
-    if (result !== 2) return result === 1;
-  }
   const dx = tx - sx;
   const dy = ty - sy;
+  if (dx * dx + dy * dy < TERRAIN_LOS_STEP_LEN_SQ) return true;
+  const sim = getSimWasm();
+  if (sim !== undefined) {
+    const result = sim.terrainHasLineOfSight(sx, sy, sz, tx, ty, tz, TERRAIN_LOS_STEP_LEN);
+    if (result !== 2) return result === 1;
+  }
   const dz = tz - sz;
   const horizDist = DMath.hypot(dx, dy);
-  if (horizDist < stepLen) return true;
-  const stepCount = Math.ceil(horizDist / stepLen);
+  const stepCount = Math.ceil(horizDist / TERRAIN_LOS_STEP_LEN);
   for (let i = 1; i < stepCount; i++) {
     const t = i / stepCount;
     const x = sx + dx * t;

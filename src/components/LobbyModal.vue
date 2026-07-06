@@ -36,6 +36,7 @@ const props = defineProps<{
   dividersMagnitude: number;
   perimeterMagnitude: number;
   terrainDTerrain: number;
+  plateauWallSlopeDegrees: number;
   metalDepositStep: number;
   terrainDetail: number;
   mapWidthLandCells: number;
@@ -68,6 +69,7 @@ const emit = defineEmits<{
   (e: 'setDividersMagnitude', value: number): void;
   (e: 'setPerimeterMagnitude', value: number): void;
   (e: 'setTerrainDTerrain', value: number): void;
+  (e: 'setPlateauWallSlopeDegrees', value: number): void;
   (e: 'setMetalDepositStep', value: number): void;
   (e: 'setTerrainDetail', value: number): void;
   (e: 'setPreset', preset: BattlePreset): void;
@@ -93,6 +95,8 @@ const centerMagnitudeOptions = BATTLE_CONFIG.centerMagnitude.options;
 const dividersMagnitudeOptions = BATTLE_CONFIG.dividersMagnitude.options;
 const perimeterMagnitudeOptions = BATTLE_CONFIG.perimeterMagnitude.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
+const plateauWallSlopeDegreesOptions =
+  BATTLE_CONFIG.plateauWallSlopeDegrees.options;
 const metalDepositStepOptions = BATTLE_CONFIG.metalDepositStep.options;
 const terrainDetailOptions = BATTLE_CONFIG.terrainDetail.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
@@ -145,6 +149,11 @@ function pickPerimeterMagnitude(value: number): void {
 function pickTerrainDTerrain(value: number): void {
   if (!props.isHost) return;
   emit('setTerrainDTerrain', value);
+}
+
+function pickPlateauWallSlopeDegrees(value: number): void {
+  if (!props.isHost) return;
+  emit('setPlateauWallSlopeDegrees', value);
 }
 
 function pickMetalDepositStep(value: number): void {
@@ -720,6 +729,21 @@ const terrainSectionVars = computed(() =>
                       : 'Only the host can change terrain'"
                     @click="pickTerrainDTerrain(opt)"
                   >{{ opt === 0 ? 'NONE' : opt.toLocaleString() }}</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>PLATEAU WALL:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in plateauWallSlopeDegreesOptions"
+                    :key="opt"
+                    :active="plateauWallSlopeDegrees === opt"
+                    :title="isHost
+                      ? `D-PLATEAU transition slope angle from horizontal: ${opt} degrees`
+                      : 'Only the host can change terrain'"
+                    @click="pickPlateauWallSlopeDegrees(opt)"
+                  >{{ opt }} DEG</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>

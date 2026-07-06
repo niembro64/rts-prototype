@@ -8,8 +8,8 @@ import {
   ENTITY_LOD_PROXY_USE_TEAM_COLOR,
 } from '@/config';
 import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
-import type { Entity } from '../sim/types';
-import { entityInstanceColorHex } from './EntityInstanceColor3D';
+import type { Entity, PlayerId } from '../sim/types';
+import { entityInstanceColorHexForPlayer } from './EntityInstanceColor3D';
 import {
   entityLodProxyGlyph3D,
   entityLodProxyRadius3D,
@@ -126,7 +126,23 @@ type ProxyPointBatch = {
 type EntityLodProxyRendererBackend3D = {
   beginFrame(): void;
   pushUnit(entity: Entity): void;
+  pushUnitProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    ownerId: PlayerId | undefined,
+  ): void;
   pushBuilding(entity: Entity): void;
+  pushBuildingProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    ownerId: PlayerId | undefined,
+  ): void;
   flush(viewportHeight: number): void;
   destroy(): void;
 };
@@ -235,6 +251,12 @@ function writeColorHex(batch: ProxyPointBatch, slot: number, colorHex: number): 
   markDirty(batch.colorDirty, slot);
 }
 
+function lodProxyColorHex(ownerId: PlayerId | undefined): number {
+  return ENTITY_LOD_PROXY_USE_TEAM_COLOR
+    ? entityInstanceColorHexForPlayer(ownerId)
+    : ENTITY_LOD_PROXY_NEUTRAL_COLOR;
+}
+
 function writePoint(
   batch: ProxyPointBatch,
   slot: number,
@@ -271,6 +293,19 @@ function writePoint(
     markDirty(batch.glyphDirty, slot);
   }
   writeColorHex(batch, slot, colorHex);
+}
+
+function writeSimPoint(
+  batch: ProxyPointBatch,
+  slot: number,
+  simX: number,
+  simY: number,
+  simZ: number,
+  radius: number,
+  glyph: number,
+  ownerId: PlayerId | undefined,
+): void {
+  writePoint(batch, slot, simX, simZ, simY, radius, glyph, lodProxyColorHex(ownerId));
 }
 
 function markBatchRange(batch: ProxyPointBatch, viewportHeight: number): void {
@@ -328,38 +363,72 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
 
   pushUnit(entity: Entity): void {
     const unit = entity.unit;
-    const slot = this.unitBatch.count;
-    if (unit === null || slot >= ENTITY_LOD_PROXY_CAP) return;
-    writePoint(
-      this.unitBatch,
-      slot,
+    if (unit === null) return;
+    this.pushUnitProxy(
       entity.transform.x,
-      entity.transform.z,
       entity.transform.y,
+      entity.transform.z,
       entityLodProxyRadius3D(entity),
       entityLodProxyGlyph3D(entity),
-      ENTITY_LOD_PROXY_USE_TEAM_COLOR
-        ? entityInstanceColorHex(entity)
-        : ENTITY_LOD_PROXY_NEUTRAL_COLOR,
+      entity.ownership?.playerId,
+    );
+  }
+
+  pushUnitProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    ownerId: PlayerId | undefined,
+  ): void {
+    const slot = this.unitBatch.count;
+    if (slot >= ENTITY_LOD_PROXY_CAP) return;
+    writeSimPoint(
+      this.unitBatch,
+      slot,
+      simX,
+      simY,
+      simZ,
+      radius,
+      glyph,
+      ownerId,
     );
     this.unitBatch.count = slot + 1;
   }
 
   pushBuilding(entity: Entity): void {
     const building = entity.building;
-    const slot = this.buildingBatch.count;
-    if (building === null || slot >= ENTITY_LOD_PROXY_CAP) return;
-    writePoint(
-      this.buildingBatch,
-      slot,
+    if (building === null) return;
+    this.pushBuildingProxy(
       entity.transform.x,
-      entity.transform.z,
       entity.transform.y,
+      entity.transform.z,
       entityLodProxyRadius3D(entity),
       entityLodProxyGlyph3D(entity),
-      ENTITY_LOD_PROXY_USE_TEAM_COLOR
-        ? entityInstanceColorHex(entity)
-        : ENTITY_LOD_PROXY_NEUTRAL_COLOR,
+      entity.ownership?.playerId,
+    );
+  }
+
+  pushBuildingProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    ownerId: PlayerId | undefined,
+  ): void {
+    const slot = this.buildingBatch.count;
+    if (slot >= ENTITY_LOD_PROXY_CAP) return;
+    writeSimPoint(
+      this.buildingBatch,
+      slot,
+      simX,
+      simY,
+      simZ,
+      radius,
+      glyph,
+      ownerId,
     );
     this.buildingBatch.count = slot + 1;
   }
@@ -423,8 +492,30 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
     this.activeBackend.pushUnit(entity);
   }
 
+  pushUnitProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    ownerId: PlayerId | undefined,
+  ): void {
+    this.activeBackend.pushUnitProxy(simX, simY, simZ, radius, glyph, ownerId);
+  }
+
   pushBuilding(entity: Entity): void {
     this.activeBackend.pushBuilding(entity);
+  }
+
+  pushBuildingProxy(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+    glyph: number,
+    ownerId: PlayerId | undefined,
+  ): void {
+    this.activeBackend.pushBuildingProxy(simX, simY, simZ, radius, glyph, ownerId);
   }
 
   flush(viewportHeight: number): void {

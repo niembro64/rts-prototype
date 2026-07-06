@@ -8,7 +8,7 @@ import {
 import {
   UNIT_GROUND_CONTACT_EPSILON,
 } from '../sim/unitGroundPhysics';
-import { WATER_LEVEL } from '../sim/Terrain';
+import { WATER_LEVEL, getTerrainVersion } from '../sim/Terrain';
 import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
@@ -26,10 +26,26 @@ import {
   UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
 } from '../../config';
 import { createWorldSupportSurface } from '../sim/supportSurface';
-import { setUnitMovementAcceleration } from '../sim/unitMovementAcceleration';
 import { isBuildInProgress } from '../sim/buildableHelpers';
-import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
-import { getSimWasm, UNIT_FORCE_BATCH_STRIDE, type SimWasm } from '../sim-wasm/init';
+import {
+  ENTITY_SLOT_BUILD_FLAG_COMPLETE,
+  ENTITY_SLOT_BUILD_FLAG_GHOST,
+  ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
+  ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
+  ENTITY_SLOT_FLAG_HAS_BODY,
+  ENTITY_SLOT_FLAG_HAS_UNIT,
+  ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
+  ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
+  entitySlotRegistry,
+} from '../sim/EntitySlotRegistry';
+import {
+  ENTITY_STATE_KIND_UNIT,
+  ENTITY_STATE_NO_BODY_SLOT,
+  BODY_FLAG_SLEEPING,
+  getSimWasm,
+  UNIT_FORCE_BATCH_STRIDE,
+  type SimWasm,
+} from '../sim-wasm/init';
 import { codeToUnitBlueprintId } from '../../types/network';
 import { getUnitLocomotion } from '../sim/blueprints';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
@@ -60,18 +76,17 @@ const UF_ROW_DIR_X = 0;
 const UF_ROW_DIR_Y = 1;
 const UF_ROW_ROTATION = 2;
 // Row 3 reserved; Rust reads effective mass from BodyPool.
-// Rows 4-9 (ground drive plus air lift family) are blueprint constants filled
-// by the kernel from the wasm-side profile table — see
+// Rows 0-1 and 47-48 are filled by the kernel from native entity-state
+// drive-input rows when an entity slot is available.
+// Rows 4-10 (ground drive plus air lift family, including the hover EMA
+// accumulator) are filled by the kernel from wasm-side native state — see
 // ensureUnitForceProfileTable.
-const UF_ROW_HOVER_SMOOTHED_FORCE = 10;
 const UF_ROW_HOVER_RANDOM_SAMPLE = 11;
 const UF_ROW_GROUND_Z = 12;
 const UF_ROW_NORMAL_X = 13;
 const UF_ROW_NORMAL_Y = 14;
 const UF_ROW_NORMAL_Z = 15;
 const UF_ROW_EXTERNAL_FX = 16;
-const UF_ROW_EXTERNAL_FY = 17;
-const UF_ROW_EXTERNAL_FZ = 18;
 const UF_ROW_ORIENTATION_X = 19;
 const UF_ROW_ORIENTATION_Y = 20;
 const UF_ROW_ORIENTATION_Z = 21;
@@ -83,17 +98,10 @@ const UF_ROW_WATER_ESCAPE_MASK_0 = 26;
 const UF_ROW_WATER_ESCAPE_MASK_1 = 27;
 const UF_ROW_WATER_ESCAPE_MASK_2 = 28;
 const UF_ROW_WATER_AHEAD_MASK = 29;
-const UF_ROW_MOVEMENT_ACCEL_X = 30;
-const UF_ROW_MOVEMENT_ACCEL_Y = 31;
-const UF_ROW_MOVEMENT_ACCEL_Z = 32;
-const UF_ROW_ANGULAR_ACCEL_X = 33;
-const UF_ROW_ANGULAR_ACCEL_Y = 34;
-const UF_ROW_ANGULAR_ACCEL_Z = 35;
 // Fully-abstracted medium force profile (appended; rows 0..36 unchanged).
-// Rows 36-44 (ground/air/water friction, water force/traction, swim family)
-// and rows 49-50 (air force/traction) are blueprint constants filled by the
-// kernel from the wasm-side profile table.
-const UF_ROW_SWIM_SMOOTHED_FORCE = 45;
+// Rows 36-45 (ground/air/water friction, water force/traction, swim family,
+// including the swim EMA accumulator) and rows 49-50 (air force/traction) are
+// filled by the kernel from wasm-side native state.
 const UF_ROW_SWIM_RANDOM_SAMPLE = 46;
 const UF_ROW_HEADING_X = 47;
 const UF_ROW_HEADING_Y = 48;
@@ -109,22 +117,39 @@ const UF_FLAG_HAS_ORIENTATION = 1 << 7;
 const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING = 1 << 8;
 const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING = 1 << 9;
 const UF_FLAG_ON_GROUND = 1 << 10;
+const UF_PROFILE_FLAG_IS_FLYING = 1 << 16;
+const UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION = 1 << 17;
+const UF_PROFILE_FLAG_IS_SWIMMER = 1 << 18;
+const UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE = 1 << 19;
+const UF_PROFILE_FLAG_SWIM_RANDOM_ACTIVE = 1 << 20;
 
-const UF_OUT_MOVEMENT_ACCEL = 1 << 0;
 const UF_OUT_CLEAR_COMBAT = 1 << 1;
 const UF_OUT_ROTATION_DIRTY = 1 << 2;
 const UF_OUT_HOVER_ORIENTATION = 1 << 3;
 const UF_OUT_WOKE_BODY = 1 << 4;
+const UF_OUT_ENTITY_STATE_SYNCED = 1 << 5;
 const UNIT_GROUND_ANGULAR_DAMPING_RATE =
   dragRateFromVelocityFrictionPer60HzFrame(UNIT_GROUND_FRICTION_PER_60HZ_FRAME);
 
 const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
 
 let _forceSlots: Uint32Array = new Uint32Array(0);
+let _forceEntitySlots: Uint32Array = new Uint32Array(0);
 let _forceFlags: Uint32Array = new Uint32Array(0);
 let _forceRows: Float64Array = new Float64Array(0);
 let _forceOutFlags: Uint32Array = new Uint32Array(0);
-let _forceEntities: (Entity | undefined)[] = [];
+let _forceTerrainGroundZ: Float64Array = new Float64Array(0);
+let _forceTerrainGroundNormals: Float64Array = new Float64Array(0);
+let _forceTerrainMaterialFlags: Uint32Array = new Uint32Array(0);
+let _forceWaterProbeX: Float64Array = new Float64Array(0);
+let _forceWaterProbeY: Float64Array = new Float64Array(0);
+let _forceWaterProbeR: Float64Array = new Float64Array(0);
+let _forceWaterProbeCenterWaterFlags: Uint32Array = new Uint32Array(0);
+let _forceWaterProbeDryMasks: Uint32Array = new Uint32Array(0);
+let _forceWaterProbeRowIndex: Int32Array = new Int32Array(0);
+let _forceWaterProbeFlagIndex: Int32Array = new Int32Array(0);
+let _forceWaterProbeFlagBit: Uint32Array = new Uint32Array(0);
+let _forceWaterProbeCount = 0;
 const _forceTerrainSurface = createWorldSupportSurface();
 const _forceSupportSurface = createWorldSupportSurface();
 const _forceProbeSupportSurface = createWorldSupportSurface();
@@ -133,6 +158,7 @@ function ensureForceBatchCapacity(count: number): void {
   if (_forceSlots.length < count) {
     const next = Math.max(count, _forceSlots.length * 2, 256);
     _forceSlots = new Uint32Array(next);
+    _forceEntitySlots = new Uint32Array(next);
     _forceFlags = new Uint32Array(next);
     _forceOutFlags = new Uint32Array(next);
   }
@@ -141,15 +167,60 @@ function ensureForceBatchCapacity(count: number): void {
     const nextRows = Math.max(rowLen, _forceRows.length * 2, 256 * UNIT_FORCE_BATCH_STRIDE);
     _forceRows = new Float64Array(nextRows);
   }
-  if (_forceEntities.length < count) {
-    _forceEntities.length = count;
+  if (_forceTerrainGroundZ.length < count) {
+    const next = Math.max(count, _forceTerrainGroundZ.length * 2, 256);
+    _forceTerrainGroundZ = new Float64Array(next);
   }
+  if (_forceTerrainMaterialFlags.length < count) {
+    const next = Math.max(count, _forceTerrainMaterialFlags.length * 2, 256);
+    _forceTerrainMaterialFlags = new Uint32Array(next);
+  }
+  const normalLen = count * 3;
+  if (_forceTerrainGroundNormals.length < normalLen) {
+    const next = Math.max(normalLen, _forceTerrainGroundNormals.length * 2, 256 * 3);
+    _forceTerrainGroundNormals = new Float64Array(next);
+  }
+}
+
+function ensureForceWaterProbeCapacity(count: number): void {
+  if (_forceWaterProbeX.length >= count) return;
+  const next = Math.max(count, _forceWaterProbeX.length * 2, 256);
+  _forceWaterProbeX = new Float64Array(next);
+  _forceWaterProbeY = new Float64Array(next);
+  _forceWaterProbeR = new Float64Array(next);
+  _forceWaterProbeCenterWaterFlags = new Uint32Array(next);
+  _forceWaterProbeDryMasks = new Uint32Array(next);
+  _forceWaterProbeRowIndex = new Int32Array(next);
+  _forceWaterProbeFlagIndex = new Int32Array(next);
+  _forceWaterProbeFlagBit = new Uint32Array(next);
+}
+
+function queueForceWaterProbeMask(
+  x: number,
+  y: number,
+  probeR: number,
+  rowIndex: number,
+  flagIndex: number = -1,
+  flagBit: number = 0,
+): void {
+  if (_forceWaterProbeCount >= _forceWaterProbeX.length) {
+    ensureForceWaterProbeCapacity(_forceWaterProbeCount + 1);
+  }
+  const index = _forceWaterProbeCount++;
+  _forceWaterProbeX[index] = x;
+  _forceWaterProbeY[index] = y;
+  _forceWaterProbeR[index] = probeR;
+  _forceWaterProbeRowIndex[index] = rowIndex;
+  _forceWaterProbeFlagIndex[index] = flagIndex;
+  _forceWaterProbeFlagBit[index] = flagBit;
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
 const UF_PROFILE_STRIDE = 17;
 
 let _unitForceProfileTableUploaded = false;
+let _unitForceProfileCodeCount = 0;
+let _unitForceProfileFlagsView: Uint32Array | null = null;
 
 /** Upload the per-blueprint locomotion constants to the wasm-side
  *  profile table once. The force kernel resolves body slot → entity
@@ -161,12 +232,14 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
   let codeCount = 0;
   while (codeToUnitBlueprintId(codeCount) !== null) codeCount++;
   sim.unitForceProfileEnsure(codeCount);
+  _unitForceProfileCodeCount = codeCount;
   const values = new Float64Array(
     sim.memory.buffer,
     sim.unitForceProfileValuesPtr(),
     codeCount * UF_PROFILE_STRIDE,
   );
   const flags = new Uint32Array(sim.memory.buffer, sim.unitForceProfileFlagsPtr(), codeCount);
+  _unitForceProfileFlagsView = flags;
   for (let code = 0; code < codeCount; code++) {
     const unitBlueprintId = codeToUnitBlueprintId(code);
     if (unitBlueprintId === null) continue;
@@ -192,9 +265,34 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     values[base + 16] = air.traction;
     flags[code] =
       (loco.forwardForceRequiresFacing ? UF_FLAG_FORWARD_THRUST_REQUIRES_FACING : 0) |
-      (loco.driveForceScalesWithFacing ? UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING : 0);
+      (loco.driveForceScalesWithFacing ? UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING : 0) |
+      (loco.type === 'flying' ? UF_PROFILE_FLAG_IS_FLYING : 0) |
+      (loco.type === 'hover' || loco.type === 'flying'
+        ? UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION
+        : 0) |
+      (water.force > 0 || water.heightUpwardForce > 0 ? UF_PROFILE_FLAG_IS_SWIMMER : 0) |
+      (air.heightUpwardForceRandomizationAmount > 0
+        ? UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE
+        : 0) |
+      (water.heightUpwardForceRandomizationAmount > 0 && water.heightUpwardForce > 0
+        ? UF_PROFILE_FLAG_SWIM_RANDOM_ACTIVE
+        : 0);
   }
   _unitForceProfileTableUploaded = true;
+}
+
+function getUnitForceProfileFlagsView(sim: SimWasm): Uint32Array {
+  if (
+    _unitForceProfileFlagsView === null ||
+    _unitForceProfileFlagsView.buffer !== sim.memory.buffer
+  ) {
+    _unitForceProfileFlagsView = new Uint32Array(
+      sim.memory.buffer,
+      sim.unitForceProfileFlagsPtr(),
+      _unitForceProfileCodeCount,
+    );
+  }
+  return _unitForceProfileFlagsView;
 }
 
 export class UnitForceSystem {
@@ -222,7 +320,10 @@ export class UnitForceSystem {
     // the last tick. See PhysicsEngine3D.step() for the detached-view
     // crash this guards against.
     sim.pool.refreshViews();
+    const bodyViews = sim.pool;
     ensureUnitForceProfileTable(sim);
+    const profileFlagsView = getUnitForceProfileFlagsView(sim);
+    const entityViews = entitySlotRegistry.getViews();
 
     const forceAccumulator = this.simulation.getForceAccumulator();
     const hasExternalForces = forceAccumulator.activeEntityCount() > 0;
@@ -234,69 +335,163 @@ export class UnitForceSystem {
 
     ensureForceBatchCapacity(activeSlots.length);
 
-    let count = 0;
+    let candidateCount = 0;
     for (let i = 0; i < activeSlots.length; i++) {
-      const entity = entitySlotRegistry.resolveSlot(activeSlots[i]);
+      const entitySlot = activeSlots[i];
+      if (
+        entityViews !== null &&
+        entitySlot >= 0 &&
+        entitySlot < entityViews.capacity &&
+        entityViews.entityId[entitySlot] >= 0 &&
+        entityViews.kind[entitySlot] === ENTITY_STATE_KIND_UNIT &&
+        (entityViews.flags[entitySlot] & (ENTITY_SLOT_FLAG_HAS_BODY | ENTITY_SLOT_FLAG_HAS_UNIT)) ===
+          (ENTITY_SLOT_FLAG_HAS_BODY | ENTITY_SLOT_FLAG_HAS_UNIT)
+      ) {
+        const bodySlot = entityViews.bodySlot[entitySlot];
+        if (bodySlot !== ENTITY_STATE_NO_BODY_SLOT && bodySlot >= 0) {
+          _forceSlots[candidateCount] = bodySlot;
+          _forceEntitySlots[candidateCount] = entitySlot;
+          candidateCount++;
+          continue;
+        }
+      }
+      const entity = entitySlotRegistry.resolveSlot(entitySlot);
+      if (entity === undefined || entity.body === null || entity.unit === null) continue;
+      _forceSlots[candidateCount] = entity.body.physicsBody.slot;
+      _forceEntitySlots[candidateCount] = entitySlot;
+      candidateCount++;
+    }
+
+    if (candidateCount === 0) return;
+
+    const terrainSampled = measureWasmBoundary('server.unitForceTerrainSampleForceSupportForSlots', () =>
+      sim.terrainSampleForceSupportForSlots(
+        _forceSlots.subarray(0, candidateCount),
+        _forceTerrainGroundZ.subarray(0, candidateCount),
+        _forceTerrainGroundNormals.subarray(0, candidateCount * 3),
+        _forceTerrainMaterialFlags.subarray(0, candidateCount),
+      ),
+    ) !== 0;
+    const terrainOnlySupport =
+      terrainSampled &&
+      !this.physics.hasSupportSurfaceBodies() &&
+      this.world.getSupportSurfaceEntities().length === 0;
+    const useNativeTerrainWaterProbes = terrainOnlySupport;
+    _forceWaterProbeCount = 0;
+    if (useNativeTerrainWaterProbes) {
+      ensureForceWaterProbeCapacity(candidateCount * 4);
+    }
+
+    let count = 0;
+    for (let i = 0; i < candidateCount; i++) {
+      const entitySlot = _forceEntitySlots[i];
+      const entity = entitySlotRegistry.resolveSlot(entitySlot);
       if (entity === undefined || entity.body === null || entity.unit === null) continue;
 
       const body = entity.body.physicsBody;
       const unit = entity.unit;
+      const bodySlot = body.slot;
+      const bodyX = bodyViews.posX[bodySlot];
+      const bodyY = bodyViews.posY[bodySlot];
+      const bodyZ = bodyViews.posZ[bodySlot];
+      const bodyGroundOffset = bodyViews.groundOffset[bodySlot];
+      const bodyRadius = bodyViews.radius[bodySlot] || 10;
+      const bodySleeping = (bodyViews.flags[bodySlot] & BODY_FLAG_SLEEPING) !== 0;
       const base = count * UNIT_FORCE_BATCH_STRIDE;
+      let profileFlags = 0;
+      let hasProfileFlags = false;
+      const hasEntityState =
+        entityViews !== null &&
+        entitySlot >= 0 &&
+        entitySlot < entityViews.capacity &&
+        entityViews.entityId[entitySlot] === entity.id &&
+        entityViews.bodySlot[entitySlot] === bodySlot;
+      if (hasEntityState) {
+        const code = entityViews.unitBlueprintCode[entitySlot];
+        if (code < _unitForceProfileCodeCount) {
+          profileFlags = profileFlagsView[code];
+          hasProfileFlags = true;
+        }
+      }
 
-      _forceSlots[count] = body.slot;
-      _forceEntities[count] = entity;
-      _forceRows[base + UF_ROW_ROTATION] = entity.transform.rotation;
-      const supportSurface = this.sampleBodySupportSurface(body, _forceSupportSurface);
+      _forceSlots[count] = bodySlot;
+      _forceEntitySlots[count] = entitySlot;
+      const rotationForPack = hasEntityState
+        ? entityViews!.rotation[entitySlot]
+        : entity.transform.rotation;
+      _forceRows[base + UF_ROW_ROTATION] = rotationForPack;
+      const supportSurface = this.sampleBodySupportSurface(
+        body,
+        bodyX,
+        bodyY,
+        _forceSupportSurface,
+        terrainSampled,
+        terrainOnlySupport,
+        i,
+      );
       const supportSurfaceContact =
         supportSurface.supportKind === 'building' || supportSurface.supportKind === 'unit';
-      const supportPenetration = supportSurface.groundZ - (body.z - body.groundOffset);
+      const supportPenetration = supportSurface.groundZ - (bodyZ - bodyGroundOffset);
       const surfaceContact = supportPenetration >= -UNIT_GROUND_CONTACT_EPSILON;
-      const buildInProgress = isBuildInProgress(entity.buildable);
+      const buildFlags = hasEntityState ? entityViews!.buildFlags[entitySlot] : 0;
+      const buildInProgress = hasEntityState
+        ? (
+            (buildFlags & ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE) !== 0 &&
+            (buildFlags & (
+              ENTITY_SLOT_BUILD_FLAG_COMPLETE |
+              ENTITY_SLOT_BUILD_FLAG_GHOST |
+              ENTITY_SLOT_BUILD_FLAG_INTERRUPTED
+            )) === 0
+          )
+        : isBuildInProgress(entity.buildable);
       if (buildInProgress) {
         // Freeze the shell's horizontal motion while it is still being built:
         // a factory shell free-falling out of the fabricator torus drops
         // straight down into the production area and cannot slide out. Gravity
         // still acts on Z; the unit is released the tick it completes.
-        body.vx = 0;
-        body.vy = 0;
+        bodyViews.velX[bodySlot] = 0;
+        bodyViews.velY[bodySlot] = 0;
         // A shell attached to a mobile producer (a queen building its bee/tick)
         // is locked in all three axes so it rides along with the host instead of
         // free-falling; the static spawn-column case (fabricator) keeps Z free.
         if (entity.buildable !== null && entity.buildable.buildLockHostId !== null) {
-          body.vz = 0;
+          bodyViews.velZ[bodySlot] = 0;
         }
       }
-      const locomotionType = unit.locomotion.type;
-      const isFlying = locomotionType === 'flying';
-      const isAirborneLocomotion = locomotionType === 'hover' || locomotionType === 'flying';
-      const suppressAirborneLift = buildInProgress;
-      // Blueprint constants (gravity-counter ratio, hover force family)
-      // are filled by the kernel from the profile table; the kernel only
-      // reads them under IS_AIRBORNE, which already excludes suppressed
-      // (build-in-progress) lift, so the old zeroing was redundant.
-      _forceRows[base + UF_ROW_HOVER_SMOOTHED_FORCE] =
-        suppressAirborneLift ? Number.NaN : unit.hoverHeightUpwardForceSmoothed ?? Number.NaN;
       _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
       _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
       _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
 
       // Fully-abstracted medium force profile (all opt-in, default 0/inert).
-      const loco = unit.locomotion;
-      // A unit "swims" only if it authored water drive or swim lift. Used to
-      // gate the open-water medium flag below so non-swimmers (every existing
-      // unit) keep their exact pre-profile UF_FLAG_IN_WATER and stay byte-
-      // identical.
-      const unitIsSwimmer =
-        loco.physics.water.force > 0 || loco.physics.water.heightUpwardForce > 0;
-      // Ground/air/water friction, water force/traction, the swim family
-      // and the air angular damping rate are blueprint constants filled by
-      // the kernel from the profile table.
-      _forceRows[base + UF_ROW_SWIM_SMOOTHED_FORCE] =
-        unit.swimHeightUpwardForceSmoothed ?? Number.NaN;
+      // Per-blueprint locomotion metadata is uploaded once to the native force
+      // profile table. Fall back to the object graph only if the slot slab is
+      // unavailable or stale.
+      let isFlying = (profileFlags & UF_PROFILE_FLAG_IS_FLYING) !== 0;
+      let isAirborneLocomotion = (profileFlags & UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION) !== 0;
+      let unitIsSwimmer = (profileFlags & UF_PROFILE_FLAG_IS_SWIMMER) !== 0;
+      let forwardForceRequiresFacing =
+        (profileFlags & UF_FLAG_FORWARD_THRUST_REQUIRES_FACING) !== 0;
+      let hoverRandomActive = (profileFlags & UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE) !== 0;
+      let swimRandomActive = (profileFlags & UF_PROFILE_FLAG_SWIM_RANDOM_ACTIVE) !== 0;
+      if (!hasProfileFlags) {
+        const loco = unit.locomotion;
+        isFlying = loco.type === 'flying';
+        isAirborneLocomotion = loco.type === 'hover' || loco.type === 'flying';
+        unitIsSwimmer = loco.physics.water.force > 0 || loco.physics.water.heightUpwardForce > 0;
+        forwardForceRequiresFacing = loco.forwardForceRequiresFacing;
+        hoverRandomActive = loco.physics.air.heightUpwardForceRandomizationAmount > 0;
+        swimRandomActive =
+          loco.physics.water.heightUpwardForceRandomizationAmount > 0 &&
+          loco.physics.water.heightUpwardForce > 0;
+      }
+      // Ground/air/water friction, water force/traction, the swim family,
+      // swim EMA accumulator, and air angular damping rate are filled by the
+      // kernel from native profile/runtime tables.
 
       let flags = 0;
 
-      if (unit.hp <= 0) {
+      const unitHp = hasEntityState ? entityViews!.hp[entitySlot] : unit.hp;
+      if (unitHp <= 0) {
         _forceRows[base + UF_ROW_DIR_X] = 0;
         _forceRows[base + UF_ROW_DIR_Y] = 0;
         _forceRows[base + UF_ROW_GROUND_Z] = 0;
@@ -308,12 +503,14 @@ export class UnitForceSystem {
       // The facing flags (forwardForceRequiresFacing /
       // driveForceScalesWithFacing) are blueprint constants OR'd in by
       // the kernel from the profile table.
-      const dirX = unit.thrustDirX ?? 0;
-      const dirY = unit.thrustDirY ?? 0;
-      _forceRows[base + UF_ROW_DIR_X] = dirX;
-      _forceRows[base + UF_ROW_DIR_Y] = dirY;
-      _forceRows[base + UF_ROW_HEADING_X] = unit.headingDirX ?? 0;
-      _forceRows[base + UF_ROW_HEADING_Y] = unit.headingDirY ?? 0;
+      const dirX = hasEntityState ? entityViews!.unitThrustDirX[entitySlot] : unit.thrustDirX ?? 0;
+      const dirY = hasEntityState ? entityViews!.unitThrustDirY[entitySlot] : unit.thrustDirY ?? 0;
+      if (!hasEntityState) {
+        _forceRows[base + UF_ROW_DIR_X] = dirX;
+        _forceRows[base + UF_ROW_DIR_Y] = dirY;
+        _forceRows[base + UF_ROW_HEADING_X] = unit.headingDirX ?? 0;
+        _forceRows[base + UF_ROW_HEADING_Y] = unit.headingDirY ?? 0;
+      }
       const dirLenSq = dirX * dirX + dirY * dirY;
       const hasThrustDir = dirLenSq > 0.0001;
       if (hasThrustDir) flags |= UF_FLAG_HAS_THRUST;
@@ -325,113 +522,177 @@ export class UnitForceSystem {
       if (isFlying && liftLocomotionActive) flags |= UF_FLAG_IS_FLYING;
       if (liftLocomotionActive) flags |= UF_FLAG_IS_AIRBORNE;
 
-      const externalForce = hasExternalForces ? forceAccumulator.getFinalForce(entity.id) : null;
-      if (externalForce !== null) {
+      const hasExternalForce =
+        hasExternalForces &&
+        forceAccumulator.copyFinalForceBySlot(
+          entitySlot,
+          _forceRows,
+          base + UF_ROW_EXTERNAL_FX,
+          entity.id,
+        );
+      if (hasExternalForce) {
         flags |= UF_FLAG_HAS_EXTERNAL_FORCE;
-        _forceRows[base + UF_ROW_EXTERNAL_FX] = externalForce.fx;
-        _forceRows[base + UF_ROW_EXTERNAL_FY] = externalForce.fy;
-        _forceRows[base + UF_ROW_EXTERNAL_FZ] = externalForce.fz;
       }
 
       _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
 
-      let orientation = unit.orientation;
-      if (orientation === null) {
-        const halfYaw = (Number.isFinite(entity.transform.rotation)
-          ? entity.transform.rotation
-          : 0) * 0.5;
-        orientation = unit.orientation = {
-          x: 0,
-          y: 0,
-          z: Math.sin(halfYaw),
-          w: Math.cos(halfYaw),
-        };
+      const unitMotionFlags = hasEntityState ? entityViews!.unitMotionFlags[entitySlot] : 0;
+      const hasOrientationState =
+        hasEntityState && (unitMotionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION) !== 0;
+      const hasAngularVelocityState =
+        hasEntityState && (unitMotionFlags & ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY) !== 0;
+      if (hasOrientationState) {
+        _forceRows[base + UF_ROW_ORIENTATION_X] = entityViews!.orientationX[entitySlot];
+        _forceRows[base + UF_ROW_ORIENTATION_Y] = entityViews!.orientationY[entitySlot];
+        _forceRows[base + UF_ROW_ORIENTATION_Z] = entityViews!.orientationZ[entitySlot];
+        _forceRows[base + UF_ROW_ORIENTATION_W] = entityViews!.orientationW[entitySlot];
+        if (unit.orientation === null) {
+          unit.orientation = {
+            x: _forceRows[base + UF_ROW_ORIENTATION_X],
+            y: _forceRows[base + UF_ROW_ORIENTATION_Y],
+            z: _forceRows[base + UF_ROW_ORIENTATION_Z],
+            w: _forceRows[base + UF_ROW_ORIENTATION_W],
+          };
+        }
+      } else {
+        let orientation = unit.orientation;
+        if (orientation === null) {
+          const halfYaw = (Number.isFinite(rotationForPack) ? rotationForPack : 0) * 0.5;
+          orientation = unit.orientation = {
+            x: 0,
+            y: 0,
+            z: Math.sin(halfYaw),
+            w: Math.cos(halfYaw),
+          };
+        }
+        _forceRows[base + UF_ROW_ORIENTATION_X] = orientation.x;
+        _forceRows[base + UF_ROW_ORIENTATION_Y] = orientation.y;
+        _forceRows[base + UF_ROW_ORIENTATION_Z] = orientation.z;
+        _forceRows[base + UF_ROW_ORIENTATION_W] = orientation.w;
       }
-      let omega = unit.angularVelocity3;
-      if (omega === null) {
-        omega = unit.angularVelocity3 = { x: 0, y: 0, z: 0 };
+      if (hasAngularVelocityState) {
+        _forceRows[base + UF_ROW_OMEGA_X] = entityViews!.angularVelocityX[entitySlot];
+        _forceRows[base + UF_ROW_OMEGA_Y] = entityViews!.angularVelocityY[entitySlot];
+        _forceRows[base + UF_ROW_OMEGA_Z] = entityViews!.angularVelocityZ[entitySlot];
+        if (unit.angularVelocity3 === null) {
+          unit.angularVelocity3 = {
+            x: _forceRows[base + UF_ROW_OMEGA_X],
+            y: _forceRows[base + UF_ROW_OMEGA_Y],
+            z: _forceRows[base + UF_ROW_OMEGA_Z],
+          };
+        }
+      } else {
+        let omega = unit.angularVelocity3;
+        if (omega === null) {
+          omega = unit.angularVelocity3 = { x: 0, y: 0, z: 0 };
+        }
+        _forceRows[base + UF_ROW_OMEGA_X] = omega.x;
+        _forceRows[base + UF_ROW_OMEGA_Y] = omega.y;
+        _forceRows[base + UF_ROW_OMEGA_Z] = omega.z;
       }
-      if (unit.angularAcceleration3 === null) {
-        unit.angularAcceleration3 = { x: 0, y: 0, z: 0 };
-      }
-      const hasAngularMotionForSleep =
-        omega.x * omega.x + omega.y * omega.y + omega.z * omega.z > 1e-12;
+      const omegaX = _forceRows[base + UF_ROW_OMEGA_X];
+      const omegaY = _forceRows[base + UF_ROW_OMEGA_Y];
+      const omegaZ = _forceRows[base + UF_ROW_OMEGA_Z];
+      const hasAngularMotionForSleep = omegaX * omegaX + omegaY * omegaY + omegaZ * omegaZ > 1e-12;
       flags |= UF_FLAG_HAS_ORIENTATION;
-      _forceRows[base + UF_ROW_ORIENTATION_X] = orientation.x;
-      _forceRows[base + UF_ROW_ORIENTATION_Y] = orientation.y;
-      _forceRows[base + UF_ROW_ORIENTATION_Z] = orientation.z;
-      _forceRows[base + UF_ROW_ORIENTATION_W] = orientation.w;
-      _forceRows[base + UF_ROW_OMEGA_X] = omega.x;
-      _forceRows[base + UF_ROW_OMEGA_Y] = omega.y;
-      _forceRows[base + UF_ROW_OMEGA_Z] = omega.z;
 
       if (liftLocomotionActive) {
         const willRustSkipSleeping =
-          body.sleeping &&
-          !isFlying &&
-          !hasThrustDir &&
-          externalForce === null &&
-          !hasAngularMotionForSleep;
-        const randAmount =
-          unit.locomotion.physics.air.heightUpwardForceRandomizationAmount;
-        if (!willRustSkipSleeping && randAmount > 0) {
+            bodySleeping &&
+            !isFlying &&
+            !hasThrustDir &&
+            !hasExternalForce &&
+            !hasAngularMotionForSleep;
+        if (!willRustSkipSleeping && hoverRandomActive) {
           _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = this.world.rng.next();
         }
       } else if (surfaceContact) {
         if (supportSurfaceContact) {
           this.writeSupportSurfaceNormal(entity, supportSurface);
         }
-        const radius = body.radius || 10;
+        const radius = bodyRadius;
         const inWater = supportSurface.materialKind === 'water';
         if (inWater) {
           flags |= UF_FLAG_IN_WATER;
-          _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_0] = this.waterDryMask(
-            body.x,
-            body.y,
-            radius * WATER_ESCAPE_PROBE_MULTS[0],
-          );
-          _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_1] = this.waterDryMask(
-            body.x,
-            body.y,
-            radius * WATER_ESCAPE_PROBE_MULTS[1],
-          );
-          _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_2] = this.waterDryMask(
-            body.x,
-            body.y,
-            radius * WATER_ESCAPE_PROBE_MULTS[2],
-          );
+          if (useNativeTerrainWaterProbes) {
+            queueForceWaterProbeMask(
+              bodyX,
+              bodyY,
+              radius * WATER_ESCAPE_PROBE_MULTS[0],
+              base + UF_ROW_WATER_ESCAPE_MASK_0,
+            );
+            queueForceWaterProbeMask(
+              bodyX,
+              bodyY,
+              radius * WATER_ESCAPE_PROBE_MULTS[1],
+              base + UF_ROW_WATER_ESCAPE_MASK_1,
+            );
+            queueForceWaterProbeMask(
+              bodyX,
+              bodyY,
+              radius * WATER_ESCAPE_PROBE_MULTS[2],
+              base + UF_ROW_WATER_ESCAPE_MASK_2,
+            );
+          } else {
+            _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_0] = this.waterDryMask(
+              bodyX,
+              bodyY,
+              radius * WATER_ESCAPE_PROBE_MULTS[0],
+            );
+            _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_1] = this.waterDryMask(
+              bodyX,
+              bodyY,
+              radius * WATER_ESCAPE_PROBE_MULTS[1],
+            );
+            _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_2] = this.waterDryMask(
+              bodyX,
+              bodyY,
+              radius * WATER_ESCAPE_PROBE_MULTS[2],
+            );
+          }
         } else if (supportSurfaceContact) {
           // The top of another physics body is a flat support plane for
           // locomotion, independent of the terrain/water underneath it.
         } else {
           if (hasThrustDir) {
             const invDirMag = 1 / thrustInputMag;
-            const useDirX = loco.forwardForceRequiresFacing
-              ? Math.cos(entity.transform.rotation)
+            const useDirX = forwardForceRequiresFacing
+              ? Math.cos(rotationForPack)
               : dirX * invDirMag;
-            const useDirY = loco.forwardForceRequiresFacing
-              ? Math.sin(entity.transform.rotation)
+            const useDirY = forwardForceRequiresFacing
+              ? Math.sin(rotationForPack)
               : dirY * invDirMag;
             const probe = radius + 5;
-            const aheadX = body.x + useDirX * probe;
-            const aheadY = body.y + useDirY * probe;
-            const aheadSurface = this.sampleWaterProbeSurface(
-              aheadX,
-              aheadY,
-              entity.id,
-              _forceProbeSupportSurface,
-            );
-            if (aheadSurface.materialKind === 'water') {
-              flags |= UF_FLAG_AHEAD_IN_WATER;
-              _forceRows[base + UF_ROW_WATER_AHEAD_MASK] = this.waterDryMask(
+            const aheadX = bodyX + useDirX * probe;
+            const aheadY = bodyY + useDirY * probe;
+            if (useNativeTerrainWaterProbes) {
+              queueForceWaterProbeMask(
                 aheadX,
                 aheadY,
                 radius,
+                base + UF_ROW_WATER_AHEAD_MASK,
+                count,
+                UF_FLAG_AHEAD_IN_WATER,
               );
+            } else {
+              const aheadSurface = this.sampleWaterProbeSurface(
+                aheadX,
+                aheadY,
+                entity.id,
+                _forceProbeSupportSurface,
+              );
+              if (aheadSurface.materialKind === 'water') {
+                flags |= UF_FLAG_AHEAD_IN_WATER;
+                _forceRows[base + UF_ROW_WATER_AHEAD_MASK] = this.waterDryMask(
+                  aheadX,
+                  aheadY,
+                  radius,
+                );
+              }
             }
           }
         }
-      } else if (unitIsSwimmer && body.z < WATER_LEVEL) {
+      } else if (unitIsSwimmer && bodyZ < WATER_LEVEL) {
         // Suspended in the water column with no ground contact: only swimmers
         // reach here. Mark the water medium so the kernel's swim path can drive
         // and seek depth. Gated on unitIsSwimmer so non-swimmers (every
@@ -442,20 +703,16 @@ export class UnitForceSystem {
       // Feed the swim-lift RNG sample iff the kernel will consume it (submerged,
       // non-zero swim randomization + force, body not sleep-skipped). For
       // non-swimmers swimForce is 0, so the RNG stream is untouched.
-      if ((flags & UF_FLAG_IN_WATER) !== 0) {
-        const swimRand = loco.physics.water.heightUpwardForceRandomizationAmount;
-        const swimForce = loco.physics.water.heightUpwardForce;
-        if (swimRand > 0 && swimForce > 0) {
-          // Mirror the kernel sleep-skip (isFlying is always false on the
-          // in-water paths) so RNG advances in lockstep across peers.
-          const willRustSkipSleeping =
-            body.sleeping &&
-            !hasThrustDir &&
-            externalForce === null &&
-            !hasAngularMotionForSleep;
-          if (!willRustSkipSleeping) {
-            _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.rng.next();
-          }
+      if ((flags & UF_FLAG_IN_WATER) !== 0 && swimRandomActive) {
+        // Mirror the kernel sleep-skip (isFlying is always false on the
+        // in-water paths) so RNG advances in lockstep across peers.
+        const willRustSkipSleeping =
+          bodySleeping &&
+          !hasThrustDir &&
+          !hasExternalForce &&
+          !hasAngularMotionForSleep;
+        if (!willRustSkipSleeping) {
+          _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.rng.next();
         }
       }
 
@@ -464,6 +721,9 @@ export class UnitForceSystem {
     }
 
     if (count === 0) return;
+    if (useNativeTerrainWaterProbes && _forceWaterProbeCount > 0) {
+      this.flushNativeTerrainWaterProbeMasks(sim);
+    }
 
     measureWasmBoundary('server.unitForceStepBatch', () => {
       sim.unitForceStepBatch(
@@ -488,27 +748,17 @@ export class UnitForceSystem {
     for (let i = 0; i < count; i++) {
       const outFlags = _forceOutFlags[i];
       if (outFlags === 0) {
-        _forceEntities[i] = undefined;
         continue;
       }
-      const entity = _forceEntities[i];
-      _forceEntities[i] = undefined;
+      const entity = entitySlotRegistry.resolveSlot(_forceEntitySlots[i]);
       if (entity === undefined || entity.unit === null || entity.body === null) continue;
       const unit = entity.unit;
       const body = entity.body.physicsBody;
       const base = i * UNIT_FORCE_BATCH_STRIDE;
+      const entityStateSynced = (outFlags & UF_OUT_ENTITY_STATE_SYNCED) !== 0;
 
       if ((outFlags & UF_OUT_WOKE_BODY) !== 0) {
         this.physics.recordWasmForceWake(body);
-      }
-
-      if ((outFlags & UF_OUT_MOVEMENT_ACCEL) !== 0) {
-        setUnitMovementAcceleration(
-          unit,
-          _forceRows[base + UF_ROW_MOVEMENT_ACCEL_X],
-          _forceRows[base + UF_ROW_MOVEMENT_ACCEL_Y],
-          _forceRows[base + UF_ROW_MOVEMENT_ACCEL_Z],
-        );
       }
 
       if ((outFlags & UF_OUT_CLEAR_COMBAT) !== 0) {
@@ -536,47 +786,22 @@ export class UnitForceSystem {
           omega.y = _forceRows[base + UF_ROW_OMEGA_Y];
           omega.z = _forceRows[base + UF_ROW_OMEGA_Z];
           if (omegaChanged) {
-            this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_VEL);
+            if (entityStateSynced) {
+              this.world.markSnapshotDirtyStateSynced(entity, ENTITY_CHANGED_VEL);
+            } else {
+              this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_VEL);
+            }
           }
         }
-        const angularAccel = unit.angularAcceleration3;
-        if (angularAccel !== null) {
-          angularAccel.x = _forceRows[base + UF_ROW_ANGULAR_ACCEL_X];
-          angularAccel.y = _forceRows[base + UF_ROW_ANGULAR_ACCEL_Y];
-          angularAccel.z = _forceRows[base + UF_ROW_ANGULAR_ACCEL_Z];
-        }
-      }
-
-      const locomotionType = unit.locomotion.type;
-      if (
-        (locomotionType === 'hover' || locomotionType === 'flying') &&
-        (outFlags & UF_OUT_MOVEMENT_ACCEL) !== 0
-      ) {
-        const smoothedHoverForce = _forceRows[base + UF_ROW_HOVER_SMOOTHED_FORCE];
-        unit.hoverHeightUpwardForceSmoothed =
-          unit.locomotion.physics.air.heightUpwardForceEMA > 0 &&
-          Number.isFinite(smoothedHoverForce)
-            ? smoothedHoverForce
-            : null;
-      }
-
-      if (
-        unit.locomotion.physics.water.heightUpwardForceEMA > 0 &&
-        (outFlags & UF_OUT_MOVEMENT_ACCEL) !== 0
-      ) {
-        // Persist the swim-lift EMA accumulator. When the unit was not
-        // submerged this tick the kernel left the row at its marshaled value,
-        // so this read-back is a no-op (preserves the accumulator across brief
-        // surfacing); NaN clears it for a fresh reseed.
-        const smoothedSwimForce = _forceRows[base + UF_ROW_SWIM_SMOOTHED_FORCE];
-        unit.swimHeightUpwardForceSmoothed = Number.isFinite(smoothedSwimForce)
-          ? smoothedSwimForce
-          : null;
       }
 
       if ((outFlags & UF_OUT_ROTATION_DIRTY) !== 0) {
         entity.transform.rotation = _forceRows[base + UF_ROW_ROTATION];
-        this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
+        if (entityStateSynced) {
+          this.world.markSnapshotDirtyStateSynced(entity, ENTITY_CHANGED_ROT);
+        } else {
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
+        }
       }
     }
   }
@@ -609,9 +834,9 @@ export class UnitForceSystem {
       this.pushPhysicsForceUnitSlot(movingUnitSlots[i]);
     }
 
-    const flyingUnits = this.world.getFlyingUnits();
-    for (let i = 0; i < flyingUnits.length; i++) {
-      this.pushPhysicsForceUnitSlot(entitySlotRegistry.getEntitySlot(flyingUnits[i]));
+    const flyingUnitSlots = this.world.getFlyingUnitSlots();
+    for (let i = 0; i < flyingUnitSlots.length; i++) {
+      this.pushPhysicsForceUnitSlot(flyingUnitSlots[i]);
     }
 
     const forceAccumulator = this.simulation.getForceAccumulator();
@@ -623,7 +848,6 @@ export class UnitForceSystem {
     if (activeForceCount > 0) {
       candidateCount = forceAccumulator.collectActiveEntitySlots(
         this.physicsCandidateUnitSlotsBuf,
-        entitySlotForId,
       );
       for (let i = 0; i < candidateCount; i++) {
         this.pushPhysicsForceUnitSlot(this.physicsCandidateUnitSlotsBuf[i]);
@@ -701,10 +925,34 @@ export class UnitForceSystem {
 
   private sampleBodySupportSurface(
     body: NonNullable<Entity['body']>['physicsBody'],
+    bodyX: number,
+    bodyY: number,
     out: SupportSurfaceContact,
+    terrainSampled: boolean,
+    terrainOnlySupport: boolean,
+    terrainSampleIndex: number,
   ): SupportSurfaceContact {
-    const x = body.x;
-    const y = body.y;
+    const x = bodyX;
+    const y = bodyY;
+    if (terrainSampled) {
+      const normalBase = terrainSampleIndex * 3;
+      const terrainSurface = _forceTerrainSurface;
+      const inWater = _forceTerrainMaterialFlags[terrainSampleIndex] !== 0;
+      terrainSurface.groundZ = _forceTerrainGroundZ[terrainSampleIndex];
+      terrainSurface.normalX = _forceTerrainGroundNormals[normalBase];
+      terrainSurface.normalY = _forceTerrainGroundNormals[normalBase + 1];
+      terrainSurface.normalZ = _forceTerrainGroundNormals[normalBase + 2];
+      terrainSurface.supportEntityId = null;
+      terrainSurface.supportKind = inWater ? 'water' : 'terrain';
+      terrainSurface.materialKind = inWater ? 'water' : 'solid';
+      terrainSurface.supportVelocityX = 0;
+      terrainSurface.supportVelocityY = 0;
+      terrainSurface.supportVelocityZ = 0;
+      terrainSurface.walkable = !inWater;
+      terrainSurface.sourceKey = getTerrainVersion();
+      if (terrainOnlySupport) return terrainSurface;
+      return this.physics.sampleSupportSurface(body, terrainSurface, out);
+    }
     const terrainBedNormal = this.world.getCachedTerrainBedNormal(x, y);
     const terrainSurface = this.world.writeTerrainSupportSurfaceAt(
       x,
@@ -719,6 +967,40 @@ export class UnitForceSystem {
       terrainSurface.normalZ = terrainBedNormal.nz;
     }
     return this.physics.sampleSupportSurface(body, terrainSurface, out);
+  }
+
+  private flushNativeTerrainWaterProbeMasks(sim: SimWasm): void {
+    const probeCount = _forceWaterProbeCount;
+    const sampled = measureWasmBoundary('server.unitForceTerrainSampleWaterProbeMasks', () =>
+      sim.terrainSampleWaterProbeMasks(
+        _forceWaterProbeX.subarray(0, probeCount),
+        _forceWaterProbeY.subarray(0, probeCount),
+        _forceWaterProbeR.subarray(0, probeCount),
+        _forceWaterProbeCenterWaterFlags.subarray(0, probeCount),
+        _forceWaterProbeDryMasks.subarray(0, probeCount),
+      ),
+    ) !== 0;
+
+    for (let i = 0; i < probeCount; i++) {
+      const rowIndex = _forceWaterProbeRowIndex[i];
+      _forceRows[rowIndex] = sampled
+        ? _forceWaterProbeDryMasks[i]
+        : this.waterDryMask(_forceWaterProbeX[i], _forceWaterProbeY[i], _forceWaterProbeR[i]);
+
+      const flagIndex = _forceWaterProbeFlagIndex[i];
+      if (flagIndex < 0) continue;
+      const centerIsWater = sampled
+        ? _forceWaterProbeCenterWaterFlags[i] !== 0
+        : this.sampleWaterProbeSurface(
+          _forceWaterProbeX[i],
+          _forceWaterProbeY[i],
+          undefined,
+          _forceProbeSupportSurface,
+        ).materialKind === 'water';
+      if (centerIsWater) {
+        _forceFlags[flagIndex] |= _forceWaterProbeFlagBit[i];
+      }
+    }
   }
 
   private ensureWaterProbeSupportIndex(): void {

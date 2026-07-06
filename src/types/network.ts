@@ -505,6 +505,9 @@ export type LobbySettings = {
   perimeterMagnitude: number;
   /** Plateau lattice step (world units). 0 = NONE (no terracing). */
   terrainDTerrain: number | undefined;
+  /** D-PLATEAU wall slope angle in degrees from horizontal. Undefined
+   *  only for legacy lobby messages. */
+  plateauWallSlopeDegrees: number | undefined;
   /** Metal-extractor pad altitude step (world units). */
   metalDepositStep: number | undefined;
   /** Fine-triangle subdivisions per land cell. 0 = off (one triangle

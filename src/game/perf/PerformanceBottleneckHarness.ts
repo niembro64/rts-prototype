@@ -1068,6 +1068,7 @@ function createServerConfig(
     dividersMagnitude: 0,
     perimeterMagnitude: -800,
     terrainDTerrain: 0,
+    plateauWallSlopeDegrees: 89,
     metalDepositStep: 0,
     terrainDetail: 1,
     mapWidthLandCells: options.mapCells,

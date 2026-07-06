@@ -5,6 +5,7 @@ import type { Entity, EntityId, PlayerId } from './types';
 import { isRayType } from './types';
 import { isBuildInProgress } from './buildableHelpers';
 import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 
 const EMPTY_ENTITIES: Entity[] = [];
 
@@ -54,6 +55,8 @@ export class EntityCacheManager {
    *  every tick; locomotion type is blueprint-static, so cache it with the
    *  other stable unit buckets instead of filtering all units repeatedly. */
   private cachedFlyingUnits: Entity[] = [];
+  private cachedFlyingUnitSlots: number[] = [];
+  private cachedFlyingUnitSlotsDirty = true;
   /** Every entity (unit OR building) with a CombatComponent that owns
    *  at least one non-visualOnly turret. The combat pipeline iterates
    *  this list and never branches on entity type — armed buildings are
@@ -147,6 +150,8 @@ export class EntityCacheManager {
     this.cachedCommanderUnits.length = 0;
     this.cachedBuilderUnits.length = 0;
     this.cachedFlyingUnits.length = 0;
+    this.cachedFlyingUnitSlots.length = 0;
+    this.cachedFlyingUnitSlotsDirty = true;
     this.cachedArmedEntities.length = 0;
     this.cachedBeamUnits.length = 0;
     this.cachedShieldPanelUnits.length = 0;
@@ -203,7 +208,7 @@ export class EntityCacheManager {
         addEntityToList(this.cachedUnits, entity, sortedInsert);
         addEntityToList(this.cachedUnitsAndBuildings, entity, sortedInsert);
         addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
-        if (entity.unit !== null && entity.unit.supportSurface.kind === 'discTop') {
+        if (entity.unit !== null && entity.unit.supportSurface?.kind === 'discTop') {
           addEntityToList(this.cachedSupportSurfaceEntities, entity, sortedInsert);
         }
         if (ownership !== null) {
@@ -228,6 +233,7 @@ export class EntityCacheManager {
         }
         if (entity.unit !== null && entity.unit.locomotion.type === 'flying') {
           addEntityToList(this.cachedFlyingUnits, entity, sortedInsert);
+          this.cachedFlyingUnitSlotsDirty = true;
         }
         if (entity.commander) addEntityToList(this.cachedCommanderUnits, entity, sortedInsert);
         if (entity.builder) addEntityToList(this.cachedBuilderUnits, entity, sortedInsert);
@@ -258,7 +264,7 @@ export class EntityCacheManager {
         addEntityToList(this.cachedBuildings, entity, sortedInsert);
         addEntityToList(this.cachedUnitsAndBuildings, entity, sortedInsert);
         addEntityToList(this.cachedCombatTargetEntities, entity, sortedInsert);
-        if (entity.building !== null && entity.building.supportSurface.kind === 'boxTop') {
+        if (entity.building !== null && entity.building.supportSurface?.kind === 'boxTop') {
           addEntityToList(this.cachedSupportSurfaceEntities, entity, sortedInsert);
         }
         if (ownership !== null) {
@@ -324,6 +330,7 @@ export class EntityCacheManager {
     removeEntityFromList(this.cachedCommanderUnits, entity);
     removeEntityFromList(this.cachedBuilderUnits, entity);
     removeEntityFromList(this.cachedFlyingUnits, entity);
+    this.cachedFlyingUnitSlotsDirty = true;
     removeEntityFromList(this.cachedArmedEntities, entity);
     removeEntityFromList(this.cachedBeamUnits, entity);
     removeEntityFromList(this.cachedShieldPanelUnits, entity);
@@ -478,6 +485,18 @@ export class EntityCacheManager {
 
   getFlyingUnits(): Entity[] {
     return this.cachedFlyingUnits;
+  }
+
+  getFlyingUnitSlots(): readonly number[] {
+    if (this.cachedFlyingUnitSlotsDirty) {
+      const slots = this.cachedFlyingUnitSlots;
+      slots.length = this.cachedFlyingUnits.length;
+      for (let i = 0; i < this.cachedFlyingUnits.length; i++) {
+        slots[i] = entitySlotRegistry.getEntitySlot(this.cachedFlyingUnits[i]);
+      }
+      this.cachedFlyingUnitSlotsDirty = false;
+    }
+    return this.cachedFlyingUnitSlots;
   }
 
   getArmedEntities(): Entity[] {

@@ -54,6 +54,10 @@ export type BeamPathTarget = {
   updatedAtMs: number;
   predictedAgeMs: number;
   points: BeamPoint[];
+  wirePointRows: Float64Array;
+  wirePointRowLength: number;
+  wireObstructionT: number | null;
+  wireEndpointDamageable: boolean | null;
   obstructionT: number | null;
   endpointDamageable: boolean | null;
   initialSnapPending: boolean;
@@ -64,6 +68,10 @@ export function createBeamPathTarget(): BeamPathTarget {
     updatedAtMs: 0,
     predictedAgeMs: 0,
     points: [],
+    wirePointRows: new Float64Array(0),
+    wirePointRowLength: 0,
+    wireObstructionT: null,
+    wireEndpointDamageable: null,
     obstructionT: null,
     endpointDamageable: null,
     initialSnapPending: true,

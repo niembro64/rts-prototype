@@ -4,6 +4,7 @@ import {
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
   TERRAIN_PERIMETER_CONFIG,
   TERRAIN_PLATEAU_CONFIG,
+  TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
   TERRAIN_RIDGE_CONFIG,
   TERRAIN_RIPPLE_CONFIG,
   TILE_FLOOR_Y,
@@ -11,6 +12,12 @@ import {
 import { smootherstep } from './terrainMath';
 import { clamp01 } from '../../math';
 import { depositOverride } from './terrainFlatZones';
+import {
+  makeMapOvalMetrics,
+  sampleMapOvalAt,
+  type MapOvalMetrics,
+  type MapOvalSample,
+} from '../mapOval';
 import {
   getMountainRippleAmplitude,
   getMountainSeparatorAmplitude,
@@ -24,17 +31,31 @@ import {
 function perimeterRampWeight(t: number): number {
   return (1 - DMath.cos(t * Math.PI)) * 0.5;
 }
-import {
-  makeMapOvalMetrics,
-  sampleMapOvalAt,
-  type MapOvalMetrics,
-  type MapOvalSample,
-} from '../mapOval';
 
 function plateauRampCurve(t: number): number {
   const smooth = smootherstep(t);
   const sharpness = clamp01(TERRAIN_PLATEAU_CONFIG.rampEdgeSharpness);
   return smooth + (t - smooth) * sharpness;
+}
+
+const TERRAIN_PLATEAU_GRADIENT_SAMPLE_STEP = 8;
+
+function plateauFlatHalfForGradient(gradientMagnitude: number): number {
+  const authoredFlatHalf = Math.min(
+    0.49,
+    Math.max(0, TERRAIN_PLATEAU_CONFIG.shelfFractionOfStep * 0.5),
+  );
+  const angle = Math.max(
+    1,
+    Math.min(89, TERRAIN_PLATEAU_WALL_SLOPE_DEGREES),
+  );
+  if (angle >= 89) return authoredFlatHalf;
+
+  const gradient = Math.max(0, Math.abs(gradientMagnitude));
+  const tanAngle = Math.max(1e-6, Math.tan(angle * Math.PI / 180));
+  const rampQSpan = Math.max(0, Math.min(1, gradient / tanAngle));
+  const angleFlatHalf = Math.max(0, Math.min(0.49, (1 - rampQSpan) * 0.5));
+  return Math.min(authoredFlatHalf, angleFlatHalf);
 }
 
 /** Snap height to the nearest TERRAIN_D_TERRAIN multiple. The
@@ -45,16 +66,16 @@ function plateauRampCurve(t: number): number {
  *  whenever PLATEAU is ON. Smoothing back to the natural surface is
  *  the job of the deposit blend ring downstream, NOT the slope
  *  estimator. */
-function applyTerrainPlateaus(height: number): number {
+function applyTerrainPlateaus(
+  height: number,
+  gradientMagnitude: number,
+): number {
   if (!Number.isFinite(height)) return height;
   const step = TERRAIN_D_TERRAIN;
   // step <= 0 = D-PLATEAU "NONE" picked, so terracing is disabled.
   if (step <= 0) return height;
 
-  const flatHalf = Math.min(
-    0.49,
-    Math.max(0, TERRAIN_PLATEAU_CONFIG.shelfFractionOfStep * 0.5),
-  );
+  const flatHalf = plateauFlatHalfForGradient(gradientMagnitude);
   const q = height / step;
   const nearestLevel = Math.round(q);
   const signedFromNearest = q - nearestLevel;
@@ -158,6 +179,75 @@ function applyTerrainMapBoundaryForSample(
   const perimeter = getTerrainPerimeterMagnitude();
   if (w >= 1) return perimeter;
   return height + (perimeter - height) * w;
+}
+
+function getShapedTerrainHeightBeforePlateaus(
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
+  ovalMetrics: MapOvalMetrics = makeMapOvalMetrics(mapWidth, mapHeight),
+): number {
+  const ovalSample = sampleMapOvalAt(ovalMetrics, x, y);
+  const natural = getGeneratedNaturalTerrainHeight(
+    x,
+    y,
+    mapWidth,
+    mapHeight,
+    ovalMetrics,
+    ovalSample,
+  );
+  return applyTerrainMapBoundaryForSample(natural, ovalMetrics, ovalSample);
+}
+
+function estimateShapedTerrainGradientBeforePlateaus(
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
+  ovalMetrics: MapOvalMetrics,
+): number {
+  if (TERRAIN_D_TERRAIN <= 0 || TERRAIN_PLATEAU_WALL_SLOPE_DEGREES >= 89) {
+    return 0;
+  }
+  const step = TERRAIN_PLATEAU_GRADIENT_SAMPLE_STEP;
+  const x0 = Math.max(0, x - step);
+  const x1 = Math.min(mapWidth, x + step);
+  const y0 = Math.max(0, y - step);
+  const y1 = Math.min(mapHeight, y + step);
+  const dxSpan = Math.max(1e-6, x1 - x0);
+  const dySpan = Math.max(1e-6, y1 - y0);
+  const hX0 = getShapedTerrainHeightBeforePlateaus(
+    x0,
+    y,
+    mapWidth,
+    mapHeight,
+    ovalMetrics,
+  );
+  const hX1 = getShapedTerrainHeightBeforePlateaus(
+    x1,
+    y,
+    mapWidth,
+    mapHeight,
+    ovalMetrics,
+  );
+  const hY0 = getShapedTerrainHeightBeforePlateaus(
+    x,
+    y0,
+    mapWidth,
+    mapHeight,
+    ovalMetrics,
+  );
+  const hY1 = getShapedTerrainHeightBeforePlateaus(
+    x,
+    y1,
+    mapWidth,
+    mapHeight,
+    ovalMetrics,
+  );
+  const gx = (hX1 - hX0) / dxSpan;
+  const gy = (hY1 - hY0) / dySpan;
+  return Math.sqrt(gx * gx + gy * gy);
 }
 
 function getGeneratedNaturalTerrainHeight(
@@ -290,7 +380,14 @@ function getTerrainHeightWithMetrics(
     ovalMetrics,
     ovalSample,
   );
-  const terraced = applyTerrainPlateaus(shaped);
+  const gradient = estimateShapedTerrainGradientBeforePlateaus(
+    x,
+    y,
+    mapWidth,
+    mapHeight,
+    ovalMetrics,
+  );
+  const terraced = applyTerrainPlateaus(shaped, gradient);
 
   let blended = terraced;
   if (includeDeposits) {

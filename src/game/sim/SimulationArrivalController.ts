@@ -5,6 +5,7 @@ import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
 import { PATHFINDING_ARRIVAL_RADIUS } from './pathfindingTuning';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 
 /** Distance (world units) at which a unit ticks a waypoint as reached. Single
  *  source of truth in pathfindingTuningConfig.json so the WASM pathfinder folds
@@ -26,6 +27,7 @@ export class SimulationArrivalController {
   private readonly advanceActivePathPoint: (entity: Entity) => void;
   private readonly queueFlyingLoiter: (entity: Entity) => void;
   private readonly entities: Entity[] = [];
+  private entitySlots = new Int32Array(0);
   private slots = new Uint32Array(0);
   private dx = new Float64Array(0);
   private dy = new Float64Array(0);
@@ -166,19 +168,16 @@ export class SimulationArrivalController {
     const unit = entity.unit;
     const body = entity.body;
     const bodySlot = body !== null ? body.physicsBody.slot : -1;
+    const entitySlot = entity.entitySlotId;
     if (!unit || bodySlot < 0 || !Number.isFinite(distance) || distance <= 0.0001) {
       if (unit) {
-        unit.thrustDirX = 0;
-        unit.thrustDirY = 0;
-        unit.headingDirX = 0;
-        unit.headingDirY = 0;
+        entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
       }
       return;
     }
 
     const invDistance = 1 / distance;
-    unit.headingDirX = dx * invDistance;
-    unit.headingDirY = dy * invDistance;
+    entitySlotRegistry.setUnitDriveInput(entity, 0, 0, dx * invDistance, dy * invDistance, entitySlot);
 
     const maintainFullThrustAtWaypoints = unit.locomotion.maintainFullThrustAtWaypoints;
     const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
@@ -188,6 +187,7 @@ export class SimulationArrivalController {
     const index = this.count++;
     this.ensureCapacity(this.count);
     this.entities[index] = entity;
+    this.entitySlots[index] = entitySlot;
     this.slots[index] = bodySlot;
     this.dx[index] = dx;
     this.dy[index] = dy;
@@ -239,8 +239,15 @@ export class SimulationArrivalController {
       const unit = entity.unit;
       if (unit) {
         const speedLimitFactor = this.speedLimitFactor[i];
-        unit.thrustDirX = this.outX[i] * speedLimitFactor;
-        unit.thrustDirY = this.outY[i] * speedLimitFactor;
+        const invDistance = this.distance[i] > 0.0001 ? 1 / this.distance[i] : 0;
+        entitySlotRegistry.setUnitDriveInput(
+          entity,
+          this.outX[i] * speedLimitFactor,
+          this.outY[i] * speedLimitFactor,
+          this.dx[i] * invDistance,
+          this.dy[i] * invDistance,
+          this.entitySlots[i],
+        );
         if (this.active[i] !== 0) movingUnits.push(entity);
       }
       this.entities[i] = undefined as unknown as Entity;
@@ -262,6 +269,9 @@ export class SimulationArrivalController {
     const slots = new Uint32Array(next);
     slots.set(this.slots);
     this.slots = slots;
+    const entitySlots = new Int32Array(next);
+    entitySlots.set(this.entitySlots);
+    this.entitySlots = entitySlots;
     const dx = new Float64Array(next);
     dx.set(this.dx);
     this.dx = dx;

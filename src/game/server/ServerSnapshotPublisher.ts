@@ -243,6 +243,20 @@ export class ServerSnapshotPublisher {
     listener.hasVisibleEntityBaseline = true;
   }
 
+  private updateListenerVisibleBaselineFromIds(
+    listener: SnapshotListenerEntry,
+    visibleEntityIds: readonly EntityId[] | undefined,
+    world: WorldState,
+    visibility: SnapshotVisibility,
+  ): void {
+    if (visibleEntityIds === undefined) {
+      this.updateListenerVisibleBaseline(listener, world, visibility);
+      return;
+    }
+    this.copyVisibleIdsInto(listener.visibleEntityIds, visibleEntityIds);
+    listener.hasVisibleEntityBaseline = true;
+  }
+
   private copyVisibleIdsInto(
     out: IndexedEntityIdSet,
     visibleEntityIds: readonly EntityId[],
@@ -449,7 +463,12 @@ export class ServerSnapshotPublisher {
           }
           addMaterializationStage(stages, 'staticPayload', stageStart);
           stageStart = performance.now();
-          this.updateListenerVisibleBaseline(listener, input.world, visibility);
+          this.updateListenerVisibleBaselineFromIds(
+            listener,
+            directSnapshot.visibleEntityIds,
+            input.world,
+            visibility,
+          );
           addMaterializationStage(stages, 'visibility', stageStart);
           this.stampSnapshotMaterialization(
             directSnapshot.state,
@@ -712,6 +731,9 @@ export class ServerSnapshotPublisher {
       const currentVisibleList = currentVisible !== undefined
         ? visibility.getVisibleEntityIds()
         : undefined;
+      const currentVisibleSlots = currentVisibleList !== undefined
+        ? visibility.getVisibleEntitySlots()
+        : undefined;
       addMaterializationStage(stages, 'visibility', stageStart);
       if (listener.preencodeWire) {
         const directSnapshot = this.directWirePreencoder.tryEncodeRichDelta({
@@ -722,6 +744,7 @@ export class ServerSnapshotPublisher {
           previousVisibleEntityIds: listener.visibleEntityIds,
           currentVisibleEntityIds: currentVisible,
           currentVisibleEntityIdList: currentVisibleList,
+          currentVisibleEntitySlots: currentVisibleSlots,
           dirtyIds: this.dirtyIdsBuf,
           dirtyFields: this.dirtyFieldsBuf,
           dirtySlots: this.dirtySlotsBuf,
@@ -778,6 +801,7 @@ export class ServerSnapshotPublisher {
             visibility,
             listener.visibleEntityIds,
             currentVisibleList!,
+            currentVisibleSlots,
             currentVisible,
             this.dirtyIdsBuf,
             this.dirtyFieldsBuf,
@@ -965,6 +989,7 @@ export class ServerSnapshotPublisher {
     visibility: SnapshotVisibility,
     previousVisibleEntityIds: Set<EntityId>,
     currentVisibleEntityIds: readonly EntityId[],
+    currentVisibleEntitySlots: readonly number[] | undefined,
     currentVisibleEntityIdSet: ReadonlySet<EntityId>,
     dirtyIds: readonly EntityId[],
     dirtyFields: readonly number[],
@@ -979,7 +1004,11 @@ export class ServerSnapshotPublisher {
     for (let i = 0; i < currentVisibleEntityIds.length; i++) {
       const id = currentVisibleEntityIds[i];
       if (previousVisibleEntityIds.has(id)) continue;
-      const entity = world.getEntity(id);
+      const entity = this.resolveSnapshotEntityFromSlot(
+        world,
+        id,
+        currentVisibleEntitySlots !== undefined ? currentVisibleEntitySlots[i] : -1,
+      );
       if (
         entity === undefined ||
         (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
@@ -1008,7 +1037,7 @@ export class ServerSnapshotPublisher {
         emittedIds.add(id);
         continue;
       }
-      const entity = world.getEntity(id);
+      const entity = this.resolveSnapshotEntityFromSlot(world, id, dirtySlots[i]);
       if (
         entity === undefined ||
         (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
@@ -1022,6 +1051,18 @@ export class ServerSnapshotPublisher {
 
     emittedIds.clear();
     return entities;
+  }
+
+  private resolveSnapshotEntityFromSlot(
+    world: WorldState,
+    id: EntityId,
+    slot: number,
+  ): Entity | undefined {
+    if (slot >= 0) {
+      const entity = entitySlotRegistry.resolveSlot(slot);
+      if (entity !== undefined && entity.id === id) return entity;
+    }
+    return world.getEntity(id);
   }
 
   private serializeUnfilteredDirtyPresentationEntities(
@@ -1060,7 +1101,7 @@ export class ServerSnapshotPublisher {
         emittedIds.add(id);
         continue;
       }
-      const entity = world.getEntity(id);
+      const entity = this.resolveSnapshotEntityFromSlot(world, id, dirtySlots[i]);
       if (
         entity === undefined ||
         (entity.type !== 'unit' && entity.type !== 'building' && entity.type !== 'tower')
@@ -1170,7 +1211,7 @@ export class ServerSnapshotPublisher {
       this.deferredEntityMotionIds.add(id);
       return true;
     }
-    const entity = world.getEntity(id);
+    const entity = this.resolveSnapshotEntityFromSlot(world, id, resolvedSlot);
     if (entity === undefined || !shouldDeferToSparseEntityMotionDelta(entity, changedFields)) {
       return false;
     }
@@ -1393,7 +1434,7 @@ export class ServerSnapshotPublisher {
         entities.push(undefined as unknown as NetworkServerSnapshotEntity);
         continue;
       }
-      const entity = world.getEntity(id);
+      const entity = this.resolveSnapshotEntityFromSlot(world, id, candidateSlots[i] ?? -1);
       if (entity === undefined) continue;
       if (visibility.isFiltered && !visibility.isEntityVisible(entity)) continue;
       const netEntity = serializeEntityDeltaSnapshot(
@@ -1608,45 +1649,28 @@ export class ServerSnapshotPublisher {
       }
       this.pushEntityMotionCandidateSlot(entitySlot);
     }
-    const movingUnits = simulation?.getMovingUnits();
     const movingUnitSlots = simulation?.getMovingUnitSlots();
-    if (movingUnits !== undefined) {
-      for (let i = 0; i < movingUnits.length; i++) {
-        const entity = movingUnits[i];
-        const slot = movingUnitSlots?.[i] ?? entitySlotRegistry.getEntitySlot(entity);
-        if (this.slotIsMotionCandidate(entityViews, slot, entity.id)) {
+    if (movingUnitSlots !== undefined) {
+      for (let i = 0; i < movingUnitSlots.length; i++) {
+        const slot = movingUnitSlots[i];
+        if (slot < 0 || slot >= entityViews.capacity) return -1;
+        const id = entityViews.entityId[slot] as EntityId;
+        if (id < 0) return -1;
+        if (this.slotIsMotionCandidate(entityViews, slot, id)) {
           this.pushEntityMotionCandidateSlot(slot);
-          continue;
         }
-        if (!isEntityMotionDeltaCandidate(entity)) continue;
-        if (
-          slot < 0 ||
-          slot >= entityViews.capacity ||
-          entityViews.entityId[slot] !== entity.id
-        ) {
-          return -1;
-        }
-        this.pushEntityMotionCandidateSlot(slot);
       }
     }
 
-    const flyingUnits = world.getFlyingUnits();
-    for (let i = 0; i < flyingUnits.length; i++) {
-      const entity = flyingUnits[i];
-      const slot = entitySlotRegistry.getEntitySlot(entity);
-      if (this.slotIsMotionCandidate(entityViews, slot, entity.id)) {
+    const flyingUnitSlots = world.getFlyingUnitSlots();
+    for (let i = 0; i < flyingUnitSlots.length; i++) {
+      const slot = flyingUnitSlots[i];
+      if (slot < 0 || slot >= entityViews.capacity) return -1;
+      const id = entityViews.entityId[slot] as EntityId;
+      if (id < 0) return -1;
+      if (this.slotIsMotionCandidate(entityViews, slot, id)) {
         this.pushEntityMotionCandidateSlot(slot);
-        continue;
       }
-      if (!isEntityMotionDeltaCandidate(entity)) continue;
-      if (
-        slot < 0 ||
-        slot >= entityViews.capacity ||
-        entityViews.entityId[slot] !== entity.id
-      ) {
-        return -1;
-      }
-      this.pushEntityMotionCandidateSlot(slot);
     }
 
     const count = this.entityMotionCandidateSlotCount;

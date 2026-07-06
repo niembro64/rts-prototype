@@ -178,9 +178,10 @@ export function runServerSnapshotPublisherContractTest(): void {
   assertContract(
     startupSource !== undefined &&
       startupSource.count === startupSnapshot.entities.length &&
-      startupSource.rawEntityRows === 1 &&
+      startupSource.rawEntityRows <= 1 &&
+      startupSource.typedEntityRows === startupSnapshot.entities.length - startupSource.rawEntityRows &&
       startupSource.typedEntityRows >= 1,
-    'preencoded startup snapshot must align private DTO rows with compact typed rows',
+    'preencoded startup snapshot must align compact typed rows with any private DTO fallback rows',
   );
   assertContract(
     capturedStartup.wirePayloadKind === undefined || capturedStartup.wirePayloadKind === 'direct',

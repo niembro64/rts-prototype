@@ -1185,6 +1185,68 @@ export function runSnapshotEntityWirePackContractTest(): void {
     'typed movement row beside a RAW row must survive the compact round trip',
   );
 
+  const builderPrioritySource = createEmptyEntityWireSource();
+  const builderPriorityRow = reserveFloat64WireRows(
+    builderPrioritySource.unitRows,
+    1,
+    ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
+  );
+  const builderPriorityBase = builderPriorityRow * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  builderPrioritySource.unitRows.values[builderPriorityBase + 0] = 707;
+  builderPrioritySource.unitRows.values[builderPriorityBase + 5] = 1;
+  builderPrioritySource.unitRows.values[builderPriorityBase + 6] = 1;
+  builderPrioritySource.unitRows.values[builderPriorityBase + 7] = ENTITY_CHANGED_ACTIONS;
+  builderPrioritySource.unitRows.values[builderPriorityBase + 38] = 1;
+  builderPrioritySource.unitRows.values[builderPriorityBase + 39] = 1;
+  builderPrioritySource.unitRows.values[builderPriorityBase + 66] = 1;
+  builderPrioritySource.unitRows.values[builderPriorityBase + 67] = 1;
+  appendEntitySnapshotWireSourceRow(
+    builderPrioritySource,
+    ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    builderPriorityRow,
+    false,
+    ENTITY_CHANGED_ACTIONS,
+  );
+  const builderPriorityBytes = encodeEntitiesV6Bytes(builderPrioritySource);
+  assertContract(
+    builderPriorityBytes !== null,
+    'Rust V6 builder-priority typed unit row must encode',
+  );
+  const packedBuilderPriority = msgpackDecode(
+    builderPriorityBytes.subarray(ENTITIES_KEY_PREFIX_BYTES),
+  ) as PackedEntitySnapshotWire;
+  assertContract(
+    packedBuilderPriority.e !== undefined &&
+      packedBuilderPriority.e.length === 1 &&
+      Array.isArray(packedBuilderPriority.e[0]),
+    'Rust V6 builder-priority row must stay typed instead of RAW',
+  );
+  const decodedBuilderPriority = unpackEntitiesFromWire(packedBuilderPriority);
+  const decodedBuilderPriorityEntity = decodedBuilderPriority[0];
+  assertContract(
+    decodedBuilderPriorityEntity?.unit?.builderPriorityLow === true &&
+      decodedBuilderPriorityEntity.unit.buildTargetId === null &&
+      decodedBuilderPriorityEntity.unit.buildTargetIdPresent === true,
+    'Rust V6 builder-priority typed row must survive compact round trip',
+  );
+  const decodedBuilderPriorityTypedOnly = unpackEntitiesFromWire(
+    packedBuilderPriority,
+    { materializeTypedDeltas: false },
+  );
+  const decodedBuilderPrioritySource =
+    getEntitySnapshotWireSource(decodedBuilderPriorityTypedOnly);
+  assertContract(
+    decodedBuilderPrioritySource !== undefined &&
+      decodedBuilderPrioritySource.rawEntityRows === 0 &&
+      decodedBuilderPrioritySource.unitRows.values[
+        decodedBuilderPrioritySource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 66
+      ] === 1 &&
+      decodedBuilderPrioritySource.unitRows.values[
+        decodedBuilderPrioritySource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE + 67
+      ] === 1,
+    'Rust V6 builder-priority decode must expose typed row slots',
+  );
+
   const factoryEntity: NetworkServerSnapshotEntity = {
     id: 101,
     type: 'building',

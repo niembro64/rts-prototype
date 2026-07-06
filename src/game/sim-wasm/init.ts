@@ -78,6 +78,7 @@ import __wbg_init, {
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
   quat_hover_orientation_step_batch,
+  unit_force_runtime_clear,
   render_unit_pose_compute,
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
@@ -159,6 +160,8 @@ import __wbg_init, {
   terrain_get_surface_height,
   terrain_get_surface_normal,
   terrain_sample_ground_for_slots,
+  terrain_sample_force_support_for_slots,
+  terrain_sample_water_probe_masks,
   terrain_bake_buildability_grid,
   terrain_has_line_of_sight,
   fog_mark_circle_scanline,
@@ -173,12 +176,14 @@ import __wbg_init, {
   entity_state_set_transform,
   entity_state_set_velocity,
   entity_state_set_unit_motion,
+  entity_state_set_unit_drive_input,
   entity_state_set_ownership,
   entity_state_set_hp_build,
   entity_state_set_static_shape,
   entity_state_set_body_slot,
   entity_state_collect_body_entity_slots,
   entity_state_sync_body_motion,
+  entity_state_sync_entity_body_motion,
   entity_state_set_blueprints,
   entity_state_mark_dirty,
   entity_state_clear_dirty,
@@ -210,6 +215,10 @@ import __wbg_init, {
   entity_state_angular_velocity_y_ptr,
   entity_state_angular_velocity_z_ptr,
   entity_state_unit_motion_flags_ptr,
+  entity_state_unit_thrust_dir_x_ptr,
+  entity_state_unit_thrust_dir_y_ptr,
+  entity_state_unit_heading_dir_x_ptr,
+  entity_state_unit_heading_dir_y_ptr,
   entity_state_hp_ptr,
   entity_state_max_hp_ptr,
   entity_state_radius_collision_ptr,
@@ -1033,7 +1042,7 @@ export interface SimWasm {
    *  (in), then the kernel writes alpha (out) and the extracted yaw
    *  of the new orientation (out). Per entity stride =
    *  QUAT_HOVER_BATCH_STRIDE f64s. JS scatters back to
-   *  entity.unit.orientation / .angularVelocity3 / .angularAcceleration3
+   *  entity.unit.orientation / .angularVelocity3
    *  and entity.transform.rotation in a post-call pass. */
   readonly quatHoverOrientationStepBatch: (
     buf: Float64Array,
@@ -1070,6 +1079,7 @@ export interface SimWasm {
   unitForceProfileEnsure: (codeCount: number) => void;
   unitForceProfileValuesPtr: () => number;
   unitForceProfileFlagsPtr: () => number;
+  unitForceRuntimeClear: () => void;
   /** C1 — splash/area target overlap classifier. TypeScript gathers
    *  spatial candidates and applies damage/event diffs; Rust owns the
    *  unit/projectile sphere tests, building AABB tests, slice filtering,
@@ -1705,6 +1715,24 @@ export interface SimWasm {
     groundZ: Float64Array,
     groundNormals: Float64Array,
   ) => number;
+  /** UnitForceSystem support sampling variant: writes terrain bed height,
+   *  terrain bed normal, and a water material flag for each body slot. */
+  readonly terrainSampleForceSupportForSlots: (
+    bodySlots: Uint32Array,
+    groundZ: Float64Array,
+    groundNormals: Float64Array,
+    materialFlags: Uint32Array,
+  ) => number;
+  /** Terrain-only water probe batch. Writes center water flags and eight-way
+   *  dry masks for each supplied center/radius. Callers that need authored
+   *  building/unit support surfaces must use the TS support index instead. */
+  readonly terrainSampleWaterProbeMasks: (
+    centersX: Float64Array,
+    centersY: Float64Array,
+    probeRadii: Float64Array,
+    centerWaterFlags: Uint32Array,
+    dryMasks: Uint32Array,
+  ) => number;
   /** C16 — bake the static terrain-buildability grid from the
    *  installed authoritative terrain mesh. TypeScript supplies
    *  config scalars + flat-zone rows and assembles the public object. */
@@ -1906,6 +1934,13 @@ export interface EntityStateApi {
     angularVelocityZ: number,
     unitMotionFlags: number,
   ) => void;
+  setUnitDriveInput: (
+    slot: number,
+    thrustDirX: number,
+    thrustDirY: number,
+    headingDirX: number,
+    headingDirY: number,
+  ) => void;
   setOwnership: (slot: number, ownerPlayerId: number, teamId: number) => void;
   setHpBuild: (
     slot: number,
@@ -1928,6 +1963,7 @@ export interface EntityStateApi {
   setBodySlot: (slot: number, bodySlot: number) => void;
   collectBodyEntitySlots: (bodySlots: Uint32Array, entitySlotsOut: Uint32Array) => number;
   syncBodyMotion: (bodySlots: Uint32Array) => number;
+  syncEntityBodyMotion: (entitySlots: Uint32Array) => number;
   setBlueprints: (
     slot: number,
     unitBlueprintCode: number,
@@ -1985,6 +2021,10 @@ export interface EntityStateApi {
   angularVelocityYPtr: () => number;
   angularVelocityZPtr: () => number;
   unitMotionFlagsPtr: () => number;
+  unitThrustDirXPtr: () => number;
+  unitThrustDirYPtr: () => number;
+  unitHeadingDirXPtr: () => number;
+  unitHeadingDirYPtr: () => number;
   hpPtr: () => number;
   maxHpPtr: () => number;
   radiusCollisionPtr: () => number;
@@ -2380,7 +2420,9 @@ export interface CombatTargetingApi {
     viewMask: number,
     targetSlots: Uint32Array,
     visibleIdsOut: Int32Array,
+    visibleSlotsOut: Uint32Array,
     radarIdsOut: Int32Array,
+    radarSlotsOut: Uint32Array,
     losSlotsOut: Uint32Array,
     countsOut: Uint32Array,
   ) => number;
@@ -4028,6 +4070,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceProfileEnsure: unit_force_profile_ensure,
         unitForceProfileValuesPtr: unit_force_profile_values_ptr,
         unitForceProfileFlagsPtr: unit_force_profile_flags_ptr,
+        unitForceRuntimeClear: unit_force_runtime_clear,
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageAreaCandidatesBatch: damage_area_candidates_batch,
         damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,
@@ -4074,6 +4117,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainSampleGroundForSlots: terrain_sample_ground_for_slots,
+        terrainSampleForceSupportForSlots: terrain_sample_force_support_for_slots,
+        terrainSampleWaterProbeMasks: terrain_sample_water_probe_masks,
         terrainBakeBuildabilityGrid: terrain_bake_buildability_grid,
         terrainHasLineOfSight: terrain_has_line_of_sight,
         fogMarkCircleScanline: fog_mark_circle_scanline,
@@ -4368,7 +4413,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           v6BasicScratchStride: 9,
           v6UnitScratchPtr: snapshot_encode_v6_unit_scratch_ptr,
           v6UnitScratchEnsure: snapshot_encode_v6_unit_scratch_ensure,
-          v6UnitScratchStride: 66,
+          v6UnitScratchStride: 68,
           v6BuildingScratchPtr: snapshot_encode_v6_building_scratch_ptr,
           v6BuildingScratchEnsure: snapshot_encode_v6_building_scratch_ensure,
           v6BuildingScratchStride: 50,
@@ -4434,12 +4479,14 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           setTransform: entity_state_set_transform,
           setVelocity: entity_state_set_velocity,
           setUnitMotion: entity_state_set_unit_motion,
+          setUnitDriveInput: entity_state_set_unit_drive_input,
           setOwnership: entity_state_set_ownership,
           setHpBuild: entity_state_set_hp_build,
           setStaticShape: entity_state_set_static_shape,
           setBodySlot: entity_state_set_body_slot,
           collectBodyEntitySlots: entity_state_collect_body_entity_slots,
           syncBodyMotion: entity_state_sync_body_motion,
+          syncEntityBodyMotion: entity_state_sync_entity_body_motion,
           setBlueprints: entity_state_set_blueprints,
           markDirty: entity_state_mark_dirty,
           clearDirty: entity_state_clear_dirty,
@@ -4471,6 +4518,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           angularVelocityYPtr: entity_state_angular_velocity_y_ptr,
           angularVelocityZPtr: entity_state_angular_velocity_z_ptr,
           unitMotionFlagsPtr: entity_state_unit_motion_flags_ptr,
+          unitThrustDirXPtr: entity_state_unit_thrust_dir_x_ptr,
+          unitThrustDirYPtr: entity_state_unit_thrust_dir_y_ptr,
+          unitHeadingDirXPtr: entity_state_unit_heading_dir_x_ptr,
+          unitHeadingDirYPtr: entity_state_unit_heading_dir_y_ptr,
           hpPtr: entity_state_hp_ptr,
           maxHpPtr: entity_state_max_hp_ptr,
           radiusCollisionPtr: entity_state_radius_collision_ptr,
@@ -4522,6 +4573,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runCanonicalCheckpointContractTest();
         const { runReplayRecorderContractTest } = await import('../server/ReplayRecorderContractTest');
         runReplayRecorderContractTest();
+        const { runForceAccumulatorContractTest } = await import('../sim/ForceAccumulatorContractTest');
+        runForceAccumulatorContractTest();
         const { runSnapshotEntityWirePackContractTest } = await import('../network/snapshotEntityWirePackContractTest');
         runSnapshotEntityWirePackContractTest();
         const { runNetworkLockstepTransportContractTest } = await import('../network/NetworkLockstepTransportContractTest');

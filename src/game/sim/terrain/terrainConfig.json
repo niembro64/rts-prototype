@@ -28,7 +28,7 @@
     },
     "plateau": {
       "shelfFractionOfStep": 0.99,
-      "rampEdgeSharpness": 0,
+      "rampEdgeSharpness": 1,
       "buildableShelfHeightTolerance": 20
     }
   },

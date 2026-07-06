@@ -99,6 +99,13 @@ export function runEntitySlotRegistryContractTest(): void {
   );
   assertContract(spatialRefreshViews.dirtyMask[firstSlot] === 0, 'spatial refresh must not mark snapshot dirty');
   assertParity(reused);
+  entitySlotRegistry.setUnitDriveInput(reused, 0.4, -0.2, 0.6, 0.8);
+  assertContract(reused.unit.thrustDirX === 0.4, 'drive helper must update unit thrust x');
+  assertContract(spatialRefreshViews.unitThrustDirY[firstSlot] === -0.2, 'drive helper must update slab thrust y');
+  assertContract(spatialRefreshViews.unitHeadingDirX[firstSlot] === 0.6, 'drive helper must update slab heading x');
+  assertContract(spatialRefreshViews.unitHeadingDirY[firstSlot] === 0.8, 'drive helper must update slab heading y');
+  assertContract(spatialRefreshViews.dirtyMask[firstSlot] === 0, 'drive helper must not mark snapshot dirty');
+  assertParity(reused);
   world.markSnapshotDirty(
     reused.id,
     ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL,
@@ -135,6 +142,24 @@ export function runEntitySlotRegistryContractTest(): void {
   assertContract(drainedFields[0] === dirtyMasksOut[0], 'world dirty drain must report the slab dirty mask');
   assertContract(motionViews.dirtyMask[firstSlot] === 0, 'world dirty drain must clear the slab dirty mask');
   assertParity(reused);
+
+  sim.entityState.markDirty(firstSlot, ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL);
+  const nativeOnlyDrainIds: number[] = [];
+  const nativeOnlyDrainFields: number[] = [];
+  world.drainSnapshotDirtyEntities(nativeOnlyDrainIds, nativeOnlyDrainFields);
+  assertContract(
+    nativeOnlyDrainIds.length === 1 && nativeOnlyDrainIds[0] === reused.id,
+    'world dirty drain must report native slab-only dirty entity ids',
+  );
+  assertContract(
+    nativeOnlyDrainFields[0] === (ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL),
+    'world dirty drain must report native slab-only dirty masks',
+  );
+  assertContract(
+    motionViews.dirtyMask[firstSlot] === 0,
+    'world dirty drain must clear native slab-only dirty masks',
+  );
+
   sim.entityState.clearDirty(firstSlot);
   spatialGrid.updateUnitSpatial(reused);
   const spatialOnlyViews = requireViews();

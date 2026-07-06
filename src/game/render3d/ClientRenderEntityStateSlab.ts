@@ -17,8 +17,13 @@ import {
   getUnitHudNameY,
 } from './HudAnchor';
 import { canIndexClientEntityId } from '../network/ClientEntityIds';
+import {
+  entityLodProxyGlyph3D,
+  entityLodProxyRadius3D,
+} from './EntityLod3D';
 
 const INITIAL_RENDER_ENTITY_STATE_CAP = 4096;
+const SNAPSHOT_PRESENCE_MAX_MARK = 0xffffffff;
 const NO_OWNER_ID = 0;
 const NO_PASSIVE_TURRET_INDEX = -1;
 
@@ -55,6 +60,8 @@ export type ClientRenderEntityStateViews = {
   readonly groundY: Float32Array;
   readonly radiusOther: Float32Array;
   readonly radiusHitbox: Float32Array;
+  readonly lodProxyRadius: Float32Array;
+  readonly lodProxyGlyph: Uint8Array;
   readonly normalX: Float32Array;
   readonly normalY: Float32Array;
   readonly normalZ: Float32Array;
@@ -169,9 +176,13 @@ export class ClientRenderEntityStateSlab {
   private readonly freeSlots: number[] = [];
   private readonly dirtySlots: number[] = [];
   private readonly packetFlagSlots: number[] = [];
+  private readonly snapshotPresenceFallbackIds = new Set<EntityId>();
   private dirtySlotMarks: Uint8Array = new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP);
   private packetFlagSlotMarks: Uint8Array = new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP);
+  private snapshotPresenceMarks = new Uint32Array(0);
+  private snapshotPresenceMark = 1;
   private nextSlot = 0;
+  private activeEntityCount = 0;
   private views: ClientRenderEntityStateViews = {
     kind: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     entityIds: new Float64Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -183,6 +194,8 @@ export class ClientRenderEntityStateSlab {
     groundY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     radiusOther: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     radiusHitbox: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    lodProxyRadius: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    lodProxyGlyph: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalX: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalZ: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -252,6 +265,7 @@ export class ClientRenderEntityStateSlab {
       this.slotByEntityId.set(entity.id, slot);
     }
     this.views.entityIds[slot] = entity.id;
+    this.activeEntityCount++;
     this.markSlotDirty(slot);
     return slot;
   }
@@ -378,6 +392,8 @@ export class ClientRenderEntityStateSlab {
     views.groundY[slot] = getUnitGroundZ(entity);
     views.radiusOther[slot] = unit.radius.other || unit.radius.hitbox || 15;
     views.radiusHitbox[slot] = unit.radius.hitbox;
+    views.lodProxyRadius[slot] = entityLodProxyRadius3D(entity);
+    views.lodProxyGlyph[slot] = entityLodProxyGlyph3D(entity);
     views.normalX[slot] = unit.surfaceNormal.nx;
     views.normalY[slot] = unit.surfaceNormal.ny;
     views.normalZ[slot] = unit.surfaceNormal.nz;
@@ -438,6 +454,8 @@ export class ClientRenderEntityStateSlab {
     views.z[slot] = entity.transform.z;
     views.rotation[slot] = entity.transform.rotation;
     views.radiusHitbox[slot] = 0;
+    views.lodProxyRadius[slot] = entityLodProxyRadius3D(entity);
+    views.lodProxyGlyph[slot] = entityLodProxyGlyph3D(entity);
     views.buildingBaseY[slot] = entity.transform.z - building.depth / 2;
     views.buildingWidth[slot] = visualConfig !== null
       ? visualConfig.gridWidth * BUILD_GRID_CELL_SIZE
@@ -482,6 +500,9 @@ export class ClientRenderEntityStateSlab {
     } else {
       this.slotByEntityId.delete(id);
     }
+    if (this.views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_NONE) {
+      this.activeEntityCount--;
+    }
     this.views.kind[slot] = CLIENT_RENDER_ENTITY_KIND_NONE;
     this.views.entityIds[slot] = 0;
     this.views.ownerIds[slot] = NO_OWNER_ID;
@@ -489,6 +510,8 @@ export class ClientRenderEntityStateSlab {
     this.views.turretCount[slot] = 0;
     this.views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
     this.views.radiusHitbox[slot] = 0;
+    this.views.lodProxyRadius[slot] = 0;
+    this.views.lodProxyGlyph[slot] = 0;
     this.views.bodyHudWidth[slot] = 0;
     this.views.hudBarsY[slot] = 0;
     this.views.hudNameY[slot] = 0;
@@ -514,6 +537,94 @@ export class ClientRenderEntityStateSlab {
       if (!present.has(id)) out.push(id);
     }
     return out;
+  }
+
+  collectEntityIdsMissingFromTypedWireRows(
+    basicValues: Float64Array,
+    basicCount: number,
+    basicStride: number,
+    unitValues: Float64Array,
+    unitCount: number,
+    unitStride: number,
+    buildingValues: Float64Array,
+    buildingCount: number,
+    buildingStride: number,
+    out: EntityId[] = [],
+  ): EntityId[] {
+    out.length = 0;
+    this.beginSnapshotPresenceMark();
+    this.snapshotPresenceFallbackIds.clear();
+    const matchedLiveCount =
+      this.markSnapshotPresenceRows(basicValues, basicCount, basicStride) +
+      this.markSnapshotPresenceRows(unitValues, unitCount, unitStride) +
+      this.markSnapshotPresenceRows(buildingValues, buildingCount, buildingStride);
+    if (matchedLiveCount === this.activeEntityCount) {
+      this.snapshotPresenceFallbackIds.clear();
+      return out;
+    }
+
+    const views = this.views;
+    for (let slot = 0; slot < this.nextSlot; slot++) {
+      if (views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_NONE) continue;
+      const id = views.entityIds[slot] as EntityId;
+      if (!this.snapshotPresenceHas(id)) out.push(id);
+    }
+    this.snapshotPresenceFallbackIds.clear();
+    return out;
+  }
+
+  private beginSnapshotPresenceMark(): void {
+    if (this.snapshotPresenceMark < SNAPSHOT_PRESENCE_MAX_MARK) {
+      this.snapshotPresenceMark++;
+      return;
+    }
+    this.snapshotPresenceMarks.fill(0);
+    this.snapshotPresenceMark = 1;
+  }
+
+  private markSnapshotPresenceRows(
+    values: Float64Array,
+    count: number,
+    stride: number,
+  ): number {
+    let matchedLiveCount = 0;
+    for (let rowIndex = 0, base = 0; rowIndex < count; rowIndex++, base += stride) {
+      if (this.markSnapshotPresenceId(values[base] as EntityId)) matchedLiveCount++;
+    }
+    return matchedLiveCount;
+  }
+
+  private markSnapshotPresenceId(id: EntityId): boolean {
+    const slot = this.getSlot(id);
+    const isLive =
+      slot !== undefined &&
+      this.views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_NONE;
+    if (!canIndexClientEntityId(id)) {
+      const previousSize = this.snapshotPresenceFallbackIds.size;
+      this.snapshotPresenceFallbackIds.add(id);
+      return isLive && this.snapshotPresenceFallbackIds.size !== previousSize;
+    }
+    this.ensureSnapshotPresenceCapacity(id + 1);
+    const alreadyMarked = this.snapshotPresenceMarks[id] === this.snapshotPresenceMark;
+    this.snapshotPresenceMarks[id] = this.snapshotPresenceMark;
+    return isLive && !alreadyMarked;
+  }
+
+  private snapshotPresenceHas(id: EntityId): boolean {
+    if (!canIndexClientEntityId(id)) return this.snapshotPresenceFallbackIds.has(id);
+    return id < this.snapshotPresenceMarks.length &&
+      this.snapshotPresenceMarks[id] === this.snapshotPresenceMark;
+  }
+
+  private ensureSnapshotPresenceCapacity(required: number): void {
+    if (this.snapshotPresenceMarks.length >= required) return;
+    let next = this.snapshotPresenceMarks.length > 0
+      ? this.snapshotPresenceMarks.length
+      : INITIAL_RENDER_ENTITY_STATE_CAP;
+    while (next < required) next *= 2;
+    const marks = new Uint32Array(next);
+    marks.set(this.snapshotPresenceMarks);
+    this.snapshotPresenceMarks = marks;
   }
 
   consumeDirtySlots(out: number[] = []): number[] {
@@ -543,6 +654,7 @@ export class ClientRenderEntityStateSlab {
     this.dirtySlotMarks.fill(0);
     this.packetFlagSlotMarks.fill(0);
     this.nextSlot = 0;
+    this.activeEntityCount = 0;
     this.views.kind.fill(CLIENT_RENDER_ENTITY_KIND_NONE);
     this.views.entityIds.fill(0);
     this.views.ownerIds.fill(NO_OWNER_ID);
@@ -550,6 +662,8 @@ export class ClientRenderEntityStateSlab {
     this.views.turretCount.fill(0);
     this.views.passiveTurretIndex.fill(NO_PASSIVE_TURRET_INDEX);
     this.views.radiusHitbox.fill(0);
+    this.views.lodProxyRadius.fill(0);
+    this.views.lodProxyGlyph.fill(0);
     this.views.bodyHudWidth.fill(0);
     this.views.hudBarsY.fill(0);
     this.views.hudNameY.fill(0);
@@ -581,6 +695,8 @@ export class ClientRenderEntityStateSlab {
       assertNear('groundY', views.groundY[slot], getUnitGroundZ(entity));
       assertNear('radiusOther', views.radiusOther[slot], unit.radius.other || unit.radius.hitbox || 15);
       assertNear('radiusHitbox', views.radiusHitbox[slot], unit.radius.hitbox);
+      assertNear('lodProxyRadius', views.lodProxyRadius[slot], entityLodProxyRadius3D(entity));
+      assertNear('lodProxyGlyph', views.lodProxyGlyph[slot], entityLodProxyGlyph3D(entity), 0);
       assertNear('velocityX', views.velocityX[slot], unit.velocityX);
       assertNear('velocityY', views.velocityY[slot], unit.velocityY);
       assertNear('bodyHudWidth', views.bodyHudWidth[slot], unit.radius.other * 2);
@@ -639,6 +755,8 @@ export class ClientRenderEntityStateSlab {
       if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) {
         throw new Error(`[client render entity state] entity ${entity.id} expected building row`);
       }
+      assertNear('lodProxyRadius', views.lodProxyRadius[slot], entityLodProxyRadius3D(entity));
+      assertNear('lodProxyGlyph', views.lodProxyGlyph[slot], entityLodProxyGlyph3D(entity), 0);
       assertNear('buildingBaseY', views.buildingBaseY[slot], entity.transform.z - building.depth / 2);
       assertNear('bodyHudWidth', views.bodyHudWidth[slot], building.width);
       assertNear('hudBarsY', views.hudBarsY[slot], getBuildingHudBarsY(entity));
@@ -702,6 +820,8 @@ export class ClientRenderEntityStateSlab {
       groundY: growFloat32(views.groundY, nextCapacity),
       radiusOther: growFloat32(views.radiusOther, nextCapacity),
       radiusHitbox: growFloat32(views.radiusHitbox, nextCapacity),
+      lodProxyRadius: growFloat32(views.lodProxyRadius, nextCapacity),
+      lodProxyGlyph: growUint8(views.lodProxyGlyph, nextCapacity),
       normalX: growFloat32(views.normalX, nextCapacity),
       normalY: growFloat32(views.normalY, nextCapacity),
       normalZ: growFloat32(views.normalZ, nextCapacity),

@@ -173,7 +173,7 @@ export const ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE = 9;
 // Unit/building row layouts: see appendDirect*EntityWireRow for the exact slot
 // order. Unit slots 51+ and building factory-private slots carry command/build
 // state that used to force a RAW entity fallback.
-export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 66;
+export const ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE = 68;
 export const ENTITY_SNAPSHOT_WIRE_BUILDING_STRIDE = 50;
 export const ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE = 19;
 // Turret row layout: rot, vel, pitch, pitchVel, id, state, hasTarget,
@@ -741,10 +741,8 @@ export function unitBuilderPrivateSnapshotRequiresDto(
   if (entity.type !== 'unit' || entity.builder === null) return false;
   if (changedFields !== undefined && (changedFields & ENTITY_CHANGED_ACTIONS) === 0) return false;
   if (visibility !== undefined && !visibility.canSeePrivateEntityDetails(entity)) return false;
-  // Typed unit action rows carry action queues and current build target, but
-  // not BAR builder-priority. Keep priority-on rows DTO-backed; priority-free
-  // rows can ride the typed path and clear stale priority on apply.
-  return entity.builder.lowPriority === true;
+  // BAR builder-priority now rides the typed unit action row.
+  return false;
 }
 
 export function unitFactoryPrivateSnapshotRequiresDto(
@@ -1000,6 +998,7 @@ function appendDirectUnitEntityWireRow(
   const hasBuildTarget = canSeePrivateDetails &&
     entity.builder !== null &&
     (isFull || (changedMask & ENTITY_CHANGED_ACTIONS) !== 0);
+  const hasBuilderPriority = hasBuildTarget;
   const buildTargetId = hasBuildTarget ? entity.builder!.currentBuildTarget : NO_ENTITY_ID;
   const canSendBuildTarget = hasBuildTarget &&
     buildTargetId !== NO_ENTITY_ID &&
@@ -1093,6 +1092,8 @@ function appendDirectUnitEntityWireRow(
   values[base + 63] = hasBuild && buildable!.isInterrupted === true ? 1 : 0;
   values[base + 64] = shouldEmitUnitFactory ? 1 : 0;
   values[base + 65] = shouldEmitUnitFactory && entity.factory!.carrierSpawnEnabled !== false ? 1 : 0;
+  values[base + 66] = hasBuilderPriority ? 1 : 0;
+  values[base + 67] = hasBuilderPriority && entity.builder!.lowPriority === true ? 1 : 0;
   appendEntitySnapshotWireSourceRow(
     entityWireSource,
     ENTITY_SNAPSHOT_WIRE_KIND_UNIT,

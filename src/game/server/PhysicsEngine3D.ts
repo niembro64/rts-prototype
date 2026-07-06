@@ -430,6 +430,8 @@ export class PhysicsEngine3D {
   private staticSupportGrid: Map<number, Body3D[]> = new Map();
   private dynamicSupportGrid: Map<number, Body3D[]> = new Map();
   private dynamicSupportGridDirty = true;
+  private staticSupportBodyCount = 0;
+  private dynamicSupportBodyCount = 0;
   private dynamicBodySlots: Uint32Array = new Uint32Array(0);
   private dynamicBodySlotsDirty = true;
   // Slot-id → Body3D lookup. Indexed by the pool slot, so the
@@ -635,11 +637,13 @@ export class PhysicsEngine3D {
     if (body.isStatic) {
       this.staticBodies.push(body);
       this.addStaticToBroadphase(body);
+      if (this.isStaticSupportBody(body)) this.staticSupportBodyCount++;
       this.addStaticSupportToGrid(body);
     } else {
       this.dynamicBodies.push(body);
       this.dynamicBodySlotsDirty = true;
       this.dynamicSupportGridDirty = true;
+      if (body.unitSupportTopOffsetZ !== null) this.dynamicSupportBodyCount++;
       if (!body.sleeping) this.awakeDynamicBodyCount++;
     }
   }
@@ -651,12 +655,18 @@ export class PhysicsEngine3D {
     if (j >= 0) {
       this.dynamicBodies.splice(j, 1);
       this.dynamicBodySlotsDirty = true;
+      if (body.unitSupportTopOffsetZ !== null) {
+        this.dynamicSupportBodyCount = Math.max(0, this.dynamicSupportBodyCount - 1);
+      }
       if (!body.sleeping) this.awakeDynamicBodyCount = Math.max(0, this.awakeDynamicBodyCount - 1);
     }
     if (j >= 0) this.dynamicSupportGridDirty = true;
     const k = this.staticBodies.indexOf(body);
     if (k >= 0) {
       this.staticBodies.splice(k, 1);
+      if (this.isStaticSupportBody(body)) {
+        this.staticSupportBodyCount = Math.max(0, this.staticSupportBodyCount - 1);
+      }
       this.removeStaticFromBroadphase(body);
       this.removeStaticSupportFromGrid(body);
     }
@@ -667,6 +677,10 @@ export class PhysicsEngine3D {
     this.bodyBySlot[body.slot] = undefined;
     // Release the BodyPool slot so future bodies can reuse it.
     body.free();
+  }
+
+  hasSupportSurfaceBodies(): boolean {
+    return this.staticSupportBodyCount > 0 || this.dynamicSupportBodyCount > 0;
   }
 
   /** Apply a 3D force to a dynamic body. Accumulates until the next
@@ -820,6 +834,13 @@ export class PhysicsEngine3D {
     );
   }
 
+  syncEntitySlotBodyMotionToEntityState(entitySlots: Uint32Array): number {
+    if (entitySlots.length === 0) return 0;
+    const sim = getSimWasm();
+    if (sim === undefined) return -1;
+    return sim.entityState.syncEntityBodyMotion(entitySlots);
+  }
+
   /** Mark that `dynamicBody` should not collide with `staticBody`.
    *  Used for units spawning inside their factory. */
   setIgnoreStatic(dynamicBody: Body3D, staticBody: Body3D): void {
@@ -949,6 +970,8 @@ export class PhysicsEngine3D {
     this.staticSupportGrid.clear();
     this.dynamicSupportGrid.clear();
     this.dynamicSupportGridDirty = true;
+    this.staticSupportBodyCount = 0;
+    this.dynamicSupportBodyCount = 0;
     this.dynamicBodySlotsDirty = true;
     this.bodyBySlot.length = 0;
     this.ignoreStatic.clear();

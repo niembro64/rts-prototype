@@ -31,12 +31,14 @@ export function runClientServerTargetStoreContractTest(): void {
   assertContract(store.delete(id), 'delete reports existing target');
   assertContract(store.get(id) === undefined, 'delete clears indexed target');
   assertContract(!store.has(id), 'has clears after delete');
+  assertContract(store.delete(id) === false, 'delete reports missing indexed target');
 
   const highId = 1_000_001 as EntityId;
   const high = createServerTarget();
   high.y = 200;
   store.set(highId, high);
   assertContract(store.get(highId) === high, 'high id falls back to Map storage');
+  assertContract(store.delete((highId + 1) as EntityId) === false, 'delete reports missing fallback target');
 
   store.clear();
   assertContract(store.size === 0, 'clear empties Map storage');

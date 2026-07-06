@@ -68,6 +68,7 @@ const ENABLE_DIRECT_RUST_SNAPSHOT_WIRE = isRustSnapshotWireEnabled();
 type DirectSerializedListenerSnapshot = {
   state: NetworkServerSnapshot;
   wirePayload: SnapshotWirePayload;
+  visibleEntityIds?: readonly EntityId[];
   visibleBaselineAddedIds?: readonly EntityId[];
   visibleBaselineRemovedIds?: readonly EntityId[];
 };
@@ -117,6 +118,7 @@ type ServerSnapshotRichDeltaDirectWireInput = {
   previousVisibleEntityIds: ReadonlySet<EntityId>;
   currentVisibleEntityIds: ReadonlySet<EntityId> | undefined;
   currentVisibleEntityIdList: readonly EntityId[] | undefined;
+  currentVisibleEntitySlots: readonly number[] | undefined;
   dirtyIds: readonly EntityId[];
   dirtyFields: readonly number[];
   dirtySlots: readonly number[];
@@ -158,6 +160,18 @@ function isSerializedEntityKind(entity: Entity): boolean {
   );
 }
 
+function resolveSnapshotEntityFromSlot(
+  world: WorldState,
+  id: EntityId,
+  slot: number,
+): Entity | undefined {
+  if (slot >= 0) {
+    const entity = entitySlotRegistry.resolveSlot(slot);
+    if (entity !== undefined && entity.id === id) return entity;
+  }
+  return world.getEntity(id);
+}
+
 export class ServerSnapshotDirectWirePreencoder {
   private readonly entityPlaceholders: NetworkServerSnapshot['entities'] = [];
   private readonly minimapPlaceholders: NonNullable<NetworkServerSnapshot['minimapEntities']> = [];
@@ -171,6 +185,7 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly removedEntityIds: number[] = [];
   private readonly removedEntityIdSet = new IndexedEntityIdSet();
   private readonly emittedDeltaEntityIds = new IndexedEntityIdSet();
+  private readonly fullVisibleEntityIds: EntityId[] = [];
   private readonly visibleBaselineAddedIds: EntityId[] = [];
   private readonly visibleBaselineRemovedIds: EntityId[] = [];
   private readonly state: NetworkServerSnapshot = {
@@ -225,6 +240,7 @@ export class ServerSnapshotDirectWirePreencoder {
     if (!ENABLE_DIRECT_RUST_SNAPSHOT_WIRE) return undefined;
     if (getSimWasm() === undefined) return undefined;
 
+    this.fullVisibleEntityIds.length = 0;
     const state = this.materializeWireState(input);
     let stageStart = performance.now();
     const encoded = encodeNetworkSnapshotWithRustFallback(state as NetworkServerSnapshotWire);
@@ -250,6 +266,7 @@ export class ServerSnapshotDirectWirePreencoder {
           ? [...encoded.rawTopLevelKeys]
           : undefined,
       },
+      visibleEntityIds: this.fullVisibleEntityIds,
     };
   }
 
@@ -713,11 +730,17 @@ export class ServerSnapshotDirectWirePreencoder {
 
     const visibleEntityIds = input.visibility.getVisibleEntityIds();
     if (visibleEntityIds !== undefined) {
+      const visibleEntitySlots = input.visibility.getVisibleEntitySlots();
       let entityCount = 0;
       for (let i = 0; i < visibleEntityIds.length; i++) {
-        const entity = input.world.getEntity(visibleEntityIds[i]);
+        const entity = resolveSnapshotEntityFromSlot(
+          input.world,
+          visibleEntityIds[i],
+          visibleEntitySlots !== undefined ? visibleEntitySlots[i] : -1,
+        );
         if (!entity || !isSerializedEntityKind(entity)) continue;
         if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
+        this.fullVisibleEntityIds.push(entity.id);
         entityCount++;
       }
       return entityCount;
@@ -734,6 +757,7 @@ export class ServerSnapshotDirectWirePreencoder {
         const entity = source[i];
         if (!acceptsSerializedEntity(entity, input.visibility)) continue;
         if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
+        this.fullVisibleEntityIds.push(entity.id);
         entityCount++;
       }
     }
@@ -746,24 +770,25 @@ export class ServerSnapshotDirectWirePreencoder {
     resetEntitySnapshotPool();
     let entityCount = 0;
     const ids = input.motionCandidateIds;
-    const visibleEntityIds = input.visibility.getVisibleEntityIdSet();
+    if (ids.length === 0) return 0;
     const entityViews = entitySlotRegistry.getViews();
     const slots = input.motionCandidateSlots;
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
-      if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
+      const slot = slots[i] ?? -1;
+      if (!this.canEmitSparseMotionRow(input, id, entityViews, slot)) continue;
       if (
         this.tryAppendUnitSlabDeltaRowFromState(
           id,
           ENTITY_MOTION_DELTA_FIELDS,
           entityViews,
-          slots[i] ?? -1,
+          slot,
         )
       ) {
         entityCount++;
         continue;
       }
-      const entity = input.world.getEntity(id);
+      const entity = resolveSnapshotEntityFromSlot(input.world, id, slot);
       if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
       if (!this.writeEntityRow(
         entityCount,
@@ -776,6 +801,31 @@ export class ServerSnapshotDirectWirePreencoder {
       entityCount++;
     }
     return entityCount;
+  }
+
+  private canEmitSparseMotionRow(
+    input: ServerSnapshotSparseDeltaDirectWireInput,
+    id: EntityId,
+    entityViews: EntityStateViews | null,
+    slot: number,
+  ): boolean {
+    const visibility = input.visibility;
+    if (!visibility.isFiltered) return true;
+    if (
+      entityViews !== null &&
+      slot >= 0 &&
+      slot < entityViews.capacity &&
+      entityViews.entityId[slot] === id
+    ) {
+      const ownerPlayerId = entityViews.ownerPlayerId[slot];
+      if (
+        ownerPlayerId !== 0 &&
+        visibility.isOwnedByRecipientOrAlly(ownerPlayerId as PlayerId)
+      ) {
+        return true;
+      }
+    }
+    return visibility.canReferenceEntityId(input.world, id);
   }
 
   private tryAppendUnitSlabDeltaRowFromState(
@@ -869,7 +919,7 @@ export class ServerSnapshotDirectWirePreencoder {
           entityCount++;
           continue;
         }
-        const entity = input.world.getEntity(id);
+        const entity = resolveSnapshotEntityFromSlot(input.world, id, slot);
         if (!entity || !acceptsSerializedEntity(entity, input.visibility)) continue;
         if (!this.writeEntityRow(
           entityCount,
@@ -890,11 +940,16 @@ export class ServerSnapshotDirectWirePreencoder {
     let entityCount = 0;
     const currentVisibleEntityIdList = input.currentVisibleEntityIdList;
     if (currentVisibleEntityIdList !== undefined) {
+      const currentVisibleEntitySlots = input.currentVisibleEntitySlots;
       for (let i = 0; i < currentVisibleEntityIdList.length; i++) {
         const id = currentVisibleEntityIdList[i];
         if (input.previousVisibleEntityIds.has(id)) continue;
         this.visibleBaselineAddedIds.push(id);
-        const entity = input.world.getEntity(id);
+        const entity = resolveSnapshotEntityFromSlot(
+          input.world,
+          id,
+          currentVisibleEntitySlots !== undefined ? currentVisibleEntitySlots[i] : -1,
+        );
         if (!entity || !isSerializedEntityKind(entity)) continue;
         if (!this.writeEntityRow(entityCount, entity, undefined, input.world, input.visibility)) continue;
         emittedIds.add(id);
@@ -934,7 +989,7 @@ export class ServerSnapshotDirectWirePreencoder {
         entityCount++;
         continue;
       }
-      const entity = input.world.getEntity(id);
+      const entity = resolveSnapshotEntityFromSlot(input.world, id, slot);
       if (!entity || !isSerializedEntityKind(entity)) continue;
       if (!this.writeEntityRow(
         entityCount,
@@ -972,7 +1027,7 @@ export class ServerSnapshotDirectWirePreencoder {
       resolvedSlot = entitySlotRegistry.getSlot(id);
     }
     if (isEntityMotionDeltaCandidateSlot(entityViews, resolvedSlot, id)) return true;
-    const entity = world.getEntity(id);
+    const entity = resolveSnapshotEntityFromSlot(world, id, resolvedSlot);
     return entity !== undefined && shouldDeferToSparseEntityMotionDelta(entity, changedFields);
   }
 
