@@ -35,6 +35,8 @@ import {
   TERRAIN_ROCK_DETAIL_CONTRAST,
   TERRAIN_ROCK_DETAIL_ENABLED,
   TERRAIN_ROCK_TEXTURE_TILE_WORLD_SIZE,
+  TERRAIN_WALL_ROCK_DETAIL_CONTRAST,
+  TERRAIN_WALL_ROCK_TEXTURE_TILE_WORLD_SIZE,
 } from '../../config';
 import { getGroundDetailTexture } from './GroundDetailTexture';
 import { getRockDetailTexture } from './RockDetailTexture';
@@ -84,12 +86,19 @@ import {
   type BuildGridOverlayUniforms,
 } from './BuildGridOverlayShader';
 
+type TerrainMeshView = NonNullable<ReturnType<typeof getTerrainMeshView>>;
+
 const CUBE_FLOOR_Y = TILE_FLOOR_Y;
 const TERRAIN_GEOMETRY_REBUILD_SETTLE_FRAMES = 3;
 const TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING = 24;
 const TERRAIN_GEOMETRY_CACHE_MAX_ENTRIES = 8;
 const TERRAIN_GEOMETRY_CACHE_MAX_BYTES = 96 * 1024 * 1024;
 const SIDE_WALL_TERRAIN_SHADE = 0.68;
+const TERRAIN_RENDER_SURFACE_SMOOTH = 0;
+const TERRAIN_RENDER_SURFACE_WALL = 1;
+const TERRAIN_RENDER_SURFACE_CLASS_COUNT = 2;
+const TERRAIN_RENDER_WALL_NORMAL_UP_MAX = 0.82;
+const TERRAIN_RENDER_WALL_MIN_HEIGHT_SPAN = 1.0;
 const BUILD_GRID_COLOR_OK = readRgbaTuple(
   COLORS.world.terrain.buildGrid.okRgba,
   'colorsConfig.world.terrain.buildGrid.okRgba',
@@ -130,6 +139,58 @@ function rawSrgbVec3(hex: number): THREE.Vector3 {
 function triangleDebugHash01(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
   return x - Math.floor(x);
+}
+
+type TerrainRenderNormal = { x: number; y: number; z: number; weight: number };
+
+function terrainRenderFaceNormal(
+  mesh: TerrainMeshView,
+  ia: number,
+  ib: number,
+  ic: number,
+): TerrainRenderNormal {
+  const a2 = ia * 2;
+  const b2 = ib * 2;
+  const c2 = ic * 2;
+  const ax = mesh.vertexCoords[a2];
+  const ay = mesh.vertexCoords[a2 + 1];
+  const az = mesh.vertexHeights[ia];
+  const bx = mesh.vertexCoords[b2];
+  const by = mesh.vertexCoords[b2 + 1];
+  const bz = mesh.vertexHeights[ib];
+  const cx = mesh.vertexCoords[c2];
+  const cy = mesh.vertexCoords[c2 + 1];
+  const cz = mesh.vertexHeights[ic];
+  const ux = bx - ax;
+  const uy = by - ay;
+  const uz = bz - az;
+  const vx = cx - ax;
+  const vy = cy - ay;
+  const vz = cz - az;
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  if (nz < 0) {
+    nx = -nx;
+    ny = -ny;
+    nz = -nz;
+  }
+  const len = Math.hypot(nx, ny, nz);
+  if (len <= 1.0e-9) return { x: 0, y: 0, z: 1, weight: 0 };
+  return { x: nx / len, y: ny / len, z: nz / len, weight: len };
+}
+
+function terrainRenderSurfaceClass(
+  normal: TerrainRenderNormal,
+  heightSpan: number,
+): number {
+  if (
+    heightSpan >= TERRAIN_RENDER_WALL_MIN_HEIGHT_SPAN &&
+    normal.z <= TERRAIN_RENDER_WALL_NORMAL_UP_MAX
+  ) {
+    return TERRAIN_RENDER_SURFACE_WALL;
+  }
+  return TERRAIN_RENDER_SURFACE_SMOOTH;
 }
 
 // Polar offset + falloff weight for sampling slope around a mesh vertex when
@@ -415,6 +476,10 @@ export class TerrainTileRenderer3D {
   private rockDetailEnabledUniform = { value: 0 };
   private rockBaseColorUniform = { value: rawSrgbVec3(TERRAIN_ROCK_BASE_COLOR) };
   private rockDetailContrastUniform = { value: TERRAIN_ROCK_DETAIL_CONTRAST };
+  private wallRockDetailTileWorldSizeUniform = {
+    value: TERRAIN_WALL_ROCK_TEXTURE_TILE_WORLD_SIZE,
+  };
+  private wallRockDetailContrastUniform = { value: TERRAIN_WALL_ROCK_DETAIL_CONTRAST };
 
   private gridCellsX = 0;
   private gridCellsY = 0;
@@ -501,6 +566,8 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uRockDetailEnabled = this.rockDetailEnabledUniform;
       shader.uniforms.uRockBaseColor = this.rockBaseColorUniform;
       shader.uniforms.uRockDetailContrast = this.rockDetailContrastUniform;
+      shader.uniforms.uWallRockDetailTileWorldSize = this.wallRockDetailTileWorldSizeUniform;
+      shader.uniforms.uWallRockDetailContrast = this.wallRockDetailContrastUniform;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -508,12 +575,14 @@ export class TerrainTileRenderer3D {
             'attribute float terrainShade;',
             'attribute float terrainNeighborhoodSlope;',
             'attribute float terrainHorizonFade;',
+            'attribute float terrainWall;',
             'attribute vec3 triangleDebugColor;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
             'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
+            'varying float vTerrainWall;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
@@ -527,6 +596,7 @@ export class TerrainTileRenderer3D {
             'vTerrainSlope = 1.0 - clamp(abs(normal.y), 0.0, 1.0);',
             'vTerrainNeighborhoodSlope = terrainNeighborhoodSlope;',
             'vTerrainHorizonFade = terrainHorizonFade;',
+            'vTerrainWall = terrainWall;',
             'vTriangleDebugColor = triangleDebugColor;',
           ].join('\n'),
         );
@@ -557,11 +627,14 @@ export class TerrainTileRenderer3D {
             'uniform float uRockDetailEnabled;',
             'uniform vec3 uRockBaseColor;',
             'uniform float uRockDetailContrast;',
+            'uniform float uWallRockDetailTileWorldSize;',
+            'uniform float uWallRockDetailContrast;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
             'varying float vTerrainNeighborhoodSlope;',
             'varying float vTerrainHorizonFade;',
+            'varying float vTerrainWall;',
             'varying vec3 vTriangleDebugColor;',
             '#include <common>',
           ].join('\n'),
@@ -589,6 +662,7 @@ export class TerrainTileRenderer3D {
             'vec3 dpdy = dFdy(vTerrainWorldPos);',
             'vec3 geomNormal = normalize(cross(dpdx, dpdy));',
             'float geomSlope = 1.0 - abs(geomNormal.y);',
+            'float wallMask = clamp(vTerrainWall, 0.0, 1.0);',
             'if (uGroundDetailEnabled > 0.0 || uRockDetailEnabled > 0.0) {',
             '  // ===== Shared mask infrastructure (used by both detail textures) =====',
             '  // Per-fragment geometric slope from world-position derivatives - the',
@@ -605,8 +679,8 @@ export class TerrainTileRenderer3D {
             '  // edge instead of snapping to full green right at the base.',
             '  // The smooth-shaded vTerrainSlope still contributes to the local',
             '  // transition without forcing a per-triangle hard boundary.',
-            '  float bufferSlope = clamp(max(vTerrainSlope * 2.5, vTerrainNeighborhoodSlope), 0.0, 1.0);',
-            '  float verticalCliffMask = smoothstep(0.78, 0.96, geomSlope);',
+            '  float bufferSlope = clamp(max(max(vTerrainSlope * 2.5, vTerrainNeighborhoodSlope), wallMask), 0.0, 1.0);',
+            '  float verticalCliffMask = max(wallMask, smoothstep(0.78, 0.96, geomSlope));',
             '  float flatDetail = (1.0 - smoothstep(0.02, 0.72, bufferSlope)) * (1.0 - verticalCliffMask) * (1.0 - shoreline);',
             '  // Restrict the grass texture to flat triangles on the world-0 plane.',
             '  // Height fades by distance from zero so lower shelves and raised',
@@ -656,14 +730,16 @@ export class TerrainTileRenderer3D {
             '    // single horizontal stripe like a pure XZ sample would produce.',
             '    vec3 triW = pow(abs(geomNormal), vec3(8.0));',
             '    triW /= max(triW.x + triW.y + triW.z, 1e-5);',
-            '    vec2 rockUvXZ = vTerrainWorldPos.xz / uRockDetailTileWorldSize;',
-            '    vec2 rockUvYZ = vTerrainWorldPos.yz / uRockDetailTileWorldSize;',
-            '    vec2 rockUvXY = vTerrainWorldPos.xy / uRockDetailTileWorldSize;',
+            '    float rockTileWorldSize = mix(uRockDetailTileWorldSize, uWallRockDetailTileWorldSize, wallMask);',
+            '    float rockDetailContrast = mix(uRockDetailContrast, uWallRockDetailContrast, wallMask);',
+            '    vec2 rockUvXZ = vTerrainWorldPos.xz / rockTileWorldSize;',
+            '    vec2 rockUvYZ = vTerrainWorldPos.yz / rockTileWorldSize;',
+            '    vec2 rockUvXY = vTerrainWorldPos.xy / rockTileWorldSize;',
             '    vec4 rockXZ = texture2D(uRockDetailTexture, rockUvXZ);',
             '    vec4 rockYZ = texture2D(uRockDetailTexture, rockUvYZ);',
             '    vec4 rockXY = texture2D(uRockDetailTexture, rockUvXY);',
             '    vec4 rockDetail = rockXZ * triW.y + rockYZ * triW.x + rockXY * triW.z;',
-            '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * uRockDetailContrast);',
+            '    terrainRgb = mix(terrainRgb, rockDetail.rgb, rockDetail.a * rockMask * rockDetailContrast);',
             '  }',
             '}',
             'float horizonBlend = uTerrainHorizonBlendEnabled * smoothstep(uTerrainHorizonFadeStart, uTerrainHorizonFadeEnd, vTerrainHorizonFade);',
@@ -702,7 +778,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v32';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v33';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {
@@ -1358,6 +1434,7 @@ export class TerrainTileRenderer3D {
     const terrainShades: number[] = [];
     const terrainNeighborhoodSlopes: number[] = [];
     const terrainHorizonFades: number[] = [];
+    const terrainWalls: number[] = [];
     const terrainIndices: number[] = [];
     const terrainDebugLevels: number[] = [];
 
@@ -1383,34 +1460,121 @@ export class TerrainTileRenderer3D {
             cellSize,
           ),
         );
-      // Lazy vertex allocation: a mesh vertex is only pushed into the GPU
-      // buffers when a kept triangle first references it. With
-      // WATER_FULLY_OPAQUE the wholly-underwater triangles are skipped,
-      // so their vertices (when not also touched by a shoreline
-      // triangle) never get written — the vertex buffer shrinks
-      // alongside the index buffer instead of carrying orphans.
-      const meshVertexToTerrainVertex = new Int32Array(authoritativeMesh.vertexCount).fill(-1);
-      const allocateTerrainVertex = (i: number): number => {
-        const existing = meshVertexToTerrainVertex[i];
+      const triangleIsRendered = new Uint8Array(authoritativeMesh.triangleCount);
+      const triangleSurfaceClasses = new Uint8Array(authoritativeMesh.triangleCount);
+      const normalSumXByClass = Array.from(
+        { length: TERRAIN_RENDER_SURFACE_CLASS_COUNT },
+        () => new Float64Array(authoritativeMesh.vertexCount),
+      );
+      const normalSumYByClass = Array.from(
+        { length: TERRAIN_RENDER_SURFACE_CLASS_COUNT },
+        () => new Float64Array(authoritativeMesh.vertexCount),
+      );
+      const normalSumZByClass = Array.from(
+        { length: TERRAIN_RENDER_SURFACE_CLASS_COUNT },
+        () => new Float64Array(authoritativeMesh.vertexCount),
+      );
+
+      for (let tri = 0; tri < authoritativeMesh.triangleCount; tri++) {
+        const triOffset = tri * 3;
+        const ia = authoritativeMesh.triangleIndices[triOffset];
+        const ib = authoritativeMesh.triangleIndices[triOffset + 1];
+        const ic = authoritativeMesh.triangleIndices[triOffset + 2];
+        const ha = authoritativeMesh.vertexHeights[ia];
+        const hb = authoritativeMesh.vertexHeights[ib];
+        const hc = authoritativeMesh.vertexHeights[ic];
+        const heightSpan = Math.max(ha, hb, hc) - Math.min(ha, hb, hc);
+        const faceNormal = terrainRenderFaceNormal(authoritativeMesh, ia, ib, ic);
+        const surfaceClass = terrainRenderSurfaceClass(faceNormal, heightSpan);
+        triangleSurfaceClasses[tri] = surfaceClass;
+        if (
+          WATER_FULLY_OPAQUE &&
+          ha <= WATER_LEVEL &&
+          hb <= WATER_LEVEL &&
+          hc <= WATER_LEVEL
+        ) {
+          continue;
+        }
+        triangleIsRendered[tri] = 1;
+        const weight = Math.max(faceNormal.weight, 1.0e-6);
+        const sumX = normalSumXByClass[surfaceClass];
+        const sumY = normalSumYByClass[surfaceClass];
+        const sumZ = normalSumZByClass[surfaceClass];
+        sumX[ia] += faceNormal.x * weight;
+        sumY[ia] += faceNormal.y * weight;
+        sumZ[ia] += faceNormal.z * weight;
+        sumX[ib] += faceNormal.x * weight;
+        sumY[ib] += faceNormal.y * weight;
+        sumZ[ib] += faceNormal.z * weight;
+        sumX[ic] += faceNormal.x * weight;
+        sumY[ic] += faceNormal.y * weight;
+        sumZ[ic] += faceNormal.z * weight;
+      }
+
+      // Lazy vertex allocation: a mesh vertex is pushed to the GPU only
+      // when a kept triangle first references it. The key includes the
+      // render surface class so plateau tops keep smooth normals while
+      // the cliff strip keeps wall normals at the same logical point.
+      const meshVertexToTerrainVertexBySurface = Array.from(
+        { length: TERRAIN_RENDER_SURFACE_CLASS_COUNT },
+        () => new Int32Array(authoritativeMesh.vertexCount).fill(-1),
+      );
+      const vertexShadowCache = new Float32Array(authoritativeMesh.vertexCount);
+      vertexShadowCache.fill(-1);
+      const getPrecomputedShadowForVertex = (
+        i: number,
+        wx: number,
+        wz: number,
+        terrainHeight: number,
+      ): number => {
+        const existing = vertexShadowCache[i];
+        if (existing >= 0) return existing;
+        const shadow = terrainPrecomputedShadow(
+          wx,
+          wz,
+          terrainHeight,
+          this.mapWidth,
+          this.mapHeight,
+          terrainHeightAt,
+        );
+        vertexShadowCache[i] = shadow;
+        return shadow;
+      };
+      const getAveragedRenderNormal = (
+        i: number,
+        surfaceClass: number,
+        wx: number,
+        wz: number,
+      ): TerrainRenderNormal => {
+        const sx = normalSumXByClass[surfaceClass][i];
+        const sy = normalSumYByClass[surfaceClass][i];
+        const sz = normalSumZByClass[surfaceClass][i];
+        const len = Math.hypot(sx, sy, sz);
+        if (len > 1.0e-9) {
+          return { x: sx / len, y: sy / len, z: sz / len, weight: len };
+        }
+        const fallback = terrainMeshNormalFromSample(
+          getTerrainMeshSample(wx, wz, this.mapWidth, this.mapHeight, cellSize),
+        );
+        return { x: fallback.nx, y: fallback.ny, z: fallback.nz, weight: 1 };
+      };
+      const allocateTerrainVertex = (i: number, surfaceClass: number): number => {
+        const vertexMap = meshVertexToTerrainVertexBySurface[surfaceClass];
+        const existing = vertexMap[i];
         if (existing >= 0) return existing;
         const coordOffset = i * 2;
         const wx = authoritativeMesh.vertexCoords[coordOffset];
         const wz = authoritativeMesh.vertexCoords[coordOffset + 1];
         const terrainHeight = authoritativeMesh.vertexHeights[i];
-        const sample = getTerrainMeshSample(
-          wx,
-          wz,
-          this.mapWidth,
-          this.mapHeight,
-          cellSize,
-        );
-        const normal = terrainMeshNormalFromSample(sample);
+        const normal = getAveragedRenderNormal(i, surfaceClass, wx, wz);
+        const isWall = surfaceClass === TERRAIN_RENDER_SURFACE_WALL;
         const idx = terrainPositions.length / 3;
-        meshVertexToTerrainVertex[i] = idx;
+        vertexMap[i] = idx;
         terrainPositions.push(wx, terrainHeight + LAND_TILE_GROUND_LIFT, wz);
-        terrainNormals.push(normal.nx, normal.nz, normal.ny);
+        terrainNormals.push(normal.x, normal.z, normal.y);
         terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
-        const vertexSlope = 1 - Math.min(1, Math.abs(normal.nz));
+        terrainWalls.push(isWall ? 1 : 0);
+        const vertexSlope = isWall ? 1 : 1 - Math.min(1, Math.abs(normal.z));
         terrainNeighborhoodSlopes.push(
           computeNeighborhoodSlope(
             wx,
@@ -1421,46 +1585,27 @@ export class TerrainTileRenderer3D {
             cellSize,
           ),
         );
-        const precomputedShadow = terrainPrecomputedShadow(
-          wx,
-          wz,
-          terrainHeight,
-          this.mapWidth,
-          this.mapHeight,
-          terrainHeightAt,
-        );
+        const precomputedShadow = getPrecomputedShadowForVertex(i, wx, wz, terrainHeight);
         terrainShades.push(
           terrainSunShade(
-            { x: normal.nx, y: normal.ny, z: normal.nz },
+            { x: normal.x, y: normal.y, z: normal.z },
             precomputedShadow,
           ),
         );
         return idx;
       };
 
-      // Per-triangle keep mask. A triangle is dropped from the rendered
-      // mesh only when every one of its three vertices sits at or below
-      // WATER_LEVEL — shoreline triangles (any vertex above water) stay.
-      // The authoritative mesh shared with the sim is untouched.
-      const triangleIsRendered = new Uint8Array(authoritativeMesh.triangleCount);
       for (let tri = 0; tri < authoritativeMesh.triangleCount; tri++) {
+        if (!triangleIsRendered[tri]) continue;
         const triOffset = tri * 3;
         const ia = authoritativeMesh.triangleIndices[triOffset];
         const ib = authoritativeMesh.triangleIndices[triOffset + 1];
         const ic = authoritativeMesh.triangleIndices[triOffset + 2];
-        if (
-          WATER_FULLY_OPAQUE &&
-          authoritativeMesh.vertexHeights[ia] <= WATER_LEVEL &&
-          authoritativeMesh.vertexHeights[ib] <= WATER_LEVEL &&
-          authoritativeMesh.vertexHeights[ic] <= WATER_LEVEL
-        ) {
-          continue;
-        }
-        triangleIsRendered[tri] = 1;
+        const surfaceClass = triangleSurfaceClasses[tri];
         terrainIndices.push(
-          allocateTerrainVertex(ia),
-          allocateTerrainVertex(ib),
-          allocateTerrainVertex(ic),
+          allocateTerrainVertex(ia, surfaceClass),
+          allocateTerrainVertex(ib, surfaceClass),
+          allocateTerrainVertex(ic, surfaceClass),
         );
         terrainDebugLevels.push(authoritativeMesh.triangleLevels[tri] ?? 0);
       }
@@ -1503,6 +1648,7 @@ export class TerrainTileRenderer3D {
           // is 1.0 so the grass mask fully suppresses any green tint here.
           terrainNeighborhoodSlopes.push(1);
           terrainHorizonFades.push(this.getTerrainHorizonFade(x, z));
+          terrainWalls.push(1);
           return idx;
         };
         const boundaryEps = 1e-4;
@@ -1538,8 +1684,8 @@ export class TerrainTileRenderer3D {
             this.mapHeight,
           );
           if (midFade >= 1) continue;
-          const topA = meshVertexToTerrainVertex[edge.a];
-          const topB = meshVertexToTerrainVertex[edge.b];
+          const topA = allocateTerrainVertex(edge.a, TERRAIN_RENDER_SURFACE_SMOOTH);
+          const topB = allocateTerrainVertex(edge.b, TERRAIN_RENDER_SURFACE_SMOOTH);
           const topAOff = topA * 3;
           const topBOff = topB * 3;
           const floorA = pushWallVertex(
@@ -1595,6 +1741,7 @@ export class TerrainTileRenderer3D {
           // value here is cosmetic — pick "flat" to match the geometry.
           terrainNeighborhoodSlopes.push(0);
           terrainHorizonFades.push(1);
+          terrainWalls.push(0);
         }
         terrainIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
         terrainDebugLevels.push(-1, -1);
@@ -1615,6 +1762,7 @@ export class TerrainTileRenderer3D {
       const debugTerrainShades = new Float32Array(debugVertexCount);
       const debugTerrainNeighborhoodSlopes = new Float32Array(debugVertexCount);
       const debugTerrainHorizonFades = new Float32Array(debugVertexCount);
+      const debugTerrainWalls = new Float32Array(debugVertexCount);
       const debugTriangleColors = new Float32Array(debugVertexCount * 3);
 
       for (let dst = 0; dst < debugVertexCount; dst++) {
@@ -1630,6 +1778,7 @@ export class TerrainTileRenderer3D {
         debugTerrainShades[dst] = terrainShades[src];
         debugTerrainNeighborhoodSlopes[dst] = terrainNeighborhoodSlopes[src];
         debugTerrainHorizonFades[dst] = terrainHorizonFades[src];
+        debugTerrainWalls[dst] = terrainWalls[src];
         const triangleIndex = Math.floor(dst / 3);
         writeTriangleDebugColor(
           debugTriangleColors,
@@ -1644,6 +1793,7 @@ export class TerrainTileRenderer3D {
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(debugTerrainShades, 1));
       geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(debugTerrainNeighborhoodSlopes, 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(debugTerrainHorizonFades, 1));
+      geometry.setAttribute('terrainWall', new THREE.BufferAttribute(debugTerrainWalls, 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(debugTriangleColors, 3));
     } else {
       const vertexCount = terrainPositions.length / 3;
@@ -1652,6 +1802,7 @@ export class TerrainTileRenderer3D {
       geometry.setAttribute('terrainShade', new THREE.BufferAttribute(new Float32Array(terrainShades), 1));
       geometry.setAttribute('terrainNeighborhoodSlope', new THREE.BufferAttribute(new Float32Array(terrainNeighborhoodSlopes), 1));
       geometry.setAttribute('terrainHorizonFade', new THREE.BufferAttribute(new Float32Array(terrainHorizonFades), 1));
+      geometry.setAttribute('terrainWall', new THREE.BufferAttribute(new Float32Array(terrainWalls), 1));
       geometry.setAttribute('triangleDebugColor', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));
       geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(terrainIndices), 1));
     }

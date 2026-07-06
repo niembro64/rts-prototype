@@ -519,6 +519,14 @@ export const TERRAIN_ROCK_TEXTURE_RESOLUTION = readTextureResolutionConfig(
   COLORS.world.terrain.rock.texture.resolution,
   'colorsConfig.world.terrain.rock.texture.resolution',
 );
+export const TERRAIN_WALL_ROCK_DETAIL_CONTRAST = readUnitIntervalConfig(
+  COLORS.world.terrain.rock.wallTexture.blend,
+  'colorsConfig.world.terrain.rock.wallTexture.blend',
+);
+export const TERRAIN_WALL_ROCK_TEXTURE_TILE_WORLD_SIZE = readPositiveConfigNumber(
+  COLORS.world.terrain.rock.wallTexture.tileWorldSize,
+  'colorsConfig.world.terrain.rock.wallTexture.tileWorldSize',
+);
 
 /** Metal deposits reuse the rock detail texture, but their mesh material can
  *  blend the texture against the per-vertex ore colors independently from the
