@@ -44,6 +44,7 @@ pub(crate) const TERRAIN_WATER_LEVEL: f64 =
 // barycentric guard.
 pub(crate) const TERRAIN_MESH_EPSILON: f64 = 1e-6;
 pub(crate) const TERRAIN_MESH_EDGE_EPSILON: f64 = 1e-4;
+pub(crate) const TERRAIN_PLATEAU_CONSTRAINT_EPSILON: f64 = 1e-7;
 pub(crate) const TERRAIN_INV_SQRT3: f64 = 0.5773502691896258;
 pub(crate) const TERRAIN_EDGE_LINE_KEY_BIAS: i64 = 0x100000000;
 pub(crate) const TERRAIN_EDGE_LINE_KEY_STRIDE: i64 = 0x200000000;
@@ -1093,6 +1094,84 @@ pub(crate) fn terrain_point_inside_map(c: &TerrainMeshBuildConfig, x: f64, z: f6
         && z <= c.map_height + TERRAIN_MESH_EPSILON
 }
 
+#[inline]
+pub(crate) fn terrain_plateau_shelf_key(level: i32) -> i32 {
+    level * 2
+}
+
+#[inline]
+pub(crate) fn terrain_plateau_wall_key(lower_level: i32) -> i32 {
+    lower_level * 2 + 1
+}
+
+pub(crate) fn terrain_plateau_q_and_flat_half_at_world(
+    c: &TerrainMeshBuildConfig,
+    x: f64,
+    z: f64,
+) -> Option<(f64, f64)> {
+    let step = terrain_plateau_step(&c.gen_cfg);
+    if step <= 0.0 || !step.is_finite() {
+        return None;
+    }
+    let shaped = terrain_shaped_height_before_plateaus(x, z, &c.metrics, &c.gen_cfg);
+    if !shaped.is_finite() {
+        return None;
+    }
+    let gradient = terrain_estimate_shaped_gradient_before_plateaus(x, z, &c.metrics, &c.gen_cfg);
+    let flat_half = terrain_plateau_flat_half_for_gradient(gradient, &c.gen_cfg);
+    Some((shaped / step, flat_half))
+}
+
+pub(crate) fn terrain_plateau_region_key_at_world(
+    c: &TerrainMeshBuildConfig,
+    x: f64,
+    z: f64,
+) -> Option<i32> {
+    let (q, flat_half) = terrain_plateau_q_and_flat_half_at_world(c, x, z)?;
+    let nearest = terrain_js_round(q);
+    let signed_from_nearest = q - nearest;
+    if signed_from_nearest.abs() <= flat_half {
+        return Some(terrain_plateau_shelf_key(nearest as i32));
+    }
+    if signed_from_nearest > 0.0 {
+        Some(terrain_plateau_wall_key(nearest as i32))
+    } else {
+        Some(terrain_plateau_wall_key(nearest as i32 - 1))
+    }
+}
+
+pub(crate) fn terrain_plateau_region_key_at_lattice(
+    c: &TerrainMeshBuildConfig,
+    i: i32,
+    j: i32,
+) -> Option<i32> {
+    let x = c.fine_edge * (i as f64 + j as f64 * 0.5);
+    let z = c.fine_height * j as f64;
+    if !terrain_point_inside_map(c, x, z) {
+        return None;
+    }
+    terrain_plateau_region_key_at_world(c, x, z)
+}
+
+/// Boundary after a plateau-region key in height order:
+/// shelf L -> wall L uses q - L - flatHalf = 0; wall L -> shelf L+1
+/// uses q - (L + 1) + flatHalf = 0.
+pub(crate) fn terrain_plateau_boundary_value_at_world(
+    c: &TerrainMeshBuildConfig,
+    x: f64,
+    z: f64,
+    after_key: i32,
+) -> Option<f64> {
+    let (q, flat_half) = terrain_plateau_q_and_flat_half_at_world(c, x, z)?;
+    if after_key % 2 == 0 {
+        let level = after_key / 2;
+        Some(q - level as f64 - flat_half)
+    } else {
+        let lower_level = (after_key - 1) / 2;
+        Some(q - (lower_level + 1) as f64 + flat_half)
+    }
+}
+
 /// One interior/edge sample of the collapse test. Returns false when this
 /// sample's surface error, waterline crossing, or normal divergence is too
 /// large to allow the candidate triangle to collapse.
@@ -1169,6 +1248,17 @@ pub(crate) fn terrain_can_collapse_triangle(
     let max_x = c.map_width + TERRAIN_MESH_EPSILON;
     let max_z = c.map_height + TERRAIN_MESH_EPSILON;
     let mut checked: i64 = 0;
+    let mut first_plateau_key: Option<i32> = None;
+    let mut observe_plateau_key = |key: Option<i32>| -> bool {
+        let Some(key) = key else {
+            return false;
+        };
+        if let Some(first) = first_plateau_key {
+            return first != key;
+        }
+        first_plateau_key = Some(key);
+        false
+    };
 
     for offset_i in 0..=n {
         let (lo_j, hi_j) = if !tri.down {
@@ -1185,6 +1275,9 @@ pub(crate) fn terrain_can_collapse_triangle(
                 continue;
             }
             checked += 1;
+            if observe_plateau_key(terrain_plateau_region_key_at_lattice(c, i, j)) {
+                return false;
+            }
             if !terrain_collapse_sample_ok(
                 c,
                 cache,
@@ -1217,6 +1310,11 @@ pub(crate) fn terrain_can_collapse_triangle(
     let centroid_x = (a.x + b.x + cc.x) / 3.0;
     let centroid_z = (a.z + b.z + cc.z) / 3.0;
     if c.sample_centroid && terrain_point_inside_map(c, centroid_x, centroid_z) {
+        if observe_plateau_key(terrain_plateau_region_key_at_world(
+            c, centroid_x, centroid_z,
+        )) {
+            return false;
+        }
         let actual = terrain_mesh_height_at_world(c, centroid_x, centroid_z);
         let approx = (a.h + b.h + cc.h) / 3.0;
         if c.preserve_waterline && (actual < c.water_level) != (approx < c.water_level) {
@@ -1700,6 +1798,172 @@ pub(crate) fn terrain_polygon_signed_area(points: &[TerrainMeshPoint]) -> f64 {
 }
 
 #[inline]
+pub(crate) fn terrain_push_unique_mesh_point(out: &mut Vec<TerrainMeshPoint>, p: TerrainMeshPoint) {
+    if let Some(prev) = out.last() {
+        if (prev.x - p.x).abs() <= TERRAIN_MESH_EPSILON
+            && (prev.z - p.z).abs() <= TERRAIN_MESH_EPSILON
+        {
+            return;
+        }
+    }
+    out.push(p);
+}
+
+pub(crate) fn terrain_plateau_boundary_intersection(
+    c: &TerrainMeshBuildConfig,
+    a: TerrainMeshPoint,
+    b: TerrainMeshPoint,
+    after_key: i32,
+) -> TerrainMeshPoint {
+    let Some(fa) = terrain_plateau_boundary_value_at_world(c, a.x, a.z, after_key) else {
+        let x = (a.x + b.x) * 0.5;
+        let z = (a.z + b.z) * 0.5;
+        return TerrainMeshPoint {
+            x,
+            z,
+            h: terrain_mesh_height_at_world(c, x, z),
+        };
+    };
+    let Some(fb) = terrain_plateau_boundary_value_at_world(c, b.x, b.z, after_key) else {
+        let x = (a.x + b.x) * 0.5;
+        let z = (a.z + b.z) * 0.5;
+        return TerrainMeshPoint {
+            x,
+            z,
+            h: terrain_mesh_height_at_world(c, x, z),
+        };
+    };
+    if fa.abs() <= TERRAIN_PLATEAU_CONSTRAINT_EPSILON {
+        return a;
+    }
+    if fb.abs() <= TERRAIN_PLATEAU_CONSTRAINT_EPSILON {
+        return b;
+    }
+
+    let mut lo = 0.0;
+    let mut hi = 1.0;
+    let mut flo = fa;
+    for _ in 0..36 {
+        let mid = (lo + hi) * 0.5;
+        let x = a.x + (b.x - a.x) * mid;
+        let z = a.z + (b.z - a.z) * mid;
+        let Some(fmid) = terrain_plateau_boundary_value_at_world(c, x, z, after_key) else {
+            break;
+        };
+        if (flo <= 0.0) == (fmid <= 0.0) {
+            lo = mid;
+            flo = fmid;
+        } else {
+            hi = mid;
+        }
+    }
+
+    let t = (lo + hi) * 0.5;
+    let x = a.x + (b.x - a.x) * t;
+    let z = a.z + (b.z - a.z) * t;
+    TerrainMeshPoint {
+        x,
+        z,
+        h: terrain_mesh_height_at_world(c, x, z),
+    }
+}
+
+pub(crate) fn terrain_clip_polygon_by_plateau_boundary(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    after_key: i32,
+    keep_lower: bool,
+) -> Vec<TerrainMeshPoint> {
+    if points.len() < 3 {
+        return Vec::new();
+    }
+
+    let inside = |value: Option<f64>| -> bool {
+        let Some(value) = value else {
+            return false;
+        };
+        if keep_lower {
+            value <= TERRAIN_PLATEAU_CONSTRAINT_EPSILON
+        } else {
+            value >= -TERRAIN_PLATEAU_CONSTRAINT_EPSILON
+        }
+    };
+
+    let mut out: Vec<TerrainMeshPoint> = Vec::new();
+    let mut prev = points[points.len() - 1];
+    let mut prev_inside = inside(terrain_plateau_boundary_value_at_world(
+        c, prev.x, prev.z, after_key,
+    ));
+    for &curr in points {
+        let curr_inside = inside(terrain_plateau_boundary_value_at_world(
+            c, curr.x, curr.z, after_key,
+        ));
+        if curr_inside != prev_inside {
+            terrain_push_unique_mesh_point(
+                &mut out,
+                terrain_plateau_boundary_intersection(c, prev, curr, after_key),
+            );
+        }
+        if curr_inside {
+            terrain_push_unique_mesh_point(&mut out, curr);
+        }
+        prev = curr;
+        prev_inside = curr_inside;
+    }
+    terrain_remove_duplicate_mesh_points(&out)
+}
+
+pub(crate) fn terrain_polygon_has_area(points: &[TerrainMeshPoint]) -> bool {
+    points.len() >= 3 && terrain_polygon_signed_area(points).abs() > TERRAIN_MESH_EPSILON
+}
+
+pub(crate) fn terrain_plateau_key_range_for_polygon(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+) -> Option<(i32, i32)> {
+    if terrain_plateau_step(&c.gen_cfg) <= 0.0 || points.len() < 3 {
+        return None;
+    }
+    let mut min_key: Option<i32> = None;
+    let mut max_key: Option<i32> = None;
+    let mut observe = |key: Option<i32>| {
+        let Some(key) = key else {
+            return;
+        };
+        min_key = Some(min_key.map_or(key, |min| min.min(key)));
+        max_key = Some(max_key.map_or(key, |max| max.max(key)));
+    };
+
+    for &p in points {
+        observe(terrain_plateau_region_key_at_world(c, p.x, p.z));
+    }
+    for i in 0..points.len() {
+        let a = points[i];
+        let b = points[(i + 1) % points.len()];
+        observe(terrain_plateau_region_key_at_world(
+            c,
+            (a.x + b.x) * 0.5,
+            (a.z + b.z) * 0.5,
+        ));
+    }
+
+    let mut cx = 0.0;
+    let mut cz = 0.0;
+    for &p in points {
+        cx += p.x;
+        cz += p.z;
+    }
+    let inv_n = 1.0 / points.len() as f64;
+    observe(terrain_plateau_region_key_at_world(
+        c,
+        cx * inv_n,
+        cz * inv_n,
+    ));
+
+    Some((min_key?, max_key?))
+}
+
+#[inline]
 pub(crate) fn terrain_world_vertex_key(x: f64, z: f64, scale: f64) -> (i64, i64) {
     (
         terrain_js_round(x * scale) as i64,
@@ -1790,6 +2054,143 @@ pub(crate) fn terrain_triangulate_convex_polygon(
         out_levels.push(level);
         out_leaf_indices.push(leaf_index);
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_emit_mesh_polygon(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    level: i32,
+    leaf_index: i32,
+    vertex_ids: &mut HashMap<(i64, i64), i32>,
+    vertex_coords: &mut Vec<f64>,
+    vertex_heights: &mut Vec<f64>,
+    triangle_indices: &mut Vec<i32>,
+    triangle_levels: &mut Vec<i32>,
+    triangle_leaf_indices: &mut Vec<i32>,
+) {
+    let points = terrain_remove_duplicate_mesh_points(points);
+    if !terrain_polygon_has_area(&points) {
+        return;
+    }
+
+    let mut polygon_ids: Vec<i32> = Vec::with_capacity(points.len());
+    for &p in &points {
+        let x = terrain_mesh_clamp_to_map(p.x, c.map_width);
+        let z = terrain_mesh_clamp_to_map(p.z, c.map_height);
+        let key = terrain_world_vertex_key(x, z, c.vertex_key_scale);
+        let id = if let Some(&existing) = vertex_ids.get(&key) {
+            existing
+        } else {
+            let id = vertex_heights.len() as i32;
+            vertex_ids.insert(key, id);
+            vertex_coords.push(x);
+            vertex_coords.push(z);
+            vertex_heights.push(terrain_mesh_height_at_world(c, x, z));
+            id
+        };
+        terrain_push_unique_vertex(&mut polygon_ids, id);
+    }
+    if polygon_ids.len() > 1 && polygon_ids[0] == polygon_ids[polygon_ids.len() - 1] {
+        polygon_ids.pop();
+    }
+
+    terrain_triangulate_convex_polygon(
+        vertex_coords,
+        &polygon_ids,
+        level,
+        leaf_index,
+        triangle_indices,
+        triangle_levels,
+        triangle_leaf_indices,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_emit_plateau_constrained_polygon(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    low_key: i32,
+    high_key: i32,
+    depth: i32,
+    level: i32,
+    leaf_index: i32,
+    vertex_ids: &mut HashMap<(i64, i64), i32>,
+    vertex_coords: &mut Vec<f64>,
+    vertex_heights: &mut Vec<f64>,
+    triangle_indices: &mut Vec<i32>,
+    triangle_levels: &mut Vec<i32>,
+    triangle_leaf_indices: &mut Vec<i32>,
+) {
+    let points = terrain_remove_duplicate_mesh_points(points);
+    if !terrain_polygon_has_area(&points) {
+        return;
+    }
+
+    if high_key <= low_key || depth >= 64 {
+        terrain_emit_mesh_polygon(
+            c,
+            &points,
+            level,
+            leaf_index,
+            vertex_ids,
+            vertex_coords,
+            vertex_heights,
+            triangle_indices,
+            triangle_levels,
+            triangle_leaf_indices,
+        );
+        return;
+    }
+
+    let lower = terrain_clip_polygon_by_plateau_boundary(c, &points, low_key, true);
+    let upper = terrain_clip_polygon_by_plateau_boundary(c, &points, low_key, false);
+    if !terrain_polygon_has_area(&lower) || !terrain_polygon_has_area(&upper) {
+        terrain_emit_mesh_polygon(
+            c,
+            &points,
+            level,
+            leaf_index,
+            vertex_ids,
+            vertex_coords,
+            vertex_heights,
+            triangle_indices,
+            triangle_levels,
+            triangle_leaf_indices,
+        );
+        return;
+    }
+
+    terrain_emit_plateau_constrained_polygon(
+        c,
+        &lower,
+        low_key,
+        low_key,
+        depth + 1,
+        level,
+        leaf_index,
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+        triangle_indices,
+        triangle_levels,
+        triangle_leaf_indices,
+    );
+    terrain_emit_plateau_constrained_polygon(
+        c,
+        &upper,
+        low_key + 1,
+        high_key,
+        depth + 1,
+        level,
+        leaf_index,
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+        triangle_indices,
+        triangle_levels,
+        triangle_leaf_indices,
+    );
 }
 
 #[inline]
@@ -2011,7 +2412,6 @@ pub(crate) fn terrain_build_conforming_topology(
 
     let mut boundary: Vec<(i32, i32)> = Vec::new();
     let mut polygon_pts: Vec<TerrainMeshPoint> = Vec::new();
-    let mut polygon_ids: Vec<i32> = Vec::new();
 
     for (leaf_index, &leaf) in leaves.iter().enumerate() {
         let source_level = terrain_triangle_hierarchy_level(c, leaf.side);
@@ -2028,32 +2428,36 @@ pub(crate) fn terrain_build_conforming_topology(
         if terrain_polygon_signed_area(&clipped) < 0.0 {
             clipped.reverse();
         }
-        polygon_ids.clear();
-        for &p in &clipped {
-            let x = terrain_mesh_clamp_to_map(p.x, c.map_width);
-            let z = terrain_mesh_clamp_to_map(p.z, c.map_height);
-            let key = terrain_world_vertex_key(x, z, c.vertex_key_scale);
-            let id = if let Some(&existing) = vertex_ids.get(&key) {
-                existing
-            } else {
-                let id = vertex_heights.len() as i32;
-                vertex_ids.insert(key, id);
-                vertex_coords.push(x);
-                vertex_coords.push(z);
-                vertex_heights.push(terrain_mesh_height_at_world(c, x, z));
-                id
-            };
-            polygon_ids.push(id);
+        if let Some((low_key, high_key)) = terrain_plateau_key_range_for_polygon(c, &clipped) {
+            terrain_emit_plateau_constrained_polygon(
+                c,
+                &clipped,
+                low_key,
+                high_key,
+                0,
+                source_level,
+                leaf_index as i32,
+                &mut vertex_ids,
+                &mut vertex_coords,
+                &mut vertex_heights,
+                &mut triangle_indices,
+                &mut triangle_levels,
+                &mut triangle_leaf_indices,
+            );
+        } else {
+            terrain_emit_mesh_polygon(
+                c,
+                &clipped,
+                source_level,
+                leaf_index as i32,
+                &mut vertex_ids,
+                &mut vertex_coords,
+                &mut vertex_heights,
+                &mut triangle_indices,
+                &mut triangle_levels,
+                &mut triangle_leaf_indices,
+            );
         }
-        terrain_triangulate_convex_polygon(
-            &vertex_coords,
-            &polygon_ids,
-            source_level,
-            leaf_index as i32,
-            &mut triangle_indices,
-            &mut triangle_levels,
-            &mut triangle_leaf_indices,
-        );
     }
 
     let (resolved_indices, resolved_levels, resolved_leaf_indices) =

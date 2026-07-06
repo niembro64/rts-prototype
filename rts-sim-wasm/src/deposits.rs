@@ -168,6 +168,11 @@ pub(crate) fn terrain_plateau_ramp_curve(t: f64, cfg: &MetalDepositTerrainConfig
     smooth + (t - smooth) * sharpness
 }
 
+#[inline]
+pub(crate) fn terrain_plateau_step(cfg: &MetalDepositTerrainConfigRust) -> f64 {
+    cfg.terrain_d_terrain
+}
+
 pub(crate) fn terrain_plateau_flat_half_for_gradient(
     gradient_magnitude: f64,
     cfg: &MetalDepositTerrainConfigRust,
