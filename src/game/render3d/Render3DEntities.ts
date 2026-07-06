@@ -40,6 +40,12 @@ import { ConstructionVisualController3D } from './ConstructionVisualController3D
 import { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
+import { entityDetailLevelForView } from './EntityLod3D';
+import {
+  UNIT_DETAIL_REBUILD_MARGIN,
+  unitDetailBand,
+  unitDetailGraphicsConfig,
+} from './EntityDetailLevel3D';
 import { BuildingEntityRenderer3D } from './BuildingEntityRenderer3D';
 import { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import {
@@ -596,13 +602,25 @@ export class Render3DEntities {
       const unitBlueprintId = unitRows.unitBlueprintIds[row];
       const unitTurretCount = unitRows.turretCount[row];
       const fullUnitDetail = true;
+      // Per-entity detail level (1 = full, 0 = glyph). Its coarse band decides
+      // whether this unit's mesh should shed its turret / legs as it shrinks on
+      // screen. A rebuild only fires once the level has moved a margin past the
+      // last-built level, so a unit sitting on a band boundary doesn't thrash.
+      const detailLevel = entityDetailLevelForView(this.frameState.view, e);
+      const detailBand = unitDetailBand(detailLevel, unitGfx);
+      const detailBandChanged =
+        m !== undefined &&
+        m.unitRenderDetailBand !== detailBand &&
+        Math.abs(detailLevel - (m.unitRenderDetailLevel ?? detailLevel)) >
+          UNIT_DETAIL_REBUILD_MARGIN;
       if (
         m &&
         (
           m.unitRenderFrameKey !== unitGeometryKey ||
           m.unitRenderOwnerId !== pid ||
           m.unitRenderBlueprintId !== unitBlueprintId ||
-          m.unitRenderTurretCount !== unitTurretCount
+          m.unitRenderTurretCount !== unitTurretCount ||
+          detailBandChanged
         )
       ) {
         // Preserve leg state across the rebuild — feet keep
@@ -618,13 +636,17 @@ export class Render3DEntities {
       if (!m) {
         const legSnap = this.legStateCache.get(entityId);
         const ownerKey = pid ?? 'neutral';
-        const unitRenderKey = `${unitGeometryKey}|owner:${ownerKey}|unit:${unitBlueprintId ?? 'unknown'}|turrets:${unitTurretCount}`;
+        const unitRenderKey = `${unitGeometryKey}|owner:${ownerKey}|unit:${unitBlueprintId ?? 'unknown'}|turrets:${unitTurretCount}|detail:${detailBand}`;
         m = this.unitMeshBuilder.build({
           entity: e,
           radius,
           ownerId: pid,
           turrets,
-          unitGfx,
+          // Feed a per-entity graphics config whose turret / leg rungs are
+          // scaled down to this unit's detail level, so a distant unit is built
+          // with a simpler (or no) turret and fewer legs. The global config is
+          // the ceiling; detail only ever removes.
+          unitGfx: unitDetailGraphicsConfig(unitGfx, detailLevel),
           unitFrameKey: unitGeometryKey,
           unitRenderKey,
           legState: legSnap,
@@ -632,6 +654,11 @@ export class Render3DEntities {
         if (legSnap !== undefined) this.legStateCache.delete(entityId);
         this.unitMeshes.set(entityId, m);
         if (m.locomotion) this.activeLocomotionUnitIds.add(entityId);
+        // Record the band + level this mesh was actually built at. Only a real
+        // (re)build updates these, so the margin gate above measures drift from
+        // the last build — not from the previous frame.
+        m.unitRenderDetailBand = detailBand;
+        m.unitRenderDetailLevel = detailLevel;
         meshCreated = true;
       }
       this.reactivateUnitMeshForScope(entityId, m);

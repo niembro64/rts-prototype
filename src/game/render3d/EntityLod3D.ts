@@ -14,6 +14,12 @@ import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
 import { getLodMode } from '@/clientBarConfig';
 import { canIndexClientEntityId } from '../network/ClientEntityIds';
 import type { Entity, EntityId } from '../sim/types';
+import {
+  DETAIL_LEVEL_FULL,
+  DETAIL_LEVEL_GLYPH,
+  detailLevelForDistance,
+} from './EntityDetailLevel3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
 
 const FALLBACK_MIN_ENTITY_LOD_RADIUS = 1;
 const ENTITY_LOD_BODY_CHANNEL = 'body';
@@ -266,6 +272,42 @@ export function simPositionUsesLowEmissionLod3D(
     highToLowDistance * highToLowDistance;
 }
 
+/**
+ * Continuous per-entity detail level L in [0,1] for callers without a
+ * hysteresis cache. 1 = full fidelity, 0 = glyph. Uses the same per-entity
+ * switch distance as the proxy, so L hits 0 where the entity turns into its
+ * glyph. Prefer the cached {@link EntityLodHysteresis3D.entityDetailLevel}
+ * inside the render loop.
+ */
+export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): number {
+  const lodMode = getLodMode();
+  if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+  if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
+  const radius = entityLodRadius3D(entity);
+  const switchDistance = entityLodFullDetailDistance3D(radius, enterProxyDistanceMultiplier());
+  const distance = Math.sqrt(entityCameraDistanceSq3D(camera, entity));
+  return detailLevelForDistance(distance, switchDistance);
+}
+
+/**
+ * Detail level from a per-frame {@link RenderViewState3D} (camera coords in
+ * three space) rather than a THREE.Camera. Lets the render loop compute a
+ * host's level with only the frame view it already holds. Same result as
+ * {@link entityDetailLevel3D}.
+ */
+export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity): number {
+  const lodMode = getLodMode();
+  if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+  if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
+  const radius = entityLodRadius3D(entity);
+  const switchDistance = entityLodFullDetailDistance3D(radius, enterProxyDistanceMultiplier());
+  const dx = view.cameraX - entity.transform.x;
+  const dy = view.cameraY - entity.transform.z;
+  const dz = view.cameraZ - entity.transform.y;
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  return detailLevelForDistance(distance, switchDistance);
+}
+
 export class EntityLodHysteresis3D {
   private readonly proxyIdsByChannel = new Map<string, Set<EntityId>>();
   private readonly lastSeenFrameByChannel = new Map<string, Map<EntityId, number>>();
@@ -405,6 +447,24 @@ export class EntityLodHysteresis3D {
     if (useProxy) proxyIds.add(entity.id);
     else proxyIds.delete(entity.id);
     return useProxy;
+  }
+
+  /**
+   * Continuous detail level L in [0,1] for this entity, reusing the per-frame
+   * cached camera distance + radius. 1 = full fidelity, 0 = glyph. Composed
+   * parts should read their HOST entity's level via this, never their own.
+   */
+  entityDetailLevel(camera: THREE.Camera, entity: Entity): number {
+    const lodMode = getLodMode();
+    if (lodMode === 'high') return DETAIL_LEVEL_FULL;
+    if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
+    const radius = this.entityLodRadius(entity);
+    const switchDistance = entityLodFullDetailDistance3D(
+      radius,
+      enterProxyDistanceMultiplier() * this.distanceScale,
+    );
+    const distance = Math.sqrt(this.entityCameraDistanceSq(camera, entity));
+    return detailLevelForDistance(distance, switchDistance);
   }
 
   entityEmissionUsesLowLodDistance(

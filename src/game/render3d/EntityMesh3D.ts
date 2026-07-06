@@ -170,6 +170,15 @@ export type EntityMesh = {
   unitRenderOwnerId?: PlayerId;
   unitRenderBlueprintId?: string;
   unitRenderTurretCount?: number;
+  /** Coarse detail band (from EntityDetailLevel3D.unitDetailBand) this mesh
+   *  was built at. As a unit shrinks on screen its band drops and the mesh is
+   *  rebuilt to shed its turret / legs — the intermediate step between the
+   *  full mesh and the flat LOD glyph. */
+  unitRenderDetailBand?: number;
+  /** Detail level at the last (re)build. A rebuild only fires once the level
+   *  has moved past a margin from this, so a unit hovering on a band boundary
+   *  doesn't rebuild every frame. */
+  unitRenderDetailLevel?: number;
   /** Per-Mesh fallback head-only turrets switch material when engaged.
    *  Instanced heads carry this through instanceColor; this cache keeps
    *  the rare per-Mesh fallback path from rewriting materials every

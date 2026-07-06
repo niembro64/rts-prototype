@@ -331,6 +331,17 @@ export const EMISSION_LOD_HIGH_TO_LOW_DISTANCES =
   lodConfigJson.emissionHighToLowDistances;
 export const ENTITY_LOD_EFFECT_RADIUS_FALLBACKS = lodConfigJson.effectRadiusFallbacks;
 
+// Continuous per-entity detail level (LOD). See lod.json `detail.comment`.
+// L in [0,1]: 1 = full fidelity, 0 = the flat proxy glyph. L ramps from 1 to 0
+// across [fullDetailFraction * switchDistance, switchDistance], so parts shed
+// progressively before an entity becomes its glyph and the geometry tier steps
+// down with zoom. Composed parts inherit their host's L.
+export const ENTITY_DETAIL_ENABLED = lodConfigJson.detail.enabled;
+export const ENTITY_DETAIL_FULL_DETAIL_FRACTION =
+  lodConfigJson.detail.fullDetailFraction;
+export const ENTITY_DETAIL_TIER_CUTOFFS = lodConfigJson.detail.tierCutoffs;
+export const ENTITY_DETAIL_FEATURE_MIN_LEVEL = lodConfigJson.detail.featureMinLevel;
+
 // Render-only water surface tuning. `color` is the tint of the flat
 // horizon water plane; `opacity` is material alpha. Lower opacity =
 // more transparent.

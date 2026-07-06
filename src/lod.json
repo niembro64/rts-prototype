@@ -52,5 +52,32 @@
     "hitImpact": 2,
     "projectileExpireImpact": 8,
     "shieldImpact": 30
+  },
+  "detail": {
+    "comment": "Continuous per-entity detail level L in [0,1]. 1 = full fidelity (only when decently zoomed in), 0 = the flat proxy glyph. L is derived from the same per-entity switch distance the proxy uses, so L reaches 0 exactly where the entity would flip to its glyph. fullDetailFraction is the fraction of that switch distance within which L stays pinned at 1; between that and the switch distance L ramps 1 -> 0. Composed parts (turret, barrel, locomotion, ...) never compute their own L: they read their host's. Each feature below names the L at/above which that part is drawn, so higher-threshold parts (small greeble) shed first as you zoom out while the body survives to the glyph. tierCutoffs pick a geometry segment tier from L.",
+    "enabled": true,
+    "fullDetailFraction": 0.4,
+    "tierCutoffs": {
+      "close": 0.62,
+      "mid": 0.3
+    },
+    "featureMinLevel": {
+      "body": 0,
+      "healthBar": 0.12,
+      "turret": 0.1,
+      "barrelPrimary": 0.14,
+      "locomotion": 0.16,
+      "nameLabel": 0.24,
+      "projectileTrail": 0.3,
+      "turretHead": 0.34,
+      "shieldPanels": 0.4,
+      "beamGlow": 0.4,
+      "buildingDetail": 0.42,
+      "chassisDetail": 0.44,
+      "barrelSecondary": 0.5,
+      "projectileGlow": 0.5,
+      "locomotionAnimated": 0.52,
+      "muzzleDetail": 0.68
+    }
   }
 }
