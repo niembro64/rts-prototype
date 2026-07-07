@@ -71,6 +71,7 @@ type ClientDefaults = {
   readonly triangleDebug: boolean;
   readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
+  readonly airLiftProbeDebug: boolean;
   readonly metalMap: boolean;
   readonly elevationMap: boolean;
   readonly pathingMap: boolean;
@@ -144,6 +145,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
     wallTriangleDebug: pickDefault(clientBarConfig.wallTriangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
+    airLiftProbeDebug: pickDefault(clientBarConfig.airLiftProbeDebug, mode),
     metalMap: pickDefault(clientBarConfig.metalMap, mode),
     elevationMap: pickDefault(clientBarConfig.elevationMap, mode),
     pathingMap: pickDefault(clientBarConfig.pathingMap, mode),
@@ -223,6 +225,7 @@ export const CLIENT_CONFIG = {
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
   wallTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.wallTriangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
+  airLiftProbeDebug: { default: DEMO_CLIENT_DEFAULTS.airLiftProbeDebug },
   metalMap: { default: DEMO_CLIENT_DEFAULTS.metalMap },
   elevationMap: { default: DEMO_CLIENT_DEFAULTS.elevationMap },
   pathingMap: { default: DEMO_CLIENT_DEFAULTS.pathingMap },
@@ -325,6 +328,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     triangleDebug: { default: defaults.triangleDebug },
     wallTriangleDebug: { default: defaults.wallTriangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
+    airLiftProbeDebug: { default: defaults.airLiftProbeDebug },
     metalMap: { default: defaults.metalMap },
     elevationMap: { default: defaults.elevationMap },
     pathingMap: { default: defaults.pathingMap },
@@ -384,6 +388,7 @@ type ClientStorageKeyName =
   | 'triangleDebug'
   | 'wallTriangleDebug'
   | 'buildGridDebug'
+  | 'airLiftProbeDebug'
   | 'metalMap'
   | 'elevationMap'
   | 'pathingMap'
@@ -429,6 +434,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'triangleDebug',
   'wallTriangleDebug',
   'buildGridDebug',
+  'airLiftProbeDebug',
   'metalMap',
   'elevationMap',
   'pathingMap',
@@ -523,6 +529,7 @@ let currentResourceBallDensity: number = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentWallTriangleDebug: boolean = _cd.wallTriangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
+let currentAirLiftProbeDebug: boolean = _cd.airLiftProbeDebug.default;
 let currentMetalMap: boolean = _cd.metalMap.default;
 let currentElevationMap: boolean = _cd.elevationMap.default;
 let currentPathingMap: boolean = _cd.pathingMap.default;
@@ -629,6 +636,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentTriangleDebug = cd.triangleDebug.default;
   currentWallTriangleDebug = cd.wallTriangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
+  currentAirLiftProbeDebug = cd.airLiftProbeDebug.default;
   currentMetalMap = cd.metalMap.default;
   currentElevationMap = cd.elevationMap.default;
   currentPathingMap = cd.pathingMap.default;
@@ -737,6 +745,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedBuildGridDebug = readPersisted(keys.buildGridDebug);
   if (storedBuildGridDebug !== null) {
     currentBuildGridDebug = storedBuildGridDebug === 'true';
+  }
+  const storedAirLiftProbeDebug = readPersisted(keys.airLiftProbeDebug);
+  if (storedAirLiftProbeDebug !== null) {
+    currentAirLiftProbeDebug = storedAirLiftProbeDebug === 'true';
   }
   const storedMetalMap = readPersisted(keys.metalMap);
   if (storedMetalMap !== null) {
@@ -1174,6 +1186,15 @@ export function getBuildGridDebug(): boolean {
 export function setBuildGridDebug(enabled: boolean): void {
   currentBuildGridDebug = enabled;
   persist(activeStorageKeys().buildGridDebug, String(enabled));
+}
+
+export function getAirLiftProbeDebug(): boolean {
+  return currentAirLiftProbeDebug;
+}
+
+export function setAirLiftProbeDebug(enabled: boolean): void {
+  currentAirLiftProbeDebug = enabled;
+  persist(activeStorageKeys().airLiftProbeDebug, String(enabled));
 }
 
 export function getMetalMap(): boolean {

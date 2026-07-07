@@ -19,7 +19,6 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
 import {
-  LAND_CELL_SIZE,
   UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
   UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT,
   UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT,
@@ -58,8 +57,8 @@ import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction'
 const HOVER_ORIENTATION_K = 30;
 const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
-const AIR_LIFT_FORWARD_PROBE_STEP = Math.max(4, LAND_CELL_SIZE * 0.5);
-const AIR_LIFT_FORWARD_PROBE_MAX_STEPS = 8;
+const AIR_LIFT_FORWARD_PROBE_SAMPLE_COUNT = 5;
+const AIR_LIFT_NEAR_GROUND_ALTITUDE = 0.5;
 
 const UF_ROW_DIR_X = 0;
 const UF_ROW_DIR_Y = 1;
@@ -90,7 +89,7 @@ const UF_ROW_OMEGA_Z = 25;
 const UF_ROW_SWIM_RANDOM_SAMPLE = 46;
 const UF_ROW_HEADING_X = 47;
 const UF_ROW_HEADING_Y = 48;
-const UF_ROW_AIR_AHEAD_GROUND_Z = 51;
+const UF_ROW_AIR_LIFT_INVERSE_ALTITUDE = 51;
 
 const UF_FLAG_HAS_THRUST = 1 << 0;
 const UF_FLAG_IS_FLYING = 1 << 1;
@@ -101,7 +100,7 @@ const UF_FLAG_HAS_ORIENTATION = 1 << 7;
 const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING = 1 << 8;
 const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING = 1 << 9;
 const UF_FLAG_ON_GROUND = 1 << 10;
-const UF_FLAG_HAS_AIR_AHEAD_GROUND = 1 << 11;
+const UF_FLAG_HAS_AIR_LIFT_INVERSE_ALTITUDE = 1 << 11;
 const UF_PROFILE_FLAG_IS_FLYING = 1 << 16;
 const UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION = 1 << 17;
 const UF_PROFILE_FLAG_IS_SWIMMER = 1 << 18;
@@ -542,7 +541,7 @@ export class UnitForceSystem {
       }
 
       _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
-      _forceRows[base + UF_ROW_AIR_AHEAD_GROUND_Z] = supportSurface.groundZ;
+      _forceRows[base + UF_ROW_AIR_LIFT_INVERSE_ALTITUDE] = 0;
 
       if (mediumLiftActive && airFraction > 0 && airLiftAuthored) {
         const aheadProbeDistance =
@@ -563,34 +562,26 @@ export class UnitForceSystem {
               probeDirY = dirY * invDirMag;
             }
             hasProbeDir = true;
-          } else if (isFlying) {
+          } else {
             probeDirX = Math.cos(yaw);
             probeDirY = Math.sin(yaw);
             hasProbeDir = true;
-          } else {
-            const velX = bodyViews.velX[bodySlot];
-            const velY = bodyViews.velY[bodySlot];
-            const velLenSq = velX * velX + velY * velY;
-            if (velLenSq > 0.0001 && Number.isFinite(velLenSq)) {
-              const invVelMag = 1 / Math.sqrt(velLenSq);
-              probeDirX = velX * invVelMag;
-              probeDirY = velY * invVelMag;
-              hasProbeDir = true;
-            }
           }
 
           if (hasProbeDir) {
-            const aheadX = bodyX + probeDirX * aheadProbeDistance;
-            const aheadY = bodyY + probeDirY * aheadProbeDistance;
-            _forceRows[base + UF_ROW_AIR_AHEAD_GROUND_Z] = this.sampleAirLiftAheadGroundZ(
-              bodyX,
-              bodyY,
-              aheadX,
-              aheadY,
-              entity.id,
-              !terrainOnlySupport,
-            );
-            flags |= UF_FLAG_HAS_AIR_AHEAD_GROUND;
+            _forceRows[base + UF_ROW_AIR_LIFT_INVERSE_ALTITUDE] =
+              this.sampleAirLiftAverageInverseAltitude(
+                bodyZ,
+                bodyX,
+                bodyY,
+                probeDirX,
+                probeDirY,
+                aheadProbeDistance,
+                supportSurface.groundZ,
+                entity.id,
+                !terrainOnlySupport,
+              );
+            flags |= UF_FLAG_HAS_AIR_LIFT_INVERSE_ALTITUDE;
           }
         }
       }
@@ -955,37 +946,48 @@ export class UnitForceSystem {
     this.probeSupportIndexReady = true;
   }
 
-  private sampleAirLiftAheadGroundZ(
-    startX: number,
-    startY: number,
-    aheadX: number,
-    aheadY: number,
+  private airLiftInverseAltitudeFromGroundZ(bodyZ: number, groundZ: number): number {
+    if (!Number.isFinite(bodyZ) || !Number.isFinite(groundZ)) {
+      return 1 / AIR_LIFT_NEAR_GROUND_ALTITUDE;
+    }
+    const altitude = bodyZ - Math.max(groundZ, WATER_LEVEL);
+    const clampedAltitude = Number.isFinite(altitude)
+      ? Math.max(AIR_LIFT_NEAR_GROUND_ALTITUDE, altitude)
+      : AIR_LIFT_NEAR_GROUND_ALTITUDE;
+    return 1 / clampedAltitude;
+  }
+
+  private sampleAirLiftAverageInverseAltitude(
+    bodyZ: number,
+    bodyX: number,
+    bodyY: number,
+    probeDirX: number,
+    probeDirY: number,
+    aheadDistance: number,
+    directGroundZ: number,
     ignoreEntityId: EntityId,
     includeSupportSurfaces: boolean,
   ): number {
-    const dx = aheadX - startX;
-    const dy = aheadY - startY;
-    const distance = Math.hypot(dx, dy);
-    if (!Number.isFinite(distance) || distance <= 0) {
-      return this.sampleAirLiftGroundZAt(aheadX, aheadY, ignoreEntityId, includeSupportSurfaces);
+    const directInverseAltitude = this.airLiftInverseAltitudeFromGroundZ(bodyZ, directGroundZ);
+    if (
+      !Number.isFinite(aheadDistance) ||
+      aheadDistance <= 0 ||
+      !Number.isFinite(probeDirX) ||
+      !Number.isFinite(probeDirY)
+    ) {
+      return directInverseAltitude;
     }
 
-    const steps = Math.max(
-      1,
-      Math.min(AIR_LIFT_FORWARD_PROBE_MAX_STEPS, Math.ceil(distance / AIR_LIFT_FORWARD_PROBE_STEP)),
-    );
-    let maxGroundZ = Number.NEGATIVE_INFINITY;
-    for (let step = 1; step <= steps; step++) {
-      const t = step / steps;
-      const x = startX + dx * t;
-      const y = startY + dy * t;
+    let inverseAltitudeSum = directInverseAltitude;
+    for (let step = 1; step <= AIR_LIFT_FORWARD_PROBE_SAMPLE_COUNT; step++) {
+      const t = step / AIR_LIFT_FORWARD_PROBE_SAMPLE_COUNT;
+      const x = bodyX + probeDirX * aheadDistance * t;
+      const y = bodyY + probeDirY * aheadDistance * t;
       const groundZ = this.sampleAirLiftGroundZAt(x, y, ignoreEntityId, includeSupportSurfaces);
-      if (Number.isFinite(groundZ) && groundZ > maxGroundZ) maxGroundZ = groundZ;
+      inverseAltitudeSum += this.airLiftInverseAltitudeFromGroundZ(bodyZ, groundZ);
     }
 
-    return Number.isFinite(maxGroundZ)
-      ? maxGroundZ
-      : this.sampleAirLiftGroundZAt(aheadX, aheadY, ignoreEntityId, includeSupportSurfaces);
+    return inverseAltitudeSum / (AIR_LIFT_FORWARD_PROBE_SAMPLE_COUNT + 1);
   }
 
   private sampleAirLiftGroundZAt(

@@ -30,6 +30,7 @@ type RtsScene3DRendererResources = {
   burnMarkRenderer?: Destroyable | null;
   groundPrintRenderer?: Destroyable | null;
   areaDragRenderer?: Destroyable | null;
+  airLiftProbeOverlay?: Destroyable | null;
   lineDragRenderer?: Destroyable | null;
   buildGhostRenderer?: Destroyable | null;
   sprayRenderer?: Destroyable | null;
@@ -66,6 +67,7 @@ export function teardownRtsScene3DRenderers(
   resources.burnMarkRenderer?.destroy();
   resources.groundPrintRenderer?.destroy();
   resources.areaDragRenderer?.destroy();
+  resources.airLiftProbeOverlay?.destroy();
   resources.lineDragRenderer?.destroy();
   resources.buildGhostRenderer?.destroy();
   resources.sprayRenderer?.destroy();

@@ -278,7 +278,7 @@ pub(crate) const UF_ROW_HEADING_X: usize = 47;
 pub(crate) const UF_ROW_HEADING_Y: usize = 48;
 pub(crate) const UF_ROW_AIR_FORCE: usize = 49;
 pub(crate) const UF_ROW_AIR_TRACTION: usize = 50;
-pub(crate) const UF_ROW_AIR_AHEAD_GROUND_Z: usize = 51;
+pub(crate) const UF_ROW_AIR_LIFT_INVERSE_ALTITUDE: usize = 51;
 
 pub(crate) const UF_FLAG_HAS_THRUST: u32 = 1 << 0;
 pub(crate) const UF_FLAG_IS_FLYING: u32 = 1 << 1;
@@ -290,7 +290,7 @@ pub(crate) const UF_FLAG_HAS_ORIENTATION: u32 = 1 << 7;
 pub(crate) const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING: u32 = 1 << 8;
 pub(crate) const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING: u32 = 1 << 9;
 pub(crate) const UF_FLAG_ON_GROUND: u32 = 1 << 10;
-pub(crate) const UF_FLAG_HAS_AIR_AHEAD_GROUND: u32 = 1 << 11;
+pub(crate) const UF_FLAG_HAS_AIR_LIFT_INVERSE_ALTITUDE: u32 = 1 << 11;
 pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
     UF_FLAG_FORWARD_THRUST_REQUIRES_FACING | UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
 
@@ -549,20 +549,22 @@ fn unit_force_clamp_magnitude3(v: &mut [f64; 3], max_mag: f64) {
 }
 
 #[inline]
-fn unit_force_air_lift_altitude(
+fn unit_force_air_lift_direct_altitude(pos_z: f64, ground_z: f64) -> f64 {
+    let body_reference_z = ground_z.max(TERRAIN_WATER_LEVEL);
+    (pos_z - body_reference_z).max(0.5)
+}
+
+#[inline]
+fn unit_force_air_lift_inverse_altitude(
     pos_z: f64,
     ground_z: f64,
-    ahead_ground_z: f64,
-    has_ahead_ground: bool,
+    sampled_inverse_altitude: f64,
+    has_sampled_inverse_altitude: bool,
 ) -> f64 {
-    let body_reference_z = ground_z.max(TERRAIN_WATER_LEVEL);
-    let body_altitude = pos_z - body_reference_z;
-    if has_ahead_ground && ahead_ground_z.is_finite() {
-        let ahead_altitude = pos_z - ahead_ground_z.max(TERRAIN_WATER_LEVEL);
-        body_altitude.min(ahead_altitude).max(0.5)
-    } else {
-        body_altitude.max(0.5)
+    if has_sampled_inverse_altitude && sampled_inverse_altitude.is_finite() {
+        return sampled_inverse_altitude.max(0.0);
     }
+    1.0 / unit_force_air_lift_direct_altitude(pos_z, ground_z)
 }
 
 #[inline]
@@ -1001,18 +1003,19 @@ pub fn unit_force_step_batch(
                 air_has_target_dir = true;
             }
 
-            let altitude = unit_force_air_lift_altitude(
+            let direct_altitude = unit_force_air_lift_direct_altitude(p.pos_z[slot], ground_z);
+            let inverse_altitude = unit_force_air_lift_inverse_altitude(
                 p.pos_z[slot],
                 ground_z,
-                rows[base + UF_ROW_AIR_AHEAD_GROUND_Z],
-                flag & UF_FLAG_HAS_AIR_AHEAD_GROUND != 0,
+                rows[base + UF_ROW_AIR_LIFT_INVERSE_ALTITUDE],
+                flag & UF_FLAG_HAS_AIR_LIFT_INVERSE_ALTITUDE != 0,
             );
             let gravity_counter_ratio = rows[base + UF_ROW_GRAVITY_COUNTER_RATIO];
             let gravity_deficit_ratio = 1.0 - gravity_counter_ratio;
             let base_hover_height_force = if rows[base + UF_ROW_HOVER_HEIGHT_FORCE].is_finite() {
                 rows[base + UF_ROW_HOVER_HEIGHT_FORCE]
             } else {
-                altitude * gravity_deficit_ratio
+                direct_altitude * gravity_deficit_ratio
             };
             let rand_amount = rows[base + UF_ROW_HOVER_RANDOM_AMOUNT];
             let raw_hover_height_force = if rand_amount > 0.0 {
@@ -1035,7 +1038,7 @@ pub fn unit_force_step_batch(
                     let vz_damp_per_mass =
                         2.0 * ((GRAVITY * gravity_deficit_ratio) / stable_altitude).sqrt();
                     let raw_lift_force_z = air_fraction
-                        * (counter_gravity_force + lift_k / altitude
+                        * (counter_gravity_force + lift_k * inverse_altitude
                             - body_mass * vz_damp_per_mass * p.vel_z[slot])
                         / 1_000_000.0;
                     let lift_force_z = unit_force_smoothed_scalar(
@@ -1355,31 +1358,45 @@ mod tests {
     }
 
     #[test]
-    fn air_lift_altitude_uses_minimum_body_and_ahead_distance() {
+    fn air_lift_inverse_altitude_uses_sampled_average_when_available() {
         let pos_z = TERRAIN_WATER_LEVEL + 50.0;
         let body_ground = TERRAIN_WATER_LEVEL + 10.0;
-        let ahead_ground = TERRAIN_WATER_LEVEL + 30.0;
+        let sampled_average_inverse_altitude = 0.5 * (1.0 / 20.0) + 0.5 * (1.0 / 40.0);
 
         assert_near(
-            unit_force_air_lift_altitude(pos_z, body_ground, ahead_ground, true),
-            20.0,
-        );
-        assert_near(
-            unit_force_air_lift_altitude(pos_z, body_ground, ahead_ground, false),
-            40.0,
-        );
-        assert_near(
-            unit_force_air_lift_altitude(pos_z, body_ground, f64::NAN, true),
-            40.0,
-        );
-        assert_near(
-            unit_force_air_lift_altitude(
-                TERRAIN_WATER_LEVEL - 10.0,
-                TERRAIN_WATER_LEVEL - 20.0,
-                TERRAIN_WATER_LEVEL - 30.0,
+            unit_force_air_lift_inverse_altitude(
+                pos_z,
+                body_ground,
+                sampled_average_inverse_altitude,
                 true,
             ),
-            0.5,
+            sampled_average_inverse_altitude,
+        );
+        assert_near(
+            unit_force_air_lift_inverse_altitude(
+                pos_z,
+                body_ground,
+                sampled_average_inverse_altitude,
+                false,
+            ),
+            1.0 / 40.0,
+        );
+        assert_near(
+            unit_force_air_lift_inverse_altitude(pos_z, body_ground, f64::NAN, true),
+            1.0 / 40.0,
+        );
+        assert_near(
+            unit_force_air_lift_inverse_altitude(
+                TERRAIN_WATER_LEVEL - 10.0,
+                TERRAIN_WATER_LEVEL - 20.0,
+                1.0 / 0.5,
+                true,
+            ),
+            2.0,
+        );
+        assert_near(
+            unit_force_air_lift_direct_altitude(pos_z, body_ground),
+            40.0,
         );
     }
 }

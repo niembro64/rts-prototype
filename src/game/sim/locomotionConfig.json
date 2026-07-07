@@ -37,7 +37,7 @@
         "forwardForceRequiresFacing": false,
         "driveForceScalesWithFacing": false,
         "maintainFullThrustAtWaypoints": false,
-        "airLiftGroundProbeAheadDistance": 200,
+        "airLiftGroundProbeAheadDistance": 900,
         "airLiftGroundProbeAheadRadiusMultiplier": 1
       }
     },
@@ -47,7 +47,7 @@
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": false,
         "maintainFullThrustAtWaypoints": true,
-        "airLiftGroundProbeAheadDistance": 200,
+        "airLiftGroundProbeAheadDistance": 900,
         "airLiftGroundProbeAheadRadiusMultiplier": 1
       }
     }

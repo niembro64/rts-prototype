@@ -2623,10 +2623,10 @@
           "force": 20200,
           "traction": 1,
           "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0.05,
+          "gravityCounterUpwardForceRatio": 0.0,
           "heightUpwardForce": 760,
           "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.9
+          "heightUpwardForceEMA": 0.99
         },
         "water": {
           "force": 0,

@@ -1023,6 +1023,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleBuildGridDebug"
         >BUILD</BarButton>
         <BarButton
+          :active="model.airLiftProbeDebug"
+          title="LIFT - show the five forward height probe points and vertical lines to sampled terrain/water for selected hover/flying units"
+          @click="model.toggleAirLiftProbeDebug"
+        >LIFT</BarButton>
+        <BarButton
           :active="model.metalMap"
           title="METAL - show metal-producing build cells without the rest of the buildability grid"
           @click="model.toggleMetalMap"
