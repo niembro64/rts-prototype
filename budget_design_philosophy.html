@@ -3071,6 +3071,16 @@
         migration from ever completing. Configuration in code looks convenient on the way in;
         it becomes a permanent dependency on the language you were trying to leave.
       </p>
+      <p>
+        Entity blueprint JSON files are the single source of truth for authored entity facts.
+        <code>units.json</code>, <code>towers.json</code>, <code>buildings.json</code>,
+        <code>turrets.json</code>, <code>shots.json</code>, and <code>rays.json</code> own the
+        gameplay numbers and atomic composition of those entities. Loaders may resolve references,
+        validate shape, and compute runtime derivatives such as scaled force or packed bitmasks,
+        but they must not re-author the same value in code. Tests likewise assert schema,
+        transforms, and invariants by reading the JSON source; they do not carry a second table of
+        expected blueprint values that can drift from the data.
+      </p>
 
       <h3>What belongs in JSON</h3>
       <ul class="rule-list">
@@ -3289,6 +3299,7 @@
         <li>Keep client prediction physically compatible with the server, especially for motion and projectiles. Ship velocity, not acceleration: the server owns force inputs, the wire ships their integrated result, and the client extrapolates from velocity only.</li>
         <li>Expose the per-channel EMA controls (movement position, movement velocity, rotation position, rotation velocity). Position channels use snap/fast/medium/slow; velocity channels additionally allow ignore so playtesters can tune each channel independently without rebuilds.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
+        <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
         <li>Make locomotion one fully-abstracted force profile present on every unit &mdash; ground/air/water &times; {force, traction, friction} plus the lift family (gravity-counter ratio, hover-height force, swim-height force) &mdash; not a closed set of chassis types with private physics. The medium is sampled per tick (ground on any contact patch including the lake bed, then air or water by the water line), only active media contribute, and a zero term is the authored declaration that a unit cannot push on that medium. Chassis archetypes survive only as visual rigs and default presets; the same sampling and force code runs for every unit, so walk/fly/swim combinations fall out for free. See <strong>Locomotion is one fully-abstracted force profile across ground, air, and water</strong>.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>

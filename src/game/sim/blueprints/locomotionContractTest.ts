@@ -1,6 +1,36 @@
 import type { LocomotionBlueprint } from './types';
+import type { UnitLocomotion } from '@/types/locomotionTypes';
 import { createUnitLocomotion, cloneUnitLocomotion } from '../locomotion';
 import { getUnitBlueprint, getUnitLocomotion } from './index';
+import rawLocomotionConfig from '../locomotionConfig.json';
+
+const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
+const MEDIUM_COPY_FIELDS = [
+  'traction',
+  'friction',
+  'gravityCounterUpwardForceRatio',
+  'heightUpwardForce',
+  'heightUpwardForceRandomizationAmount',
+  'heightUpwardForceEMA',
+] as const;
+
+type LocomotionType = LocomotionBlueprint['type'];
+type AuthoredMediumPhysics = LocomotionBlueprint['physics']['ground'];
+type RuntimeMediumPhysics = UnitLocomotion['physics']['ground'];
+
+type LocomotionTypeConfig = {
+  physics: {
+    driveForceMultiplier: number;
+    forwardForceRequiresFacing: boolean;
+    driveForceScalesWithFacing: boolean;
+    maintainFullThrustAtWaypoints: boolean;
+    airLiftGroundProbeAheadDistance: number;
+    airLiftGroundProbeAheadRadiusMultiplier: number;
+  };
+};
+
+const LOCOMOTION_TYPE_CONFIGS =
+  (rawLocomotionConfig as { types: Record<LocomotionType, LocomotionTypeConfig> }).types;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -13,19 +43,6 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
     Object.is(actual, expected),
     `${message}; expected ${String(expected)}, got ${String(actual)}`,
   );
-}
-
-function assertOwnsMediumTerm(
-  medium: Record<string, unknown>,
-  key: string,
-  expected: number,
-  messagePrefix: string,
-): void {
-  assertContract(
-    Object.prototype.hasOwnProperty.call(medium, key),
-    `${messagePrefix} must own ${key}`,
-  );
-  assertEqual(medium[key], expected, `${messagePrefix} ${key}`);
 }
 
 function cloneLocomotionBlueprint(locomotion: LocomotionBlueprint): LocomotionBlueprint {
@@ -50,88 +67,149 @@ function expectLocomotionError(
   throw new Error(`[locomotion contract] expected validation error containing "${expectedMessagePart}"`);
 }
 
-export function runLocomotionContractTest(): void {
-  const hippoBlueprint = getUnitBlueprint('unitHippo');
-  assertEqual(hippoBlueprint.supportSurface.kind, 'none', 'Hippo support surface');
-  assertEqual(
-    hippoBlueprint.locomotion.pathfindingBlueprintId,
-    'amphibiousAnywhere',
-    'Hippo authored pathfinding profile',
-  );
+function minSurfaceNormalZ(maxSlopeDeg: number): number {
+  return Math.cos(maxSlopeDeg * Math.PI / 180);
+}
 
-  const hippoLocomotion = getUnitLocomotion('unitHippo');
-  assertEqual(hippoLocomotion.pathfinding.pathfindingBlueprintId, 'amphibiousAnywhere', 'Hippo runtime pathfinding id');
-  assertEqual(hippoLocomotion.pathfinding.terrainMode, 'anywhere', 'Hippo runtime terrain mode');
-  assertEqual(hippoLocomotion.pathfinding.ignoreTerrainBlocking, true, 'Hippo ignores terrain blocking');
-  assertEqual(hippoLocomotion.pathfinding.maxSlopeDeg, null, 'Hippo max slope');
-  assertEqual(hippoLocomotion.pathfinding.minSurfaceNormalZ, 0, 'Hippo min surface normal');
-  assertOwnsMediumTerm(hippoLocomotion.physics.water, 'force', 1200, 'runtime Hippo water');
-  assertOwnsMediumTerm(hippoLocomotion.physics.water, 'traction', 0.5, 'runtime Hippo water');
-  assertOwnsMediumTerm(hippoLocomotion.physics.water, 'friction', 1.5, 'runtime Hippo water');
-  assertOwnsMediumTerm(hippoLocomotion.physics.water, 'heightUpwardForce', 12, 'runtime Hippo water');
-  assertOwnsMediumTerm(
-    hippoLocomotion.physics.water,
-    'gravityCounterUpwardForceRatio',
-    0.25,
-    'runtime Hippo water',
-  );
-  assertEqual(hippoLocomotion.maintainFullThrustAtWaypoints, false, 'Hippo waypoint thrust mode');
+function getLocomotionTypeConfig(type: LocomotionType): LocomotionTypeConfig {
+  const config = LOCOMOTION_TYPE_CONFIGS[type];
+  assertContract(config !== undefined, `locomotionConfig.json must define ${type}`);
+  return config;
+}
 
-  const clonedHippoLocomotion = cloneUnitLocomotion(hippoLocomotion);
-  assertOwnsMediumTerm(clonedHippoLocomotion.physics.water, 'force', 1200, 'cloned Hippo water');
-  assertOwnsMediumTerm(clonedHippoLocomotion.physics.water, 'traction', 0.5, 'cloned Hippo water');
-  assertOwnsMediumTerm(clonedHippoLocomotion.physics.water, 'friction', 1.5, 'cloned Hippo water');
-  assertOwnsMediumTerm(clonedHippoLocomotion.physics.water, 'heightUpwardForce', 12, 'cloned Hippo water');
-  assertOwnsMediumTerm(
-    clonedHippoLocomotion.physics.water,
-    'gravityCounterUpwardForceRatio',
-    0.25,
-    'cloned Hippo water',
+function assertMediumOwnsFields(
+  medium: RuntimeMediumPhysics,
+  label: string,
+): void {
+  assertContract(
+    Object.prototype.hasOwnProperty.call(medium, 'force'),
+    `${label} must own force`,
   );
-  assertEqual(
-    clonedHippoLocomotion.maintainFullThrustAtWaypoints,
-    false,
-    'cloned Hippo waypoint thrust mode',
-  );
-
-  const eagleLocomotion = getUnitLocomotion('unitEagle');
-  assertEqual(eagleLocomotion.type, 'flying', 'Eagle locomotion type');
-  assertEqual(eagleLocomotion.maintainFullThrustAtWaypoints, true, 'Eagle waypoint thrust mode');
-  assertEqual(eagleLocomotion.airLiftGroundProbeAheadDistance, 5, 'Eagle air lift probe distance');
-  assertEqual(
-    eagleLocomotion.airLiftGroundProbeAheadRadiusMultiplier,
-    1,
-    'Eagle air lift probe radius multiplier',
-  );
-  assertEqual(
-    cloneUnitLocomotion(eagleLocomotion).maintainFullThrustAtWaypoints,
-    true,
-    'cloned Eagle waypoint thrust mode',
-  );
-  assertEqual(
-    cloneUnitLocomotion(eagleLocomotion).airLiftGroundProbeAheadDistance,
-    5,
-    'cloned Eagle air lift probe distance',
-  );
-
-  const nonAmphibiousLocomotion = getUnitLocomotion('unitJackal');
-  for (const key of [
-    'force',
-    'traction',
-    'friction',
-    'heightUpwardForce',
-    'gravityCounterUpwardForceRatio',
-  ] as const) {
-    assertOwnsMediumTerm(nonAmphibiousLocomotion.physics.water, key, 0, 'non-amphibious water');
-    assertOwnsMediumTerm(
-      cloneUnitLocomotion(nonAmphibiousLocomotion).physics.water,
-      key,
-      0,
-      'cloned non-amphibious water',
+  for (const field of MEDIUM_COPY_FIELDS) {
+    assertContract(
+      Object.prototype.hasOwnProperty.call(medium, field),
+      `${label} must own ${field}`,
     );
   }
+}
 
-  const seaTurtleLocomotion = getUnitLocomotion('unitSeaTurtle');
+function assertRuntimeMediumMatchesAuthored(
+  runtime: RuntimeMediumPhysics,
+  authored: AuthoredMediumPhysics,
+  typeConfig: LocomotionTypeConfig,
+  label: string,
+): void {
+  assertMediumOwnsFields(runtime, label);
+  assertEqual(
+    runtime.force,
+    authored.force * typeConfig.physics.driveForceMultiplier,
+    `${label} force follows authored force and locomotion type multiplier`,
+  );
+  for (const field of MEDIUM_COPY_FIELDS) {
+    assertEqual(runtime[field], authored[field], `${label} ${field} follows blueprint JSON`);
+  }
+}
+
+function assertPathfindingMatchesAuthored(
+  runtime: UnitLocomotion['pathfinding'],
+  authored: LocomotionBlueprint['pathfinding'],
+  label: string,
+): void {
+  assertEqual(
+    runtime.pathfindingBlueprintId,
+    authored.pathfindingBlueprintId,
+    `${label} pathfinding id follows pathfinding JSON`,
+  );
+  assertEqual(
+    runtime.terrainMode,
+    authored.terrainMode,
+    `${label} terrain mode follows pathfinding JSON`,
+  );
+  if (authored.terrainMode === 'anywhere') {
+    assertEqual(runtime.ignoreTerrainBlocking, true, `${label} anywhere pathfinding ignores terrain blocking`);
+    assertEqual(runtime.maxSlopeDeg, null, `${label} anywhere pathfinding has no slope cap`);
+    assertEqual(runtime.minSurfaceNormalZ, 0, `${label} anywhere pathfinding has no surface-normal cap`);
+    return;
+  }
+  assertEqual(runtime.ignoreTerrainBlocking, false, `${label} land pathfinding uses terrain blocking`);
+  assertEqual(runtime.maxSlopeDeg, authored.maxSlopeDeg, `${label} slope cap follows pathfinding JSON`);
+  assertContract(authored.maxSlopeDeg !== null, `${label} land pathfinding must author maxSlopeDeg`);
+  assertEqual(
+    runtime.minSurfaceNormalZ,
+    minSurfaceNormalZ(authored.maxSlopeDeg),
+    `${label} min surface normal derives from pathfinding slope cap`,
+  );
+}
+
+function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLocomotion {
+  const unitBlueprint = getUnitBlueprint(unitBlueprintId);
+  const locomotion = getUnitLocomotion(unitBlueprintId);
+  const authored = unitBlueprint.locomotion;
+  const typeConfig = getLocomotionTypeConfig(authored.type);
+
+  assertEqual(locomotion.type, authored.type, `${unitBlueprintId} locomotion type follows unit JSON`);
+  for (const medium of LOCOMOTION_MEDIUM_NAMES) {
+    assertRuntimeMediumMatchesAuthored(
+      locomotion.physics[medium],
+      authored.physics[medium],
+      typeConfig,
+      `${unitBlueprintId} ${medium}`,
+    );
+  }
+  assertEqual(
+    locomotion.forwardForceRequiresFacing,
+    typeConfig.physics.forwardForceRequiresFacing,
+    `${unitBlueprintId} forward force gate follows locomotionConfig.json`,
+  );
+  assertEqual(
+    locomotion.driveForceScalesWithFacing,
+    typeConfig.physics.driveForceScalesWithFacing,
+    `${unitBlueprintId} facing force scaling follows locomotionConfig.json`,
+  );
+  assertEqual(
+    locomotion.maintainFullThrustAtWaypoints,
+    typeConfig.physics.maintainFullThrustAtWaypoints,
+    `${unitBlueprintId} waypoint thrust mode follows locomotionConfig.json`,
+  );
+  assertEqual(
+    locomotion.airLiftGroundProbeAheadDistance,
+    typeConfig.physics.airLiftGroundProbeAheadDistance,
+    `${unitBlueprintId} air lift probe distance follows locomotionConfig.json`,
+  );
+  assertEqual(
+    locomotion.airLiftGroundProbeAheadRadiusMultiplier,
+    typeConfig.physics.airLiftGroundProbeAheadRadiusMultiplier,
+    `${unitBlueprintId} air lift probe radius follows locomotionConfig.json`,
+  );
+  assertPathfindingMatchesAuthored(locomotion.pathfinding, authored.pathfinding, unitBlueprintId);
+  return locomotion;
+}
+
+function assertClonedLocomotionMatchesSource(
+  clone: UnitLocomotion,
+  source: UnitLocomotion,
+  label: string,
+): void {
+  assertEqual(JSON.stringify(clone), JSON.stringify(source), `${label} clone preserves runtime locomotion`);
+}
+
+export function runLocomotionContractTest(): void {
+  const hippoBlueprint = getUnitBlueprint('unitHippo');
+  const hippoLocomotion = assertRuntimeLocomotionMatchesSources('unitHippo');
+  const clonedHippoLocomotion = cloneUnitLocomotion(hippoLocomotion);
+  assertClonedLocomotionMatchesSource(clonedHippoLocomotion, hippoLocomotion, 'Hippo');
+
+  const eagleLocomotion = assertRuntimeLocomotionMatchesSources('unitEagle');
+  assertClonedLocomotionMatchesSource(cloneUnitLocomotion(eagleLocomotion), eagleLocomotion, 'Eagle');
+
+  const nonAmphibiousLocomotion = assertRuntimeLocomotionMatchesSources('unitJackal');
+  assertClonedLocomotionMatchesSource(
+    cloneUnitLocomotion(nonAmphibiousLocomotion),
+    nonAmphibiousLocomotion,
+    'Jackal',
+  );
+
+  const seaTurtleLocomotion = assertRuntimeLocomotionMatchesSources('unitSeaTurtle');
   const seaTurtleWaterDrive =
     seaTurtleLocomotion.physics.water.force * seaTurtleLocomotion.physics.water.traction;
   const seaTurtleGroundDrive =
@@ -140,18 +218,11 @@ export function runLocomotionContractTest(): void {
     seaTurtleWaterDrive >= seaTurtleGroundDrive * 50,
     'Sea Turtle must be much stronger in water than on ground',
   );
-  assertEqual(seaTurtleLocomotion.physics.water.force, 2700, 'Sea Turtle runtime water force');
-  assertEqual(seaTurtleLocomotion.physics.ground.force, 140, 'Sea Turtle runtime ground force');
-  assertEqual(
-    seaTurtleLocomotion.airLiftGroundProbeAheadDistance,
-    0,
-    'Sea Turtle air lift probe distance',
-  );
 
   const zeroWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
   zeroWaterForce.physics.water.force = 0;
   const zeroWaterRuntime = createUnitLocomotion(zeroWaterForce);
-  assertOwnsMediumTerm(zeroWaterRuntime.physics.water, 'force', 0, 'zero-water Hippo water');
+  assertEqual(zeroWaterRuntime.physics.water.force, 0, 'zero-water Hippo water force');
 
   const negativeWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
   negativeWaterForce.physics.water.force = -1;
