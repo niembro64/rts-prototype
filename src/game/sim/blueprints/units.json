@@ -62,30 +62,15 @@
       "physics": {
         "ground": {
           "force": 55,
-          "traction": 0.45,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -181,30 +166,15 @@
       "physics": {
         "ground": {
           "force": 50,
-          "traction": 0.75,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -307,30 +277,15 @@
       "physics": {
         "ground": {
           "force": 130,
-          "traction": 1,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -447,30 +402,15 @@
       "physics": {
         "ground": {
           "force": 160,
-          "traction": 0.75,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -565,30 +505,15 @@
       "physics": {
         "ground": {
           "force": 250,
-          "traction": 0.45,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -682,30 +607,15 @@
       "physics": {
         "ground": {
           "force": 25,
-          "traction": 1,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -822,30 +732,15 @@
       "physics": {
         "ground": {
           "force": 620,
-          "traction": 0.75,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -958,30 +853,15 @@
       "physics": {
         "ground": {
           "force": 900,
-          "traction": 1,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -1192,30 +1072,15 @@
       "physics": {
         "ground": {
           "force": 920,
-          "traction": 1,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -1331,30 +1196,15 @@
       "physics": {
         "ground": {
           "force": 850,
-          "traction": 0.75,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 600,
-          "traction": 0.5,
-          "friction": 1.5,
-          "gravityCounterUpwardForceRatio": 0.25,
-          "heightUpwardForce": 12,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 12
         }
       },
       "config": {
@@ -1459,31 +1309,16 @@
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "ground": {
-          "force": 70,
-          "traction": 0.25,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "force": 23.3333333333,
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
-          "force": 1350,
-          "traction": 1.1,
-          "friction": 1.2,
-          "gravityCounterUpwardForceRatio": 0.45,
-          "heightUpwardForce": 18,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "force": 2970,
+          "heightUpwardForce": 18
         }
       },
       "config": {
@@ -1589,30 +1424,15 @@
       "physics": {
         "ground": {
           "force": 140,
-          "traction": 1,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -1734,30 +1554,15 @@
       "physics": {
         "ground": {
           "force": 220,
-          "traction": 0.75,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -1849,30 +1654,15 @@
       "physics": {
         "ground": {
           "force": 60,
-          "traction": 0.5,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
-          "force": 120,
-          "traction": 0.3,
-          "friction": 1,
-          "gravityCounterUpwardForceRatio": 0.05,
-          "heightUpwardForce": 160,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.3
+          "force": 70,
+          "heightUpwardForce": 160
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -1992,30 +1782,15 @@
       "physics": {
         "ground": {
           "force": 80,
-          "traction": 0.5,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
-          "force": 80,
-          "traction": 1,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0.05,
-          "heightUpwardForce": 500,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.97
+          "force": 266.666666667,
+          "heightUpwardForce": 500
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -2163,30 +1938,15 @@
       "physics": {
         "ground": {
           "force": 75,
-          "traction": 0.5,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
-          "force": 75,
-          "traction": 1,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0.05,
-          "heightUpwardForce": 230,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.5
+          "force": 250,
+          "heightUpwardForce": 230
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -2286,31 +2046,16 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 2000,
-          "traction": 0.05,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "force": 1333.33333333,
+          "heightUpwardForce": 0
         },
         "air": {
-          "force": 500,
-          "traction": 0.2,
-          "friction": 3,
-          "gravityCounterUpwardForceRatio": 0.0,
-          "heightUpwardForce": 300,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.97
+          "force": 45,
+          "heightUpwardForce": 300
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -2440,30 +2185,15 @@
       "physics": {
         "ground": {
           "force": 6000,
-          "traction": 0.075,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
-          "force": 6000,
-          "traction": 0.3,
-          "friction": 0.3007525094126572,
-          "gravityCounterUpwardForceRatio": 0.05,
-          "heightUpwardForce": 700,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.97
+          "force": 60,
+          "heightUpwardForce": 700
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -2612,30 +2342,15 @@
       "physics": {
         "ground": {
           "force": 20200,
-          "traction": 0.5,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
-          "force": 20200,
-          "traction": 1,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0.0,
-          "heightUpwardForce": 760,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.99
+          "force": 67333.3333333,
+          "heightUpwardForce": 760
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -2767,31 +2482,16 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 9000,
-          "traction": 0.1125,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "force": 13500,
+          "heightUpwardForce": 0
         },
         "air": {
-          "force": 9000,
-          "traction": 0.45,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0.05,
-          "heightUpwardForce": 780,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.97
+          "force": 13500,
+          "heightUpwardForce": 780
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -2910,30 +2610,15 @@
       "physics": {
         "ground": {
           "force": 110,
-          "traction": 0.5,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
-          "force": 110,
-          "traction": 1,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0.05,
-          "heightUpwardForce": 260,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.97
+          "force": 366.666666667,
+          "heightUpwardForce": 260
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {
@@ -3106,30 +2791,15 @@
       "physics": {
         "ground": {
           "force": 450,
-          "traction": 1,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "air": {
           "force": 0,
-          "traction": 0,
-          "friction": 3.0775976632530346,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         },
         "water": {
           "force": 0,
-          "traction": 0,
-          "friction": 0,
-          "gravityCounterUpwardForceRatio": 0,
-          "heightUpwardForce": 0,
-          "heightUpwardForceRandomizationAmount": 0,
-          "heightUpwardForceEMA": 0
+          "heightUpwardForce": 0
         }
       },
       "config": {

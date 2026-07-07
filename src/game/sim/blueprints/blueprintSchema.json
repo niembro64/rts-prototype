@@ -1909,33 +1909,13 @@
       "type": "object",
       "required": [
         "force",
-        "traction",
-        "friction",
-        "gravityCounterUpwardForceRatio",
-        "heightUpwardForce",
-        "heightUpwardForceRandomizationAmount",
-        "heightUpwardForceEMA"
+        "heightUpwardForce"
       ],
       "properties": {
         "force": {
           "type": "number"
         },
-        "traction": {
-          "type": "number"
-        },
-        "friction": {
-          "type": "number"
-        },
-        "gravityCounterUpwardForceRatio": {
-          "type": "number"
-        },
         "heightUpwardForce": {
-          "type": "number"
-        },
-        "heightUpwardForceRandomizationAmount": {
-          "type": "number"
-        },
-        "heightUpwardForceEMA": {
           "type": "number"
         }
       },

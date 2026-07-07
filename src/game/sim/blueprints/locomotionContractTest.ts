@@ -14,18 +14,20 @@ import { getUnitBlueprint, getUnitLocomotion } from './index';
 import rawLocomotionConfig from '../locomotionConfig.json';
 
 const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
-const MEDIUM_COPY_FIELDS = [
+const MEDIUM_CONFIG_FIELDS = [
   'traction',
   'friction',
   'gravityCounterUpwardForceRatio',
-  'heightUpwardForce',
   'heightUpwardForceRandomizationAmount',
   'heightUpwardForceEMA',
 ] as const;
 
 type LocomotionType = LocomotionBlueprint['type'];
+type LocomotionMediumName = (typeof LOCOMOTION_MEDIUM_NAMES)[number];
 type AuthoredMediumPhysics = LocomotionBlueprint['physics']['ground'];
 type RuntimeMediumPhysics = UnitLocomotion['physics']['ground'];
+type LocomotionConfigMediumField = (typeof MEDIUM_CONFIG_FIELDS)[number];
+type LocomotionTypeMediumPhysics = Pick<RuntimeMediumPhysics, LocomotionConfigMediumField>;
 
 type LocomotionTypeConfig = {
   physics: {
@@ -35,7 +37,7 @@ type LocomotionTypeConfig = {
     maintainFullThrustAtWaypoints: boolean;
     airLiftGroundProbeAheadDistance: number;
     airLiftGroundProbeAheadRadiusMultiplier: number;
-  };
+  } & Record<LocomotionMediumName, LocomotionTypeMediumPhysics>;
 };
 
 type LocomotionConfigContract = {
@@ -148,7 +150,11 @@ function assertMediumOwnsFields(
     Object.prototype.hasOwnProperty.call(medium, 'force'),
     `${label} must own force`,
   );
-  for (const field of MEDIUM_COPY_FIELDS) {
+  assertContract(
+    Object.prototype.hasOwnProperty.call(medium, 'heightUpwardForce'),
+    `${label} must own heightUpwardForce`,
+  );
+  for (const field of MEDIUM_CONFIG_FIELDS) {
     assertContract(
       Object.prototype.hasOwnProperty.call(medium, field),
       `${label} must own ${field}`,
@@ -160,6 +166,7 @@ function assertRuntimeMediumMatchesAuthored(
   runtime: RuntimeMediumPhysics,
   authored: AuthoredMediumPhysics,
   typeConfig: LocomotionTypeConfig,
+  medium: LocomotionMediumName,
   label: string,
 ): void {
   assertMediumOwnsFields(runtime, label);
@@ -168,8 +175,17 @@ function assertRuntimeMediumMatchesAuthored(
     authored.force * typeConfig.physics.driveForceMultiplier,
     `${label} force follows authored force and locomotion type multiplier`,
   );
-  for (const field of MEDIUM_COPY_FIELDS) {
-    assertEqual(runtime[field], authored[field], `${label} ${field} follows blueprint JSON`);
+  assertEqual(
+    runtime.heightUpwardForce,
+    authored.heightUpwardForce,
+    `${label} heightUpwardForce follows blueprint JSON`,
+  );
+  for (const field of MEDIUM_CONFIG_FIELDS) {
+    assertEqual(
+      runtime[field],
+      typeConfig.physics[medium][field],
+      `${label} ${field} follows locomotionConfig.json`,
+    );
   }
 }
 
@@ -216,6 +232,7 @@ function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLoc
       locomotion.physics[medium],
       authored.physics[medium],
       typeConfig,
+      medium,
       `${unitBlueprintId} ${medium}`,
     );
   }
@@ -294,7 +311,9 @@ export function runLocomotionContractTest(): void {
   negativeWaterForce.physics.water.force = -1;
   expectLocomotionError(negativeWaterForce, 'water.force');
 
-  const invalidSwimCounter = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
-  invalidSwimCounter.physics.water.gravityCounterUpwardForceRatio = 1;
-  expectLocomotionError(invalidSwimCounter, 'water.gravityCounterUpwardForceRatio');
+  const strayUnitMediumConfig = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
+  (strayUnitMediumConfig.physics.water as AuthoredMediumPhysics & {
+    gravityCounterUpwardForceRatio: number;
+  }).gravityCounterUpwardForceRatio = 0.5;
+  expectLocomotionError(strayUnitMediumConfig, 'moved to locomotionConfig.json');
 }

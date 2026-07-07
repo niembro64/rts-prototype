@@ -9,16 +9,24 @@ import type {
 } from '@/types/locomotionTypes';
 import rawLocomotionConfig from './locomotionConfig.json';
 
-// Canonical set of locomotion discriminants. The live per-type tuning
-// (force multiplier, force-direction rules, and arrival thrust behaviour)
-// remains in locomotionConfig.json; per-unit physics now lives in a single
-// ground/air/water medium profile on each unit blueprint.
+// Canonical set of locomotion discriminants. Per-type tuning lives in
+// locomotionConfig.json; unit blueprints keep only the medium scalars that
+// are still authored per unit.
 const LOCOMOTION_TYPES = ['wheels', 'treads', 'legs', 'hover', 'flying'] as const;
 const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
+const LOCOMOTION_CONFIG_MEDIUM_FIELDS = [
+  'traction',
+  'friction',
+  'gravityCounterUpwardForceRatio',
+  'heightUpwardForceRandomizationAmount',
+  'heightUpwardForceEMA',
+] as const;
 
 type LocomotionType = (typeof LOCOMOTION_TYPES)[number];
 type LocomotionMediumName = (typeof LOCOMOTION_MEDIUM_NAMES)[number];
 type AuthoredLocomotionMediumPhysics = LocomotionBlueprint['physics'][LocomotionMediumName];
+type LocomotionConfigMediumField = (typeof LOCOMOTION_CONFIG_MEDIUM_FIELDS)[number];
+type LocomotionTypeMediumPhysics = Pick<UnitLocomotionMediumPhysics, LocomotionConfigMediumField>;
 
 type LocomotionTypeConfig = {
   physics: {
@@ -28,7 +36,7 @@ type LocomotionTypeConfig = {
     maintainFullThrustAtWaypoints: boolean;
     airLiftGroundProbeAheadDistance: number;
     airLiftGroundProbeAheadRadiusMultiplier: number;
-  };
+  } & Record<LocomotionMediumName, LocomotionTypeMediumPhysics>;
 };
 
 type AirLiftHeightForceFalloffConfig = {
@@ -75,6 +83,30 @@ function assertSlopeDegrees(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0 || value >= 90) {
     throw new Error(`Invalid locomotion ${label}: expected finite degrees in (0, 90), got ${value}`);
   }
+}
+
+function assertLocomotionTypeMediumPhysics(
+  type: LocomotionType,
+  medium: LocomotionMediumName,
+  physics: LocomotionTypeMediumPhysics | undefined,
+): asserts physics is LocomotionTypeMediumPhysics {
+  if (!physics || typeof physics !== 'object') {
+    throw new Error(`Invalid locomotionConfig.json: missing types.${type}.physics.${medium} config`);
+  }
+  assertNonNegativeFinite(`types.${type}.physics.${medium}.traction`, physics.traction);
+  assertNonNegativeFinite(`types.${type}.physics.${medium}.friction`, physics.friction);
+  assertUnitFraction(
+    `types.${type}.physics.${medium}.gravityCounterUpwardForceRatio`,
+    physics.gravityCounterUpwardForceRatio,
+  );
+  assertUnitFraction(
+    `types.${type}.physics.${medium}.heightUpwardForceRandomizationAmount`,
+    physics.heightUpwardForceRandomizationAmount,
+  );
+  assertUnitFraction(
+    `types.${type}.physics.${medium}.heightUpwardForceEMA`,
+    physics.heightUpwardForceEMA,
+  );
 }
 
 function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
@@ -132,6 +164,9 @@ function readLocomotionConfig(): LocomotionConfig {
       `types.${type}.physics.airLiftGroundProbeAheadRadiusMultiplier`,
       typeConfig.physics.airLiftGroundProbeAheadRadiusMultiplier,
     );
+    for (const medium of LOCOMOTION_MEDIUM_NAMES) {
+      assertLocomotionTypeMediumPhysics(type, medium, typeConfig.physics[medium]);
+    }
   }
   for (const type of Object.keys(types)) {
     if (!(LOCOMOTION_TYPES as readonly string[]).includes(type)) {
@@ -200,6 +235,13 @@ function getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(type: LocomotionTy
   return LOCOMOTION_CONFIG.types[type].physics.airLiftGroundProbeAheadRadiusMultiplier;
 }
 
+function getLocomotionTypeMediumPhysics(
+  type: LocomotionType,
+  medium: LocomotionMediumName,
+): LocomotionTypeMediumPhysics {
+  return LOCOMOTION_CONFIG.types[type].physics[medium];
+}
+
 function getEffectiveLocomotionForce(
   type: LocomotionType,
   medium: LocomotionMediumName,
@@ -217,32 +259,27 @@ function createRuntimeMediumPhysics(
   if (!authored || typeof authored !== 'object') {
     throw new Error(`Invalid locomotion ${type}.physics.${medium}: missing medium physics`);
   }
-  assertNonNegativeFinite(`${type}.physics.${medium}.traction`, authored.traction);
-  assertNonNegativeFinite(`${type}.physics.${medium}.friction`, authored.friction);
-  assertUnitFraction(
-    `${type}.physics.${medium}.gravityCounterUpwardForceRatio`,
-    authored.gravityCounterUpwardForceRatio,
-  );
+  for (const field of LOCOMOTION_CONFIG_MEDIUM_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(authored, field)) {
+      throw new Error(
+        `Invalid locomotion ${type}.physics.${medium}.${field}: moved to locomotionConfig.json`,
+      );
+    }
+  }
+  assertNonNegativeFinite(`${type}.physics.${medium}.force`, authored.force);
   assertNonNegativeFinite(
     `${type}.physics.${medium}.heightUpwardForce`,
     authored.heightUpwardForce,
   );
-  assertUnitFraction(
-    `${type}.physics.${medium}.heightUpwardForceRandomizationAmount`,
-    authored.heightUpwardForceRandomizationAmount,
-  );
-  assertUnitFraction(
-    `${type}.physics.${medium}.heightUpwardForceEMA`,
-    authored.heightUpwardForceEMA,
-  );
+  const typeMediumPhysics = getLocomotionTypeMediumPhysics(type, medium);
   return {
     force: getEffectiveLocomotionForce(type, medium, authored.force),
-    traction: authored.traction,
-    friction: authored.friction,
-    gravityCounterUpwardForceRatio: authored.gravityCounterUpwardForceRatio,
+    traction: typeMediumPhysics.traction,
+    friction: typeMediumPhysics.friction,
+    gravityCounterUpwardForceRatio: typeMediumPhysics.gravityCounterUpwardForceRatio,
     heightUpwardForce: authored.heightUpwardForce,
-    heightUpwardForceRandomizationAmount: authored.heightUpwardForceRandomizationAmount,
-    heightUpwardForceEMA: authored.heightUpwardForceEMA,
+    heightUpwardForceRandomizationAmount: typeMediumPhysics.heightUpwardForceRandomizationAmount,
+    heightUpwardForceEMA: typeMediumPhysics.heightUpwardForceEMA,
   };
 }
 

@@ -634,12 +634,7 @@ pub struct LegConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionMediumPhysics {
     pub force: f64,
-    pub traction: f64,
-    pub friction: f64,
-    pub gravityCounterUpwardForceRatio: f64,
     pub heightUpwardForce: f64,
-    pub heightUpwardForceRandomizationAmount: f64,
-    pub heightUpwardForceEMA: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

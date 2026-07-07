@@ -14,12 +14,12 @@
     "maxPoolSize": 100000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
-    "exhaustSpeed": 0,
+    "exhaustSpeed": -100,
     "fadeInMs": 10,
     "fadeOutMs": 500,
     "startRadius": 6,
     "endRadiusMultiplier": 2,
-    "maxAlpha": 0.05
+    "maxAlpha": 0.2
   },
   "shotMissileLong": {
     "maxPoolSize": 100000,
@@ -38,7 +38,7 @@
     "emitFramesSkip": 0,
     "exhaustSpeed": 40,
     "fadeInMs": 200,
-    "fadeOutMs": 1000,
+    "fadeOutMs": 500,
     "startRadius": 3,
     "endRadiusMultiplier": 2,
     "maxAlpha": 0.05
@@ -49,10 +49,10 @@
     "emitFramesSkip": 0,
     "exhaustSpeed": 130,
     "fadeInMs": 200,
-    "fadeOutMs": 1000,
+    "fadeOutMs": 500,
     "startRadius": 10,
     "endRadiusMultiplier": 2,
-    "maxAlpha": 0.05
+    "maxAlpha": 0.02
   },
   "locomotionDragonflyHovercraft": {
     "maxPoolSize": 10000,
@@ -60,31 +60,31 @@
     "emitFramesSkip": 0,
     "exhaustSpeed": 130,
     "fadeInMs": 200,
-    "fadeOutMs": 1000,
+    "fadeOutMs": 500,
     "startRadius": 20,
     "endRadiusMultiplier": 2,
-    "maxAlpha": 0.05
+    "maxAlpha": 0.03
   },
   "locomotionEagleFlying": {
     "maxPoolSize": 10000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
-    "exhaustSpeed": 0,
+    "exhaustSpeed": 400,
     "fadeInMs": 0,
-    "fadeOutMs": 500,
+    "fadeOutMs": 300,
     "startRadius": 6,
     "endRadiusMultiplier": 2,
-    "maxAlpha": 0.05
+    "maxAlpha": 0.1
   },
   "locomotionAlbatrosFlying": {
     "maxPoolSize": 12000,
     "capPolicy": "evictOldest",
     "emitFramesSkip": 0,
-    "exhaustSpeed": 0,
+    "exhaustSpeed": 100,
     "fadeInMs": 0,
-    "fadeOutMs": 650,
+    "fadeOutMs": 300,
     "startRadius": 14,
     "endRadiusMultiplier": 2.4,
-    "maxAlpha": 0.05
+    "maxAlpha": 0.1
   }
 }

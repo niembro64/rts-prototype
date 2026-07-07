@@ -11,7 +11,28 @@
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
         "airLiftGroundProbeAheadDistance": 0,
-        "airLiftGroundProbeAheadRadiusMultiplier": 0
+        "airLiftGroundProbeAheadRadiusMultiplier": 0,
+        "ground": {
+          "traction": 0.45,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       }
     },
     "treads": {
@@ -21,7 +42,28 @@
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
         "airLiftGroundProbeAheadDistance": 0,
-        "airLiftGroundProbeAheadRadiusMultiplier": 0
+        "airLiftGroundProbeAheadRadiusMultiplier": 0,
+        "ground": {
+          "traction": 0.75,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "traction": 0.5,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       }
     },
     "legs": {
@@ -31,7 +73,28 @@
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
         "airLiftGroundProbeAheadDistance": 0,
-        "airLiftGroundProbeAheadRadiusMultiplier": 0
+        "airLiftGroundProbeAheadRadiusMultiplier": 0,
+        "ground": {
+          "traction": 1,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "traction": 0,
+          "friction": 3.0775976632530346,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "water": {
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       }
     },
     "hover": {
@@ -41,7 +104,28 @@
         "driveForceScalesWithFacing": false,
         "maintainFullThrustAtWaypoints": false,
         "airLiftGroundProbeAheadDistance": 900,
-        "airLiftGroundProbeAheadRadiusMultiplier": 1
+        "airLiftGroundProbeAheadRadiusMultiplier": 1,
+        "ground": {
+          "traction": 0.5,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "traction": 0.2,
+          "friction": 1,
+          "gravityCounterUpwardForceRatio": 0.0,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.3
+        },
+        "water": {
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       }
     },
     "flying": {
@@ -51,7 +135,28 @@
         "driveForceScalesWithFacing": false,
         "maintainFullThrustAtWaypoints": true,
         "airLiftGroundProbeAheadDistance": 900,
-        "airLiftGroundProbeAheadRadiusMultiplier": 1
+        "airLiftGroundProbeAheadRadiusMultiplier": 1,
+        "ground": {
+          "traction": 0.075,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        },
+        "air": {
+          "traction": 3,
+          "friction": 3,
+          "gravityCounterUpwardForceRatio": 0.0,
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.97
+        },
+        "water": {
+          "traction": 0,
+          "friction": 0,
+          "gravityCounterUpwardForceRatio": 0,
+          "heightUpwardForceRandomizationAmount": 0,
+          "heightUpwardForceEMA": 0
+        }
       }
     }
   }

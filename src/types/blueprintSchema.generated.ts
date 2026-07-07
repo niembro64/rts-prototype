@@ -443,12 +443,7 @@ export type LegConfig = {
 
 export type LocomotionMediumPhysics = {
   force: number;
-  traction: number;
-  friction: number;
-  gravityCounterUpwardForceRatio: number;
   heightUpwardForce: number;
-  heightUpwardForceRandomizationAmount: number;
-  heightUpwardForceEMA: number;
 };
 
 export type LocomotionPhysics = {
