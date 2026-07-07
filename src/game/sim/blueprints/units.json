@@ -1389,7 +1389,7 @@
   "unitSeaTurtle": {
     "unitBlueprintId": "unitSeaTurtle",
     "name": "Sea Turtle",
-    "shortName": "STL",
+    "shortName": "TURT",
     "hp": 1800,
     "radius": {
       "other": 28,

@@ -711,6 +711,9 @@ pub fn unit_force_step_batch(
     out_flags: &mut [u32],
     count: usize,
     dt_sec: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
     thrust_multiplier: f64,
     force_scale: f64,
     reference_mass: f64,
@@ -735,6 +738,9 @@ pub fn unit_force_step_batch(
     let runtime = unit_force_runtime_table();
     let mut processed = 0_u32;
     let _legacy_hover_orientation_tuning = (hover_orientation_k, hover_orientation_c);
+    let wind_x = if wind_x.is_finite() { wind_x } else { 0.0 };
+    let wind_y = if wind_y.is_finite() { wind_y } else { 0.0 };
+    let wind_z = if wind_z.is_finite() { wind_z } else { 0.0 };
 
     for i in 0..count {
         out_flags[i] = 0;
@@ -1054,9 +1060,9 @@ pub fn unit_force_step_batch(
             let air_friction = rows[base + UF_ROW_AIR_FRICTION];
             if air_friction > 0.0 && body_mass > 0.0 {
                 let k = air_friction * air_fraction * body_mass / 1_000_000.0;
-                thrust_force_x -= k * p.vel_x[slot];
-                thrust_force_y -= k * p.vel_y[slot];
-                thrust_force_z -= k * p.vel_z[slot];
+                thrust_force_x += k * (wind_x - p.vel_x[slot]);
+                thrust_force_y += k * (wind_y - p.vel_y[slot]);
+                thrust_force_z += k * (wind_z - p.vel_z[slot]);
             }
         } else {
             rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;

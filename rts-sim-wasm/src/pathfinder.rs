@@ -45,6 +45,8 @@ pub(crate) struct PathfinderState {
 
     blocked: Vec<u8>,
     terrain_blocked: Vec<u8>,
+    terrain_water: Vec<u8>,
+    terrain_edge_blocked: Vec<u8>,
     terrain_base_height: Vec<f32>,
     terrain_height: Vec<f32>,
     terrain_normal_z: Vec<f32>,
@@ -55,6 +57,9 @@ pub(crate) struct PathfinderState {
     /// not routed through gaps narrower than it can fit. Independent of unit
     /// size, so it is cached once per mask rather than per radius.
     clearance: Vec<u16>,
+    /// Clearance from map edges and structure footprints only. Water-capable
+    /// and bed-walking queries use this so wet cells are not self-obstacles.
+    medium_clearance: Vec<u16>,
 
     // A* scratch (reused per query)
     g_score: Vec<f32>,
@@ -87,6 +92,14 @@ pub(crate) struct PathfinderState {
     path_scratch: Vec<u32>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct PathfinderTraversal {
+    min_normal_z: f32,
+    allow_ground: bool,
+    allow_water: bool,
+    allow_air: bool,
+}
+
 impl PathfinderState {
     pub(crate) fn empty() -> Self {
         Self {
@@ -97,11 +110,14 @@ impl PathfinderState {
             map_height: 0.0,
             blocked: Vec::new(),
             terrain_blocked: Vec::new(),
+            terrain_water: Vec::new(),
+            terrain_edge_blocked: Vec::new(),
             terrain_base_height: Vec::new(),
             terrain_height: Vec::new(),
             terrain_normal_z: Vec::new(),
             cc_labels: Vec::new(),
             clearance: Vec::new(),
+            medium_clearance: Vec::new(),
             g_score: Vec::new(),
             f_score: Vec::new(),
             parent: Vec::new(),
@@ -184,6 +200,10 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.blocked.resize(n, 0);
     state.terrain_blocked.clear();
     state.terrain_blocked.resize(n, 0);
+    state.terrain_water.clear();
+    state.terrain_water.resize(n, 0);
+    state.terrain_edge_blocked.clear();
+    state.terrain_edge_blocked.resize(n, 0);
     state.terrain_base_height.clear();
     state
         .terrain_base_height
@@ -198,6 +218,8 @@ pub fn pathfinder_init(map_width: f64, map_height: f64) {
     state.cc_labels.resize(n, 0);
     state.clearance.clear();
     state.clearance.resize(n, 0);
+    state.medium_clearance.clear();
+    state.medium_clearance.resize(n, 0);
     state.g_score.clear();
     state.g_score.resize(n, f32::INFINITY);
     state.f_score.clear();
@@ -238,10 +260,6 @@ pub(crate) fn pathfinder_sample_terrain(x: f64, y: f64) -> (f64, f32) {
     };
     let (wa, wb, wc, ax, az, ah, bx, bz, bh, cx, cz, ch) = sample;
     let h = wa * ah + wb * bh + wc * ch;
-    if h < TERRAIN_WATER_LEVEL {
-        // Below water — normal.nz unused (water-check blocks first).
-        return (h, 0.0);
-    }
     // Triangle normal — same math as terrain_get_surface_normal.
     let ux = bx - ax;
     let uy = bh - ah;
@@ -326,14 +344,13 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
             let (has_water, nz, height) = pathfinder_sample_cell_terrain(gx, gy);
             state.terrain_base_height[idx] = height;
             state.terrain_height[idx] = height;
+            state.terrain_normal_z[idx] = nz;
             if has_water {
-                state.terrain_normal_z[idx] = 0.0;
                 water_mask[idx] = 1;
-            } else {
-                state.terrain_normal_z[idx] = nz;
             }
         }
     }
+    state.terrain_water.copy_from_slice(&water_mask);
 
     // Step 2 — dilate water by WATER_BUFFER_CELLS into terrain_blocked.
     // Map-edge cells within `tk` of any border are blocked so ground routes
@@ -342,10 +359,14 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     for cell in state.terrain_blocked.iter_mut() {
         *cell = 0;
     }
+    for cell in state.terrain_edge_blocked.iter_mut() {
+        *cell = 0;
+    }
     for gy in 0..grid_h {
         for gx in 0..grid_w {
             let out_idx = (gy * grid_w + gx) as usize;
             if gx < tk || gy < tk || gx >= grid_w - tk || gy >= grid_h - tk {
+                state.terrain_edge_blocked[out_idx] = 1;
                 state.terrain_blocked[out_idx] = 1;
                 continue;
             }
@@ -364,6 +385,61 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     }
 
     state.terrain_only_key = key;
+}
+
+pub(crate) fn pathfinder_rebuild_clearance_distance(
+    clearance: &mut [u16],
+    grid_w: i32,
+    grid_h: i32,
+) {
+    // Forward pass: top-left → bottom-right (W, N, NW, NE already settled).
+    for gy in 0..grid_h {
+        for gx in 0..grid_w {
+            let idx = (gy * grid_w + gx) as usize;
+            if clearance[idx] == 0 {
+                continue;
+            }
+            let mut m = clearance[idx];
+            if gx > 0 {
+                m = m.min(clearance[idx - 1].saturating_add(1));
+            }
+            if gy > 0 {
+                let up = idx - grid_w as usize;
+                m = m.min(clearance[up].saturating_add(1));
+                if gx > 0 {
+                    m = m.min(clearance[up - 1].saturating_add(1));
+                }
+                if gx < grid_w - 1 {
+                    m = m.min(clearance[up + 1].saturating_add(1));
+                }
+            }
+            clearance[idx] = m;
+        }
+    }
+    // Backward pass: bottom-right → top-left (E, S, SE, SW).
+    for gy in (0..grid_h).rev() {
+        for gx in (0..grid_w).rev() {
+            let idx = (gy * grid_w + gx) as usize;
+            if clearance[idx] == 0 {
+                continue;
+            }
+            let mut m = clearance[idx];
+            if gx < grid_w - 1 {
+                m = m.min(clearance[idx + 1].saturating_add(1));
+            }
+            if gy < grid_h - 1 {
+                let dn = idx + grid_w as usize;
+                m = m.min(clearance[dn].saturating_add(1));
+                if gx < grid_w - 1 {
+                    m = m.min(clearance[dn + 1].saturating_add(1));
+                }
+                if gx > 0 {
+                    m = m.min(clearance[dn - 1].saturating_add(1));
+                }
+            }
+            clearance[idx] = m;
+        }
+    }
 }
 
 /// Rebuilds the full blocked mask + CC labels from the terrain mask
@@ -418,20 +494,23 @@ pub fn pathfinder_rebuild_mask_and_cc(
         state.blocked[idx] = 0;
     }
 
-    // Clearance distance field: Chebyshev cell-distance from each open cell to
-    // the nearest OBSTACLE cell (0 for obstacle cells). Built once per mask via
-    // a two-pass transform and consumed by pathfinder_is_cell_passable so a unit
-    // is kept its full footprint-plus-arrival standoff away from anything its
-    // body cannot occupy. Obstacles are water + map edges (already in `blocked`)
-    // AND every building footprint cell — buildings are walkable elevated
-    // terrain rather than `blocked` cells (only the slope gate keeps ground
-    // units off the roof), but a ground unit routing past one must still hold
-    // its body clear of the vertical sides, so the footprints seed the field
-    // too. Without this, clearance only buffered water and units hugged walls.
+    // Clearance distance fields: Chebyshev cell-distance from each open cell
+    // to the nearest OBSTACLE cell (0 for obstacle cells). Ground-only
+    // clearance treats water + map edges + building footprints as obstacles.
+    // Medium clearance treats only map edges + building footprints as
+    // obstacles, so water-capable and bed-walking routes do not make wet cells
+    // self-blocking. Building footprints seed both fields because buildings are
+    // walkable elevated terrain rather than `blocked` cells, but a unit routing
+    // past one must still hold its body clear of the vertical sides.
     {
         let n = state.n;
         for idx in 0..n {
             state.clearance[idx] = if state.blocked[idx] == 1 { 0 } else { u16::MAX };
+            state.medium_clearance[idx] = if state.terrain_edge_blocked[idx] == 1 {
+                0
+            } else {
+                u16::MAX
+            };
         }
         // Seed building footprints as clearance obstacles (see comment above).
         let mut bi = 0usize;
@@ -440,57 +519,13 @@ pub fn pathfinder_rebuild_mask_and_cc(
             let bgy = building_cells[bi + 1].floor() as i32;
             bi += 3;
             if bgx >= 0 && bgy >= 0 && bgx < grid_w && bgy < grid_h {
-                state.clearance[(bgy * grid_w + bgx) as usize] = 0;
+                let idx = (bgy * grid_w + bgx) as usize;
+                state.clearance[idx] = 0;
+                state.medium_clearance[idx] = 0;
             }
         }
-        // Forward pass: top-left → bottom-right (W, N, NW, NE already settled).
-        for gy in 0..grid_h {
-            for gx in 0..grid_w {
-                let idx = (gy * grid_w + gx) as usize;
-                if state.clearance[idx] == 0 {
-                    continue;
-                }
-                let mut m = state.clearance[idx];
-                if gx > 0 {
-                    m = m.min(state.clearance[idx - 1].saturating_add(1));
-                }
-                if gy > 0 {
-                    let up = idx - grid_w as usize;
-                    m = m.min(state.clearance[up].saturating_add(1));
-                    if gx > 0 {
-                        m = m.min(state.clearance[up - 1].saturating_add(1));
-                    }
-                    if gx < grid_w - 1 {
-                        m = m.min(state.clearance[up + 1].saturating_add(1));
-                    }
-                }
-                state.clearance[idx] = m;
-            }
-        }
-        // Backward pass: bottom-right → top-left (E, S, SE, SW).
-        for gy in (0..grid_h).rev() {
-            for gx in (0..grid_w).rev() {
-                let idx = (gy * grid_w + gx) as usize;
-                if state.clearance[idx] == 0 {
-                    continue;
-                }
-                let mut m = state.clearance[idx];
-                if gx < grid_w - 1 {
-                    m = m.min(state.clearance[idx + 1].saturating_add(1));
-                }
-                if gy < grid_h - 1 {
-                    let dn = idx + grid_w as usize;
-                    m = m.min(state.clearance[dn].saturating_add(1));
-                    if gx < grid_w - 1 {
-                        m = m.min(state.clearance[dn + 1].saturating_add(1));
-                    }
-                    if gx > 0 {
-                        m = m.min(state.clearance[dn - 1].saturating_add(1));
-                    }
-                }
-                state.clearance[idx] = m;
-            }
-        }
+        pathfinder_rebuild_clearance_distance(&mut state.clearance, grid_w, grid_h);
+        pathfinder_rebuild_clearance_distance(&mut state.medium_clearance, grid_w, grid_h);
     }
 
     // CC labelling via BFS over open cells. This is an obstacle pre-flight
@@ -550,20 +585,39 @@ pub fn pathfinder_rebuild_mask_and_cc(
 pub(crate) fn pathfinder_is_cell_passable(
     state: &PathfinderState,
     idx: usize,
-    _min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> bool {
-    if ignore_terrain_blocking {
+    if traversal.allow_air {
         return true;
     }
-    if state.blocked[idx] == 1 {
+    if state.terrain_edge_blocked[idx] == 1 {
+        return false;
+    }
+    let wet = state.terrain_water[idx] == 1;
+    let terrain_blocked = state.blocked[idx] == 1;
+    let passable_by_medium = if wet {
+        traversal.allow_water || traversal.allow_ground
+    } else if terrain_blocked {
+        // Dry shoreline-buffer cells are blocked for ground-only units, but
+        // amphibious units may cross them because the adjacent wet cells are
+        // part of their legal route space.
+        traversal.allow_water && traversal.allow_ground
+    } else {
+        traversal.allow_ground
+    };
+    if !passable_by_medium {
         return false;
     }
     // Collision-clearance gate: keep a unit of the current query's footprint
     // out of cells whose nearest blocker is closer than the body can fit.
     // cur_required_clearance is 0 during start/goal snapping and for point-size
     // units, so this is inert there (every open cell has clearance >= 1).
-    if (state.clearance[idx] as i32) < state.cur_required_clearance {
+    let clearance = if wet || traversal.allow_water {
+        state.medium_clearance[idx]
+    } else {
+        state.clearance[idx]
+    };
+    if (clearance as i32) < state.cur_required_clearance {
         return false;
     }
     true
@@ -592,18 +646,12 @@ pub(crate) fn pathfinder_is_grid_cell_passable(
     state: &PathfinderState,
     gx: i32,
     gy: i32,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> bool {
     if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
         return false;
     }
-    pathfinder_is_cell_passable(
-        state,
-        (gy * state.grid_w + gx) as usize,
-        min_normal_z,
-        ignore_terrain_blocking,
-    )
+    pathfinder_is_cell_passable(state, (gy * state.grid_w + gx) as usize, traversal)
 }
 
 #[inline]
@@ -620,8 +668,11 @@ pub(crate) fn pathfinder_can_step_height_delta(
     state: &PathfinderState,
     from_idx: usize,
     to_idx: usize,
-    min_normal_z: f32,
+    traversal: PathfinderTraversal,
 ) -> bool {
+    if traversal.allow_air || (state.terrain_water[to_idx] == 1 && traversal.allow_water) {
+        return true;
+    }
     let from_h = state.terrain_height[from_idx] as f64;
     let to_h = state.terrain_height[to_idx] as f64;
     if !from_h.is_finite() || !to_h.is_finite() {
@@ -648,7 +699,7 @@ pub(crate) fn pathfinder_can_step_height_delta(
     if dz <= 0.0 && !state.cur_symmetric_slope {
         return true;
     }
-    let required_normal_z = pathfinder_required_step_normal_z(min_normal_z);
+    let required_normal_z = pathfinder_required_step_normal_z(traversal.min_normal_z);
     if state.terrain_normal_z[from_idx] < required_normal_z
         || state.terrain_normal_z[to_idx] < required_normal_z
     {
@@ -663,22 +714,19 @@ pub(crate) fn pathfinder_can_step_between(
     state: &PathfinderState,
     from_idx: usize,
     to_idx: usize,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> bool {
-    if !pathfinder_is_cell_passable(state, to_idx, min_normal_z, ignore_terrain_blocking) {
+    if !pathfinder_is_cell_passable(state, to_idx, traversal) {
         return false;
     }
-    ignore_terrain_blocking
-        || pathfinder_can_step_height_delta(state, from_idx, to_idx, min_normal_z)
+    pathfinder_can_step_height_delta(state, from_idx, to_idx, traversal)
 }
 
 pub(crate) fn pathfinder_find_nearest_open(
     state: &PathfinderState,
     gx: i32,
     gy: i32,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> Option<(i32, i32)> {
     for &(dx, dy) in &state.snap_offsets {
         let nx = gx + dx as i32;
@@ -686,12 +734,7 @@ pub(crate) fn pathfinder_find_nearest_open(
         if nx < 0 || ny < 0 || nx >= state.grid_w || ny >= state.grid_h {
             continue;
         }
-        if pathfinder_is_cell_passable(
-            state,
-            (ny * state.grid_w + nx) as usize,
-            min_normal_z,
-            ignore_terrain_blocking,
-        ) {
+        if pathfinder_is_cell_passable(state, (ny * state.grid_w + nx) as usize, traversal) {
             return Some((nx, ny));
         }
     }
@@ -704,14 +747,13 @@ pub(crate) fn pathfinder_find_nearest_open_toward(
     gy: i32,
     target_gx: i32,
     target_gy: i32,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> Option<(i32, i32)> {
     let vx = target_gx - gx;
     let vy = target_gy - gy;
     let v_len_sq = vx * vx + vy * vy;
     if v_len_sq <= 0 {
-        return pathfinder_find_nearest_open(state, gx, gy, min_normal_z, ignore_terrain_blocking);
+        return pathfinder_find_nearest_open(state, gx, gy, traversal);
     }
 
     let mut best: Option<(i32, i32, i32, f64)> = None;
@@ -722,12 +764,7 @@ pub(crate) fn pathfinder_find_nearest_open_toward(
         if nx < 0 || ny < 0 || nx >= state.grid_w || ny >= state.grid_h {
             continue;
         }
-        if !pathfinder_is_cell_passable(
-            state,
-            (ny * state.grid_w + nx) as usize,
-            min_normal_z,
-            ignore_terrain_blocking,
-        ) {
+        if !pathfinder_is_cell_passable(state, (ny * state.grid_w + nx) as usize, traversal) {
             continue;
         }
 
@@ -758,16 +795,18 @@ pub(crate) fn pathfinder_find_nearest_open_toward(
 pub(crate) fn pathfinder_exact_sample_is_too_steep(
     x: f64,
     y: f64,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> bool {
-    if ignore_terrain_blocking {
+    if traversal.allow_air {
         return false;
     }
     let (height, normal_z) = pathfinder_sample_terrain(x, y);
-    height >= TERRAIN_WATER_LEVEL
+    if height < TERRAIN_WATER_LEVEL && traversal.allow_water {
+        return false;
+    }
+    (height >= TERRAIN_WATER_LEVEL || traversal.allow_ground)
         && normal_z.is_finite()
-        && normal_z < pathfinder_required_step_normal_z(min_normal_z)
+        && normal_z < pathfinder_required_step_normal_z(traversal.min_normal_z)
 }
 
 #[inline]
@@ -775,28 +814,23 @@ pub(crate) fn pathfinder_escape_candidate_is_stable(
     state: &PathfinderState,
     gx: i32,
     gy: i32,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> bool {
     if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
         return false;
     }
-    if !pathfinder_is_cell_passable(
-        state,
-        (gy * state.grid_w + gx) as usize,
-        min_normal_z,
-        ignore_terrain_blocking,
-    ) {
+    let idx = (gy * state.grid_w + gx) as usize;
+    if !pathfinder_is_cell_passable(state, idx, traversal) {
         return false;
     }
-    if ignore_terrain_blocking {
+    if traversal.allow_air || (state.terrain_water[idx] == 1 && traversal.allow_water) {
         return true;
     }
     let (x, y) = pathfinder_cell_center(gx, gy);
     let (height, normal_z) = pathfinder_sample_terrain(x, y);
-    height >= TERRAIN_WATER_LEVEL
+    (height >= TERRAIN_WATER_LEVEL || traversal.allow_ground)
         && normal_z.is_finite()
-        && normal_z >= pathfinder_required_step_normal_z(min_normal_z)
+        && normal_z >= pathfinder_required_step_normal_z(traversal.min_normal_z)
 }
 
 pub(crate) struct StartEscapeResult {
@@ -811,8 +845,7 @@ pub(crate) fn pathfinder_try_steep_start_escape(
     origin_gy: i32,
     goal_gx: i32,
     goal_gy: i32,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
     required_clearance: i32,
 ) -> Option<StartEscapeResult> {
     let target_dx = goal_gx - origin_gx;
@@ -844,13 +877,8 @@ pub(crate) fn pathfinder_try_steep_start_escape(
             }
 
             state.cur_required_clearance = 0;
-            if !pathfinder_escape_candidate_is_stable(
-                state,
-                candidate_gx,
-                candidate_gy,
-                min_normal_z,
-                ignore_terrain_blocking,
-            ) {
+            if !pathfinder_escape_candidate_is_stable(state, candidate_gx, candidate_gy, traversal)
+            {
                 continue;
             }
             attempts += 1;
@@ -875,8 +903,7 @@ pub(crate) fn pathfinder_try_steep_start_escape(
                 candidate_gy,
                 goal_gx,
                 goal_gy,
-                min_normal_z,
-                ignore_terrain_blocking,
+                traversal,
             );
             let mut relaxed = required_clearance;
             while relaxed > 0 && (a_star_result.is_none() || state.path_scratch.is_empty()) {
@@ -888,8 +915,7 @@ pub(crate) fn pathfinder_try_steep_start_escape(
                     candidate_gy,
                     goal_gx,
                     goal_gy,
-                    min_normal_z,
-                    ignore_terrain_blocking,
+                    traversal,
                 );
             }
             if let Some(result) = a_star_result {
@@ -911,8 +937,7 @@ pub(crate) fn pathfinder_find_nearest_in_component(
     gx: i32,
     gy: i32,
     component: i16,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> Option<(i32, i32)> {
     if component <= 0 {
         return None;
@@ -927,9 +952,7 @@ pub(crate) fn pathfinder_find_nearest_in_component(
             continue;
         }
         let idx = (ny * grid_w + nx) as usize;
-        if state.cc_labels[idx] == component
-            && pathfinder_is_cell_passable(state, idx, min_normal_z, ignore_terrain_blocking)
-        {
+        if state.cc_labels[idx] == component && pathfinder_is_cell_passable(state, idx, traversal) {
             return Some((nx, ny));
         }
     }
@@ -943,7 +966,7 @@ pub(crate) fn pathfinder_find_nearest_in_component(
             if state.cc_labels[idx] != component {
                 continue;
             }
-            if !pathfinder_is_cell_passable(state, idx, min_normal_z, ignore_terrain_blocking) {
+            if !pathfinder_is_cell_passable(state, idx, traversal) {
                 continue;
             }
             let dx = nx - gx;
@@ -1057,8 +1080,7 @@ pub(crate) fn pathfinder_a_star(
     start_gy: i32,
     goal_gx: i32,
     goal_gy: i32,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> Option<AStarResult> {
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -1114,13 +1136,7 @@ pub(crate) fn pathfinder_a_star(
             }
             let nidx = (ny * grid_w + nx) as usize;
             pathfinder_touch_a_star_cell(state, nidx);
-            if !pathfinder_can_step_between(
-                state,
-                cur_us,
-                nidx,
-                min_normal_z,
-                ignore_terrain_blocking,
-            ) {
+            if !pathfinder_can_step_between(state, cur_us, nidx, traversal) {
                 continue;
             }
             if state.closed[nidx] != 0 {
@@ -1176,8 +1192,7 @@ pub(crate) fn pathfinder_has_los(
     y0: f64,
     x1: f64,
     y1: f64,
-    min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    traversal: PathfinderTraversal,
 ) -> bool {
     let mut gx = (x0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
     let mut gy = (y0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
@@ -1194,7 +1209,7 @@ pub(crate) fn pathfinder_has_los(
             return false;
         }
         let current_idx = (gy * state.grid_w + gx) as usize;
-        if !pathfinder_is_grid_cell_passable(state, gx, gy, min_normal_z, ignore_terrain_blocking) {
+        if !pathfinder_is_grid_cell_passable(state, gx, gy, traversal) {
             return false;
         }
         if gx == tgx && gy == tgy {
@@ -1204,22 +1219,10 @@ pub(crate) fn pathfinder_has_los(
         let a_x = e2 > -dy;
         let a_y = e2 < dx;
         if a_x && a_y {
-            if !pathfinder_is_grid_cell_passable(
-                state,
-                gx + sx,
-                gy,
-                min_normal_z,
-                ignore_terrain_blocking,
-            ) {
+            if !pathfinder_is_grid_cell_passable(state, gx + sx, gy, traversal) {
                 return false;
             }
-            if !pathfinder_is_grid_cell_passable(
-                state,
-                gx,
-                gy + sy,
-                min_normal_z,
-                ignore_terrain_blocking,
-            ) {
+            if !pathfinder_is_grid_cell_passable(state, gx, gy + sy, traversal) {
                 return false;
             }
         }
@@ -1237,13 +1240,7 @@ pub(crate) fn pathfinder_has_los(
             return false;
         }
         let next_idx = (next_gy * state.grid_w + next_gx) as usize;
-        if !pathfinder_can_step_between(
-            state,
-            current_idx,
-            next_idx,
-            min_normal_z,
-            ignore_terrain_blocking,
-        ) {
+        if !pathfinder_can_step_between(state, current_idx, next_idx, traversal) {
             return false;
         }
         gx = next_gx;
@@ -1275,11 +1272,11 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
 }
 
 /// Plan a path from (start_x, start_y) to (goal_x, goal_y).
-/// `min_normal_z` is the per-unit slope filter (0 = no filter,
-/// matches normalizeMinSurfaceNormalZ returning undefined in JS).
-/// `ignore_terrain_blocking` lets airborne locomotion ignore water,
-/// terrain-inflation, and slope gates while still respecting map bounds
-/// and building-occupied cells.
+/// `min_normal_z` is the per-unit dry-ground slope filter (0 = no filter,
+/// matches normalizeMinSurfaceNormalZ returning undefined in JS). The
+/// allow_* flags are derived from the unit's usable ground/water/air medium
+/// locomotion: air bypasses terrain, wet cells accept water or ground-bed
+/// traversal, and dry cells require ground traversal.
 /// Smoothed waypoints land in `waypoint_scratch` as interleaved
 /// (x, y) f64 pairs; returns the waypoint count.
 ///
@@ -1292,19 +1289,27 @@ pub fn pathfinder_find_path(
     goal_x: f64,
     goal_y: f64,
     min_normal_z: f32,
-    ignore_terrain_blocking: bool,
+    allow_ground: bool,
+    allow_water: bool,
+    allow_air: bool,
     unit_radius: f64,
     symmetric_slope: bool,
 ) -> u32 {
     let state = pathfinder_state();
     state.waypoint_scratch.clear();
+    let traversal = PathfinderTraversal {
+        min_normal_z,
+        allow_ground,
+        allow_water,
+        allow_air,
+    };
     // Per-query traversal params. Snapping resolves the unit's literal
     // start/goal cells, so it must NOT be clearance-gated (a unit parked
     // against a building still starts there) — clearance is enabled only for
-    // the A* search + LOS smoothing below. Airborne (ignore_terrain_blocking)
-    // flies over footprints, so it carries no clearance.
+    // the A* search + LOS smoothing below. Air traversal flies over
+    // footprints, so it carries no clearance.
     state.cur_symmetric_slope = symmetric_slope;
-    let required_clearance = if ignore_terrain_blocking {
+    let required_clearance = if traversal.allow_air {
         0
     } else {
         pathfinder_clearance_cells_for_radius(unit_radius)
@@ -1331,16 +1336,8 @@ pub fn pathfinder_find_path(
     let mut start_cell_gy = sgy;
     let mut start_was_snapped = false;
     let mut start_escape_waypoint = false;
-    if !pathfinder_is_cell_passable(state, start_idx, min_normal_z, ignore_terrain_blocking) {
-        match pathfinder_find_nearest_open_toward(
-            state,
-            sgx,
-            sgy,
-            ggx,
-            ggy,
-            min_normal_z,
-            ignore_terrain_blocking,
-        ) {
+    if !pathfinder_is_cell_passable(state, start_idx, traversal) {
+        match pathfinder_find_nearest_open_toward(state, sgx, sgy, ggx, ggy, traversal) {
             Some((nx, ny)) => {
                 start_cell_gx = nx;
                 start_cell_gy = ny;
@@ -1359,9 +1356,9 @@ pub fn pathfinder_find_path(
     let mut goal_cell_gy = ggy;
     let mut goal_was_snapped = false;
     let ggy_idx = (ggy * grid_w + ggx) as usize;
-    if ignore_terrain_blocking {
-        if !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, true) {
-            match pathfinder_find_nearest_open(state, ggx, ggy, min_normal_z, true) {
+    if traversal.allow_air || traversal.allow_water {
+        if !pathfinder_is_cell_passable(state, ggy_idx, traversal) {
+            match pathfinder_find_nearest_open(state, ggx, ggy, traversal) {
                 Some((nx, ny)) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -1378,16 +1375,9 @@ pub fn pathfinder_find_path(
         // Snap goal to start's component for terrain-bound locomotion.
         let start_label = state.cc_labels[(start_cell_gy * grid_w + start_cell_gx) as usize];
         if state.cc_labels[ggy_idx] != start_label
-            || !pathfinder_is_cell_passable(state, ggy_idx, min_normal_z, false)
+            || !pathfinder_is_cell_passable(state, ggy_idx, traversal)
         {
-            match pathfinder_find_nearest_in_component(
-                state,
-                ggx,
-                ggy,
-                start_label,
-                min_normal_z,
-                false,
-            ) {
+            match pathfinder_find_nearest_in_component(state, ggx, ggy, start_label, traversal) {
                 Some((nx, ny)) => {
                     goal_cell_gx = nx;
                     goal_cell_gy = ny;
@@ -1428,15 +1418,7 @@ pub fn pathfinder_find_path(
         } else {
             (goal_x, goal_y)
         };
-        if pathfinder_has_los(
-            state,
-            start_x,
-            start_y,
-            raw_goal_x,
-            raw_goal_y,
-            min_normal_z,
-            ignore_terrain_blocking,
-        ) {
+        if pathfinder_has_los(state, start_x, start_y, raw_goal_x, raw_goal_y, traversal) {
             state.waypoint_scratch.push(raw_goal_x);
             state.waypoint_scratch.push(raw_goal_y);
             return 1;
@@ -1449,8 +1431,7 @@ pub fn pathfinder_find_path(
         start_cell_gy,
         goal_cell_gx,
         goal_cell_gy,
-        min_normal_z,
-        ignore_terrain_blocking,
+        traversal,
     );
     // If the full standoff can't reach the goal (a unit hemmed in by structures,
     // or the only route is a gap narrower than its body), relax the clearance
@@ -1468,8 +1449,7 @@ pub fn pathfinder_find_path(
             start_cell_gy,
             goal_cell_gx,
             goal_cell_gy,
-            min_normal_z,
-            ignore_terrain_blocking,
+            traversal,
         );
     }
     let made_progress = match &a_star_result {
@@ -1478,12 +1458,7 @@ pub fn pathfinder_find_path(
     };
     if !made_progress
         && !start_was_snapped
-        && pathfinder_exact_sample_is_too_steep(
-            start_x,
-            start_y,
-            min_normal_z,
-            ignore_terrain_blocking,
-        )
+        && pathfinder_exact_sample_is_too_steep(start_x, start_y, traversal)
     {
         if let Some(escape) = pathfinder_try_steep_start_escape(
             state,
@@ -1491,8 +1466,7 @@ pub fn pathfinder_find_path(
             sgy,
             goal_cell_gx,
             goal_cell_gy,
-            min_normal_z,
-            ignore_terrain_blocking,
+            traversal,
             required_clearance,
         ) {
             start_cell_gx = escape.start_gx;
@@ -1552,15 +1526,7 @@ pub fn pathfinder_find_path(
             let ngy = (next_idx - ngx) / grid_w;
             let (cand_x, cand_y) = pathfinder_cell_center(cgx, cgy);
             let (next_x, next_y) = pathfinder_cell_center(ngx, ngy);
-            if !pathfinder_has_los(
-                state,
-                anchor_x,
-                anchor_y,
-                next_x,
-                next_y,
-                min_normal_z,
-                ignore_terrain_blocking,
-            ) {
+            if !pathfinder_has_los(state, anchor_x, anchor_y, next_x, next_y, traversal) {
                 pathfinder_push_waypoint(state, cand_x, cand_y);
                 anchor_x = cand_x;
                 anchor_y = cand_y;

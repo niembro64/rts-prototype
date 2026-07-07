@@ -676,6 +676,10 @@ export class UnitForceSystem {
       this.flushNativeTerrainAirAheadProbeGroundZ(sim);
     }
 
+    const wind = this.simulation.getWindState();
+    const windX = Number.isFinite(wind.x) ? wind.x : 0;
+    const windY = Number.isFinite(wind.y) ? wind.y : 0;
+    const windZ = Number.isFinite(wind.z) ? wind.z : 0;
     measureWasmBoundary('server.unitForceStepBatch', () => {
       sim.unitForceStepBatch(
         _forceSlots.subarray(0, count),
@@ -684,6 +688,9 @@ export class UnitForceSystem {
         _forceOutFlags.subarray(0, count),
         count,
         dtSec,
+        windX,
+        windY,
+        windZ,
         this.world.thrustMultiplier,
         LOCOMOTION_FORCE_SCALE,
         UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,

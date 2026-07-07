@@ -185,7 +185,7 @@
       "$audio": "event.hit.shotMissileFast"
     },
     "submunitions": null,
-    "homingTurnRate": 0.2,
+    "homingTurnRate": 1.2,
     "homingThrust": null,
     "homingDelayMs": 0,
     "propulsionForce": null,

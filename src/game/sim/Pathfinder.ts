@@ -17,13 +17,13 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //   • Multi-point water/slope sampling plus every terrain triangle
 //     touching the path cell, so shoreline cells and vertical cliff
 //     faces cannot slip between center samples.
-//   • Terrain C-space inflation: configurable cells around water so
-//     unit bodies clear the shore. Building and tower footprints are
+//   • Terrain C-space inflation: configurable cells around water still
+//     blocks ground-only routes, while water-capable routes can use wet
+//     cells and the shoreline buffer. Building and tower footprints are
 //     elevated flat terrain: uphill entry is rejected by the same directed
 //     climb rule as cliffs, while top traversal and downhill falls are legal.
-//   • Airborne queries (hover + flying) ignore terrain blocking so
-//     water and slope do not force them onto land-only routes; they
-//     still stay inside the map.
+//   • Air-capable queries ignore terrain blocking so water and slope do
+//     not force them onto land-only routes; they still stay inside the map.
 //   • Connected-component pre-flight for symmetric blockers only. Slope
 //     traversal is directional: A* and LOS smoothing reject illegal uphill
 //     edges, while downhill moves and cliff falls remain valid.
@@ -43,13 +43,16 @@ import {
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
 import type { ActionType, UnitLocomotion, UnitPathPoint } from './types';
-import { minSurfaceNormalZForLocomotion } from './pathfindingMobility';
+import { computeLocomotionClimbProfile } from './pathfindingMobility';
 import { PATHFINDING_STABILITY_MIN_NORMAL_Z } from './pathfindingTuning';
 
 type Vec2 = { x: number; y: number };
 
 export type PathTerrainFilter = {
   minSurfaceNormalZ: number | null;
+  allowGround: boolean;
+  allowWater: boolean;
+  allowAir: boolean;
   ignoreTerrainBlocking: boolean;
 };
 
@@ -130,7 +133,7 @@ function collectBuildingCells(buildingGrid: BuildingGrid): Float64Array {
 }
 
 function normalizeMinSurfaceNormalZ(filter: PathTerrainFilter | null): number {
-  if (filter === null || filter.ignoreTerrainBlocking) return 0;
+  if (filter === null || filter.allowAir) return 0;
   const value = filter.minSurfaceNormalZ;
   if (value === null || !Number.isFinite(value) || value <= PATHFINDING_STABILITY_MIN_NORMAL_Z) {
     return 0;
@@ -138,8 +141,16 @@ function normalizeMinSurfaceNormalZ(filter: PathTerrainFilter | null): number {
   return Math.min(1, value);
 }
 
-function shouldIgnoreTerrainBlocking(filter: PathTerrainFilter | null): boolean {
-  return filter !== null && filter.ignoreTerrainBlocking;
+function pathAllowsGround(filter: PathTerrainFilter | null): boolean {
+  return filter === null || filter.allowGround;
+}
+
+function pathAllowsWater(filter: PathTerrainFilter | null): boolean {
+  return filter !== null && filter.allowWater;
+}
+
+function pathAllowsAir(filter: PathTerrainFilter | null): boolean {
+  return filter !== null && filter.allowAir;
 }
 
 export function pathTerrainFilterForLocomotion(
@@ -147,15 +158,15 @@ export function pathTerrainFilterForLocomotion(
   mass: number | undefined,
 ): PathTerrainFilter | null {
   if (locomotion === undefined) return null;
-  if (locomotion.pathfinding.ignoreTerrainBlocking) {
-    return { minSurfaceNormalZ: null, ignoreTerrainBlocking: true };
-  }
-  return mass !== undefined
-    ? {
-        minSurfaceNormalZ: minSurfaceNormalZForLocomotion(locomotion, mass),
-        ignoreTerrainBlocking: false,
-      }
-    : null;
+  if (mass === undefined) return null;
+  const mobility = computeLocomotionClimbProfile(locomotion, mass);
+  return {
+    minSurfaceNormalZ: mobility.minSurfaceNormalZ,
+    allowGround: mobility.allowGround,
+    allowWater: mobility.allowWater,
+    allowAir: mobility.allowAir,
+    ignoreTerrainBlocking: mobility.allowAir,
+  };
 }
 
 function ensureMaskAndCC(
@@ -199,7 +210,6 @@ function findPath(
 ): Vec2[] {
   ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
   const minSurfaceNormalZ = normalizeMinSurfaceNormalZ(terrainFilter);
-  const ignoreTerrainBlocking = shouldIgnoreTerrainBlocking(terrainFilter);
   const sim = getSimWasm()!;
   const count = sim.pathfinder.findPath(
     startX,
@@ -207,7 +217,9 @@ function findPath(
     goalX,
     goalY,
     minSurfaceNormalZ,
-    ignoreTerrainBlocking,
+    pathAllowsGround(terrainFilter),
+    pathAllowsWater(terrainFilter),
+    pathAllowsAir(terrainFilter),
     unitRadius,
     symmetricSlope,
   );
@@ -304,10 +316,10 @@ function validatePathDoesNotCrossWater(
  *  gate on directed uphill edges. Higher values mean flatter required
  *  uphill terrain; downhill movement and cliff falls remain valid.
  *
- *  `terrainFilter.ignoreTerrainBlocking` is for airborne locomotion:
- *  water, terrain inflation, and slope are ignored while map bounds
- *  remain enforced. Structure footprints are elevated terrain cells,
- *  so they use the same directed step rules as hills and cliffs. */
+ *  `terrainFilter` carries medium-aware traversal flags. Air can bypass
+ *  terrain blockers; wet cells can be traversed by water locomotion or
+ *  ground drive on the bed; dry cells require ground capability and use
+ *  the unit's dry-ground climb profile. */
 export function expandPathPoints(
   startX: number, startY: number,
   goalX: number, goalY: number,
@@ -330,7 +342,7 @@ export function expandPathPoints(
     unitRadius,
     symmetricSlope,
   );
-  if (VALIDATE_PATHS && !shouldIgnoreTerrainBlocking(terrainFilter)) {
+  if (VALIDATE_PATHS && !pathAllowsWater(terrainFilter) && !pathAllowsAir(terrainFilter)) {
     validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
   }
   const out: UnitPathPoint[] = [];
@@ -354,6 +366,3 @@ export type MultiLegWaypoint = {
   z: number | null;
   type: ActionType;
 };
-
-
-

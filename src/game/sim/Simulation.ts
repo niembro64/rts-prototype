@@ -594,8 +594,12 @@ export class Simulation {
 
   private pathTerrainFilterKey(filter: PathTerrainFilter | null): string {
     if (filter === null) return 'default';
-    if (filter.ignoreTerrainBlocking) return 'any';
-    return `min:${filter.minSurfaceNormalZ ?? 'null'}`;
+    return [
+      filter.allowGround ? 'g1' : 'g0',
+      filter.allowWater ? 'w1' : 'w0',
+      filter.allowAir ? 'a1' : 'a0',
+      `min:${filter.minSurfaceNormalZ ?? 'null'}`,
+    ].join(':');
   }
 
   private formationRouteCacheKey(

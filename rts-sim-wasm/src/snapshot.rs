@@ -7065,7 +7065,9 @@ mod sim_kernel_tests {
         // not a blocker that should force an origin-side escape point.
         let building_cells = [10.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_001, 20_001, 30_001);
-        let count = pathfinder_find_path(210.0, 210.0, 320.0, 210.0, 0.0, false, 0.0, false);
+        let count = pathfinder_find_path(
+            210.0, 210.0, 320.0, 210.0, 0.0, true, false, false, 0.0, false,
+        );
         assert_eq!(count, 1);
 
         let waypoints =
@@ -7085,7 +7087,9 @@ mod sim_kernel_tests {
         // there can always move/fall down from it.
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_002, 20_002, 30_002);
-        let count = pathfinder_find_path(30.0, 210.0, 80.0, 210.0, 0.0, false, 0.0, false);
+        let count = pathfinder_find_path(
+            30.0, 210.0, 80.0, 210.0, 0.0, true, false, false, 0.0, false,
+        );
         assert_eq!(count, 1);
 
         let waypoints =
@@ -7102,7 +7106,9 @@ mod sim_kernel_tests {
 
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_003, 20_003, 30_003);
-        let count = pathfinder_find_path(80.0, 210.0, 30.0, 210.0, 0.0, false, 0.0, false);
+        let count = pathfinder_find_path(
+            80.0, 210.0, 30.0, 210.0, 0.0, true, false, false, 0.0, false,
+        );
         assert!(count >= 1);
 
         let waypoints =
@@ -7113,6 +7119,130 @@ mod sim_kernel_tests {
             "ground path must not enter elevated building footprint"
         );
         assert!((waypoints[last + 1] - 210.0).abs() < 1.0e-9);
+    }
+
+    fn install_pathfinder_water_strip_test_terrain() {
+        const CELLS_X: i32 = 12;
+        const CELLS_Y: i32 = 5;
+        const CELL_SIZE: f64 = 20.0;
+        const WATER_GX: i32 = 5;
+
+        let cell_count = (CELLS_X * CELLS_Y) as usize;
+        let mut vertex_coords: Vec<f64> = Vec::new();
+        let mut vertex_heights: Vec<f64> = Vec::new();
+        let mut triangle_indices: Vec<i32> = Vec::new();
+        let mut triangle_levels: Vec<i32> = Vec::new();
+        let mut cell_triangle_offsets: Vec<i32> = Vec::with_capacity(cell_count + 1);
+        let mut cell_triangle_indices: Vec<i32> = Vec::new();
+
+        fn push_vertex(
+            vertex_coords: &mut Vec<f64>,
+            vertex_heights: &mut Vec<f64>,
+            x: f64,
+            y: f64,
+            h: f64,
+        ) -> i32 {
+            let idx = vertex_heights.len() as i32;
+            vertex_coords.push(x);
+            vertex_coords.push(y);
+            vertex_heights.push(h);
+            idx
+        }
+
+        fn push_triangle(
+            triangle_indices: &mut Vec<i32>,
+            triangle_levels: &mut Vec<i32>,
+            a: i32,
+            b: i32,
+            c: i32,
+        ) -> i32 {
+            let tri = (triangle_indices.len() / 3) as i32;
+            triangle_indices.push(a);
+            triangle_indices.push(b);
+            triangle_indices.push(c);
+            triangle_levels.push(0);
+            tri
+        }
+
+        for gy in 0..CELLS_Y {
+            for gx in 0..CELLS_X {
+                cell_triangle_offsets.push(cell_triangle_indices.len() as i32);
+                let h = if gx == WATER_GX {
+                    TERRAIN_WATER_LEVEL - 10.0
+                } else {
+                    TERRAIN_WATER_LEVEL + 10.0
+                };
+                let x0 = gx as f64 * CELL_SIZE;
+                let y0 = gy as f64 * CELL_SIZE;
+                let x1 = x0 + CELL_SIZE;
+                let y1 = y0 + CELL_SIZE;
+                let v00 = push_vertex(&mut vertex_coords, &mut vertex_heights, x0, y0, h);
+                let v10 = push_vertex(&mut vertex_coords, &mut vertex_heights, x1, y0, h);
+                let v01 = push_vertex(&mut vertex_coords, &mut vertex_heights, x0, y1, h);
+                let v11 = push_vertex(&mut vertex_coords, &mut vertex_heights, x1, y1, h);
+                let t0 = push_triangle(&mut triangle_indices, &mut triangle_levels, v00, v10, v11);
+                let t1 = push_triangle(&mut triangle_indices, &mut triangle_levels, v00, v11, v01);
+                cell_triangle_indices.push(t0);
+                cell_triangle_indices.push(t1);
+            }
+        }
+        cell_triangle_offsets.push(cell_triangle_indices.len() as i32);
+
+        let neighbor_indices = vec![-1; triangle_indices.len()];
+        let neighbor_levels = vec![-1; triangle_indices.len()];
+        terrain_clear();
+        terrain_install_mesh(
+            &vertex_coords,
+            &vertex_heights,
+            &triangle_indices,
+            &triangle_levels,
+            &neighbor_indices,
+            &neighbor_levels,
+            &cell_triangle_offsets,
+            &cell_triangle_indices,
+            CELLS_X as f64 * CELL_SIZE,
+            CELLS_Y as f64 * CELL_SIZE,
+            CELL_SIZE,
+            1,
+            CELLS_X,
+            CELLS_Y,
+        );
+    }
+
+    #[test]
+    pub(crate) fn pathfinder_water_medium_allows_crossing_water_blocked_cells() {
+        let _guard = lock_tests();
+        install_pathfinder_water_strip_test_terrain();
+        pathfinder_init(240.0, 100.0);
+        pathfinder_rebuild_mask_and_cc(&[], 10_031, 20_031, 30_031);
+
+        let ground_only_count =
+            pathfinder_find_path(50.0, 50.0, 190.0, 50.0, 0.0, true, false, false, 0.0, false);
+        let ground_only_waypoints = unsafe {
+            std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (ground_only_count as usize) * 2)
+        };
+        let ground_only_last = (ground_only_count as usize - 1) * 2;
+        assert!(
+            (ground_only_waypoints[ground_only_last] - 190.0).abs() > 1.0e-9,
+            "ground-only routes should not cross the water-buffered strip"
+        );
+
+        let amphibious_count =
+            pathfinder_find_path(50.0, 50.0, 190.0, 50.0, 0.0, true, true, false, 0.0, false);
+        assert_eq!(amphibious_count, 1);
+        let amphibious_waypoints = unsafe {
+            std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (amphibious_count as usize) * 2)
+        };
+        assert!(
+            (amphibious_waypoints[0] - 190.0).abs() < 1.0e-9,
+            "amphibious route should reach goal x, got {}",
+            amphibious_waypoints[0]
+        );
+        assert!(
+            (amphibious_waypoints[1] - 50.0).abs() < 1.0e-9,
+            "amphibious route should reach goal y, got {}",
+            amphibious_waypoints[1]
+        );
     }
 
     fn install_pathfinder_cliff_test_terrain() {
@@ -7244,7 +7374,8 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_004, 20_004, 30_004);
 
-        let count = pathfinder_find_path(90.0, 50.0, 110.0, 50.0, 0.0, false, 0.0, false);
+        let count =
+            pathfinder_find_path(90.0, 50.0, 110.0, 50.0, 0.0, true, false, false, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =
@@ -7260,7 +7391,8 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_005, 20_005, 30_005);
 
-        let count = pathfinder_find_path(110.0, 50.0, 90.0, 50.0, 0.0, false, 0.0, false);
+        let count =
+            pathfinder_find_path(110.0, 50.0, 90.0, 50.0, 0.0, true, false, false, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =
@@ -7374,7 +7506,8 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_006, 20_006, 30_006);
 
-        let count = pathfinder_find_path(100.0, 50.0, 50.0, 50.0, 0.0, false, 0.0, false);
+        let count =
+            pathfinder_find_path(100.0, 50.0, 50.0, 50.0, 0.0, true, false, false, 0.0, false);
         assert!(
             count >= 2,
             "steep wall starts should emit an explicit flat escape waypoint before the final goal"
@@ -8299,6 +8432,9 @@ mod sim_kernel_tests {
                 &mut out_flags,
                 1,
                 1.0 / 60.0,
+                0.0,
+                0.0,
+                0.0,
                 20.0,
                 150_000.0,
                 100.0,
@@ -8362,6 +8498,9 @@ mod sim_kernel_tests {
                 &mut out_flags,
                 1,
                 1.0 / 60.0,
+                0.0,
+                0.0,
+                0.0,
                 20.0,
                 150_000.0,
                 100.0,
@@ -8419,6 +8558,9 @@ mod sim_kernel_tests {
                 &mut out_flags,
                 1,
                 1.0 / 60.0,
+                0.0,
+                0.0,
+                0.0,
                 20.0,
                 150_000.0,
                 100.0,
@@ -8478,6 +8620,9 @@ mod sim_kernel_tests {
                     &mut out_flags,
                     1,
                     1.0 / 60.0,
+                    0.0,
+                    0.0,
+                    0.0,
                     20.0,
                     150_000.0,
                     100.0,
@@ -8552,6 +8697,9 @@ mod sim_kernel_tests {
                 &mut out_flags,
                 1,
                 1.0 / 60.0,
+                0.0,
+                0.0,
+                0.0,
                 20.0,
                 150_000.0,
                 100.0,
@@ -8608,6 +8756,9 @@ mod sim_kernel_tests {
                 &mut out_flags,
                 1,
                 1.0 / 60.0,
+                0.0,
+                0.0,
+                0.0,
                 20.0,
                 150_000.0,
                 100.0,
@@ -8623,6 +8774,59 @@ mod sim_kernel_tests {
         let ax = rows[UF_ROW_MOVEMENT_ACCEL_X];
         pool_free_slot(slot);
         ax
+    }
+
+    fn run_wind_air_fraction(water_fraction: f64) -> (f64, f64, f64) {
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            let clamped = water_fraction.max(0.0).min(1.0);
+            p.pos_z[i] = TERRAIN_WATER_LEVEL + UNIT_FORCE_TEST_GROUND_OFFSET
+                - clamped * UNIT_FORCE_TEST_GROUND_OFFSET * 2.0;
+            p.ground_offset[i] = UNIT_FORCE_TEST_GROUND_OFFSET;
+            p.inv_mass[i] = 1.0 / 2100.0;
+        }
+
+        let slots = [slot];
+        let flags = [0_u32];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
+        rows[UF_ROW_NORMAL_Z] = 1.0;
+        rows[UF_ROW_AIR_FRICTION] = 4.0;
+
+        assert_eq!(
+            unit_force_step_batch(
+                &slots,
+                &flags,
+                &mut rows,
+                &mut out_flags,
+                1,
+                1.0 / 60.0,
+                30.0,
+                -12.0,
+                6.0,
+                20.0,
+                150_000.0,
+                100.0,
+                30.0,
+                2.0 * 30.0_f64.sqrt(),
+                0.0,
+                UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+                UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+            ),
+            1,
+        );
+        let result = (
+            rows[UF_ROW_MOVEMENT_ACCEL_X],
+            rows[UF_ROW_MOVEMENT_ACCEL_Y],
+            rows[UF_ROW_MOVEMENT_ACCEL_Z],
+        );
+        pool_free_slot(slot);
+        result
     }
 
     #[test]
@@ -8766,6 +8970,22 @@ mod sim_kernel_tests {
             (half_ax - (air_ax + water_ax) * 0.5).abs() < 1e-9,
             "half-submerged drive should be the 50/50 air/water blend",
         );
+    }
+
+    #[test]
+    pub(crate) fn wind_drag_scales_by_above_water_fraction() {
+        let _guard = lock_tests();
+        let air = run_wind_air_fraction(0.0);
+        let half = run_wind_air_fraction(0.5);
+        let submerged = run_wind_air_fraction(1.0);
+
+        assert!(air.0 > 0.0 && air.1 < 0.0 && air.2 > 0.0);
+        assert!((half.0 - air.0 * 0.5).abs() < 1e-9);
+        assert!((half.1 - air.1 * 0.5).abs() < 1e-9);
+        assert!((half.2 - air.2 * 0.5).abs() < 1e-9);
+        assert!(submerged.0.abs() < 1e-12);
+        assert!(submerged.1.abs() < 1e-12);
+        assert!(submerged.2.abs() < 1e-12);
     }
 
     #[test]

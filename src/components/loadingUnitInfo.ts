@@ -245,7 +245,14 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
     stat('Traction', fmt(primaryPhysics.traction, 2)),
     node('Pathfinding', locomotion.pathfindingBlueprintId, undefined, [
       stat('Terrain mode', runtime.pathfinding.terrainMode),
-      stat('Ignores blocking', yesNo(runtime.pathfinding.ignoreTerrainBlocking)),
+      stat(
+        'Media',
+        [
+          climb.allowGround ? 'ground' : '',
+          climb.allowWater ? 'water' : '',
+          climb.allowAir ? 'air' : '',
+        ].filter(Boolean).join(' / ') || 'none',
+      ),
       stat('Max slope', climb.maxSlopeDeg === null ? 'any' : `${fmt(climb.maxSlopeDeg)} deg`),
       stat('Surface normal floor', climb.minSurfaceNormalZ === null ? 'any' : fmt(climb.minSurfaceNormalZ, 3)),
     ]),

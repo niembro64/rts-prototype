@@ -1064,6 +1064,9 @@ export interface SimWasm {
     outFlags: Uint32Array,
     count: number,
     dtSec: number,
+    windX: number,
+    windY: number,
+    windZ: number,
     thrustMultiplier: number,
     forceScale: number,
     referenceMass: number,
@@ -3623,14 +3626,15 @@ export interface PathfinderApi {
   ) => void;
   /** Run findPath. Writes smoothed waypoints into the WASM-side
    *  scratch buffer as interleaved (x, y) f64 pairs; returns the
-   *  waypoint COUNT (not the f64 element count). `ignoreTerrainBlocking`
-   *  is used by airborne locomotion to ignore water/slope/terrain
-   *  inflation while still respecting map bounds and buildings. */
+   *  waypoint COUNT (not the f64 element count). The medium flags come
+   *  from the unit's authored ground/water/air locomotion authority. */
   findPath: (
     startX: number, startY: number,
     goalX: number, goalY: number,
     minNormalZ: number,
-    ignoreTerrainBlocking: boolean,
+    allowGround: boolean,
+    allowWater: boolean,
+    allowAir: boolean,
     /** Unit collision radius in world units. Blockers are kept this far from
      *  the route (clearance field) so a body is not squeezed through gaps it
      *  cannot fit. 0 = point-size (no clearance gate). */

@@ -1287,12 +1287,20 @@ export class TerrainTileRenderer3D {
         : null;
     const selectedUnitPathingEnabled = selectedUnitBlueprint !== undefined &&
       selectedUnitLocomotion !== null;
+    const selectedUnitAllowsGround = selectedUnitPathingEnabled
+      ? selectedUnitClimbProfile?.allowGround === true
+      : false;
+    const selectedUnitAllowsWater = selectedUnitPathingEnabled
+      ? selectedUnitClimbProfile?.allowWater === true
+      : false;
+    const selectedUnitAllowsAir = selectedUnitPathingEnabled
+      ? selectedUnitClimbProfile?.allowAir === true
+      : false;
     const selectedUnitRequiredNormalZ = selectedUnitPathingEnabled
       ? requiredPathingNormalZ(selectedUnitClimbProfile?.minSurfaceNormalZ)
       : PATHFINDING_STABILITY_MIN_NORMAL_Z;
     const selectedUnitNeedsTerrainMask = selectedUnitPathingEnabled &&
-      selectedUnitLocomotion !== null &&
-      !selectedUnitLocomotion.pathfinding.ignoreTerrainBlocking;
+      !selectedUnitAllowsAir;
     const pathOverlayEnabled = waterPathingMapEnabled || selectedUnitPathingEnabled;
     const enabled = buildGridEnabled || metalMapEnabled || pathOverlayEnabled;
     const overlayMode = buildGridEnabled
@@ -1361,6 +1369,7 @@ export class TerrainTileRenderer3D {
         }
         if (overlayMode.startsWith('path:')) {
           const terrainWaterBlocked = this.buildGridWaterBlockMask[cellIndex] !== 0;
+          const terrainWaterRaw = this.buildGridWaterRawMask[cellIndex] !== 0;
           if (!selectedUnitPathingEnabled || selectedUnitLocomotion === null) {
             this.writeBuildGridPixel(
               offset,
@@ -1370,12 +1379,8 @@ export class TerrainTileRenderer3D {
             );
             continue;
           }
-          if (waterPathingMapEnabled && terrainWaterBlocked) {
-            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
-            continue;
-          }
 
-          if (selectedUnitLocomotion.pathfinding.ignoreTerrainBlocking) {
+          if (selectedUnitAllowsAir) {
             this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_OK);
             continue;
           }
@@ -1385,12 +1390,18 @@ export class TerrainTileRenderer3D {
             this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
             continue;
           }
-          if (terrainWaterBlocked) {
+          const passableByMedium = terrainWaterRaw
+            ? selectedUnitAllowsWater || selectedUnitAllowsGround
+            : terrainWaterBlocked
+              ? selectedUnitAllowsWater && selectedUnitAllowsGround
+              : selectedUnitAllowsGround;
+          if (!passableByMedium) {
             this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
             continue;
           }
-          const terrainPassable =
-            this.pathingTerrainMinNormalZ[cellIndex] >= selectedUnitRequiredNormalZ;
+          const terrainPassable = terrainWaterRaw && selectedUnitAllowsWater
+            ? true
+            : this.pathingTerrainMinNormalZ[cellIndex] >= selectedUnitRequiredNormalZ;
           this.writeBuildGridPixel(
             offset,
             terrainPassable ? BUILD_GRID_COLOR_OK : BUILD_GRID_COLOR_BLOCKED,

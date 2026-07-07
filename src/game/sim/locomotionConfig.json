@@ -3,7 +3,7 @@
   "types": {
     "wheels": {
       "physics": {
-        "driveForceMultiplier": 4.0,
+        "driveForceMultiplier": 2.0,
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
@@ -13,7 +13,7 @@
     },
     "treads": {
       "physics": {
-        "driveForceMultiplier": 4.0,
+        "driveForceMultiplier": 2.0,
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
@@ -43,7 +43,7 @@
     },
     "flying": {
       "physics": {
-        "driveForceMultiplier": 2.0,
+        "driveForceMultiplier": 1.0,
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": false,
         "maintainFullThrustAtWaypoints": true,

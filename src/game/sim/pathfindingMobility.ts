@@ -8,7 +8,6 @@ import type { UnitLocomotion } from './types';
 import {
   LOCOMOTION_FORCE_SCALE,
   getLocomotionForceProfile,
-  getLocomotionGroundDrivePhysics,
 } from './locomotion';
 import {
   PATHFINDING_FORCE_SAFETY_RATIO,
@@ -25,6 +24,9 @@ type LocomotionClimbProfile = {
   readonly driveLimitedSlopeDeg: number | null;
   readonly tractionLimitedSlopeDeg: number | null;
   readonly stabilityLimitedSlopeDeg: number | null;
+  readonly allowGround: boolean;
+  readonly allowWater: boolean;
+  readonly allowAir: boolean;
 };
 
 function clamp01(value: number): number {
@@ -35,12 +37,31 @@ function slopeDegToMinSurfaceNormalZ(slopeDeg: number): number {
   return Math.cos(slopeDeg * DEG_TO_RAD);
 }
 
+function mediumHasHorizontalAuthority(
+  physics: UnitLocomotion['physics']['ground'],
+): boolean {
+  return physics.force > 0 && physics.traction > 0;
+}
+
+function mediumHasLiftAuthority(
+  physics: UnitLocomotion['physics']['air'],
+): boolean {
+  return physics.gravityCounterUpwardForceRatio > 0 || physics.heightUpwardForce > 0;
+}
+
 export function computeLocomotionClimbProfile(
   locomotion: UnitLocomotion,
   mass: number,
   thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME,
 ): LocomotionClimbProfile {
-  if (locomotion.pathfinding.ignoreTerrainBlocking) {
+  const groundPhysics = locomotion.physics.ground;
+  const airPhysics = locomotion.physics.air;
+  const waterPhysics = locomotion.physics.water;
+  const allowGround = mediumHasHorizontalAuthority(groundPhysics);
+  const allowWater = mediumHasHorizontalAuthority(waterPhysics);
+  const allowAir = mediumHasHorizontalAuthority(airPhysics) && mediumHasLiftAuthority(airPhysics);
+
+  if (allowAir) {
     return {
       maxSlopeDeg: null,
       minSurfaceNormalZ: null,
@@ -48,13 +69,29 @@ export function computeLocomotionClimbProfile(
       driveLimitedSlopeDeg: null,
       tractionLimitedSlopeDeg: null,
       stabilityLimitedSlopeDeg: null,
+      allowGround,
+      allowWater,
+      allowAir,
     };
   }
   if (!Number.isFinite(mass) || mass <= 0) {
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
   }
 
-  const groundPhysics = getLocomotionGroundDrivePhysics(locomotion);
+  if (!allowGround) {
+    return {
+      maxSlopeDeg: null,
+      minSurfaceNormalZ: null,
+      safeDriveAccel: 0,
+      driveLimitedSlopeDeg: null,
+      tractionLimitedSlopeDeg: null,
+      stabilityLimitedSlopeDeg: null,
+      allowGround,
+      allowWater,
+      allowAir,
+    };
+  }
+
   const forceProfile = getLocomotionForceProfile(
     groundPhysics,
     UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
@@ -84,6 +121,9 @@ export function computeLocomotionClimbProfile(
     driveLimitedSlopeDeg,
     tractionLimitedSlopeDeg,
     stabilityLimitedSlopeDeg,
+    allowGround,
+    allowWater,
+    allowAir,
   };
 }
 
