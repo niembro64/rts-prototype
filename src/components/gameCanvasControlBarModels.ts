@@ -61,6 +61,7 @@ export type GameCanvasBattleControlBarModel = {
   readonly terrainLightSmoothing: number;
   readonly terrainTextureSmoothAcrossWallBoundary: boolean;
   readonly terrainLightSmoothAcrossWallBoundary: boolean;
+  readonly terrainSplitWallBoundaryVertices: boolean;
   readonly displayUnitCount: number;
   readonly currentForceFieldsVisible: boolean;
   readonly currentShieldsObstructSight: boolean;
@@ -91,6 +92,7 @@ export type GameCanvasBattleControlBarModel = {
   applyTerrainLightSmoothing(value: number): void;
   toggleTerrainTextureSmoothAcrossWallBoundary(): void;
   toggleTerrainLightSmoothAcrossWallBoundary(): void;
+  toggleTerrainSplitWallBoundaryVertices(): void;
   setForceFieldsVisible(enabled: boolean): void;
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;

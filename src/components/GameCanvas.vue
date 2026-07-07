@@ -49,10 +49,12 @@ import {
   loadStoredMapLandDimensions,
   getTerrainLightSmoothAcrossWallBoundary,
   getTerrainLightSmoothing,
+  getTerrainSplitWallBoundaryVertices,
   getTerrainTextureSmoothAcrossWallBoundary,
   getTerrainTextureSmoothing,
   setTerrainLightSmoothAcrossWallBoundary,
   setTerrainLightSmoothing,
+  setTerrainSplitWallBoundaryVertices,
   setTerrainTextureSmoothAcrossWallBoundary,
   setTerrainTextureSmoothing,
   syncTerrainRenderSmoothingSettings,
@@ -1065,6 +1067,9 @@ const terrainTextureSmoothAcrossWallBoundary = ref<boolean>(
 const terrainLightSmoothAcrossWallBoundary = ref<boolean>(
   getTerrainLightSmoothAcrossWallBoundary(),
 );
+const terrainSplitWallBoundaryVertices = ref<boolean>(
+  getTerrainSplitWallBoundaryVertices(),
+);
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
 const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
@@ -1405,6 +1410,8 @@ watch(currentBattleMode, (mode) => {
     getTerrainTextureSmoothAcrossWallBoundary();
   terrainLightSmoothAcrossWallBoundary.value =
     getTerrainLightSmoothAcrossWallBoundary();
+  terrainSplitWallBoundaryVertices.value =
+    getTerrainSplitWallBoundaryVertices();
 });
 // Simulation-side unit ground normal EMA - the host applies its setting via the
 // setUnitGroundNormalEmaMode command, then the display reconciles from
@@ -1556,6 +1563,15 @@ function toggleTerrainLightSmoothAcrossWallBoundary(): void {
     getTerrainLightSmoothAcrossWallBoundary();
 }
 
+function toggleTerrainSplitWallBoundaryVertices(): void {
+  setTerrainSplitWallBoundaryVertices(
+    !terrainSplitWallBoundaryVertices.value,
+    currentBattleMode.value,
+  );
+  terrainSplitWallBoundaryVertices.value =
+    getTerrainSplitWallBoundaryVertices();
+}
+
 function resetTerrainRenderSmoothingDefaults(): void {
   setTerrainTextureSmoothing(
     BATTLE_CONFIG.terrainTextureSmoothing.default,
@@ -1573,12 +1589,18 @@ function resetTerrainRenderSmoothingDefaults(): void {
     BATTLE_CONFIG.terrainLightSmoothAcrossWallBoundary.default,
     currentBattleMode.value,
   );
+  setTerrainSplitWallBoundaryVertices(
+    BATTLE_CONFIG.terrainSplitWallBoundaryVertices.default,
+    currentBattleMode.value,
+  );
   terrainTextureSmoothing.value = getTerrainTextureSmoothing();
   terrainLightSmoothing.value = getTerrainLightSmoothing();
   terrainTextureSmoothAcrossWallBoundary.value =
     getTerrainTextureSmoothAcrossWallBoundary();
   terrainLightSmoothAcrossWallBoundary.value =
     getTerrainLightSmoothAcrossWallBoundary();
+  terrainSplitWallBoundaryVertices.value =
+    getTerrainSplitWallBoundaryVertices();
 }
 
 function resetBattleDefaultsWithGroundNormal(): void {
@@ -1727,6 +1749,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
     terrainTextureSmoothAcrossWallBoundary.value,
   terrainLightSmoothAcrossWallBoundary:
     terrainLightSmoothAcrossWallBoundary.value,
+  terrainSplitWallBoundaryVertices: terrainSplitWallBoundaryVertices.value,
   displayUnitCount: displayUnitCount.value,
   currentForceFieldsVisible: currentForceFieldsVisible.value,
   currentShieldsObstructSight: currentShieldsObstructSight.value,
@@ -1757,6 +1780,7 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyTerrainLightSmoothing,
   toggleTerrainTextureSmoothAcrossWallBoundary,
   toggleTerrainLightSmoothAcrossWallBoundary,
+  toggleTerrainSplitWallBoundaryVertices,
   setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
@@ -1796,6 +1820,8 @@ watchEffect(() => {
     terrainTextureSmoothAcrossWallBoundary.value;
   m.terrainLightSmoothAcrossWallBoundary =
     terrainLightSmoothAcrossWallBoundary.value;
+  m.terrainSplitWallBoundaryVertices =
+    terrainSplitWallBoundaryVertices.value;
   m.displayUnitCount = displayUnitCount.value;
   m.currentForceFieldsVisible = currentForceFieldsVisible.value;
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;

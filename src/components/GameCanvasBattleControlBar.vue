@@ -254,6 +254,15 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
+        <BarLabel>WALL EDGE:</BarLabel>
+        <BarButton
+          :active="model.terrainSplitWallBoundaryVertices"
+          title="Split D-PLATEAU wall-edge render vertices so wall and flat triangles bake normals, texture masks, and light from their own side of the edge."
+          @click="model.toggleTerrainSplitWallBoundaryVertices"
+        >SPLIT</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
         <BarLabel>TEXTURE SMOOTH:</BarLabel>
         <BarButtonGroup>
           <BarButton

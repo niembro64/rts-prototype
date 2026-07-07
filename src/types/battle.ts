@@ -73,6 +73,10 @@ export type BattleBarConfig = {
   /** Whether baked-light smoothing may cross D-PLATEAU wall/non-wall
    *  triangle boundaries. */
   readonly terrainLightSmoothAcrossWallBoundary: BooleanSetting;
+  /** Whether the renderer duplicates D-PLATEAU wall-edge vertices so
+   *  wall and non-wall triangles bake normals/light/texture masks from
+   *  their own side of the edge. */
+  readonly terrainSplitWallBoundaryVertices: BooleanSetting;
   /** Tax (fraction in [0, 1)) applied to a resource converter's
    *  per-tick output. 0.0 = lossless conversion; 0.5 = lose half of
    *  the source amount on every conversion. */

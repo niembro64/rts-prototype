@@ -19,6 +19,7 @@ import {
 import {
   getTerrainLightSmoothAcrossWallBoundary,
   getTerrainLightSmoothing,
+  getTerrainSplitWallBoundaryVertices,
   getTerrainTextureSmoothAcrossWallBoundary,
   getTerrainTextureSmoothing,
 } from '@/battleBarConfig';
@@ -144,6 +145,7 @@ function triangleDebugHash01(n: number): number {
 // (1.0) and decays toward 0 at TERRAIN_GROUND_DETAIL_NEIGHBORHOOD_FADE_RADIUS
 // per `(1 - distance / radius) ^ FALLOFF`.
 type NeighborhoodSlopeSample = { dx: number; dz: number; weight: number };
+type SimTerrainNormal = { nx: number; ny: number; nz: number };
 
 // Anything below this weight × max-possible-slope (= 1.0) is below the
 // shader's smoothstep(0.05, 0.50, ...) threshold and therefore can never
@@ -233,6 +235,52 @@ function computeNeighborhoodSlope(
     if (weighted > best) best = weighted;
   }
   return best;
+}
+
+function terrainTriangleNormalVector(
+  vertexCoords: ArrayLike<number>,
+  vertexHeights: ArrayLike<number>,
+  ia: number,
+  ib: number,
+  ic: number,
+): SimTerrainNormal | null {
+  const ax = vertexCoords[ia * 2];
+  const az = vertexCoords[ia * 2 + 1];
+  const ah = vertexHeights[ia] ?? 0;
+  const bx = vertexCoords[ib * 2];
+  const bz = vertexCoords[ib * 2 + 1];
+  const bh = vertexHeights[ib] ?? 0;
+  const cx = vertexCoords[ic * 2];
+  const cz = vertexCoords[ic * 2 + 1];
+  const ch = vertexHeights[ic] ?? 0;
+
+  const ux = bx - ax;
+  const uy = bh - ah;
+  const uz = bz - az;
+  const vx = cx - ax;
+  const vy = ch - ah;
+  const vz = cz - az;
+  let nx = uy * vz - uz * vy;
+  let up = uz * vx - ux * vz;
+  let ny = ux * vy - uy * vx;
+  if (up < 0) {
+    nx = -nx;
+    up = -up;
+    ny = -ny;
+  }
+  const len = Math.hypot(nx, ny, up);
+  if (!Number.isFinite(len) || len <= 1.0e-9) return null;
+  return { nx, ny, nz: up };
+}
+
+function normalizeTerrainNormal(normal: SimTerrainNormal): SimTerrainNormal | null {
+  const len = Math.hypot(normal.nx, normal.ny, normal.nz);
+  if (!Number.isFinite(len) || len <= 1.0e-9) return null;
+  return {
+    nx: normal.nx / len,
+    ny: normal.ny / len,
+    nz: normal.nz / len,
+  };
 }
 
 type PathingCellTerrainSample = {
@@ -521,6 +569,7 @@ export class TerrainTileRenderer3D {
   private terrainLightSmoothing = 0;
   private terrainTextureSmoothAcrossWallBoundary = false;
   private terrainLightSmoothAcrossWallBoundary = false;
+  private terrainSplitWallBoundaryVertices = true;
   private terrainGeometryReady = false;
 
   private clientViewState: ClientViewState;
@@ -1251,6 +1300,7 @@ export class TerrainTileRenderer3D {
     terrainLightSmoothing: number,
     terrainTextureSmoothAcrossWallBoundary: boolean,
     terrainLightSmoothAcrossWallBoundary: boolean,
+    terrainSplitWallBoundaryVertices: boolean,
   ): string {
     const parts: Array<string | number> = [
       cellsX,
@@ -1270,6 +1320,7 @@ export class TerrainTileRenderer3D {
       terrainLightSmoothing,
       terrainTextureSmoothAcrossWallBoundary ? 1 : 0,
       terrainLightSmoothAcrossWallBoundary ? 1 : 0,
+      terrainSplitWallBoundaryVertices ? 1 : 0,
       CANONICAL_LAND_CELL_SIZE,
       getTerrainVersion(),
       getTerrainShadowCacheKey(),
@@ -1425,6 +1476,7 @@ export class TerrainTileRenderer3D {
     terrainLightSmoothing: number,
     terrainTextureSmoothAcrossWallBoundary: boolean,
     terrainLightSmoothAcrossWallBoundary: boolean,
+    terrainSplitWallBoundaryVertices: boolean,
   ): boolean {
     const grid = makeLandGridMetrics(this.mapWidth, this.mapHeight, cellSize);
     cellSize = grid.cellSize;
@@ -1442,6 +1494,7 @@ export class TerrainTileRenderer3D {
       terrainLightSmoothing,
       terrainTextureSmoothAcrossWallBoundary,
       terrainLightSmoothAcrossWallBoundary,
+      terrainSplitWallBoundaryVertices,
     );
     const triangleDebugChanged = triangleDebug !== this.terrainTriangleDebug;
     const wallTriangleDebugChanged =
@@ -1456,6 +1509,9 @@ export class TerrainTileRenderer3D {
     const lightBoundaryChanged =
       terrainLightSmoothAcrossWallBoundary !==
       this.terrainLightSmoothAcrossWallBoundary;
+    const wallBoundarySplitChanged =
+      terrainSplitWallBoundaryVertices !==
+      this.terrainSplitWallBoundaryVertices;
     const structuralChange =
       cellsX !== this.gridCellsX ||
       cellsY !== this.gridCellsY ||
@@ -1465,7 +1521,8 @@ export class TerrainTileRenderer3D {
       textureSmoothingChanged ||
       lightSmoothingChanged ||
       textureBoundaryChanged ||
-      lightBoundaryChanged;
+      lightBoundaryChanged ||
+      wallBoundarySplitChanged;
     if (!this.shouldRebuildTerrainGeometry(nextTerrainGeometryKey, structuralChange)) {
       return false;
     }
@@ -1483,6 +1540,8 @@ export class TerrainTileRenderer3D {
         terrainTextureSmoothAcrossWallBoundary;
       this.terrainLightSmoothAcrossWallBoundary =
         terrainLightSmoothAcrossWallBoundary;
+      this.terrainSplitWallBoundaryVertices =
+        terrainSplitWallBoundaryVertices;
       this.useTerrainGeometry(nextTerrainGeometryKey, cachedGeometry.geometry);
       this.markTerrainGeometryRebuilt(nextTerrainGeometryKey);
       return true;
@@ -1499,6 +1558,8 @@ export class TerrainTileRenderer3D {
       terrainTextureSmoothAcrossWallBoundary;
     this.terrainLightSmoothAcrossWallBoundary =
       terrainLightSmoothAcrossWallBoundary;
+    this.terrainSplitWallBoundaryVertices =
+      terrainSplitWallBoundaryVertices;
 
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];
@@ -1540,6 +1601,7 @@ export class TerrainTileRenderer3D {
       // triangle) never get written — the vertex buffer shrinks
       // alongside the index buffer instead of carrying orphans.
       const splitWallRenderVertices =
+        terrainSplitWallBoundaryVertices ||
         (terrainTextureSmoothing > 0 && !terrainTextureSmoothAcrossWallBoundary) ||
         (terrainLightSmoothing > 0 && !terrainLightSmoothAcrossWallBoundary);
       const meshVertexMapIndex = (i: number, wallClass: number): number =>
@@ -1547,6 +1609,31 @@ export class TerrainTileRenderer3D {
       const meshVertexToTerrainVertex = new Int32Array(
         authoritativeMesh.vertexCount * (splitWallRenderVertices ? 2 : 1),
       ).fill(-1);
+      const vertexClassMask = new Uint8Array(authoritativeMesh.vertexCount);
+      const classNormalSums = new Float64Array(authoritativeMesh.vertexCount * 2 * 3);
+      const classNormalOffset = (i: number, wallClass: number): number =>
+        (i * 2 + (wallClass !== 0 ? 1 : 0)) * 3;
+      const accumulateClassNormal = (
+        i: number,
+        wallClass: number,
+        normal: SimTerrainNormal,
+      ): void => {
+        const off = classNormalOffset(i, wallClass);
+        classNormalSums[off] += normal.nx;
+        classNormalSums[off + 1] += normal.ny;
+        classNormalSums[off + 2] += normal.nz;
+      };
+      const classNormalForVertex = (
+        i: number,
+        wallClass: number,
+      ): SimTerrainNormal | null => {
+        const off = classNormalOffset(i, wallClass);
+        return normalizeTerrainNormal({
+          nx: classNormalSums[off],
+          ny: classNormalSums[off + 1],
+          nz: classNormalSums[off + 2],
+        });
+      };
       const allocateTerrainVertex = (i: number, wallClass: number): number => {
         const mapIndex = meshVertexMapIndex(i, wallClass);
         const existing = meshVertexToTerrainVertex[mapIndex];
@@ -1555,14 +1642,28 @@ export class TerrainTileRenderer3D {
         const wx = authoritativeMesh.vertexCoords[coordOffset];
         const wz = authoritativeMesh.vertexCoords[coordOffset + 1];
         const terrainHeight = authoritativeMesh.vertexHeights[i];
-        const sample = getTerrainMeshSample(
-          wx,
-          wz,
-          this.mapWidth,
-          this.mapHeight,
-          cellSize,
-        );
-        const normal = terrainMeshNormalFromSample(sample);
+        const wallBoundaryVertex =
+          terrainSplitWallBoundaryVertices && (vertexClassMask[i] & 0b11) === 0b11;
+        const normal = wallBoundaryVertex
+          ? classNormalForVertex(i, wallClass) ??
+            terrainMeshNormalFromSample(
+              getTerrainMeshSample(
+                wx,
+                wz,
+                this.mapWidth,
+                this.mapHeight,
+                cellSize,
+              ),
+            )
+          : terrainMeshNormalFromSample(
+            getTerrainMeshSample(
+              wx,
+              wz,
+              this.mapWidth,
+              this.mapHeight,
+              cellSize,
+            ),
+          );
         const idx = terrainPositions.length / 3;
         meshVertexToTerrainVertex[mapIndex] = idx;
         terrainPositions.push(wx, terrainHeight + LAND_TILE_GROUND_LIFT, wz);
@@ -1572,14 +1673,16 @@ export class TerrainTileRenderer3D {
         terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
         const vertexSlope = 1 - Math.min(1, Math.abs(normal.nz));
         terrainNeighborhoodSlopes.push(
-          computeNeighborhoodSlope(
-            wx,
-            wz,
-            vertexSlope,
-            this.mapWidth,
-            this.mapHeight,
-            cellSize,
-          ),
+          wallBoundaryVertex
+            ? vertexSlope
+            : computeNeighborhoodSlope(
+              wx,
+              wz,
+              vertexSlope,
+              this.mapWidth,
+              this.mapHeight,
+              cellSize,
+            ),
         );
         const precomputedShadow = terrainPrecomputedShadow(
           wx,
@@ -1621,6 +1724,33 @@ export class TerrainTileRenderer3D {
         }
         const triWallFlag = (authoritativeMesh.triangleWallFlags[tri] ?? 0) !== 0 ? 1 : 0;
         triangleIsRendered[tri] = 1;
+        const classBit = triWallFlag !== 0 ? 0b10 : 0b01;
+        vertexClassMask[ia] |= classBit;
+        vertexClassMask[ib] |= classBit;
+        vertexClassMask[ic] |= classBit;
+        if (terrainSplitWallBoundaryVertices) {
+          const faceNormal = terrainTriangleNormalVector(
+            authoritativeMesh.vertexCoords,
+            authoritativeMesh.vertexHeights,
+            ia,
+            ib,
+            ic,
+          );
+          if (faceNormal) {
+            accumulateClassNormal(ia, triWallFlag, faceNormal);
+            accumulateClassNormal(ib, triWallFlag, faceNormal);
+            accumulateClassNormal(ic, triWallFlag, faceNormal);
+          }
+        }
+      }
+
+      for (let tri = 0; tri < authoritativeMesh.triangleCount; tri++) {
+        if (!triangleIsRendered[tri]) continue;
+        const triOffset = tri * 3;
+        const ia = authoritativeMesh.triangleIndices[triOffset];
+        const ib = authoritativeMesh.triangleIndices[triOffset + 1];
+        const ic = authoritativeMesh.triangleIndices[triOffset + 2];
+        const triWallFlag = (authoritativeMesh.triangleWallFlags[tri] ?? 0) !== 0 ? 1 : 0;
         terrainIndices.push(
           allocateTerrainVertex(ia, triWallFlag),
           allocateTerrainVertex(ib, triWallFlag),
@@ -1876,6 +2006,8 @@ export class TerrainTileRenderer3D {
       getTerrainTextureSmoothAcrossWallBoundary();
     const terrainLightSmoothAcrossWallBoundary =
       getTerrainLightSmoothAcrossWallBoundary();
+    const terrainSplitWallBoundaryVertices =
+      getTerrainSplitWallBoundaryVertices();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
     this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
     this.rebuildGeometryIfNeeded(
@@ -1887,6 +2019,7 @@ export class TerrainTileRenderer3D {
       terrainLightSmoothing,
       terrainTextureSmoothAcrossWallBoundary,
       terrainLightSmoothAcrossWallBoundary,
+      terrainSplitWallBoundaryVertices,
     );
     this.terrainMesh.visible = this.terrainGeometryReady;
 

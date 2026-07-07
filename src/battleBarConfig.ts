@@ -109,6 +109,7 @@ function sanitizeDemoTowerIds(value: unknown): string[] | null {
 const _demoPreset = getModeDefaultPreset('demo');
 const TERRAIN_RENDER_SMOOTHING_DEFAULT = 1;
 const TERRAIN_RENDER_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT = false;
+const TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES_DEFAULT = true;
 
 export const BATTLE_CONFIG = {
   units: buildUnitToggleConfig(),
@@ -174,6 +175,9 @@ export const BATTLE_CONFIG = {
   },
   terrainLightSmoothAcrossWallBoundary: {
     default: TERRAIN_RENDER_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT,
+  },
+  terrainSplitWallBoundaryVertices: {
+    default: TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES_DEFAULT,
   },
   converterTax: {
     default: _demoPreset.converterTax,
@@ -247,6 +251,10 @@ const STORAGE_DEMO_TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY =
   sk.demoTerrainLightSmoothAcrossWallBoundary;
 const STORAGE_REAL_TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY =
   sk.realTerrainLightSmoothAcrossWallBoundary;
+const STORAGE_DEMO_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES =
+  sk.demoTerrainSplitWallBoundaryVertices;
+const STORAGE_REAL_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES =
+  sk.realTerrainSplitWallBoundaryVertices;
 const STORAGE_DEMO_CONVERTER_TAX = sk.demoConverterTax;
 const STORAGE_REAL_CONVERTER_TAX = sk.realConverterTax;
 const STORAGE_DEMO_MAP_LAND_CELLS = sk.demoMapLandCells;
@@ -974,6 +982,29 @@ export function saveTerrainLightSmoothAcrossWallBoundary(
   );
 }
 
+export function loadStoredTerrainSplitWallBoundaryVertices(
+  mode: BattleMode,
+): boolean {
+  return loadModeBool(
+    mode,
+    STORAGE_REAL_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES,
+    STORAGE_DEMO_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES,
+    BATTLE_CONFIG.terrainSplitWallBoundaryVertices.default,
+  );
+}
+
+export function saveTerrainSplitWallBoundaryVertices(
+  enabled: boolean,
+  mode: BattleMode,
+): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES
+      : STORAGE_DEMO_TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES,
+    String(enabled),
+  );
+}
+
 let currentTerrainTextureSmoothing: number =
   BATTLE_CONFIG.terrainTextureSmoothing.default;
 let currentTerrainLightSmoothing: number =
@@ -982,6 +1013,8 @@ let currentTerrainTextureSmoothAcrossWallBoundary: boolean =
   BATTLE_CONFIG.terrainTextureSmoothAcrossWallBoundary.default;
 let currentTerrainLightSmoothAcrossWallBoundary: boolean =
   BATTLE_CONFIG.terrainLightSmoothAcrossWallBoundary.default;
+let currentTerrainSplitWallBoundaryVertices: boolean =
+  BATTLE_CONFIG.terrainSplitWallBoundaryVertices.default;
 
 export function syncTerrainRenderSmoothingSettings(mode: BattleMode): void {
   currentTerrainTextureSmoothing = loadStoredTerrainTextureSmoothing(mode);
@@ -990,6 +1023,8 @@ export function syncTerrainRenderSmoothingSettings(mode: BattleMode): void {
     loadStoredTerrainTextureSmoothAcrossWallBoundary(mode);
   currentTerrainLightSmoothAcrossWallBoundary =
     loadStoredTerrainLightSmoothAcrossWallBoundary(mode);
+  currentTerrainSplitWallBoundaryVertices =
+    loadStoredTerrainSplitWallBoundaryVertices(mode);
 }
 
 export function getTerrainTextureSmoothing(): number {
@@ -1006,6 +1041,10 @@ export function getTerrainTextureSmoothAcrossWallBoundary(): boolean {
 
 export function getTerrainLightSmoothAcrossWallBoundary(): boolean {
   return currentTerrainLightSmoothAcrossWallBoundary;
+}
+
+export function getTerrainSplitWallBoundaryVertices(): boolean {
+  return currentTerrainSplitWallBoundaryVertices;
 }
 
 export function setTerrainTextureSmoothing(
@@ -1038,6 +1077,14 @@ export function setTerrainLightSmoothAcrossWallBoundary(
 ): void {
   currentTerrainLightSmoothAcrossWallBoundary = enabled;
   saveTerrainLightSmoothAcrossWallBoundary(enabled, mode);
+}
+
+export function setTerrainSplitWallBoundaryVertices(
+  enabled: boolean,
+  mode: BattleMode,
+): void {
+  currentTerrainSplitWallBoundaryVertices = enabled;
+  saveTerrainSplitWallBoundaryVertices(enabled, mode);
 }
 
 syncTerrainRenderSmoothingSettings('demo');

@@ -80,6 +80,8 @@
     "realTerrainTextureSmoothAcrossWallBoundary": "real-battle-terrain-texture-smooth-across-wall-boundary",
     "demoTerrainLightSmoothAcrossWallBoundary": "demo-battle-terrain-light-smooth-across-wall-boundary",
     "realTerrainLightSmoothAcrossWallBoundary": "real-battle-terrain-light-smooth-across-wall-boundary",
+    "demoTerrainSplitWallBoundaryVertices": "demo-battle-terrain-split-wall-boundary-vertices",
+    "realTerrainSplitWallBoundaryVertices": "real-battle-terrain-split-wall-boundary-vertices",
     "demoConverterTax": "demo-battle-converter-tax",
     "realConverterTax": "real-battle-converter-tax",
     "demoMapLandCells": "demo-battle-map-land-cells",
