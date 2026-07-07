@@ -81,6 +81,7 @@ export class EnvironmentPropRenderer3D {
       metalDeposits: options.metalDeposits,
       sampleTerrainHeight: options.sampleTerrainHeight,
     });
+    logEnvironmentPlacementCounts(this.placements, options);
     void this.loadAssets();
   }
 
@@ -341,6 +342,27 @@ function publicAssetUrl(path: string): string {
     encodedPath += encodeURIComponent(parts[i]);
   }
   return `${normalizedBase}${encodedPath}`;
+}
+
+function logEnvironmentPlacementCounts(
+  placements: readonly EnvironmentPlacement[],
+  options: EnvironmentPropRenderer3DOptions,
+): void {
+  if (!import.meta.env.DEV) return;
+  const counts = new Map<string, number>();
+  for (const placement of placements) {
+    counts.set(placement.assetId, (counts.get(placement.assetId) ?? 0) + 1);
+  }
+  const parts = Array.from(counts.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([assetId, count]) => `${assetId}: ${count}`);
+  console.info(
+    '[EnvironmentPropRenderer3D] generated placements (' +
+      placements.length +
+      `, map ${options.mapWidth}x${options.mapHeight}, players ${options.playerCount}` +
+      '): ' +
+      (parts.length > 0 ? parts.join(', ') : 'none'),
+  );
 }
 
 function loadMtl(
