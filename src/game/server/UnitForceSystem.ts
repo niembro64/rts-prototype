@@ -562,7 +562,6 @@ export class UnitForceSystem {
         const aheadProbeDistance =
           unit.locomotion.airLiftGroundProbeAheadDistance +
           bodyRadius * unit.locomotion.airLiftGroundProbeAheadRadiusMultiplier;
-        const bodyProbeDistance = Number.isFinite(bodyRadius) && bodyRadius > 0 ? bodyRadius : 0;
         let probeDirX = 0;
         let probeDirY = 0;
         let hasProbeDir = false;
@@ -591,7 +590,6 @@ export class UnitForceSystem {
             probeDirX,
             probeDirY,
             aheadProbeDistance,
-            bodyProbeDistance,
             supportSurface.groundZ,
             airHeightForceForFalloff,
             entity.id,
@@ -974,7 +972,6 @@ export class UnitForceSystem {
     probeDirX: number,
     probeDirY: number,
     aheadDistance: number,
-    bodyProbeDistance: number,
     directGroundZ: number,
     heightUpwardForce: number,
     ignoreEntityId: EntityId,
@@ -987,7 +984,6 @@ export class UnitForceSystem {
       probeDirX,
       probeDirY,
       aheadDistance,
-      bodyProbeDistance,
       (x, y, kind) => {
         const groundZ = kind === 'direct'
           ? directGroundZ

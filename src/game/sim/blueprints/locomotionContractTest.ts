@@ -124,7 +124,6 @@ function assertAirLiftGroundProbeLayout(): void {
     1,
     0,
     40,
-    5,
     (x, y, kind) => {
       probes.push(`${kind}:${x}:${y}`);
     },
@@ -136,8 +135,8 @@ function assertAirLiftGroundProbeLayout(): void {
   );
   assertEqual(
     probes.join('|'),
-    'direct:10:20|forward:20:20|forward:30:20|forward:40:20|forward:50:20|left:10:25|right:10:15|rear:5:20',
-    'air lift ground probe layout matches direct, four forward, left, right, rear',
+    'direct:10:20|forward:20:20|forward:30:20|forward:40:20|forward:50:20|left:10:30|right:10:10|rear:0:20',
+    'air lift ground probe layout uses one forward spacing for side and rear probes',
   );
 }
 

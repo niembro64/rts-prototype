@@ -98,13 +98,7 @@ export class AirLiftProbeOverlay3D {
       const aheadDistance =
         unit.locomotion.airLiftGroundProbeAheadDistance +
         probeRadius * unit.locomotion.airLiftGroundProbeAheadRadiusMultiplier;
-      const bodyProbeDistance = probeRadius;
-      if (
-        (!Number.isFinite(aheadDistance) || aheadDistance <= 0) &&
-        bodyProbeDistance <= 0
-      ) {
-        continue;
-      }
+      if (!Number.isFinite(aheadDistance) || aheadDistance <= 0) continue;
 
       const bodyY = entity.transform.z;
       if (!Number.isFinite(bodyY)) continue;
@@ -114,7 +108,6 @@ export class AirLiftProbeOverlay3D {
         direction.x,
         direction.y,
         aheadDistance,
-        bodyProbeDistance,
         (x, z, kind) => {
           if (!Number.isFinite(x) || !Number.isFinite(z)) return;
 
@@ -235,7 +228,7 @@ function unitShouldShowAirLiftProbes(entity: Entity): boolean {
   const aheadDistance =
     locomotion.airLiftGroundProbeAheadDistance +
     probeRadius * locomotion.airLiftGroundProbeAheadRadiusMultiplier;
-  return (Number.isFinite(aheadDistance) && aheadDistance > 0) || probeRadius > 0;
+  return Number.isFinite(aheadDistance) && aheadDistance > 0;
 }
 
 function unitProbeRadius(unit: NonNullable<Entity['unit']>): number {

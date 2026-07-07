@@ -8,13 +8,18 @@ export const AIR_LIFT_TOTAL_GROUND_PROBE_COUNT =
 
 export type AirLiftGroundProbeKind = 'direct' | 'forward' | 'left' | 'right' | 'rear';
 
+export function getAirLiftGroundProbeSpacing(aheadDistance: number): number {
+  return Number.isFinite(aheadDistance) && aheadDistance > 0
+    ? aheadDistance / AIR_LIFT_FORWARD_GROUND_PROBE_COUNT
+    : 0;
+}
+
 export function forEachAirLiftGroundProbePoint(
   bodyX: number,
   bodyY: number,
   forwardX: number,
   forwardY: number,
   aheadDistance: number,
-  bodyProbeDistance: number,
   visit: (x: number, y: number, kind: AirLiftGroundProbeKind) => void,
 ): number {
   if (!Number.isFinite(bodyX) || !Number.isFinite(bodyY)) return 0;
@@ -32,23 +37,21 @@ export function forEachAirLiftGroundProbePoint(
     return count;
   }
 
-  if (Number.isFinite(aheadDistance) && aheadDistance > 0) {
+  const probeSpacing = getAirLiftGroundProbeSpacing(aheadDistance);
+  if (probeSpacing > 0) {
     for (let step = 1; step <= AIR_LIFT_FORWARD_GROUND_PROBE_COUNT; step++) {
-      const t = step / AIR_LIFT_FORWARD_GROUND_PROBE_COUNT;
       emit(
-        bodyX + forwardX * aheadDistance * t,
-        bodyY + forwardY * aheadDistance * t,
+        bodyX + forwardX * probeSpacing * step,
+        bodyY + forwardY * probeSpacing * step,
         'forward',
       );
     }
-  }
 
-  if (Number.isFinite(bodyProbeDistance) && bodyProbeDistance > 0) {
     const leftX = -forwardY;
     const leftY = forwardX;
-    emit(bodyX + leftX * bodyProbeDistance, bodyY + leftY * bodyProbeDistance, 'left');
-    emit(bodyX - leftX * bodyProbeDistance, bodyY - leftY * bodyProbeDistance, 'right');
-    emit(bodyX - forwardX * bodyProbeDistance, bodyY - forwardY * bodyProbeDistance, 'rear');
+    emit(bodyX + leftX * probeSpacing, bodyY + leftY * probeSpacing, 'left');
+    emit(bodyX - leftX * probeSpacing, bodyY - leftY * probeSpacing, 'right');
+    emit(bodyX - forwardX * probeSpacing, bodyY - forwardY * probeSpacing, 'rear');
   }
 
   return count;
