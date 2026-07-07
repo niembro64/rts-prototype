@@ -6,6 +6,10 @@ import {
   createUnitLocomotion,
   getAirLiftHeightDistanceScale,
 } from '../locomotion';
+import {
+  AIR_LIFT_TOTAL_GROUND_PROBE_COUNT,
+  forEachAirLiftGroundProbePoint,
+} from '../airLiftGroundProbes';
 import { getUnitBlueprint, getUnitLocomotion } from './index';
 import rawLocomotionConfig from '../locomotionConfig.json';
 
@@ -109,6 +113,31 @@ function assertAirLiftHeightForceFalloffMatchesConfig(): void {
     getAirLiftHeightDistanceScale(64, 16),
     1 / 64,
     'air lift height distance scale does not amplify below exact inverse distance',
+  );
+}
+
+function assertAirLiftGroundProbeLayout(): void {
+  const probes: string[] = [];
+  const count = forEachAirLiftGroundProbePoint(
+    10,
+    20,
+    1,
+    0,
+    40,
+    5,
+    (x, y, kind) => {
+      probes.push(`${kind}:${x}:${y}`);
+    },
+  );
+  assertEqual(
+    count,
+    AIR_LIFT_TOTAL_GROUND_PROBE_COUNT,
+    'air lift ground probe layout uses eight samples',
+  );
+  assertEqual(
+    probes.join('|'),
+    'direct:10:20|forward:20:20|forward:30:20|forward:40:20|forward:50:20|left:10:25|right:10:15|rear:5:20',
+    'air lift ground probe layout matches direct, four forward, left, right, rear',
   );
 }
 
@@ -230,6 +259,7 @@ function assertClonedLocomotionMatchesSource(
 
 export function runLocomotionContractTest(): void {
   assertAirLiftHeightForceFalloffMatchesConfig();
+  assertAirLiftGroundProbeLayout();
 
   const hippoBlueprint = getUnitBlueprint('unitHippo');
   const hippoLocomotion = assertRuntimeLocomotionMatchesSources('unitHippo');

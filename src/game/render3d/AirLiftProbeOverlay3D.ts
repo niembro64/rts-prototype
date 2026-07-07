@@ -4,13 +4,17 @@ import { WATER_LEVEL } from '../sim/Terrain';
 import type { Entity } from '../sim/types';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { createWorldSupportSurface } from '../sim/supportSurface';
+import {
+  type AirLiftGroundProbeKind,
+  AIR_LIFT_TOTAL_GROUND_PROBE_COUNT,
+  forEachAirLiftGroundProbePoint,
+} from '../sim/airLiftGroundProbes';
 import { sampleLocomotionSupportSurface } from './LocomotionTerrainSampler';
 import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
 
-const FORWARD_PROBE_COUNT = 5;
 const INITIAL_INSTANCE_CAPACITY = 16;
 const THRUST_DIRECTION_EPSILON_SQ = 0.0001;
 const MARKER_RADIUS = 5;
@@ -18,6 +22,9 @@ const LINE_RADIUS = 1.25;
 const MIN_LINE_LENGTH = 0.5;
 const SURFACE_LIFT = 0.8;
 const RENDER_ORDER = 92;
+const FORWARD_PROBE_COLOR = new THREE.Color(0x36e6ff);
+const BODY_PROBE_COLOR = new THREE.Color(0xffd447);
+const DIRECT_PROBE_COLOR = new THREE.Color(0xff7a36);
 
 export class AirLiftProbeOverlay3D {
   private readonly root = new THREE.Group();
@@ -30,6 +37,7 @@ export class AirLiftProbeOverlay3D {
   );
   private readonly markerMaterial = new THREE.MeshBasicMaterial({
     color: 0x36e6ff,
+    vertexColors: true,
     transparent: true,
     opacity: 0.88,
     depthTest: false,
@@ -38,6 +46,7 @@ export class AirLiftProbeOverlay3D {
   });
   private readonly lineMaterial = new THREE.MeshBasicMaterial({
     color: 0x36e6ff,
+    vertexColors: true,
     transparent: true,
     opacity: 0.58,
     depthTest: false,
@@ -67,7 +76,7 @@ export class AirLiftProbeOverlay3D {
     }
 
     const probeUnits = selectedUnits.filter(unitShouldShowAirLiftProbes);
-    const instanceCount = probeUnits.length * FORWARD_PROBE_COUNT;
+    const instanceCount = probeUnits.length * AIR_LIFT_TOTAL_GROUND_PROBE_COUNT;
     if (instanceCount === 0) {
       this.hide();
       return;
@@ -85,39 +94,55 @@ export class AirLiftProbeOverlay3D {
       if (unit === null) continue;
       const direction = probeDirection(entity);
       if (direction === null) continue;
+      const probeRadius = unitProbeRadius(unit);
       const aheadDistance =
         unit.locomotion.airLiftGroundProbeAheadDistance +
-        unit.radius.collision * unit.locomotion.airLiftGroundProbeAheadRadiusMultiplier;
-      if (!Number.isFinite(aheadDistance) || aheadDistance <= 0) continue;
-
-      for (let step = 1; step <= FORWARD_PROBE_COUNT; step++) {
-        const t = step / FORWARD_PROBE_COUNT;
-        const x = entity.transform.x + direction.x * aheadDistance * t;
-        const z = entity.transform.y + direction.y * aheadDistance * t;
-        const bodyY = entity.transform.z;
-        if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(bodyY)) continue;
-
-        const support = sampleLocomotionSupportSurface(
-          x,
-          z,
-          this.mapWidth,
-          this.mapHeight,
-          undefined,
-          undefined,
-          entity.id,
-          this.supportScratch,
-        );
-        const surfaceY = Math.max(support.groundZ, WATER_LEVEL) + SURFACE_LIFT;
-        this.writeMarkerInstance(markers, cursor, x, bodyY, z);
-        this.writeLineInstance(lines, cursor, x, bodyY, z, surfaceY);
-        cursor++;
+        probeRadius * unit.locomotion.airLiftGroundProbeAheadRadiusMultiplier;
+      const bodyProbeDistance = probeRadius;
+      if (
+        (!Number.isFinite(aheadDistance) || aheadDistance <= 0) &&
+        bodyProbeDistance <= 0
+      ) {
+        continue;
       }
+
+      const bodyY = entity.transform.z;
+      if (!Number.isFinite(bodyY)) continue;
+      forEachAirLiftGroundProbePoint(
+        entity.transform.x,
+        entity.transform.y,
+        direction.x,
+        direction.y,
+        aheadDistance,
+        bodyProbeDistance,
+        (x, z, kind) => {
+          if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+
+          const support = sampleLocomotionSupportSurface(
+            x,
+            z,
+            this.mapWidth,
+            this.mapHeight,
+            undefined,
+            undefined,
+            entity.id,
+            this.supportScratch,
+          );
+          const surfaceY = Math.max(support.groundZ, WATER_LEVEL) + SURFACE_LIFT;
+          const color = probeColor(kind);
+          this.writeMarkerInstance(markers, cursor, x, bodyY, z, color);
+          this.writeLineInstance(lines, cursor, x, bodyY, z, surfaceY, color);
+          cursor++;
+        },
+      );
     }
 
     markers.count = cursor;
     lines.count = cursor;
     markers.instanceMatrix.needsUpdate = true;
     lines.instanceMatrix.needsUpdate = true;
+    if (markers.instanceColor !== null) markers.instanceColor.needsUpdate = true;
+    if (lines.instanceColor !== null) lines.instanceColor.needsUpdate = true;
     this.root.visible = cursor > 0;
     markers.visible = cursor > 0;
     lines.visible = cursor > 0;
@@ -165,12 +190,14 @@ export class AirLiftProbeOverlay3D {
     x: number,
     y: number,
     z: number,
+    color: THREE.Color,
   ): void {
     this.dummy.position.set(x, y, z);
     this.dummy.rotation.set(0, 0, 0);
     this.dummy.scale.setScalar(1);
     this.dummy.updateMatrix();
     mesh.setMatrixAt(index, this.dummy.matrix);
+    mesh.setColorAt(index, color);
   }
 
   private writeLineInstance(
@@ -180,6 +207,7 @@ export class AirLiftProbeOverlay3D {
     bodyY: number,
     z: number,
     surfaceY: number,
+    color: THREE.Color,
   ): void {
     const dy = surfaceY - bodyY;
     const length = Math.max(MIN_LINE_LENGTH, Math.abs(dy));
@@ -188,6 +216,7 @@ export class AirLiftProbeOverlay3D {
     this.dummy.scale.set(1, length, 1);
     this.dummy.updateMatrix();
     mesh.setMatrixAt(index, this.dummy.matrix);
+    mesh.setColorAt(index, color);
   }
 }
 
@@ -202,10 +231,30 @@ function unitShouldShowAirLiftProbes(entity: Entity): boolean {
     air.gravityCounterUpwardForceRatio > 0 ||
     air.heightUpwardForce > 0;
   if (!airLiftAuthored) return false;
+  const probeRadius = unitProbeRadius(unit);
   const aheadDistance =
     locomotion.airLiftGroundProbeAheadDistance +
-    unit.radius.collision * locomotion.airLiftGroundProbeAheadRadiusMultiplier;
-  return Number.isFinite(aheadDistance) && aheadDistance > 0;
+    probeRadius * locomotion.airLiftGroundProbeAheadRadiusMultiplier;
+  return (Number.isFinite(aheadDistance) && aheadDistance > 0) || probeRadius > 0;
+}
+
+function unitProbeRadius(unit: NonNullable<Entity['unit']>): number {
+  return firstFinitePositive(unit.radius.collision, unit.radius.hitbox, unit.radius.other, 10);
+}
+
+function firstFinitePositive(...values: Array<number | null | undefined>): number {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+  return 0;
+}
+
+function probeColor(kind: AirLiftGroundProbeKind): THREE.Color {
+  if (kind === 'direct') return DIRECT_PROBE_COLOR;
+  if (kind === 'forward') return FORWARD_PROBE_COLOR;
+  return BODY_PROBE_COLOR;
 }
 
 function probeDirection(entity: Entity): { x: number; y: number } | null {

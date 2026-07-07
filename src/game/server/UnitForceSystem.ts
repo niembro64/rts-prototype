@@ -52,13 +52,13 @@ import { getUnitLocomotion } from '../sim/blueprints';
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction';
+import { forEachAirLiftGroundProbePoint } from '../sim/airLiftGroundProbes';
 
 // Legacy WASM ABI knobs. Unit attitude now derives stiffness/damping from
 // torque authority, inertia, and active medium damping in the force kernel.
 const HOVER_ORIENTATION_K = 30;
 const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
-const AIR_LIFT_FORWARD_PROBE_SAMPLE_COUNT = 5;
 const AIR_LIFT_NEAR_GROUND_ALTITUDE = 0.5;
 
 const UF_ROW_DIR_X = 0;
@@ -562,41 +562,41 @@ export class UnitForceSystem {
         const aheadProbeDistance =
           unit.locomotion.airLiftGroundProbeAheadDistance +
           bodyRadius * unit.locomotion.airLiftGroundProbeAheadRadiusMultiplier;
-        if (aheadProbeDistance > 0 && Number.isFinite(aheadProbeDistance)) {
-          let probeDirX = 0;
-          let probeDirY = 0;
-          let hasProbeDir = false;
-          const yaw = Number.isFinite(rotationForPack) ? rotationForPack : 0;
-          if (hasThrustDir) {
-            if (forwardForceRequiresFacing) {
-              probeDirX = Math.cos(yaw);
-              probeDirY = Math.sin(yaw);
-            } else {
-              const invDirMag = 1 / thrustInputMag;
-              probeDirX = dirX * invDirMag;
-              probeDirY = dirY * invDirMag;
-            }
-            hasProbeDir = true;
-          } else {
+        const bodyProbeDistance = Number.isFinite(bodyRadius) && bodyRadius > 0 ? bodyRadius : 0;
+        let probeDirX = 0;
+        let probeDirY = 0;
+        let hasProbeDir = false;
+        const yaw = Number.isFinite(rotationForPack) ? rotationForPack : 0;
+        if (hasThrustDir) {
+          if (forwardForceRequiresFacing) {
             probeDirX = Math.cos(yaw);
             probeDirY = Math.sin(yaw);
-            hasProbeDir = true;
+          } else {
+            const invDirMag = 1 / thrustInputMag;
+            probeDirX = dirX * invDirMag;
+            probeDirY = dirY * invDirMag;
           }
+          hasProbeDir = true;
+        } else {
+          probeDirX = Math.cos(yaw);
+          probeDirY = Math.sin(yaw);
+          hasProbeDir = true;
+        }
 
-          if (hasProbeDir) {
-            airLiftDistanceScale = this.sampleAirLiftAverageDistanceScale(
-              bodyZ,
-              bodyX,
-              bodyY,
-              probeDirX,
-              probeDirY,
-              aheadProbeDistance,
-              supportSurface.groundZ,
-              airHeightForceForFalloff,
-              entity.id,
-              !terrainOnlySupport,
-            );
-          }
+        if (hasProbeDir) {
+          airLiftDistanceScale = this.sampleAirLiftAverageDistanceScale(
+            bodyZ,
+            bodyX,
+            bodyY,
+            probeDirX,
+            probeDirY,
+            aheadProbeDistance,
+            bodyProbeDistance,
+            supportSurface.groundZ,
+            airHeightForceForFalloff,
+            entity.id,
+            !terrainOnlySupport,
+          );
         }
         _forceRows[base + UF_ROW_AIR_LIFT_DISTANCE_SCALE] = airLiftDistanceScale;
         flags |= UF_FLAG_HAS_AIR_LIFT_DISTANCE_SCALE;
@@ -974,39 +974,41 @@ export class UnitForceSystem {
     probeDirX: number,
     probeDirY: number,
     aheadDistance: number,
+    bodyProbeDistance: number,
     directGroundZ: number,
     heightUpwardForce: number,
     ignoreEntityId: EntityId,
     includeSupportSurfaces: boolean,
   ): number {
-    const directDistanceScale = this.airLiftDistanceScaleFromGroundZ(
-      bodyZ,
-      directGroundZ,
-      heightUpwardForce,
+    let distanceScaleSum = 0;
+    const sampleCount = forEachAirLiftGroundProbePoint(
+      bodyX,
+      bodyY,
+      probeDirX,
+      probeDirY,
+      aheadDistance,
+      bodyProbeDistance,
+      (x, y, kind) => {
+        const groundZ = kind === 'direct'
+          ? directGroundZ
+          : this.sampleAirLiftGroundZAt(x, y, ignoreEntityId, includeSupportSurfaces);
+        distanceScaleSum += this.airLiftDistanceScaleFromGroundZ(
+          bodyZ,
+          groundZ,
+          heightUpwardForce,
+        );
+      },
     );
-    if (
-      !Number.isFinite(aheadDistance) ||
-      aheadDistance <= 0 ||
-      !Number.isFinite(probeDirX) ||
-      !Number.isFinite(probeDirY)
-    ) {
-      return directDistanceScale;
-    }
 
-    let distanceScaleSum = directDistanceScale;
-    for (let step = 1; step <= AIR_LIFT_FORWARD_PROBE_SAMPLE_COUNT; step++) {
-      const t = step / AIR_LIFT_FORWARD_PROBE_SAMPLE_COUNT;
-      const x = bodyX + probeDirX * aheadDistance * t;
-      const y = bodyY + probeDirY * aheadDistance * t;
-      const groundZ = this.sampleAirLiftGroundZAt(x, y, ignoreEntityId, includeSupportSurfaces);
-      distanceScaleSum += this.airLiftDistanceScaleFromGroundZ(
+    if (sampleCount === 0) {
+      return this.airLiftDistanceScaleFromGroundZ(
         bodyZ,
-        groundZ,
+        directGroundZ,
         heightUpwardForce,
       );
     }
 
-    return distanceScaleSum / (AIR_LIFT_FORWARD_PROBE_SAMPLE_COUNT + 1);
+    return distanceScaleSum / sampleCount;
   }
 
   private sampleAirLiftGroundZAt(
