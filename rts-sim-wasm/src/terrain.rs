@@ -875,6 +875,7 @@ pub(crate) struct TerrainMeshTopologyRust {
     vertex_heights: Vec<f64>,
     triangle_indices: Vec<i32>,
     triangle_levels: Vec<i32>,
+    triangle_wall_flags: Vec<i32>,
     triangle_leaf_indices: Vec<i32>,
 }
 
@@ -883,6 +884,7 @@ pub(crate) struct TerrainBuiltMeshRust {
     vertex_heights: Vec<f64>,
     triangle_indices: Vec<i32>,
     triangle_levels: Vec<i32>,
+    triangle_wall_flags: Vec<i32>,
     neighbor_indices: Vec<i32>,
     neighbor_levels: Vec<i32>,
     cell_offsets: Vec<i32>,
@@ -2005,9 +2007,11 @@ pub(crate) fn terrain_triangulate_convex_polygon(
     vc: &[f64],
     polygon: &[i32],
     level: i32,
+    wall_flag: i32,
     leaf_index: i32,
     out_indices: &mut Vec<i32>,
     out_levels: &mut Vec<i32>,
+    out_wall_flags: &mut Vec<i32>,
     out_leaf_indices: &mut Vec<i32>,
 ) {
     let mut work: Vec<i32> = polygon.to_vec();
@@ -2034,6 +2038,7 @@ pub(crate) fn terrain_triangulate_convex_polygon(
             out_indices.push(curr);
             out_indices.push(next);
             out_levels.push(level);
+            out_wall_flags.push(wall_flag);
             out_leaf_indices.push(leaf_index);
             work.remove(i);
             clipped = true;
@@ -2052,6 +2057,7 @@ pub(crate) fn terrain_triangulate_convex_polygon(
         out_indices.push(work[1]);
         out_indices.push(work[2]);
         out_levels.push(level);
+        out_wall_flags.push(wall_flag);
         out_leaf_indices.push(leaf_index);
     }
 }
@@ -2067,7 +2073,9 @@ pub(crate) fn terrain_emit_mesh_polygon(
     vertex_heights: &mut Vec<f64>,
     triangle_indices: &mut Vec<i32>,
     triangle_levels: &mut Vec<i32>,
+    triangle_wall_flags: &mut Vec<i32>,
     triangle_leaf_indices: &mut Vec<i32>,
+    wall_flag: i32,
 ) {
     let points = terrain_remove_duplicate_mesh_points(points);
     if !terrain_polygon_has_area(&points) {
@@ -2099,9 +2107,11 @@ pub(crate) fn terrain_emit_mesh_polygon(
         vertex_coords,
         &polygon_ids,
         level,
+        wall_flag,
         leaf_index,
         triangle_indices,
         triangle_levels,
+        triangle_wall_flags,
         triangle_leaf_indices,
     );
 }
@@ -2120,6 +2130,7 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
     vertex_heights: &mut Vec<f64>,
     triangle_indices: &mut Vec<i32>,
     triangle_levels: &mut Vec<i32>,
+    triangle_wall_flags: &mut Vec<i32>,
     triangle_leaf_indices: &mut Vec<i32>,
 ) {
     let points = terrain_remove_duplicate_mesh_points(points);
@@ -2138,7 +2149,9 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
             vertex_heights,
             triangle_indices,
             triangle_levels,
+            triangle_wall_flags,
             triangle_leaf_indices,
+            if low_key % 2 != 0 { 1 } else { 0 },
         );
         return;
     }
@@ -2156,7 +2169,9 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
             vertex_heights,
             triangle_indices,
             triangle_levels,
+            triangle_wall_flags,
             triangle_leaf_indices,
+            if low_key % 2 != 0 { 1 } else { 0 },
         );
         return;
     }
@@ -2174,6 +2189,7 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
         vertex_heights,
         triangle_indices,
         triangle_levels,
+        triangle_wall_flags,
         triangle_leaf_indices,
     );
     terrain_emit_plateau_constrained_polygon(
@@ -2189,6 +2205,7 @@ pub(crate) fn terrain_emit_plateau_constrained_polygon(
         vertex_heights,
         triangle_indices,
         triangle_levels,
+        triangle_wall_flags,
         triangle_leaf_indices,
     );
 }
@@ -2317,10 +2334,12 @@ pub(crate) fn terrain_resolve_mesh_triangle_edge_splits(
     vc: &[f64],
     triangle_indices: Vec<i32>,
     triangle_levels: Vec<i32>,
+    triangle_wall_flags: Vec<i32>,
     triangle_leaf_indices: Vec<i32>,
-) -> (Vec<i32>, Vec<i32>, Vec<i32>) {
+) -> (Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>) {
     let mut indices = triangle_indices;
     let mut levels = triangle_levels;
+    let mut wall_flags = triangle_wall_flags;
     let mut leaf_indices = triangle_leaf_indices;
     let max_iterations = terrain_triangle_hierarchy_level(c, 1) + 2;
 
@@ -2332,6 +2351,7 @@ pub(crate) fn terrain_resolve_mesh_triangle_edge_splits(
 
         let mut next_indices: Vec<i32> = Vec::new();
         let mut next_levels: Vec<i32> = Vec::new();
+        let mut next_wall_flags: Vec<i32> = Vec::new();
         let mut next_leaf_indices: Vec<i32> = Vec::new();
 
         let tri_count = indices.len() / 3;
@@ -2376,19 +2396,22 @@ pub(crate) fn terrain_resolve_mesh_triangle_edge_splits(
                 vc,
                 &polygon,
                 levels.get(tri).copied().unwrap_or(0),
+                wall_flags.get(tri).copied().unwrap_or(0),
                 leaf_indices.get(tri).copied().unwrap_or(-1),
                 &mut next_indices,
                 &mut next_levels,
+                &mut next_wall_flags,
                 &mut next_leaf_indices,
             );
         }
 
         indices = next_indices;
         levels = next_levels;
+        wall_flags = next_wall_flags;
         leaf_indices = next_leaf_indices;
     }
 
-    (indices, levels, leaf_indices)
+    (indices, levels, wall_flags, leaf_indices)
 }
 
 pub(crate) fn terrain_build_conforming_topology(
@@ -2408,6 +2431,7 @@ pub(crate) fn terrain_build_conforming_topology(
     let mut vertex_heights: Vec<f64> = Vec::new();
     let mut triangle_indices: Vec<i32> = Vec::new();
     let mut triangle_levels: Vec<i32> = Vec::new();
+    let mut triangle_wall_flags: Vec<i32> = Vec::new();
     let mut triangle_leaf_indices: Vec<i32> = Vec::new();
 
     let mut boundary: Vec<(i32, i32)> = Vec::new();
@@ -2442,6 +2466,7 @@ pub(crate) fn terrain_build_conforming_topology(
                 &mut vertex_heights,
                 &mut triangle_indices,
                 &mut triangle_levels,
+                &mut triangle_wall_flags,
                 &mut triangle_leaf_indices,
             );
         } else {
@@ -2455,17 +2480,20 @@ pub(crate) fn terrain_build_conforming_topology(
                 &mut vertex_heights,
                 &mut triangle_indices,
                 &mut triangle_levels,
+                &mut triangle_wall_flags,
                 &mut triangle_leaf_indices,
+                0,
             );
         }
     }
 
-    let (resolved_indices, resolved_levels, resolved_leaf_indices) =
+    let (resolved_indices, resolved_levels, resolved_wall_flags, resolved_leaf_indices) =
         terrain_resolve_mesh_triangle_edge_splits(
             c,
             &vertex_coords,
             triangle_indices,
             triangle_levels,
+            triangle_wall_flags,
             triangle_leaf_indices,
         );
 
@@ -2474,6 +2502,7 @@ pub(crate) fn terrain_build_conforming_topology(
         vertex_heights,
         triangle_indices: resolved_indices,
         triangle_levels: resolved_levels,
+        triangle_wall_flags: resolved_wall_flags,
         triangle_leaf_indices: resolved_leaf_indices,
     }
 }
@@ -2592,6 +2621,7 @@ pub(crate) fn terrain_finalize_conforming_topology(
         vertex_heights,
         triangle_indices: topology.triangle_indices,
         triangle_levels: topology.triangle_levels,
+        triangle_wall_flags: topology.triangle_wall_flags,
         neighbor_indices,
         neighbor_levels,
         cell_offsets,
@@ -2718,7 +2748,7 @@ pub(crate) fn terrain_build_adaptive_mesh_internal(
 ///
 /// Layout: `[status, vertexCount, triangleCount, cellOffsetsLen, cellRefsCount,
 ///   vertexCoords(2V), vertexHeights(V), triangleIndices(3T), triangleLevels(T),
-///   neighborIndices(3T), neighborLevels(3T), cellOffsets(cellsX*cellsY+1),
+///   triangleWallFlags(T), neighborIndices(3T), neighborLevels(3T), cellOffsets(cellsX*cellsY+1),
 ///   cellIndices(R)]`. On any failure the buffer is `[0.0]`. `terrain_config`
 /// is the 23-value generation slice (see metal_deposit_terrain_config_from_slice);
 /// `flat_zones` is the 5-stride deposit override list; `lod_config` packs the 10
@@ -2796,7 +2826,7 @@ pub fn terrain_build_adaptive_mesh(
     let cell_offsets_len = mesh.cell_offsets.len();
     let refs = mesh.cell_indices.len();
     let mut out: Vec<f64> =
-        Vec::with_capacity(5 + 2 * v + v + 3 * t + t + 3 * t + 3 * t + cell_offsets_len + refs);
+        Vec::with_capacity(5 + 2 * v + v + 3 * t + t + t + 3 * t + 3 * t + cell_offsets_len + refs);
     out.push(1.0);
     out.push(v as f64);
     out.push(t as f64);
@@ -2812,6 +2842,9 @@ pub fn terrain_build_adaptive_mesh(
         out.push(value as f64);
     }
     for &value in &mesh.triangle_levels {
+        out.push(value as f64);
+    }
+    for &value in &mesh.triangle_wall_flags {
         out.push(value as f64);
     }
     for &value in &mesh.neighbor_indices {

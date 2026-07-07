@@ -145,6 +145,7 @@ export type ClientBarConfig = {
   readonly materialExplosions: BooleanSetting;
   readonly beamSnapToTurret: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
+  readonly wallTriangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
   readonly metalMap: BooleanSetting;
   readonly elevationMap: BooleanSetting;

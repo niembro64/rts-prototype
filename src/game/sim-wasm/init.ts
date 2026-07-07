@@ -3397,7 +3397,7 @@ export interface SnapshotEncodeApi {
   shroudScratchPtr: () => number;
   /** Pre-grow the shroud scratch to hold `byteCount` bytes. */
   shroudScratchEnsure: (byteCount: number) => void;
-  /** Emit compact `terrain: {v,m,vc,vh,ti}` from raw TerrainTileMap
+  /** Emit compact `terrain: {v,m,vc,vh,ti,tw}` from raw TerrainTileMap
    *  arrays copied into number scratch. */
   emitPackedTerrain: (
     mapWidth: number,
@@ -3415,6 +3415,8 @@ export interface SnapshotEncodeApi {
     meshVertexHeightsCount: number,
     meshTriangleIndicesOffset: number,
     meshTriangleIndicesCount: number,
+    meshTriangleWallFlagsOffset: number,
+    meshTriangleWallFlagsCount: number,
   ) => number;
   /** Emit full `terrain: TerrainTileMap`. Retained for byte-parity
    *  fixtures and raw DTO fallback diagnostics. */
@@ -3436,6 +3438,8 @@ export interface SnapshotEncodeApi {
     meshTriangleIndicesCount: number,
     meshTriangleLevelsOffset: number,
     meshTriangleLevelsCount: number,
+    meshTriangleWallFlagsOffset: number,
+    meshTriangleWallFlagsCount: number,
     meshTriangleNeighborIndicesOffset: number,
     meshTriangleNeighborIndicesCount: number,
     meshTriangleNeighborLevelsOffset: number,

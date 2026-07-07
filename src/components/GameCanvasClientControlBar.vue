@@ -1013,6 +1013,11 @@ function resetEveryCustomHotkey(): void {
           @click="model.toggleTriangleDebug"
         >TRIS</BarButton>
         <BarButton
+          :active="model.wallTriangleDebug"
+          title="WALL TRIS - show only terrain triangles classified as D-PLATEAU wall faces"
+          @click="model.toggleWallTriangleDebug"
+        >WALL TRIS</BarButton>
+        <BarButton
           :active="model.buildGridDebug"
           title="BUILD - show every fine build-placement cell using the same green/red/blue colors as the building ghost"
           @click="model.toggleBuildGridDebug"

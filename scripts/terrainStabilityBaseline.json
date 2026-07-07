@@ -52,6 +52,11 @@
           "length": 91,
           "hash": "171f6d6d239ffc6e"
         },
+        "meshTriangleWallFlags": {
+          "length": 91,
+          "hash": "32f775433a14bb9e",
+          "sum": 0
+        },
         "meshTriangleNeighborIndices": {
           "length": 273,
           "hash": "360326a046d6affe"
@@ -137,6 +142,11 @@
         "meshTriangleLevels": {
           "length": 4116,
           "hash": "459f53abd4289195"
+        },
+        "meshTriangleWallFlags": {
+          "length": 4116,
+          "hash": "ee24d57e99a51bd1",
+          "sum": 746
         },
         "meshTriangleNeighborIndices": {
           "length": 12348,
@@ -224,6 +234,11 @@
           "length": 31439,
           "hash": "ea70becb89121d24"
         },
+        "meshTriangleWallFlags": {
+          "length": 31439,
+          "hash": "0b2defd3b4a4956c",
+          "sum": 5932
+        },
         "meshTriangleNeighborIndices": {
           "length": 94317,
           "hash": "3740f67ca5ca9cdc"
@@ -309,6 +324,11 @@
         "meshTriangleLevels": {
           "length": 33233,
           "hash": "63ad5aa133d10d27"
+        },
+        "meshTriangleWallFlags": {
+          "length": 33233,
+          "hash": "2489c2f21a98f33f",
+          "sum": 14528
         },
         "meshTriangleNeighborIndices": {
           "length": 99699,
@@ -396,6 +416,11 @@
           "length": 34305,
           "hash": "bc9950302a5be41a"
         },
+        "meshTriangleWallFlags": {
+          "length": 34305,
+          "hash": "bb47cedb91f7ba2e",
+          "sum": 5402
+        },
         "meshTriangleNeighborIndices": {
           "length": 102915,
           "hash": "6aa373686900cd2c"
@@ -481,6 +506,11 @@
         "meshTriangleLevels": {
           "length": 113751,
           "hash": "6c1c56009bea1457"
+        },
+        "meshTriangleWallFlags": {
+          "length": 113751,
+          "hash": "e904ccda3ac17c77",
+          "sum": 22488
         },
         "meshTriangleNeighborIndices": {
           "length": 341253,

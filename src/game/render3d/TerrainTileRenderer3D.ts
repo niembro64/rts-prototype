@@ -14,6 +14,7 @@ import {
   getPathingMap,
   getPathingDebugUnit,
   getTriangleDebug,
+  getWallTriangleDebug,
 } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import {
@@ -425,6 +426,7 @@ export class TerrainTileRenderer3D {
   private pendingTerrainGeometryFrames = 0;
   private lastGeometryRebuildFrame = -TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING;
   private terrainTriangleDebug = false;
+  private terrainWallTriangleDebug = false;
   private terrainGeometryReady = false;
 
   private clientViewState: ClientViewState;
@@ -1150,6 +1152,7 @@ export class TerrainTileRenderer3D {
     cellSize: number,
     graphicsConfig: GraphicsConfig,
     triangleDebug: boolean,
+    wallTriangleDebug: boolean,
   ): string {
     const parts: Array<string | number> = [
       cellsX,
@@ -1164,6 +1167,7 @@ export class TerrainTileRenderer3D {
       graphicsConfig.terrainTileSideWalls ? 1 : 0,
       WATER_FULLY_OPAQUE ? 1 : 0,
       triangleDebug ? 1 : 0,
+      wallTriangleDebug ? 1 : 0,
       CANONICAL_LAND_CELL_SIZE,
       getTerrainVersion(),
       getTerrainShadowCacheKey(),
@@ -1314,6 +1318,7 @@ export class TerrainTileRenderer3D {
     cellSize: number,
     graphicsConfig: GraphicsConfig,
     triangleDebug: boolean,
+    wallTriangleDebug: boolean,
   ): boolean {
     const grid = makeLandGridMetrics(this.mapWidth, this.mapHeight, cellSize);
     cellSize = grid.cellSize;
@@ -1326,13 +1331,17 @@ export class TerrainTileRenderer3D {
       cellSize,
       graphicsConfig,
       triangleDebug,
+      wallTriangleDebug,
     );
     const triangleDebugChanged = triangleDebug !== this.terrainTriangleDebug;
+    const wallTriangleDebugChanged =
+      wallTriangleDebug !== this.terrainWallTriangleDebug;
     const structuralChange =
       cellsX !== this.gridCellsX ||
       cellsY !== this.gridCellsY ||
       cellSize !== this.gridCellSize ||
-      triangleDebugChanged;
+      triangleDebugChanged ||
+      wallTriangleDebugChanged;
     if (!this.shouldRebuildTerrainGeometry(nextTerrainGeometryKey, structuralChange)) {
       return false;
     }
@@ -1343,6 +1352,7 @@ export class TerrainTileRenderer3D {
       this.gridCellsY = cellsY;
       this.gridCellSize = cellSize;
       this.terrainTriangleDebug = triangleDebug;
+      this.terrainWallTriangleDebug = wallTriangleDebug;
       this.useTerrainGeometry(nextTerrainGeometryKey, cachedGeometry.geometry);
       this.markTerrainGeometryRebuilt(nextTerrainGeometryKey);
       return true;
@@ -1352,6 +1362,7 @@ export class TerrainTileRenderer3D {
     this.gridCellsY = cellsY;
     this.gridCellSize = cellSize;
     this.terrainTriangleDebug = triangleDebug;
+    this.terrainWallTriangleDebug = wallTriangleDebug;
 
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];
@@ -1456,6 +1467,9 @@ export class TerrainTileRenderer3D {
         ) {
           continue;
         }
+        if (wallTriangleDebug && (authoritativeMesh.triangleWallFlags[tri] ?? 0) === 0) {
+          continue;
+        }
         triangleIsRendered[tri] = 1;
         terrainIndices.push(
           allocateTerrainVertex(ia),
@@ -1465,7 +1479,7 @@ export class TerrainTileRenderer3D {
         terrainDebugLevels.push(authoritativeMesh.triangleLevels[tri] ?? 0);
       }
 
-      if (graphicsConfig.terrainTileSideWalls) {
+      if (!wallTriangleDebug && graphicsConfig.terrainTileSideWalls) {
         const edgeCounts = new Map<string, { a: number; b: number; count: number }>();
         const addEdge = (a: number, b: number): void => {
           const lo = Math.min(a, b);
@@ -1605,7 +1619,7 @@ export class TerrainTileRenderer3D {
       pushShelfQuad(-outer, 0, 0, H);
       pushShelfQuad(W, 0, W + outer, H);
     };
-    addInfinityShelf();
+    if (!wallTriangleDebug) addInfinityShelf();
 
     const geometry = new THREE.BufferGeometry();
     if (triangleDebug) {
@@ -1671,12 +1685,14 @@ export class TerrainTileRenderer3D {
     const cellSize = normalizeLandCellSize(LAND_CELL_SIZE);
 
     const triangleDebug = getTriangleDebug();
+    const wallTriangleDebug = getWallTriangleDebug();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
     this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
     this.rebuildGeometryIfNeeded(
       cellSize,
       graphicsConfig,
       triangleDebug,
+      wallTriangleDebug,
     );
     this.terrainMesh.visible = this.terrainGeometryReady;
 

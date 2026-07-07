@@ -2149,6 +2149,21 @@ pub(crate) fn write_number_scratch_float32_bin(w: &mut MessagePackWriter, offset
     w.write_bin(&scratch.bytes);
 }
 
+pub(crate) fn write_number_scratch_int8_bin(w: &mut MessagePackWriter, offset: u32, count: u32) {
+    let numbers = snapshot_encode_number_scratch();
+    let scratch = snapshot_encode_packed_static_scratch();
+    let start = offset as usize;
+    let n = count as usize;
+    scratch.bytes.clear();
+    scratch.bytes.reserve(n);
+    for i in 0..n {
+        scratch
+            .bytes
+            .push(numbers.buf.get(start + i).copied().unwrap_or(0.0) as i8 as u8);
+    }
+    w.write_bin(&scratch.bytes);
+}
+
 pub(crate) fn write_triangle_index_delta_bin(w: &mut MessagePackWriter, offset: u32, count: u32) {
     let numbers = snapshot_encode_number_scratch();
     let scratch = snapshot_encode_packed_static_scratch();
@@ -4653,7 +4668,7 @@ pub fn snapshot_encode_envelope_emit_shroud(
     w.buf.len() as u32
 }
 
-/// Append compact `terrain: { v: 4, m, vc, vh, ti }` from raw
+/// Append compact `terrain: { v: 5, m, vc, vh, ti, tw }` from raw
 /// TerrainTileMap arrays already copied into number scratch. This
 /// mirrors snapshotStaticWirePack.ts without running its large JS
 /// packing loops on the Rust send path.
@@ -4674,13 +4689,15 @@ pub fn snapshot_encode_envelope_emit_packed_terrain(
     mesh_vertex_heights_count: u32,
     mesh_triangle_indices_offset: u32,
     mesh_triangle_indices_count: u32,
+    mesh_triangle_wall_flags_offset: u32,
+    mesh_triangle_wall_flags_count: u32,
 ) -> u32 {
-    const PACKED_TERRAIN_VERSION: u64 = 4;
+    const PACKED_TERRAIN_VERSION: u64 = 5;
     const TERRAIN_TRIANGLE_INDICES_DELTA: f64 = 4.0;
 
     let w = messagepack_writer();
     w.write_str("terrain");
-    w.write_map_header(5);
+    w.write_map_header(6);
 
     w.write_str("v");
     w.write_uint(PACKED_TERRAIN_VERSION);
@@ -4707,6 +4724,13 @@ pub fn snapshot_encode_envelope_emit_packed_terrain(
     w.write_str("ti");
     write_triangle_index_delta_bin(w, mesh_triangle_indices_offset, mesh_triangle_indices_count);
 
+    w.write_str("tw");
+    write_number_scratch_int8_bin(
+        w,
+        mesh_triangle_wall_flags_offset,
+        mesh_triangle_wall_flags_count,
+    );
+
     w.buf.len() as u32
 }
 
@@ -4732,6 +4756,8 @@ pub fn snapshot_encode_envelope_emit_terrain(
     mesh_triangle_indices_count: u32,
     mesh_triangle_levels_offset: u32,
     mesh_triangle_levels_count: u32,
+    mesh_triangle_wall_flags_offset: u32,
+    mesh_triangle_wall_flags_count: u32,
     mesh_triangle_neighbor_indices_offset: u32,
     mesh_triangle_neighbor_indices_count: u32,
     mesh_triangle_neighbor_levels_offset: u32,
@@ -4743,7 +4769,7 @@ pub fn snapshot_encode_envelope_emit_terrain(
 ) -> u32 {
     let w = messagepack_writer();
     w.write_str("terrain");
-    w.write_map_header(17);
+    w.write_map_header(18);
 
     w.write_str("mapWidth");
     w.write_number(map_width);
@@ -4772,6 +4798,12 @@ pub fn snapshot_encode_envelope_emit_terrain(
     write_number_array_from_scratch(w, mesh_triangle_indices_offset, mesh_triangle_indices_count);
     w.write_str("meshTriangleLevels");
     write_number_array_from_scratch(w, mesh_triangle_levels_offset, mesh_triangle_levels_count);
+    w.write_str("meshTriangleWallFlags");
+    write_number_array_from_scratch(
+        w,
+        mesh_triangle_wall_flags_offset,
+        mesh_triangle_wall_flags_count,
+    );
     w.write_str("meshTriangleNeighborIndices");
     write_number_array_from_scratch(
         w,
@@ -7850,7 +7882,8 @@ mod sim_kernel_tests {
         let heights_start = coords_start + 2 * v;
         let tri_start = heights_start + v;
         let levels_start = tri_start + 3 * t;
-        let neighbor_idx_start = levels_start + t;
+        let wall_flags_start = levels_start + t;
+        let neighbor_idx_start = wall_flags_start + t;
         let neighbor_lvl_start = neighbor_idx_start + 3 * t;
         let cell_off_start = neighbor_lvl_start + 3 * t;
         let cell_idx_start = cell_off_start + cell_offsets_len;
@@ -7866,6 +7899,13 @@ mod sim_kernel_tests {
         for k in 0..(3 * t) {
             let idx = a[tri_start + k] as i64;
             assert!(idx >= 0 && (idx as usize) < v, "triangle index in range");
+        }
+        for k in 0..t {
+            let wall_flag = a[wall_flags_start + k] as i64;
+            assert!(
+                wall_flag == 0 || wall_flag == 1,
+                "triangle wall flag is boolean"
+            );
         }
         // Every cell-triangle ref points at a real triangle.
         for k in 0..refs {
