@@ -1857,9 +1857,9 @@
           "heightUpwardForceEMA": 0
         },
         "air": {
-          "force": 60,
-          "traction": 1,
-          "friction": 3.0775976632530346,
+          "force": 120,
+          "traction": 0.3,
+          "friction": 1,
           "gravityCounterUpwardForceRatio": 0.05,
           "heightUpwardForce": 160,
           "heightUpwardForceRandomizationAmount": 0.99,
