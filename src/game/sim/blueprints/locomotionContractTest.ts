@@ -1,6 +1,11 @@
 import type { LocomotionBlueprint } from './types';
 import type { UnitLocomotion } from '@/types/locomotionTypes';
-import { createUnitLocomotion, cloneUnitLocomotion } from '../locomotion';
+import {
+  AIR_LIFT_HEIGHT_FORCE_EXPONENT,
+  cloneUnitLocomotion,
+  createUnitLocomotion,
+  getAirLiftHeightDistanceScale,
+} from '../locomotion';
 import { getUnitBlueprint, getUnitLocomotion } from './index';
 import rawLocomotionConfig from '../locomotionConfig.json';
 
@@ -29,8 +34,15 @@ type LocomotionTypeConfig = {
   };
 };
 
-const LOCOMOTION_TYPE_CONFIGS =
-  (rawLocomotionConfig as { types: Record<LocomotionType, LocomotionTypeConfig> }).types;
+type LocomotionConfigContract = {
+  airLiftHeightForceFalloff: {
+    heightForceExponent: number;
+  };
+  types: Record<LocomotionType, LocomotionTypeConfig>;
+};
+
+const LOCOMOTION_CONFIG = rawLocomotionConfig as LocomotionConfigContract;
+const LOCOMOTION_TYPE_CONFIGS = LOCOMOTION_CONFIG.types;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -75,6 +87,29 @@ function getLocomotionTypeConfig(type: LocomotionType): LocomotionTypeConfig {
   const config = LOCOMOTION_TYPE_CONFIGS[type];
   assertContract(config !== undefined, `locomotionConfig.json must define ${type}`);
   return config;
+}
+
+function assertAirLiftHeightForceFalloffMatchesConfig(): void {
+  const exponent = LOCOMOTION_CONFIG.airLiftHeightForceFalloff.heightForceExponent;
+  assertContract(
+    Number.isFinite(exponent) && exponent > 0 && exponent <= 1,
+    'airLiftHeightForceFalloff.heightForceExponent must be finite in (0, 1]',
+  );
+  assertEqual(
+    AIR_LIFT_HEIGHT_FORCE_EXPONENT,
+    exponent,
+    'air lift height force exponent follows locomotionConfig.json',
+  );
+  assertEqual(
+    getAirLiftHeightDistanceScale(4, 16),
+    Math.pow(16 / 4, exponent) / 16,
+    'air lift height distance scale roots the inverse-distance height force',
+  );
+  assertEqual(
+    getAirLiftHeightDistanceScale(64, 16),
+    1 / 64,
+    'air lift height distance scale does not amplify below exact inverse distance',
+  );
 }
 
 function assertMediumOwnsFields(
@@ -194,6 +229,8 @@ function assertClonedLocomotionMatchesSource(
 }
 
 export function runLocomotionContractTest(): void {
+  assertAirLiftHeightForceFalloffMatchesConfig();
+
   const hippoBlueprint = getUnitBlueprint('unitHippo');
   const hippoLocomotion = assertRuntimeLocomotionMatchesSources('unitHippo');
   const clonedHippoLocomotion = cloneUnitLocomotion(hippoLocomotion);

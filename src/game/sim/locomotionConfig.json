@@ -1,5 +1,8 @@
 {
   "forceScale": 150000,
+  "airLiftHeightForceFalloff": {
+    "heightForceExponent": 0.5
+  },
   "types": {
     "wheels": {
       "physics": {

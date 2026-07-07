@@ -33,7 +33,7 @@ import {
 
 /** Minimum world-Y gap the rendered fan ring is allowed to have above
  *  terrain. The sim is supposed to keep hovers above ground via the
- *  inverse-distance lift force, but a bad snapshot or a 1-tick
+ *  configured height lift force, but a bad snapshot or a 1-tick
  *  interpolation glitch can briefly drop the rendered chassis below.
  *  The rig group lifts itself by enough to keep fans visible above
  *  the surface in that case. */

@@ -278,7 +278,7 @@ pub(crate) const UF_ROW_HEADING_X: usize = 47;
 pub(crate) const UF_ROW_HEADING_Y: usize = 48;
 pub(crate) const UF_ROW_AIR_FORCE: usize = 49;
 pub(crate) const UF_ROW_AIR_TRACTION: usize = 50;
-pub(crate) const UF_ROW_AIR_LIFT_INVERSE_ALTITUDE: usize = 51;
+pub(crate) const UF_ROW_AIR_LIFT_DISTANCE_SCALE: usize = 51;
 
 pub(crate) const UF_FLAG_HAS_THRUST: u32 = 1 << 0;
 pub(crate) const UF_FLAG_IS_FLYING: u32 = 1 << 1;
@@ -290,7 +290,7 @@ pub(crate) const UF_FLAG_HAS_ORIENTATION: u32 = 1 << 7;
 pub(crate) const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING: u32 = 1 << 8;
 pub(crate) const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING: u32 = 1 << 9;
 pub(crate) const UF_FLAG_ON_GROUND: u32 = 1 << 10;
-pub(crate) const UF_FLAG_HAS_AIR_LIFT_INVERSE_ALTITUDE: u32 = 1 << 11;
+pub(crate) const UF_FLAG_HAS_AIR_LIFT_DISTANCE_SCALE: u32 = 1 << 11;
 pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
     UF_FLAG_FORWARD_THRUST_REQUIRES_FACING | UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
 
@@ -555,14 +555,14 @@ fn unit_force_air_lift_direct_altitude(pos_z: f64, ground_z: f64) -> f64 {
 }
 
 #[inline]
-fn unit_force_air_lift_inverse_altitude(
+fn unit_force_air_lift_distance_scale(
     pos_z: f64,
     ground_z: f64,
-    sampled_inverse_altitude: f64,
-    has_sampled_inverse_altitude: bool,
+    sampled_distance_scale: f64,
+    has_sampled_distance_scale: bool,
 ) -> f64 {
-    if has_sampled_inverse_altitude && sampled_inverse_altitude.is_finite() {
-        return sampled_inverse_altitude.max(0.0);
+    if has_sampled_distance_scale && sampled_distance_scale.is_finite() {
+        return sampled_distance_scale.max(0.0);
     }
     1.0 / unit_force_air_lift_direct_altitude(pos_z, ground_z)
 }
@@ -1004,11 +1004,11 @@ pub fn unit_force_step_batch(
             }
 
             let direct_altitude = unit_force_air_lift_direct_altitude(p.pos_z[slot], ground_z);
-            let inverse_altitude = unit_force_air_lift_inverse_altitude(
+            let air_lift_distance_scale = unit_force_air_lift_distance_scale(
                 p.pos_z[slot],
                 ground_z,
-                rows[base + UF_ROW_AIR_LIFT_INVERSE_ALTITUDE],
-                flag & UF_FLAG_HAS_AIR_LIFT_INVERSE_ALTITUDE != 0,
+                rows[base + UF_ROW_AIR_LIFT_DISTANCE_SCALE],
+                flag & UF_FLAG_HAS_AIR_LIFT_DISTANCE_SCALE != 0,
             );
             let gravity_counter_ratio = rows[base + UF_ROW_GRAVITY_COUNTER_RATIO];
             let gravity_deficit_ratio = 1.0 - gravity_counter_ratio;
@@ -1038,7 +1038,7 @@ pub fn unit_force_step_batch(
                     let vz_damp_per_mass =
                         2.0 * ((GRAVITY * gravity_deficit_ratio) / stable_altitude).sqrt();
                     let raw_lift_force_z = air_fraction
-                        * (counter_gravity_force + lift_k * inverse_altitude
+                        * (counter_gravity_force + lift_k * air_lift_distance_scale
                             - body_mass * vz_damp_per_mass * p.vel_z[slot])
                         / 1_000_000.0;
                     let lift_force_z = unit_force_smoothed_scalar(
@@ -1358,35 +1358,35 @@ mod tests {
     }
 
     #[test]
-    fn air_lift_inverse_altitude_uses_sampled_average_when_available() {
+    fn air_lift_distance_scale_uses_sampled_average_when_available() {
         let pos_z = TERRAIN_WATER_LEVEL + 50.0;
         let body_ground = TERRAIN_WATER_LEVEL + 10.0;
-        let sampled_average_inverse_altitude = 0.5 * (1.0 / 20.0) + 0.5 * (1.0 / 40.0);
+        let sampled_average_distance_scale = 0.5 * (1.0 / 20.0) + 0.5 * (1.0 / 40.0);
 
         assert_near(
-            unit_force_air_lift_inverse_altitude(
+            unit_force_air_lift_distance_scale(
                 pos_z,
                 body_ground,
-                sampled_average_inverse_altitude,
+                sampled_average_distance_scale,
                 true,
             ),
-            sampled_average_inverse_altitude,
+            sampled_average_distance_scale,
         );
         assert_near(
-            unit_force_air_lift_inverse_altitude(
+            unit_force_air_lift_distance_scale(
                 pos_z,
                 body_ground,
-                sampled_average_inverse_altitude,
+                sampled_average_distance_scale,
                 false,
             ),
             1.0 / 40.0,
         );
         assert_near(
-            unit_force_air_lift_inverse_altitude(pos_z, body_ground, f64::NAN, true),
+            unit_force_air_lift_distance_scale(pos_z, body_ground, f64::NAN, true),
             1.0 / 40.0,
         );
         assert_near(
-            unit_force_air_lift_inverse_altitude(
+            unit_force_air_lift_distance_scale(
                 TERRAIN_WATER_LEVEL - 10.0,
                 TERRAIN_WATER_LEVEL - 20.0,
                 1.0 / 0.5,

@@ -31,8 +31,13 @@ type LocomotionTypeConfig = {
   };
 };
 
+type AirLiftHeightForceFalloffConfig = {
+  heightForceExponent: number;
+};
+
 type LocomotionConfig = {
   forceScale: number;
+  airLiftHeightForceFalloff: AirLiftHeightForceFalloffConfig;
   types: Record<LocomotionType, LocomotionTypeConfig>;
 };
 
@@ -45,6 +50,12 @@ function assertPositiveFinite(label: string, value: number): void {
 function assertNonNegativeFinite(label: string, value: number): void {
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(`Invalid locomotion ${label}: expected finite >= 0, got ${value}`);
+  }
+}
+
+function assertHeightForceExponent(label: string, value: number): void {
+  if (!Number.isFinite(value) || value <= 0 || value > 1) {
+    throw new Error(`Invalid locomotion ${label}: expected finite in (0, 1], got ${value}`);
   }
 }
 
@@ -73,9 +84,18 @@ function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
 function readLocomotionConfig(): LocomotionConfig {
   const config = rawLocomotionConfig as unknown as {
     forceScale?: number;
+    airLiftHeightForceFalloff?: Partial<AirLiftHeightForceFalloffConfig>;
     types?: Partial<Record<LocomotionType, LocomotionTypeConfig>>;
   };
   assertPositiveFinite('forceScale', config.forceScale ?? NaN);
+  const airLiftHeightForceFalloff = config.airLiftHeightForceFalloff;
+  if (!airLiftHeightForceFalloff || typeof airLiftHeightForceFalloff !== 'object') {
+    throw new Error('Invalid locomotionConfig.json: missing airLiftHeightForceFalloff config');
+  }
+  assertHeightForceExponent(
+    'airLiftHeightForceFalloff.heightForceExponent',
+    airLiftHeightForceFalloff.heightForceExponent ?? NaN,
+  );
   const types = config.types;
   if (!types || typeof types !== 'object') {
     throw new Error('Invalid locomotionConfig.json: missing types table');
@@ -127,6 +147,34 @@ const LOCOMOTION_CONFIG = readLocomotionConfig();
  *  locomotionConfig.json. Drives the mass-to-acceleration conversion in
  *  the arrival controller, pathfinding mobility, and UnitForceSystem. */
 export const LOCOMOTION_FORCE_SCALE: number = LOCOMOTION_CONFIG.forceScale;
+
+/** Power-law falloff for the air height lift term, authored in
+ *  locomotionConfig.json. 1 is exact inverse-distance force, 0.5 square-roots
+ *  the inverse-distance height force, and 0.333333 cube-roots it. */
+export const AIR_LIFT_HEIGHT_FORCE_EXPONENT: number =
+  LOCOMOTION_CONFIG.airLiftHeightForceFalloff.heightForceExponent;
+
+export function getAirLiftHeightDistanceScale(
+  clampedDistanceToSurface: number,
+  heightUpwardForce: number,
+): number {
+  if (
+    !Number.isFinite(clampedDistanceToSurface) ||
+    clampedDistanceToSurface <= 0 ||
+    !Number.isFinite(heightUpwardForce) ||
+    heightUpwardForce <= 0
+  ) {
+    return 0;
+  }
+  const exactDistanceScale = 1 / clampedDistanceToSurface;
+  const exactHeightForce = heightUpwardForce * exactDistanceScale;
+  if (!Number.isFinite(exactHeightForce) || exactHeightForce <= 0) {
+    return 0;
+  }
+  const rootedHeightForce = Math.pow(exactHeightForce, AIR_LIFT_HEIGHT_FORCE_EXPONENT);
+  const rootedDistanceScale = rootedHeightForce / heightUpwardForce;
+  return Math.min(exactDistanceScale, rootedDistanceScale);
+}
 
 function getLocomotionDriveForceMultiplier(type: LocomotionType): number {
   return LOCOMOTION_CONFIG.types[type].physics.driveForceMultiplier;

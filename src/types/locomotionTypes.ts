@@ -25,8 +25,9 @@ export type UnitLocomotionMediumPhysics = {
   friction: number;
   /** Constant upward force as a ratio of gravity. Must be in [0, 1). */
   gravityCounterUpwardForceRatio: number;
-  /** Inverse-distance upward force coefficient, referenced to the relevant
-   *  support surface: terrain/water surface for air, lake bed for water. */
+  /** Height-based upward force coefficient, referenced to the relevant
+   *  support surface: terrain/water surface for air, lake bed for water.
+   *  Air uses the global distance falloff authored in locomotionConfig.json. */
   heightUpwardForce: number;
   /** Per-tick uniform randomization of `heightUpwardForce`, as a fraction. */
   heightUpwardForceRandomizationAmount: number;
