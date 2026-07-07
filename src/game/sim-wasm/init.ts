@@ -159,6 +159,7 @@ import __wbg_init, {
   terrain_get_bed_normal,
   terrain_get_surface_height,
   terrain_get_surface_normal,
+  terrain_sample_bed_heights,
   terrain_sample_ground_for_slots,
   terrain_sample_force_support_for_slots,
   terrain_sample_water_probe_masks,
@@ -1696,6 +1697,12 @@ export interface SimWasm {
   readonly terrainGetSurfaceHeight: (x: number, z: number) => number;
   /** Raw terrain-bed height at world-space (x, z), without water-plane clamp. */
   readonly terrainGetBedHeight: (x: number, z: number) => number;
+  /** Batch raw terrain-bed height sampling for arbitrary world-space points. */
+  readonly terrainSampleBedHeights: (
+    xs: Float64Array,
+    zs: Float64Array,
+    heights: Float64Array,
+  ) => number;
   /** Sample terrain surface normal at world-space (x, z). Writes
    *  (nx, ny, nz) into out[0..3] and returns 1 on success, 0 if no
    *  mesh is installed or the triangle walk fails. Below-water
@@ -3673,7 +3680,7 @@ export const QUAT_HOVER_BATCH_STRIDE = 14;
 
 /** Layout stride for `unitForceStepBatch`. Mirrors
  *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
-export const UNIT_FORCE_BATCH_STRIDE = 51;
+export const UNIT_FORCE_BATCH_STRIDE = 52;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
@@ -4117,6 +4124,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         terrainFillCellTriangleIndices: terrain_fill_cell_triangle_indices,
         terrainBuildAdaptiveMesh: terrain_build_adaptive_mesh,
         terrainGetBedHeight: terrain_get_bed_height,
+        terrainSampleBedHeights: terrain_sample_bed_heights,
         terrainGetBedNormal: terrain_get_bed_normal,
         terrainGetSurfaceHeight: terrain_get_surface_height,
         terrainGetSurfaceNormal: terrain_get_surface_normal,

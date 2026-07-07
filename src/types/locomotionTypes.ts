@@ -54,6 +54,10 @@ export type UnitLocomotion = {
   /** True when waypoint arrival keeps full directed thrust instead of
    *  braking/slowing at final waypoints or honoring action speed limits. */
   maintainFullThrustAtWaypoints: boolean;
+  /** Fixed world-space distance for the forward air-lift ground probe. */
+  airLiftGroundProbeAheadDistance: number;
+  /** Body-radius multiplier added to the forward air-lift ground probe. */
+  airLiftGroundProbeAheadRadiusMultiplier: number;
   /** Named pathfinding profile resolved from pathfindingConfig.json. */
   pathfinding: UnitPathfindingConfig;
 };

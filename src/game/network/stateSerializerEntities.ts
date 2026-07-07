@@ -800,21 +800,79 @@ function appendDirectBasicEntityWireRow(
   );
 }
 
+const MAX_DIRECT_ROUTE_PREVIEW_POINTS = 64;
+
+function directRoutePreviewBounds(entity: Entity): { start: number; end: number } {
+  const unit = entity.unit;
+  const actions = unit?.actions ?? [];
+  const plan = unit?.activePath ?? null;
+  if (
+    unit === null ||
+    plan === null ||
+    actions.length === 0 ||
+    plan.goalX !== actions[0].x ||
+    plan.goalY !== actions[0].y ||
+    plan.goalZ !== actions[0].z
+  ) {
+    return { start: 0, end: 0 };
+  }
+
+  const start = plan.index > 0 ? plan.index : 0;
+  let end = plan.points.length - 1;
+  if (end - start > MAX_DIRECT_ROUTE_PREVIEW_POINTS) {
+    end = start + MAX_DIRECT_ROUTE_PREVIEW_POINTS;
+  }
+  if (end < start) end = start;
+  return { start, end };
+}
+
 function appendDirectActionWireRows(
   entity: Entity,
   world: WorldState,
   visibility: SnapshotVisibility | undefined,
 ): { offset: number; count: number } {
   const actions = entity.unit?.actions ?? [];
-  const count = actions.length;
+  const previewBounds = directRoutePreviewBounds(entity);
+  const previewCount = previewBounds.end - previewBounds.start;
+  const count = previewCount + actions.length;
   if (count === 0) return { offset: -1, count: 0 };
   const rows = entityWireSource.actionRows;
   const offset = reserveFloat64WireRows(rows, count, ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE);
   const values = rows.values;
   const strings = entityWireSource.actionStrings;
-  for (let i = 0; i < count; i++) {
+  let row = 0;
+
+  if (previewCount > 0) {
+    const moveCode = actionTypeToCode('move');
+    const points = entity.unit!.activePath!.points;
+    for (let k = previewBounds.start; k < previewBounds.end; k++) {
+      const point = points[k];
+      const base = (offset + row++) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+      values[base + 0] = moveCode;
+      values[base + 1] = 1;
+      values[base + 2] = point.x;
+      values[base + 3] = point.y;
+      values[base + 4] = point.z !== undefined ? 1 : 0;
+      values[base + 5] = point.z ?? 0;
+      values[base + 6] = 1;
+      values[base + 7] = 0;
+      values[base + 8] = 0;
+      values[base + 9] = 0;
+      values[base + 10] = 0;
+      values[base + 11] = 0;
+      values[base + 12] = 0;
+      values[base + 13] = 0;
+      values[base + 14] = 0;
+      values[base + 15] = 0;
+      values[base + 16] = 0;
+      values[base + 17] = 0;
+      values[base + 18] = 0;
+    }
+  }
+
+  for (let i = 0; i < actions.length; i++) {
     const action = actions[i];
-    const base = (offset + i) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
+    const base = (offset + row++) * ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE;
     values[base + 0] = actionTypeToCode(action.type);
     values[base + 1] = action.x !== undefined ? 1 : 0;
     values[base + 2] = action.x ?? 0;

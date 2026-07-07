@@ -1059,7 +1059,7 @@
       "duration": 160,
       "durationRandomness": 0.02
     },
-    "launchForce": 16000,
+    "launchForce": 4000,
     "addTurretVelocityToEmissionLaunch": true,
     "turretTurnAccel": 90000,
     "turretDrag": 0,

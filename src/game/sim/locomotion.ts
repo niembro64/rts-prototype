@@ -26,6 +26,8 @@ type LocomotionTypeConfig = {
     forwardForceRequiresFacing: boolean;
     driveForceScalesWithFacing: boolean;
     maintainFullThrustAtWaypoints: boolean;
+    airLiftGroundProbeAheadDistance: number;
+    airLiftGroundProbeAheadRadiusMultiplier: number;
   };
 };
 
@@ -102,6 +104,14 @@ function readLocomotionConfig(): LocomotionConfig {
       `types.${type}.physics.maintainFullThrustAtWaypoints`,
       typeConfig.physics.maintainFullThrustAtWaypoints,
     );
+    assertNonNegativeFinite(
+      `types.${type}.physics.airLiftGroundProbeAheadDistance`,
+      typeConfig.physics.airLiftGroundProbeAheadDistance,
+    );
+    assertNonNegativeFinite(
+      `types.${type}.physics.airLiftGroundProbeAheadRadiusMultiplier`,
+      typeConfig.physics.airLiftGroundProbeAheadRadiusMultiplier,
+    );
   }
   for (const type of Object.keys(types)) {
     if (!(LOCOMOTION_TYPES as readonly string[]).includes(type)) {
@@ -132,6 +142,14 @@ function getLocomotionDriveForceScalesWithFacing(type: LocomotionType): boolean 
 
 function getLocomotionMaintainFullThrustAtWaypoints(type: LocomotionType): boolean {
   return LOCOMOTION_CONFIG.types[type].physics.maintainFullThrustAtWaypoints;
+}
+
+function getLocomotionAirLiftGroundProbeAheadDistance(type: LocomotionType): number {
+  return LOCOMOTION_CONFIG.types[type].physics.airLiftGroundProbeAheadDistance;
+}
+
+function getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(type: LocomotionType): number {
+  return LOCOMOTION_CONFIG.types[type].physics.airLiftGroundProbeAheadRadiusMultiplier;
 }
 
 function getEffectiveLocomotionForce(
@@ -257,6 +275,9 @@ export function createUnitLocomotion(
     forwardForceRequiresFacing: getLocomotionForwardForceRequiresFacing(type),
     driveForceScalesWithFacing: getLocomotionDriveForceScalesWithFacing(type),
     maintainFullThrustAtWaypoints: getLocomotionMaintainFullThrustAtWaypoints(type),
+    airLiftGroundProbeAheadDistance: getLocomotionAirLiftGroundProbeAheadDistance(type),
+    airLiftGroundProbeAheadRadiusMultiplier:
+      getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(type),
     pathfinding,
   };
 }
@@ -280,6 +301,8 @@ export function cloneUnitLocomotion(
     forwardForceRequiresFacing: locomotion.forwardForceRequiresFacing,
     driveForceScalesWithFacing: locomotion.driveForceScalesWithFacing,
     maintainFullThrustAtWaypoints: locomotion.maintainFullThrustAtWaypoints,
+    airLiftGroundProbeAheadDistance: locomotion.airLiftGroundProbeAheadDistance,
+    airLiftGroundProbeAheadRadiusMultiplier: locomotion.airLiftGroundProbeAheadRadiusMultiplier,
     pathfinding: { ...locomotion.pathfinding },
   };
 }

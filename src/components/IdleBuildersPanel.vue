@@ -125,10 +125,10 @@ function handleChipClick(group: IdleBuilderGroupInfo, event: MouseEvent): void {
 
 <style scoped>
 .idle-builders-panel {
-  position: absolute;
+  position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(var(--idle-builders-playable-bottom, 0px) + 4px);
+  bottom: var(--idle-builders-playable-bottom, 0px);
   display: flex;
   align-items: center;
   gap: 4px;

@@ -1459,7 +1459,7 @@
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "ground": {
-          "force": 70,
+          "force": 300,
           "traction": 0.25,
           "friction": 0,
           "gravityCounterUpwardForceRatio": 0,
@@ -1477,7 +1477,7 @@
           "heightUpwardForceEMA": 0
         },
         "water": {
-          "force": 1350,
+          "force": 4050,
           "traction": 1.1,
           "friction": 1.2,
           "gravityCounterUpwardForceRatio": 0.45,

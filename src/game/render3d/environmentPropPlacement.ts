@@ -64,6 +64,11 @@ const RANDOM_ENVIRONMENT_PLACEMENT_MAX_ATTEMPTS_PER_TARGET = 80;
 const RANDOM_ENVIRONMENT_ASSET_MIN_SLOPE = 0.03;
 const RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE = 0.3;
 const RANDOM_ENVIRONMENT_ASSET_MAX_HEIGHT = 100;
+const RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_SAMPLE_COUNT = 10;
+const RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_CLEARANCE_RADIUS = LAND_CELL_SIZE * 0.45;
+const RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_HEIGHT_DELTA_MIN = 24;
+const RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_HEIGHT_DELTA_RADIUS_SCALE = 1.6;
+const RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_HEIGHT_DELTA_MAX = 70;
 
 // Lower tree roots by the terrain drop across this approximate trunk/base
 // footprint so the downhill side does not reveal the asset's underside.
@@ -178,6 +183,17 @@ function tryAddPlacement(
   if (!isRandomEnvironmentAssetHeightAllowed(y)) return false;
   const normal = getRandomEnvironmentSurfaceNormal(context, x, z);
   if (!isSlopeInRandomEnvironmentAssetZone(terrainSlopeFromNormalUp(normal.nz))) return false;
+  if (
+    !isRandomEnvironmentAssetFootprintTerrainAllowed(
+      context,
+      x,
+      z,
+      radius,
+      y,
+    )
+  ) {
+    return false;
+  }
   const slopeSink =
     spec.kind === 'tree'
       ? treeSlopeBaseSinkFromNormal(normal, radius, height)
@@ -205,6 +221,69 @@ function getRandomEnvironmentSurfaceNormal(
     context.mapWidth,
     context.mapHeight,
     LAND_CELL_SIZE,
+  );
+}
+
+function isRandomEnvironmentAssetFootprintTerrainAllowed(
+  context: PlacementContext,
+  x: number,
+  z: number,
+  radius: number,
+  centerHeight: number,
+): boolean {
+  const sampleRadius = Math.max(
+    radius * 1.35,
+    RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_CLEARANCE_RADIUS,
+  );
+  const maxHeightDelta = randomEnvironmentAssetMaxFootprintHeightDelta(radius);
+  let minHeight = centerHeight;
+  let maxHeight = centerHeight;
+
+  for (let i = 0; i < RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_SAMPLE_COUNT; i++) {
+    const a = (i / RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_SAMPLE_COUNT) * Math.PI * 2;
+    const dx = Math.cos(a) * sampleRadius;
+    const dz = Math.sin(a) * sampleRadius;
+    if (!isRandomEnvironmentAssetFootprintSampleAllowed(context, x + dx, z + dz)) {
+      return false;
+    }
+    const outerHeight = context.sampleTerrainHeight(x + dx, z + dz);
+    if (!Number.isFinite(outerHeight) || outerHeight < WATER_LEVEL) return false;
+    minHeight = Math.min(minHeight, outerHeight);
+    maxHeight = Math.max(maxHeight, outerHeight);
+
+    const innerX = x + dx * 0.5;
+    const innerZ = z + dz * 0.5;
+    if (!isRandomEnvironmentAssetFootprintSampleAllowed(context, innerX, innerZ)) {
+      return false;
+    }
+    const innerHeight = context.sampleTerrainHeight(innerX, innerZ);
+    if (!Number.isFinite(innerHeight) || innerHeight < WATER_LEVEL) return false;
+    minHeight = Math.min(minHeight, innerHeight);
+    maxHeight = Math.max(maxHeight, innerHeight);
+
+    if (maxHeight - minHeight > maxHeightDelta) return false;
+  }
+
+  return true;
+}
+
+function isRandomEnvironmentAssetFootprintSampleAllowed(
+  context: PlacementContext,
+  x: number,
+  z: number,
+): boolean {
+  if (x < 0 || z < 0 || x > context.mapWidth || z > context.mapHeight) {
+    return false;
+  }
+  const normal = getRandomEnvironmentSurfaceNormal(context, x, z);
+  return terrainSlopeFromNormalUp(normal.nz) <= RANDOM_ENVIRONMENT_ASSET_MAX_SLOPE;
+}
+
+function randomEnvironmentAssetMaxFootprintHeightDelta(radius: number): number {
+  return clamp(
+    radius * RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_HEIGHT_DELTA_RADIUS_SCALE,
+    RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_HEIGHT_DELTA_MIN,
+    RANDOM_ENVIRONMENT_ASSET_FOOTPRINT_HEIGHT_DELTA_MAX,
   );
 }
 

@@ -32,6 +32,7 @@ use wasm_bindgen::prelude::*;
 pub(crate) const PATHFINDER_BUILD_GRID_CELL_SIZE: f64 = 20.0;
 pub(crate) const PATHFINDER_SNAP_RADIUS_CELLS: i32 = 32;
 pub(crate) const PATHFINDER_MAX_A_STAR_NODES: u32 = 50_000;
+pub(crate) const PATHFINDER_MAX_STEEP_START_ESCAPE_CANDIDATES: usize = 384;
 pub(crate) const PATHFINDER_SQRT2: f32 = 1.4142135623730951;
 pub(crate) const PATHFINDER_SQRT2_MINUS_1: f32 = 0.41421356237309515;
 
@@ -753,6 +754,158 @@ pub(crate) fn pathfinder_find_nearest_open_toward(
     best.map(|(x, y, _, _)| (x, y))
 }
 
+#[inline]
+pub(crate) fn pathfinder_exact_sample_is_too_steep(
+    x: f64,
+    y: f64,
+    min_normal_z: f32,
+    ignore_terrain_blocking: bool,
+) -> bool {
+    if ignore_terrain_blocking {
+        return false;
+    }
+    let (height, normal_z) = pathfinder_sample_terrain(x, y);
+    height >= TERRAIN_WATER_LEVEL
+        && normal_z.is_finite()
+        && normal_z < pathfinder_required_step_normal_z(min_normal_z)
+}
+
+#[inline]
+pub(crate) fn pathfinder_escape_candidate_is_stable(
+    state: &PathfinderState,
+    gx: i32,
+    gy: i32,
+    min_normal_z: f32,
+    ignore_terrain_blocking: bool,
+) -> bool {
+    if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
+        return false;
+    }
+    if !pathfinder_is_cell_passable(
+        state,
+        (gy * state.grid_w + gx) as usize,
+        min_normal_z,
+        ignore_terrain_blocking,
+    ) {
+        return false;
+    }
+    if ignore_terrain_blocking {
+        return true;
+    }
+    let (x, y) = pathfinder_cell_center(gx, gy);
+    let (height, normal_z) = pathfinder_sample_terrain(x, y);
+    height >= TERRAIN_WATER_LEVEL
+        && normal_z.is_finite()
+        && normal_z >= pathfinder_required_step_normal_z(min_normal_z)
+}
+
+pub(crate) struct StartEscapeResult {
+    start_gx: i32,
+    start_gy: i32,
+    a_star_result: AStarResult,
+}
+
+pub(crate) fn pathfinder_try_steep_start_escape(
+    state: &mut PathfinderState,
+    origin_gx: i32,
+    origin_gy: i32,
+    goal_gx: i32,
+    goal_gy: i32,
+    min_normal_z: f32,
+    ignore_terrain_blocking: bool,
+    required_clearance: i32,
+) -> Option<StartEscapeResult> {
+    let target_dx = goal_gx - origin_gx;
+    let target_dy = goal_gy - origin_gy;
+    let has_target_dir = target_dx != 0 || target_dy != 0;
+
+    // First try candidates in the command direction, then fall back to any
+    // nearby stable cell. This lets a unit already on a wall escape either up
+    // or down according to the player's click, without turning ordinary flat
+    // uphill failures into wall climbs.
+    for pass in 0..2 {
+        let mut attempts = 0usize;
+        for offset_index in 0..state.snap_offsets.len() {
+            if attempts >= PATHFINDER_MAX_STEEP_START_ESCAPE_CANDIDATES {
+                break;
+            }
+            let (dx, dy) = state.snap_offsets[offset_index];
+            let candidate_gx = origin_gx + dx as i32;
+            let candidate_gy = origin_gy + dy as i32;
+            if candidate_gx == origin_gx && candidate_gy == origin_gy {
+                continue;
+            }
+            if pass == 0
+                && has_target_dir
+                && (candidate_gx - origin_gx) * target_dx + (candidate_gy - origin_gy) * target_dy
+                    < 0
+            {
+                continue;
+            }
+
+            state.cur_required_clearance = 0;
+            if !pathfinder_escape_candidate_is_stable(
+                state,
+                candidate_gx,
+                candidate_gy,
+                min_normal_z,
+                ignore_terrain_blocking,
+            ) {
+                continue;
+            }
+            attempts += 1;
+
+            if candidate_gx == goal_gx && candidate_gy == goal_gy {
+                state.path_scratch.clear();
+                return Some(StartEscapeResult {
+                    start_gx: candidate_gx,
+                    start_gy: candidate_gy,
+                    a_star_result: AStarResult {
+                        goal_gx,
+                        goal_gy,
+                        reached_goal: true,
+                    },
+                });
+            }
+
+            state.cur_required_clearance = required_clearance;
+            let mut a_star_result = pathfinder_a_star(
+                state,
+                candidate_gx,
+                candidate_gy,
+                goal_gx,
+                goal_gy,
+                min_normal_z,
+                ignore_terrain_blocking,
+            );
+            let mut relaxed = required_clearance;
+            while relaxed > 0 && (a_star_result.is_none() || state.path_scratch.is_empty()) {
+                relaxed = if relaxed > 1 { relaxed / 2 } else { 0 };
+                state.cur_required_clearance = relaxed;
+                a_star_result = pathfinder_a_star(
+                    state,
+                    candidate_gx,
+                    candidate_gy,
+                    goal_gx,
+                    goal_gy,
+                    min_normal_z,
+                    ignore_terrain_blocking,
+                );
+            }
+            if let Some(result) = a_star_result {
+                if result.reached_goal || !state.path_scratch.is_empty() {
+                    return Some(StartEscapeResult {
+                        start_gx: candidate_gx,
+                        start_gy: candidate_gy,
+                        a_star_result: result,
+                    });
+                }
+            }
+        }
+    }
+    None
+}
+
 pub(crate) fn pathfinder_find_nearest_in_component(
     state: &PathfinderState,
     gx: i32,
@@ -1107,6 +1260,20 @@ pub(crate) fn pathfinder_cell_center(gx: i32, gy: i32) -> (f64, f64) {
     )
 }
 
+#[inline]
+pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f64) {
+    let len = state.waypoint_scratch.len();
+    if len >= 2 {
+        let last_x = state.waypoint_scratch[len - 2];
+        let last_y = state.waypoint_scratch[len - 1];
+        if (last_x - x).abs() <= 1.0e-9 && (last_y - y).abs() <= 1.0e-9 {
+            return;
+        }
+    }
+    state.waypoint_scratch.push(x);
+    state.waypoint_scratch.push(y);
+}
+
 /// Plan a path from (start_x, start_y) to (goal_x, goal_y).
 /// `min_normal_z` is the per-unit slope filter (0 = no filter,
 /// matches normalizeMinSurfaceNormalZ returning undefined in JS).
@@ -1163,6 +1330,7 @@ pub fn pathfinder_find_path(
     let mut start_cell_gx = sgx;
     let mut start_cell_gy = sgy;
     let mut start_was_snapped = false;
+    let mut start_escape_waypoint = false;
     if !pathfinder_is_cell_passable(state, start_idx, min_normal_z, ignore_terrain_blocking) {
         match pathfinder_find_nearest_open_toward(
             state,
@@ -1304,6 +1472,36 @@ pub fn pathfinder_find_path(
             ignore_terrain_blocking,
         );
     }
+    let made_progress = match &a_star_result {
+        Some(result) => result.reached_goal || !state.path_scratch.is_empty(),
+        None => false,
+    };
+    if !made_progress
+        && !start_was_snapped
+        && pathfinder_exact_sample_is_too_steep(
+            start_x,
+            start_y,
+            min_normal_z,
+            ignore_terrain_blocking,
+        )
+    {
+        if let Some(escape) = pathfinder_try_steep_start_escape(
+            state,
+            sgx,
+            sgy,
+            goal_cell_gx,
+            goal_cell_gy,
+            min_normal_z,
+            ignore_terrain_blocking,
+            required_clearance,
+        ) {
+            start_cell_gx = escape.start_gx;
+            start_cell_gy = escape.start_gy;
+            start_was_snapped = true;
+            start_escape_waypoint = true;
+            a_star_result = Some(escape.a_star_result);
+        }
+    }
     let a_star_result = match a_star_result {
         Some(r) => r,
         None => {
@@ -1334,6 +1532,9 @@ pub fn pathfinder_find_path(
     let mut anchor_y: f64;
     if start_was_snapped {
         let (cx, cy) = pathfinder_cell_center(start_cell_gx, start_cell_gy);
+        if start_escape_waypoint {
+            pathfinder_push_waypoint(state, cx, cy);
+        }
         anchor_x = cx;
         anchor_y = cy;
     } else {
@@ -1360,8 +1561,7 @@ pub fn pathfinder_find_path(
                 min_normal_z,
                 ignore_terrain_blocking,
             ) {
-                state.waypoint_scratch.push(cand_x);
-                state.waypoint_scratch.push(cand_y);
+                pathfinder_push_waypoint(state, cand_x, cand_y);
                 anchor_x = cand_x;
                 anchor_y = cand_y;
             }
@@ -1369,11 +1569,9 @@ pub fn pathfinder_find_path(
     }
     if goal_was_snapped {
         let (cx, cy) = pathfinder_cell_center(goal_cell_gx, goal_cell_gy);
-        state.waypoint_scratch.push(cx);
-        state.waypoint_scratch.push(cy);
+        pathfinder_push_waypoint(state, cx, cy);
     } else {
-        state.waypoint_scratch.push(goal_x);
-        state.waypoint_scratch.push(goal_y);
+        pathfinder_push_waypoint(state, goal_x, goal_y);
     }
     (state.waypoint_scratch.len() / 2) as u32
 }

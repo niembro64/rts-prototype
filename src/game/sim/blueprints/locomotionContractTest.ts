@@ -97,10 +97,21 @@ export function runLocomotionContractTest(): void {
   const eagleLocomotion = getUnitLocomotion('unitEagle');
   assertEqual(eagleLocomotion.type, 'flying', 'Eagle locomotion type');
   assertEqual(eagleLocomotion.maintainFullThrustAtWaypoints, true, 'Eagle waypoint thrust mode');
+  assertEqual(eagleLocomotion.airLiftGroundProbeAheadDistance, 5, 'Eagle air lift probe distance');
+  assertEqual(
+    eagleLocomotion.airLiftGroundProbeAheadRadiusMultiplier,
+    1,
+    'Eagle air lift probe radius multiplier',
+  );
   assertEqual(
     cloneUnitLocomotion(eagleLocomotion).maintainFullThrustAtWaypoints,
     true,
     'cloned Eagle waypoint thrust mode',
+  );
+  assertEqual(
+    cloneUnitLocomotion(eagleLocomotion).airLiftGroundProbeAheadDistance,
+    5,
+    'cloned Eagle air lift probe distance',
   );
 
   const nonAmphibiousLocomotion = getUnitLocomotion('unitJackal');
@@ -131,6 +142,11 @@ export function runLocomotionContractTest(): void {
   );
   assertEqual(seaTurtleLocomotion.physics.water.force, 2700, 'Sea Turtle runtime water force');
   assertEqual(seaTurtleLocomotion.physics.ground.force, 140, 'Sea Turtle runtime ground force');
+  assertEqual(
+    seaTurtleLocomotion.airLiftGroundProbeAheadDistance,
+    0,
+    'Sea Turtle air lift probe distance',
+  );
 
   const zeroWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
   zeroWaterForce.physics.water.force = 0;

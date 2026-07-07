@@ -142,8 +142,8 @@
       "$audio": "event.hit.shotRocketLight"
     },
     "submunitions": null,
-    "homingTurnRate": 70,
-    "homingThrust": 3000,
+    "homingTurnRate": 20,
+    "homingThrust": 1000,
     "homingDelayMs": 3000,
     "propulsionForce": 350,
     "gravityForceMultiplier": 1,

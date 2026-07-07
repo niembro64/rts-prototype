@@ -52,25 +52,11 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction';
 
-const WATER_PROBE_DX = [
-  1, 0.7071067811865476, 0, -0.7071067811865475,
-  -1, -0.7071067811865477, 0, 0.7071067811865474,
-];
-const WATER_PROBE_DY = [
-  0, 0.7071067811865475, 1, 0.7071067811865476,
-  0, -0.7071067811865475, -1, -0.7071067811865477,
-];
-const WATER_ESCAPE_PROBE_MULTS = [1.5, 3, 6];
-
 // Legacy WASM ABI knobs. Unit attitude now derives stiffness/damping from
 // torque authority, inertia, and active medium damping in the force kernel.
 const HOVER_ORIENTATION_K = 30;
 const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
-
-const WATER_OUT_CACHE_CELL_SIZE = 25;
-const WATER_OUT_CACHE_BUCKET_SCALE = 10;
-const WATER_OUT_CACHE_MAX_ENTRIES = 4096;
 
 const UF_ROW_DIR_X = 0;
 const UF_ROW_DIR_Y = 1;
@@ -94,10 +80,6 @@ const UF_ROW_ORIENTATION_W = 22;
 const UF_ROW_OMEGA_X = 23;
 const UF_ROW_OMEGA_Y = 24;
 const UF_ROW_OMEGA_Z = 25;
-const UF_ROW_WATER_ESCAPE_MASK_0 = 26;
-const UF_ROW_WATER_ESCAPE_MASK_1 = 27;
-const UF_ROW_WATER_ESCAPE_MASK_2 = 28;
-const UF_ROW_WATER_AHEAD_MASK = 29;
 // Fully-abstracted medium force profile (appended; rows 0..36 unchanged).
 // Rows 36-45 (ground/air/water friction, water force/traction, swim family,
 // including the swim EMA accumulator) and rows 49-50 (air force/traction) are
@@ -105,18 +87,18 @@ const UF_ROW_WATER_AHEAD_MASK = 29;
 const UF_ROW_SWIM_RANDOM_SAMPLE = 46;
 const UF_ROW_HEADING_X = 47;
 const UF_ROW_HEADING_Y = 48;
+const UF_ROW_AIR_AHEAD_GROUND_Z = 51;
 
 const UF_FLAG_HAS_THRUST = 1 << 0;
 const UF_FLAG_IS_FLYING = 1 << 1;
 const UF_FLAG_IS_AIRBORNE = 1 << 2;
 const UF_FLAG_BLOCKED_OR_DEAD = 1 << 3;
 const UF_FLAG_HAS_EXTERNAL_FORCE = 1 << 4;
-const UF_FLAG_IN_WATER = 1 << 5;
-const UF_FLAG_AHEAD_IN_WATER = 1 << 6;
 const UF_FLAG_HAS_ORIENTATION = 1 << 7;
 const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING = 1 << 8;
 const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING = 1 << 9;
 const UF_FLAG_ON_GROUND = 1 << 10;
+const UF_FLAG_HAS_AIR_AHEAD_GROUND = 1 << 11;
 const UF_PROFILE_FLAG_IS_FLYING = 1 << 16;
 const UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION = 1 << 17;
 const UF_PROFILE_FLAG_IS_SWIMMER = 1 << 18;
@@ -133,6 +115,14 @@ const UNIT_GROUND_ANGULAR_DAMPING_RATE =
 
 const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
 
+function unitWaterFraction(bodyZ: number, groundOffset: number): number {
+  if (!Number.isFinite(bodyZ)) return 0;
+  const halfHeight = Number.isFinite(groundOffset) && groundOffset > 0 ? groundOffset : 0.5;
+  const height = halfHeight * 2;
+  if (height <= 0 || !Number.isFinite(height)) return bodyZ < WATER_LEVEL ? 1 : 0;
+  return Math.max(0, Math.min(1, (WATER_LEVEL - (bodyZ - halfHeight)) / height));
+}
+
 let _forceSlots: Uint32Array = new Uint32Array(0);
 let _forceEntitySlots: Uint32Array = new Uint32Array(0);
 let _forceFlags: Uint32Array = new Uint32Array(0);
@@ -141,15 +131,11 @@ let _forceOutFlags: Uint32Array = new Uint32Array(0);
 let _forceTerrainGroundZ: Float64Array = new Float64Array(0);
 let _forceTerrainGroundNormals: Float64Array = new Float64Array(0);
 let _forceTerrainMaterialFlags: Uint32Array = new Uint32Array(0);
-let _forceWaterProbeX: Float64Array = new Float64Array(0);
-let _forceWaterProbeY: Float64Array = new Float64Array(0);
-let _forceWaterProbeR: Float64Array = new Float64Array(0);
-let _forceWaterProbeCenterWaterFlags: Uint32Array = new Uint32Array(0);
-let _forceWaterProbeDryMasks: Uint32Array = new Uint32Array(0);
-let _forceWaterProbeRowIndex: Int32Array = new Int32Array(0);
-let _forceWaterProbeFlagIndex: Int32Array = new Int32Array(0);
-let _forceWaterProbeFlagBit: Uint32Array = new Uint32Array(0);
-let _forceWaterProbeCount = 0;
+let _forceAirAheadProbeX: Float64Array = new Float64Array(0);
+let _forceAirAheadProbeY: Float64Array = new Float64Array(0);
+let _forceAirAheadProbeGroundZ: Float64Array = new Float64Array(0);
+let _forceAirAheadProbeRowIndex: Int32Array = new Int32Array(0);
+let _forceAirAheadProbeCount = 0;
 const _forceTerrainSurface = createWorldSupportSurface();
 const _forceSupportSurface = createWorldSupportSurface();
 const _forceProbeSupportSurface = createWorldSupportSurface();
@@ -182,37 +168,27 @@ function ensureForceBatchCapacity(count: number): void {
   }
 }
 
-function ensureForceWaterProbeCapacity(count: number): void {
-  if (_forceWaterProbeX.length >= count) return;
-  const next = Math.max(count, _forceWaterProbeX.length * 2, 256);
-  _forceWaterProbeX = new Float64Array(next);
-  _forceWaterProbeY = new Float64Array(next);
-  _forceWaterProbeR = new Float64Array(next);
-  _forceWaterProbeCenterWaterFlags = new Uint32Array(next);
-  _forceWaterProbeDryMasks = new Uint32Array(next);
-  _forceWaterProbeRowIndex = new Int32Array(next);
-  _forceWaterProbeFlagIndex = new Int32Array(next);
-  _forceWaterProbeFlagBit = new Uint32Array(next);
+function ensureForceAirAheadProbeCapacity(count: number): void {
+  if (_forceAirAheadProbeX.length >= count) return;
+  const next = Math.max(count, _forceAirAheadProbeX.length * 2, 256);
+  _forceAirAheadProbeX = new Float64Array(next);
+  _forceAirAheadProbeY = new Float64Array(next);
+  _forceAirAheadProbeGroundZ = new Float64Array(next);
+  _forceAirAheadProbeRowIndex = new Int32Array(next);
 }
 
-function queueForceWaterProbeMask(
+function queueForceAirAheadProbeGroundZ(
   x: number,
   y: number,
-  probeR: number,
   rowIndex: number,
-  flagIndex: number = -1,
-  flagBit: number = 0,
 ): void {
-  if (_forceWaterProbeCount >= _forceWaterProbeX.length) {
-    ensureForceWaterProbeCapacity(_forceWaterProbeCount + 1);
+  if (_forceAirAheadProbeCount >= _forceAirAheadProbeX.length) {
+    ensureForceAirAheadProbeCapacity(_forceAirAheadProbeCount + 1);
   }
-  const index = _forceWaterProbeCount++;
-  _forceWaterProbeX[index] = x;
-  _forceWaterProbeY[index] = y;
-  _forceWaterProbeR[index] = probeR;
-  _forceWaterProbeRowIndex[index] = rowIndex;
-  _forceWaterProbeFlagIndex[index] = flagIndex;
-  _forceWaterProbeFlagBit[index] = flagBit;
+  const index = _forceAirAheadProbeCount++;
+  _forceAirAheadProbeX[index] = x;
+  _forceAirAheadProbeY[index] = y;
+  _forceAirAheadProbeRowIndex[index] = rowIndex;
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
@@ -305,8 +281,7 @@ export class UnitForceSystem {
   private physicsCandidateUnitSlotsBuf = new Uint32Array(1024);
   private physicsActiveUnitSlotMarks = new Uint32Array(1024);
   private physicsActiveUnitSlotMark = 1;
-  private waterDryMaskCache = new Map<number, number>();
-  private waterProbeSupportIndexReady = false;
+  private probeSupportIndexReady = false;
 
   constructor(world: WorldState, simulation: Simulation, physics: PhysicsEngine3D) {
     this.world = world;
@@ -330,8 +305,7 @@ export class UnitForceSystem {
 
     const activeSlots = this.collectPhysicsForceUnitSlots();
     if (activeSlots.length === 0) return;
-    this.waterDryMaskCache.clear();
-    this.waterProbeSupportIndexReady = false;
+    this.probeSupportIndexReady = false;
 
     ensureForceBatchCapacity(activeSlots.length);
 
@@ -376,10 +350,9 @@ export class UnitForceSystem {
       terrainSampled &&
       !this.physics.hasSupportSurfaceBodies() &&
       this.world.getSupportSurfaceEntities().length === 0;
-    const useNativeTerrainWaterProbes = terrainOnlySupport;
-    _forceWaterProbeCount = 0;
-    if (useNativeTerrainWaterProbes) {
-      ensureForceWaterProbeCapacity(candidateCount * 4);
+    _forceAirAheadProbeCount = 0;
+    if (terrainOnlySupport) {
+      ensureForceAirAheadProbeCapacity(candidateCount);
     }
 
     let count = 0;
@@ -461,14 +434,14 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
       _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
       _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
+      const waterFraction = unitWaterFraction(bodyZ, bodyGroundOffset);
+      const airFraction = 1 - waterFraction;
 
       // Fully-abstracted medium force profile (all opt-in, default 0/inert).
       // Per-blueprint locomotion metadata is uploaded once to the native force
       // profile table. Fall back to the object graph only if the slot slab is
       // unavailable or stale.
       let isFlying = (profileFlags & UF_PROFILE_FLAG_IS_FLYING) !== 0;
-      let isAirborneLocomotion = (profileFlags & UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION) !== 0;
-      let unitIsSwimmer = (profileFlags & UF_PROFILE_FLAG_IS_SWIMMER) !== 0;
       let forwardForceRequiresFacing =
         (profileFlags & UF_FLAG_FORWARD_THRUST_REQUIRES_FACING) !== 0;
       let hoverRandomActive = (profileFlags & UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE) !== 0;
@@ -476,14 +449,18 @@ export class UnitForceSystem {
       if (!hasProfileFlags) {
         const loco = unit.locomotion;
         isFlying = loco.type === 'flying';
-        isAirborneLocomotion = loco.type === 'hover' || loco.type === 'flying';
-        unitIsSwimmer = loco.physics.water.force > 0 || loco.physics.water.heightUpwardForce > 0;
         forwardForceRequiresFacing = loco.forwardForceRequiresFacing;
         hoverRandomActive = loco.physics.air.heightUpwardForceRandomizationAmount > 0;
         swimRandomActive =
           loco.physics.water.heightUpwardForceRandomizationAmount > 0 &&
           loco.physics.water.heightUpwardForce > 0;
       }
+      const airLiftAuthored =
+        unit.locomotion.physics.air.gravityCounterUpwardForceRatio > 0 ||
+        unit.locomotion.physics.air.heightUpwardForce > 0;
+      const waterLiftAuthored =
+        unit.locomotion.physics.water.gravityCounterUpwardForceRatio > 0 ||
+        unit.locomotion.physics.water.heightUpwardForce > 0;
       // Ground/air/water friction, water force/traction, the swim family,
       // swim EMA accumulator, and air angular damping rate are filled by the
       // kernel from native profile/runtime tables.
@@ -518,9 +495,9 @@ export class UnitForceSystem {
 
       if (surfaceContact) flags |= UF_FLAG_ON_GROUND;
 
-      const liftLocomotionActive = isAirborneLocomotion && !buildInProgress;
-      if (isFlying && liftLocomotionActive) flags |= UF_FLAG_IS_FLYING;
-      if (liftLocomotionActive) flags |= UF_FLAG_IS_AIRBORNE;
+      const mediumLiftActive = !buildInProgress;
+      if (isFlying && mediumLiftActive) flags |= UF_FLAG_IS_FLYING;
+      if (mediumLiftActive) flags |= UF_FLAG_IS_AIRBORNE;
 
       const hasExternalForce =
         hasExternalForces &&
@@ -535,6 +512,63 @@ export class UnitForceSystem {
       }
 
       _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
+      _forceRows[base + UF_ROW_AIR_AHEAD_GROUND_Z] = supportSurface.groundZ;
+
+      if (mediumLiftActive && airFraction > 0 && airLiftAuthored) {
+        const aheadProbeDistance =
+          unit.locomotion.airLiftGroundProbeAheadDistance +
+          bodyRadius * unit.locomotion.airLiftGroundProbeAheadRadiusMultiplier;
+        if (aheadProbeDistance > 0 && Number.isFinite(aheadProbeDistance)) {
+          let probeDirX = 0;
+          let probeDirY = 0;
+          let hasProbeDir = false;
+          const yaw = Number.isFinite(rotationForPack) ? rotationForPack : 0;
+          if (hasThrustDir) {
+            if (forwardForceRequiresFacing) {
+              probeDirX = Math.cos(yaw);
+              probeDirY = Math.sin(yaw);
+            } else {
+              const invDirMag = 1 / thrustInputMag;
+              probeDirX = dirX * invDirMag;
+              probeDirY = dirY * invDirMag;
+            }
+            hasProbeDir = true;
+          } else if (isFlying) {
+            probeDirX = Math.cos(yaw);
+            probeDirY = Math.sin(yaw);
+            hasProbeDir = true;
+          } else {
+            const velX = bodyViews.velX[bodySlot];
+            const velY = bodyViews.velY[bodySlot];
+            const velLenSq = velX * velX + velY * velY;
+            if (velLenSq > 0.0001 && Number.isFinite(velLenSq)) {
+              const invVelMag = 1 / Math.sqrt(velLenSq);
+              probeDirX = velX * invVelMag;
+              probeDirY = velY * invVelMag;
+              hasProbeDir = true;
+            }
+          }
+
+          if (hasProbeDir) {
+            const aheadX = bodyX + probeDirX * aheadProbeDistance;
+            const aheadY = bodyY + probeDirY * aheadProbeDistance;
+            if (terrainOnlySupport) {
+              queueForceAirAheadProbeGroundZ(
+                aheadX,
+                aheadY,
+                base + UF_ROW_AIR_AHEAD_GROUND_Z,
+              );
+            } else {
+              _forceRows[base + UF_ROW_AIR_AHEAD_GROUND_Z] = this.sampleAirLiftAheadGroundZ(
+                aheadX,
+                aheadY,
+                entity.id,
+              );
+            }
+            flags |= UF_FLAG_HAS_AIR_AHEAD_GROUND;
+          }
+        }
+      }
 
       const unitMotionFlags = hasEntityState ? entityViews!.unitMotionFlags[entitySlot] : 0;
       const hasOrientationState =
@@ -596,124 +630,41 @@ export class UnitForceSystem {
       const hasAngularMotionForSleep = omegaX * omegaX + omegaY * omegaY + omegaZ * omegaZ > 1e-12;
       flags |= UF_FLAG_HAS_ORIENTATION;
 
-      if (liftLocomotionActive) {
-        const willRustSkipSleeping =
-            bodySleeping &&
-            !isFlying &&
-            !hasThrustDir &&
-            !hasExternalForce &&
-            !hasAngularMotionForSleep;
-        if (!willRustSkipSleeping && hoverRandomActive) {
-          _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = this.world.rng.next();
-        }
-      } else if (surfaceContact) {
+      const mediumLiftForceActive = mediumLiftActive && (
+        (airFraction > 0 && airLiftAuthored) ||
+        (waterFraction > 0 && waterLiftAuthored)
+      );
+      const willRustSkipSleeping =
+        bodySleeping &&
+        !isFlying &&
+        !hasThrustDir &&
+        !hasExternalForce &&
+        !hasAngularMotionForSleep &&
+        !mediumLiftForceActive;
+      if (
+        !willRustSkipSleeping &&
+        mediumLiftActive &&
+        airFraction > 0 &&
+        airLiftAuthored &&
+        hoverRandomActive
+      ) {
+        _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = this.world.rng.next();
+      }
+
+      if (surfaceContact) {
         if (supportSurfaceContact) {
           this.writeSupportSurfaceNormal(entity, supportSurface);
         }
-        const radius = bodyRadius;
-        const inWater = supportSurface.materialKind === 'water';
-        if (inWater) {
-          flags |= UF_FLAG_IN_WATER;
-          if (useNativeTerrainWaterProbes) {
-            queueForceWaterProbeMask(
-              bodyX,
-              bodyY,
-              radius * WATER_ESCAPE_PROBE_MULTS[0],
-              base + UF_ROW_WATER_ESCAPE_MASK_0,
-            );
-            queueForceWaterProbeMask(
-              bodyX,
-              bodyY,
-              radius * WATER_ESCAPE_PROBE_MULTS[1],
-              base + UF_ROW_WATER_ESCAPE_MASK_1,
-            );
-            queueForceWaterProbeMask(
-              bodyX,
-              bodyY,
-              radius * WATER_ESCAPE_PROBE_MULTS[2],
-              base + UF_ROW_WATER_ESCAPE_MASK_2,
-            );
-          } else {
-            _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_0] = this.waterDryMask(
-              bodyX,
-              bodyY,
-              radius * WATER_ESCAPE_PROBE_MULTS[0],
-            );
-            _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_1] = this.waterDryMask(
-              bodyX,
-              bodyY,
-              radius * WATER_ESCAPE_PROBE_MULTS[1],
-            );
-            _forceRows[base + UF_ROW_WATER_ESCAPE_MASK_2] = this.waterDryMask(
-              bodyX,
-              bodyY,
-              radius * WATER_ESCAPE_PROBE_MULTS[2],
-            );
-          }
-        } else if (supportSurfaceContact) {
-          // The top of another physics body is a flat support plane for
-          // locomotion, independent of the terrain/water underneath it.
-        } else {
-          if (hasThrustDir) {
-            const invDirMag = 1 / thrustInputMag;
-            const useDirX = forwardForceRequiresFacing
-              ? Math.cos(rotationForPack)
-              : dirX * invDirMag;
-            const useDirY = forwardForceRequiresFacing
-              ? Math.sin(rotationForPack)
-              : dirY * invDirMag;
-            const probe = radius + 5;
-            const aheadX = bodyX + useDirX * probe;
-            const aheadY = bodyY + useDirY * probe;
-            if (useNativeTerrainWaterProbes) {
-              queueForceWaterProbeMask(
-                aheadX,
-                aheadY,
-                radius,
-                base + UF_ROW_WATER_AHEAD_MASK,
-                count,
-                UF_FLAG_AHEAD_IN_WATER,
-              );
-            } else {
-              const aheadSurface = this.sampleWaterProbeSurface(
-                aheadX,
-                aheadY,
-                entity.id,
-                _forceProbeSupportSurface,
-              );
-              if (aheadSurface.materialKind === 'water') {
-                flags |= UF_FLAG_AHEAD_IN_WATER;
-                _forceRows[base + UF_ROW_WATER_AHEAD_MASK] = this.waterDryMask(
-                  aheadX,
-                  aheadY,
-                  radius,
-                );
-              }
-            }
-          }
-        }
-      } else if (unitIsSwimmer && bodyZ < WATER_LEVEL) {
-        // Suspended in the water column with no ground contact: only swimmers
-        // reach here. Mark the water medium so the kernel's swim path can drive
-        // and seek depth. Gated on unitIsSwimmer so non-swimmers (every
-        // existing unit) never get this flag and stay byte-identical.
-        flags |= UF_FLAG_IN_WATER;
       }
 
-      // Feed the swim-lift RNG sample iff the kernel will consume it (submerged,
-      // non-zero swim randomization + force, body not sleep-skipped). For
-      // non-swimmers swimForce is 0, so the RNG stream is untouched.
-      if ((flags & UF_FLAG_IN_WATER) !== 0 && swimRandomActive) {
-        // Mirror the kernel sleep-skip (isFlying is always false on the
-        // in-water paths) so RNG advances in lockstep across peers.
-        const willRustSkipSleeping =
-          bodySleeping &&
-          !hasThrustDir &&
-          !hasExternalForce &&
-          !hasAngularMotionForSleep;
-        if (!willRustSkipSleeping) {
-          _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.rng.next();
-        }
+      if (
+        !willRustSkipSleeping &&
+        mediumLiftActive &&
+        waterFraction > 0 &&
+        waterLiftAuthored &&
+        swimRandomActive
+      ) {
+        _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.rng.next();
       }
 
       _forceFlags[count] = flags;
@@ -721,8 +672,8 @@ export class UnitForceSystem {
     }
 
     if (count === 0) return;
-    if (useNativeTerrainWaterProbes && _forceWaterProbeCount > 0) {
-      this.flushNativeTerrainWaterProbeMasks(sim);
+    if (terrainOnlySupport && _forceAirAheadProbeCount > 0) {
+      this.flushNativeTerrainAirAheadProbeGroundZ(sim);
     }
 
     measureWasmBoundary('server.unitForceStepBatch', () => {
@@ -969,90 +920,40 @@ export class UnitForceSystem {
     return this.physics.sampleSupportSurface(body, terrainSurface, out);
   }
 
-  private flushNativeTerrainWaterProbeMasks(sim: SimWasm): void {
-    const probeCount = _forceWaterProbeCount;
-    const sampled = measureWasmBoundary('server.unitForceTerrainSampleWaterProbeMasks', () =>
-      sim.terrainSampleWaterProbeMasks(
-        _forceWaterProbeX.subarray(0, probeCount),
-        _forceWaterProbeY.subarray(0, probeCount),
-        _forceWaterProbeR.subarray(0, probeCount),
-        _forceWaterProbeCenterWaterFlags.subarray(0, probeCount),
-        _forceWaterProbeDryMasks.subarray(0, probeCount),
+  private ensureProbeSupportIndex(): void {
+    if (this.probeSupportIndexReady) return;
+    this.world.refreshSupportSurfaceIndex();
+    this.probeSupportIndexReady = true;
+  }
+
+  private sampleAirLiftAheadGroundZ(
+    x: number,
+    y: number,
+    ignoreEntityId: EntityId,
+  ): number {
+    this.ensureProbeSupportIndex();
+    return this.world.sampleSupportSurfaceFromIndex(
+      x,
+      y,
+      { ignoreEntityId },
+      _forceProbeSupportSurface,
+    ).groundZ;
+  }
+
+  private flushNativeTerrainAirAheadProbeGroundZ(sim: SimWasm): void {
+    const probeCount = _forceAirAheadProbeCount;
+    const sampled = measureWasmBoundary('server.unitForceTerrainSampleAirAheadGroundZ', () =>
+      sim.terrainSampleBedHeights(
+        _forceAirAheadProbeX.subarray(0, probeCount),
+        _forceAirAheadProbeY.subarray(0, probeCount),
+        _forceAirAheadProbeGroundZ.subarray(0, probeCount),
       ),
     ) !== 0;
 
     for (let i = 0; i < probeCount; i++) {
-      const rowIndex = _forceWaterProbeRowIndex[i];
-      _forceRows[rowIndex] = sampled
-        ? _forceWaterProbeDryMasks[i]
-        : this.waterDryMask(_forceWaterProbeX[i], _forceWaterProbeY[i], _forceWaterProbeR[i]);
-
-      const flagIndex = _forceWaterProbeFlagIndex[i];
-      if (flagIndex < 0) continue;
-      const centerIsWater = sampled
-        ? _forceWaterProbeCenterWaterFlags[i] !== 0
-        : this.sampleWaterProbeSurface(
-          _forceWaterProbeX[i],
-          _forceWaterProbeY[i],
-          undefined,
-          _forceProbeSupportSurface,
-        ).materialKind === 'water';
-      if (centerIsWater) {
-        _forceFlags[flagIndex] |= _forceWaterProbeFlagBit[i];
-      }
+      _forceRows[_forceAirAheadProbeRowIndex[i]] = sampled
+        ? _forceAirAheadProbeGroundZ[i]
+        : this.world.getTerrainBedZ(_forceAirAheadProbeX[i], _forceAirAheadProbeY[i]);
     }
-  }
-
-  private ensureWaterProbeSupportIndex(): void {
-    if (this.waterProbeSupportIndexReady) return;
-    this.world.refreshSupportSurfaceIndex();
-    this.waterProbeSupportIndexReady = true;
-  }
-
-  private sampleWaterProbeSurface(
-    x: number,
-    y: number,
-    ignoreEntityId: EntityId | undefined,
-    out: SupportSurfaceContact,
-  ): SupportSurfaceContact {
-    this.ensureWaterProbeSupportIndex();
-    return ignoreEntityId === undefined
-      ? this.world.sampleSupportSurfaceFromIndex(x, y, undefined, out)
-      : this.world.sampleSupportSurfaceFromIndex(x, y, { ignoreEntityId }, out);
-  }
-
-  private waterOutCacheKey(x: number, y: number, probeR: number): number {
-    const cx = Math.floor(x / WATER_OUT_CACHE_CELL_SIZE) + 32768;
-    const cy = Math.floor(y / WATER_OUT_CACHE_CELL_SIZE) + 32768;
-    const rb = Math.max(0, Math.min(255, Math.round(probeR / WATER_OUT_CACHE_BUCKET_SCALE)));
-    return cx * 0x1000000 + cy * 0x100 + rb;
-  }
-
-  private waterDryMask(
-    x: number,
-    y: number,
-    probeR: number,
-  ): number {
-    if (this.waterDryMaskCache.size >= WATER_OUT_CACHE_MAX_ENTRIES) {
-      this.waterDryMaskCache.clear();
-    }
-    const key = this.waterOutCacheKey(x, y, probeR);
-    const cached = this.waterDryMaskCache.get(key);
-    if (cached !== undefined) return cached;
-
-    let mask = 0;
-    for (let i = 0; i < WATER_PROBE_DX.length; i++) {
-      const surface = this.sampleWaterProbeSurface(
-        x + WATER_PROBE_DX[i] * probeR,
-        y + WATER_PROBE_DY[i] * probeR,
-        undefined,
-        _forceProbeSupportSurface,
-      );
-      if (surface.materialKind !== 'water') {
-        mask |= 1 << i;
-      }
-    }
-    this.waterDryMaskCache.set(key, mask);
-    return mask;
   }
 }

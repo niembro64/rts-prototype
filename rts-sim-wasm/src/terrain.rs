@@ -3302,6 +3302,33 @@ pub fn terrain_get_bed_height(x: f64, z: f64) -> f64 {
     }
 }
 
+/// Batch raw terrain-bed height sampling for arbitrary world-space points.
+/// Returns 1 on a complete WASM sample; returns 0 if no terrain mesh is
+/// installed or any triangle sample degenerates so JS can fall back to the
+/// compatibility terrain sampler.
+#[wasm_bindgen]
+pub fn terrain_sample_bed_heights(xs: &[f64], zs: &[f64], heights_out: &mut [f64]) -> u32 {
+    let count = xs.len();
+    debug_assert!(zs.len() >= count);
+    debug_assert!(heights_out.len() >= count);
+
+    let t = terrain_grid();
+    if !t.installed {
+        return 0;
+    }
+
+    for i in 0..count {
+        let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, xs[i], zs[i]);
+        let sample = match terrain_triangle_sample_at(t, px, pz, cell_x, cell_y) {
+            Some(s) => s,
+            None => return 0,
+        };
+        heights_out[i] = terrain_height_from_triangle_sample(sample);
+    }
+
+    1
+}
+
 /// Segment-vs-terrain line-of-sight test. Walks the line from
 /// (sx, sy, sz) to (tx, ty, tz) in `step_len`-spaced samples and
 /// returns:

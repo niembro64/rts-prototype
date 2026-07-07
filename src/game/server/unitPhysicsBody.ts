@@ -2,7 +2,6 @@ import type { Entity } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
-import { getUnitAirDragCoefficient } from '../sim/unitAirFriction';
 import { getUnitGroundFrictionScale } from '../sim/unitMotionFriction';
 
 type UnitPhysicsBodyOptions = {
@@ -56,7 +55,7 @@ export function createPhysicsBodyForUnit(
     entity.id,
     spawnZ,
     entity.unit.surfaceNormal,
-    getUnitAirDragCoefficient(entity.unit),
+    0,
     getUnitGroundFrictionScale(entity.unit),
   );
   entity.transform.x = body.x;

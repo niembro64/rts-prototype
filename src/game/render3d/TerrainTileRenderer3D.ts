@@ -60,6 +60,7 @@ import {
   WATER_FULLY_OPAQUE,
   WATER_LEVEL,
 } from '../sim/Terrain';
+import { getAuthoritativeTerrainTileMap } from '../sim/terrain/terrainState';
 import { getTerrainMapBoundaryFade } from '../sim/terrain/terrainHeightGenerator';
 import {
   CANONICAL_LAND_CELL_SIZE,
@@ -111,6 +112,7 @@ const BUILD_GRID_COLOR_METAL = readRgbaTuple(
   'colorsConfig.world.terrain.buildGrid.metalRgba',
 );
 const BUILD_GRID_COLOR_TRANSPARENT = [0, 0, 0, 0] as const;
+const TERRAIN_TRIANGLE_TOUCH_EPSILON = 1.0e-9;
 
 
 const NEUTRAL_COLOR = new THREE.Color(MAP_BG_COLOR);
@@ -354,20 +356,50 @@ function requiredPathingNormalZ(unitMinNormalZ: number | null | undefined): numb
   );
 }
 
-function canPathingStepBetweenCellCenters(
-  fromHeight: number,
-  toHeight: number,
-  dxCells: number,
-  dyCells: number,
-  pathCellSize: number,
-  minNormalZ: number,
+function terrainTriangleTouchesRect(
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  cx: number,
+  cz: number,
+  minX: number,
+  minZ: number,
+  maxX: number,
+  maxZ: number,
 ): boolean {
-  if (!Number.isFinite(fromHeight) || !Number.isFinite(toHeight)) return false;
-  const horizontal = Math.hypot(dxCells, dyCells) * pathCellSize;
-  if (horizontal <= 1.0e-9) return true;
-  const dz = Math.abs(toHeight - fromHeight);
-  const stepNormalZ = horizontal / Math.hypot(horizontal, dz);
-  return stepNormalZ >= minNormalZ;
+  const triMinX = Math.min(ax, bx, cx);
+  const triMaxX = Math.max(ax, bx, cx);
+  const triMinZ = Math.min(az, bz, cz);
+  const triMaxZ = Math.max(az, bz, cz);
+  return triMaxX + TERRAIN_TRIANGLE_TOUCH_EPSILON >= minX &&
+    triMinX - TERRAIN_TRIANGLE_TOUCH_EPSILON <= maxX &&
+    triMaxZ + TERRAIN_TRIANGLE_TOUCH_EPSILON >= minZ &&
+    triMinZ - TERRAIN_TRIANGLE_TOUCH_EPSILON <= maxZ;
+}
+
+function terrainTriangleNormalZ(
+  ax: number,
+  az: number,
+  ah: number,
+  bx: number,
+  bz: number,
+  bh: number,
+  cx: number,
+  cz: number,
+  ch: number,
+): number {
+  const ux = bx - ax;
+  const uy = bh - ah;
+  const uz = bz - az;
+  const vx = cx - ax;
+  const vy = ch - ah;
+  const vz = cz - az;
+  const nx = uy * vz - uz * vy;
+  const vertical = uz * vx - ux * vz;
+  const nz = ux * vy - uy * vx;
+  const len = Math.hypot(nx, vertical, nz);
+  return len > 0 ? Math.min(1, Math.abs(vertical) / len) : 1;
 }
 
 function writeTriangleDebugColor(
@@ -542,6 +574,14 @@ export class TerrainTileRenderer3D {
   private buildGridMetalMask = new Uint8Array(1);
   private buildGridWaterRawMask = new Uint8Array(1);
   private buildGridWaterBlockMask = new Uint8Array(1);
+  private pathingTerrainMinNormalZ = new Float32Array(1);
+  private pathingTerrainMaskKeyValid = false;
+  private pathingTerrainMaskKeyCellsX = 0;
+  private pathingTerrainMaskKeyCellsY = 0;
+  private pathingTerrainMaskKeyCellSize = 0;
+  private pathingTerrainMaskKeyTerrainVersion = 0;
+  private pathingTerrainMaskKeyMapWidth = 0;
+  private pathingTerrainMaskKeyMapHeight = 0;
   private groundDetailTextureUniform: { value: THREE.Texture | null } = { value: null };
   private groundDetailTileWorldSizeUniform = { value: TERRAIN_GROUND_TEXTURE_TILE_WORLD_SIZE };
   private groundDetailEnabledUniform = { value: 0 };
@@ -895,6 +935,9 @@ export class TerrainTileRenderer3D {
     if (this.buildGridWaterBlockMask.length < safeCount) {
       this.buildGridWaterBlockMask = new Uint8Array(safeCount);
     }
+    if (this.pathingTerrainMinNormalZ.length < safeCount) {
+      this.pathingTerrainMinNormalZ = new Float32Array(safeCount);
+    }
   }
 
   private computeMetalDepositSignature(): number {
@@ -1020,19 +1063,11 @@ export class TerrainTileRenderer3D {
     cellsX: number,
     cellsY: number,
     buildCellSize: number,
+    terrainVersion: number,
   ): void {
+    this.refreshPathingTerrainCellMask(cellsX, cellsY, buildCellSize, terrainVersion);
     const cellCount = cellsX * cellsY;
-    this.buildGridWaterRawMask.fill(0, 0, cellCount);
     this.buildGridWaterBlockMask.fill(0, 0, cellCount);
-
-    for (let gy = 0; gy < cellsY; gy++) {
-      const rowOffset = gy * cellsX;
-      for (let gx = 0; gx < cellsX; gx++) {
-        if (samplePathingCellTerrain(gx, gy, buildCellSize, this.mapWidth, this.mapHeight).hasWater) {
-          this.buildGridWaterRawMask[rowOffset + gx] = 1;
-        }
-      }
-    }
 
     const bufferCells = PATHFINDING_WATER_BUFFER_CELLS;
     for (let gy = 0; gy < cellsY; gy++) {
@@ -1067,6 +1102,165 @@ export class TerrainTileRenderer3D {
         gy >= cellsY - bufferCells);
   }
 
+  private pathingTerrainMaskCacheMatches(
+    cellsX: number,
+    cellsY: number,
+    buildCellSize: number,
+    terrainVersion: number,
+  ): boolean {
+    return this.pathingTerrainMaskKeyValid &&
+      this.pathingTerrainMaskKeyCellsX === cellsX &&
+      this.pathingTerrainMaskKeyCellsY === cellsY &&
+      this.pathingTerrainMaskKeyCellSize === buildCellSize &&
+      this.pathingTerrainMaskKeyTerrainVersion === terrainVersion &&
+      this.pathingTerrainMaskKeyMapWidth === this.mapWidth &&
+      this.pathingTerrainMaskKeyMapHeight === this.mapHeight;
+  }
+
+  private storePathingTerrainMaskCacheKey(
+    cellsX: number,
+    cellsY: number,
+    buildCellSize: number,
+    terrainVersion: number,
+  ): void {
+    this.pathingTerrainMaskKeyValid = true;
+    this.pathingTerrainMaskKeyCellsX = cellsX;
+    this.pathingTerrainMaskKeyCellsY = cellsY;
+    this.pathingTerrainMaskKeyCellSize = buildCellSize;
+    this.pathingTerrainMaskKeyTerrainVersion = terrainVersion;
+    this.pathingTerrainMaskKeyMapWidth = this.mapWidth;
+    this.pathingTerrainMaskKeyMapHeight = this.mapHeight;
+  }
+
+  private refreshPathingTerrainCellMask(
+    cellsX: number,
+    cellsY: number,
+    buildCellSize: number,
+    terrainVersion: number,
+  ): void {
+    if (this.pathingTerrainMaskCacheMatches(cellsX, cellsY, buildCellSize, terrainVersion)) {
+      return;
+    }
+
+    const cellCount = cellsX * cellsY;
+    this.buildGridWaterRawMask.fill(0, 0, cellCount);
+    this.pathingTerrainMinNormalZ.fill(1, 0, cellCount);
+
+    const terrainMap = getAuthoritativeTerrainTileMap();
+    if (
+      terrainMap === null ||
+      terrainMap.mapWidth !== this.mapWidth ||
+      terrainMap.mapHeight !== this.mapHeight ||
+      terrainMap.cellSize <= 0 ||
+      terrainMap.cellsX <= 0 ||
+      terrainMap.cellsY <= 0
+    ) {
+      for (let gy = 0; gy < cellsY; gy++) {
+        const rowOffset = gy * cellsX;
+        for (let gx = 0; gx < cellsX; gx++) {
+          const cellIndex = rowOffset + gx;
+          const terrain = samplePathingCellTerrain(
+            gx,
+            gy,
+            buildCellSize,
+            this.mapWidth,
+            this.mapHeight,
+          );
+          this.buildGridWaterRawMask[cellIndex] = terrain.hasWater ? 1 : 0;
+          this.pathingTerrainMinNormalZ[cellIndex] = terrain.minNormalZ;
+        }
+      }
+      this.storePathingTerrainMaskCacheKey(cellsX, cellsY, buildCellSize, terrainVersion);
+      return;
+    }
+
+    const terrainCellSize = terrainMap.cellSize;
+    for (let gy = 0; gy < cellsY; gy++) {
+      const rowOffset = gy * cellsX;
+      const minZ = gy * buildCellSize;
+      const maxZ = Math.min(this.mapHeight, minZ + buildCellSize);
+      const minTerrainCellY = Math.max(
+        0,
+        Math.min(terrainMap.cellsY - 1, Math.floor(minZ / terrainCellSize)),
+      );
+      const maxTerrainCellY = Math.max(
+        0,
+        Math.min(terrainMap.cellsY - 1, Math.floor(maxZ / terrainCellSize)),
+      );
+      for (let gx = 0; gx < cellsX; gx++) {
+        const cellIndex = rowOffset + gx;
+        const minX = gx * buildCellSize;
+        const maxX = Math.min(this.mapWidth, minX + buildCellSize);
+        const minTerrainCellX = Math.max(
+          0,
+          Math.min(terrainMap.cellsX - 1, Math.floor(minX / terrainCellSize)),
+        );
+        const maxTerrainCellX = Math.max(
+          0,
+          Math.min(terrainMap.cellsX - 1, Math.floor(maxX / terrainCellSize)),
+        );
+
+        let hasWater = false;
+        let minNormalZ = 1;
+        for (let terrainGy = minTerrainCellY; terrainGy <= maxTerrainCellY; terrainGy++) {
+          for (let terrainGx = minTerrainCellX; terrainGx <= maxTerrainCellX; terrainGx++) {
+            const terrainCellIndex = terrainGy * terrainMap.cellsX + terrainGx;
+            const refStart = Math.max(0, terrainMap.meshCellTriangleOffsets[terrainCellIndex] ?? 0);
+            const refEnd = Math.min(
+              terrainMap.meshCellTriangleIndices.length,
+              Math.max(refStart, terrainMap.meshCellTriangleOffsets[terrainCellIndex + 1] ?? refStart),
+            );
+            for (let refIndex = refStart; refIndex < refEnd; refIndex++) {
+              const tri = terrainMap.meshCellTriangleIndices[refIndex];
+              if (tri < 0) continue;
+              const triOffset = tri * 3;
+              const ia = terrainMap.meshTriangleIndices[triOffset];
+              const ib = terrainMap.meshTriangleIndices[triOffset + 1];
+              const ic = terrainMap.meshTriangleIndices[triOffset + 2];
+              if (ia === undefined || ib === undefined || ic === undefined) continue;
+              const ax = terrainMap.meshVertexCoords[ia * 2];
+              const az = terrainMap.meshVertexCoords[ia * 2 + 1];
+              const bx = terrainMap.meshVertexCoords[ib * 2];
+              const bz = terrainMap.meshVertexCoords[ib * 2 + 1];
+              const cx = terrainMap.meshVertexCoords[ic * 2];
+              const cz = terrainMap.meshVertexCoords[ic * 2 + 1];
+              if (
+                !terrainTriangleTouchesRect(
+                  ax,
+                  az,
+                  bx,
+                  bz,
+                  cx,
+                  cz,
+                  minX,
+                  minZ,
+                  maxX,
+                  maxZ,
+                )
+              ) {
+                continue;
+              }
+              const ah = terrainMap.meshVertexHeights[ia] ?? 0;
+              const bh = terrainMap.meshVertexHeights[ib] ?? 0;
+              const ch = terrainMap.meshVertexHeights[ic] ?? 0;
+              if (ah < WATER_LEVEL || bh < WATER_LEVEL || ch < WATER_LEVEL) {
+                hasWater = true;
+              }
+              minNormalZ = Math.min(
+                minNormalZ,
+                terrainTriangleNormalZ(ax, az, ah, bx, bz, bh, cx, cz, ch),
+              );
+            }
+          }
+        }
+        this.buildGridWaterRawMask[cellIndex] = hasWater ? 1 : 0;
+        this.pathingTerrainMinNormalZ[cellIndex] = minNormalZ;
+      }
+    }
+
+    this.storePathingTerrainMaskCacheKey(cellsX, cellsY, buildCellSize, terrainVersion);
+  }
+
   private writeBuildGridPixel(offset: number, color: readonly [number, number, number, number]): void {
     this.buildGridPixels[offset] = color[0];
     this.buildGridPixels[offset + 1] = color[1];
@@ -1092,11 +1286,13 @@ export class TerrainTileRenderer3D {
         ? computeLocomotionClimbProfile(selectedUnitLocomotion, selectedUnitBlueprint.mass)
         : null;
     const selectedUnitPathingEnabled = selectedUnitBlueprint !== undefined &&
-      selectedUnitLocomotion !== null &&
-      selectedUnitClimbProfile !== null;
+      selectedUnitLocomotion !== null;
     const selectedUnitRequiredNormalZ = selectedUnitPathingEnabled
       ? requiredPathingNormalZ(selectedUnitClimbProfile?.minSurfaceNormalZ)
       : PATHFINDING_STABILITY_MIN_NORMAL_Z;
+    const selectedUnitNeedsTerrainMask = selectedUnitPathingEnabled &&
+      selectedUnitLocomotion !== null &&
+      !selectedUnitLocomotion.pathfinding.ignoreTerrainBlocking;
     const pathOverlayEnabled = waterPathingMapEnabled || selectedUnitPathingEnabled;
     const enabled = buildGridEnabled || metalMapEnabled || pathOverlayEnabled;
     const overlayMode = buildGridEnabled
@@ -1145,38 +1341,8 @@ export class TerrainTileRenderer3D {
     this.ensureBuildGridMasks(cellCount);
     this.refreshBuildGridOccupiedMask(cellsX, cellsY);
     this.refreshBuildGridMetalMask(cellsX, cellsY);
-    if (pathOverlayEnabled) {
-      this.refreshBuildGridWaterMask(cellsX, cellsY, buildCellSize);
-    }
-    const sampleUnitPathingTerrain =
-      pathOverlayEnabled &&
-      selectedUnitPathingEnabled &&
-      selectedUnitLocomotion !== null &&
-      !selectedUnitLocomotion.pathfinding.ignoreTerrainBlocking;
-    const pathingTerrainHeight = sampleUnitPathingTerrain ? new Float32Array(cellCount) : null;
-    const pathingTerrainNormalZ = sampleUnitPathingTerrain ? new Float32Array(cellCount) : null;
-    const pathingTerrainRawWater = sampleUnitPathingTerrain ? new Uint8Array(cellCount) : null;
-    if (
-      pathingTerrainHeight !== null &&
-      pathingTerrainNormalZ !== null &&
-      pathingTerrainRawWater !== null
-    ) {
-      for (let gy = 0; gy < cellsY; gy++) {
-        const rowOffset = gy * cellsX;
-        for (let gx = 0; gx < cellsX; gx++) {
-          const cellIndex = rowOffset + gx;
-          const terrain = samplePathingCellTerrain(
-            gx,
-            gy,
-            buildCellSize,
-            this.mapWidth,
-            this.mapHeight,
-          );
-          pathingTerrainHeight[cellIndex] = terrain.centerHeight;
-          pathingTerrainNormalZ[cellIndex] = terrain.minNormalZ;
-          pathingTerrainRawWater[cellIndex] = terrain.hasWater ? 1 : 0;
-        }
-      }
+    if (waterPathingMapEnabled || selectedUnitNeedsTerrainMask) {
+      this.refreshBuildGridWaterMask(cellsX, cellsY, buildCellSize, terrainVersion);
     }
 
     for (let gy = 0; gy < cellsY; gy++) {
@@ -1194,63 +1360,40 @@ export class TerrainTileRenderer3D {
           continue;
         }
         if (overlayMode.startsWith('path:')) {
-          const waterBlocked = this.buildGridWaterBlockMask[cellIndex] !== 0;
-          if (waterPathingMapEnabled && waterBlocked) {
+          const terrainWaterBlocked = this.buildGridWaterBlockMask[cellIndex] !== 0;
+          if (!selectedUnitPathingEnabled || selectedUnitLocomotion === null) {
+            this.writeBuildGridPixel(
+              offset,
+              waterPathingMapEnabled && terrainWaterBlocked
+                ? BUILD_GRID_COLOR_BLOCKED
+                : BUILD_GRID_COLOR_TRANSPARENT,
+            );
+            continue;
+          }
+          if (waterPathingMapEnabled && terrainWaterBlocked) {
             this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
             continue;
           }
-          if (!selectedUnitPathingEnabled || selectedUnitLocomotion === null) {
-            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_TRANSPARENT);
+
+          if (selectedUnitLocomotion.pathfinding.ignoreTerrainBlocking) {
+            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_OK);
             continue;
           }
+
           const occupied = this.buildGridOccupiedMask[cellIndex] !== 0;
-          let passable = !occupied;
-          if (passable && !selectedUnitLocomotion.pathfinding.ignoreTerrainBlocking) {
-            const edgeBlocked = this.isPathfinderEdgeBlockedCell(gx, gy, cellsX, cellsY);
-            if (edgeBlocked || waterBlocked) {
-              passable = false;
-            } else {
-              if (
-                pathingTerrainHeight === null ||
-                pathingTerrainNormalZ === null ||
-                pathingTerrainRawWater === null
-              ) {
-                passable = false;
-              } else {
-                passable = pathingTerrainRawWater[cellIndex] === 0 &&
-                  pathingTerrainNormalZ[cellIndex] >= selectedUnitRequiredNormalZ;
-                if (passable) {
-                  for (let ndy = -1; ndy <= 1 && passable; ndy++) {
-                    const ny = gy + ndy;
-                    if (ny < 0 || ny >= cellsY) continue;
-                    const neighborRowOffset = ny * cellsX;
-                    for (let ndx = -1; ndx <= 1; ndx++) {
-                      if (ndx === 0 && ndy === 0) continue;
-                      const nx = gx + ndx;
-                      if (nx < 0 || nx >= cellsX) continue;
-                      const neighborIndex = neighborRowOffset + nx;
-                      if (
-                        !canPathingStepBetweenCellCenters(
-                          pathingTerrainHeight[cellIndex],
-                          pathingTerrainHeight[neighborIndex],
-                          ndx,
-                          ndy,
-                          buildCellSize,
-                          selectedUnitRequiredNormalZ,
-                        )
-                      ) {
-                        passable = false;
-                        break;
-                      }
-                    }
-                  }
-                }
-              }
-            }
+          if (occupied || this.isPathfinderEdgeBlockedCell(gx, gy, cellsX, cellsY)) {
+            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
+            continue;
           }
+          if (terrainWaterBlocked) {
+            this.writeBuildGridPixel(offset, BUILD_GRID_COLOR_BLOCKED);
+            continue;
+          }
+          const terrainPassable =
+            this.pathingTerrainMinNormalZ[cellIndex] >= selectedUnitRequiredNormalZ;
           this.writeBuildGridPixel(
             offset,
-            passable ? BUILD_GRID_COLOR_OK : BUILD_GRID_COLOR_TRANSPARENT,
+            terrainPassable ? BUILD_GRID_COLOR_OK : BUILD_GRID_COLOR_BLOCKED,
           );
           continue;
         }
@@ -2023,12 +2166,13 @@ export class TerrainTileRenderer3D {
     );
     this.terrainMesh.visible = this.terrainGeometryReady;
 
-    // Whole-map cell overlays are driven only by explicit DEBUG toggles:
-    // BUILD paints buildability + occupancy + metal, PATH paints ground-unit
-    // path blockers, and METAL paints only metal-producing cells. Entering
-    // build mode shows the hover footprint (BuildGhost3D), so these map-wide
-    // paints stay intentional overlays instead of appearing every time the
-    // player tries to place a building.
+    // Whole-map cell overlays are driven only by explicit debug/client toggles:
+    // BUILD paints buildability + occupancy + metal, PATH paints selected-unit
+    // passable/blocked node cells through the same cached grid texture, and
+    // METAL paints only metal-producing cells. Entering build mode shows the
+    // hover footprint (BuildGhost3D), so these map-wide paints stay intentional
+    // overlays instead of appearing every time the player tries to place a
+    // building.
     this.refreshBuildGridTexture(
       getBuildGridDebug(),
       getMetalMap(),

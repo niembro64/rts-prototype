@@ -668,6 +668,22 @@ export function runClientSnapshotApplierContractTest(): void {
     { type: 'move', x: 310, y: 320 },
     { type: 'fight', x: 330, y: 340 },
   ];
+  refreshUnitActionHash(wireMotionEntity.unit);
+  wireMotionEntity.unit.activePath = {
+    points: [
+      { x: 255, y: 260, z: 11 },
+      { x: 285, y: 295, z: 13 },
+      { x: 310, y: 320, z: undefined },
+    ],
+    index: 0,
+    actionHash: wireMotionEntity.unit.actionHash,
+    terrainVersion: 1,
+    buildingGridVersion: 1,
+    goalX: 310,
+    goalY: 320,
+    goalZ: undefined,
+    actionType: 'move',
+  };
   wireMotionEntity.unit.repeatQueue = true;
   wireMotionEntity.unit.moveState = 'roam';
   wireMotionEntity.unit.wantCloak = true;
@@ -692,9 +708,9 @@ export function runClientSnapshotApplierContractTest(): void {
     typedActionSource !== undefined &&
       typedActionSource.count === 1 &&
       typedActionSource.typedPlaceholderRows === 1 &&
-      typedActionSource.actionRows.count === 2 &&
+      typedActionSource.actionRows.count === 4 &&
       typedActionComposition.entityDtoRows === 0,
-    'typed unit action rows must expose DTO-free action wire rows',
+    'typed unit action rows must expose DTO-free action and route-preview wire rows',
   );
   const typedActionStats = view.applyNetworkState(snapshot(4, typedActionRows), {
     syncEconomy: undefined,
@@ -704,6 +720,9 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     typedActionStats.correction.count === 1 &&
       actionEntity?.unit?.actions.length === 2 &&
+      actionEntity.unit.activePath?.points.length === 2 &&
+      actionEntity.unit.activePath.points[0].x === 255 &&
+      actionEntity.unit.activePath.points[1].z === 13 &&
       actionEntity.unit.actions[0].x === 310 &&
       actionEntity.unit.actions[1].type === 'fight' &&
       actionEntity.unit.repeatQueue === true &&
@@ -724,8 +743,8 @@ export function runClientSnapshotApplierContractTest(): void {
       decodedPackedAction.entities[0] === undefined &&
       decodedPackedActionSource !== undefined &&
       decodedPackedActionSource.typedPlaceholderRows === 1 &&
-      decodedPackedActionSource.actionRows.count === 2,
-    'packed metadata-only action rows must omit DTOs and expose action wire rows',
+      decodedPackedActionSource.actionRows.count === 4,
+    'packed metadata-only action rows must omit DTOs and expose action + route-preview wire rows',
   );
   const packedActionView = new ClientViewState();
   packedActionView.applyNetworkState(snapshot(1, [fullUnitEntity(id, 60, 100)]));
@@ -736,9 +755,11 @@ export function runClientSnapshotApplierContractTest(): void {
   const packedActionEntity = packedActionView.getEntity(id);
   assertContract(
     packedActionEntity?.unit?.actions.length === 2 &&
+      packedActionEntity.unit.activePath?.points.length === 2 &&
+      packedActionEntity.unit.activePath.points[0].x === 255 &&
       packedActionEntity.unit.actions[0].x === 310 &&
       packedActionEntity.unit.moveState === 'roam',
-    'packed metadata-only action rows must apply from reconstructed wire rows',
+    'packed metadata-only action rows must apply actions and route preview from reconstructed wire rows',
   );
   resetEntitySnapshotPool();
 

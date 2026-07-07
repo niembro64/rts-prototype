@@ -489,11 +489,11 @@ export class RtsScene3DRenderPhase {
     if (contactShadowRenderer && updateContactShadowsThisFrame) {
       contactShadowRenderer.update(entityLists.contactShadows, this.renderFrameIndex);
     }
-    // The whole-map build-grid visualization (red/green/blue squares) is
-    // baked directly onto the terrain AND the metal-deposit coin surfaces by
-    // the shared BuildGridOverlayShader inside terrainTileRenderer.update(),
-    // gated solely to the DEBUG: BUILD toggle. The build-mode hover footprint
-    // is a separate, localized signal owned by BuildGhost3D's setTarget path.
+    // Whole-map cell overlays (DEBUG: BUILD / METAL / WATER and CLIENT PATH)
+    // are baked directly onto the terrain AND metal-deposit coin surfaces by
+    // the shared BuildGridOverlayShader inside terrainTileRenderer.update().
+    // The build-mode hover footprint is a separate, localized signal owned by
+    // BuildGhost3D's setTarget path.
     terrainTileRenderer.update(
       graphicsConfig,
       renderFrameState,
