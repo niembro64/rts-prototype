@@ -16,6 +16,12 @@ import {
   getTriangleDebug,
   getWallTriangleDebug,
 } from '@/clientBarConfig';
+import {
+  getTerrainLightSmoothAcrossWallBoundary,
+  getTerrainLightSmoothing,
+  getTerrainTextureSmoothAcrossWallBoundary,
+  getTerrainTextureSmoothing,
+} from '@/battleBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
 import {
   LAND_CELL_SIZE,
@@ -358,6 +364,90 @@ function estimateTerrainGeometryByteSize(geometry: THREE.BufferGeometry): number
   return bytes;
 }
 
+function smoothTerrainRenderedScalar(
+  values: number[],
+  terrainIndices: number[],
+  terrainSourceVertices: number[],
+  terrainVertexWallClasses: number[],
+  terrainTriangleWallFlags: number[],
+  sourceVertexCount: number,
+  steps: number,
+  smoothAcrossWallBoundary: boolean,
+): void {
+  const passCount = Math.max(0, Math.min(3, Math.floor(steps)));
+  if (passCount <= 0 || values.length === 0 || sourceVertexCount <= 0) return;
+
+  const keyCount = smoothAcrossWallBoundary
+    ? sourceVertexCount
+    : sourceVertexCount * 2;
+  const sums = new Float64Array(keyCount);
+  const counts = new Uint32Array(keyCount);
+  const neighbors: Array<Set<number> | undefined> = new Array(keyCount);
+
+  const vertexKey = (terrainVertex: number, wallClass: number): number => {
+    const source = terrainSourceVertices[terrainVertex] ?? -1;
+    if (source < 0 || source >= sourceVertexCount) return -1;
+    if (smoothAcrossWallBoundary) return source;
+    const cls = wallClass !== 0 ? 1 : 0;
+    return cls * sourceVertexCount + source;
+  };
+
+  for (let i = 0; i < values.length; i++) {
+    const key = vertexKey(i, terrainVertexWallClasses[i] ?? 0);
+    if (key < 0) continue;
+    sums[key] += values[i];
+    counts[key]++;
+  }
+
+  const addNeighbor = (a: number, b: number): void => {
+    if (a < 0 || b < 0 || a === b) return;
+    (neighbors[a] ??= new Set<number>()).add(b);
+    (neighbors[b] ??= new Set<number>()).add(a);
+  };
+
+  const triCount = Math.floor(terrainIndices.length / 3);
+  for (let tri = 0; tri < triCount; tri++) {
+    const base = tri * 3;
+    const wallClass = terrainTriangleWallFlags[tri] ?? 0;
+    const a = vertexKey(terrainIndices[base], wallClass);
+    const b = vertexKey(terrainIndices[base + 1], wallClass);
+    const c = vertexKey(terrainIndices[base + 2], wallClass);
+    addNeighbor(a, b);
+    addNeighbor(b, c);
+    addNeighbor(c, a);
+  }
+
+  let current = new Float64Array(keyCount);
+  for (let key = 0; key < keyCount; key++) {
+    current[key] = counts[key] > 0 ? sums[key] / counts[key] : 0;
+  }
+
+  for (let pass = 0; pass < passCount; pass++) {
+    const next = new Float64Array(keyCount);
+    for (let key = 0; key < keyCount; key++) {
+      if (counts[key] === 0) continue;
+      let total = current[key];
+      let n = 1;
+      const adj = neighbors[key];
+      if (adj) {
+        for (const neighbor of adj) {
+          if (counts[neighbor] === 0) continue;
+          total += current[neighbor];
+          n++;
+        }
+      }
+      next[key] = total / n;
+    }
+    current = next;
+  }
+
+  for (let i = 0; i < values.length; i++) {
+    const key = vertexKey(i, terrainVertexWallClasses[i] ?? 0);
+    if (key < 0 || counts[key] === 0) continue;
+    values[i] = current[key];
+  }
+}
+
 export class TerrainTileRenderer3D {
   private terrainMesh: THREE.Mesh;
   private terrainGeometry: THREE.BufferGeometry;
@@ -427,6 +517,10 @@ export class TerrainTileRenderer3D {
   private lastGeometryRebuildFrame = -TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING;
   private terrainTriangleDebug = false;
   private terrainWallTriangleDebug = false;
+  private terrainTextureSmoothing = 0;
+  private terrainLightSmoothing = 0;
+  private terrainTextureSmoothAcrossWallBoundary = false;
+  private terrainLightSmoothAcrossWallBoundary = false;
   private terrainGeometryReady = false;
 
   private clientViewState: ClientViewState;
@@ -1153,6 +1247,10 @@ export class TerrainTileRenderer3D {
     graphicsConfig: GraphicsConfig,
     triangleDebug: boolean,
     wallTriangleDebug: boolean,
+    terrainTextureSmoothing: number,
+    terrainLightSmoothing: number,
+    terrainTextureSmoothAcrossWallBoundary: boolean,
+    terrainLightSmoothAcrossWallBoundary: boolean,
   ): string {
     const parts: Array<string | number> = [
       cellsX,
@@ -1168,6 +1266,10 @@ export class TerrainTileRenderer3D {
       WATER_FULLY_OPAQUE ? 1 : 0,
       triangleDebug ? 1 : 0,
       wallTriangleDebug ? 1 : 0,
+      terrainTextureSmoothing,
+      terrainLightSmoothing,
+      terrainTextureSmoothAcrossWallBoundary ? 1 : 0,
+      terrainLightSmoothAcrossWallBoundary ? 1 : 0,
       CANONICAL_LAND_CELL_SIZE,
       getTerrainVersion(),
       getTerrainShadowCacheKey(),
@@ -1319,6 +1421,10 @@ export class TerrainTileRenderer3D {
     graphicsConfig: GraphicsConfig,
     triangleDebug: boolean,
     wallTriangleDebug: boolean,
+    terrainTextureSmoothing: number,
+    terrainLightSmoothing: number,
+    terrainTextureSmoothAcrossWallBoundary: boolean,
+    terrainLightSmoothAcrossWallBoundary: boolean,
   ): boolean {
     const grid = makeLandGridMetrics(this.mapWidth, this.mapHeight, cellSize);
     cellSize = grid.cellSize;
@@ -1332,16 +1438,34 @@ export class TerrainTileRenderer3D {
       graphicsConfig,
       triangleDebug,
       wallTriangleDebug,
+      terrainTextureSmoothing,
+      terrainLightSmoothing,
+      terrainTextureSmoothAcrossWallBoundary,
+      terrainLightSmoothAcrossWallBoundary,
     );
     const triangleDebugChanged = triangleDebug !== this.terrainTriangleDebug;
     const wallTriangleDebugChanged =
       wallTriangleDebug !== this.terrainWallTriangleDebug;
+    const textureSmoothingChanged =
+      terrainTextureSmoothing !== this.terrainTextureSmoothing;
+    const lightSmoothingChanged =
+      terrainLightSmoothing !== this.terrainLightSmoothing;
+    const textureBoundaryChanged =
+      terrainTextureSmoothAcrossWallBoundary !==
+      this.terrainTextureSmoothAcrossWallBoundary;
+    const lightBoundaryChanged =
+      terrainLightSmoothAcrossWallBoundary !==
+      this.terrainLightSmoothAcrossWallBoundary;
     const structuralChange =
       cellsX !== this.gridCellsX ||
       cellsY !== this.gridCellsY ||
       cellSize !== this.gridCellSize ||
       triangleDebugChanged ||
-      wallTriangleDebugChanged;
+      wallTriangleDebugChanged ||
+      textureSmoothingChanged ||
+      lightSmoothingChanged ||
+      textureBoundaryChanged ||
+      lightBoundaryChanged;
     if (!this.shouldRebuildTerrainGeometry(nextTerrainGeometryKey, structuralChange)) {
       return false;
     }
@@ -1353,6 +1477,12 @@ export class TerrainTileRenderer3D {
       this.gridCellSize = cellSize;
       this.terrainTriangleDebug = triangleDebug;
       this.terrainWallTriangleDebug = wallTriangleDebug;
+      this.terrainTextureSmoothing = terrainTextureSmoothing;
+      this.terrainLightSmoothing = terrainLightSmoothing;
+      this.terrainTextureSmoothAcrossWallBoundary =
+        terrainTextureSmoothAcrossWallBoundary;
+      this.terrainLightSmoothAcrossWallBoundary =
+        terrainLightSmoothAcrossWallBoundary;
       this.useTerrainGeometry(nextTerrainGeometryKey, cachedGeometry.geometry);
       this.markTerrainGeometryRebuilt(nextTerrainGeometryKey);
       return true;
@@ -1363,6 +1493,12 @@ export class TerrainTileRenderer3D {
     this.gridCellSize = cellSize;
     this.terrainTriangleDebug = triangleDebug;
     this.terrainWallTriangleDebug = wallTriangleDebug;
+    this.terrainTextureSmoothing = terrainTextureSmoothing;
+    this.terrainLightSmoothing = terrainLightSmoothing;
+    this.terrainTextureSmoothAcrossWallBoundary =
+      terrainTextureSmoothAcrossWallBoundary;
+    this.terrainLightSmoothAcrossWallBoundary =
+      terrainLightSmoothAcrossWallBoundary;
 
     const terrainPositions: number[] = [];
     const terrainNormals: number[] = [];
@@ -1371,6 +1507,9 @@ export class TerrainTileRenderer3D {
     const terrainHorizonFades: number[] = [];
     const terrainIndices: number[] = [];
     const terrainDebugLevels: number[] = [];
+    const terrainSourceVertices: number[] = [];
+    const terrainVertexWallClasses: number[] = [];
+    const terrainTriangleWallFlags: number[] = [];
 
     const authoritativeMesh = getTerrainMeshView(
       this.mapWidth,
@@ -1400,9 +1539,17 @@ export class TerrainTileRenderer3D {
       // so their vertices (when not also touched by a shoreline
       // triangle) never get written — the vertex buffer shrinks
       // alongside the index buffer instead of carrying orphans.
-      const meshVertexToTerrainVertex = new Int32Array(authoritativeMesh.vertexCount).fill(-1);
-      const allocateTerrainVertex = (i: number): number => {
-        const existing = meshVertexToTerrainVertex[i];
+      const splitWallRenderVertices =
+        (terrainTextureSmoothing > 0 && !terrainTextureSmoothAcrossWallBoundary) ||
+        (terrainLightSmoothing > 0 && !terrainLightSmoothAcrossWallBoundary);
+      const meshVertexMapIndex = (i: number, wallClass: number): number =>
+        splitWallRenderVertices ? i * 2 + (wallClass !== 0 ? 1 : 0) : i;
+      const meshVertexToTerrainVertex = new Int32Array(
+        authoritativeMesh.vertexCount * (splitWallRenderVertices ? 2 : 1),
+      ).fill(-1);
+      const allocateTerrainVertex = (i: number, wallClass: number): number => {
+        const mapIndex = meshVertexMapIndex(i, wallClass);
+        const existing = meshVertexToTerrainVertex[mapIndex];
         if (existing >= 0) return existing;
         const coordOffset = i * 2;
         const wx = authoritativeMesh.vertexCoords[coordOffset];
@@ -1417,9 +1564,11 @@ export class TerrainTileRenderer3D {
         );
         const normal = terrainMeshNormalFromSample(sample);
         const idx = terrainPositions.length / 3;
-        meshVertexToTerrainVertex[i] = idx;
+        meshVertexToTerrainVertex[mapIndex] = idx;
         terrainPositions.push(wx, terrainHeight + LAND_TILE_GROUND_LIFT, wz);
         terrainNormals.push(normal.nx, normal.nz, normal.ny);
+        terrainSourceVertices.push(i);
+        terrainVertexWallClasses.push(wallClass !== 0 ? 1 : 0);
         terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
         const vertexSlope = 1 - Math.min(1, Math.abs(normal.nz));
         terrainNeighborhoodSlopes.push(
@@ -1470,18 +1619,20 @@ export class TerrainTileRenderer3D {
         if (wallTriangleDebug && (authoritativeMesh.triangleWallFlags[tri] ?? 0) === 0) {
           continue;
         }
+        const triWallFlag = (authoritativeMesh.triangleWallFlags[tri] ?? 0) !== 0 ? 1 : 0;
         triangleIsRendered[tri] = 1;
         terrainIndices.push(
-          allocateTerrainVertex(ia),
-          allocateTerrainVertex(ib),
-          allocateTerrainVertex(ic),
+          allocateTerrainVertex(ia, triWallFlag),
+          allocateTerrainVertex(ib, triWallFlag),
+          allocateTerrainVertex(ic, triWallFlag),
         );
         terrainDebugLevels.push(authoritativeMesh.triangleLevels[tri] ?? 0);
+        terrainTriangleWallFlags.push(triWallFlag);
       }
 
       if (!wallTriangleDebug && graphicsConfig.terrainTileSideWalls) {
-        const edgeCounts = new Map<string, { a: number; b: number; count: number }>();
-        const addEdge = (a: number, b: number): void => {
+        const edgeCounts = new Map<string, { a: number; b: number; count: number; wallClass: number }>();
+        const addEdge = (a: number, b: number, wallClass: number): void => {
           const lo = Math.min(a, b);
           const hi = Math.max(a, b);
           const key = `${lo}:${hi}`;
@@ -1490,7 +1641,7 @@ export class TerrainTileRenderer3D {
             entry.count++;
             return;
           }
-          edgeCounts.set(key, { a, b, count: 1 });
+          edgeCounts.set(key, { a, b, count: 1, wallClass });
         };
         for (let tri = 0; tri < authoritativeMesh.triangleCount; tri++) {
           if (!triangleIsRendered[tri]) continue;
@@ -1498,9 +1649,10 @@ export class TerrainTileRenderer3D {
           const a = authoritativeMesh.triangleIndices[triOffset];
           const b = authoritativeMesh.triangleIndices[triOffset + 1];
           const c = authoritativeMesh.triangleIndices[triOffset + 2];
-          addEdge(a, b);
-          addEdge(b, c);
-          addEdge(c, a);
+          const triWallFlag = (authoritativeMesh.triangleWallFlags[tri] ?? 0) !== 0 ? 1 : 0;
+          addEdge(a, b, triWallFlag);
+          addEdge(b, c, triWallFlag);
+          addEdge(c, a, triWallFlag);
         }
         const pushWallVertex = (
           x: number,
@@ -1513,6 +1665,8 @@ export class TerrainTileRenderer3D {
           terrainPositions.push(x, y, z);
           terrainNormals.push(nx, 0, nz);
           terrainShades.push(SIDE_WALL_TERRAIN_SHADE);
+          terrainSourceVertices.push(-1);
+          terrainVertexWallClasses.push(0);
           // Map-boundary side walls are vertical cliffs — neighborhood slope
           // is 1.0 so the grass mask fully suppresses any green tint here.
           terrainNeighborhoodSlopes.push(1);
@@ -1552,8 +1706,13 @@ export class TerrainTileRenderer3D {
             this.mapHeight,
           );
           if (midFade >= 1) continue;
-          const topA = meshVertexToTerrainVertex[edge.a];
-          const topB = meshVertexToTerrainVertex[edge.b];
+          const topA = meshVertexToTerrainVertex[
+            meshVertexMapIndex(edge.a, edge.wallClass)
+          ];
+          const topB = meshVertexToTerrainVertex[
+            meshVertexMapIndex(edge.b, edge.wallClass)
+          ];
+          if (topA < 0 || topB < 0) continue;
           const topAOff = topA * 3;
           const topBOff = topB * 3;
           const floorA = pushWallVertex(
@@ -1572,6 +1731,7 @@ export class TerrainTileRenderer3D {
           );
           terrainIndices.push(floorA, topA, topB, floorA, topB, floorB);
           terrainDebugLevels.push(-1, -1);
+          terrainTriangleWallFlags.push(0, 0);
         }
       }
     }
@@ -1604,6 +1764,8 @@ export class TerrainTileRenderer3D {
         for (let i = 0; i < 4; i++) {
           terrainNormals.push(0, 1, 0);
           terrainShades.push(1);
+          terrainSourceVertices.push(-1);
+          terrainVertexWallClasses.push(0);
           // Infinity-shelf quads sit at the underwater horizon and are
           // already shoreline-masked out of the grass zone, so the exact
           // value here is cosmetic — pick "flat" to match the geometry.
@@ -1612,6 +1774,7 @@ export class TerrainTileRenderer3D {
         }
         terrainIndices.push(base, base + 1, base + 2, base, base + 2, base + 3);
         terrainDebugLevels.push(-1, -1);
+        terrainTriangleWallFlags.push(0, 0);
       };
 
       pushShelfQuad(-outer, -outer, W + outer, 0);
@@ -1620,6 +1783,27 @@ export class TerrainTileRenderer3D {
       pushShelfQuad(W, 0, W + outer, H);
     };
     if (!wallTriangleDebug) addInfinityShelf();
+
+    smoothTerrainRenderedScalar(
+      terrainNeighborhoodSlopes,
+      terrainIndices,
+      terrainSourceVertices,
+      terrainVertexWallClasses,
+      terrainTriangleWallFlags,
+      authoritativeMesh.vertexCount,
+      terrainTextureSmoothing,
+      terrainTextureSmoothAcrossWallBoundary,
+    );
+    smoothTerrainRenderedScalar(
+      terrainShades,
+      terrainIndices,
+      terrainSourceVertices,
+      terrainVertexWallClasses,
+      terrainTriangleWallFlags,
+      authoritativeMesh.vertexCount,
+      terrainLightSmoothing,
+      terrainLightSmoothAcrossWallBoundary,
+    );
 
     const geometry = new THREE.BufferGeometry();
     if (triangleDebug) {
@@ -1686,6 +1870,12 @@ export class TerrainTileRenderer3D {
 
     const triangleDebug = getTriangleDebug();
     const wallTriangleDebug = getWallTriangleDebug();
+    const terrainTextureSmoothing = getTerrainTextureSmoothing();
+    const terrainLightSmoothing = getTerrainLightSmoothing();
+    const terrainTextureSmoothAcrossWallBoundary =
+      getTerrainTextureSmoothAcrossWallBoundary();
+    const terrainLightSmoothAcrossWallBoundary =
+      getTerrainLightSmoothAcrossWallBoundary();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
     this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
     this.rebuildGeometryIfNeeded(
@@ -1693,6 +1883,10 @@ export class TerrainTileRenderer3D {
       graphicsConfig,
       triangleDebug,
       wallTriangleDebug,
+      terrainTextureSmoothing,
+      terrainLightSmoothing,
+      terrainTextureSmoothAcrossWallBoundary,
+      terrainLightSmoothAcrossWallBoundary,
     );
     this.terrainMesh.visible = this.terrainGeometryReady;
 

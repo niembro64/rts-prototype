@@ -60,6 +60,19 @@ export type BattleBarConfig = {
    *  refine the mesh inside each cell so terrain features become
    *  smoother at the cost of more triangles. */
   readonly terrainDetail: OptionsConfig<number>;
+  /** Renderer-side smoothing pass count for the terrain texture mask
+   *  attribute. 0 disables extra smoothing; higher values diffuse the
+   *  value across neighboring rendered terrain vertices. */
+  readonly terrainTextureSmoothing: OptionsConfig<number>;
+  /** Renderer-side smoothing pass count for baked terrain light. */
+  readonly terrainLightSmoothing: OptionsConfig<number>;
+  /** Whether texture smoothing may cross D-PLATEAU wall/non-wall
+   *  triangle boundaries. False keeps the two triangle classes
+   *  separated at shared edge vertices. */
+  readonly terrainTextureSmoothAcrossWallBoundary: BooleanSetting;
+  /** Whether baked-light smoothing may cross D-PLATEAU wall/non-wall
+   *  triangle boundaries. */
+  readonly terrainLightSmoothAcrossWallBoundary: BooleanSetting;
   /** Tax (fraction in [0, 1)) applied to a resource converter's
    *  per-tick output. 0.0 = lossless conversion; 0.5 = lose half of
    *  the source amount on every conversion. */

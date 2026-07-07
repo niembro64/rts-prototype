@@ -47,6 +47,15 @@ import {
   loadStoredTerrainDetail,
   loadStoredPerimeterMagnitude,
   loadStoredMapLandDimensions,
+  getTerrainLightSmoothAcrossWallBoundary,
+  getTerrainLightSmoothing,
+  getTerrainTextureSmoothAcrossWallBoundary,
+  getTerrainTextureSmoothing,
+  setTerrainLightSmoothAcrossWallBoundary,
+  setTerrainLightSmoothing,
+  setTerrainTextureSmoothAcrossWallBoundary,
+  setTerrainTextureSmoothing,
+  syncTerrainRenderSmoothingSettings,
   type BattleMode,
 } from '../battleBarConfig';
 import type {
@@ -1048,6 +1057,14 @@ const plateauWallSlopeDegrees = ref<number>(
 );
 const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
+const terrainTextureSmoothing = ref<number>(getTerrainTextureSmoothing());
+const terrainLightSmoothing = ref<number>(getTerrainLightSmoothing());
+const terrainTextureSmoothAcrossWallBoundary = ref<boolean>(
+  getTerrainTextureSmoothAcrossWallBoundary(),
+);
+const terrainLightSmoothAcrossWallBoundary = ref<boolean>(
+  getTerrainLightSmoothAcrossWallBoundary(),
+);
 const initialMapDimensions = loadStoredMapLandDimensions('demo');
 const mapWidthLandCells = ref<number>(initialMapDimensions.widthLandCells);
 const mapLengthLandCells = ref<number>(initialMapDimensions.lengthLandCells);
@@ -1380,6 +1397,15 @@ const serverUnitGroundNormalEmaMode = ref<UnitGroundNormalEmaMode>(
 watch(currentBattleMode, (mode) => {
   serverUnitGroundNormalEmaMode.value = loadStoredUnitGroundNormalEmaMode(mode);
 });
+watch(currentBattleMode, (mode) => {
+  syncTerrainRenderSmoothingSettings(mode);
+  terrainTextureSmoothing.value = getTerrainTextureSmoothing();
+  terrainLightSmoothing.value = getTerrainLightSmoothing();
+  terrainTextureSmoothAcrossWallBoundary.value =
+    getTerrainTextureSmoothAcrossWallBoundary();
+  terrainLightSmoothAcrossWallBoundary.value =
+    getTerrainLightSmoothAcrossWallBoundary();
+});
 // Simulation-side unit ground normal EMA - the host applies its setting via the
 // setUnitGroundNormalEmaMode command, then the display reconciles from
 // snapshot meta when the stored value differs.
@@ -1502,9 +1528,63 @@ const {
   applyMapLandDimensions,
 });
 
+function applyTerrainTextureSmoothing(value: number): void {
+  setTerrainTextureSmoothing(value, currentBattleMode.value);
+  terrainTextureSmoothing.value = getTerrainTextureSmoothing();
+}
+
+function applyTerrainLightSmoothing(value: number): void {
+  setTerrainLightSmoothing(value, currentBattleMode.value);
+  terrainLightSmoothing.value = getTerrainLightSmoothing();
+}
+
+function toggleTerrainTextureSmoothAcrossWallBoundary(): void {
+  setTerrainTextureSmoothAcrossWallBoundary(
+    !terrainTextureSmoothAcrossWallBoundary.value,
+    currentBattleMode.value,
+  );
+  terrainTextureSmoothAcrossWallBoundary.value =
+    getTerrainTextureSmoothAcrossWallBoundary();
+}
+
+function toggleTerrainLightSmoothAcrossWallBoundary(): void {
+  setTerrainLightSmoothAcrossWallBoundary(
+    !terrainLightSmoothAcrossWallBoundary.value,
+    currentBattleMode.value,
+  );
+  terrainLightSmoothAcrossWallBoundary.value =
+    getTerrainLightSmoothAcrossWallBoundary();
+}
+
+function resetTerrainRenderSmoothingDefaults(): void {
+  setTerrainTextureSmoothing(
+    BATTLE_CONFIG.terrainTextureSmoothing.default,
+    currentBattleMode.value,
+  );
+  setTerrainLightSmoothing(
+    BATTLE_CONFIG.terrainLightSmoothing.default,
+    currentBattleMode.value,
+  );
+  setTerrainTextureSmoothAcrossWallBoundary(
+    BATTLE_CONFIG.terrainTextureSmoothAcrossWallBoundary.default,
+    currentBattleMode.value,
+  );
+  setTerrainLightSmoothAcrossWallBoundary(
+    BATTLE_CONFIG.terrainLightSmoothAcrossWallBoundary.default,
+    currentBattleMode.value,
+  );
+  terrainTextureSmoothing.value = getTerrainTextureSmoothing();
+  terrainLightSmoothing.value = getTerrainLightSmoothing();
+  terrainTextureSmoothAcrossWallBoundary.value =
+    getTerrainTextureSmoothAcrossWallBoundary();
+  terrainLightSmoothAcrossWallBoundary.value =
+    getTerrainLightSmoothAcrossWallBoundary();
+}
+
 function resetBattleDefaultsWithGroundNormal(): void {
   resetDemoDefaults();
   resetUnitGroundNormalEmaDefault();
+  resetTerrainRenderSmoothingDefaults();
 }
 
 const {
@@ -1641,6 +1721,12 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
+  terrainTextureSmoothing: terrainTextureSmoothing.value,
+  terrainLightSmoothing: terrainLightSmoothing.value,
+  terrainTextureSmoothAcrossWallBoundary:
+    terrainTextureSmoothAcrossWallBoundary.value,
+  terrainLightSmoothAcrossWallBoundary:
+    terrainLightSmoothAcrossWallBoundary.value,
   displayUnitCount: displayUnitCount.value,
   currentForceFieldsVisible: currentForceFieldsVisible.value,
   currentShieldsObstructSight: currentShieldsObstructSight.value,
@@ -1667,6 +1753,10 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyPlateauWallSlopeDegrees,
   applyMetalDepositStep,
   applyTerrainDetail,
+  applyTerrainTextureSmoothing,
+  applyTerrainLightSmoothing,
+  toggleTerrainTextureSmoothAcrossWallBoundary,
+  toggleTerrainLightSmoothAcrossWallBoundary,
   setForceFieldsVisible,
   setShieldsObstructSight,
   setFogOfWarEnabled,
@@ -1700,6 +1790,12 @@ watchEffect(() => {
   m.plateauWallSlopeDegrees = plateauWallSlopeDegrees.value;
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
+  m.terrainTextureSmoothing = terrainTextureSmoothing.value;
+  m.terrainLightSmoothing = terrainLightSmoothing.value;
+  m.terrainTextureSmoothAcrossWallBoundary =
+    terrainTextureSmoothAcrossWallBoundary.value;
+  m.terrainLightSmoothAcrossWallBoundary =
+    terrainLightSmoothAcrossWallBoundary.value;
   m.displayUnitCount = displayUnitCount.value;
   m.currentForceFieldsVisible = currentForceFieldsVisible.value;
   m.currentShieldsObstructSight = currentShieldsObstructSight.value;

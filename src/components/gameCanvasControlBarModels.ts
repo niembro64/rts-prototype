@@ -57,6 +57,10 @@ export type GameCanvasBattleControlBarModel = {
   readonly plateauWallSlopeDegrees: number;
   readonly metalDepositStep: number;
   readonly terrainDetail: number;
+  readonly terrainTextureSmoothing: number;
+  readonly terrainLightSmoothing: number;
+  readonly terrainTextureSmoothAcrossWallBoundary: boolean;
+  readonly terrainLightSmoothAcrossWallBoundary: boolean;
   readonly displayUnitCount: number;
   readonly currentForceFieldsVisible: boolean;
   readonly currentShieldsObstructSight: boolean;
@@ -83,6 +87,10 @@ export type GameCanvasBattleControlBarModel = {
   applyPlateauWallSlopeDegrees(value: number): void;
   applyMetalDepositStep(value: number): void;
   applyTerrainDetail(value: number): void;
+  applyTerrainTextureSmoothing(value: number): void;
+  applyTerrainLightSmoothing(value: number): void;
+  toggleTerrainTextureSmoothAcrossWallBoundary(): void;
+  toggleTerrainLightSmoothAcrossWallBoundary(): void;
   setForceFieldsVisible(enabled: boolean): void;
   setShieldsObstructSight(enabled: boolean): void;
   setFogOfWarEnabled(enabled: boolean): void;
