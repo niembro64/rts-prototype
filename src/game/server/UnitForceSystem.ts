@@ -172,6 +172,49 @@ const UF_PROFILE_STRIDE = 17;
 let _unitForceProfileTableUploaded = false;
 let _unitForceProfileCodeCount = 0;
 let _unitForceProfileFlagsView: Uint32Array | null = null;
+let _unitForceProfileSignature = '';
+
+type UnitForceProfileSignature = {
+  codeCount: number;
+  signature: string;
+};
+
+function buildUnitForceProfileSignature(): UnitForceProfileSignature {
+  let codeCount = 0;
+  let signature = '';
+  while (codeToUnitBlueprintId(codeCount) !== null) {
+    const unitBlueprintId = codeToUnitBlueprintId(codeCount);
+    if (unitBlueprintId !== null) {
+      const loco = getUnitLocomotion(unitBlueprintId);
+      const { ground, air, water } = loco.physics;
+      signature += [
+        codeCount,
+        ground.force,
+        ground.traction,
+        air.gravityCounterUpwardForceRatio,
+        air.heightUpwardForce,
+        air.heightUpwardForceRandomizationAmount,
+        air.heightUpwardForceEMA,
+        ground.friction,
+        air.friction,
+        water.force,
+        water.traction,
+        water.friction,
+        water.gravityCounterUpwardForceRatio,
+        water.heightUpwardForce,
+        water.heightUpwardForceRandomizationAmount,
+        water.heightUpwardForceEMA,
+        air.force,
+        air.traction,
+        loco.forwardForceRequiresFacing ? 1 : 0,
+        loco.driveForceScalesWithFacing ? 1 : 0,
+        loco.type,
+      ].join(':') + '|';
+    }
+    codeCount++;
+  }
+  return { codeCount, signature };
+}
 
 /** Upload the per-blueprint locomotion constants to the wasm-side
  *  profile table once. The force kernel resolves body slot → entity
@@ -179,9 +222,24 @@ let _unitForceProfileFlagsView: Uint32Array | null = null;
  *  the per-tick pack loop no longer copies them per unit. Values must
  *  mirror the row constants consumed by the Rust kernel. */
 function ensureUnitForceProfileTable(sim: SimWasm): void {
-  if (_unitForceProfileTableUploaded) return;
-  let codeCount = 0;
-  while (codeToUnitBlueprintId(codeCount) !== null) codeCount++;
+  const profileSignature = import.meta.env.DEV
+    ? buildUnitForceProfileSignature()
+    : null;
+  if (
+    _unitForceProfileTableUploaded &&
+    (profileSignature === null ||
+      (
+        profileSignature.codeCount === _unitForceProfileCodeCount &&
+        profileSignature.signature === _unitForceProfileSignature
+      ))
+  ) {
+    return;
+  }
+  const codeCount = profileSignature?.codeCount ?? (() => {
+    let count = 0;
+    while (codeToUnitBlueprintId(count) !== null) count++;
+    return count;
+  })();
   sim.unitForceProfileEnsure(codeCount);
   _unitForceProfileCodeCount = codeCount;
   const values = new Float64Array(
@@ -230,6 +288,7 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
         : 0);
   }
   _unitForceProfileTableUploaded = true;
+  _unitForceProfileSignature = profileSignature?.signature ?? '';
 }
 
 function getUnitForceProfileFlagsView(sim: SimWasm): Uint32Array {
