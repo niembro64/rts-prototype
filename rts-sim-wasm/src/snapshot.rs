@@ -8386,6 +8386,34 @@ mod sim_kernel_tests {
     const UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT: f64 = 1.0;
     const UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT: f64 = 6.0;
 
+    fn step_unit_force_test(
+        slots: &[u32],
+        flags: &[u32],
+        rows: &mut [f64],
+        out_flags: &mut [u32],
+    ) -> u32 {
+        unit_force_step_batch(
+            slots,
+            flags,
+            rows,
+            out_flags,
+            slots.len(),
+            1.0 / 60.0,
+            0.0,
+            0.0,
+            0.0,
+            20.0,
+            150_000.0,
+            100.0,
+            30.0,
+            2.0 * 30.0_f64.sqrt(),
+            0.0,
+            UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
+            UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
+            UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+        )
+    }
+
     fn run_flying_unit_force_with_traction(
         traction: f64,
         drive_force_scales_with_facing: bool,
@@ -8649,6 +8677,36 @@ mod sim_kernel_tests {
 
     const UNIT_FORCE_TEST_GROUND_OFFSET: f64 = 10.0;
     const UNIT_FORCE_TEST_WATER_BED_Z: f64 = TERRAIN_WATER_LEVEL - 80.0;
+    const UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE: f64 = 12.0;
+    const UNIT_FORCE_TEST_LIFT_COUNTER_RATIO: f64 = 0.25;
+
+    fn run_air_lift_force(altitude_above_ground: f64) -> (f64, u32) {
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = altitude_above_ground;
+            p.vel_z[i] = 0.0;
+            p.inv_mass[i] = 1.0 / 2100.0;
+        }
+
+        let slots = [slot];
+        let flags = [UF_FLAG_IS_AIRBORNE];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_GROUND_Z] = 0.0;
+        rows[UF_ROW_GRAVITY_COUNTER_RATIO] = UNIT_FORCE_TEST_LIFT_COUNTER_RATIO;
+        rows[UF_ROW_HOVER_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
+
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        let result = (rows[UF_ROW_MOVEMENT_ACCEL_Z], out_flags[0]);
+        pool_free_slot(slot);
+        result
+    }
 
     fn run_submerged_unit_force(
         altitude_above_bed: f64,
@@ -9087,6 +9145,139 @@ mod sim_kernel_tests {
             high_z < stable_z && high_z < GRAVITY,
             "above the swim-height target, net gravity should make the unit sink"
         );
+    }
+
+    #[test]
+    pub(crate) fn hover_height_ema_smooths_applied_vertical_force() {
+        let _guard = lock_tests();
+        let (stable_raw_z, stable_flags) = run_air_lift_force(16.0);
+        let (low_raw_z, low_flags) = run_air_lift_force(4.0);
+        assert_ne!(stable_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert_ne!(low_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert!(
+            low_raw_z > stable_raw_z,
+            "lower altitude should produce stronger raw hover lift"
+        );
+
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = 16.0;
+            p.inv_mass[i] = 1.0 / 2100.0;
+        }
+        let slots = [slot];
+        let flags = [UF_FLAG_IS_AIRBORNE];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_GROUND_Z] = 0.0;
+        rows[UF_ROW_GRAVITY_COUNTER_RATIO] = UNIT_FORCE_TEST_LIFT_COUNTER_RATIO;
+        rows[UF_ROW_HOVER_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
+        rows[UF_ROW_HOVER_EMA_WEIGHT] = 0.5;
+        rows[UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
+
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        assert!(
+            (rows[UF_ROW_MOVEMENT_ACCEL_Z] - stable_raw_z).abs() < 1e-9,
+            "first EMA tick should seed from the raw applied hover force"
+        );
+
+        {
+            let p = pool();
+            p.pos_z[slot as usize] = 4.0;
+        }
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        let expected = stable_raw_z * 0.5 + low_raw_z * 0.5;
+        assert!(
+            (rows[UF_ROW_MOVEMENT_ACCEL_Z] - expected).abs() < 1e-9,
+            "hover EMA should smooth the final applied lift force; expected {}, got {}",
+            expected,
+            rows[UF_ROW_MOVEMENT_ACCEL_Z]
+        );
+        pool_free_slot(slot);
+    }
+
+    #[test]
+    pub(crate) fn swim_height_ema_smooths_applied_vertical_force() {
+        let _guard = lock_tests();
+        let (_stable_x, _stable_y, stable_raw_z, stable_flags) = run_submerged_unit_force(
+            16.0,
+            (0.0, 0.0, 0.0),
+            false,
+            0.0,
+            0.0,
+            0.0,
+            UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE,
+            UNIT_FORCE_TEST_LIFT_COUNTER_RATIO,
+        );
+        let (_low_x, _low_y, low_raw_z, low_flags) = run_submerged_unit_force(
+            4.0,
+            (0.0, 0.0, 0.0),
+            false,
+            0.0,
+            0.0,
+            0.0,
+            UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE,
+            UNIT_FORCE_TEST_LIFT_COUNTER_RATIO,
+        );
+        assert_ne!(stable_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert_ne!(low_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert!(
+            low_raw_z > stable_raw_z,
+            "lower altitude should produce stronger raw swim lift"
+        );
+
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = UNIT_FORCE_TEST_WATER_BED_Z + 16.0;
+            p.ground_offset[i] = UNIT_FORCE_TEST_GROUND_OFFSET;
+            p.inv_mass[i] = 1.0 / 2100.0;
+        }
+        let slots = [slot];
+        let flags = [UF_FLAG_IS_AIRBORNE];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
+        rows[UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] = UNIT_FORCE_TEST_LIFT_COUNTER_RATIO;
+        rows[UF_ROW_SWIM_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
+        rows[UF_ROW_SWIM_EMA_WEIGHT] = 0.5;
+        rows[UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        assert!(
+            (rows[UF_ROW_MOVEMENT_ACCEL_Z] - stable_raw_z).abs() < 1e-9,
+            "first EMA tick should seed from the raw applied swim force"
+        );
+
+        {
+            let p = pool();
+            p.pos_z[slot as usize] = UNIT_FORCE_TEST_WATER_BED_Z + 4.0;
+        }
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        let expected = stable_raw_z * 0.5 + low_raw_z * 0.5;
+        assert!(
+            (rows[UF_ROW_MOVEMENT_ACCEL_Z] - expected).abs() < 1e-9,
+            "swim EMA should smooth the final applied lift force; expected {}, got {}",
+            expected,
+            rows[UF_ROW_MOVEMENT_ACCEL_Z]
+        );
+        pool_free_slot(slot);
     }
 
     #[test]

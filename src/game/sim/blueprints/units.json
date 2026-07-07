@@ -2299,9 +2299,9 @@
           "traction": 0.2,
           "friction": 3,
           "gravityCounterUpwardForceRatio": 0.0,
-          "heightUpwardForce": 500,
+          "heightUpwardForce": 300,
           "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.99
+          "heightUpwardForceEMA": 0.9
         },
         "water": {
           "force": 0,
@@ -2454,7 +2454,7 @@
           "gravityCounterUpwardForceRatio": 0.05,
           "heightUpwardForce": 700,
           "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.99
+          "heightUpwardForceEMA": 0.9
         },
         "water": {
           "force": 0,
@@ -2626,7 +2626,7 @@
           "gravityCounterUpwardForceRatio": 0.05,
           "heightUpwardForce": 760,
           "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.99
+          "heightUpwardForceEMA": 0.9
         },
         "water": {
           "force": 0,
@@ -2782,7 +2782,7 @@
           "gravityCounterUpwardForceRatio": 0.05,
           "heightUpwardForce": 780,
           "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.99
+          "heightUpwardForceEMA": 0.9
         },
         "water": {
           "force": 0,
@@ -2924,7 +2924,7 @@
           "gravityCounterUpwardForceRatio": 0.05,
           "heightUpwardForce": 260,
           "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.99
+          "heightUpwardForceEMA": 0.9
         },
         "water": {
           "force": 0,

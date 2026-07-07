@@ -367,6 +367,19 @@ pub(crate) fn unit_force_locomotion_magnitudes(
 }
 
 #[inline]
+fn unit_force_smoothed_scalar(raw: f64, ema_weight: f64, previous: f64) -> f64 {
+    if ema_weight > 0.0 {
+        if previous.is_finite() {
+            ema_weight * previous + (1.0 - ema_weight) * raw
+        } else {
+            raw
+        }
+    } else {
+        raw
+    }
+}
+
+#[inline]
 pub(crate) fn unit_force_water_fraction(pos_z: f64, ground_offset: f64) -> f64 {
     if !pos_z.is_finite() {
         return 0.0;
@@ -1009,35 +1022,35 @@ pub fn unit_force_step_batch(
                 base_hover_height_force
             };
             let ema_weight = rows[base + UF_ROW_HOVER_EMA_WEIGHT];
-            let hover_height_force = if ema_weight > 0.0 {
-                let prev = rows[base + UF_ROW_HOVER_SMOOTHED_FORCE];
-                let smoothed = if prev.is_finite() {
-                    ema_weight * prev + (1.0 - ema_weight) * raw_hover_height_force
-                } else {
-                    raw_hover_height_force
-                };
-                rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = smoothed;
-                smoothed
-            } else {
-                rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
-                raw_hover_height_force
-            };
 
             if medium_lift_enabled
                 && body_mass > 0.0
                 && gravity_deficit_ratio > 0.0
-                && hover_height_force > 0.0
+                && raw_hover_height_force > 0.0
             {
-                let stable_altitude = hover_height_force / gravity_deficit_ratio;
+                let stable_altitude = raw_hover_height_force / gravity_deficit_ratio;
                 if stable_altitude > 0.0 && stable_altitude.is_finite() {
                     let counter_gravity_force = body_mass * GRAVITY * gravity_counter_ratio;
-                    let lift_k = body_mass * GRAVITY * hover_height_force;
+                    let lift_k = body_mass * GRAVITY * raw_hover_height_force;
                     let vz_damp_per_mass =
                         2.0 * ((GRAVITY * gravity_deficit_ratio) / stable_altitude).sqrt();
-                    thrust_force_z += air_fraction
+                    let raw_lift_force_z = air_fraction
                         * (counter_gravity_force + lift_k / altitude
                             - body_mass * vz_damp_per_mass * p.vel_z[slot])
                         / 1_000_000.0;
+                    let lift_force_z = unit_force_smoothed_scalar(
+                        raw_lift_force_z,
+                        ema_weight,
+                        rows[base + UF_ROW_HOVER_SMOOTHED_FORCE],
+                    );
+                    if ema_weight > 0.0 {
+                        rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = lift_force_z;
+                    } else {
+                        rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
+                    }
+                    thrust_force_z += lift_force_z;
+                } else {
+                    rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
                 }
             } else {
                 rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
@@ -1095,31 +1108,33 @@ pub fn unit_force_step_batch(
                     swim_height_force
                 };
                 let ema_weight = rows[base + UF_ROW_SWIM_EMA_WEIGHT];
-                let lift_force = if ema_weight > 0.0 {
-                    let prev = rows[base + UF_ROW_SWIM_SMOOTHED_FORCE];
-                    let smoothed = if prev.is_finite() {
-                        ema_weight * prev + (1.0 - ema_weight) * raw_swim_force
-                    } else {
-                        raw_swim_force
-                    };
-                    rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = smoothed;
-                    smoothed
-                } else {
-                    rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
-                    raw_swim_force
-                };
-                if swim_deficit_ratio > 0.0 && lift_force > 0.0 {
-                    let stable_altitude = lift_force / swim_deficit_ratio;
+                if swim_deficit_ratio > 0.0 && raw_swim_force > 0.0 {
+                    let stable_altitude = raw_swim_force / swim_deficit_ratio;
                     if stable_altitude > 0.0 && stable_altitude.is_finite() {
                         let counter_gravity_force = body_mass * GRAVITY * swim_counter_ratio;
-                        let lift_k = body_mass * GRAVITY * lift_force;
+                        let lift_k = body_mass * GRAVITY * raw_swim_force;
                         let vz_damp_per_mass =
                             2.0 * ((GRAVITY * swim_deficit_ratio) / stable_altitude).sqrt();
-                        thrust_force_z += water_fraction
+                        let raw_lift_force_z = water_fraction
                             * (counter_gravity_force + lift_k / altitude
                                 - body_mass * vz_damp_per_mass * p.vel_z[slot])
                             / 1_000_000.0;
+                        let lift_force_z = unit_force_smoothed_scalar(
+                            raw_lift_force_z,
+                            ema_weight,
+                            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE],
+                        );
+                        if ema_weight > 0.0 {
+                            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = lift_force_z;
+                        } else {
+                            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+                        }
+                        thrust_force_z += lift_force_z;
+                    } else {
+                        rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
                     }
+                } else {
+                    rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
                 }
             } else {
                 rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;

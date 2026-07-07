@@ -30,7 +30,7 @@ export type UnitLocomotionMediumPhysics = {
   heightUpwardForce: number;
   /** Per-tick uniform randomization of `heightUpwardForce`, as a fraction. */
   heightUpwardForceRandomizationAmount: number;
-  /** EMA smoothing weight for the jittered height force, in [0, 1). */
+  /** EMA smoothing weight for the final vertical lift force, in [0, 1). */
   heightUpwardForceEMA: number;
 };
 
