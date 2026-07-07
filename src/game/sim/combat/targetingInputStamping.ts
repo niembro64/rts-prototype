@@ -633,7 +633,13 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   let f = 0;
   if (weaponRequiresNonObstructedLineOfSight(turret)) f |= CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS;
   const angle = turret.config.aimStyle.angleType;
+  const shot = turret.config.shot;
+  const rocketLikeShot =
+    shot !== null &&
+    isProjectileShot(shot) &&
+    (shot.type === 'rocket' || shot.type === 'missile');
   if (
+    rocketLikeShot ||
     angle === 'ballisticArcLow' ||
     angle === 'ballisticArcLowOnlyUnder' ||
     angle === 'ballisticArcHigh'
@@ -646,7 +652,7 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
   if (turret.id === NO_ENTITY_ID || turret.config.visualOnly === true) {
     f |= CT_TURRET_CFG_VISUAL_ONLY;
   }
-  if (turret.config.shot && turret.config.shot.type === 'shield') {
+  if (shot !== null && shot.type === 'shield') {
     f |= CT_TURRET_CFG_SHOT_IS_FORCE;
   }
   if (turretIgnoresForceMaterialSightObstruction(turret)) {

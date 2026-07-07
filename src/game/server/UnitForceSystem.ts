@@ -19,6 +19,7 @@ import type { WorldState } from '../sim/WorldState';
 import type { Entity, EntityId } from '../sim/types';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
 import {
+  LAND_CELL_SIZE,
   UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
   UNIT_DRIVE_FORCE_ALIGNMENT_RESPONSE_EXPONENT,
   UNIT_DRIVE_FORCE_ALIGNMENT_ZERO_FORCE_DOT,
@@ -57,6 +58,8 @@ import { dragRateFromVelocityFrictionPer60HzFrame } from '../sim/motionFriction'
 const HOVER_ORIENTATION_K = 30;
 const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
+const AIR_LIFT_FORWARD_PROBE_STEP = Math.max(4, LAND_CELL_SIZE * 0.5);
+const AIR_LIFT_FORWARD_PROBE_MAX_STEPS = 8;
 
 const UF_ROW_DIR_X = 0;
 const UF_ROW_DIR_Y = 1;
@@ -131,11 +134,6 @@ let _forceOutFlags: Uint32Array = new Uint32Array(0);
 let _forceTerrainGroundZ: Float64Array = new Float64Array(0);
 let _forceTerrainGroundNormals: Float64Array = new Float64Array(0);
 let _forceTerrainMaterialFlags: Uint32Array = new Uint32Array(0);
-let _forceAirAheadProbeX: Float64Array = new Float64Array(0);
-let _forceAirAheadProbeY: Float64Array = new Float64Array(0);
-let _forceAirAheadProbeGroundZ: Float64Array = new Float64Array(0);
-let _forceAirAheadProbeRowIndex: Int32Array = new Int32Array(0);
-let _forceAirAheadProbeCount = 0;
 const _forceTerrainSurface = createWorldSupportSurface();
 const _forceSupportSurface = createWorldSupportSurface();
 const _forceProbeSupportSurface = createWorldSupportSurface();
@@ -166,29 +164,6 @@ function ensureForceBatchCapacity(count: number): void {
     const next = Math.max(normalLen, _forceTerrainGroundNormals.length * 2, 256 * 3);
     _forceTerrainGroundNormals = new Float64Array(next);
   }
-}
-
-function ensureForceAirAheadProbeCapacity(count: number): void {
-  if (_forceAirAheadProbeX.length >= count) return;
-  const next = Math.max(count, _forceAirAheadProbeX.length * 2, 256);
-  _forceAirAheadProbeX = new Float64Array(next);
-  _forceAirAheadProbeY = new Float64Array(next);
-  _forceAirAheadProbeGroundZ = new Float64Array(next);
-  _forceAirAheadProbeRowIndex = new Int32Array(next);
-}
-
-function queueForceAirAheadProbeGroundZ(
-  x: number,
-  y: number,
-  rowIndex: number,
-): void {
-  if (_forceAirAheadProbeCount >= _forceAirAheadProbeX.length) {
-    ensureForceAirAheadProbeCapacity(_forceAirAheadProbeCount + 1);
-  }
-  const index = _forceAirAheadProbeCount++;
-  _forceAirAheadProbeX[index] = x;
-  _forceAirAheadProbeY[index] = y;
-  _forceAirAheadProbeRowIndex[index] = rowIndex;
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
@@ -350,10 +325,6 @@ export class UnitForceSystem {
       terrainSampled &&
       !this.physics.hasSupportSurfaceBodies() &&
       this.world.getSupportSurfaceEntities().length === 0;
-    _forceAirAheadProbeCount = 0;
-    if (terrainOnlySupport) {
-      ensureForceAirAheadProbeCapacity(candidateCount);
-    }
 
     let count = 0;
     for (let i = 0; i < candidateCount; i++) {
@@ -552,19 +523,14 @@ export class UnitForceSystem {
           if (hasProbeDir) {
             const aheadX = bodyX + probeDirX * aheadProbeDistance;
             const aheadY = bodyY + probeDirY * aheadProbeDistance;
-            if (terrainOnlySupport) {
-              queueForceAirAheadProbeGroundZ(
-                aheadX,
-                aheadY,
-                base + UF_ROW_AIR_AHEAD_GROUND_Z,
-              );
-            } else {
-              _forceRows[base + UF_ROW_AIR_AHEAD_GROUND_Z] = this.sampleAirLiftAheadGroundZ(
-                aheadX,
-                aheadY,
-                entity.id,
-              );
-            }
+            _forceRows[base + UF_ROW_AIR_AHEAD_GROUND_Z] = this.sampleAirLiftAheadGroundZ(
+              bodyX,
+              bodyY,
+              aheadX,
+              aheadY,
+              entity.id,
+              !terrainOnlySupport,
+            );
             flags |= UF_FLAG_HAS_AIR_AHEAD_GROUND;
           }
         }
@@ -672,9 +638,6 @@ export class UnitForceSystem {
     }
 
     if (count === 0) return;
-    if (terrainOnlySupport && _forceAirAheadProbeCount > 0) {
-      this.flushNativeTerrainAirAheadProbeGroundZ(sim);
-    }
 
     const wind = this.simulation.getWindState();
     const windX = Number.isFinite(wind.x) ? wind.x : 0;
@@ -934,10 +897,45 @@ export class UnitForceSystem {
   }
 
   private sampleAirLiftAheadGroundZ(
+    startX: number,
+    startY: number,
+    aheadX: number,
+    aheadY: number,
+    ignoreEntityId: EntityId,
+    includeSupportSurfaces: boolean,
+  ): number {
+    const dx = aheadX - startX;
+    const dy = aheadY - startY;
+    const distance = Math.hypot(dx, dy);
+    if (!Number.isFinite(distance) || distance <= 0) {
+      return this.sampleAirLiftGroundZAt(aheadX, aheadY, ignoreEntityId, includeSupportSurfaces);
+    }
+
+    const steps = Math.max(
+      1,
+      Math.min(AIR_LIFT_FORWARD_PROBE_MAX_STEPS, Math.ceil(distance / AIR_LIFT_FORWARD_PROBE_STEP)),
+    );
+    let maxGroundZ = Number.NEGATIVE_INFINITY;
+    for (let step = 1; step <= steps; step++) {
+      const t = step / steps;
+      const x = startX + dx * t;
+      const y = startY + dy * t;
+      const groundZ = this.sampleAirLiftGroundZAt(x, y, ignoreEntityId, includeSupportSurfaces);
+      if (Number.isFinite(groundZ) && groundZ > maxGroundZ) maxGroundZ = groundZ;
+    }
+
+    return Number.isFinite(maxGroundZ)
+      ? maxGroundZ
+      : this.sampleAirLiftGroundZAt(aheadX, aheadY, ignoreEntityId, includeSupportSurfaces);
+  }
+
+  private sampleAirLiftGroundZAt(
     x: number,
     y: number,
     ignoreEntityId: EntityId,
+    includeSupportSurfaces: boolean,
   ): number {
+    if (!includeSupportSurfaces) return this.world.getGroundZ(x, y);
     this.ensureProbeSupportIndex();
     return this.world.sampleSupportSurfaceFromIndex(
       x,
@@ -945,22 +943,5 @@ export class UnitForceSystem {
       { ignoreEntityId },
       _forceProbeSupportSurface,
     ).groundZ;
-  }
-
-  private flushNativeTerrainAirAheadProbeGroundZ(sim: SimWasm): void {
-    const probeCount = _forceAirAheadProbeCount;
-    const sampled = measureWasmBoundary('server.unitForceTerrainSampleAirAheadGroundZ', () =>
-      sim.terrainSampleBedHeights(
-        _forceAirAheadProbeX.subarray(0, probeCount),
-        _forceAirAheadProbeY.subarray(0, probeCount),
-        _forceAirAheadProbeGroundZ.subarray(0, probeCount),
-      ),
-    ) !== 0;
-
-    for (let i = 0; i < probeCount; i++) {
-      _forceRows[_forceAirAheadProbeRowIndex[i]] = sampled
-        ? _forceAirAheadProbeGroundZ[i]
-        : this.world.getTerrainBedZ(_forceAirAheadProbeX[i], _forceAirAheadProbeY[i]);
-    }
   }
 }

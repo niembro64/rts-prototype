@@ -112,6 +112,17 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
         `Shot blueprint ${id} must use zero gravityForceMultiplier to preserve missile speed.`,
       );
     }
+  } else if (blueprint.type === 'rocket') {
+    if (!hasRate || !Number.isFinite(blueprint.homingTurnRate) || blueprint.homingTurnRate! <= 0) {
+      throw new Error(
+        `Shot blueprint ${id} must define positive homingTurnRate for rocket steering.`,
+      );
+    }
+    if (!hasThrust || !Number.isFinite(blueprint.homingThrust) || blueprint.homingThrust! <= 0) {
+      throw new Error(
+        `Shot blueprint ${id} must define positive homingThrust for rocket steering.`,
+      );
+    }
   } else if (hasRate !== hasThrust) {
     throw new Error(
       `Shot blueprint ${id} mismatched homing: homingTurnRate=${blueprint.homingTurnRate}, homingThrust=${blueprint.homingThrust}. Both must be set or both null.`,
