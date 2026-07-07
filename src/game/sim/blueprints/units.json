@@ -1863,7 +1863,7 @@
           "gravityCounterUpwardForceRatio": 0.05,
           "heightUpwardForce": 160,
           "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.1
+          "heightUpwardForceEMA": 0.3
         },
         "water": {
           "force": 0,
@@ -2300,8 +2300,8 @@
           "friction": 3,
           "gravityCounterUpwardForceRatio": 0.0,
           "heightUpwardForce": 500,
-          "heightUpwardForceRandomizationAmount": 0.9,
-          "heightUpwardForceEMA": 0.0
+          "heightUpwardForceRandomizationAmount": 0.99,
+          "heightUpwardForceEMA": 0.99
         },
         "water": {
           "force": 0,
