@@ -536,16 +536,19 @@ fn unit_force_clamp_magnitude3(v: &mut [f64; 3], max_mag: f64) {
 }
 
 #[inline]
-fn unit_force_air_lift_reference_z(
+fn unit_force_air_lift_altitude(
+    pos_z: f64,
     ground_z: f64,
     ahead_ground_z: f64,
     has_ahead_ground: bool,
 ) -> f64 {
     let body_reference_z = ground_z.max(TERRAIN_WATER_LEVEL);
+    let body_altitude = pos_z - body_reference_z;
     if has_ahead_ground && ahead_ground_z.is_finite() {
-        (body_reference_z + ahead_ground_z.max(TERRAIN_WATER_LEVEL)) * 0.5
+        let ahead_altitude = pos_z - ahead_ground_z.max(TERRAIN_WATER_LEVEL);
+        body_altitude.min(ahead_altitude).max(0.5)
     } else {
-        body_reference_z
+        body_altitude.max(0.5)
     }
 }
 
@@ -985,12 +988,12 @@ pub fn unit_force_step_batch(
                 air_has_target_dir = true;
             }
 
-            let height_reference_z = unit_force_air_lift_reference_z(
+            let altitude = unit_force_air_lift_altitude(
+                p.pos_z[slot],
                 ground_z,
                 rows[base + UF_ROW_AIR_AHEAD_GROUND_Z],
                 flag & UF_FLAG_HAS_AIR_AHEAD_GROUND != 0,
             );
-            let altitude = (p.pos_z[slot] - height_reference_z).max(0.5);
             let gravity_counter_ratio = rows[base + UF_ROW_GRAVITY_COUNTER_RATIO];
             let gravity_deficit_ratio = 1.0 - gravity_counter_ratio;
             let base_hover_height_force = if rows[base + UF_ROW_HOVER_HEIGHT_FORCE].is_finite() {
@@ -1337,29 +1340,31 @@ mod tests {
     }
 
     #[test]
-    fn air_lift_reference_averages_body_and_ahead_ground() {
+    fn air_lift_altitude_uses_minimum_body_and_ahead_distance() {
+        let pos_z = TERRAIN_WATER_LEVEL + 50.0;
         let body_ground = TERRAIN_WATER_LEVEL + 10.0;
         let ahead_ground = TERRAIN_WATER_LEVEL + 30.0;
 
         assert_near(
-            unit_force_air_lift_reference_z(body_ground, ahead_ground, true),
-            TERRAIN_WATER_LEVEL + 20.0,
+            unit_force_air_lift_altitude(pos_z, body_ground, ahead_ground, true),
+            20.0,
         );
         assert_near(
-            unit_force_air_lift_reference_z(body_ground, ahead_ground, false),
-            body_ground,
+            unit_force_air_lift_altitude(pos_z, body_ground, ahead_ground, false),
+            40.0,
         );
         assert_near(
-            unit_force_air_lift_reference_z(body_ground, f64::NAN, true),
-            body_ground,
+            unit_force_air_lift_altitude(pos_z, body_ground, f64::NAN, true),
+            40.0,
         );
         assert_near(
-            unit_force_air_lift_reference_z(
+            unit_force_air_lift_altitude(
                 TERRAIN_WATER_LEVEL - 10.0,
+                TERRAIN_WATER_LEVEL - 20.0,
                 TERRAIN_WATER_LEVEL - 30.0,
                 true,
             ),
-            TERRAIN_WATER_LEVEL,
+            0.5,
         );
     }
 }

@@ -2295,13 +2295,13 @@
           "heightUpwardForceEMA": 0
         },
         "air": {
-          "force": 2000,
+          "force": 500,
           "traction": 0.2,
-          "friction": 13.388613078852583,
-          "gravityCounterUpwardForceRatio": 0.85,
-          "heightUpwardForce": 380,
-          "heightUpwardForceRandomizationAmount": 0.99,
-          "heightUpwardForceEMA": 0.3
+          "friction": 3,
+          "gravityCounterUpwardForceRatio": 0.0,
+          "heightUpwardForce": 500,
+          "heightUpwardForceRandomizationAmount": 0.0,
+          "heightUpwardForceEMA": 0.0
         },
         "water": {
           "force": 0,
