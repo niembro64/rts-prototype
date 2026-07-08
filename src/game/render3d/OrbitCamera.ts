@@ -106,6 +106,11 @@ type OrbitCameraOptions = {
    *  unbounded camera; terrain clearance is handled separately at render
    *  time and never writes back into the orbit state. */
   minDistance?: number;
+  /** Farthest rendered camera-eye distance from an origin point. Used for
+   *  the app's zoom-out rail. */
+  maxCameraDistanceFromOrigin?: number;
+  /** Origin point used by maxCameraDistanceFromOrigin. */
+  cameraDistanceOrigin?: { readonly x: number; readonly y: number; readonly z: number };
   /** Reference far distance for HUD fade scaling — NOT a zoom-out cap.
    *  The camera can dolly past it freely; HUD elements key off this so
    *  the fade window tracks map size. */
@@ -192,6 +197,8 @@ export class OrbitCamera {
   public smoothTauSec = 0;
 
   private minDistance = 1e-6;
+  private maxCameraDistanceFromOrigin = Infinity;
+  private cameraDistanceOrigin = new THREE.Vector3();
   /** HUD-fade far reference (see getFarReferenceDistance). Not a clamp. */
   private farReferenceDistance: number;
   private minPitch: number;
@@ -298,6 +305,19 @@ export class OrbitCamera {
     this.canvas = canvas;
     if (opts.minDistance !== undefined && Number.isFinite(opts.minDistance)) {
       this.minDistance = Math.max(1e-6, opts.minDistance);
+    }
+    if (
+      opts.maxCameraDistanceFromOrigin !== undefined &&
+      Number.isFinite(opts.maxCameraDistanceFromOrigin)
+    ) {
+      this.maxCameraDistanceFromOrigin = Math.max(this.minDistance, opts.maxCameraDistanceFromOrigin);
+    }
+    if (opts.cameraDistanceOrigin !== undefined) {
+      this.cameraDistanceOrigin.set(
+        Number.isFinite(opts.cameraDistanceOrigin.x) ? opts.cameraDistanceOrigin.x : 0,
+        Number.isFinite(opts.cameraDistanceOrigin.y) ? opts.cameraDistanceOrigin.y : 0,
+        Number.isFinite(opts.cameraDistanceOrigin.z) ? opts.cameraDistanceOrigin.z : 0,
+      );
     }
     this.farReferenceDistance = opts.farReferenceDistance ?? 8000;
     this.minPitch = opts.minPitch ?? 0.05;
@@ -804,6 +824,14 @@ export class OrbitCamera {
     this.toTargetX += moveX * cameraTravel;
     this.toTargetY += moveY * cameraTravel;
     this.toTargetZ += moveZ * cameraTravel;
+    this.toDistance = this.constrainOrbitDistance(
+      this.toDistance,
+      this.toTargetX,
+      this.toTargetY,
+      this.toTargetZ,
+      this.toYaw,
+      this.pitch,
+    );
     this.applyDestinationIfSnap();
   }
 
@@ -813,16 +841,19 @@ export class OrbitCamera {
   ): void {
     if (!Number.isFinite(wantFactor) || wantFactor <= 0 || this.toDistance <= 0) return;
     const wantedDistance = this.toDistance * wantFactor;
-    const nextDistance = Math.max(this.minDistance, wantedDistance);
-    if (nextDistance === this.toDistance) return;
-    const actualFactor = nextDistance / this.toDistance;
     const startTargetX = this.toTargetX;
     const startTargetY = this.toTargetY;
     const startTargetZ = this.toTargetZ;
+    let nextDistance = Math.max(this.minDistance, wantedDistance);
+    let actualFactor = nextDistance / this.toDistance;
     let nextTargetX = startTargetX;
     let nextTargetY = startTargetY;
     let nextTargetZ = startTargetZ;
-    if (p0) {
+    const resolveTarget = (): void => {
+      nextTargetX = startTargetX;
+      nextTargetY = startTargetY;
+      nextTargetZ = startTargetZ;
+      if (!p0) return;
       const k = 1 - actualFactor;
       // Blend ALL THREE target axes toward p0 — Y matters because
       // the cursor pin invariant is c'_new = α·c + (1-α)·p0 in 3D,
@@ -834,6 +865,31 @@ export class OrbitCamera {
       nextTargetX = actualFactor * startTargetX + k * p0.x;
       nextTargetY = actualFactor * startTargetY + k * p0.y;
       nextTargetZ = actualFactor * startTargetZ + k * p0.z;
+    };
+    resolveTarget();
+
+    for (let i = 0; i < 3; i++) {
+      const constrainedDistance = this.constrainOrbitDistance(
+        nextDistance,
+        nextTargetX,
+        nextTargetY,
+        nextTargetZ,
+        this.toYaw,
+        this.pitch,
+      );
+      if (constrainedDistance === nextDistance) break;
+      nextDistance = constrainedDistance;
+      actualFactor = nextDistance / this.toDistance;
+      resolveTarget();
+    }
+
+    if (
+      nextDistance === this.toDistance &&
+      nextTargetX === startTargetX &&
+      nextTargetY === startTargetY &&
+      nextTargetZ === startTargetZ
+    ) {
+      return;
     }
 
     // No terrain clip-test on zoom. The camera state is allowed to pass
@@ -1057,9 +1113,9 @@ export class OrbitCamera {
     return Math.atan2(b.clientY - a.clientY, b.clientX - a.clientX);
   }
 
-  /** Clamp both rendered target and smooth destination target to the
-   *  camera's active map bounds. Keeping both states constrained avoids
-   *  a smoothing tug-of-war at map edges. */
+  /** Clamp rendered and smooth-destination state to active camera rails.
+   *  Keeping both states constrained avoids a smoothing tug-of-war at
+   *  map edges and zoom rails. */
   private constrainTargets(): void {
     if (Number.isFinite(this.targetMinX) || Number.isFinite(this.targetMaxX)) {
       this.target.x = Math.min(this.targetMaxX, Math.max(this.targetMinX, this.target.x));
@@ -1069,6 +1125,55 @@ export class OrbitCamera {
       this.target.z = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.target.z));
       this.toTargetZ = Math.min(this.targetMaxZ, Math.max(this.targetMinZ, this.toTargetZ));
     }
+    this.distance = this.constrainOrbitDistance(
+      this.distance,
+      this.target.x,
+      this.target.y,
+      this.target.z,
+      this.yaw,
+      this.pitch,
+    );
+    this.toDistance = this.constrainOrbitDistance(
+      this.toDistance,
+      this.toTargetX,
+      this.toTargetY,
+      this.toTargetZ,
+      this.toYaw,
+      this.pitch,
+    );
+  }
+
+  private constrainOrbitDistance(
+    distance: number,
+    targetX: number,
+    targetY: number,
+    targetZ: number,
+    yaw: number,
+    pitch: number,
+  ): number {
+    const baseDistance = Number.isFinite(distance) ? distance : this.minDistance;
+    const minClamped = Math.max(this.minDistance, baseDistance);
+    if (!Number.isFinite(this.maxCameraDistanceFromOrigin)) return minClamped;
+
+    const sinP = Math.sin(pitch);
+    const dirX = sinP * Math.sin(yaw);
+    const dirY = Math.cos(pitch);
+    const dirZ = sinP * -Math.cos(yaw);
+    const relX = targetX - this.cameraDistanceOrigin.x;
+    const relY = targetY - this.cameraDistanceOrigin.y;
+    const relZ = targetZ - this.cameraDistanceOrigin.z;
+    const b = relX * dirX + relY * dirY + relZ * dirZ;
+    const c =
+      relX * relX +
+      relY * relY +
+      relZ * relZ -
+      this.maxCameraDistanceFromOrigin * this.maxCameraDistanceFromOrigin;
+    const discriminant = b * b - c;
+    if (discriminant < 0) return this.minDistance;
+
+    const maxOrbitDistance = -b + Math.sqrt(discriminant);
+    if (!Number.isFinite(maxOrbitDistance)) return minClamped;
+    return Math.min(minClamped, Math.max(this.minDistance, maxOrbitDistance));
   }
 
   private static normalizeAngleDelta(delta: number): number {
@@ -1304,7 +1409,14 @@ export class OrbitCamera {
 
   setDistance(distance: number): void {
     if (!Number.isFinite(distance)) return;
-    const d = Math.max(this.minDistance, distance);
+    const d = this.constrainOrbitDistance(
+      distance,
+      this.target.x,
+      this.target.y,
+      this.target.z,
+      this.yaw,
+      this.pitch,
+    );
     this.distance = d;
     this.toDistance = d;
     this.apply();
@@ -1358,9 +1470,13 @@ export class OrbitCamera {
     this.toTargetX = state.targetX;
     this.toTargetY = state.targetY;
     this.toTargetZ = state.targetZ;
-    this.distance = Math.max(
-      this.minDistance,
+    this.distance = this.constrainOrbitDistance(
       Number.isFinite(state.distance) ? state.distance : this.minDistance,
+      state.targetX,
+      state.targetY,
+      state.targetZ,
+      state.yaw,
+      state.pitch,
     );
     this.toDistance = this.distance;
     this.yaw = state.yaw;

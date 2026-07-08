@@ -539,7 +539,7 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarDivider />
         <div class="fps-stats">
-          <BarLabel title="Camera altitude (world units, distance from the ground plane). Smaller = closer to surface. Wheel clamp rides on altitude too - at the floor / ceiling you're at the actual physical limit, no more 'stuck' states.">ZOOM:</BarLabel>
+          <BarLabel title="Rendered camera-eye distance from the map center origin, in world units. Zoom-out is capped at the configured max map-center distance.">ZOOM:</BarLabel>
           <span class="fps-value">{{ fmt4(model.currentZoom) }}</span>
         </div>
       </BarControlGroup>
@@ -860,6 +860,11 @@ function resetEveryCustomHotkey(): void {
         <BarDivider />
         <BarLabel>VIS FX:</BarLabel>
         <BarButton
+          :active="model.fogShade"
+          title="Shade currently unseen terrain with a terrain-attached fog-of-war mask. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
+          @click="model.toggleFogShade"
+        >SHADE</BarButton>
+        <BarButton
           :active="model.fogClouds"
           title="Generate soft fog-of-war cloud puffs. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
           @click="model.toggleFogClouds"
@@ -1080,6 +1085,25 @@ function resetEveryCustomHotkey(): void {
                   : 'Render entire map'
             "
             @click="model.changeRenderMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Water/map boundary presentation. INF extends water and perimeter terrain to a fake horizon; SQUARE cuts off the real map and renders water as a shallow cuboid; SEA uses the square cuboid with a solid dark-blue sea background.">WATER EDGE:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.waterBoundaryMode.options"
+            :key="opt.value"
+            :active="model.waterBoundaryMode === opt.value"
+            :title="
+              opt.value === 'infinity'
+                ? 'Extend water and perimeter terrain outward into fake infinity'
+                : opt.value === 'floating-square'
+                  ? 'Cut off the map and show water as a slightly oversized cuboid below the real map'
+                  : 'Use the square water cuboid and replace the sky/sun background with solid dark-blue sea'
+            "
+            @click="model.changeWaterBoundaryMode(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

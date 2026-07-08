@@ -4,6 +4,7 @@
   "worldPaddingPercent": 20.0,
   "zoom": {
     "max": 40.0,
+    "maxMapCenterDistance": 50000.0,
     "stepFraction": 0.2
   },
   "constraints": {

@@ -159,8 +159,12 @@ export function useGameCanvasTelemetry({
 
     const scene = getScene();
     if (scene) {
-      // Display camera altitude: distance from the y=0 ground plane along its normal.
-      setNumberRefIfChanged(currentZoom, scene.cameras.main.altitude ?? scene.cameras.main.zoom, 0.05);
+      // Display camera distance from the map-center origin point.
+      setNumberRefIfChanged(
+        currentZoom,
+        scene.cameras.main.mapCenterDistance ?? scene.cameras.main.zoom,
+        0.05,
+      );
 
       const timing = scene.getFrameTiming();
       setNumberRefIfChanged(frameMsAvg, timing.frameMsAvg);

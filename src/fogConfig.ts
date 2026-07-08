@@ -14,6 +14,12 @@ type FogOfWarProfile = {
   transparentOuterFraction: number;
   zMin: number;
   zRange: number;
+  shade: {
+    cellSize: number;
+    edgeSoftnessCells: number;
+    hatchLineSpacing: number;
+    hatchLineWidth: number;
+  };
 };
 
 type FogConfig = {

@@ -359,7 +359,12 @@ export class RtsScene3D {
     const cameraBattleKind = this.lobbyPreview
       ? 'lobbyBattle'
       : this.backgroundMode ? 'demoBattle' : 'realBattle';
-    this.cameraControl = new RtsScene3DCameraControl(this.threeApp, baseDistance);
+    this.cameraControl = new RtsScene3DCameraControl(
+      this.threeApp,
+      baseDistance,
+      this.mapWidth,
+      this.mapHeight,
+    );
     this.cameraFramingSystem = new RtsScene3DCameraFramingSystem(
       this.threeApp,
       baseDistance,

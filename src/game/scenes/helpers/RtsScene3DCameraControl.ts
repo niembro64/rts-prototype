@@ -12,7 +12,7 @@ const CAMERA_VIEW_MODE_CYCLE: readonly CameraViewMode[] = ['overhead', 'ta', 'sp
 const VIEW_RADIUS_STEP_FACTOR = 1.125;
 
 // Mini "camera" accessor read by GameCanvas.vue for the zoom display.
-// Derives a scalar zoom number from the 3D orbit distance so UI sliders
+// Derives camera metrics from the 3D orbit camera so UI/legacy reads
 // have a consistent axis to read.
 //
 // Two zoom-shaped values:
@@ -22,12 +22,13 @@ const VIEW_RADIUS_STEP_FACTOR = 1.125;
 //                camera reads, and any code path that needs a multiplicative
 //                scalar relative to the default framing.
 //
-//   `altitude` - Camera world Y, i.e. distance from the y=0 ground plane along
-//                its normal. Smaller = closer to surface, larger = farther up.
+//   `mapCenterDistance` - Rendered camera-eye distance from the map center
+//                         origin point. This is what the CLIENT bar displays
+//                         as ZOOM.
 export type CameraShim = {
   main: {
     zoom: number;
-    altitude: number;
+    mapCenterDistance: number;
     scrollX: number;
     scrollY: number;
     width: number;
@@ -39,7 +40,7 @@ export class RtsScene3DCameraControl {
   public readonly cameras: CameraShim = {
     main: {
       zoom: 0,
-      altitude: 0,
+      mapCenterDistance: 0,
       scrollX: 0,
       scrollY: 0,
       width: 0,
@@ -50,13 +51,22 @@ export class RtsScene3DCameraControl {
   constructor(
     private readonly threeApp: ThreeApp,
     private readonly baseDistance: number,
+    private readonly mapWidth: number,
+    private readonly mapHeight: number,
   ) {
     Object.defineProperties(this.cameras.main, {
       zoom: {
         get: () => this.baseDistance / this.threeApp.orbit.distance,
       },
-      altitude: {
-        get: () => this.threeApp.camera.position.y,
+      mapCenterDistance: {
+        get: () => {
+          const camera = this.threeApp.camera.position;
+          return Math.hypot(
+            camera.x - this.mapWidth / 2,
+            camera.y,
+            camera.z - this.mapHeight / 2,
+          );
+        },
       },
       scrollX: {
         get: () => this.threeApp.orbit.target.x - this.visibleHalfWidth(),

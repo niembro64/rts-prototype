@@ -24,6 +24,7 @@ import type {
   ProjRangeType,
   UnitRadiusType,
   WaypointDetail,
+  WaterBoundaryMode,
 } from './types/client';
 import { CAMERA_FOV_DEGREES } from './config';
 import { persist, persistJson, readPersisted } from './persistence';
@@ -42,6 +43,7 @@ export type {
   EntityHudType,
   LodMode,
   SelectionHudMode,
+  WaterBoundaryMode,
 } from './types/client';
 export type ClientMode = 'demo' | 'real';
 
@@ -65,6 +67,7 @@ type ClientDefaults = {
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
+  readonly fogShade: boolean;
   readonly fogClouds: boolean;
   readonly materialExplosions: boolean;
   readonly beamSnapToTurret: boolean;
@@ -88,6 +91,7 @@ type ClientDefaults = {
   readonly cameraSmooth: CameraSmoothMode;
   readonly cameraFollow: CameraFollowMode;
   readonly cameraFov: CameraFovDegrees;
+  readonly waterBoundaryMode: WaterBoundaryMode;
   readonly edgeScroll: boolean;
   readonly dragPan: boolean;
   readonly sounds: Record<SoundCategory, boolean>;
@@ -139,6 +143,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     locomotionMarks: pickDefault(clientBarConfig.locomotionMarks, mode),
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
+    fogShade: pickDefault(clientBarConfig.fogShade, mode),
     fogClouds: pickDefault(clientBarConfig.fogClouds, mode),
     materialExplosions: pickDefault(clientBarConfig.materialExplosions, mode),
     beamSnapToTurret: pickDefault(clientBarConfig.beamSnapToTurret, mode),
@@ -165,6 +170,8 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     // FOV default lives in config.ts as CAMERA_FOV_DEGREES — keep one
     // canonical source for that one knob; the JSON only owns the options list.
     cameraFov: CAMERA_FOV_DEGREES,
+    waterBoundaryMode:
+      pickDefault(clientBarConfig.waterBoundaryMode, mode) as WaterBoundaryMode,
     edgeScroll: pickDefault(clientBarConfig.edgeScroll, mode),
     dragPan: pickDefault(clientBarConfig.dragPan, mode),
     sounds: { ...pickDefault(clientBarConfig.sounds, mode) } as Record<SoundCategory, boolean>,
@@ -219,6 +226,7 @@ export const CLIENT_CONFIG = {
   locomotionMarks: { default: DEMO_CLIENT_DEFAULTS.locomotionMarks },
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
+  fogShade: { default: DEMO_CLIENT_DEFAULTS.fogShade },
   fogClouds: { default: DEMO_CLIENT_DEFAULTS.fogClouds },
   materialExplosions: { default: DEMO_CLIENT_DEFAULTS.materialExplosions },
   beamSnapToTurret: { default: DEMO_CLIENT_DEFAULTS.beamSnapToTurret },
@@ -280,6 +288,10 @@ export const CLIENT_CONFIG = {
     default: CAMERA_FOV_DEGREES,
     options: clientBarConfig.cameraFov.options as OptionList<CameraFovDegrees>,
   },
+  waterBoundaryMode: {
+    default: DEMO_CLIENT_DEFAULTS.waterBoundaryMode,
+    options: clientBarConfig.waterBoundaryMode.options as OptionList<WaterBoundaryMode>,
+  },
   edgeScroll: { default: DEMO_CLIENT_DEFAULTS.edgeScroll },
   dragPan: { default: DEMO_CLIENT_DEFAULTS.dragPan },
   sounds: { default: { ...DEMO_CLIENT_DEFAULTS.sounds } },
@@ -322,6 +334,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     locomotionMarks: { default: defaults.locomotionMarks },
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
+    fogShade: { default: defaults.fogShade },
     fogClouds: { default: defaults.fogClouds },
     materialExplosions: { default: defaults.materialExplosions },
     beamSnapToTurret: { default: defaults.beamSnapToTurret },
@@ -348,6 +361,10 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     cameraSmooth: { ...CLIENT_CONFIG.cameraSmooth, default: defaults.cameraSmooth },
     cameraFollow: { ...CLIENT_CONFIG.cameraFollow, default: defaults.cameraFollow },
     cameraFov: { ...CLIENT_CONFIG.cameraFov, default: defaults.cameraFov },
+    waterBoundaryMode: {
+      ...CLIENT_CONFIG.waterBoundaryMode,
+      default: defaults.waterBoundaryMode,
+    },
     edgeScroll: { default: defaults.edgeScroll },
     dragPan: { default: defaults.dragPan },
     sounds: { default: { ...defaults.sounds } },
@@ -381,6 +398,7 @@ type ClientStorageKeyName =
   | 'locomotionMarks'
   | 'smokeTrails'
   | 'smokeSoftEdges'
+  | 'fogShade'
   | 'fogClouds'
   | 'materialExplosions'
   | 'beamSnapToTurret'
@@ -409,6 +427,7 @@ type ClientStorageKeyName =
   | 'cameraSmooth'
   | 'cameraFollow'
   | 'cameraFov'
+  | 'waterBoundaryMode'
   | 'edgeScroll'
   | 'dragPan'
   | 'lobbyVisible'
@@ -427,6 +446,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'locomotionMarks',
   'smokeTrails',
   'smokeSoftEdges',
+  'fogShade',
   'fogClouds',
   'materialExplosions',
   'beamSnapToTurret',
@@ -455,6 +475,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'cameraSmooth',
   'cameraFollow',
   'cameraFov',
+  'waterBoundaryMode',
   'edgeScroll',
   'dragPan',
   'lobbyVisible',
@@ -515,6 +536,7 @@ let currentLegsRadius: boolean = _cd.legsRadius.default;
 let currentCameraSmoothMode: CameraSmoothMode = _cd.cameraSmooth.default;
 let currentCameraFollowMode: CameraFollowMode = _cd.cameraFollow.default;
 let currentCameraFovDegrees: CameraFovDegrees = _cd.cameraFov.default;
+let currentWaterBoundaryMode: WaterBoundaryMode = _cd.waterBoundaryMode.default;
 let currentAudioScope: AudioScope = _cd.audio.default;
 let currentMasterVolume: MasterVolumePercent = _cd.masterVolume.default;
 let currentAudioSmoothing: boolean = _cd.audioSmoothing.default;
@@ -522,6 +544,7 @@ let currentBurnMarks: boolean = _cd.burnMarks.default;
 let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
+let currentFogShade: boolean = _cd.fogShade.default;
 let currentFogClouds: boolean = _cd.fogClouds.default;
 let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
 let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
@@ -579,6 +602,12 @@ function isCameraFollowMode(value: unknown): value is CameraFollowMode {
   return value === 'free' || value === 'follow' || value === 'follow-behind';
 }
 
+function isWaterBoundaryMode(value: unknown): value is WaterBoundaryMode {
+  return value === 'infinity' ||
+    value === 'floating-square' ||
+    value === 'floating-square-sea';
+}
+
 function isDriftChannelMode(value: unknown): value is DriftChannelMode {
   return value === 'ignore'
     || value === 'snap'
@@ -622,6 +651,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentCameraSmoothMode = cd.cameraSmooth.default;
   currentCameraFollowMode = cd.cameraFollow.default;
   currentCameraFovDegrees = cd.cameraFov.default;
+  currentWaterBoundaryMode = cd.waterBoundaryMode.default;
   currentAudioScope = cd.audio.default;
   currentMasterVolume = cd.masterVolume.default;
   currentAudioSmoothing = cd.audioSmoothing.default;
@@ -629,6 +659,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentLocomotionMarks = cd.locomotionMarks.default;
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
+  currentFogShade = cd.fogShade.default;
   currentFogClouds = cd.fogClouds.default;
   currentMaterialExplosions = cd.materialExplosions.default;
   currentBeamSnapToTurret = cd.beamSnapToTurret.default;
@@ -714,6 +745,10 @@ function loadFromStorage(mode: ClientMode): void {
   const storedSmokeSoftEdges = readPersisted(keys.smokeSoftEdges);
   if (storedSmokeSoftEdges !== null) {
     currentSmokeSoftEdges = storedSmokeSoftEdges === 'true';
+  }
+  const storedFogShade = readPersisted(keys.fogShade);
+  if (storedFogShade !== null) {
+    currentFogShade = storedFogShade === 'true';
   }
   const storedFogClouds = readPersisted(keys.fogClouds);
   if (storedFogClouds !== null) {
@@ -801,6 +836,10 @@ function loadFromStorage(mode: ClientMode): void {
     if (Number.isFinite(parsed) && isCameraFovDegrees(parsed)) {
       currentCameraFovDegrees = parsed;
     }
+  }
+  const storedWaterBoundaryMode = readPersisted(keys.waterBoundaryMode);
+  if (isWaterBoundaryMode(storedWaterBoundaryMode)) {
+    currentWaterBoundaryMode = storedWaterBoundaryMode;
   }
   currentMovementPosEma = readPositionDriftChannelMode(
     keys.movementPosEma,
@@ -1042,6 +1081,15 @@ export function setCameraFovDegrees(fov: CameraFovDegrees): void {
   persist(activeStorageKeys().cameraFov, String(nextFov));
 }
 
+export function getWaterBoundaryMode(): WaterBoundaryMode {
+  return currentWaterBoundaryMode;
+}
+
+export function setWaterBoundaryMode(mode: WaterBoundaryMode): void {
+  currentWaterBoundaryMode = isWaterBoundaryMode(mode) ? mode : 'infinity';
+  persist(activeStorageKeys().waterBoundaryMode, currentWaterBoundaryMode);
+}
+
 export function getAudioScope(): AudioScope {
   return currentAudioScope;
 }
@@ -1116,6 +1164,18 @@ export function getSmokeSoftEdges(): boolean {
 export function setSmokeSoftEdges(enabled: boolean): void {
   currentSmokeSoftEdges = enabled;
   persist(activeStorageKeys().smokeSoftEdges, String(enabled));
+}
+
+/** Fog-shade toggle: terrain-attached live fog-of-war shade only.
+ *  This does not change battle-level fog truth, snapshot filtering,
+ *  or entity visibility. */
+export function getFogShade(): boolean {
+  return currentFogShade;
+}
+
+export function setFogShade(enabled: boolean): void {
+  currentFogShade = enabled;
+  persist(activeStorageKeys().fogShade, String(enabled));
 }
 
 /** Fog-cloud toggle: soft fog-of-war cloud puffs only. This does not

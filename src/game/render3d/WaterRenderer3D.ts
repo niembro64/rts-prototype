@@ -1,12 +1,13 @@
-// WaterRenderer3D — transparent, flat water at WATER_LEVEL.
+// WaterRenderer3D — transparent water surface at WATER_LEVEL.
 //
-// Water is one large horizontal plane. The submerged land that makes
-// CIRCLE perimeter mode continuous is emitted by TerrainTileRenderer3D
-// as part of the terrain mesh itself, so edge terrain and off-map
-// terrain share one material/shader/color path.
+// In infinity mode water is one large horizontal plane. The submerged land
+// that makes CIRCLE perimeter mode continuous is emitted by
+// TerrainTileRenderer3D as part of the terrain mesh itself, so edge terrain
+// and off-map terrain share one material/shader/color path.
 
 import * as THREE from 'three';
-import { WATER_FULLY_OPAQUE, WATER_LEVEL } from '../sim/Terrain';
+import { getWaterBoundaryMode, type WaterBoundaryMode } from '@/clientBarConfig';
+import { TILE_FLOOR_Y, WATER_FULLY_OPAQUE, WATER_LEVEL } from '../sim/Terrain';
 import { HORIZON_RENDER_EXTEND, WATER_RENDER_CONFIG } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RenderFrameState3D } from './RenderFrameState3D';
@@ -31,6 +32,12 @@ import type { RenderFrameState3D } from './RenderFrameState3D';
 // jitter.
 const WATER_DEPTH_OFFSET_FACTOR = 0;
 const WATER_DEPTH_OFFSET_UNITS = 64;
+const FLOATING_WATER_MIN_OVERHANG = 8;
+const FLOATING_WATER_MAX_OVERHANG = 48;
+const FLOATING_WATER_OVERHANG_FRACTION = 0.006;
+const FLOATING_WATER_MIN_BOTTOM_MARGIN = 8;
+const FLOATING_WATER_MAX_BOTTOM_MARGIN = 32;
+const FLOATING_WATER_BOTTOM_MARGIN_FRACTION = 0.004;
 
 export class WaterRenderer3D {
   private waterMesh: THREE.Mesh;
@@ -41,6 +48,7 @@ export class WaterRenderer3D {
   private built = false;
   private lastVisible = true;
   private lastOpacity = Number.NaN;
+  private lastWaterBoundaryMode: WaterBoundaryMode | null = null;
 
   constructor(parent: THREE.Group, mapWidth: number, mapHeight: number) {
     this.mapWidth = mapWidth;
@@ -70,7 +78,7 @@ export class WaterRenderer3D {
     parent.add(this.waterMesh);
   }
 
-  private buildGeometry(): void {
+  private buildInfinityGeometry(): void {
     const outer = HORIZON_RENDER_EXTEND;
     const x0 = -outer;
     const z0 = -outer;
@@ -96,7 +104,102 @@ export class WaterRenderer3D {
     this.waterGeometry.setAttribute('normal', new THREE.BufferAttribute(waterNormals, 3));
     this.waterGeometry.setIndex(new THREE.BufferAttribute(waterIndices, 1));
     this.waterGeometry.computeBoundingSphere();
+  }
+
+  private buildFloatingSquareGeometry(): void {
+    const shorterAxis = Math.max(1, Math.min(this.mapWidth, this.mapHeight));
+    const overhang = Math.max(
+      FLOATING_WATER_MIN_OVERHANG,
+      Math.min(FLOATING_WATER_MAX_OVERHANG, shorterAxis * FLOATING_WATER_OVERHANG_FRACTION),
+    );
+    const bottomMargin = Math.max(
+      FLOATING_WATER_MIN_BOTTOM_MARGIN,
+      Math.min(FLOATING_WATER_MAX_BOTTOM_MARGIN, shorterAxis * FLOATING_WATER_BOTTOM_MARGIN_FRACTION),
+    );
+    const x0 = -overhang;
+    const z0 = -overhang;
+    const x1 = this.mapWidth + overhang;
+    const z1 = this.mapHeight + overhang;
+    const topY = WATER_LEVEL;
+    const bottomY = Math.min(TILE_FLOOR_Y, WATER_LEVEL) - bottomMargin;
+
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const indices: number[] = [];
+    const pushFace = (
+      facePositions: readonly number[],
+      nx: number,
+      ny: number,
+      nz: number,
+      flip = false,
+    ): void => {
+      const base = positions.length / 3;
+      positions.push(...facePositions);
+      for (let i = 0; i < 4; i++) normals.push(nx, ny, nz);
+      if (flip) indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+      else indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    };
+
+    pushFace([
+      x0, topY, z0,
+      x1, topY, z0,
+      x1, topY, z1,
+      x0, topY, z1,
+    ], 0, 1, 0, true);
+    pushFace([
+      x0, bottomY, z0,
+      x1, bottomY, z0,
+      x1, bottomY, z1,
+      x0, bottomY, z1,
+    ], 0, -1, 0);
+    pushFace([
+      x0, bottomY, z0,
+      x1, bottomY, z0,
+      x1, topY, z0,
+      x0, topY, z0,
+    ], 0, 0, -1);
+    pushFace([
+      x1, bottomY, z0,
+      x1, bottomY, z1,
+      x1, topY, z1,
+      x1, topY, z0,
+    ], 1, 0, 0);
+    pushFace([
+      x1, bottomY, z1,
+      x0, bottomY, z1,
+      x0, topY, z1,
+      x1, topY, z1,
+    ], 0, 0, 1);
+    pushFace([
+      x0, bottomY, z1,
+      x0, bottomY, z0,
+      x0, topY, z0,
+      x0, topY, z1,
+    ], -1, 0, 0);
+
+    this.waterGeometry.dispose();
+    this.waterGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array(positions), 3),
+    );
+    this.waterGeometry.setAttribute(
+      'normal',
+      new THREE.BufferAttribute(new Float32Array(normals), 3),
+    );
+    this.waterGeometry.setIndex(
+      new THREE.BufferAttribute(new Uint16Array(indices), 1),
+    );
+    this.waterGeometry.computeBoundingSphere();
+  }
+
+  private buildGeometry(mode: WaterBoundaryMode): void {
+    if (mode === 'infinity') {
+      this.buildInfinityGeometry();
+    } else {
+      this.buildFloatingSquareGeometry();
+    }
     this.built = true;
+    this.lastWaterBoundaryMode = mode;
   }
 
   update(
@@ -110,7 +213,10 @@ export class WaterRenderer3D {
       this.setVisible(false);
       return;
     }
-    if (!this.built) this.buildGeometry();
+    const waterBoundaryMode = getWaterBoundaryMode();
+    if (!this.built || this.lastWaterBoundaryMode !== waterBoundaryMode) {
+      this.buildGeometry(waterBoundaryMode);
+    }
     if (this.lastOpacity !== opacity) {
       this.waterMaterial.opacity = opacity;
       this.lastOpacity = opacity;

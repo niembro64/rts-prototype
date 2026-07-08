@@ -18,6 +18,7 @@ import {
   getClientUnitGroundNormalEmaMode,
   getDragPanEnabled,
   getElevationMap,
+  getFogShade,
   getFogClouds,
   getMaterialExplosions,
   getMovementPosEmaMode,
@@ -47,6 +48,7 @@ import {
   getWallTriangleDebug,
   getUnitRadiusToggle,
   getWaypointDetail,
+  getWaterBoundaryMode,
   getEntityHudToggle,
   getSelectionHudMode,
   setAudioScope,
@@ -61,6 +63,7 @@ import {
   setClientUnitGroundNormalEmaMode,
   setDragPanEnabled,
   setElevationMap,
+  setFogShade,
   setFogClouds,
   setMaterialExplosions,
   setMovementPosEmaMode,
@@ -90,12 +93,14 @@ import {
   setWallTriangleDebug,
   setUnitRadiusToggle,
   setWaypointDetail,
+  setWaterBoundaryMode,
   setEntityHudToggle,
   setSelectionHudMode,
   type CameraSmoothMode,
   type CameraFollowMode,
   type ClientMode,
   type LodMode,
+  type WaterBoundaryMode,
 } from '../clientBarConfig';
 import { audioManager } from '../game/audio/AudioManager';
 import { musicPlayer } from '../game/audio/MusicPlayer';
@@ -145,6 +150,7 @@ export function useGameCanvasClientSettings({
   const locomotionMarks = ref<boolean>(getLocomotionMarks());
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
+  const fogShade = ref<boolean>(getFogShade());
   const fogClouds = ref<boolean>(getFogClouds());
   const materialExplosions = ref<boolean>(getMaterialExplosions());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
@@ -214,6 +220,7 @@ export function useGameCanvasClientSettings({
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
+  const waterBoundaryMode = ref<WaterBoundaryMode>(getWaterBoundaryMode());
 
   function applyAudioRuntimeState(): void {
     audioManager.setMasterVolume(masterVolume.value / 100);
@@ -236,6 +243,7 @@ export function useGameCanvasClientSettings({
     locomotionMarks.value = getLocomotionMarks();
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
+    fogShade.value = getFogShade();
     fogClouds.value = getFogClouds();
     materialExplosions.value = getMaterialExplosions();
     beamSnapToTurret.value = getBeamSnapToTurret();
@@ -275,6 +283,7 @@ export function useGameCanvasClientSettings({
     cameraSmoothMode.value = getCameraSmoothMode();
     cameraFollowMode.value = getCameraFollowMode();
     cameraFovDegrees.value = getCameraFovDegrees();
+    waterBoundaryMode.value = getWaterBoundaryMode();
     applyAudioRuntimeState();
     applyCameraFovDegrees(cameraFovDegrees.value);
   }
@@ -367,6 +376,11 @@ export function useGameCanvasClientSettings({
     changeCameraFovDegrees(nextFov);
   }
 
+  function changeWaterBoundaryMode(mode: WaterBoundaryMode): void {
+    setWaterBoundaryMode(mode);
+    waterBoundaryMode.value = getWaterBoundaryMode();
+  }
+
   const allRangesActive = computed(() =>
     RANGE_TYPES.every((rt) => rangeToggles[rt]),
   );
@@ -435,6 +449,12 @@ export function useGameCanvasClientSettings({
     const newValue = !fogClouds.value;
     setFogClouds(newValue);
     fogClouds.value = newValue;
+  }
+
+  function toggleFogShade(): void {
+    const newValue = !fogShade.value;
+    setFogShade(newValue);
+    fogShade.value = newValue;
   }
 
   function toggleMaterialExplosions(): void {
@@ -634,6 +654,8 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = cd.smokeTrails.default;
     setSmokeSoftEdges(cd.smokeSoftEdges.default);
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
+    setFogShade(cd.fogShade.default);
+    fogShade.value = cd.fogShade.default;
     setFogClouds(cd.fogClouds.default);
     fogClouds.value = cd.fogClouds.default;
     setMaterialExplosions(cd.materialExplosions.default);
@@ -706,6 +728,7 @@ export function useGameCanvasClientSettings({
     setCameraMode(cd.cameraSmooth.default);
     setCameraFollow(cd.cameraFollow.default);
     changeCameraFovDegrees(cd.cameraFov.default);
+    changeWaterBoundaryMode(cd.waterBoundaryMode.default);
   }
 
   const SOUND_LABELS: Record<SoundCategory, string> = {
@@ -735,6 +758,7 @@ export function useGameCanvasClientSettings({
     locomotionMarks,
     smokeTrails,
     smokeSoftEdges,
+    fogShade,
     fogClouds,
     materialExplosions,
     beamSnapToTurret,
@@ -773,6 +797,7 @@ export function useGameCanvasClientSettings({
     cameraSmoothMode,
     cameraFollowMode,
     cameraFovDegrees,
+    waterBoundaryMode,
     allRangesActive,
     allProjRangesActive,
     allUnitRadiiActive,
@@ -795,6 +820,7 @@ export function useGameCanvasClientSettings({
     setCameraFollow,
     changeCameraFovDegrees,
     changeCameraFovBy,
+    changeWaterBoundaryMode,
     toggleAllRanges,
     toggleAllProjRanges,
     toggleAllUnitRadii,
@@ -803,6 +829,7 @@ export function useGameCanvasClientSettings({
     toggleLocomotionMarks,
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
+    toggleFogShade,
     toggleFogClouds,
     toggleMaterialExplosions,
     toggleBeamSnapToTurret,

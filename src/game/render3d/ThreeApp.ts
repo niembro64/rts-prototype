@@ -30,9 +30,12 @@ import {
   CAMERA_CONSTRAINTS,
   SKY_RENDER_CONFIG,
   ZOOM_MAX,
+  ZOOM_MAX_MAP_CENTER_DISTANCE,
   ZOOM_STEP_FRACTION,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
 } from '../../config';
+import { getWaterBoundaryMode } from '@/clientBarConfig';
+import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
 const DYNAMIC_PIXEL_RATIO_FLOOR = 0.75;
@@ -99,6 +102,13 @@ export class ThreeApp {
   private _lastCssHeight = 0;
   private _environmentTexture: THREE.Texture | null = null;
   private _skyTexture: THREE.Texture | null = null;
+  private _visibleSunDisk: THREE.Object3D | null = null;
+  private _lastSeaBackgroundEnabled: boolean | null = null;
+  private readonly _seaBackgroundColor = new THREE.Color().setRGB(
+    WATER_SURFACE_OUTPUT_LINEAR_RGB.r,
+    WATER_SURFACE_OUTPUT_LINEAR_RGB.g,
+    WATER_SURFACE_OUTPUT_LINEAR_RGB.b,
+  );
   private _rendererContextToken: RendererContextToken | null = null;
   private readonly _runtimeProfile: BrowserRenderRuntimeProfile;
   private _renderEnabled = true;
@@ -197,9 +207,7 @@ export class ThreeApp {
     }
 
     // The 3D equivalent of "zoom=1" is a distance that shows roughly the same
-    // region of the map as the 2D camera at its default zoom. The near
-    // distance rail is optional config; the far reference distance only
-    // drives HUD fade, not a zoom-out cap.
+    // region of the map as the 2D camera at its default zoom.
     const baseDistance = Math.max(mapWidth, mapHeight) * 0.35;
     const minDistance =
       CAMERA_CONSTRAINTS.zoomInLimit === 'zoom-max'
@@ -207,6 +215,8 @@ export class ThreeApp {
         : undefined;
     this.orbit = new OrbitCamera(this.camera, this.renderer.domElement, {
       minDistance,
+      maxCameraDistanceFromOrigin: ZOOM_MAX_MAP_CENTER_DISTANCE,
+      cameraDistanceOrigin: { x: mapWidth / 2, y: 0, z: mapHeight / 2 },
       farReferenceDistance: baseDistance * CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
       zoomStepFraction: ZOOM_STEP_FRACTION,
       movementConfig: CAMERA_MOVEMENT_CONFIG,
@@ -227,6 +237,8 @@ export class ThreeApp {
     });
 
     installSunLighting(this.scene, mapWidth, mapHeight);
+    this._visibleSunDisk = this.scene.getObjectByName('VisibleSunDisk') ?? null;
+    this.syncWaterBoundaryPresentation();
 
     // No standalone ground slab — the land tiles ARE the world's
     // mass. TerrainTileRenderer3D extends each tile cube far below
@@ -316,6 +328,22 @@ export class ThreeApp {
     this.precompileShaders();
   }
 
+  private syncWaterBoundaryPresentation(): void {
+    const seaBackgroundEnabled = getWaterBoundaryMode() === 'floating-square-sea';
+    if (this._lastSeaBackgroundEnabled !== seaBackgroundEnabled) {
+      this._lastSeaBackgroundEnabled = seaBackgroundEnabled;
+      this.scene.background = seaBackgroundEnabled
+        ? this._seaBackgroundColor
+        : this._skyTexture;
+    }
+    if (!this._visibleSunDisk) {
+      this._visibleSunDisk = this.scene.getObjectByName('VisibleSunDisk') ?? null;
+    }
+    if (this._visibleSunDisk) {
+      this._visibleSunDisk.visible = !seaBackgroundEnabled;
+    }
+  }
+
   start(): void {
     if (this._running) return;
     this._running = true;
@@ -330,6 +358,7 @@ export class ThreeApp {
       this._lastTime = now;
       if (this._updateCallback) this._updateCallback(now, delta);
       if (this._renderEnabled && !this._drawSuspended) {
+        this.syncWaterBoundaryPresentation();
         // Wrap the render call so the GPU timer captures true draw-time
         // (only the render; update-callback work is CPU-side).
         this.frameProfiler.beginFrame();

@@ -22,6 +22,7 @@ import type {
   SoundCategory,
   UnitRadiusType,
   WaypointDetail,
+  WaterBoundaryMode,
 } from '../types/client';
 import type { SnapshotRate, TickRate } from '../types/server';
 import type { UnitGroundNormalEmaMode } from '../shellConfig';
@@ -209,6 +210,7 @@ export type GameCanvasClientControlBarModel = {
   readonly locomotionMarks: boolean;
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
+  readonly fogShade: boolean;
   readonly fogClouds: boolean;
   readonly materialExplosions: boolean;
   readonly beamSnapToTurret: boolean;
@@ -252,6 +254,7 @@ export type GameCanvasClientControlBarModel = {
   readonly cameraFovDegrees: CameraFovDegrees;
   readonly cameraSmoothMode: CameraSmoothMode;
   readonly cameraFollowMode: CameraFollowMode;
+  readonly waterBoundaryMode: WaterBoundaryMode;
   readonly fullscreenActive: boolean;
   readonly uiChromeVisible: boolean;
   readonly mapDetailsVisible: boolean;
@@ -268,6 +271,7 @@ export type GameCanvasClientControlBarModel = {
   toggleLocomotionMarks(): void;
   toggleSmokeTrails(): void;
   toggleSmokeSoftEdges(): void;
+  toggleFogShade(): void;
   toggleFogClouds(): void;
   toggleMaterialExplosions(): void;
   toggleBeamSnapToTurret(): void;
@@ -306,6 +310,7 @@ export type GameCanvasClientControlBarModel = {
   toggleLegsRadius(): void;
   changeLodMode(mode: LodMode): void;
   changeCameraFovDegrees(fov: CameraFovDegrees): void;
+  changeWaterBoundaryMode(mode: WaterBoundaryMode): void;
   setCameraMode(mode: CameraSmoothMode): void;
   setCameraViewMode(mode: CameraViewMode): void;
   setCameraFollowMode(mode: CameraFollowMode): void;

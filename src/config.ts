@@ -789,14 +789,18 @@ export const CAMERA_FOV_DEGREES = cameraConfigJson.fovDegrees as CameraFovDegree
 
 /** Maximum zoom level (zoomed in). When camera constraints use
  *  zoomInLimit='zoom-max', this becomes the closest orbit distance via
- *  baseDistance / ZOOM_MAX. There is still no authored zoom-out rail. */
+ *  baseDistance / ZOOM_MAX. */
 export const ZOOM_MAX = cameraConfigJson.zoom.max;
+
+/** Maximum rendered camera-eye distance from the map center origin. This
+ *  is the same world-unit distance shown in the CLIENT bar's ZOOM readout
+ *  and acts as the authored zoom-out rail. */
+export const ZOOM_MAX_MAP_CENTER_DISTANCE = cameraConfigJson.zoom.maxMapCenterDistance;
 
 /** Far-distance reference for HUD fade, expressed as a multiple of the
  *  base framing distance (max(mapW, mapH) * 0.35). Entity HUD elements
  *  (health bars, name tags) finish fading out by this distance, so the
- *  fade window tracks map size. This is NOT a zoom-out cap: the camera
- *  can dolly past it freely; HUD elements are simply fully faded there. */
+ *  fade window tracks map size. */
 export const CAMERA_FAR_REFERENCE_DISTANCE_FACTOR =
   cameraConfigJson.farReferenceDistanceFactor;
 

@@ -1098,6 +1098,7 @@ const {
   locomotionMarks,
   smokeTrails,
   smokeSoftEdges,
+  fogShade,
   fogClouds,
   materialExplosions,
   beamSnapToTurret,
@@ -1134,6 +1135,7 @@ const {
   cameraSmoothMode,
   cameraFollowMode,
   cameraFovDegrees,
+  waterBoundaryMode,
   allRangesActive,
   allProjRangesActive,
   allUnitRadiiActive,
@@ -1158,6 +1160,7 @@ const {
   setCameraFollow,
   changeCameraFovDegrees,
   changeCameraFovBy,
+  changeWaterBoundaryMode,
   toggleAllRanges,
   toggleAllProjRanges,
   toggleAllUnitRadii,
@@ -1166,6 +1169,7 @@ const {
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
+  toggleFogShade,
   toggleFogClouds,
   toggleMaterialExplosions,
   toggleBeamSnapToTurret,
@@ -1987,6 +1991,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   locomotionMarks: locomotionMarks.value,
   smokeTrails: smokeTrails.value,
   smokeSoftEdges: smokeSoftEdges.value,
+  fogShade: fogShade.value,
   fogClouds: fogClouds.value,
   materialExplosions: materialExplosions.value,
   beamSnapToTurret: beamSnapToTurret.value,
@@ -2030,6 +2035,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   cameraFovDegrees: cameraFovDegrees.value,
   cameraSmoothMode: cameraSmoothMode.value,
   cameraFollowMode: cameraFollowMode.value,
+  waterBoundaryMode: waterBoundaryMode.value,
   fullscreenActive: fullscreenActive.value,
   uiChromeVisible: uiChromeVisible.value,
   mapDetailsVisible: mapDetailsVisible.value,
@@ -2046,6 +2052,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleLocomotionMarks,
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
+  toggleFogShade,
   toggleFogClouds,
   toggleMaterialExplosions,
   toggleBeamSnapToTurret,
@@ -2084,6 +2091,7 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleLegsRadius,
   changeLodMode,
   changeCameraFovDegrees,
+  changeWaterBoundaryMode,
   setCameraMode,
   setCameraViewMode,
   setCameraFollowMode: setCameraFollow,
@@ -2194,6 +2202,7 @@ watchEffect(() => {
   m.locomotionMarks = locomotionMarks.value;
   m.smokeTrails = smokeTrails.value;
   m.smokeSoftEdges = smokeSoftEdges.value;
+  m.fogShade = fogShade.value;
   m.fogClouds = fogClouds.value;
   m.materialExplosions = materialExplosions.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
@@ -2230,6 +2239,7 @@ watchEffect(() => {
   m.cameraFovDegrees = cameraFovDegrees.value;
   m.cameraSmoothMode = cameraSmoothMode.value;
   m.cameraFollowMode = cameraFollowMode.value;
+  m.waterBoundaryMode = waterBoundaryMode.value;
   m.fullscreenActive = fullscreenActive.value;
   m.uiChromeVisible = uiChromeVisible.value;
   m.mapDetailsVisible = mapDetailsVisible.value;

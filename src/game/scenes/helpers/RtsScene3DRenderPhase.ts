@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   getFogClouds,
+  getFogShade,
   getMaterialExplosions,
   getRadarBoundary,
   getSightBoundary,
@@ -501,6 +502,10 @@ export class RtsScene3DRenderPhase {
     terrainTileRenderer.update(
       graphicsConfig,
       renderFrameState,
+      {
+        localPlayerId: this.getLocalPlayerId(),
+        fogShadeEnabled: fogOfWarEnabled && getFogShade(),
+      },
     );
     phaseNow = performance.now();
     timings.terrainMs = phaseNow - phaseMark;

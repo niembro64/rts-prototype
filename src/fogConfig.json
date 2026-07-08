@@ -10,6 +10,12 @@
     "radius": 1000,
     "transparentOuterFraction": 0.4,
     "zMin": -500,
-    "zRange": 1600
+    "zRange": 1600,
+    "shade": {
+      "cellSize": 128,
+      "edgeSoftnessCells": 1.5,
+      "hatchLineSpacing": 72,
+      "hatchLineWidth": 0.34
+    }
   }
 }

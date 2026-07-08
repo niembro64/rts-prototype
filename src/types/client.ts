@@ -59,6 +59,16 @@ export type CameraFovDegrees = number;
 /** Renderer entity LOD policy. AUTO keeps distance-based proxy selection.
  *  HIGH keeps full meshes. LOW forces proxy meshes. */
 export type LodMode = 'auto' | 'high' | 'low';
+/** Presentation-only treatment of the map/water boundary.
+ *    infinity             — extend water and perimeter terrain to a fake horizon.
+ *    floating-square      — cut off the real map and render water as a shallow
+ *                           cuboid slightly larger than the map footprint.
+ *    floating-square-sea  — floating-square geometry with a solid sea-colored
+ *                           background and no visible sky/sun disk. */
+export type WaterBoundaryMode =
+  | 'infinity'
+  | 'floating-square'
+  | 'floating-square-sea';
 /** Waypoint visualization detail. SIMPLE shows only the user-issued
  *  click points and shortcut lines between them — the convention in
  *  most RTS games. DETAILED shows every intermediate waypoint that
@@ -135,6 +145,10 @@ export type ClientBarConfig = {
    *  Purely a SmokeTrail3D shader swap; no effect when `smokeTrails` is
    *  off. */
   readonly smokeSoftEdges: BooleanSetting;
+  /** Terrain-attached fog-of-war shade over currently unseen map areas.
+   *  Presentation only; battle-level fog still owns authoritative
+   *  visibility and snapshot filtering. */
+  readonly fogShade: BooleanSetting;
   /** Soft fog-of-war cloud puffs. This is presentation only; the BATTLE
    *  fog-of-war control still owns authoritative visibility, snapshot
    *  filtering, and what enemy entity data reaches the client. */
@@ -183,6 +197,7 @@ export type ClientBarConfig = {
   readonly cameraSmooth: LabeledOptionsConfig<CameraSmoothMode>;
   readonly cameraFollow: LabeledOptionsConfig<CameraFollowMode>;
   readonly cameraFov: LabeledOptionsConfig<CameraFovDegrees>;
+  readonly waterBoundaryMode: LabeledOptionsConfig<WaterBoundaryMode>;
   readonly edgeScroll: BooleanSetting;
   readonly dragPan: BooleanSetting;
   readonly sounds: DefaultSetting<SoundDefaults>;

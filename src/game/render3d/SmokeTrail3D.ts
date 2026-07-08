@@ -377,13 +377,14 @@ export class SmokeTrail3D {
         if (useEmitted >= this.emissionBudget(spec, dtSec)) continue;
         const emit = this.getTailEmitterPoint(e, visual.projectileTailLengthMult);
         // Puff exhaust drifts opposite to the projectile's flight
-        // direction at `exhaustSpeed`. Zero (the default) keeps puffs
-        // stationary in world space, which is the legacy behavior.
-        const exhaustSpeed = Math.max(0, spec.exhaustSpeed);
+        // direction at positive `exhaustSpeed`; negative values flip
+        // the drift direction. Zero keeps puffs stationary in world
+        // space, which is the legacy behavior.
+        const exhaustSpeed = spec.exhaustSpeed;
         let puffVx = 0;
         let puffVy = 0;
         let puffVz = 0;
-        if (exhaustSpeed > 0) {
+        if (exhaustSpeed !== 0) {
           const vx = proj.velocityX;
           const vy = proj.velocityY;
           const vz = proj.velocityZ;

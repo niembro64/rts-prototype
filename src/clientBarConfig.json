@@ -33,7 +33,8 @@
   "locomotionMarks": { "demoDefault": true, "realDefault": true },
   "smokeTrails": { "demoDefault": true, "realDefault": true },
   "smokeSoftEdges": { "demoDefault": false, "realDefault": false },
-  "fogClouds": { "demoDefault": true, "realDefault": true },
+  "fogShade": { "demoDefault": true, "realDefault": true },
+  "fogClouds": { "demoDefault": false, "realDefault": false },
   "materialExplosions": { "demoDefault": true, "realDefault": true },
   "beamSnapToTurret": { "demoDefault": true, "realDefault": true },
   "triangleDebug": { "demoDefault": false, "realDefault": false },
@@ -135,6 +136,15 @@
       { "value": 120, "label": "120" }
     ]
   },
+  "waterBoundaryMode": {
+    "demoDefault": "infinity",
+    "realDefault": "infinity",
+    "options": [
+      { "value": "infinity", "label": "INF" },
+      { "value": "floating-square", "label": "SQUARE" },
+      { "value": "floating-square-sea", "label": "SEA" }
+    ]
+  },
   "edgeScroll": { "demoDefault": false, "realDefault": true },
   "dragPan": { "demoDefault": true, "realDefault": true },
   "sounds": {
@@ -217,6 +227,7 @@
     "locomotionMarks": "locomotion-marks",
     "smokeTrails": "smoke-trails",
     "smokeSoftEdges": "smoke-soft-edges",
+    "fogShade": "fog-shade",
     "fogClouds": "fog-clouds",
     "materialExplosions": "material-explosions",
     "beamSnapToTurret": "beam-snap-to-turret",
@@ -245,6 +256,7 @@
     "cameraSmooth": "camera-smooth",
     "cameraFollow": "camera-follow",
     "cameraFov": "camera-fov-degrees",
+    "waterBoundaryMode": "water-boundary-mode",
     "edgeScroll": "edge-scroll",
     "dragPan": "drag-pan",
     "lobbyVisible": "lobby-visible",
