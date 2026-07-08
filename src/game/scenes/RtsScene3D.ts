@@ -35,6 +35,7 @@ import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
 import { simPositionUsesLowEmissionLod3D } from '../render3d/EntityLod3D';
+import { detailLevelForViewPosition } from '../render3d/EntityDetailLevel3D';
 import { EMISSION_LOD_HIGH_TO_LOW_DISTANCES } from '@/config';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
@@ -878,7 +879,35 @@ export class RtsScene3D {
             EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission],
           ),
         ),
+      positionVisualDetailLevel: (simX, simY, simZ, radius) =>
+        this.positionVisualDetailLevel(simX, simY, simZ, radius),
     });
+  }
+
+  private positionVisualDetailLevel(
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+  ): number {
+    const camera = this.threeApp.camera;
+    const matrix = camera.matrixWorld.elements;
+    return detailLevelForViewPosition(
+      {
+        viewportHeightPx: Math.max(1, this.threeApp.renderer.domElement.clientHeight),
+        cameraX: camera.position.x,
+        cameraY: camera.position.y,
+        cameraZ: camera.position.z,
+        forwardX: -matrix[8],
+        forwardY: -matrix[9],
+        forwardZ: -matrix[10],
+        fovYRad: (camera.fov * Math.PI) / 180,
+      },
+      simX,
+      simY,
+      simZ,
+      radius,
+    );
   }
 
   private handleGameOver(winnerId: PlayerId): void {

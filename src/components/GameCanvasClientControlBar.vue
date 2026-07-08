@@ -69,7 +69,7 @@ const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> 
 };
 
 const LOD_MODE_TITLES: Record<LodMode, string> = {
-  auto: 'Use distance-based level-of-detail proxy selection',
+  auto: 'Use projected-size automatic level-of-detail thresholds',
   high: 'Never render unit, building, or tower level-of-detail proxies',
   low: 'Always render unit, building, and tower level-of-detail proxies',
 };

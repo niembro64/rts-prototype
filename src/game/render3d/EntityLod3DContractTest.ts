@@ -10,11 +10,12 @@ import {
   ENTITY_LOD_PROXY_GLYPH_DIAMOND,
   ENTITY_LOD_PROXY_GLYPH_SQUARE,
   ENTITY_LOD_PROXY_GLYPH_TRIANGLE,
-  EntityLodHysteresis3D,
+  EntityLodState3D,
   entityEmissionUsesLowLodDistance3D,
   entityLodProxyGlyph3D,
   simPositionUsesLowEmissionLod3D,
 } from './EntityLod3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -24,6 +25,19 @@ function assertContract(condition: unknown, message: string): asserts condition 
 
 function cameraAt(x: number, y: number, z: number): THREE.Camera {
   return { position: { x, y, z } } as unknown as THREE.Camera;
+}
+
+function viewAt(camera: THREE.Camera): RenderViewState3D {
+  return {
+    viewportHeightPx: 900,
+    cameraX: camera.position.x,
+    cameraY: camera.position.y,
+    cameraZ: camera.position.z,
+    forwardX: 0,
+    forwardY: 0,
+    forwardZ: -1,
+    fovYRad: Math.PI / 4,
+  };
 }
 
 function entityAt(id: number, x: number, y: number, z: number): Entity {
@@ -43,7 +57,7 @@ function entityAt(id: number, x: number, y: number, z: number): Entity {
 }
 
 function assertEmissionParity(
-  lod: EntityLodHysteresis3D,
+  lod: EntityLodState3D,
   camera: THREE.Camera,
   entity: Entity,
   highToLowDistance: number | null,
@@ -55,7 +69,7 @@ function assertEmissionParity(
 }
 
 export function runEntityLod3DContractTest(): void {
-  const lod = new EntityLodHysteresis3D();
+  const lod = new EntityLodState3D();
   const camera = cameraAt(0, 0, 0);
   const entity = entityAt(101, 3, 4, 0);
   const previousLodMode = getLodMode();
@@ -84,32 +98,33 @@ export function runEntityLod3DContractTest(): void {
       'cached emission LOD matches explicit sim-position calculation',
     );
 
-    const bodyLod = new EntityLodHysteresis3D();
+    const bodyLod = new EntityLodState3D();
     const body = entityAt(202, 0, 0, 0);
     setLodMode('low');
     bodyLod.beginFrame();
     assertContract(
-      bodyLod.entityUsesLodProxy(camera, body),
+      bodyLod.entityUsesLodProxyForView(viewAt(camera), body),
       'LOW mode always forces entity LOD proxies',
     );
     setLodMode('high');
     bodyLod.beginFrame();
     assertContract(
-      !bodyLod.entityUsesLodProxy(camera, body),
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), body),
       'HIGH mode never allows entity LOD proxies',
     );
     setLodMode('auto');
     body.transform.x = 0;
+    body.transform.y = -10;
     bodyLod.beginFrame();
     assertContract(
-      !bodyLod.entityUsesLodProxy(camera, body),
-      'AUTO mode keeps nearby entities in full detail',
+      !bodyLod.entityUsesLodProxyForView(viewAt(camera), body),
+      'AUTO mode keeps large projected entities in full detail',
     );
-    body.transform.x = 10000;
+    body.transform.y = -10000;
     bodyLod.beginFrame();
     assertContract(
-      bodyLod.entityUsesLodProxy(camera, body),
-      'AUTO mode keeps existing distance-based proxy selection',
+      bodyLod.entityUsesLodProxyForView(viewAt(camera), body),
+      'AUTO mode uses projected-size proxy selection',
     );
 
     const groundUnit = entityAt(301, 0, 0, 0);

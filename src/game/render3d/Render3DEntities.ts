@@ -42,7 +42,6 @@ import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import {
-  UNIT_DETAIL_REBUILD_MARGIN,
   unitDetailBand,
   unitDetailGraphicsConfig,
 } from './EntityDetailLevel3D';
@@ -611,15 +610,13 @@ export class Render3DEntities {
       const fullUnitDetail = true;
       // Per-entity detail level (1 = full, 0 = glyph). Its coarse band decides
       // whether this unit's mesh should shed its turret / legs as it shrinks on
-      // screen. A rebuild only fires once the level has moved a margin past the
-      // last-built level, so a unit sitting on a band boundary doesn't thrash.
+      // screen. With no hysteresis, the mesh rebuilds exactly when the band
+      // from lod.json changes.
       const detailLevel = entityDetailLevelForView(this.frameState.view, e);
       const detailBand = unitDetailBand(detailLevel, unitGfx);
       const detailBandChanged =
         m !== undefined &&
-        m.unitRenderDetailBand !== detailBand &&
-        Math.abs(detailLevel - (m.unitRenderDetailLevel ?? detailLevel)) >
-          UNIT_DETAIL_REBUILD_MARGIN;
+        m.unitRenderDetailBand !== detailBand;
       if (
         m &&
         (
@@ -656,16 +653,14 @@ export class Render3DEntities {
           unitGfx: unitDetailGraphicsConfig(unitGfx, detailLevel),
           unitFrameKey: unitGeometryKey,
           unitRenderKey,
+          detailLevel,
           legState: legSnap,
         });
         if (legSnap !== undefined) this.legStateCache.delete(entityId);
         this.unitMeshes.set(entityId, m);
         if (m.locomotion) this.activeLocomotionUnitIds.add(entityId);
-        // Record the band + level this mesh was actually built at. Only a real
-        // (re)build updates these, so the margin gate above measures drift from
-        // the last build — not from the previous frame.
+        // Record the band this mesh was actually built at.
         m.unitRenderDetailBand = detailBand;
-        m.unitRenderDetailLevel = detailLevel;
         meshCreated = true;
       }
       this.reactivateUnitMeshForScope(entityId, m);

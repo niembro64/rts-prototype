@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { UnitBodyShape } from '@/types/blueprints';
 import type { GraphicsConfig } from '@/types/graphics';
 import { getUnitBodyShapeKey } from '../math/BodyDimensions';
 import { FALLBACK_UNIT_BODY_SHAPE, getUnitBlueprint } from '../sim/blueprints';
@@ -20,11 +21,16 @@ import { buildShieldPanelMesh3D } from './ShieldPanelMesh3D';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { setVector3IfChanged } from './threeTransformWriteUtils';
+import { featureVisibleAtDetail } from './EntityDetailLevel3D';
 
 // Detailed unit parts use shared instanced pools by default. The
 // per-mesh path remains only as an allocation fallback, not as the
 // normal rendering route.
 const USE_DETAILED_UNIT_INSTANCING = true;
+const LOW_DETAIL_UNIT_BODY_SHAPE: UnitBodyShape = {
+  kind: 'circle',
+  radiusFrac: 0.78,
+};
 
 type UnitMeshBuilder3DOptions = {
   world: THREE.Group;
@@ -52,6 +58,7 @@ type UnitMeshBuildRequest = {
   unitGfx: GraphicsConfig;
   unitFrameKey: string;
   unitRenderKey: string;
+  detailLevel: number;
   legState?: LegStateSnapshot;
 };
 
@@ -114,13 +121,16 @@ export class UnitMeshBuilder3D {
       unitGfx,
       unitFrameKey,
       unitRenderKey,
+      detailLevel,
       legState,
     } = request;
 
     const group = new THREE.Group();
     const blueprint = this.getUnitBlueprint(entity);
     const isAlbatros = blueprint?.unitBlueprintId === 'unitAlbatros';
-    const bodyShape = blueprint?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
+    const authoredBodyShape = blueprint?.bodyShape ?? FALLBACK_UNIT_BODY_SHAPE;
+    const bodyShape =
+      unitGfx.unitShape === 'circles' ? LOW_DETAIL_UNIT_BODY_SHAPE : authoredBodyShape;
     const bodyShapeKey = getUnitBodyShapeKey(bodyShape);
     const bodyEntry = getBodyGeom(bodyShape);
 
@@ -192,6 +202,7 @@ export class UnitMeshBuilder3D {
       unitGfx,
       useDetailedUnitInstancing,
       blueprint?.dgun?.turretBlueprintId,
+      detailLevel,
     );
 
     this.world.add(group);
@@ -225,13 +236,22 @@ export class UnitMeshBuilder3D {
       radius,
       ownerId,
       unitGfx,
+      detailLevel,
       this.getMapWidth(),
       this.getMapHeight(),
       this.legRenderer,
     );
     if (legState !== undefined) applyLegState(mesh.locomotion, legState);
 
-    this.buildMirrors(mesh, liftGroup, entity, turrets, ownerId, useDetailedUnitInstancing);
+    this.buildMirrors(
+      mesh,
+      liftGroup,
+      entity,
+      turrets,
+      ownerId,
+      useDetailedUnitInstancing,
+      detailLevel,
+    );
     return mesh;
   }
 
@@ -251,6 +271,7 @@ export class UnitMeshBuilder3D {
     unitGfx: GraphicsConfig,
     useDetailedUnitInstancing: boolean,
     commanderDgunTurretBlueprintId: string | undefined,
+    detailLevel: number,
   ): TurretMesh[] {
     const turretMeshes: TurretMesh[] = [];
     const turretOff = unitGfx.turretStyle === 'none';
@@ -262,7 +283,11 @@ export class UnitMeshBuilder3D {
       const showShieldEmitterCore = isShield &&
         turret.config.shot?.type === 'shield' &&
         turret.config.shot.barrier !== undefined;
-      const hideHead = turretOff || (isShield && !showShieldEmitterCore) || isConstructionEmitter;
+      const hideHead =
+        turretOff ||
+        unitGfx.turretStyle === 'simple' ||
+        (isShield && !showShieldEmitterCore) ||
+        isConstructionEmitter;
       let headSlot: number | undefined;
       if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
         const allocated = this.unitDetailInstances.allocTurretHeadSlot();
@@ -279,6 +304,7 @@ export class UnitMeshBuilder3D {
         showShieldEmitterCore,
         skipHead: headSlot !== undefined,
         skipBarrels: false,
+        detailLevel,
       });
       if (turretMesh.head) turretMesh.head.userData.entityId = entity.id;
       if (isCommanderUnit && !hideHead) {
@@ -315,9 +341,11 @@ export class UnitMeshBuilder3D {
     turrets: readonly Turret[],
     ownerId: PlayerId | undefined,
     useDetailedUnitInstancing: boolean,
+    detailLevel: number,
   ): void {
     const shieldPanels = entity.unit?.shieldPanels;
     if (!shieldPanels || shieldPanels.length === 0 || !entity.unit) return;
+    if (!featureVisibleAtDetail('shieldPanels', detailLevel)) return;
 
     const panelHalfSide = shieldPanels[0].halfWidth;
     const panelArmLength = shieldPanels[0].offsetX;

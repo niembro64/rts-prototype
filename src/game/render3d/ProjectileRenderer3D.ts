@@ -23,6 +23,8 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
+import { entityDetailLevelForView } from './EntityLod3D';
+import { projectileStyleForDetail } from './EntityDetailLevel3D';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
@@ -289,10 +291,6 @@ export class ProjectileRenderer3D {
     let finCount = 0;
     const wantCol = getProjRangeToggle('collision');
     const wantExp = getProjRangeToggle('explosion');
-    const projectileStyle = frameState.gfx.projectileStyle;
-    const drawProjectileTail = projectileStyle !== 'dot' && projectileStyle !== 'core';
-    const drawProjectileFins = projectileStyle === 'full';
-
     for (const e of projectiles) {
       if (pruneProjectiles) seen.add(e.id);
       const tx = e.transform.x;
@@ -307,6 +305,13 @@ export class ProjectileRenderer3D {
 
       const shotProfile = e.projectile?.config.shotProfile;
       const visualProfile = shotProfile?.visual;
+      const detailLevel = entityDetailLevelForView(frameState.view, e);
+      const projectileStyle = projectileStyleForDetail(
+        detailLevel,
+        frameState.gfx.projectileStyle,
+      );
+      const drawProjectileTail = projectileStyle !== 'dot' && projectileStyle !== 'core';
+      const drawProjectileFins = projectileStyle === 'full';
       const radius = shotProfile?.runtime.radius.other ?? 4;
       const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);

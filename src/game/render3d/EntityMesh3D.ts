@@ -156,6 +156,7 @@ export type EntityMesh = {
   buildingRenderFrameKey?: string;
   buildingRenderBlueprintId?: string | null;
   buildingRenderTurretCount?: number;
+  buildingRenderDetailBand?: number;
   unitDetailCachedX?: number;
   unitDetailCachedY?: number;
   unitDetailCachedZ?: number;
@@ -175,10 +176,6 @@ export type EntityMesh = {
    *  rebuilt to shed its turret / legs — the intermediate step between the
    *  full mesh and the flat LOD glyph. */
   unitRenderDetailBand?: number;
-  /** Detail level at the last (re)build. A rebuild only fires once the level
-   *  has moved past a margin from this, so a unit hovering on a band boundary
-   *  doesn't rebuild every frame. */
-  unitRenderDetailLevel?: number;
   /** Per-Mesh fallback head-only turrets switch material when engaged.
    *  Instanced heads carry this through instanceColor; this cache keeps
    *  the rare per-Mesh fallback path from rewriting materials every

@@ -40,6 +40,11 @@ import type { ViewportFootprint } from '../ViewportFootprint';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
 import { disposeMesh } from './threeUtils';
 import { clamp01 } from './RenderUtils';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import {
+  detailLevelForViewPosition,
+  smokeSpawnScaleForDetail,
+} from './EntityDetailLevel3D';
 
 const DEFAULT_COLOR = COLORS.effects.smokeTrail.default.colorHex;
 const MAX_PARTICLES = getSmokePoolMaxParticles();
@@ -300,6 +305,7 @@ export class SmokeTrail3D {
     renderFrameIndex: number,
     scope?: ViewportFootprint,
     emitters?: readonly SmokePuffEmitter[],
+    view?: RenderViewState3D,
   ): void {
     // PLAYER CLIENT bar toggle: when off, wipe any live puffs and skip
     // every advance / emit path so toggling off clears the screen
@@ -351,6 +357,14 @@ export class SmokeTrail3D {
       if (!profile?.runtime.isProjectile) continue;
       const spec = profile.visual.smokeTrail as ResolvedSmokeProfile | undefined;
       if (!spec) continue;
+      const lodScale = this.smokeScaleForPosition(
+        view,
+        e.transform.x,
+        e.transform.y,
+        e.transform.z,
+        spec.startRadius,
+      );
+      if (lodScale <= 0) continue;
       // RENDER scope cull: off-screen projectiles do no smoke work.
       // Re-entering scope resumes on the next matching frame phase,
       // with no missed-frame burst to catch up.
@@ -360,6 +374,8 @@ export class SmokeTrail3D {
       // Phase by projectile id so a salvo does not allocate every puff
       // on the same frame under a sparse emission cadence.
       if ((renderFrameIndex + (e.id % stride)) % stride !== 0) continue;
+      const lodStride = Math.max(1, Math.ceil(1 / lodScale));
+      if ((renderFrameIndex + e.id) % lodStride !== 0) continue;
       eligible.push(e);
     }
 
@@ -373,8 +389,16 @@ export class SmokeTrail3D {
         const proj = e.projectile!;
         const visual = proj.config.shotProfile.visual;
         const spec = visual.smokeTrail as ResolvedSmokeProfile;
+        const lodScale = this.smokeScaleForPosition(
+          view,
+          e.transform.x,
+          e.transform.y,
+          e.transform.z,
+          spec.startRadius,
+        );
+        if (lodScale <= 0) continue;
         const useEmitted = emittedByUse.get(spec.useId) ?? 0;
-        if (useEmitted >= this.emissionBudget(spec, dtSec)) continue;
+        if (useEmitted >= this.emissionBudget(spec, dtSec, lodScale)) continue;
         const emit = this.getTailEmitterPoint(e, visual.projectileTailLengthMult);
         // Puff exhaust drifts opposite to the projectile's flight
         // direction at positive `exhaustSpeed`; negative values flip
@@ -402,6 +426,7 @@ export class SmokeTrail3D {
           puffVx, puffVy, puffVz,
           spec,
           spec.color ?? DEFAULT_COLOR,
+          lodScale,
         );
         if (!spawned) continue;
         emittedByUse.set(spec.useId, useEmitted + 1);
@@ -412,7 +437,7 @@ export class SmokeTrail3D {
 
     if (emitters && emitters.length > 0) {
       this.emitFromEmitters(
-        emitters, scope, dtSec, renderFrameIndex,
+        emitters, scope, dtSec, renderFrameIndex, view,
       );
     }
 
@@ -463,8 +488,9 @@ export class SmokeTrail3D {
     scope: ViewportFootprint | undefined,
     dtSec: number,
     renderFrameIndex: number,
+    view?: RenderViewState3D,
   ): void {
-    this.emitFromEmittersForPool(this.pool, emitters, scope, dtSec, renderFrameIndex);
+    this.emitFromEmittersForPool(this.pool, emitters, scope, dtSec, renderFrameIndex, view);
   }
 
   private emitFromEmittersForPool(
@@ -473,6 +499,7 @@ export class SmokeTrail3D {
     scope: ViewportFootprint | undefined,
     dtSec: number,
     renderFrameIndex: number,
+    view?: RenderViewState3D,
   ): void {
     const len = emitters.length;
     if (len === 0 || pool.maxParticles <= 0) return;
@@ -482,18 +509,29 @@ export class SmokeTrail3D {
     let emitted = 0;
     for (let n = 0; n < len; n++) {
       const emitter = emitters[(start + n) % len];
+      const lodScale = this.smokeScaleForPosition(
+        view,
+        emitter.x,
+        emitter.y,
+        emitter.z,
+        emitter.startRadius,
+      );
+      if (lodScale <= 0) continue;
       if (scope && !scope.inScope(emitter.x, emitter.y)) continue;
       const stride = Math.max(1, Math.max(0, emitter.emitFramesSkip) + 1);
       const phase = emitter.phase ?? 0;
       if ((renderFrameIndex + phase) % stride !== 0) continue;
+      const lodStride = Math.max(1, Math.ceil(1 / lodScale));
+      if ((renderFrameIndex + phase) % lodStride !== 0) continue;
       const useEmitted = emittedByUse.get(emitter.useId) ?? 0;
-      if (useEmitted >= this.emissionBudget(emitter, dtSec)) continue;
+      if (useEmitted >= this.emissionBudget(emitter, dtSec, lodScale)) continue;
       const spawned = this.spawnPuff(
         pool,
         emitter.x, emitter.y, emitter.z,
         emitter.vx ?? 0, emitter.vy ?? 0, emitter.vz ?? 0,
         emitter,
         emitter.color ?? DEFAULT_COLOR,
+        lodScale,
       );
       if (!spawned) continue;
       emittedByUse.set(emitter.useId, useEmitted + 1);
@@ -575,9 +613,14 @@ export class SmokeTrail3D {
     else pool.activeByUse.set(useId, next);
   }
 
-  private emissionBudget(profile: SmokeSpawnProfile, dtSec: number): number {
+  private emissionBudget(
+    profile: SmokeSpawnProfile,
+    dtSec: number,
+    lodScale: number = 1,
+  ): number {
+    if (lodScale <= 0) return 0;
     const durationSec = this.smokeDurationSec(profile);
-    return Math.max(1, Math.ceil((profile.maxPoolSize * dtSec) / durationSec));
+    return Math.max(1, Math.ceil(((profile.maxPoolSize * dtSec) / durationSec) * lodScale));
   }
 
   private smokeDurationSec(profile: SmokeSpawnProfile): number {
@@ -592,6 +635,7 @@ export class SmokeTrail3D {
     simVX: number, simVY: number, simVZ: number,
     profile: SmokeSpawnProfile,
     color: number,
+    lodScale: number = 1,
   ): boolean {
     const useCap = Math.min(pool.maxParticles, Math.max(0, profile.maxPoolSize | 0));
     if (useCap <= 0) return false;
@@ -601,9 +645,14 @@ export class SmokeTrail3D {
     const b = (color & 0xff) / 255;
     const fadeInSec = Math.max(0, profile.fadeInMs / 1000);
     const fadeOutSec = Math.max(0, profile.fadeOutMs / 1000);
-    const durationSec = this.smokeDurationSec(profile);
+    const detailScale = clamp01(lodScale);
+    const durationSec = this.smokeDurationSec(profile) * (0.55 + detailScale * 0.45);
     const startRadius = Math.max(0, profile.startRadius);
-    const finalRadius = startRadius * Math.max(0, profile.endRadiusMultiplier);
+    const finalRadius =
+      startRadius *
+      Math.max(0, profile.endRadiusMultiplier) *
+      (0.78 + detailScale * 0.22);
+    const maxAlpha = profile.maxAlpha * (0.68 + detailScale * 0.32);
 
     let i: number;
     let puff: Puff;
@@ -637,6 +686,7 @@ export class SmokeTrail3D {
       fadeOutSec,
       startRadius,
       finalRadius,
+      maxAlpha,
       simX,
       simY,
       simZ,
@@ -686,6 +736,7 @@ export class SmokeTrail3D {
     fadeOutSec: number,
     startRadius: number,
     finalRadius: number,
+    maxAlpha: number,
     simX: number,
     simY: number,
     simZ: number,
@@ -704,7 +755,7 @@ export class SmokeTrail3D {
     puff.durationSec = durationSec;
     puff.startRadius = startRadius;
     puff.finalRadius = finalRadius;
-    puff.maxAlpha = profile.maxAlpha;
+    puff.maxAlpha = maxAlpha;
     puff.fadeInSec = fadeInSec;
     puff.fadeOutSec = fadeOutSec;
     puff.threeX = simX;
@@ -740,6 +791,24 @@ export class SmokeTrail3D {
     if (best < 0) best = start;
     pool.evictionCursor = (best + 1) % cap;
     return best;
+  }
+
+  private smokeScaleForPosition(
+    view: RenderViewState3D | undefined,
+    simX: number,
+    simY: number,
+    simZ: number,
+    radius: number,
+  ): number {
+    if (!view) return 1;
+    const level = detailLevelForViewPosition(
+      view,
+      simX,
+      simY,
+      simZ,
+      Math.max(1, radius),
+    );
+    return smokeSpawnScaleForDetail(level);
   }
 
   destroy(): void {

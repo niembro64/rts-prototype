@@ -15,15 +15,15 @@
 // the body they ride on — small unimportant triangles abstract away first, the
 // class-defining silhouette survives longest.
 //
-// The level itself is produced from the SAME per-entity switch distance the
-// proxy system already uses (see EntityLod3D), so L reaches 0 exactly where an
-// entity would flip to its glyph — one coherent system, no second threshold.
+// In AUTO LOD, the level is produced from projected screen radius so the result
+// follows how large the entity is on screen, not just raw camera distance. The
+// proxy system uses the same score, so L reaches 0 at the glyph transition.
 
 import {
   ENTITY_DETAIL_ENABLED,
-  ENTITY_DETAIL_FEATURE_MIN_LEVEL,
   ENTITY_DETAIL_FULL_DETAIL_FRACTION,
-  ENTITY_DETAIL_TIER_CUTOFFS,
+  ENTITY_DETAIL_THRESHOLDS,
+  ENTITY_LOD_VISUAL_SCORE,
 } from '@/config';
 import type {
   BeamStyle,
@@ -34,6 +34,7 @@ import type {
   UnitShape,
 } from '@/types/graphics';
 import type { PrimitiveGeometryTier } from './PrimitiveGeometryQuality3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
 
 /**
  * A renderable feature/part whose presence is gated by its host's detail level.
@@ -80,7 +81,28 @@ export const DETAIL_FEATURES: readonly DetailFeature[] = [
 export const DETAIL_LEVEL_FULL = 1;
 export const DETAIL_LEVEL_GLYPH = 0;
 
-const FEATURE_MIN_LEVEL = ENTITY_DETAIL_FEATURE_MIN_LEVEL as Record<DetailFeature, number>;
+const THRESHOLDS = ENTITY_DETAIL_THRESHOLDS as Record<string, unknown>;
+
+const FEATURE_VISUAL_THRESHOLD: Record<DetailFeature, readonly [string, string]> = {
+  body: ['unit', 'body'],
+  healthBar: ['hud', 'bars'],
+  turret: ['turret', 'simple'],
+  barrelPrimary: ['turret', 'primaryBarrel'],
+  locomotion: ['locomotion', 'simple'],
+  nameLabel: ['hud', 'names'],
+  projectileTrail: ['shot', 'trail'],
+  turretHead: ['turret', 'head'],
+  shieldPanels: ['unit', 'shieldPanels'],
+  beamGlow: ['beam', 'detailed'],
+  buildingDetail: ['building', 'typeDetails'],
+  chassisDetail: ['unit', 'chassisDetail'],
+  barrelSecondary: ['turret', 'secondaryBarrels'],
+  projectileGlow: ['shot', 'glow'],
+  locomotionAnimated: ['locomotion', 'animated'],
+  muzzleDetail: ['turret', 'muzzleDetail'],
+};
+
+const GEOMETRY_TIER_ORDER: readonly PrimitiveGeometryTier[] = ['far', 'mid', 'close'];
 
 function clamp01(value: number): number {
   if (!(value > 0)) return 0;
@@ -92,6 +114,61 @@ function fullDetailFraction(): number {
   const raw = ENTITY_DETAIL_FULL_DETAIL_FRACTION;
   if (!Number.isFinite(raw) || raw <= 0) return 0.4;
   return raw >= 1 ? 0.999 : raw;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function rungForDetail<T extends string>(
+  category: string,
+  order: readonly T[],
+  thresholdKeys: readonly string[],
+  level: number,
+  fallbackThresholds: readonly number[],
+): T {
+  const first = order[0];
+  if (first === undefined) {
+    throw new Error(`LOD rung order for ${category} must not be empty`);
+  }
+  let proposed = first;
+  for (let i = 0; i < order.length; i++) {
+    const thresholdKey = thresholdKeys[i];
+    const threshold = thresholdKey === undefined
+      ? fallbackThresholds[i] ?? 1
+      : visualThreshold(category, thresholdKey, fallbackThresholds[i] ?? 1);
+    const candidate = order[i];
+    if (candidate !== undefined && level >= threshold) proposed = candidate;
+  }
+  return proposed;
+}
+
+function steppedScaleByThresholds(
+  level: number,
+  category: string,
+  steps: readonly [key: string, scale: number, fallback: number][],
+): number {
+  let scale = 0;
+  for (const [key, value, fallback] of steps) {
+    if (level >= visualThreshold(category, key, fallback)) scale = Math.max(0, value);
+  }
+  return scale;
+}
+
+function projectedScoreProxyPixelRadius(): number {
+  const value = ENTITY_LOD_VISUAL_SCORE.proxyPixelRadius;
+  return Number.isFinite(value) && value >= 0 ? value : 2.5;
+}
+
+function projectedScoreFullPixelRadius(): number {
+  const proxy = projectedScoreProxyPixelRadius();
+  const value = ENTITY_LOD_VISUAL_SCORE.fullDetailPixelRadius;
+  return Number.isFinite(value) && value > proxy ? value : Math.max(proxy + 1, 26);
+}
+
+function smoothstep01(value: number): number {
+  const s = clamp01(value);
+  return s * s * (3 - 2 * s);
 }
 
 /**
@@ -110,14 +187,87 @@ export function detailLevelForDistance(distance: number, switchDistance: number)
   const t = (switchDistance - distance) / (switchDistance - fullDistance);
   // Smoothstep keeps the ramp gentle at both ends (no visible pop entering full
   // detail, no cliff into the glyph) while remaining monotonic in `t`.
-  const s = clamp01(t);
-  return s * s * (3 - 2 * s);
+  return smoothstep01(t);
+}
+
+/**
+ * Map projected screen radius to L in [0,1]. This is the RTS-camera-stable
+ * score: it follows what the player can actually see rather than raw zoom or
+ * a camera-angle-dependent distance alone.
+ */
+export function detailLevelForProjectedRadius(projectedRadiusPx: number): number {
+  if (!Number.isFinite(projectedRadiusPx) || projectedRadiusPx <= 0) {
+    return DETAIL_LEVEL_GLYPH;
+  }
+  const proxyPx = projectedScoreProxyPixelRadius();
+  const fullPx = projectedScoreFullPixelRadius();
+  if (projectedRadiusPx <= proxyPx) return DETAIL_LEVEL_GLYPH;
+  if (projectedRadiusPx >= fullPx) return DETAIL_LEVEL_FULL;
+  return smoothstep01((projectedRadiusPx - proxyPx) / (fullPx - proxyPx));
+}
+
+export function projectedRadiusPxForView(
+  view: RenderViewState3D,
+  simX: number,
+  simY: number,
+  simZ: number,
+  radius: number,
+): number {
+  const r = Number.isFinite(radius) && radius > 0 ? radius : 1;
+  const dx = simX - view.cameraX;
+  const dy = simZ - view.cameraY;
+  const dz = simY - view.cameraZ;
+  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const depth = dx * view.forwardX + dy * view.forwardY + dz * view.forwardZ;
+  const visibleDepth = depth > r ? depth : distance;
+  if (!Number.isFinite(visibleDepth) || visibleDepth <= 1e-4) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const fovScale = Math.tan(Math.max(0.001, view.fovYRad) * 0.5);
+  const viewportScale = Math.max(1, view.viewportHeightPx) * 0.5;
+  if (!Number.isFinite(fovScale) || fovScale <= 1e-6) {
+    return (r / visibleDepth) * viewportScale;
+  }
+  return (r / (visibleDepth * fovScale)) * viewportScale;
+}
+
+export function detailLevelForViewPosition(
+  view: RenderViewState3D,
+  simX: number,
+  simY: number,
+  simZ: number,
+  radius: number,
+): number {
+  return detailLevelForProjectedRadius(
+    projectedRadiusPxForView(view, simX, simY, simZ, radius),
+  );
 }
 
 /** The authored level at/above which `feature` is drawn (0 = always present). */
 export function featureMinLevel(feature: DetailFeature): number {
-  const value = FEATURE_MIN_LEVEL[feature];
-  return Number.isFinite(value) ? value : 0;
+  const [category, key] = FEATURE_VISUAL_THRESHOLD[feature];
+  return visualThreshold(category, key, 0);
+}
+
+export function visualThreshold(
+  category: string,
+  key: string,
+  fallback: number = 0,
+): number {
+  const bucket = THRESHOLDS[category];
+  const value = isRecord(bucket) ? bucket[key] : undefined;
+  const raw = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return clamp01(raw);
+}
+
+export function visualFeatureVisibleAtDetail(
+  category: string,
+  key: string,
+  level: number,
+  fallback: number = 0,
+): boolean {
+  if (!ENTITY_DETAIL_ENABLED) return true;
+  return level >= visualThreshold(category, key, fallback);
 }
 
 /** Whether `feature` is present on a host at the given detail level. */
@@ -132,9 +282,10 @@ export function featureVisibleAtDetail(feature: DetailFeature, level: number): b
  */
 export function geometryTierForDetail(level: number): PrimitiveGeometryTier {
   if (!ENTITY_DETAIL_ENABLED) return 'close';
-  const cutoffs = ENTITY_DETAIL_TIER_CUTOFFS;
-  if (level >= cutoffs.close) return 'close';
-  if (level >= cutoffs.mid) return 'mid';
+  const mid = visualThreshold('geometry', 'mid', 0.3);
+  const close = visualThreshold('geometry', 'close', 0.62);
+  if (level >= close) return 'close';
+  if (level >= mid) return 'mid';
   return 'far';
 }
 
@@ -174,24 +325,26 @@ const UNIT_SHAPE_ORDER: readonly UnitShape[] = ['circles', 'full'];
 /** Turret rung for a host's level, clamped to the user's ceiling. */
 export function turretStyleForDetail(level: number, ceiling: TurretStyle): TurretStyle {
   if (!ENTITY_DETAIL_ENABLED) return ceiling;
-  let proposed: TurretStyle = 'none';
-  if (featureVisibleAtDetail('turret', level)) {
-    proposed = featureVisibleAtDetail('turretHead', level) ? 'full' : 'simple';
-  }
+  const proposed = rungForDetail(
+    'turret',
+    TURRET_STYLE_ORDER,
+    ['none', 'simple', 'full'],
+    level,
+    [0, 0.12, 0.4],
+  );
   return clampRungToCeiling(TURRET_STYLE_ORDER, proposed, ceiling);
 }
 
 /** Locomotion (legs) rung for a host's level, clamped to the user's ceiling. */
 export function legStyleForDetail(level: number, ceiling: LegStyle): LegStyle {
   if (!ENTITY_DETAIL_ENABLED) return ceiling;
-  let proposed: LegStyle = 'none';
-  if (featureVisibleAtDetail('locomotion', level)) {
-    proposed = featureVisibleAtDetail('locomotionAnimated', level)
-      ? 'full'
-      : featureVisibleAtDetail('chassisDetail', level)
-        ? 'animated'
-        : 'simple';
-  }
+  const proposed = rungForDetail(
+    'locomotion',
+    LEG_STYLE_ORDER,
+    ['none', 'simple', 'animated', 'full'],
+    level,
+    [0, 0.14, 0.44, 0.62],
+  );
   return clampRungToCeiling(LEG_STYLE_ORDER, proposed, ceiling);
 }
 
@@ -201,36 +354,91 @@ export function projectileStyleForDetail(
   ceiling: ProjectileStyle,
 ): ProjectileStyle {
   if (!ENTITY_DETAIL_ENABLED) return ceiling;
-  let proposed: ProjectileStyle = 'dot';
-  if (featureVisibleAtDetail('projectileGlow', level)) proposed = 'full';
-  else if (featureVisibleAtDetail('projectileTrail', level)) proposed = 'trail';
-  else if (featureVisibleAtDetail('healthBar', level)) proposed = 'core';
+  const proposed = rungForDetail(
+    'shot',
+    PROJECTILE_STYLE_ORDER,
+    ['dot', 'core', 'trail', 'glow', 'full'],
+    level,
+    [0, 0.1, 0.24, 0.6, 0.82],
+  );
   return clampRungToCeiling(PROJECTILE_STYLE_ORDER, proposed, ceiling);
 }
 
 /** Beam rung for the firing host's level, clamped to the user's ceiling. */
 export function beamStyleForDetail(level: number, ceiling: BeamStyle): BeamStyle {
   if (!ENTITY_DETAIL_ENABLED) return ceiling;
-  let proposed: BeamStyle = 'simple';
-  if (featureVisibleAtDetail('beamGlow', level)) proposed = 'complex';
-  else if (featureVisibleAtDetail('projectileTrail', level)) proposed = 'detailed';
-  else if (featureVisibleAtDetail('turret', level)) proposed = 'standard';
+  const proposed = rungForDetail(
+    'beam',
+    BEAM_STYLE_ORDER,
+    ['simple', 'standard', 'detailed', 'complex'],
+    level,
+    [0, 0.2, 0.56, 0.74],
+  );
   return clampRungToCeiling(BEAM_STYLE_ORDER, proposed, ceiling);
 }
 
 /** Unit body shape rung for a host's level, clamped to the user's ceiling. */
 export function unitShapeForDetail(level: number, ceiling: UnitShape): UnitShape {
   if (!ENTITY_DETAIL_ENABLED) return ceiling;
-  const proposed: UnitShape = featureVisibleAtDetail('chassisDetail', level)
-    ? 'full'
-    : 'circles';
+  const proposed = rungForDetail(
+    'unit',
+    UNIT_SHAPE_ORDER,
+    ['body', 'bodyDetail'],
+    level,
+    [0, 0.46],
+  );
   return clampRungToCeiling(UNIT_SHAPE_ORDER, proposed, ceiling);
 }
 
-/** How far a unit's detail level must move from its last-built level before its
- *  mesh is rebuilt into a new band. Prevents a unit parked on a band boundary
- *  from rebuilding every frame as its level dithers. */
-export const UNIT_DETAIL_REBUILD_MARGIN = 0.04;
+export function detailRungIndex(level: number): number {
+  return GEOMETRY_TIER_ORDER.indexOf(geometryTierForDetail(level));
+}
+
+export function smokeSpawnScaleForDetail(level: number): number {
+  if (!ENTITY_DETAIL_ENABLED) return 1;
+  return steppedScaleByThresholds(
+    level,
+    'smoke',
+    [
+      ['none', 0, 0],
+      ['minimumCadence', 0.25, 0.12],
+      ['lowDensity', 0.42, 0.28],
+      ['normalReducedDensity', 0.62, 0.46],
+      ['nearFullDensity', 0.82, 0.64],
+      ['fullDensity', 1, 0.82],
+    ],
+  );
+}
+
+export function explosionSpawnScaleForDetail(level: number): number {
+  if (!ENTITY_DETAIL_ENABLED) return 1;
+  return steppedScaleByThresholds(
+    level,
+    'explosion',
+    [
+      ['flashOnly', 0.18, 0],
+      ['smallRing', 0.32, 0.18],
+      ['fewParticles', 0.5, 0.36],
+      ['debrisScatter', 0.75, 0.56],
+      ['fullShock', 1, 0.76],
+    ],
+  );
+}
+
+export function debrisSpawnScaleForDetail(level: number): number {
+  if (!ENTITY_DETAIL_ENABLED) return 1;
+  return steppedScaleByThresholds(
+    level,
+    'debris',
+    [
+      ['none', 0, 0],
+      ['lowCount', 0.2, 0.2],
+      ['moderateCount', 0.45, 0.4],
+      ['physicalPieces', 0.75, 0.6],
+      ['fullPieces', 1, 0.8],
+    ],
+  );
+}
 
 /**
  * Coarse per-unit detail band: the turret and leg rungs (after clamping to the
@@ -243,7 +451,18 @@ export const UNIT_DETAIL_REBUILD_MARGIN = 0.04;
 export function unitDetailBand(level: number, gfx: GraphicsConfig): number {
   const turret = TURRET_STYLE_ORDER.indexOf(turretStyleForDetail(level, gfx.turretStyle));
   const legs = LEG_STYLE_ORDER.indexOf(legStyleForDetail(level, gfx.legs));
-  return (turret < 0 ? 0 : turret) * 8 + (legs < 0 ? 0 : legs);
+  const tier = detailRungIndex(level);
+  const shape = UNIT_SHAPE_ORDER.indexOf(unitShapeForDetail(level, gfx.unitShape));
+  const treadsAnimated =
+    gfx.treadsAnimated &&
+    visualFeatureVisibleAtDetail('locomotion', 'basicAnimation', level, 0.44);
+  return (
+    (tier < 0 ? 0 : tier) * 64 +
+    (turret < 0 ? 0 : turret) * 16 +
+    (legs < 0 ? 0 : legs) * 4 +
+    (shape < 0 ? 0 : shape) * 2 +
+    (treadsAnimated ? 1 : 0)
+  );
 }
 
 /**
@@ -255,6 +474,20 @@ export function unitDetailBand(level: number, gfx: GraphicsConfig): number {
 export function unitDetailGraphicsConfig(gfx: GraphicsConfig, level: number): GraphicsConfig {
   const turretStyle = turretStyleForDetail(level, gfx.turretStyle);
   const legs = legStyleForDetail(level, gfx.legs);
-  if (turretStyle === gfx.turretStyle && legs === gfx.legs) return gfx;
-  return { ...gfx, turretStyle, legs };
+  const unitShape = unitShapeForDetail(level, gfx.unitShape);
+  const chassisDetail =
+    gfx.chassisDetail && visualFeatureVisibleAtDetail('unit', 'bodyDetail', level, 0.46);
+  const treadsAnimated =
+    gfx.treadsAnimated &&
+    visualFeatureVisibleAtDetail('locomotion', 'basicAnimation', level, 0.44);
+  if (
+    turretStyle === gfx.turretStyle &&
+    legs === gfx.legs &&
+    unitShape === gfx.unitShape &&
+    chassisDetail === gfx.chassisDetail &&
+    treadsAnimated === gfx.treadsAnimated
+  ) {
+    return gfx;
+  }
+  return { ...gfx, turretStyle, legs, unitShape, chassisDetail, treadsAnimated };
 }

@@ -42,6 +42,7 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
+import { clamp01 } from './RenderUtils';
 
 type DebrisStyle = 'puff' | 'scatter' | 'shatter' | 'detonate' | 'obliterate';
 
@@ -467,11 +468,16 @@ export class Debris3D {
     simZ: number,
     ctx: SimDeathContext,
     graphicsOverride?: GraphicsConfig,
+    detailScale: number = 1,
   ): void {
     const gfx = graphicsOverride ?? getGraphicsConfig();
     const style = (gfx.materialExplosionStyle ?? gfx.deathExplosionStyle ?? 'scatter') as DebrisStyle;
     const stride = Math.max(1, STYLE_STRIDE[style] ?? 1);
-    const pieceBudget = Math.max(0, Math.floor(gfx.materialExplosionPieceBudget ?? GLOBAL_MAX_PIECES));
+    const lodScale = clamp01(detailScale);
+    const pieceBudget = Math.max(
+      0,
+      Math.floor((gfx.materialExplosionPieceBudget ?? GLOBAL_MAX_PIECES) * lodScale),
+    );
     const physicsFrameStride =
       Math.max(0, Math.floor(gfx.materialExplosionPhysicsFramesSkip ?? 0)) + 1;
     if (pieceBudget <= 0) return;

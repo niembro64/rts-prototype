@@ -1,10 +1,7 @@
 import type * as THREE from 'three';
 import {
   ENTITY_LOD_ENABLED,
-  ENTITY_LOD_ENTER_PROXY_DISTANCE_MULTIPLIER,
-  ENTITY_LOD_EXIT_PROXY_DISTANCE_MULTIPLIER,
   ENTITY_LOD_FULL_DETAIL_DISTANCE,
-  ENTITY_LOD_HYSTERESIS_ENABLED,
   ENTITY_LOD_MIN_RADIUS,
   ENTITY_LOD_PROXY_ENABLED,
   ENTITY_LOD_REFERENCE_RADIUS,
@@ -18,13 +15,15 @@ import {
   DETAIL_LEVEL_FULL,
   DETAIL_LEVEL_GLYPH,
   detailLevelForDistance,
+  detailLevelForViewPosition,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 
 const FALLBACK_MIN_ENTITY_LOD_RADIUS = 1;
 const ENTITY_LOD_BODY_CHANNEL = 'body';
-const LOD_HYSTERESIS_STALE_FRAME_LIMIT = 120;
-const LOD_HYSTERESIS_PRUNE_INTERVAL_FRAMES = 30;
+const LOD_STATE_STALE_FRAME_LIMIT = 120;
+const LOD_STATE_PRUNE_INTERVAL_FRAMES = 30;
+const LOD_PROXY_DETAIL_LEVEL = DETAIL_LEVEL_GLYPH;
 const RUNTIME_LOD_DISTANCE_MULTIPLIER = (() => {
   const profile = getBrowserRenderRuntimeProfile();
   const configuredValue =
@@ -91,16 +90,6 @@ function finitePositiveOr(value: number, fallback: number): number {
 
 function minEntityLodRadius(): number {
   return finitePositiveOr(ENTITY_LOD_MIN_RADIUS, FALLBACK_MIN_ENTITY_LOD_RADIUS);
-}
-
-function enterProxyDistanceMultiplier(): number {
-  return finitePositiveOr(ENTITY_LOD_ENTER_PROXY_DISTANCE_MULTIPLIER, 1);
-}
-
-function exitProxyDistanceMultiplier(): number {
-  const enter = enterProxyDistanceMultiplier();
-  const exit = finitePositiveOr(ENTITY_LOD_EXIT_PROXY_DISTANCE_MULTIPLIER, enter);
-  return Math.min(enter, exit);
 }
 
 function entityLodEnabled(): boolean {
@@ -274,9 +263,9 @@ export function simPositionUsesLowEmissionLod3D(
 
 /**
  * Continuous per-entity detail level L in [0,1] for callers without a
- * hysteresis cache. 1 = full fidelity, 0 = glyph. Uses the same per-entity
+ * render-loop cache. 1 = full fidelity, 0 = glyph. Uses the same per-entity
  * switch distance as the proxy, so L hits 0 where the entity turns into its
- * glyph. Prefer the cached {@link EntityLodHysteresis3D.entityDetailLevel}
+ * glyph. Prefer the cached {@link EntityLodState3D.entityDetailLevel}
  * inside the render loop.
  */
 export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): number {
@@ -284,7 +273,7 @@ export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): numbe
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
   const radius = entityLodRadius3D(entity);
-  const switchDistance = entityLodFullDetailDistance3D(radius, enterProxyDistanceMultiplier());
+  const switchDistance = entityLodFullDetailDistance3D(radius);
   const distance = Math.sqrt(entityCameraDistanceSq3D(camera, entity));
   return detailLevelForDistance(distance, switchDistance);
 }
@@ -300,15 +289,16 @@ export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
   const radius = entityLodRadius3D(entity);
-  const switchDistance = entityLodFullDetailDistance3D(radius, enterProxyDistanceMultiplier());
-  const dx = view.cameraX - entity.transform.x;
-  const dy = view.cameraY - entity.transform.z;
-  const dz = view.cameraZ - entity.transform.y;
-  const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  return detailLevelForDistance(distance, switchDistance);
+  return detailLevelForViewPosition(
+    view,
+    entity.transform.x,
+    entity.transform.y,
+    entity.transform.z,
+    radius,
+  );
 }
 
-export class EntityLodHysteresis3D {
+export class EntityLodState3D {
   private readonly proxyIdsByChannel = new Map<string, Set<EntityId>>();
   private readonly lastSeenFrameByChannel = new Map<string, Map<EntityId, number>>();
   private readonly radiusByEntityId = new Map<EntityId, number>();
@@ -335,23 +325,23 @@ export class EntityLodHysteresis3D {
   }
 
   endFrame(): void {
-    if (this.frame % LOD_HYSTERESIS_PRUNE_INTERVAL_FRAMES !== 0) return;
+    if (this.frame % LOD_STATE_PRUNE_INTERVAL_FRAMES !== 0) return;
     for (const [channel, proxyIds] of this.proxyIdsByChannel) {
       const lastSeenByEntityId = this.lastSeenFrameByChannel.get(channel);
       for (const entityId of proxyIds) {
         const lastSeenFrame = lastSeenByEntityId?.get(entityId) ?? 0;
-        if (this.frame - lastSeenFrame <= LOD_HYSTERESIS_STALE_FRAME_LIMIT) continue;
+        if (this.frame - lastSeenFrame <= LOD_STATE_STALE_FRAME_LIMIT) continue;
         proxyIds.delete(entityId);
         lastSeenByEntityId?.delete(entityId);
       }
     }
     for (const [entityId, radiusFrame] of this.radiusFrameByEntityId) {
-      if (this.frame - radiusFrame <= LOD_HYSTERESIS_STALE_FRAME_LIMIT) continue;
+      if (this.frame - radiusFrame <= LOD_STATE_STALE_FRAME_LIMIT) continue;
       this.radiusFrameByEntityId.delete(entityId);
       this.radiusByEntityId.delete(entityId);
     }
     for (const [entityId, distanceFrame] of this.distanceSqFrameByEntityId) {
-      if (this.frame - distanceFrame <= LOD_HYSTERESIS_STALE_FRAME_LIMIT) continue;
+      if (this.frame - distanceFrame <= LOD_STATE_STALE_FRAME_LIMIT) continue;
       this.distanceSqFrameByEntityId.delete(entityId);
       this.distanceSqByEntityId.delete(entityId);
     }
@@ -432,17 +422,59 @@ export class EntityLodHysteresis3D {
 
     const proxyIds = this.proxyIdsForChannel(channel);
     this.lastSeenForChannel(channel).set(entity.id, this.frame);
-    const wasProxy = proxyIds.has(entity.id);
-    const multiplier = ENTITY_LOD_HYSTERESIS_ENABLED && wasProxy
-      ? exitProxyDistanceMultiplier()
-      : enterProxyDistanceMultiplier();
     const useProxy =
       this.entityCameraDistanceSq(camera, entity) >
       entityLodFullDetailDistanceSq3D(
         this.entityLodRadius(entity),
-        multiplier * this.distanceScale,
+        this.distanceScale,
         fullDetailDistance,
       );
+
+    if (useProxy) proxyIds.add(entity.id);
+    else proxyIds.delete(entity.id);
+    return useProxy;
+  }
+
+  /**
+   * AUTO-mode proxy selection for the active 3D render loop. Uses projected
+   * screen size so the LOD switch matches the 0..1 visual thresholds instead of
+   * a camera-angle-dependent distance-only cutoff.
+   */
+  entityUsesLodProxyForView(
+    view: RenderViewState3D,
+    entity: Entity,
+    channel: string = ENTITY_LOD_BODY_CHANNEL,
+    fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
+  ): boolean {
+    if (fullDetailDistance === null) {
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
+    }
+    const lodMode = getLodMode();
+    if (lodMode === 'high') {
+      this.deleteChannelEntity(channel, entity.id);
+      return false;
+    }
+    if (lodMode === 'low') {
+      this.proxyIdsForChannel(channel).add(entity.id);
+      this.lastSeenForChannel(channel).set(entity.id, this.frame);
+      return true;
+    }
+    if (!entityLodEnabled()) {
+      this.delete(entity.id);
+      return false;
+    }
+
+    const proxyIds = this.proxyIdsForChannel(channel);
+    this.lastSeenForChannel(channel).set(entity.id, this.frame);
+    const detailLevel = detailLevelForViewPosition(
+      view,
+      entity.transform.x,
+      entity.transform.y,
+      entity.transform.z,
+      this.entityLodRadius(entity) * this.distanceScale,
+    );
+    const useProxy = detailLevel <= LOD_PROXY_DETAIL_LEVEL;
 
     if (useProxy) proxyIds.add(entity.id);
     else proxyIds.delete(entity.id);
@@ -461,7 +493,7 @@ export class EntityLodHysteresis3D {
     const radius = this.entityLodRadius(entity);
     const switchDistance = entityLodFullDetailDistance3D(
       radius,
-      enterProxyDistanceMultiplier() * this.distanceScale,
+      this.distanceScale,
     );
     const distance = Math.sqrt(this.entityCameraDistanceSq(camera, entity));
     return detailLevelForDistance(distance, switchDistance);
@@ -579,7 +611,7 @@ export class EntityLodHysteresis3D {
       const frame = frameByEntityId[entityId];
       if (
         frame === undefined ||
-        this.frame - frame > LOD_HYSTERESIS_STALE_FRAME_LIMIT
+        this.frame - frame > LOD_STATE_STALE_FRAME_LIMIT
       ) {
         trackedByEntityId[entityId] = undefined;
         valueByEntityId[entityId] = undefined;

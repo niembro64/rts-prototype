@@ -10,6 +10,7 @@ import { COLORS } from '@/colorsConfig';
 import { hexToRgb01 } from './colorUtils';
 import { disposeMesh } from './threeUtils';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import { clamp01 } from './RenderUtils';
 
 const CORE_COLOR = COLORS.effects.explosion.core.colorHex;
 const CORE_LIFETIME_MS = 180;
@@ -173,18 +174,21 @@ export class Explosion3D {
     _momentumZ: number = 0,
     _shellColor?: number,
     _styleOverride?: ExplosionStyle,
+    detailScale: number = 1,
   ): void {
     const r = Number.isFinite(radius)
       ? Math.max(radius, MIN_IMPACT_RADIUS)
       : MIN_IMPACT_RADIUS;
     const durMult = durationMultiplier(r);
+    const lod = clamp01(detailScale);
+    const sizeScale = 0.72 + lod * 0.28;
     this.addPuff(
       simX,
       simY,
       simZ,
-      CORE_LIFETIME_MS * durMult,
-      r * CORE_EXPAND_START,
-      r * CORE_EXPAND_END,
+      CORE_LIFETIME_MS * durMult * (0.62 + lod * 0.38),
+      r * CORE_EXPAND_START * sizeScale,
+      r * CORE_EXPAND_END * sizeScale,
     );
   }
 
@@ -196,6 +200,7 @@ export class Explosion3D {
     momentumX: number = 0,
     momentumZ: number = 0,
     styleOverride?: ExplosionStyle,
+    detailScale: number = 1,
   ): void {
     this.spawnImpact(
       simX,
@@ -206,6 +211,7 @@ export class Explosion3D {
       momentumZ,
       undefined,
       styleOverride,
+      detailScale,
     );
   }
 

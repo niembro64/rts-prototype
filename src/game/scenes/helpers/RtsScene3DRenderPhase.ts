@@ -80,12 +80,15 @@ import {
   ENTITY_HUD_FADE_END_DISTANCE_FRAC,
   EMISSION_LOD_HIGH_TO_LOW_DISTANCES,
 } from '@/config';
-import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
+import type {
+  RenderFrameState3D,
+  RenderViewState3D,
+} from '../../render3d/RenderFrameState3D';
 import type { FootprintBounds, FootprintQuad, ViewportFootprint } from '../../ViewportFootprint';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
 import {
-  EntityLodHysteresis3D,
+  EntityLodState3D,
   type EntityLodEmission3D,
 } from '../../render3d/EntityLod3D';
 
@@ -199,7 +202,7 @@ export class RtsScene3DRenderPhase {
   private readonly groundPrintPacket = new GroundPrintRenderPacket3D();
   private readonly unitRenderPacket = new UnitRenderPacket3D();
   private readonly buildingRenderPacket = new BuildingRenderPacket3D();
-  private readonly entityLod = new EntityLodHysteresis3D();
+  private readonly entityLod = new EntityLodState3D();
   private readonly renderEntityLists: RenderPhaseEntityLists = {
     unitRows: this.unitRenderPacket,
     buildingRows: this.buildingRenderPacket,
@@ -448,7 +451,7 @@ export class RtsScene3DRenderPhase {
         contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
       includeGroundPrints: updateEffectsThisFrame,
       hoveredEntity,
-    }, selectionHudMode);
+    }, selectionHudMode, renderFrameState.view);
     phaseNow = performance.now();
     timings.entityPacketMs = phaseNow - phaseMark;
     phaseMark = phaseNow;
@@ -517,6 +520,7 @@ export class RtsScene3DRenderPhase {
       this.clientViewState.getLineProjectileRenderVersion(),
       entityRenderer,
       (entity, emission) => this.entityEmissionUsesFarLod(entity, emission),
+      renderFrameState.view,
     );
     phaseNow = performance.now();
     timings.beamMs = phaseNow - phaseMark;
@@ -629,6 +633,7 @@ export class RtsScene3DRenderPhase {
         this.renderFrameIndex,
         this.renderScope,
         entityRenderer.getHoverSmokeEmitters(),
+        renderFrameState.view,
       );
       fogOfWarFogRenderer.update(
         this.clientViewState,
@@ -743,6 +748,7 @@ export class RtsScene3DRenderPhase {
   private prepareEntityLists(
     options: RenderPhaseEntityListOptions,
     mode: SelectionHudMode,
+    renderView: RenderViewState3D,
   ): RenderPhaseEntityLists {
     return this.clientViewState.prepareRenderEntityPackets3D(
       this.renderEntityLists,
@@ -760,7 +766,7 @@ export class RtsScene3DRenderPhase {
         getEntityHudToggle,
         lookupPlayerName: this.lookupPlayerName,
         getGroundPrintLocomotionMesh: this.getGroundPrintLocomotionMesh,
-        isEntityFarLod: (entity) => this.entityUsesFarLod(entity),
+        isEntityFarLod: (entity) => this.entityUsesFarLod(entity, renderView),
         isEntityEmissionFarLod: (entity, emission) =>
           this.entityEmissionUsesFarLod(entity, emission),
       },
@@ -778,8 +784,8 @@ export class RtsScene3DRenderPhase {
     return this.clientViewState.collectProjectileRenderLists(bounds, this.projectileRenderLists);
   }
 
-  private entityUsesFarLod(entity: Entity): boolean {
-    return this.entityLod.entityUsesLodProxy(this.threeApp.camera, entity);
+  private entityUsesFarLod(entity: Entity, renderView: RenderViewState3D): boolean {
+    return this.entityLod.entityUsesLodProxyForView(renderView, entity);
   }
 
   private entityEmissionUsesFarLod(

@@ -4,15 +4,15 @@
     "fullDetailDistance": 3600,
     "referenceRadius": 30,
     "minRadius": 1,
-    "hysteresis": {
-      "enabled": true,
-      "enterProxyMultiplier": 1,
-      "exitProxyMultiplier": 0.92
-    },
     "runtimeDistanceMultipliers": {
       "browserDesktop": 1,
       "browserMobile": 1,
       "tauriDesktop": 0.6
+    },
+    "visualScore": {
+      "mode": "projectedRadius",
+      "proxyPixelRadius": 1.5,
+      "fullDetailPixelRadius": 12
     }
   },
   "proxy": {
@@ -54,30 +54,129 @@
     "shieldImpact": 30
   },
   "detail": {
-    "comment": "Continuous per-entity detail level L in [0,1]. 1 = full fidelity (only when decently zoomed in), 0 = the flat proxy glyph. L is derived from the same per-entity switch distance the proxy uses, so L reaches 0 exactly where the entity would flip to its glyph. fullDetailFraction is the fraction of that switch distance within which L stays pinned at 1; between that and the switch distance L ramps 1 -> 0. Composed parts (turret, barrel, locomotion, ...) never compute their own L: they read their host's. Each feature below names the L at/above which that part is drawn, so higher-threshold parts (small greeble) shed first as you zoom out while the body survives to the glyph. tierCutoffs pick a geometry segment tier from L.",
+    "comment": "Continuous visual detail score L in [0,1]. L=0 is the fully zoomed-out/proxy end: the object is at or below visualScore.proxyPixelRadius on screen. L=1 is the fully zoomed-in/full-detail end: the object is at or above visualScore.fullDetailPixelRadius on screen. In AUTO mode distance only matters through projected screen radius, so larger objects hold higher L farther away and smaller objects shed sooner. Every threshold below is the minimum L where that named visual piece/rung appears.",
     "enabled": true,
     "fullDetailFraction": 0.4,
-    "tierCutoffs": {
-      "close": 0.62,
-      "mid": 0.3
+    "thresholds": {
+      "comment": "Single source of truth for LOD flip points. Each value is a threshold in [0,1]; the named piece/rung is active when L is greater than or equal to that number.",
+      "geometry": {
+        "far": 0,
+        "mid": 0.3,
+        "close": 0.62
+      },
+      "unit": {
+        "body": 0,
+        "simplifiedBody": 0.08,
+        "silhouette": 0.18,
+        "weaponDirection": 0.3,
+        "bodyDetail": 0.46,
+        "chassisDetail": 0.46,
+        "shieldPanels": 0.46,
+        "fullPresentation": 0.62,
+        "treadsAnimated": 0.44,
+        "smallTrim": 0.78
+      },
+      "turret": {
+        "none": 0,
+        "simple": 0.12,
+        "directionMarker": 0.12,
+        "primaryBarrel": 0.24,
+        "head": 0.4,
+        "full": 0.4,
+        "secondaryBarrels": 0.58,
+        "muzzleDetail": 0.76
+      },
+      "tower": {
+        "footprint": 0,
+        "baseAndWeaponDirection": 0.1,
+        "mainShape": 0.24,
+        "aimedTurret": 0.36,
+        "launcherDetails": 0.52,
+        "animationAndGlow": 0.68,
+        "smallTrim": 0.82
+      },
+      "building": {
+        "footprint": 0,
+        "simpleBody": 0.08,
+        "mainSilhouette": 0.22,
+        "typeDetails": 0.38,
+        "largeAnimation": 0.54,
+        "tinyTrim": 0.72
+      },
+      "locomotion": {
+        "none": 0,
+        "simple": 0.14,
+        "contactHints": 0.14,
+        "simpleRig": 0.26,
+        "animated": 0.44,
+        "basicAnimation": 0.44,
+        "full": 0.62,
+        "jointsAndCleats": 0.62,
+        "exhaustAndPolish": 0.78
+      },
+      "shot": {
+        "dot": 0,
+        "core": 0.1,
+        "trail": 0.24,
+        "normalTrail": 0.42,
+        "glow": 0.6,
+        "full": 0.82
+      },
+      "beam": {
+        "simple": 0,
+        "standard": 0.2,
+        "endpoint": 0.38,
+        "detailed": 0.56,
+        "complex": 0.74
+      },
+      "shield": {
+        "implicitSurface": 0,
+        "instancedSurface": 0.22,
+        "fullSurface": 0.5,
+        "impactDetail": 0.68
+      },
+      "smoke": {
+        "none": 0,
+        "minimumCadence": 0.12,
+        "lowDensity": 0.28,
+        "normalReducedDensity": 0.46,
+        "nearFullDensity": 0.64,
+        "fullDensity": 0.82
+      },
+      "explosion": {
+        "flashOnly": 0,
+        "smallRing": 0.18,
+        "fewParticles": 0.36,
+        "debrisScatter": 0.56,
+        "fullShock": 0.76
+      },
+      "debris": {
+        "none": 0,
+        "lowCount": 0.2,
+        "moderateCount": 0.4,
+        "physicalPieces": 0.6,
+        "fullPieces": 0.8
+      },
+      "hud": {
+        "none": 0,
+        "selectedOnly": 0.14,
+        "bars": 0.28,
+        "barsAndIcons": 0.42,
+        "names": 0.6
+      },
+      "groundMarks": {
+        "none": 0,
+        "coarse": 0.22,
+        "normal": 0.44,
+        "full": 0.68
+      }
     },
-    "featureMinLevel": {
-      "body": 0,
-      "healthBar": 0.12,
-      "turret": 0.1,
-      "barrelPrimary": 0.14,
-      "locomotion": 0.16,
-      "nameLabel": 0.24,
-      "projectileTrail": 0.3,
-      "turretHead": 0.34,
-      "shieldPanels": 0.4,
-      "beamGlow": 0.4,
-      "buildingDetail": 0.42,
-      "chassisDetail": 0.44,
-      "barrelSecondary": 0.5,
-      "projectileGlow": 0.5,
-      "locomotionAnimated": 0.52,
-      "muzzleDetail": 0.68
+    "floors": {
+      "selected": 0.45,
+      "hovered": 0.35,
+      "activelyFiring": 0.3,
+      "commander": 0.4,
+      "enemyInLos": 0.18
     }
   }
 }

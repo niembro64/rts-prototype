@@ -15,6 +15,7 @@ import {
 import { VISION_FADE_IN_MS, VISION_FADE_OUT_MS } from '@/visionConfig';
 import {
   buildBuildingShape,
+  type BuildingDetailMesh,
   type BuildingShapeType,
 } from './BuildingShape3D';
 import type { EntityMesh } from './EntityMesh3D';
@@ -48,6 +49,13 @@ import {
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
 import type { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
+import { entityDetailLevelForView } from './EntityLod3D';
+import {
+  detailRungIndex,
+  featureVisibleAtDetail,
+  turretStyleForDetail,
+  visualFeatureVisibleAtDetail,
+} from './EntityDetailLevel3D';
 import {
   CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER,
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
@@ -56,6 +64,49 @@ import {
 } from './ClientRenderTurretStateSlab';
 
 const BUILDING_HEIGHT = 120;
+
+function isTowerShapeType(shapeType: BuildingShapeType): boolean {
+  return shapeType.startsWith('tower');
+}
+
+function buildingDetailBandForLevel(level: number, shapeType: BuildingShapeType): number {
+  const tower = isTowerShapeType(shapeType);
+  const category = tower ? 'tower' : 'building';
+  return (
+    detailRungIndex(level) * 64 +
+    (featureVisibleAtDetail('turretHead', level) ? 32 : 0) +
+    (featureVisibleAtDetail('barrelSecondary', level) ? 16 : 0) +
+    (featureVisibleAtDetail('muzzleDetail', level) ? 8 : 0) +
+    (visualFeatureVisibleAtDetail(category, tower ? 'launcherDetails' : 'typeDetails', level, tower ? 0.52 : 0.38) ? 4 : 0) +
+    (visualFeatureVisibleAtDetail(category, tower ? 'animationAndGlow' : 'largeAnimation', level, tower ? 0.68 : 0.54) ? 2 : 0) +
+    (visualFeatureVisibleAtDetail(category, tower ? 'smallTrim' : 'tinyTrim', level, tower ? 0.82 : 0.72) ? 1 : 0)
+  );
+}
+
+function buildingDetailVisibleAtLevel(
+  detailMesh: BuildingDetailMesh,
+  shapeType: BuildingShapeType,
+  level: number,
+): boolean {
+  const tower = isTowerShapeType(shapeType);
+  if (detailMesh.role === 'windRig' || detailMesh.role === 'extractorRotor' || detailMesh.role === 'radarRig') {
+    return visualFeatureVisibleAtDetail(
+      tower ? 'tower' : 'building',
+      tower ? 'animationAndGlow' : 'largeAnimation',
+      level,
+      tower ? 0.68 : 0.54,
+    );
+  }
+  if (detailMesh.role === 'solarLeaf' || detailMesh.role === 'solarPanel' || detailMesh.role === 'solarTeamAccent') {
+    return visualFeatureVisibleAtDetail('building', 'typeDetails', level, 0.38);
+  }
+  return visualFeatureVisibleAtDetail(
+    tower ? 'tower' : 'building',
+    tower ? 'launcherDetails' : 'typeDetails',
+    level,
+    tower ? 0.52 : 0.38,
+  );
+}
 
 function entityHasPerFrameBuildingTurretWork(entity: Entity): boolean {
   const turrets = entity.combat?.turrets;
@@ -127,6 +178,7 @@ type BuildingEntityMeshFactoryOptions = {
   coneBarrelGeom: THREE.CylinderGeometry;
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
+  detailLevel: number;
 };
 
 function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): EntityMesh {
@@ -142,6 +194,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     coneBarrelGeom,
     getPrimaryMat,
     getTurretAccentMat,
+    detailLevel,
   } = options;
   const shapeType: BuildingShapeType = entity.buildingBlueprintId
     ? getBuildingConfig(entity.buildingBlueprintId).renderProfile
@@ -165,7 +218,9 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   chassis.add(shape.primary);
   group.add(chassis);
 
-  for (const detail of shape.details) {
+  const visibleDetails = shape.details.filter((detailMesh) =>
+    buildingDetailVisibleAtLevel(detailMesh, shapeType, detailLevel));
+  for (const detail of visibleDetails) {
     detail.mesh.userData.entityId = entity.id;
     group.add(detail.mesh);
   }
@@ -173,7 +228,14 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
   const buildingTurretMeshes: TurretMesh[] = [];
   const buildingTurrets = entity.combat?.turrets;
   if (buildingTurrets) {
-    const buildingGfx = getGraphicsConfig();
+    const baseBuildingGfx = getGraphicsConfig();
+    const buildingGfx = {
+      ...baseBuildingGfx,
+      turretStyle: turretStyleForDetail(detailLevel, baseBuildingGfx.turretStyle),
+      barrelSpin:
+        baseBuildingGfx.barrelSpin &&
+        featureVisibleAtDetail('muzzleDetail', detailLevel),
+    };
     for (let ti = 0; ti < buildingTurrets.length; ti++) {
       const turret = buildingTurrets[ti];
       const turretMesh = buildTurretMesh3D(group, turret, buildingGfx, {
@@ -182,6 +244,7 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
         coneBarrelGeom,
         primaryMat: getPrimaryMat(ownerId),
         turretAccentMat: getTurretAccentMat(ownerId),
+        detailLevel,
       });
       positionBuildingTurretRoot(turretMesh, turret);
       if (turretMesh.head) turretMesh.head.userData.entityId = entity.id;
@@ -201,17 +264,29 @@ function createBuildingEntityMesh3D(options: BuildingEntityMeshFactoryOptions): 
     bodyShapeKey: '',
     turrets: buildingTurretMeshes,
     geometryKey,
-    buildingDetails: shape.details,
+    buildingDetails: visibleDetails,
     isFactoryConstructionHost: shape.isFactoryConstructionHost,
-    windRig: shape.windRig,
-    extractorRig: shape.extractorRig,
-    solarRig: shape.solarRig,
-    radarRig: shape.radarRig,
-    converterRig: shape.converterRig,
+    windRig: visualFeatureVisibleAtDetail('building', 'largeAnimation', detailLevel, 0.54)
+      ? shape.windRig
+      : undefined,
+    extractorRig: visualFeatureVisibleAtDetail('building', 'largeAnimation', detailLevel, 0.54)
+      ? shape.extractorRig
+      : undefined,
+    solarRig: visualFeatureVisibleAtDetail('building', 'typeDetails', detailLevel, 0.38)
+      ? shape.solarRig
+      : undefined,
+    radarRig: visualFeatureVisibleAtDetail('building', 'largeAnimation', detailLevel, 0.54)
+      ? shape.radarRig
+      : undefined,
+    converterRig: visualFeatureVisibleAtDetail('building', 'typeDetails', detailLevel, 0.38)
+      ? shape.converterRig
+      : undefined,
     buildingRenderFrameKey: geometryKey,
     buildingRenderBlueprintId: entity.buildingBlueprintId,
     buildingRenderTurretCount: buildingTurrets?.length ?? 0,
-    buildingHasPerFrameTurretWork: entityHasPerFrameBuildingTurretWork(entity),
+    buildingHasPerFrameTurretWork:
+      entityHasPerFrameBuildingTurretWork(entity) &&
+      featureVisibleAtDetail('barrelSecondary', detailLevel),
     buildingHeight: shape.height,
     buildingPrimaryMaterialLocked: shape.primaryMaterialLocked === true,
     buildingBodyless: shape.bodyless === true,
@@ -391,6 +466,14 @@ export class BuildingEntityRenderer3D {
       }
       const entity = rows.entityAt(row);
       if (entity === undefined || entity.building === null) continue;
+      const shapeType: BuildingShapeType = entity.buildingBlueprintId
+        ? getBuildingConfig(entity.buildingBlueprintId).renderProfile
+        : 'unknown';
+      const detailLevel = entityDetailLevelForView(frameState.view, entity);
+      const detailBand = buildingDetailBandForLevel(detailLevel, shapeType);
+      const detailBandChanged =
+        mesh !== undefined &&
+        mesh.buildingRenderDetailBand !== detailBand;
       const wasLodProxyActive = mesh?.renderLodProxyActive === true;
       if (mesh !== undefined) {
         this.reactivateBuildingMeshForScope(entity, mesh);
@@ -421,7 +504,8 @@ export class BuildingEntityRenderer3D {
         !needsTurretFrame &&
         !bodyFadeActive &&
         !overlayDirty &&
-        !wasLodProxyActive
+        !wasLodProxyActive &&
+        !detailBandChanged
       ) {
         setObjectVisibleIfChanged(mesh.group, true);
         if (pruneBuildings) mesh.renderSeenToken = pruneToken;
@@ -436,6 +520,8 @@ export class BuildingEntityRenderer3D {
         rangeOverlayStateVersion,
         unitOverlayStateVersion,
         mesh === undefined || overlayDirty,
+        detailLevel,
+        detailBand,
       );
       if (pruneBuildings) {
         const updatedMesh = this.meshes.get(entityId);
@@ -663,6 +749,8 @@ export class BuildingEntityRenderer3D {
     rangeOverlayStateVersion: number,
     unitOverlayStateVersion: number,
     updateStaticOverlays: boolean,
+    detailLevel: number,
+    detailBand: number,
   ): void {
     // If this id is mid death-fade and reappeared (id reuse / re-add),
     // finalize the dying mesh so we don't draw it under the rebuilt one.
@@ -684,7 +772,8 @@ export class BuildingEntityRenderer3D {
       (
         mesh.buildingRenderFrameKey !== frameState.key ||
         mesh.buildingRenderBlueprintId !== blueprintId ||
-        mesh.buildingRenderTurretCount !== turretCount
+        mesh.buildingRenderTurretCount !== turretCount ||
+        mesh.buildingRenderDetailBand !== detailBand
       )
     ) {
       this.animations.unregister(entity.id);
@@ -708,7 +797,9 @@ export class BuildingEntityRenderer3D {
         coneBarrelGeom: this.coneBarrelGeom,
         getPrimaryMat: this.getPrimaryMat,
         getTurretAccentMat: this.getTurretAccentMat,
+        detailLevel,
       });
+      mesh.buildingRenderDetailBand = detailBand;
       this.meshes.set(entity.id, mesh);
       this.animations.register(entity, mesh);
       this.registerBuildingSpinTurrets(entity, mesh);

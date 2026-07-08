@@ -30,6 +30,7 @@ import {
   type ConstructionEmitterRig,
 } from './ConstructionEmitterMesh3D';
 import { TURRET_BLUEPRINTS } from '../sim/blueprints/turrets';
+import { featureVisibleAtDetail } from './EntityDetailLevel3D';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -139,6 +140,9 @@ type TurretMesh3DDeps = {
    *  The Meshes still live in TurretMesh.barrels[] as data carriers
    *  but are never drawn directly. */
   skipBarrels?: boolean;
+  /** Host visual score in [0,1]. Used only to shed tiny turret pieces;
+   *  gameplay aim and projectile origins remain unchanged. */
+  detailLevel?: number;
 };
 
 // Scratch vectors reused across all turret builds — module-local so
@@ -157,6 +161,7 @@ export function buildTurretMesh3D(
   const isShield = barrel?.type === 'complexSingleEmitter';
   const headRadius = getTurretHeadRadius(turret.config);
   const headOnly = turret.config.headOnly === true;
+  const detailLevel = deps.detailLevel ?? 1;
   // Beam (ray) turrets stay head-only on the wire and visually: the beam
   // cylinder itself originates at the turret mount center.
   const followsBeam = turretBarrelFollowsBeam(turret.config);
@@ -197,7 +202,12 @@ export function buildTurretMesh3D(
   const turretOff = gfx.turretStyle === 'none';
   const showShieldEmitterCore = isShield && deps.showShieldEmitterCore === true;
   const noBodySphere = headRadius <= 0;
-  const hideHead = turretOff || (isShield && !showShieldEmitterCore) || noBodySphere;
+  const hideHead =
+    turretOff ||
+    gfx.turretStyle === 'simple' ||
+    !featureVisibleAtDetail('turretHead', detailLevel) ||
+    (isShield && !showShieldEmitterCore) ||
+    noBodySphere;
   const skipHeadMesh = hideHead || deps.skipHead === true;
 
   // Resolved head radius drives BOTH the sphere mesh size AND its
@@ -329,8 +339,12 @@ export function buildTurretMesh3D(
     pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
   } else if (barrel.type === 'simpleMultiBarrel') {
     // Parallel barrels arranged in a YZ circle around the firing axis.
+    const secondaryBarrelsVisible = featureVisibleAtDetail('barrelSecondary', detailLevel);
+    if (!secondaryBarrelsVisible) {
+      pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
+    }
     const orbitR = getSimpleMultiBarrelOrbitRadius(barrel, barrelScale);
-    const n = barrel.barrelCount;
+    const n = secondaryBarrelsVisible ? barrel.barrelCount : 0;
     for (let i = 0; i < n; i++) {
       const a = getBarrelOrbitAngle(i, n);
       const oy = Math.cos(a) * orbitR;
@@ -339,6 +353,10 @@ export function buildTurretMesh3D(
     }
   } else if (barrel.type === 'coneMultiBarrel') {
     // Barrels diverge from base orbit to a wider tip orbit.
+    const secondaryBarrelsVisible = featureVisibleAtDetail('barrelSecondary', detailLevel);
+    if (!secondaryBarrelsVisible) {
+      pushSegment(0, parentBaseY, 0, length, parentBaseY, 0);
+    }
     const baseOrbitR = getConeBarrelBaseOrbitRadius(barrel, barrelScale);
     const tipOrbitR = getConeBarrelTipOrbitRadius(
       barrel,
@@ -346,7 +364,7 @@ export function buildTurretMesh3D(
       length,
       turret.config.spread?.angle,
     );
-    const n = barrel.barrelCount;
+    const n = secondaryBarrelsVisible ? barrel.barrelCount : 0;
     for (let i = 0; i < n; i++) {
       const a = getBarrelOrbitAngle(i, n);
       const cosA = Math.cos(a);

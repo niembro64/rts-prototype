@@ -37,6 +37,9 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
+import { entityDetailLevelForView } from './EntityLod3D';
+import { beamStyleForDetail } from './EntityDetailLevel3D';
 
 // Visual tuning (color, wave alpha range, wave spacing/speed) lives in
 // beamConfig.json + colorsConfig.json and is resolved by BeamWaveVisual3D —
@@ -359,10 +362,11 @@ export class BeamRenderer3D {
 
   update(
     projectiles: readonly Entity[],
-    _graphicsConfig?: GraphicsConfig,
+    graphicsConfig?: GraphicsConfig,
     contentVersion?: number,
     turretMountResolver?: TurretMountResolver,
     isEntityEmissionLowLod: BeamEmissionLodResolver = NEVER_EMISSION_LOW_LOD,
+    view?: RenderViewState3D,
   ): void {
     if (projectiles.length === 0 && !this.hasActiveVisuals()) return;
     tickBeamWaveTime();
@@ -411,7 +415,17 @@ export class BeamRenderer3D {
       const useLowLodSegments =
         BEAM_IMPOSTER_SEGMENT_CONFIG.enabled &&
         isEntityEmissionLowLod(e, 'beamSegments');
-      const useLowLodEndpoints = isEntityEmissionLowLod(e, 'beamEndpoints');
+      const detailLevel = view ? entityDetailLevelForView(view, e) : 1;
+      const beamStyle = beamStyleForDetail(
+        detailLevel,
+        graphicsConfig?.beamStyle ?? 'complex',
+      );
+      const useImposterSegments =
+        useLowLodSegments || beamStyle === 'simple' || beamStyle === 'standard';
+      const useLowLodEndpoints =
+        isEntityEmissionLowLod(e, 'beamEndpoints') ||
+        beamStyle === 'simple' ||
+        beamStyle === 'standard';
 
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched
@@ -476,7 +490,7 @@ export class BeamRenderer3D {
         const dy = by - ay;
         const dz = bz - az;
         const segLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (useLowLodSegments) {
+        if (useImposterSegments) {
           if (imposterSegIdx < BEAM_IMPOSTER_SEGMENT_CAP) {
             this.writeImposterSegment(
               imposterSegIdx,

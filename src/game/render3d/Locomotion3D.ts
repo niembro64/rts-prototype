@@ -58,6 +58,7 @@ import type {
   AirborneEmitterBatch3D,
   AirborneEmitterParentPose3D,
 } from './AirborneEmitterBatch3D';
+import { featureVisibleAtDetail } from './EntityDetailLevel3D';
 
 export type Locomotion3DMesh =
   | TreadMesh
@@ -127,6 +128,7 @@ export function buildLocomotion(
   unitRadius: number,
   ownerId: PlayerId | undefined,
   gfx: GraphicsConfig,
+  detailLevel: number,
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
@@ -140,6 +142,7 @@ export function buildLocomotion(
   }
   const loc = bp.locomotion;
   if (!loc) return undefined;
+  if (!featureVisibleAtDetail('locomotion', detailLevel)) return undefined;
 
   const geometryKey = geometryKeyFor(gfx);
 
