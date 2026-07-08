@@ -17,8 +17,6 @@ type FogOfWarProfile = {
   shade: {
     cellSize: number;
     edgeSoftnessCells: number;
-    hatchLineSpacing: number;
-    hatchLineWidth: number;
   };
 };
 

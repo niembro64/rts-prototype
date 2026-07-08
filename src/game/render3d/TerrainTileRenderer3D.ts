@@ -27,7 +27,6 @@ import {
   getTerrainTextureSmoothing,
 } from '@/battleBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
-import { FOG_CONFIG } from '@/fogConfig';
 import {
   LAND_CELL_SIZE,
   MAP_BG_COLOR,
@@ -121,7 +120,6 @@ const FOG_SHADE_COLOR = rawSrgbVec3(COLORS.world.fogOfWar.shade.colorHex);
 const FOG_SHADE_ALPHA = COLORS.world.fogOfWar.shade.maxAlpha;
 const FOG_SHADE_RADAR_ALPHA = COLORS.world.fogOfWar.shade.radarAlpha;
 const FOG_SHADE_DESATURATE = COLORS.world.fogOfWar.shade.desaturate;
-const FOG_SHADE_HATCH_ALPHA = COLORS.world.fogOfWar.shade.hatchAlpha;
 const TERRAIN_TRIANGLE_TOUCH_EPSILON = 1.0e-9;
 
 
@@ -614,13 +612,6 @@ export class TerrainTileRenderer3D {
   private readonly fogShadeAlphaUniform = { value: FOG_SHADE_ALPHA };
   private readonly fogShadeRadarAlphaUniform = { value: FOG_SHADE_RADAR_ALPHA };
   private readonly fogShadeDesaturateUniform = { value: FOG_SHADE_DESATURATE };
-  private readonly fogShadeHatchAlphaUniform = { value: FOG_SHADE_HATCH_ALPHA };
-  private readonly fogShadeHatchSpacingUniform = {
-    value: Math.max(1, FOG_CONFIG.fogOfWar.shade.hatchLineSpacing),
-  };
-  private readonly fogShadeHatchWidthUniform = {
-    value: Math.max(0, Math.min(1, FOG_CONFIG.fogOfWar.shade.hatchLineWidth)),
-  };
 
   private gridCellsX = 0;
   private gridCellsY = 0;
@@ -723,9 +714,6 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uFogOfWarShadeAlpha = this.fogShadeAlphaUniform;
       shader.uniforms.uFogOfWarShadeRadarAlpha = this.fogShadeRadarAlphaUniform;
       shader.uniforms.uFogOfWarShadeDesaturate = this.fogShadeDesaturateUniform;
-      shader.uniforms.uFogOfWarShadeHatchAlpha = this.fogShadeHatchAlphaUniform;
-      shader.uniforms.uFogOfWarShadeHatchSpacing = this.fogShadeHatchSpacingUniform;
-      shader.uniforms.uFogOfWarShadeHatchWidth = this.fogShadeHatchWidthUniform;
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -790,9 +778,6 @@ export class TerrainTileRenderer3D {
             'uniform float uFogOfWarShadeAlpha;',
             'uniform float uFogOfWarShadeRadarAlpha;',
             'uniform float uFogOfWarShadeDesaturate;',
-            'uniform float uFogOfWarShadeHatchAlpha;',
-            'uniform float uFogOfWarShadeHatchSpacing;',
-            'uniform float uFogOfWarShadeHatchWidth;',
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
@@ -931,12 +916,6 @@ export class TerrainTileRenderer3D {
             '  float shadeLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));',
             '  vec3 desaturatedTerrain = mix(diffuseColor.rgb, vec3(shadeLuma), unseen * uFogOfWarShadeDesaturate);',
             '  diffuseColor.rgb = mix(desaturatedTerrain, uFogOfWarShadeColor, shadeAlpha);',
-            '  const vec2 fogLineDir = vec2(0.80901699, 0.58778525);',
-            '  float fogLinePhase = dot(vTerrainWorldPos.xz, fogLineDir) / max(1.0, uFogOfWarShadeHatchSpacing);',
-            '  float fogTri = abs(fract(fogLinePhase) * 2.0 - 1.0);',
-            '  float fogAa = max(0.015, fwidth(fogLinePhase) * 2.0);',
-            '  float fogLine = 1.0 - smoothstep(uFogOfWarShadeHatchWidth - fogAa, uFogOfWarShadeHatchWidth + fogAa, fogTri);',
-            '  diffuseColor.rgb = mix(diffuseColor.rgb, uFogOfWarShadeColor * 0.58, fogLine * unseen * uFogOfWarShadeHatchAlpha);',
             '}',
             buildGridOverlayFragment('vTerrainWorldPos'),
           ].join('\n'),
@@ -958,7 +937,7 @@ export class TerrainTileRenderer3D {
           ].join('\n'),
         );
     };
-    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v33';
+    this.terrainMaterial.customProgramCacheKey = () => 'authoritative-terrain-surface-v34';
   }
 
   private makeBuildGridTexture(width: number, height: number): THREE.DataTexture {

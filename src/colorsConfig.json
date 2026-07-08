@@ -102,8 +102,7 @@
         "colorHex": "#06090b",
         "maxAlpha": 0.42,
         "radarAlpha": 0.24,
-        "desaturate": 0.5,
-        "hatchAlpha": 0.14
+        "desaturate": 0.5
       },
       "cloud": {
         "maxAlpha": 0.2
