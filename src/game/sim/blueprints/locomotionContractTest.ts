@@ -17,7 +17,6 @@ const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
 const MEDIUM_CONFIG_FIELDS = [
   'traction',
   'friction',
-  'gravityCounterUpwardForceRatio',
   'heightUpwardForceRandomizationAmount',
   'heightUpwardForceEMA',
 ] as const;
@@ -313,7 +312,7 @@ export function runLocomotionContractTest(): void {
 
   const strayUnitMediumConfig = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
   (strayUnitMediumConfig.physics.water as AuthoredMediumPhysics & {
-    gravityCounterUpwardForceRatio: number;
-  }).gravityCounterUpwardForceRatio = 0.5;
+    heightUpwardForceEMA: number;
+  }).heightUpwardForceEMA = 0.5;
   expectLocomotionError(strayUnitMediumConfig, 'moved to locomotionConfig.json');
 }

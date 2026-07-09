@@ -226,6 +226,32 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
       </BarControlGroup>
       <BarControlGroup v-if="!model.gameStarted">
         <BarDivider />
+        <BarLabel>BEACH SLOPE:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.watersEdgeBeachSlopeDegrees.options"
+            :key="opt"
+            :active="model.watersEdgeBeachSlopeDegrees === opt"
+            :title="`Water's-edge beach slope angle from horizontal: ${opt} degrees`"
+            @click="model.applyWatersEdgeBeachSlopeDegrees(opt)"
+          >{{ opt }} DEG</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
+        <BarLabel>W-CLIFF:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in BATTLE_CONFIG.watersEdgeCliffHeight.options"
+            :key="opt"
+            :active="model.watersEdgeCliffHeight === opt"
+            :title="`Water's-edge cliff height: ${opt}`"
+            @click="model.applyWatersEdgeCliffHeight(opt)"
+          >{{ opt.toLocaleString() }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup v-if="!model.gameStarted">
+        <BarDivider />
         <BarLabel>D-DEPOSIT:</BarLabel>
         <BarButtonGroup>
           <BarButton

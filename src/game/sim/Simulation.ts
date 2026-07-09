@@ -32,7 +32,8 @@ import {
   pathTerrainFilterForLocomotion,
   type PathTerrainFilter,
 } from './Pathfinder';
-import { getTerrainVersion } from './Terrain';
+import { getTerrainVersion, WATER_LEVEL } from './Terrain';
+import { getUnitBlueprint } from './blueprints';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { getGuardFollowRadius, isFriendlyGuardTarget, resolveGuardServiceTarget } from './guard';
@@ -107,6 +108,10 @@ import {
   UNIT_ACTION_MOVEMENT_DECISION_HOLD,
   UNIT_ACTION_MOVEMENT_DECISION_THRUST,
 } from './SimulationUnitActionMovementPlanner';
+
+/** Consecutive fully-submerged sim ticks before an explodesIfSubmerged
+ *  unit detonates (~0.67 s at the 30 Hz lockstep step). */
+const SUBMERGED_EXPLOSION_DELAY_TICKS = 20;
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
@@ -382,6 +387,10 @@ export class Simulation {
     // Stop or re-toggle arriving on the fire tick wins the tie. The
     // zero-hp write routes the blast through the normal death path.
     this.fireDueSelfDestructs(tick);
+
+    // Units authored with base.explodesIfSubmerged die after their whole
+    // body column has been under the waterline for the sustained window.
+    this.detonateSubmergedUnits();
 
     // Solar collectors, wind turbines, and metal extractors share a
     // fortifiable-producer lifecycle: a 2 s grace timer arms on the
@@ -941,6 +950,49 @@ export class Simulation {
       hpState.hp = 0;
       this.world.markSnapshotDirty(entityId, ENTITY_CHANGED_HP);
       armed.delete(entityId);
+    }
+  }
+
+  /** Entity id -> consecutive fully-submerged tick count. Entries exist
+   *  only while a drownable unit is fully under the waterline; resurfacing
+   *  or dying clears them, so peers agree on the map contents. */
+  private readonly submergedUnitTicks = new Map<EntityId, number>();
+
+  /** Units authored with `base.explodesIfSubmerged` die once their whole
+   *  body column (center + ground offset) has stayed below the waterline
+   *  for SUBMERGED_EXPLOSION_DELAY_TICKS. The sustained window keeps a
+   *  wave splash or a knock-in from insta-killing a unit that can still
+   *  climb back out; the zero-hp write routes through the shared
+   *  pendingDeathCheck cleanup so the unit explodes and leaves a wreck
+   *  like any other death. */
+  private detonateSubmergedUnits(): void {
+    const units = this.world.getUnits();
+    const submergedTicks = this.submergedUnitTicks;
+    if (submergedTicks.size > 0) {
+      for (const entityId of submergedTicks.keys()) {
+        if (this.world.getEntity(entityId) === undefined) {
+          submergedTicks.delete(entityId);
+        }
+      }
+    }
+    for (let i = 0; i < units.length; i++) {
+      const entity = units[i];
+      const unit = entity.unit;
+      if (unit === null || unit.hp <= 0) continue;
+      if (getUnitBlueprint(unit.unitBlueprintId).base.explodesIfSubmerged !== true) continue;
+      const bodyTopZ = entity.transform.z + unit.bodyCenterHeight;
+      if (bodyTopZ > WATER_LEVEL) {
+        submergedTicks.delete(entity.id);
+        continue;
+      }
+      const ticks = (submergedTicks.get(entity.id) ?? 0) + 1;
+      if (ticks < SUBMERGED_EXPLOSION_DELAY_TICKS) {
+        submergedTicks.set(entity.id, ticks);
+        continue;
+      }
+      submergedTicks.delete(entity.id);
+      unit.hp = 0;
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_HP);
     }
   }
 

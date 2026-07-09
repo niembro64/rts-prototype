@@ -31,14 +31,10 @@ use wasm_bindgen::prelude::*;
 //  normal; JS falls back to the TS path on either sentinel.
 // ─────────────────────────────────────────────────────────────────
 
-// Mirrors src/game/sim/terrain/terrainConfig.ts:
-//   TILE_FLOOR_Y       = -1200
-//   WATER_LEVEL_FRACTION = 0.9
-//   WATER_LEVEL        = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION)
-pub(crate) const TERRAIN_TILE_FLOOR_Y: f64 = -1200.0;
-pub(crate) const TERRAIN_WATER_LEVEL_FRACTION: f64 = 0.9;
-pub(crate) const TERRAIN_WATER_LEVEL: f64 =
-    TERRAIN_TILE_FLOOR_Y * (1.0 - TERRAIN_WATER_LEVEL_FRACTION);
+// TERRAIN_TILE_FLOOR_Y / TERRAIN_WATER_LEVEL are generated from
+// src/game/sim/terrain/terrainConfig.json (same fields terrainConfig.ts
+// reads), so the sim's waterline cannot drift from the TS side.
+include!(concat!(env!("OUT_DIR"), "/terrain_constants.rs"));
 
 // Matches terrainTileMap.ts TERRAIN_MESH_EPSILON for the degenerate
 // barycentric guard.

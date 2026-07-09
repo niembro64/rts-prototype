@@ -388,6 +388,7 @@ pub struct EntityBaseLedger {
     pub health: f64,
     pub deathExplosion: EntityDeathExplosion,
     pub radius: EntityRadiusConfig,
+    pub explodesIfSubmerged: Option<bool>,
 }
 
 pub type TurretRadiusConfig = EntityRadiusConfig;
@@ -635,6 +636,7 @@ pub struct LegConfig {
 pub struct LocomotionMediumPhysics {
     pub force: f64,
     pub heightUpwardForce: f64,
+    pub buoyancy: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

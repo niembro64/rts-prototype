@@ -408,9 +408,8 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
 }
 
 function mediumStableHeight(physics: UnitLocomotionMediumPhysics): number | null {
-  const gravityDeficit = 1 - physics.gravityCounterUpwardForceRatio;
-  if (physics.heightUpwardForce <= 0 || gravityDeficit <= 0) return null;
-  return physics.heightUpwardForce / gravityDeficit;
+  if (physics.heightUpwardForce <= 0) return null;
+  return physics.heightUpwardForce;
 }
 
 function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoNode[] {
@@ -419,7 +418,7 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
   if (
     air.force > 0 ||
     air.friction > 0 ||
-    air.gravityCounterUpwardForceRatio > 0 ||
+    air.buoyancy > 0 ||
     air.heightUpwardForce > 0
   ) {
     const airChildren = [
@@ -427,11 +426,11 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
       stat('Traction', fmt(air.traction, 2)),
       stat('Friction', fmt(air.friction, 2)),
     ];
-    if (air.gravityCounterUpwardForceRatio > 0 || air.heightUpwardForce > 0) {
-      airChildren.push(
-        stat('Counter-gravity', `${fmt(air.gravityCounterUpwardForceRatio * 100)}%`),
-        stat('Height lift', fmt(air.heightUpwardForce)),
-      );
+    if (air.buoyancy > 0) {
+      airChildren.push(stat('Buoyancy', fmt(air.buoyancy, 2)));
+    }
+    if (air.heightUpwardForce > 0) {
+      airChildren.push(stat('Height lift', fmt(air.heightUpwardForce)));
       const stableHeight = mediumStableHeight(air);
       if (stableHeight !== null) airChildren.push(stat('Stable height', fmt(stableHeight)));
     }
@@ -442,7 +441,7 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
   if (
     water.force > 0 ||
     water.friction > 0 ||
-    water.gravityCounterUpwardForceRatio > 0 ||
+    water.buoyancy > 0 ||
     water.heightUpwardForce > 0
   ) {
     const waterChildren = [
@@ -450,11 +449,11 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
       stat('Traction', fmt(water.traction, 2)),
       stat('Friction', fmt(water.friction, 2)),
     ];
-    if (water.gravityCounterUpwardForceRatio > 0 || water.heightUpwardForce > 0) {
-      waterChildren.push(
-        stat('Counter-gravity', `${fmt(water.gravityCounterUpwardForceRatio * 100)}%`),
-        stat('Bed height lift', fmt(water.heightUpwardForce)),
-      );
+    if (water.buoyancy > 0) {
+      waterChildren.push(stat('Buoyancy', fmt(water.buoyancy, 2)));
+    }
+    if (water.heightUpwardForce > 0) {
+      waterChildren.push(stat('Bed height lift', fmt(water.heightUpwardForce)));
       const stableHeight = mediumStableHeight(water);
       if (stableHeight !== null) waterChildren.push(stat('Stable bed height', fmt(stableHeight)));
     }

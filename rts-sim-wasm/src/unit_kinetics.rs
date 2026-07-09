@@ -99,7 +99,7 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 52;
 pub const UF_PROFILE_STRIDE: usize = 17;
 pub(crate) const UF_PROFILE_GROUND_FORCE: usize = 0;
 pub(crate) const UF_PROFILE_GROUND_TRACTION: usize = 1;
-pub(crate) const UF_PROFILE_GRAVITY_COUNTER_RATIO: usize = 2;
+pub(crate) const UF_PROFILE_AIR_BUOYANCY: usize = 2;
 pub(crate) const UF_PROFILE_HOVER_HEIGHT_FORCE: usize = 3;
 pub(crate) const UF_PROFILE_HOVER_RANDOM_AMOUNT: usize = 4;
 pub(crate) const UF_PROFILE_HOVER_EMA_WEIGHT: usize = 5;
@@ -108,7 +108,7 @@ pub(crate) const UF_PROFILE_AIR_FRICTION: usize = 7;
 pub(crate) const UF_PROFILE_WATER_FORCE: usize = 8;
 pub(crate) const UF_PROFILE_WATER_TRACTION: usize = 9;
 pub(crate) const UF_PROFILE_WATER_FRICTION: usize = 10;
-pub(crate) const UF_PROFILE_SWIM_GRAVITY_COUNTER_RATIO: usize = 11;
+pub(crate) const UF_PROFILE_WATER_BUOYANCY: usize = 11;
 pub(crate) const UF_PROFILE_SWIM_HEIGHT_FORCE: usize = 12;
 pub(crate) const UF_PROFILE_SWIM_RANDOM_AMOUNT: usize = 13;
 pub(crate) const UF_PROFILE_SWIM_EMA_WEIGHT: usize = 14;
@@ -233,7 +233,11 @@ pub(crate) const UF_ROW_ROTATION: usize = 2;
 // cannot accidentally cancel the unit's actual physics mass.
 pub(crate) const UF_ROW_GROUND_FORCE: usize = 4;
 pub(crate) const UF_ROW_GROUND_TRACTION: usize = 5;
-pub(crate) const UF_ROW_GRAVITY_COUNTER_RATIO: usize = 6;
+// Archimedes-style buoyancy coefficients: upward force = mass * G *
+// buoyancy * fraction-of-body-in-medium. A water buoyancy above 1
+// floats the body at partial submergence (fraction = 1 / buoyancy),
+// i.e. riding the water surface; exactly 1 is neutral; 0 sinks.
+pub(crate) const UF_ROW_AIR_BUOYANCY: usize = 6;
 pub(crate) const UF_ROW_HOVER_HEIGHT_FORCE: usize = 7;
 pub(crate) const UF_ROW_HOVER_RANDOM_AMOUNT: usize = 8;
 pub(crate) const UF_ROW_HOVER_EMA_WEIGHT: usize = 9;
@@ -268,7 +272,7 @@ pub(crate) const UF_ROW_AIR_FRICTION: usize = 37;
 pub(crate) const UF_ROW_WATER_FORCE: usize = 38;
 pub(crate) const UF_ROW_WATER_TRACTION: usize = 39;
 pub(crate) const UF_ROW_WATER_FRICTION: usize = 40;
-pub(crate) const UF_ROW_SWIM_GRAVITY_COUNTER_RATIO: usize = 41;
+pub(crate) const UF_ROW_WATER_BUOYANCY: usize = 41;
 pub(crate) const UF_ROW_SWIM_HEIGHT_FORCE: usize = 42;
 pub(crate) const UF_ROW_SWIM_RANDOM_AMOUNT: usize = 43;
 pub(crate) const UF_ROW_SWIM_EMA_WEIGHT: usize = 44;
@@ -800,8 +804,8 @@ pub fn unit_force_step_batch(
                         profile.values[pbase + UF_PROFILE_GROUND_FORCE];
                     rows[base + UF_ROW_GROUND_TRACTION] =
                         profile.values[pbase + UF_PROFILE_GROUND_TRACTION];
-                    rows[base + UF_ROW_GRAVITY_COUNTER_RATIO] =
-                        profile.values[pbase + UF_PROFILE_GRAVITY_COUNTER_RATIO];
+                    rows[base + UF_ROW_AIR_BUOYANCY] =
+                        profile.values[pbase + UF_PROFILE_AIR_BUOYANCY];
                     rows[base + UF_ROW_HOVER_HEIGHT_FORCE] =
                         profile.values[pbase + UF_PROFILE_HOVER_HEIGHT_FORCE];
                     rows[base + UF_ROW_HOVER_RANDOM_AMOUNT] =
@@ -818,8 +822,8 @@ pub fn unit_force_step_batch(
                         profile.values[pbase + UF_PROFILE_WATER_TRACTION];
                     rows[base + UF_ROW_WATER_FRICTION] =
                         profile.values[pbase + UF_PROFILE_WATER_FRICTION];
-                    rows[base + UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] =
-                        profile.values[pbase + UF_PROFILE_SWIM_GRAVITY_COUNTER_RATIO];
+                    rows[base + UF_ROW_WATER_BUOYANCY] =
+                        profile.values[pbase + UF_PROFILE_WATER_BUOYANCY];
                     rows[base + UF_ROW_SWIM_HEIGHT_FORCE] =
                         profile.values[pbase + UF_PROFILE_SWIM_HEIGHT_FORCE];
                     rows[base + UF_ROW_SWIM_RANDOM_AMOUNT] =
@@ -873,14 +877,14 @@ pub fn unit_force_step_batch(
         let has_angular_motion = omega_sq > UNIT_ATTITUDE_SLEEP_EPSILON_SQ;
         let water_fraction = unit_force_water_fraction(p.pos_z[slot], p.ground_offset[slot]);
         let air_fraction = 1.0 - water_fraction;
-        let air_lift_force_active = medium_lift_enabled
-            && air_fraction > 0.0
-            && (rows[base + UF_ROW_GRAVITY_COUNTER_RATIO] > 0.0
-                || rows[base + UF_ROW_HOVER_HEIGHT_FORCE] > 0.0);
-        let water_lift_force_active = medium_lift_enabled
-            && water_fraction > 0.0
-            && (rows[base + UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] > 0.0
-                || rows[base + UF_ROW_SWIM_HEIGHT_FORCE] > 0.0);
+        // Buoyancy is passive (like friction): it keeps a body awake in
+        // its medium whether or not the lift controller is enabled.
+        let air_lift_force_active = air_fraction > 0.0
+            && ((medium_lift_enabled && rows[base + UF_ROW_HOVER_HEIGHT_FORCE] > 0.0)
+                || rows[base + UF_ROW_AIR_BUOYANCY] > 0.0);
+        let water_lift_force_active = water_fraction > 0.0
+            && ((medium_lift_enabled && rows[base + UF_ROW_SWIM_HEIGHT_FORCE] > 0.0)
+                || rows[base + UF_ROW_WATER_BUOYANCY] > 0.0);
 
         if p.flags[slot] & BODY_FLAG_SLEEPING != 0
             && !is_flying
@@ -974,12 +978,12 @@ pub fn unit_force_step_batch(
         let air_medium_active = air_fraction > 0.0
             && (rows[base + UF_ROW_AIR_FORCE] > 0.0
                 || rows[base + UF_ROW_HOVER_HEIGHT_FORCE] > 0.0
-                || rows[base + UF_ROW_GRAVITY_COUNTER_RATIO] > 0.0
+                || rows[base + UF_ROW_AIR_BUOYANCY] > 0.0
                 || rows[base + UF_ROW_AIR_FRICTION] > 0.0);
         let water_medium_active = water_fraction > 0.0
             && (rows[base + UF_ROW_WATER_FORCE] > 0.0
                 || rows[base + UF_ROW_SWIM_HEIGHT_FORCE] > 0.0
-                || rows[base + UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] > 0.0
+                || rows[base + UF_ROW_WATER_BUOYANCY] > 0.0
                 || rows[base + UF_ROW_WATER_FRICTION] > 0.0);
 
         if air_medium_active {
@@ -1010,12 +1014,10 @@ pub fn unit_force_step_batch(
                 rows[base + UF_ROW_AIR_LIFT_DISTANCE_SCALE],
                 flag & UF_FLAG_HAS_AIR_LIFT_DISTANCE_SCALE != 0,
             );
-            let gravity_counter_ratio = rows[base + UF_ROW_GRAVITY_COUNTER_RATIO];
-            let gravity_deficit_ratio = 1.0 - gravity_counter_ratio;
             let base_hover_height_force = if rows[base + UF_ROW_HOVER_HEIGHT_FORCE].is_finite() {
                 rows[base + UF_ROW_HOVER_HEIGHT_FORCE]
             } else {
-                direct_altitude * gravity_deficit_ratio
+                direct_altitude
             };
             let rand_amount = rows[base + UF_ROW_HOVER_RANDOM_AMOUNT];
             let raw_hover_height_force = if rand_amount > 0.0 {
@@ -1026,19 +1028,13 @@ pub fn unit_force_step_batch(
             };
             let ema_weight = rows[base + UF_ROW_HOVER_EMA_WEIGHT];
 
-            if medium_lift_enabled
-                && body_mass > 0.0
-                && gravity_deficit_ratio > 0.0
-                && raw_hover_height_force > 0.0
-            {
-                let stable_altitude = raw_hover_height_force / gravity_deficit_ratio;
+            if medium_lift_enabled && body_mass > 0.0 && raw_hover_height_force > 0.0 {
+                let stable_altitude = raw_hover_height_force;
                 if stable_altitude > 0.0 && stable_altitude.is_finite() {
-                    let counter_gravity_force = body_mass * GRAVITY * gravity_counter_ratio;
                     let lift_k = body_mass * GRAVITY * raw_hover_height_force;
-                    let vz_damp_per_mass =
-                        2.0 * ((GRAVITY * gravity_deficit_ratio) / stable_altitude).sqrt();
+                    let vz_damp_per_mass = 2.0 * (GRAVITY / stable_altitude).sqrt();
                     let raw_lift_force_z = air_fraction
-                        * (counter_gravity_force + lift_k * air_lift_distance_scale
+                        * (lift_k * air_lift_distance_scale
                             - body_mass * vz_damp_per_mass * p.vel_z[slot])
                         / 1_000_000.0;
                     let lift_force_z = unit_force_smoothed_scalar(
@@ -1076,6 +1072,16 @@ pub fn unit_force_step_batch(
                     thrust_force_y += air_target_dir_y * thrust_mag;
                 }
             }
+            // Passive Archimedes lift against air: mass * G * buoyancy,
+            // scaled by the fraction of the body in the air medium. Not
+            // gated on the lift controller — a buoyant hull floats with
+            // its engines off.
+            let air_buoyancy = rows[base + UF_ROW_AIR_BUOYANCY];
+            if air_buoyancy > 0.0 && body_mass > 0.0 {
+                thrust_force_z +=
+                    body_mass * GRAVITY * air_buoyancy * air_fraction / 1_000_000.0;
+            }
+
             let air_friction = rows[base + UF_ROW_AIR_FRICTION];
             if air_friction > 0.0 && body_mass > 0.0 {
                 let k = air_friction * air_fraction * body_mass / 1_000_000.0;
@@ -1101,8 +1107,6 @@ pub fn unit_force_step_batch(
             let swim_height_force = rows[base + UF_ROW_SWIM_HEIGHT_FORCE];
             if medium_lift_enabled && swim_height_force > 0.0 && body_mass > 0.0 {
                 let altitude = (p.pos_z[slot] - ground_z).max(0.5);
-                let swim_counter_ratio = rows[base + UF_ROW_SWIM_GRAVITY_COUNTER_RATIO];
-                let swim_deficit_ratio = 1.0 - swim_counter_ratio;
                 let rand_amount = rows[base + UF_ROW_SWIM_RANDOM_AMOUNT];
                 let raw_swim_force = if rand_amount > 0.0 {
                     let sample = rows[base + UF_ROW_SWIM_RANDOM_SAMPLE];
@@ -1111,36 +1115,53 @@ pub fn unit_force_step_batch(
                     swim_height_force
                 };
                 let ema_weight = rows[base + UF_ROW_SWIM_EMA_WEIGHT];
-                if swim_deficit_ratio > 0.0 && raw_swim_force > 0.0 {
-                    let stable_altitude = raw_swim_force / swim_deficit_ratio;
-                    if stable_altitude > 0.0 && stable_altitude.is_finite() {
-                        let counter_gravity_force = body_mass * GRAVITY * swim_counter_ratio;
-                        let lift_k = body_mass * GRAVITY * raw_swim_force;
-                        let vz_damp_per_mass =
-                            2.0 * ((GRAVITY * swim_deficit_ratio) / stable_altitude).sqrt();
-                        let raw_lift_force_z = water_fraction
-                            * (counter_gravity_force + lift_k / altitude
-                                - body_mass * vz_damp_per_mass * p.vel_z[slot])
-                            / 1_000_000.0;
-                        let lift_force_z = unit_force_smoothed_scalar(
-                            raw_lift_force_z,
-                            ema_weight,
-                            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE],
-                        );
-                        if ema_weight > 0.0 {
-                            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = lift_force_z;
-                        } else {
-                            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
-                        }
-                        thrust_force_z += lift_force_z;
+                let stable_altitude = raw_swim_force;
+                if stable_altitude > 0.0 && stable_altitude.is_finite() {
+                    let lift_k = body_mass * GRAVITY * raw_swim_force;
+                    let vz_damp_per_mass = 2.0 * (GRAVITY / stable_altitude).sqrt();
+                    let raw_lift_force_z = water_fraction
+                        * (lift_k / altitude - body_mass * vz_damp_per_mass * p.vel_z[slot])
+                        / 1_000_000.0;
+                    let lift_force_z = unit_force_smoothed_scalar(
+                        raw_lift_force_z,
+                        ema_weight,
+                        rows[base + UF_ROW_SWIM_SMOOTHED_FORCE],
+                    );
+                    if ema_weight > 0.0 {
+                        rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = lift_force_z;
                     } else {
                         rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
                     }
+                    thrust_force_z += lift_force_z;
                 } else {
                     rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
                 }
             } else {
                 rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+            }
+
+            // Passive Archimedes lift against water: mass * G * buoyancy,
+            // scaled by the submerged fraction of the body column. For
+            // water buoyancy > 1 equilibrium is partial submergence
+            // (fraction = 1 / buoyancy) — the body floats at the surface.
+            // The vertical damping is critically sized for the
+            // fraction-vs-depth spring and fades outside the surface
+            // band, so a deeply submerged buoyant hull simply rises under
+            // the net force until it reaches the surface.
+            let water_buoyancy = rows[base + UF_ROW_WATER_BUOYANCY];
+            if water_buoyancy > 0.0 && body_mass > 0.0 {
+                let half_height =
+                    if p.ground_offset[slot].is_finite() && p.ground_offset[slot] > 0.0 {
+                        p.ground_offset[slot]
+                    } else {
+                        0.5
+                    };
+                let surface_band = 4.0 * water_fraction * (1.0 - water_fraction);
+                let vz_damp_per_mass =
+                    2.0 * (GRAVITY * water_buoyancy / (2.0 * half_height)).sqrt();
+                thrust_force_z += (body_mass * GRAVITY * water_buoyancy * water_fraction
+                    - surface_band * body_mass * vz_damp_per_mass * p.vel_z[slot])
+                    / 1_000_000.0;
             }
 
             let water_friction = rows[base + UF_ROW_WATER_FRICTION];

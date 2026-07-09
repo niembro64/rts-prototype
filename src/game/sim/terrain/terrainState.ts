@@ -12,6 +12,8 @@ import {
   TERRAIN_FINE_TRIANGLE_SUBDIV,
   TERRAIN_PERIMETER_MAGNITUDE,
   TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+  TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+  TERRAIN_WATERS_EDGE_CLIFF_HEIGHT,
   type TerrainRuntimeConfig,
 } from './terrainConfig';
 
@@ -98,6 +100,8 @@ export function getTerrainRuntimeConfig(): TerrainRuntimeConfig {
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+    watersEdgeBeachSlopeDegrees: TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+    watersEdgeCliffHeight: TERRAIN_WATERS_EDGE_CLIFF_HEIGHT,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   };
@@ -120,6 +124,8 @@ export function setTerrainCenterMagnitude(value: number): void {
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+    watersEdgeBeachSlopeDegrees: TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+    watersEdgeCliffHeight: TERRAIN_WATERS_EDGE_CLIFF_HEIGHT,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   });
@@ -135,6 +141,8 @@ export function setTerrainDividersMagnitude(value: number): void {
     perimeterMagnitude: TERRAIN_PERIMETER_MAGNITUDE,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+    watersEdgeBeachSlopeDegrees: TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+    watersEdgeCliffHeight: TERRAIN_WATERS_EDGE_CLIFF_HEIGHT,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   });
@@ -150,6 +158,8 @@ export function setTerrainPerimeterMagnitude(value: number): void {
     perimeterMagnitude: value,
     terrainDTerrain: TERRAIN_D_TERRAIN,
     plateauWallSlopeDegrees: TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
+    watersEdgeBeachSlopeDegrees: TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+    watersEdgeCliffHeight: TERRAIN_WATERS_EDGE_CLIFF_HEIGHT,
     metalDepositStep: METAL_DEPOSIT_STEP,
     terrainDetail: TERRAIN_FINE_TRIANGLE_SUBDIV,
   });

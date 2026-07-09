@@ -258,6 +258,7 @@ export type EntityBaseLedger = {
   health: number;
   deathExplosion: EntityDeathExplosion;
   radius: EntityRadiusConfig;
+  explodesIfSubmerged?: boolean;
 };
 
 export type TurretRadiusConfig = EntityRadiusConfig;
@@ -444,6 +445,7 @@ export type LegConfig = {
 export type LocomotionMediumPhysics = {
   force: number;
   heightUpwardForce: number;
+  buoyancy?: number;
 };
 
 export type LocomotionPhysics = {

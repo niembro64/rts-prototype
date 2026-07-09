@@ -8077,6 +8077,11 @@ mod sim_kernel_tests {
             600.0, 0.0, // ripple component 2
             0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
             89.0, // plateau_wall_slope_degrees
+            0.0,  // waters_edge_beach_slope_degrees (shoreline pass off)
+            0.0,  // waters_edge_cliff_height (shoreline pass off)
+            6.0,  // shoreline_slice_count
+            0.25, // shoreline_transition_fraction
+            0.0,  // shoreline_beach_band_height
         ];
         // 10-value LOD slice mirroring terrainConfig.json defaults.
         let lod_config = [
@@ -8447,7 +8452,6 @@ mod sim_kernel_tests {
         rows[UF_ROW_ROTATION] = 0.0;
         rows[UF_ROW_AIR_FORCE] = 100.0;
         rows[UF_ROW_AIR_TRACTION] = traction;
-        rows[UF_ROW_GRAVITY_COUNTER_RATIO] = 0.0;
         rows[UF_ROW_HOVER_HEIGHT_FORCE] = 100.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
@@ -8632,7 +8636,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_ROTATION] = 0.0;
         rows[UF_ROW_AIR_FORCE] = 2000.0;
         rows[UF_ROW_AIR_TRACTION] = 0.2;
-        rows[UF_ROW_GRAVITY_COUNTER_RATIO] = 0.05;
+        rows[UF_ROW_AIR_BUOYANCY] = 0.05;
         rows[UF_ROW_HOVER_HEIGHT_FORCE] = 380.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
@@ -8678,7 +8682,6 @@ mod sim_kernel_tests {
     const UNIT_FORCE_TEST_GROUND_OFFSET: f64 = 10.0;
     const UNIT_FORCE_TEST_WATER_BED_Z: f64 = TERRAIN_WATER_LEVEL - 80.0;
     const UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE: f64 = 12.0;
-    const UNIT_FORCE_TEST_LIFT_COUNTER_RATIO: f64 = 0.25;
 
     fn run_air_lift_force(altitude_above_ground: f64) -> (f64, u32) {
         pool_init();
@@ -8696,7 +8699,6 @@ mod sim_kernel_tests {
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = 0.0;
-        rows[UF_ROW_GRAVITY_COUNTER_RATIO] = UNIT_FORCE_TEST_LIFT_COUNTER_RATIO;
         rows[UF_ROW_HOVER_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
 
         assert_eq!(
@@ -8716,7 +8718,7 @@ mod sim_kernel_tests {
         water_traction: f64,
         water_friction: f64,
         swim_height_force: f64,
-        swim_counter_ratio: f64,
+        water_buoyancy: f64,
     ) -> (f64, f64, f64, u32) {
         pool_init();
         let slot = pool_alloc_slot();
@@ -8744,7 +8746,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_WATER_FORCE] = water_force;
         rows[UF_ROW_WATER_TRACTION] = water_traction;
         rows[UF_ROW_WATER_FRICTION] = water_friction;
-        rows[UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] = swim_counter_ratio;
+        rows[UF_ROW_WATER_BUOYANCY] = water_buoyancy;
         rows[UF_ROW_SWIM_HEIGHT_FORCE] = swim_height_force;
 
         assert_eq!(
@@ -9057,7 +9059,7 @@ mod sim_kernel_tests {
             0.5,
             0.0,
             0.0,
-            0.25,
+            0.0,
         );
 
         assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
@@ -9076,7 +9078,7 @@ mod sim_kernel_tests {
     pub(crate) fn submerged_ground_contact_adds_bed_locomotion_to_water_medium() {
         let _guard = lock_tests();
         let (open_ax, _, _, _) =
-            run_submerged_unit_force(40.0, (0.0, 0.0, 0.0), true, 1200.0, 0.5, 0.0, 0.0, 0.25);
+            run_submerged_unit_force(40.0, (0.0, 0.0, 0.0), true, 1200.0, 0.5, 0.0, 0.0, 0.0);
         let (bed_ax, bed_ay, bed_az, out_flags) = run_submerged_unit_force(
             UNIT_FORCE_TEST_GROUND_OFFSET,
             (0.0, 0.0, 0.0),
@@ -9085,7 +9087,7 @@ mod sim_kernel_tests {
             0.5,
             0.0,
             0.0,
-            0.25,
+            0.0,
         );
 
         assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
@@ -9111,7 +9113,7 @@ mod sim_kernel_tests {
             0.5,
             1.5,
             0.0,
-            0.25,
+            0.0,
         );
 
         assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
@@ -9124,11 +9126,11 @@ mod sim_kernel_tests {
     pub(crate) fn swim_height_lift_targets_authored_water_column_depth() {
         let _guard = lock_tests();
         let (_low_x, _low_y, low_z, low_flags) =
-            run_submerged_unit_force(4.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.25);
+            run_submerged_unit_force(4.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.0);
         let (_stable_x, _stable_y, stable_z, stable_flags) =
-            run_submerged_unit_force(16.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.25);
+            run_submerged_unit_force(12.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.0);
         let (_high_x, _high_y, high_z, high_flags) =
-            run_submerged_unit_force(40.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.25);
+            run_submerged_unit_force(40.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.0);
 
         assert_ne!(low_flags & UF_OUT_MOVEMENT_ACCEL, 0);
         assert_ne!(stable_flags & UF_OUT_MOVEMENT_ACCEL, 0);
@@ -9145,6 +9147,71 @@ mod sim_kernel_tests {
             high_z < stable_z && high_z < GRAVITY,
             "above the swim-height target, net gravity should make the unit sink"
         );
+    }
+
+    #[test]
+    pub(crate) fn water_buoyancy_floats_body_at_partial_submergence() {
+        let _guard = lock_tests();
+        // Water buoyancy 2.0: equilibrium is half submergence
+        // (fraction = 1 / buoyancy). Bed is 80 below the waterline and
+        // the body half-height is 10.
+        // Fully submerged (center 40 above bed): lift = 2 * G.
+        let (_dx, _dy, deep_z, deep_flags) =
+            run_submerged_unit_force(40.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 0.0, 2.0);
+        // Center exactly at the waterline (80 above bed): fraction 0.5,
+        // lift exactly cancels integrator gravity.
+        let (_sx, _sy, surface_z, surface_flags) =
+            run_submerged_unit_force(80.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 0.0, 2.0);
+        // Mostly out of the water (fraction 0.25): net gravity wins.
+        let (_hx, _hy, high_z, high_flags) =
+            run_submerged_unit_force(85.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 0.0, 2.0);
+
+        assert_ne!(deep_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert_ne!(surface_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert_ne!(high_flags & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert!(
+            (deep_z - 2.0 * GRAVITY).abs() < 1e-9,
+            "fully submerged buoyant hull should rise at buoyancy * G; got {deep_z}"
+        );
+        assert!(
+            (surface_z - GRAVITY).abs() < 1e-9,
+            "at equilibrium submergence, buoyancy should cancel integrator gravity; got {surface_z}"
+        );
+        assert!(
+            high_z < GRAVITY,
+            "lifted above equilibrium submergence, net gravity should pull the hull back down"
+        );
+    }
+
+    #[test]
+    pub(crate) fn air_buoyancy_lifts_against_gravity() {
+        let _guard = lock_tests();
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.pos_z[i] = 100.0;
+            p.inv_mass[i] = 1.0 / 2100.0;
+        }
+        let slots = [slot];
+        let flags = [0_u32];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_GROUND_Z] = 0.0;
+        rows[UF_ROW_AIR_BUOYANCY] = 1.0;
+
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        assert_ne!(out_flags[0] & UF_OUT_MOVEMENT_ACCEL, 0);
+        assert!(
+            (rows[UF_ROW_MOVEMENT_ACCEL_Z] - GRAVITY).abs() < 1e-9,
+            "air buoyancy 1.0 should exactly cancel integrator gravity for a neutral balloon; got {}",
+            rows[UF_ROW_MOVEMENT_ACCEL_Z]
+        );
+        pool_free_slot(slot);
     }
 
     #[test]
@@ -9172,7 +9239,6 @@ mod sim_kernel_tests {
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = 0.0;
-        rows[UF_ROW_GRAVITY_COUNTER_RATIO] = UNIT_FORCE_TEST_LIFT_COUNTER_RATIO;
         rows[UF_ROW_HOVER_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
         rows[UF_ROW_HOVER_EMA_WEIGHT] = 0.5;
         rows[UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
@@ -9215,7 +9281,7 @@ mod sim_kernel_tests {
             0.0,
             0.0,
             UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE,
-            UNIT_FORCE_TEST_LIFT_COUNTER_RATIO,
+            0.0,
         );
         let (_low_x, _low_y, low_raw_z, low_flags) = run_submerged_unit_force(
             4.0,
@@ -9225,7 +9291,7 @@ mod sim_kernel_tests {
             0.0,
             0.0,
             UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE,
-            UNIT_FORCE_TEST_LIFT_COUNTER_RATIO,
+            0.0,
         );
         assert_ne!(stable_flags & UF_OUT_MOVEMENT_ACCEL, 0);
         assert_ne!(low_flags & UF_OUT_MOVEMENT_ACCEL, 0);
@@ -9248,7 +9314,6 @@ mod sim_kernel_tests {
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
-        rows[UF_ROW_SWIM_GRAVITY_COUNTER_RATIO] = UNIT_FORCE_TEST_LIFT_COUNTER_RATIO;
         rows[UF_ROW_SWIM_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
         rows[UF_ROW_SWIM_EMA_WEIGHT] = 0.5;
         rows[UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;

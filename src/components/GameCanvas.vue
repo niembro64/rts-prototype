@@ -44,6 +44,8 @@ import {
   loadStoredTerrainDTerrain,
   loadStoredMetalDepositStep,
   loadStoredPlateauWallSlopeDegrees,
+  loadStoredWatersEdgeBeachSlopeDegrees,
+  loadStoredWatersEdgeCliffHeight,
   loadStoredTerrainDetail,
   loadStoredPerimeterMagnitude,
   loadStoredMapLandDimensions,
@@ -1057,6 +1059,12 @@ const terrainDTerrain = ref<number>(loadStoredTerrainDTerrain('demo'));
 const plateauWallSlopeDegrees = ref<number>(
   loadStoredPlateauWallSlopeDegrees('demo'),
 );
+const watersEdgeBeachSlopeDegrees = ref<number>(
+  loadStoredWatersEdgeBeachSlopeDegrees('demo'),
+);
+const watersEdgeCliffHeight = ref<number>(
+  loadStoredWatersEdgeCliffHeight('demo'),
+);
 const metalDepositStep = ref<number>(loadStoredMetalDepositStep('demo'));
 const terrainDetail = ref<number>(loadStoredTerrainDetail('demo'));
 const terrainTextureSmoothing = ref<number>(getTerrainTextureSmoothing());
@@ -1085,6 +1093,8 @@ const mapDetailsRows = computed(() => [
   { label: 'PERIMETER', value: String(perimeterMagnitude.value) },
   { label: 'D-TERRAIN', value: terrainDTerrain.value === 0 ? 'NONE' : String(terrainDTerrain.value) },
   { label: 'PLATEAU WALL', value: `${plateauWallSlopeDegrees.value} deg` },
+  { label: 'BEACH SLOPE', value: `${watersEdgeBeachSlopeDegrees.value} deg` },
+  { label: 'W-CLIFF', value: String(watersEdgeCliffHeight.value) },
   { label: 'METAL STEP', value: metalDepositStep.value === 0 ? 'NONE' : String(metalDepositStep.value) },
   { label: 'DETAIL', value: String(terrainDetail.value) },
   { label: 'PLAYERS', value: String(lobbyPlayerCount.value) },
@@ -1289,6 +1299,8 @@ useGameCanvasLobbyPreview({
   perimeterMagnitude,
   terrainDTerrain,
   plateauWallSlopeDegrees,
+  watersEdgeBeachSlopeDegrees,
+  watersEdgeCliffHeight,
   metalDepositStep,
   terrainDetail,
   mapWidthLandCells,
@@ -1459,6 +1471,8 @@ const {
   applyPerimeterMagnitude,
   applyTerrainDTerrain,
   applyPlateauWallSlopeDegrees,
+  applyWatersEdgeBeachSlopeDegrees,
+  applyWatersEdgeCliffHeight,
   applyMetalDepositStep,
   applyTerrainDetail,
   applyMapLandDimensions,
@@ -1474,6 +1488,8 @@ const {
   perimeterMagnitude,
   terrainDTerrain,
   plateauWallSlopeDegrees,
+  watersEdgeBeachSlopeDegrees,
+  watersEdgeCliffHeight,
   metalDepositStep,
   terrainDetail,
   mapWidthLandCells,
@@ -1536,6 +1552,8 @@ const {
   applyPerimeterMagnitude,
   applyTerrainDTerrain,
   applyPlateauWallSlopeDegrees,
+  applyWatersEdgeBeachSlopeDegrees,
+  applyWatersEdgeCliffHeight,
   applyMetalDepositStep,
   applyTerrainDetail,
   applyMapLandDimensions,
@@ -1747,6 +1765,8 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   perimeterMagnitude: perimeterMagnitude.value,
   terrainDTerrain: terrainDTerrain.value,
   plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
+  watersEdgeBeachSlopeDegrees: watersEdgeBeachSlopeDegrees.value,
+  watersEdgeCliffHeight: watersEdgeCliffHeight.value,
   metalDepositStep: metalDepositStep.value,
   terrainDetail: terrainDetail.value,
   terrainTextureSmoothing: terrainTextureSmoothing.value,
@@ -1780,6 +1800,8 @@ const battleControlBarModel = reactive<GameCanvasBattleControlBarModel>({
   applyPerimeterMagnitude,
   applyTerrainDTerrain,
   applyPlateauWallSlopeDegrees,
+  applyWatersEdgeBeachSlopeDegrees,
+  applyWatersEdgeCliffHeight,
   applyMetalDepositStep,
   applyTerrainDetail,
   applyTerrainTextureSmoothing,
@@ -1818,6 +1840,8 @@ watchEffect(() => {
   m.perimeterMagnitude = perimeterMagnitude.value;
   m.terrainDTerrain = terrainDTerrain.value;
   m.plateauWallSlopeDegrees = plateauWallSlopeDegrees.value;
+  m.watersEdgeBeachSlopeDegrees = watersEdgeBeachSlopeDegrees.value;
+  m.watersEdgeCliffHeight = watersEdgeCliffHeight.value;
   m.metalDepositStep = metalDepositStep.value;
   m.terrainDetail = terrainDetail.value;
   m.terrainTextureSmoothing = terrainTextureSmoothing.value;
@@ -1853,6 +1877,8 @@ watchEffect(() => {
     perimeterMagnitude: perimeterMagnitude.value,
     terrainDTerrain: terrainDTerrain.value,
     plateauWallSlopeDegrees: plateauWallSlopeDegrees.value,
+    watersEdgeBeachSlopeDegrees: watersEdgeBeachSlopeDegrees.value,
+    watersEdgeCliffHeight: watersEdgeCliffHeight.value,
     metalDepositStep: metalDepositStep.value,
     terrainDetail: terrainDetail.value,
     mapWidthLandCells: mapWidthLandCells.value,
@@ -2674,6 +2700,8 @@ watchEffect(() => {
       :perimeter-magnitude="perimeterMagnitude"
       :terrain-d-terrain="terrainDTerrain"
       :plateau-wall-slope-degrees="plateauWallSlopeDegrees"
+      :waters-edge-beach-slope-degrees="watersEdgeBeachSlopeDegrees"
+      :waters-edge-cliff-height="watersEdgeCliffHeight"
       :metal-deposit-step="metalDepositStep"
       :terrain-detail="terrainDetail"
       :map-width-land-cells="mapWidthLandCells"
@@ -2705,6 +2733,8 @@ watchEffect(() => {
       @set-perimeter-magnitude="(v) => applyPerimeterMagnitude(v)"
       @set-terrain-d-terrain="(v) => applyTerrainDTerrain(v)"
       @set-plateau-wall-slope-degrees="(v) => applyPlateauWallSlopeDegrees(v)"
+      @set-waters-edge-beach-slope-degrees="(v) => applyWatersEdgeBeachSlopeDegrees(v)"
+      @set-waters-edge-cliff-height="(v) => applyWatersEdgeCliffHeight(v)"
       @set-metal-deposit-step="(v) => applyMetalDepositStep(v)"
       @set-terrain-detail="(v) => applyTerrainDetail(v)"
       @set-preset="(p) => applyPreset(p)"

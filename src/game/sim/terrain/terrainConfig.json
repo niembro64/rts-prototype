@@ -30,6 +30,11 @@
       "shelfFractionOfStep": 0.99,
       "rampEdgeSharpness": 1,
       "buildableShelfHeightTolerance": 20
+    },
+    "shoreline": {
+      "sliceCount": 6,
+      "transitionFraction": 0.25,
+      "beachBandHeight": 120
     }
   },
   "mesh": {

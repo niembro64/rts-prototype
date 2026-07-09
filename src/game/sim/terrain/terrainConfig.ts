@@ -107,6 +107,17 @@ export type TerrainRuntimeConfig = {
    *  90 produce cliff-like walls; lower values widen each wall into a
    *  gentler heightfield ramp. */
   plateauWallSlopeDegrees: number;
+  /** Waters-edge BEACH slope in degrees (BEACH bar). Beach shoreline
+   *  slices compress the terrain gradient through the waterline down
+   *  to (at most) this slope so ground units can wade in and out.
+   *  0 disables beach shaping (every shoreline slice becomes cliff
+   *  when cliffs are on, or natural terrain when they are off). */
+  watersEdgeBeachSlopeDegrees: number;
+  /** Waters-edge CLIFF height in world units (W-CLIFF bar). Cliff
+   *  shoreline slices snap heights near the waterline away from it
+   *  into a single plateau-style wall of this total height. 0
+   *  disables cliff shaping. */
+  watersEdgeCliffHeight: number;
   /** Metal-extractor pad altitude step (D-DEPOSIT bar). */
   metalDepositStep: number;
   /** Fine-triangle subdivisions per land cell (TERRAIN DETAIL bar).
@@ -152,6 +163,18 @@ export let TERRAIN_D_TERRAIN = BATTLE_CONFIG.terrainDTerrain.default;
  *  before deposit flat zones are blended in. */
 export let TERRAIN_PLATEAU_WALL_SLOPE_DEGREES =
   BATTLE_CONFIG.plateauWallSlopeDegrees.default;
+
+/** Currently-installed waters-edge BEACH slope (degrees). Beach
+ *  shoreline slices compress the terrain gradient through the
+ *  waterline to at most this slope. 0 = beach shaping off. */
+export let TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES =
+  BATTLE_CONFIG.watersEdgeBeachSlopeDegrees.default;
+
+/** Currently-installed waters-edge CLIFF height (world units). Cliff
+ *  shoreline slices snap the waterline into a plateau-style wall of
+ *  this total height. 0 = cliff shaping off. */
+export let TERRAIN_WATERS_EDGE_CLIFF_HEIGHT =
+  BATTLE_CONFIG.watersEdgeCliffHeight.default;
 
 /** Vertical step (world units) between metal-extractor pad altitude
  *  levels. A deposit ring's `dTerrainLevels` is multiplied by this
@@ -232,6 +255,24 @@ export function applyTerrainRuntimeConfig(config: TerrainRuntimeConfig): boolean
     changed = true;
   }
 
+  const rawBeachSlopeDegrees = Number(config.watersEdgeBeachSlopeDegrees);
+  const nextBeachSlopeDegrees = Number.isFinite(rawBeachSlopeDegrees)
+    ? Math.max(0, Math.min(89, rawBeachSlopeDegrees))
+    : TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES;
+  if (TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES !== nextBeachSlopeDegrees) {
+    TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES = nextBeachSlopeDegrees;
+    changed = true;
+  }
+
+  const rawWatersEdgeCliffHeight = Number(config.watersEdgeCliffHeight);
+  const nextWatersEdgeCliffHeight = Number.isFinite(rawWatersEdgeCliffHeight)
+    ? Math.max(0, rawWatersEdgeCliffHeight)
+    : TERRAIN_WATERS_EDGE_CLIFF_HEIGHT;
+  if (TERRAIN_WATERS_EDGE_CLIFF_HEIGHT !== nextWatersEdgeCliffHeight) {
+    TERRAIN_WATERS_EDGE_CLIFF_HEIGHT = nextWatersEdgeCliffHeight;
+    changed = true;
+  }
+
   const nextDepositStep = Math.max(0, config.metalDepositStep);
   if (METAL_DEPOSIT_STEP !== nextDepositStep) {
     METAL_DEPOSIT_STEP = nextDepositStep;
@@ -267,4 +308,17 @@ export const TERRAIN_RIDGE_CONFIG = {
   innerRadiusFraction: terrainConfig.generation.ridge.innerRadiusFraction,
   outerRadiusFraction: terrainConfig.generation.ridge.outerRadiusFraction,
   halfWidthFraction: terrainConfig.generation.ridge.halfWidthFraction,
+} as const;
+
+/** Static shoreline (waters-edge) shape knobs. The waterline is divided
+ *  into `sliceCount` angular slices around the map center, alternating
+ *  beach and cliff; `transitionFraction` of each slice blends toward
+ *  the previous slice's shape; `beachBandHeight` is the total vertical
+ *  extent (world units) of the beach gradient-compression band centered
+ *  on the waterline. The live BEACH slope / CLIFF height come from the
+ *  battle bars (`TERRAIN_WATERS_EDGE_*` above). */
+export const TERRAIN_SHORELINE_CONFIG = {
+  sliceCount: terrainConfig.generation.shoreline.sliceCount,
+  transitionFraction: terrainConfig.generation.shoreline.transitionFraction,
+  beachBandHeight: terrainConfig.generation.shoreline.beachBandHeight,
 } as const;

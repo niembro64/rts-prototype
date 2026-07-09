@@ -48,6 +48,11 @@ export type BattleBarConfig = {
   /** Slope angle in degrees for the D-PLATEAU transition band. Measured
    *  from horizontal: 89 = cliff-like, 45 = broad ramps. */
   readonly plateauWallSlopeDegrees: OptionsConfig<number>;
+  /** Slope angle in degrees for the water's-edge beach band. Measured
+   *  from horizontal: 0 = flat shelf, 30 = steep beach. */
+  readonly watersEdgeBeachSlopeDegrees: OptionsConfig<number>;
+  /** Height (world units) of the water's-edge cliff. 0 = no cliff. */
+  readonly watersEdgeCliffHeight: OptionsConfig<number>;
   /** Vertical step (world units) between metal-extractor pad altitude
    *  levels — a deposit ring's `dTerrainLevels` is multiplied by this
    *  to get its pad `height`. Independent from `terrainDTerrain` so

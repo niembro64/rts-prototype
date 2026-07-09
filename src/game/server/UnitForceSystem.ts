@@ -191,7 +191,7 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         codeCount,
         ground.force,
         ground.traction,
-        air.gravityCounterUpwardForceRatio,
+        air.buoyancy,
         air.heightUpwardForce,
         air.heightUpwardForceRandomizationAmount,
         air.heightUpwardForceEMA,
@@ -200,7 +200,7 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         water.force,
         water.traction,
         water.friction,
-        water.gravityCounterUpwardForceRatio,
+        water.buoyancy,
         water.heightUpwardForce,
         water.heightUpwardForceRandomizationAmount,
         water.heightUpwardForceEMA,
@@ -257,7 +257,7 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     const base = code * UF_PROFILE_STRIDE;
     values[base + 0] = ground.force;
     values[base + 1] = ground.traction;
-    values[base + 2] = air.gravityCounterUpwardForceRatio;
+    values[base + 2] = air.buoyancy;
     values[base + 3] = air.heightUpwardForce;
     values[base + 4] = air.heightUpwardForceRandomizationAmount;
     values[base + 5] = air.heightUpwardForceEMA;
@@ -266,7 +266,7 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     values[base + 8] = water.force;
     values[base + 9] = water.traction;
     values[base + 10] = water.friction;
-    values[base + 11] = water.gravityCounterUpwardForceRatio;
+    values[base + 11] = water.buoyancy;
     values[base + 12] = water.heightUpwardForce;
     values[base + 13] = water.heightUpwardForceRandomizationAmount;
     values[base + 14] = water.heightUpwardForceEMA;
@@ -279,7 +279,9 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
       (loco.type === 'hover' || loco.type === 'flying'
         ? UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION
         : 0) |
-      (water.force > 0 || water.heightUpwardForce > 0 ? UF_PROFILE_FLAG_IS_SWIMMER : 0) |
+      (water.force > 0 || water.heightUpwardForce > 0 || water.buoyancy > 0
+        ? UF_PROFILE_FLAG_IS_SWIMMER
+        : 0) |
       (air.heightUpwardForceRandomizationAmount > 0
         ? UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE
         : 0) |
@@ -483,10 +485,10 @@ export class UnitForceSystem {
           loco.physics.water.heightUpwardForce > 0;
       }
       const airLiftAuthored =
-        unit.locomotion.physics.air.gravityCounterUpwardForceRatio > 0 ||
+        unit.locomotion.physics.air.buoyancy > 0 ||
         unit.locomotion.physics.air.heightUpwardForce > 0;
       const waterLiftAuthored =
-        unit.locomotion.physics.water.gravityCounterUpwardForceRatio > 0 ||
+        unit.locomotion.physics.water.buoyancy > 0 ||
         unit.locomotion.physics.water.heightUpwardForce > 0;
       // Ground/air/water friction, water force/traction, the swim family,
       // swim EMA accumulator, and air angular damping rate are filled by the

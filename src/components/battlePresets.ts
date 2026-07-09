@@ -32,6 +32,8 @@ export type BattlePreset = {
   readonly perimeterMagnitude: number;
   readonly terrainDTerrain: number;
   readonly plateauWallSlopeDegrees: number;
+  readonly watersEdgeBeachSlopeDegrees: number;
+  readonly watersEdgeCliffHeight: number;
   readonly metalDepositStep: number;
   /** Fine-triangle subdivisions per land cell. 0 = off, which the
    *  terrain baker clamps to one triangle edge subdivision per cell.
@@ -119,6 +121,8 @@ function buildPresets(): readonly BattlePreset[] {
       perimeterMagnitude: 0,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
       metalDepositStep: 0,
       terrainDetail: 0,
       mapWidthLandCells: 23,
@@ -140,6 +144,8 @@ function buildPresets(): readonly BattlePreset[] {
       perimeterMagnitude: -800,
       terrainDTerrain: 1,
       plateauWallSlopeDegrees: 89,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
       metalDepositStep: 200,
       terrainDetail: 1,
       mapWidthLandCells: 53,
@@ -161,6 +167,8 @@ function buildPresets(): readonly BattlePreset[] {
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
       metalDepositStep: 0,
       terrainDetail: 8,
       mapWidthLandCells: 119,
@@ -182,6 +190,8 @@ function buildPresets(): readonly BattlePreset[] {
       perimeterMagnitude: -800,
       terrainDTerrain: 400,
       plateauWallSlopeDegrees: 89,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
       metalDepositStep: 0,
       terrainDetail: 8,
       mapWidthLandCells: 53,
@@ -203,6 +213,8 @@ function buildPresets(): readonly BattlePreset[] {
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
       metalDepositStep: 400,
       terrainDetail: 1,
       mapWidthLandCells: 119,
@@ -224,6 +236,8 @@ function buildPresets(): readonly BattlePreset[] {
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
       metalDepositStep: 200,
       terrainDetail: 8,
       mapWidthLandCells: 53,
@@ -245,6 +259,8 @@ function buildPresets(): readonly BattlePreset[] {
       perimeterMagnitude: -800,
       terrainDTerrain: 0,
       plateauWallSlopeDegrees: 89,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
       metalDepositStep: 200,
       terrainDetail: 8,
       mapWidthLandCells: 53,
@@ -266,6 +282,8 @@ function buildPresets(): readonly BattlePreset[] {
       perimeterMagnitude: -800,
       terrainDTerrain: 200,
       plateauWallSlopeDegrees: 89,
+      watersEdgeBeachSlopeDegrees: 10,
+      watersEdgeCliffHeight: 100,
       metalDepositStep: 3200,
       terrainDetail: 8,
       mapWidthLandCells: 35,
@@ -326,6 +344,8 @@ function presetMatchesCurrent(
     p.perimeterMagnitude === c.perimeterMagnitude &&
     p.terrainDTerrain === c.terrainDTerrain &&
     p.plateauWallSlopeDegrees === c.plateauWallSlopeDegrees &&
+    p.watersEdgeBeachSlopeDegrees === c.watersEdgeBeachSlopeDegrees &&
+    p.watersEdgeCliffHeight === c.watersEdgeCliffHeight &&
     p.metalDepositStep === c.metalDepositStep &&
     p.terrainDetail === c.terrainDetail &&
     p.mapWidthLandCells === c.mapWidthLandCells &&

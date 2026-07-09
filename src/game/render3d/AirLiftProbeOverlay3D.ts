@@ -221,7 +221,7 @@ function unitShouldShowAirLiftProbes(entity: Entity): boolean {
   if (locomotion.type !== 'hover' && locomotion.type !== 'flying') return false;
   const air = locomotion.physics.air;
   const airLiftAuthored =
-    air.gravityCounterUpwardForceRatio > 0 ||
+    air.buoyancy > 0 ||
     air.heightUpwardForce > 0;
   if (!airLiftAuthored) return false;
   const probeRadius = unitProbeRadius(unit);

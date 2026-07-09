@@ -1123,6 +1123,10 @@
         },
         "radius": {
           "$ref": "#/$defs/EntityRadiusConfig"
+        },
+        "explodesIfSubmerged": {
+          "type": "boolean",
+          "description": "When true, the entity dies through the normal death->explosion path after its body has been fully below the waterline for the sustained submersion window. Default false."
         }
       },
       "additionalProperties": false
@@ -1917,6 +1921,11 @@
         },
         "heightUpwardForce": {
           "type": "number"
+        },
+        "buoyancy": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Archimedes buoyancy coefficient against this medium: upward force = mass * gravity * buoyancy * fraction-of-body-in-medium. Water buoyancy > 1 floats the body at the surface; 1 is neutral; 0 (default) sinks."
         }
       },
       "additionalProperties": false

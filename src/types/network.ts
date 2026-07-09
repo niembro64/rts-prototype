@@ -508,6 +508,12 @@ export type LobbySettings = {
   /** D-PLATEAU wall slope angle in degrees from horizontal. Undefined
    *  only for legacy lobby messages. */
   plateauWallSlopeDegrees: number | undefined;
+  /** Water's-edge beach slope angle in degrees from horizontal.
+   *  Undefined only for legacy lobby messages. */
+  watersEdgeBeachSlopeDegrees: number | undefined;
+  /** Water's-edge cliff height (world units). Undefined only for
+   *  legacy lobby messages. */
+  watersEdgeCliffHeight: number | undefined;
   /** Metal-extractor pad altitude step (world units). */
   metalDepositStep: number | undefined;
   /** Fine-triangle subdivisions per land cell. 0 = off (one triangle

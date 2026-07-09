@@ -198,6 +198,9 @@ export async function createBackgroundBattle(
       perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,
       terrainDTerrain: terrainRuntimeConfig.terrainDTerrain,
       plateauWallSlopeDegrees: terrainRuntimeConfig.plateauWallSlopeDegrees,
+      watersEdgeBeachSlopeDegrees:
+        terrainRuntimeConfig.watersEdgeBeachSlopeDegrees,
+      watersEdgeCliffHeight: terrainRuntimeConfig.watersEdgeCliffHeight,
       metalDepositStep: terrainRuntimeConfig.metalDepositStep,
       terrainDetail: terrainRuntimeConfig.terrainDetail,
       mapWidthLandCells: mapDimensions.widthLandCells,

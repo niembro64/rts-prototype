@@ -17,7 +17,6 @@ const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
 const LOCOMOTION_CONFIG_MEDIUM_FIELDS = [
   'traction',
   'friction',
-  'gravityCounterUpwardForceRatio',
   'heightUpwardForceRandomizationAmount',
   'heightUpwardForceEMA',
 ] as const;
@@ -95,10 +94,6 @@ function assertLocomotionTypeMediumPhysics(
   }
   assertNonNegativeFinite(`types.${type}.physics.${medium}.traction`, physics.traction);
   assertNonNegativeFinite(`types.${type}.physics.${medium}.friction`, physics.friction);
-  assertUnitFraction(
-    `types.${type}.physics.${medium}.gravityCounterUpwardForceRatio`,
-    physics.gravityCounterUpwardForceRatio,
-  );
   assertUnitFraction(
     `types.${type}.physics.${medium}.heightUpwardForceRandomizationAmount`,
     physics.heightUpwardForceRandomizationAmount,
@@ -271,12 +266,14 @@ function createRuntimeMediumPhysics(
     `${type}.physics.${medium}.heightUpwardForce`,
     authored.heightUpwardForce,
   );
+  const authoredBuoyancy = authored.buoyancy ?? 0;
+  assertNonNegativeFinite(`${type}.physics.${medium}.buoyancy`, authoredBuoyancy);
   const typeMediumPhysics = getLocomotionTypeMediumPhysics(type, medium);
   return {
     force: getEffectiveLocomotionForce(type, medium, authored.force),
     traction: typeMediumPhysics.traction,
     friction: typeMediumPhysics.friction,
-    gravityCounterUpwardForceRatio: typeMediumPhysics.gravityCounterUpwardForceRatio,
+    buoyancy: authoredBuoyancy,
     heightUpwardForce: authored.heightUpwardForce,
     heightUpwardForceRandomizationAmount: typeMediumPhysics.heightUpwardForceRandomizationAmount,
     heightUpwardForceEMA: typeMediumPhysics.heightUpwardForceEMA,

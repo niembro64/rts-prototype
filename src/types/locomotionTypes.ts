@@ -23,8 +23,12 @@ export type UnitLocomotionMediumPhysics = {
   traction: number;
   /** Passive velocity damping rate for this medium, in 1/s. */
   friction: number;
-  /** Constant upward force as a ratio of gravity. Must be in [0, 1). */
-  gravityCounterUpwardForceRatio: number;
+  /** Archimedes-style buoyancy coefficient against this medium: upward
+   *  force = mass * gravity * buoyancy * fraction-of-body-in-medium.
+   *  Water buoyancy above 1 floats the body at partial submergence
+   *  (fraction = 1 / buoyancy); exactly 1 is neutral; 0 sinks. Ground
+   *  buoyancy is meaningless and stays 0. */
+  buoyancy: number;
   /** Height-based upward force coefficient, referenced to the relevant
    *  support surface: terrain/water surface for air, lake bed for water.
    *  Air uses the global distance falloff authored in locomotionConfig.json. */

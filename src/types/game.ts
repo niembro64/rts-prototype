@@ -128,6 +128,10 @@ export type GameServerConfig = {
   terrainDTerrain?: number;
   /** D-PLATEAU wall slope angle in degrees from horizontal. */
   plateauWallSlopeDegrees?: number;
+  /** Water's-edge beach slope angle in degrees from horizontal. */
+  watersEdgeBeachSlopeDegrees?: number;
+  /** Water's-edge cliff height (world units). 0 = no cliff. */
+  watersEdgeCliffHeight?: number;
   /** Metal-extractor pad altitude step (world units). */
   metalDepositStep?: number;
   /** Fine-triangle subdivisions per land cell. 0 = off; higher values

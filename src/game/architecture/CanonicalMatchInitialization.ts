@@ -48,6 +48,8 @@ export type CanonicalMatchInitialization = {
     readonly perimeterMagnitude: number | null;
     readonly terrainDTerrain: number | null;
     readonly plateauWallSlopeDegrees: number | null;
+    readonly watersEdgeBeachSlopeDegrees: number | null;
+    readonly watersEdgeCliffHeight: number | null;
     readonly metalDepositStep: number | null;
     readonly terrainDetail: number | null;
     readonly mapWidthLandCells: number | null;
@@ -128,6 +130,10 @@ export function buildCanonicalMatchInitialization({
       perimeterMagnitude: finiteOrNull(settings?.perimeterMagnitude),
       terrainDTerrain: finiteOrNull(settings?.terrainDTerrain),
       plateauWallSlopeDegrees: finiteOrNull(settings?.plateauWallSlopeDegrees),
+      watersEdgeBeachSlopeDegrees: finiteOrNull(
+        settings?.watersEdgeBeachSlopeDegrees,
+      ),
+      watersEdgeCliffHeight: finiteOrNull(settings?.watersEdgeCliffHeight),
       metalDepositStep: finiteOrNull(settings?.metalDepositStep),
       terrainDetail: finiteOrNull(settings?.terrainDetail),
       mapWidthLandCells: finiteOrNull(settings?.mapWidthLandCells),

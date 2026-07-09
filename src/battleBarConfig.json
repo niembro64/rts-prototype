@@ -20,6 +20,12 @@
   "plateauWallSlopeDegrees": {
     "options": [89, 85, 80, 70, 45]
   },
+  "watersEdgeBeachSlopeDegrees": {
+    "options": [0, 5, 10, 15, 20, 30]
+  },
+  "watersEdgeCliffHeight": {
+    "options": [0, 50, 100, 200, 400]
+  },
   "metalDepositStep": {
     "options": [0, 100, 200, 400, 800, 1600, 3200, 6400]
   },
@@ -68,6 +74,10 @@
     "realTerrainDTerrain": "real-battle-terrain-d-terrain",
     "demoPlateauWallSlopeDegrees": "demo-battle-plateau-wall-slope-degrees",
     "realPlateauWallSlopeDegrees": "real-battle-plateau-wall-slope-degrees",
+    "demoWatersEdgeBeachSlopeDegrees": "demo-battle-waters-edge-beach-slope-degrees",
+    "realWatersEdgeBeachSlopeDegrees": "real-battle-waters-edge-beach-slope-degrees",
+    "demoWatersEdgeCliffHeight": "demo-battle-waters-edge-cliff-height",
+    "realWatersEdgeCliffHeight": "real-battle-waters-edge-cliff-height",
     "demoMetalDepositStep": "demo-battle-metal-deposit-step",
     "realMetalDepositStep": "real-battle-metal-deposit-step",
     "demoTerrainDetail": "demo-battle-terrain-detail",

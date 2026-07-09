@@ -46,7 +46,7 @@ function mediumHasHorizontalAuthority(
 function mediumHasLiftAuthority(
   physics: UnitLocomotion['physics']['air'],
 ): boolean {
-  return physics.gravityCounterUpwardForceRatio > 0 || physics.heightUpwardForce > 0;
+  return physics.buoyancy > 0 || physics.heightUpwardForce > 0;
 }
 
 export function computeLocomotionClimbProfile(

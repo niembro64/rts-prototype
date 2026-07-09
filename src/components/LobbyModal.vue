@@ -37,6 +37,8 @@ const props = defineProps<{
   perimeterMagnitude: number;
   terrainDTerrain: number;
   plateauWallSlopeDegrees: number;
+  watersEdgeBeachSlopeDegrees: number;
+  watersEdgeCliffHeight: number;
   metalDepositStep: number;
   terrainDetail: number;
   mapWidthLandCells: number;
@@ -70,6 +72,8 @@ const emit = defineEmits<{
   (e: 'setPerimeterMagnitude', value: number): void;
   (e: 'setTerrainDTerrain', value: number): void;
   (e: 'setPlateauWallSlopeDegrees', value: number): void;
+  (e: 'setWatersEdgeBeachSlopeDegrees', value: number): void;
+  (e: 'setWatersEdgeCliffHeight', value: number): void;
   (e: 'setMetalDepositStep', value: number): void;
   (e: 'setTerrainDetail', value: number): void;
   (e: 'setPreset', preset: BattlePreset): void;
@@ -97,6 +101,10 @@ const perimeterMagnitudeOptions = BATTLE_CONFIG.perimeterMagnitude.options;
 const terrainDTerrainOptions = BATTLE_CONFIG.terrainDTerrain.options;
 const plateauWallSlopeDegreesOptions =
   BATTLE_CONFIG.plateauWallSlopeDegrees.options;
+const watersEdgeBeachSlopeDegreesOptions =
+  BATTLE_CONFIG.watersEdgeBeachSlopeDegrees.options;
+const watersEdgeCliffHeightOptions =
+  BATTLE_CONFIG.watersEdgeCliffHeight.options;
 const metalDepositStepOptions = BATTLE_CONFIG.metalDepositStep.options;
 const terrainDetailOptions = BATTLE_CONFIG.terrainDetail.options;
 const converterTaxOptions = BATTLE_CONFIG.converterTax.options;
@@ -154,6 +162,16 @@ function pickTerrainDTerrain(value: number): void {
 function pickPlateauWallSlopeDegrees(value: number): void {
   if (!props.isHost) return;
   emit('setPlateauWallSlopeDegrees', value);
+}
+
+function pickWatersEdgeBeachSlopeDegrees(value: number): void {
+  if (!props.isHost) return;
+  emit('setWatersEdgeBeachSlopeDegrees', value);
+}
+
+function pickWatersEdgeCliffHeight(value: number): void {
+  if (!props.isHost) return;
+  emit('setWatersEdgeCliffHeight', value);
 }
 
 function pickMetalDepositStep(value: number): void {
@@ -744,6 +762,36 @@ const terrainSectionVars = computed(() =>
                       : 'Only the host can change terrain'"
                     @click="pickPlateauWallSlopeDegrees(opt)"
                   >{{ opt }} DEG</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>BEACH SLOPE:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in watersEdgeBeachSlopeDegreesOptions"
+                    :key="opt"
+                    :active="watersEdgeBeachSlopeDegrees === opt"
+                    :title="isHost
+                      ? `Water's-edge beach slope angle from horizontal: ${opt} degrees`
+                      : 'Only the host can change terrain'"
+                    @click="pickWatersEdgeBeachSlopeDegrees(opt)"
+                  >{{ opt }} DEG</BarButton>
+                </BarButtonGroup>
+              </BarControlGroup>
+              <BarControlGroup>
+                <BarDivider />
+                <BarLabel>W-CLIFF:</BarLabel>
+                <BarButtonGroup>
+                  <BarButton
+                    v-for="opt in watersEdgeCliffHeightOptions"
+                    :key="opt"
+                    :active="watersEdgeCliffHeight === opt"
+                    :title="isHost
+                      ? `Water's-edge cliff height: ${opt}`
+                      : 'Only the host can change terrain'"
+                    @click="pickWatersEdgeCliffHeight(opt)"
+                  >{{ opt.toLocaleString() }}</BarButton>
                 </BarButtonGroup>
               </BarControlGroup>
               <BarControlGroup>

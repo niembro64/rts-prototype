@@ -7,7 +7,11 @@ import {
   TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
   TERRAIN_RIDGE_CONFIG,
   TERRAIN_RIPPLE_CONFIG,
+  TERRAIN_SHORELINE_CONFIG,
+  TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+  TERRAIN_WATERS_EDGE_CLIFF_HEIGHT,
   TILE_FLOOR_Y,
+  WATER_LEVEL,
 } from './terrainConfig';
 import { smootherstep } from './terrainMath';
 import { clamp01 } from '../../math';
@@ -200,16 +204,18 @@ function getShapedTerrainHeightBeforePlateaus(
   return applyTerrainMapBoundaryForSample(natural, ovalMetrics, ovalSample);
 }
 
-function estimateShapedTerrainGradientBeforePlateaus(
+/** Unguarded gradient estimate of the shaped (pre-plateau) surface.
+ *  The plateau path keeps its historical short-circuit in
+ *  `getTerrainHeightWithMetrics`; the waters-edge pass needs a real
+ *  gradient even when terracing is disabled. Mirrors
+ *  `terrain_estimate_shaped_gradient` in the Rust sim. */
+function estimateShapedTerrainGradient(
   x: number,
   y: number,
   mapWidth: number,
   mapHeight: number,
   ovalMetrics: MapOvalMetrics,
 ): number {
-  if (TERRAIN_D_TERRAIN <= 0 || TERRAIN_PLATEAU_WALL_SLOPE_DEGREES >= 89) {
-    return 0;
-  }
   const step = TERRAIN_PLATEAU_GRADIENT_SAMPLE_STEP;
   const x0 = Math.max(0, x - step);
   const x1 = Math.min(mapWidth, x + step);
@@ -248,6 +254,125 @@ function estimateShapedTerrainGradientBeforePlateaus(
   const gx = (hX1 - hX0) / dxSpan;
   const gy = (hY1 - hY0) / dySpan;
   return Math.sqrt(gx * gx + gy * gy);
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Waters-edge shoreline pass (beach / cliff slices). Mirrors the
+//  Rust implementation in deposits.rs (`terrain_apply_waters_edge`)
+//  so this analytic fallback agrees with the baked WASM mesh.
+// ─────────────────────────────────────────────────────────────────
+
+function watersEdgeBeachEnabled(): boolean {
+  return (
+    TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES > 0 &&
+    TERRAIN_SHORELINE_CONFIG.beachBandHeight > 0
+  );
+}
+
+function watersEdgeCliffEnabled(): boolean {
+  return TERRAIN_WATERS_EDGE_CLIFF_HEIGHT > 0;
+}
+
+/** Conservative vertical reach of the shoreline pass around the
+ *  waterline. Plateau snapping can move a height by up to half a
+ *  step, so the pre-plateau band gate widens by that much. */
+function watersEdgeBandExtent(): number {
+  const beachHalf = watersEdgeBeachEnabled()
+    ? TERRAIN_SHORELINE_CONFIG.beachBandHeight * 0.5
+    : 0;
+  const cliffHalf = watersEdgeCliffEnabled()
+    ? TERRAIN_WATERS_EDGE_CLIFF_HEIGHT * 0.5
+    : 0;
+  const plateauSlack = TERRAIN_D_TERRAIN > 0 ? TERRAIN_D_TERRAIN * 0.5 : 0;
+  return Math.max(beachHalf, cliffHalf) + plateauSlack;
+}
+
+/** Cliffness in [0, 1] for the angular shoreline slice containing
+ *  `angle`: even slices are beaches (0), odd slices are cliffs (1),
+ *  with a smootherstep blend across the leading transition fraction
+ *  of each slice so adjacent slice shapes join continuously. */
+function watersEdgeSliceCliffness(angle: number): number {
+  const n = Math.floor(Math.max(1, TERRAIN_SHORELINE_CONFIG.sliceCount));
+  const phase = ((angle + Math.PI) / (2 * Math.PI)) * n;
+  const k = Math.floor(phase);
+  const u = phase - k;
+  const parity = (slice: number): number => (((slice % n) + n) % n) % 2;
+  const current = parity(k);
+  const transition = clamp01(TERRAIN_SHORELINE_CONFIG.transitionFraction);
+  if (transition <= 0 || u >= transition) return current;
+  const previous = parity(k - 1);
+  return previous + (current - previous) * smootherstep(u / transition);
+}
+
+/** Beach operator: within the vertical beach band around the
+ *  waterline, fade out plateau terracing and compress the height
+ *  gradient so the surface crosses the waterline at (at most) the
+ *  authored beach slope. Identity at the band edges. */
+function watersEdgeBeachHeight(
+  terraced: number,
+  shaped: number,
+  gradient: number,
+): number {
+  const bandHalf = TERRAIN_SHORELINE_CONFIG.beachBandHeight * 0.5;
+  const dRef = shaped - WATER_LEVEL;
+  const a = Math.abs(dRef / bandHalf);
+  if (a >= 1) return terraced;
+  const bandW = 1 - smootherstep(a);
+  const beachTan = Math.tan(
+    Math.max(0.1, Math.min(89, TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES)) *
+      Math.PI / 180,
+  );
+  const gradientScale = Math.min(1, beachTan / Math.max(1e-6, gradient));
+  const unterraced = terraced + (shaped - terraced) * bandW;
+  const scale = gradientScale + (1 - gradientScale) * (1 - bandW);
+  return WATER_LEVEL + (unterraced - WATER_LEVEL) * scale;
+}
+
+/** Cliff operator: heights within half a cliff-height of the
+ *  waterline snap onto a single plateau-style terrace step centered
+ *  on the waterline — flat shelves just below and above the water
+ *  joined by a wall shaped by the same ramp curve and wall-slope
+ *  config as plateau walls. Identity at the band edges. */
+function watersEdgeCliffHeightAt(terraced: number, gradient: number): number {
+  const step = TERRAIN_WATERS_EDGE_CLIFF_HEIGHT;
+  const half = step * 0.5;
+  const d = terraced - WATER_LEVEL;
+  if (Math.abs(d) >= half) return terraced;
+  const t = (d + half) / step;
+  const flatHalf = plateauFlatHalfForGradient(gradient);
+  let ramp: number;
+  if (t <= flatHalf) {
+    ramp = 0;
+  } else if (t >= 1 - flatHalf) {
+    ramp = 1;
+  } else {
+    const rampSpan = Math.max(1e-6, 1 - flatHalf * 2);
+    ramp = plateauRampCurve((t - flatHalf) / rampSpan);
+  }
+  return WATER_LEVEL - half + ramp * step;
+}
+
+function applyWatersEdge(
+  terraced: number,
+  shaped: number,
+  gradient: number,
+  angle: number,
+): number {
+  const beachEnabled = watersEdgeBeachEnabled();
+  const cliffEnabled = watersEdgeCliffEnabled();
+  if (!beachEnabled && !cliffEnabled) return terraced;
+  const cliffness = beachEnabled && cliffEnabled
+    ? watersEdgeSliceCliffness(angle)
+    : cliffEnabled
+      ? 1
+      : 0;
+  const beach = beachEnabled && cliffness < 1
+    ? watersEdgeBeachHeight(terraced, shaped, gradient)
+    : terraced;
+  const cliff = cliffEnabled && cliffness > 0
+    ? watersEdgeCliffHeightAt(terraced, gradient)
+    : terraced;
+  return beach + (cliff - beach) * cliffness;
 }
 
 function getGeneratedNaturalTerrainHeight(
@@ -380,19 +505,23 @@ function getTerrainHeightWithMetrics(
     ovalMetrics,
     ovalSample,
   );
-  const gradient = estimateShapedTerrainGradientBeforePlateaus(
-    x,
-    y,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
+  const watersEdgeActive =
+    (watersEdgeBeachEnabled() || watersEdgeCliffEnabled()) &&
+    Math.abs(shaped - WATER_LEVEL) < watersEdgeBandExtent();
+  const plateauGradientNeeded =
+    TERRAIN_D_TERRAIN > 0 && TERRAIN_PLATEAU_WALL_SLOPE_DEGREES < 89;
+  const gradient = plateauGradientNeeded || watersEdgeActive
+    ? estimateShapedTerrainGradient(x, y, mapWidth, mapHeight, ovalMetrics)
+    : 0;
   const terraced = applyTerrainPlateaus(shaped, gradient);
+  const shored = watersEdgeActive
+    ? applyWatersEdge(terraced, shaped, gradient, ovalSample.angle)
+    : terraced;
 
-  let blended = terraced;
+  let blended = shored;
   if (includeDeposits) {
     const override = depositOverride(x, y);
-    blended = override.height * (1 - override.weight) + terraced * override.weight;
+    blended = override.height * (1 - override.weight) + shored * override.weight;
   }
 
   return Math.max(TILE_FLOOR_Y, blended);

@@ -107,6 +107,12 @@ export class ServerBootstrap {
       plateauWallSlopeDegrees:
         config.plateauWallSlopeDegrees ??
         terrainRuntimeConfig.plateauWallSlopeDegrees,
+      watersEdgeBeachSlopeDegrees:
+        config.watersEdgeBeachSlopeDegrees ??
+        terrainRuntimeConfig.watersEdgeBeachSlopeDegrees,
+      watersEdgeCliffHeight:
+        config.watersEdgeCliffHeight ??
+        terrainRuntimeConfig.watersEdgeCliffHeight,
       metalDepositStep:
         config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
       terrainDetail:
@@ -276,6 +282,12 @@ export class ServerBootstrap {
       plateauWallSlopeDegrees:
         config.plateauWallSlopeDegrees ??
         terrainRuntimeConfig.plateauWallSlopeDegrees,
+      watersEdgeBeachSlopeDegrees:
+        config.watersEdgeBeachSlopeDegrees ??
+        terrainRuntimeConfig.watersEdgeBeachSlopeDegrees,
+      watersEdgeCliffHeight:
+        config.watersEdgeCliffHeight ??
+        terrainRuntimeConfig.watersEdgeCliffHeight,
       metalDepositStep:
         config.metalDepositStep ?? terrainRuntimeConfig.metalDepositStep,
       terrainDetail:

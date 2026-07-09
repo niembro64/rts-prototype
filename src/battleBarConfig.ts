@@ -154,6 +154,14 @@ export const BATTLE_CONFIG = {
     default: _demoPreset.plateauWallSlopeDegrees,
     options: battleBarConfig.plateauWallSlopeDegrees.options as readonly number[],
   },
+  watersEdgeBeachSlopeDegrees: {
+    default: _demoPreset.watersEdgeBeachSlopeDegrees,
+    options: battleBarConfig.watersEdgeBeachSlopeDegrees.options as readonly number[],
+  },
+  watersEdgeCliffHeight: {
+    default: _demoPreset.watersEdgeCliffHeight,
+    options: battleBarConfig.watersEdgeCliffHeight.options as readonly number[],
+  },
   metalDepositStep: {
     default: _demoPreset.metalDepositStep,
     options: battleBarConfig.metalDepositStep.options as readonly number[],
@@ -235,6 +243,12 @@ const STORAGE_DEMO_TERRAIN_D_TERRAIN = sk.demoTerrainDTerrain;
 const STORAGE_REAL_TERRAIN_D_TERRAIN = sk.realTerrainDTerrain;
 const STORAGE_DEMO_PLATEAU_WALL_SLOPE_DEGREES = sk.demoPlateauWallSlopeDegrees;
 const STORAGE_REAL_PLATEAU_WALL_SLOPE_DEGREES = sk.realPlateauWallSlopeDegrees;
+const STORAGE_DEMO_WATERS_EDGE_BEACH_SLOPE_DEGREES =
+  sk.demoWatersEdgeBeachSlopeDegrees;
+const STORAGE_REAL_WATERS_EDGE_BEACH_SLOPE_DEGREES =
+  sk.realWatersEdgeBeachSlopeDegrees;
+const STORAGE_DEMO_WATERS_EDGE_CLIFF_HEIGHT = sk.demoWatersEdgeCliffHeight;
+const STORAGE_REAL_WATERS_EDGE_CLIFF_HEIGHT = sk.realWatersEdgeCliffHeight;
 const STORAGE_DEMO_METAL_DEPOSIT_STEP = sk.demoMetalDepositStep;
 const STORAGE_REAL_METAL_DEPOSIT_STEP = sk.realMetalDepositStep;
 const STORAGE_DEMO_TERRAIN_DETAIL = sk.demoTerrainDetail;
@@ -457,6 +471,10 @@ export type BattleTerrainRuntimeConfig = {
   terrainDTerrain: number;
   /** D-PLATEAU wall slope angle in degrees from horizontal. */
   plateauWallSlopeDegrees: number;
+  /** Water's-edge beach slope angle in degrees from horizontal. */
+  watersEdgeBeachSlopeDegrees: number;
+  /** Water's-edge cliff height in world units. 0 = no cliff. */
+  watersEdgeCliffHeight: number;
   /** Metal-extractor pad altitude step in world units. */
   metalDepositStep: number;
   /** Fine-triangle subdivisions per land cell. 0 = off, which the
@@ -640,6 +658,14 @@ export function normalizeTerrainDTerrain(value: number): number {
 
 export function normalizePlateauWallSlopeDegrees(value: number): number {
   return normalizeNumberOption(value, BATTLE_CONFIG.plateauWallSlopeDegrees);
+}
+
+export function normalizeWatersEdgeBeachSlopeDegrees(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.watersEdgeBeachSlopeDegrees);
+}
+
+export function normalizeWatersEdgeCliffHeight(value: number): number {
+  return normalizeNumberOption(value, BATTLE_CONFIG.watersEdgeCliffHeight);
 }
 
 export function normalizeMetalDepositStep(value: number): number {
@@ -863,6 +889,48 @@ export function savePlateauWallSlopeDegrees(
       ? STORAGE_REAL_PLATEAU_WALL_SLOPE_DEGREES
       : STORAGE_DEMO_PLATEAU_WALL_SLOPE_DEGREES,
     String(normalizePlateauWallSlopeDegrees(value)),
+  );
+}
+
+export function loadStoredWatersEdgeBeachSlopeDegrees(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+    STORAGE_DEMO_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+    BATTLE_CONFIG.watersEdgeBeachSlopeDegrees,
+  );
+}
+
+export function saveWatersEdgeBeachSlopeDegrees(
+  value: number,
+  mode: BattleMode,
+): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_WATERS_EDGE_BEACH_SLOPE_DEGREES
+      : STORAGE_DEMO_WATERS_EDGE_BEACH_SLOPE_DEGREES,
+    String(normalizeWatersEdgeBeachSlopeDegrees(value)),
+  );
+}
+
+export function loadStoredWatersEdgeCliffHeight(mode: BattleMode): number {
+  return loadModeNumberOption(
+    mode,
+    STORAGE_REAL_WATERS_EDGE_CLIFF_HEIGHT,
+    STORAGE_DEMO_WATERS_EDGE_CLIFF_HEIGHT,
+    BATTLE_CONFIG.watersEdgeCliffHeight,
+  );
+}
+
+export function saveWatersEdgeCliffHeight(
+  value: number,
+  mode: BattleMode,
+): void {
+  persist(
+    mode === 'real'
+      ? STORAGE_REAL_WATERS_EDGE_CLIFF_HEIGHT
+      : STORAGE_DEMO_WATERS_EDGE_CLIFF_HEIGHT,
+    String(normalizeWatersEdgeCliffHeight(value)),
   );
 }
 
@@ -1098,6 +1166,8 @@ export function loadStoredTerrainRuntimeConfig(
     perimeterMagnitude: loadStoredPerimeterMagnitude(mode),
     terrainDTerrain: loadStoredTerrainDTerrain(mode),
     plateauWallSlopeDegrees: loadStoredPlateauWallSlopeDegrees(mode),
+    watersEdgeBeachSlopeDegrees: loadStoredWatersEdgeBeachSlopeDegrees(mode),
+    watersEdgeCliffHeight: loadStoredWatersEdgeCliffHeight(mode),
     metalDepositStep: loadStoredMetalDepositStep(mode),
     terrainDetail: loadStoredTerrainDetail(mode),
   };

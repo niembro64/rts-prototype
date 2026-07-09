@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
 pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
-pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 23;
+pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 28;
 pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 5;
 pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
@@ -63,6 +63,11 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     ridge_inner_radius_fraction: f64,
     ridge_outer_radius_fraction: f64,
     ridge_half_width_fraction: f64,
+    waters_edge_beach_slope_degrees: f64,
+    waters_edge_cliff_height: f64,
+    shoreline_slice_count: f64,
+    shoreline_transition_fraction: f64,
+    shoreline_beach_band_height: f64,
 }
 
 pub(crate) fn metal_deposit_terrain_config_from_slice(
@@ -96,6 +101,11 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         ridge_outer_radius_fraction: values[20],
         ridge_half_width_fraction: values[21],
         plateau_wall_slope_degrees: values[22],
+        waters_edge_beach_slope_degrees: values[23],
+        waters_edge_cliff_height: values[24],
+        shoreline_slice_count: values[25],
+        shoreline_transition_fraction: values[26],
+        shoreline_beach_band_height: values[27],
     })
 }
 
@@ -320,6 +330,18 @@ pub(crate) fn terrain_estimate_shaped_gradient_before_plateaus(
     if cfg.terrain_d_terrain <= 0.0 || cfg.plateau_wall_slope_degrees >= 89.0 {
         return 0.0;
     }
+    terrain_estimate_shaped_gradient(x, y, metrics, cfg)
+}
+
+/// Unguarded gradient estimate of the shaped (pre-plateau) surface. The
+/// plateau path keeps its historical short-circuit above; the waters-edge
+/// pass needs a real gradient even when terracing is disabled.
+pub(crate) fn terrain_estimate_shaped_gradient(
+    x: f64,
+    y: f64,
+    metrics: &MapOvalMetricsRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
     let step = 8.0;
     let map_width = metrics.cx * 2.0;
     let map_height = metrics.cy * 2.0;
@@ -499,6 +521,168 @@ pub(crate) fn metal_deposit_override_from_flat_zone_rows(
     (prod_all / total_weight, weighted_height_sum / effective_sum)
 }
 
+// ─────────────────────────────────────────────────────────────────
+//  Waters-edge shoreline pass (beach / cliff slices)
+//
+//  Runs after plateau terracing and before the deposit flat-pad
+//  blend. The waterline is divided into angular slices around the
+//  map-oval center; alternating slices are beaches (the terrain
+//  gradient is compressed through the waterline so every unit can
+//  wade in and out) or cliffs (heights near the waterline snap away
+//  from it into a single plateau-style wall, reusing the plateau
+//  ramp curve and wall-slope shaping so shoreline cliffs look like
+//  every other cliff on the map). Both operators are identity at
+//  their band edges, so the pass is continuous with the rest of the
+//  heightfield. Mirrored by applyWatersEdge in
+//  terrainHeightGenerator.ts.
+// ─────────────────────────────────────────────────────────────────
+
+#[inline]
+pub(crate) fn terrain_waters_edge_beach_enabled(cfg: &MetalDepositTerrainConfigRust) -> bool {
+    cfg.waters_edge_beach_slope_degrees > 0.0 && cfg.shoreline_beach_band_height > 0.0
+}
+
+#[inline]
+pub(crate) fn terrain_waters_edge_cliff_enabled(cfg: &MetalDepositTerrainConfigRust) -> bool {
+    cfg.waters_edge_cliff_height > 0.0
+}
+
+/// Conservative vertical reach of the shoreline pass around the
+/// waterline. Plateau snapping can move a height by up to half a step,
+/// so the pre-plateau band gate widens by that much.
+pub(crate) fn terrain_waters_edge_band_extent(cfg: &MetalDepositTerrainConfigRust) -> f64 {
+    let beach_half = if terrain_waters_edge_beach_enabled(cfg) {
+        cfg.shoreline_beach_band_height * 0.5
+    } else {
+        0.0
+    };
+    let cliff_half = if terrain_waters_edge_cliff_enabled(cfg) {
+        cfg.waters_edge_cliff_height * 0.5
+    } else {
+        0.0
+    };
+    let plateau_slack = if cfg.terrain_d_terrain > 0.0 {
+        cfg.terrain_d_terrain * 0.5
+    } else {
+        0.0
+    };
+    beach_half.max(cliff_half) + plateau_slack
+}
+
+/// Cliffness in [0, 1] for the angular shoreline slice containing
+/// `angle`: even slices are beaches (0), odd slices are cliffs (1),
+/// with a smootherstep blend across the leading `transition_fraction`
+/// of each slice so adjacent slice shapes join continuously.
+pub(crate) fn terrain_waters_edge_slice_cliffness(
+    angle: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let n = cfg.shoreline_slice_count.max(1.0).floor();
+    let phase = (angle + std::f64::consts::PI) / std::f64::consts::TAU * n;
+    let k = phase.floor();
+    let u = phase - k;
+    let slice_count = n as i64;
+    let parity = |slice: i64| -> f64 {
+        let wrapped = ((slice % slice_count) + slice_count) % slice_count;
+        (wrapped % 2) as f64
+    };
+    let current = parity(k as i64);
+    let transition = terrain_clamp01(cfg.shoreline_transition_fraction);
+    if transition <= 0.0 || u >= transition {
+        return current;
+    }
+    let previous = parity(k as i64 - 1);
+    previous + (current - previous) * terrain_smootherstep(u / transition)
+}
+
+/// Beach operator: within the vertical beach band around the waterline,
+/// fade out plateau terracing and compress the height gradient so the
+/// surface crosses the waterline at (at most) the authored beach slope.
+/// Identity at the band edges.
+pub(crate) fn terrain_waters_edge_beach_height(
+    terraced: f64,
+    shaped: f64,
+    gradient: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let band_half = cfg.shoreline_beach_band_height * 0.5;
+    let d_ref = shaped - TERRAIN_WATER_LEVEL;
+    let a = (d_ref / band_half).abs();
+    if a >= 1.0 {
+        return terraced;
+    }
+    let band_w = 1.0 - terrain_smootherstep(a);
+    let beach_tan = (cfg.waters_edge_beach_slope_degrees.clamp(0.1, 89.0)
+        * std::f64::consts::PI
+        / 180.0)
+        .tan();
+    let gradient_scale = (beach_tan / gradient.max(1e-6)).min(1.0);
+    let unterraced = terraced + (shaped - terraced) * band_w;
+    let scale = gradient_scale + (1.0 - gradient_scale) * (1.0 - band_w);
+    TERRAIN_WATER_LEVEL + (unterraced - TERRAIN_WATER_LEVEL) * scale
+}
+
+/// Cliff operator: heights within half a cliff-height of the waterline
+/// snap onto a single plateau-style terrace step centered on the
+/// waterline — flat shelves just below and above the water joined by a
+/// wall shaped by the same ramp curve and wall-slope config as plateau
+/// walls. Identity at the band edges.
+pub(crate) fn terrain_waters_edge_cliff_height_at(
+    terraced: f64,
+    gradient: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let step = cfg.waters_edge_cliff_height;
+    let half = step * 0.5;
+    let d = terraced - TERRAIN_WATER_LEVEL;
+    if d.abs() >= half {
+        return terraced;
+    }
+    let t = (d + half) / step;
+    let flat_half = terrain_plateau_flat_half_for_gradient(gradient, cfg);
+    let ramp = if t <= flat_half {
+        0.0
+    } else if t >= 1.0 - flat_half {
+        1.0
+    } else {
+        let ramp_span = (1.0 - flat_half * 2.0).max(1e-6);
+        terrain_plateau_ramp_curve((t - flat_half) / ramp_span, cfg)
+    };
+    TERRAIN_WATER_LEVEL - half + ramp * step
+}
+
+pub(crate) fn terrain_apply_waters_edge(
+    terraced: f64,
+    shaped: f64,
+    gradient: f64,
+    angle: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let beach_enabled = terrain_waters_edge_beach_enabled(cfg);
+    let cliff_enabled = terrain_waters_edge_cliff_enabled(cfg);
+    if !beach_enabled && !cliff_enabled {
+        return terraced;
+    }
+    let cliffness = if beach_enabled && cliff_enabled {
+        terrain_waters_edge_slice_cliffness(angle, cfg)
+    } else if cliff_enabled {
+        1.0
+    } else {
+        0.0
+    };
+    let beach = if beach_enabled && cliffness < 1.0 {
+        terrain_waters_edge_beach_height(terraced, shaped, gradient, cfg)
+    } else {
+        terraced
+    };
+    let cliff = if cliff_enabled && cliffness > 0.0 {
+        terrain_waters_edge_cliff_height_at(terraced, gradient, cfg)
+    } else {
+        terraced
+    };
+    beach + (cliff - beach) * cliffness
+}
+
 pub(crate) fn metal_deposit_terrain_height_with_explicit_zones(
     x: f64,
     y: f64,
@@ -507,11 +691,26 @@ pub(crate) fn metal_deposit_terrain_height_with_explicit_zones(
     explicit_flat_zones: &[f64],
 ) -> f64 {
     let shaped = terrain_shaped_height_before_plateaus(x, y, metrics, cfg);
-    let gradient = terrain_estimate_shaped_gradient_before_plateaus(x, y, metrics, cfg);
+    let waters_edge_active = (terrain_waters_edge_beach_enabled(cfg)
+        || terrain_waters_edge_cliff_enabled(cfg))
+        && (shaped - TERRAIN_WATER_LEVEL).abs() < terrain_waters_edge_band_extent(cfg);
+    let plateau_gradient_needed =
+        cfg.terrain_d_terrain > 0.0 && cfg.plateau_wall_slope_degrees < 89.0;
+    let gradient = if plateau_gradient_needed || waters_edge_active {
+        terrain_estimate_shaped_gradient(x, y, metrics, cfg)
+    } else {
+        0.0
+    };
     let terraced = terrain_apply_plateaus(shaped, gradient, cfg);
+    let shored = if waters_edge_active {
+        let oval = terrain_sample_map_oval_at(metrics, x, y);
+        terrain_apply_waters_edge(terraced, shaped, gradient, oval.angle, cfg)
+    } else {
+        terraced
+    };
     let (weight, pad_height) =
         metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
-    let blended = pad_height * (1.0 - weight) + terraced * weight;
+    let blended = pad_height * (1.0 - weight) + shored * weight;
     blended.max(cfg.tile_floor_y)
 }
 
