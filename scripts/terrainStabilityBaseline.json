@@ -23,7 +23,7 @@
       "deposits": {
         "count": 28,
         "resourceCellCount": 700,
-        "hash": "55097b244abe861a"
+        "hash": "e8f2487d00bedb0a"
       },
       "terrain": {
         "metadata": {
@@ -42,7 +42,7 @@
         },
         "meshVertexHeights": {
           "length": 171,
-          "hash": "dd7b1d2f0d0a6f70"
+          "hash": "8ca59c3258bb4167"
         },
         "meshTriangleIndices": {
           "length": 912,
@@ -114,7 +114,7 @@
       "deposits": {
         "count": 42,
         "resourceCellCount": 1050,
-        "hash": "dc8df35554a5b10a"
+        "hash": "ae024b6cc1ef9a0a"
       },
       "terrain": {
         "metadata": {
@@ -133,7 +133,7 @@
         },
         "meshVertexHeights": {
           "length": 2254,
-          "hash": "b4612593d6332e47"
+          "hash": "d673bf38f4d5318e"
         },
         "meshTriangleIndices": {
           "length": 13071,
@@ -176,11 +176,11 @@
         },
         "flags": {
           "length": 7700,
-          "hash": "e94438e0d43cc6de"
+          "hash": "940ab91e3789521f"
         },
         "levels": {
           "length": 7700,
-          "hash": "41783428d9ec09de"
+          "hash": "5c2c25d6251e707f"
         }
       }
     },
@@ -205,7 +205,7 @@
       "deposits": {
         "count": 56,
         "resourceCellCount": 1400,
-        "hash": "65d6241f95c44d92"
+        "hash": "571b9707c3f56492"
       },
       "terrain": {
         "metadata": {
@@ -219,41 +219,41 @@
           "verticesY": 151
         },
         "meshVertexCoords": {
-          "length": 36254,
-          "hash": "39a0ac100aaef3f6"
+          "length": 36220,
+          "hash": "a03639861a4d518c"
         },
         "meshVertexHeights": {
-          "length": 18127,
-          "hash": "05a9bc2e28081121"
+          "length": 18110,
+          "hash": "aded098dc01f63dc"
         },
         "meshTriangleIndices": {
-          "length": 107367,
-          "hash": "168df1993b37efac"
+          "length": 107265,
+          "hash": "1ae287256522a8d3"
         },
         "meshTriangleLevels": {
-          "length": 35789,
-          "hash": "ced0efc1c741c2c9"
+          "length": 35755,
+          "hash": "e369a02dde29cab3"
         },
         "meshTriangleWallFlags": {
-          "length": 35789,
-          "hash": "7f15b28640d40451",
+          "length": 35755,
+          "hash": "b09132a55133382b",
           "sum": 7506
         },
         "meshTriangleNeighborIndices": {
-          "length": 107367,
-          "hash": "4bc25e214be2a6a2"
+          "length": 107265,
+          "hash": "f4c53fcf73a40047"
         },
         "meshTriangleNeighborLevels": {
-          "length": 107367,
-          "hash": "25ff8a36a036df77"
+          "length": 107265,
+          "hash": "9925134359062b99"
         },
         "meshCellTriangleOffsets": {
           "length": 226,
-          "hash": "035b36a4dcdbb93c"
+          "hash": "f545ffc24ab0b8d3"
         },
         "meshCellTriangleIndices": {
-          "length": 42835,
-          "hash": "f3f31b85e566bccc"
+          "length": 42814,
+          "hash": "79dbaec4638a04bf"
         }
       },
       "buildability": {
@@ -267,11 +267,11 @@
         },
         "flags": {
           "length": 22500,
-          "hash": "357435bb125270f1"
+          "hash": "2f62ab7e5e8cb571"
         },
         "levels": {
           "length": 22500,
-          "hash": "0f971c052fa4d18c"
+          "hash": "9d4cd3baebdd7bac"
         }
       }
     },
@@ -296,7 +296,7 @@
       "deposits": {
         "count": 56,
         "resourceCellCount": 1400,
-        "hash": "65d6241f95c44d92"
+        "hash": "571b9707c3f56492"
       },
       "terrain": {
         "metadata": {
@@ -310,41 +310,41 @@
           "verticesY": 151
         },
         "meshVertexCoords": {
-          "length": 36964,
-          "hash": "b0b9912f86185aed"
+          "length": 36926,
+          "hash": "0841eca148dd3ced"
         },
         "meshVertexHeights": {
-          "length": 18482,
-          "hash": "733a8cb9ab2405ca"
+          "length": 18463,
+          "hash": "44b314e14a09f5d4"
         },
         "meshTriangleIndices": {
-          "length": 109509,
-          "hash": "1ff34fc45feb3473"
+          "length": 109395,
+          "hash": "36fdbf212192c02f"
         },
         "meshTriangleLevels": {
-          "length": 36503,
-          "hash": "a5d0177f73771100"
+          "length": 36465,
+          "hash": "53992ac1069d1e0e"
         },
         "meshTriangleWallFlags": {
-          "length": 36503,
-          "hash": "6a5e8d2424e00615",
-          "sum": 15881
+          "length": 36465,
+          "hash": "f07fc9b759e8daf7",
+          "sum": 15817
         },
         "meshTriangleNeighborIndices": {
-          "length": 109509,
-          "hash": "6495338cd9acd182"
+          "length": 109395,
+          "hash": "78e336c62c9c1d31"
         },
         "meshTriangleNeighborLevels": {
-          "length": 109509,
-          "hash": "13afef125649cf95"
+          "length": 109395,
+          "hash": "93a92413bceffd93"
         },
         "meshCellTriangleOffsets": {
           "length": 226,
-          "hash": "b132796c5f594baa"
+          "hash": "a9a421c9b8990d48"
         },
         "meshCellTriangleIndices": {
-          "length": 43896,
-          "hash": "8edc7696236f4800"
+          "length": 43859,
+          "hash": "a3755b5a700f392c"
         }
       },
       "buildability": {
@@ -358,11 +358,11 @@
         },
         "flags": {
           "length": 22500,
-          "hash": "d403a0efb86cb54c"
+          "hash": "7c963bab084dac0c"
         },
         "levels": {
           "length": 22500,
-          "hash": "d54b482dedb2d791"
+          "hash": "2abb70d15242cc31"
         }
       }
     },
@@ -387,7 +387,7 @@
       "deposits": {
         "count": 84,
         "resourceCellCount": 2100,
-        "hash": "73d77ab7f9ea812b"
+        "hash": "908068ad68855eb3"
       },
       "terrain": {
         "metadata": {
@@ -401,41 +401,41 @@
           "verticesY": 166
         },
         "meshVertexCoords": {
-          "length": 42212,
-          "hash": "724d824dbe7875fb"
+          "length": 42216,
+          "hash": "c0a3a5bf79fece78"
         },
         "meshVertexHeights": {
-          "length": 21106,
-          "hash": "85a207b03e0012dd"
+          "length": 21108,
+          "hash": "25cc56d8d7f7e25a"
         },
         "meshTriangleIndices": {
-          "length": 125982,
-          "hash": "fb0a554150909059"
+          "length": 125994,
+          "hash": "017fcc85e3b4cfa1"
         },
         "meshTriangleLevels": {
-          "length": 41994,
-          "hash": "a4ce045c067434d3"
+          "length": 41998,
+          "hash": "f0e0d4ac2d30f1e7"
         },
         "meshTriangleWallFlags": {
-          "length": 41994,
-          "hash": "37cf5258c6db69d3",
+          "length": 41998,
+          "hash": "1d67b0092bc36887",
           "sum": 7196
         },
         "meshTriangleNeighborIndices": {
-          "length": 125982,
-          "hash": "1f44aeda88b76699"
+          "length": 125994,
+          "hash": "00c441ce1409dc46"
         },
         "meshTriangleNeighborLevels": {
-          "length": 125982,
-          "hash": "bad0261817323ac6"
+          "length": 125994,
+          "hash": "0c92f2429d0fa9da"
         },
         "meshCellTriangleOffsets": {
           "length": 254,
-          "hash": "e08875e0bc77b7ef"
+          "hash": "4b6d84f727711b43"
         },
         "meshCellTriangleIndices": {
-          "length": 49174,
-          "hash": "c3397e35d9ea66cc"
+          "length": 49181,
+          "hash": "7e65aac18673006e"
         }
       },
       "buildability": {
@@ -449,11 +449,11 @@
         },
         "flags": {
           "length": 25300,
-          "hash": "f21471a19d63c4eb"
+          "hash": "0c1558a5219feacb"
         },
         "levels": {
           "length": 25300,
-          "hash": "59c0db649b5c098b"
+          "hash": "836bcebfb0cd638b"
         }
       }
     },
@@ -478,7 +478,7 @@
       "deposits": {
         "count": 56,
         "resourceCellCount": 1400,
-        "hash": "65d6241f95c44d92"
+        "hash": "571b9707c3f56492"
       },
       "terrain": {
         "metadata": {
@@ -492,41 +492,41 @@
           "verticesY": 481
         },
         "meshVertexCoords": {
-          "length": 131702,
-          "hash": "cd786df4254fb57a"
+          "length": 131182,
+          "hash": "582140b74436a03d"
         },
         "meshVertexHeights": {
-          "length": 65851,
-          "hash": "5de8ef0ca806e6aa"
+          "length": 65591,
+          "hash": "4ed9a632696e41a3"
         },
         "meshTriangleIndices": {
-          "length": 392613,
-          "hash": "171fa7c7b1ea3f66"
+          "length": 391053,
+          "hash": "0ea2a6df0b8a1e97"
         },
         "meshTriangleLevels": {
-          "length": 130871,
-          "hash": "c4b7feb11bbbf25a"
+          "length": 130351,
+          "hash": "7a2d453618a8a438"
         },
         "meshTriangleWallFlags": {
-          "length": 130871,
-          "hash": "1df6e93bb8644fc3",
+          "length": 130351,
+          "hash": "43b57b78ebd00ba5",
           "sum": 27357
         },
         "meshTriangleNeighborIndices": {
-          "length": 392613,
-          "hash": "26bb066e69f0e5e7"
+          "length": 391053,
+          "hash": "dbc8f3964fdc32cf"
         },
         "meshTriangleNeighborLevels": {
-          "length": 392613,
-          "hash": "8a4ce78a821c005f"
+          "length": 391053,
+          "hash": "f052c46f32253011"
         },
         "meshCellTriangleOffsets": {
           "length": 226,
-          "hash": "8b29f76bdefe56db"
+          "hash": "6d62c3842aa35ef5"
         },
         "meshCellTriangleIndices": {
-          "length": 141976,
-          "hash": "b59563ddae747fea"
+          "length": 141476,
+          "hash": "9ffe21f7bbcf87f4"
         }
       },
       "buildability": {
@@ -540,11 +540,11 @@
         },
         "flags": {
           "length": 22500,
-          "hash": "ea33ad373c157f91"
+          "hash": "171e71e4052ec151"
         },
         "levels": {
           "length": 22500,
-          "hash": "1e95e5956bc3beec"
+          "hash": "241504444a49ed8c"
         }
       }
     }

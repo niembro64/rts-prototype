@@ -78,8 +78,10 @@ type DepositRing = {
   dTerrainLevels: number | null;
   /** Circular terrain-flattening diameter in fine building cells; can be
    *  larger than the resource footprint to give the extractor a clean
-   *  buildable pad without increasing production area. */
-  flatPadCells: number;
+   *  buildable pad without increasing production area. Pass `null` to
+   *  auto-size: the smallest cell count whose circular radius covers the
+   *  generated resource footprint radius. */
+  flatPadCells: number | null;
   /** World-unit width outside the circular flat pad where terrain eases
    *  back to the natural heightmap. Larger values make the deposit pad
    *  integrate more gradually with surrounding terrain. */
@@ -510,13 +512,10 @@ function packMetalDepositRingRows(resourceRadius: number): Float64Array {
   );
   for (let i = 0; i < METAL_DEPOSIT_CONFIG.rings.length; i++) {
     const ring = METAL_DEPOSIT_CONFIG.rings[i];
-    const flatPadCells = validMetalDepositFlatPadCells(ring.flatPadCells);
-    const flatPadRadius = (flatPadCells * BUILD_GRID_CELL_SIZE) / 2;
-    if (flatPadRadius < resourceRadius) {
-      throw new Error(
-        `Metal deposit ring flatPadCells (${flatPadCells}) must produce a circular radius >= the generated resource footprint radius (${resourceRadius.toFixed(2)} world units)`,
-      );
-    }
+    const flatPadCells = resolveMetalDepositFlatPadCells(
+      ring.flatPadCells,
+      resourceRadius,
+    );
     const base = i * METAL_DEPOSIT_RING_INPUT_STRIDE;
     ringRows[base] = ring.radiusFraction;
     ringRows[base + 1] = ring.countPerPlayer;
@@ -701,10 +700,27 @@ function validMetalDepositDTerrainLevels(levels: number | null): number | null {
   return levels;
 }
 
-function validMetalDepositFlatPadCells(cells: number): number {
+/** Resolve a ring's authored flatPadCells against the generated
+ *  resource footprint. `null` auto-sizes to the smallest cell count
+ *  whose circular flat-pad radius covers the footprint; an authored
+ *  number must still cover it or the config is rejected. */
+function resolveMetalDepositFlatPadCells(
+  cells: number | null,
+  resourceRadius: number,
+): number {
+  const requiredCells = Math.max(
+    1,
+    Math.ceil((resourceRadius * 2) / BUILD_GRID_CELL_SIZE),
+  );
+  if (cells === null) return requiredCells;
   if (!Number.isFinite(cells) || !Number.isInteger(cells) || cells <= 0) {
     throw new Error(
-      `Metal deposit ring flatPadCells must be a positive integer; received ${cells}`,
+      `Metal deposit ring flatPadCells must be a positive integer or null; received ${cells}`,
+    );
+  }
+  if (cells < requiredCells) {
+    throw new Error(
+      `Metal deposit ring flatPadCells (${cells}) must produce a circular radius >= the generated resource footprint radius (${resourceRadius.toFixed(2)} world units); author >= ${requiredCells} or null to auto-size`,
     );
   }
   return cells;

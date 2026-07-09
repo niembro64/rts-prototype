@@ -10,7 +10,7 @@
       "countPerPlayer": 1,
       "sliceOffset": 0,
       "dTerrainLevels": null,
-      "flatPadCells": 20,
+      "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
@@ -24,7 +24,7 @@
       "countPerPlayer": 1,
       "sliceOffset": 0.4,
       "dTerrainLevels": null,
-      "flatPadCells": 20,
+      "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
@@ -38,7 +38,7 @@
       "countPerPlayer": 1,
       "sliceOffset": -0.4,
       "dTerrainLevels": null,
-      "flatPadCells": 14,
+      "flatPadCells": null,
       "terrainBlendRadius": 1000,
       "depositCluster": {
         "count": 1,
@@ -52,7 +52,7 @@
       "countPerPlayer": 1,
       "sliceOffset": 0.2,
       "dTerrainLevels": null,
-      "flatPadCells": 14,
+      "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
