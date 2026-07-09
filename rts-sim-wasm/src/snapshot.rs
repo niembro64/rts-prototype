@@ -8175,6 +8175,91 @@ mod sim_kernel_tests {
         }
     }
 
+    /// Waterfront cliffs must classify as WALL TRIS through the same
+    /// region machinery as plateau walls — and independently of
+    /// D-PLATEAU (terracing disabled here).
+    #[test]
+    pub(crate) fn waters_edge_cliffs_flag_wall_triangles_without_plateaus() {
+        let _guard = lock_tests();
+        let build = |cliff_height: f64| -> Vec<f64> {
+            let terrain_config = [
+                40.0,   // center_magnitude
+                30.0,   // dividers_magnitude
+                0.0,    // terrain_d_terrain (plateau OFF — cliffs must not need it)
+                -400.0, // perimeter_magnitude (below-water rim => a shoreline ring exists)
+                2.0,    // team_count
+                -600.0, // tile_floor_y
+                0.49,   // perimeter_outer_radius_fraction
+                0.39,   // perimeter_inner_radius_fraction
+                0.04,   // generation_edge_transition_width_fraction
+                0.99,   // plateau_shelf_fraction_of_step
+                1.0,    // plateau_ramp_edge_sharpness
+                0.4,    // ripple_radius_fraction
+                1.7,    // ripple_phase
+                700.0, 0.9, // ripple component 0 wavelength/magnitude
+                600.0, 0.0, // ripple component 1
+                600.0, 0.0, // ripple component 2
+                0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+                85.0, // plateau_wall_slope_degrees (shared by waterfront walls)
+                0.0,  // waters_edge_beach_slope_degrees (all-cliff shoreline)
+                cliff_height,
+                6.0,  // shoreline_slice_count
+                0.25, // shoreline_transition_fraction
+                0.0,  // shoreline_beach_band_height
+            ];
+            let lod_config = [
+                0.0,
+                0.951,
+                1.0,
+                1.0,
+                1.0,
+                TERRAIN_WATER_LEVEL,
+                1000.0,
+                3.0,
+                0.0,
+                0.5,
+            ];
+            let flat_zones: [f64; 0] = [];
+            let cells = 12i32;
+            let cell_size = 64.0;
+            let map = cells as f64 * cell_size;
+            terrain_build_adaptive_mesh(
+                map,
+                map,
+                cell_size,
+                cells,
+                cells,
+                4,
+                0.92,
+                &terrain_config,
+                &flat_zones,
+                &lod_config,
+            )
+        };
+
+        let count_wall_tris = |a: &[f64]| -> usize {
+            assert_eq!(a[0], 1.0, "build reports success");
+            let v = a[1] as usize;
+            let t = a[2] as usize;
+            let wall_flags_start = 5 + 2 * v + v + 3 * t + t;
+            (0..t)
+                .filter(|&k| a[wall_flags_start + k] as i64 == 1)
+                .count()
+        };
+
+        let with_cliffs = build(120.0);
+        let without_cliffs = build(0.0);
+        assert!(
+            count_wall_tris(&with_cliffs) > 0,
+            "waterfront cliffs must produce wall-flagged triangles with D-PLATEAU off"
+        );
+        assert_eq!(
+            count_wall_tris(&without_cliffs),
+            0,
+            "with cliffs and plateaus both off, no triangle should flag as wall"
+        );
+    }
+
     #[test]
     pub(crate) fn terrain_water_probe_masks_mark_center_water_and_compass_dry_bits() {
         let _guard = lock_tests();

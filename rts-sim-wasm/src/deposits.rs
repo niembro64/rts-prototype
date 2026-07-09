@@ -595,6 +595,18 @@ pub(crate) fn terrain_waters_edge_slice_cliffness(
     previous + (current - previous) * terrain_smootherstep(u / transition)
 }
 
+/// Slice cliffness at a world point (the oval angle is private to this
+/// module; the mesh build's region classification calls through here).
+pub(crate) fn terrain_waters_edge_slice_cliffness_at(
+    metrics: &MapOvalMetricsRust,
+    x: f64,
+    y: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let oval = terrain_sample_map_oval_at(metrics, x, y);
+    terrain_waters_edge_slice_cliffness(oval.angle, cfg)
+}
+
 /// Beach operator: within the vertical beach band around the waterline,
 /// fade out plateau terracing and compress the height gradient so the
 /// surface crosses the waterline at (at most) the authored beach slope.
@@ -649,6 +661,73 @@ pub(crate) fn terrain_waters_edge_cliff_height_at(
         terrain_plateau_ramp_curve((t - flat_half) / ramp_span, cfg)
     };
     TERRAIN_WATER_LEVEL - half + ramp * step
+}
+
+/// Waters-edge cliff wall coordinates for region classification: the
+/// dimensionless wall coordinate `t` (0 at the submerged band edge,
+/// 1 at the dry band edge — the same coordinate
+/// `terrain_waters_edge_cliff_height_at` ramps over) and the shelf
+/// flat-half for this point. Uses exactly the pipeline's gradient rule
+/// so classification seams land where the emitted geometry bends.
+/// None when waterfront cliffs are disabled.
+pub(crate) fn terrain_waters_edge_cliff_coords(
+    x: f64,
+    y: f64,
+    metrics: &MapOvalMetricsRust,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> Option<(f64, f64)> {
+    if !terrain_waters_edge_cliff_enabled(cfg) {
+        return None;
+    }
+    let shaped = terrain_shaped_height_before_plateaus(x, y, metrics, cfg);
+    let waters_edge_active =
+        (shaped - TERRAIN_WATER_LEVEL).abs() < terrain_waters_edge_band_extent(cfg);
+    let plateau_gradient_needed =
+        cfg.terrain_d_terrain > 0.0 && cfg.plateau_wall_slope_degrees < 89.0;
+    let gradient = if plateau_gradient_needed || waters_edge_active {
+        terrain_estimate_shaped_gradient(x, y, metrics, cfg)
+    } else {
+        0.0
+    };
+    let terraced = terrain_apply_plateaus(shaped, gradient, cfg);
+    let step = cfg.waters_edge_cliff_height;
+    let t = (terraced - (TERRAIN_WATER_LEVEL - step * 0.5)) / step;
+    let flat_half = terrain_plateau_flat_half_for_gradient(gradient, cfg);
+    Some((t, flat_half))
+}
+
+/// Waters-edge region keys along the height axis: 0 below the cliff
+/// band, 1 submerged shelf, 2 wall, 3 dry shelf, 4 above the band.
+/// Odd/even parity is irrelevant here — key 2 is the wall.
+pub(crate) fn terrain_waters_edge_region_key_for_coords(t: f64, flat_half: f64) -> i32 {
+    if t <= 0.0 {
+        0
+    } else if t <= flat_half {
+        1
+    } else if t < 1.0 - flat_half {
+        2
+    } else if t < 1.0 {
+        3
+    } else {
+        4
+    }
+}
+
+/// Signed boundary function whose zero level-set separates waters-edge
+/// region `after_key` from `after_key + 1` (negative on the lower-key
+/// side), matching `terrain_plateau_boundary_value_at_world`'s
+/// convention so the same polygon clipper drives both region systems.
+pub(crate) fn terrain_waters_edge_boundary_value_for_coords(
+    t: f64,
+    flat_half: f64,
+    after_key: i32,
+) -> f64 {
+    match after_key {
+        0 => t,
+        1 => t - flat_half,
+        2 => t - (1.0 - flat_half),
+        _ => t - 1.0,
+    }
 }
 
 pub(crate) fn terrain_apply_waters_edge(
