@@ -7,16 +7,12 @@ export type RtsScene3DRenderBudgetState = {
   readonly tier: RtsScene3DRenderBudgetTier;
   readonly tierIndex: number;
   readonly unitCount: number;
-  readonly lodDistanceScale: number;
-  readonly emissionLodDistanceScale: number;
 };
 
 export type RtsScene3DRenderBudgetTelemetry = {
   readonly tier: RtsScene3DRenderBudgetTier;
   readonly tierIndex: number;
   readonly unitCount: number;
-  readonly lodDistanceScale: number;
-  readonly emissionLodDistanceScale: number;
   readonly hudFrameStride: number;
   readonly effectFrameStride: number;
 };
@@ -30,8 +26,6 @@ type ResolveRenderBudgetOptions = {
 
 type RenderBudgetTierConfig = {
   readonly tier: RtsScene3DRenderBudgetTier;
-  readonly lodDistanceScale: number;
-  readonly emissionLodDistanceScale: number;
   readonly hudFrameStride: number;
   readonly effectFrameStride: number;
   readonly burnMarkDensityScale: number;
@@ -43,8 +37,6 @@ type RenderBudgetTierConfig = {
 const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
   {
     tier: 'normal',
-    lodDistanceScale: 1,
-    emissionLodDistanceScale: 1,
     hudFrameStride: 1,
     effectFrameStride: 1,
     burnMarkDensityScale: 1,
@@ -54,8 +46,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
   },
   {
     tier: 'busy',
-    lodDistanceScale: 0.45,
-    emissionLodDistanceScale: 0.42,
     hudFrameStride: 2,
     effectFrameStride: 2,
     burnMarkDensityScale: 0.7,
@@ -65,8 +55,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
   },
   {
     tier: 'heavy',
-    lodDistanceScale: 0.26,
-    emissionLodDistanceScale: 0.24,
     hudFrameStride: 3,
     effectFrameStride: 3,
     burnMarkDensityScale: 0.35,
@@ -76,8 +64,6 @@ const TIER_CONFIGS: readonly RenderBudgetTierConfig[] = [
   },
   {
     tier: 'extreme',
-    lodDistanceScale: 0.1,
-    emissionLodDistanceScale: 0.12,
     hudFrameStride: 4,
     effectFrameStride: 4,
     burnMarkDensityScale: 0.15,
@@ -156,8 +142,6 @@ export class RtsScene3DRenderBudget {
       tier: tier.tier,
       tierIndex: this.tierIndex,
       unitCount: this.unitCount,
-      lodDistanceScale: tier.lodDistanceScale,
-      emissionLodDistanceScale: tier.emissionLodDistanceScale,
     };
   }
 
@@ -167,17 +151,9 @@ export class RtsScene3DRenderBudget {
       tier: tier.tier,
       tierIndex: this.tierIndex,
       unitCount: this.unitCount,
-      lodDistanceScale: tier.lodDistanceScale,
-      emissionLodDistanceScale: tier.emissionLodDistanceScale,
       hudFrameStride: this.effectiveGraphicsConfig.hudFrameStride,
       effectFrameStride: this.effectiveGraphicsConfig.effectFrameStride,
     };
-  }
-
-  scaleEmissionDistance(distance: number | null): number | null {
-    if (distance === null) return null;
-    const tier = TIER_CONFIGS[this.tierIndex] ?? TIER_CONFIGS[0];
-    return Math.max(0, distance * tier.emissionLodDistanceScale);
   }
 
   private writeEffectiveGraphicsConfig(

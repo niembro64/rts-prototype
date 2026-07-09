@@ -873,17 +873,6 @@ export type Buildable = {
   isInterrupted: boolean;
   healthBuildFraction: number;
   pieces: ConstructionPieceBuildRecord[];
-  /** While a unit shell is under construction its body is locked so it
-   *  cannot drift out of its producer. Two policies, both released the tick
-   *  the shell completes:
-   *    - `null` (default): static spawn column — X/Y pinned to the shell's own
-   *      spawn point, Z free so it free-falls (the fabricator torus drop).
-   *    - an `EntityId`: rigidly attached to that host body — X/Y/Z all pinned
-   *      to the host so the shell rides along as the host moves (the queen
-   *      builds its bee/tick attached to itself, then releases it to free-fall).
-   *  Server-only physics state: it drives the body pin, is not sent on the
-   *  wire (the client just receives the resulting position each snapshot). */
-  buildLockHostId: EntityId | null;
 };
 
 /** Builder component. Gives a unit the ability to construct
@@ -931,6 +920,22 @@ export type Transport = {
 type Transported = {
   transportId: EntityId;
   slotIndex: number;
+};
+
+export type EntityHoldKind = 'production' | 'transportCargo';
+
+export type EntityHold = {
+  kind: EntityHoldKind;
+  holderId: EntityId;
+  slotIndex: number;
+  /** Chassis-/building-local horizontal offset in sim coordinates. */
+  localOffsetX: number;
+  localOffsetY: number;
+  /** Held entity base height above the holder's base, in sim Z. */
+  localBaseZ: number;
+  rotateWithHolder: boolean;
+  inheritHolderRotation: boolean;
+  inheritHolderVelocity: boolean;
 };
 
 // Building configuration. gridWidth/gridHeight are the footprint on
@@ -990,24 +995,24 @@ export type UnitBuildConfig = {
   fireRange: number | undefined;
 };
 
-// Factory component. The host (today: the fabricator platform) produces
-// **units** from a fixed launch spot at the center of its footprint. The factory
-// carries one active build selection: `selectedUnitBlueprintId` is either
-// the unit blueprint to produce next/currently or null for off.
+// Factory component. The host (fabricator platform or mobile queen-style
+// producer) produces **units** from a production hold bay resolved by
+// factoryProductionHold.ts. The factory carries one active build selection:
+// `selectedUnitBlueprintId` is either the unit blueprint to produce
+// next/currently or null for off.
 // `repeatProduction` is the factory's BAR-style repeat switch: when true,
 // the selected unit repeats; when false, completion advances through
 // `productionQueue` / clears after the finite queue drains.
-// The factory
-// spawns that selected unit as an airborne shell above its center bay; the
-// shell then falls through normal physics and absorbs resources from the
-// player's stockpiles via energyDistribution regardless of where it settles.
+// The factory spawns that selected unit as an in-progress shell and holds it
+// through the generic EntityHold relation while it absorbs resources from the
+// player's stockpiles via energyDistribution.
 // `currentShellId` is the shell currently being funded (null while no
 // unit is selected). Once the shell flips `isComplete`, the factory clears
 // `currentShellId` so the same selected unit can repeat.
 //
-// Factory ≠ builder: factories produce units from a fixed center launch spot;
-// builders (commanders, future construction aircraft) construct buildings
-// at chosen locations.
+// Factory ≠ builder: factories produce units from an owned hold bay; builders
+// (commanders, future construction aircraft) construct buildings at chosen
+// locations.
 //
 // `currentBuildProgress` is the average fill ratio of that shell,
 // kept as a pure UI/snapshot mirror so the production button can draw a
@@ -1138,6 +1143,7 @@ export type EntityComponentSlots = {
   wreck: Wreck | null;
   transport: Transport | null;
   transported: Transported | null;
+  heldBy: EntityHold | null;
   buildingBlueprintId: BuildingBlueprintId | null;
   /** For extractors only — every deposit with at least one generated
    *  metal cell under this extractor's fixed build footprint. Output is
@@ -1175,6 +1181,7 @@ export function createEmptyEntityComponentSlots(): EntityComponentSlots {
     wreck: null,
     transport: null,
     transported: null,
+    heldBy: null,
     buildingBlueprintId: null,
     coveredDepositIds: null,
     metalExtractionRate: null,

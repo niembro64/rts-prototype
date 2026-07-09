@@ -7,7 +7,6 @@ import type { ClientViewState } from '../network/ClientViewState';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { RenderFrameState3D } from './RenderFrameState3D';
-import type { EntityLodEmission3D } from './EntityLod3D';
 import {
   detachObject,
   disposeGeometries,
@@ -143,23 +142,17 @@ type ProjectileRenderer3DOptions = {
   clientViewState: ClientViewState;
   scope: ViewportFootprint;
   radiusSphereGeom: THREE.BufferGeometry;
-  isEntityEmissionFarLod?: (entity: Entity, emission: EntityLodEmission3D) => boolean;
+  isEntityEmissionFarLod?: (entity: Entity) => boolean;
 };
 
-const NEVER_EMISSION_FAR_LOD = (
-  _entity: Entity,
-  _emission: EntityLodEmission3D,
-): boolean => false;
+const NEVER_EMISSION_FAR_LOD = (): boolean => false;
 
 export class ProjectileRenderer3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
   private readonly scope: ViewportFootprint;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
-  private readonly isEntityEmissionFarLod: (
-    entity: Entity,
-    emission: EntityLodEmission3D,
-  ) => boolean;
+  private readonly isEntityEmissionFarLod: (entity: Entity) => boolean;
 
   private readonly projectileGeom = createPrimitiveSphereGeometry('projectile', 'close');
   private readonly projectileCylinderGeom = createPrimitiveCylinderGeometry('projectile', 'close');
@@ -316,7 +309,7 @@ export class ProjectileRenderer3D {
       const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
 
-      if (this.isEntityEmissionFarLod(e, 'projectileCores')) {
+      if (this.isEntityEmissionFarLod(e)) {
         this.hideProjRadiusMeshes(e.id);
         this.trailStamps.delete(e.id);
         continue;
@@ -333,7 +326,7 @@ export class ProjectileRenderer3D {
         r, r, r,
       );
 
-      if (this.isEntityEmissionFarLod(e, 'projectileTrailsAndFins')) {
+      if (this.isEntityEmissionFarLod(e)) {
         this.hideProjRadiusMeshes(e.id);
         this.trailStamps.delete(e.id);
         continue;

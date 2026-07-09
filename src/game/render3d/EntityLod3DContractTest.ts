@@ -11,9 +11,9 @@ import {
   ENTITY_LOD_PROXY_GLYPH_SQUARE,
   ENTITY_LOD_PROXY_GLYPH_TRIANGLE,
   EntityLodState3D,
-  entityEmissionUsesLowLodDistance3D,
   entityLodProxyGlyph3D,
-  simPositionUsesLowEmissionLod3D,
+  entityUsesLowLodDistance3D,
+  simPositionUsesLowLodDistance3D,
 } from './EntityLod3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 
@@ -60,11 +60,10 @@ function assertEmissionParity(
   lod: EntityLodState3D,
   camera: THREE.Camera,
   entity: Entity,
-  highToLowDistance: number | null,
   label: string,
 ): void {
-  const direct = entityEmissionUsesLowLodDistance3D(camera, entity, highToLowDistance);
-  const cached = lod.entityEmissionUsesLowLodDistance(camera, entity, highToLowDistance);
+  const direct = entityUsesLowLodDistance3D(camera, entity);
+  const cached = lod.entityUsesLowLodDistance(camera, entity);
   assertContract(cached === direct, `${label} cached emission LOD matches direct distance`);
 }
 
@@ -76,26 +75,28 @@ export function runEntityLod3DContractTest(): void {
 
   try {
     lod.beginFrame();
-    assertEmissionParity(lod, camera, entity, null, 'null threshold');
-    assertEmissionParity(lod, camera, entity, Number.NaN, 'nan threshold');
-    assertEmissionParity(lod, camera, entity, -1, 'negative threshold');
-    assertEmissionParity(lod, camera, entity, 4.99, 'outside threshold');
-    assertEmissionParity(lod, camera, entity, 5, 'on threshold');
-    assertEmissionParity(lod, camera, entity, 5.01, 'inside threshold');
-
-    entity.transform.y = 100;
-    lod.beginFrame();
-    assertEmissionParity(lod, camera, entity, 50, 'new frame refreshes cached distance');
+    assertEmissionParity(lod, camera, entity, 'near entity');
     assertContract(
-      lod.entityEmissionUsesLowLodDistance(camera, entity, 50) ===
-        simPositionUsesLowEmissionLod3D(
+      !entityUsesLowLodDistance3D(camera, entity),
+      'near emissions stay HIGH',
+    );
+
+    entity.transform.y = 10000;
+    lod.beginFrame();
+    assertEmissionParity(lod, camera, entity, 'far entity');
+    assertContract(
+      lod.entityUsesLowLodDistance(camera, entity) ===
+        simPositionUsesLowLodDistance3D(
           camera,
           entity.transform.x,
           entity.transform.y,
           entity.transform.z,
-          50,
         ),
       'cached emission LOD matches explicit sim-position calculation',
+    );
+    assertContract(
+      entityUsesLowLodDistance3D(camera, entity),
+      'far emissions switch to LOW',
     );
 
     const bodyLod = new EntityLodState3D();
@@ -118,13 +119,13 @@ export function runEntityLod3DContractTest(): void {
     bodyLod.beginFrame();
     assertContract(
       !bodyLod.entityUsesLodProxyForView(viewAt(camera), body),
-      'AUTO mode keeps large projected entities in full detail',
+      'AUTO mode keeps near entities in full detail',
     );
     body.transform.y = -10000;
     bodyLod.beginFrame();
     assertContract(
       bodyLod.entityUsesLodProxyForView(viewAt(camera), body),
-      'AUTO mode uses projected-size proxy selection',
+      'AUTO mode switches far entities to proxy selection',
     );
 
     const groundUnit = entityAt(301, 0, 0, 0);

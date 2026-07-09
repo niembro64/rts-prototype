@@ -69,7 +69,7 @@ const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> 
 };
 
 const LOD_MODE_TITLES: Record<LodMode, string> = {
-  auto: 'Use projected-size automatic level-of-detail thresholds',
+  auto: 'Switch between HIGH and LOW at the configured camera distance',
   high: 'Never render unit, building, or tower level-of-detail proxies',
   low: 'Always render unit, building, and tower level-of-detail proxies',
 };

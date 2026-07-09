@@ -171,16 +171,10 @@ export type EntityMesh = {
   unitRenderOwnerId?: PlayerId;
   unitRenderBlueprintId?: string;
   unitRenderTurretCount?: number;
-  /** Coarse detail band (from EntityDetailLevel3D.unitDetailBand) this mesh
-   *  was built at. As a unit shrinks on screen its band drops and the mesh is
-   *  rebuilt to shed its turret / legs — the intermediate step between the
-   *  full mesh and the flat LOD glyph. */
+  /** Binary detail band this mesh was built at. In AUTO, units are either
+   *  full-detail meshes or proxy glyphs; this is kept as a cheap rebuild key
+   *  for explicit HIGH/LOW and future config changes. */
   unitRenderDetailBand?: number;
-  /** Per-Mesh fallback head-only turrets switch material when engaged.
-   *  Instanced heads carry this through instanceColor; this cache keeps
-   *  the rare per-Mesh fallback path from rewriting materials every
-   *  frame when the state has not changed. */
-  unitHeadOnlyTurretEngaged?: boolean[];
   /** Cached color for per-Mesh dynamic turret heads, currently shield
    *  sphere emitter cores. Instanced heads carry this through
    *  instanceColor instead. */

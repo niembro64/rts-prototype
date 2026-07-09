@@ -26,6 +26,7 @@ import { computeHostEffectiveMass, createPhysicsBodyForUnit } from './unitPhysic
 import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/projectileSystem';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm } from '../sim-wasm/init';
+import { applyEntityHoldPose } from '../sim/entityHolds';
 
 type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
@@ -168,9 +169,9 @@ export class ServerSimulationCore {
         if (entity.building === null || entity.body !== null) continue;
         // A hovering building (the fabricator torus) is intangible at ground
         // level: it gets NO collision body, so units walk freely underneath and
-        // freshly-spawned shells free-fall all the way to the ground. Its
-        // footprint is still reserved + it stays selectable/targetable via the
-        // entity spatial grid.
+        // released shells fall through it under normal physics. Its footprint
+        // is still reserved + it stays selectable/targetable via the entity
+        // spatial grid.
         if (entity.building.hovering) continue;
         const baseZ = entity.transform.z - entity.building.depth / 2;
         const body = this.physics.createBuildingBody(
@@ -239,13 +240,10 @@ export class ServerSimulationCore {
         this.repairInvalidUnitBody(entity);
         continue;
       }
-      // A unit shell still under construction is locked so it cannot drift out
-      // of its producer; it is released the tick it completes. Two policies:
-      //  - static spawn column (buildLockHostId null): X/Y pinned to the spawn
-      //    anchor, Z left free so it free-falls (the fabricator torus drop).
-      //  - attached to a mobile host (buildLockHostId set): X/Y/Z all pinned to
-      //    the host body so the shell rides along as the host moves (a queen
-      //    building its bee/tick); released, it free-falls from there.
+      // Held entities are pinned by the generic hold relation. Production
+      // shells use this while being built; transports can use the same relation
+      // for cargo. The relation owns X/Y/Z pose, velocity inheritance, and
+      // release semantics instead of burying those policies in Buildable.
       const buildFlags = hasEntityState ? entityStateViews.buildFlags[entitySlot] : 0;
       const buildInProgress = hasEntityState
         ? (
@@ -257,26 +255,33 @@ export class ServerSimulationCore {
             )) === 0
           )
         : isBuildInProgress(entity.buildable);
-      if (buildInProgress && entity.buildable !== null) {
-        const lockHostId = entity.buildable.buildLockHostId;
-        const lockHost = lockHostId !== null ? this.world.getEntity(lockHostId) : undefined;
-        if (lockHost !== undefined) {
-          // ATTACHED_BUILD_SHELL_ELEVATION holds the shell above the host so it
-          // reads as carried and has somewhere to fall on release. Tunable; the
-          // queen-mount spawn pose will refine the exact anchor.
-          const ATTACHED_BUILD_SHELL_ELEVATION = 60;
-          x = lockHost.transform.x;
-          y = lockHost.transform.y;
-          z = lockHost.transform.z + ATTACHED_BUILD_SHELL_ELEVATION;
-          vx = 0;
-          vy = 0;
-          vz = 0;
+      if (entity.heldBy !== null && applyEntityHoldPose(this.world, entity)) {
+        x = entity.transform.x;
+        y = entity.transform.y;
+        z = entity.transform.z;
+        vx = entity.unit?.velocityX ?? 0;
+        vy = entity.unit?.velocityY ?? 0;
+        vz = entity.unit?.velocityZ ?? 0;
+        if (useBodyPool) {
+          bodyPool.posX[bodySlot] = x;
+          bodyPool.posY[bodySlot] = y;
+          bodyPool.posZ[bodySlot] = z;
+          bodyPool.velX[bodySlot] = vx;
+          bodyPool.velY[bodySlot] = vy;
+          bodyPool.velZ[bodySlot] = vz;
         } else {
-          x = entity.transform.x;
-          y = entity.transform.y;
-          vx = 0;
-          vy = 0;
+          body.x = x;
+          body.y = y;
+          body.z = z;
+          body.vx = vx;
+          body.vy = vy;
+          body.vz = vz;
         }
+      } else if (buildInProgress && entity.buildable !== null) {
+        x = entity.transform.x;
+        y = entity.transform.y;
+        vx = 0;
+        vy = 0;
         if (useBodyPool) {
           bodyPool.posX[bodySlot] = x;
           bodyPool.posY[bodySlot] = y;

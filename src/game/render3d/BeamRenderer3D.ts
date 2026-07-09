@@ -18,7 +18,6 @@ import type { GraphicsConfig } from '@/types/graphics';
 import { getBeamSnapToTurret } from '@/clientBarConfig';
 import { detachObject, disposeMesh } from './threeUtils';
 import beamConfig from '@/beamConfig.json';
-import type { EntityLodEmission3D } from './EntityLod3D';
 import {
   BEAM_ENDPOINT_VERTEX_SHADER,
   BEAM_INNER_VISUAL_CONFIG,
@@ -78,10 +77,7 @@ type BeamConfigFile = {
   imposterSegment?: Partial<BeamImposterSegmentConfig>;
 };
 
-type BeamEmissionLodResolver = (
-  entity: Entity,
-  emission: EntityLodEmission3D,
-) => boolean;
+type BeamEmissionLodResolver = (entity: Entity) => boolean;
 
 const NEVER_EMISSION_LOW_LOD: BeamEmissionLodResolver = () => false;
 
@@ -414,7 +410,7 @@ export class BeamRenderer3D {
       );
       const useLowLodSegments =
         BEAM_IMPOSTER_SEGMENT_CONFIG.enabled &&
-        isEntityEmissionLowLod(e, 'beamSegments');
+        isEntityEmissionLowLod(e);
       const detailLevel = view ? entityDetailLevelForView(view, e) : 1;
       const beamStyle = beamStyleForDetail(
         detailLevel,
@@ -423,9 +419,7 @@ export class BeamRenderer3D {
       const useImposterSegments =
         useLowLodSegments || beamStyle === 'simple' || beamStyle === 'standard';
       const useLowLodEndpoints =
-        isEntityEmissionLowLod(e, 'beamEndpoints') ||
-        beamStyle === 'simple' ||
-        beamStyle === 'standard';
+        isEntityEmissionLowLod(e) || beamStyle === 'simple' || beamStyle === 'standard';
 
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched

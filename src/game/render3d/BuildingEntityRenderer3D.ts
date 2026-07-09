@@ -59,7 +59,6 @@ import {
 import {
   CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER,
   CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY,
-  CLIENT_RENDER_TURRET_STATE_ENGAGED,
   type ClientRenderTurretHostRows,
 } from './ClientRenderTurretStateSlab';
 
@@ -147,7 +146,6 @@ type BuildingTurretStateFields = {
   pitch: number;
   headOnly: boolean;
   constructionEmitter: boolean;
-  engaged: boolean;
 };
 
 function turretStateFields(
@@ -162,7 +160,6 @@ function turretStateFields(
     pitch: rows.views.pitch[row],
     headOnly: (flags & CLIENT_RENDER_TURRET_FLAG_HEAD_ONLY) !== 0,
     constructionEmitter: (flags & CLIENT_RENDER_TURRET_FLAG_CONSTRUCTION_EMITTER) !== 0,
-    engaged: rows.views.stateCode[row] === CLIENT_RENDER_TURRET_STATE_ENGAGED,
   };
 }
 
@@ -976,8 +973,8 @@ export class BuildingEntityRenderer3D {
       // deck can rotate smoothly on the client.
       if (turretState?.constructionEmitter === true || turret?.config.constructionEmitter) {
         // Building construction pylons (the fabricator's) hang UNDER the torus
-        // and point DOWN at the free-falling shell — flip the rig like the
-        // construction drone does (π about Z).
+        // and point DOWN at the held shell — flip the rig like the construction
+        // drone does (π about Z).
         if (turretMesh.constructionEmitter) {
           setEulerZIfChanged(turretMesh.constructionEmitter.group.rotation, Math.PI);
         }
@@ -994,19 +991,14 @@ export class BuildingEntityRenderer3D {
         continue;
       }
       const followsBeam = turretMesh.barrelFollowsBeam === true;
-      // Head-only turrets that don't follow a beam draw a bare head: flip
-      // its colour on engage and skip barrel posing entirely. While the
-      // shell override owns the head material during construction, leave
-      // it alone; after construction, the engaged state flips the head
-      // from player primary to the half-white lock-on cue.
+      // Head-only turrets that don't follow a beam draw a bare head and
+      // skip barrel posing. Treat that head as body geometry: keep it on
+      // player primary so state/LOD changes do not shift the body tone.
+      // While the shell override owns the head material during
+      // construction, leave it alone.
       if ((turretState?.headOnly ?? turret.config.headOnly) && !followsBeam) {
         if (turretMesh.head && !underConstruction) {
-          this.setTurretHeadMaterial(
-            turretMesh,
-            (turretState?.engaged ?? turret.state === 'engaged')
-              ? this.getTurretAccentMat(ownerId)
-              : this.getPrimaryMat(ownerId),
-          );
+          this.setTurretHeadMaterial(turretMesh, this.getPrimaryMat(ownerId));
         }
         continue;
       }

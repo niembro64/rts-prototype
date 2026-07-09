@@ -681,7 +681,7 @@ export class Debris3D {
         y: shotHeight,
         z: toz,
         radius: mount.headRadius,
-        color: mount.headOnly ? 'barrel' : 'primary',
+        color: 'primary',
       });
 
       // Barrels — one cylinder per physical barrel. Each is built as a

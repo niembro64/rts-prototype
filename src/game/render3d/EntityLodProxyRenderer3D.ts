@@ -1,22 +1,16 @@
 import * as THREE from 'three';
-import {
-  ENTITY_LOD_PROXY_CAP,
-  ENTITY_LOD_PROXY_DEPTH_TEST,
-  ENTITY_LOD_PROXY_DEPTH_WRITE,
-  ENTITY_LOD_PROXY_OPACITY,
-  ENTITY_LOD_PROXY_RENDER_ORDER,
-  ENTITY_LOD_PROXY_USE_TEAM_COLOR,
-} from '@/config';
-import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
 import type { Entity, PlayerId } from '../sim/types';
 import { entityInstanceColorHexForPlayer } from './EntityInstanceColor3D';
 import {
   entityLodProxyGlyph3D,
   entityLodProxyRadius3D,
 } from './EntityLod3D';
-import { EntityLodProxyWebGpuRenderer3D } from './EntityLodProxyWebGpuRenderer3D';
 
-const ENTITY_LOD_PROXY_NEUTRAL_COLOR = 0xffffff;
+const ENTITY_LOD_PROXY_CAP = 32768;
+const ENTITY_LOD_PROXY_OPACITY = 1;
+const ENTITY_LOD_PROXY_DEPTH_TEST = true;
+const ENTITY_LOD_PROXY_DEPTH_WRITE = true;
+const ENTITY_LOD_PROXY_RENDER_ORDER = 3;
 
 const POINT_VERTEX_SHADER = `
 attribute vec3 color;
@@ -149,7 +143,6 @@ type EntityLodProxyRendererBackend3D = {
 
 type EntityLodProxyRenderer3DOptions = {
   readonly world: THREE.Group;
-  readonly camera?: THREE.PerspectiveCamera;
   readonly canvas?: HTMLCanvasElement;
 };
 
@@ -252,9 +245,7 @@ function writeColorHex(batch: ProxyPointBatch, slot: number, colorHex: number): 
 }
 
 function lodProxyColorHex(ownerId: PlayerId | undefined): number {
-  return ENTITY_LOD_PROXY_USE_TEAM_COLOR
-    ? entityInstanceColorHexForPlayer(ownerId)
-    : ENTITY_LOD_PROXY_NEUTRAL_COLOR;
+  return entityInstanceColorHexForPlayer(ownerId);
 }
 
 function writePoint(
@@ -349,11 +340,6 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
       ? globalThis.devicePixelRatio
       : 1;
     return cssViewportHeight * dpr;
-  }
-
-  setVisible(visible: boolean): void {
-    this.unitBatch.points.visible = visible;
-    this.buildingBatch.points.visible = visible;
   }
 
   beginFrame(): void {
@@ -457,39 +443,22 @@ function normalizeOptions(
 }
 
 export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D {
-  private readonly webGlBackend: EntityLodProxyWebGlRenderer3D;
-  private activeBackend: EntityLodProxyRendererBackend3D;
-  private webGpuBackend: EntityLodProxyWebGpuRenderer3D | null = null;
-  private destroyed = false;
+  private readonly backend: EntityLodProxyWebGlRenderer3D;
 
   constructor(options: THREE.Group | EntityLodProxyRenderer3DOptions) {
     const normalizedOptions = normalizeOptions(options);
-    this.webGlBackend = new EntityLodProxyWebGlRenderer3D(
+    this.backend = new EntityLodProxyWebGlRenderer3D(
       normalizedOptions.world,
       normalizedOptions.canvas,
     );
-    this.activeBackend = this.webGlBackend;
-    const runtimeProfile = getBrowserRenderRuntimeProfile();
-    // The WebGPU overlay is a separate canvas, so it cannot share the
-    // Three.js depth buffer with terrain or water. Use it only for explicitly
-    // depthless proxy markers; depth-aware proxies must stay in the WebGL scene.
-    if (
-      runtimeProfile.tauri &&
-      !ENTITY_LOD_PROXY_DEPTH_TEST &&
-      !ENTITY_LOD_PROXY_DEPTH_WRITE &&
-      normalizedOptions.camera !== undefined &&
-      normalizedOptions.canvas !== undefined
-    ) {
-      void this.installWebGpuBackend(normalizedOptions.camera, normalizedOptions.canvas);
-    }
   }
 
   beginFrame(): void {
-    this.activeBackend.beginFrame();
+    this.backend.beginFrame();
   }
 
   pushUnit(entity: Entity): void {
-    this.activeBackend.pushUnit(entity);
+    this.backend.pushUnit(entity);
   }
 
   pushUnitProxy(
@@ -500,11 +469,11 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
     glyph: number,
     ownerId: PlayerId | undefined,
   ): void {
-    this.activeBackend.pushUnitProxy(simX, simY, simZ, radius, glyph, ownerId);
+    this.backend.pushUnitProxy(simX, simY, simZ, radius, glyph, ownerId);
   }
 
   pushBuilding(entity: Entity): void {
-    this.activeBackend.pushBuilding(entity);
+    this.backend.pushBuilding(entity);
   }
 
   pushBuildingProxy(
@@ -515,35 +484,14 @@ export class EntityLodProxyRenderer3D implements EntityLodProxyRendererBackend3D
     glyph: number,
     ownerId: PlayerId | undefined,
   ): void {
-    this.activeBackend.pushBuildingProxy(simX, simY, simZ, radius, glyph, ownerId);
+    this.backend.pushBuildingProxy(simX, simY, simZ, radius, glyph, ownerId);
   }
 
   flush(viewportHeight: number): void {
-    this.activeBackend.flush(viewportHeight);
+    this.backend.flush(viewportHeight);
   }
 
   destroy(): void {
-    this.destroyed = true;
-    this.webGpuBackend?.destroy();
-    this.webGlBackend.destroy();
-    this.webGpuBackend = null;
-    this.activeBackend = this.webGlBackend;
-  }
-
-  private async installWebGpuBackend(
-    camera: THREE.PerspectiveCamera,
-    canvas: HTMLCanvasElement,
-  ): Promise<void> {
-    const webGpuBackend = await EntityLodProxyWebGpuRenderer3D.create({
-      baseCanvas: canvas,
-      camera,
-    });
-    if (webGpuBackend === null || this.destroyed) {
-      webGpuBackend?.destroy();
-      return;
-    }
-    this.webGpuBackend = webGpuBackend;
-    this.webGlBackend.setVisible(false);
-    this.activeBackend = webGpuBackend;
+    this.backend.destroy();
   }
 }

@@ -26,7 +26,6 @@ export type BrowserRenderRuntimeProfile = {
   readonly precision: 'highp' | 'mediump' | 'lowp';
   readonly dynamicPixelRatio: boolean;
   readonly pixelRatioCap: number;
-  readonly lodDistanceMultiplier: number;
   readonly highQualityToneMapping: boolean;
   readonly environmentLighting: boolean;
   readonly powerPreference: WebGLPowerPreference;
@@ -44,7 +43,6 @@ export function getBrowserRenderRuntimeProfile(): BrowserRenderRuntimeProfile {
       precision: 'highp',
       dynamicPixelRatio: false,
       pixelRatioCap: 1,
-      lodDistanceMultiplier: 1,
       highQualityToneMapping: false,
       environmentLighting: false,
       powerPreference: 'high-performance',
@@ -59,7 +57,6 @@ export function getBrowserRenderRuntimeProfile(): BrowserRenderRuntimeProfile {
       precision: 'highp',
       dynamicPixelRatio: false,
       pixelRatioCap: 1,
-      lodDistanceMultiplier: 1,
       highQualityToneMapping: false,
       environmentLighting: false,
       powerPreference: 'default',
@@ -73,7 +70,6 @@ export function getBrowserRenderRuntimeProfile(): BrowserRenderRuntimeProfile {
     precision: 'highp',
     dynamicPixelRatio: true,
     pixelRatioCap: Number.POSITIVE_INFINITY,
-    lodDistanceMultiplier: 1,
     highQualityToneMapping: true,
     environmentLighting: true,
     powerPreference: 'high-performance',

@@ -12,6 +12,7 @@ import {
   getChassisLift,
   type LegStateSnapshot,
 } from './Locomotion3D';
+import { getFactoryProductionHoldVisual } from '../sim/factoryProductionHold';
 import { buildAlbatrosChassis } from './AlbatrosMesh3D';
 import type { LegInstancedRenderer } from './LegInstancedRenderer';
 import { getBodyGeom } from './BodyShape3D';
@@ -22,6 +23,7 @@ import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { setVector3IfChanged } from './threeTransformWriteUtils';
 import { featureVisibleAtDetail } from './EntityDetailLevel3D';
+import { buildProductionHoldRingMesh } from './ProductionHoldRing3D';
 
 // Detailed unit parts use shared instanced pools by default. The
 // per-mesh path remains only as an allocation fallback, not as the
@@ -133,6 +135,7 @@ export class UnitMeshBuilder3D {
       unitGfx.unitShape === 'circles' ? LOW_DETAIL_UNIT_BODY_SHAPE : authoredBodyShape;
     const bodyShapeKey = getUnitBodyShapeKey(bodyShape);
     const bodyEntry = getBodyGeom(bodyShape);
+    const primaryMat = this.getPrimaryMat(ownerId);
 
     const yawGroup = new THREE.Group();
     yawGroup.userData.entityId = entity.id;
@@ -172,11 +175,11 @@ export class UnitMeshBuilder3D {
 
     if (isAlbatros) {
       chassisMeshes.push(
-        ...buildAlbatrosChassis(chassis, this.getPrimaryMat(ownerId), entity.id),
+        ...buildAlbatrosChassis(chassis, primaryMat, entity.id),
       );
     } else if (!smoothChassisSlots && polyChassisSlot === undefined) {
       for (const part of bodyEntry.parts) {
-        const mesh = new THREE.Mesh(part.geometry, this.getPrimaryMat(ownerId));
+        const mesh = new THREE.Mesh(part.geometry, primaryMat);
         mesh.position.set(part.x, part.y, part.z);
         mesh.scale.set(part.scaleX, part.scaleY, part.scaleZ);
         if (part.rotZ) mesh.rotation.z = part.rotZ;
@@ -188,9 +191,12 @@ export class UnitMeshBuilder3D {
     liftGroup.add(chassis);
 
     if (entity.commander) {
-      const commanderKit = this.commanderVisualKit.buildKit();
+      const commanderKit = this.commanderVisualKit.buildKit(primaryMat);
       commanderKit.userData.entityId = entity.id;
-      commanderKit.traverse((obj) => { obj.userData.entityId = entity.id; });
+      commanderKit.traverse((obj) => {
+        obj.userData.entityId = entity.id;
+        if (obj instanceof THREE.Mesh && obj.material === primaryMat) chassisMeshes.push(obj);
+      });
       chassis.add(commanderKit);
     }
 
@@ -202,6 +208,13 @@ export class UnitMeshBuilder3D {
       unitGfx,
       useDetailedUnitInstancing,
       blueprint?.dgun?.turretBlueprintId,
+      detailLevel,
+    );
+    this.buildProductionHoldRing(
+      liftGroup,
+      entity,
+      primaryMat,
+      chassisMeshes,
       detailLevel,
     );
 
@@ -263,6 +276,33 @@ export class UnitMeshBuilder3D {
     }
   }
 
+  private buildProductionHoldRing(
+    liftGroup: THREE.Group,
+    entity: Entity,
+    primaryMat: THREE.Material,
+    chassisMeshes: THREE.Mesh[],
+    detailLevel: number,
+  ): void {
+    if (entity.unit === null || entity.factory === null) return;
+    if (!featureVisibleAtDetail('muzzleDetail', detailLevel)) return;
+    let visual: ReturnType<typeof getFactoryProductionHoldVisual> | null = null;
+    try {
+      visual = getFactoryProductionHoldVisual(entity, entity.factory.selectedUnitBlueprintId);
+    } catch {
+      visual = null;
+    }
+    if (visual === null) return;
+    const ring = buildProductionHoldRingMesh(visual.ringRadius, primaryMat);
+    ring.position.set(
+      visual.localOffsetX,
+      visual.localBaseZ - liftGroup.position.y,
+      visual.localOffsetY,
+    );
+    ring.userData.entityId = entity.id;
+    liftGroup.add(ring);
+    chassisMeshes.push(ring);
+  }
+
   private buildTurrets(
     liftGroup: THREE.Group,
     entity: Entity,
@@ -311,6 +351,7 @@ export class UnitMeshBuilder3D {
         this.commanderVisualKit.decorateTurret(
           turretMesh,
           turret.config.turretBlueprintId === commanderDgunTurretBlueprintId,
+          this.getPrimaryMat(ownerId),
         );
       }
       for (const barrel of turretMesh.barrels) barrel.userData.entityId = entity.id;

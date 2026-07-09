@@ -10,12 +10,10 @@ import {
   detail,
 } from './BuildingMeshPrimitives3D';
 import { fabricatorTorusHoverHeight, fabricatorTorusRingRadius } from '../sim/blueprints';
-import { createPrimitiveTorusGeometry } from './PrimitiveGeometryQuality3D';
-
-// Unit torus (ring radius 1, tube 0.22) for the hovering fabricator body. Scaled
-// per-instance to the footprint and laid flat (horizontal ring) at hover height.
-const fabricatorTorusGeom = createPrimitiveTorusGeometry('building', 'close', 1, 0.22);
-
+import {
+  buildProductionHoldRingMesh,
+  disposeProductionHoldRingGeom,
+} from './ProductionHoldRing3D';
 
 /** Factory chassis: the team-colored hovering torus body only. The
  *  factory's construction emitter (towers + sprays) is NOT created here —
@@ -33,18 +31,18 @@ export function buildFactoryMesh(
   const blueprint = getBuildingBlueprint('towerFabricator');
 
   // Hovering torus body: a flat (horizontal) team-colored ring at the spawn
-  // height, sized to the footprint. The unit shell appears in its center and
-  // free-falls through the open middle while the down-pointing pylons finish it.
-  const torus = new THREE.Mesh(fabricatorTorusGeom, primaryMat);
-  const ringRadius = fabricatorTorusRingRadius(width, depth);
-  torus.scale.set(ringRadius, ringRadius, ringRadius);
-  torus.rotation.x = Math.PI / 2;
+  // height, sized to the footprint. The unit shell is held in its center while
+  // the down-pointing pylons finish it.
+  const torus = buildProductionHoldRingMesh(
+    fabricatorTorusRingRadius(width, depth),
+    primaryMat,
+  );
   torus.position.y = fabricatorTorusHoverHeight();
   details.push(detail(torus, 'medium', undefined, 'static'));
 
   // The forming-unit ghost orbs that used to sit at the ground-level build
-  // bay are retired: the real unit shell now spawns at the torus centre and
-  // visibly free-falls through the ring, so the orbs were redundant. The
+  // bay are retired: the real unit shell is held at the torus center during
+  // construction, so the orbs were redundant. The
   // flag below still marks this as a factory construction host so the
   // animation controller registers it for the construction-emitter spray.
   return {
@@ -57,6 +55,6 @@ export function buildFactoryMesh(
 }
 
 export function disposeFactoryMeshGeoms(): void {
-  fabricatorTorusGeom.dispose();
+  disposeProductionHoldRingGeom();
   disposeConstructionEmitterGeoms();
 }

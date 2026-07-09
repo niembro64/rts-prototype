@@ -1,7 +1,4 @@
 import { getGraphicsConfig, getMaterialExplosions } from '@/clientBarConfig';
-import {
-  ENTITY_LOD_EFFECT_RADIUS_FALLBACKS,
-} from '@/config';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { NetworkServerSnapshotSimEvent } from '../../network/NetworkTypes';
 import type { Debris3D } from '../../render3d/Debris3D';
@@ -9,7 +6,6 @@ import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
-import type { EntityLodEmission3D } from '../../render3d/EntityLod3D';
 import {
   debrisSpawnScaleForDetail,
   explosionSpawnScaleForDetail,
@@ -32,19 +28,23 @@ type RtsScene3DVisualEventDispatchContext = {
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
   debrisRenderer: Debris3D;
-  isPositionLowEmissionLod: (
+  isPositionLowLod: (
     simX: number,
     simY: number,
     simZ: number,
-    emission: EntityLodEmission3D,
   ) => boolean;
   positionVisualDetailLevel: (
     simX: number,
     simY: number,
     simZ: number,
-    radius: number,
   ) => number;
 };
+
+const EFFECT_RADIUS_FALLBACKS = {
+  deathExplosionMin: 6,
+  hitImpact: 2,
+  projectileExpireImpact: 8,
+} as const;
 
 export function dispatchSimEvent3DVisual(
   event: NetworkServerSnapshotSimEvent,
@@ -74,19 +74,18 @@ export function dispatchSimEvent3DVisual(
     const ctx = event.impactContext;
     const radius = ctx
       ? maxFiniteNonNegativeOr(
-        ENTITY_LOD_EFFECT_RADIUS_FALLBACKS.hitImpact,
+        EFFECT_RADIUS_FALLBACKS.hitImpact,
         ctx.radiusCollision,
         ctx.deathExplosionRadius,
       )
-      : ENTITY_LOD_EFFECT_RADIUS_FALLBACKS.hitImpact;
-    if (context.isPositionLowEmissionLod(
+      : EFFECT_RADIUS_FALLBACKS.hitImpact;
+    if (context.isPositionLowLod(
       event.pos.x,
       event.pos.y,
       event.pos.z,
-      'hitImpacts',
     )) return;
     const detailScale = explosionSpawnScaleForDetail(
-      context.positionVisualDetailLevel(event.pos.x, event.pos.y, event.pos.z, radius),
+      context.positionVisualDetailLevel(event.pos.x, event.pos.y, event.pos.z),
     );
     let mx = 0, mz = 0;
     if (ctx) {
@@ -113,11 +112,10 @@ export function dispatchSimEvent3DVisual(
   } else if (event.type === 'waterSplash') {
     const splash = event.waterSplash;
     const ctx = event.impactContext;
-    if (context.isPositionLowEmissionLod(
+    if (context.isPositionLowLod(
       event.pos.x,
       event.pos.y,
       event.pos.z,
-      'waterSplashes',
     )) return;
     const fallbackVelocity = {
       x: ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0,
@@ -142,17 +140,16 @@ export function dispatchSimEvent3DVisual(
       event.playerId ?? undefined,
     );
   } else if (event.type === 'projectileExpire') {
-    if (context.isPositionLowEmissionLod(
+    if (context.isPositionLowLod(
       event.pos.x,
       event.pos.y,
       event.pos.z,
-      'projectileExpireImpacts',
     )) return;
     context.explosionRenderer.spawnImpact(
       event.pos.x,
       event.pos.y,
       event.pos.z,
-      ENTITY_LOD_EFFECT_RADIUS_FALLBACKS.projectileExpireImpact,
+      EFFECT_RADIUS_FALLBACKS.projectileExpireImpact,
       0,
       0,
       undefined,
@@ -162,18 +159,16 @@ export function dispatchSimEvent3DVisual(
           event.pos.x,
           event.pos.y,
           event.pos.z,
-          ENTITY_LOD_EFFECT_RADIUS_FALLBACKS.projectileExpireImpact,
         ),
       ),
     );
   } else if (event.type === 'shieldImpact') {
     const ctx = event.shieldImpact;
     if (ctx) {
-      if (context.isPositionLowEmissionLod(
+      if (context.isPositionLowLod(
         event.pos.x,
         event.pos.y,
         event.pos.z,
-        'shieldImpacts',
       )) return;
       context.shieldImpactRenderer.spawn(
         event.pos.x,
@@ -192,19 +187,17 @@ export function dispatchSimEvent3DVisual(
       ? context.clientViewState.getEntity(event.entityId)
       : undefined;
     const ctx = resolveDeathContext3D(event, ent);
-    if (context.isPositionLowEmissionLod(
+    if (context.isPositionLowLod(
       event.pos.x,
       event.pos.y,
       event.pos.z,
-      'materialDeathExplosions',
     )) return;
     const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
-    const deathRadius = Math.max(ctx.radius, ENTITY_LOD_EFFECT_RADIUS_FALLBACKS.deathExplosionMin);
+    const deathRadius = Math.max(ctx.radius, EFFECT_RADIUS_FALLBACKS.deathExplosionMin);
     const eventDetailLevel = context.positionVisualDetailLevel(
       event.pos.x,
       event.pos.y,
       event.pos.z,
-      deathRadius,
     );
     const mx =
       ctx.hitDir.x * attackPush +

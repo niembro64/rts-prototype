@@ -30,8 +30,11 @@ import { kneeFromIK } from '@/game/render3d/LocomotionRigShared3D';
 import { getTurretHeadRadius } from '@/game/math';
 import { COLORS } from '@/colorsConfig';
 import { SUN_RENDER_CONFIG } from '@/config';
-import { getPlayerColors, type PlayerId } from '@/game/sim/types';
-import { turretAccentColorHexForPlayer } from '@/game/render3d/EntityInstanceColor3D';
+import type { PlayerId } from '@/game/sim/types';
+import {
+  entityBodyColorHexForPlayer,
+  turretAccentColorHexForPlayer,
+} from '@/game/render3d/EntityInstanceColor3D';
 import { createShieldFallbackPanelMaterial } from '@/game/render3d/ShieldReflectorVisual3D';
 import {
   createPrimitiveCylinderGeometry,
@@ -154,7 +157,7 @@ type PreviewUnitMaterials = {
 
 function createPreviewUnitMaterials(playerId: PlayerId): PreviewUnitMaterials {
   return {
-    primary: new THREE.MeshLambertMaterial({ color: getPlayerColors(playerId).primary }),
+    primary: new THREE.MeshLambertMaterial({ color: entityBodyColorHexForPlayer(playerId) }),
     turretAccent: new THREE.MeshLambertMaterial({ color: turretAccentColorHexForPlayer(playerId) }),
     mirrorShiny: createShieldFallbackPanelMaterial(),
     leg: new THREE.MeshBasicMaterial({ color: locomotionPieceColorHex(LEG_SEGMENT_COLOR, playerId) }),

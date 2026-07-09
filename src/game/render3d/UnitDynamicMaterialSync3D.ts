@@ -37,7 +37,6 @@ export function syncUnitDynamicMaterials3D(params: {
   unitDetailInstances.syncEntityColors(entity, mesh, turrets);
 
   const ownerId = entity.ownership?.playerId;
-  let headOnlyStates = mesh.unitHeadOnlyTurretEngaged;
   let dynamicHeadColors = mesh.unitDynamicTurretHeadColorHex;
   for (let i = 0; i < mesh.turrets.length; i++) {
     const turretMesh = mesh.turrets[i];
@@ -61,16 +60,10 @@ export function syncUnitDynamicMaterials3D(params: {
       continue;
     }
     if (turretMesh.headOnly === true && turretMesh.barrelFollowsBeam !== true) {
-      const engaged = turrets[i]?.state === 'engaged';
-      if (headOnlyStates !== undefined && headOnlyStates[i] === engaged) continue;
-      if (headOnlyStates === undefined) {
-        headOnlyStates = [];
-        mesh.unitHeadOnlyTurretEngaged = headOnlyStates;
-      }
-      headOnlyStates[i] = engaged;
-      turretMesh.head.material = engaged
-        ? materialPalette.getTurretAccentMat(ownerId)
-        : materialPalette.getPrimaryMat(ownerId);
+      const primaryMat = materialPalette.getPrimaryMat(ownerId);
+      if (turretMesh.cachedHeadMaterial === primaryMat) continue;
+      turretMesh.head.material = primaryMat;
+      turretMesh.cachedHeadMaterial = primaryMat;
     }
   }
 }

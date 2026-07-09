@@ -78,7 +78,6 @@ import {
 import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
   ENTITY_HUD_FADE_END_DISTANCE_FRAC,
-  EMISSION_LOD_HIGH_TO_LOW_DISTANCES,
 } from '@/config';
 import type {
   RenderFrameState3D,
@@ -87,10 +86,7 @@ import type {
 import type { FootprintBounds, FootprintQuad, ViewportFootprint } from '../../ViewportFootprint';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
-import {
-  EntityLodState3D,
-  type EntityLodEmission3D,
-} from '../../render3d/EntityLod3D';
+import { EntityLodState3D } from '../../render3d/EntityLod3D';
 
 type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
@@ -127,11 +123,6 @@ type RtsScene3DRenderPhaseResult = {
   cameraQuad: FootprintQuad;
   cameraView: CameraViewBasis;
   renderMs: number;
-};
-
-export type RtsScene3DRenderPhaseBudget = {
-  readonly lodDistanceScale: number;
-  readonly emissionLodDistanceScale: number;
 };
 
 export type RtsScene3DRenderPhaseTimings = {
@@ -229,8 +220,6 @@ export class RtsScene3DRenderPhase {
     up: { x: 0, y: Math.SQRT1_2, z: Math.SQRT1_2 },
     towardCamera: { x: 0, y: -Math.SQRT1_2, z: Math.SQRT1_2 },
   };
-  private lodDistanceScale = 1;
-  private emissionLodDistanceScale = 1;
   private readonly lastPhaseTimings: RtsScene3DRenderPhaseTimings = {
     scopeMs: 0,
     projectileQueryMs: 0,
@@ -269,17 +258,6 @@ export class RtsScene3DRenderPhase {
 
   getCameraViewBasis(): CameraViewBasis {
     return this.cameraViewBasis;
-  }
-
-  setRenderBudget(budget: RtsScene3DRenderPhaseBudget): void {
-    this.lodDistanceScale = Number.isFinite(budget.lodDistanceScale) && budget.lodDistanceScale > 0
-      ? budget.lodDistanceScale
-      : 1;
-    this.emissionLodDistanceScale =
-      Number.isFinite(budget.emissionLodDistanceScale) && budget.emissionLodDistanceScale > 0
-        ? budget.emissionLodDistanceScale
-        : 1;
-    this.entityLod.setDistanceScale(this.lodDistanceScale);
   }
 
   getLastPhaseTimings(): RtsScene3DRenderPhaseTimings {
@@ -458,7 +436,6 @@ export class RtsScene3DRenderPhase {
     const lineProjectiles = this.filterNearLodProjectiles(
       projectileLists.line,
       this.nearLineProjectiles,
-      'lineProjectiles',
     );
     entityRenderer.update(
       renderFrameState,
@@ -468,8 +445,7 @@ export class RtsScene3DRenderPhase {
         buildingRows: entityLists.buildingRows,
         beamAimProjectiles: lineProjectiles,
         projectileRenderProjectiles: projectileLists.traveling,
-        isEntityEmissionFarLod: (entity, emission) =>
-          this.entityEmissionUsesFarLod(entity, emission),
+        isEntityEmissionFarLod: (entity) => this.entityEmissionUsesFarLod(entity),
         scoped: this.renderScope.getMode() !== 'all',
       },
       {
@@ -519,7 +495,7 @@ export class RtsScene3DRenderPhase {
       graphicsConfig,
       this.clientViewState.getLineProjectileRenderVersion(),
       entityRenderer,
-      (entity, emission) => this.entityEmissionUsesFarLod(entity, emission),
+      (entity) => this.entityEmissionUsesFarLod(entity),
       renderFrameState.view,
     );
     phaseNow = performance.now();
@@ -557,7 +533,6 @@ export class RtsScene3DRenderPhase {
         this.filterNearLodProjectiles(
           projectileLists.burnMark,
           this.nearBurnMarkProjectiles,
-          'projectileBurnMarks',
         ),
         this.burnMarkAccumMs,
       );
@@ -582,17 +557,14 @@ export class RtsScene3DRenderPhase {
           this.sprayAccumMs,
         ),
         this.nearPylonFreeLegSprays,
-        'resourceSprays',
       );
       const commanderSprays = this.filterNearLodSprays(
         this.clientViewState.getSprayTargets(),
         this.nearCommanderSprays,
-        'resourceSprays',
       );
       const resourcePylonSprays = this.filterNearLodSprays(
         entityRenderer.getResourcePylonSprayTargets(),
         this.nearResourcePylonSprays,
-        'resourceSprays',
       );
       if (resourcePylonSprays.length > 0) {
         const commanderSprayCount = commanderSprays.length;
@@ -627,7 +599,6 @@ export class RtsScene3DRenderPhase {
         this.filterNearLodProjectiles(
           projectileLists.smokeTrail,
           this.nearSmokeTrailProjectiles,
-          'projectileSmokeTrails',
         ),
         this.smokeTrailAccumMs,
         this.renderFrameIndex,
@@ -767,8 +738,7 @@ export class RtsScene3DRenderPhase {
         lookupPlayerName: this.lookupPlayerName,
         getGroundPrintLocomotionMesh: this.getGroundPrintLocomotionMesh,
         isEntityFarLod: (entity) => this.entityUsesFarLod(entity, renderView),
-        isEntityEmissionFarLod: (entity, emission) =>
-          this.entityEmissionUsesFarLod(entity, emission),
+        isEntityEmissionFarLod: (entity) => this.entityEmissionUsesFarLod(entity),
       },
     );
   }
@@ -788,28 +758,18 @@ export class RtsScene3DRenderPhase {
     return this.entityLod.entityUsesLodProxyForView(renderView, entity);
   }
 
-  private entityEmissionUsesFarLod(
-    entity: Entity,
-    emission: EntityLodEmission3D,
-  ): boolean {
-    const distance = EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission];
-    return this.entityLod.entityEmissionUsesLowLodDistance(
-      this.threeApp.camera,
-      entity,
-      distance === null ? null : distance * this.emissionLodDistanceScale,
-    );
+  private entityEmissionUsesFarLod(entity: Entity): boolean {
+    return this.entityLod.entityUsesLowLodDistance(this.threeApp.camera, entity);
   }
 
   private filterNearLodProjectiles(
     projectiles: readonly Entity[],
     out: Entity[],
-    emission: EntityLodEmission3D,
   ): readonly Entity[] {
-    if (EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission] === null) return projectiles;
     out.length = 0;
     for (let i = 0; i < projectiles.length; i++) {
       const projectile = projectiles[i];
-      if (!this.entityEmissionUsesFarLod(projectile, emission)) out.push(projectile);
+      if (!this.entityEmissionUsesFarLod(projectile)) out.push(projectile);
     }
     return out;
   }
@@ -817,16 +777,14 @@ export class RtsScene3DRenderPhase {
   private filterNearLodSprays(
     sprays: readonly SprayTarget[],
     out: SprayTarget[],
-    emission: EntityLodEmission3D,
   ): readonly SprayTarget[] {
-    if (EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission] === null) return sprays;
     out.length = 0;
     for (let i = 0; i < sprays.length; i++) {
       const spray = sprays[i];
       const source = this.clientViewState.getEntity(spray.source.id);
-      if (source !== undefined && this.entityEmissionUsesFarLod(source, emission)) continue;
+      if (source !== undefined && this.entityEmissionUsesFarLod(source)) continue;
       const target = this.clientViewState.getEntity(spray.target.id);
-      if (target !== undefined && this.entityEmissionUsesFarLod(target, emission)) continue;
+      if (target !== undefined && this.entityEmissionUsesFarLod(target)) continue;
       out.push(spray);
     }
     return out;
@@ -835,7 +793,7 @@ export class RtsScene3DRenderPhase {
   private populateTurretNamePacket(hosts: readonly Entity[], mode: SelectionHudMode): void {
     for (let i = 0; i < hosts.length; i++) {
       const host = hosts[i];
-      if (!this.entityEmissionUsesFarLod(host, 'turretNames')) {
+      if (!this.entityEmissionUsesFarLod(host)) {
         this.pushTurretNamesForEntity(host, mode);
       }
     }
@@ -861,14 +819,14 @@ export class RtsScene3DRenderPhase {
     const entity = this.clientViewState.getEntity(entityId);
     if (
       entity !== undefined &&
-      !this.entityEmissionUsesFarLod(entity, 'turretNames')
+      !this.entityEmissionUsesFarLod(entity)
     ) {
       this.pushTurretNamesForEntity(entity, mode);
     }
   }
 
   private pushTurretNamesForEntity(host: Entity, mode: SelectionHudMode): void {
-    if (this.entityEmissionUsesFarLod(host, 'turretNames')) return;
+    if (this.entityEmissionUsesFarLod(host)) return;
     const turrets = host.combat?.turrets;
     if (!turrets) return;
     const entityRenderer = this.resources.entityRenderer;
@@ -897,7 +855,7 @@ export class RtsScene3DRenderPhase {
     const scope = this.renderScope;
     for (let i = 0; i < projectiles.length; i++) {
       const shot = projectiles[i];
-      if (this.entityEmissionUsesFarLod(shot, 'shotNames')) continue;
+      if (this.entityEmissionUsesFarLod(shot)) continue;
       if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
       const proj = shot.projectile;
       if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;

@@ -1,13 +1,8 @@
 import type * as THREE from 'three';
 import {
+  ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE,
   ENTITY_LOD_ENABLED,
-  ENTITY_LOD_FULL_DETAIL_DISTANCE,
-  ENTITY_LOD_MIN_RADIUS,
-  ENTITY_LOD_PROXY_ENABLED,
-  ENTITY_LOD_REFERENCE_RADIUS,
-  ENTITY_LOD_RUNTIME_DISTANCE_MULTIPLIERS,
 } from '@/config';
-import { getBrowserRenderRuntimeProfile } from '@/browserRuntime';
 import { getLodMode } from '@/clientBarConfig';
 import { canIndexClientEntityId } from '../network/ClientEntityIds';
 import type { Entity, EntityId } from '../sim/types';
@@ -15,48 +10,14 @@ import {
   DETAIL_LEVEL_FULL,
   DETAIL_LEVEL_GLYPH,
   detailLevelForDistance,
-  detailLevelForViewPosition,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
 
-const FALLBACK_MIN_ENTITY_LOD_RADIUS = 1;
+const DEFAULT_ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE = 3600;
+const MIN_ENTITY_LOD_RADIUS = 1;
 const ENTITY_LOD_BODY_CHANNEL = 'body';
 const LOD_STATE_STALE_FRAME_LIMIT = 120;
 const LOD_STATE_PRUNE_INTERVAL_FRAMES = 30;
-const LOD_PROXY_DETAIL_LEVEL = DETAIL_LEVEL_GLYPH;
-const RUNTIME_LOD_DISTANCE_MULTIPLIER = (() => {
-  const profile = getBrowserRenderRuntimeProfile();
-  const configuredValue =
-    profile.label === 'tauri-desktop'
-      ? ENTITY_LOD_RUNTIME_DISTANCE_MULTIPLIERS.tauriDesktop
-      : profile.label === 'browser-mobile'
-        ? ENTITY_LOD_RUNTIME_DISTANCE_MULTIPLIERS.browserMobile
-        : ENTITY_LOD_RUNTIME_DISTANCE_MULTIPLIERS.browserDesktop;
-  const value = configuredValue ?? profile.lodDistanceMultiplier;
-  return Number.isFinite(value) && value > 0 ? value : 1;
-})();
-
-export type EntityLodEmission3D =
-  | 'bodyHud'
-  | 'bodyNames'
-  | 'turretNames'
-  | 'shotNames'
-  | 'contactShadows'
-  | 'groundPrints'
-  | 'lineProjectiles'
-  | 'beamSegments'
-  | 'beamEndpoints'
-  | 'projectileCores'
-  | 'projectileTrailsAndFins'
-  | 'projectileBurnMarks'
-  | 'projectileSmokeTrails'
-  | 'resourceSprays'
-  | 'waterSplashes'
-  | 'materialDeathExplosions'
-  | 'shieldFields'
-  | 'shieldImpacts'
-  | 'hitImpacts'
-  | 'projectileExpireImpacts';
 
 export const ENTITY_LOD_PROXY_GLYPH_CIRCLE = 0;
 export const ENTITY_LOD_PROXY_GLYPH_DIAMOND = 1;
@@ -71,29 +32,12 @@ export type EntityLodProxyGlyph3D =
   | typeof ENTITY_LOD_PROXY_GLYPH_SQUARE
   | typeof ENTITY_LOD_PROXY_GLYPH_CROSS;
 
-type EntityLodCutoffDistance3D = number | null;
-type EmissionLodHighToLowDistance3D = number | null;
-
-function finitePositiveRadius(...values: Array<number | null | undefined>): number {
-  let radius = 0;
-  for (const value of values) {
-    if (typeof value === 'number' && Number.isFinite(value) && value > radius) {
-      radius = value;
-    }
-  }
-  return Math.max(minEntityLodRadius(), radius);
-}
-
 function finitePositiveOr(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function minEntityLodRadius(): number {
-  return finitePositiveOr(ENTITY_LOD_MIN_RADIUS, FALLBACK_MIN_ENTITY_LOD_RADIUS);
-}
-
 function entityLodEnabled(): boolean {
-  return ENTITY_LOD_ENABLED && ENTITY_LOD_PROXY_ENABLED;
+  return ENTITY_LOD_ENABLED;
 }
 
 function entityCameraDistanceSq3D(camera: THREE.Camera, entity: Entity): number {
@@ -118,43 +62,28 @@ function simPositionCameraDistanceSq3D(
   return dx * dx + dy * dy + dz * dz;
 }
 
-export function entityLodRadius3D(entity: Entity): number {
-  const unit = entity.unit;
-  if (unit !== null) {
-    return finitePositiveRadius(
-      unit.radius.other,
-      unit.radius.hitbox,
-      unit.radius.collision,
-    );
-  }
-
-  const building = entity.building;
-  if (building !== null) {
-    return finitePositiveRadius(
-      building.targetRadius,
-      Math.hypot(building.width, building.height) * 0.5,
-    );
-  }
-
-  const projectile = entity.projectile;
-  if (projectile !== null) {
-    const radius = projectile.config.shotProfile.runtime.radius;
-    return finitePositiveRadius(radius.other, radius.hitbox, radius.collision);
-  }
-
-  return minEntityLodRadius();
+function simPositionViewDistanceSq3D(
+  view: RenderViewState3D,
+  simX: number,
+  simY: number,
+  simZ: number,
+): number {
+  const dx = view.cameraX - simX;
+  const dy = view.cameraY - simZ;
+  const dz = view.cameraZ - simY;
+  return dx * dx + dy * dy + dz * dz;
 }
 
-/** First finite-positive value (NOT the max — unlike finitePositiveRadius),
- *  floored to the min LOD radius. Lets the proxy honor a specific radius
- *  channel (collision) with hitbox/visual only as fallbacks. */
+/** First finite-positive value, floored to the min LOD radius. Lets the proxy
+ *  honor a specific radius channel (collision) with hitbox/visual only as
+ *  fallbacks. */
 function firstFinitePositiveRadius(...values: Array<number | null | undefined>): number {
   for (const value of values) {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-      return Math.max(minEntityLodRadius(), value);
+      return Math.max(MIN_ENTITY_LOD_RADIUS, value);
     }
   }
-  return minEntityLodRadius();
+  return MIN_ENTITY_LOD_RADIUS;
 }
 
 /**
@@ -162,9 +91,7 @@ function firstFinitePositiveRadius(...values: Array<number | null | undefined>):
  * collision radius / hitbox), NOT the visual mesh size. The proxy exists to
  * show the collision shape and nothing else, so it uses collision first, with
  * hitbox -> visual only as fallbacks. Buildings already expose their collision
- * footprint via targetRadius. (entityLodRadius3D — which uses the largest/visual
- * radius — still drives the distance-based LOD switch; only the proxy's drawn
- * size differs.)
+ * footprint via targetRadius.
  */
 export function entityLodProxyRadius3D(entity: Entity): number {
   const unit = entity.unit;
@@ -190,7 +117,7 @@ export function entityLodProxyRadius3D(entity: Entity): number {
     return firstFinitePositiveRadius(radius.collision, radius.hitbox, radius.other);
   }
 
-  return minEntityLodRadius();
+  return MIN_ENTITY_LOD_RADIUS;
 }
 
 export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {
@@ -210,70 +137,49 @@ export function entityLodProxyGlyph3D(entity: Entity): EntityLodProxyGlyph3D {
   return ENTITY_LOD_PROXY_GLYPH_CIRCLE;
 }
 
-function entityLodFullDetailDistance3D(
-  radius: number,
-  multiplier: number = 1,
-  fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
-): number {
-  if (fullDetailDistance === null) return Number.POSITIVE_INFINITY;
-  return (
-    finitePositiveOr(fullDetailDistance, ENTITY_LOD_FULL_DETAIL_DISTANCE) *
-    RUNTIME_LOD_DISTANCE_MULTIPLIER *
-    finitePositiveOr(multiplier, 1) *
-    finitePositiveRadius(radius) /
-    finitePositiveRadius(ENTITY_LOD_REFERENCE_RADIUS)
+function entityLodHighToLowDistance3D(): number {
+  return finitePositiveOr(
+    ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE,
+    DEFAULT_ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE,
   );
 }
 
-function entityLodFullDetailDistanceSq3D(
-  radius: number,
-  multiplier: number = 1,
-  fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
-): number {
-  const distance = entityLodFullDetailDistance3D(radius, multiplier, fullDetailDistance);
+function entityLodHighToLowDistanceSq3D(): number {
+  const distance = entityLodHighToLowDistance3D();
   return distance * distance;
 }
 
-export function entityEmissionUsesLowLodDistance3D(
+export function entityUsesLowLodDistance3D(
   camera: THREE.Camera,
   entity: Entity,
-  highToLowDistance: EmissionLodHighToLowDistance3D,
 ): boolean {
-  return simPositionUsesLowEmissionLod3D(
+  return simPositionUsesLowLodDistance3D(
     camera,
     entity.transform.x,
     entity.transform.y,
     entity.transform.z,
-    highToLowDistance,
   );
 }
 
-export function simPositionUsesLowEmissionLod3D(
+export function simPositionUsesLowLodDistance3D(
   camera: THREE.Camera,
   simX: number,
   simY: number,
   simZ: number,
-  highToLowDistance: EmissionLodHighToLowDistance3D,
 ): boolean {
-  if (highToLowDistance === null) return false;
-  if (!Number.isFinite(highToLowDistance) || highToLowDistance < 0) return false;
-  return simPositionCameraDistanceSq3D(camera, simX, simY, simZ) >
-    highToLowDistance * highToLowDistance;
+  return simPositionCameraDistanceSq3D(camera, simX, simY, simZ) >=
+    entityLodHighToLowDistanceSq3D();
 }
 
 /**
- * Continuous per-entity detail level L in [0,1] for callers without a
- * render-loop cache. 1 = full fidelity, 0 = glyph. Uses the same per-entity
- * switch distance as the proxy, so L hits 0 where the entity turns into its
- * glyph. Prefer the cached {@link EntityLodState3D.entityDetailLevel}
- * inside the render loop.
+ * Binary per-entity detail level for callers without a render-loop cache.
+ * 1 = HIGH/full fidelity, 0 = LOW/proxy glyph.
  */
 export function entityDetailLevel3D(camera: THREE.Camera, entity: Entity): number {
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
-  const radius = entityLodRadius3D(entity);
-  const switchDistance = entityLodFullDetailDistance3D(radius);
+  const switchDistance = entityLodHighToLowDistance3D();
   const distance = Math.sqrt(entityCameraDistanceSq3D(camera, entity));
   return detailLevelForDistance(distance, switchDistance);
 }
@@ -288,37 +194,25 @@ export function entityDetailLevelForView(view: RenderViewState3D, entity: Entity
   const lodMode = getLodMode();
   if (lodMode === 'high') return DETAIL_LEVEL_FULL;
   if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
-  const radius = entityLodRadius3D(entity);
-  return detailLevelForViewPosition(
+  const distance = Math.sqrt(simPositionViewDistanceSq3D(
     view,
     entity.transform.x,
     entity.transform.y,
     entity.transform.z,
-    radius,
-  );
+  ));
+  return detailLevelForDistance(distance, entityLodHighToLowDistance3D());
 }
 
 export class EntityLodState3D {
   private readonly proxyIdsByChannel = new Map<string, Set<EntityId>>();
   private readonly lastSeenFrameByChannel = new Map<string, Map<EntityId, number>>();
-  private readonly radiusByEntityId = new Map<EntityId, number>();
-  private readonly radiusFrameByEntityId = new Map<EntityId, number>();
   private readonly distanceSqByEntityId = new Map<EntityId, number>();
   private readonly distanceSqFrameByEntityId = new Map<EntityId, number>();
-  private readonly radiusByIndexedEntityId: Array<number | undefined> = [];
-  private readonly radiusFrameByIndexedEntityId: Array<number | undefined> = [];
-  private readonly radiusIndexedEntityIds: EntityId[] = [];
-  private readonly radiusIndexedEntityIdTracked: Array<boolean | undefined> = [];
   private readonly distanceSqByIndexedEntityId: Array<number | undefined> = [];
   private readonly distanceSqFrameByIndexedEntityId: Array<number | undefined> = [];
   private readonly distanceSqIndexedEntityIds: EntityId[] = [];
   private readonly distanceSqIndexedEntityIdTracked: Array<boolean | undefined> = [];
-  private distanceScale = 1;
   private frame = 0;
-
-  setDistanceScale(scale: number): void {
-    this.distanceScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  }
 
   beginFrame(): void {
     this.frame++;
@@ -335,22 +229,11 @@ export class EntityLodState3D {
         lastSeenByEntityId?.delete(entityId);
       }
     }
-    for (const [entityId, radiusFrame] of this.radiusFrameByEntityId) {
-      if (this.frame - radiusFrame <= LOD_STATE_STALE_FRAME_LIMIT) continue;
-      this.radiusFrameByEntityId.delete(entityId);
-      this.radiusByEntityId.delete(entityId);
-    }
     for (const [entityId, distanceFrame] of this.distanceSqFrameByEntityId) {
       if (this.frame - distanceFrame <= LOD_STATE_STALE_FRAME_LIMIT) continue;
       this.distanceSqFrameByEntityId.delete(entityId);
       this.distanceSqByEntityId.delete(entityId);
     }
-    this.pruneIndexedEntityCache(
-      this.radiusIndexedEntityIds,
-      this.radiusIndexedEntityIdTracked,
-      this.radiusByIndexedEntityId,
-      this.radiusFrameByIndexedEntityId,
-    );
     this.pruneIndexedEntityCache(
       this.distanceSqIndexedEntityIds,
       this.distanceSqIndexedEntityIdTracked,
@@ -362,14 +245,8 @@ export class EntityLodState3D {
   clear(): void {
     this.proxyIdsByChannel.clear();
     this.lastSeenFrameByChannel.clear();
-    this.radiusByEntityId.clear();
-    this.radiusFrameByEntityId.clear();
     this.distanceSqByEntityId.clear();
     this.distanceSqFrameByEntityId.clear();
-    this.radiusByIndexedEntityId.length = 0;
-    this.radiusFrameByIndexedEntityId.length = 0;
-    this.radiusIndexedEntityIds.length = 0;
-    this.radiusIndexedEntityIdTracked.length = 0;
     this.distanceSqByIndexedEntityId.length = 0;
     this.distanceSqFrameByIndexedEntityId.length = 0;
     this.distanceSqIndexedEntityIds.length = 0;
@@ -383,13 +260,9 @@ export class EntityLodState3D {
     for (const lastSeenByEntityId of this.lastSeenFrameByChannel.values()) {
       lastSeenByEntityId.delete(entityId);
     }
-    this.radiusByEntityId.delete(entityId);
-    this.radiusFrameByEntityId.delete(entityId);
     this.distanceSqByEntityId.delete(entityId);
     this.distanceSqFrameByEntityId.delete(entityId);
     if (canIndexClientEntityId(entityId)) {
-      this.radiusByIndexedEntityId[entityId] = undefined;
-      this.radiusFrameByIndexedEntityId[entityId] = undefined;
       this.distanceSqByIndexedEntityId[entityId] = undefined;
       this.distanceSqFrameByIndexedEntityId[entityId] = undefined;
     }
@@ -399,12 +272,7 @@ export class EntityLodState3D {
     camera: THREE.Camera,
     entity: Entity,
     channel: string = ENTITY_LOD_BODY_CHANNEL,
-    fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
   ): boolean {
-    if (fullDetailDistance === null) {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
     const lodMode = getLodMode();
     if (lodMode === 'high') {
       this.deleteChannelEntity(channel, entity.id);
@@ -423,12 +291,7 @@ export class EntityLodState3D {
     const proxyIds = this.proxyIdsForChannel(channel);
     this.lastSeenForChannel(channel).set(entity.id, this.frame);
     const useProxy =
-      this.entityCameraDistanceSq(camera, entity) >
-      entityLodFullDetailDistanceSq3D(
-        this.entityLodRadius(entity),
-        this.distanceScale,
-        fullDetailDistance,
-      );
+      this.entityCameraDistanceSq(camera, entity) >= entityLodHighToLowDistanceSq3D();
 
     if (useProxy) proxyIds.add(entity.id);
     else proxyIds.delete(entity.id);
@@ -436,20 +299,15 @@ export class EntityLodState3D {
   }
 
   /**
-   * AUTO-mode proxy selection for the active 3D render loop. Uses projected
-   * screen size so the LOD switch matches the 0..1 visual thresholds instead of
-   * a camera-angle-dependent distance-only cutoff.
+   * AUTO-mode proxy selection for the active 3D render loop. This is the
+   * single HIGH/LOW decision: nearer than the configured distance is HIGH,
+   * at/after that distance is LOW.
    */
   entityUsesLodProxyForView(
     view: RenderViewState3D,
     entity: Entity,
     channel: string = ENTITY_LOD_BODY_CHANNEL,
-    fullDetailDistance: EntityLodCutoffDistance3D = ENTITY_LOD_FULL_DETAIL_DISTANCE,
   ): boolean {
-    if (fullDetailDistance === null) {
-      this.deleteChannelEntity(channel, entity.id);
-      return false;
-    }
     const lodMode = getLodMode();
     if (lodMode === 'high') {
       this.deleteChannelEntity(channel, entity.id);
@@ -467,14 +325,13 @@ export class EntityLodState3D {
 
     const proxyIds = this.proxyIdsForChannel(channel);
     this.lastSeenForChannel(channel).set(entity.id, this.frame);
-    const detailLevel = detailLevelForViewPosition(
-      view,
-      entity.transform.x,
-      entity.transform.y,
-      entity.transform.z,
-      this.entityLodRadius(entity) * this.distanceScale,
-    );
-    const useProxy = detailLevel <= LOD_PROXY_DETAIL_LEVEL;
+    const useProxy =
+      simPositionViewDistanceSq3D(
+        view,
+        entity.transform.x,
+        entity.transform.y,
+        entity.transform.z,
+      ) >= entityLodHighToLowDistanceSq3D();
 
     if (useProxy) proxyIds.add(entity.id);
     else proxyIds.delete(entity.id);
@@ -482,32 +339,22 @@ export class EntityLodState3D {
   }
 
   /**
-   * Continuous detail level L in [0,1] for this entity, reusing the per-frame
-   * cached camera distance + radius. 1 = full fidelity, 0 = glyph. Composed
-   * parts should read their HOST entity's level via this, never their own.
+   * Binary detail level for this entity, reusing the per-frame cached camera
+   * distance. 1 = HIGH/full fidelity, 0 = LOW/glyph.
    */
   entityDetailLevel(camera: THREE.Camera, entity: Entity): number {
     const lodMode = getLodMode();
     if (lodMode === 'high') return DETAIL_LEVEL_FULL;
     if (lodMode === 'low') return DETAIL_LEVEL_GLYPH;
-    const radius = this.entityLodRadius(entity);
-    const switchDistance = entityLodFullDetailDistance3D(
-      radius,
-      this.distanceScale,
-    );
     const distance = Math.sqrt(this.entityCameraDistanceSq(camera, entity));
-    return detailLevelForDistance(distance, switchDistance);
+    return detailLevelForDistance(distance, entityLodHighToLowDistance3D());
   }
 
-  entityEmissionUsesLowLodDistance(
+  entityUsesLowLodDistance(
     camera: THREE.Camera,
     entity: Entity,
-    highToLowDistance: EmissionLodHighToLowDistance3D,
   ): boolean {
-    if (highToLowDistance === null) return false;
-    if (!Number.isFinite(highToLowDistance) || highToLowDistance < 0) return false;
-    return this.entityCameraDistanceSq(camera, entity) >
-      highToLowDistance * highToLowDistance;
+    return this.entityCameraDistanceSq(camera, entity) >= entityLodHighToLowDistanceSq3D();
   }
 
   private deleteChannelEntity(channel: string, entityId: EntityId): void {
@@ -531,34 +378,6 @@ export class EntityLodState3D {
       this.lastSeenFrameByChannel.set(channel, lastSeenByEntityId);
     }
     return lastSeenByEntityId;
-  }
-
-  private entityLodRadius(entity: Entity): number {
-    if (canIndexClientEntityId(entity.id)) {
-      const frame = this.radiusFrameByIndexedEntityId[entity.id];
-      if (frame === this.frame) {
-        const cachedRadius = this.radiusByIndexedEntityId[entity.id];
-        if (cachedRadius !== undefined) return cachedRadius;
-      }
-      const radius = entityLodRadius3D(entity);
-      this.trackIndexedEntityCache(
-        entity.id,
-        this.radiusIndexedEntityIds,
-        this.radiusIndexedEntityIdTracked,
-      );
-      this.radiusByIndexedEntityId[entity.id] = radius;
-      this.radiusFrameByIndexedEntityId[entity.id] = this.frame;
-      return radius;
-    }
-    const frame = this.radiusFrameByEntityId.get(entity.id);
-    if (frame === this.frame) {
-      const cachedRadius = this.radiusByEntityId.get(entity.id);
-      if (cachedRadius !== undefined) return cachedRadius;
-    }
-    const radius = entityLodRadius3D(entity);
-    this.radiusByEntityId.set(entity.id, radius);
-    this.radiusFrameByEntityId.set(entity.id, this.frame);
-    return radius;
   }
 
   private entityCameraDistanceSq(camera: THREE.Camera, entity: Entity): number {

@@ -182,7 +182,6 @@ import type {
   BuildingRenderPacket3D,
   UnitRenderPacket3D,
 } from '../render3d/EntityRenderPackets3D';
-import type { EntityLodEmission3D } from '../render3d/EntityLod3D';
 import {
   CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION,
   CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS,
@@ -340,7 +339,7 @@ type ClientViewRenderPacketOptions3D = {
   lookupPlayerName: (id: PlayerId) => string | null;
   getGroundPrintLocomotionMesh: (entityId: EntityId) => Locomotion3DMesh;
   isEntityFarLod?: (entity: Entity) => boolean;
-  isEntityEmissionFarLod?: (entity: Entity, emission: EntityLodEmission3D) => boolean;
+  isEntityEmissionFarLod?: (entity: Entity) => boolean;
 };
 
 type ClientSnapshotApplyStats = {
@@ -3857,7 +3856,7 @@ export class ClientViewState {
         const farLod = this.entityUsesFarLod3D(entity, options);
         this.pushUnitRenderKnownSlot3D(entity, unitRowSlots[i] ?? -1, farLod, out);
         if (
-          !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
+          !this.entityEmissionUsesFarLod3D(entity, options) &&
           options.includeBodyHud &&
           this.entityNeedsBodyHud3D(entity)
         ) {
@@ -3866,7 +3865,7 @@ export class ClientViewState {
           this.pushBodyHudEntity3D(entity, forceVisible, options, out, unitRowSlots[i] ?? -1);
         }
         if (
-          !this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames') &&
+          !this.entityEmissionUsesFarLod3D(entity, options) &&
           options.includeBodyNames
         ) {
           this.pushBodyNamesForEntity3D(entity, options, out, unitRowSlots[i] ?? -1);
@@ -3875,7 +3874,7 @@ export class ClientViewState {
           options.includeShields &&
           entity.unit !== null &&
           entity.combat !== null &&
-          !this.entityEmissionUsesFarLod3D(entity, options, 'shieldFields')
+          !this.entityEmissionUsesFarLod3D(entity, options)
         ) {
           this.pushShieldUnit3D(entity, renderScope, out, unitRowSlots[i] ?? -1);
         }
@@ -3885,7 +3884,7 @@ export class ClientViewState {
         const farLod = this.entityUsesFarLod3D(entity, options);
         this.pushBuildingRenderKnownSlot3D(entity, buildingRowSlots[i] ?? -1, farLod, out);
         if (
-          !this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud') &&
+          !this.entityEmissionUsesFarLod3D(entity, options) &&
           options.includeBodyHud &&
           this.entityNeedsBodyHud3D(entity)
         ) {
@@ -3894,7 +3893,7 @@ export class ClientViewState {
           this.pushBodyHudEntity3D(entity, forceVisible, options, out, buildingRowSlots[i] ?? -1);
         }
         if (
-          !this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames') &&
+          !this.entityEmissionUsesFarLod3D(entity, options) &&
           options.includeBodyNames
         ) {
           this.pushBodyNamesForEntity3D(entity, options, out, buildingRowSlots[i] ?? -1);
@@ -3905,7 +3904,7 @@ export class ClientViewState {
         options.includeBodyHud &&
         options.hoveredEntity !== null &&
         !hoveredBodyHudPushed &&
-        !this.entityEmissionUsesFarLod3D(options.hoveredEntity, options, 'bodyHud')
+        !this.entityEmissionUsesFarLod3D(options.hoveredEntity, options)
       ) {
         this.pushBodyHudEntity3D(options.hoveredEntity, true, options, out);
       }
@@ -4380,7 +4379,7 @@ export class ClientViewState {
     let hoveredBodyHudPushed = false;
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud')) continue;
+      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const forceVisible = entity === hoveredEntity;
       if (forceVisible) hoveredBodyHudPushed = true;
       this.pushBodyHudEntity3D(entity, forceVisible, options, out);
@@ -4388,7 +4387,7 @@ export class ClientViewState {
     if (
       hoveredEntity !== null &&
       !hoveredBodyHudPushed &&
-      !this.entityEmissionUsesFarLod3D(hoveredEntity, options, 'bodyHud')
+      !this.entityEmissionUsesFarLod3D(hoveredEntity, options)
     ) {
       this.pushBodyHudEntity3D(hoveredEntity, true, options, out);
     }
@@ -4404,7 +4403,7 @@ export class ClientViewState {
     const unit = entity.unit;
     const building = entity.building;
     if (unit === null && building === null) return;
-    if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyHud')) return;
+    if (this.entityEmissionUsesFarLod3D(entity, options)) return;
 
     const type = this.hudTypeOf3D(entity);
     let views = this.renderEntityState.getViews();
@@ -4512,7 +4511,7 @@ export class ClientViewState {
   ): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames')) {
+      if (!this.entityEmissionUsesFarLod3D(entity, options)) {
         this.pushBodyNamesForEntity3D(entity, options, out);
       }
     }
@@ -4524,7 +4523,7 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
     knownSlot = -1,
   ): void {
-    if (this.entityEmissionUsesFarLod3D(entity, options, 'bodyNames')) return;
+    if (this.entityEmissionUsesFarLod3D(entity, options)) return;
     const type = this.hudTypeOf3D(entity);
     const nameToggle = options.getEntityHudToggle(type, 'name');
     let views = this.renderEntityState.getViews();
@@ -4598,7 +4597,7 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < units.length; i++) {
-      if (!this.entityEmissionUsesFarLod3D(units[i], options, 'shieldFields')) {
+      if (!this.entityEmissionUsesFarLod3D(units[i], options)) {
         this.pushShieldUnit3D(units[i], renderScope, out);
       }
     }
@@ -4647,7 +4646,7 @@ export class ClientViewState {
     let views = this.renderEntityState.getViews();
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options, 'contactShadows')) continue;
+      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = unitSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -4678,7 +4677,7 @@ export class ClientViewState {
     }
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options, 'contactShadows')) continue;
+      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = buildingSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -4716,7 +4715,7 @@ export class ClientViewState {
     let views = this.renderEntityState.getViews();
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options, 'groundPrints')) continue;
+      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = unitSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -4782,9 +4781,8 @@ export class ClientViewState {
   private entityEmissionUsesFarLod3D(
     entity: Entity,
     options: ClientViewRenderPacketOptions3D,
-    emission: EntityLodEmission3D,
   ): boolean {
-    return options.isEntityEmissionFarLod?.(entity, emission)
+    return options.isEntityEmissionFarLod?.(entity)
       ?? this.entityUsesFarLod3D(entity, options);
   }
 

@@ -1,7 +1,6 @@
 import { COLORS } from '@/colorsConfig';
 import type { Entity, Turret, TurretState } from '../sim/types';
 import { getPlayerColors } from '../sim/types';
-import { CLIENT_RENDER_TURRET_STATE_ENGAGED } from './ClientRenderTurretStateSlab';
 
 const SHIELD_SPHERE_TURRET_PULSE_PERIOD_MS = 900;
 
@@ -9,19 +8,24 @@ export function entityInstanceColorKey(entity: Entity): number {
   return entity.ownership?.playerId ?? -1;
 }
 
-export function entityInstanceColorHex(entity: Entity): number {
-  const pid = entity.ownership?.playerId;
-  return entityInstanceColorHexForPlayer(pid);
-}
-
-export function entityInstanceColorHexForPlayer(pid: number | undefined): number {
+export function entityBodyColorHexForPlayer(pid: number | undefined): number {
   return pid !== undefined ? getPlayerColors(pid).primary : COLORS.units.neutral.colorHex;
 }
 
+export function entityBodyColorHex(entity: Entity): number {
+  return entityBodyColorHexForPlayer(entity.ownership?.playerId);
+}
+
+export function entityInstanceColorHex(entity: Entity): number {
+  return entityBodyColorHex(entity);
+}
+
+export function entityInstanceColorHexForPlayer(pid: number | undefined): number {
+  return entityBodyColorHexForPlayer(pid);
+}
+
 export function turretAccentColorHexForPlayer(playerId: number | undefined): number {
-  const primary = playerId !== undefined
-    ? getPlayerColors(playerId).primary
-    : COLORS.units.neutral.colorHex;
+  const primary = entityBodyColorHexForPlayer(playerId);
   return blendHexTowardWhite(primary, 0.5);
 }
 
@@ -31,20 +35,16 @@ export function entityTurretAccentColorHex(entity: Entity): number {
 
 export function entityHeadOnlyTurretHeadColorHex(
   entity: Entity,
-  turretState: TurretState | undefined,
+  _turretState: TurretState | undefined,
 ): number {
-  return turretState === 'engaged'
-    ? entityTurretAccentColorHex(entity)
-    : entityInstanceColorHex(entity);
+  return entityBodyColorHex(entity);
 }
 
 export function entityHeadOnlyTurretHeadColorHexForStateCode(
   entity: Entity,
-  stateCode: number,
+  _stateCode: number,
 ): number {
-  return stateCode === CLIENT_RENDER_TURRET_STATE_ENGAGED
-    ? entityTurretAccentColorHex(entity)
-    : entityInstanceColorHex(entity);
+  return entityBodyColorHex(entity);
 }
 
 export function entityShieldSphereTurretHeadColorHex(

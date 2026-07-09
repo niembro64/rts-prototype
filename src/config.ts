@@ -302,40 +302,11 @@ export const MAP_BG_COLOR = COLORS.world.map.inBounds.colorHex; // in-bounds bac
 // camera far plane still controls what actually draws.
 export const HORIZON_RENDER_EXTEND = worldRenderConfigJson.horizonRenderExtend;
 
-// Entities farther than this camera distance render as cheap hitbox proxies
-// instead of full-detail meshes and effect emitters. The distance scales
-// linearly by entity/effect radius relative to `referenceRadius`.
+// In LOD AUTO, entities closer than this camera distance render as HIGH
+// (full meshes) and entities at/after it render as LOW (proxy glyphs).
 export const ENTITY_LOD_ENABLED = lodConfigJson.entity.enabled;
-export const ENTITY_LOD_FULL_DETAIL_DISTANCE =
-  lodConfigJson.entity.fullDetailDistance;
-export const ENTITY_LOD_REFERENCE_RADIUS =
-  lodConfigJson.entity.referenceRadius;
-export const ENTITY_LOD_MIN_RADIUS =
-  lodConfigJson.entity.minRadius;
-export const ENTITY_LOD_RUNTIME_DISTANCE_MULTIPLIERS =
-  lodConfigJson.entity.runtimeDistanceMultipliers;
-export const ENTITY_LOD_VISUAL_SCORE = lodConfigJson.entity.visualScore;
-export const ENTITY_LOD_PROXY_ENABLED = lodConfigJson.proxy.enabled;
-export const ENTITY_LOD_PROXY_CAP = lodConfigJson.proxy.capacity;
-export const ENTITY_LOD_PROXY_USE_TEAM_COLOR = lodConfigJson.proxy.useTeamColor;
-export const ENTITY_LOD_PROXY_OPACITY = lodConfigJson.proxy.opacity;
-export const ENTITY_LOD_PROXY_DEPTH_TEST = lodConfigJson.proxy.depthTest;
-export const ENTITY_LOD_PROXY_DEPTH_WRITE = lodConfigJson.proxy.depthWrite;
-export const ENTITY_LOD_PROXY_RENDER_ORDER = lodConfigJson.proxy.renderOrder;
-export const EMISSION_LOD_HIGH_TO_LOW_DISTANCES =
-  lodConfigJson.emissionHighToLowDistances;
-export const ENTITY_LOD_EFFECT_RADIUS_FALLBACKS = lodConfigJson.effectRadiusFallbacks;
-
-// Continuous per-entity detail level (LOD). See lod.json `detail.comment`.
-// L in [0,1]: 1 = full fidelity, 0 = the flat proxy glyph. AUTO mode derives
-// L from projected screen radius so parts shed progressively before an entity
-// becomes its glyph and the geometry tier steps down with zoom. Composed parts
-// inherit their host's L.
-export const ENTITY_DETAIL_ENABLED = lodConfigJson.detail.enabled;
-export const ENTITY_DETAIL_FULL_DETAIL_FRACTION =
-  lodConfigJson.detail.fullDetailFraction;
-export const ENTITY_DETAIL_THRESHOLDS = lodConfigJson.detail.thresholds;
-export const ENTITY_DETAIL_FLOORS = lodConfigJson.detail.floors;
+export const ENTITY_LOD_AUTO_HIGH_TO_LOW_DISTANCE =
+  lodConfigJson.entity.autoHighToLowDistance;
 
 // Render-only water surface tuning. `color` is the tint of the flat
 // horizon water plane; `opacity` is material alpha. Lower opacity =

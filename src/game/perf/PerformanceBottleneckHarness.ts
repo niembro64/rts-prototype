@@ -159,8 +159,6 @@ type FullStackReport = {
   readonly bufferUploadCalls: NumericSummary;
   readonly renderBudgetTier: string;
   readonly renderBudgetTierIndex: NumericSummary;
-  readonly renderBudgetLodDistanceScale: NumericSummary;
-  readonly renderBudgetEmissionLodDistanceScale: NumericSummary;
   readonly renderBudgetHudFrameStride: NumericSummary;
   readonly renderBudgetEffectFrameStride: NumericSummary;
   readonly renderPhaseScopeMs: NumericSummary;
@@ -635,8 +633,6 @@ async function runFullStack(
     const bufferUploadBytes: number[] = [];
     const bufferUploadCalls: number[] = [];
     const renderBudgetTierIndex: number[] = [];
-    const renderBudgetLodDistanceScale: number[] = [];
-    const renderBudgetEmissionLodDistanceScale: number[] = [];
     const renderBudgetHudFrameStride: number[] = [];
     const renderBudgetEffectFrameStride: number[] = [];
     const renderPhaseScopeMs: number[] = [];
@@ -707,8 +703,6 @@ async function runFullStack(
       bufferUploadCalls.push(timing.webglBufferDataCalls + timing.webglBufferSubDataCalls);
       renderBudgetTier = timing.renderBudgetTier;
       renderBudgetTierIndex.push(timing.renderBudgetTierIndex);
-      renderBudgetLodDistanceScale.push(timing.renderBudgetLodDistanceScale);
-      renderBudgetEmissionLodDistanceScale.push(timing.renderBudgetEmissionLodDistanceScale);
       renderBudgetHudFrameStride.push(timing.renderBudgetHudFrameStride);
       renderBudgetEffectFrameStride.push(timing.renderBudgetEffectFrameStride);
       renderPhaseScopeMs.push(timing.renderPhaseScopeMs);
@@ -802,8 +796,6 @@ async function runFullStack(
       bufferUploadCalls: summarize(bufferUploadCalls),
       renderBudgetTier,
       renderBudgetTierIndex: summarize(renderBudgetTierIndex),
-      renderBudgetLodDistanceScale: summarize(renderBudgetLodDistanceScale),
-      renderBudgetEmissionLodDistanceScale: summarize(renderBudgetEmissionLodDistanceScale),
       renderBudgetHudFrameStride: summarize(renderBudgetHudFrameStride),
       renderBudgetEffectFrameStride: summarize(renderBudgetEffectFrameStride),
       renderPhaseScopeMs: summarize(renderPhaseScopeMs),

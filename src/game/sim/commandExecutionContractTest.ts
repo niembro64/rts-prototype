@@ -1917,6 +1917,12 @@ export function runCommandExecutionContractTest(): void {
       transport.transport.loadedUnits[0].id === passenger.id,
     'transport load action should store the passenger in cargo',
   );
+  assertContract(
+    passenger.heldBy !== null &&
+      passenger.heldBy.kind === 'transportCargo' &&
+      passenger.heldBy.holderId === transport.id,
+    'transport load action should hold the passenger through the generic hold relation',
+  );
 
   const spawnedByUnload: Entity[] = [];
   transportSim.onUnitSpawn = (newUnits) => {
@@ -1943,6 +1949,10 @@ export function runCommandExecutionContractTest(): void {
   assertContract(
     transportCargoLength(transport) === 0,
     'transport unload action should empty cargo',
+  );
+  assertContract(
+    passenger.heldBy === null,
+    'transport unload action should release the generic cargo hold',
   );
   assertContract(
     spawnedByUnload.some((entity) => entity.id === passenger.id),

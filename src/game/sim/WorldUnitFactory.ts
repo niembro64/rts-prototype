@@ -184,12 +184,11 @@ export function createUnitFromBlueprintEntity(
     };
   }
 
-  // A unit whose spawn turret declares a produced unit is a mobile factory: it
-  // builds that unit in place exactly like the fabricator, but the shell rides
-  // attached to the moving host (the spawn turret's buildLockAnchor 'host'),
-  // released to free-fall on completion. Queens build their bees / ticks this
-  // way. The factory is derived from the turret — there is no authored factory
-  // block on the unit blueprint.
+  // A unit whose spawn turret declares a produced unit is a mobile factory. The
+  // production system resolves that mount through the generic EntityHold
+  // relation while the shell is being built. Queens build their bees / ticks
+  // this way. The factory is derived from the turret — there is no authored
+  // factory block on the unit blueprint.
   const spawnMount = bp.turrets.find((m) => m.producedBlueprintId != null);
   if (spawnMount !== undefined && spawnMount.producedBlueprintId != null) {
       entity.factory = {

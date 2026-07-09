@@ -5,9 +5,12 @@ import { getBuildingConfig } from '../sim/buildConfigs';
 import { resetProjectileBuffers } from '../sim/combat/projectileSystem';
 import { resetDamageBuffers } from '../sim/damage/DamageSystem';
 import { economyManager } from '../sim/economy';
+import { resolveEntityHoldPose } from '../sim/entityHolds';
+import { getFactoryProductionHoldVisual } from '../sim/factoryProductionHold';
 import { trimEnergyDistributionBuffers } from '../sim/energyDistribution';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { resetTerrainStateForDeterministicReplay } from '../sim/Terrain';
+import { getUnitGroundZ } from '../sim/unitGeometry';
 import { getSimWasm } from '../sim-wasm/init';
 import type { GameServerConfig } from '@/types/game';
 import type { Command } from '../sim/commands';
@@ -418,8 +421,6 @@ type ReplayRunStats = {
   };
 };
 
-const QUEEN_ATTACHED_BUILD_SHELL_ELEVATION = 60;
-
 function runReplayCaseOnce(replayCase: DeterministicReplayCase): ReplayRun {
   resetReusableSimulationStateForDeterministicReplay();
   const boot = ServerBootstrap.bootstrap(replayCase.config);
@@ -492,22 +493,29 @@ function observeQueenMobileFactoryTick(core: ServerSimulationCore, stats: Replay
   );
   for (let i = 0; i < producedUnits.length; i++) {
     const entity = producedUnits[i];
-    const lockHostId = entity.buildable?.buildLockHostId ?? null;
-    if (lockHostId !== null && queenIds.has(lockHostId)) {
+    const hold = entity.heldBy;
+    if (hold !== null && hold.kind === 'production' && queenIds.has(hold.holderId)) {
       stats.queenMobileFactory.shellAttachedToHostObserved = true;
-      const host = core.world.getEntity(lockHostId);
-      if (host !== undefined) {
-        const dz = entity.transform.z - host.transform.z;
-        if (Math.abs(dz - QUEEN_ATTACHED_BUILD_SHELL_ELEVATION) <= 0.001) {
-          stats.queenMobileFactory.shellPinnedAboveHostObserved = true;
-        }
+      const pose = resolveEntityHoldPose(core.world, entity);
+      if (
+        pose !== null &&
+        Math.abs(entity.transform.x - pose.x) <= 0.001 &&
+        Math.abs(entity.transform.y - pose.y) <= 0.001 &&
+        Math.abs(entity.transform.z - pose.z) <= 0.001
+      ) {
+        stats.queenMobileFactory.shellPinnedAboveHostObserved = true;
       }
       continue;
     }
     if (entity.buildable !== null) continue;
     stats.queenMobileFactory.completedReleasedObserved = true;
     for (let q = 0; q < queens.length; q++) {
-      const attachedZ = queens[q].transform.z + QUEEN_ATTACHED_BUILD_SHELL_ELEVATION;
+      const visual = getFactoryProductionHoldVisual(
+        queens[q],
+        entity.unit?.unitBlueprintId ?? null,
+      );
+      if (visual === null) continue;
+      const attachedZ = getUnitGroundZ(queens[q]) + visual.localBaseZ + (entity.unit?.bodyCenterHeight ?? 0);
       if (entity.transform.z < attachedZ - 1) {
         stats.queenMobileFactory.completedFallingOrLowerObserved = true;
         break;

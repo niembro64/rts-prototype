@@ -392,7 +392,7 @@ export type TurretMount = {
   visualVariant?: ConstructionEmitterSize;
   producedBlueprintId?: UnitBlueprintId;
   allowedBuildBlueprintIds?: StructureBlueprintId[];
-  buildLockAnchor?: 'spawnColumn' | 'host';
+  productionHoldAnchor?: 'host';
   constructionRate?: number;
 };
 

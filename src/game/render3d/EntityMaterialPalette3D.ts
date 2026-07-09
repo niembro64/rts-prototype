@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';
-import { getPlayerColors, type PlayerId } from '../sim/types';
-import { turretAccentColorHexForPlayer } from './EntityInstanceColor3D';
+import type { PlayerId } from '../sim/types';
+import {
+  entityBodyColorHexForPlayer,
+  turretAccentColorHexForPlayer,
+} from './EntityInstanceColor3D';
 import { createShieldFallbackPanelMaterial } from './ShieldReflectorVisual3D';
 
 export class EntityMaterialPalette3D {
@@ -27,7 +30,7 @@ export class EntityMaterialPalette3D {
     if (playerId === undefined) return this.neutralMat;
     let mat = this.primaryMats.get(playerId);
     if (!mat) {
-      mat = new THREE.MeshLambertMaterial({ color: getPlayerColors(playerId).primary });
+      mat = new THREE.MeshLambertMaterial({ color: entityBodyColorHexForPlayer(playerId) });
       this.primaryMats.set(playerId, mat);
     }
     return mat;

@@ -34,9 +34,8 @@ import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootst
 import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
-import { simPositionUsesLowEmissionLod3D } from '../render3d/EntityLod3D';
+import { simPositionUsesLowLodDistance3D } from '../render3d/EntityLod3D';
 import { detailLevelForViewPosition } from '../render3d/EntityDetailLevel3D';
-import { EMISSION_LOD_HIGH_TO_LOW_DISTANCES } from '@/config';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { BarBuildCategoryId } from '../input/buildMenuLayout';
@@ -784,7 +783,6 @@ export class RtsScene3D {
       renderTpsWorst: renderTpsStats.worstRate,
     });
     renderFrameState.gfx = budgetState.graphicsConfig;
-    renderPhase.setRenderBudget(budgetState);
 
     const { cameraQuad, cameraView, renderMs } = renderPhase.run({
       effectDtMs,
@@ -869,18 +867,15 @@ export class RtsScene3D {
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
       debrisRenderer: this.debrisRenderer,
-      isPositionLowEmissionLod: (simX, simY, simZ, emission) =>
-        simPositionUsesLowEmissionLod3D(
+      isPositionLowLod: (simX, simY, simZ) =>
+        simPositionUsesLowLodDistance3D(
           this.threeApp.camera,
           simX,
           simY,
           simZ,
-          this.renderBudget.scaleEmissionDistance(
-            EMISSION_LOD_HIGH_TO_LOW_DISTANCES[emission],
-          ),
         ),
-      positionVisualDetailLevel: (simX, simY, simZ, radius) =>
-        this.positionVisualDetailLevel(simX, simY, simZ, radius),
+      positionVisualDetailLevel: (simX, simY, simZ) =>
+        this.positionVisualDetailLevel(simX, simY, simZ),
     });
   }
 
@@ -888,7 +883,6 @@ export class RtsScene3D {
     simX: number,
     simY: number,
     simZ: number,
-    radius: number,
   ): number {
     const camera = this.threeApp.camera;
     const matrix = camera.matrixWorld.elements;
@@ -906,7 +900,6 @@ export class RtsScene3D {
       simX,
       simY,
       simZ,
-      radius,
     );
   }
 
@@ -1518,8 +1511,6 @@ export class RtsScene3D {
       renderBudgetTier: renderBudget.tier,
       renderBudgetTierIndex: renderBudget.tierIndex,
       renderBudgetUnitCount: renderBudget.unitCount,
-      renderBudgetLodDistanceScale: renderBudget.lodDistanceScale,
-      renderBudgetEmissionLodDistanceScale: renderBudget.emissionLodDistanceScale,
       renderBudgetHudFrameStride: renderBudget.hudFrameStride,
       renderBudgetEffectFrameStride: renderBudget.effectFrameStride,
       renderPhaseScopeMs: renderPhaseTimings?.scopeMs ?? 0,

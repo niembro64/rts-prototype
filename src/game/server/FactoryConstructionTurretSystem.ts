@@ -7,10 +7,10 @@ const FACTORY_CONSTRUCTION_TURRET_SPIN_RAD_PER_SEC = 0.42;
 
 /** Server-authored construction turret motion for fabricators.
  *
- * The fabricator base and any shell it is funding have ordinary physics.
- * This system only animates the construction emitter turret while the
- * factory is actively funding a shell; it does not carry, seat, ignore,
- * rotate, or otherwise couple the shell to the fabricator.
+ * Shell placement is owned by factoryProductionHold + EntityHold. This system
+ * only animates the construction emitter turret while the factory is actively
+ * funding a shell; it does not carry, seat, rotate, or otherwise couple the
+ * shell to the fabricator.
  */
 export class FactoryConstructionTurretSystem {
   private readonly world: WorldState;

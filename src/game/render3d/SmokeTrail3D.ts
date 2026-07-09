@@ -362,7 +362,6 @@ export class SmokeTrail3D {
         e.transform.x,
         e.transform.y,
         e.transform.z,
-        spec.startRadius,
       );
       if (lodScale <= 0) continue;
       // RENDER scope cull: off-screen projectiles do no smoke work.
@@ -394,7 +393,6 @@ export class SmokeTrail3D {
           e.transform.x,
           e.transform.y,
           e.transform.z,
-          spec.startRadius,
         );
         if (lodScale <= 0) continue;
         const useEmitted = emittedByUse.get(spec.useId) ?? 0;
@@ -514,7 +512,6 @@ export class SmokeTrail3D {
         emitter.x,
         emitter.y,
         emitter.z,
-        emitter.startRadius,
       );
       if (lodScale <= 0) continue;
       if (scope && !scope.inScope(emitter.x, emitter.y)) continue;
@@ -798,7 +795,6 @@ export class SmokeTrail3D {
     simX: number,
     simY: number,
     simZ: number,
-    radius: number,
   ): number {
     if (!view) return 1;
     const level = detailLevelForViewPosition(
@@ -806,7 +802,6 @@ export class SmokeTrail3D {
       simX,
       simY,
       simZ,
-      Math.max(1, radius),
     );
     return smokeSpawnScaleForDetail(level);
   }

@@ -2280,7 +2280,7 @@
         "hostDirected": true,
         "requiredEngagedForFightStop": false,
         "producedBlueprintId": "unitBee",
-        "buildLockAnchor": "host"
+        "productionHoldAnchor": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionMetal",
@@ -2422,7 +2422,7 @@
         "hostDirected": true,
         "requiredEngagedForFightStop": false,
         "producedBlueprintId": "unitTick",
-        "buildLockAnchor": "host"
+        "productionHoldAnchor": "host"
       },
       {
         "turretBlueprintId": "turretResourcePylonConstructionMetal",

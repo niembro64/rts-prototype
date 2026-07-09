@@ -447,19 +447,16 @@ export class UnitForceSystem {
             )) === 0
           )
         : isBuildInProgress(entity.buildable);
-      if (buildInProgress) {
-        // Freeze the shell's horizontal motion while it is still being built:
-        // a factory shell free-falling out of the fabricator torus drops
-        // straight down into the production area and cannot slide out. Gravity
-        // still acts on Z; the unit is released the tick it completes.
+      if (entity.heldBy !== null) {
         bodyViews.velX[bodySlot] = 0;
         bodyViews.velY[bodySlot] = 0;
-        // A shell attached to a mobile producer (a queen building its bee/tick)
-        // is locked in all three axes so it rides along with the host instead of
-        // free-falling; the static spawn-column case (fabricator) keeps Z free.
-        if (entity.buildable !== null && entity.buildable.buildLockHostId !== null) {
-          bodyViews.velZ[bodySlot] = 0;
-        }
+        bodyViews.velZ[bodySlot] = 0;
+      } else if (buildInProgress) {
+        // Freeze the shell's horizontal motion while it is still being built:
+        // legacy non-held construction shells cannot slide out of their
+        // production area. Gravity still acts on Z.
+        bodyViews.velX[bodySlot] = 0;
+        bodyViews.velY[bodySlot] = 0;
       }
       _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
       _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;

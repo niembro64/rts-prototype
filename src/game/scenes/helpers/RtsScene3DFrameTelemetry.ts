@@ -36,8 +36,6 @@ export type RtsScene3DFrameTiming = {
   renderBudgetTier: string;
   renderBudgetTierIndex: number;
   renderBudgetUnitCount: number;
-  renderBudgetLodDistanceScale: number;
-  renderBudgetEmissionLodDistanceScale: number;
   renderBudgetHudFrameStride: number;
   renderBudgetEffectFrameStride: number;
   renderPhaseScopeMs: number;
@@ -77,8 +75,6 @@ type RtsScene3DFrameTimingGpuSample = {
   renderBudgetTier: string;
   renderBudgetTierIndex: number;
   renderBudgetUnitCount: number;
-  renderBudgetLodDistanceScale: number;
-  renderBudgetEmissionLodDistanceScale: number;
   renderBudgetHudFrameStride: number;
   renderBudgetEffectFrameStride: number;
   renderPhaseScopeMs: number;
@@ -180,8 +176,6 @@ export class RtsScene3DFrameTelemetry {
       renderBudgetTier: sample.renderBudgetTier,
       renderBudgetTierIndex: sample.renderBudgetTierIndex,
       renderBudgetUnitCount: sample.renderBudgetUnitCount,
-      renderBudgetLodDistanceScale: sample.renderBudgetLodDistanceScale,
-      renderBudgetEmissionLodDistanceScale: sample.renderBudgetEmissionLodDistanceScale,
       renderBudgetHudFrameStride: sample.renderBudgetHudFrameStride,
       renderBudgetEffectFrameStride: sample.renderBudgetEffectFrameStride,
       renderPhaseScopeMs: sample.renderPhaseScopeMs,

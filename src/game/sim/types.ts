@@ -69,6 +69,8 @@ export type {
   Builder,
   
   Transport,
+  EntityHold,
+  EntityHoldKind,
   BuildingConfig,
   UnitBuildConfig,
   FactoryDefaultWaypoint,

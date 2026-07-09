@@ -11,8 +11,8 @@
 //     selected build site.
 //   - Factory building (fabricator) → emitter rate read from the
 //     factory's per-resource transfer fractions; sprays target the
-//     live shell above the fabricator center. The "forming unit" orb +
-//     sparks belongs to a separate `FactoryBuildSpotRig`, not this rig.
+//     live shell held above the fabricator center. The production hold ring
+//     belongs to the factory/unit body mesh, not this emitter rig.
 
 import * as THREE from 'three';
 import type { ConstructionEmitterSize } from '@/types/blueprints';

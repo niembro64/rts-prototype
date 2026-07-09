@@ -1731,9 +1731,9 @@
             "$ref": "#/$defs/StructureBlueprintId"
           }
         },
-        "buildLockAnchor": {
+        "productionHoldAnchor": {
           "type": "string",
-          "enum": ["spawnColumn", "host"]
+          "enum": ["host"]
         },
         "constructionRate": {
           "type": "number"

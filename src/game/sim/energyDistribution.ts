@@ -514,8 +514,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       // currentShellId was admitted by factoryProduction at shell-spawn
       // time. Do not re-check the unit cap here: the incomplete shell
       // already counts as a unit, so a cap-1 spawn would otherwise starve.
-      // Do not range-check the shell: factory shells drop through physics,
-      // and the fabricator keeps funding its currentShellId wherever it lands.
+      // Do not range-check the shell: production placement is owned by the
+      // factory's EntityHold, while funding follows currentShellId by entity ID.
       const shell = world.getEntity(factory.currentShellId);
       if (
         shell !== undefined &&

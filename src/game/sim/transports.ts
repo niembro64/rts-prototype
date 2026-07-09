@@ -4,6 +4,7 @@ import type { Entity, EntityId, Transport } from './types';
 import type { WorldState } from './WorldState';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { entitySlotRegistry } from './EntitySlotRegistry';
+import { holdEntity, releaseEntityHold } from './entityHolds';
 import { shiftUnitAction, setUnitActions } from './unitActions';
 
 const TRANSPORT_UNIT_BLUEPRINT_ID = 'unitTransport';
@@ -57,6 +58,7 @@ function isTransportableUnit(target: Entity | null | undefined, playerId: number
     target.commander === null &&
     target.transport === null &&
     target.transported === null &&
+    target.heldBy === null &&
     target.buildable === null
   );
 }
@@ -98,6 +100,16 @@ function loadUnitIntoTransport(
     transportId: transport.id,
     slotIndex,
   };
+  holdEntity(transport, target, {
+    kind: 'transportCargo',
+    slotIndex,
+    localOffsetX: 0,
+    localOffsetY: 0,
+    localBaseZ: 0,
+    rotateWithHolder: true,
+    inheritHolderRotation: true,
+    inheritHolderVelocity: true,
+  });
 
   transport.transport.loadedUnits.push(target);
   world.removeEntity(target.id);
@@ -148,6 +160,7 @@ function unloadTransportCargo(
     passenger.body = null;
     passenger.selectable = { selected: false };
     passenger.transported = null;
+    releaseEntityHold(passenger);
     passengerUnit.velocityX = transportUnit?.velocityX ?? 0;
     passengerUnit.velocityY = transportUnit?.velocityY ?? 0;
     passengerUnit.velocityZ = transportUnit?.velocityZ ?? 0;

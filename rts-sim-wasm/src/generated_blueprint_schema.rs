@@ -577,7 +577,7 @@ pub struct TurretMount {
     pub visualVariant: Option<String>,
     pub producedBlueprintId: Option<String>,
     pub allowedBuildBlueprintIds: Option<Vec<String>>,
-    pub buildLockAnchor: Option<String>,
+    pub productionHoldAnchor: Option<String>,
     pub constructionRate: Option<f64>,
 }
 

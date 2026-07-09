@@ -158,6 +158,7 @@ function serializeEntity(entity: Entity): CanonicalValue {
     wreck: toCanonicalValue(entity.wreck),
     transport: serializeTransport(entity.transport),
     transported: toCanonicalValue(entity.transported),
+    heldBy: toCanonicalValue(entity.heldBy),
     buildingBlueprintId: toCanonicalValue(entity.buildingBlueprintId),
     coveredDepositIds: toCanonicalValue(entity.coveredDepositIds),
     metalExtractionRate: toCanonicalValue(entity.metalExtractionRate),

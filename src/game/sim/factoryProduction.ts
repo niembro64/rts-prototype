@@ -1,11 +1,10 @@
 import type { WorldState } from './WorldState';
 import type { Entity } from './types';
 import type { BuildingGrid } from './buildGrid';
-import { getUnitBlueprint, fabricatorTorusHoverHeight } from './blueprints';
+import { getUnitBlueprint } from './blueprints';
 import { aimTurretsToward } from './turretInit';
 import {
   COST_MULTIPLIER,
-  UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
 } from '../../config';
 import { setUnitActions } from './unitActions';
 import {
@@ -31,6 +30,11 @@ import type { WindState } from './wind';
 import type { FactoryProductionResult } from '@/types/ui';
 import type { UnitAction } from './types';
 import { factoryCanProduceUnit } from './factoryProductionRoster';
+import { applyEntityHoldPose, holdEntity, releaseEntityHold } from './entityHolds';
+import {
+  createFactoryProductionHoldSpec,
+} from './factoryProductionHold';
+export { getFactoryShellSpawnClearanceAboveSurface } from './factoryProductionHold';
 
 const FACTORY_SELECTED_NONE = 0;
 const FACTORY_SELECTED_VALID = 1;
@@ -42,7 +46,6 @@ const FACTORY_ACTION_CLEAR_INVALID_SELECTION = 3;
 const FACTORY_ACTION_STOP_PRODUCING = 4;
 const FACTORY_ACTION_SPAWN_SHELL = 5;
 const MAX_FACTORY_PRODUCTION_QUEUE_LENGTH = 64;
-const FACTORY_SHELL_MIN_FREEFALL_CLEARANCE = 36;
 const BAR_QUOTA_REPLACE_MAX_BUILD_PROGRESS = 0.075;
 const BAR_QUOTA_REPLACE_MAX_METAL = 500;
 const STILL_AIR: WindState = { x: 0, y: 0, z: 0, speed: 0, angle: 0 };
@@ -68,17 +71,6 @@ export function shiftFactoryProductionQueue(queue: string[]): string | null {
   for (let i = 1; i < queue.length; i++) queue[i - 1] = queue[i];
   queue.length--;
   return unitBlueprintId;
-}
-
-export function getFactoryShellSpawnClearanceAboveSurface(
-  bp: Pick<ReturnType<typeof getUnitBlueprint>, 'bodyCenterHeight' | 'radius'>,
-): number {
-  return Math.max(
-    FACTORY_SHELL_MIN_FREEFALL_CLEARANCE,
-    UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
-    bp.bodyCenterHeight,
-    bp.radius.collision * 0.75,
-  );
 }
 
 let factoryRows: Entity[] = [];
@@ -159,9 +151,8 @@ class FactoryProductionSystem {
     const spawnedUnits: Entity[] = [];
     const completedUnits: Entity[] = [];
     // Building factories (fabricator) then mobile unit factories (queens). The
-    // per-factory logic below is host-type-agnostic; a queen's shell differs
-    // only in being attached to the moving host (buildLockHostId) and funded
-    // from its own mount rate. Order is deterministic (buildings then units).
+    // per-factory logic below is host-type-agnostic; producer-specific bay
+    // placement is delegated to EntityHold. Order is deterministic.
     const factories = world.getFactoryBuildings().concat(world.getFactoryUnits());
     ensureFactoryProductionCapacity(factories.length);
     factoryRows.length = 0;
@@ -335,7 +326,7 @@ class FactoryProductionSystem {
     return { spawnedUnits, completedUnits };
   }
 
-  // Spawn a construction shell of `unitBlueprintId` on the factory's center support.
+  // Spawn a construction shell of `unitBlueprintId` in the factory's hold bay.
   // The shell starts at 0/0/0 paid; energyDistribution fills it. The
   // unit is fully constructed (renderer-ready), but its active build
   // state suppresses combat/orders until each resource bar tops up.
@@ -355,32 +346,12 @@ class FactoryProductionSystem {
       factory.ownership.playerId,
       unitBlueprintId,
     );
-    const spawnSupport = world.sampleSupportSurface(factory.transform.x, factory.transform.y);
-    // Fabricator shells appear in the torus center high in the air and free-fall;
-    // any other factory keeps the small surface clearance.
-    const spawnClearance = factory.buildingBlueprintId === 'towerFabricator'
-      ? fabricatorTorusHoverHeight()
-      : getFactoryShellSpawnClearanceAboveSurface(bp);
-    unit.transform.z = spawnSupport.groundZ
-      + bp.bodyCenterHeight
-      + spawnClearance;
     unit.buildable = createBuildable({
       energy: bp.cost.energy * COST_MULTIPLIER,
       metal: bp.cost.metal * COST_MULTIPLIER,
     });
-    // A mobile unit factory (queen) whose spawn turret declares buildLockAnchor
-    // 'host' builds the shell rigidly attached to itself (X/Y/Z), riding along
-    // until release. A building factory (fabricator) leaves it null → static
-    // spawn column, Z free-falling out of the torus.
-    if (factory.unit !== null) {
-      const hostBp = getUnitBlueprint(factory.unit.unitBlueprintId);
-      const spawnMount = hostBp.turrets.find(
-        (m) => m.producedBlueprintId === unitBlueprintId,
-      );
-      if (spawnMount?.buildLockAnchor === 'host') {
-        unit.buildable.buildLockHostId = factory.id;
-      }
-    }
+    holdEntity(factory, unit, createFactoryProductionHoldSpec(factory, unitBlueprintId));
+    applyEntityHoldPose(world, unit);
     initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
     world.recordFactoryProducedUnit(factory.id, unit);
@@ -477,8 +448,8 @@ class FactoryProductionSystem {
     return true;
   }
 
-  // Called when a unit shell completes. Stamps the static factory rally
-  // onto the unit and aims the turret.
+  // Called when a unit shell completes. Releases the production hold, stamps
+  // the static factory rally onto the unit, and aims the turret.
   private activateShell(
     world: WorldState,
     factory: Entity,
@@ -490,6 +461,7 @@ class FactoryProductionSystem {
   ): void {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
+    releaseEntityHold(unit);
     if (unit.unit) {
       // BAR units inherit their lab's MOVE_STATE. The prototype fabricator
       // combines land and air pages, so keep the BAR air-factory page at the
@@ -534,9 +506,9 @@ class FactoryProductionSystem {
         }
       }
     }
-    // The finished unit is NOT launched — it simply free-falls off the
-    // fabricator under gravity and then drives/flies to its rally (BAR-style
-    // roll-off). The old ballistic "unit constructor" cannon is gone.
+    // The finished unit is NOT launched — it leaves its production hold and
+    // then moves under normal physics to its rally. The old ballistic "unit
+    // constructor" cannon is gone.
     aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
     world.markSnapshotDirty(unit.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS);
   }
@@ -737,8 +709,8 @@ class FactoryProductionSystem {
     const shellId = factoryComp.currentShellId;
     if (shellId === null) return;
     const shell = world.getEntity(shellId);
-    if (shell !== undefined && shell.buildable !== null && shell.ownership !== null) {
-      if (refund) {
+    if (shell !== undefined) {
+      if (shell.buildable !== null && shell.ownership !== null && refund) {
         economyManager.addStockpile(
           world,
           shell.ownership.playerId,
@@ -748,6 +720,7 @@ class FactoryProductionSystem {
           'refund',
         );
       }
+      releaseEntityHold(shell);
       world.removeEntity(shellId);
     }
     factoryComp.currentShellId = null;

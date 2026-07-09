@@ -190,7 +190,7 @@ function assertFactoryShellSpawnedAboveSupport(
   const clearance = clearanceOverride ?? getFactoryShellSpawnClearanceAboveSurface(unit);
   assertContract(
     clearance > UNIT_INITIAL_SPAWN_HEIGHT_ABOVE_GROUND,
-    `${message}: factory shell must use extra freefall clearance`,
+    `${message}: factory shell must use extra hold clearance`,
   );
   assertNear(
     unitEntity.transform.z,
@@ -516,6 +516,12 @@ function assertFactoryShellContract(): void {
     fabricatorSpawnClearance,
   );
   assertFactoryShellPhysicsKeepsRoofSupport(world, factory, shell, shellSupport.groundZ);
+  assertContract(
+    shell.heldBy !== null &&
+      shell.heldBy.kind === 'production' &&
+      shell.heldBy.holderId === factory.id,
+    'spawned factory shell must be held by its producer while incomplete',
+  );
   assertContract(shell.buildable !== null && !shell.buildable.isComplete, 'spawned shell must be an incomplete buildable');
   assertUnitActionCount(shell, 0, 'incomplete shell must not inherit movement actions');
 
@@ -523,6 +529,7 @@ function assertFactoryShellContract(): void {
   const completed = factoryProductionSystem.update(world, 16, buildingGrid, forceAccumulator).completedUnits;
   assertContract(completed.length === 1 && completed[0] === shell, 'factory must complete the funded shell');
   assertContract(factory.factory.currentShellId === null, 'factory must clear current shell after activation');
+  assertContract(shell.heldBy === null, 'factory must release the production hold after activation');
   assertContract(factory.factory.selectedUnitBlueprintId === hoverUnitBlueprintId, 'repeat factory must keep its selected unit');
   assertContract(factory.factory.repeatProduction === true, 'repeat factory must keep repeat mode after activation');
   const completedUnit = assertUnitActionCount(shell, 2, 'completed shell must receive high-level rally actions');

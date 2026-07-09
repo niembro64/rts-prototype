@@ -97,9 +97,6 @@ import {
 } from './threeTransformWriteUtils';
 import { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
 import {
-  type EntityLodEmission3D,
-} from './EntityLod3D';
-import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
@@ -110,17 +107,14 @@ import {
 // barrel endpoint geometry is visual-only.
 
 const EMPTY_PROJECTILES: readonly Entity[] = [];
-const DEFAULT_ENTITY_EMISSION_FAR_LOD = (
-  _entity: Entity,
-  _emission: EntityLodEmission3D,
-): boolean => false;
+const DEFAULT_ENTITY_EMISSION_FAR_LOD = (): boolean => false;
 
 type RenderEntityUpdatePacket3D = {
   unitRows: UnitRenderPacket3D;
   buildingRows: BuildingRenderPacket3D;
   beamAimProjectiles?: readonly Entity[];
   projectileRenderProjectiles?: readonly Entity[];
-  isEntityEmissionFarLod?: (entity: Entity, emission: EntityLodEmission3D) => boolean;
+  isEntityEmissionFarLod?: (entity: Entity) => boolean;
   scoped: boolean;
 };
 
@@ -142,10 +136,8 @@ export class Render3DEntities {
   private camera: THREE.PerspectiveCamera;
   private getViewportHeight: () => number;
   private metalDeposits: readonly MetalDeposit[];
-  private isEntityEmissionFarLod: (
-    entity: Entity,
-    emission: EntityLodEmission3D,
-  ) => boolean = DEFAULT_ENTITY_EMISSION_FAR_LOD;
+  private isEntityEmissionFarLod: (entity: Entity) => boolean =
+    DEFAULT_ENTITY_EMISSION_FAR_LOD;
   /** Visibility scope (RENDER: WIN/PAD/ALL). Unit pose, locomotion,
    *  and turret updates intentionally ignore this so camera distance
    *  cannot change their update cadence. Effect/projectile renderers
@@ -311,7 +303,6 @@ export class Render3DEntities {
     );
     this.lodProxyRenderer = new EntityLodProxyRenderer3D({
       world: this.world,
-      camera: this.camera,
       canvas: rendererCanvas,
     });
     this.buildingRenderer = new BuildingEntityRenderer3D({
@@ -335,8 +326,7 @@ export class Render3DEntities {
       clientViewState: this.clientViewState,
       scope: this.scope,
       radiusSphereGeom: this.radiusSphereGeom,
-      isEntityEmissionFarLod: (entity, emission) =>
-        this.isEntityEmissionFarLod(entity, emission),
+      isEntityEmissionFarLod: (entity) => this.isEntityEmissionFarLod(entity),
     });
     // Per-team materials are created lazily on first use (see
     // getPrimaryMat / getSecondaryMat). The
@@ -608,10 +598,8 @@ export class Render3DEntities {
       const unitBlueprintId = unitRows.unitBlueprintIds[row];
       const unitTurretCount = unitRows.turretCount[row];
       const fullUnitDetail = true;
-      // Per-entity detail level (1 = full, 0 = glyph). Its coarse band decides
-      // whether this unit's mesh should shed its turret / legs as it shrinks on
-      // screen. With no hysteresis, the mesh rebuilds exactly when the band
-      // from lod.json changes.
+      // Binary detail level: full mesh on the HIGH side, proxy glyph on the
+      // LOW side. Non-proxy rows build at full detail.
       const detailLevel = entityDetailLevelForView(this.frameState.view, e);
       const detailBand = unitDetailBand(detailLevel, unitGfx);
       const detailBandChanged =
@@ -646,10 +634,8 @@ export class Render3DEntities {
           radius,
           ownerId: pid,
           turrets,
-          // Feed a per-entity graphics config whose turret / leg rungs are
-          // scaled down to this unit's detail level, so a distant unit is built
-          // with a simpler (or no) turret and fewer legs. The global config is
-          // the ceiling; detail only ever removes.
+          // The binary detail helper returns the global graphics config for
+          // HIGH and the old cheap config for LOW fallback paths.
           unitGfx: unitDetailGraphicsConfig(unitGfx, detailLevel),
           unitFrameKey: unitGeometryKey,
           unitRenderKey,

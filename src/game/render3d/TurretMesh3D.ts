@@ -70,9 +70,9 @@ export type TurretMesh = {
    *  Tells the alloc + per-frame writer to route through the cone
    *  instanced pool instead of the cylinder pool. */
   barrelUsesCone?: boolean;
-  /** True for head-only turrets: the per-frame writer colors the head
-   *  white when engaged (vs unit color when idle/tracking) unless it is
-   *  a ray turret, where the head keeps tracking the beam direction. */
+  /** True for head-only turrets: the per-frame writer treats the head as
+   *  body geometry, so it stays on the player primary color while aim
+   *  state changes. Ray turret heads still track the beam direction. */
   headOnly?: boolean;
   /** True for ray turrets whose head is posed from the last beam direction
    *  (`TurretBeamAimCache3D`) instead of the sim's turret aim. Set iff
@@ -119,8 +119,8 @@ type TurretMesh3DDeps = {
   coneBarrelGeom: THREE.CylinderGeometry;
   /** Resolved primary (player color) material for this unit. */
   primaryMat: THREE.Material;
-  /** Half player color, half white. Used for head-only turret heads
-   *  and all physical barrel meshes. */
+  /** Half player color, half white. Used for physical barrel meshes and
+   *  non-body weapon accents. */
   turretAccentMat: THREE.Material;
   /** Optional starting material for visible shield emitter cores. Shield
    *  turrets normally render through ShieldRenderer3D only, but shield
@@ -140,8 +140,8 @@ type TurretMesh3DDeps = {
    *  The Meshes still live in TurretMesh.barrels[] as data carriers
    *  but are never drawn directly. */
   skipBarrels?: boolean;
-  /** Host visual score in [0,1]. Used only to shed tiny turret pieces;
-   *  gameplay aim and projectile origins remain unchanged. */
+  /** Binary host visual detail: HIGH/full mesh or LOW/proxy fallback.
+   *  Gameplay aim and projectile origins remain unchanged. */
   detailLevel?: number;
 };
 
@@ -218,7 +218,7 @@ export function buildTurretMesh3D(
   if (!skipHeadMesh) {
     const baseHeadMat = showShieldEmitterCore
       ? deps.shieldEmitterMat ?? deps.primaryMat
-      : (headOnly && !followsBeam) ? deps.turretAccentMat : deps.primaryMat;
+      : deps.primaryMat;
     const headMat = showShieldEmitterCore ? baseHeadMat.clone() : baseHeadMat;
     if (showShieldEmitterCore) shieldEmitterPulseMat = headMat;
     head = new THREE.Mesh(deps.headGeom, headMat);

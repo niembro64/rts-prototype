@@ -34,7 +34,6 @@ const neckGeom = createPrimitiveCylinderGeometry('unitDetail', 'close');
 const noseConeGeom = createPrimitiveConeGeometry('unitDetail', 'close');
 const finGeom = new THREE.BoxGeometry(1, 1, 1);
 
-const undersideMat = new THREE.MeshBasicMaterial({ color: 0xe8ece2 });
 const canopyMat = new THREE.MeshBasicMaterial({ color: 0x050607 });
 
 const scratchUp = new THREE.Vector3(0, 1, 0);
@@ -89,7 +88,7 @@ function addCylinderBetween(
 }
 
 // Simple bomber body: a cylindrical fuselage with a rounded nose, tail
-// cone, dark canopy, light belly panel, and a swept vertical fin. The
+// cone, dark canopy, team-color belly panel, and a swept vertical fin. The
 // wings, tail wings, and jets stay on the FlyingRig (built from the
 // blueprint locomotion config) and are untouched here. Same span as the
 // old bird torso so the blueprint bodyShape oval (turret roots, hitbox)
@@ -109,8 +108,8 @@ export function buildAlbatrosChassis(
   addMesh(parent, meshes, noseConeGeom, primaryMat, entityId, [-0.87, 0.31, 0], [0.15, 0.16, 0.15], [0, 0, Math.PI / 2]);
   // Dark glass cockpit canopy ahead of the mid turret.
   addMesh(parent, meshes, smallSphereGeom, canopyMat, entityId, [0.34, 0.46, 0], [0.14, 0.07, 0.11]);
-  // Light belly panel.
-  addMesh(parent, meshes, bodyGeom, undersideMat, entityId, [-0.08, 0.18, 0], [0.52, 0.07, 0.13]);
+  // Belly panel uses the same body tone as the LOD proxy.
+  addMesh(parent, meshes, bodyGeom, primaryMat, entityId, [-0.08, 0.18, 0], [0.52, 0.07, 0.13]);
   // Swept vertical stabilizer over the tail cone.
   addMesh(parent, meshes, finGeom, primaryMat, entityId, [-0.76, 0.50, 0], [0.22, 0.26, 0.03], [0, 0, 0.45]);
 
