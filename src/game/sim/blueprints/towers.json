@@ -37,7 +37,7 @@
     "supportSurface": {
       "kind": "none"
     },
-    "hovering": true,
+    "hoveringType": "fabricator",
     "hud": {
       "barsOffsetAboveTop": 12
     },
@@ -92,10 +92,10 @@
         "damage": 700
       },
       "radius": {
-        "other": 169.706,
-        "hitbox": 169.706,
-        "collision": 169.706,
-        "shotArmingRadius": 339.412
+        "other": 130.272,
+        "hitbox": 130.272,
+        "collision": 130.272,
+        "shotArmingRadius": 260.544
       }
     }
   },
@@ -126,6 +126,7 @@
       "width": 60,
       "height": 60
     },
+    "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
     },
@@ -194,6 +195,7 @@
       "width": 80,
       "height": 80
     },
+    "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
     },
@@ -262,6 +264,7 @@
       "width": 40,
       "height": 40
     },
+    "hoveringType": null,
     "hud": {
       "barsOffsetAboveTop": 12
     },

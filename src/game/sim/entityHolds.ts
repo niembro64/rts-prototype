@@ -11,6 +11,7 @@ export type EntityHoldSpec = {
   localBaseZ: number;
   rotateWithHolder: boolean;
   inheritHolderRotation: boolean;
+  worldRotation?: number | null;
   inheritHolderVelocity: boolean;
 };
 
@@ -34,6 +35,7 @@ export function holdEntity(holder: Entity, held: Entity, spec: EntityHoldSpec): 
     localBaseZ: spec.localBaseZ,
     rotateWithHolder: spec.rotateWithHolder,
     inheritHolderRotation: spec.inheritHolderRotation,
+    worldRotation: spec.worldRotation ?? null,
     inheritHolderVelocity: spec.inheritHolderVelocity,
   };
   held.heldBy = hold;
@@ -82,7 +84,9 @@ export function resolveEntityHoldPose(
   pose.x = holder.transform.x + offsetX;
   pose.y = holder.transform.y + offsetY;
   pose.z = getUnitGroundZ(holder) + hold.localBaseZ + heldCenterOffsetZ;
-  pose.rotation = hold.inheritHolderRotation ? holder.transform.rotation : held.transform.rotation;
+  pose.rotation = hold.worldRotation !== null
+    ? hold.worldRotation
+    : hold.inheritHolderRotation ? holder.transform.rotation : held.transform.rotation;
 
   if (hold.inheritHolderVelocity && holder.unit !== null) {
     pose.velocityX = holder.unit.velocityX;

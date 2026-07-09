@@ -318,7 +318,7 @@ export class SelectionOverlayRenderer3D {
     const rings = m.radiusRings ?? (m.radiusRings = {});
     // A hovering body (the fabricator torus) carries its hitbox/collision/visual
     // volumes up at the torus center, not at the ground-level body midpoint.
-    const centerY = entity.building.hovering
+    const centerY = entity.building.hoveringType === 'fabricator'
       ? fabricatorTorusHoverHeight()
       : Math.max(0, config.visualHeight * 0.5);
 

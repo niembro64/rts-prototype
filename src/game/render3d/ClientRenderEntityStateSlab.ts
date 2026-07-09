@@ -1,6 +1,7 @@
 import type { Entity, EntityId, Turret } from '../sim/types';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import {
   getConstructionPieceOpacity,
   getConstructionPieceRenderFraction,
@@ -451,7 +452,7 @@ export class ClientRenderEntityStateSlab {
     views.ownerIds[slot] = entity.ownership?.playerId ?? NO_OWNER_ID;
     views.x[slot] = entity.transform.x;
     views.y[slot] = entity.transform.y;
-    views.z[slot] = entity.transform.z;
+    views.z[slot] = getBuildingCombatCenterZ(entity);
     views.rotation[slot] = entity.transform.rotation;
     views.radiusHitbox[slot] = 0;
     views.lodProxyRadius[slot] = entityLodProxyRadius3D(entity);
@@ -685,7 +686,10 @@ export class ClientRenderEntityStateSlab {
     assertNear('owner id', views.ownerIds[slot], entity.ownership?.playerId ?? NO_OWNER_ID, 0);
     assertNear('x', views.x[slot], entity.transform.x);
     assertNear('y', views.y[slot], entity.transform.y);
-    assertNear('z', views.z[slot], entity.transform.z);
+    const expectedZ = entity.building !== null
+      ? getBuildingCombatCenterZ(entity)
+      : entity.transform.z;
+    assertNear('z', views.z[slot], expectedZ);
     assertNear('rotation', views.rotation[slot], entity.transform.rotation);
     const unit = entity.unit;
     if (unit !== null) {

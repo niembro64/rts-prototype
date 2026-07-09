@@ -292,7 +292,11 @@ export class UnitMeshBuilder3D {
       visual = null;
     }
     if (visual === null) return;
-    const ring = buildProductionHoldRingMesh(visual.ringRadius, primaryMat);
+    const ring = buildProductionHoldRingMesh(
+      visual.ringRadius,
+      primaryMat,
+      visual.ringOrientation,
+    );
     ring.position.set(
       visual.localOffsetX,
       visual.localBaseZ - liftGroup.position.y,

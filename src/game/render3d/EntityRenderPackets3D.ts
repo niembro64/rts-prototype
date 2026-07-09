@@ -1,6 +1,7 @@
 import type { Entity, EntityId, PlayerId, Turret } from '../sim/types';
 import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { getBuildingConfig } from '../sim/buildConfigs';
+import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import {
   getConstructionPieceOpacity,
   getConstructionPieceRenderFraction,
@@ -530,7 +531,7 @@ export class BuildingRenderPacket3D {
     this.ownerIds[cursor] = entity.ownership?.playerId ?? NO_OWNER_ID;
     this.x[cursor] = entity.transform.x;
     this.y[cursor] = entity.transform.y;
-    this.z[cursor] = entity.transform.z;
+    this.z[cursor] = getBuildingCombatCenterZ(entity);
     this.rotation[cursor] = entity.transform.rotation;
     this.baseY[cursor] = entity.transform.z - building.depth / 2;
     this.width[cursor] = visualConfig !== null

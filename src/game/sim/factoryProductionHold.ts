@@ -6,8 +6,10 @@ import {
   fabricatorTorusHoverHeight,
   getUnitBlueprint,
 } from './blueprints';
+import { TURRET_BLUEPRINTS } from './blueprints/turrets';
 import type { Entity } from './types';
 import type { EntityHoldSpec } from './entityHolds';
+import { productionHoldRingRadiusForUnitRadius } from './productionHoldGeometry';
 
 const FACTORY_SHELL_MIN_HOLD_CLEARANCE = 36;
 
@@ -16,6 +18,15 @@ export type FactoryProductionHoldVisual = {
   localOffsetY: number;
   localBaseZ: number;
   ringRadius: number;
+  ringOrientation: FactoryProductionHoldRingOrientation;
+};
+
+export type FactoryProductionHoldRingOrientation = 'horizontal' | 'forward';
+
+export type FactoryProductionPylonVisual = {
+  localOffsetX: number;
+  localOffsetY: number;
+  localBaseZ: number;
 };
 
 export function getFactoryShellSpawnClearanceAboveSurface(
@@ -33,14 +44,19 @@ export function productionHoldRingRadiusForProducedUnit(
   unitBlueprintId: string,
 ): number {
   const bp = getUnitBlueprint(unitBlueprintId);
-  return Math.max(16, bp.radius.other * 2.1, bp.radius.collision * 1.75);
+  return productionHoldRingRadiusForUnitRadius(bp.radius);
 }
 
 function productionHoldLocalBaseZ(factory: Entity, produced: UnitBlueprint): number {
   if (factory.buildingBlueprintId === 'towerFabricator') {
     return fabricatorTorusHoverHeight();
   }
-  return (factory.unit?.bodyCenterHeight ?? 0) + getFactoryShellSpawnClearanceAboveSurface(produced);
+  if (factory.unit !== null) return factory.unit.bodyCenterHeight;
+  return getFactoryShellSpawnClearanceAboveSurface(produced);
+}
+
+function productionHoldRingOrientation(factory: Entity): FactoryProductionHoldRingOrientation {
+  return factory.unit !== null ? 'forward' : 'horizontal';
 }
 
 function productionHoldLocalOffset(factory: Entity, producedUnitBlueprintId: string): {
@@ -102,5 +118,33 @@ export function getFactoryProductionHoldVisual(
     localOffsetY: localOffset.y,
     localBaseZ: productionHoldLocalBaseZ(factory, produced),
     ringRadius: productionHoldRingRadiusForProducedUnit(producedUnitBlueprintId),
+    ringOrientation: productionHoldRingOrientation(factory),
   };
+}
+
+export function getFactoryProductionPylonVisual(
+  factory: Entity,
+  producedUnitBlueprintId: string | null,
+  turretIndex: number,
+): FactoryProductionPylonVisual | null {
+  if (factory.unit === null || producedUnitBlueprintId === null) return null;
+  const hostBp = getUnitBlueprint(factory.unit.unitBlueprintId);
+  let pylonOrdinal = 0;
+  for (let i = 0; i < hostBp.turrets.length; i++) {
+    const mount = hostBp.turrets[i];
+    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+    if (turretBlueprint?.resourcePylon?.role !== 'construction') continue;
+    if (i === turretIndex) {
+      const visual = getFactoryProductionHoldVisual(factory, producedUnitBlueprintId);
+      if (visual === null) return null;
+      const side = pylonOrdinal === 0 ? -1 : 1;
+      return {
+        localOffsetX: visual.localOffsetX,
+        localOffsetY: visual.localOffsetY + visual.ringRadius * side,
+        localBaseZ: visual.localBaseZ,
+      };
+    }
+    pylonOrdinal++;
+  }
+  return null;
 }

@@ -134,6 +134,31 @@ function buildUnitBlueprints(): Record<string, UnitBlueprint> {
 
 export const UNIT_BLUEPRINTS = buildUnitBlueprints();
 
+// Queen unit factories use the same production-ring contract as the static
+// fabricator, but hover/flying turret mounts must remain on the roll axis for
+// sim/render banking correctness. The real mounts stay axis-compliant here;
+// production-ring pylon placement is a visual override derived from the same
+// hold geometry.
+for (const bp of Object.values(UNIT_BLUEPRINTS)) {
+  const spawnMount = bp.turrets.find((mount) => mount.producedBlueprintId !== undefined);
+  if (spawnMount === undefined || spawnMount.producedBlueprintId === undefined) continue;
+  if (UNIT_BLUEPRINTS[spawnMount.producedBlueprintId] === undefined) continue;
+  const centerX = Number.isFinite(spawnMount.mount.x) ? spawnMount.mount.x : 0;
+  const centerY = 0;
+  const centerZ = 0;
+  spawnMount.mount.x = centerX;
+  spawnMount.mount.y = centerY;
+  spawnMount.mount.z = centerZ;
+
+  for (const mount of bp.turrets) {
+    const turretBlueprint = TURRET_BLUEPRINTS[mount.turretBlueprintId];
+    if (turretBlueprint?.resourcePylon?.role !== 'construction') continue;
+    mount.mount.x = centerX;
+    mount.mount.y = centerY;
+    mount.mount.z = centerZ;
+  }
+}
+
 function validateUnitSupportSurface(
   unitBlueprintId: string,
   supportSurface: UnitSupportSurface,

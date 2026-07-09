@@ -152,21 +152,30 @@ export class FogOfWarCoverageTexture3D {
     const maxY = Math.min(this.height - 1, Math.floor((source.y + stampRadius) / this.cellSize));
     const inner = Math.max(0, source.radius - softness);
     const outer = source.radius + softness;
+    const innerSq = inner * inner;
+    const outerSq = outer * outer;
+    const pixels = this.pixels;
+    const channel = source.channel;
+    const cellSize = this.cellSize;
+    const mapWidth = this.mapWidth;
+    const mapHeight = this.mapHeight;
+    const width = this.width;
     for (let gy = minY; gy <= maxY; gy++) {
-      const worldY = Math.min(this.mapHeight, (gy + 0.5) * this.cellSize);
+      const worldY = Math.min(mapHeight, (gy + 0.5) * cellSize);
       const dy = worldY - source.y;
-      const rowOffset = gy * this.width;
+      const dySq = dy * dy;
+      const rowOffset = gy * width;
       for (let gx = minX; gx <= maxX; gx++) {
-        const worldX = Math.min(this.mapWidth, (gx + 0.5) * this.cellSize);
+        const worldX = Math.min(mapWidth, (gx + 0.5) * cellSize);
         const dx = worldX - source.x;
-        const distance = Math.hypot(dx, dy);
-        if (distance >= outer) continue;
-        const coverage = softness <= 0
-          ? 1
-          : 1 - smoothstep(inner, outer, distance);
-        if (coverage <= 0) continue;
-        const offset = (rowOffset + gx) * 4 + source.channel;
-        this.pixels[offset] = maxByte(this.pixels[offset], Math.round(coverage * 255));
+        const distanceSq = dx * dx + dySq;
+        if (distanceSq >= outerSq) continue;
+        const next = softness <= 0 || distanceSq <= innerSq
+          ? 255
+          : Math.round((1 - smoothstep(inner, outer, Math.sqrt(distanceSq))) * 255);
+        if (next <= 0) continue;
+        const offset = (rowOffset + gx) * 4 + channel;
+        pixels[offset] = maxByte(pixels[offset], next);
       }
     }
   }

@@ -45,7 +45,7 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
   // so its visual/hitbox center is the floating body itself — NOT the ground-to-
   // top midpoint a grounded building uses. This is what selection/picking and
   // the selection overlay center on, so they sit on the torus, not mid-air.
-  if (entity.building?.hovering) {
+  if (entity.building?.hoveringType === 'fabricator') {
     return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight();
   }
   return getBuildingBaseZ(entity) + getBuildingVisualTopAboveGround(entity) * 0.5;
@@ -59,7 +59,7 @@ export function getBuildingVisualCenterZ(entity: Entity): number {
  * ground-centered), so their behavior is unchanged.
  */
 export function getBuildingCombatCenterZ(entity: Entity): number {
-  if (entity.building?.hovering) {
+  if (entity.building?.hoveringType === 'fabricator') {
     return getBuildingBaseZ(entity) + fabricatorTorusHoverHeight();
   }
   return entity.transform.z;

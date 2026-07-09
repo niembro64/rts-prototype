@@ -870,10 +870,11 @@ function createBuildingFromNetwork(
       height,
       depth,
       supportSurface: cloneBuildingSupportSurface(config.supportSurface),
+      hoveringType: config.hoveringType,
       hovering: config.hovering,
       hp: buildingHp !== null ? buildingHp.curr : config.hp,
       maxHp: buildingHp !== null ? buildingHp.max : config.hp,
-      targetRadius: Math.sqrt(width * width + height * height) / 2,
+      targetRadius: config.radius.hitbox,
       // The wire field `solar` carries the shared BuildingActiveState
       // open flag for every producer building (solar / wind / extractor
       // / radar / resourceConverter); map it back into the generic
@@ -1021,10 +1022,11 @@ function createBuildingFromTypedFullWireRow(
       height,
       depth,
       supportSurface: cloneBuildingSupportSurface(config.supportSurface),
+      hoveringType: config.hoveringType,
       hovering: config.hovering,
       hp: values[base + 13],
       maxHp: values[base + 14],
-      targetRadius: Math.sqrt(width * width + height * height) / 2,
+      targetRadius: config.radius.hitbox,
       activeState: hasActiveState
         ? {
             open: values[base + 20] !== 0

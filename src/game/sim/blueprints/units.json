@@ -2273,7 +2273,7 @@
       {
         "turretBlueprintId": "turretSpawnUnits",
         "mount": {
-          "x": 0.35,
+          "x": 0.92,
           "y": 0,
           "z": 0
         },
@@ -2312,17 +2312,17 @@
       "parts": [
         {
           "kind": "oval",
-          "offsetForward": -0.08,
-          "xFrac": 0.68,
-          "yFrac": 0.34,
+          "offsetForward": -0.18,
+          "xFrac": 0.62,
+          "yFrac": 0.36,
           "zFrac": 0.32
         },
         {
           "kind": "oval",
           "offsetForward": 0.52,
-          "xFrac": 0.38,
-          "yFrac": 0.26,
-          "zFrac": 0.24
+          "xFrac": 0.28,
+          "yFrac": 0.24,
+          "zFrac": 0.22
         }
       ]
     },
@@ -2415,7 +2415,7 @@
       {
         "turretBlueprintId": "turretSpawnUnits",
         "mount": {
-          "x": 0.35,
+          "x": 0.96,
           "y": 0,
           "z": 0
         },
@@ -2454,16 +2454,17 @@
       "parts": [
         {
           "kind": "oval",
-          "offsetForward": -0.15,
-          "xFrac": 0.7,
-          "yFrac": 0.38,
-          "zFrac": 0.34
+          "offsetForward": -0.2,
+          "xFrac": 0.66,
+          "yFrac": 0.4,
+          "zFrac": 0.3
         },
         {
-          "kind": "circle",
-          "offsetForward": 0.55,
-          "radiusFrac": 0.32,
-          "yFrac": 0.3
+          "kind": "oval",
+          "offsetForward": 0.54,
+          "xFrac": 0.3,
+          "yFrac": 0.27,
+          "zFrac": 0.2
         }
       ]
     },

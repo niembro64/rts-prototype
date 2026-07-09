@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Entity, PlayerId } from '../sim/types';
+import { getBuildingCombatCenterZ } from '../sim/buildingAnchors';
 import { entityInstanceColorHexForPlayer } from './EntityInstanceColor3D';
 import {
   entityLodProxyGlyph3D,
@@ -389,7 +390,7 @@ class EntityLodProxyWebGlRenderer3D implements EntityLodProxyRendererBackend3D {
     this.pushBuildingProxy(
       entity.transform.x,
       entity.transform.y,
-      entity.transform.z,
+      getBuildingCombatCenterZ(entity),
       entityLodProxyRadius3D(entity),
       entityLodProxyGlyph3D(entity),
       entity.ownership?.playerId,

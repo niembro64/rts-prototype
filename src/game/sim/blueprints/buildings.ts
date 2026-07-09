@@ -11,6 +11,7 @@ import type {
   BuildingAnchorProfile,
   BuildingRenderProfile,
   BuildingBlueprintId,
+  BuildingHoveringType,
   BuildingSupportSurface,
   ResourceCost,
 } from '../types';
@@ -31,6 +32,7 @@ import {
   assertNoInlineLockOnInclusionFields,
   validateLockOnInclusionObject,
 } from './lockOnValidation';
+import { productionHoldRingOuterRadius } from '../productionHoldGeometry';
 import {
   assertTowerLockOnInclusionConfigIds,
   getTowerLockOnInclusions,
@@ -87,10 +89,9 @@ export type BuildingBlueprint = Partial<LockOnInclusionObject> & {
   anchorProfile: BuildingAnchorProfile;
   /** Authored walkable/support proxy, independent from the collision cuboid. */
   supportSurface: BuildingSupportSurface;
-  /** Hovering structure (the fabricator torus): intangible at ground level —
-   *  no collision body, no support surface, excluded from pathfinding — but
-   *  still reserves its footprint. Optional; defaults to false. */
-  hovering?: boolean;
+  /** Hovering structure classification. Null means grounded. The fabricator
+   *  torus is currently the only hovering structure type. */
+  hoveringType: BuildingHoveringType;
   hud: EntityHudBlueprint;
   sensors: SensorCapabilityConfig;
   /** Optional reusable turret hardpoints mounted on this building.
@@ -165,6 +166,7 @@ const BUILDING_EXPLICIT_FIELDS = [
   'placementGridWidth',
   'placementGridHeight',
   'supportSurface',
+  'hoveringType',
   'sensors',
   'turrets',
 ] as const;
@@ -281,6 +283,50 @@ function validateBuildingSupportSurface(
   }
   if (!Number.isFinite(supportSurface.height) || supportSurface.height <= 0) {
     throw new Error(`Invalid building blueprint ${id}: supportSurface.height must be positive`);
+  }
+}
+
+function validateBuildingHoveringType(
+  id: string,
+  blueprint: BuildingBlueprint,
+): void {
+  const hoveringType = blueprint.hoveringType;
+  if (hoveringType !== null && hoveringType !== 'fabricator') {
+    throw new Error(
+      `Invalid building blueprint ${id}: unknown hoveringType "${String(hoveringType)}"`,
+    );
+  }
+  if (id === 'towerFabricator') {
+    if (hoveringType !== 'fabricator') {
+      throw new Error('Invalid building blueprint towerFabricator: hoveringType must be "fabricator"');
+    }
+  } else if (hoveringType !== null) {
+    throw new Error(
+      `Invalid building blueprint ${id}: only towerFabricator may currently author a hoveringType`,
+    );
+  }
+  if (hoveringType !== null && blueprint.supportSurface.kind !== 'none') {
+    throw new Error(
+      `Invalid building blueprint ${id}: hovering structures must use supportSurface.none`,
+    );
+  }
+}
+
+function validateFabricatorTorusTargetRadius(
+  id: string,
+  blueprint: BuildingBlueprint,
+): void {
+  if (id !== 'towerFabricator') return;
+  const width = blueprint.gridWidth * BUILD_GRID_CELL_SIZE;
+  const depth = blueprint.gridHeight * BUILD_GRID_CELL_SIZE;
+  const expected = fabricatorTorusOuterRadius(width, depth);
+  const radius = blueprint.base.radius;
+  for (const field of ['other', 'hitbox', 'collision'] as const) {
+    if (Math.abs(radius[field] - expected) > 1e-3) {
+      throw new Error(
+        `Invalid building blueprint ${id}: base.radius.${field} must match fabricator torus outer radius`,
+      );
+    }
   }
 }
 
@@ -421,7 +467,9 @@ for (const [id, blueprint] of Object.entries(BUILDING_BLUEPRINTS)) {
   if (!Number.isFinite(blueprint.visualHeight) || blueprint.visualHeight <= 0) {
     throw new Error(`Invalid building blueprint ${id}: visualHeight must be positive`);
   }
+  validateFabricatorTorusTargetRadius(id, blueprint);
   validateBuildingSupportSurface(id, blueprint.supportSurface);
+  validateBuildingHoveringType(id, blueprint);
   validateSensorCapabilityConfig(`building blueprint ${id}`, blueprint.sensors);
   if (
     !blueprint.hud ||
@@ -470,6 +518,10 @@ export function fabricatorTorusHoverHeight(): number {
 /** Radius of the torus ring — the circle the construction pylons hang on. */
 export function fabricatorTorusRingRadius(width: number, depth: number): number {
   return Math.max(width, depth) * 0.46;
+}
+
+export function fabricatorTorusOuterRadius(width: number, depth: number): number {
+  return productionHoldRingOuterRadius(fabricatorTorusRingRadius(width, depth));
 }
 
 // Finalize the fabricator's turret mounts from the torus geometry: the spawn

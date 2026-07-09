@@ -1,5 +1,5 @@
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
-import { ENTITY_CHANGED_POS, ENTITY_CHANGED_VEL } from '../../types/network';
+import { ENTITY_CHANGED_POS, ENTITY_CHANGED_ROT, ENTITY_CHANGED_VEL } from '../../types/network';
 import type { Command, CommandQueue } from '../sim/commands';
 import type { DeathContext } from '../sim/combat';
 import {
@@ -255,6 +255,7 @@ export class ServerSimulationCore {
             )) === 0
           )
         : isBuildInProgress(entity.buildable);
+      const previousRotation = entity.transform.rotation;
       if (entity.heldBy !== null && applyEntityHoldPose(this.world, entity)) {
         x = entity.transform.x;
         y = entity.transform.y;
@@ -276,6 +277,9 @@ export class ServerSimulationCore {
           body.vx = vx;
           body.vy = vy;
           body.vz = vz;
+        }
+        if (entity.transform.rotation !== previousRotation) {
+          this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ROT);
         }
       } else if (buildInProgress && entity.buildable !== null) {
         x = entity.transform.x;
@@ -323,7 +327,7 @@ export class ServerSimulationCore {
       const entity = entitySlotRegistry.resolveSlot(entitySlot);
       if (entity === undefined || entity.body === null) continue;
       if (entity.unit !== null) {
-        const dirtyFields = ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL;
+        const dirtyFields = ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL;
         if (this.writeSyncedMotionToEntityState(entity, entitySlot, dirtyFields, entityStateViews)) {
           this.world.markSnapshotDirtyStateSynced(entity, dirtyFields);
         } else {
@@ -353,6 +357,9 @@ export class ServerSimulationCore {
       views.posX[slot] = entity.transform.x;
       views.posY[slot] = entity.transform.y;
       views.posZ[slot] = entity.transform.z;
+    }
+    if ((dirtyFields & ENTITY_CHANGED_ROT) !== 0) {
+      views.rotation[slot] = entity.transform.rotation;
     }
     if ((dirtyFields & ENTITY_CHANGED_VEL) !== 0) {
       const unit = entity.unit;

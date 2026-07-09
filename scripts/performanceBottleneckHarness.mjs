@@ -283,7 +283,7 @@ function printReport(report) {
   console.log(`  buffer upload bytes/calls p95: ${fmt(report.fullStack.bufferUploadBytes.p95)} / ${fmt(report.fullStack.bufferUploadCalls.p95)}`);
   console.log(
     `  render budget: ${report.fullStack.renderBudgetTier} ` +
-      `(lod scale avg/p95=${fmt(report.fullStack.renderBudgetLodDistanceScale.avg)}/${fmt(report.fullStack.renderBudgetLodDistanceScale.p95)}, ` +
+      `(tier index p95=${fmt(report.fullStack.renderBudgetTierIndex?.p95)}, ` +
       `hud/effect stride p95=${fmt(report.fullStack.renderBudgetHudFrameStride.p95)}/${fmt(report.fullStack.renderBudgetEffectFrameStride.p95)})`,
   );
   console.log(

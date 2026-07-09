@@ -27,7 +27,9 @@ export function applyBuildingBlueprintRuntime(
       buildingConfig.supportSurface,
       entity.transform.rotation,
     );
+    entity.building.hoveringType = buildingConfig.hoveringType;
     entity.building.hovering = buildingConfig.hovering;
+    entity.building.targetRadius = buildingConfig.radius.hitbox;
   }
 
   if (buildingBlueprintHasActiveState(buildingBlueprintId)) {

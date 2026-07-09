@@ -14,6 +14,7 @@ import type {
 } from './blueprints';
 import type {
   BuildingAnchorProfile,
+  BuildingHoveringType,
   BuildingRenderProfile,
   BuildingBlueprintId,
   BuildingSupportSurface,
@@ -38,6 +39,7 @@ import type {
 
 export type {
   BuildingAnchorProfile,
+  BuildingHoveringType,
   BuildingRenderProfile,
   BuildingBlueprintId,
   BuildingSupportSurface,
@@ -397,13 +399,13 @@ type Building = {
    *  finding — units move under them freely and falling units pass through to
    *  the ground. They still reserve their footprint so nothing can be built on
    *  top of them. */
+  hoveringType: BuildingHoveringType;
   hovering: boolean;
   hp: number;
   maxHp: number;
-  /** sqrt(width² + height²) / 2 — precomputed at construction so the
-   *  per-tick targeting/damage range checks don't recompute the
-   *  bounding-circle radius for every candidate evaluation. Immutable
-   *  for the life of the building (dimensions never change). */
+  /** Authored target radius. Most grounded structures use the footprint
+   *  diagonal; hovering body shapes can override it to match their visible
+   *  body instead of their reserved build footprint. */
   targetRadius: number;
   activeState: BuildingActiveState | null;
 };
@@ -935,6 +937,8 @@ export type EntityHold = {
   localBaseZ: number;
   rotateWithHolder: boolean;
   inheritHolderRotation: boolean;
+  /** Optional world yaw override while held. Null means use inheritance/current rotation policy. */
+  worldRotation: number | null;
   inheritHolderVelocity: boolean;
 };
 
@@ -973,8 +977,9 @@ export type BuildingConfig = {
   visualHeight: number;
   anchorProfile: BuildingAnchorProfile;
   supportSurface: BuildingSupportSurface;
-  /** See Building.hovering — intangible at ground level (no collision / no
-   *  pathfinding block / no support), but still reserves its footprint. */
+  /** Authored hovering classification. Null means grounded. */
+  hoveringType: BuildingHoveringType;
+  /** Derived compatibility flag for existing runtime branches. */
   hovering: boolean;
   hud: import('./blueprints').EntityHudBlueprint;
   sensors: SensorCapabilityConfig;

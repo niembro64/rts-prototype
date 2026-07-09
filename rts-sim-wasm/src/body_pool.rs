@@ -1317,6 +1317,7 @@ pub fn pool_step_integrate(
 pub(crate) struct SphereContactBucket {
     pub(crate) gen: u32,
     pub(crate) items: Vec<u32>,
+    pub(crate) max_index: u32,
 }
 
 pub(crate) struct SphereResolveScratch {
@@ -1359,6 +1360,21 @@ pub(crate) fn sphere_resolve_scratch() -> &'static mut SphereResolveScratch {
         }
         (*cell).as_mut().unwrap()
     }
+}
+
+#[inline]
+fn reset_sphere_contact_bucket(bucket: &mut SphereContactBucket, gen: u32) {
+    bucket.gen = gen;
+    bucket.items.clear();
+    bucket.max_index = 0;
+}
+
+#[inline]
+fn push_sphere_contact_bucket_item(bucket: &mut SphereContactBucket, index: u32) {
+    if index > bucket.max_index {
+        bucket.max_index = index;
+    }
+    bucket.items.push(index);
 }
 
 const SPHERE_DENSE_CELL_LIMIT: usize = 131_072;
@@ -1426,10 +1442,15 @@ fn resolve_pool_sphere_pair(
 
     let ddx = bx - ax;
     let ddy = by - ay;
-    let ddz = bz - az;
     let r_sum = ar + br;
-    let dist_sq = ddx * ddx + ddy * ddy + ddz * ddz;
-    if dist_sq >= r_sum * r_sum {
+    let r_sum_sq = r_sum * r_sum;
+    let dist_xy_sq = ddx * ddx + ddy * ddy;
+    if dist_xy_sq >= r_sum_sq {
+        return;
+    }
+    let ddz = bz - az;
+    let dist_sq = dist_xy_sq + ddz * ddz;
+    if dist_sq >= r_sum_sq {
         return;
     }
 
@@ -1556,6 +1577,9 @@ fn run_pool_sphere_resolve_hash(
                             Some(b) if b.gen == gen => b,
                             _ => continue,
                         };
+                        if bucket.max_index <= i as u32 {
+                            continue;
+                        }
                         for &j_u32 in bucket.items.iter() {
                             let j = j_u32 as usize;
                             if j <= i {
@@ -1697,6 +1721,9 @@ fn run_pool_sphere_resolve_dense(
                         );
                         let bucket = &dense_cells[index];
                         if bucket.gen != gen {
+                            continue;
+                        }
+                        if bucket.max_index <= i as u32 {
                             continue;
                         }
                         for &j_u32 in bucket.items.iter() {
@@ -1880,6 +1907,7 @@ pub fn pool_resolve_sphere_sphere(
                 .resize_with(volume, || SphereContactBucket {
                     gen: 0,
                     items: Vec::new(),
+                    max_index: 0,
                 });
         }
         for i in 0..count {
@@ -1895,10 +1923,9 @@ pub fn pool_resolve_sphere_sphere(
             );
             let bucket = &mut scratch.dense_cells[index];
             if bucket.gen != gen {
-                bucket.gen = gen;
-                bucket.items.clear();
+                reset_sphere_contact_bucket(bucket, gen);
             }
-            bucket.items.push(i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32);
         }
     } else {
         let cells = &mut scratch.cells;
@@ -1908,12 +1935,12 @@ pub fn pool_resolve_sphere_sphere(
             let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
                 gen,
                 items: Vec::new(),
+                max_index: 0,
             });
             if bucket.gen != gen {
-                bucket.gen = gen;
-                bucket.items.clear();
+                reset_sphere_contact_bucket(bucket, gen);
             }
-            bucket.items.push(i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32);
         }
     }
 
@@ -2095,6 +2122,7 @@ pub fn pool_resolve_sphere_sphere_active(
                 .resize_with(volume, || SphereContactBucket {
                     gen: 0,
                     items: Vec::new(),
+                    max_index: 0,
                 });
         }
         for i in 0..count {
@@ -2110,10 +2138,9 @@ pub fn pool_resolve_sphere_sphere_active(
             );
             let bucket = &mut scratch.dense_cells[index];
             if bucket.gen != gen {
-                bucket.gen = gen;
-                bucket.items.clear();
+                reset_sphere_contact_bucket(bucket, gen);
             }
-            bucket.items.push(i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32);
         }
     } else {
         let cells = &mut scratch.cells;
@@ -2123,12 +2150,12 @@ pub fn pool_resolve_sphere_sphere_active(
             let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
                 gen,
                 items: Vec::new(),
+                max_index: 0,
             });
             if bucket.gen != gen {
-                bucket.gen = gen;
-                bucket.items.clear();
+                reset_sphere_contact_bucket(bucket, gen);
             }
-            bucket.items.push(i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32);
         }
     }
 

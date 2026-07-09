@@ -15,7 +15,13 @@ import {
 } from './Terrain';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
 import { BUILD_GRID_CELL_SIZE, BuildingGrid } from './buildGrid';
-import { fabricatorTorusHoverHeight, getAllUnitBlueprints } from './blueprints';
+import {
+  fabricatorTorusHoverHeight,
+  fabricatorTorusOuterRadius,
+  getAllUnitBlueprints,
+  getUnitBlueprint,
+} from './blueprints';
+import { getBuildingCombatCenterZ } from './buildingAnchors';
 import { applyBuildingBlueprintRuntime } from './buildingEntityRuntime';
 import { getBuildingConfig } from './buildConfigs';
 import { ConstructionSystem } from './construction';
@@ -24,6 +30,11 @@ import {
   factoryProductionSystem,
   getFactoryShellSpawnClearanceAboveSurface,
 } from './factoryProduction';
+import {
+  getFactoryProductionHoldVisual,
+  getFactoryProductionPylonVisual,
+  productionHoldRingRadiusForProducedUnit,
+} from './factoryProductionHold';
 import { ForceAccumulator } from './ForceAccumulator';
 import { computeExtractorMetalCoverage } from './metalDepositOwnership';
 import {
@@ -213,20 +224,24 @@ function assertFactoryShellPhysicsKeepsRoofSupport(
   );
   try {
     const building = factory.building;
-    const baseZ = factory.transform.z - building.depth / 2;
-    factory.body = {
-      physicsBody: physics.createBuildingBody(
-        factory.transform.x,
-        factory.transform.y,
-        building.width,
-        building.height,
-        building.depth,
-        baseZ,
-        building.supportSurface,
-        `contract_factory_${factory.id}`,
-        factory.id,
-      ),
-    };
+    const expectsBuildingSupport =
+      building.hoveringType === null && building.supportSurface.kind !== 'none';
+    if (expectsBuildingSupport) {
+      const baseZ = factory.transform.z - building.depth / 2;
+      factory.body = {
+        physicsBody: physics.createBuildingBody(
+          factory.transform.x,
+          factory.transform.y,
+          building.width,
+          building.height,
+          building.depth,
+          baseZ,
+          building.supportSurface,
+          `contract_factory_${factory.id}`,
+          factory.id,
+        ),
+      };
+    }
     const body = createPhysicsBodyForUnit(world, physics, shell, {
       ignoreOverlappingBuildings: true,
       overlapPadding: undefined,
@@ -241,21 +256,35 @@ function assertFactoryShellPhysicsKeepsRoofSupport(
       world.getCachedSurfaceNormal(shell.transform.x, shell.transform.y),
     );
     const physicsSurface = physics.sampleSupportSurface(body, terrainSurface);
-    assertContract(
-      physicsSurface.supportKind === 'building' &&
-        physicsSurface.supportEntityId === factory.id,
-      'factory shell physics support must keep the fabricator roof as terrain',
-    );
+    if (expectsBuildingSupport) {
+      assertContract(
+        physicsSurface.supportKind === 'building' &&
+          physicsSurface.supportEntityId === factory.id,
+        'factory shell physics support must keep the factory roof as support',
+      );
+    } else {
+      assertContract(
+        physicsSurface.supportKind === 'terrain',
+        'hovering factory shell physics support must stay on terrain',
+      );
+    }
     assertNear(physicsSurface.groundZ, supportTopZ, 'factory shell physics roof support height');
 
     const penetration = Math.min(2, Math.max(0.25, body.groundOffset * 0.25));
     body.z = supportTopZ + body.groundOffset - penetration;
     const penetratedPhysicsSurface = physics.sampleSupportSurface(body, terrainSurface);
-    assertContract(
-      penetratedPhysicsSurface.supportKind === 'building' &&
-        penetratedPhysicsSurface.supportEntityId === factory.id,
-      'factory shell physics support must keep roof support during contact penetration',
-    );
+    if (expectsBuildingSupport) {
+      assertContract(
+        penetratedPhysicsSurface.supportKind === 'building' &&
+          penetratedPhysicsSurface.supportEntityId === factory.id,
+        'factory shell physics support must keep roof support during contact penetration',
+      );
+    } else {
+      assertContract(
+        penetratedPhysicsSurface.supportKind === 'terrain',
+        'hovering factory shell physics support must stay on terrain during contact penetration',
+      );
+    }
     assertNear(
       penetratedPhysicsSurface.groundZ,
       supportTopZ,
@@ -449,8 +478,34 @@ function assertFactoryShellContract(): void {
   const dry = findSurfacePoint(world, 'solid', 220);
   const hoverUnitBlueprintId = firstBlueprintIdByLocomotionType().get('hover');
   assertContract(hoverUnitBlueprintId !== undefined, 'missing hover unit blueprint for factory shell contract');
-  const factory = world.createBuilding(dry.x, dry.y, 180, 180, 60, TEST_PLAYER_ID);
-  factory.buildingBlueprintId = 'towerFabricator' as BuildingBlueprintId;
+  const factoryConfig = getBuildingConfig('towerFabricator');
+  assertContract(factoryConfig.hoveringType === 'fabricator', 'fabricator config must author hoveringType');
+  assertContract(factoryConfig.hovering === true, 'fabricator hover boolean must derive from hoveringType');
+  const factory = world.createBuilding(
+    dry.x,
+    dry.y,
+    factoryConfig.gridWidth * BUILD_GRID_CELL_SIZE,
+    factoryConfig.gridHeight * BUILD_GRID_CELL_SIZE,
+    factoryConfig.gridDepth * BUILD_GRID_CELL_SIZE,
+    TEST_PLAYER_ID,
+  );
+  applyBuildingBlueprintRuntime(factory, 'towerFabricator', {
+    allocateEntityId: () => world.generateEntityId(),
+  });
+  const factoryBuilding = factory.building;
+  assertContract(factoryBuilding !== null, 'fabricator runtime must initialize a building component');
+  assertContract(factoryBuilding.hoveringType === 'fabricator', 'fabricator runtime must preserve hoveringType');
+  assertContract(factoryBuilding.hovering === true, 'fabricator runtime hover boolean must derive from hoveringType');
+  assertNear(
+    factoryBuilding.targetRadius,
+    fabricatorTorusOuterRadius(factoryBuilding.width, factoryBuilding.height),
+    'fabricator target radius must match the visible torus outer radius',
+  );
+  assertNear(
+    getBuildingCombatCenterZ(factory),
+    factory.transform.z - factoryBuilding.depth / 2 + fabricatorTorusHoverHeight(),
+    'fabricator combat/hitbox center must float above its reserved footprint',
+  );
   factory.factory = {
     selectedUnitBlueprintId: hoverUnitBlueprintId,
     lowPriority: true,
@@ -530,6 +585,13 @@ function assertFactoryShellContract(): void {
   assertContract(completed.length === 1 && completed[0] === shell, 'factory must complete the funded shell');
   assertContract(factory.factory.currentShellId === null, 'factory must clear current shell after activation');
   assertContract(shell.heldBy === null, 'factory must release the production hold after activation');
+  assertContract(
+    shell.unit !== null &&
+      Math.abs(shell.unit.velocityX) <= CONTRACT_EPSILON &&
+      Math.abs(shell.unit.velocityY) <= CONTRACT_EPSILON &&
+      Math.abs(shell.unit.velocityZ) <= CONTRACT_EPSILON,
+    'fabricator must release the completed shell with zero launch velocity',
+  );
   assertContract(factory.factory.selectedUnitBlueprintId === hoverUnitBlueprintId, 'repeat factory must keep its selected unit');
   assertContract(factory.factory.repeatProduction === true, 'repeat factory must keep repeat mode after activation');
   const completedUnit = assertUnitActionCount(shell, 2, 'completed shell must receive high-level rally actions');
@@ -793,6 +855,49 @@ function assertFactoryShellContract(): void {
   );
 }
 
+function assertQueenProductionRingMountContract(): void {
+  const cases: readonly [string, string][] = [
+    ['unitQueenBee', 'unitBee'],
+    ['unitQueenTick', 'unitTick'],
+  ];
+  for (const [queenId, producedId] of cases) {
+    const world = new WorldState(1240, 512, 512);
+    const queenEntity = world.createUnitFromBlueprint(620, 256, TEST_PLAYER_ID, queenId);
+    const queen = getUnitBlueprint(queenId);
+    const spawnMount = queen.turrets.find((mount) => mount.producedBlueprintId === producedId);
+    assertContract(spawnMount !== undefined, `${queenId} must have a spawn mount for ${producedId}`);
+    const constructionPylons = queen.turrets.filter((mount) =>
+      mount.turretBlueprintId === 'turretResourcePylonConstructionMetal' ||
+      mount.turretBlueprintId === 'turretResourcePylonConstructionEnergy');
+    assertContract(constructionPylons.length === 2, `${queenId} must have two production-ring pylons`);
+    const holdVisual = getFactoryProductionHoldVisual(queenEntity, producedId);
+    assertContract(holdVisual !== null, `${queenId} must have a production-ring visual`);
+    assertContract(holdVisual.ringOrientation === 'forward', `${queenId} production ring must face forward`);
+    assertNear(spawnMount.mount.y, 0, `${queenId} spawn mount must stay on airborne roll-axis y`);
+    assertNear(spawnMount.mount.z, 0, `${queenId} spawn mount must stay on airborne roll-axis z`);
+    const expectedRing = productionHoldRingRadiusForProducedUnit(producedId);
+    for (let i = 0; i < constructionPylons.length; i++) {
+      const pylon = constructionPylons[i];
+      const turretIndex = queen.turrets.indexOf(pylon);
+      const pylonVisual = getFactoryProductionPylonVisual(queenEntity, producedId, turretIndex);
+      assertContract(pylonVisual !== null, `${queenId} pylon ${i} must have production-ring visual placement`);
+      assertNear(pylon.mount.x, spawnMount.mount.x, `${queenId} pylon x must share the ring center`);
+      assertNear(pylon.mount.y, 0, `${queenId} pylon mount must stay on airborne roll-axis y`);
+      assertNear(pylon.mount.z, 0, `${queenId} pylon mount must stay on airborne roll-axis z`);
+      assertNear(
+        pylonVisual.localBaseZ,
+        queen.bodyCenterHeight,
+        `${queenId} pylon visual must sit at queen body-center height`,
+      );
+      assertNear(
+        Math.abs(pylonVisual.localOffsetY - spawnMount.mount.y * queen.radius.other),
+        expectedRing,
+        `${queenId} pylon visual must sit on the production ring radius`,
+      );
+    }
+  }
+}
+
 function assertFactoryGuardDefaultContract(): void {
   const world = new WorldState(1240, 512, 512);
   world.playerCount = 2;
@@ -806,6 +911,13 @@ function assertFactoryGuardDefaultContract(): void {
   });
   assertContract(factory !== null, 'factory guard default fixture must place a fabricator');
   assertContract(factory.factory !== null, 'fabricator must initialize a factory component');
+  const blockedUnderFabricator = construction.startBuilding(world, 'buildingSolar', 8, 8, TEST_PLAYER_ID, 0, 0, {
+    skipBuilderAuthorization: true,
+  });
+  assertContract(
+    blockedUnderFabricator === null,
+    'hovering fabricator placement footprint must prevent building underneath it',
+  );
   assertContract(
     factory.factory.guardTargetId === factory.id,
     'BAR factory guard widget must default builder-producing factories to self-guard',
@@ -901,6 +1013,7 @@ export function runSupportSurfaceContractTest(): void {
     assertUnitSupportContract();
     assertRenderLocomotionContract();
     assertFactoryShellContract();
+    assertQueenProductionRingMountContract();
     assertFactoryGuardDefaultContract();
     assertExtractorTierCoverageContract();
   });

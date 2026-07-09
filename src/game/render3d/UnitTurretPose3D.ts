@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { getTurretHeadRadius } from '../math';
+import { getFactoryProductionPylonVisual } from '../sim/factoryProductionHold';
 import type { Entity, Turret } from '../sim/types';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import {
@@ -117,9 +118,9 @@ export class UnitTurretPose3D {
       const useState = stateViews !== undefined && turretIdx < (turretRows?.count ?? 0);
       if (!useState && turret === undefined) continue;
       const flags = useState ? stateViews.flags[stateRow] : 0;
-      const mountX = useState ? stateViews.mountX[stateRow] : turret.mount.x;
-      const mountY = useState ? stateViews.mountY[stateRow] : turret.mount.y;
-      const mountZ = useState ? stateViews.mountZ[stateRow] : turret.mount.z;
+      let mountX = useState ? stateViews.mountX[stateRow] : turret.mount.x;
+      let mountY = useState ? stateViews.mountY[stateRow] : turret.mount.y;
+      let mountZ = useState ? stateViews.mountZ[stateRow] : turret.mount.z;
       const aimRotationFromState = useState ? stateViews.rotation[stateRow] : turret.rotation;
       const aimPitchFromState = useState ? stateViews.pitch[stateRow] : turret.pitch;
       const headRadius = turretMesh.headRadius
@@ -129,6 +130,19 @@ export class UnitTurretPose3D {
       if (!visible) {
         unitDetailInstances.clearTurretSlots(turretMesh);
         continue;
+      }
+
+      if (turretMesh.constructionEmitter && entity.factory !== null) {
+        const pylonVisual = getFactoryProductionPylonVisual(
+          entity,
+          entity.factory.selectedUnitBlueprintId,
+          turretIdx,
+        );
+        if (pylonVisual !== null) {
+          mountX = pylonVisual.localOffsetX;
+          mountY = pylonVisual.localOffsetY;
+          mountZ = pylonVisual.localBaseZ;
+        }
       }
 
       const turretHeadCenterY = Number.isFinite(mountZ)
@@ -167,11 +181,20 @@ export class UnitTurretPose3D {
         );
         if (turretMesh.pitchGroup) setEulerZIfChanged(turretMesh.pitchGroup.rotation, 0);
         if (turretMesh.spinGroup) setEulerXIfChanged(turretMesh.spinGroup.rotation, 0);
-        constructionVisuals.updateBuilderConstructionEmitter(
-          turretMesh.constructionEmitter,
-          entity,
-          currentDtMs,
-        );
+        if (entity.factory !== null) {
+          constructionVisuals.updateFactoryConstructionEmitter(
+            turretMesh.constructionEmitter,
+            entity,
+            true,
+            currentDtMs,
+          );
+        } else {
+          constructionVisuals.updateBuilderConstructionEmitter(
+            turretMesh.constructionEmitter,
+            entity,
+            currentDtMs,
+          );
+        }
         continue;
       }
 

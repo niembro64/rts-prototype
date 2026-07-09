@@ -18,6 +18,7 @@ export type {
 export type BuildingBlueprintId = StructureBlueprintId;
 export type BuildingRenderProfile = StructureBlueprintId | 'unknown' | 'bodyless';
 export type BuildingAnchorProfile = 'constantVisualTop' | 'factoryTower' | 'collisionDepth';
+export type BuildingHoveringType = 'fabricator' | null;
 export type BuildingSupportSurface =
   | { kind: 'none' }
   | {

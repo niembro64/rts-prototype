@@ -27,10 +27,15 @@ import type { FlyingMesh } from '@/game/render3d/FlyingRig3D';
 import { buildAlbatrosChassis } from '@/game/render3d/AlbatrosMesh3D';
 import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
 import { kneeFromIK } from '@/game/render3d/LocomotionRigShared3D';
+import {
+  buildProductionHoldRingMesh,
+  type ProductionHoldRingOrientation,
+} from '@/game/render3d/ProductionHoldRing3D';
 import { getTurretHeadRadius } from '@/game/math';
 import { COLORS } from '@/colorsConfig';
 import { SUN_RENDER_CONFIG } from '@/config';
 import type { PlayerId } from '@/game/sim/types';
+import { productionHoldRingRadiusForProducedUnit } from '@/game/sim/factoryProductionHold';
 import {
   entityBodyColorHexForPlayer,
   turretAccentColorHexForPlayer,
@@ -136,6 +141,15 @@ type PreviewLocomotionRig =
 type PreviewModel = {
   root: THREE.Group;
   locomotion: PreviewLocomotionRig | null;
+};
+
+type PreviewProductionRing = {
+  producedUnitBlueprintId: string;
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  ringRadius: number;
+  ringOrientation: ProductionHoldRingOrientation;
 };
 
 // In-game units mix lit team-colored body/turret materials
@@ -463,10 +477,45 @@ function buildPreviewUnitModel(
   liftGroup.position.y = chassisLift;
   yawGroup.add(liftGroup);
 
+  const productionRing = getPreviewProductionRing(blueprint, radius, chassisLift);
   buildPreviewBody(liftGroup, blueprint, materials.primary);
-  buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, materials);
+  buildPreviewProductionRing(liftGroup, productionRing, materials.primary);
+  buildPreviewTurrets(liftGroup, blueprint, unitBlueprintId, chassisLift, materials, productionRing);
   buildPreviewMirrors(liftGroup, blueprint, chassisLift, materials);
   return { root, locomotion };
+}
+
+function getPreviewProductionRing(
+  blueprint: UnitBlueprint,
+  radius: number,
+  chassisLift: number,
+): PreviewProductionRing | null {
+  const spawnMount = blueprint.turrets.find((mount) => mount.producedBlueprintId !== undefined);
+  const producedUnitBlueprintId = spawnMount?.producedBlueprintId;
+  if (spawnMount === undefined || producedUnitBlueprintId === undefined) return null;
+  return {
+    producedUnitBlueprintId,
+    centerX: spawnMount.mount.x * radius,
+    centerY: blueprint.bodyCenterHeight - chassisLift,
+    centerZ: spawnMount.mount.y * radius,
+    ringRadius: productionHoldRingRadiusForProducedUnit(producedUnitBlueprintId),
+    ringOrientation: 'forward',
+  };
+}
+
+function buildPreviewProductionRing(
+  liftGroup: THREE.Group,
+  productionRing: PreviewProductionRing | null,
+  material: THREE.Material,
+): void {
+  if (productionRing === null) return;
+  const ring = buildProductionHoldRingMesh(
+    productionRing.ringRadius,
+    material,
+    productionRing.ringOrientation,
+  );
+  ring.position.set(productionRing.centerX, productionRing.centerY, productionRing.centerZ);
+  liftGroup.add(ring);
 }
 
 function buildPreviewBody(
@@ -497,8 +546,10 @@ function buildPreviewTurrets(
   unitBlueprintId: UnitBlueprintId,
   chassisLift: number,
   materials: PreviewUnitMaterials,
+  productionRing: PreviewProductionRing | null,
 ): void {
   const turrets = createUnitRuntimeTurrets(unitBlueprintId, blueprint.radius.other);
+  let productionPylonOrdinal = 0;
   for (const turret of turrets) {
     const showShieldEmitterCore =
       unitBlueprintId === 'unitAlbatros' &&
@@ -515,10 +566,20 @@ function buildPreviewTurrets(
       skipBarrels: false,
     });
     const headRadius = getTurretHeadRadius(turret.config);
+    let mountX = turret.mount.x;
+    let mountY = turret.mount.z - chassisLift;
+    let mountZ = turret.mount.y;
+    if (productionRing !== null && turret.config.constructionEmitter !== null) {
+      const side = productionPylonOrdinal === 0 ? -1 : 1;
+      mountX = productionRing.centerX;
+      mountY = productionRing.centerY;
+      mountZ = productionRing.centerZ + productionRing.ringRadius * side;
+      productionPylonOrdinal++;
+    }
     turretMesh.root.position.set(
-      turret.mount.x,
-      turret.mount.z - chassisLift - headRadius,
-      turret.mount.y,
+      mountX,
+      mountY - headRadius,
+      mountZ,
     );
     applyTurretAimPose3D(turretMesh, 0, turret.rotation, turret.pitch);
   }

@@ -708,10 +708,9 @@ function stampCombatTargetingEntityInto(
   _stampPos.x = entity.transform.x;
   _stampPos.y = entity.transform.y;
   _stampPos.z = entity.transform.z;
-  // A hovering building's combat box is in the air (the fabricator torus), so
-  // stamp its combat center z for the targeting/aim solver instead of the
-  // ground-level transform.z. Non-hovering buildings are unaffected.
-  if (entity.building !== null && entity.building.hovering) {
+  // Building combat boxes may be anchored away from transform.z (the fabricator
+  // torus floats above its reserved build footprint).
+  if (entity.building !== null) {
     _stampPos.z = getBuildingCombatCenterZ(entity);
   }
   const unit = entity.unit;

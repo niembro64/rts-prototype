@@ -135,7 +135,9 @@ export function snapClientNonVisualState(
       entity.building.supportSurface = cloneBuildingSupportSurface(
         buildingConfig.supportSurface,
       );
+      entity.building.hoveringType = buildingConfig.hoveringType;
       entity.building.hovering = buildingConfig.hovering;
+      entity.building.targetRadius = buildingConfig.radius.hitbox;
     }
   }
 

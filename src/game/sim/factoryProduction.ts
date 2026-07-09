@@ -10,7 +10,10 @@ import { setUnitActions } from './unitActions';
 import {
   ENTITY_CHANGED_ACTIONS,
   ENTITY_CHANGED_FACTORY,
+  ENTITY_CHANGED_POS,
+  ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_TURRETS,
+  ENTITY_CHANGED_VEL,
 } from '../../types/network';
 import { economyManager } from './economy';
 import {
@@ -34,6 +37,10 @@ import { applyEntityHoldPose, holdEntity, releaseEntityHold } from './entityHold
 import {
   createFactoryProductionHoldSpec,
 } from './factoryProductionHold';
+import {
+  applyFactoryProductionLaunch,
+  updateFactoryProductionHoldLaunchPose,
+} from './factoryProductionLaunch';
 export { getFactoryShellSpawnClearanceAboveSurface } from './factoryProductionHold';
 
 const FACTORY_SELECTED_NONE = 0;
@@ -205,6 +212,7 @@ class FactoryProductionSystem {
       if (factoryComp.currentShellId !== null) {
         shell = world.getEntity(factoryComp.currentShellId) ?? null;
         if (shell !== null) {
+          updateFactoryProductionHoldLaunchPose(world, factory, shell);
           factoryShellExists[row] = 1;
           const buildable = shell.buildable;
           if (buildable !== null) {
@@ -352,6 +360,7 @@ class FactoryProductionSystem {
     });
     holdEntity(factory, unit, createFactoryProductionHoldSpec(factory, unitBlueprintId));
     applyEntityHoldPose(world, unit);
+    updateFactoryProductionHoldLaunchPose(world, factory, unit);
     initializeConstructionPieceHealth(unit, world);
     world.addEntity(unit);
     world.recordFactoryProducedUnit(factory.id, unit);
@@ -461,7 +470,9 @@ class FactoryProductionSystem {
   ): void {
     if (!factory.factory) return;
     const factoryComp = factory.factory;
+    const launchPlan = updateFactoryProductionHoldLaunchPose(world, factory, unit);
     releaseEntityHold(unit);
+    if (launchPlan !== null) applyFactoryProductionLaunch(unit, launchPlan);
     if (unit.unit) {
       // BAR units inherit their lab's MOVE_STATE. The prototype fabricator
       // combines land and air pages, so keep the BAR air-factory page at the
@@ -506,11 +517,17 @@ class FactoryProductionSystem {
         }
       }
     }
-    // The finished unit is NOT launched — it leaves its production hold and
-    // then moves under normal physics to its rally. The old ballistic "unit
-    // constructor" cannon is gone.
+    // The finished unit is released with its factory launch plan; fabricators
+    // use a zero impulse so normal gravity takes over immediately.
     aimTurretsToward(unit, world.mapWidth / 2, world.mapHeight / 2);
-    world.markSnapshotDirty(unit.id, ENTITY_CHANGED_ACTIONS | ENTITY_CHANGED_TURRETS);
+    world.markSnapshotDirty(
+      unit.id,
+      ENTITY_CHANGED_ACTIONS |
+        ENTITY_CHANGED_POS |
+        ENTITY_CHANGED_ROT |
+        ENTITY_CHANGED_TURRETS |
+        ENTITY_CHANGED_VEL,
+    );
   }
 
   // Toggle or queue factory production. Repeat mode keeps a single
