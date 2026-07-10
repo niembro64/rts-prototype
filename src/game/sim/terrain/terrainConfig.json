@@ -17,12 +17,12 @@
       "detail": "REORDERABLE among the three transform stages — later stages shape the output of earlier ones. D-PLATEAU bar snap: heights terrace onto the TERRAIN_D_TERRAIN lattice; shelf width from generation.plateau.shelfFractionOfStep, walls at the PLATEAU WALL bar slope via the shared ramp curve. Walls are closed-loop WALL TRIS regions."
     },
     {
-      "step": "metalDepositPads",
-      "detail": "REORDERABLE among the three transform stages. Per-deposit circular flat pads (flatPadCells, null = auto-sized to the resource footprint) at their resolved heights, raised-cosine blending back over each ring's terrainBlendRadius."
-    },
-    {
       "step": "watersEdgeShoreline",
       "detail": "REORDERABLE among the three transform stages. Team-periodic beach/cliff halves per player slice (beach centered on the player spoke at the BEACH SLOPE bar, 0 = flat shelf at water level; cliff centered on the divider at the W-CLIFF bar height) joined by wall-steep end caps from the PLATEAU WALL slope. Both operators apply fully at the waterline and raised-cosine fade to no effect over generation.shoreline.beachFadeRadius / cliffFadeRadius of horizontal shore distance, following the water's curves on both sides. Cliff wall/cap regions are closed-loop WALL TRIS; far from water they are flattened, not removed."
+    },
+    {
+      "step": "metalDepositPads",
+      "detail": "REORDERABLE among the three transform stages. Per-deposit circular flat pads (flatPadCells, null = auto-sized to the resource footprint) at their resolved heights, raised-cosine blending back over each ring's terrainBlendRadius."
     },
     {
       "step": "floorClamp",
