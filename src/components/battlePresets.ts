@@ -216,7 +216,7 @@ function buildPresets(): readonly BattlePreset[] {
       watersEdgeBeachSlopeDegrees: 10,
       watersEdgeCliffHeight: 100,
       metalDepositStep: 400,
-      terrainDetail: 1,
+      terrainDetail: 4,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
       grid: false,

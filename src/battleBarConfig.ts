@@ -107,8 +107,9 @@ function sanitizeDemoTowerIds(value: unknown): string[] | null {
 // many call sites that read `BATTLE_CONFIG.cap.default` etc. keep
 // working without each having to know about the demo/real split.
 const _demoPreset = getModeDefaultPreset('demo');
-const TERRAIN_RENDER_SMOOTHING_DEFAULT = 1;
-const TERRAIN_RENDER_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT = false;
+const TERRAIN_RENDER_SMOOTHING_DEFAULT = 3;
+const TERRAIN_TEXTURE_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT = true;
+const TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT = false;
 const TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES_DEFAULT = true;
 
 export const BATTLE_CONFIG = {
@@ -179,10 +180,10 @@ export const BATTLE_CONFIG = {
     options: battleBarConfig.terrainLightSmoothing.options as readonly number[],
   },
   terrainTextureSmoothAcrossWallBoundary: {
-    default: TERRAIN_RENDER_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT,
+    default: TERRAIN_TEXTURE_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT,
   },
   terrainLightSmoothAcrossWallBoundary: {
-    default: TERRAIN_RENDER_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT,
+    default: TERRAIN_LIGHT_SMOOTH_ACROSS_WALL_BOUNDARY_DEFAULT,
   },
   terrainSplitWallBoundaryVertices: {
     default: TERRAIN_SPLIT_WALL_BOUNDARY_VERTICES_DEFAULT,

@@ -39,7 +39,7 @@
       "sliceOffset": -0.4,
       "dTerrainLevels": null,
       "flatPadCells": null,
-      "terrainBlendRadius": 1000,
+      "terrainBlendRadius": 600,
       "depositCluster": {
         "count": 1,
         "radius": 0,
