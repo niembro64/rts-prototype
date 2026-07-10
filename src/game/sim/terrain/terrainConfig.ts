@@ -313,13 +313,12 @@ export const TERRAIN_RIDGE_CONFIG = {
 /** Static shoreline (waters-edge) shape knobs. The shoreline pattern is
  *  team-periodic — each player's slice is split into a beach half
  *  (centered on the player's spoke) and a cliff half (centered on the
- *  divider ridge) so every player gets an identical shoreline.
- *  `transitionFraction` of each half blends toward the other shape;
+ *  divider ridge) so every player gets an identical shoreline, joined
+ *  by wall-steep end caps derived from the PLATEAU WALL slope.
  *  `beachBandHeight` is the total vertical extent (world units) of the
  *  beach gradient-compression band centered on the waterline. The live
  *  BEACH slope / CLIFF height come from the battle bars
  *  (`TERRAIN_WATERS_EDGE_*` above). */
 export const TERRAIN_SHORELINE_CONFIG = {
-  transitionFraction: terrainConfig.generation.shoreline.transitionFraction,
   beachBandHeight: terrainConfig.generation.shoreline.beachBandHeight,
 } as const;

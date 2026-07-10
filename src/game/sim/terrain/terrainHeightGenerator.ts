@@ -293,14 +293,24 @@ function watersEdgeBandExtent(): number {
  *  and deposit rings. */
 const WATERS_EDGE_FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
 
+/** Horizontal world-unit width of a waters-edge cap — the angular
+ *  beach↔cliff transition. Derived from the same wall-slope config as
+ *  every other wall (the run needed to drop half a cliff step at that
+ *  slope), so the cap is a real end-cap wall face, not a fade. Mirrors
+ *  the Rust `terrain_waters_edge_cap_width`. */
+function watersEdgeCapWidth(): number {
+  const angle = Math.max(1, Math.min(89, TERRAIN_PLATEAU_WALL_SLOPE_DEGREES));
+  const tanAngle = Math.max(1e-6, Math.tan(angle * Math.PI / 180));
+  return Math.max(2, (TERRAIN_WATERS_EDGE_CLIFF_HEIGHT * 0.5) / tanAngle);
+}
+
 /** Cliffness in [0, 1] for the shoreline at `angle`. The pattern is
  *  team-periodic so every player slice gets an IDENTICAL shoreline:
  *  each player's slice is split in half — the beach half centered on
  *  the player's spoke, the cliff half centered on the divider ridge
- *  between players — with a smootherstep blend across the leading
- *  transition fraction of each half. Mirrors the Rust
- *  `terrain_waters_edge_slice_cliffness`. */
-function watersEdgeSliceCliffness(angle: number): number {
+ *  between players — joined by wall-steep end caps of fixed world
+ *  width. Mirrors the Rust `terrain_waters_edge_slice_cliffness`. */
+function watersEdgeSliceCliffness(angle: number, distance: number): number {
   const teams = Math.max(1, getTerrainTeamCount());
   const cycle = (2 * Math.PI) / teams;
   // +0.25 rotates the half boundaries a quarter slice so the beach
@@ -310,8 +320,11 @@ function watersEdgeSliceCliffness(angle: number): number {
   const k = Math.floor(phase);
   const u = phase - k;
   const current = k; // half 0 = beach (0), half 1 = cliff (1)
-  const transition = clamp01(TERRAIN_SHORELINE_CONFIG.transitionFraction);
-  if (transition <= 0 || u >= transition) return current;
+  // Cap width in half-slice phase units at this radius: one half
+  // spans an arc of distance * cycle / 2 world units.
+  const halfArc = Math.max(1, distance) * cycle * 0.5;
+  const transition = Math.min(0.5, watersEdgeCapWidth() / halfArc);
+  if (u >= transition) return current;
   const previous = 1 - current;
   return previous + (current - previous) * smootherstep(u / transition);
 }
@@ -369,12 +382,13 @@ function applyWatersEdge(
   shaped: number,
   gradient: number,
   angle: number,
+  distance: number,
 ): number {
   const beachEnabled = watersEdgeBeachEnabled();
   const cliffEnabled = watersEdgeCliffEnabled();
   if (!beachEnabled && !cliffEnabled) return terraced;
   const cliffness = beachEnabled && cliffEnabled
-    ? watersEdgeSliceCliffness(angle)
+    ? watersEdgeSliceCliffness(angle, distance)
     : cliffEnabled
       ? 1
       : 0;
@@ -527,7 +541,7 @@ function getTerrainHeightWithMetrics(
     : 0;
   const terraced = applyTerrainPlateaus(shaped, gradient);
   const shored = watersEdgeActive
-    ? applyWatersEdge(terraced, shaped, gradient, ovalSample.angle)
+    ? applyWatersEdge(terraced, shaped, gradient, ovalSample.angle, ovalSample.distance)
     : terraced;
 
   let blended = shored;

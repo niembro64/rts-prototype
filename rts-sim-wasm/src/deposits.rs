@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
 pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
-pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 27;
+pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 26;
 pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 5;
 pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
@@ -65,7 +65,6 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     ridge_half_width_fraction: f64,
     waters_edge_beach_slope_degrees: f64,
     waters_edge_cliff_height: f64,
-    shoreline_transition_fraction: f64,
     shoreline_beach_band_height: f64,
 }
 
@@ -102,8 +101,7 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         plateau_wall_slope_degrees: values[22],
         waters_edge_beach_slope_degrees: values[23],
         waters_edge_cliff_height: values[24],
-        shoreline_transition_fraction: values[25],
-        shoreline_beach_band_height: values[26],
+        shoreline_beach_band_height: values[25],
     })
 }
 
@@ -572,11 +570,23 @@ pub(crate) fn terrain_waters_edge_band_extent(cfg: &MetalDepositTerrainConfigRus
 /// each player's slice (2π / teamCount, anchored like ridges and
 /// deposit rings at METAL_DEPOSIT_FIRST_PLAYER_ANGLE) is split in
 /// half — the beach half centered on the player's spoke, the cliff
-/// half centered on the divider ridge between players — with a
-/// smootherstep blend across the leading `transition_fraction` of
-/// each half so the shapes join continuously.
+/// half centered on the divider ridge between players.
+///
+/// The beach↔cliff transition is NOT a slow angular fade: it is an
+/// end-cap wall. Its arc length is a fixed world-unit width derived
+/// from the same wall-slope config every other wall uses (the run
+/// needed to drop half a cliff step at that slope), so the cliff face
+/// turns the corner at each half boundary as a real radial wall face
+/// and the wall strip stays a wall until its shelves converge.
+pub(crate) fn terrain_waters_edge_cap_width(cfg: &MetalDepositTerrainConfigRust) -> f64 {
+    let angle = cfg.plateau_wall_slope_degrees.clamp(1.0, 89.0);
+    let tan_angle = (angle * std::f64::consts::PI / 180.0).tan().max(1e-6);
+    ((cfg.waters_edge_cliff_height * 0.5) / tan_angle).max(2.0)
+}
+
 pub(crate) fn terrain_waters_edge_slice_cliffness(
     angle: f64,
+    distance: f64,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
     let teams = (cfg.team_count.max(1)) as f64;
@@ -588,16 +598,40 @@ pub(crate) fn terrain_waters_edge_slice_cliffness(
     let k = phase.floor();
     let u = phase - k;
     let current = k; // half 0 = beach (0), half 1 = cliff (1)
-    let transition = terrain_clamp01(cfg.shoreline_transition_fraction);
-    if transition <= 0.0 || u >= transition {
+    // Cap width in half-slice phase units at this radius: one half
+    // spans an arc of distance * cycle / 2 world units.
+    let half_arc = distance.max(1.0) * cycle * 0.5;
+    let transition = (terrain_waters_edge_cap_width(cfg) / half_arc).min(0.5);
+    if u >= transition {
         return current;
     }
     let previous = 1.0 - current;
     previous + (current - previous) * terrain_smootherstep(u / transition)
 }
 
-/// Slice cliffness at a world point (the oval angle is private to this
-/// module; the mesh build's region classification calls through here).
+/// Cliffness with the enable-gates applied — the single source both the
+/// height operator and the mesh build's zone classification read, so
+/// geometry and WALL TRIS regions can never disagree. Beach-only
+/// shorelines are 0 everywhere, cliff-only are 1 everywhere.
+pub(crate) fn terrain_waters_edge_effective_cliffness(
+    angle: f64,
+    distance: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> f64 {
+    let beach_enabled = terrain_waters_edge_beach_enabled(cfg);
+    let cliff_enabled = terrain_waters_edge_cliff_enabled(cfg);
+    if beach_enabled && cliff_enabled {
+        terrain_waters_edge_slice_cliffness(angle, distance, cfg)
+    } else if cliff_enabled {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+/// Effective cliffness at a world point (the oval fields are private to
+/// this module; the mesh build's region classification calls through
+/// here).
 pub(crate) fn terrain_waters_edge_slice_cliffness_at(
     metrics: &MapOvalMetricsRust,
     x: f64,
@@ -605,7 +639,7 @@ pub(crate) fn terrain_waters_edge_slice_cliffness_at(
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
     let oval = terrain_sample_map_oval_at(metrics, x, y);
-    terrain_waters_edge_slice_cliffness(oval.angle, cfg)
+    terrain_waters_edge_effective_cliffness(oval.angle, oval.distance, cfg)
 }
 
 /// Beach operator: within the vertical beach band around the waterline,
@@ -736,6 +770,7 @@ pub(crate) fn terrain_apply_waters_edge(
     shaped: f64,
     gradient: f64,
     angle: f64,
+    distance: f64,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
     let beach_enabled = terrain_waters_edge_beach_enabled(cfg);
@@ -743,13 +778,7 @@ pub(crate) fn terrain_apply_waters_edge(
     if !beach_enabled && !cliff_enabled {
         return terraced;
     }
-    let cliffness = if beach_enabled && cliff_enabled {
-        terrain_waters_edge_slice_cliffness(angle, cfg)
-    } else if cliff_enabled {
-        1.0
-    } else {
-        0.0
-    };
+    let cliffness = terrain_waters_edge_effective_cliffness(angle, distance, cfg);
     let beach = if beach_enabled && cliffness < 1.0 {
         terrain_waters_edge_beach_height(terraced, shaped, gradient, cfg)
     } else {
@@ -784,7 +813,7 @@ pub(crate) fn metal_deposit_terrain_height_with_explicit_zones(
     let terraced = terrain_apply_plateaus(shaped, gradient, cfg);
     let shored = if waters_edge_active {
         let oval = terrain_sample_map_oval_at(metrics, x, y);
-        terrain_apply_waters_edge(terraced, shaped, gradient, oval.angle, cfg)
+        terrain_apply_waters_edge(terraced, shaped, gradient, oval.angle, oval.distance, cfg)
     } else {
         terraced
     };

@@ -32,7 +32,6 @@
       "buildableShelfHeightTolerance": 20
     },
     "shoreline": {
-      "transitionFraction": 0.25,
       "beachBandHeight": 120
     }
   },

@@ -1178,19 +1178,81 @@ pub(crate) fn terrain_plateau_boundary_value_at_world(
 //  is independent of D-PLATEAU — it works with terracing disabled.
 // ─────────────────────────────────────────────────────────────────
 
-/// Waters-edge region key at a world point, or None when waterfront
-/// cliffs are disabled. Beach-side shoreline (slice cliffness < 0.5)
-/// reads as a single region (key 0) so beaches never split or flag.
-pub(crate) fn terrain_waters_edge_region_key_at_world(
+/// Pure height-region key at a world point (0 below band, 1 submerged
+/// shelf, 2 wall, 3 dry shelf, 4 above band), or None when waterfront
+/// cliffs are disabled. Angular gating lives in the zone dimension.
+pub(crate) fn terrain_waters_edge_height_key_at_world(
     c: &TerrainMeshBuildConfig,
     x: f64,
     z: f64,
 ) -> Option<i32> {
     let (t, flat_half) = terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg)?;
-    if terrain_waters_edge_slice_cliffness_at(&c.metrics, x, z, &c.gen_cfg) < 0.5 {
-        return Some(0);
-    }
     Some(terrain_waters_edge_region_key_for_coords(t, flat_half))
+}
+
+/// Angular zone key: 0 = beach half, 1 = end-cap (the wall-steep
+/// beach↔cliff transition), 2 = cliff half. Derived from the same
+/// effective cliffness the height operator blends with, so the zone
+/// seams land exactly where the emitted geometry changes shape.
+const TERRAIN_WATERS_EDGE_ZONE_EPS: f64 = 1e-6;
+
+pub(crate) fn terrain_waters_edge_zone_key_for_cliffness(cliffness: f64) -> i32 {
+    if cliffness <= TERRAIN_WATERS_EDGE_ZONE_EPS {
+        0
+    } else if cliffness < 1.0 - TERRAIN_WATERS_EDGE_ZONE_EPS {
+        1
+    } else {
+        2
+    }
+}
+
+pub(crate) fn terrain_waters_edge_zone_key_at_world(
+    c: &TerrainMeshBuildConfig,
+    x: f64,
+    z: f64,
+) -> Option<i32> {
+    if !terrain_waters_edge_cliff_enabled(&c.gen_cfg) {
+        return None;
+    }
+    Some(terrain_waters_edge_zone_key_for_cliffness(
+        terrain_waters_edge_slice_cliffness_at(&c.metrics, x, z, &c.gen_cfg),
+    ))
+}
+
+pub(crate) fn terrain_waters_edge_zone_boundary_value_at_world(
+    c: &TerrainMeshBuildConfig,
+    x: f64,
+    z: f64,
+    after_key: i32,
+) -> Option<f64> {
+    if !terrain_waters_edge_cliff_enabled(&c.gen_cfg) {
+        return None;
+    }
+    let cliffness = terrain_waters_edge_slice_cliffness_at(&c.metrics, x, z, &c.gen_cfg);
+    Some(if after_key == 0 {
+        cliffness - TERRAIN_WATERS_EDGE_ZONE_EPS
+    } else {
+        cliffness - (1.0 - TERRAIN_WATERS_EDGE_ZONE_EPS)
+    })
+}
+
+/// Composite waters-edge key for collapse gating: outside the cliff
+/// band the zone is irrelevant (the geometry is untouched terraced
+/// terrain on every side of a cap), so only the band interior encodes
+/// the zone. Prevents collapse across shelf/wall seams AND across the
+/// end-cap faces without blocking simplification along cap radials far
+/// from the water.
+pub(crate) fn terrain_waters_edge_region_key_at_world(
+    c: &TerrainMeshBuildConfig,
+    x: f64,
+    z: f64,
+) -> Option<i32> {
+    let height_key = terrain_waters_edge_height_key_at_world(c, x, z)?;
+    if height_key == 0 || height_key == 4 {
+        return Some(height_key);
+    }
+    let zone = terrain_waters_edge_zone_key_at_world(c, x, z)?;
+    Some(8 + zone * 8 + height_key)
 }
 
 pub(crate) fn terrain_waters_edge_region_key_at_lattice(
@@ -2055,14 +2117,14 @@ pub(crate) fn terrain_plateau_key_range_for_polygon(
     Some((min_key?, max_key?))
 }
 
-/// Waters-edge analogue of `terrain_plateau_key_range_for_polygon`.
-/// No D-PLATEAU gate: waterfront cliff regions exist with terracing
-/// disabled. None when waterfront cliffs are off.
-pub(crate) fn terrain_waters_edge_key_range_for_polygon(
-    c: &TerrainMeshBuildConfig,
+/// Sample a region key function over a polygon's vertices, edge
+/// midpoints, and centroid, returning the observed key range. Shared
+/// by the waters-edge height and zone region systems.
+fn terrain_key_range_for_polygon(
     points: &[TerrainMeshPoint],
+    key_at: &dyn Fn(f64, f64) -> Option<i32>,
 ) -> Option<(i32, i32)> {
-    if !terrain_waters_edge_cliff_enabled(&c.gen_cfg) || points.len() < 3 {
+    if points.len() < 3 {
         return None;
     }
     let mut min_key: Option<i32> = None;
@@ -2076,16 +2138,12 @@ pub(crate) fn terrain_waters_edge_key_range_for_polygon(
     };
 
     for &p in points {
-        observe(terrain_waters_edge_region_key_at_world(c, p.x, p.z));
+        observe(key_at(p.x, p.z));
     }
     for i in 0..points.len() {
         let a = points[i];
         let b = points[(i + 1) % points.len()];
-        observe(terrain_waters_edge_region_key_at_world(
-            c,
-            (a.x + b.x) * 0.5,
-            (a.z + b.z) * 0.5,
-        ));
+        observe(key_at((a.x + b.x) * 0.5, (a.z + b.z) * 0.5));
     }
 
     let mut cx = 0.0;
@@ -2095,13 +2153,37 @@ pub(crate) fn terrain_waters_edge_key_range_for_polygon(
         cz += p.z;
     }
     let inv_n = 1.0 / points.len() as f64;
-    observe(terrain_waters_edge_region_key_at_world(
-        c,
-        cx * inv_n,
-        cz * inv_n,
-    ));
+    observe(key_at(cx * inv_n, cz * inv_n));
 
     Some((min_key?, max_key?))
+}
+
+/// Waters-edge height-region range for a polygon. No D-PLATEAU gate:
+/// waterfront cliff regions exist with terracing disabled. None when
+/// waterfront cliffs are off.
+pub(crate) fn terrain_waters_edge_height_key_range_for_polygon(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+) -> Option<(i32, i32)> {
+    if !terrain_waters_edge_cliff_enabled(&c.gen_cfg) {
+        return None;
+    }
+    terrain_key_range_for_polygon(points, &|x, z| {
+        terrain_waters_edge_height_key_at_world(c, x, z)
+    })
+}
+
+/// Waters-edge angular-zone range (beach / cap / cliff) for a polygon.
+pub(crate) fn terrain_waters_edge_zone_key_range_for_polygon(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+) -> Option<(i32, i32)> {
+    if !terrain_waters_edge_cliff_enabled(&c.gen_cfg) {
+        return None;
+    }
+    terrain_key_range_for_polygon(points, &|x, z| {
+        terrain_waters_edge_zone_key_at_world(c, x, z)
+    })
 }
 
 #[inline]
@@ -2255,17 +2337,33 @@ pub(crate) fn terrain_emit_mesh_polygon(
     );
 }
 
-/// Wall flag for a polygon that settled into waters-edge region
-/// `we_key`, given the plateau-derived flag it arrived with. Inside the
-/// cliff band the waters-edge classification is authoritative — the
-/// shoreline operator flattened any plateau wall that crossed the band
-/// onto the waterline shelves, so a stale plateau wall flag there would
-/// be wrong. Outside the band the plateau flag stands.
+/// Wall flag for a polygon that settled into waters-edge zone `zone`
+/// and height region `height_key`, given the plateau-derived flag it
+/// arrived with. Inside the cliff band the waters-edge classification
+/// is authoritative — the shoreline operator flattened any plateau
+/// wall crossing the band onto the waterline shelves, so a stale
+/// plateau wall flag there would be wrong. In a cliff zone only the
+/// wall region (2) flags; in a cap zone the whole band interior is the
+/// end-cap wall face (it tapers to nothing where the shelves converge
+/// at the band edges — a squished wall, still a wall), so the wall
+/// strip closes around the cliff instead of fading out. Outside the
+/// band the plateau flag stands.
 #[inline]
-fn terrain_waters_edge_wall_flag(we_key: i32, plateau_flag: i32) -> i32 {
-    match we_key {
-        1 | 3 => 0,
-        2 => 1,
+fn terrain_waters_edge_wall_flag(zone: i32, height_key: i32, plateau_flag: i32) -> i32 {
+    match height_key {
+        1 | 2 | 3 => {
+            if zone == 1 {
+                1
+            } else if zone == 2 {
+                if height_key == 2 {
+                    1
+                } else {
+                    0
+                }
+            } else {
+                plateau_flag
+            }
+        }
         _ => plateau_flag,
     }
 }
@@ -2283,6 +2381,7 @@ pub(crate) fn terrain_emit_waters_edge_constrained_polygon(
     depth: i32,
     level: i32,
     leaf_index: i32,
+    zone: i32,
     plateau_flag: i32,
     vertex_ids: &mut HashMap<(i64, i64), i32>,
     vertex_coords: &mut Vec<f64>,
@@ -2310,7 +2409,7 @@ pub(crate) fn terrain_emit_waters_edge_constrained_polygon(
             triangle_levels,
             triangle_wall_flags,
             triangle_leaf_indices,
-            terrain_waters_edge_wall_flag(low_key, plateau_flag),
+            terrain_waters_edge_wall_flag(zone, low_key, plateau_flag),
         );
         return;
     }
@@ -2330,7 +2429,7 @@ pub(crate) fn terrain_emit_waters_edge_constrained_polygon(
             triangle_levels,
             triangle_wall_flags,
             triangle_leaf_indices,
-            terrain_waters_edge_wall_flag(low_key, plateau_flag),
+            terrain_waters_edge_wall_flag(zone, low_key, plateau_flag),
         );
         return;
     }
@@ -2343,6 +2442,7 @@ pub(crate) fn terrain_emit_waters_edge_constrained_polygon(
         depth + 1,
         level,
         leaf_index,
+        zone,
         plateau_flag,
         vertex_ids,
         vertex_coords,
@@ -2360,6 +2460,7 @@ pub(crate) fn terrain_emit_waters_edge_constrained_polygon(
         depth + 1,
         level,
         leaf_index,
+        zone,
         plateau_flag,
         vertex_ids,
         vertex_coords,
@@ -2371,14 +2472,15 @@ pub(crate) fn terrain_emit_waters_edge_constrained_polygon(
     );
 }
 
-/// Emit a polygon that has settled into a single plateau region: route
-/// it through the waters-edge region splitter (when waterfront cliffs
-/// are enabled) so shoreline walls get the same crisp region seams and
-/// WALL TRIS classification as plateau walls.
+/// Emit a polygon that has settled into a single waters-edge zone:
+/// beach zones are geometrically smooth (no waterfront walls), so they
+/// emit directly; cap and cliff zones run the height-region splitter
+/// so shelf/wall seams stay crisp.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn terrain_emit_region_leaf_polygon(
+fn terrain_emit_waters_edge_zone_leaf_polygon(
     c: &TerrainMeshBuildConfig,
     points: &[TerrainMeshPoint],
+    zone: i32,
     level: i32,
     leaf_index: i32,
     plateau_flag: i32,
@@ -2390,7 +2492,12 @@ pub(crate) fn terrain_emit_region_leaf_polygon(
     triangle_wall_flags: &mut Vec<i32>,
     triangle_leaf_indices: &mut Vec<i32>,
 ) {
-    if let Some((low_key, high_key)) = terrain_waters_edge_key_range_for_polygon(c, points) {
+    let height_range = if zone == 0 {
+        None
+    } else {
+        terrain_waters_edge_height_key_range_for_polygon(c, points)
+    };
+    if let Some((low_key, high_key)) = height_range {
         terrain_emit_waters_edge_constrained_polygon(
             c,
             points,
@@ -2399,6 +2506,7 @@ pub(crate) fn terrain_emit_region_leaf_polygon(
             0,
             level,
             leaf_index,
+            zone,
             plateau_flag,
             vertex_ids,
             vertex_coords,
@@ -2424,6 +2532,180 @@ pub(crate) fn terrain_emit_region_leaf_polygon(
             plateau_flag,
         );
     }
+}
+
+/// Recursively split a polygon along waters-edge angular zone
+/// boundaries (the end-cap edges), then hand each settled zone to the
+/// height-region splitter. Mirrors the plateau/height recursions,
+/// driven by the zone boundary functions.
+#[allow(clippy::too_many_arguments)]
+fn terrain_emit_waters_edge_zone_polygon(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    low_key: i32,
+    high_key: i32,
+    depth: i32,
+    level: i32,
+    leaf_index: i32,
+    plateau_flag: i32,
+    vertex_ids: &mut HashMap<(i64, i64), i32>,
+    vertex_coords: &mut Vec<f64>,
+    vertex_heights: &mut Vec<f64>,
+    triangle_indices: &mut Vec<i32>,
+    triangle_levels: &mut Vec<i32>,
+    triangle_wall_flags: &mut Vec<i32>,
+    triangle_leaf_indices: &mut Vec<i32>,
+) {
+    let points = terrain_remove_duplicate_mesh_points(points);
+    if !terrain_polygon_has_area(&points) {
+        return;
+    }
+
+    if high_key <= low_key || depth >= 64 {
+        terrain_emit_waters_edge_zone_leaf_polygon(
+            c,
+            &points,
+            low_key,
+            level,
+            leaf_index,
+            plateau_flag,
+            vertex_ids,
+            vertex_coords,
+            vertex_heights,
+            triangle_indices,
+            triangle_levels,
+            triangle_wall_flags,
+            triangle_leaf_indices,
+        );
+        return;
+    }
+
+    let boundary = |x: f64, z: f64| -> Option<f64> {
+        terrain_waters_edge_zone_boundary_value_at_world(c, x, z, low_key)
+    };
+    let lower = terrain_clip_polygon_by_region_boundary(c, &points, true, &boundary);
+    let upper = terrain_clip_polygon_by_region_boundary(c, &points, false, &boundary);
+    if !terrain_polygon_has_area(&lower) || !terrain_polygon_has_area(&upper) {
+        terrain_emit_waters_edge_zone_leaf_polygon(
+            c,
+            &points,
+            low_key,
+            level,
+            leaf_index,
+            plateau_flag,
+            vertex_ids,
+            vertex_coords,
+            vertex_heights,
+            triangle_indices,
+            triangle_levels,
+            triangle_wall_flags,
+            triangle_leaf_indices,
+        );
+        return;
+    }
+
+    terrain_emit_waters_edge_zone_polygon(
+        c,
+        &lower,
+        low_key,
+        low_key,
+        depth + 1,
+        level,
+        leaf_index,
+        plateau_flag,
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+        triangle_indices,
+        triangle_levels,
+        triangle_wall_flags,
+        triangle_leaf_indices,
+    );
+    terrain_emit_waters_edge_zone_polygon(
+        c,
+        &upper,
+        low_key + 1,
+        high_key,
+        depth + 1,
+        level,
+        leaf_index,
+        plateau_flag,
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+        triangle_indices,
+        triangle_levels,
+        triangle_wall_flags,
+        triangle_leaf_indices,
+    );
+}
+
+/// Emit a polygon that has settled into a single plateau region: route
+/// it through the waters-edge splitters (when waterfront cliffs are
+/// enabled and the polygon touches the shore band) so shoreline walls
+/// and their end-caps get the same crisp region seams and WALL TRIS
+/// classification as plateau walls.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn terrain_emit_region_leaf_polygon(
+    c: &TerrainMeshBuildConfig,
+    points: &[TerrainMeshPoint],
+    level: i32,
+    leaf_index: i32,
+    plateau_flag: i32,
+    vertex_ids: &mut HashMap<(i64, i64), i32>,
+    vertex_coords: &mut Vec<f64>,
+    vertex_heights: &mut Vec<f64>,
+    triangle_indices: &mut Vec<i32>,
+    triangle_levels: &mut Vec<i32>,
+    triangle_wall_flags: &mut Vec<i32>,
+    triangle_leaf_indices: &mut Vec<i32>,
+) {
+    let height_range = terrain_waters_edge_height_key_range_for_polygon(c, points);
+    let outside_band = match height_range {
+        None => true,
+        Some((low, high)) => low == high && (low == 0 || low == 4),
+    };
+    let zone_range = if outside_band {
+        None
+    } else {
+        terrain_waters_edge_zone_key_range_for_polygon(c, points)
+    };
+    // Waterfront cliffs disabled, or the polygon never touches the
+    // shore band: the zone dimension is irrelevant out here.
+    let Some((zone_low, zone_high)) = zone_range else {
+        terrain_emit_mesh_polygon(
+            c,
+            points,
+            level,
+            leaf_index,
+            vertex_ids,
+            vertex_coords,
+            vertex_heights,
+            triangle_indices,
+            triangle_levels,
+            triangle_wall_flags,
+            triangle_leaf_indices,
+            plateau_flag,
+        );
+        return;
+    };
+    terrain_emit_waters_edge_zone_polygon(
+        c,
+        points,
+        zone_low,
+        zone_high,
+        0,
+        level,
+        leaf_index,
+        plateau_flag,
+        vertex_ids,
+        vertex_coords,
+        vertex_heights,
+        triangle_indices,
+        triangle_levels,
+        triangle_wall_flags,
+        triangle_leaf_indices,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
