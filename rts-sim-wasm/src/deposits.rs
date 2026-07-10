@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
 pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
-pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 28;
+pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 27;
 pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 5;
 pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
@@ -65,7 +65,6 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     ridge_half_width_fraction: f64,
     waters_edge_beach_slope_degrees: f64,
     waters_edge_cliff_height: f64,
-    shoreline_slice_count: f64,
     shoreline_transition_fraction: f64,
     shoreline_beach_band_height: f64,
 }
@@ -103,9 +102,8 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         plateau_wall_slope_degrees: values[22],
         waters_edge_beach_slope_degrees: values[23],
         waters_edge_cliff_height: values[24],
-        shoreline_slice_count: values[25],
-        shoreline_transition_fraction: values[26],
-        shoreline_beach_band_height: values[27],
+        shoreline_transition_fraction: values[25],
+        shoreline_beach_band_height: values[26],
     })
 }
 
@@ -569,29 +567,32 @@ pub(crate) fn terrain_waters_edge_band_extent(cfg: &MetalDepositTerrainConfigRus
     beach_half.max(cliff_half) + plateau_slack
 }
 
-/// Cliffness in [0, 1] for the angular shoreline slice containing
-/// `angle`: even slices are beaches (0), odd slices are cliffs (1),
-/// with a smootherstep blend across the leading `transition_fraction`
-/// of each slice so adjacent slice shapes join continuously.
+/// Cliffness in [0, 1] for the shoreline at `angle`. The pattern is
+/// team-periodic so every player slice gets an IDENTICAL shoreline:
+/// each player's slice (2π / teamCount, anchored like ridges and
+/// deposit rings at METAL_DEPOSIT_FIRST_PLAYER_ANGLE) is split in
+/// half — the beach half centered on the player's spoke, the cliff
+/// half centered on the divider ridge between players — with a
+/// smootherstep blend across the leading `transition_fraction` of
+/// each half so the shapes join continuously.
 pub(crate) fn terrain_waters_edge_slice_cliffness(
     angle: f64,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
-    let n = cfg.shoreline_slice_count.max(1.0).floor();
-    let phase = (angle + std::f64::consts::PI) / std::f64::consts::TAU * n;
+    let teams = (cfg.team_count.max(1)) as f64;
+    let cycle = std::f64::consts::TAU / teams;
+    // +0.25 rotates the half boundaries a quarter slice so the beach
+    // half straddles the player spoke and the cliff half the divider.
+    let rel = (angle - METAL_DEPOSIT_FIRST_PLAYER_ANGLE) / cycle + 0.25;
+    let phase = (rel - rel.floor()) * 2.0;
     let k = phase.floor();
     let u = phase - k;
-    let slice_count = n as i64;
-    let parity = |slice: i64| -> f64 {
-        let wrapped = ((slice % slice_count) + slice_count) % slice_count;
-        (wrapped % 2) as f64
-    };
-    let current = parity(k as i64);
+    let current = k; // half 0 = beach (0), half 1 = cliff (1)
     let transition = terrain_clamp01(cfg.shoreline_transition_fraction);
     if transition <= 0.0 || u >= transition {
         return current;
     }
-    let previous = parity(k as i64 - 1);
+    let previous = 1.0 - current;
     previous + (current - previous) * terrain_smootherstep(u / transition)
 }
 

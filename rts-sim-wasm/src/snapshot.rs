@@ -8079,7 +8079,6 @@ mod sim_kernel_tests {
             89.0, // plateau_wall_slope_degrees
             0.0,  // waters_edge_beach_slope_degrees (shoreline pass off)
             0.0,  // waters_edge_cliff_height (shoreline pass off)
-            6.0,  // shoreline_slice_count
             0.25, // shoreline_transition_fraction
             0.0,  // shoreline_beach_band_height
         ];
@@ -8203,7 +8202,6 @@ mod sim_kernel_tests {
                 85.0, // plateau_wall_slope_degrees (shared by waterfront walls)
                 0.0,  // waters_edge_beach_slope_degrees (all-cliff shoreline)
                 cliff_height,
-                6.0,  // shoreline_slice_count
                 0.25, // shoreline_transition_fraction
                 0.0,  // shoreline_beach_band_height
             ];

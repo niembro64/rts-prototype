@@ -287,20 +287,32 @@ function watersEdgeBandExtent(): number {
   return Math.max(beachHalf, cliffHalf) + plateauSlack;
 }
 
-/** Cliffness in [0, 1] for the angular shoreline slice containing
- *  `angle`: even slices are beaches (0), odd slices are cliffs (1),
- *  with a smootherstep blend across the leading transition fraction
- *  of each slice so adjacent slice shapes join continuously. */
+/** First player spoke angle — mirrors `getPlayerBaseAngle(0, n)` in
+ *  playerLayout.ts and METAL_DEPOSIT_FIRST_PLAYER_ANGLE in the Rust
+ *  sim, so the shoreline halves anchor to the same slices as ridges
+ *  and deposit rings. */
+const WATERS_EDGE_FIRST_PLAYER_ANGLE = -Math.PI / 2 + Math.PI / 4;
+
+/** Cliffness in [0, 1] for the shoreline at `angle`. The pattern is
+ *  team-periodic so every player slice gets an IDENTICAL shoreline:
+ *  each player's slice is split in half — the beach half centered on
+ *  the player's spoke, the cliff half centered on the divider ridge
+ *  between players — with a smootherstep blend across the leading
+ *  transition fraction of each half. Mirrors the Rust
+ *  `terrain_waters_edge_slice_cliffness`. */
 function watersEdgeSliceCliffness(angle: number): number {
-  const n = Math.floor(Math.max(1, TERRAIN_SHORELINE_CONFIG.sliceCount));
-  const phase = ((angle + Math.PI) / (2 * Math.PI)) * n;
+  const teams = Math.max(1, getTerrainTeamCount());
+  const cycle = (2 * Math.PI) / teams;
+  // +0.25 rotates the half boundaries a quarter slice so the beach
+  // half straddles the player spoke and the cliff half the divider.
+  const rel = (angle - WATERS_EDGE_FIRST_PLAYER_ANGLE) / cycle + 0.25;
+  const phase = (rel - Math.floor(rel)) * 2;
   const k = Math.floor(phase);
   const u = phase - k;
-  const parity = (slice: number): number => (((slice % n) + n) % n) % 2;
-  const current = parity(k);
+  const current = k; // half 0 = beach (0), half 1 = cliff (1)
   const transition = clamp01(TERRAIN_SHORELINE_CONFIG.transitionFraction);
   if (transition <= 0 || u >= transition) return current;
-  const previous = parity(k - 1);
+  const previous = 1 - current;
   return previous + (current - previous) * smootherstep(u / transition);
 }
 
