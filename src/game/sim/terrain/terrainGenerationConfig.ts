@@ -21,7 +21,7 @@ export const TERRAIN_GENERATION_EXTENT_FRACTION = 0.85;
 
 /** Length of the packed generation-config slice consumed by Rust
  *  (`metal_deposit_terrain_config_from_slice`). */
-const TERRAIN_GENERATION_CONFIG_LENGTH = 26;
+const TERRAIN_GENERATION_CONFIG_LENGTH = 27;
 
 /** Stride of a packed deposit flat-zone row: x, y, radius, height, blendRadius.
  *  Matches `METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE` in the Rust sim. */
@@ -60,6 +60,7 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   rows[23] = runtime.watersEdgeBeachSlopeDegrees;
   rows[24] = runtime.watersEdgeCliffHeight;
   rows[25] = TERRAIN_SHORELINE_CONFIG.beachBandHeight;
+  rows[26] = TERRAIN_SHORELINE_CONFIG.cliffFadeRadius;
   return rows;
 }
 

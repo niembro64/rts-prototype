@@ -32,7 +32,8 @@
       "buildableShelfHeightTolerance": 20
     },
     "shoreline": {
-      "beachBandHeight": 120
+      "beachBandHeight": 120,
+      "cliffFadeRadius": 300
     }
   },
   "mesh": {

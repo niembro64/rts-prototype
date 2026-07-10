@@ -316,9 +316,14 @@ export const TERRAIN_RIDGE_CONFIG = {
  *  divider ridge) so every player gets an identical shoreline, joined
  *  by wall-steep end caps derived from the PLATEAU WALL slope.
  *  `beachBandHeight` is the total vertical extent (world units) of the
- *  beach gradient-compression band centered on the waterline. The live
- *  BEACH slope / CLIFF height come from the battle bars
- *  (`TERRAIN_WATERS_EDGE_*` above). */
+ *  beach gradient-compression band centered on the waterline.
+ *  `cliffFadeRadius` is the horizontal world-unit distance over which
+ *  the cliff snap's raised lip / dredged bed relax back to the natural
+ *  surface away from the water's edge (0 = no fade); the wall REGION
+ *  classification is unaffected, so inland wall loops stay closed in
+ *  WALL TRIS with flattened geometry. The live BEACH slope / CLIFF
+ *  height come from the battle bars (`TERRAIN_WATERS_EDGE_*` above). */
 export const TERRAIN_SHORELINE_CONFIG = {
   beachBandHeight: terrainConfig.generation.shoreline.beachBandHeight,
+  cliffFadeRadius: terrainConfig.generation.shoreline.cliffFadeRadius,
 } as const;

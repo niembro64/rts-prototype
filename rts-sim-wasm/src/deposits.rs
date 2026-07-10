@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
 pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
-pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 26;
+pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 27;
 pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 5;
 pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
@@ -66,6 +66,7 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     waters_edge_beach_slope_degrees: f64,
     waters_edge_cliff_height: f64,
     shoreline_beach_band_height: f64,
+    shoreline_cliff_fade_radius: f64,
 }
 
 pub(crate) fn metal_deposit_terrain_config_from_slice(
@@ -102,6 +103,7 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         waters_edge_beach_slope_degrees: values[23],
         waters_edge_cliff_height: values[24],
         shoreline_beach_band_height: values[25],
+        shoreline_cliff_fade_radius: values[26],
     })
 }
 
@@ -674,8 +676,19 @@ pub(crate) fn terrain_waters_edge_beach_height(
 /// waterline — flat shelves just below and above the water joined by a
 /// wall shaped by the same ramp curve and wall-slope config as plateau
 /// walls. Identity at the band edges.
+///
+/// The snap's amplitude fades with horizontal distance to the water's
+/// edge over `shoreline_cliff_fade_radius`: the raised dry lip and the
+/// dredged bed hug the waterline (the first-order level-set distance
+/// |shaped - WL| / |gradient| follows the water's curves on both
+/// sides) and relax back to the natural surface beyond the radius.
+/// The wall REGION classification is untouched — inland wall loops
+/// stay closed in WALL TRIS, their triangles just carry no height
+/// change, like any other squished wall. Radius <= 0 disables the
+/// fade (legacy infinite shelves).
 pub(crate) fn terrain_waters_edge_cliff_height_at(
     terraced: f64,
+    shaped: f64,
     gradient: f64,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
@@ -695,7 +708,15 @@ pub(crate) fn terrain_waters_edge_cliff_height_at(
         let ramp_span = (1.0 - flat_half * 2.0).max(1e-6);
         terrain_plateau_ramp_curve((t - flat_half) / ramp_span, cfg)
     };
-    TERRAIN_WATER_LEVEL - half + ramp * step
+    let snapped = TERRAIN_WATER_LEVEL - half + ramp * step;
+    let fade_radius = cfg.shoreline_cliff_fade_radius;
+    if fade_radius <= 0.0 {
+        return snapped;
+    }
+    let shore_distance = (shaped - TERRAIN_WATER_LEVEL).abs() / gradient.abs().max(1e-3);
+    let fade_t = (shore_distance / fade_radius).min(1.0);
+    let weight = 1.0 - terrain_smootherstep(fade_t);
+    terraced + (snapped - terraced) * weight
 }
 
 /// Waters-edge cliff wall coordinates for region classification: the
@@ -785,7 +806,7 @@ pub(crate) fn terrain_apply_waters_edge(
         terraced
     };
     let cliff = if cliff_enabled && cliffness > 0.0 {
-        terrain_waters_edge_cliff_height_at(terraced, gradient, cfg)
+        terrain_waters_edge_cliff_height_at(terraced, shaped, gradient, cfg)
     } else {
         terraced
     };

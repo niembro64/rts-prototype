@@ -357,8 +357,18 @@ function watersEdgeBeachHeight(
  *  waterline snap onto a single plateau-style terrace step centered
  *  on the waterline — flat shelves just below and above the water
  *  joined by a wall shaped by the same ramp curve and wall-slope
- *  config as plateau walls. Identity at the band edges. */
-function watersEdgeCliffHeightAt(terraced: number, gradient: number): number {
+ *  config as plateau walls. Identity at the band edges.
+ *
+ *  The snap's amplitude fades with horizontal distance to the water's
+ *  edge over `cliffFadeRadius` (first-order level-set distance
+ *  |shaped - WL| / |gradient|, which follows the water's curves on
+ *  both sides); radius <= 0 disables the fade. Mirrors the Rust
+ *  `terrain_waters_edge_cliff_height_at`. */
+function watersEdgeCliffHeightAt(
+  terraced: number,
+  shaped: number,
+  gradient: number,
+): number {
   const step = TERRAIN_WATERS_EDGE_CLIFF_HEIGHT;
   const half = step * 0.5;
   const d = terraced - WATER_LEVEL;
@@ -374,7 +384,14 @@ function watersEdgeCliffHeightAt(terraced: number, gradient: number): number {
     const rampSpan = Math.max(1e-6, 1 - flatHalf * 2);
     ramp = plateauRampCurve((t - flatHalf) / rampSpan);
   }
-  return WATER_LEVEL - half + ramp * step;
+  const snapped = WATER_LEVEL - half + ramp * step;
+  const fadeRadius = TERRAIN_SHORELINE_CONFIG.cliffFadeRadius;
+  if (fadeRadius <= 0) return snapped;
+  const shoreDistance =
+    Math.abs(shaped - WATER_LEVEL) / Math.max(1e-3, Math.abs(gradient));
+  const fadeT = Math.min(1, shoreDistance / fadeRadius);
+  const weight = 1 - smootherstep(fadeT);
+  return terraced + (snapped - terraced) * weight;
 }
 
 function applyWatersEdge(
@@ -396,7 +413,7 @@ function applyWatersEdge(
     ? watersEdgeBeachHeight(terraced, shaped, gradient)
     : terraced;
   const cliff = cliffEnabled && cliffness > 0
-    ? watersEdgeCliffHeightAt(terraced, gradient)
+    ? watersEdgeCliffHeightAt(terraced, shaped, gradient)
     : terraced;
   return beach + (cliff - beach) * cliffness;
 }
