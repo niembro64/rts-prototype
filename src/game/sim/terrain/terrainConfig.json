@@ -1,41 +1,23 @@
 {
-  "$pipeline": [
-    {
-      "step": 1,
-      "title": "NATURAL FIELD",
-      "detail": "Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction). getGeneratedNaturalTerrainHeight / terrain_generated_natural_height."
-    },
-    {
-      "step": 2,
-      "title": "MAP BOUNDARY",
-      "detail": "PERIMETER bar override: from generation.perimeter.innerRadiusFraction the height cosine-blends toward the signed perimeter magnitude, hard at outerRadiusFraction (negative = round island below water, positive = rim wall). Result of steps 1-2 is the 'shaped' surface."
-    },
-    {
-      "step": 3,
-      "title": "GRADIENT ESTIMATE",
-      "detail": "Finite-difference slope magnitude of the shaped surface. Feeds plateau shelf sizing (step 4), waters-edge wall shelf sizing, and the shore-distance estimate |shaped - waterLevel| / gradient that both shoreline fades use (step 6). Computed when plateaus need it or the waters-edge pass is enabled."
-    },
-    {
-      "step": 4,
-      "title": "PLATEAU TERRACING",
-      "detail": "D-PLATEAU bar snap: heights terrace onto the TERRAIN_D_TERRAIN lattice; shelf width from generation.plateau.shelfFractionOfStep, walls at the PLATEAU WALL bar slope via the shared ramp curve. Walls are closed-loop WALL TRIS regions."
-    },
-    {
-      "step": 5,
-      "title": "METAL DEPOSIT PADS",
-      "detail": "Per-deposit circular flat pads (flatPadCells, null = auto-sized to the resource footprint) at their resolved heights, raised-cosine blending back to the terraced surface over each ring's terrainBlendRadius. Pads override plateaus inside their radius."
-    },
-    {
-      "step": 6,
-      "title": "WATERS-EDGE SHORELINE",
-      "detail": "Team-periodic beach/cliff halves per player slice (beach centered on the player spoke at the BEACH SLOPE bar, 0 = flat shelf at water level; cliff centered on the divider at the W-CLIFF bar height) joined by wall-steep end caps from the PLATEAU WALL slope. Both operators apply fully at the waterline and raised-cosine fade to no effect over generation.shoreline.beachFadeRadius / cliffFadeRadius of horizontal shore distance, following the water's curves on both sides. Runs AFTER the deposit pads, so the shoreline wins at the water and inland pads keep their flat tops. Cliff wall/cap regions are closed-loop WALL TRIS; far from water they are flattened, not removed."
-    },
-    {
-      "step": 7,
-      "title": "FLOOR CLAMP",
-      "detail": "max(world.floorY, height) — nothing generates below the world floor. The water plane sits at floorY * (1 - water.levelFraction)."
-    }
+  "pipeline": [
+    "naturalField",
+    "mapBoundary",
+    "gradientEstimate",
+    "plateauTerracing",
+    "metalDepositPads",
+    "watersEdgeShoreline",
+    "floorClamp"
   ],
+  "$pipelineDocs": {
+    "$comment": "The pipeline array above DRIVES the generation order — rearrange its entries to reorder the stages. plateauTerracing / metalDepositPads / watersEdgeShoreline may be shuffled freely among themselves; naturalField, mapBoundary, gradientEstimate are pinned to the front (they build the shaped surface and its slope) and floorClamp is pinned to the end. Boot fails loudly on any other arrangement.",
+    "naturalField": "Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction). Creates the height field.",
+    "mapBoundary": "PERIMETER bar override: from generation.perimeter.innerRadiusFraction the height cosine-blends toward the signed perimeter magnitude, hard at outerRadiusFraction (negative = round island below water, positive = rim wall). Stages 1-2 form the 'shaped' surface every later stage references.",
+    "gradientEstimate": "Finite-difference slope magnitude of the shaped surface. Feeds plateau shelf sizing, waters-edge wall shelf sizing, and the shore-distance estimate |shaped - waterLevel| / gradient that both shoreline fades use.",
+    "plateauTerracing": "D-PLATEAU bar snap: heights terrace onto the TERRAIN_D_TERRAIN lattice; shelf width from generation.plateau.shelfFractionOfStep, walls at the PLATEAU WALL bar slope via the shared ramp curve. Walls are closed-loop WALL TRIS regions.",
+    "metalDepositPads": "Per-deposit circular flat pads (flatPadCells, null = auto-sized to the resource footprint) at their resolved heights, raised-cosine blending back over each ring's terrainBlendRadius.",
+    "watersEdgeShoreline": "Team-periodic beach/cliff halves per player slice (beach centered on the player spoke at the BEACH SLOPE bar, 0 = flat shelf at water level; cliff centered on the divider at the W-CLIFF bar height) joined by wall-steep end caps from the PLATEAU WALL slope. Both operators apply fully at the waterline and raised-cosine fade to no effect over generation.shoreline.beachFadeRadius / cliffFadeRadius of horizontal shore distance, following the water's curves on both sides. Cliff wall/cap regions are closed-loop WALL TRIS; far from water they are flattened, not removed.",
+    "floorClamp": "max(world.floorY, height) — nothing generates below the world floor. The water plane sits at floorY * (1 - water.levelFraction)."
+  },
   "world": {
     "floorY": -600
   },

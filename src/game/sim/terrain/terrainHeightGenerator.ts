@@ -3,6 +3,7 @@ import {
   TERRAIN_D_TERRAIN,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
   TERRAIN_PERIMETER_CONFIG,
+  TERRAIN_PIPELINE_TRANSFORM_ORDER,
   TERRAIN_PLATEAU_CONFIG,
   TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
   TERRAIN_RIDGE_CONFIG,
@@ -506,21 +507,14 @@ function getGeneratedNaturalTerrainHeight(
 }
 
 /**
- * Analytical terrain height at (x, y). The authoritative stage order
- * lives in terrainConfig.json `$pipeline` — keep the two in sync:
- *   1. Natural field (ripple + divider ridges)
- *   2. Map boundary (perimeter ring override)
- *   3. Gradient estimate of the shaped field
- *   4. Plateau terracing (D-PLATEAU snap)
- *   5. Metal deposit pads (flat-zone override + blend rings)
- *   6. Waters-edge shoreline (beach/cliff halves, caps, cosine fades)
- *   7. Floor clamp
- *
- * Because the deposit blend ring is applied AFTER plateau snapping, a
- * metal extractor placed across a cliff smooths that cliff into a
- * ramp; because the waters-edge pass is applied AFTER the deposit
- * pads, the shoreline profile wins at the water and pads inland keep
- * their authored flat tops.
+ * Analytical terrain height at (x, y). The stage order is AUTHORED in
+ * terrainConfig.json `pipeline` (see `$pipelineDocs` there): the
+ * natural field, map boundary, and gradient estimate build the shaped
+ * surface, then the three transform stages (plateau terracing, metal
+ * deposit pads, waters-edge shoreline) run in whatever order the
+ * config lists them, and the floor clamp terminates. Rearranging the
+ * config array reorders the transforms here AND in the Rust mesh
+ * generator via the packed config slice — no code changes needed.
  *
  * For runtime hot paths (per-pixel minimap, per-tile pathfinding,
  * per-frame visual normals) use `getTerrainMeshHeight` /
@@ -591,19 +585,29 @@ function getTerrainHeightWithMetrics(
         TERRAIN_SHORELINE_CONFIG.beachFadeRadius) ||
       (cliffEnabled &&
         Math.abs(shaped - WATER_LEVEL) < watersEdgeBandExtent()));
-  const terraced = applyTerrainPlateaus(shaped, gradient);
-  let padded = terraced;
-  if (includeDeposits) {
-    const override = depositOverride(x, y);
-    padded = override.height * (1 - override.weight) + terraced * override.weight;
+  // The three transform stages run in the order authored in
+  // terrainConfig.json `pipeline`: later stages shape the output of
+  // earlier ones, so e.g. waters-edge after deposit pads means the
+  // shoreline wins at the water while inland pads keep their flat tops.
+  let height = shaped;
+  for (const step of TERRAIN_PIPELINE_TRANSFORM_ORDER) {
+    if (step === 'plateauTerracing') {
+      height = applyTerrainPlateaus(height, gradient);
+    } else if (step === 'metalDepositPads') {
+      if (includeDeposits) {
+        const override = depositOverride(x, y);
+        height = override.height * (1 - override.weight) + height * override.weight;
+      }
+    } else if (watersEdgeActive) {
+      height = applyWatersEdge(
+        height,
+        shaped,
+        gradient,
+        ovalSample.angle,
+        ovalSample.distance,
+      );
+    }
   }
-  // Waters-edge runs AFTER the deposit pads: the shoreline shaping
-  // wins at the water and fades out over its radii, so pads near the
-  // waterline are carried onto the beach/cliff profile while pads
-  // farther inland keep their authored flat tops untouched.
-  const shored = watersEdgeActive
-    ? applyWatersEdge(padded, shaped, gradient, ovalSample.angle, ovalSample.distance)
-    : padded;
 
-  return Math.max(TILE_FLOOR_Y, shored);
+  return Math.max(TILE_FLOOR_Y, height);
 }
