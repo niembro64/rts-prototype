@@ -1086,7 +1086,9 @@ export function getWaterBoundaryMode(): WaterBoundaryMode {
 }
 
 export function setWaterBoundaryMode(mode: WaterBoundaryMode): void {
-  currentWaterBoundaryMode = isWaterBoundaryMode(mode) ? mode : 'infinity';
+  currentWaterBoundaryMode = isWaterBoundaryMode(mode)
+    ? mode
+    : getClientConfig().waterBoundaryMode.default;
   persist(activeStorageKeys().waterBoundaryMode, currentWaterBoundaryMode);
 }
 

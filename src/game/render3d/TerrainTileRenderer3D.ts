@@ -1567,6 +1567,15 @@ export class TerrainTileRenderer3D {
     return Math.max(boundaryFade, edgeFade);
   }
 
+  private getTerrainHorizonFadeForWaterBoundaryMode(
+    x: number,
+    z: number,
+    waterBoundaryMode: WaterBoundaryMode,
+  ): number {
+    if (waterBoundaryMode === 'floating-square') return 0;
+    return this.getTerrainHorizonFade(x, z);
+  }
+
   private shouldRebuildTerrainGeometry(nextKey: string, immediate: boolean): boolean {
     if (this.terrainGeometryKey === '') return true;
     if (nextKey === this.terrainGeometryKey) {
@@ -1883,7 +1892,13 @@ export class TerrainTileRenderer3D {
         terrainNormals.push(normal.nx, normal.nz, normal.ny);
         terrainSourceVertices.push(i);
         terrainVertexWallClasses.push(wallClass !== 0 ? 1 : 0);
-        terrainHorizonFades.push(this.getTerrainHorizonFade(wx, wz));
+        terrainHorizonFades.push(
+          this.getTerrainHorizonFadeForWaterBoundaryMode(
+            wx,
+            wz,
+            waterBoundaryMode,
+          ),
+        );
         const vertexSlope = 1 - Math.min(1, Math.abs(normal.nz));
         terrainNeighborhoodSlopes.push(
           wallBoundaryVertex
@@ -2013,7 +2028,13 @@ export class TerrainTileRenderer3D {
           // Map-boundary side walls are vertical cliffs — neighborhood slope
           // is 1.0 so the grass mask fully suppresses any green tint here.
           terrainNeighborhoodSlopes.push(1);
-          terrainHorizonFades.push(this.getTerrainHorizonFade(x, z));
+          terrainHorizonFades.push(
+            this.getTerrainHorizonFadeForWaterBoundaryMode(
+              x,
+              z,
+              waterBoundaryMode,
+            ),
+          );
           return idx;
         };
         const boundaryEps = 1e-4;

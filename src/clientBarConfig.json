@@ -137,8 +137,8 @@
     ]
   },
   "waterBoundaryMode": {
-    "demoDefault": "infinity",
-    "realDefault": "infinity",
+    "demoDefault": "floating-square",
+    "realDefault": "floating-square",
     "options": [
       { "value": "infinity", "label": "INF" },
       { "value": "floating-square", "label": "SQUARE" },
