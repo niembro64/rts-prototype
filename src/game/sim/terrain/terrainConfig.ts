@@ -335,7 +335,9 @@ const TERRAIN_PIPELINE_TRANSFORM_STEPS: readonly TerrainPipelineTransformStep[] 
 ];
 
 function readTerrainPipelineTransformOrder(): readonly TerrainPipelineTransformStep[] {
-  const pipeline: readonly string[] = terrainConfig.pipeline;
+  const pipeline: readonly string[] = terrainConfig.pipeline.map(
+    (entry) => entry.step,
+  );
   const expectedLength =
     TERRAIN_PIPELINE_FIXED_PREFIX.length + TERRAIN_PIPELINE_TRANSFORM_STEPS.length + 1;
   if (!Array.isArray(pipeline) || pipeline.length !== expectedLength) {
