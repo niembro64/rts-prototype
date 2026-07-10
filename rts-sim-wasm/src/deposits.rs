@@ -476,10 +476,8 @@ pub(crate) fn terrain_generated_natural_height(
 /// falloff over blendRadius outside) — so a group's pad union is fully
 /// overridden by one smoothed field with a single outer skirt.
 ///
-/// MIRROR: depositOverride in src/game/sim/terrain/terrainFlatZones.ts
-/// implements the same math over TerrainFlatZone objects. Entry order
-/// matters for bit-identical float sums: ungrouped blend entries in
-/// zone-row order, then one entry per group in first-seen row order.
+/// This is the ONLY implementation of the flat-pad blend — TypeScript
+/// samples it through the batch WASM exports rather than mirroring it.
 pub(crate) fn metal_deposit_override_from_flat_zone_rows(
     x: f64,
     y: f64,
@@ -644,8 +642,8 @@ pub(crate) fn metal_deposit_override_from_flat_zone_rows(
 //  ramp curve and wall-slope shaping so shoreline cliffs look like
 //  every other cliff on the map). Both operators are identity at
 //  their band edges, so the pass is continuous with the rest of the
-//  heightfield. Mirrored by applyWatersEdge in
-//  terrainHeightGenerator.ts.
+//  heightfield. This is the only implementation — TypeScript samples
+//  the pipeline through the batch WASM exports.
 // ─────────────────────────────────────────────────────────────────
 
 /// Beach slope 0 is a VALID beach — a perfectly flat shelf at the
@@ -1334,6 +1332,46 @@ pub fn metal_deposit_resolve_terrain_heights(
         } else {
             return 0;
         };
+    }
+    count as u32
+}
+
+/// Map-boundary (PERIMETER ring) fade weight at packed (x, y) pairs:
+/// 0 inside the inner radius, raised-cosine ramp across the band, 1
+/// at/beyond the outer radius. Thin batch export so TypeScript (the
+/// terrain renderer's edge shading) keeps zero mirrored terrain math.
+#[wasm_bindgen]
+pub fn terrain_sample_map_boundary_fades(
+    map_width: f64,
+    map_height: f64,
+    extent_fraction: f64,
+    terrain_config: &[f64],
+    points_xy: &[f64],
+    out_fades: &mut [f64],
+) -> u32 {
+    if !map_width.is_finite()
+        || !map_height.is_finite()
+        || !extent_fraction.is_finite()
+        || points_xy.len() % 2 != 0
+    {
+        return 0;
+    }
+    let Some(cfg) = metal_deposit_terrain_config_from_slice(terrain_config) else {
+        return 0;
+    };
+    let count = points_xy.len() / 2;
+    if out_fades.len() < count {
+        return 0;
+    }
+    let metrics = terrain_make_oval_metrics(map_width, map_height, extent_fraction);
+    for i in 0..count {
+        let x = points_xy[i * 2];
+        let y = points_xy[i * 2 + 1];
+        if !x.is_finite() || !y.is_finite() {
+            return 0;
+        }
+        let oval = terrain_sample_map_oval_at(&metrics, x, y);
+        out_fades[i] = terrain_map_boundary_fade_for_sample(&metrics, &oval, &cfg);
     }
     count as u32
 }

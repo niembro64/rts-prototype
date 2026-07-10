@@ -1,4 +1,35 @@
 {
+  "comment": [
+    "Metal deposit layout blueprint. Deposits are placed on concentric rings;",
+    "each ring gets countPerPlayer deposits per player slice, phase-shifted by",
+    "sliceOffset (fraction of one slice width). Per ring:",
+    "  dTerrainLevels — pad height in D-DEPOSIT-bar steps (METAL_DEPOSIT_STEP);",
+    "    null = ride the natural terrain height under the deposit.",
+    "  flatPadCells — circular flattened pad diameter in build cells; null =",
+    "    auto-size to the smallest pad covering the resource footprint.",
+    "  terrainBlendRadius — world units outside the pad where terrain eases",
+    "    back to natural with a raised-cosine skirt.",
+    "  depositCluster — how each ring origin expands into deposits. Two types:",
+    "    type 'group-ring' (default when omitted): count deposits on a circle",
+    "      of radius around the origin; angleOffset is radians relative to the",
+    "      origin's radial angle from map center. Each deposit is a standalone",
+    "      pad — overlapping pads at different heights cliff (closest wins).",
+    "    type 'group-manual': one deposit per authored spot, and the group is",
+    "      ONE TERRAIN UNIT. Spots are world-unit offsets in the origin's",
+    "      radial frame (+x away from map center, +y perpendicular), so every",
+    "      player's slice keeps the same local shape. Each spot may author its",
+    "      own dTerrainLevels (omit = inherit ring, null = natural height).",
+    "      Terrain: every deposit's resource footprint stays perfectly flat at",
+    "      its own height; the union of the group's flat pads is fully",
+    "      overridden by one smoothed field that cosine-interpolates between",
+    "      the plateaus; the whole field eases back to natural terrain over",
+    "      terrainBlendRadius. Use this when large pads must sit near each",
+    "      other at different heights without cliffing.",
+    "      Example: \"depositCluster\": { \"type\": \"group-manual\", \"spots\":",
+    "        [ { \"x\": 0, \"y\": -230, \"dTerrainLevels\": 0 },",
+    "          { \"x\": 200, \"y\": 115, \"dTerrainLevels\": 2 },",
+    "          { \"x\": -200, \"y\": 115 } ] }"
+  ],
   "edgeMarginPx": 200,
   "coinHeight": 10,
   "resourceCells": 5,
@@ -14,6 +45,7 @@
       "terrainBlendRadius": 600,
       "demoAutoExtractor": false,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -28,6 +60,7 @@
       "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -42,6 +75,7 @@
       "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -56,6 +90,7 @@
       "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -70,6 +105,7 @@
       "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -84,6 +120,7 @@
       "flatPadCells": 40,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 3,
         "radius": 180,
         "angleOffset": 1
@@ -98,6 +135,7 @@
       "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -112,6 +150,7 @@
       "flatPadCells": 20,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -126,6 +165,7 @@
       "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -140,6 +180,7 @@
       "flatPadCells": 20,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 1,
         "radius": 0,
         "angleOffset": 0
@@ -154,6 +195,7 @@
       "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
+        "type": "group-ring",
         "count": 3,
         "radius": 180,
         "angleOffset": 1

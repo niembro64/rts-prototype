@@ -149,6 +149,7 @@ import __wbg_init, {
   metal_deposit_resolve_terrain_heights,
   metal_deposit_count_resource_candidates,
   metal_deposit_grow_resource_cells,
+  terrain_sample_map_boundary_fades,
   terrain_install_mesh,
   terrain_clear,
   terrain_is_installed,
@@ -1617,6 +1618,17 @@ export interface SimWasm {
     explicitFlatZones: Float64Array,
     heightInputs: Float64Array,
     outHeights: Float64Array,
+  ) => number;
+  /** Map-boundary (PERIMETER ring) fade weight at packed (x, y) pairs —
+   *  the renderer's edge shading samples Rust instead of mirroring the
+   *  fade math. */
+  readonly terrainSampleMapBoundaryFades: (
+    mapWidth: number,
+    mapHeight: number,
+    extentFraction: number,
+    terrainConfig: Float64Array,
+    pointsXy: Float64Array,
+    outFades: Float64Array,
   ) => number;
   readonly metalDepositCountResourceCandidates: (radiusCells: number) => number;
   readonly metalDepositGrowResourceCells: (
@@ -4121,6 +4133,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         metalDepositResolveTerrainHeights: metal_deposit_resolve_terrain_heights,
         metalDepositCountResourceCandidates: metal_deposit_count_resource_candidates,
         metalDepositGrowResourceCells: metal_deposit_grow_resource_cells,
+        terrainSampleMapBoundaryFades: terrain_sample_map_boundary_fades,
         terrainInstallMesh: terrain_install_mesh,
         terrainClear: terrain_clear,
         terrainIsInstalled: terrain_is_installed,

@@ -23,7 +23,7 @@ import {
   getTerrainVersion,
   setAuthoritativeTerrainTileMap,
 } from './terrainState';
-import { getTerrainHeight } from './terrainHeightGenerator';
+import { sampleGeneratedTerrainHeights } from './terrainHeightGenerator';
 import { getMetalDepositFlatZones } from './terrainFlatZones';
 import {
   TERRAIN_GENERATION_EXTENT_FRACTION,
@@ -410,41 +410,41 @@ export function getTerrainMeshSample(
   const z1 = z0 + subSize;
   const u = Math.max(0, Math.min(1, (px - x0) / subSize));
   const v = Math.max(0, Math.min(1, (pz - z0) / subSize));
-  const h00 = getTerrainHeight(
-    Math.min(mapWidth, x0),
-    Math.min(mapHeight, z0),
+  // One batched WASM call for all four quad corners — the analytic
+  // pipeline lives in Rust; TypeScript only packs the sample points.
+  const cx0 = Math.min(mapWidth, x0);
+  const cx1 = Math.min(mapWidth, x1);
+  const cz0 = Math.min(mapHeight, z0);
+  const cz1 = Math.min(mapHeight, z1);
+  _fallbackQuadPoints[0] = cx0;
+  _fallbackQuadPoints[1] = cz0;
+  _fallbackQuadPoints[2] = cx1;
+  _fallbackQuadPoints[3] = cz0;
+  _fallbackQuadPoints[4] = cx1;
+  _fallbackQuadPoints[5] = cz1;
+  _fallbackQuadPoints[6] = cx0;
+  _fallbackQuadPoints[7] = cz1;
+  sampleGeneratedTerrainHeights(
+    _fallbackQuadPoints,
+    4,
     mapWidth,
     mapHeight,
-  );
-  const h10 = getTerrainHeight(
-    Math.min(mapWidth, x1),
-    Math.min(mapHeight, z0),
-    mapWidth,
-    mapHeight,
-  );
-  const h11 = getTerrainHeight(
-    Math.min(mapWidth, x1),
-    Math.min(mapHeight, z1),
-    mapWidth,
-    mapHeight,
-  );
-  const h01 = getTerrainHeight(
-    Math.min(mapWidth, x0),
-    Math.min(mapHeight, z1),
-    mapWidth,
-    mapHeight,
+    _fallbackQuadHeights,
   );
   return {
     u,
     v,
     subSize,
-    h00,
-    h10,
-    h11,
-    h01,
+    h00: _fallbackQuadHeights[0],
+    h10: _fallbackQuadHeights[1],
+    h11: _fallbackQuadHeights[2],
+    h01: _fallbackQuadHeights[3],
     triangle: undefined,
   };
 }
+
+const _fallbackQuadPoints = new Float64Array(8);
+const _fallbackQuadHeights = new Float64Array(4);
 
 function interpolateTerrainMeshQuadHeight(
   u: number,
