@@ -945,6 +945,7 @@ function createSingleCellDeposit(gx: number, gy: number): MetalDeposit {
     id: 1,
     x,
     y,
+    groupId: -1,
     gridX: gx,
     gridY: gy,
     demoAutoExtractor: true,

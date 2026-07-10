@@ -27,7 +27,10 @@ pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 34;
 /// 3 plateauTerracing, 4 metalDepositPads, 5 watersEdgeShoreline,
 /// 6 floorClamp.
 pub(crate) const TERRAIN_PIPELINE_STAGE_COUNT: usize = 7;
-pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 5;
+/// Packed flat-zone row: x, y, radius, height, blendRadius,
+/// plateauRadius, groupId (-1 = ungrouped classic pad). Matches
+/// TERRAIN_FLAT_ZONE_WASM_STRIDE in terrainGenerationConfig.ts.
+pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 7;
 pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
     -std::f64::consts::FRAC_PI_2 + std::f64::consts::FRAC_PI_4;
@@ -460,33 +463,23 @@ pub(crate) fn terrain_generated_natural_height(
     (ripple + ridge) * (1.0 - generation_fade)
 }
 
-pub(crate) fn metal_deposit_flat_zone_blend_weight(
-    x: f64,
-    y: f64,
-    flat_zones: &[f64],
-    base: usize,
-) -> Option<f64> {
-    let zx = flat_zones[base];
-    let zy = flat_zones[base + 1];
-    let radius = flat_zones[base + 2];
-    let blend_radius = flat_zones[base + 4].max(0.0);
-    if blend_radius <= 0.0 {
-        return None;
-    }
-    let dx = x - zx;
-    let dy = y - zy;
-    let d2 = dx * dx + dy * dy;
-    if d2 <= radius * radius {
-        return None;
-    }
-    let d = d2.sqrt();
-    if d >= radius + blend_radius {
-        return None;
-    }
-    let t = (d - radius) / blend_radius;
-    Some((1.0 + (t * std::f64::consts::PI).cos()) * 0.5)
-}
-
+/// Deposit flat-pad override at (x, y): returns the natural-terrain
+/// weight and the pad height to blend in — the caller applies
+/// `height * (1 - weight) + natural * weight`.
+///
+/// Inside any zone's guaranteed-flat radius (full pad for classic
+/// zones, plateau for grouped `group-manual` zones) the closest such
+/// zone dominates entirely. Outside, classic zones contribute
+/// raised-cosine blend entries; each GROUP contributes one synthesized
+/// entry — its plateau-exact interpolated height field, weighted by
+/// the group's pad-union coverage (1 inside any member pad, cosine
+/// falloff over blendRadius outside) — so a group's pad union is fully
+/// overridden by one smoothed field with a single outer skirt.
+///
+/// MIRROR: depositOverride in src/game/sim/terrain/terrainFlatZones.ts
+/// implements the same math over TerrainFlatZone objects. Entry order
+/// matters for bit-identical float sums: ungrouped blend entries in
+/// zone-row order, then one entry per group in first-seen row order.
 pub(crate) fn metal_deposit_override_from_flat_zone_rows(
     x: f64,
     y: f64,
@@ -496,16 +489,21 @@ pub(crate) fn metal_deposit_override_from_flat_zone_rows(
         return (1.0, 0.0);
     }
 
+    let zone_count = flat_zones.len() / METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
     let mut containing_height = 0.0;
     let mut containing_d2 = f64::INFINITY;
-    let zone_count = flat_zones.len() / METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
     for zone_index in 0..zone_count {
         let base = zone_index * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
         let dx = x - flat_zones[base];
         let dy = y - flat_zones[base + 1];
-        let radius = flat_zones[base + 2];
+        let grouped = flat_zones[base + 6] >= 0.0;
+        let flat_radius = if grouped {
+            flat_zones[base + 5]
+        } else {
+            flat_zones[base + 2]
+        };
         let d2 = dx * dx + dy * dy;
-        if d2 <= radius * radius && d2 < containing_d2 {
+        if d2 <= flat_radius * flat_radius && d2 < containing_d2 {
             containing_height = flat_zones[base + 3];
             containing_d2 = d2;
         }
@@ -514,45 +512,116 @@ pub(crate) fn metal_deposit_override_from_flat_zone_rows(
         return (0.0, containing_height);
     }
 
-    let mut prod_all = 1.0;
-    let mut blend_count = 0usize;
+    // Blend entries: (weight, height) — ungrouped zones in row order,
+    // then one synthesized entry per group in first-seen row order.
+    let mut entry_weights: Vec<f64> = Vec::with_capacity(zone_count);
+    let mut entry_heights: Vec<f64> = Vec::with_capacity(zone_count);
+    let mut group_ids: Vec<f64> = Vec::new();
+    let mut group_weight_sums: Vec<f64> = Vec::new();
+    let mut group_weighted_heights: Vec<f64> = Vec::new();
+    let mut group_alphas: Vec<f64> = Vec::new();
     for zone_index in 0..zone_count {
         let base = zone_index * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
-        if let Some(wz) = metal_deposit_flat_zone_blend_weight(x, y, flat_zones, base) {
-            prod_all *= 1.0 - wz;
-            blend_count += 1;
+        let dx = x - flat_zones[base];
+        let dy = y - flat_zones[base + 1];
+        let radius = flat_zones[base + 2];
+        let height = flat_zones[base + 3];
+        let blend_radius = flat_zones[base + 4].max(0.0);
+        let plateau_radius = flat_zones[base + 5];
+        let group_id = flat_zones[base + 6];
+        let d2 = dx * dx + dy * dy;
+        if group_id >= 0.0 {
+            // Group member: accumulate the plateau-exact interpolation
+            // field (weights diverge toward the plateau edge so the
+            // field meets each plateau height exactly) and the
+            // pad-union coverage.
+            let d = d2.sqrt();
+            let mut group_slot = usize::MAX;
+            for g in 0..group_ids.len() {
+                if group_ids[g] == group_id {
+                    group_slot = g;
+                    break;
+                }
+            }
+            if group_slot == usize::MAX {
+                group_slot = group_ids.len();
+                group_ids.push(group_id);
+                group_weight_sums.push(0.0);
+                group_weighted_heights.push(0.0);
+                group_alphas.push(0.0);
+            }
+            let span = (radius - plateau_radius) + blend_radius;
+            if span > 0.0 {
+                let t = (d - plateau_radius) / span;
+                if t < 1.0 {
+                    let tc = if t < 0.0 { 0.0 } else { t };
+                    let c = (1.0 + (tc * std::f64::consts::PI).cos()) * 0.5;
+                    let w = (c * c) / (tc * tc).max(1e-12);
+                    group_weight_sums[group_slot] += w;
+                    group_weighted_heights[group_slot] += w * height;
+                }
+            }
+            let mut alpha = 0.0;
+            if d <= radius {
+                alpha = 1.0;
+            } else if blend_radius > 0.0 && d < radius + blend_radius {
+                let ta = (d - radius) / blend_radius;
+                alpha = (1.0 + (ta * std::f64::consts::PI).cos()) * 0.5;
+            }
+            if alpha > group_alphas[group_slot] {
+                group_alphas[group_slot] = alpha;
+            }
+            continue;
         }
+        if blend_radius <= 0.0 {
+            continue;
+        }
+        if d2 <= radius * radius {
+            continue;
+        }
+        let d = d2.sqrt();
+        if d >= radius + blend_radius {
+            continue;
+        }
+        let t = (d - radius) / blend_radius;
+        entry_weights.push((1.0 + (t * std::f64::consts::PI).cos()) * 0.5);
+        entry_heights.push(height);
     }
-    if blend_count == 0 {
+    for g in 0..group_ids.len() {
+        if group_alphas[g] <= 0.0 || group_weight_sums[g] <= 0.0 {
+            continue;
+        }
+        entry_weights.push(group_alphas[g]);
+        entry_heights.push(group_weighted_heights[g] / group_weight_sums[g]);
+    }
+    let n = entry_weights.len();
+    if n == 0 {
         return (1.0, 0.0);
+    }
+
+    let mut prod_all = 1.0;
+    for i in 0..n {
+        prod_all *= 1.0 - entry_weights[i];
     }
 
     let mut weighted_height_sum = 0.0;
     let mut effective_sum = 0.0;
-    for zone_index in 0..zone_count {
-        let base = zone_index * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
-        let Some(wz) = metal_deposit_flat_zone_blend_weight(x, y, flat_zones, base) else {
-            continue;
-        };
+    for i in 0..n {
+        let wz = entry_weights[i];
         let one_minus = 1.0 - wz;
         let ei = if one_minus > 1e-12 {
             wz * (prod_all / one_minus)
         } else {
             let mut prod_excl = 1.0;
-            for other_index in 0..zone_count {
-                if other_index == zone_index {
+            for j in 0..n {
+                if j == i {
                     continue;
                 }
-                let other_base = other_index * METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE;
-                if let Some(other_wz) =
-                    metal_deposit_flat_zone_blend_weight(x, y, flat_zones, other_base)
-                {
-                    prod_excl *= 1.0 - other_wz;
-                }
+                prod_excl *= 1.0 - entry_weights[j];
             }
             wz * prod_excl
         };
-        weighted_height_sum += ei * flat_zones[base + 3];
+        weighted_height_sum += ei * entry_heights[i];
         effective_sum += ei;
     }
 

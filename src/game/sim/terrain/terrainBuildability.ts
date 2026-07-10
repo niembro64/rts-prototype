@@ -313,7 +313,11 @@ function packTerrainFlatZoneRowsForWasm(): Float64Array {
     const base = i * TERRAIN_FLAT_ZONE_WASM_STRIDE;
     rows[base] = zone.x;
     rows[base + 1] = zone.y;
-    rows[base + 2] = zone.radius;
+    // Buildability's flat guarantee only holds where the terrain truly
+    // equals zone.height: the full pad for classic zones, the plateau
+    // for grouped zones (their pad annulus is a smoothed slope and gets
+    // classified from the real mesh instead).
+    rows[base + 2] = zone.groupId >= 0 ? zone.plateauRadius : zone.radius;
     rows[base + 3] = zone.height;
   }
   return rows;

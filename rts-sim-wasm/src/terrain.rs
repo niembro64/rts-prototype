@@ -3343,7 +3343,8 @@ pub(crate) fn terrain_build_adaptive_mesh_internal(
 ///   triangleWallFlags(T), neighborIndices(3T), neighborLevels(3T), cellOffsets(cellsX*cellsY+1),
 ///   cellIndices(R)]`. On any failure the buffer is `[0.0]`. `terrain_config`
 /// is the 23-value generation slice (see metal_deposit_terrain_config_from_slice);
-/// `flat_zones` is the 5-stride deposit override list; `lod_config` packs the 10
+/// `flat_zones` is the 7-stride deposit override list (x, y, radius, height,
+/// blendRadius, plateauRadius, groupId); `lod_config` packs the 10
 /// triangle/repair tuning values.
 #[allow(clippy::too_many_arguments)]
 #[wasm_bindgen]

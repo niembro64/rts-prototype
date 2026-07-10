@@ -25,9 +25,10 @@ export const TERRAIN_GENERATION_EXTENT_FRACTION = 0.85;
  *  (`metal_deposit_terrain_config_from_slice`). */
 const TERRAIN_GENERATION_CONFIG_LENGTH = 34;
 
-/** Stride of a packed deposit flat-zone row: x, y, radius, height, blendRadius.
+/** Stride of a packed deposit flat-zone row: x, y, radius, height,
+ *  blendRadius, plateauRadius, groupId (-1 = ungrouped classic pad).
  *  Matches `METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE` in the Rust sim. */
-const TERRAIN_FLAT_ZONE_WASM_STRIDE = 5;
+const TERRAIN_FLAT_ZONE_WASM_STRIDE = 7;
 
 /** Pack the live terrain generation config into the 23-value slice the Rust
  *  height sampler reads. Single source of truth for both the adaptive mesh
@@ -71,8 +72,9 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   return rows;
 }
 
-/** Pack flat zones into the 5-stride row layout the Rust deposit-override
- *  sampler reads (x, y, radius, height, blendRadius). */
+/** Pack flat zones into the 7-stride row layout the Rust deposit-override
+ *  sampler reads (x, y, radius, height, blendRadius, plateauRadius,
+ *  groupId). */
 export function packTerrainFlatZoneRowsForWasm(
   zones: readonly TerrainFlatZone[],
 ): Float64Array {
@@ -85,6 +87,8 @@ export function packTerrainFlatZoneRowsForWasm(
     rows[base + 2] = zone.radius;
     rows[base + 3] = zone.height;
     rows[base + 4] = zone.blendRadius;
+    rows[base + 5] = zone.plateauRadius;
+    rows[base + 6] = zone.groupId;
   }
   return rows;
 }
