@@ -1,8 +1,8 @@
 import {
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
   TERRAIN_PERIMETER_CONFIG,
-  TERRAIN_PIPELINE_TRANSFORM_CODES,
-  TERRAIN_PIPELINE_TRANSFORM_ORDER,
+  TERRAIN_PIPELINE,
+  TERRAIN_PIPELINE_STEP_CODES,
   TERRAIN_PLATEAU_CONFIG,
   TERRAIN_RIDGE_CONFIG,
   TERRAIN_RIPPLE_CONFIG,
@@ -23,7 +23,7 @@ export const TERRAIN_GENERATION_EXTENT_FRACTION = 0.85;
 
 /** Length of the packed generation-config slice consumed by Rust
  *  (`metal_deposit_terrain_config_from_slice`). */
-const TERRAIN_GENERATION_CONFIG_LENGTH = 30;
+const TERRAIN_GENERATION_CONFIG_LENGTH = 34;
 
 /** Stride of a packed deposit flat-zone row: x, y, radius, height, blendRadius.
  *  Matches `METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE` in the Rust sim. */
@@ -63,9 +63,11 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   rows[24] = runtime.watersEdgeCliffHeight;
   rows[25] = TERRAIN_SHORELINE_CONFIG.beachFadeRadius;
   rows[26] = TERRAIN_SHORELINE_CONFIG.cliffFadeRadius;
-  rows[27] = TERRAIN_PIPELINE_TRANSFORM_CODES[TERRAIN_PIPELINE_TRANSFORM_ORDER[0]];
-  rows[28] = TERRAIN_PIPELINE_TRANSFORM_CODES[TERRAIN_PIPELINE_TRANSFORM_ORDER[1]];
-  rows[29] = TERRAIN_PIPELINE_TRANSFORM_CODES[TERRAIN_PIPELINE_TRANSFORM_ORDER[2]];
+  for (let i = 0; i < TERRAIN_PIPELINE.length; i++) {
+    const entry = TERRAIN_PIPELINE[i];
+    rows[27 + i] =
+      TERRAIN_PIPELINE_STEP_CODES[entry.step] + (entry.active ? 0 : 8);
+  }
   return rows;
 }
 

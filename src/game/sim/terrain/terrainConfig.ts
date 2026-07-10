@@ -312,77 +312,92 @@ export const TERRAIN_RIDGE_CONFIG = {
   halfWidthFraction: terrainConfig.generation.ridge.halfWidthFraction,
 } as const;
 
-/** The three reorderable height-transform stages of the generation
- *  pipeline. `terrainConfig.json`'s `pipeline` array drives the order:
- *  rearrange its entries to reorder these stages. The other entries
- *  (naturalField, mapBoundary, gradientEstimate front; floorClamp
- *  last) are pinned because they build the shaped surface / its slope
- *  or terminate the pipeline — boot fails loudly if they move. */
-export type TerrainPipelineTransformStep =
+/** The seven terrain-generation pipeline stages. terrainConfig.json's
+ *  `pipeline` array drives execution: entries run strictly in authored
+ *  order, each carrying an `active` flag (inactive stages are skipped
+ *  by the generators AND by wall-region classification). Every stage
+ *  must appear exactly once, in ANY order — the semantics are defined
+ *  for all arrangements:
+ *    - naturalField OVERWRITES the height, discarding earlier stages.
+ *    - gradientEstimate snapshots the surface + slope at its position;
+ *      stages consuming them earlier see zeros (plateau walls go
+ *      near-vertical, the shoreline fades to no effect).
+ *    - floorClamp clamps at its position; a final safety clamp always
+ *      runs at the end of the pipeline regardless. */
+export type TerrainPipelineStep =
+  | 'naturalField'
+  | 'mapBoundary'
+  | 'gradientEstimate'
   | 'plateauTerracing'
   | 'metalDepositPads'
-  | 'watersEdgeShoreline';
+  | 'watersEdgeShoreline'
+  | 'floorClamp';
 
-const TERRAIN_PIPELINE_FIXED_PREFIX = [
+const TERRAIN_PIPELINE_STEPS: readonly TerrainPipelineStep[] = [
   'naturalField',
   'mapBoundary',
   'gradientEstimate',
-] as const;
-const TERRAIN_PIPELINE_TRANSFORM_STEPS: readonly TerrainPipelineTransformStep[] = [
   'plateauTerracing',
   'metalDepositPads',
   'watersEdgeShoreline',
+  'floorClamp',
 ];
 
-function readTerrainPipelineTransformOrder(): readonly TerrainPipelineTransformStep[] {
-  const pipeline: readonly string[] = terrainConfig.pipeline.map(
-    (entry) => entry.step,
-  );
-  const expectedLength =
-    TERRAIN_PIPELINE_FIXED_PREFIX.length + TERRAIN_PIPELINE_TRANSFORM_STEPS.length + 1;
-  if (!Array.isArray(pipeline) || pipeline.length !== expectedLength) {
+export type TerrainPipelineEntry = {
+  readonly step: TerrainPipelineStep;
+  readonly active: boolean;
+};
+
+function readTerrainPipeline(): readonly TerrainPipelineEntry[] {
+  const pipeline: readonly { step: string; active: boolean }[] =
+    terrainConfig.pipeline;
+  if (!Array.isArray(pipeline) || pipeline.length !== TERRAIN_PIPELINE_STEPS.length) {
     throw new Error(
-      `terrainConfig.json pipeline must list exactly ${expectedLength} stages; got ${pipeline?.length}`,
+      `terrainConfig.json pipeline must list exactly ${TERRAIN_PIPELINE_STEPS.length} stages; got ${pipeline?.length}`,
     );
   }
-  TERRAIN_PIPELINE_FIXED_PREFIX.forEach((step, i) => {
-    if (pipeline[i] !== step) {
+  for (const step of TERRAIN_PIPELINE_STEPS) {
+    if (pipeline.filter((entry) => entry.step === step).length !== 1) {
       throw new Error(
-        `terrainConfig.json pipeline[${i}] must be "${step}" (pinned — it builds the shaped surface); got "${pipeline[i]}"`,
-      );
-    }
-  });
-  if (pipeline[expectedLength - 1] !== 'floorClamp') {
-    throw new Error(
-      `terrainConfig.json pipeline must end with "floorClamp"; got "${pipeline[expectedLength - 1]}"`,
-    );
-  }
-  const middle = pipeline.slice(
-    TERRAIN_PIPELINE_FIXED_PREFIX.length,
-    expectedLength - 1,
-  ) as TerrainPipelineTransformStep[];
-  for (const step of TERRAIN_PIPELINE_TRANSFORM_STEPS) {
-    if (middle.filter((entry) => entry === step).length !== 1) {
-      throw new Error(
-        `terrainConfig.json pipeline must contain "${step}" exactly once between the pinned stages; got [${middle.join(', ')}]`,
+        `terrainConfig.json pipeline must contain "${step}" exactly once; got [${pipeline
+          .map((entry) => entry.step)
+          .join(', ')}]`,
       );
     }
   }
-  return middle;
+  for (const entry of pipeline) {
+    if (typeof entry.active !== 'boolean') {
+      throw new Error(
+        `terrainConfig.json pipeline entry "${entry.step}" must have a boolean active flag`,
+      );
+    }
+  }
+  return pipeline as readonly TerrainPipelineEntry[];
 }
 
-/** Authored order of the reorderable transform stages, validated at boot. */
-export const TERRAIN_PIPELINE_TRANSFORM_ORDER = readTerrainPipelineTransformOrder();
+/** Authored pipeline (order + active flags), validated at boot. */
+export const TERRAIN_PIPELINE = readTerrainPipeline();
 
-/** Wire codes for the transform order (packed into the wasm config
- *  slice so Rust executes the identical order). */
-export const TERRAIN_PIPELINE_TRANSFORM_CODES: Readonly<
-  Record<TerrainPipelineTransformStep, number>
+/** Wire codes for the pipeline stages (packed into the wasm config
+ *  slice — `code | 8` marks an inactive stage — so Rust executes the
+ *  identical order). */
+export const TERRAIN_PIPELINE_STEP_CODES: Readonly<
+  Record<TerrainPipelineStep, number>
 > = {
-  plateauTerracing: 0,
-  metalDepositPads: 1,
-  watersEdgeShoreline: 2,
+  naturalField: 0,
+  mapBoundary: 1,
+  gradientEstimate: 2,
+  plateauTerracing: 3,
+  metalDepositPads: 4,
+  watersEdgeShoreline: 5,
+  floorClamp: 6,
 };
+
+/** True when `step` is present and active in the authored pipeline. */
+export function isTerrainPipelineStepActive(step: TerrainPipelineStep): boolean {
+  const entry = TERRAIN_PIPELINE.find((candidate) => candidate.step === step);
+  return entry !== undefined && entry.active;
+}
 
 /** Static shoreline (waters-edge) shape knobs. The shoreline pattern is
  *  team-periodic — each player's slice is split into a beach half

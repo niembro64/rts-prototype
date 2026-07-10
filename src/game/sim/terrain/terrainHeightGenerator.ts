@@ -1,9 +1,10 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import {
+  isTerrainPipelineStepActive,
   TERRAIN_D_TERRAIN,
   TERRAIN_GENERATION_EDGE_TRANSITION_WIDTH_FRACTION,
   TERRAIN_PERIMETER_CONFIG,
-  TERRAIN_PIPELINE_TRANSFORM_ORDER,
+  TERRAIN_PIPELINE,
   TERRAIN_PLATEAU_CONFIG,
   TERRAIN_PLATEAU_WALL_SLOPE_DEGREES,
   TERRAIN_RIDGE_CONFIG,
@@ -186,77 +187,6 @@ function applyTerrainMapBoundaryForSample(
   return height + (perimeter - height) * w;
 }
 
-function getShapedTerrainHeightBeforePlateaus(
-  x: number,
-  y: number,
-  mapWidth: number,
-  mapHeight: number,
-  ovalMetrics: MapOvalMetrics = makeMapOvalMetrics(mapWidth, mapHeight),
-): number {
-  const ovalSample = sampleMapOvalAt(ovalMetrics, x, y);
-  const natural = getGeneratedNaturalTerrainHeight(
-    x,
-    y,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-    ovalSample,
-  );
-  return applyTerrainMapBoundaryForSample(natural, ovalMetrics, ovalSample);
-}
-
-/** Unguarded gradient estimate of the shaped (pre-plateau) surface.
- *  The plateau path keeps its historical short-circuit in
- *  `getTerrainHeightWithMetrics`; the waters-edge pass needs a real
- *  gradient even when terracing is disabled. Mirrors
- *  `terrain_estimate_shaped_gradient` in the Rust sim. */
-function estimateShapedTerrainGradient(
-  x: number,
-  y: number,
-  mapWidth: number,
-  mapHeight: number,
-  ovalMetrics: MapOvalMetrics,
-): number {
-  const step = TERRAIN_PLATEAU_GRADIENT_SAMPLE_STEP;
-  const x0 = Math.max(0, x - step);
-  const x1 = Math.min(mapWidth, x + step);
-  const y0 = Math.max(0, y - step);
-  const y1 = Math.min(mapHeight, y + step);
-  const dxSpan = Math.max(1e-6, x1 - x0);
-  const dySpan = Math.max(1e-6, y1 - y0);
-  const hX0 = getShapedTerrainHeightBeforePlateaus(
-    x0,
-    y,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
-  const hX1 = getShapedTerrainHeightBeforePlateaus(
-    x1,
-    y,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
-  const hY0 = getShapedTerrainHeightBeforePlateaus(
-    x,
-    y0,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
-  const hY1 = getShapedTerrainHeightBeforePlateaus(
-    x,
-    y1,
-    mapWidth,
-    mapHeight,
-    ovalMetrics,
-  );
-  const gx = (hX1 - hX0) / dxSpan;
-  const gy = (hY1 - hY0) / dySpan;
-  return Math.sqrt(gx * gx + gy * gy);
-}
-
 // ─────────────────────────────────────────────────────────────────
 //  Waters-edge shoreline pass (beach / cliff slices). Mirrors the
 //  Rust implementation in deposits.rs (`terrain_apply_waters_edge`)
@@ -269,7 +199,8 @@ function estimateShapedTerrainGradient(
 function watersEdgeBeachEnabled(): boolean {
   return (
     TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES >= 0 &&
-    TERRAIN_SHORELINE_CONFIG.beachFadeRadius > 0
+    TERRAIN_SHORELINE_CONFIG.beachFadeRadius > 0 &&
+    isTerrainPipelineStepActive('watersEdgeShoreline')
   );
 }
 
@@ -294,7 +225,8 @@ function watersEdgeFadeWeight(shoreDistance: number, radius: number): number {
 function watersEdgeCliffEnabled(): boolean {
   return (
     TERRAIN_WATERS_EDGE_CLIFF_HEIGHT > 0 &&
-    TERRAIN_SHORELINE_CONFIG.cliffFadeRadius > 0
+    TERRAIN_SHORELINE_CONFIG.cliffFadeRadius > 0 &&
+    isTerrainPipelineStepActive('watersEdgeShoreline')
   );
 }
 
@@ -546,6 +478,153 @@ export function getTerrainHeight(
 }
 
 
+/** True when any ACTIVE stage after `gradientStageIndex` in the
+ *  authored order consumes the gradient estimate. */
+function terrainPipelineGradientNeeded(gradientStageIndex: number): boolean {
+  for (let index = gradientStageIndex + 1; index < TERRAIN_PIPELINE.length; index++) {
+    const entry = TERRAIN_PIPELINE[index];
+    if (!entry.active) continue;
+    if (
+      entry.step === 'plateauTerracing' &&
+      TERRAIN_D_TERRAIN > 0 &&
+      TERRAIN_PLATEAU_WALL_SLOPE_DEGREES < 89
+    ) {
+      return true;
+    }
+    if (
+      entry.step === 'watersEdgeShoreline' &&
+      (watersEdgeBeachEnabled() || watersEdgeCliffEnabled())
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Finite-difference slope of the pipeline PREFIX (stages before the
+ *  gradientEstimate stage), so the gradient always describes the very
+ *  surface the later stages transform. Mirrors the Rust
+ *  `terrain_pipeline_estimate_gradient`. */
+function terrainPipelineEstimateGradient(
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
+  ovalMetrics: MapOvalMetrics,
+  includeDeposits: boolean,
+  stageLimit: number,
+): number {
+  const step = TERRAIN_PLATEAU_GRADIENT_SAMPLE_STEP;
+  const x0 = Math.max(0, x - step);
+  const x1 = Math.min(mapWidth, x + step);
+  const y0 = Math.max(0, y - step);
+  const y1 = Math.min(mapHeight, y + step);
+  const dxSpan = Math.max(1e-6, x1 - x0);
+  const dySpan = Math.max(1e-6, y1 - y0);
+  const hX0 = evaluateTerrainPipeline(x0, y, mapWidth, mapHeight, ovalMetrics, includeDeposits, stageLimit).height;
+  const hX1 = evaluateTerrainPipeline(x1, y, mapWidth, mapHeight, ovalMetrics, includeDeposits, stageLimit).height;
+  const hY0 = evaluateTerrainPipeline(x, y0, mapWidth, mapHeight, ovalMetrics, includeDeposits, stageLimit).height;
+  const hY1 = evaluateTerrainPipeline(x, y1, mapWidth, mapHeight, ovalMetrics, includeDeposits, stageLimit).height;
+  const gx = (hX1 - hX0) / dxSpan;
+  const gy = (hY1 - hY0) / dySpan;
+  return Math.sqrt(gx * gx + gy * gy);
+}
+
+/** Waters-edge activity gate against the gradient-stage reference
+ *  surface: within the beach fade radius of the water's edge, or
+ *  inside the cliff's vertical band. */
+function watersEdgeActiveAt(reference: number, gradient: number): boolean {
+  const beachEnabled = watersEdgeBeachEnabled();
+  const cliffEnabled = watersEdgeCliffEnabled();
+  if (!beachEnabled && !cliffEnabled) return false;
+  const shoreDistance = watersEdgeShoreDistance(reference, gradient);
+  return (
+    (beachEnabled && shoreDistance < TERRAIN_SHORELINE_CONFIG.beachFadeRadius) ||
+    (cliffEnabled && Math.abs(reference - WATER_LEVEL) < watersEdgeBandExtent())
+  );
+}
+
+/** Execute the first `stageLimit` stages of the authored pipeline at
+ *  (x, y). Inactive stages are skipped. `gradient`/`reference` are the
+ *  slope estimate and surface snapshot taken when the gradientEstimate
+ *  stage ran — stages consuming them BEFORE that stage see zeros and
+ *  degrade gracefully. naturalField OVERWRITES the height, so stages
+ *  ordered before it are discarded; the caller applies a final safety
+ *  floor clamp regardless of where (or whether) floorClamp runs.
+ *  Mirrors the Rust `terrain_pipeline_eval`. */
+function evaluateTerrainPipeline(
+  x: number,
+  y: number,
+  mapWidth: number,
+  mapHeight: number,
+  ovalMetrics: MapOvalMetrics,
+  includeDeposits: boolean,
+  stageLimit: number,
+): { height: number; gradient: number; reference: number } {
+  const ovalSample = sampleMapOvalAt(ovalMetrics, x, y);
+  let height = 0;
+  let gradient = 0;
+  let reference = 0;
+  const limit = Math.min(stageLimit, TERRAIN_PIPELINE.length);
+  for (let index = 0; index < limit; index++) {
+    const entry = TERRAIN_PIPELINE[index];
+    if (!entry.active) continue;
+    switch (entry.step) {
+      case 'naturalField':
+        height = getGeneratedNaturalTerrainHeight(
+          x,
+          y,
+          mapWidth,
+          mapHeight,
+          ovalMetrics,
+          ovalSample,
+        );
+        break;
+      case 'mapBoundary':
+        height = applyTerrainMapBoundaryForSample(height, ovalMetrics, ovalSample);
+        break;
+      case 'gradientEstimate':
+        if (terrainPipelineGradientNeeded(index)) {
+          gradient = terrainPipelineEstimateGradient(
+            x,
+            y,
+            mapWidth,
+            mapHeight,
+            ovalMetrics,
+            includeDeposits,
+            index,
+          );
+        }
+        reference = height;
+        break;
+      case 'plateauTerracing':
+        height = applyTerrainPlateaus(height, gradient);
+        break;
+      case 'metalDepositPads':
+        if (includeDeposits) {
+          const override = depositOverride(x, y);
+          height = override.height * (1 - override.weight) + height * override.weight;
+        }
+        break;
+      case 'watersEdgeShoreline':
+        if (watersEdgeActiveAt(reference, gradient)) {
+          height = applyWatersEdge(
+            height,
+            reference,
+            gradient,
+            ovalSample.angle,
+            ovalSample.distance,
+          );
+        }
+        break;
+      default:
+        height = Math.max(TILE_FLOOR_Y, height);
+        break;
+    }
+  }
+  return { height, gradient, reference };
+}
+
 function getTerrainHeightWithMetrics(
   x: number,
   y: number,
@@ -554,60 +633,16 @@ function getTerrainHeightWithMetrics(
   ovalMetrics: MapOvalMetrics,
   includeDeposits: boolean,
 ): number {
-  const ovalSample = sampleMapOvalAt(ovalMetrics, x, y);
-  const natural = getGeneratedNaturalTerrainHeight(
+  const { height } = evaluateTerrainPipeline(
     x,
     y,
     mapWidth,
     mapHeight,
     ovalMetrics,
-    ovalSample,
+    includeDeposits,
+    TERRAIN_PIPELINE.length,
   );
-  const shaped = applyTerrainMapBoundaryForSample(
-    natural,
-    ovalMetrics,
-    ovalSample,
-  );
-  const beachEnabled = watersEdgeBeachEnabled();
-  const cliffEnabled = watersEdgeCliffEnabled();
-  const watersEdgeEnabled = beachEnabled || cliffEnabled;
-  const plateauGradientNeeded =
-    TERRAIN_D_TERRAIN > 0 && TERRAIN_PLATEAU_WALL_SLOPE_DEGREES < 89;
-  // The shore-distance fades need the gradient wherever the pass is
-  // enabled, so the estimate is no longer gated to a vertical band.
-  const gradient = plateauGradientNeeded || watersEdgeEnabled
-    ? estimateShapedTerrainGradient(x, y, mapWidth, mapHeight, ovalMetrics)
-    : 0;
-  const watersEdgeActive =
-    watersEdgeEnabled &&
-    ((beachEnabled &&
-      watersEdgeShoreDistance(shaped, gradient) <
-        TERRAIN_SHORELINE_CONFIG.beachFadeRadius) ||
-      (cliffEnabled &&
-        Math.abs(shaped - WATER_LEVEL) < watersEdgeBandExtent()));
-  // The three transform stages run in the order authored in
-  // terrainConfig.json `pipeline`: later stages shape the output of
-  // earlier ones, so e.g. waters-edge after deposit pads means the
-  // shoreline wins at the water while inland pads keep their flat tops.
-  let height = shaped;
-  for (const step of TERRAIN_PIPELINE_TRANSFORM_ORDER) {
-    if (step === 'plateauTerracing') {
-      height = applyTerrainPlateaus(height, gradient);
-    } else if (step === 'metalDepositPads') {
-      if (includeDeposits) {
-        const override = depositOverride(x, y);
-        height = override.height * (1 - override.weight) + height * override.weight;
-      }
-    } else if (watersEdgeActive) {
-      height = applyWatersEdge(
-        height,
-        shaped,
-        gradient,
-        ovalSample.angle,
-        ovalSample.distance,
-      );
-    }
-  }
-
+  // Safety clamp: whatever the authored stage order (or floorClamp's
+  // active flag), nothing may generate below the world floor.
   return Math.max(TILE_FLOOR_Y, height);
 }

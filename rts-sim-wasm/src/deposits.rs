@@ -19,7 +19,14 @@ use wasm_bindgen::prelude::*;
 pub(crate) const METAL_DEPOSIT_RING_INPUT_STRIDE: usize = 6;
 pub(crate) const METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE: usize = 15;
 pub(crate) const METAL_DEPOSIT_HEIGHT_INPUT_STRIDE: usize = 3;
-pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 30;
+pub(crate) const METAL_DEPOSIT_TERRAIN_CONFIG_LEN: usize = 34;
+/// Stage codes for terrainConfig.json `pipeline` entries. The authored
+/// order (and each stage's active flag) is packed into config slots
+/// 27..34 as `code | 8` for inactive stages.
+/// 0 naturalField, 1 mapBoundary, 2 gradientEstimate,
+/// 3 plateauTerracing, 4 metalDepositPads, 5 watersEdgeShoreline,
+/// 6 floorClamp.
+pub(crate) const TERRAIN_PIPELINE_STAGE_COUNT: usize = 7;
 pub(crate) const METAL_DEPOSIT_FLAT_ZONE_INPUT_STRIDE: usize = 5;
 pub(crate) const METAL_DEPOSIT_RESOURCE_NEIGHBOR_COUNT: usize = 4;
 pub(crate) const METAL_DEPOSIT_FIRST_PLAYER_ANGLE: f64 =
@@ -67,10 +74,12 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     waters_edge_cliff_height: f64,
     shoreline_beach_fade_radius: f64,
     shoreline_cliff_fade_radius: f64,
-    /// Authored order of the three reorderable height-transform stages
-    /// (terrainConfig.json `pipeline`): 0 = plateau terracing,
-    /// 1 = metal deposit pads, 2 = waters-edge shoreline.
-    pipeline_transform_order: [u8; 3],
+    /// Authored stage order from terrainConfig.json `pipeline` (stage
+    /// codes, see TERRAIN_PIPELINE_STAGE_COUNT) plus each stage's
+    /// active flag. Every stage appears exactly once; inactive stages
+    /// are skipped by the executor and by region classification.
+    pipeline_order: [u8; TERRAIN_PIPELINE_STAGE_COUNT],
+    pipeline_active: [bool; TERRAIN_PIPELINE_STAGE_COUNT],
 }
 
 pub(crate) fn metal_deposit_terrain_config_from_slice(
@@ -108,18 +117,29 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         waters_edge_cliff_height: values[24],
         shoreline_beach_fade_radius: values[25],
         shoreline_cliff_fade_radius: values[26],
-        pipeline_transform_order: {
-            let a = values[27] as u8;
-            let b = values[28] as u8;
-            let c = values[29] as u8;
-            let mut seen = [false; 3];
-            for code in [a, b, c] {
-                if code > 2 || seen[code as usize] {
+        pipeline_order: {
+            let mut order = [0u8; TERRAIN_PIPELINE_STAGE_COUNT];
+            let mut seen = [false; TERRAIN_PIPELINE_STAGE_COUNT];
+            for (slot, entry) in order.iter_mut().enumerate() {
+                let raw = values[27 + slot];
+                if raw < 0.0 || raw.fract() != 0.0 {
+                    return None;
+                }
+                let code = (raw as u8) & 7;
+                if code as usize >= TERRAIN_PIPELINE_STAGE_COUNT || seen[code as usize] {
                     return None;
                 }
                 seen[code as usize] = true;
+                *entry = code;
             }
-            [a, b, c]
+            order
+        },
+        pipeline_active: {
+            let mut active = [true; TERRAIN_PIPELINE_STAGE_COUNT];
+            for (slot, entry) in active.iter_mut().enumerate() {
+                *entry = ((values[27 + slot] as u8) & 8) == 0;
+            }
+            active
         },
     })
 }
@@ -193,9 +213,16 @@ pub(crate) fn terrain_plateau_ramp_curve(t: f64, cfg: &MetalDepositTerrainConfig
     smooth + (t - smooth) * sharpness
 }
 
+/// Plateau lattice step as seen by REGION CLASSIFICATION: 0 when the
+/// plateauTerracing pipeline stage is inactive, so plateau wall keys
+/// vanish together with the geometry.
 #[inline]
 pub(crate) fn terrain_plateau_step(cfg: &MetalDepositTerrainConfigRust) -> f64 {
-    cfg.terrain_d_terrain
+    if terrain_pipeline_stage_active(cfg, 3) {
+        cfg.terrain_d_terrain
+    } else {
+        0.0
+    }
 }
 
 pub(crate) fn terrain_plateau_flat_half_for_gradient(
@@ -555,9 +582,27 @@ pub(crate) fn metal_deposit_override_from_flat_zone_rows(
 /// Beach slope 0 is a VALID beach — a perfectly flat shelf at the
 /// water level, fading out over the beach radius. The operator is
 /// disabled only by a non-positive fade radius (or a negative slope).
+/// True when the pipeline stage with `code` is present and active in
+/// the authored order (terrainConfig.json `pipeline` entries carry an
+/// `active` flag; inactive stages neither run nor classify).
+#[inline]
+pub(crate) fn terrain_pipeline_stage_active(
+    cfg: &MetalDepositTerrainConfigRust,
+    code: u8,
+) -> bool {
+    for slot in 0..TERRAIN_PIPELINE_STAGE_COUNT {
+        if cfg.pipeline_order[slot] == code {
+            return cfg.pipeline_active[slot];
+        }
+    }
+    false
+}
+
 #[inline]
 pub(crate) fn terrain_waters_edge_beach_enabled(cfg: &MetalDepositTerrainConfigRust) -> bool {
-    cfg.waters_edge_beach_slope_degrees >= 0.0 && cfg.shoreline_beach_fade_radius > 0.0
+    cfg.waters_edge_beach_slope_degrees >= 0.0
+        && cfg.shoreline_beach_fade_radius > 0.0
+        && terrain_pipeline_stage_active(cfg, 5)
 }
 
 /// First-order horizontal distance from a point to the waterline
@@ -582,7 +627,9 @@ pub(crate) fn terrain_waters_edge_fade_weight(shore_distance: f64, radius: f64) 
 
 #[inline]
 pub(crate) fn terrain_waters_edge_cliff_enabled(cfg: &MetalDepositTerrainConfigRust) -> bool {
-    cfg.waters_edge_cliff_height > 0.0 && cfg.shoreline_cliff_fade_radius > 0.0
+    cfg.waters_edge_cliff_height > 0.0
+        && cfg.shoreline_cliff_fade_radius > 0.0
+        && terrain_pipeline_stage_active(cfg, 5)
 }
 
 /// Conservative vertical reach of the CLIFF band around the waterline
@@ -768,23 +815,19 @@ pub(crate) fn terrain_waters_edge_cliff_coords(
     if !terrain_waters_edge_cliff_enabled(cfg) {
         return None;
     }
-    let shaped = terrain_shaped_height_before_plateaus(x, y, metrics, cfg);
-    // The pipeline estimates the gradient whenever the waters-edge pass
-    // is enabled (the shore-distance fades need it); cliff_enabled here
-    // implies enabled, so mirror that unconditionally.
-    let gradient = terrain_estimate_shaped_gradient(x, y, metrics, cfg);
-    let mut padded = shaped;
-    for code in cfg.pipeline_transform_order {
-        padded = match code {
-            0 => terrain_apply_plateaus(padded, gradient, cfg),
-            1 => {
-                let (weight, pad_height) =
-                    metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
-                pad_height * (1.0 - weight) + padded * weight
-            }
-            _ => break,
-        };
-    }
+    let waters_edge_index = cfg
+        .pipeline_order
+        .iter()
+        .position(|&code| code == 5)
+        .unwrap_or(TERRAIN_PIPELINE_STAGE_COUNT);
+    let (padded, gradient, _reference) = terrain_pipeline_eval(
+        x,
+        y,
+        metrics,
+        cfg,
+        explicit_flat_zones,
+        waters_edge_index,
+    );
     let step = cfg.waters_edge_cliff_height;
     let t = (padded - (TERRAIN_WATER_LEVEL - step * 0.5)) / step;
     let flat_half = terrain_plateau_flat_half_for_gradient(gradient, cfg);
@@ -852,6 +895,150 @@ pub(crate) fn terrain_apply_waters_edge(
     beach + (cliff - beach) * cliffness
 }
 
+/// True when any ACTIVE stage after `gradient_stage_index` in the
+/// authored order consumes the gradient estimate.
+fn terrain_pipeline_gradient_needed(
+    cfg: &MetalDepositTerrainConfigRust,
+    gradient_stage_index: usize,
+) -> bool {
+    for index in gradient_stage_index + 1..TERRAIN_PIPELINE_STAGE_COUNT {
+        if !cfg.pipeline_active[index] {
+            continue;
+        }
+        match cfg.pipeline_order[index] {
+            3 => {
+                if cfg.terrain_d_terrain > 0.0 && cfg.plateau_wall_slope_degrees < 89.0 {
+                    return true;
+                }
+            }
+            5 => {
+                if terrain_waters_edge_beach_enabled(cfg)
+                    || terrain_waters_edge_cliff_enabled(cfg)
+                {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Finite-difference slope of the pipeline PREFIX (stages before the
+/// gradientEstimate stage), so the gradient always describes the very
+/// surface the later stages transform. Mirrors the sampling pattern of
+/// `terrain_estimate_shaped_gradient`.
+fn terrain_pipeline_estimate_gradient(
+    x: f64,
+    y: f64,
+    metrics: &MapOvalMetricsRust,
+    cfg: &MetalDepositTerrainConfigRust,
+    explicit_flat_zones: &[f64],
+    stage_limit: usize,
+) -> f64 {
+    let step = 8.0;
+    let map_width = metrics.cx * 2.0;
+    let map_height = metrics.cy * 2.0;
+    let x0 = (x - step).max(0.0);
+    let x1 = (x + step).min(map_width);
+    let y0 = (y - step).max(0.0);
+    let y1 = (y + step).min(map_height);
+    let dx_span = (x1 - x0).max(1e-6);
+    let dy_span = (y1 - y0).max(1e-6);
+    let hx0 = terrain_pipeline_eval(x0, y, metrics, cfg, explicit_flat_zones, stage_limit).0;
+    let hx1 = terrain_pipeline_eval(x1, y, metrics, cfg, explicit_flat_zones, stage_limit).0;
+    let hy0 = terrain_pipeline_eval(x, y0, metrics, cfg, explicit_flat_zones, stage_limit).0;
+    let hy1 = terrain_pipeline_eval(x, y1, metrics, cfg, explicit_flat_zones, stage_limit).0;
+    let gx = (hx1 - hx0) / dx_span;
+    let gy = (hy1 - hy0) / dy_span;
+    (gx * gx + gy * gy).sqrt()
+}
+
+/// Waters-edge activity gate against the gradient-stage reference
+/// surface: within the beach fade radius of the water's edge, or
+/// inside the cliff's vertical band.
+fn terrain_waters_edge_active(
+    reference: f64,
+    gradient: f64,
+    cfg: &MetalDepositTerrainConfigRust,
+) -> bool {
+    let beach_enabled = terrain_waters_edge_beach_enabled(cfg);
+    let cliff_enabled = terrain_waters_edge_cliff_enabled(cfg);
+    if !beach_enabled && !cliff_enabled {
+        return false;
+    }
+    let shore_distance = terrain_waters_edge_shore_distance(reference, gradient);
+    (beach_enabled && shore_distance < cfg.shoreline_beach_fade_radius)
+        || (cliff_enabled
+            && (reference - TERRAIN_WATER_LEVEL).abs() < terrain_waters_edge_band_extent(cfg))
+}
+
+/// Execute the first `stage_limit` stages of the authored pipeline at
+/// (x, y). Inactive stages are skipped. Returns (height, gradient,
+/// reference): `gradient`/`reference` are the slope estimate and the
+/// surface snapshot taken when the gradientEstimate stage ran — stages
+/// that consume them BEFORE that stage see zeros and degrade
+/// gracefully (plateau walls go near-vertical, the shoreline fades to
+/// no effect). naturalField OVERWRITES the height, so stages ordered
+/// before it are discarded; a final safety floor clamp is applied by
+/// the caller regardless of where (or whether) floorClamp runs.
+pub(crate) fn terrain_pipeline_eval(
+    x: f64,
+    y: f64,
+    metrics: &MapOvalMetricsRust,
+    cfg: &MetalDepositTerrainConfigRust,
+    explicit_flat_zones: &[f64],
+    stage_limit: usize,
+) -> (f64, f64, f64) {
+    let oval = terrain_sample_map_oval_at(metrics, x, y);
+    let mut height = 0.0;
+    let mut gradient = 0.0;
+    let mut reference = 0.0;
+    let limit = stage_limit.min(TERRAIN_PIPELINE_STAGE_COUNT);
+    for index in 0..limit {
+        if !cfg.pipeline_active[index] {
+            continue;
+        }
+        match cfg.pipeline_order[index] {
+            0 => height = terrain_generated_natural_height(metrics, &oval, cfg),
+            1 => height = terrain_apply_map_boundary_for_sample(height, metrics, &oval, cfg),
+            2 => {
+                if terrain_pipeline_gradient_needed(cfg, index) {
+                    gradient = terrain_pipeline_estimate_gradient(
+                        x,
+                        y,
+                        metrics,
+                        cfg,
+                        explicit_flat_zones,
+                        index,
+                    );
+                }
+                reference = height;
+            }
+            3 => height = terrain_apply_plateaus(height, gradient, cfg),
+            4 => {
+                let (weight, pad_height) =
+                    metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
+                height = pad_height * (1.0 - weight) + height * weight;
+            }
+            5 => {
+                if terrain_waters_edge_active(reference, gradient, cfg) {
+                    height = terrain_apply_waters_edge(
+                        height,
+                        reference,
+                        gradient,
+                        oval.angle,
+                        oval.distance,
+                        cfg,
+                    );
+                }
+            }
+            _ => height = height.max(cfg.tile_floor_y),
+        }
+    }
+    (height, gradient, reference)
+}
+
 pub(crate) fn metal_deposit_terrain_height_with_explicit_zones(
     x: f64,
     y: f64,
@@ -859,56 +1046,16 @@ pub(crate) fn metal_deposit_terrain_height_with_explicit_zones(
     cfg: &MetalDepositTerrainConfigRust,
     explicit_flat_zones: &[f64],
 ) -> f64 {
-    let shaped = terrain_shaped_height_before_plateaus(x, y, metrics, cfg);
-    let beach_enabled = terrain_waters_edge_beach_enabled(cfg);
-    let cliff_enabled = terrain_waters_edge_cliff_enabled(cfg);
-    let waters_edge_enabled = beach_enabled || cliff_enabled;
-    let plateau_gradient_needed =
-        cfg.terrain_d_terrain > 0.0 && cfg.plateau_wall_slope_degrees < 89.0;
-    // The shore-distance fades need the gradient wherever the pass is
-    // enabled, so the estimate is no longer gated to a vertical band.
-    let gradient = if plateau_gradient_needed || waters_edge_enabled {
-        terrain_estimate_shaped_gradient(x, y, metrics, cfg)
-    } else {
-        0.0
-    };
-    let waters_edge_active = waters_edge_enabled && {
-        let shore_distance = terrain_waters_edge_shore_distance(shaped, gradient);
-        (beach_enabled && shore_distance < cfg.shoreline_beach_fade_radius)
-            || (cliff_enabled
-                && (shaped - TERRAIN_WATER_LEVEL).abs() < terrain_waters_edge_band_extent(cfg))
-    };
-    // The three transform stages run in the order authored in
-    // terrainConfig.json `pipeline` (packed as codes 27..29): later
-    // stages shape the output of earlier ones, so e.g. waters-edge
-    // after deposit pads means the shoreline wins at the water while
-    // inland pads keep their flat tops.
-    let mut height = shaped;
-    for code in cfg.pipeline_transform_order {
-        height = match code {
-            0 => terrain_apply_plateaus(height, gradient, cfg),
-            1 => {
-                let (weight, pad_height) =
-                    metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
-                pad_height * (1.0 - weight) + height * weight
-            }
-            _ => {
-                if waters_edge_active {
-                    let oval = terrain_sample_map_oval_at(metrics, x, y);
-                    terrain_apply_waters_edge(
-                        height,
-                        shaped,
-                        gradient,
-                        oval.angle,
-                        oval.distance,
-                        cfg,
-                    )
-                } else {
-                    height
-                }
-            }
-        };
-    }
+    let (height, _gradient, _reference) = terrain_pipeline_eval(
+        x,
+        y,
+        metrics,
+        cfg,
+        explicit_flat_zones,
+        TERRAIN_PIPELINE_STAGE_COUNT,
+    );
+    // Safety clamp: whatever the authored stage order (or floorClamp's
+    // active flag), nothing may generate below the world floor.
     height.max(cfg.tile_floor_y)
 }
 

@@ -2,31 +2,38 @@
   "pipeline": [
     {
       "step": "naturalField",
-      "detail": "PINNED FIRST (creates the height field). Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction)."
+      "active": true,
+      "detail": "This array DRIVES generation: stages execute top to bottom, each exactly once, in ANY order; set active: false to skip a stage (its wall-region classification turns off with it). OVERWRITES the height field with the natural surface — stages ordered before it are discarded. Radial cosine mountain ripple (CENTER bar) plus team-count divider ridges (DIVIDERS bar), faded to flat before the outer map buffer (generation.edgeFadeWidthFraction)."
     },
     {
       "step": "mapBoundary",
-      "detail": "PINNED SECOND. PERIMETER bar override: from generation.perimeter.innerRadiusFraction the height cosine-blends toward the signed perimeter magnitude, hard at outerRadiusFraction (negative = round island below water, positive = rim wall). Stages 1-2 form the 'shaped' surface every later stage references."
+      "active": true,
+      "detail": "Blends the current height toward the signed PERIMETER bar magnitude: untouched inside generation.perimeter.innerRadiusFraction, cosine-blending to hard override at outerRadiusFraction (negative = round island below water, positive = rim wall)."
     },
     {
       "step": "gradientEstimate",
-      "detail": "PINNED THIRD (derived, not a transform). Finite-difference slope magnitude of the shaped surface. Feeds plateau shelf sizing, waters-edge wall shelf sizing, and the shore-distance estimate |shaped - waterLevel| / gradient that both shoreline fades use."
+      "active": true,
+      "detail": "Snapshots the current surface and estimates its slope at this position in the order; later stages consume both (plateau shelf sizing, waters-edge wall sizing, and the shore-distance estimate |surface - waterLevel| / gradient behind both shoreline fades). Stages that need them BEFORE this stage see zeros: plateau walls go near-vertical and the shoreline fades to no effect."
     },
     {
       "step": "plateauTerracing",
-      "detail": "REORDERABLE among the three transform stages — later stages shape the output of earlier ones. D-PLATEAU bar snap: heights terrace onto the TERRAIN_D_TERRAIN lattice; shelf width from generation.plateau.shelfFractionOfStep, walls at the PLATEAU WALL bar slope via the shared ramp curve. Walls are closed-loop WALL TRIS regions."
+      "active": true,
+      "detail": "D-PLATEAU bar snap of the current height onto the TERRAIN_D_TERRAIN lattice; shelf width from generation.plateau.shelfFractionOfStep, walls at the PLATEAU WALL bar slope via the shared ramp curve. Walls are closed-loop WALL TRIS regions."
     },
     {
       "step": "watersEdgeShoreline",
-      "detail": "REORDERABLE among the three transform stages. Team-periodic beach/cliff halves per player slice (beach centered on the player spoke at the BEACH SLOPE bar, 0 = flat shelf at water level; cliff centered on the divider at the W-CLIFF bar height) joined by wall-steep end caps from the PLATEAU WALL slope. Both operators apply fully at the waterline and raised-cosine fade to no effect over generation.shoreline.beachFadeRadius / cliffFadeRadius of horizontal shore distance, following the water's curves on both sides. Cliff wall/cap regions are closed-loop WALL TRIS; far from water they are flattened, not removed."
-    },
-    {
-      "step": "metalDepositPads",
-      "detail": "REORDERABLE among the three transform stages. Per-deposit circular flat pads (flatPadCells, null = auto-sized to the resource footprint) at their resolved heights, raised-cosine blending back over each ring's terrainBlendRadius."
+      "active": true,
+      "detail": "Team-periodic beach/cliff halves per player slice (beach centered on the player spoke at the BEACH SLOPE bar, 0 = flat shelf at water level; cliff centered on the divider at the W-CLIFF bar height) joined by wall-steep end caps from the PLATEAU WALL slope. Both operators apply fully at the waterline and raised-cosine fade to no effect over generation.shoreline.beachFadeRadius / cliffFadeRadius of horizontal shore distance, following the water's curves on both sides. Cliff wall/cap regions are closed-loop WALL TRIS; far from water they are flattened, not removed."
     },
     {
       "step": "floorClamp",
-      "detail": "PINNED LAST. max(world.floorY, height) — nothing generates below the world floor. The water plane sits at floorY * (1 - water.levelFraction). Rearranging this array IS the generation order (TS + Rust both execute it); boot fails loudly if a pinned step moves or a step is missing/duplicated."
+      "active": true,
+      "detail": "max(world.floorY, height) at this position in the order; a final safety clamp always runs at the end of the pipeline regardless. The water plane sits at floorY * (1 - water.levelFraction)."
+    },
+    {
+      "step": "metalDepositPads",
+      "active": true,
+      "detail": "Per-deposit circular flat pads (flatPadCells, null = auto-sized to the resource footprint) at their resolved heights, raised-cosine blending back into the current height over each ring's terrainBlendRadius."
     }
   ],
   "world": {
