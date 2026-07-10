@@ -6,7 +6,9 @@ import {
   type Entity,
 } from '@/types/sim';
 import type { Command } from '../sim/commands';
+import { BUILD_GRID_CELL_SIZE } from '../sim/buildGrid';
 import { CommanderModeController } from '../input/helpers';
+import { Input3DBuildPlacementState } from './Input3DBuildPlacementState';
 import { Input3DModeClickController } from './Input3DModeClickController';
 
 function assertContract(condition: boolean, message: string): void {
@@ -35,7 +37,7 @@ type BuildCommitHarness = {
   ): void;
 };
 
-function makeCommanderBuilder(id = 101): Entity {
+function makeCommanderBuilder(id = 101, unitBlueprintId = 'unitCommander'): Entity {
   return {
     ...createEmptyEntityComponentSlots(),
     id,
@@ -43,7 +45,7 @@ function makeCommanderBuilder(id = 101): Entity {
     transform: createTransform(0, 0, 0, 0),
     ownership: { playerId: 1 },
     builder: { buildRange: 1000, lowPriority: false, currentBuildTarget: NO_ENTITY_ID },
-    unit: { unitBlueprintId: 'unitCommander', hp: 100, maxHp: 100 } as Entity['unit'],
+    unit: { unitBlueprintId, hp: 100, maxHp: 100 } as Entity['unit'],
   };
 }
 
@@ -196,10 +198,10 @@ export function runInput3DModeClickControllerContractTest(): void {
   );
   assertContract(mode.isInBuildMode, 'queued build commit must keep active build mode');
 
-  // BAR multi-builder batch semantics: without the split modifier the
-  // active builder owns the whole queue and the other capable selected
-  // builders are sent to guard-assist it; with the split modifier
-  // (BAR `Any+space buildsplit`) placements distribute round-robin.
+  // BAR multi-builder batch semantics: same-type builders share one
+  // queue with guard-assist locally standing in for BAR duplicate
+  // nanoframe build orders. Build-split forks the batch, preserving
+  // contiguous placement order instead of round-robin interleaving.
   const multiMode = new CommanderModeController();
   const leader = makeCommanderBuilder(301);
   const helper = makeCommanderBuilder(302);
@@ -222,13 +224,13 @@ export function runInput3DModeClickControllerContractTest(): void {
   multiController.commitBuildShapePlacements(makeBuildDrag(true), 'buildingSolar', multiPlanner);
   assertContract(
     multiCommands.length === 4,
-    'shared-queue build commit must enqueue every startBuild plus one guard command',
+    'same-type shared-queue build commit must enqueue every startBuild plus one guard command',
   );
   assertContract(
     multiCommands.slice(0, 3).every(
       (command) => command.type === 'startBuild' && command.builderId === leader.id,
     ),
-    'without the split modifier every placement must go to the active builder',
+    'without the split modifier one same-type group leader must own the contiguous placement queue',
   );
   const guardCommand = multiCommands[3];
   assertContract(
@@ -243,18 +245,109 @@ export function runInput3DModeClickControllerContractTest(): void {
   multiSplit.held = true;
   multiController.commitBuildShapePlacements(makeBuildDrag(true), 'buildingSolar', multiPlanner);
   assertContract(
-    multiCommands.length === 3 &&
-      multiCommands.every((command) => command.type === 'startBuild'),
-    'split-modifier build commit must enqueue only startBuild commands',
+    multiCommands.length === 5,
+    'split-modifier build commit must enqueue split startBuild commands plus assist follow-ups',
   );
-  const splitBuilderIds = multiCommands.map(
-    (command) => command.type === 'startBuild' ? command.builderId : NO_ENTITY_ID,
-  );
+  const splitStartBuilds = multiCommands.filter((command) => command.type === 'startBuild');
+  const splitBuilderIds = splitStartBuilds.map((command) => command.builderId);
   assertContract(
     splitBuilderIds[0] === leader.id &&
-      splitBuilderIds[1] === helper.id &&
-      splitBuilderIds[2] === leader.id,
-    'split-modifier build commit must distribute placements round-robin across capable builders',
+      splitBuilderIds[1] === leader.id &&
+      splitBuilderIds[2] === helper.id,
+    'split-modifier build commit must partition placements into contiguous builder chunks',
+  );
+  const splitGuards = multiCommands.filter((command) => command.type === 'guard');
+  assertContract(
+    splitGuards.length === 2 &&
+      splitGuards[0].entityIds[0] === leader.id &&
+      splitGuards[0].targetId === helper.id &&
+      splitGuards[0].queue === true &&
+      splitGuards[1].entityIds[0] === helper.id &&
+      splitGuards[1].targetId === leader.id,
+    'split-modifier build commit must append peer assist guards after own chunks',
+  );
+
+  const mixedMode = new CommanderModeController();
+  const commander = makeCommanderBuilder(501, 'unitCommander');
+  const drone = makeCommanderBuilder(502, 'unitConstructionDrone');
+  const mixedCommands: Command[] = [];
+  const mixedController = makeController(
+    mixedMode,
+    [commander, drone],
+    mixedCommands,
+    [],
+    { held: false },
+  ) as unknown as BuildCommitHarness;
+  const fivePlacements = () => [
+    { gridX: 0, gridY: 0 },
+    { gridX: 4, gridY: 0 },
+    { gridX: 8, gridY: 0 },
+    { gridX: 12, gridY: 0 },
+    { gridX: 16, gridY: 0 },
+  ];
+
+  mixedMode.enterBuildMode('buildingSolar');
+  mixedController.commitBuildShapePlacements(makeBuildDrag(true), 'buildingSolar', fivePlacements);
+  const mixedBuilderIds = mixedCommands
+    .filter((command) => command.type === 'startBuild')
+    .map((command) => command.builderId);
+  assertContract(
+    mixedBuilderIds.length === 5 &&
+      mixedBuilderIds[0] === commander.id &&
+      mixedBuilderIds[1] === commander.id &&
+      mixedBuilderIds[2] === commander.id &&
+      mixedBuilderIds[3] === drone.id &&
+      mixedBuilderIds[4] === drone.id,
+    'mixed builder-type build commit must partition ordered placements by build power',
+  );
+
+  const placementState = new Input3DBuildPlacementState();
+  const buildMapWidth = 512;
+  const buildMapHeight = 512;
+  const buildCellsX = Math.ceil(buildMapWidth / BUILD_GRID_CELL_SIZE);
+  const buildCellsY = Math.ceil(buildMapHeight / BUILD_GRID_CELL_SIZE);
+  const flatBuildabilityGrid = {
+    mapWidth: buildMapWidth,
+    mapHeight: buildMapHeight,
+    cellSize: BUILD_GRID_CELL_SIZE,
+    cellsX: buildCellsX,
+    cellsY: buildCellsY,
+    version: 1,
+    configKey: 'flat-test',
+    flags: new Array(buildCellsX * buildCellsY).fill(1),
+    levels: new Array(buildCellsX * buildCellsY).fill(0),
+  };
+  const emptyBuildEntitySource = {
+    getBuildings: () => [],
+    getTerrainBuildabilityGrid: () => flatBuildabilityGrid,
+  };
+  placementState.setMapBounds(buildMapWidth, buildMapHeight, 1, []);
+  const reverseGrid = placementState.planBuildGridPlacements(
+    'buildingSolar',
+    240,
+    240,
+    60,
+    120,
+    emptyBuildEntitySource,
+  );
+  assertContract(
+    reverseGrid.length >= 4 &&
+      reverseGrid[0].x > reverseGrid[1].x &&
+      reverseGrid[1].x > reverseGrid[2].x,
+    'reverse grid build drag must emit the first row from the drag start toward the drag end',
+  );
+  const reverseBorder = placementState.planBuildBorderPlacements(
+    'buildingSolar',
+    240,
+    240,
+    60,
+    120,
+    emptyBuildEntitySource,
+  );
+  assertContract(
+    reverseBorder.length >= 3 &&
+      reverseBorder[0].x > reverseBorder[2].x,
+    'reverse hollow build drag must start from the drag-start edge instead of the normalized minimum corner',
   );
 
   const dgunMode = new CommanderModeController();

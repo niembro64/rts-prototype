@@ -33,7 +33,11 @@ import {
   type BuildLineSpacingInfo,
 } from './Input3DBuildPlacementState';
 import type { Input3DPicker } from './Input3DPicker';
-import { entityCanBuild } from '../sim/builderBuildRoster';
+import {
+  entityCanBuild,
+  getBuilderConstructionRate,
+} from '../sim/builderBuildRoster';
+import { getBuildingConfig } from '../sim/buildConfigs';
 import { CLICK_DRAG_THRESHOLD_PX } from '../input/constants';
 import { METAL_EXTRACTOR_UPGRADE_AREA_MAX_RADIUS } from '../sim/commandLimits';
 import {
@@ -92,6 +96,24 @@ type BuildShapePlacementPlanner = (
   buildingBlueprintId: BuildingBlueprintId,
   entitySource: ModeClickEntitySource,
 ) => ReadonlyArray<{ gridX: number; gridY: number }>;
+
+type BuildQueuePlacement = {
+  gridX: number;
+  gridY: number;
+};
+
+type SelectedBuildRoster = {
+  activeBuilder: Entity;
+  capableBuilders: Entity[];
+  ineligibleBuilders: Entity[];
+};
+
+type BuildOrderGroup = {
+  leader: Entity;
+  builders: Entity[];
+  power: number;
+  placements: BuildQueuePlacement[];
+};
 
 type ModeClickEntitySource = {
   getUnits: () => Entity[];
@@ -167,11 +189,6 @@ export class Input3DModeClickController {
   private clickQueueModeOverride: QueueCommandMode | null = null;
   private areaHoverPreview: Input3DAreaDragState = EMPTY_AREA_DRAG_STATE;
   private lastBuildPreviewTarget: BuildPreviewTarget | null = null;
-  /** Round-robin cursor for split-mode single-click placements: with
-   *  the build-split modifier held, successive queued build clicks
-   *  cycle through the capable selected builders instead of piling
-   *  onto the active builder. Reset when build mode changes. */
-  private buildSplitClickCursor = 0;
 
   constructor(private readonly config: Input3DModeClickControllerConfig) {}
 
@@ -253,7 +270,6 @@ export class Input3DModeClickController {
   handleBuildModeChange(buildingBlueprintId: BuildingBlueprintId | null): void {
     this.buildPlacement.reset();
     this.lastBuildPreviewTarget = null;
-    this.buildSplitClickCursor = 0;
     if (buildingBlueprintId === null) {
       this.buildGhost?.hide();
     }
@@ -691,27 +707,21 @@ export class Input3DModeClickController {
     );
   }
 
-  /** BAR multi-builder semantics for a batch of placements:
-   *  - Default (no split modifier): the whole batch is one shared queue.
-   *    BAR gives every capable selected builder the identical order list
-   *    so they collectively build placement 1, then 2, ... Our
-   *    startBuild creates the ghost at execution time (a second
-   *    startBuild on the same cell is a no-op), so the closest
-   *    equivalent is: the active builder owns the queue and every other
-   *    capable selected builder guards it — guard is our canonical
-   *    build-assist channel, so the group works each building together
-   *    exactly like BAR's shared queue.
-   *  - Split modifier held (Space, BAR `bind Any+space buildsplit`):
-   *    placements are distributed round-robin across all capable
-   *    selected builders, each working its own fork in parallel
-   *    (cmd_buildsplit.lua via api_build_orders). */
+  /** BAR-style multi-builder build order batching:
+   *  - Default: group capable builders by unit type, sort groups by
+   *    total build power, and give each group one contiguous cost-based
+   *    slice of the ordered placements.
+   *  - Split modifier held: fork into one group per builder, then use
+   *    the same build-power partitioning. BAR appends peer follow-up
+   *    build commands; because our startBuild creates the frame
+   *    immediately, queued guard is the local equivalent assist order. */
   private commitBuildShapePlacements(
     drag: AreaDrag,
     buildingBlueprintId: BuildingBlueprintId,
     planner: BuildShapePlacementPlanner,
   ): void {
-    const capable = this.getSelectedCapableBuilders(buildingBlueprintId);
-    if (capable === null) {
+    const roster = this.getSelectedBuildRoster(buildingBlueprintId);
+    if (roster === null) {
       this.config.applyCursor('blocked');
       return;
     }
@@ -723,46 +733,34 @@ export class Input3DModeClickController {
       return;
     }
 
-    const split = this.config.isBuildSplitModifierHeld() && capable.builders.length > 1;
-    const assignees = split ? capable.builders : [capable.leader];
+    const split = this.config.isBuildSplitModifierHeld() && roster.capableBuilders.length > 1;
+    const groups = split
+      ? this.createSplitBuildOrderGroups(roster.capableBuilders)
+      : this.createDefaultBuildOrderGroups(roster);
+    this.distributeBuildPlacements(groups, placements, buildingBlueprintId);
+
     const tick = this.config.getTick();
-    const perBuilderCounts = new Map<number, number>();
-    for (let i = 0; i < placements.length; i++) {
-      const placement = placements[i];
-      const builder = assignees[i % assignees.length];
-      const assignedCount = perBuilderCounts.get(builder.id) ?? 0;
-      perBuilderCounts.set(builder.id, assignedCount + 1);
-      this.config.commandQueue.enqueue({
-        type: 'startBuild',
-        tick,
-        builderId: builder.id,
-        buildingBlueprintId,
-        gridX: placement.gridX,
-        gridY: placement.gridY,
-        rotation: this.buildPlacement.facingInfo.rotation,
-        queue: assignedCount === 0 ? drag.queue : true,
-        queueFront: assignedCount === 0 ? drag.queueFront : false,
-        queueInsertIndex: assignedCount === 0 ? drag.queueInsertIndex : undefined,
-      });
+    for (let i = 0; i < groups.length; i++) {
+      this.enqueueBuildGroupPlacements(groups[i], drag, buildingBlueprintId, tick);
     }
 
-    if (!split && capable.builders.length > 1) {
-      const helpers: Entity[] = [];
-      for (let i = 0; i < capable.builders.length; i++) {
-        const builder = capable.builders[i];
-        if (builder.id !== capable.leader.id) helpers.push(builder);
-      }
-      const guardCmd = buildGuardCommandForTarget(
-        capable.leader,
-        helpers,
-        this.config.getActivePlayerId(),
+    const workingGroups = groups.filter((group) => group.placements.length > 0);
+    if (split) {
+      this.enqueueSplitBuildAssists(
+        groups,
+        workingGroups,
+        roster.ineligibleBuilders,
+        drag,
         tick,
-        drag.queue,
-        drag.queueFront,
-        drag.queueInsertIndex,
-        this.config.getEntitySource().arePlayersAllied,
       );
-      if (guardCmd) this.config.commandQueue.enqueue(guardCmd);
+    } else {
+      this.enqueueDefaultBuildAssists(
+        groups,
+        workingGroups,
+        roster.ineligibleBuilders,
+        drag,
+        tick,
+      );
     }
 
     this.config.applyCursor('build');
@@ -770,30 +768,285 @@ export class Input3DModeClickController {
     if (!drag.queue) this.config.mode.exitBuildMode();
   }
 
-  /** The active builder plus every other selected unit able to build
-   *  this blueprint. BAR distributes multi-builder work across all
-   *  capable selected builders regardless of unit type (the engine
-   *  filters build orders per-unit by build option), so capability is
-   *  the only gate. Null when the active builder is missing or cannot
-   *  build the blueprint. */
-  private getSelectedCapableBuilders(
+  /** Active builder plus selected construction units. The active
+   *  builder still gates the local build-mode command surface; selected
+   *  builders that cannot build this structure are retained so they can
+   *  assist a working group instead of silently doing nothing. */
+  private getSelectedBuildRoster(
     buildingBlueprintId: BuildingBlueprintId,
-  ): { leader: Entity; builders: Entity[] } | null {
+  ): SelectedBuildRoster | null {
     const activeBuilder = this.config.getSelectedBuilder();
     if (activeBuilder === null) return null;
     if (!entityCanBuild(activeBuilder, buildingBlueprintId)) return null;
 
-    const builders: Entity[] = [];
-    let leaderIncluded = false;
+    const selectedBuilders: Entity[] = [];
+    const seen = new Set<EntityId>();
     const selectedUnits = this.config.getEntitySource().getSelectedUnits();
     for (let i = 0; i < selectedUnits.length; i++) {
       const unit = selectedUnits[i];
-      if (!entityCanBuild(unit, buildingBlueprintId)) continue;
-      builders.push(unit);
-      if (unit.id === activeBuilder.id) leaderIncluded = true;
+      if (unit.builder === null || unit.unit === null) continue;
+      selectedBuilders.push(unit);
+      seen.add(unit.id);
     }
-    if (!leaderIncluded) builders.unshift(activeBuilder);
-    return { leader: activeBuilder, builders };
+    if (!seen.has(activeBuilder.id)) selectedBuilders.unshift(activeBuilder);
+
+    const capableBuilders: Entity[] = [];
+    const ineligibleBuilders: Entity[] = [];
+    for (let i = 0; i < selectedBuilders.length; i++) {
+      const builder = selectedBuilders[i];
+      if (entityCanBuild(builder, buildingBlueprintId)) capableBuilders.push(builder);
+      else ineligibleBuilders.push(builder);
+    }
+    return {
+      activeBuilder,
+      capableBuilders,
+      ineligibleBuilders,
+    };
+  }
+
+  private createDefaultBuildOrderGroups(roster: SelectedBuildRoster): BuildOrderGroup[] {
+    const byType = new Map<string, BuildOrderGroup>();
+    for (let i = 0; i < roster.capableBuilders.length; i++) {
+      const builder = roster.capableBuilders[i];
+      const unitBlueprintId = builder.unit?.unitBlueprintId ?? `entity:${builder.id}`;
+      let group = byType.get(unitBlueprintId);
+      if (group === undefined) {
+        group = {
+          leader: builder,
+          builders: [],
+          power: 0,
+          placements: [],
+        };
+        byType.set(unitBlueprintId, group);
+      }
+      group.builders.push(builder);
+      group.power += this.builderBuildPower(builder);
+      if (builder.id === roster.activeBuilder.id) group.leader = builder;
+    }
+    return this.sortBuildOrderGroups(Array.from(byType.values()));
+  }
+
+  private createSplitBuildOrderGroups(builders: readonly Entity[]): BuildOrderGroup[] {
+    const groups: BuildOrderGroup[] = [];
+    for (let i = 0; i < builders.length; i++) {
+      const builder = builders[i];
+      groups.push({
+        leader: builder,
+        builders: [builder],
+        power: this.builderBuildPower(builder),
+        placements: [],
+      });
+    }
+    return this.sortBuildOrderGroups(groups);
+  }
+
+  private sortBuildOrderGroups(groups: BuildOrderGroup[]): BuildOrderGroup[] {
+    return groups.sort((a, b) => {
+      if (b.power !== a.power) return b.power - a.power;
+      return a.leader.id - b.leader.id;
+    });
+  }
+
+  private distributeBuildPlacements(
+    groups: BuildOrderGroup[],
+    placements: ReadonlyArray<BuildQueuePlacement>,
+    buildingBlueprintId: BuildingBlueprintId,
+  ): void {
+    if (groups.length === 0 || placements.length === 0) return;
+
+    const placementCost = this.buildPlacementCost(buildingBlueprintId);
+    let nextPlacementIndex = 0;
+    let remainingPower = 0;
+    for (let i = 0; i < groups.length; i++) remainingPower += groups[i].power;
+    let remainingCost = placements.length * placementCost;
+
+    for (
+      let groupIndex = 0;
+      groupIndex < groups.length && nextPlacementIndex < placements.length;
+      groupIndex++
+    ) {
+      const group = groups[groupIndex];
+      if (groupIndex === groups.length - 1 || remainingPower <= 0) {
+        while (nextPlacementIndex < placements.length) {
+          group.placements.push(placements[nextPlacementIndex++]);
+        }
+        break;
+      }
+
+      const targetCost = remainingCost * (group.power / remainingPower);
+      let groupCost = 0;
+      while (nextPlacementIndex < placements.length) {
+        const nextCost = groupCost + placementCost;
+        if (
+          group.placements.length > 0 &&
+          Math.abs(nextCost - targetCost) > Math.abs(groupCost - targetCost)
+        ) {
+          break;
+        }
+        group.placements.push(placements[nextPlacementIndex++]);
+        groupCost = nextCost;
+      }
+
+      remainingPower -= group.power;
+      remainingCost -= groupCost;
+    }
+  }
+
+  private enqueueBuildGroupPlacements(
+    group: BuildOrderGroup,
+    drag: AreaDrag,
+    buildingBlueprintId: BuildingBlueprintId,
+    tick: number,
+  ): void {
+    for (let i = 0; i < group.placements.length; i++) {
+      const placement = group.placements[i];
+      this.config.commandQueue.enqueue({
+        type: 'startBuild',
+        tick,
+        builderId: group.leader.id,
+        buildingBlueprintId,
+        gridX: placement.gridX,
+        gridY: placement.gridY,
+        rotation: this.buildPlacement.facingInfo.rotation,
+        queue: i === 0 ? drag.queue : true,
+        queueFront: i === 0 ? drag.queueFront : false,
+        queueInsertIndex: i === 0 ? drag.queueInsertIndex : undefined,
+      });
+    }
+  }
+
+  private enqueueDefaultBuildAssists(
+    groups: readonly BuildOrderGroup[],
+    workingGroups: readonly BuildOrderGroup[],
+    ineligibleBuilders: readonly Entity[],
+    drag: AreaDrag,
+    tick: number,
+  ): void {
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      if (group.placements.length > 0) {
+        this.enqueueGuardForBuilders(
+          group.builders.filter((builder) => builder.id !== group.leader.id),
+          group.leader,
+          tick,
+          drag.queue,
+          drag.queueFront,
+          drag.queueInsertIndex,
+        );
+      } else {
+        const target = this.assistTargetForIndex(workingGroups, i);
+        if (target !== null) {
+          this.enqueueGuardForBuilders(
+            group.builders,
+            target.leader,
+            tick,
+            drag.queue,
+            drag.queueFront,
+            drag.queueInsertIndex,
+          );
+        }
+      }
+    }
+    this.enqueueIneligibleBuildAssists(ineligibleBuilders, workingGroups, drag, tick);
+  }
+
+  private enqueueSplitBuildAssists(
+    groups: readonly BuildOrderGroup[],
+    workingGroups: readonly BuildOrderGroup[],
+    ineligibleBuilders: readonly Entity[],
+    drag: AreaDrag,
+    tick: number,
+  ): void {
+    if (workingGroups.length > 1) {
+      for (let i = 0; i < workingGroups.length; i++) {
+        const group = workingGroups[i];
+        const target = workingGroups[(i + 1) % workingGroups.length];
+        this.enqueueGuardForBuilders(
+          [group.leader],
+          target.leader,
+          tick,
+          true,
+          false,
+          undefined,
+        );
+      }
+    }
+
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      if (group.placements.length > 0) continue;
+      const target = this.assistTargetForIndex(workingGroups, i);
+      if (target !== null) {
+        this.enqueueGuardForBuilders(
+          group.builders,
+          target.leader,
+          tick,
+          drag.queue,
+          drag.queueFront,
+          drag.queueInsertIndex,
+        );
+      }
+    }
+    this.enqueueIneligibleBuildAssists(ineligibleBuilders, workingGroups, drag, tick);
+  }
+
+  private enqueueIneligibleBuildAssists(
+    builders: readonly Entity[],
+    workingGroups: readonly BuildOrderGroup[],
+    drag: AreaDrag,
+    tick: number,
+  ): void {
+    for (let i = 0; i < builders.length; i++) {
+      const target = this.assistTargetForIndex(workingGroups, i);
+      if (target === null) continue;
+      this.enqueueGuardForBuilders(
+        [builders[i]],
+        target.leader,
+        tick,
+        drag.queue,
+        drag.queueFront,
+        drag.queueInsertIndex,
+      );
+    }
+  }
+
+  private enqueueGuardForBuilders(
+    builders: readonly Entity[],
+    target: Entity,
+    tick: number,
+    queue: boolean,
+    queueFront: boolean,
+    queueInsertIndex: number | undefined,
+  ): void {
+    if (builders.length === 0) return;
+    const guardCmd = buildGuardCommandForTarget(
+      target,
+      builders,
+      this.config.getActivePlayerId(),
+      tick,
+      queue,
+      queueFront,
+      queueInsertIndex,
+      this.config.getEntitySource().arePlayersAllied,
+    );
+    if (guardCmd) this.config.commandQueue.enqueue(guardCmd);
+  }
+
+  private assistTargetForIndex(
+    workingGroups: readonly BuildOrderGroup[],
+    index: number,
+  ): BuildOrderGroup | null {
+    if (workingGroups.length === 0) return null;
+    return workingGroups[index % workingGroups.length];
+  }
+
+  private builderBuildPower(builder: Entity): number {
+    return Math.max(1, getBuilderConstructionRate(builder));
+  }
+
+  private buildPlacementCost(buildingBlueprintId: BuildingBlueprintId): number {
+    const config = getBuildingConfig(buildingBlueprintId);
+    return Math.max(1, config.cost.energy + config.cost.metal);
   }
 
   private getSelectedMetalExtractorUpgradeBuilderIds(): EntityId[] {
@@ -956,27 +1209,22 @@ export class Input3DModeClickController {
       return;
     }
     const queueMode = this.resolveClickQueueMode(e);
-    // BAR cmd_buildsplit: with the split modifier held, successive
-    // queued click placements rotate round-robin through the capable
-    // selected builders instead of stacking on the active builder.
-    let assignee = builder;
-    if (this.config.isBuildSplitModifierHeld()) {
-      const capable = this.getSelectedCapableBuilders(buildingBlueprintId);
-      if (capable !== null && capable.builders.length > 1) {
-        assignee = capable.builders[this.buildSplitClickCursor % capable.builders.length];
-        this.buildSplitClickCursor++;
-      }
-    }
-    const cmd = this.config.mode.buildStartBuildCommand(
-      assignee, world.x, world.y,
-      this.config.getTick(), queueMode.queue, queueMode.queueFront,
-      queueMode.queueInsertIndex,
-      this.buildPlacement.facingInfo.rotation,
+    this.commitBuildShapePlacements(
+      {
+        kind: 'buildLine',
+        button: 0,
+        start: { x: world.x, y: world.y, z: world.z },
+        current: { x: world.x, y: world.y, z: world.z },
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        queue: queueMode.queue,
+        queueFront: queueMode.queueFront,
+        queueInsertIndex: queueMode.queueInsertIndex,
+        anchorEntityId: null,
+      },
+      buildingBlueprintId,
+      () => [{ gridX: diagnostics.gridX, gridY: diagnostics.gridY }],
     );
-    if (!cmd) return;
-    this.config.commandQueue.enqueue(cmd);
-    this.config.onBuildCommandIssued(queueMode.queue);
-    if (!queueMode.queue) this.config.mode.exitBuildMode();
   }
 
   private validateBuildPlacement(

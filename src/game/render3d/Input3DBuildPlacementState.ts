@@ -234,17 +234,50 @@ export class Input3DBuildPlacementState {
     entitySource: BuildPlacementEntitySource,
   ): BuildAreaPlacementPlan[] {
     const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
-    const minX = Math.min(startX, endX);
-    const maxX = Math.max(startX, endX);
-    const minY = Math.min(startY, endY);
-    const maxY = Math.max(startY, endY);
     const spacing = Math.max(context.footprint.gridWidth, context.footprint.gridHeight, 1)
       * BUILD_GRID_CELL_SIZE
       * this.buildLineSpacingMultiplier;
-    this.planBuildSegmentPlacements(context, minX, minY, maxX, minY, spacing);
-    this.planBuildSegmentPlacements(context, maxX, minY, maxX, maxY, spacing);
-    this.planBuildSegmentPlacements(context, maxX, maxY, minX, maxY, spacing);
-    this.planBuildSegmentPlacements(context, minX, maxY, minX, minY, spacing);
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const xCount = Math.max(1, Math.floor(Math.abs(dx) / Math.max(1, spacing)) + 1);
+    const yCount = Math.max(1, Math.floor(Math.abs(dy) / Math.max(1, spacing)) + 1);
+    const xStep = (dx >= 0 ? 1 : -1) * spacing;
+    const yStep = (dy >= 0 ? 1 : -1) * spacing;
+
+    // Recoil/BAR hollow-box ordering is directional: it starts from the
+    // drag anchor corner and walks the signed rectangle perimeter instead
+    // of normalizing to the north-west corner.
+    if (xCount <= 1) {
+      this.planBuildStepPlacements(context, startX, startY, 0, yStep, yCount);
+    } else if (yCount <= 1) {
+      this.planBuildStepPlacements(context, startX, startY, xStep, 0, xCount);
+    } else {
+      this.planBuildStepPlacements(context, startX, startY + yStep, 0, yStep, yCount - 1);
+      this.planBuildStepPlacements(
+        context,
+        startX + xStep,
+        startY + (yCount - 1) * yStep,
+        xStep,
+        0,
+        xCount - 1,
+      );
+      this.planBuildStepPlacements(
+        context,
+        startX + (xCount - 1) * xStep,
+        startY + (yCount - 2) * yStep,
+        0,
+        -yStep,
+        yCount - 1,
+      );
+      this.planBuildStepPlacements(
+        context,
+        startX + (xCount - 2) * xStep,
+        startY,
+        -xStep,
+        0,
+        xCount - 1,
+      );
+    }
     return context.placements;
   }
 
@@ -257,31 +290,29 @@ export class Input3DBuildPlacementState {
     entitySource: BuildPlacementEntitySource,
   ): BuildAreaPlacementPlan[] {
     const context = this.createPlannedBuildPlacementContext(buildingBlueprintId, entitySource);
-    const minX = Math.min(startX, endX);
-    const maxX = Math.max(startX, endX);
-    const minY = Math.min(startY, endY);
-    const maxY = Math.max(startY, endY);
+    const dx = endX - startX;
+    const dy = endY - startY;
     const spacingX = Math.max(1, context.footprint.gridWidth)
       * BUILD_GRID_CELL_SIZE
       * this.buildLineSpacingMultiplier;
     const spacingY = Math.max(1, context.footprint.gridHeight)
       * BUILD_GRID_CELL_SIZE
       * this.buildLineSpacingMultiplier;
-    const xCount = Math.max(1, Math.floor((maxX - minX) / Math.max(1, spacingX)) + 1);
-    const yCount = Math.max(1, Math.floor((maxY - minY) / Math.max(1, spacingY)) + 1);
+    const xCount = Math.max(1, Math.floor(Math.abs(dx) / Math.max(1, spacingX)) + 1);
+    const yCount = Math.max(1, Math.floor(Math.abs(dy) / Math.max(1, spacingY)) + 1);
+    const xStep = (dx >= 0 ? 1 : -1) * spacingX;
+    const yStep = (dy >= 0 ? 1 : -1) * spacingY;
 
     // BAR's grid fill (gui_pregame_build.lua getBuildPositionsGrid,
-    // mirroring the engine) walks rows serpentine — every other row is
-    // filled right-to-left — so a single builder sweeps the rectangle
-    // without doubling back across each row.
+    // mirroring the engine) starts from the drag anchor and walks signed
+    // rows serpentine, so a single builder sweeps the rectangle without
+    // doubling back across each row.
     for (let yi = 0; yi < yCount; yi++) {
-      const ty = yCount === 1 ? 0 : yi / (yCount - 1);
-      const y = minY + (maxY - minY) * ty;
+      const y = startY + yStep * yi;
       const reversed = yi % 2 === 1;
       for (let step = 0; step < xCount; step++) {
         const xi = reversed ? xCount - 1 - step : step;
-        const tx = xCount === 1 ? 0 : xi / (xCount - 1);
-        const x = minX + (maxX - minX) * tx;
+        const x = startX + xStep * xi;
         this.tryAddPlannedBuildPlacement(context, x, y);
       }
     }
@@ -364,21 +395,20 @@ export class Input3DBuildPlacementState {
     }
   }
 
-  private planBuildSegmentPlacements(
+  private planBuildStepPlacements(
     context: PlannedBuildPlacementContext,
     startX: number,
     startY: number,
-    endX: number,
-    endY: number,
-    spacing: number,
+    stepX: number,
+    stepY: number,
+    count: number,
   ): void {
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const distance = Math.hypot(dx, dy);
-    const placementCount = Math.max(1, Math.floor(distance / Math.max(1, spacing)) + 1);
-    for (let i = 0; i < placementCount; i++) {
-      const t = placementCount === 1 ? 0 : i / (placementCount - 1);
-      this.tryAddPlannedBuildPlacement(context, startX + dx * t, startY + dy * t);
+    for (let i = 0; i < count; i++) {
+      this.tryAddPlannedBuildPlacement(
+        context,
+        startX + stepX * i,
+        startY + stepY * i,
+      );
     }
   }
 }

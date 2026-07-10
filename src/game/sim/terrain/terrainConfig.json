@@ -22,7 +22,7 @@
     },
     {
       "step": "watersEdgeShoreline",
-      "active": true,
+      "active": false,
       "detail": "Team-periodic beach/cliff halves per player slice (beach centered on the player spoke at the BEACH SLOPE bar, 0 = flat shelf at water level; cliff centered on the divider at the W-CLIFF bar height) joined by wall-steep end caps from the PLATEAU WALL slope. Both operators apply fully at the waterline and raised-cosine fade to no effect over generation.shoreline.beachFadeRadius / cliffFadeRadius of horizontal shore distance, following the water's curves on both sides. Cliff wall/cap regions are closed-loop WALL TRIS; far from water they are flattened, not removed."
     },
     {
