@@ -53,6 +53,7 @@ import { entityDetailLevelForView } from './EntityLod3D';
 import {
   BUILDING_ANIMATION_MIN_RUNG,
   DETAIL_REBUILD_BUDGET_BUILDINGS,
+  DETAIL_RUNG_GLYPH,
   type DetailRung,
   detailLevelForRung,
   detailRungForLevel,
@@ -449,8 +450,8 @@ export class BuildingEntityRenderer3D {
       this.removeBuildingMeshesFromPacket(buildingRows, beamAimCache);
     }
     const rows = forceFullRows
-      ? this.populateFallbackBuildingRenderRows()
-      : buildingRows ?? this.populateFallbackBuildingRenderRows();
+      ? this.populateFallbackBuildingRenderRows(entityDetailRung)
+      : buildingRows ?? this.populateFallbackBuildingRenderRows(entityDetailRung);
     if (buildingRows === undefined) this.removeBuildingMeshesFromPacket(rows, beamAimCache);
 
     for (let row = 0; row < rows.count; row++) {
@@ -569,12 +570,19 @@ export class BuildingEntityRenderer3D {
     this.lastUnitOverlayStateVersion = unitOverlayStateVersion;
   }
 
-  private populateFallbackBuildingRenderRows(): BuildingRenderPacket3D {
+  private populateFallbackBuildingRenderRows(
+    entityDetailRung?: (entity: Entity) => DetailRung,
+  ): BuildingRenderPacket3D {
     const rows = this.fallbackBuildingRenderRows;
     rows.reset();
     const buildings = this.clientViewState.getBuildings();
     for (let i = 0; i < buildings.length; i++) {
-      rows.pushEntity(buildings[i], false, true, true);
+      // Stamp the proxy flag from the same latched rung the real packet
+      // carries — a hardcoded false here would flash glyph-state
+      // buildings back to full meshes for one forced frame.
+      const lodProxy = entityDetailRung !== undefined &&
+        entityDetailRung(buildings[i]) === DETAIL_RUNG_GLYPH;
+      rows.pushEntity(buildings[i], false, true, true, lodProxy);
     }
     return rows;
   }
@@ -750,19 +758,23 @@ export class BuildingEntityRenderer3D {
 
   /** Live animation gate for the detail rung: freezes/resumes this
    *  building's animators + gatling spin without touching the mesh.
-   *  Reactivation paths re-register animators and clear the flag, so the
-   *  gate re-applies on the next visible frame. */
+   *  The freeze side is LEVEL-triggered (re-asserted every visible
+   *  frame, cheap no-ops once removed) because updateBuilding's
+   *  animations.sync and the reactivation paths re-register animators;
+   *  an edge-triggered gate would be silently defeated by them. Spin
+   *  state is retained so barrels freeze in place and resume from the
+   *  frozen angle. */
   private applyBuildingAnimationGate(
     entity: Entity,
     mesh: EntityMesh,
     animate: boolean,
   ): void {
     const gated = mesh.buildingAnimationsGated === true;
-    if (!animate && !gated) {
+    if (!animate) {
       mesh.buildingAnimationsGated = true;
       this.animations.unregister(entity.id);
-      this.unregisterBuildingSpinTurrets(entity.id);
-    } else if (animate && gated) {
+      this.deactivateBuildingSpinEntries(entity.id);
+    } else if (gated) {
       mesh.buildingAnimationsGated = false;
       this.animations.register(entity, mesh);
       this.registerBuildingSpinTurrets(entity, mesh);
@@ -917,7 +929,10 @@ export class BuildingEntityRenderer3D {
     const bodyOpacity = rows.bodyOpacity[row];
     mesh.buildingMaterializationOpacity = bodyOpacity;
     this.applyBuildingEntityFade(mesh, bodyOpacity * this.currentSpawnFadeIn(entity.id));
-    this.animations.sync(entity, mesh);
+    // While the detail-rung gate holds this building's animators frozen,
+    // sync would re-register them right before this frame's animation
+    // tick — the gate owns registration until the rung climbs back.
+    if (mesh.buildingAnimationsGated !== true) this.animations.sync(entity, mesh);
   }
 
   private updateBuildingMesh(
@@ -1123,7 +1138,9 @@ export class BuildingEntityRenderer3D {
   }
 
   private registerBuildingSpinTurrets(entity: Entity, mesh: EntityMesh): void {
-    this.unregisterBuildingSpinTurrets(entity.id);
+    // Entry refresh only — retained spin angles survive so a gate resume
+    // continues from the frozen angle instead of restarting at zero.
+    this.deactivateBuildingSpinEntries(entity.id);
     const turrets = entity.combat?.turrets;
     if (!turrets || turrets.length === 0) return;
     const entries: BuildingTurretSpinEntry[] = [];
@@ -1153,16 +1170,23 @@ export class BuildingEntityRenderer3D {
   }
 
   private unregisterBuildingSpinTurrets(entityId: EntityId): void {
-    const entries = this.buildingSpinEntriesByEntity.get(entityId);
-    if (entries !== undefined) {
-      for (const entry of entries) {
-        if (!entry.active) continue;
-        entry.active = false;
-        this.buildingSpinDeadEntries++;
-      }
-      this.buildingSpinEntriesByEntity.delete(entityId);
-    }
+    this.deactivateBuildingSpinEntries(entityId);
     this.barrelSpin.delete(entityId);
+  }
+
+  /** Stop advancing this building's gatling spin WITHOUT wiping the
+   *  stored spin angle — the detail-rung animation gate freezes barrels
+   *  in place (updateTurretPoses keeps writing the retained angle) and
+   *  resumes from it, unlike real teardown which forgets the state. */
+  private deactivateBuildingSpinEntries(entityId: EntityId): void {
+    const entries = this.buildingSpinEntriesByEntity.get(entityId);
+    if (entries === undefined) return;
+    for (const entry of entries) {
+      if (!entry.active) continue;
+      entry.active = false;
+      this.buildingSpinDeadEntries++;
+    }
+    this.buildingSpinEntriesByEntity.delete(entityId);
   }
 
   private updateBuildingTurretSpinQueue(spinDt: number): void {

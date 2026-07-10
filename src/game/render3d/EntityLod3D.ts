@@ -435,7 +435,10 @@ export class EntityLodState3D {
       return true;
     }
     if (!entityLodEnabled()) {
-      this.delete(entity.id);
+      // Proxying is off, but the detail ladder's latched-rung state must
+      // survive — wiping the whole entity here would erase the hysteresis
+      // latch every frame and reintroduce band thrash.
+      this.deleteChannelEntity(channel, entity.id);
       return false;
     }
 
@@ -473,7 +476,10 @@ export class EntityLodState3D {
       return true;
     }
     if (!entityLodEnabled()) {
-      this.delete(entity.id);
+      // Proxying is off, but the detail ladder's latched-rung state must
+      // survive — wiping the whole entity here would erase the hysteresis
+      // latch every frame and reintroduce band thrash.
+      this.deleteChannelEntity(channel, entity.id);
       return false;
     }
 

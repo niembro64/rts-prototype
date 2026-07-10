@@ -283,7 +283,9 @@ export function detailLevelForRung(rung: DetailRung): number {
 
 /** Latched rung transition: moving to a different rung requires L to
  *  clear that rung's boundary by the hysteresis margin, so an entity
- *  sitting on a boundary never oscillates. */
+ *  sitting on a boundary never oscillates. Multi-rung jumps (camera
+ *  cuts) step to the HIGHEST rung whose floor clears the margin — an
+ *  entity is never latched more than one rung below its raw target. */
 export function detailRungWithHysteresis(
   currentRung: DetailRung,
   level: number,
@@ -291,9 +293,12 @@ export function detailRungWithHysteresis(
   const targetRung = detailRungForLevel(level);
   if (targetRung === currentRung) return currentRung;
   if (targetRung > currentRung) {
-    // Upgrading: L must exceed the target rung's floor by the margin.
-    const floor = rungMinLevel(targetRung);
-    return level >= floor + DETAIL_HYSTERESIS_LEVEL ? targetRung : currentRung;
+    for (let rung = targetRung; rung > currentRung; rung--) {
+      if (level >= rungMinLevel(rung as DetailRung) + DETAIL_HYSTERESIS_LEVEL) {
+        return rung as DetailRung;
+      }
+    }
+    return currentRung;
   }
   // Downgrading: L must fall below the current rung's floor by the margin.
   const floor = rungMinLevel(currentRung);
@@ -302,12 +307,17 @@ export function detailRungWithHysteresis(
     : currentRung;
 }
 
-function rungMinLevel(rung: DetailRung): number {
+/** Minimum raw L at which a rung becomes the target (its ladder floor). */
+export function detailRungMinLevel(rung: DetailRung): number {
   switch (rung) {
     case DETAIL_RUNG_CLOSE: return CLOSE_RUNG_MIN_LEVEL;
     case DETAIL_RUNG_MID: return MID_RUNG_MIN_LEVEL;
     default: return 0;
   }
+}
+
+function rungMinLevel(rung: DetailRung): number {
+  return detailRungMinLevel(rung);
 }
 
 export function detailRungIndex(level: number): number {

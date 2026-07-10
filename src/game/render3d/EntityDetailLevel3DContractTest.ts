@@ -11,6 +11,7 @@ import {
   detailLevelForRung,
   detailLevelForScreenRadius,
   detailRungForLevel,
+  detailRungMinLevel,
   detailRungWithHysteresis,
   detailScreenRadiusPx,
   explosionSpawnScaleForDetail,
@@ -163,6 +164,23 @@ export function runEntityDetailLevel3DContractTest(): void {
   assertContract(
     detailRungWithHysteresis(DETAIL_RUNG_MID, midFloor) === DETAIL_RUNG_MID,
     'sitting exactly on a rung floor never oscillates',
+  );
+  // Multi-rung jumps (camera cuts) must land on the highest rung whose
+  // floor clears the margin — never stay stuck rungs below the target.
+  const closeFloor = detailRungMinLevel(DETAIL_RUNG_CLOSE);
+  assertContract(
+    detailRungWithHysteresis(DETAIL_RUNG_FAR, closeFloor + DETAIL_HYSTERESIS_LEVEL / 2) ===
+      DETAIL_RUNG_MID,
+    'a far-latched entity inside the close hysteresis band steps to mid, not stays far',
+  );
+  assertContract(
+    detailRungWithHysteresis(DETAIL_RUNG_GLYPH, midFloor + DETAIL_HYSTERESIS_LEVEL / 2) ===
+      DETAIL_RUNG_FAR,
+    'a glyph-latched entity inside the mid hysteresis band steps to far, not stays glyph',
+  );
+  assertContract(
+    detailRungWithHysteresis(DETAIL_RUNG_GLYPH, DETAIL_LEVEL_FULL) === DETAIL_RUNG_CLOSE,
+    'a glyph-latched entity at full level jumps straight to close',
   );
 
   // ── Features: monotonic ladder, all-on at full, all-off at glyph ──
