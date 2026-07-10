@@ -262,9 +262,12 @@ function estimateShapedTerrainGradient(
 //  so this analytic fallback agrees with the baked WASM mesh.
 // ─────────────────────────────────────────────────────────────────
 
+/** Beach slope 0 is a VALID beach — a perfectly flat shelf at the
+ *  water level, fading out over the beach radius. The operator is
+ *  disabled only by a non-positive fade radius (or a negative slope). */
 function watersEdgeBeachEnabled(): boolean {
   return (
-    TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES > 0 &&
+    TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES >= 0 &&
     TERRAIN_SHORELINE_CONFIG.beachFadeRadius > 0
   );
 }
@@ -367,7 +370,7 @@ function watersEdgeBeachHeight(
   );
   if (weight <= 0) return terraced;
   const beachTan = Math.tan(
-    Math.max(0.1, Math.min(89, TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES)) *
+    Math.max(0, Math.min(89, TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES)) *
       Math.PI / 180,
   );
   const gradientScale = Math.min(1, beachTan / Math.max(1e-6, gradient));

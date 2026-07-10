@@ -110,8 +110,10 @@ export type TerrainRuntimeConfig = {
   /** Waters-edge BEACH slope in degrees (BEACH bar). Beach shoreline
    *  slices compress the terrain gradient through the waterline down
    *  to (at most) this slope so ground units can wade in and out.
-   *  0 disables beach shaping (every shoreline slice becomes cliff
-   *  when cliffs are on, or natural terrain when they are off). */
+   *  0 is a valid beach: a perfectly flat shelf at the water level,
+   *  fading back to natural terrain over the beach fade radius. Beach
+   *  shaping is disabled via shoreline.beachFadeRadius = 0 in
+   *  terrainConfig.json. */
   watersEdgeBeachSlopeDegrees: number;
   /** Waters-edge CLIFF height in world units (W-CLIFF bar). Cliff
    *  shoreline slices snap heights near the waterline away from it

@@ -535,9 +535,12 @@ pub(crate) fn metal_deposit_override_from_flat_zone_rows(
 //  terrainHeightGenerator.ts.
 // ─────────────────────────────────────────────────────────────────
 
+/// Beach slope 0 is a VALID beach — a perfectly flat shelf at the
+/// water level, fading out over the beach radius. The operator is
+/// disabled only by a non-positive fade radius (or a negative slope).
 #[inline]
 pub(crate) fn terrain_waters_edge_beach_enabled(cfg: &MetalDepositTerrainConfigRust) -> bool {
-    cfg.waters_edge_beach_slope_degrees > 0.0 && cfg.shoreline_beach_fade_radius > 0.0
+    cfg.waters_edge_beach_slope_degrees >= 0.0 && cfg.shoreline_beach_fade_radius > 0.0
 }
 
 /// First-order horizontal distance from a point to the waterline
@@ -677,7 +680,7 @@ pub(crate) fn terrain_waters_edge_beach_height(
     if weight <= 0.0 {
         return terraced;
     }
-    let beach_tan = (cfg.waters_edge_beach_slope_degrees.clamp(0.1, 89.0)
+    let beach_tan = (cfg.waters_edge_beach_slope_degrees.clamp(0.0, 89.0)
         * std::f64::consts::PI
         / 180.0)
         .tan();
