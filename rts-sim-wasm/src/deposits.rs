@@ -562,7 +562,7 @@ pub(crate) fn terrain_waters_edge_fade_weight(shore_distance: f64, radius: f64) 
 
 #[inline]
 pub(crate) fn terrain_waters_edge_cliff_enabled(cfg: &MetalDepositTerrainConfigRust) -> bool {
-    cfg.waters_edge_cliff_height > 0.0
+    cfg.waters_edge_cliff_height > 0.0 && cfg.shoreline_cliff_fade_radius > 0.0
 }
 
 /// Conservative vertical reach of the CLIFF band around the waterline
@@ -701,7 +701,7 @@ pub(crate) fn terrain_waters_edge_beach_height(
 /// The wall REGION classification is untouched — inland wall loops
 /// stay closed in WALL TRIS, their triangles just carry no height
 /// change, like any other squished wall. Radius <= 0 disables the
-/// fade (legacy infinite shelves).
+/// cliff operator entirely (same rule as the beach's radius).
 pub(crate) fn terrain_waters_edge_cliff_height_at(
     terraced: f64,
     shaped: f64,
@@ -725,12 +725,8 @@ pub(crate) fn terrain_waters_edge_cliff_height_at(
         terrain_plateau_ramp_curve((t - flat_half) / ramp_span, cfg)
     };
     let snapped = TERRAIN_WATER_LEVEL - half + ramp * step;
-    let fade_radius = cfg.shoreline_cliff_fade_radius;
-    if fade_radius <= 0.0 {
-        return snapped;
-    }
     let shore_distance = terrain_waters_edge_shore_distance(shaped, gradient);
-    let weight = terrain_waters_edge_fade_weight(shore_distance, fade_radius);
+    let weight = terrain_waters_edge_fade_weight(shore_distance, cfg.shoreline_cliff_fade_radius);
     terraced + (snapped - terraced) * weight
 }
 

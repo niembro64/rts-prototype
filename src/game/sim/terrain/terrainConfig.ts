@@ -319,7 +319,7 @@ export const TERRAIN_RIDGE_CONFIG = {
  *  distances from the water's edge over which each operator's effect
  *  raised-cosine-fades from full (at the waterline) back to the
  *  natural surface, on both the land and water sides, following the
- *  water's curves (0 = that operator disabled / no fade). The cliff's
+ *  water's curves (0 = that operator disabled). The cliff's
  *  wall REGION classification is unaffected, so inland wall loops stay
  *  closed in WALL TRIS with flattened geometry. The live BEACH slope /
  *  CLIFF height come from the battle bars (`TERRAIN_WATERS_EDGE_*`

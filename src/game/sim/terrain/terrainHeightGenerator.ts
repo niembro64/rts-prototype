@@ -288,7 +288,10 @@ function watersEdgeFadeWeight(shoreDistance: number, radius: number): number {
 }
 
 function watersEdgeCliffEnabled(): boolean {
-  return TERRAIN_WATERS_EDGE_CLIFF_HEIGHT > 0;
+  return (
+    TERRAIN_WATERS_EDGE_CLIFF_HEIGHT > 0 &&
+    TERRAIN_SHORELINE_CONFIG.cliffFadeRadius > 0
+  );
 }
 
 /** Conservative vertical reach of the CLIFF band around the waterline
@@ -405,10 +408,11 @@ function watersEdgeCliffHeightAt(
     ramp = plateauRampCurve((t - flatHalf) / rampSpan);
   }
   const snapped = WATER_LEVEL - half + ramp * step;
-  const fadeRadius = TERRAIN_SHORELINE_CONFIG.cliffFadeRadius;
-  if (fadeRadius <= 0) return snapped;
   const shoreDistance = watersEdgeShoreDistance(shaped, gradient);
-  const weight = watersEdgeFadeWeight(shoreDistance, fadeRadius);
+  const weight = watersEdgeFadeWeight(
+    shoreDistance,
+    TERRAIN_SHORELINE_CONFIG.cliffFadeRadius,
+  );
   return terraced + (snapped - terraced) * weight;
 }
 
