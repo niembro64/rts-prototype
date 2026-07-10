@@ -27,18 +27,57 @@ import {
   beamWaveFlowRepeats,
   createBeamEmitterInstancedMaterial,
 } from './BeamWaveVisual3D';
-import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveCylinderGeometry,
+  createPrimitiveSphereGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 
-const SMOOTH_CHASSIS_CAP = 16384;
 const POLY_CHASSIS_CAP = 4096;
-const TURRET_HEAD_CAP = 16384;
-const BARREL_CAP = 32768;
 const CONE_BARREL_CAP = 4096;
 const SHIELD_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
 const UNIT_DETAIL_RENDER_ORDER = 4;
 // Unit pools fade via per-instance alpha in EntityFade3D, matching the leg
 // pools so the whole unit materializes and vanishes as one opacity channel.
+
+// Detail-LOD geometry tiers. Chassis spheres, turret heads, and barrels
+// each keep one instanced pool PER TIER so a unit's rung change is a slot
+// migration between pools (via the normal rebuild realloc), never a
+// geometry rebuild. Slot numbers carry their tier in the high bits so
+// every existing carrier (headSlot, barrelSlots, smoothChassisSlots) and
+// pose writer keeps passing plain numbers.
+const GEOMETRY_TIER_NAMES = ['close', 'mid', 'far'] as const;
+const TIER_SLOT_SHIFT = 20;
+const TIER_SLOT_MASK = (1 << TIER_SLOT_SHIFT) - 1;
+const SMOOTH_CHASSIS_TIER_CAPS = [16384, 16384, 16384] as const;
+const TURRET_HEAD_TIER_CAPS = [16384, 16384, 16384] as const;
+const BARREL_TIER_CAPS = [32768, 16384, 16384] as const;
+
+function geometryTierIndex(tier: PrimitiveGeometryTier): number {
+  return tier === 'close' ? 0 : tier === 'mid' ? 1 : 2;
+}
+
+function encodeTierSlot(tierIndex: number, index: number): number {
+  return (tierIndex << TIER_SLOT_SHIFT) | index;
+}
+
+function tierSlotTier(slot: number): number {
+  return slot >>> TIER_SLOT_SHIFT;
+}
+
+function tierSlotIndex(slot: number): number {
+  return slot & TIER_SLOT_MASK;
+}
+
+type TierPool = {
+  mesh: THREE.InstancedMesh;
+  matrixDirty: DirtySpan;
+  colorDirty: DirtySpan;
+  freeSlots: number[];
+  nextSlot: number;
+  readonly cap: number;
+};
 
 type DirtySpan = {
   minSlot: number;
@@ -290,30 +329,18 @@ export type DyingUnitPartDelta = {
 
 export class UnitDetailInstanceRenderer3D {
   private readonly world: THREE.Group;
-  private readonly smoothChassisGeom = createPrimitiveSphereGeometry('unitBody', 'close');
-  private readonly smoothChassis: THREE.InstancedMesh;
+  // One pool per geometry tier (close/mid/far); slots are tier-encoded.
+  private readonly smoothChassisPools: TierPool[] = [];
   private readonly smoothChassisSlots = new Map<EntityId, number[]>();
   private readonly smoothChassisColorKey = new Map<EntityId, number>();
-  private readonly smoothChassisMatrixDirty = createDirtySpan();
-  private readonly smoothChassisColorDirty = createDirtySpan();
-  private readonly smoothChassisFreeSlots: number[] = [];
-  private smoothChassisNextSlot = 0;
 
   private readonly polyChassis = new Map<string, PolyChassisPool>();
 
-  private readonly turretHeadInstanced: THREE.InstancedMesh;
+  private readonly turretHeadPools: TierPool[] = [];
   private readonly turretHeadColorKey = new Map<number, number>();
-  private readonly turretHeadMatrixDirty = createDirtySpan();
-  private readonly turretHeadColorDirty = createDirtySpan();
-  private readonly turretHeadFreeSlots: number[] = [];
-  private turretHeadNextSlot = 0;
 
-  private readonly barrelInstanced: THREE.InstancedMesh;
+  private readonly barrelPools: TierPool[] = [];
   private readonly barrelColorKey = new Map<number, number>();
-  private readonly barrelMatrixDirty = createDirtySpan();
-  private readonly barrelColorDirty = createDirtySpan();
-  private readonly barrelFreeSlots: number[] = [];
-  private barrelNextSlot = 0;
 
   // Parallel pool for legacy cone barrels. The same slot
   // index allocator + per-frame writer pattern as the cylinder pool above,
@@ -334,6 +361,10 @@ export class UnitDetailInstanceRenderer3D {
    *  mesh build via registerConeBarrelEmitter; the per-frame writer uses
    *  it to derive the ball matrices from the barrel matrix. */
   private readonly coneEmitterBallRadius = new Float32Array(CONE_BARREL_CAP);
+  /** Per-cone-slot inner-layer flag (1 = draw inner cone + inner ball).
+   *  Far-rung beam turrets register 0: their inner mirror slots stay
+   *  zero-scale, halving the rig's triangles without pool surgery. */
+  private readonly coneEmitterInnerActive = new Uint8Array(CONE_BARREL_CAP);
   private readonly coneBarrelFlow: EmitterFlowAttr;
   private readonly coneBarrelInnerFlow: EmitterFlowAttr;
   private readonly emitterBallFlow: EmitterFlowAttr;
@@ -377,23 +408,24 @@ export class UnitDetailInstanceRenderer3D {
   constructor(options: UnitDetailInstanceRendererOptions) {
     this.world = options.world;
 
-    this.smoothChassis = this.createPool(
-      this.smoothChassisGeom,
-      new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
-      SMOOTH_CHASSIS_CAP,
-    );
-
-    this.turretHeadInstanced = this.createPool(
-      options.turretHeadGeom.clone(),
-      new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
-      TURRET_HEAD_CAP,
-    );
-
-    this.barrelInstanced = this.createPool(
-      options.barrelGeom.clone(),
-      options.barrelMat.clone(),
-      BARREL_CAP,
-    );
+    for (let t = 0; t < GEOMETRY_TIER_NAMES.length; t++) {
+      const tierName = GEOMETRY_TIER_NAMES[t];
+      this.smoothChassisPools.push(this.createTierPool(
+        createPrimitiveSphereGeometry('unitBody', tierName),
+        new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
+        SMOOTH_CHASSIS_TIER_CAPS[t],
+      ));
+      this.turretHeadPools.push(this.createTierPool(
+        createPrimitiveSphereGeometry('turret', tierName),
+        new THREE.MeshLambertMaterial({ color: COLORS.units.turret.barrel.colorHex }),
+        TURRET_HEAD_TIER_CAPS[t],
+      ));
+      this.barrelPools.push(this.createTierPool(
+        createPrimitiveCylinderGeometry('turret', tierName),
+        options.barrelMat.clone(),
+        BARREL_TIER_CAPS[t],
+      ));
+    }
 
     // Legacy cone-barrel pools render in the beam wave material
     // (self-faded ShaderMaterials — createPool still wires their aFade
@@ -470,32 +502,51 @@ export class UnitDetailInstanceRenderer3D {
     markDirtySlot(this.shieldPanelAlphaDirty, slot);
   }
 
-  allocSmoothChassisSlots(count: number): number[] | null {
+  /** Allocate one tier-encoded slot from a tier-pool family. Zeroes the
+   *  matrix, resets fade, and paints the neutral color. Returns null when
+   *  that tier's pool is exhausted. */
+  private allocTierSlot(pools: TierPool[], tierIndex: number): number | null {
+    const pool = pools[tierIndex];
+    let index: number;
+    if (pool.freeSlots.length > 0) {
+      index = pool.freeSlots.pop()!;
+    } else if (pool.nextSlot < pool.cap) {
+      index = pool.nextSlot++;
+    } else {
+      return null;
+    }
+    writeInstanceMatrix(pool.mesh, index, ZERO_MATRIX, pool.matrixDirty);
+    this.writeFade(pool.mesh, index, 1);
+    writeInstanceColorHex(
+      pool.mesh,
+      index,
+      COLORS.units.turret.barrel.colorHex,
+      pool.colorDirty,
+    );
+    return encodeTierSlot(tierIndex, index);
+  }
+
+  private freeTierSlot(pools: TierPool[], slot: number): void {
+    const pool = pools[tierSlotTier(slot)];
+    if (!pool) return;
+    const index = tierSlotIndex(slot);
+    writeInstanceMatrix(pool.mesh, index, ZERO_MATRIX, pool.matrixDirty);
+    pool.freeSlots.push(index);
+  }
+
+  allocSmoothChassisSlots(
+    count: number,
+    tier: PrimitiveGeometryTier = 'close',
+  ): number[] | null {
     if (count <= 0) return [];
+    const tierIndex = geometryTierIndex(tier);
     const out: number[] = [];
     for (let k = 0; k < count; k++) {
-      let slot: number;
-      if (this.smoothChassisFreeSlots.length > 0) {
-        slot = this.smoothChassisFreeSlots.pop()!;
-      } else if (this.smoothChassisNextSlot < SMOOTH_CHASSIS_CAP) {
-        slot = this.smoothChassisNextSlot++;
-      } else {
-        for (const s of out) this.smoothChassisFreeSlots.push(s);
+      const slot = this.allocTierSlot(this.smoothChassisPools, tierIndex);
+      if (slot === null) {
+        for (const s of out) this.freeTierSlot(this.smoothChassisPools, s);
         return null;
       }
-      writeInstanceMatrix(
-        this.smoothChassis,
-        slot,
-        ZERO_MATRIX,
-        this.smoothChassisMatrixDirty,
-      );
-      this.writeFade(this.smoothChassis, slot, 1);
-      writeInstanceColorHex(
-        this.smoothChassis,
-        slot,
-        COLORS.units.turret.barrel.colorHex,
-        this.smoothChassisColorDirty,
-      );
       out.push(slot);
     }
     return out;
@@ -531,35 +582,21 @@ export class UnitDetailInstanceRenderer3D {
     return slot;
   }
 
-  allocTurretHeadSlot(): number | null {
-    let slot: number;
-    if (this.turretHeadFreeSlots.length > 0) {
-      slot = this.turretHeadFreeSlots.pop()!;
-    } else if (this.turretHeadNextSlot < TURRET_HEAD_CAP) {
-      slot = this.turretHeadNextSlot++;
-    } else {
-      return null;
-    }
-    writeInstanceMatrix(
-      this.turretHeadInstanced,
-      slot,
-      ZERO_MATRIX,
-      this.turretHeadMatrixDirty,
-    );
-    this.writeFade(this.turretHeadInstanced, slot, 1);
-    writeInstanceColorHex(
-      this.turretHeadInstanced,
-      slot,
-      COLORS.units.turret.barrel.colorHex,
-      this.turretHeadColorDirty,
-    );
-    return slot;
+  allocTurretHeadSlot(tier: PrimitiveGeometryTier = 'close'): number | null {
+    return this.allocTierSlot(this.turretHeadPools, geometryTierIndex(tier));
   }
 
-  allocBarrelSlots(count: number, useCone: boolean = false): number[] | null {
+  allocBarrelSlots(
+    count: number,
+    useCone: boolean = false,
+    tier: PrimitiveGeometryTier = 'close',
+  ): number[] | null {
+    const tierIndex = geometryTierIndex(tier);
     const slots: number[] = [];
     for (let i = 0; i < count; i++) {
-      const slot = useCone ? this.allocConeBarrelSlot() : this.allocBarrelSlot();
+      const slot = useCone
+        ? this.allocConeBarrelSlot()
+        : this.allocTierSlot(this.barrelPools, tierIndex);
       if (slot === null) {
         for (const allocated of slots) {
           if (useCone) this.freeConeBarrelSlot(allocated);
@@ -622,11 +659,12 @@ export class UnitDetailInstanceRenderer3D {
       this.smoothChassisColorKey.get(entity.id) !== colorKey
     ) {
       for (const slot of mesh.smoothChassisSlots) {
+        const pool = this.smoothChassisPools[tierSlotTier(slot)];
         writeInstanceColorHex(
-          this.smoothChassis,
-          slot,
+          pool.mesh,
+          tierSlotIndex(slot),
           entityInstanceColorHex(entity),
-          this.smoothChassisColorDirty,
+          pool.colorDirty,
         );
       }
       this.smoothChassisColorKey.set(entity.id, colorKey);
@@ -657,11 +695,12 @@ export class UnitDetailInstanceRenderer3D {
         turret.shieldEmitterCore !== true &&
         this.turretHeadColorKey.get(turret.headSlot) !== headColorKey
       ) {
+        const pool = this.turretHeadPools[tierSlotTier(turret.headSlot)];
         writeInstanceColorHex(
-          this.turretHeadInstanced,
-          turret.headSlot,
+          pool.mesh,
+          tierSlotIndex(turret.headSlot),
           headColorKey,
-          this.turretHeadColorDirty,
+          pool.colorDirty,
         );
         this.turretHeadColorKey.set(turret.headSlot, headColorKey);
       }
@@ -671,7 +710,8 @@ export class UnitDetailInstanceRenderer3D {
         const barrelColorKey = turretAccentHex;
         for (const slot of turret.barrelSlots) {
           if (this.barrelColorKey.get(slot) === barrelColorKey) continue;
-          writeInstanceColorHex(this.barrelInstanced, slot, barrelColorKey, this.barrelColorDirty);
+          const pool = this.barrelPools[tierSlotTier(slot)];
+          writeInstanceColorHex(pool.mesh, tierSlotIndex(slot), barrelColorKey, pool.colorDirty);
           this.barrelColorKey.set(slot, barrelColorKey);
         }
       }
@@ -688,11 +728,12 @@ export class UnitDetailInstanceRenderer3D {
   clearChassisSlots(mesh: EntityMesh): void {
     if (mesh.smoothChassisSlots) {
       for (const slot of mesh.smoothChassisSlots) {
+        const pool = this.smoothChassisPools[tierSlotTier(slot)];
         writeInstanceMatrix(
-          this.smoothChassis,
-          slot,
+          pool.mesh,
+          tierSlotIndex(slot),
           ZERO_MATRIX,
-          this.smoothChassisMatrixDirty,
+          pool.matrixDirty,
         );
       }
     } else if (mesh.polyChassisSlot !== undefined) {
@@ -723,13 +764,15 @@ export class UnitDetailInstanceRenderer3D {
     entity: Entity,
     writeColor: boolean,
   ): void {
-    writeInstanceMatrix(this.smoothChassis, slot, matrix, this.smoothChassisMatrixDirty);
+    const pool = this.smoothChassisPools[tierSlotTier(slot)];
+    const index = tierSlotIndex(slot);
+    writeInstanceMatrix(pool.mesh, index, matrix, pool.matrixDirty);
     if (writeColor) {
       writeInstanceColorHex(
-        this.smoothChassis,
-        slot,
+        pool.mesh,
+        index,
         entityInstanceColorHex(entity),
-        this.smoothChassisColorDirty,
+        pool.colorDirty,
       );
     }
   }
@@ -741,13 +784,15 @@ export class UnitDetailInstanceRenderer3D {
     entity: Entity,
     writeColor: boolean,
   ): void {
-    writeInstanceMatrixArray(this.smoothChassis, slot, matrix, offset, this.smoothChassisMatrixDirty);
+    const pool = this.smoothChassisPools[tierSlotTier(slot)];
+    const index = tierSlotIndex(slot);
+    writeInstanceMatrixArray(pool.mesh, index, matrix, offset, pool.matrixDirty);
     if (writeColor) {
       writeInstanceColorHex(
-        this.smoothChassis,
-        slot,
+        pool.mesh,
+        index,
         entityInstanceColorHex(entity),
-        this.smoothChassisColorDirty,
+        pool.colorDirty,
       );
     }
   }
@@ -809,20 +854,12 @@ export class UnitDetailInstanceRenderer3D {
      *  When undefined the normal entity color is used. */
     colorOverride?: number,
   ): void {
-    writeInstanceMatrix(
-      this.turretHeadInstanced,
-      slot,
-      matrix,
-      this.turretHeadMatrixDirty,
-    );
+    const pool = this.turretHeadPools[tierSlotTier(slot)];
+    const index = tierSlotIndex(slot);
+    writeInstanceMatrix(pool.mesh, index, matrix, pool.matrixDirty);
     const colorHex = colorOverride ?? entityInstanceColorHex(entity);
     if (this.turretHeadColorKey.get(slot) !== colorHex) {
-      writeInstanceColorHex(
-        this.turretHeadInstanced,
-        slot,
-        colorHex,
-        this.turretHeadColorDirty,
-      );
+      writeInstanceColorHex(pool.mesh, index, colorHex, pool.colorDirty);
       this.turretHeadColorKey.set(slot, colorHex);
     }
   }
@@ -836,21 +873,12 @@ export class UnitDetailInstanceRenderer3D {
      *  When undefined the normal entity color is used. */
     colorOverride?: number,
   ): void {
-    writeInstanceMatrixArray(
-      this.turretHeadInstanced,
-      slot,
-      matrix,
-      offset,
-      this.turretHeadMatrixDirty,
-    );
+    const pool = this.turretHeadPools[tierSlotTier(slot)];
+    const index = tierSlotIndex(slot);
+    writeInstanceMatrixArray(pool.mesh, index, matrix, offset, pool.matrixDirty);
     const colorHex = colorOverride ?? entityInstanceColorHex(entity);
     if (this.turretHeadColorKey.get(slot) !== colorHex) {
-      writeInstanceColorHex(
-        this.turretHeadInstanced,
-        slot,
-        colorHex,
-        this.turretHeadColorDirty,
-      );
+      writeInstanceColorHex(pool.mesh, index, colorHex, pool.colorDirty);
       this.turretHeadColorKey.set(slot, colorHex);
     }
   }
@@ -859,7 +887,8 @@ export class UnitDetailInstanceRenderer3D {
     if (useCone) {
       this.writeConeEmitterMatrices(slot, matrix.elements, 0);
     } else {
-      writeInstanceMatrix(this.barrelInstanced, slot, matrix, this.barrelMatrixDirty);
+      const pool = this.barrelPools[tierSlotTier(slot)];
+      writeInstanceMatrix(pool.mesh, tierSlotIndex(slot), matrix, pool.matrixDirty);
     }
   }
 
@@ -872,12 +901,13 @@ export class UnitDetailInstanceRenderer3D {
     if (useCone) {
       this.writeConeEmitterMatrices(slot, matrix, offset);
     } else {
+      const pool = this.barrelPools[tierSlotTier(slot)];
       writeInstanceMatrixArray(
-        this.barrelInstanced,
-        slot,
+        pool.mesh,
+        tierSlotIndex(slot),
         matrix,
         offset,
-        this.barrelMatrixDirty,
+        pool.matrixDirty,
       );
     }
   }
@@ -906,19 +936,24 @@ export class UnitDetailInstanceRenderer3D {
     const length = Math.hypot(m4, m5, m6);
     const s = BEAM_LAYER_INNER_SCALE;
     const e = _emitterMatrixScratch;
+    // Far-rung rigs register innerActive=0: their inner cone + inner ball
+    // slots stay zero-scale from alloc, so only the outer layers draw.
+    const innerActive = this.coneEmitterInnerActive[slot] !== 0;
 
-    // Inner cone: same axis column + translation, radial columns narrowed.
-    e[0] = m0 * s; e[1] = m1 * s; e[2] = m2 * s; e[3] = 0;
-    e[4] = m4; e[5] = m5; e[6] = m6; e[7] = 0;
-    e[8] = m8 * s; e[9] = m9 * s; e[10] = m10 * s; e[11] = 0;
-    e[12] = m12; e[13] = m13; e[14] = m14; e[15] = 1;
-    writeInstanceMatrixArray(
-      this.coneBarrelInnerInstanced,
-      slot,
-      e,
-      0,
-      this.coneBarrelInnerMatrixDirty,
-    );
+    if (innerActive) {
+      // Inner cone: same axis column + translation, radial columns narrowed.
+      e[0] = m0 * s; e[1] = m1 * s; e[2] = m2 * s; e[3] = 0;
+      e[4] = m4; e[5] = m5; e[6] = m6; e[7] = 0;
+      e[8] = m8 * s; e[9] = m9 * s; e[10] = m10 * s; e[11] = 0;
+      e[12] = m12; e[13] = m13; e[14] = m14; e[15] = 1;
+      writeInstanceMatrixArray(
+        this.coneBarrelInnerInstanced,
+        slot,
+        e,
+        0,
+        this.coneBarrelInnerMatrixDirty,
+      );
+    }
 
     const ballRadius = this.coneEmitterBallRadius[slot];
     // Chopped-cone taper. The inner layer narrows by the same factor, so
@@ -931,13 +966,15 @@ export class UnitDetailInstanceRenderer3D {
       0,
       coneTipTaper,
     );
-    this.writeEmitterFlow(
-      this.coneBarrelInnerFlow,
-      slot,
-      beamWaveFlowRepeats(length, BEAM_INNER_VISUAL_CONFIG.waveSpacing),
-      1,
-      coneTipTaper,
-    );
+    if (innerActive) {
+      this.writeEmitterFlow(
+        this.coneBarrelInnerFlow,
+        slot,
+        beamWaveFlowRepeats(length, BEAM_INNER_VISUAL_CONFIG.waveSpacing),
+        1,
+        coneTipTaper,
+      );
+    }
 
     if (ballRadius <= 0 || radial < 1e-6 || length < 1e-6) return;
 
@@ -962,6 +999,13 @@ export class UnitDetailInstanceRenderer3D {
       0,
       this.emitterBallMatrixDirty,
     );
+    this.writeEmitterFlow(
+      this.emitterBallFlow,
+      slot,
+      beamWaveFlowRepeats(d, BEAM_OUTER_VISUAL_CONFIG.waveSpacing),
+      2,
+    );
+    if (!innerActive) return;
     for (let i = 0; i < 12; i++) e[i] *= s;
     writeInstanceMatrixArray(
       this.emitterBallInnerInstanced,
@@ -969,13 +1013,6 @@ export class UnitDetailInstanceRenderer3D {
       e,
       0,
       this.emitterBallInnerMatrixDirty,
-    );
-
-    this.writeEmitterFlow(
-      this.emitterBallFlow,
-      slot,
-      beamWaveFlowRepeats(d, BEAM_OUTER_VISUAL_CONFIG.waveSpacing),
-      2,
     );
     this.writeEmitterFlow(
       this.emitterBallInnerFlow,
@@ -1009,11 +1046,12 @@ export class UnitDetailInstanceRenderer3D {
 
   clearTurretSlots(turret: Pick<TurretMesh, 'headSlot' | 'barrelSlots' | 'barrelUsesCone'>): void {
     if (turret.headSlot !== undefined) {
+      const pool = this.turretHeadPools[tierSlotTier(turret.headSlot)];
       writeInstanceMatrix(
-        this.turretHeadInstanced,
-        turret.headSlot,
+        pool.mesh,
+        tierSlotIndex(turret.headSlot),
         ZERO_MATRIX,
-        this.turretHeadMatrixDirty,
+        pool.matrixDirty,
       );
     }
     if (turret.barrelSlots) {
@@ -1021,7 +1059,8 @@ export class UnitDetailInstanceRenderer3D {
         if (turret.barrelUsesCone) {
           this.zeroConeEmitterSlot(slot);
         } else {
-          writeInstanceMatrix(this.barrelInstanced, slot, ZERO_MATRIX, this.barrelMatrixDirty);
+          const pool = this.barrelPools[tierSlotTier(slot)];
+          writeInstanceMatrix(pool.mesh, tierSlotIndex(slot), ZERO_MATRIX, pool.matrixDirty);
         }
       }
     }
@@ -1065,18 +1104,9 @@ export class UnitDetailInstanceRenderer3D {
   }
 
   flush(turretShieldPanelsEnabled: boolean): void {
-    this.smoothChassisNextSlot = this.trimFreeTail(
-      this.smoothChassisFreeSlots,
-      this.smoothChassisNextSlot,
-    );
     for (const pool of this.polyChassis.values()) {
       pool.nextSlot = this.trimFreeTail(pool.freeSlots, pool.nextSlot);
     }
-    this.turretHeadNextSlot = this.trimFreeTail(
-      this.turretHeadFreeSlots,
-      this.turretHeadNextSlot,
-    );
-    this.barrelNextSlot = this.trimFreeTail(this.barrelFreeSlots, this.barrelNextSlot);
     this.coneBarrelNextSlot = this.trimFreeTail(
       this.coneBarrelFreeSlots,
       this.coneBarrelNextSlot,
@@ -1086,11 +1116,9 @@ export class UnitDetailInstanceRenderer3D {
       this.shieldPanelNextSlot,
     );
 
-    setInstancedCount(this.smoothChassis, this.smoothChassisNextSlot);
-    uploadDirtySpan(this.smoothChassis.instanceMatrix, this.smoothChassisMatrixDirty, 16);
-    if (this.smoothChassis.instanceColor) {
-      uploadDirtySpan(this.smoothChassis.instanceColor, this.smoothChassisColorDirty, 3);
-    }
+    this.flushTierPools(this.smoothChassisPools);
+    this.flushTierPools(this.turretHeadPools);
+    this.flushTierPools(this.barrelPools);
 
     for (const pool of this.polyChassis.values()) {
       setInstancedCount(pool.mesh, pool.nextSlot);
@@ -1098,18 +1126,6 @@ export class UnitDetailInstanceRenderer3D {
       if (pool.mesh.instanceColor) {
         uploadDirtySpan(pool.mesh.instanceColor, pool.colorDirty, 3);
       }
-    }
-
-    setInstancedCount(this.turretHeadInstanced, this.turretHeadNextSlot);
-    uploadDirtySpan(this.turretHeadInstanced.instanceMatrix, this.turretHeadMatrixDirty, 16);
-    if (this.turretHeadInstanced.instanceColor) {
-      uploadDirtySpan(this.turretHeadInstanced.instanceColor, this.turretHeadColorDirty, 3);
-    }
-
-    setInstancedCount(this.barrelInstanced, this.barrelNextSlot);
-    uploadDirtySpan(this.barrelInstanced.instanceMatrix, this.barrelMatrixDirty, 16);
-    if (this.barrelInstanced.instanceColor) {
-      uploadDirtySpan(this.barrelInstanced.instanceColor, this.barrelColorDirty, 3);
     }
 
     // Beam-emitter pools share the cone slot allocator, so every mirror
@@ -1156,11 +1172,11 @@ export class UnitDetailInstanceRenderer3D {
     }
     this.polyChassis.clear();
 
-    disposeMesh(this.smoothChassis);
+    for (const pools of [this.smoothChassisPools, this.turretHeadPools, this.barrelPools]) {
+      for (const pool of pools) disposeMesh(pool.mesh);
+    }
 
     for (const mesh of [
-      this.turretHeadInstanced,
-      this.barrelInstanced,
       this.coneBarrelInstanced,
       this.coneBarrelInnerInstanced,
       this.emitterBallInstanced,
@@ -1170,6 +1186,32 @@ export class UnitDetailInstanceRenderer3D {
       disposeMesh(mesh);
     }
     this.fadeState.clear();
+  }
+
+  private createTierPool(
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    capacity: number,
+  ): TierPool {
+    return {
+      mesh: this.createPool(geometry, material, capacity),
+      matrixDirty: createDirtySpan(),
+      colorDirty: createDirtySpan(),
+      freeSlots: [],
+      nextSlot: 0,
+      cap: capacity,
+    };
+  }
+
+  private flushTierPools(pools: TierPool[]): void {
+    for (const pool of pools) {
+      pool.nextSlot = this.trimFreeTail(pool.freeSlots, pool.nextSlot);
+      setInstancedCount(pool.mesh, pool.nextSlot);
+      uploadDirtySpan(pool.mesh.instanceMatrix, pool.matrixDirty, 16);
+      if (pool.mesh.instanceColor) {
+        uploadDirtySpan(pool.mesh.instanceColor, pool.colorDirty, 3);
+      }
+    }
   }
 
   private createPool(
@@ -1220,7 +1262,13 @@ export class UnitDetailInstanceRenderer3D {
     turretFades: readonly number[] | null,
   ): void {
     if (mesh.smoothChassisSlots) {
-      for (const slot of mesh.smoothChassisSlots) this.writeFade(this.smoothChassis, slot, bodyFade);
+      for (const slot of mesh.smoothChassisSlots) {
+        this.writeFade(
+          this.smoothChassisPools[tierSlotTier(slot)].mesh,
+          tierSlotIndex(slot),
+          bodyFade,
+        );
+      }
     }
     if (mesh.polyChassisSlot !== undefined && mesh.bodyShapeKey) {
       const pool = this.polyChassis.get(mesh.bodyShapeKey);
@@ -1230,7 +1278,11 @@ export class UnitDetailInstanceRenderer3D {
       const turret = mesh.turrets[i];
       const fade = turretFades ? (turretFades[i] ?? bodyFade) : bodyFade;
       if (turret.headSlot !== undefined) {
-        this.writeFade(this.turretHeadInstanced, turret.headSlot, fade);
+        this.writeFade(
+          this.turretHeadPools[tierSlotTier(turret.headSlot)].mesh,
+          tierSlotIndex(turret.headSlot),
+          fade,
+        );
       }
       if (turret.barrelSlots) {
         for (const slot of turret.barrelSlots) {
@@ -1240,7 +1292,11 @@ export class UnitDetailInstanceRenderer3D {
             this.writeFade(this.emitterBallInstanced, slot, fade);
             this.writeFade(this.emitterBallInnerInstanced, slot, fade);
           } else {
-            this.writeFade(this.barrelInstanced, slot, fade);
+            this.writeFade(
+              this.barrelPools[tierSlotTier(slot)].mesh,
+              tierSlotIndex(slot),
+              fade,
+            );
           }
         }
       }
@@ -1259,11 +1315,12 @@ export class UnitDetailInstanceRenderer3D {
   ): void {
     if (mesh.smoothChassisSlots) {
       for (const slot of mesh.smoothChassisSlots) {
+        const pool = this.smoothChassisPools[tierSlotTier(slot)];
         this.applyInstancedDelta(
-          this.smoothChassis,
-          slot,
+          pool.mesh,
+          tierSlotIndex(slot),
           bodyDelta,
-          this.smoothChassisMatrixDirty,
+          pool.matrixDirty,
         );
       }
     }
@@ -1282,11 +1339,12 @@ export class UnitDetailInstanceRenderer3D {
       const turret = mesh.turrets[i];
       const delta = turretDeltas[i] ?? bodyDelta;
       if (turret.headSlot !== undefined) {
+        const pool = this.turretHeadPools[tierSlotTier(turret.headSlot)];
         this.applyInstancedDelta(
-          this.turretHeadInstanced,
-          turret.headSlot,
+          pool.mesh,
+          tierSlotIndex(turret.headSlot),
           delta,
-          this.turretHeadMatrixDirty,
+          pool.matrixDirty,
         );
       }
       if (turret.barrelSlots) {
@@ -1304,7 +1362,8 @@ export class UnitDetailInstanceRenderer3D {
               this.emitterBallInnerInstanced, slot, delta, this.emitterBallInnerMatrixDirty,
             );
           } else {
-            this.applyInstancedDelta(this.barrelInstanced, slot, delta, this.barrelMatrixDirty);
+            const pool = this.barrelPools[tierSlotTier(slot)];
+            this.applyInstancedDelta(pool.mesh, tierSlotIndex(slot), delta, pool.matrixDirty);
           }
         }
       }
@@ -1367,13 +1426,7 @@ export class UnitDetailInstanceRenderer3D {
     const slots = this.smoothChassisSlots.get(entityId);
     if (!slots) return;
     for (const slot of slots) {
-      writeInstanceMatrix(
-        this.smoothChassis,
-        slot,
-        ZERO_MATRIX,
-        this.smoothChassisMatrixDirty,
-      );
-      this.smoothChassisFreeSlots.push(slot);
+      this.freeTierSlot(this.smoothChassisPools, slot);
     }
     this.smoothChassisSlots.delete(entityId);
     this.smoothChassisColorKey.delete(entityId);
@@ -1391,39 +1444,12 @@ export class UnitDetailInstanceRenderer3D {
   }
 
   private freeTurretHeadSlot(slot: number): void {
-    writeInstanceMatrix(
-      this.turretHeadInstanced,
-      slot,
-      ZERO_MATRIX,
-      this.turretHeadMatrixDirty,
-    );
-    this.turretHeadFreeSlots.push(slot);
+    this.freeTierSlot(this.turretHeadPools, slot);
     this.turretHeadColorKey.delete(slot);
   }
 
-  private allocBarrelSlot(): number | null {
-    let slot: number;
-    if (this.barrelFreeSlots.length > 0) {
-      slot = this.barrelFreeSlots.pop()!;
-    } else if (this.barrelNextSlot < BARREL_CAP) {
-      slot = this.barrelNextSlot++;
-    } else {
-      return null;
-    }
-    writeInstanceMatrix(this.barrelInstanced, slot, ZERO_MATRIX, this.barrelMatrixDirty);
-    this.writeFade(this.barrelInstanced, slot, 1);
-    writeInstanceColorHex(
-      this.barrelInstanced,
-      slot,
-      COLORS.units.turret.barrel.colorHex,
-      this.barrelColorDirty,
-    );
-    return slot;
-  }
-
   private freeBarrelSlot(slot: number): void {
-    writeInstanceMatrix(this.barrelInstanced, slot, ZERO_MATRIX, this.barrelMatrixDirty);
-    this.barrelFreeSlots.push(slot);
+    this.freeTierSlot(this.barrelPools, slot);
     this.barrelColorKey.delete(slot);
   }
 
@@ -1437,6 +1463,7 @@ export class UnitDetailInstanceRenderer3D {
       return null;
     }
     this.coneEmitterBallRadius[slot] = 0;
+    this.coneEmitterInnerActive[slot] = 1;
     this.zeroConeEmitterSlot(slot);
     this.writeFade(this.coneBarrelInstanced, slot, 1);
     this.writeFade(this.coneBarrelInnerInstanced, slot, 1);
@@ -1447,6 +1474,7 @@ export class UnitDetailInstanceRenderer3D {
 
   private freeConeBarrelSlot(slot: number): void {
     this.coneEmitterBallRadius[slot] = 0;
+    this.coneEmitterInnerActive[slot] = 1;
     this.zeroConeEmitterSlot(slot);
     this.coneBarrelFreeSlots.push(slot);
   }
@@ -1470,9 +1498,15 @@ export class UnitDetailInstanceRenderer3D {
   }
 
   /** Record the cap radius for a legacy cone slot. Called by the mesh
-   *  builder right after slot allocation. */
-  registerConeBarrelEmitter(slot: number, ballRadius: number): void {
+   *  builder right after slot allocation. `innerLayers=false` (far-rung
+   *  hosts) keeps the inner cone + inner ball zero-scale for this slot. */
+  registerConeBarrelEmitter(
+    slot: number,
+    ballRadius: number,
+    innerLayers: boolean = true,
+  ): void {
     this.coneEmitterBallRadius[slot] = ballRadius;
+    this.coneEmitterInnerActive[slot] = innerLayers ? 1 : 0;
   }
 
   private allocShieldPanelSlot(): number | null {
@@ -1507,22 +1541,24 @@ export class UnitDetailInstanceRenderer3D {
   private releaseAllSmoothChassisSlots(): void {
     for (const slots of this.smoothChassisSlots.values()) {
       for (const slot of slots) {
-        writeInstanceMatrix(
-          this.smoothChassis,
-          slot,
-          ZERO_MATRIX,
-          this.smoothChassisMatrixDirty,
-        );
+        const pool = this.smoothChassisPools[tierSlotTier(slot)];
+        writeInstanceMatrix(pool.mesh, tierSlotIndex(slot), ZERO_MATRIX, pool.matrixDirty);
       }
     }
     this.smoothChassisSlots.clear();
     this.smoothChassisColorKey.clear();
-    clearDirtySpan(this.smoothChassisMatrixDirty);
-    clearDirtySpan(this.smoothChassisColorDirty);
-    this.clearFadeDirty(this.smoothChassis);
-    this.smoothChassisFreeSlots.length = 0;
-    this.smoothChassisNextSlot = 0;
-    this.smoothChassis.count = 0;
+    this.resetTierPools(this.smoothChassisPools);
+  }
+
+  private resetTierPools(pools: TierPool[]): void {
+    for (const pool of pools) {
+      clearDirtySpan(pool.matrixDirty);
+      clearDirtySpan(pool.colorDirty);
+      this.clearFadeDirty(pool.mesh);
+      pool.freeSlots.length = 0;
+      pool.nextSlot = 0;
+      pool.mesh.count = 0;
+    }
   }
 
   private releaseAllPolyChassisSlots(): void {
@@ -1542,34 +1578,23 @@ export class UnitDetailInstanceRenderer3D {
   }
 
   private releaseAllTurretHeadSlots(): void {
-    for (let slot = 0; slot < this.turretHeadNextSlot; slot++) {
-      writeInstanceMatrix(
-        this.turretHeadInstanced,
-        slot,
-        ZERO_MATRIX,
-        this.turretHeadMatrixDirty,
-      );
+    for (const pool of this.turretHeadPools) {
+      for (let index = 0; index < pool.nextSlot; index++) {
+        writeInstanceMatrix(pool.mesh, index, ZERO_MATRIX, pool.matrixDirty);
+      }
     }
     this.turretHeadColorKey.clear();
-    this.turretHeadFreeSlots.length = 0;
-    this.turretHeadNextSlot = 0;
-    clearDirtySpan(this.turretHeadMatrixDirty);
-    clearDirtySpan(this.turretHeadColorDirty);
-    this.clearFadeDirty(this.turretHeadInstanced);
-    this.turretHeadInstanced.count = 0;
+    this.resetTierPools(this.turretHeadPools);
   }
 
   private releaseAllBarrelSlots(): void {
-    for (let slot = 0; slot < this.barrelNextSlot; slot++) {
-      writeInstanceMatrix(this.barrelInstanced, slot, ZERO_MATRIX, this.barrelMatrixDirty);
+    for (const pool of this.barrelPools) {
+      for (let index = 0; index < pool.nextSlot; index++) {
+        writeInstanceMatrix(pool.mesh, index, ZERO_MATRIX, pool.matrixDirty);
+      }
     }
     this.barrelColorKey.clear();
-    this.barrelFreeSlots.length = 0;
-    this.barrelNextSlot = 0;
-    clearDirtySpan(this.barrelMatrixDirty);
-    clearDirtySpan(this.barrelColorDirty);
-    this.clearFadeDirty(this.barrelInstanced);
-    this.barrelInstanced.count = 0;
+    this.resetTierPools(this.barrelPools);
   }
 
   private releaseAllConeBarrelSlots(): void {
@@ -1577,6 +1602,7 @@ export class UnitDetailInstanceRenderer3D {
       this.zeroConeEmitterSlot(slot);
     }
     this.coneEmitterBallRadius.fill(0);
+    this.coneEmitterInnerActive.fill(1);
     this.coneBarrelFreeSlots.length = 0;
     this.coneBarrelNextSlot = 0;
     clearDirtySpan(this.coneBarrelMatrixDirty);

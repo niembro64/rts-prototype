@@ -42,6 +42,12 @@ import { CommanderVisualKit3D } from './CommanderVisualKit3D';
 import type { EntityMesh } from './EntityMesh3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import {
+  DETAIL_REBUILD_BUDGET_UNITS,
+  LOCOMOTION_FAR_FRAME_STRIDE,
+  UNIT_ANIMATION_MIN_RUNG,
+  type DetailRung,
+  detailLevelForRung,
+  detailRungForLevel,
   unitDetailBand,
   unitDetailGraphicsConfig,
 } from './EntityDetailLevel3D';
@@ -115,6 +121,10 @@ type RenderEntityUpdatePacket3D = {
   beamAimProjectiles?: readonly Entity[];
   projectileRenderProjectiles?: readonly Entity[];
   isEntityEmissionFarLod?: (entity: Entity) => boolean;
+  /** Latched detail rung from the scene's EntityLodState3D — the SAME
+   *  state that stamps the packet's LOD-proxy flag, so the rebuild band
+   *  and the glyph flip can never disagree within a frame. */
+  entityDetailRung?: (entity: Entity) => DetailRung;
   scoped: boolean;
 };
 
@@ -138,6 +148,12 @@ export class Render3DEntities {
   private metalDeposits: readonly MetalDeposit[];
   private isEntityEmissionFarLod: (entity: Entity) => boolean =
     DEFAULT_ENTITY_EMISSION_FAR_LOD;
+  private entityDetailRung: ((entity: Entity) => DetailRung) | undefined;
+  /** Per-frame cap on detail-band mesh rebuilds. Camera sweeps change
+   *  many bands at once; over-budget units keep their previous rung
+   *  until a later frame so a zoom never lands as one hitch frame. */
+  private unitRebuildBudgetLeft = 0;
+  private renderFrameCounter = 0;
   /** Visibility scope (RENDER: WIN/PAD/ALL). Unit pose, locomotion,
    *  and turret updates intentionally ignore this so camera distance
    *  cannot change their update cadence. Effect/projectile renderers
@@ -197,6 +213,7 @@ export class Render3DEntities {
   private readonly _poseUnitRows: number[] = [];
   private readonly _poseUnitMeshes: EntityMesh[] = [];
   private readonly _poseBodyOpacity: number[] = [];
+  private readonly _poseAnimate: boolean[] = [];
 
   // Per-entity leg-state snapshots stashed right before a mesh teardown
   // mesh teardown and consumed immediately after rebuild, so feet keep
@@ -418,6 +435,9 @@ export class Render3DEntities {
     this.turretShieldPanelsEnabled = turretShieldPanelsEnabled;
     this.isEntityEmissionFarLod = entityPacket?.isEntityEmissionFarLod
       ?? DEFAULT_ENTITY_EMISSION_FAR_LOD;
+    this.entityDetailRung = entityPacket?.entityDetailRung;
+    this.unitRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_UNITS;
+    this.renderFrameCounter++;
 
     const frameSpin = this.barrelSpinState.beginFrame();
     this._currentDtMs = frameSpin.currentDtMs;
@@ -545,9 +565,11 @@ export class Render3DEntities {
     const poseRows = this._poseUnitRows;
     const poseMeshes = this._poseUnitMeshes;
     const poseBodyOpacity = this._poseBodyOpacity;
+    const poseAnimate = this._poseAnimate;
     poseRows.length = 0;
     poseMeshes.length = 0;
     poseBodyOpacity.length = 0;
+    poseAnimate.length = 0;
     this.unitRenderPose.begin(unitRows.count);
     let poseCount = 0;
 
@@ -598,23 +620,37 @@ export class Render3DEntities {
       const unitBlueprintId = unitRows.unitBlueprintIds[row];
       const unitTurretCount = unitRows.turretCount[row];
       const fullUnitDetail = true;
-      // Binary detail level: full mesh on the HIGH side, proxy glyph on the
-      // LOW side. Non-proxy rows build at full detail.
-      const detailLevel = entityDetailLevelForView(this.frameState.view, e);
+      // Latched detail rung (screen-coverage LOD with hysteresis) from the
+      // scene's shared EntityLodState3D — the same state that stamped this
+      // packet's proxy flag. The rung's representative level drives the
+      // rebuild band, feature ladder, and geometry tier at build time.
+      const detailRung = this.entityDetailRung !== undefined
+        ? this.entityDetailRung(e)
+        : detailRungForLevel(entityDetailLevelForView(this.frameState.view, e));
+      const detailLevel = detailLevelForRung(detailRung);
       const detailBand = unitDetailBand(detailLevel, unitGfx);
       const detailBandChanged =
         m !== undefined &&
         m.unitRenderDetailBand !== detailBand;
-      if (
-        m &&
+      const coreKeyChanged =
+        m !== undefined &&
         (
           m.unitRenderFrameKey !== unitGeometryKey ||
           m.unitRenderOwnerId !== pid ||
           m.unitRenderBlueprintId !== unitBlueprintId ||
-          m.unitRenderTurretCount !== unitTurretCount ||
-          detailBandChanged
+          m.unitRenderTurretCount !== unitTurretCount
+        );
+      // Band-only changes are cosmetics and defer under the per-frame
+      // rebuild budget; core key changes (owner/blueprint/graphics) are
+      // correctness and always rebuild.
+      if (
+        m &&
+        (
+          coreKeyChanged ||
+          (detailBandChanged && this.unitRebuildBudgetLeft > 0)
         )
       ) {
+        if (!coreKeyChanged) this.unitRebuildBudgetLeft--;
         // Preserve leg state across the rebuild — feet keep
         // their planted world positions through the teardown so the
         // newly built mesh resumes the gait instead of snapping back
@@ -634,8 +670,9 @@ export class Render3DEntities {
           radius,
           ownerId: pid,
           turrets,
-          // The binary detail helper returns the global graphics config for
-          // HIGH and the old cheap config for LOW fallback paths.
+          // Per-rung graphics config: the user's global settings are the
+          // ceiling, the rung only ever scales DOWN (legs/treads/turret
+          // rungs shed as the unit shrinks on screen).
           unitGfx: unitDetailGraphicsConfig(unitGfx, detailLevel),
           unitFrameKey: unitGeometryKey,
           unitRenderKey,
@@ -653,7 +690,11 @@ export class Render3DEntities {
       this.reactivateUnitMeshForLod(entityId, m);
       if (pruneUnits) m.renderSeenToken = pruneToken;
       applyUnitLiftGroupPose3D(m, e);
-      if (unitGfx.barrelSpin) {
+      // Below the animation rung the spin state stops advancing — the
+      // spin group FREEZES at its last angle (turretPose keeps writing
+      // the stored value) instead of snapping to zero.
+      const animateUnit = detailRung >= UNIT_ANIMATION_MIN_RUNG;
+      if (unitGfx.barrelSpin && animateUnit) {
         if (!this.barrelSpinState.advanceRows(entityId, turretRows, spinDt)) {
           this.barrelSpinState.advance(e, spinDt);
         }
@@ -703,6 +744,7 @@ export class Render3DEntities {
       poseRows[poseCount] = row;
       poseMeshes[poseCount] = m;
       poseBodyOpacity[poseCount] = bodyOpacity;
+      poseAnimate[poseCount] = animateUnit;
       poseCount++;
     }
 
@@ -880,25 +922,37 @@ export class Render3DEntities {
       }
 
       // Locomotion: spin tread wheels per velocity; legs write per-
-      // instance buffers in the shared cylinder pool.
+      // instance buffers in the shared cylinder pool. Below the animation
+      // rung the rig updates on a frame stride (with accumulated dt so the
+      // EMAs stay frame-rate independent) — the floor clamp goes a few
+      // frames stale at a screen size where that cannot read.
       const locomotion = m.locomotion;
       if (locomotion) {
         const locomotionVisibilityDirty = locomotion.group.visible !== bodyMaterialized;
         if (locomotionVisibilityDirty) setObjectVisibleIfChanged(locomotion.group, bodyMaterialized);
+        const animateLocomotion = poseAnimate[poseIndex];
+        const stridePhaseDue = animateLocomotion ||
+          (this.renderFrameCounter + (e.id as number)) % LOCOMOTION_FAR_FRAME_STRIDE === 0;
         if (!bodyMaterialized) {
           this.activeLocomotionUnitIds.delete(e.id);
         } else if (
-          locomotionVisibilityDirty ||
-          this.activeLocomotionUnitIds.has(e.id) ||
-          unitRows.activePredictionAt(row) ||
-          unitRows.renderDirtyAt(row) ||
-          unitRows.lifecycleDirtyAt(row)
+          stridePhaseDue &&
+          (
+            locomotionVisibilityDirty ||
+            this.activeLocomotionUnitIds.has(e.id) ||
+            unitRows.activePredictionAt(row) ||
+            unitRows.renderDirtyAt(row) ||
+            unitRows.lifecycleDirtyAt(row)
+          )
         ) {
           const locomotionSmokeEmitters = unitRows.buildInProgressAt(row) || !this.smokeTrailsEnabled
             ? undefined
             : this.hoverSmokeEmitters;
+          const locomotionDtMs = animateLocomotion
+            ? this._currentDtMs
+            : this._currentDtMs * LOCOMOTION_FAR_FRAME_STRIDE;
           const keepLocomotionActive = updateLocomotion(
-            locomotion, e, this._currentDtMs,
+            locomotion, e, locomotionDtMs,
             mapWidth,
             mapHeight,
             this.legRenderer,

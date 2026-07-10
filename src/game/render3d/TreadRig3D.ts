@@ -41,7 +41,10 @@ import {
 } from './LocomotionTerrainSampler';
 import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { getLocomotionMatByCache } from './RenderUtils';
-import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
+import {
+  createPrimitiveCylinderGeometry,
+  type PrimitiveGeometryTier,
+} from './PrimitiveGeometryQuality3D';
 
 const TREAD_COLOR = COLORS.units.locomotion.tread.slab.colorHex;
 const WHEEL_COLOR = COLORS.units.locomotion.tread.wheel.colorHex;
@@ -67,8 +70,17 @@ const TREAD_LIFT_SETTLED_EPSILON = 0.02;
 const TREAD_BELT_SETTLED_EPSILON = 0.02;
 
 const treadBoxGeom = new THREE.BoxGeometry(1, 1, 1);
-const treadEndGeom = createPrimitiveCylinderGeometry('locomotion', 'close');
+const treadEndGeomByTier = new Map<PrimitiveGeometryTier, THREE.CylinderGeometry>();
 const wheelGeom = createPrimitiveCylinderGeometry('locomotion', 'mid');
+
+function getTreadEndGeom(tier: PrimitiveGeometryTier): THREE.CylinderGeometry {
+  let geom = treadEndGeomByTier.get(tier);
+  if (!geom) {
+    geom = createPrimitiveCylinderGeometry('locomotion', tier);
+    treadEndGeomByTier.set(tier, geom);
+  }
+  return geom;
+}
 const treadMats = new Map<number, THREE.MeshBasicMaterial>();
 const wheelMats = new Map<number, THREE.MeshBasicMaterial>();
 const cleatMats = new Map<number, THREE.MeshBasicMaterial>();
@@ -135,6 +147,7 @@ export function buildTreads(
   cfg: TreadConfig,
   animatedWheels: boolean,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): TreadMesh {
   const group = new THREE.Group();
   const length = r * cfg.treadLength;
@@ -172,7 +185,7 @@ export function buildTreads(
     sideGroup.add(centerRun);
 
     for (const end of [-1, 1] as const) {
-      const roundedEnd = new THREE.Mesh(treadEndGeom, treadMat);
+      const roundedEnd = new THREE.Mesh(getTreadEndGeom(geometryTier), treadMat);
       roundedEnd.rotation.x = Math.PI / 2;
       roundedEnd.scale.set(treadRadius, width, treadRadius);
       roundedEnd.position.set(end * halfStraight, TREAD_Y, 0);

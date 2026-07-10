@@ -22,7 +22,7 @@ import { buildShieldPanelMesh3D } from './ShieldPanelMesh3D';
 import { buildTurretMesh3D, type TurretMesh } from './TurretMesh3D';
 import type { UnitDetailInstanceRenderer3D } from './UnitDetailInstanceRenderer3D';
 import { setVector3IfChanged } from './threeTransformWriteUtils';
-import { featureVisibleAtDetail } from './EntityDetailLevel3D';
+import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
 import { buildProductionHoldRingMesh } from './ProductionHoldRing3D';
 
 // Detailed unit parts use shared instanced pools by default. The
@@ -154,12 +154,16 @@ export class UnitMeshBuilder3D {
     let smoothChassisSlots: number[] | undefined;
     let polyChassisSlot: number | undefined;
 
+    const geometryTier = geometryTierForDetail(detailLevel);
     if (
       useInstancedChassis &&
       bodyEntry.isSmooth &&
       bodyEntry.parts.length > 0
     ) {
-      smoothChassisSlots = this.unitDetailInstances.allocSmoothChassisSlots(bodyEntry.parts.length) ?? undefined;
+      smoothChassisSlots = this.unitDetailInstances.allocSmoothChassisSlots(
+        bodyEntry.parts.length,
+        geometryTier,
+      ) ?? undefined;
     } else if (
       useInstancedChassis &&
       !bodyEntry.isSmooth &&
@@ -334,7 +338,9 @@ export class UnitMeshBuilder3D {
         isConstructionEmitter;
       let headSlot: number | undefined;
       if (useDetailedUnitInstancing && !hideHead && !isCommanderUnit) {
-        const allocated = this.unitDetailInstances.allocTurretHeadSlot();
+        const allocated = this.unitDetailInstances.allocTurretHeadSlot(
+          geometryTierForDetail(detailLevel),
+        );
         if (allocated !== null) headSlot = allocated;
       }
 
@@ -365,12 +371,19 @@ export class UnitMeshBuilder3D {
         const barrelSlots = this.unitDetailInstances.allocBarrelSlots(
           turretMesh.barrels.length,
           turretMesh.barrelUsesCone === true,
+          geometryTierForDetail(detailLevel),
         );
         if (barrelSlots) {
           turretMesh.barrelSlots = barrelSlots;
           for (const barrel of turretMesh.barrels) barrel.parent?.remove(barrel);
           if (turretMesh.barrelUsesCone === true) {
-            this.unitDetailInstances.registerConeBarrelEmitter(barrelSlots[0], 0);
+            // Far-rung hosts shed the beam rig's inner cone + inner ball
+            // layers (the glow doubling), halving the rig's triangles.
+            this.unitDetailInstances.registerConeBarrelEmitter(
+              barrelSlots[0],
+              0,
+              featureVisibleAtDetail('beamGlow', detailLevel),
+            );
           }
         }
       }

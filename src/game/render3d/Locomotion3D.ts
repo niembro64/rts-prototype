@@ -58,7 +58,7 @@ import type {
   AirborneEmitterBatch3D,
   AirborneEmitterParentPose3D,
 } from './AirborneEmitterBatch3D';
-import { featureVisibleAtDetail } from './EntityDetailLevel3D';
+import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
 
 export type Locomotion3DMesh =
   | TreadMesh
@@ -145,10 +145,13 @@ export function buildLocomotion(
   if (!featureVisibleAtDetail('locomotion', detailLevel)) return undefined;
 
   const geometryKey = geometryKeyFor(gfx);
+  const geometryTier = geometryTierForDetail(detailLevel);
 
   switch (loc.type) {
     case 'treads': {
-      const mesh = buildTreads(unitGroup, unitRadius, loc.config, gfx.treadsAnimated, ownerId);
+      const mesh = buildTreads(
+        unitGroup, unitRadius, loc.config, gfx.treadsAnimated, ownerId, geometryTier,
+      );
       mesh.geometryKey = geometryKey;
       return mesh;
     }
@@ -178,6 +181,7 @@ export function buildLocomotion(
         hoverSmokeUseId(bp.unitBlueprintId),
         entity.id,
         ownerId,
+        geometryTier,
       );
       mesh.geometryKey = geometryKey;
       return mesh;

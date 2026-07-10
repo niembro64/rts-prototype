@@ -446,6 +446,8 @@ export class RtsScene3DRenderPhase {
         beamAimProjectiles: lineProjectiles,
         projectileRenderProjectiles: projectileLists.traveling,
         isEntityEmissionFarLod: (entity) => this.entityEmissionUsesFarLod(entity),
+        entityDetailRung: (entity) =>
+          this.entityLod.entityDetailRungForView(renderFrameState.view, entity),
         scoped: this.renderScope.getMode() !== 'all',
       },
       {

@@ -29,6 +29,7 @@ import { getLocomotionMatByCache } from './RenderUtils';
 import {
   createPrimitiveSphereGeometry,
   createPrimitiveTorusGeometry,
+  type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
 
 /** Minimum world-Y gap the rendered fan ring is allowed to have above
@@ -50,9 +51,18 @@ const FAN_BLADE_COUNT = 3;
 const TRI_FRONT_FAN_ANGLES_RAD = [-Math.PI / 3, Math.PI / 3, Math.PI];
 const ALBATROS_FAN_POSITION_RADIUS_FRAC = 0.86;
 
-const ringGeomByTubeRatio = new Map<number, THREE.TorusGeometry>();
+const ringGeomByTubeRatio = new Map<string, THREE.TorusGeometry>();
 const bladeRotorGeoms = new Map<string, THREE.BufferGeometry>();
-const hubGeom = createPrimitiveSphereGeometry('locomotion', 'close');
+const hubGeomByTier = new Map<PrimitiveGeometryTier, THREE.SphereGeometry>();
+
+function getHubGeom(tier: PrimitiveGeometryTier): THREE.SphereGeometry {
+  let geom = hubGeomByTier.get(tier);
+  if (!geom) {
+    geom = createPrimitiveSphereGeometry('locomotion', tier);
+    hubGeomByTier.set(tier, geom);
+  }
+  return geom;
+}
 const ringMats = new Map<number, THREE.MeshBasicMaterial>();
 const hubMats = new Map<number, THREE.MeshBasicMaterial>();
 const bladeRotorMats = new Map<string, THREE.ShaderMaterial>();
@@ -61,11 +71,12 @@ const _fanWorldPos = new THREE.Vector3();
 const _fanWorldQuat = new THREE.Quaternion();
 const _fanWorldDir = new THREE.Vector3();
 
-function getRingGeom(tubeRatio: number): THREE.TorusGeometry {
-  const key = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
+function getRingGeom(tubeRatio: number, tier: PrimitiveGeometryTier): THREE.TorusGeometry {
+  const ratioKey = Math.round(THREE.MathUtils.clamp(tubeRatio, 0.05, 0.2) * 1000) / 1000;
+  const key = `${tier}:${ratioKey}`;
   let geom = ringGeomByTubeRatio.get(key);
   if (!geom) {
-    geom = createPrimitiveTorusGeometry('locomotion', 'close', 1, key);
+    geom = createPrimitiveTorusGeometry('locomotion', tier, 1, ratioKey);
     ringGeomByTubeRatio.set(key, geom);
   }
   return geom;
@@ -261,6 +272,7 @@ function buildFan(
   entityId: number,
   fanIndex: number,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): HoverFan {
   const {
     localX, localY, localZ, fanRadius, ringTubeRadius, outwardAngleRad,
@@ -294,7 +306,7 @@ function buildFan(
   }
 
   const ring = new THREE.Mesh(
-    getRingGeom(ringTubeRatio),
+    getRingGeom(ringTubeRatio, geometryTier),
     getLocomotionMatByCache(ringMats, FAN_RING_COLOR, ownerId),
   );
   ring.rotation.x = Math.PI / 2;
@@ -320,7 +332,10 @@ function buildFan(
   );
   fanGroup.add(rotor);
 
-  const hub = new THREE.Mesh(hubGeom, getLocomotionMatByCache(hubMats, FAN_HUB_COLOR, ownerId));
+  const hub = new THREE.Mesh(
+    getHubGeom(geometryTier),
+    getLocomotionMatByCache(hubMats, FAN_HUB_COLOR, ownerId),
+  );
   hub.scale.setScalar(hubRadius);
   fanGroup.add(hub);
 
@@ -362,6 +377,7 @@ export function buildAlbatrosHoverFans(
   smokeUseId: HoverSmokeUseId,
   entityId: number,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): HoverMesh {
   const group = new THREE.Group();
   const fanPositionRadius = cfg.fanPositionRadius ?? ALBATROS_FAN_POSITION_RADIUS_FRAC;
@@ -389,6 +405,7 @@ export function buildAlbatrosHoverFans(
       entityId,
       fans.length,
       ownerId,
+      geometryTier,
     ));
   }
 
@@ -410,6 +427,7 @@ export function buildHoverFans(
   smokeUseId: HoverSmokeUseId,
   entityId: number,
   ownerId: PlayerId | undefined,
+  geometryTier: PrimitiveGeometryTier = 'close',
 ): HoverMesh {
   const group = new THREE.Group();
   const mainFanRadius = Math.max(1, unitRadius * cfg.fanRadius);
@@ -447,6 +465,7 @@ export function buildHoverFans(
         entityId,
         fans.length,
         ownerId,
+        geometryTier,
       ));
     }
     if (hasTailFan) {
@@ -477,6 +496,7 @@ export function buildHoverFans(
         entityId,
         fans.length,
         ownerId,
+        geometryTier,
       ));
     }
   } else if (cfg.fanLayout === 'twin') {
@@ -498,6 +518,7 @@ export function buildHoverFans(
         entityId,
         fans.length,
         ownerId,
+        geometryTier,
       ));
     }
   } else if (cfg.fanLayout === 'triFront') {
@@ -517,6 +538,7 @@ export function buildHoverFans(
         entityId,
         fans.length,
         ownerId,
+        geometryTier,
       ));
     }
   } else {
@@ -538,6 +560,7 @@ export function buildHoverFans(
           entityId,
           fans.length,
           ownerId,
+          geometryTier,
         ));
       }
     }
