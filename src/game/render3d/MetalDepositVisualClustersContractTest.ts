@@ -28,6 +28,7 @@ function makeDeposit(id: number, gx: number, gy: number, height: number): MetalD
     y,
     gridX: gx,
     gridY: gy,
+    demoAutoExtractor: true,
     originGx: gx,
     originGy: gy,
     resourceCells: 1,

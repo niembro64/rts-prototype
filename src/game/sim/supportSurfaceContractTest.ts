@@ -947,6 +947,7 @@ function createSingleCellDeposit(gx: number, gy: number): MetalDeposit {
     y,
     gridX: gx,
     gridY: gy,
+    demoAutoExtractor: true,
     originGx: gx,
     originGy: gy,
     resourceCells: 1,

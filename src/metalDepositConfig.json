@@ -5,6 +5,21 @@
   "resourceRadiusCells": 6,
   "rings": [
     {
+      "comment": "NEUTRAL DEAD CENTER",
+      "radiusFraction": 0,
+      "countPerPlayer": 1,
+      "sliceOffset": 0,
+      "dTerrainLevels": null,
+      "flatPadCells": null,
+      "terrainBlendRadius": 600,
+      "demoAutoExtractor": false,
+      "depositCluster": {
+        "count": 1,
+        "radius": 0,
+        "angleOffset": 0
+      }
+    },
+    {
       "comment": "CENTER PIECE",
       "radiusFraction": 0.1,
       "countPerPlayer": 1,

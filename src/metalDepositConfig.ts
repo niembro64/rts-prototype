@@ -91,6 +91,11 @@ type DepositRing = {
    *  angle from map center. `{ count: 1, radius: 0, angleOffset: 0 }`
    *  exactly preserves the legacy behavior. */
   depositCluster: MetalDepositClusterConfig;
+  /** When false, the demo/background battle does NOT auto-build a team
+   *  extractor on this ring's deposits — they start neutral and any
+   *  player may claim them. Defaults to true (legacy behavior). Real
+   *  battles are unaffected (players always build their own). */
+  demoAutoExtractor?: boolean;
   /** Optional free-form note for the author — purely descriptive, not
    *  read by any runtime code. Useful for labeling where a ring sits
    *  ("inner near spawn", "back side cluster", etc.). */
@@ -175,6 +180,9 @@ export type MetalDeposit = {
   /** World-unit blend width outside the circular flat pad before natural
    *  terrain fully takes over. */
   blendRadius: number;
+  /** False when the authored ring opts this deposit out of the demo
+   *  battle's auto-built team extractor (the deposit starts neutral). */
+  demoAutoExtractor: boolean;
 };
 
 type MetalDepositPlacement = Pick<
@@ -203,6 +211,7 @@ type PendingPlacement = {
   dTerrainLevels: number | null;
   blendRadius: number;
   explicitHeight: number | null;
+  demoAutoExtractor: boolean;
 };
 
 const METAL_DEPOSIT_RING_INPUT_STRIDE = 6;
@@ -287,6 +296,7 @@ export function generateMetalDeposits(
       dTerrainLevels: p.dTerrainLevels,
       height,
       blendRadius: p.blendRadius,
+      demoAutoExtractor: p.demoAutoExtractor,
     });
     allZones.push({
       x: p.placement.x,
@@ -350,6 +360,7 @@ function generateMetalDepositPlacementsFromWasm(
           : finiteInteger(dTerrainRaw, 'metal deposit dTerrainLevels'),
         blendRadius: placementRows[base + 13],
         explicitHeight: Number.isNaN(explicitHeightRaw) ? null : explicitHeightRaw,
+        demoAutoExtractor: ring.demoAutoExtractor !== false,
       };
       expandMetalDepositClusterPlacements(
         origin,
@@ -408,6 +419,7 @@ function expandMetalDepositClusterPlacements(
       dTerrainLevels: origin.dTerrainLevels,
       blendRadius: origin.blendRadius,
       explicitHeight: origin.explicitHeight,
+      demoAutoExtractor: origin.demoAutoExtractor,
     });
   }
 }

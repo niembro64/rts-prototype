@@ -639,6 +639,9 @@ export function spawnMetalExtractorsOnDeposits(
   const factoryWaypoint = getInitialFactoryWaypointConfig('real');
 
   for (const deposit of world.metalDeposits) {
+    // Rings authored with demoAutoExtractor: false start neutral — no
+    // team gets a free extractor there (e.g. the exact-center deposit).
+    if (deposit.demoAutoExtractor === false) continue;
     const ownerId = ownerForDeposit(world, playerIds, deposit.x, deposit.y);
     const extractor = placeCompleteBuilding(
       world,
