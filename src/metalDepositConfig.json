@@ -15,10 +15,16 @@
     "      origin's radial angle from map center. Each deposit is a standalone",
     "      pad — overlapping pads at different heights cliff (closest wins).",
     "    type 'group-manual': one deposit per authored spot, and the group is",
-    "      ONE TERRAIN UNIT. Spots are world-unit offsets in the origin's",
-    "      radial frame (+x away from map center, +y perpendicular), so every",
-    "      player's slice keeps the same local shape. Each spot may author its",
-    "      own dTerrainLevels (omit = inherit ring, null = natural height).",
+    "      ONE TERRAIN UNIT. Spots use one of two addressing forms (never mix):",
+    "      OFFSET spots {x, y} — world-unit offsets in the origin's radial",
+    "      frame (+x away from map center, +y perpendicular), so every player's",
+    "      slice keeps the same local shape. RING-COORDINATE spots",
+    "      {radiusFraction, sliceOffset} — placed by the exact same oval/slice",
+    "      formula as a standalone ring, so merging existing rings into one",
+    "      group keeps their positions identical for every player count and",
+    "      map size (ring must author countPerPlayer 1). Each spot may author",
+    "      its own dTerrainLevels (omit = inherit ring, null = natural height)",
+    "      and its own flatPadCells (omit = inherit ring).",
     "      Terrain: every deposit's resource footprint stays perfectly flat at",
     "      its own height; the union of the group's flat pads is fully",
     "      overridden by one smoothed field that cosine-interpolates between",
@@ -127,7 +133,7 @@
       }
     },
     {
-      "comment": "RIGHT ARC",
+      "comment": "RIGHT ARC — one smoothed terrain group per player; spots are ring coordinates, placed exactly where the four former standalone RIGHT ARC rings were",
       "radiusFraction": 0.83,
       "countPerPlayer": 1,
       "sliceOffset": 0.68,
@@ -135,55 +141,13 @@
       "flatPadCells": null,
       "terrainBlendRadius": 600,
       "depositCluster": {
-        "type": "group-ring",
-        "count": 1,
-        "radius": 0,
-        "angleOffset": 0
-      }
-    },
-    {
-      "comment": "RIGHT ARC",
-      "radiusFraction": 0.8,
-      "countPerPlayer": 1,
-      "sliceOffset": 0.63,
-      "dTerrainLevels": null,
-      "flatPadCells": 20,
-      "terrainBlendRadius": 600,
-      "depositCluster": {
-        "type": "group-ring",
-        "count": 1,
-        "radius": 0,
-        "angleOffset": 0
-      }
-    },
-    {
-      "comment": "RIGHT ARC",
-      "radiusFraction": 0.7,
-      "countPerPlayer": 1,
-      "sliceOffset": 0.6,
-      "dTerrainLevels": null,
-      "flatPadCells": null,
-      "terrainBlendRadius": 600,
-      "depositCluster": {
-        "type": "group-ring",
-        "count": 1,
-        "radius": 0,
-        "angleOffset": 0
-      }
-    },
-    {
-      "comment": "RIGHT ARC",
-      "radiusFraction": 0.6,
-      "countPerPlayer": 1,
-      "sliceOffset": 0.6,
-      "dTerrainLevels": null,
-      "flatPadCells": 20,
-      "terrainBlendRadius": 600,
-      "depositCluster": {
-        "type": "group-ring",
-        "count": 1,
-        "radius": 0,
-        "angleOffset": 0
+        "type": "group-manual",
+        "spots": [
+          { "radiusFraction": 0.83, "sliceOffset": 0.68 },
+          { "radiusFraction": 0.8, "sliceOffset": 0.63, "flatPadCells": 20 },
+          { "radiusFraction": 0.7, "sliceOffset": 0.6 },
+          { "radiusFraction": 0.6, "sliceOffset": 0.6, "flatPadCells": 20 }
+        ]
       }
     },
     {

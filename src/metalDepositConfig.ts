@@ -121,7 +121,7 @@ type MetalDepositRingClusterConfig = {
   angleOffset: number;
 };
 
-type MetalDepositManualSpot = {
+type MetalDepositManualOffsetSpot = {
   /** World-unit offset along the origin's radial direction from map
    *  center (+x = away from center). */
   x: number;
@@ -131,7 +131,25 @@ type MetalDepositManualSpot = {
    *  inherit the ring's `dTerrainLevels`; `null` anchors this spot to
    *  the natural terrain height under its xy. */
   dTerrainLevels?: number | null;
+  /** Per-spot flat-pad override in build cells (same rules as the
+   *  ring's `flatPadCells`). Omit to inherit the ring's value. */
+  flatPadCells?: number | null;
 };
+
+/** Ring-coordinate spot: placed by the EXACT same oval/slice formula
+ *  as a standalone ring origin, so merging existing rings into one
+ *  group reproduces their positions identically for every player
+ *  count and map size. */
+type MetalDepositManualRingSpot = {
+  radiusFraction: number;
+  sliceOffset: number;
+  dTerrainLevels?: number | null;
+  flatPadCells?: number | null;
+};
+
+type MetalDepositManualSpot =
+  | MetalDepositManualOffsetSpot
+  | MetalDepositManualRingSpot;
 
 type MetalDepositManualClusterConfig = {
   type: 'group-manual';
@@ -361,6 +379,74 @@ function makeMetalDepositFlatZone(
   };
 }
 
+/** One packed Rust placement row. A classic ring packs one row;
+ *  a `group-manual` ring with RING-COORDINATE spots packs one row PER
+ *  SPOT — each spot runs the exact same oval/slice placement formula
+ *  a standalone ring would, so merging rings into a group reproduces
+ *  their positions identically. */
+type MetalDepositPackRow = {
+  ring: DepositRing;
+  cluster: ResolvedMetalDepositClusterConfig;
+  /** Set for ring-coordinate group spots; null = the ring's own row. */
+  ringSpot: MetalDepositManualRingSpot | null;
+  radiusFraction: number;
+  countPerPlayer: number;
+  sliceOffset: number;
+  dTerrainLevels: number | null;
+  flatPadCells: number;
+  blendRadius: number;
+};
+
+function buildMetalDepositPackPlan(resourceRadius: number): MetalDepositPackRow[] {
+  const plan: MetalDepositPackRow[] = [];
+  for (const ring of METAL_DEPOSIT_CONFIG.rings) {
+    const cluster = validMetalDepositClusterConfig(ring.depositCluster);
+    const ringPadCells = resolveMetalDepositFlatPadCells(
+      ring.flatPadCells,
+      resourceRadius,
+    );
+    const ringDTerrain = validMetalDepositDTerrainLevels(ring.dTerrainLevels);
+    const blendRadius = validMetalDepositTerrainBlendRadius(ring.terrainBlendRadius);
+    if (cluster.type === 'group-manual' && cluster.spotKind === 'ring') {
+      if (metalDepositLoopCount(ring.countPerPlayer) !== 1) {
+        throw new Error(
+          'Metal deposit rings with ring-coordinate group-manual spots must author countPerPlayer 1 — each spot already places once per player slice',
+        );
+      }
+      for (const spot of cluster.spots) {
+        plan.push({
+          ring,
+          cluster,
+          ringSpot: spot,
+          radiusFraction: spot.radiusFraction,
+          countPerPlayer: 1,
+          sliceOffset: spot.sliceOffset,
+          dTerrainLevels: spot.dTerrainLevels === undefined
+            ? ringDTerrain
+            : validMetalDepositDTerrainLevels(spot.dTerrainLevels),
+          flatPadCells: spot.flatPadCells === undefined
+            ? ringPadCells
+            : resolveMetalDepositFlatPadCells(spot.flatPadCells, resourceRadius),
+          blendRadius,
+        });
+      }
+      continue;
+    }
+    plan.push({
+      ring,
+      cluster,
+      ringSpot: null,
+      radiusFraction: ring.radiusFraction,
+      countPerPlayer: ring.countPerPlayer,
+      sliceOffset: ring.sliceOffset ?? 0,
+      dTerrainLevels: ringDTerrain,
+      flatPadCells: ringPadCells,
+      blendRadius,
+    });
+  }
+  return plan;
+}
+
 function generateMetalDepositPlacementsFromWasm(
   mapWidth: number,
   mapHeight: number,
@@ -370,7 +456,8 @@ function generateMetalDepositPlacementsFromWasm(
   const resourceCells = METAL_DEPOSIT_CONFIG.resourceCells;
   const resourceRadiusCells = getMetalDepositResourceRadiusCells(resourceCells);
   const resourceRadius = (resourceRadiusCells + 0.5) * BUILD_GRID_CELL_SIZE;
-  const ringRows = packMetalDepositRingRows(resourceRadius);
+  const plan = buildMetalDepositPackPlan(resourceRadius);
+  const ringRows = packMetalDepositRingRows(plan);
   const players = Math.max(1, Math.floor(playerCount));
   const placementCount = sim.metalDepositCountPlacements(players, ringRows);
   const placementRows = new Float64Array(
@@ -398,32 +485,66 @@ function generateMetalDepositPlacementsFromWasm(
   const placements: PendingPlacement[] = [];
   const groupIdAllocator = { next: 0 };
   let sourceIndex = 0;
-  for (const ring of METAL_DEPOSIT_CONFIG.rings) {
-    const originCount = countMetalDepositRingOrigins(ring, players);
+  const consumeOrigin = (row: MetalDepositPackRow, groupId: number): PendingPlacement => {
+    const base = sourceIndex * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE;
+    const dTerrainRaw = placementRows[base + 12];
+    const explicitHeightRaw = placementRows[base + 14];
+    const origin: PendingPlacement = {
+      placement: makeMetalDepositPlacementFromWasmRow(placementRows, base, sourceIndex),
+      dTerrainLevels: Number.isNaN(dTerrainRaw)
+        ? null
+        : finiteInteger(dTerrainRaw, 'metal deposit dTerrainLevels'),
+      blendRadius: placementRows[base + 13],
+      explicitHeight: Number.isNaN(explicitHeightRaw) ? null : explicitHeightRaw,
+      demoAutoExtractor: row.ring.demoAutoExtractor !== false,
+      groupId,
+    };
+    sourceIndex++;
+    return origin;
+  };
+
+  let planIndex = 0;
+  while (planIndex < plan.length) {
+    const row = plan[planIndex];
+    if (row.ringSpot !== null) {
+      // Ring-coordinate group: this ring's spot rows are consecutive in
+      // the plan. Rust emitted origins spot-major then player-major;
+      // player p's copies of every spot share one group id, so each
+      // slice's group smooths as its own terrain unit.
+      let spotRowCount = 0;
+      while (
+        planIndex + spotRowCount < plan.length &&
+        plan[planIndex + spotRowCount].ring === row.ring
+      ) {
+        spotRowCount++;
+      }
+      const groupIdBase = groupIdAllocator.next;
+      groupIdAllocator.next += players;
+      for (let s = 0; s < spotRowCount; s++) {
+        const spotRow = plan[planIndex + s];
+        for (let p = 0; p < players; p++) {
+          placements.push(consumeOrigin(spotRow, groupIdBase + p));
+        }
+      }
+      planIndex += spotRowCount;
+      continue;
+    }
+    const originCount = row.radiusFraction <= 1e-6
+      ? 1
+      : players * metalDepositLoopCount(row.countPerPlayer);
     for (let i = 0; i < originCount; i++) {
-      const base = sourceIndex * METAL_DEPOSIT_PLACEMENT_OUTPUT_STRIDE;
-      const dTerrainRaw = placementRows[base + 12];
-      const explicitHeightRaw = placementRows[base + 14];
-      const origin: PendingPlacement = {
-        placement: makeMetalDepositPlacementFromWasmRow(placementRows, base, sourceIndex),
-        dTerrainLevels: Number.isNaN(dTerrainRaw)
-          ? null
-          : finiteInteger(dTerrainRaw, 'metal deposit dTerrainLevels'),
-        blendRadius: placementRows[base + 13],
-        explicitHeight: Number.isNaN(explicitHeightRaw) ? null : explicitHeightRaw,
-        demoAutoExtractor: ring.demoAutoExtractor !== false,
-        groupId: -1,
-      };
+      const origin = consumeOrigin(row, -1);
       expandMetalDepositClusterPlacements(
         origin,
-        ring,
+        row.cluster,
+        resourceRadius,
         mapWidth,
         mapHeight,
         placements,
         groupIdAllocator,
       );
-      sourceIndex++;
     }
+    planIndex++;
   }
   if (sourceIndex !== written) {
     throw new Error(
@@ -434,11 +555,6 @@ function generateMetalDepositPlacementsFromWasm(
   return placements;
 }
 
-function countMetalDepositRingOrigins(ring: DepositRing, playerCount: number): number {
-  if (ring.radiusFraction <= 1e-6) return 1;
-  return playerCount * metalDepositLoopCount(ring.countPerPlayer);
-}
-
 function metalDepositLoopCount(limit: number): number {
   if (!Number.isFinite(limit) || limit <= 0) return 0;
   return Math.ceil(limit);
@@ -446,13 +562,13 @@ function metalDepositLoopCount(limit: number): number {
 
 function expandMetalDepositClusterPlacements(
   origin: PendingPlacement,
-  ring: DepositRing,
+  cluster: ResolvedMetalDepositClusterConfig,
+  resourceRadius: number,
   mapWidth: number,
   mapHeight: number,
   out: PendingPlacement[],
   groupIdAllocator: { next: number },
 ): void {
-  const cluster = validMetalDepositClusterConfig(ring.depositCluster);
   const radialAngle = metalDepositRadialAngleFromMapCenter(
     origin.placement.x,
     origin.placement.y,
@@ -461,6 +577,13 @@ function expandMetalDepositClusterPlacements(
   );
 
   if (cluster.type === 'group-manual') {
+    // Ring-coordinate spots never reach this expansion — they pack as
+    // their own placement rows in buildMetalDepositPackPlan.
+    if (cluster.spotKind !== 'offsets') {
+      throw new Error(
+        'Metal deposit ring-coordinate group-manual spots must be expanded from the pack plan',
+      );
+    }
     // Every origin (each player's copy of the ring) becomes its OWN
     // terrain group — groups smooth internally, never across players.
     const groupId = groupIdAllocator.next++;
@@ -479,8 +602,19 @@ function expandMetalDepositClusterPlacements(
         : spot.dTerrainLevels === null
           ? null
           : spot.dTerrainLevels * METAL_DEPOSIT_STEP;
+      const placement = makeMetalDepositPlacementFromRawPoint(
+        rawX,
+        rawY,
+        origin.placement,
+        out.length,
+      );
+      if (spot.flatPadCells !== undefined) {
+        placement.flatPadRadius =
+          resolveMetalDepositFlatPadCells(spot.flatPadCells, resourceRadius) *
+          BUILD_GRID_CELL_SIZE * 0.5;
+      }
       out.push({
-        placement: makeMetalDepositPlacementFromRawPoint(rawX, rawY, origin.placement, out.length),
+        placement,
         dTerrainLevels,
         blendRadius: origin.blendRadius,
         explicitHeight,
@@ -605,27 +739,17 @@ function resolveMetalDepositTerrainHeightsFromWasm(
   return Array.from(outHeights);
 }
 
-function packMetalDepositRingRows(resourceRadius: number): Float64Array {
-  const ringRows = new Float64Array(
-    METAL_DEPOSIT_CONFIG.rings.length * METAL_DEPOSIT_RING_INPUT_STRIDE,
-  );
-  for (let i = 0; i < METAL_DEPOSIT_CONFIG.rings.length; i++) {
-    const ring = METAL_DEPOSIT_CONFIG.rings[i];
-    const flatPadCells = resolveMetalDepositFlatPadCells(
-      ring.flatPadCells,
-      resourceRadius,
-    );
+function packMetalDepositRingRows(plan: readonly MetalDepositPackRow[]): Float64Array {
+  const ringRows = new Float64Array(plan.length * METAL_DEPOSIT_RING_INPUT_STRIDE);
+  for (let i = 0; i < plan.length; i++) {
+    const row = plan[i];
     const base = i * METAL_DEPOSIT_RING_INPUT_STRIDE;
-    ringRows[base] = ring.radiusFraction;
-    ringRows[base + 1] = ring.countPerPlayer;
-    ringRows[base + 2] = ring.sliceOffset ?? 0;
-    ringRows[base + 3] =
-      validMetalDepositDTerrainLevels(ring.dTerrainLevels) ??
-      METAL_DEPOSIT_D_TERRAIN_NULL;
-    ringRows[base + 4] = flatPadCells;
-    ringRows[base + 5] = validMetalDepositTerrainBlendRadius(
-      ring.terrainBlendRadius,
-    );
+    ringRows[base] = row.radiusFraction;
+    ringRows[base + 1] = row.countPerPlayer;
+    ringRows[base + 2] = row.sliceOffset;
+    ringRows[base + 3] = row.dTerrainLevels ?? METAL_DEPOSIT_D_TERRAIN_NULL;
+    ringRows[base + 4] = row.flatPadCells;
+    ringRows[base + 5] = row.blendRadius;
   }
   return ringRows;
 }
@@ -836,7 +960,14 @@ function validMetalDepositTerrainBlendRadius(radius: number): number {
 
 type ResolvedMetalDepositClusterConfig =
   | { type: 'group-ring'; count: number; radius: number; angleOffset: number }
-  | { type: 'group-manual'; spots: readonly MetalDepositManualSpot[] };
+  | { type: 'group-manual'; spotKind: 'offsets'; spots: readonly MetalDepositManualOffsetSpot[] }
+  | { type: 'group-manual'; spotKind: 'ring'; spots: readonly MetalDepositManualRingSpot[] };
+
+function isMetalDepositRingSpot(
+  spot: MetalDepositManualSpot,
+): spot is MetalDepositManualRingSpot {
+  return (spot as MetalDepositManualRingSpot).radiusFraction !== undefined;
+}
 
 function validMetalDepositClusterConfig(
   cluster: MetalDepositClusterConfig | undefined,
@@ -854,9 +985,25 @@ function validMetalDepositClusterConfig(
         'Metal deposit depositCluster type "group-manual" must author a non-empty spots array',
       );
     }
+    const ringSpotCount = spots.filter(isMetalDepositRingSpot).length;
+    if (ringSpotCount !== 0 && ringSpotCount !== spots.length) {
+      throw new Error(
+        'Metal deposit group-manual spots must all use ONE addressing form: either radial-frame offsets (x/y) or ring coordinates (radiusFraction/sliceOffset)',
+      );
+    }
     for (let i = 0; i < spots.length; i++) {
       const spot = spots[i];
-      if (!Number.isFinite(spot.x) || !Number.isFinite(spot.y)) {
+      if (isMetalDepositRingSpot(spot)) {
+        if (
+          !Number.isFinite(spot.radiusFraction) ||
+          spot.radiusFraction <= 1e-6 ||
+          !Number.isFinite(spot.sliceOffset)
+        ) {
+          throw new Error(
+            `Metal deposit group-manual ring spot ${i} must have finite radiusFraction > 0 and finite sliceOffset; received (${spot.radiusFraction}, ${spot.sliceOffset})`,
+          );
+        }
+      } else if (!Number.isFinite(spot.x) || !Number.isFinite(spot.y)) {
         throw new Error(
           `Metal deposit group-manual spot ${i} must have finite x/y offsets; received (${spot.x}, ${spot.y})`,
         );
@@ -865,7 +1012,18 @@ function validMetalDepositClusterConfig(
         validMetalDepositDTerrainLevels(spot.dTerrainLevels);
       }
     }
-    return { type: 'group-manual', spots };
+    if (ringSpotCount > 0) {
+      return {
+        type: 'group-manual',
+        spotKind: 'ring',
+        spots: spots as MetalDepositManualRingSpot[],
+      };
+    }
+    return {
+      type: 'group-manual',
+      spotKind: 'offsets',
+      spots: spots as MetalDepositManualOffsetSpot[],
+    };
   }
   if (type !== 'group-ring') {
     throw new Error(
