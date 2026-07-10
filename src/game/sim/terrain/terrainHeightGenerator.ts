@@ -506,20 +506,21 @@ function getGeneratedNaturalTerrainHeight(
 }
 
 /**
- * Analytical terrain height at (x, y). Pipeline:
- *   1. Natural ripple + ridge (`getGeneratedNaturalTerrainHeight`)
- *   2. Map boundary fade (round-island falloff)
- *   3. Plateau snapping — when PLATEAU is ON, snap unconditionally
- *      to TERRAIN_D_TERRAIN levels, turning the natural surface into
- *      a stair of plateaus + cliffs
- *   4. Deposit override — flat pad inside `flatPadCells` at exactly
- *      its `height`, smoothly blending out to the already-plateaued
- *      terrain across `terrainBlendRadius`
+ * Analytical terrain height at (x, y). The authoritative stage order
+ * lives in terrainConfig.json `$pipeline` — keep the two in sync:
+ *   1. Natural field (ripple + divider ridges)
+ *   2. Map boundary (perimeter ring override)
+ *   3. Gradient estimate of the shaped field
+ *   4. Plateau terracing (D-PLATEAU snap)
+ *   5. Metal deposit pads (flat-zone override + blend rings)
+ *   6. Waters-edge shoreline (beach/cliff halves, caps, cosine fades)
+ *   7. Floor clamp
  *
- * Because the blend ring is applied AFTER plateau snapping, a metal
- * extractor placed across a cliff smooths that cliff into a ramp:
- * the inside of the pad stays flat at h, the outside transitions
- * smoothly to the stair-stepped neighbour.
+ * Because the deposit blend ring is applied AFTER plateau snapping, a
+ * metal extractor placed across a cliff smooths that cliff into a
+ * ramp; because the waters-edge pass is applied AFTER the deposit
+ * pads, the shoreline profile wins at the water and pads inland keep
+ * their authored flat tops.
  *
  * For runtime hot paths (per-pixel minimap, per-tile pathfinding,
  * per-frame visual normals) use `getTerrainMeshHeight` /
@@ -591,15 +592,18 @@ function getTerrainHeightWithMetrics(
       (cliffEnabled &&
         Math.abs(shaped - WATER_LEVEL) < watersEdgeBandExtent()));
   const terraced = applyTerrainPlateaus(shaped, gradient);
-  const shored = watersEdgeActive
-    ? applyWatersEdge(terraced, shaped, gradient, ovalSample.angle, ovalSample.distance)
-    : terraced;
-
-  let blended = shored;
+  let padded = terraced;
   if (includeDeposits) {
     const override = depositOverride(x, y);
-    blended = override.height * (1 - override.weight) + shored * override.weight;
+    padded = override.height * (1 - override.weight) + terraced * override.weight;
   }
+  // Waters-edge runs AFTER the deposit pads: the shoreline shaping
+  // wins at the water and fades out over its radii, so pads near the
+  // waterline are carried onto the beach/cliff profile while pads
+  // farther inland keep their authored flat tops untouched.
+  const shored = watersEdgeActive
+    ? applyWatersEdge(padded, shaped, gradient, ovalSample.angle, ovalSample.distance)
+    : padded;
 
-  return Math.max(TILE_FLOOR_Y, blended);
+  return Math.max(TILE_FLOOR_Y, shored);
 }

@@ -737,14 +737,16 @@ pub(crate) fn terrain_waters_edge_cliff_height_at(
 /// dimensionless wall coordinate `t` (0 at the submerged band edge,
 /// 1 at the dry band edge — the same coordinate
 /// `terrain_waters_edge_cliff_height_at` ramps over) and the shelf
-/// flat-half for this point. Uses exactly the pipeline's gradient rule
-/// so classification seams land where the emitted geometry bends.
-/// None when waterfront cliffs are disabled.
+/// flat-half for this point. Replays the pipeline stages that run
+/// BEFORE the waters-edge pass (gradient rule, plateaus, deposit
+/// pads) so classification seams land exactly where the emitted
+/// geometry bends. None when waterfront cliffs are disabled.
 pub(crate) fn terrain_waters_edge_cliff_coords(
     x: f64,
     y: f64,
     metrics: &MapOvalMetricsRust,
     cfg: &MetalDepositTerrainConfigRust,
+    explicit_flat_zones: &[f64],
 ) -> Option<(f64, f64)> {
     if !terrain_waters_edge_cliff_enabled(cfg) {
         return None;
@@ -755,8 +757,11 @@ pub(crate) fn terrain_waters_edge_cliff_coords(
     // implies enabled, so mirror that unconditionally.
     let gradient = terrain_estimate_shaped_gradient(x, y, metrics, cfg);
     let terraced = terrain_apply_plateaus(shaped, gradient, cfg);
+    let (weight, pad_height) =
+        metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
+    let padded = pad_height * (1.0 - weight) + terraced * weight;
     let step = cfg.waters_edge_cliff_height;
-    let t = (terraced - (TERRAIN_WATER_LEVEL - step * 0.5)) / step;
+    let t = (padded - (TERRAIN_WATER_LEVEL - step * 0.5)) / step;
     let flat_half = terrain_plateau_flat_half_for_gradient(gradient, cfg);
     Some((t, flat_half))
 }
@@ -849,16 +854,20 @@ pub(crate) fn metal_deposit_terrain_height_with_explicit_zones(
                 && (shaped - TERRAIN_WATER_LEVEL).abs() < terrain_waters_edge_band_extent(cfg))
     };
     let terraced = terrain_apply_plateaus(shaped, gradient, cfg);
-    let shored = if waters_edge_active {
-        let oval = terrain_sample_map_oval_at(metrics, x, y);
-        terrain_apply_waters_edge(terraced, shaped, gradient, oval.angle, oval.distance, cfg)
-    } else {
-        terraced
-    };
     let (weight, pad_height) =
         metal_deposit_override_from_flat_zone_rows(x, y, explicit_flat_zones);
-    let blended = pad_height * (1.0 - weight) + shored * weight;
-    blended.max(cfg.tile_floor_y)
+    let padded = pad_height * (1.0 - weight) + terraced * weight;
+    // Waters-edge runs AFTER the deposit pads: the shoreline shaping
+    // wins at the water and fades out over its radii, so pads near the
+    // waterline are carried onto the beach/cliff profile while pads
+    // farther inland keep their authored flat tops untouched.
+    let shored = if waters_edge_active {
+        let oval = terrain_sample_map_oval_at(metrics, x, y);
+        terrain_apply_waters_edge(padded, shaped, gradient, oval.angle, oval.distance, cfg)
+    } else {
+        padded
+    };
+    shored.max(cfg.tile_floor_y)
 }
 
 #[inline]
