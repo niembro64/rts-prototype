@@ -265,26 +265,42 @@ function estimateShapedTerrainGradient(
 function watersEdgeBeachEnabled(): boolean {
   return (
     TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES > 0 &&
-    TERRAIN_SHORELINE_CONFIG.beachBandHeight > 0
+    TERRAIN_SHORELINE_CONFIG.beachFadeRadius > 0
   );
+}
+
+/** First-order horizontal distance from a point to the waterline
+ *  contour: how far you must walk down/up the local slope for the
+ *  shaped surface to reach the water level. Follows the water's curves
+ *  on both the land and water sides; both shoreline fades key off it.
+ *  Mirrors the Rust `terrain_waters_edge_shore_distance`. */
+function watersEdgeShoreDistance(shaped: number, gradient: number): number {
+  return Math.abs(shaped - WATER_LEVEL) / Math.max(1e-3, Math.abs(gradient));
+}
+
+/** Raised-cosine shoreline fade: 1 (full effect) at the waterline,
+ *  easing to 0 at `radius` world units from the water's edge. The one
+ *  falloff shape shared by the beach and cliff operators. Mirrors the
+ *  Rust `terrain_waters_edge_fade_weight`. */
+function watersEdgeFadeWeight(shoreDistance: number, radius: number): number {
+  if (radius <= 0) return 0;
+  return 1 - perimeterRampWeight(Math.min(1, shoreDistance / radius));
 }
 
 function watersEdgeCliffEnabled(): boolean {
   return TERRAIN_WATERS_EDGE_CLIFF_HEIGHT > 0;
 }
 
-/** Conservative vertical reach of the shoreline pass around the
- *  waterline. Plateau snapping can move a height by up to half a
- *  step, so the pre-plateau band gate widens by that much. */
+/** Conservative vertical reach of the CLIFF band around the waterline
+ *  (the beach is gated by horizontal shore distance instead). Plateau
+ *  snapping can move a height by up to half a step, so the pre-plateau
+ *  band gate widens by that much. */
 function watersEdgeBandExtent(): number {
-  const beachHalf = watersEdgeBeachEnabled()
-    ? TERRAIN_SHORELINE_CONFIG.beachBandHeight * 0.5
-    : 0;
   const cliffHalf = watersEdgeCliffEnabled()
     ? TERRAIN_WATERS_EDGE_CLIFF_HEIGHT * 0.5
     : 0;
   const plateauSlack = TERRAIN_D_TERRAIN > 0 ? TERRAIN_D_TERRAIN * 0.5 : 0;
-  return Math.max(beachHalf, cliffHalf) + plateauSlack;
+  return cliffHalf + plateauSlack;
 }
 
 /** First player spoke angle — mirrors `getPlayerBaseAngle(0, n)` in
@@ -332,24 +348,28 @@ function watersEdgeSliceCliffness(angle: number, distance: number): number {
 /** Beach operator: within the vertical beach band around the
  *  waterline, fade out plateau terracing and compress the height
  *  gradient so the surface crosses the waterline at (at most) the
- *  authored beach slope. Identity at the band edges. */
+ *  authored beach slope. Full effect at the water's edge, raised-cosine
+ *  fade back to the natural surface over `beachFadeRadius` world units
+ *  of horizontal shore distance on both sides — the same falloff shape
+ *  and distance metric as the cliff fade. */
 function watersEdgeBeachHeight(
   terraced: number,
   shaped: number,
   gradient: number,
 ): number {
-  const bandHalf = TERRAIN_SHORELINE_CONFIG.beachBandHeight * 0.5;
-  const dRef = shaped - WATER_LEVEL;
-  const a = Math.abs(dRef / bandHalf);
-  if (a >= 1) return terraced;
-  const bandW = 1 - smootherstep(a);
+  const shoreDistance = watersEdgeShoreDistance(shaped, gradient);
+  const weight = watersEdgeFadeWeight(
+    shoreDistance,
+    TERRAIN_SHORELINE_CONFIG.beachFadeRadius,
+  );
+  if (weight <= 0) return terraced;
   const beachTan = Math.tan(
     Math.max(0.1, Math.min(89, TERRAIN_WATERS_EDGE_BEACH_SLOPE_DEGREES)) *
       Math.PI / 180,
   );
   const gradientScale = Math.min(1, beachTan / Math.max(1e-6, gradient));
-  const unterraced = terraced + (shaped - terraced) * bandW;
-  const scale = gradientScale + (1 - gradientScale) * (1 - bandW);
+  const unterraced = terraced + (shaped - terraced) * weight;
+  const scale = gradientScale + (1 - gradientScale) * (1 - weight);
   return WATER_LEVEL + (unterraced - WATER_LEVEL) * scale;
 }
 
@@ -387,10 +407,8 @@ function watersEdgeCliffHeightAt(
   const snapped = WATER_LEVEL - half + ramp * step;
   const fadeRadius = TERRAIN_SHORELINE_CONFIG.cliffFadeRadius;
   if (fadeRadius <= 0) return snapped;
-  const shoreDistance =
-    Math.abs(shaped - WATER_LEVEL) / Math.max(1e-3, Math.abs(gradient));
-  const fadeT = Math.min(1, shoreDistance / fadeRadius);
-  const weight = 1 - smootherstep(fadeT);
+  const shoreDistance = watersEdgeShoreDistance(shaped, gradient);
+  const weight = watersEdgeFadeWeight(shoreDistance, fadeRadius);
   return terraced + (snapped - terraced) * weight;
 }
 
@@ -548,14 +566,23 @@ function getTerrainHeightWithMetrics(
     ovalMetrics,
     ovalSample,
   );
-  const watersEdgeActive =
-    (watersEdgeBeachEnabled() || watersEdgeCliffEnabled()) &&
-    Math.abs(shaped - WATER_LEVEL) < watersEdgeBandExtent();
+  const beachEnabled = watersEdgeBeachEnabled();
+  const cliffEnabled = watersEdgeCliffEnabled();
+  const watersEdgeEnabled = beachEnabled || cliffEnabled;
   const plateauGradientNeeded =
     TERRAIN_D_TERRAIN > 0 && TERRAIN_PLATEAU_WALL_SLOPE_DEGREES < 89;
-  const gradient = plateauGradientNeeded || watersEdgeActive
+  // The shore-distance fades need the gradient wherever the pass is
+  // enabled, so the estimate is no longer gated to a vertical band.
+  const gradient = plateauGradientNeeded || watersEdgeEnabled
     ? estimateShapedTerrainGradient(x, y, mapWidth, mapHeight, ovalMetrics)
     : 0;
+  const watersEdgeActive =
+    watersEdgeEnabled &&
+    ((beachEnabled &&
+      watersEdgeShoreDistance(shaped, gradient) <
+        TERRAIN_SHORELINE_CONFIG.beachFadeRadius) ||
+      (cliffEnabled &&
+        Math.abs(shaped - WATER_LEVEL) < watersEdgeBandExtent()));
   const terraced = applyTerrainPlateaus(shaped, gradient);
   const shored = watersEdgeActive
     ? applyWatersEdge(terraced, shaped, gradient, ovalSample.angle, ovalSample.distance)

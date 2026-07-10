@@ -65,7 +65,7 @@ pub(crate) struct MetalDepositTerrainConfigRust {
     ridge_half_width_fraction: f64,
     waters_edge_beach_slope_degrees: f64,
     waters_edge_cliff_height: f64,
-    shoreline_beach_band_height: f64,
+    shoreline_beach_fade_radius: f64,
     shoreline_cliff_fade_radius: f64,
 }
 
@@ -102,7 +102,7 @@ pub(crate) fn metal_deposit_terrain_config_from_slice(
         plateau_wall_slope_degrees: values[22],
         waters_edge_beach_slope_degrees: values[23],
         waters_edge_cliff_height: values[24],
-        shoreline_beach_band_height: values[25],
+        shoreline_beach_fade_radius: values[25],
         shoreline_cliff_fade_radius: values[26],
     })
 }
@@ -537,7 +537,27 @@ pub(crate) fn metal_deposit_override_from_flat_zone_rows(
 
 #[inline]
 pub(crate) fn terrain_waters_edge_beach_enabled(cfg: &MetalDepositTerrainConfigRust) -> bool {
-    cfg.waters_edge_beach_slope_degrees > 0.0 && cfg.shoreline_beach_band_height > 0.0
+    cfg.waters_edge_beach_slope_degrees > 0.0 && cfg.shoreline_beach_fade_radius > 0.0
+}
+
+/// First-order horizontal distance from a point to the waterline
+/// contour: how far you must walk down/up the local slope for the
+/// shaped surface to reach the water level. Follows the water's curves
+/// on both the land and water sides; both shoreline fades key off it.
+#[inline]
+pub(crate) fn terrain_waters_edge_shore_distance(shaped: f64, gradient: f64) -> f64 {
+    (shaped - TERRAIN_WATER_LEVEL).abs() / gradient.abs().max(1e-3)
+}
+
+/// Raised-cosine shoreline fade: 1 (full effect) at the waterline,
+/// easing to 0 at `radius` world units from the water's edge. The one
+/// falloff shape shared by the beach and cliff operators.
+#[inline]
+pub(crate) fn terrain_waters_edge_fade_weight(shore_distance: f64, radius: f64) -> f64 {
+    if radius <= 0.0 {
+        return 0.0;
+    }
+    1.0 - terrain_perimeter_ramp_weight((shore_distance / radius).min(1.0))
 }
 
 #[inline]
@@ -545,15 +565,11 @@ pub(crate) fn terrain_waters_edge_cliff_enabled(cfg: &MetalDepositTerrainConfigR
     cfg.waters_edge_cliff_height > 0.0
 }
 
-/// Conservative vertical reach of the shoreline pass around the
-/// waterline. Plateau snapping can move a height by up to half a step,
-/// so the pre-plateau band gate widens by that much.
+/// Conservative vertical reach of the CLIFF band around the waterline
+/// (the beach is gated by horizontal shore distance instead). Plateau
+/// snapping can move a height by up to half a step, so the pre-plateau
+/// band gate widens by that much.
 pub(crate) fn terrain_waters_edge_band_extent(cfg: &MetalDepositTerrainConfigRust) -> f64 {
-    let beach_half = if terrain_waters_edge_beach_enabled(cfg) {
-        cfg.shoreline_beach_band_height * 0.5
-    } else {
-        0.0
-    };
     let cliff_half = if terrain_waters_edge_cliff_enabled(cfg) {
         cfg.waters_edge_cliff_height * 0.5
     } else {
@@ -564,7 +580,7 @@ pub(crate) fn terrain_waters_edge_band_extent(cfg: &MetalDepositTerrainConfigRus
     } else {
         0.0
     };
-    beach_half.max(cliff_half) + plateau_slack
+    cliff_half + plateau_slack
 }
 
 /// Cliffness in [0, 1] for the shoreline at `angle`. The pattern is
@@ -644,30 +660,30 @@ pub(crate) fn terrain_waters_edge_slice_cliffness_at(
     terrain_waters_edge_effective_cliffness(oval.angle, oval.distance, cfg)
 }
 
-/// Beach operator: within the vertical beach band around the waterline,
-/// fade out plateau terracing and compress the height gradient so the
-/// surface crosses the waterline at (at most) the authored beach slope.
-/// Identity at the band edges.
+/// Beach operator: fade out plateau terracing and compress the height
+/// gradient so the surface crosses the waterline at (at most) the
+/// authored beach slope. Full effect at the water's edge, raised-cosine
+/// fade back to the natural surface over `shoreline_beach_fade_radius`
+/// world units of horizontal shore distance on both sides — the same
+/// falloff shape and distance metric as the cliff fade.
 pub(crate) fn terrain_waters_edge_beach_height(
     terraced: f64,
     shaped: f64,
     gradient: f64,
     cfg: &MetalDepositTerrainConfigRust,
 ) -> f64 {
-    let band_half = cfg.shoreline_beach_band_height * 0.5;
-    let d_ref = shaped - TERRAIN_WATER_LEVEL;
-    let a = (d_ref / band_half).abs();
-    if a >= 1.0 {
+    let shore_distance = terrain_waters_edge_shore_distance(shaped, gradient);
+    let weight = terrain_waters_edge_fade_weight(shore_distance, cfg.shoreline_beach_fade_radius);
+    if weight <= 0.0 {
         return terraced;
     }
-    let band_w = 1.0 - terrain_smootherstep(a);
     let beach_tan = (cfg.waters_edge_beach_slope_degrees.clamp(0.1, 89.0)
         * std::f64::consts::PI
         / 180.0)
         .tan();
     let gradient_scale = (beach_tan / gradient.max(1e-6)).min(1.0);
-    let unterraced = terraced + (shaped - terraced) * band_w;
-    let scale = gradient_scale + (1.0 - gradient_scale) * (1.0 - band_w);
+    let unterraced = terraced + (shaped - terraced) * weight;
+    let scale = gradient_scale + (1.0 - gradient_scale) * (1.0 - weight);
     TERRAIN_WATER_LEVEL + (unterraced - TERRAIN_WATER_LEVEL) * scale
 }
 
@@ -713,9 +729,8 @@ pub(crate) fn terrain_waters_edge_cliff_height_at(
     if fade_radius <= 0.0 {
         return snapped;
     }
-    let shore_distance = (shaped - TERRAIN_WATER_LEVEL).abs() / gradient.abs().max(1e-3);
-    let fade_t = (shore_distance / fade_radius).min(1.0);
-    let weight = 1.0 - terrain_smootherstep(fade_t);
+    let shore_distance = terrain_waters_edge_shore_distance(shaped, gradient);
+    let weight = terrain_waters_edge_fade_weight(shore_distance, fade_radius);
     terraced + (snapped - terraced) * weight
 }
 
@@ -736,15 +751,10 @@ pub(crate) fn terrain_waters_edge_cliff_coords(
         return None;
     }
     let shaped = terrain_shaped_height_before_plateaus(x, y, metrics, cfg);
-    let waters_edge_active =
-        (shaped - TERRAIN_WATER_LEVEL).abs() < terrain_waters_edge_band_extent(cfg);
-    let plateau_gradient_needed =
-        cfg.terrain_d_terrain > 0.0 && cfg.plateau_wall_slope_degrees < 89.0;
-    let gradient = if plateau_gradient_needed || waters_edge_active {
-        terrain_estimate_shaped_gradient(x, y, metrics, cfg)
-    } else {
-        0.0
-    };
+    // The pipeline estimates the gradient whenever the waters-edge pass
+    // is enabled (the shore-distance fades need it); cliff_enabled here
+    // implies enabled, so mirror that unconditionally.
+    let gradient = terrain_estimate_shaped_gradient(x, y, metrics, cfg);
     let terraced = terrain_apply_plateaus(shaped, gradient, cfg);
     let step = cfg.waters_edge_cliff_height;
     let t = (terraced - (TERRAIN_WATER_LEVEL - step * 0.5)) / step;
@@ -821,15 +831,23 @@ pub(crate) fn metal_deposit_terrain_height_with_explicit_zones(
     explicit_flat_zones: &[f64],
 ) -> f64 {
     let shaped = terrain_shaped_height_before_plateaus(x, y, metrics, cfg);
-    let waters_edge_active = (terrain_waters_edge_beach_enabled(cfg)
-        || terrain_waters_edge_cliff_enabled(cfg))
-        && (shaped - TERRAIN_WATER_LEVEL).abs() < terrain_waters_edge_band_extent(cfg);
+    let beach_enabled = terrain_waters_edge_beach_enabled(cfg);
+    let cliff_enabled = terrain_waters_edge_cliff_enabled(cfg);
+    let waters_edge_enabled = beach_enabled || cliff_enabled;
     let plateau_gradient_needed =
         cfg.terrain_d_terrain > 0.0 && cfg.plateau_wall_slope_degrees < 89.0;
-    let gradient = if plateau_gradient_needed || waters_edge_active {
+    // The shore-distance fades need the gradient wherever the pass is
+    // enabled, so the estimate is no longer gated to a vertical band.
+    let gradient = if plateau_gradient_needed || waters_edge_enabled {
         terrain_estimate_shaped_gradient(x, y, metrics, cfg)
     } else {
         0.0
+    };
+    let waters_edge_active = waters_edge_enabled && {
+        let shore_distance = terrain_waters_edge_shore_distance(shaped, gradient);
+        (beach_enabled && shore_distance < cfg.shoreline_beach_fade_radius)
+            || (cliff_enabled
+                && (shaped - TERRAIN_WATER_LEVEL).abs() < terrain_waters_edge_band_extent(cfg))
     };
     let terraced = terrain_apply_plateaus(shaped, gradient, cfg);
     let shored = if waters_edge_active {

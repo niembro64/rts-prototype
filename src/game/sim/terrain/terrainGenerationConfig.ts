@@ -59,7 +59,7 @@ export function packTerrainGenerationConfigForWasm(): Float64Array {
   rows[22] = runtime.plateauWallSlopeDegrees;
   rows[23] = runtime.watersEdgeBeachSlopeDegrees;
   rows[24] = runtime.watersEdgeCliffHeight;
-  rows[25] = TERRAIN_SHORELINE_CONFIG.beachBandHeight;
+  rows[25] = TERRAIN_SHORELINE_CONFIG.beachFadeRadius;
   rows[26] = TERRAIN_SHORELINE_CONFIG.cliffFadeRadius;
   return rows;
 }

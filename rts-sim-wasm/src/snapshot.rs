@@ -8079,7 +8079,7 @@ mod sim_kernel_tests {
             89.0, // plateau_wall_slope_degrees
             0.0,  // waters_edge_beach_slope_degrees (shoreline pass off)
             0.0,  // waters_edge_cliff_height (shoreline pass off)
-            0.0,  // shoreline_beach_band_height
+            0.0,  // shoreline_beach_fade_radius
             0.0,  // shoreline_cliff_fade_radius
         ];
         // 10-value LOD slice mirroring terrainConfig.json defaults.
@@ -8202,7 +8202,7 @@ mod sim_kernel_tests {
                 85.0, // plateau_wall_slope_degrees (shared by waterfront walls)
                 0.0,  // waters_edge_beach_slope_degrees (all-cliff shoreline)
                 cliff_height,
-                0.0,  // shoreline_beach_band_height
+                0.0,  // shoreline_beach_fade_radius
                 300.0, // shoreline_cliff_fade_radius
             ];
             let lod_config = [
@@ -8285,7 +8285,7 @@ mod sim_kernel_tests {
             85.0,  // plateau_wall_slope_degrees (shared by waterfront walls + caps)
             10.0,  // waters_edge_beach_slope_degrees (beach halves active)
             120.0, // waters_edge_cliff_height
-            120.0, // shoreline_beach_band_height
+            300.0, // shoreline_beach_fade_radius
             300.0, // shoreline_cliff_fade_radius
         ];
         let lod_config = [
