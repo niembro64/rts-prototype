@@ -379,7 +379,7 @@ export class RtsScene3DRenderPhase {
     phaseNow = performance.now();
     timings.projectileQueryMs = phaseNow - phaseMark;
     phaseMark = phaseNow;
-    environmentPropRenderer?.update();
+    environmentPropRenderer?.update(renderFrameState.view);
     this.getCameraQuadUpdate()?.(
       cameraQuad,
       this.threeApp.orbit.yaw,

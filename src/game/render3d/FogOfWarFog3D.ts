@@ -9,6 +9,7 @@ import { DEMO_CONFIG } from '@/demoConfig';
 import { FOG_CONFIG } from '@/fogConfig';
 import { COLORS } from '@/colorsConfig';
 import { createPrimitiveSphereGeometry } from './PrimitiveGeometryQuality3D';
+import { FOG_SPHERE_GEOMETRY_TIER } from './EntityDetailLevel3D';
 import { disposeMesh } from './threeUtils';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 import { clamp01 } from './RenderUtils';
@@ -170,7 +171,10 @@ export class FogOfWarFog3D {
   }
 
   private createPool(maxSpheres: number): FogPool {
-    const geom = createPrimitiveSphereGeometry('fog', 'close');
+    // Fog puffs are huge soft alpha blobs — the sphere tier is a pure
+    // triangle knob with no visible silhouette change (lod.json
+    // detail.fogSphereTier).
+    const geom = createPrimitiveSphereGeometry('fog', FOG_SPHERE_GEOMETRY_TIER);
     const alphaArr = new Float32Array(maxSpheres);
     const colorArr = new Float32Array(maxSpheres * 3);
     const alphaAttr = new THREE.InstancedBufferAttribute(alphaArr, 1);

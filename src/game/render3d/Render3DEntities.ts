@@ -471,6 +471,7 @@ export class Render3DEntities {
       frameSpin.timeMs,
       this.turretBeamAimCache,
       entityPacket?.scoped === true,
+      this.entityDetailRung,
     );
     this.projectileRangeEnvelope.update();
     this.projectileRenderer.update(

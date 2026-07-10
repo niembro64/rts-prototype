@@ -30,7 +30,11 @@ import {
   type ConstructionEmitterRig,
 } from './ConstructionEmitterMesh3D';
 import { TURRET_BLUEPRINTS } from '../sim/blueprints/turrets';
-import { featureVisibleAtDetail } from './EntityDetailLevel3D';
+import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
+import {
+  getSharedPrimitiveCylinderGeometry,
+  getSharedPrimitiveSphereGeometry,
+} from './PrimitiveGeometryQuality3D';
 
 export type TurretMesh = {
   root: THREE.Group;
@@ -221,7 +225,14 @@ export function buildTurretMesh3D(
       : deps.primaryMat;
     const headMat = showShieldEmitterCore ? baseHeadMat.clone() : baseHeadMat;
     if (showShieldEmitterCore) shieldEmitterPulseMat = headMat;
-    head = new THREE.Mesh(deps.headGeom, headMat);
+    // Per-Mesh heads (towers, commanders, pool-exhaustion fallback) take
+    // the host's geometry tier: the passed close-tier sphere at full
+    // detail, a tier-shared sphere below it.
+    const headTier = geometryTierForDetail(detailLevel);
+    const headGeom = headTier === 'close'
+      ? deps.headGeom
+      : getSharedPrimitiveSphereGeometry('turret', headTier);
+    head = new THREE.Mesh(headGeom, headMat);
     head.scale.setScalar(headRadius);
     head.position.set(0, headRadius, 0);
     root.add(head);
@@ -295,7 +306,15 @@ export function buildTurretMesh3D(
   // else (including the multi-barrel clusters) uses the uniform cylinder
   // geometry.
   const barrelUsesCone = barrel.type === 'singleConeBarrel';
-  const segmentGeom = barrelUsesCone ? deps.coneBarrelGeom : deps.barrelGeom;
+  // Per-Mesh barrels (towers etc.) take the host's geometry tier, same
+  // rule as the head sphere above. Cone barrels keep the passed geometry
+  // (their beam-wave layers derive from it).
+  const barrelTier = geometryTierForDetail(detailLevel);
+  const segmentGeom = barrelUsesCone
+    ? deps.coneBarrelGeom
+    : barrelTier === 'close'
+      ? deps.barrelGeom
+      : getSharedPrimitiveCylinderGeometry('turret', barrelTier);
   const pushSegment = (
     baseX: number, baseY: number, baseZ: number,
     tipX: number, tipY: number, tipZ: number,

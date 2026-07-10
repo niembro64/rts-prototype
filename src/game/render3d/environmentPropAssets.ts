@@ -199,6 +199,12 @@ export function isRandomEnvironmentAssetUsable(assetId: string): boolean {
   );
 }
 
+export function getRandomEnvironmentAssetKind(
+  assetId: string,
+): EnvironmentAssetKind | undefined {
+  return ASSET_BY_ID.get(assetId)?.kind;
+}
+
 export function getRandomEnvironmentAssetScale(assetId: string): number {
   const config = RANDOM_ENVIRONMENT_ASSET_CONFIG_BY_ID.get(assetId);
   if (!isUsableAssetConfig(config)) return 0;

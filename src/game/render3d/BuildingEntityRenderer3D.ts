@@ -51,6 +51,11 @@ import {
 import type { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import {
+  BUILDING_ANIMATION_MIN_RUNG,
+  DETAIL_REBUILD_BUDGET_BUILDINGS,
+  type DetailRung,
+  detailLevelForRung,
+  detailRungForLevel,
   detailRungIndex,
   featureVisibleAtDetail,
   turretStyleForDetail,
@@ -326,6 +331,10 @@ export class BuildingEntityRenderer3D {
   private readonly meshes = new IndexedEntityIdMap<EntityMesh>();
   private renderScopeToken = 0;
   private lastEntitySetVersion = -1;
+  /** Per-frame cap on detail-band mesh rebuilds — camera sweeps spread
+   *  their rebuilds over frames; over-budget buildings keep the previous
+   *  rung until a later frame. */
+  private buildingRebuildBudgetLeft = 0;
   // Shared death-out flow (same controller units use, see EntityFade3D): a
   // dead building/tower is kept and its whole group dissolved 1 → 0 before
   // teardown, while the blast + debris play out. Assigned in the constructor.
@@ -407,7 +416,9 @@ export class BuildingEntityRenderer3D {
     timeMs: number,
     beamAimCache: TurretBeamAimCache3D,
     scopedRender: boolean = false,
+    entityDetailRung?: (entity: Entity) => DetailRung,
   ): void {
+    this.buildingRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_BUILDINGS;
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const packetProvided = buildingRows !== undefined;
     const fallbackFullPrune = !packetProvided && entitySetVersion !== this.lastEntitySetVersion;
@@ -466,7 +477,14 @@ export class BuildingEntityRenderer3D {
       const shapeType: BuildingShapeType = entity.buildingBlueprintId
         ? getBuildingConfig(entity.buildingBlueprintId).renderProfile
         : 'unknown';
-      const detailLevel = entityDetailLevelForView(frameState.view, entity);
+      // Latched detail rung (screen-coverage LOD with hysteresis) from the
+      // scene's shared EntityLodState3D — the same state that stamped this
+      // packet's proxy flag. Its representative level drives the rebuild
+      // band and every feature/tier decision at build time.
+      const detailRung = entityDetailRung !== undefined
+        ? entityDetailRung(entity)
+        : detailRungForLevel(entityDetailLevelForView(frameState.view, entity));
+      const detailLevel = detailLevelForRung(detailRung);
       const detailBand = buildingDetailBandForLevel(detailLevel, shapeType);
       const detailBandChanged =
         mesh !== undefined &&
@@ -475,6 +493,14 @@ export class BuildingEntityRenderer3D {
       if (mesh !== undefined) {
         this.reactivateBuildingMeshForScope(entity, mesh);
         this.reactivateBuildingMeshForLod(entity, mesh);
+        // Below the animation rung the building's animators (wind blades,
+        // extractor rotor, radar sweep, solar petals) and gatling spin
+        // freeze in place — a live gate, not a rebuild.
+        this.applyBuildingAnimationGate(
+          entity,
+          mesh,
+          detailRung >= BUILDING_ANIMATION_MIN_RUNG,
+        );
       }
       const rowDirty = rows.renderDirtyAt(row) || rows.lifecycleDirtyAt(row);
       const activePrediction = rows.activePredictionAt(row);
@@ -701,6 +727,7 @@ export class BuildingEntityRenderer3D {
     setObjectVisibleIfChanged(mesh.group, true);
     this.animations.register(entity, mesh);
     this.registerBuildingSpinTurrets(entity, mesh);
+    mesh.buildingAnimationsGated = false;
     this.applyBuildingEntityFade(
       mesh,
       (mesh.buildingMaterializationOpacity ?? 1) * this.currentSpawnFadeIn(entity.id),
@@ -714,10 +741,32 @@ export class BuildingEntityRenderer3D {
     setObjectVisibleIfChanged(mesh.group, true);
     this.animations.register(entity, mesh);
     this.registerBuildingSpinTurrets(entity, mesh);
+    mesh.buildingAnimationsGated = false;
     this.applyBuildingEntityFade(
       mesh,
       (mesh.buildingMaterializationOpacity ?? 1) * this.currentSpawnFadeIn(entity.id),
     );
+  }
+
+  /** Live animation gate for the detail rung: freezes/resumes this
+   *  building's animators + gatling spin without touching the mesh.
+   *  Reactivation paths re-register animators and clear the flag, so the
+   *  gate re-applies on the next visible frame. */
+  private applyBuildingAnimationGate(
+    entity: Entity,
+    mesh: EntityMesh,
+    animate: boolean,
+  ): void {
+    const gated = mesh.buildingAnimationsGated === true;
+    if (!animate && !gated) {
+      mesh.buildingAnimationsGated = true;
+      this.animations.unregister(entity.id);
+      this.unregisterBuildingSpinTurrets(entity.id);
+    } else if (animate && gated) {
+      mesh.buildingAnimationsGated = false;
+      this.animations.register(entity, mesh);
+      this.registerBuildingSpinTurrets(entity, mesh);
+    }
   }
 
   destroy(): void {
@@ -764,15 +813,25 @@ export class BuildingEntityRenderer3D {
     const turretCount = rows.turretCount[row];
 
     let mesh = this.meshes.get(entity.id);
-    if (
-      mesh &&
+    const coreKeyChanged =
+      mesh !== undefined &&
       (
         mesh.buildingRenderFrameKey !== frameState.key ||
         mesh.buildingRenderBlueprintId !== blueprintId ||
-        mesh.buildingRenderTurretCount !== turretCount ||
-        mesh.buildingRenderDetailBand !== detailBand
-      )
+        mesh.buildingRenderTurretCount !== turretCount
+      );
+    const bandOnlyChanged =
+      mesh !== undefined &&
+      !coreKeyChanged &&
+      mesh.buildingRenderDetailBand !== detailBand;
+    // Band-only changes are cosmetics and defer under the per-frame
+    // rebuild budget; core key changes (graphics/blueprint) are
+    // correctness and always rebuild.
+    if (
+      mesh &&
+      (coreKeyChanged || (bandOnlyChanged && this.buildingRebuildBudgetLeft > 0))
     ) {
+      if (!coreKeyChanged) this.buildingRebuildBudgetLeft--;
       this.animations.unregister(entity.id);
       this.meshes.delete(entity.id);
       this.beamAimCache?.delete(entity.id);

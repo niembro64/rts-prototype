@@ -11,6 +11,7 @@ import { ViewportFootprint } from '../ViewportFootprint';
 import {
   ACTIVE_ENVIRONMENT_ASSETS,
   type EnvironmentAssetSpec,
+  getRandomEnvironmentAssetKind,
   isRandomEnvironmentAssetUsable,
   isWoodMaterialForAsset,
   logActiveEnvironmentAssets,
@@ -20,6 +21,12 @@ import {
   generateEnvironmentPlacements,
   type EnvironmentPlacement,
 } from './environmentPropPlacement';
+import {
+  ENVIRONMENT_GRASS_MIN_SCREEN_RADIUS_PX,
+  ENVIRONMENT_TREE_MIN_SCREEN_RADIUS_PX,
+  detailScreenRadiusPx,
+} from './EntityDetailLevel3D';
+import type { RenderViewState3D } from './RenderFrameState3D';
 
 type EnvironmentPropNode = {
   placement: EnvironmentPlacement;
@@ -89,7 +96,7 @@ export class EnvironmentPropRenderer3D {
     return this.ready || this.destroyed;
   }
 
-  update(): void {
+  update(view?: RenderViewState3D): void {
     if (!this.loaded || this.nodes.length === 0) return;
     const scopeVersion = this.renderScope.getVersion();
     if (scopeVersion === this.lastScopeVersion) return;
@@ -108,6 +115,28 @@ export class EnvironmentPropRenderer3D {
       if (!inScope) {
         node.root.visible = false;
         continue;
+      }
+      // Screen-coverage hide: a prop whose projected radius drops below
+      // the authored threshold (lod.json detail.environment) is invisible
+      // clutter at that zoom — hide it instead of drawing 1-2 calls each.
+      // The pass reruns on every scope-version bump (camera move/zoom),
+      // which is exactly when these distances change.
+      if (view !== undefined) {
+        const dx = view.cameraX - node.root.position.x;
+        const dy = view.cameraY - node.root.position.y;
+        const dz = view.cameraZ - node.root.position.z;
+        const screenPx = detailScreenRadiusPx(
+          Math.max(p.radius, p.height * 0.5),
+          Math.sqrt(dx * dx + dy * dy + dz * dz),
+          view.fovYRad,
+        );
+        const minPx = getRandomEnvironmentAssetKind(p.assetId) === 'grass'
+          ? ENVIRONMENT_GRASS_MIN_SCREEN_RADIUS_PX
+          : ENVIRONMENT_TREE_MIN_SCREEN_RADIUS_PX;
+        if (screenPx < minPx) {
+          node.root.visible = false;
+          continue;
+        }
       }
       node.root.visible = true;
     }

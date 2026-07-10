@@ -157,6 +157,9 @@ export type EntityMesh = {
   buildingRenderBlueprintId?: string | null;
   buildingRenderTurretCount?: number;
   buildingRenderDetailBand?: number;
+  /** True while the detail rung has this building's animators + gatling
+   *  spin frozen (live gate, no rebuild). */
+  buildingAnimationsGated?: boolean;
   unitDetailCachedX?: number;
   unitDetailCachedY?: number;
   unitDetailCachedZ?: number;
