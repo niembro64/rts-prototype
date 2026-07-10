@@ -9,10 +9,12 @@
 
 import type { Entity } from './types';
 import { isBuildInProgress } from './buildableHelpers';
+import { isSatisfiedMovementAnchorAction } from './unitActions';
 
 export function isIdleBuilderUnit(entity: Entity): boolean {
   if (entity.builder === null || entity.unit === null) return false;
   if (entity.unit.hp <= 0) return false;
   if (isBuildInProgress(entity.buildable)) return false;
-  return entity.unit.actions.length === 0;
+  return entity.unit.actions.length === 0 ||
+    (entity.unit.actions.length === 1 && isSatisfiedMovementAnchorAction(entity.unit.actions[0]));
 }

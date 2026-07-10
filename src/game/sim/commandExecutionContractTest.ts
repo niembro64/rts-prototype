@@ -250,6 +250,122 @@ export function runCommandExecutionContractTest(): void {
     'shared formation route must use the largest selected collision radius',
   );
 
+  const anchorWorld = new WorldState(1, 512, 512);
+  const anchorConstruction = new ConstructionSystem(anchorWorld.mapWidth, anchorWorld.mapHeight);
+  const anchorUnit = anchorWorld.createUnitFromBlueprint(64, 64, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  anchorWorld.addEntity(anchorUnit);
+  const anchorSim = new Simulation(anchorWorld, new CommandQueue()) as unknown as {
+    advanceAction(entity: Entity): void;
+    handleSatisfiedMovementAnchor(entity: Entity, action: UnitAction): boolean;
+  };
+  setUnitActions(anchorUnit.unit!, [{ type: 'move', x: 128, y: 64, z: anchorWorld.getGroundZ(128, 64) }]);
+  anchorSim.advanceAction(anchorUnit);
+  assertContract(
+    anchorUnit.unit?.actions.length === 1 &&
+      anchorUnit.unit.actions[0].type === 'move' &&
+      anchorUnit.unit.actions[0].movementAnchorSatisfied === true,
+    'final move completion must retain a satisfied movement anchor',
+  );
+  anchorUnit.transform.x = 220;
+  assertContract(
+    anchorSim.handleSatisfiedMovementAnchor(anchorUnit, anchorUnit.unit!.actions[0]) === false &&
+      anchorUnit.unit?.actions.length === 1 &&
+      anchorUnit.unit.actions[0].movementAnchorSatisfied !== true,
+    'external displacement must rearm a satisfied movement anchor',
+  );
+  anchorUnit.unit!.actions[0].movementAnchorSatisfied = true;
+  executeCommand({
+    world: anchorWorld,
+    constructionSystem: anchorConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  }, {
+    type: 'move',
+    tick: 2,
+    entityIds: [anchorUnit.id],
+    targetX: 260,
+    targetY: 64,
+    targetZ: anchorWorld.getGroundZ(260, 64),
+    waypointType: 'move',
+    queue: true,
+  });
+  assertContract(
+    anchorUnit.unit?.actions.length === 1 &&
+      anchorUnit.unit.actions[0].type === 'move' &&
+      anchorUnit.unit.actions[0].x === 260,
+    'queued commands after a satisfied movement anchor must not sit behind the completed anchor',
+  );
+
+  const patrolWorld = new WorldState(1, 512, 512);
+  const patrolConstruction = new ConstructionSystem(patrolWorld.mapWidth, patrolWorld.mapHeight);
+  const patrolCtx: CommandContext = {
+    world: patrolWorld,
+    constructionSystem: patrolConstruction,
+    pendingProjectileSpawns: [],
+    pendingSimEvents: [],
+    onSimEvent: null,
+  };
+  const patrolUnit = patrolWorld.createUnitFromBlueprint(60, 60, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  patrolWorld.addEntity(patrolUnit);
+  executeCommand(patrolCtx, {
+    type: 'move',
+    tick: 3,
+    entityIds: [patrolUnit.id],
+    targetX: 160,
+    targetY: 80,
+    targetZ: patrolWorld.getGroundZ(160, 80),
+    waypointType: 'patrol',
+    queue: false,
+  });
+  assertContract(
+    patrolUnit.unit?.actions.length === 2 &&
+      patrolUnit.unit.patrolStartIndex === 0 &&
+      patrolUnit.unit.actions[0].type === 'patrol' &&
+      patrolUnit.unit.actions[0].x === patrolUnit.transform.x &&
+      patrolUnit.unit.actions[1].x === 160,
+    'single patrol command must create a BAR-style current-point-to-clicked loop',
+  );
+  const queuedPatrolUnit = patrolWorld.createUnitFromBlueprint(80, 90, 1, 'unitJackal', {
+    allocateSubEntityIds: false,
+  });
+  patrolWorld.addEntity(queuedPatrolUnit);
+  executeCommand(patrolCtx, {
+    type: 'move',
+    tick: 4,
+    entityIds: [queuedPatrolUnit.id],
+    targetX: 100,
+    targetY: 100,
+    targetZ: patrolWorld.getGroundZ(100, 100),
+    waypointType: 'move',
+    queue: false,
+  });
+  executeCommand(patrolCtx, {
+    type: 'move',
+    tick: 5,
+    entityIds: [queuedPatrolUnit.id],
+    targetX: 220,
+    targetY: 120,
+    targetZ: patrolWorld.getGroundZ(220, 120),
+    waypointType: 'patrol',
+    queue: true,
+  });
+  const queuedPatrolActions: readonly UnitAction[] = queuedPatrolUnit.unit?.actions ?? [];
+  assertContract(
+    queuedPatrolActions.length === 3 &&
+      queuedPatrolUnit.unit?.patrolStartIndex === 1 &&
+      queuedPatrolActions[0].type === 'move' &&
+      queuedPatrolActions[1].type === 'patrol' &&
+      queuedPatrolActions[1].x === 100 &&
+      queuedPatrolActions[2].type === 'patrol' &&
+      queuedPatrolActions[2].x === 220,
+    'move then queued patrol must use the previous waypoint as the patrol loop start',
+  );
+
   const world = new WorldState(1, 512, 512);
   const construction = new ConstructionSystem(world.mapWidth, world.mapHeight);
   const grid = construction.getGrid();
@@ -1097,8 +1213,12 @@ export function runCommandExecutionContractTest(): void {
   });
   const patrolAfterGuardActions: readonly UnitAction[] = guardingBuilder.unit?.actions ?? [];
   assertContract(
-    patrolAfterGuardActions.length === 1 && patrolAfterGuardActions[0].type === 'patrol',
-    'BAR Guard Remove should drop a builder guard order before a queued patrol',
+    patrolAfterGuardActions.length === 2 &&
+      patrolAfterGuardActions[0].type === 'patrol' &&
+      patrolAfterGuardActions[0].x === guardingBuilder.transform.x &&
+      patrolAfterGuardActions[1].type === 'patrol' &&
+      patrolAfterGuardActions[1].x === 160,
+    'BAR Guard Remove should drop a builder guard order and create a patrol loop start',
   );
   executeCommand(guardRemoveCtx, {
     type: 'move',
@@ -1112,9 +1232,10 @@ export function runCommandExecutionContractTest(): void {
   });
   const patrolChainActions: readonly UnitAction[] = guardingBuilder.unit?.actions ?? [];
   assertContract(
-    patrolChainActions.length === 2 &&
+    patrolChainActions.length === 3 &&
       patrolChainActions[0].type === 'patrol' &&
-      patrolChainActions[1].type === 'patrol',
+      patrolChainActions[1].type === 'patrol' &&
+      patrolChainActions[2].type === 'patrol',
     'a queued patrol must keep an existing builder patrol chain',
   );
   const guardSwapAlly = guardRemoveWorld.createUnitFromBlueprint(120, 60, 1, 'unitJackal', {

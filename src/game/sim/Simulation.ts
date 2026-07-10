@@ -41,6 +41,9 @@ import { updateTransportActions } from './transports';
 import { WindPowerTracker, sampleWindState, sampleWindStateInto, type WindState } from './wind';
 import { entitySlotRegistry } from './EntitySlotRegistry';
 import {
+  clearMovementAnchorSatisfied,
+  isMovementAnchorAction,
+  isSatisfiedMovementAnchorAction,
   rotateFirstUnitActionToEnd,
   refreshUnitActionHash,
   shiftUnitAction,
@@ -808,6 +811,37 @@ export class Simulation {
     };
   }
 
+  private refreshPatrolStartIndex(unit: Unit): void {
+    const patrolStartIndex = unit.actions.findIndex((action) => action.type === 'patrol');
+    unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
+  }
+
+  private handleSatisfiedMovementAnchor(entity: Entity, currentAction: UnitAction): boolean {
+    const unit = entity.unit;
+    if (!unit || !isSatisfiedMovementAnchorAction(currentAction)) return false;
+
+    if (hasQueuedActionIntents(unit.actions)) {
+      shiftUnitAction(unit);
+      this.refreshPatrolStartIndex(unit);
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      return true;
+    }
+
+    const dx = currentAction.x - entity.transform.x;
+    const dy = currentAction.y - entity.transform.y;
+    if (magnitude(dx, dy) > ARRIVAL_RADIUS) {
+      clearMovementAnchorSatisfied(currentAction);
+      unit.activePath = null;
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      return false;
+    }
+
+    unit.activePath = null;
+    unit.stuckTicks = 0;
+    entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entity.entitySlotId);
+    return true;
+  }
+
   private advanceActivePathPoint(entity: Entity): void {
     const unit = entity.unit;
     const plan = unit?.activePath ?? null;
@@ -1137,6 +1171,9 @@ export class Simulation {
       const currentAction = unit.actions[0];
       if (currentAction.type === 'selfDestruct') {
         this.activateQueuedSelfDestructAction(entity);
+        continue;
+      }
+      if (this.handleSatisfiedMovementAnchor(entity, currentAction)) {
         continue;
       }
       this.flyingLoiter.rememberTarget(unit, currentAction);
@@ -1626,6 +1663,7 @@ export class Simulation {
     if (
       action.type !== 'move' &&
       action.type !== 'fight' &&
+      action.type !== 'patrol' &&
       action.type !== 'attack' &&
       action.type !== 'attackGround' &&
       action.type !== 'guard' &&
@@ -1725,6 +1763,15 @@ export class Simulation {
     if (unit.actions.length === 0) return;
 
     const completedAction = unit.actions[0];
+
+    if (unit.actions.length === 1 && isMovementAnchorAction(completedAction)) {
+      completedAction.movementAnchorSatisfied = true;
+      unit.activePath = null;
+      unit.stuckTicks = 0;
+      entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entity.entitySlotId);
+      this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+      return;
+    }
 
     // Check if we're in patrol mode and should loop
     if (completedAction.type === 'patrol' && unit.patrolStartIndex !== null) {

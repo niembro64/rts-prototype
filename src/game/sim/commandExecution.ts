@@ -77,6 +77,8 @@ import { getUnitBlueprint } from './blueprints';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { setUnitGroundNormalEmaMode } from './unitGroundNormal';
 import {
+  clearMovementAnchorSatisfied,
+  dropSatisfiedMovementAnchor,
   insertUnitAction,
   pushUnitAction,
   setUnitActions,
@@ -2779,20 +2781,107 @@ function enqueueGuardAction(
   addPathActionsWithFinal(entity, action, queue, ctx, queueFront, queueInsertIndex);
 }
 
+function queuedActionInsertIndex(
+  unit: Unit,
+  queueFront: boolean,
+  queueInsertIndex?: number,
+): number {
+  if (queueFront) {
+    const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
+    return activeIntentEnd >= 0 ? activeIntentEnd + 1 : 0;
+  }
+  if (queueInsertIndex !== undefined) {
+    return Math.max(0, Math.min(Math.floor(queueInsertIndex), unit.actions.length));
+  }
+  return unit.actions.length;
+}
+
+function copyPatrolStartActionFromAnchor(
+  entity: Entity,
+  anchor: UnitAction | undefined,
+  world: WorldState,
+): UnitAction {
+  if (anchor !== undefined) {
+    return {
+      type: 'patrol',
+      x: anchor.x,
+      y: anchor.y,
+      z: anchor.z ?? world.getGroundZ(anchor.x, anchor.y),
+    };
+  }
+  const x = entity.transform.x;
+  const y = entity.transform.y;
+  return {
+    type: 'patrol',
+    x,
+    y,
+    z: world.getGroundZ(x, y),
+  };
+}
+
+function clearFormationRouteMetadata(action: UnitAction): void {
+  action.formationRouteStartX = undefined;
+  action.formationRouteStartY = undefined;
+  action.formationRouteGoalX = undefined;
+  action.formationRouteGoalY = undefined;
+  action.formationRouteOffsetX = undefined;
+  action.formationRouteOffsetY = undefined;
+  action.formationRouteRadius = undefined;
+}
+
+function addPatrolActionToUnit(
+  entity: Entity,
+  action: UnitAction,
+  queue: boolean,
+  world: WorldState | undefined,
+  queueFront: boolean,
+  queueInsertIndex?: number,
+): void {
+  const unit = entity.unit;
+  if (unit === null) return;
+  clearMovementAnchorSatisfied(action);
+  clearFormationRouteMetadata(action);
+
+  if (world === undefined) {
+    if (!queue) setUnitActions(unit, [action]);
+    else addQueuedActionToUnit(unit, action, queueFront, queueInsertIndex);
+    return;
+  }
+
+  if (!queue) {
+    const startAction = copyPatrolStartActionFromAnchor(entity, undefined, world);
+    setUnitActions(unit, [startAction, action]);
+    return;
+  }
+
+  dropSatisfiedMovementAnchor(unit);
+  removeBuilderBlockingGuardActions(entity, action);
+  const hasExistingPatrol = unit.actions.some((queuedAction) => queuedAction.type === 'patrol');
+  if (hasExistingPatrol) {
+    addQueuedActionToUnit(unit, action, queueFront, queueInsertIndex);
+    return;
+  }
+
+  const index = queuedActionInsertIndex(unit, queueFront, queueInsertIndex);
+  const anchor = index > 0 ? unit.actions[index - 1] : undefined;
+  const startAction = copyPatrolStartActionFromAnchor(entity, anchor, world);
+  insertUnitAction(unit, index, startAction);
+  insertUnitAction(unit, index + 1, action);
+}
+
 function addQueuedActionToUnit(
   unit: Unit,
   action: UnitAction,
   queueFront: boolean,
   queueInsertIndex?: number,
 ): void {
-  if (queueFront) {
-    const activeIntentEnd = getFirstActionIntentEnd(unit.actions);
-    insertUnitAction(unit, activeIntentEnd >= 0 ? activeIntentEnd + 1 : 0, action);
-  } else if (queueInsertIndex !== undefined) {
-    const index = Math.max(0, Math.min(Math.floor(queueInsertIndex), unit.actions.length));
-    insertUnitAction(unit, index, action);
-  } else {
+  clearMovementAnchorSatisfied(action);
+  dropSatisfiedMovementAnchor(unit);
+  const index = queuedActionInsertIndex(unit, queueFront, queueInsertIndex);
+  if (index >= unit.actions.length) {
     pushUnitAction(unit, action);
+  } else {
+    insertUnitAction(unit, index, action);
   }
 }
 
@@ -2806,6 +2895,16 @@ function addActionToUnit(
   queueInsertIndex?: number,
 ): void {
   if (!entity.unit) return;
+  clearMovementAnchorSatisfied(action);
+
+  if (action.type === 'patrol') {
+    addPatrolActionToUnit(entity, action, queue, world, queueFront, queueInsertIndex);
+    refreshPatrolStartIndex(entity.unit);
+    if (world !== undefined) {
+      world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+    }
+    return;
+  }
 
   if (!queue) {
     // Replace all actions

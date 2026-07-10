@@ -122,9 +122,20 @@ function ensureFactoryProductionCapacity(required: number): void {
 function directFactoryRallyActions(
   world: WorldState,
   route: ReadonlyArray<{ x: number; y: number; z?: number | null; type: UnitAction['type'] }>,
+  startX: number,
+  startY: number,
 ): { actions: UnitAction[]; patrolStartIndex: number | null } {
   const actions: UnitAction[] = [];
   let patrolStartIndex: number | null = null;
+  if (route.length === 1 && route[0].type === 'patrol') {
+    patrolStartIndex = 0;
+    actions.push({
+      type: 'patrol',
+      x: startX,
+      y: startY,
+      z: world.sampleSupportSurface(startX, startY).groundZ,
+    });
+  }
   for (let i = 0; i < route.length; i++) {
     const wp = route[i];
     if (wp.type === 'patrol' && patrolStartIndex === null) {
@@ -510,7 +521,12 @@ class FactoryProductionSystem {
               z: factoryComp.rallyZ,
               type: factoryComp.rallyType,
             }];
-        const { actions, patrolStartIndex } = directFactoryRallyActions(world, route);
+        const { actions, patrolStartIndex } = directFactoryRallyActions(
+          world,
+          route,
+          factory.transform.x,
+          factory.transform.y,
+        );
         setUnitActions(unit.unit, actions);
         if (patrolStartIndex !== null) {
           unit.unit.patrolStartIndex = patrolStartIndex;

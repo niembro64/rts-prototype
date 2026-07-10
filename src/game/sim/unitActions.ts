@@ -1,5 +1,21 @@
 import type { Unit, UnitAction } from './types';
 
+export function isMovementAnchorAction(action: UnitAction | undefined): action is UnitAction {
+  return action !== undefined && (action.type === 'move' || action.type === 'fight');
+}
+
+export function isSatisfiedMovementAnchorAction(action: UnitAction | undefined): action is UnitAction {
+  return isMovementAnchorAction(action) && action.movementAnchorSatisfied === true;
+}
+
+export function clearMovementAnchorSatisfied(action: UnitAction | undefined): void {
+  if (action !== undefined) action.movementAnchorSatisfied = undefined;
+}
+
+export function dropSatisfiedMovementAnchor(unit: Unit): UnitAction | undefined {
+  if (!isSatisfiedMovementAnchorAction(unit.actions[0])) return undefined;
+  return shiftUnitAction(unit);
+}
 
 export function computeUnitActionHash(actions: readonly UnitAction[]): number {
   let hash = actions.length;
@@ -84,4 +100,3 @@ function removeFirstUnitAction(actions: UnitAction[]): UnitAction | undefined {
   actions.length--;
   return action;
 }
-

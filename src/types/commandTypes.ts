@@ -36,6 +36,9 @@ export type UnitAction = {
   buildingId?: EntityId;
   targetId?: EntityId;
   isPathExpansion?: boolean;
+  /** Sim-local marker for a final move/fight command whose destination has
+   *  been reached. The waypoint remains durable so displacement can rearm it. */
+  movementAnchorSatisfied?: boolean;
   waitGather?: boolean;
   waitGroupId?: number;
   /** Sim-local formation route metadata. These fields are intentionally

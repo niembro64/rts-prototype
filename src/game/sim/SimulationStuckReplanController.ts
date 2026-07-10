@@ -45,8 +45,7 @@ export class SimulationStuckReplanController {
       let settlingFlags = 0;
       if (
         action !== undefined &&
-        action.type !== 'patrol' &&
-        (action.type === 'move' || action.type === 'fight')
+        (action.type === 'move' || action.type === 'fight' || action.type === 'patrol')
       ) {
         settlingDx = action.x - entity.transform.x;
         settlingDy = action.y - entity.transform.y;
