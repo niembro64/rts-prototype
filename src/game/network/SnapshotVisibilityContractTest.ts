@@ -11,7 +11,8 @@ import { spatialGrid } from '../sim/SpatialGrid';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { WorldState } from '../sim/WorldState';
 import { stampCombatTargetingPool } from '../sim/combat/targetingInputStamping';
-import type { Entity, EntityId, PlayerId } from '../sim/types';
+import { applyBuildingBlueprintRuntime } from '../sim/buildingEntityRuntime';
+import type { BuildingBlueprintId, Entity, EntityId, PlayerId } from '../sim/types';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -46,6 +47,23 @@ function createUnit(
   return entity;
 }
 
+function createOpenedStructure(
+  world: WorldState,
+  x: number,
+  y: number,
+  playerId: PlayerId,
+  buildingBlueprintId: BuildingBlueprintId,
+): Entity {
+  const entity = world.createBuilding(x, y, 80, 80, 80, playerId);
+  applyBuildingBlueprintRuntime(entity, buildingBlueprintId);
+  if (entity.building !== null && entity.building.activeState !== null) {
+    entity.building.activeState.open = true;
+  }
+  world.addEntity(entity);
+  spatialGrid.addBuilding(entity);
+  return entity;
+}
+
 export function runSnapshotVisibilityContractTest(): void {
   spatialGrid.clear();
 
@@ -69,6 +87,8 @@ export function runSnapshotVisibilityContractTest(): void {
     assertContract(entity.unit !== null, 'hidden cloaked target must have a unit component');
     entity.unit.cloaked = true;
   });
+  const structureObserver = createOpenedStructure(world, 512, 2800, 1 as PlayerId, 'buildingRadar');
+  const structureSightEnemy = createUnit(world, 512, 3600, 2 as PlayerId);
   const outOfRangeEnemy = createUnit(world, 3800, 3800, 2 as PlayerId);
 
   const legacyVisibility = SnapshotVisibility.forRecipient(world, 1 as PlayerId);
@@ -113,8 +133,10 @@ export function runSnapshotVisibilityContractTest(): void {
   );
 
   assertContract(legacyVisible.includes(observer.id), 'owned observer must be fully visible');
+  assertContract(legacyVisible.includes(structureObserver.id), 'owned structure observer must be fully visible');
   assertContract(legacyVisible.includes(fullSightEnemy.id), 'enemy inside full sight must be visible');
   assertContract(legacyVisible.includes(detectedCloakedEnemy.id), 'detected cloaked enemy must be visible');
+  assertContract(legacyVisible.includes(structureSightEnemy.id), 'enemy inside structure full sight must be visible');
   assertContract(!legacyVisible.includes(radarOnlyEnemy.id), 'radar-only enemy must not be fully visible');
   assertContract(!legacyVisible.includes(hiddenCloakedEnemy.id), 'undetected cloaked enemy must not be visible');
   assertContract(!legacyVisible.includes(outOfRangeEnemy.id), 'out-of-range enemy must not be visible');
@@ -132,9 +154,11 @@ export function runSnapshotVisibilityContractTest(): void {
   );
 
   assertContract(legacyRadar.includes(observer.id), 'owned observer must be on radar list');
+  assertContract(legacyRadar.includes(structureObserver.id), 'owned structure observer must be on radar list');
   assertContract(legacyRadar.includes(fullSightEnemy.id), 'full-sight enemy must be on radar list');
   assertContract(legacyRadar.includes(radarOnlyEnemy.id), 'radar-covered enemy must be on radar list');
   assertContract(legacyRadar.includes(detectedCloakedEnemy.id), 'detected cloaked enemy must be on radar list');
+  assertContract(legacyRadar.includes(structureSightEnemy.id), 'structure-sighted enemy must be on radar list');
   assertContract(!legacyRadar.includes(hiddenCloakedEnemy.id), 'undetected cloaked enemy must not be on radar list');
   assertContract(!legacyRadar.includes(outOfRangeEnemy.id), 'out-of-range enemy must not be on radar list');
 

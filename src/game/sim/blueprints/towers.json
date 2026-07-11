@@ -42,7 +42,7 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 0,
+      "fullSightRadius": 1200,
       "radarRadius": 0,
       "detectorRadius": 0,
       "trackingRadius": 0,
@@ -131,7 +131,7 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 0,
+      "fullSightRadius": 1200,
       "radarRadius": 0,
       "detectorRadius": 0,
       "trackingRadius": 0,
@@ -200,7 +200,7 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 0,
+      "fullSightRadius": 1200,
       "radarRadius": 0,
       "detectorRadius": 0,
       "trackingRadius": 0,
@@ -269,7 +269,7 @@
       "barsOffsetAboveTop": 12
     },
     "sensors": {
-      "fullSightRadius": 0,
+      "fullSightRadius": 1200,
       "radarRadius": 0,
       "detectorRadius": 0,
       "trackingRadius": 0,

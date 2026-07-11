@@ -40,7 +40,7 @@
     "floorY": -600
   },
   "water": {
-    "levelFraction": 0.9,
+    "levelFraction": 0.8,
     "fullyOpaque": false
   },
   "generation": {
