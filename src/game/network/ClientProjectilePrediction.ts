@@ -441,7 +441,11 @@ function applyProjectileTargetDrift(
     entity.transform.y = lerp(entity.transform.y, target.y, movPosBlend);
     entity.transform.z = lerp(entity.transform.z, target.z, movPosBlend);
   }
-  if (movVelBlend >= 0) {
+  if (movVelBlend >= 1) {
+    proj.velocityX = target.velocityX;
+    proj.velocityY = target.velocityY;
+    proj.velocityZ = target.velocityZ;
+  } else if (movVelBlend >= 0) {
     proj.velocityX = lerp(proj.velocityX, target.velocityX, movVelBlend);
     proj.velocityY = lerp(proj.velocityY, target.velocityY, movVelBlend);
     proj.velocityZ = lerp(proj.velocityZ, target.velocityZ, movVelBlend);

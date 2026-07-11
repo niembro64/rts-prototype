@@ -6,8 +6,8 @@ import type { DriftChannelMode } from '@/types/client';
  *  server target faster; larger leaves the rendered value lazier.
  *
  *  'ignore' returns a sentinel (-1) so the caller can branch on it.
- *  'snap'   collapses to alpha=1 via halfLife=0 — the EMA formula's
- *           natural limit (no special case needed).
+ *  'snap'   returns alpha=1 before the EMA formula so hot paths can
+ *           direct-copy instead of doing lerp(..., 1).
  *  fast / medium / slow span roughly 1.5 orders of magnitude so the
  *  visible difference between adjacent settings is obvious without
  *  tuning a custom number per channel. */
@@ -19,9 +19,7 @@ export const DRIFT_CHANNEL_HALF_LIFE_SEC: Record<DriftChannelMode, number> = {
   slow: 0.500,
 };
 
-/** Frame-rate independent EMA blend factor from a half-life in seconds.
- *  halfLife=0 collapses to alpha=1 (immediate / 100% blend) via the
- *  formula's natural limit — no special branch needed. */
+/** Frame-rate independent EMA blend factor from a positive half-life in seconds. */
 export function halfLifeBlend(dt: number, halfLife: number): number {
   return 1 - Math.pow(0.5, dt / halfLife);
 }

@@ -66,8 +66,8 @@
     ]
   },
   "movementVelEma": {
-    "demoDefault": "medium",
-    "realDefault": "medium",
+    "demoDefault": "snap",
+    "realDefault": "snap",
     "options": [
       { "value": "ignore", "label": "IGN" },
       { "value": "snap", "label": "SNAP" },
@@ -87,8 +87,8 @@
     ]
   },
   "rotationVelEma": {
-    "demoDefault": "medium",
-    "realDefault": "medium",
+    "demoDefault": "snap",
+    "realDefault": "snap",
     "options": [
       { "value": "ignore", "label": "IGN" },
       { "value": "snap", "label": "SNAP" },

@@ -702,23 +702,16 @@ function applyClientUnitVisualDrift(
     );
   }
 
-  // Movement velocity channel.
-  if (movVelBlend >= 0) {
-    entity.unit.velocityX = lerp(
-      entity.unit.velocityX ?? 0,
-      target.velocityX ?? 0,
-      movVelBlend,
-    );
-    entity.unit.velocityY = lerp(
-      entity.unit.velocityY ?? 0,
-      target.velocityY ?? 0,
-      movVelBlend,
-    );
-    entity.unit.velocityZ = lerp(
-      entity.unit.velocityZ ?? 0,
-      target.velocityZ ?? 0,
-      movVelBlend,
-    );
+  // Movement velocity channel. Snap is the expected/default derivative path:
+  // copy it directly instead of spending hot-loop work on lerp(..., 1).
+  if (movVelBlend >= 1) {
+    entity.unit.velocityX = target.velocityX ?? 0;
+    entity.unit.velocityY = target.velocityY ?? 0;
+    entity.unit.velocityZ = target.velocityZ ?? 0;
+  } else if (movVelBlend >= 0) {
+    entity.unit.velocityX = lerp(entity.unit.velocityX ?? 0, target.velocityX ?? 0, movVelBlend);
+    entity.unit.velocityY = lerp(entity.unit.velocityY ?? 0, target.velocityY ?? 0, movVelBlend);
+    entity.unit.velocityZ = lerp(entity.unit.velocityZ ?? 0, target.velocityZ ?? 0, movVelBlend);
   }
 
   // Full 3-DOF orientation drift. The body quaternion is the rotation-position
@@ -734,6 +727,17 @@ function applyClientUnitVisualDrift(
   // Angular velocity is paired with orientation and blends with the
   // rotation-velocity channel.
   if (
+    rotVelBlend >= 1
+    && entity.unit.angularVelocity3
+    && target.angularVelocityX !== null
+    && target.angularVelocityY !== null
+    && target.angularVelocityZ !== null
+  ) {
+    const av = entity.unit.angularVelocity3;
+    av.x = target.angularVelocityX;
+    av.y = target.angularVelocityY;
+    av.z = target.angularVelocityZ;
+  } else if (
     rotVelBlend >= 0
     && entity.unit.angularVelocity3
     && target.angularVelocityX !== null
@@ -880,7 +884,10 @@ export function applyClientCombatExpensivePrediction(options: {
           TURRET_PITCH_MAX,
         );
       }
-      if (rotVelBlend >= 0) {
+      if (rotVelBlend >= 1) {
+        weapon.angularVelocity = tw.angularVelocity;
+        weapon.pitchVelocity = tw.pitchVelocity;
+      } else if (rotVelBlend >= 0) {
         weapon.angularVelocity = lerp(
           weapon.angularVelocity,
           tw.angularVelocity,
