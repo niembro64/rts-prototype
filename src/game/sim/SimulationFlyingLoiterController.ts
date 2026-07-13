@@ -94,7 +94,7 @@ export class SimulationFlyingLoiterController {
     this.fallbackVy[index] = unit.velocityY;
   }
 
-  flush(movingUnits: Entity[]): void {
+  flush(movingUnits: Entity[], movingUnitSlots: number[]): void {
     const count = this.count;
     if (count === 0) return;
 
@@ -135,7 +135,12 @@ export class SimulationFlyingLoiterController {
         );
         const turnSign = this.outTurnSign[i];
         unit.flyingLoiterTurnSign = turnSign === 1 || turnSign === -1 ? turnSign : null;
-        if (this.active[i] !== 0) movingUnits.push(entity);
+        if (this.active[i] !== 0) {
+          movingUnits.push(entity);
+          movingUnitSlots.push(
+            this.entitySlots[i] >= 0 ? this.entitySlots[i] : entitySlotRegistry.getEntitySlot(entity),
+          );
+        }
       }
       this.entities[i] = undefined as unknown as Entity;
     }

@@ -159,7 +159,7 @@ function spawnUnit(
     let patrolStartIndex = -1;
     for (let i = 0; i < waypoints.length; i++) {
       const wp = waypoints[i];
-      const action: UnitAction = { type: wp.type, x: wp.x, y: wp.y };
+      const action: UnitAction = { type: wp.type, x: wp.x, y: wp.y, directPath: true };
       if (wp.z !== null) action.z = wp.z;
       actions[i] = action;
       if (patrolStartIndex < 0 && action.type === 'patrol') patrolStartIndex = i;

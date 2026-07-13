@@ -22,8 +22,7 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
-import { entityDetailLevelForView } from './EntityLod3D';
-import { projectileStyleForDetail } from './EntityDetailLevel3D';
+import { DETAIL_LEVEL_FULL, projectileStyleForDetail } from './EntityDetailLevel3D';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
@@ -142,17 +141,13 @@ type ProjectileRenderer3DOptions = {
   clientViewState: ClientViewState;
   scope: ViewportFootprint;
   radiusSphereGeom: THREE.BufferGeometry;
-  isEntityEmissionFarLod?: (entity: Entity) => boolean;
 };
-
-const NEVER_EMISSION_FAR_LOD = (): boolean => false;
 
 export class ProjectileRenderer3D {
   private readonly world: THREE.Group;
   private readonly clientViewState: ClientViewState;
   private readonly scope: ViewportFootprint;
   private readonly radiusSphereGeom: THREE.BufferGeometry;
-  private readonly isEntityEmissionFarLod: (entity: Entity) => boolean;
 
   private readonly projectileGeom = createPrimitiveSphereGeometry('projectile', 'close');
   private readonly projectileCylinderGeom = createPrimitiveCylinderGeometry('projectile', 'close');
@@ -224,8 +219,6 @@ export class ProjectileRenderer3D {
     this.clientViewState = options.clientViewState;
     this.scope = options.scope;
     this.radiusSphereGeom = options.radiusSphereGeom;
-    this.isEntityEmissionFarLod =
-      options.isEntityEmissionFarLod ?? NEVER_EMISSION_FAR_LOD;
 
     this.sphereInstanced = new THREE.InstancedMesh(
       this.projectileGeom,
@@ -298,9 +291,8 @@ export class ProjectileRenderer3D {
 
       const shotProfile = e.projectile?.config.shotProfile;
       const visualProfile = shotProfile?.visual;
-      const detailLevel = entityDetailLevelForView(frameState.view, e);
       const projectileStyle = projectileStyleForDetail(
-        detailLevel,
+        DETAIL_LEVEL_FULL,
         frameState.gfx.projectileStyle,
       );
       const drawProjectileTail = projectileStyle !== 'dot' && projectileStyle !== 'core';
@@ -308,12 +300,6 @@ export class ProjectileRenderer3D {
       const radius = shotProfile?.runtime.radius.other ?? 4;
       const visualRadius = radius;
       const r = Math.max(visualRadius, PROJECTILE_MIN_RADIUS);
-
-      if (this.isEntityEmissionFarLod(e)) {
-        this.hideProjRadiusMeshes(e.id);
-        this.trailStamps.delete(e.id);
-        continue;
-      }
 
       if (sphereCount >= PROJECTILE_INSTANCED_CAP) {
         this.hideProjRadiusMeshes(e.id);
@@ -325,12 +311,6 @@ export class ProjectileRenderer3D {
         tx, tz, ty,
         r, r, r,
       );
-
-      if (this.isEntityEmissionFarLod(e)) {
-        this.hideProjRadiusMeshes(e.id);
-        this.trailStamps.delete(e.id);
-        continue;
-      }
 
       const tailShape = drawProjectileTail
         ? visualProfile?.projectileTailShape ?? 'cone'

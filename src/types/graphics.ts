@@ -24,6 +24,7 @@ export type GraphicsConfig = {
   effectFrameStride: number;
   terrainTileFrameStride: number;
   terrainTileSideWalls: boolean;
+  terrainDetailTextures: boolean;
   waterSubdivisions: number;
   waterFrameStride: number;
   waterWaveAmplitude: number;
@@ -37,7 +38,14 @@ export type GraphicsConfig = {
   barrelSpin: boolean;
   beamStyle: BeamStyle;
   beamGlow: boolean;
-  antialias: boolean;
+  /** Renderer antialiasing level.
+   *  0 = off.
+   *  1 = request native WebGL default-framebuffer antialiasing.
+   *  2 = explicit 4x MSAA render target where supported.
+   *  3 = explicit 8x MSAA render target where supported.
+   *  Higher values double the requested sample count and are capped by
+   *  renderer/browser support. */
+  antialiasLevel: number;
   /** Unified density knob (0..1) for beam-scorch burn marks. The
    *  renderer derives its active-count cap, frame-skip stride, and
    *  per-mark lifetime multiplier from this single value. 0 = effect disabled. */

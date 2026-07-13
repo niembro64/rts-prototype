@@ -24,6 +24,8 @@ export {
   updateLaserSounds,
   emitLaserStopsForEntity,
   emitLaserStopsForTarget,
+  emitLaserStopsForTargetRefs,
+  getLaserStopRefsForTargets,
   resetLaserSoundState,
 } from './combat/laserSoundSystem';
 
@@ -46,4 +48,8 @@ export {
   checkProjectileCollisions,
   registerPackedProjectile,
   unregisterPackedProjectile,
+} from './combat/projectileSystem';
+
+export type {
+  ProjectileUpdatePhaseTimings,
 } from './combat/projectileSystem';

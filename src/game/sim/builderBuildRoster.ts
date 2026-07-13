@@ -5,6 +5,7 @@ import type { UnitBlueprint } from './blueprints/types';
 type BuilderCapability = {
   constructionRate: number;
   allowedBuildBlueprintIds: readonly StructureBlueprintId[];
+  allowedBuildBlueprintIdSet: ReadonlySet<StructureBlueprintId>;
 };
 
 export type SelectedBuilderTypeInfo = {
@@ -16,7 +17,14 @@ export type SelectedBuilderTypeInfo = {
 
 export const BAR_MAX_SELECTED_BUILDER_TYPES = 5;
 
+const EMPTY_STRUCTURE_BLUEPRINT_ID_SET: ReadonlySet<StructureBlueprintId> = new Set();
+const _unitBuilderCapabilityByBlueprint = new WeakMap<UnitBlueprint, BuilderCapability>();
+const _unitBuilderCapabilityById = new Map<string, BuilderCapability>();
+
 function getUnitBuilderCapability(unitBlueprint: UnitBlueprint): BuilderCapability {
+  const cached = _unitBuilderCapabilityByBlueprint.get(unitBlueprint);
+  if (cached !== undefined) return cached;
+
   let constructionRate = 0;
   let allowedBuildBlueprintIds: readonly StructureBlueprintId[] = [];
 
@@ -30,28 +38,39 @@ function getUnitBuilderCapability(unitBlueprint: UnitBlueprint): BuilderCapabili
     }
   }
 
-  return {
+  const capability = {
     constructionRate,
     allowedBuildBlueprintIds,
+    allowedBuildBlueprintIdSet: new Set(allowedBuildBlueprintIds),
   };
+  _unitBuilderCapabilityByBlueprint.set(unitBlueprint, capability);
+  return capability;
+}
+
+function getUnitBuilderCapabilityById(unitBlueprintId: string): BuilderCapability {
+  let capability = _unitBuilderCapabilityById.get(unitBlueprintId);
+  if (capability !== undefined) return capability;
+  capability = getUnitBuilderCapability(getUnitBlueprint(unitBlueprintId));
+  _unitBuilderCapabilityById.set(unitBlueprintId, capability);
+  return capability;
 }
 
 function getBuilderCapability(entity: Entity | null | undefined): BuilderCapability | null {
   if (entity === null || entity === undefined || entity.builder === null || entity.unit === null) {
     return null;
   }
-  return getUnitBuilderCapability(getUnitBlueprint(entity.unit.unitBlueprintId));
+  return getUnitBuilderCapabilityById(entity.unit.unitBlueprintId);
 }
 
 function builderCanBuild(
   builder: Builder | null | undefined,
-  allowedBuildBlueprintIds: readonly StructureBlueprintId[],
+  allowedBuildBlueprintIdSet: ReadonlySet<StructureBlueprintId>,
   buildingBlueprintId: StructureBlueprintId | string | null | undefined,
 ): boolean {
   if (builder === null || builder === undefined || buildingBlueprintId === null || buildingBlueprintId === undefined) {
     return false;
   }
-  return allowedBuildBlueprintIds.includes(buildingBlueprintId as StructureBlueprintId);
+  return allowedBuildBlueprintIdSet.has(buildingBlueprintId as StructureBlueprintId);
 }
 
 export function entityCanBuild(
@@ -59,7 +78,11 @@ export function entityCanBuild(
   buildingBlueprintId: StructureBlueprintId | string | null | undefined,
 ): boolean {
   const capability = getBuilderCapability(entity);
-  return builderCanBuild(entity?.builder, capability?.allowedBuildBlueprintIds ?? [], buildingBlueprintId);
+  return builderCanBuild(
+    entity?.builder,
+    capability?.allowedBuildBlueprintIdSet ?? EMPTY_STRUCTURE_BLUEPRINT_ID_SET,
+    buildingBlueprintId,
+  );
 }
 
 export function getBuilderConstructionRate(entity: Entity): number {

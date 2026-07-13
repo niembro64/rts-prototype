@@ -304,6 +304,7 @@ pub(crate) const UF_OUT_ROTATION_DIRTY: u32 = 1 << 2;
 pub(crate) const UF_OUT_HOVER_ORIENTATION: u32 = 1 << 3;
 pub(crate) const UF_OUT_WOKE_BODY: u32 = 1 << 4;
 pub(crate) const UF_OUT_ENTITY_STATE_SYNCED: u32 = 1 << 5;
+pub(crate) const UF_OUT_SLEEP_BODY: u32 = 1 << 6;
 
 const ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION: u32 = 1 << 1;
 const ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY: u32 = 1 << 2;
@@ -339,6 +340,9 @@ const UNIT_ATTITUDE_TURN_AUTHORITY_SCALE: f64 = 1.0;
 const UNIT_ATTITUDE_MAX_ANGULAR_SPEED: f64 = 2.5;
 const UNIT_ATTITUDE_MIN_RADIUS: f64 = 1.0;
 const UNIT_ATTITUDE_SLEEP_EPSILON_SQ: f64 = 1e-12;
+const UNIT_ATTITUDE_DIRTY_EPSILON_SQ: f64 = 1e-18;
+const UNIT_FORCE_HOVER_SLEEP_ALTITUDE_EPS: f64 = 1.0;
+const UNIT_FORCE_HOVER_SLEEP_WIND_SPEED_SQ: f64 = 1e-12;
 
 #[inline]
 pub(crate) fn unit_force_locomotion_magnitudes(
@@ -405,6 +409,88 @@ pub(crate) fn unit_force_water_fraction(pos_z: f64, ground_offset: f64) -> f64 {
     ((TERRAIN_WATER_LEVEL - bottom_z) / height)
         .max(0.0)
         .min(1.0)
+}
+
+#[inline]
+fn unit_force_try_sleep_idle_hover(
+    p: &mut BodyPool,
+    es: &mut EntityStateSlab,
+    slot: usize,
+    entity_slot: Option<usize>,
+    ground_z: f64,
+    hover_height_force: f64,
+    hover_random_amount: f64,
+    air_buoyancy: f64,
+    air_friction: f64,
+    wind_x: f64,
+    wind_y: f64,
+    wind_z: f64,
+    is_flying: bool,
+    medium_lift_enabled: bool,
+    has_thrust: bool,
+    has_external: bool,
+    has_angular_motion: bool,
+    air_fraction: f64,
+    water_fraction: f64,
+) -> Option<u32> {
+    if is_flying
+        || !medium_lift_enabled
+        || has_thrust
+        || has_external
+        || has_angular_motion
+        || air_fraction < 0.999
+        || water_fraction > 0.001
+        || hover_height_force <= 0.0
+        || !hover_height_force.is_finite()
+        || hover_random_amount > 0.0
+        || air_buoyancy > 0.0
+    {
+        return None;
+    }
+    let wind_speed_sq = wind_x * wind_x + wind_y * wind_y + wind_z * wind_z;
+    if air_friction > 0.0 && wind_speed_sq > UNIT_FORCE_HOVER_SLEEP_WIND_SPEED_SQ {
+        return None;
+    }
+    let speed_sq = p.vel_x[slot] * p.vel_x[slot]
+        + p.vel_y[slot] * p.vel_y[slot]
+        + p.vel_z[slot] * p.vel_z[slot];
+    if speed_sq > SLEEP_SPEED_SQ {
+        return None;
+    }
+    let direct_altitude = unit_force_air_lift_direct_altitude(p.pos_z[slot], ground_z);
+    if (direct_altitude - hover_height_force).abs() > UNIT_FORCE_HOVER_SLEEP_ALTITUDE_EPS {
+        return None;
+    }
+
+    let was_awake = p.flags[slot] & BODY_FLAG_SLEEPING == 0;
+    if !was_awake {
+        return Some(0);
+    }
+
+    p.flags[slot] |= BODY_FLAG_SLEEPING;
+    p.sleep_ticks[slot] = SLEEP_TICKS;
+    p.vel_x[slot] = 0.0;
+    p.vel_y[slot] = 0.0;
+    p.vel_z[slot] = 0.0;
+    p.accel_x[slot] = 0.0;
+    p.accel_y[slot] = 0.0;
+    p.accel_z[slot] = 0.0;
+    p.launch_x[slot] = 0.0;
+    p.launch_y[slot] = 0.0;
+    p.launch_z[slot] = 0.0;
+
+    let mut out = UF_OUT_SLEEP_BODY;
+    if let Some(entity_slot) = entity_slot {
+        es.pos_x[entity_slot] = p.pos_x[slot];
+        es.pos_y[entity_slot] = p.pos_y[slot];
+        es.pos_z[entity_slot] = p.pos_z[slot];
+        es.vel_x[entity_slot] = 0.0;
+        es.vel_y[entity_slot] = 0.0;
+        es.vel_z[entity_slot] = 0.0;
+        es.dirty_mask[entity_slot] |= ENTITY_CHANGED_POS | ENTITY_CHANGED_VEL;
+        out |= UF_OUT_ENTITY_STATE_SYNCED;
+    }
+    Some(out)
 }
 
 #[inline]
@@ -553,6 +639,27 @@ fn unit_force_clamp_magnitude3(v: &mut [f64; 3], max_mag: f64) {
 }
 
 #[inline]
+fn unit_force_attitude_row_changed(
+    prev_orientation: [f64; 4],
+    next_orientation: [f64; 4],
+    prev_omega: [f64; 3],
+    next_omega: [f64; 3],
+    angular_accel: [f64; 3],
+) -> bool {
+    let mut max_delta_sq = 0.0_f64;
+    for i in 0..4 {
+        let d = next_orientation[i] - prev_orientation[i];
+        max_delta_sq = max_delta_sq.max(d * d);
+    }
+    for i in 0..3 {
+        let d = next_omega[i] - prev_omega[i];
+        max_delta_sq = max_delta_sq.max(d * d);
+        max_delta_sq = max_delta_sq.max(angular_accel[i] * angular_accel[i]);
+    }
+    max_delta_sq > UNIT_ATTITUDE_DIRTY_EPSILON_SQ
+}
+
+#[inline]
 fn unit_force_air_lift_direct_altitude(pos_z: f64, ground_z: f64) -> f64 {
     let body_reference_z = ground_z.max(TERRAIN_WATER_LEVEL);
     (pos_z - body_reference_z).max(0.5)
@@ -641,12 +748,14 @@ fn unit_force_attitude_step(
         rows[base + UF_ROW_ORIENTATION_Z],
         rows[base + UF_ROW_ORIENTATION_W],
     ];
+    let prev_orientation = orientation;
     quat_normalize_inplace(&mut orientation);
     let mut omega = [
         rows[base + UF_ROW_OMEGA_X],
         rows[base + UF_ROW_OMEGA_Y],
         rows[base + UF_ROW_OMEGA_Z],
     ];
+    let prev_omega = omega;
     let current_yaw = quat_yaw(orientation);
     let heading_x = rows[base + UF_ROW_HEADING_X];
     let heading_y = rows[base + UF_ROW_HEADING_Y];
@@ -678,6 +787,11 @@ fn unit_force_attitude_step(
         omega[2] *= damp;
         unit_force_clamp_magnitude3(&mut omega, UNIT_ATTITUDE_MAX_ANGULAR_SPEED);
         quat_integrate_inplace(&mut orientation, omega, dt_sec);
+        let alpha = [0.0, 0.0, 0.0];
+        if !unit_force_attitude_row_changed(prev_orientation, orientation, prev_omega, omega, alpha)
+        {
+            return false;
+        }
         rows[base + UF_ROW_ORIENTATION_X] = orientation[0];
         rows[base + UF_ROW_ORIENTATION_Y] = orientation[1];
         rows[base + UF_ROW_ORIENTATION_Z] = orientation[2];
@@ -711,6 +825,10 @@ fn unit_force_attitude_step(
     omega[2] += alpha[2] * dt_sec;
     unit_force_clamp_magnitude3(&mut omega, UNIT_ATTITUDE_MAX_ANGULAR_SPEED);
     quat_integrate_inplace(&mut orientation, omega, dt_sec);
+
+    if !unit_force_attitude_row_changed(prev_orientation, orientation, prev_omega, omega, alpha) {
+        return false;
+    }
 
     rows[base + UF_ROW_ORIENTATION_X] = orientation[0];
     rows[base + UF_ROW_ORIENTATION_Y] = orientation[1];
@@ -885,6 +1003,32 @@ pub fn unit_force_step_batch(
         let water_lift_force_active = water_fraction > 0.0
             && ((medium_lift_enabled && rows[base + UF_ROW_SWIM_HEIGHT_FORCE] > 0.0)
                 || rows[base + UF_ROW_WATER_BUOYANCY] > 0.0);
+
+        if let Some(sleep_flags) = unit_force_try_sleep_idle_hover(
+            p,
+            es,
+            slot,
+            entity_slot,
+            rows[base + UF_ROW_GROUND_Z],
+            rows[base + UF_ROW_HOVER_HEIGHT_FORCE],
+            rows[base + UF_ROW_HOVER_RANDOM_AMOUNT],
+            rows[base + UF_ROW_AIR_BUOYANCY],
+            rows[base + UF_ROW_AIR_FRICTION],
+            wind_x,
+            wind_y,
+            wind_z,
+            is_flying,
+            medium_lift_enabled,
+            has_thrust,
+            has_external,
+            has_angular_motion,
+            air_fraction,
+            water_fraction,
+        ) {
+            out_flags[i] |= sleep_flags;
+            processed += 1;
+            continue;
+        }
 
         if p.flags[slot] & BODY_FLAG_SLEEPING != 0
             && !is_flying
@@ -1078,8 +1222,7 @@ pub fn unit_force_step_batch(
             // its engines off.
             let air_buoyancy = rows[base + UF_ROW_AIR_BUOYANCY];
             if air_buoyancy > 0.0 && body_mass > 0.0 {
-                thrust_force_z +=
-                    body_mass * GRAVITY * air_buoyancy * air_fraction / 1_000_000.0;
+                thrust_force_z += body_mass * GRAVITY * air_buoyancy * air_fraction / 1_000_000.0;
             }
 
             let air_friction = rows[base + UF_ROW_AIR_FRICTION];

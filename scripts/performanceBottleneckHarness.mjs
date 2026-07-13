@@ -37,6 +37,7 @@ try {
         width: options.width ?? 1280,
         height: options.height ?? 720,
       },
+      deviceScaleFactor: options.dpr,
     });
     page.on('console', (message) => {
       if (message.type() === 'error') {
@@ -135,6 +136,18 @@ function parseArgs(args) {
       snapshotWireStats = true;
       continue;
     }
+    if (arg === '--select-all-units' || arg === '--selectAllUnits') {
+      harnessOptions.selectAllUnits = true;
+      continue;
+    }
+    if (arg === '--peaceful') {
+      harnessOptions.peaceful = true;
+      continue;
+    }
+    if (arg === '--render-only' || arg === '--renderOnly') {
+      harnessOptions.renderOnly = true;
+      continue;
+    }
     const match = /^--([^=]+)=(.+)$/.exec(arg);
     if (!match) continue;
     const key = match[1];
@@ -149,6 +162,22 @@ function parseArgs(args) {
         .map((part) => Number(part.trim()))
         .filter((value) => Number.isFinite(value) && value > 0);
       suite = true;
+      continue;
+    }
+    if (key === 'fog-clouds' || key === 'fogClouds') {
+      harnessOptions.fogClouds = rawValue !== '0' && rawValue !== 'false';
+      continue;
+    }
+    if (key === 'select-all-units' || key === 'selectAllUnits') {
+      harnessOptions.selectAllUnits = rawValue !== '0' && rawValue !== 'false';
+      continue;
+    }
+    if (key === 'peaceful') {
+      harnessOptions.peaceful = rawValue !== '0' && rawValue !== 'false';
+      continue;
+    }
+    if (key === 'render-only' || key === 'renderOnly') {
+      harnessOptions.renderOnly = rawValue !== '0' && rawValue !== 'false';
       continue;
     }
     const value = Number(rawValue);
@@ -190,6 +219,15 @@ function parseArgs(args) {
       case 'height':
         harnessOptions.height = value;
         break;
+      case 'dpr':
+      case 'device-scale-factor':
+      case 'deviceScaleFactor':
+        harnessOptions.dpr = Math.max(0.5, value);
+        break;
+      case 'camera-distance':
+      case 'cameraDistance':
+        harnessOptions.cameraDistance = value;
+        break;
     }
   }
   return {
@@ -201,6 +239,7 @@ function parseArgs(args) {
     suite,
     width: harnessOptions.width,
     height: harnessOptions.height,
+    dpr: harnessOptions.dpr ?? 1,
     harnessOptions,
   };
 }
@@ -208,21 +247,37 @@ function parseArgs(args) {
 function printReport(report) {
   const fixed = report.environment.fixedStepMs;
   const frameBudget = report.environment.frameBudgetMs60;
+  const selectionLabel = report.options.selectAllUnits ? ', selected=all-local-units' : '';
+  const modeLabel = report.options.peaceful ? ', mode=peaceful-render-scale' : '';
+  const renderOnlyLabel = report.options.renderOnly ? ', fullStack=render-only' : '';
   console.log('Performance bottleneck harness');
-  console.log(`scenario: cap=${report.options.unitCap}, mapCells=${report.options.mapCells}, ticks=${report.options.ticks}, fullStack=${report.options.seconds}s`);
+  console.log(`scenario: cap=${report.options.unitCap}, mapCells=${report.options.mapCells}, ticks=${report.options.ticks}, fullStack=${report.options.seconds}s, cameraDistance=${fmt(report.fullStack.cameraMapCenterDistance)}${selectionLabel}${modeLabel}${renderOnlyLabel}`);
   console.log(`browser: ${report.fullStack.runtimeProfile}, dpr=${fmt(report.fullStack.activePixelRatio)}/${fmt(report.fullStack.nativePixelRatio)}, gpuTimer=${report.fullStack.gpuTimerSupported ? 'yes' : 'no'}`);
   console.log('');
   console.log('SIM ONLY');
   console.log(`  units/buildings/projectiles: ${report.simOnly.units}/${report.simOnly.buildings}/${report.simOnly.projectiles}`);
   console.log(`  step ms avg/p95/max: ${triplet(report.simOnly.stepMs)} (${fmt(report.simOnly.fixedStepUtilPctP95)}% of ${fmt(fixed)}ms fixed step)`);
   console.log(`  p95 ceiling: ${fmt(report.simOnly.simCeilingTpsP95)} TPS`);
+  printStepPhaseLine('  step phase p95 ms', report.simOnly.stepPhaseMs);
+  printSimulationUpdatePhaseLine('  update phase p95 ms', report.simOnly.simulationUpdatePhaseMs);
+  printCombatPhaseLine('  combat phase p95 ms', report.simOnly.simulationCombatPhaseMs);
+  printProjectileUpdateDetailLine('  projectile update detail p95 ms', report.simOnly.simulationCombatPhaseMs);
+  printBeamPathDetailLine('  beam path detail p95 ms', report.simOnly.simulationCombatPhaseMs);
+  printCollisionDetailLine('  collision detail p95 ms', report.simOnly.simulationCombatPhaseMs);
   printMemoryLine('  memory', report.simOnly.memory);
   printWasmBoundaryLine('  JS/WASM boundary', report.simOnly.wasmBoundary);
+  printTargetingProfileLine('  targeting profile', report.simOnly.combatTargetingProfile);
   console.log('');
   console.log('SIM + SNAPSHOT + CLIENT APPLY');
   console.log(`  units/buildings/projectiles: ${report.simSnapshot.units}/${report.simSnapshot.buildings}/${report.simSnapshot.projectiles}`);
   console.log(`  snapshots: ${report.simSnapshot.snapshots}`);
   console.log(`  step ms avg/p95/max: ${triplet(report.simSnapshot.stepMs)}`);
+  printStepPhaseLine('  step phase p95 ms', report.simSnapshot.stepPhaseMs);
+  printSimulationUpdatePhaseLine('  update phase p95 ms', report.simSnapshot.simulationUpdatePhaseMs);
+  printCombatPhaseLine('  combat phase p95 ms', report.simSnapshot.simulationCombatPhaseMs);
+  printProjectileUpdateDetailLine('  projectile update detail p95 ms', report.simSnapshot.simulationCombatPhaseMs);
+  printBeamPathDetailLine('  beam path detail p95 ms', report.simSnapshot.simulationCombatPhaseMs);
+  printCollisionDetailLine('  collision detail p95 ms', report.simSnapshot.simulationCombatPhaseMs);
   console.log(`  snapshot total ms avg/p95/max: ${triplet(report.simSnapshot.snapshotTotalMs)}`);
   console.log(`  snapshot apply ms avg/p95/max: ${triplet(report.simSnapshot.snapshotApplyMs)}`);
   console.log(`  snapshot bytes avg/p95/max: ${triplet(report.simSnapshot.snapshotBytes)}`);
@@ -230,6 +285,7 @@ function printReport(report) {
   printSnapshotMaterializationStats('  materialization', report.simSnapshot.snapshotMaterializationStats);
   printMemoryLine('  memory', report.simSnapshot.memory);
   printWasmBoundaryLine('  JS/WASM boundary', report.simSnapshot.wasmBoundary);
+  printTargetingProfileLine('  targeting profile', report.simSnapshot.combatTargetingProfile);
   console.log('');
   console.log('FULL STACK');
   console.log(`  units/buildings/projectiles: ${report.fullStack.units}/${report.fullStack.buildings}/${report.fullStack.projectiles}`);
@@ -279,6 +335,12 @@ function printReport(report) {
   }
   printSnapshotMaterializationStats('  materialization', report.fullStack.snapshotMaterializationStats);
   console.log(`  server CPU avg/hi p95: ${fmt(report.fullStack.serverCpuAvgPct.p95)}% / ${fmt(report.fullStack.serverCpuHiPct.p95)}%`);
+  printStepPhaseLine('  server step phase p95 ms', report.fullStack.serverStepPhaseMs);
+  printSimulationUpdatePhaseLine('  server update phase p95 ms', report.fullStack.serverUpdatePhaseMs);
+  printCombatPhaseLine('  server combat phase p95 ms', report.fullStack.serverCombatPhaseMs);
+  printProjectileUpdateDetailLine('  server projectile detail p95 ms', report.fullStack.serverCombatPhaseMs);
+  printBeamPathDetailLine('  server beam path detail p95 ms', report.fullStack.serverCombatPhaseMs);
+  printCollisionDetailLine('  server collision detail p95 ms', report.fullStack.serverCombatPhaseMs);
   console.log(`  draw calls/triangles p95: ${fmt(report.fullStack.drawCalls.p95)} / ${fmt(report.fullStack.triangles.p95)}`);
   console.log(`  buffer upload bytes/calls p95: ${fmt(report.fullStack.bufferUploadBytes.p95)} / ${fmt(report.fullStack.bufferUploadCalls.p95)}`);
   console.log(
@@ -311,11 +373,96 @@ function printReport(report) {
   console.log(`  long tasks p95: ${fmt(report.fullStack.longtaskMsPerSec.p95)} ms/s`);
   printMemoryLine('  memory', report.fullStack.memory);
   printWasmBoundaryLine('  JS/WASM boundary', report.fullStack.wasmBoundary);
+  printTargetingProfileLine('  targeting profile', report.fullStack.combatTargetingProfile);
   console.log('');
   console.log(`DIAGNOSIS: ${report.diagnosis.primary} (${report.diagnosis.confidence})`);
   console.log(`  ${report.diagnosis.summary}`);
   for (const line of report.diagnosis.evidence) console.log(`  evidence: ${line}`);
   for (const line of report.diagnosis.nextChecks) console.log(`  next: ${line}`);
+}
+
+function printStepPhaseLine(label, phases) {
+  if (!phases) return;
+  console.log(
+    `${label}: update=${fmt(phases.simulationUpdateMs?.p95)}, ` +
+      `physics=${fmt(phases.physicsStepMs?.p95)}, ` +
+      `sync=${fmt(phases.syncFromPhysicsMs?.p95)}, ` +
+      `forces=${fmt(phases.unitForcesMs?.p95)}, ` +
+      `repair=${fmt(phases.repairBeforeMs?.p95)}/${fmt(phases.repairAfterMs?.p95)}, ` +
+      `factory=${fmt(phases.factoryConstructionTurretMs?.p95)}, ` +
+      `finalize=${fmt(phases.projectileLaunchFinalizeMs?.p95)}`,
+  );
+}
+
+function printSimulationUpdatePhaseLine(label, phases) {
+  if (!phases) return;
+  console.log(
+    `${label}: units=${fmt(phases.unitMovementMs?.p95)}, ` +
+      `combat=${fmt(phases.combatMs?.p95)}, ` +
+      `groundNormal=${fmt(phases.unitGroundNormalMs?.p95)}, ` +
+      `spatial=${fmt(phases.spatialGridMs?.p95)}, ` +
+      `build=${fmt(phases.constructionLifecycleMs?.p95)}/` +
+        `${fmt(phases.factoryProductionMs?.p95)}, ` +
+      `econ=${fmt(phases.buildingWindEconomyMs?.p95)}/` +
+        `${fmt(phases.energyDistributionMs?.p95)}, ` +
+      `cleanup=${fmt(phases.deadCleanupMs?.p95)}`,
+  );
+}
+
+function printCombatPhaseLine(label, phases) {
+  if (!phases) return;
+  console.log(
+    `${label}: collisions=${fmt(phases.projectileCollisionsMs?.p95)}, ` +
+      `projectiles=${fmt(phases.updateProjectilesMs?.p95)}, ` +
+      `targeting=${fmt(phases.targetingFiringMs?.p95)}, ` +
+      `stamp=${fmt(phases.stampTargetingMs?.p95)}, ` +
+      `fire=${fmt(phases.fireTurretsMs?.p95)}, ` +
+      `turrets=${fmt(phases.turretRotationMs?.p95)}, ` +
+      `shields=${fmt(phases.shieldStateMs?.p95)}, ` +
+      `death=${fmt(phases.deathExplosionMs?.p95)}`,
+  );
+}
+
+function printProjectileUpdateDetailLine(label, phases) {
+  if (!phases) return;
+  console.log(
+    `${label}: packed=${fmt(phases.projectilePackedPrepMs?.p95)}/` +
+      `${fmt(phases.projectilePackedIntegrateMs?.p95)}/` +
+      `${fmt(phases.projectilePackedScatterMs?.p95)}, ` +
+      `travel=${fmt(phases.projectileTravelingPackMs?.p95)}/` +
+      `${fmt(phases.projectileHomingGuidanceMs?.p95)}/` +
+      `${fmt(phases.projectileTravelingIntegrateMs?.p95)}/` +
+      `${fmt(phases.projectileTravelingScatterMs?.p95)}, ` +
+      `line=${fmt(phases.projectileLineProjectilesMs?.p95)}, ` +
+      `beamPath=${fmt(phases.projectileLineBeamPathMs?.p95)}`,
+  );
+}
+
+function printBeamPathDetailLine(label, phases) {
+  if (!phases) return;
+  console.log(
+    `${label}: fused=${fmt(phases.projectileLineBeamFusedMs?.p95)}, ` +
+      `body=${fmt(phases.projectileLineBeamBodyMs?.p95)}, ` +
+      `reflector=${fmt(phases.projectileLineBeamReflectorMs?.p95)}, ` +
+      `ground=${fmt(phases.projectileLineBeamGroundMs?.p95)}, ` +
+      `projectiles=${fmt(phases.projectileLineBeamProjectileMs?.p95)}`,
+  );
+}
+
+function printCollisionDetailLine(label, phases) {
+  if (!phases) return;
+  console.log(
+    `${label}: setup=${fmt(phases.collisionSetupMs?.p95)}, ` +
+      `loop=${fmt(phases.collisionLoopMs?.p95)}, ` +
+      `sweep=${fmt(phases.collisionHitboxSweepMs?.p95)}, ` +
+      `beam=${fmt(phases.collisionBeamDamageMs?.p95)}, ` +
+      `dgun=${fmt(phases.collisionDgunDamageMs?.p95)}, ` +
+      `terminal=${fmt(phases.collisionTerminalPlanMs?.p95)}, ` +
+      `splash=${fmt(phases.collisionSplashDamageMs?.p95)}, ` +
+      `killed=${fmt(phases.collisionKilledProjectileDetonationMs?.p95)}, ` +
+      `submunitions=${fmt(phases.collisionSubmunitionSpawnMs?.p95)}, ` +
+      `removal=${fmt(phases.collisionFinalRemovalMs?.p95)}`,
+  );
 }
 
 function printSuiteReport(report) {
@@ -434,6 +581,18 @@ function printWasmBoundaryLine(prefix, boundary) {
         `avg=${fmt(row.avgMs)}ms max=${fmt(row.maxMs)}ms`,
     );
   }
+}
+
+function printTargetingProfileLine(prefix, profile) {
+  if (!profile) return;
+  console.log(
+    `${prefix}: sources=${fmt(profile.scheduleSources)} processed=${fmt(profile.scheduleProcessed)} ` +
+      `skipped=${fmt(profile.scheduleSkipped)} auto=${fmt(profile.autoTicks)} ` +
+      `due=${fmt(profile.reacquireDue)} spatial=${fmt(profile.spatialQueries)} ` +
+      `candidates=${fmt(profile.candidatesCollected)} slots=${fmt(profile.candidateSlotsVisited)} ` +
+      `choose=${fmt(profile.chooseCalls)}/${fmt(profile.chooseCandidateTests)} ` +
+      `gates=${fmt(profile.gateCalls)}/${fmt(profile.gatePasses)}`,
+  );
 }
 
 function printSnapshotWireStats(stats) {

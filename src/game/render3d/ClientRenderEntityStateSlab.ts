@@ -27,6 +27,7 @@ const INITIAL_RENDER_ENTITY_STATE_CAP = 4096;
 const SNAPSHOT_PRESENCE_MAX_MARK = 0xffffffff;
 const NO_OWNER_ID = 0;
 const NO_PASSIVE_TURRET_INDEX = -1;
+const UNIT_RENDER_SCOPE_PADDING_FLOOR = 128;
 
 export const CLIENT_RENDER_ENTITY_FLAG_SELECTED = 1;
 export const CLIENT_RENDER_ENTITY_FLAG_BUILD_IN_PROGRESS = 1 << 1;
@@ -63,6 +64,9 @@ export type ClientRenderEntityStateViews = {
   readonly radiusHitbox: Float32Array;
   readonly lodProxyRadius: Float32Array;
   readonly lodProxyGlyph: Uint8Array;
+  readonly lodBudgetEligible: Uint8Array;
+  /** 0 = not resolved for this row build, 1 = full row, 2 = proxy row. */
+  readonly lodProxyThisFrame: Uint8Array;
   readonly normalX: Float32Array;
   readonly normalY: Float32Array;
   readonly normalZ: Float32Array;
@@ -93,6 +97,55 @@ export type ClientRenderEntityStateViews = {
   readonly buildingBlueprintIds: (string | null | undefined)[];
 };
 
+export type ClientRenderAuthoritativeUnitPose3D = {
+  groundY: number;
+  bodyOpacity: number;
+  bodyCenterHeight: number;
+};
+
+export type ClientRenderAuthoritativeUnitPoseSample3D =
+  ClientRenderAuthoritativeUnitPose3D & {
+    x: number;
+    y: number;
+    z: number;
+    rotation: number;
+    normalX: number;
+    normalY: number;
+    normalZ: number;
+    velocityX: number;
+    velocityY: number;
+    yawRate: number;
+  };
+
+export type ClientRenderAuthoritativeProxyPose3D = {
+  x: number;
+  y: number;
+  z: number;
+};
+
+export type ClientRenderAuthoritativeBuildingPose3D = {
+  combatCenterZ: number;
+  baseY: number;
+  progress: number;
+  bodyOpacity: number;
+};
+
+export type ClientRenderAuthoritativeBuildingPoseSample3D =
+  ClientRenderAuthoritativeBuildingPose3D & {
+    x: number;
+    y: number;
+    rotation: number;
+  };
+
+export type ClientRenderPoseRefreshResult = {
+  slot: number | undefined;
+  changed: boolean;
+  spatialChanged: boolean;
+};
+
+const CLIENT_RENDER_POSE_CHANGED = 1;
+const CLIENT_RENDER_POSE_SPATIAL_CHANGED = 1 << 1;
+
 function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
   const next = new Float32Array(nextCapacity);
   next.set(source);
@@ -121,6 +174,31 @@ function growInt16(source: Int16Array, nextCapacity: number): Int16Array {
   const next = new Int16Array(nextCapacity);
   next.set(source);
   return next;
+}
+
+function writeFloat32(values: Float32Array, index: number, value: number): boolean {
+  const next = Math.fround(value);
+  if (values[index] === next) return false;
+  values[index] = next;
+  return true;
+}
+
+function writeUint8(values: Uint8Array, index: number, value: number): boolean {
+  if (values[index] === value) return false;
+  values[index] = value;
+  return true;
+}
+
+function setPoseRefreshResult(
+  out: ClientRenderPoseRefreshResult,
+  slot: number | undefined,
+  changed: boolean,
+  spatialChanged: boolean,
+): ClientRenderPoseRefreshResult {
+  out.slot = slot;
+  out.changed = changed;
+  out.spatialChanged = spatialChanged;
+  return out;
 }
 
 const passiveTurretIndexCache = new WeakMap<readonly Turret[], number>();
@@ -197,6 +275,8 @@ export class ClientRenderEntityStateSlab {
     radiusHitbox: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     lodProxyRadius: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     lodProxyGlyph: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    lodBudgetEligible: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    lodProxyThisFrame: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalX: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     normalZ: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -363,6 +443,109 @@ export class ClientRenderEntityStateSlab {
     return undefined;
   }
 
+  refreshAuthoritativeUnitPose(
+    entity: Entity,
+    pose: ClientRenderAuthoritativeUnitPose3D,
+    out: ClientRenderPoseRefreshResult,
+  ): ClientRenderPoseRefreshResult {
+    const unit = entity.unit;
+    if (unit === null) return setPoseRefreshResult(out, undefined, false, false);
+    const slot = this.getSlot(entity.id);
+    if (slot === undefined || this.views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) {
+      const refreshed = this.refreshUnit(entity);
+      if (refreshed !== undefined) {
+        this.applyAuthoritativeUnitPose(refreshed, entity, pose);
+        return setPoseRefreshResult(out, refreshed, true, true);
+      }
+      return setPoseRefreshResult(out, undefined, false, false);
+    }
+    const flags = this.applyAuthoritativeUnitPose(slot, entity, pose);
+    return setPoseRefreshResult(
+      out,
+      slot,
+      (flags & CLIENT_RENDER_POSE_CHANGED) !== 0,
+      (flags & CLIENT_RENDER_POSE_SPATIAL_CHANGED) !== 0,
+    );
+  }
+
+  refreshAuthoritativeUnitPoseSlot(
+    slot: number,
+    pose: ClientRenderAuthoritativeUnitPoseSample3D,
+    out: ClientRenderPoseRefreshResult,
+  ): ClientRenderPoseRefreshResult {
+    if (slot < 0 || this.views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) {
+      return setPoseRefreshResult(out, undefined, false, false);
+    }
+    const flags = this.writeAuthoritativeUnitPose(slot, pose, undefined);
+    if ((flags & CLIENT_RENDER_POSE_CHANGED) !== 0) this.markSlotDirty(slot);
+    return setPoseRefreshResult(
+      out,
+      slot,
+      (flags & CLIENT_RENDER_POSE_CHANGED) !== 0,
+      (flags & CLIENT_RENDER_POSE_SPATIAL_CHANGED) !== 0,
+    );
+  }
+
+  refreshAuthoritativeUnitProxyPoseSlot(
+    slot: number,
+    pose: ClientRenderAuthoritativeProxyPose3D,
+    out: ClientRenderPoseRefreshResult,
+  ): ClientRenderPoseRefreshResult {
+    if (slot < 0 || this.views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) {
+      return setPoseRefreshResult(out, undefined, false, false);
+    }
+    const flags = this.writeAuthoritativeProxyPose(slot, pose);
+    if ((flags & CLIENT_RENDER_POSE_CHANGED) !== 0) this.markSlotDirty(slot);
+    return setPoseRefreshResult(
+      out,
+      slot,
+      (flags & CLIENT_RENDER_POSE_CHANGED) !== 0,
+      (flags & CLIENT_RENDER_POSE_SPATIAL_CHANGED) !== 0,
+    );
+  }
+
+  refreshAuthoritativeBuildingPose(
+    entity: Entity,
+    pose: ClientRenderAuthoritativeBuildingPose3D,
+    out: ClientRenderPoseRefreshResult,
+  ): ClientRenderPoseRefreshResult {
+    if (entity.building === null) return setPoseRefreshResult(out, undefined, false, false);
+    const slot = this.getSlot(entity.id);
+    if (slot === undefined || this.views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) {
+      const refreshed = this.refreshBuilding(entity);
+      if (refreshed !== undefined) {
+        this.applyAuthoritativeBuildingPose(refreshed, entity, pose);
+        return setPoseRefreshResult(out, refreshed, true, true);
+      }
+      return setPoseRefreshResult(out, undefined, false, false);
+    }
+    const flags = this.applyAuthoritativeBuildingPose(slot, entity, pose);
+    return setPoseRefreshResult(
+      out,
+      slot,
+      (flags & CLIENT_RENDER_POSE_CHANGED) !== 0,
+      (flags & CLIENT_RENDER_POSE_SPATIAL_CHANGED) !== 0,
+    );
+  }
+
+  refreshAuthoritativeBuildingPoseSlot(
+    slot: number,
+    pose: ClientRenderAuthoritativeBuildingPoseSample3D,
+    out: ClientRenderPoseRefreshResult,
+  ): ClientRenderPoseRefreshResult {
+    if (slot < 0 || this.views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) {
+      return setPoseRefreshResult(out, undefined, false, false);
+    }
+    const flags = this.writeAuthoritativeBuildingPose(slot, pose);
+    if ((flags & CLIENT_RENDER_POSE_CHANGED) !== 0) this.markSlotDirty(slot);
+    return setPoseRefreshResult(
+      out,
+      slot,
+      (flags & CLIENT_RENDER_POSE_CHANGED) !== 0,
+      (flags & CLIENT_RENDER_POSE_SPATIAL_CHANGED) !== 0,
+    );
+  }
+
   refreshUnit(entity: Entity): number | undefined {
     const unit = entity.unit;
     if (unit === null) return undefined;
@@ -395,6 +578,8 @@ export class ClientRenderEntityStateSlab {
     views.radiusHitbox[slot] = unit.radius.hitbox;
     views.lodProxyRadius[slot] = entityLodProxyRadius3D(entity);
     views.lodProxyGlyph[slot] = entityLodProxyGlyph3D(entity);
+    views.lodBudgetEligible[slot] = entity.commander === null ? 1 : 0;
+    views.lodProxyThisFrame[slot] = 0;
     views.normalX[slot] = unit.surfaceNormal.nx;
     views.normalY[slot] = unit.surfaceNormal.ny;
     views.normalZ[slot] = unit.surfaceNormal.nz;
@@ -408,7 +593,10 @@ export class ClientRenderEntityStateSlab {
     views.hudNameY[slot] = getUnitHudNameY(entity);
     views.contactShadowWidth[slot] = 0;
     views.contactShadowDepth[slot] = 0;
-    views.renderScopePadding[slot] = Math.max(350, views.radiusOther[slot]);
+    views.renderScopePadding[slot] = Math.max(
+      UNIT_RENDER_SCOPE_PADDING_FLOOR,
+      views.radiusOther[slot],
+    );
     views.hp[slot] = unit.hp;
     views.maxHp[slot] = unit.maxHp;
     views.buildEnergyRatio[slot] = buildable !== null
@@ -427,6 +615,85 @@ export class ClientRenderEntityStateSlab {
     views.buildingBlueprintIds[slot] = undefined;
     this.markSlotDirty(slot);
     return slot;
+  }
+
+  private applyAuthoritativeUnitPose(
+    slot: number,
+    entity: Entity,
+    pose: ClientRenderAuthoritativeUnitPose3D,
+  ): number {
+    const unit = entity.unit;
+    if (unit === null) return 0;
+    const flags = this.writeAuthoritativeUnitPose(
+      slot,
+      {
+        x: entity.transform.x,
+        y: entity.transform.y,
+        z: entity.transform.z,
+        rotation: entity.transform.rotation,
+        groundY: pose.groundY,
+        normalX: unit.surfaceNormal.nx,
+        normalY: unit.surfaceNormal.ny,
+        normalZ: unit.surfaceNormal.nz,
+        velocityX: unit.velocityX,
+        velocityY: unit.velocityY,
+        yawRate: unit.angularVelocity3?.z ?? 0,
+        bodyOpacity: pose.bodyOpacity,
+        bodyCenterHeight: pose.bodyCenterHeight,
+      },
+      unit.suspension?.legContact === false ? 0 : 1,
+    );
+    if ((flags & CLIENT_RENDER_POSE_CHANGED) !== 0) this.markSlotDirty(slot);
+    return flags;
+  }
+
+  private writeAuthoritativeUnitPose(
+    slot: number,
+    pose: ClientRenderAuthoritativeUnitPoseSample3D,
+    groundContactEnabled: number | undefined,
+  ): number {
+    const views = this.views;
+    let flags = 0;
+    if (writeFloat32(views.x, slot, pose.x)) {
+      flags |= CLIENT_RENDER_POSE_CHANGED | CLIENT_RENDER_POSE_SPATIAL_CHANGED;
+    }
+    if (writeFloat32(views.y, slot, pose.y)) {
+      flags |= CLIENT_RENDER_POSE_CHANGED | CLIENT_RENDER_POSE_SPATIAL_CHANGED;
+    }
+    if (writeFloat32(views.z, slot, pose.z)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.rotation, slot, pose.rotation)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.groundY, slot, pose.groundY)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.normalX, slot, pose.normalX)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.normalY, slot, pose.normalY)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.normalZ, slot, pose.normalZ)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.velocityX, slot, pose.velocityX)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.velocityY, slot, pose.velocityY)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.yawRate, slot, pose.yawRate)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.bodyOpacity, slot, pose.bodyOpacity)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.bodyCenterHeight, slot, pose.bodyCenterHeight)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (
+      groundContactEnabled !== undefined &&
+      writeUint8(views.groundContactEnabled, slot, groundContactEnabled)
+    ) {
+      flags |= CLIENT_RENDER_POSE_CHANGED;
+    }
+    return flags;
+  }
+
+  private writeAuthoritativeProxyPose(
+    slot: number,
+    pose: ClientRenderAuthoritativeProxyPose3D,
+  ): number {
+    const views = this.views;
+    let flags = 0;
+    if (writeFloat32(views.x, slot, pose.x)) {
+      flags |= CLIENT_RENDER_POSE_CHANGED | CLIENT_RENDER_POSE_SPATIAL_CHANGED;
+    }
+    if (writeFloat32(views.y, slot, pose.y)) {
+      flags |= CLIENT_RENDER_POSE_CHANGED | CLIENT_RENDER_POSE_SPATIAL_CHANGED;
+    }
+    if (writeFloat32(views.z, slot, pose.z)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    return flags;
   }
 
   refreshBuilding(entity: Entity): number | undefined {
@@ -457,6 +724,8 @@ export class ClientRenderEntityStateSlab {
     views.radiusHitbox[slot] = 0;
     views.lodProxyRadius[slot] = entityLodProxyRadius3D(entity);
     views.lodProxyGlyph[slot] = entityLodProxyGlyph3D(entity);
+    views.lodBudgetEligible[slot] = 0;
+    views.lodProxyThisFrame[slot] = 0;
     views.buildingBaseY[slot] = entity.transform.z - building.depth / 2;
     views.buildingWidth[slot] = visualConfig !== null
       ? visualConfig.gridWidth * BUILD_GRID_CELL_SIZE
@@ -493,6 +762,44 @@ export class ClientRenderEntityStateSlab {
     return slot;
   }
 
+  private applyAuthoritativeBuildingPose(
+    slot: number,
+    entity: Entity,
+    pose: ClientRenderAuthoritativeBuildingPose3D,
+  ): number {
+    const flags = this.writeAuthoritativeBuildingPose(slot, {
+      x: entity.transform.x,
+      y: entity.transform.y,
+      rotation: entity.transform.rotation,
+      combatCenterZ: pose.combatCenterZ,
+      baseY: pose.baseY,
+      progress: pose.progress,
+      bodyOpacity: pose.bodyOpacity,
+    });
+    if ((flags & CLIENT_RENDER_POSE_CHANGED) !== 0) this.markSlotDirty(slot);
+    return flags;
+  }
+
+  private writeAuthoritativeBuildingPose(
+    slot: number,
+    pose: ClientRenderAuthoritativeBuildingPoseSample3D,
+  ): number {
+    const views = this.views;
+    let flags = 0;
+    if (writeFloat32(views.x, slot, pose.x)) {
+      flags |= CLIENT_RENDER_POSE_CHANGED | CLIENT_RENDER_POSE_SPATIAL_CHANGED;
+    }
+    if (writeFloat32(views.y, slot, pose.y)) {
+      flags |= CLIENT_RENDER_POSE_CHANGED | CLIENT_RENDER_POSE_SPATIAL_CHANGED;
+    }
+    if (writeFloat32(views.z, slot, pose.combatCenterZ)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.rotation, slot, pose.rotation)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.buildingBaseY, slot, pose.baseY)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.buildingProgress, slot, pose.progress)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    if (writeFloat32(views.bodyOpacity, slot, pose.bodyOpacity)) flags |= CLIENT_RENDER_POSE_CHANGED;
+    return flags;
+  }
+
   unsetEntity(id: EntityId): void {
     const slot = this.getSlot(id);
     if (slot === undefined) return;
@@ -513,6 +820,8 @@ export class ClientRenderEntityStateSlab {
     this.views.radiusHitbox[slot] = 0;
     this.views.lodProxyRadius[slot] = 0;
     this.views.lodProxyGlyph[slot] = 0;
+    this.views.lodBudgetEligible[slot] = 0;
+    this.views.lodProxyThisFrame[slot] = 0;
     this.views.bodyHudWidth[slot] = 0;
     this.views.hudBarsY[slot] = 0;
     this.views.hudNameY[slot] = 0;
@@ -665,6 +974,8 @@ export class ClientRenderEntityStateSlab {
     this.views.radiusHitbox.fill(0);
     this.views.lodProxyRadius.fill(0);
     this.views.lodProxyGlyph.fill(0);
+    this.views.lodBudgetEligible.fill(0);
+    this.views.lodProxyThisFrame.fill(0);
     this.views.bodyHudWidth.fill(0);
     this.views.hudBarsY.fill(0);
     this.views.hudNameY.fill(0);
@@ -701,6 +1012,7 @@ export class ClientRenderEntityStateSlab {
       assertNear('radiusHitbox', views.radiusHitbox[slot], unit.radius.hitbox);
       assertNear('lodProxyRadius', views.lodProxyRadius[slot], entityLodProxyRadius3D(entity));
       assertNear('lodProxyGlyph', views.lodProxyGlyph[slot], entityLodProxyGlyph3D(entity), 0);
+      assertNear('lodBudgetEligible', views.lodBudgetEligible[slot], entity.commander === null ? 1 : 0, 0);
       assertNear('velocityX', views.velocityX[slot], unit.velocityX);
       assertNear('velocityY', views.velocityY[slot], unit.velocityY);
       assertNear('bodyHudWidth', views.bodyHudWidth[slot], unit.radius.other * 2);
@@ -709,7 +1021,7 @@ export class ClientRenderEntityStateSlab {
       assertNear(
         'renderScopePadding',
         views.renderScopePadding[slot],
-        Math.max(350, views.radiusOther[slot]),
+        Math.max(UNIT_RENDER_SCOPE_PADDING_FLOOR, views.radiusOther[slot]),
       );
       assertNear(
         'groundContactEnabled',
@@ -761,6 +1073,7 @@ export class ClientRenderEntityStateSlab {
       }
       assertNear('lodProxyRadius', views.lodProxyRadius[slot], entityLodProxyRadius3D(entity));
       assertNear('lodProxyGlyph', views.lodProxyGlyph[slot], entityLodProxyGlyph3D(entity), 0);
+      assertNear('lodBudgetEligible', views.lodBudgetEligible[slot], 0, 0);
       assertNear('buildingBaseY', views.buildingBaseY[slot], entity.transform.z - building.depth / 2);
       assertNear('bodyHudWidth', views.bodyHudWidth[slot], building.width);
       assertNear('hudBarsY', views.hudBarsY[slot], getBuildingHudBarsY(entity));
@@ -826,6 +1139,8 @@ export class ClientRenderEntityStateSlab {
       radiusHitbox: growFloat32(views.radiusHitbox, nextCapacity),
       lodProxyRadius: growFloat32(views.lodProxyRadius, nextCapacity),
       lodProxyGlyph: growUint8(views.lodProxyGlyph, nextCapacity),
+      lodBudgetEligible: growUint8(views.lodBudgetEligible, nextCapacity),
+      lodProxyThisFrame: growUint8(views.lodProxyThisFrame, nextCapacity),
       normalX: growFloat32(views.normalX, nextCapacity),
       normalY: growFloat32(views.normalY, nextCapacity),
       normalZ: growFloat32(views.normalZ, nextCapacity),

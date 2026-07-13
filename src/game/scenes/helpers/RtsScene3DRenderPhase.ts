@@ -10,6 +10,7 @@ import {
 } from '@/clientBarConfig';
 import type { SelectionHudMode } from '@/clientBarConfig';
 import type { GraphicsConfig } from '@/types/graphics';
+import type { AuthoritativeRenderSource } from '@/types/game';
 import type { CameraViewBasis, SprayTarget } from '@/types/ui';
 import type { ClientViewState } from '../../network/ClientViewState';
 import type { ClientProjectileRenderLists } from '../../network/ClientProjectileStore';
@@ -79,14 +80,15 @@ import {
   ENTITY_HUD_FADE_START_DISTANCE_FRAC,
   ENTITY_HUD_FADE_END_DISTANCE_FRAC,
 } from '@/config';
-import type {
-  RenderFrameState3D,
-  RenderViewState3D,
-} from '../../render3d/RenderFrameState3D';
+import type { RenderFrameState3D } from '../../render3d/RenderFrameState3D';
 import type { FootprintBounds, FootprintQuad, ViewportFootprint } from '../../ViewportFootprint';
 import type { RtsScene3DCameraFootprintSystem } from './RtsScene3DCameraFootprintSystem';
 import type { RtsScene3DSelectionSystem } from './RtsScene3DSelectionSystem';
-import { EntityLodState3D } from '../../render3d/EntityLod3D';
+import { AuthoritativeRenderPoseOverlay3D } from '../../render3d/AuthoritativeRenderPoseOverlay3D';
+const EFFECT_PHASE_FIRE_AND_SMOKE = 0;
+const EFFECT_PHASE_BURN_MARKS = 1;
+const EFFECT_PHASE_GROUND_PRINTS = 2;
+const EFFECT_PHASE_SPRAY = 3;
 
 type RtsScene3DRenderPhaseResources = {
   entityRenderer: Render3DEntities;
@@ -137,8 +139,6 @@ export type RtsScene3DRenderPhaseTimings = {
   totalMs: number;
   unitRows: number;
   buildingRows: number;
-  unitLodProxyRows: number;
-  buildingLodProxyRows: number;
   projectileRows: number;
   lineProjectileRows: number;
 };
@@ -178,12 +178,6 @@ export class RtsScene3DRenderPhase {
     line: [],
     burnMark: [],
   };
-  private readonly nearLineProjectiles: Entity[] = [];
-  private readonly nearBurnMarkProjectiles: Entity[] = [];
-  private readonly nearSmokeTrailProjectiles: Entity[] = [];
-  private readonly nearCommanderSprays: SprayTarget[] = [];
-  private readonly nearResourcePylonSprays: SprayTarget[] = [];
-  private readonly nearPylonFreeLegSprays: SprayTarget[] = [];
   private readonly scopedUnitsScratch: Entity[] = [];
   private readonly scopedBuildingsScratch: Entity[] = [];
   private readonly bodyHudPacket = new BodyHudRenderPacket3D();
@@ -193,7 +187,7 @@ export class RtsScene3DRenderPhase {
   private readonly groundPrintPacket = new GroundPrintRenderPacket3D();
   private readonly unitRenderPacket = new UnitRenderPacket3D();
   private readonly buildingRenderPacket = new BuildingRenderPacket3D();
-  private readonly entityLod = new EntityLodState3D();
+  private readonly authoritativePoseOverlay: AuthoritativeRenderPoseOverlay3D;
   private readonly renderEntityLists: RenderPhaseEntityLists = {
     unitRows: this.unitRenderPacket,
     buildingRows: this.buildingRenderPacket,
@@ -232,8 +226,6 @@ export class RtsScene3DRenderPhase {
     totalMs: 0,
     unitRows: 0,
     buildingRows: 0,
-    unitLodProxyRows: 0,
-    buildingLodProxyRows: 0,
     projectileRows: 0,
     lineProjectileRows: 0,
   };
@@ -245,6 +237,7 @@ export class RtsScene3DRenderPhase {
     private readonly cameraFootprintSystem: RtsScene3DCameraFootprintSystem,
     private readonly selectionSystem: RtsScene3DSelectionSystem,
     private readonly resources: RtsScene3DRenderPhaseResources,
+    getAuthoritativeRenderSource: () => AuthoritativeRenderSource | null,
     private readonly getLocalPlayerId: () => PlayerId,
     private readonly getInputManager: () => Input3DManager | null,
     private readonly lookupPlayerName: (id: PlayerId) => string | null,
@@ -254,7 +247,11 @@ export class RtsScene3DRenderPhase {
       cameraPitch: number,
       cameraView: CameraViewBasis,
     ) => void) | undefined,
-  ) {}
+  ) {
+    this.authoritativePoseOverlay = new AuthoritativeRenderPoseOverlay3D(
+      getAuthoritativeRenderSource,
+    );
+  }
 
   getCameraViewBasis(): CameraViewBasis {
     return this.cameraViewBasis;
@@ -300,7 +297,11 @@ export class RtsScene3DRenderPhase {
     graphicsConfig: GraphicsConfig;
     renderFrameState: RenderFrameState3D;
   }): RtsScene3DRenderPhaseResult {
-    const { effectDtMs, graphicsConfig, renderFrameState } = options;
+    const {
+      effectDtMs,
+      graphicsConfig,
+      renderFrameState,
+    } = options;
     const renderStart = performance.now();
     const {
       entityRenderer,
@@ -338,7 +339,22 @@ export class RtsScene3DRenderPhase {
     const hudFrameStride = Math.max(1, graphicsConfig.hudFrameStride | 0);
     const effectFrameStride = Math.max(1, graphicsConfig.effectFrameStride | 0);
     const updateHudThisFrame = hudFrameStride <= 1 || this.renderFrameIndex % hudFrameStride === 0;
-    const updateEffectsThisFrame = effectFrameStride <= 1 || this.renderFrameIndex % effectFrameStride === 0;
+    const updateFireAndSmokeThisFrame = this.updateEffectPhaseThisFrame(
+      effectFrameStride,
+      EFFECT_PHASE_FIRE_AND_SMOKE,
+    );
+    const updateBurnMarksThisFrame = this.updateEffectPhaseThisFrame(
+      effectFrameStride,
+      EFFECT_PHASE_BURN_MARKS,
+    );
+    const updateGroundPrintsThisFrame = this.updateEffectPhaseThisFrame(
+      effectFrameStride,
+      EFFECT_PHASE_GROUND_PRINTS,
+    );
+    const updateSprayThisFrame = this.updateEffectPhaseThisFrame(
+      effectFrameStride,
+      EFFECT_PHASE_SPRAY,
+    );
     // Body bars are motion anchors, not just HUD content. They must follow
     // fast units every render frame even when the budget throttles heavier HUD
     // work with hudFrameStride; otherwise flyers visibly jump between stale and
@@ -366,20 +382,27 @@ export class RtsScene3DRenderPhase {
     const cameraFootprint = this.cameraFootprintSystem.update(this.threeApp.camera);
     const cameraQuad = cameraFootprint.quad;
     const cameraView = this.updateCameraViewBasis(this.threeApp.camera);
-    this.entityLod.beginFrame();
     this.renderScope.setQuad(
       cameraQuad,
       cameraFootprint.bounds,
     );
+    const authoritativePoseFrameActive = this.authoritativePoseOverlay.beginFrame(effectDtMs);
     const projectileQueryBounds = this.getProjectileQueryBounds();
     let phaseNow = performance.now();
     timings.scopeMs = phaseNow - phaseMark;
     phaseMark = phaseNow;
-    const projectileLists = this.collectRenderProjectiles(projectileQueryBounds);
+    const authoritativeProjectileLists = authoritativePoseFrameActive
+      ? this.authoritativePoseOverlay.collectProjectileRenderLists(
+        projectileQueryBounds,
+        this.projectileRenderLists,
+      )
+      : null;
+    const projectileLists = authoritativeProjectileLists ??
+      this.collectRenderProjectiles(projectileQueryBounds);
     phaseNow = performance.now();
     timings.projectileQueryMs = phaseNow - phaseMark;
     phaseMark = phaseNow;
-    environmentPropRenderer?.update(renderFrameState.view);
+    environmentPropRenderer?.update();
     this.getCameraQuadUpdate()?.(
       cameraQuad,
       this.threeApp.orbit.yaw,
@@ -409,6 +432,8 @@ export class RtsScene3DRenderPhase {
     );
     const inputManager = this.getInputManager();
     const hoveredEntity = inputManager?.getHoveredEntity() ?? null;
+    const selectedUnits = this.selectionSystem.getSelectedUnits();
+    const selectedBuildings = this.selectionSystem.getSelectedBuildings();
     const bodyHudEnabled = updateBodyHudThisFrame &&
       (
         hoveredEntity !== null ||
@@ -426,17 +451,14 @@ export class RtsScene3DRenderPhase {
       includeBodyNames: bodyNamesEnabled,
       includeShields: turretShieldSpheresEnabled && forceFieldsVisible,
       includeContactShadows:
-        contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false,
-      includeGroundPrints: updateEffectsThisFrame,
+        (contactShadowRenderer?.shouldBuildPacket(this.renderFrameIndex) ?? false),
+      includeGroundPrints: updateGroundPrintsThisFrame,
       hoveredEntity,
-    }, selectionHudMode, renderFrameState.view);
+    }, selectionHudMode);
     phaseNow = performance.now();
     timings.entityPacketMs = phaseNow - phaseMark;
     phaseMark = phaseNow;
-    const lineProjectiles = this.filterNearLodProjectiles(
-      projectileLists.line,
-      this.nearLineProjectiles,
-    );
+    const lineProjectiles = projectileLists.line;
     entityRenderer.update(
       renderFrameState,
       (serverMeta?.turretShieldPanelsEnabled ?? true) && forceFieldsVisible,
@@ -445,9 +467,6 @@ export class RtsScene3DRenderPhase {
         buildingRows: entityLists.buildingRows,
         beamAimProjectiles: lineProjectiles,
         projectileRenderProjectiles: projectileLists.traveling,
-        isEntityEmissionFarLod: (entity) => this.entityEmissionUsesFarLod(entity),
-        entityDetailRung: (entity) =>
-          this.entityLod.entityDetailRungForView(renderFrameState.view, entity),
         scoped: this.renderScope.getMode() !== 'all',
       },
       {
@@ -458,7 +477,9 @@ export class RtsScene3DRenderPhase {
           (inputManager?.isInResurrectAreaMode() ?? false),
       },
     );
-    airLiftProbeOverlay.update(this.selectionSystem.getSelectedUnits());
+    airLiftProbeOverlay.update(
+      selectedUnits,
+    );
     phaseNow = performance.now();
     timings.entityRendererMs = phaseNow - phaseMark;
     phaseMark = phaseNow;
@@ -495,10 +516,10 @@ export class RtsScene3DRenderPhase {
     beamRenderer.update(
       lineProjectiles,
       graphicsConfig,
-      this.clientViewState.getLineProjectileRenderVersion(),
+      authoritativePoseFrameActive
+        ? this.authoritativePoseOverlay.getFrameContentVersion()
+        : this.clientViewState.getLineProjectileRenderVersion(),
       entityRenderer,
-      (entity) => this.entityEmissionUsesFarLod(entity),
-      renderFrameState.view,
     );
     phaseNow = performance.now();
     timings.beamMs = phaseNow - phaseMark;
@@ -516,7 +537,7 @@ export class RtsScene3DRenderPhase {
       debrisRenderer.clear();
       this.debrisAccumMs = 0;
     }
-    if (updateEffectsThisFrame) {
+    if (updateFireAndSmokeThisFrame) {
       explosionRenderer.update(this.fireExplosionAccumMs);
       if (materialExplosionsEnabled) {
         debrisRenderer.update(this.debrisAccumMs);
@@ -530,19 +551,16 @@ export class RtsScene3DRenderPhase {
     }
     waterSplashRenderer.update(effectDtMs);
     this.burnMarkAccumMs += effectDtMs;
-    if (updateEffectsThisFrame) {
+    if (updateBurnMarksThisFrame) {
       burnMarkRenderer.update(
-        this.filterNearLodProjectiles(
-          projectileLists.burnMark,
-          this.nearBurnMarkProjectiles,
-        ),
+        projectileLists.burnMark,
         this.burnMarkAccumMs,
       );
       this.burnMarkAccumMs = 0;
     }
 
     this.groundPrintAccumMs += effectDtMs;
-    if (updateEffectsThisFrame) {
+    if (updateGroundPrintsThisFrame) {
       groundPrintRenderer.update(
         entityLists.groundPrints,
         this.getGroundPrintLocomotionMesh,
@@ -552,22 +570,13 @@ export class RtsScene3DRenderPhase {
     }
 
     this.sprayAccumMs += effectDtMs;
-    if (updateEffectsThisFrame) {
-      const pylonFreeLegSprays = this.filterNearLodSprays(
-        pylonTubeFlowRenderer.update(
-          entityRenderer.getPylonTubeFlows(),
-          this.sprayAccumMs,
-        ),
-        this.nearPylonFreeLegSprays,
+    if (updateSprayThisFrame) {
+      const pylonFreeLegSprays = pylonTubeFlowRenderer.update(
+        entityRenderer.getPylonTubeFlows(),
+        this.sprayAccumMs,
       );
-      const commanderSprays = this.filterNearLodSprays(
-        this.clientViewState.getSprayTargets(),
-        this.nearCommanderSprays,
-      );
-      const resourcePylonSprays = this.filterNearLodSprays(
-        entityRenderer.getResourcePylonSprayTargets(),
-        this.nearResourcePylonSprays,
-      );
+      const commanderSprays = this.clientViewState.getSprayTargets();
+      const resourcePylonSprays = entityRenderer.getResourcePylonSprayTargets();
       if (resourcePylonSprays.length > 0) {
         const commanderSprayCount = commanderSprays.length;
         const resourcePylonSprayCount = resourcePylonSprays.length;
@@ -596,23 +605,20 @@ export class RtsScene3DRenderPhase {
     }
 
     this.smokeTrailAccumMs += effectDtMs;
-    if (updateEffectsThisFrame) {
+    if (updateFireAndSmokeThisFrame) {
       smokeTrailRenderer.update(
-        this.filterNearLodProjectiles(
-          projectileLists.smokeTrail,
-          this.nearSmokeTrailProjectiles,
-        ),
+        projectileLists.smokeTrail,
         this.smokeTrailAccumMs,
         this.renderFrameIndex,
         this.renderScope,
         entityRenderer.getHoverSmokeEmitters(),
-        renderFrameState.view,
       );
       fogOfWarFogRenderer.update(
         this.clientViewState,
         this.getLocalPlayerId(),
         fogOfWarEnabled && getFogClouds(),
         this.smokeTrailAccumMs,
+        this.threeApp.camera.position.y,
       );
       this.smokeTrailAccumMs = 0;
     }
@@ -664,19 +670,16 @@ export class RtsScene3DRenderPhase {
 
     if (updateHudThisFrame) {
       waypoint3D?.update(
-        this.selectionSystem.getSelectedUnits(),
-        this.selectionSystem.getSelectedBuildings(),
+        selectedUnits,
+        selectedBuildings,
       );
     }
 
-    this.entityLod.endFrame();
     const renderEnd = performance.now();
     timings.hudMs = renderEnd - phaseMark;
     timings.totalMs = renderEnd - renderStart;
     timings.unitRows = entityLists.unitRows.count;
     timings.buildingRows = entityLists.buildingRows.count;
-    timings.unitLodProxyRows = this.countUnitLodProxyRows(entityLists.unitRows);
-    timings.buildingLodProxyRows = this.countBuildingLodProxyRows(entityLists.buildingRows);
     timings.projectileRows = projectileLists.traveling.length;
     timings.lineProjectileRows = lineProjectiles.length;
     return {
@@ -684,6 +687,11 @@ export class RtsScene3DRenderPhase {
       cameraView,
       renderMs: timings.totalMs,
     };
+  }
+
+  private updateEffectPhaseThisFrame(effectFrameStride: number, phaseOffset: number): boolean {
+    if (effectFrameStride <= 1) return true;
+    return this.renderFrameIndex % effectFrameStride === phaseOffset % effectFrameStride;
   }
 
   private updateCameraViewBasis(camera: THREE.Camera): CameraViewBasis {
@@ -702,28 +710,12 @@ export class RtsScene3DRenderPhase {
     return basis;
   }
 
-  private countUnitLodProxyRows(rows: UnitRenderPacket3D): number {
-    let count = 0;
-    for (let row = 0; row < rows.count; row++) {
-      if (rows.lodProxyAt(row)) count++;
-    }
-    return count;
-  }
-
-  private countBuildingLodProxyRows(rows: BuildingRenderPacket3D): number {
-    let count = 0;
-    for (let row = 0; row < rows.count; row++) {
-      if (rows.lodProxyAt(row)) count++;
-    }
-    return count;
-  }
-
   private prepareEntityLists(
     options: RenderPhaseEntityListOptions,
     mode: SelectionHudMode,
-    renderView: RenderViewState3D,
   ): RenderPhaseEntityLists {
-    return this.clientViewState.prepareRenderEntityPackets3D(
+    const authoritativeFrameActive = this.authoritativePoseOverlay.isFrameActive();
+    const lists = this.clientViewState.prepareRenderEntityPackets3D(
       this.renderEntityLists,
       {
         renderScope: this.renderScope,
@@ -739,10 +731,48 @@ export class RtsScene3DRenderPhase {
         getEntityHudToggle,
         lookupPlayerName: this.lookupPlayerName,
         getGroundPrintLocomotionMesh: this.getGroundPrintLocomotionMesh,
-        isEntityFarLod: (entity) => this.entityUsesFarLod(entity, renderView),
-        isEntityEmissionFarLod: (entity) => this.entityEmissionUsesFarLod(entity),
+        suppressActivePredictionFlags: this.authoritativePoseOverlay.isEnabled(),
+        refreshAuthoritativeRenderScope: authoritativeFrameActive
+          ? (
+              bounds,
+              candidateUnits,
+              candidateBuildings,
+            ) => this.authoritativePoseOverlay.applyScopedEntities(
+              bounds,
+              candidateUnits,
+              candidateBuildings,
+              (id) => this.clientViewState.getEntity(id),
+              (entity, state) =>
+                this.clientViewState.refreshAuthoritativeRenderEntityState3D(
+                  entity,
+                  state,
+                ),
+            )
+          : undefined,
+        collectAuthoritativeRenderSlots: authoritativeFrameActive
+          ? (
+              bounds,
+              unitSlotsOut,
+              buildingSlotsOut,
+              views,
+            ) => this.authoritativePoseOverlay.collectScopedEntitySlots(
+              bounds,
+              views,
+              (id) => this.clientViewState.getRenderEntityStateSlot(id),
+              (slot, state) =>
+                this.clientViewState.refreshAuthoritativeRenderEntitySlotState3D(
+                  slot,
+                  state,
+                  false,
+                ),
+              unitSlotsOut,
+              buildingSlotsOut,
+            )
+          : undefined,
       },
     );
+    this.authoritativePoseOverlay.endFrame();
+    return lists;
   }
 
   private getProjectileQueryBounds(): FootprintBounds | null {
@@ -756,48 +786,9 @@ export class RtsScene3DRenderPhase {
     return this.clientViewState.collectProjectileRenderLists(bounds, this.projectileRenderLists);
   }
 
-  private entityUsesFarLod(entity: Entity, renderView: RenderViewState3D): boolean {
-    return this.entityLod.entityUsesLodProxyForView(renderView, entity);
-  }
-
-  private entityEmissionUsesFarLod(entity: Entity): boolean {
-    return this.entityLod.entityUsesLowLodDistance(this.threeApp.camera, entity);
-  }
-
-  private filterNearLodProjectiles(
-    projectiles: readonly Entity[],
-    out: Entity[],
-  ): readonly Entity[] {
-    out.length = 0;
-    for (let i = 0; i < projectiles.length; i++) {
-      const projectile = projectiles[i];
-      if (!this.entityEmissionUsesFarLod(projectile)) out.push(projectile);
-    }
-    return out;
-  }
-
-  private filterNearLodSprays(
-    sprays: readonly SprayTarget[],
-    out: SprayTarget[],
-  ): readonly SprayTarget[] {
-    out.length = 0;
-    for (let i = 0; i < sprays.length; i++) {
-      const spray = sprays[i];
-      const source = this.clientViewState.getEntity(spray.source.id);
-      if (source !== undefined && this.entityEmissionUsesFarLod(source)) continue;
-      const target = this.clientViewState.getEntity(spray.target.id);
-      if (target !== undefined && this.entityEmissionUsesFarLod(target)) continue;
-      out.push(spray);
-    }
-    return out;
-  }
-
   private populateTurretNamePacket(hosts: readonly Entity[], mode: SelectionHudMode): void {
     for (let i = 0; i < hosts.length; i++) {
-      const host = hosts[i];
-      if (!this.entityEmissionUsesFarLod(host)) {
-        this.pushTurretNamesForEntity(host, mode);
-      }
+      this.pushTurretNamesForEntity(hosts[i], mode);
     }
   }
 
@@ -819,16 +810,10 @@ export class RtsScene3DRenderPhase {
 
   private pushTurretNamesForEntityId(entityId: EntityId, mode: SelectionHudMode): void {
     const entity = this.clientViewState.getEntity(entityId);
-    if (
-      entity !== undefined &&
-      !this.entityEmissionUsesFarLod(entity)
-    ) {
-      this.pushTurretNamesForEntity(entity, mode);
-    }
+    if (entity !== undefined) this.pushTurretNamesForEntity(entity, mode);
   }
 
   private pushTurretNamesForEntity(host: Entity, mode: SelectionHudMode): void {
-    if (this.entityEmissionUsesFarLod(host)) return;
     const turrets = host.combat?.turrets;
     if (!turrets) return;
     const entityRenderer = this.resources.entityRenderer;
@@ -857,7 +842,6 @@ export class RtsScene3DRenderPhase {
     const scope = this.renderScope;
     for (let i = 0; i < projectiles.length; i++) {
       const shot = projectiles[i];
-      if (this.entityEmissionUsesFarLod(shot)) continue;
       if (!scope.inScope(shot.transform.x, shot.transform.y, 100)) continue;
       const proj = shot.projectile;
       if (!proj || proj.projectileType !== 'projectile' || proj.maxHp <= 0) continue;

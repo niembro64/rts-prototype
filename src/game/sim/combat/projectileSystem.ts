@@ -4,10 +4,11 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { WorldState } from '../WorldState';
 import type { BeamPoint, Entity, EntityId, ProjectileShot, BeamRay, LaserRay, ShotSource, Turret, TurretConfig } from '../types';
 import { getEmissionBlueprintId, isRayConfig, isRayType, isProjectileShot, NO_ENTITY_ID } from '../types';
-import type { DamageSystem } from '../damage';
+import type { BeamPathPhaseTimings, DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type { WindState } from '../wind';
 import type { FireTurretsResult, ProjectileSpawnEvent, ProjectileDespawnEvent } from './types';
+import type { RayConfigRangeCylinder } from './lineShotRange';
 import { beamIndex } from '../BeamIndex';
 import {
   getTransformCosSin,
@@ -57,12 +58,7 @@ import { spatialGrid } from '../SpatialGrid';
 import { createProjectileConfigFromShot, createProjectileConfigFromTurret } from '../projectileConfigs';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import {
-  getProjectileAirDragCoefficient,
-  getProjectileAirFrictionPer60HzFrame,
   getProjectileHomingEngagementScale,
-  getProjectileHomingThrustAcceleration,
-  getProjectilePropulsionAcceleration,
-  getProjectileRocketCounterGravityCarryAcceleration,
 } from '../projectileMotion';
 import {
   CT_TURRET_STATE_ENGAGED,
@@ -371,6 +367,13 @@ const _homingAimPoint = { x: 0, y: 0, z: 0 };
 const _homingOriginVelocity = { x: 0, y: 0, z: 0 };
 const _homingOriginAcceleration = { x: 0, y: 0, z: 0 };
 const _beamTargetPoint = { x: 0, y: 0, z: 0 };
+const _beamRangeCylinder: RayConfigRangeCylinder = {
+  centerX: 0,
+  centerY: 0,
+  centerZ: 0,
+  radius: 0,
+  rangeVolume: 'turret-range-sphere',
+};
 const _fireBeamAim: BeamAimScratch = {
   dirX: 1,
   dirY: 0,
@@ -397,6 +400,22 @@ function getTurretProjectileLaunchSpeed(config: TurretConfig, shot: Pick<Project
   if (!Number.isFinite(mass) || mass <= 1e-6) return 0;
   if (!Number.isFinite(launchForce) || launchForce <= 0) return 0;
   return launchForce / mass;
+}
+
+function writeBeamRangeCylinder(
+  weapon: Turret,
+  centerX: number,
+  centerY: number,
+  centerZ: number,
+): RayConfigRangeCylinder | undefined {
+  const range = weapon.config.range;
+  if (!Number.isFinite(range) || range <= 0) return undefined;
+  _beamRangeCylinder.centerX = centerX;
+  _beamRangeCylinder.centerY = centerY;
+  _beamRangeCylinder.centerZ = centerZ;
+  _beamRangeCylinder.radius = range;
+  _beamRangeCylinder.rangeVolume = weapon.config.rangeVolume;
+  return _beamRangeCylinder;
 }
 
 function clearBeamReflectorMetadata(point: BeamPoint): void {
@@ -476,8 +495,8 @@ function isPackedProjectileEligible(entity: Entity): boolean {
   // Packed pool's batch kernel hardcodes GRAVITY; any shot that wants a
   // different gravity must run through the per-projectile JS path.
   if (shot.gravityForceMultiplier !== 1) return false;
-  if (getProjectileAirFrictionPer60HzFrame(shot) > 0) return false;
-  if (getProjectilePropulsionAcceleration(shot) > 0) return false;
+  if (profile.airFrictionPer60HzFrame > 0) return false;
+  if (profile.propulsionAcceleration > 0) return false;
   return true;
 }
 
@@ -1287,6 +1306,19 @@ export function fireTurrets(
 
 // Reusable array for homing velocity updates (avoid per-frame allocation)
 const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
+
+export type ProjectileUpdatePhaseTimings = BeamPathPhaseTimings & {
+  projectilePackedPrepMs: number;
+  projectilePackedIntegrateMs: number;
+  projectilePackedScatterMs: number;
+  projectileTravelingPackMs: number;
+  projectileHomingGuidanceMs: number;
+  projectileTravelingIntegrateMs: number;
+  projectileTravelingScatterMs: number;
+  projectileLineProjectilesMs: number;
+  projectileLineBeamPathMs: number;
+};
+
 const _travelingProjectileBatchEntities: Entity[] = [];
 const DEFAULT_TRAVELING_PROJECTILE_BATCH_CAPACITY = 16;
 const DEFAULT_HOMING_GUIDANCE_BATCH_CAPACITY = 16;
@@ -1461,7 +1493,12 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
 // Gravity constant lives in config.ts so it's shared with the physics
 // engine, client dead-reckoning, debris, and explosion sparks.
 
-function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
+function _updatePackedProjectilesJS(
+  world: WorldState,
+  dtMs: number,
+  dtSec: number,
+  timings?: ProjectileUpdatePhaseTimings,
+): void {
   // Phase 5a — three-pass structure so the inner ballistic integrate
   // can run in one batched WASM call:
   //   Pass 1: validate slot, sync external mutations into pool,
@@ -1469,6 +1506,8 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
   //   Pass 2: pool_step_packed_projectiles_batch (all slots, one call).
   //   Pass 3: scatter pool → entity.transform + proj.velocity*,
   //           run source-clearance check on the new position.
+
+  let profileMark = timings !== undefined ? performance.now() : 0;
 
   // Pass 1.
   for (let slot = 0; slot < _packedProjectileCount;) {
@@ -1511,12 +1550,23 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
     slot++;
   }
 
+  if (timings !== undefined) {
+    const now = performance.now();
+    timings.projectilePackedPrepMs += now - profileMark;
+    profileMark = now;
+  }
+
   if (_packedProjectileCount === 0) return;
 
   // Pass 2: batched ballistic integrate in WASM. Refresh views so a
   // memory grow between ticks doesn't write through detached views.
   refreshPackedProjectileViews();
   getSimWasm()!.poolStepPackedProjectilesBatch(_packedProjectileCount, dtSec, dtMs);
+  if (timings !== undefined) {
+    const now = performance.now();
+    timings.projectilePackedIntegrateMs += now - profileMark;
+    profileMark = now;
+  }
 
   // Pass 3: scatter post-integrate state back to JS-side mirrors,
   // then arm projectiles whose authored delay elapsed during this tick.
@@ -1550,6 +1600,10 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
       proj.config.shotProfile.runtime.radius.hitbox,
     );
   }
+
+  if (timings !== undefined) {
+    timings.projectilePackedScatterMs += performance.now() - profileMark;
+  }
 }
 
 function _updateTravelingProjectilesJS(
@@ -1557,10 +1611,12 @@ function _updateTravelingProjectilesJS(
   dtMs: number,
   dtSec: number,
   wind: WindState,
+  timings?: ProjectileUpdatePhaseTimings,
 ): void {
   let batchCount = 0;
   let homingGuidanceCount = 0;
   const sim = getSimWasm();
+  let profileMark = timings !== undefined ? performance.now() : 0;
 
   for (const entity of world.getTravelingProjectiles()) {
     if (!entity.projectile) continue;
@@ -1588,6 +1644,7 @@ function _updateTravelingProjectilesJS(
       dgunProjectile !== null &&
       dgunProjectile.isDGun === true;
     const shotConfig = proj.config.shot as ProjectileShot;
+    const runtimeProfile = proj.config.shotProfile.runtime;
     const projectileGravity = GRAVITY * shotConfig.gravityForceMultiplier;
     let policyFlags = isDGunWave ? TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW : 0;
 
@@ -1598,7 +1655,7 @@ function _updateTravelingProjectilesJS(
     let aNetX = 0;
     let aNetY = 0;
     let aNetZ = -projectileGravity;
-    const propulsionAccel = getProjectilePropulsionAcceleration(shotConfig);
+    const propulsionAccel = runtimeProfile.propulsionAcceleration;
     if (propulsionAccel > 0) {
       const speed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
       if (Number.isFinite(speed) && speed > 1e-6) {
@@ -1621,7 +1678,7 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileAccelX[index] = 0;
     _travelingProjectileAccelY[index] = 0;
     _travelingProjectileAccelZ[index] = 0;
-    _travelingProjectileAirDragCoefficient[index] = getProjectileAirDragCoefficient(shotConfig);
+    _travelingProjectileAirDragCoefficient[index] = runtimeProfile.airDragCoefficient;
     _travelingProjectileInvMass[index] = shotConfig.mass > 1e-6 ? 1 / shotConfig.mass : 0;
     _travelingProjectileGravity[index] = projectileGravity;
     _travelingProjectileTerrainTargetZ[index] = 0;
@@ -1634,7 +1691,7 @@ function _updateTravelingProjectilesJS(
       timeAliveBeforeStep,
       dtMs,
     );
-    const maxHomingThrustAccel = getProjectileHomingThrustAcceleration(shotConfig);
+    const maxHomingThrustAccel = runtimeProfile.homingThrustAcceleration;
     const canCarryRocketCounterGravity =
       shotConfig.type === 'rocket' &&
       maxHomingThrustAccel > 0 &&
@@ -1665,11 +1722,12 @@ function _updateTravelingProjectilesJS(
         _travelingProjectileTargetUpdateId[index] = resolvedHomingTargetId;
       }
       if (homingTarget !== undefined) {
-        aNetZ += getProjectileRocketCounterGravityCarryAcceleration(
-          shotConfig,
-          homingEngagementScale,
-          projectileGravity,
-        );
+        if (shotConfig.type === 'rocket' && projectileGravity > 0 && maxHomingThrustAccel > 0) {
+          const steeringScale = Number.isFinite(homingEngagementScale)
+            ? Math.min(1, Math.max(0, homingEngagementScale))
+            : 0;
+          aNetZ += Math.max(0, projectileGravity - maxHomingThrustAccel * steeringScale);
+        }
         if (homingEngagementScale > 0) {
           _travelingProjectileHomingTargetId[index] = homingTarget.id;
           policyFlags |= TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING;
@@ -1714,7 +1772,6 @@ function _updateTravelingProjectilesJS(
             originAccelerationY = originAcceleration.y;
             originAccelerationZ = originAcceleration.z;
           }
-          const shot = proj.config.shot as ProjectileShot;
           const remainingSec = Number.isFinite(proj.maxLifespan)
             ? Math.max(0, (proj.maxLifespan - proj.timeAlive) / 1000)
             : 0;
@@ -1752,9 +1809,9 @@ function _updateTravelingProjectilesJS(
             maxHomingThrustAccel * homingEngagementScale;
           _homingGuidanceRows[base + HG_ROW_SOLVE_INTERCEPT] = solveIntercept ? 1 : 0;
           _homingGuidanceRows[base + HG_ROW_PROJECTILE_AIR_FRICTION_PER_60HZ_FRAME] =
-            getProjectileAirFrictionPer60HzFrame(shot);
-          _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shot.mass;
-          _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] = shot.type === 'missile' ? 1 : 0;
+            runtimeProfile.airFrictionPer60HzFrame;
+          _homingGuidanceRows[base + HG_ROW_PROJECTILE_MASS] = shotConfig.mass;
+          _homingGuidanceRows[base + HG_ROW_CONSTANT_SPEED_MODE] = shotConfig.type === 'missile' ? 1 : 0;
         }
       }
     }
@@ -1789,6 +1846,12 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileAccelZ[index] = aNetZ;
   }
 
+  if (timings !== undefined) {
+    const now = performance.now();
+    timings.projectileTravelingPackMs += now - profileMark;
+    profileMark = now;
+  }
+
   if (batchCount === 0) return;
   if (sim === undefined) {
     throw new Error('Projectile integration requires initialized sim-wasm');
@@ -1813,6 +1876,12 @@ function _updateTravelingProjectilesJS(
       throw new Error(`Projectile homing guidance batch failed: ${guided}/${homingGuidanceCount}`);
     }
   }
+  if (timings !== undefined) {
+    const now = performance.now();
+    timings.projectileHomingGuidanceMs += now - profileMark;
+    profileMark = now;
+  }
+
   const integrated = sim.projectileIntegrateStepBatch(
     batchCount,
     _travelingProjectilePosX.subarray(0, batchCount),
@@ -1833,6 +1902,11 @@ function _updateTravelingProjectilesJS(
   );
   if (integrated !== batchCount) {
     throw new Error(`Projectile integration batch failed: ${integrated}/${batchCount}`);
+  }
+  if (timings !== undefined) {
+    const now = performance.now();
+    timings.projectileTravelingIntegrateMs += now - profileMark;
+    profileMark = now;
   }
 
   for (let i = 0; i < batchCount; i++) {
@@ -1903,6 +1977,10 @@ function _updateTravelingProjectilesJS(
     }
     _travelingProjectileBatchEntities[i] = undefined as unknown as Entity;
   }
+
+  if (timings !== undefined) {
+    timings.projectileTravelingScatterMs += performance.now() - profileMark;
+  }
 }
 
 // Packed ballistic shots and non-packed guided/D-gun shots now both
@@ -1915,6 +1993,7 @@ export function updateProjectiles(
   dtMs: number,
   damageSystem: DamageSystem,
   wind: WindState,
+  timings?: ProjectileUpdatePhaseTimings,
 ): { orphanedIds: EntityId[]; despawnEvents: ProjectileDespawnEvent[]; velocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] } {
   const dtSec = dtMs / 1000;
   _orphanedIds.length = 0;
@@ -1925,9 +2004,10 @@ export function updateProjectiles(
   // Position integration for traveling projectiles is Rust-owned:
   // packed ballistic shots step in the projectile pool, while guided
   // and D-gun shots pack acceleration rows for a second batch.
-  _updatePackedProjectilesJS(world, dtMs, dtSec);
-  _updateTravelingProjectilesJS(world, dtMs, dtSec, wind);
+  _updatePackedProjectilesJS(world, dtMs, dtSec, timings);
+  _updateTravelingProjectilesJS(world, dtMs, dtSec, wind, timings);
 
+  const lineProfileStart = timings !== undefined ? performance.now() : 0;
   for (const entity of world.getLineProjectiles()) {
     if (!entity.projectile) continue;
 
@@ -2060,11 +2140,16 @@ export function updateProjectiles(
         const targetChanged = proj.targetEntityId !== beamAim.targetEntityId;
         proj.targetEntityId = beamAim.targetEntityId;
 
-        // Per-tick re-trace. The turret's fire range decides whether it
-        // may lock and stay engaged; it does not clip the physical beam
-        // path. Use a finite map-scale trace budget so shield reflectors
-        // outside the lock radius can still be hit without creating an
-        // unbounded ray.
+        // Per-tick re-trace. Clip the physical beam to the same authored
+        // range volume used by targeting; the far endpoint remains only a
+        // direction/fallback ray, and findBeamPath clips every segment before
+        // the expensive body/reflector queries.
+        const rangeCylinder = writeBeamRangeCylinder(
+          weapon,
+          beamStartX,
+          beamStartY,
+          beamStartZ,
+        );
         const endpoint = resolveBeamTraceEndpoint(
           beamStartX, beamStartY, beamStartZ,
           beamAim.dirX, beamAim.dirY, beamAim.dirZ,
@@ -2077,19 +2162,39 @@ export function updateProjectiles(
 
         // Find beam path (with possible reflections off mirror units).
         const collisionRadius = proj.config.shotProfile.runtime.radius.collision;
-        const beamPath = damageSystem.findBeamPath(
-          startPoint.x, startPoint.y, startPoint.z,
-          fullEndX, fullEndY, fullEndZ,
-          proj.sourceEntityId,
-          collisionRadius,
-          BEAM_MAX_SEGMENTS,
-          undefined,
-          dtMs,
-          false,
-          proj.projectileType === 'laser'
-            ? SHIELD_REFLECTION_ENTITY_LASER
-            : SHIELD_REFLECTION_ENTITY_BEAM,
-        );
+        let beamPath: ReturnType<DamageSystem['findBeamPath']>;
+        if (timings !== undefined) {
+          const beamPathStart = performance.now();
+          beamPath = damageSystem.findBeamPath(
+            startPoint.x, startPoint.y, startPoint.z,
+            fullEndX, fullEndY, fullEndZ,
+            proj.sourceEntityId,
+            collisionRadius,
+            BEAM_MAX_SEGMENTS,
+            rangeCylinder,
+            dtMs,
+            rangeCylinder === undefined,
+            proj.projectileType === 'laser'
+              ? SHIELD_REFLECTION_ENTITY_LASER
+              : SHIELD_REFLECTION_ENTITY_BEAM,
+            timings,
+          );
+          timings.projectileLineBeamPathMs += performance.now() - beamPathStart;
+        } else {
+          beamPath = damageSystem.findBeamPath(
+            startPoint.x, startPoint.y, startPoint.z,
+            fullEndX, fullEndY, fullEndZ,
+            proj.sourceEntityId,
+            collisionRadius,
+            BEAM_MAX_SEGMENTS,
+            rangeCylinder,
+            dtMs,
+            rangeCylinder === undefined,
+            proj.projectileType === 'laser'
+              ? SHIELD_REFLECTION_ENTITY_LASER
+              : SHIELD_REFLECTION_ENTITY_BEAM,
+          );
+        }
 
         // Resize the polyline to [start, ...reflections, end] and
         // reuse existing point objects in place where possible.
@@ -2229,6 +2334,9 @@ export function updateProjectiles(
           : turretAngle;
       }
     }
+  }
+  if (timings !== undefined) {
+    timings.projectileLineProjectilesMs += performance.now() - lineProfileStart;
   }
 
   return { orphanedIds: projectilesToRemove, despawnEvents, velocityUpdates: _homingVelocityUpdates };

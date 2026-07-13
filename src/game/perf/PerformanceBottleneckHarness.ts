@@ -1,7 +1,8 @@
 import { LAND_CELL_SIZE } from '../../config';
 import { ARCHITECTURE_CONFIG } from '../../architectureConfig';
+import { getFogClouds, setFogClouds } from '../../clientBarConfig';
 import type { GameServerConfig } from '../../types/game';
-import type { PlayerId } from '../../types/sim';
+import type { EntityId, PlayerId } from '../../types/sim';
 import { createGame, destroyGame, type GameInstance } from '../createGame';
 import { ClientViewState } from '../network/ClientViewState';
 import type { NetworkServerSnapshot } from '../network/NetworkTypes';
@@ -18,6 +19,9 @@ import {
 import { getSnapshotWireBytes } from '../network/snapshotWireMetadata';
 import { LocalGameConnection } from '../server/LocalGameConnection';
 import { GameServer } from '../server/GameServer';
+import type { ServerSimulationStepPhaseTimings } from '../server/ServerSimulationCore';
+import type { SimulationUpdatePhaseTimings } from '../sim/Simulation';
+import type { SimulationCombatPhaseTimings } from '../sim/SimulationCombatController';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 import { getSimWasm } from '../sim-wasm/init';
 import {
@@ -44,6 +48,126 @@ type SnapshotTrafficMeasuredRates = SnapshotTrafficCounters & {
   readonly measuredSeconds: number;
 };
 
+type CombatTargetingProfileReport = {
+  readonly scheduleSources: number;
+  readonly scheduleProcessed: number;
+  readonly scheduleSkipped: number;
+  readonly autoTicks: number;
+  readonly reacquireDue: number;
+  readonly spatialQueries: number;
+  readonly candidateCells: number;
+  readonly candidateSlotsVisited: number;
+  readonly candidatesCollected: number;
+  readonly chooseCalls: number;
+  readonly chooseCandidateTests: number;
+  readonly gateCalls: number;
+  readonly gatePasses: number;
+};
+
+const SIM_STEP_PHASE_KEYS = [
+  'commandQueueMs',
+  'repairBeforeMs',
+  'simulationUpdateMs',
+  'factoryConstructionTurretMs',
+  'unitForcesMs',
+  'physicsStepMs',
+  'repairAfterMs',
+  'syncFromPhysicsMs',
+  'projectileLaunchFinalizeMs',
+  'totalMs',
+] as const satisfies readonly (keyof ServerSimulationStepPhaseTimings)[];
+
+const SIM_UPDATE_PHASE_KEYS = [
+  'framePrepMs',
+  'commandsMs',
+  'deathPrepassMs',
+  'buildingWindEconomyMs',
+  'unitGroundNormalMs',
+  'idleBuilderAutoRepairMs',
+  'energyDistributionMs',
+  'constructionLifecycleMs',
+  'factoryProductionMs',
+  'commanderAbilitiesMs',
+  'transportActionsMs',
+  'unitMovementMs',
+  'spatialGridMs',
+  'combatMs',
+  'deadCleanupMs',
+  'forceFinalizeMs',
+  'gameOverTickMs',
+  'totalMs',
+] as const satisfies readonly (keyof SimulationUpdatePhaseTimings)[];
+
+const SIM_COMBAT_PHASE_KEYS = [
+  'resetPlannerMs',
+  'stampTargetingMs',
+  'targetingFiringMs',
+  'laserSoundsMs',
+  'turretRotationMs',
+  'shieldStateMs',
+  'shieldSurfaceStampMs',
+  'shieldSoundsMs',
+  'fireTurretsMs',
+  'projectileSpawnEventsMs',
+  'turretDirtyMs',
+  'updateProjectilesMs',
+  'projectilePackedPrepMs',
+  'projectilePackedIntegrateMs',
+  'projectilePackedScatterMs',
+  'projectileTravelingPackMs',
+  'projectileHomingGuidanceMs',
+  'projectileTravelingIntegrateMs',
+  'projectileTravelingScatterMs',
+  'projectileLineProjectilesMs',
+  'projectileLineBeamPathMs',
+  'projectileLineBeamFusedMs',
+  'projectileLineBeamBodyMs',
+  'projectileLineBeamReflectorMs',
+  'projectileLineBeamGroundMs',
+  'projectileLineBeamProjectileMs',
+  'projectileEventCullMs',
+  'projectileSpatialRefreshMs',
+  'projectileCollisionsMs',
+  'collisionSetupMs',
+  'collisionLoopMs',
+  'collisionHitboxSweepMs',
+  'collisionBeamDamageMs',
+  'collisionDgunDamageMs',
+  'collisionTerminalPlanMs',
+  'collisionSplashDamageMs',
+  'collisionKilledProjectileDetonationMs',
+  'collisionSubmunitionSpawnMs',
+  'collisionFinalRemovalMs',
+  'collisionProjectileEventsMs',
+  'deathExplosionMs',
+  'collisionRemovalMs',
+  'totalMs',
+] as const satisfies readonly (keyof SimulationCombatPhaseTimings)[];
+
+type SimStepPhaseTimingReport = {
+  -readonly [K in keyof ServerSimulationStepPhaseTimings]: NumericSummary;
+};
+
+type SimStepPhaseTimingAccumulator = {
+  -readonly [K in keyof ServerSimulationStepPhaseTimings]: number[];
+};
+
+type SimUpdatePhaseTimingReport = {
+  -readonly [K in keyof SimulationUpdatePhaseTimings]: NumericSummary;
+};
+
+type SimUpdatePhaseTimingAccumulator = {
+  -readonly [K in keyof SimulationUpdatePhaseTimings]: number[];
+};
+
+type SimCombatPhaseTimingReport = {
+  -readonly [K in keyof SimulationCombatPhaseTimings]: NumericSummary;
+};
+
+type SimCombatPhaseTimingAccumulator = {
+  -readonly [K in keyof SimulationCombatPhaseTimings]: number[];
+};
+
 export type PerformanceBottleneckHarnessOptions = {
   readonly unitCap?: number;
   readonly ticks?: number;
@@ -54,6 +178,17 @@ export type PerformanceBottleneckHarnessOptions = {
   readonly mapCells?: number;
   readonly width?: number;
   readonly height?: number;
+  /** Map-center eye distance for the full-stack render pass. Zero keeps
+   *  the scene's normal battle framing. */
+  readonly cameraDistance?: number;
+  readonly fogClouds?: boolean;
+  readonly selectAllUnits?: boolean;
+  /** Spawn a noncombat background roster and disable AI production so high
+   *  unit-cap runs can isolate renderer/LOD scale from combat pressure. */
+  readonly peaceful?: boolean;
+  /** Pause the server before full-stack measurement. Startup still builds and
+   *  snapshots the world; the measured pass then isolates static rendering. */
+  readonly renderOnly?: boolean;
 };
 
 export type PerformanceBottleneckHarnessSuiteOptions =
@@ -104,8 +239,12 @@ type SimOnlyReport = {
   readonly stepMs: NumericSummary;
   readonly simCeilingTpsP95: number;
   readonly fixedStepUtilPctP95: number;
+  readonly stepPhaseMs: SimStepPhaseTimingReport;
+  readonly simulationUpdatePhaseMs: SimUpdatePhaseTimingReport;
+  readonly simulationCombatPhaseMs: SimCombatPhaseTimingReport;
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
+  readonly combatTargetingProfile: CombatTargetingProfileReport;
 };
 
 type SimSnapshotReport = {
@@ -119,9 +258,13 @@ type SimSnapshotReport = {
   readonly snapshotApplyMs: NumericSummary;
   readonly snapshotBytes: NumericSummary;
   readonly fixedStepUtilPctP95: number;
+  readonly stepPhaseMs: SimStepPhaseTimingReport;
+  readonly simulationUpdatePhaseMs: SimUpdatePhaseTimingReport;
+  readonly simulationCombatPhaseMs: SimCombatPhaseTimingReport;
   readonly snapshotMainThreadMsPerSecond: number;
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
+  readonly combatTargetingProfile: CombatTargetingProfileReport;
   readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
@@ -135,6 +278,7 @@ type FullStackReport = {
   readonly gpuTimerSupported: boolean;
   readonly activePixelRatio: number;
   readonly nativePixelRatio: number;
+  readonly cameraMapCenterDistance: number;
   readonly frameMs: NumericSummary;
   readonly logicMs: NumericSummary;
   readonly renderPrepMs: NumericSummary;
@@ -153,6 +297,9 @@ type FullStackReport = {
   readonly serverTpsAvg: NumericSummary;
   readonly serverCpuAvgPct: NumericSummary;
   readonly serverCpuHiPct: NumericSummary;
+  readonly serverStepPhaseMs: SimStepPhaseTimingReport;
+  readonly serverUpdatePhaseMs: SimUpdatePhaseTimingReport;
+  readonly serverCombatPhaseMs: SimCombatPhaseTimingReport;
   readonly drawCalls: NumericSummary;
   readonly triangles: NumericSummary;
   readonly bufferUploadBytes: NumericSummary;
@@ -171,14 +318,13 @@ type FullStackReport = {
   readonly renderPhaseHudMs: NumericSummary;
   readonly renderPhaseUnitRows: NumericSummary;
   readonly renderPhaseBuildingRows: NumericSummary;
-  readonly renderPhaseUnitLodProxyRows: NumericSummary;
-  readonly renderPhaseBuildingLodProxyRows: NumericSummary;
   readonly renderPhaseProjectileRows: NumericSummary;
   readonly renderPhaseLineProjectileRows: NumericSummary;
   readonly longtaskMsPerSec: NumericSummary;
   readonly snapshotBytes: NumericSummary;
   readonly memory: MemoryReport;
   readonly wasmBoundary: WasmBoundaryInstrumentationReport;
+  readonly combatTargetingProfile: CombatTargetingProfileReport;
   readonly snapshotMaterializationStats?: SnapshotMaterializationStatsReport;
   readonly snapshotWireStats?: SnapshotWireStatsReport;
 };
@@ -272,6 +418,11 @@ const DEFAULT_OPTIONS: Required<PerformanceBottleneckHarnessOptions> = {
   mapCells: 17,
   width: 1280,
   height: 720,
+  cameraDistance: 0,
+  fogClouds: true,
+  selectAllUnits: false,
+  peaceful: false,
+  renderOnly: false,
 };
 
 const DEFAULT_SUITE_UNIT_CAPS = [500, 1000, 2500, 5000] as const;
@@ -361,6 +512,11 @@ function normalizeOptions(
     mapCells: positiveInteger(options.mapCells, DEFAULT_OPTIONS.mapCells),
     width: positiveInteger(options.width, DEFAULT_OPTIONS.width),
     height: positiveInteger(options.height, DEFAULT_OPTIONS.height),
+    cameraDistance: positiveNumber(options.cameraDistance, DEFAULT_OPTIONS.cameraDistance),
+    fogClouds: options.fogClouds ?? DEFAULT_OPTIONS.fogClouds,
+    selectAllUnits: options.selectAllUnits ?? DEFAULT_OPTIONS.selectAllUnits,
+    peaceful: options.peaceful ?? DEFAULT_OPTIONS.peaceful,
+    renderOnly: options.renderOnly ?? DEFAULT_OPTIONS.renderOnly,
   };
 }
 
@@ -377,6 +533,16 @@ function normalizeUnitCaps(unitCaps: readonly number[] | undefined): readonly nu
     out.push(cap);
   }
   return out.length > 0 ? out : [...DEFAULT_SUITE_UNIT_CAPS];
+}
+
+function selectAllLocalUnits(clientViewState: ClientViewState, game: GameInstance): void {
+  const selectedIds = new Set<EntityId>();
+  const units = clientViewState.getUnitsByPlayer(LOCAL_PLAYER_ID);
+  for (let i = 0; i < units.length; i++) {
+    if (units[i].selectable !== null) selectedIds.add(units[i].id);
+  }
+  clientViewState.setSelectedIds(selectedIds);
+  game.getScene()?.markSelectionDirty();
 }
 
 function summarizeSuite(
@@ -445,6 +611,17 @@ async function runSimOnly(
     }
 
     const memory = createMemoryTracker();
+    const stepPhaseAccumulator = createSimStepPhaseTimingAccumulator();
+    const updatePhaseAccumulator = createSimUpdatePhaseTimingAccumulator();
+    const combatPhaseAccumulator = createSimCombatPhaseTimingAccumulator();
+    core.setStepProfiler((timings) => recordSimStepPhaseTiming(stepPhaseAccumulator, timings));
+    core.simulation.setUpdateProfiler((timings) =>
+      recordSimUpdatePhaseTiming(updatePhaseAccumulator, timings)
+    );
+    core.simulation.setCombatProfiler((timings) =>
+      recordSimCombatPhaseTiming(combatPhaseAccumulator, timings)
+    );
+    resetCombatTargetingProfile();
     beginWasmBoundaryTracking();
     const samples: number[] = [];
     const wallStart = performance.now();
@@ -456,6 +633,7 @@ async function runSimOnly(
     }
     const wallMs = performance.now() - wallStart;
     const stepMs = summarize(samples);
+    const combatTargetingProfile = readCombatTargetingProfile();
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
       ...countCoreEntities(core),
@@ -464,10 +642,17 @@ async function runSimOnly(
       stepMs,
       simCeilingTpsP95: stepMs.p95 > 0 ? 1000 / stepMs.p95 : 0,
       fixedStepUtilPctP95: (stepMs.p95 / fixedStepMs) * 100,
+      stepPhaseMs: summarizeSimStepPhaseTimings(stepPhaseAccumulator),
+      simulationUpdatePhaseMs: summarizeSimUpdatePhaseTimings(updatePhaseAccumulator),
+      simulationCombatPhaseMs: summarizeSimCombatPhaseTimings(combatPhaseAccumulator),
       memory: memory.finish(),
       wasmBoundary,
+      combatTargetingProfile,
     };
   } finally {
+    core.setStepProfiler(undefined);
+    core.simulation.setUpdateProfiler(undefined);
+    core.simulation.setCombatProfiler(undefined);
     finishWasmBoundaryTracking();
     server.stop();
   }
@@ -515,6 +700,17 @@ async function runSimSnapshot(
     byteSamples.length = 0;
     resetSnapshotMaterializationAccumulator(materializationSamples);
     const memory = createMemoryTracker();
+    const stepPhaseAccumulator = createSimStepPhaseTimingAccumulator();
+    const updatePhaseAccumulator = createSimUpdatePhaseTimingAccumulator();
+    const combatPhaseAccumulator = createSimCombatPhaseTimingAccumulator();
+    core.setStepProfiler((timings) => recordSimStepPhaseTiming(stepPhaseAccumulator, timings));
+    core.simulation.setUpdateProfiler((timings) =>
+      recordSimUpdatePhaseTiming(updatePhaseAccumulator, timings)
+    );
+    core.simulation.setCombatProfiler((timings) =>
+      recordSimCombatPhaseTiming(combatPhaseAccumulator, timings)
+    );
+    resetCombatTargetingProfile();
     beginWasmBoundaryTracking();
     const stepSamples: number[] = [];
     const snapshotSamples: number[] = [];
@@ -537,6 +733,7 @@ async function runSimSnapshot(
     const snapshotMaterializationStats = summarizeSnapshotMaterialization(
       materializationSamples,
     );
+    const combatTargetingProfile = readCombatTargetingProfile();
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
       ...countCoreEntities(core),
@@ -547,14 +744,21 @@ async function runSimSnapshot(
       snapshotApplyMs: summarize(applySamples),
       snapshotBytes: summarize(byteSamples),
       fixedStepUtilPctP95: (stepMs.p95 / fixedStepMs) * 100,
+      stepPhaseMs: summarizeSimStepPhaseTimings(stepPhaseAccumulator),
+      simulationUpdatePhaseMs: summarizeSimUpdatePhaseTimings(updatePhaseAccumulator),
+      simulationCombatPhaseMs: summarizeSimCombatPhaseTimings(combatPhaseAccumulator),
       snapshotMainThreadMsPerSecond:
         snapshotTotalMs.avg * (1000 / (fixedStepMs * options.snapshotEveryTicks)),
       memory: memory.finish(),
       wasmBoundary,
+      combatTargetingProfile,
       snapshotMaterializationStats,
       snapshotWireStats,
     };
   } finally {
+    core.setStepProfiler(undefined);
+    core.simulation.setUpdateProfiler(undefined);
+    core.simulation.setCombatProfiler(undefined);
     finishWasmBoundaryTracking();
     unsubscribe();
     connection.disconnect();
@@ -577,6 +781,7 @@ async function runFullStack(
   document.body.appendChild(parent);
 
   const server = await GameServer.create(createServerConfig(options));
+  const core = server.getLockstepSimulationCore();
   const connection = new LocalGameConnection(server, LOCAL_PLAYER_ID, 'local-offline', {
     ...LOCAL_PRESENTATION_CONNECTION_OPTIONS,
   });
@@ -584,6 +789,11 @@ async function runFullStack(
   const mapSize = mapWorldSize(options.mapCells);
   clientViewState.setMapDimensions(mapSize, mapSize);
   let game: GameInstance | null = null;
+  const serverStepPhaseAccumulator = createSimStepPhaseTimingAccumulator();
+  const serverUpdatePhaseAccumulator = createSimUpdatePhaseTimingAccumulator();
+  const serverCombatPhaseAccumulator = createSimCombatPhaseTimingAccumulator();
+  const previousFogClouds = getFogClouds();
+  setFogClouds(options.fogClouds);
 
   try {
     game = createGame({
@@ -604,8 +814,40 @@ async function runFullStack(
     server.start();
     connection.markClientReady();
 
+    if (options.cameraDistance > 0) {
+      const scene = game.getScene();
+      const orbit = scene?.getOrbitCamera();
+      if (orbit !== undefined) {
+        orbit.setState({
+          targetX: mapSize * 0.5,
+          targetY: 0,
+          targetZ: mapSize * 0.5,
+          distance: options.cameraDistance,
+          yaw: orbit.yaw,
+          pitch: orbit.pitch,
+        });
+      }
+    }
+
     await waitMs(options.warmupSeconds * 1000);
+    if (options.selectAllUnits) selectAllLocalUnits(clientViewState, game);
+    if (options.renderOnly) {
+      server.setPaused(true);
+      await waitMs(100);
+    }
+    core.setStepProfiler((timings) =>
+      recordSimStepPhaseTiming(serverStepPhaseAccumulator, timings)
+    );
+    core.simulation.setUpdateProfiler((timings) =>
+      recordSimUpdatePhaseTiming(serverUpdatePhaseAccumulator, timings)
+    );
+    core.simulation.setCombatProfiler((timings) =>
+      recordSimCombatPhaseTiming(serverCombatPhaseAccumulator, timings)
+    );
     const measurementStartScene = game.getScene();
+    const drainedSnapshotMaterialization: SnapshotMaterializationMetadata[] = [];
+    measurementStartScene?.drainSnapshotMaterializationMetadata(drainedSnapshotMaterialization);
+    drainedSnapshotMaterialization.length = 0;
     const snapshotReceivedCounterStart =
       measurementStartScene?.getReceivedSnapshotCounters() ?? EMPTY_SNAPSHOT_TRAFFIC_COUNTERS;
     const snapshotAppliedCounterStart =
@@ -613,6 +855,7 @@ async function runFullStack(
     const measurementStartMs = performance.now();
 
     const memory = createMemoryTracker();
+    resetCombatTargetingProfile();
     beginWasmBoundaryTracking();
     const frameMs: number[] = [];
     const logicMs: number[] = [];
@@ -645,14 +888,11 @@ async function runFullStack(
     const renderPhaseHudMs: number[] = [];
     const renderPhaseUnitRows: number[] = [];
     const renderPhaseBuildingRows: number[] = [];
-    const renderPhaseUnitLodProxyRows: number[] = [];
-    const renderPhaseBuildingLodProxyRows: number[] = [];
     const renderPhaseProjectileRows: number[] = [];
     const renderPhaseLineProjectileRows: number[] = [];
     const longtaskMsPerSec: number[] = [];
     const snapshotBytes: number[] = [];
     const snapshotMaterializationSamples = createSnapshotMaterializationAccumulator();
-    const drainedSnapshotMaterialization: SnapshotMaterializationMetadata[] = [];
     let runtimeProfile = 'unknown';
     let gpuTimerSupported = false;
     let activePixelRatio = 1;
@@ -715,8 +955,6 @@ async function runFullStack(
       renderPhaseHudMs.push(timing.renderPhaseHudMs);
       renderPhaseUnitRows.push(timing.renderPhaseUnitRows);
       renderPhaseBuildingRows.push(timing.renderPhaseBuildingRows);
-      renderPhaseUnitLodProxyRows.push(timing.renderPhaseUnitLodProxyRows);
-      renderPhaseBuildingLodProxyRows.push(timing.renderPhaseBuildingLodProxyRows);
       renderPhaseProjectileRows.push(timing.renderPhaseProjectileRows);
       renderPhaseLineProjectileRows.push(timing.renderPhaseLineProjectileRows);
       longtaskMsPerSec.push(timing.longtaskMsPerSec);
@@ -762,6 +1000,7 @@ async function runFullStack(
     const snapshotMaterializationStats = summarizeSnapshotMaterialization(
       snapshotMaterializationSamples,
     );
+    const combatTargetingProfile = readCombatTargetingProfile();
     const wasmBoundary = finishWasmBoundaryTracking();
     return {
       units: clientViewState.getUnits().length,
@@ -772,6 +1011,7 @@ async function runFullStack(
       gpuTimerSupported,
       activePixelRatio,
       nativePixelRatio,
+      cameraMapCenterDistance: scene?.cameras.main.mapCenterDistance ?? 0,
       frameMs: summarize(frameMs),
       logicMs: summarize(logicMs),
       renderPrepMs: summarize(renderPrepMs),
@@ -790,6 +1030,9 @@ async function runFullStack(
       serverTpsAvg: summarize(serverTpsAvg),
       serverCpuAvgPct: summarize(serverCpuAvgPct),
       serverCpuHiPct: summarize(serverCpuHiPct),
+      serverStepPhaseMs: summarizeSimStepPhaseTimings(serverStepPhaseAccumulator),
+      serverUpdatePhaseMs: summarizeSimUpdatePhaseTimings(serverUpdatePhaseAccumulator),
+      serverCombatPhaseMs: summarizeSimCombatPhaseTimings(serverCombatPhaseAccumulator),
       drawCalls: summarize(drawCalls),
       triangles: summarize(triangles),
       bufferUploadBytes: summarize(bufferUploadBytes),
@@ -808,23 +1051,26 @@ async function runFullStack(
       renderPhaseHudMs: summarize(renderPhaseHudMs),
       renderPhaseUnitRows: summarize(renderPhaseUnitRows),
       renderPhaseBuildingRows: summarize(renderPhaseBuildingRows),
-      renderPhaseUnitLodProxyRows: summarize(renderPhaseUnitLodProxyRows),
-      renderPhaseBuildingLodProxyRows: summarize(renderPhaseBuildingLodProxyRows),
       renderPhaseProjectileRows: summarize(renderPhaseProjectileRows),
       renderPhaseLineProjectileRows: summarize(renderPhaseLineProjectileRows),
       longtaskMsPerSec: summarize(longtaskMsPerSec),
       snapshotBytes: summarize(snapshotBytes),
       memory: memory.finish(),
       wasmBoundary,
+      combatTargetingProfile,
       snapshotMaterializationStats,
       snapshotWireStats,
     };
   } finally {
+    core.setStepProfiler(undefined);
+    core.simulation.setUpdateProfiler(undefined);
+    core.simulation.setCombatProfiler(undefined);
     finishWasmBoundaryTracking();
     if (game !== null) destroyGame(game);
     else connection.disconnect();
     server.stop();
     parent.remove();
+    setFogClouds(previousFogClouds);
   }
 }
 
@@ -1068,9 +1314,18 @@ function createServerConfig(
     mapWidthLandCells: options.mapCells,
     mapLengthLandCells: options.mapCells,
     backgroundMode: true,
-    aiPlayerIds: PLAYER_IDS,
+    aiPlayerIds: options.peaceful ? [] : PLAYER_IDS,
     spawnDemoInitialState: true,
     initialMaxTotalUnits: options.unitCap,
+    initialAllowedUnitBlueprintIds: options.peaceful
+      ? new Set(['unitConstructionDrone'])
+      : undefined,
+    initialAllowedBuildingBlueprintIds: options.peaceful
+      ? new Set()
+      : undefined,
+    initialAllowedTowerBlueprintIds: options.peaceful
+      ? new Set()
+      : undefined,
     converterTax: 0,
   };
 }
@@ -1096,6 +1351,23 @@ function diagnose(input: {
   evidence.push(
     `sim p95 ${fmt(input.simOnly.stepMs.p95)}ms = ${fmt(simUtil)}% of fixed-step budget`,
   );
+  const simPhaseEvidence = formatSimStepPhaseEvidence(input.simOnly.stepPhaseMs, 'sim-only');
+  if (simPhaseEvidence !== '') evidence.push(simPhaseEvidence);
+  const simUpdatePhaseEvidence = formatSimUpdatePhaseEvidence(
+    input.simOnly.simulationUpdatePhaseMs,
+    'sim-only',
+  );
+  if (simUpdatePhaseEvidence !== '') evidence.push(simUpdatePhaseEvidence);
+  const simCombatPhaseEvidence = formatSimCombatPhaseEvidence(
+    input.simOnly.simulationCombatPhaseMs,
+    'sim-only',
+  );
+  if (simCombatPhaseEvidence !== '') evidence.push(simCombatPhaseEvidence);
+  const collisionDetailEvidence = formatProjectileCollisionDetailEvidence(
+    input.simOnly.simulationCombatPhaseMs,
+    'sim-only',
+  );
+  if (collisionDetailEvidence !== '') evidence.push(collisionDetailEvidence);
   evidence.push(
     `snapshot p95 ${fmt(input.simSnapshot.snapshotTotalMs.p95)}ms, ` +
       `${fmt(snapshotMsPerSecond)}ms/s main-thread share`,
@@ -1121,7 +1393,7 @@ function diagnose(input: {
   );
 
   if (simUtil >= 85 || input.simOnly.simCeilingTpsP95 < ARCHITECTURE_CONFIG.lockstep.fixedStepHz * 1.15) {
-    nextChecks.push('Profile ServerSimulationCore.stepFixedTick by subsystem: targeting, physics, pathing, fog, projectiles.');
+    nextChecks.push('Use Simulation.update phase p95s to move the dominant subsystem toward Rust/data-oriented slabs: unit movement/action planning, combat, spatial refresh, or economy/construction.');
     nextChecks.push('Run the same harness with lower unit caps to find the unit-count slope.');
     return {
       primary: 'simulation',
@@ -1204,6 +1476,107 @@ function formatSnapshotMaterializationEvidence(
   return `${label} ${totalPart}top stages: ${top}`;
 }
 
+function formatSimStepPhaseEvidence(
+  phases: SimStepPhaseTimingReport | undefined,
+  label: string,
+): string {
+  if (phases === undefined) return '';
+  const entries: Array<{ label: string; p95: number }> = [
+    { label: 'simulation.update', p95: phases.simulationUpdateMs.p95 },
+    { label: 'physics.step', p95: phases.physicsStepMs.p95 },
+    { label: 'syncFromPhysics', p95: phases.syncFromPhysicsMs.p95 },
+    { label: 'unitForces', p95: phases.unitForcesMs.p95 },
+    { label: 'repairBefore', p95: phases.repairBeforeMs.p95 },
+    { label: 'repairAfter', p95: phases.repairAfterMs.p95 },
+    { label: 'factoryTurrets', p95: phases.factoryConstructionTurretMs.p95 },
+    { label: 'projectileFinalize', p95: phases.projectileLaunchFinalizeMs.p95 },
+    { label: 'commandQueue', p95: phases.commandQueueMs.p95 },
+  ];
+  entries.sort((a, b) => b.p95 - a.p95);
+  const top = entries
+    .slice(0, 4)
+    .map((entry) => `${entry.label} p95 ${fmt(entry.p95)}ms`)
+    .join(', ');
+  return `${label} step phases top: ${top}`;
+}
+
+function formatSimUpdatePhaseEvidence(
+  phases: SimUpdatePhaseTimingReport | undefined,
+  label: string,
+): string {
+  if (phases === undefined) return '';
+  const entries: Array<{ label: string; p95: number }> = [
+    { label: 'unitMovement', p95: phases.unitMovementMs.p95 },
+    { label: 'combat', p95: phases.combatMs.p95 },
+    { label: 'unitGroundNormal', p95: phases.unitGroundNormalMs.p95 },
+    { label: 'spatialGrid', p95: phases.spatialGridMs.p95 },
+    { label: 'constructionLifecycle', p95: phases.constructionLifecycleMs.p95 },
+    { label: 'factoryProduction', p95: phases.factoryProductionMs.p95 },
+    { label: 'commanderAbilities', p95: phases.commanderAbilitiesMs.p95 },
+    { label: 'buildingWindEconomy', p95: phases.buildingWindEconomyMs.p95 },
+    { label: 'energyDistribution', p95: phases.energyDistributionMs.p95 },
+    { label: 'idleBuilderAutoRepair', p95: phases.idleBuilderAutoRepairMs.p95 },
+    { label: 'deadCleanup', p95: phases.deadCleanupMs.p95 },
+    { label: 'commands', p95: phases.commandsMs.p95 },
+  ];
+  entries.sort((a, b) => b.p95 - a.p95);
+  const top = entries
+    .slice(0, 5)
+    .map((entry) => `${entry.label} p95 ${fmt(entry.p95)}ms`)
+    .join(', ');
+  return `${label} Simulation.update phases top: ${top}`;
+}
+
+function formatSimCombatPhaseEvidence(
+  phases: SimCombatPhaseTimingReport | undefined,
+  label: string,
+): string {
+  if (phases === undefined) return '';
+  const entries: Array<{ label: string; p95: number }> = [
+    { label: 'projectileCollisions', p95: phases.projectileCollisionsMs.p95 },
+    { label: 'updateProjectiles', p95: phases.updateProjectilesMs.p95 },
+    { label: 'targetingFiring', p95: phases.targetingFiringMs.p95 },
+    { label: 'stampTargeting', p95: phases.stampTargetingMs.p95 },
+    { label: 'fireTurrets', p95: phases.fireTurretsMs.p95 },
+    { label: 'turretRotation', p95: phases.turretRotationMs.p95 },
+    { label: 'shieldState', p95: phases.shieldStateMs.p95 },
+    { label: 'deathExplosion', p95: phases.deathExplosionMs.p95 },
+    { label: 'projectileSpatialRefresh', p95: phases.projectileSpatialRefreshMs.p95 },
+    { label: 'projectileEvents', p95: phases.projectileEventCullMs.p95 },
+  ];
+  entries.sort((a, b) => b.p95 - a.p95);
+  const top = entries
+    .slice(0, 5)
+    .map((entry) => `${entry.label} p95 ${fmt(entry.p95)}ms`)
+    .join(', ');
+  return `${label} combat phases top: ${top}`;
+}
+
+function formatProjectileCollisionDetailEvidence(
+  phases: SimCombatPhaseTimingReport | undefined,
+  label: string,
+): string {
+  if (phases === undefined) return '';
+  const entries: Array<{ label: string; p95: number }> = [
+    { label: 'loop', p95: phases.collisionLoopMs.p95 },
+    { label: 'hitboxSweep', p95: phases.collisionHitboxSweepMs.p95 },
+    { label: 'splashDamage', p95: phases.collisionSplashDamageMs.p95 },
+    { label: 'terminalPlan', p95: phases.collisionTerminalPlanMs.p95 },
+    { label: 'beamDamage', p95: phases.collisionBeamDamageMs.p95 },
+    { label: 'dgunDamage', p95: phases.collisionDgunDamageMs.p95 },
+    { label: 'killedProjectileDetonation', p95: phases.collisionKilledProjectileDetonationMs.p95 },
+    { label: 'submunitionSpawn', p95: phases.collisionSubmunitionSpawnMs.p95 },
+    { label: 'setup', p95: phases.collisionSetupMs.p95 },
+    { label: 'finalRemoval', p95: phases.collisionFinalRemovalMs.p95 },
+  ];
+  entries.sort((a, b) => b.p95 - a.p95);
+  const top = entries
+    .slice(0, 5)
+    .map((entry) => `${entry.label} p95 ${fmt(entry.p95)}ms`)
+    .join(', ');
+  return `${label} projectile collision detail top: ${top}`;
+}
+
 function countCoreEntities(core: ReturnType<GameServer['getLockstepSimulationCore']>): {
   units: number;
   buildings: number;
@@ -1216,6 +1589,87 @@ function countCoreEntities(core: ReturnType<GameServer['getLockstepSimulationCor
   };
 }
 
+function createSimStepPhaseTimingAccumulator(): SimStepPhaseTimingAccumulator {
+  const accumulator = {} as SimStepPhaseTimingAccumulator;
+  for (const key of SIM_STEP_PHASE_KEYS) {
+    accumulator[key] = [];
+  }
+  return accumulator;
+}
+
+function recordSimStepPhaseTiming(
+  accumulator: SimStepPhaseTimingAccumulator,
+  timings: ServerSimulationStepPhaseTimings,
+): void {
+  for (const key of SIM_STEP_PHASE_KEYS) {
+    accumulator[key].push(timings[key]);
+  }
+}
+
+function summarizeSimStepPhaseTimings(
+  accumulator: SimStepPhaseTimingAccumulator,
+): SimStepPhaseTimingReport {
+  const report = {} as SimStepPhaseTimingReport;
+  for (const key of SIM_STEP_PHASE_KEYS) {
+    report[key] = summarize(accumulator[key]);
+  }
+  return report;
+}
+
+function createSimUpdatePhaseTimingAccumulator(): SimUpdatePhaseTimingAccumulator {
+  const accumulator = {} as SimUpdatePhaseTimingAccumulator;
+  for (const key of SIM_UPDATE_PHASE_KEYS) {
+    accumulator[key] = [];
+  }
+  return accumulator;
+}
+
+function recordSimUpdatePhaseTiming(
+  accumulator: SimUpdatePhaseTimingAccumulator,
+  timings: SimulationUpdatePhaseTimings,
+): void {
+  for (const key of SIM_UPDATE_PHASE_KEYS) {
+    accumulator[key].push(timings[key]);
+  }
+}
+
+function summarizeSimUpdatePhaseTimings(
+  accumulator: SimUpdatePhaseTimingAccumulator,
+): SimUpdatePhaseTimingReport {
+  const report = {} as SimUpdatePhaseTimingReport;
+  for (const key of SIM_UPDATE_PHASE_KEYS) {
+    report[key] = summarize(accumulator[key]);
+  }
+  return report;
+}
+
+function createSimCombatPhaseTimingAccumulator(): SimCombatPhaseTimingAccumulator {
+  const accumulator = {} as SimCombatPhaseTimingAccumulator;
+  for (const key of SIM_COMBAT_PHASE_KEYS) {
+    accumulator[key] = [];
+  }
+  return accumulator;
+}
+
+function recordSimCombatPhaseTiming(
+  accumulator: SimCombatPhaseTimingAccumulator,
+  timings: SimulationCombatPhaseTimings,
+): void {
+  for (const key of SIM_COMBAT_PHASE_KEYS) {
+    accumulator[key].push(timings[key]);
+  }
+}
+
+function summarizeSimCombatPhaseTimings(
+  accumulator: SimCombatPhaseTimingAccumulator,
+): SimCombatPhaseTimingReport {
+  const report = {} as SimCombatPhaseTimingReport;
+  for (const key of SIM_COMBAT_PHASE_KEYS) {
+    report[key] = summarize(accumulator[key]);
+  }
+  return report;
+}
+
 function beginWasmBoundaryTracking(): void {
   WASM_BOUNDARY_INSTRUMENTATION.reset();
   WASM_BOUNDARY_INSTRUMENTATION.setEnabled(true);
@@ -1225,6 +1679,48 @@ function finishWasmBoundaryTracking(): WasmBoundaryInstrumentationReport {
   const report = WASM_BOUNDARY_INSTRUMENTATION.report();
   WASM_BOUNDARY_INSTRUMENTATION.setEnabled(false);
   return report;
+}
+
+const EMPTY_COMBAT_TARGETING_PROFILE: CombatTargetingProfileReport = {
+  scheduleSources: 0,
+  scheduleProcessed: 0,
+  scheduleSkipped: 0,
+  autoTicks: 0,
+  reacquireDue: 0,
+  spatialQueries: 0,
+  candidateCells: 0,
+  candidateSlotsVisited: 0,
+  candidatesCollected: 0,
+  chooseCalls: 0,
+  chooseCandidateTests: 0,
+  gateCalls: 0,
+  gatePasses: 0,
+};
+
+function resetCombatTargetingProfile(): void {
+  getSimWasm()?.combatTargeting.profileReset();
+}
+
+function readCombatTargetingProfile(): CombatTargetingProfileReport {
+  const targeting = getSimWasm()?.combatTargeting;
+  if (targeting === undefined) return EMPTY_COMBAT_TARGETING_PROFILE;
+  const values = new Float64Array(targeting.profileLen());
+  targeting.profileCopy(values);
+  return {
+    scheduleSources: values[0] ?? 0,
+    scheduleProcessed: values[1] ?? 0,
+    scheduleSkipped: values[2] ?? 0,
+    autoTicks: values[3] ?? 0,
+    reacquireDue: values[4] ?? 0,
+    spatialQueries: values[5] ?? 0,
+    candidateCells: values[6] ?? 0,
+    candidateSlotsVisited: values[7] ?? 0,
+    candidatesCollected: values[8] ?? 0,
+    chooseCalls: values[9] ?? 0,
+    chooseCandidateTests: values[10] ?? 0,
+    gateCalls: values[11] ?? 0,
+    gatePasses: values[12] ?? 0,
+  };
 }
 
 function createMemoryTracker(): {

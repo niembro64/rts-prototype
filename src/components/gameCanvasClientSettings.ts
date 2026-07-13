@@ -30,7 +30,6 @@ import {
   getRotationVelEmaMode,
   getEdgeScrollEnabled,
   getBurnMarks,
-  getLodMode,
   getLegsRadiusToggle,
   getLocomotionMarks,
   getMasterVolume,
@@ -75,7 +74,6 @@ import {
   setRotationVelEmaMode,
   setEdgeScrollEnabled,
   setBurnMarks,
-  setLodMode,
   setLegsRadiusToggle,
   setLocomotionMarks,
   setMasterVolume,
@@ -99,7 +97,6 @@ import {
   type CameraSmoothMode,
   type CameraFollowMode,
   type ClientMode,
-  type LodMode,
   type WaterBoundaryMode,
 } from '../clientBarConfig';
 import { audioManager } from '../game/audio/AudioManager';
@@ -216,7 +213,6 @@ export function useGameCanvasClientSettings({
   const commandHotkeyPreset = ref<CommandHotkeyPresetId>(getActiveCommandHotkeyPresetId());
   const commandHotkeyRevision = ref(0);
   const legsRadiusToggle = ref(getLegsRadiusToggle());
-  const lodMode = ref<LodMode>(getLodMode());
   const cameraSmoothMode = ref<CameraSmoothMode>(getCameraSmoothMode());
   const cameraFollowMode = ref<CameraFollowMode>(getCameraFollowMode());
   const cameraFovDegrees = ref<CameraFovDegrees>(getCameraFovDegrees());
@@ -279,7 +275,6 @@ export function useGameCanvasClientSettings({
     for (const prt of PROJ_RANGE_TYPES) projRangeToggles[prt] = getProjRangeToggle(prt);
     for (const urt of UNIT_RADIUS_TYPES) unitRadiusToggles[urt] = getUnitRadiusToggle(urt);
     legsRadiusToggle.value = getLegsRadiusToggle();
-    lodMode.value = getLodMode();
     cameraSmoothMode.value = getCameraSmoothMode();
     cameraFollowMode.value = getCameraFollowMode();
     cameraFovDegrees.value = getCameraFovDegrees();
@@ -348,11 +343,6 @@ export function useGameCanvasClientSettings({
     const newValue = !legsRadiusToggle.value;
     setLegsRadiusToggle(newValue);
     legsRadiusToggle.value = newValue;
-  }
-
-  function changeLodMode(mode: LodMode): void {
-    setLodMode(mode);
-    lodMode.value = mode;
   }
 
   function setCameraMode(mode: CameraSmoothMode): void {
@@ -793,7 +783,6 @@ export function useGameCanvasClientSettings({
     projRangeToggles,
     unitRadiusToggles,
     legsRadiusToggle,
-    lodMode,
     cameraSmoothMode,
     cameraFollowMode,
     cameraFovDegrees,
@@ -815,7 +804,6 @@ export function useGameCanvasClientSettings({
     toggleProjRange,
     toggleUnitRadius,
     toggleLegsRadius,
-    changeLodMode,
     setCameraMode,
     setCameraFollow,
     changeCameraFovDegrees,

@@ -5458,6 +5458,74 @@ mod sim_kernel_tests {
     }
 
     #[test]
+    pub(crate) fn damage_area_projectile_candidates_batch_reads_live_entity_state() {
+        let _guard = lock_tests();
+        entity_state_init(4);
+        {
+            let slab = entity_state();
+            slab.ensure_capacity(3);
+            slab.entity_id[1] = 101;
+            slab.kind[1] = ENTITY_STATE_KIND_SHOT;
+            slab.pos_x[1] = 3.0;
+            slab.pos_y[1] = 4.0;
+            slab.pos_z[1] = 0.0;
+            slab.hp[1] = 5.0;
+            slab.projectile_type_code[1] = 0;
+            slab.radius_collision[1] = 1.0;
+
+            slab.entity_id[2] = 102;
+            slab.kind[2] = ENTITY_STATE_KIND_SHOT;
+            slab.pos_x[2] = 20.0;
+            slab.pos_y[2] = 0.0;
+            slab.pos_z[2] = 0.0;
+            slab.hp[2] = 5.0;
+            slab.projectile_type_code[2] = 0;
+            slab.radius_collision[2] = 1.0;
+
+            slab.entity_id[3] = 103;
+            slab.kind[3] = ENTITY_STATE_KIND_SHOT;
+            slab.pos_x[3] = 0.0;
+            slab.pos_y[3] = 0.0;
+            slab.pos_z[3] = 0.0;
+            slab.hp[3] = 5.0;
+            slab.projectile_type_code[3] = 1;
+            slab.radius_collision[3] = 10.0;
+        }
+
+        let slots = [1_u32, 2, 3];
+        let mut flags = [0_u8; 3];
+        let mut dir_x = [0.0; 3];
+        let mut dir_y = [0.0; 3];
+        let mut dir_z = [0.0; 3];
+        let mut distance = [0.0; 3];
+        let processed = damage_area_projectile_candidates_batch(
+            3,
+            &slots,
+            0.0,
+            0.0,
+            0.0,
+            5.0,
+            &mut flags,
+            &mut dir_x,
+            &mut dir_y,
+            &mut dir_z,
+            &mut distance,
+        );
+
+        assert_eq!(processed, 2);
+        assert_eq!(
+            flags[0],
+            DAMAGE_AREA_FLAG_SLICE_PASS | DAMAGE_AREA_FLAG_OVERLAP
+        );
+        assert_eq!(flags[1], DAMAGE_AREA_FLAG_SLICE_PASS);
+        assert_eq!(flags[2], 0);
+        assert!((dir_x[0] - 0.6).abs() < 1e-12);
+        assert!((dir_y[0] - 0.8).abs() < 1e-12);
+        assert_eq!(dir_z[0], 0.0);
+        assert_eq!(distance[0], 5.0);
+    }
+
+    #[test]
     pub(crate) fn damage_area_turret_candidates_batch_classifies_slab_mounts() {
         let _guard = lock_tests();
 
@@ -8196,16 +8264,27 @@ mod sim_kernel_tests {
                 1.0,    // plateau_ramp_edge_sharpness
                 0.4,    // ripple_radius_fraction
                 1.7,    // ripple_phase
-                700.0, 0.9, // ripple component 0 wavelength/magnitude
-                600.0, 0.0, // ripple component 1
-                600.0, 0.0, // ripple component 2
-                0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+                700.0,
+                0.9, // ripple component 0 wavelength/magnitude
+                600.0,
+                0.0, // ripple component 1
+                600.0,
+                0.0, // ripple component 2
+                0.1,
+                0.4,
+                0.08, // ridge inner/outer/half-width fractions
                 85.0, // plateau_wall_slope_degrees (shared by waterfront walls)
                 0.0,  // waters_edge_beach_slope_degrees (all-cliff shoreline)
                 cliff_height,
-                0.0,  // shoreline_beach_fade_radius
+                0.0,   // shoreline_beach_fade_radius
                 300.0, // shoreline_cliff_fade_radius
-                0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, // pipeline stage order, all active
+                0.0,
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+                5.0,
+                6.0, // pipeline stage order, all active
             ];
             let lod_config = [
                 0.0,
@@ -8283,7 +8362,7 @@ mod sim_kernel_tests {
             700.0, 0.9, // ripple component 0 wavelength/magnitude
             600.0, 0.0, // ripple component 1
             600.0, 0.0, // ripple component 2
-            0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+            0.1, 0.4, 0.08,  // ridge inner/outer/half-width fractions
             85.0,  // plateau_wall_slope_degrees (shared by waterfront walls + caps)
             10.0,  // waters_edge_beach_slope_degrees (beach halves active)
             120.0, // waters_edge_cliff_height
@@ -9262,16 +9341,8 @@ mod sim_kernel_tests {
     #[test]
     pub(crate) fn submerged_water_friction_opposes_velocity() {
         let _guard = lock_tests();
-        let (ax, ay, az, out_flags) = run_submerged_unit_force(
-            40.0,
-            (50.0, -20.0, 10.0),
-            false,
-            1200.0,
-            0.5,
-            1.5,
-            0.0,
-            0.0,
-        );
+        let (ax, ay, az, out_flags) =
+            run_submerged_unit_force(40.0, (50.0, -20.0, 10.0), false, 1200.0, 0.5, 1.5, 0.0, 0.0);
 
         assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
         assert!(ax < 0.0, "water friction should damp positive x velocity");
@@ -10187,6 +10258,9 @@ mod lock_on_inclusion_tests {
     pub(crate) fn run_schedule_tick(turret_shield_panels_enabled: u8) -> (i32, u8, u8) {
         combat_targeting_rebuild_observation_masks();
         let source_slots = [SOURCE_SLOT];
+        let current_tick = (0..16)
+            .find(|tick| combat_targeting_reacquire_due(*tick, SOURCE_ID))
+            .unwrap_or(0);
         let mut cached_fire_ranks = [0u8; MAX];
         let mut cached_fire_dist_sqs = [0.0f64; MAX];
         let mut out_had_cooldown = [0u8; 1];
@@ -10194,7 +10268,7 @@ mod lock_on_inclusion_tests {
         let mut out_has_active_work = [0u8; 1];
         combat_targeting_schedule_and_tick_batch(
             &source_slots,
-            10,
+            current_tick,
             16.0,
             turret_shield_panels_enabled,
             1,

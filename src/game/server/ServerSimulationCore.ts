@@ -32,6 +32,19 @@ type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
 };
 
+export type ServerSimulationStepPhaseTimings = {
+  readonly commandQueueMs: number;
+  readonly repairBeforeMs: number;
+  readonly simulationUpdateMs: number;
+  readonly factoryConstructionTurretMs: number;
+  readonly unitForcesMs: number;
+  readonly physicsStepMs: number;
+  readonly repairAfterMs: number;
+  readonly syncFromPhysicsMs: number;
+  readonly projectileLaunchFinalizeMs: number;
+  readonly totalMs: number;
+};
+
 export class ServerSimulationCore {
   readonly physics: PhysicsEngine3D;
   readonly world: WorldState;
@@ -49,6 +62,7 @@ export class ServerSimulationCore {
   private readonly factoryConstructionTurretSystem: FactoryConstructionTurretSystem;
   private physicsSyncEntitySlotsBuf = new Uint32Array(1024);
   private readonly onGameOver: ((winnerId: PlayerId) => void) | undefined;
+  private stepProfiler: ((timings: ServerSimulationStepPhaseTimings) => void) | undefined;
   private isGameOver = false;
   private disposed = false;
 
@@ -75,6 +89,12 @@ export class ServerSimulationCore {
   }
 
   stepFixedTick(dtMs: number, orderedCommandsForThisTick: readonly Command[] = []): void {
+    const stepProfiler = this.stepProfiler;
+    if (stepProfiler !== undefined) {
+      this.stepFixedTickProfiled(dtMs, orderedCommandsForThisTick, stepProfiler);
+      return;
+    }
+
     for (const command of orderedCommandsForThisTick) {
       this.commandQueue.enqueue(command);
     }
@@ -88,6 +108,12 @@ export class ServerSimulationCore {
     this.repairInvalidEntityPoses();
     this.syncFromPhysics();
     finalizePendingProjectileLaunchVelocities(this.world, dtMs);
+  }
+
+  setStepProfiler(
+    profiler: ((timings: ServerSimulationStepPhaseTimings) => void) | undefined,
+  ): void {
+    this.stepProfiler = profiler;
   }
 
   getCanonicalStateHash(): CanonicalServerStateHash {
@@ -118,6 +144,73 @@ export class ServerSimulationCore {
     if (this.disposed) return;
     this.disposed = true;
     this.physics.dispose();
+  }
+
+  private stepFixedTickProfiled(
+    dtMs: number,
+    orderedCommandsForThisTick: readonly Command[],
+    profiler: (timings: ServerSimulationStepPhaseTimings) => void,
+  ): void {
+    const start = performance.now();
+    let mark = start;
+
+    for (const command of orderedCommandsForThisTick) {
+      this.commandQueue.enqueue(command);
+    }
+    let now = performance.now();
+    const commandQueueMs = now - mark;
+    mark = now;
+
+    const dtSec = dtMs / 1000;
+    this.repairInvalidEntityPoses();
+    now = performance.now();
+    const repairBeforeMs = now - mark;
+    mark = now;
+
+    this.simulation.update(dtMs);
+    now = performance.now();
+    const simulationUpdateMs = now - mark;
+    mark = now;
+
+    this.factoryConstructionTurretSystem.update(dtSec);
+    now = performance.now();
+    const factoryConstructionTurretMs = now - mark;
+    mark = now;
+
+    this.unitForceSystem.applyForces(dtSec);
+    now = performance.now();
+    const unitForcesMs = now - mark;
+    mark = now;
+
+    this.physics.step(dtSec, this.simulation.getWindState());
+    now = performance.now();
+    const physicsStepMs = now - mark;
+    mark = now;
+
+    this.repairInvalidEntityPoses();
+    now = performance.now();
+    const repairAfterMs = now - mark;
+    mark = now;
+
+    this.syncFromPhysics();
+    now = performance.now();
+    const syncFromPhysicsMs = now - mark;
+    mark = now;
+
+    finalizePendingProjectileLaunchVelocities(this.world, dtMs);
+    now = performance.now();
+    profiler({
+      commandQueueMs,
+      repairBeforeMs,
+      simulationUpdateMs,
+      factoryConstructionTurretMs,
+      unitForcesMs,
+      physicsStepMs,
+      repairAfterMs,
+      syncFromPhysicsMs,
+      projectileLaunchFinalizeMs: now - mark,
+      totalMs: now - start,
+    });
   }
 
   private setupSimulationCallbacks(): void {
@@ -320,7 +413,10 @@ export class ServerSimulationCore {
     if (!nativeSyncedMotion) {
       nativeSyncedMotion = this.physics.syncLastStepBodyMotionToEntityState() >= 0;
     }
-    if (nativeSyncedMotion) return;
+    if (nativeSyncedMotion) {
+      getSimWasm()?.spatial.syncUnitSlotsFromEntityState(syncedEntitySlots);
+      return;
+    }
 
     for (let i = 0; i < slotCount; i++) {
       const entitySlot = this.physicsSyncEntitySlotsBuf[i];
@@ -342,6 +438,7 @@ export class ServerSimulationCore {
         }
       }
     }
+    getSimWasm()?.spatial.syncUnitSlotsFromEntityState(syncedEntitySlots);
   }
 
   private writeSyncedMotionToEntityState(

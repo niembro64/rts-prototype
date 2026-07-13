@@ -42,7 +42,10 @@ let _targetingBatchHasActiveWork = new Uint8Array(0);
 let _targetingBatchCachedFireRanks = new Uint8Array(0);
 let _targetingBatchCachedFireDistSqs = new Float64Array(0);
 let _targetingBatchMaxTurrets = 0;
-const TARGETING_REACQUIRE_PERIOD_TICKS = 16;
+// Keep this in sync with COMBAT_TARGETING_REACQUIRE_PERIOD_TICKS in
+// rts-sim-wasm/src/combat_targeting.rs. Active combat work stays hot through
+// nextCombatProbeTick=-1; this only amortizes idle/no-target broad searches.
+const TARGETING_REACQUIRE_PERIOD_TICKS = 96;
 
 function positiveModulo(value: number, divisor: number): number {
   return ((value % divisor) + divisor) % divisor;

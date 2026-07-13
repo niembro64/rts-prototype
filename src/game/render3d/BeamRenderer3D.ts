@@ -36,9 +36,7 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
-import type { RenderViewState3D } from './RenderFrameState3D';
-import { entityDetailLevelForView } from './EntityLod3D';
-import { beamStyleForDetail } from './EntityDetailLevel3D';
+import { DETAIL_LEVEL_FULL, beamStyleForDetail } from './EntityDetailLevel3D';
 
 // Visual tuning (color, wave alpha range, wave spacing/speed) lives in
 // beamConfig.json + colorsConfig.json and is resolved by BeamWaveVisual3D —
@@ -76,10 +74,6 @@ type BeamConfigFile = {
   openEndedLine?: Partial<OpenEndedLineConfig>;
   imposterSegment?: Partial<BeamImposterSegmentConfig>;
 };
-
-type BeamEmissionLodResolver = (entity: Entity) => boolean;
-
-const NEVER_EMISSION_LOW_LOD: BeamEmissionLodResolver = () => false;
 
 const rawBeamConfig = beamConfig as unknown as BeamConfigFile;
 
@@ -361,8 +355,6 @@ export class BeamRenderer3D {
     graphicsConfig?: GraphicsConfig,
     contentVersion?: number,
     turretMountResolver?: TurretMountResolver,
-    isEntityEmissionLowLod: BeamEmissionLodResolver = NEVER_EMISSION_LOW_LOD,
-    view?: RenderViewState3D,
   ): void {
     if (projectiles.length === 0 && !this.hasActiveVisuals()) return;
     tickBeamWaveTime();
@@ -408,18 +400,15 @@ export class BeamRenderer3D {
         BEAM_MIN_RADIUS,
         profile.lineRadius * BEAM_RADIUS_SCALE,
       );
-      const useLowLodSegments =
-        BEAM_IMPOSTER_SEGMENT_CONFIG.enabled &&
-        isEntityEmissionLowLod(e);
-      const detailLevel = view ? entityDetailLevelForView(view, e) : 1;
       const beamStyle = beamStyleForDetail(
-        detailLevel,
+        DETAIL_LEVEL_FULL,
         graphicsConfig?.beamStyle ?? 'complex',
       );
       const useImposterSegments =
-        useLowLodSegments || beamStyle === 'simple' || beamStyle === 'standard';
-      const useLowLodEndpoints =
-        isEntityEmissionLowLod(e) || beamStyle === 'simple' || beamStyle === 'standard';
+        BEAM_IMPOSTER_SEGMENT_CONFIG.enabled &&
+        (beamStyle === 'simple' || beamStyle === 'standard');
+      const useSimpleEndpoints =
+        beamStyle === 'simple' || beamStyle === 'standard';
 
       // Walk the polyline pairwise and draw one cylinder per segment.
       // Each reflection vertex carries its own (x, y, z), so pitched
@@ -513,7 +502,7 @@ export class BeamRenderer3D {
         }
       }
 
-      if (!useLowLodEndpoints && proj.endpointDamageable !== false) {
+      if (!useSimpleEndpoints && proj.endpointDamageable !== false) {
         if (endpointIdx < BEAM_ENDPOINT_CAP) {
           const damageSphereRadius = Math.max(
             ENDPOINT_MIN_RADIUS,

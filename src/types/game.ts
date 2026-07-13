@@ -85,10 +85,23 @@ export type SnapshotUnsubscribe = () => void;
 export type SimEventCallback = (event: SimEvent) => void;
 export type GameOverCallback = (winnerId: PlayerId) => void;
 
+export type AuthoritativeRenderSource = {
+  readonly kind: 'local-server';
+  /** The local deterministic server world. Renderers must treat this as
+   *  read-only presentation input; gameplay mutation still goes through
+   *  command frames. */
+  readonly world: import('../game/sim/WorldState').WorldState;
+  readonly getTick: () => number;
+};
+
 export type GameConnection = {
   /** True for in-memory connections where the client scene and
    *  local server share process-level simulation singletons. */
   readonly sharesAuthoritativeState?: boolean;
+  /** Local-only escape hatch for rendering from authoritative sim state.
+   *  Remote and worker connections return nothing; local lockstep can
+   *  expose a filtered render adapter through this seam. */
+  getAuthoritativeRenderSource?(): AuthoritativeRenderSource | null;
   sendCommand(command: Command): void;
   markClientReady(): void;
   onSnapshot(callback: SnapshotCallback): SnapshotUnsubscribe;

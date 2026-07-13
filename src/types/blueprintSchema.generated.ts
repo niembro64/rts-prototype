@@ -215,6 +215,10 @@ export type ShotRuntimeProfile = {
   detonateOnExpiry: boolean;
   hasExplosion: boolean;
   hasSubmunitions: boolean;
+  airFrictionPer60HzFrame: number;
+  airDragCoefficient: number;
+  propulsionAcceleration: number;
+  homingThrustAcceleration: number;
 };
 
 export type ShotVisualProfile = {

@@ -365,19 +365,40 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   buildingConsumerIds.clear();
   const sweepServicingBuilderIds = buffers.sweepServicingBuilderIds;
   sweepServicingBuilderIds.clear();
+  const factoryBuildings = world.getFactoryBuildings();
+  const factoryUnits = world.getFactoryUnits();
+  const healthBarBuildings = world.getHealthBarBuildings();
+  const damagedUnits = world.getDamagedUnits();
 
   // Zero every factory's per-resource rate fractions up front. The
   // build-consumer loop below sets them on the factories that actually
   // funded a transfer this tick; any factory not touched stays at 0,
   // so the 3D resource-ball flow correctly reads empty when a queue
   // stalls or completes between frames.
-  for (const factoryEntity of world.getFactoryBuildings().concat(world.getFactoryUnits())) {
-    const fc = factoryEntity.factory;
+  for (let i = 0; i < factoryBuildings.length; i++) {
+    const fc = factoryBuildings[i].factory;
     if (!fc) continue;
     if (fc.energyRateFraction !== 0 || fc.metalRateFraction !== 0) {
       fc.energyRateFraction = 0;
       fc.metalRateFraction = 0;
     }
+  }
+  for (let i = 0; i < factoryUnits.length; i++) {
+    const fc = factoryUnits[i].factory;
+    if (!fc) continue;
+    if (fc.energyRateFraction !== 0 || fc.metalRateFraction !== 0) {
+      fc.energyRateFraction = 0;
+      fc.metalRateFraction = 0;
+    }
+  }
+
+  if (
+    factoryBuildings.length === 0 &&
+    factoryUnits.length === 0 &&
+    healthBarBuildings.length === 0 &&
+    damagedUnits.length === 0
+  ) {
+    return;
   }
 
   const addConsumer = (
@@ -435,7 +456,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // once per tick; the fast path below skips the scan entirely when empty.
   const autoAssistCandidates = _autoAssistCandidates;
   autoAssistCandidates.length = 0;
-  for (const structure of world.getHealthBarBuildings()) {
+  for (const structure of healthBarBuildings) {
     if (structure.ownership !== null && isBuildInProgress(structure.buildable)) {
       autoAssistCandidates.push(structure);
     }
@@ -506,7 +527,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
 
   // 2a) Factories currently funding unit shells (building factories then
   //     mobile unit factories / queens).
-  for (const entity of world.getFactoryBuildings().concat(world.getFactoryUnits())) {
+  const addFactoryConsumer = (entity: Entity): void => {
     const factory = entity.factory;
     const ownership = entity.ownership;
     if (factory !== null && factory.isProducing && factory.currentShellId !== null
@@ -562,12 +583,18 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
         }
       }
     }
+  };
+  for (const entity of factoryBuildings) {
+    addFactoryConsumer(entity);
+  }
+  for (const entity of factoryUnits) {
+    addFactoryConsumer(entity);
   }
 
   // 2b) Building shells under construction, funded by builder units.
   // Use the health/build HUD cache instead of scanning every static
   // entity; construction shells are already included there.
-  for (const entity of world.getHealthBarBuildings()) {
+  for (const entity of healthBarBuildings) {
     if (
       isBuildInProgress(entity.buildable)
       && entity.ownership
@@ -665,6 +692,7 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const builder = entity.builder;
     if (builder === null || entity.unit === null || entity.ownership === null) continue;
     if (entity.unit.hp <= 0 || isBuildBlockingActivation(entity.buildable)) continue;
+    if (entity.unit.actions[0]?.type !== 'guard') continue;
     const svc = resolveGuardServiceTarget(world, entity);
     if (svc === null || svc.kind !== 'heal') continue; // build/factory assist handled above
     const target = svc.target;
@@ -692,7 +720,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   //    way as they sweep past (BAR patrol-service); updateUnits holds them
   //    while they fund. Shares guardHealedTargetIds so one target gets one
   //    healer per tick.
-  const damagedUnits = world.getDamagedUnits();
   if (damagedUnits.length > 0) {
     for (const entity of world.getBuilderUnits()) {
       const builder = entity.builder;

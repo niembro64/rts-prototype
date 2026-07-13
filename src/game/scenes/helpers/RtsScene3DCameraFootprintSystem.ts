@@ -3,6 +3,10 @@ import { TERRAIN_MAX_RENDER_Y, TILE_FLOOR_Y } from '../../sim/Terrain';
 import type { FootprintBounds, FootprintQuad } from '../../ViewportFootprint';
 
 const RENDER_SCOPE_AERIAL_HEADROOM_Y = 700;
+const RENDER_SCOPE_AERIAL_MARGIN_MIN = 350;
+const RENDER_SCOPE_AERIAL_MARGIN_FOOTPRINT_FRAC = 0.35;
+const RENDER_SCOPE_AERIAL_MARGIN_HEADROOM_FRAC = 0.85;
+const RENDER_SCOPE_AERIAL_MARGIN_MAP_FRAC = 0.22;
 const RENDER_SCOPE_NDC_SAMPLES = [
   [-1,  1], [0,  1], [1,  1],
   [-1,  0], [0,  0], [1,  0],
@@ -11,7 +15,6 @@ const RENDER_SCOPE_NDC_SAMPLES = [
 const RENDER_SCOPE_PLANES = [
   TILE_FLOOR_Y,
   0,
-  TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y,
 ] as const;
 
 type RtsScene3DCameraFootprintResult = {
@@ -96,7 +99,33 @@ export class RtsScene3DCameraFootprintSystem {
       }
     }
 
+    this.expandBoundsForAerialHeadroom(bounds);
     return bounds;
+  }
+
+  private expandBoundsForAerialHeadroom(bounds: FootprintBounds): void {
+    const footprintSpan = Math.max(
+      Math.max(0, bounds.maxX - bounds.minX),
+      Math.max(0, bounds.maxY - bounds.minY),
+    );
+    const mapSpan = Math.max(1, this.mapWidth, this.mapHeight);
+    const headroomSpan = Math.max(
+      0,
+      TERRAIN_MAX_RENDER_Y + RENDER_SCOPE_AERIAL_HEADROOM_Y - Math.min(TILE_FLOOR_Y, 0),
+    );
+    const uncappedMargin = Math.max(
+      RENDER_SCOPE_AERIAL_MARGIN_MIN,
+      footprintSpan * RENDER_SCOPE_AERIAL_MARGIN_FOOTPRINT_FRAC,
+      headroomSpan * RENDER_SCOPE_AERIAL_MARGIN_HEADROOM_FRAC,
+    );
+    const margin = Math.min(
+      uncappedMargin,
+      mapSpan * RENDER_SCOPE_AERIAL_MARGIN_MAP_FRAC,
+    );
+    bounds.minX -= margin;
+    bounds.maxX += margin;
+    bounds.minY -= margin;
+    bounds.maxY += margin;
   }
 
   private writePointOnHorizontalPlane(

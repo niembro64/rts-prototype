@@ -5,6 +5,9 @@
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import {
   getBrowserRenderRuntimeProfile,
   type BrowserRenderRuntimeProfile,
@@ -34,11 +37,21 @@ import {
   ZOOM_STEP_FRACTION,
   CAMERA_FAR_REFERENCE_DISTANCE_FACTOR,
 } from '../../config';
-import { getWaterBoundaryMode } from '@/clientBarConfig';
+import { getGraphicsConfig, getWaterBoundaryMode } from '@/clientBarConfig';
 import { WATER_SURFACE_OUTPUT_LINEAR_RGB } from './WaterColor3D';
 
 const RENDER_DISABLED_UPDATE_INTERVAL_MS = 200;
-const DYNAMIC_PIXEL_RATIO_FLOOR = 0.75;
+const DYNAMIC_PIXEL_RATIO_FLOOR = 0.5;
+const DYNAMIC_PIXEL_RATIO_STEP = 0.25;
+const DYNAMIC_PIXEL_RATIO_DROP_INTERVAL_MS = 450;
+const DYNAMIC_PIXEL_RATIO_RECOVERY_INTERVAL_MS = 1500;
+const DYNAMIC_PIXEL_RATIO_OVERLOAD_GPU_MS = 13;
+const DYNAMIC_PIXEL_RATIO_FRAME_BACKPRESSURE_GPU_MS = 10;
+const DYNAMIC_PIXEL_RATIO_COMFORTABLE_GPU_MS = 8;
+const DYNAMIC_PIXEL_RATIO_OVERLOAD_FRAME_MS = 24;
+const DYNAMIC_PIXEL_RATIO_SEVERE_FRAME_MS = 40;
+const DYNAMIC_PIXEL_RATIO_BACKPRESSURE_DROP_FRAMES = 2;
+const DYNAMIC_PIXEL_RATIO_COMFORTABLE_FRAME_MS = 15;
 // CAMERA_NEAR_PLANE bumped 5 → 50: depth-buffer precision is dominated
 // by 1/near, so 10× near gives 10× better precision everywhere. The
 // game's units have ~10–20 wu radius, so 50 keeps routine play geometry
@@ -97,6 +110,7 @@ export class ThreeApp {
   private _nativePixelRatio = 1;
   private _activePixelRatio = 1;
   private _lastPixelRatioAdjustMs = 0;
+  private _pixelRatioBackpressureFrames = 0;
   private _dynamicPixelRatioEnabled = true;
   private _lastCssWidth = 0;
   private _lastCssHeight = 0;
@@ -104,6 +118,7 @@ export class ThreeApp {
   private _skyTexture: THREE.Texture | null = null;
   private _visibleSunDisk: THREE.Object3D | null = null;
   private _lastSeaBackgroundEnabled: boolean | null = null;
+  private _composer: EffectComposer | null = null;
   private readonly _seaBackgroundColor = new THREE.Color().setRGB(
     WATER_SURFACE_OUTPUT_LINEAR_RGB.r,
     WATER_SURFACE_OUTPUT_LINEAR_RGB.g,
@@ -127,6 +142,8 @@ export class ThreeApp {
     this._skyTexture = makeSkyGradientTexture();
     this.scene.background = this._skyTexture;
     this._runtimeProfile = getBrowserRenderRuntimeProfile();
+    const graphicsConfig = getGraphicsConfig();
+    const antialiasLevel = Math.max(0, Math.floor(graphicsConfig.antialiasLevel));
 
     // `logarithmicDepthBuffer` was enabled here briefly but had to come
     // off: every custom THREE.ShaderMaterial in this codebase (beams,
@@ -141,7 +158,7 @@ export class ThreeApp {
     // pure-units water polygon offset.
     this.renderer = new THREE.WebGLRenderer({
       alpha: false,
-      antialias: this._runtimeProfile.antialias,
+      antialias: antialiasLevel > 0 && this._runtimeProfile.antialias,
       depth: true,
       failIfMajorPerformanceCaveat: false,
       precision: this._runtimeProfile.precision,
@@ -173,6 +190,7 @@ export class ThreeApp {
       CAMERA_NEAR_PLANE,
       CAMERA_FAR_PLANE,
     );
+    this._composer = this.createMsaaComposer(antialiasLevel);
     this.resizeRenderer(width, height);
     this.renderer.shadowMap.enabled = false;
     parent.appendChild(this.renderer.domElement);
@@ -364,7 +382,11 @@ export class ThreeApp {
         this.frameProfiler.beginFrame();
         this.gpuTimer.begin();
         const renderStart = performance.now();
-        this.renderer.render(this.scene, this.camera);
+        if (this._composer !== null) {
+          this._composer.render();
+        } else {
+          this.renderer.render(this.scene, this.camera);
+        }
         const rendererRenderMs = performance.now() - renderStart;
         this.gpuTimer.end();
         this.frameProfiler.endFrame(this.renderer, rendererRenderMs);
@@ -384,25 +406,73 @@ export class ThreeApp {
     // buffer is reallocated by setPixelRatio()+setSize(). Those profiles
     // keep DPR stable; browser desktop keeps the adaptive quality loop.
     if (!this._dynamicPixelRatioEnabled) return;
-    if (now - this._lastPixelRatioAdjustMs < 750) return;
 
     const gpuMs = this.gpuTimer.getGpuMs();
     const hasGpuMs = this.gpuTimer.isSupported() && gpuMs > 0;
-    const overloaded = hasGpuMs ? gpuMs > 16 : frameDeltaMs > 22;
-    const comfortable = hasGpuMs ? gpuMs < 9 : frameDeltaMs < 14;
+    const frameBackpressured = frameDeltaMs > DYNAMIC_PIXEL_RATIO_OVERLOAD_FRAME_MS;
+    const frameSeverelyBackpressured = frameDeltaMs > DYNAMIC_PIXEL_RATIO_SEVERE_FRAME_MS;
+    const gpuOverloaded = hasGpuMs && gpuMs > DYNAMIC_PIXEL_RATIO_OVERLOAD_GPU_MS;
+    const backpressureOverloadCandidate = hasGpuMs
+      ? (
+          frameSeverelyBackpressured ||
+          (
+            frameBackpressured &&
+            gpuMs > DYNAMIC_PIXEL_RATIO_FRAME_BACKPRESSURE_GPU_MS
+          )
+        )
+      : frameBackpressured;
+    this._pixelRatioBackpressureFrames = backpressureOverloadCandidate
+      ? this._pixelRatioBackpressureFrames + 1
+      : 0;
+    const overloaded =
+      gpuOverloaded ||
+      this._pixelRatioBackpressureFrames >= DYNAMIC_PIXEL_RATIO_BACKPRESSURE_DROP_FRAMES;
+    const comfortable =
+      (!hasGpuMs || gpuMs < DYNAMIC_PIXEL_RATIO_COMFORTABLE_GPU_MS) &&
+      frameDeltaMs < DYNAMIC_PIXEL_RATIO_COMFORTABLE_FRAME_MS;
+    if (!overloaded && !comfortable) return;
+
+    const minInterval = overloaded
+      ? DYNAMIC_PIXEL_RATIO_DROP_INTERVAL_MS
+      : DYNAMIC_PIXEL_RATIO_RECOVERY_INTERVAL_MS;
+    if (now - this._lastPixelRatioAdjustMs < minInterval) return;
+
     let next = this._activePixelRatio;
     if (overloaded) {
-      next = Math.max(DYNAMIC_PIXEL_RATIO_FLOOR, this._activePixelRatio - 0.25);
+      next = Math.max(DYNAMIC_PIXEL_RATIO_FLOOR, this._activePixelRatio - DYNAMIC_PIXEL_RATIO_STEP);
     } else if (comfortable) {
-      next = Math.min(this._nativePixelRatio, this._activePixelRatio + 0.25);
+      next = Math.min(
+        this._nativePixelRatio,
+        this._runtimeProfile.pixelRatioCap,
+        this._activePixelRatio + DYNAMIC_PIXEL_RATIO_STEP,
+      );
     }
     if (Math.abs(next - this._activePixelRatio) < 0.01) return;
 
     this._activePixelRatio = next;
     this._lastPixelRatioAdjustMs = now;
     this.renderer.setPixelRatio(this._activePixelRatio);
+    this._composer?.setPixelRatio(this._activePixelRatio);
     const canvas = this.renderer.domElement;
     this.resizeRenderer(canvas.clientWidth, canvas.clientHeight, false, true);
+  }
+
+  private createMsaaComposer(antialiasLevel: number): EffectComposer | null {
+    if (antialiasLevel < 2) return null;
+    const maxSamples = Math.max(0, this.renderer.capabilities.maxSamples ?? 0);
+    if (maxSamples < 2) return null;
+    const requestedSamples = Math.max(2, 2 ** antialiasLevel);
+    const samples = Math.min(maxSamples, requestedSamples);
+    const renderTarget = new THREE.WebGLRenderTarget(1, 1, {
+      depthBuffer: true,
+      stencilBuffer: false,
+    });
+    renderTarget.samples = samples;
+    const composer = new EffectComposer(this.renderer, renderTarget);
+    composer.setPixelRatio(this._activePixelRatio);
+    composer.addPass(new RenderPass(this.scene, this.camera));
+    composer.addPass(new OutputPass());
+    return composer;
   }
 
   private resizeRenderer(
@@ -417,6 +487,7 @@ export class ThreeApp {
     this._lastCssWidth = w;
     this._lastCssHeight = h;
     this.renderer.setSize(w, h, updateStyle);
+    this._composer?.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -444,6 +515,8 @@ export class ThreeApp {
     this._environmentTexture = null;
     this._skyTexture?.dispose();
     this._skyTexture = null;
+    this._composer?.dispose();
+    this._composer = null;
     this.renderer.renderLists.dispose();
     this.renderer.forceContextLoss();
     this.renderer.dispose();

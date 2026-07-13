@@ -14,8 +14,10 @@ import { createBuildable } from './buildableHelpers';
 import {
   ENTITY_SLOT_BUILD_FLAG_COMPLETE,
   ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE,
+  ENTITY_SLOT_FLAG_HELD,
   entitySlotRegistry,
 } from './EntitySlotRegistry';
+import { holdEntity, releaseEntityHold } from './entityHolds';
 import { getSimWasm } from '../sim-wasm/init';
 import type { BuildingBlueprintId, Entity, PlayerId } from './types';
 
@@ -165,6 +167,26 @@ export function runEntitySlotRegistryContractTest(): void {
   const spatialOnlyViews = requireViews();
   assertContract(spatialOnlyViews.dirtyMask[firstSlot] === 0, 'spatial-only unit update must not mark snapshot dirty');
   assertParity(reused);
+  const nativeSpatialX = 305;
+  const nativeSpatialY = 315;
+  const nativeSpatialZ = 22;
+  spatialOnlyViews.posX[firstSlot] = nativeSpatialX;
+  spatialOnlyViews.posY[firstSlot] = nativeSpatialY;
+  spatialOnlyViews.posZ[firstSlot] = nativeSpatialZ;
+  const nativeSpatialRefreshCount = sim.spatial.syncUnitsFromEntityState();
+  assertContract(nativeSpatialRefreshCount >= 1, 'native spatial refresh must visit live unit rows');
+  const nativeSpatialQuery = spatialGrid.queryUnitsInRadius(
+    nativeSpatialX,
+    nativeSpatialY,
+    nativeSpatialZ,
+    5,
+  );
+  assertContract(
+    nativeSpatialQuery.includes(reused),
+    'native spatial refresh must update unit query rows from entity-state positions',
+  );
+  spatialGrid.updateUnitSpatial(reused);
+  assertParity(reused);
 
   const building = world.createBuilding(
     220,
@@ -235,6 +257,44 @@ export function runEntitySlotRegistryContractTest(): void {
     foundRangeBuildingSlot,
     'unit/building radius slot range must expose building slots',
   );
+  assertContract(reused.unit !== null, 'test unit must still have a unit component');
+  const areaUnitQuery = spatialGrid.queryAreaDamageUnitBuildingSlotRangesInRadius(
+    reused.transform.x + reused.unit.radius.hitbox + 4,
+    reused.transform.y,
+    reused.transform.z,
+    5,
+  );
+  let foundAreaUnitSlot = false;
+  const areaUnitEnd = areaUnitQuery.unitStart + areaUnitQuery.unitCount;
+  for (let i = areaUnitQuery.unitStart; i < areaUnitEnd; i++) {
+    if (areaUnitQuery.slots[i] === firstSlot) {
+      foundAreaUnitSlot = true;
+      break;
+    }
+  }
+  assertContract(
+    foundAreaUnitSlot,
+    'area damage radius query must include units whose hitbox overlaps the sphere',
+  );
+  const areaBuildingQuery = spatialGrid.queryAreaDamageUnitBuildingSlotRangesInRadius(
+    building.transform.x + building.building!.width / 2 + 4,
+    building.transform.y,
+    getBuildingCombatCenterZ(building),
+    5,
+  );
+  let foundAreaBuildingSlot = false;
+  const areaBuildingEnd =
+    areaBuildingQuery.buildingStart + areaBuildingQuery.buildingCount;
+  for (let i = areaBuildingQuery.buildingStart; i < areaBuildingEnd; i++) {
+    if (areaBuildingQuery.slots[i] === buildingSlot) {
+      foundAreaBuildingSlot = true;
+      break;
+    }
+  }
+  assertContract(
+    foundAreaBuildingSlot,
+    'area damage radius query must include buildings whose AABB overlaps the sphere',
+  );
   assertContract(
     Math.abs(buildingViews.buildProgress[buildingSlot] - 0.75) < 1e-9,
     'building build progress must mirror paid resource fraction',
@@ -249,6 +309,28 @@ export function runEntitySlotRegistryContractTest(): void {
     'incomplete building must carry buildable flag',
   );
   assertParity(building);
+
+  holdEntity(building, reused, {
+    kind: 'production',
+    slotIndex: 0,
+    localOffsetX: 0,
+    localOffsetY: 0,
+    localBaseZ: 0,
+    rotateWithHolder: false,
+    inheritHolderRotation: false,
+    inheritHolderVelocity: false,
+  });
+  assertContract(
+    (requireViews().flags[firstSlot] & ENTITY_SLOT_FLAG_HELD) !== 0,
+    'held unit must carry the held lifecycle flag',
+  );
+  assertParity(reused);
+  releaseEntityHold(reused);
+  assertContract(
+    (requireViews().flags[firstSlot] & ENTITY_SLOT_FLAG_HELD) === 0,
+    'released unit must clear the held lifecycle flag',
+  );
+  assertParity(reused);
 
   assertContract(building.building !== null, 'test building must have a building component');
   building.buildable = null;
@@ -310,6 +392,43 @@ export function runEntitySlotRegistryContractTest(): void {
     assertContract(
       alliedProjectileSlots.slots[i] !== projectileSlot,
       'enemy projectile radius query must exclude the requesting player projectiles',
+    );
+  }
+  assertContract(projectile.projectile !== null, 'test projectile must have a projectile component');
+  const projectileCollisionRadius = projectile.projectile.config.shotProfile.runtime.radius.collision;
+  assertContract(
+    Number.isFinite(projectileCollisionRadius) && projectileCollisionRadius >= 0,
+    'test projectile must expose a finite collision radius',
+  );
+  const overlappingAreaProjectileSlots = spatialGrid.queryAreaEnemyProjectileSlotsInRadius(
+    70 + projectileCollisionRadius + 4,
+    90,
+    12,
+    5,
+    2 as PlayerId,
+  );
+  let foundOverlappingAreaProjectileSlot = false;
+  for (let i = 0; i < overlappingAreaProjectileSlots.count; i++) {
+    if (overlappingAreaProjectileSlots.slots[i] === projectileSlot) {
+      foundOverlappingAreaProjectileSlot = true;
+      break;
+    }
+  }
+  assertContract(
+    foundOverlappingAreaProjectileSlot,
+    'area projectile query must include projectile bodies overlapping the splash sphere',
+  );
+  const outsideAreaProjectileSlots = spatialGrid.queryAreaEnemyProjectileSlotsInRadius(
+    70 + projectileCollisionRadius + 6,
+    90,
+    12,
+    5,
+    2 as PlayerId,
+  );
+  for (let i = 0; i < outsideAreaProjectileSlots.count; i++) {
+    assertContract(
+      outsideAreaProjectileSlots.slots[i] !== projectileSlot,
+      'area projectile query must filter projectile bodies outside the splash sphere',
     );
   }
   assertParity(projectile);

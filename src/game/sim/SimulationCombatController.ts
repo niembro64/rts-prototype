@@ -7,15 +7,17 @@ import { getSimWasm } from '../sim-wasm/init';
 import {
   checkProjectileCollisions,
   emitLaserStopsForEntity,
-  emitLaserStopsForTarget,
+  emitLaserStopsForTargetRefs,
   emitShieldStopsForEntity,
   fireTurrets,
+  getLaserStopRefsForTargets,
   hasPendingProjectileLaunchVelocityFinalization,
   registerPackedProjectile,
   resetLaserSoundState,
   resetShieldBuffers,
   resetShieldSoundState,
   type DeathContext,
+  type ProjectileUpdatePhaseTimings,
   type SimEvent,
   unregisterPackedProjectile,
   updateLaserSounds,
@@ -26,9 +28,11 @@ import {
   updateTurretRotation,
 } from './combat';
 import {
+  clearCombatTargetingStampQueues,
   stampCombatTargetingPool,
   stampShieldSurfacePool,
 } from './combat/targetingInputStamping';
+import type { ProjectileCollisionPhaseTimings } from './combat/ProjectileCollisionHandler';
 import type { DamageSystem } from './damage';
 import type { ForceAccumulator } from './ForceAccumulator';
 import type { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
@@ -47,6 +51,118 @@ type UnitDeathCallback = (
 ) | null;
 type BuildingDeathCallback = ((deadBuildingIds: EntityId[]) => void) | null;
 
+export type SimulationCombatPhaseTimings = {
+  readonly resetPlannerMs: number;
+  readonly stampTargetingMs: number;
+  readonly targetingFiringMs: number;
+  readonly laserSoundsMs: number;
+  readonly turretRotationMs: number;
+  readonly shieldStateMs: number;
+  readonly shieldSurfaceStampMs: number;
+  readonly shieldSoundsMs: number;
+  readonly fireTurretsMs: number;
+  readonly projectileSpawnEventsMs: number;
+  readonly turretDirtyMs: number;
+  readonly updateProjectilesMs: number;
+  readonly projectilePackedPrepMs: number;
+  readonly projectilePackedIntegrateMs: number;
+  readonly projectilePackedScatterMs: number;
+  readonly projectileTravelingPackMs: number;
+  readonly projectileHomingGuidanceMs: number;
+  readonly projectileTravelingIntegrateMs: number;
+  readonly projectileTravelingScatterMs: number;
+  readonly projectileLineProjectilesMs: number;
+  readonly projectileLineBeamPathMs: number;
+  readonly projectileLineBeamFusedMs: number;
+  readonly projectileLineBeamBodyMs: number;
+  readonly projectileLineBeamReflectorMs: number;
+  readonly projectileLineBeamGroundMs: number;
+  readonly projectileLineBeamProjectileMs: number;
+  readonly projectileEventCullMs: number;
+  readonly projectileSpatialRefreshMs: number;
+  readonly projectileCollisionsMs: number;
+  readonly collisionSetupMs: number;
+  readonly collisionLoopMs: number;
+  readonly collisionHitboxSweepMs: number;
+  readonly collisionBeamDamageMs: number;
+  readonly collisionDgunDamageMs: number;
+  readonly collisionTerminalPlanMs: number;
+  readonly collisionSplashDamageMs: number;
+  readonly collisionKilledProjectileDetonationMs: number;
+  readonly collisionSubmunitionSpawnMs: number;
+  readonly collisionFinalRemovalMs: number;
+  readonly collisionProjectileEventsMs: number;
+  readonly deathExplosionMs: number;
+  readonly collisionRemovalMs: number;
+  readonly totalMs: number;
+};
+
+type ProjectileUpdatePhaseTimingKey =
+  | 'projectilePackedPrepMs'
+  | 'projectilePackedIntegrateMs'
+  | 'projectilePackedScatterMs'
+  | 'projectileTravelingPackMs'
+  | 'projectileHomingGuidanceMs'
+  | 'projectileTravelingIntegrateMs'
+  | 'projectileTravelingScatterMs'
+  | 'projectileLineProjectilesMs'
+  | 'projectileLineBeamPathMs'
+  | 'projectileLineBeamFusedMs'
+  | 'projectileLineBeamBodyMs'
+  | 'projectileLineBeamReflectorMs'
+  | 'projectileLineBeamGroundMs'
+  | 'projectileLineBeamProjectileMs';
+
+function worldHasHostileCombatTargets(world: WorldState): boolean {
+  const targets = world.getCombatTargetEntities();
+  let firstTeamId = -1;
+  for (let i = 0; i < targets.length; i++) {
+    const ownership = targets[i].ownership;
+    if (ownership === null) return true;
+    const teamId = world.getTeamId(ownership.playerId);
+    if (firstTeamId < 0) {
+      firstTeamId = teamId;
+    } else if (teamId !== firstTeamId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function createEmptyProjectileCollisionPhaseTimings(): ProjectileCollisionPhaseTimings {
+  return {
+    collisionSetupMs: 0,
+    collisionLoopMs: 0,
+    collisionHitboxSweepMs: 0,
+    collisionBeamDamageMs: 0,
+    collisionDgunDamageMs: 0,
+    collisionTerminalPlanMs: 0,
+    collisionSplashDamageMs: 0,
+    collisionKilledProjectileDetonationMs: 0,
+    collisionSubmunitionSpawnMs: 0,
+    collisionFinalRemovalMs: 0,
+  };
+}
+
+function createEmptyProjectileUpdatePhaseTimings(): ProjectileUpdatePhaseTimings {
+  return {
+    projectilePackedPrepMs: 0,
+    projectilePackedIntegrateMs: 0,
+    projectilePackedScatterMs: 0,
+    projectileTravelingPackMs: 0,
+    projectileHomingGuidanceMs: 0,
+    projectileTravelingIntegrateMs: 0,
+    projectileTravelingScatterMs: 0,
+    projectileLineProjectilesMs: 0,
+    projectileLineBeamPathMs: 0,
+    projectileLineBeamFusedMs: 0,
+    projectileLineBeamBodyMs: 0,
+    projectileLineBeamReflectorMs: 0,
+    projectileLineBeamGroundMs: 0,
+    projectileLineBeamProjectileMs: 0,
+  };
+}
+
 export class SimulationCombatController {
   private readonly world: WorldState;
   private readonly damageSystem: DamageSystem;
@@ -55,6 +171,8 @@ export class SimulationCombatController {
   private readonly deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private readonly deadUnitIdsBuf: EntityId[] = [];
   private readonly deadBuildingIdsBuf: EntityId[] = [];
+  private profiler: ((timings: SimulationCombatPhaseTimings) => void) | undefined;
+  private hadHostileCombatTargetsLastTick = true;
 
   constructor(
     world: WorldState,
@@ -77,6 +195,12 @@ export class SimulationCombatController {
     onUnitDeath: UnitDeathCallback,
     onBuildingDeath: BuildingDeathCallback,
   ): void {
+    const profiler = this.profiler;
+    if (profiler !== undefined) {
+      this.updateProfiled(dtMs, wind, onSimEvent, onUnitDeath, onBuildingDeath, profiler);
+      return;
+    }
+
     const sim = getSimWasm();
     if (sim === undefined) {
       throw new Error('SimulationCombatController.update: sim-wasm is not initialized');
@@ -92,7 +216,11 @@ export class SimulationCombatController {
     // clearance gates are documented to read. Sight-toggle gating lives
     // in the kernels (shield_obstruction_active + shape toggles), not
     // in slab emptiness.
-    stampCombatTargetingPool(this.world, wind);
+    if (this.shouldSkipCombatTargetingStamp()) {
+      clearCombatTargetingStampQueues();
+    } else {
+      stampCombatTargetingPool(this.world, wind);
+    }
     // Update targeting and firing state. Cooldown timers now step inside
     // the scheduled Rust targeting batch and write back through the
     // transitional slab -> JS turret copy.
@@ -161,6 +289,10 @@ export class SimulationCombatController {
     }
   }
 
+  setProfiler(profiler: ((timings: SimulationCombatPhaseTimings) => void) | undefined): void {
+    this.profiler = profiler;
+  }
+
   reset(): void {
     this.deadUnitIdsBuf.length = 0;
     this.deadBuildingIdsBuf.length = 0;
@@ -168,6 +300,172 @@ export class SimulationCombatController {
     resetLaserSoundState();
     resetShieldSoundState();
     resetTurretSnapshotDirtyCache();
+    this.hadHostileCombatTargetsLastTick = true;
+  }
+
+  private shouldSkipCombatTargetingStamp(): boolean {
+    if (this.world.getProjectiles().length > 0) return false;
+    if (worldHasHostileCombatTargets(this.world)) {
+      this.hadHostileCombatTargetsLastTick = true;
+      return false;
+    }
+    if (this.hadHostileCombatTargetsLastTick) {
+      this.hadHostileCombatTargetsLastTick = false;
+      return false;
+    }
+    return true;
+  }
+
+  private updateProfiled(
+    dtMs: number,
+    wind: WindState,
+    onSimEvent: SimEventCallback,
+    onUnitDeath: UnitDeathCallback,
+    onBuildingDeath: BuildingDeathCallback,
+    profiler: (timings: SimulationCombatPhaseTimings) => void,
+  ): void {
+    const start = performance.now();
+    let mark = start;
+
+    const sim = getSimWasm();
+    if (sim === undefined) {
+      throw new Error('SimulationCombatController.update: sim-wasm is not initialized');
+    }
+    sim.deathExplosionPlannerReset();
+    let now = performance.now();
+    const resetPlannerMs = now - mark;
+    mark = now;
+
+    if (this.shouldSkipCombatTargetingStamp()) {
+      clearCombatTargetingStampQueues();
+    } else {
+      stampCombatTargetingPool(this.world, wind);
+    }
+    now = performance.now();
+    const stampTargetingMs = now - mark;
+    mark = now;
+
+    const activeCombatUnits = updateTargetingAndFiringState(this.world, dtMs);
+    now = performance.now();
+    const targetingFiringMs = now - mark;
+    mark = now;
+
+    if (this.world.getBeamUnits().length > 0) {
+      this.emitSimEvents(updateLaserSounds(this.world), onSimEvent);
+    }
+    now = performance.now();
+    const laserSoundsMs = now - mark;
+    mark = now;
+
+    updateTurretRotation(this.world, dtMs, activeCombatUnits);
+    now = performance.now();
+    const turretRotationMs = now - mark;
+    mark = now;
+
+    const shieldUnits = this.world.turretShieldSpheresEnabled
+      ? this.world.getShieldUnits()
+      : undefined;
+    if (shieldUnits && shieldUnits.length > 0) {
+      updateShieldState(this.world, dtMs);
+    } else {
+      resetShieldBuffers();
+    }
+    now = performance.now();
+    const shieldStateMs = now - mark;
+    mark = now;
+
+    stampShieldSurfacePool(this.world);
+    now = performance.now();
+    const shieldSurfaceStampMs = now - mark;
+    mark = now;
+
+    if (shieldUnits && shieldUnits.length > 0) {
+      this.emitSimEvents(updateShieldSounds(shieldUnits), onSimEvent);
+    }
+    now = performance.now();
+    const shieldSoundsMs = now - mark;
+    mark = now;
+
+    const fireResult = fireTurrets(this.world, dtMs, this.forceAccumulator, activeCombatUnits);
+    fireResult.projectiles.sort((a, b) => a.id - b.id);
+    fireResult.spawnEvents.sort((a, b) => a.id - b.id);
+    now = performance.now();
+    const fireTurretsMs = now - mark;
+    mark = now;
+
+    for (const proj of fireResult.projectiles) {
+      this.world.addEntity(proj);
+      registerPackedProjectile(proj);
+    }
+    for (const event of fireResult.spawnEvents) {
+      this.eventQueues.projectileSpawns.push(event);
+    }
+    this.emitSimEvents(fireResult.events, onSimEvent);
+    now = performance.now();
+    const projectileSpawnEventsMs = now - mark;
+    mark = now;
+
+    for (const unit of activeCombatUnits) {
+      if (turretSnapshotRowsChangedSinceLastSample(unit)) {
+        this.world.markSnapshotDirty(unit.id, ENTITY_CHANGED_TURRETS);
+      }
+    }
+    now = performance.now();
+    const turretDirtyMs = now - mark;
+    mark = now;
+
+    let updateProjectilesMs = 0;
+    let projectileUpdateDetails = createEmptyProjectileUpdatePhaseTimings();
+    let projectileEventCullMs = 0;
+    let projectileSpatialRefreshMs = 0;
+    let projectileCollisionsMs = 0;
+    let collisionDetails = createEmptyProjectileCollisionPhaseTimings();
+    let collisionProjectileEventsMs = 0;
+    let deathExplosionMs = 0;
+    let collisionRemovalMs = 0;
+    if (this.world.getProjectiles().length > 0) {
+      const projectileTimings = this.updateProjectileCombatProfiled(
+        dtMs,
+        wind,
+        onSimEvent,
+        onUnitDeath,
+        onBuildingDeath,
+      );
+      updateProjectilesMs = projectileTimings.updateProjectilesMs;
+      projectileUpdateDetails = projectileTimings;
+      projectileEventCullMs = projectileTimings.projectileEventCullMs;
+      projectileSpatialRefreshMs = projectileTimings.projectileSpatialRefreshMs;
+      projectileCollisionsMs = projectileTimings.projectileCollisionsMs;
+      collisionDetails = projectileTimings;
+      collisionProjectileEventsMs = projectileTimings.collisionProjectileEventsMs;
+      deathExplosionMs = projectileTimings.deathExplosionMs;
+      collisionRemovalMs = projectileTimings.collisionRemovalMs;
+    }
+    now = performance.now();
+
+    profiler({
+      resetPlannerMs,
+      stampTargetingMs,
+      targetingFiringMs,
+      laserSoundsMs,
+      turretRotationMs,
+      shieldStateMs,
+      shieldSurfaceStampMs,
+      shieldSoundsMs,
+      fireTurretsMs,
+      projectileSpawnEventsMs,
+      turretDirtyMs,
+      updateProjectilesMs,
+      ...projectileUpdateDetails,
+      projectileEventCullMs,
+      projectileSpatialRefreshMs,
+      projectileCollisionsMs,
+      ...collisionDetails,
+      collisionProjectileEventsMs,
+      deathExplosionMs,
+      collisionRemovalMs,
+      totalMs: now - start,
+    });
   }
 
   private updateProjectileCombat(
@@ -252,6 +550,131 @@ export class SimulationCombatController {
     this.removeCollisionDeadBuildings(collisionResult.deadBuildingIds, onBuildingDeath);
   }
 
+  private updateProjectileCombatProfiled(
+    dtMs: number,
+    wind: WindState,
+    onSimEvent: SimEventCallback,
+    onUnitDeath: UnitDeathCallback,
+    onBuildingDeath: BuildingDeathCallback,
+  ): Pick<
+    SimulationCombatPhaseTimings,
+    | 'updateProjectilesMs'
+    | ProjectileUpdatePhaseTimingKey
+    | 'projectileEventCullMs'
+    | 'projectileSpatialRefreshMs'
+    | 'projectileCollisionsMs'
+    | keyof ProjectileCollisionPhaseTimings
+    | 'collisionProjectileEventsMs'
+    | 'deathExplosionMs'
+    | 'collisionRemovalMs'
+  > {
+    let mark = performance.now();
+
+    const projectileUpdateDetails = createEmptyProjectileUpdatePhaseTimings();
+    const updateResult = updateProjectiles(
+      this.world,
+      dtMs,
+      this.damageSystem,
+      wind,
+      projectileUpdateDetails,
+    );
+    let now = performance.now();
+    const updateProjectilesMs = now - mark;
+    mark = now;
+
+    updateResult.orphanedIds.sort((a, b) => a - b);
+    updateResult.despawnEvents.sort((a, b) => a.id - b.id);
+    for (const id of updateResult.orphanedIds) {
+      unregisterPackedProjectile(id);
+      spatialGrid.removeProjectile(id);
+      this.world.removeEntity(id);
+    }
+    for (const event of updateResult.despawnEvents) {
+      unregisterPackedProjectile(event.id);
+      spatialGrid.removeProjectile(event.id);
+      this.eventQueues.projectileDespawns.push(event);
+    }
+    for (const event of safeVelocityUpdates(updateResult.velocityUpdates)) {
+      this.eventQueues.projectileVelocityUpdates.set(event.id, event);
+    }
+    now = performance.now();
+    const projectileEventCullMs = now - mark;
+    mark = now;
+
+    spatialGrid.updateProjectiles(this.world.getTravelingProjectiles());
+    now = performance.now();
+    const projectileSpatialRefreshMs = now - mark;
+    mark = now;
+
+    let collisionDetails = createEmptyProjectileCollisionPhaseTimings();
+    const collisionResult = checkProjectileCollisions(
+      this.world,
+      dtMs,
+      this.damageSystem,
+      this.forceAccumulator,
+      hasPendingProjectileLaunchVelocityFinalization,
+      (timings) => {
+        collisionDetails = timings;
+      },
+    );
+    now = performance.now();
+    const projectileCollisionsMs = now - mark;
+    mark = now;
+
+    collisionResult.newProjectiles.sort((a, b) => a.id - b.id);
+    collisionResult.spawnEvents.sort((a, b) => a.id - b.id);
+    for (const proj of collisionResult.newProjectiles) {
+      this.world.addEntity(proj);
+      registerPackedProjectile(proj);
+    }
+    for (const event of collisionResult.spawnEvents) {
+      this.eventQueues.projectileSpawns.push(event);
+    }
+    collisionResult.despawnEvents.sort((a, b) => a.id - b.id);
+    for (const event of collisionResult.despawnEvents) {
+      unregisterPackedProjectile(event.id);
+      spatialGrid.removeProjectile(event.id);
+      this.eventQueues.projectileDespawns.push(event);
+    }
+    for (const event of safeVelocityUpdates(collisionResult.velocityUpdates)) {
+      this.eventQueues.projectileVelocityUpdates.set(event.id, event);
+    }
+    now = performance.now();
+    const collisionProjectileEventsMs = now - mark;
+    mark = now;
+
+    this.deathExplosionPlanner.detonate(
+      collisionResult.deadUnitIds,
+      collisionResult.deadBuildingIds,
+      collisionResult.events,
+      collisionResult.deathContexts,
+    );
+    now = performance.now();
+    const deathExplosionMs = now - mark;
+    mark = now;
+
+    this.emitSimEvents(collisionResult.events, onSimEvent);
+    this.removeCollisionDeadUnits(
+      collisionResult.deadUnitIds,
+      collisionResult.deathContexts,
+      onUnitDeath,
+    );
+    this.removeCollisionDeadBuildings(collisionResult.deadBuildingIds, onBuildingDeath);
+    now = performance.now();
+
+    return {
+      updateProjectilesMs,
+      ...projectileUpdateDetails,
+      projectileEventCullMs,
+      projectileSpatialRefreshMs,
+      projectileCollisionsMs,
+      ...collisionDetails,
+      collisionProjectileEventsMs,
+      deathExplosionMs,
+      collisionRemovalMs: now - mark,
+    };
+  }
+
   private removeCollisionDeadUnits(
     deadUnitIds: Set<EntityId>,
     deathContexts: Map<EntityId, DeathContext>,
@@ -262,6 +685,7 @@ export class SimulationCombatController {
     buf.length = 0;
     for (const id of deadUnitIds) buf.push(id);
     buf.sort((a, b) => a - b);
+    const beamTargetRefsById = getLaserStopRefsForTargets(this.world, buf);
     for (let i = 0; i < buf.length; i++) {
       const id = buf[i];
       const entity = this.world.getEntity(id);
@@ -271,7 +695,7 @@ export class SimulationCombatController {
           this.eventQueues.simEvents.push(evt);
         }
         // Emit laserStop for any beam weapons across the world targeting this entity
-        for (const evt of emitLaserStopsForTarget(this.world, id)) {
+        for (const evt of emitLaserStopsForTargetRefs(beamTargetRefsById.get(id))) {
           this.eventQueues.simEvents.push(evt);
         }
         // Emit shieldStop for the dying entity's shield weapons

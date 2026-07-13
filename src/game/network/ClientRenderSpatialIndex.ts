@@ -10,7 +10,7 @@ import type { EntityId } from '../sim/types';
 const CLIENT_RENDER_CELL_SIZE = 512;
 const CLIENT_RENDER_CELL_KEY_OFFSET = 1 << 20;
 const CLIENT_RENDER_CELL_KEY_STRIDE = CLIENT_RENDER_CELL_KEY_OFFSET * 2 + 1;
-const DEFAULT_MAX_ENTITY_PADDING = 350;
+const DEFAULT_MAX_ENTITY_PADDING = 128;
 
 type ClientRenderCellKey = number;
 

@@ -26,6 +26,7 @@ import type { TreadConfig } from '@/types/blueprints';
 import { TREAD_CHASSIS_LIFT_Y } from '../math/BodyDimensions';
 import {
   type LocomotionBase,
+  type LocomotionRenderPose3D,
   type RollingContactState,
   emaAlpha,
   rollingContact,
@@ -289,15 +290,16 @@ export function updateTreads(
   dtMs: number,
   mapWidth: number,
   mapHeight: number,
+  pose?: LocomotionRenderPose3D,
 ): boolean {
   const dtSec = Math.max(0.001, dtMs / 1000);
-  const bodyCenterHeight = entity.unit ? getUnitBodyCenterHeight(entity.unit) : 0;
+  const bodyCenterHeight = pose?.bodyCenterHeight ?? (entity.unit ? getUnitBodyCenterHeight(entity.unit) : 0);
   // Convert a world-Y lift back into a chassis-local Y delta. Tilt
   // rotates local Y through the surface normal; the local lift needed
   // to raise the side by `worldLift` world units is approximately
   // `worldLift / normal.z` (with the same 0.35 floor LegRig3D uses).
-  const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
-  const normalY = Math.max(0.35, n.nz);
+  const n = pose === undefined ? getLocomotionSurfaceNormal(entity, mapWidth, mapHeight) : undefined;
+  const normalY = Math.max(0.35, pose?.normalZ ?? n!.nz);
   const liftAlpha = emaAlpha(dtSec, TREAD_LIFT_TAU_SEC);
   const beltAlpha = emaAlpha(dtSec, TREAD_BELT_TAU_SEC);
 
@@ -320,7 +322,7 @@ export function updateTreads(
       const localX = sampleLocalXs[p];
       transformChassisToWorld(
         localX, 0, sideEntry.lateralOffset,
-        entity, bodyCenterHeight, mapWidth, mapHeight, _treadWorld,
+        entity, bodyCenterHeight, mapWidth, mapHeight, _treadWorld, pose,
       );
       const naturalWorldY = _treadWorld.y;
       const clamp = sampleLocomotionPartClamp(
@@ -347,7 +349,7 @@ export function updateTreads(
     // discontinuity.
     const contact = mesh.treadContacts[s];
     const signedDistance = contact !== undefined
-      ? sampleRollingContactDistance(entity, contact)
+      ? sampleRollingContactDistance(entity, contact, pose)
       : 0;
     const targetBeltVelocity = signedDistance / dtSec;
     sideEntry.beltVelocity += (targetBeltVelocity - sideEntry.beltVelocity) * beltAlpha;
@@ -388,11 +390,15 @@ export function updateTreads(
       }
     }
   }
-  return treadsNeedFrame(mesh, entity);
+  return treadsNeedFrame(mesh, entity, pose);
 }
 
-function treadsNeedFrame(mesh: TreadMesh, entity: Entity): boolean {
-  if (rollingLocomotionBodyActive(entity)) return true;
+function treadsNeedFrame(
+  mesh: TreadMesh,
+  entity: Entity,
+  pose?: LocomotionRenderPose3D,
+): boolean {
+  if (rollingLocomotionBodyActive(entity, pose)) return true;
   for (let s = 0; s < mesh.sides.length; s++) {
     const contact = mesh.treadContacts[s];
     if (contact === undefined || !contact.initialized) return true;

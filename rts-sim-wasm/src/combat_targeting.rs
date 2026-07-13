@@ -27,6 +27,18 @@ use wasm_bindgen::prelude::*;
 // ─────────────────────────────────────────────────────────────────
 
 pub const COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY: u32 = TURRET_POOL_MAX_PER_ENTITY;
+// Active combat work stays hot through the JS bridge's nextCombatProbeTick=-1
+// path. Idle/no-target broad spatial reacquisition is deliberately slower and
+// phased by entity id so BAR-scale armies do not all scan in the same tick.
+const COMBAT_TARGETING_REACQUIRE_PERIOD_TICKS: i32 = 96;
+
+#[inline]
+pub(crate) fn combat_targeting_reacquire_due(current_tick: i32, source_entity_id: i32) -> bool {
+    current_tick < 0
+        || source_entity_id < 0
+        || current_tick.rem_euclid(COMBAT_TARGETING_REACQUIRE_PERIOD_TICKS)
+            == source_entity_id.rem_euclid(COMBAT_TARGETING_REACQUIRE_PERIOD_TICKS)
+}
 
 // Entity-flag bits — packed into `entity_flags`.
 pub const CT_ENTITY_FLAG_ALIVE: u8 = 1 << 0;
@@ -40,6 +52,25 @@ pub const CT_ENTITY_FLAG_CLOAKED: u8 = 1 << 4;
 /// hovering over it. Stamped from the host blueprint's
 /// `preventLockOnIfMyTeamIsAboveMe`.
 pub const CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE: u8 = 1 << 5;
+
+const ENTITY_SLOT_FLAG_ALIVE: u32 = 1 << 0;
+const ENTITY_SLOT_FLAG_ACTIVE: u32 = 1 << 1;
+const ENTITY_SLOT_FLAG_HAS_UNIT: u32 = 1 << 3;
+const ENTITY_SLOT_FLAG_HAS_COMBAT: u32 = 1 << 6;
+
+const CT_UNIT_PROFILE_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE: u8 = 1 << 0;
+const COMBAT_TARGETING_UNIT_PROFILE_STRIDE: usize = 11;
+const CT_UNIT_PROFILE_FULL_VISION_RADIUS: usize = 0;
+const CT_UNIT_PROFILE_RADAR_RADIUS: usize = 1;
+const CT_UNIT_PROFILE_DETECTOR_RADIUS: usize = 2;
+const CT_UNIT_PROFILE_LOCKON_RELATIONSHIP: usize = 3;
+const CT_UNIT_PROFILE_LOCKON_ENTITY_FAMILY: usize = 4;
+const CT_UNIT_PROFILE_LOCKON_BUILDING: usize = 5;
+const CT_UNIT_PROFILE_LOCKON_TOWER: usize = 6;
+const CT_UNIT_PROFILE_LOCKON_UNIT: usize = 7;
+const CT_UNIT_PROFILE_LOCKON_TURRET: usize = 8;
+const CT_UNIT_PROFILE_LOCKON_SHOT: usize = 9;
+const CT_UNIT_PROFILE_FLAGS: usize = 10;
 
 // Turret-config-flag bits — packed into `turret_config_flags`.
 pub const CT_TURRET_CFG_REQUIRES_NON_OBSTRUCTED_LOS: u16 = 1 << 0;
@@ -116,9 +147,220 @@ pub const CT_ENTITY_FAMILY_SHOT: u8 = 4;
 pub const CT_BLUEPRINT_CODE_NONE: u8 = 0xff;
 
 #[derive(Default)]
+pub(crate) struct CombatTargetingUnitProfileTable {
+    values: Vec<f64>,
+    count: usize,
+}
+
+pub(crate) struct CombatTargetingUnitProfileTableHolder(
+    UnsafeCell<CombatTargetingUnitProfileTable>,
+);
+unsafe impl Sync for CombatTargetingUnitProfileTableHolder {}
+pub(crate) static COMBAT_TARGETING_UNIT_PROFILE_TABLE: CombatTargetingUnitProfileTableHolder =
+    CombatTargetingUnitProfileTableHolder(UnsafeCell::new(CombatTargetingUnitProfileTable {
+        values: Vec::new(),
+        count: 0,
+    }));
+
+#[inline]
+pub(crate) fn combat_targeting_unit_profile_table() -> &'static mut CombatTargetingUnitProfileTable
+{
+    unsafe { &mut *COMBAT_TARGETING_UNIT_PROFILE_TABLE.0.get() }
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_unit_profile_stride() -> u32 {
+    COMBAT_TARGETING_UNIT_PROFILE_STRIDE as u32
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_unit_profile_ensure(count: u32) {
+    let table = combat_targeting_unit_profile_table();
+    table.count = count as usize;
+    table.values.resize(
+        table
+            .count
+            .saturating_mul(COMBAT_TARGETING_UNIT_PROFILE_STRIDE),
+        0.0,
+    );
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_unit_profile_values_ptr() -> *const f64 {
+    combat_targeting_unit_profile_table().values.as_ptr()
+}
+
+#[derive(Default)]
 pub(crate) struct CombatTargetingObservationCell {
     pub(crate) slots: Vec<u32>,
     pub(crate) owner_bits: u32,
+}
+
+#[derive(Default)]
+pub(crate) struct CombatTargetingSensorSourceCell {
+    pub(crate) slots: Vec<u32>,
+    pub(crate) source_mask_kinds: u8,
+    pub(crate) max_sensor_radius: f64,
+    pub(crate) max_full_sight_radius: f64,
+    pub(crate) max_detector_radius: f64,
+}
+
+#[derive(Default)]
+pub(crate) struct CombatTargetingPlayerSensorIndex {
+    pub(crate) cells: HashMap<u64, CombatTargetingSensorSourceCell>,
+    pub(crate) cell_keys: Vec<u64>,
+    pub(crate) max_radius: f64,
+    pub(crate) source_mask_kinds: u8,
+}
+
+pub(crate) struct CombatTargetingSensorSourceIndex {
+    pub(crate) players: [CombatTargetingPlayerSensorIndex; 31],
+    pub(crate) owner_bits: u32,
+}
+
+impl Default for CombatTargetingSensorSourceIndex {
+    fn default() -> Self {
+        Self {
+            players: std::array::from_fn(|_| CombatTargetingPlayerSensorIndex::default()),
+            owner_bits: 0,
+        }
+    }
+}
+
+pub(crate) struct CombatTargetingSensorSourceIndexHolder(
+    UnsafeCell<Option<CombatTargetingSensorSourceIndex>>,
+);
+unsafe impl Sync for CombatTargetingSensorSourceIndexHolder {}
+pub(crate) static COMBAT_TARGETING_SENSOR_SOURCE_INDEX: CombatTargetingSensorSourceIndexHolder =
+    CombatTargetingSensorSourceIndexHolder(UnsafeCell::new(None));
+
+#[inline]
+pub(crate) fn combat_targeting_sensor_source_index() -> &'static mut CombatTargetingSensorSourceIndex
+{
+    unsafe {
+        let cell = &mut *COMBAT_TARGETING_SENSOR_SOURCE_INDEX.0.get();
+        if cell.is_none() {
+            *cell = Some(CombatTargetingSensorSourceIndex::default());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct CombatTargetingPlayerObservationIndex {
+    pub(crate) cells: HashMap<u64, CombatTargetingObservationCell>,
+    pub(crate) cell_keys: Vec<u64>,
+}
+
+pub(crate) struct CombatTargetingObservationOwnerIndex {
+    pub(crate) players: [CombatTargetingPlayerObservationIndex; 31],
+    pub(crate) ownerless: CombatTargetingPlayerObservationIndex,
+    pub(crate) owner_bits: u32,
+}
+
+impl Default for CombatTargetingObservationOwnerIndex {
+    fn default() -> Self {
+        Self {
+            players: std::array::from_fn(|_| CombatTargetingPlayerObservationIndex::default()),
+            ownerless: CombatTargetingPlayerObservationIndex::default(),
+            owner_bits: 0,
+        }
+    }
+}
+
+pub(crate) struct CombatTargetingObservationOwnerIndexHolder(
+    UnsafeCell<Option<CombatTargetingObservationOwnerIndex>>,
+);
+unsafe impl Sync for CombatTargetingObservationOwnerIndexHolder {}
+pub(crate) static COMBAT_TARGETING_OBSERVATION_OWNER_INDEX:
+    CombatTargetingObservationOwnerIndexHolder =
+    CombatTargetingObservationOwnerIndexHolder(UnsafeCell::new(None));
+
+#[inline]
+pub(crate) fn combat_targeting_observation_owner_index(
+) -> &'static mut CombatTargetingObservationOwnerIndex {
+    unsafe {
+        let cell = &mut *COMBAT_TARGETING_OBSERVATION_OWNER_INDEX.0.get();
+        if cell.is_none() {
+            *cell = Some(CombatTargetingObservationOwnerIndex::default());
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct CombatTargetingProfile {
+    pub(crate) schedule_sources: u64,
+    pub(crate) schedule_processed: u64,
+    pub(crate) schedule_skipped: u64,
+    pub(crate) auto_ticks: u64,
+    pub(crate) reacquire_due: u64,
+    pub(crate) spatial_queries: u64,
+    pub(crate) candidate_cells: u64,
+    pub(crate) candidate_slots_visited: u64,
+    pub(crate) candidates_collected: u64,
+    pub(crate) choose_calls: u64,
+    pub(crate) choose_candidate_tests: u64,
+    pub(crate) gate_calls: u64,
+    pub(crate) gate_passes: u64,
+}
+
+pub(crate) struct CombatTargetingProfileHolder(UnsafeCell<CombatTargetingProfile>);
+unsafe impl Sync for CombatTargetingProfileHolder {}
+pub(crate) static COMBAT_TARGETING_PROFILE: CombatTargetingProfileHolder =
+    CombatTargetingProfileHolder(UnsafeCell::new(CombatTargetingProfile {
+        schedule_sources: 0,
+        schedule_processed: 0,
+        schedule_skipped: 0,
+        auto_ticks: 0,
+        reacquire_due: 0,
+        spatial_queries: 0,
+        candidate_cells: 0,
+        candidate_slots_visited: 0,
+        candidates_collected: 0,
+        choose_calls: 0,
+        choose_candidate_tests: 0,
+        gate_calls: 0,
+        gate_passes: 0,
+    }));
+
+#[inline]
+pub(crate) fn combat_targeting_profile() -> &'static mut CombatTargetingProfile {
+    unsafe { &mut *COMBAT_TARGETING_PROFILE.0.get() }
+}
+
+pub const COMBAT_TARGETING_PROFILE_LEN: usize = 13;
+
+#[wasm_bindgen]
+pub fn combat_targeting_profile_reset() {
+    *combat_targeting_profile() = CombatTargetingProfile::default();
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_profile_len() -> u32 {
+    COMBAT_TARGETING_PROFILE_LEN as u32
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_profile_copy(out: &mut [f64]) -> u32 {
+    if out.len() < COMBAT_TARGETING_PROFILE_LEN {
+        return COMBAT_TARGETING_PROFILE_LEN as u32;
+    }
+    let profile = combat_targeting_profile();
+    out[0] = profile.schedule_sources as f64;
+    out[1] = profile.schedule_processed as f64;
+    out[2] = profile.schedule_skipped as f64;
+    out[3] = profile.auto_ticks as f64;
+    out[4] = profile.reacquire_due as f64;
+    out[5] = profile.spatial_queries as f64;
+    out[6] = profile.candidate_cells as f64;
+    out[7] = profile.candidate_slots_visited as f64;
+    out[8] = profile.candidates_collected as f64;
+    out[9] = profile.choose_calls as f64;
+    out[10] = profile.choose_candidate_tests as f64;
+    out[11] = profile.gate_calls as f64;
+    out[12] = profile.gate_passes as f64;
+    COMBAT_TARGETING_PROFILE_LEN as u32
 }
 
 pub(crate) struct CombatTargetingPool {
@@ -1035,6 +1277,319 @@ pub fn combat_targeting_set_entity(
     combat_targeting_insert_observation_index_slot(pool, s);
 }
 
+const COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE: usize = 44;
+
+#[wasm_bindgen]
+pub fn combat_targeting_entity_stamp_row_stride() -> u32 {
+    COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE as u32
+}
+
+/// Batched row-form variant of `combat_targeting_set_entity`.
+/// JS still computes the row fields while Entity data lives there, but
+/// the WASM boundary crossing is per stamp pass instead of per entity.
+/// Row 10 carries host yaw; deterministic sin/cos stay inside Rust instead
+/// of crossing the JS/WASM boundary twice per entity. Row 11 is reserved.
+#[wasm_bindgen]
+pub fn combat_targeting_set_entity_rows_batch(count: u32, entity_slots: &[u32], rows: &[f64]) {
+    let n = count as usize;
+    let required_rows = match n.checked_mul(COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE) {
+        Some(v) => v,
+        None => return,
+    };
+    if entity_slots.len() < n || rows.len() < required_rows {
+        return;
+    }
+    debug_assert!(entity_slots.len() >= n);
+    debug_assert!(rows.len() >= required_rows);
+    for i in 0..n {
+        let b = i * COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE;
+        let rotation = rows[b + 10];
+        let rot_cos = rotation.cos();
+        let rot_sin = rotation.sin();
+        combat_targeting_set_entity(
+            entity_slots[i],
+            rows[b] as i32,
+            rows[b + 1] as u8,
+            rows[b + 2] as u32,
+            rows[b + 3],
+            rows[b + 4],
+            rows[b + 5],
+            rows[b + 6],
+            rows[b + 7],
+            rows[b + 8],
+            rows[b + 9],
+            rot_cos,
+            rot_sin,
+            rows[b + 12],
+            rows[b + 13],
+            rows[b + 14],
+            rows[b + 15],
+            rows[b + 16],
+            rows[b + 17],
+            rows[b + 18],
+            rows[b + 19],
+            rows[b + 20],
+            rows[b + 21],
+            rows[b + 22] as f32,
+            rows[b + 23] as u8,
+            rows[b + 24] as u8,
+            rows[b + 25] as u8,
+            rows[b + 26] as u8,
+            rows[b + 27] as u8,
+            rows[b + 28] as u32,
+            rows[b + 29] as u32,
+            rows[b + 30] as u32,
+            rows[b + 31] as u32,
+            rows[b + 32] as u32,
+            rows[b + 33] as f32,
+            rows[b + 34] as f32,
+            rows[b + 35] as f32,
+            rows[b + 36] as f32,
+            rows[b + 37] as i32,
+            rows[b + 38] as u8,
+            rows[b + 39],
+            rows[b + 40],
+            rows[b + 41],
+            rows[b + 42] as i32,
+            rows[b + 43] as u8,
+        );
+    }
+}
+
+/// Fast path for targetable unit rows that do not need per-turret targeting
+/// rows this tick. TypeScript still decides which units are eligible because
+/// turret arrays and combat-mode objects are transitional JS state, but the
+/// hot 44-field entity stamp is derived from the canonical native entity slab.
+///
+/// `extra_flags` carries CT_ENTITY_FLAG_HAS_COMBAT / FIRE_ENABLED / CLOAKED
+/// when those JS-only facts apply. Static sensors and lock-on masks come from
+/// the uploaded unit profile table.
+#[inline]
+fn combat_targeting_stamp_simple_unit_entity_from_state(
+    es: &crate::entity_state::EntityStateSlab,
+    table: &CombatTargetingUnitProfileTable,
+    entity_slot_u32: u32,
+    view_mask: u32,
+    extra_flags: u8,
+) -> Option<bool> {
+    let entity_slot = entity_slot_u32 as usize;
+    if entity_slot >= es.entity_id.len() || es.kind[entity_slot] != ENTITY_STATE_KIND_UNIT {
+        return None;
+    }
+    let entity_id = es.entity_id[entity_slot];
+    if entity_id < 0 {
+        return None;
+    }
+    let slab_flags = es.flags[entity_slot];
+    if (slab_flags & ENTITY_SLOT_FLAG_HAS_UNIT) == 0 {
+        return None;
+    }
+
+    let code = es.unit_blueprint_code[entity_slot] as usize;
+    let profile_base = code.saturating_mul(COMBAT_TARGETING_UNIT_PROFILE_STRIDE);
+    if code >= table.count
+        || profile_base + COMBAT_TARGETING_UNIT_PROFILE_STRIDE > table.values.len()
+    {
+        return None;
+    }
+    let profile = &table.values;
+
+    let hp = es.hp[entity_slot];
+    let mut flags = extra_flags;
+    if hp > 0.0 && (slab_flags & ENTITY_SLOT_FLAG_ALIVE) != 0 {
+        flags |= CT_ENTITY_FLAG_ALIVE;
+    }
+    if (slab_flags & ENTITY_SLOT_FLAG_ACTIVE) != 0 {
+        flags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
+    }
+    if (profile[profile_base + CT_UNIT_PROFILE_FLAGS] as u8
+        & CT_UNIT_PROFILE_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE)
+        != 0
+    {
+        flags |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
+    }
+
+    let owner_player_id = es.owner_player_id[entity_slot].min(255) as u8;
+    let rotation = es.rotation[entity_slot];
+    let full_vision_radius = profile[profile_base + CT_UNIT_PROFILE_FULL_VISION_RADIUS] as f32;
+    let radar_radius = profile[profile_base + CT_UNIT_PROFILE_RADAR_RADIUS] as f32;
+    let detector_radius = profile[profile_base + CT_UNIT_PROFILE_DETECTOR_RADIUS] as f32;
+    let detection_padding = es.radius_other[entity_slot]
+        .max(es.radius_hitbox[entity_slot])
+        .max(es.radius_collision[entity_slot]) as f32;
+
+    combat_targeting_set_entity(
+        entity_slot_u32,
+        entity_id,
+        owner_player_id,
+        view_mask,
+        es.pos_x[entity_slot],
+        es.pos_y[entity_slot],
+        es.pos_z[entity_slot],
+        es.vel_x[entity_slot],
+        es.vel_y[entity_slot],
+        es.vel_z[entity_slot],
+        es.pos_z[entity_slot] - es.aabb_hz[entity_slot],
+        rotation.cos(),
+        rotation.sin(),
+        es.surface_normal_x[entity_slot],
+        es.surface_normal_y[entity_slot],
+        es.surface_normal_z[entity_slot],
+        0.0,
+        0.0,
+        0.0,
+        es.radius_hitbox[entity_slot],
+        0.0,
+        0.0,
+        0.0,
+        hp as f32,
+        flags,
+        CT_ENTITY_FAMILY_UNIT,
+        code.min(CT_BLUEPRINT_CODE_NONE as usize) as u8,
+        profile[profile_base + CT_UNIT_PROFILE_LOCKON_RELATIONSHIP] as u8,
+        profile[profile_base + CT_UNIT_PROFILE_LOCKON_ENTITY_FAMILY] as u8,
+        profile[profile_base + CT_UNIT_PROFILE_LOCKON_BUILDING] as u32,
+        profile[profile_base + CT_UNIT_PROFILE_LOCKON_TOWER] as u32,
+        profile[profile_base + CT_UNIT_PROFILE_LOCKON_UNIT] as u32,
+        profile[profile_base + CT_UNIT_PROFILE_LOCKON_TURRET] as u32,
+        profile[profile_base + CT_UNIT_PROFILE_LOCKON_SHOT] as u32,
+        full_vision_radius,
+        radar_radius,
+        detector_radius,
+        detection_padding,
+        -1,
+        0,
+        0.0,
+        0.0,
+        0.0,
+        -1,
+        0,
+    );
+
+    Some(
+        owner_player_id > 0
+            && (flags & (CT_ENTITY_FLAG_ALIVE | CT_ENTITY_FLAG_BUILDABLE_COMPLETE))
+                == (CT_ENTITY_FLAG_ALIVE | CT_ENTITY_FLAG_BUILDABLE_COMPLETE)
+            && (full_vision_radius > 0.0 || radar_radius > 0.0 || detector_radius > 0.0),
+    )
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_stamp_simple_unit_entities_from_entity_state(
+    count: u32,
+    entity_slots: &[u32],
+    view_masks: &[u32],
+    extra_flags: &[u8],
+    sensor_source_slots_out: &mut [u32],
+) -> i32 {
+    let n = count as usize;
+    if entity_slots.len() < n || view_masks.len() < n || extra_flags.len() < n {
+        return 0;
+    }
+    if sensor_source_slots_out.len() < n {
+        return -(n as i32);
+    }
+
+    let es = entity_state();
+    let table = combat_targeting_unit_profile_table();
+    let mut sensor_count = 0_usize;
+
+    for i in 0..n {
+        if combat_targeting_stamp_simple_unit_entity_from_state(
+            es,
+            table,
+            entity_slots[i],
+            view_masks[i],
+            extra_flags[i],
+        ) == Some(true)
+        {
+            sensor_source_slots_out[sensor_count] = entity_slots[i];
+            sensor_count += 1;
+        }
+    }
+
+    sensor_count as i32
+}
+
+/// Observation fast path for simple-unit crowds. JS passes sorted exact slots
+/// for units that still need JS-only stamping: suspension/cloak state, priority
+/// targets, probes, non-default fire state, or turret rows. Every other unit
+/// can be derived from the canonical native entity slab, including simple
+/// combat rows whose JS state was validated as fire-enabled/default.
+#[wasm_bindgen]
+pub fn combat_targeting_stamp_observation_only_simple_units_from_entity_state(
+    view_masks_by_player: &[u32],
+    exact_slots_sorted: &[u32],
+    target_slots_out: &mut [u32],
+    sensor_source_slots_out: &mut [u32],
+    counts_out: &mut [u32],
+) -> i32 {
+    if counts_out.len() < 2 {
+        return 0;
+    }
+
+    let es = entity_state();
+    let table = combat_targeting_unit_profile_table();
+    let capacity = es
+        .entity_id
+        .len()
+        .min(es.kind.len())
+        .min(es.flags.len())
+        .min(es.owner_player_id.len())
+        .min(es.unit_blueprint_code.len());
+    if target_slots_out.len() < capacity || sensor_source_slots_out.len() < capacity {
+        return -(capacity as i32);
+    }
+
+    let mut target_count = 0_usize;
+    let mut sensor_count = 0_usize;
+    let mut exact_idx = 0_usize;
+    for entity_slot in 0..capacity {
+        let entity_slot_u32 = entity_slot as u32;
+        while exact_idx < exact_slots_sorted.len()
+            && exact_slots_sorted[exact_idx] < entity_slot_u32
+        {
+            exact_idx += 1;
+        }
+        if exact_idx < exact_slots_sorted.len() && exact_slots_sorted[exact_idx] == entity_slot_u32
+        {
+            continue;
+        }
+        let slab_flags = es.flags[entity_slot];
+        let mut extra_flags = 0_u8;
+        if (slab_flags & ENTITY_SLOT_FLAG_HAS_COMBAT) != 0 {
+            extra_flags |= CT_ENTITY_FLAG_HAS_COMBAT | CT_ENTITY_FLAG_FIRE_ENABLED;
+        }
+        let owner = es.owner_player_id[entity_slot] as usize;
+        let view_mask = if owner < view_masks_by_player.len() {
+            view_masks_by_player[owner]
+        } else {
+            0
+        };
+        match combat_targeting_stamp_simple_unit_entity_from_state(
+            es,
+            table,
+            entity_slot_u32,
+            view_mask,
+            extra_flags,
+        ) {
+            Some(has_sensor) => {
+                target_slots_out[target_count] = entity_slot_u32;
+                target_count += 1;
+                if has_sensor {
+                    sensor_source_slots_out[sensor_count] = entity_slot_u32;
+                    sensor_count += 1;
+                }
+            }
+            None => {}
+        }
+    }
+
+    counts_out[0] = target_count as u32;
+    counts_out[1] = sensor_count as u32;
+    target_count as i32
+}
+
 #[wasm_bindgen]
 pub fn combat_targeting_unset_entity(entity_slot: u32) {
     combat_targeting_pool().unset_entity(entity_slot);
@@ -1191,6 +1746,184 @@ pub fn combat_targeting_set_turret(
     );
 }
 
+const COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE: usize = 45;
+
+#[wasm_bindgen]
+pub fn combat_targeting_turret_stamp_row_stride() -> u32 {
+    COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE as u32
+}
+
+/// Batched row-form variant of `combat_targeting_set_turret`.
+/// Keeps FSM preservation and ballistic fallback seeding in the
+/// existing scalar setter while avoiding per-turret JS/WASM calls.
+#[wasm_bindgen]
+pub fn combat_targeting_set_turret_rows_batch(
+    count: u32,
+    entity_slots: &[u32],
+    turret_indices: &[u32],
+    rows: &[f64],
+) {
+    let n = count as usize;
+    let required_rows = match n.checked_mul(COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE) {
+        Some(v) => v,
+        None => return,
+    };
+    if entity_slots.len() < n || turret_indices.len() < n || rows.len() < required_rows {
+        return;
+    }
+    debug_assert!(entity_slots.len() >= n);
+    debug_assert!(turret_indices.len() >= n);
+    debug_assert!(rows.len() >= required_rows);
+    for i in 0..n {
+        let b = i * COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE;
+        combat_targeting_set_turret(
+            entity_slots[i],
+            turret_indices[i],
+            rows[b] as i32,
+            rows[b + 1] as i32,
+            rows[b + 2] as i32,
+            rows[b + 3] as i32,
+            rows[b + 4],
+            rows[b + 5],
+            rows[b + 6],
+            rows[b + 7],
+            rows[b + 8],
+            rows[b + 9],
+            rows[b + 10],
+            rows[b + 11] as f32,
+            rows[b + 12] as f32,
+            rows[b + 13] as f32,
+            rows[b + 14] as f32,
+            rows[b + 15],
+            rows[b + 16],
+            rows[b + 17],
+            rows[b + 18],
+            rows[b + 19],
+            rows[b + 20],
+            rows[b + 21],
+            rows[b + 22],
+            rows[b + 23],
+            rows[b + 24],
+            rows[b + 25],
+            rows[b + 26] as i32,
+            rows[b + 27] as u16,
+            rows[b + 28] as f32,
+            rows[b + 29],
+            rows[b + 30],
+            rows[b + 31],
+            rows[b + 32] as u8,
+            rows[b + 33],
+            rows[b + 34],
+            rows[b + 35] as u8,
+            rows[b + 36] as u8,
+            rows[b + 37] as u8,
+            rows[b + 38] as u8,
+            rows[b + 39] as u32,
+            rows[b + 40] as u32,
+            rows[b + 41] as u32,
+            rows[b + 42] as u32,
+            rows[b + 43] as u32,
+            rows[b + 44] as u8,
+        );
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct CombatTargetingStampScratch {
+    entity_slots: Vec<u32>,
+    entity_rows: Vec<f64>,
+    turret_entity_slots: Vec<u32>,
+    turret_indices: Vec<u32>,
+    turret_rows: Vec<f64>,
+}
+
+pub(crate) struct CombatTargetingStampScratchHolder(UnsafeCell<CombatTargetingStampScratch>);
+unsafe impl Sync for CombatTargetingStampScratchHolder {}
+pub(crate) static COMBAT_TARGETING_STAMP_SCRATCH: CombatTargetingStampScratchHolder =
+    CombatTargetingStampScratchHolder(UnsafeCell::new(CombatTargetingStampScratch {
+        entity_slots: Vec::new(),
+        entity_rows: Vec::new(),
+        turret_entity_slots: Vec::new(),
+        turret_indices: Vec::new(),
+        turret_rows: Vec::new(),
+    }));
+
+#[inline]
+pub(crate) fn combat_targeting_stamp_scratch() -> &'static mut CombatTargetingStampScratch {
+    unsafe { &mut *COMBAT_TARGETING_STAMP_SCRATCH.0.get() }
+}
+
+/// Persistent WASM-memory staging for the per-tick entity/turret stamp.
+/// TypeScript writes these buffers through typed views and commits counts,
+/// avoiding wasm-bindgen's copied multi-megabyte slice arguments.
+#[wasm_bindgen]
+pub fn combat_targeting_ensure_stamp_scratch_capacity(entity_capacity: u32, turret_capacity: u32) {
+    let scratch = combat_targeting_stamp_scratch();
+    let entity_capacity = entity_capacity as usize;
+    let turret_capacity = turret_capacity as usize;
+    scratch.entity_slots.resize(entity_capacity, 0);
+    scratch.entity_rows.resize(
+        entity_capacity.saturating_mul(COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE),
+        0.0,
+    );
+    scratch.turret_entity_slots.resize(turret_capacity, 0);
+    scratch.turret_indices.resize(turret_capacity, 0);
+    scratch.turret_rows.resize(
+        turret_capacity.saturating_mul(COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE),
+        0.0,
+    );
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_stamp_entity_slots_ptr() -> *const u32 {
+    combat_targeting_stamp_scratch().entity_slots.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_stamp_entity_rows_ptr() -> *const f64 {
+    combat_targeting_stamp_scratch().entity_rows.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_stamp_turret_entity_slots_ptr() -> *const u32 {
+    combat_targeting_stamp_scratch()
+        .turret_entity_slots
+        .as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_stamp_turret_indices_ptr() -> *const u32 {
+    combat_targeting_stamp_scratch().turret_indices.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_stamp_turret_rows_ptr() -> *const f64 {
+    combat_targeting_stamp_scratch().turret_rows.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_commit_stamp_scratch(entity_count: u32, turret_count: u32) {
+    let scratch = combat_targeting_stamp_scratch();
+    let entity_count = (entity_count as usize).min(scratch.entity_slots.len());
+    let entity_row_count = entity_count.saturating_mul(COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE);
+    combat_targeting_set_entity_rows_batch(
+        entity_count as u32,
+        &scratch.entity_slots[..entity_count],
+        &scratch.entity_rows[..entity_row_count],
+    );
+
+    let turret_count = (turret_count as usize)
+        .min(scratch.turret_entity_slots.len())
+        .min(scratch.turret_indices.len());
+    let turret_row_count = turret_count.saturating_mul(COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE);
+    combat_targeting_set_turret_rows_batch(
+        turret_count as u32,
+        &scratch.turret_entity_slots[..turret_count],
+        &scratch.turret_indices[..turret_count],
+        &scratch.turret_rows[..turret_row_count],
+    );
+}
+
 #[inline]
 pub(crate) fn combat_targeting_apply_surface_tilt(
     vx: f64,
@@ -1265,6 +1998,24 @@ pub fn combat_targeting_update_mount_kinematics(
     turret_shield_spheres_enabled: u8,
 ) {
     let pool = combat_targeting_pool();
+    combat_targeting_update_mount_kinematics_for_pool(
+        pool,
+        entity_slot,
+        current_tick,
+        dt_ms,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+    );
+}
+
+pub(crate) fn combat_targeting_update_mount_kinematics_for_pool(
+    pool: &mut CombatTargetingPool,
+    entity_slot: u32,
+    current_tick: i32,
+    dt_ms: f64,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+) {
     let s = entity_slot as usize;
     if s >= pool.turret_count_per_entity.len() {
         return;
@@ -1354,8 +2105,10 @@ pub fn combat_targeting_update_mount_kinematics_batch(
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
 ) {
+    let pool = combat_targeting_pool();
     for &entity_slot in entity_slots {
-        combat_targeting_update_mount_kinematics(
+        combat_targeting_update_mount_kinematics_for_pool(
+            pool,
             entity_slot,
             current_tick,
             dt_ms,
@@ -1462,7 +2215,7 @@ pub fn combat_targeting_collect_observation_visibility(
         }
 
         let id = state.entity_id[slot];
-        if id < 0 || pool.entity_id[slot] != id {
+        if id < 0 {
             return;
         }
 
@@ -1471,8 +2224,8 @@ pub fn combat_targeting_collect_observation_visibility(
             return;
         }
 
-        handled_rows += 1;
         if combat_targeting_player_mask_includes_owner(view_mask, state.owner_player_id[slot]) {
+            handled_rows += 1;
             if visible_count < visible_ids_out.len() {
                 visible_ids_out[visible_count] = id;
             }
@@ -1489,6 +2242,11 @@ pub fn combat_targeting_collect_observation_visibility(
             radar_count += 1;
             return;
         }
+
+        if pool.entity_id[slot] != id {
+            return;
+        }
+        handled_rows += 1;
 
         let flags = pool.entity_flags[slot];
         if (flags & CT_ENTITY_FLAG_ALIVE) == 0 {
@@ -2109,7 +2867,7 @@ pub(crate) const TARGETING_FALLBACK_LOS_BUDGET: u32 = 12;
 // broadphase pad conservative so a large unit straddling a sensor rim
 // still reaches the precise distance check.
 pub(crate) const COMBAT_TARGETING_SENSOR_QUERY_PAD: f64 = 128.0;
-pub(crate) const COMBAT_TARGETING_OBSERVATION_CELL_SIZE: f64 = 512.0;
+pub(crate) const COMBAT_TARGETING_OBSERVATION_CELL_SIZE: f64 = 128.0;
 pub(crate) const COMBAT_TARGETING_OWNERLESS_OBSERVATION_BIT: u32 = 1u32 << 31;
 pub(crate) const COMBAT_TARGETING_INVALID_CANDIDATE_SLOT: u32 = u32::MAX;
 pub(crate) const CT_TARGETING_PREP_HAS_APPLY: u8 = 1;
@@ -2211,6 +2969,22 @@ pub(crate) fn combat_targeting_clear_observation_index(pool: &mut CombatTargetin
             cell.owner_bits = 0;
         }
     }
+    let owner_index = combat_targeting_observation_owner_index();
+    for player in owner_index.players.iter_mut() {
+        for key in player.cell_keys.drain(..) {
+            if let Some(cell) = player.cells.get_mut(&key) {
+                cell.slots.clear();
+                cell.owner_bits = 0;
+            }
+        }
+    }
+    for key in owner_index.ownerless.cell_keys.drain(..) {
+        if let Some(cell) = owner_index.ownerless.cells.get_mut(&key) {
+            cell.slots.clear();
+            cell.owner_bits = 0;
+        }
+    }
+    owner_index.owner_bits = 0;
     pool.observation_max_detection_padding = 0.0;
 }
 
@@ -2248,6 +3022,28 @@ pub(crate) fn combat_targeting_insert_observation_index_slot(
     } else {
         owner_bit
     };
+    if owner_bit != 0 && owner_bit.count_ones() == 1 {
+        let player_idx = owner_bit.trailing_zeros() as usize;
+        let owner_index = combat_targeting_observation_owner_index();
+        if player_idx < owner_index.players.len() {
+            let player = &mut owner_index.players[player_idx];
+            let owner_cell = player.cells.entry(key).or_default();
+            if owner_cell.slots.is_empty() {
+                player.cell_keys.push(key);
+            }
+            owner_cell.slots.push(slot as u32);
+            owner_cell.owner_bits |= owner_bit;
+            owner_index.owner_bits |= owner_bit;
+        }
+    } else if owner_bit == 0 {
+        let owner_index = combat_targeting_observation_owner_index();
+        let owner_cell = owner_index.ownerless.cells.entry(key).or_default();
+        if owner_cell.slots.is_empty() {
+            owner_index.ownerless.cell_keys.push(key);
+        }
+        owner_cell.slots.push(slot as u32);
+        owner_cell.owner_bits |= COMBAT_TARGETING_OWNERLESS_OBSERVATION_BIT;
+    }
 }
 
 pub(crate) fn combat_targeting_rebuild_observation_index(pool: &mut CombatTargetingPool) {
@@ -2327,6 +3123,9 @@ pub(crate) fn combat_targeting_mark_observation_cell(
 pub(crate) const CT_OBSERVATION_MASK_SENSOR: u8 = 0;
 pub(crate) const CT_OBSERVATION_MASK_DETECTOR: u8 = 1;
 pub(crate) const CT_OBSERVATION_MASK_FULL_SIGHT: u8 = 2;
+pub(crate) const CT_SENSOR_SOURCE_MASK_SENSOR: u8 = 1 << 0;
+pub(crate) const CT_SENSOR_SOURCE_MASK_DETECTOR: u8 = 1 << 1;
+pub(crate) const CT_SENSOR_SOURCE_MASK_FULL_SIGHT: u8 = 1 << 2;
 
 pub(crate) fn combat_targeting_mark_observation_circle(
     pool: &mut CombatTargetingPool,
@@ -2473,6 +3272,536 @@ pub(crate) fn combat_targeting_mark_observation_from_source_slot(
     }
 }
 
+#[inline]
+pub(crate) fn combat_targeting_positive_radius(radius: f32) -> f64 {
+    let r = radius as f64;
+    if r > 0.0 && r.is_finite() {
+        r
+    } else {
+        0.0
+    }
+}
+
+pub(crate) fn combat_targeting_clear_sensor_source_index(
+    index: &mut CombatTargetingSensorSourceIndex,
+) {
+    for player in index.players.iter_mut() {
+        for key in player.cell_keys.drain(..) {
+            if let Some(cell) = player.cells.get_mut(&key) {
+                cell.slots.clear();
+                cell.source_mask_kinds = 0;
+                cell.max_sensor_radius = 0.0;
+                cell.max_full_sight_radius = 0.0;
+                cell.max_detector_radius = 0.0;
+            }
+        }
+        player.max_radius = 0.0;
+        player.source_mask_kinds = 0;
+    }
+    index.owner_bits = 0;
+}
+
+#[inline]
+pub(crate) fn combat_targeting_insert_sensor_source_index_slot(
+    pool: &CombatTargetingPool,
+    index: &mut CombatTargetingSensorSourceIndex,
+    source_slot: usize,
+) {
+    if !combat_targeting_entity_online_for_sensors(pool, source_slot) {
+        return;
+    }
+    let owner_bit = pool.entity_owner_bit[source_slot];
+    if owner_bit == 0 || owner_bit.count_ones() != 1 {
+        return;
+    }
+    let source_x = pool.entity_pos_x[source_slot];
+    let source_y = pool.entity_pos_y[source_slot];
+    if !source_x.is_finite() || !source_y.is_finite() {
+        return;
+    }
+
+    let full_radius = combat_targeting_positive_radius(pool.entity_full_vision_radius[source_slot]);
+    if full_radius <= 0.0 {
+        return;
+    }
+
+    let player_idx = owner_bit.trailing_zeros() as usize;
+    if player_idx >= index.players.len() {
+        return;
+    }
+    let cx = combat_targeting_observation_cell_coord(source_x);
+    let cy = combat_targeting_observation_cell_coord(source_y);
+    let key = combat_targeting_observation_cell_key(cx, cy);
+    let player = &mut index.players[player_idx];
+    let cell = player.cells.entry(key).or_default();
+    if cell.slots.is_empty() {
+        player.cell_keys.push(key);
+    }
+    cell.slots.push(source_slot as u32);
+    player.max_radius = player.max_radius.max(full_radius);
+    player.source_mask_kinds |= CT_SENSOR_SOURCE_MASK_SENSOR | CT_SENSOR_SOURCE_MASK_FULL_SIGHT;
+    cell.source_mask_kinds |= CT_SENSOR_SOURCE_MASK_SENSOR | CT_SENSOR_SOURCE_MASK_FULL_SIGHT;
+    cell.max_sensor_radius = cell.max_sensor_radius.max(full_radius);
+    cell.max_full_sight_radius = cell.max_full_sight_radius.max(full_radius);
+    index.owner_bits |= owner_bit;
+}
+
+pub(crate) fn combat_targeting_rebuild_sensor_source_index_for_sources(
+    pool: &CombatTargetingPool,
+    index: &mut CombatTargetingSensorSourceIndex,
+    source_slots: &[u32],
+) {
+    combat_targeting_clear_sensor_source_index(index);
+    for &source_slot in source_slots {
+        combat_targeting_insert_sensor_source_index_slot(pool, index, source_slot as usize);
+    }
+}
+
+#[inline]
+pub(crate) fn combat_targeting_radius_covers_target(
+    dx: f64,
+    dy: f64,
+    radius: f64,
+    target_padding: f64,
+) -> bool {
+    if radius <= 0.0 {
+        return false;
+    }
+    let r = radius + target_padding;
+    r > 0.0 && r.is_finite() && dx * dx + dy * dy <= r * r
+}
+
+#[inline]
+pub(crate) fn combat_targeting_accumulate_target_observation_from_source(
+    pool: &CombatTargetingPool,
+    source_slot: usize,
+    target_x: f64,
+    target_y: f64,
+    target_padding: f64,
+    source_mask_kinds: u8,
+    sensor_covered: &mut bool,
+    full_sight_covered: &mut bool,
+    detector_covered: &mut bool,
+) {
+    if source_slot >= pool.entity_id.len() || pool.entity_id[source_slot] < 0 {
+        return;
+    }
+    let source_x = pool.entity_pos_x[source_slot];
+    let source_y = pool.entity_pos_y[source_slot];
+    if !source_x.is_finite() || !source_y.is_finite() {
+        return;
+    }
+    let dx = target_x - source_x;
+    let dy = target_y - source_y;
+    if !*sensor_covered && (source_mask_kinds & CT_SENSOR_SOURCE_MASK_SENSOR) != 0 {
+        let full_radius =
+            combat_targeting_positive_radius(pool.entity_full_vision_radius[source_slot]);
+        let radar_radius = combat_targeting_positive_radius(pool.entity_radar_radius[source_slot]);
+        if combat_targeting_radius_covers_target(
+            dx,
+            dy,
+            full_radius.max(radar_radius),
+            target_padding,
+        ) {
+            *sensor_covered = true;
+        }
+    }
+    if !*full_sight_covered && (source_mask_kinds & CT_SENSOR_SOURCE_MASK_FULL_SIGHT) != 0 {
+        let full_radius =
+            combat_targeting_positive_radius(pool.entity_full_vision_radius[source_slot]);
+        if combat_targeting_radius_covers_target(dx, dy, full_radius, target_padding) {
+            *full_sight_covered = true;
+        }
+    }
+    if !*detector_covered && (source_mask_kinds & CT_SENSOR_SOURCE_MASK_DETECTOR) != 0 {
+        let detector_radius =
+            combat_targeting_positive_radius(pool.entity_detector_radius[source_slot]);
+        if combat_targeting_radius_covers_target(dx, dy, detector_radius, target_padding) {
+            *detector_covered = true;
+        }
+    }
+}
+
+#[inline]
+pub(crate) fn combat_targeting_target_observation_done(
+    source_mask_kinds: u8,
+    sensor_covered: bool,
+    full_sight_covered: bool,
+    detector_covered: bool,
+) -> bool {
+    ((source_mask_kinds & CT_SENSOR_SOURCE_MASK_SENSOR) == 0 || sensor_covered)
+        && ((source_mask_kinds & CT_SENSOR_SOURCE_MASK_FULL_SIGHT) == 0 || full_sight_covered)
+        && ((source_mask_kinds & CT_SENSOR_SOURCE_MASK_DETECTOR) == 0 || detector_covered)
+}
+
+#[inline]
+pub(crate) fn combat_targeting_sensor_cell_distance_bounds_sq(
+    target_x: f64,
+    target_y: f64,
+    cell_cx: i32,
+    cell_cy: i32,
+) -> (f64, f64) {
+    let min_x = (cell_cx as f64) * COMBAT_TARGETING_OBSERVATION_CELL_SIZE;
+    let min_y = (cell_cy as f64) * COMBAT_TARGETING_OBSERVATION_CELL_SIZE;
+    let max_x = min_x + COMBAT_TARGETING_OBSERVATION_CELL_SIZE;
+    let max_y = min_y + COMBAT_TARGETING_OBSERVATION_CELL_SIZE;
+
+    let dx_min = if target_x < min_x {
+        min_x - target_x
+    } else if target_x > max_x {
+        target_x - max_x
+    } else {
+        0.0
+    };
+    let dy_min = if target_y < min_y {
+        min_y - target_y
+    } else if target_y > max_y {
+        target_y - max_y
+    } else {
+        0.0
+    };
+
+    let dx0 = target_x - min_x;
+    let dx1 = target_x - max_x;
+    let dy0 = target_y - min_y;
+    let dy1 = target_y - max_y;
+    let max_dx_sq = (dx0 * dx0).max(dx1 * dx1);
+    let max_dy_sq = (dy0 * dy0).max(dy1 * dy1);
+    (dx_min * dx_min + dy_min * dy_min, max_dx_sq + max_dy_sq)
+}
+
+#[inline]
+pub(crate) fn combat_targeting_cell_radius_covers_all(
+    max_dist_sq: f64,
+    radius: f64,
+    target_padding: f64,
+) -> bool {
+    let r = radius + target_padding;
+    r > 0.0 && r.is_finite() && max_dist_sq <= r * r
+}
+
+#[inline]
+pub(crate) fn combat_targeting_cell_radius_covers_none(
+    min_dist_sq: f64,
+    radius: f64,
+    target_padding: f64,
+) -> bool {
+    let r = radius + target_padding;
+    r <= 0.0 || !r.is_finite() || min_dist_sq > r * r
+}
+
+#[inline]
+pub(crate) fn combat_targeting_accumulate_target_observation_cell(
+    pool: &CombatTargetingPool,
+    cell: &CombatTargetingSensorSourceCell,
+    cell_cx: i32,
+    cell_cy: i32,
+    target_x: f64,
+    target_y: f64,
+    target_padding: f64,
+    source_mask_kinds: u8,
+    sensor_covered: &mut bool,
+    full_sight_covered: &mut bool,
+    detector_covered: &mut bool,
+) -> bool {
+    let source_mask_kinds = source_mask_kinds & cell.source_mask_kinds;
+    if source_mask_kinds == 0 {
+        return false;
+    }
+    let (min_dist_sq, max_dist_sq) =
+        combat_targeting_sensor_cell_distance_bounds_sq(target_x, target_y, cell_cx, cell_cy);
+    let mut scan_mask = source_mask_kinds;
+
+    if !*sensor_covered && (source_mask_kinds & CT_SENSOR_SOURCE_MASK_SENSOR) != 0 {
+        if combat_targeting_cell_radius_covers_all(
+            max_dist_sq,
+            cell.max_sensor_radius,
+            target_padding,
+        ) {
+            *sensor_covered = true;
+            scan_mask &= !CT_SENSOR_SOURCE_MASK_SENSOR;
+        } else if combat_targeting_cell_radius_covers_none(
+            min_dist_sq,
+            cell.max_sensor_radius,
+            target_padding,
+        ) {
+            scan_mask &= !CT_SENSOR_SOURCE_MASK_SENSOR;
+        }
+    } else {
+        scan_mask &= !CT_SENSOR_SOURCE_MASK_SENSOR;
+    }
+
+    if !*full_sight_covered && (source_mask_kinds & CT_SENSOR_SOURCE_MASK_FULL_SIGHT) != 0 {
+        if combat_targeting_cell_radius_covers_all(
+            max_dist_sq,
+            cell.max_full_sight_radius,
+            target_padding,
+        ) {
+            *full_sight_covered = true;
+            scan_mask &= !CT_SENSOR_SOURCE_MASK_FULL_SIGHT;
+        } else if combat_targeting_cell_radius_covers_none(
+            min_dist_sq,
+            cell.max_full_sight_radius,
+            target_padding,
+        ) {
+            scan_mask &= !CT_SENSOR_SOURCE_MASK_FULL_SIGHT;
+        }
+    } else {
+        scan_mask &= !CT_SENSOR_SOURCE_MASK_FULL_SIGHT;
+    }
+
+    if !*detector_covered && (source_mask_kinds & CT_SENSOR_SOURCE_MASK_DETECTOR) != 0 {
+        if combat_targeting_cell_radius_covers_all(
+            max_dist_sq,
+            cell.max_detector_radius,
+            target_padding,
+        ) {
+            *detector_covered = true;
+            scan_mask &= !CT_SENSOR_SOURCE_MASK_DETECTOR;
+        } else if combat_targeting_cell_radius_covers_none(
+            min_dist_sq,
+            cell.max_detector_radius,
+            target_padding,
+        ) {
+            scan_mask &= !CT_SENSOR_SOURCE_MASK_DETECTOR;
+        }
+    } else {
+        scan_mask &= !CT_SENSOR_SOURCE_MASK_DETECTOR;
+    }
+
+    if combat_targeting_target_observation_done(
+        source_mask_kinds,
+        *sensor_covered,
+        *full_sight_covered,
+        *detector_covered,
+    ) || scan_mask == 0
+    {
+        return combat_targeting_target_observation_done(
+            source_mask_kinds,
+            *sensor_covered,
+            *full_sight_covered,
+            *detector_covered,
+        );
+    }
+
+    for &source_slot in &cell.slots {
+        combat_targeting_accumulate_target_observation_from_source(
+            pool,
+            source_slot as usize,
+            target_x,
+            target_y,
+            target_padding,
+            scan_mask,
+            sensor_covered,
+            full_sight_covered,
+            detector_covered,
+        );
+        if combat_targeting_target_observation_done(
+            source_mask_kinds,
+            *sensor_covered,
+            *full_sight_covered,
+            *detector_covered,
+        ) {
+            return true;
+        }
+    }
+    false
+}
+
+pub(crate) fn combat_targeting_compute_target_observation_masks(
+    pool: &CombatTargetingPool,
+    index: &CombatTargetingSensorSourceIndex,
+    target_slot: usize,
+) -> (u32, u32, u32) {
+    if target_slot >= pool.entity_flags.len()
+        || pool.entity_id[target_slot] < 0
+        || !combat_targeting_entity_alive(pool, target_slot)
+    {
+        return (0, 0, 0);
+    }
+    let target_x = pool.entity_pos_x[target_slot];
+    let target_y = pool.entity_pos_y[target_slot];
+    let target_padding = pool.entity_detection_padding[target_slot] as f64;
+    if !target_x.is_finite() || !target_y.is_finite() || !target_padding.is_finite() {
+        return (0, 0, 0);
+    }
+    let target_padding = target_padding.max(0.0);
+    let target_owner_bit = pool.entity_owner_bit[target_slot];
+    let mut sensor_mask = 0_u32;
+    let mut full_sight_mask = 0_u32;
+    let mut detector_mask = 0_u32;
+    let mut remaining_owner_bits = index.owner_bits;
+    if target_owner_bit != 0 {
+        remaining_owner_bits &= !target_owner_bit;
+    }
+
+    while remaining_owner_bits != 0 {
+        let player_idx = remaining_owner_bits.trailing_zeros() as usize;
+        let owner_bit = 1_u32 << (player_idx as u32);
+        remaining_owner_bits &= !owner_bit;
+        if player_idx >= index.players.len() {
+            continue;
+        }
+        let player = &index.players[player_idx];
+        if player.max_radius <= 0.0 || player.cell_keys.is_empty() || player.source_mask_kinds == 0
+        {
+            continue;
+        }
+        let query_radius = player.max_radius + target_padding;
+        if query_radius <= 0.0 || !query_radius.is_finite() {
+            continue;
+        }
+        let min_cx = combat_targeting_observation_cell_coord(target_x - query_radius);
+        let max_cx = combat_targeting_observation_cell_coord(target_x + query_radius);
+        let min_cy = combat_targeting_observation_cell_coord(target_y - query_radius);
+        let max_cy = combat_targeting_observation_cell_coord(target_y + query_radius);
+        let cells_x = (max_cx - min_cx + 1) as i64;
+        let cells_y = (max_cy - min_cy + 1) as i64;
+        if cells_x <= 0 || cells_y <= 0 {
+            continue;
+        }
+
+        let mut sensor_covered = false;
+        let mut full_sight_covered = false;
+        let mut detector_covered = false;
+        let center_cx = combat_targeting_observation_cell_coord(target_x);
+        let center_cy = combat_targeting_observation_cell_coord(target_y);
+        let max_ring = (center_cx - min_cx)
+            .abs()
+            .max((max_cx - center_cx).abs())
+            .max((center_cy - min_cy).abs())
+            .max((max_cy - center_cy).abs());
+        'cell_grid: for ring in 0..=max_ring {
+            let x0 = (center_cx - ring).max(min_cx);
+            let x1 = (center_cx + ring).min(max_cx);
+            let y0 = (center_cy - ring).max(min_cy);
+            let y1 = (center_cy + ring).min(max_cy);
+            if x0 > x1 || y0 > y1 {
+                continue;
+            }
+            for cx in x0..=x1 {
+                for &cy in &[y0, y1] {
+                    let key = combat_targeting_observation_cell_key(cx, cy);
+                    let Some(cell) = player.cells.get(&key) else {
+                        continue;
+                    };
+                    if combat_targeting_accumulate_target_observation_cell(
+                        pool,
+                        cell,
+                        cx,
+                        cy,
+                        target_x,
+                        target_y,
+                        target_padding,
+                        player.source_mask_kinds,
+                        &mut sensor_covered,
+                        &mut full_sight_covered,
+                        &mut detector_covered,
+                    ) {
+                        break 'cell_grid;
+                    }
+                }
+            }
+            if y1 <= y0 + 1 {
+                continue;
+            }
+            for cy in (y0 + 1)..=(y1 - 1) {
+                for &cx in &[x0, x1] {
+                    let key = combat_targeting_observation_cell_key(cx, cy);
+                    let Some(cell) = player.cells.get(&key) else {
+                        continue;
+                    };
+                    if combat_targeting_accumulate_target_observation_cell(
+                        pool,
+                        cell,
+                        cx,
+                        cy,
+                        target_x,
+                        target_y,
+                        target_padding,
+                        player.source_mask_kinds,
+                        &mut sensor_covered,
+                        &mut full_sight_covered,
+                        &mut detector_covered,
+                    ) {
+                        break 'cell_grid;
+                    }
+                }
+            }
+        }
+        if sensor_covered {
+            sensor_mask |= owner_bit;
+        }
+        if full_sight_covered {
+            full_sight_mask |= owner_bit;
+        }
+        if detector_covered {
+            detector_mask |= owner_bit;
+        }
+    }
+
+    (sensor_mask, full_sight_mask, detector_mask)
+}
+
+pub(crate) fn combat_targeting_rebuild_observation_masks_from_source_index(
+    pool: &mut CombatTargetingPool,
+    source_slots: &[u32],
+) {
+    let index = combat_targeting_sensor_source_index();
+    combat_targeting_rebuild_sensor_source_index_for_sources(pool, index, source_slots);
+    for i in 0..pool.active_entity_slots.len() {
+        let target_slot = pool.active_entity_slots[i] as usize;
+        let (sensor_mask, full_sight_mask, detector_mask) =
+            combat_targeting_compute_target_observation_masks(pool, index, target_slot);
+        if target_slot >= pool.entity_sensor_coverage_mask.len() {
+            continue;
+        }
+        pool.entity_sensor_coverage_mask[target_slot] = sensor_mask;
+        pool.entity_full_sight_coverage_mask[target_slot] = full_sight_mask;
+        pool.entity_detector_coverage_mask[target_slot] = detector_mask;
+    }
+    for &source_slot in source_slots {
+        let source_slot = source_slot as usize;
+        if !combat_targeting_entity_online_for_sensors(pool, source_slot) {
+            continue;
+        }
+        let owner_bit = pool.entity_owner_bit[source_slot];
+        if owner_bit == 0 {
+            continue;
+        }
+        let source_x = pool.entity_pos_x[source_slot];
+        let source_y = pool.entity_pos_y[source_slot];
+        if !source_x.is_finite() || !source_y.is_finite() {
+            continue;
+        }
+        let full_radius =
+            combat_targeting_positive_radius(pool.entity_full_vision_radius[source_slot]);
+        let radar_radius = combat_targeting_positive_radius(pool.entity_radar_radius[source_slot]);
+        if radar_radius > full_radius {
+            combat_targeting_mark_observation_circle(
+                pool,
+                source_x,
+                source_y,
+                radar_radius,
+                owner_bit,
+                CT_OBSERVATION_MASK_SENSOR,
+            );
+        }
+        let detector_radius =
+            combat_targeting_positive_radius(pool.entity_detector_radius[source_slot]);
+        if detector_radius > 0.0 {
+            combat_targeting_mark_observation_circle(
+                pool,
+                source_x,
+                source_y,
+                detector_radius,
+                owner_bit,
+                CT_OBSERVATION_MASK_DETECTOR,
+            );
+        }
+    }
+}
+
 /// Rebuilds per-target radar-level coverage masks from stamped sensor
 /// sources using the spatial grid. This is the hot-path
 /// targeting equivalent of the snapshot visibility aggregate: do the
@@ -2505,9 +3834,7 @@ pub fn combat_targeting_rebuild_observation_masks() {
 #[wasm_bindgen]
 pub fn combat_targeting_rebuild_observation_masks_for_sources(source_slots: &[u32]) {
     let pool = combat_targeting_pool();
-    for &source_slot in source_slots {
-        combat_targeting_mark_observation_from_source_slot(pool, source_slot as usize);
-    }
+    combat_targeting_rebuild_observation_masks_from_source_index(pool, source_slots);
 }
 
 /// Adds a temporary full-sight source such as a scan pulse after the
@@ -4124,14 +5451,14 @@ pub(crate) fn combat_targeting_decrement_entity_cooldowns(
 ///   - the maximum mount offset used to widen that query,
 ///   - and the per-turret current-fire rank cache for min-range
 ///     fallback promotion.
-#[wasm_bindgen]
-pub fn combat_targeting_prepare_auto_scan(
+pub(crate) fn combat_targeting_prepare_auto_scan_inner(
     entity_slot: u32,
     turret_shield_panels_enabled: u8,
     turret_shield_spheres_enabled: u8,
     cached_fire_ranks: &mut [u8],
     cached_fire_dist_sqs: &mut [f64],
     out_f64: &mut [f64],
+    allow_reacquire: bool,
 ) -> u8 {
     if out_f64.len() >= 2 {
         out_f64[0] = 0.0;
@@ -4216,11 +5543,31 @@ pub fn combat_targeting_prepare_auto_scan(
         out_f64[1] = max_weapon_offset;
     }
 
-    if needs_any_query {
+    if needs_any_query && allow_reacquire {
         1
     } else {
         0
     }
+}
+
+#[wasm_bindgen]
+pub fn combat_targeting_prepare_auto_scan(
+    entity_slot: u32,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    cached_fire_ranks: &mut [u8],
+    cached_fire_dist_sqs: &mut [f64],
+    out_f64: &mut [f64],
+) -> u8 {
+    combat_targeting_prepare_auto_scan_inner(
+        entity_slot,
+        turret_shield_panels_enabled,
+        turret_shield_spheres_enabled,
+        cached_fire_ranks,
+        cached_fire_dist_sqs,
+        out_f64,
+        true,
+    )
 }
 
 #[inline]
@@ -4849,9 +6196,16 @@ pub(crate) fn combat_targeting_collect_spatial_candidate_cell(
     enabled_turret_mask: u32,
     wants_friendly: bool,
     wants_enemy: bool,
-    batch_radius: f64,
+    base_radius: f64,
     scratch: &mut CombatTargetingSpatialCandidateScratch,
 ) {
+    {
+        let profile = combat_targeting_profile();
+        profile.candidate_cells = profile.candidate_cells.wrapping_add(1);
+        profile.candidate_slots_visited = profile
+            .candidate_slots_visited
+            .wrapping_add(cell.slots.len() as u64);
+    }
     if source_owner_bit != 0 {
         let bucket_owner_bits = cell.owner_bits;
         if bucket_owner_bits != 0 {
@@ -4886,7 +6240,7 @@ pub(crate) fn combat_targeting_collect_spatial_candidate_cell(
             CT_ENTITY_FAMILY_UNIT | CT_ENTITY_FAMILY_SHOT => {
                 let shot = pool.entity_radius_hitbox[slot];
                 shot > 0.0 && {
-                    let r = batch_radius + shot;
+                    let r = base_radius + shot;
                     dx * dx + dy * dy <= r * r
                 }
             }
@@ -4898,7 +6252,7 @@ pub(crate) fn combat_targeting_collect_spatial_candidate_cell(
                     pool.entity_aabb_half_y[slot],
                     source_x,
                     source_y,
-                ) <= batch_radius * batch_radius
+                ) <= base_radius * base_radius
             }
             _ => false,
         };
@@ -4927,6 +6281,96 @@ pub(crate) fn combat_targeting_collect_spatial_candidate_cell(
         scratch.pos_z.push(pool.entity_pos_z[slot]);
         scratch.radius.push(pool.entity_radius_hitbox[slot]);
         scratch.shield_panel_score.push(0.0);
+        let profile = combat_targeting_profile();
+        profile.candidates_collected = profile.candidates_collected.wrapping_add(1);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn combat_targeting_collect_spatial_candidate_cells_from_index(
+    pool: &CombatTargetingPool,
+    observation_cells: &HashMap<u64, CombatTargetingObservationCell>,
+    observation_cell_keys: &[u64],
+    min_cx: i32,
+    max_cx: i32,
+    min_cy: i32,
+    max_cy: i32,
+    entity_slot: u32,
+    source_slot: usize,
+    source_x: f64,
+    source_y: f64,
+    source_z: f64,
+    source_player: u8,
+    source_owner_bit: u32,
+    source_view_mask: u32,
+    relationship_mask: u8,
+    enabled_turret_mask: u32,
+    wants_friendly: bool,
+    wants_enemy: bool,
+    base_radius: f64,
+    scratch: &mut CombatTargetingSpatialCandidateScratch,
+) {
+    let cells_x = (max_cx - min_cx + 1) as i64;
+    let cells_y = (max_cy - min_cy + 1) as i64;
+    if cells_x <= 0 || cells_y <= 0 {
+        return;
+    }
+    let cell_count = cells_x.saturating_mul(cells_y);
+    if cell_count > observation_cell_keys.len() as i64 {
+        for &key in observation_cell_keys {
+            let (cx, cy) = combat_targeting_observation_cell_coords_from_key(key);
+            if cx < min_cx || cx > max_cx || cy < min_cy || cy > max_cy {
+                continue;
+            }
+            let Some(cell) = observation_cells.get(&key) else {
+                continue;
+            };
+            combat_targeting_collect_spatial_candidate_cell(
+                pool,
+                cell,
+                entity_slot,
+                source_slot,
+                source_x,
+                source_y,
+                source_z,
+                source_player,
+                source_owner_bit,
+                source_view_mask,
+                relationship_mask,
+                enabled_turret_mask,
+                wants_friendly,
+                wants_enemy,
+                base_radius,
+                scratch,
+            );
+        }
+        return;
+    }
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            let key = combat_targeting_observation_cell_key(cx, cy);
+            let Some(cell) = observation_cells.get(&key) else {
+                continue;
+            };
+            combat_targeting_collect_spatial_candidate_cell(
+                pool,
+                cell,
+                entity_slot,
+                source_slot,
+                source_x,
+                source_y,
+                source_z,
+                source_player,
+                source_owner_bit,
+                source_view_mask,
+                relationship_mask,
+                enabled_turret_mask,
+                wants_friendly,
+                wants_enemy,
+                base_radius,
+                scratch,
+            );
+        }
     }
 }
 
@@ -4947,9 +6391,13 @@ pub(crate) fn combat_targeting_fill_spatial_candidate_scratch(
         return 0;
     }
 
-    let batch_radius = max_acquire_range + max_weapon_offset + max_targetable_radius;
-    if !batch_radius.is_finite() || batch_radius <= 0.0 {
+    let base_radius = max_acquire_range + max_weapon_offset;
+    if !base_radius.is_finite() || base_radius <= 0.0 {
         return 0;
+    }
+    {
+        let profile = combat_targeting_profile();
+        profile.spatial_queries = profile.spatial_queries.wrapping_add(1);
     }
 
     let pool = combat_targeting_pool();
@@ -4976,31 +6424,63 @@ pub(crate) fn combat_targeting_fill_spatial_candidate_scratch(
         return 0;
     }
 
-    let query_radius = batch_radius + SPATIAL_MAX_UNIT_SHOT_RADIUS;
+    // Search cells must include the largest possible target center, but the
+    // candidate filter below uses each candidate's own radius. This avoids
+    // paying exact target ranking cost for every small unit inside
+    // `max_targetable_radius` worth of extra broadphase slack.
+    let query_radius = base_radius + max_targetable_radius + SPATIAL_MAX_UNIT_SHOT_RADIUS;
     let min_cx = combat_targeting_observation_cell_coord(source_x - query_radius);
     let max_cx = combat_targeting_observation_cell_coord(source_x + query_radius);
     let min_cy = combat_targeting_observation_cell_coord(source_y - query_radius);
     let max_cy = combat_targeting_observation_cell_coord(source_y + query_radius);
     let wants_friendly = (relationship_mask & CT_TARGETING_CANDIDATE_REL_FRIENDLY) != 0;
     let wants_enemy = (relationship_mask & CT_TARGETING_CANDIDATE_REL_ENEMY) != 0;
-    let cells_x = (max_cx - min_cx + 1) as i64;
-    let cells_y = (max_cy - min_cy + 1) as i64;
-    if cells_x <= 0 || cells_y <= 0 {
-        return 0;
-    }
-    let cell_count = cells_x.saturating_mul(cells_y);
-    if cell_count > pool.observation_cell_keys.len() as i64 {
-        for &key in &pool.observation_cell_keys {
-            let (cx, cy) = combat_targeting_observation_cell_coords_from_key(key);
-            if cx < min_cx || cx > max_cx || cy < min_cy || cy > max_cy {
-                continue;
+
+    if source_owner_bit != 0 && source_owner_bit.count_ones() == 1 {
+        let owner_index = combat_targeting_observation_owner_index();
+        let source_player_idx = source_owner_bit.trailing_zeros() as usize;
+        if wants_enemy && !wants_friendly {
+            let mut remaining_owner_bits = owner_index.owner_bits & !source_owner_bit;
+            while remaining_owner_bits != 0 {
+                let player_idx = remaining_owner_bits.trailing_zeros() as usize;
+                let owner_bit = 1_u32 << (player_idx as u32);
+                remaining_owner_bits &= !owner_bit;
+                if player_idx >= owner_index.players.len() || player_idx == source_player_idx {
+                    continue;
+                }
+                let player = &owner_index.players[player_idx];
+                combat_targeting_collect_spatial_candidate_cells_from_index(
+                    pool,
+                    &player.cells,
+                    &player.cell_keys,
+                    min_cx,
+                    max_cx,
+                    min_cy,
+                    max_cy,
+                    entity_slot,
+                    source_slot,
+                    source_x,
+                    source_y,
+                    source_z,
+                    source_player,
+                    source_owner_bit,
+                    source_view_mask,
+                    relationship_mask,
+                    enabled_turret_mask,
+                    wants_friendly,
+                    wants_enemy,
+                    base_radius,
+                    scratch,
+                );
             }
-            let Some(cell) = pool.observation_cells.get(&key) else {
-                continue;
-            };
-            combat_targeting_collect_spatial_candidate_cell(
+            combat_targeting_collect_spatial_candidate_cells_from_index(
                 pool,
-                cell,
+                &owner_index.ownerless.cells,
+                &owner_index.ownerless.cell_keys,
+                min_cx,
+                max_cx,
+                min_cy,
+                max_cy,
                 entity_slot,
                 source_slot,
                 source_x,
@@ -5013,21 +6493,21 @@ pub(crate) fn combat_targeting_fill_spatial_candidate_scratch(
                 enabled_turret_mask,
                 wants_friendly,
                 wants_enemy,
-                batch_radius,
+                base_radius,
                 scratch,
             );
+            return scratch.ids.len() as u32;
         }
-        return scratch.ids.len() as u32;
-    }
-    for cx in min_cx..=max_cx {
-        for cy in min_cy..=max_cy {
-            let key = combat_targeting_observation_cell_key(cx, cy);
-            let Some(cell) = pool.observation_cells.get(&key) else {
-                continue;
-            };
-            combat_targeting_collect_spatial_candidate_cell(
+        if wants_friendly && !wants_enemy && source_player_idx < owner_index.players.len() {
+            let player = &owner_index.players[source_player_idx];
+            combat_targeting_collect_spatial_candidate_cells_from_index(
                 pool,
-                cell,
+                &player.cells,
+                &player.cell_keys,
+                min_cx,
+                max_cx,
+                min_cy,
+                max_cy,
                 entity_slot,
                 source_slot,
                 source_x,
@@ -5040,11 +6520,36 @@ pub(crate) fn combat_targeting_fill_spatial_candidate_scratch(
                 enabled_turret_mask,
                 wants_friendly,
                 wants_enemy,
-                batch_radius,
+                base_radius,
                 scratch,
             );
+            return scratch.ids.len() as u32;
         }
     }
+
+    combat_targeting_collect_spatial_candidate_cells_from_index(
+        pool,
+        &pool.observation_cells,
+        &pool.observation_cell_keys,
+        min_cx,
+        max_cx,
+        min_cy,
+        max_cy,
+        entity_slot,
+        source_slot,
+        source_x,
+        source_y,
+        source_z,
+        source_player,
+        source_owner_bit,
+        source_view_mask,
+        relationship_mask,
+        enabled_turret_mask,
+        wants_friendly,
+        wants_enemy,
+        base_radius,
+        scratch,
+    );
 
     scratch.ids.len() as u32
 }
@@ -5206,6 +6711,7 @@ pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
     cached_fire_ranks: &mut [u8],
     cached_fire_dist_sqs: &mut [f64],
     max_targetable_radius: f64,
+    scheduled_tick: Option<i32>,
 ) {
     let mut out_f64 = [0.0f64; 2];
     combat_targeting_compute_and_apply_validate_existing_lock_fsm_batch_inner(
@@ -5223,13 +6729,24 @@ pub(crate) fn combat_targeting_auto_mode_tick_from_slab(
         &[],
         true,
     );
-    let needs_spatial_query = combat_targeting_prepare_auto_scan(
+    let reacquire_due = scheduled_tick
+        .map(|tick| combat_targeting_reacquire_due(tick, source_entity_id))
+        .unwrap_or(true);
+    {
+        let profile = combat_targeting_profile();
+        profile.auto_ticks = profile.auto_ticks.wrapping_add(1);
+        if reacquire_due {
+            profile.reacquire_due = profile.reacquire_due.wrapping_add(1);
+        }
+    }
+    let needs_spatial_query = combat_targeting_prepare_auto_scan_inner(
         entity_slot,
         turret_shield_panels_enabled,
         turret_shield_spheres_enabled,
         cached_fire_ranks,
         cached_fire_dist_sqs,
         &mut out_f64,
+        reacquire_due,
     );
 
     combat_targeting_auto_mode_spatial_candidate_tick(
@@ -5356,6 +6873,7 @@ pub fn combat_targeting_tick_batch(
                     &mut cached_fire_ranks[start..end],
                     &mut cached_fire_dist_sqs[start..end],
                     max_targetable_radius,
+                    None,
                 );
             }
         }
@@ -5399,6 +6917,10 @@ pub fn combat_targeting_schedule_and_tick_batch(
         .min(out_had_cooldown.len())
         .min(out_modes.len())
         .min(out_has_active_work.len());
+    {
+        let profile = combat_targeting_profile();
+        profile.schedule_sources = profile.schedule_sources.wrapping_add(count as u64);
+    }
 
     for entity_i in 0..count {
         out_modes[entity_i] = CT_TARGETING_TICK_MODE_SKIP;
@@ -5409,6 +6931,10 @@ pub fn combat_targeting_schedule_and_tick_batch(
         let end = start + MAX;
         if end > cached_fire_ranks.len() || end > cached_fire_dist_sqs.len() {
             break;
+        }
+        {
+            let profile = combat_targeting_profile();
+            profile.schedule_processed = profile.schedule_processed.wrapping_add(1);
         }
 
         let (
@@ -5491,6 +7017,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
         };
 
         if !entity_ready {
+            let profile = combat_targeting_profile();
+            profile.schedule_skipped = profile.schedule_skipped.wrapping_add(1);
             continue;
         }
 
@@ -5526,6 +7054,8 @@ pub fn combat_targeting_schedule_and_tick_batch(
 
         let has_priority_point = priority_point_present_val != 0;
         if priority_target_id < 0 && !has_priority_point && scheduled_probe_tick > current_tick {
+            let profile = combat_targeting_profile();
+            profile.schedule_skipped = profile.schedule_skipped.wrapping_add(1);
             continue;
         }
 
@@ -5551,6 +7081,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
                 &mut cached_fire_ranks[start..end],
                 &mut cached_fire_dist_sqs[start..end],
                 max_targetable_radius,
+                Some(current_tick),
             );
             out_modes[entity_i] = CT_TARGETING_TICK_MODE_AUTO;
             out_has_active_work[entity_i] =
@@ -5635,6 +7166,7 @@ pub fn combat_targeting_schedule_and_tick_batch(
             &mut cached_fire_ranks[start..end],
             &mut cached_fire_dist_sqs[start..end],
             max_targetable_radius,
+            Some(current_tick),
         );
         out_modes[entity_i] = CT_TARGETING_TICK_MODE_AUTO;
         out_has_active_work[entity_i] =
@@ -6090,6 +7622,10 @@ pub(crate) fn combat_targeting_candidate_slot_gate_passes(
     ground_aim_fraction: f64,
     under_only: bool,
 ) -> bool {
+    {
+        let profile = combat_targeting_profile();
+        profile.gate_calls = profile.gate_calls.wrapping_add(1);
+    }
     let idx = combat_targeting_turret_global_idx(entity_slot, turret_idx);
     let flags = pool.turret_config_flags[idx];
     let mount_x = pool.turret_mount_x[idx];
@@ -6155,7 +7691,12 @@ pub(crate) fn combat_targeting_candidate_slot_gate_passes(
         gravity,
     );
 
-    los_clear != 0 && ballistic_clear != 0 && shield_clear != 0
+    let passes = los_clear != 0 && ballistic_clear != 0 && shield_clear != 0;
+    if passes {
+        let profile = combat_targeting_profile();
+        profile.gate_passes = profile.gate_passes.wrapping_add(1);
+    }
+    passes
 }
 
 /// AIM-08.5 — batch target candidate scoring/selection + internal
@@ -6399,6 +7940,13 @@ pub(crate) fn combat_targeting_compute_and_choose_best_candidates_batch_inner(
     for turret_idx in 0..turret_count {
         if apply_mask[turret_idx] == 0 {
             continue;
+        }
+        {
+            let profile = combat_targeting_profile();
+            profile.choose_calls = profile.choose_calls.wrapping_add(1);
+            profile.choose_candidate_tests = profile
+                .choose_candidate_tests
+                .wrapping_add(clamped_candidate_count as u64);
         }
 
         out_target_ids[turret_idx] = -1;
@@ -6901,6 +8449,10 @@ pub(crate) struct ShieldSurfacePool {
     unit_broad_radius: Vec<f32>,
     mirror_yaw: Vec<f32>,
     mirror_pitch: Vec<f32>,
+    mirror_yaw_cos: Vec<f64>,
+    mirror_yaw_sin: Vec<f64>,
+    mirror_pitch_cos: Vec<f64>,
+    mirror_pitch_sin: Vec<f64>,
     pivot_x: Vec<f64>,
     pivot_y: Vec<f64>,
     pivot_z: Vec<f64>,
@@ -6912,6 +8464,8 @@ pub(crate) struct ShieldSurfacePool {
     panel_arm_length: Vec<f32>,
     panel_offset_y: Vec<f32>,
     panel_angle: Vec<f32>,
+    panel_angle_cos: Vec<f64>,
+    panel_angle_sin: Vec<f64>,
     panel_base_y: Vec<f32>,
     panel_top_y: Vec<f32>,
     panel_half_width: Vec<f32>,
@@ -6920,6 +8474,16 @@ pub(crate) struct ShieldSurfacePool {
     panel_reflection_mode_beam: Vec<u8>,
     panel_reflection_mode_laser: Vec<u8>,
     panel_reflection_entity_mask: u8,
+
+    // Reflector broadphase index. Field and panel reflection still use the
+    // exact kernels below; this only cuts the candidate set for beam/projectile
+    // reflector queries.
+    field_reflector_cells: HashMap<u64, Vec<u32>>,
+    panel_unit_reflector_cells: HashMap<u64, Vec<u32>>,
+    reflector_query_cells: Vec<u64>,
+    field_query_marks: Vec<u32>,
+    panel_unit_query_marks: Vec<u32>,
+    reflector_query_mark: u32,
 }
 
 impl ShieldSurfacePool {
@@ -6956,6 +8520,10 @@ impl ShieldSurfacePool {
             unit_broad_radius: Vec::new(),
             mirror_yaw: Vec::new(),
             mirror_pitch: Vec::new(),
+            mirror_yaw_cos: Vec::new(),
+            mirror_yaw_sin: Vec::new(),
+            mirror_pitch_cos: Vec::new(),
+            mirror_pitch_sin: Vec::new(),
             pivot_x: Vec::new(),
             pivot_y: Vec::new(),
             pivot_z: Vec::new(),
@@ -6965,6 +8533,8 @@ impl ShieldSurfacePool {
             panel_arm_length: Vec::new(),
             panel_offset_y: Vec::new(),
             panel_angle: Vec::new(),
+            panel_angle_cos: Vec::new(),
+            panel_angle_sin: Vec::new(),
             panel_base_y: Vec::new(),
             panel_top_y: Vec::new(),
             panel_half_width: Vec::new(),
@@ -6973,6 +8543,12 @@ impl ShieldSurfacePool {
             panel_reflection_mode_beam: Vec::new(),
             panel_reflection_mode_laser: Vec::new(),
             panel_reflection_entity_mask: 0,
+            field_reflector_cells: HashMap::default(),
+            panel_unit_reflector_cells: HashMap::default(),
+            reflector_query_cells: Vec::new(),
+            field_query_marks: Vec::new(),
+            panel_unit_query_marks: Vec::new(),
+            reflector_query_mark: 0,
         }
     }
 
@@ -7003,6 +8579,7 @@ impl ShieldSurfacePool {
                 .resize(needed, SHIELD_REFLECTION_MODE_NONE);
             self.field_reflection_mode_laser
                 .resize(needed, SHIELD_REFLECTION_MODE_NONE);
+            self.field_query_marks.resize(needed, 0);
         }
     }
 
@@ -7017,11 +8594,16 @@ impl ShieldSurfacePool {
             self.unit_broad_radius.resize(needed, 0.0);
             self.mirror_yaw.resize(needed, 0.0);
             self.mirror_pitch.resize(needed, 0.0);
+            self.mirror_yaw_cos.resize(needed, 1.0);
+            self.mirror_yaw_sin.resize(needed, 0.0);
+            self.mirror_pitch_cos.resize(needed, 1.0);
+            self.mirror_pitch_sin.resize(needed, 0.0);
             self.pivot_x.resize(needed, 0.0);
             self.pivot_y.resize(needed, 0.0);
             self.pivot_z.resize(needed, 0.0);
             self.panel_start.resize(needed, 0);
             self.panel_count.resize(needed, 0);
+            self.panel_unit_query_marks.resize(needed, 0);
         }
     }
 
@@ -7031,6 +8613,8 @@ impl ShieldSurfacePool {
             self.panel_arm_length.resize(needed, 0.0);
             self.panel_offset_y.resize(needed, 0.0);
             self.panel_angle.resize(needed, 0.0);
+            self.panel_angle_cos.resize(needed, 1.0);
+            self.panel_angle_sin.resize(needed, 0.0);
             self.panel_base_y.resize(needed, 0.0);
             self.panel_top_y.resize(needed, 0.0);
             self.panel_half_width.resize(needed, 0.0);
@@ -7062,6 +8646,190 @@ pub(crate) fn shield_pool() -> &'static mut ShieldSurfacePool {
     }
 }
 
+const SHIELD_REFLECTOR_INDEX_CELL_SIZE: f64 = 200.0;
+const SHIELD_REFLECTOR_INDEX_MAX_QUERY_CELLS: i64 = 4096;
+
+#[inline]
+fn shield_reflector_cell(v: f64) -> i32 {
+    (v / SHIELD_REFLECTOR_INDEX_CELL_SIZE).floor() as i32
+}
+
+#[inline]
+fn shield_reflector_index_insert_aabb(
+    cells: &mut HashMap<u64, Vec<u32>>,
+    idx: u32,
+    min_x: f64,
+    max_x: f64,
+    min_y: f64,
+    max_y: f64,
+) {
+    if !(min_x.is_finite() && max_x.is_finite() && min_y.is_finite() && max_y.is_finite()) {
+        return;
+    }
+    let lo_x = min_x.min(max_x);
+    let hi_x = min_x.max(max_x);
+    let lo_y = min_y.min(max_y);
+    let hi_y = min_y.max(max_y);
+    let min_cx = shield_reflector_cell(lo_x);
+    let max_cx = shield_reflector_cell(hi_x);
+    let min_cy = shield_reflector_cell(lo_y);
+    let max_cy = shield_reflector_cell(hi_y);
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            cells
+                .entry(pack_contact_cell_key(cx, cy, 0))
+                .or_default()
+                .push(idx);
+        }
+    }
+}
+
+#[inline]
+fn shield_reflector_collect_segment_cells(
+    out: &mut Vec<u64>,
+    sx: f64,
+    sy: f64,
+    tx: f64,
+    ty: f64,
+    pad: f64,
+) -> bool {
+    out.clear();
+    if !(sx.is_finite() && sy.is_finite() && tx.is_finite() && ty.is_finite() && pad.is_finite()) {
+        return false;
+    }
+    let pad = pad.max(0.0);
+    let min_cx = shield_reflector_cell(sx.min(tx) - pad);
+    let max_cx = shield_reflector_cell(sx.max(tx) + pad);
+    let min_cy = shield_reflector_cell(sy.min(ty) - pad);
+    let max_cy = shield_reflector_cell(sy.max(ty) + pad);
+    let cells_x = (max_cx - min_cx + 1) as i64;
+    let cells_y = (max_cy - min_cy + 1) as i64;
+    if cells_x <= 0 || cells_y <= 0 {
+        return false;
+    }
+    if cells_x * cells_y > SHIELD_REFLECTOR_INDEX_MAX_QUERY_CELLS {
+        return false;
+    }
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            out.push(pack_contact_cell_key(cx, cy, 0));
+        }
+    }
+    true
+}
+
+#[inline]
+fn shield_reflector_next_query_mark(pool: &mut ShieldSurfacePool) -> u32 {
+    let next = pool.reflector_query_mark.wrapping_add(1);
+    if next == 0 {
+        pool.field_query_marks.fill(0);
+        pool.panel_unit_query_marks.fill(0);
+        pool.reflector_query_mark = 1;
+    } else {
+        pool.reflector_query_mark = next;
+    }
+    pool.reflector_query_mark
+}
+
+#[inline]
+fn shield_reflector_mark_once(marks: &mut Vec<u32>, idx: u32, mark: u32) -> bool {
+    let i = idx as usize;
+    if i >= marks.len() {
+        marks.resize(i + 1, 0);
+    }
+    if marks[i] == mark {
+        return false;
+    }
+    marks[i] = mark;
+    true
+}
+
+#[inline]
+fn shield_field_reflection_mask_at(pool: &ShieldSurfacePool, i: usize) -> u8 {
+    shield_reflection_entity_mask_from_modes(
+        pool.field_reflection_mode_plasma[i],
+        pool.field_reflection_mode_rocket[i],
+        pool.field_reflection_mode_beam[i],
+        pool.field_reflection_mode_laser[i],
+    )
+}
+
+#[inline]
+fn shield_reflector_index_field(pool: &mut ShieldSurfacePool, idx: u32) {
+    let i = idx as usize;
+    if i >= pool.count as usize || shield_field_reflection_mask_at(pool, i) == 0 {
+        return;
+    }
+    let radius = pool.radius[i].max(0.0);
+    if !radius.is_finite() {
+        return;
+    }
+    let shape = pool.field_shape[i];
+    let (min_x, max_x, min_y, max_y) = if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
+        (
+            min4(
+                pool.prev_center_x[i],
+                pool.center_x[i],
+                pool.prev_axis_end_x[i],
+                pool.axis_end_x[i],
+            ) - radius,
+            max4(
+                pool.prev_center_x[i],
+                pool.center_x[i],
+                pool.prev_axis_end_x[i],
+                pool.axis_end_x[i],
+            ) + radius,
+            min4(
+                pool.prev_center_y[i],
+                pool.center_y[i],
+                pool.prev_axis_end_y[i],
+                pool.axis_end_y[i],
+            ) - radius,
+            max4(
+                pool.prev_center_y[i],
+                pool.center_y[i],
+                pool.prev_axis_end_y[i],
+                pool.axis_end_y[i],
+            ) + radius,
+        )
+    } else {
+        (
+            pool.prev_center_x[i].min(pool.center_x[i]) - radius,
+            pool.prev_center_x[i].max(pool.center_x[i]) + radius,
+            pool.prev_center_y[i].min(pool.center_y[i]) - radius,
+            pool.prev_center_y[i].max(pool.center_y[i]) + radius,
+        )
+    };
+    shield_reflector_index_insert_aabb(
+        &mut pool.field_reflector_cells,
+        idx,
+        min_x,
+        max_x,
+        min_y,
+        max_y,
+    );
+}
+
+#[inline]
+fn shield_reflector_index_panel_unit(pool: &mut ShieldSurfacePool, idx: u32) {
+    let i = idx as usize;
+    if i >= pool.unit_count as usize || pool.panel_count[i] == 0 {
+        return;
+    }
+    let radius = (pool.unit_broad_radius[i] as f64).max(0.0);
+    if !radius.is_finite() {
+        return;
+    }
+    shield_reflector_index_insert_aabb(
+        &mut pool.panel_unit_reflector_cells,
+        idx,
+        pool.unit_x[i] - radius,
+        pool.unit_x[i] + radius,
+        pool.unit_y[i] - radius,
+        pool.unit_y[i] + radius,
+    );
+}
+
 #[wasm_bindgen]
 pub fn shield_pool_clear() {
     let pool = shield_pool();
@@ -7070,6 +8838,9 @@ pub fn shield_pool_clear() {
     pool.total_panels = 0;
     pool.field_reflection_entity_mask = 0;
     pool.panel_reflection_entity_mask = 0;
+    pool.field_reflector_cells.clear();
+    pool.panel_unit_reflector_cells.clear();
+    pool.reflector_query_cells.clear();
 }
 
 #[wasm_bindgen]
@@ -7083,6 +8854,7 @@ pub fn shield_pool_set_count(count: u32) {
     pool.ensure_capacity(count);
     pool.count = count;
     pool.field_reflection_entity_mask = 0;
+    pool.field_reflector_cells.clear();
 }
 
 #[wasm_bindgen]
@@ -7138,6 +8910,7 @@ pub fn shield_pool_set_field(
         reflection_mode_beam,
         reflection_mode_laser,
     );
+    shield_reflector_index_field(pool, idx);
 }
 
 macro_rules! shield_pool_ptr_export {
@@ -7819,6 +9592,145 @@ pub(crate) fn shield_projectile_intersection_contact(
 }
 
 #[inline]
+fn ranges_overlap(min_a: f64, max_a: f64, min_b: f64, max_b: f64) -> bool {
+    max_a >= min_b && min_a <= max_b
+}
+
+#[inline]
+fn min4(a: f64, b: f64, c: f64, d: f64) -> f64 {
+    a.min(b).min(c).min(d)
+}
+
+#[inline]
+fn max4(a: f64, b: f64, c: f64, d: f64) -> f64 {
+    a.max(b).max(c).max(d)
+}
+
+#[inline]
+pub(crate) fn projectile_segment_may_overlap_moving_shield_field(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    prev_center_x: f64,
+    prev_center_y: f64,
+    prev_center_z: f64,
+    prev_axis_end_x: f64,
+    prev_axis_end_y: f64,
+    prev_axis_end_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    axis_end_x: f64,
+    axis_end_y: f64,
+    axis_end_z: f64,
+    radius: f64,
+    projectile_radius: f64,
+    shape: u8,
+) -> bool {
+    let expand = (radius + projectile_radius.max(0.0) + SHIELD_GRAZE_EPS).max(0.0);
+    let seg_min_x = start_x.min(end_x);
+    let seg_max_x = start_x.max(end_x);
+    let seg_min_y = start_y.min(end_y);
+    let seg_max_y = start_y.max(end_y);
+
+    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
+        let field_min_x = prev_center_x.min(center_x) - expand;
+        let field_max_x = prev_center_x.max(center_x) + expand;
+        let field_min_y = prev_center_y.min(center_y) - expand;
+        let field_max_y = prev_center_y.max(center_y) + expand;
+        return ranges_overlap(seg_min_x, seg_max_x, field_min_x, field_max_x)
+            && ranges_overlap(seg_min_y, seg_max_y, field_min_y, field_max_y);
+    }
+
+    let seg_min_z = start_z.min(end_z);
+    let seg_max_z = start_z.max(end_z);
+    let (field_min_x, field_max_x, field_min_y, field_max_y, field_min_z, field_max_z) =
+        if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
+            (
+                min4(prev_center_x, center_x, prev_axis_end_x, axis_end_x) - expand,
+                max4(prev_center_x, center_x, prev_axis_end_x, axis_end_x) + expand,
+                min4(prev_center_y, center_y, prev_axis_end_y, axis_end_y) - expand,
+                max4(prev_center_y, center_y, prev_axis_end_y, axis_end_y) + expand,
+                min4(prev_center_z, center_z, prev_axis_end_z, axis_end_z) - expand,
+                max4(prev_center_z, center_z, prev_axis_end_z, axis_end_z) + expand,
+            )
+        } else {
+            (
+                prev_center_x.min(center_x) - expand,
+                prev_center_x.max(center_x) + expand,
+                prev_center_y.min(center_y) - expand,
+                prev_center_y.max(center_y) + expand,
+                prev_center_z.min(center_z) - expand,
+                prev_center_z.max(center_z) + expand,
+            )
+        };
+
+    ranges_overlap(seg_min_x, seg_max_x, field_min_x, field_max_x)
+        && ranges_overlap(seg_min_y, seg_max_y, field_min_y, field_max_y)
+        && ranges_overlap(seg_min_z, seg_max_z, field_min_z, field_max_z)
+}
+
+#[inline]
+pub(crate) fn projectile_segment_may_overlap_current_shield_field(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    axis_end_x: f64,
+    axis_end_y: f64,
+    axis_end_z: f64,
+    radius: f64,
+    projectile_radius: f64,
+    shape: u8,
+) -> bool {
+    let expand = (radius + projectile_radius.max(0.0) + SHIELD_GRAZE_EPS).max(0.0);
+    let seg_min_x = start_x.min(end_x);
+    let seg_max_x = start_x.max(end_x);
+    let seg_min_y = start_y.min(end_y);
+    let seg_max_y = start_y.max(end_y);
+
+    if shape == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
+        return ranges_overlap(seg_min_x, seg_max_x, center_x - expand, center_x + expand)
+            && ranges_overlap(seg_min_y, seg_max_y, center_y - expand, center_y + expand);
+    }
+
+    let seg_min_z = start_z.min(end_z);
+    let seg_max_z = start_z.max(end_z);
+    let (field_min_x, field_max_x, field_min_y, field_max_y, field_min_z, field_max_z) =
+        if shape == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
+            (
+                center_x.min(axis_end_x) - expand,
+                center_x.max(axis_end_x) + expand,
+                center_y.min(axis_end_y) - expand,
+                center_y.max(axis_end_y) + expand,
+                center_z.min(axis_end_z) - expand,
+                center_z.max(axis_end_z) + expand,
+            )
+        } else {
+            (
+                center_x - expand,
+                center_x + expand,
+                center_y - expand,
+                center_y + expand,
+                center_z - expand,
+                center_z + expand,
+            )
+        };
+
+    ranges_overlap(seg_min_x, seg_max_x, field_min_x, field_max_x)
+        && ranges_overlap(seg_min_y, seg_max_y, field_min_y, field_max_y)
+        && ranges_overlap(seg_min_z, seg_max_z, field_min_z, field_max_z)
+}
+
+#[inline]
 pub(crate) fn shield_field_signed_distance_and_normal(
     px: f64,
     py: f64,
@@ -8299,6 +10211,253 @@ pub(crate) fn shield_projectile_moving_field_hit(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn shield_projectile_intersection_field_candidate(
+    pool: &ShieldSurfacePool,
+    i: usize,
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    broad_end_x: f64,
+    broad_end_y: f64,
+    broad_end_z: f64,
+    exclude_entity_id: i32,
+    exclude_panel_index: i32,
+    projectile_radius: f64,
+    reflection_entity: u8,
+    dt_sec: f64,
+    instantaneous: bool,
+    best_t: &mut f64,
+    best: &mut Option<ProjectileReflectorHit>,
+) {
+    // Whole-entity exclusion (exclude_panel_index < 0): callers use
+    // this after a field bounce so the next segment does not
+    // immediately re-resolve against that same field. Beam launch
+    // does not pass the source entity here; it excludes only the
+    // firing body on the TypeScript side, so a turret inside its own
+    // active field still reflects when the ray exits that field.
+    // A panel-scoped exclusion (>= 0) leaves the entity's field
+    // surfaces testable.
+    if exclude_panel_index < 0 && pool.owner_entity_id[i] == exclude_entity_id {
+        return;
+    }
+    let reflection_mode = shield_reflection_mode_for_entity(
+        reflection_entity,
+        pool.field_reflection_mode_plasma[i],
+        pool.field_reflection_mode_rocket[i],
+        pool.field_reflection_mode_beam[i],
+        pool.field_reflection_mode_laser[i],
+    );
+    if reflection_mode == SHIELD_REFLECTION_MODE_NONE {
+        return;
+    }
+    let broadphase_overlap = if instantaneous {
+        projectile_segment_may_overlap_current_shield_field(
+            start_x,
+            start_y,
+            start_z,
+            broad_end_x,
+            broad_end_y,
+            broad_end_z,
+            pool.center_x[i],
+            pool.center_y[i],
+            pool.center_z[i],
+            pool.axis_end_x[i],
+            pool.axis_end_y[i],
+            pool.axis_end_z[i],
+            pool.radius[i],
+            projectile_radius,
+            pool.field_shape[i],
+        )
+    } else {
+        projectile_segment_may_overlap_moving_shield_field(
+            start_x,
+            start_y,
+            start_z,
+            broad_end_x,
+            broad_end_y,
+            broad_end_z,
+            pool.prev_center_x[i],
+            pool.prev_center_y[i],
+            pool.prev_center_z[i],
+            pool.prev_axis_end_x[i],
+            pool.prev_axis_end_y[i],
+            pool.prev_axis_end_z[i],
+            pool.center_x[i],
+            pool.center_y[i],
+            pool.center_z[i],
+            pool.axis_end_x[i],
+            pool.axis_end_y[i],
+            pool.axis_end_z[i],
+            pool.radius[i],
+            projectile_radius,
+            pool.field_shape[i],
+        )
+    };
+    if !broadphase_overlap {
+        return;
+    }
+    let static_contact = shield_projectile_intersection_contact(
+        start_x,
+        start_y,
+        start_z,
+        end_x,
+        end_y,
+        end_z,
+        pool.center_x[i],
+        pool.center_y[i],
+        pool.center_z[i],
+        pool.axis_end_x[i],
+        pool.axis_end_y[i],
+        pool.axis_end_z[i],
+        pool.radius[i],
+        projectile_radius,
+        pool.field_shape[i],
+        reflection_mode,
+    );
+    let candidate = if let Some(contact) = static_contact {
+        if contact.t >= *best_t {
+            None
+        } else {
+            let t = contact.t;
+            let dx = end_x - start_x;
+            let dy = end_y - start_y;
+            let dz = end_z - start_z;
+            let hit_x = start_x + dx * t;
+            let hit_y = start_y + dy * t;
+            let hit_z = start_z + dz * t;
+            let mut normal_x = hit_x - pool.center_x[i];
+            let mut normal_y = hit_y - pool.center_y[i];
+            let mut normal_z =
+                if pool.field_shape[i] == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
+                    0.0
+                } else {
+                    hit_z - pool.center_z[i]
+                };
+            if pool.field_shape[i] == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
+                let axis_x = pool.axis_end_x[i] - pool.center_x[i];
+                let axis_y = pool.axis_end_y[i] - pool.center_y[i];
+                let axis_z = pool.axis_end_z[i] - pool.center_z[i];
+                let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
+                if axis_len > 1e-9 {
+                    let ux = axis_x / axis_len;
+                    let uy = axis_y / axis_len;
+                    let uz = axis_z / axis_len;
+                    let rel_x = hit_x - pool.center_x[i];
+                    let rel_y = hit_y - pool.center_y[i];
+                    let rel_z = hit_z - pool.center_z[i];
+                    let axial = rel_x * ux + rel_y * uy + rel_z * uz;
+                    normal_x = rel_x - ux * axial;
+                    normal_y = rel_y - uy * axial;
+                    normal_z = rel_z - uz * axial;
+                }
+            }
+            let normal_len =
+                (normal_x * normal_x + normal_y * normal_y + normal_z * normal_z).sqrt();
+            let inv_normal_len = if normal_len > 1e-9 {
+                1.0 / normal_len
+            } else {
+                1.0
+            };
+            normal_x *= inv_normal_len;
+            normal_y *= inv_normal_len;
+            normal_z *= inv_normal_len;
+            let (surface_velocity_x, surface_velocity_y, surface_velocity_z) = if instantaneous {
+                (0.0, 0.0, 0.0)
+            } else {
+                shield_field_surface_velocity(
+                    hit_x,
+                    hit_y,
+                    hit_z,
+                    normal_x,
+                    normal_y,
+                    normal_z,
+                    contact.threshold,
+                    pool.prev_center_x[i],
+                    pool.prev_center_y[i],
+                    pool.prev_center_z[i],
+                    pool.prev_axis_end_x[i],
+                    pool.prev_axis_end_y[i],
+                    pool.prev_axis_end_z[i],
+                    pool.center_x[i],
+                    pool.center_y[i],
+                    pool.center_z[i],
+                    pool.axis_end_x[i],
+                    pool.axis_end_y[i],
+                    pool.axis_end_z[i],
+                    pool.radius[i],
+                    pool.field_shape[i],
+                    dt_sec,
+                )
+            };
+            Some(ProjectileReflectorHit {
+                kind: REFLECTOR_HIT_KIND_SHIELD,
+                entity_id: pool.owner_entity_id[i],
+                panel_index: -1,
+                t,
+                x: hit_x,
+                y: hit_y,
+                z: hit_z,
+                normal_x,
+                normal_y,
+                normal_z,
+                surface_velocity_x,
+                surface_velocity_y,
+                surface_velocity_z,
+            })
+        }
+    } else if instantaneous {
+        // Instantaneous rays (beams/lasers) resolve against the
+        // current pose only. The swept prev->cur fallback below
+        // exists for traveling projectiles that cross the tick; for
+        // a ray it would evaluate the shield at last tick's pose
+        // along the path and has no start-graze rejection, so a
+        // bounced segment starting on the surface could spuriously
+        // re-reflect — a second interaction that alternates with
+        // the static reflect.
+        None
+    } else {
+        shield_projectile_moving_field_hit(
+            start_x,
+            start_y,
+            start_z,
+            end_x,
+            end_y,
+            end_z,
+            pool.prev_center_x[i],
+            pool.prev_center_y[i],
+            pool.prev_center_z[i],
+            pool.prev_axis_end_x[i],
+            pool.prev_axis_end_y[i],
+            pool.prev_axis_end_z[i],
+            pool.center_x[i],
+            pool.center_y[i],
+            pool.center_z[i],
+            pool.axis_end_x[i],
+            pool.axis_end_y[i],
+            pool.axis_end_z[i],
+            pool.radius[i],
+            projectile_radius,
+            pool.field_shape[i],
+            reflection_mode,
+            pool.owner_entity_id[i],
+            dt_sec,
+        )
+    };
+    let Some(hit) = candidate else {
+        return;
+    };
+    if hit.t >= *best_t {
+        return;
+    }
+    *best_t = hit.t;
+    *best = Some(hit);
+}
+
 #[inline]
 pub(crate) fn shield_projectile_intersection(
     start_x: f64,
@@ -8323,177 +10482,93 @@ pub(crate) fn shield_projectile_intersection(
 
     let mut best_t = max_t;
     let mut best: Option<ProjectileReflectorHit> = None;
-    for i in 0..count {
-        // Whole-entity exclusion (exclude_panel_index < 0): callers use
-        // this after a field bounce so the next segment does not
-        // immediately re-resolve against that same field. Beam launch
-        // does not pass the source entity here; it excludes only the
-        // firing body on the TypeScript side, so a turret inside its own
-        // active field still reflects when the ray exits that field.
-        // A panel-scoped exclusion (>= 0) leaves the entity's field
-        // surfaces testable.
-        if exclude_panel_index < 0 && pool.owner_entity_id[i] == exclude_entity_id {
-            continue;
-        }
-        let reflection_mode = shield_reflection_mode_for_entity(
-            reflection_entity,
-            pool.field_reflection_mode_plasma[i],
-            pool.field_reflection_mode_rocket[i],
-            pool.field_reflection_mode_beam[i],
-            pool.field_reflection_mode_laser[i],
-        );
-        let static_contact = shield_projectile_intersection_contact(
+    let clamped_max_t = if max_t.is_finite() {
+        max_t.max(0.0).min(1.0)
+    } else {
+        1.0
+    };
+    if clamped_max_t <= 0.0 {
+        return None;
+    }
+    let seg_dx = end_x - start_x;
+    let seg_dy = end_y - start_y;
+    let seg_dz = end_z - start_z;
+    let broad_end_x = start_x + seg_dx * clamped_max_t;
+    let broad_end_y = start_y + seg_dy * clamped_max_t;
+    let broad_end_z = start_z + seg_dz * clamped_max_t;
+    let use_index = !pool.field_reflector_cells.is_empty()
+        && shield_reflector_collect_segment_cells(
+            &mut pool.reflector_query_cells,
             start_x,
             start_y,
-            start_z,
-            end_x,
-            end_y,
-            end_z,
-            pool.center_x[i],
-            pool.center_y[i],
-            pool.center_z[i],
-            pool.axis_end_x[i],
-            pool.axis_end_y[i],
-            pool.axis_end_z[i],
-            pool.radius[i],
+            broad_end_x,
+            broad_end_y,
             projectile_radius,
-            pool.field_shape[i],
-            reflection_mode,
         );
-        let candidate = if let Some(contact) = static_contact {
-            if contact.t >= best_t {
-                None
-            } else {
-                let t = contact.t;
-                let dx = end_x - start_x;
-                let dy = end_y - start_y;
-                let dz = end_z - start_z;
-                let hit_x = start_x + dx * t;
-                let hit_y = start_y + dy * t;
-                let hit_z = start_z + dz * t;
-                let mut normal_x = hit_x - pool.center_x[i];
-                let mut normal_y = hit_y - pool.center_y[i];
-                let mut normal_z =
-                    if pool.field_shape[i] == SHIELD_FIELD_SHAPE_INFINITE_VERTICAL_CYLINDER {
-                        0.0
-                    } else {
-                        hit_z - pool.center_z[i]
-                    };
-                if pool.field_shape[i] == SHIELD_FIELD_SHAPE_AIMED_CYLINDER {
-                    let axis_x = pool.axis_end_x[i] - pool.center_x[i];
-                    let axis_y = pool.axis_end_y[i] - pool.center_y[i];
-                    let axis_z = pool.axis_end_z[i] - pool.center_z[i];
-                    let axis_len = (axis_x * axis_x + axis_y * axis_y + axis_z * axis_z).sqrt();
-                    if axis_len > 1e-9 {
-                        let ux = axis_x / axis_len;
-                        let uy = axis_y / axis_len;
-                        let uz = axis_z / axis_len;
-                        let rel_x = hit_x - pool.center_x[i];
-                        let rel_y = hit_y - pool.center_y[i];
-                        let rel_z = hit_z - pool.center_z[i];
-                        let axial = rel_x * ux + rel_y * uy + rel_z * uz;
-                        normal_x = rel_x - ux * axial;
-                        normal_y = rel_y - uy * axial;
-                        normal_z = rel_z - uz * axial;
+    if use_index {
+        let query_mark = shield_reflector_next_query_mark(pool);
+        let nearby_cells = std::mem::take(&mut pool.reflector_query_cells);
+        let mut marks = std::mem::take(&mut pool.field_query_marks);
+        for key in &nearby_cells {
+            if let Some(fields) = pool.field_reflector_cells.get(key) {
+                for &field_idx in fields {
+                    if !shield_reflector_mark_once(&mut marks, field_idx, query_mark) {
+                        continue;
                     }
-                }
-                let normal_len =
-                    (normal_x * normal_x + normal_y * normal_y + normal_z * normal_z).sqrt();
-                let inv_normal_len = if normal_len > 1e-9 {
-                    1.0 / normal_len
-                } else {
-                    1.0
-                };
-                normal_x *= inv_normal_len;
-                normal_y *= inv_normal_len;
-                normal_z *= inv_normal_len;
-                let (surface_velocity_x, surface_velocity_y, surface_velocity_z) =
-                    shield_field_surface_velocity(
-                        hit_x,
-                        hit_y,
-                        hit_z,
-                        normal_x,
-                        normal_y,
-                        normal_z,
-                        contact.threshold,
-                        pool.prev_center_x[i],
-                        pool.prev_center_y[i],
-                        pool.prev_center_z[i],
-                        pool.prev_axis_end_x[i],
-                        pool.prev_axis_end_y[i],
-                        pool.prev_axis_end_z[i],
-                        pool.center_x[i],
-                        pool.center_y[i],
-                        pool.center_z[i],
-                        pool.axis_end_x[i],
-                        pool.axis_end_y[i],
-                        pool.axis_end_z[i],
-                        pool.radius[i],
-                        pool.field_shape[i],
+                    let i = field_idx as usize;
+                    if i >= count {
+                        continue;
+                    }
+                    shield_projectile_intersection_field_candidate(
+                        pool,
+                        i,
+                        start_x,
+                        start_y,
+                        start_z,
+                        end_x,
+                        end_y,
+                        end_z,
+                        broad_end_x,
+                        broad_end_y,
+                        broad_end_z,
+                        exclude_entity_id,
+                        exclude_panel_index,
+                        projectile_radius,
+                        reflection_entity,
                         dt_sec,
+                        instantaneous,
+                        &mut best_t,
+                        &mut best,
                     );
-                Some(ProjectileReflectorHit {
-                    kind: REFLECTOR_HIT_KIND_SHIELD,
-                    entity_id: pool.owner_entity_id[i],
-                    panel_index: -1,
-                    t,
-                    x: hit_x,
-                    y: hit_y,
-                    z: hit_z,
-                    normal_x,
-                    normal_y,
-                    normal_z,
-                    surface_velocity_x,
-                    surface_velocity_y,
-                    surface_velocity_z,
-                })
+                }
             }
-        } else if instantaneous {
-            // Instantaneous rays (beams/lasers) resolve against the
-            // current pose only. The swept prev->cur fallback below
-            // exists for traveling projectiles that cross the tick; for
-            // a ray it would evaluate the shield at last tick's pose
-            // along the path and has no start-graze rejection, so a
-            // bounced segment starting on the surface could spuriously
-            // re-reflect — a second interaction that alternates with
-            // the static reflect.
-            None
-        } else {
-            shield_projectile_moving_field_hit(
+        }
+        pool.field_query_marks = marks;
+        pool.reflector_query_cells = nearby_cells;
+    } else {
+        for i in 0..count {
+            shield_projectile_intersection_field_candidate(
+                pool,
+                i,
                 start_x,
                 start_y,
                 start_z,
                 end_x,
                 end_y,
                 end_z,
-                pool.prev_center_x[i],
-                pool.prev_center_y[i],
-                pool.prev_center_z[i],
-                pool.prev_axis_end_x[i],
-                pool.prev_axis_end_y[i],
-                pool.prev_axis_end_z[i],
-                pool.center_x[i],
-                pool.center_y[i],
-                pool.center_z[i],
-                pool.axis_end_x[i],
-                pool.axis_end_y[i],
-                pool.axis_end_z[i],
-                pool.radius[i],
+                broad_end_x,
+                broad_end_y,
+                broad_end_z,
+                exclude_entity_id,
+                exclude_panel_index,
                 projectile_radius,
-                pool.field_shape[i],
-                reflection_mode,
-                pool.owner_entity_id[i],
+                reflection_entity,
                 dt_sec,
-            )
-        };
-        let Some(hit) = candidate else {
-            continue;
-        };
-        if hit.t >= best_t {
-            continue;
+                instantaneous,
+                &mut best_t,
+                &mut best,
+            );
         }
-        best_t = hit.t;
-        best = Some(hit);
     }
     best
 }
@@ -8578,12 +10653,10 @@ pub fn shield_clearance_segment(
                 continue;
             }
 
-            let mirror_yaw = pool.mirror_yaw[u] as f64;
-            let mirror_pitch = pool.mirror_pitch[u] as f64;
-            let cos_yaw = mirror_yaw.cos();
-            let sin_yaw = mirror_yaw.sin();
-            let cos_pitch = mirror_pitch.cos();
-            let sin_pitch = mirror_pitch.sin();
+            let cos_yaw = pool.mirror_yaw_cos[u];
+            let sin_yaw = pool.mirror_yaw_sin[u];
+            let cos_pitch = pool.mirror_pitch_cos[u];
+            let sin_pitch = pool.mirror_pitch_sin[u];
 
             let pivot_x = pool.pivot_x[u];
             let pivot_y = pool.pivot_y[u];
@@ -8605,10 +10678,10 @@ pub fn shield_clearance_segment(
 
                 // Per-panel yaw composes the mirror turret yaw with the
                 // panel's authored angle (typically 0).
-                let panel_angle = pool.panel_angle[pi] as f64;
-                let panel_yaw = mirror_yaw + panel_angle;
-                let panel_cos_yaw = panel_yaw.cos();
-                let panel_sin_yaw = panel_yaw.sin();
+                let angle_cos = pool.panel_angle_cos[pi];
+                let angle_sin = pool.panel_angle_sin[pi];
+                let panel_cos_yaw = cos_yaw * angle_cos - sin_yaw * angle_sin;
+                let panel_sin_yaw = sin_yaw * angle_cos + cos_yaw * angle_sin;
 
                 let arm_length = pool.panel_arm_length[pi] as f64;
                 let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
@@ -8770,6 +10843,9 @@ pub fn shield_panel_pool_set_unit_count(count: u32) {
     let pool = shield_pool();
     pool.ensure_unit_capacity(count);
     pool.unit_count = count;
+    if count == 0 {
+        pool.panel_unit_reflector_cells.clear();
+    }
 }
 
 #[wasm_bindgen]
@@ -8778,6 +10854,7 @@ pub fn shield_panel_pool_set_panel_count(count: u32) {
     pool.ensure_panel_capacity(count);
     pool.total_panels = count;
     pool.panel_reflection_entity_mask = 0;
+    pool.panel_unit_reflector_cells.clear();
 }
 
 #[wasm_bindgen]
@@ -8808,11 +10885,18 @@ pub fn shield_panel_pool_set_unit(
     pool.unit_broad_radius[i] = unit_broad_radius;
     pool.mirror_yaw[i] = mirror_yaw;
     pool.mirror_pitch[i] = mirror_pitch;
+    let yaw = mirror_yaw as f64;
+    let pitch = mirror_pitch as f64;
+    pool.mirror_yaw_cos[i] = yaw.cos();
+    pool.mirror_yaw_sin[i] = yaw.sin();
+    pool.mirror_pitch_cos[i] = pitch.cos();
+    pool.mirror_pitch_sin[i] = pitch.sin();
     pool.pivot_x[i] = pivot_x;
     pool.pivot_y[i] = pivot_y;
     pool.pivot_z[i] = pivot_z;
     pool.panel_start[i] = panel_start;
     pool.panel_count[i] = panel_count;
+    shield_reflector_index_panel_unit(pool, idx);
 }
 
 #[wasm_bindgen]
@@ -8835,6 +10919,9 @@ pub fn shield_panel_pool_set_panel(
     pool.panel_arm_length[i] = arm_length;
     pool.panel_offset_y[i] = offset_y;
     pool.panel_angle[i] = panel_angle;
+    let angle = panel_angle as f64;
+    pool.panel_angle_cos[i] = angle.cos();
+    pool.panel_angle_sin[i] = angle.sin();
     pool.panel_base_y[i] = base_y;
     pool.panel_top_y[i] = top_y;
     pool.panel_half_width[i] = half_width;
@@ -8966,6 +11053,151 @@ pub(crate) fn ray_tilted_rect_intersection_t(
 // `point_segment_dist_sq3` + `ray_tilted_rect_intersection_t` helpers above
 // are shared by that kernel and the projectile-intersection kernel below.
 
+#[allow(clippy::too_many_arguments)]
+#[inline]
+fn shield_panel_projectile_intersection_unit_candidate(
+    pool: &ShieldSurfacePool,
+    u: usize,
+    sx: f64,
+    sy: f64,
+    sz: f64,
+    tx: f64,
+    ty: f64,
+    tz: f64,
+    dx: f64,
+    dy: f64,
+    dz: f64,
+    exclude_unit_id: i32,
+    exclude_panel_index: i32,
+    reflection_entity: u8,
+    query_pad: f64,
+    best_t: &mut f64,
+    best: &mut Option<ProjectileReflectorHit>,
+) {
+    // exclude_panel_index < 0 excludes the whole unit (a projectile
+    // ignoring its last reflector). >= 0 excludes only that panel,
+    // so a reflected beam can still strike the mirror's other
+    // panels — matching the beam tracer's re-hit semantics.
+    let unit_excluded = pool.unit_id[u] == exclude_unit_id;
+    if unit_excluded && exclude_panel_index < 0 {
+        return;
+    }
+    let panel_count = pool.panel_count[u] as usize;
+    if panel_count == 0 {
+        return;
+    }
+    let ux = pool.unit_x[u];
+    let uy = pool.unit_y[u];
+    let uz = pool.unit_z[u];
+    let broad_r = pool.unit_broad_radius[u] as f64 + query_pad.max(0.0);
+    let broad_tx = sx + dx * *best_t;
+    let broad_ty = sy + dy * *best_t;
+    let broad_tz = sz + dz * *best_t;
+    let seg_min_x = sx.min(broad_tx);
+    let seg_max_x = sx.max(broad_tx);
+    let seg_min_y = sy.min(broad_ty);
+    let seg_max_y = sy.max(broad_ty);
+    let seg_min_z = sz.min(broad_tz);
+    let seg_max_z = sz.max(broad_tz);
+    if ux + broad_r < seg_min_x
+        || ux - broad_r > seg_max_x
+        || uy + broad_r < seg_min_y
+        || uy - broad_r > seg_max_y
+        || uz + broad_r < seg_min_z
+        || uz - broad_r > seg_max_z
+    {
+        return;
+    }
+    if point_segment_dist_sq3(ux, uy, uz, sx, sy, sz, broad_tx, broad_ty, broad_tz)
+        > broad_r * broad_r
+    {
+        return;
+    }
+
+    let cos_yaw = pool.mirror_yaw_cos[u];
+    let sin_yaw = pool.mirror_yaw_sin[u];
+    let cos_pitch = pool.mirror_pitch_cos[u];
+    let sin_pitch = pool.mirror_pitch_sin[u];
+    let perp_x = -sin_yaw;
+    let perp_y = cos_yaw;
+    let pivot_x = pool.pivot_x[u];
+    let pivot_y = pool.pivot_y[u];
+    let pivot_z = pool.pivot_z[u];
+
+    let panel_start = pool.panel_start[u] as usize;
+    for pi in panel_start..panel_start + panel_count {
+        if unit_excluded && (pi - panel_start) as i32 == exclude_panel_index {
+            continue;
+        }
+        let reflection_mode = shield_reflection_mode_for_entity(
+            reflection_entity,
+            pool.panel_reflection_mode_plasma[pi],
+            pool.panel_reflection_mode_rocket[pi],
+            pool.panel_reflection_mode_beam[pi],
+            pool.panel_reflection_mode_laser[pi],
+        );
+        if reflection_mode == SHIELD_REFLECTION_MODE_NONE {
+            continue;
+        }
+        let offset_y = pool.panel_offset_y[pi] as f64;
+        let panel_pivot_x = pivot_x + perp_x * offset_y;
+        let panel_pivot_y = pivot_y + perp_y * offset_y;
+        let panel_pivot_z = pivot_z;
+
+        let angle_cos = pool.panel_angle_cos[pi];
+        let angle_sin = pool.panel_angle_sin[pi];
+        let panel_cos_yaw = cos_yaw * angle_cos - sin_yaw * angle_sin;
+        let panel_sin_yaw = sin_yaw * angle_cos + cos_yaw * angle_sin;
+
+        let arm_length = pool.panel_arm_length[pi] as f64;
+        let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
+        let pcy = panel_pivot_y + sin_yaw * cos_pitch * arm_length;
+        let pcz = panel_pivot_z + sin_pitch * arm_length;
+
+        let nx = panel_cos_yaw * cos_pitch;
+        let ny = panel_sin_yaw * cos_pitch;
+        let nz = sin_pitch;
+
+        let edx = -panel_sin_yaw;
+        let edy = panel_cos_yaw;
+        let edz = 0.0;
+
+        let half_w = pool.panel_half_width[pi] as f64;
+        let base_y = pool.panel_base_y[pi] as f64;
+        let top_y = pool.panel_top_y[pi] as f64;
+        let half_h = (top_y - base_y) * 0.5;
+
+        let normal_velocity = dx * nx + dy * ny + dz * nz;
+        if !shield_reflection_mode_allows_crossing(reflection_mode, normal_velocity) {
+            continue;
+        }
+        let Some(t) = ray_tilted_rect_intersection_t(
+            sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
+        ) else {
+            continue;
+        };
+        if t >= *best_t {
+            continue;
+        }
+        *best_t = t;
+        *best = Some(ProjectileReflectorHit {
+            kind: REFLECTOR_HIT_KIND_SHIELD,
+            entity_id: pool.unit_id[u],
+            panel_index: (pi - panel_start) as i32,
+            t,
+            x: sx + t * dx,
+            y: sy + t * dy,
+            z: sz + t * dz,
+            normal_x: nx,
+            normal_y: ny,
+            normal_z: nz,
+            surface_velocity_x: 0.0,
+            surface_velocity_y: 0.0,
+            surface_velocity_z: 0.0,
+        });
+    }
+}
+
 #[inline]
 pub(crate) fn shield_panel_projectile_intersection(
     sx: f64,
@@ -8986,115 +11218,90 @@ pub(crate) fn shield_panel_projectile_intersection(
     if unit_count == 0 {
         return None;
     }
+    let clamped_max_t = if max_t.is_finite() {
+        max_t.max(0.0).min(1.0)
+    } else {
+        1.0
+    };
+    if clamped_max_t <= 0.0 {
+        return None;
+    }
 
     let dx = tx - sx;
     let dy = ty - sy;
     let dz = tz - sz;
     let extra_broad_radius = query_pad.max(0.0);
-    let mut best_t = max_t;
+    let mut best_t = clamped_max_t;
     let mut best: Option<ProjectileReflectorHit> = None;
 
-    for u in 0..unit_count {
-        // exclude_panel_index < 0 excludes the whole unit (a projectile
-        // ignoring its last reflector). >= 0 excludes only that panel,
-        // so a reflected beam can still strike the mirror's other
-        // panels — matching the beam tracer's re-hit semantics.
-        let unit_excluded = pool.unit_id[u] == exclude_unit_id;
-        if unit_excluded && exclude_panel_index < 0 {
-            continue;
-        }
-        let panel_count = pool.panel_count[u] as usize;
-        if panel_count == 0 {
-            continue;
-        }
-        let ux = pool.unit_x[u];
-        let uy = pool.unit_y[u];
-        let uz = pool.unit_z[u];
-        let broad_r = pool.unit_broad_radius[u] as f64 + extra_broad_radius;
-        if point_segment_dist_sq3(ux, uy, uz, sx, sy, sz, tx, ty, tz) > broad_r * broad_r {
-            continue;
-        }
-
-        let mirror_yaw = pool.mirror_yaw[u] as f64;
-        let mirror_pitch = pool.mirror_pitch[u] as f64;
-        let cos_yaw = mirror_yaw.cos();
-        let sin_yaw = mirror_yaw.sin();
-        let cos_pitch = mirror_pitch.cos();
-        let sin_pitch = mirror_pitch.sin();
-        let perp_x = -sin_yaw;
-        let perp_y = cos_yaw;
-        let pivot_x = pool.pivot_x[u];
-        let pivot_y = pool.pivot_y[u];
-        let pivot_z = pool.pivot_z[u];
-
-        let panel_start = pool.panel_start[u] as usize;
-        for pi in panel_start..panel_start + panel_count {
-            if unit_excluded && (pi - panel_start) as i32 == exclude_panel_index {
-                continue;
+    let use_index = !pool.panel_unit_reflector_cells.is_empty()
+        && shield_reflector_collect_segment_cells(
+            &mut pool.reflector_query_cells,
+            sx,
+            sy,
+            tx,
+            ty,
+            extra_broad_radius,
+        );
+    if use_index {
+        let query_mark = shield_reflector_next_query_mark(pool);
+        let nearby_cells = std::mem::take(&mut pool.reflector_query_cells);
+        let mut marks = std::mem::take(&mut pool.panel_unit_query_marks);
+        for key in &nearby_cells {
+            if let Some(units) = pool.panel_unit_reflector_cells.get(key) {
+                for &unit_idx in units {
+                    if !shield_reflector_mark_once(&mut marks, unit_idx, query_mark) {
+                        continue;
+                    }
+                    let u = unit_idx as usize;
+                    if u >= unit_count {
+                        continue;
+                    }
+                    shield_panel_projectile_intersection_unit_candidate(
+                        pool,
+                        u,
+                        sx,
+                        sy,
+                        sz,
+                        tx,
+                        ty,
+                        tz,
+                        dx,
+                        dy,
+                        dz,
+                        exclude_unit_id,
+                        exclude_panel_index,
+                        reflection_entity,
+                        extra_broad_radius,
+                        &mut best_t,
+                        &mut best,
+                    );
+                }
             }
-            let offset_y = pool.panel_offset_y[pi] as f64;
-            let panel_pivot_x = pivot_x + perp_x * offset_y;
-            let panel_pivot_y = pivot_y + perp_y * offset_y;
-            let panel_pivot_z = pivot_z;
-
-            let panel_angle = pool.panel_angle[pi] as f64;
-            let panel_yaw = mirror_yaw + panel_angle;
-            let panel_cos_yaw = panel_yaw.cos();
-            let panel_sin_yaw = panel_yaw.sin();
-
-            let arm_length = pool.panel_arm_length[pi] as f64;
-            let pcx = panel_pivot_x + cos_yaw * cos_pitch * arm_length;
-            let pcy = panel_pivot_y + sin_yaw * cos_pitch * arm_length;
-            let pcz = panel_pivot_z + sin_pitch * arm_length;
-
-            let nx = panel_cos_yaw * cos_pitch;
-            let ny = panel_sin_yaw * cos_pitch;
-            let nz = sin_pitch;
-
-            let edx = -panel_sin_yaw;
-            let edy = panel_cos_yaw;
-            let edz = 0.0;
-
-            let half_w = pool.panel_half_width[pi] as f64;
-            let base_y = pool.panel_base_y[pi] as f64;
-            let top_y = pool.panel_top_y[pi] as f64;
-            let half_h = (top_y - base_y) * 0.5;
-
-            let normal_velocity = dx * nx + dy * ny + dz * nz;
-            let reflection_mode = shield_reflection_mode_for_entity(
+        }
+        pool.panel_unit_query_marks = marks;
+        pool.reflector_query_cells = nearby_cells;
+    } else {
+        for u in 0..unit_count {
+            shield_panel_projectile_intersection_unit_candidate(
+                pool,
+                u,
+                sx,
+                sy,
+                sz,
+                tx,
+                ty,
+                tz,
+                dx,
+                dy,
+                dz,
+                exclude_unit_id,
+                exclude_panel_index,
                 reflection_entity,
-                pool.panel_reflection_mode_plasma[pi],
-                pool.panel_reflection_mode_rocket[pi],
-                pool.panel_reflection_mode_beam[pi],
-                pool.panel_reflection_mode_laser[pi],
+                extra_broad_radius,
+                &mut best_t,
+                &mut best,
             );
-            if !shield_reflection_mode_allows_crossing(reflection_mode, normal_velocity) {
-                continue;
-            }
-            let Some(t) = ray_tilted_rect_intersection_t(
-                sx, sy, sz, tx, ty, tz, pcx, pcy, pcz, nx, ny, nz, edx, edy, edz, half_w, half_h,
-            ) else {
-                continue;
-            };
-            if t >= best_t {
-                continue;
-            }
-            best_t = t;
-            best = Some(ProjectileReflectorHit {
-                kind: REFLECTOR_HIT_KIND_SHIELD,
-                entity_id: pool.unit_id[u],
-                panel_index: (pi - panel_start) as i32,
-                t,
-                x: sx + t * dx,
-                y: sy + t * dy,
-                z: sz + t * dz,
-                normal_x: nx,
-                normal_y: ny,
-                normal_z: nz,
-                surface_velocity_x: 0.0,
-                surface_velocity_y: 0.0,
-                surface_velocity_z: 0.0,
-            });
         }
     }
 
@@ -9127,6 +11334,7 @@ pub fn projectile_reflector_intersections_batch(
     instantaneous_rays: u8,
     shield_panel_query_pad: f64,
     dt_ms: f64,
+    max_t: &[f64],
     out_kind: &mut [u8],
     out_entity_id: &mut [i32],
     out_panel_index: &mut [i32],
@@ -9156,6 +11364,7 @@ pub fn projectile_reflector_intersections_batch(
     debug_assert!(reflection_entity.len() >= n);
     debug_assert!(exclude_entity_id.len() >= n);
     debug_assert!(exclude_panel_index.len() >= n);
+    debug_assert!(max_t.len() >= n);
     debug_assert!(out_kind.len() >= n);
     debug_assert!(out_entity_id.len() >= n);
     debug_assert!(out_panel_index.len() >= n);
@@ -9238,6 +11447,14 @@ pub fn projectile_reflector_intersections_batch(
         if !panels_reflect_entity && !fields_reflect_entity {
             continue;
         }
+        let row_max_t = if max_t[i].is_finite() {
+            max_t[i].max(0.0).min(1.0)
+        } else {
+            1.0
+        };
+        if row_max_t <= 0.0 {
+            continue;
+        }
 
         let mut best: Option<ProjectileReflectorHit> = None;
         if panels_reflect_entity {
@@ -9253,10 +11470,10 @@ pub fn projectile_reflector_intersections_batch(
                 radius,
                 reflection_entity,
                 shield_panel_query_pad,
-                f64::INFINITY,
+                row_max_t,
             );
         }
-        let max_t = best.as_ref().map(|hit| hit.t).unwrap_or(f64::INFINITY);
+        let max_t = best.as_ref().map(|hit| hit.t).unwrap_or(row_max_t);
         if fields_reflect_entity {
             if let Some(force_hit) = shield_projectile_intersection(
                 sx,
@@ -9312,6 +11529,187 @@ pub fn projectile_reflector_intersections_batch(
         out_surface_velocity_y[i] = hit.surface_velocity_y;
         out_surface_velocity_z[i] = hit.surface_velocity_z;
     }
+}
+
+/// Beam-specialized one-row reflector query.
+///
+/// Beams trace one segment at a time because each bounce depends on the
+/// previous reflector. This keeps them on the same panel/field math as the
+/// projectile batch, but avoids the generic batch row setup and projectile-only
+/// surface-velocity outputs for the hot per-segment beam path.
+#[wasm_bindgen]
+pub fn beam_reflector_closest_hit(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    projectile_radius: f64,
+    reflection_entity: u8,
+    exclude_entity_id: i32,
+    exclude_panel_index: i32,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_panel_query_pad: f64,
+    dt_ms: f64,
+    max_t: f64,
+    out_kind: &mut [u8],
+    out_entity_id: &mut [i32],
+    out_panel_index: &mut [i32],
+    out_t: &mut [f64],
+    out_x: &mut [f64],
+    out_y: &mut [f64],
+    out_z: &mut [f64],
+    out_normal_x: &mut [f64],
+    out_normal_y: &mut [f64],
+    out_normal_z: &mut [f64],
+    out_reflect_dir_x: &mut [f64],
+    out_reflect_dir_y: &mut [f64],
+    out_reflect_dir_z: &mut [f64],
+) -> u32 {
+    if out_kind.is_empty()
+        || out_entity_id.is_empty()
+        || out_panel_index.is_empty()
+        || out_t.is_empty()
+        || out_x.is_empty()
+        || out_y.is_empty()
+        || out_z.is_empty()
+        || out_normal_x.is_empty()
+        || out_normal_y.is_empty()
+        || out_normal_z.is_empty()
+        || out_reflect_dir_x.is_empty()
+        || out_reflect_dir_y.is_empty()
+        || out_reflect_dir_z.is_empty()
+    {
+        return 0;
+    }
+
+    out_kind[0] = REFLECTOR_HIT_KIND_NONE;
+    out_entity_id[0] = -1;
+    out_panel_index[0] = -1;
+    out_t[0] = f64::INFINITY;
+    out_x[0] = 0.0;
+    out_y[0] = 0.0;
+    out_z[0] = 0.0;
+    out_normal_x[0] = 0.0;
+    out_normal_y[0] = 0.0;
+    out_normal_z[0] = 0.0;
+    out_reflect_dir_x[0] = 0.0;
+    out_reflect_dir_y[0] = 0.0;
+    out_reflect_dir_z[0] = 0.0;
+
+    if !(start_x.is_finite()
+        && start_y.is_finite()
+        && start_z.is_finite()
+        && end_x.is_finite()
+        && end_y.is_finite()
+        && end_z.is_finite()
+        && projectile_radius.is_finite())
+    {
+        return 0;
+    }
+
+    let reflection_entity_bit = shield_reflection_entity_bit(reflection_entity);
+    if reflection_entity_bit == 0 {
+        return 0;
+    }
+    let (panel_reflection_entity_mask, field_reflection_entity_mask) = {
+        let pool = shield_pool();
+        (
+            pool.panel_reflection_entity_mask,
+            pool.field_reflection_entity_mask,
+        )
+    };
+    let panels_reflect_entity = turret_shield_panels_enabled != 0
+        && (panel_reflection_entity_mask & reflection_entity_bit) != 0;
+    let fields_reflect_entity = turret_shield_spheres_enabled != 0
+        && (field_reflection_entity_mask & reflection_entity_bit) != 0;
+    if !panels_reflect_entity && !fields_reflect_entity {
+        return 0;
+    }
+
+    let row_max_t = if max_t.is_finite() {
+        max_t.max(0.0).min(1.0)
+    } else {
+        1.0
+    };
+    if row_max_t <= 0.0 {
+        return 0;
+    }
+    let dt_sec = if dt_ms.is_finite() {
+        dt_ms.max(0.0) / 1000.0
+    } else {
+        0.0
+    };
+
+    let mut best: Option<ProjectileReflectorHit> = None;
+    if panels_reflect_entity {
+        best = shield_panel_projectile_intersection(
+            start_x,
+            start_y,
+            start_z,
+            end_x,
+            end_y,
+            end_z,
+            exclude_entity_id,
+            exclude_panel_index,
+            projectile_radius,
+            reflection_entity,
+            shield_panel_query_pad,
+            row_max_t,
+        );
+    }
+    let field_max_t = best.as_ref().map(|hit| hit.t).unwrap_or(row_max_t);
+    if fields_reflect_entity {
+        if let Some(force_hit) = shield_projectile_intersection(
+            start_x,
+            start_y,
+            start_z,
+            end_x,
+            end_y,
+            end_z,
+            exclude_entity_id,
+            exclude_panel_index,
+            projectile_radius,
+            reflection_entity,
+            dt_sec,
+            true,
+            field_max_t,
+        ) {
+            best = Some(force_hit);
+        }
+    }
+
+    let Some(hit) = best else {
+        return 0;
+    };
+    out_kind[0] = hit.kind;
+    out_entity_id[0] = hit.entity_id;
+    out_panel_index[0] = hit.panel_index;
+    out_t[0] = hit.t;
+    out_x[0] = hit.x;
+    out_y[0] = hit.y;
+    out_z[0] = hit.z;
+    out_normal_x[0] = hit.normal_x;
+    out_normal_y[0] = hit.normal_y;
+    out_normal_z[0] = hit.normal_z;
+    if let Some((rdx, rdy, rdz)) = reflect_about_normal(
+        end_x - start_x,
+        end_y - start_y,
+        end_z - start_z,
+        hit.normal_x,
+        hit.normal_y,
+        hit.normal_z,
+    ) {
+        let len = (rdx * rdx + rdy * rdy + rdz * rdz).sqrt();
+        if len > 1e-12 {
+            out_reflect_dir_x[0] = rdx / len;
+            out_reflect_dir_y[0] = rdy / len;
+            out_reflect_dir_z[0] = rdz / len;
+        }
+    }
+    1
 }
 
 /// C1 projectile migration — reflection response for projectile bodies.
@@ -9919,6 +12317,113 @@ pub fn projectile_terminal_effect_plan_batch(
     processed
 }
 
+/// C1 projectile migration — combined terminal classification and effect
+/// planning for the common hot path that previously crossed JS/WASM twice per
+/// projectile. Semantics intentionally match
+/// `projectile_terminal_consequence_batch` followed by
+/// `projectile_terminal_effect_plan_batch`.
+#[wasm_bindgen]
+pub fn projectile_terminal_classify_effect_plan_batch(
+    count: u32,
+    enabled: &[u8],
+    is_projectile_type: &[u8],
+    is_armed: &[u8],
+    has_exploded: &[u8],
+    detonate_on_expiry: &[u8],
+    has_detonation_payload: &[u8],
+    direct_hit_this_tick: &[u8],
+    reflected_projectile: &[u8],
+    hit_shield: &[u8],
+    terminal_reflector_hit: &[u8],
+    water_at_impact: &[u8],
+    has_explosion: &[u8],
+    has_submunitions: &[u8],
+    pos_x: &[f64],
+    pos_y: &[f64],
+    pos_z: &[f64],
+    ground_z: &[f64],
+    hp: &[f64],
+    time_alive_ms: &[f64],
+    max_lifespan_ms: &[f64],
+    map_width: f64,
+    map_height: f64,
+    margin: f64,
+    out_reason: &mut [u8],
+    out_flags: &mut [u32],
+    out_z: &mut [f64],
+    out_hp: &mut [f64],
+    out_effect_flags: &mut [u32],
+) -> u32 {
+    let n = count as usize;
+    if enabled.len() < n
+        || is_projectile_type.len() < n
+        || is_armed.len() < n
+        || has_exploded.len() < n
+        || detonate_on_expiry.len() < n
+        || has_detonation_payload.len() < n
+        || direct_hit_this_tick.len() < n
+        || reflected_projectile.len() < n
+        || hit_shield.len() < n
+        || terminal_reflector_hit.len() < n
+        || water_at_impact.len() < n
+        || has_explosion.len() < n
+        || has_submunitions.len() < n
+        || pos_x.len() < n
+        || pos_y.len() < n
+        || pos_z.len() < n
+        || ground_z.len() < n
+        || hp.len() < n
+        || time_alive_ms.len() < n
+        || max_lifespan_ms.len() < n
+        || out_reason.len() < n
+        || out_flags.len() < n
+        || out_z.len() < n
+        || out_hp.len() < n
+        || out_effect_flags.len() < n
+    {
+        return 0;
+    }
+
+    projectile_terminal_consequence_batch(
+        count,
+        enabled,
+        is_projectile_type,
+        is_armed,
+        has_exploded,
+        detonate_on_expiry,
+        has_detonation_payload,
+        direct_hit_this_tick,
+        reflected_projectile,
+        hit_shield,
+        terminal_reflector_hit,
+        water_at_impact,
+        pos_x,
+        pos_y,
+        pos_z,
+        ground_z,
+        hp,
+        time_alive_ms,
+        max_lifespan_ms,
+        map_width,
+        map_height,
+        margin,
+        out_reason,
+        out_flags,
+        out_z,
+        out_hp,
+    );
+
+    projectile_terminal_effect_plan_batch(
+        count,
+        enabled,
+        out_flags,
+        terminal_reflector_hit,
+        has_explosion,
+        has_submunitions,
+        out_effect_flags,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -9928,6 +12433,246 @@ mod tests {
             (actual - expected).abs() <= 1e-9,
             "expected {expected}, got {actual}"
         );
+    }
+
+    #[test]
+    fn automatic_reacquisition_is_evenly_phased_by_host() {
+        for tick in 0..COMBAT_TARGETING_REACQUIRE_PERIOD_TICKS {
+            let due = (0..COMBAT_TARGETING_REACQUIRE_PERIOD_TICKS * 2)
+                .filter(|entity_id| combat_targeting_reacquire_due(tick, *entity_id))
+                .count();
+            assert_eq!(due, 2);
+        }
+        assert!(combat_targeting_reacquire_due(-1, 7));
+    }
+
+    #[test]
+    fn owned_visibility_collects_from_entity_state_without_targeting_row() {
+        let _guard = match crate::COMBAT_TARGETING_TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let pool = combat_targeting_pool();
+        *pool = CombatTargetingPool::empty();
+        pool.ensure_entity_capacity(2);
+
+        let state = crate::entity_state::entity_state();
+        *state = crate::entity_state::EntityStateSlab::empty();
+        state.ensure_capacity(2);
+        state.entity_id[0] = 100;
+        state.kind[0] = crate::entity_state::ENTITY_STATE_KIND_UNIT;
+        state.owner_player_id[0] = 1;
+        state.entity_id[1] = 200;
+        state.kind[1] = crate::entity_state::ENTITY_STATE_KIND_UNIT;
+        state.owner_player_id[1] = 2;
+
+        let target_slots = [0_u32, 1_u32];
+        let mut visible_ids = [-1_i32; 2];
+        let mut visible_slots = [u32::MAX; 2];
+        let mut radar_ids = [-1_i32; 2];
+        let mut radar_slots = [u32::MAX; 2];
+        let mut los_slots = [u32::MAX; 2];
+        let mut counts = [0_u32; 4];
+
+        let handled = combat_targeting_collect_observation_visibility(
+            1,
+            &target_slots,
+            &mut visible_ids,
+            &mut visible_slots,
+            &mut radar_ids,
+            &mut radar_slots,
+            &mut los_slots,
+            &mut counts,
+        );
+
+        assert_eq!(handled, 1);
+        assert_eq!(counts[1], 1);
+        assert_eq!(counts[2], 1);
+        assert_eq!(visible_ids[0], 100);
+        assert_eq!(visible_slots[0], 0);
+        assert_eq!(radar_ids[0], 100);
+        assert_eq!(radar_slots[0], 0);
+    }
+
+    fn seed_observation_test_entity(
+        pool: &mut CombatTargetingPool,
+        slot: usize,
+        entity_id: i32,
+        player_id: u8,
+        x: f64,
+        full_radius: f32,
+        radar_radius: f32,
+        detector_radius: f32,
+        detection_padding: f32,
+    ) {
+        pool.entity_id[slot] = entity_id;
+        pool.entity_owner_player_id[slot] = player_id;
+        pool.entity_owner_bit[slot] = combat_targeting_player_bit(player_id);
+        pool.entity_pos_x[slot] = x;
+        pool.entity_pos_y[slot] = 0.0;
+        pool.entity_pos_z[slot] = 0.0;
+        pool.entity_flags[slot] = CT_ENTITY_FLAG_ALIVE | CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
+        pool.entity_full_vision_radius[slot] = full_radius;
+        pool.entity_radar_radius[slot] = radar_radius;
+        pool.entity_detector_radius[slot] = detector_radius;
+        pool.entity_detection_padding[slot] = detection_padding;
+        pool.active_entity_slots.push(slot as u32);
+    }
+
+    #[test]
+    fn target_oriented_observation_rebuild_matches_source_painter_masks() {
+        let _guard = match crate::COMBAT_TARGETING_TEST_LOCK.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let pool = combat_targeting_pool();
+        *pool = CombatTargetingPool::empty();
+        pool.ensure_entity_capacity(5);
+
+        seed_observation_test_entity(pool, 0, 100, 1, 0.0, 60.0, 120.0, 30.0, 0.0);
+        seed_observation_test_entity(pool, 1, 200, 2, 25.0, 0.0, 0.0, 0.0, 0.0);
+        seed_observation_test_entity(pool, 2, 201, 2, 90.0, 0.0, 0.0, 0.0, 0.0);
+        seed_observation_test_entity(pool, 3, 101, 1, 25.0, 0.0, 0.0, 0.0, 0.0);
+        seed_observation_test_entity(pool, 4, 202, 2, 135.0, 0.0, 0.0, 0.0, 20.0);
+        seed_observation_test_entity(pool, 5, 203, 2, 151.0, 0.0, 0.0, 0.0, 20.0);
+
+        combat_targeting_rebuild_observation_index(pool);
+        combat_targeting_mark_observation_from_source_slot(pool, 0);
+        let source_sensor = pool.entity_sensor_coverage_mask.clone();
+        let source_full = pool.entity_full_sight_coverage_mask.clone();
+        let source_detector = pool.entity_detector_coverage_mask.clone();
+
+        for slot in 0..pool.entity_sensor_coverage_mask.len() {
+            pool.entity_sensor_coverage_mask[slot] = 0;
+            pool.entity_full_sight_coverage_mask[slot] = 0;
+            pool.entity_detector_coverage_mask[slot] = 0;
+        }
+        combat_targeting_rebuild_observation_masks_from_source_index(pool, &[0]);
+
+        assert_eq!(pool.entity_sensor_coverage_mask, source_sensor);
+        assert_eq!(pool.entity_full_sight_coverage_mask, source_full);
+        assert_eq!(pool.entity_detector_coverage_mask, source_detector);
+        assert_eq!(pool.entity_sensor_coverage_mask[1], 1);
+        assert_eq!(pool.entity_full_sight_coverage_mask[1], 1);
+        assert_eq!(pool.entity_detector_coverage_mask[1], 1);
+        assert_eq!(pool.entity_sensor_coverage_mask[2], 1);
+        assert_eq!(pool.entity_full_sight_coverage_mask[2], 0);
+        assert_eq!(pool.entity_detector_coverage_mask[2], 0);
+        assert_eq!(pool.entity_sensor_coverage_mask[3], 0);
+        assert_eq!(pool.entity_sensor_coverage_mask[4], 1);
+        assert_eq!(pool.entity_full_sight_coverage_mask[4], 0);
+        assert_eq!(pool.entity_detector_coverage_mask[4], 0);
+        assert_eq!(pool.entity_sensor_coverage_mask[5], 0);
+    }
+
+    #[test]
+    fn projectile_terminal_combined_kernel_matches_split_kernels() {
+        let enabled = [1_u8, 1];
+        let is_projectile_type = [1_u8, 1];
+        let is_armed = [1_u8, 1];
+        let has_exploded = [0_u8, 0];
+        let detonate_on_expiry = [0_u8, 0];
+        let has_detonation_payload = [1_u8, 1];
+        let direct_hit_this_tick = [1_u8, 0];
+        let reflected_projectile = [0_u8, 0];
+        let hit_shield = [0_u8, 0];
+        let terminal_reflector_hit = [0_u8, 0];
+        let water_at_impact = [0_u8, 0];
+        let has_explosion = [1_u8, 1];
+        let has_submunitions = [0_u8, 0];
+        let pos_x = [100.0, 200.0];
+        let pos_y = [100.0, 200.0];
+        let pos_z = [10.0, 50.0];
+        let ground_z = [0.0, 0.0];
+        let hp = [0.0, 10.0];
+        let time_alive_ms = [100.0, 100.0];
+        let max_lifespan_ms = [1000.0, 1000.0];
+
+        let mut split_reason = [0_u8; 2];
+        let mut split_flags = [0_u32; 2];
+        let mut split_z = [0.0_f64; 2];
+        let mut split_hp = [0.0_f64; 2];
+        projectile_terminal_consequence_batch(
+            2,
+            &enabled,
+            &is_projectile_type,
+            &is_armed,
+            &has_exploded,
+            &detonate_on_expiry,
+            &has_detonation_payload,
+            &direct_hit_this_tick,
+            &reflected_projectile,
+            &hit_shield,
+            &terminal_reflector_hit,
+            &water_at_impact,
+            &pos_x,
+            &pos_y,
+            &pos_z,
+            &ground_z,
+            &hp,
+            &time_alive_ms,
+            &max_lifespan_ms,
+            1000.0,
+            1000.0,
+            100.0,
+            &mut split_reason,
+            &mut split_flags,
+            &mut split_z,
+            &mut split_hp,
+        );
+        let mut split_effects = [0_u32; 2];
+        projectile_terminal_effect_plan_batch(
+            2,
+            &enabled,
+            &split_flags,
+            &terminal_reflector_hit,
+            &has_explosion,
+            &has_submunitions,
+            &mut split_effects,
+        );
+
+        let mut combined_reason = [0_u8; 2];
+        let mut combined_flags = [0_u32; 2];
+        let mut combined_z = [0.0_f64; 2];
+        let mut combined_hp = [0.0_f64; 2];
+        let mut combined_effects = [0_u32; 2];
+        projectile_terminal_classify_effect_plan_batch(
+            2,
+            &enabled,
+            &is_projectile_type,
+            &is_armed,
+            &has_exploded,
+            &detonate_on_expiry,
+            &has_detonation_payload,
+            &direct_hit_this_tick,
+            &reflected_projectile,
+            &hit_shield,
+            &terminal_reflector_hit,
+            &water_at_impact,
+            &has_explosion,
+            &has_submunitions,
+            &pos_x,
+            &pos_y,
+            &pos_z,
+            &ground_z,
+            &hp,
+            &time_alive_ms,
+            &max_lifespan_ms,
+            1000.0,
+            1000.0,
+            100.0,
+            &mut combined_reason,
+            &mut combined_flags,
+            &mut combined_z,
+            &mut combined_hp,
+            &mut combined_effects,
+        );
+
+        assert_eq!(combined_reason, split_reason);
+        assert_eq!(combined_flags, split_flags);
+        assert_eq!(combined_z, split_z);
+        assert_eq!(combined_hp, split_hp);
+        assert_eq!(combined_effects, split_effects);
     }
 
     #[test]

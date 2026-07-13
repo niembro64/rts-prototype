@@ -104,7 +104,6 @@ export function bootstrapRtsScene3DRenderers(
     () => threeApp.renderer.domElement.clientHeight,
     metalDeposits,
     overlayLineSystem,
-    threeApp.renderer.domElement,
   );
   const beamRenderer = new BeamRenderer3D(threeApp.world, renderScope);
   const shieldRenderer = new ShieldRenderer3D(

@@ -48,15 +48,11 @@ import {
   setObjectVisibleIfChanged,
   setVector3IfChanged,
 } from './threeTransformWriteUtils';
-import type { EntityLodProxyRenderer3D } from './EntityLodProxyRenderer3D';
-import { entityDetailLevelForView } from './EntityLod3D';
 import {
   BUILDING_ANIMATION_MIN_RUNG,
   DETAIL_REBUILD_BUDGET_BUILDINGS,
-  DETAIL_RUNG_GLYPH,
-  type DetailRung,
-  detailLevelForRung,
-  detailRungForLevel,
+  DETAIL_LEVEL_FULL,
+  DETAIL_RUNG_CLOSE,
   detailRungIndex,
   featureVisibleAtDetail,
   turretStyleForDetail,
@@ -311,7 +307,6 @@ type BuildingEntityRenderer3DOptions = {
   disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   metalDeposits: readonly MetalDeposit[];
   scopedMeshRetention: ScopedRenderMeshRetention3D;
-  lodProxyRenderer: EntityLodProxyRenderer3D;
 };
 
 export class BuildingEntityRenderer3D {
@@ -327,7 +322,6 @@ export class BuildingEntityRenderer3D {
   private readonly getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   private readonly disposeWorldParentedOverlays: (mesh: EntityMesh) => void;
   private readonly scopedMeshRetention: ScopedRenderMeshRetention3D;
-  private readonly lodProxyRenderer: EntityLodProxyRenderer3D;
   private readonly animations: BuildingAnimationController3D;
   private readonly meshes = new IndexedEntityIdMap<EntityMesh>();
   private renderScopeToken = 0;
@@ -385,7 +379,6 @@ export class BuildingEntityRenderer3D {
     this.getTurretAccentMat = options.getTurretAccentMat;
     this.disposeWorldParentedOverlays = options.disposeWorldParentedOverlays;
     this.scopedMeshRetention = options.scopedMeshRetention;
-    this.lodProxyRenderer = options.lodProxyRenderer;
     this.animations = new BuildingAnimationController3D(
       this.clientViewState,
       this.constructionVisuals,
@@ -417,7 +410,6 @@ export class BuildingEntityRenderer3D {
     timeMs: number,
     beamAimCache: TurretBeamAimCache3D,
     scopedRender: boolean = false,
-    entityDetailRung?: (entity: Entity) => DetailRung,
   ): void {
     this.buildingRebuildBudgetLeft = DETAIL_REBUILD_BUDGET_BUILDINGS;
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
@@ -450,50 +442,27 @@ export class BuildingEntityRenderer3D {
       this.removeBuildingMeshesFromPacket(buildingRows, beamAimCache);
     }
     const rows = forceFullRows
-      ? this.populateFallbackBuildingRenderRows(entityDetailRung)
-      : buildingRows ?? this.populateFallbackBuildingRenderRows(entityDetailRung);
+      ? this.populateFallbackBuildingRenderRows()
+      : buildingRows ?? this.populateFallbackBuildingRenderRows();
     if (buildingRows === undefined) this.removeBuildingMeshesFromPacket(rows, beamAimCache);
 
     for (let row = 0; row < rows.count; row++) {
       const entityId = rows.entityIdAt(row);
 
       const mesh = this.meshes.get(entityId);
-      if (rows.lodProxyAt(row)) {
-        this.lodProxyRenderer.pushBuildingProxy(
-          rows.x[row],
-          rows.y[row],
-          rows.z[row],
-          rows.lodProxyRadius[row],
-          rows.lodProxyGlyph[row],
-          rows.ownerIdAt(row),
-        );
-        if (mesh !== undefined) {
-          if (pruneBuildings) mesh.renderSeenToken = pruneToken;
-          this.deactivateBuildingMeshForLod(entityId, mesh, beamAimCache);
-        }
-        continue;
-      }
       const entity = rows.entityAt(row);
       if (entity === undefined || entity.building === null) continue;
       const shapeType: BuildingShapeType = entity.buildingBlueprintId
         ? getBuildingConfig(entity.buildingBlueprintId).renderProfile
         : 'unknown';
-      // Latched detail rung (screen-coverage LOD with hysteresis) from the
-      // scene's shared EntityLodState3D — the same state that stamped this
-      // packet's proxy flag. Its representative level drives the rebuild
-      // band and every feature/tier decision at build time.
-      const detailRung = entityDetailRung !== undefined
-        ? entityDetailRung(entity)
-        : detailRungForLevel(entityDetailLevelForView(frameState.view, entity));
-      const detailLevel = detailLevelForRung(detailRung);
+      const detailRung = DETAIL_RUNG_CLOSE;
+      const detailLevel = DETAIL_LEVEL_FULL;
       const detailBand = buildingDetailBandForLevel(detailLevel, shapeType);
       const detailBandChanged =
         mesh !== undefined &&
         mesh.buildingRenderDetailBand !== detailBand;
-      const wasLodProxyActive = mesh?.renderLodProxyActive === true;
       if (mesh !== undefined) {
         this.reactivateBuildingMeshForScope(entity, mesh);
-        this.reactivateBuildingMeshForLod(entity, mesh);
         // Below the animation rung the building's animators (wind blades,
         // extractor rotor, radar sweep, solar petals) and gatling spin
         // freeze in place — a live gate, not a rebuild.
@@ -528,7 +497,6 @@ export class BuildingEntityRenderer3D {
         !needsTurretFrame &&
         !bodyFadeActive &&
         !overlayDirty &&
-        !wasLodProxyActive &&
         !detailBandChanged
       ) {
         setObjectVisibleIfChanged(mesh.group, true);
@@ -570,19 +538,12 @@ export class BuildingEntityRenderer3D {
     this.lastUnitOverlayStateVersion = unitOverlayStateVersion;
   }
 
-  private populateFallbackBuildingRenderRows(
-    entityDetailRung?: (entity: Entity) => DetailRung,
-  ): BuildingRenderPacket3D {
+  private populateFallbackBuildingRenderRows(): BuildingRenderPacket3D {
     const rows = this.fallbackBuildingRenderRows;
     rows.reset();
     const buildings = this.clientViewState.getBuildings();
     for (let i = 0; i < buildings.length; i++) {
-      // Stamp the proxy flag from the same latched rung the real packet
-      // carries — a hardcoded false here would flash glyph-state
-      // buildings back to full meshes for one forced frame.
-      const lodProxy = entityDetailRung !== undefined &&
-        entityDetailRung(buildings[i]) === DETAIL_RUNG_GLYPH;
-      rows.pushEntity(buildings[i], false, true, true, lodProxy);
+      rows.pushEntity(buildings[i], false, true, true, false);
     }
     return rows;
   }
@@ -713,38 +674,8 @@ export class BuildingEntityRenderer3D {
     this.detachBuildingMeshGroup(mesh);
   }
 
-  private deactivateBuildingMeshForLod(
-    id: EntityId,
-    mesh: EntityMesh,
-    beamAimCache: TurretBeamAimCache3D,
-  ): void {
-    if (mesh.renderLodProxyActive === true) return;
-    mesh.renderLodProxyActive = true;
-    this.animations.unregister(id);
-    this.unregisterBuildingSpinTurrets(id);
-    beamAimCache.delete(id);
-    this.disposeWorldParentedOverlays(mesh);
-    this.applyBuildingEntityFade(mesh, 0);
-    setObjectVisibleIfChanged(mesh.group, false);
-    this.detachBuildingMeshGroup(mesh);
-  }
-
   private reactivateBuildingMeshForScope(entity: Entity, mesh: EntityMesh): void {
     if (!this.scopedMeshRetention.markBuildingActive(entity.id)) return;
-    this.attachBuildingMeshGroup(mesh);
-    setObjectVisibleIfChanged(mesh.group, true);
-    this.animations.register(entity, mesh);
-    this.registerBuildingSpinTurrets(entity, mesh);
-    mesh.buildingAnimationsGated = false;
-    this.applyBuildingEntityFade(
-      mesh,
-      (mesh.buildingMaterializationOpacity ?? 1) * this.currentSpawnFadeIn(entity.id),
-    );
-  }
-
-  private reactivateBuildingMeshForLod(entity: Entity, mesh: EntityMesh): void {
-    if (mesh.renderLodProxyActive !== true) return;
-    mesh.renderLodProxyActive = false;
     this.attachBuildingMeshGroup(mesh);
     setObjectVisibleIfChanged(mesh.group, true);
     this.animations.register(entity, mesh);

@@ -48,7 +48,6 @@ const ENTITY_RENDER_FLAG_RENDER_DIRTY = CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY;
 const ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY = CLIENT_RENDER_ENTITY_FLAG_LIFECYCLE_DIRTY;
 const UNIT_RENDER_FLAG_AIRBORNE = CLIENT_RENDER_UNIT_FLAG_AIRBORNE;
 const UNIT_RENDER_FLAG_HAS_SUSPENSION = CLIENT_RENDER_UNIT_FLAG_HAS_SUSPENSION;
-const ENTITY_RENDER_FLAG_LOD_PROXY = 1 << 9;
 const EMPTY_TURRETS: readonly Turret[] = [];
 const passiveTurretIndexCache = new WeakMap<readonly Turret[], number>();
 
@@ -122,6 +121,7 @@ function entityRenderFlags(
   lifecycleDirty: boolean,
   lodProxy: boolean,
 ): number {
+  void lodProxy;
   let flags = entity.selectable?.selected === true
     ? ENTITY_RENDER_FLAG_SELECTED
     : 0;
@@ -131,7 +131,6 @@ function entityRenderFlags(
   if (activePrediction) flags |= ENTITY_RENDER_FLAG_ACTIVE_PREDICTION;
   if (renderDirty) flags |= ENTITY_RENDER_FLAG_RENDER_DIRTY;
   if (lifecycleDirty) flags |= ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY;
-  if (lodProxy) flags |= ENTITY_RENDER_FLAG_LOD_PROXY;
   return flags;
 }
 
@@ -142,11 +141,11 @@ function entityRenderFlagsFromState(
   lifecycleDirty: boolean,
   lodProxy: boolean,
 ): number {
+  void lodProxy;
   let flags = stateFlags;
   if (activePrediction) flags |= ENTITY_RENDER_FLAG_ACTIVE_PREDICTION;
   if (renderDirty) flags |= ENTITY_RENDER_FLAG_RENDER_DIRTY;
   if (lifecycleDirty) flags |= ENTITY_RENDER_FLAG_LIFECYCLE_DIRTY;
-  if (lodProxy) flags |= ENTITY_RENDER_FLAG_LOD_PROXY;
   return flags;
 }
 
@@ -202,10 +201,12 @@ export class UnitRenderPacket3D {
   flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   count = 0;
   removedCount = 0;
+  lodProxyCount = 0;
 
   reset(): void {
     this.count = 0;
     this.removedCount = 0;
+    this.lodProxyCount = 0;
     this.entities.length = 0;
     this.turrets.length = 0;
     this.turretStateViews = undefined;
@@ -266,6 +267,7 @@ export class UnitRenderPacket3D {
     if (unit.suspension !== null) flags |= UNIT_RENDER_FLAG_HAS_SUSPENSION;
     this.flags[cursor] = flags;
     this.count = cursor + 1;
+    void lodProxy;
   }
 
   pushEntityState(
@@ -279,7 +281,8 @@ export class UnitRenderPacket3D {
     lodProxy: boolean = false,
   ): void {
     if (state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) return;
-    if (!lodProxy && entity.unit === null) return;
+    void lodProxy;
+    if (entity.unit === null) return;
     const cursor = this.count;
     this.ensureCapacity(cursor + 1);
     const flags = entityRenderFlagsFromState(
@@ -289,26 +292,6 @@ export class UnitRenderPacket3D {
       lifecycleDirty,
       lodProxy,
     );
-    if (lodProxy) {
-      this.entities[cursor] = undefined;
-      this.turrets[cursor] = EMPTY_TURRETS;
-      this.turretHostSlots[cursor] = -1;
-      this.turretStarts[cursor] = 0;
-      this.turretStateCounts[cursor] = 0;
-      this.unitBlueprintIds[cursor] = undefined;
-      this.ids[cursor] = state.entityIds[slot];
-      this.ownerIds[cursor] = state.ownerIds[slot];
-      this.x[cursor] = state.x[slot];
-      this.y[cursor] = state.y[slot];
-      this.z[cursor] = state.z[slot];
-      this.lodProxyRadius[cursor] = state.lodProxyRadius[slot];
-      this.lodProxyGlyph[cursor] = state.lodProxyGlyph[slot];
-      this.turretCount[cursor] = 0;
-      this.passiveTurretIndex[cursor] = NO_PASSIVE_TURRET_INDEX;
-      this.flags[cursor] = flags;
-      this.count = cursor + 1;
-      return;
-    }
     const combatTurrets = entity.combat?.turrets;
     const turretRows = combatTurrets ?? EMPTY_TURRETS;
     const turretStateRows = turretState?.hostRows(slot);
@@ -347,6 +330,35 @@ export class UnitRenderPacket3D {
     this.passiveTurretIndex[cursor] = state.passiveTurretIndex[slot];
     this.flags[cursor] = flags;
     this.count = cursor + 1;
+  }
+
+  pushLodProxyState(
+    state: ClientRenderEntityStateViews,
+    slot: number,
+  ): void {
+    void state;
+    void slot;
+  }
+
+  pushBudgetEligibleLodProxyStates(
+    state: ClientRenderEntityStateViews,
+    slots: readonly number[],
+  ): void {
+    void state;
+    void slots;
+  }
+
+  pushResolvedLodProxyStates(
+    state: ClientRenderEntityStateViews,
+    slots: readonly number[],
+    outNonProxySlots: number[],
+  ): void {
+    outNonProxySlots.length = 0;
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      if (state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) continue;
+      outNonProxySlots.push(slot);
+    }
   }
 
   entityAt(row: number): Entity | undefined {
@@ -407,7 +419,8 @@ export class UnitRenderPacket3D {
   }
 
   lodProxyAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_LOD_PROXY) !== 0;
+    void row;
+    return false;
   }
 
   airborneAt(row: number): boolean {
@@ -488,10 +501,12 @@ export class BuildingRenderPacket3D {
   flags = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   count = 0;
   removedCount = 0;
+  lodProxyCount = 0;
 
   reset(): void {
     this.count = 0;
     this.removedCount = 0;
+    this.lodProxyCount = 0;
     this.entities.length = 0;
     this.turrets.length = 0;
     this.turretStateViews = undefined;
@@ -553,6 +568,7 @@ export class BuildingRenderPacket3D {
       lodProxy,
     );
     this.count = cursor + 1;
+    void lodProxy;
   }
 
   pushEntityState(
@@ -566,7 +582,8 @@ export class BuildingRenderPacket3D {
     lodProxy: boolean = false,
   ): void {
     if (state.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) return;
-    if (!lodProxy && entity.building === null) return;
+    void lodProxy;
+    if (entity.building === null) return;
     const cursor = this.count;
     this.ensureCapacity(cursor + 1);
     const flags = entityRenderFlagsFromState(
@@ -576,25 +593,6 @@ export class BuildingRenderPacket3D {
       lifecycleDirty,
       lodProxy,
     );
-    if (lodProxy) {
-      this.entities[cursor] = undefined;
-      this.turrets[cursor] = EMPTY_TURRETS;
-      this.turretHostSlots[cursor] = -1;
-      this.turretStarts[cursor] = 0;
-      this.turretStateCounts[cursor] = 0;
-      this.buildingBlueprintIds[cursor] = undefined;
-      this.ids[cursor] = state.entityIds[slot];
-      this.ownerIds[cursor] = state.ownerIds[slot];
-      this.x[cursor] = state.x[slot];
-      this.y[cursor] = state.y[slot];
-      this.z[cursor] = state.z[slot];
-      this.lodProxyRadius[cursor] = state.lodProxyRadius[slot];
-      this.lodProxyGlyph[cursor] = state.lodProxyGlyph[slot];
-      this.turretCount[cursor] = 0;
-      this.flags[cursor] = flags;
-      this.count = cursor + 1;
-      return;
-    }
     const combatTurrets = entity.combat?.turrets;
     const turretRows = combatTurrets ?? EMPTY_TURRETS;
     const turretStateRows = turretState?.hostRows(slot);
@@ -627,6 +625,14 @@ export class BuildingRenderPacket3D {
     this.turretCount[cursor] = state.turretCount[slot];
     this.flags[cursor] = flags;
     this.count = cursor + 1;
+  }
+
+  pushLodProxyState(
+    state: ClientRenderEntityStateViews,
+    slot: number,
+  ): void {
+    void state;
+    void slot;
   }
 
   entityAt(row: number): Entity | undefined {
@@ -691,7 +697,8 @@ export class BuildingRenderPacket3D {
   }
 
   lodProxyAt(row: number): boolean {
-    return (this.flags[row] & ENTITY_RENDER_FLAG_LOD_PROXY) !== 0;
+    void row;
+    return false;
   }
 
   private ensureCapacity(required: number): void {

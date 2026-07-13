@@ -1,6 +1,8 @@
 {
   "fogOfWar": {
-    "maxPoolSize": 800,
+    "maxPoolSize": 96,
+    "minPoolSize": 12,
+    "targetCoverageLayers": 4,
     "capPolicy": "skipWhenFull",
     "densitySamples": 128,
     "maxSpawnsPerFrame": 8,
@@ -9,11 +11,13 @@
     "fadeOutMs": 2000,
     "radius": 1000,
     "transparentOuterFraction": 0.4,
+    "minCameraHeightForClouds": 900,
     "zMin": -500,
     "zRange": 1600,
     "shade": {
       "cellSize": 128,
-      "edgeSoftnessCells": 1.5
+      "edgeSoftnessCells": 1.5,
+      "sourceSnapCells": 0.5
     }
   }
 }

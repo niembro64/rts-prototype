@@ -387,13 +387,17 @@ function isTypedDeltaPlaceholderEntity(
   );
 }
 
-function wireSourceRowIsTypedDelta(source: EntitySnapshotWireSource, index: number): boolean {
+function canOmitEntityDtoForTypedWireRow(
+  source: EntitySnapshotWireSource,
+  index: number,
+  entity: NetworkServerSnapshotEntity | undefined,
+): boolean {
+  if (source.rowIndices[index] < 0) return false;
   const kind = source.kinds[index];
-  return (
-    kind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC ||
-    kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT ||
-    kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING
-  );
+  if (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT || kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) {
+    return true;
+  }
+  return kind === ENTITY_SNAPSHOT_WIRE_KIND_BASIC && isTypedDeltaPlaceholderEntity(entity);
 }
 
 export function cloneNetworkSnapshotEntity(
@@ -578,7 +582,7 @@ export class ReusableNetworkSnapshotCloner {
     const entityWireSource = getEntitySnapshotWireSource(state.entities);
     const hasCompleteEntityWireSource =
       entityWireSource !== undefined && entityWireSource.count === state.entities.length;
-    const skipTypedDeltaPlaceholders =
+    const skipRedundantTypedEntityDtos =
       state.entityDeltaOnly === true && hasCompleteEntityWireSource;
     entities.length = state.entities.length;
     for (let i = 0; i < state.entities.length; i++) {
@@ -586,10 +590,9 @@ export class ReusableNetworkSnapshotCloner {
       if (
         entity === undefined ||
         (
-          skipTypedDeltaPlaceholders &&
+          skipRedundantTypedEntityDtos &&
           entityWireSource !== undefined &&
-          wireSourceRowIsTypedDelta(entityWireSource, i) &&
-          isTypedDeltaPlaceholderEntity(entity)
+          canOmitEntityDtoForTypedWireRow(entityWireSource, i, entity)
         )
       ) {
         entities[i] = undefined as unknown as NetworkServerSnapshotEntity;

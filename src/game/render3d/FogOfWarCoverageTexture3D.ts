@@ -12,11 +12,12 @@ import { configureSpriteTexture } from './threeUtils';
 
 type FogCoverageChannel = 0 | 1;
 
-type FogCoverageSource = {
-  x: number;
-  y: number;
-  radius: number;
-  channel: FogCoverageChannel;
+type FogCoverageKernel = {
+  minDx: number;
+  minDy: number;
+  width: number;
+  height: number;
+  values: Uint8Array;
 };
 
 function smoothstep(edge0: number, edge1: number, value: number): number {
@@ -27,6 +28,11 @@ function smoothstep(edge0: number, edge1: number, value: number): number {
 
 function maxByte(value: number, next: number): number {
   return next > value ? next : value;
+}
+
+function mixHash(hash: number, value: number): number {
+  hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >>> 2);
+  return hash >>> 0;
 }
 
 /** Client-side presentation texture for live fog shading.
@@ -41,19 +47,28 @@ export class FogOfWarCoverageTexture3D {
 
   private readonly cellSize: number;
   private readonly edgeSoftnessWorld: number;
+  private readonly sourceSnapWorld: number;
   private readonly pixels: Uint8Array;
   private readonly texture: THREE.DataTexture;
-  private readonly sources: FogCoverageSource[] = [];
+  private readonly sourceXs: number[] = [];
+  private readonly sourceYs: number[] = [];
+  private readonly sourceRadii: number[] = [];
+  private readonly sourceChannels: FogCoverageChannel[] = [];
+  private readonly kernelCache = new Map<string, FogCoverageKernel>();
   private readonly width: number;
   private readonly height: number;
+  private sourceHash = 0;
+  private lastAppliedSourceCount = -1;
+  private lastAppliedSourceHash = -1;
 
   constructor(
-    private readonly mapWidth: number,
-    private readonly mapHeight: number,
+    mapWidth: number,
+    mapHeight: number,
   ) {
     const shade = FOG_CONFIG.fogOfWar.shade;
     this.cellSize = Math.max(1, shade.cellSize);
     this.edgeSoftnessWorld = Math.max(0, shade.edgeSoftnessCells) * this.cellSize;
+    this.sourceSnapWorld = Math.max(1, (shade.sourceSnapCells ?? 0.5) * this.cellSize);
     this.width = Math.max(1, Math.ceil(mapWidth / this.cellSize));
     this.height = Math.max(1, Math.ceil(mapHeight / this.cellSize));
     this.pixels = new Uint8Array(this.width * this.height * 4);
@@ -80,23 +95,44 @@ export class FogOfWarCoverageTexture3D {
     enabled: boolean,
   ): void {
     this.enabledUniform.value = enabled ? 1 : 0;
-    if (!enabled) return;
+    if (!enabled) {
+      this.lastAppliedSourceCount = -1;
+      this.lastAppliedSourceHash = -1;
+      return;
+    }
+
+    this.collectSources(clientViewState, localPlayerId);
+    if (
+      this.sourceXs.length === this.lastAppliedSourceCount &&
+      this.sourceHash === this.lastAppliedSourceHash
+    ) {
+      return;
+    }
 
     this.pixels.fill(0);
-    this.collectSources(clientViewState, localPlayerId);
-    for (let i = 0; i < this.sources.length; i++) {
-      this.stampSource(this.sources[i]);
+    for (let i = 0; i < this.sourceXs.length; i++) {
+      this.stampSource(i);
     }
+    this.lastAppliedSourceCount = this.sourceXs.length;
+    this.lastAppliedSourceHash = this.sourceHash;
     this.texture.needsUpdate = true;
   }
 
   destroy(): void {
     this.texture.dispose();
-    this.sources.length = 0;
+    this.sourceXs.length = 0;
+    this.sourceYs.length = 0;
+    this.sourceRadii.length = 0;
+    this.sourceChannels.length = 0;
+    this.kernelCache.clear();
   }
 
   private collectSources(clientViewState: ClientViewState, localPlayerId: PlayerId): void {
-    this.sources.length = 0;
+    this.sourceXs.length = 0;
+    this.sourceYs.length = 0;
+    this.sourceRadii.length = 0;
+    this.sourceChannels.length = 0;
+    this.sourceHash = 0;
     const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
     for (let i = 0; i < playerIds.length; i++) {
       const playerId = playerIds[i];
@@ -140,43 +176,98 @@ export class FogOfWarCoverageTexture3D {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
       return;
     }
-    this.sources.push({ x, y, radius, channel });
+    const snap = this.sourceSnapWorld;
+    const snappedX = Math.round(x / snap) * snap;
+    const snappedY = Math.round(y / snap) * snap;
+    const snappedRadius = Math.round(radius);
+    this.sourceXs.push(snappedX);
+    this.sourceYs.push(snappedY);
+    this.sourceRadii.push(snappedRadius);
+    this.sourceChannels.push(channel);
+    this.sourceHash = mixHash(this.sourceHash, Math.round(snappedX / snap));
+    this.sourceHash = mixHash(this.sourceHash, Math.round(snappedY / snap));
+    this.sourceHash = mixHash(this.sourceHash, snappedRadius);
+    this.sourceHash = mixHash(this.sourceHash, channel);
   }
 
-  private stampSource(source: FogCoverageSource): void {
+  private stampSource(index: number): void {
+    const sourceX = this.sourceXs[index];
+    const sourceY = this.sourceYs[index];
+    const sourceRadius = this.sourceRadii[index];
+    const sourceChannel = this.sourceChannels[index];
+    const centerCellX = Math.floor(sourceX / this.cellSize);
+    const centerCellY = Math.floor(sourceY / this.cellSize);
+    const kernel = this.coverageKernel(sourceX, sourceY, sourceRadius);
+    const srcWidth = kernel.width;
+    const srcHeight = kernel.height;
+    const srcValues = kernel.values;
+    const dstBaseX = centerCellX + kernel.minDx;
+    const dstBaseY = centerCellY + kernel.minDy;
+    const pixels = this.pixels;
+    const width = this.width;
+    const height = this.height;
+    const minKy = Math.max(0, -dstBaseY);
+    const maxKy = Math.min(srcHeight - 1, height - 1 - dstBaseY);
+    const minKx = Math.max(0, -dstBaseX);
+    const maxKx = Math.min(srcWidth - 1, width - 1 - dstBaseX);
+    if (minKy > maxKy || minKx > maxKx) return;
+
+    for (let ky = minKy; ky <= maxKy; ky++) {
+      const dstOffset = ((dstBaseY + ky) * width + dstBaseX + minKx) * 4 + sourceChannel;
+      const srcOffset = ky * srcWidth + minKx;
+      for (let kx = minKx, dst = dstOffset, src = srcOffset; kx <= maxKx; kx++, dst += 4, src++) {
+        const next = srcValues[src];
+        if (next !== 0) pixels[dst] = maxByte(pixels[dst], next);
+      }
+    }
+  }
+
+  private coverageKernel(
+    sourceX: number,
+    sourceY: number,
+    sourceRadius: number,
+  ): FogCoverageKernel {
+    const fracX = sourceX - Math.floor(sourceX / this.cellSize) * this.cellSize;
+    const fracY = sourceY - Math.floor(sourceY / this.cellSize) * this.cellSize;
+    const fracXKey = Math.round(fracX);
+    const fracYKey = Math.round(fracY);
+    const radiusKey = Math.round(sourceRadius);
+    const key = `${radiusKey}:${fracXKey}:${fracYKey}`;
+    const cached = this.kernelCache.get(key);
+    if (cached !== undefined) return cached;
+
     const softness = this.edgeSoftnessWorld;
-    const stampRadius = source.radius + softness;
-    const minX = Math.max(0, Math.floor((source.x - stampRadius) / this.cellSize));
-    const maxX = Math.min(this.width - 1, Math.floor((source.x + stampRadius) / this.cellSize));
-    const minY = Math.max(0, Math.floor((source.y - stampRadius) / this.cellSize));
-    const maxY = Math.min(this.height - 1, Math.floor((source.y + stampRadius) / this.cellSize));
-    const inner = Math.max(0, source.radius - softness);
-    const outer = source.radius + softness;
+    const stampRadius = sourceRadius + softness;
+    const minDx = Math.floor((fracX - stampRadius) / this.cellSize);
+    const maxDx = Math.floor((fracX + stampRadius) / this.cellSize);
+    const minDy = Math.floor((fracY - stampRadius) / this.cellSize);
+    const maxDy = Math.floor((fracY + stampRadius) / this.cellSize);
+    const inner = Math.max(0, sourceRadius - softness);
+    const outer = sourceRadius + softness;
     const innerSq = inner * inner;
     const outerSq = outer * outer;
-    const pixels = this.pixels;
-    const channel = source.channel;
     const cellSize = this.cellSize;
-    const mapWidth = this.mapWidth;
-    const mapHeight = this.mapHeight;
-    const width = this.width;
-    for (let gy = minY; gy <= maxY; gy++) {
-      const worldY = Math.min(mapHeight, (gy + 0.5) * cellSize);
-      const dy = worldY - source.y;
+    const width = Math.max(0, maxDx - minDx + 1);
+    const height = Math.max(0, maxDy - minDy + 1);
+    const values = new Uint8Array(width * height);
+
+    for (let ky = 0; ky < height; ky++) {
+      const dy = (minDy + ky + 0.5) * cellSize - fracY;
       const dySq = dy * dy;
-      const rowOffset = gy * width;
-      for (let gx = minX; gx <= maxX; gx++) {
-        const worldX = Math.min(mapWidth, (gx + 0.5) * cellSize);
-        const dx = worldX - source.x;
+      const rowOffset = ky * width;
+      for (let kx = 0; kx < width; kx++) {
+        const dx = (minDx + kx + 0.5) * cellSize - fracX;
         const distanceSq = dx * dx + dySq;
         if (distanceSq >= outerSq) continue;
         const next = softness <= 0 || distanceSq <= innerSq
           ? 255
           : Math.round((1 - smoothstep(inner, outer, Math.sqrt(distanceSq))) * 255);
-        if (next <= 0) continue;
-        const offset = (rowOffset + gx) * 4 + channel;
-        pixels[offset] = maxByte(pixels[offset], next);
+        if (next > 0) values[rowOffset + kx] = next;
       }
     }
+
+    const kernel = { minDx, minDy, width, height, values };
+    this.kernelCache.set(key, kernel);
+    return kernel;
   }
 }

@@ -339,6 +339,10 @@ pub struct ShotRuntimeProfile {
     pub detonateOnExpiry: bool,
     pub hasExplosion: bool,
     pub hasSubmunitions: bool,
+    pub airFrictionPer60HzFrame: f64,
+    pub airDragCoefficient: f64,
+    pub propulsionAcceleration: f64,
+    pub homingThrustAcceleration: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

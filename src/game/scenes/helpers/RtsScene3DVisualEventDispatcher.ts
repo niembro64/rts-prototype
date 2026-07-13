@@ -6,10 +6,6 @@ import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { Render3DEntities } from '../../render3d/Render3DEntities';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
-import {
-  debrisSpawnScaleForDetail,
-  explosionSpawnScaleForDetail,
-} from '../../render3d/EntityDetailLevel3D';
 import { playSimEventAudio3D } from './RtsScene3DSimEventAudio';
 import {
   WATER_SURFACE_NORMAL_SIM,
@@ -28,16 +24,6 @@ type RtsScene3DVisualEventDispatchContext = {
   shieldImpactRenderer: ShieldImpactRenderer3D;
   waterSplashRenderer: WaterSplash3D;
   debrisRenderer: Debris3D;
-  isPositionLowLod: (
-    simX: number,
-    simY: number,
-    simZ: number,
-  ) => boolean;
-  positionVisualDetailLevel: (
-    simX: number,
-    simY: number,
-    simZ: number,
-  ) => number;
 };
 
 const EFFECT_RADIUS_FALLBACKS = {
@@ -79,14 +65,6 @@ export function dispatchSimEvent3DVisual(
         ctx.deathExplosionRadius,
       )
       : EFFECT_RADIUS_FALLBACKS.hitImpact;
-    if (context.isPositionLowLod(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    )) return;
-    const detailScale = explosionSpawnScaleForDetail(
-      context.positionVisualDetailLevel(event.pos.x, event.pos.y, event.pos.z),
-    );
     let mx = 0, mz = 0;
     if (ctx) {
       mx =
@@ -107,16 +85,11 @@ export function dispatchSimEvent3DVisual(
       mz,
       undefined,
       effectGfx.fireExplosionStyle,
-      detailScale,
+      1,
     );
   } else if (event.type === 'waterSplash') {
     const splash = event.waterSplash;
     const ctx = event.impactContext;
-    if (context.isPositionLowLod(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    )) return;
     const fallbackVelocity = {
       x: ctx ? finiteOr(ctx.projectile.vel.x, 0) : 0,
       y: ctx ? finiteOr(ctx.projectile.vel.y, 0) : 0,
@@ -140,11 +113,6 @@ export function dispatchSimEvent3DVisual(
       event.playerId ?? undefined,
     );
   } else if (event.type === 'projectileExpire') {
-    if (context.isPositionLowLod(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    )) return;
     context.explosionRenderer.spawnImpact(
       event.pos.x,
       event.pos.y,
@@ -154,22 +122,11 @@ export function dispatchSimEvent3DVisual(
       0,
       undefined,
       effectGfx.fireExplosionStyle,
-      explosionSpawnScaleForDetail(
-        context.positionVisualDetailLevel(
-          event.pos.x,
-          event.pos.y,
-          event.pos.z,
-        ),
-      ),
+      1,
     );
   } else if (event.type === 'shieldImpact') {
     const ctx = event.shieldImpact;
     if (ctx) {
-      if (context.isPositionLowLod(
-        event.pos.x,
-        event.pos.y,
-        event.pos.z,
-      )) return;
       context.shieldImpactRenderer.spawn(
         event.pos.x,
         event.pos.y,
@@ -187,18 +144,8 @@ export function dispatchSimEvent3DVisual(
       ? context.clientViewState.getEntity(event.entityId)
       : undefined;
     const ctx = resolveDeathContext3D(event, ent);
-    if (context.isPositionLowLod(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    )) return;
     const attackPush = Math.min(ctx.attackMagnitude * 2, 200);
     const deathRadius = Math.max(ctx.radius, EFFECT_RADIUS_FALLBACKS.deathExplosionMin);
-    const eventDetailLevel = context.positionVisualDetailLevel(
-      event.pos.x,
-      event.pos.y,
-      event.pos.z,
-    );
     const mx =
       ctx.hitDir.x * attackPush +
       ctx.projectileVel.x * 0.3 +
@@ -212,7 +159,7 @@ export function dispatchSimEvent3DVisual(
       deathRadius,
       mx, mz,
       effectGfx.fireExplosionStyle,
-      explosionSpawnScaleForDetail(eventDetailLevel),
+      1,
     );
     context.debrisRenderer.spawn(
       event.pos.x,
@@ -220,7 +167,7 @@ export function dispatchSimEvent3DVisual(
       event.pos.z,
       ctx,
       effectGfx,
-      debrisSpawnScaleForDetail(eventDetailLevel),
+      1,
     );
   }
 }

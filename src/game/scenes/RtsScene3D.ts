@@ -34,8 +34,7 @@ import { bootstrapRtsScene3DRenderers } from './helpers/RtsScene3DRendererBootst
 import { RtsScene3DRendererWarmup } from './helpers/RtsScene3DRendererWarmup';
 import { RtsScene3DSelectionSystem } from './helpers/RtsScene3DSelectionSystem';
 import { dispatchSimEvent3DVisual } from './helpers/RtsScene3DVisualEventDispatcher';
-import { simPositionUsesLowLodDistance3D } from '../render3d/EntityLod3D';
-import { detailLevelForViewPosition } from '../render3d/EntityDetailLevel3D';
+import { setRenderFrameGraphicsConfig } from '../render3d/RenderFrameState3D';
 import { getGraphicsConfig } from '@/clientBarConfig';
 import type { ClientCommandSink } from '../input/ClientCommandSink';
 import type { BarBuildCategoryId } from '../input/buildMenuLayout';
@@ -86,6 +85,7 @@ import { NameLabel3D } from '../render3d/NameLabel3D';
 import { Waypoint3D } from '../render3d/Waypoint3D';
 
 import type { GameConnection } from '../server/GameConnection';
+import type { AuthoritativeRenderSource } from '@/types/game';
 import type {
   GamePhase,
   NetworkServerSnapshotMeta,
@@ -182,6 +182,8 @@ export class RtsScene3D {
   private audioSystem = new RtsScene3DAudioSystem();
   private inputManager: Input3DManager | null = null;
   private gameConnection!: GameConnection;
+  private readonly getAuthoritativeRenderSource = (): AuthoritativeRenderSource | null =>
+    this.gameConnection.getAuthoritativeRenderSource?.() ?? null;
   private snapshotIntake!: RtsScene3DSnapshotIntake;
   private localCommandQueue = new CommandQueue();
   private readonly clientCommandSink: ClientCommandSink = {
@@ -354,7 +356,10 @@ export class RtsScene3D {
       this.clientViewState,
       this.gameConnection,
     );
-    this.predictionPhase = new RtsScene3DPredictionPhase(this.clientViewState);
+    this.predictionPhase = new RtsScene3DPredictionPhase(
+      this.clientViewState,
+      () => this.getAuthoritativeRenderSource() !== null,
+    );
     const baseDistance = Math.max(this.mapWidth, this.mapHeight) * 0.35;
     const cameraBattleKind = this.lobbyPreview
       ? 'lobbyBattle'
@@ -655,6 +660,7 @@ export class RtsScene3D {
         nameLabel3D: this.nameLabel3D,
         waypoint3D: this.waypoint3D,
       },
+      this.getAuthoritativeRenderSource,
       () => this.localPlayerId,
       () => this.inputManager,
       (playerId) => this.lookupPlayerName(playerId),
@@ -781,8 +787,9 @@ export class RtsScene3D {
       unitCount: serverUnitCount ?? this.clientViewState.getUnits().length,
       renderTpsAvg: renderTpsStats.avgRate,
       renderTpsWorst: renderTpsStats.worstRate,
+      cameraDistance: this.threeApp.orbit.distance,
     });
-    renderFrameState.gfx = budgetState.graphicsConfig;
+    setRenderFrameGraphicsConfig(renderFrameState, budgetState.graphicsConfig);
 
     const { cameraQuad, cameraView, renderMs } = renderPhase.run({
       effectDtMs,
@@ -867,40 +874,7 @@ export class RtsScene3D {
       shieldImpactRenderer: this.shieldImpactRenderer,
       waterSplashRenderer: this.waterSplashRenderer,
       debrisRenderer: this.debrisRenderer,
-      isPositionLowLod: (simX, simY, simZ) =>
-        simPositionUsesLowLodDistance3D(
-          this.threeApp.camera,
-          simX,
-          simY,
-          simZ,
-        ),
-      positionVisualDetailLevel: (simX, simY, simZ) =>
-        this.positionVisualDetailLevel(simX, simY, simZ),
     });
-  }
-
-  private positionVisualDetailLevel(
-    simX: number,
-    simY: number,
-    simZ: number,
-  ): number {
-    const camera = this.threeApp.camera;
-    const matrix = camera.matrixWorld.elements;
-    return detailLevelForViewPosition(
-      {
-        viewportHeightPx: Math.max(1, this.threeApp.renderer.domElement.clientHeight),
-        cameraX: camera.position.x,
-        cameraY: camera.position.y,
-        cameraZ: camera.position.z,
-        forwardX: -matrix[8],
-        forwardY: -matrix[9],
-        forwardZ: -matrix[10],
-        fovYRad: (camera.fov * Math.PI) / 180,
-      },
-      simX,
-      simY,
-      simZ,
-    );
   }
 
   private handleGameOver(winnerId: PlayerId): void {
@@ -1523,8 +1497,6 @@ export class RtsScene3D {
       renderPhaseHudMs: renderPhaseTimings?.hudMs ?? 0,
       renderPhaseUnitRows: renderPhaseTimings?.unitRows ?? 0,
       renderPhaseBuildingRows: renderPhaseTimings?.buildingRows ?? 0,
-      renderPhaseUnitLodProxyRows: renderPhaseTimings?.unitLodProxyRows ?? 0,
-      renderPhaseBuildingLodProxyRows: renderPhaseTimings?.buildingLodProxyRows ?? 0,
       renderPhaseProjectileRows: renderPhaseTimings?.projectileRows ?? 0,
       renderPhaseLineProjectileRows: renderPhaseTimings?.lineProjectileRows ?? 0,
     });

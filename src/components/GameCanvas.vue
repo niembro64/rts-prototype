@@ -1141,7 +1141,6 @@ const {
   projRangeToggles,
   unitRadiusToggles,
   legsRadiusToggle,
-  lodMode,
   cameraSmoothMode,
   cameraFollowMode,
   cameraFovDegrees,
@@ -1165,7 +1164,6 @@ const {
   toggleProjRange,
   toggleUnitRadius,
   toggleLegsRadius,
-  changeLodMode,
   setCameraMode,
   setCameraFollow,
   changeCameraFovDegrees,
@@ -2057,7 +2055,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   allUnitRadiiActive: allUnitRadiiActive.value,
   unitRadiusToggles,
   legsRadiusToggle: legsRadiusToggle.value,
-  lodMode: lodMode.value,
   cameraFovDegrees: cameraFovDegrees.value,
   cameraSmoothMode: cameraSmoothMode.value,
   cameraFollowMode: cameraFollowMode.value,
@@ -2115,7 +2112,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleAllUnitRadii,
   toggleUnitRadius,
   toggleLegsRadius,
-  changeLodMode,
   changeCameraFovDegrees,
   changeWaterBoundaryMode,
   setCameraMode,
@@ -2261,7 +2257,6 @@ watchEffect(() => {
   m.allProjRangesActive = allProjRangesActive.value;
   m.allUnitRadiiActive = allUnitRadiiActive.value;
   m.legsRadiusToggle = legsRadiusToggle.value;
-  m.lodMode = lodMode.value;
   m.cameraFovDegrees = cameraFovDegrees.value;
   m.cameraSmoothMode = cameraSmoothMode.value;
   m.cameraFollowMode = cameraFollowMode.value;

@@ -11,6 +11,7 @@ import {
   buildLocomotion,
   getChassisLift,
   type LegStateSnapshot,
+  type LocomotionRenderPose3D,
 } from './Locomotion3D';
 import { getFactoryProductionHoldVisual } from '../sim/factoryProductionHold';
 import { buildAlbatrosChassis } from './AlbatrosMesh3D';
@@ -62,6 +63,7 @@ type UnitMeshBuildRequest = {
   unitRenderKey: string;
   detailLevel: number;
   legState?: LegStateSnapshot;
+  locomotionPose?: LocomotionRenderPose3D;
 };
 
 export function applyUnitLiftGroupPose3D(mesh: EntityMesh, entity: Entity): void {
@@ -125,6 +127,7 @@ export class UnitMeshBuilder3D {
       unitRenderKey,
       detailLevel,
       legState,
+      locomotionPose,
     } = request;
 
     const group = new THREE.Group();
@@ -257,6 +260,7 @@ export class UnitMeshBuilder3D {
       this.getMapWidth(),
       this.getMapHeight(),
       this.legRenderer,
+      locomotionPose,
     );
     if (legState !== undefined) applyLegState(mesh.locomotion, legState);
 

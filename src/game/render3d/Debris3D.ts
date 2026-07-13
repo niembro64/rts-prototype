@@ -28,7 +28,6 @@ import { FALLBACK_UNIT_BODY_SHAPE } from '../sim/blueprints';
 import { getShieldPanelCenter } from '../sim/shieldPanelCache';
 import { SHINY_GRAY_METAL_MATERIAL } from './BuildingVisualPalette';
 import { hexToRgb01, locomotionPieceColorFromPrimary } from './colorUtils';
-import { blendHexTowardWhite } from './EntityInstanceColor3D';
 import { disposeMesh } from './threeUtils';
 import { getBodyTopY } from '../math/BodyDimensions';
 import {
@@ -131,7 +130,7 @@ function resolveDebrisTemplateColor(role: DebrisColorRole, primary: number): num
     case 'tread': return locomotionPieceColorFromPrimary(TREAD_COLOR, primary);
     case 'wheel': return locomotionPieceColorFromPrimary(WHEEL_COLOR, primary);
     case 'leg': return locomotionPieceColorFromPrimary(LEG_COLOR, primary);
-    case 'barrel': return blendHexTowardWhite(primary, 0.5);
+    case 'barrel': return COLORS.units.debris.barrel.colorHex;
     case 'shieldPanel': return SHIELD_PANEL_DEBRIS_COLOR;
   }
 }

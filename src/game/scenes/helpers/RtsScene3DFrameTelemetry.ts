@@ -48,8 +48,6 @@ export type RtsScene3DFrameTiming = {
   renderPhaseHudMs: number;
   renderPhaseUnitRows: number;
   renderPhaseBuildingRows: number;
-  renderPhaseUnitLodProxyRows: number;
-  renderPhaseBuildingLodProxyRows: number;
   renderPhaseProjectileRows: number;
   renderPhaseLineProjectileRows: number;
 };
@@ -87,8 +85,6 @@ type RtsScene3DFrameTimingGpuSample = {
   renderPhaseHudMs: number;
   renderPhaseUnitRows: number;
   renderPhaseBuildingRows: number;
-  renderPhaseUnitLodProxyRows: number;
-  renderPhaseBuildingLodProxyRows: number;
   renderPhaseProjectileRows: number;
   renderPhaseLineProjectileRows: number;
 };
@@ -188,8 +184,6 @@ export class RtsScene3DFrameTelemetry {
       renderPhaseHudMs: sample.renderPhaseHudMs,
       renderPhaseUnitRows: sample.renderPhaseUnitRows,
       renderPhaseBuildingRows: sample.renderPhaseBuildingRows,
-      renderPhaseUnitLodProxyRows: sample.renderPhaseUnitLodProxyRows,
-      renderPhaseBuildingLodProxyRows: sample.renderPhaseBuildingLodProxyRows,
       renderPhaseProjectileRows: sample.renderPhaseProjectileRows,
       renderPhaseLineProjectileRows: sample.renderPhaseLineProjectileRows,
     };

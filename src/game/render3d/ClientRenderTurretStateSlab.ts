@@ -52,6 +52,11 @@ export type ClientRenderTurretHostRows = {
   readonly views: ClientRenderTurretStateViews;
 };
 
+export type ClientRenderTurretPoseRefreshResult = {
+  rows: ClientRenderTurretHostRows | undefined;
+  changed: boolean;
+};
+
 function growFloat32(source: Float32Array, nextCapacity: number): Float32Array {
   const next = new Float32Array(nextCapacity);
   next.set(source);
@@ -74,6 +79,23 @@ function growUint16(source: Uint16Array, nextCapacity: number): Uint16Array {
   const next = new Uint16Array(nextCapacity);
   next.set(source);
   return next;
+}
+
+function writeFloat32(values: Float32Array, index: number, value: number): boolean {
+  const next = Math.fround(value);
+  if (values[index] === next) return false;
+  values[index] = next;
+  return true;
+}
+
+function setPoseRefreshResult(
+  out: ClientRenderTurretPoseRefreshResult,
+  rows: ClientRenderTurretHostRows | undefined,
+  changed: boolean,
+): ClientRenderTurretPoseRefreshResult {
+  out.rows = rows;
+  out.changed = changed;
+  return out;
 }
 
 function assertNear(label: string, actual: number, expected: number, tolerance = 1e-3): void {
@@ -122,6 +144,8 @@ function unitMountLiftY(entity: Entity): number {
 export class ClientRenderTurretStateSlab {
   private dirtyHostMarks: Uint8Array = new Uint8Array(INITIAL_RENDER_TURRET_HOST_CAP);
   private readonly dirtyHostSlots: number[] = [];
+  private hostShieldFieldCounts: Uint16Array = new Uint16Array(INITIAL_RENDER_TURRET_HOST_CAP);
+  private totalShieldFieldCount = 0;
   private readonly hostRowsScratch: ClientRenderTurretHostRows = {
     hostSlot: -1,
     start: 0,
@@ -169,6 +193,18 @@ export class ClientRenderTurretStateSlab {
     return rows;
   }
 
+  hostHasShieldField(hostSlot: number): boolean {
+    return (
+      hostSlot >= 0 &&
+      hostSlot < this.hostShieldFieldCounts.length &&
+      this.hostShieldFieldCounts[hostSlot] > 0
+    );
+  }
+
+  hasShieldFields(): boolean {
+    return this.totalShieldFieldCount > 0;
+  }
+
   refreshHost(entity: Entity, hostSlot: number): ClientRenderTurretHostRows | undefined {
     const turrets = entity.combat?.turrets;
     const count = turrets?.length ?? 0;
@@ -187,16 +223,100 @@ export class ClientRenderTurretStateSlab {
 
     this.views.hostCounts[hostSlot] = count;
     if (turrets === undefined || count === 0) {
+      this.setHostShieldFieldCount(hostSlot, 0);
       this.markHostDirty(hostSlot);
       return undefined;
     }
 
     const mountLiftY = unitMountLiftY(entity);
+    let shieldFieldCount = 0;
     for (let i = 0; i < count; i++) {
-      this.writeRow(entity, turrets[i], start + i, mountLiftY);
+      const turret = turrets[i];
+      if ((turretFlags(turret) & CLIENT_RENDER_TURRET_FLAG_SHIELD_FIELD) !== 0) {
+        shieldFieldCount++;
+      }
+      this.writeRow(entity, turret, start + i, mountLiftY);
     }
+    this.setHostShieldFieldCount(hostSlot, shieldFieldCount);
     this.markHostDirty(hostSlot);
     return this.hostRows(hostSlot);
+  }
+
+  refreshHostPose(
+    entity: Entity,
+    hostSlot: number,
+    out: ClientRenderTurretPoseRefreshResult,
+  ): ClientRenderTurretPoseRefreshResult {
+    const turrets = entity.combat?.turrets;
+    const count = turrets?.length ?? 0;
+    if (hostSlot < 0) return setPoseRefreshResult(out, undefined, false);
+    this.ensureHostCapacity(hostSlot + 1);
+    if (
+      count > CLIENT_RENDER_TURRET_MAX_PER_HOST ||
+      this.views.hostCounts[hostSlot] !== count
+    ) {
+      return setPoseRefreshResult(out, this.refreshHost(entity, hostSlot), true);
+    }
+    if (turrets === undefined || count === 0) {
+      if (this.views.hostCounts[hostSlot] !== 0) {
+        return setPoseRefreshResult(out, this.refreshHost(entity, hostSlot), true);
+      }
+      return setPoseRefreshResult(out, undefined, false);
+    }
+
+    const start = hostSlot * CLIENT_RENDER_TURRET_MAX_PER_HOST;
+    let changed = false;
+    for (let i = 0; i < count; i++) {
+      const turret = turrets[i];
+      const row = start + i;
+      if (
+        this.views.hostEntityIds[row] !== entity.id ||
+        this.views.turretEntityIds[row] !== turret.id
+      ) {
+        return setPoseRefreshResult(out, this.refreshHost(entity, hostSlot), true);
+      }
+      if (writeFloat32(this.views.rotation, row, turret.rotation)) changed = true;
+      if (writeFloat32(this.views.pitch, row, turret.pitch)) changed = true;
+    }
+    if (changed) this.markHostDirty(hostSlot);
+    return setPoseRefreshResult(out, this.hostRows(hostSlot), changed);
+  }
+
+  refreshHostPoseRows(
+    hostEntityId: number,
+    turrets: readonly Turret[] | undefined,
+    hostSlot: number,
+    out: ClientRenderTurretPoseRefreshResult,
+  ): ClientRenderTurretPoseRefreshResult {
+    const count = turrets?.length ?? 0;
+    if (hostSlot < 0) return setPoseRefreshResult(out, undefined, false);
+    this.ensureHostCapacity(hostSlot + 1);
+    if (
+      count > CLIENT_RENDER_TURRET_MAX_PER_HOST ||
+      this.views.hostCounts[hostSlot] !== count
+    ) {
+      return setPoseRefreshResult(out, this.hostRows(hostSlot), false);
+    }
+    if (turrets === undefined || count === 0) {
+      return setPoseRefreshResult(out, undefined, false);
+    }
+
+    const start = hostSlot * CLIENT_RENDER_TURRET_MAX_PER_HOST;
+    let changed = false;
+    for (let i = 0; i < count; i++) {
+      const turret = turrets[i];
+      const row = start + i;
+      if (
+        this.views.hostEntityIds[row] !== hostEntityId ||
+        this.views.turretEntityIds[row] !== turret.id
+      ) {
+        return setPoseRefreshResult(out, this.hostRows(hostSlot), false);
+      }
+      if (writeFloat32(this.views.rotation, row, turret.rotation)) changed = true;
+      if (writeFloat32(this.views.pitch, row, turret.pitch)) changed = true;
+    }
+    if (changed) this.markHostDirty(hostSlot);
+    return setPoseRefreshResult(out, this.hostRows(hostSlot), changed);
   }
 
   unsetHostSlot(hostSlot: number): void {
@@ -206,6 +326,7 @@ export class ClientRenderTurretStateSlab {
     const start = hostSlot * CLIENT_RENDER_TURRET_MAX_PER_HOST;
     for (let i = 0; i < count; i++) this.clearRow(start + i);
     this.views.hostCounts[hostSlot] = 0;
+    this.setHostShieldFieldCount(hostSlot, 0);
     this.markHostDirty(hostSlot);
   }
 
@@ -231,6 +352,8 @@ export class ClientRenderTurretStateSlab {
     this.dirtyHostMarks.fill(0);
     this.dirtyHostSlots.length = 0;
     this.views.hostCounts.fill(0);
+    this.hostShieldFieldCounts.fill(0);
+    this.totalShieldFieldCount = 0;
     this.views.flags.fill(0);
     this.views.hostEntityIds.fill(0);
     this.views.turretEntityIds.fill(0);
@@ -335,6 +458,14 @@ export class ClientRenderTurretStateSlab {
     views.spinMax[row] = 0;
   }
 
+  private setHostShieldFieldCount(hostSlot: number, count: number): void {
+    const previous = this.hostShieldFieldCounts[hostSlot] ?? 0;
+    if (previous === count) return;
+    this.hostShieldFieldCounts[hostSlot] = count;
+    this.totalShieldFieldCount += count - previous;
+    if (this.totalShieldFieldCount < 0) this.totalShieldFieldCount = 0;
+  }
+
   private ensureHostCapacity(requiredHostCount: number): void {
     if (requiredHostCount <= this.views.hostCounts.length) return;
     let nextHostCapacity = this.views.hostCounts.length;
@@ -366,6 +497,7 @@ export class ClientRenderTurretStateSlab {
       hostCounts: growUint16(views.hostCounts, nextHostCapacity),
     };
     this.dirtyHostMarks = growUint8(this.dirtyHostMarks, nextHostCapacity);
+    this.hostShieldFieldCounts = growUint16(this.hostShieldFieldCounts, nextHostCapacity);
   }
 
   private markHostDirty(hostSlot: number): void {

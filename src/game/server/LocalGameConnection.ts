@@ -1,6 +1,12 @@
 // LocalGameConnection - In-memory bridge between GameServer and local client (host)
 
-import type { GameConnection, SnapshotCallback, SimEventCallback, GameOverCallback } from './GameConnection';
+import type {
+  AuthoritativeRenderSource,
+  GameConnection,
+  SnapshotCallback,
+  SimEventCallback,
+  GameOverCallback,
+} from './GameConnection';
 import type { GameServer } from './GameServer';
 import type { Command } from '../sim/commands';
 import type { PlayerId } from '../sim/types';
@@ -18,11 +24,16 @@ import {
   refreshSnapshotEntityRowComposition,
 } from '../network/snapshotMaterializationMetadata';
 import { setSnapshotWireBytes } from '../network/snapshotWireMetadata';
-import { getEntitySnapshotWireSource } from '../network/stateSerializerEntities';
+import {
+  ENTITY_SNAPSHOT_WIRE_KIND_BUILDING,
+  ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+  getEntitySnapshotWireSource,
+} from '../network/stateSerializerEntities';
 import { projectileSnapshotWireSourceHasDirectlyConsumableRows } from '../network/stateSerializerProjectiles';
 import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
+import { CLIENT_PREDICTION_DIAGNOSTICS } from '../network/ClientPredictionDiagnostics';
 import type { CommandAuthority } from './commandAuthority';
 
 export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot): boolean {
@@ -67,6 +78,27 @@ export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot)
   return true;
 }
 
+export function stripRedundantTypedEntityDtosFromLocalDecodedSnapshot(
+  state: NetworkServerSnapshot,
+): boolean {
+  if (state.entityDeltaOnly !== true || state.projectileDeltaOnly === true) return false;
+  const source = getEntitySnapshotWireSource(state.entities);
+  if (source === undefined || source.count !== state.entities.length) return false;
+  let strippedAny = false;
+  for (let i = 0; i < state.entities.length; i++) {
+    const kind = source.kinds[i];
+    if (
+      source.rowIndices[i] >= 0 &&
+      (kind === ENTITY_SNAPSHOT_WIRE_KIND_UNIT || kind === ENTITY_SNAPSHOT_WIRE_KIND_BUILDING) &&
+      state.entities[i] !== undefined
+    ) {
+      state.entities[i] = undefined as unknown as NetworkServerSnapshot['entities'][number];
+      strippedAny = true;
+    }
+  }
+  return strippedAny;
+}
+
 export type LocalCommandAuthorityMode = 'player' | 'local-offline';
 export type LocalGameConnectionOptions = {
   commandDoorway?: (command: Command, fromPlayerId: PlayerId) => boolean;
@@ -105,6 +137,7 @@ export class LocalGameConnection implements GameConnection {
   private readonly recordSnapshotWireCost: boolean;
   private readonly loopbackSnapshotsThroughWire: boolean;
   private readonly directLocalSnapshotMaterialization: boolean;
+  private readonly authoritativeRenderSource: AuthoritativeRenderSource;
   /** Whose snapshot view this client receives. `undefined` = global
    *  observer (no fog filter; sees every entity). Decoupled from
    *  commandPlayerId so a true spectator can view-as-N without being
@@ -128,6 +161,12 @@ export class LocalGameConnection implements GameConnection {
       options.directLocalSnapshotMaterialization !== false;
     this.sharesAuthoritativeState = options.sharesAuthoritativeState ??
       !this.loopbackSnapshotsThroughWire;
+    const lockstepCore = server.getLockstepSimulationCore();
+    this.authoritativeRenderSource = {
+      kind: 'local-server',
+      world: lockstepCore.world,
+      getTick: () => lockstepCore.world.getTick(),
+    };
     this.snapshotListenerKey = this.subscribeSnapshots(server, playerId);
 
     this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
@@ -188,6 +227,7 @@ export class LocalGameConnection implements GameConnection {
       preencodeWire:
         this.loopbackSnapshotsThroughWire ||
         this.directLocalSnapshotMaterialization,
+      skipSparsePresentationDeltas: this.sharesAuthoritativeState,
     });
   }
 
@@ -220,6 +260,13 @@ export class LocalGameConnection implements GameConnection {
     return this.snapshotCallback !== null && !this.snapshotImpairment.enabled;
   }
 
+  private shouldStripRedundantLocalDecodedEntityDtos(metadataOnly: boolean): boolean {
+    return metadataOnly &&
+      this.sharesAuthoritativeState &&
+      !SNAPSHOT_CADENCE_REGRESSION.enabled &&
+      !CLIENT_PREDICTION_DIAGNOSTICS.enabled;
+  }
+
   private decodePreencodedLocalSnapshot(
     state: NetworkServerSnapshot,
     encoded: SnapshotWirePayload,
@@ -231,6 +278,9 @@ export class LocalGameConnection implements GameConnection {
     });
     setSnapshotWireBytes(decoded, encoded.bytes.byteLength);
     copySnapshotMaterializationMetadata(state, decoded);
+    if (this.shouldStripRedundantLocalDecodedEntityDtos(metadataOnly)) {
+      stripRedundantTypedEntityDtosFromLocalDecodedSnapshot(decoded);
+    }
     refreshSnapshotEntityRowComposition(decoded);
     return decoded;
   }
@@ -312,6 +362,11 @@ export class LocalGameConnection implements GameConnection {
       if (this.commandDoorway(command, this.commandPlayerId)) return;
     }
     server.receiveCommand(command, this.commandAuthority());
+  }
+
+  getAuthoritativeRenderSource(): AuthoritativeRenderSource | null {
+    if (!this.sharesAuthoritativeState || this.server === null) return null;
+    return this.authoritativeRenderSource;
   }
 
   private commandAuthority(): CommandAuthority {

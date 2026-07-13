@@ -151,6 +151,7 @@ export class RtsScene3DSnapshotIntake {
   private startupSnapshotApplied = false;
   private startupReleased = false;
   private readonly syncEconomyFromSnapshots: boolean;
+  private readonly skipPresentationMotionTargets: boolean;
   private readonly materializationMetadataSamples: SnapshotMaterializationMetadata[] = [];
 
   constructor(
@@ -158,6 +159,9 @@ export class RtsScene3DSnapshotIntake {
     private readonly gameConnection: GameConnection,
   ) {
     this.syncEconomyFromSnapshots = gameConnection.sharesAuthoritativeState !== true;
+    this.skipPresentationMotionTargets =
+      gameConnection.sharesAuthoritativeState === true &&
+      gameConnection.getAuthoritativeRenderSource?.() !== null;
   }
 
   attach(): void {
@@ -194,6 +198,7 @@ export class RtsScene3DSnapshotIntake {
         CLIENT_PREDICTION_DIAGNOSTICS.enabled,
       collectMaterializationStages: true,
       deferPredictedTurretRenderRefresh: true,
+      skipPresentationMotionTargets: this.skipPresentationMotionTargets,
     });
     const applyMs = performance.now() - applyStart;
     addSnapshotClientMaterializationStage(state, 'clientApply', applyMs);

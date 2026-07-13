@@ -1,5 +1,6 @@
 import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 import type { Entity, EntityHold, EntityHoldKind } from './types';
+import { entitySlotRegistry } from './EntitySlotRegistry';
 import { getUnitBodyCenterHeight, getUnitGroundZ } from './unitGeometry';
 import type { WorldState } from './WorldState';
 
@@ -39,11 +40,13 @@ export function holdEntity(holder: Entity, held: Entity, spec: EntityHoldSpec): 
     inheritHolderVelocity: spec.inheritHolderVelocity,
   };
   held.heldBy = hold;
+  entitySlotRegistry.setHeld(held, true);
   return hold;
 }
 
 export function releaseEntityHold(held: Entity): void {
   held.heldBy = null;
+  entitySlotRegistry.setHeld(held, false);
 }
 
 export function resolveEntityHoldPose(

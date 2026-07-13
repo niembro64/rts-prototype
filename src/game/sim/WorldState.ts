@@ -103,6 +103,7 @@ export class WorldState {
   private tick: number = 0;
   private buildingVersion: number = 0;
   private unitSetVersion: number = 0;
+  private actionQueueVersion: number = 0;
   private removedSnapshotEntities: RemovedSnapshotEntity[] = [];
   private snapshotDirtyIds: EntityId[] = [];
   private snapshotDirtyFieldsById: number[] = [];
@@ -559,7 +560,10 @@ export class WorldState {
         this.clearFactoryProductionProvenanceForFactory(entity.id);
       }
     }
-    if (entity !== undefined && entity.type === 'unit') this.unitSetVersion++;
+    if (entity !== undefined && entity.type === 'unit') {
+      this.unitSetVersion++;
+      this.actionQueueVersion++;
+    }
     if (entity !== undefined && (entity.type === 'building' || entity.type === 'tower')) this.buildingVersion++;
     if (entity !== undefined && (entity.type === 'unit' || entity.type === 'building' || entity.type === 'tower')) {
       this.removedSnapshotEntities.push({
@@ -617,6 +621,7 @@ export class WorldState {
   }
 
   private enqueueSnapshotDirty(id: EntityId, fields: number): void {
+    if (fields & ENTITY_CHANGED_ACTIONS) this.actionQueueVersion++;
     if (fields & ENTITY_CHANGED_HP) this.pendingDeathCheckIds.add(id);
     const previousFields = this.snapshotDirtyFieldsById[id] ?? 0;
     if (previousFields === 0) this.snapshotDirtyIds.push(id);
@@ -682,6 +687,10 @@ export class WorldState {
 
   getUnitSetVersion(): number {
     return this.unitSetVersion;
+  }
+
+  getActionQueueVersion(): number {
+    return this.actionQueueVersion;
   }
 
   // Get entity by ID

@@ -310,36 +310,79 @@ export class EntityCacheManager {
 
   private removeEntityFromCaches(entity: Entity): void {
     removeEntityFromList(this.cachedAll, entity);
-    removeEntityFromList(this.cachedUnits, entity);
-    removeEntityFromList(this.cachedBuildings, entity);
-    removeEntityFromList(this.cachedProjectiles, entity);
-    removeEntityFromList(this.cachedTravelingProjectiles, entity);
-    removeEntityFromList(this.cachedSmokeTrailProjectiles, entity);
-    removeEntityFromList(this.cachedLineProjectiles, entity);
-    removeEntityFromList(this.cachedDamagedUnits, entity);
-    removeEntityFromList(this.cachedHealthBarBuildings, entity);
-    removeEntityFromList(this.cachedHudEntities, entity);
-    removeEntityFromList(this.cachedWindBuildings, entity);
-    removeEntityFromList(this.cachedSolarBuildings, entity);
-    removeEntityFromList(this.cachedExtractorBuildings, entity);
-    removeEntityFromList(this.cachedConverterBuildings, entity);
-    removeEntityFromList(this.cachedActiveStateBuildings, entity);
-    removeEntityFromList(this.cachedFactoryBuildings, entity);
-    removeEntityFromList(this.cachedFactoryUnits, entity);
-    removeEntityFromList(this.cachedShieldUnits, entity);
-    removeEntityFromList(this.cachedCommanderUnits, entity);
-    removeEntityFromList(this.cachedBuilderUnits, entity);
-    removeEntityFromList(this.cachedFlyingUnits, entity);
-    this.cachedFlyingUnitSlotsDirty = true;
-    removeEntityFromList(this.cachedArmedEntities, entity);
-    removeEntityFromList(this.cachedBeamUnits, entity);
-    removeEntityFromList(this.cachedShieldPanelUnits, entity);
-    removeEntityFromList(this.cachedUnitsAndBuildings, entity);
-    removeEntityFromList(this.cachedSupportSurfaceEntities, entity);
-    removeEntityFromList(this.cachedCombatTargetEntities, entity);
-    for (const list of this.cachedUnitsByPlayer.values()) removeEntityFromList(list, entity);
-    for (const list of this.cachedBuildingsByPlayer.values()) removeEntityFromList(list, entity);
-    for (const list of this.cachedFactoriesByPlayer.values()) removeEntityFromList(list, entity);
+
+    const ownership = entity.ownership;
+    if (entity.combat) {
+      removeEntityFromList(this.cachedArmedEntities, entity);
+      removeEntityFromList(this.cachedShieldUnits, entity);
+      removeEntityFromList(this.cachedBeamUnits, entity);
+    }
+
+    switch (entity.type) {
+      case 'unit':
+        removeEntityFromList(this.cachedUnits, entity);
+        removeEntityFromList(this.cachedUnitsAndBuildings, entity);
+        removeEntityFromList(this.cachedCombatTargetEntities, entity);
+        removeEntityFromList(this.cachedDamagedUnits, entity);
+        removeEntityFromList(this.cachedHudEntities, entity);
+        removeEntityFromList(this.cachedSupportSurfaceEntities, entity);
+        removeEntityFromList(this.cachedShieldPanelUnits, entity);
+        if (entity.unit !== null && entity.unit.locomotion.type === 'flying') {
+          removeEntityFromList(this.cachedFlyingUnits, entity);
+          this.cachedFlyingUnitSlotsDirty = true;
+        }
+        if (entity.commander) removeEntityFromList(this.cachedCommanderUnits, entity);
+        if (entity.builder) removeEntityFromList(this.cachedBuilderUnits, entity);
+        if (entity.factory) {
+          removeEntityFromList(this.cachedFactoryUnits, entity);
+          removeFromOwnedList(this.cachedFactoriesByPlayer, ownership?.playerId ?? null, entity);
+        }
+        removeFromOwnedList(this.cachedUnitsByPlayer, ownership?.playerId ?? null, entity);
+        break;
+
+      case 'building':
+      case 'tower':
+        removeEntityFromList(this.cachedBuildings, entity);
+        removeEntityFromList(this.cachedUnitsAndBuildings, entity);
+        removeEntityFromList(this.cachedCombatTargetEntities, entity);
+        removeEntityFromList(this.cachedHealthBarBuildings, entity);
+        removeEntityFromList(this.cachedHudEntities, entity);
+        removeEntityFromList(this.cachedSupportSurfaceEntities, entity);
+        if (entity.buildingBlueprintId === 'buildingWind') {
+          removeEntityFromList(this.cachedWindBuildings, entity);
+          removeEntityFromList(this.cachedActiveStateBuildings, entity);
+        } else if (entity.buildingBlueprintId === 'buildingSolar') {
+          removeEntityFromList(this.cachedSolarBuildings, entity);
+          removeEntityFromList(this.cachedActiveStateBuildings, entity);
+        } else if (isMetalExtractorBlueprintId(entity.buildingBlueprintId)) {
+          removeEntityFromList(this.cachedExtractorBuildings, entity);
+          removeEntityFromList(this.cachedActiveStateBuildings, entity);
+        } else if (entity.buildingBlueprintId === 'buildingResourceConverter') {
+          removeEntityFromList(this.cachedConverterBuildings, entity);
+          removeEntityFromList(this.cachedActiveStateBuildings, entity);
+        } else if (entity.buildingBlueprintId === 'buildingRadar') {
+          removeEntityFromList(this.cachedActiveStateBuildings, entity);
+        }
+        if (entity.factory) {
+          removeEntityFromList(this.cachedFactoryBuildings, entity);
+          removeFromOwnedList(this.cachedFactoriesByPlayer, ownership?.playerId ?? null, entity);
+        }
+        removeFromOwnedList(this.cachedBuildingsByPlayer, ownership?.playerId ?? null, entity);
+        break;
+
+      case 'shot':
+        removeEntityFromList(this.cachedProjectiles, entity);
+        if (entity.projectile !== null && entity.projectile.projectileType === 'projectile') {
+          removeEntityFromList(this.cachedTravelingProjectiles, entity);
+          removeEntityFromList(this.cachedCombatTargetEntities, entity);
+          if (entity.projectile.config.shotProfile.visual.smokeTrail) {
+            removeEntityFromList(this.cachedSmokeTrailProjectiles, entity);
+          }
+        } else if (entity.projectile && isRayType(entity.projectile.projectileType)) {
+          removeEntityFromList(this.cachedLineProjectiles, entity);
+        }
+        break;
+    }
   }
 
   private addProjectileEntity(entity: Entity, includeAll: boolean, sortedInsert: boolean): void {
@@ -524,6 +567,19 @@ function addEntityToList(list: Entity[], entity: Entity, sortedInsert: boolean):
 function removeEntityFromList(list: Entity[], entity: Entity): void {
   const index = list.indexOf(entity);
   if (index >= 0) list.splice(index, 1);
+}
+
+function removeFromOwnedList(
+  map: Map<PlayerId, Entity[]>,
+  playerId: PlayerId | null,
+  entity: Entity,
+): void {
+  if (playerId !== null) {
+    const list = map.get(playerId);
+    if (list !== undefined) removeEntityFromList(list, entity);
+    return;
+  }
+  for (const list of map.values()) removeEntityFromList(list, entity);
 }
 
 function insertEntityById(list: Entity[], entity: Entity): void {

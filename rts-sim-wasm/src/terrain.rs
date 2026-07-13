@@ -1,5 +1,6 @@
 // terrain — extracted from lib.rs (pure code motion).
 
+use crate::unit_kinetics::{UF_ROW_AIR_LIFT_DISTANCE_SCALE, UNIT_FORCE_BATCH_STRIDE};
 #[allow(unused_imports)]
 use crate::*;
 #[allow(unused_imports)]
@@ -1186,7 +1187,8 @@ pub(crate) fn terrain_waters_edge_height_key_at_world(
     x: f64,
     z: f64,
 ) -> Option<i32> {
-    let (t, flat_half) = terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg, &c.flat_zones)?;
+    let (t, flat_half) =
+        terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg, &c.flat_zones)?;
     Some(terrain_waters_edge_region_key_for_coords(t, flat_half))
 }
 
@@ -1274,7 +1276,8 @@ pub(crate) fn terrain_waters_edge_boundary_value_at_world(
     z: f64,
     after_key: i32,
 ) -> Option<f64> {
-    let (t, flat_half) = terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg, &c.flat_zones)?;
+    let (t, flat_half) =
+        terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg, &c.flat_zones)?;
     Some(terrain_waters_edge_boundary_value_for_coords(
         t, flat_half, after_key,
     ))
@@ -3462,6 +3465,7 @@ pub(crate) struct TerrainGrid {
     subdiv: i32,
     cells_x: i32,
     cells_y: i32,
+    max_surface_height: f64,
     pub(crate) installed: bool,
     // mesh storage — names mirror TerrainTileMap field names in
     // src/types/terrain.ts (without the "mesh" prefix since this is
@@ -3485,6 +3489,7 @@ impl TerrainGrid {
             subdiv: 0,
             cells_x: 0,
             cells_y: 0,
+            max_surface_height: TERRAIN_WATER_LEVEL,
             installed: false,
             vertex_coords: Vec::new(),
             vertex_heights: Vec::new(),
@@ -3533,6 +3538,10 @@ pub fn terrain_install_mesh(
     t.vertex_coords.extend_from_slice(vertex_coords);
     t.vertex_heights.clear();
     t.vertex_heights.extend_from_slice(vertex_heights);
+    t.max_surface_height = vertex_heights
+        .iter()
+        .copied()
+        .fold(TERRAIN_WATER_LEVEL, f64::max);
     t.triangle_indices.clear();
     t.triangle_indices.extend_from_slice(triangle_indices);
     t.triangle_levels.clear();
@@ -3560,6 +3569,7 @@ pub fn terrain_install_mesh(
 pub fn terrain_clear() {
     let t = terrain_grid();
     t.installed = false;
+    t.max_surface_height = TERRAIN_WATER_LEVEL;
     // Drop Vec contents so the memory comes back to Rust's allocator
     // — installs are rare so the next install will reallocate.
     t.vertex_coords.clear();
@@ -3877,6 +3887,103 @@ pub fn terrain_get_surface_height(x: f64, z: f64) -> f64 {
         Some(sample) => terrain_height_from_triangle_sample(sample).max(TERRAIN_WATER_LEVEL),
         None => f64::NAN,
     }
+}
+
+/// Segment-vs-ground helper for beam traces. Returns:
+///   - hit t in [0, max_t]
+///   - -1 when the segment stays above terrain
+///   - NaN when no installed terrain sample is available, so JS can fall back
+///     to the compatibility sampler.
+#[wasm_bindgen]
+pub fn terrain_segment_ground_hit_t(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    max_t: f64,
+    steps: u32,
+    bisect_steps: u32,
+    epsilon: f64,
+) -> f64 {
+    if steps == 0
+        || !(start_x.is_finite()
+            && start_y.is_finite()
+            && start_z.is_finite()
+            && end_x.is_finite()
+            && end_y.is_finite()
+            && end_z.is_finite()
+            && max_t.is_finite()
+            && epsilon.is_finite())
+    {
+        return f64::NAN;
+    }
+    let terrain = terrain_grid();
+    if !terrain.installed {
+        return f64::NAN;
+    }
+
+    let clamped_max_t = max_t.max(0.0).min(1.0);
+    if clamped_max_t <= 0.0 {
+        return -1.0;
+    }
+    if start_z.min(end_z) > terrain.max_surface_height + epsilon {
+        return -1.0;
+    }
+    let dx = end_x - start_x;
+    let dy = end_y - start_y;
+    let dz = end_z - start_z;
+
+    let start_ground = terrain_get_surface_height(start_x, start_y);
+    if start_ground.is_nan() {
+        return f64::NAN;
+    }
+    let mut prev_t = 0.0;
+    let mut prev_clear = start_z - start_ground;
+    if prev_clear < -epsilon {
+        return 0.0;
+    }
+
+    let steps_f = steps as f64;
+    for i in 1..=steps {
+        let t = ((i as f64) / steps_f).min(clamped_max_t);
+        let x = start_x + dx * t;
+        let y = start_y + dy * t;
+        let z = start_z + dz * t;
+        let ground = terrain_get_surface_height(x, y);
+        if ground.is_nan() {
+            return f64::NAN;
+        }
+        let clear = z - ground;
+        if clear <= epsilon && prev_clear > epsilon {
+            let mut lo = prev_t;
+            let mut hi = t;
+            for _ in 0..bisect_steps {
+                let mid = (lo + hi) * 0.5;
+                let mid_x = start_x + dx * mid;
+                let mid_y = start_y + dy * mid;
+                let mid_z = start_z + dz * mid;
+                let mid_ground = terrain_get_surface_height(mid_x, mid_y);
+                if mid_ground.is_nan() {
+                    return f64::NAN;
+                }
+                if mid_z - mid_ground <= epsilon {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            return hi;
+        }
+        prev_t = t;
+        prev_clear = clear;
+        if t >= clamped_max_t {
+            break;
+        }
+    }
+
+    -1.0
 }
 
 /// Sample raw terrain-bed height at world-space (x, z), without clamping
@@ -4268,6 +4375,221 @@ pub fn terrain_sample_force_support_for_slots(
         ground_normals_out[base + 1] = ny;
         ground_normals_out[base + 2] = nz;
         material_flags_out[i] = if ground_z < TERRAIN_WATER_LEVEL { 1 } else { 0 };
+    }
+    1
+}
+
+const AIR_LIFT_FORWARD_GROUND_PROBE_COUNT: usize = 4;
+const AIR_LIFT_BODY_GROUND_PROBE_COUNT: usize = 3;
+const AIR_LIFT_TOTAL_GROUND_PROBE_COUNT: f64 =
+    (1 + AIR_LIFT_FORWARD_GROUND_PROBE_COUNT + AIR_LIFT_BODY_GROUND_PROBE_COUNT) as f64;
+
+#[inline]
+fn terrain_air_lift_height_distance_scale(
+    body_z: f64,
+    ground_z: f64,
+    height_upward_force: f64,
+    height_force_exponent: f64,
+    near_ground_altitude: f64,
+) -> f64 {
+    if !body_z.is_finite() || !ground_z.is_finite() {
+        return terrain_air_lift_height_distance_scale_from_altitude(
+            near_ground_altitude,
+            height_upward_force,
+            height_force_exponent,
+        );
+    }
+    let altitude = body_z - ground_z.max(TERRAIN_WATER_LEVEL);
+    let clamped_altitude = if altitude.is_finite() {
+        altitude.max(near_ground_altitude)
+    } else {
+        near_ground_altitude
+    };
+    terrain_air_lift_height_distance_scale_from_altitude(
+        clamped_altitude,
+        height_upward_force,
+        height_force_exponent,
+    )
+}
+
+#[inline]
+fn terrain_air_lift_height_distance_scale_from_altitude(
+    clamped_distance_to_surface: f64,
+    height_upward_force: f64,
+    height_force_exponent: f64,
+) -> f64 {
+    if !clamped_distance_to_surface.is_finite()
+        || clamped_distance_to_surface <= 0.0
+        || !height_upward_force.is_finite()
+        || height_upward_force <= 0.0
+    {
+        return 0.0;
+    }
+    let exponent = if height_force_exponent.is_finite() && height_force_exponent > 0.0 {
+        height_force_exponent
+    } else {
+        1.0
+    };
+    let exact_distance_scale = 1.0 / clamped_distance_to_surface;
+    let exact_height_force = height_upward_force * exact_distance_scale;
+    if !exact_height_force.is_finite() || exact_height_force <= 0.0 {
+        return 0.0;
+    }
+    let rooted_height_force = exact_height_force.powf(exponent);
+    let rooted_distance_scale = rooted_height_force / height_upward_force;
+    exact_distance_scale.min(rooted_distance_scale)
+}
+
+#[inline]
+fn terrain_sample_bed_height_for_air_lift(t: &TerrainGrid, x: f64, z: f64) -> Option<f64> {
+    let (px, pz, cell_x, cell_y) = terrain_clamp_to_cell(t, x, z);
+    let sample = terrain_triangle_sample_at(t, px, pz, cell_x, cell_y)?;
+    Some(terrain_height_from_triangle_sample(sample))
+}
+
+#[inline]
+fn terrain_accumulate_air_lift_probe_scale(
+    t: &TerrainGrid,
+    body_z: f64,
+    x: f64,
+    z: f64,
+    height_upward_force: f64,
+    height_force_exponent: f64,
+    near_ground_altitude: f64,
+) -> Option<f64> {
+    let ground_z = terrain_sample_bed_height_for_air_lift(t, x, z)?;
+    Some(terrain_air_lift_height_distance_scale(
+        body_z,
+        ground_z,
+        height_upward_force,
+        height_force_exponent,
+        near_ground_altitude,
+    ))
+}
+
+/// Batch terrain-only hover/flying air-lift ground probes. This is the native
+/// mirror of UnitForceSystem.sampleAirLiftAverageDistanceScale for the case
+/// where support surfaces are known absent, so every non-direct probe is just a
+/// terrain surface sample. Building/unit support probing deliberately stays in
+/// TypeScript.
+#[wasm_bindgen]
+pub fn terrain_sample_air_lift_distance_scales_for_slots(
+    body_slots: &[u32],
+    row_indices: &[u32],
+    probe_dir_x: &[f64],
+    probe_dir_z: &[f64],
+    ahead_distances: &[f64],
+    direct_ground_z: &[f64],
+    height_upward_force: &[f64],
+    rows: &mut [f64],
+    height_force_exponent: f64,
+    near_ground_altitude: f64,
+) -> u32 {
+    let count = body_slots.len();
+    debug_assert!(row_indices.len() >= count);
+    debug_assert!(probe_dir_x.len() >= count);
+    debug_assert!(probe_dir_z.len() >= count);
+    debug_assert!(ahead_distances.len() >= count);
+    debug_assert!(direct_ground_z.len() >= count);
+    debug_assert!(height_upward_force.len() >= count);
+
+    let t = terrain_grid();
+    if !t.installed {
+        return 0;
+    }
+    let p = pool();
+    for i in 0..count {
+        let slot = body_slots[i] as usize;
+        if slot >= POOL_CAPACITY_USIZE || p.flags[slot] & BODY_FLAG_OCCUPIED == 0 {
+            return 0;
+        }
+        let row = row_indices[i] as usize;
+        let out_index = row * UNIT_FORCE_BATCH_STRIDE + UF_ROW_AIR_LIFT_DISTANCE_SCALE;
+        if out_index >= rows.len() {
+            return 0;
+        }
+
+        let body_x = p.pos_x[slot];
+        let body_z = p.pos_z[slot];
+        let body_y = p.pos_y[slot];
+        let force = height_upward_force[i];
+        let forward_x = probe_dir_x[i];
+        let forward_z = probe_dir_z[i];
+        let ahead = ahead_distances[i];
+
+        let mut sum = terrain_air_lift_height_distance_scale(
+            body_z,
+            direct_ground_z[i],
+            force,
+            height_force_exponent,
+            near_ground_altitude,
+        );
+        let spacing = if ahead.is_finite() && ahead > 0.0 {
+            ahead / AIR_LIFT_FORWARD_GROUND_PROBE_COUNT as f64
+        } else {
+            0.0
+        };
+        if spacing <= 0.0 || !forward_x.is_finite() || !forward_z.is_finite() {
+            rows[out_index] = sum;
+            continue;
+        }
+
+        for step in 1..=AIR_LIFT_FORWARD_GROUND_PROBE_COUNT {
+            let offset = spacing * step as f64;
+            sum += match terrain_accumulate_air_lift_probe_scale(
+                t,
+                body_z,
+                body_x + forward_x * offset,
+                body_y + forward_z * offset,
+                force,
+                height_force_exponent,
+                near_ground_altitude,
+            ) {
+                Some(scale) => scale,
+                None => return 0,
+            };
+        }
+
+        let left_x = -forward_z;
+        let left_z = forward_x;
+        sum += match terrain_accumulate_air_lift_probe_scale(
+            t,
+            body_z,
+            body_x + left_x * spacing,
+            body_y + left_z * spacing,
+            force,
+            height_force_exponent,
+            near_ground_altitude,
+        ) {
+            Some(scale) => scale,
+            None => return 0,
+        };
+        sum += match terrain_accumulate_air_lift_probe_scale(
+            t,
+            body_z,
+            body_x - left_x * spacing,
+            body_y - left_z * spacing,
+            force,
+            height_force_exponent,
+            near_ground_altitude,
+        ) {
+            Some(scale) => scale,
+            None => return 0,
+        };
+        sum += match terrain_accumulate_air_lift_probe_scale(
+            t,
+            body_z,
+            body_x - forward_x * spacing,
+            body_y - forward_z * spacing,
+            force,
+            height_force_exponent,
+            near_ground_altitude,
+        ) {
+            Some(scale) => scale,
+            None => return 0,
+        };
+
+        rows[out_index] = sum / AIR_LIFT_TOTAL_GROUND_PROBE_COUNT;
     }
     1
 }

@@ -58,9 +58,9 @@ export function clamp01(value: number): number {
   return value;
 }
 
-/** Look up (or create + cache) the team-tinted MeshBasicMaterial for a
- *  locomotion piece. The cache is keyed by the resolved tinted color so
- *  units sharing an owner share one material. */
+/** Look up (or create + cache) the locomotion material. Owned units use
+ *  the team's mid color directly so treads/wheels/fans match chassis LOD
+ *  colors instead of carrying separate light/dark variants. */
 export function getLocomotionMatByCache(
   cache: Map<number, THREE.MeshBasicMaterial>,
   baseColor: number,

@@ -32,7 +32,6 @@ import { REFLECTIVE_SHIELD_MATERIAL } from '../blueprints/shieldMaterials';
 import { getSimWasm } from '../../sim-wasm/init';
 import { updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
-import { getCombatTargetingSourceSlots } from './targetingInputStamping';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 
 
@@ -52,6 +51,57 @@ const PROJECTILE_SWEEP_HIT_KIND_UNIT = 1;
 const PROJECTILE_SWEEP_HIT_KIND_BUILDING = 2;
 const PROJECTILE_SWEEP_HIT_KIND_PROJECTILE = 3;
 const PROJECTILE_SWEEP_NO_SLOT = 0xffff_ffff;
+
+export type ProjectileCollisionPhaseTimings = {
+  readonly collisionSetupMs: number;
+  readonly collisionLoopMs: number;
+  readonly collisionHitboxSweepMs: number;
+  readonly collisionBeamDamageMs: number;
+  readonly collisionDgunDamageMs: number;
+  readonly collisionTerminalPlanMs: number;
+  readonly collisionSplashDamageMs: number;
+  readonly collisionKilledProjectileDetonationMs: number;
+  readonly collisionSubmunitionSpawnMs: number;
+  readonly collisionFinalRemovalMs: number;
+};
+
+type MutableProjectileCollisionPhaseTimings = {
+  -readonly [K in keyof ProjectileCollisionPhaseTimings]: number;
+};
+
+type ProjectileCollisionTimedKey = Exclude<
+  keyof MutableProjectileCollisionPhaseTimings,
+  'collisionSetupMs' | 'collisionLoopMs' | 'collisionFinalRemovalMs'
+>;
+
+function createProjectileCollisionTimings(): MutableProjectileCollisionPhaseTimings {
+  return {
+    collisionSetupMs: 0,
+    collisionLoopMs: 0,
+    collisionHitboxSweepMs: 0,
+    collisionBeamDamageMs: 0,
+    collisionDgunDamageMs: 0,
+    collisionTerminalPlanMs: 0,
+    collisionSplashDamageMs: 0,
+    collisionKilledProjectileDetonationMs: 0,
+    collisionSubmunitionSpawnMs: 0,
+    collisionFinalRemovalMs: 0,
+  };
+}
+
+function addCollisionTiming<T>(
+  timings: MutableProjectileCollisionPhaseTimings | undefined,
+  key: ProjectileCollisionTimedKey,
+  run: () => T,
+): T {
+  if (timings === undefined) return run();
+  const start = performance.now();
+  try {
+    return run();
+  } finally {
+    timings[key] += performance.now() - start;
+  }
+}
 
 function isValidProjectileSweep(
   prevX: number, prevY: number, prevZ: number,
@@ -100,6 +150,7 @@ let _reflectorProjectileRadius = new Float64Array(0);
 let _reflectorReflectionEntity = new Uint8Array(0);
 let _reflectorExcludeEntityId = new Int32Array(0);
 let _reflectorExcludePanelIndex = new Int32Array(0);
+let _reflectorMaxT = new Float64Array(0);
 let _reflectorHitKind = new Uint8Array(0);
 let _reflectorHitEntityId = new Int32Array(0);
 let _reflectorHitPanelIndex = new Int32Array(0);
@@ -143,6 +194,8 @@ const _hitboxSweepExcludeOffsets = new Uint32Array(1);
 const _hitboxSweepExcludeCounts = new Uint32Array(1);
 let _hitboxSweepExcludeIds = new Int32Array(16);
 let _hitboxSweepRemovedProjectileIds = new Int32Array(16);
+let _hitboxSweepRemovedProjectileCacheSize = -1;
+let _hitboxSweepRemovedProjectileCacheCount = 0;
 const _hitboxSweepOutKind = new Uint8Array(1);
 const _hitboxSweepOutSlot = new Uint32Array(1);
 const _hitboxSweepOutEntityId = new Int32Array(1);
@@ -150,10 +203,31 @@ const _hitboxSweepOutT = new Float64Array(1);
 const _hitboxSweepOutNormalX = new Float64Array(1);
 const _hitboxSweepOutNormalY = new Float64Array(1);
 const _hitboxSweepOutNormalZ = new Float64Array(1);
+let _hitboxSweepBatchCapacity = 0;
+let _hitboxSweepBatchEnabled = new Uint8Array(0);
+let _hitboxSweepBatchStartX = new Float64Array(0);
+let _hitboxSweepBatchStartY = new Float64Array(0);
+let _hitboxSweepBatchStartZ = new Float64Array(0);
+let _hitboxSweepBatchEndX = new Float64Array(0);
+let _hitboxSweepBatchEndY = new Float64Array(0);
+let _hitboxSweepBatchEndZ = new Float64Array(0);
+let _hitboxSweepBatchProjectileRadius = new Float64Array(0);
+let _hitboxSweepBatchExcludeOffsets = new Uint32Array(0);
+let _hitboxSweepBatchExcludeCounts = new Uint32Array(0);
+let _hitboxSweepBatchOutKind = new Uint8Array(0);
+let _hitboxSweepBatchOutSlot = new Uint32Array(0);
+let _hitboxSweepBatchOutEntityId = new Int32Array(0);
+let _hitboxSweepBatchOutT = new Float64Array(0);
+let _hitboxSweepBatchOutNormalX = new Float64Array(0);
+let _hitboxSweepBatchOutNormalY = new Float64Array(0);
+let _hitboxSweepBatchOutNormalZ = new Float64Array(0);
+let _travelingProjectileFullOrdinals = new Uint32Array(0);
+let _reflectorTravelingProjectileFullOrdinals = new Uint32Array(0);
 let _submunitionLaunchCapacity = 0;
 let _submunitionLaunchVelocityX = new Float64Array(0);
 let _submunitionLaunchVelocityY = new Float64Array(0);
 let _submunitionLaunchVelocityZ = new Float64Array(0);
+const PROJECTILE_TERMINAL_REASON_NONE = 0;
 const PROJECTILE_TERMINAL_REASON_GROUND = 2;
 const PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO = 1 << 1;
 const PROJECTILE_TERMINAL_FLAG_CLAMP_Z = 1 << 2;
@@ -188,9 +262,6 @@ const _terminalOutReason = new Uint8Array(1);
 const _terminalOutFlags = new Uint32Array(1);
 const _terminalOutZ = new Float64Array(1);
 const _terminalOutHp = new Float64Array(1);
-const _terminalEffectEnabled = new Uint8Array(1);
-const _terminalEffectTerminalFlags = new Uint32Array(1);
-const _terminalEffectReflectorHit = new Uint8Array(1);
 const _terminalEffectHasExplosion = new Uint8Array(1);
 const _terminalEffectHasSubmunitions = new Uint8Array(1);
 const _terminalEffectOutFlags = new Uint32Array(1);
@@ -233,6 +304,7 @@ function ensureReflectorBatchCapacity(count: number): void {
   _reflectorReflectionEntity = new Uint8Array(next);
   _reflectorExcludeEntityId = new Int32Array(next);
   _reflectorExcludePanelIndex = new Int32Array(next);
+  _reflectorMaxT = new Float64Array(next);
   _reflectorHitKind = new Uint8Array(next);
   _reflectorHitEntityId = new Int32Array(next);
   _reflectorHitPanelIndex = new Int32Array(next);
@@ -269,7 +341,9 @@ function ensureHitboxSweepExcludeCapacity(count: number): void {
   if (count <= _hitboxSweepExcludeIds.length) return;
   let next = _hitboxSweepExcludeIds.length;
   while (next < count) next *= 2;
-  _hitboxSweepExcludeIds = new Int32Array(next);
+  const ids = new Int32Array(next);
+  ids.set(_hitboxSweepExcludeIds);
+  _hitboxSweepExcludeIds = ids;
 }
 
 function ensureHitboxSweepRemovedProjectileCapacity(count: number): void {
@@ -277,6 +351,72 @@ function ensureHitboxSweepRemovedProjectileCapacity(count: number): void {
   let next = _hitboxSweepRemovedProjectileIds.length;
   while (next < count) next *= 2;
   _hitboxSweepRemovedProjectileIds = new Int32Array(next);
+}
+
+function ensureProjectileHitboxSweepBatchCapacity(count: number): void {
+  if (count <= _hitboxSweepBatchCapacity) return;
+  let next = Math.max(8, _hitboxSweepBatchCapacity);
+  while (next < count) next *= 2;
+  _hitboxSweepBatchCapacity = next;
+  _hitboxSweepBatchEnabled = new Uint8Array(next);
+  _hitboxSweepBatchStartX = new Float64Array(next);
+  _hitboxSweepBatchStartY = new Float64Array(next);
+  _hitboxSweepBatchStartZ = new Float64Array(next);
+  _hitboxSweepBatchEndX = new Float64Array(next);
+  _hitboxSweepBatchEndY = new Float64Array(next);
+  _hitboxSweepBatchEndZ = new Float64Array(next);
+  _hitboxSweepBatchProjectileRadius = new Float64Array(next);
+  _hitboxSweepBatchExcludeOffsets = new Uint32Array(next);
+  _hitboxSweepBatchExcludeCounts = new Uint32Array(next);
+  _hitboxSweepBatchOutKind = new Uint8Array(next);
+  _hitboxSweepBatchOutSlot = new Uint32Array(next);
+  _hitboxSweepBatchOutEntityId = new Int32Array(next);
+  _hitboxSweepBatchOutT = new Float64Array(next);
+  _hitboxSweepBatchOutNormalX = new Float64Array(next);
+  _hitboxSweepBatchOutNormalY = new Float64Array(next);
+  _hitboxSweepBatchOutNormalZ = new Float64Array(next);
+}
+
+function ensureTravelingProjectileOrdinalCapacity(count: number): void {
+  if (count <= _travelingProjectileFullOrdinals.length) return;
+  let next = Math.max(8, _travelingProjectileFullOrdinals.length);
+  while (next < count) next *= 2;
+  _travelingProjectileFullOrdinals = new Uint32Array(next);
+}
+
+function ensureReflectorTravelingProjectileOrdinalCapacity(count: number): void {
+  if (count <= _reflectorTravelingProjectileFullOrdinals.length) return;
+  let next = Math.max(8, _reflectorTravelingProjectileFullOrdinals.length);
+  while (next < count) next *= 2;
+  _reflectorTravelingProjectileFullOrdinals = new Uint32Array(next);
+}
+
+function prepareTravelingProjectileOrdinals(
+  projectileEntities: readonly Entity[],
+  travelingProjectiles: readonly Entity[],
+): number {
+  const count = travelingProjectiles.length;
+  if (count === 0) return 0;
+  ensureTravelingProjectileOrdinalCapacity(count);
+  let fullOrdinal = 0;
+  let rowCount = 0;
+  for (let i = 0; i < count; i++) {
+    const traveling = travelingProjectiles[i];
+    const id = traveling.id;
+    while (
+      fullOrdinal < projectileEntities.length &&
+      projectileEntities[fullOrdinal].id < id
+    ) {
+      fullOrdinal++;
+    }
+    if (
+      fullOrdinal < projectileEntities.length &&
+      projectileEntities[fullOrdinal].id === id
+    ) {
+      _travelingProjectileFullOrdinals[rowCount++] = fullOrdinal;
+    }
+  }
+  return rowCount;
 }
 
 function ensureSubmunitionLaunchCapacity(count: number): void {
@@ -314,23 +454,27 @@ function makeSubmunitionSeed(
 function computeProjectileReflectorHits(
   world: WorldState,
   projectiles: readonly Entity[],
+  travelingProjectiles: readonly Entity[],
+  travelingOrdinalCount: number,
   dtMs: number,
 ): void {
-  const count = projectiles.length;
-  if (count === 0) return;
-  ensureReflectorBatchCapacity(count);
-  _reflectorHitKind.fill(REFLECTOR_HIT_KIND_NONE, 0, count);
-  _reflectorResponseReflected.fill(0, 0, count);
-  _reflectorResponseRotationChanged.fill(0, 0, count);
+  const fullCount = projectiles.length;
+  if (fullCount === 0 || travelingOrdinalCount === 0) return;
+  ensureReflectorBatchCapacity(fullCount);
+  ensureReflectorTravelingProjectileOrdinalCapacity(travelingOrdinalCount);
+  _reflectorEnabled.fill(0, 0, fullCount);
+  _reflectorHitKind.fill(REFLECTOR_HIT_KIND_NONE, 0, fullCount);
+  _reflectorResponseEnabled.fill(0, 0, fullCount);
+  _reflectorResponseReflected.fill(0, 0, fullCount);
+  _reflectorResponseRotationChanged.fill(0, 0, fullCount);
 
   const mirrorsActive = world.turretShieldPanelsEnabled && world.getShieldPanelUnits().length > 0;
   const shieldsActive = world.turretShieldSpheresEnabled && getActiveShields().length > 0;
   if (!mirrorsActive && !shieldsActive) return;
 
   let enabledCount = 0;
-  for (let i = 0; i < count; i++) {
-    _reflectorEnabled[i] = 0;
-    const projEntity = projectiles[i];
+  for (let row = 0; row < travelingOrdinalCount; row++) {
+    const projEntity = travelingProjectiles[row];
     if (!projEntity.projectile || !projEntity.ownership) continue;
     const proj = projEntity.projectile;
     if (proj.projectileType !== 'projectile') continue;
@@ -343,21 +487,24 @@ function computeProjectileReflectorHits(
     const curZ = projEntity.transform.z;
     if (!isValidProjectileSweep(prevX, prevY, prevZ, curX, curY, curZ)) continue;
 
-    _reflectorEnabled[i] = 1;
-    _reflectorStartX[i] = prevX;
-    _reflectorStartY[i] = prevY;
-    _reflectorStartZ[i] = prevZ;
-    _reflectorEndX[i] = curX;
-    _reflectorEndY[i] = curY;
-    _reflectorEndZ[i] = curZ;
-    _reflectorProjectileRadius[i] = proj.config.shotProfile.runtime.radius.collision;
-    _reflectorReflectionEntity[i] =
+    const packedRow = enabledCount++;
+    _reflectorTravelingProjectileFullOrdinals[packedRow] =
+      _travelingProjectileFullOrdinals[row];
+    _reflectorEnabled[packedRow] = 1;
+    _reflectorStartX[packedRow] = prevX;
+    _reflectorStartY[packedRow] = prevY;
+    _reflectorStartZ[packedRow] = prevZ;
+    _reflectorEndX[packedRow] = curX;
+    _reflectorEndY[packedRow] = curY;
+    _reflectorEndZ[packedRow] = curZ;
+    _reflectorProjectileRadius[packedRow] = proj.config.shotProfile.runtime.radius.collision;
+    _reflectorReflectionEntity[packedRow] =
       isProjectileShot(proj.config.shot) && isRocketLikeShot(proj.config.shot)
         ? SHIELD_REFLECTION_ENTITY_ROCKET
         : SHIELD_REFLECTION_ENTITY_PLASMA;
-    _reflectorExcludeEntityId[i] = proj.sourceEntityId;
-    _reflectorExcludePanelIndex[i] = -1;
-    enabledCount++;
+    _reflectorExcludeEntityId[packedRow] = proj.sourceEntityId;
+    _reflectorExcludePanelIndex[packedRow] = -1;
+    _reflectorMaxT[packedRow] = 1;
   }
   if (enabledCount === 0) return;
 
@@ -366,7 +513,7 @@ function computeProjectileReflectorHits(
     throw new Error('ProjectileCollisionHandler: sim-wasm is not initialized');
   }
   sim.projectileReflectorIntersectionsBatch(
-    count,
+    enabledCount,
     _reflectorEnabled,
     _reflectorStartX,
     _reflectorStartY,
@@ -383,6 +530,7 @@ function computeProjectileReflectorHits(
     0,
     SHIELD_PANEL_PROJECTILE_QUERY_PAD,
     dtMs,
+    _reflectorMaxT,
     _reflectorHitKind,
     _reflectorHitEntityId,
     _reflectorHitPanelIndex,
@@ -402,51 +550,83 @@ function computeProjectileReflectorHits(
   );
 
   let responseCount = 0;
-  for (let i = 0; i < count; i++) {
-    _reflectorResponseEnabled[i] = 0;
-    if (_reflectorHitKind[i] === REFLECTOR_HIT_KIND_NONE) continue;
-    const projEntity = projectiles[i];
+  for (let row = 0; row < enabledCount; row++) {
+    if (_reflectorHitKind[row] === REFLECTOR_HIT_KIND_NONE) continue;
+    const projEntity = projectiles[_reflectorTravelingProjectileFullOrdinals[row]];
     const proj = projEntity.projectile;
     if (!proj || proj.projectileType !== 'projectile') continue;
     if (!shieldMaterialReflectsProjectile(proj.config.shotProfile.runtime.isRocketLike)) continue;
-    _reflectorResponseEnabled[i] = 1;
-    _reflectorResponseVelocityX[i] = proj.velocityX;
-    _reflectorResponseVelocityY[i] = proj.velocityY;
-    _reflectorResponseVelocityZ[i] = proj.velocityZ;
-    _reflectorResponseRadius[i] = proj.config.shotProfile.runtime.radius.collision;
     responseCount++;
+    _reflectorResponseEnabled[row] = 1;
+    _reflectorResponseVelocityX[row] = proj.velocityX;
+    _reflectorResponseVelocityY[row] = proj.velocityY;
+    _reflectorResponseVelocityZ[row] = proj.velocityZ;
+    _reflectorResponseRadius[row] = proj.config.shotProfile.runtime.radius.collision;
   }
-  if (responseCount === 0) return;
+  if (responseCount > 0) {
+    sim.projectileReflectionResponseBatch(
+      enabledCount,
+      _reflectorResponseEnabled,
+      _reflectorHitT,
+      _reflectorHitX,
+      _reflectorHitY,
+      _reflectorHitZ,
+      _reflectorResponseVelocityX,
+      _reflectorResponseVelocityY,
+      _reflectorResponseVelocityZ,
+      _reflectorHitNormalX,
+      _reflectorHitNormalY,
+      _reflectorHitNormalZ,
+      _reflectorHitSurfaceVelocityX,
+      _reflectorHitSurfaceVelocityY,
+      _reflectorHitSurfaceVelocityZ,
+      _reflectorResponseRadius,
+      dtMs,
+      REFLECTIVE_SHIELD_MATERIAL.reflection.reflectivity,
+      _reflectorResponseReflected,
+      _reflectorResponsePosX,
+      _reflectorResponsePosY,
+      _reflectorResponsePosZ,
+      _reflectorResponseOutVelocityX,
+      _reflectorResponseOutVelocityY,
+      _reflectorResponseOutVelocityZ,
+      _reflectorResponseRotationChanged,
+      _reflectorResponseRotation,
+    );
+  }
+  scatterProjectileReflectorRows(enabledCount);
+}
 
-  sim.projectileReflectionResponseBatch(
-    count,
-    _reflectorResponseEnabled,
-    _reflectorHitT,
-    _reflectorHitX,
-    _reflectorHitY,
-    _reflectorHitZ,
-    _reflectorResponseVelocityX,
-    _reflectorResponseVelocityY,
-    _reflectorResponseVelocityZ,
-    _reflectorHitNormalX,
-    _reflectorHitNormalY,
-    _reflectorHitNormalZ,
-    _reflectorHitSurfaceVelocityX,
-    _reflectorHitSurfaceVelocityY,
-    _reflectorHitSurfaceVelocityZ,
-    _reflectorResponseRadius,
-    dtMs,
-    REFLECTIVE_SHIELD_MATERIAL.reflection.reflectivity,
-    _reflectorResponseReflected,
-    _reflectorResponsePosX,
-    _reflectorResponsePosY,
-    _reflectorResponsePosZ,
-    _reflectorResponseOutVelocityX,
-    _reflectorResponseOutVelocityY,
-    _reflectorResponseOutVelocityZ,
-    _reflectorResponseRotationChanged,
-    _reflectorResponseRotation,
-  );
+function scatterProjectileReflectorRows(rowCount: number): void {
+  for (let row = rowCount - 1; row >= 0; row--) {
+    const ordinal = _reflectorTravelingProjectileFullOrdinals[row];
+    if (ordinal === row) continue;
+    _reflectorHitKind[ordinal] = _reflectorHitKind[row];
+    _reflectorHitEntityId[ordinal] = _reflectorHitEntityId[row];
+    _reflectorHitPanelIndex[ordinal] = _reflectorHitPanelIndex[row];
+    _reflectorHitT[ordinal] = _reflectorHitT[row];
+    _reflectorHitX[ordinal] = _reflectorHitX[row];
+    _reflectorHitY[ordinal] = _reflectorHitY[row];
+    _reflectorHitZ[ordinal] = _reflectorHitZ[row];
+    _reflectorHitNormalX[ordinal] = _reflectorHitNormalX[row];
+    _reflectorHitNormalY[ordinal] = _reflectorHitNormalY[row];
+    _reflectorHitNormalZ[ordinal] = _reflectorHitNormalZ[row];
+    _reflectorHitReflectDirX[ordinal] = _reflectorHitReflectDirX[row];
+    _reflectorHitReflectDirY[ordinal] = _reflectorHitReflectDirY[row];
+    _reflectorHitReflectDirZ[ordinal] = _reflectorHitReflectDirZ[row];
+    _reflectorHitSurfaceVelocityX[ordinal] = _reflectorHitSurfaceVelocityX[row];
+    _reflectorHitSurfaceVelocityY[ordinal] = _reflectorHitSurfaceVelocityY[row];
+    _reflectorHitSurfaceVelocityZ[ordinal] = _reflectorHitSurfaceVelocityZ[row];
+    _reflectorResponseReflected[ordinal] = _reflectorResponseReflected[row];
+    _reflectorResponsePosX[ordinal] = _reflectorResponsePosX[row];
+    _reflectorResponsePosY[ordinal] = _reflectorResponsePosY[row];
+    _reflectorResponsePosZ[ordinal] = _reflectorResponsePosZ[row];
+    _reflectorResponseOutVelocityX[ordinal] = _reflectorResponseOutVelocityX[row];
+    _reflectorResponseOutVelocityY[ordinal] = _reflectorResponseOutVelocityY[row];
+    _reflectorResponseOutVelocityZ[ordinal] = _reflectorResponseOutVelocityZ[row];
+    _reflectorResponseRotationChanged[ordinal] = _reflectorResponseRotationChanged[row];
+    _reflectorResponseRotation[ordinal] = _reflectorResponseRotation[row];
+  }
 }
 
 function shieldMaterialReflectsProjectile(isRocketShot: boolean): boolean {
@@ -461,22 +641,6 @@ const _emptyExcludeSet = new Set<EntityId>();
 
 function getSplashExcludes(): Set<EntityId> {
   return _emptyExcludeSet;
-}
-
-function refreshProjectileCollisionTurretMounts(world: WorldState, dtMs: number): void {
-  const sourceSlots = getCombatTargetingSourceSlots();
-  if (sourceSlots.length === 0) return;
-  const sim = getSimWasm();
-  if (sim === undefined) {
-    throw new Error('Projectile turret hitbox refresh requires initialized sim-wasm');
-  }
-  sim.combatTargeting.updateMountKinematicsBatch(
-    sourceSlots,
-    world.getTick(),
-    dtMs,
-    world.turretShieldPanelsEnabled ? 1 : 0,
-    world.turretShieldSpheresEnabled ? 1 : 0,
-  );
 }
 
 function ensureProjectileHitEntities(proj: { hitEntities: Set<EntityId> }): Set<EntityId> {
@@ -544,25 +708,28 @@ function packProjectileSweepExcludes(excludeEntities: Set<EntityId>): number {
   const required =
     excludeEntities.size +
     _collisionUnitsToRemove.size +
-    _collisionBuildingsToRemove.size +
-    _collisionProjectileRemoveIds.size;
+    _collisionBuildingsToRemove.size;
   ensureHitboxSweepExcludeCapacity(Math.max(1, required));
   let count = 0;
   for (const id of excludeEntities) _hitboxSweepExcludeIds[count++] = id;
   for (const id of _collisionUnitsToRemove) _hitboxSweepExcludeIds[count++] = id;
   for (const id of _collisionBuildingsToRemove) _hitboxSweepExcludeIds[count++] = id;
-  for (const id of _collisionProjectileRemoveIds) _hitboxSweepExcludeIds[count++] = id;
-  _hitboxSweepExcludeIds.subarray(0, count).sort();
   return count;
 }
 
 function packRemovedProjectileSweepExcludes(): number {
-  ensureHitboxSweepRemovedProjectileCapacity(Math.max(1, _collisionProjectileRemoveIds.size));
+  const size = _collisionProjectileRemoveIds.size;
+  if (_hitboxSweepRemovedProjectileCacheSize === size) {
+    return _hitboxSweepRemovedProjectileCacheCount;
+  }
+
+  ensureHitboxSweepRemovedProjectileCapacity(Math.max(1, size));
   let count = 0;
   for (const id of _collisionProjectileRemoveIds) {
     _hitboxSweepRemovedProjectileIds[count++] = id;
   }
-  _hitboxSweepRemovedProjectileIds.subarray(0, count).sort();
+  _hitboxSweepRemovedProjectileCacheSize = size;
+  _hitboxSweepRemovedProjectileCacheCount = count;
   return count;
 }
 
@@ -587,6 +754,186 @@ function isValidSpatialSweepTarget(kind: number, entity: Entity | undefined): en
   }
 }
 
+function appendProjectileHitboxSweepBatchExcludes(
+  projEntityId: EntityId,
+  excludeEntities: Set<EntityId>,
+  writeOffset: number,
+): number {
+  ensureHitboxSweepExcludeCapacity(writeOffset + excludeEntities.size + 1);
+  let count = 0;
+  for (const id of excludeEntities) {
+    _hitboxSweepExcludeIds[writeOffset + count] = id;
+    count++;
+  }
+  // The legacy single-row sweep temporarily adds the projectile entity
+  // itself to hitEntities. Keep that exclusion here without mutating the
+  // projectile-owned Set during the precompute pass.
+  _hitboxSweepExcludeIds[writeOffset + count] = projEntityId;
+  return count + 1;
+}
+
+function precomputeProjectileHitboxSweepHits(
+  world: WorldState,
+  projectileEntities: readonly Entity[],
+  travelingProjectiles: readonly Entity[],
+  travelingOrdinalCount: number,
+  dtMs: number,
+  shouldSkipProjectile: ((id: EntityId) => boolean) | undefined,
+): void {
+  const fullCount = projectileEntities.length;
+  if (fullCount === 0 || travelingOrdinalCount === 0) return;
+  ensureProjectileHitboxSweepBatchCapacity(fullCount);
+  _hitboxSweepBatchEnabled.fill(0, 0, fullCount);
+
+  let enabledCount = 0;
+  let excludeWrite = 0;
+  for (let row = 0; row < travelingOrdinalCount; row++) {
+    const projEntity = travelingProjectiles[row];
+    const proj = projEntity.projectile;
+    if (proj === null || projEntity.ownership === null) continue;
+    if (shouldSkipProjectile?.(projEntity.id) === true) continue;
+    if (proj.projectileType !== 'projectile' || !proj.isArmed) continue;
+    const dgunProjectile = projEntity.dgunProjectile;
+    if (dgunProjectile !== null && dgunProjectile.isDGun === true) continue;
+    const fullOrdinal = _travelingProjectileFullOrdinals[row];
+    const reflectorKind = _reflectorHitKind[fullOrdinal];
+    const reflectedProjectile = _reflectorResponseReflected[fullOrdinal] !== 0;
+    const terminalReflectorHit =
+      reflectorKind === REFLECTOR_HIT_KIND_SHIELD && !reflectedProjectile;
+    if (reflectedProjectile || terminalReflectorHit) continue;
+    if (proj.timeAlive >= projectileEffectiveMaxLifespanMs(proj) || proj.hp <= 0) continue;
+
+    const prevX = proj.collisionStartX ?? proj.prevX ?? projEntity.transform.x;
+    const prevY = proj.collisionStartY ?? proj.prevY ?? projEntity.transform.y;
+    const prevZ = proj.collisionStartZ ?? proj.prevZ ?? projEntity.transform.z;
+    const currentX = projEntity.transform.x;
+    const currentY = projEntity.transform.y;
+    const currentZ = projEntity.transform.z;
+    if (!isValidProjectileSweep(prevX, prevY, prevZ, currentX, currentY, currentZ)) {
+      continue;
+    }
+
+    const excludeOffset = excludeWrite;
+    const excludeCount = appendProjectileHitboxSweepBatchExcludes(
+      projEntity.id,
+      proj.hitEntities,
+      excludeOffset,
+    );
+    excludeWrite += excludeCount;
+
+    const packedRow = enabledCount++;
+    _travelingProjectileFullOrdinals[packedRow] = _travelingProjectileFullOrdinals[row];
+    _hitboxSweepBatchEnabled[packedRow] = 1;
+    _hitboxSweepBatchStartX[packedRow] = prevX;
+    _hitboxSweepBatchStartY[packedRow] = prevY;
+    _hitboxSweepBatchStartZ[packedRow] = prevZ;
+    _hitboxSweepBatchEndX[packedRow] = currentX;
+    _hitboxSweepBatchEndY[packedRow] = currentY;
+    _hitboxSweepBatchEndZ[packedRow] = currentZ;
+    _hitboxSweepBatchProjectileRadius[packedRow] = proj.config.shotProfile.runtime.radius.hitbox;
+    _hitboxSweepBatchExcludeOffsets[packedRow] = excludeOffset;
+    _hitboxSweepBatchExcludeCounts[packedRow] = excludeCount;
+  }
+  if (enabledCount === 0) return;
+
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Projectile hitbox sweep batch requires initialized sim-wasm');
+  }
+  const processed = sim.projectileHitboxSweepBatch(
+    enabledCount,
+    _hitboxSweepBatchEnabled,
+    _hitboxSweepBatchStartX,
+    _hitboxSweepBatchStartY,
+    _hitboxSweepBatchStartZ,
+    _hitboxSweepBatchEndX,
+    _hitboxSweepBatchEndY,
+    _hitboxSweepBatchEndZ,
+    _hitboxSweepBatchProjectileRadius,
+    _hitboxSweepBatchExcludeOffsets,
+    _hitboxSweepBatchExcludeCounts,
+    _hitboxSweepExcludeIds.subarray(0, excludeWrite),
+    _hitboxSweepRemovedProjectileIds.subarray(0, 0),
+    world.getMaxTargetableRadius(),
+    PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA,
+    world.getTick(),
+    dtMs,
+    world.turretShieldPanelsEnabled ? 1 : 0,
+    world.turretShieldSpheresEnabled ? 1 : 0,
+    _hitboxSweepBatchOutKind,
+    _hitboxSweepBatchOutSlot,
+    _hitboxSweepBatchOutEntityId,
+    _hitboxSweepBatchOutT,
+    _hitboxSweepBatchOutNormalX,
+    _hitboxSweepBatchOutNormalY,
+    _hitboxSweepBatchOutNormalZ,
+  );
+  if (processed !== enabledCount) {
+    // Fall back to the existing single-row path for this pass rather than
+    // trusting a partial precompute.
+    _hitboxSweepBatchEnabled.fill(0, 0, fullCount);
+    return;
+  }
+  scatterProjectileHitboxSweepRows(enabledCount);
+}
+
+function scatterProjectileHitboxSweepRows(rowCount: number): void {
+  for (let row = rowCount - 1; row >= 0; row--) {
+    const ordinal = _travelingProjectileFullOrdinals[row];
+    if (ordinal === row) continue;
+    _hitboxSweepBatchEnabled[ordinal] = _hitboxSweepBatchEnabled[row];
+    _hitboxSweepBatchOutKind[ordinal] = _hitboxSweepBatchOutKind[row];
+    _hitboxSweepBatchOutSlot[ordinal] = _hitboxSweepBatchOutSlot[row];
+    _hitboxSweepBatchOutEntityId[ordinal] = _hitboxSweepBatchOutEntityId[row];
+    _hitboxSweepBatchOutT[ordinal] = _hitboxSweepBatchOutT[row];
+    _hitboxSweepBatchOutNormalX[ordinal] = _hitboxSweepBatchOutNormalX[row];
+    _hitboxSweepBatchOutNormalY[ordinal] = _hitboxSweepBatchOutNormalY[row];
+    _hitboxSweepBatchOutNormalZ[ordinal] = _hitboxSweepBatchOutNormalZ[row];
+  }
+}
+
+function precomputedProjectileSweepHitIsStale(kind: number, entity: Entity): boolean {
+  switch (kind) {
+    case PROJECTILE_SWEEP_HIT_KIND_UNIT:
+      return _collisionUnitsToRemove.has(entity.id);
+    case PROJECTILE_SWEEP_HIT_KIND_BUILDING:
+      return _collisionBuildingsToRemove.has(entity.id);
+    case PROJECTILE_SWEEP_HIT_KIND_PROJECTILE:
+      return _collisionProjectileRemoveIds.has(entity.id);
+    default:
+      return true;
+  }
+}
+
+function readPrecomputedProjectileHitboxSweepHit(
+  row: number,
+): ProjectileHitboxSweepHit | null | undefined {
+  if (_hitboxSweepBatchEnabled[row] === 0) return undefined;
+  resetProjectileHitboxSweepHit(_projectileHitboxSweepHit);
+
+  const kind = _hitboxSweepBatchOutKind[row];
+  const slot = _hitboxSweepBatchOutSlot[row];
+  if (kind === PROJECTILE_SWEEP_HIT_KIND_NONE || slot === PROJECTILE_SWEEP_NO_SLOT) {
+    return null;
+  }
+
+  const entity = spatialGrid.resolveSlot(slot);
+  if (
+    !isValidSpatialSweepTarget(kind, entity) ||
+    entity.id !== _hitboxSweepBatchOutEntityId[row] ||
+    precomputedProjectileSweepHitIsStale(kind, entity)
+  ) {
+    return undefined;
+  }
+
+  _projectileHitboxSweepHit.entity = entity;
+  _projectileHitboxSweepHit.t = _hitboxSweepBatchOutT[row];
+  _projectileHitboxSweepHit.normalX = _hitboxSweepBatchOutNormalX[row];
+  _projectileHitboxSweepHit.normalY = _hitboxSweepBatchOutNormalY[row];
+  _projectileHitboxSweepHit.normalZ = _hitboxSweepBatchOutNormalZ[row];
+  return _projectileHitboxSweepHit as ProjectileHitboxSweepHit;
+}
+
 function findProjectileHitboxSweepHit(
   world: WorldState,
   projectileHitboxRadius: number,
@@ -596,6 +943,7 @@ function findProjectileHitboxSweepHit(
   currentX: number,
   currentY: number,
   currentZ: number,
+  dtMs: number,
   excludeEntities: Set<EntityId>,
 ): ProjectileHitboxSweepHit | null {
   resetProjectileHitboxSweepHit(_projectileHitboxSweepHit);
@@ -634,6 +982,9 @@ function findProjectileHitboxSweepHit(
     world.getMaxTargetableRadius(),
     PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA,
     world.getTick(),
+    dtMs,
+    world.turretShieldPanelsEnabled ? 1 : 0,
+    world.turretShieldSpheresEnabled ? 1 : 0,
     _hitboxSweepOutKind,
     _hitboxSweepOutSlot,
     _hitboxSweepOutEntityId,
@@ -849,6 +1200,7 @@ function processKilledProjectileShots(
   projectilesToRemove: EntityId[],
   despawnEvents: ProjectileDespawnEvent[],
   depth: number = 0,
+  timings: MutableProjectileCollisionPhaseTimings | undefined = undefined,
 ): void {
   if (result.killedProjectileIds.size === 0) return;
   const killedProjectileIds = copyKilledProjectileIdsForDepth(
@@ -858,20 +1210,25 @@ function processKilledProjectileShots(
   for (let i = 0; i < killedProjectileIds.length; i++) {
     const projectileEntity = world.getEntity(killedProjectileIds[i]);
     if (projectileEntity === undefined) continue;
-    detonateKilledProjectileShot(
-      projectileEntity,
-      world,
-      damageSystem,
-      forceAccumulator,
-      unitsToRemove,
-      buildingsToRemove,
-      audioEvents,
-      deathContexts,
-      newProjectiles,
-      spawnEvents,
-      projectilesToRemove,
-      despawnEvents,
-      depth,
+    addCollisionTiming(
+      timings,
+      'collisionKilledProjectileDetonationMs',
+      () => detonateKilledProjectileShot(
+        projectileEntity,
+        world,
+        damageSystem,
+        forceAccumulator,
+        unitsToRemove,
+        buildingsToRemove,
+        audioEvents,
+        deathContexts,
+        newProjectiles,
+        spawnEvents,
+        projectilesToRemove,
+        despawnEvents,
+        depth,
+        timings,
+      ),
     );
   }
 }
@@ -890,6 +1247,7 @@ function detonateKilledProjectileShot(
   projectilesToRemove: EntityId[],
   despawnEvents: ProjectileDespawnEvent[],
   depth: number,
+  timings: MutableProjectileCollisionPhaseTimings | undefined = undefined,
 ): void {
   const proj = projEntity.projectile;
   const shot = proj === null ? undefined : proj.config.shot;
@@ -905,20 +1263,16 @@ function detonateKilledProjectileShot(
   }
 
   proj.hp = 0;
-  const terminalFlags = classifyProjectileTerminalConsequence(
+  const config = proj.config;
+  const projShot = shot;
+  const runtimeProfile = config.shotProfile.runtime;
+  const ownerId = projEntity.ownership.playerId;
+  const terminalEffectFlags = classifyProjectileTerminalConsequenceAndPlanEffects(
     world,
     projEntity,
     false,
     true,
     false,
-    false,
-  );
-
-  const config = proj.config;
-  const projShot = shot;
-  const runtimeProfile = config.shotProfile.runtime;
-  const terminalEffectFlags = planProjectileTerminalEffects(
-    terminalFlags,
     false,
     runtimeProfile.hasExplosion,
     runtimeProfile.hasSubmunitions,
@@ -943,43 +1297,47 @@ function detonateKilledProjectileShot(
     return;
   }
 
-  if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH) !== 0 && projShot.explosion) {
-    const splashResult = damageSystem.applyDamage({
-      type: 'area',
-      sourceEntityId: proj.sourceEntityId,
-      ownerId: projEntity.ownership.playerId,
-      damage: projShot.explosion.damage,
-      excludeEntities: getSplashExcludes(),
-      center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-      radius: projShot.explosion.radius,
-      knockbackForce: projShot.explosion.force,
-    });
-    forceAccumulator?.addKnockbackForces(splashResult.knockbacks);
-    collectKillsAndDeathContexts(
-      splashResult, world, damageSourceKey, damageSourceType,
-      unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-      proj.sourceEntityId,
-    );
-    firstSplashHit = splashResult.hitEntityIds.length > 0
-      ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined
-      : undefined;
-    if (depth < 8) {
-      processKilledProjectileShots(
-        splashResult,
-        world,
-        damageSystem,
-        forceAccumulator,
-        unitsToRemove,
-        buildingsToRemove,
-        audioEvents,
-        deathContexts,
-        newProjectiles,
-        spawnEvents,
-        projectilesToRemove,
-        despawnEvents,
-        depth + 1,
+  const explosion = projShot.explosion;
+  if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH) !== 0 && explosion) {
+    addCollisionTiming(timings, 'collisionSplashDamageMs', () => {
+      const splashResult = damageSystem.applyDamage({
+        type: 'area',
+        sourceEntityId: proj.sourceEntityId,
+        ownerId,
+        damage: explosion.damage,
+        excludeEntities: getSplashExcludes(),
+        center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+        radius: explosion.radius,
+        knockbackForce: explosion.force,
+      });
+      forceAccumulator?.addKnockbackForces(splashResult.knockbacks);
+      collectKillsAndDeathContexts(
+        splashResult, world, damageSourceKey, damageSourceType,
+        unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+        proj.sourceEntityId,
       );
-    }
+      firstSplashHit = splashResult.hitEntityIds.length > 0
+        ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined
+        : undefined;
+      if (depth < 8) {
+        processKilledProjectileShots(
+          splashResult,
+          world,
+          damageSystem,
+          forceAccumulator,
+          unitsToRemove,
+          buildingsToRemove,
+          audioEvents,
+          deathContexts,
+          newProjectiles,
+          spawnEvents,
+          projectilesToRemove,
+          despawnEvents,
+          depth + 1,
+          timings,
+        );
+      }
+    });
   }
 
   if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_EMIT_HIT_EVENT) !== 0) {
@@ -987,7 +1345,7 @@ function detonateKilledProjectileShot(
       type: 'hit',
       turretBlueprintId: shotBlueprintId,
       pos: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-      playerId: projEntity.ownership.playerId,
+      playerId: ownerId,
       entityId: projEntity.id,
       impactContext: buildImpactContext(
         config, projEntity.transform.x, projEntity.transform.y,
@@ -998,14 +1356,18 @@ function detonateKilledProjectileShot(
   }
 
   if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SPAWN_SUBMUNITIONS) !== 0) {
-    spawnSubmunitions(
-      world, projShot,
-      projEntity.id, proj.shotSource, proj.shotArmingRadius,
-      projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
-      proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
-      undefined, undefined, undefined,
-      projEntity.ownership.playerId, proj.sourceEntityId,
-      newProjectiles, spawnEvents,
+    addCollisionTiming(
+      timings,
+      'collisionSubmunitionSpawnMs',
+      () => spawnSubmunitions(
+        world, projShot,
+        projEntity.id, proj.shotSource, proj.shotArmingRadius,
+        projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
+        proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
+        undefined, undefined, undefined,
+        ownerId, proj.sourceEntityId,
+        newProjectiles, spawnEvents,
+      ),
     );
   }
 
@@ -1036,13 +1398,15 @@ function pushProjectileExpireEvent(
   });
 }
 
-function classifyProjectileTerminalConsequence(
+function classifyProjectileTerminalConsequenceAndPlanEffects(
   world: WorldState,
   projEntity: Entity,
   terminalReflectorHit: boolean,
   directHitThisTick: boolean,
   reflectedProjectile: boolean,
   hitShield: boolean,
+  hasExplosion: boolean,
+  hasSubmunitions: boolean,
 ): number {
   const proj = projEntity.projectile;
   if (proj === null) return 0;
@@ -1052,10 +1416,47 @@ function classifyProjectileTerminalConsequence(
   const x = projEntity.transform.x;
   const y = projEntity.transform.y;
   const z = projEntity.transform.z;
-  const groundZ = world.getGroundZ(x, y);
+  const isProjectileType = proj.projectileType === 'projectile';
+  const expired = proj.timeAlive >= projectileEffectiveMaxLifespanMs(proj);
+  const outOfBounds =
+    x < -PROJECTILE_OUT_OF_BOUNDS_MARGIN ||
+    x > world.mapWidth + PROJECTILE_OUT_OF_BOUNDS_MARGIN ||
+    y < -PROJECTILE_OUT_OF_BOUNDS_MARGIN ||
+    y > world.mapHeight + PROJECTILE_OUT_OF_BOUNDS_MARGIN;
+  let groundZ = 0;
+  let hitGroundCandidate = false;
+  if (
+    isProjectileType &&
+    !directHitThisTick &&
+    !reflectedProjectile &&
+    !hitShield &&
+    proj.isArmed
+  ) {
+    groundZ = world.getGroundZ(x, y);
+    hitGroundCandidate = z <= groundZ;
+  }
+  if (
+    !outOfBounds &&
+    !expired &&
+    (
+      !isProjectileType ||
+      (
+        !terminalReflectorHit &&
+        !hitGroundCandidate &&
+        proj.hp > 0
+      )
+    )
+  ) {
+    _terminalOutReason[0] = PROJECTILE_TERMINAL_REASON_NONE;
+    _terminalOutFlags[0] = 0;
+    _terminalOutZ[0] = z;
+    _terminalOutHp[0] = proj.hp;
+    _terminalEffectOutFlags[0] = 0;
+    return 0;
+  }
 
   _terminalEnabled[0] = 1;
-  _terminalIsProjectileType[0] = proj.projectileType === 'projectile' ? 1 : 0;
+  _terminalIsProjectileType[0] = isProjectileType ? 1 : 0;
   _terminalIsArmed[0] = proj.isArmed ? 1 : 0;
   _terminalHasExploded[0] = proj.hasExploded ? 1 : 0;
   _terminalDetonateOnExpiry[0] = runtimeProfile.detonateOnExpiry ? 1 : 0;
@@ -1065,7 +1466,10 @@ function classifyProjectileTerminalConsequence(
   _terminalReflectedProjectile[0] = reflectedProjectile ? 1 : 0;
   _terminalHitShield[0] = hitShield ? 1 : 0;
   _terminalTerminalReflectorHit[0] = terminalReflectorHit ? 1 : 0;
-  _terminalWaterAtImpact[0] = isWaterAt(x, y, world.mapWidth, world.mapHeight) ? 1 : 0;
+  _terminalWaterAtImpact[0] =
+    hitGroundCandidate && isWaterAt(x, y, world.mapWidth, world.mapHeight) ? 1 : 0;
+  _terminalEffectHasExplosion[0] = hasExplosion ? 1 : 0;
+  _terminalEffectHasSubmunitions[0] = hasSubmunitions ? 1 : 0;
   _terminalPosX[0] = x;
   _terminalPosY[0] = y;
   _terminalPosZ[0] = z;
@@ -1076,9 +1480,9 @@ function classifyProjectileTerminalConsequence(
 
   const sim = getSimWasm();
   if (sim === undefined) {
-    throw new Error('Projectile terminal consequence classification requires initialized sim-wasm');
+    throw new Error('Projectile terminal consequence/effect planning requires initialized sim-wasm');
   }
-  sim.projectileTerminalConsequenceBatch(
+  sim.projectileTerminalClassifyEffectPlanBatch(
     1,
     _terminalEnabled,
     _terminalIsProjectileType,
@@ -1091,6 +1495,8 @@ function classifyProjectileTerminalConsequence(
     _terminalHitShield,
     _terminalTerminalReflectorHit,
     _terminalWaterAtImpact,
+    _terminalEffectHasExplosion,
+    _terminalEffectHasSubmunitions,
     _terminalPosX,
     _terminalPosY,
     _terminalPosZ,
@@ -1105,6 +1511,7 @@ function classifyProjectileTerminalConsequence(
     _terminalOutFlags,
     _terminalOutZ,
     _terminalOutHp,
+    _terminalEffectOutFlags,
   );
 
   const flags = _terminalOutFlags[0];
@@ -1113,38 +1520,6 @@ function classifyProjectileTerminalConsequence(
   }
   if ((flags & PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO) !== 0) {
     proj.hp = _terminalOutHp[0];
-  }
-  return flags;
-}
-
-function planProjectileTerminalEffects(
-  terminalFlags: number,
-  terminalReflectorHit: boolean,
-  hasExplosion: boolean,
-  hasSubmunitions: boolean,
-): number {
-  _terminalEffectEnabled[0] = 1;
-  _terminalEffectTerminalFlags[0] = terminalFlags;
-  _terminalEffectReflectorHit[0] = terminalReflectorHit ? 1 : 0;
-  _terminalEffectHasExplosion[0] = hasExplosion ? 1 : 0;
-  _terminalEffectHasSubmunitions[0] = hasSubmunitions ? 1 : 0;
-  _terminalEffectOutFlags[0] = 0;
-
-  const sim = getSimWasm();
-  if (sim === undefined) {
-    throw new Error('Projectile terminal effect planning requires initialized sim-wasm');
-  }
-  const processed = sim.projectileTerminalEffectPlanBatch(
-    1,
-    _terminalEffectEnabled,
-    _terminalEffectTerminalFlags,
-    _terminalEffectReflectorHit,
-    _terminalEffectHasExplosion,
-    _terminalEffectHasSubmunitions,
-    _terminalEffectOutFlags,
-  );
-  if (processed !== 1) {
-    throw new Error(`Projectile terminal effect planning failed: ${processed}/1`);
   }
   return _terminalEffectOutFlags[0];
 }
@@ -1158,10 +1533,16 @@ export function checkProjectileCollisions(
   damageSystem: DamageSystem,
   forceAccumulator: ForceAccumulator | undefined = undefined,
   shouldSkipProjectile: ((id: EntityId) => boolean) | undefined = undefined,
+  profiler: ((timings: ProjectileCollisionPhaseTimings) => void) | undefined = undefined,
 ): CollisionResult {
+  const timings = profiler !== undefined ? createProjectileCollisionTimings() : undefined;
+  let profileMark = timings !== undefined ? performance.now() : 0;
+
   // Reuse module-level containers (cleared each call)
   _collisionProjectilesToRemove.length = 0;
   _collisionProjectileRemoveIds.clear();
+  _hitboxSweepRemovedProjectileCacheSize = -1;
+  _hitboxSweepRemovedProjectileCacheCount = 0;
   _collisionDespawnEvents.length = 0;
   _collisionUnitsToRemove.clear();
   _collisionBuildingsToRemove.clear();
@@ -1182,14 +1563,51 @@ export function checkProjectileCollisions(
   let reflectorImpactEvents = 0;
   const collisionDtMs = dtMs;
   const projectileEntities = world.getProjectiles();
-  refreshProjectileCollisionTurretMounts(world, dtMs);
-  computeProjectileReflectorHits(world, projectileEntities, collisionDtMs);
+  const travelingProjectiles = world.getTravelingProjectiles();
+  const travelingOrdinalCount = travelingProjectiles.length > 0
+    ? prepareTravelingProjectileOrdinals(
+        projectileEntities,
+        travelingProjectiles,
+      )
+    : 0;
+  if (travelingProjectiles.length > 0) {
+    computeProjectileReflectorHits(
+      world,
+      projectileEntities,
+      travelingProjectiles,
+      travelingOrdinalCount,
+      collisionDtMs,
+    );
+  }
+  if (timings !== undefined) {
+    const now = performance.now();
+    timings.collisionSetupMs = now - profileMark;
+    profileMark = now;
+  }
+  if (travelingProjectiles.length > 0) {
+    addCollisionTiming(
+      timings,
+      'collisionHitboxSweepMs',
+      () => precomputeProjectileHitboxSweepHits(
+        world,
+        projectileEntities,
+        travelingProjectiles,
+        travelingOrdinalCount,
+        collisionDtMs,
+        shouldSkipProjectile,
+      ),
+    );
+  }
+  if (timings !== undefined) {
+    profileMark = performance.now();
+  }
 
   for (let projectileOrdinal = 0; projectileOrdinal < projectileEntities.length; projectileOrdinal++) {
     const projEntity = projectileEntities[projectileOrdinal];
     if (!projEntity.projectile || !projEntity.ownership) continue;
     if (shouldSkipProjectile?.(projEntity.id) === true) continue;
 
+    const ownerId = projEntity.ownership.playerId;
     const proj = projEntity.projectile;
     const config = proj.config;
     // Projectile entities always use projectile/ray emission types (never shields).
@@ -1336,14 +1754,18 @@ export function checkProjectileCollisions(
       const impactY = lastPoint !== undefined ? lastPoint.y : projEntity.transform.y;
       const impactZ = lastPoint !== undefined ? lastPoint.z : projEntity.transform.z;
       const dtSec = collisionDtMs / 1000;
+      const endpointDamageable = proj.endpointDamageable !== false;
 
       const damageSphereRadius = runtimeProfile.radius.hitbox;
-      if (!updateProjectileSourceClearance(
-        world.getEntity(proj.sourceEntityId),
-        proj,
-        impactX, impactY, impactZ,
-        runtimeProfile.radius.collision,
-      )) {
+      if (
+        endpointDamageable &&
+        !updateProjectileSourceClearance(
+          world.getEntity(proj.sourceEntityId),
+          proj,
+          impactX, impactY, impactZ,
+          runtimeProfile.radius.collision,
+        )
+      ) {
         continue;
       }
 
@@ -1351,37 +1773,42 @@ export function checkProjectileCollisions(
       const tickDamage = beamShot.dps * dtSec;
       const tickForce = beamShot.force * dtSec;
 
-      // Beam direction for hit knockback
-      const beamAngle = projEntity.transform.rotation;
-      const beamDirX = DMath.cos(beamAngle);
-      const beamDirY = DMath.sin(beamAngle);
-
       // Reflected beams: attribute damage/kills to the last reflector
       // entity that redirected the beam (= last polyline vertex with a
       // reflectorEntityId, a legacy field name). Points layout:
       // [start, ...reflections, end]; when the max-segment cap is hit,
       // the endpoint itself can be the terminal reflector.
       let lastMirrorEntityId: EntityId | undefined;
-      if (points) {
-        for (let i = points.length - 1; i >= 1; i--) {
-          const mid = points[i].reflectorEntityId;
+      const reflectorPoints =
+        points !== undefined &&
+        points !== null &&
+        points.length >= 2 &&
+        (points.length > 2 || points[points.length - 1].reflectorEntityId !== null)
+          ? points
+          : undefined;
+      if (reflectorPoints !== undefined) {
+        for (let i = reflectorPoints.length - 1; i >= 1; i--) {
+          const mid = reflectorPoints[i].reflectorEntityId;
           if (mid !== null) { lastMirrorEntityId = mid; break; }
         }
       }
       const damageSourceId = lastMirrorEntityId ?? proj.sourceEntityId;
-      const endpointDamageable = proj.endpointDamageable !== false;
-      const result = endpointDamageable
-        ? damageSystem.applyDamage({
-            type: 'area',
-            sourceEntityId: damageSourceId,
-            ownerId: projEntity.ownership.playerId,
-            damage: tickDamage,
-            excludeEntities: _emptyExcludeSet,
-            center: { x: impactX, y: impactY, z: impactZ },
-            radius: damageSphereRadius,
-            knockbackForce: tickForce,
-          })
-        : null;
+      const result = addCollisionTiming(
+        timings,
+        'collisionBeamDamageMs',
+        () => endpointDamageable
+              ? damageSystem.applyDamage({
+                  type: 'area',
+                  sourceEntityId: damageSourceId,
+                  ownerId,
+                  damage: tickDamage,
+              excludeEntities: _emptyExcludeSet,
+              center: { x: impactX, y: impactY, z: impactZ },
+              radius: damageSphereRadius,
+              knockbackForce: tickForce,
+            })
+          : null,
+      );
 
       if (result) forceAccumulator?.addKnockbackForces(result.knockbacks);
 
@@ -1389,11 +1816,11 @@ export function checkProjectileCollisions(
       // Walk segment-by-segment along the polyline; whenever a vertex
       // carries a reflectorEntityId, the segment ENTERING that vertex is
       // the incoming beam direction at that reflector.
-      if (points && points.length > 1 && forceAccumulator) {
-        for (let i = 1; i < points.length; i++) {
-          const refl = points[i];
+      if (reflectorPoints !== undefined && tickForce !== 0 && forceAccumulator) {
+        for (let i = 1; i < reflectorPoints.length; i++) {
+          const refl = reflectorPoints[i];
           if (refl.reflectorEntityId === null) continue;
-          const prev = points[i - 1];
+          const prev = reflectorPoints[i - 1];
           const segDx = refl.x - prev.x;
           const segDy = refl.y - prev.y;
           const segLen = DMath.sqrt(segDx * segDx + segDy * segDy);
@@ -1405,27 +1832,45 @@ export function checkProjectileCollisions(
         }
       }
 
-      if (result) {
-        emitBeamHitAudio(result.hitEntityIds, world, proj, config, impactX, impactY, beamDirX, beamDirY, damageSphereRadius, audioEvents);
-        collectKillsAndDeathContexts(
-          result, world, damageSourceKey, damageSourceType,
-          unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-          proj.sourceEntityId,
-        );
-        processKilledProjectileShots(
-          result,
-          world,
-          damageSystem,
-          forceAccumulator,
-          unitsToRemove,
-          buildingsToRemove,
+      if (result && result.hitEntityIds.length > 0) {
+        addCollisionTiming(timings, 'collisionBeamDamageMs', () => {
+          if (beamShot.type === 'laser') {
+            const beamAngle = projEntity.transform.rotation;
+            emitBeamHitAudio(
+              result.hitEntityIds,
+              world,
+              proj,
+              config,
+              impactX,
+              impactY,
+              DMath.cos(beamAngle),
+              DMath.sin(beamAngle),
+              damageSphereRadius,
               audioEvents,
-          deathContexts,
-          newProjectiles,
-          spawnEvents,
-          projectilesToRemove,
-          despawnEvents,
-        );
+            );
+          }
+          collectKillsAndDeathContexts(
+            result, world, damageSourceKey, damageSourceType,
+            unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+            proj.sourceEntityId,
+          );
+          processKilledProjectileShots(
+            result,
+            world,
+            damageSystem,
+            forceAccumulator,
+            unitsToRemove,
+            buildingsToRemove,
+            audioEvents,
+            deathContexts,
+            newProjectiles,
+            spawnEvents,
+            projectilesToRemove,
+            despawnEvents,
+            0,
+            timings,
+          );
+        });
       }
 
       // Note: beam recoil is applied in fireTurrets() based on weapon.state
@@ -1464,13 +1909,21 @@ export function checkProjectileCollisions(
             // Normal rockets/plasma sweep their authored hitbox through
             // entity hitboxes. This tests overlap volume rather than
             // only the projectile origin/centerline.
-            const directHit = findProjectileHitboxSweepHit(
-              world,
-              projHitboxRadius,
-              prevX, prevY, prevZ,
-              currentX, currentY, currentZ,
-              hitEntities,
-            );
+            let directHit = readPrecomputedProjectileHitboxSweepHit(projectileOrdinal);
+            if (directHit === undefined) {
+              directHit = addCollisionTiming(
+                timings,
+                'collisionHitboxSweepMs',
+                () => findProjectileHitboxSweepHit(
+                  world,
+                  projHitboxRadius,
+                  prevX, prevY, prevZ,
+                  currentX, currentY, currentZ,
+                  collisionDtMs,
+                  hitEntities,
+                ),
+              );
+            }
             if (directHit !== null) {
               directHitThisTick = true;
               const clampedT = Math.max(0, Math.min(1, directHit.t));
@@ -1494,20 +1947,25 @@ export function checkProjectileCollisions(
                 // which projectile's sweep happened to run first.
                 if (hitProjectile.hp > 0) {
                   hitProjectile.hp = 0;
-                  detonateKilledProjectileShot(
-                    directHit.entity,
-                    world,
-                    damageSystem,
-                    forceAccumulator,
-                    unitsToRemove,
-                    buildingsToRemove,
-                    audioEvents,
-                    deathContexts,
-                    newProjectiles,
-                    spawnEvents,
-                    projectilesToRemove,
-                    despawnEvents,
-                    0,
+                  addCollisionTiming(
+                    timings,
+                    'collisionKilledProjectileDetonationMs',
+                    () => detonateKilledProjectileShot(
+                      directHit.entity,
+                      world,
+                      damageSystem,
+                      forceAccumulator,
+                      unitsToRemove,
+                      buildingsToRemove,
+                      audioEvents,
+                      deathContexts,
+                      newProjectiles,
+                      spawnEvents,
+                      projectilesToRemove,
+                      despawnEvents,
+                      0,
+                      timings,
+                    ),
                   );
                 }
               } else {
@@ -1517,20 +1975,24 @@ export function checkProjectileCollisions(
               }
             }
           } else {
-            const result = damageSystem.applyDamage({
-              type: 'swept',
-              sourceEntityId: proj.sourceEntityId,
-              ownerId: projEntity.ownership.playerId,
-              damage: projShot.explosion !== undefined ? projShot.explosion.damage : 0,
-              excludeEntities: hitEntities,
-              excludeCommanders: true,
-              prev: { x: prevX, y: prevY, z: prevZ },
-              current: { x: currentX, y: currentY, z: currentZ },
-              radius: projCollisionRadius,
-              maxHits: Math.max(0, proj.maxHits - previousTargetHitCount),
-              velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
-              projectileMass: projShot.mass,
-            });
+            const result = addCollisionTiming(
+              timings,
+              'collisionDgunDamageMs',
+              () => damageSystem.applyDamage({
+                type: 'swept',
+                sourceEntityId: proj.sourceEntityId,
+                ownerId,
+                damage: projShot.explosion !== undefined ? projShot.explosion.damage : 0,
+                excludeEntities: hitEntities,
+                excludeCommanders: true,
+                prev: { x: prevX, y: prevY, z: prevZ },
+                current: { x: currentX, y: currentY, z: currentZ },
+                radius: projCollisionRadius,
+                maxHits: Math.max(0, proj.maxHits - previousTargetHitCount),
+                velocity: { x: proj.velocityX, y: proj.velocityY, z: proj.velocityZ },
+                projectileMass: projShot.mass,
+              }),
+            );
 
             // Apply knockback from projectile hit
             forceAccumulator?.addKnockbackForces(result.knockbacks);
@@ -1573,6 +2035,8 @@ export function checkProjectileCollisions(
               spawnEvents,
               projectilesToRemove,
               despawnEvents,
+              0,
+              timings,
             );
           }
 
@@ -1587,22 +2051,22 @@ export function checkProjectileCollisions(
       }
     }
 
-    const terminalFlags = classifyProjectileTerminalConsequence(
-      world,
-      projEntity,
-      terminalReflectorHit,
-      directHitThisTick,
-      reflectedProjectile,
-      hitShield,
+    const terminalEffectFlags = addCollisionTiming(
+      timings,
+      'collisionTerminalPlanMs',
+      () => classifyProjectileTerminalConsequenceAndPlanEffects(
+        world,
+        projEntity,
+        terminalReflectorHit,
+        directHitThisTick,
+        reflectedProjectile,
+        hitShield,
+        runtimeProfile.hasExplosion,
+        runtimeProfile.hasSubmunitions,
+      ),
     );
     const terminalGroundImpact =
       _terminalOutReason[0] === PROJECTILE_TERMINAL_REASON_GROUND;
-    const terminalEffectFlags = planProjectileTerminalEffects(
-      terminalFlags,
-      terminalReflectorHit,
-      runtimeProfile.hasExplosion,
-      runtimeProfile.hasSubmunitions,
-    );
 
     // Water hit — Rust classifies this as a silent terminal (no
     // explosion, no submunitions, no damage) and plans only the
@@ -1653,50 +2117,55 @@ export function checkProjectileCollisions(
         );
       }
 
-      if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED) !== 0) {
-        const projShot = config.shot as ProjectileShot;
-        proj.hasExploded = true;
-        let firstSplashHit: Entity | undefined;
-        let splashHitCount = 0;
+        if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_SET_EXPLODED) !== 0) {
+          const projShot = config.shot as ProjectileShot;
+          proj.hasExploded = true;
+          let firstSplashHit: Entity | undefined;
+          let splashHitCount = 0;
+          const explosion = projShot.explosion;
 
-        if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH) !== 0 && projShot.explosion) {
-          const splashExcludes = getSplashExcludes();
-          // Single boolean AoE — every unit whose shot collider
-          // intersects the explosion sphere takes the full damage
-          // and full knockback force; nothing outside the sphere.
-          const splashResult = damageSystem.applyDamage({
-            type: 'area',
-            sourceEntityId: proj.sourceEntityId,
-            ownerId: projEntity.ownership.playerId,
-            damage: projShot.explosion.damage,
-            excludeEntities: splashExcludes,
-            excludeCommanders: isDGunProjectile,
-            center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
-            radius: projShot.explosion.radius,
-            knockbackForce: projShot.explosion.force,
+        if ((terminalEffectFlags & PROJECTILE_TERMINAL_EFFECT_FLAG_APPLY_SPLASH) !== 0 && explosion) {
+          addCollisionTiming(timings, 'collisionSplashDamageMs', () => {
+            const splashExcludes = getSplashExcludes();
+            // Single boolean AoE — every unit whose shot collider
+            // intersects the explosion sphere takes the full damage
+            // and full knockback force; nothing outside the sphere.
+            const splashResult = damageSystem.applyDamage({
+              type: 'area',
+              sourceEntityId: proj.sourceEntityId,
+              ownerId,
+              damage: explosion.damage,
+              excludeEntities: splashExcludes,
+              excludeCommanders: isDGunProjectile,
+              center: { x: projEntity.transform.x, y: projEntity.transform.y, z: projEntity.transform.z },
+              radius: explosion.radius,
+              knockbackForce: explosion.force,
+            });
+            forceAccumulator?.addKnockbackForces(splashResult.knockbacks);
+            collectKillsAndDeathContexts(
+              splashResult, world, damageSourceKey, damageSourceType,
+              unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
+              proj.sourceEntityId,
+            );
+            splashHitCount = splashResult.hitEntityIds.length;
+            firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
+            processKilledProjectileShots(
+              splashResult,
+              world,
+              damageSystem,
+              forceAccumulator,
+              unitsToRemove,
+              buildingsToRemove,
+              audioEvents,
+              deathContexts,
+              newProjectiles,
+              spawnEvents,
+              projectilesToRemove,
+              despawnEvents,
+              0,
+              timings,
+            );
           });
-          forceAccumulator?.addKnockbackForces(splashResult.knockbacks);
-          collectKillsAndDeathContexts(
-            splashResult, world, damageSourceKey, damageSourceType,
-            unitsToRemove, buildingsToRemove, audioEvents, deathContexts,
-            proj.sourceEntityId,
-          );
-          splashHitCount = splashResult.hitEntityIds.length;
-          firstSplashHit = splashHitCount > 0 ? world.getEntity(splashResult.hitEntityIds[0]) ?? undefined : undefined;
-          processKilledProjectileShots(
-            splashResult,
-            world,
-            damageSystem,
-            forceAccumulator,
-            unitsToRemove,
-            buildingsToRemove,
-            audioEvents,
-            deathContexts,
-            newProjectiles,
-            spawnEvents,
-            projectilesToRemove,
-            despawnEvents,
-          );
         }
 
         // Detonation audio + explosion FX. Always emit when the
@@ -1754,14 +2223,18 @@ export function checkProjectileCollisions(
             surfaceNormalY = n.ny;
             surfaceNormalZ = n.nz;
           }
-          spawnSubmunitions(
-            world, projShot,
-            projEntity.id, proj.shotSource, proj.shotArmingRadius,
+          addCollisionTiming(
+            timings,
+            'collisionSubmunitionSpawnMs',
+            () => spawnSubmunitions(
+              world, projShot,
+              projEntity.id, proj.shotSource, proj.shotArmingRadius,
             projEntity.transform.x, projEntity.transform.y, projEntity.transform.z,
             proj.velocityX ?? 0, proj.velocityY ?? 0, proj.velocityZ ?? 0,
             surfaceNormalX, surfaceNormalY, surfaceNormalZ,
-            projEntity.ownership.playerId, proj.sourceEntityId,
+            ownerId, proj.sourceEntityId,
             newProjectiles, spawnEvents,
+          ),
           );
         }
       }
@@ -1773,6 +2246,12 @@ export function checkProjectileCollisions(
       queueProjectileRemoval(projEntity.id, projectilesToRemove, despawnEvents);
       continue;
     }
+  }
+
+  if (timings !== undefined) {
+    const now = performance.now();
+    timings.collisionLoopMs = now - profileMark;
+    profileMark = now;
   }
 
   // Remove expired projectiles (and clean up beam index for any beams)
@@ -1799,6 +2278,10 @@ export function checkProjectileCollisions(
       }
     }
     world.removeEntity(id);
+  }
+  if (timings !== undefined) {
+    timings.collisionFinalRemovalMs = performance.now() - profileMark;
+    profiler?.(timings);
   }
 
   return {

@@ -49,6 +49,7 @@ import {
   setSnapshotMaterializationMetadata,
   snapshotEntityRowComposition,
 } from './snapshotMaterializationMetadata';
+import { ReusableNetworkSnapshotCloner } from './snapshotClone';
 
 function assertContract(condition: boolean, message: string): void {
   if (!condition) {
@@ -760,6 +761,24 @@ export function runClientSnapshotApplierContractTest(): void {
       packedActionEntity.unit.actions[0].x === 310 &&
       packedActionEntity.unit.moveState === 'roam',
     'packed metadata-only action rows must apply actions and route preview from reconstructed wire rows',
+  );
+  const skipActionView = new ClientViewState();
+  skipActionView.applyNetworkState(snapshot(1, [fullUnitEntity(id, 60, 100)]));
+  skipActionView.applyPrediction(1000);
+  skipActionView.consumeRenderDirties();
+  const skipActionXBefore = skipActionView.getEntity(id)?.transform.x ?? Number.NaN;
+  skipActionView.applyNetworkState(deltaSnapshot(6, typedActionRows), {
+    syncEconomy: undefined,
+    skipPresentationMotionTargets: true,
+  });
+  skipActionView.applyPrediction(100);
+  const skipActionEntity = skipActionView.getEntity(id);
+  assertContract(
+    skipActionEntity?.unit?.actions.length === 2 &&
+      skipActionEntity.unit.activePath?.points.length === 2 &&
+      skipActionEntity.unit.actions[0].x === 310 &&
+      Math.abs(skipActionEntity.transform.x - skipActionXBefore) < 1e-6,
+    'local-authoritative typed action rows must apply metadata without presentation motion targets',
   );
   resetEntitySnapshotPool();
 
@@ -2145,6 +2164,58 @@ export function runClientSnapshotApplierContractTest(): void {
     typedFullDeltaCreateView.getEntity(typedFullUnitId)?.unit?.hp === 41,
     'entity-delta full typed rows must create from typed rows before DTO fallback',
   );
+  const clonedTypedFullDelta = new ReusableNetworkSnapshotCloner().clone(decodedTypedFullDelta);
+  const clonedTypedFullDeltaSource = getEntitySnapshotWireSource(clonedTypedFullDelta.entities);
+  assertContract(
+    clonedTypedFullDelta.entities.length === 3 &&
+      (clonedTypedFullDelta.entities as Array<NetworkServerSnapshotEntity | undefined>).every(
+        entity => entity === undefined,
+      ) &&
+      clonedTypedFullDeltaSource !== undefined &&
+      clonedTypedFullDeltaSource.typedEntityRows === 3 &&
+      clonedTypedFullDeltaSource.typedPlaceholderRows === 0,
+    'entity-delta full typed row clone must omit redundant DTO fallback rows',
+  );
+  const typedFullDeltaClonedCreateView = new ClientViewState();
+  installMaterializationMetadata(clonedTypedFullDelta);
+  typedFullDeltaClonedCreateView.applyNetworkState(clonedTypedFullDelta, {
+    syncEconomy: undefined,
+    collectMaterializationStages: true,
+  });
+  typedFullDeltaClonedCreateView.applyPrediction(100);
+  const clonedTypedFullDeltaStages =
+    getSnapshotMaterializationMetadata(clonedTypedFullDelta)?.stages;
+  assertContract(
+    clonedTypedFullDeltaStages?.clientApplyEntitiesGenericTyped !== undefined &&
+      clonedTypedFullDeltaStages.clientApplyEntitiesGenericDto === undefined,
+    'cloned entity-delta full typed rows must use the typed-only mixed path without DTO fallback',
+  );
+  assertContract(
+    typedFullDeltaClonedCreateView.getEntity(typedFullUnitId)?.unit?.hp === 41,
+    'cloned entity-delta full typed rows must create from wire rows without DTO fallback',
+  );
+  const typedFullSkipView = new ClientViewState();
+  typedFullSkipView.applyNetworkState(snapshot(1, [
+    fullUnitEntity(typedFullUnitId, 100, 100),
+    fullBuildingEntity(typedFullBuildingId, 80, 120),
+    fullFactoryEntity(typedFullFactoryId),
+  ]));
+  typedFullSkipView.applyNetworkState(decodedTypedFullDelta, {
+    syncEconomy: undefined,
+    skipPresentationMotionTargets: true,
+  });
+  const typedFullSkipUnit = typedFullSkipView.getEntity(typedFullUnitId);
+  const typedFullSkipBuilding = typedFullSkipView.getEntity(typedFullBuildingId);
+  assertContract(
+    typedFullSkipUnit?.unit?.hp === 41 &&
+      typedFullSkipUnit.transform.x === 740 &&
+      typedFullSkipUnit.transform.rotation > 0.01 &&
+      typedFullSkipBuilding?.building?.hp === 52 &&
+      typedFullSkipBuilding.transform.x === 340,
+    'local-authoritative full typed delta rows must snap compatibility state without prediction',
+  );
+  typedFullSkipView.assertRenderEntityStateParity(typedFullUnitId);
+  typedFullSkipView.assertRenderEntityStateParity(typedFullBuildingId);
 
   const typedFullSnapshot = installMaterializationMetadata(snapshot(8, typedFullRows));
   typedFullView.applyNetworkState(typedFullSnapshot, {

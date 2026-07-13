@@ -618,6 +618,7 @@ export class TerrainTileRenderer3D {
   private gridCellSize = 0;
   private terrainGeometryKey = '';
   private renderFrameIndex = 0;
+  private lastFogShadeEnabled: boolean | undefined;
   private pendingTerrainGeometryKey = '';
   private pendingTerrainGeometryFrames = 0;
   private lastGeometryRebuildFrame = -TERRAIN_GEOMETRY_REBUILD_MIN_FRAME_SPACING;
@@ -806,11 +807,11 @@ export class TerrainTileRenderer3D {
             'terrainRgb = mix(terrainRgb, rock, max(exposedRock * 0.58, steepRock * 0.48));',
             'terrainRgb = mix(terrainRgb, sunBleachedRock, highDry * 0.38);',
             'terrainRgb = mix(terrainRgb, wetSoil, shoreline * 0.72);',
-            'vec3 dpdx = dFdx(vTerrainWorldPos);',
-            'vec3 dpdy = dFdy(vTerrainWorldPos);',
-            'vec3 geomNormal = normalize(cross(dpdx, dpdy));',
-            'float geomSlope = 1.0 - abs(geomNormal.y);',
             'if (uGroundDetailEnabled > 0.0 || uRockDetailEnabled > 0.0) {',
+            '  vec3 dpdx = dFdx(vTerrainWorldPos);',
+            '  vec3 dpdy = dFdy(vTerrainWorldPos);',
+            '  vec3 geomNormal = normalize(cross(dpdx, dpdy));',
+            '  float geomSlope = 1.0 - abs(geomNormal.y);',
             '  // ===== Shared mask infrastructure (used by both detail textures) =====',
             '  // Per-fragment geometric slope from world-position derivatives - the',
             '  // exact triangle face slope. Keep this out of the main grass/rock',
@@ -2244,13 +2245,26 @@ export class TerrainTileRenderer3D {
     const terrainSplitWallBoundaryVertices =
       getTerrainSplitWallBoundaryVertices();
     const waterBoundaryMode = getWaterBoundaryMode();
+    const terrainDetailTextures = graphicsConfig.terrainDetailTextures !== false;
+    this.groundDetailEnabledUniform.value =
+      TERRAIN_GROUND_DETAIL_ENABLED && terrainDetailTextures ? 1 : 0;
+    this.rockDetailEnabledUniform.value =
+      TERRAIN_ROCK_DETAIL_ENABLED && terrainDetailTextures ? 1 : 0;
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
     this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
-    this.fogOfWarCoverage.update(
-      this.clientViewState,
-      options?.localPlayerId ?? (1 as PlayerId),
-      options?.fogShadeEnabled === true,
-    );
+    const fogShadeEnabled = options?.fogShadeEnabled === true;
+    const terrainTileFrameStride = Math.max(1, graphicsConfig.terrainTileFrameStride | 0);
+    if (
+      this.renderFrameIndex % terrainTileFrameStride === 0 ||
+      fogShadeEnabled !== this.lastFogShadeEnabled
+    ) {
+      this.fogOfWarCoverage.update(
+        this.clientViewState,
+        options?.localPlayerId ?? (1 as PlayerId),
+        fogShadeEnabled,
+      );
+      this.lastFogShadeEnabled = fogShadeEnabled;
+    }
     this.rebuildGeometryIfNeeded(
       cellSize,
       graphicsConfig,

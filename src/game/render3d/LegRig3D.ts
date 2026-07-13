@@ -44,6 +44,7 @@ import {
 } from './LocomotionTerrainSampler';
 import {
   type LocomotionBase,
+  type LocomotionRenderPose3D,
   easeOutCubic,
   emaAlpha,
   kneeFromIK,
@@ -331,6 +332,7 @@ export function buildLegs(
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
   ownerId: PlayerId | undefined,
+  pose?: LocomotionRenderPose3D,
 ): LegMesh | undefined {
   if (legStyle === 'none') return undefined;
 
@@ -438,9 +440,9 @@ export function buildLegs(
   // there's no first-frame flicker from (0,0,0). Each leg's
   // phaseShift01 (set just above) decides whether it starts AT rest
   // or a full stepRadius backward of rest — see initializeLegAt.
-  const bodyCenterHeight = getUnitBodyCenterHeight(entity.unit);
+  const bodyCenterHeight = pose?.bodyCenterHeight ?? getUnitBodyCenterHeight(entity.unit);
   for (const leg of legs) {
-    initializeLegAt(leg, entity, bodyCenterHeight, mapWidth, mapHeight, stepRadius);
+    initializeLegAt(leg, entity, bodyCenterHeight, mapWidth, mapHeight, stepRadius, pose);
   }
 
   return {
@@ -506,9 +508,10 @@ export function updateLegs(
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
+  pose?: LocomotionRenderPose3D,
 ): boolean {
-  const vx = entity.unit?.velocityX ?? 0;
-  const vy = entity.unit?.velocityY ?? 0;
+  const vx = pose?.velocityX ?? entity.unit?.velocityX ?? 0;
+  const vy = pose?.velocityY ?? entity.unit?.velocityY ?? 0;
 
   // World-planted feet. Each foot sits at a real world XYZ point on
   // the terrain and stays there until the body has moved or yawed
@@ -528,7 +531,7 @@ export function updateLegs(
   //   - stepRadius < restDistance, so the rest sphere never includes
   //     the hip; the foot can drift toward the body but the trigger
   //     always fires before the foot crosses the body's footprint.
-  const bodyCenterHeight = getUnitBodyCenterHeight(entity.unit);
+  const bodyCenterHeight = pose?.bodyCenterHeight ?? getUnitBodyCenterHeight(entity.unit);
   const stepRadius = mesh.stepRadius;
   const showViz = getLegsRadiusToggle();
   const wasVisualGrounded = mesh.visualGrounded;
@@ -538,6 +541,7 @@ export function updateLegs(
     bodyCenterHeight,
     mapWidth,
     mapHeight,
+    pose,
   );
   mesh.visualGrounded = grounded;
   const touchingDown = !wasVisualGrounded && grounded;
@@ -547,14 +551,14 @@ export function updateLegs(
   // shared across every leg's IK so all legs bend their knees
   // along the same chassis-relative "up", regardless of slope.
   // On flat ground this collapses to (0, 1, 0) = world up.
-  const sn = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
-  const chassisUpX = sn.nx;
-  const chassisUpY = sn.nz;
-  const chassisUpZ = sn.ny;
+  const sn = pose === undefined ? getLocomotionSurfaceNormal(entity, mapWidth, mapHeight) : undefined;
+  const chassisUpX = pose?.normalX ?? sn!.nx;
+  const chassisUpY = pose?.normalZ ?? sn!.nz;
+  const chassisUpZ = pose?.normalY ?? sn!.ny;
   // Body velocity rotated into chassis-local frame, used for the
   // snap target's lookahead. sim x/y → three x/z (the existing
   // handedness); chassis +X = body forward.
-  const yaw = entity.transform.rotation;
+  const yaw = pose?.rotation ?? entity.transform.rotation;
   const cosYaw = Math.cos(yaw);
   const sinYaw = Math.sin(yaw);
   const vLocalForward = cosYaw * vx + sinYaw * vy;
@@ -572,6 +576,7 @@ export function updateLegs(
       chassisUpX,
       chassisUpY,
       chassisUpZ,
+      pose,
     );
   }
 
@@ -591,7 +596,7 @@ export function updateLegs(
 
     transformChassisToWorld(
       hipLocalX, hipLocalY, hipLocalZ,
-      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut, pose,
     );
     const hipWorldX = _worldOut.x;
     const hipWorldY = _worldOut.y;
@@ -599,7 +604,7 @@ export function updateLegs(
 
     transformChassisToWorld(
       restLocalX, restLocalY, restLocalZ,
-      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut, pose,
     );
     const restWorldX = _worldOut.x;
     const restWorldY = _worldOut.y;
@@ -622,7 +627,7 @@ export function updateLegs(
     if (!leg.initialized) {
       // Defer init to the helper so the build-time and "lazy on
       // first update" paths stay in sync.
-      initializeLegAt(leg, entity, bodyCenterHeight, mapWidth, mapHeight, stepRadius);
+      initializeLegAt(leg, entity, bodyCenterHeight, mapWidth, mapHeight, stepRadius, pose);
     }
 
     let startedTouchdownStep = false;
@@ -639,6 +644,7 @@ export function updateLegs(
         bodyCenterHeight,
         mapWidth,
         mapHeight,
+        pose,
       );
       startedTouchdownStep = true;
     }
@@ -704,6 +710,7 @@ export function updateLegs(
         bodyCenterHeight,
         mapWidth,
         mapHeight,
+        pose,
       );
     }
 
@@ -753,36 +760,42 @@ export function updateLegs(
       chassisUpX, chassisUpY, chassisUpZ,
     );
   }
-  return legsNeedFrame(mesh, entity, showViz);
+  return legsNeedFrame(mesh, entity, showViz, pose);
 }
 
-function legsNeedFrame(mesh: LegMesh, entity: Entity, showViz: boolean): boolean {
+function legsNeedFrame(
+  mesh: LegMesh,
+  entity: Entity,
+  showViz: boolean,
+  pose?: LocomotionRenderPose3D,
+): boolean {
   if (showViz) return true;
   if (!mesh.visualGrounded) return true;
-  if (rollingLocomotionBodyActive(entity)) return true;
+  if (rollingLocomotionBodyActive(entity, pose)) return true;
   for (const leg of mesh.legs) {
     if (!leg.initialized || leg.isSliding) return true;
   }
   return false;
 }
 
-function airborneLegBodyActive(entity: Entity): boolean {
+function airborneLegBodyActive(
+  entity: Entity,
+  pose?: LocomotionRenderPose3D,
+): boolean {
   const unit = entity.unit;
-  if (!unit) return false;
-  const vx = unit.velocityX ?? 0;
-  const vy = unit.velocityY ?? 0;
-  const vz = unit.velocityZ ?? 0;
+  if (!unit && pose === undefined) return false;
+  const vx = pose?.velocityX ?? unit?.velocityX ?? 0;
+  const vy = pose?.velocityY ?? unit?.velocityY ?? 0;
+  const vz = pose?.velocityZ ?? unit?.velocityZ ?? 0;
   if (vx * vx + vy * vy + vz * vz > AIRBORNE_LEG_LINEAR_SPEED_EPSILON_SQ) return true;
-  const angularVelocity = unit.angularVelocity3;
-  if (
-    angularVelocity !== null &&
-    angularVelocity.x * angularVelocity.x +
-      angularVelocity.y * angularVelocity.y +
-      angularVelocity.z * angularVelocity.z > AIRBORNE_LEG_ANGULAR_SPEED_EPSILON_SQ
-  ) {
+  const angularVelocity = unit?.angularVelocity3;
+  const yawRate = pose?.yawRate ?? angularVelocity?.z ?? 0;
+  const angularX = pose === undefined ? angularVelocity?.x ?? 0 : 0;
+  const angularY = pose === undefined ? angularVelocity?.y ?? 0 : 0;
+  if (angularX * angularX + angularY * angularY + yawRate * yawRate > AIRBORNE_LEG_ANGULAR_SPEED_EPSILON_SQ) {
     return true;
   }
-  const suspension = unit.suspension;
+  const suspension = unit?.suspension;
   if (!suspension) return false;
   return (
     Math.abs(suspension.offsetX) > AIRBORNE_LEG_SUSPENSION_EPSILON ||
@@ -848,6 +861,7 @@ function beginLegStepToRest(
   bodyCenterHeight: number,
   mapWidth: number,
   mapHeight: number,
+  pose?: LocomotionRenderPose3D,
 ): void {
   const lookaheadT = legSwingDurationMs(leg) / 1000;
   let offsetX = vLocalForward * lookaheadT;
@@ -869,6 +883,7 @@ function beginLegStepToRest(
     mapWidth,
     mapHeight,
     _worldOut,
+    pose,
   );
   const targetX = _worldOut.x;
   const targetZ = _worldOut.z;
@@ -907,15 +922,18 @@ function resolveVisualLegGrounded(
   bodyCenterHeight: number,
   mapWidth: number,
   mapHeight: number,
+  pose?: LocomotionRenderPose3D,
 ): boolean {
-  const groundY = getLocomotionSurfaceHeight(
-    entity.transform.x,
-    entity.transform.y,
-    mapWidth,
-    mapHeight,
-    entity.id,
-  );
-  const bodyBaseY = entity.transform.z - bodyCenterHeight;
+  const groundY = pose !== undefined && Number.isFinite(pose.groundY)
+    ? pose.groundY
+    : getLocomotionSurfaceHeight(
+      pose?.x ?? entity.transform.x,
+      pose?.y ?? entity.transform.y,
+      mapWidth,
+      mapHeight,
+      entity.id,
+    );
+  const bodyBaseY = (pose?.z ?? entity.transform.z) - bodyCenterHeight;
   const clearance = bodyBaseY - groundY;
   if (clearance <= visualGroundBuffer(mesh.maxLegLength, mesh.visualGrounded)) {
     return true;
@@ -927,6 +945,7 @@ function resolveVisualLegGrounded(
     bodyCenterHeight,
     mapWidth,
     mapHeight,
+    pose,
   );
 }
 
@@ -936,13 +955,14 @@ function hasReachablePlantedFoot(
   bodyCenterHeight: number,
   mapWidth: number,
   mapHeight: number,
+  pose?: LocomotionRenderPose3D,
 ): boolean {
   for (const leg of mesh.legs) {
     if (!leg.initialized || leg.isSliding) continue;
     const c = leg.config;
     transformChassisToWorld(
       c.attachOffsetX, leg.hipY, c.attachOffsetY,
-      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut, pose,
     );
     const dx = leg.worldX - _worldOut.x;
     const dy = leg.worldY - _worldOut.y;
@@ -974,19 +994,22 @@ function updateAirborneLegPose(
   chassisUpX: number,
   chassisUpY: number,
   chassisUpZ: number,
+  pose?: LocomotionRenderPose3D,
 ): boolean {
-  const bodyBaseY = entity.transform.z - bodyCenterHeight;
-  const bodyGroundY = getLocomotionSurfaceHeight(
-    entity.transform.x,
-    entity.transform.y,
-    mapWidth,
-    mapHeight,
-    entity.id,
-  );
+  const bodyBaseY = (pose?.z ?? entity.transform.z) - bodyCenterHeight;
+  const bodyGroundY = pose !== undefined && Number.isFinite(pose.groundY)
+    ? pose.groundY
+    : getLocomotionSurfaceHeight(
+      pose?.x ?? entity.transform.x,
+      pose?.y ?? entity.transform.y,
+      mapWidth,
+      mapHeight,
+      entity.id,
+    );
   const bodyClearance = Math.max(0, bodyBaseY - bodyGroundY);
-  const descentSpeed = Math.max(0, -(entity.unit?.velocityZ ?? 0));
+  const descentSpeed = Math.max(0, -(pose?.velocityZ ?? entity.unit?.velocityZ ?? 0));
   const poseAlpha = emaAlpha(Math.max(0, dtMs) / 1000, AIRBORNE_FOOT_POSE_TAU_SEC);
-  let needsFrame = airborneLegBodyActive(entity);
+  let needsFrame = airborneLegBodyActive(entity, pose);
 
   for (const leg of mesh.legs) {
     if (leg.restSphere) leg.restSphere.visible = false;
@@ -1003,7 +1026,7 @@ function updateAirborneLegPose(
 
     transformChassisToWorld(
       hipLocalX, hipLocalY, hipLocalZ,
-      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut, pose,
     );
     const hipWorldX = _worldOut.x;
     const hipWorldY = _worldOut.y;
@@ -1011,7 +1034,7 @@ function updateAirborneLegPose(
 
     transformChassisToWorld(
       touchdownLocalX, FOOT_Y, touchdownLocalZ,
-      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut, pose,
     );
     const footCylinderRadius = mesh.legStyle === 'simple' ? leg.upperThick : leg.lowerThick;
     const firstSurface = sampleLocomotionFootSurface(
@@ -1048,7 +1071,7 @@ function updateAirborneLegPose(
 
     transformChassisToWorld(
       touchdownLocalX, footLocalY, touchdownLocalZ,
-      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut, pose,
     );
     const targetFootX = _worldOut.x;
     const targetFootZ = _worldOut.z;
@@ -1199,6 +1222,7 @@ function initializeLegAt(
   mapWidth: number,
   mapHeight: number,
   stepRadius: number,
+  pose?: LocomotionRenderPose3D,
 ): void {
   const c = leg.config;
   const restDistance = totalLegLength(c) * c.snapDistanceMultiplier;
@@ -1222,7 +1246,7 @@ function initializeLegAt(
   const cz = restLocalZ;
   // Transform to world to find the foot's spawn XZ, then snap Y to
   // the actual terrain elevation so the foot lands ON the ground.
-  transformChassisToWorld(cx, cy, cz, entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut);
+  transformChassisToWorld(cx, cy, cz, entity, bodyCenterHeight, mapWidth, mapHeight, _worldOut, pose);
   const groundY = getLocomotionSurfaceHeight(
     _worldOut.x,
     _worldOut.z,

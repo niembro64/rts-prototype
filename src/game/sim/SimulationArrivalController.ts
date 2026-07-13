@@ -1,11 +1,11 @@
 import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS, UNIT_MASS_MULTIPLIER } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
 import { LOCOMOTION_FORCE_SCALE, getLocomotionPrimaryDrivePhysics } from './locomotion';
-import type { Entity, UnitAction } from './types';
+import type { Entity, Unit, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
 import { PATHFINDING_ARRIVAL_RADIUS } from './pathfindingTuning';
-import { entitySlotRegistry } from './EntitySlotRegistry';
+import { entitySlotRegistry, type EntityStateViews } from './EntitySlotRegistry';
 
 /** Distance (world units) at which a unit ticks a waypoint as reached. Single
  *  source of truth in pathfindingTuningConfig.json so the WASM pathfinder folds
@@ -20,6 +20,33 @@ const ARRIVAL_MIN_ACCEL = 0.001;
 const ARRIVAL_BATCH_FLAG_MAINTAIN_FULL_THRUST = 1 << 0;
 const ARRIVAL_BATCH_FLAG_LAST_ACTION = 1 << 1;
 const ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST = 1 << 2;
+
+type ArrivalLocomotionProfile = {
+  primaryDriveForce: number;
+  primaryTraction: number;
+  maintainFullThrustAtWaypoints: boolean;
+};
+
+const _arrivalLocomotionProfilesByBlueprint = new Map<string, ArrivalLocomotionProfile>();
+const _arrivalLocomotionProfilesByObject = new WeakMap<Unit['locomotion'], ArrivalLocomotionProfile>();
+
+function getArrivalLocomotionProfile(unit: Unit): ArrivalLocomotionProfile {
+  const cachedByBlueprint = _arrivalLocomotionProfilesByBlueprint.get(unit.unitBlueprintId);
+  if (cachedByBlueprint !== undefined) return cachedByBlueprint;
+
+  const locomotion = unit.locomotion;
+  const cached = _arrivalLocomotionProfilesByObject.get(locomotion);
+  if (cached !== undefined) return cached;
+  const primaryDrivePhysics = getLocomotionPrimaryDrivePhysics(locomotion);
+  const profile = {
+    primaryDriveForce: primaryDrivePhysics.force,
+    primaryTraction: primaryDrivePhysics.traction,
+    maintainFullThrustAtWaypoints: locomotion.maintainFullThrustAtWaypoints,
+  };
+  _arrivalLocomotionProfilesByBlueprint.set(unit.unitBlueprintId, profile);
+  _arrivalLocomotionProfilesByObject.set(locomotion, profile);
+  return profile;
+}
 
 export class SimulationArrivalController {
   private readonly world: WorldState;
@@ -83,8 +110,10 @@ export class SimulationArrivalController {
     const unit = entity.unit;
     if (!unit) return;
 
-    const index = this.completionCount++;
-    this.ensureCompletionCapacity(this.completionCount);
+    const index = this.completionCount;
+    const nextCount = index + 1;
+    if (this.completionSlots.length < nextCount) this.ensureCompletionCapacity(nextCount);
+    this.completionCount = nextCount;
     this.completionEntities[index] = entity;
     this.completionActions[index] = action;
     this.completionSlots[index] =
@@ -97,7 +126,8 @@ export class SimulationArrivalController {
       && isFinalActionPoint
       ? ARRIVAL_BATCH_FLAG_LAST_ACTION
       : 0;
-    if (unit.locomotion.maintainFullThrustAtWaypoints) {
+    const locomotionProfile = getArrivalLocomotionProfile(unit);
+    if (locomotionProfile.maintainFullThrustAtWaypoints) {
       flags |= ARRIVAL_COMPLETION_BATCH_FLAG_MAINTAIN_FULL_THRUST;
     }
     this.completionFlags[index] = flags;
@@ -176,16 +206,16 @@ export class SimulationArrivalController {
       return;
     }
 
-    const invDistance = 1 / distance;
-    entitySlotRegistry.setUnitDriveInput(entity, 0, 0, dx * invDistance, dy * invDistance, entitySlot);
-
-    const maintainFullThrustAtWaypoints = unit.locomotion.maintainFullThrustAtWaypoints;
+    const locomotionProfile = getArrivalLocomotionProfile(unit);
+    const maintainFullThrustAtWaypoints = locomotionProfile.maintainFullThrustAtWaypoints;
     const isLastAction = isFinalActionPoint && unit.actions.length <= 1 && action.type !== 'patrol';
     const speedLimitFactor = maintainFullThrustAtWaypoints
       ? 1
       : normalizeActionSpeedLimitFactor(action.speedLimitFactor);
-    const index = this.count++;
-    this.ensureCapacity(this.count);
+    const index = this.count;
+    const nextCount = index + 1;
+    if (this.slots.length < nextCount) this.ensureCapacity(nextCount);
+    this.count = nextCount;
     this.entities[index] = entity;
     this.entitySlots[index] = entitySlot;
     this.slots[index] = bodySlot;
@@ -193,9 +223,8 @@ export class SimulationArrivalController {
     this.dy[index] = dy;
     this.distance[index] = distance;
     this.radiusPush[index] = unit.radius.collision;
-    const drivePhysics = getLocomotionPrimaryDrivePhysics(unit.locomotion);
-    this.driveForce[index] = drivePhysics.force * speedLimitFactor;
-    this.traction[index] = drivePhysics.traction;
+    this.driveForce[index] = locomotionProfile.primaryDriveForce * speedLimitFactor;
+    this.traction[index] = locomotionProfile.primaryTraction;
     this.mass[index] = unit.mass;
     this.speedLimitFactor[index] = speedLimitFactor;
     this.flags[index] =
@@ -203,7 +232,7 @@ export class SimulationArrivalController {
       | (isLastAction ? ARRIVAL_BATCH_FLAG_LAST_ACTION : 0);
   }
 
-  flushThrust(movingUnits: Entity[], dtSec: number): void {
+  flushThrust(movingUnits: Entity[], movingUnitSlots: number[], dtSec: number): void {
     const count = this.count;
     if (count === 0) return;
 
@@ -234,25 +263,85 @@ export class SimulationArrivalController {
       ARRIVAL_MIN_ACCEL,
     );
 
+    const entityViews = entitySlotRegistry.getViews();
     for (let i = 0; i < count; i++) {
       const entity = this.entities[i];
       const unit = entity.unit;
       if (unit) {
         const speedLimitFactor = this.speedLimitFactor[i];
         const invDistance = this.distance[i] > 0.0001 ? 1 / this.distance[i] : 0;
-        entitySlotRegistry.setUnitDriveInput(
+        this.writeUnitDriveInputFast(
           entity,
+          unit,
           this.outX[i] * speedLimitFactor,
           this.outY[i] * speedLimitFactor,
           this.dx[i] * invDistance,
           this.dy[i] * invDistance,
           this.entitySlots[i],
+          entityViews,
         );
-        if (this.active[i] !== 0) movingUnits.push(entity);
+        if (this.active[i] !== 0) {
+          movingUnits.push(entity);
+          movingUnitSlots.push(
+            this.entitySlots[i] >= 0 ? this.entitySlots[i] : entitySlotRegistry.getEntitySlot(entity),
+          );
+        }
       }
       this.entities[i] = undefined as unknown as Entity;
     }
     this.count = 0;
+  }
+
+  private writeUnitDriveInputFast(
+    entity: Entity,
+    unit: Unit,
+    thrustDirX: number,
+    thrustDirY: number,
+    headingDirX: number,
+    headingDirY: number,
+    entitySlot: number,
+    views: EntityStateViews | null,
+  ): void {
+    if (
+      unit.thrustDirX !== thrustDirX ||
+      unit.thrustDirY !== thrustDirY ||
+      unit.headingDirX !== headingDirX ||
+      unit.headingDirY !== headingDirY
+    ) {
+      unit.thrustDirX = thrustDirX;
+      unit.thrustDirY = thrustDirY;
+      unit.headingDirX = headingDirX;
+      unit.headingDirY = headingDirY;
+    }
+
+    if (
+      views !== null &&
+      entitySlot >= 0 &&
+      entitySlot < views.capacity &&
+      views.entityId[entitySlot] === entity.id
+    ) {
+      if (
+        views.unitThrustDirX[entitySlot] !== thrustDirX ||
+        views.unitThrustDirY[entitySlot] !== thrustDirY ||
+        views.unitHeadingDirX[entitySlot] !== headingDirX ||
+        views.unitHeadingDirY[entitySlot] !== headingDirY
+      ) {
+        views.unitThrustDirX[entitySlot] = thrustDirX;
+        views.unitThrustDirY[entitySlot] = thrustDirY;
+        views.unitHeadingDirX[entitySlot] = headingDirX;
+        views.unitHeadingDirY[entitySlot] = headingDirY;
+      }
+      return;
+    }
+
+    entitySlotRegistry.setUnitDriveInput(
+      entity,
+      thrustDirX,
+      thrustDirY,
+      headingDirX,
+      headingDirY,
+      entitySlot,
+    );
   }
 
   reset(): void {

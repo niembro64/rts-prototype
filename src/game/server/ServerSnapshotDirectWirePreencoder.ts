@@ -122,6 +122,9 @@ type ServerSnapshotRichDeltaDirectWireInput = {
   dirtyIds: readonly EntityId[];
   dirtyFields: readonly number[];
   dirtySlots: readonly number[];
+  skipMotionOnlyRows?: boolean;
+  skipEconomy?: boolean;
+  skipPresentationProjectiles?: boolean;
   gamePhase: GamePhase;
   winnerId: PlayerId | undefined;
   sprayTargets: SprayTarget[] | undefined;
@@ -143,6 +146,7 @@ const _directGameState: NonNullable<NetworkServerSnapshot['gameState']> = {
   phase: 'battle',
   winnerId: undefined,
 };
+const DIRECT_EMPTY_ECONOMY: NetworkServerSnapshot['economy'] = {};
 
 function acceptsSerializedEntity(
   entity: Entity,
@@ -535,7 +539,7 @@ export class ServerSnapshotDirectWirePreencoder {
     state.entityDeltaOnly = entityCount > 0 ? true : undefined;
     state.projectileDeltaOnly = entityCount > 0 ? undefined : true;
     state.minimapEntities = undefined;
-    state.economy = this.economyPlaceholder;
+    state.economy = DIRECT_EMPTY_ECONOMY;
     state.resourceMovements = undefined;
     state.sprayTargets = undefined;
     state.audioEvents = netAudioEvents;
@@ -582,15 +586,20 @@ export class ServerSnapshotDirectWirePreencoder {
       }
     }
 
-    stageStart = performance.now();
-    const netEconomy = writeEconomySnapshotWireRowsDirect(
-      input.world.playerCount,
-      input.recipientPlayerId,
-      this.economyPlaceholder,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'economy', stageStart);
-    }
+    const netEconomy = input.skipEconomy === true
+      ? DIRECT_EMPTY_ECONOMY
+      : (() => {
+          stageStart = performance.now();
+          const rows = writeEconomySnapshotWireRowsDirect(
+            input.world.playerCount,
+            input.recipientPlayerId,
+            this.economyPlaceholder,
+          );
+          if (stages !== undefined) {
+            addSnapshotMaterializationStageFromStart(stages, 'economy', stageStart);
+          }
+          return rows;
+        })();
 
     stageStart = performance.now();
     const netResourceMovements = writeResourceMovementWireRowsDirect(
@@ -642,19 +651,21 @@ export class ServerSnapshotDirectWirePreencoder {
       addSnapshotMaterializationStageFromStart(stages, 'scanPulses', stageStart);
     }
 
-    const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
-    const hasProjectileEvents =
-      hasLiveLineProjectiles ||
-      (
-        input.projectileSpawns !== undefined &&
-        input.projectileDespawns !== undefined &&
-        input.projectileVelocityUpdates !== undefined &&
-        (
-          input.projectileSpawns.length > 0 ||
-          input.projectileDespawns.length > 0 ||
-          input.projectileVelocityUpdates.length > 0
-        )
-      );
+    const hasProjectileEvents = input.skipPresentationProjectiles === true
+      ? false
+      : (
+          input.world.getLineProjectiles().length > 0 ||
+          (
+            input.projectileSpawns !== undefined &&
+            input.projectileDespawns !== undefined &&
+            input.projectileVelocityUpdates !== undefined &&
+            (
+              input.projectileSpawns.length > 0 ||
+              input.projectileDespawns.length > 0 ||
+              input.projectileVelocityUpdates.length > 0
+            )
+          )
+        );
     const netProjectiles = hasProjectileEvents
       ? (() => {
           stageStart = performance.now();
@@ -899,6 +910,13 @@ export class ServerSnapshotDirectWirePreencoder {
         const changedFields = input.previousVisibleEntityIds.has(id) ? input.dirtyFields[i] : undefined;
         const slot = input.dirtySlots[i] ?? -1;
         if (
+          input.skipMotionOnlyRows === true &&
+          changedFields !== undefined &&
+          dirtyFieldsAreMotionOnly(changedFields)
+        ) {
+          continue;
+        }
+        if (
           changedFields !== undefined &&
           this.shouldDeferDirtyEntityToSparseMotion(
             input.world,
@@ -971,19 +989,26 @@ export class ServerSnapshotDirectWirePreencoder {
       const id = input.dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIds.has(id)) continue;
+      const changedFields = input.dirtyFields[i];
+      if (
+        input.skipMotionOnlyRows === true &&
+        dirtyFieldsAreMotionOnly(changedFields)
+      ) {
+        continue;
+      }
       const slot = input.dirtySlots[i] ?? -1;
       if (
         this.shouldDeferDirtyEntityToSparseMotion(
           input.world,
           id,
-          input.dirtyFields[i],
+          changedFields,
           slot,
           entityViews,
         )
       ) continue;
       if (
-        this.tryAppendUnitSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews, slot) ||
-        this.tryAppendBuildingSlabDeltaRowFromState(id, input.dirtyFields[i], entityViews, slot)
+        this.tryAppendUnitSlabDeltaRowFromState(id, changedFields, entityViews, slot) ||
+        this.tryAppendBuildingSlabDeltaRowFromState(id, changedFields, entityViews, slot)
       ) {
         emittedIds.add(id);
         entityCount++;
@@ -994,10 +1019,10 @@ export class ServerSnapshotDirectWirePreencoder {
       if (!this.writeEntityRow(
         entityCount,
         entity,
-        input.dirtyFields[i],
+        changedFields,
         input.world,
         input.visibility,
-        canUseTypedDeltaPlaceholder(entity, input.dirtyFields[i]),
+        canUseTypedDeltaPlaceholder(entity, changedFields),
       )) continue;
       emittedIds.add(id);
       entityCount++;

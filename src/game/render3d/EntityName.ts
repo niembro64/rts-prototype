@@ -32,6 +32,8 @@ const UNKNOWN_UNIT_NAME = 'Unknown Unit';
 const UNKNOWN_BUILDING_NAME = 'Unknown Building';
 const UNKNOWN_TURRET_NAME = 'Unknown Turret';
 const UNKNOWN_SHOT_NAME = 'Unknown Shot';
+const unitBlueprintNameCache = new Map<string, string>();
+const buildingBlueprintNameCache = new Map<string, string>();
 
 /** Names have no current/max, so the only thing the selection mode can
  *  do is suppress a SELECTED entity's name in 'never'. Unselected
@@ -64,6 +66,36 @@ function buildingBlueprintName(entity: Entity): string | null {
   }
 }
 
+function unitBlueprintNameById(unitBlueprintId: string | undefined): string | null {
+  if (unitBlueprintId === undefined) return null;
+  const cached = unitBlueprintNameCache.get(unitBlueprintId);
+  if (cached !== undefined) return cached;
+  try {
+    const name = getUnitBlueprint(unitBlueprintId).name;
+    unitBlueprintNameCache.set(unitBlueprintId, name);
+    return name;
+  } catch {
+    unitBlueprintNameCache.set(unitBlueprintId, UNKNOWN_UNIT_NAME);
+    return UNKNOWN_UNIT_NAME;
+  }
+}
+
+function buildingBlueprintNameById(buildingBlueprintId: string | null | undefined): string | null {
+  if (buildingBlueprintId === null || buildingBlueprintId === undefined) return null;
+  const cached = buildingBlueprintNameCache.get(buildingBlueprintId);
+  if (cached !== undefined) return cached;
+  try {
+    const name = getBuildingBlueprint(
+      buildingBlueprintId as Parameters<typeof getBuildingBlueprint>[0],
+    ).name;
+    buildingBlueprintNameCache.set(buildingBlueprintId, name);
+    return name;
+  } catch {
+    buildingBlueprintNameCache.set(buildingBlueprintId, UNKNOWN_BUILDING_NAME);
+    return UNKNOWN_BUILDING_NAME;
+  }
+}
+
 /** Body-entity label. `nameToggle` is the per-type `name` toggle for
  *  this entity's HUD type (unit / tower / building). Commander owner
  *  names are resolved separately by resolveCommanderOwnerName so the
@@ -77,6 +109,26 @@ export function resolveEntityDisplayName(
   if (!nameAllowed(nameToggle, selected, mode)) return null;
 
   return unitBlueprintName(entity) ?? buildingBlueprintName(entity);
+}
+
+export function resolveUnitBlueprintDisplayName(
+  unitBlueprintId: string | undefined,
+  selected: boolean,
+  nameToggle: boolean,
+  mode: SelectionHudMode,
+): string | null {
+  if (!nameAllowed(nameToggle, selected, mode)) return null;
+  return unitBlueprintNameById(unitBlueprintId);
+}
+
+export function resolveBuildingBlueprintDisplayName(
+  buildingBlueprintId: string | null | undefined,
+  selected: boolean,
+  nameToggle: boolean,
+  mode: SelectionHudMode,
+): string | null {
+  if (!nameAllowed(nameToggle, selected, mode)) return null;
+  return buildingBlueprintNameById(buildingBlueprintId);
 }
 
 /** Commander owner label. It uses the same per-type name toggle/mode

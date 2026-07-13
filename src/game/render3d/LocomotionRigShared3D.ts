@@ -18,18 +18,41 @@ export type LocomotionBase = {
   geometryKey: string;
 };
 
+/** Render-packet pose used by locomotion rigs when the visible body is
+ *  driven from an interpolated / authoritative render state instead of
+ *  the mutable Entity transform. Fields use sim-space naming:
+ *  x/y are horizontal, z is up, and normalZ is the up component. */
+export type LocomotionRenderPose3D = {
+  x: number;
+  y: number;
+  z: number;
+  rotation: number;
+  groundY: number;
+  normalX: number;
+  normalY: number;
+  normalZ: number;
+  velocityX: number;
+  velocityY: number;
+  velocityZ?: number;
+  yawRate: number;
+  bodyCenterHeight: number;
+};
+
 const ROLLING_LOCOMOTION_LINEAR_SPEED_EPSILON_SQ = 1e-4;
 const ROLLING_LOCOMOTION_YAW_RATE_EPSILON = 1e-4;
 const ROLLING_LOCOMOTION_SUSPENSION_EPSILON = 1e-3;
 
-export function rollingLocomotionBodyActive(entity: Entity): boolean {
+export function rollingLocomotionBodyActive(
+  entity: Entity,
+  pose?: LocomotionRenderPose3D,
+): boolean {
   const unit = entity.unit;
-  if (!unit) return false;
-  const vx = unit.velocityX ?? 0;
-  const vy = unit.velocityY ?? 0;
+  if (!unit && pose === undefined) return false;
+  const vx = pose?.velocityX ?? unit?.velocityX ?? 0;
+  const vy = pose?.velocityY ?? unit?.velocityY ?? 0;
   if (vx * vx + vy * vy > ROLLING_LOCOMOTION_LINEAR_SPEED_EPSILON_SQ) return true;
-  if (Math.abs(unit.angularVelocity3?.z ?? 0) > ROLLING_LOCOMOTION_YAW_RATE_EPSILON) return true;
-  const suspension = unit.suspension;
+  if (Math.abs(pose?.yawRate ?? unit?.angularVelocity3?.z ?? 0) > ROLLING_LOCOMOTION_YAW_RATE_EPSILON) return true;
+  const suspension = unit?.suspension;
   if (!suspension) return false;
   return (
     Math.abs(suspension.offsetX) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
@@ -80,12 +103,13 @@ export function rollingContact(localX: number, localZ: number): RollingContactSt
 export function sampleRollingContactDistance(
   entity: Entity,
   state: RollingContactState,
+  pose?: LocomotionRenderPose3D,
 ): number {
-  const rotation = entity.transform.rotation;
+  const rotation = pose?.rotation ?? entity.transform.rotation;
   const cosR = Math.cos(rotation);
   const sinR = Math.sin(rotation);
-  const worldX = entity.transform.x + cosR * state.localX - sinR * state.localZ;
-  const worldZ = entity.transform.y + sinR * state.localX + cosR * state.localZ;
+  const worldX = (pose?.x ?? entity.transform.x) + cosR * state.localX - sinR * state.localZ;
+  const worldZ = (pose?.y ?? entity.transform.y) + sinR * state.localX + cosR * state.localZ;
 
   let signedDistance = 0;
   if (state.initialized) {
@@ -121,8 +145,9 @@ const _chassisN = new THREE.Vector3();
  *
  *  where unit_base is (sim.x, sim.z − bodyCenterHeight, sim.y), yaw
  *  is −sim.rotation, and tilt is built from the surface normal at
- *  the unit's footprint. Surface normal sampling is done inline so
- *  the caller doesn't need to thread it through. */
+ *  the unit's footprint. When a render pose is supplied, its interpolated
+ *  base position / yaw / normal are used so world-space locomotion stays
+ *  attached to the rendered body instead of a stale sim Entity. */
 export function transformChassisToWorld(
   cx: number, cy: number, cz: number,
   entity: Entity,
@@ -130,6 +155,7 @@ export function transformChassisToWorld(
   mapWidth: number,
   mapHeight: number,
   out: { x: number; y: number; z: number },
+  pose?: LocomotionRenderPose3D,
 ): void {
   const suspension = entity.unit?.suspension;
   if (suspension) {
@@ -137,7 +163,7 @@ export function transformChassisToWorld(
     cy += suspension.offsetZ;
     cz += suspension.offsetY;
   }
-  const rot = entity.transform.rotation;
+  const rot = pose?.rotation ?? entity.transform.rotation;
   const cosR = Math.cos(rot);
   const sinR = Math.sin(rot);
   // Yaw: yawGroup applies rotation.y = −rot. Apply that to (cx, cy, cz).
@@ -148,20 +174,26 @@ export function transformChassisToWorld(
   // Read from the unit's sim-side smoothed normal (updateUnitGroundNormal) so
   // legs/wheels and chassis tilt all share one canonical value, falling
   // back to a raw-terrain read for non-unit entities.
-  const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
-  if (n.nx === 0 && n.ny === 0) {
-    out.x = entity.transform.x + yx;
-    out.y = entity.transform.z - bodyCenterHeight + yy;
-    out.z = entity.transform.y + yz;
+  const n = pose === undefined ? getLocomotionSurfaceNormal(entity, mapWidth, mapHeight) : undefined;
+  const nx = pose?.normalX ?? n!.nx;
+  const ny = pose?.normalY ?? n!.ny;
+  const nz = pose?.normalZ ?? n!.nz;
+  const baseX = pose?.x ?? entity.transform.x;
+  const baseY = pose?.y ?? entity.transform.y;
+  const baseZ = pose?.z ?? entity.transform.z;
+  if (nx === 0 && ny === 0) {
+    out.x = baseX + yx;
+    out.y = baseZ - bodyCenterHeight + yy;
+    out.z = baseY + yz;
     return;
   }
   // sim normal (nx, ny, nz=up) → three.js (nx, nz, ny)
-  _chassisN.set(n.nx, n.nz, n.ny);
+  _chassisN.set(nx, nz, ny);
   _chassisTilt.setFromUnitVectors(_chassisUp, _chassisN);
   _chassisVec.set(yx, yy, yz).applyQuaternion(_chassisTilt);
-  out.x = entity.transform.x + _chassisVec.x;
-  out.y = entity.transform.z - bodyCenterHeight + _chassisVec.y;
-  out.z = entity.transform.y + _chassisVec.z;
+  out.x = baseX + _chassisVec.x;
+  out.y = baseZ - bodyCenterHeight + _chassisVec.y;
+  out.z = baseY + _chassisVec.z;
 }
 
 /** 3D IK (law of cosines, lifted into 3D) — returns the knee world

@@ -939,7 +939,11 @@
         "maxLifespan",
         "detonateOnExpiry",
         "hasExplosion",
-        "hasSubmunitions"
+        "hasSubmunitions",
+        "airFrictionPer60HzFrame",
+        "airDragCoefficient",
+        "propulsionAcceleration",
+        "homingThrustAcceleration"
       ],
       "properties": {
         "shotBlueprintId": {
@@ -977,6 +981,18 @@
         },
         "hasSubmunitions": {
           "type": "boolean"
+        },
+        "airFrictionPer60HzFrame": {
+          "type": "number"
+        },
+        "airDragCoefficient": {
+          "type": "number"
+        },
+        "propulsionAcceleration": {
+          "type": "number"
+        },
+        "homingThrustAcceleration": {
+          "type": "number"
         }
       },
       "additionalProperties": false

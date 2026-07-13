@@ -56,7 +56,10 @@ import { SimulationEventQueues } from './SimulationEventQueues';
 import { resolveCommanderGameOverWinner } from './SimulationGameOver';
 import { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
 import { SimulationDeadEntityCleanup } from './SimulationDeadEntityCleanup';
-import { SimulationCombatController } from './SimulationCombatController';
+import {
+  SimulationCombatController,
+  type SimulationCombatPhaseTimings,
+} from './SimulationCombatController';
 import { SimulationActionQueueMaintenance } from './SimulationActionQueueMaintenance';
 import { SimulationIdleBuilderAutoRepair } from './SimulationIdleBuilderAutoRepair';
 import {
@@ -111,10 +114,20 @@ import {
   UNIT_ACTION_MOVEMENT_DECISION_HOLD,
   UNIT_ACTION_MOVEMENT_DECISION_THRUST,
 } from './SimulationUnitActionMovementPlanner';
+import { getSimWasm } from '../sim-wasm/init';
 
 /** Consecutive fully-submerged sim ticks before an explodesIfSubmerged
  *  unit detonates (~0.67 s at the 30 Hz lockstep step). */
 const SUBMERGED_EXPLOSION_DELAY_TICKS = 20;
+const _unitExplodesIfSubmergedByBlueprint = new Map<string, boolean>();
+
+function unitExplodesIfSubmerged(unitBlueprintId: string): boolean {
+  let cached = _unitExplodesIfSubmergedByBlueprint.get(unitBlueprintId);
+  if (cached !== undefined) return cached;
+  cached = getUnitBlueprint(unitBlueprintId).base.explodesIfSubmerged === true;
+  _unitExplodesIfSubmergedByBlueprint.set(unitBlueprintId, cached);
+  return cached;
+}
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
@@ -134,6 +147,27 @@ type FormationRouteMetadata = {
   offsetX: number;
   offsetY: number;
   radius: number;
+};
+
+export type SimulationUpdatePhaseTimings = {
+  readonly framePrepMs: number;
+  readonly commandsMs: number;
+  readonly deathPrepassMs: number;
+  readonly buildingWindEconomyMs: number;
+  readonly unitGroundNormalMs: number;
+  readonly idleBuilderAutoRepairMs: number;
+  readonly energyDistributionMs: number;
+  readonly constructionLifecycleMs: number;
+  readonly factoryProductionMs: number;
+  readonly commanderAbilitiesMs: number;
+  readonly transportActionsMs: number;
+  readonly unitMovementMs: number;
+  readonly spatialGridMs: number;
+  readonly combatMs: number;
+  readonly deadCleanupMs: number;
+  readonly forceFinalizeMs: number;
+  readonly gameOverTickMs: number;
+  readonly totalMs: number;
 };
 
 // ── Stuck-detection / replanning constants ────────────────────────
@@ -186,6 +220,9 @@ export class Simulation {
    *  grid. Buildings are static, so we only need to rescan them when
    *  one is added or removed instead of every simulation tick. */
   private spatialGridBuildingVersion = -1;
+  /** Last unit-set version that received a full native unit spatial sync.
+   *  Per-tick physics motion is synced sparsely by ServerSimulationCore. */
+  private spatialGridUnitSetVersion = -1;
 
   // Track if game is over
   private gameOverWinnerId: PlayerId | null = null;
@@ -202,9 +239,11 @@ export class Simulation {
   private _gatherWaitGroups: Map<string, GatherWaitGroup> = new Map();
   private readonly _gatherWaitGroupList: GatherWaitGroup[] = [];
   private readonly _gatherWaitGroupPool: GatherWaitGroup[] = [];
+  private _gatherWaitLastActionVersion = -1;
 
   // Reusable buffers for shared energy distribution (avoid per-tick allocations)
   private energyBuffers: EnergyBuffers = createEnergyBuffers();
+  private updateProfiler: ((timings: SimulationUpdatePhaseTimings) => void) | undefined;
 
   // Callback for when units die (to clean up physics bodies)
   // deathContexts contains info about the killing blow for directional explosions
@@ -357,8 +396,26 @@ export class Simulation {
     return this.simElapsedMs;
   }
 
+  setUpdateProfiler(
+    profiler: ((timings: SimulationUpdatePhaseTimings) => void) | undefined,
+  ): void {
+    this.updateProfiler = profiler;
+  }
+
+  setCombatProfiler(
+    profiler: ((timings: SimulationCombatPhaseTimings) => void) | undefined,
+  ): void {
+    this.combatController.setProfiler(profiler);
+  }
+
   // Run one simulation step with the given timestep
   update(dtMs: number): void {
+    const updateProfiler = this.updateProfiler;
+    if (updateProfiler !== undefined) {
+      this.updateProfiled(dtMs, updateProfiler);
+      return;
+    }
+
     if (this.gamePhase === 'init') this.gamePhase = transitionPhase('init', 'battle');
 
     this.stuckReplanController.beginFrame();
@@ -511,6 +568,177 @@ export class Simulation {
     this.checkGameOver();
 
     this.world.incrementTick();
+  }
+
+  private updateProfiled(
+    dtMs: number,
+    profiler: (timings: SimulationUpdatePhaseTimings) => void,
+  ): void {
+    const start = performance.now();
+    let mark = start;
+
+    if (this.gamePhase === 'init') this.gamePhase = transitionPhase('init', 'battle');
+    this.stuckReplanController.beginFrame();
+    resourceMovementSystem.beginTick(this.world);
+    this.forceAccumulator.clear();
+    this.simElapsedMs += dtMs;
+    const tick = this.world.getTick();
+    this.world.pruneExpiredScanPulses(tick);
+    let now = performance.now();
+    const framePrepMs = now - mark;
+    mark = now;
+
+    const cmdCtx: CommandContext = {
+      world: this.world,
+      constructionSystem: this.constructionSystem,
+      pendingProjectileSpawns: this.eventQueues.projectileSpawns,
+      pendingSimEvents: this.eventQueues.simEvents,
+      onSimEvent: this.onSimEvent,
+    };
+    const commands = this.commandQueue.getCommandsForTick(tick);
+    for (let i = 0; i < commands.length; i++) {
+      executeCommand(cmdCtx, commands[i]);
+    }
+    now = performance.now();
+    const commandsMs = now - mark;
+    mark = now;
+
+    this.fireDueSelfDestructs(tick);
+    this.detonateSubmergedUnits();
+    now = performance.now();
+    const deathPrepassMs = now - mark;
+    mark = now;
+
+    updateBuildingActiveStates(this.world, dtMs);
+    sampleWindStateInto(this.windState, this.simElapsedMs);
+    this.windPowerTracker.update(this.world, this.windState);
+    economyManager.update(this.world, dtMs, this.windState.speed);
+    now = performance.now();
+    const buildingWindEconomyMs = now - mark;
+    mark = now;
+
+    updateUnitGroundNormal(this.world, dtMs);
+    now = performance.now();
+    const unitGroundNormalMs = now - mark;
+    mark = now;
+
+    this.idleBuilderAutoRepair.update(tick);
+    now = performance.now();
+    const idleBuilderAutoRepairMs = now - mark;
+    mark = now;
+
+    distributeEnergy(this.world, dtMs, this.energyBuffers);
+    economyManager.processConverters(this.world, dtMs);
+    now = performance.now();
+    const energyDistributionMs = now - mark;
+    mark = now;
+
+    const constructionResult = updateConstructionLifecycle(this.world);
+    this.actionQueueMaintenance.advanceCompletedConstructionActions(
+      constructionResult.completedBuildings,
+    );
+    now = performance.now();
+    const constructionLifecycleMs = now - mark;
+    mark = now;
+
+    updateAiProduction(this.world, this.aiPlayerIds, this.aiAllowedUnitBlueprintIds);
+    const productionResult = factoryProductionSystem.update(
+      this.world, dtMs,
+      this.constructionSystem.getGrid(),
+      this.forceAccumulator,
+      this.windState,
+    );
+    if (productionResult.spawnedUnits.length > 0) {
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(productionResult.spawnedUnits);
+    }
+    if (productionResult.completedUnits.length > 0) {
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(productionResult.completedUnits);
+    }
+    now = performance.now();
+    const factoryProductionMs = now - mark;
+    mark = now;
+
+    const commanderResult = commanderAbilitiesSystem.update(this.world, dtMs);
+    this.currentSprayTargets = commanderResult.sprayTargets;
+    if (commanderResult.resurrectedUnits.length > 0) {
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(commanderResult.resurrectedUnits);
+    }
+    for (let i = 0; i < commanderResult.completedBuildings.length; i++) {
+      const commander = this.world.getEntity(commanderResult.completedBuildings[i].commanderId);
+      if (commander) {
+        this.advanceAction(commander);
+      }
+    }
+    now = performance.now();
+    const commanderAbilitiesMs = now - mark;
+    mark = now;
+
+    const transportResult = updateTransportActions(this.world);
+    if (transportResult.unloadedUnits.length > 0) {
+      const onUnitSpawn = this.onUnitSpawn;
+      if (onUnitSpawn !== null) onUnitSpawn(transportResult.unloadedUnits);
+    }
+    now = performance.now();
+    const transportActionsMs = now - mark;
+    mark = now;
+
+    this.updateUnits(dtMs / 1000);
+    now = performance.now();
+    const unitMovementMs = now - mark;
+    mark = now;
+
+    this.updateSpatialGrid();
+    now = performance.now();
+    const spatialGridMs = now - mark;
+    mark = now;
+
+    this.combatController.update(
+      dtMs,
+      this.windState,
+      this.onSimEvent,
+      this.onUnitDeath,
+      this.onBuildingDeath,
+    );
+    now = performance.now();
+    const combatMs = now - mark;
+    mark = now;
+
+    this.deadEntityCleanup.run(this.onUnitDeath, this.onBuildingDeath, this.onBuildingSpawn);
+    now = performance.now();
+    const deadCleanupMs = now - mark;
+    mark = now;
+
+    this.forceAccumulator.finalize();
+    now = performance.now();
+    const forceFinalizeMs = now - mark;
+    mark = now;
+
+    this.checkGameOver();
+    this.world.incrementTick();
+    now = performance.now();
+    profiler({
+      framePrepMs,
+      commandsMs,
+      deathPrepassMs,
+      buildingWindEconomyMs,
+      unitGroundNormalMs,
+      idleBuilderAutoRepairMs,
+      energyDistributionMs,
+      constructionLifecycleMs,
+      factoryProductionMs,
+      commanderAbilitiesMs,
+      transportActionsMs,
+      unitMovementMs,
+      spatialGridMs,
+      combatMs,
+      deadCleanupMs,
+      forceFinalizeMs,
+      gameOverTickMs: now - mark,
+      totalMs: now - start,
+    });
   }
 
   // Update spatial grid incrementally
@@ -716,33 +944,41 @@ export class Simulation {
     }
 
     const previousPath = unit.activePath;
-    const terrainFilter = this.pathTerrainFilterForUnit(entity);
-    const formationRoute = !forceLocalPlan && previousPath === null
+    const directPath = action.directPath === true;
+    const terrainFilter = directPath ? null : this.pathTerrainFilterForUnit(entity);
+    const formationRoute = !directPath && !forceLocalPlan && previousPath === null
       ? this.getFormationRouteMetadata(action)
       : null;
-    let points = formationRoute !== null
-      ? this.expandFormationRoutePoints(
-          action,
-          formationRoute,
-          buildingGrid,
-          terrainVersion,
-          buildingGridVersion,
-          terrainFilter,
-        )
-      : expandPathPoints(
-          entity.transform.x,
-          entity.transform.y,
-          action.x,
-          action.y,
-          this.world.mapWidth,
-          this.world.mapHeight,
-          buildingGrid,
-          action.z ?? null,
-          terrainFilter,
-          unit.radius.collision,
-          this.world.slopePathMode === 'symmetric',
-        );
-    if (formationRoute !== null && points.length <= 1) {
+    let points: UnitPathPoint[];
+    if (directPath) {
+      const x = this.clampPathX(action.x);
+      const y = this.clampPathY(action.y);
+      points = [{ x, y, z: action.z ?? this.world.getGroundZ(x, y) }];
+    } else if (formationRoute !== null) {
+      points = this.expandFormationRoutePoints(
+        action,
+        formationRoute,
+        buildingGrid,
+        terrainVersion,
+        buildingGridVersion,
+        terrainFilter,
+      );
+    } else {
+      points = expandPathPoints(
+        entity.transform.x,
+        entity.transform.y,
+        action.x,
+        action.y,
+        this.world.mapWidth,
+        this.world.mapHeight,
+        buildingGrid,
+        action.z ?? null,
+        terrainFilter,
+        unit.radius.collision,
+        this.world.slopePathMode === 'symmetric',
+      );
+    }
+    if (!directPath && formationRoute !== null && points.length <= 1) {
       points = expandPathPoints(
         entity.transform.x,
         entity.transform.y,
@@ -816,6 +1052,31 @@ export class Simulation {
     unit.patrolStartIndex = patrolStartIndex >= 0 ? patrolStartIndex : null;
   }
 
+  private clearUnitDriveInputIfNeeded(entity: Entity, unit: Unit, entitySlot: number): void {
+    if (
+      unit.thrustDirX === 0 &&
+      unit.thrustDirY === 0 &&
+      unit.headingDirX === 0 &&
+      unit.headingDirY === 0
+    ) {
+      return;
+    }
+    entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
+  }
+
+  private clearIdleGroundUnitStateIfNeeded(entity: Entity, unit: Unit, entitySlot: number): void {
+    this.clearUnitDriveInputIfNeeded(entity, unit, entitySlot);
+    if (unit.activePath !== null) unit.activePath = null;
+    if (unit.stuckTicks !== 0) unit.stuckTicks = 0;
+  }
+
+  private clearTransientCombatPriorityIfNeeded(entity: Entity): void {
+    const combat = entity.combat;
+    if (combat === null || combat.manualLaunchActive) return;
+    if (combat.priorityTargetId !== null) combat.priorityTargetId = null;
+    if (combat.priorityTargetPoint !== null) combat.priorityTargetPoint = null;
+  }
+
   private handleSatisfiedMovementAnchor(entity: Entity, currentAction: UnitAction): boolean {
     const unit = entity.unit;
     if (!unit || !isSatisfiedMovementAnchorAction(currentAction)) return false;
@@ -885,6 +1146,9 @@ export class Simulation {
   }
 
   private releaseReadyGatherWaits(): void {
+    const actionVersion = this.world.getActionQueueVersion();
+    if (this._gatherWaitLastActionVersion === actionVersion) return;
+
     const groups = this._gatherWaitGroups;
     const sortedGroups = this._gatherWaitGroupList;
     groups.clear();
@@ -908,6 +1172,7 @@ export class Simulation {
     }
 
     sortedGroups.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    let releasedAny = false;
     for (let groupIndex = 0; groupIndex < sortedGroups.length; groupIndex++) {
       const { groupId, members } = sortedGroups[groupIndex];
       let ready = members.length > 0;
@@ -926,10 +1191,12 @@ export class Simulation {
         shiftUnitAction(unit);
         unit.stuckTicks = 0;
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
+        releasedAny = true;
       }
     }
     groups.clear();
     this.releaseGatherWaitGroups(sortedGroups);
+    this._gatherWaitLastActionVersion = releasedAny ? -1 : this.world.getActionQueueVersion();
   }
 
   private acquireGatherWaitGroup(key: string, groupId: number): GatherWaitGroup {
@@ -1013,7 +1280,7 @@ export class Simulation {
       const entity = units[i];
       const unit = entity.unit;
       if (unit === null || unit.hp <= 0) continue;
-      if (getUnitBlueprint(unit.unitBlueprintId).base.explodesIfSubmerged !== true) continue;
+      if (!unitExplodesIfSubmerged(unit.unitBlueprintId)) continue;
       const bodyTopZ = entity.transform.z + unit.bodyCenterHeight;
       if (bodyTopZ > WATER_LEVEL) {
         submergedTicks.delete(entity.id);
@@ -1077,7 +1344,9 @@ export class Simulation {
 
   private updateUnits(dtSec: number): void {
     const movingUnits = this._movingUnitsBuf;
+    const movingUnitSlots = this._movingUnitSlotsBuf;
     movingUnits.length = 0;
+    movingUnitSlots.length = 0;
     this.arrivalController.beginFrame();
     this.combatHaltController.prepare();
     this.releaseReadyGatherWaits();
@@ -1089,8 +1358,17 @@ export class Simulation {
     // native plan batch reads current slab positions for actors AND their
     // range targets (Phase 1 never mutates positions, so hoisting the
     // sweep is behavior-identical to the old interleaved order).
-    for (let i = 0; i < units.length; i++) {
-      spatialGrid.updateUnitSpatial(units[i]);
+    const sim = getSimWasm();
+    if (sim !== undefined) {
+      const unitSetVersion = this.world.getUnitSetVersion();
+      if (this.spatialGridUnitSetVersion !== unitSetVersion) {
+        sim.spatial.syncUnitsFromEntityState();
+        this.spatialGridUnitSetVersion = unitSetVersion;
+      }
+    } else {
+      for (let i = 0; i < units.length; i++) {
+        spatialGrid.updateUnitSpatial(units[i]);
+      }
     }
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
@@ -1115,7 +1393,7 @@ export class Simulation {
       // so shells can fall, collide, and settle like ordinary units
       // before activation.
       if (isBuildBlockingActivation(entity.buildable)) {
-        entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
+        this.clearUnitDriveInputIfNeeded(entity, unit, entitySlot);
         if (entity.combat) {
           entity.combat.priorityTargetId = null;
           entity.combat.priorityTargetPoint = null;
@@ -1125,8 +1403,8 @@ export class Simulation {
       }
 
       if (unit.hp <= 0) {
-        entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
-        unit.stuckTicks = 0;
+        this.clearUnitDriveInputIfNeeded(entity, unit, entitySlot);
+        if (unit.stuckTicks !== 0) unit.stuckTicks = 0;
         if (entity.combat) {
           entity.combat.priorityTargetId = null;
           entity.combat.priorityTargetPoint = null;
@@ -1135,16 +1413,25 @@ export class Simulation {
         continue;
       }
 
+      // No actions - stable idle ground units are the common 10k-scale case.
+      // Avoid validating an empty queue and avoid rewriting already-idle state
+      // every sim tick. Flying units keep circling their last destination.
+      if (unit.actions.length === 0) {
+        this.clearTransientCombatPriorityIfNeeded(entity);
+        if (unit.locomotion.type !== 'flying') {
+          this.clearIdleGroundUnitStateIfNeeded(entity, unit, entitySlot);
+          continue;
+        }
+        this.clearUnitDriveInputIfNeeded(entity, unit, entitySlot);
+        planner.queue(entity, undefined, 0);
+        continue;
+      }
+
       // Default: no thrust (contact braking/drag will slow or hold the unit)
       entitySlotRegistry.setUnitDriveInput(entity, 0, 0, 0, 0, entitySlot);
 
       // Clear priority target — re-set below by attack / attack-ground actions.
-      if (entity.combat) {
-        if (!entity.combat.manualLaunchActive) {
-          entity.combat.priorityTargetId = null;
-          entity.combat.priorityTargetPoint = null;
-        }
-      }
+      this.clearTransientCombatPriorityIfNeeded(entity);
 
       // Sweep targeted intents whose target disappeared or no longer
       // needs work. The action queue holds durable command waypoints;
@@ -1154,11 +1441,9 @@ export class Simulation {
         this.world.markSnapshotDirty(entity.id, ENTITY_CHANGED_ACTIONS);
       }
 
-      // No actions - flying units keep circling their last destination.
       if (unit.actions.length === 0) {
         if (unit.locomotion.type !== 'flying') {
-          unit.activePath = null;
-          unit.stuckTicks = 0;
+          this.clearIdleGroundUnitStateIfNeeded(entity, unit, entitySlot);
           continue;
         }
         planner.queue(entity, undefined, 0);
@@ -1623,8 +1908,8 @@ export class Simulation {
     }
 
     this.arrivalController.flushCompletion();
-    this.flyingLoiter.flush(movingUnits);
-    this.arrivalController.flushThrust(movingUnits, dtSec);
+    this.flyingLoiter.flush(movingUnits, movingUnitSlots);
+    this.arrivalController.flushThrust(movingUnits, movingUnitSlots, dtSec);
 
     // Stuck-detection / replan pass — runs after every unit has had
     // its thrust set this tick. Looking at thrust + actual physics
@@ -1636,18 +1921,6 @@ export class Simulation {
     // tick budget on planning — units that don't get a slot this
     // tick stay at the threshold and try again next tick.
     this.stuckReplanController.evaluate(movingUnits);
-    this.refreshMovingUnitSlots(movingUnits);
-  }
-
-  private refreshMovingUnitSlots(movingUnits: readonly Entity[]): void {
-    const slots = this._movingUnitSlotsBuf;
-    slots.length = movingUnits.length;
-    for (let i = 0; i < movingUnits.length; i++) {
-      const entity = movingUnits[i];
-      slots[i] = entity.entitySlotId >= 0
-        ? entity.entitySlotId
-        : entitySlotRegistry.getEntitySlot(entity);
-    }
   }
 
   /** Replan the given unit's active route from its current position to
@@ -1838,5 +2111,7 @@ export class Simulation {
     this.world.clearPendingDeathCheckIds();
     resetEnergyBuffers(this.energyBuffers);
     this.spatialGridBuildingVersion = -1;
+    this.spatialGridUnitSetVersion = -1;
+    this._gatherWaitLastActionVersion = -1;
   }
 }

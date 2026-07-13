@@ -15,6 +15,7 @@ import type { Entity, PlayerId } from '../sim/types';
 import type { WheelConfig } from '@/types/blueprints';
 import {
   type LocomotionBase,
+  type LocomotionRenderPose3D,
   type RollingContactState,
   emaAlpha,
   rollingContact,
@@ -183,16 +184,17 @@ export function updateWheels(
   dtMs: number,
   mapWidth: number,
   mapHeight: number,
+  pose?: LocomotionRenderPose3D,
 ): boolean {
   const dtSec = Math.max(0.001, dtMs / 1000);
-  const bodyCenterHeight = entity.unit ? getUnitBodyCenterHeight(entity.unit) : 0;
+  const bodyCenterHeight = pose?.bodyCenterHeight ?? (entity.unit ? getUnitBodyCenterHeight(entity.unit) : 0);
   // The chassis tilt rotates local Y through the surface normal; lift
   // applied as a local-Y delta moves the wheel approximately by
   // `localLift * normal.z` in world Y. Invert that ratio (with the
   // same 0.35 floor LegRig3D uses) when converting a required world
   // lift back to a local-frame adjustment.
-  const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
-  const normalY = Math.max(0.35, n.nz);
+  const n = pose === undefined ? getLocomotionSurfaceNormal(entity, mapWidth, mapHeight) : undefined;
+  const normalY = Math.max(0.35, pose?.normalZ ?? n!.nz);
   const liftAlpha = emaAlpha(dtSec, WHEEL_LIFT_TAU_SEC);
   const omegaAlpha = emaAlpha(dtSec, WHEEL_OMEGA_TAU_SEC);
 
@@ -206,7 +208,7 @@ export function updateWheels(
     // in the unit's tilt, yaw, and suspension offsets.
     transformChassisToWorld(
       mount.localX, mount.wheelR, mount.localZ,
-      entity, bodyCenterHeight, mapWidth, mapHeight, _wheelWorld,
+      entity, bodyCenterHeight, mapWidth, mapHeight, _wheelWorld, pose,
     );
     const naturalWorldY = _wheelWorld.y;
     // Sample terrain at the tire's world XZ and clamp: tire center
@@ -236,7 +238,7 @@ export function updateWheels(
     // chassis-local distance. Reverse motion comes for free because
     // signedDistance is signed; pivots show opposite spin on opposite
     // wheels because each tire has its own contact and target.
-    const signedDistance = sampleRollingContactDistance(entity, mesh.wheelContacts[i]);
+    const signedDistance = sampleRollingContactDistance(entity, mesh.wheelContacts[i], pose);
     const tireR = Math.max(1, mount.wheelR);
     const targetOmega = signedDistance / dtSec / tireR;
     mount.angularVelocity += (targetOmega - mount.angularVelocity) * omegaAlpha;
@@ -245,11 +247,15 @@ export function updateWheels(
     // Integrate from the velocity channel.
     mesh.wheels[i].rotation.y += mount.angularVelocity * dtSec;
   }
-  return wheelsNeedFrame(mesh, entity);
+  return wheelsNeedFrame(mesh, entity, pose);
 }
 
-function wheelsNeedFrame(mesh: WheelMesh, entity: Entity): boolean {
-  if (rollingLocomotionBodyActive(entity)) return true;
+function wheelsNeedFrame(
+  mesh: WheelMesh,
+  entity: Entity,
+  pose?: LocomotionRenderPose3D,
+): boolean {
+  if (rollingLocomotionBodyActive(entity, pose)) return true;
   const count = Math.min(
     mesh.wheels.length,
     mesh.wheelContacts.length,

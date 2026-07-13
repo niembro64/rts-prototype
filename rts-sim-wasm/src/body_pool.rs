@@ -21,9 +21,9 @@ use wasm_bindgen::prelude::*;
 //
 //  Capacity is fixed at POOL_CAPACITY at init time. Vecs never
 //  reallocate, so the typed-array views JS holds remain valid
-//  forever (no per-tick view refresh). Sized for the current scale
-//  target: 5k active units plus commanders, buildings, and headroom
-//  for short-lived bodies during stress captures.
+//  forever (no per-tick view refresh). Sized for BAR-scale stress
+//  captures: 10k+ active unit bodies, static structures, and headroom
+//  for dense spawn/despawn phases.
 //
 //  Free-slot management: a free-list Vec drains last-allocated
 //  first. `next_unused_slot` tracks the high-water mark for the
@@ -35,7 +35,7 @@ use wasm_bindgen::prelude::*;
 //  every step would waste cycles.
 // ─────────────────────────────────────────────────────────────────
 
-pub const POOL_CAPACITY: u32 = 8192;
+pub const POOL_CAPACITY: u32 = 32768;
 pub(crate) const POOL_CAPACITY_USIZE: usize = POOL_CAPACITY as usize;
 
 // Bit positions inside the per-body `flags: Vec<u8>`. Mirrors the
@@ -1318,11 +1318,16 @@ pub(crate) struct SphereContactBucket {
     pub(crate) gen: u32,
     pub(crate) items: Vec<u32>,
     pub(crate) max_index: u32,
+    pub(crate) max_radius: f64,
+    pub(crate) max_regular_radius: f64,
 }
 
 pub(crate) struct SphereResolveScratch {
     pub(crate) cells: HashMap<u64, SphereContactBucket>,
     pub(crate) dense_cells: Vec<SphereContactBucket>,
+    pub(crate) dense_touched_indices: Vec<usize>,
+    pub(crate) large_indices: Vec<usize>,
+    pub(crate) is_large: Vec<bool>,
     pub(crate) cell_x: Vec<i32>,
     pub(crate) cell_y: Vec<i32>,
     pub(crate) cell_z: Vec<i32>,
@@ -1348,6 +1353,9 @@ pub(crate) fn sphere_resolve_scratch() -> &'static mut SphereResolveScratch {
             *cell = Some(SphereResolveScratch {
                 cells: HashMap::default(),
                 dense_cells: Vec::new(),
+                dense_touched_indices: Vec::new(),
+                large_indices: Vec::new(),
+                is_large: Vec::new(),
                 cell_x: Vec::new(),
                 cell_y: Vec::new(),
                 cell_z: Vec::new(),
@@ -1367,12 +1375,25 @@ fn reset_sphere_contact_bucket(bucket: &mut SphereContactBucket, gen: u32) {
     bucket.gen = gen;
     bucket.items.clear();
     bucket.max_index = 0;
+    bucket.max_radius = 0.0;
+    bucket.max_regular_radius = 0.0;
 }
 
 #[inline]
-fn push_sphere_contact_bucket_item(bucket: &mut SphereContactBucket, index: u32) {
+fn push_sphere_contact_bucket_item(
+    bucket: &mut SphereContactBucket,
+    index: u32,
+    radius: f64,
+    is_large: bool,
+) {
     if index > bucket.max_index {
         bucket.max_index = index;
+    }
+    if radius > bucket.max_radius {
+        bucket.max_radius = radius;
+    }
+    if !is_large && radius > bucket.max_regular_radius {
+        bucket.max_regular_radius = radius;
     }
     bucket.items.push(index);
 }
@@ -1419,6 +1440,68 @@ fn sphere_contact_dense_index(
 }
 
 #[inline]
+fn sphere_contact_dense_coords(
+    index: usize,
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    width: usize,
+    height: usize,
+) -> (i32, i32, i32) {
+    let plane = width * height;
+    let z = index / plane;
+    let rem = index - z * plane;
+    let y = rem / width;
+    let x = rem - y * width;
+    (min_cx + x as i32, min_cy + y as i32, min_cz + z as i32)
+}
+
+#[inline]
+fn sphere_contact_cell_may_overlap_point(
+    cx: i32,
+    cy: i32,
+    cz: i32,
+    cell_size: f64,
+    half_cs: f64,
+    px: f64,
+    py: f64,
+    pz: f64,
+    radius: f64,
+) -> bool {
+    let min_x = cx as f64 * cell_size;
+    let max_x = min_x + cell_size;
+    let min_y = cy as f64 * cell_size;
+    let max_y = min_y + cell_size;
+    let min_z = cz as f64 * cell_size - half_cs;
+    let max_z = min_z + cell_size;
+    let closest_x = if px < min_x {
+        min_x
+    } else if px > max_x {
+        max_x
+    } else {
+        px
+    };
+    let closest_y = if py < min_y {
+        min_y
+    } else if py > max_y {
+        max_y
+    } else {
+        py
+    };
+    let closest_z = if pz < min_z {
+        min_z
+    } else if pz > max_z {
+        max_z
+    } else {
+        pz
+    };
+    let dx = closest_x - px;
+    let dy = closest_y - py;
+    let dz = closest_z - pz;
+    dx * dx + dy * dy + dz * dz <= radius * radius
+}
+
+#[inline]
 fn resolve_pool_sphere_pair(
     p: &mut BodyPool,
     sphere_slots: &[u32],
@@ -1428,7 +1511,7 @@ fn resolve_pool_sphere_pair(
     ar: f64,
     a_inv_mass: f64,
     a_restitution: f64,
-) {
+) -> bool {
     let slot_a = sphere_slots[i] as usize;
     let slot_b = sphere_slots[j] as usize;
     let br = p.radius[slot_b];
@@ -1446,12 +1529,12 @@ fn resolve_pool_sphere_pair(
     let r_sum_sq = r_sum * r_sum;
     let dist_xy_sq = ddx * ddx + ddy * ddy;
     if dist_xy_sq >= r_sum_sq {
-        return;
+        return false;
     }
     let ddz = bz - az;
     let dist_sq = dist_xy_sq + ddz * ddz;
     if dist_sq >= r_sum_sq {
-        return;
+        return false;
     }
 
     woke[i] = true;
@@ -1510,7 +1593,7 @@ fn resolve_pool_sphere_pair(
     let rvz = b_vz - a_vz;
     let v_dot_n = rvx * nx + rvy * ny + rvz * nz;
     if v_dot_n >= 0.0 {
-        return;
+        return true;
     }
     let b_restitution = p.restitution[slot_b];
     let e = a_restitution.min(b_restitution);
@@ -1524,12 +1607,16 @@ fn resolve_pool_sphere_pair(
     p.vel_x[slot_b] = b_vx + ix * b_inv_mass;
     p.vel_y[slot_b] = b_vy + iy * b_inv_mass;
     p.vel_z[slot_b] = b_vz + iz * b_inv_mass;
+    true
 }
 
 #[inline]
 fn run_pool_sphere_resolve_hash(
     p: &mut BodyPool,
     sphere_slots: &[u32],
+    cell_x: &[i32],
+    cell_y: &[i32],
+    cell_z: &[i32],
     iterations: u32,
     cell_size: f64,
     half_cs: f64,
@@ -1546,11 +1633,15 @@ fn run_pool_sphere_resolve_hash(
 ) {
     let count = sphere_slots.len();
     for _iter in 0..iterations {
+        let mut any_contact = false;
         for i in 0..count {
             let slot_a = sphere_slots[i] as usize;
             let ar = p.radius[slot_a];
             let a_inv_mass = p.inv_mass[slot_a];
             let a_restitution = p.restitution[slot_a];
+            let ax = p.pos_x[slot_a];
+            let ay = p.pos_y[slot_a];
+            let az = p.pos_z[slot_a];
             // A global `max_radius * 2` range is correct but expensive:
             // one queen-class body makes every small unit scan a 5x5x5
             // neighborhood. For body A, any possible B has radius <=
@@ -1558,9 +1649,9 @@ fn run_pool_sphere_resolve_hash(
             // broadphase bound with fewer impossible bucket probes.
             let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
 
-            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
-            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
-            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
+            let acx = cell_x[i];
+            let acy = cell_y[i];
+            let acz = cell_z[i];
 
             let query_min_cx = (acx - range).max(min_cx);
             let query_max_cx = (acx + range).min(max_cx);
@@ -1580,12 +1671,25 @@ fn run_pool_sphere_resolve_hash(
                         if bucket.max_index <= i as u32 {
                             continue;
                         }
+                        if !sphere_contact_cell_may_overlap_point(
+                            cx,
+                            cy,
+                            cz,
+                            cell_size,
+                            half_cs,
+                            ax,
+                            ay,
+                            az,
+                            ar + bucket.max_radius,
+                        ) {
+                            continue;
+                        }
                         for &j_u32 in bucket.items.iter() {
                             let j = j_u32 as usize;
                             if j <= i {
                                 continue;
                             }
-                            resolve_pool_sphere_pair(
+                            if resolve_pool_sphere_pair(
                                 p,
                                 sphere_slots,
                                 woke,
@@ -1594,11 +1698,16 @@ fn run_pool_sphere_resolve_hash(
                                 ar,
                                 a_inv_mass,
                                 a_restitution,
-                            );
+                            ) {
+                                any_contact = true;
+                            }
                         }
                     }
                 }
             }
+        }
+        if !any_contact {
+            break;
         }
     }
 }
@@ -1607,6 +1716,9 @@ fn run_pool_sphere_resolve_hash(
 fn run_pool_sphere_resolve_hash_active(
     p: &mut BodyPool,
     sphere_slots: &[u32],
+    cell_x: &[i32],
+    cell_y: &[i32],
+    cell_z: &[i32],
     active_indices: &[usize],
     active: &[bool],
     iterations: u32,
@@ -1624,16 +1736,20 @@ fn run_pool_sphere_resolve_hash_active(
     woke: &mut [bool],
 ) {
     for _iter in 0..iterations {
+        let mut any_contact = false;
         for &i in active_indices {
             let slot_a = sphere_slots[i] as usize;
             let ar = p.radius[slot_a];
             let a_inv_mass = p.inv_mass[slot_a];
             let a_restitution = p.restitution[slot_a];
+            let ax = p.pos_x[slot_a];
+            let ay = p.pos_y[slot_a];
+            let az = p.pos_z[slot_a];
             let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
 
-            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
-            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
-            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
+            let acx = cell_x[i];
+            let acy = cell_y[i];
+            let acz = cell_z[i];
 
             let query_min_cx = (acx - range).max(min_cx);
             let query_max_cx = (acx + range).min(max_cx);
@@ -1650,12 +1766,25 @@ fn run_pool_sphere_resolve_hash_active(
                             Some(b) if b.gen == gen => b,
                             _ => continue,
                         };
+                        if !sphere_contact_cell_may_overlap_point(
+                            cx,
+                            cy,
+                            cz,
+                            cell_size,
+                            half_cs,
+                            ax,
+                            ay,
+                            az,
+                            ar + bucket.max_radius,
+                        ) {
+                            continue;
+                        }
                         for &j_u32 in bucket.items.iter() {
                             let j = j_u32 as usize;
                             if j == i || (active[j] && j <= i) {
                                 continue;
                             }
-                            resolve_pool_sphere_pair(
+                            if resolve_pool_sphere_pair(
                                 p,
                                 sphere_slots,
                                 woke,
@@ -1664,11 +1793,16 @@ fn run_pool_sphere_resolve_hash_active(
                                 ar,
                                 a_inv_mass,
                                 a_restitution,
-                            );
+                            ) {
+                                any_contact = true;
+                            }
                         }
                     }
                 }
             }
+        }
+        if !any_contact {
+            break;
         }
     }
 }
@@ -1690,22 +1824,45 @@ fn run_pool_sphere_resolve_dense(
     width: usize,
     height: usize,
     dense_cells: &[SphereContactBucket],
+    touched_dense_indices: &[usize],
     gen: u32,
     woke: &mut [bool],
 ) {
-    let count = sphere_slots.len();
     for _iter in 0..iterations {
-        for i in 0..count {
-            let slot_a = sphere_slots[i] as usize;
-            let ar = p.radius[slot_a];
-            let a_inv_mass = p.inv_mass[slot_a];
-            let a_restitution = p.restitution[slot_a];
-            let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
+        let mut any_contact = false;
+        for &a_index in touched_dense_indices {
+            let (acx, acy, acz) =
+                sphere_contact_dense_coords(a_index, min_cx, min_cy, min_cz, width, height);
+            let bucket_a = &dense_cells[a_index];
+            if bucket_a.gen != gen {
+                continue;
+            }
 
-            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
-            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
-            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
+            let a_items = &bucket_a.items;
+            for ai in 0..a_items.len() {
+                let i = a_items[ai] as usize;
+                let slot_a = sphere_slots[i] as usize;
+                let ar = p.radius[slot_a];
+                let a_inv_mass = p.inv_mass[slot_a];
+                let a_restitution = p.restitution[slot_a];
+                for &j_u32 in a_items[(ai + 1)..].iter() {
+                    let j = j_u32 as usize;
+                    if resolve_pool_sphere_pair(
+                        p,
+                        sphere_slots,
+                        woke,
+                        i,
+                        j,
+                        ar,
+                        a_inv_mass,
+                        a_restitution,
+                    ) {
+                        any_contact = true;
+                    }
+                }
+            }
 
+            let range = (((bucket_a.max_radius + max_radius) / cell_size).ceil() as i32).max(1);
             let query_min_cx = (acx - range).max(min_cx);
             let query_max_cx = (acx + range).min(max_cx);
             let query_min_cy = (acy - range).max(min_cy);
@@ -1713,25 +1870,392 @@ fn run_pool_sphere_resolve_dense(
             let query_min_cz = (acz - range).max(min_cz);
             let query_max_cz = (acz + range).min(max_cz);
 
+            for bcz in query_min_cz..=query_max_cz {
+                for bcy in query_min_cy..=query_max_cy {
+                    for bcx in query_min_cx..=query_max_cx {
+                        let b_index = sphere_contact_dense_index(
+                            bcx, bcy, bcz, min_cx, min_cy, min_cz, width, height,
+                        );
+                        if b_index <= a_index {
+                            continue;
+                        }
+                        let bucket_b = &dense_cells[b_index];
+                        if bucket_b.gen != gen {
+                            continue;
+                        }
+                        for &i_u32 in bucket_a.items.iter() {
+                            let i = i_u32 as usize;
+                            let slot_a = sphere_slots[i] as usize;
+                            let ar = p.radius[slot_a];
+                            let a_inv_mass = p.inv_mass[slot_a];
+                            let a_restitution = p.restitution[slot_a];
+                            let ax = p.pos_x[slot_a];
+                            let ay = p.pos_y[slot_a];
+                            let az = p.pos_z[slot_a];
+                            if !sphere_contact_cell_may_overlap_point(
+                                bcx,
+                                bcy,
+                                bcz,
+                                cell_size,
+                                half_cs,
+                                ax,
+                                ay,
+                                az,
+                                ar + bucket_b.max_radius,
+                            ) {
+                                continue;
+                            }
+                            for &j_u32 in bucket_b.items.iter() {
+                                let j = j_u32 as usize;
+                                if resolve_pool_sphere_pair(
+                                    p,
+                                    sphere_slots,
+                                    woke,
+                                    i,
+                                    j,
+                                    ar,
+                                    a_inv_mass,
+                                    a_restitution,
+                                ) {
+                                    any_contact = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !any_contact {
+            break;
+        }
+    }
+}
+
+#[inline]
+fn run_pool_sphere_resolve_dense_range1(
+    p: &mut BodyPool,
+    sphere_slots: &[u32],
+    iterations: u32,
+    cell_size: f64,
+    half_cs: f64,
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    max_cx: i32,
+    max_cy: i32,
+    max_cz: i32,
+    width: usize,
+    height: usize,
+    dense_cells: &[SphereContactBucket],
+    touched_dense_indices: &[usize],
+    gen: u32,
+    woke: &mut [bool],
+) {
+    for _iter in 0..iterations {
+        let mut any_contact = false;
+        for &a_index in touched_dense_indices {
+            let (acx, acy, acz) =
+                sphere_contact_dense_coords(a_index, min_cx, min_cy, min_cz, width, height);
+            let bucket_a = &dense_cells[a_index];
+            if bucket_a.gen != gen {
+                continue;
+            }
+
+            let a_items = &bucket_a.items;
+            for ai in 0..a_items.len() {
+                let i = a_items[ai] as usize;
+                let slot_a = sphere_slots[i] as usize;
+                let ar = p.radius[slot_a];
+                let a_inv_mass = p.inv_mass[slot_a];
+                let a_restitution = p.restitution[slot_a];
+                for &j_u32 in a_items[(ai + 1)..].iter() {
+                    let j = j_u32 as usize;
+                    if resolve_pool_sphere_pair(
+                        p,
+                        sphere_slots,
+                        woke,
+                        i,
+                        j,
+                        ar,
+                        a_inv_mass,
+                        a_restitution,
+                    ) {
+                        any_contact = true;
+                    }
+                }
+            }
+
+            for dz in -1..=1 {
+                if dz < 0 {
+                    continue;
+                }
+                let bcz = acz + dz;
+                if bcz < min_cz || bcz > max_cz {
+                    continue;
+                }
+                for dy in -1..=1 {
+                    if dz == 0 && dy < 0 {
+                        continue;
+                    }
+                    let bcy = acy + dy;
+                    if bcy < min_cy || bcy > max_cy {
+                        continue;
+                    }
+                    for dx in -1..=1 {
+                        if dz == 0 && dy == 0 && dx <= 0 {
+                            continue;
+                        }
+                        let bcx = acx + dx;
+                        if bcx < min_cx || bcx > max_cx {
+                            continue;
+                        }
+                        let b_index = sphere_contact_dense_index(
+                            bcx, bcy, bcz, min_cx, min_cy, min_cz, width, height,
+                        );
+                        let bucket_b = &dense_cells[b_index];
+                        if bucket_b.gen != gen {
+                            continue;
+                        }
+                        for &i_u32 in bucket_a.items.iter() {
+                            let i = i_u32 as usize;
+                            let slot_a = sphere_slots[i] as usize;
+                            let ar = p.radius[slot_a];
+                            let a_inv_mass = p.inv_mass[slot_a];
+                            let a_restitution = p.restitution[slot_a];
+                            let ax = p.pos_x[slot_a];
+                            let ay = p.pos_y[slot_a];
+                            let az = p.pos_z[slot_a];
+                            if !sphere_contact_cell_may_overlap_point(
+                                bcx,
+                                bcy,
+                                bcz,
+                                cell_size,
+                                half_cs,
+                                ax,
+                                ay,
+                                az,
+                                ar + bucket_b.max_radius,
+                            ) {
+                                continue;
+                            }
+                            for &j_u32 in bucket_b.items.iter() {
+                                let j = j_u32 as usize;
+                                if resolve_pool_sphere_pair(
+                                    p,
+                                    sphere_slots,
+                                    woke,
+                                    i,
+                                    j,
+                                    ar,
+                                    a_inv_mass,
+                                    a_restitution,
+                                ) {
+                                    any_contact = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !any_contact {
+            break;
+        }
+    }
+}
+
+#[inline]
+fn run_pool_sphere_resolve_dense_split_range1(
+    p: &mut BodyPool,
+    sphere_slots: &[u32],
+    cell_x: &[i32],
+    cell_y: &[i32],
+    cell_z: &[i32],
+    is_large: &[bool],
+    large_indices: &[usize],
+    iterations: u32,
+    cell_size: f64,
+    half_cs: f64,
+    max_radius: f64,
+    min_cx: i32,
+    min_cy: i32,
+    min_cz: i32,
+    max_cx: i32,
+    max_cy: i32,
+    max_cz: i32,
+    width: usize,
+    height: usize,
+    dense_cells: &[SphereContactBucket],
+    touched_dense_indices: &[usize],
+    gen: u32,
+    woke: &mut [bool],
+) {
+    for _iter in 0..iterations {
+        let mut any_contact = false;
+
+        for &a_index in touched_dense_indices {
+            let bucket_a = &dense_cells[a_index];
+            if bucket_a.gen != gen || bucket_a.max_regular_radius <= 0.0 {
+                continue;
+            }
+            let (acx, acy, acz) =
+                sphere_contact_dense_coords(a_index, min_cx, min_cy, min_cz, width, height);
+
+            let a_items = &bucket_a.items;
+            for ai in 0..a_items.len() {
+                let i = a_items[ai] as usize;
+                if is_large[i] {
+                    continue;
+                }
+                let slot_a = sphere_slots[i] as usize;
+                let ar = p.radius[slot_a];
+                let a_inv_mass = p.inv_mass[slot_a];
+                let a_restitution = p.restitution[slot_a];
+                for &j_u32 in a_items[(ai + 1)..].iter() {
+                    let j = j_u32 as usize;
+                    if is_large[j] {
+                        continue;
+                    }
+                    if resolve_pool_sphere_pair(
+                        p,
+                        sphere_slots,
+                        woke,
+                        i,
+                        j,
+                        ar,
+                        a_inv_mass,
+                        a_restitution,
+                    ) {
+                        any_contact = true;
+                    }
+                }
+            }
+
+            for dz in -1..=1 {
+                if dz < 0 {
+                    continue;
+                }
+                let bcz = acz + dz;
+                if bcz < min_cz || bcz > max_cz {
+                    continue;
+                }
+                for dy in -1..=1 {
+                    if dz == 0 && dy < 0 {
+                        continue;
+                    }
+                    let bcy = acy + dy;
+                    if bcy < min_cy || bcy > max_cy {
+                        continue;
+                    }
+                    for dx in -1..=1 {
+                        if dz == 0 && dy == 0 && dx <= 0 {
+                            continue;
+                        }
+                        let bcx = acx + dx;
+                        if bcx < min_cx || bcx > max_cx {
+                            continue;
+                        }
+                        let b_index = sphere_contact_dense_index(
+                            bcx, bcy, bcz, min_cx, min_cy, min_cz, width, height,
+                        );
+                        let bucket_b = &dense_cells[b_index];
+                        if bucket_b.gen != gen || bucket_b.max_regular_radius <= 0.0 {
+                            continue;
+                        }
+                        for &i_u32 in bucket_a.items.iter() {
+                            let i = i_u32 as usize;
+                            if is_large[i] {
+                                continue;
+                            }
+                            let slot_a = sphere_slots[i] as usize;
+                            let ar = p.radius[slot_a];
+                            let a_inv_mass = p.inv_mass[slot_a];
+                            let a_restitution = p.restitution[slot_a];
+                            let ax = p.pos_x[slot_a];
+                            let ay = p.pos_y[slot_a];
+                            let az = p.pos_z[slot_a];
+                            if !sphere_contact_cell_may_overlap_point(
+                                bcx,
+                                bcy,
+                                bcz,
+                                cell_size,
+                                half_cs,
+                                ax,
+                                ay,
+                                az,
+                                ar + bucket_b.max_regular_radius,
+                            ) {
+                                continue;
+                            }
+                            for &j_u32 in bucket_b.items.iter() {
+                                let j = j_u32 as usize;
+                                if is_large[j] {
+                                    continue;
+                                }
+                                if resolve_pool_sphere_pair(
+                                    p,
+                                    sphere_slots,
+                                    woke,
+                                    i,
+                                    j,
+                                    ar,
+                                    a_inv_mass,
+                                    a_restitution,
+                                ) {
+                                    any_contact = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for &i in large_indices {
+            let slot_a = sphere_slots[i] as usize;
+            let ar = p.radius[slot_a];
+            let a_inv_mass = p.inv_mass[slot_a];
+            let a_restitution = p.restitution[slot_a];
+            let ax = p.pos_x[slot_a];
+            let ay = p.pos_y[slot_a];
+            let az = p.pos_z[slot_a];
+            let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
+            let query_min_cx = (cell_x[i] - range).max(min_cx);
+            let query_max_cx = (cell_x[i] + range).min(max_cx);
+            let query_min_cy = (cell_y[i] - range).max(min_cy);
+            let query_max_cy = (cell_y[i] + range).min(max_cy);
+            let query_min_cz = (cell_z[i] - range).max(min_cz);
+            let query_max_cz = (cell_z[i] + range).min(max_cz);
+
             for cz in query_min_cz..=query_max_cz {
                 for cy in query_min_cy..=query_max_cy {
                     for cx in query_min_cx..=query_max_cx {
-                        let index = sphere_contact_dense_index(
+                        let b_index = sphere_contact_dense_index(
                             cx, cy, cz, min_cx, min_cy, min_cz, width, height,
                         );
-                        let bucket = &dense_cells[index];
-                        if bucket.gen != gen {
+                        let bucket_b = &dense_cells[b_index];
+                        if bucket_b.gen != gen {
                             continue;
                         }
-                        if bucket.max_index <= i as u32 {
+                        if !sphere_contact_cell_may_overlap_point(
+                            cx,
+                            cy,
+                            cz,
+                            cell_size,
+                            half_cs,
+                            ax,
+                            ay,
+                            az,
+                            ar + bucket_b.max_radius,
+                        ) {
                             continue;
                         }
-                        for &j_u32 in bucket.items.iter() {
+                        for &j_u32 in bucket_b.items.iter() {
                             let j = j_u32 as usize;
-                            if j <= i {
+                            if j == i || (is_large[j] && j <= i) {
                                 continue;
                             }
-                            resolve_pool_sphere_pair(
+                            if resolve_pool_sphere_pair(
                                 p,
                                 sphere_slots,
                                 woke,
@@ -1740,11 +2264,17 @@ fn run_pool_sphere_resolve_dense(
                                 ar,
                                 a_inv_mass,
                                 a_restitution,
-                            );
+                            ) {
+                                any_contact = true;
+                            }
                         }
                     }
                 }
             }
+        }
+
+        if !any_contact {
+            break;
         }
     }
 }
@@ -1753,6 +2283,9 @@ fn run_pool_sphere_resolve_dense(
 fn run_pool_sphere_resolve_dense_active(
     p: &mut BodyPool,
     sphere_slots: &[u32],
+    cell_x: &[i32],
+    cell_y: &[i32],
+    cell_z: &[i32],
     active_indices: &[usize],
     active: &[bool],
     iterations: u32,
@@ -1772,16 +2305,20 @@ fn run_pool_sphere_resolve_dense_active(
     woke: &mut [bool],
 ) {
     for _iter in 0..iterations {
+        let mut any_contact = false;
         for &i in active_indices {
             let slot_a = sphere_slots[i] as usize;
             let ar = p.radius[slot_a];
             let a_inv_mass = p.inv_mass[slot_a];
             let a_restitution = p.restitution[slot_a];
+            let ax = p.pos_x[slot_a];
+            let ay = p.pos_y[slot_a];
+            let az = p.pos_z[slot_a];
             let range = (((ar + max_radius) / cell_size).ceil() as i32).max(1);
 
-            let acx = (p.pos_x[slot_a] / cell_size).floor() as i32;
-            let acy = (p.pos_y[slot_a] / cell_size).floor() as i32;
-            let acz = ((p.pos_z[slot_a] + half_cs) / cell_size).floor() as i32;
+            let acx = cell_x[i];
+            let acy = cell_y[i];
+            let acz = cell_z[i];
 
             let query_min_cx = (acx - range).max(min_cx);
             let query_max_cx = (acx + range).min(max_cx);
@@ -1800,12 +2337,25 @@ fn run_pool_sphere_resolve_dense_active(
                         if bucket.gen != gen {
                             continue;
                         }
+                        if !sphere_contact_cell_may_overlap_point(
+                            cx,
+                            cy,
+                            cz,
+                            cell_size,
+                            half_cs,
+                            ax,
+                            ay,
+                            az,
+                            ar + bucket.max_radius,
+                        ) {
+                            continue;
+                        }
                         for &j_u32 in bucket.items.iter() {
                             let j = j_u32 as usize;
                             if j == i || (active[j] && j <= i) {
                                 continue;
                             }
-                            resolve_pool_sphere_pair(
+                            if resolve_pool_sphere_pair(
                                 p,
                                 sphere_slots,
                                 woke,
@@ -1814,11 +2364,16 @@ fn run_pool_sphere_resolve_dense_active(
                                 ar,
                                 a_inv_mass,
                                 a_restitution,
-                            );
+                            ) {
+                                any_contact = true;
+                            }
                         }
                     }
                 }
             }
+        }
+        if !any_contact {
+            break;
         }
     }
 }
@@ -1852,7 +2407,12 @@ pub fn pool_resolve_sphere_sphere(
         scratch.cell_y.resize(count, 0);
         scratch.cell_z.resize(count, 0);
     }
+    if scratch.is_large.len() < count {
+        scratch.is_large.resize(count, false);
+    }
+    scratch.large_indices.clear();
     let mut max_radius = 0.0_f64;
+    let mut regular_count = 0_usize;
     let mut min_cx = i32::MAX;
     let mut min_cy = i32::MAX;
     let mut min_cz = i32::MAX;
@@ -1867,6 +2427,13 @@ pub fn pool_resolve_sphere_sphere(
         let r = p.radius[slot];
         if r > max_radius {
             max_radius = r;
+        }
+        let is_large = r * 2.0 > cell_size;
+        scratch.is_large[i] = is_large;
+        if is_large {
+            scratch.large_indices.push(i);
+        } else {
+            regular_count += 1;
         }
         let cx = (x / cell_size).floor() as i32;
         let cy = (y / cell_size).floor() as i32;
@@ -1908,9 +2475,13 @@ pub fn pool_resolve_sphere_sphere(
                     gen: 0,
                     items: Vec::new(),
                     max_index: 0,
+                    max_radius: 0.0,
+                    max_regular_radius: 0.0,
                 });
         }
+        scratch.dense_touched_indices.clear();
         for i in 0..count {
+            let slot = sphere_slots[i] as usize;
             let index = sphere_contact_dense_index(
                 scratch.cell_x[i],
                 scratch.cell_y[i],
@@ -1921,26 +2492,35 @@ pub fn pool_resolve_sphere_sphere(
                 width,
                 height,
             );
-            let bucket = &mut scratch.dense_cells[index];
-            if bucket.gen != gen {
-                reset_sphere_contact_bucket(bucket, gen);
+            if scratch.dense_cells[index].gen != gen {
+                reset_sphere_contact_bucket(&mut scratch.dense_cells[index], gen);
+                scratch.dense_touched_indices.push(index);
             }
-            push_sphere_contact_bucket_item(bucket, i as u32);
+            push_sphere_contact_bucket_item(
+                &mut scratch.dense_cells[index],
+                i as u32,
+                p.radius[slot],
+                scratch.is_large[i],
+            );
         }
+        scratch.dense_touched_indices.sort_unstable();
     } else {
         let cells = &mut scratch.cells;
         for i in 0..count {
+            let slot = sphere_slots[i] as usize;
             let key =
                 pack_contact_cell_key(scratch.cell_x[i], scratch.cell_y[i], scratch.cell_z[i]);
             let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
                 gen,
                 items: Vec::new(),
                 max_index: 0,
+                max_radius: 0.0,
+                max_regular_radius: 0.0,
             });
             if bucket.gen != gen {
                 reset_sphere_contact_bucket(bucket, gen);
             }
-            push_sphere_contact_bucket_item(bucket, i as u32);
+            push_sphere_contact_bucket_item(bucket, i as u32, p.radius[slot], scratch.is_large[i]);
         }
     }
 
@@ -1954,7 +2534,55 @@ pub fn pool_resolve_sphere_sphere(
         scratch.woke[k] = false;
     }
 
-    if use_dense {
+    if use_dense && !scratch.large_indices.is_empty() && regular_count > 0 {
+        let (width, height, _depth, _volume) = dense_shape.unwrap();
+        run_pool_sphere_resolve_dense_split_range1(
+            p,
+            sphere_slots,
+            &scratch.cell_x[0..count],
+            &scratch.cell_y[0..count],
+            &scratch.cell_z[0..count],
+            &scratch.is_large[0..count],
+            &scratch.large_indices,
+            iterations,
+            cell_size,
+            half_cs,
+            max_radius,
+            min_cx,
+            min_cy,
+            min_cz,
+            max_cx,
+            max_cy,
+            max_cz,
+            width,
+            height,
+            &scratch.dense_cells,
+            &scratch.dense_touched_indices,
+            gen,
+            &mut scratch.woke[0..count],
+        );
+    } else if use_dense && max_radius * 2.0 <= cell_size {
+        let (width, height, _depth, _volume) = dense_shape.unwrap();
+        run_pool_sphere_resolve_dense_range1(
+            p,
+            sphere_slots,
+            iterations,
+            cell_size,
+            half_cs,
+            min_cx,
+            min_cy,
+            min_cz,
+            max_cx,
+            max_cy,
+            max_cz,
+            width,
+            height,
+            &scratch.dense_cells,
+            &scratch.dense_touched_indices,
+            gen,
+            &mut scratch.woke[0..count],
+        );
+    } else if use_dense {
         let (width, height, _depth, _volume) = dense_shape.unwrap();
         run_pool_sphere_resolve_dense(
             p,
@@ -1972,6 +2600,7 @@ pub fn pool_resolve_sphere_sphere(
             width,
             height,
             &scratch.dense_cells,
+            &scratch.dense_touched_indices,
             gen,
             &mut scratch.woke[0..count],
         );
@@ -1979,6 +2608,9 @@ pub fn pool_resolve_sphere_sphere(
         run_pool_sphere_resolve_hash(
             p,
             sphere_slots,
+            &scratch.cell_x[0..count],
+            &scratch.cell_y[0..count],
+            &scratch.cell_z[0..count],
             iterations,
             cell_size,
             half_cs,
@@ -2123,9 +2755,12 @@ pub fn pool_resolve_sphere_sphere_active(
                     gen: 0,
                     items: Vec::new(),
                     max_index: 0,
+                    max_radius: 0.0,
+                    max_regular_radius: 0.0,
                 });
         }
         for i in 0..count {
+            let slot = sphere_slots[i] as usize;
             let index = sphere_contact_dense_index(
                 scratch.cell_x[i],
                 scratch.cell_y[i],
@@ -2140,22 +2775,35 @@ pub fn pool_resolve_sphere_sphere_active(
             if bucket.gen != gen {
                 reset_sphere_contact_bucket(bucket, gen);
             }
-            push_sphere_contact_bucket_item(bucket, i as u32);
+            push_sphere_contact_bucket_item(
+                bucket,
+                i as u32,
+                p.radius[slot],
+                p.radius[slot] * 2.0 > cell_size,
+            );
         }
     } else {
         let cells = &mut scratch.cells;
         for i in 0..count {
+            let slot = sphere_slots[i] as usize;
             let key =
                 pack_contact_cell_key(scratch.cell_x[i], scratch.cell_y[i], scratch.cell_z[i]);
             let bucket = cells.entry(key).or_insert_with(|| SphereContactBucket {
                 gen,
                 items: Vec::new(),
                 max_index: 0,
+                max_radius: 0.0,
+                max_regular_radius: 0.0,
             });
             if bucket.gen != gen {
                 reset_sphere_contact_bucket(bucket, gen);
             }
-            push_sphere_contact_bucket_item(bucket, i as u32);
+            push_sphere_contact_bucket_item(
+                bucket,
+                i as u32,
+                p.radius[slot],
+                p.radius[slot] * 2.0 > cell_size,
+            );
         }
     }
 
@@ -2171,6 +2819,9 @@ pub fn pool_resolve_sphere_sphere_active(
         run_pool_sphere_resolve_dense_active(
             p,
             sphere_slots,
+            &scratch.cell_x[0..count],
+            &scratch.cell_y[0..count],
+            &scratch.cell_z[0..count],
             &scratch.active_indices,
             &scratch.active[0..count],
             iterations,
@@ -2193,6 +2844,9 @@ pub fn pool_resolve_sphere_sphere_active(
         run_pool_sphere_resolve_hash_active(
             p,
             sphere_slots,
+            &scratch.cell_x[0..count],
+            &scratch.cell_y[0..count],
+            &scratch.cell_z[0..count],
             &scratch.active_indices,
             &scratch.active[0..count],
             iterations,

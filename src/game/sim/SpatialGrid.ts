@@ -481,6 +481,30 @@ class SpatialGrid {
     return result;
   }
 
+  queryAreaDamageUnitBuildingSlotRangesInRadius(
+    x: number, y: number, z: number, radius: number,
+  ): {
+    slots: Uint32Array;
+    total: number;
+    unitStart: number;
+    unitCount: number;
+    buildingStart: number;
+    buildingCount: number;
+  } {
+    const total = this.api().queryAreaUnitsAndBuildingsInRadius(x, y, z, radius);
+    const slots = this.scratch(total);
+    const unitCount = slots[0];
+    const buildingCount = slots[1];
+    const result = this._unitBuildingSlotRangeResult;
+    result.slots = slots;
+    result.total = total;
+    result.unitStart = 2;
+    result.unitCount = unitCount;
+    result.buildingStart = 2 + unitCount;
+    result.buildingCount = buildingCount;
+    return result;
+  }
+
   queryUnitBuildingSlotArraysInRadius(
     x: number, y: number, z: number, radius: number,
   ): { unitSlots: number[]; buildingSlots: number[] } {
@@ -541,6 +565,17 @@ class SpatialGrid {
     return this._rectResult;
   }
 
+  queryProjectilesInRect2D(
+    minX: number,
+    maxX: number,
+    minY: number,
+    maxY: number,
+  ): Entity[] {
+    const count = this.api().queryProjectilesInRect2D(minX, maxX, minY, maxY);
+    this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultProjectiles);
+    return this.queryResultProjectiles;
+  }
+
   queryEnemyUnitsInRadius(x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId): Entity[] {
     const count = this.api().queryEnemyUnitsInRadius(x, y, z, radius, excludePlayerId);
     this.resolveSlotsRange(this.scratch(count), 0, count, this.queryResultUnits);
@@ -557,6 +592,15 @@ class SpatialGrid {
     x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId,
   ): { slots: Uint32Array; count: number } {
     const count = this.api().queryEnemyProjectilesInRadius(x, y, z, radius, excludePlayerId);
+    this._slotQueryResult.slots = this.scratch(count);
+    this._slotQueryResult.count = count;
+    return this._slotQueryResult;
+  }
+
+  queryAreaEnemyProjectileSlotsInRadius(
+    x: number, y: number, z: number, radius: number, excludePlayerId: PlayerId,
+  ): { slots: Uint32Array; count: number } {
+    const count = this.api().queryAreaEnemyProjectilesInRadius(x, y, z, radius, excludePlayerId);
     this._slotQueryResult.slots = this.scratch(count);
     this._slotQueryResult.count = count;
     return this._slotQueryResult;

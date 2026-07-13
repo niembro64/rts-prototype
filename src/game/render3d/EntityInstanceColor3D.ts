@@ -8,8 +8,12 @@ export function entityInstanceColorKey(entity: Entity): number {
   return entity.ownership?.playerId ?? -1;
 }
 
-export function entityBodyColorHexForPlayer(pid: number | undefined): number {
+export function entityTeamMidColorHexForPlayer(pid: number | undefined): number {
   return pid !== undefined ? getPlayerColors(pid).primary : COLORS.units.neutral.colorHex;
+}
+
+export function entityBodyColorHexForPlayer(pid: number | undefined): number {
+  return entityTeamMidColorHexForPlayer(pid);
 }
 
 export function entityBodyColorHex(entity: Entity): number {
@@ -21,12 +25,12 @@ export function entityInstanceColorHex(entity: Entity): number {
 }
 
 export function entityInstanceColorHexForPlayer(pid: number | undefined): number {
-  return entityBodyColorHexForPlayer(pid);
+  return entityTeamMidColorHexForPlayer(pid);
 }
 
 export function turretAccentColorHexForPlayer(playerId: number | undefined): number {
-  const primary = entityBodyColorHexForPlayer(playerId);
-  return blendHexTowardWhite(primary, 0.5);
+  void playerId;
+  return COLORS.units.turret.barrel.colorHex;
 }
 
 export function entityTurretAccentColorHex(entity: Entity): number {

@@ -379,16 +379,17 @@ export class Body3D {
 // Pile-ups beyond this cap will have some residual overlap but no
 // explosive separation — acceptable for an RTS where units jostle.
 const SPHERE_ITERATIONS = 4;
-const SPHERE_ITERATIONS_MID_COUNT = 2500;
-const SPHERE_ITERATIONS_HIGH_COUNT = 6000;
+const SPHERE_ITERATIONS_MID_ACTIVE_COUNT = 800;
+const SPHERE_ITERATIONS_HIGH_ACTIVE_COUNT = 1800;
+const SPHERE_FULL_SOLVER_ACTIVE_DENSITY = 0.92;
 
 // Broad-phase cell size for sphere-sphere contact checks. Bodies are
 // bucketed by CENTER (one cell each), then queried across enough
 // neighboring cells to cover the largest active push-radius pair.
-// Current large units have push radii around 65wu, so 160wu keeps the
-// common query to the immediate 3x3x3 neighborhood while the dynamic
-// range below still handles future oversized bodies correctly.
-const CONTACT_CELL_SIZE = 160;
+// Measured 10k-unit crowd runs favor 64wu over smaller cells: smaller cells
+// reduce bucket density, but the wider bucket grid and probe overhead cross
+// back over before the pair count win pays for itself.
+const CONTACT_CELL_SIZE = 64;
 
 // Support-surface broadphase. Static support cuboids (building roofs) and
 // dynamic support discs (units that can be stood on) are bucketed into a flat
@@ -886,6 +887,20 @@ export class PhysicsEngine3D {
     this.wakeBody(body);
   }
 
+  recordWasmForceSleep(body: Body3D): void {
+    if (!body.isStatic) {
+      this.awakeDynamicBodyCount = Math.max(0, this.awakeDynamicBodyCount - 1);
+    }
+    body.sleeping = true;
+    body.sleepTicks = BODY_SLEEP_TICKS;
+    body.ax = 0;
+    body.ay = 0;
+    body.az = 0;
+    body.groundLaunchAx = 0;
+    body.groundLaunchAy = 0;
+    body.groundLaunchAz = 0;
+  }
+
   wakeBody(body: Body3D): void {
     if (body.sleeping) {
       body.sleeping = false;
@@ -1006,7 +1021,7 @@ export class PhysicsEngine3D {
     // if integration just put the last awake body to sleep.
     const stepSlots = _integrateAwakeSlots.subarray(0, integrateCount);
     this.resolveSphereCuboidContacts(stepSlots);
-    const sphereIterations = this.getSphereIterationBudget();
+    const sphereIterations = this.getSphereIterationBudget(stepSlots.length);
     this.resolveSphereSphereContacts(sphereIterations, stepSlots, dynamicSlots);
     this.collectFinalStepSyncEntitiesAndClearForces(dynamicSlots);
   }
@@ -1060,10 +1075,13 @@ export class PhysicsEngine3D {
     }
   }
 
-  private getSphereIterationBudget(): number {
-    const count = this.dynamicBodies.length;
-    if (count >= SPHERE_ITERATIONS_HIGH_COUNT) return 1;
-    if (count >= SPHERE_ITERATIONS_MID_COUNT) return 2;
+  private getSphereIterationBudget(activeCount: number): number {
+    // RTS crowds need cheap, deterministic de-overlap more than perfect
+    // residual cleanup. Drop to fewer separator passes before 1k+ active
+    // bodies so dense fights do not spend multiple milliseconds resolving
+    // tiny remaining overlaps after the first broad push.
+    if (activeCount >= SPHERE_ITERATIONS_HIGH_ACTIVE_COUNT) return 1;
+    if (activeCount >= SPHERE_ITERATIONS_MID_ACTIVE_COUNT) return 2;
     return SPHERE_ITERATIONS;
   }
 
@@ -1093,10 +1111,12 @@ export class PhysicsEngine3D {
   }
 
   private sampleIntegrationSupportSurfaces(count: number): void {
+    if (!this.hasSupportSurfaceBodies()) return;
+
     // Refresh the dynamic support broadphase once for the whole pass using the
     // bodies' current (pre-integration) positions; the per-body queries below
     // then reuse it.
-    this.rebuildDynamicSupportGrid();
+    if (this.dynamicSupportBodyCount > 0) this.rebuildDynamicSupportGrid();
     for (let i = 0; i < count; i++) {
       const slot = _integrateAwakeSlots[i];
       const b = this.bodyBySlot[slot];
@@ -1114,6 +1134,8 @@ export class PhysicsEngine3D {
 
   private refreshStepSupportIgnoredStaticSlots(count: number): void {
     this.stepSupportIgnoredStaticSlots.clear();
+    if (this.staticSupportBodyCount <= 0) return;
+
     for (let i = 0; i < count; i++) {
       const slot = _integrateAwakeSlots[i];
       const b = this.bodyBySlot[slot];
@@ -1185,6 +1207,11 @@ export class PhysicsEngine3D {
    *  positions. Cell arrays are reused (cleared, not dropped) to avoid
    *  per-tick allocation churn. */
   private rebuildDynamicSupportGrid(): void {
+    if (this.dynamicSupportBodyCount <= 0) {
+      this.dynamicSupportGridDirty = false;
+      return;
+    }
+
     for (const bucket of this.dynamicSupportGrid.values()) bucket.length = 0;
     for (let i = 0; i < this.dynamicBodies.length; i++) {
       const b = this.dynamicBodies[i];
@@ -1203,10 +1230,9 @@ export class PhysicsEngine3D {
     body: Body3D,
     terrainGroundZ: number,
   ): StaticSupportSurfaceContact | null {
+    if (this.staticSupportBodyCount <= 0) return null;
     if (body.isStatic || body.shape !== 'sphere') return null;
 
-    this.clearExitedStaticIgnoreForBody(body);
-    const ignoredStatic = this.ignoreStatic.get(body);
     const bodyX = body.x;
     const bodyY = body.y;
     const bodyZ = body.z;
@@ -1221,7 +1247,13 @@ export class PhysicsEngine3D {
     const cell = this.staticSupportGrid.get(
       packSupportCell(supportCellCoord(bodyX), supportCellCoord(bodyY)),
     );
-    if (cell === undefined) return null;
+    if (cell === undefined || cell.length === 0) {
+      if (this.ignoreStatic.size !== 0) this.ignoreStatic.delete(body);
+      return null;
+    }
+
+    this.clearExitedStaticIgnoreForBody(body);
+    const ignoredStatic = this.ignoreStatic.get(body);
 
     for (let i = 0; i < cell.length; i++) {
       const st = cell[i];
@@ -1260,6 +1292,7 @@ export class PhysicsEngine3D {
     body: Body3D,
     terrainGroundZ: number,
   ): DynamicSupportSurfaceContact | null {
+    if (this.dynamicSupportBodyCount <= 0) return null;
     if (body.isStatic || body.shape !== 'sphere') return null;
 
     const bodyX = body.x;
@@ -1483,8 +1516,11 @@ export class PhysicsEngine3D {
       _sphereSphereWakeTransitions = new Uint32Array(maxCount);
     }
     const wakeView = _sphereSphereWakeTransitions.subarray(0, maxCount);
+    const useFullSolver =
+      activeSlots.length >= maxCount ||
+      activeSlots.length >= maxCount * SPHERE_FULL_SOLVER_ACTIVE_DENSITY;
     const wakeCount = measureWasmBoundary('physics.poolResolveSphereSphere', () =>
-      activeSlots.length >= maxCount
+      useFullSolver
         ? sim.poolResolveSphereSphere(
             dynamicSlots,
             iterations,

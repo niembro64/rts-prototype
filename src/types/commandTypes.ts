@@ -36,6 +36,10 @@ export type UnitAction = {
   buildingId?: EntityId;
   targetId?: EntityId;
   isPathExpansion?: boolean;
+  /** Sim-local: use the authored waypoint as the active movement point
+   *  without running path expansion. Intended for synthetic/demo routes that
+   *  are already known to be direct. */
+  directPath?: boolean;
   /** Sim-local marker for a final move/fight command whose destination has
    *  been reached. The waypoint remains durable so displacement can rearm it. */
   movementAnchorSatisfied?: boolean;

@@ -6,6 +6,7 @@ import type { ThreeApp } from './ThreeApp';
 import type { CursorGround, SimGroundPoint } from './CursorGround';
 import { Input3DBoxSelection } from './Input3DBoxSelection';
 import { getBuildingVisualCenterZ } from '../sim/buildingAnchors';
+import type { FootprintBounds } from '../ViewportFootprint';
 
 /** Enlarge the pick volume past the drawn body so clicks near an edge
  *  still land — BAR enlarges selection volumes by a similar factor. */
@@ -13,6 +14,14 @@ const SELECTION_VOLUME_SCALE = 1.18;
 /** Floor (world units) so tiny units — and units drawn only as LOD
  *  proxy points at distance — stay easy to click at any zoom. */
 const MIN_SELECTION_RADIUS = 12;
+const PICK_BROADPHASE_RADIUS = 768;
+
+type SpatialPickEntitySource = SelectionEntitySource & {
+  collectEntityPickCandidates3D?: (
+    bounds: FootprintBounds,
+    out: Entity[],
+  ) => Entity[];
+};
 
 /** World-space pick radius for an entity's selection volume. Units use
  *  their drawn radius; buildings/towers use their footprint half-diagonal. */
@@ -32,6 +41,7 @@ export class Input3DPicker {
   private readonly raycaster = new THREE.Raycaster();
   private readonly ndc = new THREE.Vector2();
   private readonly boxSelection = new Input3DBoxSelection();
+  private readonly pickCandidateScratch: Entity[] = [];
 
   constructor(
     private readonly threeApp: ThreeApp,
@@ -111,10 +121,15 @@ export class Input3DPicker {
     };
 
     const source = this.getEntitySource();
-    const units = source.getUnits();
-    for (let i = 0; i < units.length; i++) consider(units[i]);
-    const buildings = source.getBuildings();
-    for (let i = 0; i < buildings.length; i++) consider(buildings[i]);
+    const candidates = this.collectSpatialPickCandidates(source, clientX, clientY);
+    if (candidates !== null) {
+      for (let i = 0; i < candidates.length; i++) consider(candidates[i]);
+    } else {
+      const units = source.getUnits();
+      for (let i = 0; i < units.length; i++) consider(units[i]);
+      const buildings = source.getBuildings();
+      for (let i = 0; i < buildings.length; i++) consider(buildings[i]);
+    }
 
     return bestId;
   }
@@ -148,5 +163,26 @@ export class Input3DPicker {
   private castRay(clientX: number, clientY: number): void {
     const ndc = this.toNDC(clientX, clientY);
     this.raycaster.setFromCamera(ndc, this.threeApp.camera);
+  }
+
+  private collectSpatialPickCandidates(
+    source: SelectionEntitySource,
+    clientX: number,
+    clientY: number,
+  ): readonly Entity[] | null {
+    const spatialSource = source as SpatialPickEntitySource;
+    if (spatialSource.collectEntityPickCandidates3D === undefined) return null;
+    const ground = this.cursorGround.pickSim(clientX, clientY);
+    if (ground === null) return null;
+    const radius = PICK_BROADPHASE_RADIUS;
+    return spatialSource.collectEntityPickCandidates3D(
+      {
+        minX: ground.x - radius,
+        maxX: ground.x + radius,
+        minY: ground.y - radius,
+        maxY: ground.y + radius,
+      },
+      this.pickCandidateScratch,
+    );
   }
 }

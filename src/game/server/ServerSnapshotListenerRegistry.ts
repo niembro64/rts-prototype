@@ -8,6 +8,7 @@ import type { SnapshotListenerEntry } from './ServerSnapshotPublisher';
 
 export type SnapshotListenerOptions = {
   preencodeWire?: boolean;
+  skipSparsePresentationDeltas?: boolean;
 };
 
 export class ServerSnapshotListenerRegistry {
@@ -37,6 +38,7 @@ export class ServerSnapshotListenerRegistry {
       trackingKey,
       cacheKey,
       preencodeWire: options.preencodeWire === true,
+      skipSparsePresentationDeltas: options.skipSparsePresentationDeltas === true,
       lastStaticTerrainTileMap: undefined,
       lastStaticBuildabilityGrid: undefined,
       needsFullState: false,

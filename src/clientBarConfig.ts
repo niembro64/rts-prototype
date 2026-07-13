@@ -13,7 +13,6 @@ import type {
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
-  LodMode,
   MasterVolumePercent,
   PositionDriftChannelMode,
   PredictionMode,
@@ -41,7 +40,6 @@ export type { CameraSmoothMode, CameraFollowMode } from './types/client';
 export type {
   EntityHudElement,
   EntityHudType,
-  LodMode,
   SelectionHudMode,
   WaterBoundaryMode,
 } from './types/client';
@@ -1025,32 +1023,6 @@ export function getLegsRadiusToggle(): boolean {
 export function setLegsRadiusToggle(show: boolean): void {
   currentLegsRadius = show;
   persist(activeStorageKeys().legsRadius, String(show));
-}
-
-// Entity LOD policy. Standalone + global (not per-mode) because it is a
-// renderer inspection/perf policy rather than a battle/profile setting.
-const FORCE_LOD_PROXY_STORAGE_KEY = 'client-force-lod-proxy';
-export const LOD_MODE_OPTIONS: OptionList<LodMode> = [
-  { value: 'auto', label: 'AUTO' },
-  { value: 'high', label: 'HIGH' },
-  { value: 'low', label: 'LOW' },
-];
-
-function parseStoredLodMode(raw: string | null): LodMode {
-  if (raw === 'low' || raw === 'true') return 'low';
-  if (raw === 'high') return 'high';
-  return 'auto';
-}
-
-let currentLodMode: LodMode = parseStoredLodMode(readPersisted(FORCE_LOD_PROXY_STORAGE_KEY));
-
-export function getLodMode(): LodMode {
-  return currentLodMode;
-}
-
-export function setLodMode(mode: LodMode): void {
-  currentLodMode = mode;
-  persist(FORCE_LOD_PROXY_STORAGE_KEY, mode);
 }
 
 export function getCameraSmoothMode(): CameraSmoothMode {

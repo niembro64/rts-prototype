@@ -21,7 +21,13 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 
 import type { WorldState } from '../WorldState';
 import type { WindState } from '../wind';
-import { entitySlotRegistry } from '../EntitySlotRegistry';
+import { measureWasmBoundary } from '../../perf/WasmBoundaryInstrumentation';
+import {
+  ENTITY_SLOT_FLAG_ACTIVE,
+  ENTITY_SLOT_FLAG_HAS_COMBAT,
+  entitySlotRegistry,
+  type EntityStateViews,
+} from '../EntitySlotRegistry';
 import {
   encodeShieldBarrierShape,
   encodeShieldReflectionPolicy,
@@ -73,12 +79,13 @@ import {
   CT_TURRET_STATE_IDLE,
   CT_TURRET_STATE_TRACKING,
   CT_TURRET_STATE_ENGAGED,
+  ENTITY_STATE_KIND_UNIT,
   getSimWasm,
-  type CombatTargetingApi,
   type SimWasm,
 } from '../../sim-wasm/init';
 import {
   buildingBlueprintIdToCode,
+  codeToUnitBlueprintId,
   shotBlueprintIdToCode,
   turretBlueprintIdToCode,
   unitBlueprintIdToCode,
@@ -90,14 +97,8 @@ import {
   getUnitBlueprint,
   type LockOnMasks,
 } from '../blueprints';
-import {
-  getEntityFullVisionRadius,
-  getEntityCloakDetectionRadius,
-  getEntityRadarRadius,
-  getEntityVisibilityPadding,
-  isEntityCloaked,
-} from '../sensorCoverage';
-import { isEntityActive } from '../buildableHelpers';
+import { getBuildingConfig } from '../buildConfigs';
+import { isBuildBlockingActivation, isEntityActive } from '../buildableHelpers';
 import {
   getShotMaxLifespan,
   isProjectileShot,
@@ -110,16 +111,6 @@ import {
   type Turret,
   type TurretRanges,
 } from '../types';
-
-const _stampPos = { x: 0, y: 0, z: 0 };
-
-function getHostLockOnMasks(entity: Entity): LockOnMasks {
-  if (entity.unit !== null) return getUnitHostLockOnMasks(entity.unit.unitBlueprintId);
-  if (entity.type === 'tower' && entity.buildingBlueprintId !== null) {
-    return getTowerHostLockOnMasks(entity.buildingBlueprintId);
-  }
-  return EMPTY_LOCK_ON_MASKS;
-}
 
 export type CombatTargetingStateViews = {
   buffer: ArrayBuffer;
@@ -193,9 +184,27 @@ let _combatTargetingSensorSourceSlots = new Uint32Array(0);
 let _combatTargetingSensorSourceCount = 0;
 let _combatTargetingTargetSlots = new Uint32Array(0);
 let _combatTargetingTargetCount = 0;
+const COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE = 44;
+const COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE = 45;
+let _combatTargetingEntityStampSlots = new Uint32Array(0);
+let _combatTargetingEntityStampRows = new Float64Array(0);
+let _combatTargetingEntityStampCount = 0;
+let _combatTargetingTurretStampEntitySlots = new Uint32Array(0);
+let _combatTargetingTurretStampIndices = new Uint32Array(0);
+let _combatTargetingTurretStampRows = new Float64Array(0);
+let _combatTargetingTurretStampCount = 0;
+let _combatTargetingSimpleUnitSlots = new Uint32Array(0);
+let _combatTargetingSimpleUnitViewMasks = new Uint32Array(0);
+let _combatTargetingSimpleUnitExtraFlags = new Uint8Array(0);
+let _combatTargetingSimpleUnitSensorSlots = new Uint32Array(0);
+let _combatTargetingSimpleUnitCount = 0;
 const _stampViewMaskByPlayer = new Uint32Array(32);
 let _stampViewMaskComputedBits = 0;
-let _stampSlotUsed = new Uint8Array(0);
+const _nativeObservationOnlyViewMasksByPlayer = new Uint32Array(32);
+const _nativeObservationOnlyCounts = new Uint32Array(2);
+const _nativeObservationOnlyExactTargets: Entity[] = [];
+let _nativeObservationOnlyExactSlots = new Uint32Array(0);
+let _nativeObservationOnlyExactSlotCount = 0;
 const _mountReadContext: CombatTargetingEntityReadContext = {
   views: null as never,
   slot: -1,
@@ -205,6 +214,37 @@ const _mountReadContext: CombatTargetingEntityReadContext = {
 let _mountReadEntity: Entity | null = null;
 let _mountReadTick = -1;
 let _mountReadSim: SimWasm | null = null;
+type UnitTargetingBlueprintProfile = {
+  blueprintCode: number;
+  hostLockOn: LockOnMasks;
+  preventLockOnIfTeamAbove: boolean;
+};
+type CombatTargetingTurretArrayProfile = {
+  turretRowCapacity: number;
+  hasSchedulerSource: boolean;
+};
+const EMPTY_TURRET_ARRAY_PROFILE: CombatTargetingTurretArrayProfile = {
+  turretRowCapacity: 0,
+  hasSchedulerSource: false,
+};
+const _unitTargetingBlueprintProfiles = new Map<string, UnitTargetingBlueprintProfile>();
+const _combatTargetingTurretArrayProfiles =
+  new WeakMap<readonly Turret[], CombatTargetingTurretArrayProfile>();
+const COMBAT_TARGETING_UNIT_PROFILE_STRIDE = 11;
+const CT_UNIT_PROFILE_FULL_VISION_RADIUS = 0;
+const CT_UNIT_PROFILE_RADAR_RADIUS = 1;
+const CT_UNIT_PROFILE_DETECTOR_RADIUS = 2;
+const CT_UNIT_PROFILE_LOCKON_RELATIONSHIP = 3;
+const CT_UNIT_PROFILE_LOCKON_ENTITY_FAMILY = 4;
+const CT_UNIT_PROFILE_LOCKON_BUILDING = 5;
+const CT_UNIT_PROFILE_LOCKON_TOWER = 6;
+const CT_UNIT_PROFILE_LOCKON_UNIT = 7;
+const CT_UNIT_PROFILE_LOCKON_TURRET = 8;
+const CT_UNIT_PROFILE_LOCKON_SHOT = 9;
+const CT_UNIT_PROFILE_FLAGS = 10;
+const CT_UNIT_PROFILE_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE = 1 << 0;
+let _combatTargetingUnitProfileUploaded = false;
+let _combatTargetingUnitProfileCodeCount = 0;
 
 function playerMaskBit(playerId: number): number {
   if (playerId < 1 || playerId > 31) return 0;
@@ -224,29 +264,74 @@ function getEntityViewMask(world: WorldState, playerId: number): number {
   return mask;
 }
 
+function refreshNativeObservationOnlyViewMasks(world: WorldState): void {
+  _nativeObservationOnlyViewMasksByPlayer.fill(0);
+  _stampViewMaskComputedBits = 0;
+  for (let playerId = 1; playerId < _nativeObservationOnlyViewMasksByPlayer.length; playerId++) {
+    _nativeObservationOnlyViewMasksByPlayer[playerId] = getEntityViewMask(world, playerId);
+  }
+}
+
 function resetCombatTargetingSources(): void {
   _combatTargetingSourceCount = 0;
   _combatTargetingSensorSourceCount = 0;
   _combatTargetingTargetCount = 0;
+  _combatTargetingEntityStampCount = 0;
+  _combatTargetingTurretStampCount = 0;
+  _combatTargetingSimpleUnitCount = 0;
 }
 
-function resetCombatTargetingSlotUse(): void {
-  _stampSlotUsed.fill(0);
+export function clearCombatTargetingStampQueues(): void {
+  resetCombatTargetingSources();
+  _stampViewMaskComputedBits = 0;
 }
 
-function ensureCombatTargetingSlotUseCapacity(slot: number): void {
-  if (slot < _stampSlotUsed.length) return;
-  let next = Math.max(64, _stampSlotUsed.length);
-  while (next <= slot) next *= 2;
-  const slots = new Uint8Array(next);
-  slots.set(_stampSlotUsed);
-  _stampSlotUsed = slots;
+function getUnitTargetingBlueprintProfile(unitBlueprintId: string): UnitTargetingBlueprintProfile {
+  let profile = _unitTargetingBlueprintProfiles.get(unitBlueprintId);
+  if (profile !== undefined) return profile;
+  profile = {
+    blueprintCode: unitBlueprintIdToCode(unitBlueprintId),
+    hostLockOn: getUnitHostLockOnMasks(unitBlueprintId),
+    preventLockOnIfTeamAbove:
+      getUnitBlueprint(unitBlueprintId).preventLockOnIfMyTeamIsAboveMe === true,
+  };
+  _unitTargetingBlueprintProfiles.set(unitBlueprintId, profile);
+  return profile;
 }
 
-function reserveCombatTargetingSlot(slot: number): void {
-  if (slot < 0) return;
-  ensureCombatTargetingSlotUseCapacity(slot);
-  _stampSlotUsed[slot] = 1;
+function bindCombatTargetingStampScratch(
+  sim: SimWasm,
+  entityCapacity: number,
+  turretCapacity: number,
+): void {
+  const targeting = sim.combatTargeting;
+  targeting.ensureStampScratchCapacity(entityCapacity, turretCapacity);
+  const buffer = sim.memory.buffer;
+  _combatTargetingEntityStampSlots = new Uint32Array(
+    buffer,
+    targeting.stampEntitySlotsPtr(),
+    entityCapacity,
+  );
+  _combatTargetingEntityStampRows = new Float64Array(
+    buffer,
+    targeting.stampEntityRowsPtr(),
+    entityCapacity * COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE,
+  );
+  _combatTargetingTurretStampEntitySlots = new Uint32Array(
+    buffer,
+    targeting.stampTurretEntitySlotsPtr(),
+    turretCapacity,
+  );
+  _combatTargetingTurretStampIndices = new Uint32Array(
+    buffer,
+    targeting.stampTurretIndicesPtr(),
+    turretCapacity,
+  );
+  _combatTargetingTurretStampRows = new Float64Array(
+    buffer,
+    targeting.stampTurretRowsPtr(),
+    turretCapacity * COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE,
+  );
 }
 
 function ensureCombatTargetingTargetCapacity(count: number): void {
@@ -256,6 +341,21 @@ function ensureCombatTargetingTargetCapacity(count: number): void {
   const slots = new Uint32Array(next);
   slots.set(_combatTargetingTargetSlots.subarray(0, _combatTargetingTargetCount));
   _combatTargetingTargetSlots = slots;
+}
+
+function beginCombatTargetingEntityStampRow(slot: number): number {
+  const idx = _combatTargetingEntityStampCount;
+  _combatTargetingEntityStampSlots[idx] = slot;
+  _combatTargetingEntityStampCount++;
+  return idx * COMBAT_TARGETING_ENTITY_STAMP_ROW_STRIDE;
+}
+
+function beginCombatTargetingTurretStampRow(entitySlot: number, turretIndex: number): number {
+  const idx = _combatTargetingTurretStampCount;
+  _combatTargetingTurretStampEntitySlots[idx] = entitySlot;
+  _combatTargetingTurretStampIndices[idx] = turretIndex;
+  _combatTargetingTurretStampCount++;
+  return idx * COMBAT_TARGETING_TURRET_STAMP_ROW_STRIDE;
 }
 
 function queueCombatTargetingTargetSlot(slot: number): void {
@@ -274,10 +374,60 @@ function ensureCombatTargetingSourceCapacity(count: number): void {
   _combatTargetingSourceSlots = slots;
 }
 
+function turretParticipatesInTargetingScheduler(turret: Turret): boolean {
+  if (turret.id === NO_ENTITY_ID) return false;
+  const config = turret.config;
+  if (config.visualOnly || config.isManualFire) return false;
+  return true;
+}
+
+function turretNeedsCombatTargetingSlabRow(turret: Turret): boolean {
+  if (turret.id === NO_ENTITY_ID || turret.config.visualOnly) return false;
+  if (
+    turret.config.isManualFire &&
+    turret.config.shot === null &&
+    turret.config.passive !== true
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function getCombatTargetingTurretArrayProfile(
+  turrets: readonly Turret[] | null | undefined,
+): CombatTargetingTurretArrayProfile {
+  if (turrets === null || turrets === undefined || turrets.length === 0) {
+    return EMPTY_TURRET_ARRAY_PROFILE;
+  }
+
+  const cached = _combatTargetingTurretArrayProfiles.get(turrets);
+  if (cached !== undefined) return cached;
+
+  let needsTurretRows = false;
+  let hasSchedulerSource = false;
+  for (let i = 0; i < turrets.length; i++) {
+    const turret = turrets[i];
+    if (!needsTurretRows && turretNeedsCombatTargetingSlabRow(turret)) {
+      needsTurretRows = true;
+    }
+    if (!hasSchedulerSource && turretParticipatesInTargetingScheduler(turret)) {
+      hasSchedulerSource = true;
+    }
+    if (needsTurretRows && hasSchedulerSource) break;
+  }
+  const profile = {
+    turretRowCapacity: needsTurretRows ? turrets.length : 0,
+    hasSchedulerSource,
+  };
+  _combatTargetingTurretArrayProfiles.set(turrets, profile);
+  return profile;
+}
+
 function queueCombatTargetingSourceSlot(entity: Entity, slot: number): void {
   const combat = entity.combat;
   if (!entity.ownership || !combat || combat.turrets.length === 0) return;
   if (slot < 0) return;
+  if (!getCombatTargetingTurretArrayProfile(combat.turrets).hasSchedulerSource) return;
   const idx = _combatTargetingSourceCount;
   ensureCombatTargetingSourceCapacity(idx + 1);
   _combatTargetingSourceSlots[idx] = slot;
@@ -303,11 +453,95 @@ function ensureCombatTargetingSensorSourceCapacity(count: number): void {
   _combatTargetingSensorSourceSlots = slots;
 }
 
+function appendCombatTargetingSensorSourceSlots(slots: Uint32Array, count: number): void {
+  if (count <= 0) return;
+  const start = _combatTargetingSensorSourceCount;
+  ensureCombatTargetingSensorSourceCapacity(start + count);
+  _combatTargetingSensorSourceSlots.set(slots.subarray(0, count), start);
+  _combatTargetingSensorSourceCount = start + count;
+}
+
+function ensureNativeObservationOnlyExactSlotCapacity(count: number): void {
+  if (count <= _nativeObservationOnlyExactSlots.length) return;
+  let next = Math.max(8, _nativeObservationOnlyExactSlots.length);
+  while (next < count) next *= 2;
+  const slots = new Uint32Array(next);
+  slots.set(_nativeObservationOnlyExactSlots.subarray(0, _nativeObservationOnlyExactSlotCount));
+  _nativeObservationOnlyExactSlots = slots;
+}
+
+function queueNativeObservationOnlyExactTarget(entity: Entity, slot: number): void {
+  const idx = _nativeObservationOnlyExactSlotCount;
+  ensureNativeObservationOnlyExactSlotCapacity(idx + 1);
+  _nativeObservationOnlyExactSlots[idx] = slot;
+  _nativeObservationOnlyExactSlotCount = idx + 1;
+  _nativeObservationOnlyExactTargets.push(entity);
+}
+
 function queueCombatTargetingSensorSourceSlot(slot: number): void {
   const idx = _combatTargetingSensorSourceCount;
   ensureCombatTargetingSensorSourceCapacity(idx + 1);
   _combatTargetingSensorSourceSlots[idx] = slot;
   _combatTargetingSensorSourceCount++;
+}
+
+function ensureCombatTargetingSimpleUnitCapacity(count: number): void {
+  if (count <= _combatTargetingSimpleUnitSlots.length) return;
+  let next = Math.max(8, _combatTargetingSimpleUnitSlots.length);
+  while (next < count) next *= 2;
+  const slots = new Uint32Array(next);
+  slots.set(_combatTargetingSimpleUnitSlots.subarray(0, _combatTargetingSimpleUnitCount));
+  _combatTargetingSimpleUnitSlots = slots;
+  const viewMasks = new Uint32Array(next);
+  viewMasks.set(_combatTargetingSimpleUnitViewMasks.subarray(0, _combatTargetingSimpleUnitCount));
+  _combatTargetingSimpleUnitViewMasks = viewMasks;
+  const extraFlags = new Uint8Array(next);
+  extraFlags.set(_combatTargetingSimpleUnitExtraFlags.subarray(0, _combatTargetingSimpleUnitCount));
+  _combatTargetingSimpleUnitExtraFlags = extraFlags;
+  _combatTargetingSimpleUnitSensorSlots = new Uint32Array(next);
+}
+
+function ensureCombatTargetingUnitProfileTable(sim: SimWasm): void {
+  if (_combatTargetingUnitProfileUploaded) return;
+
+  let codeCount = 0;
+  while (codeToUnitBlueprintId(codeCount) !== null) codeCount++;
+  sim.combatTargeting.unitProfileEnsure(codeCount);
+  const stride = sim.combatTargeting.unitProfileStride();
+  if (stride !== COMBAT_TARGETING_UNIT_PROFILE_STRIDE) {
+    throw new Error(
+      `combat targeting unit profile stride mismatch: TS=${COMBAT_TARGETING_UNIT_PROFILE_STRIDE} WASM=${stride}`,
+    );
+  }
+  const values = new Float64Array(
+    sim.memory.buffer,
+    sim.combatTargeting.unitProfileValuesPtr(),
+    codeCount * COMBAT_TARGETING_UNIT_PROFILE_STRIDE,
+  );
+  values.fill(0);
+  for (let code = 0; code < codeCount; code++) {
+    const unitBlueprintId = codeToUnitBlueprintId(code);
+    if (unitBlueprintId === null) continue;
+    const bp = getUnitBlueprint(unitBlueprintId);
+    const hostLockOn = getUnitHostLockOnMasks(unitBlueprintId);
+    const base = code * COMBAT_TARGETING_UNIT_PROFILE_STRIDE;
+    values[base + CT_UNIT_PROFILE_FULL_VISION_RADIUS] = bp.sensors.fullSightRadius;
+    values[base + CT_UNIT_PROFILE_RADAR_RADIUS] = bp.sensors.radarRadius;
+    values[base + CT_UNIT_PROFILE_DETECTOR_RADIUS] = bp.sensors.detectorRadius;
+    values[base + CT_UNIT_PROFILE_LOCKON_RELATIONSHIP] = hostLockOn.relationship;
+    values[base + CT_UNIT_PROFILE_LOCKON_ENTITY_FAMILY] = hostLockOn.entityFamily;
+    values[base + CT_UNIT_PROFILE_LOCKON_BUILDING] = hostLockOn.building;
+    values[base + CT_UNIT_PROFILE_LOCKON_TOWER] = hostLockOn.tower;
+    values[base + CT_UNIT_PROFILE_LOCKON_UNIT] = hostLockOn.unit;
+    values[base + CT_UNIT_PROFILE_LOCKON_TURRET] = hostLockOn.turret;
+    values[base + CT_UNIT_PROFILE_LOCKON_SHOT] = hostLockOn.shot;
+    values[base + CT_UNIT_PROFILE_FLAGS] =
+      bp.preventLockOnIfMyTeamIsAboveMe === true
+        ? CT_UNIT_PROFILE_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE
+        : 0;
+  }
+  _combatTargetingUnitProfileCodeCount = codeCount;
+  _combatTargetingUnitProfileUploaded = true;
 }
 
 function getCombatTargetingSensorSourceSlots(): Uint32Array {
@@ -688,10 +922,185 @@ function encodeTurretConfigFlags(turret: Turret, ranges: TurretRanges): number {
 const BALLISTIC_ARC_LOW = 0;
 const BALLISTIC_ARC_HIGH = 1;
 
-function stampCombatTargetingEntityInto(
-  targeting: CombatTargetingApi,
+function tryQueueSimpleUnitCombatTargetingStamp(
   world: WorldState,
   entity: Entity,
+  entityViews: EntityStateViews | null,
+): boolean {
+  const unit = entity.unit;
+  if (unit === null || entityViews === null) return false;
+  const slot = entitySlotRegistry.getEntitySlot(entity);
+  if (
+    slot < 0 ||
+    slot >= entityViews.capacity ||
+    entityViews.entityId[slot] !== entity.id ||
+    entityViews.kind[slot] !== ENTITY_STATE_KIND_UNIT
+  ) {
+    return false;
+  }
+  const profileCode = entityViews.unitBlueprintCode[slot];
+  if (
+    profileCode < 0 ||
+    profileCode >= _combatTargetingUnitProfileCodeCount ||
+    codeToUnitBlueprintId(profileCode) === null
+  ) {
+    return false;
+  }
+
+  // Entity-state currently owns the body pose, velocity, surface normal,
+  // radii, hp, owner, and blueprint code. Suspension offsets and priority
+  // commands are still JS-only, so keep those units on the legacy exact path.
+  if (unit.suspension !== null) return false;
+  const combat = entity.combat;
+  if (
+    combat !== null &&
+    (
+      combat.priorityTargetId !== null ||
+      combat.priorityTargetPoint !== null ||
+      combat.manualLaunchActive ||
+      combat.nextCombatProbeTick >= 0
+    )
+  ) {
+    return false;
+  }
+  const turrets = combat !== null ? combat.turrets : null;
+  if (getCombatTargetingTurretArrayProfile(turrets).turretRowCapacity !== 0) return false;
+
+  const idx = _combatTargetingSimpleUnitCount;
+  ensureCombatTargetingSimpleUnitCapacity(idx + 1);
+  _combatTargetingSimpleUnitSlots[idx] = slot;
+  const playerId = entityViews.ownerPlayerId[slot];
+  _combatTargetingSimpleUnitViewMasks[idx] = getEntityViewMask(world, playerId);
+  let extraFlags = 0;
+  if (combat !== null) {
+    extraFlags |= CT_ENTITY_FLAG_HAS_COMBAT;
+    if (combatCanFire(combat)) extraFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
+  }
+  if (unit.cloaked === true) extraFlags |= CT_ENTITY_FLAG_CLOAKED;
+  _combatTargetingSimpleUnitExtraFlags[idx] = extraFlags;
+  _combatTargetingSimpleUnitCount = idx + 1;
+  queueCombatTargetingTargetSlot(slot);
+  return true;
+}
+
+function prepareNativeObservationOnlyExactTargets(
+  world: WorldState,
+  entityViews: EntityStateViews,
+): boolean {
+  _nativeObservationOnlyExactTargets.length = 0;
+  _nativeObservationOnlyExactSlotCount = 0;
+  if (world.getProjectiles().length > 0) return false;
+  if (world.getBuildings().length > 0) return false;
+
+  let nativeCandidateCount = 0;
+  const units = world.getUnits();
+  for (let i = 0; i < units.length; i++) {
+    const entity = units[i];
+    const unit = entity.unit;
+    if (unit === null) return false;
+    const slot = entitySlotRegistry.getEntitySlot(entity);
+    if (
+      slot < 0 ||
+      slot >= entityViews.capacity ||
+      entityViews.entityId[slot] !== entity.id ||
+      entityViews.kind[slot] !== ENTITY_STATE_KIND_UNIT
+    ) {
+      return false;
+    }
+
+    const entityStateHasCombat = (entityViews.flags[slot] & ENTITY_SLOT_FLAG_HAS_COMBAT) !== 0;
+    const combat = entity.combat;
+    if (unit.suspension !== null || unit.cloaked === true) {
+      queueNativeObservationOnlyExactTarget(entity, slot);
+      continue;
+    }
+
+    if (combat !== null) {
+      const turretProfile = getCombatTargetingTurretArrayProfile(combat.turrets);
+      if (
+        !entityStateHasCombat ||
+        turretProfile.turretRowCapacity !== 0 ||
+        combat.priorityTargetId !== null ||
+        combat.priorityTargetPoint !== null ||
+        combat.manualLaunchActive ||
+        combat.nextCombatProbeTick >= 0 ||
+        !combatCanFire(combat)
+      ) {
+        queueNativeObservationOnlyExactTarget(entity, slot);
+      } else {
+        nativeCandidateCount++;
+      }
+      continue;
+    }
+
+    if (entityStateHasCombat) {
+      queueNativeObservationOnlyExactTarget(entity, slot);
+    } else {
+      nativeCandidateCount++;
+    }
+  }
+  _nativeObservationOnlyExactSlots
+    .subarray(0, _nativeObservationOnlyExactSlotCount)
+    .sort();
+  return nativeCandidateCount > 0;
+}
+
+function tryStampNativeObservationOnlySimpleUnitsFromEntityState(
+  world: WorldState,
+  sim: SimWasm,
+): readonly Entity[] | null {
+  const entityViews = entitySlotRegistry.getViews();
+  if (entityViews === null) return null;
+  if (!prepareNativeObservationOnlyExactTargets(world, entityViews)) return null;
+
+  const targeting = sim.combatTargeting;
+  const capacity = Math.min(entityViews.capacity, targeting.entityCapacity());
+  ensureCombatTargetingTargetCapacity(capacity);
+  ensureCombatTargetingSimpleUnitCapacity(capacity);
+  refreshNativeObservationOnlyViewMasks(world);
+  _nativeObservationOnlyCounts[0] = 0;
+  _nativeObservationOnlyCounts[1] = 0;
+
+  let stampedCount = measureWasmBoundary(
+    'combatTargeting.stampObservationOnlySimpleUnits',
+    () => targeting.stampObservationOnlySimpleUnitsFromEntityState(
+      _nativeObservationOnlyViewMasksByPlayer,
+      _nativeObservationOnlyExactSlots.subarray(0, _nativeObservationOnlyExactSlotCount),
+      _combatTargetingTargetSlots.subarray(0, capacity),
+      _combatTargetingSimpleUnitSensorSlots.subarray(0, capacity),
+      _nativeObservationOnlyCounts,
+    ),
+  );
+  if (stampedCount < 0) {
+    const required = -stampedCount;
+    ensureCombatTargetingTargetCapacity(required);
+    ensureCombatTargetingSimpleUnitCapacity(required);
+    stampedCount = measureWasmBoundary(
+      'combatTargeting.stampObservationOnlySimpleUnits',
+      () => targeting.stampObservationOnlySimpleUnitsFromEntityState(
+        _nativeObservationOnlyViewMasksByPlayer,
+        _nativeObservationOnlyExactSlots.subarray(0, _nativeObservationOnlyExactSlotCount),
+        _combatTargetingTargetSlots.subarray(0, required),
+        _combatTargetingSimpleUnitSensorSlots.subarray(0, required),
+        _nativeObservationOnlyCounts,
+      ),
+    );
+  }
+  if (stampedCount < 0) return null;
+
+  _combatTargetingTargetCount = _nativeObservationOnlyCounts[0];
+  _combatTargetingSensorSourceCount = 0;
+  appendCombatTargetingSensorSourceSlots(
+    _combatTargetingSimpleUnitSensorSlots,
+    _nativeObservationOnlyCounts[1],
+  );
+  return _nativeObservationOnlyExactTargets;
+}
+
+function stampCombatTargetingEntityInto(
+  world: WorldState,
+  entity: Entity,
+  entityViews: EntityStateViews | null,
 ): number {
   const combat = entity.combat;
   const slot = entitySlotRegistry.getEntitySlot(entity);
@@ -699,84 +1108,91 @@ function stampCombatTargetingEntityInto(
   // the eventual kernel walks the slab, not the JS list, so anything
   // off-grid would be invisible to it anyway.
   if (slot < 0) return -1;
-  reserveCombatTargetingSlot(slot);
   invalidateCombatTargetingStateViewsIfSlotWillGrow(slot);
 
   const ownership = entity.ownership;
   const playerId = ownership ? ownership.playerId : 0;
   const viewMask = getEntityViewMask(world, playerId);
-  _stampPos.x = entity.transform.x;
-  _stampPos.y = entity.transform.y;
-  _stampPos.z = entity.transform.z;
-  // Building combat boxes may be anchored away from transform.z (the fabricator
-  // torus floats above its reserved build footprint).
-  if (entity.building !== null) {
-    _stampPos.z = getBuildingCombatCenterZ(entity);
-  }
+  const transform = entity.transform;
   const unit = entity.unit;
   const building = entity.building;
   const projectile = entity.projectile;
+  const hasEntityState =
+    entityViews !== null &&
+    slot < entityViews.capacity &&
+    entityViews.entityId[slot] === entity.id;
+  const posX = hasEntityState ? entityViews.posX[slot] : transform.x;
+  const posY = hasEntityState ? entityViews.posY[slot] : transform.y;
+  // Building combat boxes may be anchored away from transform.z (the fabricator
+  // torus floats above its reserved build footprint).
+  const posZ = building !== null
+    ? getBuildingCombatCenterZ(entity)
+    : hasEntityState ? entityViews.posZ[slot] : transform.z;
   let velX = 0;
   let velY = 0;
   let velZ = 0;
+  let groundZ = hasEntityState ? entityViews.posZ[slot] : transform.z;
   if (unit !== null) {
-    velX = unit.velocityX ?? 0;
-    velY = unit.velocityY ?? 0;
-    velZ = unit.velocityZ ?? 0;
+    velX = hasEntityState ? entityViews.velX[slot] : unit.velocityX ?? 0;
+    velY = hasEntityState ? entityViews.velY[slot] : unit.velocityY ?? 0;
+    velZ = hasEntityState ? entityViews.velZ[slot] : unit.velocityZ ?? 0;
+    groundZ = (hasEntityState ? entityViews.posZ[slot] : transform.z) - unit.bodyCenterHeight;
   } else if (projectile !== null) {
-    velX = projectile.velocityX;
-    velY = projectile.velocityY;
-    velZ = projectile.velocityZ;
+    velX = hasEntityState ? entityViews.velX[slot] : projectile.velocityX;
+    velY = hasEntityState ? entityViews.velY[slot] : projectile.velocityY;
+    velZ = hasEntityState ? entityViews.velZ[slot] : projectile.velocityZ;
+  } else if (building !== null) {
+    groundZ = (hasEntityState ? entityViews.posZ[slot] : transform.z) - building.depth * 0.5;
   }
-  const groundZ = getUnitGroundZ(entity);
-  const rotCos = DMath.cos(entity.transform.rotation);
-  const rotSin = DMath.sin(entity.transform.rotation);
-  entity.transform.rotCos = rotCos;
-  entity.transform.rotSin = rotSin;
+  const rotation = hasEntityState ? entityViews.rotation[slot] : transform.rotation;
   const surfaceN = unit ? unit.surfaceNormal : undefined;
-  const surfaceNx = surfaceN ? surfaceN.nx : 0;
-  const surfaceNy = surfaceN ? surfaceN.ny : 0;
-  const surfaceNz = surfaceN ? surfaceN.nz : 1;
+  const surfaceNx = hasEntityState ? entityViews.surfaceNormalX[slot] : surfaceN ? surfaceN.nx : 0;
+  const surfaceNy = hasEntityState ? entityViews.surfaceNormalY[slot] : surfaceN ? surfaceN.ny : 0;
+  const surfaceNz = hasEntityState ? entityViews.surfaceNormalZ[slot] : surfaceN ? surfaceN.nz : 1;
   const suspension = unit ? unit.suspension : undefined;
   const suspensionOffsetX = suspension ? suspension.offsetX : 0;
   const suspensionOffsetY = suspension ? suspension.offsetY : 0;
   const suspensionOffsetZ = suspension ? suspension.offsetZ : 0;
-  const radiusHitbox = unit
-    ? unit.radius.hitbox
-    : (building
-      ? building.targetRadius
-      : (projectile && isProjectileShot(projectile.config.shot)
-        ? projectile.config.shot.radius.hitbox
-        : 0));
+  const projectileShot = projectile !== null && isProjectileShot(projectile.config.shot)
+    ? projectile.config.shot
+    : null;
+  const radiusHitbox = hasEntityState
+    ? entityViews.radiusHitbox[slot]
+    : unit
+      ? unit.radius.hitbox
+      : (building
+        ? building.targetRadius
+        : (projectileShot !== null
+          ? projectileShot.radius.hitbox
+          : 0));
   // AABB half-extents for AABB-shaped targets (buildings). Sphere
   // targets (units/projectiles) stamp zeros so the Rust aim-point
   // resolver collapses to entity-center without branching on shape.
-  const aabbHalfX = building ? building.width * 0.5 : 0;
-  const aabbHalfY = building ? building.height * 0.5 : 0;
-  const aabbHalfZ = building ? building.depth * 0.5 : 0;
-  const hp = unit
-    ? unit.hp
-    : (building
-      ? building.hp
-      : (projectile && isProjectileShot(projectile.config.shot)
-        ? projectile.hp
-        : 0));
+  const aabbHalfX = building
+    ? hasEntityState ? entityViews.aabbHx[slot] : building.width * 0.5
+    : 0;
+  const aabbHalfY = building
+    ? hasEntityState ? entityViews.aabbHy[slot] : building.height * 0.5
+    : 0;
+  const aabbHalfZ = building
+    ? hasEntityState ? entityViews.aabbHz[slot] : building.depth * 0.5
+    : 0;
+  const hp = hasEntityState
+    ? entityViews.hp[slot]
+    : unit
+      ? unit.hp
+      : (building
+        ? building.hp
+        : (projectile !== null && projectileShot !== null
+          ? projectile.hp
+          : 0));
 
   let entityFlags = 0;
   if (combat) entityFlags |= CT_ENTITY_FLAG_HAS_COMBAT;
   if (hp > 0) entityFlags |= CT_ENTITY_FLAG_ALIVE;
   if (combatCanFire(combat)) entityFlags |= CT_ENTITY_FLAG_FIRE_ENABLED;
-  if (isEntityActive(entity)) {
+  if (hasEntityState ? (entityViews.flags[slot] & ENTITY_SLOT_FLAG_ACTIVE) !== 0 : isEntityActive(entity)) {
     entityFlags |= CT_ENTITY_FLAG_BUILDABLE_COMPLETE;
-  }
-  if (
-    unit !== null &&
-    getUnitBlueprint(unit.unitBlueprintId).preventLockOnIfMyTeamIsAboveMe === true
-  ) {
-    entityFlags |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
-  }
-  if (isEntityCloaked(entity)) {
-    entityFlags |= CT_ENTITY_FLAG_CLOAKED;
   }
 
   // LOCK-ON-03 — Stamp the entity's family + blueprint id so the Rust
@@ -787,29 +1203,70 @@ function stampCombatTargetingEntityInto(
   // family / level-1 named exclusions for that row.
   let entityFamily: number = CT_ENTITY_FAMILY_NONE;
   let entityBlueprintCode: number = CT_BLUEPRINT_CODE_NONE;
+  let hostLockOn: LockOnMasks = EMPTY_LOCK_ON_MASKS;
+  let fullVisionRadius = 0;
+  let radarRadius = 0;
+  let detectorRadius = 0;
+  let visibilityPadding = 0;
   if (unit) {
+    const unitBlueprintId = unit.unitBlueprintId;
+    const unitProfile = getUnitTargetingBlueprintProfile(unitBlueprintId);
     entityFamily = CT_ENTITY_FAMILY_UNIT;
-    entityBlueprintCode = unitBlueprintIdToCode(unit.unitBlueprintId);
+    entityBlueprintCode = hasEntityState ? entityViews.unitBlueprintCode[slot] : unitProfile.blueprintCode;
+    hostLockOn = unitProfile.hostLockOn;
+    if (unitProfile.preventLockOnIfTeamAbove) {
+      entityFlags |= CT_ENTITY_FLAG_PREVENT_LOCKON_IF_TEAM_ABOVE;
+    }
+    if (unit.cloaked === true) {
+      entityFlags |= CT_ENTITY_FLAG_CLOAKED;
+    }
+    if (unit.hp > 0) {
+      const sensors = unit.sensors;
+      fullVisionRadius = sensors.fullSightRadius > 0 ? sensors.fullSightRadius : 0;
+      radarRadius = sensors.radarRadius > 0 ? sensors.radarRadius : 0;
+      detectorRadius = sensors.detectorRadius > 0 ? sensors.detectorRadius : 0;
+    }
+    visibilityPadding = Math.max(
+      hasEntityState ? entityViews.radiusOther[slot] : unit.radius.other,
+      radiusHitbox,
+      hasEntityState ? entityViews.radiusCollision[slot] : unit.radius.collision,
+    );
   } else if (building) {
     entityFamily =
       entity.type === 'tower' ? CT_ENTITY_FAMILY_TOWER : CT_ENTITY_FAMILY_BUILDING;
     const buildingBlueprintId = entity.buildingBlueprintId;
-    entityBlueprintCode =
-      buildingBlueprintId !== null ? buildingBlueprintIdToCode(buildingBlueprintId) : CT_BLUEPRINT_CODE_NONE;
+    entityBlueprintCode = hasEntityState
+      ? entityViews.buildingBlueprintCode[slot]
+      : buildingBlueprintId !== null ? buildingBlueprintIdToCode(buildingBlueprintId) : CT_BLUEPRINT_CODE_NONE;
+    if (entity.type === 'tower' && buildingBlueprintId !== null) {
+      hostLockOn = getTowerHostLockOnMasks(buildingBlueprintId);
+    }
+    const activeState = building.activeState;
+    if (
+      buildingBlueprintId !== null &&
+      building.hp > 0 &&
+      !isBuildBlockingActivation(entity.buildable) &&
+      (activeState === null || activeState.open !== false)
+    ) {
+      const sensors = getBuildingConfig(buildingBlueprintId).sensors;
+      fullVisionRadius = sensors.fullSightRadius > 0 ? sensors.fullSightRadius : 0;
+      radarRadius = sensors.radarRadius > 0 ? sensors.radarRadius : 0;
+      detectorRadius = sensors.detectorRadius > 0 ? sensors.detectorRadius : 0;
+    }
+    visibilityPadding = hasEntityState
+      ? entityViews.radiusOther[slot]
+      : Math.max(building.width, building.height) * 0.5;
   } else if (projectile) {
     entityFamily = CT_ENTITY_FAMILY_SHOT;
-    entityBlueprintCode = shotBlueprintIdToCode(projectile.shotBlueprintId);
+    entityBlueprintCode = hasEntityState
+      ? entityViews.shotBlueprintCode[slot]
+      : shotBlueprintIdToCode(projectile.shotBlueprintId);
   }
-  const hostLockOn = getHostLockOnMasks(entity);
 
   // Sight + radar radii and entity-size padding stamped per-entity so
   // the Rust observability helper can walk the slab itself. Padding is
   // the target's footprint, so a unit counts as observed when its edge
   // (not just its center) falls inside a vision/radar circle.
-  const fullVisionRadius = getEntityFullVisionRadius(entity);
-  const radarRadius = getEntityRadarRadius(entity);
-  const detectorRadius = getEntityCloakDetectionRadius(entity);
-  const visibilityPadding = getEntityVisibilityPadding(entity);
   if (
     playerMaskBit(playerId) !== 0 &&
     hp > 0 &&
@@ -832,36 +1289,64 @@ function stampCombatTargetingEntityInto(
   const scheduledProbeTick = combat !== null ? combat.nextCombatProbeTick : -1;
 
   const turrets = combat !== null ? combat.turrets : null;
+  const turretArrayProfile = getCombatTargetingTurretArrayProfile(turrets);
+  const skipTurretRows = turretArrayProfile.turretRowCapacity === 0;
   // The slab-owned FSM tuple (state, target, cooldown, burstCooldown,
   // losBlockedTicks) is no longer an input to setTurret. Rust preserves
   // it across same-entity restamps (clear() never resets it; kernels
   // and direct slab writers own its evolution) and seeds fresh-turret
   // constants on slot reuse, keyed off setEntity's same-entity check.
-  targeting.setEntity(
-    slot, entity.id, playerId, viewMask,
-    _stampPos.x, _stampPos.y, _stampPos.z,
-    velX, velY, velZ,
-    groundZ,
-    rotCos, rotSin,
-    surfaceNx, surfaceNy, surfaceNz,
-    suspensionOffsetX, suspensionOffsetY, suspensionOffsetZ,
-    radiusHitbox,
-    aabbHalfX, aabbHalfY, aabbHalfZ,
-    hp, entityFlags,
-    entityFamily, entityBlueprintCode,
-    hostLockOn.relationship, hostLockOn.entityFamily,
-    hostLockOn.building, hostLockOn.tower,
-    hostLockOn.unit, hostLockOn.turret,
-    hostLockOn.shot,
-    fullVisionRadius, radarRadius, detectorRadius, visibilityPadding,
-    priorityTargetId === null ? -1 : priorityTargetId,
-    priorityPointPresent,
-    priorityPointX, priorityPointY, priorityPointZ,
-    scheduledProbeTick,
-    turrets !== null ? turrets.length : 0,
-  );
+  const entityRow = beginCombatTargetingEntityStampRow(slot);
+  const entityRows = _combatTargetingEntityStampRows;
+  entityRows[entityRow] = entity.id;
+  entityRows[entityRow + 1] = playerId;
+  entityRows[entityRow + 2] = viewMask;
+  entityRows[entityRow + 3] = posX;
+  entityRows[entityRow + 4] = posY;
+  entityRows[entityRow + 5] = posZ;
+  entityRows[entityRow + 6] = velX;
+  entityRows[entityRow + 7] = velY;
+  entityRows[entityRow + 8] = velZ;
+  entityRows[entityRow + 9] = groundZ;
+  // Rust derives deterministic sin/cos once inside setEntityRowsBatch.
+  // Sending yaw avoids two scalar JS/WASM calls per targetable entity.
+  entityRows[entityRow + 10] = rotation;
+  entityRows[entityRow + 11] = 0;
+  entityRows[entityRow + 12] = surfaceNx;
+  entityRows[entityRow + 13] = surfaceNy;
+  entityRows[entityRow + 14] = surfaceNz;
+  entityRows[entityRow + 15] = suspensionOffsetX;
+  entityRows[entityRow + 16] = suspensionOffsetY;
+  entityRows[entityRow + 17] = suspensionOffsetZ;
+  entityRows[entityRow + 18] = radiusHitbox;
+  entityRows[entityRow + 19] = aabbHalfX;
+  entityRows[entityRow + 20] = aabbHalfY;
+  entityRows[entityRow + 21] = aabbHalfZ;
+  entityRows[entityRow + 22] = hp;
+  entityRows[entityRow + 23] = entityFlags;
+  entityRows[entityRow + 24] = entityFamily;
+  entityRows[entityRow + 25] = entityBlueprintCode;
+  entityRows[entityRow + 26] = hostLockOn.relationship;
+  entityRows[entityRow + 27] = hostLockOn.entityFamily;
+  entityRows[entityRow + 28] = hostLockOn.building;
+  entityRows[entityRow + 29] = hostLockOn.tower;
+  entityRows[entityRow + 30] = hostLockOn.unit;
+  entityRows[entityRow + 31] = hostLockOn.turret;
+  entityRows[entityRow + 32] = hostLockOn.shot;
+  entityRows[entityRow + 33] = fullVisionRadius;
+  entityRows[entityRow + 34] = radarRadius;
+  entityRows[entityRow + 35] = detectorRadius;
+  entityRows[entityRow + 36] = visibilityPadding;
+  entityRows[entityRow + 37] = priorityTargetId === null ? -1 : priorityTargetId;
+  entityRows[entityRow + 38] = priorityPointPresent;
+  entityRows[entityRow + 39] = priorityPointX;
+  entityRows[entityRow + 40] = priorityPointY;
+  entityRows[entityRow + 41] = priorityPointZ;
+  entityRows[entityRow + 42] = scheduledProbeTick;
+  entityRows[entityRow + 43] = turrets !== null && !skipTurretRows ? turrets.length : 0;
 
-  if (turrets === null) return slot;
+  if (turrets === null || skipTurretRows) return slot;
+  const trajectoryMode = combat === null ? 'auto' : combat.trajectoryMode;
   for (let i = 0; i < turrets.length; i++) {
     const t = turrets[i];
     const ranges = t.ranges;
@@ -869,8 +1354,6 @@ function stampCombatTargetingEntityInto(
     const projectileShot: ProjectileShot | undefined =
       shot !== null && isProjectileShot(shot) ? shot : undefined;
     const angleType = t.config.aimStyle.angleType;
-    const entityCombat = entity.combat;
-    const trajectoryMode = entityCombat === null ? 'auto' : entityCombat.trajectoryMode;
     const ballisticArcPreference = trajectoryMode === 'high'
       ? BALLISTIC_ARC_HIGH
       : trajectoryMode === 'low'
@@ -893,44 +1376,53 @@ function stampCombatTargetingEntityInto(
     const trackingAcq = ranges.tracking ? rangeEdgeSq(ranges.tracking, 'acquire') : 0;
     const trackingRel = ranges.tracking ? rangeEdgeSq(ranges.tracking, 'release') : 0;
     const outermostAcq = ranges.tracking ? ranges.tracking.acquire : ranges.fire.max.acquire;
-
-    targeting.setTurret(
-      slot, i,
-      t.id,
-      t.parentId,
-      t.rootHostId,
-      t.mountIndex,
-      t.worldPos.x, t.worldPos.y, t.worldPos.z,
-      t.config.radius.hitbox,
-      t.worldVelocity.x, t.worldVelocity.y, t.worldVelocity.z,
-      t.rotation, t.pitch,
-      t.angularVelocity, t.pitchVelocity,
-      fireMaxAcq, fireMaxRel,
-      fireMinAcq, fireMinRel,
-      trackingAcq, trackingRel,
-      outermostAcq,
-      t.mountOffset2d,
-      t.mount.x, t.mount.y, t.mount.z,
-      t.worldPosTick,
-      encodeTurretConfigFlags(t, ranges),
-      t.sustainedDps,
-      projectileSpeed,
-      projectileMass,
-      projectileAirFrictionPer60HzFrame,
-      ballisticArcPreference,
-      maxTimeSec,
-      t.config.groundAimFraction ?? 0,
-      angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0,
-      turretBlueprintIdToCode(t.config.turretBlueprintId),
-      t.config.lockOnRelationshipIncludeMask,
-      t.config.lockOnEntityFamilyIncludeMask,
-      t.config.lockOnBuildingIncludeMask,
-      t.config.lockOnTowerIncludeMask,
-      t.config.lockOnUnitIncludeMask,
-      t.config.lockOnTurretIncludeMask,
-      t.config.lockOnShotIncludeMask,
-      t.config.lockOnRequiresTargetLockedOntoSelfMode,
-    );
+    const turretRow = beginCombatTargetingTurretStampRow(slot, i);
+    const turretRows = _combatTargetingTurretStampRows;
+    turretRows[turretRow] = t.id;
+    turretRows[turretRow + 1] = t.parentId;
+    turretRows[turretRow + 2] = t.rootHostId;
+    turretRows[turretRow + 3] = t.mountIndex;
+    turretRows[turretRow + 4] = t.worldPos.x;
+    turretRows[turretRow + 5] = t.worldPos.y;
+    turretRows[turretRow + 6] = t.worldPos.z;
+    turretRows[turretRow + 7] = t.config.radius.hitbox;
+    turretRows[turretRow + 8] = t.worldVelocity.x;
+    turretRows[turretRow + 9] = t.worldVelocity.y;
+    turretRows[turretRow + 10] = t.worldVelocity.z;
+    turretRows[turretRow + 11] = t.rotation;
+    turretRows[turretRow + 12] = t.pitch;
+    turretRows[turretRow + 13] = t.angularVelocity;
+    turretRows[turretRow + 14] = t.pitchVelocity;
+    turretRows[turretRow + 15] = fireMaxAcq;
+    turretRows[turretRow + 16] = fireMaxRel;
+    turretRows[turretRow + 17] = fireMinAcq;
+    turretRows[turretRow + 18] = fireMinRel;
+    turretRows[turretRow + 19] = trackingAcq;
+    turretRows[turretRow + 20] = trackingRel;
+    turretRows[turretRow + 21] = outermostAcq;
+    turretRows[turretRow + 22] = t.mountOffset2d;
+    turretRows[turretRow + 23] = t.mount.x;
+    turretRows[turretRow + 24] = t.mount.y;
+    turretRows[turretRow + 25] = t.mount.z;
+    turretRows[turretRow + 26] = t.worldPosTick;
+    turretRows[turretRow + 27] = encodeTurretConfigFlags(t, ranges);
+    turretRows[turretRow + 28] = t.sustainedDps;
+    turretRows[turretRow + 29] = projectileSpeed;
+    turretRows[turretRow + 30] = projectileMass;
+    turretRows[turretRow + 31] = projectileAirFrictionPer60HzFrame;
+    turretRows[turretRow + 32] = ballisticArcPreference;
+    turretRows[turretRow + 33] = maxTimeSec;
+    turretRows[turretRow + 34] = t.config.groundAimFraction ?? 0;
+    turretRows[turretRow + 35] = angleType === 'ballisticArcLowOnlyUnder' ? 1 : 0;
+    turretRows[turretRow + 36] = turretBlueprintIdToCode(t.config.turretBlueprintId);
+    turretRows[turretRow + 37] = t.config.lockOnRelationshipIncludeMask;
+    turretRows[turretRow + 38] = t.config.lockOnEntityFamilyIncludeMask;
+    turretRows[turretRow + 39] = t.config.lockOnBuildingIncludeMask;
+    turretRows[turretRow + 40] = t.config.lockOnTowerIncludeMask;
+    turretRows[turretRow + 41] = t.config.lockOnUnitIncludeMask;
+    turretRows[turretRow + 42] = t.config.lockOnTurretIncludeMask;
+    turretRows[turretRow + 43] = t.config.lockOnShotIncludeMask;
+    turretRows[turretRow + 44] = t.config.lockOnRequiresTargetLockedOntoSelfMode;
   }
   return slot;
 }
@@ -943,10 +1435,10 @@ function stampCombatTargetingEntityInto(
  *  armed-entity traversal. */
 export function stampCombatTargetingPool(world: WorldState, wind: WindState | null = null): void {
   resetCombatTargetingSources();
-  resetCombatTargetingSlotUse();
   _stampViewMaskComputedBits = 0;
   const sim = getSimWasm();
   if (sim === undefined) return;
+  ensureCombatTargetingUnitProfileTable(sim);
   const targeting = sim.combatTargeting;
 
   // Drop every slot's ALIVE flag and turret count so dead entities and
@@ -958,17 +1450,62 @@ export function stampCombatTargetingPool(world: WorldState, wind: WindState | nu
   } else {
     targeting.setWind(0, 0, 0);
   }
-
-  const targets = world.getCombatTargetEntities();
+  const nativeExactTargets = tryStampNativeObservationOnlySimpleUnitsFromEntityState(world, sim);
+  const targets = nativeExactTargets ?? world.getCombatTargetEntities();
+  let turretCapacity = 0;
+  for (let i = 0; i < targets.length; i++) {
+    const turrets = targets[i].combat?.turrets ?? null;
+    turretCapacity += getCombatTargetingTurretArrayProfile(turrets).turretRowCapacity;
+  }
+  bindCombatTargetingStampScratch(sim, targets.length, turretCapacity);
+  const entityViews = entitySlotRegistry.getViews();
   for (const entity of targets) {
-    const slot = stampCombatTargetingEntityInto(targeting, world, entity);
+    if (tryQueueSimpleUnitCombatTargetingStamp(world, entity, entityViews)) {
+      continue;
+    }
+    const slot = stampCombatTargetingEntityInto(world, entity, entityViews);
     if (slot >= 0) {
       queueCombatTargetingTargetSlot(slot);
       queueCombatTargetingSourceSlot(entity, slot);
     }
   }
+  if (_combatTargetingSimpleUnitCount > 0) {
+    let simpleSensorCount = measureWasmBoundary('combatTargeting.stampSimpleUnitEntities', () =>
+      targeting.stampSimpleUnitEntitiesFromEntityState(
+        _combatTargetingSimpleUnitCount,
+        _combatTargetingSimpleUnitSlots.subarray(0, _combatTargetingSimpleUnitCount),
+        _combatTargetingSimpleUnitViewMasks.subarray(0, _combatTargetingSimpleUnitCount),
+        _combatTargetingSimpleUnitExtraFlags.subarray(0, _combatTargetingSimpleUnitCount),
+        _combatTargetingSimpleUnitSensorSlots.subarray(0, _combatTargetingSimpleUnitCount),
+      )
+    );
+    if (simpleSensorCount < 0) {
+      ensureCombatTargetingSimpleUnitCapacity(-simpleSensorCount);
+      simpleSensorCount = measureWasmBoundary('combatTargeting.stampSimpleUnitEntities', () =>
+        targeting.stampSimpleUnitEntitiesFromEntityState(
+          _combatTargetingSimpleUnitCount,
+          _combatTargetingSimpleUnitSlots.subarray(0, _combatTargetingSimpleUnitCount),
+          _combatTargetingSimpleUnitViewMasks.subarray(0, _combatTargetingSimpleUnitCount),
+          _combatTargetingSimpleUnitExtraFlags.subarray(0, _combatTargetingSimpleUnitCount),
+          _combatTargetingSimpleUnitSensorSlots.subarray(0, _combatTargetingSimpleUnitCount),
+        )
+      );
+    }
+    appendCombatTargetingSensorSourceSlots(
+      _combatTargetingSimpleUnitSensorSlots,
+      Math.max(0, simpleSensorCount),
+    );
+  }
+  measureWasmBoundary('combatTargeting.commitStampScratch', () => {
+    targeting.commitStampScratch(
+      _combatTargetingEntityStampCount,
+      _combatTargetingTurretStampCount,
+    );
+  });
 
-  targeting.rebuildObservationMasksForSources(getCombatTargetingSensorSourceSlots());
+  measureWasmBoundary('combatTargeting.rebuildObservationMasks', () => {
+    targeting.rebuildObservationMasksForSources(getCombatTargetingSensorSourceSlots());
+  });
   const scanPulses = world.scanPulses;
   for (let i = 0; i < scanPulses.length; i++) {
     const pulse = scanPulses[i];

@@ -18,6 +18,7 @@ export class SimulationCombatHaltController {
   private modeBySlot = new Uint8Array(0);
   private priorityPointBySlot = new Uint8Array(0);
   private stopBySlot = new Uint8Array(0);
+  private lastNoCandidateActionVersion = -1;
 
   constructor(world: WorldState) {
     this.world = world;
@@ -25,6 +26,9 @@ export class SimulationCombatHaltController {
 
   prepare(): void {
     this.clear();
+    const actionVersion = this.world.getActionQueueVersion();
+    if (this.lastNoCandidateActionVersion === actionVersion) return;
+
     const sim = getSimWasm();
     if (sim === undefined) return;
     const units = this.world.getUnits();
@@ -57,7 +61,11 @@ export class SimulationCombatHaltController {
       this.queue(count, slot, mode, priorityPointPresent);
       count++;
     }
-    if (count === 0) return;
+    if (count === 0) {
+      this.lastNoCandidateActionVersion = this.world.getActionQueueVersion();
+      return;
+    }
+    this.lastNoCandidateActionVersion = -1;
 
     sim.combatTargeting.haltDecisionBatch(
       this.slots.subarray(0, count),
@@ -100,6 +108,7 @@ export class SimulationCombatHaltController {
 
   reset(): void {
     this.clear();
+    this.lastNoCandidateActionVersion = -1;
   }
 
   private ensureRowCapacity(required: number): void {

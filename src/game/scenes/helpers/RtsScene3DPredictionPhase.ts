@@ -17,7 +17,10 @@ type RtsScene3DPredictionPhaseResult = {
 export class RtsScene3DPredictionPhase {
   private readonly renderFrameState = createRenderFrameState();
 
-  constructor(private readonly clientViewState: ClientViewState) {}
+  constructor(
+    private readonly clientViewState: ClientViewState,
+    private readonly hasAuthoritativeRenderSource: () => boolean,
+  ) {}
 
   run(options: {
     deltaMs: number;
@@ -33,7 +36,9 @@ export class RtsScene3DPredictionPhase {
     const graphicsConfig = renderFrameState.gfx;
 
     const predStart = performance.now();
-    const targetAge = this.clientViewState.applyPrediction(options.deltaMs);
+    const targetAge = this.hasAuthoritativeRenderSource()
+      ? { activeTargets: 0, totalTargetAgeMs: 0, maxTargetAgeMs: 0 }
+      : this.clientViewState.applyPrediction(options.deltaMs);
     const predMs = performance.now() - predStart;
     CLIENT_PREDICTION_DIAGNOSTICS.recordFrame({ predictionMs: predMs, targetAge });
 

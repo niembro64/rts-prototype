@@ -330,6 +330,15 @@ export function expandPathPoints(
   unitRadius: number,
   symmetricSlope: boolean,
 ): UnitPathPoint[] {
+  if (pathAllowsAir(terrainFilter)) {
+    const x = Math.max(0, Math.min(mapWidth, goalX));
+    const y = Math.max(0, Math.min(mapHeight, goalY));
+    return [{
+      x,
+      y,
+      z: goalZ !== null ? goalZ : getSurfaceHeight(x, y, mapWidth, mapHeight, LAND_CELL_SIZE),
+    }];
+  }
   const path = findPath(
     startX,
     startY,

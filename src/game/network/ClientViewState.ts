@@ -191,16 +191,23 @@ import {
   CLIENT_RENDER_ENTITY_KIND_BUILDING,
   CLIENT_RENDER_ENTITY_KIND_UNIT,
   ClientRenderEntityStateSlab,
+  type ClientRenderPoseRefreshResult,
+  type ClientRenderEntityStateViews,
 } from '../render3d/ClientRenderEntityStateSlab';
+import type { AuthoritativeRenderEntityState3D } from '../render3d/AuthoritativeRenderPoseOverlay3D';
 import {
   ClientRenderTurretStateSlab,
   type ClientRenderTurretHostRows,
+  type ClientRenderTurretPoseRefreshResult,
 } from '../render3d/ClientRenderTurretStateSlab';
 import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
-import { isMetalExtractorBlueprintId } from '../../types/buildingTypes';
+import {
+  isMetalExtractorBlueprintId,
+} from '../../types/buildingTypes';
 import {
   unitBlueprintBarDefaultMoveState,
 } from '../sim/unitCommandCapabilities';
+import { setQuatFromYaw } from '../math/Quaternion';
 
 // Shared empty array constant (avoids allocating new [] on every snapshot/frame)
 const EMPTY_AUDIO: NetworkServerSnapshot['audioEvents'] = [];
@@ -338,8 +345,24 @@ type ClientViewRenderPacketOptions3D = {
   getEntityHudToggle: (type: EntityHudType, toggle: EntityHudElement) => boolean;
   lookupPlayerName: (id: PlayerId) => string | null;
   getGroundPrintLocomotionMesh: (entityId: EntityId) => Locomotion3DMesh;
-  isEntityFarLod?: (entity: Entity) => boolean;
-  isEntityEmissionFarLod?: (entity: Entity) => boolean;
+  suppressActivePredictionFlags?: boolean;
+  refreshAuthoritativeRenderSlots?: (
+    bounds: FootprintBounds | null,
+    unitSlots: readonly number[],
+    buildingSlots: readonly number[],
+    views: ClientRenderEntityStateViews,
+  ) => void;
+  collectAuthoritativeRenderSlots?: (
+    bounds: FootprintBounds | null,
+    unitSlotsOut: number[],
+    buildingSlotsOut: number[],
+    views: ClientRenderEntityStateViews,
+  ) => void;
+  refreshAuthoritativeRenderScope?: (
+    bounds: FootprintBounds | null,
+    candidateUnits: readonly Entity[],
+    candidateBuildings: readonly Entity[],
+  ) => void;
 };
 
 type ClientSnapshotApplyStats = {
@@ -351,6 +374,7 @@ type ClientSnapshotApplyOptions = {
   collectCorrectionStats?: boolean | undefined;
   collectMaterializationStages?: boolean | undefined;
   deferPredictedTurretRenderRefresh?: boolean | undefined;
+  skipPresentationMotionTargets?: boolean | undefined;
 };
 
 function recordClientApplySubstage(
@@ -378,6 +402,7 @@ export class ClientViewState {
   private resourcePylonSignedRates = new IndexedEntityIdMap<ClientResourcePylonSignedRates>();
   private resourcePylonFlowsBySource = new IndexedEntityIdMap<ClientResourcePylonFlow[]>();
   private readonly resourcePylonSourceIds: EntityId[] = [];
+  private suppressActivePredictionPacketFlags = false;
 
   // Audio events from last state update
   private pendingAudioEvents: NetworkServerSnapshot['audioEvents'] = [];
@@ -426,11 +451,24 @@ export class ClientViewState {
   private renderSpatialIndex = new ClientRenderSpatialIndex();
   private renderEntityState = new ClientRenderEntityStateSlab();
   private renderTurretState = new ClientRenderTurretStateSlab();
+  private readonly authoritativePoseRefreshResult: ClientRenderPoseRefreshResult = {
+    slot: undefined,
+    changed: false,
+    spatialChanged: false,
+  };
+  private readonly authoritativeTurretPoseRefreshResult: ClientRenderTurretPoseRefreshResult = {
+    rows: undefined,
+    changed: false,
+  };
   private readonly scopedRenderIncludedIds = new IndexedEntityIdSet();
   private readonly scopedRenderUnitSlots: number[] = [];
   private readonly scopedRenderBuildingSlots: number[] = [];
   private readonly scopedRenderUnitRowSlots: number[] = [];
   private readonly scopedRenderBuildingRowSlots: number[] = [];
+  private readonly scopedRenderNearUnitSlots: number[] = [];
+  private readonly scopedRenderNearBuildingSlots: number[] = [];
+  private readonly pickCandidateUnitSlots: number[] = [];
+  private readonly pickCandidateBuildingSlots: number[] = [];
   private entitySetVersion = 0;
 
   private predictionCadence = new ClientPredictionCadence();
@@ -532,7 +570,14 @@ export class ClientViewState {
   }
 
   private handleLocalEntityRemoved(entity: Entity, deferEntitySetChange: boolean): void {
-    this.cache.handleEntityRemoved(entity);
+    if (deferEntitySetChange) {
+      // Snapshot removal batches can contain hundreds of ids. Incremental cache
+      // list splices are O(rows * cached-list-size); a single lazy rebuild is
+      // cheaper and keeps the batch atomic for readers after applyNetworkState.
+      this.cache.invalidate();
+    } else {
+      this.cache.handleEntityRemoved(entity);
+    }
     if (!deferEntitySetChange) this.entitySetVersion++;
   }
 
@@ -799,12 +844,12 @@ export class ClientViewState {
     source: EntitySnapshotWireSource,
     offset: number,
     count: number,
-    target: ServerTarget,
+    target: ServerTarget | undefined,
     entity: Entity,
   ): boolean {
     if (count <= 0) return false;
     if (offset < 0 || offset + count > source.turretRows.count) return false;
-    resizeServerTargetTurrets(target, count);
+    if (target !== undefined) resizeServerTargetTurrets(target, count);
     const rows = source.turretRows.values;
     const combat = entity.combat;
     const entityTurrets = combat?.turrets;
@@ -813,12 +858,14 @@ export class ClientViewState {
       : 0;
     for (let i = 0; i < count; i++) {
       const rowBase = (offset + i) * ENTITY_SNAPSHOT_WIRE_TURRET_STRIDE;
-      const targetTurret = target.turrets[i];
-      targetTurret.rotation = deqRot(rows[rowBase + 0]);
-      targetTurret.angularVelocity = deqRot(rows[rowBase + 1]);
-      targetTurret.pitch = deqRot(rows[rowBase + 2]);
-      targetTurret.pitchVelocity = deqRot(rows[rowBase + 3]);
-      targetTurret.shieldRange = rows[rowBase + 8] !== 0 ? rows[rowBase + 9] : null;
+      if (target !== undefined) {
+        const targetTurret = target.turrets[i];
+        targetTurret.rotation = deqRot(rows[rowBase + 0]);
+        targetTurret.angularVelocity = deqRot(rows[rowBase + 1]);
+        targetTurret.pitch = deqRot(rows[rowBase + 2]);
+        targetTurret.pitchVelocity = deqRot(rows[rowBase + 3]);
+        targetTurret.shieldRange = rows[rowBase + 8] !== 0 ? rows[rowBase + 9] : null;
+      }
       if (i >= entityTurretLimit || entityTurrets === undefined) continue;
       const entityTurret = entityTurrets[i];
       if (rows[rowBase + 10] !== 0) {
@@ -1110,6 +1157,7 @@ export class ClientViewState {
     base: number,
     changedFields: number,
     now: number,
+    skipPresentationMotionTargets = false,
   ): boolean {
     if ((changedFields & ~CLIENT_BASIC_TRANSFORM_DELTA_FIELDS) !== 0) return false;
     const hasPos = (changedFields & ENTITY_CHANGED_POS) !== 0;
@@ -1121,6 +1169,7 @@ export class ClientViewState {
     const playerId = values[base + 6] | 0;
 
     if (typeCode === ENTITY_SNAPSHOT_WIRE_TYPE_UNIT) {
+      if (skipPresentationMotionTargets) return true;
       if (
         !this.renderSlotMatchesSnapshotOwner(id as EntityId, playerId as PlayerId, CLIENT_RENDER_ENTITY_KIND_UNIT)
       ) {
@@ -1165,6 +1214,7 @@ export class ClientViewState {
     now: number,
     collectCorrectionStats: boolean,
     applyStats: ClientSnapshotApplyStats,
+    skipPresentationMotionTargets = false,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
     if (rowIndex < 0 || rowIndex >= source.basicRows.count) return false;
@@ -1174,7 +1224,13 @@ export class ClientViewState {
     if (values[base + 7] === 0 || changedFields === 0) return false;
     if ((changedFields & ~CLIENT_BASIC_TRANSFORM_DELTA_FIELDS) !== 0) return false;
     if (!collectCorrectionStats) {
-      return this.applyBasicTransformTypedDeltaWireRow(values, base, changedFields, now);
+      return this.applyBasicTransformTypedDeltaWireRow(
+        values,
+        base,
+        changedFields,
+        now,
+        skipPresentationMotionTargets,
+      );
     }
 
     const id = values[base + 0] | 0;
@@ -1273,6 +1329,7 @@ export class ClientViewState {
   private applyBasicTransformTypedDeltaSource(
     source: EntitySnapshotWireSource,
     now: number,
+    skipPresentationMotionTargets: boolean,
   ): void {
     const values = source.basicRows.values;
     for (let entityIndex = 0; entityIndex < source.count; entityIndex++) {
@@ -1282,6 +1339,7 @@ export class ClientViewState {
         base,
         values[base + 8] | 0,
         now,
+        skipPresentationMotionTargets,
       );
     }
   }
@@ -1293,6 +1351,7 @@ export class ClientViewState {
     collectCorrectionStats: boolean,
     deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
+    skipPresentationMotionTargets = false,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
     return this.tryApplyUnitTypedDeltaWireRowAt(
@@ -1302,6 +1361,7 @@ export class ClientViewState {
       collectCorrectionStats,
       deferPredictedTurretRenderRefresh,
       applyStats,
+      skipPresentationMotionTargets,
     );
   }
 
@@ -1312,6 +1372,7 @@ export class ClientViewState {
     collectCorrectionStats: boolean,
     deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
+    skipPresentationMotionTargets = false,
   ): boolean {
     if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
     const values = source.unitRows.values;
@@ -1323,6 +1384,7 @@ export class ClientViewState {
       !collectCorrectionStats &&
       (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
     ) {
+      if (skipPresentationMotionTargets) return true;
       return this.tryApplyUnitHotMotionTypedDeltaWireRow(
         values,
         base,
@@ -1347,7 +1409,8 @@ export class ClientViewState {
     const ownership = existing.ownership;
     if (ownership === null || ownership.playerId !== playerId) return false;
 
-    const needsServerTarget = hasMotionFields || hasTurretFields;
+    const needsServerTarget =
+      !skipPresentationMotionTargets && (hasMotionFields || hasTurretFields);
     const previousTarget = collectCorrectionStats && needsServerTarget
       ? this.serverTargets.get(id)
       : undefined;
@@ -1398,7 +1461,11 @@ export class ClientViewState {
       }
     }
     let copiedTurretRows = false;
-    if (hasTurretFields && values[base + 43] !== 0) {
+    if (
+      !skipPresentationMotionTargets &&
+      hasTurretFields &&
+      values[base + 43] !== 0
+    ) {
       if (target === undefined) return false;
       const turretCount = values[base + 44] | 0;
       const turretOffset = values[base + 49] | 0;
@@ -1488,7 +1555,7 @@ export class ClientViewState {
       );
     }
 
-    if (hasMotionFields || copiedTurretRows) {
+    if (!skipPresentationMotionTargets && (hasMotionFields || copiedTurretRows)) {
       this.activeEntityPredictionIds.add(id);
       this.dirtyUnitRenderIds.add(id);
     }
@@ -1499,15 +1566,22 @@ export class ClientViewState {
     source: EntitySnapshotWireSource,
     entityIndex: number,
     now: number,
+    skipPresentationMotionTargets = false,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
-    return this.tryApplyUnitTypedFullWireRowAt(source, rowIndex, now);
+    return this.tryApplyUnitTypedFullWireRowAt(
+      source,
+      rowIndex,
+      now,
+      skipPresentationMotionTargets,
+    );
   }
 
   private tryApplyUnitTypedFullWireRowAt(
     source: EntitySnapshotWireSource,
     rowIndex: number,
     now: number,
+    skipPresentationMotionTargets = false,
   ): boolean {
     if (rowIndex < 0 || rowIndex >= source.unitRows.count) return false;
     const values = source.unitRows.values;
@@ -1527,41 +1601,49 @@ export class ClientViewState {
       return false;
     }
 
-    const target = this.getOrCreateServerTarget(id);
-    target.x = deqEntityPos(values[base + 1]);
-    target.y = deqEntityPos(values[base + 2]);
-    target.z = deqEntityPos(values[base + 3]);
-    target.bodyCenterHeight = existing.unit.bodyCenterHeight;
-    target.rotation = deqRot(values[base + 4]);
-    target.velocityX = deqVel(values[base + 10]);
-    target.velocityY = deqVel(values[base + 11]);
-    target.velocityZ = deqVel(values[base + 12]);
-    if (values[base + 23] !== 0) {
-      target.surfaceNormalX = deqNormal(values[base + 24]);
-      target.surfaceNormalY = deqNormal(values[base + 25]);
-      target.surfaceNormalZ = deqNormal(values[base + 26]);
-    }
-    if (values[base + 27] !== 0) {
-      let orientation = target.orientation;
-      if (orientation === null) {
-        orientation = { x: 0, y: 0, z: 0, w: 1 };
-        target.orientation = orientation;
+    const target = skipPresentationMotionTargets
+      ? undefined
+      : this.getOrCreateServerTarget(id);
+    if (target !== undefined) {
+      target.x = deqEntityPos(values[base + 1]);
+      target.y = deqEntityPos(values[base + 2]);
+      target.z = deqEntityPos(values[base + 3]);
+      target.bodyCenterHeight = existing.unit.bodyCenterHeight;
+      target.rotation = deqRot(values[base + 4]);
+      target.velocityX = deqVel(values[base + 10]);
+      target.velocityY = deqVel(values[base + 11]);
+      target.velocityZ = deqVel(values[base + 12]);
+      if (values[base + 23] !== 0) {
+        target.surfaceNormalX = deqNormal(values[base + 24]);
+        target.surfaceNormalY = deqNormal(values[base + 25]);
+        target.surfaceNormalZ = deqNormal(values[base + 26]);
       }
-      orientation.x = values[base + 28];
-      orientation.y = values[base + 29];
-      orientation.z = values[base + 30];
-      orientation.w = values[base + 31];
+      if (values[base + 27] !== 0) {
+        let orientation = target.orientation;
+        if (orientation === null) {
+          orientation = { x: 0, y: 0, z: 0, w: 1 };
+          target.orientation = orientation;
+        }
+        orientation.x = values[base + 28];
+        orientation.y = values[base + 29];
+        orientation.z = values[base + 30];
+        orientation.w = values[base + 31];
+      } else {
+        target.orientation = null;
+      }
+      if (values[base + 32] !== 0) {
+        target.angularVelocityX = values[base + 33];
+        target.angularVelocityY = values[base + 34];
+        target.angularVelocityZ = values[base + 35];
+      } else {
+        target.angularVelocityX = null;
+        target.angularVelocityY = null;
+        target.angularVelocityZ = null;
+      }
     } else {
-      target.orientation = null;
-    }
-    if (values[base + 32] !== 0) {
-      target.angularVelocityX = values[base + 33];
-      target.angularVelocityY = values[base + 34];
-      target.angularVelocityZ = values[base + 35];
-    } else {
-      target.angularVelocityX = null;
-      target.angularVelocityY = null;
-      target.angularVelocityZ = null;
+      this.serverTargets.delete(id);
+      this.activeEntityPredictionIds.delete(id);
+      this.snapUnitTypedFullWireMotionFields(existing, values, base);
     }
 
     let copiedTurretRows = false;
@@ -1580,7 +1662,7 @@ export class ClientViewState {
       );
       if (!copiedTurretRows) return false;
     }
-    target.updatedAtMs = now;
+    if (target !== undefined) target.updatedAtMs = now;
 
     this.applyUnitHpBuildTypedFields(
       existing,
@@ -1642,16 +1724,21 @@ export class ClientViewState {
         : true;
     }
 
-    this.refreshRenderableEntityStateSnapshotDelta(
-      existing,
-      true,
-      copiedTurretRows,
-      true,
-    );
+    if (skipPresentationMotionTargets) {
+      this.refreshRenderableEntityStateFromSnapshot(existing, false);
+    } else {
+      this.refreshRenderableEntityStateSnapshotDelta(
+        existing,
+        true,
+        copiedTurretRows,
+        true,
+      );
+    }
     if (existing.unit.supportSurface.kind === 'discTop') {
       this.refreshPredictionSupportSurfaceProvider(existing);
     }
     if (
+      target !== undefined &&
       !clientUnitPredictionIsSettled(
         existing,
         target,
@@ -1662,6 +1749,62 @@ export class ClientViewState {
       this.dirtyUnitRenderIds.add(id);
     }
     return true;
+  }
+
+  private snapUnitTypedFullWireMotionFields(
+    entity: Entity,
+    values: Float64Array,
+    base: number,
+  ): void {
+    const unit = entity.unit;
+    if (unit === null) return;
+    entity.transform.x = deqEntityPos(values[base + 1]);
+    entity.transform.y = deqEntityPos(values[base + 2]);
+    entity.transform.z = deqEntityPos(values[base + 3]);
+    entity.transform.rotation = deqRot(values[base + 4]);
+    unit.velocityX = deqVel(values[base + 10]);
+    unit.velocityY = deqVel(values[base + 11]);
+    unit.velocityZ = deqVel(values[base + 12]);
+
+    const normal = unit.surfaceNormal;
+    if (values[base + 23] !== 0) {
+      normal.nx = deqNormal(values[base + 24]);
+      normal.ny = deqNormal(values[base + 25]);
+      normal.nz = deqNormal(values[base + 26]);
+    } else {
+      normal.nx = 0;
+      normal.ny = 0;
+      normal.nz = 1;
+    }
+
+    let orientation = unit.orientation;
+    if (orientation === null) {
+      orientation = { x: 0, y: 0, z: 0, w: 1 };
+      unit.orientation = orientation;
+    }
+    if (values[base + 27] !== 0) {
+      orientation.x = values[base + 28];
+      orientation.y = values[base + 29];
+      orientation.z = values[base + 30];
+      orientation.w = values[base + 31];
+    } else {
+      setQuatFromYaw(orientation, entity.transform.rotation);
+    }
+
+    let angularVelocity = unit.angularVelocity3;
+    if (angularVelocity === null) {
+      angularVelocity = { x: 0, y: 0, z: 0 };
+      unit.angularVelocity3 = angularVelocity;
+    }
+    if (values[base + 32] !== 0) {
+      angularVelocity.x = values[base + 33];
+      angularVelocity.y = values[base + 34];
+      angularVelocity.z = values[base + 35];
+    } else {
+      angularVelocity.x = 0;
+      angularVelocity.y = 0;
+      angularVelocity.z = 0;
+    }
   }
 
   private tryApplyUnitHotMotionTypedDeltaWireRow(
@@ -2095,12 +2238,15 @@ export class ClientViewState {
     now: number,
     deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
+    skipPresentationMotionTargets: boolean,
   ): boolean {
     const count = source.count;
     if (count === 0 || count !== entities.length) return false;
     if (source.typedPlaceholderRows !== count) return false;
     if (this.canApplyUnitHotMotionTypedPlaceholderSource(source)) {
-      this.applyUnitHotMotionTypedPlaceholderSource(source, now);
+      if (!skipPresentationMotionTargets) {
+        this.applyUnitHotMotionTypedPlaceholderSource(source, now);
+      }
       return true;
     }
     this.applyTypedPlaceholderDeltaSource(
@@ -2108,6 +2254,7 @@ export class ClientViewState {
       now,
       deferPredictedTurretRenderRefresh,
       applyStats,
+      skipPresentationMotionTargets,
     );
     return true;
   }
@@ -2249,6 +2396,7 @@ export class ClientViewState {
     now: number,
     deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
+    skipPresentationMotionTargets: boolean,
   ): void {
     const basicValues = source.basicRows.values;
     for (let rowIndex = 0; rowIndex < source.basicRows.count; rowIndex++) {
@@ -2260,6 +2408,7 @@ export class ClientViewState {
           base,
           changedFields,
           now,
+          skipPresentationMotionTargets,
         );
       }
     }
@@ -2269,7 +2418,9 @@ export class ClientViewState {
       source.unitChangedFieldsOr !== 0 &&
       (source.unitChangedFieldsOr & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
     ) {
-      this.applyUnitHotMotionTypedRows(unitValues, source.unitRows.count, now);
+      if (!skipPresentationMotionTargets) {
+        this.applyUnitHotMotionTypedRows(unitValues, source.unitRows.count, now);
+      }
     } else {
       for (let rowIndex = 0; rowIndex < source.unitRows.count; rowIndex++) {
         const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
@@ -2279,12 +2430,14 @@ export class ClientViewState {
           changedFields !== 0 &&
           (changedFields & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
         ) {
-          this.tryApplyUnitHotMotionTypedDeltaWireRow(
-            unitValues,
-            base,
-            changedFields,
-            now,
-          );
+          if (!skipPresentationMotionTargets) {
+            this.tryApplyUnitHotMotionTypedDeltaWireRow(
+              unitValues,
+              base,
+              changedFields,
+              now,
+            );
+          }
           continue;
         }
         this.tryApplyUnitTypedDeltaWireRowAt(
@@ -2294,6 +2447,7 @@ export class ClientViewState {
           false,
           deferPredictedTurretRenderRefresh,
           applyStats,
+          skipPresentationMotionTargets,
         );
       }
     }
@@ -2303,6 +2457,7 @@ export class ClientViewState {
         rowIndex,
         now,
         deferPredictedTurretRenderRefresh,
+        skipPresentationMotionTargets,
       );
     }
   }
@@ -2330,6 +2485,7 @@ export class ClientViewState {
     now: number,
     deferPredictedTurretRenderRefresh: boolean,
     applyStats: ClientSnapshotApplyStats,
+    skipPresentationMotionTargets: boolean,
   ): boolean {
     if (source.typedPlaceholderRows === 0) return false;
 
@@ -2344,7 +2500,9 @@ export class ClientViewState {
         source.unitChangedFieldsOr !== 0 &&
         (source.unitChangedFieldsOr & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0
       ) {
-        this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
+        if (!skipPresentationMotionTargets) {
+          this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
+        }
       } else {
         for (let rowIndex = 0; rowIndex < source.unitRows.count; rowIndex++) {
           this.tryApplyUnitTypedDeltaWireRowAt(
@@ -2354,6 +2512,7 @@ export class ClientViewState {
             false,
             deferPredictedTurretRenderRefresh,
             applyStats,
+            skipPresentationMotionTargets,
           );
         }
       }
@@ -2363,6 +2522,7 @@ export class ClientViewState {
           rowIndex,
           now,
           deferPredictedTurretRenderRefresh,
+          skipPresentationMotionTargets,
         );
       }
       return true;
@@ -2374,7 +2534,9 @@ export class ClientViewState {
       source.unitChangedFieldsOr !== 0 &&
       (source.unitChangedFieldsOr & ~CLIENT_UNIT_HOT_MOTION_DELTA_FIELDS) === 0;
     if (unitHotMotionPlaceholders) {
-      this.applyUnitHotMotionTypedPlaceholderRows(source, now);
+      if (!skipPresentationMotionTargets) {
+        this.applyUnitHotMotionTypedPlaceholderRows(source, now);
+      }
       if (source.typedPlaceholderRows === source.unitTypedPlaceholderRows) return true;
 
       const basicPlaceholderIndices = source.basicTypedPlaceholderEntityIndices;
@@ -2385,6 +2547,7 @@ export class ClientViewState {
           now,
           false,
           applyStats,
+          skipPresentationMotionTargets,
         );
       }
       const buildingPlaceholderIndices = source.buildingTypedPlaceholderEntityIndices;
@@ -2394,6 +2557,7 @@ export class ClientViewState {
           buildingPlaceholderIndices[i],
           now,
           deferPredictedTurretRenderRefresh,
+          skipPresentationMotionTargets,
         );
       }
       return true;
@@ -2409,7 +2573,9 @@ export class ClientViewState {
         source.unitRows.count,
       );
     if (batchUnitHotMotion) {
-      this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
+      if (!skipPresentationMotionTargets) {
+        this.applyUnitHotMotionTypedRows(source.unitRows.values, source.unitRows.count, now);
+      }
       if (source.typedPlaceholderRows === source.unitRows.count) return true;
 
       const basicPlaceholderIndices = source.basicTypedPlaceholderEntityIndices;
@@ -2420,6 +2586,7 @@ export class ClientViewState {
           now,
           false,
           applyStats,
+          skipPresentationMotionTargets,
         );
       }
       const buildingPlaceholderIndices = source.buildingTypedPlaceholderEntityIndices;
@@ -2429,6 +2596,7 @@ export class ClientViewState {
           buildingPlaceholderIndices[i],
           now,
           deferPredictedTurretRenderRefresh,
+          skipPresentationMotionTargets,
         );
       }
       return true;
@@ -2446,6 +2614,7 @@ export class ClientViewState {
             now,
             false,
             applyStats,
+            skipPresentationMotionTargets,
           );
           break;
         case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
@@ -2457,6 +2626,7 @@ export class ClientViewState {
               false,
               deferPredictedTurretRenderRefresh,
               applyStats,
+              skipPresentationMotionTargets,
             );
           }
           break;
@@ -2466,6 +2636,7 @@ export class ClientViewState {
             entityIndex,
             now,
             deferPredictedTurretRenderRefresh,
+            skipPresentationMotionTargets,
           );
           break;
         default:
@@ -2474,6 +2645,101 @@ export class ClientViewState {
       appliedAny = true;
     }
     return appliedAny;
+  }
+
+  private tryApplyMixedTypedOnlyDeltaSource(
+    source: EntitySnapshotWireSource,
+    now: number,
+    deferPredictedTurretRenderRefresh: boolean,
+    applyStats: ClientSnapshotApplyStats,
+    skipPresentationMotionTargets: boolean,
+  ): boolean {
+    if (
+      source.count === 0 ||
+      source.rawEntityRows !== 0 ||
+      source.typedEntityRows !== source.count
+    ) {
+      return false;
+    }
+
+    this.applyMixedTypedPlaceholderRows(
+      source,
+      now,
+      deferPredictedTurretRenderRefresh,
+      applyStats,
+      skipPresentationMotionTargets,
+    );
+
+    const indices = source.nonPlaceholderEntityIndices;
+    for (let i = 0; i < source.nonPlaceholderEntityRows; i++) {
+      const entityIndex = indices[i];
+      let applied = false;
+      switch (source.kinds[entityIndex]) {
+        case ENTITY_SNAPSHOT_WIRE_KIND_BASIC:
+          applied = this.tryApplyBasicTypedDeltaWireRow(
+            source,
+            entityIndex,
+            now,
+            false,
+            applyStats,
+            skipPresentationMotionTargets,
+          );
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
+          if (typedEntityWireRowIsFull(source, entityIndex)) {
+            applied = this.tryApplyUnitTypedFullWireRow(
+              source,
+              entityIndex,
+              now,
+              skipPresentationMotionTargets,
+            );
+          } else {
+            applied = this.tryApplyUnitTypedDeltaWireRow(
+              source,
+              entityIndex,
+              now,
+              false,
+              deferPredictedTurretRenderRefresh,
+              applyStats,
+              skipPresentationMotionTargets,
+            );
+          }
+          break;
+        case ENTITY_SNAPSHOT_WIRE_KIND_BUILDING:
+          if (typedEntityWireRowIsFull(source, entityIndex)) {
+            applied = this.tryApplyBuildingTypedFullWireRow(
+              source,
+              entityIndex,
+              now,
+              skipPresentationMotionTargets,
+            );
+          } else {
+            applied = this.tryApplyBuildingTypedDeltaWireRow(
+              source,
+              entityIndex,
+              now,
+              deferPredictedTurretRenderRefresh,
+              skipPresentationMotionTargets,
+            );
+          }
+          break;
+        default:
+          return false;
+      }
+      if (applied) continue;
+
+      if (typedEntityWireRowIsFull(source, entityIndex)) {
+        const typedEntityId = typedEntityWireRowId(source, entityIndex);
+        const createdEntity = typedEntityId !== null && !this.entities.has(typedEntityId)
+          ? createEntityFromTypedFullWireRow(source, entityIndex)
+          : null;
+        if (createdEntity !== null && createdEntity.id === typedEntityId) {
+          this.attachCreatedNetworkEntity(createdEntity);
+          continue;
+        }
+      }
+    }
+    return true;
   }
 
   private canApplyTypedFullSnapshotSource(source: EntitySnapshotWireSource): boolean {
@@ -2566,6 +2832,7 @@ export class ClientViewState {
     entityIndex: number,
     now: number,
     deferPredictedTurretRenderRefresh: boolean,
+    skipPresentationMotionTargets = false,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
     return this.tryApplyBuildingTypedDeltaWireRowAt(
@@ -2573,6 +2840,7 @@ export class ClientViewState {
       rowIndex,
       now,
       deferPredictedTurretRenderRefresh,
+      skipPresentationMotionTargets,
     );
   }
 
@@ -2581,6 +2849,7 @@ export class ClientViewState {
     rowIndex: number,
     now: number,
     deferPredictedTurretRenderRefresh = false,
+    skipPresentationMotionTargets = false,
   ): boolean {
     if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
     const values = source.buildingRows.values;
@@ -2604,29 +2873,36 @@ export class ClientViewState {
     const ownership = existing.ownership;
     if (ownership === null || ownership.playerId !== playerId) return false;
 
-    const needsServerTarget = hasMotionFields || hasTurretFields;
+    const needsServerTarget =
+      !skipPresentationMotionTargets && (hasMotionFields || hasTurretFields);
     const target = needsServerTarget ? this.getOrCreateServerTarget(id) : undefined;
-    if (target !== undefined) {
-      if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
-        const x = deqEntityPos(values[base + 1]);
-        const y = deqEntityPos(values[base + 2]);
-        const z = deqEntityPos(values[base + 3]);
+    if ((changedFields & ENTITY_CHANGED_POS) !== 0) {
+      const x = deqEntityPos(values[base + 1]);
+      const y = deqEntityPos(values[base + 2]);
+      const z = deqEntityPos(values[base + 3]);
+      if (target !== undefined) {
         target.x = x;
         target.y = y;
         target.z = z;
-        existing.transform.x = x;
-        existing.transform.y = y;
-        existing.transform.z = z;
       }
-      if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
-        const rotation = deqRot(values[base + 4]);
+      existing.transform.x = x;
+      existing.transform.y = y;
+      existing.transform.z = z;
+    }
+    if ((changedFields & ENTITY_CHANGED_ROT) !== 0) {
+      const rotation = deqRot(values[base + 4]);
+      if (target !== undefined) {
         target.rotation = rotation;
-        existing.transform.rotation = rotation;
       }
+      existing.transform.rotation = rotation;
     }
 
     let copiedTurretRows = false;
-    if (hasTurretFields && values[base + 22] !== 0) {
+    if (
+      !skipPresentationMotionTargets &&
+      hasTurretFields &&
+      values[base + 22] !== 0
+    ) {
       if (target === undefined) return false;
       const turretCount = values[base + 23] | 0;
       const turretOffset = values[base + 31] | 0;
@@ -2681,15 +2957,22 @@ export class ClientViewState {
     source: EntitySnapshotWireSource,
     entityIndex: number,
     now: number,
+    skipPresentationMotionTargets = false,
   ): boolean {
     const rowIndex = source.rowIndices[entityIndex];
-    return this.tryApplyBuildingTypedFullWireRowAt(source, rowIndex, now);
+    return this.tryApplyBuildingTypedFullWireRowAt(
+      source,
+      rowIndex,
+      now,
+      skipPresentationMotionTargets,
+    );
   }
 
   private tryApplyBuildingTypedFullWireRowAt(
     source: EntitySnapshotWireSource,
     rowIndex: number,
     now: number,
+    skipPresentationMotionTargets = false,
   ): boolean {
     if (rowIndex < 0 || rowIndex >= source.buildingRows.count) return false;
     const values = source.buildingRows.values;
@@ -2742,11 +3025,16 @@ export class ClientViewState {
       if (existing.combat === null || existing.combat.turrets.length !== turretCount) {
         return false;
       }
-      const target = this.getOrCreateServerTarget(id);
-      target.x = x;
-      target.y = y;
-      target.z = z;
-      target.rotation = rotation;
+      const target = skipPresentationMotionTargets
+        ? undefined
+        : this.getOrCreateServerTarget(id);
+      if (skipPresentationMotionTargets) this.serverTargets.delete(id);
+      if (target !== undefined) {
+        target.x = x;
+        target.y = y;
+        target.z = z;
+        target.rotation = rotation;
+      }
       copiedTurretRows = this.copyWireUnitTurretsToTarget(
         source,
         turretOffset,
@@ -2755,7 +3043,7 @@ export class ClientViewState {
         existing,
       );
       if (!copiedTurretRows) return false;
-      target.updatedAtMs = now;
+      if (target !== undefined) target.updatedAtMs = now;
     } else {
       this.serverTargets.delete(id);
     }
@@ -2796,7 +3084,7 @@ export class ClientViewState {
     }
 
     if (transformChanged) {
-      this.refreshRenderableEntityStateFromSnapshot(existing, true);
+      this.refreshRenderableEntityStateFromSnapshot(existing, !skipPresentationMotionTargets);
     } else {
       this.refreshRenderableEntityStateSnapshotDelta(
         existing,
@@ -2807,7 +3095,11 @@ export class ClientViewState {
     }
     this.refreshPredictionSupportSurfaceProvider(existing);
     this.dirtyBuildingRenderIds.add(id);
-    if (copiedTurretRows) this.activeEntityPredictionIds.add(id);
+    if (copiedTurretRows && !skipPresentationMotionTargets) {
+      this.activeEntityPredictionIds.add(id);
+    } else if (skipPresentationMotionTargets) {
+      this.activeEntityPredictionIds.delete(id);
+    }
     return true;
   }
 
@@ -2992,6 +3284,10 @@ export class ClientViewState {
     const presentationDeltaOnly = entityDeltaOnly || projectileDeltaOnly;
     const collectCorrectionStats = options.collectCorrectionStats === true;
     const collectMaterializationStages = options.collectMaterializationStages === true;
+    const skipPresentationMotionTargets =
+      options.skipPresentationMotionTargets === true &&
+      presentationDeltaOnly &&
+      !collectCorrectionStats;
     const deferPredictedTurretRenderRefresh =
       options.deferPredictedTurretRenderRefresh === true;
     let materializationStageStart = collectMaterializationStages ? performance.now() : 0;
@@ -3045,6 +3341,7 @@ export class ClientViewState {
         now,
         deferPredictedTurretRenderRefresh,
         applyStats,
+        skipPresentationMotionTargets,
       )
     ) {
       entityApplyPath = 'clientApplyEntitiesTypedPlaceholder';
@@ -3057,7 +3354,11 @@ export class ClientViewState {
       this.canApplyBasicTransformTypedDeltaSource(typedEntityWireSource, state.entities)
     ) {
       entityApplyPath = 'clientApplyEntitiesBasicTyped';
-      this.applyBasicTransformTypedDeltaSource(typedEntityWireSource, now);
+      this.applyBasicTransformTypedDeltaSource(
+        typedEntityWireSource,
+        now,
+        skipPresentationMotionTargets,
+      );
     } else if (
       !projectileDeltaOnly &&
       entityDeltaOnly &&
@@ -3066,6 +3367,20 @@ export class ClientViewState {
     ) {
       entityApplyPath = 'clientApplyEntitiesMetadataTyped';
       this.applyMetadataTypedDeltaSource(typedEntityWireSource);
+    } else if (
+      !projectileDeltaOnly &&
+      entityDeltaOnly &&
+      !collectCorrectionStats &&
+      typedEntityWireSource !== undefined &&
+      this.tryApplyMixedTypedOnlyDeltaSource(
+        typedEntityWireSource,
+        now,
+        deferPredictedTurretRenderRefresh,
+        applyStats,
+        skipPresentationMotionTargets,
+      )
+    ) {
+      entityApplyPath = 'clientApplyEntitiesGenericTyped';
     } else if (!projectileDeltaOnly) {
       entityApplyPath = 'clientApplyEntitiesGeneric';
       let genericSubstageStart = collectMaterializationStages ? performance.now() : 0;
@@ -3078,6 +3393,7 @@ export class ClientViewState {
           now,
           deferPredictedTurretRenderRefresh,
           applyStats,
+          skipPresentationMotionTargets,
         );
       if (genericTypedPlaceholdersApplied && collectMaterializationStages) {
         addSnapshotMaterializationStageToSnapshot(
@@ -3114,6 +3430,7 @@ export class ClientViewState {
                 now,
                 collectCorrectionStats,
                 applyStats,
+                skipPresentationMotionTargets,
               );
               break;
             case ENTITY_SNAPSHOT_WIRE_KIND_UNIT:
@@ -3125,6 +3442,7 @@ export class ClientViewState {
                   typedEntityWireSource,
                   entityIndex,
                   now,
+                  skipPresentationMotionTargets,
                 );
               } else {
                 appliedTypedEntity = this.tryApplyUnitTypedDeltaWireRow(
@@ -3134,6 +3452,7 @@ export class ClientViewState {
                   collectCorrectionStats,
                   deferPredictedTurretRenderRefresh,
                   applyStats,
+                  skipPresentationMotionTargets,
                 );
               }
               break;
@@ -3146,6 +3465,7 @@ export class ClientViewState {
                   typedEntityWireSource,
                   entityIndex,
                   now,
+                  skipPresentationMotionTargets,
                 );
               } else {
                 appliedTypedEntity = this.tryApplyBuildingTypedDeltaWireRow(
@@ -3153,6 +3473,7 @@ export class ClientViewState {
                   entityIndex,
                   now,
                   deferPredictedTurretRenderRefresh,
+                  skipPresentationMotionTargets,
                 );
               }
               break;
@@ -3203,7 +3524,7 @@ export class ClientViewState {
           // Building bodies are static, but armed buildings still use the
           // same turret target/prediction path as units.
           const turretSnapshot = netEntity.building !== null ? netEntity.building.turrets : null;
-          if (turretSnapshot) {
+          if (turretSnapshot && !skipPresentationMotionTargets) {
             const target = this.getOrCreateServerTarget(netEntity.id);
             if ((isFull || cf! & ENTITY_CHANGED_POS) && netEntity.pos) {
               target.x = deqEntityPos(netEntity.pos.x);
@@ -3215,10 +3536,10 @@ export class ClientViewState {
             }
             this.copyNetworkTurretsToTarget(target, turretSnapshot, isFull);
             target.updatedAtMs = now;
-          } else if (isFull) {
+          } else if (isFull && !skipPresentationMotionTargets) {
             this.serverTargets.delete(netEntity.id);
           }
-        } else {
+        } else if (!skipPresentationMotionTargets) {
           // Copy drift-relevant fields into owned ServerTarget (avoids holding pooled object refs)
           const target = this.getOrCreateServerTarget(netEntity.id);
           applyNetworkUnitDriftFieldsToTarget(target, netEntity, isFull, cf);
@@ -3306,7 +3627,9 @@ export class ClientViewState {
             );
             this.refreshPredictionSupportSurfaceProvider(existing);
           }
-          this.markNetworkEntityPredictionActive(netEntity, existing);
+          if (!skipPresentationMotionTargets) {
+            this.markNetworkEntityPredictionActive(netEntity, existing);
+          }
         }
       }
       if (
@@ -3704,6 +4027,19 @@ export class ClientViewState {
     return this.renderSpatialIndex.getMaxEntityPadding();
   }
 
+  collectEntityPickCandidates3D(
+    bounds: FootprintBounds,
+    out: Entity[],
+  ): Entity[] {
+    const unitSlots = this.pickCandidateUnitSlots;
+    const buildingSlots = this.pickCandidateBuildingSlots;
+    this.renderSpatialIndex.queryFilteredSlots(bounds, unitSlots, buildingSlots);
+    out.length = 0;
+    this.pushPickCandidateSlots(unitSlots, out, CLIENT_RENDER_ENTITY_KIND_UNIT);
+    this.pushPickCandidateSlots(buildingSlots, out, CLIENT_RENDER_ENTITY_KIND_BUILDING);
+    return out;
+  }
+
   getProjectileRenderScopePadding(): number {
     return this.projectileStore.getRenderScopePadding();
   }
@@ -3715,6 +4051,140 @@ export class ClientViewState {
   getRenderTurretStateRows(id: EntityId): ClientRenderTurretHostRows | undefined {
     const slot = this.renderEntityState.getSlot(id);
     return slot !== undefined ? this.renderTurretState.hostRows(slot) : undefined;
+  }
+
+  refreshAuthoritativeRenderEntityState3D(
+    entity: Entity,
+    state: AuthoritativeRenderEntityState3D,
+  ): void {
+    const poseRefresh = this.authoritativePoseRefreshResult;
+    if (state.kind === 'unit') {
+      if (entity.unit === null) return;
+      this.renderEntityState.refreshAuthoritativeUnitPose(
+        entity,
+        {
+          groundY: state.groundY,
+          bodyOpacity: state.bodyOpacity,
+          bodyCenterHeight: state.bodyCenterHeight,
+        },
+        poseRefresh,
+      );
+    } else {
+      if (entity.building === null) return;
+      this.renderEntityState.refreshAuthoritativeBuildingPose(
+        entity,
+        {
+          combatCenterZ: state.combatCenterZ,
+          baseY: state.baseY,
+          progress: state.progress,
+          bodyOpacity: state.bodyOpacity,
+        },
+        poseRefresh,
+      );
+    }
+    const slot = poseRefresh.slot;
+    if (slot !== undefined) {
+      const turretRefresh = this.renderTurretState.refreshHostPose(
+        entity,
+        slot,
+        this.authoritativeTurretPoseRefreshResult,
+      );
+      if (poseRefresh.spatialChanged) {
+        this.renderSpatialIndex.updateSlot(this.renderEntityState.getViews(), slot);
+      }
+      if (
+        state.kind === 'building' &&
+        (poseRefresh.changed || turretRefresh.changed) &&
+        (
+          (entity.combat?.turrets.length ?? 0) > 0 ||
+          state.progress < 1 ||
+          state.bodyOpacity < 1 ||
+          isBuildInProgress(entity.buildable)
+        )
+      ) {
+        this.dirtyBuildingRenderIds.add(entity.id);
+      }
+    } else {
+      this.renderSpatialIndex.remove(entity.id);
+    }
+  }
+
+  refreshAuthoritativeRenderEntitySlotState3D(
+    slot: number,
+    state: AuthoritativeRenderEntityState3D,
+    updateSpatialIndex = true,
+  ): void {
+    const poseRefresh = this.authoritativePoseRefreshResult;
+    const views = this.renderEntityState.getViews();
+    if (state.kind === 'unit') {
+      this.renderEntityState.refreshAuthoritativeUnitPoseSlot(
+        slot,
+        {
+          x: state.x,
+          y: state.y,
+          z: state.z,
+          rotation: state.rotation,
+          groundY: state.groundY,
+          normalX: state.normalX,
+          normalY: state.normalY,
+          normalZ: state.normalZ,
+          velocityX: state.velocityX,
+          velocityY: state.velocityY,
+          yawRate: state.yawRate,
+          bodyOpacity: state.bodyOpacity,
+          bodyCenterHeight: state.bodyCenterHeight,
+        },
+        poseRefresh,
+      );
+    } else {
+      this.renderEntityState.refreshAuthoritativeBuildingPoseSlot(
+        slot,
+        {
+          x: state.x,
+          y: state.y,
+          rotation: state.rotation,
+          combatCenterZ: state.combatCenterZ,
+          baseY: state.baseY,
+          progress: state.progress,
+          bodyOpacity: state.bodyOpacity,
+        },
+        poseRefresh,
+      );
+    }
+
+    const refreshedSlot = poseRefresh.slot;
+    if (refreshedSlot === undefined) return;
+    const turretRefresh = this.renderTurretState.refreshHostPoseRows(
+      views.entityIds[refreshedSlot],
+      state.turrets,
+      refreshedSlot,
+      this.authoritativeTurretPoseRefreshResult,
+    );
+    if (updateSpatialIndex && poseRefresh.spatialChanged) {
+      this.renderSpatialIndex.updateSlot(this.renderEntityState.getViews(), refreshedSlot);
+    }
+    if (
+      state.kind === 'building' &&
+      (poseRefresh.changed || turretRefresh.changed) &&
+      (
+        (state.turrets?.length ?? 0) > 0 ||
+        state.progress < 1 ||
+        state.bodyOpacity < 1
+      )
+    ) {
+      this.dirtyBuildingRenderIds.add(views.entityIds[refreshedSlot] as EntityId);
+    }
+  }
+
+  refreshAuthoritativeProjectileRenderState3D(
+    entity: Entity,
+    lineGeometryChanged: boolean,
+  ): void {
+    if (entity.projectile === null) return;
+    this.projectileStore.updateRenderSpatialIndex(entity);
+    if (lineGeometryChanged && isLineProjectileEntity(entity)) {
+      this.projectileStore.markLineProjectilesChanged();
+    }
   }
 
   assertRenderEntityStateParity(id: EntityId): void {
@@ -3793,6 +4263,63 @@ export class ClientViewState {
     }
   }
 
+  private collectScopedRenderSlots(
+    bounds: FootprintBounds,
+    outUnitSlots: number[],
+    outBuildingSlots: number[],
+    hoveredEntity: Entity | null,
+    renderScope: ViewportFootprint,
+  ): void {
+    const selectedIds = this.selectionState.get();
+    const hasExceptions = hoveredEntity !== null || selectedIds.size > 0;
+    const included = hasExceptions ? this.scopedRenderIncludedIds : null;
+    if (included !== null) included.clear();
+    const unitSlots = this.scopedRenderUnitSlots;
+    const buildingSlots = this.scopedRenderBuildingSlots;
+    this.renderSpatialIndex.queryFilteredSlots(
+      bounds,
+      unitSlots,
+      buildingSlots,
+      (slot) => this.slotInRenderScope3D(slot, renderScope),
+    );
+    outUnitSlots.length = 0;
+    outBuildingSlots.length = 0;
+    this.filterScopedRenderSlots(
+      unitSlots,
+      outUnitSlots,
+      included,
+      CLIENT_RENDER_ENTITY_KIND_UNIT,
+    );
+    this.filterScopedRenderSlots(
+      buildingSlots,
+      outBuildingSlots,
+      included,
+      CLIENT_RENDER_ENTITY_KIND_BUILDING,
+    );
+
+    if (included === null) return;
+    if (hoveredEntity !== null) {
+      this.pushScopedRenderSlotException(
+        hoveredEntity,
+        outUnitSlots,
+        outBuildingSlots,
+        included,
+      );
+    }
+    for (const id of selectedIds) {
+      if (included.has(id)) continue;
+      const entity = this.entities.get(id);
+      if (entity !== undefined) {
+        this.pushScopedRenderSlotException(
+          entity,
+          outUnitSlots,
+          outBuildingSlots,
+          included,
+        );
+      }
+    }
+  }
+
   prepareRenderEntityPackets3D(
     out: ClientViewRenderEntityPackets3D,
     options: ClientViewRenderPacketOptions3D,
@@ -3808,18 +4335,19 @@ export class ClientViewState {
 
     this.renderEntityState.clearPacketFlags();
     try {
+      this.suppressActivePredictionPacketFlags =
+        options.suppressActivePredictionFlags === true;
       this.markRenderEntityPacketFlags();
 
       const renderScope = options.renderScope;
-      if (renderScope.getMode() === 'all') {
+      const useAuthoritativeSlotCollector =
+        options.collectAuthoritativeRenderSlots !== undefined;
+      if (renderScope.getMode() === 'all' && !useAuthoritativeSlotCollector) {
         const units = this.getUnits();
         const buildings = this.getBuildings();
-        this.populateUnitRenderRows3D(units, options, out);
-        if (options.isEntityFarLod !== undefined) {
-          this.populateBuildingRenderRows3D(buildings, options, out);
-        } else {
-          this.populateQueuedBuildingRenderRows3D(options, out);
-        }
+        options.refreshAuthoritativeRenderScope?.(null, units, buildings);
+        this.populateUnitRenderRows3D(units, out);
+        this.populateQueuedBuildingRenderRows3D(out);
         if (options.includeBodyHud) {
           this.populateBodyHudPacket3D(this.getHudEntities(), options.hoveredEntity, options, out);
         }
@@ -3827,10 +4355,10 @@ export class ClientViewState {
           this.populateBodyNamePacket3D(this.getUnitsAndBuildings(), options, out);
         }
         if (options.includeShields) {
-          this.populateShieldPacket3D(this.getShieldUnits(), renderScope, options, out);
+          this.populateShieldPacket3D(this.getShieldUnits(), renderScope, out);
         }
         if (options.includeContactShadows) {
-          this.populateContactShadowPacket3D(units, buildings, renderScope, options, out);
+          this.populateContactShadowPacket3D(units, buildings, renderScope, out);
         }
         if (options.includeGroundPrints) {
           this.populateGroundPrintPacket3D(units, options, out);
@@ -3840,71 +4368,155 @@ export class ClientViewState {
 
       const units = options.scopedUnitsOut;
       const buildings = options.scopedBuildingsOut;
-      this.collectScopedRenderEntities(
-        renderScope.getCullingBounds(this.getRenderSpatialEntityPadding()),
-        units,
-        buildings,
-        options.hoveredEntity,
-        renderScope,
-      );
-
       const unitRowSlots = this.scopedRenderUnitRowSlots;
       const buildingRowSlots = this.scopedRenderBuildingRowSlots;
+      const nearUnitSlots = this.scopedRenderNearUnitSlots;
+      const nearBuildingSlots = this.scopedRenderNearBuildingSlots;
+      const scopedBounds = renderScope.getMode() === 'all'
+        ? null
+        : renderScope.getCullingBounds(this.getRenderSpatialEntityPadding());
+      let views = this.renderEntityState.getViews();
+      if (options.collectAuthoritativeRenderSlots !== undefined) {
+        units.length = 0;
+        buildings.length = 0;
+        unitRowSlots.length = 0;
+        buildingRowSlots.length = 0;
+        options.collectAuthoritativeRenderSlots(
+          scopedBounds,
+          unitRowSlots,
+          buildingRowSlots,
+          views,
+        );
+        if (scopedBounds !== null) {
+          this.pushScopedRenderSlotExceptions(
+            unitRowSlots,
+            buildingRowSlots,
+            options.hoveredEntity,
+          );
+        }
+      } else if (options.refreshAuthoritativeRenderSlots !== undefined) {
+        const cullingBounds = scopedBounds ?? renderScope.getCullingBounds(
+          this.getRenderSpatialEntityPadding(),
+        );
+        units.length = 0;
+        buildings.length = 0;
+        this.collectScopedRenderSlots(
+          cullingBounds,
+          unitRowSlots,
+          buildingRowSlots,
+          options.hoveredEntity,
+          renderScope,
+        );
+        options.refreshAuthoritativeRenderSlots(cullingBounds, unitRowSlots, buildingRowSlots, views);
+        this.collectScopedRenderSlots(
+          cullingBounds,
+          unitRowSlots,
+          buildingRowSlots,
+          options.hoveredEntity,
+          renderScope,
+        );
+      } else if (options.refreshAuthoritativeRenderScope !== undefined) {
+        const cullingBounds = scopedBounds ?? renderScope.getCullingBounds(
+          this.getRenderSpatialEntityPadding(),
+        );
+        this.collectScopedRenderEntities(
+          cullingBounds,
+          units,
+          buildings,
+          options.hoveredEntity,
+          renderScope,
+        );
+        options.refreshAuthoritativeRenderScope(cullingBounds, units, buildings);
+        this.collectScopedRenderSlots(
+          cullingBounds,
+          unitRowSlots,
+          buildingRowSlots,
+          options.hoveredEntity,
+          renderScope,
+        );
+      } else {
+        const cullingBounds = scopedBounds ?? renderScope.getCullingBounds(
+          this.getRenderSpatialEntityPadding(),
+        );
+        units.length = 0;
+        buildings.length = 0;
+        this.collectScopedRenderSlots(
+          cullingBounds,
+          unitRowSlots,
+          buildingRowSlots,
+          options.hoveredEntity,
+          renderScope,
+        );
+      }
+      units.length = 0;
+      buildings.length = 0;
+      nearUnitSlots.length = 0;
+      nearBuildingSlots.length = 0;
+
+      views = this.renderEntityState.getViews();
+      const includeUnitShields =
+        options.includeShields && this.renderTurretState.hasShieldFields();
       let hoveredBodyHudPushed = false;
-      for (let i = 0; i < units.length; i++) {
-        const entity = units[i];
-        const farLod = this.entityUsesFarLod3D(entity, options);
-        this.pushUnitRenderKnownSlot3D(entity, unitRowSlots[i] ?? -1, farLod, out);
-        if (
-          !this.entityEmissionUsesFarLod3D(entity, options) &&
-          options.includeBodyHud &&
-          this.entityNeedsBodyHud3D(entity)
-        ) {
+      for (let i = 0; i < unitRowSlots.length; i++) {
+        const slot = unitRowSlots[i];
+        if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_UNIT) continue;
+        const entity = this.entityForRenderSlot3D(
+          views,
+          slot,
+          CLIENT_RENDER_ENTITY_KIND_UNIT,
+        );
+        if (entity === undefined) continue;
+        this.pushUnitRenderKnownSlot3D(entity, slot, out);
+        if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
           const forceVisible = entity === options.hoveredEntity;
           if (forceVisible) hoveredBodyHudPushed = true;
-          this.pushBodyHudEntity3D(entity, forceVisible, options, out, unitRowSlots[i] ?? -1);
+          this.pushBodyHudEntity3D(entity, forceVisible, options, out, slot);
         }
-        if (
-          !this.entityEmissionUsesFarLod3D(entity, options) &&
-          options.includeBodyNames
-        ) {
-          this.pushBodyNamesForEntity3D(entity, options, out, unitRowSlots[i] ?? -1);
+        if (options.includeBodyNames) {
+          this.pushBodyNamesForEntity3D(entity, options, out, slot);
         }
         if (
           options.includeShields &&
+          includeUnitShields &&
           entity.unit !== null &&
           entity.combat !== null &&
-          !this.entityEmissionUsesFarLod3D(entity, options)
+          this.renderTurretState.hostHasShieldField(slot)
         ) {
-          this.pushShieldUnit3D(entity, renderScope, out, unitRowSlots[i] ?? -1);
+          this.pushShieldUnit3D(entity, renderScope, out, slot);
+        }
+        if (options.includeContactShadows || options.includeGroundPrints) {
+          units.push(entity);
+          nearUnitSlots.push(slot);
         }
       }
-      for (let i = 0; i < buildings.length; i++) {
-        const entity = buildings[i];
-        const farLod = this.entityUsesFarLod3D(entity, options);
-        this.pushBuildingRenderKnownSlot3D(entity, buildingRowSlots[i] ?? -1, farLod, out);
-        if (
-          !this.entityEmissionUsesFarLod3D(entity, options) &&
-          options.includeBodyHud &&
-          this.entityNeedsBodyHud3D(entity)
-        ) {
+      for (let i = 0; i < buildingRowSlots.length; i++) {
+        const slot = buildingRowSlots[i];
+        if (views.kind[slot] !== CLIENT_RENDER_ENTITY_KIND_BUILDING) continue;
+        const entity = this.entityForRenderSlot3D(
+          views,
+          slot,
+          CLIENT_RENDER_ENTITY_KIND_BUILDING,
+        );
+        if (entity === undefined) continue;
+        this.pushBuildingRenderKnownSlot3D(entity, slot, out);
+        if (options.includeBodyHud && this.entityNeedsBodyHud3D(entity)) {
           const forceVisible = entity === options.hoveredEntity;
           if (forceVisible) hoveredBodyHudPushed = true;
-          this.pushBodyHudEntity3D(entity, forceVisible, options, out, buildingRowSlots[i] ?? -1);
+          this.pushBodyHudEntity3D(entity, forceVisible, options, out, slot);
         }
-        if (
-          !this.entityEmissionUsesFarLod3D(entity, options) &&
-          options.includeBodyNames
-        ) {
-          this.pushBodyNamesForEntity3D(entity, options, out, buildingRowSlots[i] ?? -1);
+        if (options.includeBodyNames) {
+          this.pushBodyNamesForEntity3D(entity, options, out, slot);
+        }
+        if (options.includeContactShadows) {
+          buildings.push(entity);
+          nearBuildingSlots.push(slot);
         }
       }
 
       if (
         options.includeBodyHud &&
         options.hoveredEntity !== null &&
-        !hoveredBodyHudPushed &&
-        !this.entityEmissionUsesFarLod3D(options.hoveredEntity, options)
+        !hoveredBodyHudPushed
       ) {
         this.pushBodyHudEntity3D(options.hoveredEntity, true, options, out);
       }
@@ -3913,17 +4525,17 @@ export class ClientViewState {
           units,
           buildings,
           renderScope,
-          options,
           out,
-          unitRowSlots,
-          buildingRowSlots,
+          nearUnitSlots,
+          nearBuildingSlots,
         );
       }
       if (options.includeGroundPrints) {
-        this.populateGroundPrintPacket3D(units, options, out, unitRowSlots);
+        this.populateGroundPrintPacket3D(units, options, out, nearUnitSlots);
       }
       return out;
     } finally {
+      this.suppressActivePredictionPacketFlags = false;
       this.renderEntityState.clearPacketFlags();
     }
   }
@@ -4050,8 +4662,10 @@ export class ClientViewState {
   }
 
   private markRenderEntityPacketFlags(): void {
-    for (const id of this.activeEntityPredictionIds) {
-      this.markRenderEntityPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION);
+    if (!this.suppressActivePredictionPacketFlags) {
+      for (const id of this.activeEntityPredictionIds) {
+        this.markRenderEntityPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION);
+      }
     }
     for (const id of this.dirtyUnitRenderIds) {
       this.markRenderEntityPacketFlagById(id, CLIENT_RENDER_ENTITY_FLAG_RENDER_DIRTY);
@@ -4075,7 +4689,10 @@ export class ClientViewState {
     unitRow: boolean,
   ): void {
     let flags = 0;
-    if (this.activeEntityPredictionIds.has(id)) {
+    if (
+      !this.suppressActivePredictionPacketFlags &&
+      this.activeEntityPredictionIds.has(id)
+    ) {
       flags |= CLIENT_RENDER_ENTITY_FLAG_ACTIVE_PREDICTION;
     }
     if (
@@ -4111,6 +4728,89 @@ export class ClientViewState {
     }
   }
 
+  private pushScopedRenderSlotException(
+    entity: Entity,
+    outUnitSlots: number[],
+    outBuildingSlots: number[],
+    included: Set<EntityId>,
+  ): void {
+    if (included.has(entity.id)) return;
+    const slot = this.getOrRefreshRenderEntityStateSlot(entity);
+    if (slot === undefined) return;
+    const views = this.renderEntityState.getViews();
+    if (entity.unit !== null && views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
+      outUnitSlots.push(slot);
+      included.add(entity.id);
+    } else if (
+      entity.building !== null &&
+      views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING
+    ) {
+      outBuildingSlots.push(slot);
+      included.add(entity.id);
+    }
+  }
+
+  private pushScopedRenderSlotExceptions(
+    outUnitSlots: number[],
+    outBuildingSlots: number[],
+    hoveredEntity: Entity | null,
+  ): void {
+    const selectedIds = this.selectionState.get();
+    if (hoveredEntity === null && selectedIds.size === 0) return;
+    const included = this.scopedRenderIncludedIds;
+    included.clear();
+    const views = this.renderEntityState.getViews();
+    for (let i = 0; i < outUnitSlots.length; i++) {
+      const slot = outUnitSlots[i];
+      if (views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_UNIT) {
+        included.add(views.entityIds[slot] as EntityId);
+      }
+    }
+    for (let i = 0; i < outBuildingSlots.length; i++) {
+      const slot = outBuildingSlots[i];
+      if (views.kind[slot] === CLIENT_RENDER_ENTITY_KIND_BUILDING) {
+        included.add(views.entityIds[slot] as EntityId);
+      }
+    }
+    if (hoveredEntity !== null) {
+      this.pushScopedRenderSlotException(
+        hoveredEntity,
+        outUnitSlots,
+        outBuildingSlots,
+        included,
+      );
+    }
+    for (const id of selectedIds) {
+      if (included.has(id)) continue;
+      const entity = this.entities.get(id);
+      if (entity !== undefined) {
+        this.pushScopedRenderSlotException(
+          entity,
+          outUnitSlots,
+          outBuildingSlots,
+          included,
+        );
+      }
+    }
+  }
+
+  private filterScopedRenderSlots(
+    slots: readonly number[],
+    outSlots: number[],
+    included: Set<EntityId> | null,
+    expectedKind: number,
+  ): void {
+    const views = this.renderEntityState.getViews();
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      if (views.kind[slot] !== expectedKind) continue;
+      const entityId = views.entityIds[slot] as EntityId;
+      if (included !== null && included.has(entityId)) continue;
+      outSlots.push(slot);
+      if (included !== null) included.add(entityId);
+    }
+  }
+
   private resolveScopedRenderSlots(
     slots: readonly number[],
     out: Entity[],
@@ -4135,6 +4835,27 @@ export class ClientViewState {
       out.push(entity);
       outSlots.push(slot);
       if (included !== null) included.add(entityId);
+    }
+  }
+
+  private pushPickCandidateSlots(
+    slots: readonly number[],
+    out: Entity[],
+    expectedKind: number,
+  ): void {
+    const views = this.renderEntityState.getViews();
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      if (views.kind[slot] !== expectedKind) continue;
+      const entity = this.entities.get(views.entityIds[slot] as EntityId);
+      if (entity === undefined) continue;
+      if (
+        (expectedKind === CLIENT_RENDER_ENTITY_KIND_UNIT && entity.unit === null) ||
+        (expectedKind === CLIENT_RENDER_ENTITY_KIND_BUILDING && entity.building === null)
+      ) {
+        continue;
+      }
+      out.push(entity);
     }
   }
 
@@ -4185,55 +4906,41 @@ export class ClientViewState {
 
   private populateUnitRenderRows3D(
     units: readonly Entity[],
-    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      this.pushUnitRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
-    }
-  }
-
-  private populateBuildingRenderRows3D(
-    buildings: readonly Entity[],
-    options: ClientViewRenderPacketOptions3D,
-    out: ClientViewRenderEntityPackets3D,
-  ): void {
-    for (let i = 0; i < buildings.length; i++) {
-      const entity = buildings[i];
-      this.pushBuildingRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
+      this.pushUnitRenderRow3D(entity, out);
     }
   }
 
   private populateQueuedBuildingRenderRows3D(
-    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (const id of this.activeEntityPredictionIds) {
       const entity = this.entities.get(id);
       if (entity !== undefined && entity.building !== null) {
-        this.pushBuildingRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
+        this.pushBuildingRenderRow3D(entity, out);
       }
     }
     for (const id of this.dirtyBuildingRenderIds) {
       if (this.activeEntityPredictionIds.has(id)) continue;
       const entity = this.entities.get(id);
       if (entity !== undefined && entity.building !== null) {
-        this.pushBuildingRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
+        this.pushBuildingRenderRow3D(entity, out);
       }
     }
     for (const id of this.renderLifecycleDirtyIds) {
       if (this.activeEntityPredictionIds.has(id) || this.dirtyBuildingRenderIds.has(id)) continue;
       const entity = this.entities.get(id);
       if (entity !== undefined && entity.building !== null) {
-        this.pushBuildingRenderRow3D(entity, this.entityUsesFarLod3D(entity, options), out);
+        this.pushBuildingRenderRow3D(entity, out);
       }
     }
   }
 
   private pushUnitRenderRow3D(
     entity: Entity,
-    farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const id = entity.id;
@@ -4251,10 +4958,11 @@ export class ClientViewState {
         false,
         false,
         false,
-        farLod,
+        false,
       );
     } else {
-      const activePrediction = this.activeEntityPredictionIds.has(id);
+      const activePrediction = !this.suppressActivePredictionPacketFlags &&
+        this.activeEntityPredictionIds.has(id);
       const renderDirty = this.dirtyUnitRenderIds.has(id);
       const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
       out.unitRows.pushEntity(
@@ -4262,7 +4970,7 @@ export class ClientViewState {
         activePrediction,
         renderDirty,
         lifecycleDirty,
-        farLod,
+        false,
       );
     }
   }
@@ -4270,7 +4978,6 @@ export class ClientViewState {
   private pushUnitRenderKnownSlot3D(
     entity: Entity,
     slot: number,
-    farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const views = this.renderEntityState.getViews();
@@ -4288,16 +4995,15 @@ export class ClientViewState {
         false,
         false,
         false,
-        farLod,
+        false,
       );
       return;
     }
-    this.pushUnitRenderRow3D(entity, farLod, out);
+    this.pushUnitRenderRow3D(entity, out);
   }
 
   private pushBuildingRenderRow3D(
     entity: Entity,
-    farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const id = entity.id;
@@ -4315,10 +5021,11 @@ export class ClientViewState {
         false,
         false,
         false,
-        farLod,
+        false,
       );
     } else {
-      const activePrediction = this.activeEntityPredictionIds.has(id);
+      const activePrediction = !this.suppressActivePredictionPacketFlags &&
+        this.activeEntityPredictionIds.has(id);
       const renderDirty = this.dirtyBuildingRenderIds.has(id);
       const lifecycleDirty = this.renderLifecycleDirtyIds.has(id);
       out.buildingRows.pushEntity(
@@ -4326,7 +5033,7 @@ export class ClientViewState {
         activePrediction,
         renderDirty,
         lifecycleDirty,
-        farLod,
+        false,
       );
     }
   }
@@ -4334,7 +5041,6 @@ export class ClientViewState {
   private pushBuildingRenderKnownSlot3D(
     entity: Entity,
     slot: number,
-    farLod: boolean,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     const views = this.renderEntityState.getViews();
@@ -4352,11 +5058,11 @@ export class ClientViewState {
         false,
         false,
         false,
-        farLod,
+        false,
       );
       return;
     }
-    this.pushBuildingRenderRow3D(entity, farLod, out);
+    this.pushBuildingRenderRow3D(entity, out);
   }
 
   private populateRenderRemovalRows3D(out: ClientViewRenderEntityPackets3D): void {
@@ -4379,16 +5085,11 @@ export class ClientViewState {
     let hoveredBodyHudPushed = false;
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const forceVisible = entity === hoveredEntity;
       if (forceVisible) hoveredBodyHudPushed = true;
       this.pushBodyHudEntity3D(entity, forceVisible, options, out);
     }
-    if (
-      hoveredEntity !== null &&
-      !hoveredBodyHudPushed &&
-      !this.entityEmissionUsesFarLod3D(hoveredEntity, options)
-    ) {
+    if (hoveredEntity !== null && !hoveredBodyHudPushed) {
       this.pushBodyHudEntity3D(hoveredEntity, true, options, out);
     }
   }
@@ -4403,7 +5104,6 @@ export class ClientViewState {
     const unit = entity.unit;
     const building = entity.building;
     if (unit === null && building === null) return;
-    if (this.entityEmissionUsesFarLod3D(entity, options)) return;
 
     const type = this.hudTypeOf3D(entity);
     let views = this.renderEntityState.getViews();
@@ -4511,9 +5211,7 @@ export class ClientViewState {
   ): void {
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
-      if (!this.entityEmissionUsesFarLod3D(entity, options)) {
-        this.pushBodyNamesForEntity3D(entity, options, out);
-      }
+      this.pushBodyNamesForEntity3D(entity, options, out);
     }
   }
 
@@ -4523,7 +5221,6 @@ export class ClientViewState {
     out: ClientViewRenderEntityPackets3D,
     knownSlot = -1,
   ): void {
-    if (this.entityEmissionUsesFarLod3D(entity, options)) return;
     const type = this.hudTypeOf3D(entity);
     const nameToggle = options.getEntityHudToggle(type, 'name');
     let views = this.renderEntityState.getViews();
@@ -4593,13 +5290,10 @@ export class ClientViewState {
   private populateShieldPacket3D(
     units: readonly Entity[],
     renderScope: ViewportFootprint,
-    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
   ): void {
     for (let i = 0; i < units.length; i++) {
-      if (!this.entityEmissionUsesFarLod3D(units[i], options)) {
-        this.pushShieldUnit3D(units[i], renderScope, out);
-      }
+      this.pushShieldUnit3D(units[i], renderScope, out);
     }
   }
 
@@ -4636,7 +5330,6 @@ export class ClientViewState {
     units: readonly Entity[],
     buildings: readonly Entity[],
     renderScope: ViewportFootprint,
-    options: ClientViewRenderPacketOptions3D,
     out: ClientViewRenderEntityPackets3D,
     unitSlots?: readonly number[],
     buildingSlots?: readonly number[],
@@ -4646,7 +5339,6 @@ export class ClientViewState {
     let views = this.renderEntityState.getViews();
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = unitSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -4677,7 +5369,6 @@ export class ClientViewState {
     }
     for (let i = 0; i < buildings.length; i++) {
       const entity = buildings[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = buildingSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -4715,7 +5406,6 @@ export class ClientViewState {
     let views = this.renderEntityState.getViews();
     for (let i = 0; i < units.length; i++) {
       const entity = units[i];
-      if (this.entityEmissionUsesFarLod3D(entity, options)) continue;
       const knownSlot = unitSlots?.[i] ?? -1;
       let slot: number | undefined =
         knownSlot >= 0 &&
@@ -4771,19 +5461,22 @@ export class ClientViewState {
     return isUnitGroundPenetrationInContact(penetration);
   }
 
-  private entityUsesFarLod3D(
-    entity: Entity,
-    options: ClientViewRenderPacketOptions3D,
-  ): boolean {
-    return options.isEntityFarLod?.(entity) === true;
-  }
-
-  private entityEmissionUsesFarLod3D(
-    entity: Entity,
-    options: ClientViewRenderPacketOptions3D,
-  ): boolean {
-    return options.isEntityEmissionFarLod?.(entity)
-      ?? this.entityUsesFarLod3D(entity, options);
+  private entityForRenderSlot3D(
+    views: ClientRenderEntityStateViews,
+    slot: number,
+    expectedKind: number,
+  ): Entity | undefined {
+    if (slot < 0 || views.kind[slot] !== expectedKind) return undefined;
+    const entityId = views.entityIds[slot] as EntityId;
+    const entity = this.entities.get(entityId);
+    if (entity === undefined) return undefined;
+    if (
+      (expectedKind === CLIENT_RENDER_ENTITY_KIND_UNIT && entity.unit === null) ||
+      (expectedKind === CLIENT_RENDER_ENTITY_KIND_BUILDING && entity.building === null)
+    ) {
+      return undefined;
+    }
+    return entity;
   }
 
   getPredictionSupportSurfaceEntities(): readonly Entity[] {

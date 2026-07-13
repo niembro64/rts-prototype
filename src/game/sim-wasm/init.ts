@@ -42,6 +42,7 @@ import __wbg_init, {
   construction_apply_consumer_spends,
   damage_area_overlap_batch,
   damage_area_candidates_batch,
+  damage_area_projectile_candidates_batch,
   damage_area_turret_candidates_batch,
   damage_death_explosion_candidates_batch,
   death_explosion_planner_reset,
@@ -49,6 +50,8 @@ import __wbg_init, {
   death_explosion_planner_append_kills,
   death_explosion_planner_next,
   damage_apply_batch,
+  damage_beam_segment_closest_hit,
+  damage_beam_solid_closest_hits,
   damage_segment_candidates_batch,
   damage_segment_hits_batch,
   death_cleanup_diff_batch,
@@ -159,10 +162,12 @@ import __wbg_init, {
   terrain_get_bed_height,
   terrain_get_bed_normal,
   terrain_get_surface_height,
+  terrain_segment_ground_hit_t,
   terrain_get_surface_normal,
   terrain_sample_bed_heights,
   terrain_sample_ground_for_slots,
   terrain_sample_force_support_for_slots,
+  terrain_sample_air_lift_distance_scales_for_slots,
   terrain_sample_water_probe_masks,
   terrain_bake_buildability_grid,
   terrain_has_line_of_sight,
@@ -245,6 +250,8 @@ import __wbg_init, {
   spatial_free_slot,
   spatial_set_entity_id,
   spatial_set_unit,
+  spatial_sync_units_from_entity_state,
+  spatial_sync_unit_slots_from_entity_state,
   spatial_set_projectile,
   spatial_set_projectiles_batch,
   spatial_set_building,
@@ -252,7 +259,9 @@ import __wbg_init, {
   spatial_query_units_in_radius,
   spatial_query_buildings_in_radius,
   spatial_query_units_and_buildings_in_radius,
+  spatial_query_area_units_and_buildings_in_radius,
   spatial_query_units_and_buildings_in_rect_2d,
+  spatial_query_projectiles_in_rect_2d,
   spatial_query_enemy_entities_in_radius,
   spatial_query_enemy_entities_in_circle_2d,
   spatial_query_units_along_line,
@@ -261,6 +270,7 @@ import __wbg_init, {
   spatial_query_entities_along_line,
   spatial_query_enemy_units_in_radius,
   spatial_query_enemy_projectiles_in_radius,
+  spatial_query_area_enemy_projectiles_in_radius,
   spatial_query_enemy_units_and_projectiles_in_radius,
   spatial_query_occupied_cells_debug,
   spatial_scratch_ptr,
@@ -299,6 +309,23 @@ import __wbg_init, {
   combat_targeting_max_turrets_per_entity,
   combat_targeting_entity_capacity,
   combat_targeting_set_entity,
+  combat_targeting_entity_stamp_row_stride,
+  combat_targeting_set_entity_rows_batch,
+  combat_targeting_unit_profile_stride,
+  combat_targeting_unit_profile_ensure,
+  combat_targeting_unit_profile_values_ptr,
+  combat_targeting_stamp_simple_unit_entities_from_entity_state,
+  combat_targeting_stamp_observation_only_simple_units_from_entity_state,
+  combat_targeting_ensure_stamp_scratch_capacity,
+  combat_targeting_stamp_entity_slots_ptr,
+  combat_targeting_stamp_entity_rows_ptr,
+  combat_targeting_stamp_turret_entity_slots_ptr,
+  combat_targeting_stamp_turret_indices_ptr,
+  combat_targeting_stamp_turret_rows_ptr,
+  combat_targeting_commit_stamp_scratch,
+  combat_targeting_profile_reset,
+  combat_targeting_profile_len,
+  combat_targeting_profile_copy,
   combat_targeting_unset_entity,
   combat_targeting_rebuild_observation_masks,
   combat_targeting_rebuild_observation_masks_for_sources,
@@ -306,6 +333,8 @@ import __wbg_init, {
   combat_targeting_add_sensor_observation_circle,
   combat_targeting_set_wind,
   combat_targeting_set_turret,
+  combat_targeting_turret_stamp_row_stride,
+  combat_targeting_set_turret_rows_batch,
   combat_targeting_update_mount_kinematics,
   combat_targeting_update_mount_kinematics_batch,
   combat_targeting_entity_flags,
@@ -410,8 +439,10 @@ import __wbg_init, {
   shield_panel_pool_set_panel,
   shield_panel_pool_set_material_mode,
   projectile_reflector_intersections_batch,
+  beam_reflector_closest_hit,
   projectile_reflection_response_batch,
   projectile_submunition_launch_velocity_batch,
+  projectile_terminal_classify_effect_plan_batch,
   projectile_terminal_consequence_batch,
   projectile_terminal_effect_plan_batch,
   projectile_hitbox_sweep_batch,
@@ -1133,6 +1164,22 @@ export interface SimWasm {
     outDirZ: Float64Array,
     outDistance: Float64Array,
   ) => number;
+  /** C1 - live entity-state splash classifier for travelling shots.
+   *  Projectile motion refreshes entity-state after combat-targeting stamp,
+   *  so projectile damage reads this post-integration slab. */
+  readonly damageAreaProjectileCandidatesBatch: (
+    count: number,
+    candidateSlots: Uint32Array,
+    centerX: number,
+    centerY: number,
+    centerZ: number,
+    radius: number,
+    outFlags: Uint8Array,
+    outDirX: Float64Array,
+    outDirY: Float64Array,
+    outDirZ: Float64Array,
+    outDistance: Float64Array,
+  ) => number;
   /** C1 - slab-driven area turret fallback classifier. Reads turret
    *  sub-hitbox mount/radius from CombatTargetingPool and reports overlap;
    *  callers preserve the body-row slice/knockback semantics. */
@@ -1224,6 +1271,69 @@ export interface SimWasm {
     outFlags: Uint8Array,
     outT: Float64Array,
   ) => number;
+  /** C1 - combined body + projectile closest hit for instantaneous beam
+   *  traces. TS keeps ground/reflector ordering; Rust shares one spatial
+   *  line walk for solid-body and live-projectile candidates. */
+  readonly damageBeamSolidClosestHits: (
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+    bodyQueryWidth: number,
+    projectileQueryWidth: number,
+    sphereInflation: number,
+    maxT: number,
+    bodyExcludeEntityId: number,
+    bodyExcludePanelIndex: number,
+    projectileExcludeEntityId: number,
+    outBodyEntityId: Int32Array,
+    outBodyT: Float64Array,
+    outProjectileEntityId: Int32Array,
+    outProjectileT: Float64Array,
+  ) => number;
+  /** Fused authoritative beam segment query. Rust resolves terrain,
+   *  solid body/projectile, and reflector ordering for one segment; returns
+   *  1 when the fused query completed, 0 when TS should use the compatibility
+   *  path. */
+  readonly damageBeamSegmentClosestHit: (
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+    bodyQueryWidth: number,
+    projectileQueryWidth: number,
+    sphereInflation: number,
+    bodyExcludeEntityId: number,
+    bodyExcludePanelIndex: number,
+    projectileExcludeEntityId: number,
+    reflectorExcludeEntityId: number,
+    reflectorExcludePanelIndex: number,
+    reflectionEntity: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    mirrorQueryPad: number,
+    dtMs: number,
+    groundSteps: number,
+    groundBisectSteps: number,
+    groundEpsilon: number,
+    outKind: Uint8Array,
+    outEntityId: Int32Array,
+    outPanelIndex: Int32Array,
+    outT: Float64Array,
+    outX: Float64Array,
+    outY: Float64Array,
+    outZ: Float64Array,
+    outNormalX: Float64Array,
+    outNormalY: Float64Array,
+    outNormalZ: Float64Array,
+    outReflectDirX: Float64Array,
+    outReflectDirY: Float64Array,
+    outReflectDirZ: Float64Array,
+  ) => number;
   /** C1 — authoritative HP write-back math for damage. TypeScript
    *  gathers candidates and applies returned entity diffs; Rust owns
    *  target-kind adjustment, next HP, and kill classification. */
@@ -1282,6 +1392,7 @@ export interface SimWasm {
     instantaneousRays: number,
     mirrorQueryPad: number,
     dtMs: number,
+    maxT: Float64Array,
     outKind: Uint8Array,
     outEntityId: Int32Array,
     outPanelIndex: Int32Array,
@@ -1299,6 +1410,40 @@ export interface SimWasm {
     outSurfaceVelocityY: Float64Array,
     outSurfaceVelocityZ: Float64Array,
   ) => void;
+  /** Beam-specialized nearest shield-panel / shield-field reflector hit.
+   *  Same reflector math as projectileReflectorIntersectionsBatch, but scalar
+   *  input and no projectile-only surface velocity outputs for the hot beam
+   *  tracer's one-dependent-segment-at-a-time path. */
+  readonly beamReflectorClosestHit: (
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+    projectileRadius: number,
+    reflectionEntity: number,
+    excludeEntityId: number,
+    excludePanelIndex: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
+    mirrorQueryPad: number,
+    dtMs: number,
+    maxT: number,
+    outKind: Uint8Array,
+    outEntityId: Int32Array,
+    outPanelIndex: Int32Array,
+    outT: Float64Array,
+    outX: Float64Array,
+    outY: Float64Array,
+    outZ: Float64Array,
+    outNormalX: Float64Array,
+    outNormalY: Float64Array,
+    outNormalZ: Float64Array,
+    outReflectDirX: Float64Array,
+    outReflectDirY: Float64Array,
+    outReflectDirZ: Float64Array,
+  ) => number;
   /** C1 — reflected projectile consequence math. Rust computes the
    *  velocity, post-hit position, and optional rotation after a shield
    *  reflector contact; TypeScript applies the returned entity diff. */
@@ -1384,6 +1529,40 @@ export interface SimWasm {
     outZ: Float64Array,
     outHp: Float64Array,
   ) => number;
+  /** C1 — combined terminal classifier/effect planner. Same output
+   *  contract as consequence classification followed by effect planning,
+   *  but with one JS/WASM crossing for the projectile collision hot path. */
+  readonly projectileTerminalClassifyEffectPlanBatch: (
+    count: number,
+    enabled: Uint8Array,
+    isProjectileType: Uint8Array,
+    isArmed: Uint8Array,
+    hasExploded: Uint8Array,
+    detonateOnExpiry: Uint8Array,
+    hasDetonationPayload: Uint8Array,
+    directHitThisTick: Uint8Array,
+    reflectedProjectile: Uint8Array,
+    hitShield: Uint8Array,
+    terminalReflectorHit: Uint8Array,
+    waterAtImpact: Uint8Array,
+    hasExplosion: Uint8Array,
+    hasSubmunitions: Uint8Array,
+    posX: Float64Array,
+    posY: Float64Array,
+    posZ: Float64Array,
+    groundZ: Float64Array,
+    hp: Float64Array,
+    timeAliveMs: Float64Array,
+    maxLifespanMs: Float64Array,
+    mapWidth: number,
+    mapHeight: number,
+    margin: number,
+    outReason: Uint8Array,
+    outFlags: Uint32Array,
+    outZ: Float64Array,
+    outHp: Float64Array,
+    outEffectFlags: Uint32Array,
+  ) => number;
   /** C1 — terminal projectile effect planner. Rust maps classified
    *  terminal flags plus authored payload booleans to compact side-effect
    *  flags; TypeScript applies those event/entity diffs to JS-owned stores. */
@@ -1398,8 +1577,8 @@ export interface SimWasm {
   ) => number;
   /** C1 — nearest swept hitbox contact for projectile bodies. Rust
    *  reads unit/building/projectile colliders from the spatial slab,
-   *  includes current-tick turret sub-hitboxes from the combat-targeting
-   *  slab, and writes one nearest hit per row. */
+   *  refreshes candidate unit turret mounts from the combat-targeting
+   *  slab on demand, and writes one nearest hit per row. */
   readonly projectileHitboxSweepBatch: (
     count: number,
     enabled: Uint8Array,
@@ -1417,6 +1596,9 @@ export interface SimWasm {
     maxTargetableRadius: number,
     queryExtra: number,
     currentTick: number,
+    dtMs: number,
+    turretShieldPanelsEnabled: number,
+    turretShieldSpheresEnabled: number,
     outKind: Uint8Array,
     outSlot: Uint32Array,
     outEntityId: Int32Array,
@@ -1710,6 +1892,20 @@ export interface SimWasm {
    *  handles the bilinear-quad-over-noise path. The mesh-installed
    *  return is max(WATER_LEVEL, triangle_height). */
   readonly terrainGetSurfaceHeight: (x: number, z: number) => number;
+  /** Beam/line segment-vs-ground helper. Returns hit t, -1 for no hit,
+   *  or NaN when JS should fall back to the compatibility sampler. */
+  readonly terrainSegmentGroundHitT: (
+    startX: number,
+    startY: number,
+    startZ: number,
+    endX: number,
+    endY: number,
+    endZ: number,
+    maxT: number,
+    steps: number,
+    bisectSteps: number,
+    epsilon: number,
+  ) => number;
   /** Raw terrain-bed height at world-space (x, z), without water-plane clamp. */
   readonly terrainGetBedHeight: (x: number, z: number) => number;
   /** Batch raw terrain-bed height sampling for arbitrary world-space points. */
@@ -1744,6 +1940,21 @@ export interface SimWasm {
     groundZ: Float64Array,
     groundNormals: Float64Array,
     materialFlags: Uint32Array,
+  ) => number;
+  /** Terrain-only hover/flying air-lift probe batch. Writes
+   *  UF_ROW_AIR_LIFT_DISTANCE_SCALE into the provided force rows for each row
+   *  index. Use only when authored support surfaces are absent. */
+  readonly terrainSampleAirLiftDistanceScalesForSlots: (
+    bodySlots: Uint32Array,
+    rowIndices: Uint32Array,
+    probeDirX: Float64Array,
+    probeDirY: Float64Array,
+    aheadDistances: Float64Array,
+    directGroundZ: Float64Array,
+    heightUpwardForce: Float64Array,
+    rows: Float64Array,
+    heightForceExponent: number,
+    nearGroundAltitude: number,
   ) => number;
   /** Terrain-only water probe batch. Writes center water flags and eight-way
    *  dry masks for each supplied center/radius. Callers that need authored
@@ -2101,6 +2312,10 @@ export interface SpatialApi {
     ownerPlayer: number,
     hpAlive: number,
   ) => void;
+  /** Refresh live unit spatial rows directly from the entity-state slab. */
+  syncUnitsFromEntityState: () => number;
+  /** Refresh selected live unit spatial rows directly from entity-state slots. */
+  syncUnitSlotsFromEntityState: (slots: Uint32Array) => number;
   /** Insert or update a projectile at slot. isProjectileType=1 if
    *  proj.projectileType === 'projectile' (the only kind queries
    *  return via queryEnemyProjectilesInRadius). */
@@ -2157,8 +2372,16 @@ export interface SpatialApi {
   queryUnitsAndBuildingsInRadius: (
     x: number, y: number, z: number, r: number,
   ) => number;
+  /** Area-damage candidates: units include hitbox radius; buildings use AABB. */
+  queryAreaUnitsAndBuildingsInRadius: (
+    x: number, y: number, z: number, r: number,
+  ) => number;
   /** 2D rect query: [nUnits, nBuildings, unit_slots..., building_slots...]. */
   queryUnitsAndBuildingsInRect2D: (
+    minX: number, maxX: number, minY: number, maxY: number,
+  ) => number;
+  /** 2D rect query: projectile slots. Includes beams and ordinary shots. */
+  queryProjectilesInRect2D: (
     minX: number, maxX: number, minY: number, maxY: number,
   ) => number;
   /** Enemy units + buildings in a 3D sphere. shotRadius padding +
@@ -2204,6 +2427,11 @@ export interface SpatialApi {
   ) => number;
   /** Enemy projectiles in a 3D sphere (only `proj.projectileType==='projectile'`). */
   queryEnemyProjectilesInRadius: (
+    x: number, y: number, z: number, r: number,
+    excludePlayer: number,
+  ) => number;
+  /** Area-damage projectile candidates: enemy projectile body overlaps sphere. */
+  queryAreaEnemyProjectilesInRadius: (
     x: number, y: number, z: number, r: number,
     excludePlayer: number,
   ) => number;
@@ -2425,6 +2653,39 @@ export interface CombatTargetingApi {
     scheduledProbeTick: number,
     turretCount: number,
   ) => void;
+  entityStampRowStride: () => number;
+  setEntityRowsBatch: (
+    count: number,
+    entitySlots: Uint32Array,
+    rows: Float64Array,
+  ) => void;
+  unitProfileStride: () => number;
+  unitProfileEnsure: (count: number) => void;
+  unitProfileValuesPtr: () => number;
+  stampSimpleUnitEntitiesFromEntityState: (
+    count: number,
+    entitySlots: Uint32Array,
+    viewMasks: Uint32Array,
+    extraFlags: Uint8Array,
+    sensorSourceSlotsOut: Uint32Array,
+  ) => number;
+  stampObservationOnlySimpleUnitsFromEntityState: (
+    viewMasksByPlayer: Uint32Array,
+    exactSlotsSorted: Uint32Array,
+    targetSlotsOut: Uint32Array,
+    sensorSourceSlotsOut: Uint32Array,
+    countsOut: Uint32Array,
+  ) => number;
+  ensureStampScratchCapacity: (entityCapacity: number, turretCapacity: number) => void;
+  stampEntitySlotsPtr: () => number;
+  stampEntityRowsPtr: () => number;
+  stampTurretEntitySlotsPtr: () => number;
+  stampTurretIndicesPtr: () => number;
+  stampTurretRowsPtr: () => number;
+  commitStampScratch: (entityCount: number, turretCount: number) => void;
+  profileReset: () => void;
+  profileLen: () => number;
+  profileCopy: (out: Float64Array) => number;
   unsetEntity: (entitySlot: number) => void;
   /** Rebuilds targeting observability masks from stamped sight/radar
    *  sources. Must run after all entities are stamped and before any
@@ -2505,6 +2766,13 @@ export interface CombatTargetingApi {
     lockonTurretMask: number,
     lockonShotMask: number,
     lockonReciprocalMode: number,
+  ) => void;
+  turretStampRowStride: () => number;
+  setTurretRowsBatch: (
+    count: number,
+    entitySlots: Uint32Array,
+    turretIndices: Uint32Array,
+    rows: Float64Array,
   ) => void;
   /** AIM-08.5 — Refresh the slab's per-entity active/firing turret
    *  masks for `entitySlot`. Reads slab FSM target/state + angular/
@@ -3797,10 +4065,10 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
       // array view JS holds over linear memory and cause the
       // "Aw, Snap!" renderer crash on the next view access.
       //
-      // 32 MB upper-bounds steady-state allocations comfortably:
-      // pool ~720 KB + per-engine static cells + transient
-      // HashMaps. Memory still grows on demand if we exceed this,
-      // but refreshViews below catches that case too.
+      // 32 MB upper-bounds steady-state fixed pools comfortably:
+      // BAR-scale BodyPool + packed projectile pool + per-engine static
+      // cells + transient HashMaps. Memory still grows on demand if we
+      // exceed this, but refreshViews below catches that case too.
       const PRE_GROW_TARGET_PAGES = 512;  // 64 KiB/page * 512 = 32 MiB
       const currentPages = initOutput.memory.buffer.byteLength / 65536;
       const growBy = PRE_GROW_TARGET_PAGES - currentPages;
@@ -4100,6 +4368,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceRuntimeClear: unit_force_runtime_clear,
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageAreaCandidatesBatch: damage_area_candidates_batch,
+        damageAreaProjectileCandidatesBatch: damage_area_projectile_candidates_batch,
         damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,
         damageDeathExplosionCandidatesBatch: damage_death_explosion_candidates_batch,
         deathExplosionPlannerReset: death_explosion_planner_reset,
@@ -4107,13 +4376,17 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         deathExplosionPlannerAppendKills: death_explosion_planner_append_kills,
         deathExplosionPlannerNext: death_explosion_planner_next,
         damageApplyBatch: damage_apply_batch,
+        damageBeamSegmentClosestHit: damage_beam_segment_closest_hit,
+        damageBeamSolidClosestHits: damage_beam_solid_closest_hits,
         damageSegmentCandidatesBatch: damage_segment_candidates_batch,
         damageSegmentHitsBatch: damage_segment_hits_batch,
         deathCleanupDiffBatch: death_cleanup_diff_batch,
         projectilePool,
         projectileReflectorIntersectionsBatch: projectile_reflector_intersections_batch,
+        beamReflectorClosestHit: beam_reflector_closest_hit,
         projectileReflectionResponseBatch: projectile_reflection_response_batch,
         projectileSubmunitionLaunchVelocityBatch: projectile_submunition_launch_velocity_batch,
+        projectileTerminalClassifyEffectPlanBatch: projectile_terminal_classify_effect_plan_batch,
         projectileTerminalConsequenceBatch: projectile_terminal_consequence_batch,
         projectileTerminalEffectPlanBatch: projectile_terminal_effect_plan_batch,
         projectileHitboxSweepBatch: projectile_hitbox_sweep_batch,
@@ -4144,9 +4417,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         terrainSampleBedHeights: terrain_sample_bed_heights,
         terrainGetBedNormal: terrain_get_bed_normal,
         terrainGetSurfaceHeight: terrain_get_surface_height,
+        terrainSegmentGroundHitT: terrain_segment_ground_hit_t,
         terrainGetSurfaceNormal: terrain_get_surface_normal,
         terrainSampleGroundForSlots: terrain_sample_ground_for_slots,
         terrainSampleForceSupportForSlots: terrain_sample_force_support_for_slots,
+        terrainSampleAirLiftDistanceScalesForSlots:
+          terrain_sample_air_lift_distance_scales_for_slots,
         terrainSampleWaterProbeMasks: terrain_sample_water_probe_masks,
         terrainBakeBuildabilityGrid: terrain_bake_buildability_grid,
         terrainHasLineOfSight: terrain_has_line_of_sight,
@@ -4191,6 +4467,25 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           maxTurretsPerEntity: combat_targeting_max_turrets_per_entity,
           entityCapacity: combat_targeting_entity_capacity,
           setEntity: combat_targeting_set_entity,
+          entityStampRowStride: combat_targeting_entity_stamp_row_stride,
+          setEntityRowsBatch: combat_targeting_set_entity_rows_batch,
+          unitProfileStride: combat_targeting_unit_profile_stride,
+          unitProfileEnsure: combat_targeting_unit_profile_ensure,
+          unitProfileValuesPtr: combat_targeting_unit_profile_values_ptr,
+          stampSimpleUnitEntitiesFromEntityState:
+            combat_targeting_stamp_simple_unit_entities_from_entity_state,
+          stampObservationOnlySimpleUnitsFromEntityState:
+            combat_targeting_stamp_observation_only_simple_units_from_entity_state,
+          ensureStampScratchCapacity: combat_targeting_ensure_stamp_scratch_capacity,
+          stampEntitySlotsPtr: combat_targeting_stamp_entity_slots_ptr,
+          stampEntityRowsPtr: combat_targeting_stamp_entity_rows_ptr,
+          stampTurretEntitySlotsPtr: combat_targeting_stamp_turret_entity_slots_ptr,
+          stampTurretIndicesPtr: combat_targeting_stamp_turret_indices_ptr,
+          stampTurretRowsPtr: combat_targeting_stamp_turret_rows_ptr,
+          commitStampScratch: combat_targeting_commit_stamp_scratch,
+          profileReset: combat_targeting_profile_reset,
+          profileLen: combat_targeting_profile_len,
+          profileCopy: combat_targeting_profile_copy,
           unsetEntity: combat_targeting_unset_entity,
           rebuildObservationMasks: combat_targeting_rebuild_observation_masks,
           rebuildObservationMasksForSources: combat_targeting_rebuild_observation_masks_for_sources,
@@ -4198,6 +4493,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           addSensorObservationCircle: combat_targeting_add_sensor_observation_circle,
           setWind: combat_targeting_set_wind,
           setTurret: combat_targeting_set_turret,
+          turretStampRowStride: combat_targeting_turret_stamp_row_stride,
+          setTurretRowsBatch: combat_targeting_set_turret_rows_batch,
           updateMountKinematics: combat_targeting_update_mount_kinematics,
           updateMountKinematicsBatch: combat_targeting_update_mount_kinematics_batch,
           entityFlags: combat_targeting_entity_flags,
@@ -4476,6 +4773,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           freeSlot: spatial_free_slot,
           setEntityId: spatial_set_entity_id,
           setUnit: spatial_set_unit,
+          syncUnitsFromEntityState: spatial_sync_units_from_entity_state,
+          syncUnitSlotsFromEntityState: spatial_sync_unit_slots_from_entity_state,
           setProjectile: spatial_set_projectile,
           setProjectilesBatch: spatial_set_projectiles_batch,
           setBuilding: spatial_set_building,
@@ -4483,7 +4782,9 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           queryUnitsInRadius: spatial_query_units_in_radius,
           queryBuildingsInRadius: spatial_query_buildings_in_radius,
           queryUnitsAndBuildingsInRadius: spatial_query_units_and_buildings_in_radius,
+          queryAreaUnitsAndBuildingsInRadius: spatial_query_area_units_and_buildings_in_radius,
           queryUnitsAndBuildingsInRect2D: spatial_query_units_and_buildings_in_rect_2d,
+          queryProjectilesInRect2D: spatial_query_projectiles_in_rect_2d,
           queryEnemyEntitiesInRadius: spatial_query_enemy_entities_in_radius,
           queryEnemyEntitiesInCircle2D: spatial_query_enemy_entities_in_circle_2d,
           queryUnitsAlongLine: spatial_query_units_along_line,
@@ -4492,6 +4793,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           queryEntitiesAlongLine: spatial_query_entities_along_line,
           queryEnemyUnitsInRadius: spatial_query_enemy_units_in_radius,
           queryEnemyProjectilesInRadius: spatial_query_enemy_projectiles_in_radius,
+          queryAreaEnemyProjectilesInRadius: spatial_query_area_enemy_projectiles_in_radius,
           queryEnemyUnitsAndProjectilesInRadius: spatial_query_enemy_units_and_projectiles_in_radius,
           queryOccupiedCellsDebug: spatial_query_occupied_cells_debug,
           scratchPtr: spatial_scratch_ptr,
@@ -4646,6 +4948,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runEntitySlotRegistryContractTest();
         const { runClientRenderEntityStateSlabContractTest } = await import('../render3d/ClientRenderEntityStateSlabContractTest');
         runClientRenderEntityStateSlabContractTest();
+        const { runAuthoritativeRenderPoseOverlay3DContractTest } = await import('../render3d/AuthoritativeRenderPoseOverlay3DContractTest');
+        runAuthoritativeRenderPoseOverlay3DContractTest();
         const { runClientRenderSpatialIndexContractTest } = await import('../network/ClientRenderSpatialIndexContractTest');
         runClientRenderSpatialIndexContractTest();
         const { runClientProjectileRenderStateSlabContractTest } = await import('../network/ClientProjectileRenderStateSlabContractTest');
@@ -4654,10 +4958,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTurretSnapshotDirtyContractTest();
         const { runPrimitiveGeometryQuality3DContractTest } = await import('../render3d/PrimitiveGeometryQuality3DContractTest');
         runPrimitiveGeometryQuality3DContractTest();
-        const { runEntityLod3DContractTest } = await import('../render3d/EntityLod3DContractTest');
-        runEntityLod3DContractTest();
-        const { runEntityDetailLevel3DContractTest } = await import('../render3d/EntityDetailLevel3DContractTest');
-        runEntityDetailLevel3DContractTest();
+        const { runEntityInstanceColor3DContractTest } = await import('../render3d/EntityInstanceColor3DContractTest');
+        runEntityInstanceColor3DContractTest();
         const { runInputControlGroupsContractTest } = await import('../input/helpers/InputControlGroupsContractTest');
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');

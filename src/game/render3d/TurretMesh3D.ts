@@ -123,8 +123,8 @@ type TurretMesh3DDeps = {
   coneBarrelGeom: THREE.CylinderGeometry;
   /** Resolved primary (player color) material for this unit. */
   primaryMat: THREE.Material;
-  /** Half player color, half white. Used for physical barrel meshes and
-   *  non-body weapon accents. */
+  /** Neutral barrel material. Turret heads/bodies use the team mid color;
+   *  barrels stay visually distinct across all LOD rungs. */
   turretAccentMat: THREE.Material;
   /** Optional starting material for visible shield emitter cores. Shield
    *  turrets normally render through ShieldRenderer3D only, but shield

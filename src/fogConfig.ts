@@ -4,6 +4,8 @@ type FogCapPolicy = 'evictOldest' | 'skipWhenFull';
 
 type FogOfWarProfile = {
   maxPoolSize: number;
+  minPoolSize: number;
+  targetCoverageLayers: number;
   capPolicy: FogCapPolicy;
   densitySamples: number;
   maxSpawnsPerFrame: number;
@@ -12,11 +14,13 @@ type FogOfWarProfile = {
   fadeOutMs: number;
   radius: number;
   transparentOuterFraction: number;
+  minCameraHeightForClouds?: number;
   zMin: number;
   zRange: number;
   shade: {
     cellSize: number;
     edgeSoftnessCells: number;
+    sourceSnapCells: number;
   };
 };
 

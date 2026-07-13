@@ -1,10 +1,12 @@
 import { buildBuildingDeathEvent, buildUnitDeathEvent } from './combat/damageHelpers';
 import {
   emitLaserStopsForEntity,
-  emitLaserStopsForTarget,
+  emitLaserStopsForTargetRefs,
   emitShieldStopsForEntity,
+  getLaserStopRefsForTargets,
 } from './combat';
 import type { DeathContext } from './combat';
+import type { BeamWeaponRef } from './combat/targetIndex';
 import type { Entity, EntityId } from './types';
 import { spatialGrid } from './SpatialGrid';
 import type { WorldState } from './WorldState';
@@ -56,7 +58,8 @@ export class SimulationDeadEntityCleanup {
     sortEntityIdsInPlace(deadUnitIds);
     sortEntityIdsInPlace(deadBuildingIds);
     this.planSyntheticDeaths(deadUnitIds, deadBuildingIds);
-    this.removeDeadUnits(deadUnitIds, onUnitDeath, onBuildingSpawn);
+    const beamTargetRefsById = getLaserStopRefsForTargets(this.world, deadUnitIds);
+    this.removeDeadUnits(deadUnitIds, beamTargetRefsById, onUnitDeath, onBuildingSpawn);
     this.removeDeadBuildings(deadBuildingIds, onBuildingDeath);
   }
 
@@ -102,6 +105,7 @@ export class SimulationDeadEntityCleanup {
 
   private removeDeadUnits(
     deadUnitIds: EntityId[],
+    beamTargetRefsById: ReadonlyMap<EntityId, readonly BeamWeaponRef[]>,
     onUnitDeath: ((deadUnitIds: EntityId[], deathContexts: Map<EntityId, DeathContext> | null) => void) | null,
     onBuildingSpawn: ((newBuildings: Entity[]) => void) | null,
   ): void {
@@ -111,7 +115,7 @@ export class SimulationDeadEntityCleanup {
     for (const id of deadUnitIds) {
       const entity = this.world.getEntity(id);
       if (entity) {
-        this.emitStopsForDeadUnit(entity, id);
+        this.emitStopsForDeadUnit(entity, beamTargetRefsById.get(id));
         if (this.syntheticDeathEventIds.has(id)) this.emitSyntheticDeathEvent(entity);
         const wreck = createWreckFromDeadUnit(this.world, entity);
         if (wreck !== null) spawnedWrecks.push(wreck);
@@ -138,9 +142,12 @@ export class SimulationDeadEntityCleanup {
     for (const id of deadBuildingIds) this.world.removeEntity(id);
   }
 
-  private emitStopsForDeadUnit(entity: Entity, id: EntityId): void {
+  private emitStopsForDeadUnit(
+    entity: Entity,
+    targetingRefs: readonly BeamWeaponRef[] | undefined,
+  ): void {
     for (const evt of emitLaserStopsForEntity(entity)) this.eventQueues.simEvents.push(evt);
-    for (const evt of emitLaserStopsForTarget(this.world, id)) this.eventQueues.simEvents.push(evt);
+    for (const evt of emitLaserStopsForTargetRefs(targetingRefs)) this.eventQueues.simEvents.push(evt);
     for (const evt of emitShieldStopsForEntity(entity)) this.eventQueues.simEvents.push(evt);
   }
 

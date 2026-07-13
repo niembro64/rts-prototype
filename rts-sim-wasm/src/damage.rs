@@ -16,6 +16,63 @@ pub(crate) const DAMAGE_AREA_FLAG_SLICE_PASS: u8 = 1 << 0;
 pub(crate) const DAMAGE_AREA_FLAG_OVERLAP: u8 = 1 << 1;
 pub(crate) const DAMAGE_DEATH_EXPLOSION_ROW_FLAG_BODY_HIT: u8 = 1 << 2;
 pub(crate) const DAMAGE_SEGMENT_HIT_FLAG_HIT: u8 = 1 << 0;
+const PROJECTILE_TYPE_PROJECTILE_CODE: u32 = 0;
+
+#[inline]
+fn damage_line_cell_bounds(
+    state: &SpatialGridState,
+    x1: f64,
+    y1: f64,
+    z1: f64,
+    x2: f64,
+    y2: f64,
+    z2: f64,
+    line_width: f64,
+) -> Option<(i32, i32, i32, i32, i32, i32)> {
+    if !x1.is_finite()
+        || !y1.is_finite()
+        || !z1.is_finite()
+        || !x2.is_finite()
+        || !y2.is_finite()
+        || !z2.is_finite()
+        || !line_width.is_finite()
+    {
+        return None;
+    }
+    let cs = state.cell_size;
+    let hcs = state.half_cell_size;
+    if !cs.is_finite() || cs <= 0.0 || !hcs.is_finite() {
+        return None;
+    }
+    let half_w = line_width * 0.5;
+    let min_x = x1.min(x2) - half_w;
+    let max_x = x1.max(x2) + half_w;
+    let min_y = y1.min(y2) - half_w;
+    let max_y = y1.max(y2) + half_w;
+    let min_z = z1.min(z2) - half_w;
+    let max_z = z1.max(z2) + half_w;
+    Some((
+        (min_x / cs).floor() as i32,
+        (max_x / cs).floor() as i32,
+        (min_y / cs).floor() as i32,
+        (max_y / cs).floor() as i32,
+        ((min_z + hcs) / cs).floor() as i32,
+        ((max_z + hcs) / cs).floor() as i32,
+    ))
+}
+
+#[inline]
+fn damage_mark_slot_once(slot_query_marks: &mut Vec<u32>, slot: u32, mark: u32) -> bool {
+    let s = slot as usize;
+    if s >= slot_query_marks.len() {
+        slot_query_marks.resize(s + 1, 0);
+    }
+    if slot_query_marks[s] == mark {
+        return false;
+    }
+    slot_query_marks[s] = mark;
+    true
+}
 
 #[inline]
 pub(crate) fn damage_segment_sphere_intersection_t(
@@ -412,6 +469,668 @@ pub fn damage_segment_candidates_batch(
     }
 
     processed
+}
+
+/// Combined body + travelling-projectile closest-hit helper for beam traces.
+///
+/// The TypeScript beam tracer still owns ground/reflector ordering, but body
+/// and live-projectile checks share the same spatial line walk. Returning them
+/// in separate output slots lets TS preserve the old ordering:
+/// ground -> body -> reflector -> projectile.
+#[wasm_bindgen]
+pub fn damage_beam_solid_closest_hits(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    body_query_width: f64,
+    projectile_query_width: f64,
+    sphere_inflation: f64,
+    max_t: f64,
+    body_exclude_entity_id: i32,
+    body_exclude_panel_index: i32,
+    projectile_exclude_entity_id: i32,
+    out_body_entity_id: &mut [i32],
+    out_body_t: &mut [f64],
+    out_projectile_entity_id: &mut [i32],
+    out_projectile_t: &mut [f64],
+) -> u32 {
+    if out_body_entity_id.is_empty()
+        || out_body_t.is_empty()
+        || out_projectile_entity_id.is_empty()
+        || out_projectile_t.is_empty()
+    {
+        return 0;
+    }
+    out_body_entity_id[0] = -1;
+    out_body_t[0] = f64::INFINITY;
+    out_projectile_entity_id[0] = -1;
+    out_projectile_t[0] = f64::INFINITY;
+    if !(start_x.is_finite()
+        && start_y.is_finite()
+        && start_z.is_finite()
+        && end_x.is_finite()
+        && end_y.is_finite()
+        && end_z.is_finite()
+        && body_query_width.is_finite()
+        && projectile_query_width.is_finite()
+        && sphere_inflation.is_finite()
+        && max_t.is_finite())
+        || body_query_width < 0.0
+        || projectile_query_width < 0.0
+    {
+        return 0;
+    }
+    let clamped_max_t = max_t.max(0.0).min(1.0);
+    if clamped_max_t <= 0.0 {
+        return 0;
+    }
+
+    let dx = end_x - start_x;
+    let dy = end_y - start_y;
+    let dz = end_z - start_z;
+    let query_end_x = start_x + dx * clamped_max_t;
+    let query_end_y = start_y + dy * clamped_max_t;
+    let query_end_z = start_z + dz * clamped_max_t;
+    let query_seg_min_x = start_x.min(query_end_x);
+    let query_seg_max_x = start_x.max(query_end_x);
+    let query_seg_min_y = start_y.min(query_end_y);
+    let query_seg_max_y = start_y.max(query_end_y);
+    let query_seg_min_z = start_z.min(query_end_z);
+    let query_seg_max_z = start_z.max(query_end_z);
+
+    let state = spatial_grid();
+    let projectile_cell_bounds = damage_line_cell_bounds(
+        state,
+        start_x,
+        start_y,
+        start_z,
+        query_end_x,
+        query_end_y,
+        query_end_z,
+        projectile_query_width,
+    );
+    if !spatial_collect_cells_along_line(
+        state,
+        start_x,
+        start_y,
+        start_z,
+        query_end_x,
+        query_end_y,
+        query_end_z,
+        projectile_query_width,
+    ) {
+        return 0;
+    }
+
+    let pool = combat_targeting_pool();
+    let slab = entity_state();
+    let nearby_unit_projectile = std::mem::take(&mut state.nearby_cells);
+    let query_mark = spatial_next_query_mark(state);
+    let mut slot_query_marks = std::mem::take(&mut state.slot_query_marks);
+    let mut best_body_t = f64::INFINITY;
+    let mut best_body_entity_id = -1;
+    let mut best_projectile_t = f64::INFINITY;
+    let mut best_projectile_entity_id = -1;
+
+    for key in &nearby_unit_projectile {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.units {
+                if !damage_mark_slot_once(&mut slot_query_marks, slot, query_mark) {
+                    continue;
+                }
+                let s = slot as usize;
+                if s >= state.slot_kind.len()
+                    || state.slot_kind[s] != SPATIAL_KIND_UNIT
+                    || state.slot_hp_alive[s] == 0
+                    || s >= pool.entity_id.len()
+                {
+                    continue;
+                }
+                let entity_id = state.slot_entity_id[s];
+                if entity_id < 0
+                    || pool.entity_id[s] != entity_id
+                    || pool.entity_family[s] != CT_ENTITY_FAMILY_UNIT
+                    || (entity_id == body_exclude_entity_id && body_exclude_panel_index < 0)
+                {
+                    continue;
+                }
+                let tx = pool.entity_pos_x[s];
+                let ty = pool.entity_pos_y[s];
+                let tz = pool.entity_pos_z[s];
+                let radius = (pool.entity_radius_hitbox[s] + sphere_inflation).max(0.0);
+                if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && radius.is_finite()) {
+                    continue;
+                }
+                if tx + radius < query_seg_min_x
+                    || tx - radius > query_seg_max_x
+                    || ty + radius < query_seg_min_y
+                    || ty - radius > query_seg_max_y
+                    || tz + radius < query_seg_min_z
+                    || tz - radius > query_seg_max_z
+                {
+                    continue;
+                }
+                if let Some(t) = damage_segment_sphere_intersection_t(
+                    start_x, start_y, start_z, end_x, end_y, end_z, tx, ty, tz, radius,
+                ) {
+                    if t <= clamped_max_t && t < best_body_t {
+                        best_body_t = t;
+                        best_body_entity_id = entity_id;
+                    }
+                }
+            }
+        }
+    }
+
+    let building_limit_t = if best_body_t.is_finite() && best_body_t < clamped_max_t {
+        best_body_t
+    } else {
+        clamped_max_t
+    };
+    let building_query_end_x = start_x + dx * building_limit_t;
+    let building_query_end_y = start_y + dy * building_limit_t;
+    let building_query_end_z = start_z + dz * building_limit_t;
+    let building_cell_bounds = damage_line_cell_bounds(
+        state,
+        start_x,
+        start_y,
+        start_z,
+        building_query_end_x,
+        building_query_end_y,
+        building_query_end_z,
+        body_query_width,
+    );
+    let reuse_projectile_cells_for_buildings =
+        projectile_cell_bounds.is_some() && projectile_cell_bounds == building_cell_bounds;
+    let mut nearby_buildings_for_restore = None;
+    if !reuse_projectile_cells_for_buildings {
+        if !spatial_collect_cells_along_line(
+            state,
+            start_x,
+            start_y,
+            start_z,
+            building_query_end_x,
+            building_query_end_y,
+            building_query_end_z,
+            body_query_width,
+        ) {
+            state.nearby_cells = nearby_unit_projectile;
+            state.slot_query_marks = slot_query_marks;
+            return 0;
+        }
+        nearby_buildings_for_restore = Some(std::mem::take(&mut state.nearby_cells));
+    }
+
+    let building_cells = nearby_buildings_for_restore
+        .as_ref()
+        .unwrap_or(&nearby_unit_projectile);
+    let building_seg_min_x = start_x.min(building_query_end_x);
+    let building_seg_max_x = start_x.max(building_query_end_x);
+    let building_seg_min_y = start_y.min(building_query_end_y);
+    let building_seg_max_y = start_y.max(building_query_end_y);
+    let building_seg_min_z = start_z.min(building_query_end_z);
+    let building_seg_max_z = start_z.max(building_query_end_z);
+    for key in building_cells {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.buildings {
+                if !damage_mark_slot_once(&mut slot_query_marks, slot, query_mark) {
+                    continue;
+                }
+                let s = slot as usize;
+                if s >= state.slot_kind.len()
+                    || state.slot_kind[s] != SPATIAL_KIND_BUILDING
+                    || state.slot_hp_alive[s] == 0
+                    || s >= pool.entity_id.len()
+                {
+                    continue;
+                }
+                let entity_id = state.slot_entity_id[s];
+                if entity_id < 0
+                    || entity_id == body_exclude_entity_id
+                    || pool.entity_id[s] != entity_id
+                {
+                    continue;
+                }
+                match pool.entity_family[s] {
+                    CT_ENTITY_FAMILY_BUILDING | CT_ENTITY_FAMILY_TOWER => {}
+                    _ => continue,
+                }
+                let tx = pool.entity_pos_x[s];
+                let ty = pool.entity_pos_y[s];
+                let tz = pool.entity_pos_z[s];
+                let hx = pool.entity_aabb_half_x[s].max(0.0);
+                let hy = pool.entity_aabb_half_y[s].max(0.0);
+                let hz = pool.entity_aabb_half_z[s].max(0.0);
+                if !(tx.is_finite()
+                    && ty.is_finite()
+                    && tz.is_finite()
+                    && hx.is_finite()
+                    && hy.is_finite()
+                    && hz.is_finite())
+                {
+                    continue;
+                }
+                if tx + hx < building_seg_min_x
+                    || tx - hx > building_seg_max_x
+                    || ty + hy < building_seg_min_y
+                    || ty - hy > building_seg_max_y
+                    || tz + hz < building_seg_min_z
+                    || tz - hz > building_seg_max_z
+                {
+                    continue;
+                }
+                if let Some(t) = damage_segment_aabb_intersection_t(
+                    start_x,
+                    start_y,
+                    start_z,
+                    end_x,
+                    end_y,
+                    end_z,
+                    tx - hx,
+                    ty - hy,
+                    tz - hz,
+                    tx + hx,
+                    ty + hy,
+                    tz + hz,
+                ) {
+                    if t <= clamped_max_t && t < best_body_t {
+                        best_body_t = t;
+                        best_body_entity_id = entity_id;
+                    }
+                }
+            }
+        }
+    }
+
+    let body_clips_projectiles = best_body_t.is_finite() && best_body_t <= clamped_max_t;
+    let projectile_limit_t = if body_clips_projectiles {
+        best_body_t
+    } else {
+        clamped_max_t
+    };
+    let projectile_query_end_x = start_x + dx * projectile_limit_t;
+    let projectile_query_end_y = start_y + dy * projectile_limit_t;
+    let projectile_query_end_z = start_z + dz * projectile_limit_t;
+    let projectile_seg_min_x = start_x.min(projectile_query_end_x);
+    let projectile_seg_max_x = start_x.max(projectile_query_end_x);
+    let projectile_seg_min_y = start_y.min(projectile_query_end_y);
+    let projectile_seg_max_y = start_y.max(projectile_query_end_y);
+    let projectile_seg_min_z = start_z.min(projectile_query_end_z);
+    let projectile_seg_max_z = start_z.max(projectile_query_end_z);
+
+    for key in &nearby_unit_projectile {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.projectiles {
+                if !damage_mark_slot_once(&mut slot_query_marks, slot, query_mark) {
+                    continue;
+                }
+                let s = slot as usize;
+                if s >= state.slot_kind.len()
+                    || state.slot_kind[s] != SPATIAL_KIND_PROJECTILE
+                    || state.slot_proj_is_projectile_type[s] == 0
+                    || s >= slab.entity_id.len()
+                    || slab.entity_id[s] < 0
+                    || slab.hp[s] <= 0.0
+                {
+                    continue;
+                }
+                let entity_id = slab.entity_id[s];
+                if entity_id == projectile_exclude_entity_id {
+                    continue;
+                }
+                let bound_r = slab.radius_collision[s] + sphere_inflation;
+                let projectile_x = slab.pos_x[s];
+                let projectile_y = slab.pos_y[s];
+                let projectile_z = slab.pos_z[s];
+                if !(bound_r.is_finite()
+                    && projectile_x.is_finite()
+                    && projectile_y.is_finite()
+                    && projectile_z.is_finite())
+                {
+                    continue;
+                }
+                if projectile_x + bound_r < projectile_seg_min_x
+                    || projectile_x - bound_r > projectile_seg_max_x
+                    || projectile_y + bound_r < projectile_seg_min_y
+                    || projectile_y - bound_r > projectile_seg_max_y
+                    || projectile_z + bound_r < projectile_seg_min_z
+                    || projectile_z - bound_r > projectile_seg_max_z
+                {
+                    continue;
+                }
+                if let Some(t) = damage_segment_sphere_intersection_t(
+                    start_x,
+                    start_y,
+                    start_z,
+                    end_x,
+                    end_y,
+                    end_z,
+                    projectile_x,
+                    projectile_y,
+                    projectile_z,
+                    bound_r,
+                ) {
+                    let within_projectile_limit = if body_clips_projectiles {
+                        t < projectile_limit_t
+                    } else {
+                        t <= projectile_limit_t
+                    };
+                    if within_projectile_limit && t < best_projectile_t {
+                        best_projectile_t = t;
+                        best_projectile_entity_id = entity_id;
+                    }
+                }
+            }
+        }
+    }
+
+    state.nearby_cells = if let Some(nearby_buildings) = nearby_buildings_for_restore {
+        if nearby_buildings.capacity() >= nearby_unit_projectile.capacity() {
+            nearby_buildings
+        } else {
+            nearby_unit_projectile
+        }
+    } else {
+        nearby_unit_projectile
+    };
+    state.slot_query_marks = slot_query_marks;
+
+    let mut flags = 0_u32;
+    if best_body_entity_id >= 0 {
+        out_body_entity_id[0] = best_body_entity_id;
+        out_body_t[0] = best_body_t;
+        flags |= 1;
+    }
+    if best_projectile_entity_id >= 0 {
+        out_projectile_entity_id[0] = best_projectile_entity_id;
+        out_projectile_t[0] = best_projectile_t;
+        flags |= 2;
+    }
+    flags
+}
+
+pub(crate) const BEAM_SEGMENT_HIT_KIND_NONE: u8 = 0;
+pub(crate) const BEAM_SEGMENT_HIT_KIND_GROUND: u8 = 1;
+pub(crate) const BEAM_SEGMENT_HIT_KIND_BODY: u8 = 2;
+pub(crate) const BEAM_SEGMENT_HIT_KIND_REFLECTOR: u8 = 3;
+pub(crate) const BEAM_SEGMENT_HIT_KIND_PROJECTILE: u8 = 4;
+
+/// Fused beam segment hit query.
+///
+/// Preserves the TypeScript beam tracer's ordering rules:
+/// ground -> solid body -> reflector -> travelling projectile. The caller still
+/// owns multi-segment reflection iteration and damage application, but the hot
+/// per-segment work crosses JS/WASM once instead of separately querying terrain,
+/// body/projectile solids, and reflectors.
+#[wasm_bindgen]
+pub fn damage_beam_segment_closest_hit(
+    start_x: f64,
+    start_y: f64,
+    start_z: f64,
+    end_x: f64,
+    end_y: f64,
+    end_z: f64,
+    body_query_width: f64,
+    projectile_query_width: f64,
+    sphere_inflation: f64,
+    body_exclude_entity_id: i32,
+    body_exclude_panel_index: i32,
+    projectile_exclude_entity_id: i32,
+    reflector_exclude_entity_id: i32,
+    reflector_exclude_panel_index: i32,
+    reflection_entity: u8,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
+    shield_panel_query_pad: f64,
+    dt_ms: f64,
+    ground_steps: u32,
+    ground_bisect_steps: u32,
+    ground_epsilon: f64,
+    out_kind: &mut [u8],
+    out_entity_id: &mut [i32],
+    out_panel_index: &mut [i32],
+    out_t: &mut [f64],
+    out_x: &mut [f64],
+    out_y: &mut [f64],
+    out_z: &mut [f64],
+    out_normal_x: &mut [f64],
+    out_normal_y: &mut [f64],
+    out_normal_z: &mut [f64],
+    out_reflect_dir_x: &mut [f64],
+    out_reflect_dir_y: &mut [f64],
+    out_reflect_dir_z: &mut [f64],
+) -> u32 {
+    if out_kind.is_empty()
+        || out_entity_id.is_empty()
+        || out_panel_index.is_empty()
+        || out_t.is_empty()
+        || out_x.is_empty()
+        || out_y.is_empty()
+        || out_z.is_empty()
+        || out_normal_x.is_empty()
+        || out_normal_y.is_empty()
+        || out_normal_z.is_empty()
+        || out_reflect_dir_x.is_empty()
+        || out_reflect_dir_y.is_empty()
+        || out_reflect_dir_z.is_empty()
+    {
+        return 0;
+    }
+
+    out_kind[0] = BEAM_SEGMENT_HIT_KIND_NONE;
+    out_entity_id[0] = -1;
+    out_panel_index[0] = -1;
+    out_t[0] = f64::INFINITY;
+    out_x[0] = 0.0;
+    out_y[0] = 0.0;
+    out_z[0] = 0.0;
+    out_normal_x[0] = 0.0;
+    out_normal_y[0] = 0.0;
+    out_normal_z[0] = 0.0;
+    out_reflect_dir_x[0] = 0.0;
+    out_reflect_dir_y[0] = 0.0;
+    out_reflect_dir_z[0] = 0.0;
+
+    if !(start_x.is_finite()
+        && start_y.is_finite()
+        && start_z.is_finite()
+        && end_x.is_finite()
+        && end_y.is_finite()
+        && end_z.is_finite()
+        && body_query_width.is_finite()
+        && projectile_query_width.is_finite()
+        && sphere_inflation.is_finite()
+        && shield_panel_query_pad.is_finite()
+        && dt_ms.is_finite()
+        && ground_epsilon.is_finite())
+        || body_query_width < 0.0
+        || projectile_query_width < 0.0
+        || ground_steps == 0
+    {
+        return 0;
+    }
+
+    let dx = end_x - start_x;
+    let dy = end_y - start_y;
+    let dz = end_z - start_z;
+    let mut best_t = f64::INFINITY;
+    let mut found = false;
+    let mut best_hit_is_ground = false;
+
+    let ground_t = crate::terrain::terrain_segment_ground_hit_t(
+        start_x,
+        start_y,
+        start_z,
+        end_x,
+        end_y,
+        end_z,
+        1.0,
+        ground_steps,
+        ground_bisect_steps,
+        ground_epsilon,
+    );
+    if ground_t.is_nan() {
+        return 0;
+    }
+    if ground_t >= 0.0 && ground_t < best_t {
+        best_t = ground_t;
+        found = true;
+        best_hit_is_ground = true;
+        out_kind[0] = BEAM_SEGMENT_HIT_KIND_GROUND;
+        out_entity_id[0] = 0;
+        out_panel_index[0] = -1;
+        out_t[0] = ground_t;
+        out_x[0] = start_x + ground_t * dx;
+        out_y[0] = start_y + ground_t * dy;
+        out_z[0] = crate::terrain::terrain_get_surface_height(out_x[0], out_y[0]);
+        if out_z[0].is_nan() {
+            return 0;
+        }
+        out_normal_x[0] = 0.0;
+        out_normal_y[0] = 0.0;
+        out_normal_z[0] = 1.0;
+    }
+
+    let mut body_entity_id = [-1_i32; 1];
+    let mut body_t = [f64::INFINITY; 1];
+    let mut projectile_entity_id = [-1_i32; 1];
+    let mut projectile_t = [f64::INFINITY; 1];
+    let solid_max_t = if best_t.is_finite() { best_t } else { 1.0 };
+    let solid_hit_flags = damage_beam_solid_closest_hits(
+        start_x,
+        start_y,
+        start_z,
+        end_x,
+        end_y,
+        end_z,
+        body_query_width,
+        projectile_query_width,
+        sphere_inflation,
+        solid_max_t,
+        body_exclude_entity_id,
+        body_exclude_panel_index,
+        projectile_exclude_entity_id,
+        &mut body_entity_id,
+        &mut body_t,
+        &mut projectile_entity_id,
+        &mut projectile_t,
+    );
+    if (solid_hit_flags & 1) != 0 {
+        let t = body_t[0];
+        if t <= best_t {
+            best_t = t;
+            found = true;
+            best_hit_is_ground = false;
+            out_kind[0] = BEAM_SEGMENT_HIT_KIND_BODY;
+            out_entity_id[0] = body_entity_id[0];
+            out_panel_index[0] = -1;
+            out_t[0] = t;
+            out_x[0] = start_x + t * dx;
+            out_y[0] = start_y + t * dy;
+            out_z[0] = start_z + t * dz;
+            out_normal_x[0] = 0.0;
+            out_normal_y[0] = 0.0;
+            out_normal_z[0] = 0.0;
+            out_reflect_dir_x[0] = 0.0;
+            out_reflect_dir_y[0] = 0.0;
+            out_reflect_dir_z[0] = 0.0;
+        }
+    }
+
+    if turret_shield_panels_enabled != 0 || turret_shield_spheres_enabled != 0 {
+        let mut refl_kind = [crate::combat_targeting::REFLECTOR_HIT_KIND_NONE; 1];
+        let mut refl_entity_id = [-1_i32; 1];
+        let mut refl_panel_index = [-1_i32; 1];
+        let mut refl_t = [f64::INFINITY; 1];
+        let mut refl_x = [0.0_f64; 1];
+        let mut refl_y = [0.0_f64; 1];
+        let mut refl_z = [0.0_f64; 1];
+        let mut refl_normal_x = [0.0_f64; 1];
+        let mut refl_normal_y = [0.0_f64; 1];
+        let mut refl_normal_z = [0.0_f64; 1];
+        let mut refl_dir_x = [0.0_f64; 1];
+        let mut refl_dir_y = [0.0_f64; 1];
+        let mut refl_dir_z = [0.0_f64; 1];
+        crate::combat_targeting::beam_reflector_closest_hit(
+            start_x,
+            start_y,
+            start_z,
+            end_x,
+            end_y,
+            end_z,
+            sphere_inflation * 2.0,
+            reflection_entity,
+            reflector_exclude_entity_id,
+            reflector_exclude_panel_index,
+            turret_shield_panels_enabled,
+            turret_shield_spheres_enabled,
+            shield_panel_query_pad,
+            dt_ms,
+            if best_t.is_finite() { (best_t + 1e-9).min(1.0) } else { 1.0 },
+            &mut refl_kind,
+            &mut refl_entity_id,
+            &mut refl_panel_index,
+            &mut refl_t,
+            &mut refl_x,
+            &mut refl_y,
+            &mut refl_z,
+            &mut refl_normal_x,
+            &mut refl_normal_y,
+            &mut refl_normal_z,
+            &mut refl_dir_x,
+            &mut refl_dir_y,
+            &mut refl_dir_z,
+        );
+        if refl_kind[0] != crate::combat_targeting::REFLECTOR_HIT_KIND_NONE
+            && (refl_t[0] < best_t || (best_hit_is_ground && refl_t[0] <= best_t))
+        {
+            best_t = refl_t[0];
+            found = true;
+            best_hit_is_ground = false;
+            out_kind[0] = BEAM_SEGMENT_HIT_KIND_REFLECTOR;
+            out_entity_id[0] = refl_entity_id[0];
+            out_panel_index[0] = refl_panel_index[0];
+            out_t[0] = refl_t[0];
+            out_x[0] = refl_x[0];
+            out_y[0] = refl_y[0];
+            out_z[0] = refl_z[0];
+            out_normal_x[0] = refl_normal_x[0];
+            out_normal_y[0] = refl_normal_y[0];
+            out_normal_z[0] = refl_normal_z[0];
+            out_reflect_dir_x[0] = refl_dir_x[0];
+            out_reflect_dir_y[0] = refl_dir_y[0];
+            out_reflect_dir_z[0] = refl_dir_z[0];
+        }
+    }
+
+    if (solid_hit_flags & 2) != 0 {
+        let t = projectile_t[0];
+        if t < best_t || (best_hit_is_ground && t == best_t) {
+            found = true;
+            out_kind[0] = BEAM_SEGMENT_HIT_KIND_PROJECTILE;
+            out_entity_id[0] = projectile_entity_id[0];
+            out_panel_index[0] = -1;
+            out_t[0] = t;
+            out_x[0] = start_x + t * dx;
+            out_y[0] = start_y + t * dy;
+            out_z[0] = start_z + t * dz;
+            out_normal_x[0] = 0.0;
+            out_normal_y[0] = 0.0;
+            out_normal_z[0] = 0.0;
+            out_reflect_dir_x[0] = 0.0;
+            out_reflect_dir_y[0] = 0.0;
+            out_reflect_dir_z[0] = 0.0;
+        }
+    }
+
+    if !found {
+        out_kind[0] = BEAM_SEGMENT_HIT_KIND_NONE;
+        out_t[0] = f64::INFINITY;
+    }
+    1
 }
 
 #[inline]
@@ -819,6 +1538,95 @@ pub fn damage_area_candidates_batch(
                 }
             }
             _ => {}
+        }
+        out_flags[i] = flags;
+        processed += 1;
+    }
+
+    processed
+}
+
+/// C1 damage migration - live entity-state projectile splash classifier.
+///
+/// Travelling shots are integrated after the combat-targeting slab is stamped,
+/// so projectile damage cannot safely read projectile position from
+/// CombatTargetingPool. This kernel keeps the slot-native contract but reads
+/// the hot entity-state projectile rows refreshed by SpatialGrid after
+/// projectile movement.
+#[wasm_bindgen]
+pub fn damage_area_projectile_candidates_batch(
+    count: u32,
+    candidate_slots: &[u32],
+    center_x: f64,
+    center_y: f64,
+    center_z: f64,
+    radius: f64,
+    out_flags: &mut [u8],
+    out_dir_x: &mut [f64],
+    out_dir_y: &mut [f64],
+    out_dir_z: &mut [f64],
+    out_distance: &mut [f64],
+) -> u32 {
+    let n = count as usize;
+    if candidate_slots.len() < n
+        || out_flags.len() < n
+        || out_dir_x.len() < n
+        || out_dir_y.len() < n
+        || out_dir_z.len() < n
+        || out_distance.len() < n
+    {
+        return 0;
+    }
+    if !(center_x.is_finite() && center_y.is_finite() && center_z.is_finite() && radius.is_finite())
+    {
+        return 0;
+    }
+
+    let slab = entity_state();
+    let area_radius = radius.max(0.0);
+    let mut processed = 0_u32;
+    for i in 0..n {
+        out_flags[i] = 0;
+        out_dir_x[i] = 0.0;
+        out_dir_y[i] = 0.0;
+        out_dir_z[i] = 0.0;
+        out_distance[i] = 0.0;
+
+        let slot = candidate_slots[i] as usize;
+        if slot >= slab.entity_id.len()
+            || slab.entity_id[slot] < 0
+            || slab.kind[slot] != ENTITY_STATE_KIND_SHOT
+            || slab.projectile_type_code[slot] != PROJECTILE_TYPE_PROJECTILE_CODE
+            || slab.hp[slot] <= 0.0
+        {
+            continue;
+        }
+
+        let tx = slab.pos_x[slot];
+        let ty = slab.pos_y[slot];
+        let tz = slab.pos_z[slot];
+        let tr = slab.radius_collision[slot].max(0.0);
+        if !(tx.is_finite() && ty.is_finite() && tz.is_finite() && tr.is_finite()) {
+            continue;
+        }
+
+        let dx = tx - center_x;
+        let dy = ty - center_y;
+        let dz = tz - center_z;
+        let dist_sq = dx * dx + dy * dy + dz * dz;
+        let distance = dist_sq.sqrt();
+        if distance > 0.0 {
+            let inv = 1.0 / distance;
+            out_dir_x[i] = dx * inv;
+            out_dir_y[i] = dy * inv;
+            out_dir_z[i] = dz * inv;
+        }
+        out_distance[i] = distance;
+
+        let mut flags = DAMAGE_AREA_FLAG_SLICE_PASS;
+        let max_dist = area_radius + tr;
+        if dist_sq <= max_dist * max_dist {
+            flags |= DAMAGE_AREA_FLAG_OVERLAP;
         }
         out_flags[i] = flags;
         processed += 1;

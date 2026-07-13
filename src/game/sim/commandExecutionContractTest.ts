@@ -19,6 +19,7 @@ import { setUnitActions, shiftUnitAction } from './unitActions';
 import { WorldState } from './WorldState';
 import { createWreckFromDeadUnit } from './wrecks';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
+import { ENTITY_CHANGED_ACTIONS } from '@/types/network';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -1438,6 +1439,7 @@ export function runCommandExecutionContractTest(): void {
     'gather wait should hold ready units while another group member has not reached the wait marker',
   );
   shiftUnitAction(delayedUnit.unit!);
+  gatherReleaseWorld.markSnapshotDirty(delayedUnit.id, ENTITY_CHANGED_ACTIONS);
   gatherReleaseSim.update(16);
   assertContract(
     firstActionType(readyUnit) === 'move' &&

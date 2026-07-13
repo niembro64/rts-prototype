@@ -20,6 +20,7 @@ export type { SprayTarget,  } from '@/types/ui';
 import type { SprayTarget, CommanderAbilitiesResult } from '@/types/ui';
 
 const _constructionEmitterMount = { x: 0, y: 0, z: 0 };
+const _commanderSprayOrigin = { x: 0, y: 0, z: 0 };
 const _reclaimTickOut = new Float64Array(5);
 const REPAIR_RATE_PAIR_KEY_STRIDE = 67_108_864;
 
@@ -75,47 +76,6 @@ class CommanderAbilitiesSystem {
       if (!commander.unit || commander.unit.hp <= 0) continue;
 
       const playerId = commander.ownership.playerId;
-      const commanderX = commander.transform.x;
-      const commanderY = commander.transform.y;
-      let commanderSprayX = commanderX;
-      let commanderSprayY = commanderY;
-      let commanderSprayZ = commander.transform.z;
-      const commanderTurrets = commander.combat !== null ? commander.combat.turrets : null;
-      // The construction spray originates at the host's construction emitter —
-      // the construction pylon(s) on builders.
-      let constructionEmitterIndex = -1;
-      if (commanderTurrets !== null) {
-        for (let i = 0; i < commanderTurrets.length; i++) {
-          if (commanderTurrets[i].config.constructionEmitter !== null) {
-            constructionEmitterIndex = i;
-            break;
-          }
-        }
-      }
-      if (constructionEmitterIndex >= 0 && commanderTurrets !== null) {
-        const { cos, sin } = getTransformCosSin(commander.transform);
-        const mount = updateWeaponWorldKinematics(
-          commander,
-          commanderTurrets[constructionEmitterIndex],
-          constructionEmitterIndex,
-          cos,
-          sin,
-          {
-            currentTick: world.getTick(),
-            dtMs,
-            unitGroundZ: getUnitGroundZ(commander),
-            // Read the smoothed normal off the commander unit instead
-            // of the position cache; updateUnitGroundNormal EMAs raw → smoothed
-            // each tick so the construction emitter mount doesn't snap
-            // on triangle crossings.
-            surfaceN: commander.unit.surfaceNormal,
-          },
-          _constructionEmitterMount,
-        );
-        commanderSprayX = mount.x;
-        commanderSprayY = mount.y;
-        commanderSprayZ = mount.z;
-      }
 
       // Get current target from queue (only work on ONE thing at a time)
       const currentTarget = this.getCurrentTarget(world, commander);
@@ -133,6 +93,7 @@ class CommanderAbilitiesSystem {
       }
 
       if (currentAction !== undefined && currentAction.type === 'capture' && commander.commander !== null) {
+        const sprayOrigin = this.resolveSprayOrigin(world, commander, dtMs);
         if (
           this.captureTarget(
             world,
@@ -140,9 +101,9 @@ class CommanderAbilitiesSystem {
             commander,
             currentTarget,
             dtMs,
-            commanderSprayX,
-            commanderSprayY,
-            commanderSprayZ,
+            sprayOrigin.x,
+            sprayOrigin.y,
+            sprayOrigin.z,
           )
         ) {
           this.pushCompletedBuilding(commander.id, currentTarget.id);
@@ -151,6 +112,7 @@ class CommanderAbilitiesSystem {
       }
 
       if (currentAction !== undefined && currentAction.type === 'resurrect' && entityCanIssueResurrectCommand(commander)) {
+        const sprayOrigin = this.resolveSprayOrigin(world, commander, dtMs);
         if (
           this.resurrectTarget(
             world,
@@ -158,9 +120,9 @@ class CommanderAbilitiesSystem {
             commander,
             currentTarget,
             dtMs,
-            commanderSprayX,
-            commanderSprayY,
-            commanderSprayZ,
+            sprayOrigin.x,
+            sprayOrigin.y,
+            sprayOrigin.z,
           )
         ) {
           this.pushCompletedBuilding(commander.id, currentTarget.id);
@@ -173,6 +135,7 @@ class CommanderAbilitiesSystem {
       // updateBuilderConstructionEmitter), so the sim only ships heal
       // sprays — there is no renderer counterpart for those.
       if (currentTarget.unit && currentTarget.unit.hp < currentTarget.unit.maxHp) {
+        const sprayOrigin = this.resolveSprayOrigin(world, commander, dtMs);
         // Healing a damaged unit - energy/progress handled by shared system
         // Check if fully healed
         if (currentTarget.unit.hp >= currentTarget.unit.maxHp) {
@@ -184,9 +147,9 @@ class CommanderAbilitiesSystem {
           this.repairEnergyRates.get(repairRatePairKey(commander.id, currentTarget.id)) ?? 0;
         const spray = this.acquireSprayTarget();
         spray.source.id = commander.id;
-        spray.source.pos.x = commanderSprayX;
-        spray.source.pos.y = commanderSprayY;
-        spray.source.z = commanderSprayZ;
+        spray.source.pos.x = sprayOrigin.x;
+        spray.source.pos.y = sprayOrigin.y;
+        spray.source.z = sprayOrigin.z;
         spray.source.playerId = playerId;
         spray.target.id = currentTarget.id;
         spray.target.pos.x = currentTarget.transform.x;
@@ -209,6 +172,50 @@ class CommanderAbilitiesSystem {
     this.emitSpawnBeamSprays(world);
 
     return this.result;
+  }
+
+  private resolveSprayOrigin(
+    world: WorldState,
+    commander: Entity,
+    dtMs: number,
+  ): typeof _commanderSprayOrigin {
+    _commanderSprayOrigin.x = commander.transform.x;
+    _commanderSprayOrigin.y = commander.transform.y;
+    _commanderSprayOrigin.z = commander.transform.z;
+
+    const commanderTurrets = commander.combat !== null ? commander.combat.turrets : null;
+    if (commanderTurrets === null || commander.unit === null) return _commanderSprayOrigin;
+
+    let constructionEmitterIndex = -1;
+    for (let i = 0; i < commanderTurrets.length; i++) {
+      if (commanderTurrets[i].config.constructionEmitter !== null) {
+        constructionEmitterIndex = i;
+        break;
+      }
+    }
+    if (constructionEmitterIndex < 0) return _commanderSprayOrigin;
+
+    const { cos, sin } = getTransformCosSin(commander.transform);
+    const mount = updateWeaponWorldKinematics(
+      commander,
+      commanderTurrets[constructionEmitterIndex],
+      constructionEmitterIndex,
+      cos,
+      sin,
+      {
+        currentTick: world.getTick(),
+        dtMs,
+        unitGroundZ: getUnitGroundZ(commander),
+        // Read the smoothed normal off the commander unit instead of the
+        // position cache so emitter mounts don't snap on triangle crossings.
+        surfaceN: commander.unit.surfaceNormal,
+      },
+      _constructionEmitterMount,
+    );
+    _commanderSprayOrigin.x = mount.x;
+    _commanderSprayOrigin.y = mount.y;
+    _commanderSprayOrigin.z = mount.z;
+    return _commanderSprayOrigin;
   }
 
   // Emit the brief init beam for each freshly-created entity (registered via

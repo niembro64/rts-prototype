@@ -112,6 +112,7 @@ export type SnapshotListenerEntry = {
   trackingKey: string;
   cacheKey: string;
   preencodeWire: boolean;
+  skipSparsePresentationDeltas?: boolean;
   lastStaticTerrainTileMap: TerrainTileMap | undefined;
   lastStaticBuildabilityGrid: TerrainBuildabilityGrid | undefined;
   /** This listener asked for recovery. Dynamic state is already full
@@ -725,6 +726,61 @@ export class ServerSnapshotPublisher {
     for (const listener of input.listeners) {
       const listenerStartedAt = performance.now();
       const stages = copySnapshotMaterializationStageDurations(emitBaseStages);
+      if (
+        this.canEmitLocalAuthoritativeMetaOnlyRichDelta(
+          listener,
+          input,
+          gamePhase,
+          winnerId,
+          sprayTargets,
+          audioEvents,
+          hasProjectileEvents,
+        )
+      ) {
+        let stageStart = performance.now();
+        const gameState: NonNullable<NetworkServerSnapshot['gameState']> = {
+          phase: gamePhase,
+          winnerId,
+        };
+        addMaterializationStage(stages, 'gameState', stageStart);
+        const state: NetworkServerSnapshot = {
+          tick: input.world.getTick(),
+          entities: PROJECTILE_DELTA_EMPTY_ENTITIES,
+          entityDeltaOnly: true,
+          projectileDeltaOnly: undefined,
+          minimapEntities: undefined,
+          economy: PROJECTILE_DELTA_EMPTY_ECONOMY,
+          resourceMovements: undefined,
+          sprayTargets: undefined,
+          audioEvents: undefined,
+          scanPulses: undefined,
+          shroud: undefined,
+          projectiles: undefined,
+          gameState,
+          serverMeta,
+          grid: undefined,
+          terrain: undefined,
+          buildability: undefined,
+          removedEntityIds: undefined,
+          visibilityFiltered: undefined,
+          visionPlayerMask: undefined,
+        };
+        stageStart = performance.now();
+        const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
+        addMaterializationStage(stages, 'wireEncode', stageStart);
+        this.stampSnapshotMaterialization(
+          state,
+          'rich-delta',
+          listener,
+          stages,
+          listenerStartedAt,
+          encoded,
+        );
+        listener.callback(state, undefined, encoded.wirePayload);
+        emitted = true;
+        continue;
+      }
+
       let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       const currentVisible = visibility.getVisibleEntityIdSet();
@@ -748,6 +804,9 @@ export class ServerSnapshotPublisher {
           dirtyIds: this.dirtyIdsBuf,
           dirtyFields: this.dirtyFieldsBuf,
           dirtySlots: this.dirtySlotsBuf,
+          skipMotionOnlyRows: listener.skipSparsePresentationDeltas === true,
+          skipEconomy: listener.skipSparsePresentationDeltas === true,
+          skipPresentationProjectiles: listener.skipSparsePresentationDeltas === true,
           gamePhase,
           winnerId,
           sprayTargets,
@@ -806,6 +865,7 @@ export class ServerSnapshotPublisher {
             this.dirtyIdsBuf,
             this.dirtyFieldsBuf,
             this.dirtySlotsBuf,
+            listener.skipSparsePresentationDeltas === true,
           )
         : this.serializeUnfilteredDirtyPresentationEntities(
             input.world,
@@ -814,6 +874,7 @@ export class ServerSnapshotPublisher {
             this.dirtyIdsBuf,
             this.dirtyFieldsBuf,
             this.dirtySlotsBuf,
+            listener.skipSparsePresentationDeltas === true,
           );
       const removedEntityIds = currentVisible !== undefined
         ? this.serializeDirtyPresentationRemovalsAndPruneVisibleBaseline(
@@ -872,11 +933,13 @@ export class ServerSnapshotPublisher {
             'minimap',
             () => serializeMinimapSnapshotEntities(input.world, visibility, listener.cacheKey),
           );
-      const economy = timeMaterializationStage(
-        stages,
-        'economy',
-        () => serializeEconomySnapshot(input.world.playerCount, listener.playerId),
-      );
+      const economy = listener.skipSparsePresentationDeltas === true
+        ? PROJECTILE_DELTA_EMPTY_ECONOMY
+        : timeMaterializationStage(
+            stages,
+            'economy',
+            () => serializeEconomySnapshot(input.world.playerCount, listener.playerId),
+          );
       const resourceMovements = timeMaterializationStage(
         stages,
         'resources',
@@ -901,7 +964,7 @@ export class ServerSnapshotPublisher {
         'scanPulses',
         () => serializeScanPulses(input.world, visibility),
       );
-      const projectiles = hasProjectileEvents
+      const projectiles = hasProjectileEvents && listener.skipSparsePresentationDeltas !== true
         ? timeMaterializationStage(
             stages,
             'projectiles',
@@ -984,6 +1047,26 @@ export class ServerSnapshotPublisher {
     return emitted;
   }
 
+  private canEmitLocalAuthoritativeMetaOnlyRichDelta(
+    listener: SnapshotListenerEntry,
+    input: ServerSnapshotPublisherInput,
+    gamePhase: NonNullable<NetworkServerSnapshot['gameState']>['phase'],
+    winnerId: PlayerId | undefined,
+    sprayTargets: readonly unknown[] | undefined,
+    audioEvents: readonly unknown[] | undefined,
+    hasProjectileEvents: boolean,
+  ): boolean {
+    if (listener.skipSparsePresentationDeltas !== true) return false;
+    if (this.dirtyIdsBuf.length > 0 || this.removedEntitiesBuf.length > 0) return false;
+    if (hasProjectileEvents) return false;
+    if ((audioEvents?.length ?? 0) > 0) return false;
+    if ((sprayTargets?.length ?? 0) > 0) return false;
+    if (input.world.scanPulses.length > 0) return false;
+    if ((gamePhase !== 'battle' && gamePhase !== 'paused') || winnerId !== undefined) return false;
+    if (input.debugGridPublisher.isEnabled()) return false;
+    return true;
+  }
+
   private serializeDirtyPresentationEntitiesAndAddVisibleBaseline(
     world: WorldState,
     visibility: SnapshotVisibility,
@@ -994,6 +1077,7 @@ export class ServerSnapshotPublisher {
     dirtyIds: readonly EntityId[],
     dirtyFields: readonly number[],
     dirtySlots: readonly number[],
+    skipMotionOnlyRows = false,
   ): NetworkServerSnapshot['entities'] {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
@@ -1025,6 +1109,7 @@ export class ServerSnapshotPublisher {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
       if (!currentVisibleEntityIdSet.has(id)) continue;
+      if (skipMotionOnlyRows && dirtyFieldsAreMotionOnly(dirtyFields[i])) continue;
       if (
         this.shouldDeferDirtyEntityToSparseMotion(
           world,
@@ -1072,6 +1157,7 @@ export class ServerSnapshotPublisher {
     dirtyIds: readonly EntityId[],
     dirtyFields: readonly number[],
     dirtySlots: readonly number[],
+    skipMotionOnlyRows = false,
   ): NetworkServerSnapshot['entities'] {
     resetEntitySnapshotPool();
     const entities: NetworkServerSnapshot['entities'] = [];
@@ -1083,6 +1169,13 @@ export class ServerSnapshotPublisher {
       const id = dirtyIds[i];
       if (emittedIds.has(id)) continue;
       const changedFields = previousVisibleEntityIds.has(id) ? dirtyFields[i] : undefined;
+      if (
+        skipMotionOnlyRows &&
+        changedFields !== undefined &&
+        dirtyFieldsAreMotionOnly(changedFields)
+      ) {
+        continue;
+      }
       if (
         changedFields !== undefined &&
         this.shouldDeferDirtyEntityToSparseMotion(
@@ -1304,6 +1397,51 @@ export class ServerSnapshotPublisher {
       let stageStart = performance.now();
       const visibility = getOrBuildVisibility(input.world, listener.playerId, visibilityCache);
       addMaterializationStage(stages, 'visibility', stageStart);
+      if (listener.skipSparsePresentationDeltas === true) {
+        if (!hasProjectilePresentationEvents || audioEvents === undefined) continue;
+        const netAudioEvents = timeMaterializationStage(
+          stages,
+          'audio',
+          () => serializeAudioEvents(audioEvents, visibility, listener.cacheKey),
+        );
+        if (netAudioEvents === undefined) continue;
+        const state: NetworkServerSnapshot = {
+          tick: input.world.getTick(),
+          entities: PROJECTILE_DELTA_EMPTY_ENTITIES,
+          entityDeltaOnly: undefined,
+          projectileDeltaOnly: true,
+          minimapEntities: undefined,
+          economy: PROJECTILE_DELTA_EMPTY_ECONOMY,
+          resourceMovements: undefined,
+          sprayTargets: undefined,
+          audioEvents: netAudioEvents,
+          scanPulses: undefined,
+          shroud: undefined,
+          projectiles: undefined,
+          gameState: undefined,
+          serverMeta: undefined,
+          grid: undefined,
+          terrain: undefined,
+          buildability: undefined,
+          visibilityFiltered: undefined,
+          visionPlayerMask: undefined,
+          removedEntityIds: undefined,
+        };
+        stageStart = performance.now();
+        const encoded = this.wirePreencoder.encodeIfRequested(state, listener.preencodeWire);
+        addMaterializationStage(stages, 'wireEncode', stageStart);
+        this.stampSnapshotMaterialization(
+          state,
+          'sparse-delta',
+          listener,
+          stages,
+          listenerStartedAt,
+          encoded,
+        );
+        listener.callback(state, undefined, encoded.wirePayload);
+        emitted = true;
+        continue;
+      }
       if (listener.preencodeWire) {
         const directSnapshot = this.directWirePreencoder.tryEncodeSparseDelta({
           world: input.world,
@@ -1422,19 +1560,20 @@ export class ServerSnapshotPublisher {
     const entityViews = entitySlotRegistry.getViews();
     for (let i = 0; i < candidateIds.length; i++) {
       const id = candidateIds[i];
+      const slot = candidateSlots[i] ?? -1;
       if (visibleEntityIds !== undefined && !visibleEntityIds.has(id)) continue;
       if (
         this.tryAppendUnitSlabDeltaRowFromState(
           id,
           ENTITY_MOTION_DELTA_FIELDS,
           entityViews,
-          candidateSlots[i] ?? -1,
+          slot,
         )
       ) {
         entities.push(undefined as unknown as NetworkServerSnapshotEntity);
         continue;
       }
-      const entity = this.resolveSnapshotEntityFromSlot(world, id, candidateSlots[i] ?? -1);
+      const entity = this.resolveSnapshotEntityFromSlot(world, id, slot);
       if (entity === undefined) continue;
       if (visibility.isFiltered && !visibility.isEntityVisible(entity)) continue;
       const netEntity = serializeEntityDeltaSnapshot(

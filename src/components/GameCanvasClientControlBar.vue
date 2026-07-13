@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { CLIENT_CONFIG, LOD_MODE_OPTIONS, isEntityHudElementSupported } from '../clientBarConfig';
+import { CLIENT_CONFIG, isEntityHudElementSupported } from '../clientBarConfig';
 import { GOOD_TPS } from '../config';
 import {
   COMMAND_HOTKEY_DISPLAY_LABELS,
@@ -27,7 +27,7 @@ import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasClientControlBarModel } from './gameCanvasControlBarModels';
-import type { EntityHudElement, EntityHudType, LodMode, PathingDebugUnitId } from '../types/client';
+import type { EntityHudElement, EntityHudType, PathingDebugUnitId } from '../types/client';
 import { fmt4, fmtBytes4, msBarStyle, statBarStyle } from './uiUtils';
 
 const ENTITY_HUD_TYPE_LABELS: Record<EntityHudType, string> = {
@@ -66,12 +66,6 @@ const COMMAND_HOTKEY_PRESET_DESCRIPTIONS: Record<CommandHotkeyPresetId, string> 
   'bar-legacy': 'BAR legacy subset',
   'bar-legacy-60pct': 'BAR legacy 60% subset',
   custom: 'local custom bindings',
-};
-
-const LOD_MODE_TITLES: Record<LodMode, string> = {
-  auto: 'Switch between HIGH and LOW at the configured camera distance',
-  high: 'Never render unit, building, or tower level-of-detail proxies',
-  low: 'Always render unit, building, and tower level-of-detail proxies',
 };
 
 const CAMERA_ANCHOR_SLOTS = [0, 1, 2, 3] as const;
@@ -874,19 +868,6 @@ function resetEveryCustomHotkey(): void {
           title="Generate client-only death material explosions: death fire puff plus part-based debris chunks"
           @click="model.toggleMaterialExplosions"
         >MATEXP</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>LOD:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in LOD_MODE_OPTIONS"
-            :key="opt.value"
-            :active="model.lodMode === opt.value"
-            :title="LOD_MODE_TITLES[opt.value]"
-            @click="model.changeLodMode(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

@@ -6,7 +6,11 @@ import { NO_ENTITY_ID } from '../types';
 import { beamIndex } from '../BeamIndex';
 import type { SimEvent } from './types';
 import { CT_TURRET_STATE_ENGAGED } from '../../sim-wasm/init';
-import { getBeamWeaponsTargeting } from './targetIndex';
+import {
+  getBeamWeaponsTargeting,
+  getBeamWeaponsTargetingForTargets,
+  type BeamWeaponRef,
+} from './targetIndex';
 import {
   readCombatTargetingTurretFsmInto,
   type CombatTargetingTurretFsmOut,
@@ -70,6 +74,28 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
   return _laserStopOwner;
 }
 
+function pushLaserStopsForTargetRefs(
+  refs: readonly BeamWeaponRef[],
+  out: SimEvent[],
+): void {
+  for (let r = 0; r < refs.length; r++) {
+    const { unit, weaponIndex } = refs[r];
+    if (!unit.combat || !unit.unit || unit.unit.hp <= 0) continue;
+    const weapon = unit.combat.turrets[weaponIndex];
+    if (!weapon) continue;
+    if (beamIndex.hasActiveBeam(unit.id, weaponIndex)) continue;
+    const config = weapon.config;
+    const soundEntityId = turretSoundEntityId(unit, weaponIndex);
+    if (!activeLaserSoundIds.delete(soundEntityId)) continue;
+    out.push({
+      type: 'laserStop',
+      turretBlueprintId: config.turretBlueprintId,
+      pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
+      entityId: soundEntityId,
+    });
+  }
+}
+
 // Emit laserStop events for all inactive beam weapons across the world that were
 // targeting a dying entity. Active beams keep their sound until the sim removes
 // the beam after its configured minimum on-time.
@@ -80,22 +106,22 @@ export function emitLaserStopsForEntity(entity: Entity): SimEvent[] {
 export function emitLaserStopsForTarget(world: WorldState, targetId: EntityId): SimEvent[] {
   _laserStopTarget.length = 0;
   const refs = getBeamWeaponsTargeting(world, targetId);
-  for (let r = 0; r < refs.length; r++) {
-    const { unit, weaponIndex } = refs[r];
-    if (!unit.combat || !unit.unit || unit.unit.hp <= 0) continue;
-    const weapon = unit.combat.turrets[weaponIndex];
-    if (!weapon) continue;
-    if (beamIndex.hasActiveBeam(unit.id, weaponIndex)) continue;
-    const config = weapon.config;
-    const soundEntityId = turretSoundEntityId(unit, weaponIndex);
-    if (!activeLaserSoundIds.delete(soundEntityId)) continue;
-    _laserStopTarget.push({
-      type: 'laserStop',
-      turretBlueprintId: config.turretBlueprintId,
-      pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
-      entityId: soundEntityId,
-    });
-  }
+  pushLaserStopsForTargetRefs(refs, _laserStopTarget);
+  return _laserStopTarget;
+}
+
+export function getLaserStopRefsForTargets(
+  world: WorldState,
+  targetIds: readonly EntityId[],
+): ReadonlyMap<EntityId, readonly BeamWeaponRef[]> {
+  return getBeamWeaponsTargetingForTargets(world, targetIds);
+}
+
+export function emitLaserStopsForTargetRefs(
+  refs: readonly BeamWeaponRef[] | undefined,
+): SimEvent[] {
+  _laserStopTarget.length = 0;
+  if (refs !== undefined) pushLaserStopsForTargetRefs(refs, _laserStopTarget);
   return _laserStopTarget;
 }
 

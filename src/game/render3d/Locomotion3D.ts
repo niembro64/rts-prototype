@@ -59,6 +59,7 @@ import type {
   AirborneEmitterParentPose3D,
 } from './AirborneEmitterBatch3D';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
+import type { LocomotionRenderPose3D } from './LocomotionRigShared3D';
 
 export type Locomotion3DMesh =
   | TreadMesh
@@ -69,6 +70,7 @@ export type Locomotion3DMesh =
   | undefined;
 
 export type { LegStateSnapshot };
+export type { LocomotionRenderPose3D };
 export { setHoverFanAnimationTime };
 
 export type AirborneEmitterUpdate3D = {
@@ -132,6 +134,7 @@ export function buildLocomotion(
   mapWidth: number,
   mapHeight: number,
   legRenderer: LegInstancedRenderer,
+  renderPose?: LocomotionRenderPose3D,
 ): Locomotion3DMesh {
   if (!entity.unit) return undefined;
   let bp;
@@ -165,7 +168,7 @@ export function buildLocomotion(
       const mesh = buildLegs(
         worldGroup, entity, unitRadius, loc.config,
         gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac,
-        mapWidth, mapHeight, legRenderer, ownerId,
+        mapWidth, mapHeight, legRenderer, ownerId, renderPose,
       );
       if (mesh) mesh.geometryKey = geometryKey;
       return mesh;
@@ -214,15 +217,16 @@ export function updateLocomotion(
   legRenderer: LegInstancedRenderer,
   hoverSmokeEmitters?: SmokePuffEmitter[],
   airborneEmitters?: AirborneEmitterUpdate3D,
+  renderPose?: LocomotionRenderPose3D,
 ): boolean {
   if (!mesh) return false;
   switch (mesh.type) {
     case 'wheels':
-      return updateWheels(mesh, entity, dtMs, mapWidth, mapHeight);
+      return updateWheels(mesh, entity, dtMs, mapWidth, mapHeight, renderPose);
     case 'treads':
-      return updateTreads(mesh, entity, dtMs, mapWidth, mapHeight);
+      return updateTreads(mesh, entity, dtMs, mapWidth, mapHeight, renderPose);
     case 'legs':
-      return updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);
+      return updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer, renderPose);
     case 'hover':
       return updateHoverFans(
         mesh,

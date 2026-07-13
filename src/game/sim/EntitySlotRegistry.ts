@@ -40,6 +40,7 @@ export const ENTITY_SLOT_FLAG_HAS_UNIT = 1 << 3;
 export const ENTITY_SLOT_FLAG_HAS_BUILDING = 1 << 4;
 export const ENTITY_SLOT_FLAG_HAS_PROJECTILE = 1 << 5;
 export const ENTITY_SLOT_FLAG_HAS_COMBAT = 1 << 6;
+export const ENTITY_SLOT_FLAG_HELD = 1 << 7;
 
 export const ENTITY_SLOT_BUILD_FLAG_HAS_BUILDABLE = 1 << 0;
 export const ENTITY_SLOT_BUILD_FLAG_COMPLETE = 1 << 1;
@@ -488,6 +489,7 @@ export class EntitySlotRegistry {
     if (projectile === null) return 0;
     let flags = ENTITY_SLOT_FLAG_HAS_PROJECTILE | ENTITY_SLOT_FLAG_ACTIVE;
     if (entity.body !== null) flags |= ENTITY_SLOT_FLAG_HAS_BODY;
+    if (entity.heldBy !== null) flags |= ENTITY_SLOT_FLAG_HELD;
     if (projectile.projectileType !== 'projectile' || projectile.hp > 0 || projectile.maxHp <= 0) {
       flags |= ENTITY_SLOT_FLAG_ALIVE;
     }
@@ -742,6 +744,26 @@ export class EntitySlotRegistry {
       unit.thrustDirY = thrustDirY;
       unit.headingDirX = headingDirX;
       unit.headingDirY = headingDirY;
+    }
+  }
+
+  setHeld(entity: Entity, held: boolean): void {
+    const sim = this.sim();
+    if (sim === undefined) return;
+    const slot = this.getEntitySlot(entity);
+    if (slot < 0) return;
+    const views = this.ensureViews();
+    if (
+      views === null ||
+      slot >= views.capacity ||
+      views.entityId[slot] !== entity.id
+    ) {
+      return;
+    }
+    if (held) {
+      views.flags[slot] |= ENTITY_SLOT_FLAG_HELD;
+    } else {
+      views.flags[slot] &= ~ENTITY_SLOT_FLAG_HELD;
     }
   }
 
@@ -1077,6 +1099,7 @@ export class EntitySlotRegistry {
 
     if (entity.body !== null) flags |= ENTITY_SLOT_FLAG_HAS_BODY;
     if (entity.combat !== null) flags |= ENTITY_SLOT_FLAG_HAS_COMBAT;
+    if (entity.heldBy !== null) flags |= ENTITY_SLOT_FLAG_HELD;
     if ((unit !== null || building !== null) && isEntityActive(entity)) {
       flags |= ENTITY_SLOT_FLAG_ACTIVE;
     }

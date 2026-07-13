@@ -15,6 +15,8 @@ import {
 } from '../network/stateSerializerEntities';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
+import type { SimEvent } from '../sim/combat';
+import { economyManager } from '../sim/economy';
 import { createProjectileConfigFromTurret } from '../sim/projectileConfigs';
 import type { Simulation } from '../sim/Simulation';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -74,10 +76,11 @@ function createPublisherInput(
   world: WorldState,
   listener: SnapshotListenerEntry,
   movingUnits: readonly Entity[] = [],
+  simulation: Simulation = createQuietSimulation(movingUnits),
 ) {
   return {
     world,
-    simulation: createQuietSimulation(movingUnits),
+    simulation,
     debugGridPublisher: {
       isEnabled: () => false,
       refresh: () => ({
@@ -106,6 +109,7 @@ function createListener(
   callback: SnapshotListenerEntry['callback'],
   visibleIds: readonly EntityId[] = [],
   preencodeWire = false,
+  skipSparsePresentationDeltas = false,
 ): SnapshotListenerEntry {
   const visibleEntityIds = new IndexedEntityIdSet();
   for (let i = 0; i < visibleIds.length; i++) visibleEntityIds.add(visibleIds[i]);
@@ -115,6 +119,7 @@ function createListener(
     trackingKey: 'contract',
     cacheKey: 'contract',
     preencodeWire,
+    skipSparsePresentationDeltas,
     lastStaticTerrainTileMap: undefined,
     lastStaticBuildabilityGrid: undefined,
     needsFullState: false,
@@ -249,6 +254,52 @@ export function runServerSnapshotPublisherContractTest(): void {
     'typed sparse motion row must identify the moving unit',
   );
 
+  const skippedSparseMotion: { value: NetworkServerSnapshot | null } = { value: null };
+  const skippedSparseMotionListener = createListener((state) => {
+    skippedSparseMotion.value = state;
+  }, [unit.id], false, true);
+  const skippedSparseMotionEmitted = new ServerSnapshotPublisher().emitProjectileDelta(
+    createPublisherInput(world, skippedSparseMotionListener),
+    true,
+  );
+  assertContract(
+    !skippedSparseMotionEmitted && skippedSparseMotion.value === null,
+    'local authoritative listeners must skip sparse unit-motion presentation deltas',
+  );
+
+  const audioEvent: SimEvent = {
+    type: 'fire',
+    turretBlueprintId: 'contract-shot',
+    sourceType: 'system',
+    sourceKey: 'contract',
+    pos: { x: unit.transform.x, y: unit.transform.y, z: unit.transform.z },
+    playerId: undefined,
+    entityId: unit.id,
+  };
+  const audioOnlySimulation = {
+    ...createQuietSimulation([]),
+    hasPendingProjectilePresentationEvents: () => true,
+    getAndClearEvents: () => [audioEvent],
+  } as unknown as Simulation;
+  const localAuthoritativeAudioOnly: { value: NetworkServerSnapshot | null } = { value: null };
+  const localAuthoritativeAudioOnlyListener = createListener((state) => {
+    localAuthoritativeAudioOnly.value = state;
+  }, [unit.id], false, true);
+  const localAuthoritativeAudioOnlyEmitted = new ServerSnapshotPublisher().emitProjectileDelta(
+    createPublisherInput(world, localAuthoritativeAudioOnlyListener, [], audioOnlySimulation),
+    true,
+  );
+  const audioOnlySparse = localAuthoritativeAudioOnly.value;
+  assertContract(
+    localAuthoritativeAudioOnlyEmitted &&
+      audioOnlySparse !== null &&
+      audioOnlySparse.projectileDeltaOnly === true &&
+      audioOnlySparse.entities.length === 0 &&
+      audioOnlySparse.projectiles === undefined &&
+      (audioOnlySparse.audioEvents?.length ?? 0) === 1,
+    'local authoritative sparse deltas with events must deliver audio without entity/projectile rows',
+  );
+
   client.applyNetworkState(captured);
   for (let i = 0; i < 10; i++) client.applyPrediction(100);
   const clientEntity = client.getEntity(unit.id);
@@ -361,6 +412,83 @@ export function runServerSnapshotPublisherContractTest(): void {
   assertContract(
     client.getEntity(unit.id)?.unit?.hp === 55,
     'client must apply slab-backed rich unit HP deltas without DTO fallback',
+  );
+
+  entitySlotRegistry.clear();
+  economyManager.reset();
+  const economyWorld = new WorldState(9905, 512, 512);
+  economyWorld.playerCount = 2;
+  const economyUnit = economyWorld.createUnitFromBlueprint(128, 132, 1 as PlayerId, 'unitEagle');
+  economyWorld.addEntity(economyUnit);
+  assertContract(economyUnit.unit !== null, 'economy fixture unit must have a unit component');
+  economyWorld.drainSnapshotDirtyEntities(drainIds, drainFields);
+  economyManager.setEconomyState(1 as PlayerId, {
+    stockpile: { curr: 123, max: 456 },
+    income: { base: 7, production: 8 },
+    expenditure: 9,
+    metal: {
+      stockpile: { curr: 10, max: 11 },
+      income: { base: 12, extraction: 13 },
+      expenditure: 14,
+    },
+  });
+  economyUnit.unit.hp = 41;
+  economyWorld.markSnapshotDirty(economyUnit.id, ENTITY_CHANGED_HP);
+
+  const capturedNormalEconomyDelta: { value: NetworkServerSnapshot | null } = { value: null };
+  const normalEconomyListener = createListener((state) => {
+    capturedNormalEconomyDelta.value = state;
+  }, [economyUnit.id]);
+  const capturedLocalAuthoritativeEconomyDelta: { value: NetworkServerSnapshot | null } = { value: null };
+  const localAuthoritativeEconomyListener = createListener((state) => {
+    capturedLocalAuthoritativeEconomyDelta.value = state;
+  }, [economyUnit.id], false, true);
+  const economyDeltaEmitted = new ServerSnapshotPublisher().emitLockstepPresentation({
+    ...createPublisherInput(economyWorld, normalEconomyListener),
+    listeners: [normalEconomyListener, localAuthoritativeEconomyListener],
+  });
+  assertContract(economyDeltaEmitted, 'publisher must emit rich economy fixture deltas');
+  const normalEconomyDelta = capturedNormalEconomyDelta.value;
+  assertContract(
+    normalEconomyDelta !== null &&
+      normalEconomyDelta.entityDeltaOnly === true &&
+      Object.keys(normalEconomyDelta.economy).length === 1,
+    'regular rich deltas must continue to include economy rows',
+  );
+  const localAuthoritativeEconomyDelta = capturedLocalAuthoritativeEconomyDelta.value;
+  assertContract(
+    localAuthoritativeEconomyDelta !== null &&
+      localAuthoritativeEconomyDelta.entityDeltaOnly === true &&
+      Object.keys(localAuthoritativeEconomyDelta.economy).length === 0,
+    'local authoritative rich deltas must skip redundant economy rows',
+  );
+  economyManager.reset();
+
+  entitySlotRegistry.clear();
+  const idleLocalWorld = new WorldState(9906, 512, 512);
+  idleLocalWorld.playerCount = 2;
+  const idleLocalUnit = idleLocalWorld.createUnitFromBlueprint(140, 144, 1 as PlayerId, 'unitEagle');
+  idleLocalWorld.addEntity(idleLocalUnit);
+  idleLocalWorld.drainSnapshotDirtyEntities(drainIds, drainFields);
+  const capturedIdleLocalAuthoritativeDelta: { value: NetworkServerSnapshot | null } = { value: null };
+  const idleLocalAuthoritativeListener = createListener((state) => {
+    capturedIdleLocalAuthoritativeDelta.value = state;
+  }, [idleLocalUnit.id], false, true);
+  const idleLocalAuthoritativeEmitted = new ServerSnapshotPublisher().emitLockstepPresentation(
+    createPublisherInput(idleLocalWorld, idleLocalAuthoritativeListener),
+  );
+  const idleLocalAuthoritativeDelta = capturedIdleLocalAuthoritativeDelta.value;
+  assertContract(
+    idleLocalAuthoritativeEmitted &&
+      idleLocalAuthoritativeDelta !== null &&
+      idleLocalAuthoritativeDelta.entityDeltaOnly === true &&
+      idleLocalAuthoritativeDelta.entities.length === 0 &&
+      idleLocalAuthoritativeDelta.minimapEntities === undefined &&
+      idleLocalAuthoritativeDelta.resourceMovements === undefined &&
+      idleLocalAuthoritativeDelta.serverMeta !== undefined &&
+      idleLocalAuthoritativeDelta.gameState?.phase === 'battle' &&
+      Object.keys(idleLocalAuthoritativeDelta.economy).length === 0,
+    'idle local authoritative rich deltas must send metadata without heavy presentation rows',
   );
 
   entitySlotRegistry.clear();
@@ -580,6 +708,19 @@ export function runServerSnapshotPublisherContractTest(): void {
     'live-beam sparse delta',
   );
 
+  const skippedBeamSparse: { value: NetworkServerSnapshot | null } = { value: null };
+  const skippedBeamSparseListener = createListener((state) => {
+    skippedBeamSparse.value = state;
+  }, [beam.id], false, true);
+  const skippedBeamSparseEmitted = new ServerSnapshotPublisher().emitProjectileDelta(
+    createPublisherInput(beamWorld, skippedBeamSparseListener),
+    false,
+  );
+  assertContract(
+    !skippedBeamSparseEmitted && skippedBeamSparse.value === null,
+    'local authoritative listeners must skip sparse live-beam presentation deltas',
+  );
+
   const capturedBeamRich: { value: NetworkServerSnapshot | null } = { value: null };
   const beamRichListener = createListener((state) => {
     capturedBeamRich.value = state;
@@ -598,5 +739,25 @@ export function runServerSnapshotPublisherContractTest(): void {
     beam.id,
     reflector.id,
     'live-beam rich delta',
+  );
+
+  const capturedLocalAuthoritativeBeamRich: { value: NetworkServerSnapshot | null } = { value: null };
+  const localAuthoritativeBeamRichListener = createListener((state) => {
+    capturedLocalAuthoritativeBeamRich.value = state;
+  }, [beam.id], false, true);
+  const localAuthoritativeBeamRichEmitted = new ServerSnapshotPublisher().emitLockstepPresentation(
+    createPublisherInput(beamWorld, localAuthoritativeBeamRichListener),
+  );
+  assertContract(
+    localAuthoritativeBeamRichEmitted,
+    'local authoritative listener must still receive rich envelopes for non-projectile state',
+  );
+  const localAuthoritativeBeamRich = capturedLocalAuthoritativeBeamRich.value;
+  assertContract(
+    localAuthoritativeBeamRich !== null &&
+      localAuthoritativeBeamRich.entityDeltaOnly === true &&
+      localAuthoritativeBeamRich.entities.length === 0 &&
+      localAuthoritativeBeamRich.projectiles === undefined,
+    'local authoritative rich deltas must skip redundant projectile presentation rows',
   );
 }

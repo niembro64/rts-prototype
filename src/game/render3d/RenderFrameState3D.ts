@@ -68,6 +68,15 @@ export function createRenderFrameState(): RenderFrameState3D {
   };
 }
 
+export function setRenderFrameGraphicsConfig(
+  out: RenderFrameState3D,
+  gfx: GraphicsConfig,
+): RenderFrameState3D {
+  out.gfx = gfx;
+  out.key = graphicsKey(gfx);
+  return out;
+}
+
 export function snapshotRenderFrameState(
   camera?: THREE.PerspectiveCamera,
   viewportHeightPx: number = 1,

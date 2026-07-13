@@ -4,6 +4,7 @@ import {
   ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE,
   appendEntitySnapshotWireSourceRow,
   createEntitySnapshotWireSource,
+  getEntitySnapshotWireSource,
   registerEntitySnapshotWireSource,
 } from '../network/stateSerializerEntities';
 import {
@@ -14,7 +15,10 @@ import {
   registerProjectileSnapshotWireSource,
 } from '../network/stateSerializerProjectiles';
 import { reserveFloat64WireRows, reserveUint32WireRows } from '../network/snapshotWireRows';
-import { canDeliverDirectLocalSnapshotState } from './LocalGameConnection';
+import {
+  canDeliverDirectLocalSnapshotState,
+  stripRedundantTypedEntityDtosFromLocalDecodedSnapshot,
+} from './LocalGameConnection';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -59,6 +63,33 @@ function createTypedPlaceholderDeltaSnapshot(): NetworkServerSnapshot {
   source.unitRows.values[base + 6] = 1;
   source.unitRows.values[base + 7] = 1;
   appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex, true, 1);
+  registerEntitySnapshotWireSource(entities, source);
+  return createSnapshot(entities);
+}
+
+function createTypedMaterializedUnitDeltaSnapshot(): NetworkServerSnapshot {
+  const entities = new Array<NetworkServerSnapshotEntity>(1);
+  entities[0] = {
+    id: 101,
+    type: 'unit',
+    playerId: 1,
+    changedFields: null,
+    pos: { x: 10, y: 20, z: 0 },
+    rotation: 0,
+    unit: null,
+    building: null,
+  };
+  const source = createEntitySnapshotWireSource(1);
+  const rowIndex = reserveFloat64WireRows(source.unitRows, 1, ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE);
+  const base = rowIndex * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE;
+  source.unitRows.values[base + 0] = 101;
+  source.unitRows.values[base + 1] = 10;
+  source.unitRows.values[base + 2] = 20;
+  source.unitRows.values[base + 3] = 0;
+  source.unitRows.values[base + 5] = 1;
+  source.unitRows.values[base + 6] = 0;
+  source.unitRows.values[base + 7] = 0;
+  appendEntitySnapshotWireSourceRow(source, ENTITY_SNAPSHOT_WIRE_KIND_UNIT, rowIndex, false, 0);
   registerEntitySnapshotWireSource(entities, source);
   return createSnapshot(entities);
 }
@@ -176,5 +207,19 @@ export function runLocalGameConnectionContractTest(): void {
   assertContract(
     !canDeliverDirectLocalSnapshotState(materializedDelta),
     'materialized entity rows should stay on the normal DTO path',
+  );
+
+  const materializedTypedDelta = createTypedMaterializedUnitDeltaSnapshot();
+  assertContract(
+    stripRedundantTypedEntityDtosFromLocalDecodedSnapshot(materializedTypedDelta),
+    'local metadata-only typed deltas should strip redundant DTO fallback rows',
+  );
+  const strippedSource = getEntitySnapshotWireSource(materializedTypedDelta.entities);
+  assertContract(
+    materializedTypedDelta.entities[0] === undefined &&
+      strippedSource !== undefined &&
+      strippedSource.count === 1 &&
+      strippedSource.kinds[0] === ENTITY_SNAPSHOT_WIRE_KIND_UNIT,
+    'local metadata-only typed delta stripping must preserve typed wire metadata',
   );
 }

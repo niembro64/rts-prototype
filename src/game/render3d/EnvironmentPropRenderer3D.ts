@@ -11,7 +11,6 @@ import { ViewportFootprint } from '../ViewportFootprint';
 import {
   ACTIVE_ENVIRONMENT_ASSETS,
   type EnvironmentAssetSpec,
-  getRandomEnvironmentAssetKind,
   isRandomEnvironmentAssetUsable,
   isWoodMaterialForAsset,
   logActiveEnvironmentAssets,
@@ -21,16 +20,10 @@ import {
   generateEnvironmentPlacements,
   type EnvironmentPlacement,
 } from './environmentPropPlacement';
-import {
-  ENVIRONMENT_GRASS_MIN_SCREEN_RADIUS_PX,
-  ENVIRONMENT_TREE_MIN_SCREEN_RADIUS_PX,
-  detailScreenRadiusPx,
-} from './EntityDetailLevel3D';
-import type { RenderViewState3D } from './RenderFrameState3D';
-
 type EnvironmentPropNode = {
   placement: EnvironmentPlacement;
   root: THREE.Group;
+  queryMark: number;
 };
 
 type LoadedEnvironmentAsset = {
@@ -50,6 +43,7 @@ type EnvironmentPropRenderer3DOptions = {
 
 const FBX_UNKNOWN_MATERIAL_WARNING_FILTER_KEY =
   '__rtsFbxUnknownMaterialWarningFilterInstalled' as const;
+const ENVIRONMENT_PROP_GRID_CELL_SIZE = 512;
 
 type ConsoleWithFbxWarningFilter = Console & {
   [FBX_UNKNOWN_MATERIAL_WARNING_FILTER_KEY]?: boolean;
@@ -62,6 +56,9 @@ export class EnvironmentPropRenderer3D {
   private readonly renderScope: ViewportFootprint;
   private readonly placements: EnvironmentPlacement[];
   private readonly nodes: EnvironmentPropNode[] = [];
+  private readonly nodeGrid = new Map<string, EnvironmentPropNode[]>();
+  private readonly activeNodes = new Set<EnvironmentPropNode>();
+  private readonly queryNodes: EnvironmentPropNode[] = [];
   private readonly materialCache = new Map<string, THREE.MeshLambertMaterial>();
   private readonly mtlCache = new Map<
     string,
@@ -72,6 +69,8 @@ export class EnvironmentPropRenderer3D {
   private ready = false;
   private loaded = false;
   private lastScopeVersion = -1;
+  private queryMark = 1;
+  private maxScopePadding = SCOPE_PADDING_EXTRA;
 
   constructor(
     parentWorld: THREE.Group,
@@ -96,49 +95,25 @@ export class EnvironmentPropRenderer3D {
     return this.ready || this.destroyed;
   }
 
-  update(view?: RenderViewState3D): void {
+  update(): void {
     if (!this.loaded || this.nodes.length === 0) return;
     const scopeVersion = this.renderScope.getVersion();
     if (scopeVersion === this.lastScopeVersion) return;
     this.lastScopeVersion = scopeVersion;
-    for (const node of this.nodes) {
-      const p = node.placement;
-      if (!isRandomEnvironmentAssetUsable(p.assetId)) {
+    const nodes = this.collectScopedNodes();
+    const mark = this.queryMark;
+    for (const node of this.activeNodes) {
+      if (node.queryMark !== mark) {
         node.root.visible = false;
-        continue;
+        this.activeNodes.delete(node);
       }
-      const inScope = this.renderScope.inScope(
-        p.x,
-        p.z,
-        p.radius + SCOPE_PADDING_EXTRA,
-      );
-      if (!inScope) {
-        node.root.visible = false;
-        continue;
-      }
-      // Screen-coverage hide: a prop whose projected radius drops below
-      // the authored threshold (lod.json detail.environment) is invisible
-      // clutter at that zoom — hide it instead of drawing 1-2 calls each.
-      // The pass reruns on every scope-version bump (camera move/zoom),
-      // which is exactly when these distances change.
-      if (view !== undefined) {
-        const dx = view.cameraX - node.root.position.x;
-        const dy = view.cameraY - node.root.position.y;
-        const dz = view.cameraZ - node.root.position.z;
-        const screenPx = detailScreenRadiusPx(
-          Math.max(p.radius, p.height * 0.5),
-          Math.sqrt(dx * dx + dy * dy + dz * dz),
-          view.fovYRad,
-        );
-        const minPx = getRandomEnvironmentAssetKind(p.assetId) === 'grass'
-          ? ENVIRONMENT_GRASS_MIN_SCREEN_RADIUS_PX
-          : ENVIRONMENT_TREE_MIN_SCREEN_RADIUS_PX;
-        if (screenPx < minPx) {
-          node.root.visible = false;
-          continue;
-        }
-      }
-      node.root.visible = true;
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      const node = nodes[i];
+      const visible = this.nodeIsVisible(node);
+      node.root.visible = visible;
+      if (visible) this.activeNodes.add(node);
+      else this.activeNodes.delete(node);
     }
   }
 
@@ -156,6 +131,9 @@ export class EnvironmentPropRenderer3D {
     for (const material of this.materialCache.values()) material.dispose();
     this.materialCache.clear();
     this.nodes.length = 0;
+    this.nodeGrid.clear();
+    this.activeNodes.clear();
+    this.queryNodes.length = 0;
     this.assets.clear();
     this.root.clear();
     this.root.parent?.remove(this.root);
@@ -353,12 +331,94 @@ export class EnvironmentPropRenderer3D {
       root.position.set(placement.x, placement.y, placement.z);
       root.rotation.y = placement.rotation;
       root.scale.setScalar(scale);
+      root.visible = false;
       root.userData.environmentProp = true;
       root.userData.assetId = placement.assetId;
       this.root.add(root);
-      this.nodes.push({ placement, root });
+      const node: EnvironmentPropNode = { placement, root, queryMark: 0 };
+      this.nodes.push(node);
+      this.addNodeToGrid(node);
+      this.maxScopePadding = Math.max(
+        this.maxScopePadding,
+        placement.radius + SCOPE_PADDING_EXTRA,
+      );
     }
   }
+
+  private addNodeToGrid(node: EnvironmentPropNode): void {
+    const cx = environmentPropGridCoord(node.placement.x);
+    const cz = environmentPropGridCoord(node.placement.z);
+    const key = environmentPropGridKey(cx, cz);
+    let bucket = this.nodeGrid.get(key);
+    if (!bucket) {
+      bucket = [];
+      this.nodeGrid.set(key, bucket);
+    }
+    bucket.push(node);
+  }
+
+  private collectScopedNodes(): EnvironmentPropNode[] {
+    this.nextQueryMark();
+    const out = this.queryNodes;
+    out.length = 0;
+    if (this.renderScope.getMode() === 'all') {
+      for (let i = 0; i < this.nodes.length; i++) this.pushQueryNode(this.nodes[i], out);
+      return out;
+    }
+    const bounds = this.renderScope.getCullingBounds(this.maxScopePadding);
+    const minCx = environmentPropGridCoord(bounds.minX);
+    const maxCx = environmentPropGridCoord(bounds.maxX);
+    const minCz = environmentPropGridCoord(bounds.minY);
+    const maxCz = environmentPropGridCoord(bounds.maxY);
+    const cellCount = (maxCx - minCx + 1) * (maxCz - minCz + 1);
+    if (cellCount > this.nodeGrid.size) {
+      for (let i = 0; i < this.nodes.length; i++) this.pushQueryNode(this.nodes[i], out);
+      return out;
+    }
+    for (let cx = minCx; cx <= maxCx; cx++) {
+      for (let cz = minCz; cz <= maxCz; cz++) {
+        const bucket = this.nodeGrid.get(environmentPropGridKey(cx, cz));
+        if (!bucket) continue;
+        for (let i = 0; i < bucket.length; i++) this.pushQueryNode(bucket[i], out);
+      }
+    }
+    return out;
+  }
+
+  private nextQueryMark(): void {
+    this.queryMark = (this.queryMark + 1) & 0x3fffffff;
+    if (this.queryMark !== 0) return;
+    this.queryMark = 1;
+    for (let i = 0; i < this.nodes.length; i++) this.nodes[i].queryMark = 0;
+  }
+
+  private pushQueryNode(node: EnvironmentPropNode, out: EnvironmentPropNode[]): void {
+    if (node.queryMark === this.queryMark) return;
+    node.queryMark = this.queryMark;
+    out.push(node);
+  }
+
+  private nodeIsVisible(
+    node: EnvironmentPropNode,
+  ): boolean {
+    const p = node.placement;
+    if (!isRandomEnvironmentAssetUsable(p.assetId)) return false;
+    if (
+      this.renderScope.getMode() !== 'all' &&
+      !this.renderScope.inScope(p.x, p.z, p.radius + SCOPE_PADDING_EXTRA)
+    ) {
+      return false;
+    }
+    return true;
+  }
+}
+
+function environmentPropGridCoord(value: number): number {
+  return Math.floor(value / ENVIRONMENT_PROP_GRID_CELL_SIZE);
+}
+
+function environmentPropGridKey(cx: number, cz: number): string {
+  return `${cx},${cz}`;
 }
 
 function publicAssetUrl(path: string): string {

@@ -13,6 +13,12 @@ import {
   isRocketLikeShot,
 } from './types';
 import { getProjectileSmokeTrailSpec } from '@/smokeConfig';
+import {
+  getProjectileAirDragCoefficient,
+  getProjectileAirFrictionPer60HzFrame,
+  getProjectileHomingThrustAcceleration,
+  getProjectilePropulsionAcceleration,
+} from './projectileMotion';
 import shotProfileConfig from './shotProfileConfig.json';
 
 const PLASMA_TAIL_LENGTH_MULT = shotProfileConfig.plasmaTailLengthMult;
@@ -38,6 +44,10 @@ function buildProjectileRuntimeProfile(shot: ProjectileShot): ShotRuntimeProfile
     detonateOnExpiry: shot.detonateOnExpiry === true,
     hasExplosion: explosionRadius > 0,
     hasSubmunitions: !!shot.submunitions,
+    airFrictionPer60HzFrame: getProjectileAirFrictionPer60HzFrame(shot),
+    airDragCoefficient: getProjectileAirDragCoefficient(shot),
+    propulsionAcceleration: getProjectilePropulsionAcceleration(shot),
+    homingThrustAcceleration: getProjectileHomingThrustAcceleration(shot),
   };
 }
 
@@ -76,6 +86,10 @@ function buildLineRuntimeProfile(shot: ActiveProjectileShot): ShotRuntimeProfile
     detonateOnExpiry: false,
     hasExplosion: false,
     hasSubmunitions: false,
+    airFrictionPer60HzFrame: 0,
+    airDragCoefficient: 0,
+    propulsionAcceleration: 0,
+    homingThrustAcceleration: 0,
   };
 }
 

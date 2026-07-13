@@ -3,6 +3,7 @@
 // per-unit force decisions and writes BodyPool acceleration directly.
 
 import {
+  AIR_LIFT_HEIGHT_FORCE_EXPONENT,
   getAirLiftHeightDistanceScale,
   LOCOMOTION_FORCE_SCALE,
 } from '../sim/locomotion';
@@ -35,6 +36,7 @@ import {
   ENTITY_SLOT_BUILD_FLAG_INTERRUPTED,
   ENTITY_SLOT_FLAG_HAS_BODY,
   ENTITY_SLOT_FLAG_HAS_UNIT,
+  ENTITY_SLOT_FLAG_HELD,
   ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY,
   ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION,
   entitySlotRegistry,
@@ -60,6 +62,10 @@ const HOVER_ORIENTATION_K = 30;
 const HOVER_ORIENTATION_C = 2 * Math.sqrt(HOVER_ORIENTATION_K);
 const SUPPORT_SURFACE_NORMAL_DIRTY_EPSILON = 1e-6;
 const AIR_LIFT_NEAR_GROUND_ALTITUDE = 0.5;
+const AIR_LIFT_GROUND_PROBE_STAGGER_MIN_FORCE_ROWS = 512;
+const AIR_LIFT_GROUND_PROBE_FRAME_STRIDE = 4;
+const SEEDED_RNG_INCREMENT = 0x6d2b79f5;
+const SEEDED_RNG_UNIT_SCALE = 1 / 4294967296;
 
 const UF_ROW_DIR_X = 0;
 const UF_ROW_DIR_Y = 1;
@@ -113,6 +119,13 @@ const UF_OUT_ROTATION_DIRTY = 1 << 2;
 const UF_OUT_HOVER_ORIENTATION = 1 << 3;
 const UF_OUT_WOKE_BODY = 1 << 4;
 const UF_OUT_ENTITY_STATE_SYNCED = 1 << 5;
+const UF_OUT_SLEEP_BODY = 1 << 6;
+const UF_OUT_REQUIRES_JS_ENTITY =
+  UF_OUT_CLEAR_COMBAT |
+  UF_OUT_ROTATION_DIRTY |
+  UF_OUT_HOVER_ORIENTATION |
+  UF_OUT_WOKE_BODY |
+  UF_OUT_SLEEP_BODY;
 const UNIT_GROUND_ANGULAR_DAMPING_RATE =
   dragRateFromVelocityFrictionPer60HzFrame(UNIT_GROUND_FRICTION_PER_60HZ_FRAME);
 
@@ -134,6 +147,19 @@ let _forceOutFlags: Uint32Array = new Uint32Array(0);
 let _forceTerrainGroundZ: Float64Array = new Float64Array(0);
 let _forceTerrainGroundNormals: Float64Array = new Float64Array(0);
 let _forceTerrainMaterialFlags: Uint32Array = new Uint32Array(0);
+let _forceAirLiftProbeBodySlots: Uint32Array = new Uint32Array(0);
+let _forceAirLiftProbeRowIndices: Uint32Array = new Uint32Array(0);
+let _forceAirLiftProbeDirX: Float64Array = new Float64Array(0);
+let _forceAirLiftProbeDirY: Float64Array = new Float64Array(0);
+let _forceAirLiftProbeAheadDistance: Float64Array = new Float64Array(0);
+let _forceAirLiftProbeDirectGroundZ: Float64Array = new Float64Array(0);
+let _forceAirLiftProbeHeightForce: Float64Array = new Float64Array(0);
+let _forceAirLiftProbeBodyX: Float64Array = new Float64Array(0);
+let _forceAirLiftProbeBodyY: Float64Array = new Float64Array(0);
+let _forceAirLiftProbeBodyZ: Float64Array = new Float64Array(0);
+let _forceAirLiftProbeEntityIds: Uint32Array = new Uint32Array(0);
+let _airLiftProbeScaleCache: Float64Array = new Float64Array(0);
+let _airLiftProbeEntityIdCache: Uint32Array = new Uint32Array(0);
 const _forceTerrainSurface = createWorldSupportSurface();
 const _forceSupportSurface = createWorldSupportSurface();
 const _forceProbeSupportSurface = createWorldSupportSurface();
@@ -159,6 +185,20 @@ function ensureForceBatchCapacity(count: number): void {
     const next = Math.max(count, _forceTerrainMaterialFlags.length * 2, 256);
     _forceTerrainMaterialFlags = new Uint32Array(next);
   }
+  if (_forceAirLiftProbeBodySlots.length < count) {
+    const next = Math.max(count, _forceAirLiftProbeBodySlots.length * 2, 256);
+    _forceAirLiftProbeBodySlots = new Uint32Array(next);
+    _forceAirLiftProbeRowIndices = new Uint32Array(next);
+    _forceAirLiftProbeDirX = new Float64Array(next);
+    _forceAirLiftProbeDirY = new Float64Array(next);
+    _forceAirLiftProbeAheadDistance = new Float64Array(next);
+    _forceAirLiftProbeDirectGroundZ = new Float64Array(next);
+    _forceAirLiftProbeHeightForce = new Float64Array(next);
+    _forceAirLiftProbeBodyX = new Float64Array(next);
+    _forceAirLiftProbeBodyY = new Float64Array(next);
+    _forceAirLiftProbeBodyZ = new Float64Array(next);
+    _forceAirLiftProbeEntityIds = new Uint32Array(next);
+  }
   const normalLen = count * 3;
   if (_forceTerrainGroundNormals.length < normalLen) {
     const next = Math.max(normalLen, _forceTerrainGroundNormals.length * 2, 256 * 3);
@@ -172,7 +212,12 @@ const UF_PROFILE_STRIDE = 17;
 let _unitForceProfileTableUploaded = false;
 let _unitForceProfileCodeCount = 0;
 let _unitForceProfileFlagsView: Uint32Array | null = null;
-let _unitForceProfileSignature = '';
+let _unitForceProfileAirLiftAuthored = new Uint8Array(0);
+let _unitForceProfileWaterLiftAuthored = new Uint8Array(0);
+let _unitForceProfileAirHeightForce = new Float64Array(0);
+let _unitForceProfileAirRandomAmount = new Float64Array(0);
+let _unitForceProfileAirProbeAheadDistance = new Float64Array(0);
+let _unitForceProfileAirProbeAheadRadiusMultiplier = new Float64Array(0);
 
 type UnitForceProfileSignature = {
   codeCount: number;
@@ -206,6 +251,8 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         water.heightUpwardForceEMA,
         air.force,
         air.traction,
+        loco.airLiftGroundProbeAheadDistance,
+        loco.airLiftGroundProbeAheadRadiusMultiplier,
         loco.forwardForceRequiresFacing ? 1 : 0,
         loco.driveForceScalesWithFacing ? 1 : 0,
         loco.type,
@@ -222,19 +269,10 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
  *  the per-tick pack loop no longer copies them per unit. Values must
  *  mirror the row constants consumed by the Rust kernel. */
 function ensureUnitForceProfileTable(sim: SimWasm): void {
+  if (_unitForceProfileTableUploaded) return;
   const profileSignature = import.meta.env.DEV
     ? buildUnitForceProfileSignature()
     : null;
-  if (
-    _unitForceProfileTableUploaded &&
-    (profileSignature === null ||
-      (
-        profileSignature.codeCount === _unitForceProfileCodeCount &&
-        profileSignature.signature === _unitForceProfileSignature
-      ))
-  ) {
-    return;
-  }
   const codeCount = profileSignature?.codeCount ?? (() => {
     let count = 0;
     while (codeToUnitBlueprintId(count) !== null) count++;
@@ -249,6 +287,21 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
   );
   const flags = new Uint32Array(sim.memory.buffer, sim.unitForceProfileFlagsPtr(), codeCount);
   _unitForceProfileFlagsView = flags;
+  if (_unitForceProfileAirLiftAuthored.length !== codeCount) {
+    _unitForceProfileAirLiftAuthored = new Uint8Array(codeCount);
+    _unitForceProfileWaterLiftAuthored = new Uint8Array(codeCount);
+    _unitForceProfileAirHeightForce = new Float64Array(codeCount);
+    _unitForceProfileAirRandomAmount = new Float64Array(codeCount);
+    _unitForceProfileAirProbeAheadDistance = new Float64Array(codeCount);
+    _unitForceProfileAirProbeAheadRadiusMultiplier = new Float64Array(codeCount);
+  } else {
+    _unitForceProfileAirLiftAuthored.fill(0);
+    _unitForceProfileWaterLiftAuthored.fill(0);
+    _unitForceProfileAirHeightForce.fill(0);
+    _unitForceProfileAirRandomAmount.fill(0);
+    _unitForceProfileAirProbeAheadDistance.fill(0);
+    _unitForceProfileAirProbeAheadRadiusMultiplier.fill(0);
+  }
   for (let code = 0; code < codeCount; code++) {
     const unitBlueprintId = codeToUnitBlueprintId(code);
     if (unitBlueprintId === null) continue;
@@ -272,6 +325,15 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     values[base + 14] = water.heightUpwardForceEMA;
     values[base + 15] = air.force;
     values[base + 16] = air.traction;
+    _unitForceProfileAirLiftAuthored[code] =
+      air.buoyancy > 0 || air.heightUpwardForce > 0 ? 1 : 0;
+    _unitForceProfileWaterLiftAuthored[code] =
+      water.buoyancy > 0 || water.heightUpwardForce > 0 ? 1 : 0;
+    _unitForceProfileAirHeightForce[code] = air.heightUpwardForce;
+    _unitForceProfileAirRandomAmount[code] = air.heightUpwardForceRandomizationAmount;
+    _unitForceProfileAirProbeAheadDistance[code] = loco.airLiftGroundProbeAheadDistance;
+    _unitForceProfileAirProbeAheadRadiusMultiplier[code] =
+      loco.airLiftGroundProbeAheadRadiusMultiplier;
     flags[code] =
       (loco.forwardForceRequiresFacing ? UF_FLAG_FORWARD_THRUST_REQUIRES_FACING : 0) |
       (loco.driveForceScalesWithFacing ? UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING : 0) |
@@ -290,7 +352,6 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
         : 0);
   }
   _unitForceProfileTableUploaded = true;
-  _unitForceProfileSignature = profileSignature?.signature ?? '';
 }
 
 function getUnitForceProfileFlagsView(sim: SimWasm): Uint32Array {
@@ -335,6 +396,8 @@ export class UnitForceSystem {
     ensureUnitForceProfileTable(sim);
     const profileFlagsView = getUnitForceProfileFlagsView(sim);
     const entityViews = entitySlotRegistry.getViews();
+    let rngSeed = this.world.rng.getSeed();
+    let rngAdvanced = false;
 
     const forceAccumulator = this.simulation.getForceAccumulator();
     const hasExternalForces = forceAccumulator.activeEntityCount() > 0;
@@ -386,16 +449,56 @@ export class UnitForceSystem {
       terrainSampled &&
       !this.physics.hasSupportSurfaceBodies() &&
       this.world.getSupportSurfaceEntities().length === 0;
+    const staggerTerrainAirLiftProbes =
+      terrainOnlySupport &&
+      candidateCount >= AIR_LIFT_GROUND_PROBE_STAGGER_MIN_FORCE_ROWS;
 
     let count = 0;
+    let terrainAirLiftProbeCount = 0;
     for (let i = 0; i < candidateCount; i++) {
       const entitySlot = _forceEntitySlots[i];
-      const entity = entitySlotRegistry.resolveSlot(entitySlot);
-      if (entity === undefined || entity.body === null || entity.unit === null) continue;
+      let bodySlot = _forceSlots[i];
+      let entity: Entity | undefined;
+      let entityId = 0 as EntityId;
+      let body: NonNullable<Entity['body']>['physicsBody'] | null = null;
+      let unit: Entity['unit'] | null = null;
+      const hasEntityState =
+        entityViews !== null &&
+        entitySlot >= 0 &&
+        entitySlot < entityViews.capacity &&
+        entityViews.entityId[entitySlot] >= 0 &&
+        entityViews.kind[entitySlot] === ENTITY_STATE_KIND_UNIT &&
+        entityViews.bodySlot[entitySlot] === bodySlot;
 
-      const body = entity.body.physicsBody;
-      const unit = entity.unit;
-      const bodySlot = body.slot;
+      if (hasEntityState) {
+        entityId = entityViews!.entityId[entitySlot] as EntityId;
+      } else {
+        entity = entitySlotRegistry.resolveSlot(entitySlot);
+        if (entity === undefined || entity.body === null || entity.unit === null) continue;
+        body = entity.body.physicsBody;
+        unit = entity.unit;
+        bodySlot = body.slot;
+        entityId = entity.id;
+      }
+
+      const resolveEntityForPack = (): Entity | undefined => {
+        if (entity !== undefined) return entity;
+        const resolved = entitySlotRegistry.resolveSlot(entitySlot);
+        if (resolved === undefined || resolved.body === null || resolved.unit === null) {
+          return undefined;
+        }
+        entity = resolved;
+        body = resolved.body.physicsBody;
+        unit = resolved.unit;
+        bodySlot = body.slot;
+        entityId = resolved.id;
+        return resolved;
+      };
+
+      if (!terrainOnlySupport && body === null) {
+        if (resolveEntityForPack() === undefined) continue;
+      }
+
       const bodyX = bodyViews.posX[bodySlot];
       const bodyY = bodyViews.posY[bodySlot];
       const bodyZ = bodyViews.posZ[bodySlot];
@@ -405,15 +508,11 @@ export class UnitForceSystem {
       const base = count * UNIT_FORCE_BATCH_STRIDE;
       let profileFlags = 0;
       let hasProfileFlags = false;
-      const hasEntityState =
-        entityViews !== null &&
-        entitySlot >= 0 &&
-        entitySlot < entityViews.capacity &&
-        entityViews.entityId[entitySlot] === entity.id &&
-        entityViews.bodySlot[entitySlot] === bodySlot;
+      let profileCode = -1;
       if (hasEntityState) {
-        const code = entityViews.unitBlueprintCode[entitySlot];
-        if (code < _unitForceProfileCodeCount) {
+        const code = entityViews!.unitBlueprintCode[entitySlot];
+        if (code >= 0 && code < _unitForceProfileCodeCount) {
+          profileCode = code;
           profileFlags = profileFlagsView[code];
           hasProfileFlags = true;
         }
@@ -423,7 +522,7 @@ export class UnitForceSystem {
       _forceEntitySlots[count] = entitySlot;
       const rotationForPack = hasEntityState
         ? entityViews!.rotation[entitySlot]
-        : entity.transform.rotation;
+        : entity!.transform.rotation;
       _forceRows[base + UF_ROW_ROTATION] = rotationForPack;
       const supportSurface = this.sampleBodySupportSurface(
         body,
@@ -448,8 +547,11 @@ export class UnitForceSystem {
               ENTITY_SLOT_BUILD_FLAG_INTERRUPTED
             )) === 0
           )
-        : isBuildInProgress(entity.buildable);
-      if (entity.heldBy !== null) {
+        : isBuildInProgress(entity!.buildable);
+      const isHeld = hasEntityState
+        ? (entityViews!.flags[entitySlot] & ENTITY_SLOT_FLAG_HELD) !== 0
+        : entity!.heldBy !== null;
+      if (isHeld) {
         bodyViews.velX[bodySlot] = 0;
         bodyViews.velY[bodySlot] = 0;
         bodyViews.velZ[bodySlot] = 0;
@@ -476,7 +578,9 @@ export class UnitForceSystem {
       let hoverRandomActive = (profileFlags & UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE) !== 0;
       let swimRandomActive = (profileFlags & UF_PROFILE_FLAG_SWIM_RANDOM_ACTIVE) !== 0;
       if (!hasProfileFlags) {
-        const loco = unit.locomotion;
+        const resolved = resolveEntityForPack();
+        if (resolved === undefined || resolved.unit === null) continue;
+        const loco = resolved.unit.locomotion;
         isFlying = loco.type === 'flying';
         forwardForceRequiresFacing = loco.forwardForceRequiresFacing;
         hoverRandomActive = loco.physics.air.heightUpwardForceRandomizationAmount > 0;
@@ -484,19 +588,25 @@ export class UnitForceSystem {
           loco.physics.water.heightUpwardForceRandomizationAmount > 0 &&
           loco.physics.water.heightUpwardForce > 0;
       }
-      const airLiftAuthored =
-        unit.locomotion.physics.air.buoyancy > 0 ||
-        unit.locomotion.physics.air.heightUpwardForce > 0;
-      const waterLiftAuthored =
-        unit.locomotion.physics.water.buoyancy > 0 ||
-        unit.locomotion.physics.water.heightUpwardForce > 0;
+      const airLiftAuthored = hasProfileFlags
+        ? _unitForceProfileAirLiftAuthored[profileCode] !== 0
+        : (
+            unit!.locomotion.physics.air.buoyancy > 0 ||
+            unit!.locomotion.physics.air.heightUpwardForce > 0
+          );
+      const waterLiftAuthored = hasProfileFlags
+        ? _unitForceProfileWaterLiftAuthored[profileCode] !== 0
+        : (
+            unit!.locomotion.physics.water.buoyancy > 0 ||
+            unit!.locomotion.physics.water.heightUpwardForce > 0
+          );
       // Ground/air/water friction, water force/traction, the swim family,
       // swim EMA accumulator, and air angular damping rate are filled by the
       // kernel from native profile/runtime tables.
 
       let flags = 0;
 
-      const unitHp = hasEntityState ? entityViews!.hp[entitySlot] : unit.hp;
+      const unitHp = hasEntityState ? entityViews!.hp[entitySlot] : unit!.hp;
       if (unitHp <= 0) {
         _forceRows[base + UF_ROW_DIR_X] = 0;
         _forceRows[base + UF_ROW_DIR_Y] = 0;
@@ -509,13 +619,13 @@ export class UnitForceSystem {
       // The facing flags (forwardForceRequiresFacing /
       // driveForceScalesWithFacing) are blueprint constants OR'd in by
       // the kernel from the profile table.
-      const dirX = hasEntityState ? entityViews!.unitThrustDirX[entitySlot] : unit.thrustDirX ?? 0;
-      const dirY = hasEntityState ? entityViews!.unitThrustDirY[entitySlot] : unit.thrustDirY ?? 0;
+      const dirX = hasEntityState ? entityViews!.unitThrustDirX[entitySlot] : unit!.thrustDirX ?? 0;
+      const dirY = hasEntityState ? entityViews!.unitThrustDirY[entitySlot] : unit!.thrustDirY ?? 0;
       if (!hasEntityState) {
         _forceRows[base + UF_ROW_DIR_X] = dirX;
         _forceRows[base + UF_ROW_DIR_Y] = dirY;
-        _forceRows[base + UF_ROW_HEADING_X] = unit.headingDirX ?? 0;
-        _forceRows[base + UF_ROW_HEADING_Y] = unit.headingDirY ?? 0;
+        _forceRows[base + UF_ROW_HEADING_X] = unit!.headingDirX ?? 0;
+        _forceRows[base + UF_ROW_HEADING_Y] = unit!.headingDirY ?? 0;
       }
       const dirLenSq = dirX * dirX + dirY * dirY;
       const hasThrustDir = dirLenSq > 0.0001;
@@ -534,7 +644,7 @@ export class UnitForceSystem {
           entitySlot,
           _forceRows,
           base + UF_ROW_EXTERNAL_FX,
-          entity.id,
+          entityId,
         );
       if (hasExternalForce) {
         flags |= UF_FLAG_HAS_EXTERNAL_FORCE;
@@ -544,26 +654,44 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_AIR_LIFT_DISTANCE_SCALE] = 0;
 
       if (mediumLiftActive && airFraction > 0 && airLiftAuthored) {
-        let airHeightForceForFalloff = unit.locomotion.physics.air.heightUpwardForce;
+        let airHeightForceForFalloff = hasProfileFlags
+          ? _unitForceProfileAirHeightForce[profileCode]
+          : unit!.locomotion.physics.air.heightUpwardForce;
         if (hoverRandomActive) {
-          const hoverRandomSample = this.world.rng.next();
+          rngSeed += SEEDED_RNG_INCREMENT;
+          let hoverRandomSample = rngSeed;
+          hoverRandomSample = Math.imul(
+            hoverRandomSample ^ (hoverRandomSample >>> 15),
+            hoverRandomSample | 1,
+          );
+          hoverRandomSample ^=
+            hoverRandomSample +
+            Math.imul(hoverRandomSample ^ (hoverRandomSample >>> 7), hoverRandomSample | 61);
+          hoverRandomSample =
+            ((hoverRandomSample ^ (hoverRandomSample >>> 14)) >>> 0) *
+            SEEDED_RNG_UNIT_SCALE;
+          rngAdvanced = true;
           _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = hoverRandomSample;
+          const hoverRandomAmount = hasProfileFlags
+            ? _unitForceProfileAirRandomAmount[profileCode]
+            : unit!.locomotion.physics.air.heightUpwardForceRandomizationAmount;
           airHeightForceForFalloff *=
             1 +
-            (hoverRandomSample * 2 - 1) *
-              unit.locomotion.physics.air.heightUpwardForceRandomizationAmount;
+            (hoverRandomSample * 2 - 1) * hoverRandomAmount;
         }
         let airLiftDistanceScale = this.airLiftDistanceScaleFromGroundZ(
           bodyZ,
           supportSurface.groundZ,
           airHeightForceForFalloff,
         );
-        const aheadProbeDistance =
-          unit.locomotion.airLiftGroundProbeAheadDistance +
-          bodyRadius * unit.locomotion.airLiftGroundProbeAheadRadiusMultiplier;
+        const aheadProbeDistance = hasProfileFlags
+          ? _unitForceProfileAirProbeAheadDistance[profileCode] +
+            bodyRadius * _unitForceProfileAirProbeAheadRadiusMultiplier[profileCode]
+          : unit!.locomotion.airLiftGroundProbeAheadDistance +
+            bodyRadius * unit!.locomotion.airLiftGroundProbeAheadRadiusMultiplier;
         let probeDirX = 0;
         let probeDirY = 0;
-        let hasProbeDir = false;
+        let useAirLiftGroundProbes = false;
         const yaw = Number.isFinite(rotationForPack) ? rotationForPack : 0;
         if (hasThrustDir) {
           if (forwardForceRequiresFacing) {
@@ -574,14 +702,38 @@ export class UnitForceSystem {
             probeDirX = dirX * invDirMag;
             probeDirY = dirY * invDirMag;
           }
-          hasProbeDir = true;
-        } else {
-          probeDirX = Math.cos(yaw);
-          probeDirY = Math.sin(yaw);
-          hasProbeDir = true;
+          useAirLiftGroundProbes = true;
         }
 
-        if (hasProbeDir) {
+        if (
+          useAirLiftGroundProbes &&
+          terrainOnlySupport &&
+          Number.isFinite(aheadProbeDistance) &&
+          aheadProbeDistance > 0
+        ) {
+          const cachedAirLiftDistanceScale = staggerTerrainAirLiftProbes
+            ? this.getCachedTerrainAirLiftProbeScale(bodySlot, entityId)
+            : null;
+          if (
+            cachedAirLiftDistanceScale !== null &&
+            !this.shouldRefreshTerrainAirLiftProbe(bodySlot)
+          ) {
+            airLiftDistanceScale = cachedAirLiftDistanceScale;
+          } else {
+            const probeIndex = terrainAirLiftProbeCount++;
+            _forceAirLiftProbeBodySlots[probeIndex] = bodySlot;
+            _forceAirLiftProbeRowIndices[probeIndex] = count;
+            _forceAirLiftProbeDirX[probeIndex] = probeDirX;
+            _forceAirLiftProbeDirY[probeIndex] = probeDirY;
+            _forceAirLiftProbeAheadDistance[probeIndex] = aheadProbeDistance;
+            _forceAirLiftProbeDirectGroundZ[probeIndex] = supportSurface.groundZ;
+            _forceAirLiftProbeHeightForce[probeIndex] = airHeightForceForFalloff;
+            _forceAirLiftProbeBodyX[probeIndex] = bodyX;
+            _forceAirLiftProbeBodyY[probeIndex] = bodyY;
+            _forceAirLiftProbeBodyZ[probeIndex] = bodyZ;
+            _forceAirLiftProbeEntityIds[probeIndex] = entityId;
+          }
+        } else if (useAirLiftGroundProbes) {
           airLiftDistanceScale = this.sampleAirLiftAverageDistanceScale(
             bodyZ,
             bodyX,
@@ -591,7 +743,7 @@ export class UnitForceSystem {
             aheadProbeDistance,
             supportSurface.groundZ,
             airHeightForceForFalloff,
-            entity.id,
+            entityId,
             !terrainOnlySupport,
           );
         }
@@ -609,7 +761,12 @@ export class UnitForceSystem {
         _forceRows[base + UF_ROW_ORIENTATION_Y] = entityViews!.orientationY[entitySlot];
         _forceRows[base + UF_ROW_ORIENTATION_Z] = entityViews!.orientationZ[entitySlot];
         _forceRows[base + UF_ROW_ORIENTATION_W] = entityViews!.orientationW[entitySlot];
-        if (unit.orientation === null) {
+        if (!hasAngularVelocityState) {
+          const resolved = resolveEntityForPack();
+          if (resolved === undefined || resolved.unit === null) continue;
+          unit = resolved.unit;
+        }
+        if (unit !== null && unit.orientation === null) {
           unit.orientation = {
             x: _forceRows[base + UF_ROW_ORIENTATION_X],
             y: _forceRows[base + UF_ROW_ORIENTATION_Y],
@@ -618,6 +775,9 @@ export class UnitForceSystem {
           };
         }
       } else {
+        const resolved = resolveEntityForPack();
+        if (resolved === undefined || resolved.unit === null) continue;
+        unit = resolved.unit;
         let orientation = unit.orientation;
         if (orientation === null) {
           const halfYaw = (Number.isFinite(rotationForPack) ? rotationForPack : 0) * 0.5;
@@ -637,7 +797,7 @@ export class UnitForceSystem {
         _forceRows[base + UF_ROW_OMEGA_X] = entityViews!.angularVelocityX[entitySlot];
         _forceRows[base + UF_ROW_OMEGA_Y] = entityViews!.angularVelocityY[entitySlot];
         _forceRows[base + UF_ROW_OMEGA_Z] = entityViews!.angularVelocityZ[entitySlot];
-        if (unit.angularVelocity3 === null) {
+        if (unit !== null && unit.angularVelocity3 === null) {
           unit.angularVelocity3 = {
             x: _forceRows[base + UF_ROW_OMEGA_X],
             y: _forceRows[base + UF_ROW_OMEGA_Y],
@@ -645,6 +805,9 @@ export class UnitForceSystem {
           };
         }
       } else {
+        const resolved = resolveEntityForPack();
+        if (resolved === undefined || resolved.unit === null) continue;
+        unit = resolved.unit;
         let omega = unit.angularVelocity3;
         if (omega === null) {
           omega = unit.angularVelocity3 = { x: 0, y: 0, z: 0 };
@@ -672,7 +835,8 @@ export class UnitForceSystem {
         !mediumLiftForceActive;
       if (surfaceContact) {
         if (supportSurfaceContact) {
-          this.writeSupportSurfaceNormal(entity, supportSurface);
+          const resolved = resolveEntityForPack();
+          if (resolved !== undefined) this.writeSupportSurfaceNormal(resolved, supportSurface);
         }
       }
 
@@ -683,14 +847,29 @@ export class UnitForceSystem {
         waterLiftAuthored &&
         swimRandomActive
       ) {
-        _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.rng.next();
+        rngSeed += SEEDED_RNG_INCREMENT;
+        let swimRandomSample = rngSeed;
+        swimRandomSample = Math.imul(
+          swimRandomSample ^ (swimRandomSample >>> 15),
+          swimRandomSample | 1,
+        );
+        swimRandomSample ^=
+          swimRandomSample +
+          Math.imul(swimRandomSample ^ (swimRandomSample >>> 7), swimRandomSample | 61);
+        swimRandomSample =
+          ((swimRandomSample ^ (swimRandomSample >>> 14)) >>> 0) *
+          SEEDED_RNG_UNIT_SCALE;
+        rngAdvanced = true;
+        _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = swimRandomSample;
       }
 
       _forceFlags[count] = flags;
       count++;
     }
 
+    if (rngAdvanced) this.world.rng.setSeed(rngSeed);
     if (count === 0) return;
+    this.sampleTerrainAirLiftProbeBatch(sim, terrainAirLiftProbeCount, count);
 
     const wind = this.simulation.getWindState();
     const windX = Number.isFinite(wind.x) ? wind.x : 0;
@@ -721,7 +900,7 @@ export class UnitForceSystem {
 
     for (let i = 0; i < count; i++) {
       const outFlags = _forceOutFlags[i];
-      if (outFlags === 0) {
+      if ((outFlags & UF_OUT_REQUIRES_JS_ENTITY) === 0) {
         continue;
       }
       const entity = entitySlotRegistry.resolveSlot(_forceEntitySlots[i]);
@@ -733,6 +912,9 @@ export class UnitForceSystem {
 
       if ((outFlags & UF_OUT_WOKE_BODY) !== 0) {
         this.physics.recordWasmForceWake(body);
+      }
+      if ((outFlags & UF_OUT_SLEEP_BODY) !== 0) {
+        this.physics.recordWasmForceSleep(body);
       }
 
       if ((outFlags & UF_OUT_CLEAR_COMBAT) !== 0) {
@@ -897,8 +1079,103 @@ export class UnitForceSystem {
     this.physicsForceUnitSlotsBuf[this.physicsForceUnitSlotCount++] = slot;
   }
 
+  private getCachedTerrainAirLiftProbeScale(
+    bodySlot: number,
+    entityId: EntityId,
+  ): number | null {
+    if (bodySlot < 0 || bodySlot >= _airLiftProbeScaleCache.length) return null;
+    if (_airLiftProbeEntityIdCache[bodySlot] !== entityId) return null;
+    const scale = _airLiftProbeScaleCache[bodySlot];
+    return Number.isFinite(scale) && scale >= 0 ? scale : null;
+  }
+
+  private shouldRefreshTerrainAirLiftProbe(bodySlot: number): boolean {
+    return (
+      (this.world.getTick() + bodySlot) %
+        AIR_LIFT_GROUND_PROBE_FRAME_STRIDE
+    ) === 0;
+  }
+
+  private writeTerrainAirLiftProbeScaleCache(
+    bodySlot: number,
+    entityId: EntityId,
+    scale: number,
+  ): void {
+    if (bodySlot < 0 || !Number.isInteger(bodySlot)) return;
+    if (!Number.isFinite(scale) || scale < 0) return;
+    if (bodySlot >= _airLiftProbeScaleCache.length) {
+      let cap = Math.max(_airLiftProbeScaleCache.length, 256);
+      while (cap <= bodySlot) cap *= 2;
+      const nextScale = new Float64Array(cap);
+      nextScale.set(_airLiftProbeScaleCache);
+      _airLiftProbeScaleCache = nextScale;
+      const nextEntityIds = new Uint32Array(cap);
+      nextEntityIds.set(_airLiftProbeEntityIdCache);
+      _airLiftProbeEntityIdCache = nextEntityIds;
+    }
+    _airLiftProbeEntityIdCache[bodySlot] = entityId;
+    _airLiftProbeScaleCache[bodySlot] = scale;
+  }
+
+  private sampleTerrainAirLiftProbeBatch(
+    sim: SimWasm,
+    probeCount: number,
+    forceRowCount: number,
+  ): void {
+    if (probeCount <= 0) return;
+    const sampled = measureWasmBoundary('server.unitForceTerrainAirLiftProbeBatch', () =>
+      sim.terrainSampleAirLiftDistanceScalesForSlots(
+        _forceAirLiftProbeBodySlots.subarray(0, probeCount),
+        _forceAirLiftProbeRowIndices.subarray(0, probeCount),
+        _forceAirLiftProbeDirX.subarray(0, probeCount),
+        _forceAirLiftProbeDirY.subarray(0, probeCount),
+        _forceAirLiftProbeAheadDistance.subarray(0, probeCount),
+        _forceAirLiftProbeDirectGroundZ.subarray(0, probeCount),
+        _forceAirLiftProbeHeightForce.subarray(0, probeCount),
+        _forceRows.subarray(0, forceRowCount * UNIT_FORCE_BATCH_STRIDE),
+        AIR_LIFT_HEIGHT_FORCE_EXPONENT,
+        AIR_LIFT_NEAR_GROUND_ALTITUDE,
+      ),
+    ) !== 0;
+    if (sampled) {
+      for (let i = 0; i < probeCount; i++) {
+        const row = _forceAirLiftProbeRowIndices[i];
+        const base = row * UNIT_FORCE_BATCH_STRIDE;
+        this.writeTerrainAirLiftProbeScaleCache(
+          _forceAirLiftProbeBodySlots[i],
+          _forceAirLiftProbeEntityIds[i] as EntityId,
+          _forceRows[base + UF_ROW_AIR_LIFT_DISTANCE_SCALE],
+        );
+      }
+      return;
+    }
+
+    for (let i = 0; i < probeCount; i++) {
+      const row = _forceAirLiftProbeRowIndices[i];
+      const base = row * UNIT_FORCE_BATCH_STRIDE;
+      const scale = this.sampleAirLiftAverageDistanceScale(
+        _forceAirLiftProbeBodyZ[i],
+        _forceAirLiftProbeBodyX[i],
+        _forceAirLiftProbeBodyY[i],
+        _forceAirLiftProbeDirX[i],
+        _forceAirLiftProbeDirY[i],
+        _forceAirLiftProbeAheadDistance[i],
+        _forceAirLiftProbeDirectGroundZ[i],
+        _forceAirLiftProbeHeightForce[i],
+        0 as EntityId,
+        false,
+      );
+      _forceRows[base + UF_ROW_AIR_LIFT_DISTANCE_SCALE] = scale;
+      this.writeTerrainAirLiftProbeScaleCache(
+        _forceAirLiftProbeBodySlots[i],
+        _forceAirLiftProbeEntityIds[i] as EntityId,
+        scale,
+      );
+    }
+  }
+
   private sampleBodySupportSurface(
-    body: NonNullable<Entity['body']>['physicsBody'],
+    body: NonNullable<Entity['body']>['physicsBody'] | null,
     bodyX: number,
     bodyY: number,
     out: SupportSurfaceContact,
@@ -924,7 +1201,7 @@ export class UnitForceSystem {
       terrainSurface.supportVelocityZ = 0;
       terrainSurface.walkable = !inWater;
       terrainSurface.sourceKey = getTerrainVersion();
-      if (terrainOnlySupport) return terrainSurface;
+      if (terrainOnlySupport || body === null) return terrainSurface;
       return this.physics.sampleSupportSurface(body, terrainSurface, out);
     }
     const terrainBedNormal = this.world.getCachedTerrainBedNormal(x, y);
@@ -940,6 +1217,7 @@ export class UnitForceSystem {
       terrainSurface.normalY = terrainBedNormal.ny;
       terrainSurface.normalZ = terrainBedNormal.nz;
     }
+    if (body === null) return terrainSurface;
     return this.physics.sampleSupportSurface(body, terrainSurface, out);
   }
 

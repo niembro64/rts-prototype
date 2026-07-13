@@ -22,12 +22,12 @@ use wasm_bindgen::prelude::*;
 //
 //  Capacity is fixed at PROJECTILE_POOL_CAPACITY so the typed-
 //  array views JS holds stay valid (no Vec realloc → no view
-//  detachment from memory.grow). 8192 covers steady-state busy
-//  combat well; allocator pre-grow at initSimWasm sizes the
-//  WASM linear memory comfortably above this.
+//  detachment from memory.grow). Sized to match the BAR-scale body
+//  pool so dense 10k-unit combat does not trip a separate projectile
+//  ceiling while the renderer is under test.
 // ─────────────────────────────────────────────────────────────────
 
-pub const PROJECTILE_POOL_CAPACITY: u32 = 8192;
+pub const PROJECTILE_POOL_CAPACITY: u32 = 32768;
 pub(crate) const PROJECTILE_POOL_CAPACITY_USIZE: usize = PROJECTILE_POOL_CAPACITY as usize;
 
 pub(crate) struct ProjectilePool {

@@ -653,10 +653,7 @@ pub(crate) fn metal_deposit_override_from_flat_zone_rows(
 /// the authored order (terrainConfig.json `pipeline` entries carry an
 /// `active` flag; inactive stages neither run nor classify).
 #[inline]
-pub(crate) fn terrain_pipeline_stage_active(
-    cfg: &MetalDepositTerrainConfigRust,
-    code: u8,
-) -> bool {
+pub(crate) fn terrain_pipeline_stage_active(cfg: &MetalDepositTerrainConfigRust, code: u8) -> bool {
     for slot in 0..TERRAIN_PIPELINE_STAGE_COUNT {
         if cfg.pipeline_order[slot] == code {
             return cfg.pipeline_active[slot];
@@ -750,8 +747,8 @@ pub(crate) fn terrain_waters_edge_slice_cliffness(
     let k = phase.floor();
     let u = phase - k;
     let current = k; // half 0 = beach (0), half 1 = cliff (1)
-    // Cap width in half-slice phase units at this radius: one half
-    // spans an arc of distance * cycle / 2 world units.
+                     // Cap width in half-slice phase units at this radius: one half
+                     // spans an arc of distance * cycle / 2 world units.
     let half_arc = distance.max(1.0) * cycle * 0.5;
     let transition = (terrain_waters_edge_cap_width(cfg) / half_arc).min(0.5);
     if u >= transition {
@@ -811,10 +808,8 @@ pub(crate) fn terrain_waters_edge_beach_height(
     if weight <= 0.0 {
         return terraced;
     }
-    let beach_tan = (cfg.waters_edge_beach_slope_degrees.clamp(0.0, 89.0)
-        * std::f64::consts::PI
-        / 180.0)
-        .tan();
+    let beach_tan =
+        (cfg.waters_edge_beach_slope_degrees.clamp(0.0, 89.0) * std::f64::consts::PI / 180.0).tan();
     let gradient_scale = (beach_tan / gradient.max(1e-6)).min(1.0);
     let unterraced = terraced + (shaped - terraced) * weight;
     let scale = gradient_scale + (1.0 - gradient_scale) * (1.0 - weight);
@@ -887,14 +882,8 @@ pub(crate) fn terrain_waters_edge_cliff_coords(
         .iter()
         .position(|&code| code == 5)
         .unwrap_or(TERRAIN_PIPELINE_STAGE_COUNT);
-    let (padded, gradient, _reference) = terrain_pipeline_eval(
-        x,
-        y,
-        metrics,
-        cfg,
-        explicit_flat_zones,
-        waters_edge_index,
-    );
+    let (padded, gradient, _reference) =
+        terrain_pipeline_eval(x, y, metrics, cfg, explicit_flat_zones, waters_edge_index);
     let step = cfg.waters_edge_cliff_height;
     let t = (padded - (TERRAIN_WATER_LEVEL - step * 0.5)) / step;
     let flat_half = terrain_plateau_flat_half_for_gradient(gradient, cfg);
@@ -979,8 +968,7 @@ fn terrain_pipeline_gradient_needed(
                 }
             }
             5 => {
-                if terrain_waters_edge_beach_enabled(cfg)
-                    || terrain_waters_edge_cliff_enabled(cfg)
+                if terrain_waters_edge_beach_enabled(cfg) || terrain_waters_edge_cliff_enabled(cfg)
                 {
                     return true;
                 }

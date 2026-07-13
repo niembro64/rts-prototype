@@ -34,6 +34,7 @@ pub(crate) const SPATIAL_KIND_PROJECTILE: u8 = 3;
 // cell sweep for enemy-entities queries so units near the radius +
 // shot-collider boundary aren't culled by cell-level rejection.
 pub(crate) const SPATIAL_MAX_UNIT_SHOT_RADIUS: f64 = 45.0;
+pub(crate) const SPATIAL_MAX_PROJECTILE_SHOT_RADIUS: f64 = 100.0;
 pub(crate) const SPATIAL_MAX_CIRCLE2D_QUERY_CELLS: i64 = 4096;
 pub(crate) const SPATIAL_MAX_LINE_QUERY_CELLS: i64 = 4096;
 pub(crate) const SPATIAL_MAX_LINE_QUERY_OCCUPIED_FALLBACK_CELLS: usize = 8192;
@@ -99,6 +100,8 @@ pub(crate) struct SpatialGridState {
     pub(crate) nearby_cells: Vec<u64>,
     pub(crate) dedup: HashSet<u32>,
     pub(crate) scratch_u32: Vec<u32>,
+    pub(crate) slot_query_marks: Vec<u32>,
+    pub(crate) query_mark: u32,
 }
 
 impl SpatialGridState {
@@ -129,6 +132,8 @@ impl SpatialGridState {
             nearby_cells: Vec::new(),
             dedup: HashSet::default(),
             scratch_u32: Vec::new(),
+            slot_query_marks: Vec::new(),
+            query_mark: 0,
         }
     }
 }
@@ -352,6 +357,9 @@ pub fn spatial_init(cell_size: f64, initial_slot_capacity: u32) {
     state.scratch_u32.clear();
     // Pre-size per-slot arrays.
     let cap = initial_slot_capacity as usize;
+    state.slot_query_marks.clear();
+    state.slot_query_marks.resize(cap, 0);
+    state.query_mark = 0;
     state.slot_kind.clear();
     state.slot_kind.resize(cap, SPATIAL_KIND_UNSET);
     state.slot_entity_id.clear();
@@ -429,6 +437,19 @@ pub(crate) fn spatial_ensure_slot_capacity(state: &mut SpatialGridState, slot: u
     state.slot_proj_is_projectile_type.resize(needed, 0);
     state.slot_cube_key.resize(needed, 0);
     state.building_cells.resize_with(needed, Vec::new);
+    state.slot_query_marks.resize(needed, 0);
+}
+
+#[inline]
+pub(crate) fn spatial_next_query_mark(state: &mut SpatialGridState) -> u32 {
+    let next = state.query_mark.wrapping_add(1);
+    if next == 0 {
+        state.slot_query_marks.fill(0);
+        state.query_mark = 1;
+    } else {
+        state.query_mark = next;
+    }
+    state.query_mark
 }
 
 #[wasm_bindgen]
@@ -461,11 +482,40 @@ pub fn spatial_free_slot(slot: u32) {
 
 // ===================== Mutations =====================
 
-/// Insert or update a unit at slot. owner_player == 0 means "no owner"
-/// (matches the JS `entity.ownership?.playerId ?? 0`). hp_alive is the
-/// HP > 0 flag — pass 0 to remove the slot.
-#[wasm_bindgen]
-pub fn spatial_set_unit(
+const ENTITY_SLOT_FLAG_ALIVE: u32 = 1 << 0;
+const ENTITY_SLOT_FLAG_HAS_UNIT: u32 = 1 << 3;
+
+fn spatial_unset_slot_inner(state: &mut SpatialGridState, slot: u32) {
+    let s = slot as usize;
+    if s >= state.slot_kind.len() {
+        return;
+    }
+    match state.slot_kind[s] {
+        SPATIAL_KIND_UNIT => {
+            let key = state.slot_cube_key[s];
+            spatial_remove_unit_from_cell(state, key, slot);
+        }
+        SPATIAL_KIND_PROJECTILE => {
+            let key = state.slot_cube_key[s];
+            spatial_remove_projectile_from_cell(state, key, slot);
+        }
+        SPATIAL_KIND_BUILDING => {
+            let old_cells = std::mem::take(&mut state.building_cells[s]);
+            for k in &old_cells {
+                spatial_remove_building_from_cell(state, *k, slot);
+            }
+        }
+        _ => {}
+    }
+    state.slot_kind[s] = SPATIAL_KIND_UNSET;
+    state.slot_entity_id[s] = -1;
+    state.slot_hp_alive[s] = 0;
+    state.slot_entity_active[s] = 0;
+    state.slot_cube_key[s] = 0;
+}
+
+fn spatial_set_unit_inner(
+    state: &mut SpatialGridState,
     slot: u32,
     x: f64,
     y: f64,
@@ -475,11 +525,10 @@ pub fn spatial_set_unit(
     owner_player: u8,
     hp_alive: u8,
 ) {
-    let state = spatial_grid();
     let s = slot as usize;
     spatial_ensure_slot_capacity(state, slot);
     if hp_alive == 0 {
-        spatial_unset_slot(slot);
+        spatial_unset_slot_inner(state, slot);
         return;
     }
     let prev_kind = state.slot_kind[s];
@@ -503,6 +552,106 @@ pub fn spatial_set_unit(
         spatial_get_or_create_cell(state, new_key).units.push(slot);
         state.slot_cube_key[s] = new_key;
     }
+}
+
+/// Insert or update a unit at slot. owner_player == 0 means "no owner"
+/// (matches the JS `entity.ownership?.playerId ?? 0`). hp_alive is the
+/// HP > 0 flag — pass 0 to remove the slot.
+#[wasm_bindgen]
+pub fn spatial_set_unit(
+    slot: u32,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius_collision: f64,
+    radius_hitbox: f64,
+    owner_player: u8,
+    hp_alive: u8,
+) {
+    let state = spatial_grid();
+    spatial_set_unit_inner(
+        state,
+        slot,
+        x,
+        y,
+        z,
+        radius_collision,
+        radius_hitbox,
+        owner_player,
+        hp_alive,
+    );
+}
+
+#[inline]
+fn spatial_sync_unit_slot_from_entity_state_inner(
+    state: &mut SpatialGridState,
+    slab: &EntityStateSlab,
+    slot: u32,
+) -> u32 {
+    let s = slot as usize;
+    if s >= slab.entity_id.len() || slab.kind[s] != ENTITY_STATE_KIND_UNIT {
+        if s < state.slot_kind.len() && state.slot_kind[s] == SPATIAL_KIND_UNIT {
+            spatial_unset_slot_inner(state, slot);
+            return 1;
+        }
+        return 0;
+    }
+
+    let flags = slab.flags[s];
+    let materialized_live_unit = slab.entity_id[s] >= 0
+        && (flags & ENTITY_SLOT_FLAG_HAS_UNIT) != 0
+        && (flags & ENTITY_SLOT_FLAG_ALIVE) != 0
+        && slab.hp[s] > 0.0;
+    if !materialized_live_unit {
+        if s < state.slot_kind.len() && state.slot_kind[s] == SPATIAL_KIND_UNIT {
+            spatial_unset_slot_inner(state, slot);
+            return 1;
+        }
+        return 0;
+    }
+
+    spatial_ensure_slot_capacity(state, slot);
+    state.slot_entity_id[s] = slab.entity_id[s];
+    spatial_set_unit_inner(
+        state,
+        slot,
+        slab.pos_x[s],
+        slab.pos_y[s],
+        slab.pos_z[s],
+        slab.radius_collision[s],
+        slab.radius_hitbox[s],
+        slab.owner_player_id[s] as u8,
+        1,
+    );
+    1
+}
+
+/// Refresh every materialized live unit's spatial row directly from the
+/// canonical entity-state slab. This replaces the JS-side 10k-unit
+/// `spatial.setUnit(...)` pre-sweep used before native action/range planning.
+#[wasm_bindgen]
+pub fn spatial_sync_units_from_entity_state() -> u32 {
+    let state = spatial_grid();
+    let slab = entity_state();
+    let mut updated = 0_u32;
+    for s in 0..slab.entity_id.len() {
+        updated += spatial_sync_unit_slot_from_entity_state_inner(state, slab, s as u32);
+    }
+    updated
+}
+
+/// Refresh only the supplied entity-state unit slots into the native spatial
+/// grid. Physics sync already has this sparse list; using it avoids a full
+/// 10k-unit sweep on steady-state ticks where no units spawned/despawned.
+#[wasm_bindgen]
+pub fn spatial_sync_unit_slots_from_entity_state(slots: &[u32]) -> u32 {
+    let state = spatial_grid();
+    let slab = entity_state();
+    let mut updated = 0_u32;
+    for &slot in slots {
+        updated += spatial_sync_unit_slot_from_entity_state_inner(state, slab, slot);
+    }
+    updated
 }
 
 #[inline]
@@ -678,32 +827,7 @@ pub fn spatial_set_building(
 #[wasm_bindgen]
 pub fn spatial_unset_slot(slot: u32) {
     let state = spatial_grid();
-    let s = slot as usize;
-    if s >= state.slot_kind.len() {
-        return;
-    }
-    match state.slot_kind[s] {
-        SPATIAL_KIND_UNIT => {
-            let key = state.slot_cube_key[s];
-            spatial_remove_unit_from_cell(state, key, slot);
-        }
-        SPATIAL_KIND_PROJECTILE => {
-            let key = state.slot_cube_key[s];
-            spatial_remove_projectile_from_cell(state, key, slot);
-        }
-        SPATIAL_KIND_BUILDING => {
-            let old_cells = std::mem::take(&mut state.building_cells[s]);
-            for k in &old_cells {
-                spatial_remove_building_from_cell(state, *k, slot);
-            }
-        }
-        _ => {}
-    }
-    state.slot_kind[s] = SPATIAL_KIND_UNSET;
-    state.slot_entity_id[s] = -1;
-    state.slot_hp_alive[s] = 0;
-    state.slot_entity_active[s] = 0;
-    state.slot_cube_key[s] = 0;
+    spatial_unset_slot_inner(state, slot);
 }
 
 // ===================== Cell-sweep helpers =====================
@@ -985,6 +1109,41 @@ pub(crate) fn spatial_push_enemy_projectile_if_in_radius(
 }
 
 #[inline]
+pub(crate) fn spatial_push_enemy_projectile_if_area_overlaps(
+    state: &SpatialGridState,
+    out: &mut Vec<u32>,
+    slot: u32,
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
+    exclude_player: u8,
+) {
+    let s = slot as usize;
+    if state.slot_kind[s] != SPATIAL_KIND_PROJECTILE {
+        return;
+    }
+    if state.slot_proj_is_projectile_type[s] == 0 {
+        return;
+    }
+    let owner = state.slot_owner_player[s];
+    if owner == exclude_player {
+        return;
+    }
+    let projectile_radius = state.slot_radius_collision[s].max(0.0);
+    if !projectile_radius.is_finite() {
+        return;
+    }
+    let check_radius = radius + projectile_radius;
+    let dx = state.slot_x[s] - x;
+    let dy = state.slot_y[s] - y;
+    let dz = state.slot_z[s] - z;
+    if dx * dx + dy * dy + dz * dz <= check_radius * check_radius {
+        out.push(slot);
+    }
+}
+
+#[inline]
 pub(crate) fn spatial_push_building_if_in_radius(
     state: &SpatialGridState,
     dedup: &mut HashSet<u32>,
@@ -1174,6 +1333,59 @@ pub fn spatial_query_units_and_buildings_in_radius(x: f64, y: f64, z: f64, radiu
     (header_n + n_units + n_buildings) as u32
 }
 
+/// Area-damage candidate query. Unlike the generic combined radius query,
+/// units include their hitbox radius in the final distance test, while
+/// buildings use their exact AABB closest-point test. Output layout:
+///   [n_units, n_buildings, unit_slot0..n, building_slot0..m]
+#[wasm_bindgen]
+pub fn spatial_query_area_units_and_buildings_in_radius(
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
+) -> u32 {
+    let state = spatial_grid();
+    state.scratch_u32.clear();
+    state.scratch_u32.push(0);
+    state.scratch_u32.push(0);
+    state.dedup.clear();
+    let query_radius = radius.max(0.0) + SPATIAL_MAX_UNIT_SHOT_RADIUS;
+    spatial_collect_cells_in_radius(state, x, y, z, query_radius);
+    let radius_sq = radius * radius;
+    let nearby = std::mem::take(&mut state.nearby_cells);
+    let mut buf = std::mem::take(&mut state.scratch_u32);
+    let header_n = 2;
+    let unit_start = buf.len();
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.units {
+                spatial_push_unit_if_in_radius(
+                    state, &mut buf, slot, x, y, z, radius, radius_sq, 0, false, true, false,
+                );
+            }
+        }
+    }
+    let n_units = (buf.len() - unit_start) as u32;
+    let mut dedup = std::mem::take(&mut state.dedup);
+    let bldg_start = buf.len();
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.buildings {
+                spatial_push_building_if_in_radius(
+                    state, &mut dedup, &mut buf, slot, x, y, z, radius_sq, 0, false, false,
+                );
+            }
+        }
+    }
+    let n_buildings = (buf.len() - bldg_start) as u32;
+    buf[0] = n_units;
+    buf[1] = n_buildings;
+    state.scratch_u32 = buf;
+    state.nearby_cells = nearby;
+    state.dedup = dedup;
+    (header_n + n_units + n_buildings) as u32
+}
+
 #[wasm_bindgen]
 pub fn spatial_query_units_and_buildings_in_rect_2d(
     min_x: f64,
@@ -1233,6 +1445,41 @@ pub fn spatial_query_units_and_buildings_in_rect_2d(
     state.scratch_u32 = buf;
     state.dedup = dedup;
     (2 + n_units + n_buildings) as u32
+}
+
+#[wasm_bindgen]
+pub fn spatial_query_projectiles_in_rect_2d(min_x: f64, max_x: f64, min_y: f64, max_y: f64) -> u32 {
+    let state = spatial_grid();
+    state.scratch_u32.clear();
+    state.dedup.clear();
+    let cs = state.cell_size;
+    let hcs = state.half_cell_size;
+    let min_cx = (min_x / cs).floor() as i32;
+    let max_cx = (max_x / cs).floor() as i32;
+    let min_cy = (min_y / cs).floor() as i32;
+    let max_cy = (max_y / cs).floor() as i32;
+    let min_cz = ((SPATIAL_TILE_FLOOR_Y - cs + hcs) / cs).floor() as i32;
+    let max_cz = ((SPATIAL_TERRAIN_MAX_RENDER_Y + cs * 2.0 + hcs) / cs).floor() as i32;
+    let mut buf = std::mem::take(&mut state.scratch_u32);
+    let mut dedup = std::mem::take(&mut state.dedup);
+    for cx in min_cx..=max_cx {
+        for cy in min_cy..=max_cy {
+            for cz in min_cz..=max_cz {
+                let key = pack_contact_cell_key(cx, cy, cz);
+                if let Some(bucket) = state.cells.get(&key) {
+                    for &slot in &bucket.projectiles {
+                        if dedup.insert(slot) {
+                            buf.push(slot);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let count = buf.len() as u32;
+    state.scratch_u32 = buf;
+    state.dedup = dedup;
+    count
 }
 
 #[wasm_bindgen]
@@ -1712,8 +1959,8 @@ pub(crate) fn projectile_sweep_hit_normal(
 
 /// C1 projectile migration — nearest swept hitbox contact for traveling
 /// projectile bodies. The kernel reads the WASM spatial slab directly,
-/// includes current-tick turret sub-hitboxes from the combat-targeting
-/// slab, and writes one nearest hit per input sweep.
+/// refreshes candidate unit turret mounts on demand from the
+/// combat-targeting slab, and writes one nearest hit per input sweep.
 #[wasm_bindgen]
 pub fn projectile_hitbox_sweep_batch(
     count: u32,
@@ -1732,6 +1979,9 @@ pub fn projectile_hitbox_sweep_batch(
     max_targetable_radius: f64,
     query_extra: f64,
     current_tick: i32,
+    dt_ms: f64,
+    turret_shield_panels_enabled: u8,
+    turret_shield_spheres_enabled: u8,
     out_kind: &mut [u8],
     out_slot: &mut [u32],
     out_entity_id: &mut [i32],
@@ -1885,6 +2135,14 @@ pub fn projectile_hitbox_sweep_batch(
                         && s < targeting.entity_flags.len()
                         && (targeting.entity_flags[s] & CT_ENTITY_FLAG_ALIVE) != 0
                     {
+                        combat_targeting_update_mount_kinematics_for_pool(
+                            &mut *targeting,
+                            slot,
+                            current_tick,
+                            dt_ms,
+                            turret_shield_panels_enabled,
+                            turret_shield_spheres_enabled,
+                        );
                         let turret_count = (targeting.turret_count_per_entity[s] as usize)
                             .min(COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
                         let base = s * (COMBAT_TARGETING_MAX_TURRETS_PER_ENTITY as usize);
@@ -2430,6 +2688,51 @@ pub fn spatial_query_enemy_projectiles_in_radius(
                     y,
                     z,
                     radius_sq,
+                    exclude_player,
+                );
+            }
+        }
+    }
+    let count = buf.len() as u32;
+    state.scratch_u32 = buf;
+    state.nearby_cells = nearby;
+    count
+}
+
+#[wasm_bindgen]
+pub fn spatial_query_area_enemy_projectiles_in_radius(
+    x: f64,
+    y: f64,
+    z: f64,
+    radius: f64,
+    exclude_player: u8,
+) -> u32 {
+    if !(x.is_finite() && y.is_finite() && z.is_finite() && radius.is_finite()) {
+        return 0;
+    }
+    let area_radius = radius.max(0.0);
+    let state = spatial_grid();
+    state.scratch_u32.clear();
+    spatial_collect_cells_in_radius(
+        state,
+        x,
+        y,
+        z,
+        area_radius + SPATIAL_MAX_PROJECTILE_SHOT_RADIUS,
+    );
+    let nearby = std::mem::take(&mut state.nearby_cells);
+    let mut buf = std::mem::take(&mut state.scratch_u32);
+    for key in &nearby {
+        if let Some(bucket) = state.cells.get(key) {
+            for &slot in &bucket.projectiles {
+                spatial_push_enemy_projectile_if_area_overlaps(
+                    state,
+                    &mut buf,
+                    slot,
+                    x,
+                    y,
+                    z,
+                    area_radius,
                     exclude_player,
                 );
             }

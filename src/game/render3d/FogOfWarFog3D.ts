@@ -89,6 +89,9 @@ void main() {
   float center = clamp((visibleRadius - edge) / visibleRadius, 0.0, 1.0);
   float soft = 0.5 - 0.5 * cos(center * 3.141592653589793);
   float alpha = vAlpha * soft;
+  // The authored transparent rim occupies most of each giant cloud's
+  // projected quad. Do not pay a blend/write for visually empty pixels.
+  if (alpha <= 0.00392156862745) discard;
   gl_FragColor = vec4(vColor, alpha);
   #include <colorspace_fragment>
 }
@@ -139,8 +142,25 @@ export class FogOfWarFog3D {
       toneMapped: false,
     });
 
-    this.pool = this.createPool(Math.max(1, this.profile.maxPoolSize | 0));
+    this.pool = this.createPool(this.resolvePoolSize());
     worldGroup.add(this.pool.mesh);
+  }
+
+  private resolvePoolSize(): number {
+    const hardMax = Math.max(1, this.profile.maxPoolSize | 0);
+    const hardMin = Math.min(
+      hardMax,
+      Math.max(1, this.profile.minPoolSize | 0),
+    );
+    const radius = Math.max(1, this.profile.radius);
+    const targetLayers = Math.max(0.25, this.profile.targetCoverageLayers);
+    // Bound average alpha overdraw rather than assigning every map the same
+    // sphere count. Area ratios cancel PI: N * cloudArea / spawnArea is the
+    // expected number of blended cloud layers at a hidden ground point.
+    const areaScaledCount = Math.ceil(
+      targetLayers * (this.spawnRadius * this.spawnRadius) / (radius * radius),
+    );
+    return Math.min(hardMax, Math.max(hardMin, areaScaledCount));
   }
 
   update(
@@ -148,8 +168,9 @@ export class FogOfWarFog3D {
     localPlayerId: PlayerId,
     enabled: boolean,
     dtMs: number,
+    cameraHeight = Number.POSITIVE_INFINITY,
   ): void {
-    if (!enabled || this.spawnRadius <= 0) {
+    if (!enabled || this.spawnRadius <= 0 || this.cameraTooLowForClouds(cameraHeight)) {
       this.clearPool();
       return;
     }
@@ -160,6 +181,14 @@ export class FogOfWarFog3D {
     this.advancePool(dtSec);
     this.spawnTowardDensity(dtSec);
     this.flushPool();
+  }
+
+  private cameraTooLowForClouds(cameraHeight: number): boolean {
+    const minHeight = this.profile.minCameraHeightForClouds;
+    return typeof minHeight === 'number' &&
+      Number.isFinite(minHeight) &&
+      Number.isFinite(cameraHeight) &&
+      cameraHeight < minHeight;
   }
 
   destroy(): void {
