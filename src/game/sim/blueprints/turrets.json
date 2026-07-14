@@ -993,7 +993,7 @@
       "durationRandomness": 0.3
     },
     "launchForce": 300,
-    "addTurretVelocityToEmissionLaunch": true,
+    "addTurretVelocityToEmissionLaunch": false,
     "turretTurnAccel": 200,
     "turretDrag": 0,
     "barrel": {
