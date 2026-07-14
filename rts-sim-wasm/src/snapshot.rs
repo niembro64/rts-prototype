@@ -1154,12 +1154,12 @@ pub fn snapshot_encode_proj_despawn_scratch_ensure(count: u32) {
     }
 }
 
-// Projectile velocity-update scratch — 9 f64 per entry:
+// Projectile motion-update scratch — 9 f64 per entry:
 //   [0]   id
 //   [1..4] pos.x, pos.y, pos.z
 //   [4..7] velocity.x, velocity.y, velocity.z
-//   [7]   clearHomingTarget flag
-//   [8]   targetEntityId (0 = omitted)
+//   [7]   authoritative yaw
+//   [8]   authoritative yaw rate
 snapshot_scratch_pool!(
     SnapshotEncodeProjVelScratch,
     SnapshotEncodeProjVelScratchHolder,
@@ -1282,8 +1282,6 @@ pub(crate) const PROJECTILE_BEAM_POINT_FLAG_REFLECTOR_PLAYER_ID: u32 = 0x08;
 pub(crate) const PROJECTILE_BEAM_POINT_FLAG_NORMAL_X: u32 = 0x10;
 pub(crate) const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Y: u32 = 0x20;
 pub(crate) const PROJECTILE_BEAM_POINT_FLAG_NORMAL_Z: u32 = 0x40;
-pub(crate) const PROJECTILE_VELOCITY_FLAG_CLEAR_HOMING: u32 = 0x01;
-pub(crate) const PROJECTILE_VELOCITY_FLAG_TARGET_ENTITY_ID: u32 = 0x02;
 
 #[derive(Default)]
 pub(crate) struct PackedBinaryWriter {
@@ -1651,7 +1649,7 @@ pub(crate) fn pack_projectile_despawns(count: usize) {
     out.set_u32_le(0, count as u32);
 }
 
-pub(crate) fn pack_projectile_velocity_updates(count: usize) {
+pub(crate) fn pack_projectile_motion_updates(count: usize) {
     let rows = snapshot_encode_proj_vel_scratch();
     let scratch = snapshot_encode_packed_projectile_scratch();
     scratch.out.reset(PACKED_BINARY_ROW_COUNT_BYTES);
@@ -1664,14 +1662,7 @@ pub(crate) fn pack_projectile_velocity_updates(count: usize) {
     scratch.reset_velocity_groups();
     for i in 0..count {
         let base = i * SNAPSHOT_ENCODE_PROJ_VEL_STRIDE;
-        let mut flags = if rows.buf[base + 7] != 0.0 {
-            PROJECTILE_VELOCITY_FLAG_CLEAR_HOMING
-        } else {
-            0
-        };
-        if rows.buf[base + 8] != 0.0 {
-            flags |= PROJECTILE_VELOCITY_FLAG_TARGET_ENTITY_ID;
-        }
+        let flags = 0;
         let group_index = scratch.velocity_group_index(flags);
         let group = &mut scratch.velocity_groups[group_index];
         let id = f64_round_i64(rows.buf[base]);
@@ -1683,9 +1674,8 @@ pub(crate) fn pack_projectile_velocity_updates(count: usize) {
         group.writer.write_var_int_from_f64(rows.buf[base + 4]);
         group.writer.write_var_int_from_f64(rows.buf[base + 5]);
         group.writer.write_var_int_from_f64(rows.buf[base + 6]);
-        if flags & PROJECTILE_VELOCITY_FLAG_TARGET_ENTITY_ID != 0 {
-            group.writer.write_var_uint_from_f64(rows.buf[base + 8]);
-        }
+        group.writer.write_var_int_from_f64(rows.buf[base + 7]);
+        group.writer.write_var_int_from_f64(rows.buf[base + 8]);
         group.count += 1;
     }
 

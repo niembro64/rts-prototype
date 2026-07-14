@@ -9,7 +9,7 @@ import {
   SHIELD_REFLECTION_ENTITY_ROCKET,
   SHIELD_PANEL_PROJECTILE_QUERY_PAD,
 } from './reflectorBatch';
-import { getEmissionBlueprintId, isRayType, isProjectileShot, isRocketLikeShot, NO_ENTITY_ID } from '../types';
+import { getEmissionBlueprintId, isRayType, isProjectileShot, isRocketLikeShot } from '../types';
 import type { DamageSystem } from '../damage';
 import type { ForceAccumulator } from '../ForceAccumulator';
 import type {
@@ -17,7 +17,6 @@ import type {
   CollisionResult,
   ProjectileDespawnEvent,
   ProjectileSpawnEvent,
-  ProjectileVelocityUpdateEvent,
   SimEventSourceType,
 } from './types';
 import { beamIndex } from '../BeamIndex';
@@ -34,6 +33,7 @@ import { updateProjectileSourceClearance } from './combatUtils';
 import { writeTurretCooldownToSlab } from './combatActivitySlab';
 import { getCombatTargetingSourceSlots } from './targetingInputStamping';
 import { rollTurretCooldownDuration } from '../turretCooldown';
+import { normalizeAngle } from '../../math';
 
 
 const PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA = 32;
@@ -85,7 +85,6 @@ const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionSimEvents: SimEvent[] = [];
 const _collisionNewProjectiles: Entity[] = [];
 const _collisionSpawnEvents: ProjectileSpawnEvent[] = [];
-const _collisionVelocityUpdates: ProjectileVelocityUpdateEvent[] = [];
 const _killedProjectileShotIdBuffers: EntityId[][] = [];
 
 let _reflectorBatchCapacity = 0;
@@ -675,7 +674,6 @@ export function resetCollisionBuffers(): void {
   _collisionSimEvents.length = 0;
   _collisionNewProjectiles.length = 0;
   _collisionSpawnEvents.length = 0;
-  _collisionVelocityUpdates.length = 0;
 }
 
 /**
@@ -796,7 +794,6 @@ function spawnSubmunitions(
       // gravity integrates from the right initial vz next tick.
       proj.transform.z = detonationZ;
       proj.projectile.velocityZ = launchVz;
-      proj.projectile.lastSentVelZ = launchVz;
     }
     const projectileComponent = proj.projectile;
     const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
@@ -1169,7 +1166,6 @@ export function checkProjectileCollisions(
   _collisionDeathContexts.clear();
   _collisionNewProjectiles.length = 0;
   _collisionSpawnEvents.length = 0;
-  _collisionVelocityUpdates.length = 0;
   const projectilesToRemove = _collisionProjectilesToRemove;
   const despawnEvents = _collisionDespawnEvents;
   const unitsToRemove = _collisionUnitsToRemove;
@@ -1178,7 +1174,6 @@ export function checkProjectileCollisions(
   const deathContexts = _collisionDeathContexts;
   const newProjectiles = _collisionNewProjectiles;
   const spawnEvents = _collisionSpawnEvents;
-  const velocityUpdates = _collisionVelocityUpdates;
   let reflectorImpactEvents = 0;
   const collisionDtMs = dtMs;
   const projectileEntities = world.getProjectiles();
@@ -1264,7 +1259,12 @@ export function checkProjectileCollisions(
           projEntity.transform.y = _reflectorResponsePosY[projectileOrdinal];
           projEntity.transform.z = _reflectorResponsePosZ[projectileOrdinal];
           if (_reflectorResponseRotationChanged[projectileOrdinal] !== 0) {
+            const previousRotation = projEntity.transform.rotation;
             projEntity.transform.rotation = _reflectorResponseRotation[projectileOrdinal];
+            const dtSec = collisionDtMs / 1000;
+            proj.angularVelocity = dtSec > 0
+              ? normalizeAngle(projEntity.transform.rotation - previousRotation) / dtSec
+              : 0;
           }
           proj.collisionStartX = projEntity.transform.x;
           proj.collisionStartY = projEntity.transform.y;
@@ -1272,23 +1272,7 @@ export function checkProjectileCollisions(
           proj.prevX = projEntity.transform.x;
           proj.prevY = projEntity.transform.y;
           proj.prevZ = projEntity.transform.z;
-          proj.lastSentVelX = reflectedX;
-          proj.lastSentVelY = reflectedY;
-          proj.lastSentVelZ = reflectedZ;
           spatialGrid.updateProjectile(projEntity);
-          velocityUpdates.push({
-            id: projEntity.id,
-            pos: {
-              x: projEntity.transform.x,
-              y: projEntity.transform.y,
-              z: projEntity.transform.z,
-            },
-            velocity: { x: reflectedX, y: reflectedY, z: reflectedZ },
-            ownerId: proj.ownerId,
-            visibilityHomingTargetId: proj.homingTargetId !== NO_ENTITY_ID
-              ? proj.homingTargetId
-              : undefined,
-          });
           reflectedProjectile = true;
           if (reflectorImpactEvents < MAX_REFLECTOR_IMPACT_EVENTS_PER_PASS) {
             reflectorImpactEvents++;
@@ -1806,7 +1790,6 @@ export function checkProjectileCollisions(
     deadBuildingIds: buildingsToRemove,
     events: audioEvents,
     despawnEvents,
-    velocityUpdates,
     deathContexts,
     newProjectiles,
     spawnEvents,

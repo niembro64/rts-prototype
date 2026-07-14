@@ -666,6 +666,8 @@ export type Projectile = {
   velocityX: number;
   velocityY: number;
   velocityZ: number;
+  /** Authoritative yaw rate in radians/second for presentation. */
+  angularVelocity: number;
   prevX: number | null;
   prevY: number | null;
   prevZ: number | null;
@@ -742,9 +744,6 @@ export type Projectile = {
   /** Sentinel `NO_ENTITY_ID` means this projectile is not homing. */
   homingTargetId: EntityId;
   homingTurnRate: number | null;
-  lastSentVelX: number | null;
-  lastSentVelY: number | null;
-  lastSentVelZ: number | null;
   /** Client-only one-shot: exact shield / shield-panel contact
    *  point from the most recent reflection, sourced from the
    *  unquantized shieldImpact audio event. Consumed by the
@@ -781,12 +780,10 @@ type ProjectileAbsenceSlots = Pick<Projectile,
   | 'obstructionTick'
   | 'hasExploded'
   | 'homingTurnRate'
-  | 'lastSentVelX'
-  | 'lastSentVelY'
-  | 'lastSentVelZ'
   | 'pendingReflectionX'
   | 'pendingReflectionY'
   | 'pendingReflectionZ'
+  | 'angularVelocity'
 >;
 
 export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
@@ -814,12 +811,10 @@ export const PROJECTILE_ABSENCE_SLOTS: Readonly<ProjectileAbsenceSlots> = {
   obstructionTick: -1,
   hasExploded: false,
   homingTurnRate: null,
-  lastSentVelX: null,
-  lastSentVelY: null,
-  lastSentVelZ: null,
   pendingReflectionX: null,
   pendingReflectionY: null,
   pendingReflectionZ: null,
+  angularVelocity: 0,
 };
 
 // Economy state per player. Each pool (energy / metal) has its

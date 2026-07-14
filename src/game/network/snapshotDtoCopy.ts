@@ -21,7 +21,7 @@ import type {
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
   NetworkServerSnapshotTurret,
-  NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotMotionUpdate,
 } from './NetworkTypes';
 import {
   PROJECTILE_TYPE_UNKNOWN,
@@ -113,20 +113,20 @@ export function copySpawnInto(
   return dst;
 }
 
-export function createVelocityDto(): NetworkServerSnapshotVelocityUpdate {
+export function createMotionDto(): NetworkServerSnapshotMotionUpdate {
   return {
     id: 0,
     pos: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
-    targetEntityId: null,
-    clearHomingTarget: null,
+    rotation: 0,
+    angularVelocity: 0,
   };
 }
 
-export function copyVelocityInto(
-  src: NetworkServerSnapshotVelocityUpdate,
-  dst: NetworkServerSnapshotVelocityUpdate,
-): NetworkServerSnapshotVelocityUpdate {
+export function copyMotionInto(
+  src: NetworkServerSnapshotMotionUpdate,
+  dst: NetworkServerSnapshotMotionUpdate,
+): NetworkServerSnapshotMotionUpdate {
   dst.id = src.id;
   dst.pos.x = src.pos.x;
   dst.pos.y = src.pos.y;
@@ -134,8 +134,8 @@ export function copyVelocityInto(
   dst.velocity.x = src.velocity.x;
   dst.velocity.y = src.velocity.y;
   dst.velocity.z = src.velocity.z;
-  dst.targetEntityId = src.targetEntityId;
-  dst.clearHomingTarget = src.clearHomingTarget === true ? true : null;
+  dst.rotation = src.rotation;
+  dst.angularVelocity = src.angularVelocity;
   return dst;
 }
 

@@ -11,7 +11,7 @@ import {
   type DeathContext,
   type ProjectileSpawnEvent,
   type ProjectileDespawnEvent,
-  type ProjectileVelocityUpdateEvent,
+  type ProjectileMotionUpdateEvent,
 } from './combat';
 import { DamageSystem } from './damage';
 import { economyManager } from './economy';
@@ -340,9 +340,9 @@ export class Simulation {
     return this.eventQueues.getAndClearProjectileDespawns();
   }
 
-  // Get and clear pending projectile velocity update events (double-buffered)
-  getAndClearProjectileVelocityUpdates(): ProjectileVelocityUpdateEvent[] {
-    return this.eventQueues.getAndClearProjectileVelocityUpdates();
+  // Get and clear pending projectile motion update events (double-buffered)
+  getAndClearProjectileMotionUpdates(): ProjectileMotionUpdateEvent[] {
+    return this.eventQueues.getAndClearProjectileMotionUpdates();
   }
 
   hasPendingProjectilePresentationEvents(): boolean {

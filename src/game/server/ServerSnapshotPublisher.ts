@@ -101,7 +101,7 @@ function snapshotProjectileRowCount(
   return (
     (projectiles.spawns?.length ?? 0) +
     (projectiles.despawns?.length ?? 0) +
-    (projectiles.velocityUpdates?.length ?? 0) +
+    (projectiles.motionUpdates?.length ?? 0) +
     (projectiles.beamUpdates?.length ?? 0)
   );
 }
@@ -329,7 +329,7 @@ export class ServerSnapshotPublisher {
     const audioEvents = input.simulation.getAndClearEvents();
     const projectileSpawns = input.simulation.getAndClearProjectileSpawns();
     const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
-    const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
+    const projectileMotionUpdates = input.simulation.getAndClearProjectileMotionUpdates();
 
     const unitCount = input.world.getUnits().length;
 
@@ -443,7 +443,7 @@ export class ServerSnapshotPublisher {
           audioEvents,
           projectileSpawns,
           projectileDespawns,
-          projectileVelocityUpdates,
+          projectileMotionUpdates,
           gridCells,
           gridSearchCells,
           gridCellSize,
@@ -536,7 +536,7 @@ export class ServerSnapshotPublisher {
         audioEvents,
         projectileSpawns,
         projectileDespawns,
-        projectileVelocityUpdates,
+        projectileMotionUpdates,
         gridCells,
         gridSearchCells,
         gridCellSize,
@@ -643,7 +643,7 @@ export class ServerSnapshotPublisher {
     const audioEvents = input.simulation.getAndClearEvents();
     const projectileSpawns = input.simulation.getAndClearProjectileSpawns();
     const projectileDespawns = input.simulation.getAndClearProjectileDespawns();
-    const projectileVelocityUpdates = input.simulation.getAndClearProjectileVelocityUpdates();
+    const projectileMotionUpdates = input.simulation.getAndClearProjectileMotionUpdates();
     const hasLiveLineProjectiles = input.world.getLineProjectiles().length > 0;
 
     this.dirtyIdsBuf.length = 0;
@@ -666,7 +666,7 @@ export class ServerSnapshotPublisher {
     const hasProjectileEvents =
       projectileSpawns.length > 0 ||
       projectileDespawns.length > 0 ||
-      projectileVelocityUpdates.length > 0 ||
+      projectileMotionUpdates.length > 0 ||
       hasLiveLineProjectiles;
     addMaterializationStage(emitBaseStages, 'lifecycleDrain', lifecycleStart);
 
@@ -754,7 +754,7 @@ export class ServerSnapshotPublisher {
           audioEvents,
           projectileSpawns,
           projectileDespawns,
-          projectileVelocityUpdates,
+          projectileMotionUpdates,
           gridCells,
           gridSearchCells,
           gridCellSize,
@@ -912,7 +912,7 @@ export class ServerSnapshotPublisher {
               emitBeamUpdates: true,
               projectileSpawns,
               projectileDespawns,
-              projectileVelocityUpdates,
+              projectileMotionUpdates,
             }),
           )
         : undefined;
@@ -1277,17 +1277,17 @@ export class ServerSnapshotPublisher {
     const projectileDespawns = hasProjectilePresentationEvents
       ? input.simulation.getAndClearProjectileDespawns()
       : undefined;
-    const projectileVelocityUpdates = hasProjectilePresentationEvents
-      ? input.simulation.getAndClearProjectileVelocityUpdates()
+    const projectileMotionUpdates = hasProjectilePresentationEvents
+      ? input.simulation.getAndClearProjectileMotionUpdates()
       : undefined;
     const hasProjectileEventsAfterDrain =
       projectileSpawns !== undefined &&
       projectileDespawns !== undefined &&
-      projectileVelocityUpdates !== undefined &&
+      projectileMotionUpdates !== undefined &&
       (
         projectileSpawns.length > 0 ||
         projectileDespawns.length > 0 ||
-        projectileVelocityUpdates.length > 0
+        projectileMotionUpdates.length > 0
       );
     const hasProjectilesAfterDrain = hasLiveLineProjectiles || hasProjectileEventsAfterDrain;
     if (!hasProjectilesAfterDrain && !hasEntityMotionDeltas) {
@@ -1313,7 +1313,7 @@ export class ServerSnapshotPublisher {
           audioEvents,
           projectileSpawns,
           projectileDespawns,
-          projectileVelocityUpdates,
+          projectileMotionUpdates,
           materializationStages: stages,
         });
         if (directSnapshot !== undefined) {
@@ -1353,7 +1353,7 @@ export class ServerSnapshotPublisher {
               emitBeamUpdates: true,
               projectileSpawns,
               projectileDespawns,
-              projectileVelocityUpdates,
+              projectileMotionUpdates,
             }),
           )
         : undefined;

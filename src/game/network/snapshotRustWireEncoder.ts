@@ -45,13 +45,13 @@ import {
   PROJECTILE_BEAM_POINT_WIRE_STRIDE,
   PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
-  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  PROJECTILE_MOTION_WIRE_STRIDE,
   getProjectileSnapshotWireSource,
   type ProjectileSnapshotWireSource,
   writeBeamPointWireRow,
   writeBeamUpdateWireRow,
   writeProjectileSpawnWireRow,
-  writeProjectileVelocityUpdateWireRow,
+  writeProjectileMotionUpdateWireRow,
 } from './stateSerializerProjectiles';
 import {
   MINIMAP_SNAPSHOT_WIRE_STRIDE,
@@ -1878,14 +1878,14 @@ function packProjectileWireSourceIntoScratch(
     copyUint32WireRowsIntoScratch(sim, api.projDespawnScratchPtr(), despawns);
   }
 
-  const velocityUpdates = source.velocityUpdates;
-  if (velocityUpdates.count > 0) {
-    api.projVelScratchEnsure(velocityUpdates.count);
+  const motionUpdates = source.motionUpdates;
+  if (motionUpdates.count > 0) {
+    api.projVelScratchEnsure(motionUpdates.count);
     copyFloatWireRowsIntoScratch(
       sim,
       api.projVelScratchPtr(),
-      velocityUpdates,
-      PROJECTILE_VELOCITY_WIRE_STRIDE,
+      motionUpdates,
+      PROJECTILE_MOTION_WIRE_STRIDE,
     );
   }
 
@@ -1919,8 +1919,8 @@ function canUseProjectileWireSource(
 ): source is ProjectileSnapshotWireSource {
   const spawnCount = projectiles.spawns !== undefined ? projectiles.spawns.length : 0;
   const despawnCount = projectiles.despawns !== undefined ? projectiles.despawns.length : 0;
-  const velocityUpdateCount = projectiles.velocityUpdates !== undefined
-    ? projectiles.velocityUpdates.length
+  const motionUpdateCount = projectiles.motionUpdates !== undefined
+    ? projectiles.motionUpdates.length
     : 0;
   const beamUpdateCount = projectiles.beamUpdates !== undefined
     ? projectiles.beamUpdates.length
@@ -1929,7 +1929,7 @@ function canUseProjectileWireSource(
     source !== undefined &&
     source.spawns.count === spawnCount &&
     source.despawns.count === despawnCount &&
-    source.velocityUpdates.count === velocityUpdateCount &&
+    source.motionUpdates.count === motionUpdateCount &&
     source.beamUpdates.count === beamUpdateCount
   );
 }
@@ -1945,9 +1945,9 @@ function packProjDespawnsIntoScratch(
   for (let i = 0; i < despawns.length; i++) view[i] = despawns[i].id;
 }
 
-function packProjVelocityUpdatesIntoScratch(
+function packProjMotionUpdatesIntoScratch(
   sim: SimWasm,
-  updates: NonNullable<SnapshotProjectiles['velocityUpdates']>,
+  updates: NonNullable<SnapshotProjectiles['motionUpdates']>,
 ): void {
   if (updates.length === 0) return;
   const api = sim.snapshotEncode;
@@ -1958,7 +1958,7 @@ function packProjVelocityUpdatesIntoScratch(
     updates.length * api.projVelScratchStride,
   );
   for (let i = 0; i < updates.length; i++) {
-    writeProjectileVelocityUpdateWireRow(view, i * api.projVelScratchStride, updates[i]);
+    writeProjectileMotionUpdateWireRow(view, i * api.projVelScratchStride, updates[i]);
   }
 }
 
@@ -2007,7 +2007,7 @@ function packBeamUpdatesIntoScratch(
 function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
   const spawns = projectiles.spawns;
   const despawns = projectiles.despawns;
-  const velocityUpdates = projectiles.velocityUpdates;
+  const motionUpdates = projectiles.motionUpdates;
   const beamUpdates = projectiles.beamUpdates;
   const wireSource = getProjectileSnapshotWireSource(projectiles);
   let beamPointCount = 0;
@@ -2016,7 +2016,7 @@ function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
   } else {
     if (spawns) packProjSpawnsIntoScratch(sim, spawns);
     if (despawns) packProjDespawnsIntoScratch(sim, despawns);
-    if (velocityUpdates) packProjVelocityUpdatesIntoScratch(sim, velocityUpdates);
+    if (motionUpdates) packProjMotionUpdatesIntoScratch(sim, motionUpdates);
     if (beamUpdates) beamPointCount = packBeamUpdatesIntoScratch(sim, beamUpdates);
   }
   sim.snapshotEncode.emitPackedProjectiles(
@@ -2024,8 +2024,8 @@ function emitProjectiles(sim: SimWasm, projectiles: SnapshotProjectiles): void {
     spawns !== undefined ? spawns.length : 0,
     despawns !== undefined ? 1 : 0,
     despawns !== undefined ? despawns.length : 0,
-    velocityUpdates !== undefined ? 1 : 0,
-    velocityUpdates !== undefined ? velocityUpdates.length : 0,
+    motionUpdates !== undefined ? 1 : 0,
+    motionUpdates !== undefined ? motionUpdates.length : 0,
     beamUpdates !== undefined ? 1 : 0,
     beamUpdates !== undefined ? beamUpdates.length : 0,
     beamPointCount,

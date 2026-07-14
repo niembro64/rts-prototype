@@ -160,7 +160,6 @@ projectile_pool_ptr_export!(
 //  Used per-tick by:
 //    - server homing projectiles (projectileSystem)
 //    - server turret aim (combat targeting scheduler)
-//    - client homing prediction (ClientProjectilePrediction)
 //    - render-time range envelope (ProjectileRangeEnvelope3D)
 //
 //  Input buffer layout (22 f64s — caller fills a module-scope

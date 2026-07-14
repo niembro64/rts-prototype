@@ -194,18 +194,10 @@ function assertSlowRocketRetargetsAfterLosingTarget(): void {
   rocket.projectile.timeAlive = 3000;
   rocket.projectile.homingTargetId = lostTarget.id;
 
-  const result = updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
+  updateProjectiles(world, 50, new DamageSystem(world), STILL_AIR);
   assertContract(
     rocket.projectile.homingTargetId === replacementTarget.id,
     'homing rocket must acquire a replacement live target after its lock dies',
-  );
-  assertContract(
-    result.velocityUpdates.some((update) =>
-      update.id === rocket.id &&
-      update.targetEntityId === replacementTarget.id &&
-      update.clearHomingTarget !== true
-    ),
-    'homing rocket retarget must emit a velocity update naming the replacement target',
   );
   resetTurretHostIntegrationState();
 }

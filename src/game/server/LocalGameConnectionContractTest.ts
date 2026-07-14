@@ -10,7 +10,7 @@ import {
   createProjectileSnapshotWireSource,
   PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
-  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  PROJECTILE_MOTION_WIRE_STRIDE,
   registerProjectileSnapshotWireSource,
 } from '../network/stateSerializerProjectiles';
 import { reserveFloat64WireRows, reserveUint32WireRows } from '../network/snapshotWireRows';
@@ -67,26 +67,26 @@ function attachDirectProjectileMotionRows(snapshot: NetworkServerSnapshot): void
   const projectiles = {
     spawns: undefined,
     despawns: new Array(1),
-    velocityUpdates: new Array(1),
+    motionUpdates: new Array(1),
     beamUpdates: undefined,
   } as NonNullable<NetworkServerSnapshot['projectiles']>;
   const source = createProjectileSnapshotWireSource();
   const despawnIndex = reserveUint32WireRows(source.despawns, 1, 1);
   source.despawns.values[despawnIndex] = 301;
-  const velocityIndex = reserveFloat64WireRows(
-    source.velocityUpdates,
+  const motionIndex = reserveFloat64WireRows(
+    source.motionUpdates,
     1,
-    PROJECTILE_VELOCITY_WIRE_STRIDE,
+    PROJECTILE_MOTION_WIRE_STRIDE,
   );
-  const velocityBase = velocityIndex * PROJECTILE_VELOCITY_WIRE_STRIDE;
-  source.velocityUpdates.values[velocityBase + 0] = 302;
-  source.velocityUpdates.values[velocityBase + 1] = 10;
-  source.velocityUpdates.values[velocityBase + 2] = 20;
-  source.velocityUpdates.values[velocityBase + 3] = 30;
-  source.velocityUpdates.values[velocityBase + 4] = 1;
-  source.velocityUpdates.values[velocityBase + 5] = 2;
-  source.velocityUpdates.values[velocityBase + 6] = 3;
-  source.velocityUpdates.values[velocityBase + 8] = 401;
+  const velocityBase = motionIndex * PROJECTILE_MOTION_WIRE_STRIDE;
+  source.motionUpdates.values[velocityBase + 0] = 302;
+  source.motionUpdates.values[velocityBase + 1] = 10;
+  source.motionUpdates.values[velocityBase + 2] = 20;
+  source.motionUpdates.values[velocityBase + 3] = 30;
+  source.motionUpdates.values[velocityBase + 4] = 1;
+  source.motionUpdates.values[velocityBase + 5] = 2;
+  source.motionUpdates.values[velocityBase + 6] = 3;
+  source.motionUpdates.values[velocityBase + 8] = 401;
   registerProjectileSnapshotWireSource(projectiles, source);
   snapshot.projectiles = projectiles;
 }
@@ -95,7 +95,7 @@ function attachDirectProjectileSpawnRows(snapshot: NetworkServerSnapshot): void 
   const projectiles = {
     spawns: new Array(1),
     despawns: undefined,
-    velocityUpdates: undefined,
+    motionUpdates: undefined,
     beamUpdates: undefined,
   } as NonNullable<NetworkServerSnapshot['projectiles']>;
   const source = createProjectileSnapshotWireSource();
@@ -108,7 +108,7 @@ function attachDirectProjectileBeamUpdateRows(snapshot: NetworkServerSnapshot): 
   const projectiles = {
     spawns: undefined,
     despawns: undefined,
-    velocityUpdates: undefined,
+    motionUpdates: undefined,
     beamUpdates: new Array(1),
   } as NonNullable<NetworkServerSnapshot['projectiles']>;
   const source = createProjectileSnapshotWireSource();

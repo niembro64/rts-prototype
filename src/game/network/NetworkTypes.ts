@@ -17,7 +17,7 @@ export type {
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotProjectileDespawn,
-  NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotMotionUpdate,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotBeamPoint,

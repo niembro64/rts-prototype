@@ -16,6 +16,7 @@ import {
   resetShieldBuffers,
   resetShieldSoundState,
   type DeathContext,
+  type ProjectileMotionUpdateEvent,
   type SimEvent,
   unregisterPackedProjectile,
   updateLaserSounds,
@@ -32,10 +33,7 @@ import {
 import type { DamageSystem } from './damage';
 import type { ForceAccumulator } from './ForceAccumulator';
 import type { SimulationDeathExplosionPlanner } from './SimulationDeathExplosionPlanner';
-import {
-  safeVelocityUpdates,
-  type SimulationEventQueues,
-} from './SimulationEventQueues';
+import type { SimulationEventQueues } from './SimulationEventQueues';
 import { spatialGrid } from './SpatialGrid';
 import type { EntityId } from './types';
 import type { WindState } from './wind';
@@ -55,6 +53,7 @@ export class SimulationCombatController {
   private readonly deathExplosionPlanner: SimulationDeathExplosionPlanner;
   private readonly deadUnitIdsBuf: EntityId[] = [];
   private readonly deadBuildingIdsBuf: EntityId[] = [];
+  private readonly projectileMotionEvents = new Map<EntityId, ProjectileMotionUpdateEvent>();
 
   constructor(
     world: WorldState,
@@ -164,6 +163,7 @@ export class SimulationCombatController {
   reset(): void {
     this.deadUnitIdsBuf.length = 0;
     this.deadBuildingIdsBuf.length = 0;
+    this.projectileMotionEvents.clear();
     resetShieldBuffers();
     resetLaserSoundState();
     resetShieldSoundState();
@@ -189,10 +189,7 @@ export class SimulationCombatController {
       unregisterPackedProjectile(event.id);
       spatialGrid.removeProjectile(event.id);
       this.eventQueues.projectileDespawns.push(event);
-    }
-    // Collect homing projectile velocity updates
-    for (const event of safeVelocityUpdates(updateResult.velocityUpdates)) {
-      this.eventQueues.projectileVelocityUpdates.set(event.id, event);
+      this.projectileMotionEvents.delete(event.id);
     }
 
     // Refresh projectile broadphase after integration. The frame-level
@@ -228,9 +225,38 @@ export class SimulationCombatController {
       unregisterPackedProjectile(event.id);
       spatialGrid.removeProjectile(event.id);
       this.eventQueues.projectileDespawns.push(event);
+      this.projectileMotionEvents.delete(event.id);
     }
-    for (const event of safeVelocityUpdates(collisionResult.velocityUpdates)) {
-      this.eventQueues.projectileVelocityUpdates.set(event.id, event);
+
+    // Lockstep presentation reads the final authoritative state after the
+    // whole fixed tick, including reflections and collision-spawned shots.
+    // Reuse one event object per live projectile to avoid per-tick object
+    // churn while still coalescing by entity id in the presentation queue.
+    for (const entity of this.world.getTravelingProjectiles()) {
+      const projectile = entity.projectile;
+      if (projectile === null) continue;
+      let event = this.projectileMotionEvents.get(entity.id);
+      if (event === undefined) {
+        event = {
+          id: entity.id,
+          pos: { x: 0, y: 0, z: 0 },
+          velocity: { x: 0, y: 0, z: 0 },
+          rotation: 0,
+          angularVelocity: 0,
+          ownerId: projectile.ownerId,
+        };
+        this.projectileMotionEvents.set(entity.id, event);
+      }
+      event.pos.x = entity.transform.x;
+      event.pos.y = entity.transform.y;
+      event.pos.z = entity.transform.z;
+      event.velocity.x = projectile.velocityX;
+      event.velocity.y = projectile.velocityY;
+      event.velocity.z = projectile.velocityZ;
+      event.rotation = entity.transform.rotation;
+      event.angularVelocity = projectile.angularVelocity;
+      event.ownerId = projectile.ownerId;
+      this.eventQueues.projectileMotionUpdates.set(entity.id, event);
     }
 
     this.deathExplosionPlanner.detonate(

@@ -15,7 +15,7 @@ import type { SimEvent } from '../sim/combat';
 import type {
   ProjectileDespawnEvent,
   ProjectileSpawnEvent,
-  ProjectileVelocityUpdateEvent,
+  ProjectileMotionUpdateEvent,
 } from '../sim/combat';
 import type { GamePhase } from '../../types/network';
 import { serializeAudioEvents } from './stateSerializerAudio';
@@ -203,7 +203,7 @@ export function serializeGameState(
   audioEvents: SimEvent[] | undefined = undefined,
   projectileSpawns: ProjectileSpawnEvent[] | undefined = undefined,
   projectileDespawns: ProjectileDespawnEvent[] | undefined = undefined,
-  projectileVelocityUpdates: ProjectileVelocityUpdateEvent[] | undefined = undefined,
+  projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined = undefined,
   gridCells: NetworkServerSnapshotGridCell[] | undefined = undefined,
   gridSearchCells: NetworkServerSnapshotGridCell[] | undefined = undefined,
   gridCellSize: number | undefined = undefined,
@@ -292,7 +292,7 @@ export function serializeGameState(
     emitBeamUpdates: options.emitProjectileDetailFields !== false,
     projectileSpawns,
     projectileDespawns,
-    projectileVelocityUpdates,
+    projectileMotionUpdates,
   });
   if (stages !== undefined) {
     addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);

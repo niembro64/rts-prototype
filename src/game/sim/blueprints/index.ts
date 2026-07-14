@@ -468,17 +468,6 @@ function validateTurretAimStyle(
       );
     }
   }
-  if (
-    emission !== null &&
-    isProjectileShot(emission) &&
-    (emission.type === 'rocket' || emission.type === 'missile')
-  ) {
-    if (turretBlueprint.addTurretVelocityToEmissionLaunch !== true) {
-      throw new Error(
-        `Turret ${turretBlueprintId} fires ${emission.type} shots and must inherit turret velocity for intercept aiming.`,
-      );
-    }
-  }
   switch (turretBlueprint.aimStyle.angleType) {
     case 'ballisticArcLow':
     case 'ballisticArcLowOnlyUnder':

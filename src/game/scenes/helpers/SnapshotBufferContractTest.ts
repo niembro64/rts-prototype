@@ -27,7 +27,7 @@ import {
   PROJECTILE_BEAM_POINT_WIRE_STRIDE,
   PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
-  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  PROJECTILE_MOTION_WIRE_STRIDE,
   registerProjectileSnapshotWireSource,
   writeBeamPointWireRow,
   writeBeamUpdateWireRow,
@@ -318,7 +318,7 @@ function createSnapshot(
     projectiles: {
       spawns: undefined,
       despawns: despawnIds.map((id) => ({ id })),
-      velocityUpdates: undefined,
+      motionUpdates: undefined,
       beamUpdates: undefined,
     },
     gameState: undefined,
@@ -335,12 +335,12 @@ function createSnapshot(
 function attachDirectProjectileMotionRows(
   snapshot: NetworkServerSnapshot,
   despawnId: number,
-  velocityId: number,
+  motionId: number,
 ): void {
   const projectiles = {
     spawns: new Array(1),
     despawns: new Array(1),
-    velocityUpdates: new Array(1),
+    motionUpdates: new Array(1),
     beamUpdates: new Array(1),
   } as NonNullable<NetworkServerSnapshot['projectiles']>;
   const source = createProjectileSnapshotWireSource();
@@ -363,20 +363,20 @@ function attachDirectProjectileMotionRows(
   source.spawns.values[spawnBase + 28] = 1;
   const despawnIndex = reserveUint32WireRows(source.despawns, 1, 1);
   source.despawns.values[despawnIndex] = despawnId;
-  const velocityIndex = reserveFloat64WireRows(
-    source.velocityUpdates,
+  const motionIndex = reserveFloat64WireRows(
+    source.motionUpdates,
     1,
-    PROJECTILE_VELOCITY_WIRE_STRIDE,
+    PROJECTILE_MOTION_WIRE_STRIDE,
   );
-  const base = velocityIndex * PROJECTILE_VELOCITY_WIRE_STRIDE;
-  source.velocityUpdates.values[base + 0] = velocityId;
-  source.velocityUpdates.values[base + 1] = 100;
-  source.velocityUpdates.values[base + 2] = 200;
-  source.velocityUpdates.values[base + 3] = 300;
-  source.velocityUpdates.values[base + 4] = 10;
-  source.velocityUpdates.values[base + 5] = 20;
-  source.velocityUpdates.values[base + 6] = 30;
-  source.velocityUpdates.values[base + 8] = 88;
+  const base = motionIndex * PROJECTILE_MOTION_WIRE_STRIDE;
+  source.motionUpdates.values[base + 0] = motionId;
+  source.motionUpdates.values[base + 1] = 100;
+  source.motionUpdates.values[base + 2] = 200;
+  source.motionUpdates.values[base + 3] = 300;
+  source.motionUpdates.values[base + 4] = 10;
+  source.motionUpdates.values[base + 5] = 20;
+  source.motionUpdates.values[base + 6] = 30;
+  source.motionUpdates.values[base + 8] = 88;
   const beamUpdate = {
     id: 82,
     obstructionT: null,
@@ -1013,12 +1013,12 @@ export function runSnapshotBufferContractTest(): void {
 
   const packedProjectileDelta = createSnapshot(10, [60, 60, 61]);
   packedProjectileDelta.projectileDeltaOnly = true;
-  packedProjectileDelta.projectiles!.velocityUpdates = [{
+  packedProjectileDelta.projectiles!.motionUpdates = [{
     id: 70,
     pos: { x: 100, y: 200, z: 300 },
     velocity: { x: 10, y: 20, z: 30 },
-    targetEntityId: 88,
-    clearHomingTarget: null,
+    rotation: 88,
+    angularVelocity: 44,
   }];
   const packedProjectiles = packProjectilesForWire(packedProjectileDelta.projectiles);
   assertContract(packedProjectiles !== undefined, 'packed projectile delta fixture must pack');
@@ -1031,7 +1031,7 @@ export function runSnapshotBufferContractTest(): void {
   );
   assertContract(
     decodedPackedDelta.projectiles?.despawns === undefined &&
-      decodedPackedDelta.projectiles?.velocityUpdates === undefined,
+      decodedPackedDelta.projectiles?.motionUpdates === undefined,
     'metadata-only decode must skip projectile despawn and velocity DTO arrays',
   );
   assertContract(
@@ -1041,7 +1041,7 @@ export function runSnapshotBufferContractTest(): void {
   fake.emitSnapshot(decodedPackedDelta);
   const consumedPackedDelta = buffer.consume();
   const packedDespawns = consumedPackedDelta?.projectiles?.despawns ?? [];
-  const packedVelocityUpdates = consumedPackedDelta?.projectiles?.velocityUpdates ?? [];
+  const packedMotionUpdates = consumedPackedDelta?.projectiles?.motionUpdates ?? [];
   assertContract(
     packedDespawns.length === 2 &&
       packedDespawns.some((despawn) => despawn.id === 60) &&
@@ -1049,12 +1049,13 @@ export function runSnapshotBufferContractTest(): void {
     'snapshot buffer must coalesce packed metadata-only despawns',
   );
   assertContract(
-    packedVelocityUpdates.length === 1 &&
-      packedVelocityUpdates[0].id === 70 &&
-      packedVelocityUpdates[0].pos.x === 100 &&
-      packedVelocityUpdates[0].velocity.z === 30 &&
-      packedVelocityUpdates[0].targetEntityId === 88,
-    'snapshot buffer must materialize packed metadata-only velocity updates on consume',
+    packedMotionUpdates.length === 1 &&
+      packedMotionUpdates[0].id === 70 &&
+      packedMotionUpdates[0].pos.x === 100 &&
+      packedMotionUpdates[0].velocity.z === 30 &&
+      packedMotionUpdates[0].rotation === 88 &&
+      packedMotionUpdates[0].angularVelocity === 44,
+    'snapshot buffer must materialize packed metadata-only motion updates on consume',
   );
 
   const directProjectileDelta = createSnapshot(11, []);
@@ -1064,7 +1065,7 @@ export function runSnapshotBufferContractTest(): void {
   const consumedDirectDelta = buffer.consume();
   const directSpawns = consumedDirectDelta?.projectiles?.spawns ?? [];
   const directDespawns = consumedDirectDelta?.projectiles?.despawns ?? [];
-  const directVelocityUpdates = consumedDirectDelta?.projectiles?.velocityUpdates ?? [];
+  const directMotionUpdates = consumedDirectDelta?.projectiles?.motionUpdates ?? [];
   const directBeamUpdates = consumedDirectDelta?.projectiles?.beamUpdates ?? [];
   assertContract(
     directSpawns.length === 1 &&
@@ -1077,12 +1078,12 @@ export function runSnapshotBufferContractTest(): void {
     'snapshot buffer must materialize direct projectile wire-source despawns on consume',
   );
   assertContract(
-    directVelocityUpdates.length === 1 &&
-      directVelocityUpdates[0].id === 81 &&
-      directVelocityUpdates[0].pos.x === 100 &&
-      directVelocityUpdates[0].velocity.z === 30 &&
-      directVelocityUpdates[0].targetEntityId === 88,
-    'snapshot buffer must materialize direct projectile wire-source velocity updates on consume',
+    directMotionUpdates.length === 1 &&
+      directMotionUpdates[0].id === 81 &&
+      directMotionUpdates[0].pos.x === 100 &&
+      directMotionUpdates[0].velocity.z === 30 &&
+      directMotionUpdates[0].angularVelocity === 88,
+    'snapshot buffer must materialize direct projectile wire-source motion updates on consume',
   );
   assertContract(
     directBeamUpdates.length === 1 &&

@@ -47,7 +47,7 @@ import type { SprayTarget } from '../sim/commanderAbilities';
 import type {
   ProjectileDespawnEvent,
   ProjectileSpawnEvent,
-  ProjectileVelocityUpdateEvent,
+  ProjectileMotionUpdateEvent,
   SimEvent,
 } from '../sim/combat';
 import { getSimWasm } from '../sim-wasm/init';
@@ -84,7 +84,7 @@ type ServerSnapshotDirectWireInput = {
   audioEvents: SimEvent[] | undefined;
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
-  projectileVelocityUpdates: ProjectileVelocityUpdateEvent[] | undefined;
+  projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined;
   gridCells: NetworkServerSnapshotGridCell[] | undefined;
   gridSearchCells: NetworkServerSnapshotGridCell[] | undefined;
   gridCellSize: number | undefined;
@@ -106,7 +106,7 @@ type ServerSnapshotSparseDeltaDirectWireInput = {
   audioEvents: SimEvent[] | undefined;
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
-  projectileVelocityUpdates: ProjectileVelocityUpdateEvent[] | undefined;
+  projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined;
   materializationStages: SnapshotMaterializationStageDurations | undefined;
 };
 
@@ -128,7 +128,7 @@ type ServerSnapshotRichDeltaDirectWireInput = {
   audioEvents: SimEvent[] | undefined;
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
-  projectileVelocityUpdates: ProjectileVelocityUpdateEvent[] | undefined;
+  projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined;
   gridCells: NetworkServerSnapshotGridCell[] | undefined;
   gridSearchCells: NetworkServerSnapshotGridCell[] | undefined;
   gridCellSize: number | undefined;
@@ -438,7 +438,7 @@ export class ServerSnapshotDirectWirePreencoder {
       emitBeamUpdates: input.emitProjectileDetailFields,
       projectileSpawns: input.projectileSpawns,
       projectileDespawns: input.projectileDespawns,
-      projectileVelocityUpdates: input.projectileVelocityUpdates,
+      projectileMotionUpdates: input.projectileMotionUpdates,
     });
     if (stages !== undefined) {
       addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
@@ -509,7 +509,7 @@ export class ServerSnapshotDirectWirePreencoder {
       emitBeamUpdates: true,
       projectileSpawns: input.projectileSpawns,
       projectileDespawns: input.projectileDespawns,
-      projectileVelocityUpdates: input.projectileVelocityUpdates,
+      projectileMotionUpdates: input.projectileMotionUpdates,
     });
     if (stages !== undefined) {
       addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
@@ -648,11 +648,11 @@ export class ServerSnapshotDirectWirePreencoder {
       (
         input.projectileSpawns !== undefined &&
         input.projectileDespawns !== undefined &&
-        input.projectileVelocityUpdates !== undefined &&
+        input.projectileMotionUpdates !== undefined &&
         (
           input.projectileSpawns.length > 0 ||
           input.projectileDespawns.length > 0 ||
-          input.projectileVelocityUpdates.length > 0
+          input.projectileMotionUpdates.length > 0
         )
       );
     const netProjectiles = hasProjectileEvents
@@ -665,7 +665,7 @@ export class ServerSnapshotDirectWirePreencoder {
             emitBeamUpdates: true,
             projectileSpawns: input.projectileSpawns,
             projectileDespawns: input.projectileDespawns,
-            projectileVelocityUpdates: input.projectileVelocityUpdates,
+            projectileMotionUpdates: input.projectileMotionUpdates,
           });
           if (stages !== undefined) {
             addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);

@@ -158,9 +158,6 @@ export class WorldProjectileFactory {
       hasLeftSource: false,
       homingTargetId: NO_ENTITY_ID,
       homingTurnRate,
-      lastSentVelX: velocityX,
-      lastSentVelY: velocityY,
-      lastSentVelZ: 0,
     };
 
     return {

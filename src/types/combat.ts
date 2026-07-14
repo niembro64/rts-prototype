@@ -175,21 +175,17 @@ export type ProjectileDespawnEvent = {
   id: EntityId;
 };
 
-export type ProjectileVelocityUpdateEvent = {
+export type ProjectileMotionUpdateEvent = {
   id: EntityId;
   pos: Vec3;
   velocity: Vec3;
+  /** Authoritative yaw about world Z. */
+  rotation: number;
+  /** Authoritative yaw rate in radians/second. */
+  angularVelocity: number;
   /** Server-only visibility context. Lets snapshot serialization avoid
    *  resolving the projectile entity again when filtering presentation rows. */
   ownerId?: PlayerId;
-  /** Set when authoritative homing retargets to a new visible entity. */
-  targetEntityId?: EntityId;
-  /** Clear the projectile's inherited homing target on clients when
-   *  authoritative guidance intentionally ends. Reflections preserve it. */
-  clearHomingTarget?: boolean;
-  /** Internal visibility helper: when the target has just been cleared,
-   *  this preserves the former target for one snapshot's FOW filtering. */
-  visibilityHomingTargetId?: EntityId;
 };
 
 export type FireTurretsResult = {
@@ -203,7 +199,6 @@ export type CollisionResult = {
   deadBuildingIds: Set<EntityId>;
   events: SimEvent[];
   despawnEvents: ProjectileDespawnEvent[];
-  velocityUpdates: ProjectileVelocityUpdateEvent[];
   deathContexts: Map<EntityId, DeathContext>;
   /** New projectile entities created by collisions (submunitions /
    *  cluster spawns). Simulation adds these to the world after the

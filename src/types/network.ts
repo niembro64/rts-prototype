@@ -667,23 +667,23 @@ export type NetworkServerSnapshotProjectileDespawn = {
   id: number;
 };
 
-export type NetworkServerSnapshotVelocityUpdate = {
+export type NetworkServerSnapshotMotionUpdate = {
   id: number;
   /** PROJECTILE_POSITION_WIRE_SCALE fixed-point position. */
   pos: Vec3;
   /** VELOCITY_WIRE_SCALE fixed-point velocity. */
   velocity: Vec3;
-  targetEntityId: number | null;
-  clearHomingTarget: boolean | null;
+  /** ROTATION_WIRE_SCALE fixed-point authoritative yaw. */
+  rotation: number;
+  /** ROTATION_WIRE_SCALE fixed-point authoritative yaw rate. */
+  angularVelocity: number;
 };
 
 /** Wire-format vertex of a beam/laser polyline. The full beam is
  *  `points = [start, ...reflections, end]`. Each vertex carries its
- *  own instantaneous 3D velocity in the world frame. The client may
- *  extrapolate unreflected open-beam vertices from that velocity, but
- *  reflector vertices and everything downstream of the first reflector
- *  are constraint results from the authoritative trace and must not be
- *  dead-reckoned independently without a local re-trace. The reflector
+ *  own instantaneous 3D velocity in the world frame. The client applies
+ *  the movement position and velocity EMA channels to these authoritative
+ *  values but never extrapolates or locally re-traces the path. The reflector
  *  vertices set `reflectorEntityId` to the redirecting reflector entity
  *  (shield panels and spheres both use this slot).
  *  Position uses PROJECTILE_POSITION_WIRE_SCALE, velocity uses
@@ -783,7 +783,7 @@ export type GamePhase = 'init' | 'battle' | 'paused' | 'gameOver';
 export type NetworkServerSnapshotProjectiles = {
   spawns: NetworkServerSnapshotProjectileSpawn[] | undefined;
   despawns: NetworkServerSnapshotProjectileDespawn[] | undefined;
-  velocityUpdates: NetworkServerSnapshotVelocityUpdate[] | undefined;
+  motionUpdates: NetworkServerSnapshotMotionUpdate[] | undefined;
   /** Authoritative live beam/laser paths. Sent every snapshot so
    *  clients draw reflected segments directly instead of re-tracing
    *  reflector/unit/building intersections in the render frame. */

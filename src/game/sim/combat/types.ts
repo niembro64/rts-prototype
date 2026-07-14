@@ -10,7 +10,7 @@ export type {
   SimEvent,
   ProjectileSpawnEvent,
   ProjectileDespawnEvent,
-  ProjectileVelocityUpdateEvent,
+  ProjectileMotionUpdateEvent,
   FireTurretsResult,
   CollisionResult,
 } from '@/types/combat';

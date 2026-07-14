@@ -95,7 +95,7 @@ function projectileConfigWithTurretIndex(
 export class ClientProjectileStore {
   readonly beamPathTargets = new Map<EntityId, BeamPathTarget>();
   readonly activeBeamPathIds = new ClientEntityIdSet();
-  readonly activeProjectilePredictionIds = new ClientEntityIdSet();
+  readonly activeProjectileMotionIds = new ClientEntityIdSet();
   readonly projectileSpawns = new ProjectileSpawnQueue();
 
   private lineProjectileRenderVersion = 0;
@@ -161,7 +161,7 @@ export class ClientProjectileStore {
     this.releaseBeamTarget(id);
     this.releaseBeamPointsForEntity(entity ?? this.options.entities.get(id));
     this.projectileSpawns.remove(id);
-    this.activeProjectilePredictionIds.delete(id);
+    this.activeProjectileMotionIds.delete(id);
     this.activeBeamPathIds.delete(id);
     this.renderSpatialIndex.remove(id);
     this.renderState.unsetEntity(id);
@@ -181,7 +181,7 @@ export class ClientProjectileStore {
         this.activeBeamPathIds.add(spawn.id);
         this.markLineProjectilesChanged();
       } else {
-        this.activeProjectilePredictionIds.add(spawn.id);
+        this.activeProjectileMotionIds.add(spawn.id);
       }
       this.markRenderListsDirty();
       return true;
@@ -203,7 +203,7 @@ export class ClientProjectileStore {
         this.activeBeamPathIds.add(id);
         this.markLineProjectilesChanged();
       } else {
-        this.activeProjectilePredictionIds.add(id);
+        this.activeProjectileMotionIds.add(id);
       }
       this.markRenderListsDirty();
       return true;
@@ -226,7 +226,6 @@ export class ClientProjectileStore {
       this.beamPathTargets.set(id, target);
     }
     target.updatedAtMs = now;
-    target.predictedAgeMs = 0;
     return target;
   }
 
@@ -364,7 +363,6 @@ export class ClientProjectileStore {
       )
     ) {
       cachedTarget.updatedAtMs = now;
-      cachedTarget.predictedAgeMs = 0;
       return;
     }
     const entity = this.options.entities.get(id);
@@ -505,7 +503,7 @@ export class ClientProjectileStore {
     cached[cachedBase + 11] = pointValues[sourceBase + 11];
   }
 
-  markVelocityUpdateActive(entity: Entity, id: EntityId): void {
+  markMotionUpdateActive(entity: Entity, id: EntityId): void {
     if (isLineProjectileEntity(entity)) {
       if (!this.activeBeamPathIds.has(id)) {
         this.activeBeamPathIds.add(id);
@@ -513,8 +511,8 @@ export class ClientProjectileStore {
       }
       this.refreshLineRenderStateAndSpatialIndex(entity, id);
       return;
-    } else if (!this.activeProjectilePredictionIds.has(id)) {
-      this.activeProjectilePredictionIds.add(id);
+    } else if (!this.activeProjectileMotionIds.has(id)) {
+      this.activeProjectileMotionIds.add(id);
       this.markRenderListsDirty();
     }
     const slot = this.renderState.updateProjectilePosition(
@@ -530,13 +528,13 @@ export class ClientProjectileStore {
     }
   }
 
-  markVelocityTargetUpdateActive(entity: Entity, id: EntityId): void {
+  markMotionTargetUpdateActive(entity: Entity, id: EntityId): void {
     if (isLineProjectileEntity(entity)) {
-      this.markVelocityUpdateActive(entity, id);
+      this.markMotionUpdateActive(entity, id);
       return;
     }
-    if (!this.activeProjectilePredictionIds.has(id)) {
-      this.activeProjectilePredictionIds.add(id);
+    if (!this.activeProjectileMotionIds.has(id)) {
+      this.activeProjectileMotionIds.add(id);
       this.markRenderListsDirty();
     }
   }
@@ -555,7 +553,7 @@ export class ClientProjectileStore {
     slotLists.burnMark.length = 0;
     const views = this.renderState.getViews();
 
-    for (const id of this.activeProjectilePredictionIds) {
+    for (const id of this.activeProjectileMotionIds) {
       const slot = this.refreshProjectileRenderSlotById(id);
       if (slot !== undefined) this.pushSlotRenderLists(slot, views, slotLists);
     }
@@ -592,7 +590,7 @@ export class ClientProjectileStore {
     }
     this.beamPathTargets.clear();
     this.projectileSpawns.clear();
-    this.activeProjectilePredictionIds.clear();
+    this.activeProjectileMotionIds.clear();
     this.activeBeamPathIds.clear();
     this.renderSpatialIndex.clear();
     this.renderState.clear();

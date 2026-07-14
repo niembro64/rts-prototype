@@ -27,7 +27,7 @@ export type {
   NetworkServerSnapshotResourceMovement,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotProjectileDespawn,
-  NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotMotionUpdate,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotBeamPoint,
   NetworkServerSnapshotBeamUpdate,

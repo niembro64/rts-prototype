@@ -24,7 +24,7 @@ import {
   PROJECTILE_BEAM_POINT_WIRE_STRIDE,
   PROJECTILE_BEAM_UPDATE_WIRE_STRIDE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
-  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  PROJECTILE_MOTION_WIRE_STRIDE,
   registerProjectileSnapshotWireSource,
   writeBeamPointWireRow,
   writeBeamUpdateWireRow,
@@ -48,7 +48,6 @@ function emptyLists(): ClientProjectileRenderLists {
 }
 
 type BeamTargetDebug = {
-  predictedAgeMs: number;
   points: Array<{ x: number }>;
 };
 
@@ -82,7 +81,7 @@ function projectileSnapshot(
       despawns: despawnIds !== undefined
         ? despawnIds.map((id) => ({ id }))
         : undefined,
-      velocityUpdates: undefined,
+      motionUpdates: undefined,
       beamUpdates: undefined,
     },
     gameState: undefined,
@@ -96,31 +95,32 @@ function projectileSnapshot(
   };
 }
 
-function directProjectileVelocitySnapshot(
+function directProjectileMotionSnapshot(
   tick: number,
   id: number,
   x: number,
   y: number,
-  targetEntityId: number | null,
+  angularVelocity: number,
 ): NetworkServerSnapshot {
   const snapshot = projectileSnapshot(tick, undefined);
   const projectiles = snapshot.projectiles!;
-  projectiles.velocityUpdates = [undefined as never];
+  projectiles.motionUpdates = [undefined as never];
   const source = createProjectileSnapshotWireSource();
   const rowIndex = reserveFloat64WireRows(
-    source.velocityUpdates,
+    source.motionUpdates,
     1,
-    PROJECTILE_VELOCITY_WIRE_STRIDE,
+    PROJECTILE_MOTION_WIRE_STRIDE,
   );
-  const base = rowIndex * PROJECTILE_VELOCITY_WIRE_STRIDE;
-  source.velocityUpdates.values[base + 0] = id;
-  source.velocityUpdates.values[base + 1] = qProjPos(x);
-  source.velocityUpdates.values[base + 2] = qProjPos(y);
-  source.velocityUpdates.values[base + 3] = qProjPos(35);
-  source.velocityUpdates.values[base + 4] = qVel(30);
-  source.velocityUpdates.values[base + 5] = qVel(5);
-  source.velocityUpdates.values[base + 6] = qVel(0);
-  source.velocityUpdates.values[base + 8] = targetEntityId ?? 0;
+  const base = rowIndex * PROJECTILE_MOTION_WIRE_STRIDE;
+  source.motionUpdates.values[base + 0] = id;
+  source.motionUpdates.values[base + 1] = qProjPos(x);
+  source.motionUpdates.values[base + 2] = qProjPos(y);
+  source.motionUpdates.values[base + 3] = qProjPos(35);
+  source.motionUpdates.values[base + 4] = qVel(30);
+  source.motionUpdates.values[base + 5] = qVel(5);
+  source.motionUpdates.values[base + 6] = qVel(0);
+  source.motionUpdates.values[base + 7] = qRot(0.4);
+  source.motionUpdates.values[base + 8] = qRot(angularVelocity);
   registerProjectileSnapshotWireSource(projectiles, source);
   return snapshot;
 }
@@ -250,6 +250,7 @@ function rocketSpawn(id: number, x: number, y: number) {
   spawn.sourceRootEntityId = 500;
   spawn.sourceTeamId = 1;
   spawn.fromParentDetonation = true;
+  spawn.targetEntityId = 999;
   return spawn;
 }
 
@@ -322,42 +323,42 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
   assertContract(lists.line.length === 1 && lists.line[0].id === 302, 'wide scoped query keeps beam');
   assertContract(lists.burnMark.length === 1 && lists.burnMark[0].id === 302, 'wide scoped query keeps beam burn mark');
 
-  const packedVelocitySnapshot = projectileSnapshot(2, undefined, [302]);
-  packedVelocitySnapshot.projectiles!.velocityUpdates = [{
+  const packedMotionSnapshot = projectileSnapshot(2, undefined, [302]);
+  packedMotionSnapshot.projectiles!.motionUpdates = [{
     id: 301,
     pos: { x: qProjPos(125), y: qProjPos(140), z: qProjPos(35) },
     velocity: { x: qVel(45), y: qVel(5), z: qVel(0) },
-    targetEntityId: 999,
-    clearHomingTarget: null,
+    rotation: qRot(0.4),
+    angularVelocity: qRot(0.2),
   }];
-  const packedProjectiles = packProjectilesForWire(packedVelocitySnapshot.projectiles);
+  const packedProjectiles = packProjectilesForWire(packedMotionSnapshot.projectiles);
   assertContract(packedProjectiles !== undefined, 'test projectile update must pack for wire');
-  const decodedPackedVelocitySnapshot = decodeNetworkSnapshot(msgpackEncode({
-    ...packedVelocitySnapshot,
+  const decodedPackedMotionSnapshot = decodeNetworkSnapshot(msgpackEncode({
+    ...packedMotionSnapshot,
     projectiles: packedProjectiles,
   }, { ignoreUndefined: true }));
   assertContract(
-    getPackedProjectileSnapshotWire(decodedPackedVelocitySnapshot.projectiles) !== undefined,
+    getPackedProjectileSnapshotWire(decodedPackedMotionSnapshot.projectiles) !== undefined,
     'decoded packed projectile snapshot must retain packed metadata',
   );
-  decodedPackedVelocitySnapshot.projectiles!.despawns = undefined;
-  decodedPackedVelocitySnapshot.projectiles!.velocityUpdates = undefined;
-  view.applyNetworkState(decodedPackedVelocitySnapshot);
+  decodedPackedMotionSnapshot.projectiles!.despawns = undefined;
+  decodedPackedMotionSnapshot.projectiles!.motionUpdates = undefined;
+  view.applyNetworkState(decodedPackedMotionSnapshot);
   const packedUpdatedProjectile = view.getEntity(301)?.projectile;
   assertContract(
     packedUpdatedProjectile?.homingTargetId === 999,
-    'packed projectile velocity metadata must apply without DTO velocity rows',
+    'packed projectile motion rows must not mutate the spawn homing target',
   );
   assertContract(
     view.getEntity(302) === undefined,
     'packed projectile despawn metadata must apply without DTO despawn rows',
   );
 
-  view.applyNetworkState(directProjectileVelocitySnapshot(3, 301, 145, 155, 555));
+  view.applyNetworkState(directProjectileMotionSnapshot(3, 301, 145, 155, 0.35));
   const directUpdatedProjectile = view.getEntity(301)?.projectile;
   assertContract(
-    directUpdatedProjectile?.homingTargetId === 555,
-    'direct projectile velocity wire rows must apply without DTO velocity rows',
+    directUpdatedProjectile?.homingTargetId === 999,
+    'direct projectile motion rows must not mutate the spawn homing target',
   );
 
   view.applyNetworkState(directProjectileSpawnSnapshot(3, beamSpawn(304, 300, 300)));
@@ -384,33 +385,31 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
   );
   const lineVersionAfterInitialBeamApply = view.getLineProjectileRenderVersion();
   view.applyPrediction(16);
-  const lineVersionAfterInitialBeamPrediction = view.getLineProjectileRenderVersion();
+  const lineVersionAfterInitialBeamMotion = view.getLineProjectileRenderVersion();
   assertContract(
-    lineVersionAfterInitialBeamPrediction !== lineVersionAfterInitialBeamApply,
-    'initial beam target prediction must invalidate line rendering when it snaps display points',
+    lineVersionAfterInitialBeamMotion !== lineVersionAfterInitialBeamApply,
+    'initial beam target application must invalidate line rendering when it seeds display points',
   );
   view.applyNetworkState(directBeamUpdateSnapshot(5, 304));
   assertContract(
-    view.getLineProjectileRenderVersion() === lineVersionAfterInitialBeamPrediction,
+    view.getLineProjectileRenderVersion() === lineVersionAfterInitialBeamMotion,
     'steady beam target snapshots must not invalidate line rendering before display points move',
   );
   const beamTarget = getProjectileStoreDebug(view).beamPathTargets.get(304);
   if (beamTarget === undefined) {
-    assertContract(false, 'steady beam target must remain tracked for prediction');
+    assertContract(false, 'steady authoritative beam target must remain tracked');
     return;
   }
   const authoritativeEndpointX = beamTarget.points[2].x;
   view.applyPrediction(16);
   assertContract(
-    beamTarget.points[2].x === authoritativeEndpointX &&
-      beamTarget.predictedAgeMs === 16,
-    'beam prediction must project display without mutating authoritative target points',
+    beamTarget.points[2].x === authoritativeEndpointX,
+    'beam EMA must not mutate authoritative target points',
   );
   view.applyNetworkState(directBeamUpdateSnapshot(6, 304));
   assertContract(
-    beamTarget.points[2].x === authoritativeEndpointX &&
-      beamTarget.predictedAgeMs === 0,
-    'steady beam target snapshots must reset local projection age without rewriting display state',
+    beamTarget.points[2].x === authoritativeEndpointX,
+    'steady beam target snapshots must not rewrite authoritative target state',
   );
 
   view.applyNetworkState(directProjectileSpawnSnapshot(7, beamSpawn(305, 360, 300)));
@@ -456,24 +455,24 @@ export function runClientProjectileRenderStateSlabContractTest(): void {
     'scoped projectile query must include newly spawned plasma projectile',
   );
 
-  const plasmaVelocitySnapshot = projectileSnapshot(10, undefined);
-  plasmaVelocitySnapshot.projectiles!.velocityUpdates = [{
+  const plasmaMotionSnapshot = projectileSnapshot(10, undefined);
+  plasmaMotionSnapshot.projectiles!.motionUpdates = [{
     id: 303,
     pos: { x: qProjPos(1500), y: qProjPos(1500), z: qProjPos(35) },
     velocity: { x: qVel(45), y: qVel(5), z: qVel(0) },
-    targetEntityId: null,
-    clearHomingTarget: null,
+    rotation: qRot(0.4),
+    angularVelocity: qRot(0.2),
   }];
-  view.applyNetworkState(plasmaVelocitySnapshot);
+  view.applyNetworkState(plasmaMotionSnapshot);
   view.collectProjectileRenderLists({ minX: 650, minY: 650, maxX: 750, maxY: 750 }, lists);
   assertContract(
     lists.traveling.length === 0,
-    'projectile velocity update must move the render spatial slot out of its old query bounds',
+    'projectile motion update must move the render spatial slot out of its old query bounds',
   );
   view.collectProjectileRenderLists({ minX: 1450, minY: 1450, maxX: 1550, maxY: 1550 }, lists);
   assertContract(
     lists.traveling.length === 1 && lists.traveling[0].id === 303,
-    'projectile velocity update must move the render spatial slot into its new query bounds',
+    'projectile motion update must move the render spatial slot into its new query bounds',
   );
 
   view.applyNetworkState(projectileSnapshot(11, undefined, [301, 302, 303, 304, 305]));

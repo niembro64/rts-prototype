@@ -270,6 +270,7 @@ export class ProjectileRenderer3D {
   }
 
   update(frameState: RenderFrameState3D, projectiles: readonly Entity[]): void {
+    const renderNowMs = performance.now();
     const seen = this.seenProjectileIds;
     const entitySetVersion = this.clientViewState.getEntitySetVersion();
     const scopeVersion = this.scope.getVersion();
@@ -370,7 +371,7 @@ export class ProjectileRenderer3D {
         if (finSizeMult > 0 && finCount < PROJECTILE_INSTANCED_CAP) {
           const isRocketLike = proj?.config.shotProfile.runtime.isRocketLike === true;
           const rollAngle = proj && isRocketLike
-            ? proj.timeAlive * ROCKET_FIN_ROLL_RATE_RAD_PER_MS
+            ? (renderNowMs + (e.id % 64) * 31) * ROCKET_FIN_ROLL_RATE_RAD_PER_MS
             : 0;
           // Push the fin's rear edge past the cylinder tail end so the
           // white fin tips don't z-fight with the rocket body cap.
@@ -835,10 +836,15 @@ export class ProjectileRenderer3D {
     const proj = entity.projectile;
     if (proj) {
       const vx = proj.velocityX, vy = proj.velocityY, vz = proj.velocityZ;
-      const len2 = vx * vx + vy * vy + vz * vz;
-      if (len2 > 1e-6) {
-        const inv = 1 / Math.sqrt(len2);
-        this.projDir.set(-vx * inv, -vz * inv, -vy * inv);
+      const horizontalSpeed = Math.sqrt(vx * vx + vy * vy);
+      const speed = Math.sqrt(horizontalSpeed * horizontalSpeed + vz * vz);
+      if (speed > 1e-3) {
+        const horizontalScale = horizontalSpeed / speed;
+        this.projDir.set(
+          -Math.cos(entity.transform.rotation) * horizontalScale,
+          -vz / speed,
+          -Math.sin(entity.transform.rotation) * horizontalScale,
+        );
       } else {
         this.projDir.set(
           -Math.cos(entity.transform.rotation),

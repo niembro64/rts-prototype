@@ -525,13 +525,12 @@
         not define the renderer snapshot contract under deterministic-lockstep.
       </p>
 
-      <h3>Client prediction is an explicit contract</h3>
+      <h3>Client presentation smoothing is an explicit contract</h3>
       <p>
-        The client view should continue to run smoothly whether snapshots arrive at 60 Hz, 10 Hz,
-        5 Hz, or briefly not at all. Prediction should use the same motion math as the server
-        wherever possible. The current code already points this way with shared TypeScript/WASM unit
-        motion, server targets, and drift modes. New systems should preserve that
-        shape.
+        The client view should continue to run smoothly while sampling the local lockstep
+        simulation. Presentation smoothing consumes authoritative local state; it must not run a
+        second projectile, collision, guidance, lifetime, or beam-trace simulation. Server targets
+        and the four drift modes are presentation tools, not a second source of gameplay truth.
       </p>
     </section>
 
@@ -550,8 +549,8 @@
       <ul class="rule-list">
         <li>Share physical kernels for body motion, projectile stepping, recoil, hover, turret pose, terrain sampling, and collision helpers.</li>
         <li>Run authoritative systems locally on every peer and keep them deterministic through fixed frames, deterministic math, canonical command ordering, and checksum diagnostics.</li>
-        <li>Predict visible state locally: movement, velocity, turret rotation, beam path presentation, projectile travel, and local command intent.</li>
-        <li>Use snapshots as correction targets. The client stores the most recent server target per entity. Position channels — movement position and rotation position — always apply correction by snapping or EMA-blending toward it; velocity channels — movement velocity and rotation velocity — can additionally ignore the snapshot derivative when that is useful for prediction testing. Acceleration is never shipped: the authoritative force solver lives on the host, and the client&rsquo;s prediction integrates position from the last-seen velocity rather than re-deriving server-side forces from a stale snapshot.</li>
+        <li>Smooth visible authoritative state locally: movement, velocity, rotation, turret pose, beam path presentation, and projectile motion.</li>
+        <li>Use snapshots as presentation targets. The client stores the most recent target per entity and applies movement position, movement velocity, rotation position, and rotation velocity only through their CLIENT EMA controls. Projectile targets are never advanced locally between simulation frames.</li>
       </ul>
 
       <h3>Prediction is velocity-based</h3>
@@ -625,40 +624,27 @@
           3D position of every visually rendered moving thing whose
           state travels on the wire as a continuous stream. That means
           the unit body center (<code>entity.transform.x/y/z</code>)
+          and every travelling shot body
+          (<code>entity.transform.x/y/z</code> on the projectile entity),
           and every per-vertex point along a beam
           (<code>proj.points[i].x/y/z</code>). Anything the player sees
           as "where this thing is right now" for a continuously
-          corrected entity rides on this channel. Travelling
-          projectiles (the <code>shot</code> kind, as opposed to
-          <code>ray</code> emissions) are <em>not</em> on
-          this channel &mdash; their position is event-driven, not continuously
-          corrected; see <strong>Ballistic projectiles are
-          event-driven</strong> below. The carve-out is guided homing
-          shots, whose event-installed correction targets blend on this
-          channel (see <strong>Homing guided shots blend between two real
-          trajectories</strong>).
+          corrected entity rides on this channel. Plasma, mortar, rocket,
+          missile, D-gun, reflected, and collision-spawned shots all use the
+          same channel with no shot-family exception.
         </li>
         <li>
           <strong>Movement velocity</strong> &mdash; the 3D linear
           velocity of every continuously-corrected moving thing whose
           authoritative velocity travels on the wire. That means the
           unit linear velocity (<code>entity.unit.velocityX/Y/Z</code>)
+          and travelling-shot linear velocity
+          (<code>proj.velocityX/Y/Z</code>),
           and the per-vertex tangential velocity on a beam
-          (<code>proj.points[i].vx/vy/vz</code>). These are the values
-          the client integrates forward between snapshots under
-          <code>VEL</code> prediction for unconstrained motion. Reflected
-          beam geometry is stricter: once a beam has hit a shield, the
-          reflector vertex and all later vertices are authoritative trace
-          constraints unless the client is also running the same local
-          reflection trace. Their velocities remain on the wire for
-          correction and diagnostics, but the presentation layer must not
-          independently dead-reckon those vertices through shield planes.
-          Travelling-projectile velocity
-          (<code>proj.velocityX/Y/Z</code>) is event-snapped, not on
-          this channel &mdash; except guided homing shots, whose
-          correction targets blend their velocity here too (see
-          <strong>Homing guided shots blend between two real
-          trajectories</strong>).
+          (<code>proj.points[i].vx/vy/vz</code>). These derivatives are
+          authoritative targets for smoothing and diagnostics. The
+          presentation layer does not integrate projectile or beam-point
+          position from them.
         </li>
         <li>
           <strong>Rotation position</strong> &mdash; the orientation of
@@ -668,7 +654,8 @@
           body orientation quaternion
           (<code>entity.unit.orientation.{x,y,z,w}</code>), and each
           turret's yaw and pitch
-          (<code>weapon.rotation</code>, <code>weapon.pitch</code>).
+          (<code>weapon.rotation</code>, <code>weapon.pitch</code>), plus
+          travelling-shot yaw (<code>entity.transform.rotation</code>).
         </li>
         <li>
           <strong>Rotation velocity</strong> &mdash; the angular rate
@@ -678,9 +665,8 @@
           (<code>entity.unit.angularVelocity3.{x,y,z}</code>), each
           turret's yaw rate (<code>weapon.angularVelocity</code>), and
           each turret's pitch rate
-          (<code>weapon.pitchVelocity</code>). These are the
-          derivatives the client integrates while drifting toward the
-          rotation-position target.
+          (<code>weapon.pitchVelocity</code>), plus travelling-shot yaw
+          rate (<code>proj.angularVelocity</code>).
         </li>
       </ul>
       <p>
@@ -715,30 +701,21 @@
         puts an actual rotation target on the wire.
       </p>
 
-      <h3>Ballistic projectiles are event-driven</h3>
+      <h3>Travelling shots use authoritative motion streams</h3>
       <p>
-        Travelling projectiles (the <code>shot</code> kind: plasma, rockets, missiles,
-        D-gun waves) are deliberately <em>excluded</em> from the continuous
-        per-snapshot correction stream the movement EMA channels exist for.
-        Their trajectory between discrete events is fully deterministic from
-        starting conditions plus the universal gravity constant plus
-        per-shot thrust (homing, terrain-follow), and the client and
-        server run the same kernel against the same inputs. There is
-        no continuous server/client divergence for the EMA to correct.
-        (Rocket- and missile-like homing shots re-enter the movement channels at their
-        discrete correction events &mdash; see <strong>Homing guided shots blend
-        between two real trajectories</strong> below &mdash; but no
-        projectile is continuously corrected per snapshot.)
+        Every peer already runs the authoritative projectile simulation inside
+        deterministic lockstep. The renderer must not reproduce that simulation.
+        Every live travelling shot &mdash; plasma, mortar, rocket, missile, D-gun,
+        reflected, or collision-spawned &mdash; publishes its final post-collision
+        position, linear velocity, yaw, and yaw rate once per fixed simulation tick.
+        All shot families install the same four-channel presentation target.
       </p>
       <p>
-        Accordingly, the wire format carries no per-snapshot rolling
-        state for projectiles. Every server-to-client message about a
-        travelling projectile is a discrete authoritative event: a
-        spawn (initial position, velocity, type), a
-        homing course correction (a <code>velocityUpdate</code> with
-        the new post-event pos + velocity), or a despawn. Between
-        events, the client dead-reckons under gravity + per-shot
-        thrust with no correction loop.
+        Spawn and despawn remain discrete lifecycle events. While a shot is live,
+        its motion row is continuous local presentation state. The renderer applies
+        MOV POS, MOV VEL, ROT POS, and ROT VEL exactly as selected in the CLIENT
+        bottom bar and does nothing else: no gravity, propulsion, homing, terrain
+        following, collision, lifetime advancement, or local deletion.
       </p>
 
       <h3>Launch frames are explicit</h3>
@@ -756,54 +733,26 @@
         spawn event by adding the mount center's current world velocity:
         <code>v_world = v_mount + v_launch_relative</code>. The same world
         velocity is written onto the projectile body and into the spawn
-        event, so server simulation, client prediction, and rendering all
+        event, so simulation and rendering both
         start from one physical initial condition. A projectile fired from a
         moving tank, aircraft, bobbing suspension mount, or recoil-shifted
         turret therefore inherits that mount motion at launch.
       </p>
       <p>
-        Vertical tube launchers are not an exception to inheritance. Their
-        authored launch vector is vertical in the turret's own frame, so a
-        rocket exits the tube straight up relative to the launcher; in world
-        space it still carries the moving launcher velocity. D-gun terrain
-        waves are the narrow authored exception: they inherit horizontal
-        mount motion but suppress vertical mount velocity so a
-        terrain-following wave does not become a lobbed ballistic shell.
+        Launch inheritance is an explicit turret-blueprint policy through
+        <code>addTurretVelocityToEmissionLaunch</code>. A vertical tube launcher
+        can disable it so the authored launch vector remains exactly vertical in
+        world space, or enable it so the shot carries mount motion. D-gun terrain
+        waves remain specialized: their launch path suppresses vertical mount
+        velocity so a terrain-following wave does not become a lobbed shell.
       </p>
+      <h3>Shot families share one presentation policy</h3>
       <p>
-        For non-homing shots &mdash; plasma bolts, D-gun waves &mdash; when a
-        <code>velocityUpdate</code> arrives, the client
-        <em>snaps</em> <code>entity.transform.x/y/z</code> and
-        <code>proj.velocityX/Y/Z</code> directly to the event's
-        values and never populates a drift target. EMA-blending toward
-        a step function would produce a smoothing ramp through
-        coordinate space that does not correspond to any real
-        trajectory &mdash; visible as wiggle in
-        the curved-cone tail after a course correction, because the tail stamps freeze a record
-        of wherever the predicted head actually was. Snapping makes
-        the discontinuity instantaneous: subsequent dead-reckon stamps
-        land on the true post-event trajectory and the tail after a
-        course correction is as clean as the tail behind a fresh shot.
-      </p>
-
-      <h3>Homing guided shots blend between two real trajectories</h3>
-      <p>
-        Rocket- and missile-like homing shots are the one exception to the pure snap, and
-        the exception preserves the rule&rsquo;s reasoning instead of ignoring
-        it. A homing guided shot&rsquo;s course corrections arrive frequently
-        enough that hard snaps read as teleporting rather than steering. So a
-        guided shot&rsquo;s <code>velocityUpdate</code> installs a correction
-        <em>target</em> instead of overwriting the rendered state, and every
-        frame the client advances <em>both</em> the rendered projectile and that
-        target with the same gravity + homing + terrain-follow kernel,
-        EMA-blending the rendered state toward the target on the movement
-        position and movement velocity channels. Because the target itself
-        dead-reckons under the deterministic kernel, the blend is between two
-        real trajectories &mdash; never a ramp toward a stale step function,
-        which is exactly what the snap rule forbids &mdash; and the target is
-        released once the rendered state settles onto it. Plasma and D-gun
-        shots keep the pure snap: their corrections are rare and
-        discontinuous, which is the case snapping exists for.
+        Homing is not a presentation exception. A delayed-guidance rocket and a
+        ballistic plasma bolt both receive the same authoritative row at the same
+        point in the fixed tick. Reflections are also represented by the final row;
+        their unquantized impact audio may add an exact trail stamp, but it may not
+        bypass the four EMA controls for the projectile body.
       </p>
 
       <h3>Rockets and missiles are separate guided shot policies</h3>
@@ -837,28 +786,12 @@
         and point-defense/reflection treatment, but their motion policy is
         missile-specific constant-speed steering.
       </p>
-      <p>
-        This generalises: any field whose authoritative evolution
-        between events is fully reproducible from a known starting
-        state under a deterministic kernel should be snapped on the
-        events and dead-reckoned between them, not low-pass filtered
-        toward a sparse target. EMA is the right answer for genuine
-        continuous mismatch (unit physics, contacts, action latency);
-        it is the wrong answer for known step functions in
-        deterministic state.
-      </p>
-
-      <h3>Rendering samples prediction</h3>
+      <h3>Rendering samples authoritative presentation state</h3>
       <p>
         Rendering should not own simulation cadence. <code>requestAnimationFrame</code> is a display
-        scheduler, not a simulation clock. The client prediction loop can run at a fixed or
-        semi-fixed timestep, while the renderer samples the latest predicted state every frame and
-        performs render-time interpolation. If the browser renders at 144 Hz, 60 Hz, 37 Hz, or is
-        briefly tab-throttled, the prediction contract should stay coherent.
-      </p>
-      <p>
-        This split keeps the browser responsive and keeps future options open. The prediction loop
-        can move toward Rust/WASM and a worker without rewriting the renderer.
+        scheduler, not a simulation clock. It samples the latest EMA-smoothed authoritative target;
+        it never advances projectile gameplay state. If the browser renders at 144 Hz, 60 Hz,
+        37 Hz, or is briefly tab-throttled, the simulation contract stays unchanged.
       </p>
     </section>
 
@@ -2021,9 +1954,9 @@
       <p>
         This unifies &ldquo;the projectile hit the dirt,&rdquo; &ldquo;two rounds collided,&rdquo; and
         &ldquo;a flak turret shot the missile down&rdquo; into one rule: a shot is a body with health,
-        and zero health detonates it. Travelling shots remain event-driven on the wire &mdash; spawn,
-        course-correction, despawn &mdash; per <strong>Ballistic projectiles are event-driven</strong>;
-        the detonation is just one more discrete event. This applies to <code>shot</code> emissions
+        and zero health detonates it. Travelling shots publish continuous authoritative motion while
+        live, with discrete spawn and despawn lifecycle events, per
+        <strong>Travelling shots use authoritative motion streams</strong>. This applies to <code>shot</code> emissions
         only: a <code>ray</code> is not a body, carries no health, and is
         never &ldquo;shot down&rdquo; &mdash; it simply stops when its turret stops sustaining it.
       </p>
@@ -3291,12 +3224,12 @@
       <h2>What New Code Should Optimize For</h2>
       <ul class="rule-list">
         <li>Keep the authoritative sim headless and portable. It should not depend on DOM, Vue, or Three.js.</li>
-        <li>Describe shared physical behavior once, then reuse it from both server authority and client prediction.</li>
-        <li>Keep the client prediction sim bounded to responsiveness and presentation unless a full-system prediction need is proven.</li>
+        <li>Describe physical behavior once in the authoritative simulation; presentation consumes its outputs instead of reproducing gameplay systems.</li>
+        <li>Keep client motion work bounded to presentation smoothing. Travelling shots and ray paths never run a second gameplay simulation in the renderer.</li>
         <li>Keep rendering decoupled from simulation cadence; <code>requestAnimationFrame</code> samples state, it does not define truth.</li>
         <li>Keep commands small, direct, validated, and host-owned.</li>
         <li>Keep presentation snapshots full-state, recipient-aware, and bounded in cadence by default.</li>
-        <li>Keep client prediction physically compatible with the server, especially for motion and projectiles. Ship velocity, not acceleration: the server owns force inputs, the wire ships their integrated result, and the client extrapolates from velocity only.</li>
+        <li>Ship authoritative position, velocity, rotation, and angular velocity for every live travelling shot each fixed tick. The client applies only the four EMA channels and never extrapolates projectile state.</li>
         <li>Expose the per-channel EMA controls (movement position, movement velocity, rotation position, rotation velocity). Position channels use snap/fast/medium/slow; velocity channels additionally allow ignore so playtesters can tune each channel independently without rebuilds.</li>
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>

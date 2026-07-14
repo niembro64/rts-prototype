@@ -1621,7 +1621,6 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   const projectileComponent = projectile.projectile;
   if (projectileComponent !== null) {
     projectileComponent.velocityZ = velocityZ;
-    projectileComponent.lastSentVelZ = velocityZ;
   }
   const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
 

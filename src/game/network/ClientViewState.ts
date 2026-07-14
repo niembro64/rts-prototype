@@ -1,10 +1,11 @@
 /**
  * ClientViewState - Manages the "client view" of the game state
  *
- * Uses EMA (Exponential Moving Average) + DEAD RECKONING for smooth rendering:
+ * Uses presentation smoothing for authoritative simulation state:
  * - On snapshot: store server's authoritative state as "targets"
- * - Every frame: predict from last-seen velocity, then drift toward server targets
- * - Smooth at any snapshot rate, from 1/sec to 60/sec
+ * - Units retain their established visual dead-reckoning path
+ * - Projectiles only EMA toward authoritative position, velocity, rotation,
+ *   and angular velocity; they do not run local projectile simulation
  */
 
 import type {
@@ -130,7 +131,7 @@ import {
 } from './stateSerializerEntities';
 import {
   forEachPackedProjectileDespawn,
-  forEachPackedProjectileVelocityUpdate,
+  forEachPackedProjectileMotionUpdate,
   getPackedProjectileSnapshotWire,
 } from './snapshotProjectileWirePack';
 import {
@@ -143,7 +144,7 @@ import {
   PROJECTILE_SPAWN_FLAG_FROM_PARENT_TRUE,
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
   PROJECTILE_SPAWN_WIRE_STRIDE,
-  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  PROJECTILE_MOTION_WIRE_STRIDE,
   projectileWireSourceHasDirectlyConsumableRows,
   type ProjectileSnapshotWireSource,
 } from './stateSerializerProjectiles';
@@ -469,13 +470,12 @@ export class ClientViewState {
       projectileSpawns: this.projectileStore.projectileSpawns,
       predictionCadence: this.predictionCadence,
       activeEntityPredictionIds: this.activeEntityPredictionIds,
-      activeProjectilePredictionIds: this.projectileStore.activeProjectilePredictionIds,
+      activeProjectileMotionIds: this.projectileStore.activeProjectileMotionIds,
       activeBeamPathIds: this.projectileStore.activeBeamPathIds,
       dirtyUnitRenderIds: this.dirtyUnitRenderIds,
       supportSurfaceEntities: this.predictionSupportSurfaceEntities,
       getMapWidth: () => this.mapWidth,
       getMapHeight: () => this.mapHeight,
-      getWind: () => this.serverMeta?.wind,
       getServerShieldsEnabled: () => {
         const serverMeta = this.serverMeta;
         return (
@@ -490,7 +490,6 @@ export class ClientViewState {
         this.turretShieldSpheresEnabledForPrediction = enabled;
       },
       applyProjectileSpawn: (spawn) => this.projectileStore.applySpawn(spawn),
-      deleteEntityLocalState: (id) => this.deleteEntityLocalState(id),
       markLineProjectilesChanged: () => this.projectileStore.markLineProjectilesChanged(),
       updateProjectileRenderSpatialIndex: (entity) => this.projectileStore.updateRenderSpatialIndex(entity),
       markBeamHostRenderDirty: (beamEntity) => this.markBeamHostRenderDirty(beamEntity),
@@ -580,7 +579,7 @@ export class ClientViewState {
     return ids.size > 0 ? ids : null;
   }
 
-  private writeRocketVelocityTarget(
+  private writeProjectileMotionTarget(
     id: EntityId,
     x: number,
     y: number,
@@ -588,13 +587,15 @@ export class ClientViewState {
     velocityX: number,
     velocityY: number,
     velocityZ: number,
+    rotation: number,
+    angularVelocity: number,
     now: number,
   ): void {
     const target = this.getOrCreateServerTarget(id);
     target.x = x;
     target.y = y;
     target.z = z;
-    target.rotation = Math.atan2(velocityY, velocityX);
+    target.rotation = rotation;
     target.velocityX = velocityX;
     target.velocityY = velocityY;
     target.velocityZ = velocityZ;
@@ -606,12 +607,12 @@ export class ClientViewState {
     target.orientation = null;
     target.angularVelocityX = null;
     target.angularVelocityY = null;
-    target.angularVelocityZ = null;
+    target.angularVelocityZ = angularVelocity;
     resizeServerTargetTurrets(target, 0);
     target.updatedAtMs = now;
   }
 
-  private applyProjectileVelocityUpdateFields(
+  private applyProjectileMotionUpdateFields(
     id: EntityId,
     qposX: number,
     qposY: number,
@@ -619,10 +620,9 @@ export class ClientViewState {
     qvelX: number,
     qvelY: number,
     qvelZ: number,
-    targetEntityId: EntityId | null,
-    clearHomingTarget: boolean,
+    qrotation: number,
+    qangularVelocity: number,
     now: number,
-    reflectedProjectileIds: Set<EntityId> | null,
   ): void {
     const entity = this.entities.get(id);
     if (entity === undefined || entity.projectile === null) return;
@@ -633,30 +633,19 @@ export class ClientViewState {
     const velocityX = deqVel(qvelX);
     const velocityY = deqVel(qvelY);
     const velocityZ = deqVel(qvelZ);
-    const shouldSmoothRocket =
-      entity.projectile.config.shotProfile.runtime.isRocketLike === true &&
-      (reflectedProjectileIds === null || !reflectedProjectileIds.has(id));
-    if (shouldSmoothRocket) {
-      this.writeRocketVelocityTarget(id, x, y, z, velocityX, velocityY, velocityZ, now);
-    } else {
-      entity.transform.x = x;
-      entity.transform.y = y;
-      entity.transform.z = z;
-      entity.projectile.velocityX = velocityX;
-      entity.projectile.velocityY = velocityY;
-      entity.projectile.velocityZ = velocityZ;
-      this.serverTargets.delete(id);
-    }
-    if (targetEntityId !== null) {
-      entity.projectile.homingTargetId = targetEntityId;
-    } else if (clearHomingTarget) {
-      entity.projectile.homingTargetId = NO_ENTITY_ID;
-    }
-    if (shouldSmoothRocket) {
-      this.projectileStore.markVelocityTargetUpdateActive(entity, id);
-    } else {
-      this.projectileStore.markVelocityUpdateActive(entity, id);
-    }
+    this.writeProjectileMotionTarget(
+      id,
+      x,
+      y,
+      z,
+      velocityX,
+      velocityY,
+      velocityZ,
+      deqRot(qrotation),
+      deqRot(qangularVelocity),
+      now,
+    );
+    this.projectileStore.markMotionTargetUpdateActive(entity, id);
   }
 
   private applyProjectileWireSourceDespawns(
@@ -704,19 +693,17 @@ export class ClientViewState {
     return true;
   }
 
-  private applyProjectileWireSourceVelocityUpdates(
+  private applyProjectileWireSourceMotionUpdates(
     source: ProjectileSnapshotWireSource | undefined,
     now: number,
-    reflectedProjectileIds: Set<EntityId> | null,
   ): boolean {
     if (source === undefined) return false;
-    const rows = source.velocityUpdates;
+    const rows = source.motionUpdates;
     if (rows.count === 0) return false;
     const values = rows.values;
     for (let i = 0; i < rows.count; i++) {
-      const base = i * PROJECTILE_VELOCITY_WIRE_STRIDE;
-      const targetEntityId = values[base + 8];
-      this.applyProjectileVelocityUpdateFields(
+      const base = i * PROJECTILE_MOTION_WIRE_STRIDE;
+      this.applyProjectileMotionUpdateFields(
         values[base + 0] as EntityId,
         values[base + 1],
         values[base + 2],
@@ -724,10 +711,9 @@ export class ClientViewState {
         values[base + 4],
         values[base + 5],
         values[base + 6],
-        targetEntityId > 0 ? targetEntityId as EntityId : null,
-        values[base + 7] !== 0,
+        values[base + 7],
+        values[base + 8],
         now,
-        reflectedProjectileIds,
       );
     }
     return true;
@@ -891,7 +877,7 @@ export class ClientViewState {
     } else if (entity.building && entity.combat !== null && entity.combat.turrets.length > 0) {
       this.activeEntityPredictionIds.add(entity.id);
     } else if (entity.projectile && !isLineProjectileEntity(entity)) {
-      this.projectileStore.activeProjectilePredictionIds.add(entity.id);
+      this.projectileStore.activeProjectileMotionIds.add(entity.id);
     }
   }
 
@@ -3445,20 +3431,13 @@ export class ClientViewState {
         projectileSubstageStart,
       );
 
-      // Process projectile velocity updates. Shield reflections are hard
-      // topology events and still snap so the trail kink stays exact. Rocket
-      // course corrections become EMA targets: the render-side projectile
-      // keeps dead-reckoning, while ClientProjectilePrediction advances the
-      // target and drifts position + velocity toward it each frame.
-      const appliedDirectVelocityUpdates = directProjectileRows
-        ? this.applyProjectileWireSourceVelocityUpdates(
-            directProjectileSource,
-            now,
-            reflectedProjectileIds,
-          )
+      // Every traveling shot receives the same authoritative four-channel
+      // motion target; the render step only applies the CLIENT EMA settings.
+      const appliedDirectMotionUpdates = directProjectileRows
+        ? this.applyProjectileWireSourceMotionUpdates(directProjectileSource, now)
         : false;
-      const appliedPackedVelocityUpdates = !appliedDirectVelocityUpdates && packedProjectiles !== undefined
-        ? forEachPackedProjectileVelocityUpdate(
+      const appliedPackedMotionUpdates = !appliedDirectMotionUpdates && packedProjectiles !== undefined
+        ? forEachPackedProjectileMotionUpdate(
             packedProjectiles,
             (
               id,
@@ -3468,9 +3447,9 @@ export class ClientViewState {
               qvelX,
               qvelY,
               qvelZ,
-              targetEntityId,
-              clearHomingTarget,
-            ) => this.applyProjectileVelocityUpdateFields(
+              qrotation,
+              qangularVelocity,
+            ) => this.applyProjectileMotionUpdateFields(
               id as EntityId,
               qposX,
               qposY,
@@ -3478,19 +3457,18 @@ export class ClientViewState {
               qvelX,
               qvelY,
               qvelZ,
-              targetEntityId as EntityId | null,
-              clearHomingTarget,
+              qrotation,
+              qangularVelocity,
               now,
-              reflectedProjectileIds,
             ),
           )
         : false;
-      const velocityUpdates = appliedDirectVelocityUpdates || appliedPackedVelocityUpdates
+      const motionUpdates = appliedDirectMotionUpdates || appliedPackedMotionUpdates
         ? undefined
-        : projectiles.velocityUpdates;
-      if (velocityUpdates !== undefined && velocityUpdates !== null) {
-        for (const vu of velocityUpdates) {
-          this.applyProjectileVelocityUpdateFields(
+        : projectiles.motionUpdates;
+      if (motionUpdates !== undefined && motionUpdates !== null) {
+        for (const vu of motionUpdates) {
+          this.applyProjectileMotionUpdateFields(
             vu.id,
             vu.pos.x,
             vu.pos.y,
@@ -3498,17 +3476,16 @@ export class ClientViewState {
             vu.velocity.x,
             vu.velocity.y,
             vu.velocity.z,
-            vu.targetEntityId,
-            vu.clearHomingTarget === true,
+            vu.rotation,
+            vu.angularVelocity,
             now,
-            reflectedProjectileIds,
           );
         }
       }
       recordClientApplySubstage(
         state,
         collectMaterializationStages,
-        'clientApplyProjectileVelocity',
+        'clientApplyProjectileMotion',
         projectileSubstageStart,
       );
     }
@@ -3548,12 +3525,9 @@ export class ClientViewState {
 
     // Stash the exact shield / shield-panel contact point on the
     // reflected projectile so the curved-cone tail renderer can insert
-    // it as a forced trail stamp on the next frame. The velocityUpdate
-    // above already snapped the head to one-tick-past-bounce; this puts
-    // the actual bounce point on the projectile so the trail kinks
-    // exactly at the shield surface instead of one tick past it. Reflection
-    // velocity updates still snap above; ordinary rocket corrections use an
-    // EMA target instead. Audio event pos is unquantized f64.
+    // it as a forced trail stamp on the next frame. Projectile body motion
+    // still follows the same four EMA channels as every other shot. Audio
+    // event position is unquantized f64.
     const audioEventsForReflection = this.pendingAudioEvents;
     if (
       reflectedProjectileIds !== null &&
@@ -3628,9 +3602,8 @@ export class ClientViewState {
   }
 
   /**
-   * Called every frame. Two steps:
-   * 1. Predict: advance positions from last-seen velocity
-   * 2. Drift: EMA blend position/velocity/rotation toward server targets
+   * Called every frame. Unit visuals may dead-reckon; projectile visuals only
+   * EMA their four authoritative motion channels toward the latest target.
    */
   applyPrediction(deltaMs: number): ClientPredictionTargetAgeStats {
     const stats = this.predictionStepper.apply(deltaMs);

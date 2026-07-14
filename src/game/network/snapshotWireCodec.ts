@@ -303,7 +303,7 @@ function unpackNetworkSnapshotFromWire(
       options.packedProjectileDeltas === 'metadata-only'
         ? {
             materializeDespawns: false,
-            materializeVelocityUpdates: false,
+            materializeMotionUpdates: false,
             materializeBeamUpdates: false,
           }
         : undefined,
@@ -406,7 +406,7 @@ function measureProjectileBreakdown(
 
   addPairBytes(sections, 'projectiles.spawns', 'spawns', projectiles.spawns);
   addPairBytes(sections, 'projectiles.despawns', 'despawns', projectiles.despawns);
-  addPairBytes(sections, 'projectiles.velocityUpdates', 'velocityUpdates', projectiles.velocityUpdates);
+  addPairBytes(sections, 'projectiles.motionUpdates', 'motionUpdates', projectiles.motionUpdates);
   addPairBytes(sections, 'projectiles.beamUpdates', 'beamUpdates', projectiles.beamUpdates);
 
   const spawns = projectiles.spawns;
@@ -438,7 +438,7 @@ function measurePackedProjectileBreakdown(
     addPairBytes(sections, 'projectiles.despawnsPacked', 'd', projectiles.d);
   }
   if (projectiles.u !== undefined) {
-    addPairBytes(sections, 'projectiles.velocityUpdatesPacked', 'u', projectiles.u);
+    addPairBytes(sections, 'projectiles.motionUpdatesPacked', 'u', projectiles.u);
   }
   if (projectiles.b !== undefined) {
     addPairBytes(sections, 'projectiles.beamUpdatesPacked', 'b', projectiles.b);

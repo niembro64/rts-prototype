@@ -3349,9 +3349,9 @@ export interface SnapshotEncodeApi {
    *  entries from the minimap scratch and writes the compact binary
    *  wire shape used by snapshotMinimapWirePack.ts. */
   emitPackedMinimap: (count: number) => number;
-  /** Emit `projectiles: { spawns?, despawns?, velocityUpdates?,
+  /** Emit `projectiles: { spawns?, despawns?, motionUpdates?,
    *  beamUpdates? }`. Reads spawn DTOs from projSpawnScratch (32 f64
-   *  each), despawn ids from projDespawnScratch, velocity-update
+   *  each), despawn ids from projDespawnScratch, motion-update
    *  tuples from projVelScratch (9 f64 each), beam-update headers
    *  from beamUpdateScratch (4 f64 each, with point_count[3] driving
    *  the per-update slice of beamPointScratch (12 f64 each)). */
@@ -3360,8 +3360,8 @@ export interface SnapshotEncodeApi {
     spawnCount: number,
     hasDespawns: number,
     despawnCount: number,
-    hasVelocityUpdates: number,
-    velocityUpdateCount: number,
+    hasMotionUpdates: number,
+    motionUpdateCount: number,
     hasBeamUpdates: number,
     beamUpdateCount: number,
   ) => void;
@@ -3373,8 +3373,8 @@ export interface SnapshotEncodeApi {
     spawnCount: number,
     hasDespawns: number,
     despawnCount: number,
-    hasVelocityUpdates: number,
-    velocityUpdateCount: number,
+    hasMotionUpdates: number,
+    motionUpdateCount: number,
     hasBeamUpdates: number,
     beamUpdateCount: number,
     beamPointCount: number,
@@ -3596,9 +3596,9 @@ export interface SnapshotEncodeApi {
   projSpawnScratchEnsure: (count: number) => void;
   /** Stride per proj-spawn entry (f64 count). */
   readonly projSpawnScratchStride: number;
-  /** Raw pointer to the projectile-velocity-update scratch
+  /** Raw pointer to the projectile-motion-update scratch
    *  (Float64Array, 9 f64 per entry: id, pos.x/y/z, vel.x/y/z,
-   *  clearHomingTarget flag, targetEntityId). */
+   *  rotation, angularVelocity). */
   projVelScratchPtr: () => number;
   /** Pre-grow the proj-vel scratch to hold `count` entries. */
   projVelScratchEnsure: (count: number) => void;
@@ -4620,6 +4620,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientServerTargetStoreContractTest();
         const { runClientUnitPredictionContractTest } = await import('../network/ClientUnitPredictionContractTest');
         runClientUnitPredictionContractTest();
+        const { runClientProjectileMotionContractTest } = await import('../network/ClientProjectileMotionContractTest');
+        runClientProjectileMotionContractTest();
         const { runSnapshotVisibilityContractTest } = await import('../network/SnapshotVisibilityContractTest');
         runSnapshotVisibilityContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');

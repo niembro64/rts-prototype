@@ -3,7 +3,7 @@ import type {
   NetworkServerSnapshotBeamPoint,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotProjectileSpawn,
-  NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotMotionUpdate,
 } from './NetworkTypes';
 import {
   PROJECTILE_BEAM_POINT_WIRE_STRIDE,
@@ -30,7 +30,7 @@ import {
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_BLUEPRINT_CODE,
   PROJECTILE_SPAWN_FLAG_SOURCE_TURRET_ENTITY_ID,
   PROJECTILE_SPAWN_FLAG_TARGET_ENTITY_ID,
-  PROJECTILE_VELOCITY_WIRE_STRIDE,
+  PROJECTILE_MOTION_WIRE_STRIDE,
   createProjectileSnapshotWireSource,
   getActiveProjectileSnapshotWireSource,
   registerProjectileSnapshotWireSource,
@@ -54,15 +54,13 @@ type PlayerId = NetworkServerSnapshotBeamPoint['reflectorPlayerId'];
 
 const PACKED_PROJECTILES_VERSION = 1;
 
-const VELOCITY_FLAG_CLEAR_HOMING = 0x01;
-const VELOCITY_FLAG_TARGET_ENTITY_ID = 0x02;
 const packedProjectileWireByDto = new WeakMap<object, PackedProjectileSnapshotWire>();
 
 function createEmptyProjectileSnapshot(): ProjectileSnapshot {
   return {
     spawns: undefined,
     despawns: undefined,
-    velocityUpdates: undefined,
+    motionUpdates: undefined,
     beamUpdates: undefined,
   };
 }
@@ -77,7 +75,7 @@ export type PackedProjectileSnapshotWire = {
 
 export type PackedProjectileUnpackOptions = {
   materializeDespawns?: boolean;
-  materializeVelocityUpdates?: boolean;
+  materializeMotionUpdates?: boolean;
   materializeBeamUpdates?: boolean;
 };
 
@@ -100,8 +98,8 @@ export function packProjectilesForWire(
     ? packProjectileDespawnsFromSource(source)
     : packProjectileDespawns(projectiles.despawns);
   const velocityBytes = source !== undefined
-    ? packProjectileVelocityUpdatesFromSource(source)
-    : packProjectileVelocityUpdates(projectiles.velocityUpdates);
+    ? packProjectileMotionUpdatesFromSource(source)
+    : packProjectileMotionUpdates(projectiles.motionUpdates);
   const beamBytes = source !== undefined
     ? packBeamUpdatesFromSource(source)
     : packBeamUpdates(projectiles.beamUpdates);
@@ -125,7 +123,7 @@ export function unpackProjectilesFromWire(
   const projectiles = createEmptyProjectileSnapshot();
   const spawns = packed.s !== undefined ? unpackProjectileSpawns(packed.s) : undefined;
   const materializeDespawns = options.materializeDespawns !== false;
-  const materializeVelocityUpdates = options.materializeVelocityUpdates !== false;
+  const materializeMotionUpdates = options.materializeMotionUpdates !== false;
   const materializeBeamUpdates = options.materializeBeamUpdates !== false;
   let decodedWireSource: ProjectileSnapshotWireSource | undefined;
   const ensureDecodedWireSource = (): ProjectileSnapshotWireSource => {
@@ -140,11 +138,11 @@ export function unpackProjectilesFromWire(
   if (packed.d !== undefined && !materializeDespawns) {
     unpackProjectileDespawnsIntoWireSource(packed.d, ensureDecodedWireSource());
   }
-  const velocityUpdates = packed.u !== undefined && materializeVelocityUpdates
-    ? unpackProjectileVelocityUpdates(packed.u)
+  const motionUpdates = packed.u !== undefined && materializeMotionUpdates
+    ? unpackProjectileMotionUpdates(packed.u)
     : undefined;
-  if (packed.u !== undefined && !materializeVelocityUpdates) {
-    unpackProjectileVelocityUpdatesIntoWireSource(packed.u, ensureDecodedWireSource());
+  if (packed.u !== undefined && !materializeMotionUpdates) {
+    unpackProjectileMotionUpdatesIntoWireSource(packed.u, ensureDecodedWireSource());
   }
   const beamUpdates = packed.b !== undefined && materializeBeamUpdates
     ? unpackBeamUpdates(packed.b)
@@ -154,7 +152,7 @@ export function unpackProjectilesFromWire(
   }
   if (spawns !== undefined) projectiles.spawns = spawns;
   if (despawns !== undefined) projectiles.despawns = despawns;
-  if (velocityUpdates !== undefined) projectiles.velocityUpdates = velocityUpdates;
+  if (motionUpdates !== undefined) projectiles.motionUpdates = motionUpdates;
   if (beamUpdates !== undefined) projectiles.beamUpdates = beamUpdates;
   if (decodedWireSource !== undefined) {
     registerProjectileSnapshotWireSource(projectiles, decodedWireSource);
@@ -632,15 +630,15 @@ export function forEachPackedProjectileDespawn(
   return true;
 }
 
-type VelocityGroup = {
+type MotionGroup = {
   flags: number;
   writer: PackedBinaryWriter;
   count: number;
   lastId: number;
 };
 
-function packProjectileVelocityUpdates(
-  updates: readonly NetworkServerSnapshotVelocityUpdate[] | undefined,
+function packProjectileMotionUpdates(
+  updates: readonly NetworkServerSnapshotMotionUpdate[] | undefined,
 ): Uint8Array | undefined {
   if (updates === undefined) return undefined;
   if (updates.length === 0) {
@@ -650,14 +648,13 @@ function packProjectileVelocityUpdates(
     return empty.finishBytes();
   }
 
-  const groups: VelocityGroup[] = [];
-  const groupsByFlags: (VelocityGroup | undefined)[] = [];
-  const estimatedPerRow = 9;
+  const groups: MotionGroup[] = [];
+  const groupsByFlags: (MotionGroup | undefined)[] = [];
+  const estimatedPerRow = 12;
 
   for (let i = 0; i < updates.length; i++) {
     const update = updates[i];
-    let flags = update.clearHomingTarget === true ? VELOCITY_FLAG_CLEAR_HOMING : 0;
-    if (update.targetEntityId !== null) flags |= VELOCITY_FLAG_TARGET_ENTITY_ID;
+    const flags = 0;
     let group = groupsByFlags[flags];
     if (group === undefined) {
       group = {
@@ -677,9 +674,8 @@ function packProjectileVelocityUpdates(
     group.writer.writeVarInt(update.velocity.x);
     group.writer.writeVarInt(update.velocity.y);
     group.writer.writeVarInt(update.velocity.z);
-    if ((flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0) {
-      group.writer.writeVarUint(update.targetEntityId ?? 0);
-    }
+    group.writer.writeVarInt(update.rotation);
+    group.writer.writeVarInt(update.angularVelocity);
     group.count++;
   }
 
@@ -702,21 +698,20 @@ function packProjectileVelocityUpdates(
   return out.finishBytes();
 }
 
-function packProjectileVelocityUpdatesFromSource(
+function packProjectileMotionUpdatesFromSource(
   source: ProjectileSnapshotWireSource,
 ): Uint8Array | undefined {
-  const rows = source.velocityUpdates;
+  const rows = source.motionUpdates;
   if (rows.count === 0) return undefined;
 
-  const values = activeFloat64WireValues(rows, PROJECTILE_VELOCITY_WIRE_STRIDE);
-  const groups: VelocityGroup[] = [];
-  const groupsByFlags: (VelocityGroup | undefined)[] = [];
-  const estimatedPerRow = 9;
+  const values = activeFloat64WireValues(rows, PROJECTILE_MOTION_WIRE_STRIDE);
+  const groups: MotionGroup[] = [];
+  const groupsByFlags: (MotionGroup | undefined)[] = [];
+  const estimatedPerRow = 12;
 
   for (let i = 0; i < rows.count; i++) {
-    const base = i * PROJECTILE_VELOCITY_WIRE_STRIDE;
-    let flags = values[base + 7] !== 0 ? VELOCITY_FLAG_CLEAR_HOMING : 0;
-    if ((values[base + 8] ?? 0) !== 0) flags |= VELOCITY_FLAG_TARGET_ENTITY_ID;
+    const base = i * PROJECTILE_MOTION_WIRE_STRIDE;
+    const flags = 0;
     let group = groupsByFlags[flags];
     if (group === undefined) {
       group = {
@@ -737,9 +732,8 @@ function packProjectileVelocityUpdatesFromSource(
     group.writer.writeVarInt(values[base + 4] ?? 0);
     group.writer.writeVarInt(values[base + 5] ?? 0);
     group.writer.writeVarInt(values[base + 6] ?? 0);
-    if ((flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0) {
-      group.writer.writeVarUint(values[base + 8] ?? 0);
-    }
+    group.writer.writeVarInt(values[base + 7] ?? 0);
+    group.writer.writeVarInt(values[base + 8] ?? 0);
     group.count++;
   }
 
@@ -762,22 +756,22 @@ function packProjectileVelocityUpdatesFromSource(
   return out.finishBytes();
 }
 
-function unpackProjectileVelocityUpdates(
+function unpackProjectileMotionUpdates(
   bytes: Uint8Array,
-): NetworkServerSnapshotVelocityUpdate[] {
+): NetworkServerSnapshotMotionUpdate[] {
   const total = readPackedBinaryRowCount(bytes);
-  const out: NetworkServerSnapshotVelocityUpdate[] = new Array(total);
+  const out: NetworkServerSnapshotMotionUpdate[] = new Array(total);
   if (total === 0) return out;
   const reader = new PackedBinaryReader(bytes);
   const groupCount = reader.readVarUint();
   let outIndex = 0;
   for (let g = 0; g < groupCount; g++) {
-    const flags = reader.readVarUint();
+    reader.readVarUint();
     const count = reader.readVarUint();
     let id = 0;
     for (let i = 0; i < count; i++) {
       id += reader.readVarInt();
-      const update: NetworkServerSnapshotVelocityUpdate = {
+      const update: NetworkServerSnapshotMotionUpdate = {
         id,
         pos: {
           x: reader.readVarInt(),
@@ -789,16 +783,9 @@ function unpackProjectileVelocityUpdates(
           y: reader.readVarInt(),
           z: reader.readVarInt(),
         },
-        targetEntityId: null,
-        clearHomingTarget: null,
+        rotation: reader.readVarInt(),
+        angularVelocity: reader.readVarInt(),
       };
-      if ((flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0) {
-        const targetEntityId = reader.readVarUint();
-        update.targetEntityId = targetEntityId > 0 ? targetEntityId : null;
-      }
-      if ((flags & VELOCITY_FLAG_CLEAR_HOMING) !== 0) {
-        update.clearHomingTarget = true;
-      }
       out[outIndex++] = update;
     }
   }
@@ -806,30 +793,28 @@ function unpackProjectileVelocityUpdates(
   return out;
 }
 
-function unpackProjectileVelocityUpdatesIntoWireSource(
+function unpackProjectileMotionUpdatesIntoWireSource(
   bytes: Uint8Array,
   source: ProjectileSnapshotWireSource,
 ): boolean {
   const total = readPackedBinaryRowCount(bytes);
   if (total === 0) return false;
   const offset = reserveFloat64WireRows(
-    source.velocityUpdates,
+    source.motionUpdates,
     total,
-    PROJECTILE_VELOCITY_WIRE_STRIDE,
+    PROJECTILE_MOTION_WIRE_STRIDE,
   );
-  const values = source.velocityUpdates.values;
+  const values = source.motionUpdates.values;
   const reader = new PackedBinaryReader(bytes);
   const groupCount = reader.readVarUint();
   let outIndex = 0;
   for (let g = 0; g < groupCount; g++) {
-    const flags = reader.readVarUint();
+    reader.readVarUint();
     const count = reader.readVarUint();
-    const clearHomingTarget = (flags & VELOCITY_FLAG_CLEAR_HOMING) !== 0;
-    const hasTargetEntityId = (flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0;
     let id = 0;
     for (let i = 0; i < count; i++) {
       id += reader.readVarInt();
-      const base = (offset + outIndex) * PROJECTILE_VELOCITY_WIRE_STRIDE;
+      const base = (offset + outIndex) * PROJECTILE_MOTION_WIRE_STRIDE;
       values[base + 0] = id;
       values[base + 1] = reader.readVarInt();
       values[base + 2] = reader.readVarInt();
@@ -837,15 +822,15 @@ function unpackProjectileVelocityUpdatesIntoWireSource(
       values[base + 4] = reader.readVarInt();
       values[base + 5] = reader.readVarInt();
       values[base + 6] = reader.readVarInt();
-      values[base + 7] = clearHomingTarget ? 1 : 0;
-      values[base + 8] = hasTargetEntityId ? reader.readVarUint() : 0;
+      values[base + 7] = reader.readVarInt();
+      values[base + 8] = reader.readVarInt();
       outIndex++;
     }
   }
   return outIndex > 0;
 }
 
-export type PackedProjectileVelocityUpdateVisitor = (
+export type PackedProjectileMotionUpdateVisitor = (
   id: number,
   qposX: number,
   qposY: number,
@@ -853,13 +838,13 @@ export type PackedProjectileVelocityUpdateVisitor = (
   qvelX: number,
   qvelY: number,
   qvelZ: number,
-  targetEntityId: number | null,
-  clearHomingTarget: boolean,
+  qrotation: number,
+  qangularVelocity: number,
 ) => void;
 
-export function forEachPackedProjectileVelocityUpdate(
+export function forEachPackedProjectileMotionUpdate(
   packed: PackedProjectileSnapshotWire,
-  visitor: PackedProjectileVelocityUpdateVisitor,
+  visitor: PackedProjectileMotionUpdateVisitor,
 ): boolean {
   if (packed.u === undefined) return false;
   const total = readPackedBinaryRowCount(packed.u);
@@ -867,11 +852,9 @@ export function forEachPackedProjectileVelocityUpdate(
   const reader = new PackedBinaryReader(packed.u);
   const groupCount = reader.readVarUint();
   for (let g = 0; g < groupCount; g++) {
-    const flags = reader.readVarUint();
+    reader.readVarUint();
     const count = reader.readVarUint();
     let id = 0;
-    const clearHomingTarget = (flags & VELOCITY_FLAG_CLEAR_HOMING) !== 0;
-    const hasTargetEntityId = (flags & VELOCITY_FLAG_TARGET_ENTITY_ID) !== 0;
     for (let i = 0; i < count; i++) {
       id += reader.readVarInt();
       const qposX = reader.readVarInt();
@@ -880,7 +863,8 @@ export function forEachPackedProjectileVelocityUpdate(
       const qvelX = reader.readVarInt();
       const qvelY = reader.readVarInt();
       const qvelZ = reader.readVarInt();
-      const targetEntityId = hasTargetEntityId ? reader.readVarUint() : 0;
+      const qrotation = reader.readVarInt();
+      const qangularVelocity = reader.readVarInt();
       visitor(
         id,
         qposX,
@@ -889,8 +873,8 @@ export function forEachPackedProjectileVelocityUpdate(
         qvelX,
         qvelY,
         qvelZ,
-        targetEntityId > 0 ? targetEntityId : null,
-        clearHomingTarget,
+        qrotation,
+        qangularVelocity,
       );
     }
   }

@@ -10,7 +10,7 @@ import type {
   NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
-  NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotMotionUpdate,
 } from './NetworkTypes';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
@@ -23,7 +23,7 @@ import {
   copySpawnInto,
   copySprayInto,
   copyTurretInto,
-  copyVelocityInto,
+  copyMotionInto,
   copyWaypointInto,
   createBeamDto,
   createCellDto,
@@ -34,7 +34,7 @@ import {
   createSpawnDto,
   createSprayDto,
   createTurretDto,
-  createVelocityDto,
+  createMotionDto,
   createWaypointDto,
 } from './snapshotDtoCopy';
 import {
@@ -173,7 +173,7 @@ type ReusableNetworkSnapshotClonerRetainedCounts = {
   scanPulses: number;
   projectileSpawns: number;
   projectileDespawns: number;
-  projectileVelocityUpdates: number;
+  projectileMotionUpdates: number;
   beamUpdates: number;
   gridCells: number;
   gridSearchCells: number;
@@ -455,13 +455,13 @@ export class ReusableNetworkSnapshotCloner {
   private scanPulses: NetworkServerSnapshotScanPulse[] = [];
   private spawns: NetworkServerSnapshotProjectileSpawn[] = [];
   private despawns: NetworkServerSnapshotProjectileDespawn[] = [];
-  private velocityUpdates: NetworkServerSnapshotVelocityUpdate[] = [];
+  private motionUpdates: NetworkServerSnapshotMotionUpdate[] = [];
   private minimapEntities: NetworkServerSnapshotMinimapEntity[] = [];
   private beamUpdates: NetworkServerSnapshotBeamUpdate[] = [];
   private projectiles: NonNullable<NetworkServerSnapshot['projectiles']> = {
     spawns: undefined,
     despawns: undefined,
-    velocityUpdates: undefined,
+    motionUpdates: undefined,
     beamUpdates: undefined,
   };
   private grid: NonNullable<NetworkServerSnapshot['grid']> = { cells: [], searchCells: [], cellSize: 0 };
@@ -520,12 +520,12 @@ export class ReusableNetworkSnapshotCloner {
     this.scanPulses.length = 0;
     this.spawns.length = 0;
     this.despawns.length = 0;
-    this.velocityUpdates.length = 0;
+    this.motionUpdates.length = 0;
     this.minimapEntities.length = 0;
     this.beamUpdates.length = 0;
     this.projectiles.spawns = undefined;
     this.projectiles.despawns = undefined;
-    this.projectiles.velocityUpdates = undefined;
+    this.projectiles.motionUpdates = undefined;
     this.projectiles.beamUpdates = undefined;
     this.grid.cells.length = 0;
     this.grid.searchCells.length = 0;
@@ -559,7 +559,7 @@ export class ReusableNetworkSnapshotCloner {
       scanPulses: this.scanPulses.length,
       projectileSpawns: this.spawns.length,
       projectileDespawns: this.despawns.length,
-      projectileVelocityUpdates: this.velocityUpdates.length,
+      projectileMotionUpdates: this.motionUpdates.length,
       beamUpdates: this.beamUpdates.length,
       gridCells: this.grid.cells.length,
       gridSearchCells: this.grid.searchCells.length,
@@ -639,11 +639,11 @@ export class ReusableNetworkSnapshotCloner {
     if (state.projectiles) {
       this.projectiles.spawns = this.copyArray(state.projectiles.spawns, this.spawns, createSpawnDto, copySpawnInto);
       this.projectiles.despawns = this.copyDespawnArray(state.projectiles.despawns);
-      this.projectiles.velocityUpdates = this.copyArray(
-        state.projectiles.velocityUpdates,
-        this.velocityUpdates,
-        createVelocityDto,
-        copyVelocityInto,
+      this.projectiles.motionUpdates = this.copyArray(
+        state.projectiles.motionUpdates,
+        this.motionUpdates,
+        createMotionDto,
+        copyMotionInto,
       );
       this.projectiles.beamUpdates = this.copyArray(
         state.projectiles.beamUpdates,

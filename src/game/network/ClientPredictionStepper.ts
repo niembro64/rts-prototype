@@ -1,7 +1,8 @@
 import {
   getMovementPosEmaMode,
   getMovementVelEmaMode,
-  getPredictionMode,
+  getRotationPosEmaMode,
+  getRotationVelEmaMode,
 } from '@/clientBarConfig';
 import type { BeamPoint, Entity, EntityId } from '../sim/types';
 import { angleDeltaAbs, lerp } from '../math';
@@ -13,10 +14,10 @@ import {
   clientUnitPredictionIsSettled,
 } from './ClientUnitPrediction';
 import {
-  applyClientProjectileVisualPredictionBatch,
-  type ClientProjectilePredictionItem,
-} from './ClientProjectilePrediction';
-import type { ClientProjectilePredictionResult } from './ClientProjectilePrediction';
+  applyClientProjectileMotionBatch,
+  type ClientProjectileMotionItem,
+} from './ClientProjectileMotion';
+import type { ClientProjectileMotionResult } from './ClientProjectileMotion';
 import type { ProjectileSpawnQueue } from './ProjectileSpawnQueue';
 import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 import {
@@ -29,17 +30,16 @@ import {
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import type { ClientPredictionTargetAgeStats } from './ClientPredictionDiagnostics';
 
-// Reused per-frame work + result buffers for the batched projectile
-// prediction pass — gathered once, integrated in a single WASM call, then
-// consumed below. Never shrunk, so no per-frame allocation.
-const _projectilePredictionItems: ClientProjectilePredictionItem[] = [];
-const _projectilePredictionResults: ClientProjectilePredictionResult[] = [];
-const _projectilePredictionIds: EntityId[] = [];
-function ensureProjectilePredictionItem(i: number): ClientProjectilePredictionItem {
-  let item = _projectilePredictionItems[i];
+// Reused per-frame work + result buffers for projectile EMA application.
+// Never shrunk, so the render loop does not allocate per frame.
+const _projectileMotionItems: ClientProjectileMotionItem[] = [];
+const _projectileMotionResults: ClientProjectileMotionResult[] = [];
+const _projectileMotionIds: EntityId[] = [];
+function ensureProjectileMotionItem(i: number): ClientProjectileMotionItem {
+  let item = _projectileMotionItems[i];
   if (item === undefined) {
     item = { entity: null as unknown as Entity, target: undefined };
-    _projectilePredictionItems[i] = item;
+    _projectileMotionItems[i] = item;
   }
   return item;
 }
@@ -51,17 +51,15 @@ type ClientPredictionStepperOptions = {
   projectileSpawns: ProjectileSpawnQueue;
   predictionCadence: ClientPredictionCadence;
   activeEntityPredictionIds: Set<EntityId>;
-  activeProjectilePredictionIds: Set<EntityId>;
+  activeProjectileMotionIds: Set<EntityId>;
   activeBeamPathIds: Set<EntityId>;
   dirtyUnitRenderIds: Set<EntityId>;
   supportSurfaceEntities: readonly Entity[];
   getMapWidth: () => number;
   getMapHeight: () => number;
-  getWind: () => { x: number; y: number; z: number } | undefined;
   getServerShieldsEnabled: () => boolean;
   setTurretShieldSpheresEnabledForPrediction: (enabled: boolean) => void;
   applyProjectileSpawn: (spawn: NetworkServerSnapshotProjectileSpawn) => boolean;
-  deleteEntityLocalState: (id: EntityId) => void;
   markLineProjectilesChanged: () => void;
   updateProjectileRenderSpatialIndex: (entity: Entity) => void;
   markBeamHostRenderDirty: (beamEntity: Entity) => void;
@@ -171,13 +169,11 @@ function shouldSnapExistingBeamPoint(current: BeamPoint, target: BeamPoint): boo
   return false;
 }
 
-function applyBeamPathPrediction(
+function applyBeamPathMotion(
   entity: Entity,
   target: BeamPathTarget,
-  deltaMs: number,
   movPosBlend: number,
   movVelBlend: number,
-  predictionMode: ReturnType<typeof getPredictionMode>,
 ): boolean {
   const proj = entity.projectile;
   if (!proj) return false;
@@ -219,30 +215,12 @@ function applyBeamPathPrediction(
     changed = true;
   }
 
-  // PREDICT mode gates whether we project the snapshot beam-path target
-  // forward for display. Keep the target object itself authoritative so
-  // stable snapshot rows can skip point copies in ClientProjectileStore.
-  // 'pos' freezes the target at its last snapshot value. 'vel' projects
-  // from velocity only while the path is still an unreflected open ray.
-  // A shield reflection vertex is not a particle: it is a ray/plane
-  // constraint point, and all later vertices are only valid as the
-  // result of that full reflected trace.
-  if (predictionMode !== 'pos') {
-    target.predictedAgeMs += deltaMs;
-  } else {
-    target.predictedAgeMs = 0;
-  }
-  const targetDt = target.predictedAgeMs / 1000;
-  let canDeadReckonVertex = predictionMode !== 'pos';
-
   for (let i = 0; i < tgtPts.length; i++) {
     const tp = tgtPts[i];
     const targetIsReflector = beamPointIsReflector(tp);
-    const useProjectedTarget = canDeadReckonVertex && !targetIsReflector;
-    if (targetIsReflector) canDeadReckonVertex = false;
-    const targetX = useProjectedTarget ? tp.x + tp.vx * targetDt : tp.x;
-    const targetY = useProjectedTarget ? tp.y + tp.vy * targetDt : tp.y;
-    const targetZ = useProjectedTarget ? tp.z + tp.vz * targetDt : tp.z;
+    const targetX = tp.x;
+    const targetY = tp.y;
+    const targetZ = tp.z;
     let pp = projPts[i];
     const isNewPoint = !pp || i >= oldLen;
     if (isNewPoint) {
@@ -363,17 +341,15 @@ export class ClientPredictionStepper {
       projectileSpawns,
       predictionCadence,
       activeEntityPredictionIds,
-      activeProjectilePredictionIds,
+      activeProjectileMotionIds,
       activeBeamPathIds,
       dirtyUnitRenderIds,
       supportSurfaceEntities,
       getMapWidth,
       getMapHeight,
-      getWind,
       getServerShieldsEnabled,
       setTurretShieldSpheresEnabledForPrediction,
       applyProjectileSpawn,
-      deleteEntityLocalState,
       markLineProjectilesChanged,
       updateProjectileRenderSpatialIndex,
       markBeamHostRenderDirty,
@@ -396,10 +372,10 @@ export class ClientPredictionStepper {
     // every field it owns, so both blends come from the movement knobs.
     const movPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
     const movVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
-    const predictionMode = getPredictionMode();
+    const rotPosBlend = getChannelBlend(getRotationPosEmaMode(), deltaMs / 1000);
+    const rotVelBlend = getChannelBlend(getRotationVelEmaMode(), deltaMs / 1000);
     const mapWidth = getMapWidth();
     const mapHeight = getMapHeight();
-    const wind = getWind();
     projectileSpawns.drain(now, applyProjectileSpawn);
 
     const turretShieldSpheresEnabled = getServerShieldsEnabled();
@@ -416,27 +392,15 @@ export class ClientPredictionStepper {
         continue;
       }
 
-      entity.projectile.timeAlive += deltaMs;
-      if (
-        Number.isFinite(entity.projectile.maxLifespan) &&
-        entity.projectile.timeAlive > entity.projectile.maxLifespan + 1000
-      ) {
-        deleteEntityLocalState(entity.id);
-        beamPathsChanged = true;
-        continue;
-      }
-
       const beamTarget = beamPathTargets.get(id);
       noteTargetAge(targetAgeStats, beamTarget === undefined ? undefined : beamTarget.updatedAtMs, now);
       if (
         beamTarget &&
-        applyBeamPathPrediction(
+        applyBeamPathMotion(
           entity,
           beamTarget,
-          deltaMs,
           movPosBlend,
           movVelBlend,
-          predictionMode,
         )
       ) {
         beamPathsChanged = true;
@@ -509,74 +473,47 @@ export class ClientPredictionStepper {
       }
     }
 
-    // Gather every active projectile (and its rocket correction target) into
-    // a reused work list, then integrate them all in a single batched WASM
-    // call (one getEntity closure for the whole frame instead of one per
-    // projectile). The per-id ordering of a Set iteration is stable, so the
-    // results array lines up with the gathered ids below.
-    const getProjectilePredictionEntity = (entityId: EntityId) => entities.get(entityId);
+    // Every traveling projectile follows the same four authoritative motion
+    // targets. No shot family runs render-side physics or homing.
     let projectileItemCount = 0;
-    const projectileIds = _projectilePredictionIds;
+    const projectileIds = _projectileMotionIds;
     projectileIds.length = 0;
-    for (const id of activeProjectilePredictionIds) {
+    for (const id of activeProjectileMotionIds) {
       const entity = entities.get(id);
       if (entity === undefined || entity.projectile === null) {
-        activeProjectilePredictionIds.delete(id);
+        activeProjectileMotionIds.delete(id);
         continue;
       }
 
       const target = serverTargets.get(id);
-      const projectileTarget = entity.projectile.config.shotProfile.runtime.isRocketLike === true
-        ? target
-        : undefined;
-      if (target !== undefined && projectileTarget === undefined) {
-        serverTargets.delete(id);
-      }
       noteTargetAge(
         targetAgeStats,
-        projectileTarget === undefined ? undefined : projectileTarget.updatedAtMs,
+        target === undefined ? undefined : target.updatedAtMs,
         now,
       );
-      const item = ensureProjectilePredictionItem(projectileItemCount);
+      const item = ensureProjectileMotionItem(projectileItemCount);
       item.entity = entity;
-      item.target = projectileTarget;
+      item.target = target;
       projectileIds[projectileItemCount] = id;
       projectileItemCount++;
     }
 
     if (projectileItemCount > 0) {
-      _projectilePredictionItems.length = projectileItemCount;
-      const predictionStep = predictionCadence.consumeDelta(deltaMs);
-      const projectileResults = applyClientProjectileVisualPredictionBatch({
-        items: _projectilePredictionItems,
-        predictionStep,
+      _projectileMotionItems.length = projectileItemCount;
+      const projectileResults = applyClientProjectileMotionBatch({
+        items: _projectileMotionItems,
         movPosBlend,
         movVelBlend,
-        mapWidth,
-        mapHeight,
-        wind,
-        getEntity: getProjectilePredictionEntity,
-        out: _projectilePredictionResults,
+        rotPosBlend,
+        rotVelBlend,
+        out: _projectileMotionResults,
       });
       for (let i = 0; i < projectileItemCount; i++) {
         const id = projectileIds[i];
-        const entity = _projectilePredictionItems[i].entity;
+        const entity = _projectileMotionItems[i].entity;
         const projectileResult = projectileResults[i];
-        if (projectileResult.becameLineProjectile) {
-          activeBeamPathIds.add(id);
-          activeProjectilePredictionIds.delete(id);
-          serverTargets.delete(id);
-          updateProjectileRenderSpatialIndex(entity);
-          markLineProjectilesChanged();
-          markBeamHostRenderDirty(entity);
-          continue;
-        }
-        if (projectileResult.shouldDelete) {
-          deleteEntityLocalState(entity.id);
-        } else {
-          if (projectileResult.targetSettled) serverTargets.delete(id);
-          updateProjectileRenderSpatialIndex(entity);
-        }
+        if (projectileResult.targetSettled) serverTargets.delete(id);
+        updateProjectileRenderSpatialIndex(entity);
       }
     }
     return targetAgeStats;

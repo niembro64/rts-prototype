@@ -52,7 +52,6 @@ export function createServerTarget(): ServerTarget {
 
 export type BeamPathTarget = {
   updatedAtMs: number;
-  predictedAgeMs: number;
   points: BeamPoint[];
   wirePointRows: Float64Array;
   wirePointRowLength: number;
@@ -66,7 +65,6 @@ export type BeamPathTarget = {
 export function createBeamPathTarget(): BeamPathTarget {
   return {
     updatedAtMs: 0,
-    predictedAgeMs: 0,
     points: [],
     wirePointRows: new Float64Array(0),
     wirePointRowLength: 0,

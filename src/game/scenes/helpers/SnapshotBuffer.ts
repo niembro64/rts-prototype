@@ -12,7 +12,7 @@ import type {
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotSimEvent,
-  NetworkServerSnapshotVelocityUpdate,
+  NetworkServerSnapshotMotionUpdate,
 } from '../../network/NetworkTypes';
 import type { GameConnection } from '../../server/GameConnection';
 import {
@@ -23,16 +23,16 @@ import {
   copyBeamInto,
   copySimEventInto,
   copySpawnInto,
-  copyVelocityInto,
+  copyMotionInto,
   createBeamDto,
   createSimEventDto,
   createSpawnDto,
-  createVelocityDto,
+  createMotionDto,
 } from '../../network/snapshotDtoCopy';
 import { addSnapshotClientMaterializationStage } from '../../network/snapshotMaterializationMetadata';
 import {
   forEachPackedProjectileDespawn,
-  forEachPackedProjectileVelocityUpdate,
+  forEachPackedProjectileMotionUpdate,
   getPackedProjectileSnapshotWire,
 } from '../../network/snapshotProjectileWirePack';
 import {
@@ -51,7 +51,7 @@ import {
   forEachProjectileWireSourceSpawn,
   forEachProjectileWireSourceBeamUpdate,
   forEachProjectileWireSourceDespawn,
-  forEachProjectileWireSourceVelocityUpdate,
+  forEachProjectileWireSourceMotionUpdate,
   projectileSnapshotWireSourceHasDirectlyConsumableRows,
 } from '../../network/stateSerializerProjectiles';
 import {
@@ -161,13 +161,13 @@ export class SnapshotBuffer {
   private bufferedAudioPool: NetworkServerSnapshotSimEvent[] = this._audioPoolA;
   private bufferedAudioOverwriteIndex = 0;
 
-  private bufferedVelocityUpdates = new Map<number, NetworkServerSnapshotVelocityUpdate>();
-  private velocityStagePool: NetworkServerSnapshotVelocityUpdate[] = [];
-  private velocityStagePoolIndex = 0;
-  private _velBufA: NetworkServerSnapshotVelocityUpdate[] = [];
-  private _velBufB: NetworkServerSnapshotVelocityUpdate[] = [];
-  private _velPoolA: NetworkServerSnapshotVelocityUpdate[] = [];
-  private _velPoolB: NetworkServerSnapshotVelocityUpdate[] = [];
+  private bufferedMotionUpdates = new Map<number, NetworkServerSnapshotMotionUpdate>();
+  private motionStagePool: NetworkServerSnapshotMotionUpdate[] = [];
+  private motionStagePoolIndex = 0;
+  private _velBufA: NetworkServerSnapshotMotionUpdate[] = [];
+  private _velBufB: NetworkServerSnapshotMotionUpdate[] = [];
+  private _velPoolA: NetworkServerSnapshotMotionUpdate[] = [];
+  private _velPoolB: NetworkServerSnapshotMotionUpdate[] = [];
   private _velBufToggle = false;
 
   private bufferedBeamUpdates = new Map<number, NetworkServerSnapshotBeamUpdate>();
@@ -227,7 +227,7 @@ export class SnapshotBuffer {
     this.bufferedDespawns.set(id, out);
   }
 
-  private pushBufferedVelocityFields(
+  private pushBufferedMotionFields(
     id: number,
     qposX: number,
     qposY: number,
@@ -235,15 +235,15 @@ export class SnapshotBuffer {
     qvelX: number,
     qvelY: number,
     qvelZ: number,
-    targetEntityId: number | null,
-    clearHomingTarget: boolean,
+    qrotation: number,
+    qangularVelocity: number,
   ): void {
-    let out = this.bufferedVelocityUpdates.get(id);
+    let out = this.bufferedMotionUpdates.get(id);
     if (!out) {
-      out = this.velocityStagePool[this.velocityStagePoolIndex] ?? createVelocityDto();
-      this.velocityStagePool[this.velocityStagePoolIndex] = out;
-      this.velocityStagePoolIndex++;
-      this.bufferedVelocityUpdates.set(id, out);
+      out = this.motionStagePool[this.motionStagePoolIndex] ?? createMotionDto();
+      this.motionStagePool[this.motionStagePoolIndex] = out;
+      this.motionStagePoolIndex++;
+      this.bufferedMotionUpdates.set(id, out);
     }
     out.id = id;
     out.pos.x = qposX;
@@ -252,8 +252,8 @@ export class SnapshotBuffer {
     out.velocity.x = qvelX;
     out.velocity.y = qvelY;
     out.velocity.z = qvelZ;
-    out.targetEntityId = targetEntityId;
-    out.clearHomingTarget = clearHomingTarget ? true : null;
+    out.rotation = qrotation;
+    out.angularVelocity = qangularVelocity;
   }
 
   private pushBufferedProjectileWireSourceRows(
@@ -269,7 +269,7 @@ export class SnapshotBuffer {
       projectiles,
       (id) => this.pushBufferedDespawnId(id),
     );
-    forEachProjectileWireSourceVelocityUpdate(
+    forEachProjectileWireSourceMotionUpdate(
       projectiles,
       (
         id,
@@ -279,9 +279,9 @@ export class SnapshotBuffer {
         qvelX,
         qvelY,
         qvelZ,
-        targetEntityId,
-        clearHomingTarget,
-      ) => this.pushBufferedVelocityFields(
+        qrotation,
+        qangularVelocity,
+      ) => this.pushBufferedMotionFields(
         id,
         qposX,
         qposY,
@@ -289,8 +289,8 @@ export class SnapshotBuffer {
         qvelX,
         qvelY,
         qvelZ,
-        targetEntityId,
-        clearHomingTarget,
+        qrotation,
+        qangularVelocity,
       ),
     );
     forEachProjectileWireSourceBeamUpdate(
@@ -1197,10 +1197,10 @@ export class SnapshotBuffer {
           this.pushBufferedAudio(state.audioEvents[i]);
         }
       }
-      if (!consumedDirectProjectileRows && proj !== undefined && proj.velocityUpdates !== undefined) {
-        for (let i = 0; i < proj.velocityUpdates.length; i++) {
-          const vu = proj.velocityUpdates[i];
-          this.pushBufferedVelocityFields(
+      if (!consumedDirectProjectileRows && proj !== undefined && proj.motionUpdates !== undefined) {
+        for (let i = 0; i < proj.motionUpdates.length; i++) {
+          const vu = proj.motionUpdates[i];
+          this.pushBufferedMotionFields(
             vu.id,
             vu.pos.x,
             vu.pos.y,
@@ -1208,12 +1208,12 @@ export class SnapshotBuffer {
             vu.velocity.x,
             vu.velocity.y,
             vu.velocity.z,
-            vu.targetEntityId,
-            vu.clearHomingTarget === true,
+            vu.rotation,
+            vu.angularVelocity,
           );
         }
       } else if (packedProjectiles !== undefined) {
-        forEachPackedProjectileVelocityUpdate(
+        forEachPackedProjectileMotionUpdate(
           packedProjectiles,
           (
             id,
@@ -1223,9 +1223,9 @@ export class SnapshotBuffer {
             qvelX,
             qvelY,
             qvelZ,
-            targetEntityId,
-            clearHomingTarget,
-          ) => this.pushBufferedVelocityFields(
+            qrotation,
+            qangularVelocity,
+          ) => this.pushBufferedMotionFields(
             id,
             qposX,
             qposY,
@@ -1233,8 +1233,8 @@ export class SnapshotBuffer {
             qvelX,
             qvelY,
             qvelZ,
-            targetEntityId,
-            clearHomingTarget,
+            qrotation,
+            qangularVelocity,
           ),
         );
       }
@@ -1375,22 +1375,22 @@ export class SnapshotBuffer {
     this.bufferedAudioOverwriteIndex = 0;
     state.audioEvents = audio.length > 0 ? audio : undefined;
 
-    // Swap velocity updates
-    let netVelUpdates: NetworkServerSnapshotVelocityUpdate[] | undefined;
-    if (this.bufferedVelocityUpdates.size > 0) {
+    // Swap motion updates
+    let netVelUpdates: NetworkServerSnapshotMotionUpdate[] | undefined;
+    if (this.bufferedMotionUpdates.size > 0) {
       const buf = this._velBufToggle ? this._velBufB : this._velBufA;
       const pool = this._velBufToggle ? this._velPoolB : this._velPoolA;
       this._velBufToggle = !this._velBufToggle;
       buf.length = 0;
       let writeIdx = 0;
-      for (const v of this.bufferedVelocityUpdates.values()) {
-        const out = pool[writeIdx] ?? createVelocityDto();
+      for (const v of this.bufferedMotionUpdates.values()) {
+        const out = pool[writeIdx] ?? createMotionDto();
         pool[writeIdx] = out;
-        buf.push(copyVelocityInto(v, out));
+        buf.push(copyMotionInto(v, out));
         writeIdx++;
       }
-      this.bufferedVelocityUpdates.clear();
-      this.velocityStagePoolIndex = 0;
+      this.bufferedMotionUpdates.clear();
+      this.motionStagePoolIndex = 0;
       netVelUpdates = buf;
     }
 
@@ -1421,14 +1421,14 @@ export class SnapshotBuffer {
         state.projectiles = {
           spawns: undefined,
           despawns: undefined,
-          velocityUpdates: undefined,
+          motionUpdates: undefined,
           beamUpdates: undefined,
         };
       }
       const projectiles = state.projectiles;
       projectiles.spawns = netSpawns;
       projectiles.despawns = netDespawns;
-      projectiles.velocityUpdates = netVelUpdates;
+      projectiles.motionUpdates = netVelUpdates;
       projectiles.beamUpdates = netBeamUpdates;
     } else {
       state.projectiles = undefined;
@@ -1475,9 +1475,9 @@ export class SnapshotBuffer {
     this._audioPoolA.length = 0;
     this._audioPoolB.length = 0;
     this.bufferedAudioOverwriteIndex = 0;
-    this.bufferedVelocityUpdates.clear();
-    this.velocityStagePool.length = 0;
-    this.velocityStagePoolIndex = 0;
+    this.bufferedMotionUpdates.clear();
+    this.motionStagePool.length = 0;
+    this.motionStagePoolIndex = 0;
     this.bufferedBeamUpdates.clear();
     this.beamStagePool.length = 0;
     this.beamStagePoolIndex = 0;

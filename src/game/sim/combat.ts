@@ -3,13 +3,13 @@
 
 export type {
   SimEvent,
-  
-  
+
+
   DeathContext,
-  
+
   ProjectileSpawnEvent,
   ProjectileDespawnEvent,
-  ProjectileVelocityUpdateEvent,
+  ProjectileMotionUpdateEvent,
 } from './combat/types';
 
 export {

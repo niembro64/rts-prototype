@@ -94,7 +94,7 @@ function rotateBarrelOffset(
 // Angular drag is lower so spin decays noticeably faster than travel — the
 // "start fast, slow to a stop" behavior the user asked for.
 // Gravity is imported from config.ts — single value shared with everything
-// that falls (physics engine, projectile arc, client prediction).
+// that falls (physics engine, projectile arc, and visual effects).
 const LINEAR_DRAG = 0.985;
 const ANGULAR_DRAG = 0.955;
 const MAX_PHYSICS_STEP_MS = 80;
@@ -409,7 +409,7 @@ export class Debris3D {
   private _dir = new THREE.Vector3();
   /** Scratch Quaternion + Euler for cylinder alignment — convert the
    *  setFromUnitVectors quaternion to Euler XYZ to seed `rx, ry, rz`
-   *  on emit, so subsequent angular-velocity updates accumulate from
+   *  on emit, so subsequent angular-motion updates accumulate from
    *  the correct base orientation. Same conversion mesh.rotation
    *  did implicitly in the per-Mesh path. */
   private _emitQuat = new THREE.Quaternion();

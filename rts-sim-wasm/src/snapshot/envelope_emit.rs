@@ -10,7 +10,7 @@ use crate::*;
 use wasm_bindgen::prelude::*;
 
 /// Append the envelope's `projectiles: {...}` nested object.
-/// Supports `spawns`, `despawns`, `velocityUpdates`, `beamUpdates`.
+/// Supports `spawns`, `despawns`, `motionUpdates`, `beamUpdates`.
 /// Called between emit_economy and _continue (pool order: projectiles
 /// sits after economy and before gameState).
 #[wasm_bindgen]
@@ -46,7 +46,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
     w.write_map_header(nested_count);
 
     // Sub-key order in ProjectileSnapshot (stateSerializerProjectiles.ts
-    // _projectilesBuf pool init): spawns, despawns, velocityUpdates,
+    // _projectilesBuf pool init): spawns, despawns, motionUpdates,
     // beamUpdates. We emit only the present subset.
     if has_spawns != 0 {
         let n = spawn_count as usize;
@@ -224,7 +224,7 @@ pub fn snapshot_encode_envelope_emit_projectiles(
     if has_velocity_updates != 0 {
         let n = velocity_update_count as usize;
         let scratch = snapshot_encode_proj_vel_scratch();
-        w.write_str("velocityUpdates");
+        w.write_str("motionUpdates");
         w.write_array_header(n);
         for i in 0..n {
             let base = i * SNAPSHOT_ENCODE_PROJ_VEL_STRIDE;
@@ -235,17 +235,10 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             let vx = scratch.buf[base + 4];
             let vy = scratch.buf[base + 5];
             let vz = scratch.buf[base + 6];
-            let clear_homing_target = scratch.buf[base + 7] != 0.0;
-            let target_entity_id = scratch.buf[base + 8] as u32;
-            // velocityUpdate DTO: {id, pos: {x, y, z}, velocity: {x, y, z}, targetEntityId?, clearHomingTarget?}
-            let mut field_count = 3;
-            if target_entity_id > 0 {
-                field_count += 1;
-            }
-            if clear_homing_target {
-                field_count += 1;
-            }
-            w.write_map_header(field_count);
+            let rotation = scratch.buf[base + 7];
+            let angular_velocity = scratch.buf[base + 8];
+            // motionUpdate DTO: {id, pos, velocity, rotation, angularVelocity}
+            w.write_map_header(5);
             w.write_str("id");
             w.write_uint(id as u64);
             w.write_str("pos");
@@ -264,14 +257,10 @@ pub fn snapshot_encode_envelope_emit_projectiles(
             w.write_number(vy);
             w.write_str("z");
             w.write_number(vz);
-            if target_entity_id > 0 {
-                w.write_str("targetEntityId");
-                w.write_uint(target_entity_id as u64);
-            }
-            if clear_homing_target {
-                w.write_str("clearHomingTarget");
-                w.write_bool(true);
-            }
+            w.write_str("rotation");
+            w.write_number(rotation);
+            w.write_str("angularVelocity");
+            w.write_number(angular_velocity);
         }
     }
     if has_beam_updates != 0 {
@@ -458,7 +447,7 @@ pub fn snapshot_encode_envelope_emit_packed_projectiles(
         w.write_bin(packed.out.as_slice());
     }
     if has_velocity_updates != 0 {
-        pack_projectile_velocity_updates(velocity_update_count as usize);
+        pack_projectile_motion_updates(velocity_update_count as usize);
         let packed = snapshot_encode_packed_projectile_scratch();
         w.write_str("u");
         w.write_bin(packed.out.as_slice());

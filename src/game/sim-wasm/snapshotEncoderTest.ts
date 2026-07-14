@@ -1355,12 +1355,12 @@ type ProjectileSpawnFixture = {
   homingTurnRate?: number;
 };
 type ProjectileDespawnFixture = { id: number };
-type ProjectileVelocityUpdateFixture = {
+type ProjectileMotionUpdateFixture = {
   id: number;
   pos: { x: number; y: number; z: number };
   velocity: { x: number; y: number; z: number };
-  targetEntityId?: number;
-  clearHomingTarget?: boolean;
+  rotation?: number;
+  angularVelocity?: number;
 };
 type BeamPointFixture = {
   x: number; y: number; z: number;
@@ -1381,7 +1381,7 @@ type BeamUpdateFixture = {
 type ProjectilesFixture = {
   spawns?: ProjectileSpawnFixture[];
   despawns?: ProjectileDespawnFixture[];
-  velocityUpdates?: ProjectileVelocityUpdateFixture[];
+  motionUpdates?: ProjectileMotionUpdateFixture[];
   beamUpdates?: BeamUpdateFixture[];
 };
 
@@ -1416,12 +1416,12 @@ function networkProjectilesFixture(projectiles: ProjectilesFixture): NetworkProj
       homingTurnRate: spawn.homingTurnRate ?? null,
     })),
     despawns: projectiles.despawns?.map((despawn) => ({ id: despawn.id })),
-    velocityUpdates: projectiles.velocityUpdates?.map((update) => ({
+    motionUpdates: projectiles.motionUpdates?.map((update) => ({
       id: update.id,
       pos: update.pos,
       velocity: update.velocity,
-      targetEntityId: update.targetEntityId ?? null,
-      clearHomingTarget: update.clearHomingTarget ?? null,
+      rotation: update.rotation ?? 0,
+      angularVelocity: update.angularVelocity ?? 0,
     })),
     beamUpdates: projectiles.beamUpdates?.map((update) => ({
       id: update.id,
@@ -1510,9 +1510,9 @@ function packProjDespawnsIntoScratch(memory: WebAssembly.Memory, ids: number[]):
   for (let i = 0; i < ids.length; i++) view[i] = ids[i];
 }
 
-function packProjVelocityUpdatesIntoScratch(
+function packProjMotionUpdatesIntoScratch(
   memory: WebAssembly.Memory,
-  updates: ProjectileVelocityUpdateFixture[],
+  updates: ProjectileMotionUpdateFixture[],
 ): void {
   if (updates.length === 0) return;
   snapshot_encode_proj_vel_scratch_ensure(updates.length);
@@ -1528,8 +1528,8 @@ function packProjVelocityUpdatesIntoScratch(
     view[base + 4] = u.velocity.x;
     view[base + 5] = u.velocity.y;
     view[base + 6] = u.velocity.z;
-    view[base + 7] = u.clearHomingTarget === true ? 1 : 0;
-    view[base + 8] = u.targetEntityId ?? 0;
+    view[base + 7] = u.rotation ?? 0;
+    view[base + 8] = u.angularVelocity ?? 0;
   }
 }
 
@@ -2140,6 +2140,11 @@ function sparseProjectilesFixture(
   return {
     ...projectiles,
     spawns: projectiles.spawns?.map(sparseProjectileSpawnFixture),
+    motionUpdates: projectiles.motionUpdates?.map((update) => ({
+      ...update,
+      rotation: update.rotation ?? 0,
+      angularVelocity: update.angularVelocity ?? 0,
+    })),
   };
 }
 
@@ -2317,21 +2322,21 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       tick: 700, entities: [], economy: {},
       projectiles: { despawns: [{ id: 1001 }, { id: 1002 }] },
     },
-    // projectiles.velocityUpdates only (mid-flight projectile)
+    // projectiles.motionUpdates only (mid-flight projectile)
     {
       tick: 701, entities: [], economy: {},
       projectiles: {
-        velocityUpdates: [
-          { id: 2001, pos: { x: 100, y: 200, z: 50 }, velocity: { x: 25, y: 10, z: 5 }, clearHomingTarget: true },
+        motionUpdates: [
+          { id: 2001, pos: { x: 100, y: 200, z: 50 }, velocity: { x: 25, y: 10, z: 5 }, rotation: 20, angularVelocity: 3 },
         ],
       },
     },
-    // projectiles with both despawns AND velocityUpdates
+    // projectiles with both despawns AND motionUpdates
     {
       tick: 702, entities: [], economy: {},
       projectiles: {
         despawns: [{ id: 3001 }],
-        velocityUpdates: [
+        motionUpdates: [
           { id: 3002, pos: { x: 0, y: 0, z: 100 }, velocity: { x: 0, y: 0, z: -9.8 } },
           { id: 3003, pos: { x: 500, y: 500, z: 0 }, velocity: { x: -10, y: 5, z: 0 } },
         ],
@@ -2351,7 +2356,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       economy: {},
       projectiles: {
         despawns: [{ id: 50 }],
-        velocityUpdates: [
+        motionUpdates: [
           { id: 51, pos: { x: 1000, y: 0, z: 50 }, velocity: { x: 100, y: 0, z: 0 } },
         ],
       },
@@ -2448,7 +2453,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
         ],
       },
     },
-    // projectiles with spawns + despawns + velocityUpdates.
+    // projectiles with spawns + despawns + motionUpdates.
     {
       tick: 803, entities: [], economy: {},
       projectiles: {
@@ -2465,7 +2470,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           barrelIndex: 0,
         }],
         despawns: [{ id: 8000 }, { id: 8001 }],
-        velocityUpdates: [
+        motionUpdates: [
           { id: 7000, pos: { x: 50, y: 0, z: 50 }, velocity: { x: 25, y: 0, z: 0 } },
         ],
       },
@@ -2899,7 +2904,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
           barrelIndex: 0,
         }],
         despawns: [{ id: 12001 }],
-        velocityUpdates: [
+        motionUpdates: [
           { id: 12002, pos: { x: 50, y: 0, z: 50 }, velocity: { x: 25, y: 0, z: 0 } },
         ],
         beamUpdates: [
@@ -3074,8 +3079,8 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
       if (f.projectiles.despawns) {
         packProjDespawnsIntoScratch(memory, f.projectiles.despawns.map((d) => d.id));
       }
-      if (f.projectiles.velocityUpdates) {
-        packProjVelocityUpdatesIntoScratch(memory, f.projectiles.velocityUpdates);
+      if (f.projectiles.motionUpdates) {
+        packProjMotionUpdatesIntoScratch(memory, f.projectiles.motionUpdates);
       }
       if (f.projectiles.beamUpdates) {
         packBeamUpdatesIntoScratch(memory, f.projectiles.beamUpdates);
@@ -3217,7 +3222,7 @@ function runEnvelopeCases(memory: WebAssembly.Memory): { passed: number; failed:
     if (hasProjectiles && f.projectiles) {
       const spawns = f.projectiles.spawns;
       const despawns = f.projectiles.despawns;
-      const vels = f.projectiles.velocityUpdates;
+      const vels = f.projectiles.motionUpdates;
       const beams = f.projectiles.beamUpdates;
       snapshot_encode_envelope_emit_projectiles(
         spawns !== undefined ? 1 : 0,
@@ -3374,8 +3379,8 @@ function packProjectilesFixtureIntoScratch(
   if (projectiles.despawns !== undefined) {
     packProjDespawnsIntoScratch(memory, projectiles.despawns.map((d) => d.id));
   }
-  if (projectiles.velocityUpdates !== undefined) {
-    packProjVelocityUpdatesIntoScratch(memory, projectiles.velocityUpdates);
+  if (projectiles.motionUpdates !== undefined) {
+    packProjMotionUpdatesIntoScratch(memory, projectiles.motionUpdates);
   }
   if (projectiles.beamUpdates !== undefined) {
     return packBeamUpdatesIntoScratch(memory, projectiles.beamUpdates);
@@ -3396,7 +3401,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
       projectiles: {
         spawns: [],
         despawns: [],
-        velocityUpdates: [],
+        motionUpdates: [],
         beamUpdates: [],
       },
     },
@@ -3454,13 +3459,14 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
       label: 'despawns-and-velocity-groups',
       projectiles: {
         despawns: [{ id: 1000 }, { id: 1005 }, { id: 1001 }],
-        velocityUpdates: [
+        motionUpdates: [
           { id: 2000, pos: { x: 1, y: 2, z: 3 }, velocity: { x: 4, y: 5, z: 6 } },
           {
             id: 2004,
             pos: { x: -1, y: -2, z: -3 },
             velocity: { x: -4, y: -5, z: -6 },
-            clearHomingTarget: true,
+            rotation: 20,
+            angularVelocity: 3,
           },
           { id: 2005, pos: { x: 7, y: 8, z: 9 }, velocity: { x: 10, y: 11, z: 12 } },
         ],
@@ -3518,7 +3524,7 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
           isDGun: true,
         }],
         despawns: [{ id: 3990 }],
-        velocityUpdates: [
+        motionUpdates: [
           { id: 4001, pos: { x: 50, y: 60, z: 70 }, velocity: { x: 8, y: 9, z: 10 } },
         ],
         beamUpdates: [{
@@ -3555,8 +3561,8 @@ function runPackedProjectileCases(memory: WebAssembly.Memory): { passed: number;
       f.projectiles.spawns?.length ?? 0,
       f.projectiles.despawns !== undefined ? 1 : 0,
       f.projectiles.despawns?.length ?? 0,
-      f.projectiles.velocityUpdates !== undefined ? 1 : 0,
-      f.projectiles.velocityUpdates?.length ?? 0,
+      f.projectiles.motionUpdates !== undefined ? 1 : 0,
+      f.projectiles.motionUpdates?.length ?? 0,
       f.projectiles.beamUpdates !== undefined ? 1 : 0,
       f.projectiles.beamUpdates?.length ?? 0,
       beamPointCount,

@@ -1,15 +1,11 @@
 import type {
   ProjectileDespawnEvent,
   ProjectileSpawnEvent,
-  ProjectileVelocityUpdateEvent,
+  ProjectileMotionUpdateEvent,
   SimEvent,
 } from './combat';
 
-const EMPTY_VEL_UPDATES: ProjectileVelocityUpdateEvent[] = [];
-
-export function safeVelocityUpdates(value: unknown): ProjectileVelocityUpdateEvent[] {
-  return Array.isArray(value) ? value as ProjectileVelocityUpdateEvent[] : EMPTY_VEL_UPDATES;
-}
+const EMPTY_MOTION_UPDATES: ProjectileMotionUpdateEvent[] = [];
 
 export class SimulationEventQueues {
   private readonly audioA: SimEvent[] = [];
@@ -24,11 +20,11 @@ export class SimulationEventQueues {
   private readonly despawnsB: ProjectileDespawnEvent[] = [];
   projectileDespawns: ProjectileDespawnEvent[] = this.despawnsA;
 
-  projectileVelocityUpdates = new Map<number, ProjectileVelocityUpdateEvent>();
-  private readonly velUpdateBufA: ProjectileVelocityUpdateEvent[] = [];
-  private readonly velUpdateBufB: ProjectileVelocityUpdateEvent[] = [];
-  private readonly velUpdateIds: number[] = [];
-  private velUpdateToggle = false;
+  projectileMotionUpdates = new Map<number, ProjectileMotionUpdateEvent>();
+  private readonly motionUpdateBufA: ProjectileMotionUpdateEvent[] = [];
+  private readonly motionUpdateBufB: ProjectileMotionUpdateEvent[] = [];
+  private readonly motionUpdateIds: number[] = [];
+  private motionUpdateToggle = false;
 
   getAndClearEvents(): SimEvent[] {
     const events = this.simEvents;
@@ -51,13 +47,13 @@ export class SimulationEventQueues {
     return events;
   }
 
-  getAndClearProjectileVelocityUpdates(): ProjectileVelocityUpdateEvent[] {
-    const map = this.projectileVelocityUpdates;
-    if (map.size === 0) return EMPTY_VEL_UPDATES;
-    const buf = this.velUpdateToggle ? this.velUpdateBufB : this.velUpdateBufA;
-    this.velUpdateToggle = !this.velUpdateToggle;
+  getAndClearProjectileMotionUpdates(): ProjectileMotionUpdateEvent[] {
+    const map = this.projectileMotionUpdates;
+    if (map.size === 0) return EMPTY_MOTION_UPDATES;
+    const buf = this.motionUpdateToggle ? this.motionUpdateBufB : this.motionUpdateBufA;
+    this.motionUpdateToggle = !this.motionUpdateToggle;
     buf.length = 0;
-    const ids = this.velUpdateIds;
+    const ids = this.motionUpdateIds;
     ids.length = 0;
     for (const id of map.keys()) ids.push(id);
     ids.sort((a, b) => a - b);
@@ -73,7 +69,7 @@ export class SimulationEventQueues {
     return (
       this.projectileSpawns.length > 0 ||
       this.projectileDespawns.length > 0 ||
-      this.projectileVelocityUpdates.size > 0
+      this.projectileMotionUpdates.size > 0
     );
   }
 
@@ -87,10 +83,10 @@ export class SimulationEventQueues {
     this.despawnsA.length = 0;
     this.despawnsB.length = 0;
     this.projectileDespawns = this.despawnsA;
-    this.projectileVelocityUpdates.clear();
-    this.velUpdateBufA.length = 0;
-    this.velUpdateBufB.length = 0;
-    this.velUpdateIds.length = 0;
-    this.velUpdateToggle = false;
+    this.projectileMotionUpdates.clear();
+    this.motionUpdateBufA.length = 0;
+    this.motionUpdateBufB.length = 0;
+    this.motionUpdateIds.length = 0;
+    this.motionUpdateToggle = false;
   }
 }

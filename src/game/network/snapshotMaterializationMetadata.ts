@@ -47,7 +47,7 @@ export const SNAPSHOT_MATERIALIZATION_STAGES = [
   'clientApplyProjectileSpawns',
   'clientApplyProjectileBeams',
   'clientApplyProjectileDespawns',
-  'clientApplyProjectileVelocity',
+  'clientApplyProjectileMotion',
   'clientApplyStores',
   'total',
 ] as const;

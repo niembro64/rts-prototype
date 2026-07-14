@@ -13,6 +13,7 @@ import {
   getTransformCosSin,
   computeTerrainFollowVerticalThrustAccel,
   countBarrels,
+  normalizeAngle,
 } from '../../math';
 import {
   PROJECTILE_MASS_MULTIPLIER,
@@ -76,10 +77,6 @@ import {
   type CombatTargetingTurretFsmOut,
 } from './targetingInputStamping';
 import {
-  snapshotRotationThresholdRadians,
-  snapshotVectorVelocityDeltaExceeded,
-} from '../../snapshotDeltaThresholds';
-import {
   TURRET_BLUEPRINT_CODE_UNKNOWN,
   shotBlueprintIdToCode,
   turretBlueprintIdToCode,
@@ -114,8 +111,6 @@ const _fireTargetingContext: CombatTargetingEntityReadContext = {
   turretCount: 0,
 };
 const TWO_PI = Math.PI * 2;
-const PROJECTILE_VELOCITY_REPORT_MAGNITUDE_RATIO = 0.0001;
-const PROJECTILE_VELOCITY_REPORT_DIRECTION_RADIANS = snapshotRotationThresholdRadians(0.0001);
 const _spreadConeDir = { x: 0, y: 0, z: 0 };
 
 function writeRandomDirectionInCone(
@@ -389,7 +384,6 @@ const _updateBeamAim: BeamAimScratch = {
   visualEndZ: 0,
   targetEntityId: NO_ENTITY_ID,
 };
-const HOMING_TARGET_UPDATE_UNCHANGED = -2;
 
 function getTurretProjectileLaunchSpeed(config: TurretConfig, shot: Pick<ProjectileShot, 'mass'>): number {
   const mass = shot.mass;
@@ -558,7 +552,6 @@ export function resetProjectileBuffers(): void {
   _fireNewProjectiles.length = 0;
   _fireSimEvents.length = 0;
   _fireSpawnEvents.length = 0;
-  _homingVelocityUpdates.length = 0;
   _orphanedIds.length = 0;
   _despawnEvents.length = 0;
   _packedProjectileCount = 0;
@@ -652,9 +645,6 @@ function writeProjectileLaunchState(
   projectile.velocityX = vx;
   projectile.velocityY = vy;
   projectile.velocityZ = vz;
-  projectile.lastSentVelX = vx;
-  projectile.lastSentVelY = vy;
-  projectile.lastSentVelZ = vz;
 
   const packedSlot = _packedProjectileSlots.get(projectileEntity.id);
   if (packedSlot !== undefined) {
@@ -925,7 +915,6 @@ export function fireTurrets(
           const projectileComponent = projectile.projectile;
           if (projectileComponent !== null) {
             projectileComponent.velocityZ = projVz;
-            projectileComponent.lastSentVelZ = projVz;
           }
           const maxLifespan = projectileComponent !== null ? projectileComponent.maxLifespan : undefined;
           const fireYaw = DMath.hypot(dirX, dirY) > 1e-9
@@ -1204,7 +1193,6 @@ export function fireTurrets(
           const projectileComponent = projectile.projectile;
           if (projectileComponent !== null) {
             projectileComponent.velocityZ = projVz;
-            projectileComponent.lastSentVelZ = projVz;
           }
           // The projectile's authored homing turn rate is installed at
           // creation; the firing tick only seeds the initial target lock.
@@ -1285,8 +1273,6 @@ export function fireTurrets(
   return { projectiles: newProjectiles, events: audioEvents, spawnEvents };
 }
 
-// Reusable array for homing velocity updates (avoid per-frame allocation)
-const _homingVelocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] = [];
 const _travelingProjectileBatchEntities: Entity[] = [];
 const DEFAULT_TRAVELING_PROJECTILE_BATCH_CAPACITY = 16;
 const DEFAULT_HOMING_GUIDANCE_BATCH_CAPACITY = 16;
@@ -1306,10 +1292,8 @@ let _travelingProjectileGravity = new Float64Array(0);
 let _travelingProjectileTerrainTargetZ = new Float64Array(0);
 let _travelingProjectilePolicyFlags = new Uint8Array(0);
 let _travelingProjectileHomingTargetId = new Int32Array(0);
-let _travelingProjectileTargetUpdateId = new Int32Array(0);
 
-const TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING = 1;
-const TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW = 2;
+const TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW = 1;
 
 const HOMING_GUIDANCE_BATCH_STRIDE = 37;
 const HG_ROW_VEL_X = 0;
@@ -1365,7 +1349,6 @@ function trimTravelingProjectileBatchBuffers(maxRetained = DEFAULT_TRAVELING_PRO
   _travelingProjectileTerrainTargetZ = new Float64Array(maxRetained);
   _travelingProjectilePolicyFlags = new Uint8Array(maxRetained);
   _travelingProjectileHomingTargetId = new Int32Array(maxRetained);
-  _travelingProjectileTargetUpdateId = new Int32Array(maxRetained);
 }
 
 function trimHomingGuidanceBuffers(maxRetained = DEFAULT_HOMING_GUIDANCE_BATCH_CAPACITY): void {
@@ -1449,17 +1432,14 @@ function ensureTravelingProjectileBatchCapacity(required: number): void {
   homingTargetId.set(_travelingProjectileHomingTargetId);
   _travelingProjectileHomingTargetId = homingTargetId;
 
-  const targetUpdateId = new Int32Array(next);
-  targetUpdateId.fill(HOMING_TARGET_UPDATE_UNCHANGED);
-  targetUpdateId.set(_travelingProjectileTargetUpdateId);
-  _travelingProjectileTargetUpdateId = targetUpdateId;
 }
 
 // 3D projectile integration: exact constant-acceleration advance on
 // (x, y, z). This must stay paired with the ballistic aim solver,
 // which solves against the same `pos + v*t + 0.5*a*t^2` equation.
 // Gravity constant lives in config.ts so it's shared with the physics
-// engine, client dead-reckoning, debris, and explosion sparks.
+// engine, debris, and explosion sparks. Client projectile presentation does
+// not integrate this equation.
 
 function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: number): void {
   // Phase 5a — three-pass structure so the inner ballistic integrate
@@ -1539,6 +1519,15 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
     proj.velocityY = vy;
     proj.velocityZ = vz;
     proj.timeAlive = timeAlive;
+    const horizontalSpeedSq = vx * vx + vy * vy;
+    const previousRotation = entity.transform.rotation;
+    const rotation = horizontalSpeedSq > 1e-12
+      ? DMath.atan2(vy, vx)
+      : previousRotation;
+    entity.transform.rotation = rotation;
+    proj.angularVelocity = dtSec > 0
+      ? normalizeAngle(rotation - previousRotation) / dtSec
+      : 0;
 
     updateProjectileArming(
       proj,
@@ -1627,7 +1616,6 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileTerrainTargetZ[index] = 0;
     _travelingProjectilePolicyFlags[index] = policyFlags;
     _travelingProjectileHomingTargetId[index] = NO_ENTITY_ID;
-    _travelingProjectileTargetUpdateId[index] = HOMING_TARGET_UPDATE_UNCHANGED;
 
     const homingEngagementScale = getProjectileHomingEngagementScale(
       shotConfig,
@@ -1662,7 +1650,6 @@ function _updateTravelingProjectilesJS(
       const resolvedHomingTargetId = homingTarget !== undefined ? homingTarget.id : NO_ENTITY_ID;
       if (resolvedHomingTargetId !== previousHomingTargetId) {
         proj.homingTargetId = resolvedHomingTargetId;
-        _travelingProjectileTargetUpdateId[index] = resolvedHomingTargetId;
       }
       if (homingTarget !== undefined) {
         aNetZ += getProjectileRocketCounterGravityCarryAcceleration(
@@ -1672,8 +1659,6 @@ function _updateTravelingProjectilesJS(
         );
         if (homingEngagementScale > 0) {
           _travelingProjectileHomingTargetId[index] = homingTarget.id;
-          policyFlags |= TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING;
-          _travelingProjectilePolicyFlags[index] = policyFlags;
           const aimPoint = resolveTargetAimPoint(
             homingTarget,
             position.x, position.y, position.z,
@@ -1867,40 +1852,18 @@ function _updateTravelingProjectilesJS(
       proj.config.shotProfile.runtime.radius.hitbox,
     );
 
-    // Visual rotation + sparse velocity-update events: only homing
-    // projectiles need either. Non-homing shots get their rotation
-    // baked into the spawn event; visible yaw drift over a ballistic
-    // arc is small enough that we don't pay the per-tick atan2 there.
-    const targetUpdateId = _travelingProjectileTargetUpdateId[i];
-    const homingTargetChanged = targetUpdateId !== HOMING_TARGET_UPDATE_UNCHANGED;
-    if (
-      (_travelingProjectilePolicyFlags[i] & TRAVELING_PROJECTILE_FLAG_HOMING_REPORTING) !== 0 ||
-      homingTargetChanged
-    ) {
-      entity.transform.rotation = DMath.atan2(vy, vx);
-
-      const lastVx = proj.lastSentVelX ?? vx;
-      const lastVy = proj.lastSentVelY ?? vy;
-      const lastVz = proj.lastSentVelZ ?? vz;
-      if (homingTargetChanged || snapshotVectorVelocityDeltaExceeded(
-        vx, vy, vz,
-        lastVx, lastVy, lastVz,
-        PROJECTILE_VELOCITY_REPORT_MAGNITUDE_RATIO,
-        PROJECTILE_VELOCITY_REPORT_DIRECTION_RADIANS,
-      )) {
-        proj.lastSentVelX = vx;
-        proj.lastSentVelY = vy;
-        proj.lastSentVelZ = vz;
-        _homingVelocityUpdates.push({
-          id: entity.id,
-          pos: { x, y, z },
-          velocity: { x: vx, y: vy, z: vz },
-          ownerId: proj.ownerId,
-          targetEntityId: proj.homingTargetId !== NO_ENTITY_ID ? proj.homingTargetId : undefined,
-          clearHomingTarget: proj.homingTargetId === NO_ENTITY_ID && homingTargetChanged ? true : undefined,
-        });
-      }
-    }
+    // Rotation is authoritative simulation state for every traveling shot.
+    // Purely vertical launch phases retain their authored yaw until horizontal
+    // motion exists, so rockets do not acquire an arbitrary facing at takeoff.
+    const horizontalSpeedSq = vx * vx + vy * vy;
+    const previousRotation = entity.transform.rotation;
+    const rotation = horizontalSpeedSq > 1e-12
+      ? DMath.atan2(vy, vx)
+      : previousRotation;
+    entity.transform.rotation = rotation;
+    proj.angularVelocity = dtSec > 0
+      ? normalizeAngle(rotation - previousRotation) / dtSec
+      : 0;
     _travelingProjectileBatchEntities[i] = undefined as unknown as Entity;
   }
 }
@@ -1908,18 +1871,17 @@ function _updateTravelingProjectilesJS(
 // Packed ballistic shots and non-packed guided/D-gun shots now both
 // cross Rust/WASM for authoritative position/velocity integration.
 
-// Update projectile positions - returns IDs of projectiles to remove (e.g., orphaned beams)
-// Also returns despawn events for removed projectiles and velocity updates for homing projectiles
+// Update projectile positions and return lifecycle removals. Continuous
+// presentation rows are collected from final world state after collisions.
 export function updateProjectiles(
   world: WorldState,
   dtMs: number,
   damageSystem: DamageSystem,
   wind: WindState,
-): { orphanedIds: EntityId[]; despawnEvents: ProjectileDespawnEvent[]; velocityUpdates: import('./types').ProjectileVelocityUpdateEvent[] } {
+): { orphanedIds: EntityId[]; despawnEvents: ProjectileDespawnEvent[] } {
   const dtSec = dtMs / 1000;
   _orphanedIds.length = 0;
   _despawnEvents.length = 0;
-  _homingVelocityUpdates.length = 0;
   const projectilesToRemove = _orphanedIds;
   const despawnEvents = _despawnEvents;
   // Position integration for traveling projectiles is Rust-owned:
@@ -2102,7 +2064,7 @@ export function updateProjectiles(
 
         // Reflection points: finite-diff per-reflector against the
         // previous trace so each reflection vertex carries its own
-        // instantaneous velocity for client-side extrapolation.
+        // instantaneous velocity for authoritative presentation smoothing.
         const prevRefs = proj.prevReflectionPoints;
         // Capture the previous trace's topology BEFORE the cache below
         // overwrites it: the endpoint's finite-diff velocity is only
@@ -2111,8 +2073,8 @@ export function updateProjectiles(
         // bounce moved to a different reflector) the old and new
         // endpoints are different points in the world — finite-diffing
         // them manufactures a huge bogus velocity that the client then
-        // integrates, slinging the rendered beam along the old→new
-        // endpoint line between snapshots.
+        // smooths, slinging the rendered beam along the old-to-new
+        // endpoint line.
         const prevTopologyRefCount = prevRefs != null ? prevRefs.length : -1;
         const prevLastReflectorId = prevRefs != null && prevRefs.length > 0
           ? prevRefs[prevRefs.length - 1].reflectorEntityId
@@ -2231,5 +2193,5 @@ export function updateProjectiles(
     }
   }
 
-  return { orphanedIds: projectilesToRemove, despawnEvents, velocityUpdates: _homingVelocityUpdates };
+  return { orphanedIds: projectilesToRemove, despawnEvents };
 }
