@@ -123,6 +123,8 @@ export function applyLegState(loc: Locomotion3DMesh, snapshot: LegStateSnapshot)
 
 export function buildLocomotion(
   unitGroup: THREE.Group,
+  airborneUnitGroup: THREE.Group,
+  airborneLiftY: number,
   worldGroup: THREE.Group,
   entity: Entity,
   unitRadius: number,
@@ -175,7 +177,7 @@ export function buildLocomotion(
         ? buildAlbatrosHoverFans
         : buildHoverFans;
       const mesh = buildHoverMesh(
-        unitGroup,
+        airborneUnitGroup,
         unitRadius,
         loc.config,
         hoverSmokeUseId(bp.unitBlueprintId),
@@ -183,18 +185,23 @@ export function buildLocomotion(
         ownerId,
         geometryTier,
       );
+      // Preserve the existing no-bank world pose while making the rig a
+      // child of the body-center roll pivot. The lift group supplies
+      // T(center) · R(bank); this offset supplies T(-center).
+      mesh.group.position.y -= airborneLiftY;
       mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'flying': {
       const mesh = buildFlyingRig(
-        unitGroup,
+        airborneUnitGroup,
         unitRadius,
         loc.config,
         flyingSmokeUseId(bp.unitBlueprintId),
         entity.id,
         ownerId,
       );
+      mesh.group.position.y -= airborneLiftY;
       mesh.geometryKey = geometryKey;
       return mesh;
     }

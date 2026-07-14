@@ -149,6 +149,35 @@ function assertAirLiftGroundProbeLayout(): void {
   );
 }
 
+function assertMobilityTuningIntent(): void {
+  const wheels = getLocomotionPresetConfig('wheels').physics;
+  const treads = getLocomotionPresetConfig('treads').physics;
+  const legs = getLocomotionPresetConfig('legs').physics;
+  const flying = getLocomotionPresetConfig('flying').physics;
+
+  assertContract(
+    wheels.driveForceMultiplier >= 2.4 && wheels.ground.surfaceGrip >= 0.55,
+    'wheels keep the faster ground acceleration and grip envelope',
+  );
+  assertContract(
+    treads.driveForceMultiplier >= 2.4 && treads.ground.surfaceGrip >= 0.85,
+    'treads keep the faster ground acceleration and grip envelope',
+  );
+  assertContract(
+    legs.driveForceMultiplier >= 1.2 && legs.ground.surfaceGrip >= 1,
+    'legs keep the faster ground drive without weakening contact grip',
+  );
+  assertContract(
+    flying.air.dragForwardScale >= 0.5 &&
+      flying.air.dragForwardScale < flying.air.dragLateralScale,
+    'flying keeps a lower cruise speed while remaining laterally draggy',
+  );
+  assertContract(
+    flying.air.traction >= 3,
+    'flying speed tuning must not remove air turn authority',
+  );
+}
+
 function assertMediumOwnsFields(
   medium: RuntimeMediumPhysics,
   label: string,
@@ -303,6 +332,7 @@ function assertClonedLocomotionMatchesSource(
 export function runLocomotionContractTest(): void {
   assertAirLiftHeightForceFalloffMatchesConfig();
   assertAirLiftGroundProbeLayout();
+  assertMobilityTuningIntent();
 
   const hippoBlueprint = getUnitBlueprint('unitHippo');
   const hippoLocomotion = assertRuntimeLocomotionMatchesSources('unitHippo');

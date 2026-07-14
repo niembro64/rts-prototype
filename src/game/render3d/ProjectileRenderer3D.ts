@@ -24,6 +24,7 @@ import {
 } from './PrimitiveGeometryQuality3D';
 import { entityDetailLevelForView } from './EntityLod3D';
 import { projectileStyleForDetail } from './EntityDetailLevel3D';
+import { ProjectileAxisPoseBatch3D } from './ProjectileAxisPoseBatch3D';
 
 const PROJECTILE_MIN_RADIUS = 0.5;
 // 1 revolution per second.
@@ -195,6 +196,7 @@ export class ProjectileRenderer3D {
   private readonly projectileRadiusMeshes = new Map<number, ProjectileRadiusMeshes>();
   private readonly projectileRadiusMeshPool: THREE.LineSegments[] = [];
   private readonly trailStamps = new IndexedEntityIdMap<TrailStampBuffer>();
+  private readonly projectileAxisPose = new ProjectileAxisPoseBatch3D();
   // Scratch buffers reused across projectiles to avoid per-frame allocs.
   // resampleTrailCenterline fills tailCenterline with the drawn ring
   // centers, tailRingDist with each ring's arc distance behind the head,
@@ -285,7 +287,23 @@ export class ProjectileRenderer3D {
     let finCount = 0;
     const wantCol = getProjRangeToggle('collision');
     const wantExp = getProjRangeToggle('explosion');
-    for (const e of projectiles) {
+    this.projectileAxisPose.begin(projectiles.length);
+    for (let i = 0; i < projectiles.length; i++) {
+      const entity = projectiles[i];
+      const projectile = entity.projectile;
+      this.projectileAxisPose.write(
+        i,
+        projectile?.velocityX ?? 0,
+        projectile?.velocityY ?? 0,
+        projectile?.velocityZ ?? 0,
+        entity.transform.rotation,
+      );
+    }
+    const projectileAxisOutput = this.projectileAxisPose.compute(projectiles.length);
+    const projectileAxisOutputStride = this.projectileAxisPose.outputStride;
+
+    for (let projectileIndex = 0; projectileIndex < projectiles.length; projectileIndex++) {
+      const e = projectiles[projectileIndex];
       if (pruneProjectiles) seen.add(e.id);
       const tx = e.transform.x;
       const ty = e.transform.y;
@@ -342,7 +360,15 @@ export class ProjectileRenderer3D {
       if (tailShape !== 'none' || finSizeMult > 0) {
         const tailLength = r * (visualProfile?.projectileTailLengthMult ?? 8);
         const tailRadius = r * (visualProfile?.projectileTailRadiusMult ?? 1);
-        this.composeProjectileTailPose(e, tx, ty, tz, tailLength, tailRadius);
+        this.composeProjectileTailPose(
+          projectileAxisOutput,
+          projectileIndex * projectileAxisOutputStride,
+          tx,
+          ty,
+          tz,
+          tailLength,
+          tailRadius,
+        );
         if (tailShape === 'cylinder') {
           if (cylinderCount < PROJECTILE_INSTANCED_CAP) {
             writeComposedMatrix(
@@ -828,34 +854,23 @@ export class ProjectileRenderer3D {
   }
 
   private composeProjectileTailPose(
-    entity: Entity,
+    pose: Float32Array,
+    poseOffset: number,
     x: number, y: number, z: number,
     length: number,
     radius: number,
   ): void {
-    const proj = entity.projectile;
-    if (proj) {
-      const vx = proj.velocityX, vy = proj.velocityY, vz = proj.velocityZ;
-      const horizontalSpeed = Math.sqrt(vx * vx + vy * vy);
-      const speed = Math.sqrt(horizontalSpeed * horizontalSpeed + vz * vz);
-      if (speed > 1e-3) {
-        const horizontalScale = horizontalSpeed / speed;
-        this.projDir.set(
-          -Math.cos(entity.transform.rotation) * horizontalScale,
-          -vz / speed,
-          -Math.sin(entity.transform.rotation) * horizontalScale,
-        );
-      } else {
-        this.projDir.set(
-          -Math.cos(entity.transform.rotation),
-          0,
-          -Math.sin(entity.transform.rotation),
-        );
-      }
-    } else {
-      this.projDir.set(0, 0, -1);
-    }
-    this.projQuat.setFromUnitVectors(PROJ_CYL_AXIS, this.projDir);
+    this.projDir.set(
+      pose[poseOffset],
+      pose[poseOffset + 1],
+      pose[poseOffset + 2],
+    );
+    this.projQuat.set(
+      pose[poseOffset + 3],
+      pose[poseOffset + 4],
+      pose[poseOffset + 5],
+      pose[poseOffset + 6],
+    );
     this.projPos.set(
       x + this.projDir.x * length * 0.5,
       z + this.projDir.y * length * 0.5,

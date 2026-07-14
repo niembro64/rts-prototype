@@ -98,7 +98,11 @@ import { areaTargetMatchesCommandFilter } from './areaCommandFilters';
 
 const MAX_FACTORY_PRODUCTION_QUOTA = 64;
 const BAR_UNLOAD_AREA_MIN_RADIUS = 64;
-const BAR_UNLOAD_AREA_PHI = (DMath.sqrt(5) + 1) / 2;
+// Golden ratio is a compile-time layout constant. Keeping the resolved
+// literal avoids invoking deterministic WASM math during module evaluation,
+// before initSimWasm() has installed the gameplay kernels (notably in the
+// browser performance harness bootstrap).
+const BAR_UNLOAD_AREA_PHI = 1.618033988749895;
 import { isCapturableTarget } from './capture';
 import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport, isTransportUnit } from './transports';

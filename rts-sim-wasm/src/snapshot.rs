@@ -9580,6 +9580,8 @@ mod sim_kernel_tests {
         let ground_normals = vec![0.0, 0.0, 1.0];
         let air_drag_coefficients = vec![12.0];
         let inv_mass = vec![0.01];
+        let yaw_rates = vec![0.0];
+        let coordinated_turn_flags = vec![0];
         client_predict_unit_motion_batch(
             1,
             &mut motions,
@@ -9588,6 +9590,8 @@ mod sim_kernel_tests {
             &ground_normals,
             &air_drag_coefficients,
             &inv_mass,
+            &yaw_rates,
+            &coordinated_turn_flags,
             dt,
             0.85,
             0.0,
@@ -9610,6 +9614,8 @@ mod sim_kernel_tests {
         let ground_normals = vec![0.0, 0.0, 1.0];
         let air_drag_coefficients = vec![12.0];
         let inv_mass = vec![0.01];
+        let yaw_rates = vec![0.0];
+        let coordinated_turn_flags = vec![0];
         client_predict_unit_motion_batch(
             1,
             &mut motions,
@@ -9618,6 +9624,8 @@ mod sim_kernel_tests {
             &ground_normals,
             &air_drag_coefficients,
             &inv_mass,
+            &yaw_rates,
+            &coordinated_turn_flags,
             1.0 / 60.0,
             0.85,
             0.0,
@@ -9628,6 +9636,42 @@ mod sim_kernel_tests {
         );
 
         assert_eq!(motions, vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    pub(crate) fn client_prediction_batch_advances_coordinated_flight_as_a_curve() {
+        let mut motions = vec![0.0, 0.0, 100.0, 60.0, 0.0, 0.0];
+        let ground_offsets = vec![3.0];
+        let ground_z = vec![0.0];
+        let ground_normals = vec![0.0, 0.0, 1.0];
+        let air_drag_coefficients = vec![0.0];
+        let inv_mass = vec![0.0];
+        let yaw_rates = vec![core::f64::consts::FRAC_PI_2];
+        let coordinated_turn_flags = vec![1];
+        client_predict_unit_motion_batch(
+            1,
+            &mut motions,
+            &ground_offsets,
+            &ground_z,
+            &ground_normals,
+            &air_drag_coefficients,
+            &inv_mass,
+            &yaw_rates,
+            &coordinated_turn_flags,
+            1.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.1,
+            0.0001,
+        );
+
+        let midpoint_distance = 60.0 / 2.0_f64.sqrt();
+        assert!((motions[0] - midpoint_distance).abs() < 1e-12);
+        assert!((motions[1] - midpoint_distance).abs() < 1e-12);
+        assert!(motions[3].abs() < 1e-12);
+        assert!((motions[4] - 60.0).abs() < 1e-12);
     }
 }
 

@@ -248,6 +248,8 @@ export class UnitMeshBuilder3D {
     applyUnitLiftGroupPose3D(mesh, entity);
     mesh.locomotion = buildLocomotion(
       yawGroup,
+      liftGroup,
+      liftGroup.position.y,
       this.world,
       entity,
       radius,

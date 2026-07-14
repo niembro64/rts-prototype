@@ -6,14 +6,14 @@
   "presets": {
     "wheels": {
       "physics": {
-        "driveForceMultiplier": 2,
+        "driveForceMultiplier": 2.4,
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
         "airLiftGroundProbeAheadDistance": 0,
         "airLiftGroundProbeAheadRadiusMultiplier": 0,
         "ground": {
-          "traction": 0.45,
+          "traction": 0.55,
           "friction": 0,
           "heightUpwardForceRandomizationAmount": 0,
           "heightUpwardForceEMA": 0,
@@ -22,8 +22,8 @@
           "dragLateralScale": 1,
           "dragVerticalScale": 1,
           "angularDrag": 0,
-          "surfaceGrip": 0.45,
-          "contactDamping": 0.45
+          "surfaceGrip": 0.55,
+          "contactDamping": 0.55
         },
         "air": {
           "traction": 0,
@@ -56,14 +56,14 @@
     },
     "treads": {
       "physics": {
-        "driveForceMultiplier": 2,
+        "driveForceMultiplier": 2.4,
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
         "airLiftGroundProbeAheadDistance": 0,
         "airLiftGroundProbeAheadRadiusMultiplier": 0,
         "ground": {
-          "traction": 0.75,
+          "traction": 0.85,
           "friction": 0,
           "heightUpwardForceRandomizationAmount": 0,
           "heightUpwardForceEMA": 0,
@@ -72,8 +72,8 @@
           "dragLateralScale": 1,
           "dragVerticalScale": 1,
           "angularDrag": 0,
-          "surfaceGrip": 0.75,
-          "contactDamping": 0.75
+          "surfaceGrip": 0.85,
+          "contactDamping": 0.85
         },
         "air": {
           "traction": 0,
@@ -106,7 +106,7 @@
     },
     "legs": {
       "physics": {
-        "driveForceMultiplier": 1,
+        "driveForceMultiplier": 1.2,
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
@@ -231,7 +231,7 @@
           "heightUpwardForceRandomizationAmount": 0.99,
           "heightUpwardForceEMA": 0.97,
           "quadraticDrag": 0.00002,
-          "dragForwardScale": 0.35,
+          "dragForwardScale": 0.55,
           "dragLateralScale": 1.3,
           "dragVerticalScale": 1,
           "angularDrag": 3,

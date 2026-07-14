@@ -9,17 +9,21 @@ use wasm_bindgen::prelude::*;
 //  Render pose scratch — unit base chain
 //
 //  Computes the high-count unit render chain:
-//    group tilt quaternion, inverse tilt, parent quaternion
-//    (tilt · Ry(-simRotation)), lifted world position, and
-//    T(liftedPos) · R(parentQuat) matrix.
+//    group tilt quaternion, inverse tilt, visual parent quaternion
+//    (tilt · Ry(-simRotation) · Rx(bank)), lifted world position, and
+//    T(liftedPos) · R(visualParentQuat) matrix.
 //
-//  This mirrors the Render3DEntities unit base-pose math. The visual
-//  airborne bank intentionally stays out of the parent quaternion here,
-//  matching the current instanced chassis/turret path.
+//  Airborne bank is presentation-only state. The previous render-frame
+//  bank enters the batch, Rust advances the local EMA, and the result is
+//  returned with the final parent pose. It never enters simulation state,
+//  snapshots, targeting, or collision math.
 // ─────────────────────────────────────────────────────────────────
 
-pub const RENDER_UNIT_POSE_INPUT_STRIDE: usize = 11;
-pub const RENDER_UNIT_POSE_OUTPUT_STRIDE: usize = 32;
+pub const RENDER_UNIT_POSE_INPUT_STRIDE: usize = 16;
+pub const RENDER_UNIT_POSE_OUTPUT_STRIDE: usize = 33;
+const RENDER_AIRBORNE_BANK_VISUAL_GRAVITY: f64 = 1.0 / 0.003;
+const RENDER_AIRBORNE_BANK_MAX: f64 = core::f64::consts::PI * 0.25;
+const RENDER_AIRBORNE_BANK_TAU_SEC: f64 = 0.18;
 
 pub(crate) struct RenderUnitPoseScratch {
     input: Vec<f32>,
@@ -126,6 +130,48 @@ pub(crate) fn render_tilt_quat_from_surface_normal(
 }
 
 #[inline]
+pub(crate) fn render_airborne_bank_step(
+    velocity_x: f64,
+    velocity_y: f64,
+    sim_rotation: f64,
+    yaw_rate: f64,
+    previous_roll: f64,
+    dt_sec: f64,
+    airborne: bool,
+) -> f64 {
+    if !airborne {
+        return 0.0;
+    }
+    let safe_previous = if previous_roll.is_finite() {
+        previous_roll.clamp(-RENDER_AIRBORNE_BANK_MAX, RENDER_AIRBORNE_BANK_MAX)
+    } else {
+        0.0
+    };
+    if !velocity_x.is_finite()
+        || !velocity_y.is_finite()
+        || !sim_rotation.is_finite()
+        || !yaw_rate.is_finite()
+    {
+        return safe_previous;
+    }
+
+    // Body-forward centripetal acceleration remains present throughout a
+    // coordinated turn, unlike lateral slip (which collapses as the yaw
+    // spring catches up). atan2 gives the old 0.003 small-angle response a
+    // physical shape while naturally saturating before the hard roll cap.
+    let forward_speed = velocity_x * sim_rotation.cos() + velocity_y * sim_rotation.sin();
+    let lateral_acceleration = -forward_speed * yaw_rate;
+    let target = lateral_acceleration
+        .atan2(RENDER_AIRBORNE_BANK_VISUAL_GRAVITY)
+        .clamp(-RENDER_AIRBORNE_BANK_MAX, RENDER_AIRBORNE_BANK_MAX);
+    if !dt_sec.is_finite() || dt_sec <= 0.0 {
+        return safe_previous;
+    }
+    let retain = (-dt_sec / RENDER_AIRBORNE_BANK_TAU_SEC).exp();
+    retain * safe_previous + (1.0 - retain) * target
+}
+
+#[inline]
 pub(crate) fn render_write_mat4_compose(
     out: &mut [f32],
     offset: usize,
@@ -188,6 +234,11 @@ pub fn render_unit_pose_compute(count: u32) {
         let lift_y = s.input[ib + 8] as f64;
         let lift_z = s.input[ib + 9] as f64;
         let airborne = s.input[ib + 10] != 0.0;
+        let velocity_x = s.input[ib + 11] as f64;
+        let velocity_y = s.input[ib + 12] as f64;
+        let yaw_rate = s.input[ib + 13] as f64;
+        let previous_bank = s.input[ib + 14] as f64;
+        let dt_sec = s.input[ib + 15] as f64;
 
         let (tilt_q, chassis_tilted) =
             render_tilt_quat_from_surface_normal(normal_x, normal_y, normal_z, airborne);
@@ -198,8 +249,24 @@ pub fn render_unit_pose_compute(count: u32) {
         };
         let yaw = -sim_rotation;
         let yaw_q = [0.0, (yaw * 0.5).sin(), 0.0, (yaw * 0.5).cos()];
-        let parent_q = quat_mul(tilt_q, yaw_q);
-        let lifted_offset = quat_rotate_vec(parent_q, [lift_x, lift_y, lift_z]);
+        let base_parent_q = quat_mul(tilt_q, yaw_q);
+        let visual_bank = render_airborne_bank_step(
+            velocity_x,
+            velocity_y,
+            sim_rotation,
+            yaw_rate,
+            previous_bank,
+            dt_sec,
+            airborne,
+        );
+        let bank_half_angle = -visual_bank * 0.5;
+        let bank_q = [bank_half_angle.sin(), 0.0, 0.0, bank_half_angle.cos()];
+        let parent_q = quat_mul(base_parent_q, bank_q);
+
+        // Lift determines the body center and must remain on the unbanked
+        // yaw axis. Bank rotates the body around that center instead of
+        // orbiting it around the terrain footprint.
+        let lifted_offset = quat_rotate_vec(base_parent_q, [lift_x, lift_y, lift_z]);
         let lifted_pos = [
             base_x + lifted_offset[0],
             base_y + lifted_offset[1],
@@ -223,6 +290,131 @@ pub fn render_unit_pose_compute(count: u32) {
         s.output[ob + 14] = lifted_pos[2] as f32;
         s.output[ob + 15] = if chassis_tilted { 1.0 } else { 0.0 };
         render_write_mat4_compose(&mut s.output, ob + 16, lifted_pos, parent_q);
+        s.output[ob + 32] = visual_bank as f32;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────
+//  Render pose scratch — projectile visual axis
+//
+//  One authoritative presentation velocity produces one rearward axis
+//  and one quaternion for the rocket body, tail, fins, and emitters.
+//  Input is sim velocity (x/y horizontal, z vertical) plus the presented
+//  yaw fallback. Output uses Three coordinates (x, vertical-y, sim-y-z).
+// ─────────────────────────────────────────────────────────────────
+
+pub const RENDER_PROJECTILE_AXIS_INPUT_STRIDE: usize = 4;
+pub const RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE: usize = 7;
+
+pub(crate) struct RenderProjectileAxisScratch {
+    input: Vec<f32>,
+    output: Vec<f32>,
+}
+
+pub(crate) struct RenderProjectileAxisScratchHolder(
+    UnsafeCell<Option<RenderProjectileAxisScratch>>,
+);
+unsafe impl Sync for RenderProjectileAxisScratchHolder {}
+pub(crate) static RENDER_PROJECTILE_AXIS_SCRATCH: RenderProjectileAxisScratchHolder =
+    RenderProjectileAxisScratchHolder(UnsafeCell::new(None));
+
+#[inline]
+pub(crate) fn render_projectile_axis_scratch() -> &'static mut RenderProjectileAxisScratch {
+    unsafe {
+        let cell = &mut *RENDER_PROJECTILE_AXIS_SCRATCH.0.get();
+        if cell.is_none() {
+            *cell = Some(RenderProjectileAxisScratch {
+                input: vec![0.0; RENDER_PROJECTILE_AXIS_INPUT_STRIDE * 1024],
+                output: vec![0.0; RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE * 1024],
+            });
+        }
+        cell.as_mut().unwrap()
+    }
+}
+
+#[inline]
+pub(crate) fn render_projectile_rearward_pose(
+    velocity_x: f64,
+    velocity_y: f64,
+    velocity_z: f64,
+    fallback_rotation: f64,
+) -> ([f64; 3], [f64; 4]) {
+    let speed_sq = velocity_x * velocity_x + velocity_y * velocity_y + velocity_z * velocity_z;
+    let rearward = if speed_sq.is_finite() && speed_sq > 1e-6 {
+        let inv_speed = 1.0 / speed_sq.sqrt();
+        [
+            -velocity_x * inv_speed,
+            -velocity_z * inv_speed,
+            -velocity_y * inv_speed,
+        ]
+    } else {
+        let yaw = if fallback_rotation.is_finite() {
+            fallback_rotation
+        } else {
+            0.0
+        };
+        [-yaw.cos(), 0.0, -yaw.sin()]
+    };
+
+    // Equivalent to THREE.Quaternion.setFromUnitVectors(local +Y,
+    // rearward), kept here so every projectile visual consumes exactly the
+    // same axis without per-projectile TypeScript vector/quaternion math.
+    let r = rearward[1] + 1.0;
+    let mut q = if r < 1e-6 {
+        [0.0, 0.0, 1.0, 0.0]
+    } else {
+        [rearward[2], 0.0, -rearward[0], r]
+    };
+    quat_normalize_inplace(&mut q);
+    (rearward, q)
+}
+
+#[wasm_bindgen]
+pub fn render_projectile_axis_input_scratch_ptr() -> *const f32 {
+    render_projectile_axis_scratch().input.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_projectile_axis_output_scratch_ptr() -> *const f32 {
+    render_projectile_axis_scratch().output.as_ptr()
+}
+
+#[wasm_bindgen]
+pub fn render_projectile_axis_scratch_ensure(count: u32) {
+    let s = render_projectile_axis_scratch();
+    let input_needed = (count as usize) * RENDER_PROJECTILE_AXIS_INPUT_STRIDE;
+    if s.input.len() < input_needed {
+        s.input.resize(input_needed, 0.0);
+    }
+    let output_needed = (count as usize) * RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE;
+    if s.output.len() < output_needed {
+        s.output.resize(output_needed, 0.0);
+    }
+}
+
+#[wasm_bindgen]
+pub fn render_projectile_axis_compute(count: u32) {
+    let s = render_projectile_axis_scratch();
+    let count_usize = count as usize;
+    debug_assert!(s.input.len() >= count_usize * RENDER_PROJECTILE_AXIS_INPUT_STRIDE);
+    debug_assert!(s.output.len() >= count_usize * RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE);
+
+    for i in 0..count_usize {
+        let ib = i * RENDER_PROJECTILE_AXIS_INPUT_STRIDE;
+        let ob = i * RENDER_PROJECTILE_AXIS_OUTPUT_STRIDE;
+        let (rearward, q) = render_projectile_rearward_pose(
+            s.input[ib] as f64,
+            s.input[ib + 1] as f64,
+            s.input[ib + 2] as f64,
+            s.input[ib + 3] as f64,
+        );
+        s.output[ob] = rearward[0] as f32;
+        s.output[ob + 1] = rearward[1] as f32;
+        s.output[ob + 2] = rearward[2] as f32;
+        s.output[ob + 3] = q[0] as f32;
+        s.output[ob + 4] = q[1] as f32;
+        s.output[ob + 5] = q[2] as f32;
+        s.output[ob + 6] = q[3] as f32;
     }
 }
 
@@ -1235,5 +1427,51 @@ pub fn render_turret_aim_compute(count: u32) {
         };
         s.output[ob] = (combined_yaw + host_rotation) as f32;
         s.output[ob + 1] = y.asin() as f32;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx(a: f64, b: f64, epsilon: f64) {
+        assert!((a - b).abs() <= epsilon, "expected {a} ~= {b}");
+    }
+
+    #[test]
+    fn airborne_bank_leans_into_turn_and_decays() {
+        let bank = render_airborne_bank_step(120.0, 0.0, 0.0, 0.8, 0.0, 0.18, true);
+        assert!(bank < 0.0, "positive yaw rate must produce inward roll");
+        assert!(bank.abs() < RENDER_AIRBORNE_BANK_MAX);
+
+        let decayed = render_airborne_bank_step(0.0, 0.0, 0.0, 0.0, bank, 0.18, true);
+        assert!(decayed.abs() < bank.abs());
+        approx(
+            render_airborne_bank_step(120.0, 0.0, 0.0, 0.8, bank, 0.18, false),
+            0.0,
+            1e-12,
+        );
+    }
+
+    #[test]
+    fn projectile_axis_uses_full_velocity_in_three_coordinates() {
+        let (rearward, q) = render_projectile_rearward_pose(3.0, 4.0, 12.0, 1.7);
+        let inv_speed = 1.0 / 13.0;
+        approx(rearward[0], -3.0 * inv_speed, 1e-12);
+        approx(rearward[1], -12.0 * inv_speed, 1e-12);
+        approx(rearward[2], -4.0 * inv_speed, 1e-12);
+
+        let rotated_axis = quat_rotate_vec(q, [0.0, 1.0, 0.0]);
+        approx(rotated_axis[0], rearward[0], 1e-12);
+        approx(rotated_axis[1], rearward[1], 1e-12);
+        approx(rotated_axis[2], rearward[2], 1e-12);
+    }
+
+    #[test]
+    fn projectile_axis_falls_back_to_presented_yaw_when_stopped() {
+        let (rearward, _) = render_projectile_rearward_pose(0.0, 0.0, 0.0, 0.5);
+        approx(rearward[0], -0.5_f64.cos(), 1e-12);
+        approx(rearward[1], 0.0, 1e-12);
+        approx(rearward[2], -0.5_f64.sin(), 1e-12);
     }
 }

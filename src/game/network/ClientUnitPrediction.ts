@@ -168,6 +168,8 @@ let groundZBatch = new Float64Array(0);
 let groundNormalBatch = new Float64Array(0);
 let airDragCoefficientBatch = new Float64Array(0);
 let invMassBatch = new Float64Array(0);
+let yawRateBatch = new Float64Array(0);
+let coordinatedTurnBatch = new Uint8Array(0);
 let contactBatch = new Uint8Array(0);
 let supportIgnoreEntityIdBatch = new Int32Array(0);
 const targetBatchRefs: UnitPredictionTarget[] = [];
@@ -290,6 +292,8 @@ function ensurePredictionBatchCapacity(count: number): void {
   groundNormalBatch = new Float64Array(capacity * 3);
   airDragCoefficientBatch = new Float64Array(capacity);
   invMassBatch = new Float64Array(capacity);
+  yawRateBatch = new Float64Array(capacity);
+  coordinatedTurnBatch = new Uint8Array(capacity);
   contactBatch = new Uint8Array(capacity);
   supportIgnoreEntityIdBatch = new Int32Array(capacity);
 }
@@ -339,6 +343,8 @@ export function resetClientUnitPredictionPools(maxRetained = INITIAL_BATCH_CAPAC
     groundNormalBatch = new Float64Array(retained * 3);
     airDragCoefficientBatch = new Float64Array(retained);
     invMassBatch = new Float64Array(retained);
+    yawRateBatch = new Float64Array(retained);
+    coordinatedTurnBatch = new Uint8Array(retained);
     contactBatch = new Uint8Array(retained);
     supportIgnoreEntityIdBatch = new Int32Array(retained);
   }
@@ -565,6 +571,8 @@ function advancePackedMotionBatch(
     groundNormalBatch,
     airDragCoefficientBatch,
     invMassBatch,
+    yawRateBatch,
+    coordinatedTurnBatch,
     dt,
     groundDamp,
     0,
@@ -595,6 +603,14 @@ function packTargetPredictionBatch(
     motionBatch[base + 5] = target.velocityZ ?? 0;
     groundOffsetBatch[batchCount] = target.bodyCenterHeight;
     supportIgnoreEntityIdBatch[batchCount] = entities[i]?.id ?? -1;
+    // Full-orientation snapshots carry angularVelocityZ. Older/partial
+    // records may omit it even though the displayed entity already has the
+    // latest derivative, so retain that derivative instead of reverting the
+    // target path to snapshot-length straight chords.
+    yawRateBatch[batchCount] =
+      target.angularVelocityZ ?? entities[i]?.unit?.angularVelocity3?.z ?? 0;
+    coordinatedTurnBatch[batchCount] =
+      entities[i]?.unit?.locomotion.type === 'flying' ? 1 : 0;
     writeUnitPredictionForceEntry(batchCount);
     targetBatchRefs[batchCount] = target;
     batchCount++;
@@ -637,6 +653,8 @@ function packEntityPredictionBatch(entities: Entity[], count: number): void {
       groundOffsetBatch[i] = unit.bodyCenterHeight;
     }
     writeUnitPredictionForceEntry(i);
+    yawRateBatch[i] = unit?.angularVelocity3?.z ?? 0;
+    coordinatedTurnBatch[i] = unit?.locomotion.type === 'flying' ? 1 : 0;
     supportIgnoreEntityIdBatch[i] = entity.id;
   }
 }

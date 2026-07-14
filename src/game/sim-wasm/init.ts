@@ -86,6 +86,10 @@ import __wbg_init, {
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
   render_unit_pose_scratch_ensure,
+  render_projectile_axis_compute,
+  render_projectile_axis_input_scratch_ptr,
+  render_projectile_axis_output_scratch_ptr,
+  render_projectile_axis_scratch_ensure,
   render_airborne_emitter_compute,
   render_airborne_emitter_input_scratch_ptr,
   render_airborne_emitter_output_scratch_ptr,
@@ -872,6 +876,8 @@ export interface SimWasm {
     groundNormals: Float64Array,
     airDragCoefficients: Float64Array,
     invMass: Float64Array,
+    yawRates: Float64Array,
+    coordinatedTurnFlags: Uint8Array,
     dtSec: number,
     groundDamp: number,
     windX: number,
@@ -1883,6 +1889,12 @@ export interface RenderPoseApi {
   unitCompute: (count: number) => void;
   unitInputStride: number;
   unitOutputStride: number;
+  projectileAxisInputScratchPtr: () => number;
+  projectileAxisOutputScratchPtr: () => number;
+  projectileAxisScratchEnsure: (count: number) => void;
+  projectileAxisCompute: (count: number) => void;
+  projectileAxisInputStride: number;
+  projectileAxisOutputStride: number;
   airborneEmitterInputScratchPtr: () => number;
   airborneEmitterOutputScratchPtr: () => number;
   airborneEmitterScratchEnsure: (count: number) => void;
@@ -4348,8 +4360,14 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           unitOutputScratchPtr: render_unit_pose_output_scratch_ptr,
           unitScratchEnsure: render_unit_pose_scratch_ensure,
           unitCompute: render_unit_pose_compute,
-          unitInputStride: 11,
-          unitOutputStride: 32,
+          unitInputStride: 16,
+          unitOutputStride: 33,
+          projectileAxisInputScratchPtr: render_projectile_axis_input_scratch_ptr,
+          projectileAxisOutputScratchPtr: render_projectile_axis_output_scratch_ptr,
+          projectileAxisScratchEnsure: render_projectile_axis_scratch_ensure,
+          projectileAxisCompute: render_projectile_axis_compute,
+          projectileAxisInputStride: 4,
+          projectileAxisOutputStride: 7,
           airborneEmitterInputScratchPtr: render_airborne_emitter_input_scratch_ptr,
           airborneEmitterOutputScratchPtr: render_airborne_emitter_output_scratch_ptr,
           airborneEmitterScratchEnsure: render_airborne_emitter_scratch_ensure,

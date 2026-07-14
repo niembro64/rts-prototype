@@ -83,10 +83,6 @@ import {
   type BuildingRenderPacket3D,
 } from './EntityRenderPackets3D';
 import { AirborneEmitterBatch3D } from './AirborneEmitterBatch3D';
-import {
-  applyAirborneBankRoll3D,
-  applyAirborneBankToParentQuat3D,
-} from './UnitAirborneBank3D';
 import { EntityMaterialPalette3D } from './EntityMaterialPalette3D';
 import {
   syncUnitDynamicMaterials3D,
@@ -268,7 +264,6 @@ export class Render3DEntities {
    *  chassis-instanced unit. */
   private _smoothLiftedPos = new THREE.Vector3();
   private _locomotionParentQuat = new THREE.Quaternion();
-  private _airborneBankQuat = new THREE.Quaternion();
   private turretMountCache = new TurretMountCache3D();
   // Last beam-firing direction per turret. Persists across frames so
   // beam-directed heads freeze on their last live firing direction.
@@ -741,6 +736,11 @@ export class Render3DEntities {
         liftPos?.y ?? (m.chassisLift ?? 0),
         liftPos?.z ?? 0,
         unitRows.airborneAt(row),
+        unitRows.velocityX[row],
+        unitRows.velocityY[row],
+        unitRows.yawRate[row],
+        m.visualBankRoll ?? 0,
+        spinDt,
       );
       poseRows[poseCount] = row;
       poseMeshes[poseCount] = m;
@@ -773,6 +773,8 @@ export class Render3DEntities {
       const airborne = unitRows.airborneAt(row);
       const yaw = -tRot;
       const poseBase = poseIndex * poseOutputStride;
+      const visualBankRoll = poseOutput[poseBase + 32];
+      m.visualBankRoll = visualBankRoll;
 
       // Position group at the unit's footprint. sim.x → Three.x, sim.y
       // → Three.z (the existing horizontal convention). Vertical =
@@ -796,16 +798,16 @@ export class Render3DEntities {
           poseOutput[poseBase + 7],
         );
       }
-      if (m.yawGroup) setEulerIfChanged(m.yawGroup.rotation, 0, yaw, 0);
-
-      if (airborne && m.yawGroup) {
-        m.visualBankRoll = applyAirborneBankRoll3D(m.yawGroup, m.visualBankRoll, {
-          velocityX: unitRows.velocityX[row],
-          velocityY: unitRows.velocityY[row],
-          yawRadians: tRot,
-          yawRate: unitRows.yawRate[row],
-          spinDtSec: spinDt,
-        });
+      if (m.yawGroup) {
+        setEulerIfChanged(m.yawGroup.rotation, 0, yaw, 0);
+      }
+      if (m.liftGroup) {
+        setEulerIfChanged(
+          m.liftGroup.rotation,
+          airborne ? -visualBankRoll : 0,
+          0,
+          0,
+        );
       }
 
       // Chassis body lives entirely in unit-radius-1 space (see
@@ -838,13 +840,6 @@ export class Render3DEntities {
         poseOutput[poseBase + 10],
         poseOutput[poseBase + 11],
       );
-      if (airborne) {
-        applyAirborneBankToParentQuat3D(
-          this._locomotionParentQuat,
-          this._airborneBankQuat,
-          m.visualBankRoll,
-        );
-      }
       this.chassisInstancePose.update(
         e,
         m,
@@ -958,7 +953,12 @@ export class Render3DEntities {
             mapHeight,
             this.legRenderer,
             locomotionSmokeEmitters,
-            this.airborneEmitterUpdate.prepare(tx, groundZ, ty, this._locomotionParentQuat),
+            this.airborneEmitterUpdate.prepare(
+              this._smoothLiftedPos.x,
+              this._smoothLiftedPos.y,
+              this._smoothLiftedPos.z,
+              this._locomotionParentQuat,
+            ),
           );
           if (keepLocomotionActive) this.activeLocomotionUnitIds.add(e.id);
           else this.activeLocomotionUnitIds.delete(e.id);

@@ -210,6 +210,8 @@ pub fn client_predict_unit_motion_batch(
     ground_normals: &[f64],
     air_drag_coefficients: &[f64],
     inv_mass: &[f64],
+    yaw_rates: &[f64],
+    coordinated_turn_flags: &[u8],
     dt_sec: f64,
     ground_damp: f64,
     wind_x: f64,
@@ -225,7 +227,13 @@ pub fn client_predict_unit_motion_batch(
     debug_assert!(ground_normals.len() >= count * 3);
     debug_assert!(air_drag_coefficients.len() >= count);
     debug_assert!(inv_mass.len() >= count);
-    if air_drag_coefficients.len() < count || inv_mass.len() < count {
+    debug_assert!(yaw_rates.len() >= count);
+    debug_assert!(coordinated_turn_flags.len() >= count);
+    if air_drag_coefficients.len() < count
+        || inv_mass.len() < count
+        || yaw_rates.len() < count
+        || coordinated_turn_flags.len() < count
+    {
         return;
     }
 
@@ -248,12 +256,40 @@ pub fn client_predict_unit_motion_batch(
             }
         }
 
+        // Airframes do not travel along a series of snapshot-length straight
+        // chords while their body yaw turns continuously. Rotate horizontal
+        // velocity by half the predicted yaw step before position integration
+        // and by the other half afterward. This is a midpoint integration of
+        // coordinated curved flight: position and heading advance together at
+        // render cadence, speed is preserved, and the latest snapshot still
+        // owns the state through the client drift channels.
+        let coordinated_turn = coordinated_turn_flags[i] != 0
+            && yaw_rates[i].is_finite()
+            && dt_sec.is_finite()
+            && dt_sec > 0.0;
+        let half_turn = if coordinated_turn {
+            yaw_rates[i] * dt_sec * 0.5
+        } else {
+            0.0
+        };
+        let (half_turn_sin, half_turn_cos) = half_turn.sin_cos();
+        let (mid_vx, mid_vy) = if coordinated_turn {
+            let vx = motions[base + 3];
+            let vy = motions[base + 4];
+            (
+                half_turn_cos * vx - half_turn_sin * vy,
+                half_turn_sin * vx + half_turn_cos * vy,
+            )
+        } else {
+            (motions[base + 3], motions[base + 4])
+        };
+
         let mut motion = [
             motions[base],
             motions[base + 1],
             motions[base + 2],
-            motions[base + 3],
-            motions[base + 4],
+            mid_vx,
+            mid_vy,
             motions[base + 5],
         ];
         integrate_unit_motion_inline(
@@ -280,8 +316,13 @@ pub fn client_predict_unit_motion_batch(
         motions[base] = motion[0];
         motions[base + 1] = motion[1];
         motions[base + 2] = motion[2];
-        motions[base + 3] = motion[3];
-        motions[base + 4] = motion[4];
+        if coordinated_turn {
+            motions[base + 3] = half_turn_cos * motion[3] - half_turn_sin * motion[4];
+            motions[base + 4] = half_turn_sin * motion[3] + half_turn_cos * motion[4];
+        } else {
+            motions[base + 3] = motion[3];
+            motions[base + 4] = motion[4];
+        }
         motions[base + 5] = motion[5];
     }
 }
