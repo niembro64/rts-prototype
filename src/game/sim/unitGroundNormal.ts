@@ -26,7 +26,7 @@
 // remains the plain snapshot-owned object populated from the wire.
 
 import type { WorldState } from './WorldState';
-import { halfLifeBlend } from '../network/driftEma';
+import { halfLifeBlend } from '../math/halfLife';
 import { getSimWasm } from '../sim-wasm/init';
 import {
   UNIT_GROUND_NORMAL_EMA_HALF_LIFE_SEC,

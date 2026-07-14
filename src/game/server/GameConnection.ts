@@ -6,4 +6,7 @@ export type {
   SnapshotUnsubscribe,
   SimEventCallback,
   GameOverCallback,
+  PresentationFrameCallback,
+  PresentationFrameEvent,
+  PresentationFrameUnsubscribe,
 } from '@/types/game';

@@ -1,10 +1,6 @@
 import * as THREE from 'three';
 import {
-  getRotationPosEmaMode,
-  getRotationVelEmaMode,
-} from '@/clientBarConfig';
-import {
-  WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS,
+  WIND_TURBINE_RESPONSE_HALF_LIFE_MULTIPLIERS,
   WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
   WIND_TURBINE_ROTOR_SPIN_MULTIPLIER,
   WIND_TURBINE_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION,
@@ -18,7 +14,7 @@ import {
 } from '@/resourceConfig';
 import type { MetalDeposit } from '../../metalDepositConfig';
 import type { ClientViewState } from '../network/ClientViewState';
-import { halfLifeBlend } from '../network/driftEma';
+import { halfLifeBlend } from '../math/halfLife';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { lerp, lerpAngle } from '../math';
 import type { Entity, EntityId } from '../sim/types';
@@ -33,7 +29,6 @@ import type { EntityMesh } from './EntityMesh3D';
 import type { ConstructionVisualController3D } from './ConstructionVisualController3D';
 import type { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 import type { ExtractorBladeAnim } from './MetalExtractorMesh3D';
-import { visualAnimBlend, visualAnimHalfLife } from './visualAnimationEma';
 import {
   addAnimatedBuildingEntry,
   clearAnimatedBuildingEntries,
@@ -46,11 +41,14 @@ import {
 } from './BuildingResourcePylonAnimator3D';
 
 // Open/close pose transitions are discrete local state changes, not
-// snapshot rotation fields. They intentionally keep fixed controller
-// alphas instead of borrowing ROT POS as a courtesy binding.
+// snapshot rotation fields. They use local, named controller response rates.
 const SOLAR_PETAL_ANIM_ALPHA = 0.16;
 const RADAR_HEAD_RAD_PER_SEC = 0.55;
 const RADAR_SWEEP_RAD_PER_SEC = 1.8;
+const EXTRACTOR_ROTOR_SPEED_RESPONSE_HALF_LIFE_SEC = 0.08;
+const RADAR_SPEED_RESPONSE_HALF_LIFE_SEC = 0.08;
+const WIND_DIRECTION_RESPONSE_HALF_LIFE_SEC = 0.08;
+const WIND_SPEED_RESPONSE_HALF_LIFE_SEC = 0.08;
 /** Per-frame blend toward the building's target open/closed pose
  *  (wind nacelle pitch + blade fold, extractor blade fold). Matches the
  *  solar petal animator's feel — smooth but not laggy. */
@@ -94,13 +92,12 @@ export class BuildingAnimationController3D {
   private windRotorPhase = 0;
   private windAnimLastMs = 0;
   /** Per-entity rotor phase. Each extractor advances its own counter
-   *  from a ROT VEL-smoothed local angular speed, so an extractor on
+   *  from a locally smoothed angular speed, so an extractor on
    *  bare ground stays stationary while one fully covering a deposit
    *  spins at full speed. Indexed by entity id; entries get pruned
    *  when the extractor despawns. */
   private extractorRotorPhases = new IndexedEntityIdMap<number>();
-  /** Courtesy ROT VEL binding for extractor rotor spin-up/spin-down.
-   *  The value is a local visual angular speed, not snapshot drift. */
+  /** Local visual angular speed for extractor spin-up/spin-down. */
   private extractorRotorSpeeds = new IndexedEntityIdMap<number>();
   /** Per-entity "closed amount" for the extractor's blade fold (0 =
    *  spinning open, 1 = folded flat against the pyramid). Smoothed
@@ -114,7 +111,7 @@ export class BuildingAnimationController3D {
    *  (nacelle tilts skyward + blades fold against the pole). */
   private windCloseAmounts = new IndexedEntityIdMap<number>();
   private windAppliedCloseAmounts = new IndexedEntityIdMap<number>();
-  /** Courtesy ROT VEL binding for radar decorative angular speeds. */
+  /** Local decorative angular speeds for the radar rig. */
   private radarHeadPhases = new IndexedEntityIdMap<number>();
   private radarSweepPhases = new IndexedEntityIdMap<number>();
   private radarHeadSpeeds = new IndexedEntityIdMap<number>();
@@ -384,7 +381,10 @@ export class BuildingAnimationController3D {
 
   private updateActiveExtractorAnimations(spinDt: number): void {
     if (this.activeExtractorBuildings.length === 0) return;
-    const rotorSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
+    const rotorSpeedAlpha = halfLifeBlend(
+      spinDt,
+      EXTRACTOR_ROTOR_SPEED_RESPONSE_HALF_LIFE_SEC,
+    );
     for (let i = 0; i < this.activeExtractorBuildings.length;) {
       const entry = this.activeExtractorBuildings[i];
       if (this.updateExtractorAnimationEntry(entry, spinDt, rotorSpeedAlpha)) {
@@ -494,7 +494,10 @@ export class BuildingAnimationController3D {
 
   private updateActiveRadarAnimations(spinDt: number): void {
     if (this.activeRadarBuildings.length === 0) return;
-    const radarSpeedAlpha = visualAnimBlend(getRotationVelEmaMode(), spinDt);
+    const radarSpeedAlpha = halfLifeBlend(
+      spinDt,
+      RADAR_SPEED_RESPONSE_HALF_LIFE_SEC,
+    );
     for (let i = 0; i < this.activeRadarBuildings.length;) {
       const entry = this.activeRadarBuildings[i];
       if (this.updateRadarAnimationEntry(entry, radarSpeedAlpha, spinDt)) {
@@ -654,16 +657,14 @@ export class BuildingAnimationController3D {
       this.windFanPitch = targetPitch;
       this.windVisualSpeed = targetSpeed;
     } else {
-      const rotPosHalfLife = visualAnimHalfLife(getRotationPosEmaMode());
-      const rotVelHalfLife = visualAnimHalfLife(getRotationVelEmaMode());
       this.windFanYaw = lerpAngle(
         this.windFanYaw,
         targetYaw,
         halfLifeBlend(
           dtSec,
           this.scaledWindTurbineHalfLife(
-            rotPosHalfLife,
-            WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.fanYaw,
+            WIND_DIRECTION_RESPONSE_HALF_LIFE_SEC,
+            WIND_TURBINE_RESPONSE_HALF_LIFE_MULTIPLIERS.fanYaw,
           ),
         ),
       );
@@ -673,8 +674,8 @@ export class BuildingAnimationController3D {
         halfLifeBlend(
           dtSec,
           this.scaledWindTurbineHalfLife(
-            rotPosHalfLife,
-            WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.fanYaw,
+            WIND_DIRECTION_RESPONSE_HALF_LIFE_SEC,
+            WIND_TURBINE_RESPONSE_HALF_LIFE_MULTIPLIERS.fanYaw,
           ),
         ),
       );
@@ -684,8 +685,8 @@ export class BuildingAnimationController3D {
         halfLifeBlend(
           dtSec,
           this.scaledWindTurbineHalfLife(
-            rotVelHalfLife,
-            WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS.bladeSpeed,
+            WIND_SPEED_RESPONSE_HALF_LIFE_SEC,
+            WIND_TURBINE_RESPONSE_HALF_LIFE_MULTIPLIERS.bladeSpeed,
           ),
         ),
       );

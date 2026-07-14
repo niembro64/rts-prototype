@@ -622,7 +622,11 @@ export function resolvePathableFormationTarget(
     world.mapHeight,
     buildingGrid,
     world.getGroundZ(x, y),
-    pathTerrainFilterForLocomotion(unitComponent.locomotion, unitComponent.mass),
+    pathTerrainFilterForLocomotion(
+      unitComponent.locomotion,
+      unitComponent.mass,
+      world.thrustMultiplier,
+    ),
     unitComponent.radius.collision,
     world.slopePathMode === 'symmetric',
   );

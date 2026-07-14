@@ -1,7 +1,7 @@
 // rts-sim-wasm init — singleton loader.
 //
 // This module is the ONLY place either the server tick or the
-// client prediction stepper should obtain the WASM handle from.
+// renderer should obtain the WASM handle from.
 // Both await `initSimWasm()`; concurrent awaiters share one fetch
 // + compile via the module-scope Promise cache below.
 //
@@ -61,8 +61,6 @@ import __wbg_init, {
   unit_action_plan_batch,
   unit_action_movement_batch,
   turret_rotation_step_batch,
-  step_unit_motion,
-  client_predict_unit_motion_batch,
   pool_init,
   pool_capacity,
   pool_alloc_slot,
@@ -86,6 +84,15 @@ import __wbg_init, {
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
   render_unit_pose_scratch_ensure,
+  presentation_clear,
+  presentation_capture_tick,
+  presentation_latest_tick,
+  presentation_has_history,
+  presentation_slot_input_scratch_ptr,
+  presentation_pose_output_scratch_ptr,
+  presentation_turret_output_scratch_ptr,
+  presentation_scratch_ensure,
+  presentation_interpolate,
   render_projectile_axis_compute,
   render_projectile_axis_input_scratch_ptr,
   render_projectile_axis_output_scratch_ptr,
@@ -277,6 +284,8 @@ import __wbg_init, {
   pathfinder_compute_locomotion_climb_profile,
   pathfinder_rebuild_mask_and_cc,
   pathfinder_find_path,
+  pathfinder_last_result_status,
+  pathfinder_validate_path,
   pathfinder_waypoints_ptr,
   pathfinder_grid_size_w,
   pathfinder_grid_size_h,
@@ -829,63 +838,6 @@ export interface SimWasm {
     pitchMin: number,
     pitchMax: number,
   ) => number;
-  /** Shared single-body unit integrator (Phase 2). Kept for
-   *  diagnostics and one-off callers; the server hot path uses
-   *  poolStepIntegrate and the client prediction hot path uses
-   *  clientPredictUnitMotionBatch.
-   *
-   *  `motion` is a Float64Array of length 6: [x, y, z, vx, vy, vz]
-   *  read AND written in place. Caller pre-samples ground state
-   *  (groundZ, normal[X/Y/Z]) so the kernel never re-enters JS
-   *  during a step. The normal is only consulted when penetration
-   *  is in contact, so passing zero/up for the normal is safe
-   *  when the caller knows the body is airborne. */
-  readonly stepUnitMotion: (
-    motion: Float64Array,
-    dtSec: number,
-    groundOffset: number,
-    ax: number,
-    ay: number,
-    az: number,
-    airDragCoefficient: number,
-    invMass: number,
-    groundDamp: number,
-    windX: number,
-    windY: number,
-    windZ: number,
-    launchAx: number,
-    launchAy: number,
-    launchAz: number,
-    groundZ: number,
-    normalX: number,
-    normalY: number,
-    normalZ: number,
-  ) => void;
-  /** Client visual-prediction unit-motion batch. Runs the same
-   *  velocity-only motion contract that ClientUnitPrediction used to
-   *  execute one body at a time: zero authored acceleration, no
-   *  launch impulse, and the client-side rest snap before integration.
-   *  JS still samples terrain because terrain baking has not moved to
-   *  WASM yet, but all predicted units cross the boundary in one call
-   *  for target extrapolation and one call for rendered entity motion. */
-  readonly clientPredictUnitMotionBatch: (
-    count: number,
-    motions: Float64Array,
-    groundOffsets: Float64Array,
-    groundZ: Float64Array,
-    groundNormals: Float64Array,
-    airDragCoefficients: Float64Array,
-    invMass: Float64Array,
-    yawRates: Float64Array,
-    coordinatedTurnFlags: Uint8Array,
-    dtSec: number,
-    groundDamp: number,
-    windX: number,
-    windY: number,
-    windZ: number,
-    restPenetrationEpsilon: number,
-    restSpeedSq: number,
-  ) => void;
   /** Body3D SoA pool — Phase 3d. Linear-memory-backed storage
    *  for every numeric body field. Slots are stable for a body's
    *  lifetime; `allocSlot()` returns the next free slot, `freeSlot`
@@ -1531,8 +1483,8 @@ export interface SimWasm {
     radius: number,
     rangeVolume: number,
   ) => number;
-  /** C1 — terrain-follow vertical thrust acceleration for D-gun waves
-   *  and matching client prediction. Gravity remains caller-owned. */
+  /** C1 — terrain-follow vertical thrust acceleration for D-gun waves.
+   *  Gravity remains caller-owned. */
   readonly terrainFollowVerticalThrustAccel: (
     positionZ: number,
     velocityZ: number,
@@ -1872,6 +1824,10 @@ export interface SimWasm {
    *  @msgpack/msgpack's `ignoreUndefined: true` output on every
    *  dev build. No consumer reads the bytes yet. */
   readonly snapshotEncode: SnapshotEncodeApi;
+  /** Two adjacent authoritative fixed-tick poses plus one shared render
+   *  interpolation alpha. This is presentation-only and is never read by
+   *  gameplay. */
+  readonly presentation: PresentationApi;
   /** Render-pose scratch kernels. These are presentation-side matrix
    *  transforms whose inputs come from client render packets and whose
    *  outputs are consumed synchronously by Three.js instance writers. */
@@ -1880,6 +1836,21 @@ export interface SimWasm {
    *  views over this for zero-copy result reads. Re-bind views after
    *  any operation that might grow the memory (rare). */
   readonly memory: WebAssembly.Memory;
+}
+
+export interface PresentationApi {
+  clear: () => void;
+  captureTick: (tick: number) => void;
+  latestTick: () => number;
+  hasHistory: () => boolean;
+  slotInputScratchPtr: () => number;
+  poseOutputScratchPtr: () => number;
+  turretOutputScratchPtr: () => number;
+  scratchEnsure: (count: number) => void;
+  interpolate: (count: number, alpha: number) => number;
+  poseOutputStride: number;
+  turretOutputStride: number;
+  maxTurretsPerEntity: number;
 }
 
 export interface RenderPoseApi {
@@ -3650,8 +3621,8 @@ export const SNAPSHOT_ENTITY_TYPE_TOWER = 3;
  *  rebuild; the Rust side caches mask + CC by version pair. */
 export interface PathfinderApi {
   /** Compute the force-, grip-, and stability-limited ground climb envelope.
-   *  Writes max slope, min normal Z, safe acceleration, then the three
-   *  individual slope limits into `out`. */
+   *  Writes max slope, min normal Z, safe acceleration, the three individual
+   *  slope limits, then flat-ground drive acceleration into `out`. */
   computeLocomotionClimbProfile: (
     groundForce: number,
     groundTraction: number,
@@ -3664,8 +3635,8 @@ export interface PathfinderApi {
     gravity: number,
     forceSafetyRatio: number,
     stabilityMaxSlopeDeg: number,
-    allowGround: boolean,
-    allowAir: boolean,
+    allowOnGround: boolean,
+    allowInAir: boolean,
     out: Float64Array,
   ) => number;
   /** Allocate the per-cell SoA arrays for the given map dimensions.
@@ -3685,21 +3656,38 @@ export interface PathfinderApi {
   ) => void;
   /** Run findPath. Writes smoothed waypoints into the WASM-side
    *  scratch buffer as interleaved (x, y) f64 pairs; returns the
-   *  waypoint COUNT (not the f64 element count). The medium flags come
-   *  from the unit's authored ground/water/air locomotion authority. */
+   *  waypoint COUNT (not the f64 element count). Effective route-domain
+   *  flags are derived from locomotion-preset policy plus physical authority. */
   findPath: (
     startX: number, startY: number,
     goalX: number, goalY: number,
     minNormalZ: number,
-    allowGround: boolean,
-    allowWater: boolean,
-    allowAir: boolean,
+    allowOnGround: boolean,
+    allowInWater: boolean,
+    allowInAir: boolean,
     /** Unit collision radius in world units. Blockers are kept this far from
      *  the route (clearance field) so a body is not squeezed through gaps it
      *  cannot fit. 0 = point-size (no clearance gate). */
     unitRadius: number,
+    /** Dry-ground tangential acceleration after drive-force and grip clamps.
+     *  Used only for normalized slope travel time; 0 disables slope cost. */
+    flatDriveAccel: number,
     /** When true (SYMMETRIC mode), the slope climb-gate applies to downhill
      *  edges too; when false (DIRECTIONAL), descent is always allowed. */
+    symmetricSlope: boolean,
+  ) => number;
+  /** Resolution code for the most recent findPath call:
+   *  0 unreachable, 1 complete, 2 snapped, 3 partial. */
+  lastResultStatus: () => number;
+  /** Validate an interleaved x/y polyline (including its start point) against
+   *  the same medium, hard-clearance, slope, and LOS rules as planning. */
+  validatePath: (
+    points: Float64Array,
+    minNormalZ: number,
+    allowOnGround: boolean,
+    allowInWater: boolean,
+    allowInAir: boolean,
+    unitRadius: number,
     symmetricSlope: boolean,
   ) => number;
   /** Raw pointer to the waypoint scratch buffer. Build a fresh
@@ -4123,8 +4111,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitActionPlanBatch: unit_action_plan_batch,
         unitActionMovementBatch: unit_action_movement_batch,
         turretRotationStepBatch: turret_rotation_step_batch,
-        stepUnitMotion: step_unit_motion,
-        clientPredictUnitMotionBatch: client_predict_unit_motion_batch,
         pool,
         poolPrepareDynamicStep: pool_prepare_dynamic_step,
         poolCollectAwakeEntityIds: pool_collect_awake_entity_ids,
@@ -4209,6 +4195,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           computeLocomotionClimbProfile: pathfinder_compute_locomotion_climb_profile,
           rebuildMaskAndCc: pathfinder_rebuild_mask_and_cc,
           findPath: pathfinder_find_path,
+          lastResultStatus: pathfinder_last_result_status,
+          validatePath: pathfinder_validate_path,
           waypointsPtr: pathfinder_waypoints_ptr,
           gridWidth: pathfinder_grid_size_w,
           gridHeight: pathfinder_grid_size_h,
@@ -4360,7 +4348,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           unitOutputScratchPtr: render_unit_pose_output_scratch_ptr,
           unitScratchEnsure: render_unit_pose_scratch_ensure,
           unitCompute: render_unit_pose_compute,
-          unitInputStride: 16,
+          unitInputStride: 21,
           unitOutputStride: 33,
           projectileAxisInputScratchPtr: render_projectile_axis_input_scratch_ptr,
           projectileAxisOutputScratchPtr: render_projectile_axis_output_scratch_ptr,
@@ -4526,6 +4514,20 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           waypointScratchEnsure: snapshot_encode_waypoint_scratch_ensure,
           waypointScratchStride: 5,
         },
+        presentation: {
+          clear: presentation_clear,
+          captureTick: presentation_capture_tick,
+          latestTick: presentation_latest_tick,
+          hasHistory: presentation_has_history,
+          slotInputScratchPtr: presentation_slot_input_scratch_ptr,
+          poseOutputScratchPtr: presentation_pose_output_scratch_ptr,
+          turretOutputScratchPtr: presentation_turret_output_scratch_ptr,
+          scratchEnsure: presentation_scratch_ensure,
+          interpolate: presentation_interpolate,
+      poseOutputStride: 20,
+          turretOutputStride: 6,
+          maxTurretsPerEntity: 8,
+        },
         spatial: {
           init: spatial_init,
           clear: spatial_clear,
@@ -4675,10 +4677,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runClientEntityIdSetContractTest();
         const { runClientServerTargetStoreContractTest } = await import('../network/ClientServerTargetStoreContractTest');
         runClientServerTargetStoreContractTest();
-        const { runClientUnitPredictionContractTest } = await import('../network/ClientUnitPredictionContractTest');
-        runClientUnitPredictionContractTest();
-        const { runClientProjectileMotionContractTest } = await import('../network/ClientProjectileMotionContractTest');
-        runClientProjectileMotionContractTest();
         const { runSnapshotVisibilityContractTest } = await import('../network/SnapshotVisibilityContractTest');
         runSnapshotVisibilityContractTest();
         const { runSnapshotBufferContractTest } = await import('../scenes/helpers/SnapshotBufferContractTest');

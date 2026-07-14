@@ -9,9 +9,8 @@ import './styles/barControls.css';
 import { initSimWasm } from './game/sim-wasm/init';
 
 // Kick off the WASM sim core load in parallel with Vue mount.
-// Both the server tick (GameServer.create()) and the client
-// prediction stepper (ClientViewState construction) await the
-// same singleton in initSimWasm() — starting it at boot just
+// Both the authoritative server tick and adjacent-tick renderer
+// presentation use the same singleton in initSimWasm() — starting it at boot just
 // front-loads the fetch/compile so the first actual await is a
 // no-op. Logs the build stamp once so devs can confirm a fresh
 // `npm run build:wasm` is being served.

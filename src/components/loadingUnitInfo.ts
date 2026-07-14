@@ -248,9 +248,9 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
       stat(
         'Media',
         [
-          climb.allowGround ? 'ground' : '',
-          climb.allowWater ? 'water' : '',
-          climb.allowAir ? 'air' : '',
+          climb.allowOnGround ? 'on ground' : '',
+          climb.allowInWater ? 'in water' : '',
+          climb.allowInAir ? 'in air' : '',
         ].filter(Boolean).join(' / ') || 'none',
       ),
       stat('Max slope', climb.maxSlopeDeg === null ? 'any' : `${fmt(climb.maxSlopeDeg)} deg`),

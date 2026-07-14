@@ -1,7 +1,8 @@
 import type { BeamPoint, Entity } from '../../types/sim';
 
-// Lightweight copy of server state used for per-frame drift in client prediction.
-// Owns its data instead of retaining references to pooled serializer objects.
+// Lightweight copy of snapshot state used for compatibility materialization,
+// correction diagnostics, and variable-length beam presentation. Owns its data
+// instead of retaining references to pooled serializer objects.
 export type ServerTargetTurret = {
   rotation: number;
   angularVelocity: number;

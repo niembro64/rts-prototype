@@ -151,6 +151,8 @@ export class RtsScene3DSnapshotIntake {
   private startupSnapshotApplied = false;
   private startupReleased = false;
   private readonly syncEconomyFromSnapshots: boolean;
+  private readonly usesLockstepPresentation: boolean;
+  private unsubscribePresentationFrame: (() => void) | null = null;
   private readonly materializationMetadataSamples: SnapshotMaterializationMetadata[] = [];
 
   constructor(
@@ -158,9 +160,16 @@ export class RtsScene3DSnapshotIntake {
     private readonly gameConnection: GameConnection,
   ) {
     this.syncEconomyFromSnapshots = gameConnection.sharesAuthoritativeState !== true;
+    this.usesLockstepPresentation = gameConnection.onPresentationFrame !== undefined;
+    this.clientViewState.setLockstepPresentationEnabled(this.usesLockstepPresentation);
   }
 
   attach(): void {
+    if (this.usesLockstepPresentation && this.gameConnection.onPresentationFrame !== undefined) {
+      this.unsubscribePresentationFrame = this.gameConnection.onPresentationFrame((event) => {
+        this.clientViewState.noteLockstepPresentationFrame(event);
+      });
+    }
     this.snapshotBuffer.attach(
       this.gameConnection,
       (state) => {
@@ -362,6 +371,8 @@ export class RtsScene3DSnapshotIntake {
   }
 
   clear(): void {
+    this.unsubscribePresentationFrame?.();
+    this.unsubscribePresentationFrame = null;
     this.snapshotBuffer.clear();
     this.materializationMetadataSamples.length = 0;
     this.snapshotCounterTotal = 0;

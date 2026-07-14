@@ -4,9 +4,6 @@ import type { SnapshotRate } from './types/server';
 export const PRESENTATION_SNAPSHOT_RATE_DEFAULT: number =
   ARCHITECTURE_CONFIG.lockstep.presentationSnapshots.nominalSnapshotRateHz;
 
-export const SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT: number =
-  ARCHITECTURE_CONFIG.lockstep.presentationSnapshots.sparseEntityMotionRateHz;
-
 function isPresentationSnapshotRate(rate: SnapshotRate): rate is number {
   return typeof rate === 'number' && Number.isFinite(rate) && rate > 0;
 }
@@ -25,8 +22,4 @@ export function presentationSnapshotRateHz(
 export function presentationSnapshotRateIntervalMs(rate: SnapshotRate): number {
   const normalized = normalizePresentationSnapshotRate(rate);
   return 1000 / normalized;
-}
-
-export function sparseEntityMotionSnapshotIntervalMs(): number {
-  return 1000 / SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT;
 }

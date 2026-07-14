@@ -22,7 +22,7 @@ export type BattlePreset = {
   readonly shieldsObstructSight: boolean;
   readonly shieldReflectionMode: ShieldReflectionMode;
   readonly fogOfWarEnabled: boolean;
-  /** Ground pathfinding slope policy (SLOPE PATH bar toggle). */
+  /** Ground pathfinding slope policy (SLOPE LIMIT bar toggle). */
   readonly slopePathMode: SlopePathMode;
   readonly converterTax: number;
   readonly centerMagnitude: number;
@@ -240,8 +240,8 @@ function buildPresets(): readonly BattlePreset[] {
       watersEdgeCliffHeight: 100,
       metalDepositStep: 200,
       terrainDetail: 8,
-      mapWidthLandCells: 79,
-      mapLengthLandCells: 79,
+      mapWidthLandCells: 53,
+      mapLengthLandCells: 53,
       grid: false,
       barsCollapsed: false,
     },

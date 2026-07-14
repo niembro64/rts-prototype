@@ -24,6 +24,11 @@ import { createSnapshotImpairmentQueue } from '../network/SnapshotImpairment';
 import { SNAPSHOT_CADENCE_REGRESSION } from '../SnapshotCadenceRegression';
 import { SNAPSHOT_ENCODE_INSTRUMENTATION } from '../SnapshotEncodeInstrumentation';
 import type { CommandAuthority } from './commandAuthority';
+import type {
+  PresentationFrameCallback,
+  PresentationFrameEvent,
+  PresentationFrameUnsubscribe,
+} from '@/types/game';
 
 export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot): boolean {
   const entityDeltaOnly = state.entityDeltaOnly === true;
@@ -95,6 +100,9 @@ export class LocalGameConnection implements GameConnection {
   private pendingSnapshotCloner = new ReusableNetworkSnapshotCloner();
   private snapshotImpairment = createSnapshotImpairmentQueue('local');
   private snapshotListenerKey: string;
+  private presentationFrameCallback: PresentationFrameCallback | null = null;
+  private pendingPresentationFrame: PresentationFrameEvent | null = null;
+  private readonly unsubscribePresentationSource: () => void;
   private gameOverListenerRef: GameOverCallback;
   /** Who this client acts as for command attribution. `undefined`
    *  is an explicit spectator authority: the server receives the
@@ -129,6 +137,9 @@ export class LocalGameConnection implements GameConnection {
     this.sharesAuthoritativeState = options.sharesAuthoritativeState ??
       !this.loopbackSnapshotsThroughWire;
     this.snapshotListenerKey = this.subscribeSnapshots(server, playerId);
+    this.unsubscribePresentationSource = server
+      .getLockstepSimulationCore()
+      .addPresentationFrameListener((event) => this.receivePresentationFrame(event));
 
     this.gameOverListenerRef = server.addGameOverListener((winnerId) => {
       const callback = this.gameOverCallback;
@@ -344,6 +355,27 @@ export class LocalGameConnection implements GameConnection {
     };
   }
 
+  onPresentationFrame(callback: PresentationFrameCallback): PresentationFrameUnsubscribe {
+    this.presentationFrameCallback = callback;
+    if (this.pendingPresentationFrame !== null) {
+      const pending = this.pendingPresentationFrame;
+      this.pendingPresentationFrame = null;
+      callback(pending);
+    }
+    return () => {
+      if (this.presentationFrameCallback === callback) this.presentationFrameCallback = null;
+    };
+  }
+
+  private receivePresentationFrame(event: PresentationFrameEvent): void {
+    const callback = this.presentationFrameCallback;
+    if (callback !== null) {
+      callback(event);
+    } else {
+      this.pendingPresentationFrame = event;
+    }
+  }
+
   clearSnapshotCallback(): void {
     this.snapshotCallback = null;
   }
@@ -359,6 +391,9 @@ export class LocalGameConnection implements GameConnection {
   disconnect(): void {
     const server = this.server;
     if (server === null) return;
+    this.unsubscribePresentationSource();
+    this.presentationFrameCallback = null;
+    this.pendingPresentationFrame = null;
     this.server = null;
     this.snapshotImpairment.clear();
     server.removeSnapshotListener(this.snapshotListenerKey);

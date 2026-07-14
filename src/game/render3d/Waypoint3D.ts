@@ -412,13 +412,11 @@ export class Waypoint3D {
     // — used directly so a waypoint dot on a hilltop sits ON the
     // hilltop, not at a terrain re-sample that may differ.
     //
-    // `actions` is a pure mirror of the authored command queue — the wire
-    // splits the planner's pathfinding intermediates back out into
-    // activePath. WAYPOINTS: SIMPLE draws each leg as a direct line to the
-    // next user waypoint (the long-standing behaviour). WAYPOINTS: DETAILED
-    // additionally traces the active leg through activePath — the smoothed
-    // route the unit actually walks around obstacles — dropping a dim,
-    // unlabelled dot at every intermediate so the routing is visible.
+    // `actions` is durable intent; `activePath` is the disposable resolved
+    // plan for actions[0]. SIMPLE connects authored waypoints conventionally.
+    // DETAILED draws only the exact remaining activePath, including its real
+    // snapped/partial endpoint, and leaves future unplanned command markers
+    // unconnected. It must never synthesize a segment to the requested goal.
     const detailed = getWaypointDetail() === 'detailed';
     for (const u of selectedUnits) {
       const unit = u.unit;
@@ -432,9 +430,9 @@ export class Waypoint3D {
         const a = actions[i];
         const p = this.actionDisplayPoint(a);
         const color = ACTION_COLORS[a.type] ?? COLORS.units.turret.barrel.colorHex;
-        // Active leg (i === 0) in DETAILED mode: thread the line through the
-        // planner's intermediate route points, marking each with a dim dot.
-        if (i === 0 && previewPoints !== undefined && previewPoints.length > 0) {
+        // Active leg in DETAILED mode: thread the exact authoritative smoothed
+        // plan, marking each resolved point with a subordinate dot.
+        if (detailed && i === 0 && previewPoints !== undefined && previewPoints.length > 0) {
           for (let k = 0; k < previewPoints.length; k++) {
             const pt = previewPoints[k];
             this.pushTerrainLine(prevX, prevY, pt.x, pt.y, color, STYLE.lineAlpha, prevZ, pt.z);
@@ -444,8 +442,9 @@ export class Waypoint3D {
             prevZ = pt.z;
           }
         }
-        // Connecting line into the user waypoint (traces the unit's route).
-        this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
+        if (!detailed) {
+          this.pushTerrainLine(prevX, prevY, p.x, p.y, color, STYLE.lineAlpha, prevZ, p.z);
+        }
         // User waypoint marker + queue-order label.
         if (a.type === 'build' || a.type === 'repair') {
           this.pushRectOutline(p.x, p.y, color, p.z);
@@ -459,7 +458,7 @@ export class Waypoint3D {
       }
       // Patrol return — link the last patrol waypoint back to the first
       // with a dimmer line.
-      if (unit.patrolStartIndex !== null && actions.length > 0) {
+      if (!detailed && unit.patrolStartIndex !== null && actions.length > 0) {
         const last = actions[actions.length - 1];
         const first = actions[unit.patrolStartIndex];
         if (last && last.type === 'patrol' && first) {

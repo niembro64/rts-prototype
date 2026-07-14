@@ -58,7 +58,7 @@ function resolveTargetTurretAimPoint(
  * Resolve the point a projectile or non-scheduler helper should aim at on a
  * target. Turret yaw/pitch and ballistic solving are Rust-owned; this TS
  * helper only resolves body/turret aim points for homing projectile guidance
- * and client prediction paths that do not have a firing turret slab row.
+ * and diagnostic paths that do not have a firing turret slab row.
  */
 export function resolveTargetAimPoint(
   target: Entity,

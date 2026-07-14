@@ -19,7 +19,6 @@ import { unitRosterDisplay } from '../game/sim/blueprints/displayRosters';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
 import {
   presentationSnapshotRateHz,
-  SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT,
 } from '../presentationSnapshotConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
@@ -133,7 +132,7 @@ function richSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): strin
 }
 
 function deltaSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
-  return `Sparse no-metadata deltas. Combined avg/low includes entity and projectile deltas. Entity motion has ${fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT)} Hz opportunities; projectile presentation deltas can emit up to ${fmt4(model.displayTickRate)} Hz during active combat. Empty opportunities do not count as SPS.`;
+  return `Sparse no-metadata projectile lifecycle, beam, and audio events can emit up to ${fmt4(model.displayTickRate)} Hz during active combat. Continuous root motion is read directly from Rust/WASM and is not counted as snapshot traffic. Empty opportunities do not count as SPS.`;
 }
 
 const props = defineProps<{
@@ -266,7 +265,7 @@ function resetEveryCustomHotkey(): void {
             v-for="opt in CLIENT_CONFIG.waypointDetail.options"
             :key="opt.value"
             :active="model.waypointDetail === opt.value"
-            title="Waypoint visualization - SIMPLE shows only your click points; DETAILED shows the planner's intermediates too"
+            title="Waypoint visualization. SIMPLE connects authored command points. DETAILED shows only the exact remaining active movement plan; future command points remain visible but unconnected until planned."
             @click="model.changeWaypointDetail(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
@@ -392,7 +391,7 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Client CPU - simulation prediction, input, HUD updates. Raw logicMs avg/hi in milliseconds per frame.">CPU:</BarLabel>
+        <BarLabel title="Client CPU - adjacent-tick presentation sampling, input, and HUD updates. Raw logicMs avg/hi in milliseconds per frame.">CPU:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -508,7 +507,7 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="`${model.clientLabel} update-loop ticks per second. This includes prediction/input/render prep cadence.`">R-TPS:</BarLabel>
+        <BarLabel :title="`${model.clientLabel} update-loop ticks per second. This includes presentation sampling, input, and render-prep cadence.`">R-TPS:</BarLabel>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -632,7 +631,7 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarDivider />
         <BarLabel :title="deltaSnapshotCadenceTitle(model)">DELTA SPS:</BarLabel>
-        <span class="fps-label">ceil {{ fmt4(SPARSE_ENTITY_MOTION_SNAPSHOT_RATE_DEFAULT) }}/{{ fmt4(model.displayTickRate) }}</span>
+        <span class="fps-label">ceil {{ fmt4(model.displayTickRate) }}</span>
         <div class="stat-bar-group">
           <div class="stat-bar">
             <div class="stat-bar-top">
@@ -670,7 +669,7 @@ function resetEveryCustomHotkey(): void {
           </div>
         </div>
         <div class="snapshot-delta-split">
-          <span title="Entity motion delta snapshots. Target is the sparse entity motion rate.">ent {{ fmt4(model.entityDeltaSnapAvgRate) }}/{{ fmt4(model.entityDeltaSnapWorstRate) }}</span>
+          <span title="Rich entity-delta envelopes containing changed presentation state; continuous root motion is not carried here.">ent {{ fmt4(model.entityDeltaSnapAvgRate) }}/{{ fmt4(model.entityDeltaSnapWorstRate) }}</span>
           <span title="Projectile delta snapshots. Target can rise to the fixed simulation tick rate during active projectile traffic.">proj {{ fmt4(model.projectileDeltaSnapAvgRate) }}/{{ fmt4(model.projectileDeltaSnapWorstRate) }}</span>
         </div>
       </BarControlGroup>
@@ -907,71 +906,6 @@ function resetEveryCustomHotkey(): void {
             :active="model.resourceBallDensity === opt.value"
             :title="`Resource-ball density scalar ${opt.value}: balls/sec = resources/sec x ${opt.value}`"
             @click="model.changeResourceBallDensity(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Client prediction physics order: POS snaps to snapshot position only; VEL integrates server-reported velocity each frame. Acceleration is not on the wire, so there is no ACC mode.">PREDICT:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.predictionMode.options"
-            :key="opt.value"
-            :active="model.predictionMode === opt.value"
-            :title="`Prediction physics: ${opt.label}.`"
-            @click="model.changePredictionMode(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Movement position EMA. SNAP replaces every tick; FAST/MED/SLOW EMA toward the snapshot position with the named half-life.">MOV POS:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.movementPosEma.options"
-            :key="opt.value"
-            :active="model.movementPosEma === opt.value"
-            :title="`Movement position EMA: ${opt.label}.`"
-            @click="model.changeMovementPosEma(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Movement velocity EMA. IGN ignores the snapshot velocity; SNAP replaces every tick; FAST/MED/SLOW EMA toward it with the named half-life.">MOV VEL:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.movementVelEma.options"
-            :key="opt.value"
-            :active="model.movementVelEma === opt.value"
-            :title="`Movement velocity EMA: ${opt.label}.`"
-            @click="model.changeMovementVelEma(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Rotation position EMA. Covers body yaw, hover orientation, and turret yaw/pitch. SNAP replaces every tick; FAST/MED/SLOW EMA toward the snapshot rotation with the named half-life.">ROT POS:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.rotationPosEma.options"
-            :key="opt.value"
-            :active="model.rotationPosEma === opt.value"
-            :title="`Rotation position EMA: ${opt.label}.`"
-            @click="model.changeRotationPosEma(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Rotation velocity EMA. Covers body angular velocity and turret angular/pitch velocity. IGN ignores the snapshot angular velocity; SNAP replaces every tick; FAST/MED/SLOW EMA toward it with the named half-life.">ROT VEL:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.rotationVelEma.options"
-            :key="opt.value"
-            :active="model.rotationVelEma === opt.value"
-            :title="`Rotation velocity EMA: ${opt.label}.`"
-            @click="model.changeRotationVelEma(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>

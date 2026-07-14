@@ -10,7 +10,7 @@ import {
 } from '@/types/network';
 import { WIND_SPEED_MAX } from '../../config';
 import type { MetalDeposit } from '../../metalDepositConfig';
-import { halfLifeBlend } from '../network/driftEma';
+import { halfLifeBlend } from '../math/halfLife';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import type { ClientViewState } from '../network/ClientViewState';
 import type { Entity, EntityId } from '../sim/types';

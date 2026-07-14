@@ -13,8 +13,9 @@ import { getCombatTargetingStateViews } from './targetingInputStamping';
 
 /** Slab-first activity-mask refresh used by sim hot paths.
  *
- *  Writes the current JS Turret angular/pitch velocity into the slab
- *  (the kernel needs them to compute hasTurretRotationWork inline),
+ *  Writes the final post-spring turret pose and angular/pitch velocity into
+ *  the slab. Activity kernels consume the rates, and adjacent-tick render
+ *  presentation captures all four values from this same authoritative row.
  *  then invokes the Rust mask kernel. Mid-tick FSM state mutations
  *  (`weapon.state = 'idle'`, `weapon.target = null`) must also write
  *  through to the slab via clearTurretFsmOnSlab so the kernel sees
@@ -39,6 +40,8 @@ export function refreshSlabActivityMasksForUnit(
   for (let i = 0; i < turretCount; i++) {
     const turret = combat.turrets[i];
     const idx = turretBase + i;
+    views.rotation[idx] = turret.rotation;
+    views.pitch[idx] = turret.pitch;
     views.angularVelocity[idx] = turret.angularVelocity;
     views.pitchVelocity[idx] = turret.pitchVelocity;
   }
@@ -72,7 +75,7 @@ function clearTurretFsmOnSlab(unit: Entity, weaponIndex: number): void {
  *  always available on the server where this function runs, so the
  *  JS values were never the source of truth on the sim hot path.
  *  Non-sim consumers (NetworkEntityFactory snapshot apply,
- *  ClientUnitPrediction) keep their own JS-mirror lifecycle: the
+ *  client presentation layer) keep their own JS-mirror lifecycle: the
  *  snapshot serializer reads slab and ships authoritative state, the
  *  client hydrates JS Turret fields from that snapshot, and any drift
  *  between mid-tick slab clears and the next snapshot is irrelevant

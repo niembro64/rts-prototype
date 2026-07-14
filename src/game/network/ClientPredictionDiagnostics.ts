@@ -6,7 +6,6 @@ import {
   type RunningStats,
 } from '../diagnosticStats';
 import { getClientPredictionTargetPoolStats } from './ClientPredictionTargets';
-import { getClientUnitPredictionPoolStats } from './ClientUnitPrediction';
 
 export type ClientPredictionTargetAgeStats = {
   activeTargets: number;
@@ -44,8 +43,6 @@ type ClientPredictionDiagnosticsReport = {
   correctionTargetAgeMaxMs: number | string;
   correctionTargetAgeSamples: number;
   retainedPools: {
-    unitMotionCapacity: number;
-    unitOrientationCapacity: number;
     serverTargetFreeList: number;
     serverTargetTurretFreeList: number;
     beamPointFreeList: number;
@@ -155,7 +152,6 @@ class ClientPredictionDiagnostics {
   }
 
   report(): ClientPredictionDiagnosticsReport {
-    const unitPools = getClientUnitPredictionPoolStats();
     const targetPools = getClientPredictionTargetPoolStats();
     return {
       frames: this.frames,
@@ -175,8 +171,6 @@ class ClientPredictionDiagnostics {
       correctionTargetAgeMaxMs: formatRunningMax(this.stats.correctionTargetAgeMs),
       correctionTargetAgeSamples: this.stats.correctionTargetAgeMs.count,
       retainedPools: {
-        unitMotionCapacity: unitPools.motionCapacity,
-        unitOrientationCapacity: unitPools.orientationCapacity,
         serverTargetFreeList: targetPools.freeServerTargets,
         serverTargetTurretFreeList: targetPools.freeServerTargetTurrets,
         beamPointFreeList: targetPools.freeBeamPoints,

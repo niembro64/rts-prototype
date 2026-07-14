@@ -1270,8 +1270,8 @@ export class SnapshotBuffer {
         this.pendingSnapshot.projectileDeltaOnly === true
       ) {
         // Projectile-only packets are just carriers for buffered projectile
-        // state. Let a following entity-motion delta become the carrier so
-        // sparse unit/fighter motion is not merged into an empty entity list.
+        // state. Let a following rich entity delta become the carrier so its
+        // changed presentation fields are not merged into an empty list.
         this.releasePendingSnapshot();
       }
       if (

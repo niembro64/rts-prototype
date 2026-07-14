@@ -564,7 +564,7 @@ export type Turret = {
   /** Yaw angular acceleration (rad/s²) produced by this tick's
    *  damped-spring step (`α = k·(aim − rot) − c·ω`). Sim-only turret
    *  solver state: acceleration is not shipped on the wire and the
-   *  client predicts from angular velocity plus EMA correction. */
+   *  renderer consumes adjacent authoritative fixed-tick orientations. */
   angularAcceleration: number;
   /** Angular velocity of the pitch axis (rad/s). Driven by the
    *  damped-spring integrator in turretSystem — the solver sets a

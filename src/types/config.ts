@@ -2,7 +2,6 @@
 
 export type SnapshotConfig = {
   nominalSnapshotRateHz: number;
-  sparseEntityMotionRateHz: number;
 };
 
 export type EmaLowConfig = {

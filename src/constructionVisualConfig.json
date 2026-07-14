@@ -1,6 +1,6 @@
 {
   "towerSpin": {
     "radPerSec": 0.42,
-    "driftHalfLifeMultiplier": 1
+    "responseHalfLifeMultiplier": 1
   }
 }

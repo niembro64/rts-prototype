@@ -45,6 +45,11 @@ import {
 import { encodeNetworkSnapshotWithRustFallback } from './snapshotRustWireEncoder';
 import { decodeNetworkSnapshot } from './snapshotWireCodec';
 import {
+  createNetworkUnitSnapshot,
+  decodeNetworkUnitActions,
+  writeNetworkUnitActions,
+} from './unitSnapshotFields';
+import {
   getSnapshotMaterializationMetadata,
   setSnapshotMaterializationMetadata,
   snapshotEntityRowComposition,
@@ -675,6 +680,7 @@ export function runClientSnapshotApplierContractTest(): void {
       { x: 285, y: 295, z: 13 },
       { x: 310, y: 320, z: undefined },
     ],
+    resolution: 'complete',
     index: 0,
     actionHash: wireMotionEntity.unit.actionHash,
     terrainVersion: 1,
@@ -708,7 +714,7 @@ export function runClientSnapshotApplierContractTest(): void {
     typedActionSource !== undefined &&
       typedActionSource.count === 1 &&
       typedActionSource.typedPlaceholderRows === 1 &&
-      typedActionSource.actionRows.count === 4 &&
+      typedActionSource.actionRows.count === 5 &&
       typedActionComposition.entityDtoRows === 0,
     'typed unit action rows must expose DTO-free action and route-preview wire rows',
   );
@@ -720,9 +726,10 @@ export function runClientSnapshotApplierContractTest(): void {
   assertContract(
     typedActionStats.correction.count === 1 &&
       actionEntity?.unit?.actions.length === 2 &&
-      actionEntity.unit.activePath?.points.length === 2 &&
+      actionEntity.unit.activePath?.points.length === 3 &&
       actionEntity.unit.activePath.points[0].x === 255 &&
       actionEntity.unit.activePath.points[1].z === 13 &&
+      actionEntity.unit.activePath.points[2].x === 310 &&
       actionEntity.unit.actions[0].x === 310 &&
       actionEntity.unit.actions[1].type === 'fight' &&
       actionEntity.unit.repeatQueue === true &&
@@ -743,7 +750,7 @@ export function runClientSnapshotApplierContractTest(): void {
       decodedPackedAction.entities[0] === undefined &&
       decodedPackedActionSource !== undefined &&
       decodedPackedActionSource.typedPlaceholderRows === 1 &&
-      decodedPackedActionSource.actionRows.count === 4,
+      decodedPackedActionSource.actionRows.count === 5,
     'packed metadata-only action rows must omit DTOs and expose action + route-preview wire rows',
   );
   const packedActionView = new ClientViewState();
@@ -755,11 +762,35 @@ export function runClientSnapshotApplierContractTest(): void {
   const packedActionEntity = packedActionView.getEntity(id);
   assertContract(
     packedActionEntity?.unit?.actions.length === 2 &&
-      packedActionEntity.unit.activePath?.points.length === 2 &&
+      packedActionEntity.unit.activePath?.points.length === 3 &&
       packedActionEntity.unit.activePath.points[0].x === 255 &&
+      packedActionEntity.unit.activePath.points[2].x === 310 &&
       packedActionEntity.unit.actions[0].x === 310 &&
       packedActionEntity.unit.moveState === 'roam',
     'packed metadata-only action rows must apply actions and route preview from reconstructed wire rows',
+  );
+
+  wireMotionEntity.unit.activePath = {
+    points: [{ x: 275, y: 280, z: 12 }],
+    resolution: 'snapped',
+    index: 0,
+    actionHash: wireMotionEntity.unit.actionHash,
+    terrainVersion: 1,
+    buildingGridVersion: 1,
+    goalX: 310,
+    goalY: 320,
+    goalZ: undefined,
+    actionType: 'move',
+  };
+  const snappedUnitSnapshot = createNetworkUnitSnapshot();
+  writeNetworkUnitActions(snappedUnitSnapshot, wireMotionEntity.unit, []);
+  const snappedDecoded = decodeNetworkUnitActions(snappedUnitSnapshot.actions);
+  assertContract(
+    snappedDecoded.actions[0].x === 310 &&
+      snappedDecoded.routePreview?.points.length === 1 &&
+      snappedDecoded.routePreview.points[0].x === 275 &&
+      snappedDecoded.routePreview.resolution === 'partial',
+    'snapped route previews must preserve their real endpoint separately from the requested command point',
   );
   resetEntitySnapshotPool();
 

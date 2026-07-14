@@ -1,23 +1,6 @@
-import {
-  getMovementPosEmaMode,
-  getMovementVelEmaMode,
-  getRotationPosEmaMode,
-  getRotationVelEmaMode,
-} from '@/clientBarConfig';
 import type { BeamPoint, Entity, EntityId } from '../sim/types';
 import { angleDeltaAbs, lerp } from '../math';
-import { getChannelBlend } from './driftEma';
-import { ClientPredictionCadence } from './ClientPredictionCadence';
-import {
-  applyClientCombatExpensivePrediction,
-  applyClientUnitVisualPredictionBatch,
-  clientUnitPredictionIsSettled,
-} from './ClientUnitPrediction';
-import {
-  applyClientProjectileMotionBatch,
-  type ClientProjectileMotionItem,
-} from './ClientProjectileMotion';
-import type { ClientProjectileMotionResult } from './ClientProjectileMotion';
+import { halfLifeBlend } from '../math/halfLife';
 import type { ProjectileSpawnQueue } from './ProjectileSpawnQueue';
 import type { NetworkServerSnapshotProjectileSpawn } from './NetworkManager';
 import {
@@ -25,40 +8,17 @@ import {
   ensureBeamPoint,
   shrinkBeamPoints,
   snapBeamPathDisplayToTarget,
-  type ServerTarget,
 } from './ClientPredictionTargets';
 import { isLineProjectileEntity } from './ClientProjectileUtils';
 import type { ClientPredictionTargetAgeStats } from './ClientPredictionDiagnostics';
 
-// Reused per-frame work + result buffers for projectile EMA application.
-// Never shrunk, so the render loop does not allocate per frame.
-const _projectileMotionItems: ClientProjectileMotionItem[] = [];
-const _projectileMotionResults: ClientProjectileMotionResult[] = [];
-const _projectileMotionIds: EntityId[] = [];
-function ensureProjectileMotionItem(i: number): ClientProjectileMotionItem {
-  let item = _projectileMotionItems[i];
-  if (item === undefined) {
-    item = { entity: null as unknown as Entity, target: undefined };
-    _projectileMotionItems[i] = item;
-  }
-  return item;
-}
+const BEAM_POINT_POSITION_RESPONSE_HALF_LIFE_SEC = 0.08;
 
-type ClientPredictionStepperOptions = {
+type ClientSupplementalPresentationOptions = {
   entities: Map<EntityId, Entity>;
-  serverTargets: Map<EntityId, ServerTarget>;
   beamPathTargets: Map<EntityId, BeamPathTarget>;
   projectileSpawns: ProjectileSpawnQueue;
-  predictionCadence: ClientPredictionCadence;
-  activeEntityPredictionIds: Set<EntityId>;
-  activeProjectileMotionIds: Set<EntityId>;
   activeBeamPathIds: Set<EntityId>;
-  dirtyUnitRenderIds: Set<EntityId>;
-  supportSurfaceEntities: readonly Entity[];
-  getMapWidth: () => number;
-  getMapHeight: () => number;
-  getServerShieldsEnabled: () => boolean;
-  setTurretShieldSpheresEnabledForPrediction: (enabled: boolean) => void;
   applyProjectileSpawn: (spawn: NetworkServerSnapshotProjectileSpawn) => boolean;
   markLineProjectilesChanged: () => void;
   updateProjectileRenderSpatialIndex: (entity: Entity) => void;
@@ -172,8 +132,7 @@ function shouldSnapExistingBeamPoint(current: BeamPoint, target: BeamPoint): boo
 function applyBeamPathMotion(
   entity: Entity,
   target: BeamPathTarget,
-  movPosBlend: number,
-  movVelBlend: number,
+  positionBlend: number,
 ): boolean {
   const proj = entity.projectile;
   if (!proj) return false;
@@ -189,7 +148,7 @@ function applyBeamPathMotion(
   const projPts = proj.points ?? (proj.points = []);
   const oldLen = projPts.length;
   // Keep snapshot application out of the displayed points. Length changes
-  // are reconciled here so existing indexes can keep their EMA state; new
+  // are reconciled here so existing indexes keep their presentation state; new
   // non-reflector endpoints seed from the old endpoint instead of from zero
   // or from the authoritative target, which removes snapshot-time resets.
   let hasOldLastPointSeed = false;
@@ -256,18 +215,11 @@ function applyBeamPathMotion(
       continue;
     }
     const px = pp.x, py = pp.y, pz = pp.z;
-    const nx = movPosBlend < 0 ? px : lerp(px, targetX, movPosBlend);
-    const ny = movPosBlend < 0 ? py : lerp(py, targetY, movPosBlend);
-    const nz = movPosBlend < 0 ? pz : lerp(pz, targetZ, movPosBlend);
+    const nx = lerp(px, targetX, positionBlend);
+    const ny = lerp(py, targetY, positionBlend);
+    const nz = lerp(pz, targetZ, positionBlend);
     const pvx = pp.vx, pvy = pp.vy, pvz = pp.vz;
-    let nvx = pvx, nvy = pvy, nvz = pvz;
-    if (movVelBlend >= 1) {
-      nvx = tp.vx; nvy = tp.vy; nvz = tp.vz;
-    } else if (movVelBlend >= 0) {
-      nvx = lerp(pvx, tp.vx, movVelBlend);
-      nvy = lerp(pvy, tp.vy, movVelBlend);
-      nvz = lerp(pvz, tp.vz, movVelBlend);
-    }
+    const nvx = tp.vx, nvy = tp.vy, nvz = tp.vz;
     if (
       Math.abs(nx - px) > 1e-4 ||
       Math.abs(ny - py) > 1e-4 ||
@@ -316,14 +268,10 @@ function applyBeamPathMotion(
   return changed;
 }
 
-export class ClientPredictionStepper {
+export class ClientSupplementalPresentation {
   private frameCounter = 0;
-  private readonly unitPredictionEntities: Entity[] = [];
-  private readonly unitPredictionTargets: Array<ServerTarget | undefined> = [];
-  private readonly entitySettlementEntities: Entity[] = [];
-  private readonly entitySettlementTargets: Array<ServerTarget | undefined> = [];
 
-  constructor(private readonly options: ClientPredictionStepperOptions) {}
+  constructor(private readonly options: ClientSupplementalPresentationOptions) {}
 
   getFrameCounter(): number {
     return this.frameCounter;
@@ -336,19 +284,9 @@ export class ClientPredictionStepper {
   apply(deltaMs: number): ClientPredictionTargetAgeStats {
     const {
       entities,
-      serverTargets,
       beamPathTargets,
       projectileSpawns,
-      predictionCadence,
-      activeEntityPredictionIds,
-      activeProjectileMotionIds,
       activeBeamPathIds,
-      dirtyUnitRenderIds,
-      supportSurfaceEntities,
-      getMapWidth,
-      getMapHeight,
-      getServerShieldsEnabled,
-      setTurretShieldSpheresEnabledForPrediction,
       applyProjectileSpawn,
       markLineProjectilesChanged,
       updateProjectileRenderSpatialIndex,
@@ -364,22 +302,11 @@ export class ClientPredictionStepper {
       totalTargetAgeMs: 0,
       maxTargetAgeMs: 0,
     };
-    // Beam vertices are paired motion state: their position rides the
-    // movement-position channel and their velocity rides movement-velocity,
-    // exactly like a unit body center (budget_design_philosophy.html "What
-    // each EMA channel applies to" — proj.points[i].x/y/z are movement
-    // position, .vx/vy/vz are movement velocity). One channel must drive
-    // every field it owns, so both blends come from the movement knobs.
-    const movPosBlend = getChannelBlend(getMovementPosEmaMode(), deltaMs / 1000);
-    const movVelBlend = getChannelBlend(getMovementVelEmaMode(), deltaMs / 1000);
-    const rotPosBlend = getChannelBlend(getRotationPosEmaMode(), deltaMs / 1000);
-    const rotVelBlend = getChannelBlend(getRotationVelEmaMode(), deltaMs / 1000);
-    const mapWidth = getMapWidth();
-    const mapHeight = getMapHeight();
+    const positionBlend = halfLifeBlend(
+      Math.max(0, deltaMs) / 1000,
+      BEAM_POINT_POSITION_RESPONSE_HALF_LIFE_SEC,
+    );
     projectileSpawns.drain(now, applyProjectileSpawn);
-
-    const turretShieldSpheresEnabled = getServerShieldsEnabled();
-    setTurretShieldSpheresEnabledForPrediction(turretShieldSpheresEnabled);
 
     let beamPathsChanged = false;
     for (const id of activeBeamPathIds) {
@@ -393,129 +320,17 @@ export class ClientPredictionStepper {
       }
 
       const beamTarget = beamPathTargets.get(id);
-      noteTargetAge(targetAgeStats, beamTarget === undefined ? undefined : beamTarget.updatedAtMs, now);
+      noteTargetAge(targetAgeStats, beamTarget?.updatedAtMs, now);
       if (
-        beamTarget &&
-        applyBeamPathMotion(
-          entity,
-          beamTarget,
-          movPosBlend,
-          movVelBlend,
-        )
+        beamTarget !== undefined &&
+        applyBeamPathMotion(entity, beamTarget, positionBlend)
       ) {
         beamPathsChanged = true;
         updateProjectileRenderSpatialIndex(entity);
-        // Beam-directed barrels (turretBarrelFollowsBeam) are posed from
-        // this path by the turret-pose passes, and the building renderer
-        // only re-poses dirty rows — so a moved beam must dirty its
-        // emitting host or a tower's barrel freezes mid-sweep.
         markBeamHostRenderDirty(entity);
       }
     }
     if (beamPathsChanged) markLineProjectilesChanged();
-
-    const unitPredictionEntities = this.unitPredictionEntities;
-    const unitPredictionTargets = this.unitPredictionTargets;
-    const entitySettlementEntities = this.entitySettlementEntities;
-    const entitySettlementTargets = this.entitySettlementTargets;
-    unitPredictionEntities.length = 0;
-    unitPredictionTargets.length = 0;
-    entitySettlementEntities.length = 0;
-    entitySettlementTargets.length = 0;
-
-    for (const id of activeEntityPredictionIds) {
-      const entity = entities.get(id);
-      if (entity === undefined || (entity.unit === null && entity.combat === null)) {
-        activeEntityPredictionIds.delete(id);
-        continue;
-      }
-
-      const target = serverTargets.get(id);
-      noteTargetAge(targetAgeStats, target === undefined ? undefined : target.updatedAtMs, now);
-      if (entity.unit) {
-        unitPredictionEntities.push(entity);
-        unitPredictionTargets.push(target);
-        dirtyUnitRenderIds.add(id);
-      }
-      if (entity.combat && entity.combat.turrets.length > 0) {
-        const predictionStep = predictionCadence.consumeDelta(deltaMs);
-        applyClientCombatExpensivePrediction({
-          entity,
-          target,
-          predictionStep,
-          turretShieldSpheresEnabled,
-        });
-      }
-
-      entitySettlementEntities.push(entity);
-      entitySettlementTargets.push(target);
-    }
-
-    applyClientUnitVisualPredictionBatch({
-      entities: unitPredictionEntities,
-      targets: unitPredictionTargets,
-      supportEntities: supportSurfaceEntities,
-      deltaMs,
-      mapWidth,
-      mapHeight,
-    });
-
-    for (let i = 0; i < entitySettlementEntities.length; i++) {
-      const entity = entitySettlementEntities[i];
-      const id = entity.id;
-      if (entity.unit === null && entity.combat === null) {
-        activeEntityPredictionIds.delete(id);
-        continue;
-      }
-      const target = entitySettlementTargets[i];
-      if (clientUnitPredictionIsSettled(entity, target, turretShieldSpheresEnabled)) {
-        activeEntityPredictionIds.delete(id);
-      }
-    }
-
-    // Every traveling projectile follows the same four authoritative motion
-    // targets. No shot family runs render-side physics or homing.
-    let projectileItemCount = 0;
-    const projectileIds = _projectileMotionIds;
-    projectileIds.length = 0;
-    for (const id of activeProjectileMotionIds) {
-      const entity = entities.get(id);
-      if (entity === undefined || entity.projectile === null) {
-        activeProjectileMotionIds.delete(id);
-        continue;
-      }
-
-      const target = serverTargets.get(id);
-      noteTargetAge(
-        targetAgeStats,
-        target === undefined ? undefined : target.updatedAtMs,
-        now,
-      );
-      const item = ensureProjectileMotionItem(projectileItemCount);
-      item.entity = entity;
-      item.target = target;
-      projectileIds[projectileItemCount] = id;
-      projectileItemCount++;
-    }
-
-    if (projectileItemCount > 0) {
-      _projectileMotionItems.length = projectileItemCount;
-      const projectileResults = applyClientProjectileMotionBatch({
-        items: _projectileMotionItems,
-        movPosBlend,
-        movVelBlend,
-        rotPosBlend,
-        rotVelBlend,
-        out: _projectileMotionResults,
-      });
-      for (let i = 0; i < projectileItemCount; i++) {
-        const id = projectileIds[i];
-        const entity = _projectileMotionItems[i].entity;
-        const projectileResult = projectileResults[i];
-        if (projectileResult.targetSettled) serverTargets.delete(id);
-        updateProjectileRenderSpatialIndex(entity);
-      }
-    }
     return targetAgeStats;
   }
 }

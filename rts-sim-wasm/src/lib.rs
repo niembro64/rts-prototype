@@ -1,9 +1,7 @@
 // rts-sim-wasm — bespoke RTS simulation core.
 //
-// Compiled to WebAssembly via wasm-pack, loaded by BOTH the
-// local server tick AND the client prediction stepper.
-// Same numerical kernels run on both sides so client prediction
-// is bit-identical to server authoritative motion.
+// Compiled to WebAssembly via wasm-pack. Rust owns the authoritative
+// fixed-tick simulation and retains adjacent poses for render interpolation.
 //
 // Phase 1 landed the scaffolding. Phase 2 ported the shared
 // unit-motion integrator. Subsequent phases move the rest of the
@@ -310,6 +308,9 @@ pub(crate) use quaternion::*;
 mod render_pose;
 #[allow(unused_imports)]
 pub(crate) use render_pose::*;
+mod presentation;
+#[allow(unused_imports)]
+pub(crate) use presentation::*;
 mod unit_kinetics;
 #[allow(unused_imports)]
 pub(crate) use unit_kinetics::*;

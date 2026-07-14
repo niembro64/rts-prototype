@@ -2,7 +2,7 @@
 name = "rts-sim-wasm"
 version = "0.0.1"
 edition = "2021"
-description = "Bespoke RTS simulation core. Compiled to WebAssembly and loaded by both the local server tick and the client prediction stepper."
+description = "Bespoke authoritative RTS simulation and adjacent-tick presentation core compiled to WebAssembly."
 license = "MIT"
 
 [lib]

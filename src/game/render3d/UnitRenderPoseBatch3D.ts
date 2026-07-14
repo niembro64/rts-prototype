@@ -1,7 +1,7 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
-const UNIT_POSE_INPUT_STRIDE = 16;
+const UNIT_POSE_INPUT_STRIDE = 21;
 const UNIT_POSE_OUTPUT_STRIDE = 33;
 
 export class UnitRenderPoseBatch3D {
@@ -52,6 +52,11 @@ export class UnitRenderPoseBatch3D {
     yawRate: number,
     previousBankRoll: number,
     dtSec: number,
+    orientationX: number,
+    orientationY: number,
+    orientationZ: number,
+    orientationW: number,
+    hasFullOrientation: boolean,
   ): void {
     const base = index * this.inputStride;
     const input = this.input;
@@ -71,6 +76,11 @@ export class UnitRenderPoseBatch3D {
     input[base + 13] = yawRate;
     input[base + 14] = previousBankRoll;
     input[base + 15] = dtSec;
+    input[base + 16] = orientationX;
+    input[base + 17] = orientationY;
+    input[base + 18] = orientationZ;
+    input[base + 19] = orientationW;
+    input[base + 20] = hasFullOrientation ? 1 : 0;
   }
 
   compute(count: number): Float32Array {

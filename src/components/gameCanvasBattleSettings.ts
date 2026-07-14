@@ -338,7 +338,7 @@ export function useGameCanvasBattleSettings({
   }
 
   function setSlopePathMode(mode: SlopePathMode): void {
-    // SLOPE PATH gates the DEMO battle only. The real lockstep game keeps the
+    // SLOPE LIMIT gates the DEMO battle only. The real lockstep game keeps the
     // default policy so every peer agrees without a per-peer stored value.
     if (currentBattleMode.value !== 'demo') return;
     getActiveConnection()?.sendCommand({ type: 'setSlopePathMode', tick: 0, mode });

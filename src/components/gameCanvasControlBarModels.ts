@@ -6,15 +6,12 @@ import type {
   CameraFovDegrees,
   CameraSmoothMode,
   CameraViewMode,
-  DriftChannelMode,
   DriftMode,
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
   LodMode,
   MasterVolumePercent,
-  PositionDriftChannelMode,
-  PredictionMode,
   PathingDebugUnitId,
   ProjRangeType,
   RangeType,
@@ -219,11 +216,6 @@ export type GameCanvasClientControlBarModel = {
   readonly materialExplosions: boolean;
   readonly beamSnapToTurret: boolean;
   readonly resourceBallDensity: number;
-  readonly movementPosEma: PositionDriftChannelMode;
-  readonly movementVelEma: DriftChannelMode;
-  readonly rotationPosEma: PositionDriftChannelMode;
-  readonly rotationVelEma: DriftChannelMode;
-  readonly predictionMode: PredictionMode;
   readonly clientUnitGroundNormalEmaMode: DriftMode;
   readonly allPanActive: boolean;
   readonly dragPanEnabled: boolean;
@@ -280,11 +272,6 @@ export type GameCanvasClientControlBarModel = {
   toggleMaterialExplosions(): void;
   toggleBeamSnapToTurret(): void;
   changeResourceBallDensity(value: number): void;
-  changeMovementPosEma(mode: PositionDriftChannelMode): void;
-  changeMovementVelEma(mode: DriftChannelMode): void;
-  changeRotationPosEma(mode: PositionDriftChannelMode): void;
-  changeRotationVelEma(mode: DriftChannelMode): void;
-  changePredictionMode(mode: PredictionMode): void;
   changeClientUnitGroundNormalEmaMode(mode: DriftMode): void;
   toggleAllPan(): void;
   toggleDragPan(): void;

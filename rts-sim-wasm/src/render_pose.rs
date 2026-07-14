@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 //  snapshots, targeting, or collision math.
 // ─────────────────────────────────────────────────────────────────
 
-pub const RENDER_UNIT_POSE_INPUT_STRIDE: usize = 16;
+pub const RENDER_UNIT_POSE_INPUT_STRIDE: usize = 21;
 pub const RENDER_UNIT_POSE_OUTPUT_STRIDE: usize = 33;
 const RENDER_AIRBORNE_BANK_VISUAL_GRAVITY: f64 = 1.0 / 0.003;
 const RENDER_AIRBORNE_BANK_MAX: f64 = core::f64::consts::PI * 0.25;
@@ -127,6 +127,16 @@ pub(crate) fn render_tilt_quat_from_surface_normal(
     };
     quat_normalize_inplace(&mut q);
     (q, true)
+}
+
+#[inline]
+pub(crate) fn render_three_quat_from_sim(sim: [f64; 4]) -> [f64; 4] {
+    // Sim coordinates are (x, y, z-up), Three coordinates are
+    // (x, z-up, y). The axis permutation is a reflection, so quaternion
+    // vector components transform by -P while the scalar is unchanged.
+    let mut out = [-sim[0], -sim[2], -sim[1], sim[3]];
+    quat_normalize_inplace(&mut out);
+    out
 }
 
 #[inline]
@@ -239,17 +249,39 @@ pub fn render_unit_pose_compute(count: u32) {
         let yaw_rate = s.input[ib + 13] as f64;
         let previous_bank = s.input[ib + 14] as f64;
         let dt_sec = s.input[ib + 15] as f64;
+        let sim_orientation = [
+            s.input[ib + 16] as f64,
+            s.input[ib + 17] as f64,
+            s.input[ib + 18] as f64,
+            s.input[ib + 19] as f64,
+        ];
+        let use_full_orientation = airborne && s.input[ib + 20] != 0.0;
 
-        let (tilt_q, chassis_tilted) =
+        let (terrain_tilt_q, chassis_tilted) =
             render_tilt_quat_from_surface_normal(normal_x, normal_y, normal_z, airborne);
+        let full_orientation_q = render_three_quat_from_sim(sim_orientation);
+        let group_q = if use_full_orientation {
+            full_orientation_q
+        } else {
+            terrain_tilt_q
+        };
         let inv_tilt_q = if chassis_tilted {
-            [-tilt_q[0], -tilt_q[1], -tilt_q[2], tilt_q[3]]
+            [
+                -terrain_tilt_q[0],
+                -terrain_tilt_q[1],
+                -terrain_tilt_q[2],
+                terrain_tilt_q[3],
+            ]
         } else {
             [0.0, 0.0, 0.0, 1.0]
         };
         let yaw = -sim_rotation;
         let yaw_q = [0.0, (yaw * 0.5).sin(), 0.0, (yaw * 0.5).cos()];
-        let base_parent_q = quat_mul(tilt_q, yaw_q);
+        let base_parent_q = if use_full_orientation {
+            full_orientation_q
+        } else {
+            quat_mul(terrain_tilt_q, yaw_q)
+        };
         let visual_bank = render_airborne_bank_step(
             velocity_x,
             velocity_y,
@@ -273,10 +305,10 @@ pub fn render_unit_pose_compute(count: u32) {
             base_z + lifted_offset[2],
         ];
 
-        s.output[ob] = tilt_q[0] as f32;
-        s.output[ob + 1] = tilt_q[1] as f32;
-        s.output[ob + 2] = tilt_q[2] as f32;
-        s.output[ob + 3] = tilt_q[3] as f32;
+        s.output[ob] = group_q[0] as f32;
+        s.output[ob + 1] = group_q[1] as f32;
+        s.output[ob + 2] = group_q[2] as f32;
+        s.output[ob + 3] = group_q[3] as f32;
         s.output[ob + 4] = inv_tilt_q[0] as f32;
         s.output[ob + 5] = inv_tilt_q[1] as f32;
         s.output[ob + 6] = inv_tilt_q[2] as f32;
@@ -288,7 +320,14 @@ pub fn render_unit_pose_compute(count: u32) {
         s.output[ob + 12] = lifted_pos[0] as f32;
         s.output[ob + 13] = lifted_pos[1] as f32;
         s.output[ob + 14] = lifted_pos[2] as f32;
-        s.output[ob + 15] = if chassis_tilted { 1.0 } else { 0.0 };
+        // 0 = yaw-only, 1 = terrain tilt + yaw, 2 = full sim quaternion.
+        s.output[ob + 15] = if use_full_orientation {
+            2.0
+        } else if chassis_tilted {
+            1.0
+        } else {
+            0.0
+        };
         render_write_mat4_compose(&mut s.output, ob + 16, lifted_pos, parent_q);
         s.output[ob + 32] = visual_bank as f32;
     }
@@ -1473,5 +1512,15 @@ mod tests {
         approx(rearward[0], -0.5_f64.cos(), 1e-12);
         approx(rearward[1], 0.0, 1e-12);
         approx(rearward[2], -0.5_f64.sin(), 1e-12);
+    }
+
+    #[test]
+    fn sim_yaw_quaternion_maps_to_existing_three_yaw_convention() {
+        let yaw = 0.8_f64;
+        let mapped = render_three_quat_from_sim([0.0, 0.0, (yaw * 0.5).sin(), (yaw * 0.5).cos()]);
+        approx(mapped[0], 0.0, 1e-12);
+        approx(mapped[1], (-yaw * 0.5).sin(), 1e-12);
+        approx(mapped[2], 0.0, 1e-12);
+        approx(mapped[3], (-yaw * 0.5).cos(), 1e-12);
     }
 }

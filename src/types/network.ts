@@ -882,9 +882,9 @@ export type NetworkServerSnapshotAction = {
    *  click-derived z (renderers fall back to a terrain sample when
    *  absent). */
   posZ: number | null;
-  /** True for path-expansion intermediates (cells the planner
-   *  inserted along the route). Used by the client renderer to hide
-   *  these in SIMPLE waypoint mode. Omitted when false to save bytes
+  /** True for resolved active-route points (including the real endpoint).
+   *  The client separates these disposable planner points from durable command
+   *  actions and shows them only in DETAILED mode. Omitted when false to save bytes
    *  — the renderer treats `undefined` as `false`. */
   pathExp: boolean | null;
   targetId: number | null;
@@ -990,10 +990,9 @@ export type NetworkServerSnapshotEntity = {
      *  used by legacy consumers and typed-row dirty detection. */
     orientation: { x: number; y: number; z: number; w: number } | null;
     /** Angular velocity 3-vector in world frame (rad/s). Paired with
-     *  `orientation`; PREDICT VEL clients integrate omega forward each
-     *  frame between snapshots. Angular acceleration is intentionally
-     *  not shipped (see design philosophy: client extrapolates from
-     *  velocity, never re-derives server-side forces). */
+     *  `orientation` for authoritative motion diagnostics and snapshot
+     *  compatibility. Adjacent fixed-tick presentation reads complete
+     *  orientations rather than integrating this value in TypeScript. */
     angularVelocity3: Vec3 | null;
     /** Legacy two-state fire permission mirror. New code reads
      *  fireState first and falls back to this bit if absent. */

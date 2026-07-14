@@ -1123,11 +1123,6 @@ const {
   pathingDebugUnit,
   sightBoundary,
   radarBoundary,
-  movementPosEma,
-  movementVelEma,
-  rotationPosEma,
-  rotationVelEma,
-  predictionMode,
   clientUnitGroundNormalEmaMode,
   edgeScrollEnabled,
   dragPanEnabled,
@@ -1194,11 +1189,6 @@ const {
   changePathingDebugUnit,
   toggleSightBoundary,
   toggleRadarBoundary,
-  changeMovementPosEma,
-  changeMovementVelEma,
-  changeRotationPosEma,
-  changeRotationVelEma,
-  changePredictionMode,
   changeClientUnitGroundNormalEmaMode,
   changeWaypointDetail,
   toggleEntityHud,
@@ -2022,11 +2012,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   materialExplosions: materialExplosions.value,
   beamSnapToTurret: beamSnapToTurret.value,
   resourceBallDensity: resourceBallDensity.value,
-  movementPosEma: movementPosEma.value,
-  movementVelEma: movementVelEma.value,
-  rotationPosEma: rotationPosEma.value,
-  rotationVelEma: rotationVelEma.value,
-  predictionMode: predictionMode.value,
   clientUnitGroundNormalEmaMode: clientUnitGroundNormalEmaMode.value,
   allPanActive: allPanActive.value,
   dragPanEnabled: dragPanEnabled.value,
@@ -2083,11 +2068,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleMaterialExplosions,
   toggleBeamSnapToTurret,
   changeResourceBallDensity,
-  changeMovementPosEma,
-  changeMovementVelEma,
-  changeRotationPosEma,
-  changeRotationVelEma,
-  changePredictionMode,
   changeClientUnitGroundNormalEmaMode,
   toggleAllPan,
   toggleDragPan,
@@ -2233,11 +2213,6 @@ watchEffect(() => {
   m.materialExplosions = materialExplosions.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
   m.resourceBallDensity = resourceBallDensity.value;
-  m.movementPosEma = movementPosEma.value;
-  m.movementVelEma = movementVelEma.value;
-  m.rotationPosEma = rotationPosEma.value;
-  m.rotationVelEma = rotationVelEma.value;
-  m.predictionMode = predictionMode.value;
   m.clientUnitGroundNormalEmaMode = clientUnitGroundNormalEmaMode.value;
   m.allPanActive = allPanActive.value;
   m.dragPanEnabled = dragPanEnabled.value;

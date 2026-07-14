@@ -17,7 +17,7 @@ import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import { createProjectileConfigFromTurret } from '../sim/projectileConfigs';
 import type { Simulation } from '../sim/Simulation';
-import type { Entity, EntityId, PlayerId } from '../sim/types';
+import type { EntityId, PlayerId } from '../sim/types';
 import { getTurretConfig } from '../sim/turretConfigs';
 import { WorldState } from '../sim/WorldState';
 import { ServerSnapshotPublisher, type SnapshotListenerEntry } from './ServerSnapshotPublisher';
@@ -53,8 +53,7 @@ function snapshot(tick: number, entities: NetworkServerSnapshot['entities']): Ne
   };
 }
 
-function createQuietSimulation(movingUnits: readonly Entity[] = []): Simulation {
-  const movingUnitSlots = movingUnits.map((entity) => entitySlotRegistry.getEntitySlot(entity));
+function createQuietSimulation(): Simulation {
   return {
     hasPendingProjectilePresentationEvents: () => false,
     getAndClearEvents: () => [],
@@ -65,19 +64,16 @@ function createQuietSimulation(movingUnits: readonly Entity[] = []): Simulation 
     getWinnerId: () => null,
     getSprayTargets: () => [],
     getWindState: () => ({ x: 0, y: 0, z: 0, speed: 0, angle: 0 }),
-    getMovingUnits: () => movingUnits,
-    getMovingUnitSlots: () => movingUnitSlots,
   } as unknown as Simulation;
 }
 
 function createPublisherInput(
   world: WorldState,
   listener: SnapshotListenerEntry,
-  movingUnits: readonly Entity[] = [],
 ) {
   return {
     world,
-    simulation: createQuietSimulation(movingUnits),
+    simulation: createQuietSimulation(),
     debugGridPublisher: {
       isEnabled: () => false,
       refresh: () => ({
@@ -201,23 +197,10 @@ export function runServerSnapshotPublisherContractTest(): void {
   assertContract(fullEntity !== null && fullEntity !== undefined, 'fixture full entity must serialize');
   const client = new ClientViewState();
   client.applyNetworkState(snapshot(1, [fullEntity]));
-  client.applyPrediction(16);
   client.consumeRenderDirties();
 
-  unit.transform.x = 220;
-  unit.transform.rotation = 0.75;
-  unit.unit.velocityX = 12;
-  unit.unit.velocityY = 4;
-  world.refreshEntitySlotState(
-    unit,
-    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL,
-  );
-
-  const capturedSnapshot: { value: NetworkServerSnapshot | null } = { value: null };
   const listener: SnapshotListenerEntry = {
-    callback: (state) => {
-      capturedSnapshot.value = state;
-    },
+    callback: () => {},
     playerId: undefined,
     trackingKey: 'contract',
     cacheKey: 'contract',
@@ -231,33 +214,6 @@ export function runServerSnapshotPublisherContractTest(): void {
     visibleEntityIds: new IndexedEntityIdSet(),
   };
   const publisher = new ServerSnapshotPublisher();
-  const emitted = publisher.emitProjectileDelta(
-    createPublisherInput(world, listener),
-    true,
-  );
-
-  assertContract(emitted, 'publisher must emit a sparse entity-motion delta');
-  const captured = capturedSnapshot.value;
-  assertContract(captured !== null, 'listener must receive the sparse delta');
-  assertContract(captured.entityDeltaOnly === true, 'motion-only output must be an entity delta');
-  assertContract(captured.entities.length === 1, 'motion-only output must contain one placeholder row');
-  assertContract(captured.entities[0] === undefined, 'slab-backed motion delta must avoid DTO materialization');
-  const source = getEntitySnapshotWireSource(captured.entities);
-  assertContract(source !== undefined && source.count === 1, 'slab-backed motion delta must expose typed wire metadata');
-  assertContract(
-    source.unitRows.values[source.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE] === unit.id,
-    'typed sparse motion row must identify the moving unit',
-  );
-
-  client.applyNetworkState(captured);
-  for (let i = 0; i < 10; i++) client.applyPrediction(100);
-  const clientEntity = client.getEntity(unit.id);
-  assertContract(
-    clientEntity !== undefined &&
-      clientEntity.transform.x > 120,
-    'client must apply slab-backed sparse motion deltas without DTO fallback',
-  );
-
   const drainIds: number[] = [];
   const drainFields: number[] = [];
   world.drainSnapshotDirtyEntities(drainIds, drainFields);
@@ -282,46 +238,13 @@ export function runServerSnapshotPublisherContractTest(): void {
   const deferredRichEmitted = publisher.emitLockstepPresentation(
     createPublisherInput(world, listener),
   );
-  assertContract(deferredRichEmitted, 'publisher must still emit rich deltas with only deferred motion rows');
+  assertContract(deferredRichEmitted, 'publisher must emit rich deltas with current recovery motion');
   const deferredRich = capturedDeferredRichSnapshot.value;
-  assertContract(deferredRich !== null, 'listener must receive deferred-motion rich delta');
-  assertContract(deferredRich.entityDeltaOnly === true, 'deferred-motion rich output must remain an entity delta envelope');
+  assertContract(deferredRich !== null, 'listener must receive current-motion rich delta');
+  assertContract(deferredRich.entityDeltaOnly === true, 'motion rich output must remain an entity delta envelope');
   assertContract(
-    deferredRich.entities.length === 0,
-    'rich dirty output must defer motion-only flying rows to the sparse motion channel',
-  );
-
-  const capturedDeferredSparseSnapshot: { value: NetworkServerSnapshot | null } = { value: null };
-  listener.callback = (state) => {
-    capturedDeferredSparseSnapshot.value = state;
-  };
-  const deferredSparseEmitted = publisher.emitProjectileDelta(
-    createPublisherInput(world, listener),
-    true,
-  );
-  assertContract(deferredSparseEmitted, 'publisher must emit sparse motion after rich defers motion-only rows');
-  const deferredSparse = capturedDeferredSparseSnapshot.value;
-  assertContract(deferredSparse !== null, 'listener must receive sparse motion after rich deferral');
-  assertContract(deferredSparse.entityDeltaOnly === true, 'deferred sparse motion output must be an entity delta');
-  assertContract(deferredSparse.entities.length === 1, 'deferred sparse motion output must contain one row');
-  assertContract(
-    deferredSparse.entities[0] === undefined,
-    'deferred sparse motion row must stay DTO-free',
-  );
-  const deferredSparseSource = getEntitySnapshotWireSource(deferredSparse.entities);
-  assertContract(
-    deferredSparseSource !== undefined &&
-      deferredSparseSource.count === 1 &&
-      deferredSparseSource.unitRows.values[
-        deferredSparseSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
-      ] === unit.id,
-    'sparse motion channel must carry the row deferred by rich presentation',
-  );
-  client.applyNetworkState(deferredSparse);
-  for (let i = 0; i < 10; i++) client.applyPrediction(100);
-  assertContract(
-    (client.getEntity(unit.id)?.transform.x ?? 0) > 220,
-    'client must apply sparse motion after rich presentation defers the row',
+    deferredRich.entities.length === 1,
+    'rich recovery output must retain dirty motion instead of depending on a sparse root-motion lane',
   );
 
   const capturedRichSnapshot: { value: NetworkServerSnapshot | null } = { value: null };
@@ -371,54 +294,15 @@ export function runServerSnapshotPublisherContractTest(): void {
   assertContract(groundUnit.unit !== null, 'ground fixture unit must have a unit component');
   assertContract(groundUnit.unit.locomotion.type !== 'flying', 'ground fixture unit must not be flying');
 
-  resetEntitySnapshotPool();
-  const groundFullEntity = serializeEntitySnapshot(groundUnit, undefined, groundWorld);
-  assertContract(groundFullEntity !== null && groundFullEntity !== undefined, 'ground fixture must serialize');
-  const groundClient = new ClientViewState();
-  groundClient.applyNetworkState(snapshot(1, [groundFullEntity]));
-  groundClient.applyPrediction(16);
-  groundClient.consumeRenderDirties();
-
   const groundDrainIds: number[] = [];
   const groundDrainFields: number[] = [];
   groundWorld.drainSnapshotDirtyEntities(groundDrainIds, groundDrainFields);
   const groundPublisher = new ServerSnapshotPublisher();
 
-  const capturedGroundMovingSparse: { value: NetworkServerSnapshot | null } = { value: null };
   let groundListener = createListener(
-    (state) => {
-      capturedGroundMovingSparse.value = state;
-    },
+    () => {},
     [groundUnit.id],
   );
-
-  groundUnit.transform.x = 150;
-  groundUnit.transform.rotation = 0.45;
-  groundUnit.unit.velocityX = 7;
-  groundUnit.unit.velocityY = 2;
-  groundWorld.refreshEntitySlotState(
-    groundUnit,
-    ENTITY_CHANGED_POS | ENTITY_CHANGED_ROT | ENTITY_CHANGED_VEL | ENTITY_CHANGED_NORMAL,
-  );
-
-  const movingGroundSparseEmitted = groundPublisher.emitProjectileDelta(
-    createPublisherInput(groundWorld, groundListener, [groundUnit]),
-    true,
-  );
-  assertContract(movingGroundSparseEmitted, 'publisher must emit sparse motion for moving ground units');
-  const movingGroundSparse = capturedGroundMovingSparse.value;
-  assertContract(movingGroundSparse !== null, 'listener must receive moving ground sparse motion');
-  const movingGroundSparseSource = getEntitySnapshotWireSource(movingGroundSparse.entities);
-  assertContract(
-    movingGroundSparseSource !== undefined &&
-      movingGroundSparseSource.count === 1 &&
-      movingGroundSparseSource.unitRows.values[
-        movingGroundSparseSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
-      ] === groundUnit.id,
-    'moving ground sparse motion must use the typed unit row path',
-  );
-
-  groundWorld.drainSnapshotDirtyEntities(groundDrainIds, groundDrainFields);
   const capturedGroundDeferredRich: { value: NetworkServerSnapshot | null } = { value: null };
   groundListener = createListener(
     (state) => {
@@ -439,44 +323,12 @@ export function runServerSnapshotPublisherContractTest(): void {
   const groundRichEmitted = groundPublisher.emitLockstepPresentation(
     createPublisherInput(groundWorld, groundListener),
   );
-  assertContract(groundRichEmitted, 'publisher must emit a rich envelope for deferred ground motion');
+  assertContract(groundRichEmitted, 'publisher must emit a rich envelope for ground recovery motion');
   const groundDeferredRich = capturedGroundDeferredRich.value;
-  assertContract(groundDeferredRich !== null, 'listener must receive deferred ground rich envelope');
+  assertContract(groundDeferredRich !== null, 'listener must receive ground rich envelope');
   assertContract(
-    groundDeferredRich.entities.length === 0,
-    'rich dirty output must defer motion-only ground rows to the sparse motion channel',
-  );
-  groundUnit.unit.velocityX = 0;
-  groundUnit.unit.velocityY = 0;
-
-  const capturedGroundDeferredSparse: { value: NetworkServerSnapshot | null } = { value: null };
-  groundListener.callback = (state) => {
-    capturedGroundDeferredSparse.value = state;
-  };
-  const groundDeferredSparseEmitted = groundPublisher.emitProjectileDelta(
-    createPublisherInput(groundWorld, groundListener),
-    true,
-  );
-  assertContract(
-    groundDeferredSparseEmitted,
-    'publisher must emit pending deferred ground motion without a moving-unit source',
-  );
-  const groundDeferredSparse = capturedGroundDeferredSparse.value;
-  assertContract(groundDeferredSparse !== null, 'listener must receive pending deferred ground sparse motion');
-  const groundDeferredSparseSource = getEntitySnapshotWireSource(groundDeferredSparse.entities);
-  assertContract(
-    groundDeferredSparseSource !== undefined &&
-      groundDeferredSparseSource.count === 1 &&
-      groundDeferredSparseSource.unitRows.values[
-        groundDeferredSparseSource.rowIndices[0] * ENTITY_SNAPSHOT_WIRE_UNIT_STRIDE
-      ] === groundUnit.id,
-    'pending deferred ground sparse motion must stay typed and DTO-free',
-  );
-  groundClient.applyNetworkState(groundDeferredSparse);
-  for (let i = 0; i < 10; i++) groundClient.applyPrediction(100);
-  assertContract(
-    (groundClient.getEntity(groundUnit.id)?.transform.x ?? 0) > 180,
-    'client must apply pending deferred ground sparse motion',
+    groundDeferredRich.entities.length === 1,
+    'rich recovery output must retain dirty ground motion without a sparse root-motion lane',
   );
 
   entitySlotRegistry.clear();
@@ -561,7 +413,6 @@ export function runServerSnapshotPublisherContractTest(): void {
   });
   const beamSparseEmitted = beamPublisher.emitProjectileDelta(
     createPublisherInput(beamWorld, beamSparseListener),
-    false,
   );
   assertContract(
     beamSparseEmitted,

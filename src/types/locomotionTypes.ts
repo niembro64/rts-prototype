@@ -58,6 +58,17 @@ export type UnitLocomotionPhysics = {
   water: UnitLocomotionMediumPhysics;
 };
 
+export type LocomotionMediumNavigation = 'air-only' | 'water-only' | 'air-and-water';
+
+export type LocomotionNavigationPolicy = {
+  /** Whether this locomotion preset may deliberately route while supported
+   *  by a ground contact patch. */
+  allowOnGround: boolean;
+  /** Fluid domains this preset may deliberately route through. Actual route
+   *  capability still requires usable authored propulsion in that medium. */
+  allowInMedium: LocomotionMediumNavigation;
+};
+
 export type UnitLocomotion = {
   /** Presentation rig only. Authoritative physics never selects behavior
    *  from this discriminant. */
@@ -67,12 +78,8 @@ export type UnitLocomotion = {
   /** Fully-abstracted medium physics. Every unit owns every medium profile;
    *  zero values make a medium inert instead of omitting fields. */
   physics: UnitLocomotionPhysics;
-  /** Intentional route domains. These are policy, not inferred physics. */
-  navigation: {
-    allowGround: boolean;
-    allowWater: boolean;
-    allowAir: boolean;
-  };
+  /** Type/preset-level navigation policy expanded from locomotionConfig.json. */
+  navigation: LocomotionNavigationPolicy;
   /** Environmental failure policy, independent from propulsion/buoyancy. */
   survival: {
     waterFatal: boolean;

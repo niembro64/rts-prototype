@@ -33,8 +33,11 @@ pub(crate) const PATHFINDER_BUILD_GRID_CELL_SIZE: f64 = 20.0;
 pub(crate) const PATHFINDER_SNAP_RADIUS_CELLS: i32 = 32;
 pub(crate) const PATHFINDER_MAX_A_STAR_NODES: u32 = 50_000;
 pub(crate) const PATHFINDER_MAX_STEEP_START_ESCAPE_CANDIDATES: usize = 384;
-pub(crate) const PATHFINDER_SQRT2: f32 = 1.4142135623730951;
 pub(crate) const PATHFINDER_SQRT2_MINUS_1: f32 = 0.41421356237309515;
+pub(crate) const PATHFINDER_RESULT_UNREACHABLE: u32 = 0;
+pub(crate) const PATHFINDER_RESULT_COMPLETE: u32 = 1;
+pub(crate) const PATHFINDER_RESULT_SNAPPED: u32 = 2;
+pub(crate) const PATHFINDER_RESULT_PARTIAL: u32 = 3;
 
 pub(crate) struct PathfinderState {
     grid_w: i32,
@@ -90,6 +93,7 @@ pub(crate) struct PathfinderState {
     // Output: smoothed waypoints as (x, y) f64 pairs.
     waypoint_scratch: Vec<f64>,
     path_scratch: Vec<u32>,
+    last_result_status: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -98,6 +102,43 @@ pub(crate) struct PathfinderTraversal {
     allow_ground: bool,
     allow_water: bool,
     allow_air: bool,
+}
+
+/// Query-local route objective, deliberately independent of locomotion rig
+/// names. The wrapper reduces force/mass/grip physics to flat acceleration;
+/// A* only knows how that capability changes travel time over terrain.
+#[derive(Clone, Copy)]
+pub(crate) struct PathfinderCostProfile {
+    flat_drive_accel: f64,
+    hard_clearance_cells: i32,
+    soft_clearance_cells: i32,
+    soft_clearance_penalty_per_cell: f32,
+}
+
+impl PathfinderCostProfile {
+    #[inline]
+    fn for_query(flat_drive_accel: f64, hard_clearance_cells: i32) -> Self {
+        Self {
+            flat_drive_accel: if flat_drive_accel.is_finite() && flat_drive_accel > 0.0 {
+                flat_drive_accel
+            } else {
+                0.0
+            },
+            hard_clearance_cells,
+            soft_clearance_cells: PATHFINDING_SOFT_CLEARANCE_CELLS.max(0),
+            soft_clearance_penalty_per_cell: PATHFINDING_SOFT_CLEARANCE_PENALTY_PER_CELL.max(0.0),
+        }
+    }
+
+    #[inline]
+    fn neutral() -> Self {
+        Self {
+            flat_drive_accel: 0.0,
+            hard_clearance_cells: 0,
+            soft_clearance_cells: 0,
+            soft_clearance_penalty_per_cell: 0.0,
+        }
+    }
 }
 
 impl PathfinderState {
@@ -134,6 +175,7 @@ impl PathfinderState {
             snap_offsets: Vec::new(),
             waypoint_scratch: Vec::new(),
             path_scratch: Vec::new(),
+            last_result_status: PATHFINDER_RESULT_UNREACHABLE,
         }
     }
 }
@@ -560,6 +602,9 @@ pub fn pathfinder_rebuild_mask_and_cc(
                     if dx == 0 && dy == 0 {
                         continue;
                     }
+                    if dx != 0 && dy != 0 && !PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS {
+                        continue;
+                    }
                     let nx = cgx + dx;
                     if nx < 0 || nx >= grid_w {
                         continue;
@@ -567,6 +612,13 @@ pub fn pathfinder_rebuild_mask_and_cc(
                     let nidx = (row + nx) as usize;
                     if state.blocked[nidx] == 1 || state.cc_labels[nidx] != 0 {
                         continue;
+                    }
+                    if dx != 0 && dy != 0 {
+                        let side_x = (cgy * grid_w + nx) as usize;
+                        let side_y = (ny * grid_w + cgx) as usize;
+                        if state.blocked[side_x] == 1 || state.blocked[side_y] == 1 {
+                            continue;
+                        }
                     }
                     state.cc_labels[nidx] = next_label;
                     state.bfs_queue[q_tail] = nidx as u32;
@@ -626,22 +678,18 @@ pub(crate) fn pathfinder_is_cell_passable(
     true
 }
 
-/// Cells the unit's footprint must keep clear of any blocker. The standoff is
-/// the collision radius PLUS the arrival tolerance (× the clearance factor): the
-/// body needs `radius` so it does not overlap, and an extra `arrivalRadius`
-/// because the arrival controller may abandon a waypoint and cut toward the next
-/// while still up to that far short of it — without the margin that corner-cut
-/// punches a unit's centre through the building edge. The nearest blocked cell's
-/// near edge sits ~(c - 0.5) cells from the cell centre, so
-/// `c >= (radius + margin)/cell + 0.5` keeps the cut on legal ground. Returns 0
-/// for point-size / non-finite radii (gate becomes a no-op, e.g. airborne).
+/// Hard configuration-space clearance for the unit's physical collision disk.
+/// Arrival tolerance is controller behavior and must never make the planner
+/// pretend the body is larger than it is. The nearest blocked cell's near edge
+/// sits ~(c - 0.5) cells from the cell centre, so
+/// `c >= radius/cell + 0.5` keeps the disk out of the blocker. Returns 0 for
+/// point-size / non-finite radii (gate becomes a no-op, e.g. airborne).
 #[inline]
-pub(crate) fn pathfinder_clearance_cells_for_radius(radius: f64) -> i32 {
+pub(crate) fn pathfinder_hard_clearance_cells_for_radius(radius: f64) -> i32 {
     if !radius.is_finite() || radius <= 0.0 {
         return 0;
     }
-    let margin = PATHFINDING_ARRIVAL_RADIUS * PATHFINDING_ARRIVAL_CLEARANCE_FACTOR;
-    (((radius + margin) / PATHFINDER_BUILD_GRID_CELL_SIZE) + 0.5).ceil() as i32
+    ((radius / PATHFINDER_BUILD_GRID_CELL_SIZE) + 0.5).ceil() as i32
 }
 
 #[inline]
@@ -687,7 +735,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
     allow_air: bool,
     out: &mut [f64],
 ) -> u32 {
-    const PROFILE_LEN: usize = 6;
+    const PROFILE_LEN: usize = 7;
     if out.len() < PROFILE_LEN {
         return 0;
     }
@@ -699,6 +747,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
             f64::NAN,
             f64::NAN,
             f64::NAN,
+            f64::NAN,
         ]);
         return 1;
     }
@@ -707,6 +756,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
             f64::NAN,
             f64::NAN,
             0.0,
+            f64::NAN,
             f64::NAN,
             f64::NAN,
             f64::NAN,
@@ -731,6 +781,9 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         force_scale,
     );
     let effective_mass = mass * unit_mass_multiplier;
+    let drive_accel = traction_force_magnitude * 1_000_000.0 / effective_mass;
+    let grip_accel = gravity * surface_grip.max(0.0);
+    let flat_drive_accel = drive_accel.min(grip_accel).max(0.0);
     let safe_drive_force = traction_force_magnitude * force_safety_ratio.clamp(0.0, 1.0);
     let safe_drive_accel = safe_drive_force * 1_000_000.0 / effective_mass;
     let radians_to_degrees = 180.0 / core::f64::consts::PI;
@@ -750,6 +803,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         drive_limited_slope_deg,
         traction_limited_slope_deg,
         stability_limited_slope_deg,
+        flat_drive_accel,
     ]);
     1
 }
@@ -811,6 +865,108 @@ pub(crate) fn pathfinder_can_step_between(
         return false;
     }
     pathfinder_can_step_height_delta(state, from_idx, to_idx, traversal)
+}
+
+#[inline]
+pub(crate) fn pathfinder_can_step_neighbor(
+    state: &PathfinderState,
+    from_gx: i32,
+    from_gy: i32,
+    to_gx: i32,
+    to_gy: i32,
+    traversal: PathfinderTraversal,
+) -> bool {
+    let from_idx = (from_gy * state.grid_w + from_gx) as usize;
+    let to_idx = (to_gy * state.grid_w + to_gx) as usize;
+    if !pathfinder_can_step_between(state, from_idx, to_idx, traversal) {
+        return false;
+    }
+    let dx = to_gx - from_gx;
+    let dy = to_gy - from_gy;
+    if dx == 0 || dy == 0 {
+        return true;
+    }
+
+    // A diagonal swept segment touches both edge-sharing cells. Requiring
+    // both directed side steps prevents corner clipping through water,
+    // structures, or an uphill face that the body's disk cannot traverse.
+    let side_x_idx = (from_gy * state.grid_w + to_gx) as usize;
+    let side_y_idx = (to_gy * state.grid_w + from_gx) as usize;
+    pathfinder_can_step_between(state, from_idx, side_x_idx, traversal)
+        && pathfinder_can_step_between(state, from_idx, side_y_idx, traversal)
+}
+
+#[inline]
+fn pathfinder_clearance_at(
+    state: &PathfinderState,
+    idx: usize,
+    traversal: PathfinderTraversal,
+) -> i32 {
+    if state.terrain_water[idx] == 1 || traversal.allow_water {
+        state.medium_clearance[idx] as i32
+    } else {
+        state.clearance[idx] as i32
+    }
+}
+
+/// Normalized traversal-time cost for one legal neighboring edge. Flat travel
+/// costs its grid distance. Uphill travel uses the acceleration remaining after
+/// gravity along the grade, while downhill receives no artificial bonus: the
+/// extra surface distance remains real, but there is no speculative top-speed
+/// model in the cell-only search. Medium changes add no cost.
+#[inline]
+pub(crate) fn pathfinder_edge_cost(
+    state: &PathfinderState,
+    from_gx: i32,
+    from_gy: i32,
+    to_gx: i32,
+    to_gy: i32,
+    traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
+) -> f32 {
+    let dx = (to_gx - from_gx) as f64;
+    let dy = (to_gy - from_gy) as f64;
+    let horizontal_cells = (dx * dx + dy * dy).sqrt();
+    if horizontal_cells <= 0.0 {
+        return 0.0;
+    }
+    let from_idx = (from_gy * state.grid_w + from_gx) as usize;
+    let to_idx = (to_gy * state.grid_w + to_gx) as usize;
+    let mut travel_cost = horizontal_cells;
+
+    let dry_ground_edge = !traversal.allow_air
+        && traversal.allow_ground
+        && state.terrain_water[from_idx] == 0
+        && state.terrain_water[to_idx] == 0
+        && cost_profile.flat_drive_accel > 0.0;
+    if dry_ground_edge {
+        let horizontal = horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE;
+        let dz = state.terrain_height[to_idx] as f64 - state.terrain_height[from_idx] as f64;
+        let surface_distance = (horizontal * horizontal + dz * dz).sqrt();
+        let uphill_sine = (dz / surface_distance.max(1.0e-9)).max(0.0);
+        let remaining_accel = (cost_profile.flat_drive_accel - GRAVITY * uphill_sine).max(1.0e-9);
+        let acceleration_time_scale = (cost_profile.flat_drive_accel / remaining_accel)
+            .sqrt()
+            .max(1.0);
+        travel_cost = surface_distance / PATHFINDER_BUILD_GRID_CELL_SIZE * acceleration_time_scale;
+    }
+
+    if !traversal.allow_air
+        && cost_profile.soft_clearance_cells > 0
+        && cost_profile.soft_clearance_penalty_per_cell > 0.0
+    {
+        let preferred = cost_profile
+            .hard_clearance_cells
+            .saturating_add(cost_profile.soft_clearance_cells);
+        let shortfall = (preferred - pathfinder_clearance_at(state, to_idx, traversal)).max(0);
+        if shortfall > 0 {
+            let shortfall = shortfall as f32;
+            let multiplier =
+                1.0 + cost_profile.soft_clearance_penalty_per_cell * shortfall * shortfall;
+            travel_cost *= multiplier as f64;
+        }
+    }
+    travel_cost.min(f32::MAX as f64) as f32
 }
 
 pub(crate) fn pathfinder_find_nearest_open(
@@ -937,7 +1093,7 @@ pub(crate) fn pathfinder_try_steep_start_escape(
     goal_gx: i32,
     goal_gy: i32,
     traversal: PathfinderTraversal,
-    required_clearance: i32,
+    cost_profile: PathfinderCostProfile,
 ) -> Option<StartEscapeResult> {
     let target_dx = goal_gx - origin_gx;
     let target_dy = goal_gy - origin_gy;
@@ -987,28 +1143,16 @@ pub(crate) fn pathfinder_try_steep_start_escape(
                 });
             }
 
-            state.cur_required_clearance = required_clearance;
-            let mut a_star_result = pathfinder_a_star(
+            state.cur_required_clearance = cost_profile.hard_clearance_cells;
+            let a_star_result = pathfinder_a_star(
                 state,
                 candidate_gx,
                 candidate_gy,
                 goal_gx,
                 goal_gy,
                 traversal,
+                cost_profile,
             );
-            let mut relaxed = required_clearance;
-            while relaxed > 0 && (a_star_result.is_none() || state.path_scratch.is_empty()) {
-                relaxed = if relaxed > 1 { relaxed / 2 } else { 0 };
-                state.cur_required_clearance = relaxed;
-                a_star_result = pathfinder_a_star(
-                    state,
-                    candidate_gx,
-                    candidate_gy,
-                    goal_gx,
-                    goal_gy,
-                    traversal,
-                );
-            }
             if let Some(result) = a_star_result {
                 if result.reached_goal || !state.path_scratch.is_empty() {
                     return Some(StartEscapeResult {
@@ -1077,12 +1221,31 @@ pub(crate) fn pathfinder_octile(ax: i32, ay: i32, bx: i32, by: i32) -> f32 {
     dx.max(dy) + PATHFINDER_SQRT2_MINUS_1 * dx.min(dy)
 }
 
+#[inline]
+fn pathfinder_heap_precedes(state: &PathfinderState, left: u32, right: u32) -> bool {
+    let left_idx = left as usize;
+    let right_idx = right as usize;
+    let left_f = state.f_score[left_idx];
+    let right_f = state.f_score[right_idx];
+    if left_f != right_f {
+        return left_f < right_f;
+    }
+    // For equal f, prefer the node with more confirmed route cost (therefore
+    // less estimated distance remaining), then stable cell order.
+    let left_g = state.g_score[left_idx];
+    let right_g = state.g_score[right_idx];
+    if left_g != right_g {
+        return left_g > right_g;
+    }
+    left < right
+}
+
 pub(crate) fn pathfinder_heap_push(state: &mut PathfinderState, idx: u32) {
     state.heap.push(idx);
     let mut i = state.heap.len() - 1;
     while i > 0 {
         let p = (i - 1) >> 1;
-        if state.f_score[state.heap[i] as usize] < state.f_score[state.heap[p] as usize] {
+        if pathfinder_heap_precedes(state, state.heap[i], state.heap[p]) {
             state.heap.swap(i, p);
             i = p;
         } else {
@@ -1102,14 +1265,10 @@ pub(crate) fn pathfinder_heap_pop(state: &mut PathfinderState) -> u32 {
             let l = (i << 1) + 1;
             let r = l + 1;
             let mut s = i;
-            if l < len
-                && state.f_score[state.heap[l] as usize] < state.f_score[state.heap[s] as usize]
-            {
+            if l < len && pathfinder_heap_precedes(state, state.heap[l], state.heap[s]) {
                 s = l;
             }
-            if r < len
-                && state.f_score[state.heap[r] as usize] < state.f_score[state.heap[s] as usize]
-            {
+            if r < len && pathfinder_heap_precedes(state, state.heap[r], state.heap[s]) {
                 s = r;
             }
             if s == i {
@@ -1124,17 +1283,6 @@ pub(crate) fn pathfinder_heap_pop(state: &mut PathfinderState) -> u32 {
 
 pub(crate) const PATHFINDER_NEIGHBOR_DX: [i32; 8] = [1, -1, 0, 0, 1, 1, -1, -1];
 pub(crate) const PATHFINDER_NEIGHBOR_DY: [i32; 8] = [0, 0, 1, -1, 1, -1, 1, -1];
-// Neighbour costs: 1.0 for cardinal, SQRT2 for diagonal.
-pub(crate) const PATHFINDER_NEIGHBOR_COST: [f32; 8] = [
-    1.0,
-    1.0,
-    1.0,
-    1.0,
-    PATHFINDER_SQRT2,
-    PATHFINDER_SQRT2,
-    PATHFINDER_SQRT2,
-    PATHFINDER_SQRT2,
-];
 
 pub(crate) struct AStarResult {
     goal_gx: i32,
@@ -1172,6 +1320,7 @@ pub(crate) fn pathfinder_a_star(
     goal_gx: i32,
     goal_gy: i32,
     traversal: PathfinderTraversal,
+    cost_profile: PathfinderCostProfile,
 ) -> Option<AStarResult> {
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -1227,13 +1376,14 @@ pub(crate) fn pathfinder_a_star(
             }
             let nidx = (ny * grid_w + nx) as usize;
             pathfinder_touch_a_star_cell(state, nidx);
-            if !pathfinder_can_step_between(state, cur_us, nidx, traversal) {
+            if !pathfinder_can_step_neighbor(state, cgx, cgy, nx, ny, traversal) {
                 continue;
             }
             if state.closed[nidx] != 0 {
                 continue;
             }
-            let tentative = state.g_score[cur_us] + PATHFINDER_NEIGHBOR_COST[k];
+            let tentative = state.g_score[cur_us]
+                + pathfinder_edge_cost(state, cgx, cgy, nx, ny, traversal, cost_profile);
             if tentative < state.g_score[nidx] {
                 state.parent[nidx] = cur as i32;
                 state.g_score[nidx] = tentative;
@@ -1276,15 +1426,18 @@ pub(crate) fn pathfinder_a_star(
     })
 }
 
-/// Supercover Bresenham LOS — true iff every cell crossed is unblocked.
-pub(crate) fn pathfinder_has_los(
+/// Trace the same supercover Bresenham segment used by validation and
+/// smoothing. Returning its cost keeps path legality and route quality on one
+/// traversal primitive; `None` means the segment is illegal.
+pub(crate) fn pathfinder_line_cost(
     state: &PathfinderState,
     x0: f64,
     y0: f64,
     x1: f64,
     y1: f64,
     traversal: PathfinderTraversal,
-) -> bool {
+    cost_profile: PathfinderCostProfile,
+) -> Option<f32> {
     let mut gx = (x0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
     let mut gy = (y0 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
     let tgx = (x1 / PATHFINDER_BUILD_GRID_CELL_SIZE).floor() as i32;
@@ -1295,28 +1448,20 @@ pub(crate) fn pathfinder_has_los(
     let dy = (tgy - gy).abs();
     let mut err = dx - dy;
     let max_steps = dx + dy + 2;
+    let mut cost = 0.0f32;
     for _ in 0..max_steps {
         if gx < 0 || gy < 0 || gx >= state.grid_w || gy >= state.grid_h {
-            return false;
+            return None;
         }
-        let current_idx = (gy * state.grid_w + gx) as usize;
         if !pathfinder_is_grid_cell_passable(state, gx, gy, traversal) {
-            return false;
+            return None;
         }
         if gx == tgx && gy == tgy {
-            return true;
+            return Some(cost);
         }
         let e2 = 2 * err;
         let a_x = e2 > -dy;
         let a_y = e2 < dx;
-        if a_x && a_y {
-            if !pathfinder_is_grid_cell_passable(state, gx + sx, gy, traversal) {
-                return false;
-            }
-            if !pathfinder_is_grid_cell_passable(state, gx, gy + sy, traversal) {
-                return false;
-            }
-        }
         let mut next_gx = gx;
         let mut next_gy = gy;
         if a_x {
@@ -1328,16 +1473,37 @@ pub(crate) fn pathfinder_has_los(
             next_gy += sy;
         }
         if next_gx < 0 || next_gy < 0 || next_gx >= state.grid_w || next_gy >= state.grid_h {
-            return false;
+            return None;
         }
-        let next_idx = (next_gy * state.grid_w + next_gx) as usize;
-        if !pathfinder_can_step_between(state, current_idx, next_idx, traversal) {
-            return false;
+        if !pathfinder_can_step_neighbor(state, gx, gy, next_gx, next_gy, traversal) {
+            return None;
         }
+        cost += pathfinder_edge_cost(state, gx, gy, next_gx, next_gy, traversal, cost_profile);
         gx = next_gx;
         gy = next_gy;
     }
-    false
+    None
+}
+
+#[inline]
+pub(crate) fn pathfinder_has_los(
+    state: &PathfinderState,
+    x0: f64,
+    y0: f64,
+    x1: f64,
+    y1: f64,
+    traversal: PathfinderTraversal,
+) -> bool {
+    pathfinder_line_cost(
+        state,
+        x0,
+        y0,
+        x1,
+        y1,
+        traversal,
+        PathfinderCostProfile::neutral(),
+    )
+    .is_some()
 }
 
 #[inline]
@@ -1385,27 +1551,29 @@ pub fn pathfinder_find_path(
     allow_water: bool,
     allow_air: bool,
     unit_radius: f64,
+    flat_drive_accel: f64,
     symmetric_slope: bool,
 ) -> u32 {
     let state = pathfinder_state();
     state.waypoint_scratch.clear();
+    state.last_result_status = PATHFINDER_RESULT_UNREACHABLE;
     let traversal = PathfinderTraversal {
         min_normal_z,
         allow_ground,
         allow_water,
         allow_air,
     };
-    // Per-query traversal params. Snapping resolves the unit's literal
-    // start/goal cells, so it must NOT be clearance-gated (a unit parked
-    // against a building still starts there) — clearance is enabled only for
-    // the A* search + LOS smoothing below. Air traversal flies over
-    // footprints, so it carries no clearance.
+    // Per-query traversal params. The start may escape without clearance (a
+    // unit pushed against a building still needs a way out), but the goal and
+    // every planned segment must fit at least the hard physical footprint.
+    // Air traversal flies over footprints, so it carries no clearance.
     state.cur_symmetric_slope = symmetric_slope;
-    let required_clearance = if traversal.allow_air {
+    let hard_clearance = if traversal.allow_air {
         0
     } else {
-        pathfinder_clearance_cells_for_radius(unit_radius)
+        pathfinder_hard_clearance_cells_for_radius(unit_radius)
     };
+    let cost_profile = PathfinderCostProfile::for_query(flat_drive_accel, hard_clearance);
     state.cur_required_clearance = 0;
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -1444,6 +1612,10 @@ pub fn pathfinder_find_path(
         }
     }
 
+    // Goals must fit the physical collision disk. Starts are allowed to be
+    // illegal so pushed/knocked units can escape, but snapping a destination
+    // without hard clearance would knowingly route the body into overlap.
+    state.cur_required_clearance = hard_clearance;
     let mut goal_cell_gx = ggx;
     let mut goal_cell_gy = ggy;
     let mut goal_was_snapped = false;
@@ -1494,11 +1666,17 @@ pub fn pathfinder_find_path(
             state.waypoint_scratch.push(goal_x);
             state.waypoint_scratch.push(goal_y);
         }
+        state.last_result_status = if goal_was_snapped || start_was_snapped {
+            PATHFINDER_RESULT_SNAPPED
+        } else {
+            PATHFINDER_RESULT_COMPLETE
+        };
         return 1;
     }
 
-    // Enable the collision-clearance gate for the actual search + smoothing.
-    state.cur_required_clearance = required_clearance;
+    // Search and smoothing enforce only physical clearance. Extra stand-off is
+    // represented by the soft cost profile and can never make a route illegal.
+    state.cur_required_clearance = hard_clearance;
 
     // BAR-style raw move: if the current leg has direct line-of-sight through
     // passable cells, do not touch A*. This is the common case for open-field
@@ -1510,9 +1688,25 @@ pub fn pathfinder_find_path(
         } else {
             (goal_x, goal_y)
         };
-        if pathfinder_has_los(state, start_x, start_y, raw_goal_x, raw_goal_y, traversal) {
+        let direct_cost = pathfinder_line_cost(
+            state,
+            start_x,
+            start_y,
+            raw_goal_x,
+            raw_goal_y,
+            traversal,
+            cost_profile,
+        );
+        let geometric_lower_bound =
+            pathfinder_octile(start_cell_gx, start_cell_gy, goal_cell_gx, goal_cell_gy);
+        if direct_cost.is_some_and(|cost| cost <= geometric_lower_bound + 1.0e-5) {
             state.waypoint_scratch.push(raw_goal_x);
             state.waypoint_scratch.push(raw_goal_y);
+            state.last_result_status = if goal_was_snapped {
+                PATHFINDER_RESULT_SNAPPED
+            } else {
+                PATHFINDER_RESULT_COMPLETE
+            };
             return 1;
         }
     }
@@ -1524,26 +1718,8 @@ pub fn pathfinder_find_path(
         goal_cell_gx,
         goal_cell_gy,
         traversal,
+        cost_profile,
     );
-    // If the full standoff can't reach the goal (a unit hemmed in by structures,
-    // or the only route is a gap narrower than its body), relax the clearance
-    // stepwise instead of collapsing straight to point-pathing, so the unit
-    // keeps the LARGEST standoff it can actually achieve rather than hugging
-    // every wall. Halving bounds this to ~log2(required) extra searches and only
-    // runs when the previous attempt found no usable path.
-    let mut relaxed = required_clearance;
-    while relaxed > 0 && (a_star_result.is_none() || state.path_scratch.is_empty()) {
-        relaxed = if relaxed > 1 { relaxed / 2 } else { 0 };
-        state.cur_required_clearance = relaxed;
-        a_star_result = pathfinder_a_star(
-            state,
-            start_cell_gx,
-            start_cell_gy,
-            goal_cell_gx,
-            goal_cell_gy,
-            traversal,
-        );
-    }
     let made_progress = match &a_star_result {
         Some(result) => result.reached_goal || !state.path_scratch.is_empty(),
         None => false,
@@ -1559,7 +1735,7 @@ pub fn pathfinder_find_path(
             goal_cell_gx,
             goal_cell_gy,
             traversal,
-            required_clearance,
+            cost_profile,
         ) {
             start_cell_gx = escape.start_gx;
             start_cell_gy = escape.start_gy;
@@ -1592,8 +1768,11 @@ pub fn pathfinder_find_path(
             }
             return 1;
         }
+        state.last_result_status = PATHFINDER_RESULT_PARTIAL;
     }
-    // String-pull LOS smoothing.
+    // Cost-aware string pulling. A legal shortcut is accepted only when it is
+    // no more expensive than the A* chain it replaces, so smoothing cannot
+    // erase slope-time or soft-clearance decisions.
     let mut anchor_x: f64;
     let mut anchor_y: f64;
     if start_was_snapped {
@@ -1609,6 +1788,20 @@ pub fn pathfinder_find_path(
     }
     let path_len = state.path_scratch.len();
     if path_len > 1 {
+        let first_idx = state.path_scratch[0] as i32;
+        let first_gx = first_idx % grid_w;
+        let first_gy = (first_idx - first_gx) / grid_w;
+        let (first_x, first_y) = pathfinder_cell_center(first_gx, first_gy);
+        let mut chain_cost = pathfinder_line_cost(
+            state,
+            anchor_x,
+            anchor_y,
+            first_x,
+            first_y,
+            traversal,
+            cost_profile,
+        )
+        .unwrap_or(f32::INFINITY);
         for i in 0..path_len - 1 {
             let cand_idx = state.path_scratch[i] as i32;
             let next_idx = state.path_scratch[i + 1] as i32;
@@ -1618,10 +1811,31 @@ pub fn pathfinder_find_path(
             let ngy = (next_idx - ngx) / grid_w;
             let (cand_x, cand_y) = pathfinder_cell_center(cgx, cgy);
             let (next_x, next_y) = pathfinder_cell_center(ngx, ngy);
-            if !pathfinder_has_los(state, anchor_x, anchor_y, next_x, next_y, traversal) {
+            let raw_edge_cost = pathfinder_line_cost(
+                state,
+                cand_x,
+                cand_y,
+                next_x,
+                next_y,
+                traversal,
+                cost_profile,
+            )
+            .unwrap_or(f32::INFINITY);
+            chain_cost += raw_edge_cost;
+            let shortcut_cost = pathfinder_line_cost(
+                state,
+                anchor_x,
+                anchor_y,
+                next_x,
+                next_y,
+                traversal,
+                cost_profile,
+            );
+            if shortcut_cost.is_none_or(|cost| cost > chain_cost + 1.0e-5) {
                 pathfinder_push_waypoint(state, cand_x, cand_y);
                 anchor_x = cand_x;
                 anchor_y = cand_y;
+                chain_cost = raw_edge_cost;
             }
         }
     }
@@ -1631,7 +1845,73 @@ pub fn pathfinder_find_path(
     } else {
         pathfinder_push_waypoint(state, goal_x, goal_y);
     }
+    if a_star_result.reached_goal {
+        state.last_result_status = if goal_was_snapped {
+            PATHFINDER_RESULT_SNAPPED
+        } else {
+            PATHFINDER_RESULT_COMPLETE
+        };
+    }
     (state.waypoint_scratch.len() / 2) as u32
+}
+
+#[wasm_bindgen]
+pub fn pathfinder_last_result_status() -> u32 {
+    pathfinder_state().last_result_status
+}
+
+/// Validate a world-space polyline against the exact traversal rules consumed
+/// by direct LOS, A*, and string-pull smoothing. `points` is interleaved x/y
+/// and includes the unit's current position as its first point. Validation uses
+/// hard collision clearance only: a translated shared route may give up comfort
+/// margin, but it may never overlap water, a structure, map bounds, or an
+/// illegal directed slope edge.
+#[wasm_bindgen]
+pub fn pathfinder_validate_path(
+    points: &[f64],
+    min_normal_z: f32,
+    allow_ground: bool,
+    allow_water: bool,
+    allow_air: bool,
+    unit_radius: f64,
+    symmetric_slope: bool,
+) -> u32 {
+    if points.len() < 4 || points.len() % 2 != 0 {
+        return 0;
+    }
+    let state = pathfinder_state();
+    if state.grid_w == 0 || state.grid_h == 0 {
+        return 0;
+    }
+    let traversal = PathfinderTraversal {
+        min_normal_z,
+        allow_ground,
+        allow_water,
+        allow_air,
+    };
+    state.cur_symmetric_slope = symmetric_slope;
+    state.cur_required_clearance = if traversal.allow_air {
+        0
+    } else {
+        pathfinder_hard_clearance_cells_for_radius(unit_radius)
+    };
+    let mut i = 0usize;
+    while i + 3 < points.len() {
+        let x0 = points[i];
+        let y0 = points[i + 1];
+        let x1 = points[i + 2];
+        let y1 = points[i + 3];
+        if !x0.is_finite()
+            || !y0.is_finite()
+            || !x1.is_finite()
+            || !y1.is_finite()
+            || !pathfinder_has_los(state, x0, y0, x1, y1, traversal)
+        {
+            return 0;
+        }
+        i += 2;
+    }
+    1
 }
 
 #[wasm_bindgen]
@@ -1653,9 +1933,40 @@ pub fn pathfinder_grid_size_h() -> i32 {
 mod tests {
     use super::*;
 
+    fn open_test_state(grid_w: i32, grid_h: i32) -> PathfinderState {
+        let mut state = PathfinderState::empty();
+        let n = (grid_w * grid_h) as usize;
+        state.grid_w = grid_w;
+        state.grid_h = grid_h;
+        state.n = n;
+        state.blocked = vec![0; n];
+        state.terrain_water = vec![0; n];
+        state.terrain_edge_blocked = vec![0; n];
+        state.terrain_height = vec![0.0; n];
+        state.terrain_normal_z = vec![1.0; n];
+        state.clearance = vec![u16::MAX; n];
+        state.medium_clearance = vec![u16::MAX; n];
+        state.g_score = vec![f32::INFINITY; n];
+        state.f_score = vec![f32::INFINITY; n];
+        state.parent = vec![-1; n];
+        state.closed = vec![0; n];
+        state.visited_gen = vec![0; n];
+        state.current_gen = 1;
+        state
+    }
+
+    fn ground_traversal() -> PathfinderTraversal {
+        PathfinderTraversal {
+            min_normal_z: 0.0,
+            allow_ground: true,
+            allow_water: false,
+            allow_air: false,
+        }
+    }
+
     #[test]
     fn locomotion_climb_profile_is_limited_by_contact_grip() {
-        let mut out = [0.0; 6];
+        let mut out = [0.0; 7];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
                 1_000.0, 1.0, 0.5, 100.0, 20.0, 150_000.0, 100.0, 10.0, GRAVITY, 0.8, 70.0, true,
@@ -1667,11 +1978,12 @@ mod tests {
         assert!((out[0] - expected_grip_slope).abs() < 1e-9);
         assert!((out[1] - (out[0] * core::f64::consts::PI / 180.0).cos()).abs() < 1e-9);
         assert!((out[4] - expected_grip_slope).abs() < 1e-9);
+        assert!((out[6] - GRAVITY * 0.5).abs() < 1e-9);
     }
 
     #[test]
     fn air_navigation_has_no_terrain_slope_limit() {
-        let mut out = [0.0; 6];
+        let mut out = [0.0; 7];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
                 0.0, 0.0, 0.0, 100.0, 20.0, 150_000.0, 100.0, 10.0, GRAVITY, 0.8, 70.0, false,
@@ -1681,5 +1993,130 @@ mod tests {
         );
         assert!(out[0].is_nan() && out[1].is_nan());
         assert!(out[2].is_infinite());
+    }
+
+    #[test]
+    fn clearance_separates_physical_radius_from_soft_preference() {
+        assert_eq!(pathfinder_hard_clearance_cells_for_radius(0.0), 0);
+        assert_eq!(pathfinder_hard_clearance_cells_for_radius(9.6), 1);
+        let profile = PathfinderCostProfile::for_query(100.0, 1);
+        assert_eq!(profile.hard_clearance_cells, 1);
+        assert_eq!(
+            profile.soft_clearance_cells,
+            PATHFINDING_SOFT_CLEARANCE_CELLS
+        );
+        assert_eq!(pathfinder_hard_clearance_cells_for_radius(50.0), 3);
+    }
+
+    #[test]
+    fn slope_cost_uses_gravity_reduced_uphill_acceleration() {
+        let mut state = open_test_state(2, 1);
+        let traversal = ground_traversal();
+        let profile = PathfinderCostProfile {
+            flat_drive_accel: GRAVITY,
+            hard_clearance_cells: 0,
+            soft_clearance_cells: 0,
+            soft_clearance_penalty_per_cell: 0.0,
+        };
+        let flat = pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile);
+        state.terrain_height[1] = 10.0;
+        let uphill = pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile);
+        assert!((flat - 1.0).abs() < 1.0e-6);
+        assert!(uphill > flat, "uphill time must exceed flat time");
+    }
+
+    #[test]
+    fn a_star_prefers_faster_flat_detour_over_legal_steep_hill() {
+        let mut state = open_test_state(5, 3);
+        state.terrain_height[(1 * state.grid_w + 2) as usize] = 15.0;
+        let traversal = ground_traversal();
+        let profile = PathfinderCostProfile {
+            flat_drive_accel: GRAVITY,
+            hard_clearance_cells: 0,
+            soft_clearance_cells: 0,
+            soft_clearance_penalty_per_cell: 0.0,
+        };
+        let result = pathfinder_a_star(&mut state, 0, 1, 4, 1, traversal, profile)
+            .expect("open grid must produce a route");
+        assert!(result.reached_goal);
+        let hill_idx = (1 * state.grid_w + 2) as u32;
+        assert!(
+            !state.path_scratch.contains(&hill_idx),
+            "time-optimal route should go around the legal but slower hill"
+        );
+    }
+
+    #[test]
+    fn medium_transition_has_no_route_cost() {
+        let mut state = open_test_state(2, 1);
+        state.terrain_water[1] = 1;
+        let traversal = PathfinderTraversal {
+            min_normal_z: 0.0,
+            allow_ground: true,
+            allow_water: true,
+            allow_air: false,
+        };
+        let profile = PathfinderCostProfile {
+            flat_drive_accel: GRAVITY,
+            hard_clearance_cells: 0,
+            soft_clearance_cells: 0,
+            soft_clearance_penalty_per_cell: 0.0,
+        };
+        assert!(
+            (pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile) - 1.0).abs() < 1.0e-6
+        );
+    }
+
+    #[test]
+    fn soft_clearance_cost_prefers_open_cells_without_blocking_narrow_routes() {
+        let mut state = open_test_state(5, 3);
+        state.cur_required_clearance = 1;
+        for gx in 1..=3 {
+            state.clearance[(1 * state.grid_w + gx) as usize] = 1;
+        }
+        let traversal = ground_traversal();
+        let profile = PathfinderCostProfile {
+            flat_drive_accel: 0.0,
+            hard_clearance_cells: 1,
+            soft_clearance_cells: 2,
+            soft_clearance_penalty_per_cell: 0.35,
+        };
+        let result = pathfinder_a_star(&mut state, 0, 1, 4, 1, traversal, profile)
+            .expect("open grid must produce a route");
+        assert!(result.reached_goal);
+        assert!(state
+            .path_scratch
+            .iter()
+            .any(|&idx| (idx as i32 / state.grid_w) != 1));
+        let direct_cost = pathfinder_line_cost(&state, 10.0, 30.0, 90.0, 30.0, traversal, profile)
+            .expect("tight direct row remains physically legal");
+        let chosen_cost = state.g_score[(1 * state.grid_w + 4) as usize];
+        assert!(
+            direct_cost > chosen_cost,
+            "smoothing must preserve the cheaper open route"
+        );
+
+        // Soft preference never changes passability: if only the tight row is
+        // available, the same hard-clearance cells remain legal.
+        for gy in [0, 2] {
+            for gx in 0..state.grid_w {
+                state.blocked[(gy * state.grid_w + gx) as usize] = 1;
+            }
+        }
+        let result = pathfinder_a_star(&mut state, 0, 1, 4, 1, traversal, profile)
+            .expect("soft clearance must not prohibit the narrow route");
+        assert!(result.reached_goal);
+    }
+
+    #[test]
+    fn diagonal_neighbor_cannot_cut_a_blocked_corner() {
+        let mut state = open_test_state(3, 3);
+        state.cur_required_clearance = 0;
+        let traversal = ground_traversal();
+
+        state.blocked[1 * 3 + 2] = 1;
+        assert!(!pathfinder_can_step_neighbor(&state, 1, 1, 2, 2, traversal,));
+        state.blocked[1 * 3 + 2] = 0;
+        assert!(pathfinder_can_step_neighbor(&state, 1, 1, 2, 2, traversal,));
     }
 }

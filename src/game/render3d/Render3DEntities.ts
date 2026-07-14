@@ -444,7 +444,7 @@ export class Render3DEntities {
     tickBeamWaveTime();
     this.turretMountCache.reset(this._currentDtMs);
     this.resourcePylonFlows.beginFrame();
-    refreshLocomotionSupportSurfaces(this.clientViewState.getPredictionSupportSurfaceEntities());
+    refreshLocomotionSupportSurfaces(this.clientViewState.getLocomotionSupportSurfaceEntities());
     this.syncSmokeTrailsQueue();
     this.syncLegsRadiusToggleQueue();
     this.selectionOverlays.beginFrame({ reclaimTargets: overlayModes.reclaimTargets === true });
@@ -741,6 +741,11 @@ export class Render3DEntities {
         unitRows.yawRate[row],
         m.visualBankRoll ?? 0,
         spinDt,
+        unitRows.orientationX[row],
+        unitRows.orientationY[row],
+        unitRows.orientationZ[row],
+        unitRows.orientationW[row],
+        unitRows.hasFullOrientation[row] !== 0,
       );
       poseRows[poseCount] = row;
       poseMeshes[poseCount] = m;
@@ -789,7 +794,9 @@ export class Render3DEntities {
         poseOutput[poseBase + 2],
         poseOutput[poseBase + 3],
       );
-      const chassisTilted = poseOutput[poseBase + 15] !== 0;
+      const poseMode = poseOutput[poseBase + 15];
+      const chassisTilted = poseMode === 1;
+      const fullOrientation = poseMode === 2;
       if (chassisTilted) {
         _invTiltQuat.set(
           poseOutput[poseBase + 4],
@@ -799,7 +806,7 @@ export class Render3DEntities {
         );
       }
       if (m.yawGroup) {
-        setEulerIfChanged(m.yawGroup.rotation, 0, yaw, 0);
+        setEulerIfChanged(m.yawGroup.rotation, 0, fullOrientation ? 0 : yaw, 0);
       }
       if (m.liftGroup) {
         setEulerIfChanged(

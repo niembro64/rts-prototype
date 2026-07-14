@@ -69,6 +69,11 @@ export type ClientRenderEntityStateViews = {
   readonly velocityX: Float32Array;
   readonly velocityY: Float32Array;
   readonly yawRate: Float32Array;
+  readonly orientationX: Float32Array;
+  readonly orientationY: Float32Array;
+  readonly orientationZ: Float32Array;
+  readonly orientationW: Float32Array;
+  readonly hasFullOrientation: Uint8Array;
   readonly bodyOpacity: Float32Array;
   readonly bodyCenterHeight: Float32Array;
   readonly buildingBaseY: Float32Array;
@@ -203,6 +208,11 @@ export class ClientRenderEntityStateSlab {
     velocityX: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     velocityY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     yawRate: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    orientationX: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    orientationY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    orientationZ: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    orientationW: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
+    hasFullOrientation: new Uint8Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     bodyOpacity: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     bodyCenterHeight: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
     buildingBaseY: new Float32Array(INITIAL_RENDER_ENTITY_STATE_CAP),
@@ -401,6 +411,12 @@ export class ClientRenderEntityStateSlab {
     views.velocityX[slot] = unit.velocityX;
     views.velocityY[slot] = unit.velocityY;
     views.yawRate[slot] = unit.angularVelocity3?.z ?? 0;
+    const orientation = unit.orientation;
+    views.orientationX[slot] = orientation?.x ?? 0;
+    views.orientationY[slot] = orientation?.y ?? 0;
+    views.orientationZ[slot] = orientation?.z ?? 0;
+    views.orientationW[slot] = orientation?.w ?? 1;
+    views.hasFullOrientation[slot] = orientation !== null ? 1 : 0;
     views.bodyOpacity[slot] = getConstructionPieceOpacity(entity, 'body');
     views.bodyCenterHeight[slot] = unit.bodyCenterHeight;
     views.bodyHudWidth[slot] = unit.radius.other * 2;
@@ -511,6 +527,7 @@ export class ClientRenderEntityStateSlab {
     this.views.turretCount[slot] = 0;
     this.views.passiveTurretIndex[slot] = NO_PASSIVE_TURRET_INDEX;
     this.views.radiusHitbox[slot] = 0;
+    this.views.hasFullOrientation[slot] = 0;
     this.views.lodProxyRadius[slot] = 0;
     this.views.lodProxyGlyph[slot] = 0;
     this.views.bodyHudWidth[slot] = 0;
@@ -703,6 +720,10 @@ export class ClientRenderEntityStateSlab {
       assertNear('lodProxyGlyph', views.lodProxyGlyph[slot], entityLodProxyGlyph3D(entity), 0);
       assertNear('velocityX', views.velocityX[slot], unit.velocityX);
       assertNear('velocityY', views.velocityY[slot], unit.velocityY);
+      assertNear('orientationX', views.orientationX[slot], unit.orientation?.x ?? 0);
+      assertNear('orientationY', views.orientationY[slot], unit.orientation?.y ?? 0);
+      assertNear('orientationZ', views.orientationZ[slot], unit.orientation?.z ?? 0);
+      assertNear('orientationW', views.orientationW[slot], unit.orientation?.w ?? 1);
       assertNear('bodyHudWidth', views.bodyHudWidth[slot], unit.radius.other * 2);
       assertNear('hudBarsY', views.hudBarsY[slot], getUnitHudBarsY(entity));
       assertNear('hudNameY', views.hudNameY[slot], getUnitHudNameY(entity));
@@ -832,6 +853,11 @@ export class ClientRenderEntityStateSlab {
       velocityX: growFloat32(views.velocityX, nextCapacity),
       velocityY: growFloat32(views.velocityY, nextCapacity),
       yawRate: growFloat32(views.yawRate, nextCapacity),
+      orientationX: growFloat32(views.orientationX, nextCapacity),
+      orientationY: growFloat32(views.orientationY, nextCapacity),
+      orientationZ: growFloat32(views.orientationZ, nextCapacity),
+      orientationW: growFloat32(views.orientationW, nextCapacity),
+      hasFullOrientation: growUint8(views.hasFullOrientation, nextCapacity),
       bodyOpacity: growFloat32(views.bodyOpacity, nextCapacity),
       bodyCenterHeight: growFloat32(views.bodyCenterHeight, nextCapacity),
       buildingBaseY: growFloat32(views.buildingBaseY, nextCapacity),

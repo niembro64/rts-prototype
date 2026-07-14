@@ -47,56 +47,6 @@
   "pathingDebugUnit": { "demoDefault": "none", "realDefault": "none" },
   "sightBoundary": { "demoDefault": false, "realDefault": false },
   "radarBoundary": { "demoDefault": false, "realDefault": false },
-  "predictionMode": {
-    "demoDefault": "vel",
-    "realDefault": "vel",
-    "options": [
-      { "value": "pos", "label": "POS" },
-      { "value": "vel", "label": "VEL" }
-    ]
-  },
-  "movementPosEma": {
-    "demoDefault": "medium",
-    "realDefault": "medium",
-    "options": [
-      { "value": "snap", "label": "SNAP" },
-      { "value": "fast", "label": "FAST" },
-      { "value": "medium", "label": "MED" },
-      { "value": "slow", "label": "SLOW" }
-    ]
-  },
-  "movementVelEma": {
-    "demoDefault": "snap",
-    "realDefault": "snap",
-    "options": [
-      { "value": "ignore", "label": "IGN" },
-      { "value": "snap", "label": "SNAP" },
-      { "value": "fast", "label": "FAST" },
-      { "value": "medium", "label": "MED" },
-      { "value": "slow", "label": "SLOW" }
-    ]
-  },
-  "rotationPosEma": {
-    "demoDefault": "medium",
-    "realDefault": "medium",
-    "options": [
-      { "value": "snap", "label": "SNAP" },
-      { "value": "fast", "label": "FAST" },
-      { "value": "medium", "label": "MED" },
-      { "value": "slow", "label": "SLOW" }
-    ]
-  },
-  "rotationVelEma": {
-    "demoDefault": "snap",
-    "realDefault": "snap",
-    "options": [
-      { "value": "ignore", "label": "IGN" },
-      { "value": "snap", "label": "SNAP" },
-      { "value": "fast", "label": "FAST" },
-      { "value": "medium", "label": "MED" },
-      { "value": "slow", "label": "SLOW" }
-    ]
-  },
   "unitGroundNormalEma": {
     "demoDefault": "fast",
     "realDefault": "fast",
@@ -242,11 +192,6 @@
     "pathingDebugUnit": "pathing-debug-unit",
     "sightBoundary": "sight-boundary",
     "radarBoundary": "radar-boundary",
-    "movementPosEma": "movement-pos-ema",
-    "movementVelEma": "movement-vel-ema",
-    "rotationPosEma": "rotation-pos-ema",
-    "rotationVelEma": "rotation-vel-ema",
-    "predictionMode": "prediction-mode",
     "unitGroundNormalEmaMode": "unit-ground-normal-ema-mode",
     "soundToggles": "sound-toggles",
     "rangeToggles": "range-toggles",

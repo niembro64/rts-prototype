@@ -7056,7 +7056,7 @@ mod sim_kernel_tests {
         let building_cells = [10.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_001, 20_001, 30_001);
         let count = pathfinder_find_path(
-            210.0, 210.0, 320.0, 210.0, 0.0, true, false, false, 0.0, false,
+            210.0, 210.0, 320.0, 210.0, 0.0, true, false, false, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7078,7 +7078,7 @@ mod sim_kernel_tests {
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_002, 20_002, 30_002);
         let count = pathfinder_find_path(
-            30.0, 210.0, 80.0, 210.0, 0.0, true, false, false, 0.0, false,
+            30.0, 210.0, 80.0, 210.0, 0.0, true, false, false, 0.0, 0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7097,7 +7097,7 @@ mod sim_kernel_tests {
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_003, 20_003, 30_003);
         let count = pathfinder_find_path(
-            80.0, 210.0, 30.0, 210.0, 0.0, true, false, false, 0.0, false,
+            80.0, 210.0, 30.0, 210.0, 0.0, true, false, false, 0.0, 0.0, false,
         );
         assert!(count >= 1);
 
@@ -7207,19 +7207,78 @@ mod sim_kernel_tests {
         pathfinder_rebuild_mask_and_cc(&[], 10_031, 20_031, 30_031);
 
         let ground_only_count =
-            pathfinder_find_path(70.0, 90.0, 250.0, 90.0, 0.0, true, false, false, 0.0, false);
+            pathfinder_find_path(70.0, 90.0, 250.0, 90.0, 0.0, true, false, false, 0.0, 0.0, false);
         let ground_only_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (ground_only_count as usize) * 2)
         };
+        let mut exact_ground_polyline = vec![70.0, 90.0];
+        exact_ground_polyline.extend_from_slice(ground_only_waypoints);
         let ground_only_last = (ground_only_count as usize - 1) * 2;
         assert!(
             (ground_only_waypoints[ground_only_last] - 250.0).abs() > 1.0e-9,
             "ground-only routes should not cross the water-buffered strip"
         );
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
+        assert_eq!(
+            pathfinder_validate_path(
+                &exact_ground_polyline,
+                0.0,
+                true,
+                false,
+                false,
+                0.0,
+                false,
+            ),
+            1,
+            "the exact snapped route must remain legal",
+        );
+        exact_ground_polyline.push(250.0);
+        exact_ground_polyline.push(90.0);
+        assert_eq!(
+            pathfinder_validate_path(
+                &exact_ground_polyline,
+                0.0,
+                true,
+                false,
+                false,
+                0.0,
+                false,
+            ),
+            0,
+            "inventing a connector from the snapped endpoint to the click crosses water",
+        );
+
+        assert_eq!(
+            pathfinder_validate_path(
+                &[50.0, 50.0, 90.0, 50.0],
+                0.0,
+                true,
+                false,
+                false,
+                0.0,
+                false,
+            ),
+            1,
+            "an anchor formation segment on legal ground should validate",
+        );
+        assert_eq!(
+            pathfinder_validate_path(
+                &[130.0, 50.0, 170.0, 50.0],
+                0.0,
+                true,
+                false,
+                false,
+                0.0,
+                false,
+            ),
+            0,
+            "translating that formation segment into the water buffer must be rejected",
+        );
 
         let amphibious_count =
-            pathfinder_find_path(70.0, 90.0, 250.0, 90.0, 0.0, true, true, false, 0.0, false);
+            pathfinder_find_path(70.0, 90.0, 250.0, 90.0, 0.0, true, true, false, 0.0, 0.0, false);
         assert_eq!(amphibious_count, 1);
+        assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_COMPLETE);
         let amphibious_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (amphibious_count as usize) * 2)
         };
@@ -7365,7 +7424,7 @@ mod sim_kernel_tests {
         pathfinder_rebuild_mask_and_cc(&[], 10_004, 20_004, 30_004);
 
         let count =
-            pathfinder_find_path(90.0, 50.0, 110.0, 50.0, 0.0, true, false, false, 0.0, false);
+            pathfinder_find_path(90.0, 50.0, 110.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =
@@ -7382,7 +7441,7 @@ mod sim_kernel_tests {
         pathfinder_rebuild_mask_and_cc(&[], 10_005, 20_005, 30_005);
 
         let count =
-            pathfinder_find_path(110.0, 50.0, 90.0, 50.0, 0.0, true, false, false, 0.0, false);
+            pathfinder_find_path(110.0, 50.0, 90.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false);
         assert_eq!(count, 1);
 
         let waypoints =
@@ -7497,7 +7556,7 @@ mod sim_kernel_tests {
         pathfinder_rebuild_mask_and_cc(&[], 10_006, 20_006, 30_006);
 
         let count =
-            pathfinder_find_path(100.0, 50.0, 50.0, 50.0, 0.0, true, false, false, 0.0, false);
+            pathfinder_find_path(100.0, 50.0, 50.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false);
         assert!(
             count >= 2,
             "steep wall starts should emit an explicit flat escape waypoint before the final goal"
@@ -9548,131 +9607,6 @@ mod sim_kernel_tests {
         assert_eq!((nx, ny, nz), (0.25, 0.5, 0.75));
     }
 
-    #[test]
-    pub(crate) fn client_prediction_batch_matches_inline_motion_step() {
-        let dt = 1.0 / 60.0;
-        let mut expected = [10.0, 20.0, 8.0, 30.0, -10.0, 2.0];
-        integrate_unit_motion_inline(
-            &mut expected,
-            dt,
-            3.0,
-            0.0,
-            0.0,
-            0.0,
-            12.0,
-            0.01,
-            0.85,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            4.0,
-            0.0,
-            0.0,
-            1.0,
-        );
-
-        let mut motions = vec![10.0, 20.0, 8.0, 30.0, -10.0, 2.0];
-        let ground_offsets = vec![3.0];
-        let ground_z = vec![4.0];
-        let ground_normals = vec![0.0, 0.0, 1.0];
-        let air_drag_coefficients = vec![12.0];
-        let inv_mass = vec![0.01];
-        let yaw_rates = vec![0.0];
-        let coordinated_turn_flags = vec![0];
-        client_predict_unit_motion_batch(
-            1,
-            &mut motions,
-            &ground_offsets,
-            &ground_z,
-            &ground_normals,
-            &air_drag_coefficients,
-            &inv_mass,
-            &yaw_rates,
-            &coordinated_turn_flags,
-            dt,
-            0.85,
-            0.0,
-            0.0,
-            0.0,
-            0.1,
-            0.0001,
-        );
-
-        for i in 0..6 {
-            assert!((motions[i] - expected[i]).abs() < 1e-12);
-        }
-    }
-
-    #[test]
-    pub(crate) fn client_prediction_batch_snaps_settled_ground_contacts() {
-        let mut motions = vec![0.0, 0.0, 1.0005, 0.001, 0.0, 0.0];
-        let ground_offsets = vec![1.0];
-        let ground_z = vec![0.0];
-        let ground_normals = vec![0.0, 0.0, 1.0];
-        let air_drag_coefficients = vec![12.0];
-        let inv_mass = vec![0.01];
-        let yaw_rates = vec![0.0];
-        let coordinated_turn_flags = vec![0];
-        client_predict_unit_motion_batch(
-            1,
-            &mut motions,
-            &ground_offsets,
-            &ground_z,
-            &ground_normals,
-            &air_drag_coefficients,
-            &inv_mass,
-            &yaw_rates,
-            &coordinated_turn_flags,
-            1.0 / 60.0,
-            0.85,
-            0.0,
-            0.0,
-            0.0,
-            0.1,
-            0.0001,
-        );
-
-        assert_eq!(motions, vec![0.0, 0.0, 1.0, 0.0, 0.0, 0.0]);
-    }
-
-    #[test]
-    pub(crate) fn client_prediction_batch_advances_coordinated_flight_as_a_curve() {
-        let mut motions = vec![0.0, 0.0, 100.0, 60.0, 0.0, 0.0];
-        let ground_offsets = vec![3.0];
-        let ground_z = vec![0.0];
-        let ground_normals = vec![0.0, 0.0, 1.0];
-        let air_drag_coefficients = vec![0.0];
-        let inv_mass = vec![0.0];
-        let yaw_rates = vec![core::f64::consts::FRAC_PI_2];
-        let coordinated_turn_flags = vec![1];
-        client_predict_unit_motion_batch(
-            1,
-            &mut motions,
-            &ground_offsets,
-            &ground_z,
-            &ground_normals,
-            &air_drag_coefficients,
-            &inv_mass,
-            &yaw_rates,
-            &coordinated_turn_flags,
-            1.0,
-            1.0,
-            0.0,
-            0.0,
-            0.0,
-            0.1,
-            0.0001,
-        );
-
-        let midpoint_distance = 60.0 / 2.0_f64.sqrt();
-        assert!((motions[0] - midpoint_distance).abs() < 1e-12);
-        assert!((motions[1] - midpoint_distance).abs() < 1e-12);
-        assert!(motions[3].abs() < 1e-12);
-        assert!((motions[4] - 60.0).abs() < 1e-12);
-    }
 }
 
 #[cfg(test)]

@@ -1,8 +1,8 @@
 # Authoritative Simulation Ledger
 
-Last audited: 2026-06-02.
+Last audited: 2026-07-14.
 
-This ledger tracks the current source of truth for authoritative simulation behavior while the project migrates toward Rust/WASM-owned tick work. It is intentionally limited to server/host simulation behavior; client rendering and EMA smoothing are separate presentation paths.
+This ledger tracks the current source of truth for authoritative simulation behavior while the project migrates toward Rust/WASM-owned tick work. Presentation is listed where it reads authoritative fixed-tick state directly; decorative rendering remains a separate frontend concern.
 
 Status terms:
 
@@ -27,6 +27,7 @@ When moving a row from `TypeScript-orchestrated` or `Transitional` to `Rust/WASM
 | Building active-state ON/OFF timer lifecycle | `rts-sim-wasm/src/lib.rs` `building_active_state_step_batch` | `src/game/sim/buildingActiveState.ts` packs active-state rows, scatters timer/open results, applies producer-rate deltas, and marks dirty snapshots |
 | Deterministic wind oscillator and wind producer-rate aggregation | `rts-sim-wasm/src/lib.rs` `wind_sample_state` and `economy_accumulate_player_rates`, with oscillator constants generated from `src/windConfig.json` | `src/game/sim/wind.ts` calls the oscillator, packs active wind producer rates, and applies the resulting per-player production-rate deltas |
 | Economy stockpile clamps, batched income/converter application, construction/repair equal-share debit allocation, and construction/repair consumer spend application | `rts-sim-wasm/src/lib.rs` `economy_*` and `construction_apply_consumer_spends` helpers | `src/game/sim/economy.ts` and `energyDistribution.ts` pack rows, copy back player stockpiles, scatter spend results onto entity objects, and record renderer-facing resource movement events |
+| Fixed-tick presentation history and interpolation | `rts-sim-wasm/src/presentation.rs` captures adjacent entity/turret slab rows and batches linear interpolation, normalized-normal interpolation, shortest-angle interpolation, and quaternion SLERP | `ClientLockstepPresentation.ts` resolves visible stable slots, supplies one display alpha, and scatters the resulting poses into renderer compatibility views; it performs no root-motion prediction or smoothing math |
 
 ## Transitional
 

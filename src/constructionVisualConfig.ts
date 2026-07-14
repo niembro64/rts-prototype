@@ -26,13 +26,13 @@ export const CONSTRUCTION_HAZARD_COLORS = {
   ),
 } as const;
 
-/** Construction tower orbital spin. The renderer EMAs the summed
- * resource transfer-rate fractions (energy + metal) using the
- * selected PLAYER CLIENT DRIFT preset, then advances the three-tower
+/** Construction tower orbital spin. The renderer smooths the summed
+ * resource transfer-rate fractions (energy + metal) using this
+ * controller's named response half-life, then advances the three-tower
  * cluster around the emitter center by
  * `radPerSec * smoothedResourceRateSum`. */
 export const CONSTRUCTION_TOWER_SPIN_CONFIG = {
   /** Radians per second for each full resource lane currently flowing. */
   radPerSec: constructionVisualConfig.towerSpin.radPerSec,
-  driftHalfLifeMultiplier: constructionVisualConfig.towerSpin.driftHalfLifeMultiplier,
+  responseHalfLifeMultiplier: constructionVisualConfig.towerSpin.responseHalfLifeMultiplier,
 } as const;

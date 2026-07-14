@@ -89,8 +89,8 @@ export const HP_BAR_COLOR_BUILD = COLORS.construction.hpBar.build.cssColor;
  *  goes empty or a queue rolls over — so the renderer EMAs them
  *  before driving the colored resource-ball sprays. Half-life is in
  *  seconds; halfLifeBlend(dt, halfLife) closes 50% of the gap each
- *  half-life, exactly the same shape as the snapshot drift EMA in
- *  driftEma.ts.
+ *  half-life, using the shared exponential response curve in
+ *  game/math/halfLife.ts.
  *
  *  Reference points (pick one for the active mode below):
  *    SNAP — 0     (no smoothing; shows raw per-tick noise)

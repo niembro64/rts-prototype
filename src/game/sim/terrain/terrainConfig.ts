@@ -8,7 +8,7 @@ export const TILE_FLOOR_Y = terrainConfig.world.floorY;
 const WATER_LEVEL_FRACTION = terrainConfig.water.levelFraction;
 export const WATER_LEVEL = TILE_FLOOR_Y * (1 - WATER_LEVEL_FRACTION);
 
-// Host sim, client prediction, and terrain rendering share this exact mesh.
+// Authoritative simulation and terrain rendering share this exact mesh.
 // This is the finest equilateral-triangle edge resolution relative to
 // LAND_CELL_SIZE. The baker groups fine triangles upward into larger
 // authoritative triangles where error allows. Lives as a `let` so the

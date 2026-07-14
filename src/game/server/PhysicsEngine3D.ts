@@ -506,7 +506,7 @@ export class PhysicsEngine3D {
   }
 
   /** Wire in the terrain heightmap so spring/friction contact uses
-   *  the same triangle surface as rendering and client prediction. */
+   *  the same triangle surface as rendering. */
   setGroundLookup(
     getZ: (x: number, y: number) => number,
     getNormal: (x: number, y: number) => { nx: number; ny: number; nz: number },

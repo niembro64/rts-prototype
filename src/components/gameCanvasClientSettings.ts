@@ -21,13 +21,8 @@ import {
   getFogShade,
   getFogClouds,
   getMaterialExplosions,
-  getMovementPosEmaMode,
-  getMovementVelEmaMode,
   getPathingMap,
   getPathingDebugUnit,
-  getPredictionMode,
-  getRotationPosEmaMode,
-  getRotationVelEmaMode,
   getEdgeScrollEnabled,
   getBurnMarks,
   getLodMode,
@@ -66,13 +61,8 @@ import {
   setFogShade,
   setFogClouds,
   setMaterialExplosions,
-  setMovementPosEmaMode,
-  setMovementVelEmaMode,
   setPathingMap,
   setPathingDebugUnit,
-  setPredictionMode,
-  setRotationPosEmaMode,
-  setRotationVelEmaMode,
   setEdgeScrollEnabled,
   setBurnMarks,
   setLodMode,
@@ -114,14 +104,11 @@ import { DEFAULT_BALLS_PER_RESOURCE_PER_SECOND } from '../resourceConfig';
 import type {
   AudioScope,
   CameraFovDegrees,
-  DriftChannelMode,
   DriftMode,
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
   MasterVolumePercent,
-  PositionDriftChannelMode,
-  PredictionMode,
   ProjRangeType,
   RangeType,
   SelectionHudMode,
@@ -165,11 +152,6 @@ export function useGameCanvasClientSettings({
   const pathingDebugUnit = ref<PathingDebugUnitId>(getPathingDebugUnit());
   const sightBoundary = ref<boolean>(getSightBoundary());
   const radarBoundary = ref<boolean>(getRadarBoundary());
-  const movementPosEma = ref<PositionDriftChannelMode>(getMovementPosEmaMode());
-  const movementVelEma = ref<DriftChannelMode>(getMovementVelEmaMode());
-  const rotationPosEma = ref<PositionDriftChannelMode>(getRotationPosEmaMode());
-  const rotationVelEma = ref<DriftChannelMode>(getRotationVelEmaMode());
-  const predictionMode = ref<PredictionMode>(getPredictionMode());
   const clientUnitGroundNormalEmaMode = ref<DriftMode>(getClientUnitGroundNormalEmaMode());
   const edgeScrollEnabled = ref(getEdgeScrollEnabled());
   const dragPanEnabled = ref(getDragPanEnabled());
@@ -258,11 +240,6 @@ export function useGameCanvasClientSettings({
     pathingDebugUnit.value = getPathingDebugUnit();
     sightBoundary.value = getSightBoundary();
     radarBoundary.value = getRadarBoundary();
-    movementPosEma.value = getMovementPosEmaMode();
-    movementVelEma.value = getMovementVelEmaMode();
-    rotationPosEma.value = getRotationPosEmaMode();
-    rotationVelEma.value = getRotationVelEmaMode();
-    predictionMode.value = getPredictionMode();
     clientUnitGroundNormalEmaMode.value = getClientUnitGroundNormalEmaMode();
     edgeScrollEnabled.value = getEdgeScrollEnabled();
     dragPanEnabled.value = getDragPanEnabled();
@@ -533,31 +510,6 @@ export function useGameCanvasClientSettings({
     radarBoundary.value = newValue;
   }
 
-  function changeMovementPosEma(mode: PositionDriftChannelMode): void {
-    setMovementPosEmaMode(mode);
-    movementPosEma.value = mode;
-  }
-
-  function changeMovementVelEma(mode: DriftChannelMode): void {
-    setMovementVelEmaMode(mode);
-    movementVelEma.value = mode;
-  }
-
-  function changeRotationPosEma(mode: PositionDriftChannelMode): void {
-    setRotationPosEmaMode(mode);
-    rotationPosEma.value = mode;
-  }
-
-  function changeRotationVelEma(mode: DriftChannelMode): void {
-    setRotationVelEmaMode(mode);
-    rotationVelEma.value = mode;
-  }
-
-  function changePredictionMode(mode: PredictionMode): void {
-    setPredictionMode(mode);
-    predictionMode.value = mode;
-  }
-
   function changeClientUnitGroundNormalEmaMode(mode: DriftMode): void {
     setClientUnitGroundNormalEmaMode(mode);
     clientUnitGroundNormalEmaMode.value = mode;
@@ -682,16 +634,6 @@ export function useGameCanvasClientSettings({
     sightBoundary.value = cd.sightBoundary.default;
     setRadarBoundary(cd.radarBoundary.default);
     radarBoundary.value = cd.radarBoundary.default;
-    setMovementPosEmaMode(cd.movementPosEma.default);
-    movementPosEma.value = cd.movementPosEma.default;
-    setMovementVelEmaMode(cd.movementVelEma.default);
-    movementVelEma.value = cd.movementVelEma.default;
-    setRotationPosEmaMode(cd.rotationPosEma.default);
-    rotationPosEma.value = cd.rotationPosEma.default;
-    setRotationVelEmaMode(cd.rotationVelEma.default);
-    rotationVelEma.value = cd.rotationVelEma.default;
-    setPredictionMode(cd.predictionMode.default);
-    predictionMode.value = cd.predictionMode.default;
     setClientUnitGroundNormalEmaMode(cd.unitGroundNormalEma.default);
     clientUnitGroundNormalEmaMode.value = cd.unitGroundNormalEma.default;
     if (edgeScrollEnabled.value !== cd.edgeScroll.default) toggleEdgeScroll();
@@ -773,11 +715,6 @@ export function useGameCanvasClientSettings({
     pathingDebugUnit,
     sightBoundary,
     radarBoundary,
-    movementPosEma,
-    movementVelEma,
-    rotationPosEma,
-    rotationVelEma,
-    predictionMode,
     clientUnitGroundNormalEmaMode,
     edgeScrollEnabled,
     dragPanEnabled,
@@ -844,11 +781,6 @@ export function useGameCanvasClientSettings({
     changePathingDebugUnit,
     toggleSightBoundary,
     toggleRadarBoundary,
-    changeMovementPosEma,
-    changeMovementVelEma,
-    changeRotationPosEma,
-    changeRotationVelEma,
-    changePredictionMode,
     changeClientUnitGroundNormalEmaMode,
     changeWaypointDetail,
     toggleEntityHud,

@@ -267,9 +267,8 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
                 config_path.display()
             )
         });
-    // Arrival tolerance (world units). Single source of truth, also consumed by
-    // SimulationArrivalController via pathfindingTuning.ts; the pathfinder folds
-    // it into per-unit clearance so a unit cannot corner-cut into a blocker.
+    // Arrival tolerance (world units). This belongs to the movement controller,
+    // not physical configuration-space clearance.
     let arrival_radius = read_number_field(&raw, "arrivalRadius")
         .unwrap_or_else(|| panic!("missing numeric arrivalRadius in {}", config_path.display()));
     if !arrival_radius.is_finite() || arrival_radius < 0.0 {
@@ -279,21 +278,34 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
             arrival_radius
         );
     }
-    // Fraction of the arrival tolerance baked into clearance (the corner-cut
-    // dial). 1.0 = fully absorb it; lower trades a tighter standoff for some
-    // residual corner-cut risk.
-    let arrival_clearance_factor = read_number_field(&raw, "arrivalClearanceFactor")
+    // Soft route preference above the unit's hard collision footprint. It is
+    // a cost gradient, never a passability constraint.
+    let soft_clearance_cells = read_number_field(&raw, "softClearanceCells")
         .unwrap_or_else(|| {
             panic!(
-                "missing numeric arrivalClearanceFactor in {}",
+                "missing numeric softClearanceCells in {}",
                 config_path.display()
             )
         });
-    if !arrival_clearance_factor.is_finite() || arrival_clearance_factor < 0.0 {
+    if soft_clearance_cells < 0.0 || soft_clearance_cells.fract() != 0.0 {
         panic!(
-            "invalid arrivalClearanceFactor in {}: expected non-negative number, got {}",
+            "invalid softClearanceCells in {}: expected non-negative integer, got {}",
             config_path.display(),
-            arrival_clearance_factor
+            soft_clearance_cells
+        );
+    }
+    let soft_clearance_penalty_per_cell =
+        read_number_field(&raw, "softClearancePenaltyPerCell").unwrap_or_else(|| {
+            panic!(
+                "missing numeric softClearancePenaltyPerCell in {}",
+                config_path.display()
+            )
+        });
+    if !soft_clearance_penalty_per_cell.is_finite() || soft_clearance_penalty_per_cell < 0.0 {
+        panic!(
+            "invalid softClearancePenaltyPerCell in {}: expected non-negative number, got {}",
+            config_path.display(),
+            soft_clearance_penalty_per_cell
         );
     }
 
@@ -313,13 +325,16 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
         "const PATHFINDING_ALLOW_DIAGONAL_NEIGHBORS: bool = {};\n",
         allow_diagonal_neighbors
     ));
+    // `arrivalRadius` is validated here because this JSON is a shared contract,
+    // but only the TypeScript arrival controller consumes it.
+    let _ = arrival_radius;
     generated.push_str(&format!(
-        "const PATHFINDING_ARRIVAL_RADIUS: f64 = {:?};\n",
-        arrival_radius
+        "const PATHFINDING_SOFT_CLEARANCE_CELLS: i32 = {};\n",
+        soft_clearance_cells as i32
     ));
     generated.push_str(&format!(
-        "const PATHFINDING_ARRIVAL_CLEARANCE_FACTOR: f64 = {:?};\n",
-        arrival_clearance_factor
+        "const PATHFINDING_SOFT_CLEARANCE_PENALTY_PER_CELL: f32 = {:?};\n",
+        soft_clearance_penalty_per_cell as f32
     ));
 
     let out_path = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is required"))

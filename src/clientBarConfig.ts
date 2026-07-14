@@ -8,15 +8,12 @@ import type {
   CameraFollowMode,
   CameraFovDegrees,
   CameraSmoothMode,
-  DriftChannelMode,
   DriftMode,
   EntityHudElement,
   EntityHudToggles,
   EntityHudType,
   LodMode,
   MasterVolumePercent,
-  PositionDriftChannelMode,
-  PredictionMode,
   PathingDebugUnitId,
   SelectionHudMode,
   SoundCategory,
@@ -81,11 +78,6 @@ type ClientDefaults = {
   readonly pathingDebugUnit: PathingDebugUnitId;
   readonly sightBoundary: boolean;
   readonly radarBoundary: boolean;
-  readonly predictionMode: PredictionMode;
-  readonly movementPosEma: PositionDriftChannelMode;
-  readonly movementVelEma: DriftChannelMode;
-  readonly rotationPosEma: PositionDriftChannelMode;
-  readonly rotationVelEma: DriftChannelMode;
   readonly unitGroundNormalEma: DriftMode;
   readonly legsRadius: boolean;
   readonly cameraSmooth: CameraSmoothMode;
@@ -158,11 +150,6 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
       pickDefault(clientBarConfig.pathingDebugUnit, mode) as PathingDebugUnitId,
     sightBoundary: pickDefault(clientBarConfig.sightBoundary, mode),
     radarBoundary: pickDefault(clientBarConfig.radarBoundary, mode),
-    predictionMode: pickDefault(clientBarConfig.predictionMode, mode) as PredictionMode,
-    movementPosEma: pickDefault(clientBarConfig.movementPosEma, mode) as PositionDriftChannelMode,
-    movementVelEma: pickDefault(clientBarConfig.movementVelEma, mode) as DriftChannelMode,
-    rotationPosEma: pickDefault(clientBarConfig.rotationPosEma, mode) as PositionDriftChannelMode,
-    rotationVelEma: pickDefault(clientBarConfig.rotationVelEma, mode) as DriftChannelMode,
     unitGroundNormalEma: pickDefault(clientBarConfig.unitGroundNormalEma, mode) as DriftMode,
     legsRadius: pickDefault(clientBarConfig.legsRadius, mode),
     cameraSmooth: pickDefault(clientBarConfig.cameraSmooth, mode) as CameraSmoothMode,
@@ -240,35 +227,6 @@ export const CLIENT_CONFIG = {
   pathingDebugUnit: { default: DEMO_CLIENT_DEFAULTS.pathingDebugUnit },
   sightBoundary: { default: DEMO_CLIENT_DEFAULTS.sightBoundary },
   radarBoundary: { default: DEMO_CLIENT_DEFAULTS.radarBoundary },
-  /** Prediction physics order: POS / VEL. Default 'vel' (integrate
-   *  position from the last-seen velocity each frame); 'pos' skips
-   *  integration entirely and snaps straight to snapshot position.
-   *  There is no ACC mode — acceleration is not shipped on the wire,
-   *  so the client cannot integrate it. */
-  predictionMode: {
-    default: DEMO_CLIENT_DEFAULTS.predictionMode,
-    options: clientBarConfig.predictionMode.options as OptionList<PredictionMode>,
-  },
-  /** Per-channel snapshot drift EMAs. Position channels always apply
-   *  correction and choose from SNAP / FAST / MED / SLOW. Velocity
-   *  channels also expose IGNORE because keeping the predicted
-   *  derivative can be meaningful there. */
-  movementPosEma: {
-    default: DEMO_CLIENT_DEFAULTS.movementPosEma,
-    options: clientBarConfig.movementPosEma.options as OptionList<PositionDriftChannelMode>,
-  },
-  movementVelEma: {
-    default: DEMO_CLIENT_DEFAULTS.movementVelEma,
-    options: clientBarConfig.movementVelEma.options as OptionList<DriftChannelMode>,
-  },
-  rotationPosEma: {
-    default: DEMO_CLIENT_DEFAULTS.rotationPosEma,
-    options: clientBarConfig.rotationPosEma.options as OptionList<PositionDriftChannelMode>,
-  },
-  rotationVelEma: {
-    default: DEMO_CLIENT_DEFAULTS.rotationVelEma,
-    options: clientBarConfig.rotationVelEma.options as OptionList<DriftChannelMode>,
-  },
   /** Client-side unit ground normal EMA layered ON TOP of the host's
    *  ground-normal EMA. SNAP = no client smoothing. */
   unitGroundNormalEma: {
@@ -348,11 +306,6 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     pathingDebugUnit: { default: defaults.pathingDebugUnit },
     sightBoundary: { default: defaults.sightBoundary },
     radarBoundary: { default: defaults.radarBoundary },
-    predictionMode: { ...CLIENT_CONFIG.predictionMode, default: defaults.predictionMode },
-    movementPosEma: { ...CLIENT_CONFIG.movementPosEma, default: defaults.movementPosEma },
-    movementVelEma: { ...CLIENT_CONFIG.movementVelEma, default: defaults.movementVelEma },
-    rotationPosEma: { ...CLIENT_CONFIG.rotationPosEma, default: defaults.rotationPosEma },
-    rotationVelEma: { ...CLIENT_CONFIG.rotationVelEma, default: defaults.rotationVelEma },
     unitGroundNormalEma: {
       ...CLIENT_CONFIG.unitGroundNormalEma,
       default: defaults.unitGroundNormalEma,
@@ -413,11 +366,6 @@ type ClientStorageKeyName =
   | 'pathingDebugUnit'
   | 'sightBoundary'
   | 'radarBoundary'
-  | 'movementPosEma'
-  | 'movementVelEma'
-  | 'rotationPosEma'
-  | 'rotationVelEma'
-  | 'predictionMode'
   | 'unitGroundNormalEmaMode'
   | 'soundToggles'
   | 'rangeToggles'
@@ -461,11 +409,6 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'pathingDebugUnit',
   'sightBoundary',
   'radarBoundary',
-  'movementPosEma',
-  'movementVelEma',
-  'rotationPosEma',
-  'rotationVelEma',
-  'predictionMode',
   'unitGroundNormalEmaMode',
   'soundToggles',
   'rangeToggles',
@@ -559,11 +502,6 @@ let currentPathingMap: boolean = _cd.pathingMap.default;
 let currentPathingDebugUnit: PathingDebugUnitId = _cd.pathingDebugUnit.default;
 let currentSightBoundary: boolean = _cd.sightBoundary.default;
 let currentRadarBoundary: boolean = _cd.radarBoundary.default;
-let currentMovementPosEma: PositionDriftChannelMode = _cd.movementPosEma.default;
-let currentMovementVelEma: DriftChannelMode = _cd.movementVelEma.default;
-let currentRotationPosEma: PositionDriftChannelMode = _cd.rotationPosEma.default;
-let currentRotationVelEma: DriftChannelMode = _cd.rotationVelEma.default;
-let currentPredictionMode: PredictionMode = _cd.predictionMode.default;
 let currentClientUnitGroundNormalEmaMode: DriftMode = _cd.unitGroundNormalEma.default;
 const currentSoundToggles: Record<SoundCategory, boolean> = {
   ..._cd.sounds.default,
@@ -608,34 +546,6 @@ function isWaterBoundaryMode(value: unknown): value is WaterBoundaryMode {
     value === 'floating-square-sea';
 }
 
-function isDriftChannelMode(value: unknown): value is DriftChannelMode {
-  return value === 'ignore'
-    || value === 'snap'
-    || value === 'fast'
-    || value === 'medium'
-    || value === 'slow';
-}
-
-function isPositionDriftChannelMode(value: unknown): value is PositionDriftChannelMode {
-  return value === 'snap'
-    || value === 'fast'
-    || value === 'medium'
-    || value === 'slow';
-}
-
-function readDriftChannelMode(storageKey: string, fallback: DriftChannelMode): DriftChannelMode {
-  const stored = readPersisted(storageKey);
-  return isDriftChannelMode(stored) ? stored : fallback;
-}
-
-function readPositionDriftChannelMode(
-  storageKey: string,
-  fallback: PositionDriftChannelMode,
-): PositionDriftChannelMode {
-  const stored = readPersisted(storageKey);
-  return isPositionDriftChannelMode(stored) ? stored : fallback;
-}
-
 function applyResourceBallDensity(value: number): void {
   currentResourceBallDensity = value;
   setBallsPerResourcePerSecond(value);
@@ -674,11 +584,6 @@ function applyClientDefaults(mode: ClientMode): void {
   currentPathingDebugUnit = cd.pathingDebugUnit.default;
   currentSightBoundary = cd.sightBoundary.default;
   currentRadarBoundary = cd.radarBoundary.default;
-  currentMovementPosEma = cd.movementPosEma.default;
-  currentMovementVelEma = cd.movementVelEma.default;
-  currentRotationPosEma = cd.rotationPosEma.default;
-  currentRotationVelEma = cd.rotationVelEma.default;
-  currentPredictionMode = cd.predictionMode.default;
   currentClientUnitGroundNormalEmaMode = cd.unitGroundNormalEma.default;
   for (const cat of SOUND_CATEGORIES) currentSoundToggles[cat] = cd.sounds.default[cat];
   currentEdgeScrollEnabled = cd.edgeScroll.default;
@@ -840,29 +745,6 @@ function loadFromStorage(mode: ClientMode): void {
   const storedWaterBoundaryMode = readPersisted(keys.waterBoundaryMode);
   if (isWaterBoundaryMode(storedWaterBoundaryMode)) {
     currentWaterBoundaryMode = storedWaterBoundaryMode;
-  }
-  currentMovementPosEma = readPositionDriftChannelMode(
-    keys.movementPosEma,
-    currentMovementPosEma,
-  );
-  currentMovementVelEma = readDriftChannelMode(
-    keys.movementVelEma,
-    currentMovementVelEma,
-  );
-  currentRotationPosEma = readPositionDriftChannelMode(
-    keys.rotationPosEma,
-    currentRotationPosEma,
-  );
-  currentRotationVelEma = readDriftChannelMode(
-    keys.rotationVelEma,
-    currentRotationVelEma,
-  );
-  const storedPredictionMode = readPersisted(keys.predictionMode);
-  if (
-    storedPredictionMode === 'pos' ||
-    storedPredictionMode === 'vel'
-  ) {
-    currentPredictionMode = storedPredictionMode;
   }
   const storedClientUnitGroundNormal = readPersisted(keys.unitGroundNormalEmaMode);
   if (
@@ -1311,51 +1193,6 @@ export function getRadarBoundary(): boolean {
 export function setRadarBoundary(enabled: boolean): void {
   currentRadarBoundary = enabled;
   persist(activeStorageKeys().radarBoundary, String(enabled));
-}
-
-export function getMovementPosEmaMode(): PositionDriftChannelMode {
-  return currentMovementPosEma;
-}
-
-export function setMovementPosEmaMode(mode: PositionDriftChannelMode): void {
-  currentMovementPosEma = mode;
-  persist(activeStorageKeys().movementPosEma, mode);
-}
-
-export function getMovementVelEmaMode(): DriftChannelMode {
-  return currentMovementVelEma;
-}
-
-export function setMovementVelEmaMode(mode: DriftChannelMode): void {
-  currentMovementVelEma = mode;
-  persist(activeStorageKeys().movementVelEma, mode);
-}
-
-export function getRotationPosEmaMode(): PositionDriftChannelMode {
-  return currentRotationPosEma;
-}
-
-export function setRotationPosEmaMode(mode: PositionDriftChannelMode): void {
-  currentRotationPosEma = mode;
-  persist(activeStorageKeys().rotationPosEma, mode);
-}
-
-export function getRotationVelEmaMode(): DriftChannelMode {
-  return currentRotationVelEma;
-}
-
-export function setRotationVelEmaMode(mode: DriftChannelMode): void {
-  currentRotationVelEma = mode;
-  persist(activeStorageKeys().rotationVelEma, mode);
-}
-
-export function getPredictionMode(): PredictionMode {
-  return currentPredictionMode;
-}
-
-export function setPredictionMode(mode: PredictionMode): void {
-  currentPredictionMode = mode;
-  persist(activeStorageKeys().predictionMode, mode);
 }
 
 /** Active client-side unit ground normal EMA mode. */

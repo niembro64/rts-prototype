@@ -19,7 +19,6 @@ import {
   PRESENTATION_SNAPSHOT_RATE_DEFAULT,
   normalizePresentationSnapshotRate,
   presentationSnapshotRateIntervalMs,
-  sparseEntityMotionSnapshotIntervalMs as configuredSparseEntityMotionSnapshotIntervalMs,
 } from '../../presentationSnapshotConfig';
 import { spatialGrid } from '../sim/SpatialGrid';
 import { getSimWasm } from '../sim-wasm/init';
@@ -125,13 +124,10 @@ export class GameServer {
   private tickRateHz: number;
   private gameSpeed = 1;
   private maxSnapshotIntervalMs: number; // Min ms between snapshots (0 = no cap, send every tick)
-  private sparseEntityMotionIntervalMs: number;
   private maxSnapshotsDisplay: SnapshotRate;
   private lastSnapshotTime: number = 0;
-  private lastSparseEntityMotionSnapshotTime: number = 0;
   private pendingPresentationSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingProjectileDeltaSnapshotTimer: ReturnType<typeof setTimeout> | null = null;
-  private pendingProjectileDeltaIncludesEntityMotion = false;
 
   // Background mode — allowed unit blueprints for AI production & UI toggles.
   // Initial set comes from GameServerConfig.initialAllowedUnitBlueprintIds when the
@@ -277,7 +273,6 @@ export class GameServer {
       config.maxSnapshotsPerSec ?? PRESENTATION_SNAPSHOT_RATE_DEFAULT,
     );
     this.maxSnapshotIntervalMs = presentationSnapshotRateIntervalMs(maxSnaps);
-    this.sparseEntityMotionIntervalMs = configuredSparseEntityMotionSnapshotIntervalMs();
     this.maxSnapshotsDisplay = maxSnaps;
 
     // Bootstrap the entire world: terrain, physics, world state, sim,
@@ -322,7 +317,6 @@ export class GameServer {
     acquireSimSlot(this);
     const now = performance.now();
     this.lastSnapshotTime = now;
-    this.lastSparseEntityMotionSnapshotTime = now;
     this.startupGateOpen = true;
     this.emitSnapshot();
   }
@@ -340,24 +334,14 @@ export class GameServer {
 
   emitLockstepProjectileDeltaSnapshotIfNeeded(): boolean {
     if (this.stopped) return false;
-    const now = performance.now();
     const hasProjectilePresentationEvents =
       this.simulation.hasPendingProjectilePresentationEvents();
-    const includeEntityMotionDeltas = this.sparseEntityMotionSnapshotDue(now);
-    if (!hasProjectilePresentationEvents && !includeEntityMotionDeltas) return false;
-    if (
-      includeEntityMotionDeltas &&
-      !hasProjectilePresentationEvents &&
-      !this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world, this.simulation)
-    ) {
-      this.lastSparseEntityMotionSnapshotTime = now;
-      return false;
-    }
-    const emitted = this.emitProjectileDeltaSnapshot(includeEntityMotionDeltas);
-    if (includeEntityMotionDeltas) {
-      this.lastSparseEntityMotionSnapshotTime = now;
-    }
-    return emitted;
+    if (!hasProjectilePresentationEvents) return false;
+    // Adjacent fixed-tick motion is already shared through the Rust
+    // presentation history. Delta packets now carry projectile lifecycle and
+    // beam topology only; duplicating unit root motion here reintroduced the
+    // sparse-snapshot correction path this architecture removes.
+    return this.snapshotPublisher.emitProjectileDelta(this.buildSnapshotPublisherInput());
   }
 
   private startGameLoop(): void {
@@ -392,15 +376,8 @@ export class GameServer {
       } else {
         const hasProjectilePresentationEvents =
           this.simulation.hasPendingProjectilePresentationEvents();
-        const sparseEntityMotionDue = this.sparseEntityMotionSnapshotDue(tickNow);
         if (hasProjectilePresentationEvents) {
-          this.queueProjectileDeltaSnapshot(sparseEntityMotionDue);
-        } else if (sparseEntityMotionDue) {
-          if (this.snapshotPublisher.hasEntityMotionDeltaCandidates(this.world, this.simulation)) {
-            this.queueProjectileDeltaSnapshot(true);
-          } else {
-            this.lastSparseEntityMotionSnapshotTime = tickNow;
-          }
+          this.queueProjectileDeltaSnapshot();
         }
       }
 
@@ -415,7 +392,6 @@ export class GameServer {
 
   private emitStartupSnapshot(now: number): void {
     this.lastSnapshotTime = now;
-    this.lastSparseEntityMotionSnapshotTime = now;
     this.emitSnapshot();
   }
 
@@ -423,7 +399,6 @@ export class GameServer {
     if (this.pendingProjectileDeltaSnapshotTimer !== null) {
       clearTimeout(this.pendingProjectileDeltaSnapshotTimer);
       this.pendingProjectileDeltaSnapshotTimer = null;
-      this.pendingProjectileDeltaIncludesEntityMotion = false;
     }
     if (this.pendingPresentationSnapshotTimer !== null) return;
     this.pendingPresentationSnapshotTimer = setTimeout(() => {
@@ -433,27 +408,14 @@ export class GameServer {
     }, 0);
   }
 
-  private queueProjectileDeltaSnapshot(includeEntityMotionDeltas: boolean): void {
+  private queueProjectileDeltaSnapshot(): void {
     if (this.pendingPresentationSnapshotTimer !== null) return;
-    if (includeEntityMotionDeltas) {
-      this.pendingProjectileDeltaIncludesEntityMotion = true;
-    }
     if (this.pendingProjectileDeltaSnapshotTimer !== null) return;
-    this.pendingProjectileDeltaIncludesEntityMotion = includeEntityMotionDeltas;
     this.pendingProjectileDeltaSnapshotTimer = setTimeout(() => {
       this.pendingProjectileDeltaSnapshotTimer = null;
-      const shouldIncludeEntityMotion = this.pendingProjectileDeltaIncludesEntityMotion;
-      this.pendingProjectileDeltaIncludesEntityMotion = false;
       if (this.stopped) return;
-      this.emitProjectileDeltaSnapshot(shouldIncludeEntityMotion);
-      if (shouldIncludeEntityMotion) {
-        this.lastSparseEntityMotionSnapshotTime = performance.now();
-      }
+      this.emitProjectileDeltaSnapshot();
     }, 0);
-  }
-
-  private sparseEntityMotionSnapshotDue(now: number): boolean {
-    return now - this.lastSparseEntityMotionSnapshotTime >= this.sparseEntityMotionIntervalMs;
   }
 
   private areStartupClientsReady(): boolean {
@@ -580,11 +542,8 @@ export class GameServer {
     this.snapshotPublisher.emitLockstepPresentation(this.buildSnapshotPublisherInput());
   }
 
-  private emitProjectileDeltaSnapshot(includeEntityMotionDeltas: boolean): boolean {
-    return this.snapshotPublisher.emitProjectileDelta(
-      this.buildSnapshotPublisherInput(),
-      includeEntityMotionDeltas,
-    );
+  private emitProjectileDeltaSnapshot(): boolean {
+    return this.snapshotPublisher.emitProjectileDelta(this.buildSnapshotPublisherInput());
   }
 
   private buildSnapshotPublisherInput() {

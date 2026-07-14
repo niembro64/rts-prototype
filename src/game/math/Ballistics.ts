@@ -5,7 +5,7 @@
 // solveTurretShotAngles is the single turret-facing API that turns that
 // intercept into yaw/pitch. Low arcs use the earliest root. High arcs require
 // a distinct later lofted root instead of silently using the only/low root.
-// This file is imported by both the authoritative sim and client prediction.
+// This file is imported by authoritative simulation and aim-preview callers.
 // Zero state, pure functions.
 
 import { getSimWasm } from '../sim-wasm/init';
@@ -674,4 +674,3 @@ function solveDampedKinematicInterceptTs(
   if (selectedRoot <= INTERCEPT_MIN_TIME) return null;
   return writeDampedInterceptSolution(input, selectedRoot, dragK, out);
 }
-

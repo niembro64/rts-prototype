@@ -90,6 +90,7 @@ export async function runDeterministicLockstepBackendContractTest(): Promise<voi
       const beforeActivePathHash = server.getLockstepSimulationCore().getCanonicalStateHash();
       const previousActivePath = commander.unit.activePath;
       commander.unit.activePath = {
+        resolution: 'complete',
         points: [
           {
             x: commander.transform.x + 16,

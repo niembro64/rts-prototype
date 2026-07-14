@@ -8,8 +8,7 @@
 // velocity vector toward the predicted intercept without changing its
 // magnitude.
 //
-// Both paths dispatch into the Rust/WASM projectile module so server and
-// client prediction share the same numeric behavior.
+// Both paths dispatch into the authoritative Rust/WASM projectile module.
 
 import { getSimWasm } from '../sim-wasm/init';
 

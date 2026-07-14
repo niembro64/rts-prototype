@@ -453,12 +453,6 @@ export type LocomotionPhysics = {
   water: LocomotionMediumPhysics;
 };
 
-export type LocomotionNavigationPolicy = {
-  allowGround: boolean;
-  allowWater: boolean;
-  allowAir: boolean;
-};
-
 export type LocomotionSurvivalPolicy = {
   waterFatal: boolean;
   fatalSubmergedFraction: number;
@@ -517,7 +511,6 @@ export type LocomotionBlueprintWheels = {
   type: 'wheels';
   physicsPresetId: string;
   physics: LocomotionPhysics;
-  navigation: LocomotionNavigationPolicy;
   survival: LocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
@@ -528,7 +521,6 @@ export type LocomotionBlueprintTreads = {
   type: 'treads';
   physicsPresetId: string;
   physics: LocomotionPhysics;
-  navigation: LocomotionNavigationPolicy;
   survival: LocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
@@ -539,7 +531,6 @@ export type LocomotionBlueprintLegs = {
   type: 'legs';
   physicsPresetId: string;
   physics: LocomotionPhysics;
-  navigation: LocomotionNavigationPolicy;
   survival: LocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
@@ -550,7 +541,6 @@ export type LocomotionBlueprintHover = {
   type: 'hover';
   physicsPresetId: string;
   physics: LocomotionPhysics;
-  navigation: LocomotionNavigationPolicy;
   survival: LocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;
@@ -561,7 +551,6 @@ export type LocomotionBlueprintFlying = {
   type: 'flying';
   physicsPresetId: string;
   physics: LocomotionPhysics;
-  navigation: LocomotionNavigationPolicy;
   survival: LocomotionSurvivalPolicy;
   pathfindingBlueprintId: string;
   pathfinding: PathfindingBlueprint;

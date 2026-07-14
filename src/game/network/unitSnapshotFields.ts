@@ -136,7 +136,7 @@ export type DecodedNetworkUnitActions = {
    *  counts, and insert positions therefore line up with the host). */
   actions: UnitAction[];
   /** Active-leg pathfinder route preview for presentation, or null when
-   *  the unit has no multi-point plan. Reconstructed as an activePath so
+   *  the unit has no active plan. Reconstructed as an activePath so
    *  Waypoint3D can trace the smoothed route the unit actually walks. */
   routePreview: Unit['activePath'];
 };
@@ -153,8 +153,11 @@ function buildClientRoutePreview(
   if (points === null || points.length === 0) return null;
   const goal = actions.length > 0 ? actions[0] : undefined;
   const fallback = points[points.length - 1];
+  const reachesRequestedGoal = goal !== undefined &&
+    fallback.x === goal.x && fallback.y === goal.y;
   return {
     points,
+    resolution: reachesRequestedGoal ? 'complete' : 'partial',
     index: 0,
     actionHash: 0,
     terrainVersion: 0,
@@ -168,9 +171,9 @@ function buildClientRoutePreview(
   };
 }
 
-/** Decode the wire action list, splitting the planner's pathfinding
- *  intermediates (pathExp entries) out of the durable waypoints. The
- *  intermediates ride the same wire framing as a transport detail, but
+/** Decode the wire action list, splitting the planner's resolved active-route
+ *  points (pathExp entries) out of the durable waypoints. The route points
+ *  ride the same wire framing as a transport detail, but
  *  are immediately separated so neither array on the client mixes
  *  authored intent with disposable path points. */
 export function decodeNetworkUnitActions(
@@ -449,11 +452,6 @@ export function clearNetworkUnitCombatMode(dst: NetworkUnitSnapshot): void {
   dst.trajectoryMode = null;
 }
 
-/** Cap on smoothed pathfinder intermediates serialized per unit as a
- *  presentation-only route preview. Smoothed paths are short (corner nodes
- *  only); the cap is a guard against a pathological plan, not a normal limit. */
-const MAX_ROUTE_PREVIEW_POINTS = 64;
-
 export function writeNetworkUnitActions(
   dst: NetworkUnitSnapshot,
   unit: Unit,
@@ -464,10 +462,10 @@ export function writeNetworkUnitActions(
   const realCount = actions.length;
 
   // Active-leg pathfinding route preview (presentation only). The planner
-  // keeps its smoothed intermediate points in unit.activePath, deliberately
+  // keeps its complete remaining smoothed route in unit.activePath, deliberately
   // OUT of the durable action queue — waypoints are intent, pathfinding
   // points are disposable. For visualization we ship the remaining
-  // intermediates as leading pathExp entries; the client splits them back
+  // route points as leading pathExp entries; the client splits them back
   // out into activePath (see decodeNetworkUnitActions), so the action queue
   // every client sees stays a pure mirror of authored intent.
   let previewStart = 0;
@@ -480,13 +478,11 @@ export function writeNetworkUnitActions(
     plan.goalY === actions[0].y &&
     plan.goalZ === actions[0].z
   ) {
-    // Skip points already passed (index) and the final point, which
-    // coincides with actions[0] (the leg goal carries its own marker).
+    // Skip points already passed, but always include the resolved final point.
+    // A snapped/partial route does not end at actions[0], and omitting that
+    // endpoint would force the renderer to invent an illegal connector.
     previewStart = plan.index > 0 ? plan.index : 0;
-    previewEnd = plan.points.length - 1;
-    if (previewEnd - previewStart > MAX_ROUTE_PREVIEW_POINTS) {
-      previewEnd = previewStart + MAX_ROUTE_PREVIEW_POINTS;
-    }
+    previewEnd = plan.points.length;
     if (previewEnd < previewStart) previewEnd = previewStart;
   }
   const previewCount = previewEnd - previewStart;

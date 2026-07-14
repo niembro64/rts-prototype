@@ -84,6 +84,14 @@ export type SnapshotCallback = (
 export type SnapshotUnsubscribe = () => void;
 export type SimEventCallback = (event: SimEvent) => void;
 export type GameOverCallback = (winnerId: PlayerId) => void;
+export type PresentationFrameEvent = {
+  /** Authoritative fixed-tick number now held as the current endpoint. */
+  tick: number;
+  /** Main-thread wall-clock time at which the endpoint became available. */
+  capturedAtMs: number;
+};
+export type PresentationFrameCallback = (event: PresentationFrameEvent) => void;
+export type PresentationFrameUnsubscribe = () => void;
 
 export type GameConnection = {
   /** True for in-memory connections where the client scene and
@@ -92,6 +100,9 @@ export type GameConnection = {
   sendCommand(command: Command): void;
   markClientReady(): void;
   onSnapshot(callback: SnapshotCallback): SnapshotUnsubscribe;
+  /** Same-process deterministic lockstep only. The motion data itself stays
+   *  in Rust/WASM; this event advances the renderer's one shared alpha clock. */
+  onPresentationFrame?(callback: PresentationFrameCallback): PresentationFrameUnsubscribe;
   clearSnapshotCallback(): void;
   onSimEvent(callback: SimEventCallback): void;
   onGameOver(callback: GameOverCallback): void;

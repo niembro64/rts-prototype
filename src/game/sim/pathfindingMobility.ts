@@ -6,7 +6,12 @@ import {
 } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
 import type { UnitLocomotion } from './types';
-import { LOCOMOTION_FORCE_SCALE } from './locomotion';
+import {
+  LOCOMOTION_FORCE_SCALE,
+  locomotionAllowsInAir,
+  locomotionAllowsInWater,
+  locomotionAllowsOnGround,
+} from './locomotion';
 import {
   PATHFINDING_FORCE_SAFETY_RATIO,
   PATHFINDING_STABILITY_MAX_SLOPE_DEG,
@@ -19,12 +24,15 @@ type LocomotionClimbProfile = {
   readonly driveLimitedSlopeDeg: number | null;
   readonly tractionLimitedSlopeDeg: number | null;
   readonly stabilityLimitedSlopeDeg: number | null;
-  readonly allowGround: boolean;
-  readonly allowWater: boolean;
-  readonly allowAir: boolean;
+  /** Dry-ground tangential acceleration after the authoritative drive-force
+   *  and Coulomb-grip clamp. */
+  readonly flatDriveAccel: number | null;
+  readonly allowOnGround: boolean;
+  readonly allowInWater: boolean;
+  readonly allowInAir: boolean;
 };
 
-const climbProfileOut = new Float64Array(6);
+const climbProfileOut = new Float64Array(7);
 
 function finiteOrNull(value: number): number | null {
   return Number.isFinite(value) ? value : null;
@@ -36,9 +44,9 @@ export function computeLocomotionClimbProfile(
   thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME,
 ): LocomotionClimbProfile {
   const groundPhysics = locomotion.physics.ground;
-  const allowGround = locomotion.navigation.allowGround;
-  const allowWater = locomotion.navigation.allowWater;
-  const allowAir = locomotion.navigation.allowAir;
+  const allowOnGround = locomotionAllowsOnGround(locomotion);
+  const allowInWater = locomotionAllowsInWater(locomotion);
+  const allowInAir = locomotionAllowsInAir(locomotion);
   if (!Number.isFinite(mass) || mass <= 0) {
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
   }
@@ -58,8 +66,8 @@ export function computeLocomotionClimbProfile(
     GRAVITY,
     PATHFINDING_FORCE_SAFETY_RATIO,
     PATHFINDING_STABILITY_MAX_SLOPE_DEG,
-    allowGround,
-    allowAir,
+    allowOnGround,
+    allowInAir,
     climbProfileOut,
   );
   if (computed !== 1) {
@@ -73,9 +81,10 @@ export function computeLocomotionClimbProfile(
     driveLimitedSlopeDeg: finiteOrNull(climbProfileOut[3]),
     tractionLimitedSlopeDeg: finiteOrNull(climbProfileOut[4]),
     stabilityLimitedSlopeDeg: finiteOrNull(climbProfileOut[5]),
-    allowGround,
-    allowWater,
-    allowAir,
+    flatDriveAccel: finiteOrNull(climbProfileOut[6]),
+    allowOnGround,
+    allowInWater,
+    allowInAir,
   };
 }
 

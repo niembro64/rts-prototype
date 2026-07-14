@@ -6,7 +6,6 @@ import {
   BUILD_RATE_EMA_MODE,
 } from '@/shellConfig';
 import { CONSTRUCTION_TOWER_SPIN_CONFIG } from '@/constructionVisualConfig';
-import { getRotationVelEmaMode } from '@/clientBarConfig';
 import {
   RESOURCE_FLOW_INBOUND,
   RESOURCE_FLOW_OUTBOUND,
@@ -16,7 +15,7 @@ import {
   type ResourceKindCode,
 } from '@/types/network';
 import type { ClientResourcePylonFlow, ClientViewState } from '../network/ClientViewState';
-import { halfLifeBlend } from '../network/driftEma';
+import { halfLifeBlend } from '../math/halfLife';
 import { IndexedEntityIdMap } from '../network/IndexedEntityIdCollections';
 import { getUnitBlueprint } from '../sim/blueprints';
 import type { Entity, EntityId, PlayerId } from '../sim/types';
@@ -34,7 +33,6 @@ import type {
   ResourcePylonDirection,
   ResourcePylonRig,
 } from './ConstructionEmitterMesh3D';
-import { visualAnimBlend } from './visualAnimationEma';
 import { ResourcePylonFlowController3D } from './ResourcePylonFlowController3D';
 
 type ConstructionTowerSpinRig = {
@@ -44,6 +42,8 @@ type ConstructionTowerSpinRig = {
   towerSpinPhase: number;
   pylons: ResourcePylonRig[];
 };
+
+const CONSTRUCTION_TOWER_SPIN_RESPONSE_HALF_LIFE_SEC = 0.08;
 
 function resourceNameFromCode(resource: ResourceKindCode): ConstructionTowerResource | null {
   if (resource === RESOURCE_KIND_ENERGY) return 'energy';
@@ -309,10 +309,10 @@ export class ConstructionVisualController3D {
     dtSec: number,
   ): void {
     if (rig.towerOrbitParts.length === 0) return;
-    const alpha = visualAnimBlend(
-      getRotationVelEmaMode(),
+    const alpha = halfLifeBlend(
       dtSec,
-      CONSTRUCTION_TOWER_SPIN_CONFIG.driftHalfLifeMultiplier,
+      CONSTRUCTION_TOWER_SPIN_RESPONSE_HALF_LIFE_SEC *
+        CONSTRUCTION_TOWER_SPIN_CONFIG.responseHalfLifeMultiplier,
     );
     const target = Math.max(0, resourceRateSum);
     const amountBefore = rig.displayTowerSpinAmount;

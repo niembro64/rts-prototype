@@ -59,11 +59,6 @@
     "locomotion": {
       "type": "wheels",
       "physicsPresetId": "wheels",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -175,11 +170,6 @@
     "locomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -297,11 +287,6 @@
     "locomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -433,11 +418,6 @@
     "locomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -547,11 +527,6 @@
     "locomotion": {
       "type": "wheels",
       "physicsPresetId": "wheels",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -660,11 +635,6 @@
     "locomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -797,11 +767,6 @@
     "locomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -929,11 +894,6 @@
     "locomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -1159,11 +1119,6 @@
     "locomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -1294,11 +1249,6 @@
     "locomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": true,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -1419,11 +1369,6 @@
     "locomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": true,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -1544,11 +1489,6 @@
     "locomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -1685,11 +1625,6 @@
     "locomotion": {
       "type": "treads",
       "physicsPresetId": "treads",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -1796,11 +1731,6 @@
     "locomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "navigation": {
-        "allowGround": false,
-        "allowWater": false,
-        "allowAir": true
-      },
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -1936,11 +1866,6 @@
     "locomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "navigation": {
-        "allowGround": false,
-        "allowWater": false,
-        "allowAir": true
-      },
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -2104,11 +2029,6 @@
     "locomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "navigation": {
-        "allowGround": false,
-        "allowWater": false,
-        "allowAir": true
-      },
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -2225,11 +2145,6 @@
     "locomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
-      "navigation": {
-        "allowGround": false,
-        "allowWater": false,
-        "allowAir": true
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -2374,11 +2289,6 @@
     "locomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
-      "navigation": {
-        "allowGround": false,
-        "allowWater": false,
-        "allowAir": true
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -2542,11 +2452,6 @@
     "locomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "navigation": {
-        "allowGround": false,
-        "allowWater": false,
-        "allowAir": true
-      },
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -2696,11 +2601,6 @@
     "locomotion": {
       "type": "flying",
       "physicsPresetId": "flying",
-      "navigation": {
-        "allowGround": false,
-        "allowWater": false,
-        "allowAir": true
-      },
       "survival": {
         "waterFatal": true,
         "fatalSubmergedFraction": 0.65,
@@ -2834,11 +2734,6 @@
     "locomotion": {
       "type": "hover",
       "physicsPresetId": "hover",
-      "navigation": {
-        "allowGround": false,
-        "allowWater": false,
-        "allowAir": true
-      },
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -3027,11 +2922,6 @@
     "locomotion": {
       "type": "legs",
       "physicsPresetId": "legs",
-      "navigation": {
-        "allowGround": true,
-        "allowWater": false,
-        "allowAir": false
-      },
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,

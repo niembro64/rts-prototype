@@ -1,11 +1,9 @@
 /**
  * ClientViewState - Manages the "client view" of the game state
  *
- * Uses presentation smoothing for authoritative simulation state:
- * - On snapshot: store server's authoritative state as "targets"
- * - Units retain their established visual dead-reckoning path
- * - Projectiles only EMA toward authoritative position, velocity, rotation,
- *   and angular velocity; they do not run local projectile simulation
+ * Same-process deterministic lockstep uses two adjacent Rust/WASM fixed-tick
+ * poses and one shared render alpha. Snapshot targets remain only as the
+ * compatibility path for snapshot-only authoritative connections.
  */
 
 import type {
@@ -72,13 +70,9 @@ import {
   getUnitBuildRequired,
 } from './ClientBuildStateApplier';
 import { ClientSelectionState } from './ClientSelectionState';
-import { ClientPredictionCadence } from './ClientPredictionCadence';
-import {
-  clientUnitPredictionIsSettled,
-  isPredictionSupportSurfaceProvider,
-  resetClientUnitPredictionPools,
-} from './ClientUnitPrediction';
-import { ClientPredictionStepper } from './ClientPredictionStepper';
+import { ClientSupplementalPresentation } from './ClientSupplementalPresentation';
+import { ClientLockstepPresentation } from './ClientLockstepPresentation';
+import type { PresentationFrameEvent } from '@/types/game';
 import type {
   ClientPredictionCorrectionStats,
   ClientPredictionTargetAgeStats,
@@ -114,6 +108,15 @@ import {
   dequantizeRotation as deqRot,
   dequantizeVelocity as deqVel,
 } from './snapshotQuantization';
+
+function isLocomotionSupportSurfaceProvider(entity: Entity): boolean {
+  const building = entity.building;
+  if (building !== null) {
+    return !building.hovering && building.supportSurface.kind === 'boxTop';
+  }
+  const unit = entity.unit;
+  return unit !== null && unit.hp > 0 && unit.supportSurface.kind === 'discTop';
+}
 import {
   ENTITY_SNAPSHOT_WIRE_BASIC_STRIDE,
   ENTITY_SNAPSHOT_WIRE_ACTION_STRIDE,
@@ -420,7 +423,6 @@ export class ClientViewState {
   private serverMeta: NetworkServerSnapshotMeta | null = null;
   private visionPlayerMask = 0;
   private readonly visionPlayerIds: PlayerId[] = [];
-  private turretShieldSpheresEnabledForPrediction = true;
 
   // === CACHED ENTITY ARRAYS (PERFORMANCE CRITICAL) ===
   private cache = new EntityCacheManager();
@@ -434,22 +436,23 @@ export class ClientViewState {
   private readonly scopedRenderBuildingRowSlots: number[] = [];
   private entitySetVersion = 0;
 
-  private predictionCadence = new ClientPredictionCadence();
   private activeEntityPredictionIds: Set<EntityId> = new ClientEntityIdSet();
   private dirtyUnitRenderIds: Set<EntityId> = new ClientEntityIdSet();
   private dirtyBuildingRenderIds: Set<EntityId> = new ClientEntityIdSet();
   private removedUnitRenderIds: EntityId[] = [];
   private removedBuildingRenderIds: EntityId[] = [];
   private renderLifecycleDirtyIds: Set<EntityId> = new ClientEntityIdSet();
-  private predictionSupportSurfaceEntities: Entity[] = [];
-  private predictionSupportSurfaceEntityIds = new IndexedEntityIdSet();
+  private locomotionSupportSurfaceEntities: Entity[] = [];
+  private locomotionSupportSurfaceEntityIds = new IndexedEntityIdSet();
   private selectionState = new ClientSelectionState(
     this.entities,
     this.dirtyUnitRenderIds,
     this.dirtyBuildingRenderIds,
     (entity) => this.markEntityPredictionActive(entity),
   );
-  private predictionStepper!: ClientPredictionStepper;
+  private supplementalPresentation!: ClientSupplementalPresentation;
+  private readonly lockstepPresentation = new ClientLockstepPresentation();
+  private lockstepPresentationEnabled = false;
 
   // Map dimensions — needed to evaluate the installed server-authored
   // terrain tile map on the client side. Before the first terrain
@@ -463,32 +466,11 @@ export class ClientViewState {
       entities: this.entities,
       handleEntityAdded: (entity) => this.handleLocalEntityAdded(entity),
     });
-    this.predictionStepper = new ClientPredictionStepper({
+    this.supplementalPresentation = new ClientSupplementalPresentation({
       entities: this.entities,
-      serverTargets: this.serverTargets,
       beamPathTargets: this.projectileStore.beamPathTargets,
       projectileSpawns: this.projectileStore.projectileSpawns,
-      predictionCadence: this.predictionCadence,
-      activeEntityPredictionIds: this.activeEntityPredictionIds,
-      activeProjectileMotionIds: this.projectileStore.activeProjectileMotionIds,
       activeBeamPathIds: this.projectileStore.activeBeamPathIds,
-      dirtyUnitRenderIds: this.dirtyUnitRenderIds,
-      supportSurfaceEntities: this.predictionSupportSurfaceEntities,
-      getMapWidth: () => this.mapWidth,
-      getMapHeight: () => this.mapHeight,
-      getServerShieldsEnabled: () => {
-        const serverMeta = this.serverMeta;
-        return (
-          serverMeta !== null &&
-          serverMeta.turretShieldSpheresEnabled !== undefined &&
-          serverMeta.turretShieldSpheresEnabled !== null
-        )
-          ? serverMeta.turretShieldSpheresEnabled
-          : true;
-      },
-      setTurretShieldSpheresEnabledForPrediction: (enabled) => {
-        this.turretShieldSpheresEnabledForPrediction = enabled;
-      },
       applyProjectileSpawn: (spawn) => this.projectileStore.applySpawn(spawn),
       markLineProjectilesChanged: () => this.projectileStore.markLineProjectilesChanged(),
       updateProjectileRenderSpatialIndex: (entity) => this.projectileStore.updateRenderSpatialIndex(entity),
@@ -502,6 +484,17 @@ export class ClientViewState {
   setMapDimensions(mapWidth: number, mapHeight: number): void {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
+  }
+
+  setLockstepPresentationEnabled(enabled: boolean): void {
+    this.lockstepPresentationEnabled = enabled;
+    if (!enabled) this.lockstepPresentation.reset();
+  }
+
+  noteLockstepPresentationFrame(event: PresentationFrameEvent): void {
+    if (!this.lockstepPresentationEnabled) return;
+    this.currentTick = event.tick;
+    this.lockstepPresentation.noteFixedTick(event.tick, event.capturedAtMs);
   }
 
   /** Read map dimensions for renderers / overlays that need to sample
@@ -526,7 +519,7 @@ export class ClientViewState {
     this.handleLocalEntityAdded(entity, deferEntitySetChange);
     this.refreshRenderableEntityStateAndSpatialIndex(entity);
     this.markEntityPredictionActive(entity);
-    this.refreshPredictionSupportSurfaceProvider(entity);
+    this.refreshLocomotionSupportSurfaceProvider(entity);
     this.renderLifecycleDirtyIds.add(entity.id);
   }
 
@@ -535,15 +528,15 @@ export class ClientViewState {
     if (!deferEntitySetChange) this.entitySetVersion++;
   }
 
-  private addPredictionSupportSurfaceProvider(entity: Entity): void {
-    if (this.predictionSupportSurfaceEntityIds.has(entity.id)) return;
-    this.predictionSupportSurfaceEntityIds.add(entity.id);
-    this.predictionSupportSurfaceEntities.push(entity);
+  private addLocomotionSupportSurfaceProvider(entity: Entity): void {
+    if (this.locomotionSupportSurfaceEntityIds.has(entity.id)) return;
+    this.locomotionSupportSurfaceEntityIds.add(entity.id);
+    this.locomotionSupportSurfaceEntities.push(entity);
   }
 
-  private removePredictionSupportSurfaceProvider(id: EntityId): void {
-    if (!this.predictionSupportSurfaceEntityIds.delete(id)) return;
-    const providers = this.predictionSupportSurfaceEntities;
+  private removeLocomotionSupportSurfaceProvider(id: EntityId): void {
+    if (!this.locomotionSupportSurfaceEntityIds.delete(id)) return;
+    const providers = this.locomotionSupportSurfaceEntities;
     for (let i = 0; i < providers.length; i++) {
       if (providers[i].id !== id) continue;
       const last = providers.pop();
@@ -552,11 +545,11 @@ export class ClientViewState {
     }
   }
 
-  private refreshPredictionSupportSurfaceProvider(entity: Entity): void {
-    if (isPredictionSupportSurfaceProvider(entity)) {
-      this.addPredictionSupportSurfaceProvider(entity);
+  private refreshLocomotionSupportSurfaceProvider(entity: Entity): void {
+    if (isLocomotionSupportSurfaceProvider(entity)) {
+      this.addLocomotionSupportSurfaceProvider(entity);
     } else {
-      this.removePredictionSupportSurfaceProvider(entity.id);
+      this.removeLocomotionSupportSurfaceProvider(entity.id);
     }
   }
 
@@ -829,7 +822,7 @@ export class ClientViewState {
         this.removedBuildingRenderIds.push(id);
       }
     }
-    this.removePredictionSupportSurfaceProvider(id);
+    this.removeLocomotionSupportSurfaceProvider(id);
     this.projectileStore.remove(id, wasLineProjectile, existing);
     this.entities.delete(id);
     this.serverTargets.delete(id);
@@ -907,10 +900,7 @@ export class ClientViewState {
     }
   }
 
-  private markNetworkEntityPredictionActive(
-    server: NetworkServerSnapshotEntity,
-    entity: Entity | undefined = undefined,
-  ): void {
+  private markNetworkEntityPredictionActive(server: NetworkServerSnapshotEntity): void {
     const cf = server.changedFields;
     if (server.type === 'building' || server.type === 'tower') {
       // Towers ride the same building turret-prediction path because
@@ -935,27 +925,13 @@ export class ClientViewState {
     }
     if (server.type !== 'unit') return;
     if (
-      cf == null &&
-      entity &&
-      clientUnitPredictionIsSettled(
-        entity,
-        this.serverTargets.get(server.id),
-        this.turretShieldSpheresEnabledForPrediction,
-      )
-    ) {
-      return;
-    }
-    if (
       cf == null ||
       (cf & (
         ENTITY_CHANGED_POS |
         ENTITY_CHANGED_ROT |
         ENTITY_CHANGED_VEL |
-        // Reactivate prediction when only the surface normal moved
-        // (host's unit ground normal EMA is still settling on a stationary unit, or
-        // the host flipped normal mode). Otherwise the new target.normal
-        // would land but the client unit visual prediction EMA — which
-        // owns the entity.unit.surfaceNormal lerp — wouldn't run.
+        // Refresh render state when only the host-authored surface normal
+        // moved, including while its ground-contact filter is settling.
         ENTITY_CHANGED_NORMAL
       )) !== 0 ||
       (server.unit !== null && Array.isArray(server.unit.turrets))
@@ -1635,18 +1611,10 @@ export class ClientViewState {
       true,
     );
     if (existing.unit.supportSurface.kind === 'discTop') {
-      this.refreshPredictionSupportSurfaceProvider(existing);
+      this.refreshLocomotionSupportSurfaceProvider(existing);
     }
-    if (
-      !clientUnitPredictionIsSettled(
-        existing,
-        target,
-        this.turretShieldSpheresEnabledForPrediction,
-      )
-    ) {
-      this.activeEntityPredictionIds.add(id);
-      this.dirtyUnitRenderIds.add(id);
-    }
+    this.activeEntityPredictionIds.add(id);
+    this.dirtyUnitRenderIds.add(id);
     return true;
   }
 
@@ -2791,7 +2759,7 @@ export class ClientViewState {
         true,
       );
     }
-    this.refreshPredictionSupportSurfaceProvider(existing);
+    this.refreshLocomotionSupportSurfaceProvider(existing);
     this.dirtyBuildingRenderIds.add(id);
     if (copiedTurretRows) this.activeEntityPredictionIds.add(id);
     return true;
@@ -2944,10 +2912,7 @@ export class ClientViewState {
     this.cache.rebuildIfNeeded(this.entities);
   }
 
-  /**
-   * Apply received network state — store server targets, snap non-visual state.
-   * Visual blending toward these targets happens in applyPrediction() each frame.
-   */
+  /** Apply received network state and materialize non-root presentation data. */
   applyNetworkState(
     state: NetworkServerSnapshot,
     options: ClientSnapshotApplyOptions = { syncEconomy: undefined },
@@ -3290,9 +3255,9 @@ export class ClientViewState {
               existing,
               this.snapshotAffectsRenderSpatialIndex(netEntity),
             );
-            this.refreshPredictionSupportSurfaceProvider(existing);
+            this.refreshLocomotionSupportSurfaceProvider(existing);
           }
-          this.markNetworkEntityPredictionActive(netEntity, existing);
+          this.markNetworkEntityPredictionActive(netEntity);
         }
       }
       if (
@@ -3431,8 +3396,8 @@ export class ClientViewState {
         projectileSubstageStart,
       );
 
-      // Every traveling shot receives the same authoritative four-channel
-      // motion target; the render step only applies the CLIENT EMA settings.
+      // Retain decoded motion rows for isolated snapshot-consumer recovery.
+      // Same-process lockstep presentation overwrites roots from Rust/WASM.
       const appliedDirectMotionUpdates = directProjectileRows
         ? this.applyProjectileWireSourceMotionUpdates(directProjectileSource, now)
         : false;
@@ -3525,9 +3490,9 @@ export class ClientViewState {
 
     // Stash the exact shield / shield-panel contact point on the
     // reflected projectile so the curved-cone tail renderer can insert
-    // it as a forced trail stamp on the next frame. Projectile body motion
-    // still follows the same four EMA channels as every other shot. Audio
-    // event position is unquantized f64.
+    // it as a forced trail stamp on the next frame. Projectile root motion
+    // remains on the shared adjacent-tick pose path. Audio event position is
+    // unquantized f64.
     const audioEventsForReflection = this.pendingAudioEvents;
     if (
       reflectedProjectileIds !== null &&
@@ -3601,14 +3566,31 @@ export class ClientViewState {
     return applyStats;
   }
 
-  /**
-   * Called every frame. Unit visuals may dead-reckon; projectile visuals only
-   * EMA their four authoritative motion channels toward the latest target.
-   */
+  /** Called every render frame. Adjacent authoritative Rust poses own root
+   * motion when presentation history is available; snapshots are otherwise
+   * materialized directly, without TypeScript root extrapolation. */
   applyPrediction(deltaMs: number): ClientPredictionTargetAgeStats {
-    const stats = this.predictionStepper.apply(deltaMs);
-    this.refreshPredictedRenderStateAndSpatialIndex();
-    return stats;
+    if (this.lockstepPresentationEnabled) {
+      // Root motion and turret aim no longer consume snapshot target sets.
+      // Supplemental presentation owns beam topology and delayed spawn intake.
+      this.activeEntityPredictionIds.clear();
+      this.projectileStore.activeProjectileMotionIds.clear();
+      const stats = this.supplementalPresentation.apply(deltaMs);
+      const updated = this.lockstepPresentation.apply(this.entities.values());
+      for (let i = 0; i < updated.length; i++) {
+        const entity = updated[i];
+        if (entity.unit !== null || entity.building !== null) {
+          this.refreshRenderableEntityStateAndSpatialIndex(entity);
+        }
+        if (entity.projectile !== null) {
+          this.projectileStore.updateRenderSpatialIndex(entity);
+        }
+      }
+      this.activeEntityPredictionIds.clear();
+      this.projectileStore.activeProjectileMotionIds.clear();
+      return stats;
+    }
+    return this.supplementalPresentation.apply(deltaMs);
   }
 
   // === Accessors for rendering and input ===
@@ -3911,14 +3893,6 @@ export class ClientViewState {
     this.renderTurretState.clearDirtyHostSlots();
   }
 
-  private refreshRenderSpatialIndexBySlot(id: EntityId, slot: number | undefined): void {
-    if (slot !== undefined) {
-      this.renderSpatialIndex.updateSlot(this.renderEntityState.getViews(), slot);
-    } else {
-      this.renderSpatialIndex.remove(id);
-    }
-  }
-
   private refreshRenderableEntityStateAndSpatialIndex(entity: Entity): void {
     const slot = this.refreshRenderableEntityState(entity);
     if (slot !== undefined) {
@@ -3997,29 +3971,6 @@ export class ClientViewState {
     const slot = this.renderEntityState.refreshEntity(entity);
     if (slot !== undefined) this.renderTurretState.refreshHost(entity, slot);
     return slot;
-  }
-
-  private refreshPredictedRenderStateAndSpatialIndex(): void {
-    for (const id of this.activeEntityPredictionIds) {
-      this.refreshRenderSpatialIndexBySlot(id, this.refreshRenderEntityStateById(id));
-    }
-    for (const id of this.dirtyUnitRenderIds) {
-      if (this.activeEntityPredictionIds.has(id)) continue;
-      this.refreshRenderSpatialIndexBySlot(id, this.refreshRenderEntityStateById(id));
-    }
-    for (const id of this.dirtyBuildingRenderIds) {
-      if (!this.activeEntityPredictionIds.has(id)) this.refreshRenderEntityStateById(id);
-    }
-    for (const id of this.renderLifecycleDirtyIds) {
-      if (
-        this.activeEntityPredictionIds.has(id) ||
-        this.dirtyUnitRenderIds.has(id) ||
-        this.dirtyBuildingRenderIds.has(id)
-      ) {
-        continue;
-      }
-      this.refreshRenderEntityStateById(id);
-    }
   }
 
   private markRenderEntityPacketFlags(): void {
@@ -4759,8 +4710,8 @@ export class ClientViewState {
       ?? this.entityUsesFarLod3D(entity, options);
   }
 
-  getPredictionSupportSurfaceEntities(): readonly Entity[] {
-    return this.predictionSupportSurfaceEntities;
+  getLocomotionSupportSurfaceEntities(): readonly Entity[] {
+    return this.locomotionSupportSurfaceEntities;
   }
 
   getBuildings(): Entity[] {
@@ -4962,15 +4913,15 @@ export class ClientViewState {
     this.renderSpatialIndex.clear();
     this.renderEntityState.clear();
     this.renderTurretState.clear();
-    this.predictionStepper.reset();
-    this.predictionCadence.clearAll();
+    this.supplementalPresentation.reset();
+    this.lockstepPresentation.reset();
+    this.lockstepPresentationEnabled = false;
     this.activeEntityPredictionIds.clear();
     this.dirtyUnitRenderIds.clear();
     this.dirtyBuildingRenderIds.clear();
     this.renderLifecycleDirtyIds.clear();
-    this.predictionSupportSurfaceEntities.length = 0;
-    this.predictionSupportSurfaceEntityIds.clear();
-    resetClientUnitPredictionPools();
+    this.locomotionSupportSurfaceEntities.length = 0;
+    this.locomotionSupportSurfaceEntityIds.clear();
     resetClientPredictionTargetPools();
     this.entitySetVersion++;
     this.invalidateCaches();

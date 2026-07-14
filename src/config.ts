@@ -58,7 +58,7 @@ const MAP_LAND_CELLS_LENGTH = MAP_DIMENSION_CONFIG.length.default;
 
 // Render-only vertical lift for the terrain mesh above sampled terrain. Keep
 // this at 0 for normal play: the terrain renderer, host sim, and client
-// prediction all share the same authoritative triangle surface. Use waypoint
+// adjacent-tick presentation all share the same authoritative triangle surface. Use waypoint
 // and floating-cell overlay lifts for readability instead of moving terrain.
 export const LAND_TILE_GROUND_LIFT = worldRenderConfigJson.landTileGroundLift;
 
@@ -110,7 +110,7 @@ export const DEFAULT_SHIELD_REFLECTION_MODE =
 //                    (frameMs / renderMs / logicMs / predMs) uses;
 //                    "hi" is the dual of "low" so the spike side
 //                    drops fast and the recovery side bleeds back
-//                    slowly. predMs isolates the
+//                    slowly. predMs (legacy telemetry name) isolates the
 //                    ClientViewState.applyPrediction wall-clock so
 //                    LOGIC stays input/HUD/scaffolding-only.
 //   initialValues  — seed values for every EMA. Rate trackers get
@@ -251,16 +251,15 @@ export const WIND_TURBINE_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION =
 export const WIND_TURBINE_ROTOR_POTENTIAL_RAD_PER_SEC =
   windConfigJson.turbine.rotorPotentialRadPerSec;
 
-/** Wind turbine visual EMA half-life multipliers layered on top of the
- *  selected PLAYER CLIENT DRIFT preset.
+/** Wind turbine visual response half-life multipliers.
  *
- *  1.0 = exactly the selected DRIFT half-life.
+ *  1.0 = the controller's named base half-life.
  *  <1.0 = faster turbine response.
  *  >1.0 = smoother/slower turbine response.
  *  0.0 = snap for that channel.
  */
-export const WIND_TURBINE_DRIFT_EMA_HALF_LIFE_MULTIPLIERS =
-  windConfigJson.turbine.driftEmaHalfLifeMultipliers;
+export const WIND_TURBINE_RESPONSE_HALF_LIFE_MULTIPLIERS =
+  windConfigJson.turbine.responseHalfLifeMultipliers;
 
 // =============================================================================
 // COST MULTIPLIER

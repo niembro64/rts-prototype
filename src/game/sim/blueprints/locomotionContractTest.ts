@@ -5,6 +5,9 @@ import {
   cloneUnitLocomotion,
   createUnitLocomotion,
   getAirLiftHeightDistanceScale,
+  locomotionAllowsInAir,
+  locomotionAllowsInWater,
+  locomotionAllowsOnGround,
 } from '../locomotion';
 import {
   AIR_LIFT_TOTAL_GROUND_PROBE_COUNT,
@@ -36,6 +39,7 @@ type LocomotionConfigMediumField = (typeof MEDIUM_CONFIG_FIELDS)[number];
 type LocomotionTypeMediumPhysics = Pick<RuntimeMediumPhysics, LocomotionConfigMediumField>;
 
 type LocomotionPresetConfig = {
+  navigation: UnitLocomotion['navigation'];
   physics: {
     driveForceMultiplier: number;
     forwardForceRequiresFacing: boolean;
@@ -270,8 +274,8 @@ function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLoc
   );
   assertEqual(
     JSON.stringify(locomotion.navigation),
-    JSON.stringify(authored.navigation),
-    `${unitBlueprintId} navigation policy follows unit JSON`,
+    JSON.stringify(typeConfig.navigation),
+    `${unitBlueprintId} navigation policy follows locomotion preset`,
   );
   assertEqual(
     JSON.stringify(locomotion.survival),
@@ -336,13 +340,25 @@ export function runLocomotionContractTest(): void {
 
   const hippoBlueprint = getUnitBlueprint('unitHippo');
   const hippoLocomotion = assertRuntimeLocomotionMatchesSources('unitHippo');
+  assertContract(locomotionAllowsOnGround(hippoLocomotion), 'Hippo allows on-ground routes');
+  assertContract(locomotionAllowsInWater(hippoLocomotion), 'Hippo allows in-water routes');
+  assertContract(!locomotionAllowsInAir(hippoLocomotion), 'Hippo does not allow in-air routes');
   const clonedHippoLocomotion = cloneUnitLocomotion(hippoLocomotion);
   assertClonedLocomotionMatchesSource(clonedHippoLocomotion, hippoLocomotion, 'Hippo');
 
   const eagleLocomotion = assertRuntimeLocomotionMatchesSources('unitEagle');
+  assertContract(!locomotionAllowsOnGround(eagleLocomotion), 'Eagle does not allow on-ground routes');
+  assertContract(!locomotionAllowsInWater(eagleLocomotion), 'Eagle does not allow in-water routes');
+  assertContract(locomotionAllowsInAir(eagleLocomotion), 'Eagle allows in-air routes');
   assertClonedLocomotionMatchesSource(cloneUnitLocomotion(eagleLocomotion), eagleLocomotion, 'Eagle');
 
   const nonAmphibiousLocomotion = assertRuntimeLocomotionMatchesSources('unitJackal');
+  assertContract(locomotionAllowsOnGround(nonAmphibiousLocomotion), 'Jackal allows on-ground routes');
+  assertContract(
+    !locomotionAllowsInWater(nonAmphibiousLocomotion),
+    'Jackal water-only preset envelope still requires physical water authority',
+  );
+  assertContract(!locomotionAllowsInAir(nonAmphibiousLocomotion), 'Jackal does not allow in-air routes');
   assertClonedLocomotionMatchesSource(
     cloneUnitLocomotion(nonAmphibiousLocomotion),
     nonAmphibiousLocomotion,
@@ -361,7 +377,6 @@ export function runLocomotionContractTest(): void {
 
   const zeroWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
   zeroWaterForce.physics.water.force = 0;
-  zeroWaterForce.navigation.allowWater = false;
   const zeroWaterRuntime = createUnitLocomotion(zeroWaterForce);
   assertEqual(zeroWaterRuntime.physics.water.force, 0, 'zero-water Hippo water force');
 

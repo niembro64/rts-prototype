@@ -25,6 +25,7 @@ const SERVER_WALL_CLOCK_ALLOWLIST = new Map([
   ['src/game/server/LocalGameConnection.ts', 'snapshot encode timing telemetry only'],
   ['src/game/server/ServerSnapshotDirectWirePreencoder.ts', 'snapshot encode timing telemetry only'],
   ['src/game/server/ServerSnapshotPublisher.ts', 'debug-grid throttle timing only'],
+  ['src/game/server/ServerSimulationCore.ts', 'presentation-frame timestamp for render interpolation only; never read by gameplay or checksums'],
   ['src/game/server/ServerSnapshotWirePayload.ts', 'snapshot wire encode timing telemetry only'],
   ['src/game/server/ServerSnapshotMetaBuilder.ts', 'snapshot metadata server-time label only; not lockstep gameplay truth'],
   ['src/game/server/ServerTickLoop.ts', 'wall-clock scheduler for non-lockstep server loops; lockstep uses a frame scheduler instead'],

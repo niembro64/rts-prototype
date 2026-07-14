@@ -1338,13 +1338,13 @@ export class TerrainTileRenderer3D {
     const selectedUnitPathingEnabled = selectedUnitBlueprint !== undefined &&
       selectedUnitLocomotion !== null;
     const selectedUnitAllowsGround = selectedUnitPathingEnabled
-      ? selectedUnitClimbProfile?.allowGround === true
+      ? selectedUnitClimbProfile?.allowOnGround === true
       : false;
     const selectedUnitAllowsWater = selectedUnitPathingEnabled
-      ? selectedUnitClimbProfile?.allowWater === true
+      ? selectedUnitClimbProfile?.allowInWater === true
       : false;
     const selectedUnitAllowsAir = selectedUnitPathingEnabled
-      ? selectedUnitClimbProfile?.allowAir === true
+      ? selectedUnitClimbProfile?.allowInAir === true
       : false;
     const selectedUnitRequiredNormalZ = selectedUnitPathingEnabled
       ? requiredPathingNormalZ(selectedUnitClimbProfile?.minSurfaceNormalZ)

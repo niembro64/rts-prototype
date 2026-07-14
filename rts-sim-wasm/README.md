@@ -1,8 +1,7 @@
 # rts-sim-wasm
 
-Bespoke RTS simulation core. Compiled to WebAssembly and loaded by
-**both** the local server tick and the client prediction
-stepper, so client prediction is bit-identical to server motion.
+Bespoke RTS simulation core. Compiled to WebAssembly, it owns the
+authoritative fixed-tick simulation and adjacent-tick presentation history.
 
 The "what to move and why" principle is in
 `docs/wasm-migration-principle.md`.
@@ -52,15 +51,11 @@ cargo watch -s 'cd .. && npm run build:wasm'
 npm run dev
 ```
 
-## TS fallback path
+## TypeScript boundaries
 
-Every WASM-exported kernel has a paired TS fallback in the
-caller's TypeScript file (e.g. `MathHelpers.ts`,
-`HomingSteering.ts`, `terrainSurface.ts`). The dispatcher checks
-`getSimWasm() !== undefined` before calling into Rust; the TS path
-runs during the brief boot window before `initSimWasm()` resolves,
-and as a structural identity-check reference implementation when
-swapping a system out for debugging.
+Some reusable math helpers retain paired TypeScript implementations for
+bootstrap and non-simulation callers. Authoritative locomotion, physics, and
+adjacent-tick presentation do not fall back to a TypeScript simulation path.
 
 ## Browser requirement: WebAssembly SIMD
 

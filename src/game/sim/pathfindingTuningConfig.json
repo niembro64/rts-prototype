@@ -2,7 +2,8 @@
   "waterBufferCells": 2,
   "forceSafetyRatio": 0.8,
   "stabilityMaxSlopeDeg": 70,
-  "allowDiagonalNeighbors": false,
+  "allowDiagonalNeighbors": true,
   "arrivalRadius": 50,
-  "arrivalClearanceFactor": 1.0
+  "softClearanceCells": 2,
+  "softClearancePenaltyPerCell": 0.35
 }

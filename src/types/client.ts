@@ -8,40 +8,8 @@ import type { RenderMode } from './graphics';
 
 export type AudioScope = 'off' | 'window' | 'padded' | 'all';
 export type MasterVolumePercent = number;
-/** Legacy four-mode smoothing space (snap / fast / mid / slow) still
- *  used by the unit ground normal EMA and the camera-smoothing knob.
- *  Per-channel snapshot drift uses PositionDriftChannelMode /
- *  DriftChannelMode below (renames 'mid' → 'medium'). */
+/** Four-mode smoothing space used by the unit-ground-normal and camera controls. */
 export type DriftMode = 'snap' | 'fast' | 'mid' | 'slow';
-/** Position-channel drift smoothing mode. Position channels always
- *  apply authoritative correction; they can snap or EMA, but cannot
- *  ignore the latest stored snapshot value. */
-export type PositionDriftChannelMode = 'snap' | 'fast' | 'medium' | 'slow';
-/** Per-channel drift smoothing mode. Velocity channels add an
- *  'ignore' option because letting prediction keep its current
- *  derivative is meaningful there:
- *    ignore — never apply the stored snapshot value for this channel
- *             to the rendered entity. Prediction (if any) keeps
- *             running from the last applied value forever.
- *    snap   — every client tick, replace the rendered value with the
- *             latest stored snapshot value for this channel. No EMA.
- *    fast/medium/slow — every client tick, EMA the rendered value
- *             toward the latest stored snapshot value using a
- *             frame-rate-independent half-life (smaller = snappier,
- *             larger = softer).
- *  The most recent server snapshot for each channel is always stored;
- *  the per-channel mode controls only what to do with it per tick. */
-export type DriftChannelMode = 'ignore' | PositionDriftChannelMode;
-/** Client-side prediction physics order. Selected on the PLAYER
- *  CLIENT bar; the prediction integrator reads it before stepping
- *  position each frame.
- *    pos — snap straight to the snapshot position; do not integrate
- *          velocity. Lowest cpu, most jittery.
- *    vel — integrate position from velocity each frame. Smoothest
- *          inter-snapshot motion. The wire never carries acceleration
- *          (the server owns force inputs and only ships their
- *          integrated velocity), so there is no ACC mode. */
-export type PredictionMode = 'pos' | 'vel';
 export type CameraSmoothMode = 'snap' | 'fast' | 'mid' | 'slow';
 export type CameraViewMode = 'overhead' | 'ta' | 'spring';
 /** Camera follow behavior for a single selected unit.
@@ -69,11 +37,11 @@ export type WaterBoundaryMode =
   | 'infinity'
   | 'floating-square'
   | 'floating-square-sea';
-/** Waypoint visualization detail. SIMPLE shows only the user-issued
- *  click points and shortcut lines between them — the convention in
- *  most RTS games. DETAILED shows every intermediate waypoint that
- *  the pathfinder inserted along the route, so the player can see
- *  how units route around obstacles. */
+/** Waypoint visualization detail. SIMPLE shows user-issued command points and
+ *  conventional intent connectors. DETAILED shows the exact remaining
+ *  smoothed active plan consumed by locomotion, including snapped or partial
+ *  endpoints; future command points remain markers until their legs are
+ *  actually planned. */
 export type WaypointDetail = 'simple' | 'detailed';
 export type PathingDebugUnitId = 'none' | string;
 /** Entity-HUD entity classes. Each maps to a renderer category that
@@ -176,19 +144,6 @@ export type ClientBarConfig = {
    *  terrain. Radar-level coverage includes all full-sight coverage
    *  plus radar-only sensor coverage. */
   readonly radarBoundary: BooleanSetting;
-  /** Per-channel client-side drift EMAs. Position channels select from
-   *  snap / fast / medium / slow. Velocity channels also allow ignore.
-   *  The rendered entity always stores the most recent snapshot value
-   *  for the channel; the mode decides per tick how to apply it. */
-  readonly movementPosEma: LabeledOptionsConfig<PositionDriftChannelMode>;
-  readonly movementVelEma: LabeledOptionsConfig<DriftChannelMode>;
-  readonly rotationPosEma: LabeledOptionsConfig<PositionDriftChannelMode>;
-  readonly rotationVelEma: LabeledOptionsConfig<DriftChannelMode>;
-  /** Prediction physics order — POS / VEL. See PredictionMode for
-   *  semantics. Default 'vel' integrates position from the last-seen
-   *  velocity. There is no ACC mode (the wire does not carry
-   *  acceleration). */
-  readonly predictionMode: LabeledOptionsConfig<PredictionMode>;
   /** Per-frame unit ground normal EMA on the client. Layered on top of
    *  the HOST SERVER unit ground normal EMA. Uses DriftMode
    *  (snap / fast / mid / slow). */

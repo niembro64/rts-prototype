@@ -9,9 +9,8 @@ use wasm_bindgen::prelude::*;
 //  Phase 6a — Damped-spring single-axis rotation integrator
 //
 //  Mirrors src/game/math/MathHelpers.ts integrateDampedRotation.
-//  Used by the authoritative turretSystem per tick. Client prediction
-//  consumes the emitted angle/velocity and coasts from velocity only,
-//  so this kernel is the source of the turret spring contract.
+//  Used by the authoritative turret system per tick. Adjacent-tick
+//  presentation interpolates the emitted authoritative turret poses.
 //
 //  Options on the TS side are an object: { wrap?, minAngle?, maxAngle? }.
 //  We encode them into a u32 flags word plus two scalar slots:

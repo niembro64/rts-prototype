@@ -3,6 +3,7 @@ import type {
   PathfindingBlueprint,
 } from '@/types/blueprints';
 import type {
+  LocomotionNavigationPolicy,
   UnitLocomotion,
   UnitLocomotionMediumPhysics,
   UnitLocomotionPhysics,
@@ -35,6 +36,7 @@ type LocomotionConfigMediumField = (typeof LOCOMOTION_CONFIG_MEDIUM_FIELDS)[numb
 type LocomotionTypeMediumPhysics = Pick<UnitLocomotionMediumPhysics, LocomotionConfigMediumField>;
 
 type LocomotionPresetConfig = {
+  navigation: LocomotionNavigationPolicy;
   physics: {
     driveForceMultiplier: number;
     forwardForceRequiresFacing: boolean;
@@ -55,6 +57,12 @@ type LocomotionConfig = {
   airLiftHeightForceFalloff: AirLiftHeightForceFalloffConfig;
   presets: Record<string, LocomotionPresetConfig>;
 };
+
+const LOCOMOTION_MEDIUM_NAVIGATION = [
+  'air-only',
+  'water-only',
+  'air-and-water',
+] as const satisfies readonly LocomotionNavigationPolicy['allowInMedium'][];
 
 function assertPositiveFinite(label: string, value: number): void {
   if (!Number.isFinite(value) || value <= 0) {
@@ -89,6 +97,17 @@ function assertClosedUnitFraction(label: string, value: number): void {
 function assertBoolean(label: string, value: unknown): asserts value is boolean {
   if (typeof value !== 'boolean') {
     throw new Error(`Invalid locomotion ${label}: expected boolean, got ${value}`);
+  }
+}
+
+function assertMediumNavigation(
+  label: string,
+  value: unknown,
+): asserts value is LocomotionNavigationPolicy['allowInMedium'] {
+  if (!(LOCOMOTION_MEDIUM_NAVIGATION as readonly unknown[]).includes(value)) {
+    throw new Error(
+      `Invalid locomotion ${label}: expected ${LOCOMOTION_MEDIUM_NAVIGATION.join(', ')}, got ${String(value)}`,
+    );
   }
 }
 
@@ -157,6 +176,17 @@ function readLocomotionConfig(): LocomotionConfig {
     if (!presetConfig.physics || typeof presetConfig.physics !== 'object') {
       throw new Error(`Invalid locomotionConfig.json: missing presets.${presetId}.physics config`);
     }
+    if (!presetConfig.navigation || typeof presetConfig.navigation !== 'object') {
+      throw new Error(`Invalid locomotionConfig.json: missing presets.${presetId}.navigation config`);
+    }
+    assertBoolean(
+      `presets.${presetId}.navigation.allowOnGround`,
+      presetConfig.navigation.allowOnGround,
+    );
+    assertMediumNavigation(
+      `presets.${presetId}.navigation.allowInMedium`,
+      presetConfig.navigation.allowInMedium,
+    );
     assertPositiveFinite(
       `presets.${presetId}.physics.driveForceMultiplier`,
       presetConfig.physics.driveForceMultiplier,
@@ -325,6 +355,36 @@ function createRuntimeLocomotionPhysics(
   };
 }
 
+function mediumHasRouteAuthority(physics: UnitLocomotionMediumPhysics): boolean {
+  return physics.force > 0 && physics.traction > 0;
+}
+
+function airHasLiftAuthority(physics: UnitLocomotionMediumPhysics): boolean {
+  return physics.buoyancy > 0 || physics.heightUpwardForce > 0;
+}
+
+function policyAllowsAir(policy: LocomotionNavigationPolicy): boolean {
+  return policy.allowInMedium === 'air-only' || policy.allowInMedium === 'air-and-water';
+}
+
+function policyAllowsWater(policy: LocomotionNavigationPolicy): boolean {
+  return policy.allowInMedium === 'water-only' || policy.allowInMedium === 'air-and-water';
+}
+
+export function locomotionAllowsOnGround(locomotion: UnitLocomotion): boolean {
+  return locomotion.navigation.allowOnGround && mediumHasRouteAuthority(locomotion.physics.ground);
+}
+
+export function locomotionAllowsInAir(locomotion: UnitLocomotion): boolean {
+  return policyAllowsAir(locomotion.navigation) &&
+    mediumHasRouteAuthority(locomotion.physics.air) &&
+    airHasLiftAuthority(locomotion.physics.air);
+}
+
+export function locomotionAllowsInWater(locomotion: UnitLocomotion): boolean {
+  return policyAllowsWater(locomotion.navigation) && mediumHasRouteAuthority(locomotion.physics.water);
+}
+
 function createRuntimePathfindingConfig(
   label: string,
   pathfinding: PathfindingBlueprint,
@@ -358,32 +418,39 @@ function createRuntimePathfindingConfig(
 export function createUnitLocomotion(
   locomotion: LocomotionBlueprint,
 ): UnitLocomotion {
-  const { type, physicsPresetId, navigation, survival } = locomotion;
+  const { type, physicsPresetId, survival } = locomotion;
   if (!(LOCOMOTION_TYPES as readonly string[]).includes(type)) {
     throw new Error(`Invalid locomotion visual rig type "${String(type)}"`);
   }
   const preset = getPreset(physicsPresetId);
   const physics = createRuntimeLocomotionPhysics(physicsPresetId, locomotion.physics);
-  if (!navigation.allowGround && !navigation.allowWater && !navigation.allowAir) {
-    throw new Error(`Invalid locomotion ${physicsPresetId}: navigation allows no domain`);
-  }
-  if (navigation.allowGround) {
-    assertPositiveFinite(`${physicsPresetId}.physics.ground.force`, physics.ground.force);
-    assertPositiveFinite(`${physicsPresetId}.physics.ground.traction`, physics.ground.traction);
-  }
-  if (navigation.allowWater) {
-    assertPositiveFinite(`${physicsPresetId}.physics.water.force`, physics.water.force);
-    assertPositiveFinite(`${physicsPresetId}.physics.water.traction`, physics.water.traction);
-  }
-  if (navigation.allowAir) {
-    assertPositiveFinite(`${physicsPresetId}.physics.air.force`, physics.air.force);
-    assertPositiveFinite(`${physicsPresetId}.physics.air.traction`, physics.air.traction);
-    if (physics.air.buoyancy <= 0) {
-      assertPositiveFinite(
-        `${physicsPresetId}.physics.air.heightUpwardForce`,
-        physics.air.heightUpwardForce,
-      );
-    }
+  const navigation = { ...preset.navigation };
+  const runtime: UnitLocomotion = {
+    type,
+    physicsPresetId,
+    physics,
+    navigation,
+    survival: { ...survival },
+    idleAirDrive: preset.physics.idleAirDrive,
+    forwardForceRequiresFacing: getLocomotionForwardForceRequiresFacing(physicsPresetId),
+    driveForceScalesWithFacing: getLocomotionDriveForceScalesWithFacing(physicsPresetId),
+    maintainFullThrustAtWaypoints: getLocomotionMaintainFullThrustAtWaypoints(physicsPresetId),
+    airLiftGroundProbeAheadDistance: getLocomotionAirLiftGroundProbeAheadDistance(physicsPresetId),
+    airLiftGroundProbeAheadRadiusMultiplier:
+      getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(physicsPresetId),
+    pathfinding: createRuntimePathfindingConfig(
+      `${type}.pathfinding(${locomotion.pathfindingBlueprintId})`,
+      locomotion.pathfinding,
+    ),
+  };
+  if (
+    !locomotionAllowsOnGround(runtime) &&
+    !locomotionAllowsInWater(runtime) &&
+    !locomotionAllowsInAir(runtime)
+  ) {
+    throw new Error(
+      `Invalid locomotion ${physicsPresetId}: preset navigation and physical authority allow no route domain`,
+    );
   }
   assertClosedUnitFraction(
     `${physicsPresetId}.survival.fatalSubmergedFraction`,
@@ -393,25 +460,7 @@ export function createUnitLocomotion(
     `${physicsPresetId}.survival.fatalExposureSeconds`,
     survival.fatalExposureSeconds,
   );
-  const pathfinding = createRuntimePathfindingConfig(
-    `${type}.pathfinding(${locomotion.pathfindingBlueprintId})`,
-    locomotion.pathfinding,
-  );
-  return {
-    type,
-    physicsPresetId,
-    physics,
-    navigation: { ...navigation },
-    survival: { ...survival },
-    idleAirDrive: preset.physics.idleAirDrive,
-    forwardForceRequiresFacing: getLocomotionForwardForceRequiresFacing(physicsPresetId),
-    driveForceScalesWithFacing: getLocomotionDriveForceScalesWithFacing(physicsPresetId),
-    maintainFullThrustAtWaypoints: getLocomotionMaintainFullThrustAtWaypoints(physicsPresetId),
-    airLiftGroundProbeAheadDistance: getLocomotionAirLiftGroundProbeAheadDistance(physicsPresetId),
-    airLiftGroundProbeAheadRadiusMultiplier:
-      getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(physicsPresetId),
-    pathfinding,
-  };
+  return runtime;
 }
 
 function cloneMediumPhysics(
@@ -446,8 +495,8 @@ export function cloneUnitLocomotion(
 export function getLocomotionPrimaryDrivePhysics(
   locomotion: UnitLocomotion,
 ): UnitLocomotionMediumPhysics {
-  if (locomotion.navigation.allowAir) return locomotion.physics.air;
-  if (locomotion.navigation.allowWater && !locomotion.navigation.allowGround) {
+  if (locomotionAllowsInAir(locomotion)) return locomotion.physics.air;
+  if (locomotionAllowsInWater(locomotion) && !locomotionAllowsOnGround(locomotion)) {
     return locomotion.physics.water;
   }
   return locomotion.physics.ground;

@@ -141,6 +141,8 @@ export type CombatTargetingStateViews = {
   losBlockedTicks: Uint16Array;
   cooldown: Float64Array;
   burstCooldown: Float64Array;
+  rotation: Float32Array;
+  pitch: Float32Array;
   angularVelocity: Float32Array;
   pitchVelocity: Float32Array;
   aimHasSolution: Uint8Array;
@@ -377,6 +379,8 @@ export function getCombatTargetingStateViews(sim: SimWasm): CombatTargetingState
     losBlockedTicks: new Uint16Array(buffer, targeting.turretLosBlockedTicksPtr(), length),
     cooldown: new Float64Array(buffer, targeting.turretCooldownPtr(), length),
     burstCooldown: new Float64Array(buffer, targeting.turretBurstCooldownPtr(), length),
+    rotation: new Float32Array(buffer, targeting.turretRotationPtr(), length),
+    pitch: new Float32Array(buffer, targeting.turretPitchPtr(), length),
     angularVelocity: new Float32Array(buffer, targeting.turretAngularVelocityPtr(), length),
     pitchVelocity: new Float32Array(buffer, targeting.turretPitchVelocityPtr(), length),
     aimHasSolution: new Uint8Array(buffer, targeting.turretBallisticHasSolutionPtr(), length),

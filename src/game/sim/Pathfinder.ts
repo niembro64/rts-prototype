@@ -48,12 +48,25 @@ import { PATHFINDING_STABILITY_MIN_NORMAL_Z } from './pathfindingTuning';
 
 type Vec2 = { x: number; y: number };
 
+export type PathResolution = 'complete' | 'snapped' | 'partial' | 'unreachable';
+
+export type ExpandedPathPlan = {
+  points: UnitPathPoint[];
+  resolution: PathResolution;
+};
+
+export type PathCostProfile = {
+  /** Locomotion capability consumed by the abstract terrain-time cost model. */
+  flatDriveAccel: number | null;
+};
+
 export type PathTerrainFilter = {
   minSurfaceNormalZ: number | null;
-  allowGround: boolean;
-  allowWater: boolean;
-  allowAir: boolean;
+  allowOnGround: boolean;
+  allowInWater: boolean;
+  allowInAir: boolean;
   ignoreTerrainBlocking: boolean;
+  cost: PathCostProfile;
 };
 
 /** When true, every path produced by `expandPathActions` is walked
@@ -133,7 +146,7 @@ function collectBuildingCells(buildingGrid: BuildingGrid): Float64Array {
 }
 
 function normalizeMinSurfaceNormalZ(filter: PathTerrainFilter | null): number {
-  if (filter === null || filter.allowAir) return 0;
+  if (filter === null || filter.allowInAir) return 0;
   const value = filter.minSurfaceNormalZ;
   if (value === null || !Number.isFinite(value) || value <= PATHFINDING_STABILITY_MIN_NORMAL_Z) {
     return 0;
@@ -142,31 +155,55 @@ function normalizeMinSurfaceNormalZ(filter: PathTerrainFilter | null): number {
 }
 
 function pathAllowsGround(filter: PathTerrainFilter | null): boolean {
-  return filter === null || filter.allowGround;
+  return filter === null || filter.allowOnGround;
 }
 
 function pathAllowsWater(filter: PathTerrainFilter | null): boolean {
-  return filter !== null && filter.allowWater;
+  return filter !== null && filter.allowInWater;
 }
 
 function pathAllowsAir(filter: PathTerrainFilter | null): boolean {
-  return filter !== null && filter.allowAir;
+  return filter !== null && filter.allowInAir;
+}
+
+function pathFlatDriveAccel(filter: PathTerrainFilter | null): number {
+  const value = filter?.cost.flatDriveAccel;
+  return value !== null && value !== undefined && Number.isFinite(value) && value > 0
+    ? value
+    : 0;
 }
 
 export function pathTerrainFilterForLocomotion(
   locomotion: UnitLocomotion | undefined,
   mass: number | undefined,
+  thrustMultiplier?: number,
 ): PathTerrainFilter | null {
   if (locomotion === undefined) return null;
   if (mass === undefined) return null;
-  const mobility = computeLocomotionClimbProfile(locomotion, mass);
+  const mobility = computeLocomotionClimbProfile(locomotion, mass, thrustMultiplier);
   return {
     minSurfaceNormalZ: mobility.minSurfaceNormalZ,
-    allowGround: mobility.allowGround,
-    allowWater: mobility.allowWater,
-    allowAir: mobility.allowAir,
-    ignoreTerrainBlocking: mobility.allowAir,
+    allowOnGround: mobility.allowOnGround,
+    allowInWater: mobility.allowInWater,
+    allowInAir: mobility.allowInAir,
+    ignoreTerrainBlocking: mobility.allowInAir,
+    cost: {
+      flatDriveAccel: mobility.flatDriveAccel,
+    },
   };
+}
+
+/** Stable cache identity for every traversal permission and route-cost input.
+ * Callers should not duplicate this field list when caching shared plans. */
+export function pathTerrainFilterCacheKey(filter: PathTerrainFilter | null): string {
+  if (filter === null) return 'default';
+  return [
+    filter.allowOnGround ? 'g1' : 'g0',
+    filter.allowInWater ? 'w1' : 'w0',
+    filter.allowInAir ? 'a1' : 'a0',
+    `min:${filter.minSurfaceNormalZ ?? 'null'}`,
+    `accel:${filter.cost.flatDriveAccel ?? 'null'}`,
+  ].join(':');
 }
 
 function ensureMaskAndCC(
@@ -199,6 +236,15 @@ function ensureMaskAndCC(
 
 // ── Public entry: findPath ───────────────────────────────────────
 
+function decodePathResolution(code: number): PathResolution {
+  switch (code) {
+    case 1: return 'complete';
+    case 2: return 'snapped';
+    case 3: return 'partial';
+    default: return 'unreachable';
+  }
+}
+
 function findPath(
   startX: number, startY: number,
   goalX: number, goalY: number,
@@ -207,7 +253,7 @@ function findPath(
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
-): Vec2[] {
+): { points: Vec2[]; resolution: PathResolution } {
   ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
   const minSurfaceNormalZ = normalizeMinSurfaceNormalZ(terrainFilter);
   const sim = getSimWasm()!;
@@ -221,17 +267,19 @@ function findPath(
     pathAllowsWater(terrainFilter),
     pathAllowsAir(terrainFilter),
     unitRadius,
+    pathFlatDriveAccel(terrainFilter),
     symmetricSlope,
   );
+  const resolution = decodePathResolution(sim.pathfinder.lastResultStatus());
   if (count === 0) {
-    return [{ x: startX, y: startY }];
+    return { points: [{ x: startX, y: startY }], resolution: 'unreachable' };
   }
   const view = new Float64Array(sim.memory.buffer, sim.pathfinder.waypointsPtr(), count * 2);
   const result: Vec2[] = new Array(count);
   for (let i = 0; i < count; i++) {
     result[i] = { x: view[i * 2], y: view[i * 2 + 1] };
   }
-  return result;
+  return { points: result, resolution };
 }
 
 // ── Path validator (developer self-check) ────────────────────────
@@ -320,7 +368,7 @@ function validatePathDoesNotCrossWater(
  *  terrain blockers; wet cells require water navigation even if the body
  *  could physically touch the bed; dry cells require ground navigation and
  *  use the unit's dry-ground climb profile. */
-export function expandPathPoints(
+export function expandPathPlan(
   startX: number, startY: number,
   goalX: number, goalY: number,
   mapWidth: number, mapHeight: number,
@@ -329,8 +377,8 @@ export function expandPathPoints(
   terrainFilter: PathTerrainFilter | null,
   unitRadius: number,
   symmetricSlope: boolean,
-): UnitPathPoint[] {
-  const path = findPath(
+): ExpandedPathPlan {
+  const result = findPath(
     startX,
     startY,
     goalX,
@@ -342,6 +390,7 @@ export function expandPathPoints(
     unitRadius,
     symmetricSlope,
   );
+  const path = result.points;
   if (VALIDATE_PATHS && !pathAllowsWater(terrainFilter) && !pathAllowsAir(terrainFilter)) {
     validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
   }
@@ -357,7 +406,102 @@ export function expandPathPoints(
       : getSurfaceHeight(px, py, mapWidth, mapHeight, LAND_CELL_SIZE);
     out.push({ x: px, y: py, z });
   }
-  return out;
+  return { points: out, resolution: result.resolution };
+}
+
+export function expandPathPoints(
+  startX: number, startY: number,
+  goalX: number, goalY: number,
+  mapWidth: number, mapHeight: number,
+  buildingGrid: BuildingGrid,
+  goalZ: number | null,
+  terrainFilter: PathTerrainFilter | null,
+  unitRadius: number,
+  symmetricSlope: boolean,
+): UnitPathPoint[] {
+  return expandPathPlan(
+    startX,
+    startY,
+    goalX,
+    goalY,
+    mapWidth,
+    mapHeight,
+    buildingGrid,
+    goalZ,
+    terrainFilter,
+    unitRadius,
+    symmetricSlope,
+  ).points;
+}
+
+let _pathValidationScratch = new Float64Array(64);
+
+function validatePathScratch(
+  length: number,
+  terrainFilter: PathTerrainFilter | null,
+  unitRadius: number,
+  symmetricSlope: boolean,
+): boolean {
+  const sim = getSimWasm()!;
+  return sim.pathfinder.validatePath(
+    _pathValidationScratch.subarray(0, length),
+    normalizeMinSurfaceNormalZ(terrainFilter),
+    pathAllowsGround(terrainFilter),
+    pathAllowsWater(terrainFilter),
+    pathAllowsAir(terrainFilter),
+    unitRadius,
+    symmetricSlope,
+  ) === 1;
+}
+
+export function isPathSegmentTraversable(
+  startX: number,
+  startY: number,
+  point: UnitPathPoint,
+  mapWidth: number,
+  mapHeight: number,
+  buildingGrid: BuildingGrid,
+  terrainFilter: PathTerrainFilter | null,
+  unitRadius: number,
+  symmetricSlope: boolean,
+): boolean {
+  ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
+  _pathValidationScratch[0] = startX;
+  _pathValidationScratch[1] = startY;
+  _pathValidationScratch[2] = point.x;
+  _pathValidationScratch[3] = point.y;
+  return validatePathScratch(4, terrainFilter, unitRadius, symmetricSlope);
+}
+
+/** Validate a translated/shared polyline through the authoritative WASM
+ * traversal kernel. The current position is the first point so the initial
+ * segment is checked too. */
+export function isPathPlanTraversable(
+  startX: number,
+  startY: number,
+  points: readonly UnitPathPoint[],
+  mapWidth: number,
+  mapHeight: number,
+  buildingGrid: BuildingGrid,
+  terrainFilter: PathTerrainFilter | null,
+  unitRadius: number,
+  symmetricSlope: boolean,
+): boolean {
+  if (points.length === 0) return false;
+  ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
+  const requiredLength = (points.length + 1) * 2;
+  if (_pathValidationScratch.length < requiredLength) {
+    let capacity = _pathValidationScratch.length;
+    while (capacity < requiredLength) capacity *= 2;
+    _pathValidationScratch = new Float64Array(capacity);
+  }
+  _pathValidationScratch[0] = startX;
+  _pathValidationScratch[1] = startY;
+  for (let i = 0; i < points.length; i++) {
+    _pathValidationScratch[(i + 1) * 2] = points[i].x;
+    _pathValidationScratch[(i + 1) * 2 + 1] = points[i].y;
+  }
+  return validatePathScratch(requiredLength, terrainFilter, unitRadius, symmetricSlope);
 }
 
 export type MultiLegWaypoint = {

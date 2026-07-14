@@ -27,6 +27,7 @@ import { finalizePendingProjectileLaunchVelocities } from '../sim/combat/project
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { getSimWasm } from '../sim-wasm/init';
 import { applyEntityHoldPose } from '../sim/entityHolds';
+import type { PresentationFrameEvent } from '@/types/game';
 
 type ServerSimulationCoreOptions = {
   onGameOver?: (winnerId: PlayerId) => void;
@@ -51,6 +52,7 @@ export class ServerSimulationCore {
   private readonly onGameOver: ((winnerId: PlayerId) => void) | undefined;
   private isGameOver = false;
   private disposed = false;
+  private readonly presentationFrameListeners = new Set<(event: PresentationFrameEvent) => void>();
 
   constructor(
     boot: BootstrappedServerWorld,
@@ -88,6 +90,25 @@ export class ServerSimulationCore {
     this.repairInvalidEntityPoses();
     this.syncFromPhysics();
     finalizePendingProjectileLaunchVelocities(this.world, dtMs);
+    const sim = getSimWasm();
+    if (sim !== undefined) {
+      const tick = this.world.getTick();
+      sim.presentation.captureTick(tick);
+      if (this.presentationFrameListeners.size > 0) {
+        const event: PresentationFrameEvent = {
+          tick,
+          capturedAtMs: performance.now(),
+        };
+        for (const listener of this.presentationFrameListeners) listener(event);
+      }
+    }
+  }
+
+  addPresentationFrameListener(
+    listener: (event: PresentationFrameEvent) => void,
+  ): () => void {
+    this.presentationFrameListeners.add(listener);
+    return () => this.presentationFrameListeners.delete(listener);
   }
 
   getCanonicalStateHash(): CanonicalServerStateHash {
@@ -117,6 +138,8 @@ export class ServerSimulationCore {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.presentationFrameListeners.clear();
+    getSimWasm()?.presentation.clear();
     this.physics.dispose();
   }
 

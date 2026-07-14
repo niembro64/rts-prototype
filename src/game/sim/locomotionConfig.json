@@ -5,6 +5,10 @@
   },
   "presets": {
     "wheels": {
+      "navigation": {
+        "allowOnGround": true,
+        "allowInMedium": "water-only"
+      },
       "physics": {
         "driveForceMultiplier": 2.4,
         "forwardForceRequiresFacing": true,
@@ -55,6 +59,10 @@
       }
     },
     "treads": {
+      "navigation": {
+        "allowOnGround": true,
+        "allowInMedium": "water-only"
+      },
       "physics": {
         "driveForceMultiplier": 2.4,
         "forwardForceRequiresFacing": true,
@@ -105,6 +113,10 @@
       }
     },
     "legs": {
+      "navigation": {
+        "allowOnGround": true,
+        "allowInMedium": "water-only"
+      },
       "physics": {
         "driveForceMultiplier": 1.2,
         "forwardForceRequiresFacing": true,
@@ -155,6 +167,10 @@
       }
     },
     "hover": {
+      "navigation": {
+        "allowOnGround": false,
+        "allowInMedium": "air-only"
+      },
       "physics": {
         "driveForceMultiplier": 0.3,
         "forwardForceRequiresFacing": false,
@@ -205,6 +221,10 @@
       }
     },
     "flying": {
+      "navigation": {
+        "allowOnGround": false,
+        "allowInMedium": "air-only"
+      },
       "physics": {
         "driveForceMultiplier": 1,
         "forwardForceRequiresFacing": true,

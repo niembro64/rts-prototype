@@ -195,6 +195,11 @@ export class UnitRenderPacket3D {
   velocityX = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   velocityY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   yawRate = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  orientationX = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  orientationY = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  orientationZ = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  orientationW = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
+  hasFullOrientation = new Uint8Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   bodyOpacity = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   bodyCenterHeight = new Float32Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
   turretCount = new Uint16Array(ENTITY_RENDER_PACKET_INITIAL_CAP);
@@ -254,6 +259,11 @@ export class UnitRenderPacket3D {
     this.velocityX[cursor] = unit.velocityX;
     this.velocityY[cursor] = unit.velocityY;
     this.yawRate[cursor] = unit.angularVelocity3?.z ?? 0;
+    this.orientationX[cursor] = unit.orientation?.x ?? 0;
+    this.orientationY[cursor] = unit.orientation?.y ?? 0;
+    this.orientationZ[cursor] = unit.orientation?.z ?? 0;
+    this.orientationW[cursor] = unit.orientation?.w ?? 1;
+    this.hasFullOrientation[cursor] = unit.orientation !== null ? 1 : 0;
     this.bodyOpacity[cursor] = getConstructionPieceOpacity(entity, 'body');
     this.bodyCenterHeight[cursor] = unit.bodyCenterHeight;
     this.turretCount[cursor] = turretRows.length;
@@ -341,6 +351,11 @@ export class UnitRenderPacket3D {
     this.velocityX[cursor] = state.velocityX[slot];
     this.velocityY[cursor] = state.velocityY[slot];
     this.yawRate[cursor] = state.yawRate[slot];
+    this.orientationX[cursor] = state.orientationX[slot];
+    this.orientationY[cursor] = state.orientationY[slot];
+    this.orientationZ[cursor] = state.orientationZ[slot];
+    this.orientationW[cursor] = state.orientationW[slot];
+    this.hasFullOrientation[cursor] = state.hasFullOrientation[slot];
     this.bodyOpacity[cursor] = state.bodyOpacity[slot];
     this.bodyCenterHeight[cursor] = state.bodyCenterHeight[slot];
     this.turretCount[cursor] = state.turretCount[slot];
@@ -438,6 +453,11 @@ export class UnitRenderPacket3D {
     this.velocityX = growFloat32(this.velocityX, nextCapacity);
     this.velocityY = growFloat32(this.velocityY, nextCapacity);
     this.yawRate = growFloat32(this.yawRate, nextCapacity);
+    this.orientationX = growFloat32(this.orientationX, nextCapacity);
+    this.orientationY = growFloat32(this.orientationY, nextCapacity);
+    this.orientationZ = growFloat32(this.orientationZ, nextCapacity);
+    this.orientationW = growFloat32(this.orientationW, nextCapacity);
+    this.hasFullOrientation = growUint8(this.hasFullOrientation, nextCapacity);
     this.bodyOpacity = growFloat32(this.bodyOpacity, nextCapacity);
     this.bodyCenterHeight = growFloat32(this.bodyCenterHeight, nextCapacity);
     this.turretCount = growUint16(this.turretCount, nextCapacity);

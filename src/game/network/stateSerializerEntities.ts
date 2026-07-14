@@ -800,8 +800,6 @@ function appendDirectBasicEntityWireRow(
   );
 }
 
-const MAX_DIRECT_ROUTE_PREVIEW_POINTS = 64;
-
 function directRoutePreviewBounds(entity: Entity): { start: number; end: number } {
   const unit = entity.unit;
   const actions = unit?.actions ?? [];
@@ -818,10 +816,7 @@ function directRoutePreviewBounds(entity: Entity): { start: number; end: number 
   }
 
   const start = plan.index > 0 ? plan.index : 0;
-  let end = plan.points.length - 1;
-  if (end - start > MAX_DIRECT_ROUTE_PREVIEW_POINTS) {
-    end = start + MAX_DIRECT_ROUTE_PREVIEW_POINTS;
-  }
+  let end = plan.points.length;
   if (end < start) end = start;
   return { start, end };
 }
@@ -1616,9 +1611,9 @@ export function serializeEntitySnapshot(
         // identically regardless of owner (see "Visible units render and
         // update identically" in budget_design_philosophy.html). Fog/vision
         // tiers still decide whether the unit appears at all; once it does,
-        // its velocity rides the wire like position and orientation so enemy
-        // aircraft bank and dead-reckon under the same prediction channels
-        // as our own. Ownership gates only commanded intent (orders, turret
+        // its velocity is available for recovery and visual enrichment just
+        // like position and orientation. Ownership gates only commanded
+        // intent (orders, turret
         // target IDs, build target, rally) below, never physical motion.
         u.velocity = poolEntry.unitVelocity;
         writeNetworkUnitVelocity(u, entity.unit, qVel);

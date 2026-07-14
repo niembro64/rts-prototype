@@ -28,8 +28,12 @@ import { ENTITY_CHANGED_ACTIONS, ENTITY_CHANGED_HP } from '@/types/network';
 import type { GamePhase } from '@/types/network';
 import { updateAiProduction } from './aiProduction';
 import {
-  expandPathPoints,
+  expandPathPlan,
+  isPathPlanTraversable,
+  isPathSegmentTraversable,
+  pathTerrainFilterCacheKey,
   pathTerrainFilterForLocomotion,
+  type ExpandedPathPlan,
   type PathTerrainFilter,
 } from './Pathfinder';
 import { getTerrainVersion } from './Terrain';
@@ -113,6 +117,10 @@ import {
 
 type ActiveMovementTarget = UnitPathPoint & {
   isFinalActionPoint: boolean;
+  /** Largest safe radius for advancing this transient point. Intermediate
+   *  corners use the broad arrival radius only when the current position has
+   *  a hard-clearance LOS to the following point. */
+  pathAdvanceRadius: number;
 };
 
 type GatherWaitGroup = {
@@ -163,7 +171,7 @@ export class Simulation {
   private unitActionPlanner: SimulationUnitActionPlanner = new SimulationUnitActionPlanner();
   private unitActionMovementPlanner: SimulationUnitActionMovementPlanner = new SimulationUnitActionMovementPlanner();
   private forceAccumulator: ForceAccumulator = new ForceAccumulator();
-  private readonly formationRouteCache = new Map<string, UnitPathPoint[]>();
+  private readonly formationRouteCache = new Map<string, ExpandedPathPlan>();
   private windState: WindState = sampleWindState(0);
   private windPowerTracker = new WindPowerTracker();
   // Accumulated sim time (ms). Drives deterministic systems like wind
@@ -595,16 +603,6 @@ export class Simulation {
     };
   }
 
-  private pathTerrainFilterKey(filter: PathTerrainFilter | null): string {
-    if (filter === null) return 'default';
-    return [
-      filter.allowGround ? 'g1' : 'g0',
-      filter.allowWater ? 'w1' : 'w0',
-      filter.allowAir ? 'a1' : 'a0',
-      `min:${filter.minSurfaceNormalZ ?? 'null'}`,
-    ].join(':');
-  }
-
   private formationRouteCacheKey(
     metadata: FormationRouteMetadata,
     terrainVersion: number,
@@ -615,7 +613,7 @@ export class Simulation {
       terrainVersion,
       buildingGridVersion,
       this.world.slopePathMode,
-      this.pathTerrainFilterKey(filter),
+      pathTerrainFilterCacheKey(filter),
       metadata.radius,
       metadata.startX,
       metadata.startY,
@@ -634,11 +632,12 @@ export class Simulation {
     return Math.max(0, Math.min(this.world.mapHeight, y));
   }
 
-  private offsetFormationRoutePoints(
+  private offsetFormationRoutePlan(
     points: readonly UnitPathPoint[],
     offsetX: number,
     offsetY: number,
-  ): UnitPathPoint[] {
+    resolution: ExpandedPathPlan['resolution'],
+  ): ExpandedPathPlan {
     const out = new Array<UnitPathPoint>(points.length);
     for (let i = 0; i < points.length; i++) {
       const x = this.clampPathX(points[i].x + offsetX);
@@ -649,7 +648,7 @@ export class Simulation {
         z: this.world.getGroundZ(x, y),
       };
     }
-    return out;
+    return { points: out, resolution };
   }
 
   private expandFormationRoutePoints(
@@ -659,17 +658,18 @@ export class Simulation {
     terrainVersion: number,
     buildingGridVersion: number,
     terrainFilter: PathTerrainFilter | null,
-  ): UnitPathPoint[] {
+    entity: Entity,
+  ): ExpandedPathPlan | null {
     const key = this.formationRouteCacheKey(
       metadata,
       terrainVersion,
       buildingGridVersion,
       terrainFilter,
     );
-    let anchorPoints = this.formationRouteCache.get(key);
-    if (anchorPoints === undefined) {
+    let anchorPlan = this.formationRouteCache.get(key);
+    if (anchorPlan === undefined) {
       if (this.formationRouteCache.size > 256) this.formationRouteCache.clear();
-      anchorPoints = expandPathPoints(
+      anchorPlan = expandPathPlan(
         metadata.startX,
         metadata.startY,
         metadata.goalX,
@@ -682,13 +682,36 @@ export class Simulation {
         metadata.radius,
         this.world.slopePathMode === 'symmetric',
       );
-      this.formationRouteCache.set(key, anchorPoints);
+      this.formationRouteCache.set(key, anchorPlan);
     }
-    return this.offsetFormationRoutePoints(
-      anchorPoints,
+    const translated = this.offsetFormationRoutePlan(
+      anchorPlan.points,
       metadata.offsetX,
       metadata.offsetY,
+      anchorPlan.resolution,
     );
+    const translatedFinal = translated.points[translated.points.length - 1];
+    if (
+      translated.resolution === 'complete' &&
+      (translatedFinal === undefined || translatedFinal.x !== action.x || translatedFinal.y !== action.y)
+    ) {
+      translated.resolution = 'snapped';
+    }
+    const unit = entity.unit;
+    if (unit === null) return null;
+    return isPathPlanTraversable(
+      entity.transform.x,
+      entity.transform.y,
+      translated.points,
+      this.world.mapWidth,
+      this.world.mapHeight,
+      buildingGrid,
+      terrainFilter,
+      unit.radius.collision,
+      this.world.slopePathMode === 'symmetric',
+    )
+      ? translated
+      : null;
   }
 
   private ensureActivePathPlan(
@@ -711,7 +734,7 @@ export class Simulation {
     const formationRoute = !forceLocalPlan && previousPath === null
       ? this.getFormationRouteMetadata(action)
       : null;
-    let points = formationRoute !== null
+    let pathPlan = formationRoute !== null
       ? this.expandFormationRoutePoints(
           action,
           formationRoute,
@@ -719,22 +742,11 @@ export class Simulation {
           terrainVersion,
           buildingGridVersion,
           terrainFilter,
+          entity,
         )
-      : expandPathPoints(
-          entity.transform.x,
-          entity.transform.y,
-          action.x,
-          action.y,
-          this.world.mapWidth,
-          this.world.mapHeight,
-          buildingGrid,
-          action.z ?? null,
-          terrainFilter,
-          unit.radius.collision,
-          this.world.slopePathMode === 'symmetric',
-        );
-    if (formationRoute !== null && points.length <= 1) {
-      points = expandPathPoints(
+      : null;
+    if (pathPlan === null) {
+      pathPlan = expandPathPlan(
         entity.transform.x,
         entity.transform.y,
         action.x,
@@ -749,7 +761,8 @@ export class Simulation {
       );
     }
     unit.activePath = {
-      points,
+      points: pathPlan.points,
+      resolution: pathPlan.resolution,
       index: 0,
       actionHash: unit.actionHash,
       terrainVersion,
@@ -776,6 +789,7 @@ export class Simulation {
         y: action.y,
         z: action.z,
         isFinalActionPoint: true,
+        pathAdvanceRadius: ARRIVAL_RADIUS,
       };
     }
 
@@ -785,6 +799,8 @@ export class Simulation {
       const dx = point.x - entity.transform.x;
       const dy = point.y - entity.transform.y;
       if (magnitude(dx, dy) > ARRIVAL_RADIUS) break;
+      const nextPoint = plan.points[plan.index + 1];
+      if (!this.isDirectPathPointReachable(entity, nextPoint)) break;
       plan.index++;
     }
     // Advancing past a preview point shrinks the serialized route; re-mark
@@ -794,12 +810,62 @@ export class Simulation {
     }
 
     const point = plan.points[plan.index];
+    const isFinalActionPoint = plan.index >= plan.points.length - 1;
+    const pointDx = point.x - entity.transform.x;
+    const pointDy = point.y - entity.transform.y;
+    const closeEnoughForBroadAdvance = magnitude(pointDx, pointDy) <= ARRIVAL_RADIUS;
+    const pathAdvanceRadius = isFinalActionPoint || (
+      closeEnoughForBroadAdvance &&
+      this.isDirectPathPointReachable(entity, plan.points[plan.index + 1])
+    ) ? ARRIVAL_RADIUS : 1;
     return {
       x: point.x,
       y: point.y,
       z: point.z,
-      isFinalActionPoint: plan.index >= plan.points.length - 1,
+      isFinalActionPoint,
+      pathAdvanceRadius,
     };
+  }
+
+  private isDirectPathPointReachable(entity: Entity, point: UnitPathPoint): boolean {
+    const unit = entity.unit;
+    if (unit === null) return false;
+    return isPathSegmentTraversable(
+      entity.transform.x,
+      entity.transform.y,
+      point,
+      this.world.mapWidth,
+      this.world.mapHeight,
+      this.constructionSystem.getGrid(),
+      this.pathTerrainFilterForUnit(entity),
+      unit.radius.collision,
+      this.world.slopePathMode === 'symmetric',
+    );
+  }
+
+  private queueMovementCompletion(
+    entity: Entity,
+    action: UnitAction,
+    target: ActiveMovementTarget,
+    dx: number,
+    dy: number,
+  ): void {
+    if (!target.isFinalActionPoint && target.pathAdvanceRadius < ARRIVAL_RADIUS) {
+      const distance = magnitude(dx, dy);
+      if (distance <= target.pathAdvanceRadius) {
+        this.advanceActivePathPoint(entity);
+      } else {
+        this.arrivalController.queueThrust(entity, action, dx, dy, distance, false);
+      }
+      return;
+    }
+    this.arrivalController.queueCompletion(
+      entity,
+      action,
+      dx,
+      dy,
+      target.isFinalActionPoint,
+    );
   }
 
   private refreshPatrolStartIndex(unit: Unit): void {
@@ -1314,7 +1380,7 @@ export class Simulation {
             entitySlot,
             movementTarget.x,
             movementTarget.y,
-            1,
+            Math.min(1, movementTarget.pathAdvanceRadius),
             movementTarget.isFinalActionPoint,
           );
           break;
@@ -1330,7 +1396,7 @@ export class Simulation {
             entitySlot,
             movementTarget.x,
             movementTarget.y,
-            15,
+            Math.min(15, movementTarget.pathAdvanceRadius),
             movementTarget.isFinalActionPoint,
           );
           break;
@@ -1346,7 +1412,7 @@ export class Simulation {
             entitySlot,
             movementTarget.x,
             movementTarget.y,
-            1,
+            Math.min(1, movementTarget.pathAdvanceRadius),
             movementTarget.isFinalActionPoint,
           );
           break;
@@ -1356,12 +1422,12 @@ export class Simulation {
           if (currentAction === undefined) break;
           if (currentAction.type !== 'attack' || currentAction.targetId === undefined) {
             const movementTarget = this.resolveActiveMovementTarget(entity, currentAction);
-            this.arrivalController.queueCompletion(
+            this.queueMovementCompletion(
               entity,
               currentAction,
+              movementTarget,
               movementTarget.x - transform.x,
               movementTarget.y - transform.y,
-              movementTarget.isFinalActionPoint,
             );
             break;
           }
@@ -1378,7 +1444,7 @@ export class Simulation {
             entitySlot,
             movementTarget.x,
             movementTarget.y,
-            15,
+            Math.min(15, movementTarget.pathAdvanceRadius),
             movementTarget.isFinalActionPoint,
           );
           break;
@@ -1394,7 +1460,7 @@ export class Simulation {
             entitySlot,
             movementTarget.x,
             movementTarget.y,
-            15,
+            Math.min(15, movementTarget.pathAdvanceRadius),
             movementTarget.isFinalActionPoint,
           );
           break;
@@ -1459,7 +1525,7 @@ export class Simulation {
             entitySlot,
             movementTarget.x,
             movementTarget.y,
-            15,
+            Math.min(15, movementTarget.pathAdvanceRadius),
             movementTarget.isFinalActionPoint,
           );
           break;
@@ -1475,12 +1541,12 @@ export class Simulation {
 
           // Completion classification is batched below so Rust reads the
           // current body velocity and applies the final-waypoint brake gate.
-          this.arrivalController.queueCompletion(
+          this.queueMovementCompletion(
             entity,
             currentAction,
+            movementTarget,
             dx,
             dy,
-            movementTarget.isFinalActionPoint,
           );
           break;
         }
@@ -1686,7 +1752,11 @@ export class Simulation {
   private pathTerrainFilterForUnit(entity: Entity): PathTerrainFilter | null {
     return entity.unit === null
       ? null
-      : pathTerrainFilterForLocomotion(entity.unit.locomotion, entity.unit.mass);
+      : pathTerrainFilterForLocomotion(
+          entity.unit.locomotion,
+          entity.unit.mass,
+          this.world.thrustMultiplier,
+        );
   }
 
   // Get force accumulator for external force application (used by RtsScene)
