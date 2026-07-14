@@ -14,6 +14,7 @@ import {
   ENTITY_CHANGED_ROT,
   ENTITY_CHANGED_VEL,
   ENTITY_CHANGED_NORMAL,
+  ENTITY_CHANGED_HP,
 } from '../../types/network';
 import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
@@ -102,11 +103,10 @@ const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING = 1 << 8;
 const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING = 1 << 9;
 const UF_FLAG_ON_GROUND = 1 << 10;
 const UF_FLAG_HAS_AIR_LIFT_DISTANCE_SCALE = 1 << 11;
-const UF_PROFILE_FLAG_IS_FLYING = 1 << 16;
-const UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION = 1 << 17;
-const UF_PROFILE_FLAG_IS_SWIMMER = 1 << 18;
-const UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE = 1 << 19;
-const UF_PROFILE_FLAG_SWIM_RANDOM_ACTIVE = 1 << 20;
+const UF_PROFILE_FLAG_IDLE_AIR_DRIVE = 1 << 16;
+const UF_PROFILE_FLAG_WATER_FATAL = 1 << 20;
+const UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE = 1 << 21;
+const UF_PROFILE_FLAG_SWIM_RANDOM_ACTIVE = 1 << 22;
 
 const UF_OUT_CLEAR_COMBAT = 1 << 1;
 const UF_OUT_ROTATION_DIRTY = 1 << 2;
@@ -117,14 +117,6 @@ const UNIT_GROUND_ANGULAR_DAMPING_RATE =
   dragRateFromVelocityFrictionPer60HzFrame(UNIT_GROUND_FRICTION_PER_60HZ_FRAME);
 
 const entitySlotForId = (entityId: EntityId): number => entitySlotRegistry.getSlot(entityId);
-
-function unitWaterFraction(bodyZ: number, groundOffset: number): number {
-  if (!Number.isFinite(bodyZ)) return 0;
-  const halfHeight = Number.isFinite(groundOffset) && groundOffset > 0 ? groundOffset : 0.5;
-  const height = halfHeight * 2;
-  if (height <= 0 || !Number.isFinite(height)) return bodyZ < WATER_LEVEL ? 1 : 0;
-  return Math.max(0, Math.min(1, (WATER_LEVEL - (bodyZ - halfHeight)) / height));
-}
 
 let _forceSlots: Uint32Array = new Uint32Array(0);
 let _forceEntitySlots: Uint32Array = new Uint32Array(0);
@@ -167,7 +159,7 @@ function ensureForceBatchCapacity(count: number): void {
 }
 
 /** Slot order kept in lockstep with UF_PROFILE_* in unit_kinetics.rs. */
-const UF_PROFILE_STRIDE = 17;
+const UF_PROFILE_STRIDE = 31;
 
 let _unitForceProfileTableUploaded = false;
 let _unitForceProfileCodeCount = 0;
@@ -206,9 +198,24 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         water.heightUpwardForceEMA,
         air.force,
         air.traction,
+        ground.surfaceGrip,
+        air.quadraticDrag,
+        air.dragForwardScale,
+        air.dragLateralScale,
+        air.dragVerticalScale,
+        air.angularDrag,
+        water.quadraticDrag,
+        water.dragForwardScale,
+        water.dragLateralScale,
+        water.dragVerticalScale,
+        water.angularDrag,
+        loco.survival.fatalSubmergedFraction,
+        loco.survival.fatalExposureSeconds,
+        ground.contactDamping,
         loco.forwardForceRequiresFacing ? 1 : 0,
         loco.driveForceScalesWithFacing ? 1 : 0,
-        loco.type,
+        loco.idleAirDrive ? 1 : 0,
+        loco.survival.waterFatal ? 1 : 0,
       ].join(':') + '|';
     }
     codeCount++;
@@ -272,16 +279,25 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     values[base + 14] = water.heightUpwardForceEMA;
     values[base + 15] = air.force;
     values[base + 16] = air.traction;
+    values[base + 17] = ground.surfaceGrip;
+    values[base + 18] = air.quadraticDrag;
+    values[base + 19] = air.dragForwardScale;
+    values[base + 20] = air.dragLateralScale;
+    values[base + 21] = air.dragVerticalScale;
+    values[base + 22] = air.angularDrag;
+    values[base + 23] = water.quadraticDrag;
+    values[base + 24] = water.dragForwardScale;
+    values[base + 25] = water.dragLateralScale;
+    values[base + 26] = water.dragVerticalScale;
+    values[base + 27] = water.angularDrag;
+    values[base + 28] = loco.survival.fatalSubmergedFraction;
+    values[base + 29] = loco.survival.fatalExposureSeconds;
+    values[base + 30] = ground.contactDamping;
     flags[code] =
       (loco.forwardForceRequiresFacing ? UF_FLAG_FORWARD_THRUST_REQUIRES_FACING : 0) |
       (loco.driveForceScalesWithFacing ? UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING : 0) |
-      (loco.type === 'flying' ? UF_PROFILE_FLAG_IS_FLYING : 0) |
-      (loco.type === 'hover' || loco.type === 'flying'
-        ? UF_PROFILE_FLAG_AIRBORNE_LOCOMOTION
-        : 0) |
-      (water.force > 0 || water.heightUpwardForce > 0 || water.buoyancy > 0
-        ? UF_PROFILE_FLAG_IS_SWIMMER
-        : 0) |
+      (loco.idleAirDrive ? UF_PROFILE_FLAG_IDLE_AIR_DRIVE : 0) |
+      (loco.survival.waterFatal ? UF_PROFILE_FLAG_WATER_FATAL : 0) |
       (air.heightUpwardForceRandomizationAmount > 0
         ? UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE
         : 0) |
@@ -327,12 +343,26 @@ export class UnitForceSystem {
 
   applyForces(dtSec: number): void {
     const sim = getSimWasm()!;
+    ensureUnitForceProfileTable(sim);
+    const fatalWaterCount = sim.unitFatalWaterStepPool(dtSec);
+    if (fatalWaterCount > 0) {
+      const fatalEntitySlots = new Uint32Array(
+        sim.memory.buffer,
+        sim.unitFatalWaterEntitySlotsPtr(),
+        fatalWaterCount,
+      );
+      for (let i = 0; i < fatalWaterCount; i++) {
+        const entity = entitySlotRegistry.resolveSlot(fatalEntitySlots[i]);
+        if (entity === undefined || entity.unit === null) continue;
+        entity.unit.hp = 0;
+        this.world.markSnapshotDirtyStateSynced(entity, ENTITY_CHANGED_HP);
+      }
+    }
     // Defensive: refresh BodyPool views in case WASM memory grew since
     // the last tick. See PhysicsEngine3D.step() for the detached-view
     // crash this guards against.
     sim.pool.refreshViews();
     const bodyViews = sim.pool;
-    ensureUnitForceProfileTable(sim);
     const profileFlagsView = getUnitForceProfileFlagsView(sim);
     const entityViews = entitySlotRegistry.getViews();
 
@@ -463,21 +493,18 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_NORMAL_X] = supportSurface.normalX;
       _forceRows[base + UF_ROW_NORMAL_Y] = supportSurface.normalY;
       _forceRows[base + UF_ROW_NORMAL_Z] = supportSurface.normalZ;
-      const waterFraction = unitWaterFraction(bodyZ, bodyGroundOffset);
-      const airFraction = 1 - waterFraction;
-
       // Fully-abstracted medium force profile (all opt-in, default 0/inert).
       // Per-blueprint locomotion metadata is uploaded once to the native force
       // profile table. Fall back to the object graph only if the slot slab is
       // unavailable or stale.
-      let isFlying = (profileFlags & UF_PROFILE_FLAG_IS_FLYING) !== 0;
+      let idleAirDrive = (profileFlags & UF_PROFILE_FLAG_IDLE_AIR_DRIVE) !== 0;
       let forwardForceRequiresFacing =
         (profileFlags & UF_FLAG_FORWARD_THRUST_REQUIRES_FACING) !== 0;
       let hoverRandomActive = (profileFlags & UF_PROFILE_FLAG_HOVER_RANDOM_ACTIVE) !== 0;
       let swimRandomActive = (profileFlags & UF_PROFILE_FLAG_SWIM_RANDOM_ACTIVE) !== 0;
       if (!hasProfileFlags) {
         const loco = unit.locomotion;
-        isFlying = loco.type === 'flying';
+        idleAirDrive = loco.idleAirDrive;
         forwardForceRequiresFacing = loco.forwardForceRequiresFacing;
         hoverRandomActive = loco.physics.air.heightUpwardForceRandomizationAmount > 0;
         swimRandomActive =
@@ -525,7 +552,7 @@ export class UnitForceSystem {
       if (surfaceContact) flags |= UF_FLAG_ON_GROUND;
 
       const mediumLiftActive = !buildInProgress;
-      if (isFlying && mediumLiftActive) flags |= UF_FLAG_IS_FLYING;
+      if (idleAirDrive && mediumLiftActive) flags |= UF_FLAG_IS_FLYING;
       if (mediumLiftActive) flags |= UF_FLAG_IS_AIRBORNE;
 
       const hasExternalForce =
@@ -543,7 +570,7 @@ export class UnitForceSystem {
       _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
       _forceRows[base + UF_ROW_AIR_LIFT_DISTANCE_SCALE] = 0;
 
-      if (mediumLiftActive && airFraction > 0 && airLiftAuthored) {
+      if (mediumLiftActive && airLiftAuthored) {
         let airHeightForceForFalloff = unit.locomotion.physics.air.heightUpwardForce;
         if (hoverRandomActive) {
           const hoverRandomSample = this.world.rng.next();
@@ -567,8 +594,8 @@ export class UnitForceSystem {
         const yaw = Number.isFinite(rotationForPack) ? rotationForPack : 0;
         if (hasThrustDir) {
           if (forwardForceRequiresFacing) {
-            probeDirX = Math.cos(yaw);
-            probeDirY = Math.sin(yaw);
+            probeDirX = DMath.cos(yaw);
+            probeDirY = DMath.sin(yaw);
           } else {
             const invDirMag = 1 / thrustInputMag;
             probeDirX = dirX * invDirMag;
@@ -576,8 +603,8 @@ export class UnitForceSystem {
           }
           hasProbeDir = true;
         } else {
-          probeDirX = Math.cos(yaw);
-          probeDirY = Math.sin(yaw);
+          probeDirX = DMath.cos(yaw);
+          probeDirY = DMath.sin(yaw);
           hasProbeDir = true;
         }
 
@@ -624,8 +651,8 @@ export class UnitForceSystem {
           orientation = unit.orientation = {
             x: 0,
             y: 0,
-            z: Math.sin(halfYaw),
-            w: Math.cos(halfYaw),
+            z: DMath.sin(halfYaw),
+            w: DMath.cos(halfYaw),
           };
         }
         _forceRows[base + UF_ROW_ORIENTATION_X] = orientation.x;
@@ -659,13 +686,10 @@ export class UnitForceSystem {
       const hasAngularMotionForSleep = omegaX * omegaX + omegaY * omegaY + omegaZ * omegaZ > 1e-12;
       flags |= UF_FLAG_HAS_ORIENTATION;
 
-      const mediumLiftForceActive = mediumLiftActive && (
-        (airFraction > 0 && airLiftAuthored) ||
-        (waterFraction > 0 && waterLiftAuthored)
-      );
+      const mediumLiftForceActive = mediumLiftActive && (airLiftAuthored || waterLiftAuthored);
       const willRustSkipSleeping =
         bodySleeping &&
-        !isFlying &&
+        !idleAirDrive &&
         !hasThrustDir &&
         !hasExternalForce &&
         !hasAngularMotionForSleep &&
@@ -679,7 +703,6 @@ export class UnitForceSystem {
       if (
         !willRustSkipSleeping &&
         mediumLiftActive &&
-        waterFraction > 0 &&
         waterLiftAuthored &&
         swimRandomActive
       ) {

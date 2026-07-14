@@ -596,7 +596,10 @@ pub(crate) fn pathfinder_is_cell_passable(
     let wet = state.terrain_water[idx] == 1;
     let terrain_blocked = state.blocked[idx] == 1;
     let passable_by_medium = if wet {
-        traversal.allow_water || traversal.allow_ground
+        // Intentional water traversal is an explicit navigation policy.
+        // Ground contact may physically exist on the lakebed, but that does
+        // not authorize an ordinary land unit to route itself into water.
+        traversal.allow_water
     } else if terrain_blocked {
         // Dry shoreline-buffer cells are blocked for ground-only units, but
         // amphibious units may cross them because the adjacent wet cells are
@@ -661,6 +664,94 @@ pub(crate) fn pathfinder_required_step_normal_z(min_normal_z: f32) -> f32 {
     } else {
         PATHFINDING_STABILITY_MIN_NORMAL_Z
     }
+}
+
+/// Derive the terrain-bound climb envelope from the same authored drive force,
+/// traction and contact grip consumed by the force kernel. TypeScript supplies
+/// immutable configuration values; all force-to-acceleration and slope physics
+/// remain canonical here in Rust.
+#[wasm_bindgen]
+pub fn pathfinder_compute_locomotion_climb_profile(
+    ground_force: f64,
+    ground_traction: f64,
+    surface_grip: f64,
+    mass: f64,
+    thrust_multiplier: f64,
+    force_scale: f64,
+    reference_mass: f64,
+    unit_mass_multiplier: f64,
+    gravity: f64,
+    force_safety_ratio: f64,
+    stability_max_slope_deg: f64,
+    allow_ground: bool,
+    allow_air: bool,
+    out: &mut [f64],
+) -> u32 {
+    const PROFILE_LEN: usize = 6;
+    if out.len() < PROFILE_LEN {
+        return 0;
+    }
+    if allow_air {
+        out[..PROFILE_LEN].copy_from_slice(&[
+            f64::NAN,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NAN,
+            f64::NAN,
+            f64::NAN,
+        ]);
+        return 1;
+    }
+    if !allow_ground {
+        out[..PROFILE_LEN].copy_from_slice(&[
+            f64::NAN,
+            f64::NAN,
+            0.0,
+            f64::NAN,
+            f64::NAN,
+            f64::NAN,
+        ]);
+        return 1;
+    }
+    if !mass.is_finite()
+        || mass <= 0.0
+        || !unit_mass_multiplier.is_finite()
+        || unit_mass_multiplier <= 0.0
+        || !gravity.is_finite()
+        || gravity <= 0.0
+    {
+        return 0;
+    }
+
+    let (_, traction_force_magnitude) = unit_force_locomotion_magnitudes(
+        ground_force,
+        ground_traction,
+        reference_mass,
+        thrust_multiplier,
+        force_scale,
+    );
+    let effective_mass = mass * unit_mass_multiplier;
+    let safe_drive_force = traction_force_magnitude * force_safety_ratio.clamp(0.0, 1.0);
+    let safe_drive_accel = safe_drive_force * 1_000_000.0 / effective_mass;
+    let radians_to_degrees = 180.0 / core::f64::consts::PI;
+    let drive_limited_slope_deg =
+        (safe_drive_accel / gravity).clamp(0.0, 1.0).asin() * radians_to_degrees;
+    let traction_limited_slope_deg = surface_grip.max(0.0).atan() * radians_to_degrees;
+    let stability_limited_slope_deg = stability_max_slope_deg.clamp(0.0, 90.0);
+    let max_slope_deg = drive_limited_slope_deg
+        .min(traction_limited_slope_deg)
+        .min(stability_limited_slope_deg)
+        .max(0.0);
+    let min_surface_normal_z = (max_slope_deg / radians_to_degrees).cos();
+    out[..PROFILE_LEN].copy_from_slice(&[
+        max_slope_deg,
+        min_surface_normal_z,
+        safe_drive_accel,
+        drive_limited_slope_deg,
+        traction_limited_slope_deg,
+        stability_limited_slope_deg,
+    ]);
+    1
 }
 
 #[inline]
@@ -801,8 +892,8 @@ pub(crate) fn pathfinder_exact_sample_is_too_steep(
         return false;
     }
     let (height, normal_z) = pathfinder_sample_terrain(x, y);
-    if height < TERRAIN_WATER_LEVEL && traversal.allow_water {
-        return false;
+    if height < TERRAIN_WATER_LEVEL {
+        return !traversal.allow_water;
     }
     (height >= TERRAIN_WATER_LEVEL || traversal.allow_ground)
         && normal_z.is_finite()
@@ -1275,8 +1366,9 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
 /// `min_normal_z` is the per-unit dry-ground slope filter (0 = no filter,
 /// matches normalizeMinSurfaceNormalZ returning undefined in JS). The
 /// allow_* flags are derived from the unit's usable ground/water/air medium
-/// locomotion: air bypasses terrain, wet cells accept water or ground-bed
-/// traversal, and dry cells require ground traversal.
+/// navigation policy: air bypasses terrain, wet cells require explicit water
+/// navigation, and dry cells require ground navigation. Physical lakebed
+/// contact does not by itself authorize an intentional water route.
 /// Smoothed waypoints land in `waypoint_scratch` as interleaved
 /// (x, y) f64 pairs; returns the waypoint count.
 ///
@@ -1555,4 +1647,39 @@ pub fn pathfinder_grid_size_w() -> i32 {
 #[wasm_bindgen]
 pub fn pathfinder_grid_size_h() -> i32 {
     pathfinder_state().grid_h
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn locomotion_climb_profile_is_limited_by_contact_grip() {
+        let mut out = [0.0; 6];
+        assert_eq!(
+            pathfinder_compute_locomotion_climb_profile(
+                1_000.0, 1.0, 0.5, 100.0, 20.0, 150_000.0, 100.0, 10.0, GRAVITY, 0.8, 70.0, true,
+                false, &mut out,
+            ),
+            1,
+        );
+        let expected_grip_slope = 0.5_f64.atan() * 180.0 / core::f64::consts::PI;
+        assert!((out[0] - expected_grip_slope).abs() < 1e-9);
+        assert!((out[1] - (out[0] * core::f64::consts::PI / 180.0).cos()).abs() < 1e-9);
+        assert!((out[4] - expected_grip_slope).abs() < 1e-9);
+    }
+
+    #[test]
+    fn air_navigation_has_no_terrain_slope_limit() {
+        let mut out = [0.0; 6];
+        assert_eq!(
+            pathfinder_compute_locomotion_climb_profile(
+                0.0, 0.0, 0.0, 100.0, 20.0, 150_000.0, 100.0, 10.0, GRAVITY, 0.8, 70.0, false,
+                true, &mut out,
+            ),
+            1,
+        );
+        assert!(out[0].is_nan() && out[1].is_nan());
+        assert!(out[2].is_infinite());
+    }
 }

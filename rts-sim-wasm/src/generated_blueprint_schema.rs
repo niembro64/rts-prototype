@@ -388,7 +388,6 @@ pub struct EntityBaseLedger {
     pub health: f64,
     pub deathExplosion: EntityDeathExplosion,
     pub radius: EntityRadiusConfig,
-    pub explodesIfSubmerged: Option<bool>,
 }
 
 pub type TurretRadiusConfig = EntityRadiusConfig;
@@ -647,6 +646,20 @@ pub struct LocomotionPhysics {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionNavigationPolicy {
+    pub allowGround: bool,
+    pub allowWater: bool,
+    pub allowAir: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionSurvivalPolicy {
+    pub waterFatal: bool,
+    pub fatalSubmergedFraction: f64,
+    pub fatalExposureSeconds: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum PathfindingTerrainMode {
     Land,
     Anywhere,
@@ -704,7 +717,10 @@ pub struct FlyingConfig {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintWheels {
     pub r#type: String,
+    pub physicsPresetId: String,
     pub physics: LocomotionPhysics,
+    pub navigation: LocomotionNavigationPolicy,
+    pub survival: LocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: WheelConfig,
@@ -713,7 +729,10 @@ pub struct LocomotionBlueprintWheels {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintTreads {
     pub r#type: String,
+    pub physicsPresetId: String,
     pub physics: LocomotionPhysics,
+    pub navigation: LocomotionNavigationPolicy,
+    pub survival: LocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: TreadConfig,
@@ -722,7 +741,10 @@ pub struct LocomotionBlueprintTreads {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintLegs {
     pub r#type: String,
+    pub physicsPresetId: String,
     pub physics: LocomotionPhysics,
+    pub navigation: LocomotionNavigationPolicy,
+    pub survival: LocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: LegConfig,
@@ -731,7 +753,10 @@ pub struct LocomotionBlueprintLegs {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintHover {
     pub r#type: String,
+    pub physicsPresetId: String,
     pub physics: LocomotionPhysics,
+    pub navigation: LocomotionNavigationPolicy,
+    pub survival: LocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: HoverConfig,
@@ -740,7 +765,10 @@ pub struct LocomotionBlueprintHover {
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintFlying {
     pub r#type: String,
+    pub physicsPresetId: String,
     pub physics: LocomotionPhysics,
+    pub navigation: LocomotionNavigationPolicy,
+    pub survival: LocomotionSurvivalPolicy,
     pub pathfindingBlueprintId: String,
     pub pathfinding: PathfindingBlueprint,
     pub config: FlyingConfig,

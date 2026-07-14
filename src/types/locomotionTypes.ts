@@ -23,6 +23,19 @@ export type UnitLocomotionMediumPhysics = {
   traction: number;
   /** Passive velocity damping rate for this medium, in 1/s. */
   friction: number;
+  /** Quadratic fluid drag rate. Zero for solid-contact response. */
+  quadraticDrag: number;
+  /** Body-local drag multipliers. Forward/lateral are resolved from yaw;
+   *  vertical remains world-up for the current spherical body model. */
+  dragForwardScale: number;
+  dragLateralScale: number;
+  dragVerticalScale: number;
+  /** Passive angular damping supplied by this occupied medium. */
+  angularDrag: number;
+  /** Coulomb-style solid contact coefficient. Meaningful only for ground. */
+  surfaceGrip: number;
+  /** Tangent damping scale for the low-speed support contact solver. */
+  contactDamping: number;
   /** Archimedes-style buoyancy coefficient against this medium: upward
    *  force = mass * gravity * buoyancy * fraction-of-body-in-medium.
    *  Water buoyancy above 1 floats the body at partial submergence
@@ -46,10 +59,28 @@ export type UnitLocomotionPhysics = {
 };
 
 export type UnitLocomotion = {
+  /** Presentation rig only. Authoritative physics never selects behavior
+   *  from this discriminant. */
   type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
+  /** Explicit preset expanded into the complete numeric profile at load. */
+  physicsPresetId: string;
   /** Fully-abstracted medium physics. Every unit owns every medium profile;
    *  zero values make a medium inert instead of omitting fields. */
   physics: UnitLocomotionPhysics;
+  /** Intentional route domains. These are policy, not inferred physics. */
+  navigation: {
+    allowGround: boolean;
+    allowWater: boolean;
+    allowAir: boolean;
+  };
+  /** Environmental failure policy, independent from propulsion/buoyancy. */
+  survival: {
+    waterFatal: boolean;
+    fatalSubmergedFraction: number;
+    fatalExposureSeconds: number;
+  };
+  /** Air propulsion continues along the nose with no waypoint thrust input. */
+  idleAirDrive: boolean;
   /** True when powered drive force can only act along the body's current
    *  forward-facing direction instead of directly along the requested vector. */
   forwardForceRequiresFacing: boolean;

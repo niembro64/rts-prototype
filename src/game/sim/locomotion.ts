@@ -7,11 +7,12 @@ import type {
   UnitLocomotionMediumPhysics,
   UnitLocomotionPhysics,
 } from '@/types/locomotionTypes';
+import { deterministicMath as DMath } from './deterministicMath';
 import rawLocomotionConfig from './locomotionConfig.json';
 
-// Canonical set of locomotion discriminants. Per-type tuning lives in
-// locomotionConfig.json; unit blueprints keep only the medium scalars that
-// are still authored per unit.
+// Visual rig discriminants are deliberately separate from authoritative
+// physics presets. A wheels rig may use any preset and moves identically to
+// any other rig with the same expanded profile.
 const LOCOMOTION_TYPES = ['wheels', 'treads', 'legs', 'hover', 'flying'] as const;
 const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
 const LOCOMOTION_CONFIG_MEDIUM_FIELDS = [
@@ -19,15 +20,21 @@ const LOCOMOTION_CONFIG_MEDIUM_FIELDS = [
   'friction',
   'heightUpwardForceRandomizationAmount',
   'heightUpwardForceEMA',
+  'quadraticDrag',
+  'dragForwardScale',
+  'dragLateralScale',
+  'dragVerticalScale',
+  'angularDrag',
+  'surfaceGrip',
+  'contactDamping',
 ] as const;
 
-type LocomotionType = (typeof LOCOMOTION_TYPES)[number];
 type LocomotionMediumName = (typeof LOCOMOTION_MEDIUM_NAMES)[number];
 type AuthoredLocomotionMediumPhysics = LocomotionBlueprint['physics'][LocomotionMediumName];
 type LocomotionConfigMediumField = (typeof LOCOMOTION_CONFIG_MEDIUM_FIELDS)[number];
 type LocomotionTypeMediumPhysics = Pick<UnitLocomotionMediumPhysics, LocomotionConfigMediumField>;
 
-type LocomotionTypeConfig = {
+type LocomotionPresetConfig = {
   physics: {
     driveForceMultiplier: number;
     forwardForceRequiresFacing: boolean;
@@ -35,6 +42,7 @@ type LocomotionTypeConfig = {
     maintainFullThrustAtWaypoints: boolean;
     airLiftGroundProbeAheadDistance: number;
     airLiftGroundProbeAheadRadiusMultiplier: number;
+    idleAirDrive: boolean;
   } & Record<LocomotionMediumName, LocomotionTypeMediumPhysics>;
 };
 
@@ -45,7 +53,7 @@ type AirLiftHeightForceFalloffConfig = {
 type LocomotionConfig = {
   forceScale: number;
   airLiftHeightForceFalloff: AirLiftHeightForceFalloffConfig;
-  types: Record<LocomotionType, LocomotionTypeConfig>;
+  presets: Record<string, LocomotionPresetConfig>;
 };
 
 function assertPositiveFinite(label: string, value: number): void {
@@ -72,6 +80,12 @@ function assertUnitFraction(label: string, value: number): void {
   }
 }
 
+function assertClosedUnitFraction(label: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`Invalid locomotion ${label}: expected finite [0, 1], got ${value}`);
+  }
+}
+
 function assertBoolean(label: string, value: unknown): asserts value is boolean {
   if (typeof value !== 'boolean') {
     throw new Error(`Invalid locomotion ${label}: expected boolean, got ${value}`);
@@ -85,21 +99,30 @@ function assertSlopeDegrees(label: string, value: number): void {
 }
 
 function assertLocomotionTypeMediumPhysics(
-  type: LocomotionType,
+  presetId: string,
   medium: LocomotionMediumName,
   physics: LocomotionTypeMediumPhysics | undefined,
 ): asserts physics is LocomotionTypeMediumPhysics {
   if (!physics || typeof physics !== 'object') {
-    throw new Error(`Invalid locomotionConfig.json: missing types.${type}.physics.${medium} config`);
+    throw new Error(
+      `Invalid locomotionConfig.json: missing presets.${presetId}.physics.${medium} config`,
+    );
   }
-  assertNonNegativeFinite(`types.${type}.physics.${medium}.traction`, physics.traction);
-  assertNonNegativeFinite(`types.${type}.physics.${medium}.friction`, physics.friction);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.traction`, physics.traction);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.friction`, physics.friction);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.quadraticDrag`, physics.quadraticDrag);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.dragForwardScale`, physics.dragForwardScale);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.dragLateralScale`, physics.dragLateralScale);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.dragVerticalScale`, physics.dragVerticalScale);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.angularDrag`, physics.angularDrag);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.surfaceGrip`, physics.surfaceGrip);
+  assertNonNegativeFinite(`presets.${presetId}.physics.${medium}.contactDamping`, physics.contactDamping);
   assertUnitFraction(
-    `types.${type}.physics.${medium}.heightUpwardForceRandomizationAmount`,
+    `presets.${presetId}.physics.${medium}.heightUpwardForceRandomizationAmount`,
     physics.heightUpwardForceRandomizationAmount,
   );
   assertUnitFraction(
-    `types.${type}.physics.${medium}.heightUpwardForceEMA`,
+    `presets.${presetId}.physics.${medium}.heightUpwardForceEMA`,
     physics.heightUpwardForceEMA,
   );
 }
@@ -112,7 +135,7 @@ function readLocomotionConfig(): LocomotionConfig {
   const config = rawLocomotionConfig as unknown as {
     forceScale?: number;
     airLiftHeightForceFalloff?: Partial<AirLiftHeightForceFalloffConfig>;
-    types?: Partial<Record<LocomotionType, LocomotionTypeConfig>>;
+    presets?: Record<string, LocomotionPresetConfig>;
   };
   assertPositiveFinite('forceScale', config.forceScale ?? NaN);
   const airLiftHeightForceFalloff = config.airLiftHeightForceFalloff;
@@ -123,49 +146,44 @@ function readLocomotionConfig(): LocomotionConfig {
     'airLiftHeightForceFalloff.heightForceExponent',
     airLiftHeightForceFalloff.heightForceExponent ?? NaN,
   );
-  const types = config.types;
-  if (!types || typeof types !== 'object') {
-    throw new Error('Invalid locomotionConfig.json: missing types table');
+  const presets = config.presets;
+  if (!presets || typeof presets !== 'object') {
+    throw new Error('Invalid locomotionConfig.json: missing presets table');
   }
-  for (const type of LOCOMOTION_TYPES) {
-    const typeConfig = types[type];
-    if (!typeConfig || typeof typeConfig !== 'object') {
-      throw new Error(`Invalid locomotionConfig.json: missing types.${type} config`);
+  for (const [presetId, presetConfig] of Object.entries(presets)) {
+    if (!presetConfig || typeof presetConfig !== 'object') {
+      throw new Error(`Invalid locomotionConfig.json: missing presets.${presetId} config`);
     }
-    if (!typeConfig.physics || typeof typeConfig.physics !== 'object') {
-      throw new Error(`Invalid locomotionConfig.json: missing types.${type}.physics config`);
+    if (!presetConfig.physics || typeof presetConfig.physics !== 'object') {
+      throw new Error(`Invalid locomotionConfig.json: missing presets.${presetId}.physics config`);
     }
     assertPositiveFinite(
-      `types.${type}.physics.driveForceMultiplier`,
-      typeConfig.physics.driveForceMultiplier,
+      `presets.${presetId}.physics.driveForceMultiplier`,
+      presetConfig.physics.driveForceMultiplier,
     );
     assertBoolean(
-      `types.${type}.physics.forwardForceRequiresFacing`,
-      typeConfig.physics.forwardForceRequiresFacing,
+      `presets.${presetId}.physics.forwardForceRequiresFacing`,
+      presetConfig.physics.forwardForceRequiresFacing,
     );
     assertBoolean(
-      `types.${type}.physics.driveForceScalesWithFacing`,
-      typeConfig.physics.driveForceScalesWithFacing,
+      `presets.${presetId}.physics.driveForceScalesWithFacing`,
+      presetConfig.physics.driveForceScalesWithFacing,
     );
     assertBoolean(
-      `types.${type}.physics.maintainFullThrustAtWaypoints`,
-      typeConfig.physics.maintainFullThrustAtWaypoints,
+      `presets.${presetId}.physics.maintainFullThrustAtWaypoints`,
+      presetConfig.physics.maintainFullThrustAtWaypoints,
     );
     assertNonNegativeFinite(
-      `types.${type}.physics.airLiftGroundProbeAheadDistance`,
-      typeConfig.physics.airLiftGroundProbeAheadDistance,
+      `presets.${presetId}.physics.airLiftGroundProbeAheadDistance`,
+      presetConfig.physics.airLiftGroundProbeAheadDistance,
     );
     assertNonNegativeFinite(
-      `types.${type}.physics.airLiftGroundProbeAheadRadiusMultiplier`,
-      typeConfig.physics.airLiftGroundProbeAheadRadiusMultiplier,
+      `presets.${presetId}.physics.airLiftGroundProbeAheadRadiusMultiplier`,
+      presetConfig.physics.airLiftGroundProbeAheadRadiusMultiplier,
     );
+    assertBoolean(`presets.${presetId}.physics.idleAirDrive`, presetConfig.physics.idleAirDrive);
     for (const medium of LOCOMOTION_MEDIUM_NAMES) {
-      assertLocomotionTypeMediumPhysics(type, medium, typeConfig.physics[medium]);
-    }
-  }
-  for (const type of Object.keys(types)) {
-    if (!(LOCOMOTION_TYPES as readonly string[]).includes(type)) {
-      throw new Error(`Invalid locomotionConfig.json: unknown locomotion type "${type}"`);
+      assertLocomotionTypeMediumPhysics(presetId, medium, presetConfig.physics[medium]);
     }
   }
   return config as LocomotionConfig;
@@ -201,78 +219,91 @@ export function getAirLiftHeightDistanceScale(
   if (!Number.isFinite(exactHeightForce) || exactHeightForce <= 0) {
     return 0;
   }
-  const rootedHeightForce = Math.pow(exactHeightForce, AIR_LIFT_HEIGHT_FORCE_EXPONENT);
+  const rootedHeightForce = DMath.pow(exactHeightForce, AIR_LIFT_HEIGHT_FORCE_EXPONENT);
   const rootedDistanceScale = rootedHeightForce / heightUpwardForce;
   return Math.min(exactDistanceScale, rootedDistanceScale);
 }
 
-function getLocomotionDriveForceMultiplier(type: LocomotionType): number {
-  return LOCOMOTION_CONFIG.types[type].physics.driveForceMultiplier;
+function getPreset(presetId: string): LocomotionPresetConfig {
+  const preset = LOCOMOTION_CONFIG.presets[presetId];
+  if (!preset) throw new Error(`Invalid locomotion physicsPresetId "${presetId}"`);
+  return preset;
 }
 
-function getLocomotionForwardForceRequiresFacing(type: LocomotionType): boolean {
-  return LOCOMOTION_CONFIG.types[type].physics.forwardForceRequiresFacing;
+function getLocomotionDriveForceMultiplier(presetId: string): number {
+  return getPreset(presetId).physics.driveForceMultiplier;
 }
 
-function getLocomotionDriveForceScalesWithFacing(type: LocomotionType): boolean {
-  return LOCOMOTION_CONFIG.types[type].physics.driveForceScalesWithFacing;
+function getLocomotionForwardForceRequiresFacing(presetId: string): boolean {
+  return getPreset(presetId).physics.forwardForceRequiresFacing;
 }
 
-function getLocomotionMaintainFullThrustAtWaypoints(type: LocomotionType): boolean {
-  return LOCOMOTION_CONFIG.types[type].physics.maintainFullThrustAtWaypoints;
+function getLocomotionDriveForceScalesWithFacing(presetId: string): boolean {
+  return getPreset(presetId).physics.driveForceScalesWithFacing;
 }
 
-function getLocomotionAirLiftGroundProbeAheadDistance(type: LocomotionType): number {
-  return LOCOMOTION_CONFIG.types[type].physics.airLiftGroundProbeAheadDistance;
+function getLocomotionMaintainFullThrustAtWaypoints(presetId: string): boolean {
+  return getPreset(presetId).physics.maintainFullThrustAtWaypoints;
 }
 
-function getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(type: LocomotionType): number {
-  return LOCOMOTION_CONFIG.types[type].physics.airLiftGroundProbeAheadRadiusMultiplier;
+function getLocomotionAirLiftGroundProbeAheadDistance(presetId: string): number {
+  return getPreset(presetId).physics.airLiftGroundProbeAheadDistance;
+}
+
+function getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(presetId: string): number {
+  return getPreset(presetId).physics.airLiftGroundProbeAheadRadiusMultiplier;
 }
 
 function getLocomotionTypeMediumPhysics(
-  type: LocomotionType,
+  presetId: string,
   medium: LocomotionMediumName,
 ): LocomotionTypeMediumPhysics {
-  return LOCOMOTION_CONFIG.types[type].physics[medium];
+  return getPreset(presetId).physics[medium];
 }
 
 function getEffectiveLocomotionForce(
-  type: LocomotionType,
+  presetId: string,
   medium: LocomotionMediumName,
   authoredForce: number,
 ): number {
-  assertNonNegativeFinite(`${type}.physics.${medium}.force`, authoredForce);
-  return authoredForce * getLocomotionDriveForceMultiplier(type);
+  assertNonNegativeFinite(`${presetId}.physics.${medium}.force`, authoredForce);
+  return authoredForce * getLocomotionDriveForceMultiplier(presetId);
 }
 
 function createRuntimeMediumPhysics(
-  type: LocomotionType,
+  presetId: string,
   medium: LocomotionMediumName,
   authored: AuthoredLocomotionMediumPhysics,
 ): UnitLocomotionMediumPhysics {
   if (!authored || typeof authored !== 'object') {
-    throw new Error(`Invalid locomotion ${type}.physics.${medium}: missing medium physics`);
+    throw new Error(`Invalid locomotion ${presetId}.physics.${medium}: missing medium physics`);
   }
   for (const field of LOCOMOTION_CONFIG_MEDIUM_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(authored, field)) {
       throw new Error(
-        `Invalid locomotion ${type}.physics.${medium}.${field}: moved to locomotionConfig.json`,
+        `Invalid locomotion ${presetId}.physics.${medium}.${field}: moved to locomotionConfig.json`,
       );
     }
   }
-  assertNonNegativeFinite(`${type}.physics.${medium}.force`, authored.force);
+  assertNonNegativeFinite(`${presetId}.physics.${medium}.force`, authored.force);
   assertNonNegativeFinite(
-    `${type}.physics.${medium}.heightUpwardForce`,
+    `${presetId}.physics.${medium}.heightUpwardForce`,
     authored.heightUpwardForce,
   );
   const authoredBuoyancy = authored.buoyancy ?? 0;
-  assertNonNegativeFinite(`${type}.physics.${medium}.buoyancy`, authoredBuoyancy);
-  const typeMediumPhysics = getLocomotionTypeMediumPhysics(type, medium);
+  assertNonNegativeFinite(`${presetId}.physics.${medium}.buoyancy`, authoredBuoyancy);
+  const typeMediumPhysics = getLocomotionTypeMediumPhysics(presetId, medium);
   return {
-    force: getEffectiveLocomotionForce(type, medium, authored.force),
+    force: getEffectiveLocomotionForce(presetId, medium, authored.force),
     traction: typeMediumPhysics.traction,
     friction: typeMediumPhysics.friction,
+    quadraticDrag: typeMediumPhysics.quadraticDrag,
+    dragForwardScale: typeMediumPhysics.dragForwardScale,
+    dragLateralScale: typeMediumPhysics.dragLateralScale,
+    dragVerticalScale: typeMediumPhysics.dragVerticalScale,
+    angularDrag: typeMediumPhysics.angularDrag,
+    surfaceGrip: typeMediumPhysics.surfaceGrip,
+    contactDamping: typeMediumPhysics.contactDamping,
     buoyancy: authoredBuoyancy,
     heightUpwardForce: authored.heightUpwardForce,
     heightUpwardForceRandomizationAmount: typeMediumPhysics.heightUpwardForceRandomizationAmount,
@@ -281,34 +312,17 @@ function createRuntimeMediumPhysics(
 }
 
 function createRuntimeLocomotionPhysics(
-  type: LocomotionType,
+  presetId: string,
   authored: LocomotionBlueprint['physics'],
 ): UnitLocomotionPhysics {
   if (!authored || typeof authored !== 'object') {
-    throw new Error(`Invalid locomotion ${type}.physics: missing physics object`);
+    throw new Error(`Invalid locomotion ${presetId}.physics: missing physics object`);
   }
   return {
-    ground: createRuntimeMediumPhysics(type, 'ground', authored.ground),
-    air: createRuntimeMediumPhysics(type, 'air', authored.air),
-    water: createRuntimeMediumPhysics(type, 'water', authored.water),
+    ground: createRuntimeMediumPhysics(presetId, 'ground', authored.ground),
+    air: createRuntimeMediumPhysics(presetId, 'air', authored.air),
+    water: createRuntimeMediumPhysics(presetId, 'water', authored.water),
   };
-}
-
-function isAirborneLocomotionType(type: LocomotionType): boolean {
-  return type === 'hover' || type === 'flying';
-}
-
-function assertPrimaryMediumCanMove(
-  type: LocomotionType,
-  physics: UnitLocomotionPhysics,
-): void {
-  const primaryMedium: LocomotionMediumName = isAirborneLocomotionType(type) ? 'air' : 'ground';
-  const primary = physics[primaryMedium];
-  assertPositiveFinite(`${type}.physics.${primaryMedium}.force`, primary.force);
-  assertPositiveFinite(`${type}.physics.${primaryMedium}.traction`, primary.traction);
-  if (primaryMedium === 'air') {
-    assertPositiveFinite(`${type}.physics.air.heightUpwardForce`, physics.air.heightUpwardForce);
-  }
 }
 
 function createRuntimePathfindingConfig(
@@ -344,22 +358,58 @@ function createRuntimePathfindingConfig(
 export function createUnitLocomotion(
   locomotion: LocomotionBlueprint,
 ): UnitLocomotion {
-  const { type } = locomotion;
-  const physics = createRuntimeLocomotionPhysics(type, locomotion.physics);
-  assertPrimaryMediumCanMove(type, physics);
+  const { type, physicsPresetId, navigation, survival } = locomotion;
+  if (!(LOCOMOTION_TYPES as readonly string[]).includes(type)) {
+    throw new Error(`Invalid locomotion visual rig type "${String(type)}"`);
+  }
+  const preset = getPreset(physicsPresetId);
+  const physics = createRuntimeLocomotionPhysics(physicsPresetId, locomotion.physics);
+  if (!navigation.allowGround && !navigation.allowWater && !navigation.allowAir) {
+    throw new Error(`Invalid locomotion ${physicsPresetId}: navigation allows no domain`);
+  }
+  if (navigation.allowGround) {
+    assertPositiveFinite(`${physicsPresetId}.physics.ground.force`, physics.ground.force);
+    assertPositiveFinite(`${physicsPresetId}.physics.ground.traction`, physics.ground.traction);
+  }
+  if (navigation.allowWater) {
+    assertPositiveFinite(`${physicsPresetId}.physics.water.force`, physics.water.force);
+    assertPositiveFinite(`${physicsPresetId}.physics.water.traction`, physics.water.traction);
+  }
+  if (navigation.allowAir) {
+    assertPositiveFinite(`${physicsPresetId}.physics.air.force`, physics.air.force);
+    assertPositiveFinite(`${physicsPresetId}.physics.air.traction`, physics.air.traction);
+    if (physics.air.buoyancy <= 0) {
+      assertPositiveFinite(
+        `${physicsPresetId}.physics.air.heightUpwardForce`,
+        physics.air.heightUpwardForce,
+      );
+    }
+  }
+  assertClosedUnitFraction(
+    `${physicsPresetId}.survival.fatalSubmergedFraction`,
+    survival.fatalSubmergedFraction,
+  );
+  assertNonNegativeFinite(
+    `${physicsPresetId}.survival.fatalExposureSeconds`,
+    survival.fatalExposureSeconds,
+  );
   const pathfinding = createRuntimePathfindingConfig(
     `${type}.pathfinding(${locomotion.pathfindingBlueprintId})`,
     locomotion.pathfinding,
   );
   return {
     type,
+    physicsPresetId,
     physics,
-    forwardForceRequiresFacing: getLocomotionForwardForceRequiresFacing(type),
-    driveForceScalesWithFacing: getLocomotionDriveForceScalesWithFacing(type),
-    maintainFullThrustAtWaypoints: getLocomotionMaintainFullThrustAtWaypoints(type),
-    airLiftGroundProbeAheadDistance: getLocomotionAirLiftGroundProbeAheadDistance(type),
+    navigation: { ...navigation },
+    survival: { ...survival },
+    idleAirDrive: preset.physics.idleAirDrive,
+    forwardForceRequiresFacing: getLocomotionForwardForceRequiresFacing(physicsPresetId),
+    driveForceScalesWithFacing: getLocomotionDriveForceScalesWithFacing(physicsPresetId),
+    maintainFullThrustAtWaypoints: getLocomotionMaintainFullThrustAtWaypoints(physicsPresetId),
+    airLiftGroundProbeAheadDistance: getLocomotionAirLiftGroundProbeAheadDistance(physicsPresetId),
     airLiftGroundProbeAheadRadiusMultiplier:
-      getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(type),
+      getLocomotionAirLiftGroundProbeAheadRadiusMultiplier(physicsPresetId),
     pathfinding,
   };
 }
@@ -375,11 +425,15 @@ export function cloneUnitLocomotion(
 ): UnitLocomotion {
   return {
     type: locomotion.type,
+    physicsPresetId: locomotion.physicsPresetId,
     physics: {
       ground: cloneMediumPhysics(locomotion.physics.ground),
       air: cloneMediumPhysics(locomotion.physics.air),
       water: cloneMediumPhysics(locomotion.physics.water),
     },
+    navigation: { ...locomotion.navigation },
+    survival: { ...locomotion.survival },
+    idleAirDrive: locomotion.idleAirDrive,
     forwardForceRequiresFacing: locomotion.forwardForceRequiresFacing,
     driveForceScalesWithFacing: locomotion.driveForceScalesWithFacing,
     maintainFullThrustAtWaypoints: locomotion.maintainFullThrustAtWaypoints,
@@ -392,9 +446,11 @@ export function cloneUnitLocomotion(
 export function getLocomotionPrimaryDrivePhysics(
   locomotion: UnitLocomotion,
 ): UnitLocomotionMediumPhysics {
-  return isAirborneLocomotionType(locomotion.type)
-    ? locomotion.physics.air
-    : locomotion.physics.ground;
+  if (locomotion.navigation.allowAir) return locomotion.physics.air;
+  if (locomotion.navigation.allowWater && !locomotion.navigation.allowGround) {
+    return locomotion.physics.water;
+  }
+  return locomotion.physics.ground;
 }
 
 export function getLocomotionGroundDrivePhysics(

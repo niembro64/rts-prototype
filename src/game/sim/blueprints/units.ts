@@ -334,8 +334,7 @@ for (const bp of Object.values(UNIT_BLUEPRINTS)) {
   // Mount-finiteness only — cross-blueprint turret-ID validation runs
   // in blueprints/index.ts where both UNIT_BLUEPRINTS and
   // TURRET_BLUEPRINTS are visible.
-  const isAirborne =
-    bp.locomotion.type === 'hover' || bp.locomotion.type === 'flying';
+  const isAirborne = bp.locomotion.navigation.allowAir;
   for (let i = 0; i < bp.turrets.length; i++) {
     const turret = bp.turrets[i];
     const mount = turret.mount;

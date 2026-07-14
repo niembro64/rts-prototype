@@ -1,6 +1,6 @@
 import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS, UNIT_MASS_MULTIPLIER } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
-import { LOCOMOTION_FORCE_SCALE, getLocomotionPrimaryDrivePhysics } from './locomotion';
+import { LOCOMOTION_FORCE_SCALE } from './locomotion';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';
@@ -33,9 +33,6 @@ export class SimulationArrivalController {
   private dy = new Float64Array(0);
   private distance = new Float64Array(0);
   private radiusPush = new Float64Array(0);
-  private driveForce = new Float64Array(0);
-  private traction = new Float64Array(0);
-  private mass = new Float64Array(0);
   private speedLimitFactor = new Float64Array(0);
   private flags = new Uint8Array(0);
   private outX = new Float64Array(0);
@@ -193,10 +190,6 @@ export class SimulationArrivalController {
     this.dy[index] = dy;
     this.distance[index] = distance;
     this.radiusPush[index] = unit.radius.collision;
-    const drivePhysics = getLocomotionPrimaryDrivePhysics(unit.locomotion);
-    this.driveForce[index] = drivePhysics.force * speedLimitFactor;
-    this.traction[index] = drivePhysics.traction;
-    this.mass[index] = unit.mass;
     this.speedLimitFactor[index] = speedLimitFactor;
     this.flags[index] =
       (maintainFullThrustAtWaypoints ? ARRIVAL_BATCH_FLAG_MAINTAIN_FULL_THRUST : 0)
@@ -217,9 +210,7 @@ export class SimulationArrivalController {
       this.dy.subarray(0, count),
       this.distance.subarray(0, count),
       this.radiusPush.subarray(0, count),
-      this.driveForce.subarray(0, count),
-      this.traction.subarray(0, count),
-      this.mass.subarray(0, count),
+      this.speedLimitFactor.subarray(0, count),
       this.flags.subarray(0, count),
       this.outX.subarray(0, count),
       this.outY.subarray(0, count),
@@ -284,15 +275,6 @@ export class SimulationArrivalController {
     const radiusCollision = new Float64Array(next);
     radiusCollision.set(this.radiusPush);
     this.radiusPush = radiusCollision;
-    const driveForce = new Float64Array(next);
-    driveForce.set(this.driveForce);
-    this.driveForce = driveForce;
-    const traction = new Float64Array(next);
-    traction.set(this.traction);
-    this.traction = traction;
-    const mass = new Float64Array(next);
-    mass.set(this.mass);
-    this.mass = mass;
     const speedLimitFactor = new Float64Array(next);
     speedLimitFactor.set(this.speedLimitFactor);
     this.speedLimitFactor = speedLimitFactor;

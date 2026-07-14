@@ -19,6 +19,7 @@ import { setUnitActions, shiftUnitAction } from './unitActions';
 import { WorldState } from './WorldState';
 import { createWreckFromDeadUnit } from './wrecks';
 import type { TerrainBuildabilityGrid } from '@/types/terrain';
+import { deterministicMath as DMath } from './deterministicMath';
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -82,15 +83,15 @@ function barUnloadAreaTargetForContract(
   oneBasedIndex: number,
   totalCount: number,
 ): { x: number; y: number } {
-  const innerCount = Math.floor(Math.sqrt(totalCount));
-  const phi = (Math.sqrt(5) + 1) / 2;
+  const innerCount = Math.floor(DMath.sqrt(totalCount));
+  const phi = (DMath.sqrt(5) + 1) / 2;
   const normalizedRadius = oneBasedIndex > totalCount - innerCount
     ? 1
-    : Math.sqrt(oneBasedIndex - 0.5) / Math.sqrt(totalCount - ((innerCount + 1) / 2));
+    : DMath.sqrt(oneBasedIndex - 0.5) / DMath.sqrt(totalCount - ((innerCount + 1) / 2));
   const theta = (2 * Math.PI * oneBasedIndex) / (phi * phi);
   return {
-    x: centerX + normalizedRadius * Math.cos(theta) * radius,
-    y: centerY + normalizedRadius * Math.sin(theta) * radius,
+    x: centerX + normalizedRadius * DMath.cos(theta) * radius,
+    y: centerY + normalizedRadius * DMath.sin(theta) * radius,
   };
 }
 
@@ -401,7 +402,7 @@ export function runCommandExecutionContractTest(): void {
   );
   assertNear(
     dgunProjectileSpawns[0].rotation,
-    Math.atan2(dgunTarget.transform.y - dgunCommander.transform.y, dgunTarget.transform.x - dgunCommander.transform.x),
+    DMath.atan2(dgunTarget.transform.y - dgunCommander.transform.y, dgunTarget.transform.x - dgunCommander.transform.x),
     'BAR DGun unit target command must aim at the target entity current point instead of the fallback ground point',
   );
 

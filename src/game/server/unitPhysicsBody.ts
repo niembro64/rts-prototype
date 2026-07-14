@@ -2,7 +2,6 @@ import type { Entity } from '../sim/types';
 import type { WorldState } from '../sim/WorldState';
 import type { Body3D, PhysicsEngine3D } from './PhysicsEngine3D';
 import { SUPPORT_SURFACE_CONTACT_EPSILON } from '../sim/supportSurface';
-import { getUnitGroundFrictionScale } from '../sim/unitMotionFriction';
 
 type UnitPhysicsBodyOptions = {
   ignoreOverlappingBuildings: boolean | undefined;
@@ -56,7 +55,9 @@ export function createPhysicsBodyForUnit(
     spawnZ,
     entity.unit.surfaceNormal,
     0,
-    getUnitGroundFrictionScale(entity.unit),
+    // The canonical locomotion profile applies contact damping in Rust on the
+    // first force step. Body creation deliberately has no physics-preset logic.
+    1,
   );
   entity.transform.x = body.x;
   entity.transform.y = body.y;

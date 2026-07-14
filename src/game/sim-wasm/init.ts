@@ -55,6 +55,7 @@ import __wbg_init, {
   economy_apply_income_credits,
   economy_apply_converter_transfers,
   arrival_completion_step_batch,
+  unit_effective_drive_acceleration,
   flying_loiter_step_batch,
   stuck_replan_step_batch,
   unit_action_plan_batch,
@@ -79,6 +80,8 @@ import __wbg_init, {
   pool_resolve_sphere_cuboid_full,
   quat_hover_orientation_step_batch,
   unit_force_runtime_clear,
+  unit_fatal_water_step_pool,
+  unit_fatal_water_entity_slots_ptr,
   render_unit_pose_compute,
   render_unit_pose_input_scratch_ptr,
   render_unit_pose_output_scratch_ptr,
@@ -267,6 +270,7 @@ import __wbg_init, {
   spatial_scratch_len,
   spatial_slot_kind,
   pathfinder_init,
+  pathfinder_compute_locomotion_climb_profile,
   pathfinder_rebuild_mask_and_cc,
   pathfinder_find_path,
   pathfinder_waypoints_ptr,
@@ -1013,9 +1017,7 @@ export interface SimWasm {
     dy: Float64Array,
     distance: Float64Array,
     radiusCollision: Float64Array,
-    driveForce: Float64Array,
-    traction: Float64Array,
-    mass: Float64Array,
+    driveScale: Float64Array,
     flags: Uint8Array,
     outThrustX: Float64Array,
     outThrustY: Float64Array,
@@ -1028,6 +1030,15 @@ export interface SimWasm {
     controlRadiusMin: number,
     responseTimeSec: number,
     minAccel: number,
+  ) => number;
+  /** Current Rust-authoritative horizontal drive acceleration for a body,
+   *  blended by air/water occupancy and ground contact/load. */
+  readonly unitEffectiveDriveAcceleration: (
+    bodySlot: number,
+    thrustMultiplier: number,
+    forceScale: number,
+    referenceMass: number,
+    unitMassMultiplier: number,
   ) => number;
   /** TS-WASM-01B2 — body-pool-backed per-unit ground-normal EMA.
    *  Rust walks occupied dynamic body slots, samples the installed
@@ -1085,6 +1096,11 @@ export interface SimWasm {
   unitForceProfileValuesPtr: () => number;
   unitForceProfileFlagsPtr: () => number;
   unitForceRuntimeClear: () => void;
+  /** Advances water-fatal exposure for every live unit body, including
+   *  sleeping bodies, and returns the count in the Rust-owned entity-slot
+   *  scratch. */
+  unitFatalWaterStepPool: (dtSec: number) => number;
+  unitFatalWaterEntitySlotsPtr: () => number;
   /** C1 — splash/area target overlap classifier. TypeScript gathers
    *  spatial candidates and applies damage/event diffs; Rust owns the
    *  unit/projectile sphere tests, building AABB tests, slice filtering,
@@ -3621,6 +3637,25 @@ export const SNAPSHOT_ENTITY_TYPE_TOWER = 3;
  *  WASM call. Caller passes the building-occupied cells list per
  *  rebuild; the Rust side caches mask + CC by version pair. */
 export interface PathfinderApi {
+  /** Compute the force-, grip-, and stability-limited ground climb envelope.
+   *  Writes max slope, min normal Z, safe acceleration, then the three
+   *  individual slope limits into `out`. */
+  computeLocomotionClimbProfile: (
+    groundForce: number,
+    groundTraction: number,
+    surfaceGrip: number,
+    mass: number,
+    thrustMultiplier: number,
+    forceScale: number,
+    referenceMass: number,
+    unitMassMultiplier: number,
+    gravity: number,
+    forceSafetyRatio: number,
+    stabilityMaxSlopeDeg: number,
+    allowGround: boolean,
+    allowAir: boolean,
+    out: Float64Array,
+  ) => number;
   /** Allocate the per-cell SoA arrays for the given map dimensions.
    *  Idempotent if map size is unchanged. Recomputes cell counts as
    *  `ceil(mapW/20), ceil(mapH/20)`. */
@@ -4091,6 +4126,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         engineStaticsRemove: engine_statics_remove,
         poolResolveSphereCuboidFull: pool_resolve_sphere_cuboid_full,
         arrivalControlStepBatch: arrival_control_step_batch,
+        unitEffectiveDriveAcceleration: unit_effective_drive_acceleration,
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
@@ -4098,6 +4134,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitForceProfileValuesPtr: unit_force_profile_values_ptr,
         unitForceProfileFlagsPtr: unit_force_profile_flags_ptr,
         unitForceRuntimeClear: unit_force_runtime_clear,
+        unitFatalWaterStepPool: unit_fatal_water_step_pool,
+        unitFatalWaterEntitySlotsPtr: unit_fatal_water_entity_slots_ptr,
         damageAreaOverlapBatch: damage_area_overlap_batch,
         damageAreaCandidatesBatch: damage_area_candidates_batch,
         damageAreaTurretCandidatesBatch: damage_area_turret_candidates_batch,
@@ -4156,6 +4194,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         memory,
         pathfinder: {
           init: pathfinder_init,
+          computeLocomotionClimbProfile: pathfinder_compute_locomotion_climb_profile,
           rebuildMaskAndCc: pathfinder_rebuild_mask_and_cc,
           findPath: pathfinder_find_path,
           waypointsPtr: pathfinder_waypoints_ptr,

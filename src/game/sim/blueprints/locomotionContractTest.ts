@@ -12,6 +12,7 @@ import {
 } from '../airLiftGroundProbes';
 import { getUnitBlueprint, getUnitLocomotion } from './index';
 import rawLocomotionConfig from '../locomotionConfig.json';
+import { deterministicMath as DMath } from '../deterministicMath';
 
 const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
 const MEDIUM_CONFIG_FIELDS = [
@@ -19,16 +20,22 @@ const MEDIUM_CONFIG_FIELDS = [
   'friction',
   'heightUpwardForceRandomizationAmount',
   'heightUpwardForceEMA',
+  'quadraticDrag',
+  'dragForwardScale',
+  'dragLateralScale',
+  'dragVerticalScale',
+  'angularDrag',
+  'surfaceGrip',
+  'contactDamping',
 ] as const;
 
-type LocomotionType = LocomotionBlueprint['type'];
 type LocomotionMediumName = (typeof LOCOMOTION_MEDIUM_NAMES)[number];
 type AuthoredMediumPhysics = LocomotionBlueprint['physics']['ground'];
 type RuntimeMediumPhysics = UnitLocomotion['physics']['ground'];
 type LocomotionConfigMediumField = (typeof MEDIUM_CONFIG_FIELDS)[number];
 type LocomotionTypeMediumPhysics = Pick<RuntimeMediumPhysics, LocomotionConfigMediumField>;
 
-type LocomotionTypeConfig = {
+type LocomotionPresetConfig = {
   physics: {
     driveForceMultiplier: number;
     forwardForceRequiresFacing: boolean;
@@ -36,6 +43,7 @@ type LocomotionTypeConfig = {
     maintainFullThrustAtWaypoints: boolean;
     airLiftGroundProbeAheadDistance: number;
     airLiftGroundProbeAheadRadiusMultiplier: number;
+    idleAirDrive: boolean;
   } & Record<LocomotionMediumName, LocomotionTypeMediumPhysics>;
 };
 
@@ -43,11 +51,11 @@ type LocomotionConfigContract = {
   airLiftHeightForceFalloff: {
     heightForceExponent: number;
   };
-  types: Record<LocomotionType, LocomotionTypeConfig>;
+  presets: Record<string, LocomotionPresetConfig>;
 };
 
 const LOCOMOTION_CONFIG = rawLocomotionConfig as LocomotionConfigContract;
-const LOCOMOTION_TYPE_CONFIGS = LOCOMOTION_CONFIG.types;
+const LOCOMOTION_PRESETS = LOCOMOTION_CONFIG.presets;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -85,12 +93,12 @@ function expectLocomotionError(
 }
 
 function minSurfaceNormalZ(maxSlopeDeg: number): number {
-  return Math.cos(maxSlopeDeg * Math.PI / 180);
+  return DMath.cos(maxSlopeDeg * Math.PI / 180);
 }
 
-function getLocomotionTypeConfig(type: LocomotionType): LocomotionTypeConfig {
-  const config = LOCOMOTION_TYPE_CONFIGS[type];
-  assertContract(config !== undefined, `locomotionConfig.json must define ${type}`);
+function getLocomotionPresetConfig(presetId: string): LocomotionPresetConfig {
+  const config = LOCOMOTION_PRESETS[presetId];
+  assertContract(config !== undefined, `locomotionConfig.json must define ${presetId}`);
   return config;
 }
 
@@ -107,7 +115,7 @@ function assertAirLiftHeightForceFalloffMatchesConfig(): void {
   );
   assertEqual(
     getAirLiftHeightDistanceScale(4, 16),
-    Math.pow(16 / 4, exponent) / 16,
+    DMath.pow(16 / 4, exponent) / 16,
     'air lift height distance scale roots the inverse-distance height force',
   );
   assertEqual(
@@ -164,7 +172,7 @@ function assertMediumOwnsFields(
 function assertRuntimeMediumMatchesAuthored(
   runtime: RuntimeMediumPhysics,
   authored: AuthoredMediumPhysics,
-  typeConfig: LocomotionTypeConfig,
+  typeConfig: LocomotionPresetConfig,
   medium: LocomotionMediumName,
   label: string,
 ): void {
@@ -172,7 +180,7 @@ function assertRuntimeMediumMatchesAuthored(
   assertEqual(
     runtime.force,
     authored.force * typeConfig.physics.driveForceMultiplier,
-    `${label} force follows authored force and locomotion type multiplier`,
+    `${label} force follows authored force and locomotion physics preset multiplier`,
   );
   assertEqual(
     runtime.heightUpwardForce,
@@ -223,9 +231,24 @@ function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLoc
   const unitBlueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
   const authored = unitBlueprint.locomotion;
-  const typeConfig = getLocomotionTypeConfig(authored.type);
+  const typeConfig = getLocomotionPresetConfig(authored.physicsPresetId);
 
   assertEqual(locomotion.type, authored.type, `${unitBlueprintId} locomotion type follows unit JSON`);
+  assertEqual(
+    locomotion.physicsPresetId,
+    authored.physicsPresetId,
+    `${unitBlueprintId} physics preset follows unit JSON`,
+  );
+  assertEqual(
+    JSON.stringify(locomotion.navigation),
+    JSON.stringify(authored.navigation),
+    `${unitBlueprintId} navigation policy follows unit JSON`,
+  );
+  assertEqual(
+    JSON.stringify(locomotion.survival),
+    JSON.stringify(authored.survival),
+    `${unitBlueprintId} survival policy follows unit JSON`,
+  );
   for (const medium of LOCOMOTION_MEDIUM_NAMES) {
     assertRuntimeMediumMatchesAuthored(
       locomotion.physics[medium],
@@ -235,6 +258,11 @@ function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLoc
       `${unitBlueprintId} ${medium}`,
     );
   }
+  assertEqual(
+    locomotion.idleAirDrive,
+    typeConfig.physics.idleAirDrive,
+    `${unitBlueprintId} idle air drive follows locomotionConfig.json`,
+  );
   assertEqual(
     locomotion.forwardForceRequiresFacing,
     typeConfig.physics.forwardForceRequiresFacing,
@@ -303,6 +331,7 @@ export function runLocomotionContractTest(): void {
 
   const zeroWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
   zeroWaterForce.physics.water.force = 0;
+  zeroWaterForce.navigation.allowWater = false;
   const zeroWaterRuntime = createUnitLocomotion(zeroWaterForce);
   assertEqual(zeroWaterRuntime.physics.water.force, 0, 'zero-water Hippo water force');
 

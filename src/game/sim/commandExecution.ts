@@ -58,7 +58,7 @@ import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
-import { getLocomotionPrimaryDrivePhysics } from './locomotion';
+import { LOCOMOTION_FORCE_SCALE } from './locomotion';
 import { magnitude, getTransformCosSin } from '../math';
 import {
   getHostShotArmingRadius,
@@ -74,7 +74,11 @@ import { resetDisabledTurretJsOnlyFields } from './combat/combatActivity';
 import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
-import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
+import {
+  DGUN_TERRAIN_FOLLOW_HEIGHT,
+  UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
+  UNIT_MASS_MULTIPLIER,
+} from '../../config';
 import { setUnitGroundNormalEmaMode } from './unitGroundNormal';
 import {
   clearMovementAnchorSatisfied,
@@ -94,7 +98,7 @@ import { areaTargetMatchesCommandFilter } from './areaCommandFilters';
 
 const MAX_FACTORY_PRODUCTION_QUOTA = 64;
 const BAR_UNLOAD_AREA_MIN_RADIUS = 64;
-const BAR_UNLOAD_AREA_PHI = (Math.sqrt(5) + 1) / 2;
+const BAR_UNLOAD_AREA_PHI = (DMath.sqrt(5) + 1) / 2;
 import { isCapturableTarget } from './capture';
 import { isResurrectableWreck } from './wrecks';
 import { canLoadTransport, isTransportUnit } from './transports';
@@ -171,7 +175,7 @@ function refreshPatrolStartIndex(unit: Unit): void {
 
 function resetFlyingLoiterToCurrentPosition(entity: Entity, world: WorldState): void {
   const unit = entity.unit;
-  if (!unit || unit.locomotion.type !== 'flying') return;
+  if (!unit || !unit.locomotion.idleAirDrive) return;
   const x = Math.max(0, Math.min(world.mapWidth, entity.transform.x));
   const y = Math.max(0, Math.min(world.mapHeight, entity.transform.y));
   unit.flyingLoiterTargetX = x;
@@ -766,15 +770,20 @@ export function buildMassAwareGroupFormationSlots(units: readonly Entity[]): Gro
   return slots;
 }
 
-function unitFormationAcceleration(entity: Entity): number {
-  const unit = entity.unit;
-  const locomotion = unit?.locomotion;
-  if (unit === null || locomotion === undefined) return 0;
-  const mass = Number.isFinite(unit.mass) && unit.mass > 0 ? unit.mass : 1;
-  const drivePhysics = getLocomotionPrimaryDrivePhysics(locomotion);
-  // Match the physics solver's relative behavior: bigger engines help,
-  // but heavier bodies still accelerate more slowly for a given force.
-  return (drivePhysics.force * drivePhysics.traction) / mass;
+function unitFormationAcceleration(entity: Entity, world: WorldState): number {
+  const body = entity.body?.physicsBody;
+  if (entity.unit === null || body === undefined) return 0;
+  const sim = getSimWasm();
+  if (sim === undefined) {
+    throw new Error('Formation acceleration requires the authoritative simulation WASM');
+  }
+  return sim.unitEffectiveDriveAcceleration(
+    body.slot,
+    world.thrustMultiplier,
+    LOCOMOTION_FORCE_SCALE,
+    UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
+    UNIT_MASS_MULTIPLIER,
+  );
 }
 
 function computeSlowestFormationSpeedFactors(
@@ -785,7 +794,7 @@ function computeSlowestFormationSpeedFactors(
   for (let i = 0; i < entityIds.length; i++) {
     const entity = world.getEntity(entityIds[i]);
     if (entity === undefined || entity.type !== 'unit' || entity.unit === null) continue;
-    const acceleration = unitFormationAcceleration(entity);
+    const acceleration = unitFormationAcceleration(entity, world);
     if (
       Number.isFinite(acceleration) &&
       acceleration > 0 &&
@@ -800,7 +809,7 @@ function computeSlowestFormationSpeedFactors(
   for (let i = 0; i < entityIds.length; i++) {
     const entity = world.getEntity(entityIds[i]);
     if (entity === undefined || entity.type !== 'unit' || entity.unit === null) continue;
-    const acceleration = unitFormationAcceleration(entity);
+    const acceleration = unitFormationAcceleration(entity, world);
     if (!Number.isFinite(acceleration) || acceleration <= slowestAcceleration) continue;
     const factor = slowestAcceleration / acceleration;
     if (factor >= 0.999) continue;
@@ -2039,7 +2048,7 @@ function executeUnloadTransportCommand(ctx: CommandContext, command: UnloadTrans
   const areaRadius = command.radius !== undefined && command.radius >= BAR_UNLOAD_AREA_MIN_RADIUS
     ? command.radius
     : null;
-  const barAreaInnerCount = areaRadius !== null ? Math.floor(Math.sqrt(transports.length)) : 0;
+  const barAreaInnerCount = areaRadius !== null ? Math.floor(DMath.sqrt(transports.length)) : 0;
 
   for (let i = 0; i < transports.length; i++) {
     const transport = transports[i];
@@ -2078,10 +2087,10 @@ function barUnloadAreaTarget(
 ): { x: number; y: number; z: number } {
   const normalizedRadius = oneBasedIndex > totalCount - innerCount
     ? 1
-    : Math.sqrt(oneBasedIndex - 0.5) / Math.sqrt(totalCount - ((innerCount + 1) / 2));
+    : DMath.sqrt(oneBasedIndex - 0.5) / DMath.sqrt(totalCount - ((innerCount + 1) / 2));
   const theta = (2 * Math.PI * oneBasedIndex) / (BAR_UNLOAD_AREA_PHI * BAR_UNLOAD_AREA_PHI);
-  const x = clampToMap(centerX + normalizedRadius * Math.cos(theta) * areaRadius, world.mapWidth);
-  const y = clampToMap(centerY + normalizedRadius * Math.sin(theta) * areaRadius, world.mapHeight);
+  const x = clampToMap(centerX + normalizedRadius * DMath.cos(theta) * areaRadius, world.mapWidth);
+  const y = clampToMap(centerY + normalizedRadius * DMath.sin(theta) * areaRadius, world.mapHeight);
   return { x, y, z: world.getGroundZ(x, y) };
 }
 

@@ -316,10 +316,10 @@ function validatePathDoesNotCrossWater(
  *  gate on directed uphill edges. Higher values mean flatter required
  *  uphill terrain; downhill movement and cliff falls remain valid.
  *
- *  `terrainFilter` carries medium-aware traversal flags. Air can bypass
- *  terrain blockers; wet cells can be traversed by water locomotion or
- *  ground drive on the bed; dry cells require ground capability and use
- *  the unit's dry-ground climb profile. */
+ *  `terrainFilter` carries explicit navigation-domain flags. Air can bypass
+ *  terrain blockers; wet cells require water navigation even if the body
+ *  could physically touch the bed; dry cells require ground navigation and
+ *  use the unit's dry-ground climb profile. */
 export function expandPathPoints(
   startX: number, startY: number,
   goalX: number, goalY: number,

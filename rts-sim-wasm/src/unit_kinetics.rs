@@ -96,7 +96,7 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 52;
 //  those out before OR-ing runtime flags.
 // ─────────────────────────────────────────────────────────────────
 
-pub const UF_PROFILE_STRIDE: usize = 17;
+pub const UF_PROFILE_STRIDE: usize = 31;
 pub(crate) const UF_PROFILE_GROUND_FORCE: usize = 0;
 pub(crate) const UF_PROFILE_GROUND_TRACTION: usize = 1;
 pub(crate) const UF_PROFILE_AIR_BUOYANCY: usize = 2;
@@ -114,6 +114,20 @@ pub(crate) const UF_PROFILE_SWIM_RANDOM_AMOUNT: usize = 13;
 pub(crate) const UF_PROFILE_SWIM_EMA_WEIGHT: usize = 14;
 pub(crate) const UF_PROFILE_AIR_FORCE: usize = 15;
 pub(crate) const UF_PROFILE_AIR_TRACTION: usize = 16;
+pub(crate) const UF_PROFILE_GROUND_SURFACE_GRIP: usize = 17;
+pub(crate) const UF_PROFILE_AIR_QUADRATIC_DRAG: usize = 18;
+pub(crate) const UF_PROFILE_AIR_DRAG_FORWARD_SCALE: usize = 19;
+pub(crate) const UF_PROFILE_AIR_DRAG_LATERAL_SCALE: usize = 20;
+pub(crate) const UF_PROFILE_AIR_DRAG_VERTICAL_SCALE: usize = 21;
+pub(crate) const UF_PROFILE_AIR_ANGULAR_DRAG: usize = 22;
+pub(crate) const UF_PROFILE_WATER_QUADRATIC_DRAG: usize = 23;
+pub(crate) const UF_PROFILE_WATER_DRAG_FORWARD_SCALE: usize = 24;
+pub(crate) const UF_PROFILE_WATER_DRAG_LATERAL_SCALE: usize = 25;
+pub(crate) const UF_PROFILE_WATER_DRAG_VERTICAL_SCALE: usize = 26;
+pub(crate) const UF_PROFILE_WATER_ANGULAR_DRAG: usize = 27;
+pub(crate) const UF_PROFILE_FATAL_WATER_FRACTION: usize = 28;
+pub(crate) const UF_PROFILE_FATAL_WATER_SECONDS: usize = 29;
+pub(crate) const UF_PROFILE_GROUND_CONTACT_DAMPING: usize = 30;
 
 pub(crate) struct UnitForceProfileTable {
     pub(crate) values: Vec<f64>,
@@ -125,6 +139,11 @@ pub(crate) struct UnitForceRuntimeTable {
     pub(crate) entity_id: Vec<i32>,
     pub(crate) hover_smoothed_force: Vec<f64>,
     pub(crate) swim_smoothed_force: Vec<f64>,
+    pub(crate) air_fraction: Vec<f64>,
+    pub(crate) water_fraction: Vec<f64>,
+    pub(crate) ground_contact: Vec<u8>,
+    pub(crate) water_exposure_seconds: Vec<f64>,
+    pub(crate) fatal_water_entity_slots: Vec<u32>,
 }
 
 pub(crate) struct UnitForceProfileTableHolder(
@@ -164,6 +183,11 @@ pub(crate) fn unit_force_runtime_table() -> &'static mut UnitForceRuntimeTable {
                 entity_id: Vec::new(),
                 hover_smoothed_force: Vec::new(),
                 swim_smoothed_force: Vec::new(),
+                air_fraction: Vec::new(),
+                water_fraction: Vec::new(),
+                ground_contact: Vec::new(),
+                water_exposure_seconds: Vec::new(),
+                fatal_water_entity_slots: Vec::new(),
             });
         }
         cell.as_mut().unwrap()
@@ -185,11 +209,19 @@ fn unit_force_runtime_slot(
         runtime.entity_id.resize(needed, ENTITY_STATE_NO_ENTITY_ID);
         runtime.hover_smoothed_force.resize(needed, f64::NAN);
         runtime.swim_smoothed_force.resize(needed, f64::NAN);
+        runtime.air_fraction.resize(needed, 1.0);
+        runtime.water_fraction.resize(needed, 0.0);
+        runtime.ground_contact.resize(needed, 0);
+        runtime.water_exposure_seconds.resize(needed, 0.0);
     }
     if runtime.entity_id[slot] != es.entity_id[slot] {
         runtime.entity_id[slot] = es.entity_id[slot];
         runtime.hover_smoothed_force[slot] = f64::NAN;
         runtime.swim_smoothed_force[slot] = f64::NAN;
+        runtime.air_fraction[slot] = 1.0;
+        runtime.water_fraction[slot] = 0.0;
+        runtime.ground_contact[slot] = 0;
+        runtime.water_exposure_seconds[slot] = 0.0;
     }
     Some(slot)
 }
@@ -224,6 +256,75 @@ pub fn unit_force_runtime_clear() {
     runtime.entity_id.fill(ENTITY_STATE_NO_ENTITY_ID);
     runtime.hover_smoothed_force.fill(f64::NAN);
     runtime.swim_smoothed_force.fill(f64::NAN);
+    runtime.air_fraction.fill(1.0);
+    runtime.water_fraction.fill(0.0);
+    runtime.ground_contact.fill(0);
+    runtime.water_exposure_seconds.fill(0.0);
+    runtime.fatal_water_entity_slots.clear();
+}
+
+/// Advance fatal-water exposure for every live unit body, including sleeping
+/// and otherwise inactive bodies. Returns a count into the Rust-owned entity
+/// slot scratch exposed by `unit_fatal_water_entity_slots_ptr`.
+#[wasm_bindgen]
+pub fn unit_fatal_water_step_pool(dt_sec: f64) -> u32 {
+    let p = pool();
+    let es = entity_state();
+    let profile = unit_force_profile_table();
+    let runtime = unit_force_runtime_table();
+    runtime.fatal_water_entity_slots.clear();
+
+    for entity_slot in 0..es.entity_id.len() {
+        if es.entity_id[entity_slot] < 0
+            || es.kind[entity_slot] != ENTITY_STATE_KIND_UNIT
+            || es.hp[entity_slot] <= 0.0
+        {
+            continue;
+        }
+        let body_slot_i32 = es.body_slot[entity_slot];
+        if body_slot_i32 < 0 {
+            continue;
+        }
+        let body_slot = body_slot_i32 as usize;
+        if body_slot >= POOL_CAPACITY_USIZE
+            || !pool_is_dynamic_sphere(p, body_slot)
+            || unit_force_entity_slot_for_body(es, p, body_slot) != Some(entity_slot)
+        {
+            continue;
+        }
+        let code = es.unit_blueprint_code[entity_slot] as usize;
+        if code >= profile.count {
+            continue;
+        }
+        let runtime_slot = match unit_force_runtime_slot(runtime, es, Some(entity_slot)) {
+            Some(slot) => slot,
+            None => continue,
+        };
+        let pbase = code * UF_PROFILE_STRIDE;
+        let water_fraction = unit_force_water_fraction(p.pos_z[body_slot], p.radius[body_slot]);
+        runtime.water_fraction[runtime_slot] = water_fraction;
+        runtime.air_fraction[runtime_slot] = 1.0 - water_fraction;
+        let (exposure_seconds, fatal_now) = unit_force_update_water_exposure(
+            runtime.water_exposure_seconds[runtime_slot],
+            profile.flags[code] & UF_PROFILE_FLAG_WATER_FATAL != 0,
+            water_fraction,
+            profile.values[pbase + UF_PROFILE_FATAL_WATER_FRACTION],
+            profile.values[pbase + UF_PROFILE_FATAL_WATER_SECONDS],
+            dt_sec,
+        );
+        runtime.water_exposure_seconds[runtime_slot] = exposure_seconds;
+        if fatal_now {
+            es.hp[entity_slot] = 0.0;
+            es.dirty_mask[entity_slot] |= ENTITY_CHANGED_HP;
+            runtime.fatal_water_entity_slots.push(entity_slot as u32);
+        }
+    }
+    runtime.fatal_water_entity_slots.len() as u32
+}
+
+#[wasm_bindgen]
+pub fn unit_fatal_water_entity_slots_ptr() -> *const u32 {
+    unit_force_runtime_table().fatal_water_entity_slots.as_ptr()
 }
 
 pub(crate) const UF_ROW_DIR_X: usize = 0;
@@ -298,6 +399,9 @@ pub(crate) const UF_FLAG_HAS_AIR_LIFT_DISTANCE_SCALE: u32 = 1 << 11;
 pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
     UF_FLAG_FORWARD_THRUST_REQUIRES_FACING | UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
 
+pub(crate) const UF_PROFILE_FLAG_IDLE_AIR_DRIVE: u32 = 1 << 16;
+pub(crate) const UF_PROFILE_FLAG_WATER_FATAL: u32 = 1 << 20;
+
 pub(crate) const UF_OUT_MOVEMENT_ACCEL: u32 = 1 << 0;
 pub(crate) const UF_OUT_CLEAR_COMBAT: u32 = 1 << 1;
 pub(crate) const UF_OUT_ROTATION_DIRTY: u32 = 1 << 2;
@@ -309,7 +413,7 @@ const ENTITY_SLOT_UNIT_MOTION_HAS_ORIENTATION: u32 = 1 << 1;
 const ENTITY_SLOT_UNIT_MOTION_HAS_ANGULAR_VELOCITY: u32 = 1 << 2;
 
 #[inline]
-fn unit_force_entity_slot_for_body(
+pub(crate) fn unit_force_entity_slot_for_body(
     es: &EntityStateSlab,
     p: &BodyPool,
     body_slot: usize,
@@ -384,27 +488,85 @@ fn unit_force_smoothed_scalar(raw: f64, ema_weight: f64, previous: f64) -> f64 {
 }
 
 #[inline]
-pub(crate) fn unit_force_water_fraction(pos_z: f64, ground_offset: f64) -> f64 {
+pub(crate) fn unit_force_water_fraction(pos_z: f64, body_radius: f64) -> f64 {
     if !pos_z.is_finite() {
         return 0.0;
     }
-    let half_height = if ground_offset.is_finite() && ground_offset > 0.0 {
-        ground_offset
+    let radius = if body_radius.is_finite() && body_radius > 0.0 {
+        body_radius
     } else {
         0.5
     };
-    let bottom_z = pos_z - half_height;
-    let height = half_height * 2.0;
-    if height <= 0.0 || !height.is_finite() {
-        return if pos_z < TERRAIN_WATER_LEVEL {
-            1.0
-        } else {
-            0.0
-        };
-    }
-    ((TERRAIN_WATER_LEVEL - bottom_z) / height)
+    let submerged_height = (TERRAIN_WATER_LEVEL - (pos_z - radius))
         .max(0.0)
-        .min(1.0)
+        .min(2.0 * radius);
+    if submerged_height <= 0.0 {
+        return 0.0;
+    }
+    if submerged_height >= 2.0 * radius {
+        return 1.0;
+    }
+    // Spherical-cap volume divided by total sphere volume:
+    // Vcap = pi*h^2*(3r-h)/3; Vsphere = 4*pi*r^3/3.
+    let fraction = submerged_height * submerged_height * (3.0 * radius - submerged_height)
+        / (4.0 * radius * radius * radius);
+    fraction.max(0.0).min(1.0)
+}
+
+#[inline]
+fn unit_force_update_water_exposure(
+    current_seconds: f64,
+    water_fatal: bool,
+    water_fraction: f64,
+    fatal_fraction: f64,
+    fatal_seconds: f64,
+    dt_sec: f64,
+) -> (f64, bool) {
+    if !water_fatal || water_fraction < fatal_fraction.clamp(0.0, 1.0) {
+        return (0.0, false);
+    }
+    let next_seconds = current_seconds.max(0.0) + dt_sec.max(0.0);
+    (next_seconds, next_seconds >= fatal_seconds.max(0.0))
+}
+
+#[inline]
+fn unit_force_fluid_drag(
+    rel_vx: f64,
+    rel_vy: f64,
+    rel_vz: f64,
+    forward_x: f64,
+    forward_y: f64,
+    linear_drag: f64,
+    quadratic_drag: f64,
+    forward_scale: f64,
+    lateral_scale: f64,
+    vertical_scale: f64,
+    occupied_fraction: f64,
+    body_mass: f64,
+) -> (f64, f64, f64) {
+    if occupied_fraction <= 0.0 || body_mass <= 0.0 {
+        return (0.0, 0.0, 0.0);
+    }
+    let side_x = -forward_y;
+    let side_y = forward_x;
+    let vf = rel_vx * forward_x + rel_vy * forward_y;
+    let vs = rel_vx * side_x + rel_vy * side_y;
+    let drag_axis = |v: f64, scale: f64| {
+        let scale = scale.max(0.0);
+        -(linear_drag.max(0.0) * v + quadratic_drag.max(0.0) * v.abs() * v)
+            * scale
+            * occupied_fraction
+            * body_mass
+            / 1_000_000.0
+    };
+    let ff = drag_axis(vf, forward_scale);
+    let fs = drag_axis(vs, lateral_scale);
+    let fz = drag_axis(rel_vz, vertical_scale);
+    (
+        ff * forward_x + fs * side_x,
+        ff * forward_y + fs * side_y,
+        fz,
+    )
 }
 
 #[inline]
@@ -782,6 +944,18 @@ pub fn unit_force_step_batch(
         rows[base + UF_ROW_ANGULAR_ACCEL_Z] = 0.0;
 
         let mut flag = flags[i];
+        let mut profile_flags = 0_u32;
+        let mut ground_surface_grip = 1.0;
+        let mut air_quadratic_drag = 0.0;
+        let mut air_drag_forward_scale = 1.0;
+        let mut air_drag_lateral_scale = 1.0;
+        let mut air_drag_vertical_scale = 1.0;
+        let mut air_angular_drag = 0.0;
+        let mut water_quadratic_drag = 0.0;
+        let mut water_drag_forward_scale = 1.0;
+        let mut water_drag_lateral_scale = 1.0;
+        let mut water_drag_vertical_scale = 1.0;
+        let mut water_angular_drag = 0.0;
         if flag & UF_FLAG_BLOCKED_OR_DEAD != 0 {
             out_flags[i] |= UF_OUT_MOVEMENT_ACCEL | UF_OUT_CLEAR_COMBAT;
             processed += 1;
@@ -800,6 +974,7 @@ pub fn unit_force_step_batch(
                 let code = es.unit_blueprint_code[entity_slot] as usize;
                 if code < profile.count {
                     let pbase = code * UF_PROFILE_STRIDE;
+                    profile_flags = profile.flags[code];
                     rows[base + UF_ROW_GROUND_FORCE] =
                         profile.values[pbase + UF_PROFILE_GROUND_FORCE];
                     rows[base + UF_ROW_GROUND_TRACTION] =
@@ -833,7 +1008,26 @@ pub fn unit_force_step_batch(
                     rows[base + UF_ROW_AIR_FORCE] = profile.values[pbase + UF_PROFILE_AIR_FORCE];
                     rows[base + UF_ROW_AIR_TRACTION] =
                         profile.values[pbase + UF_PROFILE_AIR_TRACTION];
-                    flag |= profile.flags[code] & UF_PROFILE_KERNEL_FLAG_MASK;
+                    ground_surface_grip = profile.values[pbase + UF_PROFILE_GROUND_SURFACE_GRIP];
+                    air_quadratic_drag = profile.values[pbase + UF_PROFILE_AIR_QUADRATIC_DRAG];
+                    air_drag_forward_scale =
+                        profile.values[pbase + UF_PROFILE_AIR_DRAG_FORWARD_SCALE];
+                    air_drag_lateral_scale =
+                        profile.values[pbase + UF_PROFILE_AIR_DRAG_LATERAL_SCALE];
+                    air_drag_vertical_scale =
+                        profile.values[pbase + UF_PROFILE_AIR_DRAG_VERTICAL_SCALE];
+                    air_angular_drag = profile.values[pbase + UF_PROFILE_AIR_ANGULAR_DRAG];
+                    water_quadratic_drag = profile.values[pbase + UF_PROFILE_WATER_QUADRATIC_DRAG];
+                    water_drag_forward_scale =
+                        profile.values[pbase + UF_PROFILE_WATER_DRAG_FORWARD_SCALE];
+                    water_drag_lateral_scale =
+                        profile.values[pbase + UF_PROFILE_WATER_DRAG_LATERAL_SCALE];
+                    water_drag_vertical_scale =
+                        profile.values[pbase + UF_PROFILE_WATER_DRAG_VERTICAL_SCALE];
+                    water_angular_drag = profile.values[pbase + UF_PROFILE_WATER_ANGULAR_DRAG];
+                    p.ground_friction_scale[slot] =
+                        profile.values[pbase + UF_PROFILE_GROUND_CONTACT_DAMPING].max(0.0);
+                    flag |= profile_flags & UF_PROFILE_KERNEL_FLAG_MASK;
                 }
             }
         }
@@ -847,7 +1041,8 @@ pub fn unit_force_step_batch(
         }
 
         let has_thrust = flag & UF_FLAG_HAS_THRUST != 0;
-        let is_flying = flag & UF_FLAG_IS_FLYING != 0;
+        let idle_air_drive =
+            profile_flags & UF_PROFILE_FLAG_IDLE_AIR_DRIVE != 0 || flag & UF_FLAG_IS_FLYING != 0;
         let medium_lift_enabled = flag & UF_FLAG_IS_AIRBORNE != 0;
         let has_external = flag & UF_FLAG_HAS_EXTERNAL_FORCE != 0;
         let has_orientation = flag & UF_FLAG_HAS_ORIENTATION != 0;
@@ -875,8 +1070,12 @@ pub fn unit_force_step_batch(
             0.0
         };
         let has_angular_motion = omega_sq > UNIT_ATTITUDE_SLEEP_EPSILON_SQ;
-        let water_fraction = unit_force_water_fraction(p.pos_z[slot], p.ground_offset[slot]);
+        let water_fraction = unit_force_water_fraction(p.pos_z[slot], p.radius[slot]);
         let air_fraction = 1.0 - water_fraction;
+        if let Some(runtime_slot) = runtime_slot {
+            runtime.air_fraction[runtime_slot] = air_fraction;
+            runtime.water_fraction[runtime_slot] = water_fraction;
+        }
         // Buoyancy is passive (like friction): it keeps a body awake in
         // its medium whether or not the lift controller is enabled.
         let air_lift_force_active = air_fraction > 0.0
@@ -887,7 +1086,7 @@ pub fn unit_force_step_batch(
                 || rows[base + UF_ROW_WATER_BUOYANCY] > 0.0);
 
         if p.flags[slot] & BODY_FLAG_SLEEPING != 0
-            && !is_flying
+            && !idle_air_drive
             && !has_thrust
             && !has_external
             && !has_angular_motion
@@ -946,18 +1145,20 @@ pub fn unit_force_step_batch(
         } else {
             (0.0, 0.0)
         };
-        let drive_alignment_scale =
-            if drive_force_scales_with_facing && !is_flying && has_thrust && thrust_input_mag > 0.0
-            {
-                unit_force_drive_alignment_scale(
-                    forward_x * requested_dir_x + forward_y * requested_dir_y,
-                    drive_alignment_zero_force_dot,
-                    drive_alignment_full_force_dot,
-                    drive_alignment_response_exponent,
-                )
-            } else {
-                1.0
-            };
+        let drive_alignment_scale = if drive_force_scales_with_facing
+            && !idle_air_drive
+            && has_thrust
+            && thrust_input_mag > 0.0
+        {
+            unit_force_drive_alignment_scale(
+                forward_x * requested_dir_x + forward_y * requested_dir_y,
+                drive_alignment_zero_force_dot,
+                drive_alignment_full_force_dot,
+                drive_alignment_response_exponent,
+            )
+        } else {
+            1.0
+        };
         let (drive_dir_x, drive_dir_y, has_drive_dir) = if has_thrust && thrust_input_mag > 0.0 {
             if forward_thrust_requires_facing {
                 (forward_x, forward_y, true)
@@ -975,6 +1176,9 @@ pub fn unit_force_step_batch(
         let computed_ground_contact =
             is_in_contact(ground_z - (p.pos_z[slot] - p.ground_offset[slot]));
         let ground_contact = flag & UF_FLAG_ON_GROUND != 0 || computed_ground_contact;
+        if let Some(runtime_slot) = runtime_slot {
+            runtime.ground_contact[runtime_slot] = if ground_contact { 1 } else { 0 };
+        }
         let air_medium_active = air_fraction > 0.0
             && (rows[base + UF_ROW_AIR_FORCE] > 0.0
                 || rows[base + UF_ROW_HOVER_HEIGHT_FORCE] > 0.0
@@ -992,7 +1196,7 @@ pub fn unit_force_step_batch(
             let mut air_has_target_dir = false;
             let air_thrust_scale = if has_thrust {
                 thrust_scale
-            } else if is_flying {
+            } else if idle_air_drive {
                 1.0
             } else {
                 0.0
@@ -1001,7 +1205,7 @@ pub fn unit_force_step_batch(
                 air_target_dir_x = drive_dir_x;
                 air_target_dir_y = drive_dir_y;
                 air_has_target_dir = true;
-            } else if is_flying {
+            } else if idle_air_drive {
                 air_target_dir_x = forward_x;
                 air_target_dir_y = forward_y;
                 air_has_target_dir = true;
@@ -1060,7 +1264,7 @@ pub fn unit_force_step_batch(
                     * air_fraction
                     * air_thrust_scale
                     * drive_alignment_scale;
-                if is_flying || forward_thrust_requires_facing {
+                if idle_air_drive || forward_thrust_requires_facing {
                     // Aircraft-style locomotion: engine thrust follows the nose, while
                     // the requested movement direction is only the yaw target below.
                     // Low traction therefore creates visible drift/wide turns instead
@@ -1078,16 +1282,28 @@ pub fn unit_force_step_batch(
             // its engines off.
             let air_buoyancy = rows[base + UF_ROW_AIR_BUOYANCY];
             if air_buoyancy > 0.0 && body_mass > 0.0 {
-                thrust_force_z +=
-                    body_mass * GRAVITY * air_buoyancy * air_fraction / 1_000_000.0;
+                thrust_force_z += body_mass * GRAVITY * air_buoyancy * air_fraction / 1_000_000.0;
             }
 
             let air_friction = rows[base + UF_ROW_AIR_FRICTION];
-            if air_friction > 0.0 && body_mass > 0.0 {
-                let k = air_friction * air_fraction * body_mass / 1_000_000.0;
-                thrust_force_x += k * (wind_x - p.vel_x[slot]);
-                thrust_force_y += k * (wind_y - p.vel_y[slot]);
-                thrust_force_z += k * (wind_z - p.vel_z[slot]);
+            if (air_friction > 0.0 || air_quadratic_drag > 0.0) && body_mass > 0.0 {
+                let (fx, fy, fz) = unit_force_fluid_drag(
+                    p.vel_x[slot] - wind_x,
+                    p.vel_y[slot] - wind_y,
+                    p.vel_z[slot] - wind_z,
+                    forward_x,
+                    forward_y,
+                    air_friction,
+                    air_quadratic_drag,
+                    air_drag_forward_scale,
+                    air_drag_lateral_scale,
+                    air_drag_vertical_scale,
+                    air_fraction,
+                    body_mass,
+                );
+                thrust_force_x += fx;
+                thrust_force_y += fy;
+                thrust_force_z += fz;
             }
         } else {
             rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
@@ -1165,19 +1381,41 @@ pub fn unit_force_step_batch(
             }
 
             let water_friction = rows[base + UF_ROW_WATER_FRICTION];
-            if water_friction > 0.0 && body_mass > 0.0 {
-                let k = water_friction * water_fraction * body_mass / 1_000_000.0;
-                thrust_force_x -= k * p.vel_x[slot];
-                thrust_force_y -= k * p.vel_y[slot];
-                thrust_force_z -= k * p.vel_z[slot];
+            if (water_friction > 0.0 || water_quadratic_drag > 0.0) && body_mass > 0.0 {
+                let (fx, fy, fz) = unit_force_fluid_drag(
+                    p.vel_x[slot],
+                    p.vel_y[slot],
+                    p.vel_z[slot],
+                    forward_x,
+                    forward_y,
+                    water_friction,
+                    water_quadratic_drag,
+                    water_drag_forward_scale,
+                    water_drag_lateral_scale,
+                    water_drag_vertical_scale,
+                    water_fraction,
+                    body_mass,
+                );
+                thrust_force_x += fx;
+                thrust_force_y += fy;
+                thrust_force_z += fz;
             }
         } else {
             rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
         }
 
         if ground_contact {
+            // Contact drive is constrained by Coulomb grip and the effective
+            // normal load. Buoyancy unloads an underwater contact patch, so a
+            // nearly neutral bottom-walker cannot retain dry-land traction.
+            let passive_buoyancy_ratio = air_fraction * rows[base + UF_ROW_AIR_BUOYANCY].max(0.0)
+                + water_fraction * rows[base + UF_ROW_WATER_BUOYANCY].max(0.0);
+            let normal_load =
+                body_mass * GRAVITY * (1.0 - passive_buoyancy_ratio).max(0.0) / 1_000_000.0;
+            let contact_force_limit = normal_load * ground_surface_grip.max(0.0);
+            let available_ground_force = ground_traction_force_mag.min(contact_force_limit);
             if has_drive_dir {
-                let thrust_mag = ground_traction_force_mag * thrust_scale * drive_alignment_scale;
+                let thrust_mag = available_ground_force * thrust_scale * drive_alignment_scale;
                 let normal_z = rows[base + UF_ROW_NORMAL_Z];
                 let (tx, ty, tz) = unit_force_project_horizontal_onto_slope(
                     drive_dir_x,
@@ -1207,7 +1445,7 @@ pub fn unit_force_step_batch(
                     rows[base + UF_ROW_NORMAL_X],
                     rows[base + UF_ROW_NORMAL_Y],
                     rows[base + UF_ROW_NORMAL_Z],
-                    ground_traction_force_mag,
+                    available_ground_force,
                     dt_sec,
                 );
                 thrust_force_x += fx;
@@ -1242,8 +1480,8 @@ pub fn unit_force_step_batch(
                 angular_damping += ground_angular_damping_rate.max(0.0);
                 angular_damping += rows[base + UF_ROW_GROUND_FRICTION].max(0.0);
             }
-            angular_damping += air_fraction * rows[base + UF_ROW_AIR_FRICTION].max(0.0);
-            angular_damping += water_fraction * rows[base + UF_ROW_WATER_FRICTION].max(0.0);
+            angular_damping += air_fraction * air_angular_drag.max(0.0);
+            angular_damping += water_fraction * water_angular_drag.max(0.0);
             let attitude_traction_force_mag = (if attitude_ground_contact {
                 ground_traction_force_mag
             } else {
@@ -1419,5 +1657,67 @@ mod tests {
             unit_force_air_lift_direct_altitude(pos_z, body_ground),
             40.0,
         );
+    }
+
+    #[test]
+    fn spherical_water_fraction_uses_displaced_volume() {
+        let radius = 10.0;
+        assert_near(
+            unit_force_water_fraction(TERRAIN_WATER_LEVEL + radius, radius),
+            0.0,
+        );
+        assert_near(unit_force_water_fraction(TERRAIN_WATER_LEVEL, radius), 0.5);
+        assert_near(
+            unit_force_water_fraction(
+                TERRAIN_WATER_LEVEL + radius * 0.347_296_355_333_860_6,
+                radius,
+            ),
+            0.25,
+        );
+        assert_near(
+            unit_force_water_fraction(TERRAIN_WATER_LEVEL - radius, radius),
+            1.0,
+        );
+        // A cap half a radius deep occupies 5/32 of a sphere. This catches
+        // regressions to the old linear depth fraction.
+        assert_near(
+            unit_force_water_fraction(TERRAIN_WATER_LEVEL + radius * 0.5, radius),
+            5.0 / 32.0,
+        );
+    }
+
+    #[test]
+    fn fluid_drag_respects_body_axes_and_occupied_fraction() {
+        let forward = unit_force_fluid_drag(
+            10.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5, 2.0, 1.0, 1.0, 1000.0,
+        );
+        let lateral = unit_force_fluid_drag(
+            0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5, 2.0, 1.0, 1.0, 1000.0,
+        );
+        let half_lateral = unit_force_fluid_drag(
+            0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5, 2.0, 1.0, 0.5, 1000.0,
+        );
+
+        assert!(forward.0 < 0.0 && forward.1.abs() < 1e-12);
+        assert!(lateral.1 < forward.0, "lateral drag should be stronger");
+        assert_near(half_lateral.1, lateral.1 * 0.5);
+    }
+
+    #[test]
+    fn fatal_water_exposure_has_grace_and_resets_below_threshold() {
+        let (first, fatal_first) =
+            unit_force_update_water_exposure(0.0, true, 0.75, 0.65, 2.0, 1.25);
+        assert_near(first, 1.25);
+        assert!(!fatal_first);
+
+        let (reset, fatal_reset) =
+            unit_force_update_water_exposure(first, true, 0.5, 0.65, 2.0, 0.5);
+        assert_near(reset, 0.0);
+        assert!(!fatal_reset);
+
+        let (fatal_elapsed, fatal_now) =
+            unit_force_update_water_exposure(1.25, true, 0.75, 0.65, 2.0, 0.75);
+        assert_near(fatal_elapsed, 2.0);
+        assert!(fatal_now);
     }
 }

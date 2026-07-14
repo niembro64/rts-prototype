@@ -58,6 +58,17 @@
     },
     "locomotion": {
       "type": "wheels",
+      "physicsPresetId": "wheels",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
         "ground": {
@@ -90,7 +101,6 @@
       },
       "mass": 45,
       "health": 110,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 11.04,
         "force": 3600,
@@ -164,6 +174,17 @@
     },
     "locomotion": {
       "type": "treads",
+      "physicsPresetId": "treads",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "ground": {
@@ -194,7 +215,6 @@
       },
       "mass": 75,
       "health": 170,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 14.95,
         "force": 6000,
@@ -276,6 +296,17 @@
     },
     "locomotion": {
       "type": "legs",
+      "physicsPresetId": "legs",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
@@ -328,7 +359,6 @@
       },
       "mass": 220,
       "health": 480,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 17.25,
         "force": 17600,
@@ -402,6 +432,17 @@
     },
     "locomotion": {
       "type": "treads",
+      "physicsPresetId": "treads",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "ground": {
@@ -432,7 +473,6 @@
       },
       "mass": 430,
       "health": 520,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 25.76,
         "force": 34400,
@@ -506,6 +546,17 @@
     },
     "locomotion": {
       "type": "wheels",
+      "physicsPresetId": "wheels",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
         "ground": {
@@ -537,7 +588,6 @@
       },
       "mass": 300,
       "health": 400,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 27.6,
         "force": 24000,
@@ -609,6 +659,17 @@
     },
     "locomotion": {
       "type": "legs",
+      "physicsPresetId": "legs",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
@@ -662,7 +723,6 @@
       },
       "mass": 29.5,
       "health": 98.25,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 13.915,
         "force": 2400,
@@ -736,6 +796,17 @@
     },
     "locomotion": {
       "type": "treads",
+      "physicsPresetId": "treads",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "ground": {
@@ -766,7 +837,6 @@
       },
       "mass": 1500,
       "health": 1500,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 41.4,
         "force": 120000,
@@ -858,6 +928,17 @@
     },
     "locomotion": {
       "type": "legs",
+      "physicsPresetId": "legs",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
@@ -920,7 +1001,6 @@
       },
       "mass": 3400,
       "health": 4800,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 74.75,
         "force": 272000,
@@ -1078,6 +1158,17 @@
     },
     "locomotion": {
       "type": "legs",
+      "physicsPresetId": "legs",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
@@ -1130,7 +1221,6 @@
       },
       "mass": 2600,
       "health": 4200,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 59.8,
         "force": 208000,
@@ -1203,6 +1293,17 @@
     },
     "locomotion": {
       "type": "treads",
+      "physicsPresetId": "treads",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": true,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "ground": {
@@ -1317,6 +1418,17 @@
     },
     "locomotion": {
       "type": "treads",
+      "physicsPresetId": "treads",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": true,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "ground": {
@@ -1431,6 +1543,17 @@
     },
     "locomotion": {
       "type": "legs",
+      "physicsPresetId": "legs",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
@@ -1483,7 +1606,6 @@
       },
       "mass": 70,
       "health": 210,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 22.77,
         "force": 5600,
@@ -1562,6 +1684,17 @@
     },
     "locomotion": {
       "type": "treads",
+      "physicsPresetId": "treads",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "ground": {
@@ -1592,7 +1725,6 @@
       },
       "mass": 180,
       "health": 420,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 27.6,
         "force": 14400,
@@ -1663,6 +1795,17 @@
     },
     "locomotion": {
       "type": "hover",
+      "physicsPresetId": "hover",
+      "navigation": {
+        "allowGround": false,
+        "allowWater": false,
+        "allowAir": true
+      },
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
@@ -1792,6 +1935,17 @@
     },
     "locomotion": {
       "type": "hover",
+      "physicsPresetId": "hover",
+      "navigation": {
+        "allowGround": false,
+        "allowWater": false,
+        "allowAir": true
+      },
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
@@ -1949,6 +2103,17 @@
     },
     "locomotion": {
       "type": "hover",
+      "physicsPresetId": "hover",
+      "navigation": {
+        "allowGround": false,
+        "allowWater": false,
+        "allowAir": true
+      },
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
@@ -2059,6 +2224,17 @@
     },
     "locomotion": {
       "type": "flying",
+      "physicsPresetId": "flying",
+      "navigation": {
+        "allowGround": false,
+        "allowWater": false,
+        "allowAir": true
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
@@ -2099,7 +2275,6 @@
       },
       "mass": 150,
       "health": 360,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 24.84,
         "force": 12000,
@@ -2198,6 +2373,17 @@
     },
     "locomotion": {
       "type": "flying",
+      "physicsPresetId": "flying",
+      "navigation": {
+        "allowGround": false,
+        "allowWater": false,
+        "allowAir": true
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
@@ -2244,7 +2430,6 @@
       },
       "mass": 40000,
       "health": 7600,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 118,
         "force": 1200000,
@@ -2356,6 +2541,17 @@
     },
     "locomotion": {
       "type": "hover",
+      "physicsPresetId": "hover",
+      "navigation": {
+        "allowGround": false,
+        "allowWater": false,
+        "allowAir": true
+      },
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
@@ -2499,6 +2695,17 @@
     },
     "locomotion": {
       "type": "flying",
+      "physicsPresetId": "flying",
+      "navigation": {
+        "allowGround": false,
+        "allowWater": false,
+        "allowAir": true
+      },
+      "survival": {
+        "waterFatal": true,
+        "fatalSubmergedFraction": 0.65,
+        "fatalExposureSeconds": 2
+      },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
@@ -2545,7 +2752,6 @@
       },
       "mass": 20000,
       "health": 9400,
-      "explodesIfSubmerged": true,
       "deathExplosion": {
         "radius": 136,
         "force": 820000,
@@ -2627,6 +2833,17 @@
     },
     "locomotion": {
       "type": "hover",
+      "physicsPresetId": "hover",
+      "navigation": {
+        "allowGround": false,
+        "allowWater": false,
+        "allowAir": true
+      },
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
@@ -2809,6 +3026,17 @@
     },
     "locomotion": {
       "type": "legs",
+      "physicsPresetId": "legs",
+      "navigation": {
+        "allowGround": true,
+        "allowWater": false,
+        "allowAir": false
+      },
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {

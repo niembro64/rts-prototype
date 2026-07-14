@@ -980,15 +980,18 @@
       <p>
         The world has three propulsion <em>media</em>: <strong>ground</strong> (a terrain
         contact patch, including terrain that lies under water &mdash; the lake bed is
-        ground), <strong>air</strong> (the body is above the water surface and not in ground
-        contact), and <strong>water</strong> (the body is below the water surface and not in
-        ground contact). Air and water are mutually exclusive and chosen by the water line:
-        a body is in the water medium when submerged and the air medium when it is not, and
-        it is additionally in the ground medium whenever its contact point rests on a
-        surface, <em>even underwater</em>. So a unit standing on a lake bed is in ground +
-        water; a unit swimming mid-column is in water only; a hovercraft skimming the surface
-        is in air (and optionally ground if its skirt contacts); a submarine resting on the
-        bottom is ground + water.
+        ground), <strong>air</strong> (the fraction of body volume above the water plane), and
+        <strong>water</strong> (the fraction of body volume below it). Air and water are
+        complementary occupancies rather than a typed switch: the simulation computes the
+        sphere&rsquo;s displaced-volume fraction <code>fWater</code> at the water plane and sets
+        <code>fAir = 1 - fWater</code>. Every air and water force is weighted by its occupied
+        fraction, so a body that is 25% submerged receives 25% of its water response and 75%
+        of its air response. Ground is independent and joins the blend whenever a contact
+        point rests on a surface, <em>even underwater</em>. So a unit standing on a lake bed
+        is in ground + fractionally water/air; a unit fully submerged mid-column is water
+        only; a hovercraft skimming the surface can continuously transition between air and
+        water while its skirt optionally contacts; a submarine resting on the bottom is
+        ground + water.
       </p>
       <p>
         Each medium contributes three authored scalars, present on every unit:
@@ -1025,14 +1028,33 @@
         </li>
       </ul>
       <p>
-        Only the medium(s) the body is actually in contribute this tick: a flying unit high
-        above the lake feels air friction and air force only; the instant it descends below
-        the surface it feels water friction and water force instead (air and water never both
-        apply), plus ground if it touches bottom. Selecting between air and water by the water
-        line, and adding ground whenever there is contact, is the whole medium rule &mdash;
+        Only occupied media contribute this tick: a flying unit high above the lake feels air
+        friction and air force only; as it intersects the surface those terms fade by
+        <code>fAir</code> while water friction, buoyancy, and water drive grow by
+        <code>fWater</code>, plus ground if it touches bottom. Sampling fractional occupancy at
+        the water line and adding ground whenever there is contact is the whole medium rule &mdash;
         there is no per-chassis branch deciding &ldquo;this unit type ignores water.&rdquo; A
         unit ignores water by authoring zero water terms, and the same medium-sampling code
         runs for every unit.
+      </p>
+      <p>
+        Linear damping is the baseline medium resistance. Profiles may additionally author
+        quadratic drag and forward/lateral/vertical drag scales, so a streamlined aircraft,
+        broadside boat, tumbling tank, and submarine can resist motion differently without
+        acquiring separate physics paths. Ground contact uses a Coulomb-style grip limit:
+        available ground drive cannot exceed <code>normalLoad * surfaceGrip</code>, and
+        buoyancy reduces normal load underwater. Contact damping is separate from grip;
+        neither is inferred from the visual rig or from a pathfinding label.
+      </p>
+      <p>
+        Physical capability, navigation permission, and survival are three separate
+        contracts. The force profile answers what happens if the body is in a medium.
+        Navigation explicitly declares whether the planner may choose ground, water, or air
+        routes; touching a lake bed does not silently authorize a land unit to route through
+        a lake. Survival independently declares whether water is fatal, the submerged-volume
+        threshold, and the continuous exposure grace period. This permits deliberate drowning
+        or water-impact tactics while still allowing authored swimmers, floating wreck-prone
+        vehicles, stranded survivors, submarines, and bottom walkers to use the same physics.
       </p>
       <p>
         Vertical lift is the buoyancy/altitude analogue of drive force and follows the
@@ -1063,10 +1085,11 @@
       </p>
       <ul class="rule-list">
         <li>Every unit carries the full force profile: ground/air/water &times; {force, traction, friction}, plus the lift family (<code>gravityCounterUpwardForceRatio</code>, <code>hoverHeightUpwardForce</code>, <code>swimHeightUpwardForce</code> and their randomisation/EMA siblings). A term left at zero is the explicit declaration that the unit cannot act in that way &mdash; it is authored absence, not a missing capability.</li>
-        <li>Medium is sampled, never typed: ground whenever a contact patch rests on a surface (lake bed included), then air <em>or</em> water by the water line. The same sampling runs for every unit; chassis archetypes only choose the default preset and the visual rig.</li>
-        <li>Forces and frictions from co-active media add; air and water are mutually exclusive so at most one of them applies at a time alongside any ground contribution.</li>
+        <li>Medium is sampled, never typed: ground whenever a contact patch rests on a surface (lake bed included), plus complementary displaced-volume fractions for air and water. The same sampling runs for every unit; chassis archetypes only choose the default preset and the visual rig.</li>
+        <li>Forces and frictions from co-active media add after air/water terms are weighted by occupied volume; ground contact remains an independent additive contribution.</li>
+        <li>Navigation permission and water survival are explicit policies, never inferred from non-zero force, ground contact, or visual chassis type.</li>
         <li>Vertical buoyancy/lift is thrust answering gravity, identical in shape across hover (ground-referenced), flying (ground-referenced), and swim (water-line-referenced). <code>swimHeightUpwardForce</code> = 0 sinks, balanced = neutral, high = floats.</li>
-        <li>The migration preserves behaviour exactly: a current ground unit&rsquo;s single <code>traction</code>/<code>driveForce</code> become its ground traction/force with air and water terms zero, so existing units move bit-for-bit identically until new water/air values are authored.</li>
+        <li>The migration preserves authored dry-ground behavior: a ground unit&rsquo;s former traction/drive force become its ground terms. Its accidental-water behavior is then authored explicitly through water drag, buoyancy, navigation permission, and survival policy instead of inheriting an undefined exception.</li>
       </ul>
 
       <h3>Discrete gameplay still enters through physical effects</h3>

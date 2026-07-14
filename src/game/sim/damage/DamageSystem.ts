@@ -232,7 +232,7 @@ function lineSphereIntersectionTWithDelta(
 
   let discriminant = b * b - 4 * segmentLenSq * c;
   if (discriminant < 0) return null;
-  discriminant = Math.sqrt(discriminant);
+  discriminant = DMath.sqrt(discriminant);
 
   const invDenom = 1 / (2 * segmentLenSq);
   const t1 = (-b - discriminant) * invDenom;

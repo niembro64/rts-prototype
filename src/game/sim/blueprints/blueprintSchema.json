@@ -1123,10 +1123,6 @@
         },
         "radius": {
           "$ref": "#/$defs/EntityRadiusConfig"
-        },
-        "explodesIfSubmerged": {
-          "type": "boolean",
-          "description": "When true, the entity dies through the normal death->explosion path after its body has been fully below the waterline for the sustained submersion window. Default false."
         }
       },
       "additionalProperties": false
@@ -1950,6 +1946,49 @@
       },
       "additionalProperties": false
     },
+    "LocomotionNavigationPolicy": {
+      "type": "object",
+      "required": [
+        "allowGround",
+        "allowWater",
+        "allowAir"
+      ],
+      "properties": {
+        "allowGround": {
+          "type": "boolean"
+        },
+        "allowWater": {
+          "type": "boolean"
+        },
+        "allowAir": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionSurvivalPolicy": {
+      "type": "object",
+      "required": [
+        "waterFatal",
+        "fatalSubmergedFraction",
+        "fatalExposureSeconds"
+      ],
+      "properties": {
+        "waterFatal": {
+          "type": "boolean"
+        },
+        "fatalSubmergedFraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "fatalExposureSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
     "PathfindingTerrainMode": {
       "enum": [
         "land",
@@ -2121,7 +2160,10 @@
       "type": "object",
       "required": [
         "type",
+        "physicsPresetId",
         "physics",
+        "navigation",
+        "survival",
         "pathfindingBlueprintId",
         "pathfinding",
         "config"
@@ -2130,8 +2172,17 @@
         "type": {
           "const": "wheels"
         },
+        "physicsPresetId": {
+          "type": "string"
+        },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
+        },
+        "navigation": {
+          "$ref": "#/$defs/LocomotionNavigationPolicy"
+        },
+        "survival": {
+          "$ref": "#/$defs/LocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2149,7 +2200,10 @@
       "type": "object",
       "required": [
         "type",
+        "physicsPresetId",
         "physics",
+        "navigation",
+        "survival",
         "pathfindingBlueprintId",
         "pathfinding",
         "config"
@@ -2158,8 +2212,17 @@
         "type": {
           "const": "treads"
         },
+        "physicsPresetId": {
+          "type": "string"
+        },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
+        },
+        "navigation": {
+          "$ref": "#/$defs/LocomotionNavigationPolicy"
+        },
+        "survival": {
+          "$ref": "#/$defs/LocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2177,7 +2240,10 @@
       "type": "object",
       "required": [
         "type",
+        "physicsPresetId",
         "physics",
+        "navigation",
+        "survival",
         "pathfindingBlueprintId",
         "pathfinding",
         "config"
@@ -2186,8 +2252,17 @@
         "type": {
           "const": "legs"
         },
+        "physicsPresetId": {
+          "type": "string"
+        },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
+        },
+        "navigation": {
+          "$ref": "#/$defs/LocomotionNavigationPolicy"
+        },
+        "survival": {
+          "$ref": "#/$defs/LocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2205,7 +2280,10 @@
       "type": "object",
       "required": [
         "type",
+        "physicsPresetId",
         "physics",
+        "navigation",
+        "survival",
         "pathfindingBlueprintId",
         "pathfinding",
         "config"
@@ -2214,8 +2292,17 @@
         "type": {
           "const": "hover"
         },
+        "physicsPresetId": {
+          "type": "string"
+        },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
+        },
+        "navigation": {
+          "$ref": "#/$defs/LocomotionNavigationPolicy"
+        },
+        "survival": {
+          "$ref": "#/$defs/LocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"
@@ -2233,7 +2320,10 @@
       "type": "object",
       "required": [
         "type",
+        "physicsPresetId",
         "physics",
+        "navigation",
+        "survival",
         "pathfindingBlueprintId",
         "pathfinding",
         "config"
@@ -2242,8 +2332,17 @@
         "type": {
           "const": "flying"
         },
+        "physicsPresetId": {
+          "type": "string"
+        },
         "physics": {
           "$ref": "#/$defs/LocomotionPhysics"
+        },
+        "navigation": {
+          "$ref": "#/$defs/LocomotionNavigationPolicy"
+        },
+        "survival": {
+          "$ref": "#/$defs/LocomotionSurvivalPolicy"
         },
         "pathfindingBlueprintId": {
           "type": "string"

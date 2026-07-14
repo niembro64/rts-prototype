@@ -7112,10 +7112,10 @@ mod sim_kernel_tests {
     }
 
     fn install_pathfinder_water_strip_test_terrain() {
-        const CELLS_X: i32 = 12;
-        const CELLS_Y: i32 = 5;
+        const CELLS_X: i32 = 16;
+        const CELLS_Y: i32 = 9;
         const CELL_SIZE: f64 = 20.0;
-        const WATER_GX: i32 = 5;
+        const WATER_GX: i32 = 8;
 
         let cell_count = (CELLS_X * CELLS_Y) as usize;
         let mut vertex_coords: Vec<f64> = Vec::new();
@@ -7203,33 +7203,33 @@ mod sim_kernel_tests {
     pub(crate) fn pathfinder_water_medium_allows_crossing_water_blocked_cells() {
         let _guard = lock_tests();
         install_pathfinder_water_strip_test_terrain();
-        pathfinder_init(240.0, 100.0);
+        pathfinder_init(320.0, 180.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_031, 20_031, 30_031);
 
         let ground_only_count =
-            pathfinder_find_path(50.0, 50.0, 190.0, 50.0, 0.0, true, false, false, 0.0, false);
+            pathfinder_find_path(70.0, 90.0, 250.0, 90.0, 0.0, true, false, false, 0.0, false);
         let ground_only_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (ground_only_count as usize) * 2)
         };
         let ground_only_last = (ground_only_count as usize - 1) * 2;
         assert!(
-            (ground_only_waypoints[ground_only_last] - 190.0).abs() > 1.0e-9,
+            (ground_only_waypoints[ground_only_last] - 250.0).abs() > 1.0e-9,
             "ground-only routes should not cross the water-buffered strip"
         );
 
         let amphibious_count =
-            pathfinder_find_path(50.0, 50.0, 190.0, 50.0, 0.0, true, true, false, 0.0, false);
+            pathfinder_find_path(70.0, 90.0, 250.0, 90.0, 0.0, true, true, false, 0.0, false);
         assert_eq!(amphibious_count, 1);
         let amphibious_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (amphibious_count as usize) * 2)
         };
         assert!(
-            (amphibious_waypoints[0] - 190.0).abs() < 1.0e-9,
+            (amphibious_waypoints[0] - 250.0).abs() < 1.0e-9,
             "amphibious route should reach goal x, got {}",
             amphibious_waypoints[0]
         );
         assert!(
-            (amphibious_waypoints[1] - 50.0).abs() < 1.0e-9,
+            (amphibious_waypoints[1] - 90.0).abs() < 1.0e-9,
             "amphibious route should reach goal y, got {}",
             amphibious_waypoints[1]
         );
@@ -9239,8 +9239,8 @@ mod sim_kernel_tests {
 
         assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
         assert!(
-            bed_ax > open_ax * 1.5,
-            "touching the terrain bed should add ground traction while water drive remains active",
+            bed_ax > open_ax,
+            "touching the terrain bed should add grip-limited ground drive while water drive remains active",
         );
         assert!(bed_ay.abs() < 1e-12);
         assert!(

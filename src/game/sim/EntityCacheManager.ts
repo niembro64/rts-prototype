@@ -231,7 +231,7 @@ export class EntityCacheManager {
         if (entity.unit !== null && entity.unit.shieldPanels.length > 0) {
           addEntityToList(this.cachedShieldPanelUnits, entity, sortedInsert);
         }
-        if (entity.unit !== null && entity.unit.locomotion.type === 'flying') {
+        if (entity.unit !== null && entity.unit.locomotion.idleAirDrive) {
           addEntityToList(this.cachedFlyingUnits, entity, sortedInsert);
           this.cachedFlyingUnitSlotsDirty = true;
         }

@@ -385,6 +385,110 @@ pub(crate) fn compute_arrival_control_thrust(
     (accel_x * out_scale, accel_y * out_scale, 1)
 }
 
+fn unit_effective_coupled_drive(
+    p: &BodyPool,
+    es: &EntityStateSlab,
+    profile: &UnitForceProfileTable,
+    runtime: &UnitForceRuntimeTable,
+    slot: usize,
+    thrust_multiplier: f64,
+    force_scale: f64,
+    reference_mass: f64,
+    unit_mass_multiplier: f64,
+) -> Option<(f64, f64)> {
+    if slot >= POOL_CAPACITY_USIZE || !pool_is_dynamic_sphere(p, slot) {
+        return None;
+    }
+    let entity_slot = unit_force_entity_slot_for_body(es, p, slot)?;
+    let code = es.unit_blueprint_code[entity_slot] as usize;
+    if code >= profile.count {
+        return None;
+    }
+    let pbase = code * UF_PROFILE_STRIDE;
+    let runtime_is_current =
+        runtime.entity_id.get(entity_slot).copied() == Some(es.entity_id[entity_slot]);
+    let water_fraction = if runtime_is_current {
+        runtime.water_fraction[entity_slot]
+    } else {
+        unit_force_water_fraction(p.pos_z[slot], p.radius[slot])
+    };
+    let air_fraction = 1.0 - water_fraction;
+    let ground_contact = runtime_is_current && runtime.ground_contact[entity_slot] != 0;
+    let mut coupled_drive = air_fraction
+        * profile.values[pbase + UF_PROFILE_AIR_FORCE]
+        * profile.values[pbase + UF_PROFILE_AIR_TRACTION]
+        + water_fraction
+            * profile.values[pbase + UF_PROFILE_WATER_FORCE]
+            * profile.values[pbase + UF_PROFILE_WATER_TRACTION];
+
+    let body_mass = if p.inv_mass[slot] > 0.0 {
+        1.0 / p.inv_mass[slot]
+    } else {
+        0.0
+    };
+    if ground_contact {
+        let (_, ground_engine_force) = unit_force_locomotion_magnitudes(
+            profile.values[pbase + UF_PROFILE_GROUND_FORCE],
+            profile.values[pbase + UF_PROFILE_GROUND_TRACTION],
+            reference_mass,
+            thrust_multiplier,
+            force_scale,
+        );
+        let buoyancy_ratio = air_fraction
+            * profile.values[pbase + UF_PROFILE_AIR_BUOYANCY].max(0.0)
+            + water_fraction * profile.values[pbase + UF_PROFILE_WATER_BUOYANCY].max(0.0);
+        let normal_load = body_mass * GRAVITY * (1.0 - buoyancy_ratio).max(0.0) / 1_000_000.0;
+        let contact_limit =
+            normal_load * profile.values[pbase + UF_PROFILE_GROUND_SURFACE_GRIP].max(0.0);
+        let available_ground_force = ground_engine_force.min(contact_limit);
+        if thrust_multiplier > 0.0 && reference_mass > 0.0 {
+            coupled_drive +=
+                available_ground_force * force_scale / (thrust_multiplier * reference_mass);
+        }
+    }
+    let mut authored_mass = body_mass / unit_mass_multiplier.max(1.0e-9);
+    if !authored_mass.is_finite() {
+        authored_mass = 0.0;
+    }
+    Some((coupled_drive, authored_mass))
+}
+
+#[wasm_bindgen]
+pub fn unit_effective_drive_acceleration(
+    body_slot: u32,
+    thrust_multiplier: f64,
+    force_scale: f64,
+    reference_mass: f64,
+    unit_mass_multiplier: f64,
+) -> f64 {
+    let p = pool();
+    let es = entity_state();
+    let profile = unit_force_profile_table();
+    let runtime = unit_force_runtime_table();
+    let Some((coupled_drive, mass)) = unit_effective_coupled_drive(
+        p,
+        es,
+        profile,
+        runtime,
+        body_slot as usize,
+        thrust_multiplier,
+        force_scale,
+        reference_mass,
+        unit_mass_multiplier,
+    ) else {
+        return 0.0;
+    };
+    arrival_horizontal_drive_accel(
+        coupled_drive,
+        1.0,
+        mass,
+        thrust_multiplier,
+        force_scale,
+        reference_mass,
+        unit_mass_multiplier,
+    )
+}
+
 #[wasm_bindgen]
 pub fn arrival_control_step_batch(
     slots: &[u32],
@@ -392,9 +496,7 @@ pub fn arrival_control_step_batch(
     dy: &[f64],
     distance: &[f64],
     radius_collision: &[f64],
-    drive_force: &[f64],
-    traction: &[f64],
-    mass: &[f64],
+    drive_scale: &[f64],
     flags: &[u8],
     out_thrust_x: &mut [f64],
     out_thrust_y: &mut [f64],
@@ -413,18 +515,32 @@ pub fn arrival_control_step_batch(
     debug_assert!(dy.len() >= count);
     debug_assert!(distance.len() >= count);
     debug_assert!(radius_collision.len() >= count);
-    debug_assert!(drive_force.len() >= count);
-    debug_assert!(traction.len() >= count);
-    debug_assert!(mass.len() >= count);
+    debug_assert!(drive_scale.len() >= count);
     debug_assert!(flags.len() >= count);
     debug_assert!(out_thrust_x.len() >= count);
     debug_assert!(out_thrust_y.len() >= count);
     debug_assert!(out_active.len() >= count);
 
     let p = pool();
+    let es = entity_state();
+    let profile = unit_force_profile_table();
+    let runtime = unit_force_runtime_table();
     let mut active_count = 0_u32;
     for i in 0..count {
         let slot = slots[i] as usize;
+        let (mut coupled_drive, mass) = unit_effective_coupled_drive(
+            p,
+            es,
+            profile,
+            runtime,
+            slot,
+            thrust_multiplier,
+            force_scale,
+            reference_mass,
+            unit_mass_multiplier,
+        )
+        .unwrap_or((0.0, 0.0));
+        coupled_drive *= drive_scale[i].max(0.0);
         let (thrust_x, thrust_y, active) = compute_arrival_control_thrust(
             dx[i],
             dy[i],
@@ -432,9 +548,9 @@ pub fn arrival_control_step_batch(
             p.vel_x[slot],
             p.vel_y[slot],
             radius_collision[i],
-            drive_force[i],
-            traction[i],
-            mass[i],
+            coupled_drive,
+            1.0,
+            mass,
             flags[i],
             dt_sec,
             thrust_multiplier,
