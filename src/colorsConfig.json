@@ -23,7 +23,7 @@
     },
     "water": {
       "colorHex": "#22303B",
-      "opacity": 0.8
+      "opacity": 0.45
     },
     "sky": {
       "topColor": "#6d9dcc",

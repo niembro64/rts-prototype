@@ -1313,16 +1313,38 @@
       "parts": [
         {
           "kind": "oval",
-          "offsetForward": -0.2,
-          "xFrac": 1.15,
-          "yFrac": 0.78,
-          "zFrac": 0.42
+          "offsetForward": -0.12,
+          "xFrac": 1.08,
+          "yFrac": 0.3,
+          "zFrac": 0.76
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.16,
+          "xFrac": 0.96,
+          "yFrac": 0.58,
+          "zFrac": 0.66
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.72,
+          "xFrac": 0.34,
+          "yFrac": 0.18,
+          "zFrac": 0.2
         },
         {
           "kind": "circle",
-          "offsetForward": 0.55,
-          "radiusFrac": 0.32,
-          "yFrac": 0.32
+          "offsetForward": 1.02,
+          "radiusFrac": 0.25,
+          "yFrac": 0.22,
+          "centerYFrac": 0.3
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -1.17,
+          "xFrac": 0.25,
+          "yFrac": 0.1,
+          "zFrac": 0.13
         }
       ]
     },
