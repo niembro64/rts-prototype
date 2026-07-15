@@ -16,7 +16,7 @@ import {
 } from '../../types/network';
 import type { Simulation } from '../sim/Simulation';
 import type { WorldState } from '../sim/WorldState';
-import type { Entity, EntityId } from '../sim/types';
+import type { Entity, EntityId, PlayerId } from '../sim/types';
 import type { PhysicsEngine3D, SupportSurfaceContact } from './PhysicsEngine3D';
 import {
   UNIT_DRIVE_FORCE_ALIGNMENT_FULL_FORCE_DOT,
@@ -571,7 +571,9 @@ export class UnitForceSystem {
       if (mediumLiftActive && airLiftAuthored) {
         let airHeightForceForFalloff = unit.locomotion.physics.air.heightUpwardForce;
         if (hoverRandomActive) {
-          const hoverRandomSample = this.world.rng.next();
+          const hoverRandomSample = this.world.nextRandom(
+            entity.ownership?.playerId ?? (0 as PlayerId),
+          );
           _forceRows[base + UF_ROW_HOVER_RANDOM_SAMPLE] = hoverRandomSample;
           airHeightForceForFalloff *=
             1 +
@@ -704,7 +706,9 @@ export class UnitForceSystem {
         waterLiftAuthored &&
         swimRandomActive
       ) {
-        _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.rng.next();
+        _forceRows[base + UF_ROW_SWIM_RANDOM_SAMPLE] = this.world.nextRandom(
+          entity.ownership?.playerId ?? (0 as PlayerId),
+        );
       }
 
       _forceFlags[count] = flags;

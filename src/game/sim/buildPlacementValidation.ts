@@ -15,6 +15,7 @@ import {
   getMetalDepositFootprintCoverage,
 } from './metalDeposits';
 import { evaluateBuildabilityFootprint, getTerrainBuildabilityGridCell } from './Terrain';
+import { buildingIgnoresTerrainForPlacement } from './buildingPlacementPolicy';
 
 export type BuildPlacementCellReason =
   | 'ok'
@@ -123,6 +124,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
   let failureReason: BuildPlacementFailureReason | null = null;
   let metalCoveredCells = 0;
   const terrainLevelCounts = new Map<number, number>();
+  const ignoreTerrain = buildingIgnoresTerrainForPlacement(candidateType);
 
   // Walk the whole-footprint perimeter once. Per-cell loop below also
   // walks each cell's perimeter ONCE and reads BOTH the buildable
@@ -134,7 +136,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     terrainBuildabilityGrid.cellSize === BUILD_GRID_CELL_SIZE &&
     terrainBuildabilityGrid.mapWidth === mapWidth &&
     terrainBuildabilityGrid.mapHeight === mapHeight;
-  const footprintTerrainOk = useAuthoritativeBuildability
+  const footprintTerrainOk = ignoreTerrain || useAuthoritativeBuildability
     ? true
     : evaluateBuildabilityFootprint(
       center.x,
@@ -163,7 +165,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
       } else if (isCellOccupied(gx, gy)) {
         reason = 'occupied';
         blocking = true;
-      } else {
+      } else if (!ignoreTerrain) {
         const cellEval = useAuthoritativeBuildability
           ? getTerrainBuildabilityGridCell(terrainBuildabilityGrid, gx, gy)
           : evaluateBuildabilityFootprint(
@@ -214,7 +216,7 @@ function getBuildingPlacementDiagnosticsAtGrid(
     }
   }
 
-  if (expectedTerrainLevel !== null) {
+  if (!ignoreTerrain && expectedTerrainLevel !== null) {
     for (const cell of cells) {
       if (!cell.blocking && cell.terrainLevel !== expectedTerrainLevel) {
         cell.reason = 'terrain';

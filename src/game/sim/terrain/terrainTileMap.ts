@@ -293,6 +293,24 @@ export function getTerrainMeshView(
   };
 }
 
+/** Exact maximum height of the installed piecewise-planar terrain mesh.
+ * Linear interpolation inside a triangle cannot exceed its highest vertex,
+ * so scanning the immutable vertex array finds the map's true highest point. */
+export function getTerrainMeshMaximumHeight(
+  mapWidth: number,
+  mapHeight: number,
+  cellSize: number = CANONICAL_LAND_CELL_SIZE,
+): number | null {
+  const view = getTerrainMeshView(mapWidth, mapHeight, cellSize);
+  if (!view || view.vertexHeights.length === 0) return null;
+  let maximum = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < view.vertexHeights.length; i++) {
+    const height = view.vertexHeights[i];
+    if (Number.isFinite(height) && height > maximum) maximum = height;
+  }
+  return Number.isFinite(maximum) ? maximum : null;
+}
+
 function terrainTriangleSampleFromGlobalMesh(
   map: TerrainTileMap,
   px: number,

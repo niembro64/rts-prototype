@@ -219,7 +219,9 @@ void (battleBarConfig.realDefault as string);
 // Legacy `rts-*` keys are migrated lazily into `demo-battle-*` (the
 // original "battle" namespace) by the load helpers below.
 const sk = battleBarConfig.storageKeys;
+const CURRENT_DEMO_CONTENT_REVISION = 'orca-offshore-v1';
 const STORAGE_DEMO_UNITS = sk.demoUnits;
+const STORAGE_DEMO_CONTENT_REVISION = sk.demoContentRevision;
 const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
 const STORAGE_DEMO_TOWERS = sk.demoTowers;
 const STORAGE_DEMO_CAP = sk.demoCap;
@@ -291,6 +293,34 @@ function ensureBattleMigrations(): void {
   if (_battleMigrationsRun) return;
   _battleMigrationsRun = true;
   for (const [oldK, newK] of BATTLE_KEY_MIGRATIONS) migrateKey(oldK, newK);
+  migrateDemoContentForOffshoreUnits();
+}
+
+/** One-time content migration for the first water-production roster.
+ * Old saves used the former flat-map default and cannot contain Orca. */
+function migrateDemoContentForOffshoreUnits(): void {
+  if (readPersisted(STORAGE_DEMO_CONTENT_REVISION) === CURRENT_DEMO_CONTENT_REVISION) return;
+
+  const storedUnits = readPersisted(STORAGE_DEMO_UNITS);
+  if (storedUnits !== null) {
+    try {
+      const units = sanitizeDemoUnitIds(JSON.parse(storedUnits));
+      if (units !== null && !units.includes('unitOrca')) {
+        units.push('unitOrca');
+        persistJson(STORAGE_DEMO_UNITS, units);
+      }
+    } catch {
+      // Malformed state will fall back to the current demo preset.
+    }
+  }
+
+  // 0 was the previous DEMO BATTLE default. Move that legacy default to the
+  // round-island value so its offshore Fabricators have an actual water ring.
+  // After this one-time migration the user's terrain choice is preserved.
+  if (readPersisted(STORAGE_DEMO_PERIMETER_MAGNITUDE) === '0') {
+    persist(STORAGE_DEMO_PERIMETER_MAGNITUDE, '-800');
+  }
+  persist(STORAGE_DEMO_CONTENT_REVISION, CURRENT_DEMO_CONTENT_REVISION);
 }
 
 /** "true"/"false" → boolean, null otherwise. Keeps each loader a
@@ -321,8 +351,7 @@ export function loadStoredDemoUnits(): string[] | null {
   const stored = readPersisted(STORAGE_DEMO_UNITS);
   if (!stored) return null;
   try {
-    const parsed = JSON.parse(stored);
-    return sanitizeDemoUnitIds(parsed);
+    return sanitizeDemoUnitIds(JSON.parse(stored));
   } catch {
     /* malformed JSON */
   }
@@ -331,6 +360,7 @@ export function loadStoredDemoUnits(): string[] | null {
 
 export function saveDemoUnits(units: string[]): void {
   persistJson(STORAGE_DEMO_UNITS, sanitizeDemoUnitIds(units) ?? []);
+  persist(STORAGE_DEMO_CONTENT_REVISION, CURRENT_DEMO_CONTENT_REVISION);
 }
 
 export function getDefaultDemoUnits(): string[] {

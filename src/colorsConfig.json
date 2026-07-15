@@ -372,6 +372,11 @@
           "colorHex": "#111111"
         }
       },
+      "swim": {
+        "fin": {
+          "colorHex": "#222222"
+        }
+      },
       "hover": {
         "fanRing": {
           "colorHex": "#444444"

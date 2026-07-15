@@ -36,6 +36,7 @@
         "unitWidow",
         "unitHippo",
         "unitSeaTurtle",
+        "unitOrca",
         "unitTarantula",
         "unitLoris",
         "unitBee",
@@ -68,6 +69,7 @@
         "turretAlbatrosSiegeCannon",
         "turretRocketSlow",
         "turretRocketFast",
+        "turretTorpedo",
         "turretAntiAir",
         "turretSpawnBuildingsAndTowers",
         "turretSpawnUnits",
@@ -86,7 +88,8 @@
         "shotPlasmaHeavy",
         "shotMortarMedium",
         "shotMortarHeavy",
-        "shotPlasmaDisruptor"
+        "shotPlasmaDisruptor",
+        "shotTorpedo"
       ]
     }
   },
@@ -192,6 +195,15 @@
       }
     },
     "unitSeaTurtle": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
+        }
+      }
+    },
+    "unitOrca": {
       "targets": {
         "enemy": {
           "buildings": "all",
@@ -512,6 +524,15 @@
           "shots": {
             "only": ["shotRocketLight", "shotMortarMedium", "shotMortarHeavy"]
           }
+        }
+      }
+    },
+    "turretTorpedo": {
+      "targets": {
+        "enemy": {
+          "buildings": "all",
+          "towers": "all",
+          "units": "all"
         }
       }
     },

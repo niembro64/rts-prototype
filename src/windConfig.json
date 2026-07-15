@@ -27,7 +27,7 @@
     "rotorPotentialRadPerSec": 0.4,
     "responseHalfLifeMultipliers": {
       "fanYaw": 4,
-      "bladeSpeed": 5.00
+      "bladeSpeed": 5.0
     }
   },
   "particles": {
@@ -38,13 +38,11 @@
     "alpha": 0.16,
     "radiusWorld": 1.25,
     "fieldPaddingWorld": 160,
-    "heightAboveSurfaceWorld": {
-      "min": 5,
-      "max": 4000
-    },
+    "lowerPlaneDistanceAboveWaterLevelWorld": 10,
+    "upperPlaneDistanceAboveHighestTerrainWorld": 200,
     "lifetimeSeconds": {
-      "min": 2,
-      "max": 4
+      "min": 0.1,
+      "max": 1
     },
     "fadeFraction": 0.15
   }

@@ -69,6 +69,13 @@ pub enum ProjectileShotKind {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum ProjectilePhysicsMedium {
+    AirOnly,
+    WaterOnly,
+    AirAndWater,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ShieldSurfaceResponse {
     Reflect,
     Absorb,
@@ -225,6 +232,7 @@ pub struct ProjectileShotBlueprint {
     pub homingThrust: Option<f64>,
     pub homingDelayMs: Option<f64>,
     pub propulsionForce: Option<f64>,
+    pub physicsMedium: ProjectilePhysicsMedium,
     pub gravityForceMultiplier: f64,
     pub airFrictionPer60HzFrame: f64,
     pub smokeTrail: Option<SmokeTrailSpec>,
@@ -269,6 +277,7 @@ pub struct ProjectileShot {
     pub homingThrust: Option<f64>,
     pub homingDelayMs: Option<f64>,
     pub propulsionForce: Option<f64>,
+    pub physicsMedium: ProjectilePhysicsMedium,
     pub gravityForceMultiplier: f64,
     pub airFrictionPer60HzFrame: f64,
     pub trailLength: Option<f64>,
@@ -649,6 +658,25 @@ pub struct FlipperConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct SwimConfig {
+    pub pectoralOffsetXFrac: f64,
+    pub pectoralLateralOffsetFrac: f64,
+    pub pectoralHeightFrac: f64,
+    pub pectoralSpanFrac: f64,
+    pub pectoralRootChordFrac: f64,
+    pub pectoralTipChordFrac: f64,
+    pub tailOffsetXFrac: f64,
+    pub tailSpanFrac: f64,
+    pub tailChordFrac: f64,
+    pub dorsalOffsetXFrac: f64,
+    pub dorsalHeightFrac: f64,
+    pub dorsalChordFrac: f64,
+    pub thicknessFrac: f64,
+    pub strokeAngleDeg: f64,
+    pub cycleDistanceFrac: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionMediumPhysics {
     pub heightUpwardForce: f64,
     pub buoyancy: Option<f64>,
@@ -790,6 +818,17 @@ pub struct LocomotionBlueprintFlying {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionBlueprintSwim {
+    pub r#type: String,
+    pub physicsPresetId: String,
+    pub physics: LocomotionPhysics,
+    pub survival: LocomotionSurvivalPolicy,
+    pub pathfindingBlueprintId: String,
+    pub pathfinding: PathfindingBlueprint,
+    pub config: SwimConfig,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum LocomotionBlueprint {
     LocomotionBlueprintWheels(LocomotionBlueprintWheels),
     LocomotionBlueprintTreads(LocomotionBlueprintTreads),
@@ -797,6 +836,7 @@ pub enum LocomotionBlueprint {
     LocomotionBlueprintFlippers(LocomotionBlueprintFlippers),
     LocomotionBlueprintHover(LocomotionBlueprintHover),
     LocomotionBlueprintFlying(LocomotionBlueprintFlying),
+    LocomotionBlueprintSwim(LocomotionBlueprintSwim),
 }
 
 #[derive(Clone, Debug, PartialEq)]

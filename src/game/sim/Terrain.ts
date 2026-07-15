@@ -27,6 +27,7 @@ export {
 export {
   buildTerrainTileMap,
   getTerrainMeshHeight,
+  getTerrainMeshMaximumHeight,
   getTerrainMeshNormal,
   getTerrainMeshSample,
   getTerrainMeshView,

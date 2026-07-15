@@ -52,6 +52,7 @@ import type {
 } from './types';
 import { WorldState } from './WorldState';
 import type { MetalDeposit } from '../../metalDepositConfig';
+import { getHighestBuildFootprintGroundZ } from './buildingPlacementPolicy';
 
 const TEST_PLAYER_ID = 1 as PlayerId;
 const CONTRACT_EPSILON = 1e-6;
@@ -83,6 +84,15 @@ function createAllBuildableTerrainGrid(mapWidth: number, mapHeight: number): Ter
     configKey: 'support-surface-contract:all-buildable',
     flags: new Array(cellCount).fill(1),
     levels: new Array(cellCount).fill(0),
+  };
+}
+
+function createNoBuildableTerrainGrid(mapWidth: number, mapHeight: number): TerrainBuildabilityGrid {
+  const grid = createAllBuildableTerrainGrid(mapWidth, mapHeight);
+  return {
+    ...grid,
+    configKey: 'support-surface-contract:none-buildable',
+    flags: new Array(grid.flags.length).fill(0),
   };
 }
 
@@ -388,7 +398,7 @@ function assertBuildingSupportContract(): void {
 
   const locomotionIds = firstBlueprintIdByLocomotionType();
   const requiredTypes: UnitLocomotion['type'][] = [
-    'wheels', 'treads', 'legs', 'flippers', 'hover', 'flying',
+    'wheels', 'treads', 'legs', 'flippers', 'hover', 'flying', 'swim',
   ];
   for (let i = 0; i < requiredTypes.length; i++) {
     const type = requiredTypes[i];
@@ -940,6 +950,42 @@ function assertFactoryGuardDefaultContract(): void {
   );
 }
 
+function assertFabricatorTerrainIndependentPlacementContract(): void {
+  const world = new WorldState(1241, 512, 512);
+  world.playerCount = 2;
+  const construction = new ConstructionSystem(
+    world.mapWidth,
+    world.mapHeight,
+    createNoBuildableTerrainGrid(world.mapWidth, world.mapHeight),
+  );
+  const gridX = 8;
+  const gridY = 8;
+  const factory = construction.startBuilding(
+    world,
+    'towerFabricator',
+    gridX,
+    gridY,
+    TEST_PLAYER_ID,
+    0,
+    0,
+    { skipBuilderAuthorization: true },
+  );
+  assertContract(factory !== null, 'fabricator placement must ignore terrain buildability and flatness');
+  const config = getBuildingConfig('towerFabricator');
+  const expectedBaseline = getHighestBuildFootprintGroundZ(
+    gridX,
+    gridY,
+    config.placementGridWidth,
+    config.placementGridHeight,
+    (x, y) => world.getGroundZ(x, y),
+  );
+  assertNear(
+    factory.transform.z - factory.building!.depth / 2,
+    expectedBaseline,
+    'fabricator base must use the highest build-square terrain sample',
+  );
+}
+
 function createSingleCellDeposit(gx: number, gy: number): MetalDeposit {
   const x = (gx + 0.5) * BUILD_GRID_CELL_SIZE;
   const y = (gy + 0.5) * BUILD_GRID_CELL_SIZE;
@@ -1021,6 +1067,7 @@ export function runSupportSurfaceContractTest(): void {
     assertFactoryShellContract();
     assertQueenProductionRingMountContract();
     assertFactoryGuardDefaultContract();
+    assertFabricatorTerrainIndependentPlacementContract();
     assertExtractorTierCoverageContract();
   });
 }

@@ -80,7 +80,8 @@ export function buildCanonicalServerState(core: ServerSimulationCore): Canonical
     world: {
       tick: world.getTick(),
       nextEntityId: world.getNextEntityId(),
-      rngSeed: world.rng.getSeed(),
+      gameGenerationSeed: world.getGameGenerationSeed(),
+      rngSeed: world.getRandomStreamState(),
       activePlayerId: world.activePlayerId,
       playerCount: world.playerCount,
       playerIds,

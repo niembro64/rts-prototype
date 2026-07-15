@@ -30,6 +30,7 @@ import {
 import type { PlayerId } from '../sim/types';
 import type { GameInstance } from '@/types/game';
 import { applyStoredBattleServerSettings } from '../server/battleServerSettings';
+import { createHostGameGenerationSeed } from '../network/gameGenerationSeed';
 
 export type BackgroundBattleState = {
   gameInstance: GameInstance;
@@ -193,6 +194,7 @@ export async function createBackgroundBattle(
   const server = await GameServer.create(
     {
       playerIds: demoPlayerIds,
+      gameGenerationSeed: createHostGameGenerationSeed(),
       centerMagnitude: terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrainRuntimeConfig.perimeterMagnitude,

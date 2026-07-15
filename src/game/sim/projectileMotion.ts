@@ -61,6 +61,33 @@ export function getProjectileRocketCounterGravityCarryAcceleration(
   return Math.max(0, projectileGravity - maxThrustAccel * steeringScale);
 }
 
+export function getProjectileMediumHoldCounterGravityAcceleration(
+  shot: {
+    physicsMedium: ProjectileShot['physicsMedium'];
+    type: ProjectileShot['type'];
+    homingThrust?: number | null;
+    mass: number;
+  },
+  mediumPhysicsActive: boolean,
+  guidedTargetAlreadyCarriesGravity: boolean,
+  projectileGravity: number,
+): number {
+  if (
+    !mediumPhysicsActive ||
+    guidedTargetAlreadyCarriesGravity ||
+    shot.physicsMedium !== 'water-only' ||
+    shot.type !== 'rocket' ||
+    !Number.isFinite(projectileGravity) ||
+    projectileGravity <= 0
+  ) {
+    return 0;
+  }
+  return Math.min(
+    projectileGravity,
+    getProjectileHomingThrustAcceleration(shot),
+  );
+}
+
 export function getProjectileHomingEngagementScale(
   shot: { homingDelayMs?: number | null },
   timeAliveBeforeStepMs: number,

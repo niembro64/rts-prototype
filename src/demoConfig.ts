@@ -3,6 +3,26 @@ import demoConfig from './demoConfig.json';
 
 export type DemoBattleWaypointType = 'move' | 'fight' | 'patrol';
 
+const REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS = [
+  'unitSeaTurtle',
+  'unitOrca',
+] as const;
+
+function validatedWaterFabricatorConfig(): typeof demoConfig.waterFabricators {
+  const config = demoConfig.waterFabricators;
+  const ids = config.unitBlueprintIds;
+  if (
+    ids.length !== REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.length ||
+    REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.some((id) => !ids.includes(id))
+  ) {
+    throw new Error(
+      'demoConfig.waterFabricators.unitBlueprintIds must contain exactly ' +
+        REQUIRED_WATER_FACTORY_UNIT_BLUEPRINT_IDS.join(' and '),
+    );
+  }
+  return config;
+}
+
 export const DEMO_CONFIG = {
   /** Number of players in the demo game */
   playerCount: demoConfig.playerCount,
@@ -54,6 +74,13 @@ export const DEMO_CONFIG = {
    * shared behavior.
    */
   baseRings: demoConfig.baseRings,
+
+  /**
+   * Demo-only outer-water Fabricators. These are ordinary Fabricators using
+   * the universal unit roster and drop pipeline; this section controls only
+   * their initial placement and repeat-build seed.
+   */
+  waterFabricators: validatedWaterFabricatorConfig(),
 
   /**
    * DEMO BATTLE initial-spawn unit order type. 'fight' makes the

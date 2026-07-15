@@ -187,6 +187,13 @@
         "missile"
       ]
     },
+    "ProjectilePhysicsMedium": {
+      "enum": [
+        "air-only",
+        "water-only",
+        "air-and-water"
+      ]
+    },
     "ShieldSurfaceResponse": {
       "enum": [
         "reflect",
@@ -556,6 +563,7 @@
         "homingThrust",
         "homingDelayMs",
         "propulsionForce",
+        "physicsMedium",
         "gravityForceMultiplier",
         "airFrictionPer60HzFrame",
         "smokeTrail"
@@ -655,6 +663,9 @@
             }
           ]
         },
+        "physicsMedium": {
+          "$ref": "#/$defs/ProjectilePhysicsMedium"
+        },
         "gravityForceMultiplier": {
           "type": "number"
         },
@@ -734,6 +745,7 @@
         "health",
         "launchForce",
         "radius",
+        "physicsMedium",
         "gravityForceMultiplier",
         "airFrictionPer60HzFrame"
       ],
@@ -779,6 +791,9 @@
         },
         "propulsionForce": {
           "type": "number"
+        },
+        "physicsMedium": {
+          "$ref": "#/$defs/ProjectilePhysicsMedium"
         },
         "gravityForceMultiplier": {
           "type": "number"
@@ -1939,6 +1954,44 @@
       },
       "additionalProperties": false
     },
+    "SwimConfig": {
+      "type": "object",
+      "required": [
+        "pectoralOffsetXFrac",
+        "pectoralLateralOffsetFrac",
+        "pectoralHeightFrac",
+        "pectoralSpanFrac",
+        "pectoralRootChordFrac",
+        "pectoralTipChordFrac",
+        "tailOffsetXFrac",
+        "tailSpanFrac",
+        "tailChordFrac",
+        "dorsalOffsetXFrac",
+        "dorsalHeightFrac",
+        "dorsalChordFrac",
+        "thicknessFrac",
+        "strokeAngleDeg",
+        "cycleDistanceFrac"
+      ],
+      "properties": {
+        "pectoralOffsetXFrac": { "type": "number" },
+        "pectoralLateralOffsetFrac": { "type": "number" },
+        "pectoralHeightFrac": { "type": "number" },
+        "pectoralSpanFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "pectoralRootChordFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "pectoralTipChordFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "tailOffsetXFrac": { "type": "number" },
+        "tailSpanFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "tailChordFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "dorsalOffsetXFrac": { "type": "number" },
+        "dorsalHeightFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "dorsalChordFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "thicknessFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "strokeAngleDeg": { "type": "number" },
+        "cycleDistanceFrac": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "LocomotionMediumPhysics": {
       "type": "object",
       "required": [
@@ -2368,6 +2421,28 @@
       },
       "additionalProperties": false
     },
+    "LocomotionBlueprintSwim": {
+      "type": "object",
+      "required": [
+        "type",
+        "physicsPresetId",
+        "physics",
+        "survival",
+        "pathfindingBlueprintId",
+        "pathfinding",
+        "config"
+      ],
+      "properties": {
+        "type": { "const": "swim" },
+        "physicsPresetId": { "type": "string" },
+        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
+        "survival": { "$ref": "#/$defs/LocomotionSurvivalPolicy" },
+        "pathfindingBlueprintId": { "type": "string" },
+        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
+        "config": { "$ref": "#/$defs/SwimConfig" }
+      },
+      "additionalProperties": false
+    },
     "LocomotionBlueprint": {
       "oneOf": [
         {
@@ -2387,6 +2462,9 @@
         },
         {
           "$ref": "#/$defs/LocomotionBlueprintFlying"
+        },
+        {
+          "$ref": "#/$defs/LocomotionBlueprintSwim"
         }
       ]
     },

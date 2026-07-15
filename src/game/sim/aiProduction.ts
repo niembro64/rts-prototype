@@ -24,7 +24,11 @@ function initWeights(): void {
   }
 }
 
-function pickRandomUnit(world: WorldState, allowedUnitBlueprintIds: ReadonlySet<string> | null): string {
+function pickRandomUnit(
+  world: WorldState,
+  playerId: PlayerId,
+  allowedUnitBlueprintIds: ReadonlySet<string> | null,
+): string {
   initWeights();
 
   if (allowedUnitBlueprintIds && allowedUnitBlueprintIds.size > 0) {
@@ -35,7 +39,7 @@ function pickRandomUnit(world: WorldState, allowedUnitBlueprintIds: ReadonlySet<
     }
     if (filteredTotal <= 0) return weights[0].id;
 
-    const r = world.rng.next() * filteredTotal;
+    const r = world.nextRandom(playerId) * filteredTotal;
     let cumulative = 0;
     for (const entry of weights) {
       if (!allowedUnitBlueprintIds.has(entry.id)) continue;
@@ -44,7 +48,7 @@ function pickRandomUnit(world: WorldState, allowedUnitBlueprintIds: ReadonlySet<
     }
   }
 
-  const r = world.rng.next() * totalWeight;
+  const r = world.nextRandom(playerId) * totalWeight;
   let cumulative = 0;
   for (const entry of weights) {
     cumulative += entry.weight;
@@ -97,7 +101,11 @@ export function updateAiProduction(
 
     // Pick a repeat-build type for the factory if it has none set.
     if (entity.factory.selectedUnitBlueprintId === null && world.canPlayerQueueUnit(entity.ownership.playerId)) {
-      if (factoryProductionSystem.selectUnit(entity, pickRandomUnit(world, factoryAllowedUnitBlueprintIds), world)) {
+      if (factoryProductionSystem.selectUnit(
+        entity,
+        pickRandomUnit(world, entity.ownership.playerId, factoryAllowedUnitBlueprintIds),
+        world,
+      )) {
         world.markSnapshotDirty(entity.id, ENTITY_CHANGED_FACTORY);
       }
     }

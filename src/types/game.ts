@@ -128,6 +128,9 @@ export type GameConnection = {
 
 export type GameServerConfig = {
   playerIds: PlayerId[];
+  /** Immutable uint32 sampled once by the match host and distributed through
+   * canonical initialization. Omitted only by deterministic tests/fixtures. */
+  gameGenerationSeed?: number;
   /** Signed CENTER amplitude selected by the host/lobby. */
   centerMagnitude?: number;
   /** Signed DIVIDERS amplitude selected by the host/lobby. */

@@ -66,6 +66,7 @@ import type { Command } from '../game/sim/commands';
 import type { PlayerId } from '../game/sim/types';
 import type { MapLandCellDimensions } from '../mapSizeConfig';
 import { presentationSnapshotRateIntervalMs } from '../presentationSnapshotConfig';
+import { createHostGameGenerationSeed } from '../game/network/gameGenerationSeed';
 
 export type RealBattleStartupTerrain = {
   terrainRuntimeConfig: BattleTerrainRuntimeConfig;
@@ -76,6 +77,7 @@ export type RealBattleStartupTerrain = {
 type CreateRealBattleServerOptions = {
   playerIds: PlayerId[];
   aiPlayerIds?: PlayerId[];
+  gameGenerationSeed: number;
   terrain: RealBattleStartupTerrain;
   converterTax?: number;
   onLoadingProgress?: (progress: number, phase?: string) => void | Promise<void>;
@@ -131,6 +133,7 @@ type RealBattleMatchContext = {
   readonly hostPlayerId: PlayerId;
   readonly settings: LobbySettings;
   readonly initializationHash: string;
+  readonly gameGenerationSeed: number;
 };
 
 type CreateRealBattleMatchContextOptions = {
@@ -242,6 +245,7 @@ function createRealBattleMatchContext({
       playerIds: battleHandoff.playerIds,
       aiPlayerIds: battleHandoff.initialization.aiPlayerIds,
       settings,
+      gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
     });
     const rebuiltHash = hashCanonicalMatchInitialization(rebuiltInitialization);
     if (rebuiltHash !== battleHandoff.initializationHash) {
@@ -257,6 +261,7 @@ function createRealBattleMatchContext({
       hostPlayerId: battleHandoff.hostPlayerId,
       settings,
       initializationHash: battleHandoff.initializationHash,
+      gameGenerationSeed: battleHandoff.initialization.gameGenerationSeed,
     };
   }
 
@@ -267,6 +272,7 @@ function createRealBattleMatchContext({
     ? 'local-lockstep'
     : network.getRoomCode();
   const hostPlayerId = playerIds[0] ?? localPlayerId;
+  const gameGenerationSeed = createHostGameGenerationSeed();
   const initialization = buildCanonicalMatchInitialization({
     gameId,
     roomCode,
@@ -274,6 +280,7 @@ function createRealBattleMatchContext({
     playerIds,
     aiPlayerIds,
     settings: fallbackSettings,
+    gameGenerationSeed,
   });
   return {
     gameId,
@@ -281,6 +288,7 @@ function createRealBattleMatchContext({
     hostPlayerId,
     settings: fallbackSettings,
     initializationHash: hashCanonicalMatchInitialization(initialization),
+    gameGenerationSeed,
   };
 }
 
@@ -448,6 +456,7 @@ function createLocalRealBattleConnection(
 async function createRealBattleServer({
   playerIds,
   aiPlayerIds,
+  gameGenerationSeed,
   terrain,
   converterTax,
   onLoadingProgress,
@@ -456,6 +465,7 @@ async function createRealBattleServer({
     {
       playerIds,
       aiPlayerIds,
+      gameGenerationSeed,
       centerMagnitude: terrain.terrainRuntimeConfig.centerMagnitude,
       dividersMagnitude: terrain.terrainRuntimeConfig.dividersMagnitude,
       perimeterMagnitude: terrain.terrainRuntimeConfig.perimeterMagnitude,
@@ -517,6 +527,7 @@ async function createDeterministicLockstepBackendRuntime({
   const server = await createRealBattleServer({
     playerIds,
     aiPlayerIds,
+    gameGenerationSeed: matchContext.gameGenerationSeed,
     terrain,
     converterTax: matchContext.settings.converterTax,
     onLoadingProgress,

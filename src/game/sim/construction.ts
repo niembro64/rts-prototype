@@ -23,6 +23,10 @@ import {
   METAL_EXTRACTOR_T1_BLUEPRINT_ID,
   METAL_EXTRACTOR_T2_BLUEPRINT_ID,
 } from './metalExtractorUpgrade';
+import {
+  buildingIgnoresTerrainForPlacement,
+  getHighestBuildFootprintGroundZ,
+} from './buildingPlacementPolicy';
 
 type StartBuildingOptions = {
   skipBuilderAuthorization?: boolean;
@@ -120,6 +124,16 @@ export class ConstructionSystem {
       playerId,
       rotation,
     );
+    if (buildingIgnoresTerrainForPlacement(buildingBlueprintId)) {
+      const baselineZ = getHighestBuildFootprintGroundZ(
+        gridX,
+        gridY,
+        placementFootprint.gridWidth,
+        placementFootprint.gridHeight,
+        (x, y) => world.getGroundZ(x, y),
+      );
+      entity.transform.z = baselineZ + physicalSize.depth / 2;
+    }
 
     // Add buildable component — paid starts at zero on every axis;
     // resources flow in from the player's stockpile until each axis
@@ -343,6 +357,22 @@ export class ConstructionSystem {
       config.gridDepth * BUILD_GRID_CELL_SIZE,
       playerId
     );
+    if (buildingIgnoresTerrainForPlacement(buildingBlueprintId)) {
+      const footprint = getRotatedGridFootprint(
+        config.placementGridWidth,
+        config.placementGridHeight,
+        0,
+      );
+      const grid = this.buildingGrid.worldToGrid(snapped.x, snapped.y);
+      const baselineZ = getHighestBuildFootprintGroundZ(
+        grid.gx,
+        grid.gy,
+        footprint.gridWidth,
+        footprint.gridHeight,
+        (x, y) => world.getGroundZ(x, y),
+      );
+      entity.transform.z = baselineZ + entity.building!.depth / 2;
+    }
 
     entity.buildable = createBuildable(config.cost, {
       paid: null,

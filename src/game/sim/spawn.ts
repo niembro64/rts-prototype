@@ -27,6 +27,8 @@ import {
   type MapOvalMetrics,
 } from './mapOval';
 import { angleDeltaAbs } from '../math';
+import { isWaterAt } from './Terrain';
+import { fabricatorTorusOuterRadius } from './blueprints';
 
 export {  getPlayerBaseAngle } from './playerLayout';
 
@@ -294,16 +296,24 @@ function completeInitialBuilding(
       world.mapHeight,
       factoryWaypoint,
     );
-    const rally = defaultWaypoints[0];
-    entity.factory.defaultWaypoints = defaultWaypoints;
-    entity.factory.rallyX = rally.x;
-    entity.factory.rallyY = rally.y;
-    entity.factory.rallyZ = null;
-    entity.factory.rallyType = rally.type;
+    setFactoryDefaultWaypoints(entity, defaultWaypoints);
   }
 
   applyCompletedBuildingEffects(world, entity);
   entity.buildable = null;
+}
+
+function setFactoryDefaultWaypoints(
+  entity: Entity,
+  defaultWaypoints: readonly FactoryDefaultWaypoint[],
+): void {
+  if (entity.factory === null || defaultWaypoints.length === 0) return;
+  const rally = defaultWaypoints[0];
+  entity.factory.defaultWaypoints = defaultWaypoints;
+  entity.factory.rallyX = rally.x;
+  entity.factory.rallyY = rally.y;
+  entity.factory.rallyZ = rally.z;
+  entity.factory.rallyType = rally.type;
 }
 
 // (Building rows replaced by per-player arcs along the spawn oval —
@@ -373,12 +383,14 @@ function placeArcRow(
 
 function getAvailableDemoFactoryUnitBlueprintIds(
   availableUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
+  excludedUnitBlueprintIds: ReadonlySet<string> | undefined = undefined,
 ): string[] {
   const unitBlueprintIds: string[] = [];
   const factoryRoster = getStructureFactoryAllowedUnitBlueprintIds('towerFabricator');
   for (let i = 0; i < factoryRoster.length; i++) {
     const unitBlueprintId = factoryRoster[i];
     if (availableUnitBlueprintIds !== undefined && !availableUnitBlueprintIds.has(unitBlueprintId)) continue;
+    if (excludedUnitBlueprintIds?.has(unitBlueprintId)) continue;
     unitBlueprintIds.push(unitBlueprintId);
   }
   return unitBlueprintIds;
@@ -401,6 +413,8 @@ function placeFactoryArcRowForUnitBlueprintIds(
   sectorAngle: number,
   playerId: PlayerId,
   factoryWaypoint: InitialFactoryWaypointConfig,
+  searchOffsets: readonly GridOffset[] = INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
+  acceptCompleted: ((entity: Entity) => boolean) | null = null,
 ): Entity[] {
   const count = unitBlueprintIds.length;
   if (count <= 0) return [];
@@ -419,6 +433,8 @@ function placeFactoryArcRowForUnitBlueprintIds(
       point.y,
       playerId,
       factoryWaypoint,
+      searchOffsets,
+      acceptCompleted,
     );
     if (!factory) continue;
     seedFactoryRepeatBuild(factory, unitBlueprintIds[j]);
@@ -426,6 +442,40 @@ function placeFactoryArcRowForUnitBlueprintIds(
   }
 
   return entities;
+}
+
+function isFabricatorOverWater(world: WorldState, entity: Entity): boolean {
+  const building = entity.building;
+  if (building === null) return false;
+  const sampleRadius = fabricatorTorusOuterRadius(building.width, building.height) * 0.72;
+  for (let i = 0; i < 8; i++) {
+    const angle = i * Math.PI / 4;
+    const x = entity.transform.x + DMath.cos(angle) * sampleRadius;
+    const y = entity.transform.y + DMath.sin(angle) * sampleRadius;
+    if (!isWaterAt(x, y, world.mapWidth, world.mapHeight)) return false;
+  }
+  return isWaterAt(entity.transform.x, entity.transform.y, world.mapWidth, world.mapHeight);
+}
+
+function configureOuterWaterFactoryWaypoints(
+  world: WorldState,
+  entity: Entity,
+  oval: MapOvalMetrics,
+  radius: number,
+): void {
+  const angle = mapOvalAngleAt(
+    world.mapWidth,
+    world.mapHeight,
+    entity.transform.x,
+    entity.transform.y,
+  );
+  const patrolArc = Math.PI / Math.max(2, world.playerCount);
+  const forward = mapOvalPointAt(oval, angle + patrolArc, radius);
+  const backward = mapOvalPointAt(oval, angle - patrolArc, radius);
+  setFactoryDefaultWaypoints(entity, [
+    { x: forward.x, y: forward.y, z: null, type: 'patrol' },
+    { x: backward.x, y: backward.y, z: null, type: 'patrol' },
+  ]);
 }
 
 /**
@@ -477,7 +527,14 @@ export function spawnInitialBases(
   const { oval, radius: spawnRadius } = getDemoOval(world);
   const { cx, cy } = oval;
   const factoryWaypoint = getInitialFactoryWaypointConfig(mode);
-  const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(availableUnitBlueprintIds);
+  const waterFactoryUnitBlueprintIds = DEMO_CONFIG.waterFabricators.unitBlueprintIds.filter(
+    (id) => availableUnitBlueprintIds === undefined || availableUnitBlueprintIds.has(id),
+  );
+  const waterFactoryUnitBlueprintIdSet = new Set<string>(DEMO_CONFIG.waterFabricators.unitBlueprintIds);
+  const factoryUnitBlueprintIds = getAvailableDemoFactoryUnitBlueprintIds(
+    availableUnitBlueprintIds,
+    waterFactoryUnitBlueprintIdSet,
+  );
 
   // Concentric radii — each ring is explicit so the demo layout can be
   // tuned the same way metal deposit rings are tuned.
@@ -493,6 +550,10 @@ export function spawnInitialBases(
   const factoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
     DEMO_CONFIG.baseRings.towerFabricator.radiusFraction,
+  );
+  const waterFactoryRadius = demoBaseRingRadiusFromOuterSpawnRadius(
+    spawnRadius,
+    DEMO_CONFIG.waterFabricators.radiusFraction,
   );
   const radarRadius = demoBaseRingRadiusFromOuterSpawnRadius(
     spawnRadius,
@@ -564,12 +625,42 @@ export function spawnInitialBases(
       ));
     }
 
-    // Fabricator arc — one fabricator per available demo unit blueprint.
+    // Fabricator arcs — one ordinary land Fabricator per available demo unit
+    // blueprint, plus exactly two outer-water Fabricators per player: one
+    // repeat-building Sea Turtles and one repeat-building Orcas.
     // Each fabricator starts with a repeat-build selection matching
     // its unit blueprint, so the base layout and AI production inventory
     // stay tied to the same unit roster. Gated by the towerFabricator
     // tower toggle — disabling it removes the demo's whole factory ring.
     if (isTowerEnabled('towerFabricator')) {
+      // Offshore factories are inserted first so the deterministic factory
+      // update order lets their two reserved cap slots produce Orca and Sea
+      // Turtle shells before ordinary land production considers the cap.
+      entities.push(...placeFactoryArcRowForUnitBlueprintIds(
+        world,
+        construction,
+        waterFactoryUnitBlueprintIds,
+        oval,
+        waterFactoryRadius,
+        baseAngle,
+        getPlayerBuildArcAngle(
+          playerCount,
+          DEMO_CONFIG.waterFabricators.arcSectorFraction,
+        ),
+        playerId,
+        factoryWaypoint,
+        INITIAL_BASE_PLACEMENT_SEARCH_OFFSETS,
+        (entity) => {
+          if (!isFabricatorOverWater(world, entity)) return false;
+          configureOuterWaterFactoryWaypoints(
+            world,
+            entity,
+            oval,
+            waterFactoryRadius,
+          );
+          return true;
+        },
+      ));
       entities.push(...placeFactoryArcRowForUnitBlueprintIds(
         world, construction, factoryUnitBlueprintIds,
         oval, factoryRadius, baseAngle, sectorAngle, playerId, factoryWaypoint,

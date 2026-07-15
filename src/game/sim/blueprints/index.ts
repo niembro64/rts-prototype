@@ -554,6 +554,7 @@ function buildShotConfig(
     homingThrust: shotBlueprint.homingThrust ?? undefined,
     homingDelayMs: shotBlueprint.homingDelayMs ?? undefined,
     propulsionForce: shotBlueprint.propulsionForce ?? undefined,
+    physicsMedium: shotBlueprint.physicsMedium,
     gravityForceMultiplier: shotBlueprint.gravityForceMultiplier,
     airFrictionPer60HzFrame: shotBlueprint.airFrictionPer60HzFrame,
     submunitions: shotBlueprint.submunitions ?? undefined,

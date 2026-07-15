@@ -597,6 +597,7 @@ const BAR_GROUP_ICON_BY_UNIT_BLUEPRINT_ID: Readonly<Record<string, BarGroupIconI
   unitMammoth: 'weapon',
   unitMongoose: 'weapon',
   unitSeaTurtle: 'weapon',
+  unitOrca: 'weapon',
   unitQueenBee: 'weapon',
   unitQueenTick: 'weapon',
   unitTarantula: 'weapon',

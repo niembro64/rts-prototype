@@ -2,7 +2,7 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Projectile collision detection and damage application
 
 import type { WorldState } from '../WorldState';
-import type { Entity, EntityId, Projectile, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
+import type { Entity, EntityId, PlayerId, Projectile, ProjectileShot, BeamRay, LaserRay, ShotSource } from '../types';
 import {
   REFLECTOR_HIT_KIND_NONE,
   SHIELD_REFLECTION_ENTITY_PLASMA,
@@ -34,6 +34,10 @@ import { writeTurretCooldownToSlab } from './combatActivitySlab';
 import { getCombatTargetingSourceSlots } from './targetingInputStamping';
 import { rollTurretCooldownDuration } from '../turretCooldown';
 import { normalizeAngle } from '../../math';
+import {
+  getAirProjectileWaterEntryFraction,
+  projectileCanOperateInWater,
+} from '../projectileMedium';
 
 
 const PROJECTILE_HITBOX_SWEEP_QUERY_EXTRA = 32;
@@ -81,6 +85,7 @@ const _collisionBuildingsToRemove = new Set<EntityId>();
 const _collisionDeathContexts = new Map<EntityId, DeathContext>();
 const _collisionProjectilesToRemove: EntityId[] = [];
 const _collisionProjectileRemoveIds = new Set<EntityId>();
+const _collisionWaterSurfaceImpactIds = new Set<EntityId>();
 const _collisionDespawnEvents: ProjectileDespawnEvent[] = [];
 const _collisionSimEvents: SimEvent[] = [];
 const _collisionNewProjectiles: Entity[] = [];
@@ -176,6 +181,8 @@ const _terminalReflectedProjectile = new Uint8Array(1);
 const _terminalHitShield = new Uint8Array(1);
 const _terminalTerminalReflectorHit = new Uint8Array(1);
 const _terminalWaterAtImpact = new Uint8Array(1);
+const _terminalWaterSurfaceImpact = new Uint8Array(1);
+const _terminalWaterCompatible = new Uint8Array(1);
 const _terminalPosX = new Float64Array(1);
 const _terminalPosY = new Float64Array(1);
 const _terminalPosZ = new Float64Array(1);
@@ -298,8 +305,9 @@ function makeSubmunitionSeed(
   parentShotEntityId: EntityId,
   parentShotSource: ShotSource,
   currentTick: number,
+  gameplayRandomSeed: number,
 ): number {
-  let seed = 0x9e3779b9;
+  let seed = mixSubmunitionSeed(0x9e3779b9, gameplayRandomSeed);
   seed = mixSubmunitionSeed(seed, parentShotEntityId);
   seed = mixSubmunitionSeed(seed, currentTick);
   seed = mixSubmunitionSeed(seed, parentShotSource.spawnTick);
@@ -446,6 +454,46 @@ function computeProjectileReflectorHits(
     _reflectorResponseRotationChanged,
     _reflectorResponseRotation,
   );
+}
+
+/**
+ * Stop air-only projectiles at the first water-surface crossing before any
+ * reflector or damage sweep is evaluated. The terminal classifier owns the
+ * resulting harmless splash/removal; this pass only shortens the swept path.
+ */
+function clipAirProjectilesToWaterSurface(
+  world: WorldState,
+  projectiles: readonly Entity[],
+): void {
+  _collisionWaterSurfaceImpactIds.clear();
+  for (let i = 0; i < projectiles.length; i++) {
+    const entity = projectiles[i];
+    const proj = entity.projectile;
+    if (
+      proj === null ||
+      proj.projectileType !== 'projectile' ||
+      !isProjectileShot(proj.config.shot) ||
+      proj.config.shot.physicsMedium !== 'air-only'
+    ) {
+      continue;
+    }
+    const previousX = proj.collisionStartX ?? proj.prevX ?? entity.transform.x;
+    const previousY = proj.collisionStartY ?? proj.prevY ?? entity.transform.y;
+    const previousZ = proj.collisionStartZ ?? proj.prevZ ?? entity.transform.z;
+    const fraction = getAirProjectileWaterEntryFraction(
+      previousZ,
+      entity.transform.z,
+      WATER_LEVEL,
+    );
+    if (fraction === null) continue;
+    const impactX = previousX + fraction * (entity.transform.x - previousX);
+    const impactY = previousY + fraction * (entity.transform.y - previousY);
+    if (!isWaterAt(impactX, impactY, world.mapWidth, world.mapHeight)) continue;
+    entity.transform.x = impactX;
+    entity.transform.y = impactY;
+    entity.transform.z = WATER_LEVEL;
+    _collisionWaterSurfaceImpactIds.add(entity.id);
+  }
 }
 
 function shieldMaterialReflectsProjectile(isRocketShot: boolean): boolean {
@@ -751,7 +799,12 @@ function spawnSubmunitions(
   }
   const processed = sim.projectileSubmunitionLaunchVelocityBatch(
     childCount,
-    makeSubmunitionSeed(parentShotEntityId, parentShotSource, world.getTick()),
+    makeSubmunitionSeed(
+      parentShotEntityId,
+      parentShotSource,
+      world.getTick(),
+      Math.floor(world.nextRandom(ownerId as PlayerId) * 0x1_0000_0000) >>> 0,
+    ),
     parentVx,
     parentVy,
     parentVz,
@@ -1040,6 +1093,7 @@ function classifyProjectileTerminalConsequence(
   directHitThisTick: boolean,
   reflectedProjectile: boolean,
   hitShield: boolean,
+  waterSurfaceImpact = false,
 ): number {
   const proj = projEntity.projectile;
   if (proj === null) return 0;
@@ -1063,6 +1117,11 @@ function classifyProjectileTerminalConsequence(
   _terminalHitShield[0] = hitShield ? 1 : 0;
   _terminalTerminalReflectorHit[0] = terminalReflectorHit ? 1 : 0;
   _terminalWaterAtImpact[0] = isWaterAt(x, y, world.mapWidth, world.mapHeight) ? 1 : 0;
+  _terminalWaterSurfaceImpact[0] = waterSurfaceImpact ? 1 : 0;
+  _terminalWaterCompatible[0] =
+    isProjectileShot(config.shot) && projectileCanOperateInWater(config.shot.physicsMedium)
+      ? 1
+      : 0;
   _terminalPosX[0] = x;
   _terminalPosY[0] = y;
   _terminalPosZ[0] = z;
@@ -1088,6 +1147,8 @@ function classifyProjectileTerminalConsequence(
     _terminalHitShield,
     _terminalTerminalReflectorHit,
     _terminalWaterAtImpact,
+    _terminalWaterSurfaceImpact,
+    _terminalWaterCompatible,
     _terminalPosX,
     _terminalPosY,
     _terminalPosZ,
@@ -1159,6 +1220,7 @@ export function checkProjectileCollisions(
   // Reuse module-level containers (cleared each call)
   _collisionProjectilesToRemove.length = 0;
   _collisionProjectileRemoveIds.clear();
+  _collisionWaterSurfaceImpactIds.clear();
   _collisionDespawnEvents.length = 0;
   _collisionUnitsToRemove.clear();
   _collisionBuildingsToRemove.clear();
@@ -1178,6 +1240,7 @@ export function checkProjectileCollisions(
   const collisionDtMs = dtMs;
   const projectileEntities = world.getProjectiles();
   refreshProjectileCollisionTurretMounts(world, dtMs);
+  clipAirProjectilesToWaterSurface(world, projectileEntities);
   computeProjectileReflectorHits(world, projectileEntities, collisionDtMs);
 
   for (let projectileOrdinal = 0; projectileOrdinal < projectileEntities.length; projectileOrdinal++) {
@@ -1303,8 +1366,15 @@ export function checkProjectileCollisions(
     // Handle different projectile types.
     // Ground impact is checked after this block so a swept projectile
     // hitbox can stop on an entity it overlapped before reaching terrain.
+    const waterSurfaceImpact =
+      _collisionWaterSurfaceImpactIds.has(projEntity.id) &&
+      !reflectedProjectile &&
+      !terminalReflectorHit;
     const canApplyDamageThisTick =
-      !terminalReflectorHit && !expiredBeforeDamage && !healthZeroBeforeDamage;
+      !waterSurfaceImpact &&
+      !terminalReflectorHit &&
+      !expiredBeforeDamage &&
+      !healthZeroBeforeDamage;
     if (canApplyDamageThisTick && isRayType(proj.projectileType)) {
       if (proj.obstructionTick === undefined) {
         // A newly-created beam that has not received its first
@@ -1578,6 +1648,7 @@ export function checkProjectileCollisions(
       directHitThisTick,
       reflectedProjectile,
       hitShield,
+      waterSurfaceImpact,
     );
     const terminalGroundImpact =
       _terminalOutReason[0] === PROJECTILE_TERMINAL_REASON_GROUND;
@@ -1774,7 +1845,11 @@ export function checkProjectileCollisions(
       // the slab. The source entity may have despawned between the
       // beam's creation and its expiry; writeTurretCooldownToSlab is a
       // no-op when the slab slot is missing.
-      const cooldown = rollTurretCooldownDuration(proj.config.cooldown, () => world.rng.next());
+      const sourcePlayerId = world.getEntity(proj.sourceEntityId)?.ownership?.playerId ?? (0 as PlayerId);
+      const cooldown = rollTurretCooldownDuration(
+        proj.config.cooldown,
+        () => world.nextRandom(sourcePlayerId),
+      );
       if (cooldown > 0) {
         const source = world.getEntity(proj.sourceEntityId);
         if (source) {

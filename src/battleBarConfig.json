@@ -44,6 +44,7 @@
 
   "storageKeys": {
     "demoUnits": "demo-battle-units",
+    "demoContentRevision": "demo-battle-content-revision",
     "demoBuildings": "demo-battle-buildings",
     "demoTowers": "demo-battle-towers",
     "demoCap": "demo-battle-cap",

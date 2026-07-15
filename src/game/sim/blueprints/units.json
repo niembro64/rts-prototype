@@ -1415,6 +1415,149 @@
     },
     "preventLockOnIfMyTeamIsAboveMe": true
   },
+  "unitOrca": {
+    "unitBlueprintId": "unitOrca",
+    "name": "Orca",
+    "shortName": "ORCA",
+    "hp": 1450,
+    "radius": {
+      "other": 34,
+      "hitbox": 28,
+      "collision": 42,
+      "shotArmingRadius": 55
+    },
+    "bodyCenterHeight": 10,
+    "supportSurface": {
+      "kind": "none"
+    },
+    "fullVisionRadius": 1350,
+    "sensors": {
+      "fullSightRadius": 1350,
+      "radarRadius": 0,
+      "detectorRadius": 0,
+      "trackingRadius": 0,
+      "scanRadius": 0
+    },
+    "mass": 1800,
+    "cost": {
+      "energy": 3200,
+      "metal": 3200
+    },
+    "turrets": [
+      {
+        "turretBlueprintId": "turretTorpedo",
+        "mount": {
+          "x": 0.48,
+          "y": 0,
+          "z": 0
+        },
+        "hostDirected": true,
+        "requiredEngagedForFightStop": true
+      }
+    ],
+    "bodyShape": {
+      "kind": "composite",
+      "parts": [
+        {
+          "kind": "oval",
+          "offsetForward": -0.08,
+          "xFrac": 1.18,
+          "yFrac": 0.38,
+          "zFrac": 0.42
+        },
+        {
+          "kind": "oval",
+          "offsetForward": 0.72,
+          "xFrac": 0.38,
+          "yFrac": 0.24,
+          "zFrac": 0.28
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -0.12,
+          "xFrac": 0.28,
+          "yFrac": 0.13,
+          "zFrac": 0.16
+        },
+        {
+          "kind": "oval",
+          "offsetForward": -1.04,
+          "xFrac": 0.28,
+          "yFrac": 0.11,
+          "zFrac": 0.13
+        }
+      ]
+    },
+    "hud": {
+      "barsOffsetAboveTop": 14
+    },
+    "legAttachHeightFrac": null,
+    "suspension": null,
+    "builder": null,
+    "dgun": null,
+    "deathSound": {
+      "$audio": "event.death.unitHippo"
+    },
+    "locomotion": {
+      "type": "swim",
+      "physicsPresetId": "swim",
+      "survival": {
+        "waterFatal": false,
+        "fatalSubmergedFraction": 1,
+        "fatalExposureSeconds": 0
+      },
+      "pathfindingBlueprintId": "amphibiousAnywhere",
+      "physics": {
+        "ground": {
+          "heightUpwardForce": 0
+        },
+        "air": {
+          "heightUpwardForce": 0
+        },
+        "water": {
+          "heightUpwardForce": 34,
+          "buoyancy": 0.75
+        }
+      },
+      "config": {
+        "pectoralOffsetXFrac": 0.12,
+        "pectoralLateralOffsetFrac": 0.32,
+        "pectoralHeightFrac": 0.02,
+        "pectoralSpanFrac": 0.68,
+        "pectoralRootChordFrac": 0.38,
+        "pectoralTipChordFrac": 0.16,
+        "tailOffsetXFrac": -1.12,
+        "tailSpanFrac": 0.78,
+        "tailChordFrac": 0.28,
+        "dorsalOffsetXFrac": -0.12,
+        "dorsalHeightFrac": 0.42,
+        "dorsalChordFrac": 0.34,
+        "thicknessFrac": 0.055,
+        "strokeAngleDeg": 13,
+        "cycleDistanceFrac": 1.9
+      }
+    },
+    "base": {
+      "cost": {
+        "energy": 3200,
+        "metal": 3200
+      },
+      "mass": 1800,
+      "health": 1450,
+      "deathExplosion": {
+        "radius": 62,
+        "force": 140000,
+        "damage": 980
+      },
+      "radius": {
+        "other": 34,
+        "hitbox": 28,
+        "collision": 42,
+        "shotArmingRadius": 55
+      }
+    },
+    "preventLockOnIfMyTeamIsAboveMe": true
+  },
   "unitTarantula": {
     "unitBlueprintId": "unitTarantula",
     "name": "Tarantula",

@@ -1050,6 +1050,62 @@
     "emissionKind": "shot",
     "emissionBlueprintId": "shotRocketLight"
   },
+  "turretTorpedo": {
+    "turretBlueprintId": "turretTorpedo",
+    "name": "Torpedo Launcher",
+    "range": 900,
+    "rangeVolume": "turret-range-sphere",
+    "cooldown": {
+      "duration": 1800,
+      "durationRandomness": 0.08
+    },
+    "launchForce": 1200,
+    "addTurretVelocityToEmissionLaunch": true,
+    "turretTurnAccel": 600,
+    "turretDrag": 3,
+    "barrel": {
+      "type": "singleCylinderBarrel",
+      "barrelLength": 1.8
+    },
+    "isManualFire": false,
+    "passive": false,
+    "requiresNonObstructedLineOfSight": true,
+    "rangeMultiplierOverrides": {
+      "engageRangeMax": {
+        "acquire": 0.95,
+        "release": 1
+      },
+      "engageRangeMin": null,
+      "trackingRange": null
+    },
+    "eventsSmooth": false,
+    "color": 16777215,
+    "spread": {
+      "angle": 0,
+      "pelletCount": 1
+    },
+    "burst": null,
+    "shieldPanels": [],
+    "audio": {
+      "fireSound": {
+        "$audio": "event.fire.turretRocketSlow"
+      }
+    },
+    "verticalLauncher": false,
+    "idlePitch": 0,
+    "groundAimFraction": null,
+    "radius": {
+      "other": 8
+    },
+    "headOnly": false,
+    "constructionEmitter": null,
+    "aimStyle": {
+      "angleType": "rayDirect"
+    },
+    "kind": "attack",
+    "emissionKind": "shot",
+    "emissionBlueprintId": "shotTorpedo"
+  },
   "turretRocketFast": {
     "turretBlueprintId": "turretRocketFast",
     "name": "Fast Rocket Launcher",

@@ -62,6 +62,7 @@ import {
   getProjectileAirFrictionPer60HzFrame,
   getProjectileHomingEngagementScale,
   getProjectileHomingThrustAcceleration,
+  getProjectileMediumHoldCounterGravityAcceleration,
   getProjectilePropulsionAcceleration,
   getProjectileRocketCounterGravityCarryAcceleration,
 } from '../projectileMotion';
@@ -81,6 +82,8 @@ import {
   shotBlueprintIdToCode,
   turretBlueprintIdToCode,
 } from '../../../types/network';
+import { WATER_LEVEL } from '../Terrain';
+import { projectilePhysicsAppliesAtHeight } from '../projectileMedium';
 
 export { checkProjectileCollisions } from './ProjectileCollisionHandler';
 
@@ -842,7 +845,7 @@ export function fireTurrets(
         writeTurretCooldownToSlab(
           unit,
           weaponIndex,
-          rollTurretCooldownDuration(spec.cooldown, () => world.rng.next()),
+          rollTurretCooldownDuration(spec.cooldown, () => world.nextRandom(playerId)),
         );
 
         const projectileConfig = createProjectileConfigFromShot(
@@ -874,7 +877,7 @@ export function fireTurrets(
             writeRandomDirectionInCone(
               dirX, dirY, dirZ,
               spreadAngle,
-              () => world.rng.next(),
+              () => world.nextRandom(playerId),
               _spreadConeDir,
             );
             dirX = _spreadConeDir.x;
@@ -1015,7 +1018,7 @@ export function fireTurrets(
           writeTurretCooldownToSlab(
             unit,
             weaponIndex,
-            rollTurretCooldownDuration(config.cooldown, () => world.rng.next()),
+            rollTurretCooldownDuration(config.cooldown, () => world.nextRandom(playerId)),
           );
           const burstConfig = config.burst;
           if (burstConfig !== null && burstConfig.count > 1) {
@@ -1059,7 +1062,7 @@ export function fireTurrets(
           writeRandomDirectionInCone(
             dirX, dirY, dirZ,
             spreadAngle,
-            () => world.rng.next(),
+            () => world.nextRandom(playerId),
             _spreadConeDir,
           );
           dirX = _spreadConeDir.x;
@@ -1578,6 +1581,11 @@ function _updateTravelingProjectilesJS(
       dgunProjectile.isDGun === true;
     const shotConfig = proj.config.shot as ProjectileShot;
     const projectileGravity = GRAVITY * shotConfig.gravityForceMultiplier;
+    const mediumPhysicsActive = projectilePhysicsAppliesAtHeight(
+      shotConfig.physicsMedium,
+      position.z,
+      WATER_LEVEL,
+    );
     let policyFlags = isDGunWave ? TRAVELING_PROJECTILE_FLAG_DGUN_TERRAIN_FOLLOW : 0;
 
     // Per-tick acceleration. Gravity and thrust combine before
@@ -1587,7 +1595,9 @@ function _updateTravelingProjectilesJS(
     let aNetX = 0;
     let aNetY = 0;
     let aNetZ = -projectileGravity;
-    const propulsionAccel = getProjectilePropulsionAcceleration(shotConfig);
+    const propulsionAccel = mediumPhysicsActive
+      ? getProjectilePropulsionAcceleration(shotConfig)
+      : 0;
     if (propulsionAccel > 0) {
       const speed = DMath.hypot(proj.velocityX, proj.velocityY, proj.velocityZ);
       if (Number.isFinite(speed) && speed > 1e-6) {
@@ -1610,7 +1620,9 @@ function _updateTravelingProjectilesJS(
     _travelingProjectileAccelX[index] = 0;
     _travelingProjectileAccelY[index] = 0;
     _travelingProjectileAccelZ[index] = 0;
-    _travelingProjectileAirDragCoefficient[index] = getProjectileAirDragCoefficient(shotConfig);
+    _travelingProjectileAirDragCoefficient[index] = mediumPhysicsActive
+      ? getProjectileAirDragCoefficient(shotConfig)
+      : 0;
     _travelingProjectileInvMass[index] = shotConfig.mass > 1e-6 ? 1 / shotConfig.mass : 0;
     _travelingProjectileGravity[index] = projectileGravity;
     _travelingProjectileTerrainTargetZ[index] = 0;
@@ -1627,7 +1639,9 @@ function _updateTravelingProjectilesJS(
       shotConfig.type === 'rocket' &&
       maxHomingThrustAccel > 0 &&
       projectileGravity > 0;
+    let guidedTargetCarriesGravity = false;
     if (
+      mediumPhysicsActive &&
       !isDGunWave &&
       (shotConfig.homingTurnRate ?? 0) > 0 &&
       (homingEngagementScale > 0 || canCarryRocketCounterGravity)
@@ -1652,6 +1666,7 @@ function _updateTravelingProjectilesJS(
         proj.homingTargetId = resolvedHomingTargetId;
       }
       if (homingTarget !== undefined) {
+        guidedTargetCarriesGravity = true;
         aNetZ += getProjectileRocketCounterGravityCarryAcceleration(
           shotConfig,
           homingEngagementScale,
@@ -1743,6 +1758,12 @@ function _updateTravelingProjectilesJS(
         }
       }
     }
+    aNetZ += getProjectileMediumHoldCounterGravityAcceleration(
+      shotConfig,
+      mediumPhysicsActive,
+      guidedTargetCarriesGravity,
+      projectileGravity,
+    );
 
     // Single combined-acceleration integration step. Rust owns the
     // `pos + v*t + 0.5*a*t²`, `vel + a*t` kernel; TypeScript only packs

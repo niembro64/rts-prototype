@@ -262,6 +262,7 @@ const BAR_EQUIVALENT_FACTORY_SLOT_INDEX = new Map<UnitBlueprintId, number>([
   ['unitBadger', 5],
   ['unitMongoose', 6],
   ['unitSeaTurtle', 8],
+  ['unitOrca', 9],
   ['unitTick', BAR_GRID_SLOT_COUNT + 3],
   ['unitTarantula', BAR_GRID_SLOT_COUNT + 6],
   ['unitConstructionDrone', BAR_GRID_SLOT_COUNT * 2],
@@ -278,6 +279,7 @@ const BAR_EQUIVALENT_GRID_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
   'unitBadger',
   'unitMongoose',
   'unitSeaTurtle',
+  'unitOrca',
   'unitTick',
   'unitTarantula',
   'unitConstructionDrone',
@@ -300,6 +302,7 @@ const BAR_EQUIVALENT_CLASSIC_FACTORY_UNIT_ORDER: readonly UnitBlueprintId[] = [
   'unitBadger',
   'unitMongoose',
   'unitSeaTurtle',
+  'unitOrca',
   'unitTarantula',
   'unitTransport',
 ];

@@ -12,6 +12,7 @@ import type { PlayerId } from '../sim/types';
 import type { LobbyPlayer } from './NetworkTypes';
 import { createLobbyPlayer } from './NetworkLobbyRoster';
 import { normalizeRoomCode } from './NetworkRoomCode';
+import { createHostGameGenerationSeed } from './gameGenerationSeed';
 
 type BuildBattleHandoffOptions = {
   gameId: string;
@@ -49,6 +50,7 @@ export function buildBattleHandoff({
     hostPlayerId: 1 as PlayerId,
     playerIds: normalizedPlayerIds,
     settings,
+    gameGenerationSeed: createHostGameGenerationSeed(),
   });
   return {
     protocol: BATTLE_HANDOFF_PROTOCOL,
@@ -81,6 +83,7 @@ export function normalizeBattleHandoffMessage(
       hostPlayerId: handoff.hostPlayerId,
       playerIds: normalizedPlayerIds,
       settings: handoff.settings,
+      gameGenerationSeed: handoff.initialization.gameGenerationSeed,
     });
     const initializationHash = hashCanonicalMatchInitialization(initialization);
     if (handoff.initializationHash !== initializationHash) {

@@ -8,10 +8,8 @@ type WindParticleConfig = {
   alpha: number;
   radiusWorld: number;
   fieldPaddingWorld: number;
-  heightAboveSurfaceWorld: {
-    min: number;
-    max: number;
-  };
+  lowerPlaneDistanceAboveWaterLevelWorld: number;
+  upperPlaneDistanceAboveHighestTerrainWorld: number;
   lifetimeSeconds: {
     min: number;
     max: number;
@@ -28,11 +26,13 @@ assertCssHex(config.colorHex, 'windConfig.particles.colorHex');
 assertUnitInterval(config.alpha, 'windConfig.particles.alpha');
 assertPositive(config.radiusWorld, 'windConfig.particles.radiusWorld');
 assertNonNegative(config.fieldPaddingWorld, 'windConfig.particles.fieldPaddingWorld');
-assertRange(
-  config.heightAboveSurfaceWorld.min,
-  config.heightAboveSurfaceWorld.max,
-  'windConfig.particles.heightAboveSurfaceWorld',
-  0,
+assertNonNegative(
+  config.lowerPlaneDistanceAboveWaterLevelWorld,
+  'windConfig.particles.lowerPlaneDistanceAboveWaterLevelWorld',
+);
+assertNonNegative(
+  config.upperPlaneDistanceAboveHighestTerrainWorld,
+  'windConfig.particles.upperPlaneDistanceAboveHighestTerrainWorld',
 );
 assertRange(
   config.lifetimeSeconds.min,

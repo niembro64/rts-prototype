@@ -46,6 +46,10 @@ import {
   createBuildingBodiesForEntities,
   createUnitBodiesForEntities,
 } from './InitialPhysicsBodiesHelpers';
+import {
+  DEFAULT_GAME_GENERATION_SEED,
+  normalizeGameGenerationSeed,
+} from '../network/gameGenerationSeed';
 
 export interface BootstrappedServerWorld {
   physics: PhysicsEngine3D;
@@ -63,8 +67,6 @@ export interface BootstrappedServerWorld {
 
 type BootstrapProgress = (progress: number, phase: string | undefined) => void | Promise<void>;
 
-export const SERVER_WORLD_SEED = 42;
-
 export class ServerBootstrap {
   static async bootstrapAsync(
     config: GameServerConfig,
@@ -80,6 +82,9 @@ export class ServerBootstrap {
 
     await report(0, 'Reading map size');
     const playerIds = normalizePlayerIds(config.playerIds);
+    const gameGenerationSeed = normalizeGameGenerationSeed(
+      config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
+    );
     const backgroundMode = config.backgroundMode ?? false;
 
     const mapConfig = getMapSize(
@@ -140,7 +145,7 @@ export class ServerBootstrap {
 
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
-    const world = new WorldState(SERVER_WORLD_SEED, mapWidth, mapHeight);
+    const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
     physics.setGroundLookup(
@@ -251,6 +256,9 @@ export class ServerBootstrap {
     providedPhysics: PhysicsEngine3D | undefined = undefined,
   ): BootstrappedServerWorld {
     const playerIds = normalizePlayerIds(config.playerIds);
+    const gameGenerationSeed = normalizeGameGenerationSeed(
+      config.gameGenerationSeed ?? DEFAULT_GAME_GENERATION_SEED,
+    );
     const backgroundMode = config.backgroundMode ?? false;
 
     const mapConfig = getMapSize(
@@ -316,7 +324,7 @@ export class ServerBootstrap {
     // The physics engine is now fully 3D — same module for every path.
     const physics = providedPhysics ?? new PhysicsEngine3D(mapWidth, mapHeight);
     try {
-    const world = new WorldState(SERVER_WORLD_SEED, mapWidth, mapHeight);
+    const world = new WorldState(gameGenerationSeed, mapWidth, mapHeight);
     world.playerCount = playerIds.length;
     world.metalDeposits = deposits;
     // Wire the terrain bed into physics so solid ground contacts remain

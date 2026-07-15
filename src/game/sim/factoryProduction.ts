@@ -176,6 +176,7 @@ class FactoryProductionSystem {
     factoryRows.length = 0;
     factoryRowShells.length = 0;
     factoryRowSelectedUnitBlueprintIds.length = 0;
+    const remainingSpawnCapacityByPlayer = new Map<number, number>();
 
     for (const factory of factories) {
       // Factory itself must be complete and owned.
@@ -247,9 +248,19 @@ class FactoryProductionSystem {
             getUnitBlueprint(selectedUnitBlueprintId);
             if (factoryCanProduceUnit(factory, selectedUnitBlueprintId)) {
               factorySelectedState[row] = FACTORY_SELECTED_VALID;
-              // Honour the unit cap at SHELL SPAWN time — once a shell is in
-              // the world it counts toward the cap.
-              factoryCanBuildUnit[row] = world.canPlayerBuildUnit(playerId) ? 1 : 0;
+              // Reserve capacity while packing the complete deterministic
+              // factory batch. Checking world.canPlayerBuildUnit separately
+              // for every row lets every idle factory observe the same free
+              // slot and overshoot the cap simultaneously.
+              let remainingCapacity = remainingSpawnCapacityByPlayer.get(playerId);
+              if (remainingCapacity === undefined) {
+                remainingCapacity = world.getRemainingUnitCapacity(playerId);
+              }
+              if (remainingCapacity > 0) {
+                factoryCanBuildUnit[row] = 1;
+                remainingCapacity--;
+              }
+              remainingSpawnCapacityByPlayer.set(playerId, remainingCapacity);
             } else {
               factorySelectedState[row] = FACTORY_SELECTED_INVALID;
             }

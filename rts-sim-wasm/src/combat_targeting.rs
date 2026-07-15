@@ -9697,6 +9697,8 @@ pub fn projectile_terminal_consequence_batch(
     hit_shield: &[u8],
     terminal_reflector_hit: &[u8],
     water_at_impact: &[u8],
+    water_surface_impact: &[u8],
+    water_compatible: &[u8],
     pos_x: &[f64],
     pos_y: &[f64],
     pos_z: &[f64],
@@ -9724,6 +9726,8 @@ pub fn projectile_terminal_consequence_batch(
         || hit_shield.len() < n
         || terminal_reflector_hit.len() < n
         || water_at_impact.len() < n
+        || water_surface_impact.len() < n
+        || water_compatible.len() < n
         || pos_x.len() < n
         || pos_y.len() < n
         || pos_z.len() < n
@@ -9771,6 +9775,17 @@ pub fn projectile_terminal_consequence_batch(
             let mut next_hp = hp[i];
             let mut flags = 0_u32;
             let mut next_z = pos_z[i];
+            if water_surface_impact[i] != 0 {
+                next_hp = 0.0;
+                flags |= PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
+                    | PROJECTILE_TERMINAL_FLAG_REMOVE
+                    | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH;
+                out_hp[i] = next_hp;
+                out_reason[i] = PROJECTILE_TERMINAL_REASON_WATER;
+                out_flags[i] = flags;
+                processed += 1;
+                continue;
+            }
             if hit_ground {
                 next_hp = 0.0;
                 next_z = ground_z[i];
@@ -9785,7 +9800,7 @@ pub fn projectile_terminal_consequence_batch(
             out_hp[i] = next_hp;
             out_z[i] = next_z;
 
-            if hit_ground && water_at_impact[i] != 0 {
+            if hit_ground && water_at_impact[i] != 0 && water_compatible[i] == 0 {
                 flags |= PROJECTILE_TERMINAL_FLAG_REMOVE | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH;
                 out_reason[i] = PROJECTILE_TERMINAL_REASON_WATER;
                 out_flags[i] = flags;

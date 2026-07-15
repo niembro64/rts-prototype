@@ -19,6 +19,7 @@
     "homingThrust": null,
     "homingDelayMs": null,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.003,
     "smokeTrail": null,
@@ -61,6 +62,7 @@
     "homingThrust": null,
     "homingDelayMs": null,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.002,
     "smokeTrail": null,
@@ -103,6 +105,7 @@
     "homingThrust": null,
     "homingDelayMs": null,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.0025,
     "smokeTrail": null,
@@ -146,6 +149,7 @@
     "homingThrust": 1000,
     "homingDelayMs": 3000,
     "propulsionForce": 350,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.0,
     "smokeTrail": null,
@@ -189,6 +193,7 @@
     "homingThrust": null,
     "homingDelayMs": 0,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 0,
     "airFrictionPer60HzFrame": 0,
     "smokeTrail": null,
@@ -232,6 +237,7 @@
     "homingThrust": null,
     "homingDelayMs": 0,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 0,
     "airFrictionPer60HzFrame": 0,
     "smokeTrail": null,
@@ -274,6 +280,7 @@
     "homingThrust": null,
     "homingDelayMs": null,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.003,
     "smokeTrail": null,
@@ -322,6 +329,7 @@
     "homingThrust": null,
     "homingDelayMs": null,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.004,
     "smokeTrail": null,
@@ -370,6 +378,7 @@
     "homingThrust": null,
     "homingDelayMs": null,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.004,
     "smokeTrail": null,
@@ -412,6 +421,7 @@
     "homingThrust": null,
     "homingDelayMs": null,
     "propulsionForce": null,
+    "physicsMedium": "air-only",
     "gravityForceMultiplier": 1,
     "airFrictionPer60HzFrame": 0.006,
     "smokeTrail": null,
@@ -431,6 +441,50 @@
         "other": 25,
         "hitbox": 20,
         "collision": 25
+      }
+    }
+  },
+  "shotTorpedo": {
+    "type": "rocket",
+    "shotBlueprintId": "shotTorpedo",
+    "name": "Torpedo",
+    "mass": 12,
+    "health": 12,
+    "radius": {
+      "other": 3.5,
+      "hitbox": 2.4,
+      "collision": 3.5
+    },
+    "detonateOnExpiry": false,
+    "maxLifespan": 9000,
+    "hitSound": {
+      "$audio": "event.hit.shotRocketLight"
+    },
+    "submunitions": null,
+    "homingTurnRate": 4,
+    "homingThrust": 10000,
+    "homingDelayMs": 0,
+    "propulsionForce": 2400,
+    "physicsMedium": "water-only",
+    "gravityForceMultiplier": 1,
+    "airFrictionPer60HzFrame": 0,
+    "smokeTrail": null,
+    "base": {
+      "cost": {
+        "energy": 0,
+        "metal": 0
+      },
+      "mass": 12,
+      "health": 12,
+      "deathExplosion": {
+        "radius": 52,
+        "force": 18000,
+        "damage": 180
+      },
+      "radius": {
+        "other": 3.5,
+        "hitbox": 2.4,
+        "collision": 3.5
       }
     }
   }

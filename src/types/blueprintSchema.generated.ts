@@ -21,6 +21,8 @@ export type SensorCapabilityConfig = {
 
 export type ProjectileShotKind = 'plasma' | 'rocket' | 'missile';
 
+export type ProjectilePhysicsMedium = 'air-only' | 'water-only' | 'air-and-water';
+
 export type ShieldSurfaceResponse = 'reflect' | 'absorb' | 'passThrough';
 
 export type ShieldReflectionMode = 'outside-in' | 'inside-out' | 'both';
@@ -136,6 +138,7 @@ export type ProjectileShotBlueprint = {
   homingThrust: number | null;
   homingDelayMs: number | null;
   propulsionForce: number | null;
+  physicsMedium: ProjectilePhysicsMedium;
   gravityForceMultiplier: number;
   airFrictionPer60HzFrame: number;
   smokeTrail: SmokeTrailSpec | null;
@@ -170,6 +173,7 @@ export type ProjectileShot = {
   homingThrust?: number;
   homingDelayMs?: number;
   propulsionForce?: number;
+  physicsMedium: ProjectilePhysicsMedium;
   gravityForceMultiplier: number;
   airFrictionPer60HzFrame: number;
   trailLength?: number;
@@ -457,6 +461,24 @@ export type FlipperConfig = {
   cycleDistanceFrac: number;
 };
 
+export type SwimConfig = {
+  pectoralOffsetXFrac: number;
+  pectoralLateralOffsetFrac: number;
+  pectoralHeightFrac: number;
+  pectoralSpanFrac: number;
+  pectoralRootChordFrac: number;
+  pectoralTipChordFrac: number;
+  tailOffsetXFrac: number;
+  tailSpanFrac: number;
+  tailChordFrac: number;
+  dorsalOffsetXFrac: number;
+  dorsalHeightFrac: number;
+  dorsalChordFrac: number;
+  thicknessFrac: number;
+  strokeAngleDeg: number;
+  cycleDistanceFrac: number;
+};
+
 export type LocomotionMediumPhysics = {
   heightUpwardForce: number;
   buoyancy?: number;
@@ -582,7 +604,17 @@ export type LocomotionBlueprintFlying = {
   config: FlyingConfig;
 };
 
-export type LocomotionBlueprint = LocomotionBlueprintWheels | LocomotionBlueprintTreads | LocomotionBlueprintLegs | LocomotionBlueprintFlippers | LocomotionBlueprintHover | LocomotionBlueprintFlying;
+export type LocomotionBlueprintSwim = {
+  type: 'swim';
+  physicsPresetId: string;
+  physics: LocomotionPhysics;
+  survival: LocomotionSurvivalPolicy;
+  pathfindingBlueprintId: string;
+  pathfinding: PathfindingBlueprint;
+  config: SwimConfig;
+};
+
+export type LocomotionBlueprint = LocomotionBlueprintWheels | LocomotionBlueprintTreads | LocomotionBlueprintLegs | LocomotionBlueprintFlippers | LocomotionBlueprintHover | LocomotionBlueprintFlying | LocomotionBlueprintSwim;
 
 export type UnitBodyShapePartCircle = {
   kind: 'circle';

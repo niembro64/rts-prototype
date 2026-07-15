@@ -6131,6 +6131,7 @@ mod sim_kernel_tests {
         let hit_shield = [0_u8];
         let terminal_reflector = [0_u8];
         let water = [1_u8];
+        let zero = [0_u8];
         let x = [20.0];
         let y = [30.0];
         let z = [-2.0];
@@ -6157,6 +6158,8 @@ mod sim_kernel_tests {
                 &hit_shield,
                 &terminal_reflector,
                 &water,
+                &zero,
+                &zero,
                 &x,
                 &y,
                 &z,
@@ -6184,6 +6187,80 @@ mod sim_kernel_tests {
                 | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH,
         );
         assert_eq!(out_z[0], 0.0);
+        assert_eq!(out_hp[0], 0.0);
+    }
+
+    #[test]
+    pub(crate) fn projectile_terminal_consequence_stops_air_shot_at_water_surface() {
+        let one = [1_u8];
+        let zero = [0_u8];
+        let x = [20.0];
+        let y = [30.0];
+        let z = [10.0];
+        let ground_z = [-40.0];
+        let hp = [10.0];
+        let time_alive = [100.0];
+        let max_life = [1000.0];
+        let mut reason = [0_u8];
+        let mut flags = [0_u32];
+        let mut out_z = [0.0];
+        let mut out_hp = [0.0];
+
+        assert_eq!(
+            projectile_terminal_consequence_batch(
+                1, &one, &one, &one, &zero, &zero, &one,
+                &zero, &zero, &zero, &zero, &one, &one, &zero,
+                &x, &y, &z, &ground_z, &hp, &time_alive, &max_life,
+                100.0, 100.0, 10.0,
+                &mut reason, &mut flags, &mut out_z, &mut out_hp,
+            ),
+            1,
+        );
+        assert_eq!(reason[0], PROJECTILE_TERMINAL_REASON_WATER);
+        assert_eq!(
+            flags[0],
+            PROJECTILE_TERMINAL_FLAG_REMOVE
+                | PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
+                | PROJECTILE_TERMINAL_FLAG_WATER_SPLASH,
+        );
+        assert_eq!(out_hp[0], 0.0);
+    }
+
+    #[test]
+    pub(crate) fn projectile_terminal_consequence_water_compatible_shot_detonates_on_seabed() {
+        let one = [1_u8];
+        let zero = [0_u8];
+        let x = [20.0];
+        let y = [30.0];
+        let z = [-42.0];
+        let ground_z = [-40.0];
+        let hp = [10.0];
+        let time_alive = [100.0];
+        let max_life = [1000.0];
+        let mut reason = [0_u8];
+        let mut flags = [0_u32];
+        let mut out_z = [0.0];
+        let mut out_hp = [0.0];
+
+        assert_eq!(
+            projectile_terminal_consequence_batch(
+                1, &one, &one, &one, &zero, &zero, &one,
+                &zero, &zero, &zero, &zero, &one, &zero, &one,
+                &x, &y, &z, &ground_z, &hp, &time_alive, &max_life,
+                100.0, 100.0, 10.0,
+                &mut reason, &mut flags, &mut out_z, &mut out_hp,
+            ),
+            1,
+        );
+        assert_eq!(reason[0], PROJECTILE_TERMINAL_REASON_GROUND);
+        assert_eq!(
+            flags[0],
+            PROJECTILE_TERMINAL_FLAG_REMOVE
+                | PROJECTILE_TERMINAL_FLAG_SET_HP_ZERO
+                | PROJECTILE_TERMINAL_FLAG_CLAMP_Z
+                | PROJECTILE_TERMINAL_FLAG_DETONATE,
+        );
+        assert_eq!(out_z[0], -40.0);
         assert_eq!(out_hp[0], 0.0);
     }
 
@@ -6223,6 +6300,8 @@ mod sim_kernel_tests {
                 &zero,
                 &zero,
                 &water,
+                &zero,
+                &zero,
                 &x,
                 &y,
                 &z,
@@ -6288,6 +6367,8 @@ mod sim_kernel_tests {
                 &zero,
                 &zero,
                 &water,
+                &zero,
+                &zero,
                 &x,
                 &y,
                 &z,
@@ -6347,6 +6428,8 @@ mod sim_kernel_tests {
                 &zero,
                 &zero,
                 &water,
+                &zero,
+                &zero,
                 &x,
                 &y,
                 &z,

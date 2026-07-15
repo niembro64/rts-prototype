@@ -24,7 +24,10 @@ import turretsJson from '../sim/blueprints/turrets.json';
 import unitRosterJson from '../sim/blueprints/unitRoster.json';
 import unitsJson from '../sim/blueprints/units.json';
 import shotProfileConfigJson from '../sim/shotProfileConfig.json';
-import { SERVER_WORLD_SEED } from '../server/ServerBootstrap';
+import {
+  DEFAULT_GAME_GENERATION_SEED,
+  normalizeGameGenerationSeed,
+} from '../network/gameGenerationSeed';
 import type { PlayerId } from '../sim/types';
 import type { LobbySettings } from '@/types/network';
 
@@ -36,7 +39,7 @@ const {
   ...canonicalWindConfigJson
 } = windConfigJson;
 
-const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v4';
+const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v5';
 const APP_SOURCE_VERSION = '0.0.1';
 export const SIM_WASM_EXPECTED_VERSION = 'rts-sim-wasm 0.0.1';
 
@@ -48,7 +51,7 @@ export type CanonicalMatchInitialization = {
   readonly hostPlayerId: PlayerId;
   readonly playerIds: readonly PlayerId[];
   readonly aiPlayerIds: readonly PlayerId[];
-  readonly seed: number;
+  readonly gameGenerationSeed: number;
   readonly map: {
     readonly centerMagnitude: number | null;
     readonly dividersMagnitude: number | null;
@@ -83,6 +86,7 @@ type BuildCanonicalMatchInitializationOptions = {
   playerIds: Iterable<PlayerId>;
   aiPlayerIds?: Iterable<PlayerId> | undefined;
   settings: LobbySettings | undefined;
+  gameGenerationSeed?: number;
 };
 
 const BLUEPRINT_CONTENT = {
@@ -120,6 +124,7 @@ export function buildCanonicalMatchInitialization({
   playerIds,
   aiPlayerIds,
   settings,
+  gameGenerationSeed = DEFAULT_GAME_GENERATION_SEED,
 }: BuildCanonicalMatchInitializationOptions): CanonicalMatchInitialization {
   return {
     schema: CANONICAL_MATCH_INITIALIZATION_SCHEMA,
@@ -129,7 +134,7 @@ export function buildCanonicalMatchInitialization({
     hostPlayerId,
     playerIds: normalizePlayerIds(playerIds),
     aiPlayerIds: normalizePlayerIds(aiPlayerIds ?? []),
-    seed: SERVER_WORLD_SEED,
+    gameGenerationSeed: normalizeGameGenerationSeed(gameGenerationSeed),
     map: {
       centerMagnitude: finiteOrNull(settings?.centerMagnitude),
       dividersMagnitude: finiteOrNull(settings?.dividersMagnitude),

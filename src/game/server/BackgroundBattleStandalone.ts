@@ -141,7 +141,10 @@ function spawnUnit(
   if (allowedUnitBlueprintIds !== undefined && allowedUnitBlueprintIds.size === 0) return null;
   if (waypoints.length === 0) return null;
 
-  const unitBlueprintId = selectUnitBlueprintId(() => world.rng.next(), allowedUnitBlueprintIds);
+  const unitBlueprintId = selectUnitBlueprintId(
+    () => world.nextRandom(playerId),
+    allowedUnitBlueprintIds,
+  );
   // Defensive: only ever spawn from the allowed-types set. If
   // selectUnitBlueprintId signalled "nothing valid" (empty set, weight
   // table empty after rebuild), skip the spawn entirely instead of
@@ -187,6 +190,22 @@ function countInitialDemoUnitsByPlayer(world: WorldState, playerId: PlayerId): n
   return count;
 }
 
+/** Keep one live-unit slot available for every seeded offshore production
+ * line. Water factories are inserted before land factories, so they claim
+ * these slots on the first production tick instead of being starved by the
+ * demo's center battle or reinforcement filler. */
+function offshoreFactoryProductionReserve(world: WorldState, playerId: PlayerId): number {
+  let count = 0;
+  for (const factory of world.getFactoriesByPlayer(playerId)) {
+    const selected = factory.factory?.selectedUnitBlueprintId;
+    if (selected !== undefined && selected !== null &&
+        DEMO_CONFIG.waterFabricators.unitBlueprintIds.includes(selected)) {
+      count++;
+    }
+  }
+  return count;
+}
+
 function sampleCenterSpawnPoint(
   oval: MapOvalMetrics,
   centerRadius: number,
@@ -226,6 +245,12 @@ export function spawnBackgroundUnitsStandalone(
   playerIds: readonly PlayerId[] | undefined = undefined,
 ): Entity[] {
   const spawned: Entity[] = [];
+  const centerBattleAllowedUnitBlueprintIds = new Set<string>();
+  const sourceUnitBlueprintIds = allowedUnitBlueprintIds ?? BACKGROUND_UNIT_BLUEPRINT_IDS;
+  for (const unitBlueprintId of sourceUnitBlueprintIds) {
+    if (DEMO_CONFIG.waterFabricators.unitBlueprintIds.includes(unitBlueprintId)) continue;
+    centerBattleAllowedUnitBlueprintIds.add(unitBlueprintId);
+  }
   let playersSource: readonly PlayerId[];
   if (playerIds && playerIds.length > 0) {
     playersSource = playerIds;
@@ -266,19 +291,16 @@ export function spawnBackgroundUnitsStandalone(
     // fill the center battle immediately instead of silently dropping
     // units on terrain presets whose center disk is mostly water.
     const centerRadius = DEMO_CONFIG.centerSpawnRadius * oval.minDim;
-    // Initial demo spawn fills each team's non-commander slice of the global unit cap
-    // — `unitCapPerPlayer` (= maxTotalUnits / numPlayers). The demo
-    // starts at FULL CAP so the user immediately sees the battle at
-    // the intended scale; reinforcement ticks below pick up any units
-    // that water-rejection skipped, but with unitCapPerPlayer as the
-    // ceiling there's no separate "demo size" knob to keep in sync.
-    const totalPerPlayer = unitCapPerPlayer;
     const waterBuffer = DEMO_CONFIG.centerSpawnWaterBufferPx;
     const maxAttempts = DEMO_CONFIG.centerSpawnWaterMaxAttempts;
 
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
       const pUnits = countInitialDemoUnitsByPlayer(world, playerId);
+      const productionReserve = offshoreFactoryProductionReserve(world, playerId);
+      // Commander is already live and counts against the cap. Fill the center
+      // battle only to cap - commander - offshore production reservations.
+      const totalPerPlayer = Math.max(0, unitCapPerPlayer - 1 - productionReserve);
 
       for (let i = 0; i < totalPerPlayer && pUnits + i < unitCapPerPlayer; i++) {
         const spawn = sampleCenterSpawnPoint(
@@ -288,7 +310,7 @@ export function spawnBackgroundUnitsStandalone(
           mapHeight,
           waterBuffer,
           maxAttempts,
-          () => world.rng.next(),
+          () => world.nextRandom(playerId),
         );
         if (!spawn) continue;
 
@@ -305,7 +327,7 @@ export function spawnBackgroundUnitsStandalone(
             { x: targetX, y: targetY, z: null, type: 'patrol' },
             { x: spawn.x, y: spawn.y, z: null, type: 'patrol' },
           ],
-          allowedUnitBlueprintIds,
+          centerBattleAllowedUnitBlueprintIds,
         );
         if (unit) spawned.push(unit);
       }
@@ -319,11 +341,15 @@ export function spawnBackgroundUnitsStandalone(
     for (let p = 0; p < numPlayers; p++) {
       const playerId = players[p];
       const pUnits = world.getUnitsByPlayer(playerId).length;
-      if (pUnits >= unitCapPerPlayer) continue;
+      const reinforcementCeiling = Math.max(
+        1,
+        unitCapPerPlayer - offshoreFactoryProductionReserve(world, playerId),
+      );
+      if (pUnits >= reinforcementCeiling) continue;
 
-      const offsetAngle = (world.rng.next() - 0.5) * sectorAngle;
+      const offsetAngle = (world.nextRandom(playerId) - 0.5) * sectorAngle;
       const a = baseAngles[p] + offsetAngle;
-      const r = spawnRadius * (0.85 + world.rng.next() * 0.15);
+      const r = spawnRadius * (0.85 + world.nextRandom(playerId) * 0.15);
       const point = mapOvalPointAt(oval, a, r);
 
       const unit = spawnUnit(
@@ -332,7 +358,7 @@ export function spawnBackgroundUnitsStandalone(
           { x: cx, y: cy, z: null, type: 'patrol' },
           { x: point.x, y: point.y, z: null, type: 'patrol' },
         ],
-        allowedUnitBlueprintIds,
+        centerBattleAllowedUnitBlueprintIds,
       );
       if (unit) spawned.push(unit);
     }

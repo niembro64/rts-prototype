@@ -552,6 +552,7 @@ function summarizeUnitRole(blueprint: UnitBlueprint, weaponCount: number): strin
   if (blueprint.builder) return 'builder / support';
   if (weaponCount === 0) return 'utility';
   if (blueprint.locomotion.type === 'flying') return 'air strike';
+  if (blueprint.locomotion.type === 'swim') return 'underwater assault';
   if (blueprint.locomotion.type === 'hover') return 'hover skirmisher';
   if (blueprint.locomotion.type === 'legs') return 'walker assault';
   if (blueprint.locomotion.type === 'treads') return 'armored assault';

@@ -1,5 +1,5 @@
 {
-  "playerCount": 4,
+  "playerCount": 3,
   "arcSectorFraction": 0.7,
   "spawnMarginPx": 100,
   "baseRings": {
@@ -33,6 +33,14 @@
     "towerBeamMega": {
       "radiusFraction": 0.4
     }
+  },
+  "waterFabricators": {
+    "radiusFraction": 0.92,
+    "arcSectorFraction": 0.9,
+    "unitBlueprintIds": [
+      "unitSeaTurtle",
+      "unitOrca"
+    ]
   },
   "initialUnitWaypointType": "patrol",
   "factoryFightWaypointDistance": 0.4,

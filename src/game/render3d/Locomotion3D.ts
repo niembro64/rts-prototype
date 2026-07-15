@@ -1,6 +1,6 @@
 // Locomotion3D — thin dispatcher over the per-locomotion-type rig
 // modules (LegRig3D, FlipperRig3D, TreadRig3D, WheelRig3D, HoverRig3D,
-// FlyingRig3D). Each rig owns its build,
+// FlyingRig3D, SwimRig3D). Each rig owns its build,
 // update, and (for legs) state-snapshot logic. This file only:
 //   - exposes the discriminated `Locomotion3DMesh` union,
 //   - dispatches to the correct rig at build / update / destroy time,
@@ -58,6 +58,11 @@ import {
   buildFlippers,
   updateFlippers,
 } from './FlipperRig3D';
+import {
+  type SwimMesh,
+  buildSwimRig,
+  updateSwimRig,
+} from './SwimRig3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import type { FlyingSmokeUseId, HoverSmokeUseId } from '@/smokeConfig';
 import type {
@@ -74,6 +79,7 @@ export type Locomotion3DMesh =
   | FlipperMesh
   | HoverMesh
   | FlyingMesh
+  | SwimMesh
   | undefined;
 
 export type { LegStateSnapshot };
@@ -216,6 +222,11 @@ export function buildLocomotion(
       mesh.geometryKey = geometryKey;
       return mesh;
     }
+    case 'swim': {
+      const mesh = buildSwimRig(unitGroup, unitRadius, loc.config, ownerId);
+      mesh.geometryKey = geometryKey;
+      return mesh;
+    }
   }
 }
 
@@ -264,6 +275,8 @@ export function updateLocomotion(
         airborneEmitters?.batch,
         airborneEmitters?.pose,
       );
+    case 'swim':
+      return updateSwimRig(mesh, pose, dtMs);
   }
 }
 

@@ -28,6 +28,7 @@ export type {
   
   ShieldSurfaceResponse,
   FlyingConfig,
+  SwimConfig,
   FlipperConfig,
   HoverConfig,
   RayBlueprint,

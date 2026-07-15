@@ -20,7 +20,7 @@ import {
   AIR_LIFT_TOTAL_GROUND_PROBE_COUNT,
   forEachAirLiftGroundProbePoint,
 } from '../airLiftGroundProbes';
-import { getUnitBlueprint, getUnitLocomotion } from './index';
+import { getShotBlueprint, getTurretBlueprint, getUnitBlueprint, getUnitLocomotion } from './index';
 import rawLocomotionConfig from '../locomotionConfig.json';
 import { deterministicMath as DMath } from '../deterministicMath';
 
@@ -376,6 +376,45 @@ export function runLocomotionContractTest(): void {
   assertContract(
     seaTurtleRoutes.allowOnGround && seaTurtleRoutes.allowInWater && !seaTurtleRoutes.allowInAir,
     'flippers route on ground and in water, never through air',
+  );
+  const orcaLocomotion = assertRuntimeLocomotionMatchesSources('unitOrca');
+  const orcaBlueprint = getUnitBlueprint('unitOrca');
+  assertEqual(
+    orcaBlueprint.locomotion.type,
+    'swim',
+    'Orca owns the independent swim visual rig',
+  );
+  assertEqual(
+    orcaLocomotion.physicsPresetId,
+    'swim',
+    'Orca owns the water-only swim physics preset',
+  );
+  assertEqual(
+    orcaBlueprint.turrets[0]?.turretBlueprintId,
+    'turretTorpedo',
+    'Orca mounts its dedicated torpedo turret',
+  );
+  const torpedoTurret = getTurretBlueprint('turretTorpedo');
+  assertEqual(
+    torpedoTurret.emissionBlueprintId,
+    'shotTorpedo',
+    'the dedicated torpedo turret emits the dedicated torpedo shot',
+  );
+  assertEqual(
+    getShotBlueprint('shotTorpedo').physicsMedium,
+    'water-only',
+    'the dedicated torpedo shot remains water-only',
+  );
+  const orcaRoutes = resolveLocomotionRouteCapabilities(orcaLocomotion);
+  assertContract(
+    !orcaRoutes.allowOnGround && orcaRoutes.allowInWater && !orcaRoutes.allowInAir,
+    'Orca routes only through the water medium',
+  );
+  assertContract(
+    orcaLocomotion.physics.water.driveForce > 0 &&
+      orcaLocomotion.physics.ground.driveForce === 0 &&
+      orcaLocomotion.physics.air.driveForce === 0,
+    'Orca propulsion is owned exclusively by its water medium preset',
   );
   assertEqual(
     hippoBlueprint.locomotion.type,

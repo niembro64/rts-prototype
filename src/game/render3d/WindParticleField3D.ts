@@ -12,7 +12,8 @@ type WindParticleFieldOptions = {
   mapWidth: number;
   mapHeight: number;
   renderScope: ViewportFootprint;
-  sampleSurfaceHeight: (x: number, z: number) => number;
+  waterLevelWorld: number;
+  highestTerrainWorld: number;
 };
 
 const PARTICLE_VERTEX_SHADER = `
@@ -41,7 +42,8 @@ export class WindParticleField3D {
   private readonly mapWidth: number;
   private readonly mapHeight: number;
   private readonly renderScope: ViewportFootprint;
-  private readonly sampleSurfaceHeight: (x: number, z: number) => number;
+  private readonly lowerPlaneWorld: number;
+  private readonly upperPlaneWorld: number;
   private readonly geometry: THREE.SphereGeometry;
   private readonly material: THREE.ShaderMaterial;
   private readonly mesh: THREE.InstancedMesh;
@@ -63,7 +65,13 @@ export class WindParticleField3D {
     this.mapWidth = options.mapWidth;
     this.mapHeight = options.mapHeight;
     this.renderScope = options.renderScope;
-    this.sampleSurfaceHeight = options.sampleSurfaceHeight;
+    this.lowerPlaneWorld = options.waterLevelWorld +
+      this.config.lowerPlaneDistanceAboveWaterLevelWorld;
+    this.upperPlaneWorld = Math.max(
+      this.lowerPlaneWorld,
+      options.highestTerrainWorld +
+        this.config.upperPlaneDistanceAboveHighestTerrainWorld,
+    );
     this.scale.setScalar(this.config.radiusWorld);
 
     const count = this.config.maxParticles;
@@ -197,18 +205,14 @@ export class WindParticleField3D {
   ): void {
     const x = lerp(bounds.minX, bounds.maxX, this.random());
     const z = lerp(bounds.minZ, bounds.maxZ, this.random());
-    const height = lerp(
-      this.config.heightAboveSurfaceWorld.min,
-      this.config.heightAboveSurfaceWorld.max,
-      this.random(),
-    );
+    const worldHeight = lerp(this.lowerPlaneWorld, this.upperPlaneWorld, this.random());
     const life = lerp(
       this.config.lifetimeSeconds.min,
       this.config.lifetimeSeconds.max,
       this.random(),
     );
     this.x[index] = x;
-    this.y[index] = this.sampleSurfaceHeight(x, z) + height;
+    this.y[index] = worldHeight;
     this.z[index] = z;
     this.life[index] = life;
     this.age[index] = distributeAge ? this.random() * life : 0;

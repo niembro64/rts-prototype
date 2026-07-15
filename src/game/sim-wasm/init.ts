@@ -1343,6 +1343,8 @@ export interface SimWasm {
     hitShield: Uint8Array,
     terminalReflectorHit: Uint8Array,
     waterAtImpact: Uint8Array,
+    waterSurfaceImpact: Uint8Array,
+    waterCompatible: Uint8Array,
     posX: Float64Array,
     posY: Float64Array,
     posZ: Float64Array,
@@ -4663,6 +4665,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runReplayRecorderContractTest();
         const { runForceAccumulatorContractTest } = await import('../sim/ForceAccumulatorContractTest');
         runForceAccumulatorContractTest();
+        const { runSeededRNGContractTest } = await import('../sim/SeededRNGContractTest');
+        runSeededRNGContractTest();
         const { runSnapshotEntityWirePackContractTest } = await import('../network/snapshotEntityWirePackContractTest');
         runSnapshotEntityWirePackContractTest();
         const { runNetworkLockstepTransportContractTest } = await import('../network/NetworkLockstepTransportContractTest');

@@ -123,7 +123,7 @@ export class WorldState {
   // which is visual/hitbox/collision for units and footprint half-extent
   // for buildings. Stale-too-large mirrors maxTargetableRadius.
   private maxVisibilityPadding: number = 0;
-  public rng: SeededRNG;
+  private readonly rng: SeededRNG;
 
   // Transient, presentation-only init "spawn beam" registrations: a spawn
   // turret on `sourceId` briefly zaps the freshly-created `targetId` into
@@ -244,6 +244,20 @@ export class WorldState {
     this.mapWidth = mapWidth;
     this.mapHeight = mapHeight;
     this.supportSurfaceSampler = new WorldSupportSurfaceSampler(mapWidth, mapHeight);
+  }
+
+  /** Canonical simulation randomness. Callers provide the player whose
+   * action/entity owns the outcome; the world supplies the current tick. */
+  nextRandom(playerId: PlayerId = 0 as PlayerId): number {
+    return this.rng.next(playerId, this.tick);
+  }
+
+  getGameGenerationSeed(): number {
+    return this.rng.getGameGenerationSeed();
+  }
+
+  getRandomStreamState(): number {
+    return this.rng.getSeed();
   }
 
   /** Terrain/water elevation at world point (x, y). Use

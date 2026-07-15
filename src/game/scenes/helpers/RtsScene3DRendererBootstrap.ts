@@ -32,8 +32,11 @@ import type { ViewportFootprint } from '../../ViewportFootprint';
 import { LAND_CELL_SIZE } from '../../../config';
 import type { MetalDeposit } from '../../../metalDepositConfig';
 import {
+  TERRAIN_MAX_RENDER_Y,
+  WATER_LEVEL,
   getSurfaceHeight,
   getTerrainMeshHeight,
+  getTerrainMeshMaximumHeight,
 } from '../../sim/Terrain';
 import type { RtsScene3DCameraFramingSystem } from './RtsScene3DCameraFramingSystem';
 
@@ -202,8 +205,9 @@ export function bootstrapRtsScene3DRenderers(
     mapWidth,
     mapHeight,
     renderScope,
-    sampleSurfaceHeight: (x, z) =>
-      getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE),
+    waterLevelWorld: WATER_LEVEL,
+    highestTerrainWorld:
+      getTerrainMeshMaximumHeight(mapWidth, mapHeight) ?? TERRAIN_MAX_RENDER_Y,
   });
   const sightBoundaryRenderer = new SightBoundaryRenderer3D(
     threeApp.world,

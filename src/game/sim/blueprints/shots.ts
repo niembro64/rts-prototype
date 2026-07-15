@@ -26,6 +26,7 @@ const PROJECTILE_EXPLICIT_FIELDS = [
   'homingThrust',
   'homingDelayMs',
   'propulsionForce',
+  'physicsMedium',
   'gravityForceMultiplier',
   'airFrictionPer60HzFrame',
   'smokeTrail',
@@ -76,6 +77,15 @@ for (const [id, blueprint] of Object.entries(SHOT_BLUEPRINTS)) {
     );
   }
   assertValidEntityRadius(`shot blueprint ${id}`, blueprint.radius);
+  if (
+    blueprint.physicsMedium !== 'air-only' &&
+    blueprint.physicsMedium !== 'water-only' &&
+    blueprint.physicsMedium !== 'air-and-water'
+  ) {
+    throw new Error(
+      `Shot blueprint ${id} has invalid physicsMedium: expected air-only, water-only, or air-and-water.`,
+    );
+  }
   // The runtime shot explosion is derived from base.deathExplosion in
   // buildShotConfig — base.deathExplosion is the single source of truth for
   // a shot's death blast, so there is no separate authored `explosion` field

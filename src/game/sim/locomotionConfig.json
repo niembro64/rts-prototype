@@ -144,6 +144,51 @@
         }
       }
     },
+    "swim": {
+      "extends": "flying",
+      "navigation": {
+        "allowOnGround": false,
+        "allowInMedium": "water-only"
+      },
+      "physics": {
+        "forwardForceRequiresFacing": true,
+        "driveForceScalesWithFacing": false,
+        "maintainFullThrustAtWaypoints": true,
+        "airLiftGroundProbeAheadDistance": 0,
+        "airLiftGroundProbeAheadRadiusMultiplier": 0,
+        "ground": {
+          "driveForce": 0,
+          "traction": 0,
+          "friction": 0,
+          "quadraticDrag": 0,
+          "angularDrag": 0,
+          "surfaceGrip": 0,
+          "contactDamping": 0
+        },
+        "air": {
+          "driveForce": 0,
+          "traction": 0,
+          "friction": 1,
+          "quadraticDrag": 0.00002,
+          "angularDrag": 1,
+          "surfaceGrip": 0,
+          "contactDamping": 0
+        },
+        "water": {
+          "driveForce": 6200,
+          "traction": 1.5,
+          "friction": 2.5,
+          "quadraticDrag": 0.0015,
+          "dragForwardScale": 0.35,
+          "dragLateralScale": 1.8,
+          "dragVerticalScale": 1.5,
+          "angularDrag": 3,
+          "surfaceGrip": 0,
+          "contactDamping": 0
+        },
+        "idleAirDrive": false
+      }
+    },
     "legs": {
       "navigation": {
         "allowOnGround": true,
