@@ -17,7 +17,7 @@
         "airLiftGroundProbeAheadDistance": 0,
         "airLiftGroundProbeAheadRadiusMultiplier": 0,
         "ground": {
-          "traction": 0.55,
+          "traction": 2,
           "friction": 0,
           "heightUpwardForceRandomizationAmount": 0,
           "heightUpwardForceEMA": 0,
@@ -64,7 +64,7 @@
         "allowInMedium": "water-only"
       },
       "physics": {
-        "driveForceMultiplier": 2.4,
+        "driveForceMultiplier": 4,
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
@@ -118,7 +118,7 @@
         "allowInMedium": "water-only"
       },
       "physics": {
-        "driveForceMultiplier": 1.2,
+        "driveForceMultiplier": 3,
         "forwardForceRequiresFacing": true,
         "driveForceScalesWithFacing": true,
         "maintainFullThrustAtWaypoints": false,
