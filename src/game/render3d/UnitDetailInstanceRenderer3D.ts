@@ -32,12 +32,13 @@ import {
   createPrimitiveSphereGeometry,
   type PrimitiveGeometryTier,
 } from './PrimitiveGeometryQuality3D';
+import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
 const POLY_CHASSIS_CAP = 4096;
 const CONE_BARREL_CAP = 4096;
 const SHIELD_PANEL_CAP = 1024;
 const ZERO_MATRIX = new THREE.Matrix4().makeScale(0, 0, 0);
-const UNIT_DETAIL_RENDER_ORDER = 4;
+const UNIT_DETAIL_RENDER_ORDER = TRANSPARENT_RENDER_ORDER_3D.entityParts;
 // Unit pools fade via per-instance alpha in EntityFade3D, matching the leg
 // pools so the whole unit materializes and vanishes as one opacity channel.
 

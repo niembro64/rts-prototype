@@ -11,6 +11,7 @@ import { TILE_FLOOR_Y, WATER_FULLY_OPAQUE, WATER_LEVEL } from '../sim/Terrain';
 import { HORIZON_RENDER_EXTEND, WATER_RENDER_CONFIG } from '../../config';
 import type { GraphicsConfig } from '@/types/graphics';
 import type { RenderFrameState3D } from './RenderFrameState3D';
+import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
 // Depth bias only. The mesh vertices stay exactly at WATER_LEVEL for
 // gameplay/readability, but the fragments are pushed slightly behind
@@ -57,6 +58,8 @@ export class WaterRenderer3D {
     // Even when transparent, water is still a real surface for later
     // transparent effects: writing depth prevents fog/smoke fragments
     // physically behind the water plane from being composited over it.
+    // Transparent entity parts render immediately before this surface,
+    // otherwise this depth write would erase submerged instanced bodies.
     // WATER_FULLY_OPAQUE additionally disables alpha blending; triangles
     // beneath the ocean are culled in TerrainTileRenderer3D for that mode.
     this.waterMaterial = new THREE.MeshBasicMaterial({
@@ -72,7 +75,7 @@ export class WaterRenderer3D {
     });
 
     this.waterMesh = new THREE.Mesh(this.waterGeometry, this.waterMaterial);
-    this.waterMesh.renderOrder = 3;
+    this.waterMesh.renderOrder = TRANSPARENT_RENDER_ORDER_3D.waterSurface;
     this.waterMesh.frustumCulled = false;
     this.lastVisible = this.waterMesh.visible;
     parent.add(this.waterMesh);

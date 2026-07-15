@@ -42,6 +42,7 @@ import {
   createPrimitiveCylinderGeometry,
   createPrimitiveSphereGeometry,
 } from './PrimitiveGeometryQuality3D';
+import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 
 /** Pool capacity. With 4 legs per leg-equipped unit and ~1000 such
  *  units on the map, peak demand is ~4000 upper-leg slots and ~4000
@@ -53,7 +54,7 @@ const SLOT_CAP = 16384;
 /** Keep leg instances in the same transparent-pass render group as the
  *  unit body/turret detail instances (UNIT_DETAIL_RENDER_ORDER) so a
  *  fading unit's legs sort alongside the rest of its alpha-faded parts. */
-const LEG_RENDER_ORDER = 4;
+const LEG_RENDER_ORDER = TRANSPARENT_RENDER_ORDER_3D.entityParts;
 
 /** Defrag is run from flush() when freed slots make up at least this
  *  many entries AND at least this fraction of nextSlot. Keeps the

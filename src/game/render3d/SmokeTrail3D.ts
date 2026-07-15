@@ -27,6 +27,7 @@
 // (shot blueprint id or locomotion blueprint id).
 
 import * as THREE from 'three';
+import { TRANSPARENT_RENDER_ORDER_3D } from './TransparentRenderOrder3D';
 import type { Entity } from '../sim/types';
 import { COLORS } from '@/colorsConfig';
 import { getSmokeTrails, getSmokeSoftEdges } from '@/clientBarConfig';
@@ -267,9 +268,9 @@ export class SmokeTrail3D {
     // from the source geometry — not the per-instance matrices — so a
     // puff far from the origin would be incorrectly culled. Disable.
     mesh.frustumCulled = false;
-    // Draw after water (renderOrder=3), so transparent sorting does not
+    // Draw after water, so transparent sorting does not
     // let the water plane blend over puffs that are geometrically above it.
-    mesh.renderOrder = 5;
+    mesh.renderOrder = TRANSPARENT_RENDER_ORDER_3D.aboveWaterEffects;
     this.root.add(mesh);
 
     return {
