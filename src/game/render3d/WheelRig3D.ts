@@ -21,6 +21,7 @@ import {
   emaAlpha,
   rollingContact,
   rollingLocomotionBodyActive,
+  rollingWheelAngularVelocity,
   sampleRollingContactDistance,
   transformChassisToWorld,
 } from './LocomotionRigShared3D';
@@ -81,8 +82,9 @@ export type WheelMount = {
    *  sampled clamp target. */
   targetLift: number;
   /** Rotation-velocity channel: tire angular velocity in rad/s around
-   *  its axle. EMA-couples toward `signedDistance / dt / wheelR` every
-   *  frame; rotation integrates from this. */
+   *  its axle. EMA-couples toward `-signedDistance / dt / wheelR` every
+   *  frame so the bottom contact surface moves opposite chassis travel;
+   *  rotation integrates from this. */
   angularVelocity: number;
 };
 
@@ -238,12 +240,14 @@ export function updateWheels(
 
     // ── Rotation-velocity channel: angularVelocity ───────────────
     // Target spin rate is always derived from the per-tire signed
-    // chassis-local distance. Reverse motion comes for free because
+    // chassis-local distance with the no-slip contact sign. Reverse motion comes for free because
     // signedDistance is signed; pivots show opposite spin on opposite
     // wheels because each tire has its own contact and target.
     const signedDistance = sampleRollingContactDistance(pose, mesh.wheelContacts[i]);
-    const tireR = Math.max(1, mount.wheelR);
-    const targetOmega = signedDistance / dtSec / tireR;
+    const targetOmega = rollingWheelAngularVelocity(
+      signedDistance / dtSec,
+      mount.wheelR,
+    );
     mount.angularVelocity += (targetOmega - mount.angularVelocity) * omegaAlpha;
 
     // ── Rotation-position channel: tire rotation ─────────────────

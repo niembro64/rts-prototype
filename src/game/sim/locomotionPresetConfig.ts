@@ -19,6 +19,10 @@ import {
   assertLocomotionUnitFraction,
 } from './locomotionValidation';
 import { isSurfaceProbeSetId } from './surfaceProbeSets';
+import {
+  isSurfaceProbeAggregation,
+  type SurfaceProbeAggregation,
+} from './surfaceProbeAggregation';
 
 export const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
 export type LocomotionMediumName = (typeof LOCOMOTION_MEDIUM_NAMES)[number];
@@ -68,6 +72,7 @@ type LocomotionConfig = {
     referenceDistanceWorld: number;
     minimumDistanceWorld: number;
     distanceExponent: number;
+    probeAggregation: SurfaceProbeAggregation;
   };
   mediumDefaults: LocomotionMediumDefaults;
   presets: Record<string, LocomotionPresetConfig>;
@@ -260,6 +265,7 @@ function readLocomotionConfig(): LocomotionConfig {
     'referenceDistanceWorld',
     'minimumDistanceWorld',
     'distanceExponent',
+    'probeAggregation',
   ]);
   assertLocomotionPositiveFinite(
     'surfaceLiftDefaults.referenceDistanceWorld',
@@ -273,6 +279,13 @@ function readLocomotionConfig(): LocomotionConfig {
   if (!Number.isFinite(exponent) || exponent <= 0 || exponent > 1) {
     throw new Error(
       `Invalid locomotion surfaceLiftDefaults.distanceExponent: expected finite in (0, 1], got ${exponent}`,
+    );
+  }
+  const probeAggregation = surfaceLiftDefaults.probeAggregation;
+  if (!isSurfaceProbeAggregation(probeAggregation)) {
+    throw new Error(
+      'Invalid locomotion surfaceLiftDefaults.probeAggregation: expected average or max, ' +
+      `got ${String(probeAggregation)}`,
     );
   }
   const mediumDefaults = config.mediumDefaults;
@@ -302,6 +315,7 @@ function readLocomotionConfig(): LocomotionConfig {
       referenceDistanceWorld: surfaceLiftDefaults.referenceDistanceWorld,
       minimumDistanceWorld: surfaceLiftDefaults.minimumDistanceWorld,
       distanceExponent: exponent,
+      probeAggregation,
     },
     mediumDefaults: mediumDefaults as LocomotionMediumDefaults,
     presets,
@@ -317,6 +331,8 @@ export const SURFACE_LIFT_MINIMUM_DISTANCE_WORLD =
   LOCOMOTION_CONFIG.surfaceLiftDefaults.minimumDistanceWorld;
 export const SURFACE_LIFT_DISTANCE_EXPONENT =
   LOCOMOTION_CONFIG.surfaceLiftDefaults.distanceExponent;
+export const SURFACE_LIFT_PROBE_AGGREGATION =
+  LOCOMOTION_CONFIG.surfaceLiftDefaults.probeAggregation;
 
 export const LOCOMOTION_FRICTION_BY_MEDIUM: Readonly<Record<LocomotionMediumName, number>> =
   Object.freeze(Object.fromEntries(

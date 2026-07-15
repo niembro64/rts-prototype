@@ -917,7 +917,9 @@
         Air and water resistance also own quadratic drag, directional drag scales, and angular
         drag; their preset-level <code>surfaceLiftResponse</code> group owns lift randomisation and
         EMA smoothing. The global <code>surfaceLiftDefaults</code> group owns the one shared
-        inverse-distance response curve used by both fluids. Ground instead owns a
+        inverse-distance response curve used by both fluids and the
+        <code>probeAggregation</code> policy (<code>average</code> or <code>max</code>) used after
+        evaluating that nonlinear response independently at every configured probe. Ground instead owns a
         <code>contact</code> group containing surface grip and
         tangent damping. Fields that have no physical meaning in a medium are absent rather than
         repeated as decorative zeroes. No preset inherits an invisible partial group: every
@@ -1057,7 +1059,7 @@
         <li>Medium is sampled, never typed: ground whenever a contact patch rests on a surface (lake bed included), plus complementary displaced-volume fractions for air and water. The same sampling runs for every unit; chassis archetypes only choose the default preset and the visual rig.</li>
         <li>Forces and frictions from co-active media add after air/water terms are weighted by occupied volume; ground contact remains an independent additive contribution.</li>
         <li>Navigation policy lives once on the locomotion preset as <code>allowOnGround</code> plus <code>allowInMedium</code>; effective route capability is that policy intersected with the unit&rsquo;s physical drive force, force coupling, and lift authority, never inferred from momentary contact or presentation state.</li>
-        <li>Vertical lift is thrust answering gravity, identical in shape across hover, flying, and swim but explicit about its physical source. Water owns <code>liftForceFromGroundSurface</code>; air owns both <code>liftForceFromGroundSurface</code> and <code>liftForceFromWaterSurface</code>. Probe-averaged source contributions add before the medium&rsquo;s one randomization/EMA pipeline, and the smoothed result is occupancy-weighted. <code>gravityCounterRatio</code> independently counters 0&ndash;100% of occupied-medium weight, without smoothing or upward force beyond gravity.</li>
+        <li>Vertical lift is thrust answering gravity, identical in shape across hover, flying, and swim but explicit about its physical source. Water owns <code>liftForceFromGroundSurface</code>; air owns both <code>liftForceFromGroundSurface</code> and <code>liftForceFromWaterSurface</code>. Each air probe chooses exactly one source: dry terrain uses the ground-surface force, while water-covered terrain uses only the water-surface force. Water-medium lift continues to measure from the ground bed beneath it. Each source&rsquo;s nonlinear probe response is combined with the configured <code>average</code> or <code>max</code> policy before the medium&rsquo;s one randomization/EMA pipeline, and the smoothed result is occupancy-weighted. <code>gravityCounterRatio</code> independently counters 0&ndash;100% of occupied-medium weight, without smoothing or upward force beyond gravity.</li>
         <li>Drive force is authored once per locomotion preset medium. Units never carry a drive-force value or multiplier, so lighter bodies accelerate faster under the same preset force and heavier bodies resist it according to mass.</li>
       </ul>
 

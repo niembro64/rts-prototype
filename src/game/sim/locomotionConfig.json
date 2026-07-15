@@ -3,7 +3,8 @@
   "surfaceLiftDefaults": {
     "referenceDistanceWorld": 1,
     "minimumDistanceWorld": 0.5,
-    "distanceExponent": 0.5
+    "distanceExponent": 0.5,
+    "probeAggregation": "max"
   },
   "mediumDefaults": {
     "ground": {
@@ -200,7 +201,7 @@
         },
         "water": {
           "propulsion": {
-            "driveForce": 7140,
+            "driveForce": 400,
             "forceCoupling": 0.5
           },
           "resistance": {
@@ -266,7 +267,7 @@
         },
         "water": {
           "propulsion": {
-            "driveForce": 2975,
+            "driveForce": 250,
             "forceCoupling": 1.2
           },
           "resistance": {
@@ -275,13 +276,13 @@
             "directionalScale": {
               "forward": 0.65,
               "lateral": 1.5,
-              "vertical": 1.2
+              "vertical": 4
             },
             "angularDrag": 4
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
+            "randomizationAmount": 0,
+            "ema": 0.1
           }
         },
         "idleAirDrive": false
@@ -326,13 +327,13 @@
             "angularDrag": 1
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
+            "randomizationAmount": 0,
+            "ema": 0
           }
         },
         "water": {
           "propulsion": {
-            "driveForce": 6200,
+            "driveForce": 250,
             "forceCoupling": 1.5
           },
           "resistance": {
@@ -341,13 +342,13 @@
             "directionalScale": {
               "forward": 0.35,
               "lateral": 1.8,
-              "vertical": 1.5
+              "vertical": 4
             },
             "angularDrag": 3
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
+            "randomizationAmount": 0,
+            "ema": 0.1
           }
         },
         "idleAirDrive": false
@@ -444,7 +445,7 @@
         },
         "air": {
           "propulsion": {
-            "driveForce": 80,
+            "driveForce": 20,
             "forceCoupling": 0.2
           },
           "resistance": {
@@ -453,13 +454,13 @@
             "directionalScale": {
               "forward": 1,
               "lateral": 1,
-              "vertical": 1
+              "vertical": 6
             },
             "angularDrag": 1
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.3
+            "randomizationAmount": 0,
+            "ema": 0.1
           }
         },
         "water": {
@@ -510,7 +511,7 @@
         },
         "air": {
           "propulsion": {
-            "driveForce": 60,
+            "driveForce": 15,
             "forceCoupling": 3
           },
           "resistance": {
@@ -519,13 +520,13 @@
             "directionalScale": {
               "forward": 0.55,
               "lateral": 1.3,
-              "vertical": 1
+              "vertical": 6
             },
             "angularDrag": 3
           },
           "surfaceLiftResponse": {
-            "randomizationAmount": 0.99,
-            "ema": 0.97
+            "randomizationAmount": 0,
+            "ema": 0.1
           }
         },
         "water": {

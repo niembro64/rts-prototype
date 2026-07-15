@@ -9515,12 +9515,13 @@ mod sim_kernel_tests {
                 p.inv_mass[i] = 1.0 / 2100.0;
             }
             let slots = [slot];
-            let flags = [UF_FLAG_IS_AIRBORNE | UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
+            let flags =
+                [UF_FLAG_IS_AIRBORNE | UF_FLAG_HAS_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
             let mut out_flags = [0_u32; 1];
             let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
             rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
             rows[UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE] = UNIT_FORCE_TEST_LIFT_FORCE;
-            rows[UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = distance_response;
+            rows[UF_ROW_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = distance_response;
 
             assert_eq!(
                 step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
@@ -9670,14 +9671,14 @@ mod sim_kernel_tests {
             p.inv_mass[i] = 1.0 / 2100.0;
         }
         let slots = [slot];
-        let flags = [UF_FLAG_IS_AIRBORNE | UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
+        let flags = [UF_FLAG_IS_AIRBORNE | UF_FLAG_HAS_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = TERRAIN_WATER_LEVEL - 100.0;
         rows[UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] = UNIT_FORCE_TEST_LIFT_FORCE;
         rows[UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] = 0.5;
         rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
-        rows[UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] =
+        rows[UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] =
             unit_force_surface_lift_distance_response(16.0, 1.0, 0.5, 0.5);
 
         assert_eq!(
@@ -9715,7 +9716,7 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn air_ground_and_water_surface_lift_contributions_add_before_ema() {
+    pub(crate) fn air_dry_ground_and_water_probe_contributions_add_before_ema() {
         let _guard = lock_tests();
         let run = |ground_force: f64, water_force: f64| -> (f64, f64) {
             pool_init();
@@ -9729,14 +9730,14 @@ mod sim_kernel_tests {
             }
             let slots = [slot];
             let flags = [UF_FLAG_IS_AIRBORNE
-                | UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE
+                | UF_FLAG_HAS_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE
                 | UF_FLAG_HAS_WATER_SURFACE_LIFT_DISTANCE_RESPONSE];
             let mut out_flags = [0_u32; 1];
             let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
             rows[UF_ROW_GROUND_Z] = TERRAIN_WATER_LEVEL - 100.0;
             rows[UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] = ground_force;
             rows[UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE] = water_force;
-            rows[UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = 0.25;
+            rows[UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = 0.25;
             rows[UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE] = 0.5;
             rows[UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] = 0.5;
             rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
@@ -9758,7 +9759,7 @@ mod sim_kernel_tests {
         let combined = run(100.0, 100.0);
         assert!(
             (combined.0 - ground_only.0 - water_only.0).abs() < 1e-9,
-            "air lift must add source contributions after their independent distance responses",
+            "shoreline air lift must add mutually exclusive dry-ground and water probe contributions",
         );
         assert!(
             (combined.1 - ground_only.1 - water_only.1).abs() < 1e-12,

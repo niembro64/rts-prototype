@@ -15,7 +15,7 @@
 // touching ground. Position EMAs toward the floor-clamp target every
 // frame; belt velocity EMAs toward the per-side body-motion-derived
 // target every frame. Internal wheels read their angular velocity
-// from the parent side's beltVelocity / wheelR so the whole side
+// from the parent side's -beltVelocity / wheelR so the whole side
 // moves as one mechanism. See the "Locomotion Visuals Are Frontend"
 // section of budget_design_philosophy.html.
 
@@ -32,6 +32,7 @@ import {
   emaAlpha,
   rollingContact,
   rollingLocomotionBodyActive,
+  rollingWheelAngularVelocity,
   sampleRollingContactDistance,
   transformChassisToWorld,
   wrappedRollingPhase,
@@ -285,7 +286,7 @@ const _treadUp = { x: 0, y: 1, z: 0 };
  *  floor clamp drives the lift channel via EMA; the per-side signed
  *  distance drives the beltVelocity channel via EMA. beltPhase
  *  integrates from beltVelocity and feeds the cleat layout. Internal
- *  wheels integrate from the same per-side beltVelocity / wheelR.
+ *  wheels integrate from the same per-side -beltVelocity / wheelR.
  *  Animation always plays — the rig doesn't check whether the side
  *  is touching ground. */
 export function updateTreads(
@@ -364,15 +365,18 @@ export function updateTreads(
     sideEntry.beltPhase += sideEntry.beltVelocity * dtSec;
   }
 
-  // Internal wheels: angular velocity = parent side's beltVelocity / wheelR.
+  // Internal wheels use the no-slip sign: angular velocity is the
+  // negative of the parent side's forward belt velocity / wheel radius.
   // Rotation integrates from that. Same tau, same regime — wheels and
   // cleats on one side move as one mechanism.
   for (let i = 0; i < mesh.wheels.length; i++) {
     const sideIdx = mesh.wheelSide[i];
     const side = mesh.sides[sideIdx];
     if (!side) continue;
-    const tireR = Math.max(1, mesh.wheels[i].scale.x);
-    const omega = side.beltVelocity / tireR;
+    const omega = rollingWheelAngularVelocity(
+      side.beltVelocity,
+      mesh.wheels[i].scale.x,
+    );
     mesh.wheels[i].rotation.y += omega * dtSec;
   }
 

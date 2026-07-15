@@ -157,6 +157,20 @@ export function wrappedRollingPhase(phase: number, spacing: number): number {
   return ((phase % spacing) + spacing) % spacing;
 }
 
+/**
+ * Convert signed chassis-forward travel velocity into cylinder rotation.
+ * The rolling cylinders use local +Y as their axle. After the rig rotates
+ * that axle onto chassis +Z, positive angular velocity moves the bottom of
+ * the cylinder toward chassis +X. No-slip forward travel therefore requires
+ * the opposite sign at the contact patch.
+ */
+export function rollingWheelAngularVelocity(
+  chassisForwardVelocity: number,
+  wheelRadius: number,
+): number {
+  return -chassisForwardVelocity / Math.max(1, wheelRadius);
+}
+
 const _rollingWorld = { x: 0, y: 0, z: 0 };
 
 /** Given a chassis-local point (cx, cy, cz) and a unit's transform,

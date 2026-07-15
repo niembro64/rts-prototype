@@ -80,7 +80,7 @@ pub fn quat_hover_orientation_step_batch(
 //  state that still lives on Entity/Unit objects.
 // ─────────────────────────────────────────────────────────────────
 
-pub const UNIT_FORCE_BATCH_STRIDE: usize = 54;
+pub const UNIT_FORCE_BATCH_STRIDE: usize = 55;
 
 // ─────────────────────────────────────────────────────────────────
 //  Blueprint locomotion force profile table
@@ -384,9 +384,10 @@ pub(crate) const UF_ROW_HEADING_X: usize = 47;
 pub(crate) const UF_ROW_HEADING_Y: usize = 48;
 pub(crate) const UF_ROW_AIR_DRIVE_FORCE: usize = 49;
 pub(crate) const UF_ROW_AIR_FORCE_COUPLING: usize = 50;
-pub(crate) const UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 51;
+pub(crate) const UF_ROW_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 51;
 pub(crate) const UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 52;
 pub(crate) const UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE: usize = 53;
+pub(crate) const UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 54;
 
 pub(crate) const UF_FLAG_HAS_THRUST: u32 = 1 << 0;
 pub(crate) const UF_FLAG_IS_FLYING: u32 = 1 << 1;
@@ -398,8 +399,9 @@ pub(crate) const UF_FLAG_HAS_ORIENTATION: u32 = 1 << 7;
 pub(crate) const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING: u32 = 1 << 8;
 pub(crate) const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING: u32 = 1 << 9;
 pub(crate) const UF_FLAG_ON_GROUND: u32 = 1 << 10;
-pub(crate) const UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 11;
+pub(crate) const UF_FLAG_HAS_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 11;
 pub(crate) const UF_FLAG_HAS_WATER_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 12;
+pub(crate) const UF_FLAG_HAS_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 13;
 pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
     UF_FLAG_FORWARD_THRUST_REQUIRES_FACING | UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
 
@@ -1338,8 +1340,8 @@ pub fn unit_force_step_batch(
             let ground_surface_distance_response = unit_force_ground_surface_lift_distance_response(
                 p.pos_z[slot],
                 ground_z,
-                rows[base + UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE],
-                flag & UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE != 0,
+                rows[base + UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE],
+                flag & UF_FLAG_HAS_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE != 0,
                 surface_lift_reference_distance_world,
                 surface_lift_minimum_distance_world,
                 surface_lift_distance_exponent,
@@ -1446,21 +1448,21 @@ pub fn unit_force_step_batch(
                 rows[base + UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE];
             if medium_lift_enabled && lift_force_from_ground_surface > 0.0 {
                 let sampled_distance_response =
-                    rows[base + UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
-                let distance_response = if flag & UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE
-                    != 0
-                    && sampled_distance_response.is_finite()
-                {
-                    sampled_distance_response.max(0.0)
-                } else {
-                    let distance_to_surface = p.pos_z[slot] - ground_z;
-                    unit_force_surface_lift_distance_response(
-                        distance_to_surface,
-                        surface_lift_reference_distance_world,
-                        surface_lift_minimum_distance_world,
-                        surface_lift_distance_exponent,
-                    )
-                };
+                    rows[base + UF_ROW_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
+                let distance_response =
+                    if flag & UF_FLAG_HAS_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE != 0
+                        && sampled_distance_response.is_finite()
+                    {
+                        sampled_distance_response.max(0.0)
+                    } else {
+                        let distance_to_surface = p.pos_z[slot] - ground_z;
+                        unit_force_surface_lift_distance_response(
+                            distance_to_surface,
+                            surface_lift_reference_distance_world,
+                            surface_lift_minimum_distance_world,
+                            surface_lift_distance_exponent,
+                        )
+                    };
                 let rand_amount = rows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_AMOUNT];
                 let full_medium_surface_lift = unit_force_full_medium_surface_lift(
                     lift_force_from_ground_surface,

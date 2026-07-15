@@ -65,12 +65,12 @@ export function runWaterLiftLocomotionContractTest(): void {
       `${unitBlueprintId} water physics must not source lift from water surface`,
     );
     assertContract(
-      lift.randomizationAmount === 0.99,
-      `${unitBlueprintId} must use active water lift randomization`,
+      lift.randomizationAmount === 0,
+      `${unitBlueprintId} must disable lift noise in the stable default tuning`,
     );
     assertContract(
-      lift.ema === 0.97,
-      `${unitBlueprintId} must smooth randomized water lift`,
+      lift.ema === 0.1,
+      `${unitBlueprintId} must use responsive water lift smoothing`,
     );
   }
 }

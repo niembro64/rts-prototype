@@ -10,6 +10,12 @@ import {
 } from '../locomotion';
 import { getSurfaceLiftDistanceResponse } from '../surfaceLiftDistanceResponse';
 import { resolveSurfaceLiftGroundZ } from '../surfaceLiftGroundSupport';
+import {
+  accumulateSurfaceProbeResponse,
+  finalizeSurfaceProbeResponse,
+  isSurfaceProbeAggregation,
+  surfaceProbeUsesWaterSurface,
+} from '../surfaceProbeAggregation';
 import { resolveLocomotionRouteCapabilities } from '../locomotionNavigation';
 import {
   LOCOMOTION_FRICTION_BY_MEDIUM,
@@ -73,6 +79,7 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
     referenceDistanceWorld,
     minimumDistanceWorld,
     distanceExponent,
+    probeAggregation,
   } = rawLocomotionConfig.surfaceLiftDefaults;
   assertContract(
     Number.isFinite(referenceDistanceWorld) && referenceDistanceWorld > 0,
@@ -86,6 +93,10 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
     Number.isFinite(distanceExponent) && distanceExponent > 0 && distanceExponent <= 1,
     'surfaceLiftDefaults.distanceExponent must be finite in (0, 1]',
   );
+  assertContract(
+    isSurfaceProbeAggregation(probeAggregation),
+    'surfaceLiftDefaults.probeAggregation must be average or max',
+  );
   assertEqual(
     getSurfaceLiftDistanceResponse(4),
     DMath.pow(referenceDistanceWorld / 4, distanceExponent),
@@ -95,6 +106,30 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
     getSurfaceLiftDistanceResponse(minimumDistanceWorld / 2),
     DMath.pow(referenceDistanceWorld / minimumDistanceWorld, distanceExponent),
     'surface lift clamps distance before applying the shared power law',
+  );
+  const averageAggregate = accumulateSurfaceProbeResponse(
+    accumulateSurfaceProbeResponse(0, 0.25, 'average'),
+    0.75,
+    'average',
+  );
+  assertEqual(
+    finalizeSurfaceProbeResponse(averageAggregate, 2, 'average'),
+    0.5,
+    'average probe aggregation averages nonlinear per-probe responses',
+  );
+  const maxAggregate = accumulateSurfaceProbeResponse(
+    accumulateSurfaceProbeResponse(0, 0.25, 'max'),
+    0.75,
+    'max',
+  );
+  assertEqual(
+    finalizeSurfaceProbeResponse(maxAggregate, 2, 'max'),
+    0.75,
+    'max probe aggregation selects the strongest nonlinear per-probe response',
+  );
+  assertContract(
+    !surfaceProbeUsesWaterSurface(0, 0) && surfaceProbeUsesWaterSurface(-1, 0),
+    'air lift probes choose ground at/above water level and water below it',
   );
 }
 
@@ -192,6 +227,8 @@ function assertMobilityTuningIntent(): void {
   const treads = getLocomotionPreset('treads').physics;
   const legs = getLocomotionPreset('legs').physics;
   const flippers = getLocomotionPreset('flippers').physics;
+  const swim = getLocomotionPreset('swim').physics;
+  const hover = getLocomotionPreset('hover').physics;
   const flying = getLocomotionPreset('flying').physics;
 
   assertContract(
@@ -221,6 +258,19 @@ function assertMobilityTuningIntent(): void {
     flying.air.propulsion.forceCoupling >= 3,
     'flying speed tuning must not remove air turn authority',
   );
+  for (const [label, fluid] of [
+    ['flippers.water', flippers.water],
+    ['swim.water', swim.water],
+    ['hover.air', hover.air],
+    ['flying.air', flying.air],
+  ] as const) {
+    assertContract(
+      fluid.surfaceLiftResponse.randomizationAmount === 0 &&
+        fluid.surfaceLiftResponse.ema <= 0.1 &&
+        fluid.resistance.directionalScale.vertical >= 4,
+      `${label} keeps the stable, strongly damped surface-lift tuning`,
+    );
+  }
 }
 
 function assertGlobalFrictionContract(): void {
@@ -506,18 +556,18 @@ export function runLocomotionContractTest(): void {
     seaTurtleLocomotion.physics.ground.propulsion.forceCoupling;
   assertEqual(
     seaTurtleWaterDrive,
-    3570,
-    'flippers preserve the prior Sea Turtle coupled water drive exactly',
+    300,
+    'flippers use the normalized Sea Turtle coupled water drive',
   );
   assertContract(
-    seaTurtleWaterDrive > seaTurtleGroundDrive * 4,
-    'Sea Turtle remains much stronger in water than on ground',
+    seaTurtleWaterDrive < seaTurtleGroundDrive,
+    'Sea Turtle water propulsion accounts for the absence of a ground-grip force cap',
   );
   assertContract(
     seaTurtleLocomotion.physics.water.lift.liftForceFromGroundSurface > 0 &&
-      seaTurtleLocomotion.physics.water.lift.randomizationAmount > 0 &&
+      seaTurtleLocomotion.physics.water.lift.randomizationAmount === 0 &&
       seaTurtleLocomotion.physics.water.lift.ema > 0,
-    'Sea Turtle water lift owns active upward force, randomization, and EMA smoothing',
+    'Sea Turtle water lift owns active upward force and responsive, noise-free EMA smoothing',
   );
   const seaTurtleRoutes = resolveLocomotionRouteCapabilities(seaTurtleLocomotion);
   assertContract(
@@ -565,9 +615,9 @@ export function runLocomotionContractTest(): void {
   );
   assertContract(
     orcaLocomotion.physics.water.lift.liftForceFromGroundSurface > 0 &&
-      orcaLocomotion.physics.water.lift.randomizationAmount > 0 &&
+      orcaLocomotion.physics.water.lift.randomizationAmount === 0 &&
       orcaLocomotion.physics.water.lift.ema > 0,
-    'Orca water lift owns active upward force, randomization, and EMA smoothing',
+    'Orca water lift owns active upward force and responsive, noise-free EMA smoothing',
   );
   const eagleAirLiftLocomotion = assertRuntimeLocomotionMatchesSources('unitEagle');
   assertContract(

@@ -1927,8 +1927,8 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 113.841996,
-            "liftForceFromWaterSurface": 113.841996,
+            "liftForceFromGroundSurface": 110,
+            "liftForceFromWaterSurface": 40,
             "gravityCounterRatio": 0
           }
         },
@@ -2062,8 +2062,8 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 855.296001,
-            "liftForceFromWaterSurface": 855.296001,
+            "liftForceFromGroundSurface": 800,
+            "liftForceFromWaterSurface": 500,
             "gravityCounterRatio": 0
           }
         },
@@ -2225,8 +2225,8 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 307.106455,
-            "liftForceFromWaterSurface": 307.106455,
+            "liftForceFromGroundSurface": 300,
+            "liftForceFromWaterSurface": 700,
             "gravityCounterRatio": 0
           }
         },
@@ -2341,8 +2341,8 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 584.567148,
-            "liftForceFromWaterSurface": 584.567148,
+            "liftForceFromGroundSurface": 600,
+            "liftForceFromWaterSurface": 400,
             "gravityCounterRatio": 0
           }
         },
@@ -2486,8 +2486,8 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 238117.617996,
-            "liftForceFromWaterSurface": 238117.617996,
+            "liftForceFromGroundSurface": 200000,
+            "liftForceFromWaterSurface": 100000,
             "gravityCounterRatio": 0
           }
         },
@@ -2650,8 +2650,8 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 111650.794892,
-            "liftForceFromWaterSurface": 111650.794892,
+            "liftForceFromGroundSurface": 70000,
+            "liftForceFromWaterSurface": 100000,
             "gravityCounterRatio": 0
           }
         },
@@ -2799,8 +2799,8 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 125678.160394,
-            "liftForceFromWaterSurface": 125678.160394,
+            "liftForceFromGroundSurface": 50000,
+            "liftForceFromWaterSurface": 100000,
             "gravityCounterRatio": 0
           }
         },
@@ -2933,8 +2933,8 @@
       "physics": {
         "air": {
           "lift": {
-            "liftForceFromGroundSurface": 798.163517,
-            "liftForceFromWaterSurface": 798.163517,
+            "liftForceFromGroundSurface": 400,
+            "liftForceFromWaterSurface": 1200,
             "gravityCounterRatio": 0
           }
         },

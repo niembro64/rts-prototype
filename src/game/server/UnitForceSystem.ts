@@ -5,9 +5,15 @@
 import { getSurfaceLiftDistanceResponse } from '../sim/surfaceLiftDistanceResponse';
 import { resolveSurfaceLiftGroundZ } from '../sim/surfaceLiftGroundSupport';
 import {
+  accumulateSurfaceProbeResponse,
+  finalizeSurfaceProbeResponse,
+  surfaceProbeUsesWaterSurface,
+} from '../sim/surfaceProbeAggregation';
+import {
   LOCOMOTION_FORCE_SCALE,
   SURFACE_LIFT_DISTANCE_EXPONENT,
   SURFACE_LIFT_MINIMUM_DISTANCE_WORLD,
+  SURFACE_LIFT_PROBE_AGGREGATION,
   SURFACE_LIFT_REFERENCE_DISTANCE_WORLD,
   getLocomotionEffectiveFriction,
 } from '../sim/locomotionPresetConfig';
@@ -97,8 +103,9 @@ const UF_ROW_OMEGA_Z = 25;
 const UF_ROW_WATER_SURFACE_LIFT_RANDOM_SAMPLE = 46;
 const UF_ROW_HEADING_X = 47;
 const UF_ROW_HEADING_Y = 48;
-const UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE = 51;
+const UF_ROW_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE = 51;
 const UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE = 52;
+const UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE = 54;
 
 const UF_FLAG_HAS_THRUST = 1 << 0;
 const UF_FLAG_IS_FLYING = 1 << 1;
@@ -109,8 +116,9 @@ const UF_FLAG_HAS_ORIENTATION = 1 << 7;
 const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING = 1 << 8;
 const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING = 1 << 9;
 const UF_FLAG_ON_GROUND = 1 << 10;
-const UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE = 1 << 11;
+const UF_FLAG_HAS_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE = 1 << 11;
 const UF_FLAG_HAS_WATER_SURFACE_LIFT_DISTANCE_RESPONSE = 1 << 12;
+const UF_FLAG_HAS_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE = 1 << 13;
 const UF_PROFILE_FLAG_IDLE_AIR_DRIVE = 1 << 16;
 const UF_PROFILE_FLAG_WATER_FATAL = 1 << 20;
 const UF_PROFILE_FLAG_AIR_SURFACE_LIFT_RANDOM_ACTIVE = 1 << 21;
@@ -132,7 +140,11 @@ let _forceFlags: Uint32Array = new Uint32Array(0);
 let _forceRows: Float64Array = new Float64Array(0);
 let _forceOutFlags: Uint32Array = new Uint32Array(0);
 let _forceTerrainGroundZ: Float64Array = new Float64Array(0);
-const _surfaceLiftDistanceResponses = { groundSurface: 0, waterSurface: 0 };
+const _surfaceLiftDistanceResponses = {
+  airGroundSurface: 0,
+  waterGroundSurface: 0,
+  waterSurface: 0,
+};
 let _forceTerrainGroundNormals: Float64Array = new Float64Array(0);
 let _forceTerrainMaterialFlags: Uint32Array = new Uint32Array(0);
 const _forceTerrainSurface = createWorldSupportSurface();
@@ -592,8 +604,9 @@ export class UnitForceSystem {
       }
 
       _forceRows[base + UF_ROW_GROUND_Z] = supportSurface.groundZ;
-      _forceRows[base + UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = 0;
+      _forceRows[base + UF_ROW_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = 0;
       _forceRows[base + UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE] = 0;
+      _forceRows[base + UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = 0;
 
       if (mediumLiftActive && airLiftAuthored) {
         if (hoverRandomActive) {
@@ -603,8 +616,10 @@ export class UnitForceSystem {
           _forceRows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_SAMPLE] = hoverRandomSample;
         }
       }
-      const samplesGroundSurface = airGroundLiftAuthored || waterGroundLiftAuthored;
-      if (mediumLiftActive && (samplesGroundSurface || airWaterSurfaceLiftAuthored)) {
+      if (
+        mediumLiftActive &&
+        (airGroundLiftAuthored || waterGroundLiftAuthored || airWaterSurfaceLiftAuthored)
+      ) {
         let probeDirX = 0;
         let probeDirY = 0;
         const yaw = Number.isFinite(rotationForPack) ? rotationForPack : 0;
@@ -622,7 +637,7 @@ export class UnitForceSystem {
           probeDirY = DMath.sin(yaw);
         }
 
-        this.sampleSurfaceLiftAverageDistanceResponses(
+        this.sampleSurfaceLiftAggregatedDistanceResponses(
           unit.locomotion.surfaceProbeSetId,
           bodyZ,
           bodyX,
@@ -633,14 +648,20 @@ export class UnitForceSystem {
           supportSurface.groundZ,
           entity.id,
           !terrainOnlySupport,
-          samplesGroundSurface,
+          airGroundLiftAuthored,
+          waterGroundLiftAuthored,
           airWaterSurfaceLiftAuthored,
           _surfaceLiftDistanceResponses,
         );
-        if (samplesGroundSurface) {
-          _forceRows[base + UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] =
-            _surfaceLiftDistanceResponses.groundSurface;
-          flags |= UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE;
+        if (airGroundLiftAuthored) {
+          _forceRows[base + UF_ROW_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] =
+            _surfaceLiftDistanceResponses.airGroundSurface;
+          flags |= UF_FLAG_HAS_AIR_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE;
+        }
+        if (waterGroundLiftAuthored) {
+          _forceRows[base + UF_ROW_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] =
+            _surfaceLiftDistanceResponses.waterGroundSurface;
+          flags |= UF_FLAG_HAS_WATER_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE;
         }
         if (airWaterSurfaceLiftAuthored) {
           _forceRows[base + UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE] =
@@ -1014,7 +1035,7 @@ export class UnitForceSystem {
     return getSurfaceLiftDistanceResponse(clampedAltitude);
   }
 
-  private sampleSurfaceLiftAverageDistanceResponses(
+  private sampleSurfaceLiftAggregatedDistanceResponses(
     probeSetId: SurfaceProbeSetId,
     bodyZ: number,
     bodyX: number,
@@ -1025,12 +1046,14 @@ export class UnitForceSystem {
     directGroundZ: number,
     ignoreEntityId: EntityId,
     includeSupportSurfaces: boolean,
-    sampleGroundSurface: boolean,
+    sampleAirGroundSurface: boolean,
+    sampleWaterGroundSurface: boolean,
     sampleWaterSurface: boolean,
-    out: { groundSurface: number; waterSurface: number },
+    out: { airGroundSurface: number; waterGroundSurface: number; waterSurface: number },
   ): void {
-    let groundSurfaceResponseSum = 0;
-    let waterSurfaceResponseSum = 0;
+    let airGroundSurfaceResponseAggregate = 0;
+    let waterGroundSurfaceResponseAggregate = 0;
+    let waterSurfaceResponseAggregate = 0;
     const sampleCount = forEachSurfaceProbePoint(
       probeSetId,
       bodyX,
@@ -1042,28 +1065,74 @@ export class UnitForceSystem {
         const groundZ = role === 'center'
           ? directGroundZ
           : this.sampleSurfaceLiftSupportZAt(x, y, ignoreEntityId, includeSupportSurfaces);
-        if (sampleGroundSurface) {
-          groundSurfaceResponseSum +=
-            this.surfaceLiftDistanceResponseFromSurfaceZ(bodyZ, groundZ);
+        const waterCovered = surfaceProbeUsesWaterSurface(
+          this.world.getTerrainBedZ(x, y),
+          WATER_LEVEL,
+        );
+        if (sampleAirGroundSurface && !waterCovered) {
+          const response = this.surfaceLiftDistanceResponseFromSurfaceZ(bodyZ, groundZ);
+          airGroundSurfaceResponseAggregate = accumulateSurfaceProbeResponse(
+            airGroundSurfaceResponseAggregate,
+            response,
+            SURFACE_LIFT_PROBE_AGGREGATION,
+          );
         }
-        if (sampleWaterSurface && this.world.getTerrainBedZ(x, y) < WATER_LEVEL) {
-          waterSurfaceResponseSum +=
-            this.surfaceLiftDistanceResponseFromSurfaceZ(bodyZ, WATER_LEVEL);
+        if (sampleWaterGroundSurface) {
+          const response = this.surfaceLiftDistanceResponseFromSurfaceZ(bodyZ, groundZ);
+          waterGroundSurfaceResponseAggregate = accumulateSurfaceProbeResponse(
+            waterGroundSurfaceResponseAggregate,
+            response,
+            SURFACE_LIFT_PROBE_AGGREGATION,
+          );
+        }
+        if (sampleWaterSurface && waterCovered) {
+          const response = this.surfaceLiftDistanceResponseFromSurfaceZ(bodyZ, WATER_LEVEL);
+          waterSurfaceResponseAggregate = accumulateSurfaceProbeResponse(
+            waterSurfaceResponseAggregate,
+            response,
+            SURFACE_LIFT_PROBE_AGGREGATION,
+          );
         }
       },
     );
 
     if (sampleCount === 0) {
-      out.groundSurface = sampleGroundSurface
+      const waterCovered = surfaceProbeUsesWaterSurface(
+        this.world.getTerrainBedZ(bodyX, bodyY),
+        WATER_LEVEL,
+      );
+      out.airGroundSurface = sampleAirGroundSurface && !waterCovered
         ? this.surfaceLiftDistanceResponseFromSurfaceZ(bodyZ, directGroundZ)
         : 0;
-      out.waterSurface = sampleWaterSurface && this.world.getTerrainBedZ(bodyX, bodyY) < WATER_LEVEL
+      out.waterGroundSurface = sampleWaterGroundSurface
+        ? this.surfaceLiftDistanceResponseFromSurfaceZ(bodyZ, directGroundZ)
+        : 0;
+      out.waterSurface = sampleWaterSurface && waterCovered
         ? this.surfaceLiftDistanceResponseFromSurfaceZ(bodyZ, WATER_LEVEL)
         : 0;
       return;
     }
-    out.groundSurface = sampleGroundSurface ? groundSurfaceResponseSum / sampleCount : 0;
-    out.waterSurface = sampleWaterSurface ? waterSurfaceResponseSum / sampleCount : 0;
+    out.airGroundSurface = sampleAirGroundSurface
+      ? finalizeSurfaceProbeResponse(
+        airGroundSurfaceResponseAggregate,
+        sampleCount,
+        SURFACE_LIFT_PROBE_AGGREGATION,
+      )
+      : 0;
+    out.waterGroundSurface = sampleWaterGroundSurface
+      ? finalizeSurfaceProbeResponse(
+        waterGroundSurfaceResponseAggregate,
+        sampleCount,
+        SURFACE_LIFT_PROBE_AGGREGATION,
+      )
+      : 0;
+    out.waterSurface = sampleWaterSurface
+      ? finalizeSurfaceProbeResponse(
+        waterSurfaceResponseAggregate,
+        sampleCount,
+        SURFACE_LIFT_PROBE_AGGREGATION,
+      )
+      : 0;
   }
 
   private sampleSurfaceLiftSupportZAt(

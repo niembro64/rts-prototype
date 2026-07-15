@@ -3743,7 +3743,7 @@ export const QUAT_HOVER_BATCH_STRIDE = 14;
 
 /** Layout stride for `unitForceStepBatch`. Mirrors
  *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
-export const UNIT_FORCE_BATCH_STRIDE = 54;
+export const UNIT_FORCE_BATCH_STRIDE = 55;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
@@ -4738,6 +4738,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runEntityLod3DContractTest();
         const { runEntityDetailLevel3DContractTest } = await import('../render3d/EntityDetailLevel3DContractTest');
         runEntityDetailLevel3DContractTest();
+        const { runRollingLocomotionContractTest } = await import('../render3d/RollingLocomotionContractTest');
+        runRollingLocomotionContractTest();
         const { runInputControlGroupsContractTest } = await import('../input/helpers/InputControlGroupsContractTest');
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');
