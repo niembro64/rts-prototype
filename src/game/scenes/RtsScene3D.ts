@@ -54,6 +54,7 @@ import { ViewportFootprint } from '../ViewportFootprint';
 import { SprayRenderer3D } from '../render3d/SprayRenderer3D';
 import { PylonTubeFlowRenderer } from '../render3d/PylonTubeFlowRenderer';
 import { SmokeTrail3D } from '../render3d/SmokeTrail3D';
+import { WindParticleField3D } from '../render3d/WindParticleField3D';
 import { SightBoundaryRenderer3D } from '../render3d/SightBoundaryRenderer3D';
 import type { OverlayLineSystem } from '../render3d/OverlayLineSystem';
 import { Explosion3D } from '../render3d/Explosion3D';
@@ -174,6 +175,7 @@ export class RtsScene3D {
   private sprayRenderer!: SprayRenderer3D;
   private pylonTubeFlowRenderer!: PylonTubeFlowRenderer;
   private smokeTrailRenderer!: SmokeTrail3D;
+  private windParticleFieldRenderer!: WindParticleField3D;
   private overlayLineSystem!: OverlayLineSystem;
   private sightBoundaryRenderer!: SightBoundaryRenderer3D;
   private radarBoundaryRenderer!: SightBoundaryRenderer3D;
@@ -448,6 +450,7 @@ export class RtsScene3D {
     this.sprayRenderer = renderers.sprayRenderer;
     this.pylonTubeFlowRenderer = renderers.pylonTubeFlowRenderer;
     this.smokeTrailRenderer = renderers.smokeTrailRenderer;
+    this.windParticleFieldRenderer = renderers.windParticleFieldRenderer;
     this.overlayLineSystem = renderers.overlayLineSystem;
     this.sightBoundaryRenderer = renderers.sightBoundaryRenderer;
     this.radarBoundaryRenderer = renderers.radarBoundaryRenderer;
@@ -644,6 +647,7 @@ export class RtsScene3D {
         sprayRenderer: this.sprayRenderer,
         pylonTubeFlowRenderer: this.pylonTubeFlowRenderer,
         smokeTrailRenderer: this.smokeTrailRenderer,
+        windParticleFieldRenderer: this.windParticleFieldRenderer,
         overlayLineSystem: this.overlayLineSystem,
         sightBoundaryRenderer: this.sightBoundaryRenderer,
         radarBoundaryRenderer: this.radarBoundaryRenderer,
@@ -1601,6 +1605,7 @@ export class RtsScene3D {
       sprayRenderer: this.sprayRenderer,
       pylonTubeFlowRenderer: this.pylonTubeFlowRenderer,
       smokeTrailRenderer: this.smokeTrailRenderer,
+      windParticleFieldRenderer: this.windParticleFieldRenderer,
       sightBoundaryRenderer: this.sightBoundaryRenderer,
       radarBoundaryRenderer: this.radarBoundaryRenderer,
       overlayLineSystem: this.overlayLineSystem,

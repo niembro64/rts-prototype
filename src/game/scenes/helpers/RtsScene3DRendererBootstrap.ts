@@ -27,6 +27,7 @@ import { TerrainTileRenderer3D } from '../../render3d/TerrainTileRenderer3D';
 import type { ThreeApp } from '../../render3d/ThreeApp';
 import { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
 import { WaterSplash3D } from '../../render3d/WaterSplash3D';
+import { WindParticleField3D } from '../../render3d/WindParticleField3D';
 import type { ViewportFootprint } from '../../ViewportFootprint';
 import { LAND_CELL_SIZE } from '../../../config';
 import type { MetalDeposit } from '../../../metalDepositConfig';
@@ -70,6 +71,7 @@ type RtsScene3DRendererBootstrapResult = {
   sprayRenderer: SprayRenderer3D;
   pylonTubeFlowRenderer: PylonTubeFlowRenderer;
   smokeTrailRenderer: SmokeTrail3D;
+  windParticleFieldRenderer: WindParticleField3D;
   overlayLineSystem: OverlayLineSystem;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
@@ -196,6 +198,13 @@ export function bootstrapRtsScene3DRenderers(
   const sprayRenderer = new SprayRenderer3D(threeApp.world);
   const pylonTubeFlowRenderer = new PylonTubeFlowRenderer(threeApp.world);
   const smokeTrailRenderer = new SmokeTrail3D(threeApp.world);
+  const windParticleFieldRenderer = new WindParticleField3D(threeApp.world, {
+    mapWidth,
+    mapHeight,
+    renderScope,
+    sampleSurfaceHeight: (x, z) =>
+      getSurfaceHeight(x, z, mapWidth, mapHeight, LAND_CELL_SIZE),
+  });
   const sightBoundaryRenderer = new SightBoundaryRenderer3D(
     threeApp.world,
     overlayLineSystem,
@@ -231,6 +240,7 @@ export function bootstrapRtsScene3DRenderers(
     sprayRenderer,
     pylonTubeFlowRenderer,
     smokeTrailRenderer,
+    windParticleFieldRenderer,
     overlayLineSystem,
     sightBoundaryRenderer,
     radarBoundaryRenderer,

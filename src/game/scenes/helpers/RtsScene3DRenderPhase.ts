@@ -30,6 +30,7 @@ import type { WaterRenderer3D } from '../../render3d/WaterRenderer3D';
 import type { Explosion3D } from '../../render3d/Explosion3D';
 import type { ShieldImpactRenderer3D } from '../../render3d/ShieldImpactRenderer3D';
 import type { WaterSplash3D } from '../../render3d/WaterSplash3D';
+import type { WindParticleField3D } from '../../render3d/WindParticleField3D';
 import type { Debris3D } from '../../render3d/Debris3D';
 import type { BurnMark3D } from '../../render3d/BurnMark3D';
 import {
@@ -109,6 +110,7 @@ type RtsScene3DRenderPhaseResources = {
   sprayRenderer: SprayRenderer3D;
   pylonTubeFlowRenderer: PylonTubeFlowRenderer;
   smokeTrailRenderer: SmokeTrail3D;
+  windParticleFieldRenderer: WindParticleField3D;
   overlayLineSystem: OverlayLineSystem;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
@@ -321,6 +323,7 @@ export class RtsScene3DRenderPhase {
       sprayRenderer,
       pylonTubeFlowRenderer,
       smokeTrailRenderer,
+      windParticleFieldRenderer,
       overlayLineSystem,
       sightBoundaryRenderer,
       radarBoundaryRenderer,
@@ -388,6 +391,7 @@ export class RtsScene3DRenderPhase {
     const fogOfWarEnabled = serverMeta?.fogOfWarEnabled === true;
     const turretShieldSpheresEnabled = serverMeta?.turretShieldSpheresEnabled ?? true;
     const forceFieldsVisible = serverMeta?.forceFieldsVisible ?? true;
+    windParticleFieldRenderer.update(serverMeta?.wind, effectDtMs);
     // Keep every overlay line's screen-pixel width correct for the current
     // canvas size (one shared material drives all of them).
     const overlaySize = this.threeApp.renderer.getSize(this._overlayResolution);

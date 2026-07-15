@@ -30,5 +30,24 @@
       "fanYaw": 4,
       "bladeSpeed": 0.2
     }
+  },
+  "particles": {
+    "enabled": true,
+    "maxParticles": 19200,
+    "colorHex": "#d9f2ff",
+    "alpha": 0.16,
+    "radiusWorld": 1.25,
+    "minimumTrailLengthWorld": 3,
+    "trailDurationSeconds": 0.12,
+    "fieldPaddingWorld": 160,
+    "heightAboveSurfaceWorld": {
+      "min": 40,
+      "max": 320
+    },
+    "lifetimeSeconds": {
+      "min": 4,
+      "max": 8
+    },
+    "fadeFraction": 0.15
   }
 }
