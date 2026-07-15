@@ -3,6 +3,7 @@
 // per-unit force decisions and writes BodyPool acceleration directly.
 
 import { getSurfaceLiftDistanceResponse } from '../sim/surfaceLiftDistanceResponse';
+import { resolveSurfaceLiftGroundZ } from '../sim/surfaceLiftGroundSupport';
 import {
   LOCOMOTION_FORCE_SCALE,
   SURFACE_LIFT_DISTANCE_EXPONENT,
@@ -1071,13 +1072,15 @@ export class UnitForceSystem {
     ignoreEntityId: EntityId,
     includeSupportSurfaces: boolean,
   ): number {
-    if (!includeSupportSurfaces) return this.world.getGroundZ(x, y);
+    const terrainBedZ = this.world.getTerrainBedZ(x, y);
+    if (!includeSupportSurfaces) return terrainBedZ;
     this.ensureProbeSupportIndex();
-    return this.world.sampleSupportSurfaceFromIndex(
+    const support = this.world.sampleSupportSurfaceFromIndex(
       x,
       y,
       { ignoreEntityId },
       _forceProbeSupportSurface,
-    ).groundZ;
+    );
+    return resolveSurfaceLiftGroundZ(support, terrainBedZ);
   }
 }

@@ -9,6 +9,7 @@ import {
   createUnitLocomotion,
 } from '../locomotion';
 import { getSurfaceLiftDistanceResponse } from '../surfaceLiftDistanceResponse';
+import { resolveSurfaceLiftGroundZ } from '../surfaceLiftGroundSupport';
 import { resolveLocomotionRouteCapabilities } from '../locomotionNavigation';
 import {
   LOCOMOTION_FRICTION_BY_MEDIUM,
@@ -97,6 +98,19 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
   );
 }
 
+function assertSurfaceLiftGroundSupportContract(): void {
+  assertEqual(
+    resolveSurfaceLiftGroundZ({ groundZ: 0, materialKind: 'water' }, -240),
+    -240,
+    'surface-lift ground probes resolve water material to the terrain bed',
+  );
+  assertEqual(
+    resolveSurfaceLiftGroundZ({ groundZ: 80, materialKind: 'solid' }, -240),
+    80,
+    'surface-lift ground probes preserve a real solid support above the terrain bed',
+  );
+}
+
 function assertAllLiftObjectsAreExplicit(): void {
   for (const unit of getAllUnitBlueprints()) {
     const id = unit.unitBlueprintId;
@@ -157,14 +171,14 @@ function assertSurfaceProbeLayouts(): void {
       `${presetId} uses center sampling`,
     );
   }
-  for (const presetId of ['amphibiousTreads', 'flippers', 'swim']) {
+  for (const presetId of ['amphibiousTreads', 'swim']) {
     assertEqual(
       getLocomotionPreset(presetId).physics.surfaceProbeSetId,
       '5-points',
       `${presetId} uses footprint sampling`,
     );
   }
-  for (const presetId of ['hover', 'flying']) {
+  for (const presetId of ['flippers', 'hover', 'flying']) {
     assertEqual(
       getLocomotionPreset(presetId).physics.surfaceProbeSetId,
       '8-points',
@@ -414,6 +428,7 @@ function assertClonedLocomotionMatchesSource(
 
 export function runLocomotionContractTest(): void {
   assertSurfaceLiftDefaultsMatchConfig();
+  assertSurfaceLiftGroundSupportContract();
   assertAllLiftObjectsAreExplicit();
   assertSurfaceProbeLayouts();
   assertMobilityTuningIntent();

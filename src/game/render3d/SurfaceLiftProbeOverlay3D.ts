@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { getAirLiftProbeDebug } from '@/clientBarConfig';
-import { WATER_LEVEL, isWaterAt } from '../sim/Terrain';
+import { WATER_LEVEL, getTerrainBedHeight, isWaterAt } from '../sim/Terrain';
 import type { Entity } from '../sim/types';
 import { isBuildInProgress } from '../sim/buildableHelpers';
 import { createWorldSupportSurface } from '../sim/supportSurface';
+import { resolveSurfaceLiftGroundZ } from '../sim/surfaceLiftGroundSupport';
 import {
   type SurfaceProbePointRole,
   forEachSurfaceProbePoint,
@@ -18,23 +19,28 @@ import {
 const INITIAL_INSTANCE_CAPACITY = 16;
 const THRUST_DIRECTION_EPSILON_SQ = 0.0001;
 const MARKER_RADIUS = 5;
-const LINE_RADIUS = 1.25;
-const MIN_LINE_LENGTH = 0.5;
-const SURFACE_LIFT = 0.8;
+const GROUND_LINE_RADIUS = 3.5;
+const WATER_LINE_RADIUS = 0.35;
+const MIN_VISIBLE_LINE_LENGTH = 0.01;
 const RENDER_ORDER = 92;
 const FORWARD_PROBE_COLOR = new THREE.Color(0x36e6ff);
 const BODY_PROBE_COLOR = new THREE.Color(0xffd447);
 const DIRECT_PROBE_COLOR = new THREE.Color(0xff7a36);
-const WATER_SURFACE_PROBE_COLOR = new THREE.Color(0x3d8dff);
 
 export class SurfaceLiftProbeOverlay3D {
   private readonly root = new THREE.Group();
   private readonly markerGeometry = createPrimitiveSphereGeometry('debug', 'close', MARKER_RADIUS);
-  private readonly lineGeometry = createPrimitiveCylinderGeometry(
+  private readonly groundLineGeometry = createPrimitiveCylinderGeometry(
     'debug',
     'close',
-    LINE_RADIUS,
-    LINE_RADIUS,
+    GROUND_LINE_RADIUS,
+    GROUND_LINE_RADIUS,
+  );
+  private readonly waterLineGeometry = createPrimitiveCylinderGeometry(
+    'debug',
+    'close',
+    WATER_LINE_RADIUS,
+    WATER_LINE_RADIUS,
   );
   private readonly markerMaterial = new THREE.MeshBasicMaterial({
     color: 0x36e6ff,
@@ -45,11 +51,18 @@ export class SurfaceLiftProbeOverlay3D {
     depthWrite: false,
     toneMapped: false,
   });
-  private readonly lineMaterial = new THREE.MeshBasicMaterial({
-    color: 0x36e6ff,
-    vertexColors: true,
+  private readonly groundLineMaterial = new THREE.MeshBasicMaterial({
+    color: 0x050505,
     transparent: true,
-    opacity: 0.58,
+    opacity: 0.82,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  private readonly waterLineMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff2020,
+    transparent: true,
+    opacity: 0.5,
     depthTest: false,
     depthWrite: false,
     toneMapped: false,
@@ -57,7 +70,8 @@ export class SurfaceLiftProbeOverlay3D {
   private readonly supportScratch = createWorldSupportSurface();
   private readonly dummy = new THREE.Object3D();
   private markerMesh: THREE.InstancedMesh | null = null;
-  private lineMesh: THREE.InstancedMesh | null = null;
+  private groundLineMesh: THREE.InstancedMesh | null = null;
+  private waterLineMesh: THREE.InstancedMesh | null = null;
   private instanceCapacity = 0;
 
   constructor(
@@ -88,13 +102,15 @@ export class SurfaceLiftProbeOverlay3D {
       return;
     }
 
-    this.ensureCapacity(instanceCount * 2);
+    this.ensureCapacity(instanceCount);
     const markers = this.markerMesh;
-    const lines = this.lineMesh;
-    if (markers === null || lines === null) return;
+    const groundLines = this.groundLineMesh;
+    const waterLines = this.waterLineMesh;
+    if (markers === null || groundLines === null || waterLines === null) return;
 
     let markerCursor = 0;
-    let lineCursor = 0;
+    let groundLineCursor = 0;
+    let waterLineCursor = 0;
     for (let i = 0; i < probeUnits.length; i++) {
       const entity = probeUnits[i];
       const unit = entity.unit;
@@ -102,12 +118,6 @@ export class SurfaceLiftProbeOverlay3D {
       const direction = probeDirection(entity);
       if (direction === null) continue;
       const probeRadius = unitProbeRadius(unit);
-      const samplesGroundSurface =
-        unit.locomotion.physics.air.lift.liftForceFromGroundSurface > 0 ||
-        unit.locomotion.physics.water.lift.liftForceFromGroundSurface > 0;
-      const samplesWaterSurface =
-        unit.locomotion.physics.air.lift.liftForceFromWaterSurface > 0;
-
       const bodyY = entity.transform.z;
       if (!Number.isFinite(bodyY)) continue;
       forEachSurfaceProbePoint(
@@ -130,81 +140,107 @@ export class SurfaceLiftProbeOverlay3D {
             entity.id,
             this.supportScratch,
           );
+          const groundY = resolveSurfaceLiftGroundZ(
+            support,
+            getTerrainBedHeight(x, z, this.mapWidth, this.mapHeight),
+          );
           const color = probeColor(role);
           this.writeMarkerInstance(markers, markerCursor, x, bodyY, z, color);
           markerCursor++;
-          if (samplesGroundSurface) {
-            this.writeLineInstance(
-              lines,
-              lineCursor,
-              x,
-              bodyY,
-              z,
-              support.groundZ + SURFACE_LIFT,
-              color,
-            );
-            lineCursor++;
+          if (this.writeLineInstance(
+            groundLines,
+            groundLineCursor,
+            x,
+            bodyY,
+            z,
+            groundY,
+          )) {
+            groundLineCursor++;
           }
-          if (samplesWaterSurface && isWaterAt(x, z, this.mapWidth, this.mapHeight)) {
-            this.writeLineInstance(
-              lines,
-              lineCursor,
+          if (isWaterAt(x, z, this.mapWidth, this.mapHeight)) {
+            if (this.writeLineInstance(
+              waterLines,
+              waterLineCursor,
               x,
               bodyY,
               z,
-              WATER_LEVEL + SURFACE_LIFT,
-              WATER_SURFACE_PROBE_COLOR,
-            );
-            lineCursor++;
+              WATER_LEVEL,
+            )) {
+              waterLineCursor++;
+            }
           }
         },
       );
     }
 
     markers.count = markerCursor;
-    lines.count = lineCursor;
+    groundLines.count = groundLineCursor;
+    waterLines.count = waterLineCursor;
     markers.instanceMatrix.needsUpdate = true;
-    lines.instanceMatrix.needsUpdate = true;
+    groundLines.instanceMatrix.needsUpdate = true;
+    waterLines.instanceMatrix.needsUpdate = true;
     if (markers.instanceColor !== null) markers.instanceColor.needsUpdate = true;
-    if (lines.instanceColor !== null) lines.instanceColor.needsUpdate = true;
     this.root.visible = markerCursor > 0;
     markers.visible = markerCursor > 0;
-    lines.visible = lineCursor > 0;
+    groundLines.visible = groundLineCursor > 0;
+    waterLines.visible = waterLineCursor > 0;
   }
 
   destroy(): void {
     this.parentWorld.remove(this.root);
     this.markerGeometry.dispose();
-    this.lineGeometry.dispose();
+    this.groundLineGeometry.dispose();
+    this.waterLineGeometry.dispose();
     this.markerMaterial.dispose();
-    this.lineMaterial.dispose();
+    this.groundLineMaterial.dispose();
+    this.waterLineMaterial.dispose();
   }
 
   private hide(): void {
     this.root.visible = false;
     if (this.markerMesh) this.markerMesh.visible = false;
-    if (this.lineMesh) this.lineMesh.visible = false;
+    if (this.groundLineMesh) this.groundLineMesh.visible = false;
+    if (this.waterLineMesh) this.waterLineMesh.visible = false;
   }
 
   private ensureCapacity(required: number): void {
-    if (required <= this.instanceCapacity && this.markerMesh !== null && this.lineMesh !== null) {
+    if (
+      required <= this.instanceCapacity &&
+      this.markerMesh !== null &&
+      this.groundLineMesh !== null &&
+      this.waterLineMesh !== null
+    ) {
       return;
     }
     let next = Math.max(INITIAL_INSTANCE_CAPACITY, this.instanceCapacity);
     while (next < required) next *= 2;
     if (this.markerMesh !== null) this.root.remove(this.markerMesh);
-    if (this.lineMesh !== null) this.root.remove(this.lineMesh);
+    if (this.groundLineMesh !== null) this.root.remove(this.groundLineMesh);
+    if (this.waterLineMesh !== null) this.root.remove(this.waterLineMesh);
     this.markerMesh = new THREE.InstancedMesh(this.markerGeometry, this.markerMaterial, next);
-    this.lineMesh = new THREE.InstancedMesh(this.lineGeometry, this.lineMaterial, next);
+    this.groundLineMesh = new THREE.InstancedMesh(
+      this.groundLineGeometry,
+      this.groundLineMaterial,
+      next,
+    );
+    this.waterLineMesh = new THREE.InstancedMesh(
+      this.waterLineGeometry,
+      this.waterLineMaterial,
+      next,
+    );
     this.markerMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.lineMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.groundLineMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.waterLineMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.markerMesh.frustumCulled = false;
-    this.lineMesh.frustumCulled = false;
-    this.markerMesh.renderOrder = RENDER_ORDER;
-    this.lineMesh.renderOrder = RENDER_ORDER - 1;
+    this.groundLineMesh.frustumCulled = false;
+    this.waterLineMesh.frustumCulled = false;
+    this.markerMesh.renderOrder = RENDER_ORDER + 1;
+    this.groundLineMesh.renderOrder = RENDER_ORDER - 1;
+    this.waterLineMesh.renderOrder = RENDER_ORDER;
     this.markerMesh.visible = false;
-    this.lineMesh.visible = false;
-    this.root.add(this.lineMesh, this.markerMesh);
+    this.groundLineMesh.visible = false;
+    this.waterLineMesh.visible = false;
+    this.root.add(this.groundLineMesh, this.waterLineMesh, this.markerMesh);
     this.instanceCapacity = next;
   }
 
@@ -231,16 +267,16 @@ export class SurfaceLiftProbeOverlay3D {
     bodyY: number,
     z: number,
     surfaceY: number,
-    color: THREE.Color,
-  ): void {
+  ): boolean {
     const dy = surfaceY - bodyY;
-    const length = Math.max(MIN_LINE_LENGTH, Math.abs(dy));
+    const length = Math.abs(dy);
+    if (!Number.isFinite(length) || length < MIN_VISIBLE_LINE_LENGTH) return false;
     this.dummy.position.set(x, bodyY + dy * 0.5, z);
     this.dummy.rotation.set(0, 0, 0);
     this.dummy.scale.set(1, length, 1);
     this.dummy.updateMatrix();
     mesh.setMatrixAt(index, this.dummy.matrix);
-    mesh.setColorAt(index, color);
+    return true;
   }
 }
 

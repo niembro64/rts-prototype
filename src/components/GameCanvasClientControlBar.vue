@@ -1023,7 +1023,7 @@ function resetEveryCustomHotkey(): void {
         >BUILD</BarButton>
         <BarButton
           :active="model.airLiftProbeDebug"
-          title="LIFT - show configured lift probes; role-colored lines sample solid ground/support and blue lines sample exposed water"
+          title="LIFT - show configured lift probes; thick black lines reach solid ground/support and thin red lines reach exposed water level"
           @click="model.toggleAirLiftProbeDebug"
         >LIFT</BarButton>
         <BarButton
