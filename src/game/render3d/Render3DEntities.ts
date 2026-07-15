@@ -71,6 +71,7 @@ import { UnitChassisInstancePose3D } from './UnitChassisInstancePose3D';
 import { UnitTurretPose3D } from './UnitTurretPose3D';
 import { applyUnitLiftGroupPose3D, UnitMeshBuilder3D } from './UnitMeshBuilder3D';
 import { UnitRenderPoseBatch3D } from './UnitRenderPoseBatch3D';
+import type { LocomotionRenderPose } from './LocomotionRigShared3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import { refreshLocomotionSupportSurfaces } from './LocomotionTerrainSampler';
 import { getBeamSnapToTurret, getLegsRadiusToggle, getSmokeTrails } from '@/clientBarConfig';
@@ -205,6 +206,21 @@ export class Render3DEntities {
   private chassisInstancePose = new UnitChassisInstancePose3D();
   private turretPose = new UnitTurretPose3D();
   private unitRenderPose = new UnitRenderPoseBatch3D();
+  private readonly locomotionRenderPose: LocomotionRenderPose = {
+    baseX: 0,
+    baseY: 0,
+    baseZ: 0,
+    quaternionX: 0,
+    quaternionY: 0,
+    quaternionZ: 0,
+    quaternionW: 1,
+    velocityX: 0,
+    velocityY: 0,
+    velocityZ: 0,
+    yawRate: 0,
+    waterFraction: 0,
+    maxContinuousDistance: 1,
+  };
   private readonly fallbackUnitRenderRows = new UnitRenderPacket3D();
   private readonly _poseUnitRows: number[] = [];
   private readonly _poseUnitMeshes: EntityMesh[] = [];
@@ -368,8 +384,6 @@ export class Render3DEntities {
       getPrimaryMat: (playerId) => this.materialPalette.getPrimaryMat(playerId),
       getTurretAccentMat: (playerId) => this.materialPalette.getTurretAccentMat(playerId),
       getMirrorShinyMat: () => this.materialPalette.getMirrorShinyMat(),
-      getMapWidth: () => this.clientViewState.getMapWidth(),
-      getMapHeight: () => this.clientViewState.getMapHeight(),
     });
 
     // KILLED units: scatter the corpse pieces while ramping the death fade.
@@ -746,6 +760,8 @@ export class Render3DEntities {
         unitRows.orientationZ[row],
         unitRows.orientationW[row],
         unitRows.hasFullOrientation[row] !== 0,
+        unitRows.z[row],
+        e.unit.radius.collision,
       );
       poseRows[poseCount] = row;
       poseMeshes[poseCount] = m;
@@ -954,8 +970,22 @@ export class Render3DEntities {
           const locomotionDtMs = animateLocomotion
             ? this._currentDtMs
             : this._currentDtMs * LOCOMOTION_FAR_FRAME_STRIDE;
+          const locomotionPose = this.locomotionRenderPose;
+          locomotionPose.baseX = tx;
+          locomotionPose.baseY = groundZ;
+          locomotionPose.baseZ = ty;
+          locomotionPose.quaternionX = poseOutput[poseBase + 8];
+          locomotionPose.quaternionY = poseOutput[poseBase + 9];
+          locomotionPose.quaternionZ = poseOutput[poseBase + 10];
+          locomotionPose.quaternionW = poseOutput[poseBase + 11];
+          locomotionPose.velocityX = unitRows.velocityX[row];
+          locomotionPose.velocityY = e.unit.velocityZ ?? 0;
+          locomotionPose.velocityZ = unitRows.velocityY[row];
+          locomotionPose.yawRate = unitRows.yawRate[row];
+          locomotionPose.waterFraction = poseOutput[poseBase + 33];
+          locomotionPose.maxContinuousDistance = Math.max(1, radius * 4);
           const keepLocomotionActive = updateLocomotion(
-            locomotion, e, locomotionDtMs,
+            locomotion, e, locomotionPose, locomotionDtMs,
             mapWidth,
             mapHeight,
             this.legRenderer,

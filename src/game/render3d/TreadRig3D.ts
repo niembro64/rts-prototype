@@ -26,7 +26,9 @@ import type { TreadConfig } from '@/types/blueprints';
 import { TREAD_CHASSIS_LIFT_Y } from '../math/BodyDimensions';
 import {
   type LocomotionBase,
+  type LocomotionRenderPose,
   type RollingContactState,
+  chassisUpFromPose,
   emaAlpha,
   rollingContact,
   rollingLocomotionBodyActive,
@@ -35,11 +37,9 @@ import {
   wrappedRollingPhase,
 } from './LocomotionRigShared3D';
 import {
-  getLocomotionSurfaceNormal,
   sampleLocomotionPartClamp,
   type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
-import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { getLocomotionMatByCache } from './RenderUtils';
 import {
   createPrimitiveCylinderGeometry,
@@ -134,6 +134,9 @@ export type TreadMesh = {
   cleatLoopLength: number;
   treadStraightLength: number;
   treadRadius: number;
+  /** Maximum chassis-local suspension travel. A support surface can
+   *  lift the belt within this envelope, never detach the whole rig. */
+  maxLift: number;
   /** Width of the rut a single tread side stamps onto the ground, in
    *  world units. Roughly the cleat width — narrower than the full
    *  belt so the two parallel ruts are visually separated rather
@@ -268,6 +271,7 @@ export function buildTreads(
     cleatLoopLength,
     treadStraightLength: straightLength,
     treadRadius,
+    maxLift: Math.max(1, Math.min(r * 0.35, TREAD_HEIGHT)),
     printWidth,
     geometryKey: '',
   };
@@ -275,6 +279,7 @@ export function buildTreads(
 
 // Scratch reused per frame so the tread loop never allocates.
 const _treadWorld = { x: 0, y: 0, z: 0 };
+const _treadUp = { x: 0, y: 1, z: 0 };
 
 /** Per-frame: integrate each side's four visual channels forward. The
  *  floor clamp drives the lift channel via EMA; the per-side signed
@@ -286,18 +291,18 @@ const _treadWorld = { x: 0, y: 0, z: 0 };
 export function updateTreads(
   mesh: TreadMesh,
   entity: Entity,
+  pose: LocomotionRenderPose,
   dtMs: number,
   mapWidth: number,
   mapHeight: number,
 ): boolean {
   const dtSec = Math.max(0.001, dtMs / 1000);
-  const bodyCenterHeight = entity.unit ? getUnitBodyCenterHeight(entity.unit) : 0;
   // Convert a world-Y lift back into a chassis-local Y delta. Tilt
   // rotates local Y through the surface normal; the local lift needed
   // to raise the side by `worldLift` world units is approximately
   // `worldLift / normal.z` (with the same 0.35 floor LegRig3D uses).
-  const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
-  const normalY = Math.max(0.35, n.nz);
+  chassisUpFromPose(pose, _treadUp);
+  const normalY = Math.max(0.35, _treadUp.y);
   const liftAlpha = emaAlpha(dtSec, TREAD_LIFT_TAU_SEC);
   const beltAlpha = emaAlpha(dtSec, TREAD_BELT_TAU_SEC);
 
@@ -320,7 +325,7 @@ export function updateTreads(
       const localX = sampleLocalXs[p];
       transformChassisToWorld(
         localX, 0, sideEntry.lateralOffset,
-        entity, bodyCenterHeight, mapWidth, mapHeight, _treadWorld,
+        pose, _treadWorld,
       );
       const naturalWorldY = _treadWorld.y;
       const clamp = sampleLocomotionPartClamp(
@@ -336,6 +341,7 @@ export function updateTreads(
         if (localLift > maxRequiredLocalLift) maxRequiredLocalLift = localLift;
       }
     }
+    maxRequiredLocalLift = Math.min(mesh.maxLift, maxRequiredLocalLift);
     sideEntry.targetLift = maxRequiredLocalLift;
     sideEntry.lift += (maxRequiredLocalLift - sideEntry.lift) * liftAlpha;
     sideEntry.group.position.y = sideEntry.lift;
@@ -347,7 +353,7 @@ export function updateTreads(
     // discontinuity.
     const contact = mesh.treadContacts[s];
     const signedDistance = contact !== undefined
-      ? sampleRollingContactDistance(entity, contact)
+      ? sampleRollingContactDistance(pose, contact)
       : 0;
     const targetBeltVelocity = signedDistance / dtSec;
     sideEntry.beltVelocity += (targetBeltVelocity - sideEntry.beltVelocity) * beltAlpha;
@@ -388,11 +394,11 @@ export function updateTreads(
       }
     }
   }
-  return treadsNeedFrame(mesh, entity);
+  return treadsNeedFrame(mesh, pose);
 }
 
-function treadsNeedFrame(mesh: TreadMesh, entity: Entity): boolean {
-  if (rollingLocomotionBodyActive(entity)) return true;
+function treadsNeedFrame(mesh: TreadMesh, pose: LocomotionRenderPose): boolean {
+  if (rollingLocomotionBodyActive(pose)) return true;
   for (let s = 0; s < mesh.sides.length; s++) {
     const contact = mesh.treadContacts[s];
     if (contact === undefined || !contact.initialized) return true;

@@ -130,6 +130,20 @@
         }
       }
     },
+    "flippers": {
+      "extends": "legs",
+      "physics": {
+        "water": {
+          "driveForce": 2975,
+          "traction": 1.2,
+          "friction": 5,
+          "dragForwardScale": 0.65,
+          "dragLateralScale": 1.5,
+          "dragVerticalScale": 1.2,
+          "angularDrag": 4
+        }
+      }
+    },
     "legs": {
       "navigation": {
         "allowOnGround": true,

@@ -24,6 +24,11 @@ import {
 } from '@/game/render3d/HoverRig3D';
 import { buildFlyingRig } from '@/game/render3d/FlyingRig3D';
 import type { FlyingMesh } from '@/game/render3d/FlyingRig3D';
+import {
+  buildFlippers,
+  poseFlippersAtCycle,
+  type FlipperMesh,
+} from '@/game/render3d/FlipperRig3D';
 import { buildAlbatrosChassis } from '@/game/render3d/AlbatrosMesh3D';
 import { buildShieldPanelMesh3D } from '@/game/render3d/ShieldPanelMesh3D';
 import { kneeFromIK } from '@/game/render3d/LocomotionRigShared3D';
@@ -136,6 +141,7 @@ type PreviewLocomotionRig =
   | { type: 'treads'; mesh: TreadMesh }
   | { type: 'hover'; mesh: HoverMesh }
   | { type: 'flying'; mesh: FlyingMesh }
+  | { type: 'flippers'; mesh: FlipperMesh }
   | { type: 'legs'; group: THREE.Group };
 
 type PreviewModel = {
@@ -597,6 +603,11 @@ function buildPreviewLocomotion(
       return { type: 'treads', mesh: buildTreads(yawGroup, radius, locomotion.config, true, HOST_PLAYER_ID) };
     case 'wheels':
       return { type: 'wheels', mesh: buildWheels(yawGroup, radius, locomotion.config, HOST_PLAYER_ID) };
+    case 'flippers':
+      return {
+        type: 'flippers',
+        mesh: buildFlippers(yawGroup, radius, locomotion.config, HOST_PLAYER_ID),
+      };
     case 'hover':
       if (blueprint.unitBlueprintId === 'unitAlbatros') {
         return {
@@ -733,6 +744,9 @@ function animatePreviewLocomotion(
   switch (rig.type) {
     case 'wheels':
       animatePreviewWheels(rig.mesh, active ? stride : 0);
+      return;
+    case 'flippers':
+      poseFlippersAtCycle(rig.mesh, active ? stride : 0, 0);
       return;
     case 'treads':
       animatePreviewTreads(rig.mesh, active ? stride : 0);

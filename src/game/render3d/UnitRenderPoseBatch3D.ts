@@ -1,8 +1,8 @@
 import { getSimWasm, type SimWasm } from '../sim-wasm/init';
 import { measureWasmBoundary } from '../perf/WasmBoundaryInstrumentation';
 
-const UNIT_POSE_INPUT_STRIDE = 21;
-const UNIT_POSE_OUTPUT_STRIDE = 33;
+const UNIT_POSE_INPUT_STRIDE = 23;
+const UNIT_POSE_OUTPUT_STRIDE = 34;
 
 export class UnitRenderPoseBatch3D {
   inputStride = UNIT_POSE_INPUT_STRIDE;
@@ -57,6 +57,8 @@ export class UnitRenderPoseBatch3D {
     orientationZ: number,
     orientationW: number,
     hasFullOrientation: boolean,
+    bodyCenterZ: number,
+    collisionRadius: number,
   ): void {
     const base = index * this.inputStride;
     const input = this.input;
@@ -81,6 +83,8 @@ export class UnitRenderPoseBatch3D {
     input[base + 18] = orientationZ;
     input[base + 19] = orientationW;
     input[base + 20] = hasFullOrientation ? 1 : 0;
+    input[base + 21] = bodyCenterZ;
+    input[base + 22] = collisionRadius;
   }
 
   compute(count: number): Float32Array {

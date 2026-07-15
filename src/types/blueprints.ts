@@ -28,6 +28,7 @@ export type {
   
   ShieldSurfaceResponse,
   FlyingConfig,
+  FlipperConfig,
   HoverConfig,
   RayBlueprint,
   LockOnInclusionObject,

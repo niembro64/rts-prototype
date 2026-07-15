@@ -441,6 +441,22 @@ export type LegConfig = {
   leftSide: LegLayoutEntry[];
 };
 
+export type FlipperConfig = {
+  frontOffsetXFrac: number;
+  rearOffsetXFrac: number;
+  lateralOffsetFrac: number;
+  rootHeightFrac: number;
+  frontLengthFrac: number;
+  rearLengthFrac: number;
+  rootChordFrac: number;
+  tipChordFrac: number;
+  thicknessFrac: number;
+  groundDownAngleDeg: number;
+  groundSweepAngleDeg: number;
+  waterStrokeAngleDeg: number;
+  cycleDistanceFrac: number;
+};
+
 export type LocomotionMediumPhysics = {
   heightUpwardForce: number;
   buoyancy?: number;
@@ -536,6 +552,16 @@ export type LocomotionBlueprintLegs = {
   config: LegConfig;
 };
 
+export type LocomotionBlueprintFlippers = {
+  type: 'flippers';
+  physicsPresetId: string;
+  physics: LocomotionPhysics;
+  survival: LocomotionSurvivalPolicy;
+  pathfindingBlueprintId: string;
+  pathfinding: PathfindingBlueprint;
+  config: FlipperConfig;
+};
+
 export type LocomotionBlueprintHover = {
   type: 'hover';
   physicsPresetId: string;
@@ -556,7 +582,7 @@ export type LocomotionBlueprintFlying = {
   config: FlyingConfig;
 };
 
-export type LocomotionBlueprint = LocomotionBlueprintWheels | LocomotionBlueprintTreads | LocomotionBlueprintLegs | LocomotionBlueprintHover | LocomotionBlueprintFlying;
+export type LocomotionBlueprint = LocomotionBlueprintWheels | LocomotionBlueprintTreads | LocomotionBlueprintLegs | LocomotionBlueprintFlippers | LocomotionBlueprintHover | LocomotionBlueprintFlying;
 
 export type UnitBodyShapePartCircle = {
   kind: 'circle';

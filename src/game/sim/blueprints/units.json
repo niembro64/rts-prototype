@@ -1337,8 +1337,8 @@
       "$audio": "event.death.unitHippo"
     },
     "locomotion": {
-      "type": "treads",
-      "physicsPresetId": "amphibiousTreads",
+      "type": "flippers",
+      "physicsPresetId": "flippers",
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -1357,11 +1357,19 @@
         }
       },
       "config": {
-        "treadOffset": 0.9,
-        "treadLength": 1.8,
-        "treadWidth": 0.5,
-        "wheelRadius": 0.16,
-        "rotationSpeed": 0.8
+        "frontOffsetXFrac": 0.46,
+        "rearOffsetXFrac": -0.43,
+        "lateralOffsetFrac": 0.34,
+        "rootHeightFrac": 0.34,
+        "frontLengthFrac": 1.05,
+        "rearLengthFrac": 0.74,
+        "rootChordFrac": 0.42,
+        "tipChordFrac": 0.18,
+        "thicknessFrac": 0.07,
+        "groundDownAngleDeg": 48,
+        "groundSweepAngleDeg": 24,
+        "waterStrokeAngleDeg": 32,
+        "cycleDistanceFrac": 1.4
       }
     },
     "base": {

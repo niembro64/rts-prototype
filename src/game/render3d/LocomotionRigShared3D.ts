@@ -1,15 +1,31 @@
 // LocomotionRigShared3D — types, constants, and pure helpers shared by
-// the per-locomotion-type rig modules (LegRig3D, TreadRig3D, WheelRig3D).
+// the per-locomotion-type rig modules.
 //
 // Anything in here is consumed by more than one rig module: the
 // LocomotionBase mixin every Locomotion3DMesh variant carries, the
-// rolling-contact state used by both wheels and treads, the
+// rolling-contact state used by wheels, treads, and flippers, the
 // chassis→world transform legs use for hip / rest / target sampling
 // per frame, the IK solver, and a couple of pure math utilities.
 
-import * as THREE from 'three';
-import type { Entity } from '../sim/types';
-import { getLocomotionSurfaceNormal } from './LocomotionTerrainSampler';
+/** Canonical presentation pose consumed by every locomotion rig. It is
+ *  assembled from the same batched position/quaternion used to draw the
+ *  chassis, so world-space appendages cannot drift onto a different pose
+ *  timeline. Three coordinates use x/y-up/z ordering. */
+export type LocomotionRenderPose = {
+  baseX: number;
+  baseY: number;
+  baseZ: number;
+  quaternionX: number;
+  quaternionY: number;
+  quaternionZ: number;
+  quaternionW: number;
+  velocityX: number;
+  velocityY: number;
+  velocityZ: number;
+  yawRate: number;
+  waterFraction: number;
+  maxContinuousDistance: number;
+};
 
 /** Per-rig common header. Every locomotion mesh kind carries the
  *  geometry key so the renderer can detect graphics-config changes and
@@ -20,28 +36,47 @@ export type LocomotionBase = {
 
 const ROLLING_LOCOMOTION_LINEAR_SPEED_EPSILON_SQ = 1e-4;
 const ROLLING_LOCOMOTION_YAW_RATE_EPSILON = 1e-4;
-const ROLLING_LOCOMOTION_SUSPENSION_EPSILON = 1e-3;
 
-export function rollingLocomotionBodyActive(entity: Entity): boolean {
-  const unit = entity.unit;
-  if (!unit) return false;
-  const vx = unit.velocityX ?? 0;
-  const vy = unit.velocityY ?? 0;
-  if (vx * vx + vy * vy > ROLLING_LOCOMOTION_LINEAR_SPEED_EPSILON_SQ) return true;
-  if (Math.abs(unit.angularVelocity3?.z ?? 0) > ROLLING_LOCOMOTION_YAW_RATE_EPSILON) return true;
-  const suspension = unit.suspension;
-  if (!suspension) return false;
-  return (
-    Math.abs(suspension.offsetX) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
-    Math.abs(suspension.offsetY) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
-    Math.abs(suspension.offsetZ) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
-    Math.abs(suspension.velocityX) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
-    Math.abs(suspension.velocityY) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON ||
-    Math.abs(suspension.velocityZ) > ROLLING_LOCOMOTION_SUSPENSION_EPSILON
-  );
+export function rollingLocomotionBodyActive(pose: LocomotionRenderPose): boolean {
+  const { velocityX: vx, velocityY: vy, velocityZ: vz } = pose;
+  if (vx * vx + vy * vy + vz * vz > ROLLING_LOCOMOTION_LINEAR_SPEED_EPSILON_SQ) return true;
+  if (Math.abs(pose.yawRate) > ROLLING_LOCOMOTION_YAW_RATE_EPSILON) return true;
+  return false;
 }
 
-/** Per-wheel/tread contact state. Tracks the rolling contact point in
+/** Rotate a world-space vector into the chassis frame represented by
+ * `pose`. This is the inverse of the canonical root quaternion. */
+export function transformWorldVectorToChassis(
+  x: number,
+  y: number,
+  z: number,
+  pose: LocomotionRenderPose,
+  out: { x: number; y: number; z: number },
+): void {
+  const qx = -pose.quaternionX;
+  const qy = -pose.quaternionY;
+  const qz = -pose.quaternionZ;
+  const qw = pose.quaternionW;
+  const tx = 2 * (qy * z - qz * y);
+  const ty = 2 * (qz * x - qx * z);
+  const tz = 2 * (qx * y - qy * x);
+  out.x = x + qw * tx + (qy * tz - qz * ty);
+  out.y = y + qw * ty + (qz * tx - qx * tz);
+  out.z = z + qw * tz + (qx * ty - qy * tx);
+}
+
+/** Chassis +Y expressed in world coordinates. */
+export function chassisUpFromPose(
+  pose: LocomotionRenderPose,
+  out: { x: number; y: number; z: number },
+): void {
+  const { quaternionX: x, quaternionY: y, quaternionZ: z, quaternionW: w } = pose;
+  out.x = 2 * (x * y - w * z);
+  out.y = 1 - 2 * (x * x + z * z);
+  out.z = 2 * (y * z + w * x);
+}
+
+/** Per-wheel/tread/flipper contact state. Tracks the rolling contact point in
  *  chassis-local AND world XZ so `sampleRollingContactDistance` can
  *  compute signed ground motion (forward/reverse) without ever
  *  sampling terrain height. */
@@ -78,20 +113,36 @@ export function rollingContact(localX: number, localZ: number): RollingContactSt
  *  (e.g. wheel rotation). Sign is along the body's current +X
  *  (forward). */
 export function sampleRollingContactDistance(
-  entity: Entity,
+  pose: LocomotionRenderPose,
   state: RollingContactState,
 ): number {
-  const rotation = entity.transform.rotation;
-  const cosR = Math.cos(rotation);
-  const sinR = Math.sin(rotation);
-  const worldX = entity.transform.x + cosR * state.localX - sinR * state.localZ;
-  const worldZ = entity.transform.y + sinR * state.localX + cosR * state.localZ;
+  transformChassisToWorld(state.localX, 0, state.localZ, pose, _rollingWorld);
+  const worldX = _rollingWorld.x;
+  const worldZ = _rollingWorld.z;
+  const qx = pose.quaternionX;
+  const qy = pose.quaternionY;
+  const qz = pose.quaternionZ;
+  const qw = pose.quaternionW;
+  let forwardX = 1 - 2 * (qy * qy + qz * qz);
+  let forwardZ = 2 * (qx * qz - qw * qy);
+  const forwardLen = Math.hypot(forwardX, forwardZ);
+  if (forwardLen > 1e-6) {
+    forwardX /= forwardLen;
+    forwardZ /= forwardLen;
+  } else {
+    forwardX = 1;
+    forwardZ = 0;
+  }
 
   let signedDistance = 0;
   if (state.initialized) {
     const dx = worldX - state.worldX;
     const dz = worldZ - state.worldZ;
-    signedDistance = dx * cosR + dz * sinR;
+    const distanceSq = dx * dx + dz * dz;
+    const maxDistance = Math.max(1, pose.maxContinuousDistance);
+    if (Number.isFinite(distanceSq) && distanceSq <= maxDistance * maxDistance) {
+      signedDistance = dx * forwardX + dz * forwardZ;
+    }
   }
 
   state.worldX = worldX;
@@ -106,62 +157,29 @@ export function wrappedRollingPhase(phase: number, spacing: number): number {
   return ((phase % spacing) + spacing) % spacing;
 }
 
-// Reused by transformChassisToWorld so the per-frame loop allocates no
-// quaternions / vectors.
-const _chassisVec = new THREE.Vector3();
-const _chassisTilt = new THREE.Quaternion();
-const _chassisUp = new THREE.Vector3(0, 1, 0);
-const _chassisN = new THREE.Vector3();
+const _rollingWorld = { x: 0, y: 0, z: 0 };
 
 /** Given a chassis-local point (cx, cy, cz) and a unit's transform,
- *  return the corresponding WORLD point (writes into out). The
- *  transform chain matches Render3DEntities exactly:
- *
- *    world = T(unit_base) · tilt · Ry(yaw) · chassis_local
- *
- *  where unit_base is (sim.x, sim.z − bodyCenterHeight, sim.y), yaw
- *  is −sim.rotation, and tilt is built from the surface normal at
- *  the unit's footprint. Surface normal sampling is done inline so
- *  the caller doesn't need to thread it through. */
+ *  return the corresponding WORLD point (writes into out). The pose is
+ *  the exact root transform already consumed by the chassis renderer. */
 export function transformChassisToWorld(
   cx: number, cy: number, cz: number,
-  entity: Entity,
-  bodyCenterHeight: number,
-  mapWidth: number,
-  mapHeight: number,
+  pose: LocomotionRenderPose,
   out: { x: number; y: number; z: number },
 ): void {
-  const suspension = entity.unit?.suspension;
-  if (suspension) {
-    cx += suspension.offsetX;
-    cy += suspension.offsetZ;
-    cz += suspension.offsetY;
-  }
-  const rot = entity.transform.rotation;
-  const cosR = Math.cos(rot);
-  const sinR = Math.sin(rot);
-  // Yaw: yawGroup applies rotation.y = −rot. Apply that to (cx, cy, cz).
-  const yx = cosR * cx - sinR * cz;
-  const yy = cy;
-  const yz = sinR * cx + cosR * cz;
-  // Tilt: build the same surface-normal quaternion the renderer uses.
-  // Read from the unit's sim-side smoothed normal (updateUnitGroundNormal) so
-  // legs/wheels and chassis tilt all share one canonical value, falling
-  // back to a raw-terrain read for non-unit entities.
-  const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
-  if (n.nx === 0 && n.ny === 0) {
-    out.x = entity.transform.x + yx;
-    out.y = entity.transform.z - bodyCenterHeight + yy;
-    out.z = entity.transform.y + yz;
-    return;
-  }
-  // sim normal (nx, ny, nz=up) → three.js (nx, nz, ny)
-  _chassisN.set(n.nx, n.nz, n.ny);
-  _chassisTilt.setFromUnitVectors(_chassisUp, _chassisN);
-  _chassisVec.set(yx, yy, yz).applyQuaternion(_chassisTilt);
-  out.x = entity.transform.x + _chassisVec.x;
-  out.y = entity.transform.z - bodyCenterHeight + _chassisVec.y;
-  out.z = entity.transform.y + _chassisVec.z;
+  const x = cx;
+  const y = cy;
+  const z = cz;
+  const qx = pose.quaternionX;
+  const qy = pose.quaternionY;
+  const qz = pose.quaternionZ;
+  const qw = pose.quaternionW;
+  const tx = 2 * (qy * z - qz * y);
+  const ty = 2 * (qz * x - qx * z);
+  const tz = 2 * (qx * y - qy * x);
+  out.x = pose.baseX + x + qw * tx + (qy * tz - qz * ty);
+  out.y = pose.baseY + y + qw * ty + (qz * tx - qx * tz);
+  out.z = pose.baseZ + z + qw * tz + (qx * ty - qy * tx);
 }
 
 /** 3D IK (law of cosines, lifted into 3D) — returns the knee world

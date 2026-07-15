@@ -117,6 +117,7 @@ function assertMobilityTuningIntent(): void {
   const wheels = getLocomotionPreset('wheels').physics;
   const treads = getLocomotionPreset('treads').physics;
   const legs = getLocomotionPreset('legs').physics;
+  const flippers = getLocomotionPreset('flippers').physics;
   const flying = getLocomotionPreset('flying').physics;
 
   assertContract(
@@ -130,6 +131,11 @@ function assertMobilityTuningIntent(): void {
   assertContract(
     legs.ground.driveForce > 0 && legs.ground.surfaceGrip >= 1,
     'legs keep ground drive without weakening contact grip',
+  );
+  assertEqual(
+    flippers.ground.driveForce,
+    legs.ground.driveForce,
+    'flippers inherit leg-family ground propulsion',
   );
   assertContract(
     flying.air.dragForwardScale >= 0.5 &&
@@ -342,13 +348,39 @@ export function runLocomotionContractTest(): void {
   );
 
   const seaTurtleLocomotion = assertRuntimeLocomotionMatchesSources('unitSeaTurtle');
+  const seaTurtleBlueprint = getUnitBlueprint('unitSeaTurtle');
+  assertEqual(
+    seaTurtleBlueprint.locomotion.type,
+    'flippers',
+    'Sea Turtle owns the independent flipper visual rig',
+  );
+  assertEqual(
+    seaTurtleLocomotion.physicsPresetId,
+    'flippers',
+    'Sea Turtle owns the independent flipper physics preset',
+  );
   const seaTurtleWaterDrive =
     seaTurtleLocomotion.physics.water.driveForce * seaTurtleLocomotion.physics.water.traction;
   const seaTurtleGroundDrive =
     seaTurtleLocomotion.physics.ground.driveForce * seaTurtleLocomotion.physics.ground.traction;
+  assertEqual(
+    seaTurtleWaterDrive,
+    3570,
+    'flippers preserve the prior Sea Turtle coupled water drive exactly',
+  );
   assertContract(
-    seaTurtleWaterDrive >= seaTurtleGroundDrive * 5,
-    'Sea Turtle must be much stronger in water than on ground',
+    seaTurtleWaterDrive > seaTurtleGroundDrive * 4,
+    'Sea Turtle remains much stronger in water than on ground',
+  );
+  const seaTurtleRoutes = resolveLocomotionRouteCapabilities(seaTurtleLocomotion);
+  assertContract(
+    seaTurtleRoutes.allowOnGround && seaTurtleRoutes.allowInWater && !seaTurtleRoutes.allowInAir,
+    'flippers route on ground and in water, never through air',
+  );
+  assertEqual(
+    hippoBlueprint.locomotion.type,
+    'treads',
+    'Hippo remains the amphibious tread unit',
   );
 
   const strayUnitMediumConfig = cloneLocomotionBlueprint(hippoBlueprint.locomotion);

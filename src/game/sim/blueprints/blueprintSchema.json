@@ -1905,6 +1905,40 @@
       },
       "additionalProperties": false
     },
+    "FlipperConfig": {
+      "type": "object",
+      "required": [
+        "frontOffsetXFrac",
+        "rearOffsetXFrac",
+        "lateralOffsetFrac",
+        "rootHeightFrac",
+        "frontLengthFrac",
+        "rearLengthFrac",
+        "rootChordFrac",
+        "tipChordFrac",
+        "thicknessFrac",
+        "groundDownAngleDeg",
+        "groundSweepAngleDeg",
+        "waterStrokeAngleDeg",
+        "cycleDistanceFrac"
+      ],
+      "properties": {
+        "frontOffsetXFrac": { "type": "number" },
+        "rearOffsetXFrac": { "type": "number" },
+        "lateralOffsetFrac": { "type": "number" },
+        "rootHeightFrac": { "type": "number" },
+        "frontLengthFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "rearLengthFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "rootChordFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "tipChordFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "thicknessFrac": { "type": "number", "exclusiveMinimum": 0 },
+        "groundDownAngleDeg": { "type": "number" },
+        "groundSweepAngleDeg": { "type": "number" },
+        "waterStrokeAngleDeg": { "type": "number" },
+        "cycleDistanceFrac": { "type": "number", "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
     "LocomotionMediumPhysics": {
       "type": "object",
       "required": [
@@ -2240,6 +2274,28 @@
       },
       "additionalProperties": false
     },
+    "LocomotionBlueprintFlippers": {
+      "type": "object",
+      "required": [
+        "type",
+        "physicsPresetId",
+        "physics",
+        "survival",
+        "pathfindingBlueprintId",
+        "pathfinding",
+        "config"
+      ],
+      "properties": {
+        "type": { "const": "flippers" },
+        "physicsPresetId": { "type": "string" },
+        "physics": { "$ref": "#/$defs/LocomotionPhysics" },
+        "survival": { "$ref": "#/$defs/LocomotionSurvivalPolicy" },
+        "pathfindingBlueprintId": { "type": "string" },
+        "pathfinding": { "$ref": "#/$defs/PathfindingBlueprint" },
+        "config": { "$ref": "#/$defs/FlipperConfig" }
+      },
+      "additionalProperties": false
+    },
     "LocomotionBlueprintHover": {
       "type": "object",
       "required": [
@@ -2322,6 +2378,9 @@
         },
         {
           "$ref": "#/$defs/LocomotionBlueprintLegs"
+        },
+        {
+          "$ref": "#/$defs/LocomotionBlueprintFlippers"
         },
         {
           "$ref": "#/$defs/LocomotionBlueprintHover"

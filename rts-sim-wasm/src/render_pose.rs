@@ -19,8 +19,8 @@ use wasm_bindgen::prelude::*;
 //  snapshots, targeting, or collision math.
 // ─────────────────────────────────────────────────────────────────
 
-pub const RENDER_UNIT_POSE_INPUT_STRIDE: usize = 21;
-pub const RENDER_UNIT_POSE_OUTPUT_STRIDE: usize = 33;
+pub const RENDER_UNIT_POSE_INPUT_STRIDE: usize = 23;
+pub const RENDER_UNIT_POSE_OUTPUT_STRIDE: usize = 34;
 const RENDER_AIRBORNE_BANK_VISUAL_GRAVITY: f64 = 1.0 / 0.003;
 const RENDER_AIRBORNE_BANK_MAX: f64 = core::f64::consts::PI * 0.25;
 const RENDER_AIRBORNE_BANK_TAU_SEC: f64 = 0.18;
@@ -256,6 +256,8 @@ pub fn render_unit_pose_compute(count: u32) {
             s.input[ib + 19] as f64,
         ];
         let use_full_orientation = airborne && s.input[ib + 20] != 0.0;
+        let body_center_z = s.input[ib + 21] as f64;
+        let collision_radius = s.input[ib + 22] as f64;
 
         let (terrain_tilt_q, chassis_tilted) =
             render_tilt_quat_from_surface_normal(normal_x, normal_y, normal_z, airborne);
@@ -330,6 +332,7 @@ pub fn render_unit_pose_compute(count: u32) {
         };
         render_write_mat4_compose(&mut s.output, ob + 16, lifted_pos, parent_q);
         s.output[ob + 32] = visual_bank as f32;
+        s.output[ob + 33] = unit_force_water_fraction(body_center_z, collision_radius) as f32;
     }
 }
 

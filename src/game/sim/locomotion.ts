@@ -28,7 +28,7 @@ import {
 // Visual rig discriminants are deliberately separate from authoritative
 // physics presets. A wheels rig may use any preset and moves identically to
 // any other rig with the same expanded profile.
-const LOCOMOTION_TYPES = ['wheels', 'treads', 'legs', 'hover', 'flying'] as const;
+const LOCOMOTION_TYPES = ['wheels', 'treads', 'legs', 'flippers', 'hover', 'flying'] as const;
 type AuthoredLocomotionMediumPhysics = LocomotionBlueprint['physics'][LocomotionMediumName];
 
 function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {

@@ -1,5 +1,6 @@
 // Locomotion3D — thin dispatcher over the per-locomotion-type rig
-// modules (LegRig3D, TreadRig3D, WheelRig3D, HoverRig3D). Each rig owns its build,
+// modules (LegRig3D, FlipperRig3D, TreadRig3D, WheelRig3D, HoverRig3D,
+// FlyingRig3D). Each rig owns its build,
 // update, and (for legs) state-snapshot logic. This file only:
 //   - exposes the discriminated `Locomotion3DMesh` union,
 //   - dispatches to the correct rig at build / update / destroy time,
@@ -52,6 +53,11 @@ import {
   buildFlyingRig,
   updateFlyingRig,
 } from './FlyingRig3D';
+import {
+  type FlipperMesh,
+  buildFlippers,
+  updateFlippers,
+} from './FlipperRig3D';
 import type { SmokePuffEmitter } from './SmokeTrail3D';
 import type { FlyingSmokeUseId, HoverSmokeUseId } from '@/smokeConfig';
 import type {
@@ -59,11 +65,13 @@ import type {
   AirborneEmitterParentPose3D,
 } from './AirborneEmitterBatch3D';
 import { featureVisibleAtDetail, geometryTierForDetail } from './EntityDetailLevel3D';
+import type { LocomotionRenderPose } from './LocomotionRigShared3D';
 
 export type Locomotion3DMesh =
   | TreadMesh
   | WheelMesh
   | LegMesh
+  | FlipperMesh
   | HoverMesh
   | FlyingMesh
   | undefined;
@@ -131,8 +139,6 @@ export function buildLocomotion(
   ownerId: PlayerId | undefined,
   gfx: GraphicsConfig,
   detailLevel: number,
-  mapWidth: number,
-  mapHeight: number,
   legRenderer: LegInstancedRenderer,
 ): Locomotion3DMesh {
   if (!entity.unit) return undefined;
@@ -165,11 +171,16 @@ export function buildLocomotion(
     case 'legs': {
       const chassisLiftY = getChassisLift(bp, unitRadius);
       const mesh = buildLegs(
-        worldGroup, entity, unitRadius, loc.config,
+        worldGroup, unitRadius, loc.config,
         gfx.legs, bp.bodyShape, chassisLiftY, bp.legAttachHeightFrac,
-        mapWidth, mapHeight, legRenderer, ownerId,
+        legRenderer, ownerId,
       );
       if (mesh) mesh.geometryKey = geometryKey;
+      return mesh;
+    }
+    case 'flippers': {
+      const mesh = buildFlippers(unitGroup, unitRadius, loc.config, ownerId);
+      mesh.geometryKey = geometryKey;
       return mesh;
     }
     case 'hover': {
@@ -215,6 +226,7 @@ export function buildLocomotion(
 export function updateLocomotion(
   mesh: Locomotion3DMesh,
   entity: Entity,
+  pose: LocomotionRenderPose,
   dtMs: number,
   mapWidth: number,
   mapHeight: number,
@@ -225,11 +237,13 @@ export function updateLocomotion(
   if (!mesh) return false;
   switch (mesh.type) {
     case 'wheels':
-      return updateWheels(mesh, entity, dtMs, mapWidth, mapHeight);
+      return updateWheels(mesh, entity, pose, dtMs, mapWidth, mapHeight);
     case 'treads':
-      return updateTreads(mesh, entity, dtMs, mapWidth, mapHeight);
+      return updateTreads(mesh, entity, pose, dtMs, mapWidth, mapHeight);
     case 'legs':
-      return updateLegs(mesh, entity, dtMs, mapWidth, mapHeight, legRenderer);
+      return updateLegs(mesh, entity, pose, dtMs, mapWidth, mapHeight, legRenderer);
+    case 'flippers':
+      return updateFlippers(mesh, pose, dtMs);
     case 'hover':
       return updateHoverFans(
         mesh,

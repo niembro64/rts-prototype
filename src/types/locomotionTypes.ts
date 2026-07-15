@@ -72,7 +72,7 @@ export type LocomotionNavigationPolicy = {
 export type UnitLocomotion = {
   /** Presentation rig only. Authoritative physics never selects behavior
    *  from this discriminant. */
-  type: 'wheels' | 'treads' | 'legs' | 'hover' | 'flying';
+  type: 'wheels' | 'treads' | 'legs' | 'flippers' | 'hover' | 'flying';
   /** Explicit preset expanded into the complete numeric profile at load. */
   physicsPresetId: string;
   /** Fully-abstracted medium physics. Every unit owns every medium profile;

@@ -1351,7 +1351,7 @@
         upstream.
       </p>
 
-      <h3>The four locomotions</h3>
+      <h3>The six locomotion rigs</h3>
       <ul class="rule-list">
         <li><strong>Wheels</strong> &mdash; a chassis driven through discrete rigid contact patches at
         fixed body-local positions. Visually: cylindrical tires, each spinning around its own axle,
@@ -1366,12 +1366,31 @@
         past it, the foot lifts and swings to a new plant. IK solves hip&rarr;knee&rarr;foot for the
         rendered pose. The contract is per-foot, not per-chassis &mdash; feet must touch terrain on
         plant and swing through air during transit.</li>
+        <li><strong>Flippers</strong> &mdash; four rigid, single-hinge hydrofoils with no knee or
+        separate foot. On land they use a diagonal, leg-like support gait; as the physical
+        submerged fraction rises they continuously unfold into wing-like paddles. The visual
+        transition reads the same body-in-water fraction as locomotion physics, while force and
+        traction remain wholly owned by the locomotion preset.</li>
         <li><strong>Hover</strong> &mdash; a chassis that never touches anything; a duct array
         balances gravity with downward thrust against the air column underneath. Visually: spinning
         fans, downward smoke columns, chassis riding a target altitude. The contract is
         <em>anti-contact</em>: the gap is the feature, and that gap must be measurable per frame so
         smoke length and altitude shading look right.</li>
+        <li><strong>Flying</strong> &mdash; a body supported and propelled in air. Wings, jets, and
+        exhaust communicate the force profile but do not own it; their pose is downstream of the
+        canonical full-body orientation and velocity.</li>
       </ul>
+
+      <h3>One rendered root pose owns every attachment</h3>
+      <p>
+        A rig must consume the exact batched root position and quaternion used to draw its chassis.
+        It must not independently rebuild yaw, terrain tilt, or interpolation from mutable entity
+        state. Every attachment also has a finite mechanical envelope: wheels and tread rails have
+        bounded suspension travel, and world-space legs have bounded reach. A teleport, recycled
+        slot, or other root discontinuity resets history rather than integrating the gap. These are
+        attachment invariants, not tuning knobs; no terrain sample or stale planted point may pull
+        locomotion geometry arbitrarily far from its body.
+      </p>
 
       <h3>Always animate; terrain only clamps position</h3>
       <p>
@@ -1428,12 +1447,15 @@
         of being initialized in place.
       </p>
 
-      <h3>Floor clamping is a hard invariant, not a tunable</h3>
+      <h3>Floor clamping and attachment reach are joint invariants</h3>
       <ul class="rule-list">
-        <li>The clamp is non-optional. Every rig writes
+        <li>Within the part&rsquo;s physical attachment envelope, the clamp is non-optional. Every rig writes
         <code>renderedY = max(naturalY, terrainY + clearance)</code> for every part it owns, then
-        EMA-converges the part's movement-position channel toward that value. No flag, no debug
-        toggle, no edge case where parts are allowed to drop under the surface.</li>
+        EMA-converges the part's movement-position channel toward that value.</li>
+        <li>If terrain support and mechanical reach cannot both be satisfied, mechanical reach wins:
+        keep the part attached and expose the chassis/terrain contradiction rather than detaching a
+        wheel, rail, or limb into space. The authoritative body is the system that must resolve the
+        impossible pose.</li>
         <li>Floating above terrain is acceptable; tunneling through it is not. When the sim chassis
         is over a dip, individual wheels are allowed to read as &ldquo;slightly floating&rdquo;
         rather than pretending to droop on suspension we do not have.</li>

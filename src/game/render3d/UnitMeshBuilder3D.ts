@@ -48,8 +48,6 @@ type UnitMeshBuilder3DOptions = {
   getPrimaryMat: (playerId: PlayerId | undefined) => THREE.Material;
   getTurretAccentMat: (playerId: PlayerId | undefined) => THREE.Material;
   getMirrorShinyMat: () => THREE.Material;
-  getMapWidth: () => number;
-  getMapHeight: () => number;
 };
 
 type UnitMeshBuildRequest = {
@@ -93,8 +91,6 @@ export class UnitMeshBuilder3D {
   private readonly getPrimaryMat: UnitMeshBuilder3DOptions['getPrimaryMat'];
   private readonly getTurretAccentMat: UnitMeshBuilder3DOptions['getTurretAccentMat'];
   private readonly getMirrorShinyMat: UnitMeshBuilder3DOptions['getMirrorShinyMat'];
-  private readonly getMapWidth: () => number;
-  private readonly getMapHeight: () => number;
 
   constructor(options: UnitMeshBuilder3DOptions) {
     this.world = options.world;
@@ -110,8 +106,6 @@ export class UnitMeshBuilder3D {
     this.getPrimaryMat = options.getPrimaryMat;
     this.getTurretAccentMat = options.getTurretAccentMat;
     this.getMirrorShinyMat = options.getMirrorShinyMat;
-    this.getMapWidth = options.getMapWidth;
-    this.getMapHeight = options.getMapHeight;
   }
 
   build(request: UnitMeshBuildRequest): EntityMesh {
@@ -256,8 +250,6 @@ export class UnitMeshBuilder3D {
       ownerId,
       unitGfx,
       detailLevel,
-      this.getMapWidth(),
-      this.getMapHeight(),
       this.legRenderer,
     );
     if (legState !== undefined) applyLegState(mesh.locomotion, legState);

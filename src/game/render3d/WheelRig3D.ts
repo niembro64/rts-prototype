@@ -15,7 +15,9 @@ import type { Entity, PlayerId } from '../sim/types';
 import type { WheelConfig } from '@/types/blueprints';
 import {
   type LocomotionBase,
+  type LocomotionRenderPose,
   type RollingContactState,
+  chassisUpFromPose,
   emaAlpha,
   rollingContact,
   rollingLocomotionBodyActive,
@@ -23,11 +25,9 @@ import {
   transformChassisToWorld,
 } from './LocomotionRigShared3D';
 import {
-  getLocomotionSurfaceNormal,
   sampleLocomotionPartClamp,
   type LocomotionPartClamp,
 } from './LocomotionTerrainSampler';
-import { getUnitBodyCenterHeight } from '../sim/unitGeometry';
 import { getLocomotionMatByCache } from './RenderUtils';
 import { createPrimitiveCylinderGeometry } from './PrimitiveGeometryQuality3D';
 
@@ -68,6 +68,9 @@ export type WheelMount = {
   localX: number;
   localZ: number;
   wheelR: number;
+  /** Hard attachment envelope. Terrain may request more clearance,
+   *  but a tire can never visually leave its suspension travel. */
+  maxLift: number;
   /** Movement-position channel: chassis-local Y offset added on top of
    *  the baseline mount Y (`wheelR`). EMA'd toward `max(0, terrainLift)`
    *  every frame, so the wheel smoothly rises and falls over terrain
@@ -145,6 +148,7 @@ export function buildWheels(
         localX: sx * fx,
         localZ: sz * fz,
         wheelR,
+        maxLift: Math.max(1, wheelR * 1.25),
         lift: 0,
         targetLift: 0,
         angularVelocity: 0,
@@ -170,6 +174,7 @@ export function buildWheels(
 
 // Scratch reused per frame so the wheel loop never allocates.
 const _wheelWorld = { x: 0, y: 0, z: 0 };
+const _wheelUp = { x: 0, y: 1, z: 0 };
 
 /** Per-frame: integrate each tire's four visual channels forward.
  *  Movement-position (lift) EMA-tracks the floor clamp under the
@@ -180,19 +185,19 @@ const _wheelWorld = { x: 0, y: 0, z: 0 };
 export function updateWheels(
   mesh: WheelMesh,
   entity: Entity,
+  pose: LocomotionRenderPose,
   dtMs: number,
   mapWidth: number,
   mapHeight: number,
 ): boolean {
   const dtSec = Math.max(0.001, dtMs / 1000);
-  const bodyCenterHeight = entity.unit ? getUnitBodyCenterHeight(entity.unit) : 0;
   // The chassis tilt rotates local Y through the surface normal; lift
   // applied as a local-Y delta moves the wheel approximately by
   // `localLift * normal.z` in world Y. Invert that ratio (with the
   // same 0.35 floor LegRig3D uses) when converting a required world
   // lift back to a local-frame adjustment.
-  const n = getLocomotionSurfaceNormal(entity, mapWidth, mapHeight);
-  const normalY = Math.max(0.35, n.nz);
+  chassisUpFromPose(pose, _wheelUp);
+  const normalY = Math.max(0.35, _wheelUp.y);
   const liftAlpha = emaAlpha(dtSec, WHEEL_LIFT_TAU_SEC);
   const omegaAlpha = emaAlpha(dtSec, WHEEL_OMEGA_TAU_SEC);
 
@@ -206,7 +211,7 @@ export function updateWheels(
     // in the unit's tilt, yaw, and suspension offsets.
     transformChassisToWorld(
       mount.localX, mount.wheelR, mount.localZ,
-      entity, bodyCenterHeight, mapWidth, mapHeight, _wheelWorld,
+      pose, _wheelWorld,
     );
     const naturalWorldY = _wheelWorld.y;
     // Sample terrain at the tire's world XZ and clamp: tire center
@@ -226,7 +231,7 @@ export function updateWheels(
     // settles back toward its mount over the lift tau instead of
     // teleporting down.
     const worldLift = clamp.renderedY - naturalWorldY;
-    const targetLift = worldLift > 0 ? worldLift / normalY : 0;
+    const targetLift = Math.min(mount.maxLift, worldLift > 0 ? worldLift / normalY : 0);
     mount.targetLift = targetLift;
     mount.lift += (targetLift - mount.lift) * liftAlpha;
     wheelGroup.position.y = mount.wheelR + mount.lift;
@@ -236,7 +241,7 @@ export function updateWheels(
     // chassis-local distance. Reverse motion comes for free because
     // signedDistance is signed; pivots show opposite spin on opposite
     // wheels because each tire has its own contact and target.
-    const signedDistance = sampleRollingContactDistance(entity, mesh.wheelContacts[i]);
+    const signedDistance = sampleRollingContactDistance(pose, mesh.wheelContacts[i]);
     const tireR = Math.max(1, mount.wheelR);
     const targetOmega = signedDistance / dtSec / tireR;
     mount.angularVelocity += (targetOmega - mount.angularVelocity) * omegaAlpha;
@@ -245,11 +250,11 @@ export function updateWheels(
     // Integrate from the velocity channel.
     mesh.wheels[i].rotation.y += mount.angularVelocity * dtSec;
   }
-  return wheelsNeedFrame(mesh, entity);
+  return wheelsNeedFrame(mesh, pose);
 }
 
-function wheelsNeedFrame(mesh: WheelMesh, entity: Entity): boolean {
-  if (rollingLocomotionBodyActive(entity)) return true;
+function wheelsNeedFrame(mesh: WheelMesh, pose: LocomotionRenderPose): boolean {
+  if (rollingLocomotionBodyActive(pose)) return true;
   const count = Math.min(
     mesh.wheels.length,
     mesh.wheelContacts.length,

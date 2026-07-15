@@ -632,6 +632,23 @@ pub struct LegConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct FlipperConfig {
+    pub frontOffsetXFrac: f64,
+    pub rearOffsetXFrac: f64,
+    pub lateralOffsetFrac: f64,
+    pub rootHeightFrac: f64,
+    pub frontLengthFrac: f64,
+    pub rearLengthFrac: f64,
+    pub rootChordFrac: f64,
+    pub tipChordFrac: f64,
+    pub thicknessFrac: f64,
+    pub groundDownAngleDeg: f64,
+    pub groundSweepAngleDeg: f64,
+    pub waterStrokeAngleDeg: f64,
+    pub cycleDistanceFrac: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionMediumPhysics {
     pub heightUpwardForce: f64,
     pub buoyancy: Option<f64>,
@@ -740,6 +757,17 @@ pub struct LocomotionBlueprintLegs {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionBlueprintFlippers {
+    pub r#type: String,
+    pub physicsPresetId: String,
+    pub physics: LocomotionPhysics,
+    pub survival: LocomotionSurvivalPolicy,
+    pub pathfindingBlueprintId: String,
+    pub pathfinding: PathfindingBlueprint,
+    pub config: FlipperConfig,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionBlueprintHover {
     pub r#type: String,
     pub physicsPresetId: String,
@@ -766,6 +794,7 @@ pub enum LocomotionBlueprint {
     LocomotionBlueprintWheels(LocomotionBlueprintWheels),
     LocomotionBlueprintTreads(LocomotionBlueprintTreads),
     LocomotionBlueprintLegs(LocomotionBlueprintLegs),
+    LocomotionBlueprintFlippers(LocomotionBlueprintFlippers),
     LocomotionBlueprintHover(LocomotionBlueprintHover),
     LocomotionBlueprintFlying(LocomotionBlueprintFlying),
 }

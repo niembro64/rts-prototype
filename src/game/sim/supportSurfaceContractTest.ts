@@ -387,7 +387,9 @@ function assertBuildingSupportContract(): void {
   assertSpawnedOnSupport(buildingSpawn, buildingTopZ, 'unit spawn on building support');
 
   const locomotionIds = firstBlueprintIdByLocomotionType();
-  const requiredTypes: UnitLocomotion['type'][] = ['wheels', 'treads', 'legs', 'hover', 'flying'];
+  const requiredTypes: UnitLocomotion['type'][] = [
+    'wheels', 'treads', 'legs', 'flippers', 'hover', 'flying',
+  ];
   for (let i = 0; i < requiredTypes.length; i++) {
     const type = requiredTypes[i];
     const unitBlueprintId = locomotionIds.get(type);

@@ -378,6 +378,11 @@
           "opacity": 0.4
         }
       },
+      "flipper": {
+        "panel": {
+          "colorHex": "#205d63"
+        }
+      },
       "hover": {
         "fanRing": {
           "colorHex": "#444444"
