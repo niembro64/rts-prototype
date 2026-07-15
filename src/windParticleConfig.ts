@@ -2,12 +2,11 @@ import rawWindConfig from './windConfig.json';
 
 type WindParticleConfig = {
   enabled: boolean;
+  speedMultiplier: number;
   maxParticles: number;
   colorHex: string;
   alpha: number;
   radiusWorld: number;
-  minimumTrailLengthWorld: number;
-  trailDurationSeconds: number;
   fieldPaddingWorld: number;
   heightAboveSurfaceWorld: {
     min: number;
@@ -23,12 +22,11 @@ type WindParticleConfig = {
 const config = rawWindConfig.particles as WindParticleConfig;
 
 assertBoolean(config.enabled, 'windConfig.particles.enabled');
+assertPositive(config.speedMultiplier, 'windConfig.particles.speedMultiplier');
 assertPositiveInteger(config.maxParticles, 'windConfig.particles.maxParticles');
 assertCssHex(config.colorHex, 'windConfig.particles.colorHex');
 assertUnitInterval(config.alpha, 'windConfig.particles.alpha');
 assertPositive(config.radiusWorld, 'windConfig.particles.radiusWorld');
-assertPositive(config.minimumTrailLengthWorld, 'windConfig.particles.minimumTrailLengthWorld');
-assertNonNegative(config.trailDurationSeconds, 'windConfig.particles.trailDurationSeconds');
 assertNonNegative(config.fieldPaddingWorld, 'windConfig.particles.fieldPaddingWorld');
 assertRange(
   config.heightAboveSurfaceWorld.min,

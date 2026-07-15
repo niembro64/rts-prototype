@@ -34,6 +34,8 @@ type WindBladeAnim = {
 export type WindTurbineRig = {
   root: THREE.Mesh;
   rotor: THREE.Mesh;
+  /** Hub-to-tip distance used to convert linear wind speed to rotor speed. */
+  rotorRadiusWorld: number;
   pylon: ResourcePylonRig;
   /** Authored pitch applied to root.rotation.x at full close (1.0). */
   closedPitch: number;
@@ -178,6 +180,7 @@ export function buildWindTurbineMesh(
     windRig: {
       root,
       rotor,
+      rotorRadiusWorld: bladeLen,
       pylon: energyPylon.rig,
       // Pitch the nacelle to point straight up. The root's open-pose
       // pitch is 0 (horizontal nacelle); -π/2 sends it skyward so the

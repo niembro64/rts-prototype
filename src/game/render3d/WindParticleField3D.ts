@@ -33,7 +33,7 @@ void main() {
 }
 `;
 
-/** Camera-local air tracers moved by the exact authoritative wind vector.
+/** Camera-local air particles moved along the authoritative wind vector.
  * One bounded InstancedMesh follows the same typed-buffer particle pattern as
  * SprayRenderer3D and SmokeTrail3D; there are no per-particle scene objects. */
 export class WindParticleField3D {
@@ -56,8 +56,6 @@ export class WindParticleField3D {
   private readonly scale = new THREE.Vector3();
   private readonly orientation = new THREE.Quaternion();
   private readonly matrix = new THREE.Matrix4();
-  private readonly localTrailAxis = new THREE.Vector3(0, 0, 1);
-  private readonly windDirection = new THREE.Vector3();
   private seeded = false;
   private rngState = 0x7f4a7c15;
 
@@ -66,6 +64,7 @@ export class WindParticleField3D {
     this.mapHeight = options.mapHeight;
     this.renderScope = options.renderScope;
     this.sampleSurfaceHeight = options.sampleSurfaceHeight;
+    this.scale.setScalar(this.config.radiusWorld);
 
     const count = this.config.maxParticles;
     this.x = new Float32Array(count);
@@ -105,11 +104,11 @@ export class WindParticleField3D {
       return;
     }
 
-    // sim(x, y, z) -> Three(x, z, y). Components are not normalized or
-    // cosmetically scaled: position += authoritative wind * elapsed seconds.
-    const vx = finiteOrZero(wind.x);
-    const vy = finiteOrZero(wind.z);
-    const vz = finiteOrZero(wind.y);
+    // sim(x, y, z) -> Three(x, z, y). Preserve the authoritative direction
+    // while applying the explicitly authored presentation-only speed scale.
+    const vx = finiteOrZero(wind.x) * this.config.speedMultiplier;
+    const vy = finiteOrZero(wind.z) * this.config.speedMultiplier;
+    const vz = finiteOrZero(wind.y) * this.config.speedMultiplier;
     const speed = Math.hypot(vx, vy, vz);
     if (speed <= 1e-6) {
       this.mesh.count = 0;
@@ -127,17 +126,6 @@ export class WindParticleField3D {
     }
 
     const dtSec = Math.max(0, finiteOrZero(dtMs)) / 1000;
-    this.windDirection.set(vx / speed, vy / speed, vz / speed);
-    this.orientation.setFromUnitVectors(this.localTrailAxis, this.windDirection);
-    const trailLength = Math.max(
-      this.config.minimumTrailLengthWorld,
-      speed * this.config.trailDurationSeconds,
-    );
-    this.scale.set(
-      this.config.radiusWorld,
-      this.config.radiusWorld,
-      trailLength * 0.5,
-    );
 
     for (let i = 0; i < this.config.maxParticles; i++) {
       this.age[i] += dtSec;

@@ -28,7 +28,13 @@ import { SERVER_WORLD_SEED } from '../server/ServerBootstrap';
 import type { PlayerId } from '../sim/types';
 import type { LobbySettings } from '@/types/network';
 
-const { particles: _windPresentation, ...canonicalWindConfigJson } = windConfigJson;
+// Turbine animation and wind particles are presentation-only. Keep them out
+// of the deterministic content hash so visual tuning cannot split lockstep.
+const {
+  turbine: _windTurbinePresentation,
+  particles: _windParticlePresentation,
+  ...canonicalWindConfigJson
+} = windConfigJson;
 
 const CANONICAL_MATCH_INITIALIZATION_SCHEMA = 'budget-annihilation.match-init.v4';
 const APP_SOURCE_VERSION = '0.0.1';

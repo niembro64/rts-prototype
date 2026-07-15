@@ -1,8 +1,8 @@
 {
-  "energyPerSecond": 0.2,
+  "energyPerSecond": 1.2,
   "speed": {
-    "min": 20,
-    "max": 80
+    "min": 5,
+    "max": 20
   },
   "directionOscillationPeriodsSeconds": {
     "primary": 48,
@@ -22,31 +22,29 @@
     }
   },
   "turbine": {
-    "rotorRadPerSecPerWindSpeed": 2,
-    "rotorSpinMultiplier": 0.2,
+    "rotorTipSpeedRatio": 2,
     "rotorSpinReflectsActualProduction": true,
     "rotorPotentialRadPerSec": 0.4,
     "responseHalfLifeMultipliers": {
       "fanYaw": 4,
-      "bladeSpeed": 0.2
+      "bladeSpeed": 5.00
     }
   },
   "particles": {
     "enabled": true,
+    "speedMultiplier": 40,
     "maxParticles": 19200,
     "colorHex": "#d9f2ff",
     "alpha": 0.16,
     "radiusWorld": 1.25,
-    "minimumTrailLengthWorld": 3,
-    "trailDurationSeconds": 0.12,
     "fieldPaddingWorld": 160,
     "heightAboveSurfaceWorld": {
-      "min": 40,
-      "max": 320
+      "min": 5,
+      "max": 4000
     },
     "lifetimeSeconds": {
-      "min": 4,
-      "max": 8
+      "min": 2,
+      "max": 4
     },
     "fadeFraction": 0.15
   }

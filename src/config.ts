@@ -237,12 +237,10 @@ export const BASE_METAL_PER_SECOND = economyConfigJson.metal.baseIncomePerSecond
 export const WIND_SPEED_MIN = windConfigJson.speed.min;
 export const WIND_SPEED_MAX = windConfigJson.speed.max;
 
-/** Visual wind turbine rotor speed, in radians per second at wind speed 1.0,
- *  before the authored visual-only spin multiplier is applied. */
-export const WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED =
-  windConfigJson.turbine.rotorRadPerSecPerWindSpeed;
-export const WIND_TURBINE_ROTOR_SPIN_MULTIPLIER =
-  windConfigJson.turbine.rotorSpinMultiplier;
+/** Ratio of blade-tip linear speed to authoritative wind speed. The animator
+ *  converts this to angular speed using each turbine's actual rotor radius. */
+export const WIND_TURBINE_ROTOR_TIP_SPEED_RATIO =
+  windConfigJson.turbine.rotorTipSpeedRatio;
 /** When true the turbine blades spin proportional to live (actual) wind speed
  *  (dead air -> still); when false every open turbine spins at the flat
  *  "potential" rate below regardless of current wind. */

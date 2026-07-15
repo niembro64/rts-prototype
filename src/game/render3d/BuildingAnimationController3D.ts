@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 import {
   WIND_TURBINE_RESPONSE_HALF_LIFE_MULTIPLIERS,
-  WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED,
-  WIND_TURBINE_ROTOR_SPIN_MULTIPLIER,
   WIND_TURBINE_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION,
+  WIND_TURBINE_ROTOR_TIP_SPEED_RATIO,
   WIND_TURBINE_ROTOR_POTENTIAL_RAD_PER_SEC,
 } from '../../config';
 import {
@@ -39,6 +38,7 @@ import {
 import {
   BuildingResourcePylonAnimator3D,
 } from './BuildingResourcePylonAnimator3D';
+import { windRotorAngularSpeed } from './WindKinematics3D';
 
 // Open/close pose transitions are discrete local state changes, not
 // snapshot rotation fields. They use local, named controller response rates.
@@ -89,7 +89,9 @@ export class BuildingAnimationController3D {
   private windFanYaw: number | null = null;
   private windFanPitch: number | null = null;
   private windVisualSpeed: number | null = null;
-  private windRotorPhase = 0;
+  /** Per-turbine phase lets differently sized future rotors obey the same
+   *  tip-speed ratio without coupling their angular velocity. */
+  private windRotorPhases = new IndexedEntityIdMap<number>();
   private windAnimLastMs = 0;
   /** Per-entity rotor phase. Each extractor advances its own counter
    *  from a locally smoothed angular speed, so an extractor on
@@ -208,6 +210,7 @@ export class BuildingAnimationController3D {
     this.extractorAppliedCloseAmounts.delete(id);
     this.windCloseAmounts.delete(id);
     this.windAppliedCloseAmounts.delete(id);
+    this.windRotorPhases.delete(id);
     removeAnimatedBuildingEntry(this.factoryBuildings, this.factoryBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.activeFactoryBuildings, this.activeFactoryBuildingIndexById, id);
     removeAnimatedBuildingEntry(this.radarBuildings, this.radarBuildingIndexById, id);
@@ -280,6 +283,7 @@ export class BuildingAnimationController3D {
     this.extractorRotorYaws.clear();
     this.windCloseAmounts.clear();
     this.windAppliedCloseAmounts.clear();
+    this.windRotorPhases.clear();
     this.extractorAppliedCloseAmounts.clear();
     this.radarHeadPhases.clear();
     this.radarSweepPhases.clear();
@@ -288,7 +292,6 @@ export class BuildingAnimationController3D {
     this.windFanYaw = null;
     this.windFanPitch = null;
     this.windVisualSpeed = null;
-    this.windRotorPhase = 0;
     this.windAnimLastMs = 0;
   }
 
@@ -337,10 +340,10 @@ export class BuildingAnimationController3D {
 
   private updateActiveWindAnimations(): void {
     if (this.activeWindBuildings.length === 0) return;
-    this.updateWindAnimationGlobals();
+    const dtSec = this.updateWindAnimationGlobals();
     for (let i = 0; i < this.activeWindBuildings.length;) {
       const entry = this.activeWindBuildings[i];
-      if (this.updateWindAnimationEntry(entry)) {
+      if (this.updateWindAnimationEntry(entry, dtSec)) {
         i++;
       } else {
         removeAnimatedBuildingEntry(this.activeWindBuildings, this.activeWindBuildingIndexById, entry.id);
@@ -355,7 +358,7 @@ export class BuildingAnimationController3D {
     return Math.abs(1 - appliedClose) >= BUILDING_RIG_IDLE_EPSILON;
   }
 
-  private updateWindAnimationEntry(entry: AnimatedBuildingEntry): boolean {
+  private updateWindAnimationEntry(entry: AnimatedBuildingEntry, dtSec: number): boolean {
     const { id, entity, mesh } = entry;
     const open = entity.building?.activeState?.open !== false;
     const closeTarget = open ? 0 : 1;
@@ -365,7 +368,20 @@ export class BuildingAnimationController3D {
       : close + (closeTarget - close) * BUILDING_FORTIFY_ANIM_ALPHA;
     this.windCloseAmounts.set(id, close);
     const detailsReady = mesh.buildingCachedDetailsReady === true;
-    this.updateWindTurbineRig(mesh, detailsReady, close);
+    const rig = mesh.windRig;
+    let rotorPhase = this.windRotorPhases.get(id) ?? 0;
+    if (rig && open && this.windVisualSpeed !== null) {
+      const angularSpeed = WIND_TURBINE_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION
+        ? windRotorAngularSpeed(
+          this.windVisualSpeed,
+          rig.rotorRadiusWorld,
+          WIND_TURBINE_ROTOR_TIP_SPEED_RATIO,
+        )
+        : WIND_TURBINE_ROTOR_POTENTIAL_RAD_PER_SEC;
+      rotorPhase += dtSec * angularSpeed;
+      this.windRotorPhases.set(id, rotorPhase);
+    }
+    this.updateWindTurbineRig(mesh, detailsReady, close, rotorPhase);
     if (detailsReady) this.windAppliedCloseAmounts.set(id, close);
     return this.windAnimationNeedsFrame(entry);
   }
@@ -636,12 +652,12 @@ export class BuildingAnimationController3D {
     return Math.abs(target - next) >= BUILDING_RIG_IDLE_EPSILON;
   }
 
-  private updateWindAnimationGlobals(): void {
+  private updateWindAnimationGlobals(): number {
     const wind = this.clientViewState.getServerMeta()?.wind;
     const now = performance.now();
     const dtSec = this.windAnimLastMs > 0 ? (now - this.windAnimLastMs) / 1000 : 0;
     this.windAnimLastMs = now;
-    if (!wind) return;
+    if (!wind) return 0;
 
     const targetYaw = Math.atan2(-wind.x, -wind.y);
     const horizontalSpeed = Math.hypot(wind.x, wind.y);
@@ -691,17 +707,7 @@ export class BuildingAnimationController3D {
         ),
       );
     }
-    // ACTUAL mode (default): blade speed tracks live wind (a turbine in dead
-    // air is still). POTENTIAL mode: spin at a flat rate regardless of current
-    // wind. Either way each turbine's own OFF/folded state zeroes its rotor via
-    // closeAmount in updateWindTurbineRig.
-    this.windRotorPhase += dtSec * (
-      WIND_TURBINE_ROTOR_SPIN_REFLECTS_ACTUAL_PRODUCTION
-        ? this.windVisualSpeed *
-          WIND_TURBINE_ROTOR_RAD_PER_SEC_PER_WIND_SPEED *
-          WIND_TURBINE_ROTOR_SPIN_MULTIPLIER
-        : WIND_TURBINE_ROTOR_POTENTIAL_RAD_PER_SEC
-    );
+    return dtSec;
   }
 
   private scaledWindTurbineHalfLife(baseHalfLife: number, multiplier: number): number {
@@ -713,6 +719,7 @@ export class BuildingAnimationController3D {
     m: EntityMesh,
     detailsReady: boolean,
     closeAmount: number,
+    rotorPhase: number,
   ): void {
     if (
       !m.windRig ||
@@ -731,7 +738,7 @@ export class BuildingAnimationController3D {
     // Spin only while the rotor is mostly extended. As the blades fold
     // toward the pole the rotor settles to a fixed rest phase so the
     // baked closed quaternions match exactly.
-    m.windRig.rotor.rotation.z = this.windRotorPhase * (1 - closeAmount);
+    m.windRig.rotor.rotation.z = rotorPhase * (1 - closeAmount);
     // Slerp each blade between its baked open and closed quaternions.
     for (const child of m.windRig.rotor.children) {
       const anim = child.userData.windBlade as
