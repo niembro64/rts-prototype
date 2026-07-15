@@ -8,8 +8,8 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     treat exact building/tower footprints as elevated terrain cells;
 //   - keeps expandPathActions JS-side because it consults JS-side
 //     blueprint config and constructs UnitAction objects;
-//   - preserves the original public surface (`findPath`,
-//     `expandPathActions`, `PathTerrainFilter`).
+//   - preserves the path expansion surface while traversal policy and grid
+//     cache ownership live in focused helpers.
 //
 // Design choices we kept from the JS impl:
 //   • 8-connected A* with the octile heuristic. Bounded by
@@ -33,18 +33,20 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     gets cleared and the visualization doesn't draw a fake
 //     straight line through obstacles.
 
-import { BUILD_GRID_CELL_SIZE, type BuildingGrid } from './buildGrid';
+import type { BuildingGrid } from './buildGrid';
 import { LAND_CELL_SIZE } from '../../config';
 import { GAME_DIAGNOSTICS, debugWarn } from '../diagnostics';
 import {
   isWaterAt,
   getSurfaceHeight,
-  getTerrainVersion,
 } from './Terrain';
 import { getSimWasm } from '../sim-wasm/init';
-import type { ActionType, UnitLocomotion, UnitPathPoint } from './types';
-import { computeLocomotionClimbProfile } from './pathfindingMobility';
-import { PATHFINDING_STABILITY_MIN_NORMAL_Z } from './pathfindingTuning';
+import type { ActionType, UnitPathPoint } from './types';
+import { ensurePathfinderGrid } from './pathfinderGridCache';
+import {
+  resolvePathfinderTraversalInput,
+  type PathTerrainFilter,
+} from './pathfindingTraversal';
 
 type Vec2 = { x: number; y: number };
 
@@ -55,20 +57,6 @@ export type ExpandedPathPlan = {
   resolution: PathResolution;
 };
 
-export type PathCostProfile = {
-  /** Locomotion capability consumed by the abstract terrain-time cost model. */
-  flatDriveAccel: number | null;
-};
-
-export type PathTerrainFilter = {
-  minSurfaceNormalZ: number | null;
-  allowOnGround: boolean;
-  allowInWater: boolean;
-  allowInAir: boolean;
-  ignoreTerrainBlocking: boolean;
-  cost: PathCostProfile;
-};
-
 /** When true, every path produced by `expandPathActions` is walked
  *  segment-by-segment and any world-space sample that lands over
  *  water is logged. */
@@ -77,162 +65,6 @@ const VALIDATE_PATHS = GAME_DIAGNOSTICS.pathValidation;
 /** Spacing (world units) between water-check samples along each
  *  segment during path validation. */
 const VALIDATE_SAMPLE_STEP_WU = 5;
-
-// ── Init / mask cache ────────────────────────────────────────────
-
-let _initMapWidth = 0;
-let _initMapHeight = 0;
-let _initSim: ReturnType<typeof getSimWasm> | null = null;
-let _maskCacheMapWidth = 0;
-let _maskCacheMapHeight = 0;
-let _maskCacheTerrainVersion = -1;
-let _maskCacheBuildingVersion = -1;
-let _maskCacheBuildingGrid: BuildingGrid | null = null;
-const _buildingGridIds = new WeakMap<BuildingGrid, number>();
-let _nextBuildingGridId = 1;
-
-function invalidateMaskCache(): void {
-  _maskCacheMapWidth = 0;
-  _maskCacheMapHeight = 0;
-  _maskCacheTerrainVersion = -1;
-  _maskCacheBuildingVersion = -1;
-  _maskCacheBuildingGrid = null;
-}
-
-function buildingGridId(buildingGrid: BuildingGrid): number {
-  let id = _buildingGridIds.get(buildingGrid);
-  if (id === undefined) {
-    id = _nextBuildingGridId++;
-    if (_nextBuildingGridId > 0xffff_ffff) _nextBuildingGridId = 1;
-    _buildingGridIds.set(buildingGrid, id);
-  }
-  return id;
-}
-
-function ensureInitialized(mapWidth: number, mapHeight: number): void {
-  const sim = getSimWasm()!;
-  if (sim !== _initSim) {
-    _initSim = sim;
-    _initMapWidth = 0;
-    _initMapHeight = 0;
-    invalidateMaskCache();
-  }
-  if (mapWidth === _initMapWidth && mapHeight === _initMapHeight) return;
-  sim.pathfinder.init(mapWidth, mapHeight);
-  _initMapWidth = mapWidth;
-  _initMapHeight = mapHeight;
-  invalidateMaskCache();
-}
-
-// Reusable Float64Array for the per-rebuild structure-cell payload:
-// gx, gy, pathTopZ triples. Grows on demand; never shrinks.
-let _buildingCellsScratch = new Float64Array(384);
-
-function collectBuildingCells(buildingGrid: BuildingGrid): Float64Array {
-  let count = 0;
-  for (const { gx, gy, cell } of buildingGrid.occupiedCells()) {
-    if (count + 3 > _buildingCellsScratch.length) {
-      const next = new Float64Array(_buildingCellsScratch.length * 2);
-      next.set(_buildingCellsScratch);
-      _buildingCellsScratch = next;
-    }
-    _buildingCellsScratch[count++] = gx;
-    _buildingCellsScratch[count++] = gy;
-    _buildingCellsScratch[count++] = Number.isFinite(cell.pathTopZ) && cell.pathTopZ !== undefined
-      ? cell.pathTopZ
-      : BUILD_GRID_CELL_SIZE;
-  }
-  return _buildingCellsScratch.subarray(0, count);
-}
-
-function normalizeMinSurfaceNormalZ(filter: PathTerrainFilter | null): number {
-  if (filter === null || filter.allowInAir) return 0;
-  const value = filter.minSurfaceNormalZ;
-  if (value === null || !Number.isFinite(value) || value <= PATHFINDING_STABILITY_MIN_NORMAL_Z) {
-    return 0;
-  }
-  return Math.min(1, value);
-}
-
-function pathAllowsGround(filter: PathTerrainFilter | null): boolean {
-  return filter === null || filter.allowOnGround;
-}
-
-function pathAllowsWater(filter: PathTerrainFilter | null): boolean {
-  return filter !== null && filter.allowInWater;
-}
-
-function pathAllowsAir(filter: PathTerrainFilter | null): boolean {
-  return filter !== null && filter.allowInAir;
-}
-
-function pathFlatDriveAccel(filter: PathTerrainFilter | null): number {
-  const value = filter?.cost.flatDriveAccel;
-  return value !== null && value !== undefined && Number.isFinite(value) && value > 0
-    ? value
-    : 0;
-}
-
-export function pathTerrainFilterForLocomotion(
-  locomotion: UnitLocomotion | undefined,
-  mass: number | undefined,
-  thrustMultiplier?: number,
-): PathTerrainFilter | null {
-  if (locomotion === undefined) return null;
-  if (mass === undefined) return null;
-  const mobility = computeLocomotionClimbProfile(locomotion, mass, thrustMultiplier);
-  return {
-    minSurfaceNormalZ: mobility.minSurfaceNormalZ,
-    allowOnGround: mobility.allowOnGround,
-    allowInWater: mobility.allowInWater,
-    allowInAir: mobility.allowInAir,
-    ignoreTerrainBlocking: mobility.allowInAir,
-    cost: {
-      flatDriveAccel: mobility.flatDriveAccel,
-    },
-  };
-}
-
-/** Stable cache identity for every traversal permission and route-cost input.
- * Callers should not duplicate this field list when caching shared plans. */
-export function pathTerrainFilterCacheKey(filter: PathTerrainFilter | null): string {
-  if (filter === null) return 'default';
-  return [
-    filter.allowOnGround ? 'g1' : 'g0',
-    filter.allowInWater ? 'w1' : 'w0',
-    filter.allowInAir ? 'a1' : 'a0',
-    `min:${filter.minSurfaceNormalZ ?? 'null'}`,
-    `accel:${filter.cost.flatDriveAccel ?? 'null'}`,
-  ].join(':');
-}
-
-function ensureMaskAndCC(
-  buildingGrid: BuildingGrid,
-  mapWidth: number, mapHeight: number,
-): void {
-  ensureInitialized(mapWidth, mapHeight);
-  const sim = getSimWasm()!;
-  const tVer = getTerrainVersion();
-  const bVer = buildingGrid.getVersion();
-  if (
-    mapWidth === _maskCacheMapWidth &&
-    mapHeight === _maskCacheMapHeight &&
-    tVer === _maskCacheTerrainVersion &&
-    bVer === _maskCacheBuildingVersion &&
-    buildingGrid === _maskCacheBuildingGrid
-  ) {
-    return;
-  }
-  const occ = collectBuildingCells(buildingGrid);
-  // Rust caches mask + CC by terrain/building versions plus grid identity;
-  // this is a no-op when nothing has changed.
-  sim.pathfinder.rebuildMaskAndCc(occ, tVer, bVer, buildingGridId(buildingGrid));
-  _maskCacheMapWidth = mapWidth;
-  _maskCacheMapHeight = mapHeight;
-  _maskCacheTerrainVersion = tVer;
-  _maskCacheBuildingVersion = bVer;
-  _maskCacheBuildingGrid = buildingGrid;
-}
 
 // ── Public entry: findPath ───────────────────────────────────────
 
@@ -254,20 +86,20 @@ function findPath(
   unitRadius: number,
   symmetricSlope: boolean,
 ): { points: Vec2[]; resolution: PathResolution } {
-  ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
-  const minSurfaceNormalZ = normalizeMinSurfaceNormalZ(terrainFilter);
+  ensurePathfinderGrid(buildingGrid, mapWidth, mapHeight);
+  const traversal = resolvePathfinderTraversalInput(terrainFilter);
   const sim = getSimWasm()!;
   const count = sim.pathfinder.findPath(
     startX,
     startY,
     goalX,
     goalY,
-    minSurfaceNormalZ,
-    pathAllowsGround(terrainFilter),
-    pathAllowsWater(terrainFilter),
-    pathAllowsAir(terrainFilter),
+    traversal.minSurfaceNormalZ,
+    traversal.allowOnGround,
+    traversal.allowInWater,
+    traversal.allowInAir,
     unitRadius,
-    pathFlatDriveAccel(terrainFilter),
+    traversal.flatDriveAccel,
     symmetricSlope,
   );
   const resolution = decodePathResolution(sim.pathfinder.lastResultStatus());
@@ -391,8 +223,11 @@ export function expandPathPlan(
     symmetricSlope,
   );
   const path = result.points;
-  if (VALIDATE_PATHS && !pathAllowsWater(terrainFilter) && !pathAllowsAir(terrainFilter)) {
-    validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
+  if (VALIDATE_PATHS) {
+    const traversal = resolvePathfinderTraversalInput(terrainFilter);
+    if (!traversal.allowInWater && !traversal.allowInAir) {
+      validatePathDoesNotCrossWater(startX, startY, goalX, goalY, path, mapWidth, mapHeight);
+    }
   }
   const out: UnitPathPoint[] = [];
   const lastIdx = path.length - 1;
@@ -443,12 +278,13 @@ function validatePathScratch(
   symmetricSlope: boolean,
 ): boolean {
   const sim = getSimWasm()!;
+  const traversal = resolvePathfinderTraversalInput(terrainFilter);
   return sim.pathfinder.validatePath(
     _pathValidationScratch.subarray(0, length),
-    normalizeMinSurfaceNormalZ(terrainFilter),
-    pathAllowsGround(terrainFilter),
-    pathAllowsWater(terrainFilter),
-    pathAllowsAir(terrainFilter),
+    traversal.minSurfaceNormalZ,
+    traversal.allowOnGround,
+    traversal.allowInWater,
+    traversal.allowInAir,
     unitRadius,
     symmetricSlope,
   ) === 1;
@@ -465,7 +301,7 @@ export function isPathSegmentTraversable(
   unitRadius: number,
   symmetricSlope: boolean,
 ): boolean {
-  ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
+  ensurePathfinderGrid(buildingGrid, mapWidth, mapHeight);
   _pathValidationScratch[0] = startX;
   _pathValidationScratch[1] = startY;
   _pathValidationScratch[2] = point.x;
@@ -488,7 +324,7 @@ export function isPathPlanTraversable(
   symmetricSlope: boolean,
 ): boolean {
   if (points.length === 0) return false;
-  ensureMaskAndCC(buildingGrid, mapWidth, mapHeight);
+  ensurePathfinderGrid(buildingGrid, mapWidth, mapHeight);
   const requiredLength = (points.length + 1) * 2;
   if (_pathValidationScratch.length < requiredLength) {
     let capacity = _pathValidationScratch.length;

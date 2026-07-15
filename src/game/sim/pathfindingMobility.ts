@@ -6,12 +6,8 @@ import {
 } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
 import type { UnitLocomotion } from './types';
-import {
-  LOCOMOTION_FORCE_SCALE,
-  locomotionAllowsInAir,
-  locomotionAllowsInWater,
-  locomotionAllowsOnGround,
-} from './locomotion';
+import { resolveLocomotionRouteCapabilities } from './locomotionNavigation';
+import { LOCOMOTION_FORCE_SCALE } from './locomotionPresetConfig';
 import {
   PATHFINDING_FORCE_SAFETY_RATIO,
   PATHFINDING_STABILITY_MAX_SLOPE_DEG,
@@ -44,9 +40,8 @@ export function computeLocomotionClimbProfile(
   thrustMultiplier = UNIT_THRUST_MULTIPLIER_GAME,
 ): LocomotionClimbProfile {
   const groundPhysics = locomotion.physics.ground;
-  const allowOnGround = locomotionAllowsOnGround(locomotion);
-  const allowInWater = locomotionAllowsInWater(locomotion);
-  const allowInAir = locomotionAllowsInAir(locomotion);
+  const { allowOnGround, allowInWater, allowInAir } =
+    resolveLocomotionRouteCapabilities(locomotion);
   if (!Number.isFinite(mass) || mass <= 0) {
     throw new Error(`Invalid pathfinding mobility mass: expected positive finite number, got ${mass}`);
   }
@@ -55,7 +50,7 @@ export function computeLocomotionClimbProfile(
     throw new Error('Pathfinding mobility requires the authoritative simulation WASM to be initialized');
   }
   const computed = sim.pathfinder.computeLocomotionClimbProfile(
-    groundPhysics.force,
+    groundPhysics.driveForce,
     groundPhysics.traction,
     groundPhysics.surfaceGrip,
     mass,

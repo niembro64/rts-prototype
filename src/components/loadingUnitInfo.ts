@@ -241,7 +241,7 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
   const primaryPhysics = getLocomotionPrimaryDrivePhysics(runtime);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
-    stat('Drive force', fmt(primaryPhysics.force)),
+    stat('Drive force', fmt(primaryPhysics.driveForce)),
     stat('Traction', fmt(primaryPhysics.traction, 2)),
     node('Pathfinding', locomotion.pathfindingBlueprintId, undefined, [
       stat('Terrain mode', runtime.pathfinding.terrainMode),
@@ -416,13 +416,13 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
   const items: LoadingUnitInfoNode[] = [];
   const air = locomotion.physics.air;
   if (
-    air.force > 0 ||
+    air.driveForce > 0 ||
     air.friction > 0 ||
     air.buoyancy > 0 ||
     air.heightUpwardForce > 0
   ) {
     const airChildren = [
-      stat('Force', fmt(air.force)),
+      stat('Drive force', fmt(air.driveForce)),
       stat('Traction', fmt(air.traction, 2)),
       stat('Friction', fmt(air.friction, 2)),
     ];
@@ -439,13 +439,13 @@ function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoN
 
   const water = locomotion.physics.water;
   if (
-    water.force > 0 ||
+    water.driveForce > 0 ||
     water.friction > 0 ||
     water.buoyancy > 0 ||
     water.heightUpwardForce > 0
   ) {
     const waterChildren = [
-      stat('Force', fmt(water.force)),
+      stat('Drive force', fmt(water.driveForce)),
       stat('Traction', fmt(water.traction, 2)),
       stat('Friction', fmt(water.friction, 2)),
     ];

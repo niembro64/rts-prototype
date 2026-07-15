@@ -2,10 +2,8 @@
 // TypeScript gathers entity/terrain inputs, the Rust/WASM batch owns the
 // per-unit force decisions and writes BodyPool acceleration directly.
 
-import {
-  getAirLiftHeightDistanceScale,
-  LOCOMOTION_FORCE_SCALE,
-} from '../sim/locomotion';
+import { getAirLiftHeightDistanceScale } from '../sim/airLiftForce';
+import { LOCOMOTION_FORCE_SCALE } from '../sim/locomotionPresetConfig';
 import {
   UNIT_GROUND_CONTACT_EPSILON,
 } from '../sim/unitGroundPhysics';
@@ -181,7 +179,7 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
       const { ground, air, water } = loco.physics;
       signature += [
         codeCount,
-        ground.force,
+        ground.driveForce,
         ground.traction,
         air.buoyancy,
         air.heightUpwardForce,
@@ -189,14 +187,14 @@ function buildUnitForceProfileSignature(): UnitForceProfileSignature {
         air.heightUpwardForceEMA,
         ground.friction,
         air.friction,
-        water.force,
+        water.driveForce,
         water.traction,
         water.friction,
         water.buoyancy,
         water.heightUpwardForce,
         water.heightUpwardForceRandomizationAmount,
         water.heightUpwardForceEMA,
-        air.force,
+        air.driveForce,
         air.traction,
         ground.surfaceGrip,
         air.quadraticDrag,
@@ -262,7 +260,7 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     const loco = getUnitLocomotion(unitBlueprintId);
     const { ground, air, water } = loco.physics;
     const base = code * UF_PROFILE_STRIDE;
-    values[base + 0] = ground.force;
+    values[base + 0] = ground.driveForce;
     values[base + 1] = ground.traction;
     values[base + 2] = air.buoyancy;
     values[base + 3] = air.heightUpwardForce;
@@ -270,14 +268,14 @@ function ensureUnitForceProfileTable(sim: SimWasm): void {
     values[base + 5] = air.heightUpwardForceEMA;
     values[base + 6] = ground.friction;
     values[base + 7] = air.friction;
-    values[base + 8] = water.force;
+    values[base + 8] = water.driveForce;
     values[base + 9] = water.traction;
     values[base + 10] = water.friction;
     values[base + 11] = water.buoyancy;
     values[base + 12] = water.heightUpwardForce;
     values[base + 13] = water.heightUpwardForceRandomizationAmount;
     values[base + 14] = water.heightUpwardForceEMA;
-    values[base + 15] = air.force;
+    values[base + 15] = air.driveForce;
     values[base + 16] = air.traction;
     values[base + 17] = ground.surfaceGrip;
     values[base + 18] = air.quadraticDrag;
@@ -517,7 +515,7 @@ export class UnitForceSystem {
       const waterLiftAuthored =
         unit.locomotion.physics.water.buoyancy > 0 ||
         unit.locomotion.physics.water.heightUpwardForce > 0;
-      // Ground/air/water friction, water force/traction, the swim family,
+      // Ground/air/water friction, water drive force/traction, the swim family,
       // swim EMA accumulator, and air angular damping rate are filled by the
       // kernel from native profile/runtime tables.
 

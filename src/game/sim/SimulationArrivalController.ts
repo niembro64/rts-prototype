@@ -1,6 +1,6 @@
 import { UNIT_LOCOMOTION_FORCE_REFERENCE_MASS, UNIT_MASS_MULTIPLIER } from '../../config';
 import { getSimWasm } from '../sim-wasm/init';
-import { LOCOMOTION_FORCE_SCALE } from './locomotion';
+import { LOCOMOTION_FORCE_SCALE } from './locomotionPresetConfig';
 import type { Entity, UnitAction } from './types';
 import type { WorldState } from './WorldState';
 import { SIMULATION_INVALID_BODY_SLOT } from './SimulationFlyingLoiterController';

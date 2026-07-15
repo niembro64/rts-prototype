@@ -58,7 +58,7 @@ import { NO_ENTITY_ID } from './types';
 import { isProjectileShot } from './types';
 import type { WorldState } from './WorldState';
 import type { SimEvent } from './combat';
-import { LOCOMOTION_FORCE_SCALE } from './locomotion';
+import { LOCOMOTION_FORCE_SCALE } from './locomotionPresetConfig';
 import { magnitude, getTransformCosSin } from '../math';
 import {
   getHostShotArmingRadius,
@@ -120,7 +120,8 @@ import {
   getUnitActionTargetId,
 } from './unitActionIntents';
 import type { BuildingGrid } from './buildGrid';
-import { expandPathPoints, pathTerrainFilterForLocomotion } from './Pathfinder';
+import { expandPathPoints } from './Pathfinder';
+import { pathTerrainFilterForLocomotion } from './pathfindingTraversal';
 import { canBuilderUpgradeMetalExtractor, isUpgradeableMetalExtractorTarget } from './metalExtractorUpgrade';
 import {
   entityHasBarAirPlantLandAtCommand,

@@ -3624,7 +3624,7 @@ export interface PathfinderApi {
    *  Writes max slope, min normal Z, safe acceleration, the three individual
    *  slope limits, then flat-ground drive acceleration into `out`. */
   computeLocomotionClimbProfile: (
-    groundForce: number,
+    groundDriveForce: number,
     groundTraction: number,
     surfaceGrip: number,
     mass: number,

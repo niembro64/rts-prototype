@@ -442,7 +442,6 @@ export type LegConfig = {
 };
 
 export type LocomotionMediumPhysics = {
-  force: number;
   heightUpwardForce: number;
   buoyancy?: number;
 };

@@ -8656,7 +8656,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_X] = 0.0;
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
-        rows[UF_ROW_AIR_FORCE] = 100.0;
+        rows[UF_ROW_AIR_DRIVE_FORCE] = 100.0;
         rows[UF_ROW_AIR_TRACTION] = traction;
         rows[UF_ROW_HOVER_HEIGHT_FORCE] = 100.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
@@ -8722,7 +8722,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_X] = 0.0;
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
-        rows[UF_ROW_GROUND_FORCE] = 100.0;
+        rows[UF_ROW_GROUND_DRIVE_FORCE] = 100.0;
         rows[UF_ROW_GROUND_TRACTION] = 1.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_NORMAL_Z] = 1.0;
@@ -8782,7 +8782,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_X] = 0.0;
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = rotation;
-        rows[UF_ROW_GROUND_FORCE] = 100.0;
+        rows[UF_ROW_GROUND_DRIVE_FORCE] = 100.0;
         rows[UF_ROW_GROUND_TRACTION] = 1.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_NORMAL_Z] = 1.0;
@@ -8840,7 +8840,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_X] = 0.0;
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
-        rows[UF_ROW_AIR_FORCE] = 2000.0;
+        rows[UF_ROW_AIR_DRIVE_FORCE] = 2000.0;
         rows[UF_ROW_AIR_TRACTION] = 0.2;
         rows[UF_ROW_AIR_BUOYANCY] = 0.05;
         rows[UF_ROW_HOVER_HEIGHT_FORCE] = 380.0;
@@ -8945,11 +8945,11 @@ mod sim_kernel_tests {
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_DIR_X] = if has_thrust { 1.0 } else { 0.0 };
         rows[UF_ROW_DIR_Y] = 0.0;
-        rows[UF_ROW_GROUND_FORCE] = 850.0;
+        rows[UF_ROW_GROUND_DRIVE_FORCE] = 850.0;
         rows[UF_ROW_GROUND_TRACTION] = 0.75;
         rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
         rows[UF_ROW_NORMAL_Z] = 1.0;
-        rows[UF_ROW_WATER_FORCE] = water_force;
+        rows[UF_ROW_WATER_DRIVE_FORCE] = water_force;
         rows[UF_ROW_WATER_TRACTION] = water_traction;
         rows[UF_ROW_WATER_FRICTION] = water_friction;
         rows[UF_ROW_WATER_BUOYANCY] = water_buoyancy;
@@ -9009,9 +9009,9 @@ mod sim_kernel_tests {
         rows[UF_ROW_DIR_Y] = 0.0;
         rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
         rows[UF_ROW_NORMAL_Z] = 1.0;
-        rows[UF_ROW_AIR_FORCE] = 600.0;
+        rows[UF_ROW_AIR_DRIVE_FORCE] = 600.0;
         rows[UF_ROW_AIR_TRACTION] = 0.25;
-        rows[UF_ROW_WATER_FORCE] = 1200.0;
+        rows[UF_ROW_WATER_DRIVE_FORCE] = 1200.0;
         rows[UF_ROW_WATER_TRACTION] = 0.5;
 
         assert_eq!(

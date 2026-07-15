@@ -1908,13 +1908,9 @@
     "LocomotionMediumPhysics": {
       "type": "object",
       "required": [
-        "force",
         "heightUpwardForce"
       ],
       "properties": {
-        "force": {
-          "type": "number"
-        },
         "heightUpwardForce": {
           "type": "number"
         },

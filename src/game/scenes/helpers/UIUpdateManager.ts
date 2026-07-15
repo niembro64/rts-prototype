@@ -1332,7 +1332,7 @@ export type UnitStatsOverlayInfo = {
   mass: number | null;
   costEnergy: number | null;
   costMetal: number | null;
-  locomotion: { type: string; force: number; traction: number } | null;
+  locomotion: { type: string; driveForce: number; traction: number } | null;
   weapons: UnitStatsWeaponInfo[];
   factory: UnitStatsFactoryInfo | null;
 };
@@ -1446,7 +1446,7 @@ export function buildUnitStatsOverlayInfo(
       const primaryPhysics = getLocomotionPrimaryDrivePhysics(runtimeLocomotion);
       locomotion = {
         type: runtimeLocomotion.type,
-        force: primaryPhysics.force,
+        driveForce: primaryPhysics.driveForce,
         traction: primaryPhysics.traction,
       };
     } catch {

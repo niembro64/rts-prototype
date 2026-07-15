@@ -415,10 +415,10 @@ fn unit_effective_coupled_drive(
     let air_fraction = 1.0 - water_fraction;
     let ground_contact = runtime_is_current && runtime.ground_contact[entity_slot] != 0;
     let mut coupled_drive = air_fraction
-        * profile.values[pbase + UF_PROFILE_AIR_FORCE]
+        * profile.values[pbase + UF_PROFILE_AIR_DRIVE_FORCE]
         * profile.values[pbase + UF_PROFILE_AIR_TRACTION]
         + water_fraction
-            * profile.values[pbase + UF_PROFILE_WATER_FORCE]
+            * profile.values[pbase + UF_PROFILE_WATER_DRIVE_FORCE]
             * profile.values[pbase + UF_PROFILE_WATER_TRACTION];
 
     let body_mass = if p.inv_mass[slot] > 0.0 {
@@ -427,8 +427,8 @@ fn unit_effective_coupled_drive(
         0.0
     };
     if ground_contact {
-        let (_, ground_engine_force) = unit_force_locomotion_magnitudes(
-            profile.values[pbase + UF_PROFILE_GROUND_FORCE],
+        let (_, ground_drive_force) = unit_force_locomotion_magnitudes(
+            profile.values[pbase + UF_PROFILE_GROUND_DRIVE_FORCE],
             profile.values[pbase + UF_PROFILE_GROUND_TRACTION],
             reference_mass,
             thrust_multiplier,
@@ -440,7 +440,7 @@ fn unit_effective_coupled_drive(
         let normal_load = body_mass * GRAVITY * (1.0 - buoyancy_ratio).max(0.0) / 1_000_000.0;
         let contact_limit =
             normal_load * profile.values[pbase + UF_PROFILE_GROUND_SURFACE_GRIP].max(0.0);
-        let available_ground_force = ground_engine_force.min(contact_limit);
+        let available_ground_force = ground_drive_force.min(contact_limit);
         if thrust_multiplier > 0.0 && reference_mass > 0.0 {
             coupled_drive +=
                 available_ground_force * force_scale / (thrust_multiplier * reference_mass);

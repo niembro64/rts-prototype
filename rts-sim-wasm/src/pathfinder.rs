@@ -720,7 +720,7 @@ pub(crate) fn pathfinder_required_step_normal_z(min_normal_z: f32) -> f32 {
 /// remain canonical here in Rust.
 #[wasm_bindgen]
 pub fn pathfinder_compute_locomotion_climb_profile(
-    ground_force: f64,
+    ground_drive_force: f64,
     ground_traction: f64,
     surface_grip: f64,
     mass: f64,
@@ -774,7 +774,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
     }
 
     let (_, traction_force_magnitude) = unit_force_locomotion_magnitudes(
-        ground_force,
+        ground_drive_force,
         ground_traction,
         reference_mass,
         thrust_multiplier,

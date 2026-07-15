@@ -16,8 +16,8 @@ export type UnitPathfindingConfig = {
 };
 
 export type UnitLocomotionMediumPhysics = {
-  /** Propulsion scalar for this medium, after locomotion-type force scaling. */
-  force: number;
+  /** Absolute propulsion force owned by this locomotion preset and medium. */
+  driveForce: number;
   /** Movement authority coefficient for coupling force into directed thrust
    *  and attitude torque in this medium. */
   traction: number;

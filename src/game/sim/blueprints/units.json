@@ -67,15 +67,12 @@
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
         "ground": {
-          "force": 55,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0,
           "buoyancy": 1.35
         }
@@ -178,15 +175,12 @@
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "ground": {
-          "force": 50,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -295,15 +289,12 @@
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
-          "force": 130,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -426,15 +417,12 @@
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "ground": {
-          "force": 160,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -535,15 +523,12 @@
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
         "ground": {
-          "force": 250,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -643,15 +628,12 @@
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
-          "force": 25,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0,
           "buoyancy": 1.6
         }
@@ -775,15 +757,12 @@
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "ground": {
-          "force": 620,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -902,15 +881,12 @@
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
-          "force": 900,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -1127,15 +1103,12 @@
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
-          "force": 920,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -1248,7 +1221,7 @@
     },
     "locomotion": {
       "type": "treads",
-      "physicsPresetId": "treads",
+      "physicsPresetId": "amphibiousTreads",
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -1257,15 +1230,12 @@
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "ground": {
-          "force": 850,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 600,
           "heightUpwardForce": 12
         }
       },
@@ -1368,7 +1338,7 @@
     },
     "locomotion": {
       "type": "treads",
-      "physicsPresetId": "treads",
+      "physicsPresetId": "amphibiousTreads",
       "survival": {
         "waterFatal": false,
         "fatalSubmergedFraction": 1,
@@ -1377,15 +1347,12 @@
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
         "ground": {
-          "force": 23.3333333333,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 2970,
           "heightUpwardForce": 18
         }
       },
@@ -1497,15 +1464,12 @@
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
-          "force": 140,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -1633,15 +1597,12 @@
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
         "ground": {
-          "force": 220,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -1739,15 +1700,12 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 60,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 70,
           "heightUpwardForce": 160
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0,
           "buoyancy": 1.5
         }
@@ -1874,15 +1832,12 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 80,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 266.666666667,
           "heightUpwardForce": 500
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0,
           "buoyancy": 1.4
         }
@@ -2037,15 +1992,12 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 75,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 250,
           "heightUpwardForce": 230
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0,
           "buoyancy": 1.5
         }
@@ -2153,15 +2105,12 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 1333.33333333,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 45,
           "heightUpwardForce": 300
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -2297,15 +2246,12 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 6000,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 60,
           "heightUpwardForce": 700
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -2460,15 +2406,12 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 20200,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 67333.3333333,
           "heightUpwardForce": 760
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0,
           "buoyancy": 1.3
         }
@@ -2609,15 +2552,12 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 13500,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 13500,
           "heightUpwardForce": 780
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },
@@ -2742,15 +2682,12 @@
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
         "ground": {
-          "force": 110,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 366.666666667,
           "heightUpwardForce": 260
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0,
           "buoyancy": 1.4
         }
@@ -2930,15 +2867,12 @@
       "pathfindingBlueprintId": "legsLand",
       "physics": {
         "ground": {
-          "force": 450,
           "heightUpwardForce": 0
         },
         "air": {
-          "force": 0,
           "heightUpwardForce": 0
         },
         "water": {
-          "force": 0,
           "heightUpwardForce": 0
         }
       },

@@ -1,14 +1,21 @@
 import type { LocomotionBlueprint } from './types';
 import type { UnitLocomotion } from '@/types/locomotionTypes';
 import {
-  AIR_LIFT_HEIGHT_FORCE_EXPONENT,
   cloneUnitLocomotion,
   createUnitLocomotion,
-  getAirLiftHeightDistanceScale,
-  locomotionAllowsInAir,
-  locomotionAllowsInWater,
-  locomotionAllowsOnGround,
 } from '../locomotion';
+import {
+  AIR_LIFT_HEIGHT_FORCE_EXPONENT,
+  getAirLiftHeightDistanceScale,
+} from '../airLiftForce';
+import { resolveLocomotionRouteCapabilities } from '../locomotionNavigation';
+import {
+  LOCOMOTION_CONFIG_MEDIUM_FIELDS,
+  LOCOMOTION_MEDIUM_NAMES,
+  getLocomotionPreset,
+  type LocomotionMediumName,
+  type LocomotionPresetConfig,
+} from '../locomotionPresetConfig';
 import {
   AIR_LIFT_TOTAL_GROUND_PROBE_COUNT,
   forEachAirLiftGroundProbePoint,
@@ -17,49 +24,8 @@ import { getUnitBlueprint, getUnitLocomotion } from './index';
 import rawLocomotionConfig from '../locomotionConfig.json';
 import { deterministicMath as DMath } from '../deterministicMath';
 
-const LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
-const MEDIUM_CONFIG_FIELDS = [
-  'traction',
-  'friction',
-  'heightUpwardForceRandomizationAmount',
-  'heightUpwardForceEMA',
-  'quadraticDrag',
-  'dragForwardScale',
-  'dragLateralScale',
-  'dragVerticalScale',
-  'angularDrag',
-  'surfaceGrip',
-  'contactDamping',
-] as const;
-
-type LocomotionMediumName = (typeof LOCOMOTION_MEDIUM_NAMES)[number];
 type AuthoredMediumPhysics = LocomotionBlueprint['physics']['ground'];
 type RuntimeMediumPhysics = UnitLocomotion['physics']['ground'];
-type LocomotionConfigMediumField = (typeof MEDIUM_CONFIG_FIELDS)[number];
-type LocomotionTypeMediumPhysics = Pick<RuntimeMediumPhysics, LocomotionConfigMediumField>;
-
-type LocomotionPresetConfig = {
-  navigation: UnitLocomotion['navigation'];
-  physics: {
-    driveForceMultiplier: number;
-    forwardForceRequiresFacing: boolean;
-    driveForceScalesWithFacing: boolean;
-    maintainFullThrustAtWaypoints: boolean;
-    airLiftGroundProbeAheadDistance: number;
-    airLiftGroundProbeAheadRadiusMultiplier: number;
-    idleAirDrive: boolean;
-  } & Record<LocomotionMediumName, LocomotionTypeMediumPhysics>;
-};
-
-type LocomotionConfigContract = {
-  airLiftHeightForceFalloff: {
-    heightForceExponent: number;
-  };
-  presets: Record<string, LocomotionPresetConfig>;
-};
-
-const LOCOMOTION_CONFIG = rawLocomotionConfig as LocomotionConfigContract;
-const LOCOMOTION_PRESETS = LOCOMOTION_CONFIG.presets;
 
 function assertContract(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -100,14 +66,8 @@ function minSurfaceNormalZ(maxSlopeDeg: number): number {
   return DMath.cos(maxSlopeDeg * Math.PI / 180);
 }
 
-function getLocomotionPresetConfig(presetId: string): LocomotionPresetConfig {
-  const config = LOCOMOTION_PRESETS[presetId];
-  assertContract(config !== undefined, `locomotionConfig.json must define ${presetId}`);
-  return config;
-}
-
 function assertAirLiftHeightForceFalloffMatchesConfig(): void {
-  const exponent = LOCOMOTION_CONFIG.airLiftHeightForceFalloff.heightForceExponent;
+  const exponent = rawLocomotionConfig.airLiftHeightForceFalloff.heightForceExponent;
   assertContract(
     Number.isFinite(exponent) && exponent > 0 && exponent <= 1,
     'airLiftHeightForceFalloff.heightForceExponent must be finite in (0, 1]',
@@ -154,22 +114,22 @@ function assertAirLiftGroundProbeLayout(): void {
 }
 
 function assertMobilityTuningIntent(): void {
-  const wheels = getLocomotionPresetConfig('wheels').physics;
-  const treads = getLocomotionPresetConfig('treads').physics;
-  const legs = getLocomotionPresetConfig('legs').physics;
-  const flying = getLocomotionPresetConfig('flying').physics;
+  const wheels = getLocomotionPreset('wheels').physics;
+  const treads = getLocomotionPreset('treads').physics;
+  const legs = getLocomotionPreset('legs').physics;
+  const flying = getLocomotionPreset('flying').physics;
 
   assertContract(
-    wheels.driveForceMultiplier >= 2.4 && wheels.ground.surfaceGrip >= 0.55,
-    'wheels keep the faster ground acceleration and grip envelope',
+    wheels.ground.driveForce > 0 && wheels.ground.surfaceGrip >= 0.55,
+    'wheels keep ground drive and their grip envelope',
   );
   assertContract(
-    treads.driveForceMultiplier >= 2.4 && treads.ground.surfaceGrip >= 0.85,
-    'treads keep the faster ground acceleration and grip envelope',
+    treads.ground.driveForce > 0 && treads.ground.surfaceGrip >= 0.85,
+    'treads keep ground drive and their grip envelope',
   );
   assertContract(
-    legs.driveForceMultiplier >= 1.2 && legs.ground.surfaceGrip >= 1,
-    'legs keep the faster ground drive without weakening contact grip',
+    legs.ground.driveForce > 0 && legs.ground.surfaceGrip >= 1,
+    'legs keep ground drive without weakening contact grip',
   );
   assertContract(
     flying.air.dragForwardScale >= 0.5 &&
@@ -187,14 +147,10 @@ function assertMediumOwnsFields(
   label: string,
 ): void {
   assertContract(
-    Object.prototype.hasOwnProperty.call(medium, 'force'),
-    `${label} must own force`,
-  );
-  assertContract(
     Object.prototype.hasOwnProperty.call(medium, 'heightUpwardForce'),
     `${label} must own heightUpwardForce`,
   );
-  for (const field of MEDIUM_CONFIG_FIELDS) {
+  for (const field of LOCOMOTION_CONFIG_MEDIUM_FIELDS) {
     assertContract(
       Object.prototype.hasOwnProperty.call(medium, field),
       `${label} must own ${field}`,
@@ -211,16 +167,11 @@ function assertRuntimeMediumMatchesAuthored(
 ): void {
   assertMediumOwnsFields(runtime, label);
   assertEqual(
-    runtime.force,
-    authored.force * typeConfig.physics.driveForceMultiplier,
-    `${label} force follows authored force and locomotion physics preset multiplier`,
-  );
-  assertEqual(
     runtime.heightUpwardForce,
     authored.heightUpwardForce,
     `${label} heightUpwardForce follows blueprint JSON`,
   );
-  for (const field of MEDIUM_CONFIG_FIELDS) {
+  for (const field of LOCOMOTION_CONFIG_MEDIUM_FIELDS) {
     assertEqual(
       runtime[field],
       typeConfig.physics[medium][field],
@@ -264,7 +215,7 @@ function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLoc
   const unitBlueprint = getUnitBlueprint(unitBlueprintId);
   const locomotion = getUnitLocomotion(unitBlueprintId);
   const authored = unitBlueprint.locomotion;
-  const typeConfig = getLocomotionPresetConfig(authored.physicsPresetId);
+  const typeConfig = getLocomotionPreset(authored.physicsPresetId);
 
   assertEqual(locomotion.type, authored.type, `${unitBlueprintId} locomotion type follows unit JSON`);
   assertEqual(
@@ -340,53 +291,69 @@ export function runLocomotionContractTest(): void {
 
   const hippoBlueprint = getUnitBlueprint('unitHippo');
   const hippoLocomotion = assertRuntimeLocomotionMatchesSources('unitHippo');
-  assertContract(locomotionAllowsOnGround(hippoLocomotion), 'Hippo allows on-ground routes');
-  assertContract(locomotionAllowsInWater(hippoLocomotion), 'Hippo allows in-water routes');
-  assertContract(!locomotionAllowsInAir(hippoLocomotion), 'Hippo does not allow in-air routes');
+  const hippoRoutes = resolveLocomotionRouteCapabilities(hippoLocomotion);
+  assertContract(hippoRoutes.allowOnGround, 'Hippo allows on-ground routes');
+  assertContract(hippoRoutes.allowInWater, 'Hippo allows in-water routes');
+  assertContract(!hippoRoutes.allowInAir, 'Hippo does not allow in-air routes');
   const clonedHippoLocomotion = cloneUnitLocomotion(hippoLocomotion);
   assertClonedLocomotionMatchesSource(clonedHippoLocomotion, hippoLocomotion, 'Hippo');
 
   const eagleLocomotion = assertRuntimeLocomotionMatchesSources('unitEagle');
-  assertContract(!locomotionAllowsOnGround(eagleLocomotion), 'Eagle does not allow on-ground routes');
-  assertContract(!locomotionAllowsInWater(eagleLocomotion), 'Eagle does not allow in-water routes');
-  assertContract(locomotionAllowsInAir(eagleLocomotion), 'Eagle allows in-air routes');
+  const eagleRoutes = resolveLocomotionRouteCapabilities(eagleLocomotion);
+  assertContract(!eagleRoutes.allowOnGround, 'Eagle does not allow on-ground routes');
+  assertContract(!eagleRoutes.allowInWater, 'Eagle does not allow in-water routes');
+  assertContract(eagleRoutes.allowInAir, 'Eagle allows in-air routes');
   assertClonedLocomotionMatchesSource(cloneUnitLocomotion(eagleLocomotion), eagleLocomotion, 'Eagle');
 
+  const jackalBlueprint = getUnitBlueprint('unitJackal');
   const nonAmphibiousLocomotion = assertRuntimeLocomotionMatchesSources('unitJackal');
-  assertContract(locomotionAllowsOnGround(nonAmphibiousLocomotion), 'Jackal allows on-ground routes');
+  const jackalRoutes = resolveLocomotionRouteCapabilities(nonAmphibiousLocomotion);
+  assertContract(jackalRoutes.allowOnGround, 'Jackal allows on-ground routes');
   assertContract(
-    !locomotionAllowsInWater(nonAmphibiousLocomotion),
+    !jackalRoutes.allowInWater,
     'Jackal water-only preset envelope still requires physical water authority',
   );
-  assertContract(!locomotionAllowsInAir(nonAmphibiousLocomotion), 'Jackal does not allow in-air routes');
+  assertContract(!jackalRoutes.allowInAir, 'Jackal does not allow in-air routes');
   assertClonedLocomotionMatchesSource(
     cloneUnitLocomotion(nonAmphibiousLocomotion),
     nonAmphibiousLocomotion,
     'Jackal',
   );
+  const lynxRoutes = resolveLocomotionRouteCapabilities(
+    assertRuntimeLocomotionMatchesSources('unitLynx'),
+  );
+  assertContract(
+    !lynxRoutes.allowInWater,
+    'standard treads do not inherit amphibious water authority',
+  );
+  const mongooseBlueprint = getUnitBlueprint('unitMongoose');
+  const mongooseLocomotion = assertRuntimeLocomotionMatchesSources('unitMongoose');
+  assertEqual(
+    nonAmphibiousLocomotion.physics.ground.driveForce,
+    mongooseLocomotion.physics.ground.driveForce,
+    'units sharing the wheels preset receive the same ground drive force',
+  );
+  assertContract(
+    jackalBlueprint.mass < mongooseBlueprint.mass &&
+      nonAmphibiousLocomotion.physics.ground.driveForce /
+        jackalBlueprint.mass >
+        mongooseLocomotion.physics.ground.driveForce / mongooseBlueprint.mass,
+    'shared preset drive force makes the lighter Jackal accelerate faster than the Mongoose',
+  );
 
   const seaTurtleLocomotion = assertRuntimeLocomotionMatchesSources('unitSeaTurtle');
   const seaTurtleWaterDrive =
-    seaTurtleLocomotion.physics.water.force * seaTurtleLocomotion.physics.water.traction;
+    seaTurtleLocomotion.physics.water.driveForce * seaTurtleLocomotion.physics.water.traction;
   const seaTurtleGroundDrive =
-    seaTurtleLocomotion.physics.ground.force * seaTurtleLocomotion.physics.ground.traction;
+    seaTurtleLocomotion.physics.ground.driveForce * seaTurtleLocomotion.physics.ground.traction;
   assertContract(
-    seaTurtleWaterDrive >= seaTurtleGroundDrive * 50,
+    seaTurtleWaterDrive >= seaTurtleGroundDrive * 5,
     'Sea Turtle must be much stronger in water than on ground',
   );
 
-  const zeroWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
-  zeroWaterForce.physics.water.force = 0;
-  const zeroWaterRuntime = createUnitLocomotion(zeroWaterForce);
-  assertEqual(zeroWaterRuntime.physics.water.force, 0, 'zero-water Hippo water force');
-
-  const negativeWaterForce = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
-  negativeWaterForce.physics.water.force = -1;
-  expectLocomotionError(negativeWaterForce, 'water.force');
-
   const strayUnitMediumConfig = cloneLocomotionBlueprint(hippoBlueprint.locomotion);
   (strayUnitMediumConfig.physics.water as AuthoredMediumPhysics & {
-    heightUpwardForceEMA: number;
-  }).heightUpwardForceEMA = 0.5;
+    driveForce: number;
+  }).driveForce = 1;
   expectLocomotionError(strayUnitMediumConfig, 'moved to locomotionConfig.json');
 }

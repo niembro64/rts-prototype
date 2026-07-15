@@ -31,11 +31,13 @@ import {
   expandPathPlan,
   isPathPlanTraversable,
   isPathSegmentTraversable,
+  type ExpandedPathPlan,
+} from './Pathfinder';
+import {
   pathTerrainFilterCacheKey,
   pathTerrainFilterForLocomotion,
-  type ExpandedPathPlan,
   type PathTerrainFilter,
-} from './Pathfinder';
+} from './pathfindingTraversal';
 import { getTerrainVersion } from './Terrain';
 import { updateBuildingActiveStates } from './buildingActiveState';
 import { getEntityTargetPoint } from './buildingAnchors';

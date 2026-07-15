@@ -879,16 +879,18 @@
         A unit&rsquo;s locomotion is not a closed set of discriminated chassis types
         (&ldquo;this is a wheeled unit,&rdquo; &ldquo;this is a flyer&rdquo;) that each
         carry their own private physics. It is one <em>fully-abstracted force profile</em>
-        that every unit owns in full: the same field set is present on every unit, and a
-        unit specializes only by which terms it sets to non-zero. The chassis archetypes
+        that every runtime unit receives in full from its locomotion preset: the same field
+        set is present on every unit, while the authored unit contributes mass and any
+        body-specific lift/buoyancy terms. The chassis archetypes
         &mdash; wheels, treads, legs, hover, flying &mdash; survive as <strong>visual rig
         choices and authored default presets</strong> (see <strong>Locomotion Visuals Are
         Frontend</strong>), not as separate physics code paths. Two units with the same
         force-profile numbers move identically regardless of which rig draws them, exactly
         as two shapes with the same material look identically (<strong>Materials Are
-        Independent Of Shape</strong>). A zero is a real, meaningful authored value: it is
-        how a pure ground tank declares it cannot push on air or water, and how an aircraft
-        declares it cannot push on the ground.
+        Independent Of Shape</strong>). A zero is a real, meaningful preset value: it is how
+        a pure ground locomotion declares it cannot push on air or water, and how an aircraft
+        locomotion declares it cannot push on the ground. Units sharing a preset receive the
+        same absolute drive force; their different masses create different accelerations.
       </p>
       <p>
         The world has three propulsion <em>media</em>: <strong>ground</strong> (a terrain
@@ -907,16 +909,17 @@
         ground + water.
       </p>
       <p>
-        Each medium contributes three authored scalars, present on every unit:
+        Each medium contributes three preset-authored scalars, expanded onto every runtime unit:
       </p>
       <ul class="rule-list">
         <li>
-          <strong>Drive force</strong> (<code>locomotionGroundForce</code>,
-          <code>locomotionAirForce</code>, <code>locomotionWaterForce</code>) &mdash; the
+          <strong>Drive force</strong> (<code>ground.driveForce</code>,
+          <code>air.driveForce</code>, <code>water.driveForce</code>) &mdash; the
           magnitude of thrust the unit can produce <em>while in that medium</em>, applied
-          through the arrival controller toward the desired motion state. A unit that can
-          walk but not swim sets ground force &gt; 0 and water force = 0; an amphibious unit
-          sets both; a gunship sets air force &gt; 0 and ground force = 0. The forces are
+          through the arrival controller toward the desired motion state. A locomotion preset
+          that can walk but not swim sets ground drive force &gt; 0 and water drive force = 0;
+          an amphibious preset sets both; a gunship preset sets air drive force &gt; 0 and ground
+          drive force = 0. There is no per-unit drive-force multiplier or override. The forces are
           additive when a unit is in more than one medium at once (a tracked amphibian on the
           lake bed drives on ground force, then loses it and falls back to water force as it
           drives off into the deep).
@@ -990,23 +993,23 @@
         smoothing knobs that steady hover lift apply to swim lift.
       </p>
       <p>
-        Because every term lives on every unit, strange-but-legal combinations fall out for
-        free: a unit with non-zero ground, air, and water force that walks to the shore, lifts
+        Because every expanded preset carries every term, strange-but-legal combinations fall out
+        for free: a preset with non-zero ground, air, and water drive force walks to the shore, lifts
         off on air force and lift, flies across the lake, then settles and swims under water
         force &mdash; all without a single new code path, just three media sampled per tick and
-        a force profile with all terms authored. The arrival controller, gravity, terrain
+        one force profile with all terms authored once. The arrival controller, gravity, terrain
         contact, and collision are unchanged; they simply read whichever medium&rsquo;s
         traction, friction, and force are active this tick. This is the locomotion reading of
         <strong>Mass must matter</strong> and <strong>Config Is Data, Not Code</strong>: one
         physical model, all tuning in JSON, no chassis-type conditionals in the hot path.
       </p>
       <ul class="rule-list">
-        <li>Every unit carries the full force profile: ground/air/water &times; {force, traction, friction}, plus the lift family (<code>gravityCounterUpwardForceRatio</code>, <code>hoverHeightUpwardForce</code>, <code>swimHeightUpwardForce</code> and their randomisation/EMA siblings). A term left at zero is the explicit declaration that the unit cannot act in that way &mdash; it is authored absence, not a missing capability.</li>
+        <li>Every locomotion preset owns ground/air/water &times; {<code>driveForce</code>, traction, friction}; every runtime unit receives that complete profile, while mass remains unit-authored. A zero preset term is the explicit declaration that the locomotion cannot act in that way.</li>
         <li>Medium is sampled, never typed: ground whenever a contact patch rests on a surface (lake bed included), plus complementary displaced-volume fractions for air and water. The same sampling runs for every unit; chassis archetypes only choose the default preset and the visual rig.</li>
         <li>Forces and frictions from co-active media add after air/water terms are weighted by occupied volume; ground contact remains an independent additive contribution.</li>
         <li>Navigation policy lives once on the locomotion preset as <code>allowOnGround</code> plus <code>allowInMedium</code>; effective route capability is that policy intersected with the unit&rsquo;s physical force, traction, and lift authority, never inferred from momentary contact or presentation state.</li>
         <li>Vertical buoyancy/lift is thrust answering gravity, identical in shape across hover (ground-referenced), flying (ground-referenced), and swim (water-line-referenced). <code>swimHeightUpwardForce</code> = 0 sinks, balanced = neutral, high = floats.</li>
-        <li>The migration preserves authored dry-ground behavior: a ground unit&rsquo;s former traction/drive force become its ground terms. Its accidental-water behavior is then authored explicitly through water drag, buoyancy, navigation permission, and survival policy instead of inheriting an undefined exception.</li>
+        <li>Drive force is authored once per locomotion preset medium. Units never carry a drive-force value or multiplier, so lighter bodies accelerate faster under the same preset force and heavier bodies resist it according to mass.</li>
       </ul>
 
       <h3>Discrete gameplay still enters through physical effects</h3>
@@ -3174,7 +3177,7 @@
         <li>Make mass and force first-class fields in gameplay designs, not decorative metadata.</li>
         <li>Keep entity blueprint JSON files as the single source of truth for authored gameplay facts. Runtime loaders may derive validated forms from those files, and tests may verify those derivations, but no test, TypeScript helper, Rust table, or renderer path should restate the same entity numbers as independent expected values.</li>
         <li>Drive locomotion with velocity-aware arrival control, not position-only waypoint seeking. Units should brake against their current velocity when stopping distance runs out, and ground, hovercraft, and air profiles should share this controller while differing through physical limits.</li>
-        <li>Make locomotion one fully-abstracted force profile present on every unit &mdash; ground/air/water &times; {force, traction, friction} plus the lift family (gravity-counter ratio, hover-height force, swim-height force) &mdash; not a closed set of chassis types with private physics. The medium is sampled per tick (ground on any contact patch including the lake bed, then air or water by the water line), only active media contribute, and a zero term is the authored declaration that a unit cannot push on that medium. Chassis archetypes survive only as visual rigs and default presets; the same sampling and force code runs for every unit, so walk/fly/swim combinations fall out for free. See <strong>Locomotion is one fully-abstracted force profile across ground, air, and water</strong>.</li>
+        <li>Make locomotion one fully-abstracted preset profile expanded onto every runtime unit &mdash; ground/air/water &times; {drive force, traction, friction} plus the lift family (gravity-counter ratio, hover-height force, swim-height force) &mdash; not a closed set of chassis code paths or per-unit drive tuning. The medium is sampled per tick (ground on any contact patch including the lake bed, then air or water by the water line), only active media contribute, and a zero preset term declares that locomotion cannot push on that medium. Units author mass, so bodies sharing one preset accelerate differently through force divided by mass. See <strong>Locomotion is one fully-abstracted force profile across ground, air, and water</strong>.</li>
         <li>Apply gravity to every mass body every tick; guided projectiles cancel it inside their homing equation by adding a counter-gravity thrust term, not by setting an <code>ignoresGravity</code> flag that skips integration.</li>
         <li>Keep locomotion visuals entirely client-side: the sim publishes one chassis point, the rig places every wheel, cleat, foot, or fan in the world. Each rig clamps every part it owns to <code>max(naturalY, terrainY + clearance)</code> as a hard invariant &mdash; tunneling is never allowed, floating over dips is.</li>
         <li>Derive per-part visual state from the interpolated root pose and interpolated velocities. Animation always plays off body motion; the rig never branches on whether a part is touching ground. Floor clamping and decorative spring controllers remain frontend-only and never alter the authoritative or interpolated root.</li>

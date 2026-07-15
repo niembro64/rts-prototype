@@ -97,7 +97,7 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 52;
 // ─────────────────────────────────────────────────────────────────
 
 pub const UF_PROFILE_STRIDE: usize = 31;
-pub(crate) const UF_PROFILE_GROUND_FORCE: usize = 0;
+pub(crate) const UF_PROFILE_GROUND_DRIVE_FORCE: usize = 0;
 pub(crate) const UF_PROFILE_GROUND_TRACTION: usize = 1;
 pub(crate) const UF_PROFILE_AIR_BUOYANCY: usize = 2;
 pub(crate) const UF_PROFILE_HOVER_HEIGHT_FORCE: usize = 3;
@@ -105,14 +105,14 @@ pub(crate) const UF_PROFILE_HOVER_RANDOM_AMOUNT: usize = 4;
 pub(crate) const UF_PROFILE_HOVER_EMA_WEIGHT: usize = 5;
 pub(crate) const UF_PROFILE_GROUND_FRICTION: usize = 6;
 pub(crate) const UF_PROFILE_AIR_FRICTION: usize = 7;
-pub(crate) const UF_PROFILE_WATER_FORCE: usize = 8;
+pub(crate) const UF_PROFILE_WATER_DRIVE_FORCE: usize = 8;
 pub(crate) const UF_PROFILE_WATER_TRACTION: usize = 9;
 pub(crate) const UF_PROFILE_WATER_FRICTION: usize = 10;
 pub(crate) const UF_PROFILE_WATER_BUOYANCY: usize = 11;
 pub(crate) const UF_PROFILE_SWIM_HEIGHT_FORCE: usize = 12;
 pub(crate) const UF_PROFILE_SWIM_RANDOM_AMOUNT: usize = 13;
 pub(crate) const UF_PROFILE_SWIM_EMA_WEIGHT: usize = 14;
-pub(crate) const UF_PROFILE_AIR_FORCE: usize = 15;
+pub(crate) const UF_PROFILE_AIR_DRIVE_FORCE: usize = 15;
 pub(crate) const UF_PROFILE_AIR_TRACTION: usize = 16;
 pub(crate) const UF_PROFILE_GROUND_SURFACE_GRIP: usize = 17;
 pub(crate) const UF_PROFILE_AIR_QUADRATIC_DRAG: usize = 18;
@@ -332,7 +332,7 @@ pub(crate) const UF_ROW_DIR_Y: usize = 1;
 pub(crate) const UF_ROW_ROTATION: usize = 2;
 // Row 3 reserved: unit mass now comes from BodyPool inv_mass so drive force
 // cannot accidentally cancel the unit's actual physics mass.
-pub(crate) const UF_ROW_GROUND_FORCE: usize = 4;
+pub(crate) const UF_ROW_GROUND_DRIVE_FORCE: usize = 4;
 pub(crate) const UF_ROW_GROUND_TRACTION: usize = 5;
 // Archimedes-style buoyancy coefficients: upward force = mass * G *
 // buoyancy * fraction-of-body-in-medium. A water buoyancy above 1
@@ -370,7 +370,7 @@ pub(crate) const UF_ROW_ANGULAR_ACCEL_Z: usize = 35;
 // ground contact, plus air/water fractions sampled from the water line.
 pub(crate) const UF_ROW_GROUND_FRICTION: usize = 36;
 pub(crate) const UF_ROW_AIR_FRICTION: usize = 37;
-pub(crate) const UF_ROW_WATER_FORCE: usize = 38;
+pub(crate) const UF_ROW_WATER_DRIVE_FORCE: usize = 38;
 pub(crate) const UF_ROW_WATER_TRACTION: usize = 39;
 pub(crate) const UF_ROW_WATER_FRICTION: usize = 40;
 pub(crate) const UF_ROW_WATER_BUOYANCY: usize = 41;
@@ -381,7 +381,7 @@ pub(crate) const UF_ROW_SWIM_SMOOTHED_FORCE: usize = 45;
 pub(crate) const UF_ROW_SWIM_RANDOM_SAMPLE: usize = 46;
 pub(crate) const UF_ROW_HEADING_X: usize = 47;
 pub(crate) const UF_ROW_HEADING_Y: usize = 48;
-pub(crate) const UF_ROW_AIR_FORCE: usize = 49;
+pub(crate) const UF_ROW_AIR_DRIVE_FORCE: usize = 49;
 pub(crate) const UF_ROW_AIR_TRACTION: usize = 50;
 pub(crate) const UF_ROW_AIR_LIFT_DISTANCE_SCALE: usize = 51;
 
@@ -975,8 +975,8 @@ pub fn unit_force_step_batch(
                 if code < profile.count {
                     let pbase = code * UF_PROFILE_STRIDE;
                     profile_flags = profile.flags[code];
-                    rows[base + UF_ROW_GROUND_FORCE] =
-                        profile.values[pbase + UF_PROFILE_GROUND_FORCE];
+                    rows[base + UF_ROW_GROUND_DRIVE_FORCE] =
+                        profile.values[pbase + UF_PROFILE_GROUND_DRIVE_FORCE];
                     rows[base + UF_ROW_GROUND_TRACTION] =
                         profile.values[pbase + UF_PROFILE_GROUND_TRACTION];
                     rows[base + UF_ROW_AIR_BUOYANCY] =
@@ -991,8 +991,8 @@ pub fn unit_force_step_batch(
                         profile.values[pbase + UF_PROFILE_GROUND_FRICTION];
                     rows[base + UF_ROW_AIR_FRICTION] =
                         profile.values[pbase + UF_PROFILE_AIR_FRICTION];
-                    rows[base + UF_ROW_WATER_FORCE] =
-                        profile.values[pbase + UF_PROFILE_WATER_FORCE];
+                    rows[base + UF_ROW_WATER_DRIVE_FORCE] =
+                        profile.values[pbase + UF_PROFILE_WATER_DRIVE_FORCE];
                     rows[base + UF_ROW_WATER_TRACTION] =
                         profile.values[pbase + UF_PROFILE_WATER_TRACTION];
                     rows[base + UF_ROW_WATER_FRICTION] =
@@ -1005,7 +1005,8 @@ pub fn unit_force_step_batch(
                         profile.values[pbase + UF_PROFILE_SWIM_RANDOM_AMOUNT];
                     rows[base + UF_ROW_SWIM_EMA_WEIGHT] =
                         profile.values[pbase + UF_PROFILE_SWIM_EMA_WEIGHT];
-                    rows[base + UF_ROW_AIR_FORCE] = profile.values[pbase + UF_PROFILE_AIR_FORCE];
+                    rows[base + UF_ROW_AIR_DRIVE_FORCE] =
+                        profile.values[pbase + UF_PROFILE_AIR_DRIVE_FORCE];
                     rows[base + UF_ROW_AIR_TRACTION] =
                         profile.values[pbase + UF_PROFILE_AIR_TRACTION];
                     ground_surface_grip = profile.values[pbase + UF_PROFILE_GROUND_SURFACE_GRIP];
@@ -1102,21 +1103,21 @@ pub fn unit_force_step_batch(
             0.0
         };
         let (_ground_raw_force_mag, ground_traction_force_mag) = unit_force_locomotion_magnitudes(
-            rows[base + UF_ROW_GROUND_FORCE],
+            rows[base + UF_ROW_GROUND_DRIVE_FORCE],
             rows[base + UF_ROW_GROUND_TRACTION],
             reference_mass,
             thrust_multiplier,
             force_scale,
         );
         let (_air_raw_force_mag, air_traction_force_mag) = unit_force_locomotion_magnitudes(
-            rows[base + UF_ROW_AIR_FORCE],
+            rows[base + UF_ROW_AIR_DRIVE_FORCE],
             rows[base + UF_ROW_AIR_TRACTION],
             reference_mass,
             thrust_multiplier,
             force_scale,
         );
         let (_water_raw_force_mag, water_traction_force_mag) = unit_force_locomotion_magnitudes(
-            rows[base + UF_ROW_WATER_FORCE],
+            rows[base + UF_ROW_WATER_DRIVE_FORCE],
             rows[base + UF_ROW_WATER_TRACTION],
             reference_mass,
             thrust_multiplier,
@@ -1180,12 +1181,12 @@ pub fn unit_force_step_batch(
             runtime.ground_contact[runtime_slot] = if ground_contact { 1 } else { 0 };
         }
         let air_medium_active = air_fraction > 0.0
-            && (rows[base + UF_ROW_AIR_FORCE] > 0.0
+            && (rows[base + UF_ROW_AIR_DRIVE_FORCE] > 0.0
                 || rows[base + UF_ROW_HOVER_HEIGHT_FORCE] > 0.0
                 || rows[base + UF_ROW_AIR_BUOYANCY] > 0.0
                 || rows[base + UF_ROW_AIR_FRICTION] > 0.0);
         let water_medium_active = water_fraction > 0.0
-            && (rows[base + UF_ROW_WATER_FORCE] > 0.0
+            && (rows[base + UF_ROW_WATER_DRIVE_FORCE] > 0.0
                 || rows[base + UF_ROW_SWIM_HEIGHT_FORCE] > 0.0
                 || rows[base + UF_ROW_WATER_BUOYANCY] > 0.0
                 || rows[base + UF_ROW_WATER_FRICTION] > 0.0);
@@ -1310,7 +1311,7 @@ pub fn unit_force_step_batch(
         }
 
         if water_medium_active {
-            let water_force = rows[base + UF_ROW_WATER_FORCE];
+            let water_force = rows[base + UF_ROW_WATER_DRIVE_FORCE];
             if has_drive_dir && water_force > 0.0 {
                 let mag = water_traction_force_mag
                     * water_fraction
