@@ -715,13 +715,13 @@ pub(crate) fn pathfinder_required_step_normal_z(min_normal_z: f32) -> f32 {
 }
 
 /// Derive the terrain-bound climb envelope from the same authored drive force,
-/// traction and contact grip consumed by the force kernel. TypeScript supplies
+/// force_coupling and contact grip consumed by the force kernel. TypeScript supplies
 /// immutable configuration values; all force-to-acceleration and slope physics
 /// remain canonical here in Rust.
 #[wasm_bindgen]
 pub fn pathfinder_compute_locomotion_climb_profile(
     ground_drive_force: f64,
-    ground_traction: f64,
+    ground_force_coupling: f64,
     surface_grip: f64,
     mass: f64,
     thrust_multiplier: f64,
@@ -773,26 +773,26 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         return 0;
     }
 
-    let (_, traction_force_magnitude) = unit_force_locomotion_magnitudes(
+    let (_, coupled_force_magnitude) = unit_force_locomotion_magnitudes(
         ground_drive_force,
-        ground_traction,
+        ground_force_coupling,
         reference_mass,
         thrust_multiplier,
         force_scale,
     );
     let effective_mass = mass * unit_mass_multiplier;
-    let drive_accel = traction_force_magnitude * 1_000_000.0 / effective_mass;
+    let drive_accel = coupled_force_magnitude * 1_000_000.0 / effective_mass;
     let grip_accel = gravity * surface_grip.max(0.0);
     let flat_drive_accel = drive_accel.min(grip_accel).max(0.0);
-    let safe_drive_force = traction_force_magnitude * force_safety_ratio.clamp(0.0, 1.0);
+    let safe_drive_force = coupled_force_magnitude * force_safety_ratio.clamp(0.0, 1.0);
     let safe_drive_accel = safe_drive_force * 1_000_000.0 / effective_mass;
     let radians_to_degrees = 180.0 / core::f64::consts::PI;
     let drive_limited_slope_deg =
         (safe_drive_accel / gravity).clamp(0.0, 1.0).asin() * radians_to_degrees;
-    let traction_limited_slope_deg = surface_grip.max(0.0).atan() * radians_to_degrees;
+    let grip_limited_slope_deg = surface_grip.max(0.0).atan() * radians_to_degrees;
     let stability_limited_slope_deg = stability_max_slope_deg.clamp(0.0, 90.0);
     let max_slope_deg = drive_limited_slope_deg
-        .min(traction_limited_slope_deg)
+        .min(grip_limited_slope_deg)
         .min(stability_limited_slope_deg)
         .max(0.0);
     let min_surface_normal_z = (max_slope_deg / radians_to_degrees).cos();
@@ -801,7 +801,7 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         min_surface_normal_z,
         safe_drive_accel,
         drive_limited_slope_deg,
-        traction_limited_slope_deg,
+        grip_limited_slope_deg,
         stability_limited_slope_deg,
         flat_drive_accel,
     ]);

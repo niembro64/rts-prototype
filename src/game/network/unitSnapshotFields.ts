@@ -1,4 +1,5 @@
 import type { BuildingBlueprintId, CombatFireState, Entity, Unit, UnitAction, UnitMoveState, UnitPathPoint } from '../sim/types';
+import type { EntityRadii } from '@/types/sim';
 import type {
   NetworkServerSnapshotAction,
   NetworkServerSnapshotEntity,
@@ -35,7 +36,10 @@ import {
 } from './snapshotDtoCopy';
 
 type NetworkUnitSnapshot = NonNullable<NetworkServerSnapshotEntity['unit']>;
-type NetworkUnitRadius = NonNullable<NetworkUnitSnapshot['radius']>;
+type UnitRadiusFallback = number | Pick<
+  EntityRadii,
+  'other' | 'hitbox' | 'collision' | 'shotArmingRadius'
+>;
 
 type Vec3 = { x: number; y: number; z: number };
 type Quantize = (n: number) => number;
@@ -320,8 +324,8 @@ function finiteOr(value: unknown, fallback: number): number {
 
 export function readNetworkUnitRadius(
   src: NetworkUnitSnapshot | undefined | null,
-  fallback: number | NetworkUnitRadius,
-): { other: number; hitbox: number; collision: number } {
+  fallback: UnitRadiusFallback,
+): EntityRadii {
   const radius = src !== null && src !== undefined ? src.radius : null;
   return {
     other: finiteOr(
@@ -336,10 +340,18 @@ export function readNetworkUnitRadius(
       radius !== null && radius !== undefined ? radius.collision : undefined,
       radiusFallback(fallback, 'collision'),
     ),
+    // ARM is immutable blueprint geometry, so it does not consume another
+    // per-unit wire scalar. Hydrate it from the local blueprint fallback.
+    shotArmingRadius: typeof fallback !== 'number' && isFiniteNumber(fallback.shotArmingRadius)
+      ? fallback.shotArmingRadius
+      : undefined,
   };
 }
 
-function radiusFallback(fallback: number | NetworkUnitRadius, key: keyof NetworkUnitRadius): number {
+function radiusFallback(
+  fallback: UnitRadiusFallback,
+  key: 'other' | 'hitbox' | 'collision',
+): number {
   return typeof fallback === 'number' ? fallback : finiteOr(fallback[key], 15);
 }
 

@@ -77,6 +77,7 @@ import __wbg_init, {
   engine_statics_remove,
   pool_resolve_sphere_cuboid_full,
   quat_hover_orientation_step_batch,
+  unit_force_surface_lift_distance_response,
   unit_force_runtime_clear,
   unit_fatal_water_step_pool,
   unit_fatal_water_entity_slots_ptr,
@@ -1046,6 +1047,15 @@ export interface SimWasm {
     driveAlignmentZeroForceDot: number,
     driveAlignmentFullForceDot: number,
     driveAlignmentResponseExponent: number,
+    surfaceLiftReferenceDistanceWorld: number,
+    surfaceLiftMinimumDistanceWorld: number,
+    surfaceLiftDistanceExponent: number,
+  ) => number;
+  readonly unitForceSurfaceLiftDistanceResponse: (
+    distanceToSurfaceWorld: number,
+    referenceDistanceWorld: number,
+    minimumDistanceWorld: number,
+    distanceExponent: number,
   ) => number;
   /** Blueprint locomotion constants table for unitForceStepBatch,
    *  code-indexed. Ensure BEFORE taking the pointers (resize moves
@@ -3627,7 +3637,7 @@ export interface PathfinderApi {
    *  slope limits, then flat-ground drive acceleration into `out`. */
   computeLocomotionClimbProfile: (
     groundDriveForce: number,
-    groundTraction: number,
+    groundForceCoupling: number,
     surfaceGrip: number,
     mass: number,
     thrustMultiplier: number,
@@ -3733,7 +3743,7 @@ export const QUAT_HOVER_BATCH_STRIDE = 14;
 
 /** Layout stride for `unitForceStepBatch`. Mirrors
  *  UNIT_FORCE_BATCH_STRIDE in rts-sim-wasm/src/unit_kinetics.rs. */
-export const UNIT_FORCE_BATCH_STRIDE = 52;
+export const UNIT_FORCE_BATCH_STRIDE = 54;
 
 /** Bit flags packed into BodyPoolViews.flags[slot]. Mirrors the
  *  BODY_FLAG_* constants in rts-sim-wasm/src/lib.rs. */
@@ -4130,6 +4140,7 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         unitGroundNormalStepPool: unit_ground_normal_step_pool,
         quatHoverOrientationStepBatch: quat_hover_orientation_step_batch,
         unitForceStepBatch: unit_force_step_batch,
+        unitForceSurfaceLiftDistanceResponse: unit_force_surface_lift_distance_response,
         unitForceProfileEnsure: unit_force_profile_ensure,
         unitForceProfileValuesPtr: unit_force_profile_values_ptr,
         unitForceProfileFlagsPtr: unit_force_profile_flags_ptr,
@@ -4691,8 +4702,12 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runRosterCommandSurfaceContractTest();
         const { runLocomotionContractTest } = await import('../sim/blueprints/locomotionContractTest');
         runLocomotionContractTest();
+        const { runWaterLiftLocomotionContractTest } = await import('../sim/blueprints/waterLiftLocomotionContractTest');
+        runWaterLiftLocomotionContractTest();
         const { runProjectileMotionContractTest } = await import('../sim/projectileMotionContractTest');
         runProjectileMotionContractTest();
+        const { runShotArmingContractTest } = await import('../sim/combat/shotArmingContractTest');
+        runShotArmingContractTest();
         const { runBoxSelectionContractTest } = await import('../input/helpers/BoxSelectionContractTest');
         runBoxSelectionContractTest();
         const { runRightClickCommandsContractTest } = await import('../input/helpers/RightClickCommandsContractTest');
@@ -4717,6 +4732,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runTurretSnapshotDirtyContractTest();
         const { runPrimitiveGeometryQuality3DContractTest } = await import('../render3d/PrimitiveGeometryQuality3DContractTest');
         runPrimitiveGeometryQuality3DContractTest();
+        const { runShotArmingOverlay3DContractTest } = await import('../render3d/ShotArmingOverlay3DContractTest');
+        runShotArmingOverlay3DContractTest();
         const { runEntityLod3DContractTest } = await import('../render3d/EntityLod3DContractTest');
         runEntityLod3DContractTest();
         const { runEntityDetailLevel3DContractTest } = await import('../render3d/EntityDetailLevel3DContractTest');

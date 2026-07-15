@@ -12,12 +12,13 @@ import { getUnitBuilderConstructionRate } from '@/game/sim/builderBuildRoster';
 import { getTurretCooldownDuration } from '@/game/sim/turretCooldown';
 import { computeLocomotionClimbProfile } from '@/game/sim/pathfindingMobility';
 import { getLocomotionPrimaryDrivePhysics } from '@/game/sim/locomotion';
+import { getLocomotionEffectiveFriction } from '@/game/sim/locomotionPresetConfig';
 import type { BuildingBlueprint } from '@/game/sim/blueprints';
 import type {
   ShotBlueprint,
   UnitBlueprint,
 } from '@/types/blueprints';
-import type { UnitLocomotion, UnitLocomotionMediumPhysics } from '@/types/locomotionTypes';
+import type { UnitLocomotion } from '@/types/locomotionTypes';
 import type {
   EmissionConfig,
   ProjectileShot,
@@ -241,8 +242,8 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
   const primaryPhysics = getLocomotionPrimaryDrivePhysics(runtime);
   const items: LoadingUnitInfoNode[] = [
     stat('Type', labelCase(runtime.type)),
-    stat('Drive force', fmt(primaryPhysics.driveForce)),
-    stat('Traction', fmt(primaryPhysics.traction, 2)),
+    stat('Drive force', fmt(primaryPhysics.propulsion.driveForce)),
+    stat('Force coupling', fmt(primaryPhysics.propulsion.forceCoupling, 2)),
     node('Pathfinding', locomotion.pathfindingBlueprintId, undefined, [
       stat('Terrain mode', runtime.pathfinding.terrainMode),
       stat(
@@ -407,55 +408,58 @@ function describeEmission(shot: EmissionConfig, blueprintId: string | null): Loa
   return node('Emission', label, undefined, children);
 }
 
-function mediumStableHeight(physics: UnitLocomotionMediumPhysics): number | null {
-  if (physics.heightUpwardForce <= 0) return null;
-  return physics.heightUpwardForce;
-}
-
 function describeLocomotionPhysics(locomotion: UnitLocomotion): LoadingUnitInfoNode[] {
   const items: LoadingUnitInfoNode[] = [];
   const air = locomotion.physics.air;
+  const airFriction = getLocomotionEffectiveFriction('air', air);
   if (
-    air.driveForce > 0 ||
-    air.friction > 0 ||
-    air.buoyancy > 0 ||
-    air.heightUpwardForce > 0
+    air.propulsion.driveForce > 0 ||
+    airFriction > 0 ||
+    air.lift.gravityCounterRatio > 0 ||
+    air.lift.liftForceFromGroundSurface > 0 ||
+    air.lift.liftForceFromWaterSurface > 0
   ) {
     const airChildren = [
-      stat('Drive force', fmt(air.driveForce)),
-      stat('Traction', fmt(air.traction, 2)),
-      stat('Friction', fmt(air.friction, 2)),
+      stat('Drive force', fmt(air.propulsion.driveForce)),
+      stat('Force coupling', fmt(air.propulsion.forceCoupling, 2)),
+      stat('Friction', fmt(airFriction, 2)),
     ];
-    if (air.buoyancy > 0) {
-      airChildren.push(stat('Buoyancy', fmt(air.buoyancy, 2)));
+    if (air.lift.gravityCounterRatio > 0) {
+      airChildren.push(stat('Gravity counter', fmt(air.lift.gravityCounterRatio, 2)));
     }
-    if (air.heightUpwardForce > 0) {
-      airChildren.push(stat('Height lift', fmt(air.heightUpwardForce)));
-      const stableHeight = mediumStableHeight(air);
-      if (stableHeight !== null) airChildren.push(stat('Stable height', fmt(stableHeight)));
+    if (air.lift.liftForceFromGroundSurface > 0) {
+      airChildren.push(
+        stat('Lift force from ground surface', fmt(air.lift.liftForceFromGroundSurface)),
+      );
+    }
+    if (air.lift.liftForceFromWaterSurface > 0) {
+      airChildren.push(
+        stat('Lift force from water surface', fmt(air.lift.liftForceFromWaterSurface)),
+      );
     }
     items.push(node('Air medium', undefined, undefined, airChildren));
   }
 
   const water = locomotion.physics.water;
+  const waterFriction = getLocomotionEffectiveFriction('water', water);
   if (
-    water.driveForce > 0 ||
-    water.friction > 0 ||
-    water.buoyancy > 0 ||
-    water.heightUpwardForce > 0
+    water.propulsion.driveForce > 0 ||
+    waterFriction > 0 ||
+    water.lift.gravityCounterRatio > 0 ||
+    water.lift.liftForceFromGroundSurface > 0
   ) {
     const waterChildren = [
-      stat('Drive force', fmt(water.driveForce)),
-      stat('Traction', fmt(water.traction, 2)),
-      stat('Friction', fmt(water.friction, 2)),
+      stat('Drive force', fmt(water.propulsion.driveForce)),
+      stat('Force coupling', fmt(water.propulsion.forceCoupling, 2)),
+      stat('Friction', fmt(waterFriction, 2)),
     ];
-    if (water.buoyancy > 0) {
-      waterChildren.push(stat('Buoyancy', fmt(water.buoyancy, 2)));
+    if (water.lift.gravityCounterRatio > 0) {
+      waterChildren.push(stat('Gravity counter', fmt(water.lift.gravityCounterRatio, 2)));
     }
-    if (water.heightUpwardForce > 0) {
-      waterChildren.push(stat('Bed height lift', fmt(water.heightUpwardForce)));
-      const stableHeight = mediumStableHeight(water);
-      if (stableHeight !== null) waterChildren.push(stat('Stable bed height', fmt(stableHeight)));
+    if (water.lift.liftForceFromGroundSurface > 0) {
+      waterChildren.push(
+        stat('Lift force from ground surface', fmt(water.lift.liftForceFromGroundSurface)),
+      );
     }
     items.push(node('Water medium', undefined, undefined, waterChildren));
   }

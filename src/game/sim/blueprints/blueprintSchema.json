@@ -1992,39 +1992,52 @@
       },
       "additionalProperties": false
     },
-    "LocomotionMediumPhysics": {
+    "LocomotionLiftPhysics": {
       "type": "object",
       "required": [
-        "heightUpwardForce"
+        "liftForceFromGroundSurface",
+        "gravityCounterRatio"
       ],
       "properties": {
-        "heightUpwardForce": {
-          "type": "number"
-        },
-        "buoyancy": {
+        "liftForceFromGroundSurface": {
           "type": "number",
           "minimum": 0,
-          "description": "Archimedes buoyancy coefficient against this medium: upward force = mass * gravity * buoyancy * fraction-of-body-in-medium. Water buoyancy > 1 floats the body at the surface; 1 is neutral; 0 (default) sinks."
+          "description": "Upward force strength sourced from the probe-averaged nonlinear distance response to the highest solid ground/support surface."
+        },
+        "liftForceFromWaterSurface": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Air-only upward force strength sourced from the probe-averaged nonlinear distance response to exposed water surface."
+        },
+        "gravityCounterRatio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of gravity passively countered at full occupancy of this medium; final force is weighted by the occupied fraction."
         }
+      },
+      "additionalProperties": false
+    },
+    "LocomotionFluidBodyPhysics": {
+      "type": "object",
+      "required": ["lift"],
+      "properties": {
+        "lift": { "$ref": "#/$defs/LocomotionLiftPhysics" }
       },
       "additionalProperties": false
     },
     "LocomotionPhysics": {
       "type": "object",
       "required": [
-        "ground",
         "air",
         "water"
       ],
       "properties": {
-        "ground": {
-          "$ref": "#/$defs/LocomotionMediumPhysics"
-        },
         "air": {
-          "$ref": "#/$defs/LocomotionMediumPhysics"
+          "$ref": "#/$defs/LocomotionFluidBodyPhysics"
         },
         "water": {
-          "$ref": "#/$defs/LocomotionMediumPhysics"
+          "$ref": "#/$defs/LocomotionFluidBodyPhysics"
         }
       },
       "additionalProperties": false

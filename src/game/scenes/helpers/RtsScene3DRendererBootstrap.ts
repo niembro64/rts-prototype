@@ -1,6 +1,6 @@
 import type { ClientViewState } from '../../network/ClientViewState';
 import { AreaDrag3D } from '../../render3d/AreaDrag3D';
-import { AirLiftProbeOverlay3D } from '../../render3d/AirLiftProbeOverlay3D';
+import { SurfaceLiftProbeOverlay3D } from '../../render3d/SurfaceLiftProbeOverlay3D';
 import { BeamRenderer3D } from '../../render3d/BeamRenderer3D';
 import { BuildGhost3D } from '../../render3d/BuildGhost3D';
 import { BurnMark3D } from '../../render3d/BurnMark3D';
@@ -68,7 +68,7 @@ type RtsScene3DRendererBootstrapResult = {
   burnMarkRenderer: BurnMark3D;
   groundPrintRenderer: GroundPrint3D;
   areaDragRenderer: AreaDrag3D;
-  airLiftProbeOverlay: AirLiftProbeOverlay3D;
+  airLiftProbeOverlay: SurfaceLiftProbeOverlay3D;
   lineDragRenderer: LineDrag3D;
   buildGhostRenderer: BuildGhost3D;
   sprayRenderer: SprayRenderer3D;
@@ -186,7 +186,7 @@ export function bootstrapRtsScene3DRenderers(
     (x, z) => getLocomotionSurfaceHeight(x, z, mapWidth, mapHeight),
   );
   const areaDragRenderer = new AreaDrag3D(threeApp.world, overlayLineSystem);
-  const airLiftProbeOverlay = new AirLiftProbeOverlay3D(
+  const airLiftProbeOverlay = new SurfaceLiftProbeOverlay3D(
     threeApp.world,
     mapWidth,
     mapHeight,

@@ -33,15 +33,17 @@ import {
   getEntityAcceleration3d,
   getEntityPosition3d,
   getEntityVelocity3d,
-  getHostShotArmingRadius,
   getProjectileLaunchSpeed,
   isLiveHomingTarget,
   isShieldSubmunitionTurret,
   isWeaponAimedForFire,
   turretMaskIncludes,
-  updateProjectileArming,
   updateWeaponWorldKinematics,
 } from './combatUtils';
+import {
+  getHostShotArmingRadius,
+  updateProjectileArming,
+} from './shotArming';
 import { isBuildBlockingActivation } from '../buildableHelpers';
 import {
   dropTurretLockMidTick,
@@ -1031,7 +1033,7 @@ export function fireTurrets(
         }
       }
 
-      // Fire from the turret origin along the turret's solved yaw/pitch.
+      // Fire from the turret mount center along the solved yaw/pitch.
       const turretAngle = weapon.rotation;
       const turretPitch = weapon.pitch;
 
@@ -1087,7 +1089,7 @@ export function fireTurrets(
         }
 
         if (isBeamWeapon) {
-          // Beam start is the turret origin for both simulation and rendering.
+          // Beam start is the turret mount center for simulation and rendering.
           const beamStartX = spawnX;
           const beamStartY = spawnY;
           const beamStartZ = spawnZ;
@@ -1502,7 +1504,7 @@ function _updatePackedProjectilesJS(world: WorldState, dtMs: number, dtSec: numb
   getSimWasm()!.poolStepPackedProjectilesBatch(_packedProjectileCount, dtSec, dtMs);
 
   // Pass 3: scatter post-integrate state back to JS-side mirrors,
-  // then arm projectiles whose authored delay elapsed during this tick.
+  // then arm projectiles whose full hitbox cleared the host ARM sphere.
   for (let slot = 0; slot < _packedProjectileCount; slot++) {
     const entity = _packedProjectileEntities[slot];
     if (!entity || !entity.projectile) continue;
@@ -1967,7 +1969,7 @@ export function updateProjectiles(
           }
         }
 
-        // Beam starts follow the turret origin. Direction follows the
+        // Beam starts follow the turret mount center. Direction follows the
         // live target-origin ray when the turret has an entity lock,
         // so a fast target cannot visually or physically dodge merely
         // because the rendered turret yaw is still catching up.

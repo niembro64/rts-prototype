@@ -10,13 +10,16 @@ import type { Entity, PlayerId } from '../sim/types';
 import { FOG_CONFIG } from '@/fogConfig';
 import { configureSpriteTexture } from './threeUtils';
 
-type FogCoverageChannel = 0 | 1;
+const FOG_COVERAGE_FULL_SIGHT_MASK = 1;
+const FOG_COVERAGE_RADAR_MASK = 2;
+const FOG_COVERAGE_FULL_SIGHT_AND_RADAR_MASK = 3;
+type FogCoverageChannelMask = 1 | 2 | 3;
 
 type FogCoverageSource = {
   x: number;
   y: number;
   radius: number;
-  channel: FogCoverageChannel;
+  channelMask: FogCoverageChannelMask;
 };
 
 function smoothstep(edge0: number, edge1: number, value: number): number {
@@ -43,18 +46,29 @@ export class FogOfWarCoverageTexture3D {
   private readonly pixels: Uint8Array;
   private readonly texture: THREE.DataTexture;
   private readonly sources: FogCoverageSource[] = [];
+  private sourceCount = 0;
   private readonly width: number;
   private readonly height: number;
+  private readonly cellCenterWorldX: Float64Array;
+  private readonly cellCenterWorldY: Float64Array;
 
   constructor(
-    private readonly mapWidth: number,
-    private readonly mapHeight: number,
+    mapWidth: number,
+    mapHeight: number,
   ) {
     const presentation = FOG_CONFIG.presentation;
     this.cellSize = Math.max(1, presentation.coverage.cellSizeWorld);
     this.edgeSoftnessWorld = Math.max(0, presentation.shade.edgeSoftnessWorld);
     this.width = Math.max(1, Math.ceil(mapWidth / this.cellSize));
     this.height = Math.max(1, Math.ceil(mapHeight / this.cellSize));
+    this.cellCenterWorldX = new Float64Array(this.width);
+    this.cellCenterWorldY = new Float64Array(this.height);
+    for (let gx = 0; gx < this.width; gx++) {
+      this.cellCenterWorldX[gx] = Math.min(mapWidth, (gx + 0.5) * this.cellSize);
+    }
+    for (let gy = 0; gy < this.height; gy++) {
+      this.cellCenterWorldY[gy] = Math.min(mapHeight, (gy + 0.5) * this.cellSize);
+    }
     this.pixels = new Uint8Array(this.width * this.height * 4);
     this.texture = new THREE.DataTexture(
       this.pixels,
@@ -82,7 +96,7 @@ export class FogOfWarCoverageTexture3D {
 
     this.pixels.fill(0);
     this.collectSources(clientViewState, localPlayerId);
-    for (let i = 0; i < this.sources.length; i++) {
+    for (let i = 0; i < this.sourceCount; i++) {
       this.stampSource(this.sources[i]);
     }
     this.texture.needsUpdate = true;
@@ -95,10 +109,11 @@ export class FogOfWarCoverageTexture3D {
   destroy(): void {
     this.texture.dispose();
     this.sources.length = 0;
+    this.sourceCount = 0;
   }
 
   private collectSources(clientViewState: ClientViewState, localPlayerId: PlayerId): void {
-    this.sources.length = 0;
+    this.sourceCount = 0;
     const playerIds = clientViewState.getVisionPlayerIds(localPlayerId);
     for (let i = 0; i < playerIds.length; i++) {
       const playerId = playerIds[i];
@@ -109,8 +124,12 @@ export class FogOfWarCoverageTexture3D {
     const pulses = clientViewState.getScanPulses();
     for (let i = 0; i < pulses.length; i++) {
       const pulse = pulses[i];
-      this.pushSource(pulse.x, pulse.y, pulse.radius, 0);
-      this.pushSource(pulse.x, pulse.y, pulse.radius, 1);
+      this.pushSource(
+        pulse.x,
+        pulse.y,
+        pulse.radius,
+        FOG_COVERAGE_FULL_SIGHT_AND_RADAR_MASK,
+      );
     }
   }
 
@@ -119,15 +138,19 @@ export class FogOfWarCoverageTexture3D {
       const entity = entities[i];
       if (canEntityProvideFullVision(entity)) {
         const radius = getEntityFullVisionRadius(entity);
-        this.pushSource(entity.transform.x, entity.transform.y, radius, 0);
-        this.pushSource(entity.transform.x, entity.transform.y, radius, 1);
+        this.pushSource(
+          entity.transform.x,
+          entity.transform.y,
+          radius,
+          FOG_COVERAGE_FULL_SIGHT_AND_RADAR_MASK,
+        );
       }
       if (canEntityProvideRadarVision(entity)) {
         this.pushSource(
           entity.transform.x,
           entity.transform.y,
           getEntityRadarRadius(entity),
-          1,
+          FOG_COVERAGE_RADAR_MASK,
         );
       }
     }
@@ -137,12 +160,23 @@ export class FogOfWarCoverageTexture3D {
     x: number,
     y: number,
     radius: number,
-    channel: FogCoverageChannel,
+    channelMask: FogCoverageChannelMask,
   ): void {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius) || radius <= 0) {
       return;
     }
-    this.sources.push({ x, y, radius, channel });
+    const cursor = this.sourceCount;
+    let source = this.sources[cursor];
+    if (source === undefined) {
+      source = { x, y, radius, channelMask };
+      this.sources.push(source);
+    } else {
+      source.x = x;
+      source.y = y;
+      source.radius = radius;
+      source.channelMask = channelMask;
+    }
+    this.sourceCount = cursor + 1;
   }
 
   private stampSource(source: FogCoverageSource): void {
@@ -157,18 +191,18 @@ export class FogOfWarCoverageTexture3D {
     const innerSq = inner * inner;
     const outerSq = outer * outer;
     const pixels = this.pixels;
-    const channel = source.channel;
-    const cellSize = this.cellSize;
-    const mapWidth = this.mapWidth;
-    const mapHeight = this.mapHeight;
+    const writeFullSight = (source.channelMask & FOG_COVERAGE_FULL_SIGHT_MASK) !== 0;
+    const writeRadar = (source.channelMask & FOG_COVERAGE_RADAR_MASK) !== 0;
+    const cellCenterWorldX = this.cellCenterWorldX;
+    const cellCenterWorldY = this.cellCenterWorldY;
     const width = this.width;
     for (let gy = minY; gy <= maxY; gy++) {
-      const worldY = Math.min(mapHeight, (gy + 0.5) * cellSize);
+      const worldY = cellCenterWorldY[gy];
       const dy = worldY - source.y;
       const dySq = dy * dy;
       const rowOffset = gy * width;
       for (let gx = minX; gx <= maxX; gx++) {
-        const worldX = Math.min(mapWidth, (gx + 0.5) * cellSize);
+        const worldX = cellCenterWorldX[gx];
         const dx = worldX - source.x;
         const distanceSq = dx * dx + dySq;
         if (distanceSq >= outerSq) continue;
@@ -176,8 +210,9 @@ export class FogOfWarCoverageTexture3D {
           ? 255
           : Math.round((1 - smoothstep(inner, outer, Math.sqrt(distanceSq))) * 255);
         if (next <= 0) continue;
-        const offset = (rowOffset + gx) * 4 + channel;
-        pixels[offset] = maxByte(pixels[offset], next);
+        const offset = (rowOffset + gx) * 4;
+        if (writeFullSight) pixels[offset] = maxByte(pixels[offset], next);
+        if (writeRadar) pixels[offset + 1] = maxByte(pixels[offset + 1], next);
       }
     }
   }

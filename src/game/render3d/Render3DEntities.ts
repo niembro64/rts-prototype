@@ -257,7 +257,7 @@ export class Render3DEntities {
   private mirrorGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorArmGeom = new THREE.BoxGeometry(1, 1, 1);
   private mirrorSupportGeom = createPrimitiveCylinderGeometry('shield', 'mid', 0.5, 0.5);
-  // Unit-radius indicator wireframe spheres (VISUAL/HITBOX/COLLISION). Unit
+  // Host-radius indicator wireframe spheres (BODY/HIT/COL/ARM). Unit
   // radius = 1 → scale per mesh to the actual collider radius. The
   // sim's hit-detection uses 3D spheres centered on transform.z, so
   // the debug viz is a matching 3D wireframe sphere (not a flat

@@ -22,7 +22,7 @@
     }
   },
   "turbine": {
-    "rotorTipSpeedRatio": 2,
+    "rotorTipSpeedRatio": 20,
     "rotorSpinReflectsActualProduction": true,
     "rotorPotentialRadPerSec": 0.4,
     "responseHalfLifeMultipliers": {

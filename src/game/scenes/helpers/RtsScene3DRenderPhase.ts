@@ -42,7 +42,7 @@ import {
   UnitRenderPacket3D,
 } from '../../render3d/EntityRenderPackets3D';
 import type { AreaDrag3D } from '../../render3d/AreaDrag3D';
-import type { AirLiftProbeOverlay3D } from '../../render3d/AirLiftProbeOverlay3D';
+import type { SurfaceLiftProbeOverlay3D } from '../../render3d/SurfaceLiftProbeOverlay3D';
 import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
@@ -105,7 +105,7 @@ type RtsScene3DRenderPhaseResources = {
   burnMarkRenderer: BurnMark3D;
   groundPrintRenderer: GroundPrint3D;
   areaDragRenderer: AreaDrag3D;
-  airLiftProbeOverlay: AirLiftProbeOverlay3D;
+  airLiftProbeOverlay: SurfaceLiftProbeOverlay3D;
   lineDragRenderer: LineDrag3D;
   sprayRenderer: SprayRenderer3D;
   pylonTubeFlowRenderer: PylonTubeFlowRenderer;

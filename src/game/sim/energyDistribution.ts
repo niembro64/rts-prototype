@@ -36,6 +36,81 @@ import type { EnergyBuffers, EnergyConsumer } from '@/types/ui';
 // Per-tick scratch for idle-builder auto-assist candidates (module-scoped to
 // avoid per-tick allocation; distributeEnergy runs single-threaded).
 const _autoAssistCandidates: Entity[] = [];
+const _factoryEntities: Entity[] = [];
+const _factoryAssistRateById = new Map<EntityId, number>();
+const _factoryByShellId = new Map<EntityId, EntityId>();
+const _autoAssistedBuilderIds = new Set<EntityId>();
+const _guardHealedTargetIds = new Set<EntityId>();
+const _energyConsumerPool: EnergyConsumer[] = [];
+const _consumerIndexArrayPool: number[][] = [];
+
+function releaseEnergyConsumerRows(buffers: EnergyBuffers): void {
+  const consumers = buffers.consumers;
+  for (let i = 0; i < consumers.length; i++) {
+    _energyConsumerPool.push(consumers[i]);
+  }
+  consumers.length = 0;
+  for (const indices of buffers.consumersByPlayer.values()) {
+    indices.length = 0;
+    _consumerIndexArrayPool.push(indices);
+  }
+  buffers.consumersByPlayer.clear();
+}
+
+function collectFactoryEntities(world: WorldState): readonly Entity[] {
+  _factoryEntities.length = 0;
+  const buildingFactories = world.getFactoryBuildings();
+  for (let i = 0; i < buildingFactories.length; i++) {
+    _factoryEntities.push(buildingFactories[i]);
+  }
+  const unitFactories = world.getFactoryUnits();
+  for (let i = 0; i < unitFactories.length; i++) {
+    _factoryEntities.push(unitFactories[i]);
+  }
+  return _factoryEntities;
+}
+
+function addEnergyConsumer(
+  buffers: EnergyBuffers,
+  playerId: PlayerId,
+  entity: Entity,
+  type: 'build' | 'heal',
+  remainingCost: number,
+  maxResourcePerTick: number,
+  sourceEntityId: EntityId | null,
+  sourceBreakdownTargetId: EntityId | null,
+): void {
+  const consumers = buffers.consumers;
+  const idx = consumers.length;
+  let consumer = _energyConsumerPool.pop();
+  if (consumer === undefined) {
+    consumer = {
+      entity,
+      type,
+      sourceEntityId,
+      sourceBreakdownTargetId,
+      remainingCost,
+      playerId,
+      maxResourcePerTick,
+    };
+  } else {
+    consumer.entity = entity;
+    consumer.type = type;
+    consumer.sourceEntityId = sourceEntityId;
+    consumer.sourceBreakdownTargetId = sourceBreakdownTargetId;
+    consumer.remainingCost = remainingCost;
+    consumer.playerId = playerId;
+    consumer.maxResourcePerTick = maxResourcePerTick;
+  }
+  consumers.push(consumer);
+  let indices = buffers.consumersByPlayer.get(playerId);
+  if (indices === undefined) {
+    indices = _consumerIndexArrayPool.pop() ?? [];
+    buffers.consumersByPlayer.set(playerId, indices);
+  }
+  indices.push(idx);
+  if (type === 'build') buffers.buildingConsumerIds.add(entity.id);
+}
 
 // A mobile unit factory (queen) has no building config; its per-tick build
 // rate is the value authored on its construction-pylon mount, read fresh each
@@ -44,7 +119,7 @@ function factoryUnitConstructionRate(entity: Entity): number {
   if (entity.unit === null) return Infinity;
   const bp = getUnitBlueprint(entity.unit.unitBlueprintId);
   const pylon = bp.turrets.find((m) => m.constructionRate != null);
-  return pylon?.constructionRate ?? Infinity;
+  return pylon === undefined ? Infinity : pylon.constructionRate ?? Infinity;
 }
 
 function findAutoAssistTarget(builder: Entity, candidates: readonly Entity[]): Entity | null {
@@ -120,8 +195,7 @@ export function createEnergyBuffers(): EnergyBuffers {
 }
 
 export function resetEnergyBuffers(buffers: EnergyBuffers): void {
-  buffers.consumers.length = 0;
-  buffers.consumersByPlayer.clear();
+  releaseEnergyConsumerRows(buffers);
   buffers.buildTargetSet.clear();
   buffers.constructionRateByTarget.clear();
   buffers.constructionSourceHeadByTarget.clear();
@@ -357,21 +431,30 @@ function applyConsumerSpendResults(sim: SimWasm, count: number): void {
 //   • 'heal'  — a commander healing a damaged unit (energy only).
 export function distributeEnergy(world: WorldState, dtMs: number, buffers: EnergyBuffers): void {
   const dtSec = dtMs / 1000;
+  releaseEnergyConsumerRows(buffers);
   const consumers = buffers.consumers;
-  consumers.length = 0;
   const byPlayer = buffers.consumersByPlayer;
-  byPlayer.clear();
   const buildingConsumerIds = buffers.buildingConsumerIds;
   buildingConsumerIds.clear();
   const sweepServicingBuilderIds = buffers.sweepServicingBuilderIds;
   sweepServicingBuilderIds.clear();
+  const factoryEntities = collectFactoryEntities(world);
+  const factoryAssistRateById = _factoryAssistRateById;
+  factoryAssistRateById.clear();
+  const factoryByShellId = _factoryByShellId;
+  factoryByShellId.clear();
+  const autoAssistedBuilderIds = _autoAssistedBuilderIds;
+  autoAssistedBuilderIds.clear();
+  const guardHealedTargetIds = _guardHealedTargetIds;
+  guardHealedTargetIds.clear();
 
   // Zero every factory's per-resource rate fractions up front. The
   // build-consumer loop below sets them on the factories that actually
   // funded a transfer this tick; any factory not touched stays at 0,
   // so the 3D resource-ball flow correctly reads empty when a queue
   // stalls or completes between frames.
-  for (const factoryEntity of world.getFactoryBuildings().concat(world.getFactoryUnits())) {
+  for (let i = 0; i < factoryEntities.length; i++) {
+    const factoryEntity = factoryEntities[i];
     const fc = factoryEntity.factory;
     if (!fc) continue;
     if (fc.energyRateFraction !== 0 || fc.metalRateFraction !== 0) {
@@ -379,34 +462,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       fc.metalRateFraction = 0;
     }
   }
-
-  const addConsumer = (
-    playerId: PlayerId,
-    entity: Entity,
-    type: 'build' | 'heal',
-    remainingCost: number,
-    maxResourcePerTick: number,
-    sourceEntityId: EntityId | null,
-    sourceBreakdownTargetId: EntityId | null,
-  ) => {
-    const idx = consumers.length;
-    consumers.push({
-      entity,
-      type,
-      sourceEntityId,
-      sourceBreakdownTargetId,
-      remainingCost,
-      playerId,
-      maxResourcePerTick,
-    });
-    let arr = byPlayer.get(playerId);
-    if (!arr) {
-      arr = [];
-      byPlayer.set(playerId, arr);
-    }
-    arr.push(idx);
-    if (type === 'build') buildingConsumerIds.add(entity.id);
-  };
 
   const buildTargets = buffers.buildTargetSet;
   buildTargets.clear();
@@ -426,10 +481,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   // Guard-assisted factory production: builders guarding a producing factory
   // add their build power to that factory's current unit shell (keyed by
   // factory id; read by pass 2a below).
-  const factoryAssistRateById = new Map<EntityId, number>();
   // Shell entity id -> the factory producing it, so the per-source build
   // breakdown can still update the factory's progress/rate fractions.
-  const factoryByShellId = new Map<EntityId, EntityId>();
   // Candidate nanoframes for idle-builder auto-assist (structures only; unit
   // shells are funded by their factory + explicit guard-assist). Collected
   // once per tick; the fast path below skips the scan entirely when empty.
@@ -442,7 +495,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   }
   // Builders that auto-assisted a build this tick — excluded from auto-repair
   // so one idle builder does not split its pylons across two jobs.
-  const autoAssistedBuilderIds = new Set<EntityId>();
   for (const entity of world.getBuilderUnits()) {
     const builder = entity.builder;
     if (builder === null) continue;
@@ -506,7 +558,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
 
   // 2a) Factories currently funding unit shells (building factories then
   //     mobile unit factories / queens).
-  for (const entity of world.getFactoryBuildings().concat(world.getFactoryUnits())) {
+  for (let factoryIndex = 0; factoryIndex < factoryEntities.length; factoryIndex++) {
+    const entity = factoryEntities[factoryIndex];
     const factory = entity.factory;
     const ownership = entity.ownership;
     if (factory !== null && factory.isProducing && factory.currentShellId !== null
@@ -550,7 +603,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
           // the breakdown channel (null sourceEntityId, shell as breakdown key).
           addConstructionSource(buffers, shell.id, entity.id, sourceRate * dtSec);
           factoryByShellId.set(shell.id, entity.id);
-          addConsumer(
+          addEnergyConsumer(
+            buffers,
             ownership.playerId,
             shell,
             'build',
@@ -576,7 +630,16 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       const remainingCost = getTotalRemainingCost(entity.buildable);
       if (remainingCost > 0) {
         const rateCap = (constructionRateByTarget.get(entity.id) ?? Infinity) * dtSec;
-        addConsumer(entity.ownership.playerId, entity, 'build', remainingCost, rateCap, null, entity.id);
+        addEnergyConsumer(
+          buffers,
+          entity.ownership.playerId,
+          entity,
+          'build',
+          remainingCost,
+          rateCap,
+          null,
+          entity.id,
+        );
       }
     }
   }
@@ -601,7 +664,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (!buildingConsumerIds.has(target.id)) {
         const remainingCost = getTotalRemainingCost(target.buildable);
         if (remainingCost > 0) {
-          addConsumer(
+          addEnergyConsumer(
+            buffers,
             commander.ownership.playerId,
             target,
             'build',
@@ -627,7 +691,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (!buildingConsumerIds.has(target.id)) {
         const remainingCost = getTotalRemainingCost(target.buildable);
         if (remainingCost > 0) {
-          addConsumer(
+          addEnergyConsumer(
+            buffers,
             entity.ownership.playerId,
             target,
             'build',
@@ -642,7 +707,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       const hpToHeal = target.unit.maxHp - target.unit.hp;
       const remaining = hpToHeal * HEAL_COST_PER_HP;
       if (remaining > 0) {
-        addConsumer(
+        addEnergyConsumer(
+          buffers,
           entity.ownership.playerId,
           target,
           'heal',
@@ -660,7 +726,6 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
   //    construction to assist (that goes through the build pass above) and
   //    the target is a damaged, completed unit. One healer funds a given
   //    target per tick; HP is capped at maxHp so it never overshoots.
-  const guardHealedTargetIds = new Set<EntityId>();
   for (const entity of world.getBuilderUnits()) {
     const builder = entity.builder;
     if (builder === null || entity.unit === null || entity.ownership === null) continue;
@@ -674,7 +739,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
     const remaining = (target.unit.maxHp - target.unit.hp) * HEAL_COST_PER_HP;
     if (remaining <= 0) continue;
     guardHealedTargetIds.add(target.id);
-    addConsumer(
+    addEnergyConsumer(
+      buffers,
       entity.ownership.playerId,
       target,
       'heal',
@@ -709,7 +775,8 @@ export function distributeEnergy(world: WorldState, dtMs: number, buffers: Energ
       if (remaining <= 0) continue;
       guardHealedTargetIds.add(target.id);
       if (sweepHeal) sweepServicingBuilderIds.add(entity.id);
-      addConsumer(
+      addEnergyConsumer(
+        buffers,
         entity.ownership.playerId,
         target,
         'heal',

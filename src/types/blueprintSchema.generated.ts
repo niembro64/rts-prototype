@@ -479,15 +479,19 @@ export type SwimConfig = {
   cycleDistanceFrac: number;
 };
 
-export type LocomotionMediumPhysics = {
-  heightUpwardForce: number;
-  buoyancy?: number;
+export type LocomotionLiftPhysics = {
+  liftForceFromGroundSurface: number;
+  liftForceFromWaterSurface?: number;
+  gravityCounterRatio: number;
+};
+
+export type LocomotionFluidBodyPhysics = {
+  lift: LocomotionLiftPhysics;
 };
 
 export type LocomotionPhysics = {
-  ground: LocomotionMediumPhysics;
-  air: LocomotionMediumPhysics;
-  water: LocomotionMediumPhysics;
+  air: LocomotionFluidBodyPhysics;
+  water: LocomotionFluidBodyPhysics;
 };
 
 export type LocomotionSurvivalPolicy = {

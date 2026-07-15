@@ -23,7 +23,9 @@ import towersJson from '../sim/blueprints/towers.json';
 import turretsJson from '../sim/blueprints/turrets.json';
 import unitRosterJson from '../sim/blueprints/unitRoster.json';
 import unitsJson from '../sim/blueprints/units.json';
+import locomotionConfigJson from '../sim/locomotionConfig.json';
 import shotProfileConfigJson from '../sim/shotProfileConfig.json';
+import surfaceProbeConfigJson from '../sim/surfaceProbeConfig.json';
 import {
   DEFAULT_GAME_GENERATION_SEED,
   normalizeGameGenerationSeed,
@@ -109,10 +111,12 @@ const GAMEPLAY_CONFIG_CONTENT = {
   buildConfig: buildConfigJson,
   combatConfig: combatConfigJson,
   economyConfig: economyConfigJson,
+  locomotionConfig: locomotionConfigJson,
   metalDepositConfig: metalDepositConfigJson,
   physicsTuningConfig: physicsTuningConfigJson,
   realBattleConfig: realBattleConfigJson,
   sharedSimConstants: sharedSimConstantsJson,
+  surfaceProbeConfig: surfaceProbeConfigJson,
   visionConfig: visionConfigJson,
   windConfig: canonicalWindConfigJson,
 } as const;

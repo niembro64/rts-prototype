@@ -1023,7 +1023,7 @@ function resetEveryCustomHotkey(): void {
         >BUILD</BarButton>
         <BarButton
           :active="model.airLiftProbeDebug"
-          title="LIFT - show the five forward height probe points and vertical lines to sampled terrain/water for selected hover/flying units"
+          title="LIFT - show configured lift probes; role-colored lines sample solid ground/support and blue lines sample exposed water"
           @click="model.toggleAirLiftProbeDebug"
         >LIFT</BarButton>
         <BarButton
@@ -1253,7 +1253,7 @@ function resetEveryCustomHotkey(): void {
           >COL</BarButton>
           <BarButton
             :active="model.unitRadiusToggles.shotArmingRadius"
-            title="Show host projectile arming sphere (radius.shotArmingRadius - shots arm after leaving this safe zone)"
+            title="Show host projectile arming sphere (ARM = 1.5 × collision radius; shots activate after fully clearing it)"
             @click="model.toggleUnitRadius('shotArmingRadius')"
           >ARM</BarButton>
         </BarButtonGroup>

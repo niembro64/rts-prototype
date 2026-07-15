@@ -80,7 +80,7 @@ pub fn quat_hover_orientation_step_batch(
 //  state that still lives on Entity/Unit objects.
 // ─────────────────────────────────────────────────────────────────
 
-pub const UNIT_FORCE_BATCH_STRIDE: usize = 52;
+pub const UNIT_FORCE_BATCH_STRIDE: usize = 54;
 
 // ─────────────────────────────────────────────────────────────────
 //  Blueprint locomotion force profile table
@@ -96,24 +96,24 @@ pub const UNIT_FORCE_BATCH_STRIDE: usize = 52;
 //  those out before OR-ing runtime flags.
 // ─────────────────────────────────────────────────────────────────
 
-pub const UF_PROFILE_STRIDE: usize = 31;
+pub const UF_PROFILE_STRIDE: usize = 32;
 pub(crate) const UF_PROFILE_GROUND_DRIVE_FORCE: usize = 0;
-pub(crate) const UF_PROFILE_GROUND_TRACTION: usize = 1;
-pub(crate) const UF_PROFILE_AIR_BUOYANCY: usize = 2;
-pub(crate) const UF_PROFILE_HOVER_HEIGHT_FORCE: usize = 3;
-pub(crate) const UF_PROFILE_HOVER_RANDOM_AMOUNT: usize = 4;
-pub(crate) const UF_PROFILE_HOVER_EMA_WEIGHT: usize = 5;
+pub(crate) const UF_PROFILE_GROUND_FORCE_COUPLING: usize = 1;
+pub(crate) const UF_PROFILE_AIR_GRAVITY_COUNTER_RATIO: usize = 2;
+pub(crate) const UF_PROFILE_AIR_LIFT_FORCE_FROM_GROUND_SURFACE: usize = 3;
+pub(crate) const UF_PROFILE_AIR_SURFACE_LIFT_RANDOM_AMOUNT: usize = 4;
+pub(crate) const UF_PROFILE_AIR_SURFACE_LIFT_EMA_WEIGHT: usize = 5;
 pub(crate) const UF_PROFILE_GROUND_FRICTION: usize = 6;
 pub(crate) const UF_PROFILE_AIR_FRICTION: usize = 7;
 pub(crate) const UF_PROFILE_WATER_DRIVE_FORCE: usize = 8;
-pub(crate) const UF_PROFILE_WATER_TRACTION: usize = 9;
+pub(crate) const UF_PROFILE_WATER_FORCE_COUPLING: usize = 9;
 pub(crate) const UF_PROFILE_WATER_FRICTION: usize = 10;
-pub(crate) const UF_PROFILE_WATER_BUOYANCY: usize = 11;
-pub(crate) const UF_PROFILE_SWIM_HEIGHT_FORCE: usize = 12;
-pub(crate) const UF_PROFILE_SWIM_RANDOM_AMOUNT: usize = 13;
-pub(crate) const UF_PROFILE_SWIM_EMA_WEIGHT: usize = 14;
+pub(crate) const UF_PROFILE_WATER_GRAVITY_COUNTER_RATIO: usize = 11;
+pub(crate) const UF_PROFILE_WATER_LIFT_FORCE_FROM_GROUND_SURFACE: usize = 12;
+pub(crate) const UF_PROFILE_WATER_SURFACE_LIFT_RANDOM_AMOUNT: usize = 13;
+pub(crate) const UF_PROFILE_WATER_SURFACE_LIFT_EMA_WEIGHT: usize = 14;
 pub(crate) const UF_PROFILE_AIR_DRIVE_FORCE: usize = 15;
-pub(crate) const UF_PROFILE_AIR_TRACTION: usize = 16;
+pub(crate) const UF_PROFILE_AIR_FORCE_COUPLING: usize = 16;
 pub(crate) const UF_PROFILE_GROUND_SURFACE_GRIP: usize = 17;
 pub(crate) const UF_PROFILE_AIR_QUADRATIC_DRAG: usize = 18;
 pub(crate) const UF_PROFILE_AIR_DRAG_FORWARD_SCALE: usize = 19;
@@ -128,6 +128,7 @@ pub(crate) const UF_PROFILE_WATER_ANGULAR_DRAG: usize = 27;
 pub(crate) const UF_PROFILE_FATAL_WATER_FRACTION: usize = 28;
 pub(crate) const UF_PROFILE_FATAL_WATER_SECONDS: usize = 29;
 pub(crate) const UF_PROFILE_GROUND_CONTACT_DAMPING: usize = 30;
+pub(crate) const UF_PROFILE_AIR_LIFT_FORCE_FROM_WATER_SURFACE: usize = 31;
 
 pub(crate) struct UnitForceProfileTable {
     pub(crate) values: Vec<f64>,
@@ -137,8 +138,8 @@ pub(crate) struct UnitForceProfileTable {
 
 pub(crate) struct UnitForceRuntimeTable {
     pub(crate) entity_id: Vec<i32>,
-    pub(crate) hover_smoothed_force: Vec<f64>,
-    pub(crate) swim_smoothed_force: Vec<f64>,
+    pub(crate) air_surface_lift_smoothed_force: Vec<f64>,
+    pub(crate) water_lift_smoothed_force: Vec<f64>,
     pub(crate) air_fraction: Vec<f64>,
     pub(crate) water_fraction: Vec<f64>,
     pub(crate) ground_contact: Vec<u8>,
@@ -181,8 +182,8 @@ pub(crate) fn unit_force_runtime_table() -> &'static mut UnitForceRuntimeTable {
         if cell.is_none() {
             *cell = Some(UnitForceRuntimeTable {
                 entity_id: Vec::new(),
-                hover_smoothed_force: Vec::new(),
-                swim_smoothed_force: Vec::new(),
+                air_surface_lift_smoothed_force: Vec::new(),
+                water_lift_smoothed_force: Vec::new(),
                 air_fraction: Vec::new(),
                 water_fraction: Vec::new(),
                 ground_contact: Vec::new(),
@@ -207,8 +208,10 @@ fn unit_force_runtime_slot(
     let needed = slot + 1;
     if runtime.entity_id.len() < needed {
         runtime.entity_id.resize(needed, ENTITY_STATE_NO_ENTITY_ID);
-        runtime.hover_smoothed_force.resize(needed, f64::NAN);
-        runtime.swim_smoothed_force.resize(needed, f64::NAN);
+        runtime
+            .air_surface_lift_smoothed_force
+            .resize(needed, f64::NAN);
+        runtime.water_lift_smoothed_force.resize(needed, f64::NAN);
         runtime.air_fraction.resize(needed, 1.0);
         runtime.water_fraction.resize(needed, 0.0);
         runtime.ground_contact.resize(needed, 0);
@@ -216,8 +219,8 @@ fn unit_force_runtime_slot(
     }
     if runtime.entity_id[slot] != es.entity_id[slot] {
         runtime.entity_id[slot] = es.entity_id[slot];
-        runtime.hover_smoothed_force[slot] = f64::NAN;
-        runtime.swim_smoothed_force[slot] = f64::NAN;
+        runtime.air_surface_lift_smoothed_force[slot] = f64::NAN;
+        runtime.water_lift_smoothed_force[slot] = f64::NAN;
         runtime.air_fraction[slot] = 1.0;
         runtime.water_fraction[slot] = 0.0;
         runtime.ground_contact[slot] = 0;
@@ -254,8 +257,8 @@ pub fn unit_force_profile_flags_ptr() -> *const u32 {
 pub fn unit_force_runtime_clear() {
     let runtime = unit_force_runtime_table();
     runtime.entity_id.fill(ENTITY_STATE_NO_ENTITY_ID);
-    runtime.hover_smoothed_force.fill(f64::NAN);
-    runtime.swim_smoothed_force.fill(f64::NAN);
+    runtime.air_surface_lift_smoothed_force.fill(f64::NAN);
+    runtime.water_lift_smoothed_force.fill(f64::NAN);
     runtime.air_fraction.fill(1.0);
     runtime.water_fraction.fill(0.0);
     runtime.ground_contact.fill(0);
@@ -333,17 +336,15 @@ pub(crate) const UF_ROW_ROTATION: usize = 2;
 // Row 3 reserved: unit mass now comes from BodyPool inv_mass so drive force
 // cannot accidentally cancel the unit's actual physics mass.
 pub(crate) const UF_ROW_GROUND_DRIVE_FORCE: usize = 4;
-pub(crate) const UF_ROW_GROUND_TRACTION: usize = 5;
-// Archimedes-style buoyancy coefficients: upward force = mass * G *
-// buoyancy * fraction-of-body-in-medium. A water buoyancy above 1
-// floats the body at partial submergence (fraction = 1 / buoyancy),
-// i.e. riding the water surface; exactly 1 is neutral; 0 sinks.
-pub(crate) const UF_ROW_AIR_BUOYANCY: usize = 6;
-pub(crate) const UF_ROW_HOVER_HEIGHT_FORCE: usize = 7;
-pub(crate) const UF_ROW_HOVER_RANDOM_AMOUNT: usize = 8;
-pub(crate) const UF_ROW_HOVER_EMA_WEIGHT: usize = 9;
-pub(crate) const UF_ROW_HOVER_SMOOTHED_FORCE: usize = 10;
-pub(crate) const UF_ROW_HOVER_RANDOM_SAMPLE: usize = 11;
+pub(crate) const UF_ROW_GROUND_FORCE_COUPLING: usize = 5;
+// Passive gravity-counter ratios are constrained to [0, 1]. Their upward
+// force is mass * G * ratio * fraction-of-body-in-medium.
+pub(crate) const UF_ROW_AIR_GRAVITY_COUNTER_RATIO: usize = 6;
+pub(crate) const UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE: usize = 7;
+pub(crate) const UF_ROW_AIR_SURFACE_LIFT_RANDOM_AMOUNT: usize = 8;
+pub(crate) const UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT: usize = 9;
+pub(crate) const UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE: usize = 10;
+pub(crate) const UF_ROW_AIR_SURFACE_LIFT_RANDOM_SAMPLE: usize = 11;
 pub(crate) const UF_ROW_GROUND_Z: usize = 12;
 pub(crate) const UF_ROW_NORMAL_X: usize = 13;
 pub(crate) const UF_ROW_NORMAL_Y: usize = 14;
@@ -371,19 +372,21 @@ pub(crate) const UF_ROW_ANGULAR_ACCEL_Z: usize = 35;
 pub(crate) const UF_ROW_GROUND_FRICTION: usize = 36;
 pub(crate) const UF_ROW_AIR_FRICTION: usize = 37;
 pub(crate) const UF_ROW_WATER_DRIVE_FORCE: usize = 38;
-pub(crate) const UF_ROW_WATER_TRACTION: usize = 39;
+pub(crate) const UF_ROW_WATER_FORCE_COUPLING: usize = 39;
 pub(crate) const UF_ROW_WATER_FRICTION: usize = 40;
-pub(crate) const UF_ROW_WATER_BUOYANCY: usize = 41;
-pub(crate) const UF_ROW_SWIM_HEIGHT_FORCE: usize = 42;
-pub(crate) const UF_ROW_SWIM_RANDOM_AMOUNT: usize = 43;
-pub(crate) const UF_ROW_SWIM_EMA_WEIGHT: usize = 44;
-pub(crate) const UF_ROW_SWIM_SMOOTHED_FORCE: usize = 45;
-pub(crate) const UF_ROW_SWIM_RANDOM_SAMPLE: usize = 46;
+pub(crate) const UF_ROW_WATER_GRAVITY_COUNTER_RATIO: usize = 41;
+pub(crate) const UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE: usize = 42;
+pub(crate) const UF_ROW_WATER_SURFACE_LIFT_RANDOM_AMOUNT: usize = 43;
+pub(crate) const UF_ROW_WATER_SURFACE_LIFT_EMA_WEIGHT: usize = 44;
+pub(crate) const UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE: usize = 45;
+pub(crate) const UF_ROW_WATER_SURFACE_LIFT_RANDOM_SAMPLE: usize = 46;
 pub(crate) const UF_ROW_HEADING_X: usize = 47;
 pub(crate) const UF_ROW_HEADING_Y: usize = 48;
 pub(crate) const UF_ROW_AIR_DRIVE_FORCE: usize = 49;
-pub(crate) const UF_ROW_AIR_TRACTION: usize = 50;
-pub(crate) const UF_ROW_AIR_LIFT_DISTANCE_SCALE: usize = 51;
+pub(crate) const UF_ROW_AIR_FORCE_COUPLING: usize = 50;
+pub(crate) const UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 51;
+pub(crate) const UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE: usize = 52;
+pub(crate) const UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE: usize = 53;
 
 pub(crate) const UF_FLAG_HAS_THRUST: u32 = 1 << 0;
 pub(crate) const UF_FLAG_IS_FLYING: u32 = 1 << 1;
@@ -395,7 +398,8 @@ pub(crate) const UF_FLAG_HAS_ORIENTATION: u32 = 1 << 7;
 pub(crate) const UF_FLAG_FORWARD_THRUST_REQUIRES_FACING: u32 = 1 << 8;
 pub(crate) const UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING: u32 = 1 << 9;
 pub(crate) const UF_FLAG_ON_GROUND: u32 = 1 << 10;
-pub(crate) const UF_FLAG_HAS_AIR_LIFT_DISTANCE_SCALE: u32 = 1 << 11;
+pub(crate) const UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 11;
+pub(crate) const UF_FLAG_HAS_WATER_SURFACE_LIFT_DISTANCE_RESPONSE: u32 = 1 << 12;
 pub(crate) const UF_PROFILE_KERNEL_FLAG_MASK: u32 =
     UF_FLAG_FORWARD_THRUST_REQUIRES_FACING | UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING;
 
@@ -447,13 +451,13 @@ const UNIT_ATTITUDE_SLEEP_EPSILON_SQ: f64 = 1e-12;
 #[inline]
 pub(crate) fn unit_force_locomotion_magnitudes(
     drive_force: f64,
-    traction: f64,
+    force_coupling: f64,
     reference_mass: f64,
     thrust_multiplier: f64,
     force_scale: f64,
 ) -> (f64, f64) {
     if !drive_force.is_finite()
-        || !traction.is_finite()
+        || !force_coupling.is_finite()
         || !reference_mass.is_finite()
         || !thrust_multiplier.is_finite()
         || !force_scale.is_finite()
@@ -463,11 +467,11 @@ pub(crate) fn unit_force_locomotion_magnitudes(
         return (0.0, 0.0);
     }
     let raw = drive_force * thrust_multiplier * reference_mass / force_scale;
-    let traction_mag = raw * traction;
+    let coupled_mag = raw * force_coupling;
     (
         if raw.is_finite() { raw } else { 0.0 },
-        if traction_mag.is_finite() {
-            traction_mag
+        if coupled_mag.is_finite() {
+            coupled_mag
         } else {
             0.0
         },
@@ -484,6 +488,84 @@ fn unit_force_smoothed_scalar(raw: f64, ema_weight: f64, previous: f64) -> f64 {
         }
     } else {
         raw
+    }
+}
+
+#[inline]
+pub(crate) fn unit_force_randomized_surface_lift_force(
+    base_force: f64,
+    randomization_amount: f64,
+    random_sample: f64,
+) -> f64 {
+    if randomization_amount > 0.0 {
+        base_force * (1.0 + (random_sample * 2.0 - 1.0) * randomization_amount)
+    } else {
+        base_force
+    }
+}
+
+#[inline]
+fn unit_force_full_medium_surface_lift(
+    lift_force_from_ground_surface: f64,
+    ground_surface_distance_response: f64,
+    lift_force_from_water_surface: f64,
+    water_surface_distance_response: f64,
+    randomization_amount: f64,
+    random_sample: f64,
+    reference_mass: f64,
+    thrust_multiplier: f64,
+    force_scale: f64,
+) -> f64 {
+    // Each physical source evaluates its nonlinear distance response first.
+    // The source contributions then share one medium-level randomization/EMA.
+    let combined_source_force = lift_force_from_ground_surface.max(0.0)
+        * ground_surface_distance_response.max(0.0)
+        + lift_force_from_water_surface.max(0.0) * water_surface_distance_response.max(0.0);
+    let randomized_force = unit_force_randomized_surface_lift_force(
+        combined_source_force,
+        randomization_amount,
+        random_sample,
+    );
+    let (force_magnitude, _) = unit_force_locomotion_magnitudes(
+        randomized_force,
+        1.0,
+        reference_mass,
+        thrust_multiplier,
+        force_scale,
+    );
+    if force_magnitude.is_finite() && force_magnitude > 0.0 {
+        force_magnitude
+    } else {
+        0.0
+    }
+}
+
+/** Canonical dimensionless power-law response shared by air and water
+ * surface lift. Force magnitude is deliberately not an input: authored force
+ * strength and distance response are independent physical quantities. */
+#[wasm_bindgen]
+pub fn unit_force_surface_lift_distance_response(
+    distance_to_surface_world: f64,
+    reference_distance_world: f64,
+    minimum_distance_world: f64,
+    distance_exponent: f64,
+) -> f64 {
+    if !distance_to_surface_world.is_finite()
+        || !reference_distance_world.is_finite()
+        || !minimum_distance_world.is_finite()
+        || !distance_exponent.is_finite()
+        || reference_distance_world <= 0.0
+        || minimum_distance_world <= 0.0
+        || distance_exponent <= 0.0
+    {
+        return 0.0;
+    }
+    let distance = distance_to_surface_world.max(minimum_distance_world);
+    let response = (reference_distance_world / distance).powf(distance_exponent);
+    if response.is_finite() && response > 0.0 {
+        response
+    } else {
+        0.0
     }
 }
 
@@ -715,22 +797,53 @@ fn unit_force_clamp_magnitude3(v: &mut [f64; 3], max_mag: f64) {
 }
 
 #[inline]
-fn unit_force_air_lift_direct_altitude(pos_z: f64, ground_z: f64) -> f64 {
-    let body_reference_z = ground_z.max(TERRAIN_WATER_LEVEL);
-    (pos_z - body_reference_z).max(0.5)
+fn unit_force_ground_surface_distance(pos_z: f64, ground_z: f64) -> f64 {
+    (pos_z - ground_z).max(0.5)
 }
 
 #[inline]
-fn unit_force_air_lift_distance_scale(
+fn unit_force_ground_surface_lift_distance_response(
     pos_z: f64,
     ground_z: f64,
-    sampled_distance_scale: f64,
-    has_sampled_distance_scale: bool,
+    sampled_distance_response: f64,
+    has_sampled_distance_response: bool,
+    reference_distance_world: f64,
+    minimum_distance_world: f64,
+    distance_exponent: f64,
 ) -> f64 {
-    if has_sampled_distance_scale && sampled_distance_scale.is_finite() {
-        return sampled_distance_scale.max(0.0);
+    if has_sampled_distance_response && sampled_distance_response.is_finite() {
+        return sampled_distance_response.max(0.0);
     }
-    1.0 / unit_force_air_lift_direct_altitude(pos_z, ground_z)
+    unit_force_surface_lift_distance_response(
+        unit_force_ground_surface_distance(pos_z, ground_z),
+        reference_distance_world,
+        minimum_distance_world,
+        distance_exponent,
+    )
+}
+
+#[inline]
+fn unit_force_water_surface_lift_distance_response(
+    pos_z: f64,
+    ground_z: f64,
+    sampled_distance_response: f64,
+    has_sampled_distance_response: bool,
+    reference_distance_world: f64,
+    minimum_distance_world: f64,
+    distance_exponent: f64,
+) -> f64 {
+    if has_sampled_distance_response && sampled_distance_response.is_finite() {
+        return sampled_distance_response.max(0.0);
+    }
+    if ground_z >= TERRAIN_WATER_LEVEL {
+        return 0.0;
+    }
+    unit_force_surface_lift_distance_response(
+        pos_z - TERRAIN_WATER_LEVEL,
+        reference_distance_world,
+        minimum_distance_world,
+        distance_exponent,
+    )
 }
 
 #[inline]
@@ -789,7 +902,7 @@ fn unit_force_attitude_step(
     base: usize,
     body_mass: f64,
     radius: f64,
-    traction_force_mag: f64,
+    coupled_force_mag: f64,
     target_up: [f64; 3],
     medium_angular_damping: f64,
     dt_sec: f64,
@@ -827,7 +940,7 @@ fn unit_force_attitude_step(
     if inertia <= 1e-9 || !inertia.is_finite() {
         return false;
     }
-    let torque = traction_force_mag.max(0.0) * r;
+    let torque = coupled_force_mag.max(0.0) * r;
     let max_alpha = torque * 1_000_000.0 / inertia * UNIT_ATTITUDE_TURN_AUTHORITY_SCALE;
     if max_alpha <= 1e-9 || !max_alpha.is_finite() {
         let damp = if medium_angular_damping.is_finite() {
@@ -907,6 +1020,9 @@ pub fn unit_force_step_batch(
     drive_alignment_zero_force_dot: f64,
     drive_alignment_full_force_dot: f64,
     drive_alignment_response_exponent: f64,
+    surface_lift_reference_distance_world: f64,
+    surface_lift_minimum_distance_world: f64,
+    surface_lift_distance_exponent: f64,
 ) -> u32 {
     if slots.len() < count
         || flags.len() < count
@@ -977,38 +1093,40 @@ pub fn unit_force_step_batch(
                     profile_flags = profile.flags[code];
                     rows[base + UF_ROW_GROUND_DRIVE_FORCE] =
                         profile.values[pbase + UF_PROFILE_GROUND_DRIVE_FORCE];
-                    rows[base + UF_ROW_GROUND_TRACTION] =
-                        profile.values[pbase + UF_PROFILE_GROUND_TRACTION];
-                    rows[base + UF_ROW_AIR_BUOYANCY] =
-                        profile.values[pbase + UF_PROFILE_AIR_BUOYANCY];
-                    rows[base + UF_ROW_HOVER_HEIGHT_FORCE] =
-                        profile.values[pbase + UF_PROFILE_HOVER_HEIGHT_FORCE];
-                    rows[base + UF_ROW_HOVER_RANDOM_AMOUNT] =
-                        profile.values[pbase + UF_PROFILE_HOVER_RANDOM_AMOUNT];
-                    rows[base + UF_ROW_HOVER_EMA_WEIGHT] =
-                        profile.values[pbase + UF_PROFILE_HOVER_EMA_WEIGHT];
+                    rows[base + UF_ROW_GROUND_FORCE_COUPLING] =
+                        profile.values[pbase + UF_PROFILE_GROUND_FORCE_COUPLING];
+                    rows[base + UF_ROW_AIR_GRAVITY_COUNTER_RATIO] =
+                        profile.values[pbase + UF_PROFILE_AIR_GRAVITY_COUNTER_RATIO];
+                    rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] =
+                        profile.values[pbase + UF_PROFILE_AIR_LIFT_FORCE_FROM_GROUND_SURFACE];
+                    rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE] =
+                        profile.values[pbase + UF_PROFILE_AIR_LIFT_FORCE_FROM_WATER_SURFACE];
+                    rows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_AMOUNT] =
+                        profile.values[pbase + UF_PROFILE_AIR_SURFACE_LIFT_RANDOM_AMOUNT];
+                    rows[base + UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] =
+                        profile.values[pbase + UF_PROFILE_AIR_SURFACE_LIFT_EMA_WEIGHT];
                     rows[base + UF_ROW_GROUND_FRICTION] =
                         profile.values[pbase + UF_PROFILE_GROUND_FRICTION];
                     rows[base + UF_ROW_AIR_FRICTION] =
                         profile.values[pbase + UF_PROFILE_AIR_FRICTION];
                     rows[base + UF_ROW_WATER_DRIVE_FORCE] =
                         profile.values[pbase + UF_PROFILE_WATER_DRIVE_FORCE];
-                    rows[base + UF_ROW_WATER_TRACTION] =
-                        profile.values[pbase + UF_PROFILE_WATER_TRACTION];
+                    rows[base + UF_ROW_WATER_FORCE_COUPLING] =
+                        profile.values[pbase + UF_PROFILE_WATER_FORCE_COUPLING];
                     rows[base + UF_ROW_WATER_FRICTION] =
                         profile.values[pbase + UF_PROFILE_WATER_FRICTION];
-                    rows[base + UF_ROW_WATER_BUOYANCY] =
-                        profile.values[pbase + UF_PROFILE_WATER_BUOYANCY];
-                    rows[base + UF_ROW_SWIM_HEIGHT_FORCE] =
-                        profile.values[pbase + UF_PROFILE_SWIM_HEIGHT_FORCE];
-                    rows[base + UF_ROW_SWIM_RANDOM_AMOUNT] =
-                        profile.values[pbase + UF_PROFILE_SWIM_RANDOM_AMOUNT];
-                    rows[base + UF_ROW_SWIM_EMA_WEIGHT] =
-                        profile.values[pbase + UF_PROFILE_SWIM_EMA_WEIGHT];
+                    rows[base + UF_ROW_WATER_GRAVITY_COUNTER_RATIO] =
+                        profile.values[pbase + UF_PROFILE_WATER_GRAVITY_COUNTER_RATIO];
+                    rows[base + UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE] =
+                        profile.values[pbase + UF_PROFILE_WATER_LIFT_FORCE_FROM_GROUND_SURFACE];
+                    rows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_AMOUNT] =
+                        profile.values[pbase + UF_PROFILE_WATER_SURFACE_LIFT_RANDOM_AMOUNT];
+                    rows[base + UF_ROW_WATER_SURFACE_LIFT_EMA_WEIGHT] =
+                        profile.values[pbase + UF_PROFILE_WATER_SURFACE_LIFT_EMA_WEIGHT];
                     rows[base + UF_ROW_AIR_DRIVE_FORCE] =
                         profile.values[pbase + UF_PROFILE_AIR_DRIVE_FORCE];
-                    rows[base + UF_ROW_AIR_TRACTION] =
-                        profile.values[pbase + UF_PROFILE_AIR_TRACTION];
+                    rows[base + UF_ROW_AIR_FORCE_COUPLING] =
+                        profile.values[pbase + UF_PROFILE_AIR_FORCE_COUPLING];
                     ground_surface_grip = profile.values[pbase + UF_PROFILE_GROUND_SURFACE_GRIP];
                     air_quadratic_drag = profile.values[pbase + UF_PROFILE_AIR_QUADRATIC_DRAG];
                     air_drag_forward_scale =
@@ -1050,18 +1168,19 @@ pub fn unit_force_step_batch(
         let forward_thrust_requires_facing = flag & UF_FLAG_FORWARD_THRUST_REQUIRES_FACING != 0;
         let drive_force_scales_with_facing = flag & UF_FLAG_DRIVE_FORCE_SCALES_WITH_FACING != 0;
         if let Some(runtime_slot) = runtime_slot {
-            if rows[base + UF_ROW_HOVER_EMA_WEIGHT] > 0.0 {
-                rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] =
-                    runtime.hover_smoothed_force[runtime_slot];
+            if rows[base + UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] > 0.0 {
+                rows[base + UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] =
+                    runtime.air_surface_lift_smoothed_force[runtime_slot];
             } else {
-                rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
-                runtime.hover_smoothed_force[runtime_slot] = f64::NAN;
+                rows[base + UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
+                runtime.air_surface_lift_smoothed_force[runtime_slot] = f64::NAN;
             }
-            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = if rows[base + UF_ROW_SWIM_EMA_WEIGHT] > 0.0 {
-                runtime.swim_smoothed_force[runtime_slot]
-            } else {
-                f64::NAN
-            };
+            rows[base + UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] =
+                if rows[base + UF_ROW_WATER_SURFACE_LIFT_EMA_WEIGHT] > 0.0 {
+                    runtime.water_lift_smoothed_force[runtime_slot]
+                } else {
+                    f64::NAN
+                };
         }
         let omega_sq = if has_orientation {
             rows[base + UF_ROW_OMEGA_X] * rows[base + UF_ROW_OMEGA_X]
@@ -1077,14 +1196,17 @@ pub fn unit_force_step_batch(
             runtime.air_fraction[runtime_slot] = air_fraction;
             runtime.water_fraction[runtime_slot] = water_fraction;
         }
-        // Buoyancy is passive (like friction): it keeps a body awake in
-        // its medium whether or not the lift controller is enabled.
+        // Gravity countering is passive: it keeps a body awake in its
+        // medium whether or not powered surface lift is enabled.
         let air_lift_force_active = air_fraction > 0.0
-            && ((medium_lift_enabled && rows[base + UF_ROW_HOVER_HEIGHT_FORCE] > 0.0)
-                || rows[base + UF_ROW_AIR_BUOYANCY] > 0.0);
+            && ((medium_lift_enabled
+                && (rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] > 0.0
+                    || rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE] > 0.0))
+                || rows[base + UF_ROW_AIR_GRAVITY_COUNTER_RATIO] > 0.0);
         let water_lift_force_active = water_fraction > 0.0
-            && ((medium_lift_enabled && rows[base + UF_ROW_SWIM_HEIGHT_FORCE] > 0.0)
-                || rows[base + UF_ROW_WATER_BUOYANCY] > 0.0);
+            && ((medium_lift_enabled
+                && rows[base + UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE] > 0.0)
+                || rows[base + UF_ROW_WATER_GRAVITY_COUNTER_RATIO] > 0.0);
 
         if p.flags[slot] & BODY_FLAG_SLEEPING != 0
             && !idle_air_drive
@@ -1102,23 +1224,23 @@ pub fn unit_force_step_batch(
         } else {
             0.0
         };
-        let (_ground_raw_force_mag, ground_traction_force_mag) = unit_force_locomotion_magnitudes(
+        let (_ground_raw_force_mag, ground_coupled_force_mag) = unit_force_locomotion_magnitudes(
             rows[base + UF_ROW_GROUND_DRIVE_FORCE],
-            rows[base + UF_ROW_GROUND_TRACTION],
+            rows[base + UF_ROW_GROUND_FORCE_COUPLING],
             reference_mass,
             thrust_multiplier,
             force_scale,
         );
-        let (_air_raw_force_mag, air_traction_force_mag) = unit_force_locomotion_magnitudes(
+        let (_air_raw_force_mag, air_coupled_force_mag) = unit_force_locomotion_magnitudes(
             rows[base + UF_ROW_AIR_DRIVE_FORCE],
-            rows[base + UF_ROW_AIR_TRACTION],
+            rows[base + UF_ROW_AIR_FORCE_COUPLING],
             reference_mass,
             thrust_multiplier,
             force_scale,
         );
-        let (_water_raw_force_mag, water_traction_force_mag) = unit_force_locomotion_magnitudes(
+        let (_water_raw_force_mag, water_coupled_force_mag) = unit_force_locomotion_magnitudes(
             rows[base + UF_ROW_WATER_DRIVE_FORCE],
-            rows[base + UF_ROW_WATER_TRACTION],
+            rows[base + UF_ROW_WATER_FORCE_COUPLING],
             reference_mass,
             thrust_multiplier,
             force_scale,
@@ -1182,13 +1304,14 @@ pub fn unit_force_step_batch(
         }
         let air_medium_active = air_fraction > 0.0
             && (rows[base + UF_ROW_AIR_DRIVE_FORCE] > 0.0
-                || rows[base + UF_ROW_HOVER_HEIGHT_FORCE] > 0.0
-                || rows[base + UF_ROW_AIR_BUOYANCY] > 0.0
+                || rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] > 0.0
+                || rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE] > 0.0
+                || rows[base + UF_ROW_AIR_GRAVITY_COUNTER_RATIO] > 0.0
                 || rows[base + UF_ROW_AIR_FRICTION] > 0.0);
         let water_medium_active = water_fraction > 0.0
             && (rows[base + UF_ROW_WATER_DRIVE_FORCE] > 0.0
-                || rows[base + UF_ROW_SWIM_HEIGHT_FORCE] > 0.0
-                || rows[base + UF_ROW_WATER_BUOYANCY] > 0.0
+                || rows[base + UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE] > 0.0
+                || rows[base + UF_ROW_WATER_GRAVITY_COUNTER_RATIO] > 0.0
                 || rows[base + UF_ROW_WATER_FRICTION] > 0.0);
 
         if air_medium_active {
@@ -1212,63 +1335,65 @@ pub fn unit_force_step_batch(
                 air_has_target_dir = true;
             }
 
-            let direct_altitude = unit_force_air_lift_direct_altitude(p.pos_z[slot], ground_z);
-            let air_lift_distance_scale = unit_force_air_lift_distance_scale(
+            let ground_surface_distance_response = unit_force_ground_surface_lift_distance_response(
                 p.pos_z[slot],
                 ground_z,
-                rows[base + UF_ROW_AIR_LIFT_DISTANCE_SCALE],
-                flag & UF_FLAG_HAS_AIR_LIFT_DISTANCE_SCALE != 0,
+                rows[base + UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE],
+                flag & UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE != 0,
+                surface_lift_reference_distance_world,
+                surface_lift_minimum_distance_world,
+                surface_lift_distance_exponent,
             );
-            let base_hover_height_force = if rows[base + UF_ROW_HOVER_HEIGHT_FORCE].is_finite() {
-                rows[base + UF_ROW_HOVER_HEIGHT_FORCE]
-            } else {
-                direct_altitude
-            };
-            let rand_amount = rows[base + UF_ROW_HOVER_RANDOM_AMOUNT];
-            let raw_hover_height_force = if rand_amount > 0.0 {
-                let sample = rows[base + UF_ROW_HOVER_RANDOM_SAMPLE];
-                base_hover_height_force * (1.0 + (sample * 2.0 - 1.0) * rand_amount)
-            } else {
-                base_hover_height_force
-            };
-            let ema_weight = rows[base + UF_ROW_HOVER_EMA_WEIGHT];
+            let water_surface_distance_response = unit_force_water_surface_lift_distance_response(
+                p.pos_z[slot],
+                ground_z,
+                rows[base + UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE],
+                flag & UF_FLAG_HAS_WATER_SURFACE_LIFT_DISTANCE_RESPONSE != 0,
+                surface_lift_reference_distance_world,
+                surface_lift_minimum_distance_world,
+                surface_lift_distance_exponent,
+            );
+            let rand_amount = rows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_AMOUNT];
+            let full_medium_surface_lift = unit_force_full_medium_surface_lift(
+                rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE],
+                ground_surface_distance_response,
+                rows[base + UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE],
+                water_surface_distance_response,
+                rand_amount,
+                rows[base + UF_ROW_AIR_SURFACE_LIFT_RANDOM_SAMPLE],
+                reference_mass,
+                thrust_multiplier,
+                force_scale,
+            );
+            let ema_weight = rows[base + UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT];
 
-            if medium_lift_enabled && body_mass > 0.0 && raw_hover_height_force > 0.0 {
-                let stable_altitude = raw_hover_height_force;
-                if stable_altitude > 0.0 && stable_altitude.is_finite() {
-                    let lift_k = body_mass * GRAVITY * raw_hover_height_force;
-                    let vz_damp_per_mass = 2.0 * (GRAVITY / stable_altitude).sqrt();
-                    let raw_lift_force_z = air_fraction
-                        * (lift_k * air_lift_distance_scale
-                            - body_mass * vz_damp_per_mass * p.vel_z[slot])
-                        / 1_000_000.0;
-                    let lift_force_z = unit_force_smoothed_scalar(
-                        raw_lift_force_z,
-                        ema_weight,
-                        rows[base + UF_ROW_HOVER_SMOOTHED_FORCE],
-                    );
-                    if ema_weight > 0.0 {
-                        rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = lift_force_z;
-                    } else {
-                        rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
-                    }
-                    thrust_force_z += lift_force_z;
+            if medium_lift_enabled && full_medium_surface_lift > 0.0 {
+                // Smooth the full-medium force first. Occupancy is a final,
+                // unsmoothed application weight so entering/exiting a medium
+                // cannot leak into this controller's EMA history.
+                let smoothed_full_medium_force = unit_force_smoothed_scalar(
+                    full_medium_surface_lift,
+                    ema_weight,
+                    rows[base + UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE],
+                );
+                if ema_weight > 0.0 {
+                    rows[base + UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] =
+                        smoothed_full_medium_force;
                 } else {
-                    rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
+                    rows[base + UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
                 }
+                thrust_force_z += air_fraction * smoothed_full_medium_force;
             } else {
-                rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
+                rows[base + UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
             }
 
             if air_has_target_dir {
-                let thrust_mag = air_traction_force_mag
-                    * air_fraction
-                    * air_thrust_scale
-                    * drive_alignment_scale;
+                let thrust_mag =
+                    air_coupled_force_mag * air_fraction * air_thrust_scale * drive_alignment_scale;
                 if idle_air_drive || forward_thrust_requires_facing {
                     // Aircraft-style locomotion: engine thrust follows the nose, while
                     // the requested movement direction is only the yaw target below.
-                    // Low traction therefore creates visible drift/wide turns instead
+                    // Low force_coupling therefore creates visible drift/wide turns instead
                     // of allowing instant sideways thrust.
                     thrust_force_x += forward_x * thrust_mag;
                     thrust_force_y += forward_y * thrust_mag;
@@ -1277,13 +1402,11 @@ pub fn unit_force_step_batch(
                     thrust_force_y += air_target_dir_y * thrust_mag;
                 }
             }
-            // Passive Archimedes lift against air: mass * G * buoyancy,
-            // scaled by the fraction of the body in the air medium. Not
-            // gated on the lift controller — a buoyant hull floats with
-            // its engines off.
-            let air_buoyancy = rows[base + UF_ROW_AIR_BUOYANCY];
-            if air_buoyancy > 0.0 && body_mass > 0.0 {
-                thrust_force_z += body_mass * GRAVITY * air_buoyancy * air_fraction / 1_000_000.0;
+            let air_gravity_counter_ratio =
+                rows[base + UF_ROW_AIR_GRAVITY_COUNTER_RATIO].clamp(0.0, 1.0);
+            if air_gravity_counter_ratio > 0.0 && body_mass > 0.0 {
+                thrust_force_z +=
+                    body_mass * GRAVITY * air_gravity_counter_ratio * air_fraction / 1_000_000.0;
             }
 
             let air_friction = rows[base + UF_ROW_AIR_FRICTION];
@@ -1307,78 +1430,76 @@ pub fn unit_force_step_batch(
                 thrust_force_z += fz;
             }
         } else {
-            rows[base + UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
+            rows[base + UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
         }
 
         if water_medium_active {
             let water_force = rows[base + UF_ROW_WATER_DRIVE_FORCE];
             if has_drive_dir && water_force > 0.0 {
-                let mag = water_traction_force_mag
-                    * water_fraction
-                    * thrust_scale
-                    * drive_alignment_scale;
+                let mag =
+                    water_coupled_force_mag * water_fraction * thrust_scale * drive_alignment_scale;
                 thrust_force_x += drive_dir_x * mag;
                 thrust_force_y += drive_dir_y * mag;
             }
 
-            let swim_height_force = rows[base + UF_ROW_SWIM_HEIGHT_FORCE];
-            if medium_lift_enabled && swim_height_force > 0.0 && body_mass > 0.0 {
-                let altitude = (p.pos_z[slot] - ground_z).max(0.5);
-                let rand_amount = rows[base + UF_ROW_SWIM_RANDOM_AMOUNT];
-                let raw_swim_force = if rand_amount > 0.0 {
-                    let sample = rows[base + UF_ROW_SWIM_RANDOM_SAMPLE];
-                    swim_height_force * (1.0 + (sample * 2.0 - 1.0) * rand_amount)
+            let lift_force_from_ground_surface =
+                rows[base + UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE];
+            if medium_lift_enabled && lift_force_from_ground_surface > 0.0 {
+                let sampled_distance_response =
+                    rows[base + UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
+                let distance_response = if flag & UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE
+                    != 0
+                    && sampled_distance_response.is_finite()
+                {
+                    sampled_distance_response.max(0.0)
                 } else {
-                    swim_height_force
+                    let distance_to_surface = p.pos_z[slot] - ground_z;
+                    unit_force_surface_lift_distance_response(
+                        distance_to_surface,
+                        surface_lift_reference_distance_world,
+                        surface_lift_minimum_distance_world,
+                        surface_lift_distance_exponent,
+                    )
                 };
-                let ema_weight = rows[base + UF_ROW_SWIM_EMA_WEIGHT];
-                let stable_altitude = raw_swim_force;
-                if stable_altitude > 0.0 && stable_altitude.is_finite() {
-                    let lift_k = body_mass * GRAVITY * raw_swim_force;
-                    let vz_damp_per_mass = 2.0 * (GRAVITY / stable_altitude).sqrt();
-                    let raw_lift_force_z = water_fraction
-                        * (lift_k / altitude - body_mass * vz_damp_per_mass * p.vel_z[slot])
-                        / 1_000_000.0;
-                    let lift_force_z = unit_force_smoothed_scalar(
-                        raw_lift_force_z,
+                let rand_amount = rows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_AMOUNT];
+                let full_medium_surface_lift = unit_force_full_medium_surface_lift(
+                    lift_force_from_ground_surface,
+                    distance_response,
+                    0.0,
+                    0.0,
+                    rand_amount,
+                    rows[base + UF_ROW_WATER_SURFACE_LIFT_RANDOM_SAMPLE],
+                    reference_mass,
+                    thrust_multiplier,
+                    force_scale,
+                );
+                let ema_weight = rows[base + UF_ROW_WATER_SURFACE_LIFT_EMA_WEIGHT];
+                if full_medium_surface_lift > 0.0 {
+                    let smoothed_full_medium_force = unit_force_smoothed_scalar(
+                        full_medium_surface_lift,
                         ema_weight,
-                        rows[base + UF_ROW_SWIM_SMOOTHED_FORCE],
+                        rows[base + UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE],
                     );
                     if ema_weight > 0.0 {
-                        rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = lift_force_z;
+                        rows[base + UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] =
+                            smoothed_full_medium_force;
                     } else {
-                        rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+                        rows[base + UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
                     }
-                    thrust_force_z += lift_force_z;
+                    thrust_force_z += water_fraction * smoothed_full_medium_force;
                 } else {
-                    rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+                    rows[base + UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
                 }
             } else {
-                rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+                rows[base + UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
             }
 
-            // Passive Archimedes lift against water: mass * G * buoyancy,
-            // scaled by the submerged fraction of the body column. For
-            // water buoyancy > 1 equilibrium is partial submergence
-            // (fraction = 1 / buoyancy) — the body floats at the surface.
-            // The vertical damping is critically sized for the
-            // fraction-vs-depth spring and fades outside the surface
-            // band, so a deeply submerged buoyant hull simply rises under
-            // the net force until it reaches the surface.
-            let water_buoyancy = rows[base + UF_ROW_WATER_BUOYANCY];
-            if water_buoyancy > 0.0 && body_mass > 0.0 {
-                let half_height =
-                    if p.ground_offset[slot].is_finite() && p.ground_offset[slot] > 0.0 {
-                        p.ground_offset[slot]
-                    } else {
-                        0.5
-                    };
-                let surface_band = 4.0 * water_fraction * (1.0 - water_fraction);
-                let vz_damp_per_mass =
-                    2.0 * (GRAVITY * water_buoyancy / (2.0 * half_height)).sqrt();
-                thrust_force_z += (body_mass * GRAVITY * water_buoyancy * water_fraction
-                    - surface_band * body_mass * vz_damp_per_mass * p.vel_z[slot])
-                    / 1_000_000.0;
+            let water_gravity_counter_ratio =
+                rows[base + UF_ROW_WATER_GRAVITY_COUNTER_RATIO].clamp(0.0, 1.0);
+            if water_gravity_counter_ratio > 0.0 && body_mass > 0.0 {
+                thrust_force_z +=
+                    body_mass * GRAVITY * water_gravity_counter_ratio * water_fraction
+                        / 1_000_000.0;
             }
 
             let water_friction = rows[base + UF_ROW_WATER_FRICTION];
@@ -1402,19 +1523,20 @@ pub fn unit_force_step_batch(
                 thrust_force_z += fz;
             }
         } else {
-            rows[base + UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+            rows[base + UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
         }
 
         if ground_contact {
             // Contact drive is constrained by Coulomb grip and the effective
-            // normal load. Buoyancy unloads an underwater contact patch, so a
-            // nearly neutral bottom-walker cannot retain dry-land traction.
-            let passive_buoyancy_ratio = air_fraction * rows[base + UF_ROW_AIR_BUOYANCY].max(0.0)
-                + water_fraction * rows[base + UF_ROW_WATER_BUOYANCY].max(0.0);
+            // normal load. Passive gravity countering unloads a submerged
+            // contact patch, so a neutral bottom-walker has no dry-land grip.
+            let passive_gravity_counter_ratio = air_fraction
+                * rows[base + UF_ROW_AIR_GRAVITY_COUNTER_RATIO].clamp(0.0, 1.0)
+                + water_fraction * rows[base + UF_ROW_WATER_GRAVITY_COUNTER_RATIO].clamp(0.0, 1.0);
             let normal_load =
-                body_mass * GRAVITY * (1.0 - passive_buoyancy_ratio).max(0.0) / 1_000_000.0;
+                body_mass * GRAVITY * (1.0 - passive_gravity_counter_ratio).max(0.0) / 1_000_000.0;
             let contact_force_limit = normal_load * ground_surface_grip.max(0.0);
-            let available_ground_force = ground_traction_force_mag.min(contact_force_limit);
+            let available_ground_force = ground_coupled_force_mag.min(contact_force_limit);
             if has_drive_dir {
                 let thrust_mag = available_ground_force * thrust_scale * drive_alignment_scale;
                 let normal_z = rows[base + UF_ROW_NORMAL_Z];
@@ -1425,14 +1547,15 @@ pub fn unit_force_step_batch(
                     rows[base + UF_ROW_NORMAL_Y],
                     normal_z,
                 );
-                let traction = rows[base + UF_ROW_GROUND_TRACTION].max(0.0);
-                let traction_min_normal_z = if traction.is_finite() {
-                    1.0 / (1.0 + traction * traction).sqrt()
+                let force_coupling = rows[base + UF_ROW_GROUND_FORCE_COUPLING].max(0.0);
+                let force_coupling_min_normal_z = if force_coupling.is_finite() {
+                    1.0 / (1.0 + force_coupling * force_coupling).sqrt()
                 } else {
                     1.0
                 };
-                let climbing_beyond_traction = tz > 0.0 && normal_z < traction_min_normal_z;
-                if !climbing_beyond_traction {
+                let climbing_beyond_force_coupling =
+                    tz > 0.0 && normal_z < force_coupling_min_normal_z;
+                if !climbing_beyond_force_coupling {
                     thrust_force_x += tx * thrust_mag;
                     thrust_force_y += ty * thrust_mag;
                     thrust_force_z += tz * thrust_mag;
@@ -1483,19 +1606,19 @@ pub fn unit_force_step_batch(
             }
             angular_damping += air_fraction * air_angular_drag.max(0.0);
             angular_damping += water_fraction * water_angular_drag.max(0.0);
-            let attitude_traction_force_mag = (if attitude_ground_contact {
-                ground_traction_force_mag
+            let attitude_coupled_force_mag = (if attitude_ground_contact {
+                ground_coupled_force_mag
             } else {
                 0.0
-            }) + air_fraction * air_traction_force_mag
-                + water_fraction * water_traction_force_mag;
+            }) + air_fraction * air_coupled_force_mag
+                + water_fraction * water_coupled_force_mag;
 
             if unit_force_attitude_step(
                 rows,
                 base,
                 body_mass,
                 p.radius[slot],
-                attitude_traction_force_mag,
+                attitude_coupled_force_mag,
                 target_up,
                 angular_damping,
                 dt_sec,
@@ -1580,12 +1703,13 @@ pub fn unit_force_step_batch(
         rows[base + UF_ROW_MOVEMENT_ACCEL_Z] = thrust_force_z * movement_accel_scale;
         out_flags[i] |= UF_OUT_MOVEMENT_ACCEL;
         if let Some(runtime_slot) = runtime_slot {
-            if rows[base + UF_ROW_HOVER_EMA_WEIGHT] > 0.0 {
-                runtime.hover_smoothed_force[runtime_slot] =
-                    rows[base + UF_ROW_HOVER_SMOOTHED_FORCE];
+            if rows[base + UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] > 0.0 {
+                runtime.air_surface_lift_smoothed_force[runtime_slot] =
+                    rows[base + UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE];
             }
-            if rows[base + UF_ROW_SWIM_EMA_WEIGHT] > 0.0 {
-                runtime.swim_smoothed_force[runtime_slot] = rows[base + UF_ROW_SWIM_SMOOTHED_FORCE];
+            if rows[base + UF_ROW_WATER_SURFACE_LIFT_EMA_WEIGHT] > 0.0 {
+                runtime.water_lift_smoothed_force[runtime_slot] =
+                    rows[base + UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE];
             }
         }
 
@@ -1618,45 +1742,88 @@ mod tests {
     }
 
     #[test]
-    fn air_lift_distance_scale_uses_sampled_average_when_available() {
+    fn ground_surface_lift_distance_response_uses_sampled_average_when_available() {
         let pos_z = TERRAIN_WATER_LEVEL + 50.0;
         let body_ground = TERRAIN_WATER_LEVEL + 10.0;
-        let sampled_average_distance_scale = 0.5 * (1.0 / 20.0) + 0.5 * (1.0 / 40.0);
+        let sampled_average_distance_response =
+            0.5 * (1.0_f64 / 20.0).sqrt() + 0.5 * (1.0_f64 / 40.0).sqrt();
 
         assert_near(
-            unit_force_air_lift_distance_scale(
+            unit_force_ground_surface_lift_distance_response(
                 pos_z,
                 body_ground,
-                sampled_average_distance_scale,
+                sampled_average_distance_response,
                 true,
+                1.0,
+                0.5,
+                0.5,
             ),
-            sampled_average_distance_scale,
+            sampled_average_distance_response,
         );
         assert_near(
-            unit_force_air_lift_distance_scale(
+            unit_force_ground_surface_lift_distance_response(
                 pos_z,
                 body_ground,
-                sampled_average_distance_scale,
+                sampled_average_distance_response,
                 false,
+                1.0,
+                0.5,
+                0.5,
             ),
-            1.0 / 40.0,
+            (1.0_f64 / 40.0).sqrt(),
         );
         assert_near(
-            unit_force_air_lift_distance_scale(pos_z, body_ground, f64::NAN, true),
-            1.0 / 40.0,
+            unit_force_ground_surface_lift_distance_response(
+                pos_z,
+                body_ground,
+                f64::NAN,
+                true,
+                1.0,
+                0.5,
+                0.5,
+            ),
+            (1.0_f64 / 40.0).sqrt(),
         );
         assert_near(
-            unit_force_air_lift_distance_scale(
+            unit_force_ground_surface_lift_distance_response(
                 TERRAIN_WATER_LEVEL - 10.0,
                 TERRAIN_WATER_LEVEL - 20.0,
-                1.0 / 0.5,
+                (1.0_f64 / 10.0).sqrt(),
                 true,
+                1.0,
+                0.5,
+                0.5,
             ),
-            2.0,
+            (1.0_f64 / 10.0).sqrt(),
+        );
+        assert_near(unit_force_ground_surface_distance(pos_z, body_ground), 40.0);
+    }
+
+    #[test]
+    fn water_surface_lift_distance_response_requires_exposed_water() {
+        assert_near(
+            unit_force_water_surface_lift_distance_response(
+                TERRAIN_WATER_LEVEL + 10.0,
+                TERRAIN_WATER_LEVEL - 20.0,
+                f64::NAN,
+                false,
+                1.0,
+                0.5,
+                0.5,
+            ),
+            (1.0_f64 / 10.0).sqrt(),
         );
         assert_near(
-            unit_force_air_lift_direct_altitude(pos_z, body_ground),
-            40.0,
+            unit_force_water_surface_lift_distance_response(
+                TERRAIN_WATER_LEVEL + 10.0,
+                TERRAIN_WATER_LEVEL + 1.0,
+                f64::NAN,
+                false,
+                1.0,
+                0.5,
+                0.5,
+            ),
+            0.0,
         );
     }
 

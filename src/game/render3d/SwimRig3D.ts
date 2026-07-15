@@ -1,6 +1,6 @@
 // SwimRig3D — cetacean-style pectoral fins, dorsal fin, and horizontally
 // paired tail flukes. This is a presentation rig only; the authoritative
-// water propulsion/buoyancy profile lives in the `swim` locomotion preset.
+// water propulsion/lift profile lives in the `swim` locomotion preset.
 
 import * as THREE from 'three';
 import { COLORS } from '@/colorsConfig';

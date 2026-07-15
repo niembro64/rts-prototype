@@ -8,7 +8,7 @@
       "other": 8,
       "hitbox": 6,
       "collision": 9.6,
-      "shotArmingRadius": 12
+      "shotArmingRadius": 14.4
     },
     "bodyCenterHeight": 5.680000000000001,
     "supportSurface": {
@@ -66,15 +66,18 @@
       },
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0,
-          "buoyancy": 1.35
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 1
+          }
         }
       },
       "config": {
@@ -102,7 +105,7 @@
         "other": 8,
         "hitbox": 6,
         "collision": 9.6,
-        "shotArmingRadius": 12
+        "shotArmingRadius": 14.4
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -116,7 +119,7 @@
       "other": 10,
       "hitbox": 7,
       "collision": 13,
-      "shotArmingRadius": 14
+      "shotArmingRadius": 19.5
     },
     "bodyCenterHeight": 11.5,
     "supportSurface": {
@@ -174,14 +177,18 @@
       },
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -208,7 +215,7 @@
         "other": 10,
         "hitbox": 7,
         "collision": 13,
-        "shotArmingRadius": 14
+        "shotArmingRadius": 19.5
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -222,7 +229,7 @@
       "other": 13,
       "hitbox": 9,
       "collision": 15,
-      "shotArmingRadius": 18
+      "shotArmingRadius": 22.5
     },
     "bodyCenterHeight": 58.5,
     "supportSurface": {
@@ -288,14 +295,18 @@
       },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -344,7 +355,7 @@
         "other": 13,
         "hitbox": 9,
         "collision": 15,
-        "shotArmingRadius": 18
+        "shotArmingRadius": 22.5
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -358,7 +369,7 @@
       "other": 16,
       "hitbox": 13,
       "collision": 22.4,
-      "shotArmingRadius": 26
+      "shotArmingRadius": 33.6
     },
     "bodyCenterHeight": 12.4,
     "supportSurface": {
@@ -416,14 +427,18 @@
       },
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -450,7 +465,7 @@
         "other": 16,
         "hitbox": 13,
         "collision": 22.4,
-        "shotArmingRadius": 26
+        "shotArmingRadius": 33.6
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -464,7 +479,7 @@
       "other": 20,
       "hitbox": 12,
       "collision": 24,
-      "shotArmingRadius": 24
+      "shotArmingRadius": 36
     },
     "bodyCenterHeight": 11.8,
     "supportSurface": {
@@ -522,14 +537,18 @@
       },
       "pathfindingBlueprintId": "wheelsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -557,7 +576,7 @@
         "other": 20,
         "hitbox": 12,
         "collision": 24,
-        "shotArmingRadius": 24
+        "shotArmingRadius": 36
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -571,7 +590,7 @@
       "other": 10,
       "hitbox": 8,
       "collision": 12.1,
-      "shotArmingRadius": 16
+      "shotArmingRadius": 18.15
     },
     "bodyCenterHeight": 8,
     "supportSurface": {
@@ -627,15 +646,18 @@
       },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0,
-          "buoyancy": 1.6
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 1
+          }
         }
       },
       "config": {
@@ -684,7 +706,7 @@
         "other": 10,
         "hitbox": 8,
         "collision": 12.1,
-        "shotArmingRadius": 16
+        "shotArmingRadius": 18.15
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -698,7 +720,7 @@
       "other": 24,
       "hitbox": 24,
       "collision": 36,
-      "shotArmingRadius": 48
+      "shotArmingRadius": 54
     },
     "bodyCenterHeight": 13.6,
     "supportSurface": {
@@ -756,14 +778,18 @@
       },
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -790,7 +816,7 @@
         "other": 24,
         "hitbox": 24,
         "collision": 36,
-        "shotArmingRadius": 48
+        "shotArmingRadius": 54
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -804,7 +830,7 @@
       "other": 40,
       "hitbox": 50,
       "collision": 65,
-      "shotArmingRadius": 100
+      "shotArmingRadius": 97.5
     },
     "bodyCenterHeight": 54,
     "supportSurface": {
@@ -880,14 +906,18 @@
       },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -946,7 +976,7 @@
         "other": 40,
         "hitbox": 50,
         "collision": 65,
-        "shotArmingRadius": 100
+        "shotArmingRadius": 97.5
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -960,7 +990,7 @@
       "other": 30,
       "hitbox": 40,
       "collision": 52,
-      "shotArmingRadius": 80
+      "shotArmingRadius": 78
     },
     "bodyCenterHeight": 49.5,
     "supportSurface": {
@@ -1102,14 +1132,18 @@
       },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -1158,7 +1192,7 @@
         "other": 30,
         "hitbox": 40,
         "collision": 52,
-        "shotArmingRadius": 80
+        "shotArmingRadius": 78
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -1172,7 +1206,7 @@
       "other": 30,
       "hitbox": 27,
       "collision": 54,
-      "shotArmingRadius": 54
+      "shotArmingRadius": 81
     },
     "bodyCenterHeight": 19,
     "supportSurface": {
@@ -1229,14 +1263,18 @@
       },
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 12
+          "lift": {
+            "liftForceFromGroundSurface": 1636.788013,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -1263,7 +1301,7 @@
         "other": 30,
         "hitbox": 27,
         "collision": 54,
-        "shotArmingRadius": 54
+        "shotArmingRadius": 81
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -1277,7 +1315,7 @@
       "other": 28,
       "hitbox": 24,
       "collision": 48,
-      "shotArmingRadius": 48
+      "shotArmingRadius": 72
     },
     "bodyCenterHeight": 14,
     "supportSurface": {
@@ -1368,14 +1406,18 @@
       },
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 18
+          "lift": {
+            "liftForceFromGroundSurface": 300,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -1410,7 +1452,7 @@
         "other": 28,
         "hitbox": 24,
         "collision": 48,
-        "shotArmingRadius": 48
+        "shotArmingRadius": 72
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -1424,7 +1466,7 @@
       "other": 34,
       "hitbox": 28,
       "collision": 42,
-      "shotArmingRadius": 55
+      "shotArmingRadius": 63
     },
     "bodyCenterHeight": 10,
     "supportSurface": {
@@ -1508,15 +1550,18 @@
       },
       "pathfindingBlueprintId": "amphibiousAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 34,
-          "buoyancy": 0.75
+          "lift": {
+            "liftForceFromGroundSurface": 2361.535517,
+            "gravityCounterRatio": 0.75
+          }
         }
       },
       "config": {
@@ -1553,7 +1598,7 @@
         "other": 34,
         "hitbox": 28,
         "collision": 42,
-        "shotArmingRadius": 55
+        "shotArmingRadius": 63
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -1567,7 +1612,7 @@
       "other": 11,
       "hitbox": 13,
       "collision": 19.8,
-      "shotArmingRadius": 26
+      "shotArmingRadius": 29.7
     },
     "bodyCenterHeight": 14.025,
     "supportSurface": {
@@ -1636,14 +1681,18 @@
       },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -1692,7 +1741,7 @@
         "other": 11,
         "hitbox": 13,
         "collision": 19.8,
-        "shotArmingRadius": 26
+        "shotArmingRadius": 29.7
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -1706,7 +1755,7 @@
       "other": 10,
       "hitbox": 8,
       "collision": 24,
-      "shotArmingRadius": 16
+      "shotArmingRadius": 36
     },
     "bodyCenterHeight": 24,
     "supportSurface": {
@@ -1769,14 +1818,18 @@
       },
       "pathfindingBlueprintId": "treadsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -1803,7 +1856,7 @@
         "other": 10,
         "hitbox": 8,
         "collision": 24,
-        "shotArmingRadius": 16
+        "shotArmingRadius": 36
       }
     }
   },
@@ -1816,7 +1869,7 @@
       "other": 9,
       "hitbox": 8,
       "collision": 10.8,
-      "shotArmingRadius": 16
+      "shotArmingRadius": 16.2
     },
     "bodyCenterHeight": 1.3499999999999999,
     "supportSurface": {
@@ -1872,15 +1925,18 @@
       },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 160
+          "lift": {
+            "liftForceFromGroundSurface": 113.841996,
+            "liftForceFromWaterSurface": 113.841996,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0,
-          "buoyancy": 1.5
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 1
+          }
         }
       },
       "config": {
@@ -1909,7 +1965,7 @@
         "other": 9,
         "hitbox": 8,
         "collision": 10.8,
-        "shotArmingRadius": 16
+        "shotArmingRadius": 16.2
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -1923,7 +1979,7 @@
       "other": 16,
       "hitbox": 40,
       "collision": 50,
-      "shotArmingRadius": 80
+      "shotArmingRadius": 75
     },
     "bodyCenterHeight": 3.2,
     "supportSurface": {
@@ -2004,15 +2060,18 @@
       },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 500
+          "lift": {
+            "liftForceFromGroundSurface": 855.296001,
+            "liftForceFromWaterSurface": 855.296001,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0,
-          "buoyancy": 1.4
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 1
+          }
         }
       },
       "config": {
@@ -2041,7 +2100,7 @@
         "other": 16,
         "hitbox": 40,
         "collision": 50,
-        "shotArmingRadius": 80
+        "shotArmingRadius": 75
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -2055,7 +2114,7 @@
       "other": 15,
       "hitbox": 14,
       "collision": 19,
-      "shotArmingRadius": 28
+      "shotArmingRadius": 28.5
     },
     "bodyCenterHeight": 4.5,
     "supportSurface": {
@@ -2164,15 +2223,18 @@
       },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 230
+          "lift": {
+            "liftForceFromGroundSurface": 307.106455,
+            "liftForceFromWaterSurface": 307.106455,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0,
-          "buoyancy": 1.5
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 1
+          }
         }
       },
       "config": {
@@ -2201,7 +2263,7 @@
         "other": 15,
         "hitbox": 14,
         "collision": 19,
-        "shotArmingRadius": 28
+        "shotArmingRadius": 28.5
       }
     }
   },
@@ -2214,7 +2276,7 @@
       "other": 18,
       "hitbox": 15,
       "collision": 21.6,
-      "shotArmingRadius": 30
+      "shotArmingRadius": 32.4
     },
     "bodyCenterHeight": 5.4,
     "supportSurface": {
@@ -2277,14 +2339,18 @@
       },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 300
+          "lift": {
+            "liftForceFromGroundSurface": 584.567148,
+            "liftForceFromWaterSurface": 584.567148,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -2321,7 +2387,7 @@
         "other": 18,
         "hitbox": 15,
         "collision": 21.6,
-        "shotArmingRadius": 30
+        "shotArmingRadius": 32.4
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -2335,7 +2401,7 @@
       "other": 76,
       "hitbox": 68,
       "collision": 92,
-      "shotArmingRadius": 136
+      "shotArmingRadius": 138
     },
     "bodyCenterHeight": 42,
     "supportSurface": {
@@ -2418,14 +2484,18 @@
       },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 700
+          "lift": {
+            "liftForceFromGroundSurface": 238117.617996,
+            "liftForceFromWaterSurface": 238117.617996,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -2468,7 +2538,7 @@
         "other": 76,
         "hitbox": 68,
         "collision": 92,
-        "shotArmingRadius": 136
+        "shotArmingRadius": 138
       }
     },
     "preventLockOnIfMyTeamIsAboveMe": true
@@ -2482,7 +2552,7 @@
       "other": 92,
       "hitbox": 82,
       "collision": 112,
-      "shotArmingRadius": 164
+      "shotArmingRadius": 168
     },
     "bodyCenterHeight": 52,
     "supportSurface": {
@@ -2578,15 +2648,18 @@
       },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 760
+          "lift": {
+            "liftForceFromGroundSurface": 111650.794892,
+            "liftForceFromWaterSurface": 111650.794892,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0,
-          "buoyancy": 1.3
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 1
+          }
         }
       },
       "config": {
@@ -2615,7 +2688,7 @@
         "other": 92,
         "hitbox": 82,
         "collision": 112,
-        "shotArmingRadius": 164
+        "shotArmingRadius": 168
       }
     }
   },
@@ -2628,7 +2701,7 @@
       "other": 94,
       "hitbox": 84,
       "collision": 114,
-      "shotArmingRadius": 168
+      "shotArmingRadius": 171
     },
     "bodyCenterHeight": 54,
     "supportSurface": {
@@ -2724,14 +2797,18 @@
       },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 780
+          "lift": {
+            "liftForceFromGroundSurface": 125678.160394,
+            "liftForceFromWaterSurface": 125678.160394,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -2774,7 +2851,7 @@
         "other": 94,
         "hitbox": 84,
         "collision": 114,
-        "shotArmingRadius": 168
+        "shotArmingRadius": 171
       }
     }
   },
@@ -2787,7 +2864,7 @@
       "other": 22,
       "hitbox": 20,
       "collision": 28,
-      "shotArmingRadius": 40
+      "shotArmingRadius": 42
     },
     "bodyCenterHeight": 3.8,
     "supportSurface": {
@@ -2854,15 +2931,18 @@
       },
       "pathfindingBlueprintId": "airborneAnywhere",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 260
+          "lift": {
+            "liftForceFromGroundSurface": 798.163517,
+            "liftForceFromWaterSurface": 798.163517,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0,
-          "buoyancy": 1.4
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 1
+          }
         }
       },
       "config": {
@@ -2891,7 +2971,7 @@
         "other": 22,
         "hitbox": 20,
         "collision": 28,
-        "shotArmingRadius": 40
+        "shotArmingRadius": 42
       }
     }
   },
@@ -2904,7 +2984,7 @@
       "other": 20,
       "hitbox": 20,
       "collision": 20,
-      "shotArmingRadius": 40
+      "shotArmingRadius": 30
     },
     "bodyCenterHeight": 22.4,
     "supportSurface": {
@@ -3039,14 +3119,18 @@
       },
       "pathfindingBlueprintId": "legsLand",
       "physics": {
-        "ground": {
-          "heightUpwardForce": 0
-        },
         "air": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "liftForceFromWaterSurface": 0,
+            "gravityCounterRatio": 0
+          }
         },
         "water": {
-          "heightUpwardForce": 0
+          "lift": {
+            "liftForceFromGroundSurface": 0,
+            "gravityCounterRatio": 0
+          }
         }
       },
       "config": {
@@ -3095,7 +3179,7 @@
         "other": 20,
         "hitbox": 20,
         "collision": 20,
-        "shotArmingRadius": 40
+        "shotArmingRadius": 30
       }
     }
   }

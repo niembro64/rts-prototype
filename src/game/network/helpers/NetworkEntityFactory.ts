@@ -628,11 +628,9 @@ function createUnitFromTypedFullWireRow(
   const blueprintMass = unitBlueprint !== undefined && unitBlueprint.mass !== undefined
     ? unitBlueprint.mass
     : 25;
-  const radius = {
-    other: blueprintRadius.other ?? 15,
-    hitbox: blueprintRadius.hitbox ?? 15,
-    collision: blueprintRadius.collision ?? 15,
-  };
+  // Typed full rows omit immutable radii; hydrate every radius, including
+  // ARM, through the same blueprint fallback as DTO snapshots.
+  const radius = readNetworkUnitRadius(null, blueprintRadius);
   const blueprintBodyCenterHeight = unitBlueprint !== undefined &&
     unitBlueprint.bodyCenterHeight !== undefined
     ? unitBlueprint.bodyCenterHeight

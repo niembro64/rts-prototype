@@ -61,10 +61,10 @@ import type { SimEvent } from './combat';
 import { LOCOMOTION_FORCE_SCALE } from './locomotionPresetConfig';
 import { magnitude, getTransformCosSin } from '../math';
 import {
-  getHostShotArmingRadius,
   isBallisticArcWeapon,
   updateWeaponWorldKinematics,
 } from './combat/combatUtils';
+import { getHostShotArmingRadius } from './combat/shotArming';
 import { economyManager } from './economy';
 import { factoryProductionSystem } from './factoryProduction';
 import { factoryCanProduceUnit } from './factoryProductionRoster';
@@ -75,7 +75,6 @@ import { getEntityTargetPoint } from './buildingAnchors';
 import { GAME_DIAGNOSTICS, debugLog } from '../diagnostics';
 import { getUnitBlueprint } from './blueprints';
 import {
-  DGUN_TERRAIN_FOLLOW_HEIGHT,
   UNIT_LOCOMOTION_FORCE_REFERENCE_MASS,
   UNIT_MASS_MULTIPLIER,
 } from '../../config';
@@ -1584,7 +1583,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   );
   const spawnX = mount.x;
   const spawnY = mount.y;
-  const dgunFireZ = ctx.world.getGroundZ(spawnX, spawnY) + DGUN_TERRAIN_FOLLOW_HEIGHT;
+  const spawnZ = mount.z;
 
   // D-gun is a terrain-following wave: it travels horizontally in the
   // commanded direction while vertical thrust rides the local terrain.
@@ -1635,7 +1634,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
     },
   );
 
-  projectile.transform.z = dgunFireZ;
+  projectile.transform.z = spawnZ;
   const projectileComponent = projectile.projectile;
   if (projectileComponent !== null) {
     projectileComponent.velocityZ = velocityZ;
@@ -1644,11 +1643,11 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
 
   ctx.world.addEntity(projectile);
 
-  // Emit projectile spawn event for D-gun. Spawn XY comes from the
-  // turret origin; altitude remains terrain-following.
+  // The D-gun begins at the turret center like every other physical
+  // emission. Its terrain-follow controller takes over after launch.
   ctx.pendingProjectileSpawns.push({
     id: projectile.id,
-    pos: { x: spawnX, y: spawnY, z: dgunFireZ },
+    pos: { x: spawnX, y: spawnY, z: spawnZ },
     rotation: fireAngle,
     velocity: { x: velocityX, y: velocityY, z: velocityZ },
     projectileType: 'projectile',
@@ -1675,7 +1674,7 @@ function executeFireDGunCommand(ctx: CommandContext, command: FireDGunCommand): 
   // Emit audio event at the authoritative projectile spawn.
   const dgunSimEvent: SimEvent = {
     type: 'fire',
-    pos: { x: spawnX, y: spawnY, z: dgunFireZ },
+    pos: { x: spawnX, y: spawnY, z: spawnZ },
     turretBlueprintId: turretDisruptor.config.turretBlueprintId,
     playerId,
     entityId: commander.id,

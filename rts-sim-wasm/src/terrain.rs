@@ -1186,7 +1186,8 @@ pub(crate) fn terrain_waters_edge_height_key_at_world(
     x: f64,
     z: f64,
 ) -> Option<i32> {
-    let (t, flat_half) = terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg, &c.flat_zones)?;
+    let (t, flat_half) =
+        terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg, &c.flat_zones)?;
     Some(terrain_waters_edge_region_key_for_coords(t, flat_half))
 }
 
@@ -1274,7 +1275,8 @@ pub(crate) fn terrain_waters_edge_boundary_value_at_world(
     z: f64,
     after_key: i32,
 ) -> Option<f64> {
-    let (t, flat_half) = terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg, &c.flat_zones)?;
+    let (t, flat_half) =
+        terrain_waters_edge_cliff_coords(x, z, &c.metrics, &c.gen_cfg, &c.flat_zones)?;
     Some(terrain_waters_edge_boundary_value_for_coords(
         t, flat_half, after_key,
     ))

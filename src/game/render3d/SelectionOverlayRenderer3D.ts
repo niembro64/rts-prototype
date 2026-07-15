@@ -17,6 +17,7 @@ import { isUnitGroundPenetrationInContact } from '../sim/unitGroundPhysics';
 import { getTurretWorldMount } from '../math/MountGeometry';
 import { getTransformCosSin } from '../math';
 import { getTurretMountHeight } from '../sim/combat/combatUtils';
+import { getHostShotArmingRadius } from '../sim/combat/shotArming';
 import {
   createWorldSupportSurface,
 } from '../sim/supportSurface';
@@ -291,7 +292,7 @@ export class SelectionOverlayRenderer3D {
     );
     this.setUnitRadiusSphere(
       rings, 'shotArmingRadius', showShotArming, m.group,
-      centerY, collider.shotArmingRadius ?? 0, this.radiusMatShotArming,
+      centerY, getHostShotArmingRadius(entity), this.radiusMatShotArming,
     );
     m.radiusRingsVisible = true;
   }
@@ -336,7 +337,7 @@ export class SelectionOverlayRenderer3D {
     );
     this.setUnitRadiusSphere(
       rings, 'shotArmingRadius', showShotArming, m.group,
-      centerY, collider.shotArmingRadius ?? 0, this.radiusMatShotArming,
+      centerY, getHostShotArmingRadius(entity), this.radiusMatShotArming,
     );
     m.radiusRingsVisible = true;
   }

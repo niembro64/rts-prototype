@@ -96,6 +96,18 @@ function assertSlowRocketLaunchVelocityInheritance(addTurretVelocityToEmissionLa
     if (rocket === null) {
       throw new Error('[turret host integration] fired rocket must have a projectile component');
     }
+    assertNear(rocketEntity.transform.x, badgerTurret.worldPos.x, 'shot launch x must be turret center x');
+    assertNear(rocketEntity.transform.y, badgerTurret.worldPos.y, 'shot launch y must be turret center y');
+    assertNear(rocketEntity.transform.z, badgerTurret.worldPos.z, 'shot launch z must be turret center z');
+    assertNear(rocketSpawn.pos.x, badgerTurret.worldPos.x, 'spawn event x must be turret center x');
+    assertNear(rocketSpawn.pos.y, badgerTurret.worldPos.y, 'spawn event y must be turret center y');
+    assertNear(rocketSpawn.pos.z, badgerTurret.worldPos.z, 'spawn event z must be turret center z');
+    assertContract(!rocket.isArmed, 'fresh physical shot must begin inert inside its host ARM sphere');
+    assertNear(
+      rocket.shotArmingRadius,
+      badger.unit.radius.shotArmingRadius ?? 0,
+      'shot must snapshot its host authored ARM radius at launch',
+    );
     assertContract(
       hasPendingProjectileLaunchVelocityFinalization(rocketEntity.id),
       'fresh turret projectile must wait for post-physics launch velocity finalization',

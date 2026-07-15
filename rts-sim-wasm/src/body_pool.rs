@@ -73,9 +73,9 @@ pub(crate) struct BodyPool {
     pub(crate) inv_mass: Vec<f64>,
     pub(crate) restitution: Vec<f64>,
     pub(crate) ground_offset: Vec<f64>,
-    // Per-body wind-relative air drag coefficient. Dynamic units author
-    // locomotion.physics.air.friction, then JS converts that value plus mass
-    // into this coefficient before allocation. 0.0 = no wind/air coupling.
+    // Integrator-level wind-relative air drag coefficient. Unit locomotion
+    // linear/quadratic air drag is applied by the unit-force kernel instead;
+    // unit bodies therefore leave this separate coefficient at zero.
     pub(crate) air_drag_coefficient: Vec<f64>,
     // Per-body ground-friction multiplier. 1.0 = the full global
     // ground-contact tangential damping; 0.0 = frictionless (keeps all
@@ -294,7 +294,7 @@ pub(crate) const ARRIVAL_COMPLETION_FLAG_MAINTAIN_FULL_THRUST: u8 = 1 << 2;
 #[inline]
 pub(crate) fn arrival_horizontal_drive_accel(
     drive_force: f64,
-    traction: f64,
+    force_coupling: f64,
     mass: f64,
     thrust_multiplier: f64,
     force_scale: f64,
@@ -311,9 +311,9 @@ pub(crate) fn arrival_horizontal_drive_accel(
         return 0.0;
     }
 
-    let traction_force_magnitude =
-        drive_force * thrust_multiplier * traction * reference_mass / force_scale;
-    traction_force_magnitude * 1_000_000.0 / physics_mass
+    let coupled_force_magnitude =
+        drive_force * thrust_multiplier * force_coupling * reference_mass / force_scale;
+    coupled_force_magnitude * 1_000_000.0 / physics_mass
 }
 
 #[inline]
@@ -325,7 +325,7 @@ pub(crate) fn compute_arrival_control_thrust(
     body_vy: f64,
     radius_collision: f64,
     drive_force: f64,
-    traction: f64,
+    force_coupling: f64,
     mass: f64,
     flags: u8,
     dt_sec: f64,
@@ -348,7 +348,7 @@ pub(crate) fn compute_arrival_control_thrust(
 
     let max_accel = arrival_horizontal_drive_accel(
         drive_force,
-        traction,
+        force_coupling,
         mass,
         thrust_multiplier,
         force_scale,
@@ -416,10 +416,10 @@ fn unit_effective_coupled_drive(
     let ground_contact = runtime_is_current && runtime.ground_contact[entity_slot] != 0;
     let mut coupled_drive = air_fraction
         * profile.values[pbase + UF_PROFILE_AIR_DRIVE_FORCE]
-        * profile.values[pbase + UF_PROFILE_AIR_TRACTION]
+        * profile.values[pbase + UF_PROFILE_AIR_FORCE_COUPLING]
         + water_fraction
             * profile.values[pbase + UF_PROFILE_WATER_DRIVE_FORCE]
-            * profile.values[pbase + UF_PROFILE_WATER_TRACTION];
+            * profile.values[pbase + UF_PROFILE_WATER_FORCE_COUPLING];
 
     let body_mass = if p.inv_mass[slot] > 0.0 {
         1.0 / p.inv_mass[slot]
@@ -429,15 +429,17 @@ fn unit_effective_coupled_drive(
     if ground_contact {
         let (_, ground_drive_force) = unit_force_locomotion_magnitudes(
             profile.values[pbase + UF_PROFILE_GROUND_DRIVE_FORCE],
-            profile.values[pbase + UF_PROFILE_GROUND_TRACTION],
+            profile.values[pbase + UF_PROFILE_GROUND_FORCE_COUPLING],
             reference_mass,
             thrust_multiplier,
             force_scale,
         );
-        let buoyancy_ratio = air_fraction
-            * profile.values[pbase + UF_PROFILE_AIR_BUOYANCY].max(0.0)
-            + water_fraction * profile.values[pbase + UF_PROFILE_WATER_BUOYANCY].max(0.0);
-        let normal_load = body_mass * GRAVITY * (1.0 - buoyancy_ratio).max(0.0) / 1_000_000.0;
+        let gravity_counter_ratio = air_fraction
+            * profile.values[pbase + UF_PROFILE_AIR_GRAVITY_COUNTER_RATIO].max(0.0)
+            + water_fraction
+                * profile.values[pbase + UF_PROFILE_WATER_GRAVITY_COUNTER_RATIO].max(0.0);
+        let normal_load =
+            body_mass * GRAVITY * (1.0 - gravity_counter_ratio).max(0.0) / 1_000_000.0;
         let contact_limit =
             normal_load * profile.values[pbase + UF_PROFILE_GROUND_SURFACE_GRIP].max(0.0);
         let available_ground_force = ground_drive_force.min(contact_limit);

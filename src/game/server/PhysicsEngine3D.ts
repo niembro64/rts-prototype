@@ -340,9 +340,9 @@ export class Body3D {
    *  0 means this body has no wind/air coupling. */
   get airDragCoefficient(): number { return pv().airDragCoefficient[this.slot]; }
   set airDragCoefficient(v: number) { pv().airDragCoefficient[this.slot] = v; }
-  /** Per-body ground-friction multiplier (1 = normal traction,
-   *  0 = frictionless). Settable so a body's traction can change at
-   *  runtime if a future feature needs it. */
+  /** Per-body solid-contact tangent-damping multiplier. This is the runtime
+   *  expansion of locomotion ground.contact.tangentDamping, not propulsion coupling or
+   *  the locomotion profile's linear friction multiplier. */
   get groundFrictionScale(): number { return pv().groundFrictionScale[this.slot]; }
   set groundFrictionScale(v: number) { pv().groundFrictionScale[this.slot] = v; }
 

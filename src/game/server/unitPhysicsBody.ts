@@ -55,7 +55,7 @@ export function createPhysicsBodyForUnit(
     spawnZ,
     entity.unit.surfaceNormal,
     0,
-    // The canonical locomotion profile applies contact damping in Rust on the
+    // The canonical locomotion profile applies tangent damping in Rust on the
     // first force step. Body creation deliberately has no physics-preset logic.
     1,
   );

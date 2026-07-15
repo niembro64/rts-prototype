@@ -1,4 +1,3 @@
-import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 // Combat utility functions
 
 import type { Entity, ProjectileShot, Turret } from '../types';
@@ -8,7 +7,6 @@ import { getTurretWorldMount } from '../../math';
 import type { Vec3 } from '@/types/vec2';
 import { getUnitGroundZ } from '../unitGeometry';
 import { getRuntimeTurretMount, getRuntimeTurretMountHeight } from '../turretMounts';
-import { getBuildingConfig } from '../buildConfigs';
 import { GRAVITY } from '../../../config';
 import {
   readCombatTargetingTurretMountKinematicsFromContextInto,
@@ -415,89 +413,6 @@ export function getEntityAcceleration3d(
     out.z = 0;
   }
   return out;
-}
-
-export function updateProjectileArming(
-  projectile: {
-    projectileType: string;
-    isArmed: boolean;
-    shotArmingRadius: number;
-    collisionStartX: number | null;
-    collisionStartY: number | null;
-    collisionStartZ: number | null;
-  },
-  source: Entity | undefined,
-  previousX: number,
-  previousY: number,
-  previousZ: number,
-  currentX: number,
-  currentY: number,
-  currentZ: number,
-  projectileHitboxRadius = 0,
-): boolean {
-  if (projectile.projectileType !== 'projectile') return true;
-  if (projectile.isArmed) return true;
-
-  const armingRadius = Number.isFinite(projectile.shotArmingRadius)
-    ? Math.max(0, projectile.shotArmingRadius)
-    : 0;
-  if (armingRadius <= 0 || source === undefined) {
-    projectile.isArmed = true;
-    projectile.collisionStartX = source === undefined ? currentX : previousX;
-    projectile.collisionStartY = source === undefined ? currentY : previousY;
-    projectile.collisionStartZ = source === undefined ? currentZ : previousZ;
-    return true;
-  }
-
-  const center = getEntityPosition3d(source, _entityPositionScratch);
-  const prevDx = previousX - center.x;
-  const prevDy = previousY - center.y;
-  const prevDz = previousZ - center.z;
-  const currDx = currentX - center.x;
-  const currDy = currentY - center.y;
-  const currDz = currentZ - center.z;
-  const effectiveArmingRadius = armingRadius + (
-    Number.isFinite(projectileHitboxRadius)
-      ? Math.max(0, projectileHitboxRadius)
-      : 0
-  );
-  const radiusSq = effectiveArmingRadius * effectiveArmingRadius;
-  const prevDistSq = prevDx * prevDx + prevDy * prevDy + prevDz * prevDz;
-  const currDistSq = currDx * currDx + currDy * currDy + currDz * currDz;
-  if (currDistSq <= radiusSq) return false;
-
-  let t = 0;
-  if (prevDistSq < radiusSq) {
-    const segDx = currentX - previousX;
-    const segDy = currentY - previousY;
-    const segDz = currentZ - previousZ;
-    const a = segDx * segDx + segDy * segDy + segDz * segDz;
-    const b = 2 * (prevDx * segDx + prevDy * segDy + prevDz * segDz);
-    const c = prevDistSq - radiusSq;
-    const disc = b * b - 4 * a * c;
-    t = a > 1e-12 && disc >= 0
-      ? (-b + DMath.sqrt(disc)) / (2 * a)
-      : 1;
-  }
-  const clampedT = Math.max(0, Math.min(1, t));
-  projectile.isArmed = true;
-  projectile.collisionStartX = previousX + clampedT * (currentX - previousX);
-  projectile.collisionStartY = previousY + clampedT * (currentY - previousY);
-  projectile.collisionStartZ = previousZ + clampedT * (currentZ - previousZ);
-  return true;
-}
-
-export function getHostShotArmingRadius(host: Entity): number {
-  const unitRadius = host.unit?.radius.shotArmingRadius;
-  if (unitRadius !== undefined) {
-    return Number.isFinite(unitRadius) ? Math.max(0, unitRadius) : 0;
-  }
-  const buildingBlueprintId = host.buildingBlueprintId;
-  if (buildingBlueprintId !== undefined && buildingBlueprintId !== null) {
-    const radius = getBuildingConfig(buildingBlueprintId).radius.shotArmingRadius;
-    return radius !== undefined && Number.isFinite(radius) ? Math.max(0, radius) : 0;
-  }
-  return 0;
 }
 
 export function updateProjectileSourceClearance(

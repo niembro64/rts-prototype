@@ -1332,7 +1332,7 @@ export type UnitStatsOverlayInfo = {
   mass: number | null;
   costEnergy: number | null;
   costMetal: number | null;
-  locomotion: { type: string; driveForce: number; traction: number } | null;
+  locomotion: { type: string; driveForce: number; forceCoupling: number } | null;
   weapons: UnitStatsWeaponInfo[];
   factory: UnitStatsFactoryInfo | null;
 };
@@ -1446,8 +1446,8 @@ export function buildUnitStatsOverlayInfo(
       const primaryPhysics = getLocomotionPrimaryDrivePhysics(runtimeLocomotion);
       locomotion = {
         type: runtimeLocomotion.type,
-        driveForce: primaryPhysics.driveForce,
-        traction: primaryPhysics.traction,
+        driveForce: primaryPhysics.propulsion.driveForce,
+        forceCoupling: primaryPhysics.propulsion.forceCoupling,
       };
     } catch {
       // Unknown blueprint: show the raw id + live hp only.

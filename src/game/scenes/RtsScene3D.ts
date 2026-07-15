@@ -65,7 +65,7 @@ import { Debris3D } from '../render3d/Debris3D';
 import { BurnMark3D } from '../render3d/BurnMark3D';
 import { GroundPrint3D } from '../render3d/GroundPrint3D';
 import { AreaDrag3D } from '../render3d/AreaDrag3D';
-import { AirLiftProbeOverlay3D } from '../render3d/AirLiftProbeOverlay3D';
+import { SurfaceLiftProbeOverlay3D } from '../render3d/SurfaceLiftProbeOverlay3D';
 import { LineDrag3D } from '../render3d/LineDrag3D';
 import { BuildGhost3D } from '../render3d/BuildGhost3D';
 import { ContactShadowRenderer3D } from '../render3d/ContactShadowRenderer3D';
@@ -169,7 +169,7 @@ export class RtsScene3D {
   private burnMarkRenderer!: BurnMark3D;
   private groundPrintRenderer!: GroundPrint3D;
   private areaDragRenderer!: AreaDrag3D;
-  private airLiftProbeOverlay!: AirLiftProbeOverlay3D;
+  private airLiftProbeOverlay!: SurfaceLiftProbeOverlay3D;
   private lineDragRenderer!: LineDrag3D;
   private buildGhostRenderer!: BuildGhost3D;
   private sprayRenderer!: SprayRenderer3D;

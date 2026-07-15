@@ -133,7 +133,7 @@ export type ClientBarConfig = {
   readonly triangleDebug: BooleanSetting;
   readonly wallTriangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;
-  /** Draws selected hover/flying unit air-lift height probe points and
+  /** Draws selected units' configured surface-lift probe points and
    *  vertical lines to the sampled terrain/water/support surface. */
   readonly airLiftProbeDebug: BooleanSetting;
   readonly metalMap: BooleanSetting;

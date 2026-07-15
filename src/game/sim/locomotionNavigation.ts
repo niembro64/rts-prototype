@@ -1,6 +1,7 @@
 import type {
   LocomotionMediumNavigation,
   UnitLocomotion,
+  UnitLocomotionFluidPhysics,
   UnitLocomotionMediumPhysics,
 } from '@/types/locomotionTypes';
 
@@ -32,11 +33,13 @@ export function isLocomotionMediumNavigation(
 }
 
 function hasHorizontalRouteAuthority(physics: UnitLocomotionMediumPhysics): boolean {
-  return physics.driveForce > 0 && physics.traction > 0;
+  return physics.propulsion.driveForce > 0 && physics.propulsion.forceCoupling > 0;
 }
 
-function hasAirLiftAuthority(physics: UnitLocomotionMediumPhysics): boolean {
-  return physics.buoyancy > 0 || physics.heightUpwardForce > 0;
+function hasAirLiftAuthority(physics: UnitLocomotionFluidPhysics): boolean {
+  return physics.lift.gravityCounterRatio > 0 ||
+    physics.lift.liftForceFromGroundSurface > 0 ||
+    physics.lift.liftForceFromWaterSurface > 0;
 }
 
 /** Resolve the single effective route-domain contract used by pathfinding,

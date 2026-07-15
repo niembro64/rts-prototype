@@ -6208,11 +6208,34 @@ mod sim_kernel_tests {
 
         assert_eq!(
             projectile_terminal_consequence_batch(
-                1, &one, &one, &one, &zero, &zero, &one,
-                &zero, &zero, &zero, &zero, &one, &one, &zero,
-                &x, &y, &z, &ground_z, &hp, &time_alive, &max_life,
-                100.0, 100.0, 10.0,
-                &mut reason, &mut flags, &mut out_z, &mut out_hp,
+                1,
+                &one,
+                &one,
+                &one,
+                &zero,
+                &zero,
+                &one,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &one,
+                &one,
+                &zero,
+                &x,
+                &y,
+                &z,
+                &ground_z,
+                &hp,
+                &time_alive,
+                &max_life,
+                100.0,
+                100.0,
+                10.0,
+                &mut reason,
+                &mut flags,
+                &mut out_z,
+                &mut out_hp,
             ),
             1,
         );
@@ -6244,11 +6267,34 @@ mod sim_kernel_tests {
 
         assert_eq!(
             projectile_terminal_consequence_batch(
-                1, &one, &one, &one, &zero, &zero, &one,
-                &zero, &zero, &zero, &zero, &one, &zero, &one,
-                &x, &y, &z, &ground_z, &hp, &time_alive, &max_life,
-                100.0, 100.0, 10.0,
-                &mut reason, &mut flags, &mut out_z, &mut out_hp,
+                1,
+                &one,
+                &one,
+                &one,
+                &zero,
+                &zero,
+                &one,
+                &zero,
+                &zero,
+                &zero,
+                &zero,
+                &one,
+                &zero,
+                &one,
+                &x,
+                &y,
+                &z,
+                &ground_z,
+                &hp,
+                &time_alive,
+                &max_life,
+                100.0,
+                100.0,
+                10.0,
+                &mut reason,
+                &mut flags,
+                &mut out_z,
+                &mut out_hp,
             ),
             1,
         );
@@ -7289,8 +7335,9 @@ mod sim_kernel_tests {
         pathfinder_init(320.0, 180.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_031, 20_031, 30_031);
 
-        let ground_only_count =
-            pathfinder_find_path(70.0, 90.0, 250.0, 90.0, 0.0, true, false, false, 0.0, 0.0, false);
+        let ground_only_count = pathfinder_find_path(
+            70.0, 90.0, 250.0, 90.0, 0.0, true, false, false, 0.0, 0.0, false,
+        );
         let ground_only_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (ground_only_count as usize) * 2)
         };
@@ -7303,30 +7350,14 @@ mod sim_kernel_tests {
         );
         assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
         assert_eq!(
-            pathfinder_validate_path(
-                &exact_ground_polyline,
-                0.0,
-                true,
-                false,
-                false,
-                0.0,
-                false,
-            ),
+            pathfinder_validate_path(&exact_ground_polyline, 0.0, true, false, false, 0.0, false,),
             1,
             "the exact snapped route must remain legal",
         );
         exact_ground_polyline.push(250.0);
         exact_ground_polyline.push(90.0);
         assert_eq!(
-            pathfinder_validate_path(
-                &exact_ground_polyline,
-                0.0,
-                true,
-                false,
-                false,
-                0.0,
-                false,
-            ),
+            pathfinder_validate_path(&exact_ground_polyline, 0.0, true, false, false, 0.0, false,),
             0,
             "inventing a connector from the snapped endpoint to the click crosses water",
         );
@@ -7358,8 +7389,9 @@ mod sim_kernel_tests {
             "translating that formation segment into the water buffer must be rejected",
         );
 
-        let amphibious_count =
-            pathfinder_find_path(70.0, 90.0, 250.0, 90.0, 0.0, true, true, false, 0.0, 0.0, false);
+        let amphibious_count = pathfinder_find_path(
+            70.0, 90.0, 250.0, 90.0, 0.0, true, true, false, 0.0, 0.0, false,
+        );
         assert_eq!(amphibious_count, 1);
         assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_COMPLETE);
         let amphibious_waypoints = unsafe {
@@ -7506,8 +7538,9 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_004, 20_004, 30_004);
 
-        let count =
-            pathfinder_find_path(90.0, 50.0, 110.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false);
+        let count = pathfinder_find_path(
+            90.0, 50.0, 110.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false,
+        );
         assert_eq!(count, 1);
 
         let waypoints =
@@ -7523,8 +7556,9 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_005, 20_005, 30_005);
 
-        let count =
-            pathfinder_find_path(110.0, 50.0, 90.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false);
+        let count = pathfinder_find_path(
+            110.0, 50.0, 90.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false,
+        );
         assert_eq!(count, 1);
 
         let waypoints =
@@ -7638,8 +7672,9 @@ mod sim_kernel_tests {
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_006, 20_006, 30_006);
 
-        let count =
-            pathfinder_find_path(100.0, 50.0, 50.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false);
+        let count = pathfinder_find_path(
+            100.0, 50.0, 50.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false,
+        );
         assert!(
             count >= 2,
             "steep wall starts should emit an explicit flat escape waypoint before the final goal"
@@ -8328,16 +8363,27 @@ mod sim_kernel_tests {
                 1.0,    // plateau_ramp_edge_sharpness
                 0.4,    // ripple_radius_fraction
                 1.7,    // ripple_phase
-                700.0, 0.9, // ripple component 0 wavelength/magnitude
-                600.0, 0.0, // ripple component 1
-                600.0, 0.0, // ripple component 2
-                0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+                700.0,
+                0.9, // ripple component 0 wavelength/magnitude
+                600.0,
+                0.0, // ripple component 1
+                600.0,
+                0.0, // ripple component 2
+                0.1,
+                0.4,
+                0.08, // ridge inner/outer/half-width fractions
                 85.0, // plateau_wall_slope_degrees (shared by waterfront walls)
                 0.0,  // waters_edge_beach_slope_degrees (all-cliff shoreline)
                 cliff_height,
-                0.0,  // shoreline_beach_fade_radius
+                0.0,   // shoreline_beach_fade_radius
                 300.0, // shoreline_cliff_fade_radius
-                0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, // pipeline stage order, all active
+                0.0,
+                1.0,
+                2.0,
+                3.0,
+                4.0,
+                5.0,
+                6.0, // pipeline stage order, all active
             ];
             let lod_config = [
                 0.0,
@@ -8415,7 +8461,7 @@ mod sim_kernel_tests {
             700.0, 0.9, // ripple component 0 wavelength/magnitude
             600.0, 0.0, // ripple component 1
             600.0, 0.0, // ripple component 2
-            0.1, 0.4, 0.08, // ridge inner/outer/half-width fractions
+            0.1, 0.4, 0.08,  // ridge inner/outer/half-width fractions
             85.0,  // plateau_wall_slope_degrees (shared by waterfront walls + caps)
             10.0,  // waters_edge_beach_slope_degrees (beach halves active)
             120.0, // waters_edge_cliff_height
@@ -8679,6 +8725,9 @@ mod sim_kernel_tests {
     const UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT: f64 = -1.0;
     const UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT: f64 = 1.0;
     const UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT: f64 = 6.0;
+    const UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE: f64 = 1.0;
+    const UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE: f64 = 0.5;
+    const UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT: f64 = 0.5;
 
     fn step_unit_force_test(
         slots: &[u32],
@@ -8705,11 +8754,14 @@ mod sim_kernel_tests {
             UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
             UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
             UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+            UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
+            UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
+            UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
         )
     }
 
-    fn run_flying_unit_force_with_traction(
-        traction: f64,
+    fn run_flying_unit_force_with_force_coupling(
+        force_coupling: f64,
         drive_force_scales_with_facing: bool,
     ) -> (f64, f64, f64) {
         pool_init();
@@ -8740,8 +8792,8 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
         rows[UF_ROW_AIR_DRIVE_FORCE] = 100.0;
-        rows[UF_ROW_AIR_TRACTION] = traction;
-        rows[UF_ROW_HOVER_HEIGHT_FORCE] = 100.0;
+        rows[UF_ROW_AIR_FORCE_COUPLING] = force_coupling;
+        rows[UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] = 100.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
 
@@ -8765,6 +8817,9 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
             ),
             1,
         );
@@ -8806,7 +8861,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
         rows[UF_ROW_GROUND_DRIVE_FORCE] = 100.0;
-        rows[UF_ROW_GROUND_TRACTION] = 1.0;
+        rows[UF_ROW_GROUND_FORCE_COUPLING] = 1.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_NORMAL_Z] = 1.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
@@ -8831,6 +8886,9 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
             ),
             1,
         );
@@ -8866,7 +8924,7 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = rotation;
         rows[UF_ROW_GROUND_DRIVE_FORCE] = 100.0;
-        rows[UF_ROW_GROUND_TRACTION] = 1.0;
+        rows[UF_ROW_GROUND_FORCE_COUPLING] = 1.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_NORMAL_Z] = 1.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
@@ -8891,6 +8949,9 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
             ),
             1,
         );
@@ -8924,9 +8985,9 @@ mod sim_kernel_tests {
         rows[UF_ROW_HEADING_Y] = 1.0;
         rows[UF_ROW_ROTATION] = 0.0;
         rows[UF_ROW_AIR_DRIVE_FORCE] = 2000.0;
-        rows[UF_ROW_AIR_TRACTION] = 0.2;
-        rows[UF_ROW_AIR_BUOYANCY] = 0.05;
-        rows[UF_ROW_HOVER_HEIGHT_FORCE] = 380.0;
+        rows[UF_ROW_AIR_FORCE_COUPLING] = 0.2;
+        rows[UF_ROW_AIR_GRAVITY_COUNTER_RATIO] = 0.05;
+        rows[UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] = 380.0;
         rows[UF_ROW_GROUND_Z] = 0.0;
         rows[UF_ROW_ORIENTATION_W] = 1.0;
         rows[UF_ROW_AIR_FRICTION] = -(1.0_f64 - 0.2_f64).ln() * 60.0;
@@ -8953,6 +9014,9 @@ mod sim_kernel_tests {
                     UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                     UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                     UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+                    UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
+                    UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
+                    UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
                 ),
                 1,
             );
@@ -8970,7 +9034,7 @@ mod sim_kernel_tests {
 
     const UNIT_FORCE_TEST_GROUND_OFFSET: f64 = 10.0;
     const UNIT_FORCE_TEST_WATER_BED_Z: f64 = TERRAIN_WATER_LEVEL - 80.0;
-    const UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE: f64 = 12.0;
+    const UNIT_FORCE_TEST_LIFT_FORCE: f64 = 163.678801;
 
     fn run_air_lift_force(altitude_above_ground: f64) -> (f64, u32) {
         pool_init();
@@ -8988,7 +9052,7 @@ mod sim_kernel_tests {
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = 0.0;
-        rows[UF_ROW_HOVER_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
+        rows[UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] = UNIT_FORCE_TEST_LIFT_FORCE;
 
         assert_eq!(
             step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
@@ -9004,10 +9068,10 @@ mod sim_kernel_tests {
         velocity: (f64, f64, f64),
         has_thrust: bool,
         water_force: f64,
-        water_traction: f64,
+        water_force_coupling: f64,
         water_friction: f64,
-        swim_height_force: f64,
-        water_buoyancy: f64,
+        water_ground_surface_lift_force: f64,
+        water_gravity_counter_ratio: f64,
     ) -> (f64, f64, f64, u32) {
         pool_init();
         let slot = pool_alloc_slot();
@@ -9029,14 +9093,14 @@ mod sim_kernel_tests {
         rows[UF_ROW_DIR_X] = if has_thrust { 1.0 } else { 0.0 };
         rows[UF_ROW_DIR_Y] = 0.0;
         rows[UF_ROW_GROUND_DRIVE_FORCE] = 850.0;
-        rows[UF_ROW_GROUND_TRACTION] = 0.75;
+        rows[UF_ROW_GROUND_FORCE_COUPLING] = 0.75;
         rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
         rows[UF_ROW_NORMAL_Z] = 1.0;
         rows[UF_ROW_WATER_DRIVE_FORCE] = water_force;
-        rows[UF_ROW_WATER_TRACTION] = water_traction;
+        rows[UF_ROW_WATER_FORCE_COUPLING] = water_force_coupling;
         rows[UF_ROW_WATER_FRICTION] = water_friction;
-        rows[UF_ROW_WATER_BUOYANCY] = water_buoyancy;
-        rows[UF_ROW_SWIM_HEIGHT_FORCE] = swim_height_force;
+        rows[UF_ROW_WATER_GRAVITY_COUNTER_RATIO] = water_gravity_counter_ratio;
+        rows[UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE] = water_ground_surface_lift_force;
 
         assert_eq!(
             unit_force_step_batch(
@@ -9058,6 +9122,9 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
             ),
             1,
         );
@@ -9093,9 +9160,9 @@ mod sim_kernel_tests {
         rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
         rows[UF_ROW_NORMAL_Z] = 1.0;
         rows[UF_ROW_AIR_DRIVE_FORCE] = 600.0;
-        rows[UF_ROW_AIR_TRACTION] = 0.25;
+        rows[UF_ROW_AIR_FORCE_COUPLING] = 0.25;
         rows[UF_ROW_WATER_DRIVE_FORCE] = 1200.0;
-        rows[UF_ROW_WATER_TRACTION] = 0.5;
+        rows[UF_ROW_WATER_FORCE_COUPLING] = 0.5;
 
         assert_eq!(
             unit_force_step_batch(
@@ -9117,6 +9184,9 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
             ),
             1,
         );
@@ -9166,6 +9236,9 @@ mod sim_kernel_tests {
                 UNIT_FORCE_TEST_ALIGNMENT_ZERO_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_FULL_DOT,
                 UNIT_FORCE_TEST_ALIGNMENT_RESPONSE_EXPONENT,
+                UNIT_FORCE_TEST_SURFACE_LIFT_REFERENCE_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_MINIMUM_DISTANCE,
+                UNIT_FORCE_TEST_SURFACE_LIFT_DISTANCE_EXPONENT,
             ),
             1,
         );
@@ -9179,10 +9252,12 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn flying_traction_controls_thrust_and_turn_authority() {
+    pub(crate) fn flying_force_coupling_controls_thrust_and_turn_authority() {
         let _guard = lock_tests();
-        let (low_ax, low_ay, low_yaw_accel) = run_flying_unit_force_with_traction(0.05, false);
-        let (high_ax, high_ay, high_yaw_accel) = run_flying_unit_force_with_traction(1.0, false);
+        let (low_ax, low_ay, low_yaw_accel) =
+            run_flying_unit_force_with_force_coupling(0.05, false);
+        let (high_ax, high_ay, high_yaw_accel) =
+            run_flying_unit_force_with_force_coupling(1.0, false);
 
         assert!(
             low_ax > 0.0,
@@ -9194,15 +9269,15 @@ mod sim_kernel_tests {
         );
         assert!(
             high_ay.abs() < 1e-12,
-            "higher traction changes authority, not the aircraft thrust axis",
+            "higher force_coupling changes authority, not the aircraft thrust axis",
         );
         assert!(
             high_ax > low_ax * 10.0,
-            "higher traction should produce stronger flying thrust",
+            "higher force_coupling should produce stronger flying thrust",
         );
         assert!(
             high_yaw_accel > low_yaw_accel * 10.0,
-            "higher traction should turn the flying body faster",
+            "higher force_coupling should turn the flying body faster",
         );
     }
 
@@ -9272,8 +9347,8 @@ mod sim_kernel_tests {
     #[test]
     pub(crate) fn flying_drive_force_ignores_alignment_scaling() {
         let _guard = lock_tests();
-        let (free_ax, free_ay, _) = run_flying_unit_force_with_traction(1.0, false);
-        let (scaled_ax, scaled_ay, _) = run_flying_unit_force_with_traction(1.0, true);
+        let (free_ax, free_ay, _) = run_flying_unit_force_with_force_coupling(1.0, false);
+        let (scaled_ax, scaled_ay, _) = run_flying_unit_force_with_force_coupling(1.0, true);
 
         assert!((scaled_ax - free_ax).abs() < 1e-9);
         assert!((scaled_ay - free_ay).abs() < 1e-9);
@@ -9394,16 +9469,8 @@ mod sim_kernel_tests {
     #[test]
     pub(crate) fn submerged_water_friction_opposes_velocity() {
         let _guard = lock_tests();
-        let (ax, ay, az, out_flags) = run_submerged_unit_force(
-            40.0,
-            (50.0, -20.0, 10.0),
-            false,
-            1200.0,
-            0.5,
-            1.5,
-            0.0,
-            0.0,
-        );
+        let (ax, ay, az, out_flags) =
+            run_submerged_unit_force(40.0, (50.0, -20.0, 10.0), false, 1200.0, 0.5, 1.5, 0.0, 0.0);
 
         assert_ne!(out_flags & UF_OUT_MOVEMENT_ACCEL, 0);
         assert!(ax < 0.0, "water friction should damp positive x velocity");
@@ -9412,7 +9479,7 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn swim_height_lift_targets_authored_water_column_depth() {
+    pub(crate) fn water_ground_surface_lift_weakens_with_distance_from_the_bed() {
         let _guard = lock_tests();
         let (_low_x, _low_y, low_z, low_flags) =
             run_submerged_unit_force(4.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 12.0, 0.0);
@@ -9426,29 +9493,60 @@ mod sim_kernel_tests {
         assert_ne!(high_flags & UF_OUT_MOVEMENT_ACCEL, 0);
         assert!(
             low_z > stable_z,
-            "below the swim-height target, lift should exceed equilibrium"
+            "closer water surface lift should be stronger"
         );
         assert!(
-            (stable_z - GRAVITY).abs() < 1e-9,
-            "at the authored target height, lift should cancel integrator gravity"
-        );
-        assert!(
-            high_z < stable_z && high_z < GRAVITY,
-            "above the swim-height target, net gravity should make the unit sink"
+            stable_z > high_z,
+            "surface lift force must fall continuously with bed distance"
         );
     }
 
     #[test]
-    pub(crate) fn water_buoyancy_floats_body_at_partial_submergence() {
+    pub(crate) fn water_ground_surface_lift_uses_supplied_multi_probe_average_response() {
         let _guard = lock_tests();
-        // Water buoyancy 2.0: equilibrium is half submergence
-        // (fraction = 1 / buoyancy). Bed is 80 below the waterline and
-        // the body half-height is 10.
-        // Fully submerged (center 40 above bed): lift = 2 * G.
+        let run = |distance_response: f64| -> f64 {
+            pool_init();
+            let slot = pool_alloc_slot();
+            {
+                let p = pool();
+                let i = slot as usize;
+                p.pos_z[i] = UNIT_FORCE_TEST_WATER_BED_Z + 16.0;
+                p.ground_offset[i] = UNIT_FORCE_TEST_GROUND_OFFSET;
+                p.inv_mass[i] = 1.0 / 2100.0;
+            }
+            let slots = [slot];
+            let flags = [UF_FLAG_IS_AIRBORNE | UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
+            let mut out_flags = [0_u32; 1];
+            let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+            rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
+            rows[UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE] = UNIT_FORCE_TEST_LIFT_FORCE;
+            rows[UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = distance_response;
+
+            assert_eq!(
+                step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+                1
+            );
+            let acceleration = rows[UF_ROW_MOVEMENT_ACCEL_Z];
+            pool_free_slot(slot);
+            acceleration
+        };
+
+        let low_response_acceleration = run(0.25);
+        let high_response_acceleration = run(0.5);
+        assert!(
+            (high_response_acceleration - low_response_acceleration * 2.0).abs() < 1e-9,
+            "water lift from ground must consume the already-averaged nonlinear response supplied by the configured probes",
+        );
+    }
+
+    #[test]
+    pub(crate) fn water_gravity_counter_is_bounded_and_occupancy_weighted() {
+        let _guard = lock_tests();
+        // Ratios above one are defensively clamped. At full occupancy a
+        // ratio of one cancels gravity; partial occupancy applies directly.
         let (_dx, _dy, deep_z, deep_flags) =
             run_submerged_unit_force(40.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 0.0, 2.0);
-        // Center exactly at the waterline (80 above bed): fraction 0.5,
-        // lift exactly cancels integrator gravity.
+        // Center exactly at the waterline: fraction 0.5.
         let (_sx, _sy, surface_z, surface_flags) =
             run_submerged_unit_force(80.0, (0.0, 0.0, 0.0), false, 0.0, 0.0, 0.0, 0.0, 2.0);
         // Mostly out of the water (fraction 0.25): net gravity wins.
@@ -9459,21 +9557,21 @@ mod sim_kernel_tests {
         assert_ne!(surface_flags & UF_OUT_MOVEMENT_ACCEL, 0);
         assert_ne!(high_flags & UF_OUT_MOVEMENT_ACCEL, 0);
         assert!(
-            (deep_z - 2.0 * GRAVITY).abs() < 1e-9,
-            "fully submerged buoyant hull should rise at buoyancy * G; got {deep_z}"
+            (deep_z - GRAVITY).abs() < 1e-9,
+            "full water occupancy at ratio one should counter exactly G; got {deep_z}"
         );
         assert!(
-            (surface_z - GRAVITY).abs() < 1e-9,
-            "at equilibrium submergence, buoyancy should cancel integrator gravity; got {surface_z}"
+            (surface_z - 0.5 * GRAVITY).abs() < 1e-9,
+            "half water occupancy must apply exactly half the gravity counter; got {surface_z}"
         );
         assert!(
-            high_z < GRAVITY,
-            "lifted above equilibrium submergence, net gravity should pull the hull back down"
+            high_z < surface_z,
+            "lower water occupancy must directly reduce the gravity-counter force"
         );
     }
 
     #[test]
-    pub(crate) fn air_buoyancy_lifts_against_gravity() {
+    pub(crate) fn air_gravity_counter_lifts_against_gravity() {
         let _guard = lock_tests();
         pool_init();
         let slot = pool_alloc_slot();
@@ -9488,7 +9586,7 @@ mod sim_kernel_tests {
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = 0.0;
-        rows[UF_ROW_AIR_BUOYANCY] = 1.0;
+        rows[UF_ROW_AIR_GRAVITY_COUNTER_RATIO] = 1.0;
 
         assert_eq!(
             step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
@@ -9497,14 +9595,14 @@ mod sim_kernel_tests {
         assert_ne!(out_flags[0] & UF_OUT_MOVEMENT_ACCEL, 0);
         assert!(
             (rows[UF_ROW_MOVEMENT_ACCEL_Z] - GRAVITY).abs() < 1e-9,
-            "air buoyancy 1.0 should exactly cancel integrator gravity for a neutral balloon; got {}",
+            "air gravity counter 1.0 should exactly cancel integrator gravity; got {}",
             rows[UF_ROW_MOVEMENT_ACCEL_Z]
         );
         pool_free_slot(slot);
     }
 
     #[test]
-    pub(crate) fn hover_height_ema_smooths_applied_vertical_force() {
+    pub(crate) fn air_surface_lift_ema_smooths_full_medium_force() {
         let _guard = lock_tests();
         let (stable_raw_z, stable_flags) = run_air_lift_force(16.0);
         let (low_raw_z, low_flags) = run_air_lift_force(4.0);
@@ -9528,9 +9626,9 @@ mod sim_kernel_tests {
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = 0.0;
-        rows[UF_ROW_HOVER_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
-        rows[UF_ROW_HOVER_EMA_WEIGHT] = 0.5;
-        rows[UF_ROW_HOVER_SMOOTHED_FORCE] = f64::NAN;
+        rows[UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] = UNIT_FORCE_TEST_LIFT_FORCE;
+        rows[UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] = 0.5;
+        rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
 
         assert_eq!(
             step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
@@ -9538,7 +9636,7 @@ mod sim_kernel_tests {
         );
         assert!(
             (rows[UF_ROW_MOVEMENT_ACCEL_Z] - stable_raw_z).abs() < 1e-9,
-            "first EMA tick should seed from the raw applied hover force"
+            "first EMA tick should seed from the full-medium air lift force"
         );
 
         {
@@ -9552,7 +9650,7 @@ mod sim_kernel_tests {
         let expected = stable_raw_z * 0.5 + low_raw_z * 0.5;
         assert!(
             (rows[UF_ROW_MOVEMENT_ACCEL_Z] - expected).abs() < 1e-9,
-            "hover EMA should smooth the final applied lift force; expected {}, got {}",
+            "air EMA should smooth the full-medium lift force; expected {}, got {}",
             expected,
             rows[UF_ROW_MOVEMENT_ACCEL_Z]
         );
@@ -9560,7 +9658,116 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn swim_height_ema_smooths_applied_vertical_force() {
+    pub(crate) fn air_surface_lift_ema_precedes_occupancy_weighting() {
+        let _guard = lock_tests();
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.radius[i] = 10.0;
+            p.pos_z[i] = TERRAIN_WATER_LEVEL + 10.0;
+            p.inv_mass[i] = 1.0 / 2100.0;
+        }
+        let slots = [slot];
+        let flags = [UF_FLAG_IS_AIRBORNE | UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_GROUND_Z] = TERRAIN_WATER_LEVEL - 100.0;
+        rows[UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] = UNIT_FORCE_TEST_LIFT_FORCE;
+        rows[UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] = 0.5;
+        rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
+        rows[UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] =
+            unit_force_surface_lift_distance_response(16.0, 1.0, 0.5, 0.5);
+
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        let full_applied = rows[UF_ROW_MOVEMENT_ACCEL_Z];
+        let full_medium_ema = rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE];
+
+        pool().pos_z[slot as usize] = TERRAIN_WATER_LEVEL;
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        assert!(
+            (rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] - full_medium_ema).abs() < 1e-12,
+            "air occupancy must not enter the surface-lift EMA state"
+        );
+        assert!(
+            (rows[UF_ROW_MOVEMENT_ACCEL_Z] - full_applied * 0.5).abs() < 1e-9,
+            "half air occupancy must apply exactly half the already-smoothed force"
+        );
+        pool_free_slot(slot);
+    }
+
+    #[test]
+    pub(crate) fn air_and_water_lift_share_randomization_equation() {
+        let _guard = lock_tests();
+        let base = 100.0;
+        let amount = 0.25;
+        assert!((unit_force_randomized_surface_lift_force(base, amount, 0.0) - 75.0).abs() < 1e-9);
+        assert!((unit_force_randomized_surface_lift_force(base, amount, 0.5) - 100.0).abs() < 1e-9);
+        assert!((unit_force_randomized_surface_lift_force(base, amount, 1.0) - 125.0).abs() < 1e-9);
+        assert!((unit_force_randomized_surface_lift_force(base, 0.0, 0.0) - base).abs() < 1e-9);
+    }
+
+    #[test]
+    pub(crate) fn air_ground_and_water_surface_lift_contributions_add_before_ema() {
+        let _guard = lock_tests();
+        let run = |ground_force: f64, water_force: f64| -> (f64, f64) {
+            pool_init();
+            let slot = pool_alloc_slot();
+            {
+                let p = pool();
+                let i = slot as usize;
+                p.radius[i] = 10.0;
+                p.pos_z[i] = TERRAIN_WATER_LEVEL + 10.0;
+                p.inv_mass[i] = 1.0 / 2100.0;
+            }
+            let slots = [slot];
+            let flags = [UF_FLAG_IS_AIRBORNE
+                | UF_FLAG_HAS_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE
+                | UF_FLAG_HAS_WATER_SURFACE_LIFT_DISTANCE_RESPONSE];
+            let mut out_flags = [0_u32; 1];
+            let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+            rows[UF_ROW_GROUND_Z] = TERRAIN_WATER_LEVEL - 100.0;
+            rows[UF_ROW_AIR_LIFT_FORCE_FROM_GROUND_SURFACE] = ground_force;
+            rows[UF_ROW_AIR_LIFT_FORCE_FROM_WATER_SURFACE] = water_force;
+            rows[UF_ROW_GROUND_SURFACE_LIFT_DISTANCE_RESPONSE] = 0.25;
+            rows[UF_ROW_WATER_SURFACE_LIFT_DISTANCE_RESPONSE] = 0.5;
+            rows[UF_ROW_AIR_SURFACE_LIFT_EMA_WEIGHT] = 0.5;
+            rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
+
+            assert_eq!(
+                step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+                1
+            );
+            let result = (
+                rows[UF_ROW_MOVEMENT_ACCEL_Z],
+                rows[UF_ROW_AIR_SURFACE_LIFT_SMOOTHED_FORCE],
+            );
+            pool_free_slot(slot);
+            result
+        };
+
+        let ground_only = run(100.0, 0.0);
+        let water_only = run(0.0, 100.0);
+        let combined = run(100.0, 100.0);
+        assert!(
+            (combined.0 - ground_only.0 - water_only.0).abs() < 1e-9,
+            "air lift must add source contributions after their independent distance responses",
+        );
+        assert!(
+            (combined.1 - ground_only.1 - water_only.1).abs() < 1e-12,
+            "one air EMA must receive the already-combined full-medium source force",
+        );
+    }
+
+    #[test]
+    pub(crate) fn water_ground_surface_lift_ema_smooths_full_medium_force() {
         let _guard = lock_tests();
         let (_stable_x, _stable_y, stable_raw_z, stable_flags) = run_submerged_unit_force(
             16.0,
@@ -9569,7 +9776,7 @@ mod sim_kernel_tests {
             0.0,
             0.0,
             0.0,
-            UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE,
+            UNIT_FORCE_TEST_LIFT_FORCE,
             0.0,
         );
         let (_low_x, _low_y, low_raw_z, low_flags) = run_submerged_unit_force(
@@ -9579,7 +9786,7 @@ mod sim_kernel_tests {
             0.0,
             0.0,
             0.0,
-            UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE,
+            UNIT_FORCE_TEST_LIFT_FORCE,
             0.0,
         );
         assert_ne!(stable_flags & UF_OUT_MOVEMENT_ACCEL, 0);
@@ -9603,9 +9810,9 @@ mod sim_kernel_tests {
         let mut out_flags = [0_u32; 1];
         let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
         rows[UF_ROW_GROUND_Z] = UNIT_FORCE_TEST_WATER_BED_Z;
-        rows[UF_ROW_SWIM_HEIGHT_FORCE] = UNIT_FORCE_TEST_LIFT_HEIGHT_FORCE;
-        rows[UF_ROW_SWIM_EMA_WEIGHT] = 0.5;
-        rows[UF_ROW_SWIM_SMOOTHED_FORCE] = f64::NAN;
+        rows[UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE] = UNIT_FORCE_TEST_LIFT_FORCE;
+        rows[UF_ROW_WATER_SURFACE_LIFT_EMA_WEIGHT] = 0.5;
+        rows[UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
 
         assert_eq!(
             step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
@@ -9613,7 +9820,7 @@ mod sim_kernel_tests {
         );
         assert!(
             (rows[UF_ROW_MOVEMENT_ACCEL_Z] - stable_raw_z).abs() < 1e-9,
-            "first EMA tick should seed from the raw applied swim force"
+            "first EMA tick should seed from the full-medium water lift force"
         );
 
         {
@@ -9627,9 +9834,55 @@ mod sim_kernel_tests {
         let expected = stable_raw_z * 0.5 + low_raw_z * 0.5;
         assert!(
             (rows[UF_ROW_MOVEMENT_ACCEL_Z] - expected).abs() < 1e-9,
-            "swim EMA should smooth the final applied lift force; expected {}, got {}",
+            "water EMA should smooth the full-medium lift force; expected {}, got {}",
             expected,
             rows[UF_ROW_MOVEMENT_ACCEL_Z]
+        );
+        pool_free_slot(slot);
+    }
+
+    #[test]
+    pub(crate) fn water_ground_surface_lift_ema_precedes_occupancy_weighting() {
+        let _guard = lock_tests();
+        pool_init();
+        let slot = pool_alloc_slot();
+        {
+            let p = pool();
+            let i = slot as usize;
+            p.radius[i] = 10.0;
+            p.ground_offset[i] = 10.0;
+            p.pos_z[i] = TERRAIN_WATER_LEVEL - 10.0;
+            p.inv_mass[i] = 1.0 / 2100.0;
+        }
+        let slots = [slot];
+        let flags = [UF_FLAG_IS_AIRBORNE];
+        let mut out_flags = [0_u32; 1];
+        let mut rows = [0.0_f64; UNIT_FORCE_BATCH_STRIDE];
+        rows[UF_ROW_GROUND_Z] = TERRAIN_WATER_LEVEL - 26.0;
+        rows[UF_ROW_WATER_LIFT_FORCE_FROM_GROUND_SURFACE] = UNIT_FORCE_TEST_LIFT_FORCE;
+        rows[UF_ROW_WATER_SURFACE_LIFT_EMA_WEIGHT] = 0.5;
+        rows[UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] = f64::NAN;
+
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        let full_applied = rows[UF_ROW_MOVEMENT_ACCEL_Z];
+        let full_medium_ema = rows[UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE];
+
+        pool().pos_z[slot as usize] = TERRAIN_WATER_LEVEL;
+        rows[UF_ROW_GROUND_Z] = TERRAIN_WATER_LEVEL - 16.0;
+        assert_eq!(
+            step_unit_force_test(&slots, &flags, &mut rows, &mut out_flags),
+            1
+        );
+        assert!(
+            (rows[UF_ROW_WATER_SURFACE_LIFT_SMOOTHED_FORCE] - full_medium_ema).abs() < 1e-12,
+            "water occupancy must not enter the surface-lift EMA state"
+        );
+        assert!(
+            (rows[UF_ROW_MOVEMENT_ACCEL_Z] - full_applied * 0.5).abs() < 1e-9,
+            "half water occupancy must apply exactly half the already-smoothed force"
         );
         pool_free_slot(slot);
     }
@@ -9689,7 +9942,6 @@ mod sim_kernel_tests {
         let (nx, ny, nz) = compute_unit_ground_normal_step(0.0, 0.0, 1.0, 0.25, 0.5, 0.75, 1.0);
         assert_eq!((nx, ny, nz), (0.25, 0.5, 0.75));
     }
-
 }
 
 #[cfg(test)]

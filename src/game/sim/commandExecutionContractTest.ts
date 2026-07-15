@@ -405,6 +405,20 @@ export function runCommandExecutionContractTest(): void {
     DMath.atan2(dgunTarget.transform.y - dgunCommander.transform.y, dgunTarget.transform.x - dgunCommander.transform.x),
     'BAR DGun unit target command must aim at the target entity current point instead of the fallback ground point',
   );
+  const dgunSpawn = dgunProjectileSpawns[0];
+  const dgunTurret = dgunCommander.combat?.turrets[dgunSpawn.turretIndex];
+  const dgunProjectile = dgunWorld.getEntity(dgunSpawn.id)?.projectile;
+  assertContract(dgunTurret !== undefined, 'D-gun spawn must resolve its emitting turret');
+  assertContract(dgunProjectile !== null && dgunProjectile !== undefined, 'D-gun spawn must create a physical shot');
+  assertNear(dgunSpawn.pos.x, dgunTurret.worldPos.x, 'D-gun shot must start at turret center x');
+  assertNear(dgunSpawn.pos.y, dgunTurret.worldPos.y, 'D-gun shot must start at turret center y');
+  assertNear(dgunSpawn.pos.z, dgunTurret.worldPos.z, 'D-gun shot must start at turret center z');
+  assertContract(!dgunProjectile.isArmed, 'D-gun shot must begin inert inside host ARM');
+  assertNear(
+    dgunProjectile.shotArmingRadius,
+    dgunCommander.unit?.radius.shotArmingRadius ?? 0,
+    'D-gun shot must snapshot the host ARM radius',
+  );
 
   const unit = world.createUnitFromBlueprint(80, 240, 1, 'unitJackal', {
     allocateSubEntityIds: false,

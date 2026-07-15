@@ -19,6 +19,7 @@ import {
 } from './types';
 import { DGUN_TERRAIN_FOLLOW_HEIGHT } from '../../config';
 import { createProjectileConfigFromTurret } from './projectileConfigs';
+import { sanitizeShotArmingRadius } from './combat/shotArming';
 
 export type CreateProjectileProvenance = {
   /** Runtime emission blueprint for this projectile body. Submunitions use child shot blueprint ids here. */
@@ -127,14 +128,10 @@ export class WorldProjectileFactory {
       provenance.shotArmingRadius !== null
         ? provenance.shotArmingRadius
         : 0;
-    const shotArmingRadius = Number.isFinite(authoredShotArmingRadius)
-      ? Math.max(0, authoredShotArmingRadius)
-      : 0;
+    const shotArmingRadius = sanitizeShotArmingRadius(authoredShotArmingRadius);
 
-    // createProjectile's z/vz defaults to "fired horizontally at
-    // source turret height" — M6 (projectile ballistics) will override
-    // these with per-turret pitch and ballistic solutions. The point
-    // of this commit is just that the fields exist and get serialized.
+    // Firing paths replace the default z/vz with the authoritative turret
+    // center and solved launch vector immediately after construction.
     const projectile: Projectile = {
       ownerId,
       sourceEntityId,
@@ -153,7 +150,10 @@ export class WorldProjectileFactory {
       maxLifespan,
       hitEntities: new Set<EntityId>(),
       maxHits,
-      isArmed: projectileType !== 'projectile' || shotArmingRadius <= 0,
+      // Every physical shot is inert at creation. A zero-radius or
+      // missing-host fallback is activated by the first arming update,
+      // keeping construction semantics uniform without delaying rays.
+      isArmed: projectileType !== 'projectile',
       shotArmingRadius,
       hasLeftSource: false,
       homingTargetId: NO_ENTITY_ID,

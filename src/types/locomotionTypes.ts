@@ -15,47 +15,65 @@ export type UnitPathfindingConfig = {
   minSurfaceNormalZ: number;
 };
 
-export type UnitLocomotionMediumPhysics = {
+export type UnitLocomotionPropulsionPhysics = {
   /** Absolute propulsion force owned by this locomotion preset and medium. */
   driveForce: number;
-  /** Movement authority coefficient for coupling force into directed thrust
-   *  and attitude torque in this medium. */
-  traction: number;
-  /** Passive velocity damping rate for this medium, in 1/s. */
-  friction: number;
-  /** Quadratic fluid drag rate. Zero for solid-contact response. */
-  quadraticDrag: number;
-  /** Body-local drag multipliers. Forward/lateral are resolved from yaw;
-   *  vertical remains world-up for the current spherical body model. */
-  dragForwardScale: number;
-  dragLateralScale: number;
-  dragVerticalScale: number;
-  /** Passive angular damping supplied by this occupied medium. */
-  angularDrag: number;
-  /** Coulomb-style solid contact coefficient. Meaningful only for ground. */
-  surfaceGrip: number;
-  /** Tangent damping scale for the low-speed support contact solver. */
-  contactDamping: number;
-  /** Archimedes-style buoyancy coefficient against this medium: upward
-   *  force = mass * gravity * buoyancy * fraction-of-body-in-medium.
-   *  Water buoyancy above 1 floats the body at partial submergence
-   *  (fraction = 1 / buoyancy); exactly 1 is neutral; 0 sinks. Ground
-   *  buoyancy is meaningless and stays 0. */
-  buoyancy: number;
-  /** Height-based upward force coefficient, referenced to the relevant
-   *  support surface: terrain/water surface for air, lake bed for water.
-   *  Air uses the global distance falloff authored in locomotionConfig.json. */
-  heightUpwardForce: number;
-  /** Per-tick uniform randomization of `heightUpwardForce`, as a fraction. */
-  heightUpwardForceRandomizationAmount: number;
-  /** EMA smoothing weight for the final vertical lift force, in [0, 1). */
-  heightUpwardForceEMA: number;
+  /** Coupling coefficient that converts drive force into directed thrust and
+   *  attitude torque in this medium. */
+  forceCoupling: number;
 };
 
+export type UnitLocomotionResistancePhysics = {
+  /** Fraction of the global linear damping rate for this medium, in [0, 1]. */
+  frictionMultiplier: number;
+  /** Quadratic fluid drag rate. */
+  quadraticDrag: number;
+  /** Drag multipliers in body-forward, body-lateral, and world-vertical axes. */
+  directionalScale: { forward: number; lateral: number; vertical: number };
+  /** Passive angular damping supplied by this occupied fluid. */
+  angularDrag: number;
+};
+
+export type UnitLocomotionLiftPhysics = {
+  /** Fraction of gravity passively countered at full medium occupancy, in [0, 1]. */
+  gravityCounterRatio: number;
+  /** Upward force sourced from the probe-averaged distance to the highest
+   *  solid ground/support surface. */
+  liftForceFromGroundSurface: number;
+  /** Upward force sourced from the probe-averaged distance to exposed water.
+   *  Always zero for water-medium physics. */
+  liftForceFromWaterSurface: number;
+  /** Per-tick uniform randomization of the full-medium surface lift force. */
+  randomizationAmount: number;
+  /** EMA weight applied before medium occupancy weighting, in [0, 1). */
+  ema: number;
+};
+
+export type UnitLocomotionGroundPhysics = {
+  propulsion: UnitLocomotionPropulsionPhysics;
+  resistance: Pick<UnitLocomotionResistancePhysics, 'frictionMultiplier'>;
+  contact: {
+    /** Coulomb-style limit on force transmitted through solid contact. */
+    surfaceGrip: number;
+    /** Tangent damping scale for the support-contact solver. */
+    tangentDamping: number;
+  };
+};
+
+export type UnitLocomotionFluidPhysics = {
+  propulsion: UnitLocomotionPropulsionPhysics;
+  resistance: UnitLocomotionResistancePhysics;
+  lift: UnitLocomotionLiftPhysics;
+};
+
+export type UnitLocomotionMediumPhysics =
+  | UnitLocomotionGroundPhysics
+  | UnitLocomotionFluidPhysics;
+
 export type UnitLocomotionPhysics = {
-  ground: UnitLocomotionMediumPhysics;
-  air: UnitLocomotionMediumPhysics;
-  water: UnitLocomotionMediumPhysics;
+  ground: UnitLocomotionGroundPhysics;
+  air: UnitLocomotionFluidPhysics;
+  water: UnitLocomotionFluidPhysics;
 };
 
 export type LocomotionMediumNavigation = 'air-only' | 'water-only' | 'air-and-water';
@@ -69,18 +87,21 @@ export type LocomotionNavigationPolicy = {
   allowInMedium: LocomotionMediumNavigation;
 };
 
+export type SurfaceProbeSetId = '1-point' | '5-points' | '8-points';
+
 export type UnitLocomotion = {
   /** Presentation rig only. Authoritative physics never selects behavior
    *  from this discriminant. */
   type: 'wheels' | 'treads' | 'legs' | 'flippers' | 'hover' | 'flying' | 'swim';
-  /** Explicit preset expanded into the complete numeric profile at load. */
+  /** Explicit preset expanded into the complete applicable profile at load. */
   physicsPresetId: string;
-  /** Fully-abstracted medium physics. Every unit owns every medium profile;
-   *  zero values make a medium inert instead of omitting fields. */
+  /** Fully-abstracted medium physics. Every unit owns each medium profile;
+   *  zero propulsion makes a medium inert, while concepts that do not apply
+   *  to that medium are structurally absent. */
   physics: UnitLocomotionPhysics;
   /** Type/preset-level navigation policy expanded from locomotionConfig.json. */
   navigation: LocomotionNavigationPolicy;
-  /** Environmental failure policy, independent from propulsion/buoyancy. */
+  /** Environmental failure policy, independent from propulsion/lift. */
   survival: {
     waterFatal: boolean;
     fatalSubmergedFraction: number;
@@ -97,10 +118,9 @@ export type UnitLocomotion = {
   /** True when waypoint arrival keeps full directed thrust instead of
    *  braking/slowing at final waypoints or honoring action speed limits. */
   maintainFullThrustAtWaypoints: boolean;
-  /** Fixed world-space distance for the forward air-lift ground probe. */
-  airLiftGroundProbeAheadDistance: number;
-  /** Body-radius multiplier added to the forward air-lift ground probe. */
-  airLiftGroundProbeAheadRadiusMultiplier: number;
+  /** Named, config-authored sampling layout used for air and water
+   *  surface-lift distance responses. */
+  surfaceProbeSetId: SurfaceProbeSetId;
   /** Named pathfinding profile resolved from pathfindingConfig.json. */
   pathfinding: UnitPathfindingConfig;
 };

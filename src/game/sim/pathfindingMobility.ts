@@ -18,7 +18,7 @@ type LocomotionClimbProfile = {
   readonly minSurfaceNormalZ: number | null;
   readonly safeDriveAccel: number;
   readonly driveLimitedSlopeDeg: number | null;
-  readonly tractionLimitedSlopeDeg: number | null;
+  readonly gripLimitedSlopeDeg: number | null;
   readonly stabilityLimitedSlopeDeg: number | null;
   /** Dry-ground tangential acceleration after the authoritative drive-force
    *  and Coulomb-grip clamp. */
@@ -50,9 +50,9 @@ export function computeLocomotionClimbProfile(
     throw new Error('Pathfinding mobility requires the authoritative simulation WASM to be initialized');
   }
   const computed = sim.pathfinder.computeLocomotionClimbProfile(
-    groundPhysics.driveForce,
-    groundPhysics.traction,
-    groundPhysics.surfaceGrip,
+    groundPhysics.propulsion.driveForce,
+    groundPhysics.propulsion.forceCoupling,
+    groundPhysics.contact.surfaceGrip,
     mass,
     thrustMultiplier,
     LOCOMOTION_FORCE_SCALE,
@@ -74,7 +74,7 @@ export function computeLocomotionClimbProfile(
     minSurfaceNormalZ: finiteOrNull(climbProfileOut[1]),
     safeDriveAccel: climbProfileOut[2],
     driveLimitedSlopeDeg: finiteOrNull(climbProfileOut[3]),
-    tractionLimitedSlopeDeg: finiteOrNull(climbProfileOut[4]),
+    gripLimitedSlopeDeg: finiteOrNull(climbProfileOut[4]),
     stabilityLimitedSlopeDeg: finiteOrNull(climbProfileOut[5]),
     flatDriveAccel: finiteOrNull(climbProfileOut[6]),
     allowOnGround,

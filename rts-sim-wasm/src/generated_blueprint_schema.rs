@@ -677,16 +677,21 @@ pub struct SwimConfig {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LocomotionMediumPhysics {
-    pub heightUpwardForce: f64,
-    pub buoyancy: Option<f64>,
+pub struct LocomotionLiftPhysics {
+    pub liftForceFromGroundSurface: f64,
+    pub liftForceFromWaterSurface: Option<f64>,
+    pub gravityCounterRatio: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LocomotionFluidBodyPhysics {
+    pub lift: LocomotionLiftPhysics,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LocomotionPhysics {
-    pub ground: LocomotionMediumPhysics,
-    pub air: LocomotionMediumPhysics,
-    pub water: LocomotionMediumPhysics,
+    pub air: LocomotionFluidBodyPhysics,
+    pub water: LocomotionFluidBodyPhysics,
 }
 
 #[derive(Clone, Debug, PartialEq)]

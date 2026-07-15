@@ -280,13 +280,12 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
     }
     // Soft route preference above the unit's hard collision footprint. It is
     // a cost gradient, never a passability constraint.
-    let soft_clearance_cells = read_number_field(&raw, "softClearanceCells")
-        .unwrap_or_else(|| {
-            panic!(
-                "missing numeric softClearanceCells in {}",
-                config_path.display()
-            )
-        });
+    let soft_clearance_cells = read_number_field(&raw, "softClearanceCells").unwrap_or_else(|| {
+        panic!(
+            "missing numeric softClearanceCells in {}",
+            config_path.display()
+        )
+    });
     if soft_clearance_cells < 0.0 || soft_clearance_cells.fract() != 0.0 {
         panic!(
             "invalid softClearanceCells in {}: expected non-negative integer, got {}",
@@ -294,8 +293,8 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
             soft_clearance_cells
         );
     }
-    let soft_clearance_penalty_per_cell =
-        read_number_field(&raw, "softClearancePenaltyPerCell").unwrap_or_else(|| {
+    let soft_clearance_penalty_per_cell = read_number_field(&raw, "softClearancePenaltyPerCell")
+        .unwrap_or_else(|| {
             panic!(
                 "missing numeric softClearancePenaltyPerCell in {}",
                 config_path.display()

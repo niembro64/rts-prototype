@@ -1295,8 +1295,14 @@ export class TerrainTileRenderer3D {
     waterPathingMapEnabled: boolean,
     pathingDebugUnitId: string,
   ): void {
+    const pathingUnitRequested = pathingDebugUnitId !== 'none';
+    if (!buildGridEnabled && !metalMapEnabled && !waterPathingMapEnabled && !pathingUnitRequested) {
+      this.buildGridEnabledUniform.value = 0;
+      return;
+    }
+
     const selectedUnitBlueprint =
-      pathingDebugUnitId !== 'none'
+      pathingUnitRequested
         ? UNIT_BLUEPRINTS[pathingDebugUnitId as keyof typeof UNIT_BLUEPRINTS]
         : undefined;
     const selectedUnitLocomotion = selectedUnitBlueprint !== undefined
@@ -1308,22 +1314,24 @@ export class TerrainTileRenderer3D {
         : null;
     const selectedUnitPathingEnabled = selectedUnitBlueprint !== undefined &&
       selectedUnitLocomotion !== null;
-    const selectedUnitAllowsGround = selectedUnitPathingEnabled
-      ? selectedUnitClimbProfile?.allowOnGround === true
+    const selectedUnitAllowsGround = selectedUnitClimbProfile !== null
+      ? selectedUnitClimbProfile.allowOnGround === true
       : false;
-    const selectedUnitAllowsWater = selectedUnitPathingEnabled
-      ? selectedUnitClimbProfile?.allowInWater === true
+    const selectedUnitAllowsWater = selectedUnitClimbProfile !== null
+      ? selectedUnitClimbProfile.allowInWater === true
       : false;
-    const selectedUnitAllowsAir = selectedUnitPathingEnabled
-      ? selectedUnitClimbProfile?.allowInAir === true
+    const selectedUnitAllowsAir = selectedUnitClimbProfile !== null
+      ? selectedUnitClimbProfile.allowInAir === true
       : false;
-    const selectedUnitRequiredNormalZ = selectedUnitPathingEnabled
-      ? requiredPathingNormalZ(selectedUnitClimbProfile?.minSurfaceNormalZ)
+    const selectedUnitRequiredNormalZ = selectedUnitClimbProfile !== null
+      ? requiredPathingNormalZ(selectedUnitClimbProfile.minSurfaceNormalZ)
       : PATHFINDING_STABILITY_MIN_NORMAL_Z;
     const selectedUnitNeedsTerrainMask = selectedUnitPathingEnabled &&
       !selectedUnitAllowsAir;
     const pathOverlayEnabled = waterPathingMapEnabled || selectedUnitPathingEnabled;
     const enabled = buildGridEnabled || metalMapEnabled || pathOverlayEnabled;
+    this.buildGridEnabledUniform.value = enabled ? 1 : 0;
+    if (!enabled) return;
     const overlayMode = buildGridEnabled
       ? 'build'
       : pathOverlayEnabled
@@ -1333,15 +1341,10 @@ export class TerrainTileRenderer3D {
         : metalMapEnabled
           ? 'metal'
           : 'off';
-    this.buildGridEnabledUniform.value = enabled ? 1 : 0;
     const buildabilityGrid = this.clientViewState.getTerrainBuildabilityGrid();
     const buildCellSize = buildabilityGrid?.cellSize ?? BUILD_GRID_CELL_SIZE;
     this.buildGridCellSizeUniform.value = buildCellSize;
     this.buildGridWorldSizeUniform.value.set(this.mapWidth, this.mapHeight);
-    if (!enabled) {
-      return;
-    }
-
     const cellsX = buildabilityGrid?.cellsX ?? Math.max(1, Math.ceil(this.mapWidth / buildCellSize));
     const cellsY = buildabilityGrid?.cellsY ?? Math.max(1, Math.ceil(this.mapHeight / buildCellSize));
     this.ensureBuildGridTexture(cellsX, cellsY);
