@@ -212,7 +212,11 @@ export type GameCanvasClientControlBarModel = {
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly fogShade: boolean;
-  readonly fogClouds: boolean;
+  readonly fogUnseenDarkness: number;
+  readonly fogRadarDarkness: number;
+  readonly fogUnseenDesaturation: number;
+  readonly fogRadarDesaturation: number;
+  readonly fogEdgeSoftness: number;
   readonly materialExplosions: boolean;
   readonly beamSnapToTurret: boolean;
   readonly resourceBallDensity: number;
@@ -268,7 +272,11 @@ export type GameCanvasClientControlBarModel = {
   toggleSmokeTrails(): void;
   toggleSmokeSoftEdges(): void;
   toggleFogShade(): void;
-  toggleFogClouds(): void;
+  changeFogUnseenDarkness(value: number): void;
+  changeFogRadarDarkness(value: number): void;
+  changeFogUnseenDesaturation(value: number): void;
+  changeFogRadarDesaturation(value: number): void;
+  changeFogEdgeSoftness(value: number): void;
   toggleMaterialExplosions(): void;
   toggleBeamSnapToTurret(): void;
   changeResourceBallDensity(value: number): void;

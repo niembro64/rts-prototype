@@ -1,19 +1,23 @@
 {
-  "fogOfWar": {
-    "maxPoolSize": 800,
-    "capPolicy": "skipWhenFull",
-    "densitySamples": 128,
-    "maxSpawnsPerFrame": 8,
-    "spawnAttemptsPerFog": 32,
-    "fadeInMs": 2000,
-    "fadeOutMs": 2000,
-    "radius": 1000,
-    "transparentOuterFraction": 0.4,
-    "zMin": -500,
-    "zRange": 1600,
+  "presentation": {
+    "enabledByDefault": true,
+    "coverage": {
+      "cellSizeWorld": 128
+    },
     "shade": {
-      "cellSize": 128,
-      "edgeSoftnessCells": 1.5
+      "colorHex": "#06090b",
+      "unseenDarknessPercent": 42,
+      "radarDarknessPercent": 24,
+      "unseenColorLossPercent": 50,
+      "radarColorLossPercent": 25,
+      "edgeSoftnessWorld": 192
+    },
+    "controlOptions": {
+      "unseenDarknessPercent": [0, 25, 42, 60, 80],
+      "radarDarknessPercent": [0, 12, 24, 36, 48],
+      "unseenColorLossPercent": [0, 25, 50, 75, 100],
+      "radarColorLossPercent": [0, 25, 50, 75, 100],
+      "edgeSoftnessWorld": [0, 64, 128, 192, 256, 384]
     }
   }
 }

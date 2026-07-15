@@ -387,9 +387,11 @@
       <p>
         The <strong>PLAYER CLIENT</strong> bar owns only fog presentation. Its
         <code>DEBUG:</code> controls may show or hide the sight boundary, the live dark shade over
-        currently unseen terrain, and the soft fog cloud puffs. Fog visual colors and shade alpha
-        belong in <code>colorsConfig.json</code>; fog cloud behavior and geometry belong in
-        <code>fogConfig.json</code>.
+        currently unseen terrain and environment props. The client
+        may independently tune radar-only and fully unseen darkness, color loss, and world-space
+        boundary softness without changing sensor truth. The complete fog presentation profile
+        &mdash; authored defaults, tint, coverage resolution, softness, and user-facing option
+        values &mdash; belongs in <code>fogConfig.json</code>.
         Those controls must not change gameplay truth, server filtering, radar semantics, or what
         entity data is delivered to the player.
       </p>
@@ -397,8 +399,8 @@
         There is no persistent black explored/unexplored shroud. We should not track or render
         &ldquo;ever seen&rdquo; terrain history as a separate black map state unless it is deliberately
         reintroduced as a gameplay feature with its own design justification. The current visual
-        model for unseen areas is live-only: optional shade and optional clouds, both disabled
-        automatically when battle-level fog is off.
+        model for unseen areas is live-only: the optional shade is disabled automatically when
+        battle-level fog is off.
       </p>
 
       <h3>Sight, radar, and contacts are separate information tiers</h3>

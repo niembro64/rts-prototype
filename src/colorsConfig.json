@@ -96,17 +96,6 @@
     "burnMark": {
       "hotColorHex": "#880200",
       "coolResidueColorHex": "#221100"
-    },
-    "fogOfWar": {
-      "shade": {
-        "colorHex": "#06090b",
-        "maxAlpha": 0.42,
-        "radarAlpha": 0.24,
-        "desaturate": 0.5
-      },
-      "cloud": {
-        "maxAlpha": 0.2
-      }
     }
   },
   "environment": {
@@ -380,7 +369,7 @@
       },
       "flipper": {
         "panel": {
-          "colorHex": "#205d63"
+          "colorHex": "#111111"
         }
       },
       "hover": {

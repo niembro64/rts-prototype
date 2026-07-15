@@ -136,13 +136,12 @@ void main() {
 }
 `;
 
-// SOFT (non-sphere) variant. Same approach as FogOfWarFog3D: carry the
-// view-space puff center + radius so the fragment can measure each
+// The SOFT (non-sphere) variant carries the view-space puff center + radius
+// so the fragment can measure each
 // pixel's normalized distance from the projected center and ease alpha
 // to zero with a raised cosine BEFORE the geometric silhouette. The hard
 // sphere outline is never drawn, so the puff reads as a soft round blob.
-// Outer fraction matches the fog field (fogConfig transparentOuterFraction
-// = 0.4) so smoke and fog softness feel consistent. Color is output the
+// The outer 40% remains transparent. Color is output the
 // same way as the sphere shader (no colorspace include) so toggling SOFT
 // changes only the puff's shape, never its color.
 const SMOKE_SOFT_OUTER_FRACTION = 0.4;

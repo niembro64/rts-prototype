@@ -113,14 +113,18 @@ export type ClientBarConfig = {
    *  Purely a SmokeTrail3D shader swap; no effect when `smokeTrails` is
    *  off. */
   readonly smokeSoftEdges: BooleanSetting;
-  /** Terrain-attached fog-of-war shade over currently unseen map areas.
+  /** World-attached fog-of-war shade over terrain and environment props.
    *  Presentation only; battle-level fog still owns authoritative
    *  visibility and snapshot filtering. */
   readonly fogShade: BooleanSetting;
-  /** Soft fog-of-war cloud puffs. This is presentation only; the BATTLE
-   *  fog-of-war control still owns authoritative visibility, snapshot
-   *  filtering, and what enemy entity data reaches the client. */
-  readonly fogClouds: BooleanSetting;
+  /** Independent presentation strengths for the two non-visual sensor tiers.
+   * Percent values affect color only and never authoritative fog behavior. */
+  readonly fogUnseenDarkness: LabeledOptionsConfig<number>;
+  readonly fogRadarDarkness: LabeledOptionsConfig<number>;
+  readonly fogUnseenDesaturation: LabeledOptionsConfig<number>;
+  readonly fogRadarDesaturation: LabeledOptionsConfig<number>;
+  /** Width of the world-space transition band around sensor coverage. */
+  readonly fogEdgeSoftness: LabeledOptionsConfig<number>;
   /** Client-only death material breakup: death fire puff plus part-based
    *  Debris3D chunks. Does not affect authoritative death, damage,
    *  knockback, or the dying shell materialization fade. */

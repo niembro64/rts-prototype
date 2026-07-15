@@ -27,6 +27,7 @@ import {
   detailScreenRadiusPx,
 } from './EntityDetailLevel3D';
 import type { RenderViewState3D } from './RenderFrameState3D';
+import type { FogOfWarShade3D } from './FogOfWarShade3D';
 
 type EnvironmentPropNode = {
   placement: EnvironmentPlacement;
@@ -45,6 +46,7 @@ type EnvironmentPropRenderer3DOptions = {
   playerCount: number;
   metalDeposits: ReadonlyArray<MetalDeposit>;
   renderScope: ViewportFootprint;
+  fogOfWarShade: FogOfWarShade3D;
   sampleTerrainHeight: (x: number, z: number) => number;
 };
 
@@ -60,6 +62,7 @@ installKnownFbxMaterialWarningFilter();
 export class EnvironmentPropRenderer3D {
   private readonly root = new THREE.Group();
   private readonly renderScope: ViewportFootprint;
+  private readonly fogOfWarShade: FogOfWarShade3D;
   private readonly placements: EnvironmentPlacement[];
   private readonly nodes: EnvironmentPropNode[] = [];
   private readonly materialCache = new Map<string, THREE.MeshLambertMaterial>();
@@ -78,6 +81,7 @@ export class EnvironmentPropRenderer3D {
     options: EnvironmentPropRenderer3DOptions,
   ) {
     this.renderScope = options.renderScope;
+    this.fogOfWarShade = options.fogOfWarShade;
     this.root.name = 'EnvironmentPropRenderer3D';
     parentWorld.add(this.root);
     logActiveEnvironmentAssets();
@@ -236,6 +240,11 @@ export class EnvironmentPropRenderer3D {
       if (geometry && !geometry.getAttribute('normal'))
         geometry.computeVertexNormals();
       mesh.material = this.materialForAsset(spec, mesh.material);
+      if (Array.isArray(mesh.material)) {
+        for (const material of mesh.material) this.fogOfWarShade.patchMaterial(material);
+      } else {
+        this.fogOfWarShade.patchMaterial(mesh.material);
+      }
       mesh.castShadow = false;
       mesh.receiveShadow = false;
     });

@@ -36,7 +36,6 @@ type RtsScene3DRendererResources = {
   sprayRenderer?: Destroyable | null;
   pylonTubeFlowRenderer?: Destroyable | null;
   smokeTrailRenderer?: Destroyable | null;
-  fogOfWarFogRenderer?: Destroyable | null;
   sightBoundaryRenderer?: Destroyable | null;
   radarBoundaryRenderer?: Destroyable | null;
   overlayLineSystem?: Disposable | null;
@@ -73,7 +72,6 @@ export function teardownRtsScene3DRenderers(
   resources.sprayRenderer?.destroy();
   resources.pylonTubeFlowRenderer?.destroy();
   resources.smokeTrailRenderer?.destroy();
-  resources.fogOfWarFogRenderer?.destroy();
   resources.sightBoundaryRenderer?.destroy();
   resources.radarBoundaryRenderer?.destroy();
   // overlayLineSystem owns the single shared ScreenSpaceLineMaterial (GL

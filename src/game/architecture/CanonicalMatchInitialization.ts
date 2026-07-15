@@ -5,7 +5,6 @@ import {
 import buildConfigJson from '../../buildConfig.json';
 import combatConfigJson from '../../combatConfig.json';
 import economyConfigJson from '../../economyConfig.json';
-import fogConfigJson from '../../fogConfig.json';
 import metalDepositConfigJson from '../../metalDepositConfig.json';
 import physicsTuningConfigJson from '../../physicsTuningConfig.json';
 import realBattleConfigJson from '../../realBattleConfig.json';
@@ -98,7 +97,6 @@ const GAMEPLAY_CONFIG_CONTENT = {
   buildConfig: buildConfigJson,
   combatConfig: combatConfigJson,
   economyConfig: economyConfigJson,
-  fogConfig: fogConfigJson,
   metalDepositConfig: metalDepositConfigJson,
   physicsTuningConfig: physicsTuningConfigJson,
   realBattleConfig: realBattleConfigJson,

@@ -1109,7 +1109,11 @@ const {
   smokeTrails,
   smokeSoftEdges,
   fogShade,
-  fogClouds,
+  fogUnseenDarkness,
+  fogRadarDarkness,
+  fogUnseenDesaturation,
+  fogRadarDesaturation,
+  fogEdgeSoftness,
   materialExplosions,
   beamSnapToTurret,
   resourceBallDensity,
@@ -1175,7 +1179,11 @@ const {
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
   toggleFogShade,
-  toggleFogClouds,
+  changeFogUnseenDarkness,
+  changeFogRadarDarkness,
+  changeFogUnseenDesaturation,
+  changeFogRadarDesaturation,
+  changeFogEdgeSoftness,
   toggleMaterialExplosions,
   toggleBeamSnapToTurret,
   changeResourceBallDensity,
@@ -2008,7 +2016,11 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   smokeTrails: smokeTrails.value,
   smokeSoftEdges: smokeSoftEdges.value,
   fogShade: fogShade.value,
-  fogClouds: fogClouds.value,
+  fogUnseenDarkness: fogUnseenDarkness.value,
+  fogRadarDarkness: fogRadarDarkness.value,
+  fogUnseenDesaturation: fogUnseenDesaturation.value,
+  fogRadarDesaturation: fogRadarDesaturation.value,
+  fogEdgeSoftness: fogEdgeSoftness.value,
   materialExplosions: materialExplosions.value,
   beamSnapToTurret: beamSnapToTurret.value,
   resourceBallDensity: resourceBallDensity.value,
@@ -2064,7 +2076,11 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
   toggleFogShade,
-  toggleFogClouds,
+  changeFogUnseenDarkness,
+  changeFogRadarDarkness,
+  changeFogUnseenDesaturation,
+  changeFogRadarDesaturation,
+  changeFogEdgeSoftness,
   toggleMaterialExplosions,
   toggleBeamSnapToTurret,
   changeResourceBallDensity,
@@ -2209,7 +2225,11 @@ watchEffect(() => {
   m.smokeTrails = smokeTrails.value;
   m.smokeSoftEdges = smokeSoftEdges.value;
   m.fogShade = fogShade.value;
-  m.fogClouds = fogClouds.value;
+  m.fogUnseenDarkness = fogUnseenDarkness.value;
+  m.fogRadarDarkness = fogRadarDarkness.value;
+  m.fogUnseenDesaturation = fogUnseenDesaturation.value;
+  m.fogRadarDesaturation = fogRadarDesaturation.value;
+  m.fogEdgeSoftness = fogEdgeSoftness.value;
   m.materialExplosions = materialExplosions.value;
   m.beamSnapToTurret = beamSnapToTurret.value;
   m.resourceBallDensity = resourceBallDensity.value;

@@ -35,12 +35,11 @@ function maxByte(value: number, next: number): number {
  *  authoritative fog filtering still comes from the host snapshot. */
 export class FogOfWarCoverageTexture3D {
   readonly textureUniform: { value: THREE.DataTexture };
-  readonly mapSizeUniform: { value: THREE.Vector2 };
   readonly worldSizeUniform: { value: THREE.Vector2 };
   readonly enabledUniform = { value: 0 };
 
   private readonly cellSize: number;
-  private readonly edgeSoftnessWorld: number;
+  private edgeSoftnessWorld: number;
   private readonly pixels: Uint8Array;
   private readonly texture: THREE.DataTexture;
   private readonly sources: FogCoverageSource[] = [];
@@ -51,9 +50,9 @@ export class FogOfWarCoverageTexture3D {
     private readonly mapWidth: number,
     private readonly mapHeight: number,
   ) {
-    const shade = FOG_CONFIG.fogOfWar.shade;
-    this.cellSize = Math.max(1, shade.cellSize);
-    this.edgeSoftnessWorld = Math.max(0, shade.edgeSoftnessCells) * this.cellSize;
+    const presentation = FOG_CONFIG.presentation;
+    this.cellSize = Math.max(1, presentation.coverage.cellSizeWorld);
+    this.edgeSoftnessWorld = Math.max(0, presentation.shade.edgeSoftnessWorld);
     this.width = Math.max(1, Math.ceil(mapWidth / this.cellSize));
     this.height = Math.max(1, Math.ceil(mapHeight / this.cellSize));
     this.pixels = new Uint8Array(this.width * this.height * 4);
@@ -70,7 +69,6 @@ export class FogOfWarCoverageTexture3D {
     this.texture.flipY = false;
     this.texture.needsUpdate = true;
     this.textureUniform = { value: this.texture };
-    this.mapSizeUniform = { value: new THREE.Vector2(this.width, this.height) };
     this.worldSizeUniform = { value: new THREE.Vector2(mapWidth, mapHeight) };
   }
 
@@ -88,6 +86,10 @@ export class FogOfWarCoverageTexture3D {
       this.stampSource(this.sources[i]);
     }
     this.texture.needsUpdate = true;
+  }
+
+  setEdgeSoftnessWorld(value: number): void {
+    this.edgeSoftnessWorld = Number.isFinite(value) ? Math.max(0, value) : 0;
   }
 
   destroy(): void {

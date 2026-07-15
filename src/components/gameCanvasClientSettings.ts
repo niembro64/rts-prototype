@@ -19,7 +19,11 @@ import {
   getDragPanEnabled,
   getElevationMap,
   getFogShade,
-  getFogClouds,
+  getFogUnseenDarkness,
+  getFogRadarDarkness,
+  getFogUnseenDesaturation,
+  getFogRadarDesaturation,
+  getFogEdgeSoftness,
   getMaterialExplosions,
   getPathingMap,
   getPathingDebugUnit,
@@ -59,7 +63,11 @@ import {
   setDragPanEnabled,
   setElevationMap,
   setFogShade,
-  setFogClouds,
+  setFogUnseenDarkness,
+  setFogRadarDarkness,
+  setFogUnseenDesaturation,
+  setFogRadarDesaturation,
+  setFogEdgeSoftness,
   setMaterialExplosions,
   setPathingMap,
   setPathingDebugUnit,
@@ -138,7 +146,11 @@ export function useGameCanvasClientSettings({
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const fogShade = ref<boolean>(getFogShade());
-  const fogClouds = ref<boolean>(getFogClouds());
+  const fogUnseenDarkness = ref(getFogUnseenDarkness());
+  const fogRadarDarkness = ref(getFogRadarDarkness());
+  const fogUnseenDesaturation = ref(getFogUnseenDesaturation());
+  const fogRadarDesaturation = ref(getFogRadarDesaturation());
+  const fogEdgeSoftness = ref(getFogEdgeSoftness());
   const materialExplosions = ref<boolean>(getMaterialExplosions());
   const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
   const resourceBallDensity = ref<number>(getResourceBallDensity());
@@ -226,7 +238,11 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     fogShade.value = getFogShade();
-    fogClouds.value = getFogClouds();
+    fogUnseenDarkness.value = getFogUnseenDarkness();
+    fogRadarDarkness.value = getFogRadarDarkness();
+    fogUnseenDesaturation.value = getFogUnseenDesaturation();
+    fogRadarDesaturation.value = getFogRadarDesaturation();
+    fogEdgeSoftness.value = getFogEdgeSoftness();
     materialExplosions.value = getMaterialExplosions();
     beamSnapToTurret.value = getBeamSnapToTurret();
     resourceBallDensity.value = getResourceBallDensity();
@@ -422,16 +438,35 @@ export function useGameCanvasClientSettings({
     smokeSoftEdges.value = newValue;
   }
 
-  function toggleFogClouds(): void {
-    const newValue = !fogClouds.value;
-    setFogClouds(newValue);
-    fogClouds.value = newValue;
-  }
-
   function toggleFogShade(): void {
     const newValue = !fogShade.value;
     setFogShade(newValue);
     fogShade.value = newValue;
+  }
+
+  function changeFogUnseenDarkness(value: number): void {
+    setFogUnseenDarkness(value);
+    fogUnseenDarkness.value = getFogUnseenDarkness();
+  }
+
+  function changeFogRadarDarkness(value: number): void {
+    setFogRadarDarkness(value);
+    fogRadarDarkness.value = getFogRadarDarkness();
+  }
+
+  function changeFogUnseenDesaturation(value: number): void {
+    setFogUnseenDesaturation(value);
+    fogUnseenDesaturation.value = getFogUnseenDesaturation();
+  }
+
+  function changeFogRadarDesaturation(value: number): void {
+    setFogRadarDesaturation(value);
+    fogRadarDesaturation.value = getFogRadarDesaturation();
+  }
+
+  function changeFogEdgeSoftness(value: number): void {
+    setFogEdgeSoftness(value);
+    fogEdgeSoftness.value = getFogEdgeSoftness();
   }
 
   function toggleMaterialExplosions(): void {
@@ -608,8 +643,11 @@ export function useGameCanvasClientSettings({
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
     setFogShade(cd.fogShade.default);
     fogShade.value = cd.fogShade.default;
-    setFogClouds(cd.fogClouds.default);
-    fogClouds.value = cd.fogClouds.default;
+    changeFogUnseenDarkness(cd.fogUnseenDarkness.default);
+    changeFogRadarDarkness(cd.fogRadarDarkness.default);
+    changeFogUnseenDesaturation(cd.fogUnseenDesaturation.default);
+    changeFogRadarDesaturation(cd.fogRadarDesaturation.default);
+    changeFogEdgeSoftness(cd.fogEdgeSoftness.default);
     setMaterialExplosions(cd.materialExplosions.default);
     materialExplosions.value = cd.materialExplosions.default;
     setBeamSnapToTurret(cd.beamSnapToTurret.default);
@@ -701,7 +739,11 @@ export function useGameCanvasClientSettings({
     smokeTrails,
     smokeSoftEdges,
     fogShade,
-    fogClouds,
+    fogUnseenDarkness,
+    fogRadarDarkness,
+    fogUnseenDesaturation,
+    fogRadarDesaturation,
+    fogEdgeSoftness,
     materialExplosions,
     beamSnapToTurret,
     resourceBallDensity,
@@ -767,7 +809,11 @@ export function useGameCanvasClientSettings({
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
     toggleFogShade,
-    toggleFogClouds,
+    changeFogUnseenDarkness,
+    changeFogRadarDarkness,
+    changeFogUnseenDesaturation,
+    changeFogRadarDesaturation,
+    changeFogEdgeSoftness,
     toggleMaterialExplosions,
     toggleBeamSnapToTurret,
     changeResourceBallDensity,

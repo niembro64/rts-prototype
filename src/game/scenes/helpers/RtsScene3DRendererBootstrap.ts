@@ -8,8 +8,8 @@ import { ContactShadowRenderer3D } from '../../render3d/ContactShadowRenderer3D'
 import { CursorGround } from '../../render3d/CursorGround';
 import { Debris3D } from '../../render3d/Debris3D';
 import { EnvironmentPropRenderer3D } from '../../render3d/EnvironmentPropRenderer3D';
+import { FogOfWarShade3D } from '../../render3d/FogOfWarShade3D';
 import { Explosion3D } from '../../render3d/Explosion3D';
-import { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
 import { GroundPrint3D } from '../../render3d/GroundPrint3D';
 import { LegInstancedRenderer } from '../../render3d/LegInstancedRenderer';
 import { LineDrag3D } from '../../render3d/LineDrag3D';
@@ -70,7 +70,6 @@ type RtsScene3DRendererBootstrapResult = {
   sprayRenderer: SprayRenderer3D;
   pylonTubeFlowRenderer: PylonTubeFlowRenderer;
   smokeTrailRenderer: SmokeTrail3D;
-  fogOfWarFogRenderer: FogOfWarFog3D;
   overlayLineSystem: OverlayLineSystem;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
@@ -113,12 +112,14 @@ export function bootstrapRtsScene3DRenderers(
     threeApp.camera,
     (eid) => entityRenderer.getUnitYawGroup(eid),
   );
+  const fogOfWarShade = new FogOfWarShade3D(mapWidth, mapHeight);
   const terrainTileRenderer = new TerrainTileRenderer3D(
     threeApp.world,
     clientViewState,
     mapWidth,
     mapHeight,
     metalDeposits,
+    fogOfWarShade,
   );
   const metalDepositRenderer = new MetalDepositRenderer3D(
     threeApp.world,
@@ -133,6 +134,7 @@ export function bootstrapRtsScene3DRenderers(
       playerCount,
       metalDeposits,
       renderScope,
+      fogOfWarShade,
       sampleTerrainHeight: (x, z) => getTerrainMeshHeight(x, z, mapWidth, mapHeight),
     },
   );
@@ -194,11 +196,6 @@ export function bootstrapRtsScene3DRenderers(
   const sprayRenderer = new SprayRenderer3D(threeApp.world);
   const pylonTubeFlowRenderer = new PylonTubeFlowRenderer(threeApp.world);
   const smokeTrailRenderer = new SmokeTrail3D(threeApp.world);
-  const fogOfWarFogRenderer = new FogOfWarFog3D(
-    threeApp.world,
-    mapWidth,
-    mapHeight,
-  );
   const sightBoundaryRenderer = new SightBoundaryRenderer3D(
     threeApp.world,
     overlayLineSystem,
@@ -234,7 +231,6 @@ export function bootstrapRtsScene3DRenderers(
     sprayRenderer,
     pylonTubeFlowRenderer,
     smokeTrailRenderer,
-    fogOfWarFogRenderer,
     overlayLineSystem,
     sightBoundaryRenderer,
     radarBoundaryRenderer,

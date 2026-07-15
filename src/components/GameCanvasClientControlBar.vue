@@ -860,19 +860,79 @@ function resetEveryCustomHotkey(): void {
         <BarLabel>VIS FX:</BarLabel>
         <BarButton
           :active="model.fogShade"
-          title="Shade currently unseen terrain with a terrain-attached fog-of-war mask. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
+          title="Shade currently unseen terrain and environment props with a world-attached fog-of-war mask. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
           @click="model.toggleFogShade"
         >SHADE</BarButton>
-        <BarButton
-          :active="model.fogClouds"
-          title="Generate soft fog-of-war cloud puffs. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
-          @click="model.toggleFogClouds"
-        >CLOUDS</BarButton>
         <BarButton
           :active="model.materialExplosions"
           title="Generate client-only death material explosions: death fire puff plus part-based debris chunks"
           @click="model.toggleMaterialExplosions"
         >MATEXP</BarButton>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Dark tint strength in areas outside both full sight and radar.">UNSEEN DARK:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.fogUnseenDarkness.options"
+            :key="opt.value"
+            :active="model.fogUnseenDarkness === opt.value"
+            :title="`Set fully unseen fog darkening to ${opt.value}%.`"
+            @click="model.changeFogUnseenDarkness(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Dark tint strength in radar-only areas outside full sight.">RADAR DARK:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.fogRadarDarkness.options"
+            :key="opt.value"
+            :active="model.fogRadarDarkness === opt.value"
+            :title="`Set radar-only fog darkening to ${opt.value}%.`"
+            @click="model.changeFogRadarDarkness(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Percentage of color removed outside both full sight and radar.">UNSEEN COLOR LOSS:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.fogUnseenDesaturation.options"
+            :key="opt.value"
+            :active="model.fogUnseenDesaturation === opt.value"
+            :title="`Remove ${opt.value}% of color in fully unseen areas.`"
+            @click="model.changeFogUnseenDesaturation(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="Percentage of color removed in radar-only areas outside full sight.">RADAR COLOR LOSS:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.fogRadarDesaturation.options"
+            :key="opt.value"
+            :active="model.fogRadarDesaturation === opt.value"
+            :title="`Remove ${opt.value}% of color in radar-only areas.`"
+            @click="model.changeFogRadarDesaturation(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel title="World-space feather width around sight and radar boundaries. This softens the mask without blurring terrain detail.">FOG EDGE:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in CLIENT_CONFIG.fogEdgeSoftness.options"
+            :key="opt.value"
+            :active="model.fogEdgeSoftness === opt.value"
+            :title="`Set fog boundary feathering to ${opt.value} world units.`"
+            @click="model.changeFogEdgeSoftness(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

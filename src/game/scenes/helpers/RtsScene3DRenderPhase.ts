@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {
-  getFogClouds,
   getFogShade,
+  getFogShadePresentationSettings,
   getMaterialExplosions,
   getRadarBoundary,
   getSightBoundary,
@@ -46,7 +46,6 @@ import type { LineDrag3D } from '../../render3d/LineDrag3D';
 import type { SprayRenderer3D } from '../../render3d/SprayRenderer3D';
 import type { PylonTubeFlowRenderer } from '../../render3d/PylonTubeFlowRenderer';
 import type { SmokeTrail3D } from '../../render3d/SmokeTrail3D';
-import type { FogOfWarFog3D } from '../../render3d/FogOfWarFog3D';
 import type { SightBoundaryRenderer3D } from '../../render3d/SightBoundaryRenderer3D';
 import type { OverlayLineSystem } from '../../render3d/OverlayLineSystem';
 import {
@@ -110,7 +109,6 @@ type RtsScene3DRenderPhaseResources = {
   sprayRenderer: SprayRenderer3D;
   pylonTubeFlowRenderer: PylonTubeFlowRenderer;
   smokeTrailRenderer: SmokeTrail3D;
-  fogOfWarFogRenderer: FogOfWarFog3D;
   overlayLineSystem: OverlayLineSystem;
   sightBoundaryRenderer: SightBoundaryRenderer3D;
   radarBoundaryRenderer: SightBoundaryRenderer3D;
@@ -323,7 +321,6 @@ export class RtsScene3DRenderPhase {
       sprayRenderer,
       pylonTubeFlowRenderer,
       smokeTrailRenderer,
-      fogOfWarFogRenderer,
       overlayLineSystem,
       sightBoundaryRenderer,
       radarBoundaryRenderer,
@@ -485,7 +482,10 @@ export class RtsScene3DRenderPhase {
       renderFrameState,
       {
         localPlayerId: this.getLocalPlayerId(),
-        fogShadeEnabled: fogOfWarEnabled && getFogShade(),
+        fogShade: {
+          ...getFogShadePresentationSettings(),
+          enabled: fogOfWarEnabled && getFogShade(),
+        },
       },
     );
     phaseNow = performance.now();
@@ -607,12 +607,6 @@ export class RtsScene3DRenderPhase {
         this.renderScope,
         entityRenderer.getHoverSmokeEmitters(),
         renderFrameState.view,
-      );
-      fogOfWarFogRenderer.update(
-        this.clientViewState,
-        this.getLocalPlayerId(),
-        fogOfWarEnabled && getFogClouds(),
-        this.smokeTrailAccumMs,
       );
       this.smokeTrailAccumMs = 0;
     }

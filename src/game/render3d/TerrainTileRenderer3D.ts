@@ -49,7 +49,12 @@ import {
 } from '../../config';
 import { getGroundDetailTexture } from './GroundDetailTexture';
 import { getRockDetailTexture } from './RockDetailTexture';
-import { FogOfWarCoverageTexture3D } from './FogOfWarCoverageTexture3D';
+import {
+  FOG_OF_WAR_SHADE_FRAGMENT_PARS,
+  FogOfWarShade3D,
+  fogOfWarShadeFragment,
+  type FogOfWarShadeSettings3D,
+} from './FogOfWarShade3D';
 import {
   getTerrainMeshSample,
   getTerrainMeshView,
@@ -116,10 +121,6 @@ const BUILD_GRID_COLOR_METAL = readRgbaTuple(
   'colorsConfig.world.terrain.buildGrid.metalRgba',
 );
 const BUILD_GRID_COLOR_TRANSPARENT = [0, 0, 0, 0] as const;
-const FOG_SHADE_COLOR = rawSrgbVec3(COLORS.world.fogOfWar.shade.colorHex);
-const FOG_SHADE_ALPHA = COLORS.world.fogOfWar.shade.maxAlpha;
-const FOG_SHADE_RADAR_ALPHA = COLORS.world.fogOfWar.shade.radarAlpha;
-const FOG_SHADE_DESATURATE = COLORS.world.fogOfWar.shade.desaturate;
 const TERRAIN_TRIANGLE_TOUCH_EPSILON = 1.0e-9;
 
 
@@ -130,7 +131,7 @@ const TERRAIN_HORIZON_WATER_COLOR = WATER_SURFACE_LINEAR_COLOR.clone();
 
 type TerrainTileRendererUpdateOptions = {
   localPlayerId: PlayerId;
-  fogShadeEnabled: boolean;
+  fogShade: FogOfWarShadeSettings3D;
 };
 
 function smoothstep01(t: number): number {
@@ -607,11 +608,7 @@ export class TerrainTileRenderer3D {
   private rockDetailEnabledUniform = { value: 0 };
   private rockBaseColorUniform = { value: rawSrgbVec3(TERRAIN_ROCK_BASE_COLOR) };
   private rockDetailContrastUniform = { value: TERRAIN_ROCK_DETAIL_CONTRAST };
-  private readonly fogOfWarCoverage: FogOfWarCoverageTexture3D;
-  private readonly fogShadeColorUniform = { value: FOG_SHADE_COLOR };
-  private readonly fogShadeAlphaUniform = { value: FOG_SHADE_ALPHA };
-  private readonly fogShadeRadarAlphaUniform = { value: FOG_SHADE_RADAR_ALPHA };
-  private readonly fogShadeDesaturateUniform = { value: FOG_SHADE_DESATURATE };
+  private readonly fogOfWarShade: FogOfWarShade3D;
 
   private gridCellsX = 0;
   private gridCellsY = 0;
@@ -641,7 +638,8 @@ export class TerrainTileRenderer3D {
     clientViewState: ClientViewState,
     mapWidth: number,
     mapHeight: number,
-    metalDeposits: readonly MetalDeposit[] = [],
+    metalDeposits: readonly MetalDeposit[],
+    fogOfWarShade: FogOfWarShade3D,
   ) {
     this.clientViewState = clientViewState;
     this.metalDeposits = metalDeposits;
@@ -650,7 +648,7 @@ export class TerrainTileRenderer3D {
 
     this.buildGridTexture = this.makeBuildGridTexture(1, 1);
     this.buildGridMapUniform = { value: this.buildGridTexture };
-    this.fogOfWarCoverage = new FogOfWarCoverageTexture3D(mapWidth, mapHeight);
+    this.fogOfWarShade = fogOfWarShade;
 
     if (TERRAIN_GROUND_DETAIL_ENABLED) {
       this.groundDetailTextureUniform.value = getGroundDetailTexture();
@@ -706,14 +704,7 @@ export class TerrainTileRenderer3D {
       shader.uniforms.uRockDetailEnabled = this.rockDetailEnabledUniform;
       shader.uniforms.uRockBaseColor = this.rockBaseColorUniform;
       shader.uniforms.uRockDetailContrast = this.rockDetailContrastUniform;
-      shader.uniforms.uFogOfWarShadeMap = this.fogOfWarCoverage.textureUniform;
-      shader.uniforms.uFogOfWarShadeMapSize = this.fogOfWarCoverage.mapSizeUniform;
-      shader.uniforms.uFogOfWarShadeWorldSize = this.fogOfWarCoverage.worldSizeUniform;
-      shader.uniforms.uFogOfWarShadeEnabled = this.fogOfWarCoverage.enabledUniform;
-      shader.uniforms.uFogOfWarShadeColor = this.fogShadeColorUniform;
-      shader.uniforms.uFogOfWarShadeAlpha = this.fogShadeAlphaUniform;
-      shader.uniforms.uFogOfWarShadeRadarAlpha = this.fogShadeRadarAlphaUniform;
-      shader.uniforms.uFogOfWarShadeDesaturate = this.fogShadeDesaturateUniform;
+      this.fogOfWarShade.assignUniforms(shader);
       shader.vertexShader = shader.vertexShader
         .replace(
           '#include <common>',
@@ -770,14 +761,7 @@ export class TerrainTileRenderer3D {
             'uniform float uRockDetailEnabled;',
             'uniform vec3 uRockBaseColor;',
             'uniform float uRockDetailContrast;',
-            'uniform sampler2D uFogOfWarShadeMap;',
-            'uniform vec2 uFogOfWarShadeMapSize;',
-            'uniform vec2 uFogOfWarShadeWorldSize;',
-            'uniform float uFogOfWarShadeEnabled;',
-            'uniform vec3 uFogOfWarShadeColor;',
-            'uniform float uFogOfWarShadeAlpha;',
-            'uniform float uFogOfWarShadeRadarAlpha;',
-            'uniform float uFogOfWarShadeDesaturate;',
+            FOG_OF_WAR_SHADE_FRAGMENT_PARS,
             'varying vec3 vTerrainWorldPos;',
             'varying float vTerrainShade;',
             'varying float vTerrainSlope;',
@@ -903,20 +887,7 @@ export class TerrainTileRenderer3D {
             '  elevationRgb = mix(elevationRgb * 0.72, elevationRgb, contour);',
             '  diffuseColor.rgb = mix(diffuseColor.rgb, elevationRgb, 0.68);',
             '}',
-            'if (uFogOfWarShadeEnabled > 0.0 &&',
-            '    vTerrainWorldPos.x >= 0.0 && vTerrainWorldPos.z >= 0.0 &&',
-            '    vTerrainWorldPos.x <= uFogOfWarShadeWorldSize.x &&',
-            '    vTerrainWorldPos.z <= uFogOfWarShadeWorldSize.y) {',
-            '  vec2 fogUv = clamp(vTerrainWorldPos.xz / uFogOfWarShadeWorldSize, vec2(0.0), vec2(1.0));',
-            '  vec4 fogCoverage = texture2D(uFogOfWarShadeMap, fogUv);',
-            '  float fullSightCoverage = smoothstep(0.02, 0.98, fogCoverage.r);',
-            '  float radarCoverage = max(fullSightCoverage, smoothstep(0.02, 0.98, fogCoverage.g));',
-            '  float unseen = 1.0 - fullSightCoverage;',
-            '  float shadeAlpha = unseen * mix(uFogOfWarShadeAlpha, uFogOfWarShadeRadarAlpha, radarCoverage);',
-            '  float shadeLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));',
-            '  vec3 desaturatedTerrain = mix(diffuseColor.rgb, vec3(shadeLuma), unseen * uFogOfWarShadeDesaturate);',
-            '  diffuseColor.rgb = mix(desaturatedTerrain, uFogOfWarShadeColor, shadeAlpha);',
-            '}',
+            fogOfWarShadeFragment('vTerrainWorldPos'),
             buildGridOverlayFragment('vTerrainWorldPos'),
           ].join('\n'),
         )
@@ -2246,10 +2217,17 @@ export class TerrainTileRenderer3D {
     const waterBoundaryMode = getWaterBoundaryMode();
     this.triangleDebugEnabledUniform.value = triangleDebug ? 1 : 0;
     this.elevationMapEnabledUniform.value = getElevationMap() ? 1 : 0;
-    this.fogOfWarCoverage.update(
+    this.fogOfWarShade.update(
       this.clientViewState,
       options?.localPlayerId ?? (1 as PlayerId),
-      options?.fogShadeEnabled === true,
+      options?.fogShade ?? {
+        enabled: false,
+        unseenDarkness: 0,
+        radarDarkness: 0,
+        unseenDesaturation: 0,
+        radarDesaturation: 0,
+        edgeSoftnessWorld: 0,
+      },
     );
     this.rebuildGeometryIfNeeded(
       cellSize,
@@ -2308,7 +2286,7 @@ export class TerrainTileRenderer3D {
     this.terrainMaterial.dispose();
     this.terrainMesh.parent?.remove(this.terrainMesh);
     this.buildGridTexture.dispose();
-    this.fogOfWarCoverage.destroy();
+    this.fogOfWarShade.destroy();
     this.buildGridPixels = new Uint8Array(4);
     this.terrainGeometryReady = false;
   }
