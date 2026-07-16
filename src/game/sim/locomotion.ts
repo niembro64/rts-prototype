@@ -22,7 +22,6 @@ import {
   assertLocomotionClosedUnitFraction,
   assertLocomotionNonNegativeFinite,
   assertLocomotionPositiveFinite,
-  assertLocomotionSlopeDegrees,
 } from './locomotionValidation';
 
 // Visual rig discriminants are deliberately separate from authoritative
@@ -32,10 +31,6 @@ const LOCOMOTION_TYPES = [
   'wheels', 'treads', 'legs', 'flippers', 'hover', 'flying', 'swim',
 ] as const;
 type AuthoredFluidPhysics = NonNullable<LocomotionBlueprint['physics']['air']>;
-
-function maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg: number): number {
-  return Math.cos(maxSlopeDeg * Math.PI / 180);
-}
 
 function createRuntimeGroundPhysics(
   preset: LocomotionPresetConfig,
@@ -145,32 +140,12 @@ function createRuntimeLocomotionPhysics(
 }
 
 function createRuntimePathfindingConfig(
-  label: string,
   pathfinding: PathfindingBlueprint,
 ): UnitLocomotion['pathfinding'] {
-  if (pathfinding.terrainMode === 'anywhere') {
-    if (pathfinding.maxSlopeDeg !== null) {
-      throw new Error(`Invalid ${label}: anywhere pathfinding must use maxSlopeDeg=null`);
-    }
-    return {
-      pathfindingBlueprintId: pathfinding.pathfindingBlueprintId,
-      terrainMode: pathfinding.terrainMode,
-      ignoreTerrainBlocking: true,
-      maxSlopeDeg: null,
-      minSurfaceNormalZ: 0,
-    };
-  }
-  const maxSlopeDeg = pathfinding.maxSlopeDeg;
-  if (maxSlopeDeg === null) {
-    throw new Error(`Invalid ${label}: land pathfinding requires maxSlopeDeg`);
-  }
-  assertLocomotionSlopeDegrees(`${label}.maxSlopeDeg`, maxSlopeDeg);
   return {
     pathfindingBlueprintId: pathfinding.pathfindingBlueprintId,
     terrainMode: pathfinding.terrainMode,
-    ignoreTerrainBlocking: false,
-    maxSlopeDeg,
-    minSurfaceNormalZ: maxSlopeDegToMinSurfaceNormalZ(maxSlopeDeg),
+    ignoreTerrainBlocking: pathfinding.terrainMode === 'anywhere',
   };
 }
 
@@ -195,10 +170,7 @@ export function createUnitLocomotion(
     driveForceScalesWithFacing: preset.physics.driveForceScalesWithFacing,
     maintainFullThrustAtWaypoints: preset.physics.maintainFullThrustAtWaypoints,
     surfaceProbeSetId: preset.physics.surfaceProbeSetId,
-    pathfinding: createRuntimePathfindingConfig(
-      `${type}.pathfinding(${locomotion.pathfindingBlueprintId})`,
-      locomotion.pathfinding,
-    ),
+    pathfinding: createRuntimePathfindingConfig(locomotion.pathfinding),
   };
   if (!hasAnyLocomotionRouteCapability(resolveLocomotionRouteCapabilities(runtime))) {
     throw new Error(

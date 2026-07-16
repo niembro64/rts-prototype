@@ -255,7 +255,7 @@ function buildMovementSection(blueprint: UnitBlueprint): LoadingUnitInfoSection 
         ].filter(Boolean).join(' / ') || 'none',
       ),
       stat('Max slope', climb.maxSlopeDeg === null ? 'any' : `${fmt(climb.maxSlopeDeg)} deg`),
-      stat('Surface normal floor', climb.minSurfaceNormalZ === null ? 'any' : fmt(climb.minSurfaceNormalZ, 3)),
+      stat('Standstill normal floor', climb.minStandstillNormalZ === null ? 'any' : fmt(climb.minStandstillNormalZ, 3)),
     ]),
     ...describeLocomotionPhysics(runtime),
   ];

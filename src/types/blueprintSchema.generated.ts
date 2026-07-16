@@ -505,7 +505,6 @@ export type PathfindingTerrainMode = 'land' | 'anywhere';
 export type PathfindingBlueprint = {
   pathfindingBlueprintId: string;
   terrainMode: PathfindingTerrainMode;
-  maxSlopeDeg: number | null;
 };
 
 export type HoverConfig = {

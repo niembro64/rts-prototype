@@ -7,12 +7,6 @@ export type UnitPathfindingConfig = {
   terrainMode: UnitPathfindingTerrainMode;
   /** True for profiles that can route over water and steep terrain. */
   ignoreTerrainBlocking: boolean;
-  /** Null when terrainMode is `anywhere`; otherwise the slope limit
-   *  authored in pathfindingConfig.json. */
-  maxSlopeDeg: number | null;
-  /** Precomputed cosine threshold for pathfinding against terrain
-   *  normals. 0 when terrain blocking is ignored. */
-  minSurfaceNormalZ: number;
 };
 
 export type UnitLocomotionPropulsionPhysics = {

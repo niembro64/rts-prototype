@@ -4,7 +4,7 @@
     "referenceDistanceWorld": 1,
     "minimumDistanceWorld": 0.5,
     "distanceExponent": 0.5,
-    "probeAggregation": "max"
+    "probeAggregation": "average"
   },
   "mediumDefaults": {
     "ground": {

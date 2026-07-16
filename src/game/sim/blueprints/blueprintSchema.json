@@ -2075,8 +2075,7 @@
       "type": "object",
       "required": [
         "pathfindingBlueprintId",
-        "terrainMode",
-        "maxSlopeDeg"
+        "terrainMode"
       ],
       "properties": {
         "pathfindingBlueprintId": {
@@ -2084,16 +2083,6 @@
         },
         "terrainMode": {
           "$ref": "#/$defs/PathfindingTerrainMode"
-        },
-        "maxSlopeDeg": {
-          "oneOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ]
         }
       },
       "additionalProperties": false

@@ -76,7 +76,7 @@ function resolveInlineLocomotion(
     (locomotion.physics as { maxSlopeDeg?: unknown }).maxSlopeDeg !== undefined
   ) {
     throw new Error(
-      `Invalid unit blueprint ${unitBlueprintId}: locomotion physics.maxSlopeDeg moved to pathfindingConfig.json`,
+      `Invalid unit blueprint ${unitBlueprintId}: locomotion physics.maxSlopeDeg is derived from authoritative physics`,
     );
   }
   const resolved = {

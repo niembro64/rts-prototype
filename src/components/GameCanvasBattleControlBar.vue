@@ -397,10 +397,10 @@ const UNIT_GROUND_NORMAL_EMA_LABEL: Record<UnitGroundNormalEmaMode, string> = {
           @click="model.setFogOfWarEnabled(!model.currentFogOfWarEnabled)"
         >FOG OF WAR</BarButton>
         <BarDivider />
-        <BarLabel title="Controls whether terrain above a unit's climb limit is blocked only uphill or in both travel directions.">SLOPE LIMIT:</BarLabel>
+        <BarLabel title="All routes require standstill control. This chooses whether the stricter powered-climb gate applies uphill only or in both directions.">CLIMB GATE:</BarLabel>
         <BarButton
           :active="model.currentSlopePathMode === 'symmetric'"
-          title="Ground pathfinding slope limit (demo battle). UPHILL ONLY preserves gravity-assisted steep descent and cliff falls. BOTH DIRECTIONS treats terrain above the unit's climb limit as blocked uphill and downhill."
+          title="Ground pathfinding climb policy. UPHILL ONLY uses the standstill envelope downhill. BOTH DIRECTIONS applies the stricter powered-climb envelope uphill and downhill."
           @click="model.setSlopePathMode(model.currentSlopePathMode === 'symmetric' ? 'directional' : 'symmetric')"
         >{{ model.currentSlopePathMode === 'symmetric' ? 'BOTH DIRECTIONS' : 'UPHILL ONLY' }}</BarButton>
         <BarDivider />

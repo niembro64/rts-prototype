@@ -3632,9 +3632,9 @@ export const SNAPSHOT_ENTITY_TYPE_TOWER = 3;
  *  WASM call. Caller passes the building-occupied cells list per
  *  rebuild; the Rust side caches mask + CC by version pair. */
 export interface PathfinderApi {
-  /** Compute the force-, grip-, and stability-limited ground climb envelope.
-   *  Writes max slope, min normal Z, safe acceleration, the three individual
-   *  slope limits, then flat-ground drive acceleration into `out`. */
+  /** Compute and cache-source the standstill and uphill ground envelopes.
+   *  The output includes force, grip, coupling, stability, and acceleration
+   *  terms consumed by pathfinding's directional edge evaluator. */
   computeLocomotionClimbProfile: (
     groundDriveForce: number,
     groundForceCoupling: number,
@@ -3674,6 +3674,7 @@ export interface PathfinderApi {
     startX: number, startY: number,
     goalX: number, goalY: number,
     minNormalZ: number,
+    minClimbNormalZ: number,
     allowOnGround: boolean,
     allowInWater: boolean,
     allowInAir: boolean,
@@ -3684,8 +3685,13 @@ export interface PathfinderApi {
     /** Dry-ground tangential acceleration after drive-force and grip clamps.
      *  Used only for normalized slope travel time; 0 disables slope cost. */
     flatDriveAccel: number,
-    /** When true (SYMMETRIC mode), the slope climb-gate applies to downhill
-     *  edges too; when false (DIRECTIONAL), descent is always allowed. */
+    /** Safety-reduced drive acceleration used for hard feasibility. */
+    safeDriveAccel: number,
+    /** Coulomb surface-grip coefficient used for cross-slope force budget. */
+    surfaceGrip: number,
+    /** Every route surface must first support a standstill. When true
+     *  (SYMMETRIC mode), the stricter climb gate also applies downhill; when
+     *  false (DIRECTIONAL), downhill uses only the standstill envelope. */
     symmetricSlope: boolean,
   ) => number;
   /** Resolution code for the most recent findPath call:
@@ -3696,6 +3702,7 @@ export interface PathfinderApi {
   validatePath: (
     points: Float64Array,
     minNormalZ: number,
+    minClimbNormalZ: number,
     allowOnGround: boolean,
     allowInWater: boolean,
     allowInAir: boolean,
@@ -4644,6 +4651,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         },
       };
       resolvedHandle = handle;
+      const { warmPathfindingMobilityCache } = await import('../sim/pathfindingMobilityCache');
+      warmPathfindingMobilityCache();
       if (import.meta.env.DEV && !shouldRunBootContractTests()) {
         console.info(
           '(dev) boot contract tests skipped — opt in with ?contractTests=1 or localStorage BA_RUN_CONTRACT_TESTS="1"',
@@ -4702,6 +4711,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runRosterCommandSurfaceContractTest();
         const { runLocomotionContractTest } = await import('../sim/blueprints/locomotionContractTest');
         runLocomotionContractTest();
+        const { runPathfindingMobilityContractTest } = await import('../sim/pathfindingMobilityContractTest');
+        runPathfindingMobilityContractTest();
         const { runWaterLiftLocomotionContractTest } = await import('../sim/blueprints/waterLiftLocomotionContractTest');
         runWaterLiftLocomotionContractTest();
         const { runProjectileMotionContractTest } = await import('../sim/projectileMotionContractTest');
@@ -4740,6 +4751,8 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
         runEntityDetailLevel3DContractTest();
         const { runRollingLocomotionContractTest } = await import('../render3d/RollingLocomotionContractTest');
         runRollingLocomotionContractTest();
+        const { runLegRig3DContractTest } = await import('../render3d/LegRig3DContractTest');
+        runLegRig3DContractTest();
         const { runInputControlGroupsContractTest } = await import('../input/helpers/InputControlGroupsContractTest');
         runInputControlGroupsContractTest();
         const { runInput3DKeyboardControllerContractTest } = await import('../render3d/Input3DKeyboardControllerContractTest');

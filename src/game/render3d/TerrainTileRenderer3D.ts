@@ -1324,7 +1324,7 @@ export class TerrainTileRenderer3D {
       ? selectedUnitClimbProfile.allowInAir === true
       : false;
     const selectedUnitRequiredNormalZ = selectedUnitClimbProfile !== null
-      ? requiredPathingNormalZ(selectedUnitClimbProfile.minSurfaceNormalZ)
+      ? requiredPathingNormalZ(selectedUnitClimbProfile.minStandstillNormalZ)
       : PATHFINDING_STABILITY_MIN_NORMAL_Z;
     const selectedUnitNeedsTerrainMask = selectedUnitPathingEnabled &&
       !selectedUnitAllowsAir;

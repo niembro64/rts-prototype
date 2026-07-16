@@ -1,14 +1,16 @@
 import type { UnitLocomotion } from './types';
 import { computeLocomotionClimbProfile } from './pathfindingMobility';
-import { PATHFINDING_STABILITY_MIN_NORMAL_Z } from './pathfindingTuning';
 
 export type PathCostProfile = Readonly<{
   /** Locomotion capability consumed by the abstract terrain-time cost model. */
   flatDriveAccel: number | null;
+  safeDriveAccel: number;
+  surfaceGrip: number;
 }>;
 
 export type PathTerrainFilter = Readonly<{
-  minSurfaceNormalZ: number | null;
+  minStandstillNormalZ: number | null;
+  minClimbNormalZ: number | null;
   allowOnGround: boolean;
   allowInWater: boolean;
   allowInAir: boolean;
@@ -16,28 +18,38 @@ export type PathTerrainFilter = Readonly<{
 }>;
 
 export type PathfinderTraversalInput = Readonly<{
-  minSurfaceNormalZ: number;
+  minStandstillNormalZ: number;
+  minClimbNormalZ: number;
   allowOnGround: boolean;
   allowInWater: boolean;
   allowInAir: boolean;
   flatDriveAccel: number;
+  safeDriveAccel: number;
+  surfaceGrip: number;
 }>;
+
+function finiteNormalOrZero(value: number | null | undefined): number {
+  return value !== null &&
+    value !== undefined &&
+    Number.isFinite(value) &&
+    value > 0
+    ? Math.min(1, value)
+    : 0;
+}
 
 /** Decode nullable public filter state once for each WASM query. */
 export function resolvePathfinderTraversalInput(
   filter: PathTerrainFilter | null,
 ): PathfinderTraversalInput {
-  const normal = filter?.allowInAir === true ? null : filter?.minSurfaceNormalZ;
-  const minSurfaceNormalZ =
-    normal !== null &&
-    normal !== undefined &&
-    Number.isFinite(normal) &&
-    normal > PATHFINDING_STABILITY_MIN_NORMAL_Z
-      ? Math.min(1, normal)
-      : 0;
+  const normal = filter?.allowInAir === true ? null : filter?.minStandstillNormalZ;
+  const minStandstillNormalZ = finiteNormalOrZero(normal);
+  const minClimbNormalZ = filter?.allowInAir === true
+    ? 0
+    : finiteNormalOrZero(filter?.minClimbNormalZ);
   const flatDriveAccel = filter?.cost.flatDriveAccel;
   return {
-    minSurfaceNormalZ,
+    minStandstillNormalZ,
+    minClimbNormalZ,
     allowOnGround: filter === null || filter.allowOnGround,
     allowInWater: filter?.allowInWater === true,
     allowInAir: filter?.allowInAir === true,
@@ -48,7 +60,13 @@ export function resolvePathfinderTraversalInput(
       flatDriveAccel > 0
         ? flatDriveAccel
         : 0,
+    safeDriveAccel: finitePositiveOrZero(filter?.cost.safeDriveAccel),
+    surfaceGrip: finitePositiveOrZero(filter?.cost.surfaceGrip),
   };
+}
+
+function finitePositiveOrZero(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 export function pathTerrainFilterForLocomotion(
@@ -59,11 +77,16 @@ export function pathTerrainFilterForLocomotion(
   if (locomotion === undefined || mass === undefined) return null;
   const mobility = computeLocomotionClimbProfile(locomotion, mass, thrustMultiplier);
   return {
-    minSurfaceNormalZ: mobility.minSurfaceNormalZ,
+    minStandstillNormalZ: mobility.minStandstillNormalZ,
+    minClimbNormalZ: mobility.minClimbNormalZ,
     allowOnGround: mobility.allowOnGround,
     allowInWater: mobility.allowInWater,
     allowInAir: mobility.allowInAir,
-    cost: { flatDriveAccel: mobility.flatDriveAccel },
+    cost: {
+      flatDriveAccel: mobility.flatDriveAccel,
+      safeDriveAccel: mobility.safeDriveAccel,
+      surfaceGrip: mobility.surfaceGrip,
+    },
   };
 }
 
@@ -74,7 +97,10 @@ export function pathTerrainFilterCacheKey(filter: PathTerrainFilter | null): str
     filter.allowOnGround ? 'g1' : 'g0',
     filter.allowInWater ? 'w1' : 'w0',
     filter.allowInAir ? 'a1' : 'a0',
-    `min:${filter.minSurfaceNormalZ ?? 'null'}`,
+    `standstill:${filter.minStandstillNormalZ ?? 'null'}`,
+    `climb:${filter.minClimbNormalZ ?? 'null'}`,
     `accel:${filter.cost.flatDriveAccel ?? 'null'}`,
+    `safe:${filter.cost.safeDriveAccel}`,
+    `grip:${filter.cost.surfaceGrip}`,
   ].join(':');
 }

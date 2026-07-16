@@ -21,12 +21,13 @@ import { deterministicMath as DMath } from '@/game/sim/deterministicMath';
 //     blocks ground-only routes, while water-capable routes can use wet
 //     cells and the shoreline buffer. Building and tower footprints are
 //     elevated flat terrain: uphill entry is rejected by the same directed
-//     climb rule as cliffs, while top traversal and downhill falls are legal.
+//     climb rule as cliffs, while top traversal and controlled descent remain
+//     subject to the unit's derived standstill envelope.
 //   • Air-capable queries ignore terrain blocking so water and slope do
 //     not force them onto land-only routes; they still stay inside the map.
-//   • Connected-component pre-flight for symmetric blockers only. Slope
-//     traversal is directional: A* and LOS smoothing reject illegal uphill
-//     edges, while downhill moves and cliff falls remain valid.
+//   • Connected-component pre-flight for symmetric blockers only. Every dry
+//     route surface must support a physics-derived standstill; directional
+//     traversal then adds the force-coupling constraint only to uphill edges.
 //   • Euclidean-sorted snap offsets — no compass bias.
 //   • Stay-put bail: when there's no possible path, return a
 //     single waypoint at the unit's current position so the queue
@@ -94,12 +95,15 @@ function findPath(
     startY,
     goalX,
     goalY,
-    traversal.minSurfaceNormalZ,
+    traversal.minStandstillNormalZ,
+    traversal.minClimbNormalZ,
     traversal.allowOnGround,
     traversal.allowInWater,
     traversal.allowInAir,
     unitRadius,
     traversal.flatDriveAccel,
+    traversal.safeDriveAccel,
+    traversal.surfaceGrip,
     symmetricSlope,
   );
   const resolution = decodePathResolution(sim.pathfinder.lastResultStatus());
@@ -192,9 +196,9 @@ function validatePathDoesNotCrossWater(
  *  preserving "the cursor was there, the dot is there" precision.
  *  Otherwise z falls back to a terrain sample at the waypoint's xy.
  *
- *  `terrainFilter.minSurfaceNormalZ` adds a per-unit locomotion climb
- *  gate on directed uphill edges. Higher values mean flatter required
- *  uphill terrain; downhill movement and cliff falls remain valid.
+ *  `terrainFilter.minStandstillNormalZ` requires every traversed ground
+ *  surface to support the unit from rest. `minClimbNormalZ` adds the stricter
+ *  force-coupling gate to powered uphill edges.
  *
  *  `terrainFilter` carries explicit navigation-domain flags. Air can bypass
  *  terrain blockers; wet cells require water navigation even if the body
@@ -281,7 +285,8 @@ function validatePathScratch(
   const traversal = resolvePathfinderTraversalInput(terrainFilter);
   return sim.pathfinder.validatePath(
     _pathValidationScratch.subarray(0, length),
-    traversal.minSurfaceNormalZ,
+    traversal.minStandstillNormalZ,
+    traversal.minClimbNormalZ,
     traversal.allowOnGround,
     traversal.allowInWater,
     traversal.allowInAir,

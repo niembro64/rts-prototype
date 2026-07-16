@@ -711,7 +711,6 @@ pub enum PathfindingTerrainMode {
 pub struct PathfindingBlueprint {
     pub pathfindingBlueprintId: String,
     pub terrainMode: PathfindingTerrainMode,
-    pub maxSlopeDeg: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

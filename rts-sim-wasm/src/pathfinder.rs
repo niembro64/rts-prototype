@@ -14,8 +14,8 @@ use wasm_bindgen::prelude::*;
 //  forwards (start, goal, mapWidth, mapHeight, buildingGrid.occupiedCells,
 //  terrainFilter) and reads the smoothed waypoint scratch. Building and
 //  tower footprints are elevated terrain cells: flat on top, vertical
-//  on the sides, and governed by the same directed slope rules as hills
-//  and cliffs.
+//  on the sides, and governed by the same standstill and directed climb
+//  rules as hills and cliffs.
 //
 //  Mask + CC are cached internally; JS passes the terrain + building
 //  version pair on each call, the Rust side rebuilds only when the
@@ -77,8 +77,9 @@ pub(crate) struct PathfinderState {
 
     // Per-query traversal params, set at pathfinder_find_path entry (one query
     // runs at a time). `cur_required_clearance` gates cells by the unit's
-    // collision footprint in cells; `cur_symmetric_slope` makes the climb gate
-    // apply to downhill edges too (SYMMETRIC mode) instead of only uphill.
+    // collision footprint in cells. Every ground direction must satisfy the
+    // standstill envelope; `cur_symmetric_slope` additionally makes the
+    // stricter climb gate apply downhill (SYMMETRIC mode) instead of uphill only.
     cur_required_clearance: i32,
     cur_symmetric_slope: bool,
 
@@ -98,7 +99,10 @@ pub(crate) struct PathfinderState {
 
 #[derive(Clone, Copy)]
 pub(crate) struct PathfinderTraversal {
-    min_normal_z: f32,
+    /// Minimum full-surface normal needed to remain controllably at rest.
+    min_standstill_normal_z: f32,
+    /// Uphill-only threshold after force-coupling geometry is applied.
+    min_climb_normal_z: f32,
     allow_ground: bool,
     allow_water: bool,
     allow_air: bool,
@@ -110,6 +114,8 @@ pub(crate) struct PathfinderTraversal {
 #[derive(Clone, Copy)]
 pub(crate) struct PathfinderCostProfile {
     flat_drive_accel: f64,
+    safe_drive_accel: f64,
+    surface_grip: f64,
     hard_clearance_cells: i32,
     soft_clearance_cells: i32,
     soft_clearance_penalty_per_cell: f32,
@@ -117,10 +123,25 @@ pub(crate) struct PathfinderCostProfile {
 
 impl PathfinderCostProfile {
     #[inline]
-    fn for_query(flat_drive_accel: f64, hard_clearance_cells: i32) -> Self {
+    fn for_query(
+        flat_drive_accel: f64,
+        safe_drive_accel: f64,
+        surface_grip: f64,
+        hard_clearance_cells: i32,
+    ) -> Self {
         Self {
             flat_drive_accel: if flat_drive_accel.is_finite() && flat_drive_accel > 0.0 {
                 flat_drive_accel
+            } else {
+                0.0
+            },
+            safe_drive_accel: if safe_drive_accel.is_finite() && safe_drive_accel > 0.0 {
+                safe_drive_accel
+            } else {
+                0.0
+            },
+            surface_grip: if surface_grip.is_finite() && surface_grip > 0.0 {
+                surface_grip
             } else {
                 0.0
             },
@@ -134,6 +155,8 @@ impl PathfinderCostProfile {
     fn neutral() -> Self {
         Self {
             flat_drive_accel: 0.0,
+            safe_drive_accel: 0.0,
+            surface_grip: 0.0,
             hard_clearance_cells: 0,
             soft_clearance_cells: 0,
             soft_clearance_penalty_per_cell: 0.0,
@@ -376,9 +399,9 @@ pub(crate) fn pathfinder_rebuild_terrain_mask(state: &mut PathfinderState, terra
     let grid_h = state.grid_h;
     let n = state.n;
     // Step 1 - classify water and the steepest terrain touching each cell.
-    // Slope is not a symmetric cell blocker: downhill movement and falling
-    // off cliffs must remain legal. The per-cell normal is kept for the
-    // directed uphill edge gate below.
+    // The per-cell normal is retained so each query can enforce its derived
+    // standstill envelope in every direction and its stricter climb envelope
+    // on the applicable directed edges.
     let mut water_mask: Vec<u8> = vec![0u8; n];
     for gy in 0..grid_h {
         for gx in 0..grid_w {
@@ -571,8 +594,8 @@ pub fn pathfinder_rebuild_mask_and_cc(
     }
 
     // CC labelling via BFS over open cells. This is an obstacle pre-flight
-    // only: slope traversal is directional, so it cannot be represented by
-    // one undirected component label without rejecting valid downhill paths.
+    // only: slope capability is query-specific and its climb envelope is
+    // directional, so one shared undirected label cannot encode it.
     state.cc_labels.fill(0);
     let mut next_label: i16 = 1;
     for seed in 0..state.n {
@@ -706,11 +729,11 @@ pub(crate) fn pathfinder_is_grid_cell_passable(
 }
 
 #[inline]
-pub(crate) fn pathfinder_required_step_normal_z(min_normal_z: f32) -> f32 {
-    if min_normal_z.is_finite() && min_normal_z > PATHFINDING_STABILITY_MIN_NORMAL_Z {
-        min_normal_z
+pub(crate) fn pathfinder_required_normal_z(min_normal_z: f32) -> f32 {
+    if min_normal_z.is_finite() && min_normal_z > 0.0 {
+        min_normal_z.min(1.0)
     } else {
-        PATHFINDING_STABILITY_MIN_NORMAL_Z
+        0.0
     }
 }
 
@@ -735,31 +758,21 @@ pub fn pathfinder_compute_locomotion_climb_profile(
     allow_air: bool,
     out: &mut [f64],
 ) -> u32 {
-    const PROFILE_LEN: usize = 7;
+    const PROFILE_LEN: usize = 10;
     if out.len() < PROFILE_LEN {
         return 0;
     }
     if allow_air {
         out[..PROFILE_LEN].copy_from_slice(&[
-            f64::NAN,
-            f64::NAN,
-            f64::INFINITY,
-            f64::NAN,
-            f64::NAN,
-            f64::NAN,
-            f64::NAN,
+            f64::NAN, f64::NAN, f64::INFINITY, f64::NAN, f64::NAN,
+            f64::NAN, f64::NAN, f64::NAN, f64::NAN, 0.0,
         ]);
         return 1;
     }
     if !allow_ground {
         out[..PROFILE_LEN].copy_from_slice(&[
-            f64::NAN,
-            f64::NAN,
-            0.0,
-            f64::NAN,
-            f64::NAN,
-            f64::NAN,
-            f64::NAN,
+            f64::NAN, f64::NAN, 0.0, f64::NAN, f64::NAN,
+            f64::NAN, f64::NAN, f64::NAN, f64::NAN, surface_grip.max(0.0),
         ]);
         return 1;
     }
@@ -791,11 +804,18 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         (safe_drive_accel / gravity).clamp(0.0, 1.0).asin() * radians_to_degrees;
     let grip_limited_slope_deg = surface_grip.max(0.0).atan() * radians_to_degrees;
     let stability_limited_slope_deg = stability_max_slope_deg.clamp(0.0, 90.0);
+    // Standstill means the complete gravity-tangent vector can be cancelled,
+    // not merely that the unit can point downhill without an uphill command.
     let max_slope_deg = drive_limited_slope_deg
         .min(grip_limited_slope_deg)
         .min(stability_limited_slope_deg)
         .max(0.0);
     let min_surface_normal_z = (max_slope_deg / radians_to_degrees).cos();
+    // The runtime drive kernel has an additional geometric coupling cutoff for
+    // positive slope-tangent thrust: tan(theta) <= forceCoupling.
+    let coupling_limited_slope_deg = ground_force_coupling.max(0.0).atan() * radians_to_degrees;
+    let max_climb_slope_deg = max_slope_deg.min(coupling_limited_slope_deg);
+    let min_climb_normal_z = (max_climb_slope_deg / radians_to_degrees).cos();
     out[..PROFILE_LEN].copy_from_slice(&[
         max_slope_deg,
         min_surface_normal_z,
@@ -804,6 +824,9 @@ pub fn pathfinder_compute_locomotion_climb_profile(
         grip_limited_slope_deg,
         stability_limited_slope_deg,
         flat_drive_accel,
+        coupling_limited_slope_deg,
+        min_climb_normal_z,
+        surface_grip.max(0.0),
     ]);
     1
 }
@@ -823,6 +846,16 @@ pub(crate) fn pathfinder_can_step_height_delta(
     if !from_h.is_finite() || !to_h.is_finite() {
         return false;
     }
+    // A valid route surface must be one on which this unit can arrest its
+    // motion and remain at rest. Apply this to every dry-ground direction;
+    // descending or walking a contour does not make an unholdable face safe.
+    let standstill_normal_z =
+        pathfinder_required_normal_z(traversal.min_standstill_normal_z);
+    if state.terrain_normal_z[from_idx] < standstill_normal_z
+        || state.terrain_normal_z[to_idx] < standstill_normal_z
+    {
+        return false;
+    }
     let from_i32 = from_idx as i32;
     let to_i32 = to_idx as i32;
     let from_gx = from_i32 % state.grid_w;
@@ -836,15 +869,14 @@ pub(crate) fn pathfinder_can_step_height_delta(
         return true;
     }
     let dz = to_h - from_h;
-    // DIRECTIONAL mode (default): descending and flat steps are always legal —
-    // gravity assists, so a unit may drive down or fall off any slope while
-    // only uphill is gated by its climb profile. SYMMETRIC mode: the climb gate
-    // applies regardless of direction, so a face too steep to climb also blocks
-    // the downhill edge.
+    // DIRECTIONAL mode preserves one-way controlled descent, but unlike the old
+    // fall-permitting rule the full surface already passed the standstill test
+    // above. SYMMETRIC mode additionally requires uphill coupling authority in
+    // both directions.
     if dz <= 0.0 && !state.cur_symmetric_slope {
         return true;
     }
-    let required_normal_z = pathfinder_required_step_normal_z(traversal.min_normal_z);
+    let required_normal_z = pathfinder_required_normal_z(traversal.min_climb_normal_z);
     if state.terrain_normal_z[from_idx] < required_normal_z
         || state.terrain_normal_z[to_idx] < required_normal_z
     {
@@ -910,10 +942,11 @@ fn pathfinder_clearance_at(
 }
 
 /// Normalized traversal-time cost for one legal neighboring edge. Flat travel
-/// costs its grid distance. Uphill travel uses the acceleration remaining after
-/// gravity along the grade, while downhill receives no artificial bonus: the
-/// extra surface distance remains real, but there is no speculative top-speed
-/// model in the cell-only search. Medium changes add no cost.
+/// costs its grid distance. Dry-ground travel reserves Coulomb traction for
+/// holding the cross-slope before assigning the remaining contact budget to
+/// forward acceleration. Uphill then subtracts gravity along the route. A
+/// downhill edge receives no speculative speed bonus, keeping octile distance
+/// an admissible lower bound. Medium changes add no cost.
 #[inline]
 pub(crate) fn pathfinder_edge_cost(
     state: &PathfinderState,
@@ -943,8 +976,33 @@ pub(crate) fn pathfinder_edge_cost(
         let horizontal = horizontal_cells * PATHFINDER_BUILD_GRID_CELL_SIZE;
         let dz = state.terrain_height[to_idx] as f64 - state.terrain_height[from_idx] as f64;
         let surface_distance = (horizontal * horizontal + dz * dz).sqrt();
-        let uphill_sine = (dz / surface_distance.max(1.0e-9)).max(0.0);
-        let remaining_accel = (cost_profile.flat_drive_accel - GRAVITY * uphill_sine).max(1.0e-9);
+        let directional_sine = dz / surface_distance.max(1.0e-9);
+        let uphill_sine = directional_sine.max(0.0);
+        let normal_z = (state.terrain_normal_z[from_idx] as f64)
+            .min(state.terrain_normal_z[to_idx] as f64)
+            .clamp(0.0, 1.0);
+        let total_tangent_sine = (1.0 - normal_z * normal_z).max(0.0).sqrt();
+        if cost_profile.safe_drive_accel > 0.0
+            && GRAVITY * total_tangent_sine >= cost_profile.safe_drive_accel
+        {
+            return f32::MAX;
+        }
+        let lateral_sine_sq = (total_tangent_sine * total_tangent_sine
+            - directional_sine * directional_sine)
+            .max(0.0);
+        let lateral_hold_accel = GRAVITY * lateral_sine_sq.sqrt();
+        // Realistic Coulomb budget uses N = mg*cos(theta). The runtime's
+        // current scalar contact clamp is no stricter, so this remains a safe
+        // promise: every accepted route is within actual movement authority.
+        let grip_accel = GRAVITY * cost_profile.surface_grip * normal_z;
+        let longitudinal_grip_accel =
+            (grip_accel * grip_accel - lateral_hold_accel * lateral_hold_accel)
+                .max(0.0)
+                .sqrt();
+        let powered_accel = cost_profile
+            .flat_drive_accel
+            .min(longitudinal_grip_accel);
+        let remaining_accel = (powered_accel - GRAVITY * uphill_sine).max(1.0e-9);
         let acceleration_time_scale = (cost_profile.flat_drive_accel / remaining_accel)
             .sqrt()
             .max(1.0);
@@ -1053,7 +1111,8 @@ pub(crate) fn pathfinder_exact_sample_is_too_steep(
     }
     (height >= TERRAIN_WATER_LEVEL || traversal.allow_ground)
         && normal_z.is_finite()
-        && normal_z < pathfinder_required_step_normal_z(traversal.min_normal_z)
+        && normal_z
+            < pathfinder_required_normal_z(traversal.min_standstill_normal_z)
 }
 
 #[inline]
@@ -1077,7 +1136,8 @@ pub(crate) fn pathfinder_escape_candidate_is_stable(
     let (height, normal_z) = pathfinder_sample_terrain(x, y);
     (height >= TERRAIN_WATER_LEVEL || traversal.allow_ground)
         && normal_z.is_finite()
-        && normal_z >= pathfinder_required_step_normal_z(traversal.min_normal_z)
+        && normal_z
+            >= pathfinder_required_normal_z(traversal.min_standstill_normal_z)
 }
 
 pub(crate) struct StartEscapeResult {
@@ -1529,8 +1589,9 @@ pub(crate) fn pathfinder_push_waypoint(state: &mut PathfinderState, x: f64, y: f
 }
 
 /// Plan a path from (start_x, start_y) to (goal_x, goal_y).
-/// `min_normal_z` is the per-unit dry-ground slope filter (0 = no filter,
-/// matches normalizeMinSurfaceNormalZ returning undefined in JS). The
+/// `min_standstill_normal_z` is the per-unit dry-ground surface on which the
+/// unit can stop and hold; `min_climb_normal_z` adds uphill force-coupling.
+/// Zero disables the corresponding filter. The
 /// allow_* flags are derived from the unit's usable ground/water/air medium
 /// navigation policy: air bypasses terrain, wet cells require explicit water
 /// navigation, and dry cells require ground navigation. Physical lakebed
@@ -1546,19 +1607,23 @@ pub fn pathfinder_find_path(
     start_y: f64,
     goal_x: f64,
     goal_y: f64,
-    min_normal_z: f32,
+    min_standstill_normal_z: f32,
+    min_climb_normal_z: f32,
     allow_ground: bool,
     allow_water: bool,
     allow_air: bool,
     unit_radius: f64,
     flat_drive_accel: f64,
+    safe_drive_accel: f64,
+    surface_grip: f64,
     symmetric_slope: bool,
 ) -> u32 {
     let state = pathfinder_state();
     state.waypoint_scratch.clear();
     state.last_result_status = PATHFINDER_RESULT_UNREACHABLE;
     let traversal = PathfinderTraversal {
-        min_normal_z,
+        min_standstill_normal_z,
+        min_climb_normal_z,
         allow_ground,
         allow_water,
         allow_air,
@@ -1573,7 +1638,12 @@ pub fn pathfinder_find_path(
     } else {
         pathfinder_hard_clearance_cells_for_radius(unit_radius)
     };
-    let cost_profile = PathfinderCostProfile::for_query(flat_drive_accel, hard_clearance);
+    let cost_profile = PathfinderCostProfile::for_query(
+        flat_drive_accel,
+        safe_drive_accel,
+        surface_grip,
+        hard_clearance,
+    );
     state.cur_required_clearance = 0;
     let grid_w = state.grid_w;
     let grid_h = state.grid_h;
@@ -1720,12 +1790,10 @@ pub fn pathfinder_find_path(
         traversal,
         cost_profile,
     );
-    let made_progress = match &a_star_result {
-        Some(result) => result.reached_goal || !state.path_scratch.is_empty(),
-        None => false,
-    };
-    if !made_progress
-        && !start_was_snapped
+    // Exact terrain can be steeper than its coarse path cell. Always prefer an
+    // explicit route to a nearby standstill-valid cell when the unit begins on
+    // such a face, even if coarse A* found a nominal path from that cell.
+    if !start_was_snapped
         && pathfinder_exact_sample_is_too_steep(start_x, start_y, traversal)
     {
         if let Some(escape) = pathfinder_try_steep_start_escape(
@@ -1864,12 +1932,13 @@ pub fn pathfinder_last_result_status() -> u32 {
 /// by direct LOS, A*, and string-pull smoothing. `points` is interleaved x/y
 /// and includes the unit's current position as its first point. Validation uses
 /// hard collision clearance only: a translated shared route may give up comfort
-/// margin, but it may never overlap water, a structure, map bounds, or an
-/// illegal directed slope edge.
+/// margin, but it may never overlap water, a structure, map bounds, an
+/// unsupported standstill surface, or an illegal directed climb edge.
 #[wasm_bindgen]
 pub fn pathfinder_validate_path(
     points: &[f64],
-    min_normal_z: f32,
+    min_standstill_normal_z: f32,
+    min_climb_normal_z: f32,
     allow_ground: bool,
     allow_water: bool,
     allow_air: bool,
@@ -1884,7 +1953,8 @@ pub fn pathfinder_validate_path(
         return 0;
     }
     let traversal = PathfinderTraversal {
-        min_normal_z,
+        min_standstill_normal_z,
+        min_climb_normal_z,
         allow_ground,
         allow_water,
         allow_air,
@@ -1957,16 +2027,28 @@ mod tests {
 
     fn ground_traversal() -> PathfinderTraversal {
         PathfinderTraversal {
-            min_normal_z: 0.0,
+            min_standstill_normal_z: 0.0,
+            min_climb_normal_z: 0.0,
             allow_ground: true,
             allow_water: false,
             allow_air: false,
         }
     }
 
+    fn ground_cost_profile(flat_drive_accel: f64) -> PathfinderCostProfile {
+        PathfinderCostProfile {
+            flat_drive_accel,
+            safe_drive_accel: flat_drive_accel * 0.8,
+            surface_grip: 1.0,
+            hard_clearance_cells: 0,
+            soft_clearance_cells: 0,
+            soft_clearance_penalty_per_cell: 0.0,
+        }
+    }
+
     #[test]
     fn locomotion_climb_profile_is_limited_by_contact_grip() {
-        let mut out = [0.0; 7];
+        let mut out = [0.0; 10];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
                 1_000.0, 1.0, 0.5, 100.0, 20.0, 150_000.0, 100.0, 10.0, GRAVITY, 0.8, 70.0, true,
@@ -1979,11 +2061,14 @@ mod tests {
         assert!((out[1] - (out[0] * core::f64::consts::PI / 180.0).cos()).abs() < 1e-9);
         assert!((out[4] - expected_grip_slope).abs() < 1e-9);
         assert!((out[6] - GRAVITY * 0.5).abs() < 1e-9);
+        assert!((out[7] - 45.0).abs() < 1e-9);
+        assert!((out[8] - out[1]).abs() < 1e-9);
+        assert!((out[9] - 0.5).abs() < 1e-9);
     }
 
     #[test]
     fn air_navigation_has_no_terrain_slope_limit() {
-        let mut out = [0.0; 7];
+        let mut out = [0.0; 10];
         assert_eq!(
             pathfinder_compute_locomotion_climb_profile(
                 0.0, 0.0, 0.0, 100.0, 20.0, 150_000.0, 100.0, 10.0, GRAVITY, 0.8, 70.0, false,
@@ -1999,7 +2084,7 @@ mod tests {
     fn clearance_separates_physical_radius_from_soft_preference() {
         assert_eq!(pathfinder_hard_clearance_cells_for_radius(0.0), 0);
         assert_eq!(pathfinder_hard_clearance_cells_for_radius(9.6), 1);
-        let profile = PathfinderCostProfile::for_query(100.0, 1);
+        let profile = PathfinderCostProfile::for_query(100.0, 80.0, 0.75, 1);
         assert_eq!(profile.hard_clearance_cells, 1);
         assert_eq!(
             profile.soft_clearance_cells,
@@ -2012,12 +2097,7 @@ mod tests {
     fn slope_cost_uses_gravity_reduced_uphill_acceleration() {
         let mut state = open_test_state(2, 1);
         let traversal = ground_traversal();
-        let profile = PathfinderCostProfile {
-            flat_drive_accel: GRAVITY,
-            hard_clearance_cells: 0,
-            soft_clearance_cells: 0,
-            soft_clearance_penalty_per_cell: 0.0,
-        };
+        let profile = ground_cost_profile(GRAVITY);
         let flat = pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile);
         state.terrain_height[1] = 10.0;
         let uphill = pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile);
@@ -2026,16 +2106,62 @@ mod tests {
     }
 
     #[test]
+    fn every_route_surface_must_support_a_standstill() {
+        let mut state = open_test_state(2, 1);
+        state.terrain_height[0] = 10.0;
+        state.terrain_normal_z[0] = 0.6;
+        state.terrain_normal_z[1] = 0.6;
+        let traversal = PathfinderTraversal {
+            min_standstill_normal_z: 0.7,
+            min_climb_normal_z: 0.8,
+            allow_ground: true,
+            allow_water: false,
+            allow_air: false,
+        };
+        assert!(
+            !pathfinder_can_step_height_delta(&state, 0, 1, traversal),
+            "downhill is not a valid route when the unit cannot stop on the face"
+        );
+    }
+
+    #[test]
+    fn force_coupling_is_an_uphill_only_limit() {
+        let mut state = open_test_state(2, 1);
+        state.terrain_height[1] = 5.0;
+        state.terrain_normal_z[0] = 0.85;
+        state.terrain_normal_z[1] = 0.85;
+        let traversal = PathfinderTraversal {
+            min_standstill_normal_z: 0.8,
+            min_climb_normal_z: 0.9,
+            allow_ground: true,
+            allow_water: false,
+            allow_air: false,
+        };
+        assert!(!pathfinder_can_step_height_delta(&state, 0, 1, traversal));
+        assert!(pathfinder_can_step_height_delta(&state, 1, 0, traversal));
+    }
+
+    #[test]
+    fn contour_travel_reserves_grip_for_cross_slope_hold() {
+        let mut state = open_test_state(2, 1);
+        let traversal = ground_traversal();
+        let profile = ground_cost_profile(GRAVITY);
+        let flat = pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile);
+        state.terrain_normal_z[0] = 0.8;
+        state.terrain_normal_z[1] = 0.8;
+        let contour = pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile);
+        assert!(
+            contour > flat,
+            "holding position across a side slope must consume traction"
+        );
+    }
+
+    #[test]
     fn a_star_prefers_faster_flat_detour_over_legal_steep_hill() {
         let mut state = open_test_state(5, 3);
         state.terrain_height[(1 * state.grid_w + 2) as usize] = 15.0;
         let traversal = ground_traversal();
-        let profile = PathfinderCostProfile {
-            flat_drive_accel: GRAVITY,
-            hard_clearance_cells: 0,
-            soft_clearance_cells: 0,
-            soft_clearance_penalty_per_cell: 0.0,
-        };
+        let profile = ground_cost_profile(GRAVITY);
         let result = pathfinder_a_star(&mut state, 0, 1, 4, 1, traversal, profile)
             .expect("open grid must produce a route");
         assert!(result.reached_goal);
@@ -2051,17 +2177,13 @@ mod tests {
         let mut state = open_test_state(2, 1);
         state.terrain_water[1] = 1;
         let traversal = PathfinderTraversal {
-            min_normal_z: 0.0,
+            min_standstill_normal_z: 0.0,
+            min_climb_normal_z: 0.0,
             allow_ground: true,
             allow_water: true,
             allow_air: false,
         };
-        let profile = PathfinderCostProfile {
-            flat_drive_accel: GRAVITY,
-            hard_clearance_cells: 0,
-            soft_clearance_cells: 0,
-            soft_clearance_penalty_per_cell: 0.0,
-        };
+        let profile = ground_cost_profile(GRAVITY);
         assert!(
             (pathfinder_edge_cost(&state, 0, 0, 1, 0, traversal, profile) - 1.0).abs() < 1.0e-6
         );
@@ -2077,6 +2199,8 @@ mod tests {
         let traversal = ground_traversal();
         let profile = PathfinderCostProfile {
             flat_drive_accel: 0.0,
+            safe_drive_accel: 0.0,
+            surface_grip: 0.0,
             hard_clearance_cells: 1,
             soft_clearance_cells: 2,
             soft_clearance_penalty_per_cell: 0.35,

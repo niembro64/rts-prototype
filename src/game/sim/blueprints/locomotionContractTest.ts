@@ -70,10 +70,6 @@ function expectLocomotionError(
   throw new Error(`[locomotion contract] expected validation error containing "${expectedMessagePart}"`);
 }
 
-function minSurfaceNormalZ(maxSlopeDeg: number): number {
-  return DMath.cos(maxSlopeDeg * Math.PI / 180);
-}
-
 function assertSurfaceLiftDefaultsMatchConfig(): void {
   const {
     referenceDistanceWorld,
@@ -386,18 +382,9 @@ function assertPathfindingMatchesAuthored(
   );
   if (authored.terrainMode === 'anywhere') {
     assertEqual(runtime.ignoreTerrainBlocking, true, `${label} anywhere pathfinding ignores terrain blocking`);
-    assertEqual(runtime.maxSlopeDeg, null, `${label} anywhere pathfinding has no slope cap`);
-    assertEqual(runtime.minSurfaceNormalZ, 0, `${label} anywhere pathfinding has no surface-normal cap`);
     return;
   }
   assertEqual(runtime.ignoreTerrainBlocking, false, `${label} land pathfinding uses terrain blocking`);
-  assertEqual(runtime.maxSlopeDeg, authored.maxSlopeDeg, `${label} slope cap follows pathfinding JSON`);
-  assertContract(authored.maxSlopeDeg !== null, `${label} land pathfinding must author maxSlopeDeg`);
-  assertEqual(
-    runtime.minSurfaceNormalZ,
-    minSurfaceNormalZ(authored.maxSlopeDeg),
-    `${label} min surface normal derives from pathfinding slope cap`,
-  );
 }
 
 function assertRuntimeLocomotionMatchesSources(unitBlueprintId: string): UnitLocomotion {

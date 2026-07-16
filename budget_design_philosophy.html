@@ -781,19 +781,25 @@
 
       <h3>Terrain pathfinding is directional around slopes and cliffs</h3>
       <p>
-        Ground pathfinding must treat terrain traversal as a directed movement problem, not a
-        symmetric &ldquo;is this cell steep?&rdquo; mask. A unit should never be routed up a slope,
-        ramp, shelf edge, or vertical cliff face that its locomotion profile cannot climb. The same
-        geometry remains legal in the downhill direction: units can always descend hills, drive down
-        steep faces, or fall off cliffs when the command and physics carry them that way.
+        Ground pathfinding must separate two physical questions. First, every route surface must
+        be one on which the unit could remain controllable from a standstill; this support test is
+        independent of travel direction. Second, powered ascent is directional and may impose a
+        stricter climb limit. A unit should never be routed onto a slope, ramp, shelf edge, or
+        vertical face that its drive force, mass, force coupling, grip, and global stability ceiling
+        cannot realistically support. Downhill movement avoids the uphill power requirement, but it
+        does not make an uncontrollable surface traversable.
       </p>
       <p>
         Among physically legal routes, A* minimizes a normalized traversal-time cost derived from
         the same abstract force profile as locomotion. The pathfinder receives dry-ground
-        acceleration after drive force, mass, force coupling, and Coulomb-grip limits; it does not branch
-        on wheels, treads, legs, or any other visual chassis name. Uphill cost accounts for the
-        longer surface distance and for gravity subtracting from available tangential acceleration.
-        Medium boundaries carry no arbitrary entry or transition surcharge.
+        acceleration after drive force, mass, force coupling, and Coulomb-grip limits; it does not
+        branch on wheels, treads, legs, or any other visual chassis name. The standstill and climb
+        envelopes are derived once per unique immutable physics profile and mass, cached in memory,
+        and shared by route legality, smoothing, validation, cost, and debug presentation. Uphill
+        cost accounts for the longer surface distance and for gravity subtracting from available
+        tangential acceleration. Contour travel reserves enough Coulomb grip to oppose the lateral
+        component of gravity before spending the remaining grip on forward acceleration. Medium
+        boundaries carry no arbitrary entry or transition surcharge.
       </p>
       <p>
         Collision clearance remains configuration-space geometry: the physical body radius is a
@@ -807,16 +813,15 @@
         authoritative terrain triangle that touches it, including triangles that only meet the
         node along an edge or vertex. Vertical 90-degree faces are common and must participate in
         the node&rsquo;s traversal tests even when the node center samples a flat top or bottom
-        shelf. The planner may use such a node for a downhill or lateral route, but uphill edges
-        out of or into that node must be rejected unless the full directed step is within the
-        unit&rsquo;s climb budget.
+        shelf. The planner may use such a node only when the complete touched geometry is inside
+        the unit&rsquo;s standstill envelope; uphill edges must additionally fit its climb budget.
       </p>
       <ul class="rule-list">
         <li>Water, map bounds, and hard blockers remain symmetric blockers for ground pathfinding.</li>
         <li>Other units may be ignored by the global path calculation; local collision, steering, and arrival control handle moving-unit congestion.</li>
-        <li>Buildings and towers are terrain in the pathfinding model: their footprints provide flat elevated tops and vertical sides. A route from ground level goes around them because climbing the side is an illegal uphill cliff, while a unit already on top can cross the flat roof or descend/fall off under the same rules as any other terrain shelf.</li>
-        <li>Slope and height-delta checks are edge rules: uphill is limited by the unit&rsquo;s climb profile; downhill and falling are always allowed.</li>
-        <li>Connected-component shortcuts must not use symmetric slope rejection, because that would incorrectly disconnect a valid downhill route.</li>
+        <li>Buildings and towers are terrain in the pathfinding model: their footprints provide flat elevated tops and vertical sides. Routes go around unsupported walls; a unit already on a roof can cross its supported flat surface, but planning does not treat a fall down the wall as ordinary traversable ground.</li>
+        <li>Standstill validity is a surface rule in every direction; powered climb capability is an additional directed edge rule.</li>
+        <li>Shared connected-component shortcuts encode only invariant obstacles. Unit-specific standstill and directional climb rules remain query-time tests.</li>
         <li>Line-of-sight path smoothing must run the same directed edge checks as A*, so smoothing cannot erase a necessary climb gate.</li>
         <li>Route costs are capability-based and deterministic: physical acceleration and clearance inputs, never locomotion rig type or presentation state.</li>
         <li>Medium transitions have no fixed penalty, and the base planner carries no heading-state, turn-radius, congestion, or threat-cost expansion.</li>
@@ -1496,6 +1501,15 @@
         re-seat feet at their rest points. When a legged unit really leaves the ground, feet move
         smoothly into an airborne pose; when it returns, each foot swings to a terrain plant instead
         of being initialized in place.
+      </p>
+      <p>
+        Each leg explicitly owns a <code>planted</code>, <code>stepping</code>, or <code>free</code>
+        contact state. A planted foot starts a lifted swing when it leaves its moving rest region
+        <em>or</em> approaches physical extension; the reach clamp is only an emergency safeguard
+        for an already-unplanted foot, never a way to drag a nominally planted endpoint with the
+        chassis. Unsupported air legs tuck on ascent and extend for descent/touchdown. Unsupported
+        water legs instead blend toward a damped, velocity-trailing pose, while legs close enough
+        to the bed retain the ordinary planted gait on underwater ground.
       </p>
 
       <h3>Floor clamping and attachment reach are joint invariants</h3>

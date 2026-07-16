@@ -14,7 +14,7 @@
 //    quads-per-second we end up emitting.
 //
 // 2. NO MISSED FOOTPRINTS. Leg stamps are emitted on the planted-
-//    after-sliding transition (`wasSliding && !isSliding`), so every
+//    unplanted → planted transition, so every
 //    plant cycle stamps exactly once. No frame-skip can drop a
 //    plant — we read every frame and look for the edge.
 //
@@ -288,12 +288,12 @@ type TrailState = {
 };
 
 // ── Per-stamp bookkeeping ──
-// Track the previous-frame slide state so we can detect the
-// sliding → planted transition (foot just landed). Plus the last
+// Track whether the foot was unplanted so we can detect the
+// free/stepping → planted transition (foot just landed). Plus the last
 // stamp position for the rare micro-replant dedupe.
 
 type StampState = {
-  wasSliding: boolean;
+  wasUnplanted: boolean;
   lastX: number;
   lastY: number;
   hasInitial: boolean;
@@ -593,7 +593,7 @@ export class GroundPrint3D {
   }
 
   // ── Stamp sampling (legs) ──
-  // Detect the slide → planted transition. Every plant cycle yields
+  // Detect the stepping/free → planted transition. Every plant cycle yields
   // exactly one stamp; misses are only possible if a plant happens
   // closer than STAMP_MIN_DIST to the previous stamp (rare; the
   // body has effectively not moved between cycles).
@@ -607,19 +607,20 @@ export class GroundPrint3D {
       // First sighting. If the foot is already planted, treat that
       // as the initial plant and stamp it.
       state = {
-        wasSliding: leg.isSliding,
+        wasUnplanted: leg.contactState !== 'planted',
         lastX: leg.worldX,
         lastY: leg.worldZ,
         hasInitial: false,
       };
       this.stamps.set(key, state);
-      if (!leg.isSliding) {
+      if (leg.contactState === 'planted') {
         this.emitStamp(state, leg);
       }
       return;
     }
-    const justLanded = state.wasSliding && !leg.isSliding;
-    state.wasSliding = leg.isSliding;
+    const unplanted = leg.contactState !== 'planted';
+    const justLanded = state.wasUnplanted && !unplanted;
+    state.wasUnplanted = unplanted;
     if (!justLanded) return;
     if (state.hasInitial) {
       const dx = leg.worldX - state.lastX;

@@ -42,10 +42,6 @@ const HIGH_RISK_MATH_ALLOWLIST = new Map([
     count: 1,
     reason: 'module-load hover orientation damping constant derived from canonical config before gameplay ticks',
   }],
-  ['src/game/sim/locomotion.ts', {
-    count: 1,
-    reason: 'blueprint load-time slope conversion; resulting numeric value is canonicalized in content hash/replay',
-  }],
   ['src/game/sim/pathfindingTuning.ts', {
     count: 1,
     reason: 'module-load pathfinding stability threshold derived from canonical config before terrain/pathfinding startup',

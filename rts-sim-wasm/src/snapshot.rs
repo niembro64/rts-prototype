@@ -7185,7 +7185,8 @@ mod sim_kernel_tests {
         let building_cells = [10.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_001, 20_001, 30_001);
         let count = pathfinder_find_path(
-            210.0, 210.0, 320.0, 210.0, 0.0, true, false, false, 0.0, 0.0, false,
+            210.0, 210.0, 320.0, 210.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
+            0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7207,7 +7208,8 @@ mod sim_kernel_tests {
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_002, 20_002, 30_002);
         let count = pathfinder_find_path(
-            30.0, 210.0, 80.0, 210.0, 0.0, true, false, false, 0.0, 0.0, false,
+            30.0, 210.0, 80.0, 210.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
+            0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7226,7 +7228,20 @@ mod sim_kernel_tests {
         let building_cells = [1.0, 10.0, 60.0];
         pathfinder_rebuild_mask_and_cc(&building_cells, 10_003, 20_003, 30_003);
         let count = pathfinder_find_path(
-            80.0, 210.0, 30.0, 210.0, 0.0, true, false, false, 0.0, 0.0, false,
+            80.0,
+            210.0,
+            30.0,
+            210.0,
+            PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            true,
+            false,
+            false,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            false,
         );
         assert!(count >= 1);
 
@@ -7336,7 +7351,8 @@ mod sim_kernel_tests {
         pathfinder_rebuild_mask_and_cc(&[], 10_031, 20_031, 30_031);
 
         let ground_only_count = pathfinder_find_path(
-            70.0, 90.0, 250.0, 90.0, 0.0, true, false, false, 0.0, 0.0, false,
+            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
+            0.0, false,
         );
         let ground_only_waypoints = unsafe {
             std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (ground_only_count as usize) * 2)
@@ -7350,14 +7366,32 @@ mod sim_kernel_tests {
         );
         assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_SNAPPED);
         assert_eq!(
-            pathfinder_validate_path(&exact_ground_polyline, 0.0, true, false, false, 0.0, false,),
+            pathfinder_validate_path(
+                &exact_ground_polyline,
+                0.0,
+                0.0,
+                true,
+                false,
+                false,
+                0.0,
+                false,
+            ),
             1,
             "the exact snapped route must remain legal",
         );
         exact_ground_polyline.push(250.0);
         exact_ground_polyline.push(90.0);
         assert_eq!(
-            pathfinder_validate_path(&exact_ground_polyline, 0.0, true, false, false, 0.0, false,),
+            pathfinder_validate_path(
+                &exact_ground_polyline,
+                0.0,
+                0.0,
+                true,
+                false,
+                false,
+                0.0,
+                false,
+            ),
             0,
             "inventing a connector from the snapped endpoint to the click crosses water",
         );
@@ -7365,6 +7399,7 @@ mod sim_kernel_tests {
         assert_eq!(
             pathfinder_validate_path(
                 &[50.0, 50.0, 90.0, 50.0],
+                0.0,
                 0.0,
                 true,
                 false,
@@ -7379,6 +7414,7 @@ mod sim_kernel_tests {
             pathfinder_validate_path(
                 &[130.0, 50.0, 170.0, 50.0],
                 0.0,
+                0.0,
                 true,
                 false,
                 false,
@@ -7390,7 +7426,8 @@ mod sim_kernel_tests {
         );
 
         let amphibious_count = pathfinder_find_path(
-            70.0, 90.0, 250.0, 90.0, 0.0, true, true, false, 0.0, 0.0, false,
+            70.0, 90.0, 250.0, 90.0, 0.0, 0.0, true, true, false, 0.0, 0.0, 0.0,
+            0.0, false,
         );
         assert_eq!(amphibious_count, 1);
         assert_eq!(pathfinder_last_result_status(), PATHFINDER_RESULT_COMPLETE);
@@ -7532,14 +7569,15 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_allows_downhill_cliff_descent() {
+    pub(crate) fn pathfinder_can_disable_ground_slope_gates_for_unfiltered_queries() {
         let _guard = lock_tests();
         install_pathfinder_cliff_test_terrain();
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_004, 20_004, 30_004);
 
         let count = pathfinder_find_path(
-            90.0, 50.0, 110.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false,
+            90.0, 50.0, 110.0, 50.0, 0.0, 0.0, true, false, false, 0.0, 0.0, 0.0,
+            0.0, false,
         );
         assert_eq!(count, 1);
 
@@ -7557,7 +7595,20 @@ mod sim_kernel_tests {
         pathfinder_rebuild_mask_and_cc(&[], 10_005, 20_005, 30_005);
 
         let count = pathfinder_find_path(
-            110.0, 50.0, 90.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false,
+            110.0,
+            50.0,
+            90.0,
+            50.0,
+            PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            true,
+            false,
+            false,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            false,
         );
         assert_eq!(count, 1);
 
@@ -7666,25 +7717,39 @@ mod sim_kernel_tests {
     }
 
     #[test]
-    pub(crate) fn pathfinder_escapes_from_steep_wall_start_toward_goal() {
+    pub(crate) fn pathfinder_routes_from_steep_wall_start_toward_goal() {
         let _guard = lock_tests();
         install_pathfinder_sloped_wall_escape_test_terrain();
         pathfinder_init(200.0, 100.0);
         pathfinder_rebuild_mask_and_cc(&[], 10_006, 20_006, 30_006);
 
         let count = pathfinder_find_path(
-            100.0, 50.0, 50.0, 50.0, 0.0, true, false, false, 0.0, 0.0, false,
+            100.0,
+            50.0,
+            50.0,
+            50.0,
+            PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            PATHFINDING_STABILITY_MIN_NORMAL_Z,
+            true,
+            false,
+            false,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            false,
         );
-        assert!(
-            count >= 2,
-            "steep wall starts should emit an explicit flat escape waypoint before the final goal"
-        );
-
         let waypoints =
             unsafe { std::slice::from_raw_parts(pathfinder_waypoints_ptr(), (count as usize) * 2) };
         assert!(
+            count >= 1,
+            "steep wall starts must retain a route onto standstill-valid ground; got {count} at ({}, {})",
+            waypoints[0],
+            waypoints[1],
+        );
+        assert!(
             waypoints[0] < 80.0,
-            "first escape waypoint should land on the flat plateau top, got x={}",
+            "first route waypoint should land on the flat plateau top, got x={}",
             waypoints[0]
         );
         let last = (count as usize - 1) * 2;

@@ -2,8 +2,12 @@ export const SURFACE_PROBE_AGGREGATION_VALUES = ['average', 'max'] as const;
 export type SurfaceProbeAggregation =
   (typeof SURFACE_PROBE_AGGREGATION_VALUES)[number];
 
-export function isSurfaceProbeAggregation(value: unknown): value is SurfaceProbeAggregation {
-  return (SURFACE_PROBE_AGGREGATION_VALUES as readonly unknown[]).includes(value);
+export function isSurfaceProbeAggregation(
+  value: unknown,
+): value is SurfaceProbeAggregation {
+  return (SURFACE_PROBE_AGGREGATION_VALUES as readonly unknown[]).includes(
+    value,
+  );
 }
 
 /** Air lift uses exactly one supporting surface source at each probe. */

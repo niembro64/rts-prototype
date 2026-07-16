@@ -317,7 +317,7 @@ fn generate_pathfinding_tuning(manifest_dir: &Path) {
         water_buffer_cells as i32
     ));
     generated.push_str(&format!(
-        "const PATHFINDING_STABILITY_MIN_NORMAL_Z: f32 = {:?};\n",
+        "#[allow(dead_code)]\nconst PATHFINDING_STABILITY_MIN_NORMAL_Z: f32 = {:?};\n",
         stability_min_normal_z
     ));
     generated.push_str(&format!(
