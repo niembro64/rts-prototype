@@ -520,9 +520,9 @@ function resetEveryCustomHotkey(): void {
         >BUILD</BarButton>
         <BarButton
           :active="model.airLiftProbeDebug"
-          title="LIFT - show configured lift probes; thick black lines reach solid ground/support and thin red lines reach exposed water level"
+          title="PROBES - show configured lift probes; thick black lines reach solid ground/support and thin red lines reach exposed water level"
           @click="model.toggleAirLiftProbeDebug"
-        >LIFT</BarButton>
+        >PROBES</BarButton>
         <BarButton
           :active="model.metalMap"
           title="METAL - show metal-producing build cells without the rest of the buildability grid"
