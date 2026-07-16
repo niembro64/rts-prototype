@@ -13,13 +13,6 @@ type FogPresentationConfig = {
     radarColorLossPercent: number;
     edgeSoftnessWorld: number;
   };
-  controlOptions: {
-    unseenDarknessPercent: number[];
-    radarDarknessPercent: number[];
-    unseenColorLossPercent: number[];
-    radarColorLossPercent: number[];
-    edgeSoftnessWorld: number[];
-  };
 };
 
 type FogConfig = {
@@ -37,60 +30,7 @@ assertPercent(presentation.shade.radarDarknessPercent, 'fogConfig.presentation.s
 assertPercent(presentation.shade.unseenColorLossPercent, 'fogConfig.presentation.shade.unseenColorLossPercent');
 assertPercent(presentation.shade.radarColorLossPercent, 'fogConfig.presentation.shade.radarColorLossPercent');
 assertNonNegative(presentation.shade.edgeSoftnessWorld, 'fogConfig.presentation.shade.edgeSoftnessWorld');
-assertPercentOptions(
-  presentation.controlOptions.unseenDarknessPercent,
-  'fogConfig.presentation.controlOptions.unseenDarknessPercent',
-);
-assertPercentOptions(
-  presentation.controlOptions.radarDarknessPercent,
-  'fogConfig.presentation.controlOptions.radarDarknessPercent',
-);
-assertPercentOptions(
-  presentation.controlOptions.unseenColorLossPercent,
-  'fogConfig.presentation.controlOptions.unseenColorLossPercent',
-);
-assertPercentOptions(
-  presentation.controlOptions.radarColorLossPercent,
-  'fogConfig.presentation.controlOptions.radarColorLossPercent',
-);
-assertNonNegativeOptions(
-  presentation.controlOptions.edgeSoftnessWorld,
-  'fogConfig.presentation.controlOptions.edgeSoftnessWorld',
-);
-assertOptionIncludes(
-  presentation.controlOptions.unseenDarknessPercent,
-  presentation.shade.unseenDarknessPercent,
-  'fogConfig.presentation.controlOptions.unseenDarknessPercent',
-);
-assertOptionIncludes(
-  presentation.controlOptions.radarDarknessPercent,
-  presentation.shade.radarDarknessPercent,
-  'fogConfig.presentation.controlOptions.radarDarknessPercent',
-);
-assertOptionIncludes(
-  presentation.controlOptions.unseenColorLossPercent,
-  presentation.shade.unseenColorLossPercent,
-  'fogConfig.presentation.controlOptions.unseenColorLossPercent',
-);
-assertOptionIncludes(
-  presentation.controlOptions.radarColorLossPercent,
-  presentation.shade.radarColorLossPercent,
-  'fogConfig.presentation.controlOptions.radarColorLossPercent',
-);
-assertOptionIncludes(
-  presentation.controlOptions.edgeSoftnessWorld,
-  presentation.shade.edgeSoftnessWorld,
-  'fogConfig.presentation.controlOptions.edgeSoftnessWorld',
-);
-
 export const FOG_CONFIG = FOG_CONFIG_RAW;
-
-export function fogControlOptions(values: readonly number[]): ReadonlyArray<{
-  value: number;
-  label: string;
-}> {
-  return values.map((value) => ({ value, label: String(value) }));
-}
 
 function assertBoolean(value: unknown, fieldName: string): asserts value is boolean {
   if (typeof value !== 'boolean') throw new Error(`${fieldName} must be a boolean`);
@@ -117,25 +57,5 @@ function assertPercent(value: unknown, fieldName: string): asserts value is numb
 function assertCssHex(value: unknown, fieldName: string): asserts value is string {
   if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) {
     throw new Error(`${fieldName} must be a six-digit CSS hex color`);
-  }
-}
-
-function assertPercentOptions(values: unknown, fieldName: string): asserts values is number[] {
-  if (!Array.isArray(values) || values.length === 0) {
-    throw new Error(`${fieldName} must be a non-empty array`);
-  }
-  for (let i = 0; i < values.length; i++) assertPercent(values[i], `${fieldName}[${i}]`);
-}
-
-function assertNonNegativeOptions(values: unknown, fieldName: string): asserts values is number[] {
-  if (!Array.isArray(values) || values.length === 0) {
-    throw new Error(`${fieldName} must be a non-empty array`);
-  }
-  for (let i = 0; i < values.length; i++) assertNonNegative(values[i], `${fieldName}[${i}]`);
-}
-
-function assertOptionIncludes(values: readonly number[], value: number, fieldName: string): void {
-  if (!values.includes(value)) {
-    throw new Error(`${fieldName} must include the authored default ${value}`);
   }
 }

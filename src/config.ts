@@ -136,6 +136,8 @@ export const EMA_INITIAL_VALUES = emaConfigJson.initialValues;
  *  from producing unbounded traces or arbitrary damage spheres. */
 export const BEAM_MAX_SEGMENTS = combatConfigJson.beamMaxSegments;
 export const BEAM_MIN_ON_TIME_MS = beamConfigJson.minOnTimeMs;
+/** Presentation-only beam origins follow their live rendered turret mounts. */
+export const BEAM_SNAP_ORIGIN_TO_TURRET = beamConfigJson.snapOriginToTurret;
 
 // =============================================================================
 // BATTLE WAYPOINT DEFAULTS

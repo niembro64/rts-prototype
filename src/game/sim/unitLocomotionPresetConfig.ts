@@ -19,20 +19,10 @@ import {
   assertUnitLocomotionUnitFraction,
 } from './unitLocomotionValidation';
 import { isSurfaceProbeSetId } from './surfaceProbeSets';
-import {
-  isSurfaceProbeAggregation,
-  type SurfaceProbeAggregation,
-} from './surfaceProbeAggregation';
 
 export const UNIT_LOCOMOTION_MEDIUM_NAMES = ['ground', 'air', 'water'] as const;
 export type UnitLocomotionMediumName = (typeof UNIT_LOCOMOTION_MEDIUM_NAMES)[number];
 export type UnitLocomotionFluidMediumName = Exclude<UnitLocomotionMediumName, 'ground'>;
-export const SURFACE_LIFT_DISTANCE_MEASUREMENT_VALUES = [
-  'body-center',
-  'body-clearance',
-] as const;
-export type SurfaceLiftDistanceMeasurement =
-  (typeof SURFACE_LIFT_DISTANCE_MEASUREMENT_VALUES)[number];
 
 export const UNIT_LOCOMOTION_PROPULSION_FIELDS = ['driveForce', 'forceCoupling'] as const;
 export const UNIT_LOCOMOTION_FLUID_RESISTANCE_FIELDS = [
@@ -75,18 +65,9 @@ type LocomotionMediumDefaults = Record<
 type UnitLocomotionConfig = {
   forceScale: number;
   surfaceLiftDefaults: {
-    distanceMeasurement: SurfaceLiftDistanceMeasurement;
     referenceDistanceWorld: number;
     minimumDistanceWorld: number;
     distanceExponent: number;
-    probeAggregation: SurfaceProbeAggregation;
-    nearSurfaceAvoidance: {
-      clearanceWorld: number;
-      bodyRadiusMultiplier: number;
-      gain: number;
-      distanceExponent: number;
-      maximumAdditionalResponse: number;
-    };
   };
   mediumDefaults: LocomotionMediumDefaults;
   presets: Record<string, UnitLocomotionPresetConfig>;
@@ -276,20 +257,10 @@ function readUnitLocomotionConfig(): UnitLocomotionConfig {
     throw new Error('Invalid unitLocomotionConfig.json: missing surfaceLiftDefaults config');
   }
   assertExactKeys('surfaceLiftDefaults', surfaceLiftDefaults as Record<string, unknown>, [
-    'distanceMeasurement',
     'referenceDistanceWorld',
     'minimumDistanceWorld',
     'distanceExponent',
-    'probeAggregation',
-    'nearSurfaceAvoidance',
   ]);
-  const distanceMeasurement = surfaceLiftDefaults.distanceMeasurement;
-  if (!SURFACE_LIFT_DISTANCE_MEASUREMENT_VALUES.includes(distanceMeasurement)) {
-    throw new Error(
-      'Invalid unit locomotion surfaceLiftDefaults.distanceMeasurement: expected ' +
-      `${SURFACE_LIFT_DISTANCE_MEASUREMENT_VALUES.join(' or ')}, got ${String(distanceMeasurement)}`,
-    );
-  }
   assertUnitLocomotionPositiveFinite(
     'surfaceLiftDefaults.referenceDistanceWorld',
     surfaceLiftDefaults.referenceDistanceWorld,
@@ -304,46 +275,6 @@ function readUnitLocomotionConfig(): UnitLocomotionConfig {
       `Invalid unit locomotion surfaceLiftDefaults.distanceExponent: expected finite in (0, 1], got ${exponent}`,
     );
   }
-  const probeAggregation = surfaceLiftDefaults.probeAggregation;
-  if (!isSurfaceProbeAggregation(probeAggregation)) {
-    throw new Error(
-      'Invalid unit locomotion surfaceLiftDefaults.probeAggregation: expected average or max, ' +
-      `got ${String(probeAggregation)}`,
-    );
-  }
-  const nearSurfaceAvoidance = surfaceLiftDefaults.nearSurfaceAvoidance;
-  assertObject('surfaceLiftDefaults.nearSurfaceAvoidance', nearSurfaceAvoidance);
-  assertExactKeys(
-    'surfaceLiftDefaults.nearSurfaceAvoidance',
-    nearSurfaceAvoidance,
-    [
-      'clearanceWorld',
-      'bodyRadiusMultiplier',
-      'gain',
-      'distanceExponent',
-      'maximumAdditionalResponse',
-    ],
-  );
-  assertUnitLocomotionNonNegativeFinite(
-    'surfaceLiftDefaults.nearSurfaceAvoidance.clearanceWorld',
-    nearSurfaceAvoidance.clearanceWorld as number,
-  );
-  assertUnitLocomotionNonNegativeFinite(
-    'surfaceLiftDefaults.nearSurfaceAvoidance.bodyRadiusMultiplier',
-    nearSurfaceAvoidance.bodyRadiusMultiplier as number,
-  );
-  assertUnitLocomotionNonNegativeFinite(
-    'surfaceLiftDefaults.nearSurfaceAvoidance.gain',
-    nearSurfaceAvoidance.gain as number,
-  );
-  assertUnitLocomotionPositiveFinite(
-    'surfaceLiftDefaults.nearSurfaceAvoidance.distanceExponent',
-    nearSurfaceAvoidance.distanceExponent as number,
-  );
-  assertUnitLocomotionNonNegativeFinite(
-    'surfaceLiftDefaults.nearSurfaceAvoidance.maximumAdditionalResponse',
-    nearSurfaceAvoidance.maximumAdditionalResponse as number,
-  );
   const mediumDefaults = config.mediumDefaults;
   assertObject('mediumDefaults', mediumDefaults);
   assertExactKeys('mediumDefaults', mediumDefaults, UNIT_LOCOMOTION_MEDIUM_NAMES);
@@ -368,18 +299,9 @@ function readUnitLocomotionConfig(): UnitLocomotionConfig {
   return {
     forceScale: config.forceScale!,
     surfaceLiftDefaults: {
-      distanceMeasurement,
       referenceDistanceWorld: surfaceLiftDefaults.referenceDistanceWorld,
       minimumDistanceWorld: surfaceLiftDefaults.minimumDistanceWorld,
       distanceExponent: exponent,
-      probeAggregation,
-      nearSurfaceAvoidance: {
-        clearanceWorld: nearSurfaceAvoidance.clearanceWorld as number,
-        bodyRadiusMultiplier: nearSurfaceAvoidance.bodyRadiusMultiplier as number,
-        gain: nearSurfaceAvoidance.gain as number,
-        distanceExponent: nearSurfaceAvoidance.distanceExponent as number,
-        maximumAdditionalResponse: nearSurfaceAvoidance.maximumAdditionalResponse as number,
-      },
     },
     mediumDefaults: mediumDefaults as LocomotionMediumDefaults,
     presets,
@@ -389,19 +311,12 @@ function readUnitLocomotionConfig(): UnitLocomotionConfig {
 const UNIT_LOCOMOTION_CONFIG = readUnitLocomotionConfig();
 
 export const UNIT_LOCOMOTION_FORCE_SCALE = UNIT_LOCOMOTION_CONFIG.forceScale;
-export const SURFACE_LIFT_DISTANCE_MEASUREMENT =
-  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.distanceMeasurement;
 export const SURFACE_LIFT_REFERENCE_DISTANCE_WORLD =
   UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.referenceDistanceWorld;
 export const SURFACE_LIFT_MINIMUM_DISTANCE_WORLD =
   UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.minimumDistanceWorld;
 export const SURFACE_LIFT_DISTANCE_EXPONENT =
   UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.distanceExponent;
-export const SURFACE_LIFT_PROBE_AGGREGATION =
-  UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.probeAggregation;
-export const SURFACE_LIFT_NEAR_SURFACE_AVOIDANCE = Object.freeze({
-  ...UNIT_LOCOMOTION_CONFIG.surfaceLiftDefaults.nearSurfaceAvoidance,
-});
 
 export const UNIT_LOCOMOTION_FRICTION_BY_MEDIUM: Readonly<Record<UnitLocomotionMediumName, number>> =
   Object.freeze(Object.fromEntries(

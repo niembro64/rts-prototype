@@ -18,11 +18,6 @@
 
 import rawConfig from './resourceConfig.json';
 
-type ResourceBallDensityOption = {
-  readonly value: number;
-  readonly label: string;
-};
-
 type EconomyConeHalfAnglesByBuilding = {
   readonly buildingExtractor: number;
   readonly buildingExtractorT2: number;
@@ -70,32 +65,6 @@ function posInt(label: string, value: number): number {
   return value;
 }
 
-function resourceBallDensityOptions(
-  label: string,
-  value: readonly { readonly value: number; readonly label: string }[],
-  defaultValue: number,
-): readonly ResourceBallDensityOption[] {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new Error(`resourceConfig.${label} must be a non-empty option array`);
-  }
-  let defaultFound = false;
-  const options: ResourceBallDensityOption[] = [];
-  for (let i = 0; i < value.length; i++) {
-    const rawOption = value[i];
-    const optionValue = posNum(`${label}[${i}].value`, rawOption.value);
-    const optionLabel = rawOption.label;
-    if (typeof optionLabel !== 'string' || optionLabel.length === 0) {
-      throw new Error(`resourceConfig.${label}[${i}].label must be a non-empty string`);
-    }
-    if (optionValue === defaultValue) defaultFound = true;
-    options.push({ value: optionValue, label: optionLabel });
-  }
-  if (!defaultFound) {
-    throw new Error(`resourceConfig.${label} must include ballsPerResourcePerSecond default ${defaultValue}`);
-  }
-  return options;
-}
-
 function economyConeHalfAnglesByBuilding(
   label: string,
   value: EconomyConeHalfAnglesByBuilding,
@@ -119,13 +88,8 @@ const defaultBallsPerResourcePerSecond = posNum(
 
 export const RESOURCE_CONFIG = {
   /** balls/second spawned per (resource/second) of transfer. The single
-   *  global toggle for resource-ball density across every pylon. */
+   *  global resource-ball density across every pylon. */
   ballsPerResourcePerSecond: defaultBallsPerResourcePerSecond,
-  ballsPerResourcePerSecondOptions: resourceBallDensityOptions(
-    'ballsPerResourcePerSecondOptions',
-    rawConfig.ballsPerResourcePerSecondOptions,
-    defaultBallsPerResourcePerSecond,
-  ),
   metalExtractor: {
     rotorRadPerSecPerMetalRate: posNum(
       'metalExtractor.rotorRadPerSecPerMetalRate',
@@ -180,7 +144,6 @@ export const RESOURCE_CONFIG = {
   },
 } as const;
 
-export const RESOURCE_BALL_DENSITY_OPTIONS = RESOURCE_CONFIG.ballsPerResourcePerSecondOptions;
 /** Visual extractor rotor speed, in radians per second per (metal/second)
  *  of live extraction, before the authored visual-only spin multiplier.
  *  Spin is tied directly to throughput — no per-tier normalization — so a
@@ -225,22 +188,9 @@ export const PYLON_BUILDING_WIND_CONE_HALF_ANGLE_RAD =
 export const PYLON_BUILDING_RESOURCE_CONVERTER_CONE_HALF_ANGLE_RAD =
   PYLON_ECONOMY_CONE_HALF_ANGLE_RAD_BY_BUILDING.buildingResourceConverter;
 
-/** Default balls/second spawned per (resource/second) of transfer. */
-export const DEFAULT_BALLS_PER_RESOURCE_PER_SECOND = RESOURCE_CONFIG.ballsPerResourcePerSecond;
-
-let activeBallsPerResourcePerSecond = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
-
-export function setBallsPerResourcePerSecond(value: number): void {
-  activeBallsPerResourcePerSecond = posNum('activeBallsPerResourcePerSecond', value);
-}
-
-export function isResourceBallDensityOption(value: number): boolean {
-  return RESOURCE_BALL_DENSITY_OPTIONS.some((opt) => opt.value === value);
-}
-
 /** Convert an absolute resource transfer rate (resources/second) into a
  *  ball spawn rate (balls/second). Negative/zero rates produce 0. */
 export function ballSpawnRateForResourceRate(resourceRatePerSecond: number): number {
   if (!Number.isFinite(resourceRatePerSecond) || resourceRatePerSecond <= 0) return 0;
-  return resourceRatePerSecond * activeBallsPerResourcePerSecond;
+  return resourceRatePerSecond * RESOURCE_CONFIG.ballsPerResourcePerSecond;
 }

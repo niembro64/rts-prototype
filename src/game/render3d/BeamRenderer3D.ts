@@ -15,7 +15,7 @@ import type { Entity } from '../sim/types';
 import { isRayType } from '../sim/types';
 import type { ViewportFootprint } from '../ViewportFootprint';
 import type { GraphicsConfig } from '@/types/graphics';
-import { getBeamSnapToTurret } from '@/clientBarConfig';
+import { BEAM_SNAP_ORIGIN_TO_TURRET } from '@/config';
 import { detachObject, disposeMesh } from './threeUtils';
 import beamConfig from '@/beamConfig.json';
 import {
@@ -366,7 +366,7 @@ export class BeamRenderer3D {
   ): void {
     if (projectiles.length === 0 && !this.hasActiveVisuals()) return;
     tickBeamWaveTime();
-    const snapToTurret = getBeamSnapToTurret() && !!turretMountResolver;
+    const snapToTurret = BEAM_SNAP_ORIGIN_TO_TURRET && !!turretMountResolver;
     const scopeVersion = this.scope.getVersion();
     if (
       !snapToTurret &&

@@ -1,15 +1,3 @@
-export const SURFACE_PROBE_AGGREGATION_VALUES = ['average', 'max'] as const;
-export type SurfaceProbeAggregation =
-  (typeof SURFACE_PROBE_AGGREGATION_VALUES)[number];
-
-export function isSurfaceProbeAggregation(
-  value: unknown,
-): value is SurfaceProbeAggregation {
-  return (SURFACE_PROBE_AGGREGATION_VALUES as readonly unknown[]).includes(
-    value,
-  );
-}
-
 /** Air lift uses exactly one supporting surface source at each probe. */
 export function surfaceProbeUsesWaterSurface(
   terrainBedZ: number,
@@ -18,43 +6,20 @@ export function surfaceProbeUsesWaterSurface(
   return terrainBedZ < waterLevel;
 }
 
-export function accumulateSurfaceProbeResponse(
-  aggregate: number,
-  response: number,
-  aggregation: SurfaceProbeAggregation,
-): number {
-  return aggregation === 'max'
-    ? Math.max(aggregate, response)
-    : aggregate + response;
-}
-
-export function finalizeSurfaceProbeResponse(
-  aggregate: number,
-  sampleCount: number,
-  aggregation: SurfaceProbeAggregation,
-): number {
-  if (sampleCount <= 0) return 0;
-  return aggregation === 'max' ? aggregate : aggregate / sampleCount;
-}
-
 /** Aggregates force proposals after each probe has already applied its
- * source-specific authored force. This is intentionally separate from the
- * legacy response helpers: force-first aggregation is the locomotion rule. */
+ * source-specific authored force. The arithmetic mean is deliberately
+ * hardcoded to preserve the original multi-probe lift behavior. */
 export function accumulateSurfaceProbeProposedForce(
   aggregate: number,
   proposedForce: number,
-  aggregation: SurfaceProbeAggregation,
 ): number {
-  return aggregation === 'max'
-    ? Math.max(aggregate, proposedForce)
-    : aggregate + proposedForce;
+  return aggregate + proposedForce;
 }
 
 export function finalizeSurfaceProbeProposedForce(
   aggregate: number,
   sampleCount: number,
-  aggregation: SurfaceProbeAggregation,
 ): number {
   if (sampleCount <= 0) return 0;
-  return aggregation === 'max' ? aggregate : aggregate / sampleCount;
+  return aggregate / sampleCount;
 }

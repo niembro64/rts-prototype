@@ -1,18 +1,9 @@
 {
   "forceScale": 150000,
   "surfaceLiftDefaults": {
-    "distanceMeasurement": "body-clearance",
     "referenceDistanceWorld": 1,
-    "minimumDistanceWorld": 0.5,
-    "distanceExponent": 0.5,
-    "probeAggregation": "average",
-    "nearSurfaceAvoidance": {
-      "clearanceWorld": 12,
-      "bodyRadiusMultiplier": 0.25,
-      "gain": 8,
-      "distanceExponent": 3,
-      "maximumAdditionalResponse": 256
-    }
+    "minimumDistanceWorld": 0.001,
+    "distanceExponent": 0.5
   },
   "mediumDefaults": {
     "ground": {

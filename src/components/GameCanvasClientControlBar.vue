@@ -16,7 +16,6 @@ import {
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
 import { unitRosterDisplay } from '../game/sim/blueprints/displayRosters';
-import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
@@ -455,7 +454,20 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel>MARKS:</BarLabel>
+        <BarLabel>LOD:</BarLabel>
+        <BarButtonGroup>
+          <BarButton
+            v-for="opt in LOD_MODE_OPTIONS"
+            :key="opt.value"
+            :active="model.lodMode === opt.value"
+            :title="LOD_MODE_TITLES[opt.value]"
+            @click="model.changeLodMode(opt.value)"
+          >{{ opt.label }}</BarButton>
+        </BarButtonGroup>
+      </BarControlGroup>
+      <BarControlGroup>
+        <BarDivider />
+        <BarLabel>DEBUG:</BarLabel>
         <BarButton
           :active="model.burnMarks"
           title="Draw beam, laser, and dgun scorch trails on the ground"
@@ -476,10 +488,6 @@ function resetEveryCustomHotkey(): void {
           title="Smoke-puff edge style — on: soft fog-style blobs; off: legacy hard-edged spheres"
           @click="model.toggleSmokeSoftEdges"
         >SOFT</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>VIS FX:</BarLabel>
         <BarButton
           :active="model.fogShade"
           title="Shade currently unseen terrain and environment props with a world-attached fog-of-war mask. Battle-level FOG OF WAR still controls visibility and snapshot filtering."
@@ -490,119 +498,11 @@ function resetEveryCustomHotkey(): void {
           title="Generate client-only death material explosions: death fire puff plus part-based debris chunks"
           @click="model.toggleMaterialExplosions"
         >MATEXP</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Dark tint strength in areas outside both full sight and radar.">UNSEEN DARK:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.fogUnseenDarkness.options"
-            :key="opt.value"
-            :active="model.fogUnseenDarkness === opt.value"
-            :title="`Set fully unseen fog darkening to ${opt.value}%.`"
-            @click="model.changeFogUnseenDarkness(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Dark tint strength in radar-only areas outside full sight.">RADAR DARK:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.fogRadarDarkness.options"
-            :key="opt.value"
-            :active="model.fogRadarDarkness === opt.value"
-            :title="`Set radar-only fog darkening to ${opt.value}%.`"
-            @click="model.changeFogRadarDarkness(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Percentage of color removed outside both full sight and radar.">UNSEEN COLOR LOSS:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.fogUnseenDesaturation.options"
-            :key="opt.value"
-            :active="model.fogUnseenDesaturation === opt.value"
-            :title="`Remove ${opt.value}% of color in fully unseen areas.`"
-            @click="model.changeFogUnseenDesaturation(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Percentage of color removed in radar-only areas outside full sight.">RADAR COLOR LOSS:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.fogRadarDesaturation.options"
-            :key="opt.value"
-            :active="model.fogRadarDesaturation === opt.value"
-            :title="`Remove ${opt.value}% of color in radar-only areas.`"
-            @click="model.changeFogRadarDesaturation(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="World-space feather width around sight and radar boundaries. This softens the mask without blurring terrain detail.">FOG EDGE:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.fogEdgeSoftness.options"
-            :key="opt.value"
-            :active="model.fogEdgeSoftness === opt.value"
-            :title="`Set fog boundary feathering to ${opt.value} world units.`"
-            @click="model.changeFogEdgeSoftness(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>LOD:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in LOD_MODE_OPTIONS"
-            :key="opt.value"
-            :active="model.lodMode === opt.value"
-            :title="LOD_MODE_TITLES[opt.value]"
-            @click="model.changeLodMode(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>BEAMS:</BarLabel>
         <BarButton
-          :active="model.beamSnapToTurret"
-          title="Snap beam origins to live rendered turret centers"
-          @click="model.toggleBeamSnapToTurret"
-        >TURRET</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Resource-ball density. Balls per second equals absolute resources per second multiplied by this scalar.">RES BALLS:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in RESOURCE_BALL_DENSITY_OPTIONS"
-            :key="opt.value"
-            :active="model.resourceBallDensity === opt.value"
-            :title="`Resource-ball density scalar ${opt.value}: balls/sec = resources/sec x ${opt.value}`"
-            @click="model.changeResourceBallDensity(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>PAN:</BarLabel>
-        <BarButton
-          :active="model.edgeScrollEnabled"
-          title="Edge scroll - move camera when mouse near viewport border"
-          @click="model.toggleEdgeScroll"
-        >EDGE</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>DEBUG:</BarLabel>
+          :active="model.legsRadiusToggle"
+          title="Show each leg's rest circle (chassis-local - the foot wanders inside this radius before snapping to the opposite edge)"
+          @click="model.toggleLegsRadius"
+        >LEG RAD</BarButton>
         <BarButton
           :active="model.triangleDebug"
           title="TRIS - debug-color every terrain mesh triangle so triangle reduction and flat-tile optimization are visually obvious"
@@ -649,16 +549,6 @@ function resetEveryCustomHotkey(): void {
             @click="model.changePathingDebugUnit(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
-        <BarButton
-          :active="model.sightBoundary"
-          title="SIGHT - draw the local player's total full-sight boundary"
-          @click="model.toggleSightBoundary"
-        >SIGHT</BarButton>
-        <BarButton
-          :active="model.radarBoundary"
-          title="RADAR - draw radar-level coverage, including all SIGHT areas plus radar-only sensor areas"
-          @click="model.toggleRadarBoundary"
-        >RADAR</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -835,15 +725,6 @@ function resetEveryCustomHotkey(): void {
             @click="model.toggleUnitRadius('shotArmingRadius')"
           >ARM</BarButton>
         </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>LEGS:</BarLabel>
-        <BarButton
-          :active="model.legsRadiusToggle"
-          title="Show each leg's rest circle (chassis-local - the foot wanders inside this radius before snapping to the opposite edge)"
-          @click="model.toggleLegsRadius"
-        >RAD</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />

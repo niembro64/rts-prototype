@@ -1,5 +1,6 @@
 {
   "minOnTimeMs": 200,
+  "snapOriginToTurret": true,
   "outer": {
     "waveHighToLowAlphaLengthRatio": 0.5,
     "waveSpacing": 300,

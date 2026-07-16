@@ -10,16 +10,11 @@ import {
 } from '../unitLocomotion';
 import {
   getSurfaceLiftDistanceResponse,
-  getSurfaceLiftProbeDistance,
-  getSurfaceLiftProbeForceMultiplier,
 } from '../surfaceLiftDistanceResponse';
 import { resolveSurfaceLiftGroundZ } from '../surfaceLiftGroundSupport';
 import {
   accumulateSurfaceProbeProposedForce,
-  accumulateSurfaceProbeResponse,
   finalizeSurfaceProbeProposedForce,
-  finalizeSurfaceProbeResponse,
-  isSurfaceProbeAggregation,
   surfaceProbeUsesWaterSurface,
 } from '../surfaceProbeAggregation';
 import { resolveUnitLocomotionRouteCapabilities } from '../unitLocomotionNavigation';
@@ -86,19 +81,15 @@ function expectLocomotionError(
 }
 
 function assertSurfaceLiftDefaultsMatchConfig(): void {
+  assertContract(
+    !('probeAggregation' in rawLocomotionConfig.surfaceLiftDefaults),
+    'surface lift preserves its historical hardcoded average instead of an average/max setting',
+  );
   const {
-    distanceMeasurement,
     referenceDistanceWorld,
     minimumDistanceWorld,
     distanceExponent,
-    probeAggregation,
-    nearSurfaceAvoidance,
   } = rawLocomotionConfig.surfaceLiftDefaults;
-  assertEqual(
-    distanceMeasurement,
-    'body-clearance',
-    'surface probes measure authored hull clearance rather than body-center altitude',
-  );
   assertContract(
     Number.isFinite(referenceDistanceWorld) && referenceDistanceWorld > 0,
     'surfaceLiftDefaults.referenceDistanceWorld must be positive',
@@ -110,10 +101,6 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
   assertContract(
     Number.isFinite(distanceExponent) && distanceExponent > 0 && distanceExponent <= 1,
     'surfaceLiftDefaults.distanceExponent must be finite in (0, 1]',
-  );
-  assertContract(
-    isSurfaceProbeAggregation(probeAggregation),
-    'surfaceLiftDefaults.probeAggregation must be average or max',
   );
   assertEqual(
     getSurfaceLiftDistanceResponse(4),
@@ -136,68 +123,16 @@ function assertSurfaceLiftDefaultsMatchConfig(): void {
       `probe distance ${String(invalidProbeDistance)} resolves through the configured positive minimum`,
     );
   }
-  assertEqual(
-    getSurfaceLiftProbeDistance(25, 5, 10),
-    10,
-    'body-clearance probe distance subtracts the authored body-center height',
-  );
-  const avoidanceClearance =
-    nearSurfaceAvoidance.clearanceWorld + 20 * nearSurfaceAvoidance.bodyRadiusMultiplier;
-  assertEqual(
-    getSurfaceLiftProbeForceMultiplier(avoidanceClearance, 20),
-    getSurfaceLiftDistanceResponse(avoidanceClearance),
-    'near-surface avoidance is zero at its configured clearance threshold',
-  );
-  assertEqual(
-    getSurfaceLiftProbeForceMultiplier(minimumDistanceWorld, 20),
-    minimumDistanceResponse + nearSurfaceAvoidance.maximumAdditionalResponse,
-    'a dangerously close probe receives the configured capped additional response',
-  );
-  assertContract(
-    getSurfaceLiftProbeForceMultiplier(minimumDistanceWorld, 20) / 8 >= 32,
-    'one dangerously close or buried probe retains extreme authority after an eight-probe average',
-  );
-  const averageAggregate = accumulateSurfaceProbeResponse(
-    accumulateSurfaceProbeResponse(0, 0.25, 'average'),
-    0.75,
-    'average',
-  );
-  assertEqual(
-    finalizeSurfaceProbeResponse(averageAggregate, 2, 'average'),
-    0.5,
-    'average probe aggregation averages nonlinear per-probe responses',
-  );
-  const maxAggregate = accumulateSurfaceProbeResponse(
-    accumulateSurfaceProbeResponse(0, 0.25, 'max'),
-    0.75,
-    'max',
-  );
-  assertEqual(
-    finalizeSurfaceProbeResponse(maxAggregate, 2, 'max'),
-    0.75,
-    'max probe aggregation selects the strongest nonlinear per-probe response',
-  );
   const firstProposedForce = 100 * 0.25;
   const secondProposedForce = 10 * 0.75;
   const proposedForceSum = accumulateSurfaceProbeProposedForce(
-    accumulateSurfaceProbeProposedForce(0, firstProposedForce, 'average'),
+    accumulateSurfaceProbeProposedForce(0, firstProposedForce),
     secondProposedForce,
-    'average',
   );
   assertEqual(
-    finalizeSurfaceProbeProposedForce(proposedForceSum, 2, 'average'),
+    finalizeSurfaceProbeProposedForce(proposedForceSum, 2),
     16.25,
-    'average aggregation operates after each probe applies its authored force',
-  );
-  const proposedForceMax = accumulateSurfaceProbeProposedForce(
-    accumulateSurfaceProbeProposedForce(0, firstProposedForce, 'max'),
-    secondProposedForce,
-    'max',
-  );
-  assertEqual(
-    finalizeSurfaceProbeProposedForce(proposedForceMax, 2, 'max'),
-    25,
-    'max aggregation selects the strongest complete per-probe force proposal',
+    'the historical hardcoded average operates after each probe applies its authored force',
   );
   assertContract(
     !surfaceProbeUsesWaterSurface(0, 0) && surfaceProbeUsesWaterSurface(-1, 0),

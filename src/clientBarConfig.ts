@@ -24,13 +24,8 @@ import type {
   WaterBoundaryMode,
 } from './types/client';
 import { CAMERA_FOV_DEGREES } from './config';
-import { FOG_CONFIG, fogControlOptions } from './fogConfig';
+import { FOG_CONFIG } from './fogConfig';
 import { persist, persistJson, readPersisted } from './persistence';
-import {
-  DEFAULT_BALLS_PER_RESOURCE_PER_SECOND,
-  isResourceBallDensityOption,
-  setBallsPerResourcePerSecond,
-} from './resourceConfig';
 import rawPlayerClientGraphicsConfig from './playerClientGraphicsConfig.json';
 import clientBarConfig from './clientBarConfig.json';
 import { isBuildableUnitBlueprintId } from './game/sim/blueprints/unitRoster';
@@ -63,11 +58,6 @@ const PLAYER_CLIENT_MAX_GRAPHICS_CONFIG = rawPlayerClientGraphicsConfig as Graph
 const MIN_CAMERA_FOV_DEGREES = 1;
 const MAX_CAMERA_FOV_DEGREES = 179;
 const FOG_PRESENTATION = FOG_CONFIG.presentation;
-const DEFAULT_FOG_UNSEEN_DARKNESS = FOG_PRESENTATION.shade.unseenDarknessPercent;
-const DEFAULT_FOG_RADAR_DARKNESS = FOG_PRESENTATION.shade.radarDarknessPercent;
-const DEFAULT_FOG_UNSEEN_DESATURATION = FOG_PRESENTATION.shade.unseenColorLossPercent;
-const DEFAULT_FOG_RADAR_DESATURATION = FOG_PRESENTATION.shade.radarColorLossPercent;
-const DEFAULT_FOG_EDGE_SOFTNESS = FOG_PRESENTATION.shade.edgeSoftnessWorld;
 
 type ClientDefaults = {
   readonly render: RenderMode;
@@ -79,13 +69,7 @@ type ClientDefaults = {
   readonly smokeTrails: boolean;
   readonly smokeSoftEdges: boolean;
   readonly fogShade: boolean;
-  readonly fogUnseenDarkness: number;
-  readonly fogRadarDarkness: number;
-  readonly fogUnseenDesaturation: number;
-  readonly fogRadarDesaturation: number;
-  readonly fogEdgeSoftness: number;
   readonly materialExplosions: boolean;
-  readonly beamSnapToTurret: boolean;
   readonly triangleDebug: boolean;
   readonly wallTriangleDebug: boolean;
   readonly buildGridDebug: boolean;
@@ -154,13 +138,7 @@ function resolveClientDefaults(mode: ClientMode): ClientDefaults {
     smokeTrails: pickDefault(clientBarConfig.smokeTrails, mode),
     smokeSoftEdges: pickDefault(clientBarConfig.smokeSoftEdges, mode),
     fogShade: FOG_PRESENTATION.enabledByDefault,
-    fogUnseenDarkness: DEFAULT_FOG_UNSEEN_DARKNESS,
-    fogRadarDarkness: DEFAULT_FOG_RADAR_DARKNESS,
-    fogUnseenDesaturation: DEFAULT_FOG_UNSEEN_DESATURATION,
-    fogRadarDesaturation: DEFAULT_FOG_RADAR_DESATURATION,
-    fogEdgeSoftness: DEFAULT_FOG_EDGE_SOFTNESS,
     materialExplosions: pickDefault(clientBarConfig.materialExplosions, mode),
-    beamSnapToTurret: pickDefault(clientBarConfig.beamSnapToTurret, mode),
     triangleDebug: pickDefault(clientBarConfig.triangleDebug, mode),
     wallTriangleDebug: pickDefault(clientBarConfig.wallTriangleDebug, mode),
     buildGridDebug: pickDefault(clientBarConfig.buildGridDebug, mode),
@@ -236,28 +214,7 @@ export const CLIENT_CONFIG = {
   smokeTrails: { default: DEMO_CLIENT_DEFAULTS.smokeTrails },
   smokeSoftEdges: { default: DEMO_CLIENT_DEFAULTS.smokeSoftEdges },
   fogShade: { default: DEMO_CLIENT_DEFAULTS.fogShade },
-  fogUnseenDarkness: {
-    default: DEMO_CLIENT_DEFAULTS.fogUnseenDarkness,
-    options: fogControlOptions(FOG_PRESENTATION.controlOptions.unseenDarknessPercent),
-  },
-  fogRadarDarkness: {
-    default: DEMO_CLIENT_DEFAULTS.fogRadarDarkness,
-    options: fogControlOptions(FOG_PRESENTATION.controlOptions.radarDarknessPercent),
-  },
-  fogUnseenDesaturation: {
-    default: DEMO_CLIENT_DEFAULTS.fogUnseenDesaturation,
-    options: fogControlOptions(FOG_PRESENTATION.controlOptions.unseenColorLossPercent),
-  },
-  fogRadarDesaturation: {
-    default: DEMO_CLIENT_DEFAULTS.fogRadarDesaturation,
-    options: fogControlOptions(FOG_PRESENTATION.controlOptions.radarColorLossPercent),
-  },
-  fogEdgeSoftness: {
-    default: DEMO_CLIENT_DEFAULTS.fogEdgeSoftness,
-    options: fogControlOptions(FOG_PRESENTATION.controlOptions.edgeSoftnessWorld),
-  },
   materialExplosions: { default: DEMO_CLIENT_DEFAULTS.materialExplosions },
-  beamSnapToTurret: { default: DEMO_CLIENT_DEFAULTS.beamSnapToTurret },
   triangleDebug: { default: DEMO_CLIENT_DEFAULTS.triangleDebug },
   wallTriangleDebug: { default: DEMO_CLIENT_DEFAULTS.wallTriangleDebug },
   buildGridDebug: { default: DEMO_CLIENT_DEFAULTS.buildGridDebug },
@@ -334,19 +291,7 @@ function buildClientConfig(defaults: ClientDefaults): ClientBarConfig {
     smokeTrails: { default: defaults.smokeTrails },
     smokeSoftEdges: { default: defaults.smokeSoftEdges },
     fogShade: { default: defaults.fogShade },
-    fogUnseenDarkness: { ...CLIENT_CONFIG.fogUnseenDarkness, default: defaults.fogUnseenDarkness },
-    fogRadarDarkness: { ...CLIENT_CONFIG.fogRadarDarkness, default: defaults.fogRadarDarkness },
-    fogUnseenDesaturation: {
-      ...CLIENT_CONFIG.fogUnseenDesaturation,
-      default: defaults.fogUnseenDesaturation,
-    },
-    fogRadarDesaturation: {
-      ...CLIENT_CONFIG.fogRadarDesaturation,
-      default: defaults.fogRadarDesaturation,
-    },
-    fogEdgeSoftness: { ...CLIENT_CONFIG.fogEdgeSoftness, default: defaults.fogEdgeSoftness },
     materialExplosions: { default: defaults.materialExplosions },
-    beamSnapToTurret: { default: defaults.beamSnapToTurret },
     triangleDebug: { default: defaults.triangleDebug },
     wallTriangleDebug: { default: defaults.wallTriangleDebug },
     buildGridDebug: { default: defaults.buildGridDebug },
@@ -403,14 +348,7 @@ type ClientStorageKeyName =
   | 'smokeTrails'
   | 'smokeSoftEdges'
   | 'fogShade'
-  | 'fogUnseenDarkness'
-  | 'fogRadarDarkness'
-  | 'fogUnseenDesaturation'
-  | 'fogRadarDesaturation'
-  | 'fogEdgeSoftness'
   | 'materialExplosions'
-  | 'beamSnapToTurret'
-  | 'resourceBallDensity'
   | 'triangleDebug'
   | 'wallTriangleDebug'
   | 'buildGridDebug'
@@ -450,14 +388,7 @@ const CLIENT_STORAGE_KEY_NAMES: readonly ClientStorageKeyName[] = [
   'smokeTrails',
   'smokeSoftEdges',
   'fogShade',
-  'fogUnseenDarkness',
-  'fogRadarDarkness',
-  'fogUnseenDesaturation',
-  'fogRadarDesaturation',
-  'fogEdgeSoftness',
   'materialExplosions',
-  'beamSnapToTurret',
-  'resourceBallDensity',
   'triangleDebug',
   'wallTriangleDebug',
   'buildGridDebug',
@@ -547,14 +478,7 @@ let currentLocomotionMarks: boolean = _cd.locomotionMarks.default;
 let currentSmokeTrails: boolean = _cd.smokeTrails.default;
 let currentSmokeSoftEdges: boolean = _cd.smokeSoftEdges.default;
 let currentFogShade: boolean = _cd.fogShade.default;
-let currentFogUnseenDarkness = _cd.fogUnseenDarkness.default;
-let currentFogRadarDarkness = _cd.fogRadarDarkness.default;
-let currentFogUnseenDesaturation = _cd.fogUnseenDesaturation.default;
-let currentFogRadarDesaturation = _cd.fogRadarDesaturation.default;
-let currentFogEdgeSoftness = _cd.fogEdgeSoftness.default;
 let currentMaterialExplosions: boolean = _cd.materialExplosions.default;
-let currentBeamSnapToTurret: boolean = _cd.beamSnapToTurret.default;
-let currentResourceBallDensity: number = DEFAULT_BALLS_PER_RESOURCE_PER_SECOND;
 let currentTriangleDebug: boolean = _cd.triangleDebug.default;
 let currentWallTriangleDebug: boolean = _cd.wallTriangleDebug.default;
 let currentBuildGridDebug: boolean = _cd.buildGridDebug.default;
@@ -599,21 +523,6 @@ function isMasterVolumePercent(value: number): value is MasterVolumePercent {
   return Number.isFinite(value) && value >= 0 && value <= 200;
 }
 
-function normalizeFogPercent(value: number): number {
-  return Math.round(Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0)));
-}
-
-function normalizeFogEdgeSoftness(value: number): number {
-  return Math.round(Math.max(0, Math.min(2048, Number.isFinite(value) ? value : 0)));
-}
-
-function readStoredNumber(key: string, fallback: number): number {
-  const stored = readPersisted(key);
-  if (stored === null) return fallback;
-  const parsed = Number(stored);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 function isCameraFollowMode(value: unknown): value is CameraFollowMode {
   return value === 'free' || value === 'follow' || value === 'follow-behind';
 }
@@ -622,11 +531,6 @@ function isWaterBoundaryMode(value: unknown): value is WaterBoundaryMode {
   return value === 'infinity' ||
     value === 'floating-square' ||
     value === 'floating-square-sea';
-}
-
-function applyResourceBallDensity(value: number): void {
-  currentResourceBallDensity = value;
-  setBallsPerResourcePerSecond(value);
 }
 
 function applyClientDefaults(mode: ClientMode): void {
@@ -648,14 +552,7 @@ function applyClientDefaults(mode: ClientMode): void {
   currentSmokeTrails = cd.smokeTrails.default;
   currentSmokeSoftEdges = cd.smokeSoftEdges.default;
   currentFogShade = cd.fogShade.default;
-  currentFogUnseenDarkness = cd.fogUnseenDarkness.default;
-  currentFogRadarDarkness = cd.fogRadarDarkness.default;
-  currentFogUnseenDesaturation = cd.fogUnseenDesaturation.default;
-  currentFogRadarDesaturation = cd.fogRadarDesaturation.default;
-  currentFogEdgeSoftness = cd.fogEdgeSoftness.default;
   currentMaterialExplosions = cd.materialExplosions.default;
-  currentBeamSnapToTurret = cd.beamSnapToTurret.default;
-  applyResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
   currentTriangleDebug = cd.triangleDebug.default;
   currentWallTriangleDebug = cd.wallTriangleDebug.default;
   currentBuildGridDebug = cd.buildGridDebug.default;
@@ -737,35 +634,9 @@ function loadFromStorage(mode: ClientMode): void {
   if (storedFogShade !== null) {
     currentFogShade = storedFogShade === 'true';
   }
-  currentFogUnseenDarkness = normalizeFogPercent(
-    readStoredNumber(keys.fogUnseenDarkness, currentFogUnseenDarkness),
-  );
-  currentFogRadarDarkness = normalizeFogPercent(
-    readStoredNumber(keys.fogRadarDarkness, currentFogRadarDarkness),
-  );
-  currentFogUnseenDesaturation = normalizeFogPercent(
-    readStoredNumber(keys.fogUnseenDesaturation, currentFogUnseenDesaturation),
-  );
-  currentFogRadarDesaturation = normalizeFogPercent(
-    readStoredNumber(keys.fogRadarDesaturation, currentFogRadarDesaturation),
-  );
-  currentFogEdgeSoftness = normalizeFogEdgeSoftness(
-    readStoredNumber(keys.fogEdgeSoftness, currentFogEdgeSoftness),
-  );
   const storedMaterialExplosions = readPersisted(keys.materialExplosions);
   if (storedMaterialExplosions !== null) {
     currentMaterialExplosions = storedMaterialExplosions === 'true';
-  }
-  const storedBeamSnapToTurret = readPersisted(keys.beamSnapToTurret);
-  if (storedBeamSnapToTurret !== null) {
-    currentBeamSnapToTurret = storedBeamSnapToTurret === 'true';
-  }
-  const storedResourceBallDensity = readPersisted(keys.resourceBallDensity);
-  if (storedResourceBallDensity !== null) {
-    const parsed = Number(storedResourceBallDensity);
-    if (Number.isFinite(parsed) && isResourceBallDensityOption(parsed)) {
-      applyResourceBallDensity(parsed);
-    }
   }
   const storedTriangleDebug = readPersisted(keys.triangleDebug);
   if (storedTriangleDebug !== null) {
@@ -1155,58 +1026,13 @@ export function setFogShade(enabled: boolean): void {
   persist(activeStorageKeys().fogShade, String(enabled));
 }
 
-export function getFogUnseenDarkness(): number {
-  return currentFogUnseenDarkness;
-}
-
-export function setFogUnseenDarkness(value: number): void {
-  currentFogUnseenDarkness = normalizeFogPercent(value);
-  persist(activeStorageKeys().fogUnseenDarkness, String(currentFogUnseenDarkness));
-}
-
-export function getFogRadarDarkness(): number {
-  return currentFogRadarDarkness;
-}
-
-export function setFogRadarDarkness(value: number): void {
-  currentFogRadarDarkness = normalizeFogPercent(value);
-  persist(activeStorageKeys().fogRadarDarkness, String(currentFogRadarDarkness));
-}
-
-export function getFogUnseenDesaturation(): number {
-  return currentFogUnseenDesaturation;
-}
-
-export function setFogUnseenDesaturation(value: number): void {
-  currentFogUnseenDesaturation = normalizeFogPercent(value);
-  persist(activeStorageKeys().fogUnseenDesaturation, String(currentFogUnseenDesaturation));
-}
-
-export function getFogRadarDesaturation(): number {
-  return currentFogRadarDesaturation;
-}
-
-export function setFogRadarDesaturation(value: number): void {
-  currentFogRadarDesaturation = normalizeFogPercent(value);
-  persist(activeStorageKeys().fogRadarDesaturation, String(currentFogRadarDesaturation));
-}
-
-export function getFogEdgeSoftness(): number {
-  return currentFogEdgeSoftness;
-}
-
-export function setFogEdgeSoftness(value: number): void {
-  currentFogEdgeSoftness = normalizeFogEdgeSoftness(value);
-  persist(activeStorageKeys().fogEdgeSoftness, String(currentFogEdgeSoftness));
-}
-
 export function getFogShadePresentationSettings(): FogShadePresentationSettings {
   return {
-    unseenDarkness: currentFogUnseenDarkness / 100,
-    radarDarkness: currentFogRadarDarkness / 100,
-    unseenDesaturation: currentFogUnseenDesaturation / 100,
-    radarDesaturation: currentFogRadarDesaturation / 100,
-    edgeSoftnessWorld: currentFogEdgeSoftness,
+    unseenDarkness: FOG_PRESENTATION.shade.unseenDarknessPercent / 100,
+    radarDarkness: FOG_PRESENTATION.shade.radarDarknessPercent / 100,
+    unseenDesaturation: FOG_PRESENTATION.shade.unseenColorLossPercent / 100,
+    radarDesaturation: FOG_PRESENTATION.shade.radarColorLossPercent / 100,
+    edgeSoftnessWorld: FOG_PRESENTATION.shade.edgeSoftnessWorld,
   };
 }
 
@@ -1220,25 +1046,6 @@ export function getMaterialExplosions(): boolean {
 export function setMaterialExplosions(enabled: boolean): void {
   currentMaterialExplosions = enabled;
   persist(activeStorageKeys().materialExplosions, String(enabled));
-}
-
-export function getBeamSnapToTurret(): boolean {
-  return currentBeamSnapToTurret;
-}
-
-export function setBeamSnapToTurret(enabled: boolean): void {
-  currentBeamSnapToTurret = enabled;
-  persist(activeStorageKeys().beamSnapToTurret, String(enabled));
-}
-
-export function getResourceBallDensity(): number {
-  return currentResourceBallDensity;
-}
-
-export function setResourceBallDensity(value: number): void {
-  if (!isResourceBallDensityOption(value)) return;
-  applyResourceBallDensity(value);
-  persist(activeStorageKeys().resourceBallDensity, String(value));
 }
 
 export function getTriangleDebug(): boolean {

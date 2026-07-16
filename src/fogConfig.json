@@ -11,13 +11,6 @@
       "unseenColorLossPercent": 50,
       "radarColorLossPercent": 25,
       "edgeSoftnessWorld": 192
-    },
-    "controlOptions": {
-      "unseenDarknessPercent": [0, 25, 42, 60, 80],
-      "radarDarknessPercent": [0, 12, 24, 36, 48],
-      "unseenColorLossPercent": [0, 25, 50, 75, 100],
-      "radarColorLossPercent": [0, 25, 50, 75, 100],
-      "edgeSoftnessWorld": [0, 64, 128, 192, 256, 384]
     }
   }
 }

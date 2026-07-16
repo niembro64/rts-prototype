@@ -1108,14 +1108,7 @@ const {
   smokeTrails,
   smokeSoftEdges,
   fogShade,
-  fogUnseenDarkness,
-  fogRadarDarkness,
-  fogUnseenDesaturation,
-  fogRadarDesaturation,
-  fogEdgeSoftness,
   materialExplosions,
-  beamSnapToTurret,
-  resourceBallDensity,
   triangleDebug,
   wallTriangleDebug,
   buildGridDebug,
@@ -1124,10 +1117,7 @@ const {
   elevationMap,
   pathingMap,
   pathingDebugUnit,
-  sightBoundary,
-  radarBoundary,
   clientUnitGroundNormalEmaMode,
-  edgeScrollEnabled,
   dragPanEnabled,
   waypointDetail,
   entityHud,
@@ -1178,14 +1168,7 @@ const {
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
   toggleFogShade,
-  changeFogUnseenDarkness,
-  changeFogRadarDarkness,
-  changeFogUnseenDesaturation,
-  changeFogRadarDesaturation,
-  changeFogEdgeSoftness,
   toggleMaterialExplosions,
-  toggleBeamSnapToTurret,
-  changeResourceBallDensity,
   toggleTriangleDebug,
   toggleWallTriangleDebug,
   toggleBuildGridDebug,
@@ -1195,14 +1178,12 @@ const {
   togglePathingMap,
   changePathingDebugUnit,
   toggleSightBoundary,
-  toggleRadarBoundary,
   changeClientUnitGroundNormalEmaMode,
   changeWaypointDetail,
   toggleEntityHud,
   changeSelectionHudMode,
   changeCommandHotkeyPreset,
   refreshCommandHotkeys,
-  toggleEdgeScroll,
   toggleDragPan,
   toggleAllPan,
   toggleAllSounds,
@@ -2008,18 +1989,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   smokeTrails: smokeTrails.value,
   smokeSoftEdges: smokeSoftEdges.value,
   fogShade: fogShade.value,
-  fogUnseenDarkness: fogUnseenDarkness.value,
-  fogRadarDarkness: fogRadarDarkness.value,
-  fogUnseenDesaturation: fogUnseenDesaturation.value,
-  fogRadarDesaturation: fogRadarDesaturation.value,
-  fogEdgeSoftness: fogEdgeSoftness.value,
   materialExplosions: materialExplosions.value,
-  beamSnapToTurret: beamSnapToTurret.value,
-  resourceBallDensity: resourceBallDensity.value,
   clientUnitGroundNormalEmaMode: clientUnitGroundNormalEmaMode.value,
   allPanActive: allPanActive.value,
   dragPanEnabled: dragPanEnabled.value,
-  edgeScrollEnabled: edgeScrollEnabled.value,
   showServerControls: showServerControls.value,
   triangleDebug: triangleDebug.value,
   wallTriangleDebug: wallTriangleDebug.value,
@@ -2029,8 +2002,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   elevationMap: elevationMap.value,
   pathingMap: pathingMap.value,
   pathingDebugUnit: pathingDebugUnit.value,
-  sightBoundary: sightBoundary.value,
-  radarBoundary: radarBoundary.value,
   renderMode: renderMode.value,
   audioScope: audioScope.value,
   masterVolume: masterVolume.value,
@@ -2068,18 +2039,10 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleSmokeTrails,
   toggleSmokeSoftEdges,
   toggleFogShade,
-  changeFogUnseenDarkness,
-  changeFogRadarDarkness,
-  changeFogUnseenDesaturation,
-  changeFogRadarDesaturation,
-  changeFogEdgeSoftness,
   toggleMaterialExplosions,
-  toggleBeamSnapToTurret,
-  changeResourceBallDensity,
   changeClientUnitGroundNormalEmaMode,
   toggleAllPan,
   toggleDragPan,
-  toggleEdgeScroll,
   toggleTriangleDebug,
   toggleWallTriangleDebug,
   toggleBuildGridDebug,
@@ -2088,8 +2051,6 @@ const clientControlBarModel = reactive<GameCanvasClientControlBarModel>({
   toggleElevationMap,
   togglePathingMap,
   changePathingDebugUnit,
-  toggleSightBoundary,
-  toggleRadarBoundary,
   changeRenderMode,
   changeAudioScope,
   changeMasterVolume,
@@ -2217,18 +2178,10 @@ watchEffect(() => {
   m.smokeTrails = smokeTrails.value;
   m.smokeSoftEdges = smokeSoftEdges.value;
   m.fogShade = fogShade.value;
-  m.fogUnseenDarkness = fogUnseenDarkness.value;
-  m.fogRadarDarkness = fogRadarDarkness.value;
-  m.fogUnseenDesaturation = fogUnseenDesaturation.value;
-  m.fogRadarDesaturation = fogRadarDesaturation.value;
-  m.fogEdgeSoftness = fogEdgeSoftness.value;
   m.materialExplosions = materialExplosions.value;
-  m.beamSnapToTurret = beamSnapToTurret.value;
-  m.resourceBallDensity = resourceBallDensity.value;
   m.clientUnitGroundNormalEmaMode = clientUnitGroundNormalEmaMode.value;
   m.allPanActive = allPanActive.value;
   m.dragPanEnabled = dragPanEnabled.value;
-  m.edgeScrollEnabled = edgeScrollEnabled.value;
   m.showServerControls = showServerControls.value;
   m.triangleDebug = triangleDebug.value;
   m.wallTriangleDebug = wallTriangleDebug.value;
@@ -2238,8 +2191,6 @@ watchEffect(() => {
   m.elevationMap = elevationMap.value;
   m.pathingMap = pathingMap.value;
   m.pathingDebugUnit = pathingDebugUnit.value;
-  m.sightBoundary = sightBoundary.value;
-  m.radarBoundary = radarBoundary.value;
   m.renderMode = renderMode.value;
   m.audioScope = audioScope.value;
   m.masterVolume = masterVolume.value;

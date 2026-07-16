@@ -117,19 +117,10 @@ export type ClientBarConfig = {
    *  Presentation only; battle-level fog still owns authoritative
    *  visibility and snapshot filtering. */
   readonly fogShade: BooleanSetting;
-  /** Independent presentation strengths for the two non-visual sensor tiers.
-   * Percent values affect color only and never authoritative fog behavior. */
-  readonly fogUnseenDarkness: LabeledOptionsConfig<number>;
-  readonly fogRadarDarkness: LabeledOptionsConfig<number>;
-  readonly fogUnseenDesaturation: LabeledOptionsConfig<number>;
-  readonly fogRadarDesaturation: LabeledOptionsConfig<number>;
-  /** Width of the world-space transition band around sensor coverage. */
-  readonly fogEdgeSoftness: LabeledOptionsConfig<number>;
   /** Client-only death material breakup: death fire puff plus part-based
    *  Debris3D chunks. Does not affect authoritative death, damage,
    *  knockback, or the dying shell materialization fade. */
   readonly materialExplosions: BooleanSetting;
-  readonly beamSnapToTurret: BooleanSetting;
   readonly triangleDebug: BooleanSetting;
   readonly wallTriangleDebug: BooleanSetting;
   readonly buildGridDebug: BooleanSetting;

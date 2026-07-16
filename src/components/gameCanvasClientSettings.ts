@@ -9,7 +9,6 @@ import {
   getAudioScope,
   getAudioSmoothing,
   getAirLiftProbeDebug,
-  getBeamSnapToTurret,
   getBuildGridDebug,
   getCameraFollowMode,
   getCameraFovDegrees,
@@ -19,11 +18,6 @@ import {
   getDragPanEnabled,
   getElevationMap,
   getFogShade,
-  getFogUnseenDarkness,
-  getFogRadarDarkness,
-  getFogUnseenDesaturation,
-  getFogRadarDesaturation,
-  getFogEdgeSoftness,
   getMaterialExplosions,
   getPathingMap,
   getPathingDebugUnit,
@@ -41,7 +35,6 @@ import {
   getProjRangeToggle,
   getRangeToggle,
   getRenderMode,
-  getResourceBallDensity,
   getSoundToggle,
   getTriangleDebug,
   getWallTriangleDebug,
@@ -53,7 +46,6 @@ import {
   setAudioScope,
   setAudioSmoothing,
   setAirLiftProbeDebug,
-  setBeamSnapToTurret,
   setBuildGridDebug,
   setCameraFollowMode,
   setCameraFovDegrees,
@@ -63,11 +55,6 @@ import {
   setDragPanEnabled,
   setElevationMap,
   setFogShade,
-  setFogUnseenDarkness,
-  setFogRadarDarkness,
-  setFogUnseenDesaturation,
-  setFogRadarDesaturation,
-  setFogEdgeSoftness,
   setMaterialExplosions,
   setPathingMap,
   setPathingDebugUnit,
@@ -85,7 +72,6 @@ import {
   setProjRangeToggle,
   setRangeToggle,
   setRenderMode,
-  setResourceBallDensity,
   setSoundToggle,
   setTriangleDebug,
   setWallTriangleDebug,
@@ -108,7 +94,6 @@ import {
   setActiveCommandHotkeyPresetId,
   type CommandHotkeyPresetId,
 } from '../game/input/commandHotkeys';
-import { DEFAULT_BALLS_PER_RESOURCE_PER_SECOND } from '../resourceConfig';
 import type {
   AudioScope,
   CameraFovDegrees,
@@ -146,14 +131,7 @@ export function useGameCanvasClientSettings({
   const smokeTrails = ref<boolean>(getSmokeTrails());
   const smokeSoftEdges = ref<boolean>(getSmokeSoftEdges());
   const fogShade = ref<boolean>(getFogShade());
-  const fogUnseenDarkness = ref(getFogUnseenDarkness());
-  const fogRadarDarkness = ref(getFogRadarDarkness());
-  const fogUnseenDesaturation = ref(getFogUnseenDesaturation());
-  const fogRadarDesaturation = ref(getFogRadarDesaturation());
-  const fogEdgeSoftness = ref(getFogEdgeSoftness());
   const materialExplosions = ref<boolean>(getMaterialExplosions());
-  const beamSnapToTurret = ref<boolean>(getBeamSnapToTurret());
-  const resourceBallDensity = ref<number>(getResourceBallDensity());
   const triangleDebug = ref<boolean>(getTriangleDebug());
   const wallTriangleDebug = ref<boolean>(getWallTriangleDebug());
   const buildGridDebug = ref<boolean>(getBuildGridDebug());
@@ -238,14 +216,7 @@ export function useGameCanvasClientSettings({
     smokeTrails.value = getSmokeTrails();
     smokeSoftEdges.value = getSmokeSoftEdges();
     fogShade.value = getFogShade();
-    fogUnseenDarkness.value = getFogUnseenDarkness();
-    fogRadarDarkness.value = getFogRadarDarkness();
-    fogUnseenDesaturation.value = getFogUnseenDesaturation();
-    fogRadarDesaturation.value = getFogRadarDesaturation();
-    fogEdgeSoftness.value = getFogEdgeSoftness();
     materialExplosions.value = getMaterialExplosions();
-    beamSnapToTurret.value = getBeamSnapToTurret();
-    resourceBallDensity.value = getResourceBallDensity();
     triangleDebug.value = getTriangleDebug();
     wallTriangleDebug.value = getWallTriangleDebug();
     buildGridDebug.value = getBuildGridDebug();
@@ -444,46 +415,10 @@ export function useGameCanvasClientSettings({
     fogShade.value = newValue;
   }
 
-  function changeFogUnseenDarkness(value: number): void {
-    setFogUnseenDarkness(value);
-    fogUnseenDarkness.value = getFogUnseenDarkness();
-  }
-
-  function changeFogRadarDarkness(value: number): void {
-    setFogRadarDarkness(value);
-    fogRadarDarkness.value = getFogRadarDarkness();
-  }
-
-  function changeFogUnseenDesaturation(value: number): void {
-    setFogUnseenDesaturation(value);
-    fogUnseenDesaturation.value = getFogUnseenDesaturation();
-  }
-
-  function changeFogRadarDesaturation(value: number): void {
-    setFogRadarDesaturation(value);
-    fogRadarDesaturation.value = getFogRadarDesaturation();
-  }
-
-  function changeFogEdgeSoftness(value: number): void {
-    setFogEdgeSoftness(value);
-    fogEdgeSoftness.value = getFogEdgeSoftness();
-  }
-
   function toggleMaterialExplosions(): void {
     const newValue = !materialExplosions.value;
     setMaterialExplosions(newValue);
     materialExplosions.value = newValue;
-  }
-
-  function toggleBeamSnapToTurret(): void {
-    const newValue = !beamSnapToTurret.value;
-    setBeamSnapToTurret(newValue);
-    beamSnapToTurret.value = newValue;
-  }
-
-  function changeResourceBallDensity(value: number): void {
-    setResourceBallDensity(value);
-    resourceBallDensity.value = getResourceBallDensity();
   }
 
   function toggleTriangleDebug(): void {
@@ -643,16 +578,8 @@ export function useGameCanvasClientSettings({
     smokeSoftEdges.value = cd.smokeSoftEdges.default;
     setFogShade(cd.fogShade.default);
     fogShade.value = cd.fogShade.default;
-    changeFogUnseenDarkness(cd.fogUnseenDarkness.default);
-    changeFogRadarDarkness(cd.fogRadarDarkness.default);
-    changeFogUnseenDesaturation(cd.fogUnseenDesaturation.default);
-    changeFogRadarDesaturation(cd.fogRadarDesaturation.default);
-    changeFogEdgeSoftness(cd.fogEdgeSoftness.default);
     setMaterialExplosions(cd.materialExplosions.default);
     materialExplosions.value = cd.materialExplosions.default;
-    setBeamSnapToTurret(cd.beamSnapToTurret.default);
-    beamSnapToTurret.value = cd.beamSnapToTurret.default;
-    changeResourceBallDensity(DEFAULT_BALLS_PER_RESOURCE_PER_SECOND);
     setTriangleDebug(cd.triangleDebug.default);
     triangleDebug.value = cd.triangleDebug.default;
     setWallTriangleDebug(cd.wallTriangleDebug.default);
@@ -739,14 +666,7 @@ export function useGameCanvasClientSettings({
     smokeTrails,
     smokeSoftEdges,
     fogShade,
-    fogUnseenDarkness,
-    fogRadarDarkness,
-    fogUnseenDesaturation,
-    fogRadarDesaturation,
-    fogEdgeSoftness,
     materialExplosions,
-    beamSnapToTurret,
-    resourceBallDensity,
     triangleDebug,
     wallTriangleDebug,
     buildGridDebug,
@@ -809,14 +729,7 @@ export function useGameCanvasClientSettings({
     toggleSmokeTrails,
     toggleSmokeSoftEdges,
     toggleFogShade,
-    changeFogUnseenDarkness,
-    changeFogRadarDarkness,
-    changeFogUnseenDesaturation,
-    changeFogRadarDesaturation,
-    changeFogEdgeSoftness,
     toggleMaterialExplosions,
-    toggleBeamSnapToTurret,
-    changeResourceBallDensity,
     toggleTriangleDebug,
     toggleWallTriangleDebug,
     toggleBuildGridDebug,
