@@ -384,7 +384,6 @@ export function executeCommand(ctx: CommandContext, command: Command): void {
       break;
     case 'setPaused':
     case 'adjustGameSpeed':
-    case 'setSendGridInfo':
     case 'setBackgroundUnitBlueprintEnabled':
     case 'setBackgroundBuildingBlueprintEnabled':
     case 'setBackgroundTowerBlueprintEnabled':

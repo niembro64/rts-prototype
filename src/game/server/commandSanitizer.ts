@@ -199,8 +199,6 @@ function sanitizeCommandWithTick(command: Command, world: WorldState, tick: numb
       return SERVER_CONFIG.unitGroundNormalEma.options.includes(command.mode)
         ? { ...command, tick }
         : null;
-    case 'setSendGridInfo':
-      return typeof command.enabled === 'boolean' ? { ...command, tick } : null;
     case 'setBackgroundUnitBlueprintEnabled':
       return typeof command.enabled === 'boolean' && isBuildableUnitBlueprintId(command.unitBlueprintId)
         ? { ...command, tick }

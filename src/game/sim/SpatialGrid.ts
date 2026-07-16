@@ -718,34 +718,6 @@ class SpatialGrid {
     return this._unitsAndBuildingsSlotsResult;
   }
 
-  // ===================== Debug =====================
-
-  getCellSize(): number {
-    return this.cellSize;
-  }
-
-  /** Per-cell unique-player debug listing. Reusable array; do not
-   *  store the reference. */
-  getOccupiedCells(): { cell: { x: number; y: number; z: number }; players: number[] }[] {
-    const total = this.api().queryOccupiedCellsDebug();
-    const slots = this.scratch(total);
-    const result: { cell: { x: number; y: number; z: number }; players: number[] }[] = [];
-    if (total === 0) return result;
-    const nCells = slots[0];
-    let read = 1;
-    for (let i = 0; i < nCells; i++) {
-      const cx = slots[read++] | 0;
-      const cy = slots[read++] | 0;
-      const cz = slots[read++] | 0;
-      const nPlayers = slots[read++];
-      const players: number[] = [];
-      for (let p = 0; p < nPlayers; p++) {
-        players.push(slots[read++]);
-      }
-      result.push({ cell: { x: cx, y: cy, z: cz }, players });
-    }
-    return result;
-  }
 }
 
 // Singleton instance for the game

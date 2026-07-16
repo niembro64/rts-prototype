@@ -277,7 +277,6 @@ import __wbg_init, {
   spatial_query_enemy_units_in_radius,
   spatial_query_enemy_projectiles_in_radius,
   spatial_query_enemy_units_and_projectiles_in_radius,
-  spatial_query_occupied_cells_debug,
   spatial_scratch_ptr,
   spatial_scratch_len,
   spatial_slot_kind,
@@ -453,11 +452,6 @@ import __wbg_init, {
   snapshot_encode_envelope_emit_scan_pulses,
   snapshot_encode_scan_pulse_scratch_ptr,
   snapshot_encode_scan_pulse_scratch_ensure,
-  snapshot_encode_envelope_emit_grid,
-  snapshot_encode_grid_cell_scratch_ptr,
-  snapshot_encode_grid_cell_scratch_ensure,
-  snapshot_encode_grid_search_cell_scratch_ptr,
-  snapshot_encode_grid_search_cell_scratch_ensure,
   snapshot_encode_envelope_emit_shroud,
   snapshot_encode_shroud_scratch_ptr,
   snapshot_encode_shroud_scratch_ensure,
@@ -2228,9 +2222,6 @@ export interface SpatialApi {
     x: number, y: number, z: number, r: number,
     excludePlayer: number,
   ) => number;
-  /** Debug: per-cell unique-player listing. Output: [nCells, per
-   *  cell: (cx: i32, cy: i32, cz: i32, nPlayers, p0, p1, ...)]. */
-  queryOccupiedCellsDebug: () => number;
 
   // ---------- Scratch buffer access ----------
 
@@ -3258,8 +3249,8 @@ export interface SnapshotEncodeApi {
    *  Caller must emit the entities key next with emitRawKeyValue. */
   envelopeBeginPackedEntities: (tick: number, totalKeyCount: number) => void;
   /** Append a top-level key and an already MessagePack-encoded value.
-   *  Transitional DP-02 bridge for low-frequency fields such as
-   *  debug grids while their dedicated Rust encoders are still pending. */
+   *  Transitional DP-02 bridge for low-frequency fields whose
+   *  dedicated Rust encoders are still pending. */
   emitRawKeyValue: (key: string, value: Uint8Array) => number;
   /** Emit the `entities` key + compact V6 `{v,m,t,b,e}` value.
    *  Caller must first bulk-fill the V6 input scratches (kinds /
@@ -3302,7 +3293,6 @@ export interface SnapshotEncodeApi {
     snapsRateSlot: number,
     serverTimeSlot: number,
     serverIpSlot: number,
-    gridEnabled: number,
     hasUnitsAllowed: number,
     unitsAllowedSlotStart: number,
     unitsAllowedCount: number,
@@ -3413,19 +3403,6 @@ export interface SnapshotEncodeApi {
   scanPulseScratchEnsure: (count: number) => void;
   /** Stride per scan-pulse entry (f64 count). */
   readonly scanPulseScratchStride: number;
-  /** Emit `grid: { cells, searchCells, cellSize }` from compact row
-   *  scratches. Each cell row stores x/y/z plus a player-id bitmask. */
-  emitGrid: (cellCount: number, searchCellCount: number, cellSize: number) => number;
-  /** Raw pointer to the debug-grid cells scratch. */
-  gridCellScratchPtr: () => number;
-  /** Pre-grow the debug-grid cells scratch to hold `count` rows. */
-  gridCellScratchEnsure: (count: number) => void;
-  /** Raw pointer to the debug-grid searchCells scratch. */
-  gridSearchCellScratchPtr: () => number;
-  /** Pre-grow the debug-grid searchCells scratch to hold `count` rows. */
-  gridSearchCellScratchEnsure: (count: number) => void;
-  /** Stride per debug-grid cell row (f64 count). */
-  readonly gridCellScratchStride: number;
   /** Emit `shroud: { gridW, gridH, cellSize, bitmap }`. The bitmap
    *  bytes come from the shroud scratch (caller pre-fills `bytes`
    *  bytes); the wrapper map is emitted with the gridW/gridH/cellSize
@@ -4449,12 +4426,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           scanPulseScratchPtr: snapshot_encode_scan_pulse_scratch_ptr,
           scanPulseScratchEnsure: snapshot_encode_scan_pulse_scratch_ensure,
           scanPulseScratchStride: 6,
-          emitGrid: snapshot_encode_envelope_emit_grid,
-          gridCellScratchPtr: snapshot_encode_grid_cell_scratch_ptr,
-          gridCellScratchEnsure: snapshot_encode_grid_cell_scratch_ensure,
-          gridSearchCellScratchPtr: snapshot_encode_grid_search_cell_scratch_ptr,
-          gridSearchCellScratchEnsure: snapshot_encode_grid_search_cell_scratch_ensure,
-          gridCellScratchStride: 4,
           emitShroud: snapshot_encode_envelope_emit_shroud,
           shroudScratchPtr: snapshot_encode_shroud_scratch_ptr,
           shroudScratchEnsure: snapshot_encode_shroud_scratch_ensure,
@@ -4577,7 +4548,6 @@ export function initSimWasm(moduleOrPath?: InitInput | Promise<InitInput>): Prom
           queryEnemyUnitsInRadius: spatial_query_enemy_units_in_radius,
           queryEnemyProjectilesInRadius: spatial_query_enemy_projectiles_in_radius,
           queryEnemyUnitsAndProjectilesInRadius: spatial_query_enemy_units_and_projectiles_in_radius,
-          queryOccupiedCellsDebug: spatial_query_occupied_cells_debug,
           scratchPtr: spatial_scratch_ptr,
           scratchLen: spatial_scratch_len,
           slotKind: spatial_slot_kind,

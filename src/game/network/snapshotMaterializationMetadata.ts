@@ -17,7 +17,6 @@ import { getEntitySnapshotWireSource } from './stateSerializerEntities';
 export const SNAPSHOT_MATERIALIZATION_STAGES = [
   'lifecycleDrain',
   'meta',
-  'grid',
   'visibility',
   'entityDtos',
   'projectiles',

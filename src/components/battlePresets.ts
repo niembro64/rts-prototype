@@ -41,8 +41,6 @@ export type BattlePreset = {
   readonly terrainDetail: number;
   readonly mapWidthLandCells: number;
   readonly mapLengthLandCells: number;
-  /** Whether the host's grid-debug overlay is on by default. */
-  readonly grid: boolean;
   /** Whether the bottom control bars are collapsed by default. */
   readonly barsCollapsed: boolean;
 };
@@ -128,7 +126,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 0,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      grid: true,
       barsCollapsed: true,
     },
     {
@@ -151,7 +148,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 1,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      grid: false,
       barsCollapsed: true,
     },
     {
@@ -174,7 +170,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 8,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
-      grid: false,
       barsCollapsed: false,
     },
     {
@@ -197,7 +192,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 8,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      grid: false,
       barsCollapsed: false,
     },
     {
@@ -220,7 +214,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 4,
       mapWidthLandCells: 119,
       mapLengthLandCells: 119,
-      grid: false,
       barsCollapsed: false,
     },
     {
@@ -243,7 +236,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 8,
       mapWidthLandCells: 53,
       mapLengthLandCells: 53,
-      grid: false,
       barsCollapsed: false,
     },
     {
@@ -266,7 +258,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 8,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      grid: false,
       barsCollapsed: false,
     },
     {
@@ -289,7 +280,6 @@ function buildPresets(): readonly BattlePreset[] {
       terrainDetail: 8,
       mapWidthLandCells: 79,
       mapLengthLandCells: 79,
-      grid: false,
       barsCollapsed: false,
     },
   ];
@@ -301,7 +291,7 @@ const STORAGE_SELECTED_PRESET = 'battle-selected-preset';
 
 /** Resolve the preset that supplies the default values for a given
  *  battle mode. Every DEMO BATTLE / REAL BATTLE bar default — cap,
- *  fog of war, terrain, grid overlay, bar collapse — flows through
+ *  fog of war, terrain, bar collapse — flows through
  *  the preset returned here. The bars own no inline defaults. */
 export function getModeDefaultPreset(mode: BattleMode): BattlePreset {
   const name = MODE_DEFAULT_PRESET_NAMES[mode];

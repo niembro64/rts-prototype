@@ -720,11 +720,6 @@ export type NetworkServerSnapshotBeamUpdate = {
   endpointDamageable: boolean | null;
 };
 
-export type NetworkServerSnapshotGridCell = {
-  cell: Vec3;
-  players: number[];
-};
-
 export type NetworkServerSnapshotMeta = {
   ticks: {
     avg: number;
@@ -735,7 +730,6 @@ export type NetworkServerSnapshotMeta = {
   };
   snaps: { rate: SnapshotRate };
   server: { time: string; ip: string };
-  grid: boolean;
   units: {
     allowed: string[] | undefined;
     max: number | undefined;
@@ -795,12 +789,6 @@ export type NetworkServerSnapshotGameState = {
   winnerId: PlayerId | undefined;
 };
 
-export type NetworkServerSnapshotGrid = {
-  cells: NetworkServerSnapshotGridCell[];
-  searchCells: NetworkServerSnapshotGridCell[];
-  cellSize: number;
-};
-
 export type NetworkServerSnapshot = {
   tick: number;
   entities: NetworkServerSnapshotEntity[];
@@ -830,7 +818,6 @@ export type NetworkServerSnapshot = {
   projectiles: NetworkServerSnapshotProjectiles | undefined;
   gameState: NetworkServerSnapshotGameState | undefined;
   serverMeta: NetworkServerSnapshotMeta | undefined;
-  grid: NetworkServerSnapshotGrid | undefined;
   terrain: TerrainTileMap | undefined;
   buildability: TerrainBuildabilityGrid | undefined;
   /** True when the presentation snapshot intentionally omits entities

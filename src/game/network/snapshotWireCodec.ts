@@ -74,7 +74,6 @@ const TOP_LEVEL_SNAPSHOT_KEYS = [
   'projectiles',
   'gameState',
   'serverMeta',
-  'grid',
   'terrain',
   'buildability',
   'removedEntityIds',

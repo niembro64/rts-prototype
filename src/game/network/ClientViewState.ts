@@ -23,7 +23,6 @@ import {
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
-  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
   NetworkServerSnapshotResourceMovement,
 } from './NetworkManager';
@@ -413,10 +412,6 @@ export class ClientViewState {
   private readonly typedFullCreationScratch: Entity[] = [];
   private readonly typedFullCreationIds: Set<EntityId> = new ClientEntityIdSet();
 
-  // Spatial grid debug visualization data
-  private gridCells: NetworkServerSnapshotGridCell[] = [];
-  private gridSearchCells: NetworkServerSnapshotGridCell[] = [];
-  private gridCellSize: number = 0;
   private terrainBuildabilityGrid: TerrainBuildabilityGrid | null = null;
 
   // Server metadata from latest snapshot
@@ -3535,22 +3530,8 @@ export class ClientViewState {
       }
     }
 
-    // Store spatial grid debug data. The server sends this diagnostic
-    // payload on a slower cadence than normal snapshots; keep the last
-    // received grid payload until a new one arrives. When the server
-    // toggle is off, serverMeta.grid clears the client copy.
-    const serverMeta = state.serverMeta;
-    if (state.grid) {
-      this.gridCells = state.grid.cells;
-      this.gridSearchCells = state.grid.searchCells;
-      this.gridCellSize = state.grid.cellSize;
-    } else if (serverMeta !== undefined && serverMeta !== null && serverMeta.grid === false) {
-      this.gridCells = [];
-      this.gridSearchCells = [];
-      this.gridCellSize = 0;
-    }
-
     // Store server metadata
+    const serverMeta = state.serverMeta;
     if (serverMeta !== undefined && serverMeta !== null) {
       this.serverMeta = serverMeta;
     }
@@ -4871,20 +4852,6 @@ export class ClientViewState {
     if (hadSelection) this.refreshAllRenderableEntityStates();
   }
 
-  // === Spatial grid debug data ===
-
-  getGridCells(): NetworkServerSnapshotGridCell[] {
-    return this.gridCells;
-  }
-
-  getGridSearchCells(): NetworkServerSnapshotGridCell[] {
-    return this.gridSearchCells;
-  }
-
-  getGridCellSize(): number {
-    return this.gridCellSize;
-  }
-
   getServerMeta(): NetworkServerSnapshotMeta | null {
     return this.serverMeta;
   }
@@ -4905,9 +4872,6 @@ export class ClientViewState {
     this.gameOverWinnerId = null;
     this.gamePhase = 'init';
     this.selectionState.reset();
-    this.gridCells = [];
-    this.gridSearchCells = [];
-    this.gridCellSize = 0;
     this.terrainBuildabilityGrid = null;
     this.serverMeta = null;
     this.renderSpatialIndex.clear();

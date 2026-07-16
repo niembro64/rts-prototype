@@ -56,7 +56,6 @@ function cloneServerMeta(meta: NetworkServerSnapshotMeta): NetworkServerSnapshot
     ticks: { ...meta.ticks },
     snaps: { ...meta.snaps },
     server: { ...meta.server },
-    grid: meta.grid,
     units: {
       allowed: meta.units.allowed ? [...meta.units.allowed] : undefined,
       max: meta.units.max,

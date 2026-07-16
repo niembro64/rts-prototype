@@ -56,7 +56,6 @@ type CommandType =
   | 'setPaused'
   | 'adjustGameSpeed'
   | 'setUnitGroundNormalEmaMode'
-  | 'setSendGridInfo'
   | 'setBackgroundUnitBlueprintEnabled'
   | 'setBackgroundBuildingBlueprintEnabled'
   | 'setBackgroundTowerBlueprintEnabled'
@@ -545,11 +544,6 @@ export type SetUnitGroundNormalEmaModeCommand = BaseCommand & {
   mode: UnitGroundNormalEmaMode;
 };
 
-export type SetSendGridInfoCommand = BaseCommand & {
-  type: 'setSendGridInfo';
-  enabled: boolean;
-};
-
 export type SetBackgroundUnitBlueprintEnabledCommand = BaseCommand & {
   type: 'setBackgroundUnitBlueprintEnabled';
   unitBlueprintId: string;
@@ -664,7 +658,6 @@ export type Command =
   | SetPausedCommand
   | AdjustGameSpeedCommand
   | SetUnitGroundNormalEmaModeCommand
-  | SetSendGridInfoCommand
   | SetBackgroundUnitBlueprintEnabledCommand
   | SetBackgroundBuildingBlueprintEnabledCommand
   | SetBackgroundTowerBlueprintEnabledCommand

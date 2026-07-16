@@ -31,7 +31,6 @@ export type {
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotBeamPoint,
   NetworkServerSnapshotBeamUpdate,
-  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
   LobbyPlayer,
   LobbySettings,

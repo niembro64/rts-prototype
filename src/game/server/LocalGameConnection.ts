@@ -40,7 +40,6 @@ export function canDeliverDirectLocalSnapshotState(state: NetworkServerSnapshot)
     state.sprayTargets !== undefined ||
     state.audioEvents !== undefined ||
     state.scanPulses !== undefined ||
-    state.grid !== undefined ||
     state.serverMeta !== undefined ||
     state.gameState !== undefined ||
     state.removedEntityIds !== undefined

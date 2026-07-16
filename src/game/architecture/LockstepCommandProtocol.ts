@@ -68,7 +68,6 @@ type LockstepCommandRejectionLogger = (rejection: LockstepCommandRejection) => v
 const LOCAL_PRESENTATION_COMMAND_TYPES: ReadonlySet<Command['type']> = new Set([
   'select',
   'clearSelection',
-  'setSendGridInfo',
   'setBackgroundUnitBlueprintEnabled',
   'setBackgroundBuildingBlueprintEnabled',
   'setBackgroundTowerBlueprintEnabled',

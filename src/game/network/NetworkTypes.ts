@@ -22,7 +22,6 @@ export type {
   NetworkServerSnapshotScanPulse,
   NetworkServerSnapshotBeamPoint,
   NetworkServerSnapshotBeamUpdate,
-  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
   NetworkServerSnapshot,
   NetworkServerSnapshotSprayTarget,

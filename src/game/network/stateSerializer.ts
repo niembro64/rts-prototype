@@ -5,7 +5,6 @@ import { entitySlotRegistry } from '../sim/EntitySlotRegistry';
 import type {
   NetworkServerSnapshot,
   NetworkServerSnapshotEntity,
-  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotSimEvent,
   NetworkServerSnapshotSprayTarget,
@@ -25,7 +24,6 @@ import {
   resetEntitySnapshotPool,
   serializeEntitySnapshot,
 } from './stateSerializerEntities';
-import { serializeGridSnapshot } from './stateSerializerGrid';
 import { serializeMinimapSnapshotEntities } from './stateSerializerMinimap';
 import { serializeProjectileSnapshot } from './stateSerializerProjectiles';
 import { serializeResourceMovements } from './stateSerializerResourceMovements';
@@ -64,7 +62,6 @@ const _snapshotBuf: NetworkServerSnapshot = {
   shroud: undefined,
   projectiles: undefined,
   gameState: undefined,
-  grid: undefined,
   serverMeta: undefined,
   terrain: undefined,
   buildability: undefined,
@@ -204,9 +201,6 @@ export function serializeGameState(
   projectileSpawns: ProjectileSpawnEvent[] | undefined = undefined,
   projectileDespawns: ProjectileDespawnEvent[] | undefined = undefined,
   projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined = undefined,
-  gridCells: NetworkServerSnapshotGridCell[] | undefined = undefined,
-  gridSearchCells: NetworkServerSnapshotGridCell[] | undefined = undefined,
-  gridCellSize: number | undefined = undefined,
   options: SerializeGameStateOptions = DEFAULT_SERIALIZE_GAME_STATE_OPTIONS,
 ): NetworkServerSnapshot {
   const recipientPlayerId = options.recipientPlayerId;
@@ -299,12 +293,6 @@ export function serializeGameState(
   }
 
   stageStart = performance.now();
-  const netGrid = serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize);
-  if (stages !== undefined) {
-    addSnapshotMaterializationStageFromStart(stages, 'grid', stageStart);
-  }
-
-  stageStart = performance.now();
   _gameStateBuf.phase = gamePhase;
   _gameStateBuf.winnerId = winnerId;
   if (stages !== undefined) {
@@ -324,7 +312,6 @@ export function serializeGameState(
   _snapshotBuf.shroud = netShroud;
   _snapshotBuf.projectiles = netProjectiles;
   _snapshotBuf.gameState = _gameStateBuf;
-  _snapshotBuf.grid = netGrid;
   _snapshotBuf.removedEntityIds = _removedIdsBuf.length > 0 ? _removedIdsBuf : undefined;
   _snapshotBuf.visibilityFiltered = visibility.isFiltered ? true : undefined;
   _snapshotBuf.visionPlayerMask = visibility.hasRecipient

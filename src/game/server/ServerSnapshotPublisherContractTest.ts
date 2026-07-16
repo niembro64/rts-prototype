@@ -44,7 +44,6 @@ function snapshot(tick: number, entities: NetworkServerSnapshot['entities']): Ne
     projectiles: undefined,
     gameState: undefined,
     serverMeta: undefined,
-    grid: undefined,
     terrain: undefined,
     buildability: undefined,
     visibilityFiltered: undefined,

@@ -9,7 +9,6 @@ type ServerSnapshotMetaInput = {
   tickRateHz: TickRate;
   snapshotRate: SnapshotRate;
   ipAddress: string;
-  gridEnabled: boolean;
   allowedUnits: ReadonlySet<string> | undefined;
   maxUnits: number | undefined;
   unitCount: number | undefined;
@@ -64,7 +63,6 @@ export class ServerSnapshotMetaBuilder {
       },
       snaps: { rate: input.snapshotRate },
       server: { time: this.formatServerTime(), ip: input.ipAddress },
-      grid: input.gridEnabled,
       units: {
         allowed: this.resolveAllowedUnits(input.allowedUnits),
         max: input.maxUnits,

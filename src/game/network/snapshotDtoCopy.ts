@@ -1,19 +1,18 @@
 // Centralized copy/factory helpers for the wire DTO shapes that the
-// snapshot serializer, snapshot cloner, projectile-spawn smoothing
-// queue, and debug-grid publisher all build into pooled buffers.
+// snapshot serializer, snapshot cloner, and projectile-spawn smoothing
+// queue all build into pooled buffers.
 //
 // Each shape used to keep its own factory + per-field copy in two or
 // three modules, which is exactly how DTO fields drift — add a new
 // optional field in one site, miss the others, and the wire schema
 // silently desyncs. Every pair below is the single source of truth;
-// pool wrappers in the serializer, the cloner, the spawn-smoothing
-// queue, and the debug-grid publisher import these directly.
+// pool wrappers in the serializer, the cloner, and the spawn-smoothing
+// queue import these directly.
 
 import type {
   NetworkServerSnapshotAction,
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotEntity,
-  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotProjectileSpawn,
   NetworkServerSnapshotResourceMovement,
@@ -443,18 +442,3 @@ export function copyScanPulseInto(
   return dst;
 }
 
-export function createCellDto(): NetworkServerSnapshotGridCell {
-  return { cell: { x: 0, y: 0, z: 0 }, players: [] };
-}
-
-export function copyCellInto(
-  src: NetworkServerSnapshotGridCell,
-  dst: NetworkServerSnapshotGridCell,
-): NetworkServerSnapshotGridCell {
-  dst.cell.x = src.cell.x;
-  dst.cell.y = src.cell.y;
-  dst.cell.z = src.cell.z;
-  dst.players.length = src.players.length;
-  for (let i = 0; i < src.players.length; i++) dst.players[i] = src.players[i];
-  return dst;
-}

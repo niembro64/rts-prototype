@@ -32,7 +32,6 @@ import { factoryProductionSystem, shiftFactoryProductionQueue } from '../sim/fac
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import { initSimWasm } from '../sim-wasm/init';
 import { ServerBootstrap } from './ServerBootstrap';
-import { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerTickLoop } from './ServerTickLoop';
 import { ServerSnapshotPublisher } from './ServerSnapshotPublisher';
 import {
@@ -159,7 +158,6 @@ export class GameServer {
 
   private startupGateOpen = false;
 
-  private debugGridPublisher = new ServerDebugGridPublisher();
   private snapshotPublisher = new ServerSnapshotPublisher();
   private replayRecorder!: ReplayRecorder;
 
@@ -514,7 +512,6 @@ export class GameServer {
       sim.shieldSurfacePool.clear();
       sim.projectilePool.clear();
     }
-    this.debugGridPublisher.clear();
     this.snapshotPublisher.clear();
     this.snapshotListeners.clearStartupReady();
     this.startupGateOpen = false;
@@ -550,7 +547,6 @@ export class GameServer {
     return {
       world: this.world,
       simulation: this.simulation,
-      debugGridPublisher: this.debugGridPublisher,
       listeners: this.snapshotListeners.entries,
       terrainTileMap: this.terrainTileMap,
       terrainBuildabilityGrid: this.terrainBuildabilityGrid,
@@ -601,11 +597,6 @@ export class GameServer {
         // every client running with the same effective EMA the
         // moment the user clicks the bar button.
         setUnitGroundNormalEmaMode(sanitizedCommand.mode);
-        return;
-      case 'setSendGridInfo':
-        if (!canApplyServerControl) return;
-        recordAcceptedCommand(sanitizedCommand);
-        this.setSendGridInfo(sanitizedCommand.enabled);
         return;
       case 'setBackgroundUnitBlueprintEnabled':
         if (!canApplyServerControl) return;
@@ -850,11 +841,6 @@ export class GameServer {
   // Set the public IP address (called by host component after fetching)
   setIpAddress(ip: string): void {
     this.ipAddress = ip;
-  }
-
-  // Toggle spatial grid debug info in snapshots
-  setSendGridInfo(enabled: boolean): void {
-    this.debugGridPublisher.setEnabled(enabled);
   }
 
   // Get tick rate stats (EMA-based avg and low)

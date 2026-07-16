@@ -178,7 +178,6 @@ export class SnapshotBuffer {
   private _beamPoolA: NetworkServerSnapshotBeamUpdate[] = [];
   private _beamPoolB: NetworkServerSnapshotBeamUpdate[] = [];
   private _beamBufToggle = false;
-  private bufferedGrid: NetworkServerSnapshot['grid'];
   private readonly pendingEntityIndexById = new Map<number, number>();
   private pendingEntityIndexReady = false;
   private readonly removedEntityIdSet = new Set<number>();
@@ -1251,11 +1250,6 @@ export class SnapshotBuffer {
           copyBeamInto(bu, out);
         }
       }
-      if (state.grid) {
-        this.bufferedGrid = state.grid;
-      } else if (state.serverMeta !== undefined && state.serverMeta.grid === false) {
-        this.bufferedGrid = undefined;
-      }
       if (
         state.projectileDeltaOnly === true &&
         this.pendingSnapshot !== null &&
@@ -1315,9 +1309,6 @@ export class SnapshotBuffer {
         pending.buildability = previousBuildability;
       }
       this.pendingSnapshot = pending;
-      if (pending.grid !== undefined) {
-        this.bufferedGrid = pending.grid;
-      }
       this.pendingSnapshotRelease = null;
       releaseSnapshot?.();
     });
@@ -1434,17 +1425,6 @@ export class SnapshotBuffer {
       state.projectiles = undefined;
     }
 
-    if (
-      !state.grid &&
-      this.bufferedGrid &&
-      (state.serverMeta === undefined || state.serverMeta.grid !== false)
-    ) {
-      state.grid = this.bufferedGrid;
-    }
-    if (state.grid === this.bufferedGrid) {
-      this.bufferedGrid = undefined;
-    }
-
     this.consumedSnapshotRelease = releaseSnapshot;
     return state;
   }
@@ -1481,7 +1461,6 @@ export class SnapshotBuffer {
     this.bufferedBeamUpdates.clear();
     this.beamStagePool.length = 0;
     this.beamStagePoolIndex = 0;
-    this.bufferedGrid = undefined;
     this.invalidatePendingEntityIndex();
     this.removedEntityIdSet.clear();
     this._velBufA.length = 0;

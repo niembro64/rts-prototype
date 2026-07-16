@@ -109,7 +109,6 @@ function isGameplayResponseCommand(command: Command): boolean {
     case 'setPaused':
     case 'adjustGameSpeed':
     case 'setUnitGroundNormalEmaMode':
-    case 'setSendGridInfo':
     case 'setBackgroundUnitBlueprintEnabled':
     case 'setBackgroundBuildingBlueprintEnabled':
     case 'setBackgroundTowerBlueprintEnabled':

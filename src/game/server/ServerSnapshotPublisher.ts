@@ -19,7 +19,6 @@ import { serializeSprayTargets } from '../network/stateSerializerSpray';
 import { serializeMinimapSnapshotEntities } from '../network/stateSerializerMinimap';
 import { serializeProjectileSnapshot } from '../network/stateSerializerProjectiles';
 import { serializeResourceMovements } from '../network/stateSerializerResourceMovements';
-import { serializeGridSnapshot } from '../network/stateSerializerGrid';
 import { IndexedEntityIdSet } from '../network/IndexedEntityIdCollections';
 import {
   appendBasicEntityWireRowDirectFromState,
@@ -48,7 +47,6 @@ import type {
 } from '../network/stateSerializer';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import type { SnapshotCallback } from './GameConnection';
-import type { ServerDebugGridPublisher } from './ServerDebugGridPublisher';
 import { ServerSnapshotMetaBuilder } from './ServerSnapshotMetaBuilder';
 import {
   ServerSnapshotWirePreencoder,
@@ -119,7 +117,6 @@ export type SnapshotListenerEntry = {
 type ServerSnapshotPublisherInput = {
   world: WorldState;
   simulation: Simulation;
-  debugGridPublisher: ServerDebugGridPublisher;
   listeners: readonly SnapshotListenerEntry[];
   terrainTileMap: TerrainTileMap;
   terrainBuildabilityGrid: TerrainBuildabilityGrid;
@@ -324,7 +321,6 @@ export class ServerSnapshotPublisher {
       tickRateHz: input.tickRateHz,
       snapshotRate: input.maxSnapshotsDisplay,
       ipAddress: input.ipAddress,
-      gridEnabled: input.debugGridPublisher.isEnabled(),
       allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
       maxUnits: input.world.maxTotalUnits,
       unitCount,
@@ -349,13 +345,6 @@ export class ServerSnapshotPublisher {
       unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
     });
     addMaterializationStage(emitBaseStages, 'meta', stageStart);
-
-    stageStart = performance.now();
-    const gridDebug = input.debugGridPublisher.refresh(performance.now(), input.world);
-    const gridCells = gridDebug.cells;
-    const gridSearchCells = gridDebug.searchCells;
-    const gridCellSize = gridDebug.cellSize;
-    addMaterializationStage(emitBaseStages, 'grid', stageStart);
 
     // Share one SnapshotVisibility per team across the listener loop
     // (FOW-OPT-01). Two teammates merge the same set of
@@ -409,9 +398,6 @@ export class ServerSnapshotPublisher {
           projectileSpawns,
           projectileDespawns,
           projectileMotionUpdates,
-          gridCells,
-          gridSearchCells,
-          gridCellSize,
           emitProjectileDetailFields: true,
           audioOverride,
           sprayOverride,
@@ -502,9 +488,6 @@ export class ServerSnapshotPublisher {
         projectileSpawns,
         projectileDespawns,
         projectileMotionUpdates,
-        gridCells,
-        gridSearchCells,
-        gridCellSize,
         serializeOptions,
       );
 
@@ -637,7 +620,6 @@ export class ServerSnapshotPublisher {
       tickRateHz: input.tickRateHz,
       snapshotRate: input.maxSnapshotsDisplay,
       ipAddress: input.ipAddress,
-      gridEnabled: input.debugGridPublisher.isEnabled(),
       allowedUnits: input.backgroundMode ? input.backgroundAllowedUnitBlueprintIds : undefined,
       maxUnits: input.world.maxTotalUnits,
       unitCount,
@@ -662,13 +644,6 @@ export class ServerSnapshotPublisher {
       unitGroundNormalEmaMode: getUnitGroundNormalEmaMode(),
     });
     addMaterializationStage(emitBaseStages, 'meta', stageStart);
-
-    stageStart = performance.now();
-    const gridDebug = input.debugGridPublisher.refresh(performance.now(), input.world);
-    const gridCells = gridDebug.cells;
-    const gridSearchCells = gridDebug.searchCells;
-    const gridCellSize = gridDebug.cellSize;
-    addMaterializationStage(emitBaseStages, 'grid', stageStart);
 
     const visibilityCache = this.visibilityCache;
     visibilityCache.clear();
@@ -713,9 +688,6 @@ export class ServerSnapshotPublisher {
           projectileSpawns,
           projectileDespawns,
           projectileMotionUpdates,
-          gridCells,
-          gridSearchCells,
-          gridCellSize,
           audioOverride: undefined,
           sprayOverride: undefined,
           minimapOverride: undefined,
@@ -882,12 +854,6 @@ export class ServerSnapshotPublisher {
           winnerId,
         }),
       );
-      const grid = timeMaterializationStage(
-        stages,
-        'grid',
-        () => serializeGridSnapshot(gridCells, gridSearchCells, gridCellSize),
-      );
-
       const state: NetworkServerSnapshot = {
         tick: input.world.getTick(),
         entities,
@@ -903,7 +869,6 @@ export class ServerSnapshotPublisher {
         projectiles,
         gameState,
         serverMeta,
-        grid,
         terrain: undefined,
         buildability: undefined,
         removedEntityIds,
@@ -1235,7 +1200,6 @@ export class ServerSnapshotPublisher {
         projectiles,
         gameState: undefined,
         serverMeta: undefined,
-        grid: undefined,
         terrain: undefined,
         buildability: undefined,
         visibilityFiltered: undefined,

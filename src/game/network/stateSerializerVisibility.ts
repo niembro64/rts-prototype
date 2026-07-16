@@ -190,8 +190,7 @@ export class SnapshotVisibility {
    *  Stored as a number bitmask (FOW-OPT-10) — playerId p
    *  maps to bit (p - 1), so PlayerIds 1..31 fit. isOwnedByRecipientOrAlly
    *  collapses to a single AND + compare per probe, vs Set.has()'s
-   *  hashmap lookup. Same convention already used by
-   *  ServerDebugGridPublisher.playerMask. */
+   *  hashmap lookup. */
   private viewMask: number = 0;
 
   /** True when fog-of-war filtering is active for this snapshot

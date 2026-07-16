@@ -40,7 +40,6 @@ import {
   loadStoredCap,
   loadStoredCenterMagnitude,
   loadStoredDividersMagnitude,
-  loadStoredGrid,
   loadStoredTerrainDTerrain,
   loadStoredMetalDepositStep,
   loadStoredPlateauWallSlopeDegrees,
@@ -1446,9 +1445,6 @@ const displaySnapshotRate = computed(
     serverMetaFromSnapshot.value?.snaps.rate ??
     PRESENTATION_SNAPSHOT_RATE_DEFAULT,
 );
-const displayGridInfo = computed(
-  () => serverMetaFromSnapshot.value?.grid ?? loadStoredGrid(currentBattleMode.value),
-);
 const displayUnitCount = computed(
   () => serverMetaFromSnapshot.value?.units.count ?? 0,
 );
@@ -1499,10 +1495,8 @@ const {
 const {
   resetServerDefaults: resetUnitGroundNormalEmaDefault,
   setUnitGroundNormalEmaModeValue,
-  resetGridInfoToDefault,
 } = useGameCanvasServerSettings({
   currentBattleMode,
-  displayGridInfo,
   serverUnitGroundNormalEmaMode,
   getActiveConnection: () => activeConnection,
 });
@@ -1543,7 +1537,6 @@ const {
   demoBuildingBlueprintIds,
   demoTowerBlueprintIds,
   getActiveConnection: () => activeConnection,
-  resetGridInfoToDefault,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
   applyDividersMagnitude,
@@ -1881,7 +1874,6 @@ watchEffect(() => {
     terrainDetail: terrainDetail.value,
     mapWidthLandCells: mapWidthLandCells.value,
     mapLengthLandCells: mapLengthLandCells.value,
-    grid: displayGridInfo.value,
     barsCollapsed: bottomBarsCollapsed.value,
   });
 });

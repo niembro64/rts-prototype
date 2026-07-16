@@ -5,7 +5,6 @@ import type {
   NetworkServerSnapshotBeamUpdate,
   NetworkServerSnapshotEconomy,
   NetworkServerSnapshotEntity,
-  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMinimapEntity,
   NetworkServerSnapshotProjectileDespawn,
   NetworkServerSnapshotProjectileSpawn,
@@ -69,11 +68,6 @@ import {
   SCAN_PULSE_WIRE_STRIDE,
   getScanPulseWireSource,
 } from './stateSerializerVisibility';
-import {
-  GRID_CELL_WIRE_STRIDE,
-  getGridSnapshotWireSource,
-  type GridSnapshotWireSource,
-} from './stateSerializerGrid';
 import {
   activeFloat64WireValues,
   activeUint32WireValues,
@@ -161,7 +155,6 @@ type SnapshotEncodeApi = SimWasm['snapshotEncode'];
 type SnapshotUnit = NonNullable<NetworkServerSnapshotEntity['unit']>;
 type SnapshotBuilding = NonNullable<NetworkServerSnapshotEntity['building']>;
 type SnapshotProjectiles = NonNullable<NetworkServerSnapshot['projectiles']>;
-type SnapshotGrid = NonNullable<NetworkServerSnapshot['grid']>;
 type SnapshotServerMeta = NetworkServerSnapshotMeta;
 
 const _utf8 = new TextEncoder();
@@ -1309,7 +1302,6 @@ function canEncodeServerMeta(meta: SnapshotServerMeta): boolean {
     !meta.server ||
     typeof meta.server.time !== 'string' ||
     typeof meta.server.ip !== 'string' ||
-    typeof meta.grid !== 'boolean' ||
     !meta.units ||
     (meta.units.allowed !== undefined && !isStringArray(meta.units.allowed)) ||
     !isOptionalFiniteNumber(meta.units.max) ||
@@ -1380,7 +1372,6 @@ function emitServerMeta(sim: SimWasm, meta: SnapshotServerMeta): void {
     snapsRateSlot,
     serverTimeSlot,
     serverIpSlot,
-    meta.grid ? 1 : 0,
     unitsAllowed !== undefined ? 1 : 0,
     unitsAllowedSlotStart,
     unitsAllowed !== undefined ? unitsAllowed.length : 0,
@@ -2072,87 +2063,6 @@ function packScanPulsesIntoScratch(
   }
 }
 
-function gridPlayerMask(players: readonly number[]): number {
-  let mask = 0;
-  for (let i = 0; i < players.length; i++) {
-    const playerId = players[i];
-    if (playerId >= 1 && playerId <= 31) mask |= 1 << (playerId - 1);
-  }
-  return mask >>> 0;
-}
-
-function packGridCellsIntoScratch(
-  sim: SimWasm,
-  cells: readonly NetworkServerSnapshotGridCell[],
-  scratchPtr: number,
-): void {
-  if (cells.length === 0) return;
-  const view = new Float64Array(
-    sim.memory.buffer,
-    scratchPtr,
-    cells.length * GRID_CELL_WIRE_STRIDE,
-  );
-  for (let i = 0; i < cells.length; i++) {
-    const cell = cells[i];
-    const base = i * GRID_CELL_WIRE_STRIDE;
-    view[base + 0] = cell.cell.x;
-    view[base + 1] = cell.cell.y;
-    view[base + 2] = cell.cell.z;
-    view[base + 3] = gridPlayerMask(cell.players);
-  }
-}
-
-function packGridWireSourceIntoScratch(
-  sim: SimWasm,
-  source: GridSnapshotWireSource,
-): { cellCount: number; searchCellCount: number } {
-  const api = sim.snapshotEncode;
-  const cellCount = source.cells.count;
-  api.gridCellScratchEnsure(cellCount);
-  copyFloatWireRowsIntoScratch(
-    sim,
-    api.gridCellScratchPtr(),
-    source.cells,
-    GRID_CELL_WIRE_STRIDE,
-  );
-
-  const searchCellCount = source.searchCells.count;
-  api.gridSearchCellScratchEnsure(searchCellCount);
-  copyFloatWireRowsIntoScratch(
-    sim,
-    api.gridSearchCellScratchPtr(),
-    source.searchCells,
-    GRID_CELL_WIRE_STRIDE,
-  );
-
-  return { cellCount, searchCellCount };
-}
-
-function packGridIntoScratch(
-  sim: SimWasm,
-  grid: SnapshotGrid,
-): { cellCount: number; searchCellCount: number } {
-  const source = getGridSnapshotWireSource(grid);
-  if (
-    source !== undefined &&
-    source.cells.count === grid.cells.length &&
-    source.searchCells.count === grid.searchCells.length
-  ) {
-    return packGridWireSourceIntoScratch(sim, source);
-  }
-
-  const api = sim.snapshotEncode;
-  const cellCount = grid.cells.length;
-  api.gridCellScratchEnsure(cellCount);
-  packGridCellsIntoScratch(sim, grid.cells, api.gridCellScratchPtr());
-
-  const searchCellCount = grid.searchCells.length;
-  api.gridSearchCellScratchEnsure(searchCellCount);
-  packGridCellsIntoScratch(sim, grid.searchCells, api.gridSearchCellScratchPtr());
-
-  return { cellCount, searchCellCount };
-}
-
 function packShroudIntoScratch(sim: SimWasm, shroud: NonNullable<NetworkServerSnapshot['shroud']>): void {
   if (shroud.bitmap.length === 0) return;
   const api = sim.snapshotEncode;
@@ -2375,12 +2285,6 @@ function emitTopLevelKey(
       const pulses = value as NonNullable<NetworkServerSnapshot['scanPulses']>;
       packScanPulsesIntoScratch(sim, pulses);
       api.emitScanPulses(pulses.length);
-      return;
-    }
-    case 'grid': {
-      const grid = value as SnapshotGrid;
-      const { cellCount, searchCellCount } = packGridIntoScratch(sim, grid);
-      api.emitGrid(cellCount, searchCellCount, grid.cellSize);
       return;
     }
     case 'shroud': {

@@ -323,7 +323,6 @@ function createSnapshot(
     },
     gameState: undefined,
     serverMeta: undefined,
-    grid: undefined,
     terrain: undefined,
     buildability: undefined,
     visibilityFiltered: undefined,

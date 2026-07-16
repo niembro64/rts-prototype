@@ -15,7 +15,6 @@ import type {
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '@/types/terrain';
 import {
   copyBeamInto,
-  copyCellInto,
   copyMinimapEntityInto,
   copyResourceMovementInto,
   copyScanPulseInto,
@@ -26,7 +25,6 @@ import {
   copyMotionInto,
   copyWaypointInto,
   createBeamDto,
-  createCellDto,
   createMinimapEntityDto,
   createResourceMovementDto,
   createScanPulseDto,
@@ -175,8 +173,6 @@ type ReusableNetworkSnapshotClonerRetainedCounts = {
   projectileDespawns: number;
   projectileMotionUpdates: number;
   beamUpdates: number;
-  gridCells: number;
-  gridSearchCells: number;
   removedEntityIds: number;
   hasTerrain: boolean;
   hasBuildability: boolean;
@@ -441,7 +437,6 @@ export class ReusableNetworkSnapshotCloner {
     projectiles: undefined,
     gameState: undefined,
     serverMeta: undefined,
-    grid: undefined,
     terrain: undefined,
     buildability: undefined,
     visibilityFiltered: undefined,
@@ -464,7 +459,6 @@ export class ReusableNetworkSnapshotCloner {
     motionUpdates: undefined,
     beamUpdates: undefined,
   };
-  private grid: NonNullable<NetworkServerSnapshot['grid']> = { cells: [], searchCells: [], cellSize: 0 };
   private gameState: NonNullable<NetworkServerSnapshot['gameState']> = {
     phase: 'battle',
     winnerId: undefined,
@@ -479,7 +473,6 @@ export class ReusableNetworkSnapshotCloner {
     ticks: { avg: 0, low: 0, rate: 0 },
     snaps: { rate: 0 },
     server: { time: '', ip: '' },
-    grid: false,
     units: { allowed: undefined, max: undefined, count: undefined },
     turretShieldPanelsEnabled: undefined,
     turretShieldSpheresEnabled: undefined,
@@ -527,8 +520,6 @@ export class ReusableNetworkSnapshotCloner {
     this.projectiles.despawns = undefined;
     this.projectiles.motionUpdates = undefined;
     this.projectiles.beamUpdates = undefined;
-    this.grid.cells.length = 0;
-    this.grid.searchCells.length = 0;
     this.removedEntityIds.length = 0;
     this.snapshot.sprayTargets = undefined;
     this.snapshot.resourceMovements = undefined;
@@ -537,7 +528,6 @@ export class ReusableNetworkSnapshotCloner {
     this.snapshot.shroud = undefined;
     this.snapshot.minimapEntities = undefined;
     this.snapshot.projectiles = undefined;
-    this.snapshot.grid = undefined;
     this.snapshot.terrain = undefined;
     this.snapshot.buildability = undefined;
     this.snapshot.gameState = undefined;
@@ -561,8 +551,6 @@ export class ReusableNetworkSnapshotCloner {
       projectileDespawns: this.despawns.length,
       projectileMotionUpdates: this.motionUpdates.length,
       beamUpdates: this.beamUpdates.length,
-      gridCells: this.grid.cells.length,
-      gridSearchCells: this.grid.searchCells.length,
       removedEntityIds: this.removedEntityIds.length,
       hasTerrain: this.snapshot.terrain !== undefined,
       hasBuildability: this.snapshot.buildability !== undefined,
@@ -671,7 +659,6 @@ export class ReusableNetworkSnapshotCloner {
       dsm.snaps.rate = sm.snaps.rate;
       dsm.server.time = sm.server.time;
       dsm.server.ip = sm.server.ip;
-      dsm.grid = sm.grid;
       const dunits = dsm.units;
       if (sm.units.allowed) {
         const allowed = this.serverMetaUnitsAllowed;
@@ -723,14 +710,6 @@ export class ReusableNetworkSnapshotCloner {
       dst.serverMeta = dsm;
     } else {
       dst.serverMeta = undefined;
-    }
-    if (state.grid) {
-      this.grid.cells = this.copyRequiredArray(state.grid.cells, this.grid.cells, createCellDto, copyCellInto);
-      this.grid.searchCells = this.copyRequiredArray(state.grid.searchCells, this.grid.searchCells, createCellDto, copyCellInto);
-      this.grid.cellSize = state.grid.cellSize;
-      dst.grid = this.grid;
-    } else {
-      dst.grid = undefined;
     }
     dst.terrain = state.terrain ? cloneTerrainTileMap(state.terrain) : undefined;
     dst.buildability = state.buildability

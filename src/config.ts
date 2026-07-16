@@ -39,7 +39,6 @@ import telemetryConfigJson from './telemetryConfig.json';
 import economyConfigJson from './economyConfig.json';
 import windConfigJson from './windConfig.json';
 import physicsTuningConfigJson from './physicsTuningConfig.json';
-import serverDebugGridConfigJson from './serverDebugGridConfig.json';
 import cameraConfigJson from './cameraConfig.json';
 import realBattleConfigJson from './realBattleConfig.json';
 import backgroundBattleConfigJson from './backgroundBattleConfig.json';
@@ -68,13 +67,6 @@ export const LAND_TILE_GROUND_LIFT = worldRenderConfigJson.landTileGroundLift;
 // so terrain and overlay layers do not hide them.
 export const WAYPOINT_GROUND_LIFT = worldRenderConfigJson.waypointGroundLift;
 
-// Host-server spatial-grid debug snapshots are intentionally throttled
-// separately from normal gameplay snapshots. These overlays are diagnostic
-// data, not simulation state, and recomputing/sending them every snapshot can
-// create visible hitches at high unit counts.
-export const SERVER_GRID_DEBUG_INTERVAL_MS = serverDebugGridConfigJson.snapshotIntervalMs;
-export const SERVER_GRID_DEBUG_MAX_OCCUPIED_CELLS = serverDebugGridConfigJson.maxOccupiedCells;
-export const SERVER_GRID_DEBUG_MAX_SEARCH_CELLS = serverDebugGridConfigJson.maxSearchCells;
 export const GOOD_TPS = telemetryConfigJson.goodTps;
 
 // =============================================================================

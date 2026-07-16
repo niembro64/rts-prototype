@@ -7,7 +7,6 @@ import {
   loadStoredTurretShieldSpheresEnabled,
   loadStoredFogOfWarEnabled,
   loadStoredSlopePathMode,
-  loadStoredGrid,
   loadStoredTurretShieldPanelsEnabled,
 } from '../../battleBarConfig';
 import {
@@ -92,11 +91,6 @@ export function buildStoredBattleServerSettingCommands(
       type: 'setConverterTax',
       tick: 0,
       tax: loadStoredConverterTax(mode),
-    },
-    {
-      type: 'setSendGridInfo',
-      tick: 0,
-      enabled: loadStoredGrid(mode),
     },
   );
 

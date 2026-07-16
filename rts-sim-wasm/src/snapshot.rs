@@ -1069,7 +1069,7 @@ pub fn snapshot_encode_entity_building(
 // Mirrors stateSerializer.ts's `_snapshotBuf` pool entry layout:
 // the entries are inserted in declaration order at pool creation
 // (tick, entities, minimapEntities, economy, sprayTargets,
-// audioEvents, projectiles, gameState, grid, removedEntityIds,
+// audioEvents, projectiles, gameState, removedEntityIds,
 // visibilityFiltered). msgpack-with-
 // ignoreUndefined emits ONLY the keys whose values are not
 // undefined.
@@ -2244,62 +2244,6 @@ snapshot_scratch_pool!(
     init 8,
     ensure(count)
 );
-
-/// Debug-grid scratch — 4 f64 per cell:
-///   [0] x   [1] y   [2] z   [3] playerId bitmask (players 1..31).
-pub(crate) const SNAPSHOT_ENCODE_GRID_CELL_STRIDE: usize = 4;
-
-pub(crate) struct SnapshotEncodeGridScratch {
-    cells: Vec<f64>,
-    search_cells: Vec<f64>,
-}
-
-pub(crate) struct SnapshotEncodeGridScratchHolder(UnsafeCell<Option<SnapshotEncodeGridScratch>>);
-unsafe impl Sync for SnapshotEncodeGridScratchHolder {}
-pub(crate) static SNAPSHOT_ENCODE_GRID_SCRATCH: SnapshotEncodeGridScratchHolder =
-    SnapshotEncodeGridScratchHolder(UnsafeCell::new(None));
-
-#[inline]
-pub(crate) fn snapshot_encode_grid_scratch() -> &'static mut SnapshotEncodeGridScratch {
-    unsafe {
-        let cell = &mut *SNAPSHOT_ENCODE_GRID_SCRATCH.0.get();
-        if cell.is_none() {
-            *cell = Some(SnapshotEncodeGridScratch {
-                cells: vec![0.0; SNAPSHOT_ENCODE_GRID_CELL_STRIDE * 8],
-                search_cells: vec![0.0; SNAPSHOT_ENCODE_GRID_CELL_STRIDE * 8],
-            });
-        }
-        cell.as_mut().unwrap()
-    }
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_grid_cell_scratch_ptr() -> *const f64 {
-    snapshot_encode_grid_scratch().cells.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_grid_cell_scratch_ensure(count: u32) {
-    let needed = (count as usize) * SNAPSHOT_ENCODE_GRID_CELL_STRIDE;
-    let s = snapshot_encode_grid_scratch();
-    if s.cells.len() < needed {
-        s.cells.resize(needed, 0.0);
-    }
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_grid_search_cell_scratch_ptr() -> *const f64 {
-    snapshot_encode_grid_scratch().search_cells.as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn snapshot_encode_grid_search_cell_scratch_ensure(count: u32) {
-    let needed = (count as usize) * SNAPSHOT_ENCODE_GRID_CELL_STRIDE;
-    let s = snapshot_encode_grid_scratch();
-    if s.search_cells.len() < needed {
-        s.search_cells.resize(needed, 0.0);
-    }
-}
 
 /// Removed-entity-IDs scratch — Uint32Array of EntityId values for
 /// the envelope's removedEntityIds field. JS pre-fills before
@@ -4306,7 +4250,6 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     snaps_rate_slot: u32,
     server_time_slot: u32,
     server_ip_slot: u32,
-    grid_enabled: u8,
     has_units_allowed: u8,
     units_allowed_slot_start: u32,
     units_allowed_count: u32,
@@ -4337,7 +4280,7 @@ pub fn snapshot_encode_envelope_emit_server_meta(
 ) -> u32 {
     let w = messagepack_writer();
 
-    let mut field_count: usize = 8; // ticks, snaps, server, grid, units, cpu, wind, unitGroundNormalEma
+    let mut field_count: usize = 7; // ticks, snaps, server, units, cpu, wind, unitGroundNormalEma
     if has_turret_shield_panels_enabled != 0 {
         field_count += 1;
     }
@@ -4384,9 +4327,6 @@ pub fn snapshot_encode_envelope_emit_server_meta(
     write_string_from_scratch(w, server_time_slot);
     w.write_str("ip");
     write_string_from_scratch(w, server_ip_slot);
-
-    w.write_str("grid");
-    w.write_bool(grid_enabled != 0);
 
     let mut units_field_count: usize = 0;
     if has_units_allowed != 0 {
@@ -4984,64 +4924,6 @@ pub fn snapshot_encode_envelope_emit_scan_pulses(count: u32) -> u32 {
         w.write_str("expiresAtTick");
         w.write_uint(expires_at_tick as u64);
     }
-    w.buf.len() as u32
-}
-
-#[inline]
-pub(crate) fn snapshot_encode_write_grid_cell_array(
-    w: &mut MessagePackWriter,
-    rows: &[f64],
-    count: usize,
-) {
-    w.write_array_header(count);
-    for i in 0..count {
-        let base = i * SNAPSHOT_ENCODE_GRID_CELL_STRIDE;
-        let x = rows[base];
-        let y = rows[base + 1];
-        let z = rows[base + 2];
-        let players_mask = rows[base + 3] as u32;
-        let player_count = players_mask.count_ones() as usize;
-
-        w.write_map_header(2);
-        w.write_str("cell");
-        w.write_map_header(3);
-        w.write_str("x");
-        w.write_number(x);
-        w.write_str("y");
-        w.write_number(y);
-        w.write_str("z");
-        w.write_number(z);
-
-        w.write_str("players");
-        w.write_array_header(player_count);
-        for player_id in 1..=31u32 {
-            if (players_mask & (1 << (player_id - 1))) != 0 {
-                w.write_uint(player_id as u64);
-            }
-        }
-    }
-}
-
-/// Emit the spatial debug grid DTO shape from compact row scratch:
-/// `grid: { cells, searchCells, cellSize }`.
-#[wasm_bindgen]
-pub fn snapshot_encode_envelope_emit_grid(
-    cell_count: u32,
-    search_cell_count: u32,
-    cell_size: f64,
-) -> u32 {
-    let w = messagepack_writer();
-    let scratch = snapshot_encode_grid_scratch();
-
-    w.write_str("grid");
-    w.write_map_header(3);
-    w.write_str("cells");
-    snapshot_encode_write_grid_cell_array(w, &scratch.cells, cell_count as usize);
-    w.write_str("searchCells");
-    snapshot_encode_write_grid_cell_array(w, &scratch.search_cells, search_cell_count as usize);
-    w.write_str("cellSize");
-    w.write_number(cell_size);
-
     w.buf.len() as u32
 }
 

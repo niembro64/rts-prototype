@@ -72,7 +72,6 @@ type GameCanvasBattleSettingsOptions = {
   demoBuildingBlueprintIds: readonly string[];
   demoTowerBlueprintIds: readonly string[];
   getActiveConnection: () => GameConnection | null;
-  resetGridInfoToDefault: () => void;
   broadcastLobbySettingsIfHost: () => void;
   applyCenterMagnitude: (value: number, broadcast?: boolean) => void;
   applyDividersMagnitude: (value: number, broadcast?: boolean) => void;
@@ -96,7 +95,6 @@ export function useGameCanvasBattleSettings({
   demoBuildingBlueprintIds,
   demoTowerBlueprintIds,
   getActiveConnection,
-  resetGridInfoToDefault,
   broadcastLobbySettingsIfHost,
   applyCenterMagnitude,
   applyDividersMagnitude,
@@ -398,7 +396,6 @@ export function useGameCanvasBattleSettings({
       },
       false,
     );
-    resetGridInfoToDefault();
     saveSelectedPresetName(preset.name);
     broadcastLobbySettingsIfHost();
   }

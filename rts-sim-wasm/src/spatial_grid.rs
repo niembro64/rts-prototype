@@ -2504,60 +2504,6 @@ pub fn spatial_query_enemy_units_and_projectiles_in_radius(
     (2 + n_units + n_projectiles) as u32
 }
 
-// ===================== Debug queries =====================
-
-/// Emits occupied-cells debug info as
-/// [n_cells, (cx, cy, cz, n_players, p0, p1, ...) per cell]
-/// where (cx, cy, cz) are SIGNED 32-bit cell indices and n_players
-/// counts UNIQUE player ids only (matches getOccupiedCells in TS).
-#[wasm_bindgen]
-pub fn spatial_query_occupied_cells_debug() -> u32 {
-    let state = spatial_grid();
-    state.scratch_u32.clear();
-    state.scratch_u32.push(0);
-    let mut n_cells = 0u32;
-    let mut cells_iter: Vec<(u64, &SpatialCellBucket)> =
-        state.cells.iter().map(|(k, v)| (*k, v)).collect();
-    // Deterministic output: HashMap iteration order varies run-to-run,
-    // which would make replay/debug diffs of this payload noisy.
-    cells_iter.sort_unstable_by_key(|&(k, _)| k);
-    let mut buf = std::mem::take(&mut state.scratch_u32);
-    let mut seen_players: HashSet<u8> = HashSet::default();
-    for (key, bucket) in cells_iter {
-        if bucket.units.is_empty() {
-            continue;
-        }
-        seen_players.clear();
-        for &slot in &bucket.units {
-            let owner = state.slot_owner_player[slot as usize];
-            if owner != 0 {
-                seen_players.insert(owner);
-            }
-        }
-        if seen_players.is_empty() {
-            continue;
-        }
-        // Unpack cube key.
-        let czb = (key & 0xFFFF) as i64;
-        let cyb = ((key >> 16) & 0xFFFF) as i64;
-        let cxb = ((key >> 32) & 0xFFFF) as i64;
-        let cx = (cxb - CONTACT_CELL_BIAS) as i32;
-        let cy = (cyb - CONTACT_CELL_BIAS) as i32;
-        let cz = (czb - CONTACT_CELL_BIAS) as i32;
-        buf.push(cx as u32);
-        buf.push(cy as u32);
-        buf.push(cz as u32);
-        buf.push(seen_players.len() as u32);
-        for p in &seen_players {
-            buf.push(*p as u32);
-        }
-        n_cells += 1;
-    }
-    buf[0] = n_cells;
-    let len = buf.len() as u32;
-    state.scratch_u32 = buf;
-    len
-}
 
 // ===================== Result buffer access =====================
 

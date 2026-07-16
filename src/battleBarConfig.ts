@@ -226,8 +226,6 @@ const STORAGE_DEMO_BUILDINGS = sk.demoBuildings;
 const STORAGE_DEMO_TOWERS = sk.demoTowers;
 const STORAGE_DEMO_CAP = sk.demoCap;
 const STORAGE_REAL_CAP = sk.realCap;
-const STORAGE_DEMO_GRID = sk.demoGrid;
-const STORAGE_REAL_GRID = sk.realGrid;
 const STORAGE_DEMO_FORCE_FIELDS_VISIBLE = sk.demoForceFieldsVisible;
 const STORAGE_REAL_FORCE_FIELDS_VISIBLE = sk.realForceFieldsVisible;
 const STORAGE_DEMO_SHIELDS_OBSTRUCT_SIGHT = sk.demoShieldsObstructSight;
@@ -437,31 +435,6 @@ function saveRealCap(value: number): void {
   persist(STORAGE_REAL_CAP, String(value));
 }
 
-function loadStoredDemoGrid(): boolean {
-  return loadBool(STORAGE_DEMO_GRID) ?? getModeDefaultPreset('demo').grid;
-}
-
-function saveDemoGrid(enabled: boolean): void {
-  persist(STORAGE_DEMO_GRID, String(enabled));
-}
-
-function loadStoredRealGrid(): boolean {
-  return loadBool(STORAGE_REAL_GRID) ?? getModeDefaultPreset('real').grid;
-}
-
-function saveRealGrid(enabled: boolean): void {
-  persist(STORAGE_REAL_GRID, String(enabled));
-}
-
-export function loadStoredGrid(mode: BattleMode): boolean {
-  return mode === 'real' ? loadStoredRealGrid() : loadStoredDemoGrid();
-}
-
-export function saveStoredGrid(mode: BattleMode, enabled: boolean): void {
-  if (mode === 'real') saveRealGrid(enabled);
-  else saveDemoGrid(enabled);
-}
-
 export function loadStoredDemoBarsCollapsed(): boolean {
   return (
     loadBool(STORAGE_DEMO_BARS_COLLAPSED) ??
@@ -521,10 +494,6 @@ export function loadStoredCap(mode: BattleMode): number {
 export function saveStoredCap(mode: BattleMode, value: number): void {
   if (mode === 'real') saveRealCap(value);
   else saveDemoCap(value);
-}
-
-export function getDefaultGrid(mode: BattleMode): boolean {
-  return getModeDefaultPreset(mode).grid;
 }
 
 

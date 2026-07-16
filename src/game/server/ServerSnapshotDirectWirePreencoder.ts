@@ -2,7 +2,6 @@ import type { GamePhase } from '../../types/network';
 import type { TerrainBuildabilityGrid, TerrainTileMap } from '../../types/terrain';
 import type {
   NetworkServerSnapshot,
-  NetworkServerSnapshotGridCell,
   NetworkServerSnapshotMeta,
 } from '../network/NetworkTypes';
 import type { SnapshotWirePayload } from '../network/SnapshotWirePayload';
@@ -19,7 +18,6 @@ import {
   resetEntitySnapshotPool,
   serializeEntitySnapshot,
 } from '../network/stateSerializerEntities';
-import { writeGridSnapshotWireRowsDirect } from '../network/stateSerializerGrid';
 import { writeMinimapSnapshotWireRowsDirect } from '../network/stateSerializerMinimap';
 import { writeProjectileSnapshotWireRowsDirect } from '../network/stateSerializerProjectiles';
 import { writeResourceMovementWireRowsDirect } from '../network/stateSerializerResourceMovements';
@@ -81,9 +79,6 @@ type ServerSnapshotDirectWireInput = {
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
   projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined;
-  gridCells: NetworkServerSnapshotGridCell[] | undefined;
-  gridSearchCells: NetworkServerSnapshotGridCell[] | undefined;
-  gridCellSize: number | undefined;
   emitProjectileDetailFields: boolean;
   audioOverride: SerializerAudioOverride | undefined;
   sprayOverride: SerializerSprayOverride | undefined;
@@ -123,9 +118,6 @@ type ServerSnapshotRichDeltaDirectWireInput = {
   projectileSpawns: ProjectileSpawnEvent[] | undefined;
   projectileDespawns: ProjectileDespawnEvent[] | undefined;
   projectileMotionUpdates: ProjectileMotionUpdateEvent[] | undefined;
-  gridCells: NetworkServerSnapshotGridCell[] | undefined;
-  gridSearchCells: NetworkServerSnapshotGridCell[] | undefined;
-  gridCellSize: number | undefined;
   audioOverride: SerializerAudioOverride | undefined;
   sprayOverride: SerializerSprayOverride | undefined;
   minimapOverride: SerializerMinimapOverride | undefined;
@@ -173,8 +165,6 @@ export class ServerSnapshotDirectWirePreencoder {
   private readonly scanPulsePlaceholders: NonNullable<NetworkServerSnapshot['scanPulses']> = [];
   private readonly resourceMovementPlaceholders: NonNullable<NetworkServerSnapshot['resourceMovements']> = [];
   private readonly audioEventPlaceholders: NonNullable<NetworkServerSnapshot['audioEvents']> = [];
-  private readonly gridCellPlaceholders: NetworkServerSnapshotGridCell[] = [];
-  private readonly gridSearchCellPlaceholders: NetworkServerSnapshotGridCell[] = [];
   private readonly economyPlaceholder = {} as NetworkServerSnapshot['economy'];
   private readonly removedEntityIds: number[] = [];
   private readonly removedEntityIdSet = new IndexedEntityIdSet();
@@ -195,7 +185,6 @@ export class ServerSnapshotDirectWirePreencoder {
     scanPulses: undefined,
     shroud: undefined,
     projectiles: undefined,
-    grid: undefined,
     serverMeta: undefined,
     terrain: undefined,
     buildability: undefined,
@@ -438,18 +427,6 @@ export class ServerSnapshotDirectWirePreencoder {
       addSnapshotMaterializationStageFromStart(stages, 'projectiles', stageStart);
     }
     stageStart = performance.now();
-    const netGrid = writeGridSnapshotWireRowsDirect(
-      input.gridCells,
-      input.gridSearchCells,
-      input.gridCellSize,
-      this.gridCellPlaceholders,
-      this.gridSearchCellPlaceholders,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'grid', stageStart);
-    }
-
-    stageStart = performance.now();
     _directGameState.phase = input.gamePhase;
     _directGameState.winnerId = input.winnerId;
     if (stages !== undefined) {
@@ -467,7 +444,6 @@ export class ServerSnapshotDirectWirePreencoder {
     state.scanPulses = netScanPulses;
     state.shroud = undefined;
     state.projectiles = netProjectiles;
-    state.grid = netGrid;
     state.serverMeta = input.serverMeta;
     state.terrain = input.terrain;
     state.buildability = input.buildability;
@@ -535,7 +511,6 @@ export class ServerSnapshotDirectWirePreencoder {
     state.scanPulses = undefined;
     state.shroud = undefined;
     state.projectiles = netProjectiles;
-    state.grid = undefined;
     state.serverMeta = undefined;
     state.terrain = undefined;
     state.buildability = undefined;
@@ -668,18 +643,6 @@ export class ServerSnapshotDirectWirePreencoder {
       : undefined;
 
     stageStart = performance.now();
-    const netGrid = writeGridSnapshotWireRowsDirect(
-      input.gridCells,
-      input.gridSearchCells,
-      input.gridCellSize,
-      this.gridCellPlaceholders,
-      this.gridSearchCellPlaceholders,
-    );
-    if (stages !== undefined) {
-      addSnapshotMaterializationStageFromStart(stages, 'grid', stageStart);
-    }
-
-    stageStart = performance.now();
     _directGameState.phase = input.gamePhase;
     _directGameState.winnerId = input.winnerId;
     if (stages !== undefined) {
@@ -699,7 +662,6 @@ export class ServerSnapshotDirectWirePreencoder {
     state.scanPulses = netScanPulses;
     state.shroud = undefined;
     state.projectiles = netProjectiles;
-    state.grid = netGrid;
     state.serverMeta = input.serverMeta;
     state.terrain = undefined;
     state.buildability = undefined;
