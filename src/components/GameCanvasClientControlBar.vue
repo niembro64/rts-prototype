@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { CLIENT_CONFIG, LOD_MODE_OPTIONS, isEntityHudElementSupported } from '../clientBarConfig';
+import { CLIENT_CONFIG, LOD_MODE_OPTIONS } from '../clientBarConfig';
 import { GOOD_TPS } from '../config';
 import {
   COMMAND_HOTKEY_DISPLAY_LABELS,
@@ -17,37 +17,14 @@ import {
 } from '../game/input/commandHotkeys';
 import { unitRosterDisplay } from '../game/sim/blueprints/displayRosters';
 import { RESOURCE_BALL_DENSITY_OPTIONS } from '../resourceConfig';
-import {
-  presentationSnapshotRateHz,
-} from '../presentationSnapshotConfig';
 import BarButton from './BarButton.vue';
 import BarButtonGroup from './BarButtonGroup.vue';
 import BarControlGroup from './BarControlGroup.vue';
 import BarDivider from './BarDivider.vue';
 import BarLabel from './BarLabel.vue';
 import type { GameCanvasClientControlBarModel } from './gameCanvasControlBarModels';
-import type { EntityHudElement, EntityHudType, LodMode, PathingDebugUnitId } from '../types/client';
+import type { LodMode, PathingDebugUnitId } from '../types/client';
 import { fmt4, fmtBytes4, msBarStyle, statBarStyle } from './uiUtils';
-
-const ENTITY_HUD_TYPE_LABELS: Record<EntityHudType, string> = {
-  unit: 'UNIT',
-  tower: 'TOWER',
-  building: 'BLDG',
-  turret: 'TURR',
-  shot: 'SHOT',
-};
-
-const ENTITY_HUD_ELEMENT_LABELS: Record<EntityHudElement, string> = {
-  name: 'NAME',
-  healthBar: 'HP',
-  buildBars: 'BUILD',
-};
-
-const ENTITY_HUD_ELEMENT_DESCRIPTIONS: Record<EntityHudElement, string> = {
-  name: 'name',
-  healthBar: 'health bar',
-  buildBars: 'construction progress bars',
-};
 
 const COMMAND_HOTKEY_PRESET_LABELS: Record<CommandHotkeyPresetId, string> = {
   prototype: 'PROTO',
@@ -87,27 +64,6 @@ const PATHING_DEBUG_UNIT_OPTIONS: readonly {
   })),
 ];
 
-const SNAPSHOT_REASONABLE_BYTES = 1024 * 1024;
-const SNAPSHOT_SIZE_TARGET_RATIO_BUDGET = 1;
-const SNAPSHOT_APPLY_REASONABLE_MS = 4;
-
-function snapshotSizeTargetRatio(bytes: number, reasonableBytes: number): number {
-  if (!Number.isFinite(bytes) || !Number.isFinite(reasonableBytes) || reasonableBytes <= 0) {
-    return 0;
-  }
-  return Math.max(0, bytes / reasonableBytes);
-}
-
-function fmtRatio4(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '0';
-  if (value < 0.095) return value.toFixed(2);
-  if (value < 9.95) return value.toFixed(1).replace(/\.0$/, '');
-  if (value < 999.5) return `${Math.round(value)}`;
-  const kilo = value / 1000;
-  if (kilo < 9.95) return `${Math.round(kilo)}k`;
-  return '9k';
-}
-
 function fmtCount4(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0';
   if (value < 999.5) return Math.round(value).toString();
@@ -117,22 +73,6 @@ function fmtCount4(value: number): string {
   const millions = thousands / 1000;
   if (millions < 9.95) return `${millions.toFixed(1)}m`;
   return `${Math.round(millions)}m`;
-}
-
-function richSnapshotTargetHz(model: GameCanvasClientControlBarModel): number {
-  return presentationSnapshotRateHz(model.displaySnapshotRate, model.displayTickRate);
-}
-
-function totalSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
-  return `EMA of snapshots consumed by the local renderer. ${fmt4(model.displayTickRate)} Hz is the fixed-step publication ceiling, not a required non-empty packet rate; rich snapshots target ${fmt4(richSnapshotTargetHz(model))} Hz and sparse deltas are event-driven.`;
-}
-
-function richSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
-  return `Rich presentation snapshots carry server metadata and slower-changing presentation state. Target ${fmt4(richSnapshotTargetHz(model))} Hz from architecture.lockstep.presentationSnapshots.nominalSnapshotRateHz.`;
-}
-
-function deltaSnapshotCadenceTitle(model: GameCanvasClientControlBarModel): string {
-  return `Sparse no-metadata projectile lifecycle, beam, and audio events can emit up to ${fmt4(model.displayTickRate)} Hz during active combat. Continuous root motion is read directly from Rust/WASM and is not counted as snapshot traffic. Empty opportunities do not count as SPS.`;
 }
 
 const props = defineProps<{
@@ -340,7 +280,7 @@ function resetEveryCustomHotkey(): void {
       <BarControlGroup>
         <BarDivider />
         <BarLabel>ENTITY HUD:</BarLabel>
-        <BarLabel title="Current-selection HUD elements override the per-type toggles below for selected entities. ALL always shows them; OFF never does; DMG shows bars only when damaged or under construction.">SEL:</BarLabel>
+        <BarLabel title="Current-selection HUD elements for selected entities. ALL always shows them; OFF never does; DMG shows bars only when damaged or under construction.">SEL:</BarLabel>
         <BarButtonGroup>
           <BarButton
             v-for="opt in CLIENT_CONFIG.selectionHudMode.options"
@@ -350,44 +290,6 @@ function resetEveryCustomHotkey(): void {
             @click="model.changeSelectionHudMode(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
-        <div class="entity-hud-grid">
-          <div
-            v-for="element in model.entityHudElements"
-            :key="element"
-            class="entity-hud-row"
-          >
-            <BarLabel>{{ ENTITY_HUD_ELEMENT_LABELS[element] }}:</BarLabel>
-            <BarButtonGroup>
-              <BarButton
-                v-for="type in model.entityHudTypes"
-                :key="type"
-                :active="isEntityHudElementSupported(type, element) && model.entityHud[type][element]"
-                :disabled="!isEntityHudElementSupported(type, element)"
-                :title="isEntityHudElementSupported(type, element)
-                  ? `Show ${ENTITY_HUD_ELEMENT_DESCRIPTIONS[element]} for ${ENTITY_HUD_TYPE_LABELS[type]}`
-                  : `${ENTITY_HUD_ELEMENT_LABELS[element]} is not available for ${ENTITY_HUD_TYPE_LABELS[type]}`"
-                @click="isEntityHudElementSupported(type, element) && model.toggleEntityHud(type, element)"
-              >{{ ENTITY_HUD_TYPE_LABELS[type] }}</BarButton>
-            </BarButtonGroup>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <div class="fps-stats">
-          <BarLabel :title="`Canvas HUD sprite pools for bars, labels, and waypoint flags. Active ${model.hudSpriteActiveCount}, retained ${model.hudSpriteRetainedCount}, peak retained ${model.hudSpritePeakCount}, retained budget ${model.hudSpriteBudgetCount}, disposed ${model.hudSpriteDisposedCount}.`">HUD SPR:</BarLabel>
-          <span class="fps-value">{{ model.hudSpriteActiveCount }}/{{ model.hudSpriteRetainedCount }}</span>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <div class="fps-stats">
-          <BarLabel :title="`Scoped render mesh retention. Retained units ${model.scopedRetainedUnitMeshes}, retained buildings ${model.scopedRetainedBuildingMeshes}, hidden ${fmt4(model.scopedMeshHiddenPerSec)}/s, shown ${fmt4(model.scopedMeshReactivatedPerSec)}/s, scoped destroys ${fmt4(model.scopedMeshDestroyPerSec)}/s, scoped rebuilds ${fmt4(model.scopedMeshRebuildPerSec)}/s.`">SCOPE:</BarLabel>
-          <span class="fps-value">{{ model.scopedRetainedUnitMeshes }}/{{ model.scopedRetainedBuildingMeshes }}</span>
-          <span class="fps-label">u/b</span>
-          <span class="fps-value">{{ fmt4(model.scopedMeshDestroyPerSec) }}/{{ fmt4(model.scopedMeshRebuildPerSec) }}</span>
-          <span class="fps-label">d/r</span>
-        </div>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -544,286 +446,6 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel :title="totalSnapshotCadenceTitle(model)">TOTAL SPS:</BarLabel>
-        <span class="fps-label">ceil {{ fmt4(model.displayTickRate) }}</span>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.snapAvgRate) }}</span>
-              <span class="fps-label">avg</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  statBarStyle(
-                    model.snapAvgRate,
-                    model.displayTickRate,
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.snapWorstRate) }}</span>
-              <span class="fps-label">low</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  statBarStyle(
-                    model.snapWorstRate,
-                    model.displayTickRate,
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-        </div>
-        <div class="snapshot-delta-split">
-          <span title="Raw snapshots received from the connection over the telemetry sample window.">rx {{ fmt4(model.rawSnapshotReceivedRate) }}</span>
-          <span title="Raw snapshots applied by ClientViewState over the telemetry sample window.">ap {{ fmt4(model.rawSnapshotAppliedRate) }}</span>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel :title="richSnapshotCadenceTitle(model)">RICH SPS:</BarLabel>
-        <span class="fps-label">tgt {{ fmt4(richSnapshotTargetHz(model)) }}</span>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.richSnapAvgRate) }}</span>
-              <span class="fps-label">avg</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  statBarStyle(
-                    model.richSnapAvgRate,
-                    richSnapshotTargetHz(model),
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.richSnapWorstRate) }}</span>
-              <span class="fps-label">low</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  statBarStyle(
-                    model.richSnapWorstRate,
-                    richSnapshotTargetHz(model),
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel :title="deltaSnapshotCadenceTitle(model)">DELTA SPS:</BarLabel>
-        <span class="fps-label">ceil {{ fmt4(model.displayTickRate) }}</span>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.deltaSnapAvgRate) }}</span>
-              <span class="fps-label">avg</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  statBarStyle(
-                    model.deltaSnapAvgRate,
-                    model.displayTickRate,
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.deltaSnapWorstRate) }}</span>
-              <span class="fps-label">low</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  statBarStyle(
-                    model.deltaSnapWorstRate,
-                    model.displayTickRate,
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-        </div>
-        <div class="snapshot-delta-split">
-          <span title="Rich entity-delta envelopes containing changed presentation state; continuous root motion is not carried here.">ent {{ fmt4(model.entityDeltaSnapAvgRate) }}/{{ fmt4(model.entityDeltaSnapWorstRate) }}</span>
-          <span title="Projectile delta snapshots. Target can rise to the fixed simulation tick rate during active projectile traffic.">proj {{ fmt4(model.projectileDeltaSnapAvgRate) }}/{{ fmt4(model.projectileDeltaSnapWorstRate) }}</span>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel :title="`Encoded local snapshot payload size estimate before decode/unpack. Lockstep uses local snapshots for renderer input, not remote gameplay authority. Target ${fmtBytes4(SNAPSHOT_REASONABLE_BYTES)}; x is avg divided by target.`">SNAP SIZE:</BarLabel>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.snapshotSizeAvgBytes) }}</span>
-              <span class="fps-label">avg</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.snapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.snapshotSizeHiBytes) }}</span>
-              <span class="fps-label">hi</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.snapshotSizeHiBytes, SNAPSHOT_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtRatio4(snapshotSizeTargetRatio(model.snapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES)) }}</span>
-              <span class="fps-label">x</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="
-                  msBarStyle(
-                    snapshotSizeTargetRatio(model.snapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES),
-                    SNAPSHOT_SIZE_TARGET_RATIO_BUDGET,
-                  )
-                "
-              ></div>
-            </div>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Payload bytes for rich metadata-carrying presentation snapshots.">RICH BYTES:</BarLabel>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.richSnapshotSizeAvgBytes) }}</span>
-              <span class="fps-label">avg</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.richSnapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.richSnapshotSizeHiBytes) }}</span>
-              <span class="fps-label">hi</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.richSnapshotSizeHiBytes, SNAPSHOT_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Payload bytes for sparse no-metadata entity/projectile deltas.">DELTA BYTES:</BarLabel>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.deltaSnapshotSizeAvgBytes) }}</span>
-              <span class="fps-label">avg</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.deltaSnapshotSizeAvgBytes, SNAPSHOT_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmtBytes4(model.deltaSnapshotSizeHiBytes) }}</span>
-              <span class="fps-label">hi</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.deltaSnapshotSizeHiBytes, SNAPSHOT_REASONABLE_BYTES)"
-              ></div>
-            </div>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="ClientViewState.applyNetworkState wall-clock cost split by all/rich/delta snapshots.">SNAP APPLY:</BarLabel>
-        <div class="stat-bar-group">
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.snapshotApplyAvgMs) }}</span>
-              <span class="fps-label">all</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.snapshotApplyAvgMs, SNAPSHOT_APPLY_REASONABLE_MS)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.richSnapshotApplyAvgMs) }}</span>
-              <span class="fps-label">rich</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.richSnapshotApplyAvgMs, SNAPSHOT_APPLY_REASONABLE_MS)"
-              ></div>
-            </div>
-          </div>
-          <div class="stat-bar">
-            <div class="stat-bar-top">
-              <span class="fps-value">{{ fmt4(model.deltaSnapshotApplyAvgMs) }}</span>
-              <span class="fps-label">delta</span>
-            </div>
-            <div class="stat-bar-track">
-              <div
-                class="stat-bar-fill"
-                :style="msBarStyle(model.deltaSnapshotApplyAvgMs, SNAPSHOT_APPLY_REASONABLE_MS)"
-              ></div>
-            </div>
-          </div>
-        </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
         <BarLabel>EVENTS:</BarLabel>
         <BarButton
           :active="model.audioSmoothing"
@@ -971,37 +593,12 @@ function resetEveryCustomHotkey(): void {
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
-        <BarLabel title="Per-frame unit ground normal EMA on the client. Layered on top of the HOST SERVER UNIT GROUND NORMAL EMA - sim smooths first, then this knob smooths further at render cadence.">UNIT GROUND NORMAL EMA:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.unitGroundNormalEma.options"
-            :key="opt.value"
-            :active="model.clientUnitGroundNormalEmaMode === opt.value"
-            :title="`Set client-side unit ground normal EMA to ${opt.label}.`"
-            @click="model.changeClientUnitGroundNormalEmaMode(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
         <BarLabel>PAN:</BarLabel>
         <BarButton
-          :active="model.allPanActive"
-          title="Toggle all camera pan methods on/off"
-          @click="model.toggleAllPan"
-        >ALL</BarButton>
-        <BarButtonGroup>
-          <BarButton
-            :active="model.dragPanEnabled"
-            title="Middle-click drag to pan camera"
-            @click="model.toggleDragPan"
-          >DRAG</BarButton>
-          <BarButton
-            :active="model.edgeScrollEnabled"
-            title="Edge scroll - move camera when mouse near viewport border"
-            @click="model.toggleEdgeScroll"
-          >EDGE</BarButton>
-        </BarButtonGroup>
+          :active="model.edgeScrollEnabled"
+          title="Edge scroll - move camera when mouse near viewport border"
+          @click="model.toggleEdgeScroll"
+        >EDGE</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -1098,25 +695,6 @@ function resetEveryCustomHotkey(): void {
                   : 'Use the square water cuboid and replace the sky/sun background with solid dark-blue sea'
             "
             @click="model.changeWaterBoundaryMode(opt.value)"
-          >{{ opt.label }}</BarButton>
-        </BarButtonGroup>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>AUDIO:</BarLabel>
-        <BarButtonGroup>
-          <BarButton
-            v-for="opt in CLIENT_CONFIG.audio.options"
-            :key="opt.value"
-            :active="model.audioScope === opt.value"
-            :title="
-              opt.value === 'window'
-                ? 'Play audio from visible area'
-                : opt.value === 'padded'
-                  ? 'Play audio from visible area plus padding'
-                  : 'Play audio from entire map'
-            "
-            @click="model.changeAudioScope(opt.value)"
           >{{ opt.label }}</BarButton>
         </BarButtonGroup>
       </BarControlGroup>
@@ -1305,28 +883,6 @@ function resetEveryCustomHotkey(): void {
             @click="model.setCameraMode('slow')"
           >SLOW</BarButton>
         </BarButtonGroup>
-        <BarButtonGroup>
-          <BarButton
-            :active="false"
-            title="Switch to a steep overhead camera angle without changing the current target or zoom"
-            @click="model.setCameraViewMode('overhead')"
-          >TOP</BarButton>
-          <BarButton
-            :active="false"
-            title="Switch to the default Total Annihilation-style RTS camera angle"
-            @click="model.setCameraViewMode('ta')"
-          >TA</BarButton>
-          <BarButton
-            :active="false"
-            title="Switch to a shallower Spring-style 3D camera angle"
-            @click="model.setCameraViewMode('spring')"
-          >SPR</BarButton>
-        </BarButtonGroup>
-        <BarButton
-          :active="false"
-          title="Rotate the camera view 180 degrees around the current target"
-          @click="model.flipCameraYaw"
-        >FLIP</BarButton>
         <BarDivider />
       </BarControlGroup>
       <BarControlGroup>
@@ -1434,31 +990,6 @@ function resetEveryCustomHotkey(): void {
 </template>
 
 <style scoped>
-/* Compact 3-row entity-HUD matrix: one row per HUD element (NAME / HP /
- * BUILD), each row a connected 6-button pill across the entity types. The
- * rows stack vertically inside the surrounding flex control-group. */
-.entity-hud-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.entity-hud-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.snapshot-delta-split {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 88px;
-  color: #aeb8c6;
-  font-size: 10px;
-  white-space: nowrap;
-}
-
 .hotkey-editor {
   display: flex;
   flex-direction: column;

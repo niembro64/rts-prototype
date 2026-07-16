@@ -12,11 +12,6 @@ defineProps<{
 }>();
 
 const LOCKSTEP_FIXED_SIM_HZ = ARCHITECTURE_CONFIG.lockstep.fixedStepHz;
-const LOCKSTEP_CHECKSUM_INTERVAL_TICKS = ARCHITECTURE_CONFIG.lockstep.checksumIntervalTicks;
-
-function architectureTitle(): string {
-  return 'deterministic-lockstep: ordered command frames are multiplayer truth; each browser runs the same local server simulation.';
-}
 
 function simTpsTitle(): string {
   return `Actual lockstep frames advanced per wall-clock second in this browser. This can be below ${LOCKSTEP_FIXED_SIM_HZ} when the browser pump is slow or waiting for command frames; the fixed simulation step still remains ${LOCKSTEP_FIXED_SIM_HZ} Hz.`;
@@ -28,18 +23,6 @@ function simTpsTarget(): number {
 
 function cpuTitle(): string {
   return `Local lockstep simulation CPU load - measured server-simulation work as a percent of the fixed ${LOCKSTEP_FIXED_SIM_HZ} Hz frame budget.`;
-}
-
-function timingValue(): string {
-  return `${fmt4(LOCKSTEP_FIXED_SIM_HZ)} HZ`;
-}
-
-function fixedStepTitle(): string {
-  return `deterministic-lockstep fixed simulation step from architecture.json: ${LOCKSTEP_FIXED_SIM_HZ} Hz (${fmt4(1000 / LOCKSTEP_FIXED_SIM_HZ)} ms per logical frame). Actual frame advancement is shown separately as ADV TPS.`;
-}
-
-function checksumTitle(): string {
-  return `deterministic-lockstep checksum interval from architecture.json: compare canonical state every ${LOCKSTEP_CHECKSUM_INTERVAL_TICKS} lockstep ticks.`;
 }
 
 </script>
@@ -76,30 +59,6 @@ function checksumTitle(): string {
           title="Server IP address"
           >{{ model.displayServerIp }}</span
         >
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel>BACKEND:</BarLabel>
-        <BarButton
-          :active="true"
-          :title="architectureTitle()"
-        >LOCKSTEP</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel :title="fixedStepTitle()">FIXED STEP:</BarLabel>
-        <BarButton
-          :active="true"
-          :title="fixedStepTitle()"
-        >{{ timingValue() }}</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel :title="checksumTitle()">CHECKSUM:</BarLabel>
-        <BarButton
-          :active="true"
-          :title="checksumTitle()"
-        >{{ LOCKSTEP_CHECKSUM_INTERVAL_TICKS }} TICKS</BarButton>
       </BarControlGroup>
       <BarControlGroup>
         <BarDivider />
@@ -166,22 +125,6 @@ function checksumTitle(): string {
             </div>
           </div>
         </div>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="In deterministic-lockstep, ordered command frames and checksums are multiplayer truth.">TRUTH:</BarLabel>
-        <BarButton
-          :active="true"
-          title="Gameplay truth is the canonical ordered command-frame stream."
-        >CMD FRAMES</BarButton>
-      </BarControlGroup>
-      <BarControlGroup>
-        <BarDivider />
-        <BarLabel title="Local snapshots still feed the existing renderer, but they are not remote gameplay authority.">SNAPS:</BarLabel>
-        <BarButton
-          :active="true"
-          title="Snapshots are generated locally for presentation and diagnostics only."
-        >LOCAL RENDER</BarButton>
       </BarControlGroup>
     </div>
   </div>
